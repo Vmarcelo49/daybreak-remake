@@ -1,3 +1,4 @@
+# Build artifacts
 build/
 *.o
 *.obj
@@ -8,3 +9,7 @@ CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 Makefile
+
+# Allow these committed binaries
+!daybreak_hook.dll
+!daybreak_launcher.exe
