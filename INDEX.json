@@ -12,7 +12,7 @@
     "decompiled_in_binary_data": 3087,
     "total_coverage_pct": 75.44,
     "binary_data_categories": {
-      "other": 31,
+      "other": 32,
       "segments": 2,
       "types": 26,
       "strings": 23,
@@ -47100,7 +47100,11 @@
       },
       {
         "file": "binary_data/network_analysis/candidates.json",
-        "size_bytes": 6592
+        "size_bytes": 10446
+      },
+      {
+        "file": "binary_data/network_analysis/FASE11B_REPORT.md",
+        "size_bytes": 11063
       },
       {
         "file": "binary_data/network_analysis/FASE11_REPORT.md",
