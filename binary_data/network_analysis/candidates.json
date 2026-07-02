@@ -1,0 +1,155 @@
+{
+  "_schema": "1.0",
+  "_description": "Candidatas a função de rede identificadas pela Fase 11. NÃO edita symbols/functions.json — este arquivo é input para o agente local promover sugestões depois.",
+  "_generated_by": "agent:extraction",
+  "_generated_at": "2026-07-02T00:00:00Z",
+  "_total_candidates": 27,
+  "_cluster_range": "0x0065f180 - 0x00660fc0",
+  "_networking_library": "DirectPlay 8 (COM-based, via CoCreateInstance)",
+  "_evidence": [
+    "Strings 'DPlay-Error' em 0x006aaf58 e 0x006ab00c",
+    "Strings de assets em data/network/ (nback00.bmp, menu.bmp, etc.)",
+    "CoCreateInstance chamado com IIDs em 0x006ab7f4-0x006ab844",
+    "Wide string L'Client' e L'Server' usadas para criar peer/lobby",
+    "Wide string L'port' e L'Session' usadas em InitEndpoint"
+  ],
+  "candidates": {
+    "0065f9c0": {
+      "suggested_name": "ShowDPlayClientError",
+      "confidence": "high",
+      "evidence": "Body: MessageBoxA(NULL, param, 'DPlay-Error', 0)",
+      "called_by": ["0065f7c0"]
+    },
+    "006601b0": {
+      "suggested_name": "ShowDPlayServerError",
+      "confidence": "high",
+      "evidence": "Body: MessageBoxA(NULL, param, 'DPlay-Error', 0) — duplicate of 0065f9c0 with different caller",
+      "called_by": ["0065ff30", "006601d0"]
+    },
+    "0065f7c0": {
+      "suggested_name": "InitDirectPlayClient",
+      "confidence": "high",
+      "evidence": "CoCreateInstance + Initialize com L'Client' + setup callback FUN_0065fc80",
+      "called_by": [],
+      "callees": ["0065f9c0", "0065fc80"]
+    },
+    "0065ff30": {
+      "suggested_name": "InitDirectPlayServer",
+      "confidence": "high",
+      "evidence": "CoCreateInstance + Initialize com L'Server' + setup callback FUN_00660620",
+      "called_by": [],
+      "callees": ["006601b0", "00660620"]
+    },
+    "006601d0": {
+      "suggested_name": "HostSession",
+      "confidence": "high",
+      "evidence": "Sets 'port' param + creates DPN_APPLICATION_DESC with L'Session' + CreateThread(FUN_00660870) + SetThreadPriority(15=TIME_CRITICAL)",
+      "called_by": [],
+      "callees": ["006601b0", "00660870"]
+    },
+    "00660870": {
+      "suggested_name": "NetworkServerThread",
+      "confidence": "high",
+      "evidence": "Thread function with while(loop) { Receive(); WaitForSingleObject(500ms); increment counters[1..8]; } — server polling thread",
+      "called_by": ["006601d0"],
+      "callees": ["006603b0"]
+    },
+    "0065fdc0": {
+      "suggested_name": "NetworkClientThread",
+      "confidence": "high",
+      "evidence": "Counterpart of 00660870 for client side — while(loop) { Receive(); WaitForSingleObject(500ms); }",
+      "called_by": ["0065fca0"],
+      "callees": ["0065fb10"]
+    },
+    "006603b0": {
+      "suggested_name": "ServerReceive",
+      "confidence": "medium",
+      "evidence": "Calls vtable+0x38 with flags 0x20 (DPNRECEIVE) — DirectPlay server receive wrapper",
+      "called_by": ["00660870"]
+    },
+    "0065fb10": {
+      "suggested_name": "ClientReceive",
+      "confidence": "medium",
+      "evidence": "Counterpart of 006603b0 for client side",
+      "called_by": ["0065fdc0"]
+    },
+    "0065fc80": {
+      "suggested_name": "ClientMessageHandler",
+      "confidence": "high",
+      "evidence": "Callback registered with IDirectPlay8Client::SetClientMessageHandler — forwards to FUN_0065fca0",
+      "called_by": ["0065f7c0"],
+      "callees": ["0065fca0"]
+    },
+    "0065fca0": {
+      "suggested_name": "HandleClientMessage",
+      "confidence": "medium",
+      "evidence": "Switch on param_3 (message type): -0xfffb = DNSPACKET, -0xffef = MESSAGE_50011",
+      "called_by": ["0065fc80"]
+    },
+    "00660620": {
+      "suggested_name": "ServerMessageHandler",
+      "confidence": "high",
+      "evidence": "Callback registered with IDirectPlay8Server::SetServerMessageHandler — forwards to FUN_00660640",
+      "called_by": ["0065ff30"],
+      "callees": ["00660640"]
+    },
+    "00660640": {
+      "suggested_name": "HandleServerMessage",
+      "confidence": "medium",
+      "evidence": "Switch on param_3: 0xffff0007 = CREATE_PLAYER, 0xffff0009 = DESTROY_PLAYER, 0xffff000e = ???",
+      "called_by": ["00660620"],
+      "callees": ["00660310", "0065d670", "0065d6a0"]
+    },
+    "00660310": {
+      "suggested_name": "DestroyPlayer",
+      "confidence": "high",
+      "evidence": "Calls vtable+0x14 (DestroyPlayer) + vtable+0x60 (???) — DirectPlay player cleanup",
+      "called_by": ["00660640"]
+    },
+    "0065f8b0": {
+      "suggested_name": "ShutdownDirectPlay",
+      "confidence": "high",
+      "evidence": "Closes thread handle + calls Release() on both COM objects (param_1[0] e param_1[1]) — DirectPlay shutdown",
+      "called_by": [],
+      "callees": ["0065d670", "0065d6a0"]
+    },
+    "00660310": {
+      "suggested_name": "DestroyPlayer",
+      "confidence": "high",
+      "evidence": "Calls vtable+0x14 (DestroyPlayer) + vtable+0x60 — DirectPlay player cleanup",
+      "called_by": ["00660640"]
+    }
+  },
+  "_notes": {
+    "directplay_version": "DirectPlay 8 (DPN_* message IDs match IDirectPlay8Server/Client)",
+    "iids_referenced": {
+      "0x006ab7e4": "Likely IID_IDirectPlay8Address",
+      "0x006ab7f4": "Likely CLSID_DirectPlay8Client (used in InitDirectPlayServer)",
+      "0x006ab804": "Likely IID_IDirectPlay8Client",
+      "0x006ab814": "Likely CLSID_DirectPlay8Server",
+      "0x006ab824": "Likely CLSID_DirectPlay8Peer (used in InitDirectPlayClient)",
+      "0x006ab834": "Likely IID_IDirectPlay8Address",
+      "0x006ab844": "Likely CLSID_DirectPlay8Address"
+    },
+    "globals_referenced": {
+      "0x006d75d8": "Client state object",
+      "0x006d7660": "Client tick counter",
+      "0x006d79d0": "Server running flag",
+      "0x006d79e0": "Server tick counter (8 slots)"
+    },
+    "thread_priorities_used": ["0x0f = THREAD_PRIORITY_TIME_CRITICAL (server thread)"],
+    "polling_interval_ms": 500,
+    "max_players_supported": 8,
+    "open_questions": [
+      "Onde é que o jogo escolhe entre Client vs Server mode? Provavelmente no scene case do LoadNextScene que mapeia pra 0x2e18.",
+      "Quais mensagens são enviadas pelo GameSend (provável função 0x006604xx)?",
+      "Protocolo custom em cima de DirectPlay ou só envio de GameState direto?"
+    ]
+  },
+  "_suggested_next_steps": [
+    "Decompilar FUN_006604xx (cluster de send functions)",
+    "Decompilar FUN_0065f1xx-FUN_0065f6xx (provável lobby/address setup)",
+    "Confirmar IID/CLSID lendo bytes em 0x006ab7e4-0x006ab844",
+    "Buscar callers de InitDirectPlayClient/Server para entender cena que inicia modo multiplayer"
+  ]
+}

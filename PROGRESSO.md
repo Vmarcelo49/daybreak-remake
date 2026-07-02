@@ -97,3 +97,34 @@ daybreak-decomp/
 Todas as fases que precisavam de MCP (1-12, exceto 10 e 11) estão concluídas. O trabalho restante pode ser feito 100% offline.
 
 URL atual: `https://jewel-illustrations-have-willing.trycloudflare.com` (pode encerrar).
+
+---
+
+## Fase 11 — Análise de Multiplayer/Network (CONCLUÍDA)
+
+**Stack**: DirectPlay 8 (COM-based, via CoCreateInstance)
+**Cluster**: 27 funções em 0x0065f180 - 0x00660fc0
+**Funções nomeadas**: 16 (11 high, 5 medium) — ver `binary_data/network_analysis/candidates.json`
+
+### Descobertas-chave
+
+- **3 modos**: Client, Server, Peer (todos usam DirectPlay 8)
+- **8 slots de tick counter** — sugere até 8 players
+- **Threads de polling** com `WaitForSingleObject(500ms)`
+- **Server thread** com prioridade `THREAD_PRIORITY_TIME_CRITICAL`
+- **Protocolo de aplicação** ainda não mapeado (cluster `FUN_006604xx` precisa de análise)
+
+### Arquivos
+
+- `binary_data/network_analysis/FASE11_REPORT.md` — relatório completo com diagrama
+- `binary_data/network_analysis/candidates.json` — 16 sugestões prontas para o agente local promover para `symbols/functions.json`
+
+### Próximos passos
+
+| # | Quem | Ação |
+|---|------|------|
+| 1 | Agente local | Promover 11 sugestões `high confidence` de `candidates.json` para `symbols/functions.json` |
+| 2 | Agente local | Decompilar `FUN_006604xx` (GameSend functions) |
+| 3 | Operador | Revisar e promover as sugestões para `reviewed` |
+
+**Nota**: Este trabalho foi feito 100% offline, sem MCP. As sugestões estão em arquivo separado (`candidates.json`) para NÃO conflitar com o trabalho do agente local em `symbols/functions.json`.
