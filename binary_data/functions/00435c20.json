@@ -1,0 +1,7 @@
+{
+  "address": "00435c20",
+  "name": "FUN_00435c20",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00435c20(void)\n\n{\n  char cVar1;\n  undefined4 uVar2;\n  undefined4 *puVar3;\n  int iVar4;\n  int *piVar5;\n  undefined1 local_1c [4];\n  undefined4 *local_18;\n  undefined4 *local_14;\n  undefined1 local_10 [4];\n  undefined1 local_c [4];\n  undefined4 local_8;\n  \n  FUN_0065d670();\n  FUN_00653d10(&local_8);\n  while( true ) {\n    uVar2 = FUN_00654620(local_c);\n    cVar1 = const_iterator__operator__(uVar2);\n    if (cVar1 == '\\0') break;\n    FUN_00653d70();\n    FUN_00435e20();\n    puVar3 = (undefined4 *)FUN_00653d70();\n    (**(code **)(*(int *)*puVar3 + 0x20))();\n    FUN_00653d70();\n    iVar4 = FUN_00435e40();\n    if (iVar4 == 0) {\n      piVar5 = (int *)FUN_00653d70();\n      local_18 = (undefined4 *)*piVar5;\n      local_14 = local_18;\n      if (local_18 != (undefined4 *)0x0) {\n        (**(code **)*local_18)(1);\n      }\n      puVar3 = (undefined4 *)FUN_00425500(local_1c,local_8);\n      local_8 = *puVar3;\n    }\n    else {\n      FUN_0042fc40(local_10,0);\n    }\n  }\n  FUN_0065d6a0();\n  return;\n}\n\n"
+}

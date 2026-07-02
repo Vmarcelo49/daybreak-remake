@@ -1,0 +1,7 @@
+{
+  "address": "00693370",
+  "name": "FUN_00693370",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00693370(int param_1)\n\n{\n  HANDLE hHandle;\n  \n  hHandle = (HANDLE)InterlockedExchange((LONG *)(param_1 + 0x14),0);\n  if (hHandle != (HANDLE)0x0) {\n    WaitForSingleObject(hHandle,0xffffffff);\n    CloseHandle(hHandle);\n  }\n  return;\n}\n\n"
+}

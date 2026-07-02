@@ -1,0 +1,7 @@
+{
+  "address": "0068bd80",
+  "name": "FUN_0068bd80",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_0068bd80(int param_1)\n\n{\n  undefined4 uVar1;\n  HANDLE local_2c;\n  undefined4 local_28;\n  undefined4 local_24;\n  undefined4 local_20;\n  DWORD local_1c;\n  undefined4 local_18;\n  void *local_10;\n  undefined1 *puStack_c;\n  undefined4 local_8;\n  \n  local_8 = 0xffffffff;\n  puStack_c = &LAB_0069f6a8;\n  local_10 = ExceptionList;\n  ExceptionList = &local_10;\n  FUN_0068d950(param_1 + 0xa4);\n  local_8 = 0;\n  do {\n    if (*(int *)(param_1 + 0xc4) != 2) {\n      *(int *)(param_1 + 0xcc) = *(int *)(param_1 + 0xcc) + 1;\n      local_8 = 0xffffffff;\n      FUN_0068d9a0();\n      ExceptionList = local_10;\n      return 0;\n    }\n    FUN_0068d9c0();\n    local_18 = 0;\n    local_20 = 1;\n    local_2c = *(HANDLE *)(param_1 + 0xbc);\n    local_28 = *(undefined4 *)(param_1 + 0xd0);\n    local_24 = 2;\n    local_1c = WaitForMultipleObjects(2,&local_2c,0,0xffffffff);\n    FUN_0068d980();\n  } while (local_1c == 0);\n  if (local_1c == 1) {\n    local_8 = 0xffffffff;\n    FUN_0068d9a0();\n    uVar1 = 0x80040223;\n  }\n  else if (local_1c == 0xffffffff) {\n    uVar1 = FUN_00693210();\n    local_8 = 0xffffffff;\n    FUN_0068d9a0();\n  }\n  else {\n    local_8 = 0xffffffff;\n    FUN_0068d9a0();\n    uVar1 = 0x8000ffff;\n  }\n  ExceptionList = local_10;\n  return uVar1;\n}\n\n"
+}

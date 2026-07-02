@@ -1,0 +1,7 @@
+{
+  "address": "00689d50",
+  "name": "FUN_00689d50",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint __thiscall FUN_00689d50(undefined4 param_1,int param_2,int param_3)\n\n{\n  int iVar1;\n  \n  if (param_3 == 0) {\n    iVar1 = -0x7fffbffd;\n  }\n  else {\n    iVar1 = (**(code **)(*(int *)(param_2 + -0xc) + 0x20))(param_3,param_1);\n    if (iVar1 < 0) {\n      iVar1 = 1;\n    }\n  }\n  return iVar1;\n}\n\n"
+}

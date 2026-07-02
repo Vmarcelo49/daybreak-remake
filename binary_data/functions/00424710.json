@@ -1,0 +1,7 @@
+{
+  "address": "00424710",
+  "name": "FUN_00424710",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_00424710(void)\n\n{\n  undefined4 uStack_10;\n  undefined4 local_c;\n  \n  std::allocator<char>::allocator<char>((allocator<char> *)&uStack_10);\n  _String_val<>();\n  uStack_10 = 0;\n  FUN_00425820();\n  return local_c;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "00428150",
+  "name": "FUN_00428150",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __thiscall\nFUN_00428150(undefined4 param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4,\n            undefined4 param_5,undefined4 param_6,undefined4 param_7,undefined4 param_8)\n\n{\n  undefined1 uVar1;\n  \n  uVar1 = FUN_004281e0(&param_3,&param_7,param_1);\n  FUN_004281f0(param_2,param_3,param_4,param_5,param_6,param_7,param_8,uVar1);\n  return param_2;\n}\n\n"
+}

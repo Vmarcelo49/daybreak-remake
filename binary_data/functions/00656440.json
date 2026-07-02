@@ -1,0 +1,7 @@
+{
+  "address": "00656440",
+  "name": "FUN_00656440",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_00656440(undefined4 param_1)\n\n{\n  void *local_10;\n  undefined1 *puStack_c;\n  undefined4 local_8;\n  \n  local_8 = 0xffffffff;\n  puStack_c = &LAB_0069edb3;\n  local_10 = ExceptionList;\n  ExceptionList = &local_10;\n  FUN_00656500();\n  local_8 = 0;\n  FUN_00653dc0();\n  local_8 = CONCAT31(local_8._1_3_,1);\n  FUN_00653dc0();\n  ExceptionList = local_10;\n  return param_1;\n}\n\n"
+}

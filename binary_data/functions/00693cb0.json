@@ -1,0 +1,7 @@
+{
+  "address": "00693cb0",
+  "name": "FUN_00693cb0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint __thiscall FUN_00693cb0(int *param_1,int param_2,undefined4 param_3)\n\n{\n  allocator<char> *this;\n  undefined4 uVar1;\n  int local_2c;\n  int local_1c;\n  void *local_10;\n  undefined1 *puStack_c;\n  undefined4 local_8;\n  \n  local_8 = 0xffffffff;\n  puStack_c = &LAB_0069fbdf;\n  local_10 = ExceptionList;\n  if (param_2 == 0) {\n    ExceptionList = &local_10;\n    local_1c = FUN_006938a0(param_3);\n  }\n  else if (param_2 == *param_1) {\n    ExceptionList = &local_10;\n    local_1c = FUN_00693990(param_3);\n  }\n  else {\n    ExceptionList = &local_10;\n    local_1c = FUN_006941d0();\n    if (local_1c == 0) {\n      this = operator_new(0xc);\n      local_8 = 0;\n      if (this == (allocator<char> *)0x0) {\n        local_2c = 0;\n      }\n      else {\n        local_2c = std::allocator<char>::allocator<char>(this);\n      }\n      local_8 = 0xffffffff;\n      local_1c = local_2c;\n    }\n    if (local_1c == 0) {\n      local_1c = 0;\n    }\n    else {\n      FUN_006940d0(param_3);\n      uVar1 = FUN_0068de10();\n      FUN_00687260(uVar1);\n      FUN_006940b0(param_2);\n      FUN_00687260(local_1c);\n      FUN_006940b0(local_1c);\n      param_1[2] = param_1[2] + 1;\n    }\n  }\n  ExceptionList = local_10;\n  return local_1c;\n}\n\n"
+}

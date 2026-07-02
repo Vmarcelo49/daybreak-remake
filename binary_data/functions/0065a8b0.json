@@ -1,0 +1,7 @@
+{
+  "address": "0065a8b0",
+  "name": "FUN_0065a8b0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_0065a8b0(int param_1)\n\n{\n  char cVar1;\n  wchar_t *pwVar2;\n  undefined4 uVar3;\n  undefined4 *puVar4;\n  undefined4 local_10;\n  undefined4 local_c;\n  undefined4 local_8;\n  \n  cVar1 = FUN_006544f0();\n  if (cVar1 == '\\0') {\n    pwVar2 = std::basic_string<wchar_t,std::char_traits<wchar_t>,std::allocator<wchar_t>_>::back\n                       ((basic_string<wchar_t,std::char_traits<wchar_t>,std::allocator<wchar_t>_> *)\n                        (param_1 + 0x20));\n    local_8 = *(undefined4 *)pwVar2;\n    FUN_00654340(local_8);\n    FUN_00654580();\n    uVar3 = FUN_00654390();\n    puVar4 = (undefined4 *)FUN_00658a10(local_8);\n    *puVar4 = uVar3;\n  }\n  else {\n    local_8 = FUN_0064f010();\n    FUN_00654340(local_8);\n    local_c = 0;\n    FUN_0065a9c0(&local_c);\n    local_10 = FUN_00654390();\n    FUN_00654510(&local_10);\n  }\n  FUN_0065a970(local_8);\n  return;\n}\n\n"
+}

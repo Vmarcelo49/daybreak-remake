@@ -1,0 +1,7 @@
+{
+  "address": "004201a0",
+  "name": "FUN_004201a0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_004201a0(int param_1)\n\n{\n  if (0 < *(int *)(param_1 + 0x30c)) {\n    *(int *)(param_1 + 0x30c) = *(int *)(param_1 + 0x30c) + -1;\n  }\n  if ((-6.0 < *(float *)(param_1 + 0x314)) &&\n     (*(float *)(param_1 + 0x314) = *(float *)(param_1 + 0x314) - 0.2,\n     *(float *)(param_1 + 0x314) < -6.0 != (*(float *)(param_1 + 0x314) == -6.0))) {\n    *(undefined1 *)(param_1 + 0xaec4) = 1;\n  }\n  if ((*(int *)(param_1 + 0x7f0) < 1) && (*(int *)(param_1 + 0x7f8) < 1)) {\n    if (*(char *)(param_1 + 0x824) != '\\0') {\n      *(char *)(param_1 + 0x824) = *(char *)(param_1 + 0x824) + -5;\n    }\n  }\n  else if (*(char *)(param_1 + 0x824) != -1) {\n    *(char *)(param_1 + 0x824) = *(char *)(param_1 + 0x824) + '\\x05';\n  }\n  *(undefined1 *)(param_1 + 0xaec8) = 0;\n  *(undefined1 *)(param_1 + 0xaec9) = 0;\n  *(undefined1 *)(param_1 + 0xaecb) = 0;\n  *(undefined1 *)(param_1 + 0xaeca) = 0;\n  return;\n}\n\n"
+}

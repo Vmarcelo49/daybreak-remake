@@ -1,0 +1,48 @@
+_FLOATING_SAVE_AREA | winnt.h | 112 bytes | /winnt.h/_FLOATING_SAVE_AREA
+_LARGE_INTEGER | winnt.h | 8 bytes | /winnt.h/_LARGE_INTEGER
+_LIST_ENTRY | winnt.h | 8 bytes | /winnt.h/_LIST_ENTRY
+_LIST_ENTRY * | winnt.h | 4 bytes | /winnt.h/_LIST_ENTRY *
+_MEMORY_BASIC_INFORMATION | winnt.h | 28 bytes | /winnt.h/_MEMORY_BASIC_INFORMATION
+_MEMORY_BASIC_INFORMATION * | winnt.h | 4 bytes | /winnt.h/_MEMORY_BASIC_INFORMATION *
+_OSVERSIONINFOA | winnt.h | 148 bytes | /winnt.h/_OSVERSIONINFOA
+_OSVERSIONINFOA * | winnt.h | 4 bytes | /winnt.h/_OSVERSIONINFOA *
+_RTL_CRITICAL_SECTION | winnt.h | 24 bytes | /winnt.h/_RTL_CRITICAL_SECTION
+_RTL_CRITICAL_SECTION * | winnt.h | 4 bytes | /winnt.h/_RTL_CRITICAL_SECTION *
+_RTL_CRITICAL_SECTION_DEBUG | winnt.h | 32 bytes | /winnt.h/_RTL_CRITICAL_SECTION_DEBUG
+_RTL_CRITICAL_SECTION_DEBUG * | winnt.h | 4 bytes | /winnt.h/_RTL_CRITICAL_SECTION_DEBUG *
+_struct_19 | winnt.h | 8 bytes | /winnt.h/_struct_19
+_struct_20 | winnt.h | 8 bytes | /winnt.h/_struct_20
+CHAR | winnt.h | 1 bytes | /winnt.h/CHAR
+CHAR * | winnt.h | 4 bytes | /winnt.h/CHAR *
+CHAR[128] | winnt.h | 128 bytes | /winnt.h/CHAR[128]
+CONTEXT | winnt.h | 716 bytes | /winnt.h/CONTEXT
+CONTEXT * | winnt.h | 4 bytes | /winnt.h/CONTEXT *
+EXCEPTION_RECORD | winnt.h | 80 bytes | /winnt.h/EXCEPTION_RECORD
+EXCEPTION_RECORD * | winnt.h | 4 bytes | /winnt.h/EXCEPTION_RECORD *
+FLOATING_SAVE_AREA | winnt.h | 112 bytes | /winnt.h/FLOATING_SAVE_AREA
+HANDLE | winnt.h | 4 bytes | /winnt.h/HANDLE
+HANDLE * | winnt.h | 4 bytes | /winnt.h/HANDLE *
+HRESULT | winnt.h | 4 bytes | /winnt.h/HRESULT
+LARGE_INTEGER | winnt.h | 8 bytes | /winnt.h/LARGE_INTEGER
+LARGE_INTEGER * | winnt.h | 4 bytes | /winnt.h/LARGE_INTEGER *
+LCID | winnt.h | 4 bytes | /winnt.h/LCID
+LIST_ENTRY | winnt.h | 8 bytes | /winnt.h/LIST_ENTRY
+LONG | winnt.h | 4 bytes | /winnt.h/LONG
+LONG * | winnt.h | 4 bytes | /winnt.h/LONG *
+LONGLONG | winnt.h | 8 bytes | /winnt.h/LONGLONG
+LPCH | winnt.h | 4 bytes | /winnt.h/LPCH
+LPCSTR | winnt.h | 4 bytes | /winnt.h/LPCSTR
+LPCWSTR | winnt.h | 4 bytes | /winnt.h/LPCWSTR
+LPOSVERSIONINFOA | winnt.h | 4 bytes | /winnt.h/LPOSVERSIONINFOA
+LPSTR | winnt.h | 4 bytes | /winnt.h/LPSTR
+LPWCH | winnt.h | 4 bytes | /winnt.h/LPWCH
+LPWSTR | winnt.h | 4 bytes | /winnt.h/LPWSTR
+PCONTEXT | winnt.h | 4 bytes | /winnt.h/PCONTEXT
+PEXCEPTION_RECORD | winnt.h | 4 bytes | /winnt.h/PEXCEPTION_RECORD
+PLONG | winnt.h | 4 bytes | /winnt.h/PLONG
+PMEMORY_BASIC_INFORMATION | winnt.h | 4 bytes | /winnt.h/PMEMORY_BASIC_INFORMATION
+PRTL_CRITICAL_SECTION | winnt.h | 4 bytes | /winnt.h/PRTL_CRITICAL_SECTION
+PRTL_CRITICAL_SECTION_DEBUG | winnt.h | 4 bytes | /winnt.h/PRTL_CRITICAL_SECTION_DEBUG
+PVOID | winnt.h | 4 bytes | /winnt.h/PVOID
+WCHAR | winnt.h | 2 bytes | /winnt.h/WCHAR
+WCHAR * | winnt.h | 4 bytes | /winnt.h/WCHAR *

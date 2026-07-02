@@ -1,0 +1,7 @@
+{
+  "address": "00690b20",
+  "name": "FUN_00690b20",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00690b20(int *param_1)\n\n{\n  param_1[0x3d] = 0;\n  param_1[0x3e] = 5000000;\n  (**(code **)(*param_1 + 0xb4))(param_1[0x54],param_1[0x55]);\n  FUN_00690ad0();\n  return;\n}\n\n"
+}

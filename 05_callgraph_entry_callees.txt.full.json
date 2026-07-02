@@ -1,0 +1,16 @@
+{
+  "jsonrpc": "2.0",
+  "id": 954729467,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "FUN_0064d250 @ 0064d250\nGetCommandLineA @ EXTERNAL:0000003a\nGetModuleHandleA @ EXTERNAL:00000038\nGetStartupInfoA @ EXTERNAL:00000039\nGetVersionExA @ EXTERNAL:0000003b\n__RTC_Initialize @ 00671b1d\n__SEH_epilog @ 0066e5ef\n__SEH_prolog @ 0066e5b4\n___crtGetEnvironmentStringsA @ 006717fd\n__amsg_exit @ 0066c8bd\n__cexit @ 00671123\n__chkstk @ 0066cc70\n__cinit @ 00670fd4\n__heap_init @ 00671bbf\n__ioinit @ 0067191f\n__mtinit @ 0066dde4\n__setargv @ 0067175b\n__setenvp @ 00671528\n__wincmdln @ 006714cb\n_exit @ 00671101\nfast_error_exit @ 0066c8e2"
+      }
+    ],
+    "structuredContent": {
+      "result": "FUN_0064d250 @ 0064d250\nGetCommandLineA @ EXTERNAL:0000003a\nGetModuleHandleA @ EXTERNAL:00000038\nGetStartupInfoA @ EXTERNAL:00000039\nGetVersionExA @ EXTERNAL:0000003b\n__RTC_Initialize @ 00671b1d\n__SEH_epilog @ 0066e5ef\n__SEH_prolog @ 0066e5b4\n___crtGetEnvironmentStringsA @ 006717fd\n__amsg_exit @ 0066c8bd\n__cexit @ 00671123\n__chkstk @ 0066cc70\n__cinit @ 00670fd4\n__heap_init @ 00671bbf\n__ioinit @ 0067191f\n__mtinit @ 0066dde4\n__setargv @ 0067175b\n__setenvp @ 00671528\n__wincmdln @ 006714cb\n_exit @ 00671101\nfast_error_exit @ 0066c8e2"
+    },
+    "isError": false
+  }
+}

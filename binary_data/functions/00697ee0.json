@@ -1,0 +1,7 @@
+{
+  "address": "00697ee0",
+  "name": "FUN_00697ee0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00697ee0(void)\n\n{\n  longlong lVar1;\n  longlong lVar2;\n  \n  lVar1 = FUN_00697fc0();\n  lVar2 = FUN_00697fc0();\n  FUN_0068d8f0(lVar1 + lVar2);\n  return;\n}\n\n"
+}

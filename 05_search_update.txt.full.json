@@ -1,0 +1,16 @@
+{
+  "jsonrpc": "2.0",
+  "id": 954781102,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "___updatetlocinfo @ 0066f306\n___updatetlocinfo_lk @ 0066f245\n___updatetmbcinfo @ 00671df4"
+      }
+    ],
+    "structuredContent": {
+      "result": "___updatetlocinfo @ 0066f306\n___updatetlocinfo_lk @ 0066f245\n___updatetmbcinfo @ 00671df4"
+    },
+    "isError": false
+  }
+}

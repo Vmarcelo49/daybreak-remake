@@ -1,0 +1,7 @@
+{
+  "address": "00680790",
+  "name": "FUN_00680790",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00680790(int *param_1,int param_2)\n\n{\n  void *pvVar1;\n  \n  *param_1 = param_2;\n  pvVar1 = _calloc(param_2 * 3,4);\n  param_1[1] = (int)pvVar1;\n  pvVar1 = _calloc(0x20,4);\n  param_1[2] = (int)pvVar1;\n  FUN_006807d0(param_2,param_1[1],pvVar1);\n  return;\n}\n\n"
+}

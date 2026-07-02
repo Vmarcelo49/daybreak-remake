@@ -1,0 +1,65 @@
+_FILETIME | windef.h | 8 bytes | /WinDef.h/_FILETIME
+_FILETIME * | windef.h | 4 bytes | /WinDef.h/_FILETIME *
+ATOM | windef.h | 2 bytes | /WinDef.h/ATOM
+BOOL | windef.h | 4 bytes | /WinDef.h/BOOL
+BOOL * | windef.h | 4 bytes | /WinDef.h/BOOL *
+BYTE | windef.h | 1 bytes | /WinDef.h/BYTE
+BYTE * | windef.h | 4 bytes | /WinDef.h/BYTE *
+BYTE[12] | windef.h | 12 bytes | /WinDef.h/BYTE[12]
+BYTE[2] | windef.h | 2 bytes | /WinDef.h/BYTE[2]
+BYTE[512] | windef.h | 512 bytes | /WinDef.h/BYTE[512]
+BYTE[80] | windef.h | 80 bytes | /WinDef.h/BYTE[80]
+DWORD | windef.h | 4 bytes | /WinDef.h/DWORD
+DWORD * | windef.h | 4 bytes | /WinDef.h/DWORD *
+DWORD[3] | windef.h | 12 bytes | /WinDef.h/DWORD[3]
+FARPROC | windef.h | 4 bytes | /WinDef.h/FARPROC
+HBRUSH | windef.h | 4 bytes | /WinDef.h/HBRUSH
+HBRUSH__ | windef.h | 4 bytes | /WinDef.h/HBRUSH__
+HBRUSH__ * | windef.h | 4 bytes | /WinDef.h/HBRUSH__ *
+HCURSOR | windef.h | 4 bytes | /WinDef.h/HCURSOR
+HDC | windef.h | 4 bytes | /WinDef.h/HDC
+HDC__ | windef.h | 4 bytes | /WinDef.h/HDC__
+HDC__ * | windef.h | 4 bytes | /WinDef.h/HDC__ *
+HFONT | windef.h | 4 bytes | /WinDef.h/HFONT
+HFONT__ | windef.h | 4 bytes | /WinDef.h/HFONT__
+HFONT__ * | windef.h | 4 bytes | /WinDef.h/HFONT__ *
+HGDIOBJ | windef.h | 4 bytes | /WinDef.h/HGDIOBJ
+HICON | windef.h | 4 bytes | /WinDef.h/HICON
+HICON__ | windef.h | 4 bytes | /WinDef.h/HICON__
+HICON__ * | windef.h | 4 bytes | /WinDef.h/HICON__ *
+HINSTANCE | windef.h | 4 bytes | /WinDef.h/HINSTANCE
+HINSTANCE__ | windef.h | 4 bytes | /WinDef.h/HINSTANCE__
+HINSTANCE__ * | windef.h | 4 bytes | /WinDef.h/HINSTANCE__ *
+HMENU | windef.h | 4 bytes | /WinDef.h/HMENU
+HMENU__ | windef.h | 4 bytes | /WinDef.h/HMENU__
+HMENU__ * | windef.h | 4 bytes | /WinDef.h/HMENU__ *
+HMODULE | windef.h | 4 bytes | /WinDef.h/HMODULE
+HTASK | windef.h | 4 bytes | /WinDef.h/HTASK
+HTASK__ | windef.h | 4 bytes | /WinDef.h/HTASK__
+HTASK__ * | windef.h | 4 bytes | /WinDef.h/HTASK__ *
+HWND | windef.h | 4 bytes | /WinDef.h/HWND
+HWND__ | windef.h | 4 bytes | /WinDef.h/HWND__
+HWND__ * | windef.h | 4 bytes | /WinDef.h/HWND__ *
+LPARAM | windef.h | 4 bytes | /WinDef.h/LPARAM
+LPBOOL | windef.h | 4 bytes | /WinDef.h/LPBOOL
+LPBYTE | windef.h | 4 bytes | /WinDef.h/LPBYTE
+LPCVOID | windef.h | 4 bytes | /WinDef.h/LPCVOID
+LPDWORD | windef.h | 4 bytes | /WinDef.h/LPDWORD
+LPFILETIME | windef.h | 4 bytes | /WinDef.h/LPFILETIME
+LPHANDLE | windef.h | 4 bytes | /WinDef.h/LPHANDLE
+LPLONG | windef.h | 4 bytes | /WinDef.h/LPLONG
+LPRECT | windef.h | 4 bytes | /WinDef.h/LPRECT
+LPVOID | windef.h | 4 bytes | /WinDef.h/LPVOID
+LPVOID * | windef.h | 4 bytes | /WinDef.h/LPVOID *
+LPWORD | windef.h | 4 bytes | /WinDef.h/LPWORD
+LRESULT | windef.h | 4 bytes | /WinDef.h/LRESULT
+PDWORD | windef.h | 4 bytes | /WinDef.h/PDWORD
+POINT | windef.h | 8 bytes | /WinDef.h/POINT
+RECT | windef.h | 16 bytes | /WinDef.h/RECT
+tagPOINT | windef.h | 8 bytes | /WinDef.h/tagPOINT
+tagRECT | windef.h | 16 bytes | /WinDef.h/tagRECT
+tagRECT * | windef.h | 4 bytes | /WinDef.h/tagRECT *
+UINT | windef.h | 4 bytes | /WinDef.h/UINT
+WORD | windef.h | 2 bytes | /WinDef.h/WORD
+WORD * | windef.h | 4 bytes | /WinDef.h/WORD *
+WPARAM | windef.h | 4 bytes | /WinDef.h/WPARAM

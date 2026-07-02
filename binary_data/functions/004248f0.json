@@ -1,0 +1,7 @@
+{
+  "address": "004248f0",
+  "name": "FUN_004248f0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint FUN_004248f0(void)\n\n{\n  allocator<char> aaStack_10 [4];\n  int local_c;\n  \n  std::allocator<char>::allocator<char>(aaStack_10);\n  FUN_00424d60();\n  *(undefined4 *)(local_c + 4) = 0;\n  *(undefined4 *)(local_c + 8) = 0;\n  *(undefined4 *)(local_c + 0xc) = 0;\n  *(undefined4 *)(local_c + 0x10) = 0;\n  return local_c;\n}\n\n"
+}

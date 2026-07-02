@@ -1,0 +1,7 @@
+{
+  "address": "00693990",
+  "name": "FUN_00693990",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint __thiscall FUN_00693990(int *param_1,undefined4 param_2)\n\n{\n  allocator<char> *this;\n  int local_24;\n  int local_14;\n  void *local_10;\n  undefined1 *puStack_c;\n  undefined4 local_8;\n  \n  local_8 = 0xffffffff;\n  puStack_c = &LAB_0069fbb5;\n  local_10 = ExceptionList;\n  ExceptionList = &local_10;\n  local_14 = FUN_006941d0();\n  if (local_14 == 0) {\n    this = operator_new(0xc);\n    local_8 = 0;\n    if (this == (allocator<char> *)0x0) {\n      local_24 = 0;\n    }\n    else {\n      local_24 = std::allocator<char>::allocator<char>(this);\n    }\n    local_8 = 0xffffffff;\n    local_14 = local_24;\n  }\n  if (local_14 == 0) {\n    local_14 = 0;\n  }\n  else {\n    FUN_006940d0(param_2);\n    FUN_00687260(0);\n    FUN_006940b0(*param_1);\n    if (*param_1 == 0) {\n      param_1[1] = local_14;\n    }\n    else {\n      FUN_00687260(local_14);\n    }\n    *param_1 = local_14;\n    param_1[2] = param_1[2] + 1;\n  }\n  ExceptionList = local_10;\n  return local_14;\n}\n\n"
+}

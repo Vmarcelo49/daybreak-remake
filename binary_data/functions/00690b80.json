@@ -1,0 +1,7 @@
+{
+  "address": "00690b80",
+  "name": "FUN_00690b80",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00690b80(int *param_1)\n\n{\n  DWORD DVar1;\n  \n  (**(code **)(*param_1 + 0xb4))(param_1[0x54],param_1[0x55]);\n  DVar1 = timeGetTime();\n  param_1[0x3f] = DVar1;\n  return;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "00410d60",
+  "name": "FUN_00410d60",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 * __fastcall FUN_00410d60(undefined4 *param_1)\n\n{\n  undefined4 *puVar1;\n  undefined1 local_1c [4];\n  undefined1 local_18 [4];\n  undefined1 local_14 [4];\n  void *local_10;\n  undefined1 *puStack_c;\n  undefined4 local_8;\n  \n  local_8 = 0xffffffff;\n  puStack_c = &LAB_0069dd38;\n  local_10 = ExceptionList;\n  ExceptionList = &local_10;\n  FUN_00403a50();\n  local_8 = 0;\n  *param_1 = &PTR_FUN_006a1bdc;\n  _vector_constructor_iterator_(param_1 + 1,0xa0,2,FUN_00403a70);\n  FUN_00403a70();\n  _vector_constructor_iterator_(param_1 + 0x79,4,3,FUN_00425ac0);\n  puVar1 = (undefined4 *)FUN_006560c0(local_14,\"data/title/back00.bmp\");\n  param_1[0x79] = *puVar1;\n  puVar1 = (undefined4 *)FUN_006560c0(local_18,\"data/title/logo.bmp\");\n  param_1[0x7a] = *puVar1;\n  puVar1 = (undefined4 *)FUN_006560c0(local_1c,\"data/title/title.bmp\");\n  param_1[0x7b] = *puVar1;\n  FUN_00655af0(param_1[0x79],0,0,800,600);\n  FUN_00655b20(param_1[0x7a],0,0,0x200,300,0x100,0);\n  FUN_006556c0(param_1[0x7b],0,0,0xc0,0x30,0x60,0);\n  param_1[0x7c] = 0;\n  ExceptionList = local_10;\n  return param_1;\n}\n\n"
+}

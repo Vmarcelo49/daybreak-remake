@@ -1,0 +1,7 @@
+{
+  "address": "00662460",
+  "name": "FUN_00662460",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_00662460(undefined4 param_1,int param_2)\n\n{\n  undefined4 *local_14;\n  \n  if (param_2 == 0) {\n    local_14 = (undefined4 *)0x0;\n  }\n  else {\n    local_14 = (undefined4 *)(param_2 + -0x10);\n  }\n  if ((local_14 != (undefined4 *)0x0) && (local_14 != (undefined4 *)0x0)) {\n    (**(code **)*local_14)(1);\n  }\n  return 0;\n}\n\n"
+}

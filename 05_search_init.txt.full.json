@@ -1,0 +1,16 @@
+{
+  "jsonrpc": "2.0",
+  "id": 954743890,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "CommonInit @ 00543c70\n__RTC_Initialize @ 00671b1d\n___crtInitCritSecAndSpinCount @ 006746da\n___crtInitCritSecNoSpinCount@8 @ 006746ca\n___initmbctable @ 00672143\n___onexitinit @ 0066c81b\n___sbh_heap_init @ 00672f92\n___security_init_cookie @ 0066e406\n___sse2_available_init @ 00672df1\n__cinit @ 00670fd4\n__heap_init @ 00671bbf\n__initterm @ 00670fbc\n__ioinit @ 0067191f\n__mtinit @ 0066dde4\n__mtinitlocknum @ 0066e7bc\n__mtinitlocks @ 0066e709"
+      }
+    ],
+    "structuredContent": {
+      "result": "CommonInit @ 00543c70\n__RTC_Initialize @ 00671b1d\n___crtInitCritSecAndSpinCount @ 006746da\n___crtInitCritSecNoSpinCount@8 @ 006746ca\n___initmbctable @ 00672143\n___onexitinit @ 0066c81b\n___sbh_heap_init @ 00672f92\n___security_init_cookie @ 0066e406\n___sse2_available_init @ 00672df1\n__cinit @ 00670fd4\n__heap_init @ 00671bbf\n__initterm @ 00670fbc\n__ioinit @ 0067191f\n__mtinit @ 0066dde4\n__mtinitlocknum @ 0066e7bc\n__mtinitlocks @ 0066e709"
+    },
+    "isError": false
+  }
+}

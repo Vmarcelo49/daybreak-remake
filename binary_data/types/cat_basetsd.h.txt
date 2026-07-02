@@ -1,0 +1,7 @@
+DWORD_PTR | basetsd.h | 4 bytes | /basetsd.h/DWORD_PTR
+LONG_PTR | basetsd.h | 4 bytes | /basetsd.h/LONG_PTR
+SIZE_T | basetsd.h | 4 bytes | /basetsd.h/SIZE_T
+UINT_PTR | basetsd.h | 4 bytes | /basetsd.h/UINT_PTR
+ULONG_PTR | basetsd.h | 4 bytes | /basetsd.h/ULONG_PTR
+ULONG_PTR * | basetsd.h | 4 bytes | /basetsd.h/ULONG_PTR *
+ULONG_PTR[15] | basetsd.h | 60 bytes | /basetsd.h/ULONG_PTR[15]

@@ -1,0 +1,7 @@
+{
+  "address": "006631f0",
+  "name": "FUN_006631f0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_006631f0(undefined4 param_1)\n\n{\n  undefined4 uVar1;\n  undefined1 local_6;\n  allocator<char> local_5;\n  \n  uVar1 = std::allocator<char>::allocator<char>(&local_5);\n  FUN_006635a0(&local_6,uVar1);\n  return param_1;\n}\n\n"
+}

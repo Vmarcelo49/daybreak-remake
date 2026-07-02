@@ -1,0 +1,7 @@
+{
+  "address": "0042fa80",
+  "name": "FUN_0042fa80",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0042fa80(void)\n\n{\n  char cVar1;\n  int *piVar2;\n  undefined1 local_18 [4];\n  undefined4 *local_14;\n  undefined4 *local_10;\n  undefined1 local_c [4];\n  undefined1 local_8 [4];\n  \n  FUN_0065d670();\n  FUN_00653d10(local_8);\n  FUN_00654620(local_c);\n  while (cVar1 = const_iterator__operator__(local_c), cVar1 != '\\0') {\n    piVar2 = (int *)FUN_00653d70();\n    local_14 = (undefined4 *)*piVar2;\n    local_10 = local_14;\n    if (local_14 != (undefined4 *)0x0) {\n      (**(code **)*local_14)(1);\n    }\n    FUN_0042fc40(local_18,0);\n  }\n  FUN_004261d0();\n  FUN_0065d6a0();\n  return;\n}\n\n"
+}

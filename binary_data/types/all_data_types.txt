@@ -1,0 +1,4 @@
+Error executing tool list_data_types: 1 validation error for list_data_typesArguments
+category
+  Field required [type=missing, input_value={}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.12/v/missing

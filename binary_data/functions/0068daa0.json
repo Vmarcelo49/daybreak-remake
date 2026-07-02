@@ -1,0 +1,7 @@
+{
+  "address": "0068daa0",
+  "name": "FUN_0068daa0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nbool __fastcall FUN_0068daa0(int param_1)\n\n{\n  return *(int *)(*(int *)(param_1 + 0x28) + 0x14) == 0;\n}\n\n"
+}

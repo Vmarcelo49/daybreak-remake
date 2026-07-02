@@ -1,0 +1,7 @@
+{
+  "address": "006544f0",
+  "name": "FUN_006544f0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nbool __fastcall FUN_006544f0(undefined4 param_1)\n\n{\n  int iVar1;\n  \n  iVar1 = FUN_0064f010(param_1);\n  return iVar1 == 0;\n}\n\n"
+}

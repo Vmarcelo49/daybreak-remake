@@ -1,0 +1,7 @@
+{
+  "address": "0064b060",
+  "name": "FUN_0064b060",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall\nFUN_0064b060(undefined4 param_1,undefined4 param_2,undefined4 *param_3,undefined1 param_4)\n\n{\n  undefined1 local_20 [8];\n  undefined2 local_18;\n  undefined4 local_14;\n  undefined4 local_10;\n  undefined4 local_c;\n  undefined1 local_8;\n  \n  if (DAT_006cfdb0 == '\\x01') {\n    FUN_0063f110(param_1);\n    local_18 = (undefined2)param_2;\n    local_14 = *param_3;\n    local_10 = param_3[1];\n    local_c = param_3[2];\n    local_8 = param_4;\n    FUN_00415d30(0,local_20,0x10,2);\n  }\n  FUN_0064ae70(param_2,param_3,param_4);\n  return;\n}\n\n"
+}

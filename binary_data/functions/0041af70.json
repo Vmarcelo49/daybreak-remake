@@ -1,0 +1,7 @@
+{
+  "address": "0041af70",
+  "name": "FUN_0041af70",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nbool __fastcall FUN_0041af70(int param_1)\n\n{\n  bool bVar1;\n  \n  FUN_0065d670();\n  bVar1 = *(uint *)(param_1 + 0x88) < 0x10;\n  if (bVar1) {\n    FUN_0065d6a0();\n  }\n  else {\n    FUN_0065d6a0();\n  }\n  return !bVar1;\n}\n\n"
+}

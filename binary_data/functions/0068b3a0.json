@@ -1,0 +1,7 @@
+{
+  "address": "0068b3a0",
+  "name": "FUN_0068b3a0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_0068b3a0(int param_1,uint param_2,void *param_3)\n\n{\n  size_t local_38;\n  size_t local_34;\n  undefined4 local_30;\n  uint local_2c;\n  undefined4 local_28;\n  undefined4 local_24;\n  undefined4 local_20;\n  undefined4 local_1c;\n  undefined4 local_18;\n  undefined4 local_14;\n  undefined4 local_10;\n  undefined4 local_c;\n  undefined4 local_8;\n  \n  if (param_2 != 0) {\n    if (param_3 == (void *)0x0) {\n      return 0x80004003;\n    }\n    if (param_2 < 0x30) {\n      local_38 = param_2;\n    }\n    else {\n      local_38 = 0x30;\n    }\n    local_34 = local_38;\n    local_2c = *(uint *)(param_1 + 4) & 0xffffffdf;\n    local_30 = *(undefined4 *)(param_1 + 8);\n    local_c = *(undefined4 *)(param_1 + 0xc);\n    local_8 = *(undefined4 *)(param_1 + 0x14);\n    local_28 = *(undefined4 *)(param_1 + 0x10);\n    local_24 = *(undefined4 *)(param_1 + 0x20);\n    local_20 = *(undefined4 *)(param_1 + 0x24);\n    local_1c = *(undefined4 *)(param_1 + 0x28);\n    local_18 = *(undefined4 *)(param_1 + 0x2c);\n    local_14 = *(undefined4 *)(param_1 + 0x40);\n    if ((*(uint *)(param_1 + 4) & 8) == 0) {\n      local_10 = 0;\n    }\n    else {\n      local_10 = *(undefined4 *)(param_1 + 0x3c);\n    }\n    _memcpy(param_3,&local_34,local_38);\n  }\n  return 0;\n}\n\n"
+}

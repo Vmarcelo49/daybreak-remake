@@ -1,0 +1,7 @@
+{
+  "address": "00674d58",
+  "name": "FUN_00674d58",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\n/* WARNING: Function: __SEH_prolog replaced with injection: SEH_prolog */\n/* WARNING: Function: __SEH_epilog replaced with injection: EH_epilog3 */\n\nDWORD FUN_00674d58(uint param_1)\n\n{\n  HANDLE hFile;\n  BOOL BVar1;\n  DWORD *pDVar2;\n  undefined4 *puVar3;\n  int iVar4;\n  DWORD local_20;\n  \n  if (DAT_006d8bc8 <= param_1) {\nLAB_00674e00:\n    puVar3 = (undefined4 *)FUN_0066ef57();\n    *puVar3 = 9;\n    return 0xffffffff;\n  }\n  iVar4 = (param_1 & 0x1f) * 0x24;\n  if ((*(byte *)((&DAT_006d8be0)[(int)param_1 >> 5] + 4 + iVar4) & 1) == 0) goto LAB_00674e00;\n  __lock_fhandle(param_1);\n  if ((*(byte *)((&DAT_006d8be0)[(int)param_1 >> 5] + 4 + iVar4) & 1) != 0) {\n    hFile = (HANDLE)__get_osfhandle(param_1);\n    BVar1 = FlushFileBuffers(hFile);\n    if (BVar1 == 0) {\n      local_20 = GetLastError();\n    }\n    else {\n      local_20 = 0;\n    }\n    if (local_20 == 0) goto LAB_00674de7;\n    pDVar2 = (DWORD *)FUN_0066ef60();\n    *pDVar2 = local_20;\n  }\n  puVar3 = (undefined4 *)FUN_0066ef57();\n  *puVar3 = 9;\n  local_20 = 0xffffffff;\nLAB_00674de7:\n  FUN_00674df8();\n  return local_20;\n}\n\n"
+}

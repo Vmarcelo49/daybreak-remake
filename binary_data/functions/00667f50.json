@@ -1,0 +1,7 @@
+{
+  "address": "00667f50",
+  "name": "FUN_00667f50",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_00667f50(int param_1)\n\n{\n  uint local_c;\n  undefined4 local_8;\n  \n  local_8 = 0xffffffff;\n  if (*(int *)(param_1 + 4) != 0) {\n    (**(code **)(**(int **)(param_1 + 4) + 0x24))(*(undefined4 *)(param_1 + 4),&local_c);\n    if ((local_c & 1) != 0) {\n      (**(code **)(**(int **)(param_1 + 4) + 0x10))(*(undefined4 *)(param_1 + 4),&local_8,0);\n    }\n  }\n  return local_8;\n}\n\n"
+}

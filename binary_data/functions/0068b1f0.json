@@ -1,0 +1,7 @@
+{
+  "address": "0068b1f0",
+  "name": "FUN_0068b1f0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nbool FUN_0068b1f0(int param_1)\n\n{\n  return (*(uint *)(param_1 + 4) & 4) == 0;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "004269e0",
+  "name": "FUN_004269e0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_004269e0(void)\n\n{\n  int iVar1;\n  int unaff_EBP;\n  undefined4 *unaff_FS_OFFSET;\n  \n  *(undefined4 *)(unaff_EBP + -4) = 0xffffffff;\n  iVar1 = FUN_004258e0();\n  *(int *)(unaff_EBP + 0xc) = iVar1 + *(int *)(unaff_EBP + 0xc);\n  if (*(int *)(*(int *)(unaff_EBP + -0x30) + 4) != 0) {\n    FUN_00426840(*(undefined4 *)(*(int *)(unaff_EBP + -0x30) + 4),\n                 *(undefined4 *)(*(int *)(unaff_EBP + -0x30) + 8));\n    deallocate(*(undefined4 *)(*(int *)(unaff_EBP + -0x30) + 4),\n               (*(int *)(*(int *)(unaff_EBP + -0x30) + 0xc) -\n               *(int *)(*(int *)(unaff_EBP + -0x30) + 4)) / 0xc);\n  }\n  *(int *)(*(int *)(unaff_EBP + -0x30) + 0xc) =\n       *(int *)(unaff_EBP + -0x20) * 0xc + *(int *)(unaff_EBP + -0x28);\n  *(int *)(*(int *)(unaff_EBP + -0x30) + 8) =\n       *(int *)(unaff_EBP + 0xc) * 0xc + *(int *)(unaff_EBP + -0x28);\n  *(undefined4 *)(*(int *)(unaff_EBP + -0x30) + 4) = *(undefined4 *)(unaff_EBP + -0x28);\n  *unaff_FS_OFFSET = *(undefined4 *)(unaff_EBP + -0xc);\n  return;\n}\n\n"
+}

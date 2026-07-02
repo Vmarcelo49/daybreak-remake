@@ -1,0 +1,7 @@
+{
+  "address": "0068b260",
+  "name": "FUN_0068b260",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_0068b260(int param_1,int param_2)\n\n{\n  if (param_2 == 0) {\n    *(uint *)(param_1 + 4) = *(uint *)(param_1 + 4) & 0xfffffffd;\n  }\n  else {\n    *(uint *)(param_1 + 4) = *(uint *)(param_1 + 4) | 2;\n  }\n  return 0;\n}\n\n"
+}

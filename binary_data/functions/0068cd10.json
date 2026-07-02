@@ -1,0 +1,7 @@
+{
+  "address": "0068cd10",
+  "name": "FUN_0068cd10",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_0068cd10(int param_1)\n\n{\n  if (*(int *)(param_1 + 0x34) != 0) {\n    ReleaseSemaphore(*(HANDLE *)(param_1 + 0x30),*(LONG *)(param_1 + 0x34),(LPLONG)0x0);\n    *(undefined4 *)(param_1 + 0x34) = 0;\n  }\n  return;\n}\n\n"
+}

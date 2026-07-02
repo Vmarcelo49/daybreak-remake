@@ -1,0 +1,7 @@
+{
+  "address": "00669ac0",
+  "name": "FUN_00669ac0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_00669ac0(int param_1,LPCSTR param_2)\n\n{\n  int iVar1;\n  void *pvVar2;\n  \n  if (param_2 != (LPCSTR)0x0) {\n    iVar1 = lstrlenA(param_2);\n    if (*(int *)(param_1 + 0x10) != 0) {\n      _free(*(void **)(param_1 + 0x10));\n      *(undefined4 *)(param_1 + 0x10) = 0;\n    }\n    pvVar2 = operator_new(iVar1 + 1U);\n    *(void **)(param_1 + 0x10) = pvVar2;\n    _memcpy(*(void **)(param_1 + 0x10),param_2,iVar1 + 1U);\n  }\n  return;\n}\n\n"
+}

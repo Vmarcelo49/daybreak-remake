@@ -1,0 +1,7 @@
+{
+  "address": "00402010",
+  "name": "FUN_00402010",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nCPropertySection * __thiscall FUN_00402010(CPropertySection *param_1,uint param_2)\n\n{\n  CPropertySection::~CPropertySection(param_1);\n  if ((param_2 & 1) != 0) {\n    _free(param_1);\n  }\n  return param_1;\n}\n\n"
+}

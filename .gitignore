@@ -1,6 +1,4 @@
-# Decompilação automática de binários via MCP
-# Arquivos sensíveis que NÃO devem ir para o repo
-*.full.json
+# Artefatos sensíveis que NÃO devem ir para o repo
 .chunks/
 *.tmp
 *.bak
@@ -14,3 +12,11 @@ Thumbs.db
 *id_ed25519*
 *.pem
 .env
+
+# Manter .full.json em binary_data/functions/ (são os JSONs completos das funções)
+# Mas ignorar .full.json grandes que são duplicatas dos .txt
+binary_data/*.full.json
+binary_data/strings/*.full.json
+binary_data/types/*.full.json
+binary_data/callgraph/*.full.json
+binary_data/segments/*.full.json

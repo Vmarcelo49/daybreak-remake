@@ -1,0 +1,3 @@
+HIMC | imm.h | 4 bytes | /imm.h/HIMC
+HIMC__ | imm.h | 4 bytes | /imm.h/HIMC__
+HIMC__ * | imm.h | 4 bytes | /imm.h/HIMC__ *

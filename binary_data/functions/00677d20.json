@@ -1,0 +1,7 @@
+{
+  "address": "00677d20",
+  "name": "FUN_00677d20",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_00677d20(undefined4 *param_1)\n\n{\n  undefined4 uVar1;\n  int iVar2;\n  int iVar3;\n  undefined4 uVar4;\n  longlong lVar5;\n  undefined1 auStack_10 [16];\n  \n  uVar4 = param_1[2];\n  uVar1 = param_1[3];\n  iVar3 = param_1[0x17];\n  (*(code *)param_1[0xb1])(*param_1,0,0,2);\n  iVar2 = (*(code *)param_1[0xb3])(*param_1);\n  param_1[4] = iVar2;\n  param_1[5] = iVar2 >> 0x1f;\n  param_1[2] = param_1[4];\n  param_1[3] = iVar2 >> 0x1f;\n  lVar5 = FUN_00677e20(param_1,auStack_10);\n  if ((lVar5 < 0x100000000) && (lVar5 < 0)) {\n    return (int)lVar5;\n  }\n  iVar2 = FUN_0069cb00(auStack_10);\n  if (iVar2 == iVar3) {\n    iVar3 = FUN_00677f80(param_1,0,0,lVar5,lVar5 + 1,iVar3,0);\n    if (iVar3 != 0) {\n      return 0xffffff80;\n    }\n  }\n  else {\n    iVar3 = FUN_00677f80(param_1,0,0,0,0,lVar5 + 1,iVar3,0);\n    if (iVar3 < 0) {\n      return 0xffffff80;\n    }\n  }\n  FUN_006781a0(param_1,uVar4,uVar1);\n  uVar4 = FUN_006785b0(param_1,0,0);\n  return uVar4;\n}\n\n"
+}

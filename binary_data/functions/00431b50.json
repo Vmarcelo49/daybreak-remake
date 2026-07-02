@@ -1,0 +1,7 @@
+{
+  "address": "00431b50",
+  "name": "FUN_00431b50",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall\nFUN_00431b50(float *param_1,int param_2,float param_3,undefined4 param_4,float param_5,int param_6,\n            char param_7)\n\n{\n  float local_10;\n  char local_9;\n  int local_8;\n  \n  if (param_2 < 0) {\n    param_2 = -param_2;\n    local_9 = '\\x02';\n  }\n  else if (param_7 == '\\0') {\n    local_9 = '\\0';\n  }\n  else {\n    local_9 = '\\x01';\n  }\n  local_8 = param_2;\n  local_10 = param_3 - param_5 * *param_1;\n  if (param_6 < 1) {\n    while (-1 < local_8) {\n      FUN_00408250(param_5);\n      FUN_00655d60(local_10,param_4);\n      if (local_8 < 10) {\n        local_8 = -1;\n      }\n      else {\n        local_8 = local_8 / 10;\n      }\n      local_10 = local_10 - (*param_1 + param_1[1]) * param_5;\n    }\n  }\n  else {\n    for (; 0 < param_6; param_6 = param_6 + -1) {\n      FUN_00408250(param_5);\n      FUN_00655d60(local_10,param_4);\n      local_10 = local_10 - (*param_1 + param_1[1]) * param_5;\n    }\n  }\n  if (local_9 != '\\0') {\n    FUN_00408250(param_5);\n    FUN_00655d60(local_10,param_4);\n  }\n  return;\n}\n\n"
+}

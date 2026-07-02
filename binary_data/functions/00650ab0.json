@@ -1,0 +1,7 @@
+{
+  "address": "00650ab0",
+  "name": "FUN_00650ab0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_00650ab0(int param_1,int *param_2)\n\n{\n  *(int *)(param_1 + 0x260) = *param_2;\n  *(int *)(param_1 + 0x264) = param_2[1];\n  *(int *)(param_1 + 0x268) = param_2[2] - *param_2;\n  *(int *)(param_1 + 0x26c) = param_2[3] - param_2[1];\n  *(undefined4 *)(param_1 + 0x274) = 0x3f800000;\n  *(undefined4 *)(param_1 + 0x270) = 0;\n  (**(code **)(*DAT_006d16f8 + 0xbc))(DAT_006d16f8,param_1 + 0x260);\n  return;\n}\n\n"
+}

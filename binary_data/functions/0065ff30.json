@@ -1,0 +1,7 @@
+{
+  "address": "0065ff30",
+  "name": "FUN_0065ff30",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_0065ff30(LPVOID *param_1)\n\n{\n  HRESULT HVar1;\n  undefined4 uVar2;\n  int iVar3;\n  undefined4 local_1c [2];\n  wchar_t *local_14;\n  \n  HVar1 = CoCreateInstance((IID *)&DAT_006ab814,(LPUNKNOWN)0x0,1,(IID *)&DAT_006ab7f4,param_1);\n  if (HVar1 < 0) {\n    FUN_006601b0(&DAT_006aaf94);\n    uVar2 = 0;\n  }\n  else {\n    iVar3 = (**(code **)(*(int *)*param_1 + 0xc))(*param_1,0,FUN_00660620,0);\n    if (iVar3 < 0) {\n      FUN_006601b0(&DAT_006aafb4);\n      uVar2 = 0;\n    }\n    else {\n      HVar1 = CoCreateInstance((IID *)&DAT_006ab844,(LPUNKNOWN)0x0,1,(IID *)&DAT_006ab834,\n                               param_1 + 1);\n      if (HVar1 < 0) {\n        FUN_006601b0(&DAT_006aafcc);\n        uVar2 = 0;\n      }\n      else {\n        iVar3 = (**(code **)(*(int *)param_1[1] + 0x34))(param_1[1],&DAT_006ab7e4);\n        if (iVar3 < 0) {\n          FUN_006601b0(&DAT_006aafe4);\n          uVar2 = 0;\n        }\n        else {\n          _memset(local_1c,0,0x18);\n          local_1c[0] = 0x18;\n          local_14 = L\"Server\";\n          (**(code **)(*(int *)*param_1 + 0x20))(*param_1,local_1c,0,0,0);\n          uVar2 = 1;\n        }\n      }\n    }\n  }\n  return uVar2;\n}\n\n"
+}

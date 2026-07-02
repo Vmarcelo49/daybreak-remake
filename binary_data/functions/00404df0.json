@@ -1,0 +1,7 @@
+{
+  "address": "00404df0",
+  "name": "FUN_00404df0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid * __thiscall FUN_00404df0(void *param_1,uint param_2)\n\n{\n  FUN_004041a0();\n  if ((param_2 & 1) != 0) {\n    _free(param_1);\n  }\n  return param_1;\n}\n\n"
+}

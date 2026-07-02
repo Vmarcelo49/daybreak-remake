@@ -1,0 +1,7 @@
+{
+  "address": "0068e7f0",
+  "name": "FUN_0068e7f0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __thiscall FUN_0068e7f0(int *param_1,int param_2)\n\n{\n  int iVar1;\n  undefined4 uVar2;\n  \n  iVar1 = FUN_0068da80();\n  if (iVar1 == 0) {\n    FUN_00691bf0();\n    uVar2 = 0;\n  }\n  else {\n    iVar1 = FUN_00691b70();\n    if (iVar1 == 1) {\n      FUN_00691bf0();\n      uVar2 = 0;\n    }\n    else {\n      iVar1 = (**(code **)(*param_1 + 0xa0))();\n      if ((iVar1 == 1) && (param_2 != 0)) {\n        FUN_00691bf0();\n        uVar2 = 0;\n      }\n      else {\n        FUN_00691c10();\n        uVar2 = 1;\n      }\n    }\n  }\n  return uVar2;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "0066c430",
+  "name": "FUN_0066c430",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0066c430(char *param_1,char *param_2)\n\n{\n  __fsopen(param_1,param_2,0x40);\n  return;\n}\n\n"
+}

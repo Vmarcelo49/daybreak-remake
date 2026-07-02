@@ -1,0 +1,7 @@
+{
+  "address": "00433b00",
+  "name": "FUN_00433b00",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nbool FUN_00433b00(undefined4 param_1)\n\n{\n  char cVar1;\n  \n  cVar1 = FUN_00647670(param_1);\n  return cVar1 == '\\0';\n}\n\n"
+}

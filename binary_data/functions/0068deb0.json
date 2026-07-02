@@ -1,0 +1,7 @@
+{
+  "address": "0068deb0",
+  "name": "FUN_0068deb0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nHMODULE FUN_0068deb0(void)\n\n{\n  if (DAT_006d894c == (HMODULE)0x0) {\n    DAT_006d894c = LoadLibraryA(\"OleAut32.dll\");\n  }\n  return DAT_006d894c;\n}\n\n"
+}

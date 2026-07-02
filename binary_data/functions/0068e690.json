@@ -1,0 +1,7 @@
+{
+  "address": "0068e690",
+  "name": "FUN_0068e690",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_0068e690(int *param_1)\n\n{\n  undefined4 uVar1;\n  HANDLE local_10;\n  undefined4 local_c;\n  DWORD local_8;\n  \n  local_10 = (HANDLE)FUN_0068de10();\n  local_c = FUN_0068de10();\n  local_8 = 0x102;\n  (**(code **)(*param_1 + 0x48))();\n  while (local_8 == 0x102) {\n    local_8 = WaitForMultipleObjects(2,&local_10,0,10000);\n  }\n  (**(code **)(*param_1 + 0x4c))();\n  if (local_8 == 0) {\n    uVar1 = 0x80040223;\n  }\n  else {\n    FUN_0068f210();\n    uVar1 = 0;\n  }\n  return uVar1;\n}\n\n"
+}

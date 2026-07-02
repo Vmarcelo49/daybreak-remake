@@ -1,0 +1,7 @@
+{
+  "address": "00679ad0",
+  "name": "FUN_00679ad0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00679ad0(int *param_1)\n\n{\n  void *_Memory;\n  int iVar1;\n  \n  if (param_1 != (int *)0x0) {\n    iVar1 = 0;\n    if (0 < param_1[2]) {\n      do {\n        _Memory = *(void **)(*param_1 + iVar1 * 4);\n        if (_Memory != (void *)0x0) {\n          _free(_Memory);\n        }\n        iVar1 = iVar1 + 1;\n      } while (iVar1 < param_1[2]);\n    }\n    if ((void *)*param_1 != (void *)0x0) {\n      _free((void *)*param_1);\n    }\n    if ((void *)param_1[1] != (void *)0x0) {\n      _free((void *)param_1[1]);\n    }\n    if ((void *)param_1[3] != (void *)0x0) {\n      _free((void *)param_1[3]);\n    }\n  }\n  *param_1 = 0;\n  param_1[1] = 0;\n  param_1[2] = 0;\n  param_1[3] = 0;\n  return;\n}\n\n"
+}

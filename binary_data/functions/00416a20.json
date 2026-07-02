@@ -1,0 +1,7 @@
+{
+  "address": "00416a20",
+  "name": "FUN_00416a20",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_00416a20(int param_1)\n\n{\n  byte bVar1;\n  byte bVar2;\n  char cVar3;\n  undefined1 local_24 [8];\n  undefined1 local_1c [8];\n  undefined1 local_14 [8];\n  int local_c;\n  int local_8;\n  \n  FUN_00416180();\n  FUN_00416280(0x12);\n  if (*(int *)(param_1 + 0x16c) != 0) {\n    local_8 = 0;\n    for (local_c = 1; local_c < 8; local_c = local_c + 1) {\n      if (*(int *)(param_1 + 0x124 + local_c * 4) != 0) {\n        local_8 = local_8 + 1;\n      }\n    }\n    if (local_8 < DAT_006cfdcc) {\n      FUN_004176d0();\n      FUN_00415d30(0,local_1c,0x10,2);\n      return 0x12;\n    }\n    FUN_00417680();\n    FUN_00415d30(0,local_14,0,0x88);\n    *(undefined4 *)(param_1 + 0x16c) = 0;\n  }\n  FUN_00634f60();\n  bVar1 = DAT_006cfa2c;\n  bVar2 = FUN_00416330();\n  if ((bVar1 & bVar2) == 0) {\n    cVar3 = FUN_006586d0(0x1c);\n    if ((cVar3 != '\\0') &&\n       ((cVar3 = FUN_006586d0(0xb8), cVar3 != '\\0' || (cVar3 = FUN_006586d0(0x38), cVar3 != '\\0'))))\n    {\n      FUN_0064ad70();\n    }\n    FUN_00640ea0();\n    return 0x12;\n  }\n  FUN_004167c0();\n  FUN_00415d30(0,local_24,0,0x88);\n  return 0xe;\n}\n\n"
+}

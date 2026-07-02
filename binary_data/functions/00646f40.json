@@ -1,0 +1,7 @@
+{
+  "address": "00646f40",
+  "name": "FUN_00646f40",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00646f40(void)\n\n{\n  char cVar1;\n  int iVar2;\n  undefined1 *puVar3;\n  undefined4 uVar4;\n  undefined1 local_24 [8];\n  undefined1 local_1c [8];\n  undefined1 local_14 [8];\n  undefined1 local_c [8];\n  \n  iVar2 = FUN_0063bf40();\n  if (iVar2 != 0) {\n    uVar4 = 1;\n    puVar3 = local_c;\n    FUN_00425150(local_1c);\n    FUN_004250e0(puVar3,uVar4);\n    FUN_00425ae0(local_14);\n    while (iVar2 = FUN_00647610(), 0 < *(int *)(iVar2 + 0x8c)) {\n      iVar2 = FUN_00647610();\n      if (*(int *)(iVar2 + 0x8c) != 0) {\n        iVar2 = FUN_00647610();\n        *(int *)(iVar2 + 0x8c) = *(int *)(iVar2 + 0x8c) + -1;\n      }\n      cVar1 = FUN_00647670(local_14);\n      if (cVar1 != '\\0') {\n        return;\n      }\n      FUN_00647630(local_24,0);\n    }\n  }\n  return;\n}\n\n"
+}

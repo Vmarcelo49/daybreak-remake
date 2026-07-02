@@ -1,0 +1,7 @@
+{
+  "address": "0068de70",
+  "name": "FUN_0068de70",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0068de70(void)\n\n{\n  LONG LVar1;\n  \n  LVar1 = InterlockedDecrement((LONG *)&DAT_006d8950);\n  if ((LVar1 == 0) && (DAT_006d894c != (HMODULE)0x0)) {\n    FreeLibrary(DAT_006d894c);\n    DAT_006d894c = (HMODULE)0x0;\n  }\n  return;\n}\n\n"
+}

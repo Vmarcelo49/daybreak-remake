@@ -1,0 +1,7 @@
+{
+  "address": "0065e400",
+  "name": "FUN_0065e400",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_0065e400(byte param_1)\n\n{\n  undefined4 uVar1;\n  \n  if (param_1 < 0x81) {\n    uVar1 = 0;\n  }\n  else if (param_1 < 0xa0) {\n    uVar1 = 1;\n  }\n  else if (param_1 < 0xe0) {\n    uVar1 = 0;\n  }\n  else if (param_1 < 0xff) {\n    uVar1 = 1;\n  }\n  else {\n    uVar1 = 0;\n  }\n  return uVar1;\n}\n\n"
+}

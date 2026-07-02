@@ -1,0 +1,7 @@
+{
+  "address": "0064fc45",
+  "name": "FUN_0064fc45",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0064fc45(void)\n\n{\n  int unaff_EBP;\n  undefined4 *unaff_FS_OFFSET;\n  \n  *(undefined4 *)(unaff_EBP + -4) = 0xffffffff;\n  *unaff_FS_OFFSET = *(undefined4 *)(unaff_EBP + -0xc);\n  return;\n}\n\n"
+}

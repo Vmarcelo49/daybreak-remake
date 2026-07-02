@@ -1,0 +1,7 @@
+{
+  "address": "00692600",
+  "name": "FUN_00692600",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00692600(undefined4 param_1,LPWSTR param_2,int param_3)\n\n{\n  CHAR local_24 [32];\n  \n  FUN_00693480(local_24,0x20,&DAT_006ad6e8,param_1);\n  MultiByteToWideChar(0,0,local_24,-1,param_2,param_3);\n  return;\n}\n\n"
+}

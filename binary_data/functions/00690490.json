@@ -1,0 +1,7 @@
+{
+  "address": "00690490",
+  "name": "FUN_00690490",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint __fastcall FUN_00690490(int param_1)\n\n{\n  int iVar1;\n  \n  iVar1 = (**(code **)(**(int **)(param_1 + 0xd8) + 0x8c))();\n  if (-1 < iVar1) {\n    iVar1 = FUN_0068a740();\n  }\n  return iVar1;\n}\n\n"
+}

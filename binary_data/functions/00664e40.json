@@ -1,0 +1,7 @@
+{
+  "address": "00664e40",
+  "name": "FUN_00664e40",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_00664e40(undefined4 param_1)\n\n{\n  undefined4 *puVar1;\n  char *pcVar2;\n  \n  while( true ) {\n    puVar1 = (undefined4 *)FUN_00654020(param_1);\n    pcVar2 = (char *)FUN_00663560(*puVar1);\n    if (*pcVar2 != '\\0') break;\n    puVar1 = (undefined4 *)FUN_00654020(param_1);\n    param_1 = *puVar1;\n  }\n  return param_1;\n}\n\n"
+}

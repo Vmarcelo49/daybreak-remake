@@ -1,0 +1,7 @@
+_is_ctype_compatible | mtdll.h | 8 bytes | /mtdll.h/_is_ctype_compatible
+_is_ctype_compatible[5] | mtdll.h | 40 bytes | /mtdll.h/_is_ctype_compatible[5]
+_ptiddata | mtdll.h | 4 bytes | /mtdll.h/_ptiddata
+_setloc_struct | mtdll.h | 764 bytes | /mtdll.h/_setloc_struct
+_tiddata | mtdll.h | 952 bytes | /mtdll.h/_tiddata
+_tiddata * | mtdll.h | 4 bytes | /mtdll.h/_tiddata *
+setloc_struct | mtdll.h | 764 bytes | /mtdll.h/setloc_struct

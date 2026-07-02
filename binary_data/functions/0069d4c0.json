@@ -1,0 +1,7 @@
+{
+  "address": "0069d4c0",
+  "name": "FUN_0069d4c0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0069d4c0(int *param_1,uint param_2,int param_3)\n\n{\n  void *pvVar1;\n  int iVar2;\n  uint uVar3;\n  \n  if (param_1[4] <= *param_1 + 4) {\n    pvVar1 = _realloc((void *)param_1[2],param_1[4] + 0x100);\n    param_1[2] = (int)pvVar1;\n    param_1[4] = param_1[4] + 0x100;\n    param_1[3] = *param_1 + (int)pvVar1;\n  }\n  param_2 = param_2 & *(uint *)(&DAT_006c77d8 + param_3 * 4);\n  uVar3 = param_3 + param_1[1];\n  *(byte *)param_1[3] = *(byte *)param_1[3] | (char)param_2 << ((byte)param_1[1] & 0x1f);\n  if ((((7 < (int)uVar3) &&\n       (*(char *)(param_1[3] + 1) = (char)(param_2 >> (8U - (char)param_1[1] & 0x1f)),\n       0xf < (int)uVar3)) &&\n      (*(char *)(param_1[3] + 2) = (char)(param_2 >> (0x10U - (char)param_1[1] & 0x1f)),\n      0x17 < (int)uVar3)) &&\n     (*(char *)(param_1[3] + 3) = (char)(param_2 >> (0x18U - (char)param_1[1] & 0x1f)),\n     0x1f < (int)uVar3)) {\n    if (param_1[1] == 0) {\n      *(undefined1 *)(param_1[3] + 4) = 0;\n    }\n    else {\n      *(char *)(param_1[3] + 4) = (char)(param_2 >> (0x20U - (char)param_1[1] & 0x1f));\n    }\n  }\n  iVar2 = (int)(uVar3 + ((int)uVar3 >> 0x1f & 7U)) >> 3;\n  param_1[1] = uVar3 & 7;\n  *param_1 = *param_1 + iVar2;\n  param_1[3] = param_1[3] + iVar2;\n  return;\n}\n\n"
+}

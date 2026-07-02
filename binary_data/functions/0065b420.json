@@ -1,0 +1,7 @@
+{
+  "address": "0065b420",
+  "name": "FUN_0065b420",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_0065b420(int param_1,undefined4 param_2,char param_3,int param_4)\n\n{\n  char cVar1;\n  uint uVar2;\n  int *piVar3;\n  undefined4 *puVar4;\n  \n  if (param_3 == '\\0') {\n    FUN_0065b330(param_2,param_4);\n  }\n  else {\n    cVar1 = FUN_0064d6e0();\n    if (cVar1 == '\\0') {\n      if (param_4 - *(char *)(param_1 + 0x58) < *(int *)(param_1 + 0x54)) {\n        if (*(char *)(param_1 + 0x50) == '\\0') {\n          uVar2 = FUN_00667f50();\n          piVar3 = (int *)FUN_0065a850(*(undefined4 *)(param_1 + 0x4c));\n          if (uVar2 < *(uint *)(*piVar3 + 0x18)) {\n            return;\n          }\n        }\n        else {\n          uVar2 = FUN_00667f50();\n          piVar3 = (int *)FUN_0065a850(*(undefined4 *)(param_1 + 0x4c));\n          if (uVar2 < *(uint *)(*piVar3 + 0x18)) {\n            return;\n          }\n        }\n      }\n      FUN_00667f20();\n      puVar4 = (undefined4 *)FUN_0065a850(param_2);\n      FUN_00667860(*puVar4);\n      FUN_00667ed0(0);\n      *(int *)(param_1 + 0x54) = param_4;\n      *(undefined4 *)(param_1 + 0x4c) = param_2;\n      *(undefined1 *)(param_1 + 0x50) = 1;\n    }\n  }\n  return;\n}\n\n"
+}

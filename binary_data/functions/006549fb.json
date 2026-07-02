@@ -1,0 +1,7 @@
+{
+  "address": "006549fb",
+  "name": "FUN_006549fb",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_006549fb(void)\n\n{\n  int unaff_EBP;\n  \n  *(undefined4 *)(unaff_EBP + -4) = 0xffffffff;\n  *(int *)(*(int *)(unaff_EBP + -0x28) + 8) =\n       *(int *)(*(int *)(unaff_EBP + -0x28) + 8) + *(int *)(unaff_EBP + 0xc) * 4;\n  FUN_006596b0(*(undefined4 *)(unaff_EBP + 8),\n               *(int *)(*(int *)(unaff_EBP + -0x28) + 8) + *(int *)(unaff_EBP + 0xc) * -4,\n               unaff_EBP + -0x14);\n  ExceptionList = *(void **)(unaff_EBP + -0xc);\n  return;\n}\n\n"
+}

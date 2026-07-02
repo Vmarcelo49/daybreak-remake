@@ -1,0 +1,7 @@
+{
+  "address": "0066ef60",
+  "name": "FUN_0066ef60",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nulong * FUN_0066ef60(void)\n\n{\n  _ptiddata p_Var1;\n  \n  p_Var1 = __getptd();\n  return &p_Var1->_tdoserrno;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "0066b668",
+  "name": "FUN_0066b668",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nulonglong FUN_0066b668(void)\n\n{\n  ulonglong uVar1;\n  uint uVar2;\n  float fVar3;\n  float10 in_ST0;\n  undefined4 local_20;\n  undefined4 uStack_1c;\n  \n  uVar1 = (ulonglong)ROUND(in_ST0);\n  local_20 = (uint)uVar1;\n  uStack_1c = (float)(uVar1 >> 0x20);\n  fVar3 = (float)in_ST0;\n  if ((local_20 != 0) || (fVar3 = uStack_1c, (uVar1 & 0x7fffffff00000000) != 0)) {\n    if ((int)fVar3 < 0) {\n      uVar1 = uVar1 + (0x80000000 < (uint)-(float)(in_ST0 - (float10)(longlong)uVar1));\n    }\n    else {\n      uVar2 = (uint)(0x80000000 < (uint)(float)(in_ST0 - (float10)(longlong)uVar1));\n      uVar1 = CONCAT44((int)uStack_1c - (uint)(local_20 < uVar2),local_20 - uVar2);\n    }\n  }\n  return uVar1;\n}\n\n"
+}

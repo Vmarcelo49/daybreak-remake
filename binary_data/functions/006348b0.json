@@ -1,0 +1,7 @@
+{
+  "address": "006348b0",
+  "name": "FUN_006348b0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_006348b0(int param_1)\n\n{\n  uint local_8;\n  \n  for (local_8 = 0; local_8 < 4; local_8 = local_8 + 1) {\n    *(undefined4 *)(param_1 + 0x129c + local_8 * 4) = *(undefined4 *)(&DAT_006cfae0 + local_8 * 4);\n    FUN_00642c50(*(undefined4 *)(param_1 + 0x129c + local_8 * 4));\n  }\n  return;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "00699a70",
+  "name": "FUN_00699a70",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_00699a70(int param_1)\n\n{\n  FUN_006919a0();\n  if (*(int *)(param_1 + 0x80) != 0) {\n    WaitForSingleObject(*(HANDLE *)(param_1 + 0x80),0xffffffff);\n    CloseHandle(*(HANDLE *)(param_1 + 0x80));\n    *(undefined4 *)(param_1 + 0x80) = 0;\n  }\n  return 0;\n}\n\n"
+}

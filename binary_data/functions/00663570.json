@@ -1,0 +1,7 @@
+{
+  "address": "00663570",
+  "name": "FUN_00663570",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00663570(undefined4 param_1)\n\n{\n  undefined4 uVar1;\n  \n  uVar1 = FUN_00663cf0(param_1);\n  FUN_00663590(uVar1);\n  return;\n}\n\n"
+}

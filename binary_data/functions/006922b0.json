@@ -1,0 +1,7 @@
+{
+  "address": "006922b0",
+  "name": "FUN_006922b0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nbool __fastcall FUN_006922b0(LPVOID param_1)\n\n{\n  HANDLE pvVar1;\n  bool bVar2;\n  \n  pvVar1 = CreateSemaphoreA((LPSECURITY_ATTRIBUTES)0x0,0,0x7fffffff,(LPCSTR)0x0);\n  *(HANDLE *)((int)param_1 + 0x3c) = pvVar1;\n  if (*(int *)((int)param_1 + 0x3c) == 0) {\n    bVar2 = false;\n  }\n  else {\n    pvVar1 = CreateThread((LPSECURITY_ATTRIBUTES)0x0,0,FUN_00692310,param_1,0,\n                          (LPDWORD)((int)param_1 + 4));\n    *(HANDLE *)((int)param_1 + 8) = pvVar1;\n    bVar2 = *(int *)((int)param_1 + 8) != 0;\n  }\n  return bVar2;\n}\n\n"
+}

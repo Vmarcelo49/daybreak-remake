@@ -1,0 +1,7 @@
+{
+  "address": "00697f60",
+  "name": "FUN_00697f60",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined8 * __fastcall FUN_00697f60(undefined8 *param_1)\n\n{\n  undefined8 uVar1;\n  \n  uVar1 = FUN_0066b668();\n  *param_1 = uVar1;\n  return param_1;\n}\n\n"
+}

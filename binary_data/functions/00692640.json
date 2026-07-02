@@ -1,0 +1,7 @@
+{
+  "address": "00692640",
+  "name": "FUN_00692640",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 * FUN_00692640(undefined4 *param_1,undefined4 *param_2,uint param_3)\n\n{\n  uint uVar1;\n  undefined1 *puVar2;\n  undefined4 *puVar3;\n  undefined1 *puVar4;\n  \n  if ((param_2 < param_1) && (param_1 < (undefined4 *)((int)param_2 + param_3))) {\n    puVar2 = (undefined1 *)((int)param_2 + param_3);\n    puVar4 = (undefined1 *)((int)param_1 + param_3);\n    while( true ) {\n      puVar4 = puVar4 + -1;\n      puVar2 = puVar2 + -1;\n      if (param_3 == 0) break;\n      param_3 = param_3 - 1;\n      *puVar4 = *puVar2;\n    }\n  }\n  else {\n    uVar1 = param_3 & 3;\n    puVar3 = param_1;\n    for (param_3 = param_3 >> 2; param_3 != 0; param_3 = param_3 - 1) {\n      *puVar3 = *param_2;\n      param_2 = param_2 + 1;\n      puVar3 = puVar3 + 1;\n    }\n    if (uVar1 != 0) {\n      for (; uVar1 != 0; uVar1 = uVar1 - 1) {\n        *(undefined1 *)puVar3 = *(undefined1 *)param_2;\n        param_2 = (undefined4 *)((int)param_2 + 1);\n        puVar3 = (undefined4 *)((int)puVar3 + 1);\n      }\n    }\n  }\n  return param_1;\n}\n\n"
+}

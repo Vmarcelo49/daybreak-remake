@@ -1,0 +1,7 @@
+{
+  "address": "00430860",
+  "name": "FUN_00430860",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined * FUN_00430860(int param_1)\n\n{\n  return (&PTR_DAT_006b7308)[param_1];\n}\n\n"
+}

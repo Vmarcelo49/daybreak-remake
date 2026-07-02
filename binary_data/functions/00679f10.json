@@ -1,0 +1,7 @@
+{
+  "address": "00679f10",
+  "name": "FUN_00679f10",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_00679f10(int *param_1,undefined4 param_2)\n\n{\n  int iVar1;\n  void *pvVar2;\n  int iVar3;\n  \n  iVar1 = FUN_0069d720(param_2,0x20);\n  if (-1 < iVar1) {\n    pvVar2 = _calloc(iVar1 + 1,1);\n    param_1[3] = (int)pvVar2;\n    FUN_00679e00(param_2,pvVar2,iVar1);\n    iVar1 = FUN_0069d720(param_2,0x20);\n    param_1[2] = iVar1;\n    if (-1 < iVar1) {\n      pvVar2 = _calloc(iVar1 + 1,4);\n      *param_1 = (int)pvVar2;\n      pvVar2 = _calloc(param_1[2] + 1,4);\n      param_1[1] = (int)pvVar2;\n      iVar1 = 0;\n      if (0 < param_1[2]) {\n        do {\n          iVar3 = FUN_0069d720(param_2,0x20);\n          if (iVar3 < 0) goto LAB_00679fce;\n          *(int *)(param_1[1] + iVar1 * 4) = iVar3;\n          pvVar2 = _calloc(iVar3 + 1,1);\n          *(void **)(*param_1 + iVar1 * 4) = pvVar2;\n          FUN_00679e00(param_2,*(undefined4 *)(*param_1 + iVar1 * 4),iVar3);\n          iVar1 = iVar1 + 1;\n        } while (iVar1 < param_1[2]);\n      }\n      iVar1 = FUN_0069d720(param_2,1);\n      if (iVar1 == 1) {\n        return 0;\n      }\n    }\n  }\nLAB_00679fce:\n  FUN_00679ad0(param_1);\n  return 0xffffff7b;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "00434d60",
+  "name": "FUN_00434d60",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_00434d60(int param_1,float *param_2)\n\n{\n  float10 fVar1;\n  float10 fVar2;\n  float10 fVar3;\n  \n  fVar1 = (float10)FUN_0065d010(*(undefined4 *)(param_1 + 0x100));\n  fVar2 = (float10)FUN_0065d050(*(undefined4 *)(param_1 + 0x100));\n  fVar3 = (float10)FUN_0065d050(*(float *)(*(int *)(param_1 + 0x20) + 0x5c) +\n                                *(float *)(*(int *)(param_1 + 0x20) + 100));\n  *param_2 = (float)(fVar3 * (float10)(float)fVar2);\n  param_2[1] = (float)fVar1;\n  fVar1 = (float10)FUN_0065d010(*(float *)(*(int *)(param_1 + 0x20) + 0x5c) +\n                                *(float *)(*(int *)(param_1 + 0x20) + 100));\n  param_2[2] = (float)(fVar1 * (float10)(float)fVar2);\n  return;\n}\n\n"
+}

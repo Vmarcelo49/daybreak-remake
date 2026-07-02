@@ -1,0 +1,7 @@
+{
+  "address": "0040e410",
+  "name": "FUN_0040e410",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_0040e410(int param_1)\n\n{\n  char cVar1;\n  undefined4 uVar2;\n  \n  if (*(int *)(param_1 + 0x1f0) < 2) {\n    FUN_00650f40();\n    cVar1 = FUN_00650f70();\n    if (cVar1 == '\\0') {\n      uVar2 = 0;\n    }\n    else {\n      FUN_00655d60(0,0);\n      FUN_00650fd0();\n      uVar2 = 1;\n    }\n  }\n  else {\n    cVar1 = FUN_00650f70();\n    if (cVar1 != '\\0') {\n      (**(code **)(*DAT_006d16f8 + 0xe4))(DAT_006d16f8,7,0);\n      FUN_00655d60(0,0);\n      if ((*(int *)(param_1 + 0x1f0) < 2) || (4 < *(int *)(param_1 + 0x1f0))) {\n        if ((4 < *(int *)(param_1 + 0x1f0)) && (*(int *)(param_1 + 0x1f0) < 7)) {\n          if (*(int *)(param_1 + 0x200) == 4) {\n            FUN_00655830(0x43c80000,0x436c0000,0,3);\n          }\n          else if (*(int *)(param_1 + 0x200) == 3) {\n            FUN_00655830(0x43c80000,0x436c0000,0,4);\n          }\n          else {\n            FUN_00655830(0x43c80000,0x436c0000,0,*(undefined4 *)(param_1 + 0x200));\n          }\n          FUN_00655830(0x43c80000,0x43960000,0,8);\n          FUN_00655830(0x43c80000,0x43a60000,0,9);\n        }\n      }\n      else {\n        FUN_00655830(0x43c80000,0x43960000,0,(DAT_006cfd04 & 0xf) - 3);\n      }\n      if (*(int *)(param_1 + 500) < 0xff) {\n        FUN_00651860(0,0,0x44480000,0x44160000,(0xff - *(int *)(param_1 + 500)) * 0x1000000);\n      }\n      FUN_00650fd0();\n    }\n    uVar2 = 1;\n  }\n  return uVar2;\n}\n\n"
+}

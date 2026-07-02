@@ -1,0 +1,7 @@
+{
+  "address": "006580a0",
+  "name": "FUN_006580a0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_006580a0(void)\n\n{\n  bool bVar1;\n  char cVar2;\n  HRESULT HVar3;\n  \n  HVar3 = CoInitialize((LPVOID)0x0);\n  if (-1 < HVar3) {\n    bVar1 = false;\n    while (DAT_006d18ac != '\\0') {\n      FUN_0065d670();\n      if (DAT_006d18cc == (int *)0x0) {\n        bVar1 = true;\n      }\n      else {\n        cVar2 = (**(code **)(*DAT_006d18cc + 4))();\n        if (cVar2 == '\\0') {\n          bVar1 = true;\n        }\n        else {\n          DAT_006d18a8 = DAT_006d18a8 + 1;\n        }\n      }\n      FUN_0065d6a0();\n      if (bVar1) {\n        WaitForSingleObject(DAT_006d18c4,10);\n        bVar1 = false;\n      }\n    }\n    CoUninitialize();\n  }\n  return 0;\n}\n\n"
+}

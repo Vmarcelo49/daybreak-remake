@@ -1,0 +1,7 @@
+{
+  "address": "00401b30",
+  "name": "FUN_00401b30",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00401b30(int param_1)\n\n{\n  *(int *)(param_1 + 0x30) = *(int *)(param_1 + 0x30) + 1;\n  if (*(int *)(param_1 + 0x1c) != 0) {\n    FUN_00402040(0,(float)*(uint *)(param_1 + 0x30) / 500.0);\n  }\n  return;\n}\n\n"
+}

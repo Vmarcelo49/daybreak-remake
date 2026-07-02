@@ -1,0 +1,7 @@
+{
+  "address": "00422ab0",
+  "name": "FUN_00422ab0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nuint __thiscall FUN_00422ab0(uint param_1,short param_2,short param_3,char param_4,int param_5)\n\n{\n  int iVar1;\n  undefined4 local_8;\n  \n  if (*(int *)(param_1 + 0xaed0) != 0) {\n    if (param_5 != 0) {\n      FUN_00423530(param_5);\n    }\n    *(int *)(*(int *)(param_1 + 0xaed0) + 0x7b0) = *(int *)(*(int *)(param_1 + 0xaed0) + 0x7b0) + 1;\n    *(int *)(*(int *)(param_1 + 0xaed0) + 0x7b4) = *(int *)(*(int *)(param_1 + 0xaed0) + 0x7b4) + 1;\n    if (param_4 == '\\0') {\n      local_8 = 100;\n    }\n    else {\n      iVar1 = *(int *)(*(int *)(param_1 + 0xaed0) + 0x7b0);\n      if (iVar1 == 1) {\n        local_8 = 100;\n      }\n      else if (iVar1 == 2) {\n        local_8 = 0x46;\n      }\n      else if (iVar1 == 3) {\n        local_8 = 0x32;\n      }\n      else {\n        local_8 = 0x21;\n      }\n    }\n    FUN_00639160(*(undefined4 *)(param_1 + 0xaed0),param_1,(param_3 * local_8) / 100,0,1);\n    param_1 = FUN_00421080((int)param_2);\n  }\n  return param_1 & 0xffffff00;\n}\n\n"
+}

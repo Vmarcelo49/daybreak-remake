@@ -1,0 +1,7 @@
+{
+  "address": "0066b848",
+  "name": "FUN_0066b848",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0066b848(void)\n\n{\n  int unaff_EBP;\n  \n  if (*(int *)(unaff_EBP + -0x20) == 0) {\n    __ArrayUnwind(*(void **)(unaff_EBP + 8),*(uint *)(unaff_EBP + 0xc),*(int *)(unaff_EBP + -0x1c),\n                  *(_func_void_void_ptr **)(unaff_EBP + 0x18));\n  }\n  return;\n}\n\n"
+}

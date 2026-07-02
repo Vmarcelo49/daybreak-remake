@@ -1,0 +1,7 @@
+{
+  "address": "00633bc0",
+  "name": "FUN_00633bc0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00633bc0(int param_1)\n\n{\n  if (*(float *)(param_1 + 0x14) < (float)(*(int *)(DAT_006cfaf0 + 0x34) + -5000)) {\n    *(undefined4 *)(param_1 + 0x14) = 0;\n  }\n  if ((float)(*(int *)(DAT_006cfaf0 + 0x3c) + 5000) < *(float *)(param_1 + 0x14)) {\n    *(undefined4 *)(param_1 + 0x14) = 0;\n  }\n  if (*(float *)(param_1 + 0x1c) < (float)(*(int *)(DAT_006cfaf0 + 0x38) + -5000)) {\n    *(undefined4 *)(param_1 + 0x1c) = 0;\n  }\n  if ((float)(*(int *)(DAT_006cfaf0 + 0x40) + 5000) < *(float *)(param_1 + 0x1c)) {\n    *(undefined4 *)(param_1 + 0x1c) = 0;\n  }\n  if (*(float *)(param_1 + 0x18) < -2000.0) {\n    *(undefined4 *)(param_1 + 0x18) = 0x447a0000;\n  }\n  return;\n}\n\n"
+}

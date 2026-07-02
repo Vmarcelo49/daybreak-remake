@@ -1,0 +1,7 @@
+{
+  "address": "00653760",
+  "name": "FUN_00653760",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_00653760(undefined4 *param_1,LPVOID param_2,DWORD param_3)\n\n{\n  if (param_1[0x1f] == 0) {\n    ReadFile((HANDLE)*param_1,param_2,param_3,param_1 + 1,(LPOVERLAPPED)0x0);\n  }\n  else {\n    FUN_00663030(param_2,param_3);\n  }\n  return;\n}\n\n"
+}

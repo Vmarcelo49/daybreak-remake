@@ -1,0 +1,7 @@
+{
+  "address": "00685030",
+  "name": "FUN_00685030",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nuint FUN_00685030(void)\n\n{\n  uint uVar1;\n  \n  uVar1 = __ftol();\n  if (0x3ff < (int)uVar1) {\n    return 0x3ff;\n  }\n  return uVar1 & ((int)uVar1 < 0) - 1;\n}\n\n"
+}

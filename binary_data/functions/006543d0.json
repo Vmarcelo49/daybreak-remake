@@ -1,0 +1,7 @@
+{
+  "address": "006543d0",
+  "name": "FUN_006543d0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_006543d0(void)\n\n{\n  uint uVar1;\n  uint uVar2;\n  undefined4 uVar3;\n  int *piVar4;\n  int iVar5;\n  \n  uVar1 = FUN_006543b0();\n  uVar2 = FUN_0064f010();\n  if (uVar1 < uVar2) {\n    piVar4 = (int *)FUN_00658a10(uVar1);\n    iVar5 = FUN_00654390();\n    if (*piVar4 == iVar5) {\n      uVar3 = FUN_006545d0(uVar1);\n    }\n    else {\n      uVar3 = 0;\n    }\n  }\n  else {\n    uVar3 = 0;\n  }\n  return uVar3;\n}\n\n"
+}

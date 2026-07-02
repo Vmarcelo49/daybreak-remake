@@ -1,0 +1,7 @@
+{
+  "address": "0067a2c0",
+  "name": "FUN_0067a2c0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint FUN_0067a2c0(int param_1,int param_2)\n\n{\n  int iVar1;\n  undefined4 *puVar2;\n  void *pvVar3;\n  uint _Size;\n  \n  _Size = param_2 + 7U & 0xfffffff8;\n  if (*(int *)(param_1 + 0x4c) < (int)(*(int *)(param_1 + 0x48) + _Size)) {\n    if (*(int *)(param_1 + 0x44) != 0) {\n      puVar2 = _malloc(8);\n      *(int *)(param_1 + 0x50) = *(int *)(param_1 + 0x50) + *(int *)(param_1 + 0x48);\n      puVar2[1] = *(undefined4 *)(param_1 + 0x54);\n      *puVar2 = *(undefined4 *)(param_1 + 0x44);\n      *(undefined4 **)(param_1 + 0x54) = puVar2;\n    }\n    *(uint *)(param_1 + 0x4c) = _Size;\n    pvVar3 = _malloc(_Size);\n    *(void **)(param_1 + 0x44) = pvVar3;\n    *(undefined4 *)(param_1 + 0x48) = 0;\n  }\n  iVar1 = *(int *)(param_1 + 0x48);\n  *(uint *)(param_1 + 0x48) = iVar1 + _Size;\n  return *(int *)(param_1 + 0x44) + iVar1;\n}\n\n"
+}

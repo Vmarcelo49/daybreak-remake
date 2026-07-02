@@ -1,0 +1,7 @@
+{
+  "address": "00419260",
+  "name": "FUN_00419260",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint __thiscall FUN_00419260(int param_1,undefined1 *param_2)\n\n{\n  int local_10;\n  int local_c;\n  undefined1 *local_8;\n  \n  *param_2 = 4;\n  local_8 = param_2;\n  for (local_c = 0; local_8 = local_8 + 1, local_c < 8; local_c = local_c + 1) {\n    *local_8 = *(undefined1 *)(param_1 + local_c + 8);\n  }\n  for (local_10 = 0; local_10 < 4; local_10 = local_10 + 1) {\n    *local_8 = *(undefined1 *)(param_1 + local_10 + 0x10);\n    local_8 = local_8 + 1;\n  }\n  return (int)local_8 - (int)param_2;\n}\n\n"
+}

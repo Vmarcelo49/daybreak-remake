@@ -1,0 +1,4 @@
+_cpinfo | winnls.h | 20 bytes | /winnls.h/_cpinfo
+_cpinfo * | winnls.h | 4 bytes | /winnls.h/_cpinfo *
+LCTYPE | winnls.h | 4 bytes | /winnls.h/LCTYPE
+LPCPINFO | winnls.h | 4 bytes | /winnls.h/LPCPINFO

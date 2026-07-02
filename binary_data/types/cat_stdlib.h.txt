@@ -1,0 +1,7 @@
+_CRT_DOUBLE | stdlib.h | 8 bytes | /stdlib.h/_CRT_DOUBLE
+_CRT_DOUBLE * | stdlib.h | 4 bytes | /stdlib.h/_CRT_DOUBLE *
+_CRT_FLOAT | stdlib.h | 4 bytes | /stdlib.h/_CRT_FLOAT
+_CRT_FLOAT * | stdlib.h | 4 bytes | /stdlib.h/_CRT_FLOAT *
+_LDBL12 | stdlib.h | 12 bytes | /stdlib.h/_LDBL12
+_LDBL12 * | stdlib.h | 4 bytes | /stdlib.h/_LDBL12 *
+_onexit_t | stdlib.h | 4 bytes | /stdlib.h/_onexit_t

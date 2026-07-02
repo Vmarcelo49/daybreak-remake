@@ -1,0 +1,3 @@
+006a1330: "data/stage15"
+006a4dd4: "data/stage%02d"
+006a4e00: "data/stage%02d"

@@ -1,0 +1,7 @@
+{
+  "address": "0042c800",
+  "name": "FUN_0042c800",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_0042c800(int param_1,undefined2 param_2)\n\n{\n  undefined4 local_8;\n  \n  for (local_8 = 0; local_8 < 4; local_8 = local_8 + 1) {\n    *(undefined2 *)(param_1 + 0x88 + local_8 * 2) = param_2;\n  }\n  return;\n}\n\n"
+}

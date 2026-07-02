@@ -1,0 +1,7 @@
+{
+  "address": "0068bfe0",
+  "name": "FUN_0068bfe0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_0068bfe0(int param_1)\n\n{\n  undefined4 uVar1;\n  \n  if ((*(int *)(param_1 + 0xd0) == 0) || (*(int *)(param_1 + 0xd4) == 0)) {\n    uVar1 = 0x80004005;\n  }\n  else {\n    ResetEvent(*(HANDLE *)(param_1 + 0xd0));\n    uVar1 = FUN_0068a320();\n  }\n  return uVar1;\n}\n\n"
+}

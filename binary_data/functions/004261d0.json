@@ -1,0 +1,7 @@
+{
+  "address": "004261d0",
+  "name": "FUN_004261d0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_004261d0(allocator<std::_Container_proxy> *param_1)\n\n{\n  _Container_proxy *p_Var1;\n  undefined4 *puVar2;\n  _Container_proxy *local_8;\n  \n  puVar2 = (undefined4 *)FUN_00663590(*(undefined4 *)(param_1 + 4));\n  local_8 = (_Container_proxy *)*puVar2;\n  puVar2 = (undefined4 *)FUN_00663590(*(undefined4 *)(param_1 + 4));\n  *puVar2 = *(undefined4 *)(param_1 + 4);\n  puVar2 = (undefined4 *)FUN_00653df0(*(undefined4 *)(param_1 + 4));\n  *puVar2 = *(undefined4 *)(param_1 + 4);\n  *(undefined4 *)(param_1 + 8) = 0;\n  while (local_8 != *(_Container_proxy **)(param_1 + 4)) {\n    puVar2 = (undefined4 *)FUN_00663590(local_8);\n    p_Var1 = (_Container_proxy *)*puVar2;\n    std::allocator<std::_Container_proxy>::destroy(param_1,local_8);\n    deallocate(local_8,1);\n    local_8 = p_Var1;\n  }\n  return;\n}\n\n"
+}

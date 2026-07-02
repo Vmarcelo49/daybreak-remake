@@ -1,0 +1,7 @@
+{
+  "address": "0064c8a0",
+  "name": "FUN_0064c8a0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined1 FUN_0064c8a0(int param_1,int param_2)\n\n{\n  undefined1 uVar1;\n  \n  if ((param_1 == 1) && (((param_2 == 0x1f || (param_2 == 0x22)) || (param_2 == 0x27)))) {\n    uVar1 = 1;\n  }\n  else {\n    uVar1 = 0;\n  }\n  return uVar1;\n}\n\n"
+}

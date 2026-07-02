@@ -1,0 +1,7 @@
+{
+  "address": "0066e7a7",
+  "name": "FUN_0066e7a7",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0066e7a7(int param_1)\n\n{\n  LeaveCriticalSection((LPCRITICAL_SECTION)(&DAT_006b78b8)[param_1 * 2]);\n  return;\n}\n\n"
+}

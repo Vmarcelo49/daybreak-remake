@@ -1,0 +1,7 @@
+{
+  "address": "00692f70",
+  "name": "FUN_00692f70",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nbool FUN_00692f70(int *param_1)\n\n{\n  int iVar1;\n  \n  iVar1 = *param_1;\n  if (iVar1 != 0) {\n    Ordinal_6(*param_1);\n  }\n  return iVar1 == 0;\n}\n\n"
+}

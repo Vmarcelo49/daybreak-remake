@@ -1,0 +1,6 @@
+_CONTEXT | excpt.h | 716 bytes | /excpt.h/_CONTEXT
+_CONTEXT * | excpt.h | 4 bytes | /excpt.h/_CONTEXT *
+_EXCEPTION_POINTERS | excpt.h | 8 bytes | /excpt.h/_EXCEPTION_POINTERS
+_EXCEPTION_POINTERS * | excpt.h | 4 bytes | /excpt.h/_EXCEPTION_POINTERS *
+_EXCEPTION_RECORD | excpt.h | 80 bytes | /excpt.h/_EXCEPTION_RECORD
+_EXCEPTION_RECORD * | excpt.h | 4 bytes | /excpt.h/_EXCEPTION_RECORD *

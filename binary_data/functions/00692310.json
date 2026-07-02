@@ -1,0 +1,7 @@
+{
+  "address": "00692310",
+  "name": "FUN_00692310",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint FUN_00692310(int *param_1)\n\n{\n  undefined4 local_18;\n  undefined4 local_14;\n  undefined4 local_10;\n  undefined4 local_c;\n  int local_8;\n  \n  FUN_00693400();\n  CoInitialize((LPVOID)0x0);\n  (**(code **)(*param_1 + 4))();\n  do {\n    (**(code **)*param_1)(&local_18);\n    local_8 = (**(code **)(*param_1 + 8))(local_18,local_14,local_10,local_c);\n  } while (local_8 == 0);\n  CoUninitialize();\n  return local_8;\n}\n\n"
+}

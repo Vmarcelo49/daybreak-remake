@@ -1,0 +1,7 @@
+{
+  "address": "006616d0",
+  "name": "FUN_006616d0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined1 FUN_006616d0(void)\n\n{\n  undefined4 extraout_var;\n  undefined4 uVar1;\n  \n  FUN_006618a0(0,0,0x43960000);\n  uVar1 = extraout_var;\n  FUN_00661910(0,0,0);\n  FUN_00661980(0,0x3f800000,0);\n  FUN_00661770(uVar1);\n  FUN_00661740(0x3f490fdb,0x3faaaaab,0x42480000,0x48127c00);\n  return 1;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "00691f30",
+  "name": "FUN_00691f30",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_00691f30(undefined4 *param_1)\n\n{\n  int iVar1;\n  undefined4 uVar2;\n  \n  iVar1 = FUN_00692180();\n  uVar2 = (**(code **)*param_1)();\n  if (-1 < iVar1) {\n    CoUninitialize();\n  }\n  return uVar2;\n}\n\n"
+}

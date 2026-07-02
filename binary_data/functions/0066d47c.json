@@ -1,0 +1,7 @@
+{
+  "address": "0066d47c",
+  "name": "FUN_0066d47c",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0066d47c(void)\n\n{\n  _ptiddata p_Var1;\n  \n  p_Var1 = __getptd();\n  if (0 < (int)p_Var1->_purecall) {\n    p_Var1 = __getptd();\n    p_Var1->_purecall = (void *)((int)p_Var1->_purecall + -1);\n  }\n  return;\n}\n\n"
+}

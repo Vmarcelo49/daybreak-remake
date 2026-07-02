@@ -1,0 +1,7 @@
+{
+  "address": "0042e950",
+  "name": "FUN_0042e950",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_0042e950(int param_1)\n\n{\n  undefined4 local_c;\n  \n  if (((*(int *)(param_1 + 0xadec) < 300) || (0x17b < *(int *)(param_1 + 0xadec))) &&\n     (*(int *)(param_1 + 0xadec) < 400)) {\n    local_c = 0;\n  }\n  else {\n    local_c = 1;\n  }\n  return local_c;\n}\n\n"
+}

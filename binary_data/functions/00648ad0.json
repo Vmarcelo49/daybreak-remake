@@ -1,0 +1,7 @@
+{
+  "address": "00648ad0",
+  "name": "FUN_00648ad0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\n/* WARNING: Function: __security_check_cookie replaced with injection: security_check_cookie */\n\nvoid __fastcall FUN_00648ad0(int param_1)\n\n{\n  int local_118;\n  CHAR local_114 [268];\n  undefined4 local_8;\n  \n  local_8 = DAT_006b77f4;\n  FUN_00634760();\n  wsprintfA(local_114,\"data/stage%02d\",*(undefined4 *)(param_1 + 0x52d4));\n  FUN_0064ac60(local_114);\n  FUN_00634920();\n  *(undefined1 *)(param_1 + 0x5330) = 0;\n  *(undefined1 *)(param_1 + 0x5331) = 0;\n  FUN_0064ab30(0);\n  FUN_0064ab30(1);\n  if ((*(int *)(param_1 + 0x5308) == *(int *)(param_1 + 0x5310)) ||\n     (*(int *)(param_1 + 0x530c) == *(int *)(param_1 + 0x5310))) {\n    *(undefined1 *)(param_1 + 0x5332) = 1;\n  }\n  else {\n    *(undefined1 *)(param_1 + 0x5332) = 0;\n  }\n  if ((*(int *)(param_1 + 0x5308) == *(int *)(param_1 + 0x5314)) ||\n     (*(int *)(param_1 + 0x530c) == *(int *)(param_1 + 0x5314))) {\n    *(undefined1 *)(param_1 + 0x5333) = 1;\n  }\n  else {\n    *(undefined1 *)(param_1 + 0x5333) = 0;\n  }\n  FUN_0064ab30(2);\n  FUN_0064ab30(3);\n  for (local_118 = 0; local_118 < 4; local_118 = local_118 + 1) {\n    FUN_0041dcb0();\n  }\n  FUN_006348b0();\n  FUN_00634980();\n  if (*(char *)(param_1 + 0x5590) == '\\x01') {\n    FUN_00642060();\n  }\n  (**(code **)(*DAT_006d8428 + 0x2c))(DAT_006d8428,0x3c23d70a,0);\n  (**(code **)(*DAT_006d8428 + 0x3c))(DAT_006d8428,0x3a03126f,0);\n  return;\n}\n\n"
+}

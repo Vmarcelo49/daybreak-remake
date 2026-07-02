@@ -1,0 +1,7 @@
+{
+  "address": "006885b0",
+  "name": "FUN_006885b0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nHRESULT FUN_006885b0(int param_1)\n\n{\n  int iVar1;\n  int *local_c;\n  HRESULT local_8;\n  \n  iVar1 = (**(code **)(*(int *)(param_1 + -0x10) + 0x20))();\n  if (iVar1 == 0) {\n    local_8 = 1;\n  }\n  else {\n    local_8 = CoInitialize((LPVOID)0x0);\n    local_8 = CoCreateInstance((IID *)&DAT_006ad1d4,(LPUNKNOWN)0x0,1,(IID *)&DAT_006acfd4,&local_c);\n    if (-1 < local_8) {\n      local_8 = FUN_0068d600(iVar1,local_c,0);\n      (**(code **)(*local_c + 8))(local_c);\n    }\n    CoFreeUnusedLibraries();\n    CoUninitialize();\n    if (local_8 == -0x7ff8fffe) {\n      local_8 = 0;\n    }\n  }\n  return local_8;\n}\n\n"
+}

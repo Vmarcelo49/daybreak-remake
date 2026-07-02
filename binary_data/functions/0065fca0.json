@@ -1,0 +1,7 @@
+{
+  "address": "0065fca0",
+  "name": "FUN_0065fca0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_0065fca0(int param_1,undefined4 param_2,int param_3,int param_4)\n\n{\n  HANDLE pvVar1;\n  \n  if (param_3 == -0xfffb) {\n    *(undefined4 *)(param_1 + 0x88) = 0;\n    if (*(int *)(param_4 + 0xc) != 0) {\n      return 0x80158230;\n    }\n    *(undefined4 *)(param_1 + 0x70) = **(undefined4 **)(param_4 + 0x10);\n    *(undefined1 *)(param_1 + 0x74) = 1;\n    pvVar1 = CreateEventA((LPSECURITY_ATTRIBUTES)0x0,0,0,(LPCSTR)0x0);\n    *(HANDLE *)(param_1 + 0x78) = pvVar1;\n    pvVar1 = CreateThread((LPSECURITY_ATTRIBUTES)0x0,0,FUN_0065fdc0,(LPVOID)0x0,0,\n                          (LPDWORD)(param_1 + 0x80));\n    *(HANDLE *)(param_1 + 0x7c) = pvVar1;\n    SetThreadPriority(*(HANDLE *)(param_1 + 0x7c),0xf);\n  }\n  else if (param_3 == -0xffef) {\n    if (*(char *)(param_1 + 0x74) == '\\0') {\n      return 0;\n    }\n    FUN_0065d670();\n    if (*(int *)(param_1 + 0x6c) != 0) {\n      (**(code **)(**(int **)(param_1 + 0x6c) + 4))\n                (*(undefined4 *)(param_4 + 0xc),*(undefined4 *)(param_4 + 0x10));\n    }\n    *(undefined4 *)(param_1 + 0x88) = 0;\n    FUN_0065d6a0();\n  }\n  return 0;\n}\n\n"
+}

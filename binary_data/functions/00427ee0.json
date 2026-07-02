@@ -1,0 +1,7 @@
+{
+  "address": "00427ee0",
+  "name": "FUN_00427ee0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 * FUN_00427ee0(undefined4 *param_1)\n\n{\n  char cVar1;\n  undefined4 uVar2;\n  undefined4 in_stack_00000018;\n  undefined4 in_stack_0000001c;\n  \n  while( true ) {\n    cVar1 = FUN_00433b00(&stack0x00000010);\n    if (cVar1 == '\\0') break;\n    uVar2 = FUN_004250c0();\n    FUN_004250c0(uVar2);\n    FUN_00427f40(uVar2);\n    iterator__operator__();\n    iterator__operator__();\n  }\n  *param_1 = in_stack_00000018;\n  param_1[1] = in_stack_0000001c;\n  return param_1;\n}\n\n"
+}

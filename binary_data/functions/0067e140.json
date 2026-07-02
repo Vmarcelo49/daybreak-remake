@@ -1,0 +1,7 @@
+{
+  "address": "0067e140",
+  "name": "FUN_0067e140",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_0067e140(undefined4 *param_1,undefined4 *param_2)\n\n{\n  undefined4 uVar1;\n  int iVar2;\n  undefined4 *puVar3;\n  \n  puVar3 = param_1;\n  for (iVar2 = 0xb; iVar2 != 0; iVar2 = iVar2 + -1) {\n    *puVar3 = 0;\n    puVar3 = puVar3 + 1;\n  }\n  param_1[3] = param_2;\n  param_1[1] = param_2[1];\n  param_1[2] = param_2[1];\n  *param_1 = *param_2;\n  uVar1 = FUN_0067dc10(param_2[2],param_2[1],0);\n  param_1[5] = uVar1;\n  uVar1 = FUN_0067de00(param_2,param_2[1],0);\n  param_1[4] = uVar1;\n  return 0;\n}\n\n"
+}

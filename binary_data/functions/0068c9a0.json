@@ -1,0 +1,7 @@
+{
+  "address": "0068c9a0",
+  "name": "FUN_0068c9a0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_0068c9a0(int param_1,int *param_2,undefined4 param_3,undefined4 param_4,uint param_5)\n\n{\n  int iVar1;\n  int local_20;\n  void *local_10;\n  undefined1 *puStack_c;\n  undefined4 local_8;\n  \n  local_8 = 0xffffffff;\n  puStack_c = &LAB_0069f758;\n  local_10 = ExceptionList;\n  ExceptionList = &local_10;\n  *param_2 = 0;\n  while( true ) {\n    if (param_1 == 0xc) {\n      local_20 = 0;\n    }\n    else {\n      local_20 = param_1 + 4;\n    }\n    FUN_0068d950(local_20);\n    local_8 = 0;\n    if (*(int *)(param_1 + 0x44) == 0) {\n      local_8 = 0xffffffff;\n      FUN_0068d9a0();\n      ExceptionList = local_10;\n      return 0x80040211;\n    }\n    iVar1 = FUN_0068dca0();\n    if (iVar1 == 0) {\n      FUN_0068dcf0();\n    }\n    local_8 = 0xffffffff;\n    FUN_0068d9a0();\n    if (iVar1 != 0) break;\n    if ((param_5 & 4) != 0) {\n      ExceptionList = local_10;\n      return 0x8004022e;\n    }\n    WaitForSingleObject(*(HANDLE *)(param_1 + 0x24),0xffffffff);\n  }\n  *(undefined4 *)(iVar1 + 0x44) = 1;\n  *param_2 = iVar1;\n  ExceptionList = local_10;\n  return 0;\n}\n\n"
+}

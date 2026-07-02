@@ -1,0 +1,2 @@
+entry @ 0066c906 [Function] (0 params) [external entry]
+IMAGE_DOS_HEADER_00400000 @ 00400000 [Label] [program entry]

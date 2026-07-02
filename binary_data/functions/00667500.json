@@ -1,0 +1,7 @@
+{
+  "address": "00667500",
+  "name": "FUN_00667500",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_00667500(int param_1,uint param_2)\n\n{\n  int iVar1;\n  undefined1 local_54 [28];\n  undefined1 local_38 [40];\n  void *local_10;\n  undefined1 *puStack_c;\n  undefined4 local_8;\n  \n  local_8 = 0xffffffff;\n  puStack_c = &LAB_0069f368;\n  local_10 = ExceptionList;\n  ExceptionList = &local_10;\n  iVar1 = FUN_00436070();\n  if ((uint)(iVar1 - *(int *)(param_1 + 8)) < param_2) {\n    basic_string<>(\"list<T> too long\");\n    local_8 = 0;\n    FID_conflict_length_error(local_54);\n                    /* WARNING: Subroutine does not return */\n    __CxxThrowException_8(local_38,&DAT_006b1da0);\n  }\n  *(uint *)(param_1 + 8) = *(int *)(param_1 + 8) + param_2;\n  ExceptionList = local_10;\n  return;\n}\n\n"
+}

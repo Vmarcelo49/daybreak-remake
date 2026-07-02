@@ -1,0 +1,7 @@
+{
+  "address": "006941d0",
+  "name": "FUN_006941d0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint __fastcall FUN_006941d0(int param_1)\n\n{\n  int iVar1;\n  undefined4 uVar2;\n  \n  iVar1 = *(int *)(param_1 + 8);\n  if (iVar1 != 0) {\n    uVar2 = FUN_0068dc80();\n    *(undefined4 *)(param_1 + 8) = uVar2;\n    *(int *)(param_1 + 4) = *(int *)(param_1 + 4) + -1;\n  }\n  return iVar1;\n}\n\n"
+}

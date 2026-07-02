@@ -1,0 +1,7 @@
+{
+  "address": "00699de0",
+  "name": "FUN_00699de0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_00699de0(undefined4 param_1)\n\n{\n  DWORD DVar1;\n  HANDLE local_c;\n  undefined4 local_8;\n  \n  local_c = (HANDLE)FUN_0068de10(param_1);\n  local_8 = FUN_0068de10();\n  while( true ) {\n    DVar1 = WaitForMultipleObjects(2,&local_c,0,0xffffffff);\n    if (DVar1 != 1) break;\n    FUN_00699ce0();\n  }\n  return 0;\n}\n\n"
+}

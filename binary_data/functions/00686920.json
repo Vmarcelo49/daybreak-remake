@@ -1,0 +1,7 @@
+{
+  "address": "00686920",
+  "name": "FUN_00686920",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __thiscall FUN_00686920(int param_1,int param_2)\n\n{\n  int iVar1;\n  \n  iVar1 = FUN_00687190(param_1,param_2);\n  if ((((iVar1 == 1) && (iVar1 = FUN_00687190(param_1 + 0x10,param_2 + 0x10), iVar1 == 1)) &&\n      (iVar1 = FUN_00687190(param_1 + 0x2c,param_2 + 0x2c), iVar1 == 1)) &&\n     ((*(int *)(param_1 + 0x40) == *(int *)(param_2 + 0x40) &&\n      ((*(int *)(param_1 + 0x40) == 0 ||\n       (iVar1 = _memcmp(*(void **)(param_1 + 0x44),*(void **)(param_2 + 0x44),\n                        *(size_t *)(param_1 + 0x40)), iVar1 == 0)))))) {\n    return 1;\n  }\n  return 0;\n}\n\n"
+}

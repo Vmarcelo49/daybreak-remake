@@ -1,0 +1,7 @@
+{
+  "address": "0040e9c0",
+  "name": "FUN_0040e9c0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_0040e9c0(undefined4 *param_1)\n\n{\n  void *local_10;\n  undefined1 *puStack_c;\n  int local_8;\n  \n  puStack_c = &LAB_0069dcb1;\n  local_10 = ExceptionList;\n  ExceptionList = &local_10;\n  *param_1 = &PTR_FUN_006a1b70;\n  local_8 = 3;\n  if (param_1[0x10] != 0) {\n    FUN_0040fb10(1);\n  }\n  CloseHandle((HANDLE)param_1[0x1cf]);\n  FUN_0065b1d0(param_1[0x11]);\n  FUN_00656200(param_1[0x12]);\n  FUN_00656200(param_1[0x13]);\n  FUN_00656200(param_1[0x14]);\n  FUN_00656200(param_1[0x15]);\n  FUN_00656200(param_1[0x16]);\n  FUN_00656200(param_1[0x17]);\n  FUN_00656200(param_1[0x18]);\n  FUN_00656200(param_1[0x19]);\n  FUN_00656200(param_1[0x1a]);\n  local_8._0_1_ = 2;\n  _eh_vector_destructor_iterator_(param_1 + 0x1b1,0x14,6,FUN_0040fc10);\n  local_8._0_1_ = 1;\n  ~<>();\n  local_8 = (uint)local_8._1_3_ << 8;\n  FUN_0065d640();\n  local_8 = 0xffffffff;\n  FUN_004039d0();\n  ExceptionList = local_10;\n  return;\n}\n\n"
+}

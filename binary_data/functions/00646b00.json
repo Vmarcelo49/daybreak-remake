@@ -1,0 +1,7 @@
+{
+  "address": "00646b00",
+  "name": "FUN_00646b00",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_00646b00(int param_1,float param_2,float param_3)\n\n{\n  int iVar1;\n  undefined4 uVar2;\n  float fVar3;\n  float fVar4;\n  undefined4 local_14;\n  undefined4 local_10;\n  undefined4 local_8;\n  \n  iVar1 = FUN_0068de10();\n  if (iVar1 != 0) {\n    FUN_00655d60(param_2 + 48.0,param_3 + 13.0);\n    iVar1 = *(int *)(param_1 + 0x1278);\n    local_8 = iVar1 + -8;\n    if (local_8 < 0) {\n      local_8 = 0;\n    }\n    local_14 = 0;\n    for (local_10 = local_8; local_10 < iVar1; local_10 = local_10 + 1) {\n      fVar4 = (float)local_14 * 32.0 + param_3;\n      fVar3 = param_2;\n      uVar2 = FUN_00647310(local_10);\n      FUN_00646db0(uVar2,fVar3,fVar4);\n      local_14 = local_14 + 1;\n    }\n  }\n  return;\n}\n\n"
+}

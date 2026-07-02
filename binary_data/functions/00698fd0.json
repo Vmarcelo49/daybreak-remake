@@ -1,0 +1,7 @@
+{
+  "address": "00698fd0",
+  "name": "FUN_00698fd0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nbool __thiscall FUN_00698fd0(undefined4 param_1,uint param_2)\n\n{\n  int iVar1;\n  \n  iVar1 = FUN_00699000(param_1);\n  return (iVar1 - 1U & param_2) == 0;\n}\n\n"
+}

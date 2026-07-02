@@ -1,0 +1,7 @@
+{
+  "address": "0069d640",
+  "name": "FUN_0069d640",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nuint FUN_0069d640(int *param_1,int param_2)\n\n{\n  int iVar1;\n  byte *pbVar2;\n  char cVar3;\n  uint uVar4;\n  int iVar5;\n  \n  iVar1 = param_1[1];\n  iVar5 = param_2 + iVar1;\n  if ((param_1[4] <= *param_1 + 4) && (param_1[4] * 8 < iVar5 + *param_1 * 8)) {\n    return 0xffffffff;\n  }\n  pbVar2 = (byte *)param_1[3];\n  uVar4 = (uint)(*pbVar2 >> (*(byte *)(param_1 + 1) & 0x1f));\n  if (((8 < iVar5) &&\n      (((cVar3 = (char)iVar1, uVar4 = uVar4 | (uint)pbVar2[1] << (8U - cVar3 & 0x1f), 0x10 < iVar5\n        && (uVar4 = uVar4 | (uint)pbVar2[2] << (0x10U - cVar3 & 0x1f), 0x18 < iVar5)) &&\n       (uVar4 = uVar4 | (uint)pbVar2[3] << (0x18U - cVar3 & 0x1f), 0x20 < iVar5)))) && (iVar1 != 0))\n  {\n    uVar4 = uVar4 | (uint)pbVar2[4] << (0x20U - cVar3 & 0x1f);\n  }\n  return uVar4 & *(uint *)(&DAT_006c77d8 + param_2 * 4);\n}\n\n"
+}

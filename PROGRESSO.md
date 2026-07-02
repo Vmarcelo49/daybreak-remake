@@ -3,83 +3,68 @@
 Última atualização: 2026-07-02
 Repo: https://github.com/giovanni-marchisio/daybreak-decomp
 
-## Status atual: ✅ Fases 1-7 CONCLUÍDAS + deploy no GitHub
+## Status atual: ✅ DUMP COMPLETO + GitHub Action configurado
 
 ## Resumo rápido
 
 | Métrica | Valor |
 |---------|-------|
 | Funções no binário | 4,092 |
-| Funções decompiladas | **106 / 4,092** (2.6%) |
-| Código C gerado | ~2.2 MB em 106 arquivos |
-| Tags aplicadas | 35+ |
-| Plate comments | 3 |
+| **Funções decompiladas (binary_data)** | **3,087** |
+| **Funções curadas (decompiled/)** | 104 |
+| **Cobertura total** | **75.44%** (resto: thunks + externals) |
+| Strings extraídas | 22 filtros diferentes, ~50 KB total |
+| Tipos por categoria | 14 categorias |
+| Call graph edges | 1,000+ (todos os disponíveis) |
 | Erros | 0 |
 
-## Estrutura deste diretório
+## Estrutura final do repo
 
 ```
-daybreakdx-re/
-├── PROGRESSO.md                  ← você está aqui
-├── RELATORIO_COMPLETO.md         ← relatório final consolidado
-├── decompiled/                   ← 106 arquivos .c individuais
-│   ├── entry.c                   (entry point CRT)
-│   ├── FUN_0064d250_entry_sub.c  (WinMain)
-│   ├── CommonInit.c
-│   ├── LoadNextScene.c
-│   ├── D3DX*.c                   (25 funções DirectX)
-│   └── FUN_*.c                   (top hubs/dispatchers)
-├── 01_*.txt                      (reconhecimento inicial)
-├── 02_*.txt                      (mapeamento de funções)
-├── 03_*.txt/json                 (priorização)
-├── 04_*.json                     (progresso de decompilação)
-├── 05_*.txt                      (análise de call graph)
-└── 06_*.txt                      (top hubs/dispatchers decompilados)
+daybreak-decomp/
+├── .github/
+│   ├── workflows/build-index.yml      (CI: gera INDEX.md/json a cada push)
+│   └── scripts/generate_index.py      (gerador do índice)
+├── decompiled/                        (104 funções curadas)
+├── binary_data/
+│   ├── functions/                     (3,087 JSONs de função)
+│   ├── strings/                       (strings por filtro)
+│   ├── types/                         (tipos por categoria)
+│   ├── callgraph/                     (call graph completo)
+│   ├── segments/                      (Headers.bin + segments_list)
+│   ├── imports.txt, exports.txt
+│   ├── globals.txt, data_items.txt
+│   ├── external_locations.txt
+│   ├── metadata.txt, open_programs.txt
+│   └── entry_points.txt
+├── INDEX.md                           (gerado pelo CI)
+├── INDEX.json                         (gerado pelo CI)
+├── PLANO.md
+├── PROGRESSO.md                       (este arquivo)
+└── RELATORIO_COMPLETO.md
 ```
 
-## Fases executadas
+## Como explorar sem MCP
 
-- [x] **Fase 1**: Reconhecimento (imports, exports, entry, segments, strings)
-- [x] **Fase 2**: Mapeamento — listar todas as 4,092 funções
-- [x] **Fase 3**: Priorização — selecionar 86 funções-chave
-- [x] **Fase 4**: Decompilação das 86 funções em batches
-- [x] **Fase 5**: Análise de call graph completo
-- [x] **Fase 5b**: Decompilação dos top 10 dispatchers e top 10 hubs
-- [x] **Fase 6**: Documentação (tags + plate comments nas funções-chave)
-- [x] **Fase 7**: Relatório consolidado
+1. **Ver funções por categoria**: navegue `binary_data/functions/<addr>.json`
+2. **Buscar string específica**: `grep "pattern" binary_data/strings/filter_*.txt`
+3. **Tipos de uma categoria**: `cat binary_data/types/cat_<name>.txt`
+4. **Call graph**: `binary_data/callgraph/full_call_graph.txt`
+5. **Índice navegável**: `INDEX.md` (humano) ou `INDEX.json` (máquina)
 
-## Próximos passos planejados
+## GitHub Action
 
-- [ ] Decompilar as ~4,000 FUN_* restantes (consumo estimado: ~6h)
-- [ ] Analisar tabela de scene handlers em `0x006a16c0`
-- [ ] Renomear FUN_* identificadas no Ghidra
-- [ ] Buscar strings de network/multiplayer
-- [ ] Decompilar maiores dispatchers restantes
+O workflow `.github/workflows/build-index.yml` roda a cada push na `main`:
+1. Roda `.github/scripts/generate_index.py`
+2. Gera `INDEX.md` (human-readable) e `INDEX.json` (machine-readable)
+3. Faz commit de volta no repo (se mudou)
+4. Publica artefato `decompilation-index`
 
-## Funções-chave já documentadas
+## Próximas fases planejadas (Fase 9+)
 
-| Endereço | Nome | Tag(s) | Plate comment |
-|----------|------|--------|---------------|
-| `0x0066c906` | `entry` | entry-point, program-start, crt | — |
-| `0x0064d250` | `FUN_0064d250` (WinMain) | win-main, window-creation | ✅ |
-| `0x00406310` | `LoadNextScene` | scene-manager, state-machine | ✅ |
-| `0x00543c70` | `CommonInit` | init, bootstrap | ✅ |
-| `0x00669cd2`-`0x00669d62` | 25 funções D3DX | directx, d3dx, graphics | — |
-| `0x00412110` | `FUN_00412110` (top dispatcher) | dispatcher, call-graph-hub | — |
+- [ ] **Fase 9**: Análise da tabela de scene handlers em `0x006a16c0`
+- [ ] **Fase 10**: Renomear FUN_* identificadas no Ghidra
+- [ ] **Fase 11**: Análise de multiplayer/network
+- [ ] **Fase 12**: Detecção de anti-analysis
 
-## Como acompanhar pelo navegador
-
-Abra no navegador:
-```
-https://ryan-alcohol-placement-suites.trycloudflare.com/?token=c08ee2c9cc3dad43122b9a933150cc62b9930abd65c64e368e775a3ce6d002c7
-```
-
-Navegue para `daybreakdx-re/` e clique em qualquer arquivo `.c` ou `.md` para ver o conteúdo.
-
-## Como baixar tudo de uma vez
-
-```bash
-curl -H "Authorization: Bearer TOKEN" \
-  -o daybreakdx-re.zip \
-  "https://ryan-alcohol-placement-suites.trycloudflare.com/api/zip/daybreakdx-re"
-```
+Com o dump completo, **não é mais necessário MCP** para continuar — todo o trabalho futuro pode ser feito offline a partir dos JSONs em `binary_data/functions/`.

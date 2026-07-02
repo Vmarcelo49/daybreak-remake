@@ -1,0 +1,7 @@
+{
+  "address": "00649620",
+  "name": "FUN_00649620",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00649620(int param_1)\n\n{\n  FUN_00650210();\n  FUN_0065b520();\n  FUN_0065b9b0();\n  FUN_0065ba70(10000);\n  FUN_0042fa80();\n  FUN_0064c820();\n  FUN_0064c820();\n  if (*(int *)(param_1 + 0x52c8) != 0) {\n    if (*(undefined4 **)(param_1 + 0x52c8) != (undefined4 *)0x0) {\n      (**(code **)**(undefined4 **)(param_1 + 0x52c8))(1);\n    }\n    *(undefined4 *)(param_1 + 0x52c8) = 0;\n  }\n  if (*(int *)(param_1 + 0x52cc) != 0) {\n    if (*(undefined4 **)(param_1 + 0x52cc) != (undefined4 *)0x0) {\n      (**(code **)**(undefined4 **)(param_1 + 0x52cc))(1);\n    }\n    *(undefined4 *)(param_1 + 0x52cc) = 0;\n  }\n  if (*(int *)(param_1 + 0x52d0) != 0) {\n    if (*(int *)(param_1 + 0x52d0) != 0) {\n      FUN_0064c7f0(1);\n    }\n    *(undefined4 *)(param_1 + 0x52d0) = 0;\n  }\n  return;\n}\n\n"
+}

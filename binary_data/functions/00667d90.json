@@ -1,0 +1,7 @@
+{
+  "address": "00667d90",
+  "name": "FUN_00667d90",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint __thiscall FUN_00667d90(int param_1,int param_2)\n\n{\n  uint local_18;\n  int local_14;\n  uint local_10;\n  void *local_c;\n  undefined4 local_8;\n  \n  local_c = (void *)0x0;\n  local_10 = 0;\n  local_8 = (**(code **)(**(int **)(param_1 + 4) + 4))(*(undefined4 *)(param_1 + 4));\n  (**(code **)(**(int **)(param_1 + 4) + 0x24))(*(undefined4 *)(param_1 + 4),&local_18);\n  if ((local_18 & 1) != 0) {\n    (**(code **)(**(int **)(param_1 + 4) + 0x48))(*(undefined4 *)(param_1 + 4));\n  }\n  (**(code **)(**(int **)(param_1 + 4) + 0x34))(*(undefined4 *)(param_1 + 4),0);\n  local_14 = (**(code **)(**(int **)(param_1 + 4) + 0x2c))\n                       (*(undefined4 *)(param_1 + 4),0,0,&local_c,&local_10,0,0,2);\n  if (-1 < local_14) {\n    if (*(uint *)(param_2 + 0x18) < local_10) {\n      _memset((void *)((int)local_c + *(int *)(param_2 + 0x18)),0,\n              local_10 - *(int *)(param_2 + 0x18));\n      _memcpy(local_c,*(void **)(param_2 + 0x14),*(size_t *)(param_2 + 0x18));\n    }\n    else {\n      _memcpy(local_c,*(void **)(param_2 + 0x14),local_10);\n    }\n    (**(code **)(**(int **)(param_1 + 4) + 0x4c))(*(undefined4 *)(param_1 + 4),local_c,local_10,0,0)\n    ;\n    (**(code **)(**(int **)(param_1 + 4) + 8))(*(undefined4 *)(param_1 + 4));\n  }\n  return param_1;\n}\n\n"
+}

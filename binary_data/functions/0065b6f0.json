@@ -1,0 +1,7 @@
+{
+  "address": "0065b6f0",
+  "name": "FUN_0065b6f0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_0065b6f0(int *param_1)\n\n{\n  DWORD local_8;\n  \n  FUN_0065b9b0();\n  if (param_1[1] != 0) {\n    FUN_0065d670();\n    *(undefined1 *)(param_1 + 0x4d3) = 0;\n    *(undefined1 *)((int)param_1 + 0x134d) = 0;\n    FUN_0065d6a0();\n    FUN_00667f20();\n    local_8 = 0x103;\n    while (local_8 == 0x103) {\n      GetExitCodeThread((HANDLE)param_1[1],&local_8);\n    }\n    CloseHandle((HANDLE)param_1[1]);\n    param_1[1] = 0;\n  }\n  FUN_006679f0();\n  FUN_00668070();\n  if (*param_1 != 0) {\n    CloseHandle((HANDLE)*param_1);\n    *param_1 = 0;\n  }\n  return;\n}\n\n"
+}

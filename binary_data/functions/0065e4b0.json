@@ -1,0 +1,7 @@
+{
+  "address": "0065e4b0",
+  "name": "FUN_0065e4b0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_0065e4b0(int param_1)\n\n{\n  int iVar1;\n  wchar_t *pwVar2;\n  \n  while( true ) {\n    iVar1 = FUN_0063bf40();\n    if (iVar1 == 0) break;\n    pwVar2 = std::basic_string<wchar_t,std::char_traits<wchar_t>,std::allocator<wchar_t>_>::back\n                       ((basic_string<wchar_t,std::char_traits<wchar_t>,std::allocator<wchar_t>_> *)\n                        (param_1 + 4));\n    _free(*(void **)pwVar2);\n    FUN_00432fa0();\n  }\n  return;\n}\n\n"
+}

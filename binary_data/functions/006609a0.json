@@ -1,0 +1,7 @@
+{
+  "address": "006609a0",
+  "name": "FUN_006609a0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_006609a0(undefined4 *param_1)\n\n{\n  HIMC pHVar1;\n  HWND pHVar2;\n  \n  pHVar1 = ImmGetContext(DAT_006d1850);\n  *param_1 = pHVar1;\n  pHVar2 = ImmGetDefaultIMEWnd((HWND)0x0);\n  param_1[1] = pHVar2;\n  return;\n}\n\n"
+}

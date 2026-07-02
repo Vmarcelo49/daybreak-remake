@@ -1,0 +1,7 @@
+{
+  "address": "00669bad",
+  "name": "FUN_00669bad",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00669bad(void)\n\n{\n  int unaff_EBP;\n  \n  FUN_0066d2cc();\n  basic_string<>(\"invalid string position\");\n  *(undefined4 *)(unaff_EBP + -4) = 0;\n  FID_conflict_runtime_error(unaff_EBP + -0x28);\n  *(undefined ***)(unaff_EBP + -0x50) = &PTR_FUN_006ab38c;\n                    /* WARNING: Subroutine does not return */\n  __CxxThrowException_8(unaff_EBP + -0x50,&DAT_006b2d40);\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "0063f9f0",
+  "name": "FUN_0063f9f0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0063f9f0(void)\n\n{\n  undefined4 extraout_var;\n  undefined1 local_c [8];\n  \n  FUN_00425ae0(local_c);\n  FUN_006401b0(extraout_var);\n  return;\n}\n\n"
+}

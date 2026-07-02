@@ -1,0 +1,7 @@
+{
+  "address": "00669c71",
+  "name": "FUN_00669c71",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\n/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */\n\nvoid FUN_00669c71(void)\n\n{\n  undefined **local_14 [3];\n  char *local_8;\n  \n  if ((_DAT_006d8478 & 1) == 0) {\n    _DAT_006d8478 = _DAT_006d8478 | 1;\n    local_8 = \"bad allocation\";\n    exception::exception((exception *)&DAT_006d846c,&local_8);\n    _DAT_006d846c = &PTR_FUN_006ab3c0;\n    _atexit((_func_4879 *)&LAB_006a05df);\n  }\n  exception::exception((exception *)local_14,(exception *)&DAT_006d846c);\n  local_14[0] = &PTR_FUN_006ab3c0;\n                    /* WARNING: Subroutine does not return */\n  __CxxThrowException_8(local_14,&DAT_006b4154);\n}\n\n"
+}

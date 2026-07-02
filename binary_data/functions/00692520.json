@@ -1,0 +1,7 @@
+{
+  "address": "00692520",
+  "name": "FUN_00692520",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint FUN_00692520(ushort *param_1,ushort *param_2)\n\n{\n  ushort uVar1;\n  ushort local_c;\n  ushort local_8;\n  \n  while( true ) {\n    local_8 = *param_1;\n    local_c = *param_2;\n    if ((0x40 < local_8) && (local_8 < 0x5b)) {\n      local_8 = local_8 + 0x20;\n    }\n    if ((0x40 < local_c) && (local_c < 0x5b)) {\n      local_c = local_c + 0x20;\n    }\n    if (local_8 != local_c) break;\n    uVar1 = *param_1;\n    param_1 = param_1 + 1;\n    if ((uVar1 == 0) || (uVar1 = *param_2, param_2 = param_2 + 1, uVar1 == 0)) {\n      return 0;\n    }\n  }\n  return (uint)local_8 - (uint)local_c;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "0065bb00",
+  "name": "FUN_0065bb00",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_0065bb00(void)\n\n{\n  HRESULT HVar1;\n  \n  HVar1 = CoInitialize((LPVOID)0x0);\n  if (-1 < HVar1) {\n    FUN_0065bb30();\n    CoUninitialize();\n  }\n  return 0;\n}\n\n"
+}

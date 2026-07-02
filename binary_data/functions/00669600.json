@@ -1,0 +1,7 @@
+{
+  "address": "00669600",
+  "name": "FUN_00669600",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_00669600(LPCVOID param_1,LPCSTR param_2)\n\n{\n  DWORD local_c;\n  HANDLE local_8;\n  \n  local_8 = CreateFileA(param_2,0x40000000,0,(LPSECURITY_ATTRIBUTES)0x0,4,0x80,(HANDLE)0x0);\n  if (local_8 != (HANDLE)0xffffffff) {\n    WriteFile(local_8,param_1,0x12,&local_c,(LPOVERLAPPED)0x0);\n    WriteFile(local_8,(LPCVOID)((int)param_1 + 0x18),4,&local_c,(LPOVERLAPPED)0x0);\n    WriteFile(local_8,*(LPCVOID *)((int)param_1 + 0x14),*(DWORD *)((int)param_1 + 0x18),&local_c,\n              (LPOVERLAPPED)0x0);\n    CloseHandle(local_8);\n  }\n  return;\n}\n\n"
+}

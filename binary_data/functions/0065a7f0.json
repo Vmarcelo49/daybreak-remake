@@ -1,0 +1,7 @@
+{
+  "address": "0065a7f0",
+  "name": "FUN_0065a7f0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0065a7f0(void)\n\n{\n  int *piVar1;\n  int iVar2;\n  undefined4 *puVar3;\n  undefined4 local_8;\n  \n  local_8 = FUN_006543b0();\n  piVar1 = (int *)FUN_00658a10(local_8);\n  iVar2 = FUN_00654390();\n  if (*piVar1 == iVar2) {\n    puVar3 = (undefined4 *)FUN_00658a10(local_8);\n    *puVar3 = 0;\n    FUN_00654510(&local_8);\n  }\n  return;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "00660400",
+  "name": "FUN_00660400",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall\nFUN_00660400(undefined4 *param_1,int param_2,undefined4 param_3,undefined4 param_4,\n            undefined4 param_5,uint param_6)\n\n{\n  undefined4 local_10;\n  undefined4 local_c;\n  undefined4 local_8;\n  \n  if (param_2 == 0) {\n    FUN_006603b0(param_3,param_4,param_5,param_6);\n  }\n  else if (param_1[param_2 + 10] != 0) {\n    local_c = param_3;\n    local_10 = param_4;\n    local_8 = 0;\n    (**(code **)(*(int *)*param_1 + 0x38))\n              (*param_1,param_1[param_2 + 2],&local_10,1,param_5,0,&local_8,param_6 | 0x20);\n  }\n  return;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "00434c30",
+  "name": "FUN_00434c30",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00434c30(int param_1)\n\n{\n  float10 fVar1;\n  allocator<char> local_1c [12];\n  float local_10;\n  float local_c;\n  float local_8;\n  \n  std::allocator<char>::allocator<char>(local_1c);\n  FUN_00434cc0(0,local_1c);\n  FUN_0042dfd0(&local_10,local_1c);\n  local_c = local_c + 70.0;\n  fVar1 = (float10)FUN_0042de80(local_8 * local_8 + local_10 * local_10);\n  fVar1 = (float10)FUN_004235a0(local_c,(float)fVar1);\n  *(float *)(param_1 + 0x100) = (float)((fVar1 * (float10)180.0) / (float10)3.1415927);\n  return;\n}\n\n"
+}

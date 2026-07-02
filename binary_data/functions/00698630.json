@@ -1,0 +1,7 @@
+{
+  "address": "00698630",
+  "name": "FUN_00698630",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint FUN_00698630(undefined4 *param_1)\n\n{\n  void *pvVar1;\n  int *local_38;\n  int local_18;\n  int *local_14;\n  void *local_10;\n  undefined1 *puStack_c;\n  undefined4 local_8;\n  \n  local_8 = 0xffffffff;\n  puStack_c = &LAB_0069ff1d;\n  local_10 = ExceptionList;\n  if (param_1 == (undefined4 *)0x0) {\n    local_18 = -0x7fffbffd;\n  }\n  else {\n    local_18 = 0;\n    local_14 = (int *)0x0;\n    ExceptionList = &local_10;\n    *param_1 = 0;\n    pvVar1 = operator_new(100);\n    local_8 = 0;\n    if (pvVar1 == (void *)0x0) {\n      local_38 = (int *)0x0;\n    }\n    else {\n      local_38 = (int *)FUN_0068d0b0(0,0,&local_18);\n    }\n    local_8 = 0xffffffff;\n    local_14 = local_38;\n    if (local_38 == (int *)0x0) {\n      local_18 = -0x7ff8fff2;\n    }\n    else if (local_18 < 0) {\n      if (local_38 != (int *)0x0) {\n        (**(code **)(*local_38 + 0xc))(1);\n      }\n    }\n    else {\n      local_18 = (**(code **)local_38[3])(local_38 + 3,&LAB_006ad024,param_1);\n      if (local_18 < 0) {\n        if (local_14 != (int *)0x0) {\n          (**(code **)(*local_14 + 0xc))(1);\n        }\n        local_18 = -0x7fffbffe;\n      }\n      else {\n        local_18 = 0;\n      }\n    }\n  }\n  ExceptionList = local_10;\n  return local_18;\n}\n\n"
+}

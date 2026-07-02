@@ -1,0 +1,7 @@
+{
+  "address": "00657330",
+  "name": "FUN_00657330",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_00657330(char *param_1,void *param_2)\n\n{\n  _memcpy(param_1,param_2,0x34);\n  if ((int)(uint)DAT_006d1a28 <= (int)*param_1) {\n    _memset(param_1,0,0x34);\n    *param_1 = -2;\n  }\n  _memset(param_1 + 0x38,0,0x28);\n  return;\n}\n\n"
+}

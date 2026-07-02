@@ -1,0 +1,7 @@
+{
+  "address": "00416620",
+  "name": "FUN_00416620",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __thiscall FUN_00416620(int param_1,undefined1 *param_2)\n\n{\n  int local_8;\n  \n  *param_2 = 0xf;\n  for (local_8 = 0; local_8 < 9; local_8 = local_8 + 1) {\n    param_2[local_8 + 1] = *(undefined1 *)(param_1 + local_8 + 8);\n  }\n  return 10;\n}\n\n"
+}

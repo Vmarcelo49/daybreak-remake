@@ -1,0 +1,7 @@
+{
+  "address": "00669a80",
+  "name": "FUN_00669a80",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00669a80(undefined4 *param_1)\n\n{\n  *param_1 = &PTR_FUN_006ab36c;\n  if (param_1[4] != 0) {\n    _free((void *)param_1[4]);\n    param_1[4] = 0;\n  }\n  return;\n}\n\n"
+}

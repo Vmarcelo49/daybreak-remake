@@ -1,0 +1,7 @@
+{
+  "address": "0064ad70",
+  "name": "FUN_0064ad70",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_0064ad70(undefined4 param_1)\n\n{\n  DAT_006cfced = '\\x01' - (DAT_006cfced != '\\0');\n  FUN_00403ac0(param_1);\n  return;\n}\n\n"
+}

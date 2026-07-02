@@ -1,0 +1,7 @@
+{
+  "address": "006687e0",
+  "name": "FUN_006687e0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint FUN_006687e0(undefined4 *param_1)\n\n{\n  int iVar1;\n  \n  iVar1 = FUN_006539b0(*param_1,0,1);\n  return iVar1 - param_1[3];\n}\n\n"
+}

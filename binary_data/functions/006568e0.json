@@ -1,0 +1,7 @@
+{
+  "address": "006568e0",
+  "name": "FUN_006568e0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_006568e0(void)\n\n{\n  undefined1 local_54 [28];\n  undefined1 local_38 [40];\n  void *pvStack_10;\n  undefined1 *puStack_c;\n  undefined4 local_8;\n  \n  local_8 = 0xffffffff;\n  puStack_c = &LAB_0069edc8;\n  pvStack_10 = ExceptionList;\n  ExceptionList = &pvStack_10;\n  basic_string<>(\"invalid vector<T> subscript\");\n  local_8 = 0;\n  FID_conflict_length_error(local_54);\n                    /* WARNING: Subroutine does not return */\n  __CxxThrowException_8(local_38,&DAT_006b2d40);\n}\n\n"
+}

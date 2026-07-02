@@ -1,0 +1,7 @@
+006a1318: "%s/%02d.x"
+006a1324: "%s/%02db.x"
+006a1340: "%s/collision.x"
+006a1370: "%s/collision_camera.x"
+006a13a8: "%s/collision_tama.x"
+006a48fb: "@data/camera/01.x"
+006a49c4: "data/aura/%02d.x"

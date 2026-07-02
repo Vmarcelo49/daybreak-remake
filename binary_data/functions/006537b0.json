@@ -1,0 +1,7 @@
+{
+  "address": "006537b0",
+  "name": "FUN_006537b0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nBOOL __thiscall FUN_006537b0(undefined4 *param_1,undefined4 param_2,LPVOID param_3,DWORD param_4)\n\n{\n  char cVar1;\n  int iVar2;\n  BOOL BVar3;\n  undefined4 uVar4;\n  undefined4 *puVar5;\n  LPDWORD lpNumberOfBytesRead;\n  LPOVERLAPPED lpOverlapped;\n  \n  cVar1 = FUN_0064d6e0();\n  if (cVar1 == '\\0') {\n    iVar2 = FUN_006543d0(param_2);\n    if (iVar2 == 0) {\n      lpOverlapped = (LPOVERLAPPED)0x0;\n      lpNumberOfBytesRead = param_1 + 1;\n      puVar5 = (undefined4 *)FUN_006543d0(param_2);\n      BVar3 = ReadFile((HANDLE)*puVar5,param_3,param_4,lpNumberOfBytesRead,lpOverlapped);\n    }\n    else {\n      BVar3 = FUN_00663030(param_3,param_4);\n      uVar4 = FUN_00653b30();\n      param_1[1] = uVar4;\n    }\n  }\n  else {\n    BVar3 = ReadFile((HANDLE)*param_1,param_3,param_4,param_1 + 1,(LPOVERLAPPED)0x0);\n  }\n  return BVar3;\n}\n\n"
+}

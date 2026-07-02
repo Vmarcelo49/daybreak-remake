@@ -1,0 +1,7 @@
+{
+  "address": "00667180",
+  "name": "FUN_00667180",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __thiscall FUN_00667180(undefined4 param_1,int param_2)\n\n{\n  char cVar1;\n  undefined4 *puVar2;\n  int *piVar3;\n  DWORD dwMilliseconds;\n  undefined1 local_18 [4];\n  undefined1 local_14 [4];\n  undefined1 local_10 [4];\n  undefined4 local_c;\n  undefined4 local_8;\n  \n  FUN_004248b0(param_1);\n  FUN_004248b0();\n  FUN_0065d670();\n  puVar2 = (undefined4 *)FUN_00653d10(local_10);\n  local_8 = *puVar2;\n  puVar2 = (undefined4 *)FUN_00654620(local_14);\n  local_c = *puVar2;\n  while ((cVar1 = const_iterator__operator__(&local_c), cVar1 != '\\0' &&\n         (piVar3 = (int *)FUN_00653d70(), *piVar3 != param_2))) {\n    FUN_0042fc40(local_18,0);\n  }\n  FUN_0065d6a0();\n  cVar1 = const_iterator__operator__(&local_c);\n  if (cVar1 != '\\0') {\n    dwMilliseconds = 0xffffffff;\n    puVar2 = (undefined4 *)FUN_00653d70();\n    WaitForSingleObject((HANDLE)*puVar2,dwMilliseconds);\n  }\n  return 0;\n}\n\n"
+}

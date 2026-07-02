@@ -1,0 +1,7 @@
+{
+  "address": "00416030",
+  "name": "FUN_00416030",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_00416030(int param_1,int param_2)\n\n{\n  int iVar1;\n  undefined4 local_20;\n  undefined4 local_1c;\n  undefined4 local_18;\n  undefined4 local_14;\n  undefined4 local_10;\n  undefined4 local_c;\n  \n  iVar1 = param_2 + 1;\n  for (local_c = 0; local_c < 8; local_c = local_c + 1) {\n    *(bool *)(param_1 + local_c + 8) = *(char *)(iVar1 + local_c) != '\\0';\n  }\n  for (local_10 = 0; local_10 < 8; local_10 = local_10 + 1) {\n    for (local_14 = 0; local_14 < 9; local_14 = local_14 + 1) {\n      *(undefined1 *)(param_1 + 0x10 + local_10 * 9 + local_14) =\n           *(undefined1 *)(param_2 + 9 + local_10 * 9 + local_14);\n    }\n  }\n  for (local_18 = 0; local_18 < 8; local_18 = local_18 + 1) {\n    *(undefined1 *)(param_1 + local_18 + 0x58) = *(undefined1 *)(iVar1 + local_18 + 0x50);\n  }\n  for (local_1c = 0; local_1c < 4; local_1c = local_1c + 1) {\n    *(undefined1 *)(param_1 + local_1c + 0x60) = *(undefined1 *)(iVar1 + local_1c + 0x58);\n  }\n  for (local_20 = 0; local_20 < 4; local_20 = local_20 + 1) {\n    *(undefined1 *)(param_1 + local_20 + 100) = *(undefined1 *)(iVar1 + local_20 + 0x5c);\n  }\n  *(bool *)(param_1 + 0x68) = *(char *)(param_2 + 0x61) != '\\0';\n  *(undefined1 *)(param_1 + 0x69) = *(undefined1 *)(param_2 + 0x62);\n  return;\n}\n\n"
+}

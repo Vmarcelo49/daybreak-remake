@@ -1,0 +1,7 @@
+{
+  "address": "006698b0",
+  "name": "FUN_006698b0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_006698b0(undefined4 param_1,int *param_2,void *param_3,uint *param_4)\n\n{\n  char cVar1;\n  undefined4 uVar2;\n  void *pvVar3;\n  undefined1 local_1c [4];\n  int local_18;\n  int local_14;\n  int local_10;\n  undefined4 local_c;\n  int local_8;\n  \n  cVar1 = FUN_00653540(param_1);\n  if (cVar1 == '\\0') {\n    uVar2 = 0;\n  }\n  else {\n    _memset(param_3,0,0x12);\n    FUN_00653760(&local_8,4);\n    if (local_8 == 0x46464952) {\n      FUN_00653760(local_1c,4);\n      FUN_00653760(&local_18,4);\n      if (local_18 == 0x45564157) {\n        FUN_00653760(&local_14,4);\n        if (local_14 == 0x20746d66) {\n          FUN_00653760(&local_c,4);\n          FUN_00653760(param_3,local_c);\n          FUN_00653760(&local_10,4);\n          if (local_10 == 0x61746164) {\n            FUN_00653760(param_4,4);\n            if (*param_4 == 0) {\n              uVar2 = 0;\n            }\n            else {\n              if (*param_2 != 0) {\n                _free((void *)*param_2);\n              }\n              pvVar3 = operator_new(*param_4);\n              *param_2 = (int)pvVar3;\n              FUN_00653760(*param_2,*param_4);\n              uVar2 = 1;\n            }\n          }\n          else {\n            uVar2 = 0;\n          }\n        }\n        else {\n          uVar2 = 0;\n        }\n      }\n      else {\n        uVar2 = 0;\n      }\n    }\n    else {\n      uVar2 = 0;\n    }\n  }\n  return uVar2;\n}\n\n"
+}

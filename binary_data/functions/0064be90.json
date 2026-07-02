@@ -1,0 +1,7 @@
+{
+  "address": "0064be90",
+  "name": "FUN_0064be90",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_0064be90(int param_1)\n\n{\n  undefined4 local_c;\n  undefined4 local_8;\n  \n  local_8 = 0;\n  *(undefined4 *)(param_1 + 0x5304) = 0xffffffff;\n  *(undefined4 *)(param_1 + 0x5300) = 0xffffffff;\n  *(undefined4 *)(param_1 + 0x52fc) = 0xffffffff;\n  *(undefined4 *)(param_1 + 0x52f8) = 0xffffffff;\n  for (local_c = 0; local_c < 8; local_c = local_c + 1) {\n    if (-1 < *(char *)(param_1 + local_c + 0x55c1)) {\n      if ((*(int *)(param_1 + 0x55ac) < local_8) || (3 < local_8)) {\n        *(undefined1 *)(param_1 + local_c + 0x55c1) = 0xff;\n      }\n      else {\n        *(undefined1 *)(param_1 + local_c + 0x55c1) = (undefined1)local_8;\n        *(int *)(param_1 + 0x52f8 + local_8 * 4) = local_c;\n        local_8 = local_8 + 1;\n      }\n    }\n  }\n  FUN_0064bf60();\n  return;\n}\n\n"
+}

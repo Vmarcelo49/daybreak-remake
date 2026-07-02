@@ -1,0 +1,7 @@
+{
+  "address": "0068db90",
+  "name": "FUN_0068db90",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nLPCRITICAL_SECTION __fastcall FUN_0068db90(LPCRITICAL_SECTION param_1)\n\n{\n  InitializeCriticalSection(param_1);\n  return param_1;\n}\n\n"
+}

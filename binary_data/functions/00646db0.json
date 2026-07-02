@@ -1,0 +1,7 @@
+{
+  "address": "00646db0",
+  "name": "FUN_00646db0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\n/* WARNING: Removing unreachable block (ram,0x00646e12) */\n\nvoid FUN_00646db0(int param_1,float param_2,undefined4 param_3)\n\n{\n  undefined4 local_8;\n  \n  for (local_8 = 0; local_8 < 8; local_8 = local_8 + 1) {\n    FUN_00655830((float)local_8 * 12.0 + param_2,param_3,*(byte *)(param_1 + local_8) & 0x8000000f,\n                 (int)(uint)*(byte *)(param_1 + local_8) >> 4);\n  }\n  return;\n}\n\n"
+}

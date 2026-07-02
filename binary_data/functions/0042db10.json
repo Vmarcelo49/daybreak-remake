@@ -1,0 +1,7 @@
+{
+  "address": "0042db10",
+  "name": "FUN_0042db10",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_0042db10(int param_1,float param_2,float param_3)\n\n{\n  float10 fVar1;\n  float local_8;\n  \n  local_8 = *(float *)(param_1 + 100) - param_2;\n  if (local_8 < -180.0) {\n    local_8 = local_8 + 360.0;\n  }\n  if (180.0 < local_8) {\n    local_8 = local_8 - 360.0;\n  }\n  fVar1 = (float10)FUN_0042df90(local_8);\n  if ((float10)param_3 <= fVar1) {\n    if (0.0 <= local_8) {\n      if ((0.0 < local_8) &&\n         (*(float *)(param_1 + 100) = *(float *)(param_1 + 100) - param_3,\n         *(float *)(param_1 + 100) < -180.0)) {\n        *(float *)(param_1 + 100) = *(float *)(param_1 + 100) + 360.0;\n      }\n    }\n    else {\n      *(float *)(param_1 + 100) = param_3 + *(float *)(param_1 + 100);\n      if (180.0 < *(float *)(param_1 + 100)) {\n        *(float *)(param_1 + 100) = *(float *)(param_1 + 100) - 360.0;\n      }\n    }\n  }\n  else {\n    *(float *)(param_1 + 100) = param_2;\n  }\n  return;\n}\n\n"
+}

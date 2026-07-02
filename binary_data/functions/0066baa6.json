@@ -1,0 +1,7 @@
+{
+  "address": "0066baa6",
+  "name": "FUN_0066baa6",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nexception * __thiscall FUN_0066baa6(exception *param_1,byte param_2)\n\n{\n  exception::~exception(param_1);\n  if ((param_2 & 1) != 0) {\n    _free(param_1);\n  }\n  return param_1;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "006555e0",
+  "name": "FUN_006555e0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_006555e0(undefined4 param_1,LPCSTR param_2)\n\n{\n  FUN_00655530(param_1);\n  SetCurrentDirectoryA(param_2);\n  return;\n}\n\n"
+}

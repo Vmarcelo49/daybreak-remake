@@ -1,0 +1,7 @@
+{
+  "address": "00681d80",
+  "name": "FUN_00681d80",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00681d80(int param_1,int *param_2,undefined4 param_3)\n\n{\n  undefined4 uVar1;\n  int *piVar2;\n  int iVar3;\n  \n  if (*param_2 < 2) {\n    FUN_0069d4c0(param_3,0,1);\n  }\n  else {\n    FUN_0069d4c0(param_3,1,1);\n    FUN_0069d4c0(param_3,*param_2 + -1,4);\n  }\n  if (param_2[0x121] < 1) {\n    FUN_0069d4c0(param_3,0,1);\n  }\n  else {\n    FUN_0069d4c0(param_3,1,1);\n    FUN_0069d4c0(param_3,param_2[0x121] + -1,8);\n    iVar3 = 0;\n    if (0 < param_2[0x121]) {\n      piVar2 = param_2 + 0x222;\n      do {\n        uVar1 = FUN_00681ed0(*(undefined4 *)(param_1 + 4));\n        FUN_0069d4c0(param_3,piVar2[-0x100],uVar1);\n        uVar1 = FUN_00681ed0(*(undefined4 *)(param_1 + 4));\n        FUN_0069d4c0(param_3,*piVar2,uVar1);\n        iVar3 = iVar3 + 1;\n        piVar2 = piVar2 + 1;\n      } while (iVar3 < param_2[0x121]);\n    }\n  }\n  FUN_0069d4c0(param_3,0,2);\n  if ((1 < *param_2) && (iVar3 = 0, piVar2 = param_2, 0 < *(int *)(param_1 + 4))) {\n    do {\n      FUN_0069d4c0(param_3,piVar2[1],4);\n      iVar3 = iVar3 + 1;\n      piVar2 = piVar2 + 1;\n    } while (iVar3 < *(int *)(param_1 + 4));\n  }\n  iVar3 = 0;\n  if (0 < *param_2) {\n    piVar2 = param_2 + 0x111;\n    do {\n      FUN_0069d4c0(param_3,0,8);\n      FUN_0069d4c0(param_3,piVar2[-0x10],8);\n      FUN_0069d4c0(param_3,*piVar2,8);\n      iVar3 = iVar3 + 1;\n      piVar2 = piVar2 + 1;\n    } while (iVar3 < *param_2);\n  }\n  return;\n}\n\n"
+}

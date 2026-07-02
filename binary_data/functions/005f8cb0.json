@@ -1,0 +1,7 @@
+{
+  "address": "005f8cb0",
+  "name": "FUN_005f8cb0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall\nFUN_005f8cb0(int *param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4,\n            undefined4 param_5,undefined4 param_6,undefined4 param_7,undefined4 param_8)\n\n{\n  undefined4 uVar1;\n  undefined4 *puVar2;\n  undefined4 local_c;\n  undefined4 local_8;\n  \n  local_8 = DAT_006b7630;\n  DAT_006b7630 = param_2;\n  FUN_0065d670();\n  uVar1 = FUN_00423750(param_4,param_5,param_6);\n  local_c = (**(code **)(*param_1 + 8))(param_3,uVar1,param_7,param_8);\n  FUN_00435e60(&local_c);\n  puVar2 = (undefined4 *)FUN_00667280();\n  (**(code **)(*(int *)*puVar2 + 0x10))();\n  FUN_0065d6a0();\n  DAT_006b7630 = local_8;\n  return;\n}\n\n"
+}

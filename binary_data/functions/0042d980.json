@@ -1,0 +1,7 @@
+{
+  "address": "0042d980",
+  "name": "FUN_0042d980",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nfloat10 __fastcall FUN_0042d980(int param_1)\n\n{\n  float10 fVar1;\n  float10 fVar2;\n  \n  fVar1 = (float10)FUN_0040da40(*(float *)(param_1 + 0x14) -\n                                *(float *)(*(int *)(param_1 + 0x38) + 0x14),2);\n  fVar2 = (float10)FUN_0040da40(*(float *)(param_1 + 0x1c) -\n                                *(float *)(*(int *)(param_1 + 0x38) + 0x1c),2);\n  return fVar2 + (float10)(float)fVar1;\n}\n\n"
+}

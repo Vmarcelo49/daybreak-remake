@@ -1,0 +1,7 @@
+{
+  "address": "0066ef57",
+  "name": "FUN_0066ef57",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint * FUN_0066ef57(void)\n\n{\n  _ptiddata p_Var1;\n  \n  p_Var1 = __getptd();\n  return &p_Var1->_terrno;\n}\n\n"
+}

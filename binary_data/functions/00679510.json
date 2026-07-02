@@ -1,0 +1,7 @@
+{
+  "address": "00679510",
+  "name": "FUN_00679510",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_00679510(int param_1,double param_2)\n\n{\n  double dVar1;\n  int iVar2;\n  undefined4 uVar3;\n  float10 fVar4;\n  undefined8 uVar5;\n  \n  FUN_006784b0(param_1,0xffffffff);\n  fVar4 = (float10)FUN_00678520(param_1,0xffffffff);\n  dVar1 = (double)fVar4;\n  if (1 < *(int *)(param_1 + 0x58)) {\n    if (*(int *)(param_1 + 4) == 0) {\n      return 0xffffff76;\n    }\n    if ((0.0 <= param_2) && (param_2 <= dVar1)) {\n      iVar2 = *(int *)(param_1 + 0x34);\n      do {\n        iVar2 = iVar2 + -1;\n        if (iVar2 < 0) break;\n        fVar4 = (float10)FUN_00678520(param_1,iVar2);\n        dVar1 = (double)((float10)dVar1 - fVar4);\n      } while (param_2 < dVar1);\n      uVar5 = __ftol();\n      uVar3 = FUN_00678ec0(param_1,uVar5);\n      return uVar3;\n    }\n  }\n  return 0xffffff7d;\n}\n\n"
+}

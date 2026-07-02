@@ -1,0 +1,7 @@
+{
+  "address": "0067dd90",
+  "name": "FUN_0067dd90",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0067dd90(int *param_1)\n\n{\n  int iVar1;\n  int iVar2;\n  int iVar3;\n  int iVar4;\n  float10 fVar5;\n  \n  fVar5 = (float10)FUN_0069a730();\n  FUN_0069a090((double)fVar5);\n  iVar1 = __ftol();\n  do {\n    while( true ) {\n      iVar2 = 1;\n      iVar3 = 1;\n      if (0 < *param_1) {\n        iVar4 = *param_1;\n        do {\n          iVar2 = iVar2 * iVar1;\n          iVar3 = iVar3 * (iVar1 + 1);\n          iVar4 = iVar4 + -1;\n        } while (iVar4 != 0);\n      }\n      iVar4 = param_1[1];\n      if (iVar2 <= iVar4) break;\nLAB_0067ddeb:\n      iVar1 = iVar1 + -1;\n    }\n    if (iVar4 < iVar3) {\n      return;\n    }\n    if (iVar4 < iVar2) goto LAB_0067ddeb;\n    iVar1 = iVar1 + 1;\n  } while( true );\n}\n\n"
+}

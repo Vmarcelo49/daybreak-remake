@@ -1,0 +1,7 @@
+{
+  "address": "00659fb0",
+  "name": "FUN_00659fb0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_00659fb0(undefined4 param_1)\n\n{\n  char cVar1;\n  undefined4 uVar2;\n  int iVar3;\n  int *piVar4;\n  \n  cVar1 = FUN_0064d6e0();\n  if (cVar1 == '\\0') {\n    iVar3 = FUN_0065a850(param_1);\n    if (iVar3 == 0) {\n      iVar3 = FUN_0065a850(param_1);\n      if (iVar3 == 0) {\n        return 0;\n      }\n      piVar4 = (int *)FUN_0065a850(param_1);\n      if ((int *)*piVar4 != (int *)0x0) {\n        (**(code **)(*(int *)*piVar4 + 4))(1);\n      }\n      FUN_0065a7f0(param_1);\n    }\n    else {\n      piVar4 = (int *)FUN_0065a850(param_1);\n      if (*piVar4 != 0) {\n        FUN_0065a3f0(1);\n      }\n      FUN_0065a7f0(param_1);\n    }\n    uVar2 = 1;\n  }\n  else {\n    uVar2 = 0;\n  }\n  return uVar2;\n}\n\n"
+}

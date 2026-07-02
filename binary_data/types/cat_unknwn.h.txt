@@ -1,0 +1,5 @@
+IUnknown | unknwn.h | 4 bytes | /unknwn.h/IUnknown
+IUnknown * | unknwn.h | 4 bytes | /unknwn.h/IUnknown *
+IUnknownVtbl | unknwn.h | 12 bytes | /unknwn.h/IUnknownVtbl
+IUnknownVtbl * | unknwn.h | 4 bytes | /unknwn.h/IUnknownVtbl *
+LPUNKNOWN | unknwn.h | 4 bytes | /unknwn.h/LPUNKNOWN

@@ -1,0 +1,7 @@
+{
+  "address": "00423000",
+  "name": "FUN_00423000",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00423000(int param_1)\n\n{\n  int *piVar1;\n  \n  if (*(int *)(*(int *)(param_1 + 0x308) + 0x308) == param_1) {\n    *(int *)(param_1 + 0xaf08) = *(int *)(param_1 + 0xaf08) + 1;\n    *(int *)(*(int *)(param_1 + 0x308) + 0xaf00) = *(int *)(*(int *)(param_1 + 0x308) + 0xaf00) + 1;\n  }\n  else {\n    *(int *)(param_1 + 0xaf0c) = *(int *)(param_1 + 0xaf0c) + 1;\n    *(int *)(*(int *)(param_1 + 0x308) + 0xaf04) = *(int *)(*(int *)(param_1 + 0x308) + 0xaf04) + 1;\n  }\n  piVar1 = (int *)FUN_00658a10(0);\n  if (*(int *)(param_1 + 0x308) == *(int *)(*piVar1 + 0x308)) {\n    *(int *)(param_1 + 0xaf10) = *(int *)(param_1 + 0xaf10) + 1;\n  }\n  *(int *)(param_1 + 0xaf18) = *(int *)(param_1 + 0xaf18) + 1;\n  return;\n}\n\n"
+}

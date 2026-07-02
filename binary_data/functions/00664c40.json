@@ -1,0 +1,7 @@
+{
+  "address": "00664c40",
+  "name": "FUN_00664c40",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00664c40(int *param_1)\n\n{\n  char *pcVar1;\n  int *piVar2;\n  undefined4 *puVar3;\n  int iVar4;\n  \n  pcVar1 = (char *)FUN_00663560(*param_1);\n  if (*pcVar1 == '\\0') {\n    puVar3 = (undefined4 *)FUN_00663590(*param_1);\n    pcVar1 = (char *)FUN_00663560(*puVar3);\n    if (*pcVar1 == '\\0') {\n      puVar3 = (undefined4 *)FUN_00663590(*param_1);\n      iVar4 = FUN_00664e40(*puVar3);\n      *param_1 = iVar4;\n    }\n    else {\n      while( true ) {\n        piVar2 = (int *)FUN_00653df0(*param_1);\n        iVar4 = *piVar2;\n        pcVar1 = (char *)FUN_00663560(iVar4);\n        if (*pcVar1 != '\\0') break;\n        piVar2 = (int *)FUN_00663590(iVar4);\n        if (*param_1 != *piVar2) break;\n        *param_1 = iVar4;\n      }\n      pcVar1 = (char *)FUN_00663560(iVar4);\n      if (*pcVar1 == '\\0') {\n        *param_1 = iVar4;\n      }\n    }\n  }\n  else {\n    piVar2 = (int *)FUN_00654020(*param_1);\n    *param_1 = *piVar2;\n  }\n  return;\n}\n\n"
+}

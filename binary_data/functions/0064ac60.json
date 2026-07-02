@@ -1,0 +1,7 @@
+{
+  "address": "0064ac60",
+  "name": "FUN_0064ac60",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_0064ac60(int param_1,undefined4 param_2)\n\n{\n  void *pvVar1;\n  undefined4 local_2c;\n  void *local_10;\n  undefined1 *puStack_c;\n  undefined4 local_8;\n  \n  local_8 = 0xffffffff;\n  puStack_c = &LAB_0069eb07;\n  local_10 = ExceptionList;\n  ExceptionList = &local_10;\n  if (*(int *)(param_1 + 0x52d0) != 0) {\n    ExceptionList = &local_10;\n    if (*(int *)(param_1 + 0x52d0) != 0) {\n      ExceptionList = &local_10;\n      FUN_0064c7f0(1);\n    }\n    *(undefined4 *)(param_1 + 0x52d0) = 0;\n  }\n  pvVar1 = operator_new(0xbc);\n  local_8 = 0;\n  if (pvVar1 == (void *)0x0) {\n    local_2c = 0;\n  }\n  else {\n    local_2c = FUN_00401030();\n  }\n  local_8 = 0xffffffff;\n  *(undefined4 *)(param_1 + 0x52d0) = local_2c;\n  if (*(char *)(param_1 + 0x54ca) == '\\0') {\n    FUN_0064cea0();\n  }\n  else {\n    FUN_0064ce80();\n  }\n  FUN_0064cec0();\n  FUN_004011f0(param_2);\n  ExceptionList = local_10;\n  return;\n}\n\n"
+}

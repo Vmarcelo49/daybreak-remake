@@ -1,0 +1,7 @@
+{
+  "address": "0067da80",
+  "name": "FUN_0067da80",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0067da80(float param_1,float param_2,float *param_3,float *param_4)\n\n{\n  float fVar1;\n  float fVar2;\n  int iVar3;\n  \n  iVar3 = (uint)(ABS(*param_4) < ABS(*param_3)) - (uint)(ABS(*param_3) < ABS(*param_4));\n  if (iVar3 == 0) {\n    iVar3 = (uint)(ABS(param_2) < ABS(param_1)) * 2 + -1;\n  }\n  if (iVar3 == 1) {\n    if (*param_3 <= 0.0) {\n      *param_4 = *param_4 - *param_3;\n    }\n    else {\n      *param_4 = *param_3 - *param_4;\n    }\n  }\n  else {\n    fVar1 = *param_4;\n    if (*param_4 <= 0.0) {\n      fVar2 = *param_4 - *param_3;\n    }\n    else {\n      fVar2 = *param_3 - *param_4;\n    }\n    *param_4 = fVar2;\n    *param_3 = fVar1;\n  }\n  if (ABS(*param_3) * 1.9999 < *param_4) {\n    *param_4 = ABS(*param_3) * -2.0;\n    *param_3 = -*param_3;\n    return;\n  }\n  return;\n}\n\n"
+}

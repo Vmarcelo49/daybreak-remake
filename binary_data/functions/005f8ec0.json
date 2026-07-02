@@ -1,0 +1,7 @@
+{
+  "address": "005f8ec0",
+  "name": "FUN_005f8ec0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 * __fastcall FUN_005f8ec0(undefined4 *param_1)\n\n{\n  FUN_00415ec0();\n  *param_1 = &PTR_FUN_006a480c;\n  std::allocator<char>::allocator<char>((allocator<char> *)(param_1 + 8));\n  return param_1;\n}\n\n"
+}

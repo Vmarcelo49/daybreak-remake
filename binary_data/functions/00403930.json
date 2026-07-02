@@ -1,0 +1,7 @@
+{
+  "address": "00403930",
+  "name": "FUN_00403930",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00403930(void)\n\n{\n  int iVar1;\n  undefined4 extraout_var;\n  undefined4 uVar2;\n  int local_8;\n  \n  FUN_0065a090(DAT_006cfcf0 * DAT_006cfcf8);\n  uVar2 = extraout_var;\n  FUN_0065b9f0(DAT_006cfcf0 * DAT_006cfcf4);\n  FUN_0065b250(DAT_006cfcf0 * DAT_006cfcfc);\n  for (local_8 = 0; local_8 < 0x20; local_8 = local_8 + 1) {\n    iVar1 = FUN_0068de10(uVar2);\n    if (iVar1 != 0) {\n      FUN_0065a1d0(*(undefined4 *)(&DAT_006ca838 + local_8 * 4),10000);\n    }\n  }\n  return;\n}\n\n"
+}

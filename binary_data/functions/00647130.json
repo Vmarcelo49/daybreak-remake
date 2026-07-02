@@ -1,0 +1,7 @@
+{
+  "address": "00647130",
+  "name": "FUN_00647130",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined1 * __fastcall FUN_00647130(undefined1 *param_1)\n\n{\n  int iVar1;\n  undefined4 uVar2;\n  int local_10;\n  int local_8;\n  \n  iVar1 = *(int *)(param_1 + 0x414);\n  local_8 = iVar1 + -8;\n  if (local_8 < 0) {\n    local_8 = 0;\n  }\n  *param_1 = 0;\n  for (local_10 = local_8; local_10 < iVar1; local_10 = local_10 + 1) {\n    uVar2 = FUN_00647400(local_10);\n    FUN_0066b870(param_1,uVar2);\n  }\n  return param_1;\n}\n\n"
+}

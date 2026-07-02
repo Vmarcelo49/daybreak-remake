@@ -1,0 +1,7 @@
+{
+  "address": "00668b80",
+  "name": "FUN_00668b80",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_00668b80(allocator<char> *param_1)\n\n{\n  undefined4 uVar1;\n  int iVar2;\n  undefined4 uVar3;\n  int iVar4;\n  undefined *puVar5;\n  int extraout_var;\n  undefined4 local_c;\n  \n  local_c = 0x80004005;\n  if (param_1 == (allocator<char> *)0x0) {\n    local_c = 0x80004003;\n  }\n  else {\n    uVar1 = FUN_00669460(&DAT_006ad184);\n    iVar4 = extraout_var;\n    iVar2 = ___(uVar1);\n    if (iVar2 != 0) {\n      uVar1 = FUN_00669440(iVar4,0);\n      puVar5 = &DAT_006ad254;\n      uVar3 = std::allocator<char>::allocator<char>(param_1);\n      iVar2 = _IsEqualGUID(uVar3,puVar5,iVar4,uVar1);\n      if (iVar2 != 0) {\n        puVar5 = &DAT_006ad224;\n        uVar3 = FUN_00669420(&DAT_006ad224);\n        iVar2 = _IsEqualGUID(uVar3,puVar5,iVar4,uVar1);\n        if (iVar2 != 0) {\n          *(undefined1 *)(iVar4 + 0x168) = 1;\n          return 0;\n        }\n      }\n    }\n    uVar1 = FUN_00669460(&DAT_006ad194);\n    iVar2 = ___(uVar1);\n    if (iVar2 == 0) {\n      FUN_00669440();\n      *(undefined1 *)(iVar4 + 0x168) = 0;\n      puVar5 = &DAT_006ad254;\n      uVar1 = std::allocator<char>::allocator<char>(param_1);\n      iVar4 = _IsEqualGUID(uVar1,puVar5);\n      if (iVar4 != 0) {\n        uVar1 = FUN_00669420(&DAT_006ad224);\n        iVar4 = _IsEqualGUID(uVar1);\n        if (iVar4 != 0) {\n          local_c = 0;\n        }\n      }\n    }\n    else {\n      local_c = 0x80070057;\n    }\n  }\n  return local_c;\n}\n\n"
+}

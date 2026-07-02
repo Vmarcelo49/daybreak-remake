@@ -1,0 +1,7 @@
+{
+  "address": "006a0100",
+  "name": "FUN_006a0100",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_006a0100(void)\n\n{\n  std::allocator<char>::allocator<char>((allocator<char> *)&DAT_006c78b8);\n  return;\n}\n\n"
+}

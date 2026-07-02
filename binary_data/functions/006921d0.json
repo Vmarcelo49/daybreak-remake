@@ -1,0 +1,7 @@
+{
+  "address": "006921d0",
+  "name": "FUN_006921d0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_006921d0(int param_1)\n\n{\n  void *_Memory;\n  int local_14;\n  void *local_10;\n  undefined1 *puStack_c;\n  uint local_8;\n  \n  puStack_c = &LAB_0069fb5b;\n  local_10 = ExceptionList;\n  local_8 = 1;\n  ExceptionList = &local_10;\n  if (*(int *)(param_1 + 8) != 0) {\n    ExceptionList = &local_10;\n    WaitForSingleObject(*(HANDLE *)(param_1 + 8),0xffffffff);\n    CloseHandle(*(HANDLE *)(param_1 + 8));\n  }\n  local_14 = FUN_0068de10();\n  while (local_14 != 0) {\n    _Memory = (void *)FUN_006981d0(&local_14);\n    _free(_Memory);\n  }\n  FUN_00693630();\n  if (*(int *)(param_1 + 0x3c) != 0) {\n    CloseHandle(*(HANDLE *)(param_1 + 0x3c));\n  }\n  local_8 = local_8 & 0xffffff00;\n  FUN_0068dbb0();\n  local_8 = 0xffffffff;\n  FUN_00693440();\n  ExceptionList = local_10;\n  return;\n}\n\n"
+}

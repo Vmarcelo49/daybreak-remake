@@ -1,0 +1,7 @@
+{
+  "address": "00633930",
+  "name": "FUN_00633930",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nuint __thiscall FUN_00633930(int param_1,uint param_2)\n\n{\n  undefined1 local_34 [12];\n  float local_28;\n  undefined4 *local_24;\n  int local_20;\n  undefined4 local_1c;\n  float local_18;\n  undefined4 local_14;\n  undefined1 local_10 [4];\n  undefined1 local_c [4];\n  undefined1 local_8 [4];\n  \n  local_1c = *(undefined4 *)(param_1 + 0xc);\n  local_14 = *(undefined4 *)(param_1 + 0x14);\n  local_18 = *(float *)(param_1 + 0x10) + 150.0;\n  FUN_0042dfd0(local_34,param_1 + 0x3c);\n  D3DXVec3Normalize(local_34,local_34);\n  local_20 = 0;\n  for (local_24 = *(undefined4 **)(param_2 + 0x44); local_24 != (undefined4 *)0x0;\n      local_24 = (undefined4 *)local_24[8]) {\n    D3DXIntersect(local_24[2],&local_1c,local_34,&local_20,local_10,local_c,local_8,&local_28,0,0);\n    if ((local_20 != 0) && (local_28 < *(float *)(param_1 + 0x78))) {\n      FUN_0066b860(param_1 + 0x96,*local_24);\n    }\n  }\n  if (*(int *)(param_2 + 0x48) != 0) {\n    FUN_00633930(*(undefined4 *)(param_2 + 0x48));\n  }\n  if (*(int *)(param_2 + 0x4c) != 0) {\n    param_2 = FUN_00633930(*(undefined4 *)(param_2 + 0x4c));\n  }\n  return param_2 & 0xffffff00;\n}\n\n"
+}

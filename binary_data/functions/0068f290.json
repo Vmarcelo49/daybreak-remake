@@ -1,0 +1,7 @@
+{
+  "address": "0068f290",
+  "name": "FUN_0068f290",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __thiscall FUN_0068f290(int *param_1,int param_2)\n\n{\n  undefined4 uVar1;\n  int iVar2;\n  HANDLE hEvent;\n  undefined8 uVar3;\n  undefined4 local_14;\n  undefined4 local_10;\n  undefined1 local_c [8];\n  \n  if (param_2 == 0) {\n    uVar1 = 0;\n  }\n  else {\n    iVar2 = (**(code **)(*param_1 + 0x58))(param_2,&local_14,local_c);\n    if (iVar2 < 0) {\n      uVar1 = 0;\n    }\n    else if (iVar2 == 0) {\n      hEvent = (HANDLE)FUN_0068de10();\n      SetEvent(hEvent);\n      uVar1 = 1;\n    }\n    else {\n      uVar1 = FUN_0068de10(param_1 + 0x1a);\n      uVar3 = FUN_00697fc0(local_14,local_10,uVar1);\n      iVar2 = (**(code **)(*(int *)param_1[6] + 0x10))(param_1[6],uVar3);\n      if (iVar2 < 0) {\n        uVar1 = 0;\n      }\n      else {\n        uVar1 = 1;\n      }\n    }\n  }\n  return uVar1;\n}\n\n"
+}

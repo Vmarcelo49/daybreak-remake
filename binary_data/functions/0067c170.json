@@ -1,0 +1,7 @@
+{
+  "address": "0067c170",
+  "name": "FUN_0067c170",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0067c170(float *param_1,float param_2)\n\n{\n  int iVar1;\n  \n  iVar1 = 0x38;\n  do {\n    iVar1 = iVar1 + -1;\n    *param_1 = param_2 + *param_1;\n    param_1 = param_1 + 1;\n  } while (iVar1 != 0);\n  return;\n}\n\n"
+}

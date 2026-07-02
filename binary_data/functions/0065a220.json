@@ -1,0 +1,7 @@
+{
+  "address": "0065a220",
+  "name": "FUN_0065a220",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_0065a220(undefined4 param_1,undefined4 param_2)\n\n{\n  char cVar1;\n  undefined4 uVar2;\n  \n  cVar1 = FUN_0064d6e0(param_1);\n  if (cVar1 == '\\0') {\n    uVar2 = 0;\n    FUN_0065a850(param_2);\n    FUN_00667ed0(uVar2);\n  }\n  return;\n}\n\n"
+}

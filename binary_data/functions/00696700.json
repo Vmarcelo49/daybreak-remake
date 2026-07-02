@@ -1,0 +1,7 @@
+{
+  "address": "00696700",
+  "name": "FUN_00696700",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00696700(int param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4)\n\n{\n  FUN_006942c0(param_1 + 0x10,&LAB_006ad0d1_3,param_2,param_3,param_4);\n  return;\n}\n\n"
+}

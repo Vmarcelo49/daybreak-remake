@@ -1,0 +1,7 @@
+{
+  "address": "00669460",
+  "name": "FUN_00669460",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint __fastcall FUN_00669460(int param_1)\n\n{\n  return param_1 + 0x2c;\n}\n\n"
+}

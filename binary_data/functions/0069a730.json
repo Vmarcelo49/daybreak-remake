@@ -1,0 +1,7 @@
+{
+  "address": "0069a730",
+  "name": "FUN_0069a730",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0069a730(void)\n\n{\n  ushort in_FPUControlWord;\n  float10 in_ST0;\n  float10 in_ST1;\n  \n  if ((DAT_006d8980 != 0) && ((MXCSR & 0x1f80) == 0x1f80 && (in_FPUControlWord & 0x7f) == 0x7f)) {\n    FUN_0069ad20();\n    return;\n  }\n  FUN_0069a78d((double)in_ST1,(double)in_ST0);\n  return;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "0067f270",
+  "name": "FUN_0067f270",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0067f270(undefined4 *param_1)\n\n{\n  int iVar1;\n  int iVar2;\n  \n  if (param_1 != (undefined4 *)0x0) {\n    if ((void *)*param_1 != (void *)0x0) {\n      _free((void *)*param_1);\n    }\n    if ((void *)param_1[1] != (void *)0x0) {\n      _free((void *)param_1[1]);\n    }\n    if ((void *)param_1[5] != (void *)0x0) {\n      _free((void *)param_1[5]);\n    }\n    if ((void *)param_1[0xc] != (void *)0x0) {\n      _free((void *)param_1[0xc]);\n    }\n    if ((void *)param_1[0xd] != (void *)0x0) {\n      _free((void *)param_1[0xd]);\n    }\n    if ((void *)param_1[0xe] != (void *)0x0) {\n      _free((void *)param_1[0xe]);\n    }\n    if (param_1[0x18] != 0) {\n      if (param_1[2] == 0) {\n        FUN_0069d5e0(param_1[0x18]);\n      }\n      else {\n        iVar1 = 0;\n        if (0 < (int)param_1[2]) {\n          iVar2 = 0;\n          do {\n            FUN_0069d5e0(iVar2 + param_1[0x18]);\n            iVar1 = iVar1 + 1;\n            iVar2 = iVar2 + 0x14;\n          } while (iVar1 < (int)param_1[2]);\n        }\n      }\n      _free((void *)param_1[0x18]);\n    }\n    if ((void *)param_1[0x19] != (void *)0x0) {\n      _free((void *)param_1[0x19]);\n    }\n    for (iVar1 = 0x1a; iVar1 != 0; iVar1 = iVar1 + -1) {\n      *param_1 = 0;\n      param_1 = param_1 + 1;\n    }\n  }\n  return;\n}\n\n"
+}

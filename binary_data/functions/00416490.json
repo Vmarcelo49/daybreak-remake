@@ -1,0 +1,7 @@
+{
+  "address": "00416490",
+  "name": "FUN_00416490",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_00416490(undefined1 *param_1)\n\n{\n  *param_1 = 6;\n  return 1;\n}\n\n"
+}

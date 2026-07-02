@@ -1,0 +1,7 @@
+{
+  "address": "0064ef20",
+  "name": "FUN_0064ef20",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_0064ef20(undefined4 param_1,uint param_2)\n\n{\n  uint uVar1;\n  undefined1 *puVar2;\n  undefined1 local_c [4];\n  undefined1 local_8 [4];\n  \n  uVar1 = FUN_0064f010(param_1);\n  if (uVar1 <= param_2) {\n    FUN_0064f2a0();\n  }\n  puVar2 = local_c;\n  FUN_00654620(local_8);\n  iterator__operator_(puVar2,param_2);\n  FUN_00654770();\n  return;\n}\n\n"
+}

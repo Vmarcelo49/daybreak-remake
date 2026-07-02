@@ -1,0 +1,7 @@
+{
+  "address": "006932d0",
+  "name": "FUN_006932d0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_006932d0(void)\n\n{\n  BOOL BVar1;\n  undefined4 uVar2;\n  _OSVERSIONINFOA local_9c;\n  \n  local_9c.dwOSVersionInfoSize = 0x94;\n  BVar1 = GetVersionExA(&local_9c);\n  if ((BVar1 == 0) ||\n     ((local_9c.dwMajorVersion < 6 &&\n      ((local_9c.dwMajorVersion != 5 || (local_9c.dwMinorVersion == 0)))))) {\n    uVar2 = 0;\n  }\n  else {\n    uVar2 = 1;\n  }\n  return uVar2;\n}\n\n"
+}

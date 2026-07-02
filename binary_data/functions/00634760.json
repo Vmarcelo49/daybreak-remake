@@ -1,0 +1,7 @@
+{
+  "address": "00634760",
+  "name": "FUN_00634760",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00634760(int param_1)\n\n{\n  undefined4 local_8;\n  \n  *(undefined1 *)(param_1 + 0x4a40) = 0;\n  *(undefined4 *)(param_1 + 0x44b4) = 0;\n  *(undefined4 *)(param_1 + 0x1408) = 0;\n  *(undefined4 *)(param_1 + 0x442c) = 0;\n  *(undefined4 *)(param_1 + 0x4428) = 0;\n  *(undefined4 *)(param_1 + 0x4424) = 0;\n  *(undefined4 *)(param_1 + 0x4a3c) = 1;\n  *(undefined4 *)(param_1 + 0x41e0) = 0;\n  *(int *)(param_1 + 0x43d8) = *(int *)(param_1 + 0x43d4) * 0x3c;\n  for (local_8 = 0; local_8 < 4; local_8 = local_8 + 1) {\n    FUN_00632e10();\n  }\n  _memset((void *)(param_1 + 0x43e4),0,0x10);\n  _memset((void *)(param_1 + 0x4414),0,8);\n  *(undefined4 *)(param_1 + 0x1c) = 0;\n  FUN_0063bf60();\n  FUN_0063bf80();\n  *(undefined1 *)(param_1 + 0x7f4) = DAT_006cfdc5;\n  *(undefined1 *)(param_1 + 0x4430) = 0;\n  *(undefined1 *)(param_1 + 0x4431) = 0;\n  FUN_0065b1d0(*(undefined4 *)(param_1 + 0x4494));\n  FUN_00642c10();\n  return;\n}\n\n"
+}

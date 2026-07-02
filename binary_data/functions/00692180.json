@@ -1,0 +1,7 @@
+{
+  "address": "00692180",
+  "name": "FUN_00692180",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint FUN_00692180(void)\n\n{\n  HMODULE hModule;\n  FARPROC pFVar1;\n  int local_c;\n  \n  local_c = -0x7fffbffb;\n  hModule = GetModuleHandleA(\"ole32.dll\");\n  if (hModule != (HMODULE)0x0) {\n    pFVar1 = GetProcAddress(hModule,\"CoInitializeEx\");\n    if (pFVar1 != (FARPROC)0x0) {\n      local_c = (*pFVar1)(0,4);\n    }\n  }\n  return local_c;\n}\n\n"
+}

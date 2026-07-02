@@ -1,0 +1,12 @@
+LPMSG | winuser.h | 4 bytes | /winuser.h/LPMSG
+MSG | winuser.h | 28 bytes | /winuser.h/MSG
+MSG * | winuser.h | 4 bytes | /winuser.h/MSG *
+PWINDOWINFO | winuser.h | 4 bytes | /winuser.h/PWINDOWINFO
+tagMSG | winuser.h | 28 bytes | /winuser.h/tagMSG
+tagMSG * | winuser.h | 4 bytes | /winuser.h/tagMSG *
+tagWINDOWINFO | winuser.h | 60 bytes | /winuser.h/tagWINDOWINFO
+tagWINDOWINFO * | winuser.h | 4 bytes | /winuser.h/tagWINDOWINFO *
+tagWNDCLASSEXA | winuser.h | 48 bytes | /winuser.h/tagWNDCLASSEXA
+WNDCLASSEXA | winuser.h | 48 bytes | /winuser.h/WNDCLASSEXA
+WNDCLASSEXA * | winuser.h | 4 bytes | /winuser.h/WNDCLASSEXA *
+WNDPROC | winuser.h | 4 bytes | /winuser.h/WNDPROC

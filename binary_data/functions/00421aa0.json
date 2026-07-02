@@ -1,0 +1,7 @@
+{
+  "address": "00421aa0",
+  "name": "FUN_00421aa0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall\nFUN_00421aa0(int param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4,undefined4 param_5\n            ,undefined4 param_6,undefined4 param_7)\n\n{\n  float10 fVar1;\n  float10 fVar2;\n  float fVar3;\n  float fVar4;\n  float fVar5;\n  undefined1 local_34 [8];\n  undefined1 local_2c;\n  undefined2 local_2a;\n  undefined4 local_28;\n  undefined4 local_24;\n  undefined4 local_20;\n  undefined4 local_1c;\n  undefined4 local_18;\n  undefined4 local_14;\n  undefined4 local_10;\n  undefined4 local_c;\n  undefined4 local_8;\n  \n  fVar1 = (float10)FUN_0065d010(param_6);\n  fVar2 = (float10)FUN_0065d050(param_7);\n  fVar4 = (float)(fVar2 * (float10)(float)fVar1);\n  fVar1 = (float10)FUN_0065d010(param_7,fVar4);\n  fVar3 = (float)fVar1;\n  fVar1 = (float10)FUN_0065d050(param_6,fVar3);\n  fVar5 = (float)fVar1;\n  fVar1 = (float10)FUN_0065d050(param_7,fVar3,fVar4,fVar5);\n  FUN_00423750((float)(fVar1 * (float10)fVar5),fVar3,fVar4);\n  if (DAT_006cfdb0 == '\\x01') {\n    FUN_00423960();\n    local_2c = *(undefined1 *)(param_1 + 8);\n    local_2a = (undefined2)param_2;\n    local_28 = param_3;\n    local_24 = param_4;\n    local_20 = param_5;\n    local_1c = local_10;\n    local_18 = local_c;\n    local_14 = local_8;\n    FUN_00415d30(0,local_34,0,8);\n  }\n  FUN_00435990(param_2,param_3,param_4,param_5,&local_10,param_1);\n  return;\n}\n\n"
+}

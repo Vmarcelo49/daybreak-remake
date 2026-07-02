@@ -1,0 +1,7 @@
+{
+  "address": "00670308",
+  "name": "FUN_00670308",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nuint FUN_00670308(undefined4 param_1,uint param_2)\n\n{\n  if ((param_2 & 0x7ff00000) != 0x7ff00000) {\n    return param_2 & 0x7ff00000;\n  }\n  return param_2;\n}\n\n"
+}

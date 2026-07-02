@@ -1,0 +1,7 @@
+{
+  "address": "00667b00",
+  "name": "FUN_00667b00",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __thiscall\nFUN_00667b00(undefined4 *param_1,void *param_2,undefined4 param_3,undefined4 param_4)\n\n{\n  char cVar1;\n  undefined4 uVar2;\n  void *local_1c;\n  size_t local_18;\n  size_t local_14;\n  void *local_10;\n  undefined4 local_c;\n  int local_8;\n  \n  if (param_1[1] != 0) {\n    local_c = (**(code **)(*(int *)param_1[1] + 8))(param_1[1]);\n    param_1[1] = 0;\n  }\n  cVar1 = (**(code **)*param_1)(param_4,param_3);\n  if (cVar1 == '\\0') {\n    uVar2 = 0;\n  }\n  else {\n    if (param_2 != (void *)0x0) {\n      local_8 = (**(code **)(*(int *)param_1[1] + 0x2c))\n                          (param_1[1],0,param_3,&local_1c,&local_18,&local_10,&local_14,2);\n      if (local_8 < 0) {\n        FUN_00661cf0(&DAT_006ab1fc);\n        return 0;\n      }\n      _memcpy(local_1c,param_2,local_18);\n      _memcpy(local_10,(void *)((int)param_2 + local_18),local_14);\n      (**(code **)(*(int *)param_1[1] + 0x4c))(param_1[1],local_1c,local_18,local_10,local_14);\n      param_1[2] = param_3;\n    }\n    uVar2 = 1;\n  }\n  return uVar2;\n}\n\n"
+}

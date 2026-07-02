@@ -1,0 +1,3 @@
+_iobuf | mbstring.h | 32 bytes | /mbstring.h/_iobuf
+FILE | mbstring.h | 32 bytes | /mbstring.h/FILE
+FILE * | mbstring.h | 4 bytes | /mbstring.h/FILE *

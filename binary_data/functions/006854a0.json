@@ -1,0 +1,7 @@
+{
+  "address": "006854a0",
+  "name": "FUN_006854a0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint FUN_006854a0(int param_1,int param_2,int param_3)\n\n{\n  int iVar1;\n  int iVar2;\n  \n  iVar2 = *(int *)(param_1 + param_3 * 4);\n  if (iVar2 < 0) {\n    return *(int *)(param_2 + param_3 * 4);\n  }\n  iVar1 = *(int *)(param_2 + param_3 * 4);\n  if (-1 < iVar1) {\n    iVar2 = iVar2 + iVar1 >> 1;\n  }\n  return iVar2;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "00657b00",
+  "name": "FUN_00657b00",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00657b00(int param_1)\n\n{\n  DWORD local_8;\n  \n  FUN_0065d670();\n  if (*(int *)(param_1 + 0x3c) != 0) {\n    if (*(undefined4 **)(param_1 + 0x3c) != (undefined4 *)0x0) {\n      (**(code **)**(undefined4 **)(param_1 + 0x3c))(1);\n    }\n    *(undefined4 *)(param_1 + 0x3c) = 0;\n  }\n  FUN_0065d6a0();\n  (**(code **)(**(int **)(param_1 + 0x38) + 4))();\n  if (*(int *)(param_1 + 0x38) != 0) {\n    _free(*(void **)(param_1 + 0x38));\n    *(undefined4 *)(param_1 + 0x38) = 0;\n  }\n  *(undefined1 *)(param_1 + 0x1c) = 0;\n  if (*(int *)(param_1 + 0x20) != 0) {\n    SetThreadPriority(*(HANDLE *)(param_1 + 0x20),0xf);\n    local_8 = 0x103;\n    while (local_8 == 0x103) {\n      GetExitCodeThread(*(HANDLE *)(param_1 + 0x20),&local_8);\n    }\n    CloseHandle(*(HANDLE *)(param_1 + 0x20));\n    *(undefined4 *)(param_1 + 0x20) = 0;\n  }\n  if (*(int *)(param_1 + 0x24) != 0) {\n    local_8 = 0x103;\n    while (local_8 == 0x103) {\n      GetExitCodeThread(*(HANDLE *)(param_1 + 0x20),&local_8);\n    }\n    CloseHandle(*(HANDLE *)(param_1 + 0x24));\n    *(undefined4 *)(param_1 + 0x24) = 0;\n  }\n  if (*(int *)(param_1 + 0x34) != 0) {\n    CloseHandle(*(HANDLE *)(param_1 + 0x34));\n  }\n  FUN_006582d0();\n  FUN_00661c60();\n  FUN_00650280();\n  FUN_00655380();\n  CoUninitialize();\n  return;\n}\n\n"
+}

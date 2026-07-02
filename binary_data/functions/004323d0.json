@@ -1,0 +1,7 @@
+{
+  "address": "004323d0",
+  "name": "FUN_004323d0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall\nFUN_004323d0(undefined4 param_1,uint param_2,uint param_3,undefined4 param_4,undefined1 param_5)\n\n{\n  uint uVar1;\n  undefined4 *puVar2;\n  \n  uVar1 = FUN_0063bf40(param_1);\n  if (param_2 < uVar1) {\n    FUN_00424230(param_2);\n    uVar1 = FUN_0063bf40(param_1);\n    if (param_3 < uVar1) {\n      FUN_00432500(param_5);\n      uVar1 = (uint)DAT_006cfd00;\n      FUN_00424230(param_2);\n      puVar2 = (undefined4 *)FUN_004327d0(param_3);\n      FUN_0065b420(*puVar2,uVar1,param_4);\n    }\n  }\n  return;\n}\n\n"
+}

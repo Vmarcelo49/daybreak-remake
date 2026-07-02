@@ -1,0 +1,7 @@
+{
+  "address": "0066eaa1",
+  "name": "FUN_0066eaa1",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint FUN_0066eaa1(FILE *param_1)\n\n{\n  int iVar1;\n  \n  iVar1 = __flush(param_1);\n  if (iVar1 != 0) {\n    return -1;\n  }\n  if ((param_1->_flag & 0x4000) != 0) {\n    iVar1 = FUN_00674d58(param_1->_file);\n    return -(uint)(iVar1 != 0);\n  }\n  return 0;\n}\n\n"
+}

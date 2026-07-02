@@ -1,0 +1,7 @@
+{
+  "address": "00656400",
+  "name": "FUN_00656400",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nbool __thiscall FUN_00656400(int *param_1,int param_2)\n\n{\n  return *param_1 == param_2;\n}\n\n"
+}

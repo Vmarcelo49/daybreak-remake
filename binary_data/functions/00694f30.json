@@ -1,0 +1,7 @@
+{
+  "address": "00694f30",
+  "name": "FUN_00694f30",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint FUN_00694f30(code *param_1,undefined4 param_2)\n\n{\n  undefined4 extraout_var;\n  int local_c;\n  int *local_8;\n  \n  local_c = FUN_00694b70(&local_8);\n  if (-1 < local_c) {\n    local_c = (*param_1)(local_8,param_2,extraout_var);\n    (**(code **)(*local_8 + 8))(local_8);\n  }\n  return local_c;\n}\n\n"
+}

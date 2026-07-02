@@ -1,0 +1,7 @@
+{
+  "address": "00669c32",
+  "name": "FUN_00669c32",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00669c32(exception *param_1)\n\n{\n  *(undefined ***)param_1 = &PTR_FUN_006ab3c0;\n  exception::~exception(param_1);\n  return;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "0041da70",
+  "name": "FUN_0041da70",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_0041da70(undefined4 *param_1)\n\n{\n  int local_18;\n  int local_14;\n  void *local_10;\n  undefined1 *puStack_c;\n  int local_8;\n  \n  puStack_c = &LAB_0069e1f6;\n  local_10 = ExceptionList;\n  ExceptionList = &local_10;\n  *param_1 = &PTR_FUN_006a240c;\n  local_8 = 10;\n  if (param_1[0x47] != 0) {\n    if (param_1[0x47] != 0) {\n      FUN_00402010(1);\n    }\n    param_1[0x47] = 0;\n  }\n  if (param_1[0x2bad] != 0) {\n    if (param_1[0x2bad] != 0) {\n      FUN_00423370(1);\n    }\n    param_1[0x2bad] = 0;\n  }\n  for (local_14 = 0; local_14 < 1000; local_14 = local_14 + 1) {\n    FUN_004244c0();\n  }\n  for (local_18 = 0; local_18 < 0x100; local_18 = local_18 + 1) {\n    FUN_00424210();\n  }\n  local_8._0_1_ = 9;\n  FUN_00431da0();\n  local_8._0_1_ = 8;\n  _eh_vector_destructor_iterator_(param_1 + 0x1d78,0x38,0x100,FUN_00423270);\n  local_8._0_1_ = 7;\n  _eh_vector_destructor_iterator_(param_1 + 0x220,0x1c,1000,FUN_004232c0);\n  local_8._0_1_ = 6;\n  FUN_004247e0();\n  local_8._0_1_ = 5;\n  FUN_00433d90();\n  local_8._0_1_ = 4;\n  FUN_0065a5e0();\n  local_8._0_1_ = 3;\n  FUN_0065a5e0();\n  local_8._0_1_ = 2;\n  FUN_00424670();\n  local_8._0_1_ = 1;\n  FUN_00657320();\n  local_8 = (uint)local_8._1_3_ << 8;\n  FUN_0065d640();\n  local_8 = 0xffffffff;\n  FUN_0040dc70();\n  ExceptionList = local_10;\n  return;\n}\n\n"
+}

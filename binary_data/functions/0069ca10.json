@@ -1,0 +1,7 @@
+{
+  "address": "0069ca10",
+  "name": "FUN_0069ca10",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nbyte FUN_0069ca10(int *param_1)\n\n{\n  return *(byte *)(*param_1 + 5) & 4;\n}\n\n"
+}

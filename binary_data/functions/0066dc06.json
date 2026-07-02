@@ -1,0 +1,7 @@
+{
+  "address": "0066dc06",
+  "name": "FUN_0066dc06",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0066dc06(void)\n\n{\n  TlsAlloc();\n  return;\n}\n\n"
+}

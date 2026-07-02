@@ -1,0 +1,7 @@
+{
+  "address": "0065cfa0",
+  "name": "FUN_0065cfa0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_0065cfa0(undefined4 param_1)\n\n{\n  float10 fVar1;\n  int local_8;\n  \n  for (local_8 = 0; local_8 < 0xe10; local_8 = local_8 + 1) {\n    fVar1 = (float10)FUN_0066cd04((((double)local_8 / 10.0) * 3.1415926535) / 180.0);\n    *(float *)(&DAT_006d3b90 + local_8 * 4) = (float)fVar1;\n  }\n  FUN_0065d0c0();\n  return param_1;\n}\n\n"
+}

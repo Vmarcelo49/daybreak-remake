@@ -1,0 +1,7 @@
+{
+  "address": "00640ca0",
+  "name": "FUN_00640ca0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_00640ca0(int param_1,int param_2)\n\n{\n  int local_c;\n  short *local_8;\n  \n  *(undefined4 *)(param_1 + 8) = *(undefined4 *)(param_2 + 1);\n  local_8 = (short *)(param_2 + 5);\n  for (local_c = 0; local_c < 4; local_c = local_c + 1) {\n    *(float *)(param_1 + 0xc + local_c * 4) = (float)(int)*local_8;\n    *(float *)(param_1 + 0x1c + local_c * 4) = (float)(int)local_8[1];\n    *(float *)(param_1 + 0x2c + local_c * 4) = (float)(int)local_8[2];\n    *(float *)(param_1 + 0x3c + local_c * 4) = (float)(int)local_8[3] / 100.0;\n    *(float *)(param_1 + 0x4c + local_c * 4) = (float)(int)local_8[4] / 100.0;\n    *(uint *)(param_1 + 0x5c + local_c * 4) = (uint)*(byte *)(local_8 + 5);\n    *(int *)(param_1 + 0x6c + local_c * 4) = (int)*(short *)((int)local_8 + 0xb);\n    *(uint *)(param_1 + 0x7c + local_c * 4) = (uint)*(byte *)((int)local_8 + 0xd);\n    *(int *)(param_1 + 0x8c + local_c * 4) = (int)local_8[7];\n    *(uint *)(param_1 + 0x9c + local_c * 4) = (uint)*(byte *)(local_8 + 8);\n    *(int *)(param_1 + 0xac + local_c * 4) = (int)*(short *)((int)local_8 + 0x11);\n    *(uint *)(param_1 + 0xbc + local_c * 4) = (uint)*(byte *)((int)local_8 + 0x13);\n    *(int *)(param_1 + 0xcc + local_c * 4) = (int)local_8[10];\n    local_8 = local_8 + 0xb;\n  }\n  return;\n}\n\n"
+}

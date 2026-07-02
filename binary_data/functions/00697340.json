@@ -1,0 +1,7 @@
+{
+  "address": "00697340",
+  "name": "FUN_00697340",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\n/* WARNING: Removing unreachable block (ram,0x00697402) */\n\nundefined4 __thiscall FUN_00697340(int param_1,int param_2)\n\n{\n  int iVar1;\n  longlong lVar2;\n  longlong lVar3;\n  undefined1 *puVar4;\n  undefined1 local_30 [8];\n  undefined1 local_28 [12];\n  int local_1c;\n  int local_18;\n  void *local_10;\n  undefined1 *puStack_c;\n  undefined4 local_8;\n  \n  local_8 = 0xffffffff;\n  puStack_c = &LAB_0069fe05;\n  local_10 = ExceptionList;\n  ExceptionList = &local_10;\n  FUN_0068d950(param_1 + 8);\n  local_8 = 0;\n  (**(code **)(*(int *)(param_2 + 0xc) + 4))(param_2 + 0xc);\n  iVar1 = FUN_00698070();\n  if (iVar1 == 0) {\n    local_18 = param_1 + 0x20;\n  }\n  else {\n    local_18 = param_1 + 0x38;\n  }\n  local_1c = FUN_0068de10();\n  while (local_1c != 0) {\n    puVar4 = local_28;\n    FUN_006981f0(local_1c);\n    FUN_006981a0(puVar4);\n    lVar2 = FUN_00697fc0();\n    FUN_006981a0(local_30);\n    lVar3 = FUN_00697fc0();\n    if (lVar3 < lVar2) break;\n    FUN_006981d0(&local_1c);\n  }\n  if (local_1c == 0) {\n    FUN_00698250(param_2);\n  }\n  else {\n    FUN_00698230(local_1c,param_2);\n  }\n  FUN_00697630();\n  local_8 = 0xffffffff;\n  FUN_0068d9a0();\n  ExceptionList = local_10;\n  return 0;\n}\n\n"
+}

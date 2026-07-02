@@ -1,0 +1,7 @@
+{
+  "address": "006429c0",
+  "name": "FUN_006429c0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_006429c0(void)\n\n{\n  int local_8;\n  \n  for (local_8 = 0; local_8 < 9; local_8 = local_8 + 1) {\n    FUN_00656200((&DAT_006c7f38)[local_8]);\n  }\n  return;\n}\n\n"
+}

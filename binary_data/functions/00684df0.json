@@ -1,0 +1,7 @@
+{
+  "address": "00684df0",
+  "name": "FUN_00684df0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint FUN_00684df0(int param_1,int param_2,uint param_3,uint param_4,int param_5)\n\n{\n  int iVar1;\n  uint uVar2;\n  \n  param_3 = param_3 & 0x7fff;\n  uVar2 = (param_4 & 0x7fff) - param_3;\n  iVar1 = (int)(((uVar2 ^ (int)uVar2 >> 0x1f) - ((int)uVar2 >> 0x1f)) * (param_5 - param_1)) /\n          (param_2 - param_1);\n  if ((int)uVar2 < 0) {\n    return param_3 - iVar1;\n  }\n  return iVar1 + param_3;\n}\n\n"
+}

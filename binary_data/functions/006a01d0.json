@@ -1,0 +1,7 @@
+{
+  "address": "006a01d0",
+  "name": "FUN_006a01d0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_006a01d0(void)\n\n{\n  _vector_constructor_iterator_(&DAT_006ca460,0xa0,2,FUN_00403a70);\n  return;\n}\n\n"
+}

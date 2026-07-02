@@ -1,0 +1,7 @@
+{
+  "address": "00416800",
+  "name": "FUN_00416800",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 * __fastcall FUN_00416800(undefined4 *param_1)\n\n{\n  undefined4 *local_1c;\n  int local_14;\n  void *local_10;\n  undefined1 *puStack_c;\n  undefined4 local_8;\n  \n  local_8 = 0xffffffff;\n  puStack_c = &LAB_0069de63;\n  local_10 = ExceptionList;\n  ExceptionList = &local_10;\n  FUN_00403ae0();\n  local_8 = 0;\n  FUN_00415dc0();\n  local_8 = CONCAT31(local_8._1_3_,1);\n  *param_1 = &PTR_FUN_006a1f08;\n  param_1[1] = &PTR_FUN_006a1ef4;\n  for (local_14 = 0; local_14 < 4; local_14 = local_14 + 1) {\n    if ((int)(&DAT_006cfaf8)[local_14] < 4) {\n      if (0 < (int)(&DAT_006cfb18)[(&DAT_006cfaf8)[local_14]]) {\n        FUN_0040da90();\n      }\n    }\n    else {\n      FUN_0040da90();\n    }\n    FUN_00657850();\n    *(undefined2 *)(&DAT_006cb758 + local_14 * 0xc) = 0xffff;\n  }\n  param_1[0x5b] = 1;\n  FUN_00415da0();\n  if ((DAT_006cfdc8 == '\\0') || (DAT_006cfe1e == '\\0')) {\n    FUN_00415d70(0,0);\n  }\n  else {\n    FUN_00415d70(1,0);\n  }\n  if (param_1 == (undefined4 *)0x0) {\n    local_1c = (undefined4 *)0x0;\n  }\n  else {\n    local_1c = param_1 + 1;\n  }\n  FUN_0065fee0(local_1c);\n  ExceptionList = local_10;\n  return param_1;\n}\n\n"
+}

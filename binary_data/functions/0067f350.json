@@ -1,0 +1,7 @@
+{
+  "address": "0067f350",
+  "name": "FUN_0067f350",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nbool FUN_0067f350(int param_1)\n\n{\n  return *(int *)(*(int *)(*(int *)(param_1 + 0x40) + 0x68) + 0x50) != 0;\n}\n\n"
+}

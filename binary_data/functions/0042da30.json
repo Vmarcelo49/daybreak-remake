@@ -1,0 +1,7 @@
+{
+  "address": "0042da30",
+  "name": "FUN_0042da30",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nfloat10 __fastcall FUN_0042da30(int param_1)\n\n{\n  return (float10)*(float *)(*(int *)(param_1 + 0x38) + 0x18) - (float10)*(float *)(param_1 + 0x18);\n}\n\n"
+}

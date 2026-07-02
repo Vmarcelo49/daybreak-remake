@@ -1,0 +1,7 @@
+{
+  "address": "00426af6",
+  "name": "FUN_00426af6",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00426af6(void)\n\n{\n  int unaff_EBP;\n  undefined4 *unaff_FS_OFFSET;\n  \n  *(undefined4 *)(unaff_EBP + -4) = 0xffffffff;\n  *(int *)(*(int *)(unaff_EBP + -0x30) + 8) =\n       *(int *)(unaff_EBP + 0xc) * 0xc + *(int *)(*(int *)(unaff_EBP + -0x30) + 8);\n  FUN_004271d0(*(undefined4 *)(unaff_EBP + 8),\n               *(int *)(*(int *)(unaff_EBP + -0x30) + 8) + *(int *)(unaff_EBP + 0xc) * -0xc,\n               unaff_EBP + -0x1c);\n  *unaff_FS_OFFSET = *(undefined4 *)(unaff_EBP + -0xc);\n  return;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "0068c1a0",
+  "name": "FUN_0068c1a0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint __thiscall FUN_0068c1a0(int param_1,undefined4 param_2)\n\n{\n  int iVar1;\n  undefined4 uVar2;\n  int *piVar3;\n  allocator<char> local_14 [4];\n  void *local_10;\n  undefined1 *puStack_c;\n  undefined4 local_8;\n  \n  local_8 = 0xffffffff;\n  puStack_c = &LAB_0069f6de;\n  local_10 = ExceptionList;\n  ExceptionList = &local_10;\n  iVar1 = FUN_0068da80();\n  if (iVar1 == 0) {\n    iVar1 = -0x7ffbfdf7;\n  }\n  else {\n    FUN_00425ac0();\n    local_8 = 0;\n    uVar2 = std::allocator<char>::allocator<char>(local_14);\n    (**(code **)**(undefined4 **)(param_1 + 0x18))\n              (*(undefined4 *)(param_1 + 0x18),&DAT_006acf64,uVar2);\n    iVar1 = FUN_0068de10();\n    if (iVar1 != 0) {\n      piVar3 = (int *)FUN_0068de10();\n      iVar1 = (**(code **)(*piVar3 + 0xc))(piVar3,param_2);\n      if (iVar1 == 0) {\n        iVar1 = FUN_0068c2b0(param_2);\n        if (iVar1 < 0) {\n          local_8 = 0xffffffff;\n          FUN_0068dde0();\n          ExceptionList = local_10;\n          return iVar1;\n        }\n        local_8 = 0xffffffff;\n        FUN_0068dde0();\n        ExceptionList = local_10;\n        return 0;\n      }\n    }\n    iVar1 = FUN_0068c430(param_2);\n    local_8 = 0xffffffff;\n    FUN_0068dde0();\n  }\n  ExceptionList = local_10;\n  return iVar1;\n}\n\n"
+}

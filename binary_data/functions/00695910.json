@@ -1,0 +1,7 @@
+{
+  "address": "00695910",
+  "name": "FUN_00695910",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_00695910(int param_1,undefined4 param_2,int param_3)\n\n{\n  int iVar1;\n  undefined4 uVar2;\n  \n  iVar1 = FUN_006871b0(param_2,&DAT_006acfe4);\n  if (iVar1 == 0) {\n    uVar2 = FUN_0068df80(param_1,param_2,param_3);\n  }\n  else if (param_3 == 0) {\n    uVar2 = 0x80004003;\n  }\n  else {\n    uVar2 = FUN_0068e090(param_1 + -4,param_3);\n  }\n  return uVar2;\n}\n\n"
+}

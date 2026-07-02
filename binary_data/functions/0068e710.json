@@ -1,0 +1,7 @@
+{
+  "address": "0068e710",
+  "name": "FUN_0068e710",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_0068e710(int param_1)\n\n{\n  DWORD DVar1;\n  UINT Msg;\n  WPARAM wParam;\n  LPARAM lParam;\n  tagMSG local_20;\n  \n  while (*(int *)(param_1 + 0xb4) != 0) {\n    PeekMessageA(&local_20,(HWND)0x0,0,0,0);\n    Sleep(1);\n  }\n  DVar1 = GetQueueStatus(8);\n  if ((DVar1 >> 0x10 & 8) != 0) {\n    lParam = 0;\n    wParam = 0;\n    Msg = 0;\n    DVar1 = GetCurrentThreadId();\n    PostThreadMessageA(DVar1,Msg,wParam,lParam);\n  }\n  return;\n}\n\n"
+}

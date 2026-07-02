@@ -1,0 +1,7 @@
+{
+  "address": "00403a70",
+  "name": "FUN_00403a70",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint __fastcall FUN_00403a70(int param_1)\n\n{\n  FUN_00425ac0();\n  _vector_constructor_iterator_((void *)(param_1 + 4),0x1c,4,FUN_0068d8d0);\n  return param_1;\n}\n\n"
+}

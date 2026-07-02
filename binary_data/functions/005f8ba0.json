@@ -1,0 +1,7 @@
+{
+  "address": "005f8ba0",
+  "name": "FUN_005f8ba0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall\nFUN_005f8ba0(int *param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4,\n            undefined4 param_5,undefined4 *param_6,int param_7)\n\n{\n  undefined4 uVar1;\n  undefined4 *puVar2;\n  undefined4 local_34;\n  undefined1 local_30 [8];\n  undefined1 local_28;\n  undefined1 local_27;\n  int local_24;\n  undefined2 local_20;\n  undefined4 local_1c;\n  undefined4 local_18;\n  undefined4 local_14;\n  undefined4 local_10;\n  undefined4 local_c;\n  undefined4 local_8;\n  \n  DAT_006b7630 = DAT_006b7630 + 2;\n  if (DAT_006cfdb0 == '\\x01') {\n    FUN_005f8ec0();\n    local_28 = *(undefined1 *)(param_1[0xb] + 8);\n    local_27 = *(undefined1 *)(param_7 + 8);\n    local_24 = DAT_006b7630;\n    local_20 = (undefined2)param_2;\n    local_1c = param_3;\n    local_18 = param_4;\n    local_14 = param_5;\n    local_10 = *param_6;\n    local_c = param_6[1];\n    local_8 = param_6[2];\n    FUN_00415d30(0,local_30,0,0x88);\n  }\n  FUN_0065d670();\n  uVar1 = FUN_00423750(param_3,param_4,param_5);\n  local_34 = (**(code **)(*param_1 + 8))(param_2,uVar1,param_6,param_7);\n  FUN_00435e60(&local_34);\n  puVar2 = (undefined4 *)FUN_00667280();\n  (**(code **)(*(int *)*puVar2 + 0x10))();\n  FUN_0065d6a0();\n  return;\n}\n\n"
+}

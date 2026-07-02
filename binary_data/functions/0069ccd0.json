@@ -1,0 +1,7 @@
+{
+  "address": "0069ccd0",
+  "name": "FUN_0069ccd0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0069ccd0(undefined4 *param_1,int param_2)\n\n{\n  size_t _NewSize;\n  void *pvVar1;\n  \n  if ((int)param_1[1] <= param_1[2] + param_2) {\n    _NewSize = param_1[1] + 0x400 + param_2;\n    param_1[1] = _NewSize;\n    pvVar1 = _realloc((void *)*param_1,_NewSize);\n    *param_1 = pvVar1;\n  }\n  return;\n}\n\n"
+}

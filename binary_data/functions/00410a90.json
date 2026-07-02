@@ -1,0 +1,7 @@
+{
+  "address": "00410a90",
+  "name": "FUN_00410a90",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00410a90(void)\n\n{\n  char *pcVar1;\n  int unaff_EBP;\n  uint uVar2;\n  \n  *(undefined4 *)(unaff_EBP + -4) = 0xffffffff;\n  if (*(int *)(unaff_EBP + 0xc) != 0) {\n    uVar2 = *(uint *)(unaff_EBP + 0xc);\n    pcVar1 = std::basic_string<char,std::char_traits<char>,std::_DebugHeapAllocator<char>_>::_Myptr\n                       (*(basic_string<char,std::char_traits<char>,std::_DebugHeapAllocator<char>_>\n                          **)(unaff_EBP + -0x1c));\n    std::char_traits<char>::copy(*(char **)(unaff_EBP + -0x14),pcVar1,uVar2);\n  }\n  std::basic_string<char,std::char_traits<char>,std::_DebugHeapAllocator<char>_>::_Tidy\n            (*(basic_string<char,std::char_traits<char>,std::_DebugHeapAllocator<char>_> **)\n              (unaff_EBP + -0x1c),true,0);\n  *(undefined4 *)(*(int *)(unaff_EBP + -0x1c) + 4) = *(undefined4 *)(unaff_EBP + -0x14);\n  *(undefined4 *)(*(int *)(unaff_EBP + -0x1c) + 0x18) = *(undefined4 *)(unaff_EBP + -0x18);\n  std::basic_string<char,std::char_traits<char>,std::_DebugHeapAllocator<char>_>::_Eos\n            (*(basic_string<char,std::char_traits<char>,std::_DebugHeapAllocator<char>_> **)\n              (unaff_EBP + -0x1c),*(uint *)(unaff_EBP + 0xc));\n  ExceptionList = *(void **)(unaff_EBP + -0xc);\n  return;\n}\n\n"
+}

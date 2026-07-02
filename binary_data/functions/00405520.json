@@ -1,0 +1,7 @@
+{
+  "address": "00405520",
+  "name": "FUN_00405520",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\n/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */\n\nundefined4 * __fastcall FUN_00405520(undefined4 *param_1)\n\n{\n  undefined4 *puVar1;\n  undefined4 uVar2;\n  undefined4 uVar3;\n  undefined4 uVar4;\n  undefined4 uVar5;\n  undefined1 local_14 [4];\n  void *local_10;\n  undefined1 *puStack_c;\n  undefined4 local_8;\n  \n  local_8 = 0xffffffff;\n  puStack_c = &LAB_0069db48;\n  local_10 = ExceptionList;\n  ExceptionList = &local_10;\n  FUN_00403a50();\n  local_8 = 0;\n  *param_1 = &PTR_FUN_006a1520;\n  FUN_00403a70();\n  param_1[1] = 0;\n  _DAT_006c7880 = 0;\n  FUN_0065c050(DAT_006ca830);\n  FUN_0065c080(\"movie/prologue.mpg\");\n  uVar5 = 0x1e0;\n  uVar4 = 0x280;\n  uVar3 = 0;\n  uVar2 = 0;\n  puVar1 = (undefined4 *)FUN_00405200(local_14);\n  FUN_00655af0(*puVar1,uVar2,uVar3,uVar4,uVar5);\n  FUN_00408250(0x3fa00000);\n  ExceptionList = local_10;\n  return param_1;\n}\n\n"
+}

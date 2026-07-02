@@ -1,0 +1,7 @@
+{
+  "address": "006884e0",
+  "name": "FUN_006884e0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_006884e0(int param_1)\n\n{\n  return *(undefined4 *)(param_1 + 0x48);\n}\n\n"
+}

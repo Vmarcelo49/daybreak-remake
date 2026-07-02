@@ -1,0 +1,7 @@
+{
+  "address": "0066e9f5",
+  "name": "FUN_0066e9f5",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0066e9f5(void)\n\n{\n  int unaff_EBX;\n  \n  __unlock_fhandle(unaff_EBX);\n  return;\n}\n\n"
+}

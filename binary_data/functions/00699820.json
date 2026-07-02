@@ -1,0 +1,7 @@
+{
+  "address": "00699820",
+  "name": "FUN_00699820",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_00699820(int param_1)\n\n{\n  int iVar1;\n  void *local_10;\n  undefined1 *puStack_c;\n  undefined4 local_8;\n  \n  local_8 = 0xffffffff;\n  puStack_c = &LAB_006a0075;\n  local_10 = ExceptionList;\n  ExceptionList = &local_10;\n  FUN_0068d950(param_1 + 0x1c);\n  local_8 = 0;\n  *(undefined4 *)(param_1 + 0x34) = 1;\n  while( true ) {\n    iVar1 = FUN_00699ad0();\n    if (iVar1 == 0) break;\n    FUN_00691c30();\n    FUN_00699ca0(iVar1);\n  }\n  if (*(int *)(param_1 + 0x70) < 1) {\n    FUN_006919a0();\n    local_8 = 0xffffffff;\n    FUN_0068d9a0();\n  }\n  else {\n    *(undefined4 *)(param_1 + 0x74) = 1;\n    local_8 = 0xffffffff;\n    FUN_0068d9a0();\n    while( true ) {\n      FUN_00693320(0xffffffff);\n      FUN_0068d950(param_1 + 0x1c);\n      local_8 = 1;\n      if (*(int *)(param_1 + 0x70) == 0) break;\n      local_8 = 0xffffffff;\n      FUN_0068d9a0();\n    }\n    *(undefined4 *)(param_1 + 0x74) = 0;\n    FUN_006919a0();\n    local_8 = 0xffffffff;\n    FUN_0068d9a0();\n  }\n  ExceptionList = local_10;\n  return 0;\n}\n\n"
+}

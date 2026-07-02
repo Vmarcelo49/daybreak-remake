@@ -1,0 +1,7 @@
+{
+  "address": "00669bed",
+  "name": "FUN_00669bed",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00669bed(void)\n\n{\n  int unaff_EBP;\n  \n  FUN_0066d2cc();\n  basic_string<>(\"string too long\");\n  *(undefined4 *)(unaff_EBP + -4) = 0;\n  FID_conflict_runtime_error(unaff_EBP + -0x28);\n  *(undefined ***)(unaff_EBP + -0x50) = &PTR_FUN_006ab380;\n                    /* WARNING: Subroutine does not return */\n  __CxxThrowException_8(unaff_EBP + -0x50,&DAT_006b1da0);\n}\n\n"
+}

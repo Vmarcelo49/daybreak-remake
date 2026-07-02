@@ -1,0 +1,7 @@
+{
+  "address": "0068c060",
+  "name": "FUN_0068c060",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_0068c060(int param_1)\n\n{\n  SetEvent(*(HANDLE *)(param_1 + 0xd0));\n  FUN_0068a3d0();\n  return;\n}\n\n"
+}

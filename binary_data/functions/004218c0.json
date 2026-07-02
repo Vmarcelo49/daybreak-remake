@@ -1,0 +1,7 @@
+{
+  "address": "004218c0",
+  "name": "FUN_004218c0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_004218c0(int param_1)\n\n{\n  int iVar1;\n  int *piVar2;\n  undefined1 local_c;\n  \n  piVar2 = *(int **)(param_1 + 0xade8);\n  if (*piVar2 <= *(int *)(param_1 + 0xae04) + 1) {\n    iVar1 = FUN_0063bf40();\n    piVar2 = (int *)(iVar1 + -1);\n    if ((int)piVar2 <= *(int *)(param_1 + 0xadf4)) {\n      local_c = 1;\n      goto LAB_0042191b;\n    }\n  }\n  local_c = 0;\nLAB_0042191b:\n  return CONCAT31((int3)((uint)piVar2 >> 8),local_c);\n}\n\n"
+}

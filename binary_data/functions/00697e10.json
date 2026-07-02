@@ -1,0 +1,7 @@
+{
+  "address": "00697e10",
+  "name": "FUN_00697e10",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00697e10(undefined4 param_1)\n\n{\n  int *piVar1;\n  \n  piVar1 = (int *)FUN_0068dc80(param_1);\n  (**(code **)(*piVar1 + 4))(piVar1);\n  return;\n}\n\n"
+}

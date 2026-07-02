@@ -1,0 +1,7 @@
+{
+  "address": "0066cefd",
+  "name": "FUN_0066cefd",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\n/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */\n\nfloat10 FUN_0066cefd(int param_1,uint param_2)\n\n{\n  uint in_EAX;\n  bool in_ZF;\n  short in_FPUControlWord;\n  float10 in_ST0;\n  float10 extraout_ST0;\n  float10 fVar1;\n  \n  if (in_ZF) {\n    if (((in_EAX & 0xfffff) != 0) || (fVar1 = _DAT_006b7fb0, param_1 != 0)) {\n      fVar1 = (float10)FUN_006702ac();\n    }\nLAB_0066cf8c:\n    if (DAT_006d847c == 0) {\n      fVar1 = (float10)__startOneArgErrorHandling();\n      return fVar1;\n    }\n  }\n  else {\n    if (in_FPUControlWord != 0x27f) {\n      in_EAX = FUN_00670295();\n      in_ST0 = extraout_ST0;\n    }\n    if (in_EAX < 0x3ff00000) {\n      fVar1 = (float10)fpatan(SQRT(((float10)1 - in_ST0) * ((float10)1 + in_ST0)),in_ST0);\n    }\n    else {\n      fVar1 = _DAT_006b7fb0;\n      if ((0x3ff00000 < in_EAX) || ((param_2 & 0xfffff) != 0 || param_1 != 0)) goto LAB_0066cf8c;\n      if ((param_2 & 0x80000000) == 0) {\n        fVar1 = (float10)0;\n      }\n      else {\n        fVar1 = (float10)3.141592653589793;\n      }\n    }\n    if (DAT_006d847c == 0) {\n      fVar1 = (float10)__math_exit();\n      return fVar1;\n    }\n  }\n  return fVar1;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "0065d0c0",
+  "name": "FUN_0065d0c0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0065d0c0(undefined4 param_1)\n\n{\n  DAT_006d31d0 = param_1;\n  for (DAT_006b77bc = 1; DAT_006b77bc < 0x270; DAT_006b77bc = DAT_006b77bc + 1) {\n    (&DAT_006d31d0)[DAT_006b77bc] =\n         (*(uint *)(DAT_006b77bc * 4 + 0x6d31cc) >> 0x1e ^ *(uint *)(DAT_006b77bc * 4 + 0x6d31cc)) *\n         0x6c078965 + DAT_006b77bc;\n    (&DAT_006d31d0)[DAT_006b77bc] = (&DAT_006d31d0)[DAT_006b77bc];\n  }\n  return;\n}\n\n"
+}

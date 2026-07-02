@@ -1,0 +1,7 @@
+{
+  "address": "0068ff60",
+  "name": "FUN_0068ff60",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_0068ff60(int *param_1)\n\n{\n  int iVar1;\n  undefined4 uVar2;\n  int local_28;\n  void *local_10;\n  undefined1 *puStack_c;\n  undefined4 local_8;\n  \n  local_8 = 0xffffffff;\n  puStack_c = &LAB_0069fa0e;\n  local_10 = ExceptionList;\n  ExceptionList = &local_10;\n  FUN_0068d950(param_1 + 0x25);\n  local_8 = 0;\n  iVar1 = FUN_0068da80();\n  if (iVar1 == 0) {\n    local_8 = 0xffffffff;\n    FUN_0068d9a0();\n    uVar2 = 0;\n  }\n  else {\n    if (param_1[0x1e] == 0) {\n      local_28 = 0;\n    }\n    else {\n      local_28 = param_1[0x1e] + 0xc;\n    }\n    (**(code **)(*(int *)(param_1[0x1e] + 0xc) + 4))(param_1[0x1e] + 0xc);\n    FUN_006883f0(0x16,local_28,0);\n    FUN_00691bd0(1);\n    (**(code **)(*param_1 + 0x70))();\n    (**(code **)(*(int *)(param_1[0x1e] + 0xc) + 8))(param_1[0x1e] + 0xc);\n    local_8 = 0xffffffff;\n    FUN_0068d9a0();\n    uVar2 = 1;\n  }\n  ExceptionList = local_10;\n  return uVar2;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "006999e0",
+  "name": "FUN_006999e0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nDWORD __fastcall FUN_006999e0(LPVOID param_1)\n\n{\n  DWORD DVar1;\n  HANDLE pvVar2;\n  DWORD local_8;\n  \n  if (*(int *)((int)param_1 + 0x80) == 0) {\n    FUN_006919c0();\n    pvVar2 = CreateThread((LPSECURITY_ATTRIBUTES)0x0,0,FUN_00699fa0,param_1,0,&local_8);\n    *(HANDLE *)((int)param_1 + 0x80) = pvVar2;\n    if (*(int *)((int)param_1 + 0x80) == 0) {\n      DVar1 = GetLastError();\n      if (0 < (int)DVar1) {\n        DVar1 = DVar1 & 0xffff | 0x80070000;\n      }\n    }\n    else {\n      DVar1 = 0;\n    }\n  }\n  else {\n    DVar1 = 0;\n  }\n  return DVar1;\n}\n\n"
+}

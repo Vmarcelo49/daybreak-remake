@@ -1,0 +1,7 @@
+{
+  "address": "00415890",
+  "name": "FUN_00415890",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __thiscall FUN_00415890(undefined4 param_1,int param_2)\n\n{\n  undefined4 uVar1;\n  int local_c;\n  int local_8;\n  \n  if ((param_2 < 1) || ((int)DAT_006cfdd0 <= DAT_006cfdcc + 1)) {\n    uVar1 = 0;\n  }\n  else if ((&DAT_006cfdd1)[param_2] == '\\0') {\n    FUN_0065d670(param_1);\n    (&DAT_006cfdd1)[param_2] = 1;\n    (&DAT_006cfdf1)[param_2] = 0;\n    local_8 = 0;\n    for (local_c = 1; local_c < 8; local_c = local_c + 1) {\n      if ((&DAT_006cfdd1)[local_c] != '\\0') {\n        local_8 = local_8 + 1;\n      }\n    }\n    DAT_006cfdcc = local_8;\n    _memset(&DAT_006cfdfc,0,0x20);\n    FUN_0064aed0(0);\n    FUN_0065d6a0();\n    uVar1 = 1;\n  }\n  else {\n    uVar1 = 0;\n  }\n  return uVar1;\n}\n\n"
+}

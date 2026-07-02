@@ -1,0 +1,7 @@
+{
+  "address": "00695bb0",
+  "name": "FUN_00695bb0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nuint FUN_00695bb0(int param_1,uint *param_2)\n\n{\n  uint uVar1;\n  \n  if (param_2 == (uint *)0x0) {\n    uVar1 = 0x80004003;\n  }\n  else {\n    uVar1 = (uint)((~*(uint *)(param_1 + 0x30) & *param_2) != 0);\n  }\n  return uVar1;\n}\n\n"
+}

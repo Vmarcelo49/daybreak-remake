@@ -1,0 +1,7 @@
+{
+  "address": "0067db50",
+  "name": "FUN_0067db50",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0067db50(float param_1,uint param_2,uint param_3,float *param_4,undefined4 *param_5)\n\n{\n  uint uVar1;\n  uint uVar2;\n  \n  uVar1 = ((int)param_3 < (int)param_2) - 1;\n  uVar2 = (int)(param_2 - param_3) >> 0x1f;\n  uVar2 = 0x1f - ((param_2 - param_3 ^ uVar2) - uVar2);\n  *param_4 = (*(float *)(&DAT_006be780 + (((int)uVar2 < 0) - 1 & uVar2) * 4) + 1.0) *\n             *(float *)(&DAT_006be380 + (~uVar1 & param_2 | uVar1 & param_3) * 4) * param_1;\n  *param_5 = 0;\n  return;\n}\n\n"
+}

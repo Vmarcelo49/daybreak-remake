@@ -1,0 +1,7 @@
+{
+  "address": "0065ba70",
+  "name": "FUN_0065ba70",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_0065ba70(int param_1,int param_2)\n\n{\n  if (param_2 < 0) {\n    *(undefined4 *)(param_1 + 0x1360) = 0;\n  }\n  else if (param_2 < 0x2711) {\n    *(int *)(param_1 + 0x1360) = param_2;\n  }\n  else {\n    *(undefined4 *)(param_1 + 0x1360) = 10000;\n  }\n  if (*(int *)(param_1 + 0x10) != 0) {\n    (**(code **)(**(int **)(param_1 + 0x10) + 0x3c))\n              (*(undefined4 *)(param_1 + 0x10),\n               (*(int *)(param_1 + 0x135c) * *(int *)(param_1 + 0x1360)) / 10000 + -10000);\n  }\n  return;\n}\n\n"
+}

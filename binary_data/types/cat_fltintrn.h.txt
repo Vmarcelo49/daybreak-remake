@@ -1,0 +1,5 @@
+_strflt | fltintrn.h | 16 bytes | /fltintrn.h/_strflt
+_strflt * | fltintrn.h | 4 bytes | /fltintrn.h/_strflt *
+enum_3272 | fltintrn.h | 4 bytes | /fltintrn.h/enum_3272
+INTRNCVT_STATUS | fltintrn.h | 4 bytes | /fltintrn.h/INTRNCVT_STATUS
+STRFLT | fltintrn.h | 4 bytes | /fltintrn.h/STRFLT

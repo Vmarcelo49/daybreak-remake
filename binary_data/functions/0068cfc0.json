@@ -1,0 +1,7 @@
+{
+  "address": "0068cfc0",
+  "name": "FUN_0068cfc0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_0068cfc0(int *param_1,int param_2)\n\n{\n  int *piVar1;\n  undefined4 *puVar2;\n  int *local_8;\n  \n  local_8 = param_1;\n  while( true ) {\n    if (*local_8 == 0) {\n      return;\n    }\n    if (*local_8 == param_2) break;\n    local_8 = (int *)FUN_0068dce0(*local_8);\n  }\n  piVar1 = (int *)FUN_0068dce0(param_2);\n  *local_8 = *piVar1;\n  puVar2 = (undefined4 *)FUN_0068dce0(param_2);\n  *puVar2 = 0;\n  param_1[1] = param_1[1] + -1;\n  return;\n}\n\n"
+}

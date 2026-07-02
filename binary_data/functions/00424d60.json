@@ -1,0 +1,7 @@
+{
+  "address": "00424d60",
+  "name": "FUN_00424d60",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_00424d60(undefined4 param_1)\n\n{\n  undefined4 uVar1;\n  \n  uVar1 = param_1;\n  allocator<>(&stack0x00000004);\n  _String_val<>(uVar1);\n  allocator<>(&stack0x00000004);\n  return param_1;\n}\n\n"
+}

@@ -1,0 +1,21 @@
+_OVERLAPPED | winbase.h | 20 bytes | /winbase.h/_OVERLAPPED
+_OVERLAPPED * | winbase.h | 4 bytes | /winbase.h/_OVERLAPPED *
+_SECURITY_ATTRIBUTES | winbase.h | 12 bytes | /winbase.h/_SECURITY_ATTRIBUTES
+_SECURITY_ATTRIBUTES * | winbase.h | 4 bytes | /winbase.h/_SECURITY_ATTRIBUTES *
+_STARTUPINFOA | winbase.h | 68 bytes | /winbase.h/_STARTUPINFOA
+_STARTUPINFOA * | winbase.h | 4 bytes | /winbase.h/_STARTUPINFOA *
+_struct_519 | winbase.h | 8 bytes | /winbase.h/_struct_519
+_struct_531 | winbase.h | 4 bytes | /winbase.h/_struct_531
+_SYSTEM_INFO | winbase.h | 36 bytes | /winbase.h/_SYSTEM_INFO
+_SYSTEM_INFO * | winbase.h | 4 bytes | /winbase.h/_SYSTEM_INFO *
+_union_518 | winbase.h | 8 bytes | /winbase.h/_union_518
+_union_530 | winbase.h | 4 bytes | /winbase.h/_union_530
+LPCRITICAL_SECTION | winbase.h | 4 bytes | /winbase.h/LPCRITICAL_SECTION
+LPOVERLAPPED | winbase.h | 4 bytes | /winbase.h/LPOVERLAPPED
+LPSECURITY_ATTRIBUTES | winbase.h | 4 bytes | /winbase.h/LPSECURITY_ATTRIBUTES
+LPSTARTUPINFOA | winbase.h | 4 bytes | /winbase.h/LPSTARTUPINFOA
+LPSYSTEM_INFO | winbase.h | 4 bytes | /winbase.h/LPSYSTEM_INFO
+LPTHREAD_START_ROUTINE | winbase.h | 4 bytes | /winbase.h/LPTHREAD_START_ROUTINE
+LPTOP_LEVEL_EXCEPTION_FILTER | winbase.h | 4 bytes | /winbase.h/LPTOP_LEVEL_EXCEPTION_FILTER
+PTHREAD_START_ROUTINE | winbase.h | 4 bytes | /winbase.h/PTHREAD_START_ROUTINE
+PTOP_LEVEL_EXCEPTION_FILTER | winbase.h | 4 bytes | /winbase.h/PTOP_LEVEL_EXCEPTION_FILTER

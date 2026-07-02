@@ -1,0 +1,7 @@
+{
+  "address": "00693260",
+  "name": "FUN_00693260",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint * FUN_00693260(int *param_1,int *param_2)\n\n{\n  if (param_2 != (int *)0x0) {\n    (**(code **)(*param_2 + 4))(param_2);\n  }\n  if (*param_1 != 0) {\n    (**(code **)(*(int *)*param_1 + 8))(*param_1);\n  }\n  *param_1 = (int)param_2;\n  return param_2;\n}\n\n"
+}

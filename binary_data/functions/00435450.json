@@ -1,0 +1,7 @@
+{
+  "address": "00435450",
+  "name": "FUN_00435450",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall\nFUN_00435450(int param_1,int param_2,undefined4 param_3,undefined4 param_4,undefined4 param_5,\n            undefined4 param_6,undefined4 param_7)\n\n{\n  char cVar1;\n  float10 fVar2;\n  float fVar3;\n  float fVar4;\n  undefined1 local_18 [12];\n  float local_c;\n  float local_8;\n  \n  fVar2 = (float10)FUN_0065d010(param_7);\n  local_c = (float)fVar2;\n  fVar2 = (float10)FUN_0065d050(param_7);\n  local_8 = (float)fVar2;\n  fVar2 = (float10)FUN_0065d010(param_6);\n  fVar4 = (float)(fVar2 * (float10)local_8);\n  fVar3 = local_c;\n  fVar2 = (float10)FUN_0065d050(param_6,local_c,fVar4);\n  FUN_00423750((float)(fVar2 * (float10)local_8),fVar3,fVar4);\n  if (*(int *)(*(int *)(param_1 + 0xf4) + 8 + param_2 * 0xc) < 0) {\n    (**(code **)(*(int *)(param_1 + 0xac) + 0xc))\n              (param_2,param_3,param_4,param_5,local_18,\n               *(undefined4 *)(*(int *)(param_1 + 0x20) + 0x38));\n  }\n  else {\n    cVar1 = FUN_00435920();\n    if (cVar1 != '\\0') {\n      (**(code **)(*(int *)(param_1 + 0xac) + 0xc))\n                (param_2,param_3,param_4,param_5,local_18,\n                 *(undefined4 *)(*(int *)(param_1 + 0x20) + 0x38));\n    }\n  }\n  return;\n}\n\n"
+}

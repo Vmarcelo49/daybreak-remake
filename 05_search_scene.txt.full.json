@@ -1,0 +1,16 @@
+{
+  "jsonrpc": "2.0",
+  "id": 954743317,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "LoadNextScene @ 00406310"
+      }
+    ],
+    "structuredContent": {
+      "result": "LoadNextScene @ 00406310"
+    },
+    "isError": false
+  }
+}

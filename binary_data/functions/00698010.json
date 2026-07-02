@@ -1,0 +1,7 @@
+{
+  "address": "00698010",
+  "name": "FUN_00698010",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00698010(CAccessibleProxy *param_1)\n\n{\n  void *local_10;\n  undefined1 *puStack_c;\n  uint local_8;\n  \n  puStack_c = &LAB_0069fed3;\n  local_10 = ExceptionList;\n  local_8 = 1;\n  ExceptionList = &local_10;\n  FUN_00694270();\n  local_8 = local_8 & 0xffffff00;\n  FUN_00696ac0();\n  local_8 = 0xffffffff;\n  ATL::CAccessibleProxy::~CAccessibleProxy(param_1);\n  ExceptionList = local_10;\n  return;\n}\n\n"
+}

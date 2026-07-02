@@ -1,0 +1,7 @@
+{
+  "address": "0066df8c",
+  "name": "FUN_0066df8c",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0066df8c(char *param_1)\n\n{\n  char cVar1;\n  char cVar2;\n  int iVar3;\n  bool bVar4;\n  \n  iVar3 = _tolower((int)*param_1);\n  bVar4 = iVar3 == 0x65;\n  while (!bVar4) {\n    param_1 = param_1 + 1;\n    iVar3 = _isdigit((int)*param_1);\n    bVar4 = iVar3 == 0;\n  }\n  cVar2 = *param_1;\n  *param_1 = DAT_006b835c;\n  do {\n    param_1 = param_1 + 1;\n    cVar1 = *param_1;\n    *param_1 = cVar2;\n    cVar2 = cVar1;\n  } while (*param_1 != '\\0');\n  return;\n}\n\n"
+}

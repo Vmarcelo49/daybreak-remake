@@ -1,0 +1,7 @@
+{
+  "address": "00687810",
+  "name": "FUN_00687810",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00687810(int param_1,undefined4 param_2,undefined4 param_3)\n\n{\n  int iVar1;\n  int local_14;\n  int local_10;\n  int local_c;\n  int local_8;\n  \n  iVar1 = FUN_006871b0(param_2,&LAB_006ad051_3);\n  if (iVar1 == 0) {\n    iVar1 = FUN_006871b0(param_2,&LAB_006ad061_3);\n    if (iVar1 == 0) {\n      iVar1 = FUN_006871b0(param_2,&DAT_006ad9b8);\n      if (iVar1 == 0) {\n        iVar1 = FUN_006871b0(param_2,&DAT_006acff4);\n        if (iVar1 == 0) {\n          FUN_0068df80(param_1,param_2,param_3);\n        }\n        else {\n          if (param_1 == 0) {\n            local_14 = 0;\n          }\n          else {\n            local_14 = param_1 + 0x10;\n          }\n          FUN_0068e090(local_14,param_3);\n        }\n      }\n      else {\n        if (param_1 == 0) {\n          local_10 = 0;\n        }\n        else {\n          local_10 = param_1 + 0xc;\n        }\n        FUN_0068e090(local_10,param_3);\n      }\n    }\n    else {\n      if (param_1 == 0) {\n        local_c = 0;\n      }\n      else {\n        local_c = param_1 + 0xc;\n      }\n      FUN_0068e090(local_c,param_3);\n    }\n  }\n  else {\n    if (param_1 == 0) {\n      local_8 = 0;\n    }\n    else {\n      local_8 = param_1 + 0xc;\n    }\n    FUN_0068e090(local_8,param_3);\n  }\n  return;\n}\n\n"
+}

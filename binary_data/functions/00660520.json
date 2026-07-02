@@ -1,0 +1,7 @@
+{
+  "address": "00660520",
+  "name": "FUN_00660520",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall\nFUN_00660520(undefined4 *param_1,int param_2,undefined4 *param_3,undefined4 param_4,uint param_5)\n\n{\n  int iVar1;\n  undefined4 local_c;\n  undefined *local_8;\n  \n  if (param_2 == 0) {\n    FUN_00660490(param_3,param_4,param_5);\n  }\n  else if (param_1[param_2 + 10] != 0) {\n    local_8 = &DAT_006d7768;\n    local_c = (**(code **)*param_3)(&DAT_006d7768);\n    if (param_3[1] != 0) {\n      (**(code **)(*(int *)*param_1 + 0x14))(*param_1,param_3[1],0);\n    }\n    param_3[1] = 0;\n    iVar1 = (**(code **)(*(int *)*param_1 + 0x38))\n                      (*param_1,param_1[param_2 + 2],&local_c,1,param_4,0,param_3 + 1,param_5 | 0x20\n                      );\n    if (iVar1 != 0) {\n      param_3[1] = 0;\n    }\n  }\n  return;\n}\n\n"
+}

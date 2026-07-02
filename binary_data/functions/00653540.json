@@ -1,0 +1,7 @@
+{
+  "address": "00653540",
+  "name": "FUN_00653540",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __thiscall FUN_00653540(int *param_1,LPCSTR param_2)\n\n{\n  char cVar1;\n  int iVar2;\n  int *piVar3;\n  HANDLE pvVar4;\n  LPCSTR pCVar5;\n  undefined1 local_c [4];\n  int local_8;\n  \n  iVar2 = FUN_00699fc0();\n  if (iVar2 == 0) {\n    if (*param_1 != 0) {\n      CloseHandle((HANDLE)*param_1);\n    }\n    pvVar4 = CreateFileA(param_2,0x80000000,1,(LPSECURITY_ATTRIBUTES)0x0,3,0x80,(HANDLE)0x0);\n    *param_1 = (int)pvVar4;\n    if (*param_1 != -1) {\n      return 1;\n    }\n    *param_1 = 0;\n  }\n  else {\n    local_8 = param_1[0x1d];\n    while (cVar1 = const_iterator__operator__(param_1 + 0x1e), cVar1 != '\\0') {\n      pCVar5 = param_2;\n      FUN_00653d70(param_2);\n      cVar1 = FUN_00662f70(pCVar5);\n      if (cVar1 != '\\0') {\n        piVar3 = (int *)FUN_00653d70();\n        param_1[0x1f] = *piVar3;\n        return 1;\n      }\n      FUN_0042fc40(local_c,0);\n    }\n    param_1[0x1f] = 0;\n  }\n  return 0;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "0066b5a2",
+  "name": "FUN_0066b5a2",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0066b5a2(void)\n\n{\n  undefined4 in_EAX;\n  int unaff_EBP;\n  \n  DAT_006b7814 = *(undefined4 *)(unaff_EBP + 8);\n  DAT_006b7810 = in_EAX;\n  DAT_006b7818 = unaff_EBP;\n  return;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "0066c3cc",
+  "name": "FUN_0066c3cc",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0066c3cc(void)\n\n{\n  FILE *unaff_ESI;\n  \n  __unlock_file(unaff_ESI);\n  return;\n}\n\n"
+}

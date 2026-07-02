@@ -1,0 +1,7 @@
+{
+  "address": "00650ef0",
+  "name": "FUN_00650ef0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00650ef0(undefined4 param_1)\n\n{\n  char cVar1;\n  \n  DAT_006d171c = (uint)(DAT_006d171c == 0);\n  cVar1 = FUN_00650de0(param_1);\n  if (cVar1 == '\\0') {\n    DAT_006d171c = (uint)(DAT_006d171c == 0);\n  }\n  else {\n    ShowCursor(DAT_006d171c);\n  }\n  return;\n}\n\n"
+}

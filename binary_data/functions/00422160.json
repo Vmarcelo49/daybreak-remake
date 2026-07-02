@@ -1,0 +1,7 @@
+{
+  "address": "00422160",
+  "name": "FUN_00422160",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00422160(int param_1)\n\n{\n  undefined1 local_10 [8];\n  undefined4 local_8;\n  \n  if (DAT_006cfdb0 == '\\x01') {\n    FUN_00423b80();\n    local_8 = *(undefined4 *)(param_1 + 8);\n    FUN_00415d30(0,local_10,0,8);\n  }\n  *(undefined4 *)(param_1 + 0x7a4) = 10000;\n  *(undefined4 *)(param_1 + 0x840) = *(undefined4 *)(param_1 + 0x328);\n  *(undefined1 *)(param_1 + 0x846) = 1;\n  *(undefined1 *)(param_1 + 0x334) = 0xfc;\n  return;\n}\n\n"
+}

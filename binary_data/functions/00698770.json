@@ -1,0 +1,7 @@
+{
+  "address": "00698770",
+  "name": "FUN_00698770",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint FUN_00698770(undefined4 param_1,int *param_2,int param_3,undefined4 *param_4)\n\n{\n  int iVar1;\n  int local_1c;\n  int *local_18;\n  undefined1 local_14 [8];\n  undefined4 local_c;\n  \n  if (param_2 == (int *)0x0) {\n    local_1c = -0x7fffbffd;\n  }\n  else if (param_3 == 0) {\n    local_1c = -0x7fffbffd;\n  }\n  else if (param_4 == (undefined4 *)0x0) {\n    local_1c = -0x7fffbffd;\n  }\n  else {\n    if ((*(int *)(param_3 + 8) == 0) ||\n       (iVar1 = FUN_00698fd0(*(undefined4 *)(param_3 + 8)), iVar1 == 0)) {\n      FUN_00699ef0(param_3 + 8);\n    }\n    if (((param_2 == (int *)0x0) ||\n        (iVar1 = (**(code **)(*param_2 + 0xc))(param_2,param_3,local_14), iVar1 < 0)) ||\n       (iVar1 = FUN_00698fd0(local_c), iVar1 == 0)) {\n      local_1c = FUN_00698630(&local_18);\n      if (-1 < local_1c) {\n        local_1c = (**(code **)(*local_18 + 0xc))(local_18,param_3,local_14);\n        if ((local_1c < 0) || (iVar1 = FUN_00698fd0(local_c), iVar1 == 0)) {\n          (**(code **)(*local_18 + 8))(local_18);\n          if (-1 < local_1c) {\n            local_1c = -0x7ffbfdf2;\n          }\n        }\n        else {\n          *param_4 = local_18;\n          local_1c = 0;\n        }\n      }\n    }\n    else {\n      (**(code **)(*param_2 + 4))(param_2);\n      *param_4 = param_2;\n      local_1c = 0;\n    }\n  }\n  return local_1c;\n}\n\n"
+}

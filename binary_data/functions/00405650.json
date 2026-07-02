@@ -1,0 +1,7 @@
+{
+  "address": "00405650",
+  "name": "FUN_00405650",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_00405650(int param_1)\n\n{\n  char cVar1;\n  undefined4 uVar2;\n  int local_8;\n  \n  cVar1 = FUN_00405250();\n  if (cVar1 == '\\0') {\n    if (*(int *)(param_1 + 4) < 10) {\n      *(int *)(param_1 + 4) = *(int *)(param_1 + 4) + 1;\n      if (*(int *)(param_1 + 4) != 10) {\n        return 4;\n      }\n      FUN_0065b9b0();\n      FUN_0065c950();\n    }\n    FUN_006584e0();\n    FUN_006585f0();\n    cVar1 = FUN_0065c9d0();\n    if (cVar1 == '\\0') {\n      uVar2 = 5;\n    }\n    else {\n      for (local_8 = 0; local_8 < 4; local_8 = local_8 + 1) {\n        FUN_00657390();\n        if (((&DAT_006caeb8)[local_8 * 0x19] == 1) || (cVar1 = FUN_006586d0(1), cVar1 != '\\0')) {\n          FUN_0065c990();\n          return 5;\n        }\n      }\n      uVar2 = 4;\n    }\n  }\n  else {\n    uVar2 = 4;\n  }\n  return uVar2;\n}\n\n"
+}

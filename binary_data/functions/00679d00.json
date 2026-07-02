@@ -1,0 +1,7 @@
+{
+  "address": "00679d00",
+  "name": "FUN_00679d00",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_00679d00(int param_1,int param_2,undefined4 *param_3)\n\n{\n  int iVar1;\n  undefined4 uVar2;\n  int iVar3;\n  short *psVar4;\n  short *psVar5;\n  bool bVar6;\n  short local_1c [4];\n  undefined1 local_14 [20];\n  \n  if (param_3 != (undefined4 *)0x0) {\n    FUN_0069d610(local_14,*param_3,param_3[1]);\n    iVar1 = FUN_0069d720(local_14,8);\n    local_1c[0] = 0;\n    local_1c[1] = 0;\n    local_1c[2] = 0;\n    FUN_00679e00(local_14,local_1c,6);\n    iVar3 = 3;\n    bVar6 = true;\n    psVar4 = local_1c;\n    psVar5 = (short *)(s_vorbis_006b888b + 1);\n    do {\n      if (iVar3 == 0) break;\n      iVar3 = iVar3 + -1;\n      bVar6 = *psVar4 == *psVar5;\n      psVar4 = psVar4 + 1;\n      psVar5 = psVar5 + 1;\n    } while (bVar6);\n    if (!bVar6) {\n      return 0xffffff7c;\n    }\n    if (iVar1 == 1) {\n      if ((param_3[2] != 0) && (*(int *)(param_1 + 8) == 0)) {\n        uVar2 = FUN_00679e30(param_1,local_14);\n        return uVar2;\n      }\n    }\n    else if (iVar1 == 3) {\n      if (*(int *)(param_1 + 8) != 0) {\n        uVar2 = FUN_00679f10(param_2,local_14);\n        return uVar2;\n      }\n    }\n    else if (((iVar1 == 5) && (*(int *)(param_1 + 8) != 0)) && (*(int *)(param_2 + 0xc) != 0)) {\n      uVar2 = FUN_00679ff0(param_1,local_14);\n      return uVar2;\n    }\n  }\n  return 0xffffff7b;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "00423480",
+  "name": "FUN_00423480",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid * __fastcall FUN_00423480(void *param_1)\n\n{\n  std::allocator<char>::allocator<char>((allocator<char> *)((int)param_1 + 0xc));\n  std::allocator<char>::allocator<char>((allocator<char> *)((int)param_1 + 0x18));\n  _memset(param_1,0,0x80);\n  return param_1;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "0066c540",
+  "name": "FUN_0066c540",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0066c540(void)\n\n{\n  __ctrandisp2();\n  return;\n}\n\n"
+}

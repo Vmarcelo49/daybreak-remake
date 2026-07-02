@@ -1,0 +1,7 @@
+{
+  "address": "0068c510",
+  "name": "FUN_0068c510",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_0068c510(HANDLE param_1)\n\n{\n  DWORD DVar1;\n  undefined4 uVar2;\n  \n  uVar2 = 0;\n  DVar1 = WaitForSingleObject(param_1,0xffffffff);\n  if (DVar1 == 0) {\n    uVar2 = 0;\n  }\n  else if (DVar1 == 0xffffffff) {\n    uVar2 = FUN_00693210(0xffffffff,uVar2);\n  }\n  else {\n    uVar2 = 0x8000ffff;\n  }\n  return uVar2;\n}\n\n"
+}

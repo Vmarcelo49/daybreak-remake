@@ -1,0 +1,7 @@
+{
+  "address": "00686f20",
+  "name": "FUN_00686f20",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_00686f20(undefined4 *param_1,undefined4 *param_2)\n\n{\n  LPVOID pvVar1;\n  int iVar2;\n  undefined4 *puVar3;\n  undefined4 *puVar4;\n  \n  puVar3 = param_2;\n  puVar4 = param_1;\n  for (iVar2 = 0x12; iVar2 != 0; iVar2 = iVar2 + -1) {\n    *puVar4 = *puVar3;\n    puVar3 = puVar3 + 1;\n    puVar4 = puVar4 + 1;\n  }\n  if (param_2[0x10] != 0) {\n    pvVar1 = CoTaskMemAlloc(param_2[0x10]);\n    param_1[0x11] = pvVar1;\n    if (param_1[0x11] == 0) {\n      param_1[0x10] = 0;\n      return 0x8007000e;\n    }\n    _memcpy((void *)param_1[0x11],(void *)param_2[0x11],param_1[0x10]);\n  }\n  if (param_1[0xf] != 0) {\n    (**(code **)(*(int *)param_1[0xf] + 4))(param_1[0xf]);\n  }\n  return 0;\n}\n\n"
+}

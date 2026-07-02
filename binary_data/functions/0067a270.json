@@ -1,0 +1,7 @@
+{
+  "address": "0067a270",
+  "name": "FUN_0067a270",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_0067a270(int *param_1,undefined4 *param_2)\n\n{\n  void *pvVar1;\n  int iVar2;\n  undefined4 *puVar3;\n  \n  puVar3 = param_2;\n  for (iVar2 = 0x1c; iVar2 != 0; iVar2 = iVar2 + -1) {\n    *puVar3 = 0;\n    puVar3 = puVar3 + 1;\n  }\n  param_2[0x10] = param_1;\n  param_2[0x13] = 0;\n  param_2[0x11] = 0;\n  if (*param_1 != 0) {\n    pvVar1 = _calloc(1,0x48);\n    param_2[0x1a] = pvVar1;\n    FUN_0069d480(param_2 + 1);\n    *(undefined4 *)((int)pvVar1 + 4) = 0xc61c3c00;\n  }\n  return 0;\n}\n\n"
+}

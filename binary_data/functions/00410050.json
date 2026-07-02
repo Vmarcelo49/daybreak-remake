@@ -1,0 +1,7 @@
+{
+  "address": "00410050",
+  "name": "FUN_00410050",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00410050(allocator<std::_Container_proxy> *param_1)\n\n{\n  char cVar1;\n  int local_8;\n  \n  while( true ) {\n    cVar1 = Empty();\n    if (cVar1 != '\\0') break;\n    FUN_00410190();\n  }\n  local_8 = *(int *)(param_1 + 8);\n  while (local_8 != 0) {\n    local_8 = local_8 + -1;\n    if (*(int *)(*(int *)(param_1 + 4) + local_8 * 4) != 0) {\n      deallocate(*(undefined4 *)(*(int *)(param_1 + 4) + local_8 * 4),2);\n    }\n    std::allocator<std::_Container_proxy>::destroy\n              (param_1,(_Container_proxy *)(*(int *)(param_1 + 4) + local_8 * 4));\n  }\n  if (*(int *)(param_1 + 4) != 0) {\n    deallocate(*(undefined4 *)(param_1 + 4),*(undefined4 *)(param_1 + 8));\n  }\n  *(undefined4 *)(param_1 + 8) = 0;\n  *(undefined4 *)(param_1 + 4) = 0;\n  return;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "004212f0",
+  "name": "FUN_004212f0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_004212f0(int param_1)\n\n{\n  int iVar1;\n  undefined4 uVar2;\n  int iVar3;\n  \n  FUN_004244e0(*(undefined4 *)(param_1 + 0xadf4));\n  iVar1 = FUN_0063bf40();\n  if (*(int *)(param_1 + 0xadfc) + 1 < iVar1) {\n    do {\n      iVar3 = *(int *)(param_1 + 0xadfc) + 1;\n      FUN_004244e0(*(undefined4 *)(param_1 + 0xadf4));\n      iVar3 = FUN_00424370(iVar3);\n      if (*(int *)(param_1 + 0xae04) < *(int *)(iVar3 + 4)) goto LAB_004213c7;\n      *(int *)(param_1 + 0xadfc) = *(int *)(param_1 + 0xadfc) + 1;\n    } while (*(int *)(param_1 + 0xadfc) + 1 < iVar1);\n    *(int *)(param_1 + 0xadfc) = iVar1 + -1;\nLAB_004213c7:\n    uVar2 = *(undefined4 *)(param_1 + 0xadfc);\n    FUN_004244e0(*(undefined4 *)(param_1 + 0xadf4));\n    uVar2 = FUN_00424370(uVar2);\n    *(undefined4 *)(param_1 + 0x10) = uVar2;\n  }\n  return;\n}\n\n"
+}

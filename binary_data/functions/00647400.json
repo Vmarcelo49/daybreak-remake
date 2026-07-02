@@ -1,0 +1,7 @@
+{
+  "address": "00647400",
+  "name": "FUN_00647400",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00647400(undefined4 param_1)\n\n{\n  undefined1 *puVar1;\n  undefined4 extraout_var;\n  undefined4 uVar2;\n  undefined1 local_14 [8];\n  undefined1 local_c [8];\n  \n  puVar1 = local_14;\n  FUN_00425ae0(local_c);\n  uVar2 = extraout_var;\n  FUN_004372b0(puVar1,param_1);\n  FUN_006479d0(uVar2);\n  return;\n}\n\n"
+}

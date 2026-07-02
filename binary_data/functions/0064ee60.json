@@ -1,0 +1,7 @@
+{
+  "address": "0064ee60",
+  "name": "FUN_0064ee60",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid * __thiscall FUN_0064ee60(void *param_1,void *param_2)\n\n{\n  _memcpy(param_1,param_2,0x40);\n  return param_1;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "00699e40",
+  "name": "FUN_00699e40",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint __thiscall\nFUN_00699e40(int param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4,undefined4 param_5\n            )\n\n{\n  int iVar1;\n  undefined1 local_34 [4];\n  int local_30;\n  \n  iVar1 = FUN_00699f20(param_2,param_3);\n  if (((iVar1 == 0) || (iVar1 = FUN_00698fd0(param_4), iVar1 == 0)) ||\n     (iVar1 = FUN_00698fd0(param_5), iVar1 == 0)) {\n    local_30 = FUN_00699110(param_1,*(undefined4 *)(param_1 + 0x18),param_2,param_3,param_4,0,\n                            param_5,0,0);\n    if (-1 < local_30) {\n      local_30 = FUN_00699180();\n    }\n  }\n  else {\n    local_30 = FUN_00699730(param_2,param_3,param_4,param_5,local_34,0);\n  }\n  return local_30;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "005f71f0",
+  "name": "FUN_005f71f0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_005f71f0(int param_1)\n\n{\n  int iVar1;\n  int *piVar2;\n  undefined4 *puVar3;\n  undefined1 local_1c [8];\n  undefined1 local_14;\n  undefined4 local_10;\n  int local_c;\n  int local_8;\n  \n  local_8 = *(int *)(*(int *)(param_1 + 0x11c) + 0x2c) + 0x2e0;\n  local_c = 0;\n  while ((iVar1 = FUN_0064f010(), local_c < iVar1 &&\n         (iVar1 = *(int *)(param_1 + 0x38), piVar2 = (int *)FUN_005f7a80(local_c),\n         *(int *)(iVar1 + 8) == *(int *)(*piVar2 + 8)))) {\n    local_c = local_c + 1;\n  }\n  puVar3 = (undefined4 *)FUN_005f7a80(local_c);\n  *(undefined4 *)(param_1 + 0x38) = *puVar3;\n  if ((DAT_006cfdb0 == '\\x01') && (*(int *)(param_1 + 0x160) != 0)) {\n    FUN_005f77b0();\n    local_14 = *(undefined1 *)(param_1 + 8);\n    local_10 = *(undefined4 *)(param_1 + 0x160);\n    FUN_00415d30(0,local_1c,0,0x88);\n  }\n  return;\n}\n\n"
+}

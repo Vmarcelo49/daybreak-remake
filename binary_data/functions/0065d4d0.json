@@ -1,0 +1,7 @@
+{
+  "address": "0065d4d0",
+  "name": "FUN_0065d4d0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0065d4d0(float param_1,float *param_2)\n\n{\n  param_2[3] = (1.0 - param_1) * (1.0 - param_1) * (1.0 - param_1) * 0.25;\n  param_2[2] = param_1 * 0.25 + (param_1 * param_1 * param_1 * 0.5833333 - param_1 * param_1 * 1.25)\n               + 0.5833333;\n  param_2[1] = param_1 * 0.5 + param_1 * param_1 * 0.5 + param_1 * param_1 * param_1 * -0.5 +\n               0.16666667;\n  *param_2 = param_1 * param_1 * param_1 * 0.16666667;\n  return;\n}\n\n"
+}

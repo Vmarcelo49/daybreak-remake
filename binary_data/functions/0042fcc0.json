@@ -1,0 +1,7 @@
+{
+  "address": "0042fcc0",
+  "name": "FUN_0042fcc0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0042fcc0(int param_1)\n\n{\n  operator_new(param_1 * 0xc);\n  return;\n}\n\n"
+}

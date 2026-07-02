@@ -1,0 +1,7 @@
+{
+  "address": "00691b10",
+  "name": "FUN_00691b10",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nuint FUN_00691b10(uint param_1,uint param_2)\n\n{\n  if ((param_2 < 0x80000000) || ((-2 < (int)param_2 && (0xe2329aff < param_1)))) {\n    if ((-1 < (int)param_2) && ((0 < (int)param_2 || (500000000 < param_1)))) {\n      param_1 = 500000000;\n    }\n  }\n  else {\n    param_1 = 0xe2329b00;\n  }\n  return param_1;\n}\n\n"
+}

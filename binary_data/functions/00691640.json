@@ -1,0 +1,7 @@
+{
+  "address": "00691640",
+  "name": "FUN_00691640",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint FUN_00691640(int param_1)\n\n{\n  undefined4 local_8;\n  \n  local_8 = 1;\n  if (param_1 < 0x40000001) {\n    for (; local_8 * local_8 < param_1; local_8 = local_8 << 1) {\n    }\n    if (param_1 == 0) {\n      local_8 = 0;\n    }\n    else {\n      local_8 = (local_8 * local_8 + param_1) / (local_8 << 1);\n      if (-1 < local_8) {\n        local_8 = (local_8 * local_8 + param_1) / (local_8 << 1);\n      }\n      if (-1 < local_8) {\n        local_8 = (local_8 * local_8 + param_1) / (local_8 << 1);\n      }\n    }\n  }\n  else {\n    local_8 = 0x8000;\n  }\n  return local_8;\n}\n\n"
+}

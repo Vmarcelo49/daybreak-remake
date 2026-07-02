@@ -1,0 +1,7 @@
+{
+  "address": "00693320",
+  "name": "FUN_00693320",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nbool __thiscall FUN_00693320(undefined4 *param_1,DWORD param_2)\n\n{\n  DWORD DVar1;\n  \n  DVar1 = WaitForSingleObject((HANDLE)*param_1,param_2);\n  return DVar1 == 0;\n}\n\n"
+}

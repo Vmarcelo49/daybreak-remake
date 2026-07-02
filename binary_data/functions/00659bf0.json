@@ -1,0 +1,7 @@
+{
+  "address": "00659bf0",
+  "name": "FUN_00659bf0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\n/* WARNING: Function: __chkstk replaced with injection: alloca_probe */\n/* WARNING: Function: __security_check_cookie replaced with injection: security_check_cookie */\n\nundefined4 __fastcall FUN_00659bf0(int param_1)\n\n{\n  int iStack_80020;\n  undefined1 auStack_8001c [524292];\n  undefined2 local_18;\n  undefined2 local_16;\n  undefined4 local_14;\n  undefined4 local_10;\n  undefined2 local_c;\n  undefined2 local_a;\n  uint local_8;\n  \n  local_8 = 0x659bfd;\n  _memset(auStack_8001c,0,0x80000);\n  local_8 = local_8 & 0xffff0000;\n  local_18 = 1;\n  local_14 = 0xac44;\n  local_a = 0x10;\n  local_16 = 1;\n  local_c = 2;\n  local_10 = 0x15888;\n  for (iStack_80020 = 0; iStack_80020 < 0x20; iStack_80020 = iStack_80020 + 1) {\n    FUN_00667b00(auStack_8001c,0x80000,&local_18);\n    FUN_00667b00(auStack_8001c,0x80000,&local_18);\n  }\n  *(undefined4 *)(param_1 + 0x3e0) = 0;\n  *(undefined4 *)(param_1 + 0x3e4) = 0;\n  *(undefined4 *)(param_1 + 1000) = 10000;\n  *(undefined4 *)(param_1 + 0x3ec) = 10000;\n  return 1;\n}\n\n"
+}

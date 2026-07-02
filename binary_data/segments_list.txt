@@ -1,0 +1,6 @@
+Headers: 00400000 - 00400fff
+.text: 00401000 - 006a0fff
+.rdata: 006a1000 - 006b6fff
+.data: 006b7000 - 006d9d07
+.rsrc: 006da000 - 006dafff
+tdb: ffdff000 - ffdfffff

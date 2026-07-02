@@ -1,0 +1,7 @@
+{
+  "address": "0068de50",
+  "name": "FUN_0068de50",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_0068de50(undefined4 param_1)\n\n{\n  InterlockedIncrement((LONG *)&DAT_006d8950);\n  return param_1;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "00420850",
+  "name": "FUN_00420850",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00420850(int param_1)\n\n{\n  if (*(int *)(param_1 + 0x828) == 0) {\n    FUN_004237d0();\n  }\n  return;\n}\n\n"
+}

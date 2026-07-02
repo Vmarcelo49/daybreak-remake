@@ -1,0 +1,7 @@
+{
+  "address": "00403d70",
+  "name": "FUN_00403d70",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_00403d70(int param_1)\n\n{\n  int local_8;\n  \n  *(int *)(param_1 + 4) = *(int *)(param_1 + 4) + 1;\n  FUN_006584e0();\n  FUN_006585f0();\n  local_8 = 0;\n  while( true ) {\n    if (3 < local_8) {\n      return 0x14;\n    }\n    FUN_00657390();\n    if (((&DAT_006cae9c)[local_8 * 0x19] != 0) || ((&DAT_006caea0)[local_8 * 0x19] != 0)) break;\n    local_8 = local_8 + 1;\n  }\n  FUN_0065b870(\"data/bgm/title.ogg\");\n  return 1;\n}\n\n"
+}

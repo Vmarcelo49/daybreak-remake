@@ -1,0 +1,7 @@
+{
+  "address": "00406140",
+  "name": "FUN_00406140",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00406140(undefined4 *param_1)\n\n{\n  int local_18;\n  int local_14;\n  void *local_10;\n  undefined1 *puStack_c;\n  undefined4 local_8;\n  \n  puStack_c = &LAB_0069db8a;\n  local_10 = ExceptionList;\n  ExceptionList = &local_10;\n  *param_1 = &PTR_FUN_006a16b4;\n  local_8 = 0;\n  FUN_0065b1d0(param_1[0x69]);\n  for (local_14 = 0; local_14 < 0xe; local_14 = local_14 + 1) {\n    FUN_00656200(param_1[local_14 + 0x47]);\n  }\n  for (local_18 = 0; local_18 < 7; local_18 = local_18 + 1) {\n    FUN_00656200(param_1[local_18 + 0x5d]);\n  }\n  FUN_00656200(param_1[0x55]);\n  FUN_00656200(param_1[0x56]);\n  FUN_00656200(param_1[0x57]);\n  FUN_00656200(param_1[0x58]);\n  FUN_00656200(param_1[0x5b]);\n  FUN_00656200(param_1[0x5c]);\n  FUN_00656200(param_1[0x67]);\n  FUN_00656200(param_1[0x68]);\n  FUN_00656200(param_1[0x43]);\n  FUN_00656200(param_1[0x44]);\n  FUN_00656200(param_1[0x45]);\n  FUN_00656200(param_1[0x46]);\n  FUN_00656200(param_1[0x42]);\n  local_8 = 0xffffffff;\n  FUN_004039d0();\n  ExceptionList = local_10;\n  return;\n}\n\n"
+}

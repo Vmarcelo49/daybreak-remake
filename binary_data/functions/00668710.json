@@ -1,0 +1,7 @@
+{
+  "address": "00668710",
+  "name": "FUN_00668710",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint FUN_00668710(undefined4 *param_1,int param_2,undefined4 param_3,int param_4)\n\n{\n  int iVar1;\n  undefined4 local_c;\n  int local_8;\n  \n  if (param_4 == 1) {\n    local_c = 1;\n    local_8 = param_2;\n  }\n  else if (param_4 == 2) {\n    local_c = 0;\n    local_8 = param_2 + param_1[3] + param_1[2];\n  }\n  else {\n    if (param_4 != 0) {\n      return -1;\n    }\n    local_c = 0;\n    local_8 = param_2 + param_1[3];\n  }\n  iVar1 = FUN_006539b0(*param_1,local_8,local_c);\n  return (iVar1 != -1) - 1;\n}\n\n"
+}

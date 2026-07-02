@@ -1,0 +1,16 @@
+{
+  "jsonrpc": "2.0",
+  "id": 954776815,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "No callers found for function: LoadNextScene"
+      }
+    ],
+    "structuredContent": {
+      "result": "No callers found for function: LoadNextScene"
+    },
+    "isError": false
+  }
+}

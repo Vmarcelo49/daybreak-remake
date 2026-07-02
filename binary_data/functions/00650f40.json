@@ -1,0 +1,7 @@
+{
+  "address": "00650f40",
+  "name": "FUN_00650f40",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00650f40(undefined4 param_1)\n\n{\n  (**(code **)(*DAT_006d16f8 + 0xac))(DAT_006d16f8,0,0,3,0,0x3f800000,0,param_1);\n  return;\n}\n\n"
+}

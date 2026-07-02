@@ -1,0 +1,7 @@
+{
+  "address": "00667050",
+  "name": "FUN_00667050",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_00667050(void)\n\n{\n  HANDLE pvVar1;\n  undefined4 *puVar2;\n  undefined4 local_8;\n  \n  local_8 = 0;\n  FUN_0065d670();\n  FUN_006672b0(&local_8);\n  pvVar1 = CreateEventA((LPSECURITY_ATTRIBUTES)0x0,0,0,(LPCSTR)0x0);\n  puVar2 = (undefined4 *)FUN_00667280();\n  *puVar2 = pvVar1;\n  FUN_0065d6a0();\n  puVar2 = (undefined4 *)FUN_00667280();\n  return *puVar2;\n}\n\n"
+}

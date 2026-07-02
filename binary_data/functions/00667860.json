@@ -1,0 +1,7 @@
+{
+  "address": "00667860",
+  "name": "FUN_00667860",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint __thiscall FUN_00667860(int param_1,int param_2)\n\n{\n  uint local_14;\n  int local_10;\n  uint local_c;\n  void *local_8;\n  \n  local_8 = (void *)0x0;\n  local_c = 0;\n  (**(code **)(**(int **)(param_1 + 4) + 0x24))(*(undefined4 *)(param_1 + 4),&local_14);\n  if ((local_14 & 1) != 0) {\n    (**(code **)(**(int **)(param_1 + 4) + 0x48))(*(undefined4 *)(param_1 + 4));\n  }\n  (**(code **)(**(int **)(param_1 + 4) + 0x34))(*(undefined4 *)(param_1 + 4),0);\n  local_10 = (**(code **)(**(int **)(param_1 + 4) + 0x2c))\n                       (*(undefined4 *)(param_1 + 4),0,0,&local_8,&local_c,0,0,2);\n  if (-1 < local_10) {\n    if (*(uint *)(param_2 + 0x18) < local_c) {\n      _memset((void *)((int)local_8 + *(int *)(param_2 + 0x18)),0,local_c - *(int *)(param_2 + 0x18)\n             );\n      _memcpy(local_8,*(void **)(param_2 + 0x14),*(size_t *)(param_2 + 0x18));\n    }\n    else {\n      _memcpy(local_8,*(void **)(param_2 + 0x14),local_c);\n    }\n    (**(code **)(**(int **)(param_1 + 4) + 0x4c))(*(undefined4 *)(param_1 + 4),local_8,local_c,0,0);\n  }\n  return param_1;\n}\n\n"
+}

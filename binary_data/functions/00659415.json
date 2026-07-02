@@ -1,0 +1,7 @@
+{
+  "address": "00659415",
+  "name": "FUN_00659415",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\n/* WARNING: Function: __security_check_cookie replaced with injection: security_check_cookie */\n\nvoid FUN_00659415(void)\n\n{\n  int unaff_EBP;\n  \n  *(undefined4 *)(unaff_EBP + -4) = 0xffffffff;\n  *(int *)(*(int *)(unaff_EBP + -0x7c) + 8) =\n       *(int *)(unaff_EBP + 0xc) * 0x50 + *(int *)(*(int *)(unaff_EBP + -0x7c) + 8);\n  FUN_00659750(*(undefined4 *)(unaff_EBP + 8),\n               *(int *)(*(int *)(unaff_EBP + -0x7c) + 8) + *(int *)(unaff_EBP + 0xc) * -0x50,\n               unaff_EBP + -0x68);\n  ExceptionList = *(void **)(unaff_EBP + -0xc);\n  return;\n}\n\n"
+}

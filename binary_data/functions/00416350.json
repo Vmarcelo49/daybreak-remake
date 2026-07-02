@@ -1,0 +1,7 @@
+{
+  "address": "00416350",
+  "name": "FUN_00416350",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __thiscall FUN_00416350(int param_1,undefined4 param_2,undefined4 param_3)\n\n{\n  undefined4 uVar1;\n  undefined1 local_1c [8];\n  undefined4 local_14;\n  int local_10;\n  int local_c;\n  int local_8;\n  \n  local_8 = 0;\n  for (local_c = 1; local_c < 8; local_c = local_c + 1) {\n    if (*(int *)(param_1 + 0x120 + local_c * 4) != 0) {\n      local_8 = local_8 + 1;\n    }\n  }\n  uVar1 = param_3;\n  if (local_8 < DAT_006cfdcc) {\n    for (local_10 = 1; uVar1 = param_2, local_10 < 8; local_10 = local_10 + 1) {\n      if ((*(int *)(param_1 + 0x120 + local_10 * 4) == 0) && ((&DAT_006cfdd1)[local_10] != '\\0')) {\n        FUN_00416410();\n        local_14 = param_3;\n        FUN_00415d30(local_10,local_1c,10,2);\n      }\n    }\n  }\n  return uVar1;\n}\n\n"
+}

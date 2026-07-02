@@ -1,0 +1,7 @@
+{
+  "address": "006a0590",
+  "name": "FUN_006a0590",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_006a0590(void)\n\n{\n  CPropertySet::~CPropertySet((CPropertySet *)&DAT_006d75d8);\n  return;\n}\n\n"
+}

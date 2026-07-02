@@ -1,0 +1,7 @@
+{
+  "address": "006586d0",
+  "name": "FUN_006586d0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nbool __thiscall FUN_006586d0(int param_1,byte param_2)\n\n{\n  return (*(byte *)(param_1 + 0x20 + (uint)param_2) & 0x80) != 0;\n}\n\n"
+}

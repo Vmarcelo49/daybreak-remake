@@ -1,0 +1,7 @@
+{
+  "address": "00666f60",
+  "name": "FUN_00666f60",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_00666f60(void)\n\n{\n  char cVar1;\n  undefined4 *puVar2;\n  undefined1 local_18 [4];\n  undefined1 local_14 [4];\n  undefined1 local_10 [4];\n  undefined4 local_c;\n  undefined4 local_8;\n  \n  FUN_004248b0();\n  FUN_004248b0();\n  while (DAT_006d8468 != '\\0') {\n    WaitForSingleObject(DAT_006d844c,DAT_006d8458);\n    FUN_0065d670();\n    puVar2 = (undefined4 *)FUN_00653d10(local_10);\n    local_8 = *puVar2;\n    puVar2 = (undefined4 *)FUN_00654620(local_14);\n    local_c = *puVar2;\n    while( true ) {\n      cVar1 = const_iterator__operator__(&local_c);\n      if (cVar1 == '\\0') break;\n      puVar2 = (undefined4 *)FUN_00653d70();\n      SetEvent((HANDLE)*puVar2);\n      FUN_0042fc40(local_18,0);\n    }\n    FUN_0065d6a0();\n  }\n  return 0;\n}\n\n"
+}

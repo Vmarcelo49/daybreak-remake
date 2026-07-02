@@ -1,0 +1,7 @@
+{
+  "address": "00686ed0",
+  "name": "FUN_00686ed0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nLPVOID FUN_00686ed0(undefined4 param_1)\n\n{\n  LPVOID pv;\n  int iVar1;\n  \n  pv = CoTaskMemAlloc(0x48);\n  if (pv == (LPVOID)0x0) {\n    pv = (LPVOID)0x0;\n  }\n  else {\n    iVar1 = FUN_00686f20(pv,param_1);\n    if (iVar1 < 0) {\n      CoTaskMemFree(pv);\n      pv = (LPVOID)0x0;\n    }\n  }\n  return pv;\n}\n\n"
+}

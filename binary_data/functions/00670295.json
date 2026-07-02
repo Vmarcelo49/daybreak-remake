@@ -1,0 +1,7 @@
+{
+  "address": "00670295",
+  "name": "FUN_00670295",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00670295(void)\n\n{\n  return;\n}\n\n"
+}

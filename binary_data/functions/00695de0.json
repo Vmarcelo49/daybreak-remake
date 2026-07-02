@@ -1,0 +1,7 @@
+{
+  "address": "00695de0",
+  "name": "FUN_00695de0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_00695de0(undefined4 param_1,undefined8 *param_2,undefined8 *param_3)\n\n{\n  undefined8 uVar1;\n  \n  if (param_2 != (undefined8 *)0x0) {\n    uVar1 = FUN_00697fc0();\n    *param_2 = uVar1;\n  }\n  if (param_3 != (undefined8 *)0x0) {\n    uVar1 = FUN_00697fc0();\n    *param_3 = uVar1;\n  }\n  return 0;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "006572d0",
+  "name": "FUN_006572d0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid * __fastcall FUN_006572d0(void *param_1)\n\n{\n  _memset((void *)((int)param_1 + 0x38),0,0x28);\n  _memset(param_1,0,0x34);\n  *(undefined1 *)((int)param_1 + 0x60) = 0;\n  *(undefined4 *)((int)param_1 + 0x34) = 0;\n  return param_1;\n}\n\n"
+}

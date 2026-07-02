@@ -1,0 +1,7 @@
+{
+  "address": "006599b0",
+  "name": "FUN_006599b0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_006599b0(undefined4 *param_1,int param_2,undefined4 *param_3)\n\n{\n  for (; param_2 != 0; param_2 = param_2 + -1) {\n    *param_1 = *param_3;\n    param_1 = param_1 + 1;\n  }\n  return;\n}\n\n"
+}

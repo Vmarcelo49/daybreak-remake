@@ -1,0 +1,7 @@
+{
+  "address": "00425500",
+  "name": "FUN_00425500",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 * __thiscall\nFUN_00425500(allocator<std::_Container_proxy> *param_1,undefined4 *param_2,undefined4 param_3)\n\n{\n  undefined4 *puVar1;\n  undefined4 *puVar2;\n  undefined1 local_c [4];\n  _Container_proxy *local_8;\n  \n  FUN_0042fc40(local_c,0);\n  local_8 = (_Container_proxy *)FUN_0068de10();\n  if (local_8 != *(_Container_proxy **)(param_1 + 4)) {\n    puVar1 = (undefined4 *)FUN_00663590(local_8);\n    puVar2 = (undefined4 *)FUN_00653df0(local_8);\n    puVar2 = (undefined4 *)FUN_00663590(*puVar2);\n    *puVar2 = *puVar1;\n    puVar1 = (undefined4 *)FUN_00653df0(local_8);\n    puVar2 = (undefined4 *)FUN_00663590(local_8);\n    puVar2 = (undefined4 *)FUN_00653df0(*puVar2);\n    *puVar2 = *puVar1;\n    std::allocator<std::_Container_proxy>::destroy(param_1,local_8);\n    deallocate(local_8,1);\n    *(int *)(param_1 + 8) = *(int *)(param_1 + 8) + -1;\n  }\n  *param_2 = param_3;\n  return param_2;\n}\n\n"
+}

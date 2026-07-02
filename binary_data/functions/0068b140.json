@@ -1,0 +1,7 @@
+{
+  "address": "0068b140",
+  "name": "FUN_0068b140",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_0068b140(int param_1,int *param_2,int *param_3)\n\n{\n  if (param_2 == (int *)0x0) {\n    *(uint *)(param_1 + 4) = *(uint *)(param_1 + 4) & 0xffffffdf;\n  }\n  else {\n    *(int *)(param_1 + 0x30) = *param_2;\n    *(int *)(param_1 + 0x34) = param_2[1];\n    *(int *)(param_1 + 0x38) = *param_3 - *param_2;\n    *(uint *)(param_1 + 4) = *(uint *)(param_1 + 4) | 0x20;\n  }\n  return 0;\n}\n\n"
+}

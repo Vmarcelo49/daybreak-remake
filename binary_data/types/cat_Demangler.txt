@@ -1,0 +1,27 @@
+_EXCEPTION_DISPOSITION | demangler | 4 bytes | /Demangler/_EXCEPTION_DISPOSITION
+_s_CatchableType | demangler | 1 bytes | /Demangler/_s_CatchableType
+_s_CatchableType * | demangler | 4 bytes | /Demangler/_s_CatchableType *
+_s_ThrowInfo | demangler | 1 bytes | /Demangler/_s_ThrowInfo
+_s_ThrowInfo * | demangler | 4 bytes | /Demangler/_s_ThrowInfo *
+_ULARGE_INTEGER | demangler | 1 bytes | /Demangler/_ULARGE_INTEGER
+CMFCCaptionButtonEx | demangler | 1 bytes | /Demangler/CMFCCaptionButtonEx
+CMFCPropertyPage | demangler | 1 bytes | /Demangler/CMFCPropertyPage
+COleDataObject | demangler | 1 bytes | /Demangler/COleDataObject
+CPane | demangler | 1 bytes | /Demangler/CPane
+CPropertySection | demangler | 1 bytes | /Demangler/CPropertySection
+CPropertySet | demangler | 1 bytes | /Demangler/CPropertySet
+CRect | demangler | 1 bytes | /Demangler/CRect
+CRect * | demangler | 4 bytes | /Demangler/CRect *
+CWnd | demangler | 1 bytes | /Demangler/CWnd
+EHExceptionRecord | demangler | 1 bytes | /Demangler/EHExceptionRecord
+EHExceptionRecord * | demangler | 4 bytes | /Demangler/EHExceptionRecord *
+EHRegistrationNode | demangler | 1 bytes | /Demangler/EHRegistrationNode
+EHRegistrationNode * | demangler | 4 bytes | /Demangler/EHRegistrationNode *
+FrameInfo | demangler | 1 bytes | /Demangler/FrameInfo
+FrameInfo * | demangler | 4 bytes | /Demangler/FrameInfo *
+HKEY__ | demangler | 1 bytes | /Demangler/HKEY__
+HKEY__ * | demangler | 4 bytes | /Demangler/HKEY__ *
+PMD | demangler | 1 bytes | /Demangler/PMD
+PMD * | demangler | 4 bytes | /Demangler/PMD *
+TranslatorGuardRN | demangler | 1 bytes | /Demangler/TranslatorGuardRN
+TranslatorGuardRN * | demangler | 4 bytes | /Demangler/TranslatorGuardRN *

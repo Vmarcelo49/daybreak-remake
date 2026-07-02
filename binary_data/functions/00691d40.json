@@ -1,0 +1,7 @@
+{
+  "address": "00691d40",
+  "name": "FUN_00691d40",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 * __thiscall FUN_00691d40(undefined4 *param_1,BOOL param_2)\n\n{\n  HANDLE pvVar1;\n  \n  pvVar1 = CreateEventA((LPSECURITY_ATTRIBUTES)0x0,param_2,0,(LPCSTR)0x0);\n  *param_1 = pvVar1;\n  return param_1;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "00415ef0",
+  "name": "FUN_00415ef0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __thiscall FUN_00415ef0(int param_1,undefined1 *param_2)\n\n{\n  int local_1c;\n  int local_18;\n  int local_14;\n  int local_10;\n  int local_c;\n  int local_8;\n  \n  *param_2 = 0x10;\n  for (local_8 = 0; local_8 < 8; local_8 = local_8 + 1) {\n    param_2[local_8 + 1] = *(undefined1 *)(param_1 + local_8 + 8);\n  }\n  for (local_c = 0; local_c < 8; local_c = local_c + 1) {\n    for (local_10 = 0; local_10 < 9; local_10 = local_10 + 1) {\n      param_2[local_c * 9 + local_10 + 9] = *(undefined1 *)(param_1 + 0x10 + local_c * 9 + local_10)\n      ;\n    }\n  }\n  for (local_14 = 0; local_14 < 8; local_14 = local_14 + 1) {\n    param_2[local_14 + 0x51] = *(undefined1 *)(param_1 + local_14 + 0x58);\n  }\n  for (local_18 = 0; local_18 < 4; local_18 = local_18 + 1) {\n    param_2[local_18 + 0x59] = *(undefined1 *)(param_1 + local_18 + 0x60);\n  }\n  for (local_1c = 0; local_1c < 4; local_1c = local_1c + 1) {\n    param_2[local_1c + 0x5d] = *(undefined1 *)(param_1 + local_1c + 100);\n  }\n  param_2[0x61] = *(undefined1 *)(param_1 + 0x68);\n  param_2[0x62] = *(undefined1 *)(param_1 + 0x69);\n  return 99;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "00401030",
+  "name": "FUN_00401030",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint __fastcall FUN_00401030(int param_1)\n\n{\n  int local_8;\n  \n  _vector_constructor_iterator_\n            ((void *)(param_1 + 0x44),0xc,4,std::allocator<char>::allocator<char>);\n  _vector_constructor_iterator_\n            ((void *)(param_1 + 0x74),0xc,6,std::allocator<char>::allocator<char>);\n  for (local_8 = 0; local_8 < 8; local_8 = local_8 + 1) {\n    *(undefined4 *)(param_1 + local_8 * 4) = 0;\n  }\n  *(undefined4 *)(param_1 + 0x20) = 0;\n  *(undefined4 *)(param_1 + 0x24) = 0;\n  *(undefined4 *)(param_1 + 0x28) = 0;\n  *(undefined4 *)(param_1 + 0x30) = 0;\n  return param_1;\n}\n\n"
+}

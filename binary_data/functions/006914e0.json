@@ -1,0 +1,7 @@
+{
+  "address": "006914e0",
+  "name": "FUN_006914e0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_006914e0(int param_1,int *param_2)\n\n{\n  undefined4 uVar1;\n  DWORD DVar2;\n  int iVar3;\n  undefined4 local_c;\n  \n  if (param_2 == (int *)0x0) {\n    uVar1 = 0x80004003;\n  }\n  else {\n    FUN_0068d950(param_1 + -100);\n    if (*(int *)(param_1 + -0x7c) == 0) {\n      local_c = *(int *)(param_1 + 0x78);\n    }\n    else {\n      DVar2 = timeGetTime();\n      local_c = DVar2 - *(int *)(param_1 + 0x78);\n    }\n    if (local_c < 1) {\n      *param_2 = 0;\n    }\n    else {\n      iVar3 = MulDiv(100000,*(int *)(param_1 + 0x44),local_c);\n      *param_2 = iVar3;\n    }\n    FUN_0068d9a0();\n    uVar1 = 0;\n  }\n  return uVar1;\n}\n\n"
+}

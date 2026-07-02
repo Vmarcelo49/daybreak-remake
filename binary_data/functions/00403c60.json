@@ -1,0 +1,7 @@
+{
+  "address": "00403c60",
+  "name": "FUN_00403c60",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 * __fastcall FUN_00403c60(undefined4 *param_1)\n\n{\n  undefined4 *puVar1;\n  undefined1 local_14 [4];\n  void *local_10;\n  undefined1 *puStack_c;\n  undefined4 local_8;\n  \n  local_8 = 0xffffffff;\n  puStack_c = &LAB_0069da88;\n  local_10 = ExceptionList;\n  ExceptionList = &local_10;\n  FUN_00403a50();\n  local_8 = 0;\n  *param_1 = &PTR_FUN_006a146c;\n  FUN_00425ac0();\n  FUN_00403a70();\n  param_1[1] = 0;\n  puVar1 = (undefined4 *)FUN_006560c0(local_14,\"data/object/gameover.bmp\");\n  param_1[2] = *puVar1;\n  FUN_00655af0(param_1[2],0,0,800,600);\n  ExceptionList = local_10;\n  return param_1;\n}\n\n"
+}

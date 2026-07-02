@@ -1,0 +1,7 @@
+{
+  "address": "004244c0",
+  "name": "FUN_004244c0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_004244c0(undefined4 param_1)\n\n{\n  FUN_00425380(param_1);\n  return;\n}\n\n"
+}

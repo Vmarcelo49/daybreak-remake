@@ -1,0 +1,7 @@
+{
+  "address": "0064fd40",
+  "name": "FUN_0064fd40",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0064fd40(int param_1,int param_2,int param_3)\n\n{\n  void *pvStack_10;\n  undefined1 *puStack_c;\n  undefined4 local_8;\n  \n  puStack_c = &LAB_0069ec50;\n  pvStack_10 = ExceptionList;\n  local_8 = 0;\n  ExceptionList = &pvStack_10;\n  for (; param_1 != param_2; param_1 = param_1 + 4) {\n    FUN_00432ee0(param_3,param_1);\n    param_3 = param_3 + 4;\n  }\n  FUN_0064fdc7();\n  return;\n}\n\n"
+}

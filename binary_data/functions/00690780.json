@@ -1,0 +1,7 @@
+{
+  "address": "00690780",
+  "name": "FUN_00690780",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_00690780(int param_1)\n\n{\n  DWORD DVar1;\n  \n  *(undefined4 *)(param_1 + 0x138) = 0xfffffc18;\n  *(undefined4 *)(param_1 + 0x13c) = 0xffffffff;\n  DVar1 = timeGetTime();\n  *(DWORD *)(param_1 + 0x158) = DVar1;\n  *(undefined4 *)(param_1 + 0xf4) = 0;\n  *(undefined4 *)(param_1 + 0x10c) = 0xffffffff;\n  *(undefined4 *)(param_1 + 0x110) = 0;\n  *(undefined4 *)(param_1 + 0xf8) = 0;\n  *(undefined4 *)(param_1 + 0x108) = 0;\n  *(undefined4 *)(param_1 + 0xfc) = 0;\n  *(undefined4 *)(param_1 + 0x124) = 0;\n  *(undefined4 *)(param_1 + 0x120) = 0;\n  *(undefined4 *)(param_1 + 0x128) = 0;\n  *(undefined4 *)(param_1 + 300) = 0;\n  *(undefined4 *)(param_1 + 0x130) = 0;\n  *(undefined4 *)(param_1 + 0x134) = 0;\n  *(undefined4 *)(param_1 + 0x140) = 0;\n  *(undefined4 *)(param_1 + 0x144) = 0;\n  *(undefined4 *)(param_1 + 0x154) = 0;\n  *(undefined4 *)(param_1 + 0x150) = 0;\n  *(undefined4 *)(param_1 + 0x148) = 0;\n  *(undefined4 *)(param_1 + 0x14c) = 0;\n  *(undefined4 *)(param_1 + 0xe8) = 0;\n  *(undefined4 *)(param_1 + 0x100) = 0;\n  *(undefined4 *)(param_1 + 0x104) = 0xfffb6c20;\n  *(undefined4 *)(param_1 + 0xf0) = 0;\n  *(undefined4 *)(param_1 + 0x118) = 0;\n  *(undefined4 *)(param_1 + 0x11c) = 0;\n  return 0;\n}\n\n"
+}

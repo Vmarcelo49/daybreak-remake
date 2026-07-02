@@ -1,0 +1,7 @@
+{
+  "address": "00687280",
+  "name": "FUN_00687280",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00687280(LPVOID *param_1)\n\n{\n  CoCreateInstance((IID *)&DAT_006ad1a4,(LPUNKNOWN)0x0,1,(IID *)&LAB_006ad024,param_1);\n  return;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "00655660",
+  "name": "FUN_00655660",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_00655660(int param_1,LPCSTR param_2)\n\n{\n  MessageBoxA(*(HWND *)(param_1 + 0x108),param_2,\"Error\",0);\n  return;\n}\n\n"
+}

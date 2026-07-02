@@ -1,0 +1,7 @@
+{
+  "address": "00661cf0",
+  "name": "FUN_00661cf0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00661cf0(LPCSTR param_1)\n\n{\n  MessageBoxA((HWND)0x0,param_1,\"DSound-Error\",0);\n  return;\n}\n\n"
+}

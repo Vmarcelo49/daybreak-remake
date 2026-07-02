@@ -1,0 +1,16 @@
+{
+  "jsonrpc": "2.0",
+  "id": 954779448,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "No functions matching 'Game'"
+      }
+    ],
+    "structuredContent": {
+      "result": "No functions matching 'Game'"
+    },
+    "isError": false
+  }
+}

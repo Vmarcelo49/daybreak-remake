@@ -1,0 +1,12 @@
+Program Name: DaybreakDX.exe
+Executable Path: /mnt/hdexterno/Games/Higurashi Daybreak/DaybreakDX.exe
+Architecture: x86
+Compiler: windows
+Language: x86:LE:32:default
+Endian: Little
+Address Size: 32 bits
+Base Address: 00400000
+Memory Blocks: 6
+Total Memory Size: 2997512 bytes
+Function Count: 4267
+Symbol Count: 39002

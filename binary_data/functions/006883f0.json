@@ -1,0 +1,7 @@
+{
+  "address": "006883f0",
+  "name": "FUN_006883f0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __thiscall FUN_006883f0(int param_1,int param_2,undefined4 param_3,int param_4)\n\n{\n  int *piVar1;\n  undefined4 uVar2;\n  undefined4 local_10;\n  \n  piVar1 = *(int **)(param_1 + 0x44);\n  if (piVar1 == (int *)0x0) {\n    uVar2 = 0x80004001;\n  }\n  else {\n    if (param_2 == 1) {\n      if (param_1 == 0) {\n        local_10 = 0;\n      }\n      else {\n        local_10 = param_1 + 0xc;\n      }\n      param_4 = local_10;\n    }\n    uVar2 = (**(code **)(*piVar1 + 0xc))(piVar1,param_2,param_3,param_4);\n  }\n  return uVar2;\n}\n\n"
+}

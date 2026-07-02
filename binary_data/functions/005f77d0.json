@@ -1,0 +1,7 @@
+{
+  "address": "005f77d0",
+  "name": "FUN_005f77d0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __thiscall FUN_005f77d0(int param_1,undefined1 *param_2)\n\n{\n  *param_2 = 0x3a;\n  param_2[1] = *(undefined1 *)(param_1 + 8);\n  *(undefined4 *)(param_2 + 2) = *(undefined4 *)(param_1 + 0xc);\n  return 6;\n}\n\n"
+}

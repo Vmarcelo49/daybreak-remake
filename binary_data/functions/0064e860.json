@@ -1,0 +1,7 @@
+{
+  "address": "0064e860",
+  "name": "FUN_0064e860",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_0064e860(undefined4 param_1)\n\n{\n  uint uVar1;\n  undefined4 *puVar2;\n  undefined4 local_8;\n  \n  local_8 = 0;\n  while( true ) {\n    uVar1 = FUN_0064f010(param_1);\n    if (uVar1 <= local_8) break;\n    puVar2 = (undefined4 *)FUN_0064ef20(local_8);\n    *puVar2 = 0xffffffff;\n    local_8 = local_8 + 1;\n  }\n  return;\n}\n\n"
+}

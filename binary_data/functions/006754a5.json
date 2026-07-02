@@ -1,0 +1,7 @@
+{
+  "address": "006754a5",
+  "name": "FUN_006754a5",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_006754a5(void)\n\n{\n  int unaff_EBP;\n  \n  if (*(int *)(unaff_EBP + -0x1c) != 0) {\n    __unlock_fhandle(*(int *)(unaff_EBP + -0x20));\n  }\n  return;\n}\n\n"
+}

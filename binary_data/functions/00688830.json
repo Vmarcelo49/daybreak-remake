@@ -1,0 +1,7 @@
+{
+  "address": "00688830",
+  "name": "FUN_00688830",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00688830(int param_1)\n\n{\n  InterlockedIncrement((LONG *)(param_1 + 0x14));\n  return;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "00688240",
+  "name": "FUN_00688240",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_00688240(int param_1,undefined2 *param_2)\n\n{\n  undefined4 uVar1;\n  \n  if (param_2 == (undefined2 *)0x0) {\n    uVar1 = 0x80004003;\n  }\n  else {\n    if (*(int *)(param_1 + 0x30) == 0) {\n      *param_2 = 0;\n    }\n    else {\n      FUN_00692460(param_2,*(undefined4 *)(param_1 + 0x30),0x80);\n    }\n    *(undefined4 *)(param_2 + 0x80) = *(undefined4 *)(param_1 + 0x34);\n    if (*(int *)(param_1 + 0x34) != 0) {\n      (**(code **)(**(int **)(param_1 + 0x34) + 4))(*(undefined4 *)(param_1 + 0x34));\n    }\n    uVar1 = 0;\n  }\n  return uVar1;\n}\n\n"
+}

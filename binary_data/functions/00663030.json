@@ -1,0 +1,7 @@
+{
+  "address": "00663030",
+  "name": "FUN_00663030",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nBOOL __thiscall FUN_00663030(undefined4 *param_1,LPVOID param_2,uint param_3)\n\n{\n  uint uVar1;\n  DWORD DVar2;\n  BOOL BVar3;\n  uint local_18;\n  \n  DVar2 = SetFilePointer((HANDLE)*param_1,0,(PLONG)0x0,1);\n  if ((uint)(param_1[1] + param_1[2]) < DVar2 + param_3) {\n    param_3 = (param_1[1] + param_1[2]) - DVar2;\n  }\n  BVar3 = ReadFile((HANDLE)*param_1,param_2,param_3,param_1 + 3,(LPOVERLAPPED)0x0);\n  uVar1 = param_1[1];\n  for (local_18 = 0; local_18 < param_3; local_18 = local_18 + 1) {\n    *(byte *)((int)param_2 + local_18) =\n         *(byte *)((int)param_2 + local_18) ^ ((byte)(uVar1 >> 1) | 8);\n  }\n  return BVar3;\n}\n\n"
+}

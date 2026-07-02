@@ -1,0 +1,7 @@
+{
+  "address": "00661d10",
+  "name": "FUN_00661d10",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\n/* WARNING: Function: __security_check_cookie replaced with injection: security_check_cookie */\n\nvoid __thiscall FUN_00661d10(char *param_1,char *param_2)\n\n{\n  undefined4 local_118;\n  undefined1 local_114 [264];\n  undefined4 local_c;\n  size_t local_8;\n  \n  local_c = DAT_006b77f4;\n  local_118 = param_1;\n  if (*param_1 == '\\0') {\n    FUN_00665020(param_2);\n  }\n  else {\n    local_8 = _strlen(param_2);\n    FUN_0066b860(local_114,param_2);\n    local_114[local_8 - 3] = 99;\n    local_114[local_8 - 2] = 0x6e;\n    local_114[local_8 - 1] = 0x76;\n    FUN_00665e70(local_114);\n  }\n  return;\n}\n\n"
+}

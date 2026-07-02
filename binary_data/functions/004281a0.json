@@ -1,0 +1,7 @@
+{
+  "address": "004281a0",
+  "name": "FUN_004281a0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_004281a0(void)\n\n{\n  int iVar1;\n  int *in_stack_00000014;\n  \n  iVar1 = FUN_00438080(&stack0x00000004);\n  *in_stack_00000014 = iVar1 + *in_stack_00000014;\n  return;\n}\n\n"
+}

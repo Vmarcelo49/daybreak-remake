@@ -1,0 +1,7 @@
+{
+  "address": "00698380",
+  "name": "FUN_00698380",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nCAccessibleProxy * __thiscall FUN_00698380(CAccessibleProxy *param_1,uint param_2)\n\n{\n  ATL::CAccessibleProxy::~CAccessibleProxy(param_1);\n  if ((param_2 & 1) != 0) {\n    _free(param_1);\n  }\n  return param_1;\n}\n\n"
+}

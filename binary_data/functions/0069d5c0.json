@@ -1,0 +1,7 @@
+{
+  "address": "0069d5c0",
+  "name": "FUN_0069d5c0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0069d5c0(int param_1)\n\n{\n  int iVar1;\n  \n  iVar1 = 8 - *(int *)(param_1 + 4);\n  if (iVar1 < 8) {\n    FUN_0069d4c0(param_1,0,iVar1);\n  }\n  return;\n}\n\n"
+}

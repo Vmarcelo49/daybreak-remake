@@ -1,0 +1,7 @@
+{
+  "address": "00686ea0",
+  "name": "FUN_00686ea0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00686ea0(LPVOID param_1)\n\n{\n  if (param_1 != (LPVOID)0x0) {\n    FUN_00686fb0(param_1);\n    CoTaskMemFree(param_1);\n  }\n  return;\n}\n\n"
+}

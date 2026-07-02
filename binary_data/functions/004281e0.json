@@ -1,0 +1,7 @@
+{
+  "address": "004281e0",
+  "name": "FUN_004281e0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined1 __fastcall FUN_004281e0(undefined4 param_1)\n\n{\n  undefined1 local_5;\n  \n  local_5 = (undefined1)((uint)param_1 >> 0x18);\n  return local_5;\n}\n\n"
+}

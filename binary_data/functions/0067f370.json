@@ -1,0 +1,7 @@
+{
+  "address": "0067f370",
+  "name": "FUN_0067f370",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0067f370(undefined4 *param_1)\n\n{\n  int iVar1;\n  undefined4 *puVar2;\n  \n  FUN_00680ba0(param_1 + 4);\n  puVar2 = param_1 + 0xc;\n  iVar1 = 7;\n  do {\n    _free((void *)*puVar2);\n    puVar2 = puVar2 + 4;\n    iVar1 = iVar1 + -1;\n  } while (iVar1 != 0);\n  _free((void *)param_1[9]);\n  _free((void *)param_1[0x26]);\n  _free((void *)param_1[0x28]);\n  for (iVar1 = 0x2d; iVar1 != 0; iVar1 = iVar1 + -1) {\n    *param_1 = 0;\n    param_1 = param_1 + 1;\n  }\n  return;\n}\n\n"
+}

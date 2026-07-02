@@ -1,0 +1,7 @@
+{
+  "address": "006430f0",
+  "name": "FUN_006430f0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_006430f0(void)\n\n{\n  int local_8;\n  \n  for (local_8 = 0; local_8 < 2; local_8 = local_8 + 1) {\n    if ((&DAT_006c78e0)[local_8] != 0) {\n      (&DAT_006c78e0)[local_8] = (&DAT_006c78e0)[local_8] + -1;\n    }\n    if (*(float *)(&DAT_006c78f0 + local_8 * 4) <\n        (float)*(int *)(*(int *)(&DAT_006c78d8 + local_8 * 4) + 4)) {\n      *(float *)(&DAT_006c78f0 + local_8 * 4) = *(float *)(&DAT_006c78f0 + local_8 * 4) + 0.5;\n    }\n    if ((float)*(int *)(*(int *)(&DAT_006c78d8 + local_8 * 4) + 4) <\n        *(float *)(&DAT_006c78f0 + local_8 * 4)) {\n      *(float *)(&DAT_006c78f0 + local_8 * 4) = *(float *)(&DAT_006c78f0 + local_8 * 4) - 0.5;\n    }\n  }\n  return;\n}\n\n"
+}

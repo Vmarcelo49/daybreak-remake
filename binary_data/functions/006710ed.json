@@ -1,0 +1,7 @@
+{
+  "address": "006710ed",
+  "name": "FUN_006710ed",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_006710ed(void)\n\n{\n  int unaff_EBP;\n  int unaff_EDI;\n  \n  if (*(int *)(unaff_EBP + 0x10) != unaff_EDI) {\n    FUN_0066e7a7(8);\n  }\n  return;\n}\n\n"
+}

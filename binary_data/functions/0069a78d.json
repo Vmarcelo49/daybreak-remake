@@ -1,0 +1,7 @@
+{
+  "address": "0069a78d",
+  "name": "FUN_0069a78d",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0069a78d(undefined4 param_1,undefined4 param_2,int param_3)\n\n{\n  uint in_EAX;\n  uint extraout_ECX;\n  uint uVar1;\n  short in_FPUControlWord;\n  \n  uVar1 = in_EAX;\n  if (in_FPUControlWord != 0x27f) {\n    in_EAX = FUN_00670295();\n    uVar1 = extraout_ECX;\n  }\n  if ((uVar1 & 0x7ff00000) != 0x7ff00000) {\n                    /* WARNING: Subroutine does not return */\n    __fload_withFB();\n  }\n  if ((in_EAX & 0xfffff) == 0 && param_3 == 0) {\n                    /* WARNING: Subroutine does not return */\n    __fload_withFB();\n  }\n                    /* WARNING: Subroutine does not return */\n  __fload_withFB();\n}\n\n"
+}

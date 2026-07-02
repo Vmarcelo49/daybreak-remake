@@ -1,0 +1,7 @@
+{
+  "address": "0066cd04",
+  "name": "FUN_0066cd04",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0066cd04(void)\n\n{\n                    /* WARNING: Subroutine does not return */\n  __fload_withFB();\n}\n\n"
+}

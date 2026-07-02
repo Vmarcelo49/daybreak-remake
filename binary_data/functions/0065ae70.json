@@ -1,0 +1,7 @@
+{
+  "address": "0065ae70",
+  "name": "FUN_0065ae70",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint __thiscall FUN_0065ae70(int *param_1,int *param_2)\n\n{\n  return *param_1 - *param_2 >> 2;\n}\n\n"
+}

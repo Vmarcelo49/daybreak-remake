@@ -1,0 +1,7 @@
+{
+  "address": "0042ea40",
+  "name": "FUN_0042ea40",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_0042ea40(int param_1)\n\n{\n  int iVar1;\n  int local_8;\n  \n  if (*(int *)(param_1 + 0x30) != 0) {\n    if (*(int *)(param_1 + 0x30) != 0) {\n      FID_conflict__vector_deleting_destructor_(3);\n    }\n    *(undefined4 *)(param_1 + 0x30) = 0;\n  }\n  if (*(int *)(param_1 + 0x34) != 0) {\n    if (*(int *)(param_1 + 0x34) != 0) {\n      FID_conflict__vector_deleting_destructor_(3);\n    }\n    *(undefined4 *)(param_1 + 0x34) = 0;\n  }\n  if (*(int *)(param_1 + 0x38) != 0) {\n    for (local_8 = 0; local_8 < 100; local_8 = local_8 + 1) {\n      if (*(int *)(*(int *)(param_1 + 0x38) + local_8 * 4) != 0) {\n        if (*(int *)(*(int *)(param_1 + 0x38) + local_8 * 4) != 0) {\n          FUN_00402010(1);\n        }\n        *(undefined4 *)(*(int *)(param_1 + 0x38) + local_8 * 4) = 0;\n      }\n    }\n  }\n  if (*(int *)(param_1 + 0x38) != 0) {\n    _free(*(void **)(param_1 + 0x38));\n    *(undefined4 *)(param_1 + 0x38) = 0;\n  }\n  iVar1 = FUN_0068de10();\n  if (iVar1 != 0) {\n    FUN_00656200(*(undefined4 *)(param_1 + 0x2c));\n  }\n  return;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "00693210",
+  "name": "FUN_00693210",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nDWORD FUN_00693210(void)\n\n{\n  DWORD DVar1;\n  \n  DVar1 = GetLastError();\n  if (DVar1 == 0) {\n    DVar1 = 0x80004005;\n  }\n  else if (0 < (int)DVar1) {\n    DVar1 = DVar1 & 0xffff | 0x80070000;\n  }\n  return DVar1;\n}\n\n"
+}

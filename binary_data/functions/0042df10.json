@@ -1,0 +1,7 @@
+{
+  "address": "0042df10",
+  "name": "FUN_0042df10",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nfloat * __thiscall FUN_0042df10(float *param_1,float param_2)\n\n{\n  *param_1 = param_2 * *param_1;\n  param_1[1] = param_2 * param_1[1];\n  param_1[2] = param_2 * param_1[2];\n  return param_1;\n}\n\n"
+}

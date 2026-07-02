@@ -1,0 +1,5 @@
+_GUID | guiddef.h | 16 bytes | /guiddef.h/_GUID
+_GUID * | guiddef.h | 4 bytes | /guiddef.h/_GUID *
+GUID | guiddef.h | 16 bytes | /guiddef.h/GUID
+IID | guiddef.h | 16 bytes | /guiddef.h/IID
+IID * | guiddef.h | 4 bytes | /guiddef.h/IID *

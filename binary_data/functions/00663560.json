@@ -1,0 +1,7 @@
+{
+  "address": "00663560",
+  "name": "FUN_00663560",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint FUN_00663560(int param_1)\n\n{\n  return param_1 + 0x119;\n}\n\n"
+}

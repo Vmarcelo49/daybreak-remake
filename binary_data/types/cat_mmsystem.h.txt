@@ -1,0 +1,23 @@
+_MMCKINFO | mmsystem.h | 20 bytes | /mmsystem.h/_MMCKINFO
+_MMCKINFO * | mmsystem.h | 4 bytes | /mmsystem.h/_MMCKINFO *
+_MMIOINFO | mmsystem.h | 72 bytes | /mmsystem.h/_MMIOINFO
+_MMIOINFO * | mmsystem.h | 4 bytes | /mmsystem.h/_MMIOINFO *
+FOURCC | mmsystem.h | 4 bytes | /mmsystem.h/FOURCC
+HMMIO | mmsystem.h | 4 bytes | /mmsystem.h/HMMIO
+HMMIO__ | mmsystem.h | 4 bytes | /mmsystem.h/HMMIO__
+HMMIO__ * | mmsystem.h | 4 bytes | /mmsystem.h/HMMIO__ *
+HPSTR | mmsystem.h | 4 bytes | /mmsystem.h/HPSTR
+HWAVEOUT | mmsystem.h | 4 bytes | /mmsystem.h/HWAVEOUT
+HWAVEOUT__ | mmsystem.h | 4 bytes | /mmsystem.h/HWAVEOUT__
+HWAVEOUT__ * | mmsystem.h | 4 bytes | /mmsystem.h/HWAVEOUT__ *
+LPMMCKINFO | mmsystem.h | 4 bytes | /mmsystem.h/LPMMCKINFO
+LPMMIOINFO | mmsystem.h | 4 bytes | /mmsystem.h/LPMMIOINFO
+LPMMIOPROC | mmsystem.h | 4 bytes | /mmsystem.h/LPMMIOPROC
+LPTIMECALLBACK | mmsystem.h | 4 bytes | /mmsystem.h/LPTIMECALLBACK
+MMCKINFO | mmsystem.h | 20 bytes | /mmsystem.h/MMCKINFO
+MMCKINFO * | mmsystem.h | 4 bytes | /mmsystem.h/MMCKINFO *
+MMIOPROC | mmsystem.h | variable bytes | /mmsystem.h/MMIOPROC
+MMIOPROC * | mmsystem.h | 4 bytes | /mmsystem.h/MMIOPROC *
+MMRESULT | mmsystem.h | 4 bytes | /mmsystem.h/MMRESULT
+TIMECALLBACK | mmsystem.h | variable bytes | /mmsystem.h/TIMECALLBACK
+TIMECALLBACK * | mmsystem.h | 4 bytes | /mmsystem.h/TIMECALLBACK *

@@ -1,0 +1,7 @@
+{
+  "address": "00686000",
+  "name": "FUN_00686000",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00686000(int param_1,int param_2,int param_3,int param_4,int param_5)\n\n{\n  int iVar1;\n  int iVar2;\n  int iVar3;\n  int iVar4;\n  uint uVar5;\n  float *pfVar6;\n  uint uVar7;\n  float *pfVar8;\n  int iVar9;\n  \n  iVar4 = param_2;\n  iVar2 = param_1;\n  uVar7 = param_4 - param_3;\n  iVar9 = param_2 - param_1;\n  iVar3 = (int)uVar7 / iVar9;\n  if ((int)uVar7 < 0) {\n    param_1 = iVar3 + -1;\n  }\n  else {\n    param_1 = iVar3 + 1;\n  }\n  uVar5 = iVar3 * iVar9 >> 0x1f;\n  param_2 = 0;\n  pfVar6 = (float *)(&DAT_006c6860 + param_3 * 4);\n  iVar1 = iVar2 + 1;\n  *(float *)(param_5 + iVar2 * 4) =\n       *(float *)(&DAT_006c6860 + param_3 * 4) * *(float *)(param_5 + iVar2 * 4);\n  if (iVar1 < iVar4) {\n    iVar4 = iVar4 - iVar1;\n    pfVar8 = (float *)(param_5 + iVar1 * 4);\n    do {\n      param_2 = param_2 + (((uVar7 ^ (int)uVar7 >> 0x1f) - ((int)uVar7 >> 0x1f)) -\n                          ((iVar3 * iVar9 ^ uVar5) - uVar5));\n      iVar2 = iVar3;\n      if (iVar9 <= param_2) {\n        param_2 = param_2 - iVar9;\n        iVar2 = param_1;\n      }\n      pfVar6 = pfVar6 + iVar2;\n      iVar4 = iVar4 + -1;\n      *pfVar8 = *pfVar6 * *pfVar8;\n      pfVar8 = pfVar8 + 1;\n    } while (iVar4 != 0);\n  }\n  return;\n}\n\n"
+}

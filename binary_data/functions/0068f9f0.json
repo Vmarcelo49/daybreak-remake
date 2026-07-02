@@ -1,0 +1,7 @@
+{
+  "address": "0068f9f0",
+  "name": "FUN_0068f9f0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_0068f9f0(int param_1)\n\n{\n  undefined4 uVar1;\n  uint uVar2;\n  int iVar3;\n  undefined8 uVar4;\n  uint local_14;\n  int local_10;\n  int local_8;\n  \n  if (((*(int *)(param_1 + 0x70) == 0) || (*(int *)(param_1 + 0x74) != 0)) ||\n     (*(int *)(param_1 + 0xc0) != 0)) {\n    uVar1 = 0;\n  }\n  else if (*(int *)(param_1 + 0x18) == 0) {\n    uVar1 = FUN_0068fae0();\n  }\n  else {\n    uVar4 = FUN_00697fc0();\n    uVar2 = (uint)uVar4 + *(uint *)(param_1 + 0xb8);\n    iVar3 = (int)((ulonglong)uVar4 >> 0x20) + *(int *)(param_1 + 0xbc) +\n            (uint)CARRY4((uint)uVar4,*(uint *)(param_1 + 0xb8));\n    (**(code **)(**(int **)(param_1 + 0x18) + 0xc))\n              (*(undefined4 *)(param_1 + 0x18),&local_14,param_1,uVar2,iVar3);\n    local_8 = __alldiv(uVar2 - local_14,(iVar3 - local_10) - (uint)(uVar2 < local_14),10000,0);\n    if (local_8 < 0x32) {\n      uVar1 = FUN_0068fae0();\n    }\n    else {\n      uVar1 = FUN_006932a0(local_8,10,FUN_0068f950,param_1,0);\n      *(undefined4 *)(param_1 + 0xc0) = uVar1;\n      if (*(int *)(param_1 + 0xc0) == 0) {\n        uVar1 = FUN_0068fae0();\n      }\n      else {\n        uVar1 = 0;\n      }\n    }\n  }\n  return uVar1;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "0068dc30",
+  "name": "FUN_0068dc30",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_0068dc30(int param_1,undefined1 param_2)\n\n{\n  *(undefined1 *)(param_1 + 0x25) = param_2;\n  return;\n}\n\n"
+}

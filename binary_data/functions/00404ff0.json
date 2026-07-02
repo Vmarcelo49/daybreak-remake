@@ -1,0 +1,7 @@
+{
+  "address": "00404ff0",
+  "name": "FUN_00404ff0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __fastcall FUN_00404ff0(int param_1)\n\n{\n  char cVar1;\n  int local_8;\n  \n  cVar1 = FUN_00405250();\n  if (cVar1 != '\\0') {\n    return 0;\n  }\n  FUN_006584e0();\n  FUN_006585f0();\n  cVar1 = FUN_006586d0(0x1c);\n  if ((cVar1 != '\\0') &&\n     ((cVar1 = FUN_006586d0(0xb8), cVar1 != '\\0' || (cVar1 = FUN_006586d0(0x38), cVar1 != '\\0')))) {\n    FUN_0064ad70();\n  }\n  if (*(int *)(param_1 + 0xac) == 0) {\n    *(int *)(param_1 + 0xac) = *(int *)(param_1 + 0xac) + 1;\n    FUN_0065c950();\n    FUN_0065b870(\"data/bgm/titlesemi.ogg\");\n    FUN_00405290(2);\n  }\n  FUN_006584e0();\n  FUN_006585f0();\n  if ((*(int *)(param_1 + 0xac) == 1) && (cVar1 = FUN_0065c9d0(), cVar1 != '\\0')) {\n    local_8 = 0;\n    while( true ) {\n      if (3 < local_8) {\n        return 0;\n      }\n      FUN_00657390();\n      if (((((&DAT_006cae9c)[local_8 * 0x19] != 0) || ((&DAT_006caea0)[local_8 * 0x19] != 0)) ||\n          ((&DAT_006caeb8)[local_8 * 0x19] != 0)) || (cVar1 = FUN_006586d0(1), cVar1 != '\\0'))\n      break;\n      local_8 = local_8 + 1;\n    }\n    FUN_0065c990();\n    FUN_0065b870(\"data/bgm/title.ogg\");\n    FUN_00405290(1);\n    return 1;\n  }\n  *(int *)(param_1 + 0xac) = *(int *)(param_1 + 0xac) + 1;\n  return 1;\n}\n\n"
+}

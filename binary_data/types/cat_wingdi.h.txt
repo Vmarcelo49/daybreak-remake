@@ -1,0 +1,11 @@
+_FIXED | wingdi.h | 4 bytes | /wingdi.h/_FIXED
+_GLYPHMETRICS | wingdi.h | 20 bytes | /wingdi.h/_GLYPHMETRICS
+_GLYPHMETRICS * | wingdi.h | 4 bytes | /wingdi.h/_GLYPHMETRICS *
+_MAT2 | wingdi.h | 16 bytes | /wingdi.h/_MAT2
+FIXED | wingdi.h | 4 bytes | /wingdi.h/FIXED
+LPGLYPHMETRICS | wingdi.h | 4 bytes | /wingdi.h/LPGLYPHMETRICS
+LPTEXTMETRICA | wingdi.h | 4 bytes | /wingdi.h/LPTEXTMETRICA
+MAT2 | wingdi.h | 16 bytes | /wingdi.h/MAT2
+MAT2 * | wingdi.h | 4 bytes | /wingdi.h/MAT2 *
+tagTEXTMETRICA | wingdi.h | 56 bytes | /wingdi.h/tagTEXTMETRICA
+tagTEXTMETRICA * | wingdi.h | 4 bytes | /wingdi.h/tagTEXTMETRICA *

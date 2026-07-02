@@ -1,0 +1,7 @@
+{
+  "address": "0067a330",
+  "name": "FUN_0067a330",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_0067a330(int param_1)\n\n{\n  undefined4 *puVar1;\n  int iVar2;\n  undefined4 *_Memory;\n  void *pvVar3;\n  \n  _Memory = *(undefined4 **)(param_1 + 0x54);\n  while (_Memory != (undefined4 *)0x0) {\n    puVar1 = (undefined4 *)_Memory[1];\n    _free((void *)*_Memory);\n    *_Memory = 0;\n    _Memory[1] = 0;\n    _free(_Memory);\n    _Memory = puVar1;\n  }\n  if (*(int *)(param_1 + 0x50) != 0) {\n    pvVar3 = _realloc(*(void **)(param_1 + 0x44),*(int *)(param_1 + 0x4c) + *(int *)(param_1 + 0x50)\n                     );\n    *(void **)(param_1 + 0x44) = pvVar3;\n    iVar2 = *(int *)(param_1 + 0x50);\n    *(undefined4 *)(param_1 + 0x50) = 0;\n    *(int *)(param_1 + 0x4c) = *(int *)(param_1 + 0x4c) + iVar2;\n  }\n  *(undefined4 *)(param_1 + 0x48) = 0;\n  *(undefined4 *)(param_1 + 0x54) = 0;\n  return;\n}\n\n"
+}

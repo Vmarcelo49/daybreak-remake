@@ -1,0 +1,7 @@
+{
+  "address": "00691d90",
+  "name": "FUN_00691d90",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nbool __thiscall FUN_00691d90(HANDLE *param_1,uint param_2)\n\n{\n  DWORD DVar1;\n  DWORD local_38;\n  tagMSG local_2c;\n  DWORD local_10;\n  uint local_c;\n  DWORD local_8;\n  \n  local_c = param_2;\n  if (param_2 != 0xffffffff) {\n    local_10 = timeGetTime();\n  }\n  do {\n    local_8 = MsgWaitForMultipleObjects(1,param_1,0,local_c,0x40);\n    if (local_8 == 1) {\n      PeekMessageA(&local_2c,(HWND)0x0,0,0,0);\n      if (local_c != 0xffffffff) {\n        DVar1 = timeGetTime();\n        if (DVar1 - local_10 < param_2) {\n          local_38 = param_2 - (DVar1 - local_10);\n        }\n        else {\n          local_38 = 0;\n        }\n        local_c = local_38;\n      }\n    }\n  } while (local_8 == 1);\n  return local_8 == 0;\n}\n\n"
+}

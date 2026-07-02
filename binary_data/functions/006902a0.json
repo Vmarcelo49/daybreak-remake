@@ -1,0 +1,7 @@
+{
+  "address": "006902a0",
+  "name": "FUN_006902a0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint FUN_006902a0(int param_1)\n\n{\n  int local_1c;\n  void *local_10;\n  undefined1 *puStack_c;\n  uint local_8;\n  \n  local_8 = 0xffffffff;\n  puStack_c = &LAB_0069fa5c;\n  local_10 = ExceptionList;\n  ExceptionList = &local_10;\n  FUN_0068d950(*(int *)(param_1 + 0xcc) + 0x7c);\n  local_8 = 0;\n  FUN_0068d950(*(int *)(param_1 + 0xcc) + 0x94);\n  local_8 = CONCAT31(local_8._1_3_,1);\n  local_1c = (**(code **)(**(int **)(param_1 + 0xcc) + 0x88))();\n  if (-1 < local_1c) {\n    local_1c = FUN_0068ab90(param_1);\n  }\n  local_8 = local_8 & 0xffffff00;\n  FUN_0068d9a0();\n  local_8 = 0xffffffff;\n  FUN_0068d9a0();\n  ExceptionList = local_10;\n  return local_1c;\n}\n\n"
+}

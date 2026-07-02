@@ -1,0 +1,7 @@
+{
+  "address": "00650b40",
+  "name": "FUN_00650b40",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_00650b40(undefined4 param_1,int param_2)\n\n{\n  if (DAT_006b77ac != param_2) {\n    if (param_2 == 0) {\n      (**(code **)(*DAT_006d16f8 + 0x114))(DAT_006d16f8,0,5,1,0,param_1);\n      (**(code **)(*DAT_006d16f8 + 0x114))(DAT_006d16f8,0,6,1);\n      (**(code **)(*DAT_006d16f8 + 0x114))(DAT_006d16f8,0,7,1);\n    }\n    else if (param_2 == 1) {\n      (**(code **)(*DAT_006d16f8 + 0x114))(DAT_006d16f8,0,5,2);\n      (**(code **)(*DAT_006d16f8 + 0x114))(DAT_006d16f8,0,6,2);\n      (**(code **)(*DAT_006d16f8 + 0x114))(DAT_006d16f8,0,7,2);\n    }\n    DAT_006b77ac = param_2;\n  }\n  return;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "0040d7b0",
+  "name": "FUN_0040d7b0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_0040d7b0(int param_1)\n\n{\n  uint uVar1;\n  int local_18;\n  uint local_14 [4];\n  \n  local_14[0] = FUN_0065d150();\n  local_14[0] = local_14[0] % 4;\n  local_14[1] = FUN_0065d150();\n  while (local_14[1] = local_14[1] % 4, local_14[1] == local_14[0]) {\n    local_14[1] = FUN_0065d150();\n  }\n  uVar1 = FUN_0065d150();\n  local_14[2] = uVar1 % 4;\n  while ((local_14[2] == local_14[0] || (local_14[2] == local_14[1]))) {\n    uVar1 = FUN_0065d150();\n    local_14[2] = uVar1 % 4;\n  }\n  for (local_14[3] = 0;\n      ((int)local_14[3] < 4 &&\n      (((local_14[0] == local_14[3] || (local_14[1] == local_14[3])) || (local_14[2] == local_14[3])\n       ))); local_14[3] = local_14[3] + 1) {\n  }\n  for (local_18 = 0; local_18 < 4; local_18 = local_18 + 1) {\n    if (-1 < *(int *)(param_1 + 0x3c48 + local_18 * 4)) {\n      switch(local_14[local_18]) {\n      case 0:\n        *(undefined4 *)(param_1 + 0x3c48 + local_18 * 4) = 0;\n        break;\n      case 1:\n        *(undefined4 *)(param_1 + 0x3c48 + local_18 * 4) = 1;\n        break;\n      case 2:\n        *(undefined4 *)(param_1 + 0x3c48 + local_18 * 4) = 3;\n        break;\n      case 3:\n        *(undefined4 *)(param_1 + 0x3c48 + local_18 * 4) = 4;\n      }\n    }\n  }\n  return;\n}\n\n"
+}

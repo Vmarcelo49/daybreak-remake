@@ -1,0 +1,4 @@
+006a14af: "Cmovie/op.mpg"
+006a150c: "movie/prologue.mpg"
+006a1a58: "movie/staffroll2.mpg"
+006a1a70: "movie/staffroll.mpg"

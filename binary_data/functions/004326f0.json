@@ -1,0 +1,7 @@
+{
+  "address": "004326f0",
+  "name": "FUN_004326f0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_004326f0(int param_1,undefined4 param_2)\n\n{\n  uint uVar1;\n  undefined4 uVar2;\n  undefined4 local_c;\n  \n  if (((uint)(*(int *)(param_1 + 0xc) + *(int *)(param_1 + 0x10)) % 4 == 0) &&\n     (*(uint *)(param_1 + 8) <= *(int *)(param_1 + 0x10) + 4U >> 2)) {\n    FUN_00432c10(1);\n  }\n  uVar1 = *(int *)(param_1 + 0xc) + *(int *)(param_1 + 0x10);\n  local_c = uVar1 >> 2;\n  if (*(uint *)(param_1 + 8) <= local_c) {\n    local_c = local_c - *(int *)(param_1 + 8);\n  }\n  if (*(int *)(*(int *)(param_1 + 4) + local_c * 4) == 0) {\n    uVar2 = FUN_004107e0(4);\n    *(undefined4 *)(*(int *)(param_1 + 4) + local_c * 4) = uVar2;\n  }\n  FUN_00432ee0(*(int *)(*(int *)(param_1 + 4) + local_c * 4) + (uVar1 % 4) * 4,param_2);\n  *(int *)(param_1 + 0x10) = *(int *)(param_1 + 0x10) + 1;\n  return;\n}\n\n"
+}

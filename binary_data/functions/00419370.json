@@ -1,0 +1,7 @@
+{
+  "address": "00419370",
+  "name": "FUN_00419370",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_00419370(undefined4 param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4)\n\n{\n  FUN_00660520(param_1,param_2,param_3,param_4);\n  return;\n}\n\n"
+}

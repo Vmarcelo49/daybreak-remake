@@ -1,0 +1,7 @@
+{
+  "address": "0068f230",
+  "name": "FUN_0068f230",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nbool __fastcall FUN_0068f230(int param_1)\n\n{\n  int iVar1;\n  \n  iVar1 = *(int *)(param_1 + 0x68);\n  if (*(int *)(param_1 + 0x68) != 0) {\n    (**(code **)(**(int **)(param_1 + 0x18) + 0x18))\n              (*(undefined4 *)(param_1 + 0x18),*(undefined4 *)(param_1 + 0x68));\n    FUN_0068f210();\n  }\n  FUN_006919c0();\n  return iVar1 == 0;\n}\n\n"
+}

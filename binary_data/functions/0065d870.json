@@ -1,0 +1,7 @@
+{
+  "address": "0065d870",
+  "name": "FUN_0065d870",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_0065d870(undefined4 *param_1)\n\n{\n  HFONT pHVar1;\n  HDC pHVar2;\n  HGDIOBJ pvVar3;\n  tagTEXTMETRICA local_3c;\n  \n  pHVar1 = CreateFontA(param_1[0x4d],0,0,0,700,(uint)*(byte *)((int)param_1 + 0x131),0,0,0x80,4,0,2,\n                       0x31,(LPCSTR)(param_1 + 0xc));\n  param_1[2] = pHVar1;\n  pHVar2 = GetDC((HWND)*param_1);\n  param_1[1] = pHVar2;\n  pvVar3 = SelectObject((HDC)param_1[1],(HGDIOBJ)param_1[2]);\n  param_1[3] = pvVar3;\n  GetTextMetricsA((HDC)param_1[1],&local_3c);\n  param_1[9] = local_3c.tmAscent;\n  return;\n}\n\n"
+}

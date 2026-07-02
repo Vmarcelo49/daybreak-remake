@@ -1,0 +1,7 @@
+{
+  "address": "00653960",
+  "name": "FUN_00653960",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall FUN_00653960(undefined4 *param_1,LONG param_2,DWORD param_3)\n\n{\n  if (param_1[0x1f] == 0) {\n    SetFilePointer((HANDLE)*param_1,param_2,(PLONG)0x0,param_3);\n  }\n  else {\n    FUN_006630f0(param_2,param_3);\n  }\n  return;\n}\n\n"
+}

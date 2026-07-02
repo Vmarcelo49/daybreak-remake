@@ -1,0 +1,7 @@
+{
+  "address": "0065fc10",
+  "name": "FUN_0065fc10",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_0065fc10(int *param_1)\n\n{\n  int local_8;\n  \n  if (*param_1 != 0) {\n    local_8 = (**(code **)(*(int *)*param_1 + 0x18))(*param_1,0,0x8000);\n    do {\n      if (local_8 == 0) {\n        return;\n      }\n      local_8 = (**(code **)(*(int *)*param_1 + 0x18))(*param_1,0,0x8000);\n      if (local_8 == -0x7fea7ef0) {\n        return;\n      }\n    } while (local_8 != 0x15800e);\n  }\n  return;\n}\n\n"
+}

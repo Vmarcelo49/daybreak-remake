@@ -1,0 +1,7 @@
+{
+  "address": "00647d60",
+  "name": "FUN_00647d60",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __fastcall FUN_00647d60(int param_1)\n\n{\n  void *local_10;\n  undefined1 *puStack_c;\n  int local_8;\n  \n  puStack_c = &LAB_0069e88e;\n  local_10 = ExceptionList;\n  local_8 = 3;\n  ExceptionList = &local_10;\n  FUN_00645820();\n  local_8._0_1_ = 2;\n  FUN_0065af50();\n  local_8._0_1_ = 1;\n  FUN_0042ea20();\n  local_8 = (uint)local_8._1_3_ << 8;\n  FUN_0064c600();\n  local_8 = 0xffffffff;\n  _eh_vector_destructor_iterator_((void *)(param_1 + 0x63c),100,4,FUN_00657320);\n  ExceptionList = local_10;\n  return;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "00696f40",
+  "name": "FUN_00696f40",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nint __fastcall FUN_00696f40(int param_1)\n\n{\n  undefined4 uVar1;\n  undefined4 uVar2;\n  undefined4 uVar3;\n  int **ppiVar4;\n  int *local_34;\n  int local_30;\n  undefined1 local_2c [4];\n  undefined1 local_28 [32];\n  int *local_8;\n  \n  if (*(int *)(param_1 + 0x10) == 0) {\n    local_30 = -0x7ffbfdcc;\n  }\n  else {\n    ppiVar4 = &local_8;\n    uVar3 = 0;\n    uVar2 = 0;\n    uVar1 = FUN_004233c0(0,0,ppiVar4);\n    local_30 = FUN_006942c0(param_1 + 0x48,uVar1,uVar2,uVar3,ppiVar4);\n    if (-1 < local_30) {\n      uVar1 = FUN_004233c0(&local_34);\n      local_30 = (**(code **)**(undefined4 **)(param_1 + 0x14))\n                           (*(undefined4 *)(param_1 + 0x14),uVar1);\n      if (local_30 < 0) {\n        (**(code **)(*local_8 + 8))(local_8);\n      }\n      else {\n        uVar1 = FUN_00698180(local_28,local_2c);\n        uVar1 = FUN_00698160(uVar1);\n        uVar1 = FUN_00698140(uVar1);\n        uVar1 = FUN_0063b630(uVar1);\n        uVar1 = (**(code **)(*local_8 + 0x2c))(local_8,local_34,uVar1);\n        *(undefined4 *)(param_1 + 0x4c) = uVar1;\n        (**(code **)(*local_34 + 8))(local_34);\n        (**(code **)(*local_8 + 8))(local_8);\n        local_30 = (**(code **)(**(int **)(param_1 + 0x10) + 0xc))(param_1);\n        *(undefined4 *)(param_1 + 0x10) = 0;\n      }\n    }\n  }\n  return local_30;\n}\n\n"
+}

@@ -1,0 +1,7 @@
+{
+  "address": "006966e0",
+  "name": "FUN_006966e0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid FUN_006966e0(int param_1)\n\n{\n  CWnd::XAccessible::GetTypeInfoCount((uint *)(param_1 + 0x10));\n  return;\n}\n\n"
+}

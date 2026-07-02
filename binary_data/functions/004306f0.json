@@ -1,0 +1,7 @@
+{
+  "address": "004306f0",
+  "name": "FUN_004306f0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 __thiscall FUN_004306f0(float *param_1,undefined4 param_2,float *param_3)\n\n{\n  FUN_00430750(*param_1 + *param_3,param_1[1] + param_3[1],param_1[2] + param_3[2],\n               param_1[3] + param_3[3]);\n  return param_2;\n}\n\n"
+}

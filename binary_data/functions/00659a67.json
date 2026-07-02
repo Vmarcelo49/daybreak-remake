@@ -1,0 +1,7 @@
+{
+  "address": "00659a67",
+  "name": "FUN_00659a67",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_00659a67(void)\n\n{\n  int unaff_EBP;\n  \n  *(undefined4 *)(unaff_EBP + -4) = 0xffffffff;\n  ExceptionList = *(void **)(unaff_EBP + -0xc);\n  return *(undefined4 *)(unaff_EBP + 0x10);\n}\n\n"
+}

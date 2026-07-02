@@ -1,0 +1,7 @@
+{
+  "address": "0064ddd0",
+  "name": "FUN_0064ddd0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\n/* WARNING: Function: __security_check_cookie replaced with injection: security_check_cookie */\n\nvoid __thiscall FUN_0064ddd0(int param_1,undefined4 param_2,int *param_3)\n\n{\n  int iVar1;\n  int local_28;\n  int local_24;\n  CHAR local_20 [16];\n  undefined4 local_10;\n  size_t local_c;\n  int local_8;\n  \n  local_10 = DAT_006b77f4;\n  local_8 = 0;\n  if (*param_3 != 0) {\n    for (local_24 = 0; local_24 < 2; local_24 = local_24 + 1) {\n      wsprintfA(local_20,\"%s%02d\",param_2,local_24);\n      local_c = _strlen(local_20);\n      iVar1 = _strncmp(local_20,(char *)*param_3,local_c);\n      if (iVar1 == 0) {\n        local_8 = local_24;\n        break;\n      }\n    }\n  }\n  for (local_28 = 0; local_28 < 2; local_28 = local_28 + 1) {\n    if (local_28 == local_8) {\n      (**(code **)(**(int **)(param_1 + 0xc + local_28 * 4) + 0x1c))\n                (*(undefined4 *)(param_1 + 0xc + local_28 * 4),*param_3,param_3 + 1,0,0,0);\n    }\n    else {\n      (**(code **)(**(int **)(param_1 + 0xc + local_28 * 4) + 0x1c))\n                (*(undefined4 *)(param_1 + 0xc + local_28 * 4),*param_3,0,0,0,0);\n    }\n  }\n  if (param_3[0x12] != 0) {\n    FUN_0064ddd0(param_2,param_3[0x12]);\n  }\n  if (param_3[0x13] != 0) {\n    FUN_0064ddd0(param_2,param_3[0x13]);\n  }\n  return;\n}\n\n"
+}

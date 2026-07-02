@@ -1,0 +1,7 @@
+{
+  "address": "0064ff30",
+  "name": "FUN_0064ff30",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nbool __fastcall FUN_0064ff30(undefined4 param_1)\n\n{\n  char cVar1;\n  \n  cVar1 = FUN_0064ff80(param_1);\n  if (cVar1 != '\\0') {\n    FUN_00650410();\n    FUN_006616d0();\n  }\n  else {\n    FUN_006553e0(&DAT_006aa93c);\n  }\n  return cVar1 != '\\0';\n}\n\n"
+}

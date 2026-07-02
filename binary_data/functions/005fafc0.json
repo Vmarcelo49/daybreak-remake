@@ -1,0 +1,7 @@
+{
+  "address": "005fafc0",
+  "name": "FUN_005fafc0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nvoid __thiscall\nFUN_005fafc0(int param_1,undefined1 param_2,undefined1 param_3,undefined1 param_4,undefined1 param_5\n            )\n\n{\n  *(undefined1 *)(param_1 + 0x144) = param_2;\n  *(undefined1 *)(param_1 + 0x145) = param_3;\n  *(undefined1 *)(param_1 + 0x146) = param_4;\n  *(undefined1 *)(param_1 + 0x147) = param_5;\n  return;\n}\n\n"
+}

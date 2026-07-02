@@ -1,0 +1,7 @@
+{
+  "address": "0068afe0",
+  "name": "FUN_0068afe0",
+  "isThunk": false,
+  "isExternal": false,
+  "decompiled": "\nundefined4 FUN_0068afe0(int param_1,undefined4 *param_2,int *param_3)\n\n{\n  uint uVar1;\n  int iVar2;\n  undefined4 uVar3;\n  \n  if ((*(uint *)(param_1 + 4) & 0x100) == 0) {\n    if ((*(uint *)(param_1 + 4) & 0x10) == 0) {\n      uVar3 = 0x80040249;\n    }\n    else {\n      *param_2 = *(undefined4 *)(param_1 + 0x20);\n      param_2[1] = *(undefined4 *)(param_1 + 0x24);\n      uVar1 = *(uint *)(param_1 + 0x20);\n      iVar2 = *(int *)(param_1 + 0x24);\n      *param_3 = uVar1 + 1;\n      param_3[1] = iVar2 + (uint)(0xfffffffe < uVar1);\n      uVar3 = 0x40270;\n    }\n  }\n  else {\n    *param_2 = *(undefined4 *)(param_1 + 0x20);\n    param_2[1] = *(undefined4 *)(param_1 + 0x24);\n    *param_3 = *(int *)(param_1 + 0x28);\n    param_3[1] = *(int *)(param_1 + 0x2c);\n    uVar3 = 0;\n  }\n  return uVar3;\n}\n\n"
+}
