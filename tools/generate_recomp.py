@@ -78,24 +78,50 @@ def apply_clang_format(content: str) -> str:
 
 def rename_in_code(code: str, addr: str, old_name: str, new_name: str) -> str:
     """Renomeia ocorrências de old_name por new_name no código."""
+    # Guard: old_name vazio gera pattern r'\b\b' (zero-width), que casa entre
+    # cada par de caracteres e insere new_name em todo lugar (corrompe o código).
+    if not old_name:
+        return code
     # Cuidado: só renomear identificadores completos, não substrings
     # Use word boundaries
     pattern = r'\b' + re.escape(old_name) + r'\b'
     return re.sub(pattern, new_name, code)
 
 def generate():
+    # Limpa arquivos .c antigos antes de regenerar. Sem isso, quando uma função
+    # muda de status (ex: suggested -> reviewed) e ganha novo nome de arquivo,
+    # o arquivo antigo (FUN_<addr>.c) fica órfão em recomp/.
+    if RECOMP.exists():
+        for old in RECOMP.glob("*.c"):
+            old.unlink()
     RECOMP.mkdir(exist_ok=True)
     symbols = load_symbols()
     notes = load_notes()
     entries = symbols.get("entries", {})
 
-    stats = {"total": 0, "renamed": 0, "suggested_only": 0, "unreviewed": 0}
+    stats = {"total": 0, "renamed": 0, "suggested_only": 0, "unreviewed": 0, "deduped": 0}
 
+    # Pré-escaneia decompiled/ para resolver duplicatas: há pares como
+    # FUN_<addr>.c + FUN_<addr>_06_top_hubs.c (curação manual que duplicou o
+    # endereço). Para cada endereço, fica só com o arquivo "cânone" — o que tem
+    # o nome mais simples (sem sufixo _nn_*) e o // Function: preenchido.
+    canonical: dict[str, Path] = {}
     for c_file in sorted(DECOMPILED.glob("*.c")):
         addr = extract_addr(c_file)
         if not addr:
             continue
+        name = extract_name(c_file)
+        prev = canonical.get(addr)
+        if prev is None:
+            canonical[addr] = c_file
+            continue
+        # Desempate: prefere (1) nome não-vazio, (2) stem sem sufixo _nn_*
+        def _score(f: Path, n: str) -> tuple:
+            return (bool(n), not re.search(r'_\d{2}_', f.stem))
+        if _score(c_file, name) > _score(prev, extract_name(prev)):
+            canonical[addr] = c_file
 
+    for addr, c_file in sorted(canonical.items(), key=lambda kv: kv[1].name):
         code = extract_code_body(c_file)
         original_name = extract_name(c_file)
         entry = entries.get(addr, {})
@@ -151,6 +177,11 @@ def generate():
 
     print(f"=== generate_recomp.py report ===")
     print(f"Total gerado: {stats['total']}")
+    # Quantos arquivos em decompiled/ foram ignorados por serem duplicatas
+    total_sources = sum(1 for _ in DECOMPILED.glob("*.c"))
+    deduped = total_sources - stats["total"]
+    if deduped > 0:
+        print(f"  Duplicatas ignoradas (endereço já processado): {deduped}")
     print(f"  Renomeados (reviewed/locked): {stats['renamed']}")
     print(f"  Sugestão em comentário: {stats['suggested_only']}")
     print(f"  Sem revisão (unreviewed): {stats['unreviewed']}")

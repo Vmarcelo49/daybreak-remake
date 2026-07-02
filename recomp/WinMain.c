@@ -1,164 +1,140 @@
 // ============================================
 // Address:  0x0064d250
-// Original:
+// Original: FUN_0064d250
 // Name:     WinMain (status: reviewed)
 // TODO(decomp): WinMain or wWinMain? Parameter types suggest ANSI (CHAR local_174) but could be
 // wrapper.
 // ============================================
 
-/* WinMainWARNINGWinMain: WinMainFunctionWinMain: WinMain__security_check_cookieWinMain
- * WinMainreplacedWinMain WinMainwithWinMain WinMaininjectionWinMain:
- * WinMainsecurity_check_cookieWinMain */
-/* WinMainWARNINGWinMain: WinMainGlobalsWinMain WinMainstartingWinMain WinMainwithWinMain
- * 'WinMain_WinMain' WinMainoverlapWinMain WinMainsmallerWinMain WinMainsymbolsWinMain
- * WinMainatWinMain WinMaintheWinMain WinMainsameWinMain WinMainaddressWinMain */
+/* WARNING: Function: __security_check_cookie replaced with injection: security_check_cookie */
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+/* WinMain-equivalent: registers window class "HigurashiDaybreak", creates main window, sets
+   windowed size based on GetSystemMetrics. Entry point of game UI. */
 
-WinMainundefined4WinMain WinMainFUN_0064d250WinMain(WinMainHINSTANCEWinMain WinMainparam_1WinMain,
-                                                    WinMainundefined4WinMain WinMainparam_2WinMain,
-                                                    WinMainundefined4WinMain WinMainparam_3WinMain,
-                                                    WinMainintWinMain WinMainparam_4WinMain)
+undefined4 WinMain(HINSTANCE param_1, undefined4 param_2, undefined4 param_3, int param_4)
 
 {
-    WinMaincharWinMain WinMaincVar1WinMain;
-    WinMainATOMWinMain WinMainAVar2WinMain;
-    WinMainintWinMain WinMainiVar3WinMain;
-    WinMainintWinMain WinMainiVar4WinMain;
-    WinMainintWinMain WinMainiVar5WinMain;
-    WinMainundefined4WinMain *WinMainpuVar6WinMain;
-    WinMainvoidWinMain *WinMainpvVar7WinMain;
-    WinMainundefined4WinMain WinMainlocal_194WinMain;
-    WinMainundefined1WinMain WinMainlocal_18cWinMain[WinMain4WinMain];
-    WinMainundefined1WinMain WinMainlocal_188WinMain[WinMain4WinMain];
-    WinMainundefined1WinMain WinMainlocal_184WinMain[WinMain4WinMain];
-    WinMainundefined1WinMain WinMainlocal_180WinMain[WinMain4WinMain];
-    WinMainundefined1WinMain WinMainlocal_17cWinMain[WinMain4WinMain];
-    WinMainHWNDWinMain WinMainlocal_178WinMain;
-    WinMainCHARWinMain WinMainlocal_174WinMain[WinMain268WinMain];
-    WinMainundefined4WinMain WinMainlocal_68WinMain;
-    WinMaincharWinMain *WinMainlocal_64WinMain;
-    WinMainHWNDWinMain WinMainlocal_60WinMain;
-    WinMainHINSTANCEWinMain WinMainlocal_5cWinMain;
-    WinMainundefined4WinMain WinMainlocal_58WinMain;
-    WinMainuintWinMain WinMainlocal_48WinMain;
-    WinMainintWinMain WinMainlocal_40WinMain;
-    WinMainundefined4WinMain WinMainlocal_3cWinMain;
-    WinMainintWinMain WinMainlocal_38WinMain;
-    WinMainWNDCLASSEXAWinMain WinMainlocal_34WinMain;
+    char cVar1;
+    ATOM AVar2;
+    int iVar3;
+    int iVar4;
+    int iVar5;
+    undefined4 *puVar6;
+    void *pvVar7;
+    undefined4 local_194;
+    undefined1 local_18c[4];
+    undefined1 local_188[4];
+    undefined1 local_184[4];
+    undefined1 local_180[4];
+    undefined1 local_17c[4];
+    HWND local_178;
+    CHAR local_174[268];
+    undefined4 local_68;
+    char *local_64;
+    HWND local_60;
+    HINSTANCE local_5c;
+    undefined4 local_58;
+    uint local_48;
+    int local_40;
+    undefined4 local_3c;
+    int local_38;
+    WNDCLASSEXA local_34;
 
-    WinMainlocal_68WinMain = WinMainDAT_006b77f4WinMain;
-    WinMainGetModuleFileNameAWinMain(
-        (WinMainHMODULEWinMain)WinMain0x0WinMain, WinMainlocal_174WinMain, WinMain0x104WinMain);
-    WinMainlocal_64WinMain = WinMain_strrchrWinMain(WinMainlocal_174WinMain, WinMain0x5cWinMain);
-    WinMainlocal_64WinMain[WinMain1WinMain] = '\WinMain0WinMain';
-    WinMainSetCurrentDirectoryAWinMain(WinMainlocal_174WinMain);
-    WinMainiVar3WinMain    = WinMainGetSystemMetricsWinMain(WinMain0x2dWinMain);
-    WinMainiVar4WinMain    = WinMainGetSystemMetricsWinMain(WinMain5WinMain);
-    WinMainlocal_40WinMain = WinMainGetSystemMetricsWinMain(WinMain7WinMain);
-    WinMainlocal_40WinMain =
-        WinMainiVar3WinMain + WinMain800WinMain + WinMainiVar4WinMain + WinMainlocal_40WinMain;
-    WinMainiVar3WinMain    = WinMainGetSystemMetricsWinMain(WinMain0x2eWinMain);
-    WinMainiVar4WinMain    = WinMainGetSystemMetricsWinMain(WinMain6WinMain);
-    WinMainiVar5WinMain    = WinMainGetSystemMetricsWinMain(WinMain8WinMain);
-    WinMainlocal_38WinMain = WinMainGetSystemMetricsWinMain(WinMain4WinMain);
-    WinMainlocal_38WinMain = WinMainiVar3WinMain + WinMain600WinMain + WinMainiVar4WinMain +
-                             WinMainiVar5WinMain + WinMainlocal_38WinMain;
-    WinMainlocal_34WinMain.WinMaincbSizeWinMain        = WinMain0x30WinMain;
-    WinMainlocal_34WinMain.WinMainhInstanceWinMain     = WinMainparam_1WinMain;
-    WinMainlocal_34WinMain.WinMainlpszClassNameWinMain = "WinMainHigurashiDaybreakWinMain";
-    WinMainlocal_34WinMain.WinMainlpfnWndProcWinMain   = WinMainFUN_0064d5e0WinMain;
-    WinMainlocal_34WinMain.WinMainstyleWinMain         = WinMain0WinMain;
-    WinMainlocal_34WinMain.WinMainhIconWinMain =
-        WinMainLoadIconAWinMain(WinMainparam_1WinMain, "WinMainICONWinMain");
-    WinMainlocal_34WinMain.WinMainhIconSmWinMain =
-        WinMainLoadIconAWinMain(WinMainparam_1WinMain, "WinMainICONWinMain");
-    WinMainlocal_34WinMain.WinMainhCursorWinMain = WinMainLoadCursorAWinMain(
-        (WinMainHINSTANCEWinMain)WinMain0x0WinMain, (WinMainLPCSTRWinMain)WinMain0x7f00WinMain);
-    WinMainlocal_34WinMain.WinMainlpszMenuNameWinMain = (WinMainLPCSTRWinMain)WinMain0x0WinMain;
-    WinMainlocal_34WinMain.WinMaincbClsExtraWinMain   = WinMain0WinMain;
-    WinMainlocal_34WinMain.WinMaincbWndExtraWinMain   = WinMain0WinMain;
-    WinMainlocal_34WinMain.WinMainhbrBackgroundWinMain =
-        WinMainGetStockObjectWinMain(WinMain4WinMain);
-    WinMainAVar2WinMain = WinMainRegisterClassExAWinMain(&WinMainlocal_34WinMain);
-    WinMainifWinMain((WinMainAVar2WinMain != WinMain0WinMain) &&
-                     (WinMainlocal_178WinMain = WinMainCreateWindowExAWinMain(
-                          WinMain0x40000WinMain,
-                          "WinMainHigurashiDaybreakWinMain",
-                          "WinMainHigurashiWinMain WinMainDaybreakWinMain WinMainKaiWinMain",
-                          WinMain0xc80000WinMain,
-                          -WinMain0x80000000WinMain,
-                          -WinMain0x80000000WinMain,
-                          WinMainlocal_40WinMain,
-                          WinMainlocal_38WinMain,
-                          (WinMainHWNDWinMain)WinMain0x0WinMain,
-                          (WinMainHMENUWinMain)WinMain0x0WinMain,
-                          WinMainparam_1WinMain,
-                          (WinMainLPVOIDWinMain)WinMain0x0WinMain),
-                      WinMainlocal_178WinMain != (WinMainHWNDWinMain)WinMain0x0WinMain))
+    local_68 = DAT_006b77f4;
+    GetModuleFileNameA((HMODULE)0x0, local_174, 0x104);
+    local_64    = _strrchr(local_174, 0x5c);
+    local_64[1] = '\0';
+    SetCurrentDirectoryA(local_174);
+    iVar3                  = GetSystemMetrics(0x2d);
+    iVar4                  = GetSystemMetrics(5);
+    local_40               = GetSystemMetrics(7);
+    local_40               = iVar3 + 800 + iVar4 + local_40;
+    iVar3                  = GetSystemMetrics(0x2e);
+    iVar4                  = GetSystemMetrics(6);
+    iVar5                  = GetSystemMetrics(8);
+    local_38               = GetSystemMetrics(4);
+    local_38               = iVar3 + 600 + iVar4 + iVar5 + local_38;
+    local_34.cbSize        = 0x30;
+    local_34.hInstance     = param_1;
+    local_34.lpszClassName = "HigurashiDaybreak";
+    local_34.lpfnWndProc   = FUN_0064d5e0;
+    local_34.style         = 0;
+    local_34.hIcon         = LoadIconA(param_1, "ICON");
+    local_34.hIconSm       = LoadIconA(param_1, "ICON");
+    local_34.hCursor       = LoadCursorA((HINSTANCE)0x0, (LPCSTR)0x7f00);
+    local_34.lpszMenuName  = (LPCSTR)0x0;
+    local_34.cbClsExtra    = 0;
+    local_34.cbWndExtra    = 0;
+    local_34.hbrBackground = GetStockObject(4);
+    AVar2                  = RegisterClassExA(&local_34);
+    if ((AVar2 != 0) && (local_178 = CreateWindowExA(0x40000,
+                                                     "HigurashiDaybreak",
+                                                     "Higurashi Daybreak Kai",
+                                                     0xc80000,
+                                                     -0x80000000,
+                                                     -0x80000000,
+                                                     local_40,
+                                                     local_38,
+                                                     (HWND)0x0,
+                                                     (HMENU)0x0,
+                                                     param_1,
+                                                     (LPVOID)0x0),
+                         local_178 != (HWND)0x0))
     {
-        WinMainShowWindowWinMain(WinMainlocal_178WinMain, WinMainparam_4WinMain);
-        WinMainUpdateWindowWinMain(WinMainlocal_178WinMain);
-        WinMaindoWinMain {}
-        WinMainwhileWinMain(WinMainDAT_006d11a0WinMain == '\WinMain0WinMain');
-        WinMainFUN_0064d760WinMain();
-        WinMainpuVar6WinMain = (WinMainundefined4WinMain *)WinMainFUN_006532f0WinMain(
-            WinMainlocal_17cWinMain, "WinMaindaybreak00WinMain.WinMaindatWinMain");
-        WinMainDAT_006ca824WinMain = *WinMainpuVar6WinMain;
-        WinMainpuVar6WinMain       = (WinMainundefined4WinMain *)WinMainFUN_006532f0WinMain(
-            WinMainlocal_180WinMain, "WinMaindaybreak04WinMain.WinMaindatWinMain");
-        WinMainDAT_006ca828WinMain = *WinMainpuVar6WinMain;
-        WinMainFUN_006532f0WinMain(&WinMainlocal_3cWinMain,
-                                   "WinMaindaybreak07WinMain.WinMaindatWinMain");
-        WinMainpuVar6WinMain = (WinMainundefined4WinMain *)WinMainFUN_006532f0WinMain(
-            WinMainlocal_184WinMain, "WinMaindaybreak05WinMain.WinMaindatWinMain");
-        WinMain_DAT_006ca82cWinMain = *WinMainpuVar6WinMain;
-        WinMainpuVar6WinMain        = (WinMainundefined4WinMain *)WinMainFUN_006532f0WinMain(
-            WinMainlocal_188WinMain, "WinMaindaybreak02WinMain.WinMaindatWinMain");
-        WinMainDAT_006ca830WinMain = *WinMainpuVar6WinMain;
-        WinMainpuVar6WinMain       = (WinMainundefined4WinMain *)WinMainFUN_006532f0WinMain(
-            WinMainlocal_18cWinMain, "WinMaindaybreak06WinMain.WinMaindatWinMain");
-        WinMainDAT_006ca834WinMain = *WinMainpuVar6WinMain;
-        WinMaincVar1WinMain        = WinMainFUN_0064d6e0WinMain();
-        WinMainifWinMain((WinMaincVar1WinMain == '\WinMain0WinMain') &&
-                         (WinMaincVar1WinMain = WinMainFUN_0064d6e0WinMain(),
-                          WinMaincVar1WinMain == '\WinMain0WinMain'))
+        ShowWindow(local_178, param_4);
+        UpdateWindow(local_178);
+        do
         {
-            WinMainiVar3WinMain = WinMainFUN_0068de10WinMain();
-            WinMainifWinMain(WinMainiVar3WinMain != WinMain0WinMain)
+        } while (DAT_006d11a0 == '\0');
+        FUN_0064d760();
+        puVar6       = (undefined4 *)FUN_006532f0(local_17c, "daybreak00.dat");
+        DAT_006ca824 = *puVar6;
+        puVar6       = (undefined4 *)FUN_006532f0(local_180, "daybreak04.dat");
+        DAT_006ca828 = *puVar6;
+        FUN_006532f0(&local_3c, "daybreak07.dat");
+        puVar6        = (undefined4 *)FUN_006532f0(local_184, "daybreak05.dat");
+        _DAT_006ca82c = *puVar6;
+        puVar6        = (undefined4 *)FUN_006532f0(local_188, "daybreak02.dat");
+        DAT_006ca830  = *puVar6;
+        puVar6        = (undefined4 *)FUN_006532f0(local_18c, "daybreak06.dat");
+        DAT_006ca834  = *puVar6;
+        cVar1         = FUN_0064d6e0();
+        if ((cVar1 == '\0') && (cVar1 = FUN_0064d6e0(), cVar1 == '\0'))
+        {
+            iVar3 = FUN_0068de10();
+            if (iVar3 != 0)
             {
-                WinMainFUN_00653480WinMain(WinMainlocal_3cWinMain);
+                FUN_00653480(local_3c);
             }
-            WinMainFUN_00653480WinMain(WinMainDAT_006ca828WinMain);
-            WinMainFUN_00653480WinMain(WinMainDAT_006ca824WinMain);
-            WinMainFUN_0064d700WinMain();
-            WinMainlocal_60WinMain = WinMainlocal_178WinMain;
-            WinMainlocal_5cWinMain = WinMainparam_1WinMain;
-            WinMainpvVar7WinMain   = WinMainoperator_newWinMain(WinMain4WinMain);
-            WinMainifWinMain(WinMainpvVar7WinMain == (WinMainvoidWinMain *)WinMain0x0WinMain)
+            FUN_00653480(DAT_006ca828);
+            FUN_00653480(DAT_006ca824);
+            FUN_0064d700();
+            local_60 = local_178;
+            local_5c = param_1;
+            pvVar7   = operator_new(4);
+            if (pvVar7 == (void *)0x0)
             {
-                WinMainlocal_194WinMain = WinMain0WinMain;
+                local_194 = 0;
             }
-            WinMainelseWinMain
+            else
             {
-                WinMainlocal_194WinMain = WinMainFUN_0064d780WinMain();
+                local_194 = FUN_0064d780();
             }
-            WinMainlocal_58WinMain = WinMainlocal_194WinMain;
-            WinMainlocal_48WinMain = WinMainlocal_48WinMain | WinMain1WinMain;
-            WinMaincVar1WinMain    = WinMainFUN_00657910WinMain(&WinMainlocal_60WinMain);
-            WinMainifWinMain(WinMaincVar1WinMain == '\WinMain0WinMain')
+            local_58 = local_194;
+            local_48 = local_48 | 1;
+            cVar1    = FUN_00657910(&local_60);
+            if (cVar1 == '\0')
             {
-                WinMainMessageBoxAWinMain(WinMainlocal_178WinMain,
-                                          &WinMainDAT_006a5600WinMain,
-                                          "WinMainErrorWinMain",
-                                          WinMain0WinMain);
+                MessageBoxA(local_178, &DAT_006a5600, "Error", 0);
             }
-            WinMainelseWinMain
+            else
             {
-                WinMainFUN_006609a0WinMain();
-                WinMainFUN_00657ef0WinMain();
-                WinMainFUN_00657b00WinMain();
+                FUN_006609a0();
+                FUN_00657ef0();
+                FUN_00657b00();
             }
-            WinMainFUN_006609d0WinMain();
+            FUN_006609d0();
         }
     }
-    WinMainreturnWinMain WinMain0WinMain;
+    return 0;
 }

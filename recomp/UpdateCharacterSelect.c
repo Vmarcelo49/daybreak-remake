@@ -1,986 +1,293 @@
 // ============================================
 // Address:  0x00406850
-// Original:
+// Original: FUN_00406850
 // Name:     UpdateCharacterSelect (status: reviewed)
 // ============================================
 
-UpdateCharacterSelectvoidUpdateCharacterSelect UpdateCharacterSelect__thiscallUpdateCharacterSelect
-UpdateCharacterSelectFUN_00406850UpdateCharacterSelect(
-    UpdateCharacterSelectintUpdateCharacterSelect UpdateCharacterSelectparam_1UpdateCharacterSelect,
-    UpdateCharacterSelectintUpdateCharacterSelect UpdateCharacterSelectparam_2UpdateCharacterSelect)
+void __thiscall UpdateCharacterSelect(int param_1, int param_2)
 
 {
-    UpdateCharacterSelectintUpdateCharacterSelect UpdateCharacterSelectiVar1UpdateCharacterSelect;
-    UpdateCharacterSelectundefined4UpdateCharacterSelect
-        UpdateCharacterSelectuVar2UpdateCharacterSelect;
-    UpdateCharacterSelectundefined4UpdateCharacterSelect
-        *UpdateCharacterSelectpuVar3UpdateCharacterSelect;
-    UpdateCharacterSelectuintUpdateCharacterSelect UpdateCharacterSelectuVar4UpdateCharacterSelect;
-    UpdateCharacterSelectundefined1UpdateCharacterSelect
-        UpdateCharacterSelectlocal_14UpdateCharacterSelect
-            [UpdateCharacterSelect4UpdateCharacterSelect];
-    UpdateCharacterSelectintUpdateCharacterSelect
-        UpdateCharacterSelectlocal_10UpdateCharacterSelect;
-    UpdateCharacterSelectintUpdateCharacterSelect
-        *UpdateCharacterSelectlocal_cUpdateCharacterSelect;
-    UpdateCharacterSelectcharUpdateCharacterSelect
-        UpdateCharacterSelectlocal_5UpdateCharacterSelect;
+    int iVar1;
+    undefined4 uVar2;
+    undefined4 *puVar3;
+    uint uVar4;
+    undefined1 local_14[4];
+    int local_10;
+    int *local_c;
+    char local_5;
 
-    UpdateCharacterSelectFUN_00657390UpdateCharacterSelect();
-    UpdateCharacterSelectlocal_cUpdateCharacterSelect =
-        &UpdateCharacterSelectDAT_006cae94UpdateCharacterSelect +
-        UpdateCharacterSelectparam_2UpdateCharacterSelect *
-            UpdateCharacterSelect0x19UpdateCharacterSelect;
-    UpdateCharacterSelectifUpdateCharacterSelect(
-        (*(UpdateCharacterSelectintUpdateCharacterSelect
-               *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                  UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                  UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                      UpdateCharacterSelect4UpdateCharacterSelect) <
-         UpdateCharacterSelect0UpdateCharacterSelect) &&
-        (((*UpdateCharacterSelectlocal_cUpdateCharacterSelect !=
-               UpdateCharacterSelect0UpdateCharacterSelect ||
-           ((&UpdateCharacterSelectDAT_006cae98UpdateCharacterSelect)
-                [UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                 UpdateCharacterSelect0x19UpdateCharacterSelect] !=
-            UpdateCharacterSelect0UpdateCharacterSelect)) ||
-          ((&UpdateCharacterSelectDAT_006cae9cUpdateCharacterSelect)
-               [UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                UpdateCharacterSelect0x19UpdateCharacterSelect] !=
-           UpdateCharacterSelect0UpdateCharacterSelect))))
+    FUN_00657390();
+    local_c = &DAT_006cae94 + param_2 * 0x19;
+    if ((*(int *)(param_1 + 0x2e28 + param_2 * 4) < 0) &&
+        (((*local_c != 0 || ((&DAT_006cae98)[param_2 * 0x19] != 0)) ||
+          ((&DAT_006cae9c)[param_2 * 0x19] != 0))))
     {
-        *(UpdateCharacterSelectintUpdateCharacterSelect
-              *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                 UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                 UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                     UpdateCharacterSelect4UpdateCharacterSelect) =
-            UpdateCharacterSelectparam_2UpdateCharacterSelect;
+        *(int *)(param_1 + 0x2e28 + param_2 * 4) = param_2;
     }
-    UpdateCharacterSelectlocal_5UpdateCharacterSelect =
-        *(UpdateCharacterSelectcharUpdateCharacterSelect
-              *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                 UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                 UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                     UpdateCharacterSelect4UpdateCharacterSelect);
-    UpdateCharacterSelectlocal_10UpdateCharacterSelect =
-        *(UpdateCharacterSelectintUpdateCharacterSelect
-              *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                 UpdateCharacterSelect0x2e98UpdateCharacterSelect +
-                 UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                     UpdateCharacterSelect4UpdateCharacterSelect);
-    UpdateCharacterSelectswitchUpdateCharacterSelect(
-        *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-              *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                 UpdateCharacterSelect0x2e98UpdateCharacterSelect +
-                 UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                     UpdateCharacterSelect4UpdateCharacterSelect))
+    local_5  = *(char *)(param_1 + 0x2e28 + param_2 * 4);
+    local_10 = *(int *)(param_1 + 0x2e98 + param_2 * 4);
+    switch (*(undefined4 *)(param_1 + 0x2e98 + param_2 * 4))
     {
-        UpdateCharacterSelectcaseUpdateCharacterSelect UpdateCharacterSelect0UpdateCharacterSelect
-            : UpdateCharacterSelectifUpdateCharacterSelect(
-                  (((&UpdateCharacterSelectDAT_006caea0UpdateCharacterSelect)
-                        [UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                         UpdateCharacterSelect0x19UpdateCharacterSelect] ==
-                    UpdateCharacterSelect1UpdateCharacterSelect) &&
-                   (*(UpdateCharacterSelectintUpdateCharacterSelect
-                          *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                             UpdateCharacterSelect0x2e98UpdateCharacterSelect) ==
-                    UpdateCharacterSelect0UpdateCharacterSelect)) &&
-                  (*(UpdateCharacterSelectintUpdateCharacterSelect
-                         *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                            UpdateCharacterSelect0x2e9cUpdateCharacterSelect) ==
-                   UpdateCharacterSelect0UpdateCharacterSelect))
+    case 0:
+        if ((((&DAT_006caea0)[param_2 * 0x19] == 1) && (*(int *)(param_1 + 0x2e98) == 0)) &&
+            (*(int *)(param_1 + 0x2e9c) == 0))
         {
-            UpdateCharacterSelectFUN_0064aed0UpdateCharacterSelect(
-                UpdateCharacterSelect1UpdateCharacterSelect);
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e18UpdateCharacterSelect) =
-                UpdateCharacterSelect0UpdateCharacterSelect;
-            UpdateCharacterSelectreturnUpdateCharacterSelect;
+            FUN_0064aed0(1);
+            *(undefined4 *)(param_1 + 0x2e18) = 0;
+            return;
         }
-        UpdateCharacterSelectiVar1UpdateCharacterSelect =
-            UpdateCharacterSelectFUN_00403aa0UpdateCharacterSelect(
-                (&UpdateCharacterSelectDAT_006cae98UpdateCharacterSelect)
-                    [UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                     UpdateCharacterSelect0x19UpdateCharacterSelect]);
-        UpdateCharacterSelectifUpdateCharacterSelect(
-            UpdateCharacterSelectiVar1UpdateCharacterSelect ==
-            UpdateCharacterSelect1UpdateCharacterSelect)
+        iVar1 = FUN_00403aa0((&DAT_006cae98)[param_2 * 0x19]);
+        if (iVar1 == 1)
         {
-            UpdateCharacterSelectifUpdateCharacterSelect(
-                UpdateCharacterSelectlocal_cUpdateCharacterSelect
-                    [UpdateCharacterSelect1UpdateCharacterSelect] <
-                UpdateCharacterSelect1UpdateCharacterSelect)
+            if (local_c[1] < 1)
             {
-                UpdateCharacterSelectifUpdateCharacterSelect(
-                    *(UpdateCharacterSelectintUpdateCharacterSelect
-                          *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                             UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                             UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                                 UpdateCharacterSelect4UpdateCharacterSelect) ==
-                    UpdateCharacterSelect0UpdateCharacterSelect)
+                if (*(int *)(param_1 + 0x2e28 + param_2 * 4) == 0)
                 {
-                    *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                          *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                             UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                             UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                                 UpdateCharacterSelect4UpdateCharacterSelect) =
-                        UpdateCharacterSelect2UpdateCharacterSelect;
+                    *(undefined4 *)(param_1 + 0x2e28 + param_2 * 4) = 2;
                 }
-                UpdateCharacterSelectelseUpdateCharacterSelect
-                    UpdateCharacterSelectifUpdateCharacterSelect(
-                        *(UpdateCharacterSelectintUpdateCharacterSelect
-                              *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                                 UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                                 UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                                     UpdateCharacterSelect4UpdateCharacterSelect) <
-                        UpdateCharacterSelect2UpdateCharacterSelect)
+                else if (*(int *)(param_1 + 0x2e28 + param_2 * 4) < 2)
                 {
-                    *(UpdateCharacterSelectintUpdateCharacterSelect
-                          *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                             UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                             UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                                 UpdateCharacterSelect4UpdateCharacterSelect) =
-                        *(UpdateCharacterSelectintUpdateCharacterSelect
-                              *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                                 UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                                 UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                                     UpdateCharacterSelect4UpdateCharacterSelect) +
-                        -UpdateCharacterSelect1UpdateCharacterSelect;
+                    *(int *)(param_1 + 0x2e28 + param_2 * 4) =
+                        *(int *)(param_1 + 0x2e28 + param_2 * 4) + -1;
                 }
-                UpdateCharacterSelectelseUpdateCharacterSelect
+                else
                 {
-                    *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                          *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                             UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                             UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                                 UpdateCharacterSelect4UpdateCharacterSelect) =
-                        UpdateCharacterSelect1UpdateCharacterSelect;
+                    *(undefined4 *)(param_1 + 0x2e28 + param_2 * 4) = 1;
                 }
             }
-            UpdateCharacterSelectelseUpdateCharacterSelect
-                UpdateCharacterSelectifUpdateCharacterSelect(
-                    *(UpdateCharacterSelectintUpdateCharacterSelect
-                          *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                             UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                             UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                                 UpdateCharacterSelect4UpdateCharacterSelect) <
-                    UpdateCharacterSelect2UpdateCharacterSelect)
+            else if (*(int *)(param_1 + 0x2e28 + param_2 * 4) < 2)
             {
-                *(UpdateCharacterSelectintUpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                         UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) =
-                    *(UpdateCharacterSelectintUpdateCharacterSelect
-                          *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                             UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                             UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                                 UpdateCharacterSelect4UpdateCharacterSelect) +
-                    UpdateCharacterSelect1UpdateCharacterSelect;
+                *(int *)(param_1 + 0x2e28 + param_2 * 4) =
+                    *(int *)(param_1 + 0x2e28 + param_2 * 4) + 1;
             }
-            UpdateCharacterSelectelseUpdateCharacterSelect
+            else
             {
-                *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                         UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) =
-                    UpdateCharacterSelect0UpdateCharacterSelect;
+                *(undefined4 *)(param_1 + 0x2e28 + param_2 * 4) = 0;
             }
-            UpdateCharacterSelectFUN_0064aed0UpdateCharacterSelect(
-                UpdateCharacterSelect2UpdateCharacterSelect);
+            FUN_0064aed0(2);
         }
-        UpdateCharacterSelectelseUpdateCharacterSelect
+        else
         {
-            UpdateCharacterSelectiVar1UpdateCharacterSelect =
-                UpdateCharacterSelectFUN_00403aa0UpdateCharacterSelect(
-                    *UpdateCharacterSelectlocal_cUpdateCharacterSelect);
-            UpdateCharacterSelectifUpdateCharacterSelect(
-                UpdateCharacterSelectiVar1UpdateCharacterSelect ==
-                UpdateCharacterSelect1UpdateCharacterSelect)
+            iVar1 = FUN_00403aa0(*local_c);
+            if (iVar1 == 1)
             {
-                UpdateCharacterSelectifUpdateCharacterSelect(
-                    *(UpdateCharacterSelectintUpdateCharacterSelect
-                          *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                             UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                             UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                                 UpdateCharacterSelect4UpdateCharacterSelect) ==
-                    UpdateCharacterSelect2UpdateCharacterSelect)
+                if (*(int *)(param_1 + 0x2e28 + param_2 * 4) == 2)
                 {
-                    *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                          *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                             UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                             UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                                 UpdateCharacterSelect4UpdateCharacterSelect) =
-                        UpdateCharacterSelect3UpdateCharacterSelect;
+                    *(undefined4 *)(param_1 + 0x2e28 + param_2 * 4) = 3;
                 }
-                UpdateCharacterSelectelseUpdateCharacterSelect
-                    UpdateCharacterSelectifUpdateCharacterSelect(
-                        *(UpdateCharacterSelectintUpdateCharacterSelect
-                              *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                                 UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                                 UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                                     UpdateCharacterSelect4UpdateCharacterSelect) ==
-                        UpdateCharacterSelect3UpdateCharacterSelect)
+                else if (*(int *)(param_1 + 0x2e28 + param_2 * 4) == 3)
                 {
-                    *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                          *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                             UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                             UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                                 UpdateCharacterSelect4UpdateCharacterSelect) =
-                        UpdateCharacterSelect2UpdateCharacterSelect;
+                    *(undefined4 *)(param_1 + 0x2e28 + param_2 * 4) = 2;
                 }
-                UpdateCharacterSelectFUN_0064aed0UpdateCharacterSelect(
-                    UpdateCharacterSelect2UpdateCharacterSelect);
+                FUN_0064aed0(2);
             }
         }
-        UpdateCharacterSelectifUpdateCharacterSelect(
-            *(UpdateCharacterSelectintUpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                     UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) <
-            UpdateCharacterSelect2UpdateCharacterSelect)
+        if (*(int *)(param_1 + 0x2e28 + param_2 * 4) < 2)
         {
-            UpdateCharacterSelectifUpdateCharacterSelect(
-                ((UpdateCharacterSelectlocal_cUpdateCharacterSelect
-                      [UpdateCharacterSelect3UpdateCharacterSelect] ==
-                  UpdateCharacterSelect1UpdateCharacterSelect) &&
-                 (*(UpdateCharacterSelectintUpdateCharacterSelect
-                        *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                           UpdateCharacterSelect0x2e90UpdateCharacterSelect +
-                           UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                               UpdateCharacterSelect4UpdateCharacterSelect) <
-                  UpdateCharacterSelect0UpdateCharacterSelect)) &&
-                ((*(UpdateCharacterSelectintUpdateCharacterSelect
-                        *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                           UpdateCharacterSelect0x2e40UpdateCharacterSelect +
-                           UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                               UpdateCharacterSelect4UpdateCharacterSelect) ==
-                      UpdateCharacterSelectparam_2UpdateCharacterSelect ||
-                  (*(UpdateCharacterSelectintUpdateCharacterSelect
-                         *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                            UpdateCharacterSelect0x2e40UpdateCharacterSelect +
-                            UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                                UpdateCharacterSelect4UpdateCharacterSelect) ==
-                   UpdateCharacterSelect4UpdateCharacterSelect))))
+            if (((local_c[3] == 1) && (*(int *)(param_1 + 0x2e90 + local_5 * 4) < 0)) &&
+                ((*(int *)(param_1 + 0x2e40 + local_5 * 4) == param_2 ||
+                  (*(int *)(param_1 + 0x2e40 + local_5 * 4) == 4))))
             {
-                UpdateCharacterSelectifUpdateCharacterSelect(
-                    *(UpdateCharacterSelectintUpdateCharacterSelect
-                          *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                             UpdateCharacterSelect0x2e40UpdateCharacterSelect +
-                             UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                                 UpdateCharacterSelect4UpdateCharacterSelect) ==
-                    UpdateCharacterSelectparam_2UpdateCharacterSelect)
+                if (*(int *)(param_1 + 0x2e40 + local_5 * 4) == param_2)
                 {
-                    *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                          *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                             UpdateCharacterSelect0x2ea0UpdateCharacterSelect +
-                             UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                                 UpdateCharacterSelect4UpdateCharacterSelect) =
-                        UpdateCharacterSelect0xffffffffUpdateCharacterSelect;
+                    *(undefined4 *)(param_1 + 0x2ea0 + param_2 * 4) = 0xffffffff;
                 }
-                *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2e40UpdateCharacterSelect +
-                         UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) =
-                    UpdateCharacterSelect0xffffffffUpdateCharacterSelect;
-                (&UpdateCharacterSelectDAT_006cfb4cUpdateCharacterSelect)
-                    [UpdateCharacterSelectlocal_5UpdateCharacterSelect] =
-                        UpdateCharacterSelect0UpdateCharacterSelect;
-                *(UpdateCharacterSelectundefined1UpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2ea8UpdateCharacterSelect +
-                         (UpdateCharacterSelectintUpdateCharacterSelect)
-                             UpdateCharacterSelectlocal_5UpdateCharacterSelect) =
-                    UpdateCharacterSelect0UpdateCharacterSelect;
+                *(undefined4 *)(param_1 + 0x2e40 + local_5 * 4)  = 0xffffffff;
+                (&DAT_006cfb4c)[local_5]                         = 0;
+                *(undefined1 *)(param_1 + 0x2ea8 + (int)local_5) = 0;
             }
-            UpdateCharacterSelectelseUpdateCharacterSelect
-                UpdateCharacterSelectifUpdateCharacterSelect(
-                    ((UpdateCharacterSelectlocal_cUpdateCharacterSelect
-                          [UpdateCharacterSelect2UpdateCharacterSelect] ==
-                      UpdateCharacterSelect1UpdateCharacterSelect) &&
-                     (*(UpdateCharacterSelectintUpdateCharacterSelect
-                            *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                               UpdateCharacterSelect0x2e90UpdateCharacterSelect +
-                               UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                                   UpdateCharacterSelect4UpdateCharacterSelect) <
-                      UpdateCharacterSelect0UpdateCharacterSelect)) &&
-                    (*(UpdateCharacterSelectintUpdateCharacterSelect
-                           *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                              UpdateCharacterSelect0x2e40UpdateCharacterSelect +
-                              UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                                  UpdateCharacterSelect4UpdateCharacterSelect) <
-                     UpdateCharacterSelect0UpdateCharacterSelect))
+            else if (((local_c[2] == 1) && (*(int *)(param_1 + 0x2e90 + local_5 * 4) < 0)) &&
+                     (*(int *)(param_1 + 0x2e40 + local_5 * 4) < 0))
             {
-                UpdateCharacterSelectifUpdateCharacterSelect(
-                    (UpdateCharacterSelectlocal_cUpdateCharacterSelect
-                         [UpdateCharacterSelect5UpdateCharacterSelect] ==
-                     UpdateCharacterSelect0UpdateCharacterSelect) ||
-                    ('\UpdateCharacterSelectx05UpdateCharacterSelect' <
-                     (UpdateCharacterSelectcharUpdateCharacterSelect)(&UpdateCharacterSelectDAT_006b710cUpdateCharacterSelect)
-                         [*(UpdateCharacterSelectintUpdateCharacterSelect
-                                *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                                   UpdateCharacterSelect0x2e20UpdateCharacterSelect) *
-                              UpdateCharacterSelect2UpdateCharacterSelect +
-                          UpdateCharacterSelectparam_2UpdateCharacterSelect]))
+                if ((local_c[5] == 0) ||
+                    ('\x05' < (char)(&DAT_006b710c)[*(int *)(param_1 + 0x2e20) * 2 + param_2]))
                 {
-                    (&UpdateCharacterSelectDAT_006cfb4cUpdateCharacterSelect)
-                        [UpdateCharacterSelectlocal_5UpdateCharacterSelect] =
-                            UpdateCharacterSelect0UpdateCharacterSelect;
+                    (&DAT_006cfb4c)[local_5] = 0;
                 }
-                UpdateCharacterSelectelseUpdateCharacterSelect
+                else
                 {
-                    (&UpdateCharacterSelectDAT_006cfb4cUpdateCharacterSelect)
-                        [UpdateCharacterSelectlocal_5UpdateCharacterSelect] =
-                            UpdateCharacterSelect1UpdateCharacterSelect;
+                    (&DAT_006cfb4c)[local_5] = 1;
                 }
-                UpdateCharacterSelectFUN_0064aed0UpdateCharacterSelect(
-                    UpdateCharacterSelect0UpdateCharacterSelect);
-                *(UpdateCharacterSelectundefined1UpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2ea8UpdateCharacterSelect +
-                         (UpdateCharacterSelectintUpdateCharacterSelect)
-                             UpdateCharacterSelectlocal_5UpdateCharacterSelect) =
-                    UpdateCharacterSelect0UpdateCharacterSelect;
-                *(UpdateCharacterSelectintUpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2e90UpdateCharacterSelect +
-                         UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) =
-                    UpdateCharacterSelectparam_2UpdateCharacterSelect;
-                *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2e98UpdateCharacterSelect +
-                         UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) =
-                    UpdateCharacterSelect3UpdateCharacterSelect;
-                *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2e30UpdateCharacterSelect +
-                         UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) =
-                    UpdateCharacterSelect0UpdateCharacterSelect;
+                FUN_0064aed0(0);
+                *(undefined1 *)(param_1 + 0x2ea8 + (int)local_5) = 0;
+                *(int *)(param_1 + 0x2e90 + local_5 * 4)         = param_2;
+                *(undefined4 *)(param_1 + 0x2e98 + param_2 * 4)  = 3;
+                *(undefined4 *)(param_1 + 0x2e30 + local_5 * 4)  = 0;
             }
         }
-        UpdateCharacterSelectelseUpdateCharacterSelect UpdateCharacterSelectifUpdateCharacterSelect(
-            UpdateCharacterSelectlocal_cUpdateCharacterSelect
-                [UpdateCharacterSelect2UpdateCharacterSelect] ==
-            UpdateCharacterSelect1UpdateCharacterSelect)
+        else if (local_c[2] == 1)
         {
-            UpdateCharacterSelectifUpdateCharacterSelect(
-                ((*(UpdateCharacterSelectintUpdateCharacterSelect
-                        *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                           UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                           UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                               UpdateCharacterSelect4UpdateCharacterSelect) ==
-                  UpdateCharacterSelect3UpdateCharacterSelect) &&
-                 (*(UpdateCharacterSelectintUpdateCharacterSelect
-                        *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                           UpdateCharacterSelect0x2e98UpdateCharacterSelect) ==
-                  UpdateCharacterSelect0UpdateCharacterSelect)) &&
-                (*(UpdateCharacterSelectintUpdateCharacterSelect
-                       *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                          UpdateCharacterSelect0x2e9cUpdateCharacterSelect) ==
-                 UpdateCharacterSelect0UpdateCharacterSelect))
+            if (((*(int *)(param_1 + 0x2e28 + param_2 * 4) == 3) &&
+                 (*(int *)(param_1 + 0x2e98) == 0)) &&
+                (*(int *)(param_1 + 0x2e9c) == 0))
             {
-                UpdateCharacterSelectFUN_0064aed0UpdateCharacterSelect(
-                    UpdateCharacterSelect1UpdateCharacterSelect);
-                *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2e18UpdateCharacterSelect) =
-                    UpdateCharacterSelect0UpdateCharacterSelect;
-                UpdateCharacterSelectreturnUpdateCharacterSelect;
+                FUN_0064aed0(1);
+                *(undefined4 *)(param_1 + 0x2e18) = 0;
+                return;
             }
-            UpdateCharacterSelectifUpdateCharacterSelect(
-                ((*(UpdateCharacterSelectintUpdateCharacterSelect
-                        *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                           UpdateCharacterSelect0x2e28UpdateCharacterSelect +
-                           UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                               UpdateCharacterSelect4UpdateCharacterSelect) ==
-                  UpdateCharacterSelect2UpdateCharacterSelect) &&
-                 (*(UpdateCharacterSelectintUpdateCharacterSelect
-                        *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                           UpdateCharacterSelect0x2e98UpdateCharacterSelect) ==
-                  UpdateCharacterSelect0UpdateCharacterSelect)) &&
-                (*(UpdateCharacterSelectintUpdateCharacterSelect
-                       *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                          UpdateCharacterSelect0x2e9cUpdateCharacterSelect) ==
-                 UpdateCharacterSelect0UpdateCharacterSelect))
+            if (((*(int *)(param_1 + 0x2e28 + param_2 * 4) == 2) &&
+                 (*(int *)(param_1 + 0x2e98) == 0)) &&
+                (*(int *)(param_1 + 0x2e9c) == 0))
             {
-                UpdateCharacterSelectFUN_0064aed0UpdateCharacterSelect(
-                    UpdateCharacterSelect0UpdateCharacterSelect);
-                *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2e18UpdateCharacterSelect) =
-                    UpdateCharacterSelect2UpdateCharacterSelect;
-                UpdateCharacterSelectreturnUpdateCharacterSelect;
+                FUN_0064aed0(0);
+                *(undefined4 *)(param_1 + 0x2e18) = 2;
+                return;
             }
         }
-        UpdateCharacterSelectbreakUpdateCharacterSelect;
-        UpdateCharacterSelectcaseUpdateCharacterSelect UpdateCharacterSelect1UpdateCharacterSelect
-            : UpdateCharacterSelectiVar1UpdateCharacterSelect =
-                  UpdateCharacterSelectFUN_00403aa0UpdateCharacterSelect(
-                      (&UpdateCharacterSelectDAT_006cae98UpdateCharacterSelect)
-                          [UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                           UpdateCharacterSelect0x19UpdateCharacterSelect]);
-        UpdateCharacterSelectifUpdateCharacterSelect(
-            (UpdateCharacterSelectiVar1UpdateCharacterSelect ==
-             UpdateCharacterSelect1UpdateCharacterSelect) &&
-            (*(UpdateCharacterSelectintUpdateCharacterSelect
-                   *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                      UpdateCharacterSelect0x2ea0UpdateCharacterSelect +
-                      UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                          UpdateCharacterSelect4UpdateCharacterSelect) <
-             UpdateCharacterSelect0UpdateCharacterSelect))
+        break;
+    case 1:
+        iVar1 = FUN_00403aa0((&DAT_006cae98)[param_2 * 0x19]);
+        if ((iVar1 == 1) && (*(int *)(param_1 + 0x2ea0 + param_2 * 4) < 0))
         {
-            UpdateCharacterSelectFUN_0064aed0UpdateCharacterSelect(
-                UpdateCharacterSelect2UpdateCharacterSelect);
-            UpdateCharacterSelectuVar4UpdateCharacterSelect =
-                *(UpdateCharacterSelectintUpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2e30UpdateCharacterSelect +
-                         UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) +
-                    UpdateCharacterSelect2UpdateCharacterSelect +
-                    UpdateCharacterSelectlocal_cUpdateCharacterSelect
-                        [UpdateCharacterSelect1UpdateCharacterSelect] &
-                UpdateCharacterSelect0x80000001UpdateCharacterSelect;
-            UpdateCharacterSelectifUpdateCharacterSelect(
-                (UpdateCharacterSelectintUpdateCharacterSelect)
-                    UpdateCharacterSelectuVar4UpdateCharacterSelect <
-                UpdateCharacterSelect0UpdateCharacterSelect)
+            FUN_0064aed0(2);
+            uVar4 = *(int *)(param_1 + 0x2e30 + local_5 * 4) + 2 + local_c[1] & 0x80000001;
+            if ((int)uVar4 < 0)
             {
-                UpdateCharacterSelectuVar4UpdateCharacterSelect =
-                    (UpdateCharacterSelectuVar4UpdateCharacterSelect -
-                         UpdateCharacterSelect1UpdateCharacterSelect |
-                     UpdateCharacterSelect0xfffffffeUpdateCharacterSelect) +
-                    UpdateCharacterSelect1UpdateCharacterSelect;
+                uVar4 = (uVar4 - 1 | 0xfffffffe) + 1;
             }
-            *(UpdateCharacterSelectuintUpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e30UpdateCharacterSelect +
-                     UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                UpdateCharacterSelectuVar4UpdateCharacterSelect;
+            *(uint *)(param_1 + 0x2e30 + local_5 * 4) = uVar4;
         }
-        UpdateCharacterSelectifUpdateCharacterSelect(
-            UpdateCharacterSelectlocal_cUpdateCharacterSelect
-                [UpdateCharacterSelect2UpdateCharacterSelect] ==
-            UpdateCharacterSelect1UpdateCharacterSelect)
+        if (local_c[2] == 1)
         {
-            UpdateCharacterSelectFUN_0064aed0UpdateCharacterSelect(
-                UpdateCharacterSelect0UpdateCharacterSelect);
-            UpdateCharacterSelectifUpdateCharacterSelect(
-                *(UpdateCharacterSelectintUpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2e30UpdateCharacterSelect +
-                         UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) ==
-                UpdateCharacterSelect0UpdateCharacterSelect)
+            FUN_0064aed0(0);
+            if (*(int *)(param_1 + 0x2e30 + local_5 * 4) == 0)
             {
-                *(UpdateCharacterSelectintUpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2ea0UpdateCharacterSelect +
-                         UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) =
-                    (UpdateCharacterSelectintUpdateCharacterSelect)
-                        UpdateCharacterSelectlocal_5UpdateCharacterSelect;
-                *(UpdateCharacterSelectintUpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2e40UpdateCharacterSelect +
-                         UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) =
-                    UpdateCharacterSelectparam_2UpdateCharacterSelect;
+                *(int *)(param_1 + 0x2ea0 + param_2 * 4) = (int)local_5;
+                *(int *)(param_1 + 0x2e40 + local_5 * 4) = param_2;
             }
-            UpdateCharacterSelectelseUpdateCharacterSelect
+            else
             {
-                *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2e40UpdateCharacterSelect +
-                         UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) =
-                    UpdateCharacterSelect4UpdateCharacterSelect;
+                *(undefined4 *)(param_1 + 0x2e40 + local_5 * 4) = 4;
             }
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e98UpdateCharacterSelect +
-                     UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                UpdateCharacterSelect8UpdateCharacterSelect;
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2eacUpdateCharacterSelect +
-                     UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                UpdateCharacterSelect0x40800000UpdateCharacterSelect;
-            *(UpdateCharacterSelectundefined1UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2ea8UpdateCharacterSelect +
-                     (UpdateCharacterSelectintUpdateCharacterSelect)
-                         UpdateCharacterSelectlocal_5UpdateCharacterSelect) =
-                UpdateCharacterSelect1UpdateCharacterSelect;
-            UpdateCharacterSelectFUN_0065b1d0UpdateCharacterSelect(
-                *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x1a4UpdateCharacterSelect));
-            UpdateCharacterSelectuVar2UpdateCharacterSelect =
-                UpdateCharacterSelectFUN_00649770UpdateCharacterSelect(
-                    (UpdateCharacterSelectintUpdateCharacterSelect)(UpdateCharacterSelectcharUpdateCharacterSelect)(&UpdateCharacterSelectDAT_006b710cUpdateCharacterSelect)
-                        [*(UpdateCharacterSelectintUpdateCharacterSelect
-                               *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                                  UpdateCharacterSelect0x2e20UpdateCharacterSelect) *
-                             UpdateCharacterSelect2UpdateCharacterSelect +
-                         (UpdateCharacterSelectintUpdateCharacterSelect)
-                             UpdateCharacterSelectlocal_5UpdateCharacterSelect]);
-            UpdateCharacterSelectwsprintfAUpdateCharacterSelect(
-                (UpdateCharacterSelectLPSTRUpdateCharacterSelect)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                                                                  UpdateCharacterSelect4UpdateCharacterSelect),
-                "UpdateCharacterSelectdataUpdateCharacterSelect/"
-                "UpdateCharacterSelectvoiceUpdateCharacterSelect/"
-                "UpdateCharacterSelectentryUpdateCharacterSelect/"
-                "%UpdateCharacterSelectsUpdateCharacterSelect."
-                "UpdateCharacterSelectwavUpdateCharacterSelect",
-                UpdateCharacterSelectuVar2UpdateCharacterSelect);
-            UpdateCharacterSelectpuVar3UpdateCharacterSelect =
-                (UpdateCharacterSelectundefined4UpdateCharacterSelect *)
-                    UpdateCharacterSelectFUN_0065b0d0UpdateCharacterSelect(
-                        UpdateCharacterSelectlocal_14UpdateCharacterSelect,
-                        UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                            UpdateCharacterSelect4UpdateCharacterSelect);
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x1a4UpdateCharacterSelect) =
-                *UpdateCharacterSelectpuVar3UpdateCharacterSelect;
-            UpdateCharacterSelectFUN_0065b330UpdateCharacterSelect(
-                *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x1a4UpdateCharacterSelect),
-                UpdateCharacterSelect0UpdateCharacterSelect);
+            *(undefined4 *)(param_1 + 0x2e98 + param_2 * 4)  = 8;
+            *(undefined4 *)(param_1 + 0x2eac + local_5 * 4)  = 0x40800000;
+            *(undefined1 *)(param_1 + 0x2ea8 + (int)local_5) = 1;
+            FUN_0065b1d0(*(undefined4 *)(param_1 + 0x1a4));
+            uVar2 = FUN_00649770(
+                (int)(char)(&DAT_006b710c)[*(int *)(param_1 + 0x2e20) * 2 + (int)local_5]);
+            wsprintfA((LPSTR)(param_1 + 4), "data/voice/entry/%s.wav", uVar2);
+            puVar3                           = (undefined4 *)FUN_0065b0d0(local_14, param_1 + 4);
+            *(undefined4 *)(param_1 + 0x1a4) = *puVar3;
+            FUN_0065b330(*(undefined4 *)(param_1 + 0x1a4), 0);
         }
-        UpdateCharacterSelectelseUpdateCharacterSelect UpdateCharacterSelectifUpdateCharacterSelect(
-            UpdateCharacterSelectlocal_cUpdateCharacterSelect
-                [UpdateCharacterSelect3UpdateCharacterSelect] ==
-            UpdateCharacterSelect1UpdateCharacterSelect)
+        else if (local_c[3] == 1)
         {
-            UpdateCharacterSelectFUN_0064aed0UpdateCharacterSelect(
-                UpdateCharacterSelect1UpdateCharacterSelect);
-            UpdateCharacterSelectifUpdateCharacterSelect(
-                *(UpdateCharacterSelectintUpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2ea0UpdateCharacterSelect +
-                         UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) ==
-                (UpdateCharacterSelectintUpdateCharacterSelect)
-                    UpdateCharacterSelectlocal_5UpdateCharacterSelect)
+            FUN_0064aed0(1);
+            if (*(int *)(param_1 + 0x2ea0 + param_2 * 4) == (int)local_5)
             {
-                *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2ea0UpdateCharacterSelect +
-                         UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) =
-                    UpdateCharacterSelect0xffffffffUpdateCharacterSelect;
+                *(undefined4 *)(param_1 + 0x2ea0 + param_2 * 4) = 0xffffffff;
             }
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e98UpdateCharacterSelect +
-                     UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                UpdateCharacterSelect4UpdateCharacterSelect;
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e30UpdateCharacterSelect +
-                     UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2e70UpdateCharacterSelect +
-                         UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect);
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e40UpdateCharacterSelect +
-                     UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                UpdateCharacterSelect0xffffffffUpdateCharacterSelect;
+            *(undefined4 *)(param_1 + 0x2e98 + param_2 * 4) = 4;
+            *(undefined4 *)(param_1 + 0x2e30 + local_5 * 4) =
+                *(undefined4 *)(param_1 + 0x2e70 + local_5 * 4);
+            *(undefined4 *)(param_1 + 0x2e40 + local_5 * 4) = 0xffffffff;
         }
-        UpdateCharacterSelectbreakUpdateCharacterSelect;
-        UpdateCharacterSelectcaseUpdateCharacterSelect UpdateCharacterSelect3UpdateCharacterSelect
-            : UpdateCharacterSelectiVar1UpdateCharacterSelect =
-                  UpdateCharacterSelectFUN_00403aa0UpdateCharacterSelect(
-                      (&UpdateCharacterSelectDAT_006cae98UpdateCharacterSelect)
-                          [UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                           UpdateCharacterSelect0x19UpdateCharacterSelect]);
-        UpdateCharacterSelectifUpdateCharacterSelect(
-            UpdateCharacterSelectiVar1UpdateCharacterSelect ==
-            UpdateCharacterSelect1UpdateCharacterSelect)
+        break;
+    case 3:
+        iVar1 = FUN_00403aa0((&DAT_006cae98)[param_2 * 0x19]);
+        if (iVar1 == 1)
         {
-            UpdateCharacterSelectFUN_0064aed0UpdateCharacterSelect(
-                UpdateCharacterSelect2UpdateCharacterSelect);
-            *(UpdateCharacterSelectintUpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e30UpdateCharacterSelect +
-                     UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                (*(UpdateCharacterSelectintUpdateCharacterSelect
-                       *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                          UpdateCharacterSelect0x2e30UpdateCharacterSelect +
-                          UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                              UpdateCharacterSelect4UpdateCharacterSelect) +
-                 UpdateCharacterSelect3UpdateCharacterSelect +
-                 UpdateCharacterSelectlocal_cUpdateCharacterSelect
-                     [UpdateCharacterSelect1UpdateCharacterSelect]) %
-                UpdateCharacterSelect3UpdateCharacterSelect;
+            FUN_0064aed0(2);
+            *(int *)(param_1 + 0x2e30 + local_5 * 4) =
+                (*(int *)(param_1 + 0x2e30 + local_5 * 4) + 3 + local_c[1]) % 3;
         }
-        *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-              *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                 UpdateCharacterSelect0x2e60UpdateCharacterSelect +
-                 UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                     UpdateCharacterSelect4UpdateCharacterSelect) =
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e30UpdateCharacterSelect +
-                     UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect);
-        UpdateCharacterSelectifUpdateCharacterSelect(
-            UpdateCharacterSelectlocal_cUpdateCharacterSelect
-                [UpdateCharacterSelect2UpdateCharacterSelect] ==
-            UpdateCharacterSelect1UpdateCharacterSelect)
+        *(undefined4 *)(param_1 + 0x2e60 + local_5 * 4) =
+            *(undefined4 *)(param_1 + 0x2e30 + local_5 * 4);
+        if (local_c[2] == 1)
         {
-            UpdateCharacterSelectFUN_0064aed0UpdateCharacterSelect(
-                UpdateCharacterSelect0UpdateCharacterSelect);
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e98UpdateCharacterSelect +
-                     UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                UpdateCharacterSelect4UpdateCharacterSelect;
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e30UpdateCharacterSelect +
-                     UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                UpdateCharacterSelect0UpdateCharacterSelect;
+            FUN_0064aed0(0);
+            *(undefined4 *)(param_1 + 0x2e98 + param_2 * 4) = 4;
+            *(undefined4 *)(param_1 + 0x2e30 + local_5 * 4) = 0;
         }
-        UpdateCharacterSelectelseUpdateCharacterSelect UpdateCharacterSelectifUpdateCharacterSelect(
-            UpdateCharacterSelectlocal_cUpdateCharacterSelect
-                [UpdateCharacterSelect3UpdateCharacterSelect] ==
-            UpdateCharacterSelect1UpdateCharacterSelect)
+        else if (local_c[3] == 1)
         {
-            UpdateCharacterSelectFUN_0064aed0UpdateCharacterSelect(
-                UpdateCharacterSelect1UpdateCharacterSelect);
-            UpdateCharacterSelectifUpdateCharacterSelect(
-                *(UpdateCharacterSelectintUpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2ea0UpdateCharacterSelect +
-                         UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) ==
-                (UpdateCharacterSelectintUpdateCharacterSelect)
-                    UpdateCharacterSelectlocal_5UpdateCharacterSelect)
+            FUN_0064aed0(1);
+            if (*(int *)(param_1 + 0x2ea0 + param_2 * 4) == (int)local_5)
             {
-                *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2ea0UpdateCharacterSelect +
-                         UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) =
-                    UpdateCharacterSelect0xffffffffUpdateCharacterSelect;
+                *(undefined4 *)(param_1 + 0x2ea0 + param_2 * 4) = 0xffffffff;
             }
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e98UpdateCharacterSelect +
-                     UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                UpdateCharacterSelect0UpdateCharacterSelect;
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e40UpdateCharacterSelect +
-                     UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                UpdateCharacterSelect0xffffffffUpdateCharacterSelect;
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e60UpdateCharacterSelect +
-                     UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                UpdateCharacterSelect0xffffffffUpdateCharacterSelect;
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e90UpdateCharacterSelect +
-                     UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                UpdateCharacterSelect0xffffffffUpdateCharacterSelect;
-            (&UpdateCharacterSelectDAT_006cfb4cUpdateCharacterSelect)
-                [UpdateCharacterSelectlocal_5UpdateCharacterSelect] =
-                    UpdateCharacterSelect0UpdateCharacterSelect;
+            *(undefined4 *)(param_1 + 0x2e98 + param_2 * 4) = 0;
+            *(undefined4 *)(param_1 + 0x2e40 + local_5 * 4) = 0xffffffff;
+            *(undefined4 *)(param_1 + 0x2e60 + local_5 * 4) = 0xffffffff;
+            *(undefined4 *)(param_1 + 0x2e90 + local_5 * 4) = 0xffffffff;
+            (&DAT_006cfb4c)[local_5]                        = 0;
         }
-        UpdateCharacterSelectbreakUpdateCharacterSelect;
-        UpdateCharacterSelectcaseUpdateCharacterSelect UpdateCharacterSelect4UpdateCharacterSelect
-            : UpdateCharacterSelectiVar1UpdateCharacterSelect =
-                  UpdateCharacterSelectFUN_00403aa0UpdateCharacterSelect(
-                      (&UpdateCharacterSelectDAT_006cae98UpdateCharacterSelect)
-                          [UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                           UpdateCharacterSelect0x19UpdateCharacterSelect]);
-        UpdateCharacterSelectifUpdateCharacterSelect(
-            UpdateCharacterSelectiVar1UpdateCharacterSelect ==
-            UpdateCharacterSelect1UpdateCharacterSelect)
+        break;
+    case 4:
+        iVar1 = FUN_00403aa0((&DAT_006cae98)[param_2 * 0x19]);
+        if (iVar1 == 1)
         {
-            UpdateCharacterSelectFUN_0064aed0UpdateCharacterSelect(
-                UpdateCharacterSelect2UpdateCharacterSelect);
-            *(UpdateCharacterSelectintUpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e30UpdateCharacterSelect +
-                     UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                (*(UpdateCharacterSelectintUpdateCharacterSelect
-                       *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                          UpdateCharacterSelect0x2e30UpdateCharacterSelect +
-                          UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                              UpdateCharacterSelect4UpdateCharacterSelect) +
-                 UpdateCharacterSelect3UpdateCharacterSelect +
-                 UpdateCharacterSelectlocal_cUpdateCharacterSelect
-                     [UpdateCharacterSelect1UpdateCharacterSelect]) %
-                UpdateCharacterSelect3UpdateCharacterSelect;
+            FUN_0064aed0(2);
+            *(int *)(param_1 + 0x2e30 + local_5 * 4) =
+                (*(int *)(param_1 + 0x2e30 + local_5 * 4) + 3 + local_c[1]) % 3;
         }
-        *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-              *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                 UpdateCharacterSelect0x2e70UpdateCharacterSelect +
-                 UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                     UpdateCharacterSelect4UpdateCharacterSelect) =
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e30UpdateCharacterSelect +
-                     UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect);
-        UpdateCharacterSelectifUpdateCharacterSelect(
-            UpdateCharacterSelectlocal_cUpdateCharacterSelect
-                [UpdateCharacterSelect2UpdateCharacterSelect] ==
-            UpdateCharacterSelect1UpdateCharacterSelect)
+        *(undefined4 *)(param_1 + 0x2e70 + local_5 * 4) =
+            *(undefined4 *)(param_1 + 0x2e30 + local_5 * 4);
+        if (local_c[2] == 1)
         {
-            UpdateCharacterSelectFUN_0064aed0UpdateCharacterSelect(
-                UpdateCharacterSelect0UpdateCharacterSelect);
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e98UpdateCharacterSelect +
-                     UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                UpdateCharacterSelect1UpdateCharacterSelect;
-            UpdateCharacterSelectifUpdateCharacterSelect(
-                *(UpdateCharacterSelectintUpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2ea0UpdateCharacterSelect +
-                         UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) ==
-                (UpdateCharacterSelectintUpdateCharacterSelect)
-                    UpdateCharacterSelectlocal_5UpdateCharacterSelect)
+            FUN_0064aed0(0);
+            *(undefined4 *)(param_1 + 0x2e98 + param_2 * 4) = 1;
+            if (*(int *)(param_1 + 0x2ea0 + param_2 * 4) == (int)local_5)
             {
-                *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2ea0UpdateCharacterSelect +
-                         UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) =
-                    UpdateCharacterSelect0xffffffffUpdateCharacterSelect;
-                *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2e30UpdateCharacterSelect +
-                         UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) =
-                    UpdateCharacterSelect0UpdateCharacterSelect;
+                *(undefined4 *)(param_1 + 0x2ea0 + param_2 * 4) = 0xffffffff;
+                *(undefined4 *)(param_1 + 0x2e30 + local_5 * 4) = 0;
             }
-            UpdateCharacterSelectelseUpdateCharacterSelect
+            else
             {
-                *(UpdateCharacterSelectuintUpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2e30UpdateCharacterSelect +
-                         UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) =
-                    (UpdateCharacterSelectuintUpdateCharacterSelect)(-UpdateCharacterSelect1UpdateCharacterSelect <
-                                                                     *(UpdateCharacterSelectintUpdateCharacterSelect
-                                                                           *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                                                                              UpdateCharacterSelect0x2ea0UpdateCharacterSelect +
-                                                                              UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                                                                                  UpdateCharacterSelect4UpdateCharacterSelect));
+                *(uint *)(param_1 + 0x2e30 + local_5 * 4) =
+                    (uint)(-1 < *(int *)(param_1 + 0x2ea0 + param_2 * 4));
             }
         }
-        UpdateCharacterSelectelseUpdateCharacterSelect UpdateCharacterSelectifUpdateCharacterSelect(
-            UpdateCharacterSelectlocal_cUpdateCharacterSelect
-                [UpdateCharacterSelect3UpdateCharacterSelect] ==
-            UpdateCharacterSelect1UpdateCharacterSelect)
+        else if (local_c[3] == 1)
         {
-            UpdateCharacterSelectFUN_0064aed0UpdateCharacterSelect(
-                UpdateCharacterSelect1UpdateCharacterSelect);
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e98UpdateCharacterSelect +
-                     UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                UpdateCharacterSelect3UpdateCharacterSelect;
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e30UpdateCharacterSelect +
-                     UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2e60UpdateCharacterSelect +
-                         UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect);
+            FUN_0064aed0(1);
+            *(undefined4 *)(param_1 + 0x2e98 + param_2 * 4) = 3;
+            *(undefined4 *)(param_1 + 0x2e30 + local_5 * 4) =
+                *(undefined4 *)(param_1 + 0x2e60 + local_5 * 4);
         }
-        UpdateCharacterSelectbreakUpdateCharacterSelect;
-        UpdateCharacterSelectcaseUpdateCharacterSelect UpdateCharacterSelect8UpdateCharacterSelect
-            : UpdateCharacterSelectifUpdateCharacterSelect(
-                  *(UpdateCharacterSelectfloatUpdateCharacterSelect
-                        *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                           UpdateCharacterSelect0x2eacUpdateCharacterSelect +
-                           UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                               UpdateCharacterSelect4UpdateCharacterSelect) <=
-                  UpdateCharacterSelect1UpdateCharacterSelect
-                      .UpdateCharacterSelect0UpdateCharacterSelect)
+        break;
+    case 8:
+        if (*(float *)(param_1 + 0x2eac + local_5 * 4) <= 1.0)
         {
-            UpdateCharacterSelectFUN_0064aed0UpdateCharacterSelect(
-                UpdateCharacterSelect3UpdateCharacterSelect);
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e98UpdateCharacterSelect +
-                     UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                UpdateCharacterSelect0UpdateCharacterSelect;
-            *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e90UpdateCharacterSelect +
-                     UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                UpdateCharacterSelect0xffffffffUpdateCharacterSelect;
+            FUN_0064aed0(3);
+            *(undefined4 *)(param_1 + 0x2e98 + param_2 * 4) = 0;
+            *(undefined4 *)(param_1 + 0x2e90 + local_5 * 4) = 0xffffffff;
         }
-        UpdateCharacterSelectelseUpdateCharacterSelect
+        else
         {
-            *(UpdateCharacterSelectfloatUpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2eacUpdateCharacterSelect +
-                     UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                *(UpdateCharacterSelectfloatUpdateCharacterSelect
-                      *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                         UpdateCharacterSelect0x2eacUpdateCharacterSelect +
-                         UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                             UpdateCharacterSelect4UpdateCharacterSelect) -
-                UpdateCharacterSelect0UpdateCharacterSelect
-                    .UpdateCharacterSelect2UpdateCharacterSelect;
+            *(float *)(param_1 + 0x2eac + local_5 * 4) =
+                *(float *)(param_1 + 0x2eac + local_5 * 4) - 0.2;
         }
     }
-    UpdateCharacterSelectifUpdateCharacterSelect(
-        ((*(UpdateCharacterSelectintUpdateCharacterSelect
-                *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                   UpdateCharacterSelect0x2e98UpdateCharacterSelect +
-                   UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                       UpdateCharacterSelect4UpdateCharacterSelect) ==
-          UpdateCharacterSelect4UpdateCharacterSelect) ||
-         (*(UpdateCharacterSelectintUpdateCharacterSelect
-                *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                   UpdateCharacterSelect0x2e98UpdateCharacterSelect +
-                   UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                       UpdateCharacterSelect4UpdateCharacterSelect) ==
-          UpdateCharacterSelect3UpdateCharacterSelect)) ||
-        (*(UpdateCharacterSelectintUpdateCharacterSelect
-               *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                  UpdateCharacterSelect0x2e98UpdateCharacterSelect +
-                  UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                      UpdateCharacterSelect4UpdateCharacterSelect) ==
-         UpdateCharacterSelect1UpdateCharacterSelect))
+    if (((*(int *)(param_1 + 0x2e98 + param_2 * 4) == 4) ||
+         (*(int *)(param_1 + 0x2e98 + param_2 * 4) == 3)) ||
+        (*(int *)(param_1 + 0x2e98 + param_2 * 4) == 1))
     {
-        UpdateCharacterSelectifUpdateCharacterSelect(
-            *UpdateCharacterSelectlocal_cUpdateCharacterSelect ==
-            UpdateCharacterSelect1UpdateCharacterSelect)
+        if (*local_c == 1)
         {
-            *(UpdateCharacterSelectintUpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e80UpdateCharacterSelect +
-                     UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                (*(UpdateCharacterSelectintUpdateCharacterSelect
-                       *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                          UpdateCharacterSelect0x2e80UpdateCharacterSelect +
-                          UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                              UpdateCharacterSelect4UpdateCharacterSelect) +
-                 UpdateCharacterSelect1UpdateCharacterSelect) %
-                (UpdateCharacterSelectintUpdateCharacterSelect)(UpdateCharacterSelectcharUpdateCharacterSelect)(&UpdateCharacterSelectDAT_006b71c0UpdateCharacterSelect)
-                    [(UpdateCharacterSelectcharUpdateCharacterSelect)(&UpdateCharacterSelectDAT_006b710cUpdateCharacterSelect)
-                         [*(UpdateCharacterSelectintUpdateCharacterSelect
-                                *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                                   UpdateCharacterSelect0x2e20UpdateCharacterSelect) *
-                              UpdateCharacterSelect2UpdateCharacterSelect +
-                          (UpdateCharacterSelectintUpdateCharacterSelect)
-                              UpdateCharacterSelectlocal_5UpdateCharacterSelect]];
+            *(int *)(param_1 + 0x2e80 + local_5 * 4) =
+                (*(int *)(param_1 + 0x2e80 + local_5 * 4) + 1) %
+                (int)(char)(&DAT_006b71c0)[(
+                    char)(&DAT_006b710c)[*(int *)(param_1 + 0x2e20) * 2 + (int)local_5]];
         }
-        UpdateCharacterSelectelseUpdateCharacterSelect UpdateCharacterSelectifUpdateCharacterSelect(
-            *UpdateCharacterSelectlocal_cUpdateCharacterSelect ==
-            -UpdateCharacterSelect1UpdateCharacterSelect)
+        else if (*local_c == -1)
         {
-            *(UpdateCharacterSelectintUpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2e80UpdateCharacterSelect +
-                     UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) =
-                (*(UpdateCharacterSelectintUpdateCharacterSelect
-                       *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                          UpdateCharacterSelect0x2e80UpdateCharacterSelect +
-                          UpdateCharacterSelectlocal_5UpdateCharacterSelect *
-                              UpdateCharacterSelect4UpdateCharacterSelect) +
-                 -UpdateCharacterSelect1UpdateCharacterSelect +
-                 (UpdateCharacterSelectintUpdateCharacterSelect)(UpdateCharacterSelectcharUpdateCharacterSelect)(&UpdateCharacterSelectDAT_006b71c0UpdateCharacterSelect)
-                     [(UpdateCharacterSelectcharUpdateCharacterSelect)(&UpdateCharacterSelectDAT_006b710cUpdateCharacterSelect)
-                          [*(UpdateCharacterSelectintUpdateCharacterSelect
-                                 *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                                    UpdateCharacterSelect0x2e20UpdateCharacterSelect) *
-                               UpdateCharacterSelect2UpdateCharacterSelect +
-                           (UpdateCharacterSelectintUpdateCharacterSelect)
-                               UpdateCharacterSelectlocal_5UpdateCharacterSelect]]) %
-                (UpdateCharacterSelectintUpdateCharacterSelect)(UpdateCharacterSelectcharUpdateCharacterSelect)(&UpdateCharacterSelectDAT_006b71c0UpdateCharacterSelect)
-                    [(UpdateCharacterSelectcharUpdateCharacterSelect)(&UpdateCharacterSelectDAT_006b710cUpdateCharacterSelect)
-                         [*(UpdateCharacterSelectintUpdateCharacterSelect
-                                *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                                   UpdateCharacterSelect0x2e20UpdateCharacterSelect) *
-                              UpdateCharacterSelect2UpdateCharacterSelect +
-                          (UpdateCharacterSelectintUpdateCharacterSelect)
-                              UpdateCharacterSelectlocal_5UpdateCharacterSelect]];
+            *(int *)(param_1 + 0x2e80 + local_5 * 4) =
+                (*(int *)(param_1 + 0x2e80 + local_5 * 4) + -1 +
+                 (int)(char)(&DAT_006b71c0)[(
+                     char)(&DAT_006b710c)[*(int *)(param_1 + 0x2e20) * 2 + (int)local_5]]) %
+                (int)(char)(&DAT_006b71c0)[(
+                    char)(&DAT_006b710c)[*(int *)(param_1 + 0x2e20) * 2 + (int)local_5]];
         }
     }
-    UpdateCharacterSelectifUpdateCharacterSelect(
-        *(UpdateCharacterSelectintUpdateCharacterSelect
-              *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                 UpdateCharacterSelect0x2e98UpdateCharacterSelect +
-                 UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                     UpdateCharacterSelect4UpdateCharacterSelect) !=
-        UpdateCharacterSelectlocal_10UpdateCharacterSelect)
+    if (*(int *)(param_1 + 0x2e98 + param_2 * 4) != local_10)
     {
-        *(UpdateCharacterSelectundefined4UpdateCharacterSelect
-              *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                 UpdateCharacterSelect0x2eb4UpdateCharacterSelect +
-                 UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                     UpdateCharacterSelect4UpdateCharacterSelect) =
-            UpdateCharacterSelect0x43960000UpdateCharacterSelect;
+        *(undefined4 *)(param_1 + 0x2eb4 + param_2 * 4) = 0x43960000;
     }
-    UpdateCharacterSelectifUpdateCharacterSelect(
-        UpdateCharacterSelect0UpdateCharacterSelect.UpdateCharacterSelect0UpdateCharacterSelect <
-        *(UpdateCharacterSelectfloatUpdateCharacterSelect
-              *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                 UpdateCharacterSelect0x2eb4UpdateCharacterSelect +
-                 UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                     UpdateCharacterSelect4UpdateCharacterSelect))
+    if (0.0 < *(float *)(param_1 + 0x2eb4 + param_2 * 4))
     {
-        *(UpdateCharacterSelectfloatUpdateCharacterSelect
-              *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                 UpdateCharacterSelect0x2eb4UpdateCharacterSelect +
-                 UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                     UpdateCharacterSelect4UpdateCharacterSelect) =
-            *(UpdateCharacterSelectfloatUpdateCharacterSelect
-                  *)(UpdateCharacterSelectparam_1UpdateCharacterSelect +
-                     UpdateCharacterSelect0x2eb4UpdateCharacterSelect +
-                     UpdateCharacterSelectparam_2UpdateCharacterSelect *
-                         UpdateCharacterSelect4UpdateCharacterSelect) -
-            UpdateCharacterSelect20UpdateCharacterSelect
-                .UpdateCharacterSelect0UpdateCharacterSelect;
+        *(float *)(param_1 + 0x2eb4 + param_2 * 4) =
+            *(float *)(param_1 + 0x2eb4 + param_2 * 4) - 20.0;
     }
-    UpdateCharacterSelectreturnUpdateCharacterSelect;
+    return;
 }
