@@ -107,6 +107,14 @@ void ShutdownTitleScene(void);
 int  UpdateTitleScene(EngineState *state, const uint8_t keys[256]);
 void RenderTitleScene(EngineState *state);
 
+/* scene_manager.c — MVP+2 scene state machine (LoadNextScene) */
+void SceneManager_Init(void);
+void SceneManager_Shutdown(EngineState *state);
+bool LoadNextScene(EngineState *state, int new_scene_id);
+int  SceneManager_Update(EngineState *state, const uint8_t keys[256]);
+void SceneManager_Render(EngineState *state);
+int  SceneManager_GetCurrentScene(void);
+
 /* ============================================================
  * Error reporting (used by all modules)
  * ============================================================ */

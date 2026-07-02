@@ -13,6 +13,7 @@ set(MVP_SOURCES
     src/input_init.c
     src/render_loop.c
     src/scene_title.c
+    src/scene_manager.c
 )
 
 include_directories(${CMAKE_SOURCE_DIR}/include)
