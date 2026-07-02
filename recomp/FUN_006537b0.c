@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x006537b0
 // Original: FUN_006537b0
-// Status:   unreviewed
+// Suggested: ReadFileBytes (confidence: high)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 BOOL __thiscall FUN_006537b0(undefined4 *param_1, undefined4 param_2, LPVOID param_3, DWORD param_4)

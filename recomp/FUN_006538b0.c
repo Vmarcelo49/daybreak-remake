@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x006538b0
 // Original: FUN_006538b0
-// Status:   unreviewed
+// Suggested: ReadInt32FromHandle (confidence: medium)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 undefined4 __thiscall FUN_006538b0(undefined4 *param_1, undefined4 param_2)

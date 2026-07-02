@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00653860
 // Original: FUN_00653860
-// Status:   unreviewed
+// Suggested: ReadInt32 (confidence: high)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 undefined4 __fastcall FUN_00653860(undefined4 *param_1)

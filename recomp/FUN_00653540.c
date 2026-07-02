@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00653540
 // Original: FUN_00653540
-// Status:   unreviewed
+// Suggested: OpenGameFile (confidence: high)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 undefined4 __thiscall FUN_00653540(int *param_1, LPCSTR param_2)

@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00653760
 // Original: FUN_00653760
-// Status:   unreviewed
+// Suggested: ReadBytesDiscard (confidence: medium)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 void __thiscall FUN_00653760(undefined4 *param_1, LPVOID param_2, DWORD param_3)

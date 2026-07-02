@@ -4375,16 +4375,25 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00653860": {
-      "suggested_name": "FUN_00653860",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "ReadInt32",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/FUN_00653860.c",
       "signature_hash": "5bbd1a9ec0aca9eb",
-      "depends_on_unresolved": [],
+      "depends_on_unresolved": [
+        "00663030"
+      ],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:44+00:00"
+      "last_updated": "2026-07-02T03:46:29+00:00",
+      "tags": [
+        "io",
+        "file",
+        "read",
+        "primitive"
+      ],
+      "justification": "Lê um único uint32 do arquivo (ReadFile 4 bytes em local_8, retorna). Usada extensivamente em parsers de .dat/.scenario (FUN_00648f30 LoadTeamScenario chama ela 8x)."
     },
     "004382a0": {
       "suggested_name": "FUN_004382a0",
@@ -9147,16 +9156,24 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00653760": {
-      "suggested_name": "FUN_00653760",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "ReadBytesDiscard",
+      "confidence": "medium",
+      "status": "suggested",
       "source_file": "decompiled/FUN_00653760.c",
       "signature_hash": "aa89283c73174a0d",
-      "depends_on_unresolved": [],
+      "depends_on_unresolved": [
+        "00663030"
+      ],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:44+00:00"
+      "last_updated": "2026-07-02T03:46:29+00:00",
+      "tags": [
+        "io",
+        "file",
+        "read"
+      ],
+      "justification": "Lê N bytes para buffer (ReadFile ou archive) sem retornar — usado para skip/seek de campos não usados em parsers. Sem retornar BOOL (void)."
     },
     "0064fbc0": {
       "suggested_name": "FUN_0064fbc0",
@@ -11905,16 +11922,28 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00653620": {
-      "suggested_name": "FUN_00653620",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "OpenGameFileHandle",
+      "confidence": "medium",
+      "status": "suggested",
       "source_file": "decompiled/FUN_00653620.c",
       "signature_hash": "ea856e14e9231230",
-      "depends_on_unresolved": [],
+      "depends_on_unresolved": [
+        "0064d6e0",
+        "006543d0",
+        "00662f70",
+        "00654430",
+        "0065a7f0"
+      ],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:44+00:00"
+      "last_updated": "2026-07-02T03:46:29+00:00",
+      "tags": [
+        "io",
+        "file",
+        "open"
+      ],
+      "justification": "Variante de OpenGameFile que recebe handle pointer: CreateFileA ou fallback de archive. Mesma mecânica que FUN_00653540 mas com assinatura diferente (2 params)."
     },
     "00658140": {
       "suggested_name": "FUN_00658140",
@@ -16202,16 +16231,27 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00653540": {
-      "suggested_name": "FUN_00653540",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "OpenGameFile",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/FUN_00653540.c",
       "signature_hash": "912e42bd6c8d27b6",
-      "depends_on_unresolved": [],
+      "depends_on_unresolved": [
+        "00699fc0",
+        "00653d70",
+        "00662f70",
+        "0042fc40"
+      ],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:44+00:00"
+      "last_updated": "2026-07-02T03:46:29+00:00",
+      "tags": [
+        "io",
+        "file",
+        "open"
+      ],
+      "justification": "Abre um arquivo do jogo: CreateFileA(path, GENERIC_READ, OPEN_EXISTING) no modo direto, ou busca em archive (loop const_iterator + FUN_00662f70) no modo archive. Retorna 1/0. Dual-mode (disk vs archive) é o padrão de asset loading do jogo."
     },
     "0041a260": {
       "suggested_name": "FUN_0041a260",
@@ -16298,16 +16338,27 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "006537b0": {
-      "suggested_name": "FUN_006537b0",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "ReadFileBytes",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/FUN_006537b0.c",
       "signature_hash": "bd3f2339a72582fe",
-      "depends_on_unresolved": [],
+      "depends_on_unresolved": [
+        "0064d6e0",
+        "006543d0",
+        "00663030",
+        "00653b30"
+      ],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:44+00:00"
+      "last_updated": "2026-07-02T03:46:29+00:00",
+      "tags": [
+        "io",
+        "file",
+        "read"
+      ],
+      "justification": "Wrapper de ReadFile(handle, buffer, size, &bytesRead) — lê N bytes do arquivo. Suporta modo direto e modo archive (via FUN_00663030). Assinatura BOOL ReadFile-like."
     },
     "004a9c40": {
       "suggested_name": "FUN_004a9c40",
@@ -30417,16 +30468,28 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "006538b0": {
-      "suggested_name": "FUN_006538b0",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "ReadInt32FromHandle",
+      "confidence": "medium",
+      "status": "suggested",
       "source_file": "decompiled/FUN_006538b0.c",
       "signature_hash": "44efb0ccce9ff92f",
-      "depends_on_unresolved": [],
+      "depends_on_unresolved": [
+        "0064d6e0",
+        "006543d0",
+        "00663030",
+        "00653b30"
+      ],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:44+00:00"
+      "last_updated": "2026-07-02T03:46:29+00:00",
+      "tags": [
+        "io",
+        "file",
+        "read",
+        "primitive"
+      ],
+      "justification": "Variante multi-handle de ReadInt32: lê 4 bytes de um handle específico (param_2). Mesma lógica que FUN_00653860 mas com handle explícito."
     },
     "006964d0": {
       "suggested_name": "FUN_006964d0",
