@@ -1,3 +1,7 @@
+// Function: 
+// Address:  0x00406850
+// Reason:   manual_curation
+
 
 void __thiscall FUN_00406850(int param_1,int param_2)
 

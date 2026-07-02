@@ -1,0 +1,12 @@
+// Function: FUN_00691ad0
+// Address:  0x00691ad0
+// Source:   batch_decompile (mass dump)
+// Hash:     a52370ed6166842e
+
+
+int __fastcall FUN_00691ad0(int param_1)
+
+{
+  return param_1 + 0xa8;
+}
+

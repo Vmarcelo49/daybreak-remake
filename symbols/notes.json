@@ -1,0 +1,48 @@
+{
+  "_schema": "1.0",
+  "_description": "Observações, ambiguidades e TODOs por função. Ver PLANO_RECOMP.md seção 5.2.",
+  "WinMain": [
+    {
+      "type": "note",
+      "text": "Window size calc: 800x600 + GetSystemMetrics borders. Native resolution confirmed.",
+      "author": "agent:extraction",
+      "resolved": true
+    },
+    {
+      "type": "ambiguity",
+      "text": "WinMain or wWinMain? Parameter types suggest ANSI (CHAR local_174) but could be wrapper.",
+      "author": "agent:extraction",
+      "resolved": false
+    }
+  ],
+  "LoadNextScene": [
+    {
+      "type": "note",
+      "text": "Signature: uint __fastcall LoadNextScene(int pGameState). Single param = pointer to game state struct.",
+      "author": "agent:extraction",
+      "resolved": true
+    },
+    {
+      "type": "hypothesis",
+      "text": "Function pointer table at 0x006a16c0 likely contains { scene_id, init_fn, update_fn, draw_fn, cleanup_fn } per scene. Needs verification by reading bytes.",
+      "author": "agent:extraction",
+      "resolved": false,
+      "needs_action": "Fase 9 do PLANO.md"
+    },
+    {
+      "type": "ambiguity",
+      "text": "13 callees could be scene handlers OR could be sub-dispatchers (init/update/draw for current scene only). Need to decompile 2-3 to confirm.",
+      "author": "agent:extraction",
+      "resolved": false
+    }
+  ],
+  "MainGameLoop": [
+    {
+      "type": "ambiguity",
+      "text": "32 out-edges is high — could be MainGameLoop OR could be SceneUpdateBatch OR even per-frame entity update dispatcher. Decompile first to confirm.",
+      "author": "agent:extraction",
+      "resolved": false,
+      "needs_action": "Decompile FUN_00412110 to confirm hypothesis"
+    }
+  ]
+}

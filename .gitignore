@@ -7,16 +7,14 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Chaves e credenciais (se acidentalmente colocadas aqui)
+# Chaves e credenciais
 *deploy_key*
 *id_ed25519*
 *.pem
 .env
 
-# Manter .full.json em binary_data/functions/ (são os JSONs completos das funções)
-# Mas ignorar .full.json grandes que são duplicatas dos .txt
-binary_data/*.full.json
-binary_data/strings/*.full.json
-binary_data/types/*.full.json
-binary_data/callgraph/*.full.json
-binary_data/segments/*.full.json
+# .full.json são respostas brutas do MCP — duplicações dos .txt
+*.full.json
+
+# Manter JSONs individuais em binary_data/functions/ (são os artefatos úteis)
+!binary_data/functions/*.json

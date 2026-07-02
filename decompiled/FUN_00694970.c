@@ -1,0 +1,14 @@
+// Function: FUN_00694970
+// Address:  0x00694970
+// Source:   batch_decompile (mass dump)
+// Hash:     9673a8d1aeb2febf
+
+
+void FUN_00694970(int param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4,
+                 undefined4 param_5,undefined4 param_6)
+
+{
+  FUN_00694410(param_1 + 0x10,&LAB_006ad101_3,param_3,param_4,param_5,param_6);
+  return;
+}
+

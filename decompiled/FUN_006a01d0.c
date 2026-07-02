@@ -1,0 +1,13 @@
+// Function: FUN_006a01d0
+// Address:  0x006a01d0
+// Source:   batch_decompile (mass dump)
+// Hash:     1f168e8ef0baacbd
+
+
+void FUN_006a01d0(void)
+
+{
+  _vector_constructor_iterator_(&DAT_006ca460,0xa0,2,FUN_00403a70);
+  return;
+}
+

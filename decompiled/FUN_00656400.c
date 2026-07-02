@@ -1,0 +1,12 @@
+// Function: FUN_00656400
+// Address:  0x00656400
+// Source:   batch_decompile (mass dump)
+// Hash:     2c0a6fc7f3fc5289
+
+
+bool __thiscall FUN_00656400(int *param_1,int param_2)
+
+{
+  return *param_1 == param_2;
+}
+

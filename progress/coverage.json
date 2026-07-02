@@ -1,0 +1,154 @@
+{
+  "generated_at": "2026-07-02T02:36:46+00:00",
+  "total_functions_in_binary": 4092,
+  "total_in_decompiled": 3191,
+  "decompilation_coverage_percent": 77.98,
+  "functions_named_reviewed_or_locked": 4,
+  "functions_with_suggestion": 1,
+  "functions_unreviewed": 3164,
+  "functions_stale": 0,
+  "review_coverage_percent": 0.13,
+  "suggestion_coverage_percent": 0.16,
+  "hot_spots": [
+    {
+      "symbol": "FUN_0064aed0",
+      "address": "0064aed0",
+      "called_by_count": 18,
+      "status": "unreviewed",
+      "source_file": "decompiled/FUN_0064aed0.c"
+    },
+    {
+      "symbol": "FUN_004039d0",
+      "address": "004039d0",
+      "called_by_count": 16,
+      "status": "unreviewed",
+      "source_file": "decompiled/FUN_004039d0.c"
+    },
+    {
+      "symbol": "FUN_00415ec0",
+      "address": "00415ec0",
+      "called_by_count": 16,
+      "status": "unreviewed",
+      "source_file": "decompiled/FUN_00415ec0.c"
+    },
+    {
+      "symbol": "FUN_00403a50",
+      "address": "00403a50",
+      "called_by_count": 15,
+      "status": "unreviewed",
+      "source_file": "decompiled/FUN_00403a50.c"
+    },
+    {
+      "symbol": "FUN_00415d30",
+      "address": "00415d30",
+      "called_by_count": 15,
+      "status": "unreviewed",
+      "source_file": "decompiled/FUN_00415d30.c"
+    },
+    {
+      "symbol": "FUN_00655af0",
+      "address": "00655af0",
+      "called_by_count": 15,
+      "status": "unreviewed",
+      "source_file": "decompiled/FUN_00655af0.c"
+    },
+    {
+      "symbol": "FUN_00655d60",
+      "address": "00655d60",
+      "called_by_count": 15,
+      "status": "unreviewed",
+      "source_file": "decompiled/FUN_00655d60.c"
+    },
+    {
+      "symbol": "FUN_006560c0",
+      "address": "006560c0",
+      "called_by_count": 15,
+      "status": "unreviewed",
+      "source_file": "decompiled/FUN_006560c0.c"
+    },
+    {
+      "symbol": "FUN_00656200",
+      "address": "00656200",
+      "called_by_count": 15,
+      "status": "unreviewed",
+      "source_file": "decompiled/FUN_00656200.c"
+    },
+    {
+      "symbol": "FUN_00657390",
+      "address": "00657390",
+      "called_by_count": 15,
+      "status": "unreviewed",
+      "source_file": "decompiled/FUN_00657390.c"
+    },
+    {
+      "symbol": "FUN_006586d0",
+      "address": "006586d0",
+      "called_by_count": 15,
+      "status": "unreviewed",
+      "source_file": "decompiled/FUN_006586d0.c"
+    },
+    {
+      "symbol": "FUN_0065d670",
+      "address": "0065d670",
+      "called_by_count": 15,
+      "status": "unreviewed",
+      "source_file": "decompiled/FUN_0065d670.c"
+    },
+    {
+      "symbol": "FUN_0065d6a0",
+      "address": "0065d6a0",
+      "called_by_count": 15,
+      "status": "unreviewed",
+      "source_file": "decompiled/FUN_0065d6a0.c"
+    },
+    {
+      "symbol": "FUN_00401000",
+      "address": "00401000",
+      "called_by_count": 15,
+      "status": "unreviewed",
+      "source_file": "decompiled/_vector_constructor_iterator_.c"
+    },
+    {
+      "symbol": "FUN_00650f70",
+      "address": "00650f70",
+      "called_by_count": 14,
+      "status": "unreviewed",
+      "source_file": "decompiled/FUN_00650f70.c"
+    },
+    {
+      "symbol": "FUN_00650fd0",
+      "address": "00650fd0",
+      "called_by_count": 14,
+      "status": "unreviewed",
+      "source_file": "decompiled/FUN_00650fd0.c"
+    },
+    {
+      "symbol": "FUN_00403a70",
+      "address": "00403a70",
+      "called_by_count": 13,
+      "status": "unreviewed",
+      "source_file": "decompiled/FUN_00403a70.c"
+    },
+    {
+      "symbol": "FUN_006584e0",
+      "address": "006584e0",
+      "called_by_count": 13,
+      "status": "unreviewed",
+      "source_file": "decompiled/FUN_006584e0.c"
+    },
+    {
+      "symbol": "FUN_006585f0",
+      "address": "006585f0",
+      "called_by_count": 13,
+      "status": "unreviewed",
+      "source_file": "decompiled/FUN_006585f0.c"
+    },
+    {
+      "symbol": "FUN_0065b870",
+      "address": "0065b870",
+      "called_by_count": 12,
+      "status": "unreviewed",
+      "source_file": "decompiled/FUN_0065b870.c"
+    }
+  ]
+}

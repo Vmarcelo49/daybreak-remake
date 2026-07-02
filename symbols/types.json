@@ -1,0 +1,30 @@
+{
+  "_schema": "1.0",
+  "_description": "Structs/unions/enums reconstruídos. Ver PLANO_RECOMP.md seção 5.",
+  "entries": {},
+  "_hypotheses": {
+    "GameState": {
+      "confidence": "low",
+      "hypothesized_at": "0x00406310",
+      "evidence": "LoadNextScene receives single int param that drives 13-way dispatch",
+      "fields": [
+        {"name": "current_scene_id", "type": "int", "offset": "0x00", "confidence": "low"},
+        {"name": "next_scene_id", "type": "int", "offset": "0x04", "confidence": "low"}
+      ],
+      "needs_action": "Decompile LoadNextScene body to confirm"
+    },
+    "SceneHandler": {
+      "confidence": "low",
+      "hypothesized_at": "0x006a16c0",
+      "evidence": "Function pointer table at this address — referenced by LoadNextScene",
+      "fields": [
+        {"name": "scene_id", "type": "int", "offset": "0x00"},
+        {"name": "init_fn", "type": "void(*)(GameState*)", "offset": "0x04"},
+        {"name": "update_fn", "type": "void(*)(GameState*, float)", "offset": "0x08"},
+        {"name": "draw_fn", "type": "void(*)(GameState*)", "offset": "0x0c"},
+        {"name": "cleanup_fn", "type": "void(*)(GameState*)", "offset": "0x10"}
+      ],
+      "needs_action": "Fase 9 — read memory at 0x006a16c0 and parse as array"
+    }
+  }
+}

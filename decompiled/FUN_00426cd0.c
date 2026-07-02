@@ -1,0 +1,13 @@
+// Function: FUN_00426cd0
+// Address:  0x00426cd0
+// Source:   batch_decompile (mass dump)
+// Hash:     766c9d2c9005a0ce
+
+
+int * __thiscall FUN_00426cd0(int *param_1,int param_2)
+
+{
+  *param_1 = param_2 * 0xc + *param_1;
+  return param_1;
+}
+

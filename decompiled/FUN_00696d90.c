@@ -1,0 +1,28 @@
+// Function: FUN_00696d90
+// Address:  0x00696d90
+// Source:   batch_decompile (mass dump)
+// Hash:     1003e3efa657be6a
+
+
+void FUN_00696d90(int param_1,undefined4 param_2,undefined4 param_3)
+
+{
+  int iVar1;
+  int local_8;
+  
+  iVar1 = FUN_006871b0(param_2,&LAB_006ad0b1_3);
+  if (iVar1 == 0) {
+    FUN_0068df80(param_1,param_2,param_3);
+  }
+  else {
+    if (param_1 == 0) {
+      local_8 = 0;
+    }
+    else {
+      local_8 = param_1 + 0xc;
+    }
+    FUN_0068e090(local_8,param_3);
+  }
+  return;
+}
+

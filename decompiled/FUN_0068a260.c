@@ -1,0 +1,23 @@
+// Function: FUN_0068a260
+// Address:  0x0068a260
+// Source:   batch_decompile (mass dump)
+// Hash:     48609266b22d923e
+
+
+undefined4 __thiscall
+FUN_0068a260(int param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4,undefined4 param_5
+            )
+
+{
+  undefined4 uVar1;
+  
+  if (*(int *)(param_1 + 0x98) == 0) {
+    uVar1 = 0x80004002;
+  }
+  else {
+    uVar1 = (**(code **)(**(int **)(param_1 + 0x98) + 0x1c))
+                      (*(undefined4 *)(param_1 + 0x98),param_2,param_3,param_4,param_5);
+  }
+  return uVar1;
+}
+

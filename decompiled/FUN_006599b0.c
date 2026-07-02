@@ -1,0 +1,16 @@
+// Function: FUN_006599b0
+// Address:  0x006599b0
+// Source:   batch_decompile (mass dump)
+// Hash:     8165395bbcc95ed3
+
+
+void FUN_006599b0(undefined4 *param_1,int param_2,undefined4 *param_3)
+
+{
+  for (; param_2 != 0; param_2 = param_2 + -1) {
+    *param_1 = *param_3;
+    param_1 = param_1 + 1;
+  }
+  return;
+}
+
