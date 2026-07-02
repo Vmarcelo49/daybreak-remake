@@ -136,8 +136,21 @@ int main(int argc, char *argv[])
     char cmd_line[MAX_PATH];
     snprintf(cmd_line, sizeof(cmd_line), "\"%s\"", exe_path);
 
+    /* Set working directory to the game's folder so relative paths work */
+    char work_dir[MAX_PATH];
+    strncpy(work_dir, exe_path, MAX_PATH - 1);
+    work_dir[MAX_PATH - 1] = '\0';
+    char *last_slash = strrchr(work_dir, '\\');
+    if (last_slash) {
+        *last_slash = '\0';
+    } else {
+        GetCurrentDirectoryA(MAX_PATH, work_dir);
+    }
+
+    printf("Working directory: %s\n", work_dir);
+
     if (!CreateProcessA(NULL, cmd_line, NULL, NULL, FALSE,
-                        CREATE_SUSPENDED, NULL, NULL, &si, &pi)) {
+                        CREATE_SUSPENDED, NULL, work_dir, &si, &pi)) {
         printf("CreateProcess failed (error %lu)\n", GetLastError());
         printf("Make sure DaybreakDX.exe is in the current directory.\n");
         return 1;
