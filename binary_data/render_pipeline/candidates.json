@@ -1,0 +1,156 @@
+{
+  "_schema": "1.0",
+  "_description": "Candidatas a função de render/D3D identificadas pela análise do render pipeline. NÃO edita symbols/functions.json — input para o agente local promover.",
+  "_generated_by": "agent:extraction",
+  "_generated_at": "2026-07-02T00:00:00Z",
+  "_total_candidates": 22,
+  "_d3d_version": "Direct3D 9 + D3DX (DirectX 9 era)",
+  "_directx_components_used": ["Direct3D 9", "D3DX (effects + mesh)", "DirectInput 8", "DirectMusic/Miles (likely)"],
+  "candidates": {
+    "00657910": {
+      "suggested_name": "EngineInit",
+      "confidence": "high",
+      "evidence": "Orquestra init de 8 subsistemas: timer, COM, D3D, shaders, input, audio, worker thread, scene init. Recebe EngineConfig em param_2, popula EngineState em param_1."
+    },
+    "00654b90": {
+      "suggested_name": "InitD3D",
+      "confidence": "high",
+      "evidence": "Direct3DCreate9(D3D_SDK_VERSION=0x20) + CreateDevice com 3 fallbacks: HARDWARE(0x44) → SOFTWARE(0x24) → REF(0x22). Setup D3DPRESENT_PARAMETERS com D3DFMT_D16 (0x50)."
+    },
+    "00654b70": {
+      "suggested_name": "InitD3DWindowed",
+      "confidence": "medium",
+      "evidence": "Wrapper que chama InitD3D(state, NULL, 0, 1) — modo windowed sem tamanho especificado (usa client rect)."
+    },
+    "00654f00": {
+      "suggested_name": "SetupRenderStates",
+      "confidence": "medium",
+      "evidence": "Chamado no final de InitD3D. Recebe state struct. Provável set de render states e sampler states."
+    },
+    "0064ff30": {
+      "suggested_name": "InitShaders",
+      "confidence": "high",
+      "evidence": "Wrapper que chama CreateAllShaders + InitShaderConstants + InitShaderTextures. Falha propaga erro via ShowD3DError."
+    },
+    "0064ff80": {
+      "suggested_name": "CreateAllShaders",
+      "confidence": "high",
+      "evidence": "Carrega 10 efeitos D3DX compilados embarcados no binário. Endereços dos shaders: 006a5f68 (3499B), 006a6cd8 (3640B), 006a7b10 (812B), 006a7e40 (1964B), 006a85f0 (1744B), 006a8cc0 (1920B), 006a9440 (1932B), + 3 mais. Total ~20KB."
+    },
+    "00650410": {
+      "suggested_name": "InitShaderConstants",
+      "confidence": "medium",
+      "evidence": "Chamado após CreateAllShaders. Provável set de constantes de shader (matrizes, vetores)."
+    },
+    "006616d0": {
+      "suggested_name": "InitShaderTextures",
+      "confidence": "medium",
+      "evidence": "Chamado após CreateAllShaders. Provável bind de texturas iniciais aos shaders."
+    },
+    "0064d940": {
+      "suggested_name": "LoadMeshFromX",
+      "confidence": "high",
+      "evidence": "D3DXLoadMeshHierarchyFromXInMemory com flag D3DXMESH_MANAGED (0x220). Aloca buffer, lê resource, carrega hierarchy, retorna frame_root em out+8."
+    },
+    "00658260": {
+      "suggested_name": "InitDirectInput",
+      "confidence": "high",
+      "evidence": "DirectInput8Create(hinstance, 0x800=DIRECTINPUT_VERSION, &IID_IDirectInput8, &out)."
+    },
+    "00658410": {
+      "suggested_name": "InitKeyboard",
+      "confidence": "high",
+      "evidence": "CreateDevice(GUID_SysKeyboard) + SetCooperativeLevel + SetDataFormat. Usa DirectInput vtable+0xc, +0x2c, +0x34."
+    },
+    "00658550": {
+      "suggested_name": "InitMouseOrJoystick",
+      "confidence": "medium",
+      "evidence": "Cria outro DirectInput device com callback FUN_00658740 (SetEventNotification). Provável mouse ou joystick."
+    },
+    "00661ad0": {
+      "suggested_name": "InitAudio",
+      "confidence": "medium",
+      "evidence": "CoCreateInstance com IIDs em 0x006ab884/0x006ab894 + chamada vtable+0x28. Provável DirectMusic ou Miles Sound System."
+    },
+    "006580a0": {
+      "suggested_name": "WorkerThread",
+      "confidence": "medium",
+      "evidence": "Thread function com loop polling DAT_006d18cc (provável sound mixer). CoInitialize no início."
+    },
+    "00667050": {
+      "suggested_name": "CreateRenderSyncEvent",
+      "confidence": "medium",
+      "evidence": "CreateEventA + armazena em global. Provável sync entre threads de render."
+    },
+    "00657c80": {
+      "suggested_name": "InitScene",
+      "confidence": "medium",
+      "evidence": "Recebe scene_param e inicializa cena. Modifica param_1+0x60 (contador de fade?) e chama ClearScreen com cores de fade."
+    },
+    "00650d50": {
+      "suggested_name": "ClearScreen",
+      "confidence": "high",
+      "evidence": "Provável device->Clear com cor ARGB. Chamado com 0xff000000 (preto) no EngineInit. Também chamado com cores de fade em InitScene."
+    },
+    "006553e0": {
+      "suggested_name": "ShowD3DError",
+      "confidence": "high",
+      "evidence": "MessageBox de erro D3D. Usado em 5+ pontos de InitD3D/CreateAllShaders."
+    },
+    "006583f0": {
+      "suggested_name": "ShowInputError",
+      "confidence": "high",
+      "evidence": "MessageBox de erro DirectInput. Paralelo a ShowD3DError."
+    },
+    "00661cf0": {
+      "suggested_name": "ShowAudioError",
+      "confidence": "high",
+      "evidence": "MessageBox de erro áudio. Paralelo a ShowD3DError/ShowInputError."
+    },
+    "0065d0c0": {
+      "suggested_name": "InitTimer",
+      "confidence": "medium",
+      "evidence": "Recebe timeGetTime() no EngineInit. Provável init de timer base para game loop."
+    },
+    "00655450": {
+      "suggested_name": "PreInitSetup",
+      "confidence": "low",
+      "evidence": "Chamado antes de InitD3D com hwnd/hinstance. Pouca info sem decompilar."
+    }
+  },
+  "_d3d_constants_confirmed": {
+    "D3D_SDK_VERSION": "0x20",
+    "D3DCREATE_HARDWARE_VERTEXPROCESSING": "0x40",
+    "D3DCREATE_SOFTWARE_VERTEXPROCESSING": "0x20",
+    "D3DCREATE_MULTITHREADED": "0x04",
+    "D3DFMT_D16": "0x50",
+    "D3DPRESENT_INTERVAL_DEFAULT": "0x02",
+    "D3DPRESENT_RATE_DEFAULT": "0x80000000",
+    "D3DSWAPEFFECT_DISCARD": "0x01",
+    "D3DXMESH_MANAGED": "0x220",
+    "DIRECTINPUT_VERSION": "0x800"
+  },
+  "_shader_blob_addresses": {
+    "006a5f68": 3499,
+    "006a6cd8": 3640,
+    "006a7b10": 812,
+    "006a7e40": 1964,
+    "006a85f0": 1744,
+    "006a8cc0": 1920,
+    "006a9440": 1932,
+    "note": "+ 3 more shaders (total 10), addresses not yet extracted"
+  },
+  "_render_pipeline_architecture": "EngineInit → InitD3D (3-fallback) → InitShaders (10 effects) → InitDirectInput → InitKeyboard → InitMouseOrJoystick → InitAudio → WorkerThread → CreateRenderSyncEvent → InitScene",
+  "_open_questions": [
+    "Onde fica o render loop principal? (BeginScene/EndScene/Present não encontrados ainda)",
+    "Quais render states são setados em SetupRenderStates (FUN_00654f00)?",
+    "Qual sistema de áudio exato? (DirectMusic vs Miles Sound System)",
+    "Worker thread (FUN_006580a0) faz mixing de áudio ou outra coisa?"
+  ],
+  "_next_steps_for_agent_local": [
+    "Promover as 12 sugestões high confidence para symbols/functions.json",
+    "Buscar callers de ClearScreen (FUN_00650d50) para achar render loop",
+    "Decompilar SetupRenderStates (FUN_00654f00) para listar render states",
+    "Decompilar WorkerThread (FUN_006580a0) completo"
+  ]
+}
