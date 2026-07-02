@@ -3,6 +3,11 @@
 // Original: FUN_0065d150
 // Suggested: GetRandomNumber (confidence: medium)
 // Status:   suggested — name kept as comment until reviewed
+// NOTE: agent:extraction suggested 'GetRandomNumber'. agent:local identifies o algoritmo
+// especificamente como Mersenne Twister (MT19937): state de 624 words (DAT_006d31d0[0x26f]),
+// seeding via index DAT_006b77bc, constantes 0x80000000/0x7fffffff para twist, tempering (shifts
+// 0xb/0x13a58ad/0x1df8c/0xf/0x12). Sugeriu 'MersenneTwisterRand'. 'GetRandomNumber' é correto;
+// 'MersenneTwisterRand' documenta o algoritmo. Operador decide o nível de detalhe.
 // ============================================
 
 /* WARNING: Globals starting with '_' overlap smaller symbols at the same address */

@@ -3,6 +3,10 @@
 // Original: FUN_00408050
 // Suggested: InitPlayerSlot (confidence: medium)
 // Status:   suggested — name kept as comment until reviewed
+// NOTE: agent:extraction suggested 'InitPlayerSlot'. agent:local suggests 'LoadPlayerPortraits' —
+// FUN_00408050 carrega 3 BMPs por slot ('data/select/w%02d.bmp', 'cos%02d.bmp', '%02d.bmp') via
+// wsprintfA + LoadResourceChecked (FUN_006560c0). 'InitPlayerSlot' foca no slot;
+// 'LoadPlayerPortraits' foca na ação. Operador decide.
 // ============================================
 
 void __thiscall FUN_00408050(int param_1, int param_2, undefined4 param_3)

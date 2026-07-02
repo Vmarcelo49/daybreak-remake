@@ -1,7 +1,7 @@
 // ============================================
 // Address:  0x006585f0
 // Original: FUN_006585f0
-// Suggested: UpdateInputState (confidence: low)
+// Suggested: UpdateInputState (confidence: high)
 // Status:   suggested — name kept as comment until reviewed
 // ============================================
 

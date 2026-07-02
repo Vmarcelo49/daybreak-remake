@@ -1,7 +1,7 @@
 // ============================================
 // Address:  0x00406850
 // Original: FUN_00406850
-// Suggested: UpdateCharacterSelect (confidence: medium)
+// Suggested: UpdateCharacterSelect (confidence: high)
 // Status:   suggested — name kept as comment until reviewed
 // ============================================
 

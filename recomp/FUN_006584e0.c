@@ -1,7 +1,7 @@
 // ============================================
 // Address:  0x006584e0
 // Original: FUN_006584e0
-// Suggested: UpdateInput (confidence: low)
+// Suggested: UpdateInput (confidence: high)
 // Status:   suggested — name kept as comment until reviewed
 // ============================================
 

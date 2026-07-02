@@ -3,6 +3,10 @@
 // Original: FUN_00648f30
 // Suggested: LoadStage (confidence: medium)
 // Status:   suggested — name kept as comment until reviewed
+// NOTE: agent:extraction suggested 'LoadStage'. agent:local suggests 'LoadTeamScenario' —
+// FUN_00648f30 carrega 'data/scenario/team%02d.dat', faz shuffle Fisher-Yates de 6 entries (usando
+// FUN_0065d150 = Mersenne Twister) e seta stats de team (100/100/100/100 em +0x4b90..+0x4b9c).
+// 'LoadStage' é genérico mas não errado; 'LoadTeamScenario' é mais específico. Operador decide.
 // ============================================
 
 /* WARNING: Function: __security_check_cookie replaced with injection: security_check_cookie */
