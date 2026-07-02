@@ -89,7 +89,7 @@ daybreak-decomp/
 │       ├── anti_debug.txt
 │       ├── iocs.txt
 │       └── FASE12_REPORT.md
-└── 01_*.txt — 06_*.txt
+└── extraction_phases/            # dados brutos das fases 1-6 (01_*.txt — 06_*.txt)
 ```
 
 ## Túnel MCP — pode ser fechado

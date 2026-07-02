@@ -12,12 +12,12 @@ This repo contains the **reverse-engineering artifacts** produced via Ghidra + G
 | [`PROGRESSO.md`](PROGRESSO.md) | Live status of the ongoing work |
 | [`RELATORIO_COMPLETO.md`](RELATORIO_COMPLETO.md) | Consolidated final report (312 lines) |
 | [`decompiled/`](decompiled/) | 106 individual `.c` files (one per decompiled function) |
-| `01_*.txt` | Phase 1 — Reconnaissance (entry, segments, imports, strings) |
-| `02_*.txt` | Phase 2 — Function mapping (all 4,092 functions) |
-| `03_*.{txt,json}` | Phase 3 — Prioritization (86 key functions) |
-| `04_*.json` | Phase 4 — Batch decompile progress |
-| `05_*.txt` | Phase 5 — Call graph analysis |
-| `06_*.txt` | Phase 5b — Top hubs/dispatchers decompiled |
+| [`extraction_phases/`](extraction_phases/) | Raw dumps from extraction phases 1–6 |
+| ↳ `01_*.txt` | Phase 1 — Reconnaissance (entry, segments, imports, strings) |
+| ↳ `02_*.txt` | Phase 2 — Function mapping (all 4,092 functions) |
+| ↳ `03_*.txt` | Phase 3 — Prioritization (86 key functions) |
+| ↳ `05_*.txt` | Phase 5 — Call graph analysis |
+| ↳ `06_*.txt` | Phase 5b — Top hubs/dispatchers decompiled |
 
 ## Target summary
 

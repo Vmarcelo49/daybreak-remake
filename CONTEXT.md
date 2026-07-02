@@ -74,7 +74,7 @@ daybreak-decomp/
 │   ├── segments/                  (⚠️ só Headers.bin — faltam .text/.rdata/.data)
 │   └── *.txt                      (imports, exports, globals, etc.)
 │
-└── 01_*.txt — 06_*.txt            (dados brutos das fases 1-6)
+└── extraction_phases/            (dados brutos das fases 1-6: 01_*.txt — 06_*.txt)
 ```
 
 ## 5. Pipelines disponíveis
@@ -107,7 +107,7 @@ git config core.sshCommand "python3 /home/z/my-project/FileVault/shared/ssh.py -
 git push origin main
 ```
 
-Push direto na `main` aceito apenas para: `decompiled/`, `binary_data/`, `symbols/`, `progress/`, `*.md`, `NN_*.txt`.
+Push direto na `main` aceito apenas para: `decompiled/`, `binary_data/`, `symbols/`, `progress/`, `extraction_phases/`, `*.md`.
 **Nunca** commitar: `recomp/*.c` (gerado), chaves, `.env`, `*.full.json`.
 
 ## 6. Funções-chave já identificadas

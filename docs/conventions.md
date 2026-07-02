@@ -72,7 +72,7 @@
 - ✅ `binary_data/*`
 - ✅ `symbols/*.json` (com revisão humana)
 - ✅ `progress/*`
-- ✅ `*.md`, `NN_*.txt`
+- ✅ `*.md`, `extraction_phases/*.txt`
 - ❌ `recomp/*.c` — commit apenas via `tools/generate_recomp.py` (commit automático) ou PR manual após revisão
 
 ## 7. Branches

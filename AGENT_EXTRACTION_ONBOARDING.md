@@ -182,7 +182,7 @@ docs: update PLANO.md — Fase 9 completed
 - ✅ `binary_data/*` (todos os dumps do MCP)
 - ✅ `symbols/*.json` (suas sugestões)
 - ✅ `progress/*`
-- ✅ `*.md`, `NN_*.txt`
+- ✅ `*.md`, `extraction_phases/*.txt`
 - ❌ `recomp/*.c` (build output)
 
 ## 8. Quando extrair dados novos para `binary_data/`

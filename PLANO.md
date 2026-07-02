@@ -73,7 +73,7 @@ tdb     : 0xffdff000 - 0xffdfffff   (TIB/TEB)
 
 ### Fase 1 — Reconhecimento ✅
 - [x] Entry points, segmentos, exports, imports, strings
-- **Arquivos**: `01_*.txt`, `binary_data/{imports,exports,entry_points,segments_list}.txt`
+- **Arquivos**: `extraction_phases/01_*.txt`, `binary_data/{imports,exports,entry_points,segments_list}.txt`
 
 ### Fase 2 — Mapeamento ✅
 - [x] Listar todas as 4,092 funções com flags (thunk/external)
@@ -272,7 +272,7 @@ Ver `docs/conventions.md` seção 6 para detalhes. Resumo:
 - ✅ `binary_data/*`
 - ✅ `symbols/*.json` (com revisão humana)
 - ✅ `progress/*`
-- ✅ `*.md`, `NN_*.txt`
+- ✅ `*.md`, `extraction_phases/*.txt`
 - ❌ `recomp/*.c` — commit apenas via `tools/generate_recomp.py` ou PR manual
 
 ---
@@ -322,7 +322,7 @@ daybreak-decomp/
 │   ├── segments/                  (Headers.bin + lista)
 │   └── *.txt                      (imports, exports, globals, etc.)
 │
-├── 01_*.txt — 06_*.txt            (dados brutos das fases 1-6)
+├── extraction_phases/            (dados brutos das fases 1-6: 01_*.txt — 06_*.txt)
 └── .chunks/                       (ignorado — workdir do FileVault)
 ```
 

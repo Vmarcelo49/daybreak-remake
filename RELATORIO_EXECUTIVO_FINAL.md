@@ -226,7 +226,7 @@ daybreak-decomp/
 │   ├── anti_analysis/             # Fase 12 (binário limpo)
 │   └── *.txt                      # imports, exports, globals, etc.
 │
-└── 01_*.txt — 06_*.txt            # dados brutos das fases 1-6
+└── extraction_phases/            # dados brutos das fases 1-6 (01_*.txt — 06_*.txt)
 ```
 
 ## 9. Conclusão
