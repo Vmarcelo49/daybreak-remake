@@ -15,6 +15,8 @@ set(MVP_SOURCES
     src/scene_title.c
     src/scene_manager.c
     src/scene_stubs.c
+    src/dat_archive.c
+    src/texture_loader.c
 )
 
 include_directories(${CMAKE_SOURCE_DIR}/include)
@@ -87,6 +89,13 @@ add_custom_command(TARGET daybreak_mvp POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_SOURCE_DIR}/shaders $<TARGET_FILE_DIR:daybreak_mvp>/shaders
     || true  # ignore if shaders dir is empty
+)
+
+# Copy data assets to build dir (synthetic BMPs for testing)
+add_custom_command(TARGET daybreak_mvp POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/data $<TARGET_FILE_DIR:daybreak_mvp>/data
+    || true  # ignore if data dir is empty
 )
 
 message(STATUS "")

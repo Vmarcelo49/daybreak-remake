@@ -115,6 +115,11 @@ int  SceneManager_Update(EngineState *state, const uint8_t keys[256]);
 void SceneManager_Render(EngineState *state);
 int  SceneManager_GetCurrentScene(void);
 
+/* texture_loader.c — MVP+3 D3D texture loading */
+IDirect3DTexture9 *LoadTextureFromFile(EngineState *state, const char *path);
+void ReleaseTexture(IDirect3DTexture9 *texture);
+void GetTextureSize(IDirect3DTexture9 *texture, uint32_t *width, uint32_t *height);
+
 /* ============================================================
  * Error reporting (used by all modules)
  * ============================================================ */
