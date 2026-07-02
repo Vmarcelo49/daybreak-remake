@@ -24,7 +24,7 @@ Ver `progress/coverage.json` (gerado por `tools/coverage_report.py`).
 daybreak-decomp/
 ├── PLANO.md                       (extração/análise — rev 3)
 ├── PLANO_RECOMP.md                (pipeline de recomposição)
-├── AGENT_HANDOFF.md               (instruções para segundo agente)
+├── AGENT_LOCAL_ONBOARDING.md / AGENT_EXTRACTION_ONBOARDING.md               (instruções para segundo agente)
 ├── PROGRESSO.md                   (este arquivo)
 ├── RELATORIO_COMPLETO.md
 ├── INDEX.md / INDEX.json          (gerados pelo CI)
@@ -59,4 +59,4 @@ daybreak-decomp/
 | 3 | Operador | Promover suggested → reviewed após análise |
 | 4 | Ambos | Fase 11: análise de multiplayer/network |
 
-Ver `AGENT_HANDOFF.md` para instruções detalhadas do segundo agente.
+Ver `AGENT_LOCAL_ONBOARDING.md / AGENT_EXTRACTION_ONBOARDING.md` para instruções detalhadas do segundo agente.

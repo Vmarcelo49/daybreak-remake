@@ -284,7 +284,7 @@ daybreak-decomp/
 ├── README.md
 ├── PLANO.md                       (este arquivo — extração/análise)
 ├── PLANO_RECOMP.md                (pipeline de recomposição)
-├── AGENT_HANDOFF.md               (instruções para segundo agente Super Z)
+├── AGENT_LOCAL_ONBOARDING.md / AGENT_EXTRACTION_ONBOARDING.md               (instruções para segundo agente Super Z)
 ├── PROGRESSO.md                   (status em tempo real)
 ├── RELATORIO_COMPLETO.md          (relatório final consolidado)
 ├── INDEX.md / INDEX.json          (gerados pelo GitHub Action)
