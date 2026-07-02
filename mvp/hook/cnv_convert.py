@@ -155,10 +155,9 @@ def convert_image_cnv(data):
         for i in range(256):
             bmp += bytes([i, i, i, 0])
     
-    # Pixel data — .cnv is top-down, BMP is bottom-up
-    # Flip rows vertically
+    # Pixel data — CNV is bottom-up (same as BMP), copy directly
     src_row_size = width * bytes_per_pixel
-    for row in range(height - 1, -1, -1):
+    for row in range(height):
         row_data = pixel_data[row * src_row_size:(row + 1) * src_row_size]
         # Pad row if needed
         if len(row_data) < row_size:

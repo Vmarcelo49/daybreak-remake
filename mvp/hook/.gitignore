@@ -13,3 +13,4 @@ Makefile
 # Allow these committed binaries
 !daybreak_hook.dll
 !daybreak_launcher.exe
+test_repack.dat
