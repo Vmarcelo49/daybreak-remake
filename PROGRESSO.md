@@ -128,3 +128,42 @@ URL atual: `https://jewel-illustrations-have-willing.trycloudflare.com` (pode en
 | 3 | Operador | Revisar e promover as sugestões para `reviewed` |
 
 **Nota**: Este trabalho foi feito 100% offline, sem MCP. As sugestões estão em arquivo separado (`candidates.json`) para NÃO conflitar com o trabalho do agente local em `symbols/functions.json`.
+
+---
+
+## Fase 11b — Mapeamento do Menu de Multiplayer (CONCLUÍDA)
+
+**Função chave**: `FUN_00412ac0` (NetworkMenuDispatcher) — switch de 10 cases
+**Resultado**: identifiquei TODO o fluxo de UI de multiplayer
+
+### 10 cases do NetworkMenuDispatcher mapeados
+
+| Case | Nome | Função |
+|------|------|--------|
+| 0 | MainMenu | Seleção de modo (host/client/char/stage/settings/back) |
+| 1 | SubMenu | Submenu genérico |
+| 2 | CharacterSelect | Seleção de personagem (16 chars × 5 sub-modes, 8 slots) |
+| 3 | StageSelect | Seleção de stage (1-9) |
+| 4 | PortConfig | Configura porta (5 dígitos, máx 65535) |
+| 5 | ClientIPEntry | Entrada de IP (4 octetos × 3 dígitos) |
+| 6 | ServerSelectFromList | Seleção de server salvo (parse 'host:port') |
+| 7 | Connecting | Aguardando conexão (timeout 1800 ticks ~15s) |
+| 8 | ConnectionSuccess | Pós-conexão |
+| 9 | SettingsToggle | Toggle de config |
+
+### 10 novas funções identificadas (adicionadas a candidates.json)
+
+- `NetworkMenuDispatcher` (00412ac0) — high
+- `ConnectToServer` (0065f9e0) — high
+- `SaveConfigFile` (006488d0) — high (descobriu `config.dat`!)
+- `LoadConfigFile` (006486c0) — high
+- `AbsInt` (0066b65c) — high
+- `WcslenWrapper` (0066cec4) — high
+- `SetNetworkMessageCallback` (0065f780) — medium
+- `CancelPendingConnection` (0065fae0) — medium
+- `InitChatUI` (00645840) — medium (carrega data/chat/*.bmp)
+- `CheckConnectionSuccess` (004146e0) — medium
+
+### Total acumulado: 26 sugestões (21 high, 5 medium)
+
+Ver `binary_data/network_analysis/FASE11B_REPORT.md` para detalhes.

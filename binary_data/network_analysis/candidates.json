@@ -3,7 +3,7 @@
   "_description": "Candidatas a função de rede identificadas pela Fase 11. NÃO edita symbols/functions.json — este arquivo é input para o agente local promover sugestões depois.",
   "_generated_by": "agent:extraction",
   "_generated_at": "2026-07-02T00:00:00Z",
-  "_total_candidates": 27,
+  "_total_candidates": 37,
   "_cluster_range": "0x0065f180 - 0x00660fc0",
   "_networking_library": "DirectPlay 8 (COM-based, via CoCreateInstance)",
   "_evidence": [
@@ -151,5 +151,91 @@
     "Decompilar FUN_0065f1xx-FUN_0065f6xx (provável lobby/address setup)",
     "Confirmar IID/CLSID lendo bytes em 0x006ab7e4-0x006ab844",
     "Buscar callers de InitDirectPlayClient/Server para entender cena que inicia modo multiplayer"
-  ]
+  ],
+  "_fase11b_additions": {
+    "_description": "10 novas funções identificadas na Fase 11b (NetworkMenuDispatcher analysis)",
+    "00412ac0": {
+      "suggested_name": "NetworkMenuDispatcher",
+      "confidence": "high",
+      "evidence": "Switch 10 cases (0-9) que implementa todo o fluxo de menu de multiplayer. Chama InitDirectPlayClient/Server, HostSession, ConnectToServer. Mantém estado em param_1+0x1088 (case atual), +0x1070 (submenu), +0x18b8 (timeout counter)."
+    },
+    "0065f9e0": {
+      "suggested_name": "ConnectToServer",
+      "confidence": "high",
+      "evidence": "Seta 'port' + 'hostname' + 'Session' no IDirectPlay8Client e chama Connect via vtable+0x1c. Chamado em NetworkMenuDispatcher cases 5 e 6 após IP entry."
+    },
+    "0065f780": {
+      "suggested_name": "SetNetworkMessageCallback",
+      "confidence": "medium",
+      "evidence": "Seta callback em param_1+0x6c dentro de critical section. Provável registration de handler de mensagens custom."
+    },
+    "0065fae0": {
+      "suggested_name": "CancelPendingConnection",
+      "confidence": "medium",
+      "evidence": "Chama vtable+0x18 com param_1[0x21] — provável CancelAsyncOperation do DirectPlay."
+    },
+    "0066b65c": {
+      "suggested_name": "AbsInt",
+      "confidence": "high",
+      "evidence": "Body: if (param_1 < 0) param_1 = -param_1; return param_1; — wrapper de abs() para input."
+    },
+    "0066cec4": {
+      "suggested_name": "WcslenWrapper",
+      "confidence": "high",
+      "evidence": "Loop contando shorts até null — implementação de wcslen para wide strings."
+    },
+    "006488d0": {
+      "suggested_name": "SaveConfigFile",
+      "confidence": "high",
+      "evidence": "CreateFileA('config.dat', GENERIC_WRITE) + WriteFile em múltiplos offsets. Chamado após mudanças de config em network menu."
+    },
+    "006486c0": {
+      "suggested_name": "LoadConfigFile",
+      "confidence": "high",
+      "evidence": "CreateFileA('config.dat', GENERIC_READ) + ReadFile. Carrega config salva (incluindo IP/porta/char selection)."
+    },
+    "00645840": {
+      "suggested_name": "InitChatUI",
+      "confidence": "medium",
+      "evidence": "Carrega data/chat/chat.bmp, name_p1.bmp, name_p2.bmp — UI de chat para multiplayer. Chamado após conexão bem-sucedida."
+    },
+    "004146e0": {
+      "suggested_name": "CheckConnectionSuccess",
+      "confidence": "medium",
+      "evidence": "Retorna *(param_1 + 0x74) — flag de 'conectado' setada pelo callback ClientMessageHandler."
+    }
+  },
+  "_fase11b_summary": {
+    "network_menu_function": "0x00412ac0 (NetworkMenuDispatcher)",
+    "10_cases_mapped": {
+      "0": "MainMenu (6 opções: host/client/char/stage/settings/back)",
+      "1": "SubMenu genérico",
+      "2": "CharacterSelect (16 chars × 5 sub-modes, 8 player slots)",
+      "3": "StageSelect (1-9)",
+      "4": "PortConfig (5 dígitos, máx 65535)",
+      "5": "ClientIPEntry (4 octetos × 3 dígitos)",
+      "6": "ServerSelectFromList (parse 'host:port')",
+      "7": "Connecting (timeout 1800 ticks ~15s)",
+      "8": "ConnectionSuccess",
+      "9": "SettingsToggle"
+    },
+    "config_file": "config.dat (persiste IP/porta/char selection)",
+    "max_players": 8,
+    "connection_timeout_ticks": 1800,
+    "input_globals": {
+      "0x006cae94": "joystick X (input horizontal)",
+      "0x006cae98": "joystick Y (input vertical)",
+      "0x006cae9c": "botão confirm",
+      "0x006caea0": "botão cancel"
+    },
+    "network_state_globals": {
+      "0x006cfdb0": "mode flag (0=single, 1=host aguardando, 2=conectado)",
+      "0x006cfdb8": "char selection por slot [8]",
+      "0x006cfdc0": "active slots bitmask (8 bits)",
+      "0x006cfdc1-4": "IP address (4 octets)",
+      "0x006cfdc5": "stage selecionado",
+      "0x006cfdc6": "porta de rede (ushort)",
+      "0x006cfdc8": "settings toggle"
+    }
+  }
 }
