@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00669d2c
 // Original: D3DXFrameDestroy
-// Status:   unreviewed
+// Suggested: D3DXFrameDestroy (confidence: high)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 void D3DXFrameDestroy(void)

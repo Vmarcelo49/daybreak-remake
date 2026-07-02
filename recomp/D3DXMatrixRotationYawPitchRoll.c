@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00669d20
 // Original: D3DXMatrixRotationYawPitchRoll
-// Status:   unreviewed
+// Suggested: D3DXMatrixRotationYawPitchRoll (confidence: high)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 void D3DXMatrixRotationYawPitchRoll(void)

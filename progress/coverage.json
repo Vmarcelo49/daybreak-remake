@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-07-02T03:29:00+00:00",
+  "generated_at": "2026-07-02T03:34:52+00:00",
   "total_functions_in_binary": 4092,
   "total_in_decompiled": 3191,
   "decompilation_coverage_percent": 77.98,
   "functions_named_reviewed_or_locked": 4,
-  "functions_with_suggestion": 22,
-  "functions_unreviewed": 3143,
+  "functions_with_suggestion": 47,
+  "functions_unreviewed": 3118,
   "functions_stale": 0,
   "review_coverage_percent": 0.13,
-  "suggestion_coverage_percent": 0.81,
+  "suggestion_coverage_percent": 1.6,
   "hot_spots": [
     {
       "symbol": "FUN_00401000",

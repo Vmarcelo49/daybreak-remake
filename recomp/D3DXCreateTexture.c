@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00669d4a
 // Original: D3DXCreateTexture
-// Status:   unreviewed
+// Suggested: D3DXCreateTexture (confidence: high)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 void D3DXCreateTexture(void)

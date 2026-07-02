@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00669cea
 // Original: D3DXMatrixRotationX
-// Status:   unreviewed
+// Suggested: D3DXMatrixRotationX (confidence: high)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 void D3DXMatrixRotationX(void)

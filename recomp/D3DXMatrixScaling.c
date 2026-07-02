@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00669cd2
 // Original: D3DXMatrixScaling
-// Status:   unreviewed
+// Suggested: D3DXMatrixScaling (confidence: high)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 void D3DXMatrixScaling(void)

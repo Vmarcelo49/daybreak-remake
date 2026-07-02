@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00669cf0
 // Original: D3DXMatrixTranslation
-// Status:   unreviewed
+// Suggested: D3DXMatrixTranslation (confidence: high)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 void D3DXMatrixTranslation(void)

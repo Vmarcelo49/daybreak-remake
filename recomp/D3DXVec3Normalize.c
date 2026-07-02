@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00669cfc
 // Original: D3DXVec3Normalize
-// Status:   unreviewed
+// Suggested: D3DXVec3Normalize (confidence: high)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 void D3DXVec3Normalize(void)

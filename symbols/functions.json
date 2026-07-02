@@ -375,16 +375,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669cd2": {
-      "suggested_name": "FUN_00669cd2",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXMatrixScaling",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXMatrixScaling.c",
       "signature_hash": "c20a5e79b0ece4eb",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "matrix",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixScaling). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "0065a090": {
       "suggested_name": "FUN_0065a090",
@@ -1011,16 +1018,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669cea": {
-      "suggested_name": "FUN_00669cea",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXMatrixRotationX",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXMatrixRotationX.c",
       "signature_hash": "525ddcc9f1cf1611",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "matrix",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixRotationX). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "0042d980": {
       "suggested_name": "FUN_0042d980",
@@ -1107,16 +1121,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669d02": {
-      "suggested_name": "FUN_00669d02",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXGetFVFVertexSize",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXGetFVFVertexSize.c",
       "signature_hash": "eea75d3f9548e03e",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "mesh",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXGetFVFVertexSize). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "00667820": {
       "suggested_name": "FUN_00667820",
@@ -1683,16 +1704,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669d4a": {
-      "suggested_name": "FUN_00669d4a",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXCreateTexture",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXCreateTexture.c",
       "signature_hash": "880e73165399b9b6",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "texture",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXCreateTexture). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "00415dc0": {
       "suggested_name": "FUN_00415dc0",
@@ -4443,16 +4471,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669d50": {
-      "suggested_name": "FUN_00669d50",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXMatrixRotationAxis",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXMatrixRotationAxis.c",
       "signature_hash": "79087c674193e94f",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "matrix",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixRotationAxis). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "00685030": {
       "suggested_name": "FUN_00685030",
@@ -4719,16 +4754,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669cf0": {
-      "suggested_name": "FUN_00669cf0",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXMatrixTranslation",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXMatrixTranslation.c",
       "signature_hash": "765af52fe85f5749",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "matrix",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixTranslation). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "004270d0": {
       "suggested_name": "FUN_004270d0",
@@ -8433,16 +8475,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669d26": {
-      "suggested_name": "FUN_00669d26",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXLoadMeshHierarchyFromXInMemory",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXLoadMeshHierarchyFromXInMemory.c",
       "signature_hash": "1bc3b202f39e0536",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "mesh",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXLoadMeshHierarchyFromXInMemory). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "00425ae0": {
       "suggested_name": "FUN_00425ae0",
@@ -8755,16 +8804,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669ce4": {
-      "suggested_name": "FUN_00669ce4",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXMatrixRotationY",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXMatrixRotationY.c",
       "signature_hash": "e0bdc1c05599424b",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "matrix",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixRotationY). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "00647130": {
       "suggested_name": "FUN_00647130",
@@ -10051,16 +10107,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669d44": {
-      "suggested_name": "FUN_00669d44",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXMatrixLookAtLH",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXMatrixLookAtLH.c",
       "signature_hash": "7696cf1c654e063b",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "matrix",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixLookAtLH). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "00698d10": {
       "suggested_name": "FUN_00698d10",
@@ -11364,16 +11427,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669d14": {
-      "suggested_name": "FUN_00669d14",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXMatrixRotationZ",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXMatrixRotationZ.c",
       "signature_hash": "37ab192511492b58",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "matrix",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixRotationZ). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "00679240": {
       "suggested_name": "FUN_00679240",
@@ -11664,16 +11734,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669d38": {
-      "suggested_name": "FUN_00669d38",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXCreateEffect",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXCreateEffect.c",
       "signature_hash": "d5f60f1b3e7d83ee",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "texture",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXCreateEffect). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "006631f0": {
       "suggested_name": "FUN_006631f0",
@@ -14513,16 +14590,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669d32": {
-      "suggested_name": "FUN_00669d32",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXFrameFind",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXFrameFind.c",
       "signature_hash": "6524cc1dabb49319",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "mesh",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXFrameFind). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "00405200": {
       "suggested_name": "FUN_00405200",
@@ -17665,16 +17749,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669cd8": {
-      "suggested_name": "FUN_00669cd8",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXMatrixMultiply",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXMatrixMultiply.c",
       "signature_hash": "ee7bc86b9e6ef458",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "matrix",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixMultiply). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "0068bc30": {
       "suggested_name": "FUN_0068bc30",
@@ -19950,16 +20041,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669cf6": {
-      "suggested_name": "FUN_00669cf6",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXMatrixInverse",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXMatrixInverse.c",
       "signature_hash": "2c2a7f8a7727a69e",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "matrix",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixInverse). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "0064c2c0": {
       "suggested_name": "FUN_0064c2c0",
@@ -22743,16 +22841,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669d1a": {
-      "suggested_name": "FUN_00669d1a",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXVec2Normalize",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXVec2Normalize.c",
       "signature_hash": "205974375a1634d6",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "vector",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXVec2Normalize). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "00434cc0": {
       "suggested_name": "FUN_00434cc0",
@@ -22779,16 +22884,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669d08": {
-      "suggested_name": "FUN_00669d08",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXIntersect",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXIntersect.c",
       "signature_hash": "403b9ab79836a862",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "mesh",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXIntersect). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "00421010": {
       "suggested_name": "FUN_00421010",
@@ -25702,16 +25814,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669d0e": {
-      "suggested_name": "FUN_00669d0e",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXVec4Transform",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXVec4Transform.c",
       "signature_hash": "44505223cecbc9fe",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "vector",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXVec4Transform). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "0063b650": {
       "suggested_name": "FUN_0063b650",
@@ -27394,16 +27513,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669d2c": {
-      "suggested_name": "FUN_00669d2c",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXFrameDestroy",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXFrameDestroy.c",
       "signature_hash": "6eaa2919d6e6c2a9",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "mesh",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXFrameDestroy). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "006a0140": {
       "suggested_name": "FUN_006a0140",
@@ -29469,16 +29595,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669d3e": {
-      "suggested_name": "FUN_00669d3e",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXMatrixPerspectiveFovLH",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXMatrixPerspectiveFovLH.c",
       "signature_hash": "0a02c8a35a4a4e72",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "matrix",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixPerspectiveFovLH). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "00662890": {
       "suggested_name": "FUN_00662890",
@@ -30717,16 +30850,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669cde": {
-      "suggested_name": "FUN_00669cde",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXVec3Transform",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXVec3Transform.c",
       "signature_hash": "b36561c5cf3add53",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "vector",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXVec3Transform). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "0064f884": {
       "suggested_name": "FUN_0064f884",
@@ -31258,16 +31398,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669d20": {
-      "suggested_name": "FUN_00669d20",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXMatrixRotationYawPitchRoll",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXMatrixRotationYawPitchRoll.c",
       "signature_hash": "8c4fe42261dfd1b9",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "matrix",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixRotationYawPitchRoll). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "00663ff0": {
       "suggested_name": "FUN_00663ff0",
@@ -32022,16 +32169,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669d5c": {
-      "suggested_name": "FUN_00669d5c",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "Direct3DCreate9",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/Direct3DCreate9.c",
       "signature_hash": "f2fa2364c3c8026e",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "directx",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (Direct3DCreate9). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "00684e40": {
       "suggested_name": "FUN_00684e40",
@@ -34283,16 +34437,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669cfc": {
-      "suggested_name": "FUN_00669cfc",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXVec3Normalize",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXVec3Normalize.c",
       "signature_hash": "30cb2bbac8af0ffb",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "vector",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXVec3Normalize). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "00653c10": {
       "suggested_name": "FUN_00653c10",
@@ -34607,16 +34768,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669d56": {
-      "suggested_name": "FUN_00669d56",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "D3DXComputeNormals",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/D3DXComputeNormals.c",
       "signature_hash": "50156ffcad8cdc34",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "mesh",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (D3DXComputeNormals). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "0064c1e0": {
       "suggested_name": "FUN_0064c1e0",
@@ -36755,16 +36923,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00669d62": {
-      "suggested_name": "FUN_00669d62",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "DirectInput8Create",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/DirectInput8Create.c",
       "signature_hash": "cf27f881b0731f00",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:33:17+00:00",
+      "tags": [
+        "d3dx",
+        "directx",
+        "directx",
+        "microsoft-api"
+      ],
+      "justification": "Microsoft DirectX 9 utility function (DirectInput8Create). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
     },
     "0065f780": {
       "suggested_name": "FUN_0065f780",

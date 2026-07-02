@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00669d50
 // Original: D3DXMatrixRotationAxis
-// Status:   unreviewed
+// Suggested: D3DXMatrixRotationAxis (confidence: high)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 void D3DXMatrixRotationAxis(void)

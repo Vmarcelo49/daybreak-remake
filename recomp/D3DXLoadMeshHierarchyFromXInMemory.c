@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00669d26
 // Original: D3DXLoadMeshHierarchyFromXInMemory
-// Status:   unreviewed
+// Suggested: D3DXLoadMeshHierarchyFromXInMemory (confidence: high)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 void D3DXLoadMeshHierarchyFromXInMemory(void)

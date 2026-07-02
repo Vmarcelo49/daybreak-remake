@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00669d56
 // Original: D3DXComputeNormals
-// Status:   unreviewed
+// Suggested: D3DXComputeNormals (confidence: high)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 void D3DXComputeNormals(void)

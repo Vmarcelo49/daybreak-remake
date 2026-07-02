@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00669d38
 // Original: D3DXCreateEffect
-// Status:   unreviewed
+// Suggested: D3DXCreateEffect (confidence: high)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 void D3DXCreateEffect(void)
