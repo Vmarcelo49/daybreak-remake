@@ -14,6 +14,7 @@ set(MVP_SOURCES
     src/render_loop.c
     src/scene_title.c
     src/scene_manager.c
+    src/scene_stubs.c
 )
 
 include_directories(${CMAKE_SOURCE_DIR}/include)

@@ -63,6 +63,12 @@ bool EngineInit(EngineState *state, HWND hwnd, HINSTANCE hinstance,
         return false;
     }
 
+    /* 6.5 Init stub scenes font (used by Select/VS/Battle/Network stubs) */
+    extern bool InitStubScenes(EngineState *state);
+    if (!InitStubScenes(state)) {
+        /* Non-fatal — stubs will just show colored backgrounds */
+    }
+
     /* 7. InitMouseOrJoystick — SKIPPED in MVP */
 
     /* 8. InitAudio — SKIPPED in MVP (DirectMusic stub) */

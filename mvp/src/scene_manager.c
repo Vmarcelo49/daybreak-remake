@@ -52,69 +52,48 @@ extern void  ShutdownTitleScene(void);
 extern int   UpdateTitleScene(EngineState *state, const uint8_t keys[256]);
 extern void  RenderTitleScene(EngineState *state);
 
+/* Stub scene renderers — implemented in scene_stubs.c */
+extern bool  InitStubScenes(EngineState *state);
+extern void  ShutdownStubScenes(void);
+extern void  RenderSelectScene(EngineState *state);
+extern void  RenderVSScene(EngineState *state);
+extern void  RenderBattleScene(EngineState *state);
+extern void  RenderNetworkScene(EngineState *state);
+
 /* Stub scenes for unimplemented ones */
 static bool  StubInit(EngineState *state) { (void)state; return true; }
 static void  StubShutdown(void) {}
 static int   StubUpdate(EngineState *state, const uint8_t keys[256]) {
     (void)state;
     /* ESC handled in main loop; X goes back to title */
-    if (keys[DIK_X] & 0x80) return SCENE_TITLE;
-    return -1;
-}
-static void  StubRender(EngineState *state, const char *scene_name) {
-    if (!BeginScene(state)) return;
-    ClearScreen(state, COLOR_ARGB(0xff, 0x20, 0x20, 0x20));
-    /* Text rendering would go here */
-    EndSceneAndPresent(state);
-    (void)scene_name;
-}
-
-/* Select scene stub */
-static int SelectUpdate(EngineState *state, const uint8_t keys[256]) {
-    (void)state;
     static bool prev_x = false;
     bool x = (keys[DIK_X] & 0x80) != 0;
-    if (x && !prev_x) return SCENE_TITLE;
+    if (x && !prev_x) {
+        prev_x = x;
+        return SCENE_TITLE;
+    }
     prev_x = x;
     return -1;
 }
-static void SelectRender(EngineState *state) {
-    StubRender(state, "Select");
-}
 
-/* VS scene stub */
+/* VS scene — auto-advances after a delay */
 static int VSUpdate(EngineState *state, const uint8_t keys[256]) {
     (void)state;
-    return -1;
-}
-static void VSRender(EngineState *state) {
-    StubRender(state, "VS Loading");
-}
-
-/* Battle scene stub */
-static int BattleUpdate(EngineState *state, const uint8_t keys[256]) {
-    (void)state;
+    static int frame_count = 0;
     static bool prev_x = false;
     bool x = (keys[DIK_X] & 0x80) != 0;
-    if (x && !prev_x) return SCENE_TITLE;
+    if (x && !prev_x) {
+        prev_x = x;
+        frame_count = 0;
+        return SCENE_TITLE;
+    }
     prev_x = x;
+    frame_count++;
+    if (frame_count > 180) {  /* ~3 seconds at 60fps */
+        frame_count = 0;
+        return SCENE_BATTLE;
+    }
     return -1;
-}
-static void BattleRender(EngineState *state) {
-    StubRender(state, "Battle");
-}
-
-/* Network scene stub */
-static int NetworkUpdate(EngineState *state, const uint8_t keys[256]) {
-    (void)state;
-    static bool prev_x = false;
-    bool x = (keys[DIK_X] & 0x80) != 0;
-    if (x && !prev_x) return SCENE_TITLE;
-    prev_x = x;
-    return -1;
-}
-static void NetworkRender(EngineState *state) {
-    StubRender(state, "Network (stub — DirectPlay not ported)");
 }
 
 /* Scene table — indexed by SceneId */
@@ -122,19 +101,19 @@ static Scene g_scenes[] = {
     /* SCENE_TITLE (0) */
     { InitTitleScene, ShutdownTitleScene, UpdateTitleScene, RenderTitleScene },
     /* SCENE_SELECT (1) */
-    { StubInit, StubShutdown, SelectUpdate, SelectRender },
+    { StubInit, StubShutdown, StubUpdate, RenderSelectScene },
     /* SCENE_VS_LOAD (2) */
-    { StubInit, StubShutdown, VSUpdate, VSRender },
+    { StubInit, StubShutdown, VSUpdate, RenderVSScene },
     /* SCENE_BATTLE (3) */
-    { StubInit, StubShutdown, BattleUpdate, BattleRender },
+    { StubInit, StubShutdown, StubUpdate, RenderBattleScene },
     /* placeholder 4-6 */
     { StubInit, StubShutdown, StubUpdate, NULL },
     { StubInit, StubShutdown, StubUpdate, NULL },
     { StubInit, StubShutdown, StubUpdate, NULL },
     /* SCENE_CONNECT (7) */
-    { StubInit, StubShutdown, NetworkUpdate, NetworkRender },
+    { StubInit, StubShutdown, StubUpdate, RenderNetworkScene },
     /* SCENE_BATTLE_RUN (8) */
-    { StubInit, StubShutdown, BattleUpdate, BattleRender },
+    { StubInit, StubShutdown, StubUpdate, RenderBattleScene },
 };
 
 #define NUM_SCENES (sizeof(g_scenes) / sizeof(g_scenes[0]))

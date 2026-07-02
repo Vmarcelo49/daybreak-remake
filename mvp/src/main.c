@@ -143,6 +143,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     }
     ShutdownInput(&g_engine);
     DestroyAllShaders(&g_engine);
+    {
+        extern void ShutdownStubScenes(void);
+        ShutdownStubScenes();
+    }
 
     DestroyWindow(hwnd);
     UnregisterClassA(DAYBREAK_WINDOW_CLASS, hInstance);
