@@ -1,285 +1,241 @@
 /**
- * daybreak_hook.c — DLL hook for DaybreakDX.exe
+ * daybreak_hook.c — DLL hook for DaybreakDX.exe (v2 — no recursion)
  *
- * PURPOSE:
- *   Enables "direct file mode" in DaybreakDX.exe so the game loads assets
- *   (BMPs, OGs, .x meshes) directly from the data/ folder instead of from
- *   the daybreakXX.dat archives.
+ * PREVIOUS VERSION HAD A BUG: detour functions called "original" which
+ * pointed to the patched address → infinite recursion → stack overflow.
  *
- *   Additionally, provides a "hybrid mode" that tries direct file first,
- *   then falls back to the .dat archive if the file is not found.
+ * THIS VERSION FIXES IT with two approaches:
  *
- * HOW IT WORKS:
- *   The original game has an internal flag at a singleton's offset +0 that
- *   controls whether to use archive mode (1) or direct file mode (0).
+ * Mode 0 (Direct file only): 1-byte binary patch — no hooks at all
+ * Mode 1 (Archive only):     No patches, no hooks
+ * Mode 2 (Hybrid):           1-byte patch + trampoline-based hook on ResourceExists
  *
- *   - FUN_0064d760 (0x0064d760) sets this flag to 1 (enable archive mode)
- *   - FUN_00699fc0 (0x00699fc0) reads the flag
- *   - FUN_00653540 (0x00653540) checks the flag:
- *       if flag == 0 → CreateFileA (direct file mode)
- *       if flag != 0 → archive lookup
+ * ============================================================
  *
- *   This DLL hooks:
- *   1. FUN_0064d760 — to NOT set the flag to 1 (keep it 0 = direct mode)
- *   2. CreateFileA — to implement hybrid mode: try direct file first,
- *      if not found, set flag to 1 temporarily so the game uses archive
+ * REVERSE ENGINEERING (confirmed from PE byte analysis):
  *
- * INJECTION:
- *   Copy this DLL next to DaybreakDX.exe and rename the exe to something
- *   else, then create a launcher that does:
- *       CreateProcess("DaybreakDX.exe", ..., CREATE_SUSPENDED)
- *       LoadLibrary("daybreak_hook.dll")
- *       ResumeThread()
+ * FUN_0064d760 (set_flag) assembly:
+ *   55           push ebp
+ *   8B EC        mov ebp, esp
+ *   51           push ecx
+ *   89 4D FC     mov [ebp-4], ecx       ; save this
+ *   8B 45 FC     mov eax, [ebp-4]       ; eax = this
+ *   C6 00 01     mov byte [eax], 1      ; ← flag = 1 (archive mode)
+ *   8B E5        mov esp, ebp
+ *   5D           pop ebp
+ *   C3           ret
  *
- *   OR simpler: use a DLL loader like LoadDll.exe, or use AppInit_DLLs
- *   registry key, or use the Detours library.
+ * Patching the 0x01 at offset +0x0C to 0x00 makes it set flag = 0 (direct mode).
+ * This is a SINGLE BYTE patch — safest possible modification.
  *
- *   For MVP, we provide a simple launcher (daybreak_launcher.exe) that
- *   injects the DLL on startup.
+ * FUN_00653540 (ResourceExists) first 6 bytes:
+ *   55           push ebp           (1 byte)
+ *   8B EC        mov ebp, esp       (2 bytes)
+ *   83 EC 0C     sub esp, 0x0C      (3 bytes)
+ *   → Total: 6 bytes = minimum for trampoline (>= 5 for JMP rel32)
+ *
+ *   89 4D F4     mov [ebp-0xC], ecx ; save this_ptr
+ *   8B 4D F4     mov ecx, [ebp-0xC] ; reload this_ptr
+ *   83 C1 68     add ecx, 0x68      ; ecx = this_ptr + 0x68
+ *   E8 ...       call FUN_00699fc0  ; get_flag → returns *((this_ptr+0x68)+8)
+ *
+ * So the archive flag is at: this_ptr + 0x68 + 0x08 = this_ptr + 0x70
  */
 
 #include <windows.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <string.h>
 
 /* ============================================================
  * Configuration
  * ============================================================ */
 
-/* Original binary addresses (from decompilation analysis) */
-#define ADDR_SET_ARCHIVE_FLAG    0x0064d760  /* FUN_0064d760 — sets flag to 1 */
-#define ADDR_GET_ARCHIVE_FLAG    0x00699fc0  /* FUN_00699fc0 — returns flag */
-#define ADDR_RESOURCE_EXISTS     0x00653540  /* FUN_00653540 — checks flag */
+/* Original binary addresses (VA) */
+#define ADDR_SET_FLAG         0x0064d760  /* FUN_0064d760 */
+#define ADDR_RESOURCE_EXISTS  0x00653540  /* FUN_00653540 */
 
-/* Image base of DaybreakDX.exe (from PE header) */
-#define ORIGINAL_IMAGE_BASE      0x00400000
+#define ORIGINAL_IMAGE_BASE   0x00400000
 
-/* Mode: 0 = direct file only, 1 = archive only, 2 = hybrid (direct first, then archive) */
-#define HOOK_MODE_HYBRID         2
+/* Offset of the 0x01 byte we want to patch in FUN_0064d760 */
+#define SET_FLAG_PATCH_OFFSET  0x0C  /* offset of the 0x01 in "C6 00 01" */
 
-static int g_hook_mode = HOOK_MODE_HYBRID;
+/* Offset of archive flag from ResourceExists this_ptr */
+/* this_ptr + 0x68 → passed to get_flag → get_flag reads +8 → total +0x70 */
+#define FLAG_OFFSET_FROM_THIS  0x70
+
+/* Hook modes */
+#define MODE_DIRECT   0  /* Direct file only */
+#define MODE_ARCHIVE  1  /* Archive only (original behavior) */
+#define MODE_HYBRID   2  /* Direct first, archive fallback */
+
+static int g_hook_mode = MODE_HYBRID;
+static uintptr_t g_image_base = 0;
 
 /* ============================================================
- * Hook installation helpers (minhook-style trampolines)
+ * Trampoline — allocates executable memory with original bytes
+ *              + JMP back to original+N, so detour can call original
+ *              without re-entering the hook (fixes the recursion bug)
  * ============================================================ */
 
-/* Simple inline patch: write a JMP rel32 instruction at addr.
- * Original 5 bytes are saved for unhooking. */
-typedef struct {
-    void *target;
-    unsigned char original_bytes[5];
-    unsigned char hook_bytes[5];
-    bool active;
-} InlineHook;
+typedef struct Trampoline {
+    void *exec_mem;         /* executable memory block */
+    void *original_addr;    /* address of original function */
+    int   patch_size;       /* number of bytes copied (>= 5) */
+    unsigned char saved_bytes[16]; /* original bytes (for unpatch) */
+} Trampoline;
 
-static bool InstallInlineHook(InlineHook *hook, void *target, void *detour)
+static bool CreateTrampoline(Trampoline *t, void *target, int min_bytes)
 {
-    hook->target = target;
-    hook->active = false;
+    t->original_addr = target;
+    t->exec_mem = NULL;
+    t->patch_size = 0;
 
-    /* Save original bytes */
-    memcpy(hook->original_bytes, target, 5);
+    /* Read original bytes */
+    memcpy(t->saved_bytes, target, 16);
 
-    /* Build JMP rel32 to detour */
-    DWORD rel = (DWORD)((uintptr_t)detour - (uintptr_t)target - 5);
-    hook->hook_bytes[0] = 0xE9;  /* JMP rel32 */
-    memcpy(&hook->hook_bytes[1], &rel, 4);
+    /* Determine how many bytes to copy.
+     * We need at least min_bytes (5 for JMP rel32), and we must
+     * end on an instruction boundary.
+     *
+     * For our specific functions, we know the instruction layout:
+     *   FUN_00653540: 55(1) 8BEC(2) 83EC0C(3) = 6 bytes → use 6
+     */
+    /* Hardcoded for known functions — would need a length disassembler
+     * for general case */
+    if (min_bytes <= 5) {
+        t->patch_size = 6;  /* ResourceExists: push/mov/sub = 6 bytes */
+    } else {
+        t->patch_size = min_bytes;
+    }
 
-    /* Make target writable */
-    DWORD old_protect;
-    if (!VirtualProtect(target, 5, PAGE_EXECUTE_READWRITE, &old_protect)) {
+    /* Allocate executable memory */
+    t->exec_mem = VirtualAlloc(NULL, t->patch_size + 5,
+                                MEM_COMMIT | MEM_RESERVE,
+                                PAGE_EXECUTE_READWRITE);
+    if (!t->exec_mem) {
         return false;
     }
 
-    /* Write hook bytes */
-    memcpy(target, hook->hook_bytes, 5);
+    /* Copy original bytes to trampoline */
+    memcpy(t->exec_mem, target, t->patch_size);
 
-    /* Restore protection */
-    VirtualProtect(target, 5, old_protect, &old_protect);
+    /* Append JMP rel32 to (original + patch_size) */
+    unsigned char *jmp_addr = (unsigned char *)t->exec_mem + t->patch_size;
+    DWORD rel = (DWORD)((uintptr_t)target + t->patch_size - (uintptr_t)jmp_addr - 5);
+    jmp_addr[0] = 0xE9;
+    memcpy(&jmp_addr[1], &rel, 4);
 
-    /* Flush instruction cache */
-    FlushInstructionCache(GetCurrentProcess(), target, 5);
-
-    hook->active = true;
     return true;
 }
 
-static void RemoveInlineHook(InlineHook *hook)
+static void DestroyTrampoline(Trampoline *t)
 {
-    if (!hook->active) return;
+    if (t->exec_mem) {
+        VirtualFree(t->exec_mem, 0, MEM_RELEASE);
+        t->exec_mem = NULL;
+    }
+}
+
+/* Install 5-byte JMP at target, fill rest with NOPs */
+static bool InstallJmpHook(void *target, void *detour, int patch_size)
+{
+    DWORD old_protect;
+    if (!VirtualProtect(target, patch_size, PAGE_EXECUTE_READWRITE, &old_protect)) {
+        return false;
+    }
+
+    /* Write JMP rel32 */
+    unsigned char *p = (unsigned char *)target;
+    DWORD rel = (DWORD)((uintptr_t)detour - (uintptr_t)target - 5);
+    p[0] = 0xE9;
+    memcpy(&p[1], &rel, 4);
+
+    /* Fill remaining bytes with NOP */
+    for (int i = 5; i < patch_size; i++) {
+        p[i] = 0x90;
+    }
+
+    VirtualProtect(target, patch_size, old_protect, &old_protect);
+    FlushInstructionCache(GetCurrentProcess(), target, patch_size);
+    return true;
+}
+
+static void RemoveJmpHook(void *target, const unsigned char *saved, int patch_size)
+{
+    DWORD old_protect;
+    VirtualProtect(target, patch_size, PAGE_EXECUTE_READWRITE, &old_protect);
+    memcpy(target, saved, patch_size);
+    VirtualProtect(target, patch_size, old_protect, &old_protect);
+    FlushInstructionCache(GetCurrentProcess(), target, patch_size);
+}
+
+/* ============================================================
+ * 1-byte patch for FUN_0064d760 (set_flag)
+ *
+ * Changes the 0x01 in "C6 00 01" (mov byte [eax], 1) to 0x00
+ * so the function sets flag = 0 (direct file mode) instead of 1.
+ * ============================================================ */
+
+static bool PatchSetFlag(bool enable_direct_mode)
+{
+    unsigned char *addr = (unsigned char *)(g_image_base +
+        (ADDR_SET_FLAG - ORIGINAL_IMAGE_BASE) + SET_FLAG_PATCH_OFFSET);
 
     DWORD old_protect;
-    VirtualProtect(hook->target, 5, PAGE_EXECUTE_READWRITE, &old_protect);
-    memcpy(hook->target, hook->original_bytes, 5);
-    VirtualProtect(hook->target, 5, old_protect, &old_protect);
-    FlushInstructionCache(GetCurrentProcess(), hook->target, 5);
+    if (!VirtualProtect(addr, 1, PAGE_READWRITE, &old_protect)) {
+        return false;
+    }
 
-    hook->active = false;
+    if (enable_direct_mode) {
+        *addr = 0x00;  /* set flag to 0 (direct mode) */
+    } else {
+        *addr = 0x01;  /* restore: set flag to 1 (archive mode) */
+    }
+
+    VirtualProtect(addr, 1, old_protect, &old_protect);
+    FlushInstructionCache(GetCurrentProcess(), addr, 1);
+    return true;
 }
 
 /* ============================================================
- * Hook 1: FUN_0064d760 — original sets flag to 1 (archive mode)
+ * Hook for FUN_00653540 (ResourceExists) — hybrid mode
  *
- * Our detour: in hybrid mode, we DON'T set the flag — leave it 0
- * so the game uses direct file mode by default.
+ * Trampoline lets us call the original function without
+ * re-entering our hook (this was the bug in v1).
  *
- * In archive-only mode, we call the original (set flag to 1).
+ * The archive flag is at this_ptr + 0x70.
+ * We set it to 0 (direct), call original → tries CreateFileA.
+ * If that fails, set to 1 (archive), call original → tries archive.
  * ============================================================ */
 
-static InlineHook g_hook_set_flag;
-static void (*orig_set_archive_flag)(void *) = NULL;
+static Trampoline g_res_exists_trampoline;
+static bool g_trampoline_created = false;
 
-static void __fastcall hook_set_archive_flag(void *this_ptr)
+/* Function pointer to trampoline (calls original via saved bytes + JMP) */
+typedef bool (__fastcall *ResourceExistsFunc)(void *, const char *);
+static ResourceExistsFunc g_orig_resource_exists = NULL;
+
+static bool __fastcall hook_resource_exists(void *this_ptr, const char *filename)
 {
-    if (g_hook_mode == 0) {
-        /* Direct file only — don't set flag, leave it 0 */
-        return;
-    }
-    if (g_hook_mode == 1) {
-        /* Archive only — call original (sets to 1) */
-        orig_set_archive_flag(this_ptr);
-        return;
-    }
-    /* Hybrid mode — don't set flag initially. The CreateFileA hook
-     * will set it to 1 temporarily when a direct file fails. */
-    return;
-}
+    /* The archive flag is at this_ptr + 0x70 */
+    volatile int *flag = (volatile int *)((char *)this_ptr + FLAG_OFFSET_FROM_THIS);
 
-/* ============================================================
- * Hook 2: FUN_00699fc0 — original returns the flag value
- *
- * Our detour: in hybrid mode, return 0 (direct mode) by default.
- * The CreateFileA hook manages flag state for fallback.
- * ============================================================ */
+    /* Save current flag value */
+    int old_flag = *flag;
 
-static InlineHook g_hook_get_flag;
-static int (*orig_get_archive_flag)(void *) = NULL;
-
-static int __fastcall hook_get_archive_flag(void *this_ptr)
-{
-    if (g_hook_mode == 0) {
-        return 0;  /* Always direct file mode */
-    }
-    if (g_hook_mode == 1) {
-        return orig_get_archive_flag(this_ptr);  /* Use real flag */
-    }
-    /* Hybrid: return 0 (direct mode) — CreateFileA hook handles fallback */
-    return 0;
-}
-
-/* ============================================================
- * Hook 3: CreateFileA — for hybrid mode fallback
- *
- * When the game tries to open a file directly (in hybrid mode),
- * if the file doesn't exist, we temporarily switch to archive
- * mode so the archive lookup kicks in.
- * ============================================================ */
-
-static InlineHook g_hook_createfile;
-static HANDLE (WINAPI *orig_CreateFileA)(LPCSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES,
-                                          DWORD, DWORD, HANDLE) = NULL;
-
-/* Track if we're in a fallback (archive lookup) */
-static __thread bool g_in_fallback = false;
-
-static HANDLE WINAPI hook_CreateFileA(LPCSTR lpFileName, DWORD dwDesiredAccess,
-                                       DWORD dwShareMode,
-                                       LPSECURITY_ATTRIBUTES lpSecurityAttributes,
-                                       DWORD dwCreationDisposition,
-                                       DWORD dwFlagsAndAttributes,
-                                       HANDLE hTemplateFile)
-{
-    /* Always call original first */
-    HANDLE result = orig_CreateFileA(lpFileName, dwDesiredAccess, dwShareMode,
-                                      lpSecurityAttributes, dwCreationDisposition,
-                                      dwFlagsAndAttributes, hTemplateFile);
-
-    /* In hybrid mode, if direct file fails, let the game try archive.
-     * The game's ResourceExists checks our hooked get_archive_flag,
-     * which returns 0 (direct mode). But if CreateFileA fails here,
-     * ResourceExists returns 0 (file not found) and the game reports error.
-     *
-     * For proper hybrid, we need to intercept at the ResourceExists level
-     * (FUN_00653540) rather than CreateFileA. See hook_resource_exists below.
-     */
-    return result;
-}
-
-/* ============================================================
- * Hook 4: FUN_00653540 (ResourceExists) — full hybrid implementation
- *
- * Original behavior:
- *   if (archive_flag != 0) { archive_lookup(filename); }
- *   else { CreateFileA(filename); }
- *
- * Our hybrid behavior:
- *   1. Try CreateFileA(filename) — direct file mode
- *   2. If fails, call original (which will do archive lookup)
- *
- * This requires calling the original FUN_00653540 with the flag set to 1.
- * ============================================================ */
-
-static InlineHook g_hook_resource_exists;
-
-/* The original function signature (thiscall in MSVC, but we're hooking):
- *   bool __thiscall ResourceExists(Resource* this, LPCSTR filename)
- * In MinGW/clang we use __fastcall with this in ECX. */
-typedef bool (__fastcall *ResourceExists_t)(void *, LPCSTR);
-static ResourceExists_t orig_resource_exists = NULL;
-
-static bool __fastcall hook_resource_exists(void *this_ptr, LPCSTR filename)
-{
-    if (g_hook_mode == 0) {
-        /* Direct file only: try direct, never use archive */
-        /* Just call original — our get_archive_flag hook returns 0,
-         * so original will do CreateFileA only. */
-        return orig_resource_exists(this_ptr, filename);
-    }
-
-    if (g_hook_mode == 1) {
-        /* Archive only: call original (flag is 1, will use archive) */
-        return orig_resource_exists(this_ptr, filename);
-    }
-
-    /* Hybrid mode: try direct file first */
-    /* Temporarily set flag to 0 so original uses direct mode */
-    /* But our get_archive_flag hook already returns 0... so original
-     * will try direct file. If that fails, we need to try archive. */
-
-    /* Step 1: Try direct file (original with flag=0) */
-    bool result = orig_resource_exists(this_ptr, filename);
+    /* Step 1: Try direct file mode (flag = 0) */
+    *flag = 0;
+    bool result = g_orig_resource_exists(this_ptr, filename);
     if (result) {
-        return true;  /* Found as direct file */
+        *flag = old_flag;  /* restore */
+        return true;
     }
 
-    /* Step 2: Try archive mode.
-     * We need to call original with flag=1, but our hook returns 0.
-     * Solution: temporarily remove the get_flag hook, call original
-     * (which will use real flag = 1 since set_flag was called),
-     * then re-install hook. */
-
-    /* Save current flag state */
-    static bool flag_was_set = false;
-    if (!flag_was_set) {
-        /* The original set_archive_flag was called at startup,
-         * so the real flag is 1. Our hook just returns 0 instead.
-         * To use archive mode, we temporarily unhook get_flag. */
-        RemoveInlineHook(&g_hook_get_flag);
-        flag_was_set = true;
-    }
-
-    result = orig_resource_exists(this_ptr, filename);
-
-    /* Re-install the hook to go back to direct mode for next file */
-    if (flag_was_set) {
-        /* Get the current address (might have moved due to ASLR, but
-         * DaybreakDX is 32-bit without ASLR typically) */
-        HMODULE hExe = GetModuleHandleA(NULL);
-        void *get_flag_addr = (void *)((uintptr_t)hExe +
-                                        (ADDR_GET_ARCHIVE_FLAG - ORIGINAL_IMAGE_BASE));
-        InstallInlineHook(&g_hook_get_flag, get_flag_addr, hook_get_archive_flag);
-        flag_was_set = false;
-    }
+    /* Step 2: Fallback to archive mode (flag = 1) */
+    *flag = 1;
+    result = g_orig_resource_exists(this_ptr, filename);
+    *flag = old_flag;  /* restore */
 
     return result;
 }
@@ -290,76 +246,115 @@ static bool __fastcall hook_resource_exists(void *this_ptr, LPCSTR filename)
 
 static bool InstallHooks(void)
 {
-    HMODULE hExe = GetModuleHandleA(NULL);
-    if (!hExe) {
-        MessageBoxA(NULL, "GetModuleHandle failed", "daybreak_hook", MB_OK);
+    g_image_base = (uintptr_t)GetModuleHandleA(NULL);
+    if (!g_image_base) {
+        MessageBoxA(NULL, "GetModuleHandle failed", "daybreak_hook", MB_OK | MB_ICONERROR);
         return false;
     }
 
-    /* Calculate actual addresses (handles ASLR if enabled, though
-     * DaybreakDX is typically loaded at its preferred base 0x00400000) */
-    uintptr_t base = (uintptr_t)hExe;
-    void *addr_set_flag = (void *)(base + (ADDR_SET_ARCHIVE_FLAG - ORIGINAL_IMAGE_BASE));
-    void *addr_get_flag = (void *)(base + (ADDR_GET_ARCHIVE_FLAG - ORIGINAL_IMAGE_BASE));
-    void *addr_res_exists = (void *)(base + (ADDR_RESOURCE_EXISTS - ORIGINAL_IMAGE_BASE));
-
-    /* Read hook mode from environment variable if set */
+    /* Read hook mode from environment variable */
     const char *mode_env = getenv("DAYBREAK_HOOK_MODE");
     if (mode_env) {
         g_hook_mode = atoi(mode_env);
+        if (g_hook_mode < 0 || g_hook_mode > 2) {
+            g_hook_mode = MODE_HYBRID;
+        }
     }
 
-    /* Install hooks */
+    char msg[512];
     bool ok = true;
 
-    if (g_hook_mode == 0 || g_hook_mode == 2) {
-        /* Hook set_flag: prevent it from enabling archive mode */
-        if (!InstallInlineHook(&g_hook_set_flag, addr_set_flag, hook_set_archive_flag)) {
-            ok = false;
+    if (g_hook_mode == MODE_ARCHIVE) {
+        /* Mode 1: no patches, no hooks — original behavior */
+        snprintf(msg, sizeof(msg),
+            "daybreak_hook loaded!\n\n"
+            "Mode: 1 (Archive only — original behavior)\n"
+            "No patches applied.\n"
+            "Image base: 0x%p", (void *)g_image_base);
+    }
+    else if (g_hook_mode == MODE_DIRECT) {
+        /* Mode 0: 1-byte patch only — direct file mode */
+        void *set_flag_addr = (void *)(g_image_base +
+            (ADDR_SET_FLAG - ORIGINAL_IMAGE_BASE));
+        ok = PatchSetFlag(true);
+
+        snprintf(msg, sizeof(msg),
+            "daybreak_hook loaded!\n\n"
+            "Mode: 0 (Direct file only)\n"
+            "Image base: 0x%p\n"
+            "Patched FUN_0064d760 at 0x%p (1 byte: 0x01 → 0x00)\n"
+            "Result: game loads from data/ folder only\n"
+            "Hooks installed: %s",
+            (void *)g_image_base, set_flag_addr,
+            ok ? "Yes" : "FAILED");
+    }
+    else {
+        /* Mode 2: hybrid — 1-byte patch + trampoline hook */
+        void *set_flag_addr = (void *)(g_image_base +
+            (ADDR_SET_FLAG - ORIGINAL_IMAGE_BASE));
+        void *res_exists_addr = (void *)(g_image_base +
+            (ADDR_RESOURCE_EXISTS - ORIGINAL_IMAGE_BASE));
+
+        /* Patch set_flag to 0 (direct mode default) */
+        ok = PatchSetFlag(true);
+
+        /* Create trampoline for ResourceExists */
+        if (ok) {
+            g_trampoline_created = CreateTrampoline(&g_res_exists_trampoline,
+                                                     res_exists_addr, 5);
+            if (g_trampoline_created) {
+                g_orig_resource_exists = (ResourceExistsFunc)g_res_exists_trampoline.exec_mem;
+                /* Install JMP hook (6 bytes: 5 for JMP + 1 NOP) */
+                ok = InstallJmpHook(res_exists_addr, (void *)hook_resource_exists,
+                                     g_res_exists_trampoline.patch_size);
+            } else {
+                ok = false;
+            }
         }
-        /* Calculate trampoline address for calling original */
-        orig_set_archive_flag = (void (*)(void *))((uintptr_t)addr_set_flag);
+
+        snprintf(msg, sizeof(msg),
+            "daybreak_hook loaded!\n\n"
+            "Mode: 2 (Hybrid — direct first, archive fallback)\n"
+            "Image base: 0x%p\n"
+            "Patched set_flag at 0x%p (1 byte)\n"
+            "Trampoline for ResourceExists at 0x%p (%d bytes)\n"
+            "Trampoline exec mem: 0x%p\n"
+            "Hooks installed: %s",
+            (void *)g_image_base,
+            set_flag_addr,
+            res_exists_addr,
+            g_trampoline_created ? g_res_exists_trampoline.patch_size : 0,
+            g_trampoline_created ? g_res_exists_trampoline.exec_mem : NULL,
+            ok ? "Yes" : "PARTIAL — check console");
     }
 
-    if (g_hook_mode == 0 || g_hook_mode == 2) {
-        /* Hook get_flag: return 0 (direct mode) */
-        if (!InstallInlineHook(&g_hook_get_flag, addr_get_flag, hook_get_archive_flag)) {
-            ok = false;
-        }
-        orig_get_archive_flag = (int (*)(void *))((uintptr_t)addr_get_flag);
-    }
-
-    if (g_hook_mode == 2) {
-        /* Hook resource_exists: hybrid mode */
-        if (!InstallInlineHook(&g_hook_resource_exists, addr_res_exists, hook_resource_exists)) {
-            ok = false;
-        }
-        orig_resource_exists = (ResourceExists_t)addr_res_exists;
-    }
-
-    /* Show a notification */
-    char msg[256];
-    snprintf(msg, sizeof(msg),
-             "daybreak_hook loaded!\n\n"
-             "Mode: %d (%s)\n"
-             "Image base: 0x%p\n"
-             "Hooks installed: %s",
-             g_hook_mode,
-             g_hook_mode == 0 ? "Direct file only" :
-             g_hook_mode == 1 ? "Archive only" :
-             g_hook_mode == 2 ? "Hybrid (direct + archive fallback)" : "Unknown",
-             hExe,
-             ok ? "Yes" : "Partial");
     MessageBoxA(NULL, msg, "daybreak_hook", MB_OK | MB_ICONINFORMATION);
+
+    /* Also print to console (if available) */
+    FILE *console = freopen("CONOUT$", "w", stdout);
+    if (console) {
+        printf("%s\n", msg);
+    }
 
     return ok;
 }
 
 static void RemoveHooks(void)
 {
-    RemoveInlineHook(&g_hook_set_flag);
-    RemoveInlineHook(&g_hook_get_flag);
-    RemoveInlineHook(&g_hook_resource_exists);
+    if (g_hook_mode == MODE_DIRECT || g_hook_mode == MODE_HYBRID) {
+        /* Restore set_flag byte */
+        PatchSetFlag(false);
+    }
+
+    if (g_hook_mode == MODE_HYBRID && g_trampoline_created) {
+        /* Restore ResourceExists original bytes */
+        void *res_exists_addr = (void *)(g_image_base +
+            (ADDR_RESOURCE_EXISTS - ORIGINAL_IMAGE_BASE));
+        RemoveJmpHook(res_exists_addr, g_res_exists_trampoline.saved_bytes,
+                       g_res_exists_trampoline.patch_size);
+        DestroyTrampoline(&g_res_exists_trampoline);
+        g_trampoline_created = false;
+    }
 }
 
 /* ============================================================
@@ -373,6 +368,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 
     switch (ul_reason_for_call) {
     case DLL_PROCESS_ATTACH:
+        DisableThreadLibraryCalls(hModule);
         InstallHooks();
         break;
 
