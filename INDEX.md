@@ -23,7 +23,7 @@ daybreak-decomp/
 ├── INDEX.json                     Índice legível por máquina
 ├── decompiled/                    Funções curadas (106 .c)
 ├── binary_data/                   Dump massivo do Ghidra
-│   ├── other/                       (36 arquivos)
+│   ├── other/                       (48 arquivos)
 │   ├── segments/                       (2 arquivos)
 │   ├── types/                       (26 arquivos)
 │   ├── strings/                       (23 arquivos)
@@ -93,7 +93,7 @@ daybreak-decomp/
 
 ## 📦 Artefatos em `binary_data/`
 
-### `other/` (36 arquivos)
+### `other/` (48 arquivos)
 
 - `binary_data/exports.txt` (17 bytes)
 - `binary_data/segments_list.txt` (162 bytes)
@@ -115,7 +115,7 @@ daybreak-decomp/
 - `binary_data/anti_analysis/malware_behaviors.txt` (260 bytes)
 - `binary_data/render_pipeline/FASE_D3D_REPORT.md` (11,371 bytes)
 - `binary_data/render_pipeline/FASE_RENDER_LOOP_REPORT.md` (15,191 bytes)
-- _(e mais 16 arquivos)_
+- _(e mais 28 arquivos)_
 
 ### `segments/` (2 arquivos)
 

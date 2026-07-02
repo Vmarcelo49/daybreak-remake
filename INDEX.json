@@ -12,7 +12,7 @@
     "decompiled_in_binary_data": 3087,
     "total_coverage_pct": 75.44,
     "binary_data_categories": {
-      "other": 36,
+      "other": 48,
       "segments": 2,
       "types": 26,
       "strings": 23,
@@ -47141,6 +47141,54 @@
       {
         "file": "binary_data/render_pipeline/candidates.json",
         "size_bytes": 10283
+      },
+      {
+        "file": "binary_data/pe_extract/scene_dispatcher_config.bin",
+        "size_bytes": 256
+      },
+      {
+        "file": "binary_data/pe_extract/shader_info.json",
+        "size_bytes": 1191
+      },
+      {
+        "file": "binary_data/pe_extract/char_selections.bin",
+        "size_bytes": 0
+      },
+      {
+        "file": "binary_data/pe_extract/input_state.bin",
+        "size_bytes": 0
+      },
+      {
+        "file": "binary_data/pe_extract/section_.text.bin",
+        "size_bytes": 2752512
+      },
+      {
+        "file": "binary_data/pe_extract/active_slots.bin",
+        "size_bytes": 0
+      },
+      {
+        "file": "binary_data/pe_extract/ip_address.bin",
+        "size_bytes": 0
+      },
+      {
+        "file": "binary_data/pe_extract/section_.rdata.bin",
+        "size_bytes": 90112
+      },
+      {
+        "file": "binary_data/pe_extract/section_.rsrc.bin",
+        "size_bytes": 4096
+      },
+      {
+        "file": "binary_data/pe_extract/port.bin",
+        "size_bytes": 0
+      },
+      {
+        "file": "binary_data/pe_extract/section_.data.bin",
+        "size_bytes": 69632
+      },
+      {
+        "file": "binary_data/pe_extract/pe_info.json",
+        "size_bytes": 993
       },
       {
         "file": "binary_data/scene_table/0x006a16c0_256bytes.bin",
