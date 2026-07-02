@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x0066b65c
 // Original: FUN_0066b65c
-// Status:   unreviewed
+// Suggested: AbsInt (confidence: high)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 int FUN_0066b65c(int param_1)

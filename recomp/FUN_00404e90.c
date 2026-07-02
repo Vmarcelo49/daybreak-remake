@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00404e90
 // Original: FUN_00404e90
-// Status:   unreviewed
+// Suggested: GetControllerState (confidence: medium)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 int *__thiscall FUN_00404e90(int *param_1, int param_2)

@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00403aa0
 // Original: FUN_00403aa0
-// Status:   unreviewed
+// Suggested: AbsInputValue (confidence: medium)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 void FUN_00403aa0(undefined4 param_1)

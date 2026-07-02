@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00404220
 // Original: FUN_00404220
-// Status:   unreviewed
+// Suggested: UpdateKeyConfigMenu (confidence: high)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 undefined4 __fastcall FUN_00404220(int param_1)

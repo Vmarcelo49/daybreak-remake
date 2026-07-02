@@ -9663,16 +9663,24 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00403aa0": {
-      "suggested_name": "FUN_00403aa0",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "AbsInputValue",
+      "confidence": "medium",
+      "status": "suggested",
       "source_file": "decompiled/FUN_00403aa0.c",
       "signature_hash": "8461ac1b14a7a2f1",
-      "depends_on_unresolved": [],
+      "depends_on_unresolved": [
+        "0066b65c"
+      ],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:40:34+00:00",
+      "tags": [
+        "input",
+        "math",
+        "helper"
+      ],
+      "justification": "Thin wrapper que chama FUN_0066b65c (abs). Usada no input handling para normalizar valores de axis de controller (comparar com 0x1f5=501). Nome descritivo do uso."
     },
     "00426392": {
       "suggested_name": "FUN_00426392",
@@ -23635,16 +23643,22 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00404e90": {
-      "suggested_name": "FUN_00404e90",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "GetControllerState",
+      "confidence": "medium",
+      "status": "suggested",
       "source_file": "decompiled/FUN_00404e90.c",
       "signature_hash": "5184e3c438a910e7",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:40:34+00:00",
+      "tags": [
+        "input",
+        "controller",
+        "helper"
+      ],
+      "justification": "*param_1 = param_2 * 0x50 + *param_1 — indexa array de controller states (stride 0x50=80 bytes). Retorna ponteiro para o estado do controller[idx]."
     },
     "00658e60": {
       "suggested_name": "FUN_00658e60",
@@ -30346,16 +30360,37 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00404220": {
-      "suggested_name": "FUN_00404220",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "UpdateKeyConfigMenu",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/FUN_00404220.c",
       "signature_hash": "7582c029acb07646",
-      "depends_on_unresolved": [],
+      "depends_on_unresolved": [
+        "006584e0",
+        "006585f0",
+        "00657820",
+        "006586d0",
+        "00657390",
+        "0066b65c",
+        "00403aa0",
+        "00404e20",
+        "0064aed0",
+        "0064ad70",
+        "006488d0",
+        "00658700",
+        "00657330"
+      ],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:40:34+00:00",
+      "tags": [
+        "input",
+        "keyconfig",
+        "menu",
+        "state-machine"
+      ],
+      "justification": "State machine (switch em pGameState+0x5c0) para tela de keyconfig: lê teclas via FUN_006586d0 (IsKeyPressed) e FUN_00657820 (IsKeyDown), atribui bindings em DAT_006cfe20/24 (tabela de keyconfig com 5 slots x 12 teclas), navega menu com 5 posições (mod 5). String 'data/keyconfig/%04d.bmp' confirma o contexto."
     },
     "006940d0": {
       "suggested_name": "FUN_006940d0",
@@ -32529,16 +32564,23 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00404e60": {
-      "suggested_name": "FUN_00404e60",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "ReadControllerState",
+      "confidence": "medium",
+      "status": "suggested",
       "source_file": "decompiled/FUN_00404e60.c",
       "signature_hash": "c1966773c7a398ec",
-      "depends_on_unresolved": [],
+      "depends_on_unresolved": [
+        "00404e90"
+      ],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:40:34+00:00",
+      "tags": [
+        "input",
+        "controller"
+      ],
+      "justification": "Wrapper: chama FUN_00404e90 (GetControllerState) e desreferencia o resultado (*param_1 = *puVar1). Lê o primeiro campo do controller state."
     },
     "006616d0": {
       "suggested_name": "FUN_006616d0",
@@ -34540,16 +34582,22 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00657820": {
-      "suggested_name": "FUN_00657820",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "IsKeyDown",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/FUN_00657820.c",
       "signature_hash": "4166172964d0d453",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:44+00:00"
+      "last_updated": "2026-07-02T03:40:34+00:00",
+      "tags": [
+        "input",
+        "key",
+        "poll"
+      ],
+      "justification": "return (DAT_006d1928[param_1] & 0x80) != 0 — testa o high-bit da tabela de estado de teclas (clássico GetAsyncKeyState high-bit). Chamada com VK codes (0xcb=left, 0xcd=right, 1=mouse)."
     },
     "00695a00": {
       "suggested_name": "FUN_00695a00",
@@ -36359,16 +36407,21 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "0066b65c": {
-      "suggested_name": "FUN_0066b65c",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "AbsInt",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/FUN_0066b65c.c",
       "signature_hash": "8ff48ac71d5911ad",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:local",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:44+00:00"
+      "last_updated": "2026-07-02T03:40:34+00:00",
+      "tags": [
+        "math",
+        "helper"
+      ],
+      "justification": "Implementação literal de abs(int): if (param_1<0) param_1=-param_1; return param_1. Trivial."
     },
     "00698160": {
       "suggested_name": "FUN_00698160",

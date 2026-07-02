@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00657820
 // Original: FUN_00657820
-// Status:   unreviewed
+// Suggested: IsKeyDown (confidence: high)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 bool FUN_00657820(byte param_1)
