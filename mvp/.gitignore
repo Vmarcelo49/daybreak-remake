@@ -16,5 +16,10 @@ CMakeFiles/
 cmake_install.cmake
 Makefile
 
-# Shader binaries (extracted from original binary - copyright)
-shaders/*.bin
+# Shader binaries extracted from original binary
+# These are committed — they're needed for the MVP to work
+# shaders/*.bin  ← DON'T ignore, we want them in the repo
+
+# Original binary (never commit - copyright)
+DaybreakDX.exe
+*.exe.bak

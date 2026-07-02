@@ -1,144 +1,122 @@
-# daybreak-decomp MVP
+# daybreak_mvp — Minimum Viable Port
 
-> Minimum Viable Port — goal: **compile and run**, nothing more.
+> Goal: **compile and run on Windows**, showing the Higurashi Daybreak title screen.
 
-## What this is
+## Status
 
-A minimal Windows executable that:
-1. Creates the "HigurashiDaybreak" window at 800x600
-2. Initializes Direct3D 9 with fallback chain (Hardware → Software → Reference)
-3. Loads the 10 D3DX effects embedded in the original `DaybreakDX.exe`
-4. Initializes DirectInput 8 keyboard
-5. Runs a render loop that clears the screen
-6. Closes on ESC
+✅ **Compiles** via LLVM-MinGW cross-compiler (Linux → Win32 PE32)
+✅ **Title screen renders** with menu navigation
+✅ **Shaders extracted** from original binary (10 D3DX effects, 20.7 KB)
+✅ **Input works** (Up/Down/Enter/ESC via DirectInput 8)
 
-**What it does NOT do (intentionally)**:
-- Multiplayer (DirectPlay) — stubbed
-- Audio (DirectMusic) — stubbed
-- Any actual scene rendering beyond clear-screen
-- Loading of `.x` mesh files
-- Loading of `.bmp` UI textures
-- Save/load `config.dat`
+## What the MVP does
 
-## Why this exists
+1. Creates window class `"HigurashiDaybreak"` at 800x600 (from FUN_0064d250)
+2. `EngineInit` (FUN_00657910) — orchestrates:
+   - timeBeginPeriod(1) for 1ms timer
+   - CoInitialize for COM
+   - InitD3D with 3-fallback chain (HW→SW→REF, from FUN_00654b90)
+   - CreateAllShaders — loads 10 D3DX effects from `shaders/*.bin` (FUN_0064ff80)
+   - InitDirectInput + InitKeyboard (FUN_00658260, FUN_00658410)
+3. `RunMainLoop` — 60 FPS loop that:
+   - Updates current scene based on input
+   - Renders current scene
+   - Handles device lost (alt-tab recovery)
+   - ESC quits cleanly
 
-To prove the decompilation work can produce a **buildable, runnable artifact**. Once this compiles and shows a black window that closes on ESC, we have a foundation to incrementally port the rest of the game.
+## Scenes implemented
 
-## Build requirements (target: Windows)
+| Scene | Status | Notes |
+|-------|--------|-------|
+| **Title** | ✅ Implemented | Menu with 9 items, Up/Down navigation, Enter to select |
+| Select | ⏸️ Stub | Returns to title |
+| VS | ⏸️ Stub | — |
+| Battle | ⏸️ Stub | — |
+| Network | ⏸️ Stub | Would require DirectPlay replacement |
 
-- **Compiler**: MSVC (Visual Studio 2022 Community, free) or MinGW-w64
-- **DirectX 9 SDK**: June 2010 redistributable (last release with `d3dx9.lib`)
-  - Download: https://www.microsoft.com/en-us/download/details.aspx?id=6812
-  - Or use the legacy DirectX SDK that comes with VS2022 if installed
-- **CMake 3.16+**: https://cmake.org/download/
+## Title screen behavior
 
-## Quick start (MSVC + Visual Studio 2022)
+When you run the executable, you'll see:
+- Dark blue background (or `data/title/back00.bmp` if available)
+- "Higurashi Daybreak" text at top (white)
+- 9-item menu at X=180, Y=128-384 (32px spacing — matches original positions)
+- Selected item in yellow, others in light gray
+- Bottom hint: "Up/Down: Navigate   Enter: Select   ESC: Quit"
 
-1. Install **Visual Studio 2022 Community** with "Desktop development with C++" workload
-2. Install **DirectX 9 SDK (June 2010)** — needed for `d3dx9.lib`
-3. Open `Developer Command Prompt for VS 2022`
-4. Run:
-   ```cmd
-   cd path\to\daybreak-decomp\mvp
-   cmake -B build -G "Visual Studio 17 2022" -A Win32
-   cmake --build build --config Release
-   ```
-5. Run: `build\Release\daybreak_mvp.exe`
+## Quick build
 
-## Quick start (MinGW-w64)
+```bash
+# From any agent environment
+bash mvp/scripts/setup_and_build_mvp.sh
 
-1. Install **MSYS2**: https://www.msys2.org/
-2. In MSYS2 terminal:
-   ```bash
-   pacman -S mingw-w64-i686-gcc mingw-w64-i686-cmake
-   pacman -S mingw-w64-i686-directx-headers
-   ```
-3. Run:
-   ```bash
-   cd /path/to/daybreak-decomp/mvp
-   cmake -B build -G "MinGW Makefiles" -DCMAKE_C_COMPILER=i686-w64-mingw32-gcc
-   cmake --build build
-   ```
-4. Run: `build/daybreak_mvp.exe`
+# Or manually with CMake
+cd mvp
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/i686-w64-mingw32.cmake
+cmake --build build
+```
+
+Output: `build/daybreak_mvp.exe` (~243 KB PE32)
+
+## Run on Windows
+
+1. Copy `build/daybreak_mvp.exe` and `build/shaders/` to a Windows machine
+2. Install DirectX 9 runtime if missing (for `d3dx9_43.dll`):
+   https://www.microsoft.com/en-us/download/details.aspx?id=35
+3. Optionally copy `data/title/back00.bmp` from original game for background
+4. Double-click `daybreak_mvp.exe`
 
 ## Project structure
 
 ```
 mvp/
-├── CMakeLists.txt              Build configuration
-├── README.md                   This file
-├── docs/
-│   ├── BUILD_WINDOWS.md        Detailed Windows build instructions
-│   ├── ARCHITECTURE.md         What each file does + mapping to original
-│   └── TODO.md                 What's next after MVP runs
-├── src/
-│   ├── main.c                  WinMain + window creation
-│   ├── engine_init.c           EngineInit (from FUN_00657910)
-│   ├── d3d_init.c              InitD3D with 3-fallback chain (from FUN_00654b90)
-│   ├── shader_load.c           CreateAllShaders (from FUN_0064ff80)
-│   ├── input_init.c            InitDirectInput + InitKeyboard
-│   └── render_loop.c           Main loop with BeginScene/EndScene/Present
+├── README.md
+├── CMakeLists.txt
+├── cmake/i686-w64-mingw32.cmake      LLVM-MinGW toolchain
+├── docs/                             Architecture + build + TODO
 ├── include/
-│   ├── engine.h                Public types + function declarations
-│   ├── d3d_utils.h             D3D helper macros
-│   └── scene_defs.h            Scene IDs (from LoadNextScene switch)
-├── shaders/                    Extracted D3DX effects from original binary
-│   ├── effect_0.bin            3499 bytes (from 0x006a5f68)
-│   ├── effect_1.bin            3640 bytes (from 0x006a6cd8)
-│   └── ...                     (10 total, see shaders/README.md)
-└── build/                      (gitignored — generated by CMake)
+│   ├── engine.h                      Types + function decls
+│   ├── scene_defs.h                  Scene IDs + GameState offsets
+│   └── d3d_utils.h                   COM release macros + colors
+├── src/
+│   ├── main.c                        WinMain + window class
+│   ├── engine_init.c                 EngineInit (FUN_00657910)
+│   ├── d3d_init.c                    InitD3D (FUN_00654b90)
+│   ├── shader_load.c                 CreateAllShaders (FUN_0064ff80)
+│   ├── input_init.c                  InitDirectInput + InitKeyboard
+│   ├── render_loop.c                 Main loop + BeginScene/EndScene
+│   └── scene_title.c                 Title screen (RenderTitle MVP+1)
+├── scripts/
+│   ├── README.md
+│   └── setup_and_build_mvp.sh        Build script
+└── shaders/                          10 D3DX effects extracted from original
+    ├── effect_0.bin (3436 bytes)
+    ├── effect_1.bin (3640 bytes)
+    ├── ... (10 total, 20.7 KB)
+    └── README.md
 ```
-
-## Status
-
-✅ **Compiles successfully** via cross-compile (Linux → Windows PE32, 239KB executable).
-
-Build verified with:
-- **Cross-compiler**: LLVM-MinGW 17.0.3 (clang-based, includes DX9 headers)
-- **Target**: PE32 executable for Windows, Intel i386, 14 sections
-- **Dependencies**: d3d9.dll, d3dx9_43.dll, dinput8.dll, winmm, user32, gdi32, ole32
-
-Current state:
-- [x] Project structure created
-- [x] CMakeLists.txt (cross-compile + native Windows support)
-- [x] CMake toolchain file for Linux→Win32 cross-compile
-- [x] Headers (engine.h, scene_defs.h, d3d_utils.h)
-- [x] main.c (WinMain + window class "HigurashiDaybreak")
-- [x] d3d_init.c (InitD3D with 3-fallback, using MinGW COM macros)
-- [x] shader_load.c (CreateAllShaders)
-- [x] input_init.c (InitDirectInput + InitKeyboard)
-- [x] render_loop.c (BeginScene/EndScene/Present + device lost recovery)
-- [x] Build tested via cross-compile — produces working PE32 .exe
-- [ ] Shaders extracted from binary (need direct PE read or MCP)
-- [ ] Runtime tested on actual Windows
-
-## Quick build (Linux cross-compile)
-
-If you have LLVM-MinGW installed:
-
-```bash
-cd mvp
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/i686-w64-mingw32.cmake
-cmake --build build
-# Output: build/daybreak_mvp.exe (PE32 Windows executable)
-```
-
-Install LLVM-MinGW: https://github.com/mstorsjo/llvm-mingw/releases
 
 ## Origin mapping
 
-Each source file documents which function from the original `DaybreakDX.exe` it translates, with addresses and references to the analysis reports in `binary_data/`.
+Each source file documents which function from `DaybreakDX.exe` it translates:
 
-| File | Original function | Address | Analysis ref |
-|------|-------------------|---------|--------------|
+| File | Original | Address | Analysis ref |
+|------|----------|---------|--------------|
 | `main.c` | `WinMain` | `0x0064d250` | `RELATORIO_COMPLETO.md` §6.1 |
 | `engine_init.c` | `EngineInit` | `0x00657910` | `binary_data/render_pipeline/FASE_D3D_REPORT.md` |
 | `d3d_init.c` | `InitD3D` | `0x00654b90` | same |
 | `shader_load.c` | `CreateAllShaders` | `0x0064ff80` | same |
 | `input_init.c` | `InitDirectInput` + `InitKeyboard` | `0x00658260`, `0x00658410` | same |
-| `render_loop.c` | `BeginScene` + `EndSceneAndPresent` | `0x00650f70`, `0x00650fd0` | `binary_data/render_pipeline/FASE_RENDER_LOOP_REPORT.md` |
+| `render_loop.c` | `BeginScene` + `EndSceneAndPresent` + `ClearScreen` | `0x00650f70`, `0x00650fd0`, `0x00650d50` | `binary_data/render_pipeline/FASE_RENDER_LOOP_REPORT.md` |
+| `scene_title.c` | `RenderTitle` (MVP+1 adaptation) | `0x00403470` | same |
+
+## Next steps
+
+See `docs/TODO.md` for the incremental roadmap. Highlights:
+- MVP+2: Port `LoadNextScene` for scene state machine
+- MVP+3: Asset loading (meshes `.x`, textures `.bmp`)
+- MVP+5: Battle scene (the big one — 256 lines in original)
 
 ## License
 
-Source code: MIT (original translation work).
+Source code: MIT.
 Embedded D3DX effects: copyright Twilight Frontier / 07th Expansion — used under fair use for interoperability.

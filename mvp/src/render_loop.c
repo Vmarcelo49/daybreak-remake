@@ -11,6 +11,7 @@
  */
 
 #include "engine.h"
+#include "scene_defs.h"
 #include "d3d_utils.h"
 #include <stdio.h>
 
@@ -112,6 +113,15 @@ int RunMainLoop(EngineState *state)
     MSG msg = {0};
     uint8_t keys[256] = {0};
 
+    /* Initialize title scene (MVP+1) */
+    if (!InitTitleScene(state)) {
+        ShowError("Failed to initialize title scene. Continuing with clear screen only.",
+                  "Warning");
+        /* Continue anyway — fall back to clear screen */
+    }
+
+    int current_scene = SCENE_TITLE;
+
     while (!g_should_quit) {
         /* 1. Process all pending Windows messages */
         while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
@@ -142,26 +152,33 @@ int RunMainLoop(EngineState *state)
             }
         }
 
-        /* 4. Begin scene */
-        if (!BeginScene(state)) {
-            Sleep(10);
-            continue;
+        /* 4. Update + render based on current scene */
+        switch (current_scene) {
+        case SCENE_TITLE: {
+            /* Update: handle input, returns next scene or -1 */
+            int next = UpdateTitleScene(state, keys);
+            if (next >= 0) {
+                /* For MVP, only Title scene is implemented.
+                 * Other scene IDs would transition but we stay on title. */
+                /* current_scene = next; */  /* TODO: implement other scenes */
+            }
+            /* Render */
+            RenderTitleScene(state);
+            break;
         }
 
-        /* 5. Clear screen — color cycles slowly to show it's running */
-        DWORD elapsed = timeGetTime() - state->start_time;
-        D3DCOLOR color = COLOR_ARGB(0xff,
-                                    (uint8_t)(elapsed / 10  & 0xff),
-                                    (uint8_t)(elapsed / 20  & 0xff),
-                                    (uint8_t)(elapsed / 30  & 0xff));
-        ClearScreen(state, color);
+        default:
+            /* Unknown scene — fallback to clear screen */
+            if (!BeginScene(state)) {
+                Sleep(10);
+                continue;
+            }
+            ClearScreen(state, COLOR_BLACK);
+            EndSceneAndPresent(state);
+            break;
+        }
 
-        /* 6. (MVP) No scene rendering — would go here in real game */
-
-        /* 7. End scene + present */
-        EndSceneAndPresent(state);
-
-        /* 8. Cap to ~60 FPS (16.67ms per frame) */
+        /* 5. Cap to ~60 FPS (16.67ms per frame) */
         DWORD frame_time = timeGetTime() - state->last_frame_time;
         if (frame_time < 16) {
             Sleep(16 - frame_time);
@@ -169,6 +186,7 @@ int RunMainLoop(EngineState *state)
         state->last_frame_time = timeGetTime();
     }
 
+    ShutdownTitleScene();
     return (int)msg.wParam;
 }
 

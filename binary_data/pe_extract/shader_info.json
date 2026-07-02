@@ -1,0 +1,58 @@
+[
+  {
+    "name": "effect_0.bin",
+    "virtual_address": 6971240,
+    "file_offset": 2776936,
+    "size": 3499,
+    "magic": "0xfeff0901",
+    "is_d3dx_effect": false
+  },
+  {
+    "name": "effect_1.bin",
+    "virtual_address": 6974680,
+    "file_offset": 2780376,
+    "size": 3640,
+    "magic": "0xfeff0901",
+    "is_d3dx_effect": false
+  },
+  {
+    "name": "effect_2.bin",
+    "virtual_address": 6978320,
+    "file_offset": 2784016,
+    "size": 812,
+    "magic": "0xfeff0901",
+    "is_d3dx_effect": false
+  },
+  {
+    "name": "effect_3.bin",
+    "virtual_address": 6979136,
+    "file_offset": 2784832,
+    "size": 1964,
+    "magic": "0xfeff0901",
+    "is_d3dx_effect": false
+  },
+  {
+    "name": "effect_4.bin",
+    "virtual_address": 6981104,
+    "file_offset": 2786800,
+    "size": 1744,
+    "magic": "0xfeff0901",
+    "is_d3dx_effect": false
+  },
+  {
+    "name": "effect_5.bin",
+    "virtual_address": 6982848,
+    "file_offset": 2788544,
+    "size": 1920,
+    "magic": "0xfeff0901",
+    "is_d3dx_effect": false
+  },
+  {
+    "name": "effect_6.bin",
+    "virtual_address": 6984768,
+    "file_offset": 2790464,
+    "size": 1932,
+    "magic": "0xfeff0901",
+    "is_d3dx_effect": false
+  }
+]

@@ -101,6 +101,12 @@ void EndSceneAndPresent(EngineState *state);
 void ClearScreen(EngineState *state, D3DCOLOR color);
 int  RunMainLoop(EngineState *state);
 
+/* scene_title.c — MVP+1 first real scene */
+bool InitTitleScene(EngineState *state);
+void ShutdownTitleScene(void);
+int  UpdateTitleScene(EngineState *state, const uint8_t keys[256]);
+void RenderTitleScene(EngineState *state);
+
 /* ============================================================
  * Error reporting (used by all modules)
  * ============================================================ */

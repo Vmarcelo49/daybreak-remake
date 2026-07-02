@@ -1,0 +1,44 @@
+{
+  "file_path": "/home/z/my-project/FileVault/shared/DaybreakDX.exe",
+  "file_size": 2920448,
+  "machine": 332,
+  "num_sections": 4,
+  "image_base": 4194304,
+  "entry_rva": 2541830,
+  "image_size": 2994176,
+  "header_size": 4096,
+  "sections": [
+    {
+      "name": ".text",
+      "virtual_size": 2749929,
+      "virtual_address": 4096,
+      "raw_size": 2752512,
+      "raw_ptr": 4096,
+      "characteristics": 1610612768
+    },
+    {
+      "name": ".rdata",
+      "virtual_size": 87748,
+      "virtual_address": 2756608,
+      "raw_size": 90112,
+      "raw_ptr": 2756608,
+      "characteristics": 1073741888
+    },
+    {
+      "name": ".data",
+      "virtual_size": 142600,
+      "virtual_address": 2846720,
+      "raw_size": 69632,
+      "raw_ptr": 2846720,
+      "characteristics": 3221225536
+    },
+    {
+      "name": ".rsrc",
+      "virtual_size": 3440,
+      "virtual_address": 2990080,
+      "raw_size": 4096,
+      "raw_ptr": 2916352,
+      "characteristics": 1073741888
+    }
+  ]
+}

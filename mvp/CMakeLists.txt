@@ -12,6 +12,7 @@ set(MVP_SOURCES
     src/shader_load.c
     src/input_init.c
     src/render_loop.c
+    src/scene_title.c
 )
 
 include_directories(${CMAKE_SOURCE_DIR}/include)
