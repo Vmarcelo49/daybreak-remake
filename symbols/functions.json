@@ -1088,16 +1088,20 @@
       "last_updated": "2026-07-02T02:36:43+00:00"
     },
     "00406850": {
-      "suggested_name": "FUN_00406850",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "UpdateCharacterSelect",
+      "confidence": "medium",
+      "status": "suggested",
       "source_file": "decompiled/FUN_00406850.c",
       "signature_hash": "5a1c94e97f98e4a9",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:extraction",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:04:21+00:00",
+      "tags": [
+        "scene-handler"
+      ],
+      "justification": "Called in case 1 (select) with player_id 0 and 1"
     },
     "004072b0": {
       "suggested_name": "FUN_004072b0",
@@ -1124,16 +1128,20 @@
       "last_updated": "2026-07-02T02:36:43+00:00"
     },
     "00408050": {
-      "suggested_name": "FUN_00408050",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "InitPlayerSlot",
+      "confidence": "medium",
+      "status": "suggested",
       "source_file": "decompiled/FUN_00408050.c",
       "signature_hash": "a349d706b1ceb2ba",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:extraction",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:43+00:00"
+      "last_updated": "2026-07-02T03:04:21+00:00",
+      "tags": [
+        "scene-handler"
+      ],
+      "justification": "Called as (player_id, char_id) — initializes 2-player slots"
     },
     "00408250": {
       "suggested_name": "FUN_00408250",
@@ -16381,16 +16389,20 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00648f30": {
-      "suggested_name": "FUN_00648f30",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "LoadStage",
+      "confidence": "medium",
+      "status": "suggested",
       "source_file": "decompiled/FUN_00648f30.c",
       "signature_hash": "d3700dea03df7f7c",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:extraction",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:44+00:00"
+      "last_updated": "2026-07-02T03:04:21+00:00",
+      "tags": [
+        "scene-handler"
+      ],
+      "justification": "Called in case 3 (battle init) with stage_id from DAT_006b7100"
     },
     "006492f0": {
       "suggested_name": "FUN_006492f0",
@@ -16465,16 +16477,20 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "0064ad70": {
-      "suggested_name": "FUN_0064ad70",
+      "suggested_name": "TogglePauseFlag",
       "confidence": "low",
-      "status": "unreviewed",
+      "status": "suggested",
       "source_file": "decompiled/FUN_0064ad70.c",
       "signature_hash": "b17b978d406ca721",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:extraction",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:44+00:00"
+      "last_updated": "2026-07-02T03:04:21+00:00",
+      "tags": [
+        "scene-handler"
+      ],
+      "justification": "Body: DAT_006cfced = 1 - (DAT_006cfced != 0) — toggle 0/1"
     },
     "0064ada0": {
       "suggested_name": "FUN_0064ada0",
@@ -16525,16 +16541,20 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "0064aed0": {
-      "suggested_name": "FUN_0064aed0",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "SetSceneState",
+      "confidence": "medium",
+      "status": "suggested",
       "source_file": "decompiled/FUN_0064aed0.c",
       "signature_hash": "67aa57bd432a38db",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:extraction",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:44+00:00"
+      "last_updated": "2026-07-02T03:04:21+00:00",
+      "tags": [
+        "scene-handler"
+      ],
+      "justification": "Called with 0/1/2 in case 0 — state transition; top hub (18 callers)"
     },
     "0064af20": {
       "suggested_name": "FUN_0064af20",
@@ -20358,16 +20378,20 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00657390": {
-      "suggested_name": "FUN_00657390",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "UpdateTitleScreen",
+      "confidence": "medium",
+      "status": "suggested",
       "source_file": "decompiled/FUN_00657390.c",
       "signature_hash": "566487e6f3d30c6d",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:extraction",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:44+00:00"
+      "last_updated": "2026-07-02T03:04:21+00:00",
+      "tags": [
+        "scene-handler"
+      ],
+      "justification": "Called only in case 0 (title); receives char* param"
     },
     "00657820": {
       "suggested_name": "FUN_00657820",
@@ -20550,16 +20574,20 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "006584e0": {
-      "suggested_name": "FUN_006584e0",
+      "suggested_name": "UpdateInput",
       "confidence": "low",
-      "status": "unreviewed",
+      "status": "suggested",
       "source_file": "decompiled/FUN_006584e0.c",
       "signature_hash": "03da09c5820b21cd",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:extraction",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:44+00:00"
+      "last_updated": "2026-07-02T03:04:21+00:00",
+      "tags": [
+        "scene-handler"
+      ],
+      "justification": "Called before switch in LoadNextScene; interacts with vtable +0x24"
     },
     "00658550": {
       "suggested_name": "FUN_00658550",
@@ -20574,28 +20602,36 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "006585f0": {
-      "suggested_name": "FUN_006585f0",
+      "suggested_name": "UpdateInputState",
       "confidence": "low",
-      "status": "unreviewed",
+      "status": "suggested",
       "source_file": "decompiled/FUN_006585f0.c",
       "signature_hash": "4db33e2c9ed8df15",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:extraction",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:44+00:00"
+      "last_updated": "2026-07-02T03:04:21+00:00",
+      "tags": [
+        "scene-handler"
+      ],
+      "justification": "Called after FUN_006584e0 — input state update"
     },
     "006586d0": {
-      "suggested_name": "FUN_006586d0",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "IsKeyPressed",
+      "confidence": "medium",
+      "status": "suggested",
       "source_file": "decompiled/FUN_006586d0.c",
       "signature_hash": "9786291ee413733f",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:extraction",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:44+00:00"
+      "last_updated": "2026-07-02T03:04:21+00:00",
+      "tags": [
+        "utility"
+      ],
+      "justification": "bool FUN_006586d0(int, byte) — checks & 0x80 in offset+0x20+key"
     },
     "00658700": {
       "suggested_name": "FUN_00658700",
@@ -21906,16 +21942,20 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "0065b870": {
-      "suggested_name": "FUN_0065b870",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "PlayBGM",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/FUN_0065b870.c",
       "signature_hash": "9f0b9cbb221b6ca7",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:extraction",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:44+00:00"
+      "last_updated": "2026-07-02T03:04:21+00:00",
+      "tags": [
+        "scene-handler"
+      ],
+      "justification": "Called with 'data/bgm/title.ogg' as arg — audio playback function"
     },
     "0065b970": {
       "suggested_name": "FUN_0065b970",
@@ -22398,16 +22438,20 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "0065d150": {
-      "suggested_name": "FUN_0065d150",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "GetRandomNumber",
+      "confidence": "medium",
+      "status": "suggested",
       "source_file": "decompiled/FUN_0065d150.c",
       "signature_hash": "a8e00cc5543a0139",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:extraction",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:44+00:00"
+      "last_updated": "2026-07-02T03:04:21+00:00",
+      "tags": [
+        "utility"
+      ],
+      "justification": "uint FUN_0065d150(void) used with %3 and %2 — RNG"
     },
     "0065d2f0": {
       "suggested_name": "FUN_0065d2f0",
@@ -22494,16 +22538,20 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "0065d670": {
-      "suggested_name": "FUN_0065d670",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "EnterGameCriticalSection",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/FUN_0065d670.c",
       "signature_hash": "ded150ace483f7b5",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:extraction",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:44+00:00"
+      "last_updated": "2026-07-02T03:04:21+00:00",
+      "tags": [
+        "utility"
+      ],
+      "justification": "Body: EnterCriticalSection((LPCRITICAL_SECTION)(param_1 + 4))"
     },
     "0065d690": {
       "suggested_name": "FUN_0065d690",
@@ -22518,16 +22566,20 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "0065d6a0": {
-      "suggested_name": "FUN_0065d6a0",
-      "confidence": "low",
-      "status": "unreviewed",
+      "suggested_name": "LeaveGameCriticalSection",
+      "confidence": "high",
+      "status": "suggested",
       "source_file": "decompiled/FUN_0065d6a0.c",
       "signature_hash": "56a5249bbe40f38d",
       "depends_on_unresolved": [],
       "notes_ref": null,
-      "suggested_by": null,
+      "suggested_by": "agent:extraction",
       "reviewed_by": null,
-      "last_updated": "2026-07-02T02:36:44+00:00"
+      "last_updated": "2026-07-02T03:04:21+00:00",
+      "tags": [
+        "utility"
+      ],
+      "justification": "Body: LeaveCriticalSection((LPCRITICAL_SECTION)(param_1 + 4))"
     },
     "0065d6c0": {
       "suggested_name": "FUN_0065d6c0",
@@ -38062,11 +38114,12 @@
     "total_in_decompiled": 3191,
     "total_in_symbols_json": 3169,
     "by_status": {
-      "unreviewed": 3164,
+      "unreviewed": 3151,
       "reviewed": 3,
-      "suggested": 1,
+      "suggested": 14,
       "locked": 1
     },
-    "last_ingest": "2026-07-02T02:36:44+00:00"
+    "last_ingest": "2026-07-02T02:36:44+00:00",
+    "last_extraction_update": "2026-07-02T03:04:21+00:00"
   }
 }

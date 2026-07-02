@@ -17,23 +17,25 @@
   ],
   "LoadNextScene": [
     {
-      "type": "note",
-      "text": "Signature: uint __fastcall LoadNextScene(int pGameState). Single param = pointer to game state struct.",
+      "type": "discovery",
+      "text": "FASE 9 DISPROVED original hypothesis: 0x006a16c0 is NOT a function pointer table — it's a SceneDispatcherConfig struct containing a pointer to LoadNextScene + UI floats + asset path strings. See binary_data/scene_table/FASE9_REPORT.md",
       "author": "agent:extraction",
-      "resolved": true
+      "resolved": true,
+      "timestamp": "2026-07-02T03:06:27+00:00"
+    },
+    {
+      "type": "discovery",
+      "text": "Scene dispatch is via switch case inside LoadNextScene on pGameState+0x2e18 (current_scene_id). 4 cases identified: 0=title, 1=select, 2=VS loading, 3=battle init.",
+      "author": "agent:extraction",
+      "resolved": true,
+      "timestamp": "2026-07-02T03:06:27+00:00"
     },
     {
       "type": "hypothesis",
-      "text": "Function pointer table at 0x006a16c0 likely contains { scene_id, init_fn, update_fn, draw_fn, cleanup_fn } per scene. Needs verification by reading bytes.",
+      "text": "GameState struct: 0x2e14=frame_counter, 0x2e18=current_scene_id (high confidence), 0x2e20=sub_scene_id, 0x2e28-0x2ea8=per-player state (2 players), 0x2ebc=scene_specific_byte. Total size: at least 0x2ebc bytes.",
       "author": "agent:extraction",
       "resolved": false,
-      "needs_action": "Fase 9 do PLANO.md"
-    },
-    {
-      "type": "ambiguity",
-      "text": "13 callees could be scene handlers OR could be sub-dispatchers (init/update/draw for current scene only). Need to decompile 2-3 to confirm.",
-      "author": "agent:extraction",
-      "resolved": false
+      "needs_action": "Decompile more LoadNextScene callers to confirm"
     }
   ],
   "MainGameLoop": [
@@ -43,6 +45,33 @@
       "author": "agent:extraction",
       "resolved": false,
       "needs_action": "Decompile FUN_00412110 to confirm hypothesis"
+    }
+  ],
+  "PlayBGM": [
+    {
+      "type": "evidence",
+      "text": "FUN_0065b870 called with 'data/bgm/title.ogg' as argument in LoadNextScene case 0. Strong indicator of audio playback function.",
+      "author": "agent:extraction",
+      "resolved": true,
+      "timestamp": "2026-07-02T03:06:27+00:00"
+    }
+  ],
+  "EnterGameCriticalSection": [
+    {
+      "type": "evidence",
+      "text": "FUN_0065d670 body: EnterCriticalSection((LPCRITICAL_SECTION)(param_1 + 4)). Wrapper around Win32 API for game's critical section.",
+      "author": "agent:extraction",
+      "resolved": true,
+      "timestamp": "2026-07-02T03:06:27+00:00"
+    }
+  ],
+  "LeaveGameCriticalSection": [
+    {
+      "type": "evidence",
+      "text": "FUN_0065d6a0 body: LeaveCriticalSection((LPCRITICAL_SECTION)(param_1 + 4)). Pair with EnterGameCriticalSection.",
+      "author": "agent:extraction",
+      "resolved": true,
+      "timestamp": "2026-07-02T03:06:27+00:00"
     }
   ]
 }

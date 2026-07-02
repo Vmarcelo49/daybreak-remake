@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00657390
 // Original: FUN_00657390
-// Status:   unreviewed
+// Suggested: UpdateTitleScreen (confidence: medium)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 

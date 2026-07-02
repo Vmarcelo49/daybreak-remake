@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x006586d0
 // Original: FUN_006586d0
-// Status:   unreviewed
+// Suggested: IsKeyPressed (confidence: medium)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 

@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00406850
 // Original: 
-// Status:   unreviewed
+// Suggested: UpdateCharacterSelect (confidence: medium)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 

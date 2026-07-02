@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x00408050
 // Original: FUN_00408050
-// Status:   unreviewed
+// Suggested: InitPlayerSlot (confidence: medium)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 

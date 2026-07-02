@@ -4,27 +4,205 @@
   "entries": {},
   "_hypotheses": {
     "GameState": {
-      "confidence": "low",
-      "hypothesized_at": "0x00406310",
-      "evidence": "LoadNextScene receives single int param that drives 13-way dispatch",
+      "confidence": "medium",
+      "hypothesized_at": "0x00406310 (LoadNextScene param)",
+      "evidence": "LoadNextScene receives int pGameState. Accesses pGameState+0x2e14 (frame counter?), +0x2e18 (current_scene_id — switch), +0x2e20 (sub_scene_id), +0x2e28-0x2ea8 (per-player state arrays, 2 players). Total size: at least 0x2ebc bytes.",
       "fields": [
-        {"name": "current_scene_id", "type": "int", "offset": "0x00", "confidence": "low"},
-        {"name": "next_scene_id", "type": "int", "offset": "0x04", "confidence": "low"}
+        {
+          "name": "frame_counter",
+          "type": "int",
+          "offset": "0x2e14",
+          "confidence": "medium"
+        },
+        {
+          "name": "current_scene_id",
+          "type": "int",
+          "offset": "0x2e18",
+          "confidence": "high",
+          "evidence": "Used in switch statement"
+        },
+        {
+          "name": "sub_scene_id",
+          "type": "int",
+          "offset": "0x2e20",
+          "confidence": "medium",
+          "evidence": "Used as array index into DAT_006b7190/71a8/71b4"
+        },
+        {
+          "name": "player_states",
+          "type": "PlayerState[2]",
+          "offset": "0x2e28",
+          "confidence": "medium",
+          "evidence": "Loop iterates local_player=0..1"
+        },
+        {
+          "name": "scene_specific_byte",
+          "type": "char",
+          "offset": "0x2ebc",
+          "confidence": "low",
+          "evidence": "Case 2 checks == -1 and modifies with +0x0f"
+        }
       ],
-      "needs_action": "Decompile LoadNextScene body to confirm"
+      "needs_action": "Decompile more callers of LoadNextScene to confirm field offsets"
     },
     "SceneHandler": {
       "confidence": "low",
       "hypothesized_at": "0x006a16c0",
-      "evidence": "Function pointer table at this address — referenced by LoadNextScene",
+      "evidence": "DISPROVED: 0x006a16c0 is not a function pointer table — it's a config struct containing LoadNextScene ptr + floats + asset path strings. See binary_data/scene_table/FASE9_REPORT.md",
       "fields": [
-        {"name": "scene_id", "type": "int", "offset": "0x00"},
-        {"name": "init_fn", "type": "void(*)(GameState*)", "offset": "0x04"},
-        {"name": "update_fn", "type": "void(*)(GameState*, float)", "offset": "0x08"},
-        {"name": "draw_fn", "type": "void(*)(GameState*)", "offset": "0x0c"},
-        {"name": "cleanup_fn", "type": "void(*)(GameState*)", "offset": "0x10"}
+        {
+          "name": "scene_id",
+          "type": "int",
+          "offset": "0x00"
+        },
+        {
+          "name": "init_fn",
+          "type": "void(*)(GameState*)",
+          "offset": "0x04"
+        },
+        {
+          "name": "update_fn",
+          "type": "void(*)(GameState*, float)",
+          "offset": "0x08"
+        },
+        {
+          "name": "draw_fn",
+          "type": "void(*)(GameState*)",
+          "offset": "0x0c"
+        },
+        {
+          "name": "cleanup_fn",
+          "type": "void(*)(GameState*)",
+          "offset": "0x10"
+        }
       ],
-      "needs_action": "Fase 9 — read memory at 0x006a16c0 and parse as array"
+      "needs_action": "Remove after operator review"
+    },
+    "SceneDispatcherConfig": {
+      "confidence": "medium",
+      "hypothesized_at": "0x006a16c0",
+      "evidence": "256 bytes dumped via read_memory. Offset 0 = pointer to LoadNextScene (0x00406310). Offsets 4-63 = floats (20.0, 1.0, 400.0, 200.0, 510.0, 100.0, 8.0, 110.0, 610.0, 130.0, 600.0, 50.0, 210.0) — likely UI layout constants. Offsets 64+ = null-terminated strings of asset paths (data/select/bg00.bmp, etc.).",
+      "fields": [
+        {
+          "name": "load_next_scene",
+          "type": "void(*)(GameState*)",
+          "offset": "0x00",
+          "confidence": "high"
+        },
+        {
+          "name": "field_04",
+          "type": "float",
+          "offset": "0x04",
+          "value": "20.0f",
+          "confidence": "low"
+        },
+        {
+          "name": "field_08",
+          "type": "void*",
+          "offset": "0x08",
+          "value": "NULL",
+          "confidence": "high"
+        },
+        {
+          "name": "field_0c",
+          "type": "float",
+          "offset": "0x0c",
+          "value": "0.2f",
+          "confidence": "low"
+        },
+        {
+          "name": "field_10",
+          "type": "float",
+          "offset": "0x10",
+          "value": "1.0f",
+          "confidence": "low"
+        },
+        {
+          "name": "ui_offset_x",
+          "type": "float",
+          "offset": "0x14",
+          "value": "400.0f",
+          "confidence": "medium"
+        },
+        {
+          "name": "ui_offset_y",
+          "type": "float",
+          "offset": "0x18",
+          "value": "200.0f",
+          "confidence": "medium"
+        },
+        {
+          "name": "ui_width",
+          "type": "float",
+          "offset": "0x1c",
+          "value": "510.0f",
+          "confidence": "medium"
+        },
+        {
+          "name": "field_20",
+          "type": "float",
+          "offset": "0x20",
+          "value": "100.0f",
+          "confidence": "low"
+        },
+        {
+          "name": "field_24",
+          "type": "float",
+          "offset": "0x24",
+          "value": "8.0f",
+          "confidence": "low"
+        },
+        {
+          "name": "field_28",
+          "type": "float",
+          "offset": "0x28",
+          "value": "110.0f",
+          "confidence": "low"
+        },
+        {
+          "name": "field_2c",
+          "type": "float",
+          "offset": "0x2c",
+          "value": "610.0f",
+          "confidence": "low"
+        },
+        {
+          "name": "field_30",
+          "type": "float",
+          "offset": "0x30",
+          "value": "130.0f",
+          "confidence": "low"
+        },
+        {
+          "name": "window_height",
+          "type": "float",
+          "offset": "0x34",
+          "value": "600.0f",
+          "confidence": "high"
+        },
+        {
+          "name": "field_38",
+          "type": "float",
+          "offset": "0x38",
+          "value": "50.0f",
+          "confidence": "low"
+        },
+        {
+          "name": "field_3c",
+          "type": "float",
+          "offset": "0x3c",
+          "value": "210.0f",
+          "confidence": "low"
+        },
+        {
+          "name": "asset_paths",
+          "type": "char[]",
+          "offset": "0x40+",
+          "value": "data/select/*.bmp strings",
+          "confidence": "high"
+        }
+      ],
+      "needs_action": "Operator review"
     }
   }
 }

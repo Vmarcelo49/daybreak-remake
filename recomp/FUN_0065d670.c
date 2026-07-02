@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x0065d670
 // Original: FUN_0065d670
-// Status:   unreviewed
+// Suggested: EnterGameCriticalSection (confidence: high)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 

@@ -1,7 +1,8 @@
 // ============================================
 // Address:  0x0064ad70
 // Original: FUN_0064ad70
-// Status:   unreviewed
+// Suggested: TogglePauseFlag (confidence: low)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
 
