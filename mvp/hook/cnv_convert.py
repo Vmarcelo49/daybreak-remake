@@ -23,11 +23,9 @@ CNV Audio Format (reverse-engineered from FUN_00665020 audio path):
     Offset 14 (2 bytes): bits_per_sample
     Offset 16: raw PCM data
 
-Detection:
-    - Image .cnv: first byte is 8, 16, 24, or 32 (bpp)
-                  AND offset 13 reads as 0 (uncompressed) or valid compressed size
-    - Audio .cnv: first 2 bytes are 01 00 or 02 00 (channels)
-                  AND offset 4 reads as 44100, 22050, or 48000 (sample_rate)
+Filename encoding:
+    Filenames in .dat use Shift-JIS (Japanese Windows encoding).
+    This script handles both ASCII and Shift-JIS filenames correctly.
 """
 import os, struct, sys, wave, io
 

@@ -1,35 +1,36 @@
 #!/usr/bin/env python3
 """
-Extract AND convert files from daybreakXX.dat archives.
-
-Two-step process:
-  1. Extract .dat → .cnv files (XOR-decoded)
-  2. Convert .cnv → original format (.bmp / .wav)
-
-Conversion rules (reverse-engineered from FUN_00661d10, FUN_00665020, FUN_00665e70):
-  - .cnv with "BM" magic → rename to .bmp (it's a standard BMP file)
-  - .cnv with audio header (starts with 01 00) → convert to .wav (add RIFF header)
-  - .cnv with other content → leave as .cnv (unknown format)
-  - .ogg, .sfl, .mpg, .dat, .sav → keep as-is (already original format)
-
-The game (FUN_00661d10) works like this:
-  1. Takes filename "data/title/back00.bmp"
-  2. Changes extension to .cnv → "data/title/back00.cnv"
-  3. Loads .cnv from archive
-  4. If .cnv starts with "BM" → treats as BMP (FUN_00665020)
-  5. If .cnv starts with audio header → treats as WAV
-
-So for direct file mode to work, we need:
-  - data/title/back00.bmp (actual BMP file, not .cnv)
-  - data/voice/.../xxx.wav (actual WAV file, not .cnv)
-
-This script does the conversion during extraction so the hook can
-load the original-format files directly from disk.
+Extract all files from daybreakXX.dat archives into data/ folder.
 
 Usage:
     python3 extract_dat.py [path_to_game_folder]
+
+Format (reverse-engineered from FUN_00662d10, FUN_00663030):
+  Header: uint16 num_entries
+  Entry table: num_entries * 0x10c bytes (XOR-encoded)
+  File data: XOR-encoded per file
+
+  Entry struct (0x10c = 268 bytes):
+    0x00  0x104  filename (null-terminated, Shift-JIS encoding for Japanese)
+    0x104 4     file_size (uint32 LE)
+    0x108 4     file_offset (uint32 LE)
+
+  Entry table XOR:
+    key=100, inc=100
+    for each byte: byte ^= key; key=(key+inc)&0xFF; inc=(inc+77)&0xFF
+
+  File data XOR:
+    key = ((file_offset >> 1) & 0xFF) | 8  (constant per file)
+    for each byte: byte ^= key
+
+Filename encoding:
+  Filenames inside .dat use Shift-JIS (Japanese Windows encoding).
+  Some filenames contain Japanese characters (e.g., character names).
+  On Windows, the filesystem uses UTF-16 internally, and CreateFileA
+  with Shift-JIS strings works correctly. On Linux/Wine, we need to
+  handle encoding carefully.
 """
-import os, struct, sys, wave, io
+import os, struct, sys, shutil
 
 def decode_entry_table(data):
     """XOR-decode the entry table with evolving key."""
@@ -47,91 +48,37 @@ def decode_file_data(data, file_offset):
     key = ((file_offset >> 1) & 0xFF) | 8
     return bytes(b ^ key for b in data)
 
-def cnv_to_wav(cnv_data):
-    """Convert .cnv audio format to standard WAV.
+def safe_filename(raw_bytes):
+    """Convert filename bytes to a filesystem-safe string.
     
-    .cnv audio header (16 bytes):
-      offset 0: uint16 channels
-      offset 2: uint16 unknown (always 1?)
-      offset 4: uint32 sample_rate
-      offset 8: uint32 byte_rate
-      offset 12: uint16 block_align
-      offset 14: uint16 bits_per_sample
-    Followed by raw PCM data.
+    Filenames in .dat are Shift-JIS encoded. Try Shift-JIS first,
+    then CP932 (Windows Japanese), then ASCII with replacement.
     
-    WAV format:
-      RIFF header (12 bytes)
-      fmt chunk (24 bytes)
-      data chunk header (8 bytes) + PCM data
+    For filesystem safety, replace characters that are invalid on Windows:
+    \ / : * ? " < > |
     """
-    if len(cnv_data) < 16:
-        return None
+    # Try Shift-JIS (same as CP932 on Windows)
+    for encoding in ('shift-jis', 'cp932', 'ascii'):
+        try:
+            name = raw_bytes.decode(encoding)
+            break
+        except (UnicodeDecodeError, LookupError):
+            continue
+    else:
+        # Last resort: decode with errors='replace'
+        name = raw_bytes.decode('ascii', errors='replace')
     
-    channels = struct.unpack_from("<H", cnv_data, 0)[0]
-    sample_rate = struct.unpack_from("<I", cnv_data, 4)[0]
-    byte_rate = struct.unpack_from("<I", cnv_data, 8)[0]
-    block_align = struct.unpack_from("<H", cnv_data, 12)[0]
-    bits_per_sample = struct.unpack_from("<H", cnv_data, 14)[0]
+    # Replace characters that are invalid on Windows filesystems
+    # The game uses / as path separator, which is fine
+    # But some Japanese chars might cause issues on certain filesystems
+    safe = name
+    for char in '\\:*?"<>|':
+        safe = safe.replace(char, '_')
     
-    pcm_data = cnv_data[16:]
-    data_size = len(pcm_data)
-    
-    # Build WAV file
-    wav = io.BytesIO()
-    
-    # RIFF header
-    wav.write(b'RIFF')
-    wav.write(struct.pack('<I', 36 + data_size))  # file size - 8
-    wav.write(b'WAVE')
-    
-    # fmt chunk
-    wav.write(b'fmt ')
-    wav.write(struct.pack('<I', 16))  # chunk size
-    wav.write(struct.pack('<H', 1))   # audio format = PCM
-    wav.write(struct.pack('<H', channels))
-    wav.write(struct.pack('<I', sample_rate))
-    wav.write(struct.pack('<I', byte_rate))
-    wav.write(struct.pack('<H', block_align))
-    wav.write(struct.pack('<H', bits_per_sample))
-    
-    # data chunk
-    wav.write(b'data')
-    wav.write(struct.pack('<I', data_size))
-    wav.write(pcm_data)
-    
-    return wav.getvalue()
-
-def convert_cnv_file(filename, cnv_data):
-    """Convert .cnv data to original format.
-    
-    Returns (new_filename, converted_data) or (filename, cnv_data) if no conversion needed.
-    """
-    if len(cnv_data) < 4:
-        return filename, cnv_data
-    
-    # Check if it's a BMP (magic "BM" = 0x42 0x4D)
-    if cnv_data[:2] == b'BM':
-        # .cnv is actually a BMP — just change extension
-        new_name = filename[:-4] + '.bmp' if filename.endswith('.cnv') else filename
-        return new_name, cnv_data
-    
-    # Check if it's audio .cnv (starts with 01 00 = channels=1)
-    if cnv_data[0] == 0x01 and cnv_data[1] == 0x00 and len(cnv_data) >= 16:
-        # Try to parse as audio header
-        sample_rate = struct.unpack_from("<I", cnv_data, 4)[0]
-        bits = struct.unpack_from("<H", cnv_data, 14)[0]
-        # Sanity check: sample_rate should be 44100 or 22050, bits should be 16
-        if sample_rate in (44100, 22050, 48000) and bits in (8, 16):
-            wav_data = cnv_to_wav(cnv_data)
-            if wav_data:
-                new_name = filename[:-4] + '.wav' if filename.endswith('.cnv') else filename
-                return new_name, wav_data
-    
-    # Unknown format — keep as .cnv
-    return filename, cnv_data
+    return safe
 
 def extract_archive(dat_path, output_dir):
-    """Extract and convert all files from one .dat archive."""
+    """Extract all files from one .dat archive."""
     with open(dat_path, "rb") as f:
         raw = f.read()
 
@@ -150,16 +97,21 @@ def extract_archive(dat_path, output_dir):
     table = decode_entry_table(raw[2:2 + table_size])
 
     count = 0
-    converted = 0
     errors = 0
     for i in range(num_entries):
         entry_off = i * 0x10c
         entry = table[entry_off:entry_off + 0x10c]
 
-        filename = entry[:0x104].split(b'\x00')[0].decode('ascii', errors='replace')
+        # Extract raw filename bytes (null-terminated)
+        name_bytes = entry[:0x104].split(b'\x00')[0]
+        
+        # Decode filename (Shift-JIS for Japanese, ASCII for English)
+        filename = safe_filename(name_bytes)
+        
         file_size = struct.unpack_from("<I", entry, 0x104)[0]
         file_offset = struct.unpack_from("<I", entry, 0x108)[0]
 
+        # Sanity checks
         if file_size == 0 or file_size > 100 * 1024 * 1024:
             errors += 1
             continue
@@ -170,6 +122,7 @@ def extract_archive(dat_path, output_dir):
             errors += 1
             continue
 
+        # Decode file data
         encoded = raw[file_offset:file_offset + file_size]
         try:
             decoded = decode_file_data(encoded, file_offset)
@@ -178,15 +131,9 @@ def extract_archive(dat_path, output_dir):
             errors += 1
             continue
 
-        # DON'T convert .cnv — the game opens .cnv files from disk.
-        # Image .cnv files ARE BMPs (magic "BM") — game reads them as BMP.
-        # Audio .cnv files have custom 16-byte header — game reads them natively.
-        # Just extract as-is with .cnv extension.
-        out_filename = filename
-        out_data = decoded
-
         # Create directory structure
-        safe_path = out_filename.replace('\\', '/').lstrip('/')
+        # Filenames inside .dat already include "data/" prefix
+        safe_path = filename.replace('\\', '/').lstrip('/')
         if safe_path.startswith("data/"):
             parent_dir = os.path.dirname(output_dir)
             out_path = os.path.join(parent_dir, safe_path)
@@ -197,17 +144,14 @@ def extract_archive(dat_path, output_dir):
             os.makedirs(out_dir, exist_ok=True)
 
         with open(out_path, "wb") as f:
-            f.write(out_data)
+            f.write(decoded)
 
         count += 1
         if count <= 5:
-            ext_change = f" → {out_filename.rsplit('.', 1)[-1]}" if out_filename != filename else ""
-            print(f"    extracted: {filename}{ext_change} ({file_size} bytes)")
+            print(f"    extracted: {filename} ({file_size} bytes)")
 
     if count > 5:
         print(f"    ... and {count - 5} more files")
-    if converted > 0:
-        print(f"    Converted {converted} .cnv files to .bmp/.wav")
     if errors > 0:
         print(f"    {errors} entries skipped (invalid)")
 
@@ -222,9 +166,8 @@ def main():
         "daybreak05.dat", "daybreak06.dat", "daybreak07.dat",
     ]
 
-    print(f"Extracting and converting archives from: {game_dir}")
+    print(f"Extracting archives from: {game_dir}")
     print(f"Output directory: {output_dir}")
-    print(f"Conversion: .cnv → .bmp (images), .cnv → .wav (audio)")
     print()
 
     total = 0
@@ -237,25 +180,6 @@ def main():
 
     print(f"\nTotal files extracted: {total}")
     print(f"Files are in: {output_dir}")
-    
-    # Count converted files
-    bmp_count = 0
-    wav_count = 0
-    cnv_count = 0
-    other_count = 0
-    for root, dirs, files in os.walk(output_dir):
-        for f in files:
-            ext = f.rsplit('.', 1)[-1].lower() if '.' in f else ''
-            if ext == 'bmp': bmp_count += 1
-            elif ext == 'wav': wav_count += 1
-            elif ext == 'cnv': cnv_count += 1
-            else: other_count += 1
-    
-    print(f"\nFile summary:")
-    print(f"  .bmp files: {bmp_count}")
-    print(f"  .wav files: {wav_count}")
-    print(f"  .cnv files: {cnv_count} (unconverted — unknown format)")
-    print(f"  Other: {other_count} (.ogg, .sfl, .dat, .mpg, etc.)")
     print(f"\nNow run daybreak_launcher.exe to start the game with direct file mode.")
 
 if __name__ == "__main__":
