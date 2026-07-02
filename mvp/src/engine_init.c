@@ -43,6 +43,17 @@ bool EngineInit(EngineState *state, HWND hwnd, HINSTANCE hinstance,
         return false;
     }
 
+    /* 2.5 Load all daybreakXX.dat archives (the original game's asset storage) */
+    int archives_loaded = LoadAllArchives();
+    if (archives_loaded == 0) {
+        ShowError(
+            "No daybreakXX.dat archives found.\n"
+            "Please copy daybreak00.dat..daybreak07.dat next to daybreak_mvp.exe\n"
+            "from your Higurashi Daybreak installation.",
+            "Archive Error");
+        /* Continue anyway — synthetic BMPs will be used as fallback */
+    }
+
     /* 3. PreInitSetup — skipped (window already created by main.c) */
 
     /* 4. Init D3D */

@@ -120,6 +120,11 @@ IDirect3DTexture9 *LoadTextureFromFile(EngineState *state, const char *path);
 void ReleaseTexture(IDirect3DTexture9 *texture);
 void GetTextureSize(IDirect3DTexture9 *texture, uint32_t *width, uint32_t *height);
 
+/* archive_init.c — MVP+3 load all daybreakXX.dat archives */
+int  LoadAllArchives(void);
+void ShutdownAllArchives(void);
+int  GetLoadedArchiveCount(void);
+
 /* ============================================================
  * Error reporting (used by all modules)
  * ============================================================ */

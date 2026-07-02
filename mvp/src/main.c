@@ -147,6 +147,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
         extern void ShutdownStubScenes(void);
         ShutdownStubScenes();
     }
+    ShutdownAllArchives();
 
     DestroyWindow(hwnd);
     UnregisterClassA(DAYBREAK_WINDOW_CLASS, hInstance);

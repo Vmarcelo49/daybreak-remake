@@ -1,7 +1,15 @@
 /**
  * dat_archive.h — Loader for daybreakXX.dat archive format
  *
- * See dat_archive.c for format documentation.
+ * See dat_archive.c for full format documentation.
+ *
+ * Usage:
+ *   1. DatArchive_Open(&arc, "daybreak00.dat")  — at startup
+ *   2. DatArchive_Open(&arc, "daybreak02.dat")  — load more archives
+ *   3. void *data = DatArchive_ReadFile(NULL, "data/title/back00.bmp", &size);
+ *   4. Use data (XOR-decoded automatically)
+ *   5. free(data);
+ *   6. DatArchive_ShutdownAll()  — at exit
  */
 #ifndef DAYBREAK_DAT_ARCHIVE_H
 #define DAYBREAK_DAT_ARCHIVE_H
@@ -10,36 +18,37 @@
 #include <stdbool.h>
 #include <windows.h>
 
-/* Resource handle — wraps either a direct file or an archive entry */
-typedef struct DatResource {
-    HANDLE  handle;
-    bool    is_archive;
-    uint32_t archive_key;    /* XOR key for archive entries */
-    uint32_t size;           /* Total size in bytes */
-    uint32_t position;       /* Current read position (for archive) */
-} DatResource;
-
-/* Archive handle — for daybreakXX.dat files (future) */
+/* Archive handle — represents one loaded .dat file */
 typedef struct DatArchive {
-    HANDLE  handle;
-    uint32_t key;
-    /* TODO: file table */
+    char      archive_path[MAX_PATH];
+    HANDLE    handle;
+    uint16_t  num_entries;
+    void     *entries;  /* internal: ArchiveEntry[] */
+    bool      loaded;
 } DatArchive;
 
-/* Resource API — matches original FUN_00653540/00653a40/00653760 */
+/* Resource handle — for streaming reads (mostly unused in MVP) */
+typedef struct DatResource {
+    HANDLE   handle;
+    bool     is_archive;
+    uint32_t archive_key;
+    uint32_t size;
+    uint32_t position;
+} DatResource;
+
+/* Archive API */
+bool DatArchive_Open(DatArchive *arc, const char *path);
+void DatArchive_Close(DatArchive *arc);
+void DatArchive_ShutdownAll(void);
+bool DatArchive_HasFile(DatArchive *arc, const char *filename);
+void *DatArchive_ReadFile(DatArchive *arc, const char *filename, uint32_t *out_size);
+void DatArchive_ListFiles(void);
+
+/* Resource API (high-level) */
 bool     DatResource_Open(DatResource *res, const char *path);
 bool     DatResource_Read(DatResource *res, void *buffer, uint32_t size);
 uint32_t DatResource_GetSize(DatResource *res);
 void     DatResource_Close(DatResource *res);
-
-/* Convenience: load entire file into memory.
- * Returns malloc'd buffer (caller must free) or NULL on failure. */
 void    *DatResource_LoadFile(const char *path, uint32_t *out_size);
-
-/* Archive API — for daybreakXX.dat (stub for MVP+3) */
-bool DatArchive_Open(DatArchive *arc, const char *path);
-void DatArchive_Close(DatArchive *arc);
-bool DatArchive_HasFile(DatArchive *arc, const char *filename);
-void *DatArchive_ReadFile(DatArchive *arc, const char *filename, uint32_t *out_size);
 
 #endif /* DAYBREAK_DAT_ARCHIVE_H */

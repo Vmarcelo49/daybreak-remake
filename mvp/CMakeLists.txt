@@ -17,6 +17,7 @@ set(MVP_SOURCES
     src/scene_stubs.c
     src/dat_archive.c
     src/texture_loader.c
+    src/archive_init.c
 )
 
 include_directories(${CMAKE_SOURCE_DIR}/include)
