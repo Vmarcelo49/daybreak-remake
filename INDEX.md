@@ -23,7 +23,7 @@ daybreak-decomp/
 ├── INDEX.json                     Índice legível por máquina
 ├── decompiled/                    Funções curadas (106 .c)
 ├── binary_data/                   Dump massivo do Ghidra
-│   ├── other/                       (10 arquivos)
+│   ├── other/                       (29 arquivos)
 │   ├── segments/                       (2 arquivos)
 │   ├── types/                       (26 arquivos)
 │   ├── strings/                       (23 arquivos)
@@ -93,7 +93,7 @@ daybreak-decomp/
 
 ## 📦 Artefatos em `binary_data/`
 
-### `other/` (10 arquivos)
+### `other/` (29 arquivos)
 
 - `binary_data/exports.txt` (17 bytes)
 - `binary_data/segments_list.txt` (162 bytes)
@@ -105,6 +105,17 @@ daybreak-decomp/
 - `binary_data/globals.txt` (4,680 bytes)
 - `binary_data/mass_decompile_progress.json` (37,466 bytes)
 - `binary_data/open_programs.txt` (410 bytes)
+- `binary_data/anti_analysis/FASE12_REPORT.md` (3,971 bytes)
+- `binary_data/anti_analysis/anti_debug.txt` (11,666 bytes)
+- `binary_data/anti_analysis/iocs.txt` (10,439 bytes)
+- `binary_data/anti_analysis/malware_behaviors.txt` (260 bytes)
+- `binary_data/scene_table/0x006a16c0_256bytes.bin` (256 bytes)
+- `binary_data/scene_table/FASE9_REPORT.md` (6,554 bytes)
+- `binary_data/scene_table/callees/0064ad70.c` (192 bytes)
+- `binary_data/scene_table/callees/006585f0.c` (890 bytes)
+- `binary_data/scene_table/callees/0064aed0.c` (348 bytes)
+- `binary_data/scene_table/callees/00657390.c` (7,273 bytes)
+- _(e mais 9 arquivos)_
 
 ### `segments/` (2 arquivos)
 

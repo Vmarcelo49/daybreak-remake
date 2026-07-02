@@ -12,7 +12,7 @@
     "decompiled_in_binary_data": 3087,
     "total_coverage_pct": 75.44,
     "binary_data_categories": {
-      "other": 10,
+      "other": 29,
       "segments": 2,
       "types": 26,
       "strings": 23,
@@ -47097,6 +47097,82 @@
       {
         "file": "binary_data/open_programs.txt",
         "size_bytes": 410
+      },
+      {
+        "file": "binary_data/anti_analysis/FASE12_REPORT.md",
+        "size_bytes": 3971
+      },
+      {
+        "file": "binary_data/anti_analysis/anti_debug.txt",
+        "size_bytes": 11666
+      },
+      {
+        "file": "binary_data/anti_analysis/iocs.txt",
+        "size_bytes": 10439
+      },
+      {
+        "file": "binary_data/anti_analysis/malware_behaviors.txt",
+        "size_bytes": 260
+      },
+      {
+        "file": "binary_data/scene_table/0x006a16c0_256bytes.bin",
+        "size_bytes": 256
+      },
+      {
+        "file": "binary_data/scene_table/FASE9_REPORT.md",
+        "size_bytes": 6554
+      },
+      {
+        "file": "binary_data/scene_table/callees/0064ad70.c",
+        "size_bytes": 192
+      },
+      {
+        "file": "binary_data/scene_table/callees/006585f0.c",
+        "size_bytes": 890
+      },
+      {
+        "file": "binary_data/scene_table/callees/0064aed0.c",
+        "size_bytes": 348
+      },
+      {
+        "file": "binary_data/scene_table/callees/00657390.c",
+        "size_bytes": 7273
+      },
+      {
+        "file": "binary_data/scene_table/callees/00648f30.c",
+        "size_bytes": 2799
+      },
+      {
+        "file": "binary_data/scene_table/callees/006586d0.c",
+        "size_bytes": 179
+      },
+      {
+        "file": "binary_data/scene_table/callees/0065d150.c",
+        "size_bytes": 1381
+      },
+      {
+        "file": "binary_data/scene_table/callees/006584e0.c",
+        "size_bytes": 468
+      },
+      {
+        "file": "binary_data/scene_table/callees/0065d670.c",
+        "size_bytes": 169
+      },
+      {
+        "file": "binary_data/scene_table/callees/00408050.c",
+        "size_bytes": 1376
+      },
+      {
+        "file": "binary_data/scene_table/callees/0065b870.c",
+        "size_bytes": 717
+      },
+      {
+        "file": "binary_data/scene_table/callees/0065d6a0.c",
+        "size_bytes": 169
+      },
+      {
+        "file": "binary_data/scene_table/callees/00406850.c",
+        "size_bytes": 9369
       }
     ],
     "segments": [
