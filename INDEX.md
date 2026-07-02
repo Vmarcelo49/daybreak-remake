@@ -18,9 +18,12 @@
 daybreak-decomp/
 ├── PLANO.md                       Plano completo de decompilação
 ├── PROGRESSO.md                   Status em tempo real
-├── RELATORIO_COMPLETO.md          Relatório final consolidado
 ├── INDEX.md                       Este arquivo
 ├── INDEX.json                     Índice legível por máquina
+├── docs/                          Documentação de referência
+│   ├── CONTEXT.md, PLANO_RECOMP.md, AGENT_*_ONBOARDING.md
+│   ├── RELATORIO_COMPLETO.md, RELATORIO_EXECUTIVO_FINAL.md
+│   └── conventions.md
 ├── decompiled/                    Funções curadas (106 .c)
 ├── binary_data/                   Dump massivo do Ghidra
 │   ├── other/                       (48 arquivos)
@@ -29,7 +32,7 @@ daybreak-decomp/
 │   ├── strings/                       (23 arquivos)
 │   ├── callgraph/                       (1 arquivos)
 │   └── functions/                 JSON por função (~3.000+)
-├── 01_*.txt — 06_*.txt            Dados brutos das fases 1-6
+├── extraction_phases/             Dados brutos das fases 1-6 (01_*.txt — 06_*.txt)
 └── .github/
     ├── workflows/build-index.yml  Action que gera este índice
     └── scripts/generate_index.py  Script gerador
@@ -178,7 +181,7 @@ daybreak-decomp/
 
 - [`PLANO.md`](PLANO.md)
 - [`PROGRESSO.md`](PROGRESSO.md)
-- [`RELATORIO_COMPLETO.md`](RELATORIO_COMPLETO.md)
+- [`docs/RELATORIO_COMPLETO.md`](docs/RELATORIO_COMPLETO.md)
 
 ---
 
