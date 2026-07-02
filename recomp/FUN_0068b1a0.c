@@ -4,10 +4,8 @@
 // Status:   unreviewed
 // ============================================
 
-
 bool FUN_0068b1a0(int param_1)
 
 {
-  return (*(uint *)(param_1 + 4) & 1) == 0;
+    return (*(uint *)(param_1 + 4) & 1) == 0;
 }
-

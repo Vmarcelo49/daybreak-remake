@@ -4,12 +4,10 @@
 // Status:   unreviewed
 // ============================================
 
-
-undefined4 * __fastcall FUN_005f7860(undefined4 *param_1)
+undefined4 *__fastcall FUN_005f7860(undefined4 *param_1)
 
 {
-  FUN_00415ec0();
-  *param_1 = &PTR_FUN_006a47b4;
-  return param_1;
+    FUN_00415ec0();
+    *param_1 = &PTR_FUN_006a47b4;
+    return param_1;
 }
-

@@ -4,10 +4,8 @@
 // Status:   unreviewed
 // ============================================
 
-
 int FUN_0068dce0(int param_1)
 
 {
-  return param_1 + 0x1c;
+    return param_1 + 0x1c;
 }
-

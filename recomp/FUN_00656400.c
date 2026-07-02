@@ -4,10 +4,8 @@
 // Status:   unreviewed
 // ============================================
 
-
-bool __thiscall FUN_00656400(int *param_1,int param_2)
+bool __thiscall FUN_00656400(int *param_1, int param_2)
 
 {
-  return *param_1 == param_2;
+    return *param_1 == param_2;
 }
-

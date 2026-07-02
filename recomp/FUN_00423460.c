@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
-void * __fastcall FUN_00423460(void *param_1)
+void *__fastcall FUN_00423460(void *param_1)
 
 {
-  _memset(param_1,0,0x14);
-  return param_1;
+    _memset(param_1, 0, 0x14);
+    return param_1;
 }
-

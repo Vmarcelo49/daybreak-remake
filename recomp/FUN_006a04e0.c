@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 void FUN_006a04e0(void)
 
 {
-  FUN_00647d60();
-  return;
+    FUN_00647d60();
+    return;
 }
-

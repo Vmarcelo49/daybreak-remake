@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 void __fastcall FUN_004348c0(undefined4 param_1)
 
 {
-  FUN_00435b20(param_1);
-  return;
+    FUN_00435b20(param_1);
+    return;
 }
-

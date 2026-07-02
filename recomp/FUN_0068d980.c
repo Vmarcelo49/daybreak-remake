@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 void __fastcall FUN_0068d980(LPCRITICAL_SECTION param_1)
 
 {
-  EnterCriticalSection(param_1);
-  return;
+    EnterCriticalSection(param_1);
+    return;
 }
-

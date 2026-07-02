@@ -4,13 +4,11 @@
 // Status:   unreviewed
 // ============================================
 
-
 void FUN_0066d2cc(void)
 
 {
-  undefined1 auStack_c [12];
-  
-  ExceptionList = auStack_c;
-  return;
-}
+    undefined1 auStack_c[12];
 
+    ExceptionList = auStack_c;
+    return;
+}

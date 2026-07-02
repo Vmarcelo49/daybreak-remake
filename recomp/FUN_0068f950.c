@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
-void FUN_0068f950(undefined4 param_1,undefined4 param_2,undefined4 param_3)
+void FUN_0068f950(undefined4 param_1, undefined4 param_2, undefined4 param_3)
 
 {
-  FUN_0068f970(param_3);
-  return;
+    FUN_0068f970(param_3);
+    return;
 }
-

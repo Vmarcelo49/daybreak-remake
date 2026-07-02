@@ -4,13 +4,11 @@
 // Status:   unreviewed
 // ============================================
 
-
 void FUN_0066c272(void)
 
 {
-  FILE *unaff_ESI;
-  
-  __unlock_file(unaff_ESI);
-  return;
-}
+    FILE *unaff_ESI;
 
+    __unlock_file(unaff_ESI);
+    return;
+}

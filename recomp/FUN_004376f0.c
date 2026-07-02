@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 void __fastcall FUN_004376f0(undefined4 param_1)
 
 {
-  max_size(param_1);
-  return;
+    max_size(param_1);
+    return;
 }
-

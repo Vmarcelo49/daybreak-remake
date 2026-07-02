@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
-int * __fastcall FUN_0064f320(int *param_1)
+int *__fastcall FUN_0064f320(int *param_1)
 
 {
-  *param_1 = *param_1 + 4;
-  return param_1;
+    *param_1 = *param_1 + 4;
+    return param_1;
 }
-

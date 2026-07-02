@@ -4,13 +4,11 @@
 // Status:   unreviewed
 // ============================================
 
-
-code * FUN_00410a83(void)
+code *FUN_00410a83(void)
 
 {
-  int unaff_EBP;
-  
-  *(undefined4 *)(unaff_EBP + -4) = 1;
-  return FUN_00410a90;
-}
+    int unaff_EBP;
 
+    *(undefined4 *)(unaff_EBP + -4) = 1;
+    return FUN_00410a90;
+}

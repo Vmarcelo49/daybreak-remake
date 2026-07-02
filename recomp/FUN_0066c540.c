@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 void FUN_0066c540(void)
 
 {
-  __ctrandisp2();
-  return;
+    __ctrandisp2();
+    return;
 }
-

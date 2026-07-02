@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 void FUN_0042dfb0(float param_1)
 
 {
-  _fabs((double)param_1);
-  return;
+    _fabs((double)param_1);
+    return;
 }
-

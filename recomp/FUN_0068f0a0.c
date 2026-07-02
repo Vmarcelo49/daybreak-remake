@@ -4,10 +4,8 @@
 // Status:   unreviewed
 // ============================================
 
-
 undefined4 FUN_0068f0a0(void)
 
 {
-  return 0;
+    return 0;
 }
-

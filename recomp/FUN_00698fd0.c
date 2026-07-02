@@ -4,13 +4,11 @@
 // Status:   unreviewed
 // ============================================
 
-
-bool __thiscall FUN_00698fd0(undefined4 param_1,uint param_2)
+bool __thiscall FUN_00698fd0(undefined4 param_1, uint param_2)
 
 {
-  int iVar1;
-  
-  iVar1 = FUN_00699000(param_1);
-  return (iVar1 - 1U & param_2) == 0;
-}
+    int iVar1;
 
+    iVar1 = FUN_00699000(param_1);
+    return (iVar1 - 1U & param_2) == 0;
+}

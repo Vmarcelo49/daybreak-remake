@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
-void __thiscall FUN_00655660(int param_1,LPCSTR param_2)
+void __thiscall FUN_00655660(int param_1, LPCSTR param_2)
 
 {
-  MessageBoxA(*(HWND *)(param_1 + 0x108),param_2,"Error",0);
-  return;
+    MessageBoxA(*(HWND *)(param_1 + 0x108), param_2, "Error", 0);
+    return;
 }
-

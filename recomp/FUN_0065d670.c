@@ -5,11 +5,9 @@
 // Status:   suggested — name kept as comment until reviewed
 // ============================================
 
-
 void __fastcall FUN_0065d670(int param_1)
 
 {
-  EnterCriticalSection((LPCRITICAL_SECTION)(param_1 + 4));
-  return;
+    EnterCriticalSection((LPCRITICAL_SECTION)(param_1 + 4));
+    return;
 }
-

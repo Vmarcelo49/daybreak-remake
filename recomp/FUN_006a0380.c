@@ -4,12 +4,10 @@
 // Status:   unreviewed
 // ============================================
 
-
 void FUN_006a0380(void)
 
 {
-  FUN_00657870();
-  _atexit(FUN_006a0540);
-  return;
+    FUN_00657870();
+    _atexit(FUN_006a0540);
+    return;
 }
-

@@ -4,13 +4,11 @@
 // Status:   unreviewed
 // ============================================
 
-
-bool __thiscall FUN_00693320(undefined4 *param_1,DWORD param_2)
+bool __thiscall FUN_00693320(undefined4 *param_1, DWORD param_2)
 
 {
-  DWORD DVar1;
-  
-  DVar1 = WaitForSingleObject((HANDLE)*param_1,param_2);
-  return DVar1 == 0;
-}
+    DWORD DVar1;
 
+    DVar1 = WaitForSingleObject((HANDLE)*param_1, param_2);
+    return DVar1 == 0;
+}

@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
-void FUN_0066c430(char *param_1,char *param_2)
+void FUN_0066c430(char *param_1, char *param_2)
 
 {
-  __fsopen(param_1,param_2,0x40);
-  return;
+    __fsopen(param_1, param_2, 0x40);
+    return;
 }
-

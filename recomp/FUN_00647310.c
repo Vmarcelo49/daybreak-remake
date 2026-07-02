@@ -4,13 +4,11 @@
 // Status:   unreviewed
 // ============================================
 
-
 int FUN_00647310(undefined4 param_1)
 
 {
-  int iVar1;
-  
-  iVar1 = FUN_00647400(param_1);
-  return iVar1 + 0x80;
-}
+    int iVar1;
 
+    iVar1 = FUN_00647400(param_1);
+    return iVar1 + 0x80;
+}

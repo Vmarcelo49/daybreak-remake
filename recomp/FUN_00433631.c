@@ -4,14 +4,12 @@
 // Status:   unreviewed
 // ============================================
 
-
 void FUN_00433631(void)
 
 {
-  int unaff_EBP;
-  
-  *(undefined4 *)(unaff_EBP + -4) = 0xffffffff;
-  FUN_004338df();
-  return;
-}
+    int unaff_EBP;
 
+    *(undefined4 *)(unaff_EBP + -4) = 0xffffffff;
+    FUN_004338df();
+    return;
+}

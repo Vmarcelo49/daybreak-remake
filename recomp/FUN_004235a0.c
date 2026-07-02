@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
-void __thiscall FUN_004235a0(undefined4 param_1,float param_2,float param_3)
+void __thiscall FUN_004235a0(undefined4 param_1, float param_2, float param_3)
 
 {
-  FUN_0066c540((double)param_2,(double)param_3,param_1);
-  return;
+    FUN_0066c540((double)param_2, (double)param_3, param_1);
+    return;
 }
-

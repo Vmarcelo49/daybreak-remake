@@ -4,10 +4,8 @@
 // Status:   unreviewed
 // ============================================
 
-
 int __fastcall FUN_0064e6a0(int param_1)
 
 {
-  return param_1 + 0x5c;
+    return param_1 + 0x5c;
 }
-

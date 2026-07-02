@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 void FUN_0066c574(void)
 
 {
-                    /* WARNING: Subroutine does not return */
-  __fload_withFB();
+    /* WARNING: Subroutine does not return */
+    __fload_withFB();
 }
-

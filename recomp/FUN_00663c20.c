@@ -4,13 +4,11 @@
 // Status:   unreviewed
 // ============================================
 
-
-bool __thiscall FUN_00663c20(char *param_1,char *param_2)
+bool __thiscall FUN_00663c20(char *param_1, char *param_2)
 
 {
-  int iVar1;
-  
-  iVar1 = __stricmp(param_1,param_2);
-  return 0 < iVar1;
-}
+    int iVar1;
 
+    iVar1 = __stricmp(param_1, param_2);
+    return 0 < iVar1;
+}

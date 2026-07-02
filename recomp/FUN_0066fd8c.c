@@ -4,12 +4,10 @@
 // Status:   unreviewed
 // ============================================
 
-
 /* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
 
 unkbyte10 FUN_0066fd8c(void)
 
 {
-  return _DAT_006b7fba;
+    return _DAT_006b7fba;
 }
-

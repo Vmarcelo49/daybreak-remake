@@ -4,10 +4,8 @@
 // Status:   unreviewed
 // ============================================
 
-
 bool __fastcall FUN_0068da80(int param_1)
 
 {
-  return *(int *)(param_1 + 0x18) != 0;
+    return *(int *)(param_1 + 0x18) != 0;
 }
-

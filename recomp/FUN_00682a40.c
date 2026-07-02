@@ -4,10 +4,8 @@
 // Status:   unreviewed
 // ============================================
 
-
 float10 FUN_00682a40(uint *param_1)
 
 {
-  return (float10)(*param_1 & 0x7fffffff) * (float10)7.1771143e-07 - (float10)764.2712;
+    return (float10)(*param_1 & 0x7fffffff) * (float10)7.1771143e-07 - (float10)764.2712;
 }
-

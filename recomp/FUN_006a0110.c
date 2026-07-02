@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 void FUN_006a0110(void)
 
 {
-  _vector_constructor_iterator_(&DAT_006c7f38,4,9,FUN_00425ac0);
-  return;
+    _vector_constructor_iterator_(&DAT_006c7f38, 4, 9, FUN_00425ac0);
+    return;
 }
-

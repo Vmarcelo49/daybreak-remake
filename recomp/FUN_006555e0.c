@@ -4,12 +4,10 @@
 // Status:   unreviewed
 // ============================================
 
-
-void __thiscall FUN_006555e0(undefined4 param_1,LPCSTR param_2)
+void __thiscall FUN_006555e0(undefined4 param_1, LPCSTR param_2)
 
 {
-  FUN_00655530(param_1);
-  SetCurrentDirectoryA(param_2);
-  return;
+    FUN_00655530(param_1);
+    SetCurrentDirectoryA(param_2);
+    return;
 }
-

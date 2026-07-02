@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 void FUN_0064c060(void)
 
 {
-  FUN_006556c0(DAT_006cacb8,0,0xa0,0x80,0x20,0x40,0);
-  return;
+    FUN_006556c0(DAT_006cacb8, 0, 0xa0, 0x80, 0x20, 0x40, 0);
+    return;
 }
-

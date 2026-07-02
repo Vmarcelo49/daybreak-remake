@@ -4,10 +4,8 @@
 // Status:   unreviewed
 // ============================================
 
-
 byte FUN_0069ca00(int *param_1)
 
 {
-  return *(byte *)(*param_1 + 5) & 2;
+    return *(byte *)(*param_1 + 5) & 2;
 }
-

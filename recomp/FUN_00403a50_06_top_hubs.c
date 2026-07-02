@@ -1,14 +1,13 @@
 // ============================================
 // Address:  0x00403a50
 // Original: FUN_00403a50
-// Status:   unreviewed
+// Suggested: InitVtable6a140c_Ret (confidence: low)
+// Status:   suggested — name kept as comment until reviewed
 // ============================================
 
-
-undefined4 * __fastcall FUN_00403a50(undefined4 *param_1)
+undefined4 *__fastcall FUN_00403a50(undefined4 *param_1)
 
 {
-  *param_1 = &PTR_FUN_006a140c;
-  return param_1;
+    *param_1 = &PTR_FUN_006a140c;
+    return param_1;
 }
-

@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 void __fastcall FUN_00693440(CPropertySet *param_1)
 
 {
-  CPropertySet::~CPropertySet(param_1);
-  return;
+    CPropertySet::~CPropertySet(param_1);
+    return;
 }
-

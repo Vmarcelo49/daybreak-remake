@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
-undefined1 * __fastcall FUN_00661e50(undefined1 *param_1)
+undefined1 *__fastcall FUN_00661e50(undefined1 *param_1)
 
 {
-  *param_1 = 0;
-  return param_1;
+    *param_1 = 0;
+    return param_1;
 }
-

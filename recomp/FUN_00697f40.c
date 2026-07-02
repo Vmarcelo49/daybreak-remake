@@ -4,10 +4,8 @@
 // Status:   unreviewed
 // ============================================
 
-
 float10 __fastcall FUN_00697f40(longlong *param_1)
 
 {
-  return (float10)*param_1 / (float10)10000000.0;
+    return (float10)*param_1 / (float10)10000000.0;
 }
-

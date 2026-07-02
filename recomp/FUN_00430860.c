@@ -4,10 +4,8 @@
 // Status:   unreviewed
 // ============================================
 
-
-undefined * FUN_00430860(int param_1)
+undefined *FUN_00430860(int param_1)
 
 {
-  return (&PTR_DAT_006b7308)[param_1];
+    return (&PTR_DAT_006b7308)[param_1];
 }
-

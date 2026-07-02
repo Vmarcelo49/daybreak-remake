@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 void __fastcall FUN_006919a0(undefined4 *param_1)
 
 {
-  SetEvent((HANDLE)*param_1);
-  return;
+    SetEvent((HANDLE)*param_1);
+    return;
 }
-

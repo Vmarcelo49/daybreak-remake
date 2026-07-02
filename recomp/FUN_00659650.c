@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 void FUN_00659650(int param_1)
 
 {
-  operator_new(param_1 * 0x50);
-  return;
+    operator_new(param_1 * 0x50);
+    return;
 }
-

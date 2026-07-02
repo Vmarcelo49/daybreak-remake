@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 void FUN_00674237(void)
 
 {
-  __amsg_exit(2);
-  return;
+    __amsg_exit(2);
+    return;
 }
-

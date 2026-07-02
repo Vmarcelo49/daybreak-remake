@@ -4,10 +4,8 @@
 // Status:   unreviewed
 // ============================================
 
-
 undefined1 __fastcall FUN_00414690(int param_1)
 
 {
-  return *(undefined1 *)(param_1 + 0x134d);
+    return *(undefined1 *)(param_1 + 0x134d);
 }
-

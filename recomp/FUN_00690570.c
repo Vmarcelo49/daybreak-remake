@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
-void __thiscall FUN_00690570(int param_1,undefined4 param_2)
+void __thiscall FUN_00690570(int param_1, undefined4 param_2)
 
 {
-  (**(code **)(**(int **)(param_1 + 0xd8) + 0xb0))(param_2);
-  return;
+    (**(code **)(**(int **)(param_1 + 0xd8) + 0xb0))(param_2);
+    return;
 }
-

@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 void FUN_006a05a0(void)
 
 {
-  CPropertySet::~CPropertySet((CPropertySet *)&DAT_006d7968);
-  return;
+    CPropertySet::~CPropertySet((CPropertySet *)&DAT_006d7968);
+    return;
 }
-

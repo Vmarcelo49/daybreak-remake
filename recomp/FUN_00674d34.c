@@ -4,13 +4,11 @@
 // Status:   unreviewed
 // ============================================
 
-
 void FUN_00674d34(void)
 
 {
-  int unaff_EBX;
-  
-  __unlock_fhandle(unaff_EBX);
-  return;
-}
+    int unaff_EBX;
 
+    __unlock_fhandle(unaff_EBX);
+    return;
+}

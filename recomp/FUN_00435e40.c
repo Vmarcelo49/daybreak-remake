@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 int __fastcall FUN_00435e40(int *param_1)
 
 {
-  *param_1 = *param_1 + -1;
-  return *param_1;
+    *param_1 = *param_1 + -1;
+    return *param_1;
 }
-

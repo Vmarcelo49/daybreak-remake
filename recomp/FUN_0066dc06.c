@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 void FUN_0066dc06(void)
 
 {
-  TlsAlloc();
-  return;
+    TlsAlloc();
+    return;
 }
-

@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 void __fastcall FUN_0068dbb0(LPCRITICAL_SECTION param_1)
 
 {
-  DeleteCriticalSection(param_1);
-  return;
+    DeleteCriticalSection(param_1);
+    return;
 }
-

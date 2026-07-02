@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
-void __thiscall FUN_0040da20(int param_1,undefined1 param_2)
+void __thiscall FUN_0040da20(int param_1, undefined1 param_2)
 
 {
-  *(undefined1 *)(param_1 + 0xe60) = param_2;
-  return;
+    *(undefined1 *)(param_1 + 0xe60) = param_2;
+    return;
 }
-

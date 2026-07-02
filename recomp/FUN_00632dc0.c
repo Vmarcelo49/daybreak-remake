@@ -4,16 +4,16 @@
 // Status:   unreviewed
 // ============================================
 
-
 void __fastcall FUN_00632dc0(int *param_1)
 
 {
-  if (*param_1 != 0) {
-    if (*param_1 != 0) {
-      FUN_00402010(1);
+    if (*param_1 != 0)
+    {
+        if (*param_1 != 0)
+        {
+            FUN_00402010(1);
+        }
+        *param_1 = 0;
     }
-    *param_1 = 0;
-  }
-  return;
+    return;
 }
-

@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 undefined4 FUN_00416490(undefined1 *param_1)
 
 {
-  *param_1 = 6;
-  return 1;
+    *param_1 = 6;
+    return 1;
 }
-

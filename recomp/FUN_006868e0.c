@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
-undefined4 __thiscall FUN_006868e0(undefined4 param_1,undefined4 param_2)
+undefined4 __thiscall FUN_006868e0(undefined4 param_1, undefined4 param_2)
 
 {
-  FUN_00686a10(param_2);
-  return param_1;
+    FUN_00686a10(param_2);
+    return param_1;
 }
-

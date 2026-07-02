@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
-void FUN_00410700(undefined1 *param_1,undefined1 *param_2)
+void FUN_00410700(undefined1 *param_1, undefined1 *param_2)
 
 {
-  *param_1 = *param_2;
-  return;
+    *param_1 = *param_2;
+    return;
 }
-

@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 void __fastcall FUN_00655530(LPCSTR param_1)
 
 {
-  SetCurrentDirectoryA(param_1);
-  return;
+    SetCurrentDirectoryA(param_1);
+    return;
 }
-

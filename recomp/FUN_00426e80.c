@@ -4,10 +4,8 @@
 // Status:   unreviewed
 // ============================================
 
-
-int __thiscall FUN_00426e80(int *param_1,int *param_2)
+int __thiscall FUN_00426e80(int *param_1, int *param_2)
 
 {
-  return (*param_1 - *param_2) / 0xc;
+    return (*param_1 - *param_2) / 0xc;
 }
-

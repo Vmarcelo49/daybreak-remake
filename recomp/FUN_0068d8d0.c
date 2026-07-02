@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
-allocator<char> * __fastcall FUN_0068d8d0(allocator<char> *param_1)
+allocator<char> *__fastcall FUN_0068d8d0(allocator<char> *param_1)
 
 {
-  std::allocator<char>::allocator<char>(param_1);
-  return param_1;
+    std::allocator<char>::allocator<char>(param_1);
+    return param_1;
 }
-

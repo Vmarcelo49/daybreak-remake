@@ -4,11 +4,9 @@
 // Status:   unreviewed
 // ============================================
 
-
 void FUN_00689310(int param_1)
 
 {
-  (**(code **)(*(int *)(*(int *)(param_1 + 0x28) + 0xc) + 4))(*(int *)(param_1 + 0x28) + 0xc);
-  return;
+    (**(code **)(*(int *)(*(int *)(param_1 + 0x28) + 0xc) + 4))(*(int *)(param_1 + 0x28) + 0xc);
+    return;
 }
-
