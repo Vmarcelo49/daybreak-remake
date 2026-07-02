@@ -3,7 +3,7 @@
   "_description": "Candidatas a função de rede identificadas pela Fase 11. NÃO edita symbols/functions.json — este arquivo é input para o agente local promover sugestões depois.",
   "_generated_by": "agent:extraction",
   "_generated_at": "2026-07-02T00:00:00Z",
-  "_total_candidates": 37,
+  "_total_candidates": 48,
   "_cluster_range": "0x0065f180 - 0x00660fc0",
   "_networking_library": "DirectPlay 8 (COM-based, via CoCreateInstance)",
   "_evidence": [
@@ -237,5 +237,89 @@
       "0x006cfdc6": "porta de rede (ushort)",
       "0x006cfdc8": "settings toggle"
     }
+  },
+  "_fase11c_additions": {
+    "_description": "11 novas funções identificadas na Fase 11c (GameSend + Network Cleanup)",
+    "_send_cluster": {
+      "00660400": {
+        "suggested_name": "SendToPlayerOrBroadcast",
+        "confidence": "high",
+        "evidence": "If param_2==0 calls ServerReceive (broadcast), else calls IDirectPlay8Server::SendTo (vtable+0x38) with player_id and DPNSEND_GUARANTEED (0x20) flag"
+      },
+      "00660490": {
+        "suggested_name": "ClientSendToServer",
+        "confidence": "high",
+        "evidence": "Send do client para server usando buffer global 0x006d7668. Chama vtable+0x38 (Send) com flag 0x20 (GUARANTEED)"
+      },
+      "00660520": {
+        "suggested_name": "ServerSendToPlayer",
+        "confidence": "high",
+        "evidence": "Similar ao 00660400 mas com cleanup de async send anterior (vtable+0x14 = CancelAsyncOp). Usa buffer global 0x006d7768"
+      },
+      "006605f0": {
+        "suggested_name": "CancelAllAsyncSends",
+        "confidence": "medium",
+        "evidence": "Chama vtable+0x14 com flag 0x8000 (DPNSEND_CANCEL) — cancela todos os sends pendentes"
+      }
+    },
+    "_message_type_factories": {
+      "0065f180": {"suggested_name": "MakeMessageType1", "confidence": "medium", "evidence": "Factory: *param = 1; return param;"},
+      "0065f1a0": {"suggested_name": "MakeMessageType2", "confidence": "medium", "evidence": "Factory: *param = 2; return param;"},
+      "0065f200": {"suggested_name": "MakeMessageType4", "confidence": "medium", "evidence": "Factory: *param = 4; return param;"},
+      "0065f220": {"suggested_name": "MakeMessageType7", "confidence": "medium", "evidence": "Factory: *param = 7; return param;"},
+      "0065f240": {"suggested_name": "MakeMessageType5", "confidence": "medium", "evidence": "Factory: *param = 5; return param;"},
+      "0065f260": {"suggested_name": "MakeMessageType6", "confidence": "medium", "evidence": "Factory: *param = 6; return param;"}
+    },
+    "_utility_functions": {
+      "0065f280": {
+        "suggested_name": "ParseCSVLine",
+        "confidence": "high",
+        "evidence": "Loop procurando ',' e '\\r' em string — parser de CSV (provável config/network list)"
+      },
+      "0065f350": {
+        "suggested_name": "ReadStreamAligned",
+        "confidence": "medium",
+        "evidence": "Verifica alinhamento % 4 == 0 — leitura de stream com alinhamento 4 bytes"
+      },
+      "0065f430": {
+        "suggested_name": "WriteStreamPadded",
+        "confidence": "medium",
+        "evidence": "Escrita com padding de alinhamento (par de 0065f350)"
+      },
+      "0065f640": {
+        "suggested_name": "InitMessageObject",
+        "confidence": "medium",
+        "evidence": "Inicializa struct com 2 buffers locais (28 + 40 bytes)"
+      },
+      "0065f6a0": {
+        "suggested_name": "AllocateMessageBuffer",
+        "confidence": "medium",
+        "evidence": "Aloca buffer de tamanho 4 + param_1 (variável)"
+      },
+      "0065f6e0": {
+        "suggested_name": "ResetNetworkState",
+        "confidence": "high",
+        "evidence": "Zera campos 0, 1, 0x1b, 0x1e, 0x1f da struct de estado de rede"
+      },
+      "0065fee0": {
+        "suggested_name": "SetNetworkPlayerId",
+        "confidence": "medium",
+        "evidence": "Seta param_1+100 e chama CancelAllAsyncSends + memset 0x20 bytes em +0x78"
+      },
+      "00660050": {
+        "suggested_name": "FullNetworkShutdown",
+        "confidence": "high",
+        "evidence": "Loop 1-8 chamando DestroyPlayer + cancela sends + espera thread terminar (STILL_ACTIVE=0x103) + Release COM (vtable+0x8 em param_1[0] e param_1[1]) + memset player array"
+      }
+    },
+    "_send_buffers_global": {
+      "0x006d7668": "Buffer global de send client → server",
+      "0x006d7768": "Buffer global de send server → player"
+    },
+    "_directplay_flags_used": {
+      "0x20": "DPNSEND_GUARANTEED (entrega confiável)",
+      "0x8000": "DPNSEND_CANCEL (cancela send pendente)"
+    },
+    "_answer_to_open_question": "Protocolo custom leve sobre DirectPlay com 6+ message types (factories), buffers globais por direção, e cancelamento de send anterior antes de cada novo send. NÃO é envio direto de GameState."
   }
 }
