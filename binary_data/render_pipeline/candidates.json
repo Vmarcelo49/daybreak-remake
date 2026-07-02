@@ -3,7 +3,7 @@
   "_description": "Candidatas a função de render/D3D identificadas pela análise do render pipeline. NÃO edita symbols/functions.json — input para o agente local promover.",
   "_generated_by": "agent:extraction",
   "_generated_at": "2026-07-02T00:00:00Z",
-  "_total_candidates": 22,
+  "_total_candidates": 30,
   "_d3d_version": "Direct3D 9 + D3DX (DirectX 9 era)",
   "_directx_components_used": ["Direct3D 9", "D3DX (effects + mesh)", "DirectInput 8", "DirectMusic/Miles (likely)"],
   "candidates": {
@@ -152,5 +152,71 @@
     "Buscar callers de ClearScreen (FUN_00650d50) para achar render loop",
     "Decompilar SetupRenderStates (FUN_00654f00) para listar render states",
     "Decompilar WorkerThread (FUN_006580a0) completo"
-  ]
+  ],
+  "_render_loop_additions": {
+    "_description": "8 novas funções identificadas na análise do render loop (scene renderers + Begin/EndScene)",
+    "00650f70": {
+      "suggested_name": "BeginScene",
+      "confidence": "high",
+      "evidence": "Chama IDirect3DDevice9::BeginScene (vtable+0xa4) em DAT_006d16f8 (g_device). Retorna false se device lost (param_1+0x58 == 0)."
+    },
+    "00650fd0": {
+      "suggested_name": "EndSceneAndPresent",
+      "confidence": "high",
+      "evidence": "Chama EndScene (vtable+0xa8) + Present (vtable+0x44). Trata D3DERR_DEVICELOST (-0x7789f798 = 0x88760868) setando param_1+0x59=1."
+    },
+    "00650ab0": {
+      "suggested_name": "SetViewport",
+      "confidence": "medium",
+      "evidence": "Seta viewport em param_1+0x260-0x26c + chama vtable+0xbc (SetViewport)."
+    },
+    "00651820": {
+      "suggested_name": "DrawRect",
+      "confidence": "medium",
+      "evidence": "Wrapper para FUN_00651860. Recebe RECT (param_1) e cor (param_2)."
+    },
+    "00646110": {
+      "suggested_name": "DrawSprite",
+      "confidence": "medium",
+      "evidence": "Switch case 0/1/2/3 que chama BindTexture (FUN_00656200) + CreateSprite (FUN_00656190) + SetSpritePosition (FUN_00655af0) + SetSpriteScale (FUN_00655690)."
+    },
+    "004020a0": {
+      "suggested_name": "SceneFactory",
+      "confidence": "high",
+      "evidence": "Switch case 0/1/2/3 com operator_new(0x150/0x208/0xa8/0x3d98). Cria estado de cada cena (Title/Select/VS/Battle). Battle = 15.7 KB."
+    },
+    "00403470": {
+      "suggested_name": "RenderTitle",
+      "confidence": "medium",
+      "evidence": "Renderer que chama BeginScene + 9x DrawMenuItem + EndScene. Items em coluna Y=128,160,192,...,384 (espaçamento 32px)."
+    },
+    "004072b0": {
+      "suggested_name": "RenderBattle",
+      "confidence": "high",
+      "evidence": "Maior scene renderer (256 linhas). Provável battle scene com HUD + characters + effects."
+    },
+    "00404a50": {"suggested_name": "RenderSelect", "confidence": "medium"},
+    "00403e10": {"suggested_name": "RenderSimple1", "confidence": "low"},
+    "004051b0": {"suggested_name": "RenderSimple2", "confidence": "low"},
+    "004054a0": {"suggested_name": "RenderSimple3", "confidence": "low"},
+    "00405750": {"suggested_name": "RenderSimple4", "confidence": "low"},
+    "0040b1f0": {"suggested_name": "RenderVS", "confidence": "medium"},
+    "0040e410": {"suggested_name": "RenderNetwork", "confidence": "medium"},
+    "0040f130": {"suggested_name": "RenderOptions", "confidence": "medium"}
+  },
+  "_render_loop_pattern": "Cada scene renderer faz: BeginScene() → SetRenderState(ALPHABLENDENABLE=FALSE) → Draw*() × N → EndSceneAndPresent()",
+  "_device_lost_handling": "EndSceneAndPresent verifica D3DERR_DEVICELOST (0x88760868) e seta state->device_lost = 1. Reset function not yet identified.",
+  "_total_scene_renderers": 10,
+  "_render_state_constants_used": {
+    "7": "D3DRS_ALPHABLENDENABLE",
+    "0xe": "D3DRS_SRCBLEND",
+    "0x13": "D3DRS_SRCBLENDALPHA",
+    "0x14": "D3DRS_DESTBLENDALPHA"
+  },
+  "_scene_sizes": {
+    "SceneTitle": "0x150 (336 bytes)",
+    "SceneSelect": "0x208 (520 bytes)",
+    "SceneVS": "0xa8 (168 bytes)",
+    "SceneBattle": "0x3d98 (15768 bytes — maior)"
+  }
 }
