@@ -107,8 +107,19 @@ def extract_archive(dat_path, output_dir):
             continue
 
         # Create directory structure
+        # IMPORTANT: filenames inside .dat already include "data/" prefix
+        # (e.g., "data/title/back00.bmp"). Extract relative to output_dir's
+        # PARENT, so files end up at output_dir/../data/title/back00.bmp
+        # which is the correct location for the game to find them.
         safe_path = filename.replace('\\', '/').lstrip('/')
-        out_path = os.path.join(output_dir, safe_path)
+        # If filename starts with "data/", extract to output_dir/../
+        if safe_path.startswith("data/"):
+            # Extract to parent of output_dir (which is "data" folder)
+            # output_dir = game_dir/data, parent = game_dir
+            parent_dir = os.path.dirname(output_dir)
+            out_path = os.path.join(parent_dir, safe_path)
+        else:
+            out_path = os.path.join(output_dir, safe_path)
         out_dir = os.path.dirname(out_path)
         if out_dir:
             os.makedirs(out_dir, exist_ok=True)
