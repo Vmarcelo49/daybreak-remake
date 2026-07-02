@@ -1,0 +1,16 @@
+CommonInit @ 00543c70
+__RTC_Initialize @ 00671b1d
+___crtInitCritSecAndSpinCount @ 006746da
+___crtInitCritSecNoSpinCount@8 @ 006746ca
+___initmbctable @ 00672143
+___onexitinit @ 0066c81b
+___sbh_heap_init @ 00672f92
+___security_init_cookie @ 0066e406
+___sse2_available_init @ 00672df1
+__cinit @ 00670fd4
+__heap_init @ 00671bbf
+__initterm @ 00670fbc
+__ioinit @ 0067191f
+__mtinit @ 0066dde4
+__mtinitlocknum @ 0066e7bc
+__mtinitlocks @ 0066e709

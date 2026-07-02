@@ -1,0 +1,432 @@
+[
+  {
+    "address": "0066c906",
+    "name": "entry",
+    "reason": "entry_point"
+  },
+  {
+    "address": "00406310",
+    "name": "LoadNextScene",
+    "reason": "keyword:Load"
+  },
+  {
+    "address": "00410420",
+    "name": "basic_string<char,std::char_traits<char>,std::allocator<char>_>",
+    "reason": "keyword:char"
+  },
+  {
+    "address": "00410d00",
+    "name": "_Allocate<char>",
+    "reason": "keyword:char"
+  },
+  {
+    "address": "00543c70",
+    "name": "CommonInit",
+    "reason": "keyword:Init"
+  },
+  {
+    "address": "00662540",
+    "name": "allocator<char>",
+    "reason": "keyword:char"
+  },
+  {
+    "address": "00667610",
+    "name": "~ctype<char>",
+    "reason": "keyword:char"
+  },
+  {
+    "address": "00669cd2",
+    "name": "D3DXMatrixScaling",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669cd8",
+    "name": "D3DXMatrixMultiply",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669cde",
+    "name": "D3DXVec3Transform",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669ce4",
+    "name": "D3DXMatrixRotationY",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669cea",
+    "name": "D3DXMatrixRotationX",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669cf0",
+    "name": "D3DXMatrixTranslation",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669cf6",
+    "name": "D3DXMatrixInverse",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669cfc",
+    "name": "D3DXVec3Normalize",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669d02",
+    "name": "D3DXGetFVFVertexSize",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669d08",
+    "name": "D3DXIntersect",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669d0e",
+    "name": "D3DXVec4Transform",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669d14",
+    "name": "D3DXMatrixRotationZ",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669d1a",
+    "name": "D3DXVec2Normalize",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669d20",
+    "name": "D3DXMatrixRotationYawPitchRoll",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669d26",
+    "name": "D3DXLoadMeshHierarchyFromXInMemory",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669d2c",
+    "name": "D3DXFrameDestroy",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669d32",
+    "name": "D3DXFrameFind",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669d38",
+    "name": "D3DXCreateEffect",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669d3e",
+    "name": "D3DXMatrixPerspectiveFovLH",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669d44",
+    "name": "D3DXMatrixLookAtLH",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669d4a",
+    "name": "D3DXCreateTexture",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669d50",
+    "name": "D3DXMatrixRotationAxis",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669d56",
+    "name": "D3DXComputeNormals",
+    "reason": "keyword:D3D"
+  },
+  {
+    "address": "00669d5c",
+    "name": "Direct3DCreate9",
+    "reason": "keyword:Direct3D"
+  },
+  {
+    "address": "00669d62",
+    "name": "DirectInput8Create",
+    "reason": "keyword:Input"
+  },
+  {
+    "address": "0066b042",
+    "name": "ImmSetOpenStatus",
+    "reason": "keyword:Open"
+  },
+  {
+    "address": "0066b048",
+    "name": "ImmGetOpenStatus",
+    "reason": "keyword:Open"
+  },
+  {
+    "address": "0066b090",
+    "name": "_UnwindNestedFrames",
+    "reason": "keyword:Frame"
+  },
+  {
+    "address": "0066b0e2",
+    "name": "___CxxFrameHandler",
+    "reason": "keyword:Frame"
+  },
+  {
+    "address": "0066b346",
+    "name": "_CreateFrameInfo",
+    "reason": "keyword:Frame"
+  },
+  {
+    "address": "0066b38f",
+    "name": "_FindAndUnlinkFrame",
+    "reason": "keyword:Frame"
+  },
+  {
+    "address": "0066c3d4",
+    "name": "__fsopen",
+    "reason": "keyword:Open"
+  },
+  {
+    "address": "0066c81b",
+    "name": "___onexitinit",
+    "reason": "keyword:Init"
+  },
+  {
+    "address": "0066d3c9",
+    "name": "___FrameUnwindToState",
+    "reason": "keyword:Frame"
+  },
+  {
+    "address": "0066db64",
+    "name": "___InternalCxxFrameHandler",
+    "reason": "keyword:Frame"
+  },
+  {
+    "address": "0066dde4",
+    "name": "__mtinit",
+    "reason": "keyword:Init"
+  },
+  {
+    "address": "0066df40",
+    "name": "__CallSettingFrame@12",
+    "reason": "keyword:Frame"
+  },
+  {
+    "address": "0066e406",
+    "name": "___security_init_cookie",
+    "reason": "keyword:Init"
+  },
+  {
+    "address": "0066e709",
+    "name": "__mtinitlocks",
+    "reason": "keyword:Init"
+  },
+  {
+    "address": "0066e7bc",
+    "name": "__mtinitlocknum",
+    "reason": "keyword:Init"
+  },
+  {
+    "address": "0066ec6a",
+    "name": "__lock_file",
+    "reason": "keyword:File"
+  },
+  {
+    "address": "0066ec99",
+    "name": "__lock_file2",
+    "reason": "keyword:File"
+  },
+  {
+    "address": "0066ecbc",
+    "name": "__unlock_file",
+    "reason": "keyword:File"
+  },
+  {
+    "address": "0066eceb",
+    "name": "__unlock_file2",
+    "reason": "keyword:File"
+  },
+  {
+    "address": "0066edef",
+    "name": "__openfile",
+    "reason": "keyword:File"
+  },
+  {
+    "address": "0066f245",
+    "name": "___updatetlocinfo_lk",
+    "reason": "keyword:Update"
+  },
+  {
+    "address": "0066f306",
+    "name": "___updatetlocinfo",
+    "reason": "keyword:Update"
+  },
+  {
+    "address": "0066f45a",
+    "name": "write_char",
+    "reason": "keyword:char"
+  },
+  {
+    "address": "0066f47f",
+    "name": "write_multi_char",
+    "reason": "keyword:char"
+  },
+  {
+    "address": "0066f4a4",
+    "name": "write_string",
+    "reason": "keyword:Write"
+  },
+  {
+    "address": "00670014",
+    "name": "__fload",
+    "reason": "keyword:Load"
+  },
+  {
+    "address": "006702c5",
+    "name": "__fload_withFB",
+    "reason": "keyword:Load"
+  },
+  {
+    "address": "00670fbc",
+    "name": "__initterm",
+    "reason": "keyword:Init"
+  },
+  {
+    "address": "00670fd4",
+    "name": "__cinit",
+    "reason": "keyword:Init"
+  },
+  {
+    "address": "006711b7",
+    "name": "__NMSG_WRITE",
+    "reason": "keyword:Write"
+  },
+  {
+    "address": "0067191f",
+    "name": "__ioinit",
+    "reason": "keyword:Init"
+  },
+  {
+    "address": "00671b1d",
+    "name": "__RTC_Initialize",
+    "reason": "keyword:Init"
+  },
+  {
+    "address": "00671bbf",
+    "name": "__heap_init",
+    "reason": "keyword:Init"
+  },
+  {
+    "address": "00671df4",
+    "name": "___updatetmbcinfo",
+    "reason": "keyword:Update"
+  },
+  {
+    "address": "00672143",
+    "name": "___initmbctable",
+    "reason": "keyword:Init"
+  },
+  {
+    "address": "006722a6",
+    "name": "write_char",
+    "reason": "keyword:char"
+  },
+  {
+    "address": "006722d9",
+    "name": "write_multi_char",
+    "reason": "keyword:char"
+  },
+  {
+    "address": "006722fd",
+    "name": "write_string",
+    "reason": "keyword:Write"
+  },
+  {
+    "address": "00672df1",
+    "name": "___sse2_available_init",
+    "reason": "keyword:Init"
+  },
+  {
+    "address": "00672f92",
+    "name": "___sbh_heap_init",
+    "reason": "keyword:Init"
+  },
+  {
+    "address": "00673ab5",
+    "name": "_ValidateRead",
+    "reason": "keyword:Read"
+  },
+  {
+    "address": "00673ad1",
+    "name": "_ValidateWrite",
+    "reason": "keyword:Write"
+  },
+  {
+    "address": "006746ca",
+    "name": "___crtInitCritSecNoSpinCount@8",
+    "reason": "keyword:Init"
+  },
+  {
+    "address": "006746da",
+    "name": "___crtInitCritSecAndSpinCount",
+    "reason": "keyword:Init"
+  },
+  {
+    "address": "00674adf",
+    "name": "__write_lk",
+    "reason": "keyword:Write"
+  },
+  {
+    "address": "00674cad",
+    "name": "__write",
+    "reason": "keyword:Write"
+  },
+  {
+    "address": "00674eaf",
+    "name": "__read_lk",
+    "reason": "keyword:Read"
+  },
+  {
+    "address": "0067508a",
+    "name": "__read",
+    "reason": "keyword:Read"
+  },
+  {
+    "address": "00675179",
+    "name": "__tsopen_lk",
+    "reason": "keyword:Open"
+  },
+  {
+    "address": "00675460",
+    "name": "__sopen",
+    "reason": "keyword:Open"
+  },
+  {
+    "address": "006940f0",
+    "name": "CRegKey",
+    "reason": "keyword:Key"
+  },
+  {
+    "address": "00695990",
+    "name": "GetConnectionInterface",
+    "reason": "keyword:connect"
+  },
+  {
+    "address": "00695a30",
+    "name": "GetConnectionInterface",
+    "reason": "keyword:connect"
+  },
+  {
+    "address": "00401000",
+    "name": "`vector_constructor_iterator'",
+    "reason": "named_symbol"
+  }
+]

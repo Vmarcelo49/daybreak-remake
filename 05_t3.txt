@@ -1,0 +1,4 @@
+Function: LoadNextScene at 00406310
+Signature: uint __fastcall LoadNextScene(int pGameState)
+Entry: 00406310
+Body: 00406310 - 0040683a

@@ -1,0 +1,16 @@
+# Decompilação automática de binários via MCP
+# Arquivos sensíveis que NÃO devem ir para o repo
+*.full.json
+.chunks/
+*.tmp
+*.bak
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+
+# Chaves e credenciais (se acidentalmente colocadas aqui)
+*deploy_key*
+*id_ed25519*
+*.pem
+.env
