@@ -1,8 +1,9 @@
 # Progresso da Análise — DaybreakDX.exe
 
 Última atualização: 2026-07-02
+Repo: https://github.com/giovanni-marchisio/daybreak-decomp
 
-## Status atual: ✅ Fase 1-7 CONCLUÍDAS (parcial)
+## Status atual: ✅ Fases 1-7 CONCLUÍDAS + deploy no GitHub
 
 ## Resumo rápido
 
