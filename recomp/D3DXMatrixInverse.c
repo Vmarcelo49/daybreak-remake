@@ -1,8 +1,7 @@
 // ============================================
 // Address:  0x00669cf6
 // Original: D3DXMatrixInverse
-// Suggested: D3DXMatrixInverse (confidence: high)
-// Status:   suggested — name kept as comment until reviewed
+// Name:     D3DXMatrixInverse (status: locked)
 // ============================================
 
 void D3DXMatrixInverse(void)

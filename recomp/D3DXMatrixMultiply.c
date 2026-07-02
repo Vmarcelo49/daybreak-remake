@@ -1,8 +1,7 @@
 // ============================================
 // Address:  0x00669cd8
 // Original: D3DXMatrixMultiply
-// Suggested: D3DXMatrixMultiply (confidence: high)
-// Status:   suggested — name kept as comment until reviewed
+// Name:     D3DXMatrixMultiply (status: locked)
 // ============================================
 
 void D3DXMatrixMultiply(void)

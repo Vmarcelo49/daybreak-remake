@@ -1,8 +1,7 @@
 // ============================================
 // Address:  0x00669ce4
 // Original: D3DXMatrixRotationY
-// Suggested: D3DXMatrixRotationY (confidence: high)
-// Status:   suggested — name kept as comment until reviewed
+// Name:     D3DXMatrixRotationY (status: locked)
 // ============================================
 
 void D3DXMatrixRotationY(void)

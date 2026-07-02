@@ -1,8 +1,7 @@
 // ============================================
 // Address:  0x00669d02
 // Original: D3DXGetFVFVertexSize
-// Suggested: D3DXGetFVFVertexSize (confidence: high)
-// Status:   suggested — name kept as comment until reviewed
+// Name:     D3DXGetFVFVertexSize (status: locked)
 // ============================================
 
 void D3DXGetFVFVertexSize(void)

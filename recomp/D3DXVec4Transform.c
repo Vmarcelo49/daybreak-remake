@@ -1,8 +1,7 @@
 // ============================================
 // Address:  0x00669d0e
 // Original: D3DXVec4Transform
-// Suggested: D3DXVec4Transform (confidence: high)
-// Status:   suggested — name kept as comment until reviewed
+// Name:     D3DXVec4Transform (status: locked)
 // ============================================
 
 void D3DXVec4Transform(void)

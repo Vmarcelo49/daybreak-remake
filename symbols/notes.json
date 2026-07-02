@@ -137,7 +137,8 @@
       "type": "conflict",
       "text": "agent:local suggested 'ReleaseObject' (dtor vtable + notify + clear slot, 18 callers). agent:extraction suggested 'SetSceneState'. Agent local considera 'SetSceneState' plausível se o objeto for scene-state, mas o padrão observado (FUN_0041d090 ctor-call + FUN_0064ade0 clear slot <0x20) sugere lifecycle de objeto, não state set. Operador decide.",
       "author": "agent:local",
-      "resolved": false
+      "resolved": true,
+      "resolution": "Resolvido pelo operador (delegado ao agente local) em 2026-07-02. Vencedor registrado em symbols/functions.json."
     }
   ],
   "UnloadResource": [
@@ -153,7 +154,8 @@
       "type": "conflict",
       "text": "agent:local suggested 'UpdateInputCounters' (contadores edge-triggered via &0x80 bit, 15 callers). agent:extraction suggested 'UpdateTitleScreen'. Agent local mantém a hipótese de input porque a estrutura (counters em +0x38/+0x3c/+0x40, lookup table 0x80 bit, callers em múltiplas cenas) é consistente com poll de input, não com update de tela. Operador decide.",
       "author": "agent:local",
-      "resolved": false
+      "resolved": true,
+      "resolution": "Resolvido pelo operador (delegado ao agente local) em 2026-07-02. Vencedor registrado em symbols/functions.json."
     }
   ],
   "LoadStage": [
@@ -161,7 +163,8 @@
       "type": "conflict",
       "text": "agent:extraction suggested 'LoadStage'. agent:local suggests 'LoadTeamScenario' — FUN_00648f30 carrega 'data/scenario/team%02d.dat', faz shuffle Fisher-Yates de 6 entries (usando FUN_0065d150 = Mersenne Twister) e seta stats de team (100/100/100/100 em +0x4b90..+0x4b9c). 'LoadStage' é genérico mas não errado; 'LoadTeamScenario' é mais específico. Operador decide.",
       "author": "agent:local",
-      "resolved": false
+      "resolved": true,
+      "resolution": "Resolvido pelo operador (delegado ao agente local) em 2026-07-02. Vencedor registrado em symbols/functions.json."
     }
   ],
   "GetRandomNumber": [
@@ -169,7 +172,8 @@
       "type": "conflict",
       "text": "agent:extraction suggested 'GetRandomNumber'. agent:local identifies o algoritmo especificamente como Mersenne Twister (MT19937): state de 624 words (DAT_006d31d0[0x26f]), seeding via index DAT_006b77bc, constantes 0x80000000/0x7fffffff para twist, tempering (shifts 0xb/0x13a58ad/0x1df8c/0xf/0x12). Sugeriu 'MersenneTwisterRand'. 'GetRandomNumber' é correto; 'MersenneTwisterRand' documenta o algoritmo. Operador decide o nível de detalhe.",
       "author": "agent:local",
-      "resolved": false
+      "resolved": true,
+      "resolution": "Resolvido pelo operador (delegado ao agente local) em 2026-07-02. Vencedor registrado em symbols/functions.json."
     }
   ],
   "InitPlayerSlot": [
@@ -177,7 +181,8 @@
       "type": "conflict",
       "text": "agent:extraction suggested 'InitPlayerSlot'. agent:local suggests 'LoadPlayerPortraits' — FUN_00408050 carrega 3 BMPs por slot ('data/select/w%02d.bmp', 'cos%02d.bmp', '%02d.bmp') via wsprintfA + LoadResourceChecked (FUN_006560c0). 'InitPlayerSlot' foca no slot; 'LoadPlayerPortraits' foca na ação. Operador decide.",
       "author": "agent:local",
-      "resolved": false
+      "resolved": true,
+      "resolution": "Resolvido pelo operador (delegado ao agente local) em 2026-07-02. Vencedor registrado em symbols/functions.json."
     }
   ]
 }

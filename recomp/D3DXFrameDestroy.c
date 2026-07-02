@@ -1,8 +1,7 @@
 // ============================================
 // Address:  0x00669d2c
 // Original: D3DXFrameDestroy
-// Suggested: D3DXFrameDestroy (confidence: high)
-// Status:   suggested — name kept as comment until reviewed
+// Name:     D3DXFrameDestroy (status: locked)
 // ============================================
 
 void D3DXFrameDestroy(void)

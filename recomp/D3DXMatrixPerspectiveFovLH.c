@@ -1,8 +1,7 @@
 // ============================================
 // Address:  0x00669d3e
 // Original: D3DXMatrixPerspectiveFovLH
-// Suggested: D3DXMatrixPerspectiveFovLH (confidence: high)
-// Status:   suggested — name kept as comment until reviewed
+// Name:     D3DXMatrixPerspectiveFovLH (status: locked)
 // ============================================
 
 void D3DXMatrixPerspectiveFovLH(void)

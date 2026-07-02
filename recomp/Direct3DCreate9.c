@@ -1,8 +1,7 @@
 // ============================================
 // Address:  0x00669d5c
 // Original: Direct3DCreate9
-// Suggested: Direct3DCreate9 (confidence: high)
-// Status:   suggested — name kept as comment until reviewed
+// Name:     Direct3DCreate9 (status: locked)
 // ============================================
 
 void Direct3DCreate9(void)

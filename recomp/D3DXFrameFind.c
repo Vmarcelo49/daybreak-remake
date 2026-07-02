@@ -1,8 +1,7 @@
 // ============================================
 // Address:  0x00669d32
 // Original: D3DXFrameFind
-// Suggested: D3DXFrameFind (confidence: high)
-// Status:   suggested — name kept as comment until reviewed
+// Name:     D3DXFrameFind (status: locked)
 // ============================================
 
 void D3DXFrameFind(void)

@@ -1,13 +1,13 @@
 {
-  "generated_at": "2026-07-02T03:47:41+00:00",
+  "generated_at": "2026-07-02T03:55:00+00:00",
   "total_functions_in_binary": 4092,
   "total_in_decompiled": 3191,
   "decompilation_coverage_percent": 77.98,
-  "functions_named_reviewed_or_locked": 4,
-  "functions_with_suggestion": 59,
+  "functions_named_reviewed_or_locked": 48,
+  "functions_with_suggestion": 15,
   "functions_unreviewed": 3106,
   "functions_stale": 0,
-  "review_coverage_percent": 0.13,
+  "review_coverage_percent": 1.5,
   "suggestion_coverage_percent": 1.97,
   "hot_spots": [
     {

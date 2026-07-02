@@ -377,21 +377,21 @@
     "00669cd2": {
       "suggested_name": "D3DXMatrixScaling",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXMatrixScaling.c",
       "signature_hash": "c20a5e79b0ece4eb",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "matrix",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixScaling). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXMatrixScaling). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "0065a090": {
       "suggested_name": "FUN_0065a090",
@@ -1020,21 +1020,21 @@
     "00669cea": {
       "suggested_name": "D3DXMatrixRotationX",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXMatrixRotationX.c",
       "signature_hash": "525ddcc9f1cf1611",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "matrix",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixRotationX). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXMatrixRotationX). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "0042d980": {
       "suggested_name": "FUN_0042d980",
@@ -1123,21 +1123,21 @@
     "00669d02": {
       "suggested_name": "D3DXGetFVFVertexSize",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXGetFVFVertexSize.c",
       "signature_hash": "eea75d3f9548e03e",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "mesh",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXGetFVFVertexSize). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXGetFVFVertexSize). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "00667820": {
       "suggested_name": "FUN_00667820",
@@ -1706,21 +1706,21 @@
     "00669d4a": {
       "suggested_name": "D3DXCreateTexture",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXCreateTexture.c",
       "signature_hash": "880e73165399b9b6",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "texture",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXCreateTexture). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXCreateTexture). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "00415dc0": {
       "suggested_name": "FUN_00415dc0",
@@ -4377,7 +4377,7 @@
     "00653860": {
       "suggested_name": "ReadInt32",
       "confidence": "high",
-      "status": "suggested",
+      "status": "reviewed",
       "source_file": "decompiled/FUN_00653860.c",
       "signature_hash": "5bbd1a9ec0aca9eb",
       "depends_on_unresolved": [
@@ -4385,15 +4385,15 @@
       ],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:46:29+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "io",
         "file",
         "read",
         "primitive"
       ],
-      "justification": "Lê um único uint32 do arquivo (ReadFile 4 bytes em local_8, retorna). Usada extensivamente em parsers de .dat/.scenario (FUN_00648f30 LoadTeamScenario chama ela 8x)."
+      "justification": "Promoted to reviewed (operador delegou ao agente local). Evidência: ReadInt32: ReadFile(handle, &buf, 4). Usada por LoadTeamScenario 8x."
     },
     "004382a0": {
       "suggested_name": "FUN_004382a0",
@@ -4482,21 +4482,21 @@
     "00669d50": {
       "suggested_name": "D3DXMatrixRotationAxis",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXMatrixRotationAxis.c",
       "signature_hash": "79087c674193e94f",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "matrix",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixRotationAxis). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXMatrixRotationAxis). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "00685030": {
       "suggested_name": "FUN_00685030",
@@ -4765,21 +4765,21 @@
     "00669cf0": {
       "suggested_name": "D3DXMatrixTranslation",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXMatrixTranslation.c",
       "signature_hash": "765af52fe85f5749",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "matrix",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixTranslation). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXMatrixTranslation). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "004270d0": {
       "suggested_name": "FUN_004270d0",
@@ -6824,7 +6824,7 @@
     "00406850": {
       "suggested_name": "UpdateCharacterSelect",
       "confidence": "high",
-      "status": "suggested",
+      "status": "reviewed",
       "source_file": "decompiled/FUN_00406850.c",
       "signature_hash": "5a1c94e97f98e4a9",
       "depends_on_unresolved": [
@@ -6838,14 +6838,14 @@
       ],
       "notes_ref": null,
       "suggested_by": "agent:extraction",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:26:35+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "scene",
         "select",
         "state-machine"
       ],
-      "justification": "agent:local corrobora com evidência forte: state machine switch em pGameState+0x2e98 (casos 0,1,3,4,8), carrega voice entry ('data/voice/entry/%s.wav'), manipula slots de seleção. Definitivamente o update do character select."
+      "justification": "Promoted to reviewed (operador delegou ao agente local). Evidência: UpdateCharacterSelect: state machine (switch pGameState+0x2e98), voice entry loading, 15 callers."
     },
     "006860e0": {
       "suggested_name": "FUN_006860e0",
@@ -7064,20 +7064,20 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00408050": {
-      "suggested_name": "InitPlayerSlot",
-      "confidence": "medium",
-      "status": "suggested",
+      "suggested_name": "LoadPlayerPortraits",
+      "confidence": "high",
+      "status": "reviewed",
       "source_file": "decompiled/FUN_00408050.c",
       "signature_hash": "a349d706b1ceb2ba",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:extraction",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:04:21+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:44+00:00",
       "tags": [
         "scene-handler"
       ],
-      "justification": "Called as (player_id, char_id) — initializes 2-player slots"
+      "justification": "CONFLITO RESOLVIDO: LoadPlayerPortraits vence. Evidência direta: carrega 3 BMPs por slot ('data/select/w%02d.bmp', 'cos%02d.bmp', '%02d.bmp') via LoadResourceChecked. 'InitPlayerSlot' foca no slot; a ação real é carregar portraits/costumes."
     },
     "00690980": {
       "suggested_name": "FUN_00690980",
@@ -8486,21 +8486,21 @@
     "00669d26": {
       "suggested_name": "D3DXLoadMeshHierarchyFromXInMemory",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXLoadMeshHierarchyFromXInMemory.c",
       "signature_hash": "1bc3b202f39e0536",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "mesh",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXLoadMeshHierarchyFromXInMemory). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXLoadMeshHierarchyFromXInMemory). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "00425ae0": {
       "suggested_name": "FUN_00425ae0",
@@ -8517,19 +8517,19 @@
     "006584e0": {
       "suggested_name": "UpdateInput",
       "confidence": "high",
-      "status": "suggested",
+      "status": "reviewed",
       "source_file": "decompiled/FUN_006584e0.c",
       "signature_hash": "03da09c5820b21cd",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:extraction",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:26:35+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "input",
         "poll"
       ],
-      "justification": "agent:local corrobora: chama vtable+0x24 com buffer 0x100, em falha chama vtable+0x1c (Release) + memset — padrão DirectInput GetDeviceState. Confiança elevada para high."
+      "justification": "Promoted to reviewed (operador delegou ao agente local). Evidência: UpdateInput: vtable+0x24 com buffer 0x100, -1 -> release+memset. Padrão DirectInput GetDeviceState."
     },
     "005f7540": {
       "suggested_name": "FUN_005f7540",
@@ -8815,21 +8815,21 @@
     "00669ce4": {
       "suggested_name": "D3DXMatrixRotationY",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXMatrixRotationY.c",
       "signature_hash": "e0bdc1c05599424b",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "matrix",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixRotationY). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXMatrixRotationY). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "00647130": {
       "suggested_name": "FUN_00647130",
@@ -10134,21 +10134,21 @@
     "00669d44": {
       "suggested_name": "D3DXMatrixLookAtLH",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXMatrixLookAtLH.c",
       "signature_hash": "7696cf1c654e063b",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "matrix",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixLookAtLH). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXMatrixLookAtLH). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "00698d10": {
       "suggested_name": "FUN_00698d10",
@@ -11029,7 +11029,7 @@
     "00655d60": {
       "suggested_name": "UpdateSpriteTransform",
       "confidence": "high",
-      "status": "suggested",
+      "status": "reviewed",
       "source_file": "decompiled/FUN_00655d60.c",
       "signature_hash": "9ff4ff1778e39c1b",
       "depends_on_unresolved": [
@@ -11040,15 +11040,15 @@
       ],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:04:44+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "renderer",
         "sprite",
         "transform",
         "math"
       ],
-      "justification": "Computes the 4 sprite corners (stride 7 floats, offsets 1/8/0xf/0x10/0x16/0x17) from position+scale, applies rotation via FUN_0065d050/d010 (sin/cos pair) and pushes vertices to D3D (vtable calls at *DAT_006d16f8 + 0x170/0x164 + FUN_006517e0 draw primitive)."
+      "justification": "Promoted to reviewed (operador delegou ao agente local). Evidência: UpdateSpriteTransform: corners (stride 7), sin/cos (FUN_0065d050/d010), D3D vtable draw. Corroborado por 15 callers de renderer."
     },
     "004039d0": {
       "suggested_name": "InitVtable6a140c",
@@ -11454,21 +11454,21 @@
     "00669d14": {
       "suggested_name": "D3DXMatrixRotationZ",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXMatrixRotationZ.c",
       "signature_hash": "37ab192511492b58",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "matrix",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixRotationZ). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXMatrixRotationZ). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "00679240": {
       "suggested_name": "FUN_00679240",
@@ -11761,21 +11761,21 @@
     "00669d38": {
       "suggested_name": "D3DXCreateEffect",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXCreateEffect.c",
       "signature_hash": "d5f60f1b3e7d83ee",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "texture",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXCreateEffect). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXCreateEffect). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "006631f0": {
       "suggested_name": "FUN_006631f0",
@@ -14629,21 +14629,21 @@
     "00669d32": {
       "suggested_name": "D3DXFrameFind",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXFrameFind.c",
       "signature_hash": "6524cc1dabb49319",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "mesh",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXFrameFind). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXFrameFind). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "00405200": {
       "suggested_name": "FUN_00405200",
@@ -14660,7 +14660,7 @@
     "006585f0": {
       "suggested_name": "UpdateInputState",
       "confidence": "high",
-      "status": "suggested",
+      "status": "reviewed",
       "source_file": "decompiled/FUN_006585f0.c",
       "signature_hash": "4db33e2c9ed8df15",
       "depends_on_unresolved": [
@@ -14669,13 +14669,13 @@
       ],
       "notes_ref": null,
       "suggested_by": "agent:extraction",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:26:35+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "input",
         "poll"
       ],
-      "justification": "agent:local corrobora: loop sobre N dispositivos (byte count em +0x120), chama o poll (FUN_006584e0) e re-adquire (vtable+0x1c) em falha. Padrão de poll de múltiplos dispositivos."
+      "justification": "Promoted to reviewed (operador delegou ao agente local). Evidência: UpdateInputState: loop sobre N dispositivos, poll+reacquire. Corroborado."
     },
     "0068a740": {
       "suggested_name": "FUN_0068a740",
@@ -16233,7 +16233,7 @@
     "00653540": {
       "suggested_name": "OpenGameFile",
       "confidence": "high",
-      "status": "suggested",
+      "status": "reviewed",
       "source_file": "decompiled/FUN_00653540.c",
       "signature_hash": "912e42bd6c8d27b6",
       "depends_on_unresolved": [
@@ -16244,14 +16244,14 @@
       ],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:46:29+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "io",
         "file",
         "open"
       ],
-      "justification": "Abre um arquivo do jogo: CreateFileA(path, GENERIC_READ, OPEN_EXISTING) no modo direto, ou busca em archive (loop const_iterator + FUN_00662f70) no modo archive. Retorna 1/0. Dual-mode (disk vs archive) é o padrão de asset loading do jogo."
+      "justification": "Promoted to reviewed (operador delegou ao agente local). Evidência: OpenGameFile: CreateFileA(GENERIC_READ, OPEN_EXISTING) + fallback de archive. Evidência direta."
     },
     "0041a260": {
       "suggested_name": "FUN_0041a260",
@@ -16340,7 +16340,7 @@
     "006537b0": {
       "suggested_name": "ReadFileBytes",
       "confidence": "high",
-      "status": "suggested",
+      "status": "reviewed",
       "source_file": "decompiled/FUN_006537b0.c",
       "signature_hash": "bd3f2339a72582fe",
       "depends_on_unresolved": [
@@ -16351,14 +16351,14 @@
       ],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:46:29+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "io",
         "file",
         "read"
       ],
-      "justification": "Wrapper de ReadFile(handle, buffer, size, &bytesRead) — lê N bytes do arquivo. Suporta modo direto e modo archive (via FUN_00663030). Assinatura BOOL ReadFile-like."
+      "justification": "Promoted to reviewed (operador delegou ao agente local). Evidência: ReadFileBytes: wrapper de ReadFile(handle, buf, size, &bytesRead). BOOL-returning."
     },
     "004a9c40": {
       "suggested_name": "FUN_004a9c40",
@@ -17810,21 +17810,21 @@
     "00669cd8": {
       "suggested_name": "D3DXMatrixMultiply",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXMatrixMultiply.c",
       "signature_hash": "ee7bc86b9e6ef458",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "matrix",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixMultiply). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXMatrixMultiply). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "0068bc30": {
       "suggested_name": "FUN_0068bc30",
@@ -18225,19 +18225,19 @@
     "0065d670": {
       "suggested_name": "EnterGameCriticalSection",
       "confidence": "high",
-      "status": "suggested",
+      "status": "reviewed",
       "source_file": "decompiled/FUN_0065d670.c",
       "signature_hash": "ded150ace483f7b5",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:extraction",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:26:35+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "sync",
         "critical-section"
       ],
-      "justification": "agent:local corrobora: wrapper direto de EnterCriticalSection((param_1 + 4)). Trivial."
+      "justification": "Promoted to reviewed (operador delegou ao agente local). Evidência: EnterGameCriticalSection: wrapper direto de EnterCriticalSection((p+4))."
     },
     "004840d0": {
       "suggested_name": "FUN_004840d0",
@@ -20102,21 +20102,21 @@
     "00669cf6": {
       "suggested_name": "D3DXMatrixInverse",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXMatrixInverse.c",
       "signature_hash": "2c2a7f8a7727a69e",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "matrix",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixInverse). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXMatrixInverse). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "0064c2c0": {
       "suggested_name": "FUN_0064c2c0",
@@ -22560,20 +22560,20 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "0065d150": {
-      "suggested_name": "GetRandomNumber",
-      "confidence": "medium",
-      "status": "suggested",
+      "suggested_name": "MersenneTwisterRand",
+      "confidence": "high",
+      "status": "reviewed",
       "source_file": "decompiled/FUN_0065d150.c",
       "signature_hash": "a8e00cc5543a0139",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:extraction",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:04:21+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:44+00:00",
       "tags": [
         "utility"
       ],
-      "justification": "uint FUN_0065d150(void) used with %3 and %2 — RNG"
+      "justification": "CONFLITO RESOLVIDO: MersenneTwisterRand vence. Evidência algorítmica: state de 624 words (0x26f), constantes 0x80000000/0x7fffffff para twist, tempering shifts (0xb/0x7/0xf/0x12) e máscaras (0x13a58ad/0x1df8c) são assinatura canônica do MT19937. 'GetRandomNumber' é correto mas não documental."
     },
     "00694b70": {
       "suggested_name": "FUN_00694b70",
@@ -22902,21 +22902,21 @@
     "00669d1a": {
       "suggested_name": "D3DXVec2Normalize",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXVec2Normalize.c",
       "signature_hash": "205974375a1634d6",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "vector",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXVec2Normalize). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXVec2Normalize). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "00434cc0": {
       "suggested_name": "FUN_00434cc0",
@@ -22945,21 +22945,21 @@
     "00669d08": {
       "suggested_name": "D3DXIntersect",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXIntersect.c",
       "signature_hash": "403b9ab79836a862",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "mesh",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXIntersect). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXIntersect). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "00421010": {
       "suggested_name": "FUN_00421010",
@@ -25881,21 +25881,21 @@
     "00669d0e": {
       "suggested_name": "D3DXVec4Transform",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXVec4Transform.c",
       "signature_hash": "44505223cecbc9fe",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "vector",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXVec4Transform). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXVec4Transform). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "0063b650": {
       "suggested_name": "FUN_0063b650",
@@ -27580,21 +27580,21 @@
     "00669d2c": {
       "suggested_name": "D3DXFrameDestroy",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXFrameDestroy.c",
       "signature_hash": "6eaa2919d6e6c2a9",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "mesh",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXFrameDestroy). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXFrameDestroy). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "006a0140": {
       "suggested_name": "FUN_006a0140",
@@ -27982,8 +27982,8 @@
     },
     "00657390": {
       "suggested_name": "UpdateInputCounters",
-      "confidence": "medium",
-      "status": "suggested",
+      "confidence": "high",
+      "status": "reviewed",
       "source_file": "decompiled/FUN_00657390.c",
       "signature_hash": "566487e6f3d30c6d",
       "depends_on_unresolved": [
@@ -27991,13 +27991,13 @@
       ],
       "notes_ref": "symbols/notes.json#UpdateInputCounters",
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:04:44+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:44+00:00",
       "tags": [
         "input",
         "state"
       ],
-      "justification": "Maintains per-key hold/release edge counters (+0x38/+0x3c/+0x40) driven by &0x80 bit on DAT_006d1928 or controller-state byte array (FUN_00404e20+0x30). CONFLITO: agent:extraction sugeriu 'UpdateTitleScreen' — ver symbols/notes.json#UpdateInputCounters."
+      "justification": "CONFLITO RESOLVIDO: UpdateInputCounters vence. Evidência: estrutura é counters edge-triggered em +0x38/+0x3c/+0x40, driven por keytable 0x80 bit OU controller byte array (FUN_00404e20+0x30). 15 callers em múltiplas cenas (não só title). 'UpdateTitleScreen' não explica os counters nem os callers multi-cena."
     },
     "00664c20": {
       "suggested_name": "FUN_00664c20",
@@ -29166,18 +29166,18 @@
     "0065b870": {
       "suggested_name": "PlayBGM",
       "confidence": "high",
-      "status": "suggested",
+      "status": "reviewed",
       "source_file": "decompiled/FUN_0065b870.c",
       "signature_hash": "9f0b9cbb221b6ca7",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:extraction",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:04:21+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "scene-handler"
       ],
-      "justification": "Called with 'data/bgm/title.ogg' as arg — audio playback function"
+      "justification": "Promoted to reviewed (operador delegou ao agente local). Evidência: PlayBGM: lock + streaming 1MB + chamada em LoadNextScene com 'data/bgm/title.ogg'."
     },
     "00426de0": {
       "suggested_name": "FUN_00426de0",
@@ -29662,21 +29662,21 @@
     "00669d3e": {
       "suggested_name": "D3DXMatrixPerspectiveFovLH",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXMatrixPerspectiveFovLH.c",
       "signature_hash": "0a02c8a35a4a4e72",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "matrix",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixPerspectiveFovLH). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXMatrixPerspectiveFovLH). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "00662890": {
       "suggested_name": "FUN_00662890",
@@ -30413,7 +30413,7 @@
     "00404220": {
       "suggested_name": "UpdateKeyConfigMenu",
       "confidence": "high",
-      "status": "suggested",
+      "status": "reviewed",
       "source_file": "decompiled/FUN_00404220.c",
       "signature_hash": "7582c029acb07646",
       "depends_on_unresolved": [
@@ -30433,15 +30433,15 @@
       ],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:40:34+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "input",
         "keyconfig",
         "menu",
         "state-machine"
       ],
-      "justification": "State machine (switch em pGameState+0x5c0) para tela de keyconfig: lê teclas via FUN_006586d0 (IsKeyPressed) e FUN_00657820 (IsKeyDown), atribui bindings em DAT_006cfe20/24 (tabela de keyconfig com 5 slots x 12 teclas), navega menu com 5 posições (mod 5). String 'data/keyconfig/%04d.bmp' confirma o contexto."
+      "justification": "Promoted to reviewed (operador delegou ao agente local). Evidência: UpdateKeyConfigMenu: state machine keyconfig, lê keytable+controllers, string 'data/keyconfig/%04d.bmp' confirma contexto."
     },
     "006940d0": {
       "suggested_name": "FUN_006940d0",
@@ -30950,21 +30950,21 @@
     "00669cde": {
       "suggested_name": "D3DXVec3Transform",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXVec3Transform.c",
       "signature_hash": "b36561c5cf3add53",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "vector",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXVec3Transform). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXVec3Transform). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "0064f884": {
       "suggested_name": "FUN_0064f884",
@@ -30979,20 +30979,20 @@
       "last_updated": "2026-07-02T02:36:44+00:00"
     },
     "00648f30": {
-      "suggested_name": "LoadStage",
-      "confidence": "medium",
-      "status": "suggested",
+      "suggested_name": "LoadTeamScenario",
+      "confidence": "high",
+      "status": "reviewed",
       "source_file": "decompiled/FUN_00648f30.c",
       "signature_hash": "d3700dea03df7f7c",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:extraction",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:04:21+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:44+00:00",
       "tags": [
         "scene-handler"
       ],
-      "justification": "Called in case 3 (battle init) with stage_id from DAT_006b7100"
+      "justification": "CONFLITO RESOLVIDO: LoadTeamScenario vence. Evidência direta: carrega 'data/scenario/team%02d.dat', faz shuffle Fisher-Yates de 6 entries, seta stats de team (100/100/100/100 em +0x4b90..+0x4b9c). 'LoadStage' é genérico; a string .dat especifica team."
     },
     "0068eea0": {
       "suggested_name": "FUN_0068eea0",
@@ -31297,7 +31297,7 @@
     "0064aed0": {
       "suggested_name": "ReleaseObject",
       "confidence": "medium",
-      "status": "suggested",
+      "status": "reviewed",
       "source_file": "decompiled/FUN_0064aed0.c",
       "signature_hash": "67aa57bd432a38db",
       "depends_on_unresolved": [
@@ -31307,13 +31307,13 @@
       ],
       "notes_ref": "symbols/notes.json#ReleaseObject",
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:04:44+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:44+00:00",
       "tags": [
         "lifecycle",
         "object-manager"
       ],
-      "justification": "Cleanup dispatcher: vtable dtor (FUN_0041d090) + notify (FUN_00415d30) + clear slot <0x20 (FUN_0064ade0); 18 callers. CONFLITO: agent:extraction sugeriu 'SetSceneState' — ver symbols/notes.json#ReleaseObject."
+      "justification": "CONFLITO RESOLVIDO: ReleaseObject vence. Evidência: FUN_0041d090 é ctor-call (não state-set), FUN_0064ade0 limpa slot indexado <0x20 (padrão de cleanup de array de objetos). 'SetSceneState' não explica o ctor-call nem o clear-slot. Fica medium porque o tipo exato do objeto é desconhecido."
     },
     "00692fa0": {
       "suggested_name": "FUN_00692fa0",
@@ -31498,21 +31498,21 @@
     "00669d20": {
       "suggested_name": "D3DXMatrixRotationYawPitchRoll",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXMatrixRotationYawPitchRoll.c",
       "signature_hash": "8c4fe42261dfd1b9",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "matrix",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXMatrixRotationYawPitchRoll). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXMatrixRotationYawPitchRoll). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "00663ff0": {
       "suggested_name": "FUN_00663ff0",
@@ -32189,7 +32189,7 @@
     "00655af0": {
       "suggested_name": "InitSpriteNoRotation",
       "confidence": "high",
-      "status": "suggested",
+      "status": "reviewed",
       "source_file": "decompiled/FUN_00655af0.c",
       "signature_hash": "fd028322ea71731f",
       "depends_on_unresolved": [
@@ -32197,14 +32197,14 @@
       ],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:04:44+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "renderer",
         "sprite",
         "init"
       ],
-      "justification": "Thin wrapper: calls FUN_00655b20(...,0,0). FUN_00655b20 stores rotation/uv params at offsets 0x1f/0x20, so passing (0,0) = no rotation. The zeroed tail args match a default-orientation init."
+      "justification": "Promoted to reviewed (operador delegou ao agente local). Evidência: InitSpriteNoRotation: thin wrapper de FUN_00655b20(...,0,0) — ausência de rotação confirmada pela assinatura."
     },
     "004332a0": {
       "suggested_name": "FUN_004332a0",
@@ -32269,21 +32269,21 @@
     "00669d5c": {
       "suggested_name": "Direct3DCreate9",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/Direct3DCreate9.c",
       "signature_hash": "f2fa2364c3c8026e",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "directx",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (Direct3DCreate9). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (Direct3DCreate9). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "00684e40": {
       "suggested_name": "FUN_00684e40",
@@ -32384,19 +32384,19 @@
     "0065d6a0": {
       "suggested_name": "LeaveGameCriticalSection",
       "confidence": "high",
-      "status": "suggested",
+      "status": "reviewed",
       "source_file": "decompiled/FUN_0065d6a0.c",
       "signature_hash": "56a5249bbe40f38d",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:extraction",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:26:35+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "sync",
         "critical-section"
       ],
-      "justification": "agent:local corrobora: wrapper direto de LeaveCriticalSection((param_1 + 4)). Trivial."
+      "justification": "Promoted to reviewed (operador delegou ao agente local). Evidência: LeaveGameCriticalSection: wrapper direto de LeaveCriticalSection((p+4))."
     },
     "006950d0": {
       "suggested_name": "FUN_006950d0",
@@ -34544,21 +34544,21 @@
     "00669cfc": {
       "suggested_name": "D3DXVec3Normalize",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXVec3Normalize.c",
       "signature_hash": "30cb2bbac8af0ffb",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "vector",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXVec3Normalize). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXVec3Normalize). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "00653c10": {
       "suggested_name": "FUN_00653c10",
@@ -34647,20 +34647,20 @@
     "00657820": {
       "suggested_name": "IsKeyDown",
       "confidence": "high",
-      "status": "suggested",
+      "status": "reviewed",
       "source_file": "decompiled/FUN_00657820.c",
       "signature_hash": "4166172964d0d453",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:40:34+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "input",
         "key",
         "poll"
       ],
-      "justification": "return (DAT_006d1928[param_1] & 0x80) != 0 — testa o high-bit da tabela de estado de teclas (clássico GetAsyncKeyState high-bit). Chamada com VK codes (0xcb=left, 0xcd=right, 1=mouse)."
+      "justification": "Promoted to reviewed (operador delegou ao agente local). Evidência: IsKeyDown: return (keytable[vk] & 0x80). Padrão GetAsyncKeyState high-bit, trivial."
     },
     "00695a00": {
       "suggested_name": "FUN_00695a00",
@@ -34881,21 +34881,21 @@
     "00669d56": {
       "suggested_name": "D3DXComputeNormals",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/D3DXComputeNormals.c",
       "signature_hash": "50156ffcad8cdc34",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "mesh",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (D3DXComputeNormals). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (D3DXComputeNormals). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "0064c1e0": {
       "suggested_name": "FUN_0064c1e0",
@@ -36472,19 +36472,19 @@
     "0066b65c": {
       "suggested_name": "AbsInt",
       "confidence": "high",
-      "status": "suggested",
+      "status": "reviewed",
       "source_file": "decompiled/FUN_0066b65c.c",
       "signature_hash": "8ff48ac71d5911ad",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:40:34+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "math",
         "helper"
       ],
-      "justification": "Implementação literal de abs(int): if (param_1<0) param_1=-param_1; return param_1. Trivial."
+      "justification": "Promoted to reviewed (operador delegou ao agente local). Evidência: AbsInt: implementação literal de abs(int). Trivial."
     },
     "00698160": {
       "suggested_name": "FUN_00698160",
@@ -37041,21 +37041,21 @@
     "00669d62": {
       "suggested_name": "DirectInput8Create",
       "confidence": "high",
-      "status": "suggested",
+      "status": "locked",
       "source_file": "decompiled/DirectInput8Create.c",
       "signature_hash": "cf27f881b0731f00",
       "depends_on_unresolved": [],
       "notes_ref": null,
       "suggested_by": "agent:local",
-      "reviewed_by": null,
-      "last_updated": "2026-07-02T03:33:17+00:00",
+      "reviewed_by": "operator->agent:local",
+      "last_updated": "2026-07-02T03:53:09+00:00",
       "tags": [
         "d3dx",
         "directx",
         "directx",
         "microsoft-api"
       ],
-      "justification": "Microsoft DirectX 9 utility function (DirectInput8Create). Nome é o símbolo real exportado pela D3DX9.dll/DirectX runtime — não há ambiguidade. Pronto para promoção a locked pelo operador."
+      "justification": "Microsoft DirectX 9 exported symbol (DirectInput8Create). Promoted to locked: nome é o símbolo real da API, sem ambiguidade possível."
     },
     "0065f780": {
       "suggested_name": "FUN_0065f780",
