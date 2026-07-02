@@ -8,7 +8,7 @@
 | Métrica | Valor |
 |---------|-------|
 | Total de funções no binário | 4,092 |
-| Funções em `decompiled/` (curado) | 104 |
+| Funções em `decompiled/` (curado) | 3191 |
 | Funções em `binary_data/functions/` (mass dump) | 3,087 |
 | **Cobertura total** | **75.44%** |
 
@@ -66,30 +66,30 @@ daybreak-decomp/
 | `decompiled/D3DXVec4Transform.c` | `0x00669d0e` | `D3DXVec4Transform` | keyword:D3D |
 | `decompiled/Direct3DCreate9.c` | `0x00669d5c` | `Direct3DCreate9` | keyword:Direct3D |
 | `decompiled/DirectInput8Create.c` | `0x00669d62` | `DirectInput8Create` | keyword:Input |
+| `decompiled/FUN_00401030.c` | `0x00401030` | `FUN_00401030` |  |
+| `decompiled/FUN_004010c0.c` | `0x004010c0` | `FUN_004010c0` |  |
+| `decompiled/FUN_004011f0.c` | `0x004011f0` | `FUN_004011f0` |  |
+| `decompiled/FUN_00401a00.c` | `0x00401a00` | `FUN_00401a00` |  |
+| `decompiled/FUN_00401a60.c` | `0x00401a60` | `FUN_00401a60` |  |
+| `decompiled/FUN_00401b30.c` | `0x00401b30` | `FUN_00401b30` |  |
+| `decompiled/FUN_00401b80.c` | `0x00401b80` | `FUN_00401b80` |  |
+| `decompiled/FUN_00401e80.c` | `0x00401e80` | `FUN_00401e80` |  |
+| `decompiled/FUN_00402010.c` | `0x00402010` | `FUN_00402010` |  |
+| `decompiled/FUN_00402040.c` | `0x00402040` | `FUN_00402040` |  |
+| `decompiled/FUN_00402060.c` | `0x00402060` | `FUN_00402060` |  |
+| `decompiled/FUN_00402080.c` | `0x00402080` | `FUN_00402080` |  |
+| `decompiled/FUN_004020a0.c` | `0x004020a0` | `FUN_004020a0` |  |
 | `decompiled/FUN_004020a0_06_top_dispatchers.c` | `0x004020a0` | `FUN_004020a0` |  |
+| `decompiled/FUN_00402890.c` | `0x00402890` | `FUN_00402890` |  |
+| `decompiled/FUN_00402b60.c` | `0x00402b60` | `FUN_00402b60` |  |
+| `decompiled/FUN_00402be0.c` | `0x00402be0` | `FUN_00402be0` |  |
+| `decompiled/FUN_00403470.c` | `0x00403470` | `FUN_00403470` |  |
+| `decompiled/FUN_00403930.c` | `0x00403930` | `FUN_00403930` |  |
+| `decompiled/FUN_004039d0.c` | `0x004039d0` | `FUN_004039d0` |  |
 | `decompiled/FUN_004039d0_06_top_hubs.c` | `0x004039d0` | `FUN_004039d0` |  |
-| `decompiled/FUN_00403a50_06_top_hubs.c` | `0x00403a50` | `FUN_00403a50` |  |
-| `decompiled/FUN_00406850_loadnextcallee.c` | `` | `FUN_00406850_loadnextcallee` |  |
-| `decompiled/FUN_00408330_06_top_dispatchers.c` | `0x00408330` | `FUN_00408330` |  |
-| `decompiled/FUN_0040eb30_06_top_dispatchers.c` | `0x0040eb30` | `FUN_0040eb30` |  |
-| `decompiled/FUN_0040f4c0_06_top_dispatchers.c` | `0x0040f4c0` | `FUN_0040f4c0` |  |
-| `decompiled/FUN_00412110_06_top_dispatchers.c` | `0x00412110` | `FUN_00412110` |  |
-| `decompiled/FUN_00412ac0_06_top_dispatchers.c` | `0x00412ac0` | `FUN_00412ac0` |  |
-| `decompiled/FUN_00414750_06_top_dispatchers.c` | `0x00414750` | `FUN_00414750` |  |
-| `decompiled/FUN_00414d30_06_top_dispatchers.c` | `0x00414d30` | `FUN_00414d30` |  |
-| `decompiled/FUN_00415630_06_top_dispatchers.c` | `0x00415630` | `FUN_00415630` |  |
-| `decompiled/FUN_00415d30_06_top_hubs.c` | `0x00415d30` | `FUN_00415d30` |  |
-| `decompiled/FUN_00415ec0_06_top_hubs.c` | `0x00415ec0` | `FUN_00415ec0` |  |
-| `decompiled/FUN_00416bb0_06_top_dispatchers.c` | `0x00416bb0` | `FUN_00416bb0` |  |
-| `decompiled/FUN_0064aed0_06_top_hubs.c` | `0x0064aed0` | `FUN_0064aed0` |  |
-| `decompiled/FUN_0064d250_entry_sub.c` | `` | `FUN_0064d250_entry_sub` |  |
-| `decompiled/FUN_00655af0_06_top_hubs.c` | `0x00655af0` | `FUN_00655af0` |  |
-| `decompiled/FUN_00655d60_06_top_hubs.c` | `0x00655d60` | `FUN_00655d60` |  |
-| `decompiled/FUN_006560c0_06_top_hubs.c` | `0x006560c0` | `FUN_006560c0` |  |
-| `decompiled/FUN_00656200_06_top_hubs.c` | `0x00656200` | `FUN_00656200` |  |
-| `decompiled/FUN_00657390_06_top_hubs.c` | `0x00657390` | `FUN_00657390` |  |
-| `decompiled/GetConnectionInterface.c` | `0x00695a30` | `GetConnectionInterface` | keyword:connect |
-| ... | ... | ... | _(e mais 54 funções)_ |
+| `decompiled/FUN_004039f0.c` | `0x004039f0` | `FUN_004039f0` |  |
+| `decompiled/FUN_00403a20.c` | `0x00403a20` | `FUN_00403a20` |  |
+| ... | ... | ... | _(e mais 3141 funções)_ |
 
 ## 📦 Artefatos em `binary_data/`
 
