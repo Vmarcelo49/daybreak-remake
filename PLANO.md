@@ -1,7 +1,7 @@
 # Plano de Decompilação — DaybreakDX.exe
 
 > Documento vivo. Repo: https://github.com/giovanni-marchisio/daybreak-decomp
-> Documento irmão: `PLANO_RECOMP.md` (pipeline de recomposição)
+> Documento irmão: `docs/PLANO_RECOMP.md` (pipeline de recomposição)
 >
 > **Revisão 3 (2026-07-02)**: plano realinhado com a realidade — decompilação em massa completa (3.191 funções), pipeline `tools/` implementado e funcional, dois agentes Super Z disponíveis para trabalho paralelo.
 
@@ -56,7 +56,7 @@ O túnel expõe as 192 ferramentas do GhidraMCP publicamente, incluindo operaç�
 **Mitigação em uso**:
 - Subir o túnel **só durante sessão ativa de trabalho**, derrubar ao finalizar
 - Não aplicar plate comments/tags sensíveis durante a sessão pública sem revisão
-- Em sessões futuras, considerar wrapper Express com Bearer token (já documentado em `daybreakdx-re/PLANO_RECOMP.md` original)
+- Em sessões futuras, considerar wrapper Express com Bearer token (já documentado em `daybreakdx-re/docs/PLANO_RECOMP.md` original)
 
 ## 3. Segmentos (memory layout)
 
@@ -104,7 +104,7 @@ tdb     : 0xffdff000 - 0xffdfffff   (TIB/TEB)
 - **Padrão estabelecido**: anotar via tag/plate comment, **nunca** via `rename_function` (ver Fase 10)
 
 ### Fase 7 — Relatório consolidado ✅
-- [x] `RELATORIO_COMPLETO.md` (312 linhas)
+- [x] `docs/RELATORIO_COMPLETO.md` (312 linhas)
 
 ### Fase 8 — Decompilação em massa das `FUN_*` restantes ✅
 - [x] 3,087/3,087 funções decompiladas em batches via `mass_decompile.py`
@@ -136,7 +136,7 @@ tdb     : 0xffdff000 - 0xffdfffff   (TIB/TEB)
 ### Fase 10 — Anotação de identidade das funções (REVISADA)
 **Esta fase está em andamento contínuo, não é mais um step único.**
 
-**Processo** (alinhado com `PLANO_RECOMP.md` seção 0.1):
+**Processo** (alinhado com `docs/PLANO_RECOMP.md` seção 0.1):
 1. Quando uma função tem comportamento identificado, aplicar **plate comment** no Ghidra (não `rename_function`)
 2. Registrar sugestão em `symbols/functions.json` com `suggested_by: "agent:extraction"` e `signature_hash`
 3. Estado flui: `unreviewed → suggested → reviewed → locked`
@@ -283,11 +283,15 @@ Ver `docs/conventions.md` seção 6 para detalhes. Resumo:
 daybreak-decomp/
 ├── README.md
 ├── PLANO.md                       (este arquivo — extração/análise)
-├── PLANO_RECOMP.md                (pipeline de recomposição)
-├── AGENT_LOCAL_ONBOARDING.md / AGENT_EXTRACTION_ONBOARDING.md               (instruções para segundo agente Super Z)
 ├── PROGRESSO.md                   (status em tempo real)
-├── RELATORIO_COMPLETO.md          (relatório final consolidado)
 ├── INDEX.md / INDEX.json          (gerados pelo GitHub Action)
+├── docs/
+│   ├── CONTEXT.md                 (contexto neutro do projeto)
+│   ├── PLANO_RECOMP.md            (pipeline de recomposição)
+│   ├── AGENT_LOCAL_ONBOARDING.md / AGENT_EXTRACTION_ONBOARDING.md  (instruções para segundo agente Super Z)
+│   ├── RELATORIO_COMPLETO.md      (relatório final consolidado)
+│   ├── RELATORIO_EXECUTIVO_FINAL.md
+│   └── conventions.md             (padrões de C, nomenclatura, commits)
 ├── .gitignore, .clang-format
 │
 ├── .github/

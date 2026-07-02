@@ -67,7 +67,8 @@ Ver `binary_data/anti_analysis/FASE12_REPORT.md` para detalhes.
 
 ```
 daybreak-decomp/
-├── PLANO.md, PLANO_RECOMP.md, AGENT_*.md, CONTEXT.md, PROGRESSO.md
+├── PLANO.md, PROGRESSO.md
+├── docs/                          (CONTEXT, PLANO_RECOMP, AGENT_*, RELATORIO_*, conventions)
 ├── decompiled/                    (3,191 .c brutos)
 ├── recomp/                        (3,191 .c GERADOS)
 ├── symbols/                       (FONTE DE VERDADE)

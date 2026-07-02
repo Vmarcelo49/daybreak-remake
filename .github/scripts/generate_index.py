@@ -116,8 +116,8 @@ index = {
     "documents": [
         "PLANO.md",
         "PROGRESSO.md",
-        "RELATORIO_COMPLETO.md",
-    ] if all((REPO_ROOT / d).exists() for d in ["PLANO.md", "PROGRESSO.md", "RELATORIO_COMPLETO.md"]) else [],
+        "docs/RELATORIO_COMPLETO.md",
+    ] if all((REPO_ROOT / d).exists() for d in ["PLANO.md", "PROGRESSO.md", "docs/RELATORIO_COMPLETO.md"]) else [],
 }
 
 with open(REPO_ROOT / "INDEX.json", "w", encoding="utf-8") as f:
@@ -146,15 +146,18 @@ md.append("```")
 md.append("daybreak-decomp/")
 md.append("├── PLANO.md                       Plano completo de decompilação")
 md.append("├── PROGRESSO.md                   Status em tempo real")
-md.append("├── RELATORIO_COMPLETO.md          Relatório final consolidado")
 md.append("├── INDEX.md                       Este arquivo")
 md.append("├── INDEX.json                     Índice legível por máquina")
+md.append("├── docs/                          Documentação de referência")
+md.append("│   ├── CONTEXT.md, PLANO_RECOMP.md, AGENT_*_ONBOARDING.md")
+md.append("│   ├── RELATORIO_COMPLETO.md, RELATORIO_EXECUTIVO_FINAL.md")
+md.append("│   └── conventions.md")
 md.append("├── decompiled/                    Funções curadas (106 .c)")
 md.append("├── binary_data/                   Dump massivo do Ghidra")
 for cat, files in bd_artifacts.items():
     md.append(f"│   ├── {cat}/{'':<22} ({len(files)} arquivos)")
 md.append("│   └── functions/                 JSON por função (~3.000+)")
-md.append("├── 01_*.txt — 06_*.txt            Dados brutos das fases 1-6")
+md.append("├── extraction_phases/             Dados brutos das fases 1-6 (01_*.txt — 06_*.txt)")
 md.append("└── .github/")
 md.append("    ├── workflows/build-index.yml  Action que gera este índice")
 md.append("    └── scripts/generate_index.py  Script gerador")

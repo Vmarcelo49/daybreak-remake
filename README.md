@@ -10,7 +10,7 @@ This repo contains the **reverse-engineering artifacts** produced via Ghidra + G
 |------|-------------|
 | [`PLANO.md`](PLANO.md) | Full decompilation plan (phases, target info, future work) |
 | [`PROGRESSO.md`](PROGRESSO.md) | Live status of the ongoing work |
-| [`RELATORIO_COMPLETO.md`](RELATORIO_COMPLETO.md) | Consolidated final report (312 lines) |
+| [`docs/RELATORIO_COMPLETO.md`](docs/RELATORIO_COMPLETO.md) | Consolidated final report (312 lines) |
 | [`decompiled/`](decompiled/) | 106 individual `.c` files (one per decompiled function) |
 | [`extraction_phases/`](extraction_phases/) | Raw dumps from extraction phases 1–6 |
 | ↳ `01_*.txt` | Phase 1 — Reconnaissance (entry, segments, imports, strings) |
