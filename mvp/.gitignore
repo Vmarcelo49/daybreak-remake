@@ -3,7 +3,6 @@ build/
 build_test.exe
 *.o
 *.obj
-*.exe
 *.pdb
 *.ilk
 
@@ -23,3 +22,7 @@ Makefile
 # Original binary (never commit - copyright)
 DaybreakDX.exe
 *.exe.bak
+
+# Ignore all .exe EXCEPT our built daybreak_mvp.exe
+*.exe
+!daybreak_mvp.exe
