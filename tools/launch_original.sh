@@ -45,7 +45,7 @@ pick_widemod() {
 WIDEMOD_RESOLVED="$(pick_widemod)"
 
 [[ -f "$GAME_DIR/DaybreakDX.exe" ]] || { echo "ERROR: $GAME_DIR/DaybreakDX.exe not found (set GAME_DIR)" >&2; exit 1; }
-[[ -f "$GAME_DIR/config.dat" ]]     || { echo "ERROR: $GAME_DIR/config.dat not found (open config in the game once to generate it)" >&2; exit 1; }
+[[ -f "$GAME_DIR/config.dat" ]]     || echo "WARN: no config.dat yet (fresh install) — open config in the game once to generate it" >&2
 [[ -f "$GAME_DIR/DaybreakFixer.dll" ]] || echo "WARN: DaybreakFixer.dll missing in $GAME_DIR — --launch injection will fail" >&2
 
 # Optional resolution patch applied before launch: --resolution 1920x1080
