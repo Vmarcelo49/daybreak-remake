@@ -1,0 +1,18 @@
+# Build artifacts
+/build/
+/build-*/
+/out/
+
+# IDE / OS
+.vscode/
+.idea/
+*.user
+.DS_Store
+
+# Toolchain (extracted locally, not part of source tree)
+/tools/
+!/tools/asset-tools/
+!/tools/hook-tracer/
+
+# Local experiment archive, not source
+daybreak-fix-zig.zip
