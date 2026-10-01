@@ -70,6 +70,32 @@ static void survey_mesh(ID3DXMesh* mesh, const char* name) {
                 mn.x, mn.y, mn.z, mx.x, mx.y, mx.z);
 }
 
+// Material inventory for the texture hunt: per container, each material's
+// requested file vs bound texture (env-gated with DAYBREAK_MESHINFO).
+static void survey_materials(D3DXFRAME* frame, const char* name) {
+    for (D3DXFRAME* f = frame; f; f = f->pFrameSibling) {
+        for (D3DXMESHCONTAINER* mc = f->pMeshContainer; mc;
+             mc = mc->pNextMeshContainer) {
+            auto* vmc = static_cast<XMeshContainer*>(mc);
+            for (DWORD i = 0; i < vmc->NumMaterials; ++i) {
+                const char* want = (i < vmc->textureFiles.size() &&
+                                    !vmc->textureFiles[i].empty())
+                                   ? vmc->textureFiles[i].c_str() : "(none)";
+                const bool bound = i < vmc->textures.size() && vmc->textures[i];
+                const D3DMATERIAL9& m = (i < vmc->d3dMaterials.size())
+                                        ? vmc->d3dMaterials[i] : D3DMATERIAL9{};
+                std::printf("[daybreak] mat %s/%s[%lu]: want=%s bound=%d"
+                            " diffuse=(%.2f,%.2f,%.2f,%.2f) power=%.1f\n",
+                            name, f->Name ? f->Name : "(frame)",
+                            static_cast<unsigned long>(i), want, bound ? 1 : 0,
+                            m.Diffuse.r, m.Diffuse.g, m.Diffuse.b, m.Diffuse.a,
+                            m.Power);
+            }
+        }
+        if (f->pFrameFirstChild) survey_materials(f->pFrameFirstChild, name);
+    }
+}
+
 static void survey_frames(D3DXFRAME* frame, const char* name) {
     for (D3DXFRAME* f = frame; f; f = f->pFrameSibling) {
         for (D3DXMESHCONTAINER* mc = f->pMeshContainer; mc;
@@ -474,6 +500,11 @@ void Scene_Gameplay::on_enter(SceneContext& ctx) {
                     survey_frames(m_stageModels[i]->root_frame(), stage_parts[i]);
                 }
             }
+            for (int i = 0; i < 7; ++i) {
+                if (m_stageModels[i] && m_stageModels[i]->root_frame()) {
+                    survey_materials(m_stageModels[i]->root_frame(), stage_parts[i]);
+                }
+            }
             if (m_models[0] && m_models[0]->root_frame()) {
                 survey_frames(m_models[0]->root_frame(), "P1 fighter");
             }
@@ -706,6 +737,16 @@ void Scene_Gameplay::render(SceneContext& ctx) {
             D3DCOLOR_COLORVALUE(0.35f, 0.35f, 0.35f, 1.0f));
         ctx.device->SetRenderState(D3DRS_ZENABLE, TRUE);
         ctx.device->SetRenderState(D3DRS_CULLMODE, D3DCULL_CCW);
+        // Foliage/ground-detail cards are alpha cutouts: their CNVs carry
+        // bimodal alpha (e.g. stage21 葉っぱ地面02 is ~74% zero-alpha), so
+        // the zero fringe must be discarded, not drawn as quads. Same
+        // 0x08/GE convention as the asset-viewer path (x_model_renderer).
+        // Restored before the HUD — font glyph fringe would fail the test.
+        DWORD prevAlphaTest = FALSE;
+        ctx.device->GetRenderState(D3DRS_ALPHATESTENABLE, &prevAlphaTest);
+        ctx.device->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
+        ctx.device->SetRenderState(D3DRS_ALPHAREF, 0x08);
+        ctx.device->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATEREQUAL);
         ctx.device->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
         ctx.device->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
 
@@ -718,16 +759,26 @@ void Scene_Gameplay::render(SceneContext& ctx) {
         ctx.device->LightEnable(0, TRUE);
 
         // Render stage meshes first (no world transform — identity).
+        // DAYBREAK_ONLY=<substr> isolates meshes for the texture hunt
+        // (suite diagnostic: renders only matching stage parts/fighters).
+        const char* only = std::getenv("DAYBREAK_ONLY");
         D3DXMATRIX id;
         D3DXMatrixIdentity(&id);
         ctx.device->SetTransform(D3DTS_WORLD, &id);
+        static const char* partNames[7] = {
+            "00.X", "01.X", "02.X", "03.X", "04.X", "05.X", "06.X",
+        };
         for (int i = 0; i < 7; ++i) {
-            if (m_stageModels[i]) m_stageModels[i]->render(ctx.device);
+            if (m_stageModels[i] &&
+                (!only || std::strstr(partNames[i], only))) {
+                m_stageModels[i]->render(ctx.device);
+            }
         }
 
         m_fighters[0].render(ctx.device);
         m_fighters[1].render(ctx.device);
         m_shots.render(ctx.device);
+        ctx.device->SetRenderState(D3DRS_ALPHATESTENABLE, prevAlphaTest);
 
         // View probe for the visual-validation suite (env-gated, ~1/sec):
         // eye + both fighters, to diagnose framing without a debugger.

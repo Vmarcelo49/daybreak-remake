@@ -360,7 +360,7 @@ STDMETHODIMP XModel::create_mesh_container(
     LPCSTR Name,
     const D3DXMESHDATA* pMeshData,
     const D3DXMATERIAL* pMaterials,
-    const D3DXEFFECTINSTANCE* /*pEffectInstances*/,
+    const D3DXEFFECTINSTANCE* pEffectInstances,
     DWORD NumMaterials,
     const DWORD* /*pAdjacency*/,
     LPD3DXSKININFO pSkinInfo,
@@ -385,10 +385,22 @@ STDMETHODIMP XModel::create_mesh_container(
     mc->pOriginalMesh->AddRef();
 
     // Materials + textures.
+    // Suite probe: log per-material effect bindings (the game's 10-shader
+    // EffectSystem likely drives blend modes like shadow multiply).
+    if (pEffectInstances) {
+        for (DWORD ei = 0; ei < NumMaterials; ++ei) {
+            if (pEffectInstances[ei].pEffectFilename) {
+                std::printf("[daybreak] XModel effect: mat %lu -> %s\n",
+                            static_cast<unsigned long>(ei),
+                            pEffectInstances[ei].pEffectFilename);
+            }
+        }
+    }
     mc->NumMaterials = NumMaterials;
     if (NumMaterials > 0) {
         mc->d3dMaterials.resize(NumMaterials);
         mc->textures.assign(NumMaterials, nullptr);
+        mc->textureFiles.assign(NumMaterials, {});
         for (DWORD i = 0; i < NumMaterials; ++i) {
             if (pMaterials) {
                 mc->d3dMaterials[i] = pMaterials[i].MatD3D;
@@ -400,6 +412,9 @@ STDMETHODIMP XModel::create_mesh_container(
             }
 
             if (pMaterials && pMaterials[i].pTextureFilename) {
+                // Keep the raw requested name for the bundle-backed pass;
+                // the disk loader below only fires when a search dir exists.
+                mc->textureFiles[i] = pMaterials[i].pTextureFilename;
                 std::wstring texW  = shift_jis_to_wstring(pMaterials[i].pTextureFilename);
                 std::wstring fullW = m_modelDir + texW;
                 IDirect3DTexture9* tex = nullptr;
@@ -619,6 +634,38 @@ void XModel::render(IDirect3DDevice9* device) const {
     render_frame(m_rootFrame, device);
 }
 
+void XModel::resolve_material_textures(
+    const std::function<IDirect3DTexture9*(const std::string&)>& resolve) {
+    if (!resolve || !m_rootFrame) return;
+    int resolved = 0, missed = 0;
+    std::function<void(D3DXFRAME*)> walk = [&](D3DXFRAME* frame) {
+        for (D3DXFRAME* f = frame; f; f = f->pFrameSibling) {
+            for (D3DXMESHCONTAINER* mc = f->pMeshContainer; mc;
+                 mc = mc->pNextMeshContainer) {
+                auto* vmc = static_cast<XMeshContainer*>(mc);
+                for (DWORD i = 0; i < vmc->NumMaterials; ++i) {
+                    if (i >= vmc->textures.size() || i >= vmc->textureFiles.size()) break;
+                    if (vmc->textures[i] || vmc->textureFiles[i].empty()) continue;
+                    IDirect3DTexture9* tex = resolve(vmc->textureFiles[i]);
+                    if (tex) {
+                        tex->AddRef();  // container owns one ref (see header)
+                        vmc->textures[i] = tex;
+                        ++resolved;
+                    } else {
+                        ++missed;
+                    }
+                }
+            }
+            if (f->pFrameFirstChild) walk(f->pFrameFirstChild);
+        }
+    };
+    walk(m_rootFrame);
+    if (resolved + missed > 0) {
+        std::printf("[daybreak] XModel textures: %d resolved, %d missed\n",
+                    resolved, missed);
+    }
+}
+
 void XModel::render_frame(D3DXFRAME* frame, IDirect3DDevice9* device) const {
     if (!frame) return;
 
@@ -648,7 +695,27 @@ void XModel::render_frame(D3DXFRAME* frame, IDirect3DDevice9* device) const {
             } else {
                 device->SetTexture(0, nullptr);
             }
+            // Baked blob shadows (e.g. stage21 shadow01: white card, dark
+            // blob, opaque alpha) are only meaningful under multiply blend —
+            // opaque/alpha variants all print the white quad. The real
+            // trigger is an effect-technique binding (open RE, P3.1); until
+            // that lands, the "shadow" texture name is the provisional
+            // signal. dest = src*dst: white keeps ground, blob darkens it.
+            // Depth write off so the decal never occludes later geometry.
+            bool multiply = i < vmc->textureFiles.size() &&
+                            vmc->textureFiles[i].find("shadow") !=
+                            std::string::npos;
+            if (multiply) {
+                device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+                device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_DESTCOLOR);
+                device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ZERO);
+                device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+            }
             mesh->DrawSubset(i);
+            if (multiply) {
+                device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+                device->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
+            }
         }
         pMC = pMC->pNextMeshContainer;
     }

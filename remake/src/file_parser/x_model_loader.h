@@ -24,6 +24,7 @@
 #include <d3dx9anim.h>
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,10 @@ struct XMeshContainer : public D3DXMESHCONTAINER {
     ID3DXMesh*                       pSkinnedMesh  = nullptr;  // CPU-skinned output
     std::vector<IDirect3DTexture9*>  textures;
     std::vector<D3DMATERIAL9>        d3dMaterials;
+    // Raw TextureFilename bytes per material (Shift-JIS preserved), kept
+    // because D3DX hands us the names only inside create_mesh_container.
+    // Bundle-backed resolution happens later via resolve_material_textures.
+    std::vector<std::string>         textureFiles;
 };
 
 // ---------------------------------------------------------------------------
@@ -126,6 +131,15 @@ public:
     bool   has_animations() const { return m_animController != nullptr; }
     double current_track_time() const;
     float  current_track_duration() const;
+
+    // ---- bundle-backed material textures -----------------------------------
+    // Walks every mesh container; for each material that requested a texture
+    // file but got none (disk load skipped it), calls resolve(filename) and
+    // stores the result. resolve() returns a borrowed (cache-owned) pointer;
+    // this method AddRefs on store, so destroy_mesh_container's Release
+    // stays balanced. Logs a per-model resolved/missed summary.
+    void resolve_material_textures(
+        const std::function<IDirect3DTexture9*(const std::string&)>& resolve);
 
     // ---- frame hierarchy access -------------------------------------------
     // Exposes the root D3DXFRAME so subsystems (e.g. physics::raycast_model)

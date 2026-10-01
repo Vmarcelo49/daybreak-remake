@@ -65,9 +65,15 @@ far from zero; judge layout/framing/HUD by eye), and writes the report.
 
 ## Known deltas (suite-owned punchlist for future milestones)
 
-- **D1 — Untextured.** Models and stage render white/gray: material
-  textures (`.cnv` referenced by `.X` files) are not wired into the
-  loader yet. Layout and framing compare; color does not.
+- **D1 — Textured (bundle-backed resolve).** `.X` `TextureFilename`
+  refs (`服.bmp`) map to same-dir `.cnv` in the bundle (Shift-JIS→UTF-8
+  before lookup — the miss-everything encoding bug is fixed). Foliage
+  cards alpha-cut via scene alpha test (bimodal CNV alpha); baked blob
+  shadows (`shadow*.bmp`: white card + dark blob, opaque alpha) white-key
+  to transparent at resolve time (exact-white texels → alpha 0, cut by
+  the same alpha test) and multiply the rest (white neutral, blob
+  darkens) — both keyed on the texture name, provisional until
+  effect-technique binding (P3.1) lands.
 - **D2 — Bind pose.** Fighters load with 0 animation sets (character
   anims live in separate `data/<char>/NN.dat`, not yet loaded), so
   poses never change. F2 anim-debug lists the (empty) set table.
