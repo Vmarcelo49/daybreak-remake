@@ -34,8 +34,12 @@ void key_out_white(IDirect3DTexture9* tex) {
     tex->UnlockRect(0);
 }
 
+// Baked-shadow decal verdict on the UTF-8 converted ref: ASCII "shadow"
+// plus 影 (U+5F71, UTF-8 bytes below) — e.g. stage21 校舎影02 (school
+// shadow), 手すり影 (handrail shadow). Provisional until effect binding.
 bool is_shadow_decal(const std::string& refUtf8) {
-    return refUtf8.find("shadow") != std::string::npos;
+    return refUtf8.find("shadow") != std::string::npos ||
+           refUtf8.find("\xe5\xbd\xb1") != std::string::npos;
 }
 
 } // namespace
@@ -92,7 +96,11 @@ daybreak::XModel* AssetManager::load_x(const std::string& name) {
         const size_t slash = name.find_last_of('/');
         if (slash != std::string::npos) dir = name.substr(0, slash + 1);
     }
-    auto resolve = [this, &dir](const std::string& ref) -> IDirect3DTexture9* {
+    MaterialResolver resolver;
+    resolver.isShadowDecal = [](const std::string& ref) {
+        return is_shadow_decal(file_parser::text_codec::shift_jis_to_utf8(ref));
+    };
+    resolver.load = [this, &dir](const std::string& ref) -> IDirect3DTexture9* {
         // Bundle entry names are UTF-8 (decoded at ingest); .X texture refs
         // are raw Shift-JIS — convert once so non-ASCII stems can match.
         const std::string refUtf8 =
@@ -112,9 +120,9 @@ daybreak::XModel* AssetManager::load_x(const std::string& name) {
             IDirect3DTexture9* tex = load_texture(c);
             // Shadow decals double as their own mask: white keys out
             // (alpha-tested away by the scene), the dark blob multiplies.
-            // Mutating the cached texture is contained: only shadow*
-            // refs resolve to these files (verified in the material
-            // inventory), and re-keying is idempotent.
+            // Mutating the cached texture is contained: only shadow
+            // refs (shadow*/影*) resolve to these files (verified in the
+            // material inventory), and re-keying is idempotent.
             if (tex && is_shadow_decal(refUtf8)) key_out_white(tex);
             return tex;
         }
@@ -132,7 +140,8 @@ daybreak::XModel* AssetManager::load_x(const std::string& name) {
         // load_from_memory already logged the error.
         return nullptr;
     }
-    model->resolve_material_textures(resolve);
+    model->resolve_material_textures(resolver);
+
 
     // 6. Cache + return.
     CachedModel c;

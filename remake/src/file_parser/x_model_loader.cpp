@@ -401,6 +401,7 @@ STDMETHODIMP XModel::create_mesh_container(
         mc->d3dMaterials.resize(NumMaterials);
         mc->textures.assign(NumMaterials, nullptr);
         mc->textureFiles.assign(NumMaterials, {});
+        mc->shadowDecal.assign(NumMaterials, 0);
         for (DWORD i = 0; i < NumMaterials; ++i) {
             if (pMaterials) {
                 mc->d3dMaterials[i] = pMaterials[i].MatD3D;
@@ -634,9 +635,8 @@ void XModel::render(IDirect3DDevice9* device) const {
     render_frame(m_rootFrame, device);
 }
 
-void XModel::resolve_material_textures(
-    const std::function<IDirect3DTexture9*(const std::string&)>& resolve) {
-    if (!resolve || !m_rootFrame) return;
+void XModel::resolve_material_textures(const MaterialResolver& resolver) {
+    if (!resolver.load || !m_rootFrame) return;
     int resolved = 0, missed = 0;
     std::function<void(D3DXFRAME*)> walk = [&](D3DXFRAME* frame) {
         for (D3DXFRAME* f = frame; f; f = f->pFrameSibling) {
@@ -644,15 +644,22 @@ void XModel::resolve_material_textures(
                  mc = mc->pNextMeshContainer) {
                 auto* vmc = static_cast<XMeshContainer*>(mc);
                 for (DWORD i = 0; i < vmc->NumMaterials; ++i) {
-                    if (i >= vmc->textures.size() || i >= vmc->textureFiles.size()) break;
-                    if (vmc->textures[i] || vmc->textureFiles[i].empty()) continue;
-                    IDirect3DTexture9* tex = resolve(vmc->textureFiles[i]);
-                    if (tex) {
-                        tex->AddRef();  // container owns one ref (see header)
-                        vmc->textures[i] = tex;
-                        ++resolved;
-                    } else {
-                        ++missed;
+                    if (i >= vmc->textures.size() || i >= vmc->textureFiles.size() ||
+                        i >= vmc->shadowDecal.size()) break;
+                    if (vmc->textureFiles[i].empty()) continue;
+                    if (!vmc->textures[i]) {
+                        IDirect3DTexture9* tex = resolver.load(vmc->textureFiles[i]);
+                        if (tex) {
+                            tex->AddRef();  // container owns one ref (see header)
+                            vmc->textures[i] = tex;
+                            ++resolved;
+                        } else {
+                            ++missed;
+                        }
+                    }
+                    if (resolver.isShadowDecal) {
+                        vmc->shadowDecal[i] =
+                            resolver.isShadowDecal(vmc->textureFiles[i]) ? 1 : 0;
                     }
                 }
             }
@@ -702,9 +709,7 @@ void XModel::render_frame(D3DXFRAME* frame, IDirect3DDevice9* device) const {
             // that lands, the "shadow" texture name is the provisional
             // signal. dest = src*dst: white keeps ground, blob darkens it.
             // Depth write off so the decal never occludes later geometry.
-            bool multiply = i < vmc->textureFiles.size() &&
-                            vmc->textureFiles[i].find("shadow") !=
-                            std::string::npos;
+            bool multiply = i < vmc->shadowDecal.size() && vmc->shadowDecal[i];
             if (multiply) {
                 device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
                 device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_DESTCOLOR);

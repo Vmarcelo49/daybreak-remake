@@ -69,11 +69,13 @@ far from zero; judge layout/framing/HUD by eye), and writes the report.
   refs (`服.bmp`) map to same-dir `.cnv` in the bundle (Shift-JIS→UTF-8
   before lookup — the miss-everything encoding bug is fixed). Foliage
   cards alpha-cut via scene alpha test (bimodal CNV alpha); baked blob
-  shadows (`shadow*.bmp`: white card + dark blob, opaque alpha) white-key
-  to transparent at resolve time (exact-white texels → alpha 0, cut by
-  the same alpha test) and multiply the rest (white neutral, blob
-  darkens) — both keyed on the texture name, provisional until
-  effect-technique binding (P3.1) lands.
+  shadows (white card + dark blob/silhouette, opaque alpha) white-key
+  exact-white texels to transparent at resolve time (cut by the same
+  alpha test) and multiply the rest (white neutral, blob darkens).
+  Decal verdict lives in one `MaterialResolver` predicate on the texture
+  name — ASCII `shadow*` plus 影 (e.g. 校舎影02 school shadow, 手すり影
+  handrail shadow) — provisional until effect-technique binding (P3.1)
+  replaces name-matching with real technique assignment.
 - **D2 — Bind pose.** Fighters load with 0 animation sets (character
   anims live in separate `data/<char>/NN.dat`, not yet loaded), so
   poses never change. F2 anim-debug lists the (empty) set table.

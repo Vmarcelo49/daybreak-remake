@@ -46,6 +46,19 @@ struct XMeshContainer : public D3DXMESHCONTAINER {
     // because D3DX hands us the names only inside create_mesh_container.
     // Bundle-backed resolution happens later via resolve_material_textures.
     std::vector<std::string>         textureFiles;
+    // Baked-shadow decal flag per material (white-key + multiply). Set at
+    // resolve time from the texture name; read by render_frame. Provisional
+    // signal until effect-technique binding (P3.1) replaces it.
+    std::vector<char>                shadowDecal;
+};
+
+// Bundle-backed material resolver (see AssetManager::load_x): maps a raw
+// TextureFilename to a GPU texture plus a shadow-decal verdict.
+struct MaterialResolver {
+    // Returns a borrowed (cache-owned) texture, or nullptr. Raw Shift-JIS name.
+    std::function<IDirect3DTexture9*(const std::string&)> load;
+    // True when the named texture is a baked-shadow decal. Same encoding.
+    std::function<bool(const std::string&)> isShadowDecal;
 };
 
 // ---------------------------------------------------------------------------
@@ -138,8 +151,7 @@ public:
     // stores the result. resolve() returns a borrowed (cache-owned) pointer;
     // this method AddRefs on store, so destroy_mesh_container's Release
     // stays balanced. Logs a per-model resolved/missed summary.
-    void resolve_material_textures(
-        const std::function<IDirect3DTexture9*(const std::string&)>& resolve);
+    void resolve_material_textures(const MaterialResolver& resolver);
 
     // ---- frame hierarchy access -------------------------------------------
     // Exposes the root D3DXFRAME so subsystems (e.g. physics::raycast_model)
