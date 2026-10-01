@@ -1,43 +1,86 @@
 # daybreak-decomp
 
-Decompilation of **Higurashi Daybreak** (`DaybreakDX.exe`) — Twilight Frontier / 07th Expansion.
+Decompilation **and** remake of **Higurashi Daybreak** (`DaybreakDX.exe`,
+Twilight Frontier / 07th Expansion).
 
-This repo contains the **reverse-engineering artifacts** produced via Ghidra + GhidraMCP, automated by an AI agent (Super Z / GLM) operating through a Cloudflare tunnel.
+## Which half do you want?
 
-## Repo layout
+| | `remake/` — the product | `research/` — the evidence |
+|---|---|---|
+| What | Playable C++23 remake (SDL2 + D3D9, 800×600 arena fighter) | 3,191 decompiled functions, readable-C pipeline, RE reports |
+| Start | `remake/README.md`, then `remake/docs/decisions.md` | `docs/overview.md`, then `docs/pipeline.md` |
+| Rules | Game code only; DX9 + original `.X` stay | `recomp/` never hand-edited; `symbols/` is truth |
 
-| Path | Description |
-|------|-------------|
-| [`PLANO.md`](PLANO.md) | Full decompilation plan (phases, target info, future work) |
-| [`PROGRESSO.md`](PROGRESSO.md) | Live status of the ongoing work |
-| [`docs/RELATORIO_COMPLETO.md`](docs/RELATORIO_COMPLETO.md) | Consolidated final report (312 lines) |
-| [`decompiled/`](decompiled/) | 106 individual `.c` files (one per decompiled function) |
-| [`extraction_phases/`](extraction_phases/) | Raw dumps from extraction phases 1–6 |
-| ↳ `01_*.txt` | Phase 1 — Reconnaissance (entry, segments, imports, strings) |
-| ↳ `02_*.txt` | Phase 2 — Function mapping (all 4,092 functions) |
-| ↳ `03_*.txt` | Phase 3 — Prioritization (86 key functions) |
-| ↳ `05_*.txt` | Phase 5 — Call graph analysis |
-| ↳ `06_*.txt` | Phase 5b — Top hubs/dispatchers decompiled |
+## Layout
+
+```
+daybreak-decomp/
+├── README.md / INDEX.md / INDEX.json   this map + generated index
+├── docs/                               English docs
+│   ├── overview.md                     repo map + key findings
+│   ├── pipeline.md                     how research artifacts flow
+│   ├── status.md                       living status (metric: progress/coverage.json)
+│   ├── conventions.md                  C / style / commit rules
+│   ├── agents/                         guides for automation agents
+│   ├── reports/summary.md              findings in English
+│   └── archive/                        original Portuguese docs (historical)
+├── research/                           RE artifacts + pipelines
+│   ├── binary_data/    upstream evidence (function JSONs, strings, reports)
+│   ├── decompiled/     raw dump, one .c per function (read-only)
+│   ├── recomp/         generated readable C (never edit by hand)
+│   ├── symbols/        source of truth (names, types, notes)
+│   ├── progress/       coverage metrics (official)
+│   ├── tools/          ingest → generate_recomp → coverage_report
+│   └── extraction_phases/  raw phase dumps + prioritization data
+├── remake/                             the remake (own README + docs)
+├── tools/launch_original.sh            run the original exe under Wine
+├── Higurashi-Daybreak/                 local game install (gitignored)
+└── .github/                            index Action
+```
 
 ## Target summary
 
 | Field | Value |
-|-------|-------|
-| Binary | `DaybreakDX.exe` |
-| Format | PE32 (x86, Windows) |
-| Image base | `0x00400000` |
-| Functions | 4,092 |
-| Decompiled | 106 (2.6%) |
-| DirectX | D3D9 + D3DX + DirectInput8 |
-| Renderer | Windowed 800x600, window class `"HigurashiDaybreak"` |
+|---|---|
+| Binary | `DaybreakDX.exe`, PE32 x86, image base `0x00400000` |
+| Functions | 4,092 in binary · 3,191 decompilable (~78%) · review in progress |
+| Renderer | D3D9 + D3DX + DirectInput8, fixed 800×600, `"HigurashiDaybreak"` |
+| Scene dispatch | `LoadNextScene` (`0x00406310`), switch on `pGameState+0x2e18` |
+| Network | DirectPlay 8 (documented, not ported) |
+| Binary hygiene | Clean — no packing, no anti-debug |
 
-## Highlights
+## Quick commands
 
-- **WinMain** identified at `0x0064d250` (registers window class `"HigurashiDaybreak"`)
-- **Scene state machine** at `LoadNextScene` (`0x00406310`) — called via function pointer table at `0x006a16c0`
-- **25 D3DX functions** mapped and tagged (`directx`, `d3dx`, `graphics`)
-- **Top dispatcher** `FUN_00412110` with 32 callees — candidate for main game loop
+```bash
+# RE pipeline (after dump changes)
+python3 research/tools/ingest.py --full
+python3 research/tools/generate_recomp.py
+python3 research/tools/coverage_report.py   # run before committing
+
+# Search the evidence offline
+grep -r "pattern" research/binary_data/strings/
+grep -l "pattern" research/decompiled/*.c
+
+# Rebuild the repo index
+python3 .github/scripts/generate_index.py
+
+# Build the remake (one-time toolchain fetch first)
+./remake/scripts/fetch_deps.sh && ./remake/build.sh
+
+# Run the original for side-by-side comparison
+./tools/launch_original.sh
+```
+
+## Conventions
+
+Commit prefixes (`feat/fix/docs/chore/refactor/recomp:/symbols:`), C11
+style, and push scope are defined in `docs/conventions.md`. The short
+version: never hand-edit `research/recomp/`; `research/symbols/` needs
+human review for promotion; run `coverage_report.py` before pushing.
 
 ## License
 
-Reverse-engineering artifacts produced for **research and educational purposes only**. The original binary remains property of its respective copyright holders.
+Reverse-engineering artifacts are for **research and educational
+purposes only**. The original binary and game assets remain property of
+their respective copyright holders. Remake source is original work —
+see `remake/` docs.
