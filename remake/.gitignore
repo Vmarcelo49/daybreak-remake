@@ -9,8 +9,10 @@
 *.user
 .DS_Store
 
-# Toolchain (extracted locally, not part of source tree)
-/tools/
+# Toolchain (extracted locally, not part of source tree).
+# NOTE: negate with /tools/* (not /tools/) so the two lines below work —
+# git never re-includes anything under a fully-excluded directory.
+/tools/*
 !/tools/asset-tools/
 !/tools/hook-tracer/
 
