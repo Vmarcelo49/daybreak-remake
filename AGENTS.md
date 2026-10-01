@@ -31,6 +31,27 @@ modern port. No bit-matching against the original binary is attempted.
 4. **Comment policy in `remake/src/`:** explain *why*, cite RE provenance
    (`FUN_xxxxxx`, addresses). No restatement comments, no dead code.
 5. **Run `coverage_report.py` before committing** research changes.
+6. **Full diff review before EVERY commit** — see the section below.
+   Not optional, no size exemption.
+
+## MANDATORY — full diff review before EVERY commit
+
+Read `git diff` **and** `git diff --cached`. This step cannot be skipped,
+no matter how small the change. Review every changed file for:
+
+- **Unused code** — dead branches, unused includes/members/functions left
+  behind by the edit.
+- **Debug helpers that are no longer useful** — temporary log lines,
+  traces, fingerprints, counters added while investigating; remove them
+  or gate them behind an env flag if genuinely valuable.
+- **Repeated logic** — duplicated blocks that should be unified into one
+  helper or loop.
+- **Verbose and useless comments** — comments narrating obvious code,
+  stale references to removed code, or long-winded explanations of what
+  the diff already shows.
+
+Fix everything found (or explicitly justify keeping it) before
+committing. A skipped review is a process violation.
 
 ## Map
 
