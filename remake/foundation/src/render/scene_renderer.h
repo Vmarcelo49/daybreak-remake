@@ -49,6 +49,7 @@ struct Stats {
     int    untextured      = 0;
     int    decals          = 0;
     int    effects         = 0;
+    int    billboarded     = 0;   // effect draws that yaw to the camera (EFFECTS-BILLBOARD.md)
 };
 
 // Which blend/depth/cull variant draws an item. The order below is also the
@@ -82,6 +83,12 @@ public:
     void updatePose(const std::vector<std::vector<glm::mat4>>& worlds);
 
     void setCamera(const glm::mat4& viewProj);
+    // Camera eye in world space, for effect-card billboarding. The viewProj alone
+    // cannot yield it (a perspective product does not separate into eye and
+    // projection), and main.cpp is the only caller that knows the eye — so until
+    // the caller wires this, billboarding stays dormant and every capture is
+    // byte-identical to before. See EFFECTS-BILLBOARD.md.
+    void setEye(const glm::vec3& eye);
     void setFog(const xm::StageEnv&);
     void setAppearance(const Appearance&);
 
@@ -111,6 +118,13 @@ private:
         Pass       pass = Pass::Opaque;
         glm::mat4  model{1.f};
         glm::vec4  baseColor{1.f};                   // material diffuse (D3DX faceColor)
+        // Cylindrical-billboard candidate: mesh-space pivot (submesh bounds center),
+        // authored facing yaw, plus the verdict from setScene. Only Effect-pass
+        // draws from unskinned meshes are ever marked; ground-plane cards are
+        // excluded (see .cpp).
+        glm::vec3  bbCenter{0.f};
+        float      bbYaw0 = 0.f;
+        bool       billboard = false;
     };
 
     // What updatePose() needs to rebuild one mesh's slice of the palette storage.
@@ -170,6 +184,11 @@ private:
     xm::CameraUniform camera_{};
     Appearance        appearance_{};
     Stats             stats_{};
+    // Billboard eye. haveEye_ is false until setEye() runs, which keeps the
+    // billboard path dormant (and captures byte-identical) on callers that were
+    // written before it existed.
+    glm::vec3         eye_{0.f};
+    bool              haveEye_ = false;
 };
 
 }  // namespace render

@@ -2,8 +2,11 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstring>
 #include <unordered_map>
+
+#include <glm/gtc/matrix_transform.hpp>
 
 #include "shaders/model_wgsl.h"
 
@@ -39,6 +42,61 @@ Pass classifyPass(const std::string& role, const std::string& texture) {
     if (role == "effect" || role == "aura") return Pass::Effect;
     if (!texture.empty() && isShadowDecalName(texture)) return Pass::Decal;
     return Pass::Opaque;
+}
+
+// Cylindrical-billboard verdict for one effect draw, from the submesh geometry
+// alone (no texture names — those are deliberately excluded as routing signals).
+// Upright cards (single quads, crossed-plane sets, beam fans, Y-symmetric rings)
+// yaw around world Y to face the camera; ground-plane cards (normals ±Y, e.g.
+// aura/03's 400x400 floor quad) keep their authored orientation, which a Y spin
+// could only disturb. All surveyed effect/aura meshes are unskinned, so the pivot
+// is the submesh bounds center in mesh space; a skinned mesh can never reach here
+// (the caller guards on it) because its vertices leave mesh space per-bone.
+bool classifyBillboard(const xm::Mesh& mesh, const xm::Submesh& sub, glm::vec3& centerOut,
+                         float& yaw0Out) {
+    if (mesh.skinned || mesh.vertices.empty() || mesh.indices.empty()) return false;
+    glm::vec3 lo(1e30f), hi(-1e30f);
+    double    nySum = 0.0;
+    int       posX = 0, negX = 0, posZ = 0, negZ = 0;
+    uint32_t  n = 0;
+    const uint32_t end = std::min(sub.firstIndex + sub.indexCount, (uint32_t)mesh.indices.size());
+    for (uint32_t i = sub.firstIndex; i < end; ++i) {
+        const uint32_t vi = mesh.indices[i];
+        if (vi >= mesh.vertices.size()) continue;
+        const xm::Vertex& v = mesh.vertices[vi];
+        lo = glm::min(lo, v.pos);
+        hi = glm::max(hi, v.pos);
+        nySum += std::fabs((double)v.normal.y);
+        // Dominant-axis vote: a single quad votes one axis; a crossed-plane set
+        // ties and falls through to +Z, which faces one of its cards at the camera.
+        if (std::fabs(v.normal.x) >= std::fabs(v.normal.y) &&
+            std::fabs(v.normal.x) >= std::fabs(v.normal.z)) {
+            if (v.normal.x >= 0.f) ++posX; else ++negX;
+        } else if (std::fabs(v.normal.z) >= std::fabs(v.normal.y)) {
+            if (v.normal.z >= 0.f) ++posZ; else ++negZ;
+        }
+        ++n;
+    }
+    if (n == 0) return false;
+    centerOut = (lo + hi) * 0.5f;
+    // Ground-dominant cards stay put: their plane already contains every camera
+    // yaw, so facing is meaningless and spinning only churns directional art.
+    if (nySum / (double)n > 0.5) return false;
+    // Authored facing: the yaw the card's dominant normal already has, so the
+    // render-time yaw is relative to it (a YZ-plane card needs yaw-90°, not yaw).
+    // Plain constants, not M_PI_2/M_PI: those need feature-test macros that differ
+    // per target, and this file builds for Linux, MinGW and Emscripten alike.
+    constexpr float kHalfPi = 1.57079632679f;
+    constexpr float kPi = 3.14159265359f;
+    if (posX >= negX && posX >= posZ && posX >= negZ)
+        yaw0Out = kHalfPi;
+    else if (negX >= posZ && negX >= negZ)
+        yaw0Out = -kHalfPi;
+    else if (negZ >= posZ)
+        yaw0Out = kPi;
+    else
+        yaw0Out = 0.f;
+    return true;
 }
 
 // COPY_BYTES_PER_ROW_ALIGNMENT is 256: a tightly packed RGBA row is only legal for
@@ -363,6 +421,14 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                 // all live in non-drawn collision meshes, so no capture changes from
                 // this — it is the real per-material signal, wired rather than dropped.
                 d.baseColor = mat.diffuse;
+                // Effect cards yaw to face the camera around world Y (cylindrical, not
+                // spherical: the world's up axis is load-bearing — ground cards lie in
+                // XZ, shockwaves read as verticals — and the arena camera stays near
+                // level). The verdict is geometry-only; dormant until setEye().
+                if (pass == Pass::Effect && classifyBillboard(mesh, sub, d.bbCenter, d.bbYaw0)) {
+                    d.billboard = true;
+                    ++stats_.billboarded;
+                }
                 // Decals and effect cards are lighting, not paint: white has to stay
                 // exactly white (decals) and black exactly black (effects) or the blend
                 // darkens or washes the ground it is supposed to leave alone.
@@ -462,6 +528,11 @@ void SceneRenderer::updatePose(const std::vector<std::vector<glm::mat4>>& worlds
 }
 
 void SceneRenderer::setCamera(const glm::mat4& viewProj) { camera_.viewProj = viewProj; }
+
+void SceneRenderer::setEye(const glm::vec3& eye) {
+    eye_ = eye;
+    haveEye_ = true;
+}
 
 void SceneRenderer::setFog(const xm::StageEnv& env) {
     camera_.fogColor = glm::vec4(env.fogColor, 1.f);
@@ -636,6 +707,26 @@ bool SceneRenderer::render(const Target& target, std::string& error) {
     for (size_t i = 0; i < draws_.size(); ++i) {
         xm::DrawUniform du;
         du.model = draws_[i].model;
+        // Cylindrical billboard: yaw the card around its own (posed) center so its
+        // plane faces the camera, preserving world up. Unskinned effect meshes pose
+        // as world = model * palette[0] * pos, so folding T(C)*Ry*T(-C) into the
+        // model matrix rotates the posed card rigidly. The yaw is relative to the
+        // card's authored facing (bbYaw0): a YZ-plane card's normal starts at +X,
+        // so facing the camera needs yaw - 90°, not yaw. Overhead camera (|d| ~ 0)
+        // keeps the authored orientation instead of spinning on a singularity.
+        if (draws_[i].billboard && haveEye_ &&
+            draws_[i].paletteOffset < palette_.size()) {
+            const glm::mat4 fw = draws_[i].model * palette_[draws_[i].paletteOffset];
+            const glm::vec3 c = glm::vec3(fw * glm::vec4(draws_[i].bbCenter, 1.f));
+            const glm::vec2 d = glm::vec2(eye_.x - c.x, eye_.z - c.z);
+            if (glm::dot(d, d) > 1e-6f) {
+                const float yaw = std::atan2(d.x, d.y) - draws_[i].bbYaw0;
+                const glm::mat4 t1 = glm::translate(glm::mat4(1.f), c);
+                const glm::mat4 t0 = glm::translate(glm::mat4(1.f), -c);
+                du.model = t1 * glm::rotate(glm::mat4(1.f), yaw, glm::vec3(0.f, 1.f, 0.f)) *
+                           t0 * draws_[i].model;
+            }
+        }
         du.paletteOffset = draws_[i].paletteOffset;
         du.flags = draws_[i].flags | (appearance_.unlit ? xm::kDrawUnlit : 0u);
         du.baseColor = draws_[i].baseColor;

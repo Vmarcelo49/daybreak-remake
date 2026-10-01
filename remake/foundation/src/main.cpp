@@ -29,6 +29,11 @@
 #include "render/scene_renderer.h"
 #include "ui/hud.h"
 #include "ui/sprite.h"
+#include "game/hud_bridge.h"
+#include "game/fighter_pose.h"
+#include "audio/audio_engine.h"
+#include "input/input_backend.h"
+#include "input/input_sdl3.h"
 #include "shaders/demo_wgsl.h"
 
 namespace {
@@ -41,6 +46,8 @@ struct Options {
     // triangle demo; an effect file may ride along with any of them.
     std::string model, stage, character, weapon, effect;
     bool        hudTest = false;   // composite a synthetic HUD into --out captures
+    bool        audioTest = false; // run the audio backend self-check and exit
+    bool        inputTest = false; // run the input backend self-check and exit
 
     // Offscreen capture. Empty `out` means "draw into the window".
     std::string out;
@@ -96,6 +103,8 @@ void usage() {
         "  --list             print what was loaded and exit\n"
         "  --effect=<file.x>  load one card with the effect role (additive pass)\n"
         "  --hud-test         composite a synthetic HUD into --out captures\n"
+        "  --audio-test         run the audio backend self-check and exit\n"
+        "  --input-test         run the input backend self-check and exit\n"
         "With no asset argument the spinning-triangle demo runs.\n");
 }
 
@@ -123,6 +132,8 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--unlit") o.unlit = true;
         else if (a == "--list") o.list = true;
         else if (a == "--hud-test") o.hudTest = true;
+        else if (a == "--audio-test") o.audioTest = true;
+        else if (a == "--input-test") o.inputTest = true;
         else if (a.rfind("--", 0) == 0) {
             error = "unknown option " + a;
             return false;
@@ -291,6 +302,9 @@ struct App {
     render::Appearance           appearance;
     glm::vec3                    eye{0.f}, target{0.f};
     float                        cameraRadius = 1.f, sceneReach = 0.f;
+    glm::vec3                    arenaDesired{0.f};
+    glm::vec3                    prevEye{0.f};
+    bool                         havePrevEye = false;
 
     double   startTime = 0.0;
     double   lastTime = 0.0;
@@ -499,13 +513,19 @@ bool initScene(App& app) {
     } else if (mode == "bounds") {
         app.eye = center + glm::vec3(0.9f, 0.45f, -1.15f) * camDist;
     } else if (mode == "arena" && haveSpawn) {
-        // The game camera, not a framing convenience: the env.dat spawn is the
-        // locked-on fighter, and the desired eye is one-shot (no spring, no
-        // collision clamp — both game-side per the reference).
+        // The game camera, not a framing convenience: the env.dat spawn stands in
+        // for the locked-on fighter, converted through the game pose interface the
+        // way gameplay code will. The desired eye is one-shot (no spring, no
+        // collision clamp — both game-side per the reference); per-frame smoothing
+        // happens in SDL_AppIterate.
+        game::FighterPose pose;
+        pose.position = spawnEye;
+        pose.facingYaw = 0.f;
         const render::ArenaFrame af = render::arenaViewProj(
-            render::ArenaTarget{spawnEye, 0.f}, render::ArenaCameraParams{}, 16.f / 9.f);
+            game::arenaTargetFrom(pose), render::ArenaCameraParams{}, 16.f / 9.f);
         app.eye = af.eye;
         app.target = af.aim;
+        app.arenaDesired = af.eye;
     } else if (mode == "arena") {
         std::fprintf(stderr, "[scene] --camera=arena needs env.dat; framing bounds instead\n");
         app.eye = center + glm::vec3(0.62f, 0.34f, -0.71f) * camDist;
@@ -637,6 +657,70 @@ void advanceAnimation(App& app, double delta) {
     app.renderer.updatePose(app.worlds);
 }
 
+// ---------------------------------------------------------------------------------------
+// Backend self-checks: --audio-test and --input-test exercise the media/input
+// backends in-engine (same binaries, same SDL) without needing game data.
+// ---------------------------------------------------------------------------------------
+bool runAudioTest(App& app) {
+    // A 440 Hz sine, one second, mix-ready stereo: synthesized so the check needs
+    // no copyrighted bytes and stays deterministic across targets.
+    fnd::audio::Sdl3Engine engine(nullptr);   // null gate: native always ready
+    fnd::audio::Spec spec;
+    if (!engine.open(spec)) {
+        app.error = "audio device open failed";
+        return false;
+    }
+    std::vector<int16_t> tone(44100 * 2);
+    for (size_t i = 0; i < 44100; ++i) {
+        const float v = std::sin(2.f * 3.14159265f * 440.f * (float)i / 44100.f);
+        const int16_t q = (int16_t)(v * 32767.f);
+        tone[i * 2] = q;
+        tone[i * 2 + 1] = q;
+    }
+    const size_t pushed = engine.push_music_s16(tone.data(), tone.size() / 2);
+    fnd::audio::SfxHandle h = engine.load_pcm_s16(tone.data(), tone.size() / 2);
+    const int ch = engine.play(h, fnd::audio::SfxBus::Sfx);
+    fnd::audio::Volumes vols;
+    vols.music = 50;
+    vols.sfx = 25;
+    engine.set_volumes(vols);
+    std::printf("audio-test: device open, music pushed %zu/44100 frames, sfx handle %d on channel %d\n",
+                pushed, (int)h, ch);
+    std::printf("audio-test: music queued %zu frames, music gain %.2f, sfx gain %.2f\n",
+                engine.music_queued_frames(), engine.music_gain(),
+                engine.bus_gain_applied(fnd::audio::SfxBus::Sfx));
+    engine.close();
+    return pushed == 44100 && h >= 0 && ch >= 0;
+}
+
+bool runInputTest(App& app) {
+    fnd::input::Backend backend;
+    if (!backend.init()) {
+        app.error = "input backend init failed";
+        return false;
+    }
+    // Canned tap on P1 melee (X): down at frame 2, up at frame 4. No hardware
+    // input exists headless, so the event-held set carries the whole test.
+    bool ok = true;
+    for (uint64_t frame = 1; frame <= 6; ++frame) {
+        if (frame == 2) backend.note_key(fnd::input::sdl3::kScMelee, true);
+        if (frame == 4) backend.note_key(fnd::input::sdl3::kScMelee, false);
+        backend.poll();
+        const fnd::input::PlayerState& p0 = backend.player(0);
+        const bool held = p0.down[fnd::input::AttackA];
+        const bool jp = p0.just_pressed[fnd::input::AttackA];
+        const bool jr = p0.just_released[fnd::input::AttackA];
+        const int timer = p0.press_timer[fnd::input::AttackA];
+        std::printf("input-test: frame %llu held=%d just_pressed=%d just_released=%d timer=%d\n",
+                    (unsigned long long)frame, (int)held, (int)jp, (int)jr, timer);
+        if (jp != (frame == 2) || jr != (frame == 4) || held != (frame >= 2 && frame < 4))
+            ok = false;
+    }
+    backend.shutdown();
+    if (!ok) app.error = "input edge sequence mismatch";
+    return ok;
+}
+
 }  // namespace
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
@@ -685,6 +769,9 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
                 app->sc.formatCount, app->sc.presentModeCount, app->sc.supportsFifo ? "yes" : "no");
     std::printf("present mode : %s\n", gpu::presentModeName(app->sc.presentMode));
 
+    if (app->opts.audioTest) return runAudioTest(*app) ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
+    if (app->opts.inputTest) return runInputTest(*app) ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
+
     const bool ok = hasAsset(app->opts) ? initScene(*app) : initTriangle(*app);
     if (!ok) return SDL_APP_FAILURE;
 
@@ -705,29 +792,9 @@ struct HudTestHook {
 };
 
 ui::HudState syntheticHudState() {
-    ui::HudState st;
-    st.balloon[0] = 87.f;
-    st.balloon[1] = 42.f;
-    st.limit = 100.f;
-    st.mainWhole = 5;
-    st.mainFrac = 0.6f;
-    st.reloading = false;
-    st.chargeWhole = 2;
-    st.chargeFrac = 0.3f;
-    st.holdVisible = true;
-    st.holdFrac = 0.5f;
-    st.holdColor = ui::kHudTierYellow;
-    st.hp = 73.f;
-    st.hyperName = "OYASHIRO";
-    st.hyperGauge = 0.8f;
-    st.hyperActive = false;
-    st.hyperReady = true;
-    st.hyperSecondsLeft = 0.f;
-    st.hyperAura = ui::kHudWhite;
-    st.staminaVisible = true;
-    st.staminaFrac = 0.4f;
-    st.koVisible = false;
-    return st;
+    // Field-equal to game::syntheticHudState() by construction (the track's own
+    // test pins it); forwarding keeps one definition of the test values.
+    return game::syntheticHudState();
 }
 
 bool hudTestHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat format,
@@ -766,8 +833,21 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     if (hasAsset(app->opts)) {
         const uint32_t w = capturing ? (uint32_t)app->opts.size : app->sc.width;
         const uint32_t h = capturing ? (uint32_t)app->opts.size : app->sc.height;
+        if (app->opts.camera == "arena") {
+            // First frame seeds from the desired eye, so single-frame captures stay
+            // exactly deterministic; longer runs converge through the dt-correct
+            // spring instead of snapping.
+            if (!app->havePrevEye) {
+                app->prevEye = app->arenaDesired;
+                app->havePrevEye = true;
+            }
+            app->eye = render::arenaSmoothEyeDt(app->prevEye, app->arenaDesired,
+                                                (float)delta, 0.1f);
+            app->prevEye = app->eye;
+        }
         app->renderer.setCamera(viewProj(app->eye, app->target, (float)w / (float)h,
                                         app->cameraRadius, app->sceneReach));
+        app->renderer.setEye(app->eye);
 
         if (capturing) {
             // --out without --frames means one frame, so the last frame is always defined.

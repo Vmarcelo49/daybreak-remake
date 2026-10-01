@@ -85,14 +85,22 @@ target_link_libraries(foundation_ui PUBLIC foundation)
 # Media/input contracts and tables. Header-only by design (they unit-test
 # anywhere), so this library is one TU of static_asserts against the real SDL3
 # headers: the tables cannot drift from SDL3 without failing every target build.
-add_library(foundation_media STATIC src/input/pin_tables.cpp)
+add_library(foundation_media STATIC src/input/pin_tables.cpp src/audio/audio_engine.cpp
+                          src/input/input_backend.cpp)
 target_include_directories(foundation_media PUBLIC src)
 if(NOT EMSCRIPTEN)
     target_link_libraries(foundation_media PUBLIC SDL3::SDL3)
 endif()
 
+# Game-facing interfaces: header-only (glm+std, plus hud_bridge.h over ui/), so
+# this library is a check TU that forces every target to compile them — the
+# same rationale as the pin TU above.
+add_library(foundation_game STATIC src/game/game_check.cpp)
+target_include_directories(foundation_game PUBLIC src)
+target_link_libraries(foundation_game PUBLIC foundation_ui glm)
+
 add_executable(foundation_demo src/main.cpp)
-target_link_libraries(foundation_demo PRIVATE foundation_render foundation_ui foundation_media)
+target_link_libraries(foundation_demo PRIVATE foundation_render foundation_ui foundation_media foundation_game)
 
 if(EMSCRIPTEN)
     set_target_properties(foundation_demo PROPERTIES SUFFIX ".html")

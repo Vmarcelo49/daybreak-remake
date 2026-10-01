@@ -41,6 +41,8 @@ without a display:
 ./build/linux/foundation_demo --effect=<data/effect/01.X> --out=effect.ppm
 ./build/linux/foundation_demo --stage=<data/stage21> --camera=arena --out=arena.ppm
 ./build/linux/foundation_demo --character=<data/akane:0> --hud-test --out=hud.ppm
+./build/linux/foundation_demo --audio-test
+./build/linux/foundation_demo --input-test
 ./build/linux/foundation_demo --list                    # what a spec loads, then exit
 ```
 
@@ -154,14 +156,19 @@ New since the port landed, all verified the same way:
   pass in-repo (`effect/01.X`: 11 effect draws, 17.95% coverage, no black quads).
 - `--hud-test` composites a deterministic synthetic HUD into `--out` captures
   through the renderer's UI hook — the first in-engine HUD-over-3D frame.
-- `foundation_ui` (sprite batch, bitmap font, HUD composer, diagnostics) and
-  `foundation_media` (audio/input contracts plus SDL3 pin asserts) compile on all
-  three targets; the media backends themselves remain future work.
+- `foundation_ui` (sprite batch, bitmap font, HUD composer, diagnostics) is wired
+  into the demo; `foundation_media` now carries the real SDL3 audio and input
+  backends, verified in-engine with `--audio-test` (440 Hz tone through music +
+  SFX paths, gains applied) and `--input-test` (canned 6-frame tap with exact
+  edge output). Media backends run on Linux and Wine; the browser gesture path
+  and audible checks remain open.
 
 ## Not here yet
 
-Deliberately out of scope for the foundation: the 2D/HUD layer, effects, audio,
-input mapping, and any game code. Asset loading and depth-buffered 3D drawing are
-in place; what is still missing before DX9 can be retired (gate D2) is the frame
-having to *match* the original's, which needs the effect techniques, the 2D pass
-and the game camera rather than a framing heuristic.
+Deliberately out of scope for the foundation: game code itself, video decoding
+(explicit stub), BGM/OGG decoders, and live-pad/browser-gesture verification.
+Asset loading, depth-buffered 3D drawing, HUD compositing, audio/input backends
+and the game camera path are in place; what is still missing before DX9 can be
+retired (gate D2) is the frame having to *match* the original's, which needs
+game-driven state (real HP, fighter positions, effect spawns) rather than test
+rigs.
