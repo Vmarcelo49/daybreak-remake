@@ -8,7 +8,9 @@ economy, HUD, and BGM.
 Start here for context: [`docs/game-spec.md`](docs/game-spec.md) (what the
 game is + build plan) · [`docs/decisions.md`](docs/decisions.md) (binding
 scope/tech decisions) · [`docs/reference/README.md`](docs/reference/README.md)
-(21 ground-truth captures) · [`docs/roadmap.md`](docs/roadmap.md) (PT roadmap).
+(21 ground-truth captures) · [`docs/placeholders.md`](docs/placeholders.md)
+(shipped stand-ins vs their targets) ·
+[`docs/roadmap.md`](docs/roadmap.md) (PT roadmap).
 
 ## Quick start
 
