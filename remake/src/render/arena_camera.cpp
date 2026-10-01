@@ -16,7 +16,7 @@ ArenaCamera::ArenaCamera() {
     D3DXMatrixIdentity(&m_proj);
     m_eye    = D3DXVECTOR3(0.0f, 0.0f, 0.0f);
     m_target = D3DXVECTOR3(0.0f, 0.0f, 0.0f);
-    m_up     = D3DXVECTOR3(0.0f, 0.0f, 1.0f);  // Z-up (game uses Z-up)
+    m_up     = D3DXVECTOR3(0.0f, 1.0f, 0.0f);  // Y-up world
 }
 
 void ArenaCamera::set_target_pool(const std::vector<CameraTarget*>& fighters) {
@@ -65,15 +65,16 @@ CameraTarget* ArenaCamera::active_target() const {
 D3DXVECTOR3 ArenaCamera::compute_desired_eye(const CameraTarget* t) const {
     if (!t) return D3DXVECTOR3(0.0f, 0.0f, kHeightOffset);
 
-    // The original game subtracts π/4 from the camera's Z rotation,
-    // which means the camera sits 45° to the side of the target's facing
-    // direction (gives a 3/4 view rather than directly behind).
+    // The camera sits 45° to the side of the target's facing direction
+    // (gives a 3/4 view rather than directly behind).
     float angle = t->facing_yaw - kBaselineZRotation + m_orbitNudge;
 
-    // X/Y in the horizontal plane, Z is up (matches game's coord system).
-    float dx = -std::sin(angle) * kDistanceOffset;
-    float dy = -std::cos(angle) * kDistanceOffset;
-    float dz = kHeightOffset;
+    // XZ is the horizontal plane, Y is up.
+    const float dist = (m_distOverride >= 0.0f) ? m_distOverride : kDistanceOffset;
+    const float height = (m_heightOverride >= 0.0f) ? m_heightOverride : kHeightOffset;
+    float dx = -std::sin(angle) * dist;
+    float dz = -std::cos(angle) * dist;
+    float dy = height;
 
     return D3DXVECTOR3(t->position.x + dx,
                        t->position.y + dy,
@@ -88,7 +89,7 @@ void ArenaCamera::update(double /*dt*/, D3DXFRAME* collisionFrame) {
     }
 
     // Target position is the fighter's position (slightly above ground).
-    m_target = D3DXVECTOR3(t->position.x, t->position.y, t->position.z + 50.0f);
+    m_target = D3DXVECTOR3(t->position.x, t->position.y + 50.0f, t->position.z);
 
     D3DXVECTOR3 desiredEye = compute_desired_eye(t);
 
@@ -135,7 +136,7 @@ void ArenaCamera::update(double /*dt*/, D3DXFRAME* collisionFrame) {
             m_eye.z + (desiredEye.z - m_eye.z) * 0.1f);
     }
 
-    m_up = D3DXVECTOR3(0.0f, 0.0f, 1.0f);
+    m_up = D3DXVECTOR3(0.0f, 1.0f, 0.0f);
 
     D3DXMatrixLookAtLH(&m_view, &m_eye, &m_target, &m_up);
 }

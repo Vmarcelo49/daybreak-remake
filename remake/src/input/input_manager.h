@@ -21,6 +21,8 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 #include <SDL.h>
 
@@ -140,6 +142,19 @@ public:
     // True if any player is holding `action` (for UI hold-to-scroll).
     bool any_down(Action action) const;
 
+    // Visual-validation driver: frame-indexed P1 held-set override, applied
+    // inside poll() after device reads so just_pressed/just_released derive
+    // normally. Script lines are `<frame> <TOKEN>...` (`-` = release all;
+    // `#` comments, blanks skipped). Tokens: UP DOWN LEFT RIGHT MELEE
+    // HEAVY GUARD SHOOT JUMP SPECIAL TACTICS LOCK PAUSE. Frames are the
+    // 1-based main-loop render index (same numbering as -shot).
+    struct ScriptEvent {
+        uint64_t frame = 0;
+        uint32_t mask  = 0;  // bit i = Action i held
+    };
+    bool load_script(const char* path);
+    void tick_script(uint64_t frame);
+
 private:
     PlayerInput      m_players[kMaxPlayers];
     KeyboardBindings m_kbBindings[kMaxPlayers];
@@ -150,6 +165,11 @@ private:
     void update_player_keyboard(int index);
     void update_player_gamepad(int index);
     void compute_edges(int index);
+
+    std::vector<ScriptEvent> m_script;
+    size_t                   m_scriptPos = 0;
+    uint32_t                 m_scriptMask = 0;
+    bool                     m_scriptActive = false;
 };
 
 } // namespace daybreak::input

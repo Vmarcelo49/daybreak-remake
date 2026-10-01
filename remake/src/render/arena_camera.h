@@ -6,8 +6,12 @@
 //
 //    * The camera is ALWAYS focused on one fighter (the "target").
 //    * A button press cycles the target through the alive fighters.
-//    * Camera orbits the target on the Z axis (horizontal plane) with a
+//    * Camera orbits the target about the vertical (Y) axis with a
 //      baseline angle of 45° (= π/4) offset from the target's facing.
+//      (An earlier Z-up reading of fcn.006507c0's RotationZ was wrong:
+//      that rotation feeds a 2D overlay transform in the same function,
+//      while actors yaw with RotationY (FUN_00420b30), models stand along
+//      Y, and D3D is Y-up by default.)
 //    * Camera height offset = 300.0 units, distance offset = 800.0 units
 //      (generous, to keep all 4 fighters visible in 2v2).
 //    * Camera collision: raycast against `collision_camera.x` from the
@@ -40,8 +44,8 @@
 namespace daybreak {
 
 struct CameraTarget {
-    D3DXVECTOR3 position;       // world-space position
-    float       facing_yaw;     // yaw angle in radians (around Z axis)
+    D3DXVECTOR3 position;       // world-space position (Y-up world)
+    float       facing_yaw;     // yaw angle in radians (about Y axis)
     bool        alive = true;   // dead fighters are skipped by cycle_target
 };
 
@@ -66,12 +70,15 @@ public:
     CameraTarget* active_target() const;
 
     // ---- orbit control ----------------------------------------------------
-    // The camera orbits the target on the Z axis (horizontal plane).
+    // The camera orbits the target about the Y axis (horizontal XZ plane).
     // The orbit angle is normally derived from the target's facing_yaw
     // (camera stays behind the target).  The user can nudge it with the
     // right stick.
     void nudge_orbit(float delta_radians) { m_orbitNudge += delta_radians; }
     void reset_orbit() { m_orbitNudge = 0.0f; }
+    // Visual-validation overrides (suite explores viewpoints per stage).
+    void set_height_offset(float h) { m_heightOverride = h; }
+    void set_distance_offset(float d) { m_distOverride = d; }
 
     // ---- update -----------------------------------------------------------
     // Advances the camera by `dt` seconds.  If `collisionFrame` is non-null,
@@ -109,6 +116,8 @@ private:
 
     // Orbit nudge (user-controlled offset from the baseline 45° angle).
     float m_orbitNudge = 0.0f;
+    float m_heightOverride = -1.0f;  // <0 = kHeightOffset
+    float m_distOverride = -1.0f;    // <0 = kDistanceOffset
 
     // Cached collision state (for the spring lerp).
     float m_lastHitDist = 10000.0f;

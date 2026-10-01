@@ -14,6 +14,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <sstream>
 
 namespace daybreak::input {
 
@@ -100,7 +102,72 @@ void InputManager::poll() {
             default:
                 break;
         }
+        // Script override (visual-validation runs): replace P1's held set
+        // wholesale so scripted taps/holds read exactly as played.
+        if (m_scriptActive && i == 0) {
+            for (int a = 0; a < ActionCount; ++a) {
+                m_players[i].down[a] = (m_scriptMask & (1u << a)) != 0;
+            }
+        }
         compute_edges(i);
+    }
+}
+
+bool InputManager::load_script(const char* path) {
+    static const struct { const char* name; Action action; } kTokens[] = {
+        {"UP", Up}, {"DOWN", Down}, {"LEFT", Left}, {"RIGHT", Right},
+        {"MELEE", AttackA}, {"HEAVY", AttackB}, {"GUARD", Guard},
+        {"SHOOT", Shoot}, {"JUMP", Jump}, {"SPECIAL", Special},
+        {"TACTICS", Tactics}, {"LOCK", LockSwitch}, {"PAUSE", Pause},
+    };
+    std::ifstream f(path);
+    if (!f.is_open()) {
+        std::fprintf(stderr, "[daybreak] input script not found: %s\n", path);
+        return false;
+    }
+    std::vector<ScriptEvent> events;
+    std::string line;
+    int lineno = 0;
+    while (std::getline(f, line)) {
+        ++lineno;
+        std::istringstream ls(line);
+        uint64_t frame = 0;
+        if (!(ls >> frame)) continue;  // blank or `#` comment
+        uint32_t mask = 0;
+        std::string tok;
+        while (ls >> tok) {
+            if (!tok.empty() && tok[0] == '#') break;  // EOL comment
+            if (tok == "-") { mask = 0; continue; }
+            bool known = false;
+            for (const auto& t : kTokens) {
+                if (tok == t.name) {
+                    mask |= (1u << t.action);
+                    known = true;
+                    break;
+                }
+            }
+            if (!known) {
+                std::fprintf(stderr,
+                             "[daybreak] input script %s:%d: unknown token %s\n",
+                             path, lineno, tok.c_str());
+            }
+        }
+        events.push_back({frame, mask});
+    }
+    m_script = std::move(events);
+    m_scriptPos = 0;
+    m_scriptMask = 0;
+    m_scriptActive = true;
+    std::printf("[daybreak] input script: %s (%zu events)\n",
+                path, m_script.size());
+    return true;
+}
+
+void InputManager::tick_script(uint64_t frame) {
+    if (!m_scriptActive) return;
+    while (m_scriptPos < m_script.size() && m_script[m_scriptPos].frame <= frame) {
+        m_scriptMask = m_script[m_scriptPos].mask;
+        ++m_scriptPos;
     }
 }
 

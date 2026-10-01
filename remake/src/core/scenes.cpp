@@ -4,6 +4,7 @@
 #include "scenes.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 
@@ -35,6 +36,50 @@ static std::string extract_to_temp(assets::AssetManager* am, const char* asset_n
     f.write(reinterpret_cast<const char*>(bytes.data()),
             static_cast<std::streamsize>(bytes.size()));
     return std::string(path);
+}
+
+// Mesh survey for the visual-validation suite (env-gated): prints vertex
+// counts + world-space bounding boxes per loaded mesh so captures can be
+// aimed (spawns are per-stage and undocumented until stage select lands).
+static void survey_mesh(ID3DXMesh* mesh, const char* name) {
+    if (!mesh || !name) return;
+    const DWORD nVerts = mesh->GetNumVertices();
+    const DWORD nFaces = mesh->GetNumFaces();
+    const DWORD stride = mesh->GetNumBytesPerVertex();
+    D3DXVECTOR3 mn(1e30f, 1e30f, 1e30f), mx(-1e30f, -1e30f, -1e30f);
+    IDirect3DVertexBuffer9* vb = nullptr;
+    BYTE* bytes = nullptr;
+    if (stride >= 12 && SUCCEEDED(mesh->GetVertexBuffer(&vb)) && vb &&
+        SUCCEEDED(vb->Lock(0, 0, reinterpret_cast<void**>(&bytes), 0)) && bytes) {
+        for (DWORD i = 0; i < nVerts; ++i) {
+            const float* v = reinterpret_cast<const float*>(bytes + i * stride);
+            if (v[0] < mn.x) mn.x = v[0];
+            if (v[1] < mn.y) mn.y = v[1];
+            if (v[2] < mn.z) mn.z = v[2];
+            if (v[0] > mx.x) mx.x = v[0];
+            if (v[1] > mx.y) mx.y = v[1];
+            if (v[2] > mx.z) mx.z = v[2];
+        }
+        vb->Unlock();
+        vb->Release();
+    }
+    std::printf("[daybreak] mesh %s: verts=%lu faces=%lu"
+                " bbox=(%.0f,%.0f,%.0f)-(%.0f,%.0f,%.0f)\n",
+                name, static_cast<unsigned long>(nVerts),
+                static_cast<unsigned long>(nFaces),
+                mn.x, mn.y, mn.z, mx.x, mx.y, mx.z);
+}
+
+static void survey_frames(D3DXFRAME* frame, const char* name) {
+    for (D3DXFRAME* f = frame; f; f = f->pFrameSibling) {
+        for (D3DXMESHCONTAINER* mc = f->pMeshContainer; mc;
+             mc = mc->pNextMeshContainer) {
+            if (mc->MeshData.Type == D3DXMESHTYPE_MESH && mc->MeshData.pMesh) {
+                survey_mesh(mc->MeshData.pMesh, name);
+            }
+        }
+        if (f->pFrameFirstChild) survey_frames(f->pFrameFirstChild, name);
+    }
 }
 
 static bool poll_and_check_quit(input::InputManager* input) {
@@ -423,6 +468,22 @@ void Scene_Gameplay::on_enter(SceneContext& ctx) {
             }
         }
         std::printf("[daybreak] Stage: %d meshes loaded\n", m_stageModelCount);
+        if (std::getenv("DAYBREAK_MESHINFO")) {
+            for (int i = 0; i < 7; ++i) {
+                if (m_stageModels[i] && m_stageModels[i]->root_frame()) {
+                    survey_frames(m_stageModels[i]->root_frame(), stage_parts[i]);
+                }
+            }
+            if (m_models[0] && m_models[0]->root_frame()) {
+                survey_frames(m_models[0]->root_frame(), "P1 fighter");
+            }
+            if (m_models[1] && m_models[1]->root_frame()) {
+                survey_frames(m_models[1]->root_frame(), "P2 fighter");
+            }
+            if (m_tamaCollision && m_tamaCollision->root_frame()) {
+                survey_frames(m_tamaCollision->root_frame(), "tama");
+            }
+        }
 
         // Projectile channel for shots (fcn.004011f0's collision_tama.x).
         // Optional: shots fly to expiry when the stage ships none.
@@ -432,12 +493,23 @@ void Scene_Gameplay::on_enter(SceneContext& ctx) {
         m_shots.clear();
     }
 
-    // Spawn positions from env.dat (stage01):
-    // Fighter 1: (1393, -463, 200) → scaled to our coordinate system
-    // Fighter 2: (-2200, -1363, 200)
-    // Using the raw values — the stage .X files use the same coordinate space.
-    if (m_models[0]) {
+    // Spawn triples in stage env.dat read (x, z, y): shared height 200
+    // for both fighters (flat arena — confirmed in stage21/env.dat, which
+    // holds (1393,-463,200) and (-2200,-1363,200) verbatim).
+    if (m_useCustomSpawn) {
+        m_spawnPos[0] = m_customSpawn;
+        std::printf("[daybreak] Gameplay: custom P1 spawn (%.0f,%.0f,%.0f)\n",
+                    m_customSpawn.x, m_customSpawn.y, m_customSpawn.z);
+    } else {
         m_spawnPos[0] = D3DXVECTOR3(1393.0f, 200.0f, -463.0f);
+    }
+    if (const char* camh = std::getenv("DAYBREAK_CAMH")) {
+        m_camera.set_height_offset(static_cast<float>(std::atof(camh)));
+    }
+    if (const char* camd = std::getenv("DAYBREAK_CAMD")) {
+        m_camera.set_distance_offset(static_cast<float>(std::atof(camd)));
+    }
+    if (m_models[0]) {
         m_spawnFacing[0] = 0.0f;
         m_fighters[0].init(m_models[0], m_spawnPos[0], m_spawnFacing[0]);
     }
@@ -611,10 +683,9 @@ UpdateResult Scene_Gameplay::update(SceneContext& ctx, double dt) {
     m_fighters[0].sync_target(m_targets[0]);
     m_fighters[1].sync_target(m_targets[1]);
 
-    XModel* cam_model = m_models[0];
-    if (cam_model && cam_model->root_frame()) {
-        m_camera.update(dt, cam_model->root_frame());
-    }
+    // No collision_camera.x is loaded in this scene yet, so the camera
+    // runs unclamped (passing P1's own frame here used to risk self-hits).
+    m_camera.update(dt, nullptr);
 
     return UpdateResult::Continue;
 }
@@ -657,6 +728,24 @@ void Scene_Gameplay::render(SceneContext& ctx) {
         m_fighters[0].render(ctx.device);
         m_fighters[1].render(ctx.device);
         m_shots.render(ctx.device);
+
+        // View probe for the visual-validation suite (env-gated, ~1/sec):
+        // eye + both fighters, to diagnose framing without a debugger.
+        if (std::getenv("DAYBREAK_CAMINFO")) {
+            static int probe = 0;
+            if (probe++ % 60 == 0) {
+                const D3DXVECTOR3& e = m_camera.eye();
+                const D3DXVECTOR3& a = m_fighters[0].position();
+                const D3DXVECTOR3& b = m_fighters[1].position();
+                std::printf("[daybreak] cam eye=(%.0f,%.0f,%.0f)"
+                            " p1=(%.0f,%.0f,%.0f,%s) p2=(%.0f,%.0f,%.0f,%s)\n",
+                            e.x, e.y, e.z,
+                            a.x, a.y, a.z,
+                            gameplay::state_to_anim_name(m_fighters[0].state()),
+                            b.x, b.y, b.z,
+                            gameplay::state_to_anim_name(m_fighters[1].state()));
+            }
+        }
 
         // HUD (after 3D, same scene). Layout from battle-hud.webp.
         if (!m_hudReady) m_hudReady = m_hud.init(ctx.device);

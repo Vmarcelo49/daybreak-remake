@@ -33,6 +33,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -343,6 +344,76 @@ static int run_asset_info_tool(int argc, char* argv[]) {
 // ============================================================================
 // Main loop
 // ============================================================================
+// ----------------------------------------------------------------------------
+// Visual-validation capture options (see remake/tests/visual/README.md).
+// Frames are the 1-based main-loop render index: `-shot 120=a.bmp` saves
+// the backbuffer right after render #120, and script `<frame>` lines use
+// the same numbering.
+// ----------------------------------------------------------------------------
+struct CaptureOpts {
+    const char* scene = "gameplay";
+    int p1 = 0;
+    int p2 = 1;
+    uint64_t maxFrames = 0;  // 0 = run until quit
+    std::vector<std::pair<uint64_t, std::string>> shots;  // frame → BMP path
+    const char* script = nullptr;  // P1 input-script path (or nullptr)
+    bool hasSpawn = false;
+    float spawn[3] = {0, 0, 0};  // -spawn x,y,z (P1 override, world units)
+};
+
+static CaptureOpts parse_capture_opts(int argc, char* argv[]) {
+    CaptureOpts o;
+    for (int i = 1; i < argc; ++i) {
+        const std::string a = argv[i];
+        const char* val = (i + 1 < argc) ? argv[i + 1] : nullptr;
+        if ((a == "-scene" || a == "-script") && val) {
+            if (a == "-scene") o.scene = argv[++i];
+            else o.script = argv[++i];
+        } else if ((a == "-p1" || a == "-p2" || a == "-frames") && val) {
+            if (a == "-p1") o.p1 = std::atoi(argv[++i]);
+            else if (a == "-p2") o.p2 = std::atoi(argv[++i]);
+            else o.maxFrames = std::strtoull(argv[++i], nullptr, 10);
+        } else if (a == "-spawn" && val) {
+            ++i;
+            if (std::sscanf(argv[i], "%f,%f,%f",
+                            &o.spawn[0], &o.spawn[1], &o.spawn[2]) == 3) {
+                o.hasSpawn = true;
+            } else {
+                std::fprintf(stderr, "[daybreak] -spawn needs x,y,z\n");
+            }
+        } else if (a == "-shot" && val) {
+            ++i;
+            const char* eq = std::strchr(argv[i], '=');
+            if (!eq) {
+                std::fprintf(stderr, "[daybreak] -shot needs F=path\n");
+                continue;
+            }
+            o.shots.emplace_back(std::strtoull(argv[i], nullptr, 10),
+                                 std::string(eq + 1));
+        }
+    }
+    return o;
+}
+
+// Saves the current backbuffer to a BMP (F12 / -shot visual-validation path).
+static bool save_shot(IDirect3DDevice9* device, const char* path) {
+    if (!device || !path) return false;
+    IDirect3DSurface9* back = nullptr;
+    if (FAILED(device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &back)) ||
+        !back) {
+        return false;
+    }
+    const HRESULT hr = D3DXSaveSurfaceToFileA(path, D3DXIFF_BMP, back,
+                                             nullptr, nullptr);
+    back->Release();
+    if (SUCCEEDED(hr)) {
+        std::printf("[daybreak] screenshot: %s\n", path);
+        return true;
+    }
+    std::fprintf(stderr, "[daybreak] screenshot failed: %s\n", path);
+    return false;
+}
+
 int main(int argc, char* argv[]) {
     // ---- CLI modes (no SDL/D3D) ----
     if (argc >= 2 && std::string(argv[1]) == "-dat") {
@@ -351,6 +422,8 @@ int main(int argc, char* argv[]) {
     if (argc >= 2 && std::string(argv[1]) == "-asset-info") {
         return run_asset_info_tool(argc, argv);
     }
+
+    const CaptureOpts copts = parse_capture_opts(argc, argv);
 
     // ---- GUI mode: bootstrap SDL + D3D + SceneManager ----
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
@@ -429,13 +502,26 @@ int main(int argc, char* argv[]) {
     ctx.viewport_w = App::kWidth;
     ctx.viewport_h = App::kHeight;
 
+    if (copts.script && !app.input.load_script(copts.script)) {
+        teardown(app);
+        return 1;
+    }
+
     daybreak::SceneManager mgr(ctx);
-    // Skip Bootstrap+Opening+Title+ModeSelect+CharacterSelect — go straight
-    // to Gameplay.
-    {
+    // Default boot skips Bootstrap+Opening+Title+ModeSelect+CharacterSelect
+    // and goes straight to Gameplay; -scene title boots the title instead
+    // (visual-validation entry points).
+    if (std::string(copts.scene) == "title") {
+        mgr.start(std::make_unique<daybreak::Scene_Title>());
+    } else {
         auto gameplay = std::make_unique<daybreak::Scene_Gameplay>();
-        gameplay->m_p1CharIndex = 0;  // rika
-        gameplay->m_p2CharIndex = 1;  // takano
+        gameplay->m_p1CharIndex = copts.p1 < 0 || copts.p1 > 3 ? 0 : copts.p1;
+        gameplay->m_p2CharIndex = copts.p2 < 0 || copts.p2 > 3 ? 1 : copts.p2;
+        if (copts.hasSpawn) {
+            gameplay->m_useCustomSpawn = true;
+            gameplay->m_customSpawn = D3DXVECTOR3(copts.spawn[0], copts.spawn[1],
+                                                 copts.spawn[2]);
+        }
         mgr.start(std::move(gameplay));
     }
 
@@ -448,6 +534,7 @@ int main(int argc, char* argv[]) {
     uint64_t frame_count = 0;
     double fps_timer = 0.0;
     uint64_t frames_in_window = 0;
+    Uint32 lastTick = SDL_GetTicks();
 
     while (mgr.is_running()) {
         HRESULT coop = app.device->TestCooperativeLevel();
@@ -469,18 +556,54 @@ int main(int argc, char* argv[]) {
         }
 
         const auto now = clock::now();
-        const std::chrono::duration<double> dt_dur = now - last;
-        const double dt = dt_dur.count();
 
-        if (mgr.update(dt) == daybreak::UpdateResult::Quit) break;
+        // Scripted P1 input (visual-validation runs) applies on the next
+        // poll inside the scene update, keyed on the upcoming render index.
+        app.input.tick_script(frame_count + 1);
+
+        // Fixed-step logic (1/60): frame N is always game-time N/60s, so
+        // scripted holds/charges/recharge behave identically on every host
+        // (and frame-indexed captures are deterministic). Wall-clock dt is
+        // unusable here — std::chrono::steady_clock barely advances under
+        // Wine, which froze every dt-driven system (recharge, charge holds,
+        // gravity, dash windows) while frame counters kept ticking. Fixed
+        // step also matches the original's 60fps-locked design and the
+        // deterministic lockstep netplay wants later (decisions.md D6).
+        if (mgr.update(kMinFrame) == daybreak::UpdateResult::Quit) break;
 
         mgr.render();
+
+        // Frame-indexed captures (-shot) save the backbuffer before Present;
+        // F12 grabs shot_f<frame>.bmp the same way (keyboard state is fresh:
+        // scenes pump SDL events during update, so no extra drain needed).
+        const uint64_t rendered = frame_count + 1;
+        for (const auto& shot : copts.shots) {
+            if (shot.first == rendered) save_shot(app.device, shot.second.c_str());
+        }
+        {
+            const uint8_t* kb = SDL_GetKeyboardState(nullptr);
+            static bool f12WasDown = false;
+            const bool f12Down = kb && kb[SDL_SCANCODE_F12];
+            if (f12Down && !f12WasDown) {
+                char name[64];
+                std::snprintf(name, sizeof(name), "shot_f%llu.bmp",
+                              static_cast<unsigned long long>(rendered));
+                save_shot(app.device, name);
+            }
+            f12WasDown = f12Down;
+        }
+
         app.device->Present(nullptr, nullptr, nullptr, nullptr);
 
-        // FPS counter (debug).
+        // FPS counter (debug, wall time via SDL ticks — see above).
         ++frame_count;
+        if (copts.maxFrames && frame_count >= copts.maxFrames) break;
         ++frames_in_window;
-        fps_timer += dt;
+        {
+            const Uint32 tick = SDL_GetTicks();
+            fps_timer += static_cast<double>(tick - lastTick) / 1000.0;
+            lastTick = tick;
+        }
         if (fps_timer >= 1.0) {
             double fps = static_cast<double>(frames_in_window) / fps_timer;
             std::printf("[daybreak] fps=%.1f scene=%s frames=%llu\n",

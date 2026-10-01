@@ -151,6 +151,10 @@ public:
     // Set by CharacterSelect before transitioning.
     int m_p1CharIndex = 0;
     int m_p2CharIndex = 1;
+    // Visual-validation override (-spawn x,y,z): P1 starts here instead of
+    // the env.dat spawn, so the suite can explore per-stage viewpoints.
+    bool m_useCustomSpawn = false;
+    D3DXVECTOR3 m_customSpawn{};
 
 private:
     gameplay::Fighter       m_fighters[2];

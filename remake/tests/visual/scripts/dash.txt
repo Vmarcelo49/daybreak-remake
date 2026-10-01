@@ -1,0 +1,5 @@
+# Double-tap Up = forward dash (0.30s window); stamina bar must be up mid-dash.
+80 UP
+84 -
+88 UP
+92 -

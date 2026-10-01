@@ -2,6 +2,7 @@
 /build/
 /build-*/
 /out/
+/tests/visual/out/
 
 # IDE / OS
 .vscode/

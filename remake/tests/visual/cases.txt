@@ -1,0 +1,11 @@
+# Visual A/B cases: name|reference capture|timeout(s)|wine args.
+# Reference captures live in remake/docs/reference/. Empty ref = remake-only
+# (no ground truth pins that frame yet). -script paths resolve against the
+# staging dir (run.sh links scripts/ there); -shot BMPs land in staging too.
+title-100|title-menu.webp|90|-scene title -frames 120 -shot 100=title-100.bmp
+gameplay-120|battle-hud.webp|120|-frames 150 -shot 120=gameplay-120.bmp
+gameplay-yard|battle-hud.webp|120|-spawn 0,200,0 -frames 150 -shot 120=gameplay-yard.bmp
+gameplay-dash|battle-stamina.webp|120|-spawn 0,200,0 -script scripts/dash.txt -frames 150 -shot 95=gameplay-dash.bmp
+gameplay-tapshot|battle-hud.webp|120|-spawn 0,200,0 -script scripts/tapshot.txt -frames 150 -shot 110=gameplay-tapshot.bmp
+gameplay-charge||120|-spawn 0,200,0 -script scripts/charge.txt -frames 200 -shot 160=gameplay-charge-hold.bmp -shot 185=gameplay-charge-release.bmp
+gameplay-ko|ko-moment.webp|300|-spawn -2000,200,-1200 -script scripts/ko.txt -frames 2600 -shot 2290=gameplay-ko-a.bmp -shot 2330=gameplay-ko-b.bmp -shot 2450=gameplay-ko-c.bmp

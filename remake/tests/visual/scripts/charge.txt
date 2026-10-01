@@ -1,0 +1,3 @@
+# Hold C 90 frames (~1.5s at 60fps) = red-tier release.
+80 SHOOT
+170 -
