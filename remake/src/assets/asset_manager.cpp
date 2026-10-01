@@ -17,6 +17,12 @@ namespace {
 // transparent (baked blob shadows are white cards with a dark blob; the
 // original devs key on the white). Runs on the A8R8G8B8 MANAGED textures
 // UIImage produces. Idempotent — re-keying changes nothing.
+//
+// Clear ALPHA ONLY, never the colour: the sampler bilinearly filters RGB
+// and alpha together, so zeroing keyed texels' RGB bleeds black into the
+// kept edge pixels (their alpha stays above the test threshold) and paints
+// a hard dark rim along every silhouette — visible in captures. Keeping
+// the white RGB means the bleed is neutral under multiply.
 void key_out_white(IDirect3DTexture9* tex) {
     if (!tex) return;
     D3DSURFACE_DESC desc;
@@ -28,7 +34,7 @@ void key_out_white(IDirect3DTexture9* tex) {
         auto* row = reinterpret_cast<uint32_t*>(
             static_cast<uint8_t*>(lr.pBits) + y * lr.Pitch);
         for (UINT x = 0; x < desc.Width; ++x) {
-            if ((row[x] & 0x00FFFFFFu) == 0x00FFFFFFu) row[x] = 0x00000000u;
+            if ((row[x] & 0x00FFFFFFu) == 0x00FFFFFFu) row[x] &= 0x00FFFFFFu;
         }
     }
     tex->UnlockRect(0);

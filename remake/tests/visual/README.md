@@ -58,6 +58,7 @@ far from zero; judge layout/framing/HUD by eye), and writes the report.
 | `title-100` | `title-menu.webp` | Title bg + boot (no menu text yet) |
 | `gameplay-120` | `battle-hud.webp` | Default-spawn framing, full HUD |
 | `gameplay-yard` | `battle-hud.webp` | Arena-center framing, P1 mid-frame |
+| `gameplay-school` | `battle-hud.webp` | School side of the yard: baked-shadow decals + seam (04/05 overlap) |
 | `gameplay-dash` | `battle-stamina.webp` | Double-tap dash + contextual stamina bar |
 | `gameplay-tapshot` | `battle-hud.webp` | Tap-tier projectile in flight |
 | `gameplay-charge` | — (charge UI unpinned) | Charge meter while held + red release |
@@ -70,8 +71,13 @@ far from zero; judge layout/framing/HUD by eye), and writes the report.
   before lookup — the miss-everything encoding bug is fixed). Foliage
   cards alpha-cut via scene alpha test (bimodal CNV alpha); baked blob
   shadows (white card + dark blob/silhouette, opaque alpha) white-key
-  exact-white texels to transparent at resolve time (cut by the same
-  alpha test) and multiply the rest (white neutral, blob darkens).
+  exact-white texels to transparent at resolve time — clearing **alpha
+  only**: zeroing the keyed texels' RGB made bilinear filtering bleed
+  black into kept edge pixels, painting a hard dark rim along every
+  silhouette (fixed 2026-10-01). The rest multiplies (white neutral,
+  blob darkens), and a stencil keeps each pixel to one darkening so
+  overlapping decal cards (04's shed × 05's school) don't stack into a
+  dark seam — measured: 257 px at the seam, 46 vs 133 without it.
   Decal verdict lives in one `MaterialResolver` predicate on the texture
   name — ASCII `shadow*` plus 影 (e.g. 校舎影02 school shadow, 手すり影
   handrail shadow) — provisional until effect-technique binding (P3.1)

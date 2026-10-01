@@ -711,13 +711,30 @@ void XModel::render_frame(D3DXFRAME* frame, IDirect3DDevice9* device) const {
             // Depth write off so the decal never occludes later geometry.
             bool multiply = i < vmc->shadowDecal.size() && vmc->shadowDecal[i];
             if (multiply) {
+                // Baked shadows are lighting, not paint: two overlapping
+                // decal cards (stage21: the shed's shadow01 over the school's
+                // 校舎影02) otherwise multiply twice and draw a hard dark
+                // outline exactly along their overlap — visible in captures.
+                // Stencil "already shadowed" pixels (0 = unshadowed; the
+                // first decal to cover a pixel bumps it to 1 via INCRSAT), so
+                // each pixel darkens at most once. Alpha-tested-away texels
+                // never reach the stencil, so silhouettes stay exact.
                 device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
                 device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_DESTCOLOR);
                 device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ZERO);
                 device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+                device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
+                device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_EQUAL);
+                device->SetRenderState(D3DRS_STENCILREF, 0);
+                device->SetRenderState(D3DRS_STENCILMASK, 0xFFFFFFFF);
+                device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xFFFFFFFF);
+                device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_INCRSAT);
+                device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
+                device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
             }
             mesh->DrawSubset(i);
             if (multiply) {
+                device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
                 device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
                 device->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
             }

@@ -5,6 +5,7 @@
 title-100|title-menu.webp|90|-scene title -frames 120 -shot 100=title-100.bmp
 gameplay-120|battle-hud.webp|120|-frames 150 -shot 120=gameplay-120.bmp
 gameplay-yard|battle-hud.webp|120|-spawn 0,200,0 -frames 150 -shot 120=gameplay-yard.bmp
+gameplay-school|battle-hud.webp|120|-spawn 2800,200,-800 -frames 130 -shot 110=gameplay-school.bmp
 gameplay-dash|battle-stamina.webp|120|-spawn 0,200,0 -script scripts/dash.txt -frames 150 -shot 95=gameplay-dash.bmp
 gameplay-tapshot|battle-hud.webp|120|-spawn 0,200,0 -script scripts/tapshot.txt -frames 150 -shot 110=gameplay-tapshot.bmp
 gameplay-charge||120|-spawn 0,200,0 -script scripts/charge.txt -frames 200 -shot 160=gameplay-charge-hold.bmp -shot 185=gameplay-charge-release.bmp

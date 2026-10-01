@@ -723,8 +723,8 @@ UpdateResult Scene_Gameplay::update(SceneContext& ctx, double dt) {
 
 void Scene_Gameplay::render(SceneContext& ctx) {
     if (!ctx.device) return;
-    ctx.device->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER,
-                      D3DCOLOR_XRGB(40, 42, 54), 1.0f, 0);
+    ctx.device->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER |
+                      D3DCLEAR_STENCIL, D3DCOLOR_XRGB(40, 42, 54), 1.0f, 0);
     if (!m_models[0]) return;
 
     if (SUCCEEDED(ctx.device->BeginScene())) {
@@ -759,8 +759,8 @@ void Scene_Gameplay::render(SceneContext& ctx) {
         ctx.device->LightEnable(0, TRUE);
 
         // Render stage meshes first (no world transform — identity).
-        // DAYBREAK_ONLY=<substr> isolates meshes for the texture hunt
-        // (suite diagnostic: renders only matching stage parts/fighters).
+        // DAYBREAK_ONLY=<token>[,<token>...] isolates stage parts for the
+        // suite's texture/overlap hunts (empty = render everything).
         const char* only = std::getenv("DAYBREAK_ONLY");
         D3DXMATRIX id;
         D3DXMatrixIdentity(&id);
@@ -769,10 +769,17 @@ void Scene_Gameplay::render(SceneContext& ctx) {
             "00.X", "01.X", "02.X", "03.X", "04.X", "05.X", "06.X",
         };
         for (int i = 0; i < 7; ++i) {
-            if (m_stageModels[i] &&
-                (!only || std::strstr(partNames[i], only))) {
-                m_stageModels[i]->render(ctx.device);
+            bool wanted = (only == nullptr);
+            for (const char* tok = only; !wanted && tok && *tok;) {
+                const char* comma = std::strchr(tok, ',');
+                const size_t len = comma ? static_cast<size_t>(comma - tok)
+                                         : std::strlen(tok);
+                if (len > 0 && std::strncmp(partNames[i], tok, len) == 0) {
+                    wanted = true;
+                }
+                tok = comma ? comma + 1 : nullptr;
             }
+            if (m_stageModels[i] && wanted) m_stageModels[i]->render(ctx.device);
         }
 
         m_fighters[0].render(ctx.device);

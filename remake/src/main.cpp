@@ -123,7 +123,10 @@ static bool d3d_init(App& app) {
     pp.BackBufferWidth        = App::kWidth;
     pp.BackBufferHeight       = App::kHeight;
     pp.EnableAutoDepthStencil = TRUE;
-    pp.AutoDepthStencilFormat = D3DFMT_D16;
+    // D24S8, not D16: the stencil bit enforces "a baked shadow darkens each
+    // pixel once" (see XModel::render_frame), and 24 depth bits keep ground
+    // decals off the z-fight threshold at arena distances.
+    pp.AutoDepthStencilFormat = D3DFMT_D24S8;
     pp.PresentationInterval   = D3DPRESENT_INTERVAL_ONE;
 
     HRESULT hr = app.d3d->CreateDevice(
@@ -445,6 +448,19 @@ int main(int argc, char* argv[]) {
     }
     if (!acquire_hwnd(app)) { teardown(app); return 1; }
     if (!d3d_init(app))     { teardown(app); return 1; }
+
+    {
+        IDirect3DSurface9* ds = nullptr;
+        if (SUCCEEDED(app.device->GetDepthStencilSurface(&ds)) && ds) {
+            D3DSURFACE_DESC d{};
+            ds->GetDesc(&d);
+            std::printf("[daybreak] d3d: depth-stencil format = %lu (%ux%u)\n",
+                        static_cast<unsigned long>(d.Format), d.Width, d.Height);
+            ds->Release();
+        } else {
+            std::fprintf(stderr, "[daybreak] d3d: no depth-stencil surface\n");
+        }
+    }
 
     app.input.init();
 
