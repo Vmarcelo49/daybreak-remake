@@ -8,9 +8,10 @@ config screens → gameplay → result), e gameplay 2v2 com câmera de arena
 fighter que locka num fighter e cicla via botão. Suporte a 1P, 2P split, 4P
 split (4 viewports 256×448 em grid 2×2 dentro de 800×600).
 
-**FORA de escopo** (declarar explicitamente):
+**FORA de escopo** (declarar explicitamente — exceto netplay, ver `decisions.md` D6):
 
-- ❌ Online / netcode / matchmaking
+- ❌ Matchmaking online além de LAN (netplay via LAN **é** escopo e foco;
+  DirectPlay 8 substituído, não portado)
 - ❌ Modo história com cutscenes (os vídeos `.mpg` rodam mas o story mode
   completo — branching, scenario data, save — não)
 - ❌ Save / load de progresso

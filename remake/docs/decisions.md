@@ -59,3 +59,13 @@ comments — when a decision changes.
 - Delete comments that restate the code, dead-code blocks kept
   "just in case", and stale milestone chatter. No behavior changes
   while cleaning (cleanup pass running, 2026-10-01).
+
+## D6 — Scope: versus + LAN netplay first (2026-10-01)
+
+- The focus is **offline versus** (split-screen, bots) and **LAN
+  netplay**. Full spec: `docs/game-spec.md`.
+- This supersedes the old roadmap's blanket "no online/netcode" ban:
+  DirectPlay 8 is still replaced, not ported, but a LAN-first netcode
+  (deterministic lockstep over UDP) is in scope.
+- Story mode stays loadable but is not the focus (no branching, saves,
+  or localization). Non-goals listed in `game-spec.md` §5 stand.
