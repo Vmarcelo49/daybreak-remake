@@ -584,6 +584,16 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     auto* app = new App();
     *appstate = app;
 
+#if defined(__EMSCRIPTEN__) && defined(FOUNDATION_WEB_ASSET)
+    // argv never reaches wasm: a local verification build names its one asset at
+    // configure time. This does not affect native argument handling.
+    static const std::string webAsset = FOUNDATION_WEB_ASSET;
+    static const char* webArgv[] = {"foundation_demo", webAsset.c_str()};
+    if (!webAsset.empty()) {
+        argc = 2;
+        argv = const_cast<char**>(webArgv);
+    }
+#endif
     if (!parseArgs(argc, argv, app->opts, app->error)) {
         usage();
         return SDL_APP_FAILURE;

@@ -33,6 +33,14 @@ if(EMSCRIPTEN)
     # SDL3 is supplied by the Emscripten port; it also owns the <canvas>.
     add_compile_options(-sUSE_SDL=3)
     add_link_options(-sUSE_SDL=3 -sASYNCIFY=1 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576)
+    # Local game data can be mounted at /assets for browser verification. Both stay
+    # local-only: the data is copyrighted and build/ is ignored, so this never changes
+    # what the plain web build contains.
+    set(FOUNDATION_WEB_ASSETS "" CACHE PATH "Local directory preloaded as /assets in the web build")
+    set(FOUNDATION_WEB_ASSET "" CACHE STRING "Single asset argument injected on web, e.g. --character=/assets/akane:0")
+    if(FOUNDATION_WEB_ASSETS)
+        add_link_options("SHELL:--preload-file ${FOUNDATION_WEB_ASSETS}@/assets")
+    endif()
 else()
     find_package(SDL3 REQUIRED)
     add_subdirectory(third_party/sdl3webgpu)
@@ -69,6 +77,11 @@ target_link_libraries(foundation_demo PRIVATE foundation_render)
 
 if(EMSCRIPTEN)
     set_target_properties(foundation_demo PROPERTIES SUFFIX ".html")
+    # argv never reaches wasm, so a local verification build can name its one asset here.
+    # The plain web build leaves this empty and keeps the triangle demo.
+    if(FOUNDATION_WEB_ASSET)
+        target_compile_definitions(foundation_demo PRIVATE "FOUNDATION_WEB_ASSET=\"${FOUNDATION_WEB_ASSET}\"")
+    endif()
 else()
     target_copy_webgpu_binaries(foundation_demo)
 endif()

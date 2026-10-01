@@ -100,10 +100,23 @@ cap-at-refresh behaviour. On the web FIFO is the *only* present mode there is.
 WGSL is embedded in the binary (`src/shaders/demo_wgsl.h`, `model_wgsl.h`) rather
 than loaded from a file, because the web build has no filesystem.
 
-`.X`, `.cnv` and `.dat` are read from disk, so **assets only work on the native
-targets for now**: the web build compiles and runs, but it has no way to reach the
-game data yet. Preloading (`--preload-file`) or fetching them over HTTP is the next
-decision for that target, and it is deliberately not made here.
+`.X`, `.cnv` and `.dat` are read from disk. On native targets that is the extracted
+game tree. On the web, the same code reads from Emscripten’s virtual filesystem,
+so a local verification build can preload a small asset subset as `/assets`:
+
+```bash
+mkdir -p /tmp/foundation-web-assets
+cp -a <game-data>/akane /tmp/foundation-web-assets/
+emcmake cmake -S . -B build/web-assets -GNinja \
+  -DFOUNDATION_WEB_ASSETS=/tmp/foundation-web-assets \
+  "-DFOUNDATION_WEB_ASSET=--character=/assets/akane:0"
+cmake --build build/web-assets
+```
+
+The game data itself is never committed and the generated package stays under the
+ignored `build/` directory. A fetched-over-HTTP runtime asset path is still the
+future decision for a real web release; this preload exists only to verify the
+renderer on the web target.
 
 ## What is verified, and what is not
 

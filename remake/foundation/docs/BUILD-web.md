@@ -51,6 +51,28 @@ keepRuntimeAlive() is set ... due to an async operation`. It is an ASYNCIFY
 side effect of the main loop, not a failure: the exit status is 0 and the report
 above has already been printed.
 
+## Local asset preload for renderer verification
+
+The ordinary web build has no game data. For a local check, mount a small subset
+at `/assets` in a separate build directory and inject one asset argument (the
+plain build is untouched):
+
+```bash
+mkdir -p /tmp/foundation-web-assets
+cp -a <game-data>/akane /tmp/foundation-web-assets/
+emcmake cmake -S . -B build/web-assets -GNinja \
+  -DFOUNDATION_WEB_ASSETS=/tmp/foundation-web-assets \
+  "-DFOUNDATION_WEB_ASSET=--character=/assets/akane:0"
+cmake --build build/web-assets
+python3 -m http.server 8178 -d build/web-assets
+# open http://127.0.0.1:8178/foundation_demo.html
+```
+
+The expected console evidence is the same shape as native asset runs: the loaded
+model/mesh/vertex counts, resolved texture counts, generated draws and GPU
+textures, followed by the frame report and `RESULT: ok`. Game data and the
+generated `.data` package stay out of the repository.
+
 ## Implementation notes
 
 - **No present call.** The browser composites the canvas on the next animation
