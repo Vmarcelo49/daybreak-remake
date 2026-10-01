@@ -3,12 +3,14 @@ name: Build foundation (Linux / Windows / Web)
 # The point of the foundation is that one source tree builds for every target, so
 # CI builds all three rather than the one the runner happens to be.
 
+# It runs ONLY when remake/foundation/VERSION changes. These builds are slow, and
+# during early development a build on every push is noise rather than signal: bump
+# the version when the foundation is worth re-verifying across the whole matrix, or
+# use workflow_dispatch to run it by hand.
 on:
   push:
-    branches: [ main, 'feat/**' ]
-    paths: [ 'remake/foundation/**', '.github/workflows/build-foundation.yml' ]
-  pull_request:
-    paths: [ 'remake/foundation/**' ]
+    branches: [ main ]
+    paths: [ 'remake/foundation/VERSION' ]
   workflow_dispatch:
 
 jobs:
