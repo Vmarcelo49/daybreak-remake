@@ -100,6 +100,7 @@ set(DAYBREAK_SOURCES
     src/core/scene_manager.cpp
     src/core/scenes.cpp
     src/gameplay/fighter.cpp
+    src/gameplay/projectile.cpp
     src/input/input_manager.cpp
     src/file_parser/dat_crypto.cpp
     src/file_parser/dat_bundle.cpp
@@ -122,6 +123,7 @@ set(DAYBREAK_HEADERS
     src/core/scene_manager.h
     src/core/scenes.h
     src/gameplay/fighter.h
+    src/gameplay/projectile.h
     src/input/input_manager.h
     src/file_parser/dat_crypto.h
     src/file_parser/dat_bundle.h

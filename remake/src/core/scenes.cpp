@@ -423,6 +423,13 @@ void Scene_Gameplay::on_enter(SceneContext& ctx) {
             }
         }
         std::printf("[daybreak] Stage: %d meshes loaded\n", m_stageModelCount);
+
+        // Projectile channel for shots (fcn.004011f0's collision_tama.x).
+        // Optional: shots fly to expiry when the stage ships none.
+        m_tamaCollision = ctx.assets->load_x("data/stage21/collision_tama.x");
+        std::printf("[daybreak] Stage: tama collision %s\n",
+                    m_tamaCollision ? "loaded" : "missing (open field)");
+        m_shots.clear();
     }
 
     // Spawn positions from env.dat (stage01):
@@ -480,6 +487,8 @@ void Scene_Gameplay::on_exit(SceneContext& ctx) {
     m_hudReady = false;
     m_models[0] = nullptr;
     m_models[1] = nullptr;
+    m_tamaCollision = nullptr;
+    m_shots.clear();
     for (int i = 0; i < 7; ++i) m_stageModels[i] = nullptr;
     m_stageModelCount = 0;
 }
@@ -561,6 +570,21 @@ UpdateResult Scene_Gameplay::update(SceneContext& ctx, double dt) {
         m_fighters[0].try_melee_hit(m_fighters[1]);
         m_fighters[1].try_melee_hit(m_fighters[0]);
 
+        // Shots: drain C-release handoffs into the pool (P2's dummy passes
+        // nullptr input so it never arms — P1 exercises shots against it),
+        // then advance live shots vs fighters + the tama channel.
+        for (int i = 0; i < 2; ++i) {
+            gameplay::PendingShot shot = m_fighters[i].take_pending_shot();
+            if (shot.armed && m_fighters[i].is_alive()) {
+                if (m_shots.spawn(shot.pos, shot.dir, shot.tier, &m_fighters[i])) {
+                    m_shots.spawn_spark(shot.pos, 0.2f);  // muzzle flash
+                }
+            }
+        }
+        D3DXFRAME* tamaRoot = m_tamaCollision ? m_tamaCollision->root_frame()
+                                             : nullptr;
+        m_shots.update(dt, m_fighters, 2, tamaRoot);
+
         // KO → balloon → respawn / round-over bookkeeping.
         for (int i = 0; i < 2; ++i) {
             if (!m_fighters[i].is_alive() && m_koAt[i] < 0.0) {
@@ -632,6 +656,7 @@ void Scene_Gameplay::render(SceneContext& ctx) {
 
         m_fighters[0].render(ctx.device);
         m_fighters[1].render(ctx.device);
+        m_shots.render(ctx.device);
 
         // HUD (after 3D, same scene). Layout from battle-hud.webp.
         if (!m_hudReady) m_hudReady = m_hud.init(ctx.device);
@@ -645,14 +670,31 @@ void Scene_Gameplay::render(SceneContext& ctx) {
             m_hud.text(W - 120, 8, D3DCOLOR_XRGB(255, 255, 255), "%.0f%%", m_balloon[1]);
             m_hud.text(W - 120, 34, D3DCOLOR_XRGB(255, 160, 160), "LIMIT %.0f%%", m_limit);
             m_hud.text(4, 4, D3DCOLOR_XRGB(255, 255, 0), "0");
-            // Bottom-right: MAIN / CHARGE stocks + HP (P1). Stocks are
-            // static until the projectile milestone; HP is live.
-            m_hud.text(W - 220, H - 104, D3DCOLOR_XRGB(255, 255, 255), "6 MAIN");
-            m_hud.bar(W - 220, H - 80, 180, 12, 1.0f,
+            // Bottom-right: MAIN / CHARGE fractional stocks (P1). Bar fill is
+            // the recharge readout itself (ammo-bar.webp); digits are whole
+            // stock left. A RELOAD tag shows the reloadNG gate between volleys.
+            const gameplay::Fighter& p1f = m_fighters[0];
+            const char* reloadTag = p1f.reload_ok() ? "" : " RELOAD";
+            m_hud.text(W - 220, H - 104, D3DCOLOR_XRGB(255, 255, 255), "%d MAIN%s",
+                       p1f.main_whole(), reloadTag);
+            m_hud.bar(W - 220, H - 80, 180, 12, p1f.main_frac(),
                       D3DCOLOR_XRGB(90, 140, 255), D3DCOLOR_XRGB(20, 20, 30));
-            m_hud.text(W - 220, H - 62, D3DCOLOR_XRGB(255, 255, 255), "2 CHARGE");
-            m_hud.bar(W - 220, H - 38, 180, 12, 1.0f,
+            m_hud.text(W - 220, H - 62, D3DCOLOR_XRGB(255, 255, 255), "%d CHARGE",
+                       p1f.charge_whole());
+            m_hud.bar(W - 220, H - 38, 180, 12, p1f.charge_frac(),
                       D3DCOLOR_XRGB(90, 255, 150), D3DCOLOR_XRGB(20, 20, 30));
+            // Charge meter while C is held: fills to red, tier colors at the
+            // two hold thresholds (spec §3.1 yellow/red charge attacks).
+            if (ctx.input && ctx.input->player(0).down[input::Action::Shoot] &&
+                p1f.is_alive()) {
+                const gameplay::ShotTier tier = p1f.charge_tier();
+                const D3DCOLOR tierColor =
+                    tier == gameplay::ShotTier::Red    ? D3DCOLOR_XRGB(255, 70, 50)
+                    : tier == gameplay::ShotTier::Yellow ? D3DCOLOR_XRGB(255, 230, 80)
+                                                         : D3DCOLOR_XRGB(120, 120, 120);
+                m_hud.bar(W - 220, H - 118, 180, 8, p1f.charge_hold_frac(),
+                          tierColor, D3DCOLOR_XRGB(20, 20, 30));
+            }
             m_hud.text(W - 220, H - 140, D3DCOLOR_XRGB(255, 255, 255), "HP");
             m_hud.bar(W - 180, H - 140, 160, 14,
                       m_fighters[0].hp() / 100.0f,

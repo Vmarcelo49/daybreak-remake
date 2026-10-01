@@ -169,6 +169,11 @@ private:
     D3DXVECTOR3             m_spawnPos[2] = {};
     float                   m_spawnFacing[2] = {0.0f, 0.0f};
 
+    // Shots (spec §3.1): shared pool + the stage's projectile-only mesh.
+    // collision_tama.x is optional — open stages fly shots to expiry.
+    gameplay::ProjectilePool m_shots;
+    XModel*                 m_tamaCollision = nullptr;
+
     // HUD + KO sting (ASCII "KO!" until JP text lands).
     render::Hud             m_hud;
     bool                    m_hudReady = false;

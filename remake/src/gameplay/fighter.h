@@ -21,6 +21,10 @@
 //    Idle/Walk → AttackA → Idle    (melee key — light, 30 frames)
 //    Idle/Walk → AttackB → Idle    (heavy — currently same-key stand-in,
 //                                   real game uses directional variants)
+//    Idle/Walk → ShootA/B/C → Idle (C released: tap/yellow/red tier, 20 frames;
+//                                   tiers map to the binary's shotA/B/C anim
+//                                   states @0x2b7560+; costs + reloadNG gating
+//                                   live in projectile.h)
 //    Idle/Walk → Guard → Idle      (block key held)
 //    Any → Hit → Idle              (took damage, 15 frames stun)
 //    Any → Knockdown → KO          (HP reached 0)
@@ -35,6 +39,7 @@
 #include <string>
 
 #include "file_parser/x_model_loader.h"
+#include "gameplay/projectile.h"
 #include "input/input_manager.h"
 #include "render/arena_camera.h"  // for CameraTarget
 
@@ -54,6 +59,9 @@ enum class FighterState : int {
     KO          = 9,   // defeated
     BattleStart = 10,  // round start pose
     TagOut      = 11,  // 2v2: tagged out (partner tagged in)
+    ShootA      = 12,  // tap shot fired (anim "shotA")
+    ShootB      = 13,  // yellow charge released (anim "shotB")
+    ShootC      = 14,  // red charge released (anim "shotC")
 };
 
 // Maps FighterState → animation set name (matching the .X file's named
@@ -73,6 +81,9 @@ inline const char* state_to_anim_name(FighterState s) {
         case FighterState::KO:          return "damageKO";
         case FighterState::BattleStart: return "battlestart";
         case FighterState::TagOut:      return "recovery";
+        case FighterState::ShootA:      return "shotA";
+        case FighterState::ShootB:      return "shotB";
+        case FighterState::ShootC:      return "shotC";
         default: return nullptr;
     }
 }
@@ -91,6 +102,26 @@ struct FighterConstants {
     static constexpr float kMeleeRange    = 160.0f;  // XZ reach of melee swings
     static constexpr int   kLightDamage   = 5;
     static constexpr int   kHeavyDamage   = 12;
+    // Shot economy (spec §3.1; counts pinned by battle-hud.webp, rest tuning).
+    static constexpr float kMainMax       = 6.0f;   // MAIN stock
+    static constexpr float kChargeMax     = 2.0f;   // CHARGE stock
+    static constexpr float kMainPerSec    = 0.8f;   // MAIN refill rate
+    static constexpr float kChargePerSec  = 0.3f;   // CHARGE refill rate
+    static constexpr float kYellowHoldSec = 0.45f;  // hold → yellow tier
+    static constexpr float kRedHoldSec    = 1.10f;  // hold → red tier
+    static constexpr int   kShotFrames    = 20;     // firing pose length
+    static constexpr float kMuzzleForward = 60.0f;  // spawn ahead of fighter
+    static constexpr float kMuzzleHeight  = 100.0f; // spawn above feet
+};
+
+// Handoff from Fighter (input/charge side) to the scene (spawn/collide side):
+// update_state_machine() arms this on C release; Scene_Gameplay drains it
+// into the ProjectilePool the same frame, so at most one shot queues.
+struct PendingShot {
+    bool          armed = false;
+    ShotTier      tier  = ShotTier::Tap;
+    D3DXVECTOR3   pos   {};
+    D3DXVECTOR3   dir   {0, 0, 1};
 };
 
 class Fighter {
@@ -117,6 +148,10 @@ public:
     void take_damage(int amount);
     void set_state(FighterState new_state);
 
+    // Scene drains the shot armed by C-release into the ProjectilePool.
+    // Disarms on read (at most one pending shot ever queues).
+    PendingShot take_pending_shot();
+
     // Melee hit check, called once per frame by the scene for each
     // attacker→target pair. Only fires during the attack's active window,
     // at most once per swing (m_didHitThisSwing). Range-only for now —
@@ -132,6 +167,17 @@ public:
     FighterState       state()      const { return m_state; }
     bool               is_alive()   const { return m_hp > 0; }
     XModel*            model()      const { return m_model; }
+    // Fractional stocks feed the HUD bars directly (ammo-bar.webp).
+    float main_frac() const { return m_main.value / FighterConstants::kMainMax; }
+    float charge_frac() const {
+        return m_charge.value / FighterConstants::kChargeMax;
+    }
+    int main_whole() const { return m_main.whole(); }
+    int charge_whole() const { return m_charge.whole(); }
+    // 0..1 across the full hold (red threshold = 1); colors the HUD meter.
+    float charge_hold_frac() const;
+    ShotTier charge_tier() const;
+    bool reload_ok() const { return m_reloadTimer <= 0; }
 
     // For CameraTarget compatibility.
     // (ArenaCamera reads position + facing_yaw from CameraTarget;
@@ -157,6 +203,13 @@ private:
     int          m_animSetIdx  = -1;   // cached animation set index for current state
     bool         m_didHitThisSwing = false;  // melee connected already this swing
 
+    // --- shots (spec §3.1; costs/reload in projectile.h) ---
+    AmmoStock    m_main;         // MAIN fractional stock (max 6)
+    AmmoStock    m_charge;       // CHARGE fractional stock (max 2)
+    float        m_chargeHeld = 0.0f;  // seconds C held (resets on release)
+    int          m_reloadTimer = 0;    // reloadNG window (frames, 0 = reloadOK)
+    PendingShot  m_pending;      // armed shot awaiting scene spawn
+
     // --- movement helpers ---
     void update_movement(const input::PlayerInput* input, const Fighter* opp, double dt);
     void update_state_machine(const input::PlayerInput* input, double dt);
@@ -166,6 +219,11 @@ private:
     // Check if the current state allows movement (not attacking/stunned).
     bool can_act() const;
     bool can_move() const;
+
+    // C-release firing: picks the tier from hold time, spends the matching
+    // stock, opens the reloadNG window, and arms m_pending for the scene.
+    // Silently drops when reloading or broke (HUD already shows the gate).
+    void try_fire();
 };
 
 } // namespace daybreak::gameplay

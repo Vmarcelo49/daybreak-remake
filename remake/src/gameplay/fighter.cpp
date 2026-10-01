@@ -24,6 +24,13 @@ void Fighter::init(XModel* model, const D3DXVECTOR3& pos, float facing) {
     m_state = FighterState::BattleStart;
     m_stateTimer = FighterConstants::kBattleStartFrames;
     m_animSetIdx = -1;
+    m_main = AmmoStock{FighterConstants::kMainMax, FighterConstants::kMainMax,
+                       FighterConstants::kMainPerSec};
+    m_charge = AmmoStock{FighterConstants::kChargeMax, FighterConstants::kChargeMax,
+                         FighterConstants::kChargePerSec};
+    m_chargeHeld = 0.0f;
+    m_reloadTimer = 0;
+    m_pending = PendingShot{};
     try_switch_animation();
 }
 
@@ -36,6 +43,11 @@ void Fighter::reset(const D3DXVECTOR3& pos, float facing) {
     m_state = FighterState::BattleStart;
     m_stateTimer = FighterConstants::kBattleStartFrames;
     m_animSetIdx = -1;
+    m_main.value = FighterConstants::kMainMax;
+    m_charge.value = FighterConstants::kChargeMax;
+    m_chargeHeld = 0.0f;
+    m_reloadTimer = 0;
+    m_pending = PendingShot{};
     try_switch_animation();
 }
 
@@ -61,6 +73,8 @@ void Fighter::update(const input::PlayerInput* input, const Fighter* opponent, d
     }
 
     // 2. Update state machine (check input, transition states).
+    // A lost action window (hit, KO) breaks any charge hold in progress.
+    if (!can_act()) m_chargeHeld = 0.0f;
     if (can_act() && input) {
         update_state_machine(input, dt);
     }
@@ -82,6 +96,12 @@ void Fighter::update(const input::PlayerInput* input, const Fighter* opponent, d
     if (m_stamina < FighterConstants::kMaxStamina && can_act()) {
         m_stamina = std::min(m_stamina + 1, FighterConstants::kMaxStamina);
     }
+
+    // 5b. Recharge ammo continuously (the HUD sweep IS this refill —
+    // ammo-bar.webp) and tick the reloadNG window down.
+    m_main.recharge(dt);
+    m_charge.recharge(dt);
+    if (m_reloadTimer > 0) --m_reloadTimer;
 
     // 6. Update the model's animation (advance time).
     if (m_model) {
@@ -105,6 +125,23 @@ void Fighter::update_state_machine(const input::PlayerInput* input, double dt) {
         set_state(FighterState::AttackB);
         m_stateTimer = FighterConstants::kAttackFrames;
         return;
+    }
+
+    // Shoot (C): holding accumulates charge without interrupting the state
+    // (mobile charge — the original's charge/movement interplay is un-RE'd,
+    // so the least surprising model wins); releasing fires the held tier.
+    // Charge only accrues while actionable so hits/attacks break the hold.
+    if (input->down[input::Action::Shoot]) {
+        if (m_chargeHeld < FighterConstants::kRedHoldSec) {
+            m_chargeHeld += static_cast<float>(dt);
+        }
+    }
+    if (input->just_released[input::Action::Shoot]) {
+        // Fire even on a sub-frame tap (no down[] frame was ever observed —
+        // charge_tier() just reads Tap then). Drops under reloadNG/no stock.
+        try_fire();
+        m_chargeHeld = 0.0f;
+        if (m_pending.armed) return;
     }
 
     // Guard (block key held).
@@ -267,6 +304,52 @@ bool Fighter::try_melee_hit(Fighter& target) {
         : FighterConstants::kLightDamage;
     target.take_damage(dmg);
     return true;
+}
+
+float Fighter::charge_hold_frac() const {
+    float f = m_chargeHeld / FighterConstants::kRedHoldSec;
+    if (f < 0.0f) f = 0.0f;
+    if (f > 1.0f) f = 1.0f;
+    return f;
+}
+
+ShotTier Fighter::charge_tier() const {
+    if (m_chargeHeld >= FighterConstants::kRedHoldSec)    return ShotTier::Red;
+    if (m_chargeHeld >= FighterConstants::kYellowHoldSec) return ShotTier::Yellow;
+    return ShotTier::Tap;
+}
+
+void Fighter::try_fire() {
+    const ShotTier tier = charge_tier();
+    const ShotParams p = shot_params(tier);
+    // Tap draws MAIN, charged tiers draw CHARGE (red costs the full stock).
+    AmmoStock& stock = (tier == ShotTier::Tap) ? m_main : m_charge;
+    const float cost = (tier == ShotTier::Tap) ? p.mainCost : p.chargeCost;
+    if (m_reloadTimer > 0 || !stock.can_spend(cost)) return;  // reloadNG: drop
+    stock.spend(cost);
+    m_reloadTimer = p.reloadFrames;
+
+    // Muzzle ahead of the fighter at chest height, aimed along facing
+    // (yaw=0 faces +Z — same convention as update_facing).
+    const D3DXVECTOR3 dir(std::sin(m_facing), 0.0f, std::cos(m_facing));
+    m_pending.armed = true;
+    m_pending.tier  = tier;
+    m_pending.dir   = dir;
+    m_pending.pos   = m_position + dir * FighterConstants::kMuzzleForward;
+    m_pending.pos.y += FighterConstants::kMuzzleHeight;
+
+    set_state(tier == ShotTier::Red ? FighterState::ShootC
+              : tier == ShotTier::Yellow ? FighterState::ShootB
+                                        : FighterState::ShootA);
+    m_stateTimer = FighterConstants::kShotFrames;
+    std::printf("[daybreak] fired %s (stock %.1f)\n",
+                shot_tier_anim(tier), stock.value);
+}
+
+PendingShot Fighter::take_pending_shot() {
+    PendingShot out = m_pending;
+    m_pending.armed = false;
+    return out;
 }
 
 void Fighter::render(IDirect3DDevice9* device) {
