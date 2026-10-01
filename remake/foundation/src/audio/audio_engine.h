@@ -163,6 +163,10 @@ public:
     SfxHandle load_pcm_s16(const int16_t* stereo_frames, size_t frame_count);
     SfxHandle load_wav(const uint8_t* bytes, size_t size);
     SfxHandle load_cnv(const uint8_t* bytes, size_t size);
+    // OGG Vorbis (every shipped BGM file). Decoded with vendored stb_vorbis,
+    // then converted to mix spec like everything else; MP3 ships nowhere in
+    // the game data, so no second decoder is carried for it.
+    SfxHandle load_ogg(const uint8_t* bytes, size_t size);
     void clear_bank();
 
     // Fire a loaded buffer. req.channel >= 0 plays exactly there (returns -1

@@ -169,9 +169,10 @@ New since the port landed, all verified the same way:
 ## Not here yet
 
 Deliberately out of scope for the foundation: game code itself, video decoding
-(explicit stub), BGM/OGG decoders, and live-pad/browser-gesture verification.
-Asset loading, depth-buffered 3D drawing, HUD compositing, audio/input backends
-and the game camera path are in place; what is still missing before DX9 can be
-retired (gate D2) is the frame having to *match* the original's, which needs
+(explicit stub), BGM streaming/`.sfl` loops, and live-pad/browser-gesture
+verification. Asset loading, depth-buffered 3D drawing, HUD compositing,
+audio/input backends (including OGG Vorbis decode of all shipped BGM) and the
+game camera path are in place; what is still missing before DX9 can be retired
+(gate D2) is the frame having to *match* the original's, which needs
 game-driven state (real HP, fighter positions, effect spawns) rather than test
 rigs.

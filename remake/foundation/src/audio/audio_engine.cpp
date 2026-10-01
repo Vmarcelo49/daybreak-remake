@@ -13,6 +13,12 @@
 
 #include "audio/audio_sdl3.h"
 
+// Single-header OGG Vorbis decoder, public domain. The implementation lives
+// in this TU only (STB_VORBIS_IMPLEMENTATION once); the header side stays in
+// audio_engine.h's load_ogg.
+#define STB_VORBIS_IMPLEMENTATION
+#include "stb_vorbis.c"
+
 namespace fnd::audio {
 
 namespace {
@@ -165,6 +171,36 @@ SfxHandle Sdl3Engine::load_wav(const uint8_t* bytes, size_t size) {
 SfxHandle Sdl3Engine::load_cnv(const uint8_t* bytes, size_t size) {
     std::vector<int16_t> pcm;
     if (!decode_cnv_s16(bytes, size, pcm)) return kInvalidSfx;
+    return load_pcm_s16(pcm.data(), pcm.size() / 2);
+}
+
+SfxHandle Sdl3Engine::load_ogg(const uint8_t* bytes, size_t size) {
+    if (!bytes || size == 0) return kInvalidSfx;
+    if (detect_format(bytes, size) != BlobFormat::Ogg) return kInvalidSfx;
+    int error = 0;
+    stb_vorbis* vorbis = stb_vorbis_open_memory(bytes, (int)size, &error, nullptr);
+    if (!vorbis) return kInvalidSfx;
+    stb_vorbis_info info = stb_vorbis_get_info(vorbis);
+    // Short (S16) output matches the mix format directly; longer-than-buffer
+    // streams loop the pull until the decoder reports done.
+    std::vector<int16_t> interleaved;
+    interleaved.reserve(4096 * 2);
+    for (;;) {
+        int16_t chunk[4096 * 2];
+        int n = stb_vorbis_get_samples_short_interleaved(vorbis, 2, chunk, 4096 * 2);
+        if (n <= 0) break;
+        interleaved.insert(interleaved.end(), chunk, chunk + (size_t)n * 2);
+    }
+    const int channels = info.channels;
+    const int rate = (int)info.sample_rate;
+    stb_vorbis_close(vorbis);
+    if (interleaved.empty()) return kInvalidSfx;
+    const size_t frames = interleaved.size() / 2;
+    if (channels == 2 && rate == 44100) return load_pcm_s16(interleaved.data(), frames);
+    std::vector<int16_t> pcm;
+    convert_to_mix_s16(reinterpret_cast<const uint8_t*>(interleaved.data()), frames,
+                       channels, (uint32_t)rate, 16, pcm);
+    if (pcm.empty()) return kInvalidSfx;
     return load_pcm_s16(pcm.data(), pcm.size() / 2);
 }
 

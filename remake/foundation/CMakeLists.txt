@@ -89,6 +89,7 @@ target_link_libraries(foundation_ui PUBLIC foundation)
 add_library(foundation_media STATIC src/input/pin_tables.cpp src/audio/audio_engine.cpp
                           src/input/input_backend.cpp)
 target_include_directories(foundation_media PUBLIC src)
+target_include_directories(foundation_media PRIVATE third_party/stb)
 if(NOT EMSCRIPTEN)
     target_link_libraries(foundation_media PUBLIC SDL3::SDL3)
 endif()

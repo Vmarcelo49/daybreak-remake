@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -48,6 +49,7 @@ struct Options {
     std::string model, stage, character, weapon, effect;
     bool        hudTest = false;   // composite a synthetic HUD into --out captures
     bool        audioTest = false; // run the audio backend self-check and exit
+    std::string audioFile;       // with --audio-test: decode a real file too
     bool        inputTest = false; // run the input backend self-check and exit
 
     // Offscreen capture. Empty `out` means "draw into the window".
@@ -105,6 +107,7 @@ void usage() {
         "  --effect=<file.x>  load one card with the effect role (additive pass)\n"
         "  --hud-test         composite a synthetic HUD into --out captures\n"
         "  --audio-test         run the audio backend self-check and exit\n"
+        "  --audio-file=<path>  with --audio-test: decode a real file as well\n"
         "  --input-test         run the input backend self-check and exit\n"
         "With no asset argument the spinning-triangle demo runs.\n");
 }
@@ -128,6 +131,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--time=")).empty()) o.time = (float)std::atof(v.c_str());
         else if (!(v = val("--dt=")).empty()) o.dt = (float)std::atof(v.c_str());
         else if (!(v = val("--camera=")).empty()) o.camera = v;
+        else if (!(v = val("--audio-file=")).empty()) o.audioFile = v;
         else if (a == "--no-textures") o.noTextures = true;
         else if (a == "--no-fog") o.noFog = true;
         else if (a == "--unlit") o.unlit = true;
@@ -690,6 +694,45 @@ bool runAudioTest(App& app) {
     std::printf("audio-test: music queued %zu frames, music gain %.2f, sfx gain %.2f\n",
                 engine.music_queued_frames(), engine.music_gain(),
                 engine.bus_gain_applied(fnd::audio::SfxBus::Sfx));
+    if (!app.opts.audioFile.empty()) {
+        // A real shipped file through the same bank: format-detected, decoded,
+        // and fired once. Local data only, never committed.
+        std::ifstream f(app.opts.audioFile, std::ios::binary);
+        if (!f) {
+            app.error = "cannot open " + app.opts.audioFile;
+            return false;
+        }
+        const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)),
+                                         std::istreambuf_iterator<char>());
+        fnd::audio::SfxHandle fh = fnd::audio::kInvalidSfx;
+        const char* kind = "unknown";
+        switch (fnd::audio::detect_format(bytes.data(), bytes.size())) {
+            case fnd::audio::BlobFormat::Ogg:
+                fh = engine.load_ogg(bytes.data(), bytes.size());
+                kind = "ogg";
+                break;
+            case fnd::audio::BlobFormat::Wav:
+                fh = engine.load_wav(bytes.data(), bytes.size());
+                kind = "wav";
+                break;
+            case fnd::audio::BlobFormat::CnvPcm:
+                fh = engine.load_cnv(bytes.data(), bytes.size());
+                kind = "cnv";
+                break;
+            default: break;
+        }
+        if (fh < 0) {
+            app.error = "decode failed for " + app.opts.audioFile;
+            return false;
+        }
+        const int fch = engine.play(fh, fnd::audio::SfxBus::Sfx);
+        std::printf("audio-test: file %s (%s, %zu bytes) decoded, handle %d on channel %d\n",
+                    app.opts.audioFile.c_str(), kind, bytes.size(), (int)fh, fch);
+        if (fch < 0) {
+            app.error = "file playback failed";
+            return false;
+        }
+    }
     engine.close();
     return pushed == 44100 && h >= 0 && ch >= 0;
 }

@@ -38,26 +38,35 @@ src/dst specs are constant and never depend on which source ran.
   on the next `play`/`channel_busy`, so callers never poll. A `stop` clears
   the stream and the flag together.
 
-## Decoder seam (BGM streaming + OGG/MP3 — out of scope)
+## Decoder seam (BGM streaming + MP3 — out of scope)
 
 The engine accepts decoded PCM or synthesized buffers only. What decodes
 today: WAV-PCM (`decode_wav_s16`: re-walks chunks so JUNK/LIST files decode,
-rejects non-PCM) and CNV-PCM (`decode_cnv_s16`: same payload
+rejects non-PCM), CNV-PCM (`decode_cnv_s16`: same payload
 `cnv_convert.py::convert_audio_cnv` wraps into a WAV, without the temp
-file). OGG/MP3 blobs are detected by `audio_format.h` but refused by every
-`load_*` — reverified in the harness below.
+file), and OGG Vorbis (`Sdl3Engine::load_ogg` via vendored stb_vorbis
+pinned in `scripts/fetch_deps.sh` — every shipped BGM file, verified below).
+MP3 blobs are detected by `audio_format.h` but refused by every `load_*`;
+nothing in the shipped game data is MP3, so no second decoder is carried.
 
-The future decoder feeds the two push paths and nothing else:
+What remains decoder-side:
 
-- BGM file: decode OGG (vorbisfile/stb_vorbis or SDL3 stream helper) into
-  S16 stereo chunks → `push_music_s16`, honouring `.sfl` loop points (136 B,
-  format still unparsed — see MEDIA-INPUT.md §7).
+- BGM file: OGG is done; honouring `.sfl` loop points (136 B, format still
+  unparsed — see MEDIA-INPUT.md §7) and streaming (vs whole-file load) belong
+  to `push_music_s16` callers, not the engine.
 - Movie audio: MP2 frames → `interleave_lr_s16` (already in `audio_sdl3.h`) →
-  `push_music_s16`.
-- Short cues in new containers: decode → `load_pcm_s16` → `play`.
+  `push_music_s16` — waiting on the video decision, not on audio.
 
-No engine change is needed for any of these; they are a new `load_ogg` /
-`stream_bgm` caller, not a new backend.
+No engine change is needed for any of these; they are new callers of the two
+push paths, not a new backend.
+
+## Verification (headless, SDL dummy driver)
+
+In-engine `--audio-test` extends the harness: `--audio-file=<path>` decodes
+a real shipped file through the bank (ogg/wav/cnv by format detection) and
+fires it once. All 21 shipped BGM files decode with `RESULT: ok`, and decoded
+sample counts match `ffprobe` durations to within container padding on every
+file (e.g. `01.ogg`: 94.09 s vs 4,149,248 samples).
 
 ## Verification (headless, SDL dummy driver)
 
@@ -146,8 +155,10 @@ push; closed-engine silence.
 
 - No audible playback check (subjective; dummy driver only).
 - No BGM file streaming or `.sfl` loop points — seam documented above.
-- No OGG/MP3 decoding — detection only; every `load_*` refuses them.
+- No MP3 decoding — detection only; nothing shipped is MP3, so no decoder.
+- OGG Vorbis decodes (all 21 BGM files, durations cross-checked with ffprobe).
 - No browser gesture run — gate logic executed natively; web AudioContext
   behaviour is per the SDL3/Emscripten contract, not executed.
-- No `main.cpp`/CMake wiring — proposed above, parent decides.
+- `main.cpp`/CMake wiring for `--audio-test --audio-file` landed with the
+  decoder (this doc's § Verification describes it).
 - macOS untouched (standing PORT-PLAN rule).
