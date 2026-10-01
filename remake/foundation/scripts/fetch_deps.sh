@@ -10,6 +10,7 @@ mkdir -p "$tp"
 WEBGPU_DIST_COMMIT=17dcd42a7683355e7a40ac4e97e77f36dff5b5ab   # 2025-09-03
 SDL3WEBGPU_COMMIT=4fa9d70935e41c075f664b231ee10a64262a8ac7      # 2025-05-01
 SDL3_VERSION=3.4.16
+GLM_VERSION=1.0.1
 
 fetch_zip() {  # url destdir name
     local url=$1 dest=$2 name=$3 tmp
@@ -22,6 +23,7 @@ fetch_zip() {  # url destdir name
     rm -rf "$tmp"
 }
 
+fetch_zip "https://github.com/g-truc/glm/archive/refs/tags/${GLM_VERSION}.zip" "$tp/glm" "glm ${GLM_VERSION}"
 fetch_zip "https://github.com/eliemichel/WebGPU-distribution/archive/${WEBGPU_DIST_COMMIT}.zip" "$tp/webgpu" "WebGPU-distribution"
 fetch_zip "https://github.com/eliemichel/sdl3webgpu/archive/${SDL3WEBGPU_COMMIT}.zip" "$tp/sdl3webgpu" "sdl3webgpu"
 

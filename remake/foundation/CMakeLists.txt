@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
-project(daybreak_foundation LANGUAGES C CXX)
+
+# The version lives in VERSION so that bumping it is a one-line act — and the only
+# thing that triggers the multi-target CI build (see .github/workflows).
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" FOUNDATION_VERSION)
+string(STRIP "${FOUNDATION_VERSION}" FOUNDATION_VERSION)
+project(daybreak_foundation VERSION ${FOUNDATION_VERSION} LANGUAGES C CXX)
 
 # Multi-platform foundation: SDL3 + WebGPU (webgpu.h), built for Linux, Windows
 # (MinGW cross-compile) and the web (Emscripten) from this one file.
@@ -33,6 +38,16 @@ else()
     add_subdirectory(third_party/sdl3webgpu)
 endif()
 
+# glm is the asset layer's only third-party dependency (xmodel.h works in mat4/vec3).
+add_library(glm INTERFACE)
+target_include_directories(glm INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/glm")
+
+# The Daybreak asset layer: .X/.cnv decoding and scene assembly, unchanged from the
+# backend it was proved on.
+add_library(foundation_assets STATIC src/assets/assets.cpp)
+target_include_directories(foundation_assets PUBLIC src/assets)
+target_link_libraries(foundation_assets PUBLIC glm)
+
 add_library(foundation STATIC
     src/platform/platform.cpp
     src/platform/surface.cpp
@@ -44,8 +59,13 @@ if(NOT EMSCRIPTEN)
     target_link_libraries(foundation PUBLIC SDL3::SDL3 sdl3webgpu)
 endif()
 
+# The scene renderer is the one layer above gpu/ that also needs the asset layer: it
+# builds the pipelines raw WebGPU requires and consumes xm::Vertex / xm::DrawUniform.
+add_library(foundation_render STATIC src/render/scene_renderer.cpp)
+target_link_libraries(foundation_render PUBLIC foundation foundation_assets)
+
 add_executable(foundation_demo src/main.cpp)
-target_link_libraries(foundation_demo PRIVATE foundation)
+target_link_libraries(foundation_demo PRIVATE foundation_render)
 
 if(EMSCRIPTEN)
     set_target_properties(foundation_demo PROPERTIES SUFFIX ".html")

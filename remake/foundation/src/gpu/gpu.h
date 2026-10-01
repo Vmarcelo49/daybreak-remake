@@ -5,6 +5,7 @@
 #include <webgpu/webgpu.h>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace gpu {
 
@@ -51,6 +52,13 @@ bool endFrame(Context&, Swapchain&, Frame&);
 
 WGPUShaderModule createShaderModule(WGPUDevice, const char* wgsl);
 WGPUBuffer       createBuffer(WGPUDevice, uint64_t size, WGPUBufferUsage usage, const void* data);
+
+// Copies a buffer's [offset, offset + size) range into host memory. The wait is the
+// same AllowProcessEvents loop the adapter and device requests use — which on the web
+// also has to yield to the browser's event loop — so it lives here rather than being
+// re-implemented by every caller that reads a texture back.
+bool readBuffer(WGPUInstance, WGPUBuffer, uint64_t offset, uint64_t size,
+                std::vector<uint8_t>& out, std::string& error);
 
 const char* presentModeName(WGPUPresentMode);
 const char* backendName(WGPUBackendType);

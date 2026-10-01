@@ -60,6 +60,18 @@ void onUncapturedError(WGPUDevice const*, WGPUErrorType type, WGPUStringView mes
     std::fprintf(stderr, "[gpu] uncaptured error (%d): %s\n", (int)type, toString(message).c_str());
 }
 
+struct MapWaiter {
+    bool done = false;
+    bool ok   = false;
+};
+
+void onMapped(WGPUMapAsyncStatus status, WGPUStringView message, void* ud1, void*) {
+    auto* w = static_cast<MapWaiter*>(ud1);
+    w->done = true;
+    w->ok = status == WGPUMapAsyncStatus_Success;
+    if (!w->ok) std::fprintf(stderr, "[gpu] buffer map failed: %s\n", toString(message).c_str());
+}
+
 }  // namespace
 
 const char* backendName(WGPUBackendType t) {
@@ -257,6 +269,48 @@ WGPUBuffer createBuffer(WGPUDevice device, uint64_t size, WGPUBufferUsage usage,
         wgpuBufferUnmap(buffer);
     }
     return buffer;
+}
+
+bool readBuffer(WGPUInstance instance, WGPUBuffer buffer, uint64_t offset, uint64_t size,
+                std::vector<uint8_t>& out, std::string& error) {
+    // The map is asynchronous, and the wait is the same "process events until the
+    // callback fires" loop the adapter and device requests use — including the
+    // emscripten_sleep that lets the browser's event loop run. That is the whole
+    // reason this helper belongs in the gpu layer.
+    if (!instance || !buffer || size == 0) {
+        error = "readBuffer: no instance, no buffer or an empty range";
+        return false;
+    }
+
+    MapWaiter mw;
+    WGPUBufferMapCallbackInfo cb = {};
+    cb.mode = WGPUCallbackMode_AllowProcessEvents;
+    cb.callback = onMapped;
+    cb.userdata1 = &mw;
+    wgpuBufferMapAsync(buffer, WGPUMapMode_Read, offset, size, cb);
+
+#if defined(__EMSCRIPTEN__)
+    while (!mw.done) {
+        wgpuInstanceProcessEvents(instance);
+        emscripten_sleep(0);
+    }
+#else
+    while (!mw.done) wgpuInstanceProcessEvents(instance);
+#endif
+
+    if (!mw.ok) {
+        error = "buffer mapAsync failed";
+        return false;
+    }
+    const void* mapped = wgpuBufferGetConstMappedRange(buffer, offset, size);
+    if (!mapped) {
+        error = "buffer range is not mapped";
+        wgpuBufferUnmap(buffer);
+        return false;
+    }
+    out.assign((const uint8_t*)mapped, (const uint8_t*)mapped + size);
+    wgpuBufferUnmap(buffer);
+    return true;
 }
 
 }  // namespace gpu

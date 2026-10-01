@@ -1,9 +1,10 @@
 # foundation — the multi-platform base
 
 SDL3 + WebGPU (`webgpu.h`) in one CMake project that builds for **Linux, Windows
-and the web**, and for macOS wherever the toolchain allows. This is the platform
-layer the renderer migration (decision D2) lands on: it is deliberately *not* a
-game, and it knows nothing about Daybreak's assets.
+and the web**, and for macOS wherever the toolchain allows. This is the base the
+renderer migration (decision D2) lands on: it is still not a game — no gameplay, no
+HUD, no camera controller — but it now loads and draws Daybreak's real stages,
+characters and weapons.
 
 ## Build
 
@@ -28,8 +29,21 @@ Run the demo:
 python3 -m http.server 8177 -d build/web     # then open foundation_demo.html
 ```
 
+With no asset argument it draws the spinning triangle. With one it loads the game's
+real assets and draws them (depth buffer, textures, per-draw uniforms, camera, stage
+fog), and `--out` renders offscreen and writes a PPM, which is how it gets verified
+without a display:
+
+```bash
+./build/linux/foundation_demo --stage=<data/stageNN> --camera=player --out=stage.ppm --size=400
+./build/linux/foundation_demo --character=<data/akane:0> --anim=2 --frames=30 --out=char.ppm
+./build/linux/foundation_demo --weapon=<data/item/05.X> --out=weapon.ppm
+./build/linux/foundation_demo --list                    # what a spec loads, then exit
+```
+
 The demo prints which adapter and backend it got, the surface's formats and
-present modes, and a frame-timing summary, then `RESULT: ok`.
+present modes, what the asset layer loaded and how many textures resolved, and a
+frame-timing summary, then `RESULT: ok`.
 
 ## Layout
 
@@ -37,6 +51,10 @@ present modes, and a frame-timing summary, then `RESULT: ok`.
 src/platform/   SDL3 only — window, timing, video driver. Knows nothing of WebGPU.
 src/platform/surface.{h,cpp}   the single SDL<->WebGPU seam (native / web canvas)
 src/gpu/        webgpu.h only — instance, adapter, device, swapchain, frame, buffers
+src/assets/     the Daybreak asset layer: .X meshes/animation, .cnv textures,
+                Shift-JIS name resolution, stage/character/weapon scene assembly
+src/render/     draws an xm::Scene — depth buffer, pipelines, per-draw uniforms,
+                camera and fog
 src/shaders/    WGSL, embedded in the binary
 src/main.cpp    the app: SDL3 main callbacks, one code path for native and web
 ```
@@ -48,6 +66,10 @@ Two rules keep the backend swappable, and they are the whole point of the split:
    decision rather than a code change.
 2. **`platform/` knows nothing about WebGPU**, except `surface.{h,cpp}`, which
    exists precisely to be the one place they meet.
+
+`render/` is a deliberate third exception: building render pipelines is not
+something `gpu/` wraps, so it includes `webgpu.h` and consumes the asset layer's
+`xm::DrawUniform` / `xm::wgpuVertexLayout()` — the contract between the two.
 
 ## Implementation per target
 
@@ -75,11 +97,13 @@ cap-at-refresh behaviour. On the web FIFO is the *only* present mode there is.
 
 ## Shaders and assets
 
-WGSL is embedded in the binary (`src/shaders/demo_wgsl.h`) rather than loaded from
-a file, because the web build has no filesystem. Everything else that gets loaded
-at runtime — `.X` meshes, `.cnv` textures, `.dat` bundles — will need the same
-treatment (embedded or fetched over HTTP), which is a decision to make before the
-asset layer is moved onto this base.
+WGSL is embedded in the binary (`src/shaders/demo_wgsl.h`, `model_wgsl.h`) rather
+than loaded from a file, because the web build has no filesystem.
+
+`.X`, `.cnv` and `.dat` are read from disk, so **assets only work on the native
+targets for now**: the web build compiles and runs, but it has no way to reach the
+game data yet. Preloading (`--preload-file`) or fetching them over HTTP is the next
+decision for that target, and it is deliberately not made here.
 
 ## What is verified, and what is not
 
@@ -96,10 +120,20 @@ Every "ran" row printed `RESULT: ok` with real frame timings; per-target command
 and outputs are in `docs/BUILD-linux.md`, `docs/BUILD-windows.md` and
 `docs/BUILD-web.md`.
 
+The asset path is verified the same way, offscreen, where it produces numbers
+rather than a window: a stage at its spawn point, a character and a weapon each
+report coverage and the luminance range of the frame, and `--no-textures` renders
+the same scene untextured for comparison. Linux and Windows/Wine produce
+byte-identical captures of the same asset, which is the point of the exercise —
+one renderer, three targets. The two frames the reference implementation's own
+captures were kept for (stage01 at the player camera, akane plus a weapon at the
+front camera) come out pixel-identical here, so the port is not an approximation
+of the shader and draw path it replaces.
+
 ## Not here yet
 
-Deliberately out of scope for the foundation: asset loading (the `.X`/`.cnv`
-loader proved out in `webgpu-mvp/`), depth buffers, the 2D/HUD layer, effects,
-audio, input mapping, and any game code. The next step that makes this a renderer
-rather than a base is moving the asset layer onto it and drawing a real stage —
-the gate D2 sets for retiring DX9.
+Deliberately out of scope for the foundation: the 2D/HUD layer, effects, audio,
+input mapping, and any game code. Asset loading and depth-buffered 3D drawing are
+in place; what is still missing before DX9 can be retired (gate D2) is the frame
+having to *match* the original's, which needs the effect techniques, the 2D pass
+and the game camera rather than a framing heuristic.
