@@ -1,0 +1,4 @@
+# Gauge starts full (-gauge 1,0): S at 78 activates Hypermode (spec §3.4),
+# so the capture shows the aura, the mode's timer, and an emptied bar.
+78 SPECIAL
+84 -

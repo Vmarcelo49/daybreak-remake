@@ -46,6 +46,16 @@ Probes (all env-gated, off by default):
 | `DAYBREAK_CAMH/H`, `DAYBREAK_CAMD` | camera height/distance override |
 | `DAYBREAK_MESHINFO=1` | vertex counts + bounding boxes per mesh at load |
 
+Launch flags for staging states (the original's training keys are F1–F4;
+these are their launch-time equivalents, so a case needs no wind-up):
+
+| Flag | Effect |
+|---|---|
+| `-hyper p1,p2` | Hypermode pick per slot (0 Friendship, 1 Oyashiro, 2 Kakera) |
+| `-gauge p1,p2` | Hypermode bar fill at spawn, 0..1 (F4 equivalent) |
+| `-hp p1,p2` | Startup HP 1..100 (reaches lethal-hit paths immediately) |
+| `-spawn` / `-spawn2 x,y,z` | Override P1/P2 spawn (stage in front of the camera) |
+
 `run.sh` stages a dir of symlinks (exe, DLLs, `.dat`s, `assets/`,
 `scripts/`), runs each case headless, converts BMP→PNG, scores RMSE
 against the reference (informational only — an untextured build reads
@@ -63,6 +73,18 @@ far from zero; judge layout/framing/HUD by eye), and writes the report.
 | `gameplay-tapshot` | `battle-hud.webp` | Tap-tier projectile in flight |
 | `gameplay-charge` | — (charge UI unpinned) | Charge meter while held + red release |
 | `gameplay-ko` | `ko-moment.webp` | 28 taps vs P2 dummy → KO, sting, balloon +21% |
+| `gameplay-hyper-charge` | — (gauge UI unpinned) | Friendship bar fills from damage dealt (4 taps) |
+| `gameplay-hyper-active` | — (aura is a placeholder) | `-gauge 1,0` + S: activation, aura, timer, emptied bar |
+| `gameplay-kakera` | — (no capture yet) | Kakera death save: lethal hit revives to 100% HP instead of KO |
+
+## Hypermode (spec §3.4) — implemented, aura is a placeholder
+
+Fill/activation/durations/damage/stun/recharge rules come from the wiki
+([Hypermode](https://higurashidaybreak.fandom.com/wiki/Hypermode) and the
+per-mode pages); fill rates are tuning. The **aura is a translucent cube
+shell**, not the wiki's particle burst — the real effect replaces it when
+the effect system is bound (P3.1). `-gauge`/`-hp` exist so the
+suite can reach active/lethal states instantly.
 
 ## Known deltas (suite-owned punchlist for future milestones)
 

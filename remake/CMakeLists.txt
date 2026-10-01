@@ -110,6 +110,7 @@ set(DAYBREAK_SOURCES
     src/maps/stage.cpp
     src/physics/raycast.cpp
     src/render/arena_camera.cpp
+    src/render/debug_prim.cpp
     src/render/effect_system.cpp
     src/render/hud.cpp
     src/render/ui_image.cpp
@@ -133,6 +134,7 @@ set(DAYBREAK_HEADERS
     src/maps/stage.h
     src/physics/raycast.h
     src/render/arena_camera.h
+    src/render/debug_prim.h
     src/render/effect_system.h
     src/render/hud.h
     src/render/ui_image.h

@@ -360,8 +360,14 @@ struct CaptureOpts {
     uint64_t maxFrames = 0;  // 0 = run until quit
     std::vector<std::pair<uint64_t, std::string>> shots;  // frame → BMP path
     const char* script = nullptr;  // P1 input-script path (or nullptr)
-    bool hasSpawn = false;
-    float spawn[3] = {0, 0, 0};  // -spawn x,y,z (P1 override, world units)
+    bool hasSpawn[2] = {false, false};
+    float spawn[2][3] = {{0, 0, 0}, {0, 0, 0}};  // -spawn / -spawn2 x,y,z
+    int hypermodes[2] = {0, 1};  // -hyper p1,p2 (0 Friendship, 1 Oyashiro,
+                                 // 2 Kakera) until the versus picker exists
+    float gauges[2] = {0.0f, 0.0f};  // -gauge p1,p2: Hypermode bar fill at
+                                     // spawn (0..1) — state injection for
+                                     // tests, like the original's F4 key
+    int hp[2] = {100, 100};          // -hp p1,p2: startup HP (1..100)
 };
 
 static CaptureOpts parse_capture_opts(int argc, char* argv[]) {
@@ -376,13 +382,30 @@ static CaptureOpts parse_capture_opts(int argc, char* argv[]) {
             if (a == "-p1") o.p1 = std::atoi(argv[++i]);
             else if (a == "-p2") o.p2 = std::atoi(argv[++i]);
             else o.maxFrames = std::strtoull(argv[++i], nullptr, 10);
-        } else if (a == "-spawn" && val) {
+        } else if ((a == "-spawn" || a == "-spawn2") && val) {
+            const int slot = (a == "-spawn2") ? 1 : 0;
             ++i;
-            if (std::sscanf(argv[i], "%f,%f,%f",
-                            &o.spawn[0], &o.spawn[1], &o.spawn[2]) == 3) {
-                o.hasSpawn = true;
+            if (std::sscanf(argv[i], "%f,%f,%f", &o.spawn[slot][0],
+                            &o.spawn[slot][1], &o.spawn[slot][2]) == 3) {
+                o.hasSpawn[slot] = true;
             } else {
-                std::fprintf(stderr, "[daybreak] -spawn needs x,y,z\n");
+                std::fprintf(stderr, "[daybreak] %s needs x,y,z\n", a.c_str());
+            }
+        } else if (a == "-hyper" && val) {
+            ++i;
+            if (std::sscanf(argv[i], "%d,%d",
+                            &o.hypermodes[0], &o.hypermodes[1]) != 2) {
+                std::fprintf(stderr, "[daybreak] -hyper needs p1,p2\n");
+            }
+        } else if (a == "-hp" && val) {
+            ++i;
+            if (std::sscanf(argv[i], "%d,%d", &o.hp[0], &o.hp[1]) != 2) {
+                std::fprintf(stderr, "[daybreak] -hp needs p1,p2\n");
+            }
+        } else if (a == "-gauge" && val) {
+            ++i;
+            if (std::sscanf(argv[i], "%f,%f", &o.gauges[0], &o.gauges[1]) != 2) {
+                std::fprintf(stderr, "[daybreak] -gauge needs p1,p2 (0..1)\n");
             }
         } else if (a == "-shot" && val) {
             ++i;
@@ -533,10 +556,22 @@ int main(int argc, char* argv[]) {
         auto gameplay = std::make_unique<daybreak::Scene_Gameplay>();
         gameplay->m_p1CharIndex = copts.p1 < 0 || copts.p1 > 3 ? 0 : copts.p1;
         gameplay->m_p2CharIndex = copts.p2 < 0 || copts.p2 > 3 ? 1 : copts.p2;
-        if (copts.hasSpawn) {
-            gameplay->m_useCustomSpawn = true;
-            gameplay->m_customSpawn = D3DXVECTOR3(copts.spawn[0], copts.spawn[1],
-                                                 copts.spawn[2]);
+        gameplay->m_p1Hypermode = static_cast<daybreak::gameplay::Hypermode>(
+            copts.hypermodes[0] < 0 || copts.hypermodes[0] > 2
+                ? 0 : copts.hypermodes[0]);
+        gameplay->m_p2Hypermode = static_cast<daybreak::gameplay::Hypermode>(
+            copts.hypermodes[1] < 0 || copts.hypermodes[1] > 2
+                ? 1 : copts.hypermodes[1]);
+        gameplay->m_startGauge[0] = copts.gauges[0];
+        gameplay->m_startGauge[1] = copts.gauges[1];
+        gameplay->m_startHP[0] = copts.hp[0];
+        gameplay->m_startHP[1] = copts.hp[1];
+        for (int slot = 0; slot < 2; ++slot) {
+            if (!copts.hasSpawn[slot]) continue;
+            gameplay->m_useCustomSpawn[slot] = true;
+            gameplay->m_customSpawn[slot] = D3DXVECTOR3(copts.spawn[slot][0],
+                                                        copts.spawn[slot][1],
+                                                        copts.spawn[slot][2]);
         }
         mgr.start(std::move(gameplay));
     }

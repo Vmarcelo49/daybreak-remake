@@ -12,6 +12,8 @@
 #include <cmath>
 #include <cstdio>
 
+#include "render/debug_prim.h"
+
 namespace daybreak::gameplay {
 
 void Fighter::init(XModel* model, const D3DXVECTOR3& pos, float facing) {
@@ -60,6 +62,10 @@ void Fighter::reset(const D3DXVECTOR3& pos, float facing) {
     m_chargeHeld = 0.0f;
     m_reloadTimer = 0;
     m_pending = PendingShot{};
+    m_gauge = 0.0f;
+    m_hyperActive = false;
+    m_hyperTimer = 0.0f;
+    m_hitsActive = 0;
     try_switch_animation();
 }
 
@@ -73,8 +79,12 @@ bool Fighter::can_move() const {
            m_state == FighterState::Run || m_state == FighterState::Jump;
 }
 
-void Fighter::update(const input::PlayerInput* input, const Fighter* opponent, double dt) {
+void Fighter::update(const input::PlayerInput* input, Fighter* opponent, double dt) {
     m_time += dt;
+
+    // Hypermode first: it can activate this frame (S), expire, or drain
+    // Kakera HP, all before the state machine reads the mode's modifiers.
+    update_hypermode(dt, opponent);
 
     // 1. Decrement state timer (mirrors +0xa0 in fcn.0041f580).
     if (m_stateTimer > 0) {
@@ -92,7 +102,7 @@ void Fighter::update(const input::PlayerInput* input, const Fighter* opponent, d
     // A lost action window (hit, KO) breaks any charge hold in progress.
     if (!can_act()) m_chargeHeld = 0.0f;
     if (can_act() && input) {
-        update_state_machine(input, dt);
+        update_state_machine(input, opponent, dt);
     }
 
     // 3. Update movement (if the state allows it).
@@ -160,9 +170,13 @@ void Fighter::update(const input::PlayerInput* input, const Fighter* opponent, d
     }
 
     // 5b. Recharge ammo continuously (the HUD sweep IS this refill —
-    // ammo-bar.webp) and tick the reloadNG window down.
-    m_main.recharge(dt);
-    m_charge.recharge(dt);
+    // ammo-bar.webp) and tick the reloadNG window down. Friendship mode
+    // brings the stocks back faster (spec §3.4).
+    const HypermodeParams& hyp = hypermode_params(m_hypermode);
+    const float mainMul   = m_hyperActive ? hyp.mainRechargeMul   : 1.0f;
+    const float chargeMul = m_hyperActive ? hyp.chargeRechargeMul : 1.0f;
+    m_main.recharge(dt, mainMul);
+    m_charge.recharge(dt, chargeMul);
     if (m_reloadTimer > 0) --m_reloadTimer;
 
     // 6. Update the model's animation (advance time).
@@ -171,7 +185,8 @@ void Fighter::update(const input::PlayerInput* input, const Fighter* opponent, d
     }
 }
 
-void Fighter::update_state_machine(const input::PlayerInput* input, double dt) {
+void Fighter::update_state_machine(const input::PlayerInput* input,
+                                    Fighter* opponent, double dt) {
     if (!input) return;
 
     // AttackA (melee key in the original: X). Provisional mapping —
@@ -213,18 +228,31 @@ void Fighter::update_state_machine(const input::PlayerInput* input, double dt) {
         }
     }
 
-    // Shoot (C): holding accumulates charge without interrupting the state
-    // (mobile charge — the original's charge/movement interplay is un-RE'd,
-    // so the least surprising model wins); releasing fires the held tier.
-    // Charge only accrues while actionable so hits/attacks break the hold.
-    if (input->down[input::Action::Shoot]) {
+    // Special (S) has three roles in priority order (spec §3.1): activate
+    // Hypermode at a full bar, then the EX move while active, and only
+    // otherwise does it charge the shot like C does.
+    if (input->just_pressed[input::Action::Special]) {
+        if (try_activate_hypermode(opponent)) return;
+        if (m_hyperActive) {
+            try_ex_move();
+            return;
+        }
+    }
+
+    // Shoot (C) — or S when neither of the above applies: holding
+    // accumulates charge without interrupting the state (mobile charge —
+    // the original's charge/movement interplay is un-RE'd, so the least
+    // surprising model wins); releasing fires the held tier. Charge only
+    // accrues while actionable so hits/attacks break the hold.
+    const bool chargeDown = input->down[input::Action::Shoot] ||
+                            (input->down[input::Action::Special] && !m_hyperActive);
+    if (chargeDown) {
         if (m_chargeHeld < FighterConstants::kRedHoldSec) {
             m_chargeHeld += static_cast<float>(dt);
         }
-    }
-    if (input->just_released[input::Action::Shoot]) {
-        // Fire even on a sub-frame tap (no down[] frame was ever observed —
-        // charge_tier() just reads Tap then). Drops under reloadNG/no stock.
+    } else if (m_chargeHeld > 0.0f) {
+        // Fire even on a sub-frame tap (charge_tier() then reads Tap).
+        // Drops under reloadNG/no stock.
         try_fire();
         m_chargeHeld = 0.0f;
         if (m_pending.armed) return;
@@ -353,22 +381,135 @@ void Fighter::try_switch_animation() {
     }
 }
 
-void Fighter::take_damage(int amount) {
+void Fighter::take_damage(int amount, Fighter* source) {
+    const HypermodeParams& mine = hypermode_params(m_hypermode);
+
     if (m_state == FighterState::Guard) {
         // Blocking reduces damage to 20%.
         amount = std::max(1, amount / 5);
     }
 
+    // Hypermode damage trades: the attacker's mode boosts what it deals
+    // (Oyashiro/Kakera ×1.5), ours cuts what we take (×0.75 / ×0.20).
+    if (source && source->hyper_active()) {
+        const float mul = hypermode_params(source->m_hypermode).damageDealtMul;
+        amount = static_cast<int>(std::lround(amount * mul));
+    }
+    if (m_hyperActive) {
+        amount = static_cast<int>(std::lround(amount * mine.damageTakenMul));
+    }
+    amount = std::max(1, amount);
+
+    // Gauge credit happens on the damage that actually lands: the attacker's
+    // mode may feed on dealing it, ours on taking it (never while active, so
+    // an active mode cannot refill itself).
+    if (source) source->gain_gauge(amount *
+                                   hypermode_params(source->m_hypermode)
+                                       .fillPerDamageDealt);
+    gain_gauge(amount * mine.fillPerDamageTaken);
+
     m_hp = std::max(0, m_hp - amount);
-    std::printf("[daybreak] fighter took %d damage → HP=%d\n", amount, m_hp);
+    std::printf("[daybreak] fighter took %d damage → HP=%d%s\n", amount, m_hp,
+                m_hyperActive ? " (hypermode)" : "");
 
     if (m_hp <= 0) {
+        // Kakera fires on the killing blow instead of dying (spec §3.4).
+        if (mine.autoOnDeath && !m_hyperActive && m_gauge >= 1.0f) {
+            m_hp = FighterConstants::kMaxHP;
+            m_gauge = 0.0f;
+            m_hyperActive = true;
+            m_hyperTimer = mine.durationSec;
+            m_hitsActive = 0;
+            std::printf("[daybreak] KAKERA save: HP restored to %d\n", m_hp);
+            return;
+        }
         set_state(FighterState::KO);
         m_stateTimer = 0;  // permanent until round reset
     } else {
-        set_state(FighterState::Hit);
-        m_stateTimer = FighterConstants::kHitStunFrames;
+        // Stun rules while active: Kakera ignores stun entirely, Oyashiro
+        // skips every other hit ("avoids being stunned every other hit" —
+        // the wiki doesn't say which of the pair, we skip the 2nd, 4th, …).
+        bool stun = true;
+        if (m_hyperActive) {
+            ++m_hitsActive;
+            if (mine.stunImmune ||
+                (mine.stunEveryOtherHit && m_hitsActive % 2 == 0)) {
+                stun = false;
+            }
+        }
+        if (stun) {
+            set_state(FighterState::Hit);
+            m_stateTimer = FighterConstants::kHitStunFrames;
+        }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Hypermode (spec §3.4)
+// ---------------------------------------------------------------------------
+void Fighter::gain_gauge(float fraction) {
+    if (m_hyperActive || fraction <= 0.0f || !is_alive()) return;
+    // The battle setting ゲージ増加量 (gauge rate) scales this once the
+    // settings screen exists (spec §3.4).
+    m_gauge = std::min(1.0f, m_gauge + fraction);
+}
+
+bool Fighter::try_activate_hypermode(Fighter* opponent) {
+    const HypermodeParams& p = hypermode_params(m_hypermode);
+    // Kakera has no manual activation — it fires on a lethal hit instead.
+    if (p.autoOnDeath || m_hyperActive || !is_alive() || m_gauge < 1.0f) {
+        return false;
+    }
+
+    m_gauge = 0.0f;
+    m_hyperActive = true;
+    m_hyperTimer = p.durationSec;
+    m_hitsActive = 0;
+    std::printf("[daybreak] %s activated (%.0fs)\n", p.name, p.durationSec);
+
+    // Oyashiro's activation shoves anyone in melee range away, no damage.
+    if (opponent && opponent->is_alive()) {
+        const D3DXVECTOR3& tp = opponent->position();
+        D3DXVECTOR3 away(tp.x - m_position.x, 0.0f, tp.z - m_position.z);
+        const float dist = D3DXVec3Length(&away);
+        if (dist > 0.0001f && dist <= FighterConstants::kMeleeRange) {
+            opponent->apply_knockback(away / dist, FighterConstants::kRunSpeed);
+            std::printf("[daybreak] %s burst knocked back the opponent\n", p.name);
+        }
+    }
+    return true;
+}
+
+void Fighter::try_ex_move() {
+    // EX content per character is un-RE'd; the binary reserves "shotFinal"
+    // for it, so the stand-in fires that animation with an EX-tier shot.
+    fire_shot(ShotTier::Ex);
+}
+
+void Fighter::update_hypermode(double dt, Fighter* opponent) {
+    (void)opponent;
+    if (!m_hyperActive) return;
+    const HypermodeParams& p = hypermode_params(m_hypermode);
+
+    m_hyperTimer -= static_cast<float>(dt);
+    // Kakera trades its HP for the buff: 100% -> 1% over the duration, and
+    // the mode ends (bonuses dropped, still alive at 1%) when it bottoms out.
+    if (p.autoOnDeath) {
+        const float drain = (FighterConstants::kMaxHP - 1.0f) / p.durationSec;
+        m_hp = std::max(1, m_hp - static_cast<int>(drain * static_cast<float>(dt) + 0.5f));
+        if (m_hp <= 1) m_hyperTimer = 0.0f;
+    }
+    if (m_hyperTimer <= 0.0f) {
+        m_hyperActive = false;
+        m_hyperTimer = 0.0f;
+        std::printf("[daybreak] %s ended\n", p.name);
+    }
+}
+
+void Fighter::apply_knockback(const D3DXVECTOR3& dir, float speed) {
+    m_velocity = dir * speed;
+    set_state(FighterState::Hit);
+    m_stateTimer = FighterConstants::kHitStunFrames;
 }
 
 bool Fighter::try_melee_hit(Fighter& target) {
@@ -397,7 +538,7 @@ bool Fighter::try_melee_hit(Fighter& target) {
     const int dmg = (m_state == FighterState::AttackB)
         ? FighterConstants::kHeavyDamage
         : FighterConstants::kLightDamage;
-    target.take_damage(dmg);
+    target.take_damage(dmg, this);
     return true;
 }
 
@@ -457,10 +598,11 @@ bool Fighter::try_dash(input::Action dir) {
     return true;
 }
 
-void Fighter::try_fire() {
-    const ShotTier tier = charge_tier();
+void Fighter::try_fire() { fire_shot(charge_tier()); }
+
+void Fighter::fire_shot(ShotTier tier) {
     const ShotParams p = shot_params(tier);
-    // Tap draws MAIN, charged tiers draw CHARGE (red costs the full stock).
+    // Tap draws MAIN, charged tiers and the EX move draw CHARGE.
     AmmoStock& stock = (tier == ShotTier::Tap) ? m_main : m_charge;
     const float cost = (tier == ShotTier::Tap) ? p.mainCost : p.chargeCost;
     if (m_reloadTimer > 0 || !stock.can_spend(cost)) return;  // reloadNG: drop
@@ -476,9 +618,12 @@ void Fighter::try_fire() {
     m_pending.pos   = m_position + dir * FighterConstants::kMuzzleForward;
     m_pending.pos.y += FighterConstants::kMuzzleHeight;
 
-    set_state(tier == ShotTier::Red ? FighterState::ShootC
-              : tier == ShotTier::Yellow ? FighterState::ShootB
-                                        : FighterState::ShootA);
+    switch (tier) {
+        case ShotTier::Tap:    set_state(FighterState::ShootA);    break;
+        case ShotTier::Yellow: set_state(FighterState::ShootB);    break;
+        case ShotTier::Red:    set_state(FighterState::ShootC);    break;
+        case ShotTier::Ex:     set_state(FighterState::ShotFinal); break;
+    }
     m_stateTimer = FighterConstants::kShotFrames;
     std::printf("[daybreak] fired %s (stock %.1f)\n",
                 shot_tier_anim(tier), stock.value);
@@ -492,6 +637,32 @@ PendingShot Fighter::take_pending_shot() {
 
 void Fighter::render(IDirect3DDevice9* device) {
     if (!m_model || !device) return;
+
+    // Hypermode aura — placeholder. The wiki's captures show a pulsing
+    // particle burst in the mode's colour (magenta Oyashiro, cyan
+    // Friendship); RE names the states `oyashiro`/`oyashiroB`, and a real
+    // particle effect replaces these shells later. Drawn in the model's own
+    // space (local coords) so it rides whatever transform the fighter gets.
+    if (m_hyperActive) {
+        const HypermodeParams& p = hypermode_params(m_hypermode);
+        const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_time) * 8.0f);
+        // Additive light over the arena's bright ground saturates to white
+        // fast; this keeps the mode colour readable.
+        const int alpha = static_cast<int>(70.0f + 40.0f * pulse);
+        const D3DCOLOR aura = D3DCOLOR_ARGB(
+            alpha, GetRValue(p.aura), GetGValue(p.aura), GetBValue(p.aura));
+        D3DXMATRIX world;
+        D3DXMatrixRotationY(&world, m_facing);
+        D3DXMATRIX trans;
+        D3DXMatrixTranslation(&trans, m_position.x, m_position.y, m_position.z);
+        world = world * trans;
+        device->SetTransform(D3DTS_WORLD, &world);
+
+        render::UnlitCubePass pass(device, /*alphaBlend=*/true,
+                                   /*worldSpace=*/false);
+        const D3DXVECTOR3 mid(0.0f, 58.0f, 0.0f);
+        pass.draw(mid, 56.0f + 4.0f * pulse, aura);
+    }
 
     // The original game uses D3DXMatrixRotationY + D3DXMatrixTranslation.
     D3DXMATRIX rot, trans, world;

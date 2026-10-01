@@ -527,12 +527,27 @@ void Scene_Gameplay::on_enter(SceneContext& ctx) {
     // Spawn triples in stage env.dat read (x, z, y): shared height 200
     // for both fighters (flat arena — confirmed in stage21/env.dat, which
     // holds (1393,-463,200) and (-2200,-1363,200) verbatim).
-    if (m_useCustomSpawn) {
-        m_spawnPos[0] = m_customSpawn;
-        std::printf("[daybreak] Gameplay: custom P1 spawn (%.0f,%.0f,%.0f)\n",
-                    m_customSpawn.x, m_customSpawn.y, m_customSpawn.z);
-    } else {
-        m_spawnPos[0] = D3DXVECTOR3(1393.0f, 200.0f, -463.0f);
+    const gameplay::Hypermode hypermode[2] = {m_p1Hypermode, m_p2Hypermode};
+    const D3DXVECTOR3 kDefaultSpawn[2] = {
+        D3DXVECTOR3(1393.0f, 200.0f, -463.0f),
+        D3DXVECTOR3(-2200.0f, 200.0f, -1363.0f),
+    };
+    const float kDefaultFacing[2] = {0.0f, 3.14159f};
+    for (int i = 0; i < 2; ++i) {
+        m_spawnPos[i] = m_useCustomSpawn[i] ? m_customSpawn[i]
+                                            : kDefaultSpawn[i];
+        m_spawnFacing[i] = kDefaultFacing[i];
+        if (m_useCustomSpawn[i]) {
+            std::printf("[daybreak] Gameplay: custom P%d spawn (%.0f,%.0f,%.0f)\n",
+                        i + 1, m_spawnPos[i].x, m_spawnPos[i].y, m_spawnPos[i].z);
+        }
+        if (m_models[i]) {
+            m_fighters[i].init(m_models[i], m_spawnPos[i], m_spawnFacing[i]);
+            // init() resets these, so launch-time injection follows it.
+            m_fighters[i].set_hypermode(hypermode[i]);
+            m_fighters[i].set_hyper_gauge(m_startGauge[i]);
+            m_fighters[i].set_hp(m_startHP[i]);
+        }
     }
     if (const char* camh = std::getenv("DAYBREAK_CAMH")) {
         m_camera.set_height_offset(static_cast<float>(std::atof(camh)));
@@ -540,15 +555,10 @@ void Scene_Gameplay::on_enter(SceneContext& ctx) {
     if (const char* camd = std::getenv("DAYBREAK_CAMD")) {
         m_camera.set_distance_offset(static_cast<float>(std::atof(camd)));
     }
-    if (m_models[0]) {
-        m_spawnFacing[0] = 0.0f;
-        m_fighters[0].init(m_models[0], m_spawnPos[0], m_spawnFacing[0]);
-    }
-    if (m_models[1]) {
-        m_spawnPos[1] = D3DXVECTOR3(-2200.0f, 200.0f, -1363.0f);
-        m_spawnFacing[1] = 3.14159f;
-        m_fighters[1].init(m_models[1], m_spawnPos[1], m_spawnFacing[1]);
-    }
+    std::printf("[daybreak] hypermode: P1=%s P2=%s\n",
+                gameplay::hypermode_params(hypermode[0]).name,
+                gameplay::hypermode_params(hypermode[1]).name);
+
     m_balloon[0] = m_balloon[1] = 0.0f;
     m_koAt[0] = m_koAt[1] = -1.0;
 
@@ -846,10 +856,24 @@ void Scene_Gameplay::render(SceneContext& ctx) {
             m_hud.bar(W - 180, H - 140, 160, 14,
                       m_fighters[0].hp() / 100.0f,
                       D3DCOLOR_XRGB(255, 220, 60), D3DCOLOR_XRGB(20, 20, 30));
-            // Bottom-left: limit gauge (empty until super meter exists).
-            m_hud.text(20, H - 40, D3DCOLOR_XRGB(255, 255, 255), "OYASHIRO");
-            m_hud.bar(20, H - 64, 180, 12, 0.0f,
-                      D3DCOLOR_XRGB(255, 255, 255), D3DCOLOR_XRGB(20, 20, 30));
+            // Bottom-left: the Hypermode bar (spec §3.4) — fills by damage
+            // dealt/taken per the slot's mode, and S activates it at full.
+            const gameplay::Fighter& hf = m_fighters[0];
+            const gameplay::HypermodeParams& hp =
+                gameplay::hypermode_params(hf.hypermode());
+            if (hf.hyper_active()) {
+                m_hud.text(20, H - 40, hp.aura, "%s %.0fs", hp.name,
+                           hf.hyper_seconds_left());
+            } else if (hf.hyper_ready()) {
+                m_hud.text(20, H - 40, D3DCOLOR_XRGB(255, 255, 120),
+                           "%s  READY (S)", hp.name);
+            } else {
+                m_hud.text(20, H - 40, D3DCOLOR_XRGB(255, 255, 255), "%s", hp.name);
+            }
+            m_hud.bar(20, H - 64, 180, 12, hf.hyper_gauge(),
+                      hf.hyper_active() ? hp.aura
+                                        : D3DCOLOR_XRGB(170, 170, 170),
+                      D3DCOLOR_XRGB(20, 20, 30));
             // Stamina: contextual — dashing, blocking, or airborne
             // (battle-stamina.webp: the bar appears on use, jump spends it).
             gameplay::FighterState st = m_fighters[0].state();

@@ -44,23 +44,35 @@ Options/controller setup are built only as far as versus needs them.
   There is **no dedicated heavy button** — heavy is likely a
   directional variant (input model still provisional, see §3.6).
 - **Shoot button (C)**: fires the equipped weapon's projectile
-  (`shotA/B/C`, `shotFinal`). **Tap** = quick (black) shot. Ammo is a
-  **counted stock** (MAIN 6, CHARGE 2), recharging over time — the HUD
-  bar fill fraction *is* the recharge readout (model as fractional
-  stock, not bullets + timer).
-- **Charge**: holding shoot fills a meter with **two thresholds**.
-  Release at yellow bar = yellow charge attack; at red bar = red charge
-  attack (stronger). ([Menus/charge](https://higurashidaybreak.fandom.com/wiki/Menus))
+  (`shotA/B/C`, `shotFinal`). Ammo is a **counted stock** (MAIN 6,
+  CHARGE 2), recharging over time — the HUD bar fill fraction *is* the
+  recharge readout (model as fractional stock, not bullets + timer).
+- **Shot tiers** ([Basics](https://higurashidaybreak.fandom.com/wiki/Basics)):
+  **NS** Neutral Shot (tap, or under the yellow threshold), **CS** Charge
+  Shot (yellow filled), **FCS** Full Charge Shot (red maxed). The charge
+  meter **also fills while holding the Special button**, not just shoot.
 - **Reload states** (`reloadOK/NG`) gate projectile users between volleys.
-- **Special button (S)**, **tactics button (Q/作戦)**: exist on the
-  controller table; tactics (team orders?) is unmodeled — investigate
-  with bot work.
+- **Special button (S)**: three roles, in priority order —
+  1. **Activate Hypermode** when its bar is full (§3.4),
+  2. **EX move** while Hypermode is active ([Hypermode](https://higurashidaybreak.fandom.com/wiki/Hypermode)),
+  3. otherwise **charge the shot** alongside C.
+- **Tactics button (Q/作戦)**: exists on the controller table; behavior
+  unmodeled — investigate with bot work.
+- Melee variants are named in the wiki as NA/FA/HA/DashA/StepA/j.A/LA/ADA
+  (neutral / forward / horizontal / dash / sidestep / air / landing /
+  airdash attack). We currently have one swing plus dash and aerial
+  stand-ins; LA and StepA have no input path yet.
 
 ### 3.2 Movement
 
-- Double-tap a direction = **dash** that way — all 4 ground directions
-  **and in the air** (air dash).
-- Jump (**Z**); **holding jump flies** for a short time (limited flight).
+- Double-tap a direction ([Basics](https://higurashidaybreak.fandom.com/wiki/Basics)):
+  **forward = dash**, **back = backdash**, **left/right = sidestep**,
+  and in the air an **airdash** (all four directions).
+- Jump (**Z**). Flight is documented as a **rising airdash** — "press the
+  jump button and a direction in the air" (wiki) — while the owner's
+  observation and §3.6 describe **holding jump** to fly. Both models are
+  in the spec until re-checked in the original; we implement hold-jump.
+- Aerial/landing attack variants (j.A, LA, ADA) ride on these states.
 - Guard (**D**, hold), tag (`tagfront/tagback/tagOK` swap the active
   partner in 2v2), provoke (taunt), revival and KO/down states round out
   the 40+ animation states in the binary (full list:
@@ -78,13 +90,25 @@ distance offsets, orbits at 45° baseline, and spring-collides against
 - **Stamina**: spent by dashing, **jumping**, and holding block — and the
   bar is **contextual** (appears on use, drains while held, refills fast
   after). Empty = no dash, guard breaks down.
-- **Limit gauge (super)**: fills when dealing **and** taking damage;
-  behavior depends on the picked **hypermode** (Friendship / Oyashiro /
-  Kakera): Oyashiro charges by taking damage (→ +attack/+defense/stun
-  immunity), Kakera charges slower and triggers on death. Per-slot pick
-  at versus setup, after weapon.
-- Mapping to RE states: `HPcheck` (low HP), `nearWin/nearLose`,
-  `guard/guarded`, `spark` (hit VFX trigger).
+- **Hypermode bar** (the large bottom-left gauge): fills by dealing or
+  taking damage depending on the mode; at full, **S activates** it in DX
+  (the original auto-activated) and the fighter gains a **coloured
+  aura**, the mode's modifiers, and an **EX move** (S while active).
+  Per-slot pick at versus setup, after weapon
+  ([Hypermode](https://higurashidaybreak.fandom.com/wiki/Hypermode)).
+
+  | Mode | Fills from | Activation | Duration | Modifiers |
+  |---|---|---|---|---|
+  | **Friendship** | damage **dealt** | S at full | 15 s | MAIN + CHARGE recharge faster; locking the same target as your ally enhances black/yellow charge shots (DX also chains normal/command attacks on the focused target) |
+  | **Oyashiro** | damage **taken** | S at full (auto in the original) | 15 s | take ×0.75, deal ×1.5; **every other hit** avoids stun; activation knocks back enemies in melee range (no damage). DX: activating while being hit or KO'd leaves the bar at 25% and lasts 4 s |
+  | **Kakera** | damage taken, **slower than Oyashiro** | **automatic on death** from a direct hit | 25 s unhit | HP restored to 100% then drains to 1%; stun-immune to **all** hits; take ×0.20, deal ×1.5; at 1% the bonuses drop but the fighter lives |
+
+  The battle setting ゲージ増加量 (gauge rate, default 100%) scales fill.
+- **Not the same as `LIMIT`**: the top-corner `LIMIT %` is the balloon
+  lose condition (§3.5). The bottom-left bar is this gauge.
+- Mapping to RE states: `oyashiro` / `oyashiroB` (binary string table
+  @0x2b73xx) are the aura states; plus `HPcheck` (low HP),
+  `nearWin/nearLose`, `guard/guarded`, `spark` (hit VFX trigger).
 
 ### 3.5 Winning — the balloon
 
@@ -95,7 +119,8 @@ handicap %** (spec multiplier on capacity).
 A KO fills ~20–23% (observed +21%); the KO'd fighter **respawns
 airborne**. KO presentation is sting (撃破！) → inflate → floating `+N%`
 delta. Hitting the downed fighter scores **Overkill: +1/hit**
-(captured; wiki says 1–2%) until the lock-on indicator turns gray.
+(captured; wiki says 1–2%) for **3 seconds max**, until the lock-on
+indicator turns gray.
 ([Basics](https://higurashidaybreak.fandom.com/wiki/Basics),
 [Overkill](https://higurashidaybreak.fandom.com/wiki/Overkill))
 
@@ -120,6 +145,15 @@ mapping in our input layer is still provisional (see `input_manager.h`).
 Menus vs battle accept different keys — menu handling must be
 slot/context-aware, not a single global confirm/cancel pair.
 
+### 3.6b Versus debug keys (wiki)
+
+Versus doubles as a training mode via function keys
+([Basics](https://higurashidaybreak.fandom.com/wiki/Basics)):
+**F1** max HP for everyone + both balloons to 0%, **F2** CPUs off
+(stand still), **F3** CPUs on, **F4** max Hypermode. Our `F2` currently
+toggles animation debug in `Scene_Gameplay` — it moves when these land,
+since F2 is the original's CPU-off key. F12 (screenshot) is ours.
+
 ### 3.7 Versus flow (captured end-to-end)
 
 Title → **Team** (blue/red panels) → Character (grid, P1 starts on Rena,
@@ -140,13 +174,13 @@ in `README.md` + audit notes; RE truth in `reverse-engineering.md`.
 
 | # | System | Now | Work |
 |---|---|---|---|
-| 1 | Melee + hit detection | 🔶 states exist, `take_damage` never called | Wire `D3DXIntersect` raycast (exists) into fighter-vs-fighter checks; damage numbers (light 5 / heavy 12 / special 25); hitstun/knockdown/KO transitions |
-| 2 | HP / KO / respawn / balloon | ❌ | HP=100, KO state, airborne respawn, balloon 20–23%/KO vs per-team LIMIT (+size handicap %), KO sting → inflate → +N% delta, 3-beat result, loop back to team select |
-| 3 | Projectiles + charge | ❌ | `shotA/B/C` + tap/yellow/red tiers, **fractional ammo stocks** (MAIN 6, CHARGE 2, fill = recharge readout), reload gating, `collision_tama.x` channel, hit sparks |
-| 4 | Movement full set | 🔶 walk/run only | Double-tap dash (8-way + air), hold-jump fly timer, dash+attack and aerial variants |
-| 5 | Stamina + limit gauge | ❌ (fields exist, unused) | **Contextual** stamina drain on dash/jump/block-hold + fast refill; limit gauge with 3 hypermode behaviors (Friendship/Oyashiro/Kakera) |
+| 1 | Melee + hit detection | ✅ one swing + dash/aerial stand-ins; damage wired | Wire `D3DXIntersect` raycast (exists) into fighter-vs-fighter checks; damage numbers (light 5 / heavy 12 / special 25); hitstun/knockdown/KO transitions. **Remaining:** FA/HA directional variants, LA/StepA inputs, special 25 |
+| 2 | HP / KO / respawn / balloon | ✅ HP 100, KO, airborne respawn, balloon +21% | HP=100, KO state, airborne respawn, balloon 20–23%/KO vs per-team LIMIT (+size handicap %), KO sting → inflate → +N% delta, 3-beat result, loop back to team select |
+| 3 | Projectiles + charge | ✅ tiers, fractional stocks, reload gate, tama channel, sparks | `shotA/B/C` + tap/yellow/red tiers, **fractional ammo stocks** (MAIN 6, CHARGE 2, fill = recharge readout), reload gating, `collision_tama.x` channel, hit sparks |
+| 4 | Movement full set | ✅ dash/backdash/sidestep + air dash, hold-jump flight | Double-tap dash (8-way + air), hold-jump fly timer, dash+attack and aerial variants |
+| 5 | Stamina + limit gauge | ✅ bar + 3 modes; aura/EX are placeholders | **Contextual** stamina drain + fast refill. Hypermode bar per §3.4: fill by damage dealt/taken per mode, S to activate (Kakera auto on death), 15/25 s durations, damage ×0.75/×1.5 (Oyashiro), ×0.20/×1.5 (Kakera), stun rules, Friendship recharge boost. Remaining: real aura VFX (cube stand-in), per-character EX content (`shotFinal` anim fired), ゲージ増加量 battle setting |
 | 6 | Tag + teams | ❌ | `tagfront/tagback/tagOK`, partner AI-or-player control swap, 2v2 slots |
-| 7 | Overkill | ❌ | Downed-hit detection, **+1/hit**, gray-lock cutoff |
+| 7 | Overkill | ❌ | Downed-hit detection, **+1/hit** within the **3 s** window, gray-lock cutoff |
 | 8 | Bots | ❌ (P2 is a dummy) | AI: approach/retreat, melee range checks, block/dash reactions, difficulty tiers for empty versus slots |
 | 9 | Split-screen | ❌ (RE'd: 4 viewports 256×448 in 800×600) | Viewport grid (1/2/4), per-player ArenaCamera |
 | 10 | Versus frontend | 🔶 title partial; select scenes missing | Team → char → weapon/costume → hypermode → controller → ready → stage/settings → VS sting → result sequence (all captured in `docs/reference/`); punishment/titles as session flags |

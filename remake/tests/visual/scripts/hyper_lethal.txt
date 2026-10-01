@@ -1,0 +1,4 @@
+# One tap into a 3 HP dummy (-hp 100,3) under Kakera (-hyper 0,2 -gauge 0,1):
+# the killing blow must trigger Kakera's death save instead of a KO.
+78 SHOOT
+82 -

@@ -13,6 +13,14 @@
 //    - HP max = 100 (constant 0x64 near "HPcheck").
 //    - Movement uses D3DXVec3Normalize on the stick direction.
 //
+//  Hypermode (spec §3.4) is modelled from the wiki, which pins the numbers
+//  (higurashidaybreak.fandom.com/wiki/Hypermode + per-mode pages): the
+//  bottom-left bar fills by damage dealt (Friendship) or taken (Oyashiro,
+//  Kakera — slower), S activates it in DX (Kakera instead fires itself on a
+//  lethal hit), and while active the fighter gets a coloured aura, the
+//  mode's damage/stun/recharge modifiers, and an EX move on S. The
+//  original's "auto-activate at full" rule (pre-DX) is not modelled.
+//
 //  State machine (simplified from the 40+ anim states; input mapping is
 //  provisional — see input_manager.h: the original has ONE melee key (X),
 //  no dedicated heavy key, and separate shoot/special/tactics keys):
@@ -68,6 +76,7 @@ enum class FighterState : int {
     ShootB      = 13,  // yellow charge released (anim "shotB")
     ShootC      = 14,  // red charge released (anim "shotC")
     Jump        = 15,  // airborne (leap, fly, or falling out of an air dash)
+    ShotFinal   = 16,  // Hypermode EX move (anim "shotFinal")
 };
 
 // Maps FighterState → animation set name (matching the .X file's named
@@ -96,8 +105,57 @@ inline const char* state_to_anim_name(FighterState s) {
         // track-0 fallback in try_switch_animation applies until the real
         // locomotion anims are identified.
         case FighterState::Jump:        return "jump";
+        case FighterState::ShotFinal:   return "shotFinal";
         default: return nullptr;
     }
+}
+
+// Hypermode pick (spec §3.4). Index order matches the versus setup list and
+// the -hyper CLI argument: Friendship, Oyashiro, Kakera (DX's third mode).
+enum class Hypermode : int {
+    Friendship = 0,
+    Oyashiro   = 1,
+    Kakera     = 2,
+};
+
+// Per-mode rules. Durations and damage/stun multipliers are wiki numbers;
+// fill rates and recharge boosts are provisional tuning (the wiki gives no
+// figures, only "slower than Oyashiro" for Kakera).
+struct HypermodeParams {
+    const char* name;
+    float fillPerDamageDealt;  // gauge fraction gained per HP dealt
+    float fillPerDamageTaken;  // gauge fraction gained per HP taken
+    float durationSec;
+    float damageTakenMul;
+    float damageDealtMul;
+    bool  autoOnDeath;         // Kakera: fires itself when a hit would KO
+    bool  stunImmune;          // Kakera: never stunned while active
+    bool  stunEveryOtherHit;   // Oyashiro: alternate hits skip the stun
+    float mainRechargeMul;     // Friendship: ammo comes back faster
+    float chargeRechargeMul;
+    D3DCOLOR aura;
+};
+
+inline HypermodeParams hypermode_params(Hypermode m) {
+    switch (m) {
+        // Aura colours follow the wiki's mode captures: Oyashiro burns
+        // magenta/pink (Keiichi), Friendship is cyan (Shion). Kakera has no
+        // capture yet — green keeps it distinguishable from both.
+        case Hypermode::Friendship:
+            return {"FRIENDSHIP", 1.0f / 60.0f, 0.0f, 15.0f, 1.0f, 1.0f,
+                    false, false, false, 1.6f, 1.6f,
+                    D3DCOLOR_XRGB(130, 220, 255)};
+        case Hypermode::Oyashiro:
+            return {"OYASHIRO", 0.0f, 1.0f / 50.0f, 15.0f, 0.75f, 1.5f,
+                    false, false, true, 1.0f, 1.0f,
+                    D3DCOLOR_XRGB(255, 110, 220)};
+        case Hypermode::Kakera:
+            return {"KAKERA", 0.0f, 1.0f / 90.0f, 25.0f, 0.20f, 1.5f,
+                    true, true, false, 1.0f, 1.0f,
+                    D3DCOLOR_XRGB(150, 255, 160)};
+    }
+    return {"FRIENDSHIP", 0.0f, 0.0f, 15.0f, 1.0f, 1.0f,
+            false, false, false, 1.0f, 1.0f, D3DCOLOR_XRGB(255, 255, 255)};
 }
 
 // Movement speed constants (from RE section 14.7 + gameplay tuning).
@@ -165,9 +223,10 @@ public:
 
     // Update the fighter for this frame.
     // `input` = the player's input (or nullptr for AI/dummy).
-    // `opponent` = the other fighter (for lock-on facing).
+    // `opponent` = the other fighter (lock-on facing, and the target of an
+    // Oyashiro activation burst — hence non-const).
     // `dt` = delta time in seconds.
-    void update(const input::PlayerInput* input, const Fighter* opponent, double dt);
+    void update(const input::PlayerInput* input, Fighter* opponent, double dt);
 
     // Render the fighter's model.  The caller should have already set up
     // the view/projection matrices; this sets the world matrix from the
@@ -175,8 +234,29 @@ public:
     void render(IDirect3DDevice9* device);
 
     // --- combat ---
-    void take_damage(int amount);
+    // `source` applies the attacker's Hypermode damage bonus and earns its
+    // gauge (Friendship). Pass nullptr for environmental damage.
+    void take_damage(int amount, Fighter* source = nullptr);
     void set_state(FighterState new_state);
+
+    // --- hypermode (spec §3.4) ---
+    void set_hypermode(Hypermode m) { m_hypermode = m; }
+    // Launch-time state injection (the suite's stand-in for the original's
+    // F-keys: F4 maxes Hypermode, wiki Basics §training). 0..1, clamped.
+    void set_hyper_gauge(float f) {
+        m_gauge = f < 0.0f ? 0.0f : (f > 1.0f ? 1.0f : f);
+    }
+    // Startup HP (-hp): lets a test reach a lethal-hit path without a
+    // wind-up (Kakera's death save, Overkill's downed window).
+    void set_hp(int hp) {
+        m_hp = hp < 1 ? 1 : (hp > FighterConstants::kMaxHP ? FighterConstants::kMaxHP
+                                                           : hp);
+    }
+    Hypermode hypermode() const { return m_hypermode; }
+    bool  hyper_active() const { return m_hyperActive; }
+    bool  hyper_ready() const { return m_gauge >= 1.0f && !m_hyperActive; }
+    float hyper_gauge() const { return m_gauge; }
+    float hyper_seconds_left() const { return m_hyperTimer; }
 
     // Scene drains the shot armed by C-release into the ProjectilePool.
     // Disarms on read (at most one pending shot ever queues).
@@ -234,6 +314,13 @@ private:
     int          m_animSetIdx  = -1;   // cached animation set index for current state
     bool         m_didHitThisSwing = false;  // melee connected already this swing
 
+    // --- hypermode (spec §3.4; numbers in hypermode_params) ---
+    Hypermode    m_hypermode    = Hypermode::Friendship;
+    float        m_gauge        = 0.0f;   // 0..1; full = ready (S activates)
+    bool         m_hyperActive  = false;
+    float        m_hyperTimer   = 0.0f;   // seconds left while active
+    int          m_hitsActive   = 0;      // hits taken since activation
+
     // --- shots (spec §3.1; costs/reload in projectile.h) ---
     AmmoStock    m_main;         // MAIN fractional stock (max 6)
     AmmoStock    m_charge;       // CHARGE fractional stock (max 2)
@@ -255,7 +342,8 @@ private:
 
     // --- movement helpers ---
     void update_movement(const input::PlayerInput* input, const Fighter* opp, double dt);
-    void update_state_machine(const input::PlayerInput* input, double dt);
+    void update_state_machine(const input::PlayerInput* input, Fighter* opponent,
+                              double dt);
     void update_facing(const Fighter* opp, double dt);
     void try_switch_animation();
 
@@ -263,16 +351,31 @@ private:
     bool can_act() const;
     bool can_move() const;
 
-    // C-release firing: picks the tier from hold time, spends the matching
-    // stock, opens the reloadNG window, and arms m_pending for the scene.
-    // Silently drops when reloading or broke (HUD already shows the gate).
+    // C-release firing: picks the tier from hold time, then fire_shot().
     void try_fire();
+
+    // Spends the tier's stock, opens the reloadNG window, and arms
+    // m_pending for the scene. Silently drops when reloading or broke (the
+    // HUD already shows the gate).
+    void fire_shot(ShotTier tier);
+
+    // Hypermode plumbing: gauge credit, S activation (with Oyashiro's
+    // no-damage knockback burst), the EX move, and the Kakera death save.
+    void gain_gauge(float fraction);
+    bool try_activate_hypermode(Fighter* opponent);
+    void try_ex_move();
+    void update_hypermode(double dt, Fighter* opponent);
 
     // Z leap (grounded only) and double-tap dash setup. try_dash maps the
     // tapped key to a facing-relative dash (Up = forward ...) and returns
     // false when the stamina gate or the once-per-airtime rule blocks it.
     void try_jump();
     bool try_dash(input::Action dir);
+
+    // Knocks the target away without damage (Oyashiro activation). Reuses
+    // the Hit state's friction branch to carry the push; the real knockback
+    // animation state is un-RE'd.
+    void apply_knockback(const D3DXVECTOR3& dir, float speed);
 };
 
 } // namespace daybreak::gameplay

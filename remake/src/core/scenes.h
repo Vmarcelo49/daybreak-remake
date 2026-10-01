@@ -151,10 +151,23 @@ public:
     // Set by CharacterSelect before transitioning.
     int m_p1CharIndex = 0;
     int m_p2CharIndex = 1;
-    // Visual-validation override (-spawn x,y,z): P1 starts here instead of
-    // the env.dat spawn, so the suite can explore per-stage viewpoints.
-    bool m_useCustomSpawn = false;
-    D3DXVECTOR3 m_customSpawn{};
+    // Hypermode picks per slot (0 Friendship, 1 Oyashiro, 2 Kakera). The
+    // versus flow sets these after the weapon pick; until that screen
+    // exists, -hyper supplies them (defaults favour the testable pair:
+    // P1 fills by dealing damage, P2 by taking it).
+    gameplay::Hypermode m_p1Hypermode = gameplay::Hypermode::Friendship;
+    gameplay::Hypermode m_p2Hypermode = gameplay::Hypermode::Oyashiro;
+    // Startup Hypermode gauge fill per slot (-gauge 0..1,0..1). Mirrors the
+    // original's F4 "max hypermode" training key so tests need no wind-up.
+    float m_startGauge[2] = {0.0f, 0.0f};
+    // Startup HP per slot (-hp p1,p2), same state-injection rationale.
+    int   m_startHP[2] = {gameplay::FighterConstants::kMaxHP,
+                          gameplay::FighterConstants::kMaxHP};
+    // Visual-validation overrides (-spawn / -spawn2 x,y,z): that fighter
+    // starts here instead of its env.dat spawn, so the suite can explore
+    // viewpoints and stage interactions in front of the camera.
+    bool m_useCustomSpawn[2] = {false, false};
+    D3DXVECTOR3 m_customSpawn[2] = {};
 
 private:
     gameplay::Fighter       m_fighters[2];

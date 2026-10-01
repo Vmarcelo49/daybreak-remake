@@ -7,6 +7,7 @@
 
 #include "gameplay/fighter.h"
 #include "physics/raycast.h"
+#include "render/debug_prim.h"
 
 namespace daybreak::gameplay {
 
@@ -16,7 +17,7 @@ void ProjectilePool::clear() {
 }
 
 bool ProjectilePool::spawn(const D3DXVECTOR3& pos, const D3DXVECTOR3& dir,
-                           ShotTier tier, const void* owner) {
+                           ShotTier tier, Fighter* owner) {
     const ShotParams p = shot_params(tier);
     for (auto& s : m_shots) {
         if (s.alive) continue;
@@ -88,7 +89,7 @@ void ProjectilePool::update(double dt, Fighter* fighters, int fighterCount,
             const float dz = fp.z - s.pos.z;
             if (dx * dx + dz * dz > p.hitRadius * p.hitRadius) continue;
             s.alive = false;
-            f.take_damage(p.damage);
+            f.take_damage(p.damage, s.owner);
             spawn_spark(s.pos, 0.35f);
             break;
         }
@@ -107,91 +108,27 @@ int ProjectilePool::live_shots() const {
     return n;
 }
 
-void ProjectilePool::draw_cube(IDirect3DDevice9* device,
-                               const D3DXVECTOR3& center,
-                               float halfExtent, D3DCOLOR color) {
-    struct V {
-        float x, y, z;
-        D3DCOLOR c;
-    };
-    static constexpr DWORD kFvf = D3DFVF_XYZ | D3DFVF_DIFFUSE;
-    const float h = halfExtent;
-    // 12 triangles, 36 vertices (two per face, outward winding is irrelevant:
-    // culling is off for debug cubes).
-    const V v[36] = {
-        {center.x-h, center.y-h, center.z-h, color},
-        {center.x-h, center.y+h, center.z-h, color},
-        {center.x+h, center.y+h, center.z-h, color},
-        {center.x-h, center.y-h, center.z-h, color},
-        {center.x+h, center.y+h, center.z-h, color},
-        {center.x+h, center.y-h, center.z-h, color},
-        {center.x-h, center.y-h, center.z+h, color},
-        {center.x+h, center.y+h, center.z+h, color},
-        {center.x-h, center.y+h, center.z+h, color},
-        {center.x-h, center.y-h, center.z+h, color},
-        {center.x+h, center.y-h, center.z+h, color},
-        {center.x+h, center.y+h, center.z+h, color},
-        {center.x-h, center.y-h, center.z-h, color},
-        {center.x-h, center.y-h, center.z+h, color},
-        {center.x-h, center.y+h, center.z+h, color},
-        {center.x-h, center.y-h, center.z-h, color},
-        {center.x-h, center.y+h, center.z+h, color},
-        {center.x-h, center.y+h, center.z-h, color},
-        {center.x+h, center.y-h, center.z-h, color},
-        {center.x+h, center.y+h, center.z+h, color},
-        {center.x+h, center.y-h, center.z+h, color},
-        {center.x+h, center.y-h, center.z-h, color},
-        {center.x+h, center.y+h, center.z-h, color},
-        {center.x+h, center.y+h, center.z+h, color},
-        {center.x-h, center.y+h, center.z-h, color},
-        {center.x-h, center.y+h, center.z+h, color},
-        {center.x+h, center.y+h, center.z+h, color},
-        {center.x-h, center.y+h, center.z-h, color},
-        {center.x+h, center.y+h, center.z+h, color},
-        {center.x+h, center.y+h, center.z-h, color},
-        {center.x-h, center.y-h, center.z-h, color},
-        {center.x+h, center.y-h, center.z+h, color},
-        {center.x-h, center.y-h, center.z+h, color},
-        {center.x-h, center.y-h, center.z-h, color},
-        {center.x+h, center.y-h, center.z-h, color},
-        {center.x+h, center.y-h, center.z+h, color},
-    };
-    device->SetFVF(kFvf);
-    device->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 12, v, sizeof(V));
-}
-
 void ProjectilePool::render(IDirect3DDevice9* device) {
     if (!device) return;
 
-    // Debug cubes are unlit + uncullled; sparks additionally fade via alpha.
-    DWORD prevLighting = TRUE, prevCull = D3DCULL_CCW, prevBlend = FALSE;
-    device->GetRenderState(D3DRS_LIGHTING, &prevLighting);
-    device->GetRenderState(D3DRS_CULLMODE, &prevCull);
-    device->GetRenderState(D3DRS_ALPHABLENDENABLE, &prevBlend);
-    device->SetRenderState(D3DRS_LIGHTING, FALSE);
-    device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
-
-    for (const auto& s : m_shots) {
-        if (!s.alive) continue;
-        draw_cube(device, s.pos, 16.0f, shot_params(s.tier).color);
+    {
+        render::UnlitCubePass opaque(device, /*alphaBlend=*/false);
+        for (const auto& s : m_shots) {
+            if (s.alive) opaque.draw(s.pos, 16.0f, shot_params(s.tier).color);
+        }
     }
-
-    device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-    device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-    device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ONE);
-    for (const auto& sp : m_sparks) {
-        if (!sp.alive) continue;
-        // Grow + fade over life (expanding flash reads as an impact).
-        const float t = sp.age / sp.life;
-        const int alpha = static_cast<int>(255.0f * (1.0f - t));
-        const D3DCOLOR c = D3DCOLOR_ARGB(alpha, 255,
-                                        static_cast<int>(240.0f - 120.0f * t), 120);
-        draw_cube(device, sp.pos, 14.0f + 46.0f * t, c);
+    {
+        render::UnlitCubePass glow(device, /*alphaBlend=*/true);
+        for (const auto& sp : m_sparks) {
+            if (!sp.alive) continue;
+            // Grow + fade over life (expanding flash reads as an impact).
+            const float t = sp.age / sp.life;
+            const int alpha = static_cast<int>(255.0f * (1.0f - t));
+            const D3DCOLOR c = D3DCOLOR_ARGB(alpha, 255,
+                                            static_cast<int>(240.0f - 120.0f * t), 120);
+            glow.draw(sp.pos, 14.0f + 46.0f * t, c);
+        }
     }
-
-    device->SetRenderState(D3DRS_ALPHABLENDENABLE, prevBlend);
-    device->SetRenderState(D3DRS_CULLMODE, prevCull);
-    device->SetRenderState(D3DRS_LIGHTING, prevLighting);
 }
 
 } // namespace daybreak::gameplay

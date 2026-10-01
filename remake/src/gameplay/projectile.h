@@ -29,11 +29,14 @@ namespace daybreak::gameplay {
 class Fighter;  // update() damages fighters; defined in gameplay/fighter.h.
 
 // Tap = quick black shot; Yellow/Red = charged releases at the two hold
-// thresholds (spec §3.1). Each tier maps 1:1 to a firing animation state.
+// thresholds (spec §3.1); Ex = the Hypermode EX move on S, whose reserved
+// animation is "shotFinal" in the binary's string table (@0x2b7590). Each
+// tier maps 1:1 to a firing animation state.
 enum class ShotTier : std::uint8_t {
-    Tap    = 0,  // "shotA" in the binary string table
+    Tap    = 0,  // "shotA"
     Yellow = 1,  // "shotB"
     Red    = 2,  // "shotC"
+    Ex     = 3,  // "shotFinal"
 };
 
 inline const char* shot_tier_anim(ShotTier t) {
@@ -41,6 +44,7 @@ inline const char* shot_tier_anim(ShotTier t) {
         case ShotTier::Tap:    return "shotA";
         case ShotTier::Yellow: return "shotB";
         case ShotTier::Red:    return "shotC";
+        case ShotTier::Ex:     return "shotFinal";
     }
     return "shotA";
 }
@@ -65,6 +69,8 @@ inline ShotParams shot_params(ShotTier t) {
             return {550.0f, 9, 65.0f, 2.5f, 0.0f, 1.0f, 30, D3DCOLOR_XRGB(255, 230, 80)};
         case ShotTier::Red:
             return {460.0f, 16, 80.0f, 3.0f, 0.0f, 2.0f, 45, D3DCOLOR_XRGB(255, 90, 60)};
+        case ShotTier::Ex:
+            return {520.0f, 22, 90.0f, 3.0f, 0.0f, 1.0f, 60, D3DCOLOR_XRGB(255, 90, 255)};
     }
     return {650.0f, 4, 55.0f, 2.5f, 1.0f, 0.0f, 15, D3DCOLOR_XRGB(150, 200, 255)};
 }
@@ -76,8 +82,8 @@ struct AmmoStock {
     float value   = 1.0f;
     float perSec  = 0.5f;  // refill rate (provisional tuning)
 
-    void recharge(double dt) {
-        value += perSec * static_cast<float>(dt);
+    void recharge(double dt, float rateMul = 1.0f) {
+        value += perSec * rateMul * static_cast<float>(dt);
         if (value > max) value = max;
     }
     bool can_spend(float n) const { return value >= n; }
@@ -96,7 +102,8 @@ struct Projectile {
     D3DXVECTOR3   vel   {};
     float         age   = 0.0f;
     float         life  = 0.0f;
-    const void*   owner = nullptr;  // firing Fighter; never self-hits
+    Fighter*      owner = nullptr;  // firing fighter; never self-hits, and
+                                    // its Hypermode scales the damage dealt
 };
 
 // Hit spark: transient impact marker for the binary's `spark` VFX trigger.
@@ -121,7 +128,7 @@ public:
     // the pool is full (caller drops the shot — same as the original, which
     // has a fixed tama table and silently refuses overflow).
     bool spawn(const D3DXVECTOR3& pos, const D3DXVECTOR3& dir,
-               ShotTier tier, const void* owner);
+               ShotTier tier, Fighter* owner);
 
     // Screen-space-free VFX trigger (binary `fire`/`spark` states).
     void spawn_spark(const D3DXVECTOR3& pos, float life = 0.3f);
@@ -143,9 +150,6 @@ public:
 private:
     std::array<Projectile, kMaxShots>  m_shots{};
     std::array<Spark, kMaxSparks>      m_sparks{};
-
-    static void draw_cube(IDirect3DDevice9* device, const D3DXVECTOR3& center,
-                          float halfExtent, D3DCOLOR color);
 };
 
 } // namespace daybreak::gameplay
