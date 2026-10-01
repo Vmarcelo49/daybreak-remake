@@ -175,14 +175,21 @@ SfxHandle Sdl3Engine::load_cnv(const uint8_t* bytes, size_t size) {
 }
 
 SfxHandle Sdl3Engine::load_ogg(const uint8_t* bytes, size_t size) {
-    if (!bytes || size == 0) return kInvalidSfx;
-    if (detect_format(bytes, size) != BlobFormat::Ogg) return kInvalidSfx;
+    DecodedOgg decoded;
+    if (!decode_ogg_s16(bytes, size, decoded)) return kInvalidSfx;
+    return load_pcm_s16(decoded.stereo44100.data(), decoded.stereo44100.size() / 2);
+}
+
+bool decode_ogg_s16(const uint8_t* bytes, size_t size, DecodedOgg& out) {
+    out = DecodedOgg{};
+    if (!bytes || size == 0) return false;
+    if (detect_format(bytes, size) != BlobFormat::Ogg) return false;
     int error = 0;
     stb_vorbis* vorbis = stb_vorbis_open_memory(bytes, (int)size, &error, nullptr);
-    if (!vorbis) return kInvalidSfx;
+    if (!vorbis) return false;
     stb_vorbis_info info = stb_vorbis_get_info(vorbis);
-    // Short (S16) output matches the mix format directly; longer-than-buffer
-    // streams loop the pull until the decoder reports done.
+    out.srcRate = (uint32_t)info.sample_rate;
+    out.srcChannels = info.channels;
     std::vector<int16_t> interleaved;
     interleaved.reserve(4096 * 2);
     for (;;) {
@@ -191,17 +198,19 @@ SfxHandle Sdl3Engine::load_ogg(const uint8_t* bytes, size_t size) {
         if (n <= 0) break;
         interleaved.insert(interleaved.end(), chunk, chunk + (size_t)n * 2);
     }
-    const int channels = info.channels;
-    const int rate = (int)info.sample_rate;
     stb_vorbis_close(vorbis);
-    if (interleaved.empty()) return kInvalidSfx;
+    if (interleaved.empty()) return false;
     const size_t frames = interleaved.size() / 2;
-    if (channels == 2 && rate == 44100) return load_pcm_s16(interleaved.data(), frames);
-    std::vector<int16_t> pcm;
-    convert_to_mix_s16(reinterpret_cast<const uint8_t*>(interleaved.data()), frames,
-                       channels, (uint32_t)rate, 16, pcm);
-    if (pcm.empty()) return kInvalidSfx;
-    return load_pcm_s16(pcm.data(), pcm.size() / 2);
+    if (info.channels == 2 && info.sample_rate == 44100) {
+        out.stereo44100 = std::move(interleaved);
+    } else {
+        convert_to_mix_s16(reinterpret_cast<const uint8_t*>(interleaved.data()), frames,
+                           info.channels, (uint32_t)info.sample_rate, 16,
+                           out.stereo44100);
+        if (out.stereo44100.empty()) return false;
+    }
+    out.ok = true;
+    return true;
 }
 
 void Sdl3Engine::clear_bank() {

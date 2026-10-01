@@ -10,6 +10,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 
 namespace fnd::audio {
 
@@ -140,6 +141,94 @@ inline float volume_gain(int volume_0_128) {
     if (volume_0_128 < 0) volume_0_128 = 0;
     if (volume_0_128 > 128) volume_0_128 = 128;
     return static_cast<float>(volume_0_128) / 128.0f;
+}
+
+struct SflLoop {
+    bool     valid = false;
+    uint32_t startSample = 0;  // loop start, in file-rate samples
+    uint32_t endSample = 0;    // loop end (exclusive), same units
+};
+
+// Loop points for a BGM track, from its sibling .sfl file. The shipped files
+// are RIFF 'SFPL' sheets: a 'cue ' chunk whose first point carries the loop
+// start as a sample offset, plus an adtl 'labl' chunk naming the region in
+// text ("Region 00:00:06.741 to 00:01:30.221"). Both name the same region —
+// the cue offset is authoritative for the start (exact samples, no float
+// round-trip) and the label for the end — and every shipped pair agrees, so
+// a mismatch fails the parse rather than silently looping the wrong bars.
+// fileRate converts the label times to samples; it is the decoded audio's
+// rate (44100 on every shipped track).
+inline SflLoop parse_sfl_loop(const uint8_t* bytes, size_t size, uint32_t fileRate) {
+    SflLoop out;
+    if (!bytes || size < 12 || fileRate == 0) return out;
+    auto u32 = [&](size_t o) -> uint32_t {
+        return static_cast<uint32_t>(bytes[o] | (bytes[o + 1] << 8) |
+                                     (bytes[o + 2] << 16) | (bytes[o + 3] << 24));
+    };
+    if (!(bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F' &&
+          bytes[8] == 'S' && bytes[9] == 'F' && bytes[10] == 'P' && bytes[11] == 'L'))
+        return out;
+    bool haveCue = false, haveLabel = false;
+    uint32_t cueStart = 0, labelStartMs = 0, labelEndMs = 0;
+    size_t pos = 12;
+    // Walk top-level chunks; LIST/adtl is descended one level for labl chunks.
+    // A small fixed bound keeps a corrupt length field from looping forever.
+    for (int guard = 0; guard < 64 && pos + 8 <= size; ++guard) {
+        uint32_t chunk = u32(pos), len = u32(pos + 4), body = pos + 8;
+        if (body + len > size) break;
+        if (chunk == 0x20657563u) {  // "cue "
+            if (len >= 4 && u32(body) >= 1 && body + 4 + 24 <= size) {
+                cueStart = u32(body + 4 + 20);  // first point's sample offset
+                haveCue = true;
+            }
+        } else if (chunk == 0x5453494cu) {  // "LIST"
+            if (len >= 4 && bytes[body] == 'a' && bytes[body + 1] == 'd' &&
+                bytes[body + 2] == 't' && bytes[body + 3] == 'l') {
+                size_t sub = body + 4, subEnd = body + len;
+                for (int sg = 0; sg < 64 && sub + 8 <= subEnd && sub + 8 <= size; ++sg) {
+                    uint32_t schunk = u32(sub), slen = u32(sub + 4), sbody = sub + 8;
+                    if (sbody + slen > size || sbody + slen > subEnd) break;
+                    if (schunk == 0x6c62616cu && slen >= 4) {  // "labl"
+                        // Text is "Region HH:MM:SS.mmm to HH:MM:SS.mmm"; parse
+                        // both timestamps rather than trusting any binary end
+                        // field, because the shipped sheets carry the end only
+                        // in text.
+                        unsigned sh = 0, sm = 0, ss = 0, sms = 0;
+                        unsigned eh = 0, em = 0, es = 0, ems = 0;
+                        const char* t = (const char*)bytes + sbody + 4;
+                        size_t tlen = slen - 4;
+                        // Bounded scan: the label is short; never read past it.
+                        // Eight conversions, no trailing %c: the label's NUL
+                        // terminator ends sscanf input rather than matching.
+                        for (size_t i = 0; i + 7 < tlen; ++i) {
+                            if (std::sscanf(t + i, "Region %u:%u:%u.%u to %u:%u:%u.%u",
+                                            &sh, &sm, &ss, &sms, &eh, &em, &es, &ems) == 8) {
+                                labelStartMs = ((sh * 60 + sm) * 60 + ss) * 1000 + sms;
+                                labelEndMs = ((eh * 60 + em) * 60 + es) * 1000 + ems;
+                                haveLabel = true;
+                                break;
+                            }
+                        }
+                    }
+                    sub = sbody + slen + (slen & 1);
+                }
+            }
+        }
+        pos = body + len + (len & 1);
+    }
+    if (!haveCue || !haveLabel) return out;
+    const uint32_t endSample =
+        (uint32_t)(((uint64_t)labelEndMs * fileRate + 500) / 1000);
+    const uint32_t labelStart =
+        (uint32_t)(((uint64_t)labelStartMs * fileRate + 500) / 1000);
+    // The two start readings name the same bar; beyond one second of drift
+    // something is off, and looping the wrong region is worse than no loop.
+    uint32_t drift = cueStart > labelStart ? cueStart - labelStart : labelStart - cueStart;
+    if (endSample <= cueStart || drift > fileRate) return out;
+    out.valid = true;
+    out.startSample = cueStart;
+    out.endSample = endSample;
+    return out;
 }
 
 }  // namespace fnd::audio

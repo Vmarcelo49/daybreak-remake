@@ -51,9 +51,12 @@ nothing in the shipped game data is MP3, so no second decoder is carried.
 
 What remains decoder-side:
 
-- BGM file: OGG is done; honouring `.sfl` loop points (136 B, format still
-  unparsed — see MEDIA-INPUT.md §7) and streaming (vs whole-file load) belong
-  to `push_music_s16` callers, not the engine.
+- BGM file: OGG is done, and so are `.sfl` loop points and streaming.
+  `parse_sfl_loop` reads the RIFF cue offset (authoritative start) plus the
+  `Region MM:SS.mmm to MM:SS.mmm` label (end), failing on mismatch rather
+  than looping the wrong bars; `LoopPlayer` streams decoded PCM through any
+  `Engine` in chunks, wrapping at the loop end. `--audio-test --audio-file`
+  streams every `.sfl` pair through two full wraps with exact accounting.
 - Movie audio: MP2 frames → `interleave_lr_s16` (already in `audio_sdl3.h`) →
   `push_music_s16` — waiting on the video decision, not on audio.
 
@@ -154,7 +157,8 @@ push; closed-engine silence.
 ## Explicitly not verified
 
 - No audible playback check (subjective; dummy driver only).
-- No BGM file streaming or `.sfl` loop points — seam documented above.
+- No BGM file streaming or `.sfl` loop points — implemented (see above); all
+  20 pairs stream two wraps with exact accounting on Linux and Wine.
 - No MP3 decoding — detection only; nothing shipped is MP3, so no decoder.
 - OGG Vorbis decodes (all 21 BGM files, durations cross-checked with ffprobe).
 - No browser gesture run — gate logic executed natively; web AudioContext

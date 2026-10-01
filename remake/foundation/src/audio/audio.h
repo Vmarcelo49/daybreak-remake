@@ -114,4 +114,59 @@ private:
     Volumes volumes_;
 };
 
+// BGM looping over decoded mix-ready PCM (S16 stereo @44100), driven through
+// the Engine push interface — so NullEngine tests it with no device, and the
+// real engine streams it without ever holding more than a chunk. The PCM is
+// borrowed and must outlive the player; BGM buffers are MBs, so no copy.
+// Loop points come from parse_sfl_loop (.sfl sibling) in file-rate samples;
+// every shipped track decodes at 44100, which is the mix rate, so no scaling.
+class LoopPlayer {
+public:
+    void set_source(const int16_t* stereo44100, size_t frames) {
+        pcm_ = stereo44100;
+        frames_ = frames;
+        pos_ = 0;
+        loops_ = 0;
+    }
+    // [startFrame, endFrame); endFrame == 0 or past EOF means play to EOF once.
+    void set_loop(uint32_t startFrame, uint32_t endFrame) {
+        loopStart_ = startFrame;
+        loopEnd_ = endFrame;
+    }
+    // Push up to maxFrames, wrapping at the loop end as needed. Returns frames
+    // pushed this call: 0 at EOF with no loop, or when the engine takes none
+    // (backpressure — call again later, never spins: no progress, no wrap).
+    size_t push_next(Engine& engine, size_t maxFrames) {
+        if (!pcm_ || maxFrames == 0) return 0;
+        const size_t end =
+            (loopEnd_ > loopStart_ && loopStart_ < frames_)
+                ? (loopEnd_ < frames_ ? loopEnd_ : frames_)
+                : frames_;
+        size_t pushed = 0;
+        while (pushed < maxFrames && pos_ < frames_) {
+            if (pos_ >= end) {
+                if (end == frames_) return pushed;  // EOF, no loop region left
+                pos_ = loopStart_;
+                ++loops_;
+                continue;
+            }
+            size_t want = end - pos_;
+            if (want > maxFrames - pushed) want = maxFrames - pushed;
+            const size_t got = engine.push_music_s16(pcm_ + pos_ * 2, want);
+            pos_ += got;
+            pushed += got;
+            if (got == 0) break;
+        }
+        return pushed;
+    }
+    uint64_t loops_completed() const { return loops_; }
+    size_t position() const { return pos_; }
+
+private:
+    const int16_t* pcm_ = nullptr;
+    size_t frames_ = 0, pos_ = 0;
+    uint32_t loopStart_ = 0, loopEnd_ = 0;
+    uint64_t loops_ = 0;
+};
+
 }  // namespace fnd::audio

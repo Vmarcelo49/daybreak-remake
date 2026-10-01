@@ -732,6 +732,64 @@ bool runAudioTest(App& app) {
             app.error = "file playback failed";
             return false;
         }
+        // A sibling .sfl file carries the BGM loop region. When one parses,
+        // stream the track through it twice in engine-sized chunks: this is the
+        // production streaming path (decode once, push looped chunks), verified
+        // by exact frame accounting rather than by listening.
+        if (std::string(kind) == "ogg") {
+            std::string sflPath = app.opts.audioFile;
+            const size_t dot = sflPath.find_last_of('.');
+            if (dot != std::string::npos) {
+                sflPath.replace(dot, std::string::npos, ".sfl");
+                std::ifstream sf(sflPath, std::ios::binary);
+                if (sf) {
+                    const std::vector<uint8_t> sfl((std::istreambuf_iterator<char>(sf)),
+                                                   std::istreambuf_iterator<char>());
+                    fnd::audio::DecodedOgg decoded;
+                    if (fnd::audio::decode_ogg_s16(bytes.data(), bytes.size(), decoded) &&
+                        decoded.ok && decoded.srcRate == 44100 && decoded.srcChannels == 2) {
+                        const fnd::audio::SflLoop loop =
+                            fnd::audio::parse_sfl_loop(sfl.data(), sfl.size(), 44100);
+                        if (loop.valid) {
+                            fnd::audio::LoopPlayer player;
+                            player.set_source(decoded.stereo44100.data(),
+                                              decoded.stereo44100.size() / 2);
+                            player.set_loop(loop.startSample, loop.endSample);
+                            size_t streamed = 0;
+                            // Two full loops, bounded: a runaway wrap would show
+                            // up here as iterations past the budget, not a hang.
+                            const size_t budget =
+                                (2 * (loop.endSample - loop.startSample) + loop.endSample) /
+                                    4096 +
+                                8;
+                            for (size_t i = 0; i < budget && player.loops_completed() < 2;
+                                 ++i)
+                                streamed += player.push_next(engine, 4096);
+                            // Two wraps land at end + (end - start): the opening
+                            // [0, end) pass plus one full [start, end) loop.
+                            const size_t expect =
+                                2 * (size_t)loop.endSample - loop.startSample;
+                            // The call containing the second wrap keeps pushing
+                            // into the third pass up to its chunk budget, so the
+                            // total overshoots by less than one chunk: wraps are
+                            // the exact signal, totals are bounded each side.
+                            std::printf("audio-test: loop %u..%u streamed %zu frames, %llu wraps\n",
+                                        loop.startSample, loop.endSample, streamed,
+                                        (unsigned long long)player.loops_completed());
+                            if (player.loops_completed() != 2 || streamed < expect ||
+                                streamed >= expect + 4096 ||
+                                player.position() < loop.startSample ||
+                                player.position() >= loop.endSample) {
+                                app.error = "loop streaming mismatch";
+                                return false;
+                            }
+                        } else {
+                            std::printf("audio-test: .sfl present but unparsable, loop test skipped\n");
+                        }
+                    }
+                }
+            }
+        }
     }
     engine.close();
     return pushed == 44100 && h >= 0 && ch >= 0;

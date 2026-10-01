@@ -136,6 +136,16 @@ inline bool decode_cnv_s16(const uint8_t* bytes, size_t size,
     return !out_stereo.empty();
 }
 
+// OGG decode that reports what it found, for callers (loop streaming) that
+// need the source rate. load_ogg below is the bank path over this.
+struct DecodedOgg {
+    std::vector<int16_t> stereo44100;  // mix-ready, always 44100 stereo
+    uint32_t             srcRate = 0;
+    int                  srcChannels = 0;
+    bool                 ok = false;
+};
+bool decode_ogg_s16(const uint8_t* bytes, size_t size, DecodedOgg& out);
+
 // Real Engine: SDL3 device at the game Spec, 32 SFX slot streams + 1 music
 // stream, volume buses, web UnlockGate. SDL types stay in the .cpp (PIMPL)
 // so this header keeps audio.h's no-SDL promise and tests without SDL linked.
