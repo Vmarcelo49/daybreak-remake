@@ -25,6 +25,7 @@
 #include "gpu/gpu.h"
 #include "platform/platform.h"
 #include "platform/surface.h"
+#include "platform/web_pack.h"
 #include "render/arena_camera.h"
 #include "render/scene_renderer.h"
 #include "ui/hud.h"
@@ -727,14 +728,28 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     auto* app = new App();
     *appstate = app;
 
-#if defined(__EMSCRIPTEN__) && defined(FOUNDATION_WEB_ASSET)
-    // argv never reaches wasm: a local verification build names its one asset at
-    // configure time. This does not affect native argument handling.
-    static const std::string webAsset = FOUNDATION_WEB_ASSET;
-    static const char* webArgv[] = {"foundation_demo", webAsset.c_str()};
-    if (!webAsset.empty()) {
-        argc = 2;
-        argv = const_cast<char**>(webArgv);
+#if defined(__EMSCRIPTEN__)
+    // argv never reaches wasm, so the web build takes its asset three ways, in
+    // this order: ?pack=<manifest-url> (fetched into /packs/, asset= line wins),
+    // ?asset=<single CLI arg>, then the configure-time FOUNDATION_WEB_ASSET.
+    // Plain builds with none of these keep the triangle demo.
+    {
+        static std::string webAsset;
+        const std::string packUrl = plat::webQueryParam("pack");
+        std::string packAsset;
+        if (!packUrl.empty() && !plat::fetchWebPack(packUrl, packAsset, app->error))
+            return SDL_APP_FAILURE;
+        webAsset = plat::webQueryParam("asset");
+        if (webAsset.empty()) webAsset = packAsset;
+#ifdef FOUNDATION_WEB_ASSET
+        if (webAsset.empty()) webAsset = FOUNDATION_WEB_ASSET;
+#endif
+        if (!webAsset.empty()) {
+            static const char* webArgv[] = {"foundation_demo", nullptr};
+            webArgv[1] = webAsset.c_str();
+            argc = 2;
+            argv = const_cast<char**>(webArgv);
+        }
     }
 #endif
     if (!parseArgs(argc, argv, app->opts, app->error)) {

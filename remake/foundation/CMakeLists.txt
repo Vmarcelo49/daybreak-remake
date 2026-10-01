@@ -32,7 +32,7 @@ add_subdirectory(third_party/webgpu)
 if(EMSCRIPTEN)
     # SDL3 is supplied by the Emscripten port; it also owns the <canvas>.
     add_compile_options(-sUSE_SDL=3)
-    add_link_options(-sUSE_SDL=3 -sASYNCIFY=1 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576)
+    add_link_options(-sUSE_SDL=3 -sASYNCIFY=1 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576 -sFETCH=1)
     # Local game data can be mounted at /assets for browser verification. Both stay
     # local-only: the data is copyrighted and build/ is ignored, so this never changes
     # what the plain web build contains.
@@ -59,6 +59,7 @@ target_link_libraries(foundation_assets PUBLIC glm)
 add_library(foundation STATIC
     src/platform/platform.cpp
     src/platform/surface.cpp
+    src/platform/web_pack.cpp
     src/gpu/gpu.cpp)
 target_include_directories(foundation PUBLIC src)
 target_link_libraries(foundation PUBLIC webgpu)

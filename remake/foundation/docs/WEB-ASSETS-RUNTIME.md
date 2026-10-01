@@ -7,7 +7,9 @@ Local paths below are machine-local and gitignored, never committed.
 
 **Production path: plain web build + HTTP fetch/streaming of per-pack assets,
 cached in the browser (IndexedDB/OPFS), with Emscripten preload kept only for
-local renderer verification.**
+local renderer verification.** The fetch half of this is now implemented
+(`src/platform/web_pack.{h,cpp}` + `scripts/make_pack.py`); the persistence
+half (IndexedDB/OPFS) is still open.
 
 - The engine (`foundation_demo.wasm` 3.67 MB + `.js` 0.48 MB + `.html` 22 KB)
   ships with **no assets**. At startup it fetches named asset packs
@@ -66,6 +68,30 @@ Why not the alternatives:
   (effects techniques, 2D/HUD, audio, game camera — see PORT-PLAN checkpoint)
   is equally absent on web. No web-only stubs: the web runs the same
   `main.cpp` code path as native (§5).
+
+## Runtime fetch, verified end-to-end (W2 follow-through)
+
+`?pack=<manifest-url>` fetches the manifest and every listed file into `/packs/`
+(percent-encoding Shift-JIS-derived UTF-8 names), then `?asset=` — or the
+manifest's own `asset=` line — selects the scene through the unchanged argument
+parser. Observed in Chromium against a local pack server (Akane, 18 files,
+11.8 MB):
+
+```text
+[pack] 18 files, 11.8 MB -> /packs/ from http://127.0.0.1:8179/packs/akane/manifest.txt
+[scene] /packs/akane: 1 model(s), 8 meshes, 2195 vertices, textures 13 resolved / 0 missed
+draws: 13 (13 textured, 0 untextured, 0 decals, 0 effects), 5 GPU textures
+frames      : 4216 in 70.251 s
+delta avg   : 16.659 ms (60.0 fps)
+RESULT: ok
+```
+
+Two real bugs found on the way there, both fixed and documented in code:
+query parsing never skipped the leading `?` (first parameter invisible), and
+the URL encoder mangled `:` in `http://`. A third finding stands:
+`emscripten_fetch_wait()` never resolved in this setup (HTTP 0 every attempt),
+so completion goes through `onsuccess`/`onerror` callbacks pumped by the same
+yield the adapter waits use.
 
 ## 3. Browser evidence (W2)
 

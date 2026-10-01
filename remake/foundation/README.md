@@ -118,10 +118,13 @@ emcmake cmake -S . -B build/web-assets -GNinja \
 cmake --build build/web-assets
 ```
 
-The game data itself is never committed and the generated package stays under the
-ignored `build/` directory. A fetched-over-HTTP runtime asset path is still the
-future decision for a real web release; this preload exists only to verify the
-renderer on the web target.
+The game data itself is never committed and generated packages stay under the
+ignored `build/` directory. Beyond preload, the web build now also fetches
+per-pack assets at runtime: `scripts/make_pack.py` writes a manifest from an
+extracted tree, and `?pack=<manifest-url>` loads it into `/packs/` in the
+browser (verified: Akane, 18 files, 4,216 frames at 60 fps, `RESULT: ok`).
+Browser-side persistence (IndexedDB/OPFS) is the remaining open half; see
+`docs/WEB-ASSETS-RUNTIME.md`.
 
 ## What is verified, and what is not
 
