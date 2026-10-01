@@ -19,17 +19,44 @@ comments — when a decision changes.
   (real gameplay stack) is the strictly better foundation
   (see comparison notes in chat, 2026-10-01).
 
-## D2 — DirectX 9 stays. No renderer migration.
+## D2 — The renderer migrates to WebGPU. DX9 is the reference until parity.
 
-- The game renders through **Direct3D 9 + D3DX9** (`d3dx9_43.dll`,
-  June 2010 redist). Dropping DX9 is **not possible** (D1 discussion,
-  2026-10-01).
-- Contain the deprecation risk by keeping all D3DX usage behind the
-  existing seams (`XModel`, renderer helpers) — but there is no plan to
-  replace the renderer.
+- **Supersedes the 2026-10-01 text** that read "DirectX 9 stays. No
+  renderer migration." and claimed dropping DX9 was *not possible*. That
+  claim was tested and disproven (evidence below), so the direction is
+  now the opposite one.
+- Target: **SDL3 + `webgpu.h`**, with the backend chosen per platform —
+  **wgpu-native** on native targets, **emdawnwebgpu** on the web. One
+  `CMakeLists.txt` serves both; the only source differences are in the
+  presentation layer (six of them, all one-liners).
+- **DX9 is not deleted.** It stays buildable and remains the A/B
+  reference until the WebGPU path renders a complete in-game frame
+  (stage + characters + HUD) that matches it. That frame is the gate;
+  until it passes, DX9 is the shipping renderer.
+- Evidence (built and run, not argued — `webgpu-spike/FINDINGS.md`):
+  - Linux/Wayland, real GPU, wgpu-native: surface, capabilities,
+    configure, 60/60 frames presented, FIFO available.
+  - Web (Emscripten + emdawnwebgpu): `RESULT: ok` in Chromium; the
+    browser presents, and FIFO is the only present mode it offers.
+  - Windows: Dawn linked from MinGW and ran; wgpu-native cross-compiled
+    earlier the same day rendered under Wine byte-identically to Linux.
+  - macOS: **unverified** — no Mac available. Dawn ships macos x64 and
+    aarch64 prebuilts and `sdl3webgpu` has the Metal path, but nothing
+    has been executed. Do not claim it works.
+- Known obstacle: Dawn (at least the `chromium/7187` prebuilt) rejects
+  `WGPUSurfaceSourceWaylandSurface`, so it is a poor native backend on a
+  Wayland desktop. wgpu-native handles Wayland.
+- Rationale: D3DX9 is deprecated, drags `d3dx9_43.dll` and Wine-specific
+  behaviour, and blocks the Linux/macOS/web targets this port exists to
+  reach.
 
 ## D3 — Original `.X` files are used directly. No conversion pipeline.
 
+- **Unchanged by D2.** The asset path is the same on every backend: the
+  originals are loaded as shipped. `webgpu-mvp/` decodes all 728 `.X`
+  files (three encodings), all 5051 `.cnv` images and the Shift-JIS
+  texture references with no conversion step, for exactly the reasons
+  below.
 - Character/stage/collision meshes ship as `.X` in three encodings
   (`0302txt`, `0303bin`, `0303bzip`) with `D3DXLoadMeshHierarchyFromXInMemory`
   frame trees, `ID3DXAnimationController` sets, skin weights, Biped rigs.
@@ -39,8 +66,10 @@ comments — when a decision changes.
   converters bake down animation blending/track setup the game relies on
   and would cost more effort than using the originals.
 - Loader parity targets (from `docs/reverse-engineering.md`): InMemory
-  variant, mesh flags `0x220` (`32BIT | NPATCHES`), 2 anim tracks bound
-  at load.
+  variant, mesh flags `0x220`, 2 anim tracks bound
+  at load. (Note: `0x220` is `D3DXMESH_VB_MANAGED | D3DXMESH_IB_MANAGED`
+  per `d3dx9mesh.h`, not the `32BIT | NPATCHES` this line originally
+  claimed — no NPatch templates exist in the shipped assets.)
 
 ## D4 — mvp hook status (do not plan around the README)
 

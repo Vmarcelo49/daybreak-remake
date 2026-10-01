@@ -5,6 +5,11 @@ C++23 + SDL2 + Direct3D 9, cross-compiled from Linux to **Windows x64**
 fighters, stage meshes, lock-on camera, melee combat with HP/KO/balloon
 economy, HUD, and BGM.
 
+> **The renderer is migrating to SDL3 + WebGPU** — decision D2 in
+> [`docs/decisions.md`](docs/decisions.md), reversed 2026-10-01. The stack
+> described below is what the tree is today; DX9 stays buildable as the
+> A/B reference until the WebGPU path renders a matching in-game frame.
+
 Start here for context: [`docs/game-spec.md`](docs/game-spec.md) (what the
 game is + build plan) · [`docs/decisions.md`](docs/decisions.md) (binding
 scope/tech decisions) · [`docs/reference/README.md`](docs/reference/README.md)
