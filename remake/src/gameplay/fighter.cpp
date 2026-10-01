@@ -20,7 +20,7 @@ void Fighter::init(XModel* model, const D3DXVECTOR3& pos, float facing) {
     m_facing = facing;
     m_velocity = D3DXVECTOR3(0, 0, 0);
     m_hp = FighterConstants::kMaxHP;
-    m_stamina = FighterConstants::kMaxStamina;
+    m_stamina = static_cast<float>(FighterConstants::kMaxStamina);
     m_state = FighterState::BattleStart;
     m_stateTimer = FighterConstants::kBattleStartFrames;
     m_animSetIdx = -1;
@@ -31,6 +31,12 @@ void Fighter::init(XModel* model, const D3DXVECTOR3& pos, float facing) {
     m_chargeHeld = 0.0f;
     m_reloadTimer = 0;
     m_pending = PendingShot{};
+    m_vy = 0.0f;
+    m_grounded = true;
+    m_groundY = pos.y;
+    m_flyLeft = FighterConstants::kFlyTimeSec;
+    m_dashAir = false;
+    m_airDashed = false;
     try_switch_animation();
 }
 
@@ -39,10 +45,16 @@ void Fighter::reset(const D3DXVECTOR3& pos, float facing) {
     m_facing = facing;
     m_velocity = D3DXVECTOR3(0, 0, 0);
     m_hp = FighterConstants::kMaxHP;
-    m_stamina = FighterConstants::kMaxStamina;
+    m_stamina = static_cast<float>(FighterConstants::kMaxStamina);
     m_state = FighterState::BattleStart;
     m_stateTimer = FighterConstants::kBattleStartFrames;
     m_animSetIdx = -1;
+    m_vy = 0.0f;
+    m_grounded = true;
+    m_groundY = pos.y;
+    m_flyLeft = FighterConstants::kFlyTimeSec;
+    m_dashAir = false;
+    m_airDashed = false;
     m_main.value = FighterConstants::kMainMax;
     m_charge.value = FighterConstants::kChargeMax;
     m_chargeHeld = 0.0f;
@@ -53,21 +65,25 @@ void Fighter::reset(const D3DXVECTOR3& pos, float facing) {
 
 bool Fighter::can_act() const {
     return m_state == FighterState::Idle || m_state == FighterState::Walk ||
-           m_state == FighterState::Run;
+           m_state == FighterState::Run || m_state == FighterState::Jump;
 }
 
 bool Fighter::can_move() const {
     return m_state == FighterState::Idle || m_state == FighterState::Walk ||
-           m_state == FighterState::Run;
+           m_state == FighterState::Run || m_state == FighterState::Jump;
 }
 
 void Fighter::update(const input::PlayerInput* input, const Fighter* opponent, double dt) {
+    m_time += dt;
+
     // 1. Decrement state timer (mirrors +0xa0 in fcn.0041f580).
     if (m_stateTimer > 0) {
         --m_stateTimer;
         if (m_stateTimer == 0) {
             if (m_state != FighterState::KO && m_state != FighterState::TagOut) {
-                set_state(FighterState::Idle);
+                // Timed states expire back into the fall when airborne
+                // (a dash/attack/volley started mid-air lands as Jump).
+                set_state(m_grounded ? FighterState::Idle : FighterState::Jump);
             }
         }
     }
@@ -92,9 +108,55 @@ void Fighter::update(const input::PlayerInput* input, const Fighter* opponent, d
         update_facing(opponent, dt);
     }
 
-    // 5. Regenerate stamina.
-    if (m_stamina < FighterConstants::kMaxStamina && can_act()) {
-        m_stamina = std::min(m_stamina + 1, FighterConstants::kMaxStamina);
+    // 5. Stamina: grounded refill (fast after use — battle-stamina.webp)
+    // plus block-hold drain. Dash/leap/flight spends happen at trigger
+    // sites below; airtime never refills, so flight is a real budget.
+    if (m_grounded && can_act()) {
+        m_stamina = std::min(m_stamina + FighterConstants::kStaminaRegenSec *
+                             static_cast<float>(dt),
+                             static_cast<float>(FighterConstants::kMaxStamina));
+    }
+    if (m_state == FighterState::Guard) {
+        m_stamina = std::max(0.0f, m_stamina - FighterConstants::kGuardDrainSec *
+                             static_cast<float>(dt));
+    }
+
+    // 5b. Vertical motion: hold-Z flight against the fly budget, else
+    // gravity. Runs for every state (corpses fall too); only Jump and an
+    // airborne dash convert the landing into Idle — Hit/KO/attacks keep
+    // their state through touchdown.
+    if (!m_grounded) {
+        const float step = static_cast<float>(dt);
+        const bool wantFly = input && input->down[input::Action::Jump] &&
+                             m_state == FighterState::Jump && m_flyLeft > 0.0f &&
+                             is_alive();
+        // An air dash hangs for its window (no fall until it expires).
+        const bool dashHang = m_state == FighterState::Run && m_dashAir;
+        if (wantFly) {
+            m_vy = FighterConstants::kFlyRise;
+            m_flyLeft -= step;
+            m_stamina = std::max(0.0f, m_stamina - FighterConstants::kFlyDrainSec * step);
+        } else if (!dashHang) {
+            m_vy -= FighterConstants::kGravity * step;
+        }
+        m_position.y += m_vy * step;
+        const float ceiling = m_groundY + FighterConstants::kFlyMaxAlt;
+        if (m_position.y > ceiling) {
+            m_position.y = ceiling;
+            if (m_vy > 0.0f) m_vy = 0.0f;
+        }
+        if (m_position.y <= m_groundY) {
+            m_position.y = m_groundY;
+            m_vy = 0.0f;
+            m_grounded = true;
+            m_flyLeft = FighterConstants::kFlyTimeSec;
+            m_airDashed = false;
+            if (m_state == FighterState::Jump ||
+                (m_state == FighterState::Run && m_dashAir)) {
+                set_state(FighterState::Idle);
+            }
+            m_dashAir = false;
+        }
     }
 
     // 5b. Recharge ammo continuously (the HUD sweep IS this refill —
@@ -125,6 +187,30 @@ void Fighter::update_state_machine(const input::PlayerInput* input, double dt) {
         set_state(FighterState::AttackB);
         m_stateTimer = FighterConstants::kAttackFrames;
         return;
+    }
+
+    // Jump (Z): grounded leap; holding Z aloft flies against the fly budget
+    // (vertical block in update()). X/C/S all stay usable airborne — aerials
+    // are the same swings with gravity running underneath.
+    if (input->just_pressed[input::Action::Jump] && m_grounded) {
+        try_jump();
+        return;
+    }
+
+    // Double-tap dash: tap,tap on a direction within the window commits a
+    // facing-relative dash (Up = forward ...) — or an air dash when airborne
+    // (once per airtime). Runs before Guard so a tap under a held block key
+    // still sidesteps.
+    {
+        const input::Action dirs[4] = {input::Action::Up, input::Action::Down,
+                                       input::Action::Left, input::Action::Right};
+        for (int d = 0; d < 4; ++d) {
+            if (!input->just_pressed[dirs[d]]) continue;
+            const bool chained =
+                (m_time - m_lastTap[d]) <= FighterConstants::kDoubleTapSec;
+            m_lastTap[d] = m_time;
+            if (chained && try_dash(dirs[d])) return;
+        }
     }
 
     // Shoot (C): holding accumulates charge without interrupting the state
@@ -173,6 +259,15 @@ void Fighter::update_state_machine(const input::PlayerInput* input, double dt) {
 void Fighter::update_movement(const input::PlayerInput* input, const Fighter* opp, double dt) {
     if (!input) return;
 
+    // Committed dash: steering is locked to the tapped direction for the
+    // dash window (ground or air — m_dashDir was resolved at trigger time).
+    if (m_state == FighterState::Run) {
+        m_velocity.x = m_dashDir.x * m_dashSpeed;
+        m_velocity.z = m_dashDir.z * m_dashSpeed;
+        m_position += m_velocity * static_cast<float>(dt);
+        return;
+    }
+
     float dx = 0.0f, dz = 0.0f;
 
     if (std::abs(input->stick_x) > 8000 || std::abs(input->stick_y) > 8000) {
@@ -192,7 +287,7 @@ void Fighter::update_movement(const input::PlayerInput* input, const Fighter* op
         dz /= len;
 
         float speed = FighterConstants::kWalkSpeed;
-        if (m_state == FighterState::Run) speed = FighterConstants::kRunSpeed;
+        if (!m_grounded) speed *= FighterConstants::kAirControl;
 
         m_velocity.x = dx * speed;
         m_velocity.z = dz * speed;
@@ -317,6 +412,49 @@ ShotTier Fighter::charge_tier() const {
     if (m_chargeHeld >= FighterConstants::kRedHoldSec)    return ShotTier::Red;
     if (m_chargeHeld >= FighterConstants::kYellowHoldSec) return ShotTier::Yellow;
     return ShotTier::Tap;
+}
+
+void Fighter::try_jump() {
+    m_stamina = std::max(0.0f, m_stamina - FighterConstants::kJumpStamina);
+    m_grounded = false;
+    m_vy = FighterConstants::kJumpSpeed;
+    set_state(FighterState::Jump);
+    m_stateTimer = 0;  // physics-driven: gravity/landing own this state
+    std::printf("[daybreak] jump (stamina %.0f)\n", m_stamina);
+}
+
+bool Fighter::try_dash(input::Action dir) {
+    // Stamina gate (spec §3.4: empty = no dash) and the once-per-airtime
+    // rule for air dashes.
+    if (m_stamina < FighterConstants::kDashStamina) return false;
+    if (!m_grounded && m_airDashed) return false;
+
+    // Facing-relative dash: Up is toward the opponent (the camera sits
+    // behind us, so screen-up ≈ forward), Down peels away, Left/Right
+    // sidestep. Right = up × facing (left-handed yaw=0-faces-+Z world).
+    const float fx = std::sin(m_facing);
+    const float fz = std::cos(m_facing);
+    D3DXVECTOR3 d(0, 0, 0);
+    if (dir == input::Action::Up)         d = D3DXVECTOR3(fx, 0, fz);
+    else if (dir == input::Action::Down)  d = D3DXVECTOR3(-fx, 0, -fz);
+    else if (dir == input::Action::Right)  d = D3DXVECTOR3(fz, 0, -fx);
+    else                                  d = D3DXVECTOR3(-fz, 0, fx);
+
+    m_stamina -= FighterConstants::kDashStamina;
+    m_dashDir = d;
+    m_dashAir = !m_grounded;
+    if (m_dashAir) {
+        m_airDashed = true;
+        m_vy = 0.0f;  // air dash hangs: no fall during the window
+        m_dashSpeed = FighterConstants::kAirDashSpeed;
+    } else {
+        m_dashSpeed = FighterConstants::kRunSpeed;
+    }
+    set_state(FighterState::Run);
+    m_stateTimer = FighterConstants::kDashFrames;
+    std::printf("[daybreak] %s dash (stamina %.0f)\n",
+                m_dashAir ? "air" : "ground", m_stamina);
+    return true;
 }
 
 void Fighter::try_fire() {

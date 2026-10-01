@@ -703,13 +703,12 @@ void Scene_Gameplay::render(SceneContext& ctx) {
             m_hud.text(20, H - 40, D3DCOLOR_XRGB(255, 255, 255), "OYASHIRO");
             m_hud.bar(20, H - 64, 180, 12, 0.0f,
                       D3DCOLOR_XRGB(255, 255, 255), D3DCOLOR_XRGB(20, 20, 30));
-            // Stamina: contextual — dashing, blocking, or jumping.
-            // (No Jump state exists yet, so read the input directly.)
-            bool jumping = ctx.input &&
-                ctx.input->player(0).down[input::Action::Jump];
+            // Stamina: contextual — dashing, blocking, or airborne
+            // (battle-stamina.webp: the bar appears on use, jump spends it).
             gameplay::FighterState st = m_fighters[0].state();
             if (st == gameplay::FighterState::Run ||
-                st == gameplay::FighterState::Guard || jumping) {
+                st == gameplay::FighterState::Guard ||
+                st == gameplay::FighterState::Jump) {
                 m_hud.text(W / 2 - 100, H - 60, D3DCOLOR_XRGB(255, 255, 255), "STAMINA");
                 m_hud.bar(W / 2 - 100, H - 38, 200, 12,
                           m_fighters[0].stamina() / 100.0f,

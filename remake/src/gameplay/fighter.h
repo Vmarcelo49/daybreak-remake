@@ -25,6 +25,11 @@
 //                                   tiers map to the binary's shotA/B/C anim
 //                                   states @0x2b7560+; costs + reloadNG gating
 //                                   live in projectile.h)
+//    Idle/Walk/Run/Jump → Jump     (Z: leap; hold to fly on the fly timer)
+//    tap,tap dir → Run             (ground dash) or Run-air (air dash, once
+//                                   per airtime); X mid-dash = dash attack,
+//                                   X airborne = aerial (same swing, gravity
+//                                   keeps running underneath it)
 //    Idle/Walk → Guard → Idle      (block key held)
 //    Any → Hit → Idle              (took damage, 15 frames stun)
 //    Any → Knockdown → KO          (HP reached 0)
@@ -62,6 +67,7 @@ enum class FighterState : int {
     ShootA      = 12,  // tap shot fired (anim "shotA")
     ShootB      = 13,  // yellow charge released (anim "shotB")
     ShootC      = 14,  // red charge released (anim "shotC")
+    Jump        = 15,  // airborne (leap, fly, or falling out of an air dash)
 };
 
 // Maps FighterState → animation set name (matching the .X file's named
@@ -84,6 +90,12 @@ inline const char* state_to_anim_name(FighterState s) {
         case FighterState::ShootA:      return "shotA";
         case FighterState::ShootB:      return "shotB";
         case FighterState::ShootC:      return "shotC";
+        // No jump/dash/fly name exists in the binary's anim-state table
+        // (@0x2b73xx holds attackA/C, shotA/C, guard, damage... but no
+        // locomotion beyond the .X defaults), so this misses and the
+        // track-0 fallback in try_switch_animation applies until the real
+        // locomotion anims are identified.
+        case FighterState::Jump:        return "jump";
         default: return nullptr;
     }
 }
@@ -112,6 +124,24 @@ struct FighterConstants {
     static constexpr int   kShotFrames    = 20;     // firing pose length
     static constexpr float kMuzzleForward = 60.0f;  // spawn ahead of fighter
     static constexpr float kMuzzleHeight  = 100.0f; // spawn above feet
+    // Air movement (spec §3.2; all provisional — no RE numbers yet).
+    static constexpr float kGravity       = 900.0f; // downward accel (u/s^2)
+    static constexpr float kJumpSpeed     = 380.0f; // leap initial vy (u/s)
+    static constexpr float kFlyRise       = 40.0f;  // vy while holding Z aloft
+    static constexpr float kFlyTimeSec    = 1.2f;   // flight budget per airtime
+    static constexpr float kFlyMaxAlt     = 420.0f; // ceiling above takeoff
+    static constexpr float kAirControl    = 0.7f;   // stick authority airborne
+    // Dashes (spec §3.2): double-tap a direction; airborne → air dash.
+    static constexpr double kDoubleTapSec = 0.30;   // tap,tap window (seconds)
+    static constexpr int   kDashFrames    = 20;     // committed dash length
+    static constexpr float kAirDashSpeed  = 260.0f; // ground dash uses kRunSpeed
+    // Stamina spends (spec §3.4: dashing/jumping/block-hold spend it all).
+    static constexpr float kDashStamina    = 20.0f;  // per dash (gated: no
+                                                    // dash below this)
+    static constexpr float kJumpStamina    = 10.0f;  // per leap (clamped)
+    static constexpr float kGuardDrainSec  = 25.0f;  // block-hold drain
+    static constexpr float kFlyDrainSec    = 30.0f;  // flight drain
+    static constexpr float kStaminaRegenSec = 60.0f; // grounded refill rate
 };
 
 // Handoff from Fighter (input/charge side) to the scene (spawn/collide side):
@@ -154,8 +184,8 @@ public:
 
     // Melee hit check, called once per frame by the scene for each
     // attacker→target pair. Only fires during the attack's active window,
-    // at most once per swing (m_didHitThisSwing). Range-only for now —
-    // real hitboxes (mesh raycast) come with the projectile milestone.
+    // at most once per swing (m_didHitThisSwing). XZ-radius check, matching
+    // the flat-arena footwork (same convention as the shot-vs-fighter test).
     // Returns true if the hit connected.
     bool try_melee_hit(Fighter& target);
 
@@ -163,9 +193,10 @@ public:
     const D3DXVECTOR3& position()   const { return m_position; }
     float              facing_yaw() const { return m_facing; }
     int                hp()         const { return m_hp; }
-    int                stamina()    const { return m_stamina; }
+    int                stamina()    const { return static_cast<int>(m_stamina); }
     FighterState       state()      const { return m_state; }
     bool               is_alive()   const { return m_hp > 0; }
+    bool               airborne()   const { return !m_grounded; }
     XModel*            model()      const { return m_model; }
     // Fractional stocks feed the HUD bars directly (ammo-bar.webp).
     float main_frac() const { return m_main.value / FighterConstants::kMainMax; }
@@ -195,7 +226,7 @@ private:
 
     // --- stats ---
     int          m_hp          = FighterConstants::kMaxHP;
-    int          m_stamina     = FighterConstants::kMaxStamina;
+    float        m_stamina     = static_cast<float>(FighterConstants::kMaxStamina);
 
     // --- state machine ---
     FighterState m_state       = FighterState::Idle;
@@ -209,6 +240,18 @@ private:
     float        m_chargeHeld = 0.0f;  // seconds C held (resets on release)
     int          m_reloadTimer = 0;    // reloadNG window (frames, 0 = reloadOK)
     PendingShot  m_pending;      // armed shot awaiting scene spawn
+
+    // --- air + dash (spec §3.2) ---
+    float        m_vy = 0.0f;          // vertical velocity (u/s)
+    bool         m_grounded = true;    // false between takeoff and landing
+    float        m_groundY = 0.0f;      // takeoff height (flat-arena landing)
+    float        m_flyLeft = FighterConstants::kFlyTimeSec;  // flight budget
+    D3DXVECTOR3  m_dashDir{0, 0, 1};   // committed dash direction (world XZ)
+    float        m_dashSpeed = FighterConstants::kRunSpeed;
+    bool         m_dashAir = false;     // current dash started airborne
+    bool         m_airDashed = false;   // air dash spent (resets on landing)
+    double       m_time = 0.0;          // per-fighter clock (double-tap)
+    double       m_lastTap[4] = {-1.0, -1.0, -1.0, -1.0};  // Up/Down/Left/Right
 
     // --- movement helpers ---
     void update_movement(const input::PlayerInput* input, const Fighter* opp, double dt);
@@ -224,6 +267,12 @@ private:
     // stock, opens the reloadNG window, and arms m_pending for the scene.
     // Silently drops when reloading or broke (HUD already shows the gate).
     void try_fire();
+
+    // Z leap (grounded only) and double-tap dash setup. try_dash maps the
+    // tapped key to a facing-relative dash (Up = forward ...) and returns
+    // false when the stamina gate or the once-per-airtime rule blocks it.
+    void try_jump();
+    bool try_dash(input::Action dir);
 };
 
 } // namespace daybreak::gameplay
