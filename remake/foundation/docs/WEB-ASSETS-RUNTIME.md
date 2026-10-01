@@ -86,12 +86,24 @@ delta avg   : 16.659 ms (60.0 fps)
 RESULT: ok
 ```
 
-Two real bugs found on the way there, both fixed and documented in code:
-query parsing never skipped the leading `?` (first parameter invisible), and
-the URL encoder mangled `:` in `http://`. A third finding stands:
-`emscripten_fetch_wait()` never resolved in this setup (HTTP 0 every attempt),
-so completion goes through `onsuccess`/`onerror` callbacks pumped by the same
-yield the adapter waits use.
+Three real bugs found on the way there, all fixed and documented in code:
+query parsing never skipped the leading `?` (first parameter invisible); the
+URL encoder mangled `:` in `http://`; and `emscripten_fetch_wait()` never
+resolved in this setup (HTTP 0 every attempt), so completion goes through
+`onsuccess`/`onerror` callbacks pumped by the same yield the adapter waits use.
+
+## Persistence, verified (IndexedDB via IDBFS)
+
+`/packs/` is an IDBFS mount: after a fetch, the manifest hash plus every file
+syncs back, and the next boot populates from storage, compares the hash, and
+skips all downloads on a match. The decisive test blocked every file download
+at the network layer (`**/data/**` aborted, manifest allowed) and reloaded:
+`cache hit: 18 files already in /packs/`, then the full scene — 13/13 textures,
+13 draws — with zero pack bytes over the wire. An earlier green run turned out
+to be confounded by the browser HTTP cache serving the files with no server
+log lines; the abort-route test rules that out, because aborted requests reach
+neither server nor cache. Sync/mount failures degrade to an uncached MEMFS
+session rather than failing the run.
 
 ## 3. Browser evidence (W2)
 

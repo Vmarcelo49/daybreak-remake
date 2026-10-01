@@ -101,6 +101,99 @@ std::string dirOf(const std::string& url) {
     return slash == std::string::npos ? std::string() : url.substr(0, slash + 1);
 }
 
+uint32_t fnv1a(const uint8_t* data, size_t n) {
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i < n; ++i) {
+        h ^= data[i];
+        h *= 16777619u;
+    }
+    return h;
+}
+
+std::string hashName(const std::string& manifestUrl) {
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "/packs/.hash_%08x", fnv1a(
+                      reinterpret_cast<const uint8_t*>(manifestUrl.data()), manifestUrl.size()));
+    return buf;
+}
+
+}  // namespace
+
+// IndexedDB persistence (IDBFS): repeat visits skip the download entirely.
+// Best-effort by design — if the mount, populate, or write-back fails, the
+// session continues on MEMFS exactly as before, just uncached.
+static volatile int g_syncDone = 0;
+static volatile int g_syncErr = 0;
+static bool g_packsMounted = false;
+static bool g_idbfs = false;
+
+extern "C" void EMSCRIPTEN_KEEPALIVE webPackSyncDone(int err) {
+    g_syncErr = err;
+    g_syncDone = 1;
+}
+
+namespace {
+
+// One mount per boot; a missing IDBFS (flag not linked, storage unavailable)
+// degrades to an uncached session rather than failing the run.
+void ensurePacksMounted() {
+    if (g_packsMounted) return;
+    g_packsMounted = true;
+    g_idbfs = EM_ASM_INT({
+        try {
+            if (typeof IDBFS === 'undefined') return 0;
+            try { FS.mkdir('/packs'); } catch (e) {}
+            FS.mount(IDBFS, {}, '/packs');
+            return 1;
+        } catch (e) { return 0; }
+    }) != 0;
+}
+
+bool idbfsSync(bool populate, std::string& error) {
+    if (!g_idbfs) return true;
+    g_syncDone = 0;
+    g_syncErr = 0;
+    EM_ASM({ FS.syncfs($0, function(err) { _webPackSyncDone(err ? 1 : 0); }); },
+           populate ? 1 : 0);
+    while (!g_syncDone) emscripten_sleep(0);
+    if (g_syncErr) {
+        error = "IDBFS sync failed";
+        return false;
+    }
+    return true;
+}
+
+// True when every listed file already sits in /packs/ under this manifest's
+// hash: same manifest text plus all files present. Existence (not bytes) is
+// the check — eviction wipes the store wholesale, so a full present set
+// means a valid cache; anything else refetches everything, simply.
+bool cacheValid(const std::vector<std::string>& files, const std::string& hashPath,
+                uint32_t manifestHash) {
+    char buf[16];
+    std::FILE* f = std::fopen(hashPath.c_str(), "rb");
+    if (!f) return false;
+    const size_t got = std::fread(buf, 1, sizeof buf, f);
+    std::fclose(f);
+    uint32_t stored = 0;
+    if (got == 0 || std::sscanf(buf, "%x", &stored) != 1 || stored != manifestHash)
+        return false;
+    for (const std::string& rel : files) {
+        std::FILE* g = std::fopen((std::string("/packs/") + rel).c_str(), "rb");
+        if (!g) return false;
+        std::fclose(g);
+    }
+    return true;
+}
+
+void writeCacheHash(const std::string& hashPath, uint32_t manifestHash) {
+    char buf[16];
+    std::snprintf(buf, sizeof buf, "%08x", manifestHash);
+    if (std::FILE* f = std::fopen(hashPath.c_str(), "wb")) {
+        std::fwrite(buf, 1, 8, f);
+        std::fclose(f);
+    }
+}
+
 }  // namespace
 
 std::string webQueryParam(const char* key) {
@@ -136,8 +229,17 @@ std::string webQueryParam(const char* key) {
 
 bool fetchWebPack(const std::string& manifestUrl, std::string& assetArg, std::string& error) {
     std::printf("[pack] fetching %s\n", manifestUrl.c_str());
+    ensurePacksMounted();
+    if (g_idbfs) {
+        // Best-effort populate: a failed sync just means "fetch everything",
+        // never a failed run.
+        std::string syncError;
+        if (!idbfsSync(true, syncError))
+            std::fprintf(stderr, "[pack] warning: %s\n", syncError.c_str());
+    }
     std::vector<uint8_t> manifest;
     if (!fetchBytes(manifestUrl, manifest, error)) return false;
+    const uint32_t manifestHash = fnv1a(manifest.data(), manifest.size());
 
     std::string base = dirOf(manifestUrl);
     std::string asset;
@@ -165,6 +267,15 @@ bool fetchWebPack(const std::string& manifestUrl, std::string& assetArg, std::st
         return false;
     }
 
+    // Same manifest text plus every file present means the IndexedDB copy is
+    // current: skip all downloads. Anything else refetches everything, simply.
+    const std::string hashPath = hashName(manifestUrl);
+    if (g_idbfs && cacheValid(files, hashPath, manifestHash)) {
+        std::printf("[pack] cache hit: %zu files already in /packs/\n", files.size());
+        assetArg = asset;
+        return true;
+    }
+
     size_t bytes = 0;
     for (const std::string& rel : files) {
         const std::string dest = std::string("/packs/") + rel;
@@ -186,6 +297,13 @@ bool fetchWebPack(const std::string& manifestUrl, std::string& assetArg, std::st
     }
     std::printf("[pack] %zu files, %.1f MB -> /packs/ from %s\n", files.size(),
                 (double)bytes / 1048576.0, manifestUrl.c_str());
+    if (g_idbfs) {
+        writeCacheHash(hashPath, manifestHash);
+        std::string syncError;
+        if (!idbfsSync(false, syncError))
+            std::fprintf(stderr, "[pack] warning: %s (session continues uncached)\n",
+                         syncError.c_str());
+    }
     assetArg = asset;
     return true;
 }
