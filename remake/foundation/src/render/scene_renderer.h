@@ -48,7 +48,15 @@ struct Stats {
     int    textured        = 0;
     int    untextured      = 0;
     int    decals          = 0;
+    int    effects         = 0;
 };
+
+// Which blend/depth/cull variant draws an item. The order below is also the
+// submission order: lit opaque geometry first, multiply decals over it, additive
+// effect cards last. Classification lives in scene_renderer.cpp (classifyPass);
+// the asset layer's SceneModel::role is the only effect signal the renderer may
+// read, because shipped material terms do not distinguish effect cards (R2).
+enum class Pass : uint8_t { Opaque = 0, Decal = 1, Effect = 2 };
 
 class SceneRenderer {
 public:
@@ -79,10 +87,17 @@ public:
 
     bool render(const Target&, std::string& error);
 
+    // Optional UI compositing for verification captures: invoked after the 3D pass
+    // into the capture encoder, before copy-to-readback. Uses only WebGPU types so
+    // render/ never includes ui/ headers; the caller adapts. Null keeps current
+    // behavior, and existing captures byte-identical.
+    using UiHook = bool (*)(WGPUCommandEncoder, WGPUTextureView, WGPUTextureFormat,
+                            uint32_t, uint32_t, void* userdata);
     // Renders size x size offscreen into an RGBA8Unorm texture and reads the pixels
     // back (RGBA8, tightly packed). Only verification needs this; the window path
     // never calls it.
-    bool capture(uint32_t size, std::vector<uint8_t>& rgba, std::string& error);
+    bool capture(uint32_t size, std::vector<uint8_t>& rgba, std::string& error,
+                 UiHook uiHook = nullptr, void* uiUserdata = nullptr);
 
     const Stats& stats() const { return stats_; }
 
@@ -93,8 +108,9 @@ private:
         uint32_t   paletteOffset = 0;
         uint32_t   flags = 0;                        // from the material, per draw
         int        texture = -1;                     // -1 -> the 1x1 white fallback
-        bool       decal = false;                    // baked shadow: drawn last, multiplied
+        Pass       pass = Pass::Opaque;
         glm::mat4  model{1.f};
+        glm::vec4  baseColor{1.f};                   // material diffuse (D3DX faceColor)
     };
 
     // What updatePose() needs to rebuild one mesh's slice of the palette storage.
@@ -112,11 +128,12 @@ private:
 
     struct Pipelines {
         WGPUTextureFormat format = WGPUTextureFormat_Undefined;
-        WGPURenderPipeline main   = nullptr;   // lit, depth-writing
+        WGPURenderPipeline opaque = nullptr;   // lit, depth-writing
         WGPURenderPipeline decal  = nullptr;   // multiply blend, no depth write, no cull
+        WGPURenderPipeline effect = nullptr;   // additive, unlit, no depth write, no cull
     };
 
-    WGPURenderPipeline pipelineFor(WGPUTextureFormat, bool decal, std::string& error);
+    WGPURenderPipeline pipelineFor(WGPUTextureFormat, Pass, std::string& error);
     bool ensureDepth(uint32_t width, uint32_t height, std::string& error);
     bool buildBindings(std::string& error);
 

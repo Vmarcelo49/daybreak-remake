@@ -65,7 +65,8 @@ std::string sjisToUtf8(const std::string& in);
 // Baked shadow decals ship as a white card with a dark blob and an opaque alpha
 // channel, so they only read correctly under multiply blending. The DX9 renderer
 // keys exact white to transparent and multiplies the rest; reproduced here so the
-// WebGPU path can present the same result without a stencil.
+// WebGPU path can present the same result, with the decal pipeline's EQUAL-0/INCRSAT
+// stencil guard keeping overlapping cards to a single multiply.
 void keyOutWhite(CnvImage& img);
 
 // Resolves and caches the textures one model references. `directory` is where the

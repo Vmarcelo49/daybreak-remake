@@ -72,8 +72,27 @@ endif()
 add_library(foundation_render STATIC src/render/scene_renderer.cpp)
 target_link_libraries(foundation_render PUBLIC foundation foundation_assets)
 
+# The 2D/UI layer: sprite batch, bitmap font, HUD composition, diagnostics. Same
+# shape as foundation_render; verified headless before wiring (docs/UI-VERIFY.md).
+add_library(foundation_ui STATIC
+    src/ui/sprite.cpp
+    src/ui/font.cpp
+    src/ui/hud.cpp
+    src/ui/fallback.cpp)
+target_include_directories(foundation_ui PUBLIC src)
+target_link_libraries(foundation_ui PUBLIC foundation)
+
+# Media/input contracts and tables. Header-only by design (they unit-test
+# anywhere), so this library is one TU of static_asserts against the real SDL3
+# headers: the tables cannot drift from SDL3 without failing every target build.
+add_library(foundation_media STATIC src/input/pin_tables.cpp)
+target_include_directories(foundation_media PUBLIC src)
+if(NOT EMSCRIPTEN)
+    target_link_libraries(foundation_media PUBLIC SDL3::SDL3)
+endif()
+
 add_executable(foundation_demo src/main.cpp)
-target_link_libraries(foundation_demo PRIVATE foundation_render)
+target_link_libraries(foundation_demo PRIVATE foundation_render foundation_ui foundation_media)
 
 if(EMSCRIPTEN)
     set_target_properties(foundation_demo PROPERTIES SUFFIX ".html")

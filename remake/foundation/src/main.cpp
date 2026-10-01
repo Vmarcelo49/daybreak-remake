@@ -25,7 +25,10 @@
 #include "gpu/gpu.h"
 #include "platform/platform.h"
 #include "platform/surface.h"
+#include "render/arena_camera.h"
 #include "render/scene_renderer.h"
+#include "ui/hud.h"
+#include "ui/sprite.h"
 #include "shaders/demo_wgsl.h"
 
 namespace {
@@ -34,8 +37,10 @@ namespace {
 // Command line
 // ---------------------------------------------------------------------------------------
 struct Options {
-    // Asset selection. Exactly one of these, or none for the triangle demo.
-    std::string model, stage, character, weapon;
+    // Asset selection. Exactly one of stage/character/weapon/model, or none for the
+    // triangle demo; an effect file may ride along with any of them.
+    std::string model, stage, character, weapon, effect;
+    bool        hudTest = false;   // composite a synthetic HUD into --out captures
 
     // Offscreen capture. Empty `out` means "draw into the window".
     std::string out;
@@ -56,7 +61,8 @@ struct Options {
 };
 
 bool hasAsset(const Options& o) {
-    return !o.model.empty() || !o.stage.empty() || !o.character.empty() || !o.weapon.empty();
+    return !o.model.empty() || !o.stage.empty() || !o.character.empty() || !o.weapon.empty() ||
+           !o.effect.empty();
 }
 
 // A Windows path starts with a drive-letter colon, so a `:N` suffix is only a suffix
@@ -76,17 +82,20 @@ void usage() {
     std::fprintf(stderr,
         "usage: foundation_demo [<model.x> | --model=<file.x> | --stage=<dir> |\n"
         "                       --character=<baseDir>/<name>[:costume] |\n"
-        "                       --weapon=<dir or .x>[:slot]] [options]\n"
+        "                       --weapon=<dir or .x>[:slot] | --effect=<file.x]] [options]\n"
         "  --out=<file.ppm>   render offscreen and write a PPM (verification path)\n"
         "  --size=N           offscreen size in pixels (default 512)\n"
         "  --frames=N         stop after N frames (0 = until the window closes)\n"
-        "  --camera=MODE      auto|player|front|top|bounds (default auto: the stage's\n"
-        "                     spawn point when env.dat has one, else framed bounds)\n"
+        "  --camera=MODE      auto|player|front|top|bounds|arena\n"
+        "                     (default auto: the stage's spawn point when env.dat\n"
+        "                     has one, else framed bounds)\n"
         "  --anim=N --time=S --dt=S   pose with animation set N, seek and step\n"
         "  --no-textures      draw untextured, for an A/B of texture resolution\n"
         "  --no-fog           ignore the stage's env.dat fog\n"
         "  --unlit            skip the lambert term\n"
         "  --list             print what was loaded and exit\n"
+        "  --effect=<file.x>  load one card with the effect role (additive pass)\n"
+        "  --hud-test         composite a synthetic HUD into --out captures\n"
         "With no asset argument the spinning-triangle demo runs.\n");
 }
 
@@ -101,6 +110,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--stage=")).empty()) o.stage = v;
         else if (!(v = val("--character=")).empty()) o.character = v;
         else if (!(v = val("--weapon=")).empty()) o.weapon = v;
+        else if (!(v = val("--effect=")).empty()) o.effect = v;
         else if (!(v = val("--out=")).empty()) o.out = v;
         else if (!(v = val("--size=")).empty()) o.size = std::atoi(v.c_str());
         else if (!(v = val("--frames=")).empty()) o.frames = std::atoi(v.c_str());
@@ -112,6 +122,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--no-fog") o.noFog = true;
         else if (a == "--unlit") o.unlit = true;
         else if (a == "--list") o.list = true;
+        else if (a == "--hud-test") o.hudTest = true;
         else if (a.rfind("--", 0) == 0) {
             error = "unknown option " + a;
             return false;
@@ -128,7 +139,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         }
         if (o.frames == 0) o.frames = 1;   // a capture with no frame count means one frame
     }
-    for (const char* mode : {"auto", "player", "front", "top", "bounds"})
+    for (const char* mode : {"auto", "player", "front", "top", "bounds", "arena"})
         if (o.camera == mode) return true;
     error = "unknown --camera=" + o.camera;
     return false;
@@ -169,6 +180,16 @@ xm::Scene loadScene(const Options& o, std::string& error) {
         int slot = 0;
         splitSuffix(o.weapon, spec, slot);
         scene = xm::loadWeapon(spec, slot, nullptr, sopt);
+    } else if (!o.effect.empty()) {
+        xm::SceneModel sm;
+        sm.model = xm::loadFile(o.effect);
+        sm.source = o.effect;
+        sm.role = "effect";
+        const size_t slash = o.effect.find_last_of("/\\");
+        sm.textures =
+            xm::TextureCache(slash == std::string::npos ? std::string() : o.effect.substr(0, slash + 1));
+        scene.models.push_back(std::move(sm));
+        scene.source = o.effect;
     } else {
         xm::SceneModel sm;
         sm.model = xm::loadFile(o.model);
@@ -180,9 +201,23 @@ xm::Scene loadScene(const Options& o, std::string& error) {
         scene.models.push_back(std::move(sm));
         scene.source = o.model;
     }
+    if (!o.effect.empty() && !scene.models.empty() &&
+        scene.models.back().source != o.effect) {
+        // An effect card may ride along with any other asset, the way a weapon rides
+        // a character: same file loading, but the effect role routes it to the
+        // additive pass instead of the opaque one.
+        xm::SceneModel sm;
+        sm.model = xm::loadFile(o.effect);
+        sm.source = o.effect;
+        sm.role = "effect";
+        const size_t slash = o.effect.find_last_of("/\\");
+        sm.textures =
+            xm::TextureCache(slash == std::string::npos ? std::string() : o.effect.substr(0, slash + 1));
+        scene.models.push_back(std::move(sm));
+    }
     if (scene.models.empty())
         error = "nothing loaded from " +
-                (o.stage.empty() ? (o.character.empty() ? (o.weapon.empty() ? o.model : o.weapon)
+                (o.stage.empty() ? (o.character.empty() ? (o.weapon.empty() ? (o.effect.empty() ? o.model : o.effect) : o.weapon)
                                                         : o.character)
                                  : o.stage);
     return scene;
@@ -249,6 +284,9 @@ struct App {
     std::vector<std::vector<glm::mat4>> worlds;
     std::vector<glm::mat4>       modelMatrices;
     render::SceneRenderer        renderer;
+    ui::SpriteRenderer           uiRenderer;
+    ui::HudComposer              hudComposer;
+    bool                         uiReady = false;
     render::Options              renderOptions;
     render::Appearance           appearance;
     glm::vec3                    eye{0.f}, target{0.f};
@@ -460,6 +498,17 @@ bool initScene(App& app) {
         app.eye = center + glm::vec3(0.02f, 1.f, -0.16f) * camDist;
     } else if (mode == "bounds") {
         app.eye = center + glm::vec3(0.9f, 0.45f, -1.15f) * camDist;
+    } else if (mode == "arena" && haveSpawn) {
+        // The game camera, not a framing convenience: the env.dat spawn is the
+        // locked-on fighter, and the desired eye is one-shot (no spring, no
+        // collision clamp — both game-side per the reference).
+        const render::ArenaFrame af = render::arenaViewProj(
+            render::ArenaTarget{spawnEye, 0.f}, render::ArenaCameraParams{}, 16.f / 9.f);
+        app.eye = af.eye;
+        app.target = af.aim;
+    } else if (mode == "arena") {
+        std::fprintf(stderr, "[scene] --camera=arena needs env.dat; framing bounds instead\n");
+        app.eye = center + glm::vec3(0.62f, 0.34f, -0.71f) * camDist;
     } else if (haveSpawn) {
         // auto: a stage frames from its spawn point, everything else from its bounds.
         app.eye = spawnEye + glm::vec3(0.f, 320.f, 0.f);
@@ -483,6 +532,15 @@ bool initScene(App& app) {
     app.renderer.setFog(app.scene.env);
     app.renderer.setAppearance(app.appearance);
 
+    // The HUD test rig: same renderer, same swapchain format, one deterministic
+    // synthetic HUD composited into --out captures. Font upload is fatal here (a
+    // capture without labels would silently prove less); in a game it is not.
+    if (app.opts.hudTest) {
+        if (!app.uiRenderer.init(app.ctx.device, app.ctx.queue, app.error)) return false;
+        if (!app.hudComposer.uploadFont(app.uiRenderer, app.error)) return false;
+        app.uiReady = true;
+    }
+
     const render::Stats& st = app.renderer.stats();
     std::printf("scene %s: %zu model(s), %zu meshes, %zu vertices, %zu palette matrices\n",
                 app.scene.source.c_str(), app.scene.models.size(), app.scene.totalMeshes(),
@@ -497,8 +555,8 @@ bool initScene(App& app) {
         std::printf("fog from env.dat: %.0f..%.0f rgb(%.2f %.2f %.2f)%s\n", app.scene.env.fogStart,
                     app.scene.env.fogEnd, app.scene.env.fogColor.r, app.scene.env.fogColor.g,
                     app.scene.env.fogColor.b, app.scene.env.fogEnabled ? "" : " (disabled)");
-    std::printf("draws: %zu (%d textured, %d untextured, %d decals), %zu GPU textures\n", st.draws,
-                st.textured, st.untextured, st.decals, st.textures);
+    std::printf("draws: %zu (%d textured, %d untextured, %d decals, %d effects), %zu GPU textures\n", st.draws,
+                st.textured, st.untextured, st.decals, st.effects, st.textures);
     return true;
 }
 
@@ -552,6 +610,7 @@ void report(App& app) {
 }
 
 void teardown(App& app) {
+    if (app.uiReady) app.uiRenderer.shutdown();
     app.renderer.shutdown();
     if (app.bindGroup) wgpuBindGroupRelease(app.bindGroup);
     if (app.pipeline) wgpuRenderPipelineRelease(app.pipeline);
@@ -633,6 +692,52 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     return app->opts.list ? SDL_APP_SUCCESS : SDL_APP_CONTINUE;
 }
 
+// ---------------------------------------------------------------------------------------
+// The --hud-test rig: one deterministic synthetic HUD, composited into --out captures
+// through the renderer's UiHook (same encoder, same 3D-then-UI order a game uses).
+// Fixed values, so captures stay byte-identical across runs and targets.
+// ---------------------------------------------------------------------------------------
+struct HudTestHook {
+    ui::SpriteRenderer* ui = nullptr;
+    ui::HudComposer*    hud = nullptr;
+    uint32_t            size = 0;
+    std::string*        error = nullptr;
+};
+
+ui::HudState syntheticHudState() {
+    ui::HudState st;
+    st.balloon[0] = 87.f;
+    st.balloon[1] = 42.f;
+    st.limit = 100.f;
+    st.mainWhole = 5;
+    st.mainFrac = 0.6f;
+    st.reloading = false;
+    st.chargeWhole = 2;
+    st.chargeFrac = 0.3f;
+    st.holdVisible = true;
+    st.holdFrac = 0.5f;
+    st.holdColor = ui::kHudTierYellow;
+    st.hp = 73.f;
+    st.hyperName = "OYASHIRO";
+    st.hyperGauge = 0.8f;
+    st.hyperActive = false;
+    st.hyperReady = true;
+    st.hyperSecondsLeft = 0.f;
+    st.hyperAura = ui::kHudWhite;
+    st.staminaVisible = true;
+    st.staminaFrac = 0.4f;
+    st.koVisible = false;
+    return st;
+}
+
+bool hudTestHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat format,
+                 uint32_t w, uint32_t h, void* ud) {
+    auto* hk = static_cast<HudTestHook*>(ud);
+    hk->ui->beginFrame(w, h);
+    hk->hud->compose(*hk->ui, syntheticHudState(), ui::computeHudLayout((int)w, (int)h));
+    return hk->ui->render(enc, view, format, *hk->error);
+}
+
 SDL_AppResult SDL_AppIterate(void* appstate) {
     auto* app = static_cast<App*>(appstate);
 
@@ -668,7 +773,12 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             // --out without --frames means one frame, so the last frame is always defined.
             if (app->frames >= (uint64_t)app->opts.frames) {
                 std::vector<uint8_t> rgba;
-                if (!app->renderer.capture((uint32_t)app->opts.size, rgba, app->error))
+                HudTestHook hook{&app->uiRenderer, &app->hudComposer,
+                                 (uint32_t)app->opts.size, &app->error};
+                const bool useHud = app->opts.hudTest && app->uiReady;
+                if (!app->renderer.capture((uint32_t)app->opts.size, rgba, app->error,
+                                           useHud ? hudTestHook : nullptr,
+                                           useHud ? &hook : nullptr))
                     return SDL_APP_FAILURE;
                 reportCoverage(rgba, app->opts.size);
                 writePpm(app->opts.out, rgba, app->opts.size);

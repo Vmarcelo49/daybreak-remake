@@ -38,6 +38,9 @@ without a display:
 ./build/linux/foundation_demo --stage=<data/stageNN> --camera=player --out=stage.ppm --size=400
 ./build/linux/foundation_demo --character=<data/akane:0> --anim=2 --frames=30 --out=char.ppm
 ./build/linux/foundation_demo --weapon=<data/item/05.X> --out=weapon.ppm
+./build/linux/foundation_demo --effect=<data/effect/01.X> --out=effect.ppm
+./build/linux/foundation_demo --stage=<data/stage21> --camera=arena --out=arena.ppm
+./build/linux/foundation_demo --character=<data/akane:0> --hud-test --out=hud.ppm
 ./build/linux/foundation_demo --list                    # what a spec loads, then exit
 ```
 
@@ -142,6 +145,18 @@ one renderer, three targets. The two frames the reference implementation's own
 captures were kept for (stage01 at the player camera, akane plus a weapon at the
 front camera) come out pixel-identical here, so the port is not an approximation
 of the shader and draw path it replaces.
+
+New since the port landed, all verified the same way:
+
+- `--camera=arena` drives the one-shot game camera from an env.dat spawn
+  (stage21: eye-level fight frame, 96.55% coverage).
+- `--effect=<file>` loads a card with the effect role, engaging the additive
+  pass in-repo (`effect/01.X`: 11 effect draws, 17.95% coverage, no black quads).
+- `--hud-test` composites a deterministic synthetic HUD into `--out` captures
+  through the renderer's UI hook — the first in-engine HUD-over-3D frame.
+- `foundation_ui` (sprite batch, bitmap font, HUD composer, diagnostics) and
+  `foundation_media` (audio/input contracts plus SDL3 pin asserts) compile on all
+  three targets; the media backends themselves remain future work.
 
 ## Not here yet
 

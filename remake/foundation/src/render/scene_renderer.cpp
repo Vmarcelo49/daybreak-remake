@@ -14,9 +14,12 @@ WGPUStringView sv(const char* s) { return WGPUStringView{s, WGPU_STRLEN}; }
 
 // Baked shadow decals are identified by name, exactly as the DX9 fix does: the
 // "shadow*" family plus the 影 (kage) names the stages use for 校舎影02 / 手すり影 /
-// 影坂01. Binding them by effect technique would be the real answer; until the item
-// and effect tables are parsed, the name is the same provisional signal the DX9
-// renderer uses.
+// 影坂01. This stays PROVISIONAL (R1): the real signal would be a per-material
+// effect/technique binding, but a token-level survey of all 728 shipped .X files
+// found the EffectInstance template defined 491 times and instantiated zero times,
+// so D3DX itself would hand the reference loader an empty effect list for every
+// shipped asset. Until an asset with a real binding is observed, the name is the
+// same signal the DX9 renderer uses — see docs/RENDER-MATERIALS.md.
 bool isShadowDecalName(const std::string& raw) {
     std::string s = xm::sjisToUtf8(raw);
     std::string lower;
@@ -24,6 +27,18 @@ bool isShadowDecalName(const std::string& raw) {
     for (char c : s) lower += (char)std::tolower((unsigned char)c);
     if (lower.find("shadow") != std::string::npos) return true;
     return s.find("\xe5\xbd\xb1") != std::string::npos;   // 影 in UTF-8
+}
+
+// Effect cards (data/effect, data/aura) are indistinguishable from opaque geometry
+// in their parsed material terms — white diffuse, power 0, near-zero specular,
+// zero emissive, opaque-alpha textures — so no material signal can route them.
+// The scene role is the only honest signal: the asset layer names each model's
+// category, and a future `--effect` loader assigns these roles the way loadWeapon
+// assigns "weapon" today. Bare `--model` loads keep role "model" and stay opaque.
+Pass classifyPass(const std::string& role, const std::string& texture) {
+    if (role == "effect" || role == "aura") return Pass::Effect;
+    if (!texture.empty() && isShadowDecalName(texture)) return Pass::Decal;
+    return Pass::Opaque;
 }
 
 // COPY_BYTES_PER_ROW_ALIGNMENT is 256: a tightly packed RGBA row is only legal for
@@ -160,8 +175,9 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
 
 void SceneRenderer::shutdown() {
     for (Pipelines& p : pipelines_) {
-        if (p.main) wgpuRenderPipelineRelease(p.main);
+        if (p.opaque) wgpuRenderPipelineRelease(p.opaque);
         if (p.decal) wgpuRenderPipelineRelease(p.decal);
+        if (p.effect) wgpuRenderPipelineRelease(p.effect);
     }
     pipelines_.clear();
 
@@ -295,7 +311,7 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                     (sub.material >= 0 && (size_t)sub.material < mesh.materials.size())
                         ? mesh.materials[(size_t)sub.material]
                         : (mesh.materials.empty() ? xm::Material{} : mesh.materials[0]);
-                const bool decal = !mat.texture.empty() && isShadowDecalName(mat.texture);
+                const Pass pass = classifyPass(sm.role, mat.texture);
                 if (options.textures && !mat.texture.empty()) {
                     // const_cast: the cache hands out a shared image and keying white
                     // out is idempotent, which is what makes mutating it here safe.
@@ -303,7 +319,7 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                     if (img && !img->empty()) {
                         // White keys out so the card disappears where it is neutral and
                         // only the blob multiplies.
-                        if (decal) xm::keyOutWhite(*img);
+                        if (pass == Pass::Decal) xm::keyOutWhite(*img);
                         auto it = texIndex.find(img);
                         if (it == texIndex.end()) {
                             Texture tex;
@@ -341,12 +357,18 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                 } else {
                     ++stats_.untextured;
                 }
-                d.decal = decal;
-                // A decal must not be shaded: white has to stay exactly white or the
-                // multiply darkens the ground it is supposed to leave alone.
-                if (decal) {
+                d.pass = pass;
+                // Diffuse rides baseColor the way D3DX feeds faceColor to the pipeline;
+                // the renderer used to shade everything white. Observed tinted materials
+                // all live in non-drawn collision meshes, so no capture changes from
+                // this — it is the real per-material signal, wired rather than dropped.
+                d.baseColor = mat.diffuse;
+                // Decals and effect cards are lighting, not paint: white has to stay
+                // exactly white (decals) and black exactly black (effects) or the blend
+                // darkens or washes the ground it is supposed to leave alone.
+                if (pass != Pass::Opaque) {
                     d.flags |= xm::kDrawUnlit;
-                    ++stats_.decals;
+                    if (pass == Pass::Decal) ++stats_.decals; else ++stats_.effects;
                 }
                 // The original's 3D passes alpha-test: without it the foliage and
                 // ground cards draw as opaque quads.
@@ -361,10 +383,15 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
         return false;
     }
 
-    // Baked shadows are coplanar with the ground and do not write depth, so they must
-    // be drawn after it. The original draws its decal pass last for the same reason.
+    // Opaque geometry first, then the multiply decals over it, then additive effect
+    // cards last: decals are coplanar with the ground and must not occlude anything,
+    // and effect glows add over the shadowed ground rather than under it. The
+    // decal-after-opaque half reproduces the original's decal-pass-last order; the
+    // effect-last half is the renderer's choice, unverified against the original.
     std::stable_partition(draws_.begin(), draws_.end(),
-                          [](const DrawItem& d) { return !d.decal; });
+                          [](const DrawItem& d) { return d.pass == Pass::Opaque; });
+    std::stable_partition(draws_.begin(), draws_.end(),
+                          [](const DrawItem& d) { return d.pass != Pass::Effect; });
 
     paletteBuffer_ = gpu::createBuffer(device_, palette_.size() * sizeof(glm::mat4),
                                        WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst,
@@ -452,12 +479,14 @@ bool SceneRenderer::ensureDepth(uint32_t width, uint32_t height, std::string& er
 
     // The original renders into a D3DFMT_D16 autodepthstencil. Without a depth buffer
     // a stage is unrenderable: its inverted sky dome encloses the camera, so whichever
-    // sub-model is drawn first fills the screen.
+    // sub-model is drawn first fills the screen. The texture carries a stencil byte
+    // too, for the DX9 decal guard below (first decal to cover a pixel bumps it via
+    // INCRSAT); depth values are identical to the old stencil-less texture.
     WGPUTextureDescriptor td = {};
     td.usage = WGPUTextureUsage_RenderAttachment;
     td.dimension = WGPUTextureDimension_2D;
     td.size = WGPUExtent3D{width, height, 1};
-    td.format = WGPUTextureFormat_Depth24Plus;
+    td.format = WGPUTextureFormat_Depth24PlusStencil8;
     td.mipLevelCount = 1;
     td.sampleCount = 1;
     depthTex_ = wgpuDeviceCreateTexture(device_, &td);
@@ -471,31 +500,56 @@ bool SceneRenderer::ensureDepth(uint32_t width, uint32_t height, std::string& er
     return true;
 }
 
-WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, bool decal,
+WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, Pass pass,
                                               std::string& error) {
-    for (const Pipelines& p : pipelines_)
-        if (p.format == format) return decal ? p.decal : p.main;
+    Pipelines* entry = nullptr;
+    for (Pipelines& p : pipelines_)
+        if (p.format == format) {
+            entry = &p;
+            break;
+        }
+    if (!entry) {
+        pipelines_.push_back(Pipelines{});
+        entry = &pipelines_.back();
+        entry->format = format;
+    }
+    WGPURenderPipeline& slot =
+        pass == Pass::Opaque ? entry->opaque : pass == Pass::Decal ? entry->decal : entry->effect;
+    if (slot) return slot;
 
     WGPUVertexAttribute attrs[xm::kVertexAttributeCount];
     WGPUVertexBufferLayout vbl = xm::wgpuVertexLayout(attrs);
 
-    // Both pipelines of a format are built together: a target format needs the decal
-    // pipeline too, and a cache entry with only half of it would be a trap.
-    auto makePipeline = [&](bool multiply) {
-        // The two differ in exactly three places:
-        //   * the normal pipeline draws lit, textured 3D geometry, alpha-blended;
-        //   * the decal one reproduces the DX9 path for baked shadows —
+    // Each pass builds only on first use: the default captures draw no effect cards,
+    // so eagerly creating all three per format would mint pipelines nothing binds.
+    auto makePipeline = [&](Pass kind) {
+        //   * opaque draws lit, textured 3D geometry, alpha-blended;
+        //   * decal reproduces the DX9 path for baked shadows —
         //     dest = src * dst (SRCBLEND = DESTCOLOR, DESTBLEND = ZERO), ZWRITEENABLE
         //     off so the card never occludes anything, and no culling because a decal
-        //     card can face either way.
+        //     card can face either way. The stencil test is the DX9 overlap guard:
+        //     pixels already shadowed read 1, not 0, and are skipped, so two cards
+        //     darken shared ground exactly once. The reference is set to 0 once the
+        //     decal pass binds (render() below);
+        //   * effect reproduces the observed need of the glow/spark cards in
+        //     data/effect and data/aura: additive over everything, unlit, no depth
+        //     write, no culling — the 2D/effect-pass treatment the original gives
+        //     such cards (CULLMODE off). SRC_ALPHA,ONE matches the DX9 debug
+        //     additive precedent; on shipped effect textures alpha is uniformly 255
+        //     (surveyed), so it coincides with ONE,ONE there — see RENDER-PASSES.md.
         WGPUColorTargetState target = {};
         target.format = format;
         target.writeMask = WGPUColorWriteMask_All;
         WGPUBlendState blend = {};
-        if (multiply) {
+        if (kind == Pass::Decal) {
             blend.color.srcFactor = WGPUBlendFactor_Dst;
             blend.color.dstFactor = WGPUBlendFactor_Zero;
             blend.alpha.srcFactor = WGPUBlendFactor_Zero;
+            blend.alpha.dstFactor = WGPUBlendFactor_One;
+        } else if (kind == Pass::Effect) {
+            blend.color.srcFactor = WGPUBlendFactor_SrcAlpha;
+            blend.color.dstFactor = WGPUBlendFactor_One;
+            blend.alpha.srcFactor = WGPUBlendFactor_One;
             blend.alpha.dstFactor = WGPUBlendFactor_One;
         } else {
             blend.color.srcFactor = WGPUBlendFactor_SrcAlpha;
@@ -508,11 +562,24 @@ WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, bool dec
         target.blend = &blend;
 
         WGPUDepthStencilState depth = {};
-        depth.format = WGPUTextureFormat_Depth24Plus;
-        depth.depthWriteEnabled = multiply ? WGPUOptionalBool_False : WGPUOptionalBool_True;
+        depth.format = WGPUTextureFormat_Depth24PlusStencil8;
+        depth.depthWriteEnabled =
+            kind == Pass::Opaque ? WGPUOptionalBool_True : WGPUOptionalBool_False;
         depth.depthCompare = WGPUCompareFunction_LessEqual;
         setStencilOps(depth.stencilFront);
         setStencilOps(depth.stencilBack);
+        // Full masks on every pass, not just the decal one: the masks are meaningless
+        // while all ops are Keep, but a zero mask is a needless backend-validation
+        // question on targets this session cannot execute (web/Dawn).
+        depth.stencilReadMask = 0xFF;
+        depth.stencilWriteMask = 0xFF;
+        if (kind == Pass::Decal) {
+            // EQUAL 0 / INCRSAT — the DX9 states verbatim.
+            for (WGPUStencilFaceState* s : {&depth.stencilFront, &depth.stencilBack}) {
+                s->compare = WGPUCompareFunction_Equal;
+                s->passOp = WGPUStencilOperation_IncrementClamp;
+            }
+        }
 
         WGPUFragmentState fs = {};
         fs.module = shader_;
@@ -531,7 +598,7 @@ WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, bool dec
         rpd.primitive.frontFace = WGPUFrontFace_CW;
         // The original culls counter-clockwise for 3D (CULLMODE = 3) and disables
         // culling for its 2D/effect passes, which is where the decals belong.
-        rpd.primitive.cullMode = multiply ? WGPUCullMode_None : WGPUCullMode_Back;
+        rpd.primitive.cullMode = kind == Pass::Opaque ? WGPUCullMode_Back : WGPUCullMode_None;
         rpd.depthStencil = &depth;
         rpd.multisample.count = 1;
         rpd.multisample.mask = 0xFFFFFFFFu;
@@ -539,18 +606,9 @@ WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, bool dec
         return wgpuDeviceCreateRenderPipeline(device_, &rpd);
     };
 
-    Pipelines p;
-    p.format = format;
-    p.main = makePipeline(false);
-    p.decal = makePipeline(true);
-    if (!p.main || !p.decal) {
-        error = "render pipeline creation failed for format " + std::to_string((int)format);
-        if (p.main) wgpuRenderPipelineRelease(p.main);
-        if (p.decal) wgpuRenderPipelineRelease(p.decal);
-        return nullptr;
-    }
-    pipelines_.push_back(p);
-    return decal ? p.decal : p.main;
+    slot = makePipeline(pass);
+    if (!slot) error = "render pipeline creation failed for format " + std::to_string((int)format);
+    return slot;
 }
 
 bool SceneRenderer::render(const Target& target, std::string& error) {
@@ -563,10 +621,6 @@ bool SceneRenderer::render(const Target& target, std::string& error) {
         return false;
     }
     if (!ensureDepth(target.width, target.height, error)) return false;
-
-    WGPURenderPipeline mainPipeline = pipelineFor(target.format, false, error);
-    WGPURenderPipeline decalPipeline = pipelineFor(target.format, true, error);
-    if (!mainPipeline || !decalPipeline) return false;
 
     // Camera, light and fog, in a local copy: the light is a fixed world-space key,
     // because the original has no dynamic lighting for 3D passes, only these D3D light
@@ -584,6 +638,7 @@ bool SceneRenderer::render(const Target& target, std::string& error) {
         du.model = draws_[i].model;
         du.paletteOffset = draws_[i].paletteOffset;
         du.flags = draws_[i].flags | (appearance_.unlit ? xm::kDrawUnlit : 0u);
+        du.baseColor = draws_[i].baseColor;
         std::memcpy(drawData.data() + i * xm::kDrawStride, &du, sizeof du);
     }
     wgpuQueueWriteBuffer(queue_, drawBuffer_, 0, drawData.data(), drawData.size());
@@ -601,8 +656,11 @@ bool SceneRenderer::render(const Target& target, std::string& error) {
     depth.depthStoreOp = WGPUStoreOp_Store;
     depth.depthClearValue = 1.0f;
     depth.depthReadOnly = false;
-    depth.stencilLoadOp = WGPULoadOp_Undefined;
-    depth.stencilStoreOp = WGPUStoreOp_Undefined;
+    // The decal guard needs a zeroed stencil every frame; nothing reads it back.
+    depth.stencilLoadOp = WGPULoadOp_Clear;
+    depth.stencilStoreOp = WGPUStoreOp_Discard;
+    depth.stencilClearValue = 0;
+    depth.stencilReadOnly = false;
 
     WGPURenderPassDescriptor passDesc = {};
     passDesc.colorAttachmentCount = 1;
@@ -614,15 +672,27 @@ bool SceneRenderer::render(const Target& target, std::string& error) {
         error = "render pass could not be started";
         return false;
     }
-    wgpuRenderPassEncoderSetPipeline(pass, mainPipeline);
     wgpuRenderPassEncoderSetBindGroup(pass, 0, cameraGroup_, 0, nullptr);
 
-    bool decalBound = false;
+    // Pipelines bind lazily: draws are sorted by pass, so each of the at most three
+    // pipelines binds once, and a scene with no decals or effects never creates
+    // those pipelines at all.
+    WGPURenderPipeline boundPipelines[3] = {nullptr, nullptr, nullptr};
+    Pass current = Pass::Opaque;
+    bool haveCurrent = false;
     for (size_t i = 0; i < draws_.size(); ++i) {
         const DrawItem& d = draws_[i];
-        if (d.decal != decalBound) {   // draws are sorted, so this flips at most once
-            wgpuRenderPassEncoderSetPipeline(pass, d.decal ? decalPipeline : mainPipeline);
-            decalBound = d.decal;
+        if (!haveCurrent || d.pass != current) {
+            WGPURenderPipeline& slot = boundPipelines[(int)d.pass];
+            if (!slot && !(slot = pipelineFor(target.format, d.pass, error))) {
+                wgpuRenderPassEncoderEnd(pass);
+                wgpuRenderPassEncoderRelease(pass);
+                return false;
+            }
+            wgpuRenderPassEncoderSetPipeline(pass, slot);
+            if (d.pass == Pass::Decal) wgpuRenderPassEncoderSetStencilReference(pass, 0);
+            current = d.pass;
+            haveCurrent = true;
         }
         const uint32_t offset = (uint32_t)(i * xm::kDrawStride);
         wgpuRenderPassEncoderSetBindGroup(pass, 1, drawGroup_, 1, &offset);
@@ -638,7 +708,8 @@ bool SceneRenderer::render(const Target& target, std::string& error) {
     return true;
 }
 
-bool SceneRenderer::capture(uint32_t size, std::vector<uint8_t>& rgba, std::string& error) {
+bool SceneRenderer::capture(uint32_t size, std::vector<uint8_t>& rgba, std::string& error,
+                           UiHook uiHook, void* uiUserdata) {
     if (!device_) {
         error = "renderer not initialized";
         return false;
@@ -667,6 +738,7 @@ bool SceneRenderer::capture(uint32_t size, std::vector<uint8_t>& rgba, std::stri
     target.format = WGPUTextureFormat_RGBA8Unorm;
     target.width = target.height = size;
     if (ok) ok = render(target, error);
+    if (ok && uiHook) ok = uiHook(encoder, colorView, td.format, size, size, uiUserdata);
 
     std::vector<uint8_t> padded;
     if (ok) {

@@ -97,9 +97,10 @@ fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
   let textured = (draw.flags & FLAG_TEXTURED) != 0u;
   var albedo = select(in.color, in.color * texel, textured);
 
-  // The original's 3D passes alpha-test against ref 0x08 with GE — a very low
-  // threshold, which trims foliage and ground cards without eating soft edges.
-  if ((draw.flags & FLAG_ALPHA_TEST) != 0u && albedo.a < 0.5) {
+  // The original's 3D passes alpha-test against ref 0x08 with GE — the DX9 renderer
+  // sets ALPHAREF 0x08 / ALPHAFUNC GE, so texels at exactly 8/255 stay. A 0.5
+  // threshold here used to eat soft foliage and ground-card edges the original keeps.
+  if ((draw.flags & FLAG_ALPHA_TEST) != 0u && albedo.a * 255.0 < 8.0) {
     discard;
   }
 
@@ -113,6 +114,11 @@ fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
     lit = cam.ambient.rgb + cam.lightColor.rgb * ndl;
   }
 
+  // Emissive, specular and power stay parsed-but-unused (R4): wiring emissive as
+  // the fixed-function flat add blows out materials the original shades normally
+  // (akane's face material carries emissive ≈ skin tone yet renders shaded, not
+  // fullbright), so the term belongs to the effect-technique binding that selects
+  // the real shader — see docs/RENDER-MATERIALS.md. Diffuse does ride baseColor.
   var shaded = albedo.rgb * lit;
   if (cam.fogParams.z > 0.5) {
     let span = max(cam.fogParams.y - cam.fogParams.x, 1e-3);

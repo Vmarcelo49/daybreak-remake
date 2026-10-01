@@ -1,0 +1,96 @@
+# UI verification (Track U)
+
+All checks run from a disposable scratch dir; no shared build file was changed
+and nothing under `/tmp` is committed. The library itself is unintegrated, so
+verification compiles `src/ui/*` directly against the real `webgpu.h` with the
+same flags the Linux build uses.
+
+## Commands (exact)
+
+```bash
+F=/home/marcelo/Projetos/daybreak-decomp/remake/foundation
+W=$F/build/linux/_deps/wgpu-linux-x86_64-release-src/include
+g++ -std=gnu++17 -DWEBGPU_BACKEND_WGPU -Wall -Wextra \
+  -I$F/src -isystem $W -isystem $W/webgpu \
+  -o /tmp/ui_verify/ui_check /tmp/ui_verify/main.cpp \
+  $F/src/ui/sprite.cpp $F/src/ui/font.cpp $F/src/ui/hud.cpp \
+  $F/src/ui/fallback.cpp $F/src/gpu/gpu.cpp \
+  -L$F/build/linux -lwgpu_native -Wl,-rpath,$F/build/linux
+cd /tmp/ui_verify && ./ui_check
+```
+
+(`gpu.cpp` links for `gpu::createShaderModule`/`createBuffer`, the same
+dependency the proposed `foundation_ui → foundation` link declares.)
+
+## Observed output
+
+```
+host checks done
+HOST OK
+gpu: backend=Vulkan
+batch: 78 quads, 0 dropped
+coverage: 72565 px of 120000 (60.47%) luminance 0.067..1.000
+wrote /tmp/ui_verify/out.ppm
+RESULT: ok
+```
+
+Zero warnings under `-Wall -Wextra`. Before the fix, the run caught a real
+bug: the sampler descriptor left `maxAnisotropy` at 0 and wgpu-native's
+validator aborted `wgpuDeviceCreateSampler` (`Invalid anisotropic clamp: 0.
+Must be at least 1`); `sprite.cpp` now sets 1 like the scene renderer.
+
+## What was checked
+
+Host-side (no device, deterministic):
+
+- `barFillWidth`: halves, clamps both ends, sub-pixel fractions draw nothing,
+  zero width — the DX9 `(int)(w*frac)` truncation reproduced exactly.
+- `pixelsToNdc`: corners map to (∓1,±1), centre to origin — agrees with the
+  `ui_wgsl` mapping by construction.
+- `clipToScissor`: disabled clip yields the viewport; negative/overflowing
+  rects clamp; fully-off and zero-area clips drop the quad.
+- `measureText`/`glyphSupported`/`utf8Next`: exact monospace extents
+  (`"MAIN"` = 24 px at scale 1), multiline extents, empty string, CJK and
+  malformed bytes advance exactly one cell as `?`.
+- `layoutText`/`layoutTextCentered`: one quad per glyph, 15x21 px glyphs at
+  scale 3, UVs inside the atlas, centred block starts at `centerX - width/2`.
+- `buildAtlasRGBA`: 128x48 RGBA, ink-pixel count sane, `'A'` bar row inked,
+  space cell empty, glyph RGB white (tint carries the colour).
+- `computeHudLayout`: 800x600 anchors equal the surveyed DX9 constants
+  (balloon `(20,8)`/`(W-120,8)`, main bar `(W-220,H-80,180x12)`, HP bar
+  `(W-180,H-140,160x14)`, hyper bar `(20,H-64,180x12)`, stamina centred,
+  KO at `(W/2,220)`); a 400x300 viewport tracks.
+- `buildDiagLines`/`computeDiagPanel`: healthy 3-line form, error shows its
+  first line truncated to 60 chars, panel pads the longest line, tiny surfaces
+  clamp the panel instead of covering the frame.
+
+GPU (headless wgpu-native → Vulkan/RADV, no surface, 400x300 offscreen):
+
+- `SpriteRenderer::init`, font atlas upload, and a synthetic 8x8 checker
+  upload (standing in for a decoded CNV) all succeed; 78-quad HUD batch records
+  with 0 drops.
+- Orientation probe (white 20x20 at pixels 10,10) reads back at top-left:
+  the y-flip is correct.
+- Scissor probe (full-frame red, left-half clip) paints only the left half:
+  `SetScissorRect` needs no per-backend flip, as designed.
+- Composed battle HUD (balloon/LIMIT, MAIN/CHARGE + hold tier, HP, active
+  OYASHIRO gauge, stamina, KO sting) + checker sprite read back at 60.47%
+  coverage, luminance 0.067..1.000; `/tmp/ui_verify/out.ppm` shows corner
+  labels, bottom bars, centred stamina and the corner sprite in place.
+
+## Not verified
+
+- **No in-engine frame.** The layer is unintegrated by design: no `main.cpp`
+  wiring, no HUD-over-3D capture, no byte-identical Linux/Windows pair. The
+  offscreen pattern it needs is proven headless, but the parent's integration
+  must re-run captures before any commit.
+- **No Dawn-family execution.** Shared code has no backend `#if`, but only
+  wgpu-native/Vulkan ran here. Web (emdawnwebgpu) and Windows/Wine exercise is
+  open — expected to work, not shown.
+- **No visual sign-off beyond the scratch PPM.** Glyph aesthetics and colour
+  fidelity were asserted numerically (ink counts, probe pixels, coverage), not
+  judged against the DX9 reference screenshots.
+- **No CJK.** Unsupported codepoints render as `?` by design; JP HUD text
+  needs a separate font track.
+- **No performance numbers.** A 78-quad HUD rewrites one small vertex buffer
+  per frame; no frame-time claim is made until it runs in the demo loop.
