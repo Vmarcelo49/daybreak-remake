@@ -30,11 +30,13 @@ dropped — everything shaded white). Observed tinted materials (174/4758) all l
 in non-drawn collision meshes, so this changes zero capture pixels; it is wired
 because it is the D3DX `faceColor` path, not a heuristic.
 
-Proposed parent-owned follow-up (reported, not applied): parse nested
-`MeshMaterialList`-level `EffectInstance` children into `Material` (filename +
-params) so `classifyPass()` in `scene_renderer.cpp` can key decals/effects on it
-and the name heuristic can retire. The render side already funnels all routing
-through `classifyPass()` — the patch is one predicate.
+Landed as `Material::effectFile`: nested `EffectInstance` children parse into the
+material (filename + stats flag) in `readMaterialBody`, covering both named and
+inline materials. Verified with a synthetic instance (`glow.fx` lands, texture
+untouched) and a full 728-file corpus reload (0 failures, 0 shipped materials
+carry one — the survey result stands). Routing deliberately unchanged: with no
+shipped instance to key on, `classifyPass()` keeps its current signals until an
+asset actually carries an effect file.
 
 ## R4 — terms wired only with observed justification
 

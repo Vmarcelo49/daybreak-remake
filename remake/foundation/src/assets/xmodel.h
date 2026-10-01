@@ -83,6 +83,11 @@ struct Material {
     glm::vec3   specular{0.f};
     glm::vec3   emissive{0.f};
     std::string texture;   // raw bytes as stored (Shift-JIS in the shipped assets)
+    // Effect filename from a nested EffectInstance child, when the material has
+    // one. Empty in every shipped asset (the template is defined 491x but never
+    // instantiated); parsed so future/modded files do not silently lose it, and
+    // so routing can key on it instead of the texture-name heuristic.
+    std::string effectFile;
 };
 
 struct Submesh {           // one draw call: indices [firstIndex, firstIndex + indexCount)
@@ -1388,6 +1393,17 @@ private:
                 header();
                 std::string v = lx_.next();
                 mt.texture = lx_.lastQuoted() ? v : trimNul(v);
+                skipRest();
+                return true;
+            }
+            if (t == "EffectInstance") {
+                // Nested effect binding, previously skipped outright here (the
+                // binary converter already emits these — the template is seeded).
+                // Same shape as TextureFilename (optional name + one string).
+                header();
+                std::string v = lx_.next();
+                mt.effectFile = lx_.lastQuoted() ? v : trimNul(v);
+                m_.stats.hadEffectInstance = true;
                 skipRest();
                 return true;
             }
