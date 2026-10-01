@@ -18,3 +18,5 @@ Thumbs.db
 
 # Manter JSONs individuais em binary_data/functions/ (são os artefatos úteis)
 !binary_data/functions/*.json
+
+Higurashi-Daybreak/

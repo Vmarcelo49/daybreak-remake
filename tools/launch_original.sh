@@ -1,27 +1,33 @@
 #!/usr/bin/env bash
 #
-# launch_original.sh — open the original DaybreakDX.exe with the widescreen
-# hook, for agent testing.
+# launch_original.sh — open DaybreakDX.exe with our DaybreakFixer injector,
+# for agent testing. (wideMod support removed 2026-09-30: wideMod is not
+# compatible with our DLL — game stays black under `wideMod --launch`.)
 #
 # What it does:
-#   1. Resolves the game folder (GAME_DIR) and wideMod.exe (WIDEMOD).
-#   2. Sanity-checks DaybreakDX.exe + config.dat (+ warns if DaybreakFixer.dll
-#      is missing, the --launch injection would fail).
-#   3. Runs `wideMod.exe --launch` under wine, pinned to CPU 0 on the host
-#      (taskset, complements the in-guest affinity workaround).
+#   1. Resolves the game folder (GAME_DIR) and injector.exe (INJECTOR).
+#   2. Sanity-checks DaybreakDX.exe + injector.exe (+ warns if
+#      DaybreakFixer.dll / config.dat are missing).
+#   3. Runs `injector.exe` under wine (Forwards CLI args). Our injector
+#      exits after launching, so the script then BLOCKS while DaybreakDX.exe
+#      lives, printing `game launched:` / `game exited:` lines.
+#   4. No host-side CPU pin by default: pinning (taskset -c 0) causes
+#      pathologically slow boot (black window for minutes) + system-wide
+#      hitches under Wine (root cause 2026-09-30). Opt in with PIN_CPUS="0".
 #
 # It BLOCKS while the game runs so interactive agents (computer-use, etc.)
 # can drive the window; kill DaybreakDX.exe (or Ctrl-C here) to end the
-# session. wideMod prints `game launched: pid=...` on start and
-# `game exited: pid=... code=...` at the end.
+# session.
 #
 # Usage:
-#   tools/launch_original.sh [--resolution 1920x1080] [-- <extra wideMod args>]
+#   tools/launch_original.sh [--affinity] [--no-priority] [dll] [exe]
+#   (args forwarded to injector.exe; resolution comes from widescreen.toml)
 #
 # Env:
 #   GAME_DIR  game install dir (default: <repo>/Higurashi-Daybreak)
-#   WIDEMOD   wideMod.exe path (default: $GAME_DIR/wideMod.exe, then
-#             ~/Projetos/daybreakWidescreen/wideMod.exe)
+#   INJECTOR  injector.exe path (default: $GAME_DIR/injector.exe)
+#   PIN_CPUS  opt-in host CPU pin, e.g. PIN_CPUS="0" (default: unset = no
+#             pin; pinning causes black-screen boot + hitches under Wine)
 #   WINE      wine binary (default: wine)
 #   WINEDLLOVERRIDES / WINEDEBUG  passthrough (defaults: "" / -all)
 #
@@ -29,46 +35,56 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GAME_DIR="${GAME_DIR:-$REPO_ROOT/Higurashi-Daybreak}"
+INJECTOR="${INJECTOR:-$GAME_DIR/injector.exe}"
 WINE="${WINE:-wine}"
 
-pick_widemod() {
-    if [[ -n "${WIDEMOD:-}" && -f "$WIDEMOD" ]]; then echo "$WIDEMOD"; return; fi
-    # Prefer the source-built binary so agents always exercise the latest
-    # --launch implementation; fall back to a copy inside the game dir.
-    local sibling="$HOME/Projetos/daybreakWidescreen/wideMod.exe"
-    if [[ -f "$sibling" ]]; then echo "$sibling"; return; fi
-    if [[ -f "$GAME_DIR/wideMod.exe" ]]; then echo "$GAME_DIR/wideMod.exe"; return; fi
-    echo "ERROR: wideMod.exe not found. Set WIDEMOD=/path/to/wideMod.exe" >&2
-    exit 1
-}
-
-WIDEMOD_RESOLVED="$(pick_widemod)"
-
 [[ -f "$GAME_DIR/DaybreakDX.exe" ]] || { echo "ERROR: $GAME_DIR/DaybreakDX.exe not found (set GAME_DIR)" >&2; exit 1; }
+[[ -f "$INJECTOR" ]] || { echo "ERROR: injector.exe not found at $INJECTOR (set INJECTOR)" >&2; exit 1; }
+[[ -f "$GAME_DIR/DaybreakFixer.dll" ]] || echo "WARN: DaybreakFixer.dll missing in $GAME_DIR — injection will fail" >&2
 [[ -f "$GAME_DIR/config.dat" ]]     || echo "WARN: no config.dat yet (fresh install) — open config in the game once to generate it" >&2
-[[ -f "$GAME_DIR/DaybreakFixer.dll" ]] || echo "WARN: DaybreakFixer.dll missing in $GAME_DIR — --launch injection will fail" >&2
 
-# Optional resolution patch applied before launch: --resolution 1920x1080
-EXTRA_ARGS=()
-if [[ "${1:-}" == "--resolution" && -n "${2:-}" ]]; then
-    EXTRA_ARGS+=(--resolution="$2")
-    shift 2
+# Our injector reads resolution from widescreen.toml; fail fast instead of
+# misparsing wideMod-style flags as [dll]/[exe] positionals.
+if [[ "${1:-}" == "--resolution" ]]; then
+    echo "ERROR: --resolution is a wideMod flag (unsupported). Edit widescreen.toml [display] instead." >&2
+    exit 2
+fi
+if [[ "${1:-}" == "--launch" ]]; then
+    echo "ERROR: --launch is a wideMod flag (unsupported). Our injector launches by default; drop the flag." >&2
+    exit 2
 fi
 if [[ "${1:-}" == "--" ]]; then shift; fi
-# Any remaining args are forwarded to wideMod.exe verbatim.
 
 export WINEDEBUG="${WINEDEBUG:--all}"
 [[ -n "${WINEDLLOVERRIDES:-}" ]] && export WINEDLLOVERRIDES
 
 PIN=()
-if command -v taskset >/dev/null 2>&1; then PIN=(taskset -c 0); fi
+if [[ -n "${PIN_CPUS:-}" ]] && command -v taskset >/dev/null 2>&1; then PIN=(taskset -c "$PIN_CPUS"); fi
 
 echo "=== launch_original ==="
 echo "  game dir: $GAME_DIR"
-echo "  wideMod:  $WIDEMOD_RESOLVED"
-echo "  args:     --launch ${EXTRA_ARGS[*]:-} $*"
+echo "  injector: $INJECTOR"
+if [[ ${#PIN[@]} -eq 0 ]]; then echo "  pin:      none (set PIN_CPUS=\"0\" to pin)"; else echo "  pin:      ${PIN[*]}"; fi
+echo "  args:     $*"
 echo ""
 
 cd "$GAME_DIR"
 # shellcheck disable=SC2068
-exec "${PIN[@]}" "$WINE" "$WIDEMOD_RESOLVED" --launch "${EXTRA_ARGS[@]}" $@
+"${PIN[@]}" "$WINE" "$INJECTOR" $@
+
+# Our injector exits right after launching; block while the game lives so
+# agents keep a stable window to drive. Wait up to 90s for boot, then
+# poll until the process is gone (Ctrl-C / game quit ends the session).
+echo "waiting for DaybreakDX.exe..."
+for _ in $(seq 1 90); do
+    if pgrep -f "DaybreakDX\.exe" >/dev/null; then break; fi
+    sleep 1
+done
+GAME_PID="$(pgrep -f "DaybreakDX\.exe" | head -1 || true)"
+if [[ -z "${GAME_PID:-}" ]]; then
+    echo "ERROR: DaybreakDX.exe did not appear within 90s — check wine output above" >&2
+    exit 1
+fi
+echo "game launched: pid=$GAME_PID exe=DaybreakDX.exe"
+while kill -0 "$GAME_PID" 2>/dev/null; do sleep 2; done
+echo "game exited: pid=$GAME_PID"
