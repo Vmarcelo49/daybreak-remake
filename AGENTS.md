@@ -14,7 +14,7 @@ modern port. No bit-matching against the original binary is attempted.
 
 | | `remake/` (product) | `research/` (evidence) |
 |---|---|---|
-| Language | C++23, SDL2 + D3D9 | C11 dumps, Python pipeline, JSON |
+| Language | C++23, SDL2 + D3D9 → SDL3 + WebGPU (D2) | C11 dumps, Python pipeline, JSON |
 | Rule | **All new game code goes here** | Nothing here runs the game |
 | Entry docs | `remake/README.md` → `remake/docs/decisions.md` | `docs/overview.md` → `docs/pipeline.md` |
 | Build | `remake/scripts/fetch_deps.sh` (once), then `remake/build.sh` | `python3 research/tools/coverage_report.py` (no deps) |
@@ -23,9 +23,12 @@ modern port. No bit-matching against the original binary is attempted.
 
 1. **Never hand-edit `research/recomp/`.** Generated output; edits are
    overwritten. Source of truth is `research/symbols/`.
-2. **`remake/` keeps DX9 + original `.X` files.** No renderer migration,
-   no conversion pipeline — binding decisions in
-   `remake/docs/decisions.md` (read D1–D5 before touching `remake/`).
+2. **`remake/` keeps the original `.X` files — no conversion pipeline.**
+   The renderer is **migrating to WebGPU** (D2, reversed 2026-10-01):
+   SDL3 + `webgpu.h`, wgpu-native on native targets and emdawnwebgpu on
+   the web. DX9 stays buildable as the A/B reference until the WebGPU
+   path renders a matching in-game frame. Binding decisions in
+   `remake/docs/decisions.md` (read D1–D6 before touching `remake/`).
 3. **`mvp/` is gone.** Retired 2026-10-01 after its contents were ported.
    Don't recreate it; decomp provenance lives in `research/`.
 4. **Comment policy in `remake/src/`:** explain *why*, cite RE provenance
@@ -65,6 +68,7 @@ daybreak-decomp/
 │                    tools/ (ingest→generate→coverage) · extraction_phases/
 ├── remake/          src/{core,render,file_parser,gameplay,physics,input,maps,audio,assets}/
 │                    tools/{asset-tools,hook-tracer}/ assets/shaders/ docs/ tests/
+│                    foundation/   SDL3 + WebGPU base; builds Linux/Windows/web (D2)
 ├── tools/launch_original.sh   run the ORIGINAL exe under Wine (repo-root relative)
 ├── Higurashi-Daybreak/        local game install — gitignored, never commit
 └── .github/                   index Action (regenerates INDEX on push)
