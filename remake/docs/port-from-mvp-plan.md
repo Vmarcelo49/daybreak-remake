@@ -51,14 +51,11 @@ copies (+ a `README.md` each stating origin + "mvp frozen" pointer).
   (`scene_defs.h`); `GameState` offsets `0x2e14/0x2e18/0x2e20…`; input
   globals `0x006cae94…a0`. Put them in `src/core/scenes.h` comments so
   future debugger sessions speak the same language. No behavior change.
-- **P2.2 Title menu data** (from `mvp/src/scene_title.c`, a port of
-  `RenderTitle FUN_00403470`).
-  Merge into remake `Scene_Title`: 9 items at **X=180, Y=128+i*32**;
-  Up/Down wraps; `Enter/Z` confirm, `X/Backspace` cancel; mapping
-  `0→Select, 1→Connect, 3/4→Battle, 8→quit`, items 2/5/6/7 no-op.
-  Keep remake's CNV backgrounds + SDL input; take only positions/map.
-  Caveat: mvp's labels are **guessed from screenshots** (original used a
-  bitmap-font glyph sheet) — treat as placeholder text.
+- **P2.2 Title menu data** (from retired `mvp/src/scene_title.c`).
+  ⚠️ SUPERSEDED by captures (`docs/reference/title-menu.webp`): the real
+  title has **6 items at different positions** (y≈280, ~45px stride), not
+  mvp's inferred 9 at X=180/Y=128+i*32 — do NOT implement those numbers.
+  Kept for the record: Up/Down wrap + confirm/cancel grammar idea only.
 - **P2.3 Stub-flow conventions** (from `scene_manager.c`).
   VS auto-advance after 180 frames (`VS→BATTLE`); `X` returns any stub
   scene to Title. Use for TeamSelect/Result/Config until real.

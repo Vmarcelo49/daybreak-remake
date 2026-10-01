@@ -3,10 +3,14 @@
 ## Escopo revisado (após contexto do user + RE round 3)
 
 **DENTRO de escopo:** mesma estrutura de jogo do original — máquina de estados
-de cenas frontend (opening → menu → mode select → character/team select →
-config screens → gameplay → result), e gameplay 2v2 com câmera de arena
+de cenas frontend (opening → title → team select → character select →
+weapon/costume → hypermode → controller → ready → stage/settings → VS →
+gameplay → result → back to team), e gameplay 2v2 com câmera de arena
 fighter que locka num fighter e cicla via botão. Suporte a 1P, 2P split, 4P
 split (4 viewports 256×448 em grid 2×2 dentro de 800×600).
+(Fluxo capturado tela a tela — ver `docs/reference/README.md`. O antigo
+"mode select" entre title e team NÃO aparece nas capturas; `Scene_ModeSelect`
+está marcado como não-verificado até rechecagem.)
 
 **FORA de escopo** (declarar explicitamente — exceto netplay, ver `decisions.md` D6):
 
