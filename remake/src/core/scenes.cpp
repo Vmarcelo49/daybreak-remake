@@ -60,15 +60,20 @@ static bool menu_navigate(const input::PlayerInput& p1, int& selected, int count
     return changed;
 }
 
-// Helper: check if P1 confirmed (AttackA or Guard pressed).
+// Helper: check if P1 confirmed.
+// Captures show Z (= Jump) confirming in menus (team select, result
+// advance). Title-screen key still unverified (menus were undrivable
+// under Wine), so Guard stays as a fallback for now.
 static bool menu_confirmed(const input::PlayerInput& p1) {
-    return p1.just_pressed[input::Action::AttackA] ||
+    return p1.just_pressed[input::Action::Jump] ||
            p1.just_pressed[input::Action::Guard];
 }
 
-// Helper: check if P1 cancelled (AttackB pressed).
+// Helper: check if P1 cancelled.
+// Captures show X (= AttackA/melee) cancelling on filled select slots
+// (deselects back to character pick). Title-screen key unverified.
 static bool menu_cancelled(const input::PlayerInput& p1) {
-    return p1.just_pressed[input::Action::AttackB];
+    return p1.just_pressed[input::Action::AttackA];
 }
 
 // ============================================================================
@@ -425,11 +430,17 @@ void Scene_Gameplay::on_enter(SceneContext& ctx) {
     // Fighter 2: (-2200, -1363, 200)
     // Using the raw values — the stage .X files use the same coordinate space.
     if (m_models[0]) {
-        m_fighters[0].init(m_models[0], D3DXVECTOR3(1393.0f, 200.0f, -463.0f), 0.0f);
+        m_spawnPos[0] = D3DXVECTOR3(1393.0f, 200.0f, -463.0f);
+        m_spawnFacing[0] = 0.0f;
+        m_fighters[0].init(m_models[0], m_spawnPos[0], m_spawnFacing[0]);
     }
     if (m_models[1]) {
-        m_fighters[1].init(m_models[1], D3DXVECTOR3(-2200.0f, 200.0f, -1363.0f), 3.14159f);
+        m_spawnPos[1] = D3DXVECTOR3(-2200.0f, 200.0f, -1363.0f);
+        m_spawnFacing[1] = 3.14159f;
+        m_fighters[1].init(m_models[1], m_spawnPos[1], m_spawnFacing[1]);
     }
+    m_balloon[0] = m_balloon[1] = 0.0f;
+    m_koAt[0] = m_koAt[1] = -1.0;
 
     m_fighters[0].sync_target(m_targets[0]);
     m_fighters[1].sync_target(m_targets[1]);
@@ -459,10 +470,14 @@ void Scene_Gameplay::on_enter(SceneContext& ctx) {
         }
     }
     m_elapsed = 0.0;
+    m_stingUntil = -1.0;
+    m_hudReady = ctx.device ? m_hud.init(ctx.device) : false;
 }
 
 void Scene_Gameplay::on_exit(SceneContext& ctx) {
     if (ctx.audio) ctx.audio->stop_music();
+    m_hud.unload();
+    m_hudReady = false;
     m_models[0] = nullptr;
     m_models[1] = nullptr;
     for (int i = 0; i < 7; ++i) m_stageModels[i] = nullptr;
@@ -541,6 +556,32 @@ UpdateResult Scene_Gameplay::update(SceneContext& ctx, double dt) {
         const input::PlayerInput* p1_input = ctx.input ? &ctx.input->player(0) : nullptr;
         m_fighters[0].update(p1_input, &m_fighters[1], dt);
         m_fighters[1].update(nullptr, &m_fighters[0], dt);
+
+        // Melee resolution, both directions.
+        m_fighters[0].try_melee_hit(m_fighters[1]);
+        m_fighters[1].try_melee_hit(m_fighters[0]);
+
+        // KO → balloon → respawn / round-over bookkeeping.
+        for (int i = 0; i < 2; ++i) {
+            if (!m_fighters[i].is_alive() && m_koAt[i] < 0.0) {
+                m_koAt[i] = m_elapsed;
+                m_balloon[i] += 21.0f;
+                std::printf("[daybreak] KO! side=%d balloon=%.0f%% (LIMIT %.0f%%)\n",
+                            i, m_balloon[i], m_limit);
+                if (m_balloon[i] >= m_limit) {
+                    std::printf("[daybreak] side %d balloon burst — round over\n", i);
+                    set_next(std::make_unique<Scene_Title>());
+                    return UpdateResult::Transition;
+                }
+                m_stingUntil = m_elapsed + 2.0;  // "KO!" sting (ASCII stand-in)
+            }
+            if (!m_fighters[i].is_alive() && m_koAt[i] >= 0.0 &&
+                m_elapsed - m_koAt[i] >= 3.0) {
+                m_fighters[i].reset(m_spawnPos[i], m_spawnFacing[i]);
+                m_koAt[i] = -1.0;
+                std::printf("[daybreak] side %d respawned\n", i);
+            }
+        }
     }
 
     m_fighters[0].sync_target(m_targets[0]);
@@ -591,6 +632,53 @@ void Scene_Gameplay::render(SceneContext& ctx) {
 
         m_fighters[0].render(ctx.device);
         m_fighters[1].render(ctx.device);
+
+        // HUD (after 3D, same scene). Layout from battle-hud.webp.
+        if (!m_hudReady) m_hudReady = m_hud.init(ctx.device);
+        if (m_hudReady) {
+            const int W = ctx.viewport_w;
+            const int H = ctx.viewport_h;
+            m_hud.begin(ctx.device);
+            // Balloon + LIMIT, top corners.
+            m_hud.text(20, 8, D3DCOLOR_XRGB(255, 255, 255), "%.0f%%", m_balloon[0]);
+            m_hud.text(20, 34, D3DCOLOR_XRGB(160, 200, 255), "LIMIT %.0f%%", m_limit);
+            m_hud.text(W - 120, 8, D3DCOLOR_XRGB(255, 255, 255), "%.0f%%", m_balloon[1]);
+            m_hud.text(W - 120, 34, D3DCOLOR_XRGB(255, 160, 160), "LIMIT %.0f%%", m_limit);
+            m_hud.text(4, 4, D3DCOLOR_XRGB(255, 255, 0), "0");
+            // Bottom-right: MAIN / CHARGE stocks + HP (P1). Stocks are
+            // static until the projectile milestone; HP is live.
+            m_hud.text(W - 220, H - 104, D3DCOLOR_XRGB(255, 255, 255), "6 MAIN");
+            m_hud.bar(W - 220, H - 80, 180, 12, 1.0f,
+                      D3DCOLOR_XRGB(90, 140, 255), D3DCOLOR_XRGB(20, 20, 30));
+            m_hud.text(W - 220, H - 62, D3DCOLOR_XRGB(255, 255, 255), "2 CHARGE");
+            m_hud.bar(W - 220, H - 38, 180, 12, 1.0f,
+                      D3DCOLOR_XRGB(90, 255, 150), D3DCOLOR_XRGB(20, 20, 30));
+            m_hud.text(W - 220, H - 140, D3DCOLOR_XRGB(255, 255, 255), "HP");
+            m_hud.bar(W - 180, H - 140, 160, 14,
+                      m_fighters[0].hp() / 100.0f,
+                      D3DCOLOR_XRGB(255, 220, 60), D3DCOLOR_XRGB(20, 20, 30));
+            // Bottom-left: limit gauge (empty until super meter exists).
+            m_hud.text(20, H - 40, D3DCOLOR_XRGB(255, 255, 255), "OYASHIRO");
+            m_hud.bar(20, H - 64, 180, 12, 0.0f,
+                      D3DCOLOR_XRGB(255, 255, 255), D3DCOLOR_XRGB(20, 20, 30));
+            // Stamina: contextual — dashing, blocking, or jumping.
+            // (No Jump state exists yet, so read the input directly.)
+            bool jumping = ctx.input &&
+                ctx.input->player(0).down[input::Action::Jump];
+            gameplay::FighterState st = m_fighters[0].state();
+            if (st == gameplay::FighterState::Run ||
+                st == gameplay::FighterState::Guard || jumping) {
+                m_hud.text(W / 2 - 100, H - 60, D3DCOLOR_XRGB(255, 255, 255), "STAMINA");
+                m_hud.bar(W / 2 - 100, H - 38, 200, 12,
+                          m_fighters[0].stamina() / 100.0f,
+                          D3DCOLOR_XRGB(255, 255, 255), D3DCOLOR_XRGB(20, 20, 30));
+            }
+            // KO sting.
+            if (m_elapsed < m_stingUntil) {
+                m_hud.centered(220, 100, D3DCOLOR_XRGB(255, 60, 60), "KO!");
+            }
+            m_hud.end();
+        }
         ctx.device->EndScene();
     }
 }

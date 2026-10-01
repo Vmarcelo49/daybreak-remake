@@ -18,19 +18,26 @@
 namespace daybreak::input {
 
 // Default keyboard bindings:
-//   P1: WASD + J(light) K(heavy) L(guard)
-//   P2: Arrows + Numpad1/2/3 (or Z/X/C if numpad unavailable)
+//   P0: verified 1P layout (arrows + Z/X/C/A/S/D/Q/W).
+//   P1-P3: provisional fallbacks (the original uses pads for these slots).
 static KeyboardBindings defaultKbBindings(int player) {
     switch (player) {
-        case 0: return { SDL_SCANCODE_W, SDL_SCANCODE_S, SDL_SCANCODE_A, SDL_SCANCODE_D,
-                         SDL_SCANCODE_J, SDL_SCANCODE_K, SDL_SCANCODE_L };
-        case 1: return { SDL_SCANCODE_UP, SDL_SCANCODE_DOWN, SDL_SCANCODE_LEFT, SDL_SCANCODE_RIGHT,
-                         SDL_SCANCODE_N, SDL_SCANCODE_M, SDL_SCANCODE_COMMA };
-        // P2+ typically use gamepads; these are fallbacks.
+        case 0: return { SDL_SCANCODE_UP, SDL_SCANCODE_DOWN, SDL_SCANCODE_LEFT, SDL_SCANCODE_RIGHT,
+                          SDL_SCANCODE_X, SDL_SCANCODE_UNKNOWN, SDL_SCANCODE_D,
+                          SDL_SCANCODE_C, SDL_SCANCODE_Z, SDL_SCANCODE_S,
+                          SDL_SCANCODE_Q, SDL_SCANCODE_A, SDL_SCANCODE_W };
+        case 1: return { SDL_SCANCODE_W, SDL_SCANCODE_S, SDL_SCANCODE_A, SDL_SCANCODE_D,
+                          SDL_SCANCODE_F, SDL_SCANCODE_UNKNOWN, SDL_SCANCODE_H,
+                          SDL_SCANCODE_G, SDL_SCANCODE_T, SDL_SCANCODE_R,
+                          SDL_SCANCODE_Y, SDL_SCANCODE_U, SDL_SCANCODE_I };
         case 2: return { SDL_SCANCODE_I, SDL_SCANCODE_K, SDL_SCANCODE_J, SDL_SCANCODE_L,
-                         SDL_SCANCODE_R, SDL_SCANCODE_T, SDL_SCANCODE_Y };
+                          SDL_SCANCODE_U, SDL_SCANCODE_UNKNOWN, SDL_SCANCODE_O,
+                          SDL_SCANCODE_P, SDL_SCANCODE_H, SDL_SCANCODE_Y,
+                          SDL_SCANCODE_N, SDL_SCANCODE_B, SDL_SCANCODE_M };
         case 3: return { SDL_SCANCODE_KP_8, SDL_SCANCODE_KP_5, SDL_SCANCODE_KP_4, SDL_SCANCODE_KP_6,
-                         SDL_SCANCODE_KP_1, SDL_SCANCODE_KP_2, SDL_SCANCODE_KP_3 };
+                          SDL_SCANCODE_KP_1, SDL_SCANCODE_UNKNOWN, SDL_SCANCODE_KP_3,
+                          SDL_SCANCODE_KP_0, SDL_SCANCODE_KP_PERIOD, SDL_SCANCODE_KP_7,
+                          SDL_SCANCODE_KP_9, SDL_SCANCODE_KP_DIVIDE, SDL_SCANCODE_KP_MULTIPLY };
         default: return {};
     }
 }
@@ -135,8 +142,15 @@ void InputManager::update_player_keyboard(int index) {
     m_players[index].down[Left]    = m_keyboardState[kb.left];
     m_players[index].down[Right]   = m_keyboardState[kb.right];
     m_players[index].down[AttackA] = m_keyboardState[kb.attackA];
-    m_players[index].down[AttackB] = m_keyboardState[kb.attackB];
+    m_players[index].down[AttackB] = kb.attackB != SDL_SCANCODE_UNKNOWN &&
+                                     m_keyboardState[kb.attackB];
     m_players[index].down[Guard]   = m_keyboardState[kb.guard];
+    m_players[index].down[Shoot]   = m_keyboardState[kb.shoot];
+    m_players[index].down[Jump]    = m_keyboardState[kb.jump];
+    m_players[index].down[Special] = m_keyboardState[kb.special];
+    m_players[index].down[Tactics] = m_keyboardState[kb.tactics];
+    m_players[index].down[LockSwitch] = m_keyboardState[kb.lockSwitch];
+    m_players[index].down[Pause]   = m_keyboardState[kb.pause];
 
     // Keyboard has no analog sticks; set from digital D-pad.
     m_players[index].stick_x = m_players[index].down[Right] ? 32767 :
@@ -161,11 +175,18 @@ void InputManager::update_player_gamepad(int index) {
     m_players[index].down[Right]   = SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
 
     // Face buttons (Xbox layout: A=bottom, B=right, X=left, Y=top).
-    // AttackA = X (light), AttackB = Y (heavy), Guard = A (block).
-    // Target switch = B (right button) or LB.
+    // PROVISIONAL pad map (original P2-P4 pads are buttons 1-8, exact
+    // layout unknown — see input_manager.h). Melee=X, jump=B, guard=A
+    // mirror the keyboard semantics; triggers/shoulders cover the rest.
     m_players[index].down[AttackA] = SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_X);
-    m_players[index].down[AttackB] = SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_Y);
+    m_players[index].down[AttackB] = false;  // unbound (no key exists)
     m_players[index].down[Guard]   = SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_A);
+    m_players[index].down[Jump]    = SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_B);
+    m_players[index].down[Shoot]   = SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_Y);
+    m_players[index].down[Special] = SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+    m_players[index].down[LockSwitch] = SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+    m_players[index].down[Tactics] = SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_BACK);
+    m_players[index].down[Pause]   = SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_START);
 
     m_players[index].stick_x = SDL_GameControllerGetAxis(gc, SDL_CONTROLLER_AXIS_LEFTX);
     m_players[index].stick_y = SDL_GameControllerGetAxis(gc, SDL_CONTROLLER_AXIS_LEFTY);

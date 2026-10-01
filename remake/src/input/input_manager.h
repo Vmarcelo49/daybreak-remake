@@ -9,21 +9,14 @@
 //    - DirectInput8Create with version 0x800
 //
 //  We use SDL2 instead of DirectInput8 directly (SDL2 abstracts both keyboard
-//  and gamepad), but mirror the same 7-action enum and 4-player structure.
+//  and gamepad). The 4-player structure mirrors the original; the action
+//  model is our own (below), verified against the controller-setup capture
+//  (remake/docs/reference/controller-setup.webp). The original's internal
+//  7-slot polling loop is deliberately NOT mirrored.
 //
-//  Actions (7 per player, inferred from RE + game design):
-//    0: Up
-//    1: Down
-//    2: Left
-//    3: Right
-//    4: AttackA  (light attack — punch/kick)
-//    5: AttackB  (heavy attack / special)
-//    6: Guard    (block / target switch when tapped)
-//
-//  Note: "Target switch" (Tab in our camera) is action 6 tapped quickly
-//  while guarding.  The original game uses a dedicated button on the
-//  controller; we map it to Guard-tap for keyboard and to a shoulder
-//  button on gamepad.
+//  "Target switch" is the dedicated LockSwitch action (tap = cycle enemy,
+//  hold = aim ally -- matches the original's A key). ArenaCamera still also
+//  accepts its legacy Guard-tap/Q-E stand-ins until scenes migrate fully.
 // =============================================================================
 #pragma once
 
@@ -33,15 +26,29 @@
 
 namespace daybreak::input {
 
+//  Action model (redesigned 2026-10-01 from ground truth —
+//  remake/docs/reference/controller-setup.webp). The original's internal
+//  7-slot polling loop is deliberately NOT mirrored: this is a remake,
+//  so we model the 11 verified player functions + pause directly.
+//  Authoritative P1 layout: arrows + Z jump/confirm, X melee/cancel,
+//  C shoot, A lock-switch, S special, D guard, Q tactics, W pause;
+//  P2–P4 use pads (buttons 1–8, exact map unknown).
 enum Action : int {
     Up      = 0,
     Down    = 1,
     Left    = 2,
     Right   = 3,
-    AttackA = 4,  // light
-    AttackB = 5,  // heavy / special
-    Guard   = 6,  // block / target switch
-    ActionCount = 7,
+    AttackA = 4,  // melee (X) — feeds FighterState::AttackA
+    AttackB = 5,  // heavy stand-in, UNBOUND by default (no dedicated key
+                  // exists; real game uses directional variants — TODO)
+    Guard   = 6,  // block (D)
+    Shoot   = 7,  // projectile (C)
+    Jump    = 8,  // jump, hold = fly (Z); doubles as menu confirm
+    Special = 9,  // special attack (S)
+    Tactics = 10, // team tactics (Q) — behavior unmodeled, TODO
+    LockSwitch = 11, // target switch, hold = aim ally (A)
+    Pause   = 12, // pause (W)
+    ActionCount = 13,
 };
 
 enum class DeviceType : int {
@@ -81,14 +88,22 @@ struct PlayerInput {
 };
 
 // Keyboard bindings for one player.  Maps Action → SDL_Scancode.
+// P0 defaults are the verified 1P layout (arrows + Z/X/C/A/S/D/Q/W);
+// P1+ fallbacks are provisional (original uses pads there).
 struct KeyboardBindings {
-    SDL_Scancode up      = SDL_SCANCODE_W;
-    SDL_Scancode down    = SDL_SCANCODE_S;
-    SDL_Scancode left    = SDL_SCANCODE_A;
-    SDL_Scancode right   = SDL_SCANCODE_D;
-    SDL_Scancode attackA = SDL_SCANCODE_J;   // light
-    SDL_Scancode attackB = SDL_SCANCODE_K;   // heavy
-    SDL_Scancode guard   = SDL_SCANCODE_L;   // block
+    SDL_Scancode up      = SDL_SCANCODE_UP;
+    SDL_Scancode down    = SDL_SCANCODE_DOWN;
+    SDL_Scancode left    = SDL_SCANCODE_LEFT;
+    SDL_Scancode right   = SDL_SCANCODE_RIGHT;
+    SDL_Scancode attackA = SDL_SCANCODE_X;       // melee
+    SDL_Scancode attackB = SDL_SCANCODE_UNKNOWN; // unbound (no key exists)
+    SDL_Scancode guard   = SDL_SCANCODE_D;       // block
+    SDL_Scancode shoot   = SDL_SCANCODE_C;
+    SDL_Scancode jump    = SDL_SCANCODE_Z;       // + menu confirm
+    SDL_Scancode special = SDL_SCANCODE_S;
+    SDL_Scancode tactics = SDL_SCANCODE_Q;
+    SDL_Scancode lockSwitch = SDL_SCANCODE_A;
+    SDL_Scancode pause   = SDL_SCANCODE_W;
 };
 
 class InputManager {

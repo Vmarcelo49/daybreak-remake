@@ -13,12 +13,15 @@
 //    - HP max = 100 (constant 0x64 near "HPcheck").
 //    - Movement uses D3DXVec3Normalize on the stick direction.
 //
-//  State machine (simplified from the 40+ anim states):
+//  State machine (simplified from the 40+ anim states; input mapping is
+//  provisional — see input_manager.h: the original has ONE melee key (X),
+//  no dedicated heavy key, and separate shoot/special/tactics keys):
 //    Idle → Walk → Idle            (stick moved / released)
 //    Idle → Run → Idle             (dash: double-tap direction)
-//    Idle/Walk → AttackA → Idle    (J / X button — light, 30 frames)
-//    Idle/Walk → AttackB → Idle    (K / Y button — heavy, 30 frames)
-//    Idle/Walk → Guard → Idle      (L / A button held — block)
+//    Idle/Walk → AttackA → Idle    (melee key — light, 30 frames)
+//    Idle/Walk → AttackB → Idle    (heavy — currently same-key stand-in,
+//                                   real game uses directional variants)
+//    Idle/Walk → Guard → Idle      (block key held)
 //    Any → Hit → Idle              (took damage, 15 frames stun)
 //    Any → Knockdown → KO          (HP reached 0)
 //    BattleStart → Idle            (round start pose, 60 frames)
@@ -42,10 +45,10 @@ enum class FighterState : int {
     Idle        = 0,   // standing, no input
     Walk        = 1,   // moving (stick/d-pad)
     Run         = 2,   // dashing (double-tap)
-    AttackA     = 3,   // light attack (J / X)
-    AttackB     = 4,   // heavy attack (K / Y)
+    AttackA     = 3,   // melee (provisional input; see input_manager.h)
+    AttackB     = 4,   // heavy stand-in (no dedicated key in original)
     AttackC     = 5,   // special attack (not yet mapped to input)
-    Guard       = 6,   // blocking (L / A held)
+    Guard       = 6,   // blocking (block key held)
     Hit         = 7,   // taking damage (stun)
     Knockdown   = 8,   // knocked down
     KO          = 9,   // defeated
@@ -85,6 +88,9 @@ struct FighterConstants {
     static constexpr int   kAttackFrames  = 30;      // 0x1e = 0.5s at 60fps
     static constexpr int   kHitStunFrames = 15;      // ~0.25s stun
     static constexpr int   kBattleStartFrames = 60;  // 1.0s intro pose
+    static constexpr float kMeleeRange    = 160.0f;  // XZ reach of melee swings
+    static constexpr int   kLightDamage   = 5;
+    static constexpr int   kHeavyDamage   = 12;
 };
 
 class Fighter {
@@ -110,6 +116,13 @@ public:
     // --- combat ---
     void take_damage(int amount);
     void set_state(FighterState new_state);
+
+    // Melee hit check, called once per frame by the scene for each
+    // attacker→target pair. Only fires during the attack's active window,
+    // at most once per swing (m_didHitThisSwing). Range-only for now —
+    // real hitboxes (mesh raycast) come with the projectile milestone.
+    // Returns true if the hit connected.
+    bool try_melee_hit(Fighter& target);
 
     // --- getters ---
     const D3DXVECTOR3& position()   const { return m_position; }
@@ -142,6 +155,7 @@ private:
     FighterState m_state       = FighterState::Idle;
     int          m_stateTimer  = 0;    // frames remaining in current state
     int          m_animSetIdx  = -1;   // cached animation set index for current state
+    bool         m_didHitThisSwing = false;  // melee connected already this swing
 
     // --- movement helpers ---
     void update_movement(const input::PlayerInput* input, const Fighter* opp, double dt);

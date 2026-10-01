@@ -92,21 +92,22 @@ void Fighter::update(const input::PlayerInput* input, const Fighter* opponent, d
 void Fighter::update_state_machine(const input::PlayerInput* input, double dt) {
     if (!input) return;
 
-    // AttackA (light) — J on keyboard, X on gamepad.
+    // AttackA (melee key in the original: X). Provisional mapping —
+    // see input_manager.h (no dedicated heavy key exists).
     if (input->just_pressed[input::Action::AttackA]) {
         set_state(FighterState::AttackA);
         m_stateTimer = FighterConstants::kAttackFrames;
         return;
     }
 
-    // AttackB (heavy) — K on keyboard, Y on gamepad.
+    // AttackB (heavy stand-in — unbound by default; see input_manager.h).
     if (input->just_pressed[input::Action::AttackB]) {
         set_state(FighterState::AttackB);
         m_stateTimer = FighterConstants::kAttackFrames;
         return;
     }
 
-    // Guard — L on keyboard, A on gamepad (held).
+    // Guard (block key held).
     if (input->down[input::Action::Guard]) {
         if (m_state != FighterState::Guard) {
             set_state(FighterState::Guard);
@@ -188,6 +189,7 @@ void Fighter::set_state(FighterState new_state) {
     if (m_state == new_state) return;
     m_state = new_state;
     m_animSetIdx = -1;  // force animation re-lookup
+    m_didHitThisSwing = false;  // new swing may hit again
     try_switch_animation();
 
     const char* name = state_to_anim_name(new_state);
@@ -235,6 +237,36 @@ void Fighter::take_damage(int amount) {
         set_state(FighterState::Hit);
         m_stateTimer = FighterConstants::kHitStunFrames;
     }
+}
+
+bool Fighter::try_melee_hit(Fighter& target) {
+    if (m_state != FighterState::AttackA && m_state != FighterState::AttackB) {
+        return false;
+    }
+    if (m_didHitThisSwing || !target.is_alive()) {
+        return false;
+    }
+    // Active window: skip the first few startup frames so the swing has
+    // to actually come out (mirrors +0xa0 action-frames counting down).
+    const int elapsed = FighterConstants::kAttackFrames - m_stateTimer;
+    if (elapsed < 5) {
+        return false;
+    }
+
+    const float dx = target.m_position.x - m_position.x;
+    const float dz = target.m_position.z - m_position.z;
+    const float distSq = dx * dx + dz * dz;
+    const float range = FighterConstants::kMeleeRange;
+    if (distSq > range * range) {
+        return false;
+    }
+
+    m_didHitThisSwing = true;
+    const int dmg = (m_state == FighterState::AttackB)
+        ? FighterConstants::kHeavyDamage
+        : FighterConstants::kLightDamage;
+    target.take_damage(dmg);
+    return true;
 }
 
 void Fighter::render(IDirect3DDevice9* device) {

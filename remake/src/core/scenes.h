@@ -1,14 +1,17 @@
 // =============================================================================
 //  scenes.h — concrete scene implementations.
 //
-//  Scene flow (mirrors the original game):
+//  Scene flow (from captures — docs/reference/README.md, full loop):
 //    Bootstrap → Opening (op.mpg) → Title (menu)
-//      → VS Mode → ModeSelect → CharacterSelect → Gameplay → Title
-//      → Config (stub)
-//      → Key Config (stub)
-//      → Exit
+//      → TeamSelect → CharacterSelect → Weapon/Costume → Hypermode
+//      → Controller (per slot) → Ready → Stage/Settings → VS sting
+//      → Gameplay → Result (sting → quote → report) → back to TeamSelect
+//      → Config (stub), Key Config (stub), Exit
+//  NOTE: Scene_ModeSelect below is UNVERIFIED against the original —
+//  captures go Title → TeamSelect directly. Keep it until versus entry
+//  is re-checked; it may need merging into the Title→Team transition.
 //
-//  Original scene IDs (LoadNextScene, FUN_00406310 — from mvp/scene_defs.h):
+//  Original scene IDs (LoadNextScene, FUN_00406310 — via retired mvp):
 //    TITLE=0, SELECT=1, VS_LOAD=2, BATTLE=3, CONNECT=7, BATTLE_RUN=8.
 //  Our classes cover a different (remake-specific) flow, but new scenes
 //  that map 1:1 to original states should reuse these numbers in comments.
@@ -16,9 +19,9 @@
 //  current_scene +0x2e18, sub_scene +0x2e20; input globals joystick X/Y
 //  0x006cae94/98, confirm 0x006cae9c, cancel 0x006caea0.
 //
-//  Stub-scene conventions (from mvp/scene_manager.c): a VS-style loading
-//  scene auto-advances after ~180 frames; any stub returns to Title on
-//  cancel (AttackB / X).
+//  Stub-scene conventions (from retired mvp's LoadNextScene port):
+//  a VS-style loading scene auto-advances after ~180 frames; any stub
+//  returns to Title on cancel.
 // =============================================================================
 #pragma once
 
@@ -27,6 +30,7 @@
 
 #include "core/scene.h"
 #include "render/arena_camera.h"
+#include "render/hud.h"
 #include "render/ui_image.h"
 #include "render/video_player.h"
 #include "gameplay/fighter.h"
@@ -70,19 +74,19 @@ private:
     int             m_selected = 0;
     double          m_elapsed = 0.0;
 
-    // Menu items (mirrors the original game's title screen).
+    // Menu items (remake-specific short menu; the original has 6 JP items:
+    // Story/Versus/Netplay/Option/Controller/Exit — see
+    // docs/reference/title-menu.webp).
     static constexpr int kMenuItemCount = 4;
     const char* m_items[kMenuItemCount] = {
         "VS Mode", "Config", "Key Config", "Exit"
     };
 
-    // Menu layout geometry from RenderTitle (FUN_00403470): 9 items at
-    // X=180, Y=128+i*32.  Our menu is shorter, but text rendering (see
-    // the TODO in scenes.cpp) must use this origin/stride so the layout
-    // matches the original, and item targets follow its mapping
-    // (0→Select, 1→Connect, 3/4→Battle, 8→quit; 2/5/6/7 no-op).
-    // mvp's English labels are guesses from screenshots — the original
-    // used a bitmap-font glyph sheet.
+    // Menu layout geometry (UNVERIFIED — do not trust blindly): retired
+    // mvp inferred 9 items at X=180, Y=128+i*32 from RenderTitle, but the
+    // captured title screen shows 6 items at different positions
+    // (items start y≈280, ~45px stride — see title-menu.webp). Re-measure
+    // from the capture before text rendering lands (TODO in scenes.cpp).
     static constexpr int kMenuX  = 180;
     static constexpr int kMenuY0 = 128;
     static constexpr int kMenuDY = 32;
@@ -156,6 +160,19 @@ private:
     ArenaCamera             m_camera;
     CameraTarget            m_targets[2];
     double                  m_elapsed = 0.0;
+
+    // Balloon economy (spec §3.5): per-side balloon %, LIMIT, KO clock.
+    // Side i's balloon inflates when fighter i is KO'd; side loses past LIMIT.
+    float                   m_balloon[2] = {0.0f, 0.0f};
+    float                   m_limit = 100.0f;
+    double                  m_koAt[2] = {-1.0, -1.0};  // -1 = alive
+    D3DXVECTOR3             m_spawnPos[2] = {};
+    float                   m_spawnFacing[2] = {0.0f, 0.0f};
+
+    // HUD + KO sting (ASCII "KO!" until JP text lands).
+    render::Hud             m_hud;
+    bool                    m_hudReady = false;
+    double                  m_stingUntil = -1.0;
 
     // Animation debug mode (F2 to toggle).
     // When active, Left/Right cycles through all AnimationSets on P1's model.
