@@ -11,8 +11,8 @@
 // What this pins (every expectation is hand arithmetic, printed next to the measured
 // value; each check states its tolerance — 1e-3 absolute at the 800-unit scale is
 // 1.25e-6 relative, i.e. float noise — and drops to 0.f where the arithmetic is exact):
-//   1. constants + desired-eye formula, including the height/distance overrides, the
-//      orbit nudge and the 50-unit aim raise;
+//   1. the desired-eye formula, including the height/distance overrides, the orbit
+//      nudge and the aim raise;
 //   2. convergence from the (0,0,0) seed: N updates leave 1 - 0.9^N of the desired
 //      offset. The banked DX9 frame 1 is this rule with N = 1 — hud-dash logs
 //      eye=(70,50,-38) with a 500-unit desired height, and 10% of 500 is 50 — which is
@@ -24,7 +24,18 @@
 //      reference's walk from "no active target"), out-of-range/dead refusals;
 //   5. the LH / Y-up / ZO [0,1] view-projection convention: the aim lands on the screen
 //      centre, one unit in front is inside the depth range, and the projection equals
-//      glm::perspectiveLH_ZO with the reference's fov/near/far.
+//      glm::perspectiveLH_ZO with referenceRemake()'s fov/near/far;
+//   6. the ORIGINAL game's framing — ArenaCameraPreset::original(), which is what a
+//      match now renders with: its seven numbers, the four axis-aligned desired-eye
+//      cases they produce, its aim, its convergence and collision arithmetic, and its
+//      projection.
+//
+// Which preset each section runs: 1-5 pin the ported rules against the DX9 remake's
+// framing (height 300 / distance 800 / aim +50 / baseline π/4 / near 1 / far 100000),
+// because those are the numbers the *behavioural* oracle's traces were banked with;
+// 6 pins the original's numbers, which are the *visual* oracle's (the prints). A
+// framing change must move section 6 and leave 1-5 alone — that is the point of the
+// preset split, and it is what makes "the port's semantics are unchanged" testable.
 //
 // What this does NOT prove: parity with the DX9 binary. There is no in-process DX9
 // oracle, and the collision cases use this test's own two-triangle quads, so they pin
@@ -54,6 +65,7 @@ using game::physics::RayHit;
 using game::physics::raycastModel;
 using gameplay::ArenaCamera;
 using gameplay::CameraTarget;
+using gameplay::ArenaCameraPreset;
 using gameplay::CollisionQuery;
 
 int g_checks   = 0;
@@ -148,7 +160,7 @@ xm::Model quadAtZ(float z, float x0, float x1, float y0, float y1) {
 // ---------------------------------------------------------------------------------------
 void desiredEyeCases() {
     section("1. constants + desired-eye formula");
-    ArenaCamera cam;
+    ArenaCamera cam(ArenaCameraPreset::referenceRemake());
     // angle = facing - π/4 + nudge. facing 0 -> angle = -π/4, so the horizontal offset
     // is (-sin(-π/4), -cos(-π/4)) * 800 = (+800·sin45, -800·cos45); height 300.
     const CameraTarget front = makeTarget(0.f, 200.f, 0.f, 0.f);
@@ -213,7 +225,7 @@ void desiredEyeCases() {
               cam.compute_desired_eye(nullptr), glm::vec3(0.f, 0.f, 300.f), 1e-3f);
 
     // The aim update() builds is the position raised 50, not the position.
-    ArenaCamera aimCam;
+    ArenaCamera aimCam(ArenaCameraPreset::referenceRemake());
     CameraTarget piOver4 = makeTarget(0.f, 200.f, 0.f, kPiOver4);
     std::vector<CameraTarget*> pool{&piOver4};
     aimCam.set_target_pool(pool);
@@ -229,7 +241,7 @@ void desiredEyeCases() {
 // ---------------------------------------------------------------------------------------
 void convergenceCases() {
     section("2. convergence: N updates leave (1 - 0.9^N) of the desired offset");
-    ArenaCamera cam;
+    ArenaCamera cam(ArenaCameraPreset::referenceRemake());
     CameraTarget t = makeTarget(0.f, 0.f, 0.f, kPiOver4);   // desired eye (0, 300, -800)
     std::vector<CameraTarget*> pool{&t};
     cam.set_target_pool(pool);
@@ -308,7 +320,7 @@ void collisionCases() {
         checkBool("quad at z=-400: the test's own raycast hits", independent.hit, true);
         checkFloat("quad at z=-400: hit.dist = |leg|/2", independent.dist, 419.076365f, 1e-3f);
 
-        ArenaCamera cam;
+        ArenaCamera cam(ArenaCameraPreset::referenceRemake());
         CameraTarget t = makeTarget(0.f, 0.f, 0.f, kPiOver4);
         std::vector<CameraTarget*> pool{&t};
         cam.set_target_pool(pool);
@@ -331,7 +343,7 @@ void collisionCases() {
         xm::Model model = quadAtZ(-10.f, -500.f, 500.f, -100.f, 900.f);
         CameraCollision cc;
         cc.setMesh(&model);
-        ArenaCamera cam;
+        ArenaCamera cam(ArenaCameraPreset::referenceRemake());
         CameraTarget t = makeTarget(0.f, 0.f, 0.f, kPiOver4);
         std::vector<CameraTarget*> pool{&t};
         cam.set_target_pool(pool);
@@ -346,7 +358,7 @@ void collisionCases() {
         xm::Model model = quadAtZ(-400.f, 2000.f, 3000.f, -100.f, 900.f);
         CameraCollision cc;
         cc.setMesh(&model);
-        ArenaCamera cam;
+        ArenaCamera cam(ArenaCameraPreset::referenceRemake());
         CameraTarget t = makeTarget(0.f, 0.f, 0.f, kPiOver4);
         std::vector<CameraTarget*> pool{&t};
         cam.set_target_pool(pool);
@@ -367,7 +379,7 @@ void collisionCases() {
         checkBool("quad at z=-900: beyond the desired eye", beyond.dist > len, true);
         CameraCollision cc;
         cc.setMesh(&model);
-        ArenaCamera cam;
+        ArenaCamera cam(ArenaCameraPreset::referenceRemake());
         CameraTarget t = makeTarget(0.f, 0.f, 0.f, kPiOver4);
         std::vector<CameraTarget*> pool{&t};
         cam.set_target_pool(pool);
@@ -380,7 +392,7 @@ void collisionCases() {
     // No query configured (the reference's nullptr collisionFrame, the match scene's
     // configuration): the same 10% lerp, never a snap.
     {
-        ArenaCamera cam;
+        ArenaCamera cam(ArenaCameraPreset::referenceRemake());
         CameraTarget t = makeTarget(0.f, 0.f, 0.f, kPiOver4);
         std::vector<CameraTarget*> pool{&t};
         cam.set_target_pool(pool);
@@ -402,7 +414,7 @@ void targetCases() {
     CameraTarget d = makeTarget(300.f, 0.f, 0.f, 0.f, false);
     std::vector<CameraTarget*> pool{&a, &b, &c, &d};
 
-    ArenaCamera cam;
+    ArenaCamera cam(ArenaCameraPreset::referenceRemake());
     checkInt("fresh camera: active_target_index() = -1", cam.active_target_index(), -1);
     checkBool("fresh camera: active_target() = nullptr", cam.active_target() == nullptr, true);
 
@@ -501,7 +513,7 @@ void targetCases() {
 // ---------------------------------------------------------------------------------------
 void matrixCases() {
     section("5. view/projection: LH, Y-up, depth [0,1]");
-    ArenaCamera cam;
+    ArenaCamera cam(ArenaCameraPreset::referenceRemake());
     CameraTarget t = makeTarget(0.f, 0.f, 0.f, kPiOver4);   // desired eye (0, 300, -800)
     std::vector<CameraTarget*> pool{&t};
     cam.set_target_pool(pool);
@@ -572,8 +584,126 @@ void matrixCases() {
               (vp * glm::vec4(cam.eye() - forward * 100.f, 1.f)).w < 0.f, true);
 
     // Before the first update the view is the constructor's identity.
-    ArenaCamera fresh;
+    ArenaCamera fresh(ArenaCameraPreset::referenceRemake());
     checkMatExact("fresh camera: view_matrix() = identity", fresh.view_matrix(), glm::mat4(1.f));
+}
+
+// ---------------------------------------------------------------------------------------
+// 6. the original game's preset (the default: what a match renders with)
+// ---------------------------------------------------------------------------------------
+void originalPresetCases() {
+    section("6. the original's framing (ArenaCameraPreset::original(), the default)");
+    // Why these numbers and not the remake's: the visual target is the original's own
+    // prints (FULL-REPLACEMENT-PLAN.md §6a). The preset's own comment carries the
+    // measurement; this section pins the arithmetic every frame's framing follows from.
+    const ArenaCameraPreset p = ArenaCameraPreset::original();
+    checkFloat("original: eye height above the fighter = 211", p.height, 211.f, 0.f);
+    checkFloat("original: horizontal eye distance = 289", p.distance, 289.f, 0.f);
+    checkFloat("original: aim = position + 138 (her neck, not the remake's +50)", p.aimHeight,
+               138.f, 0.f);
+    checkFloat("original: baseline orbit = 0 (directly behind the facing)", p.baselineOrbit,
+               0.f, 0.f);
+    checkFloat("original: fovy = pi/4 (the original's own D3DX call)", p.fovY, kPiOver4, 1e-9f);
+    checkFloat("original: near = 50", p.nearClip, 50.f, 0.f);
+    checkFloat("original: far = 150000", p.farClip, 150000.f, 0.f);
+
+    // The default camera IS the original: a match must render the game's framing.
+    ArenaCamera def;
+    checkFloat("default-constructed camera uses the original preset", def.preset().height,
+               p.height, 0.f);
+    checkFloat("default-constructed camera: aim height is the original's", def.preset().aimHeight,
+               p.aimHeight, 0.f);
+
+    ArenaCamera cam;   // default = original
+    // The fighter's forward is (sin yaw, 0, cos yaw) (fighter.cpp:667), so "directly
+    // behind" (baseline 0) puts the eye at pos - forward*distance + height.
+    // facing 0 -> forward +z -> eye = pos + (0, 211, -289).
+    CameraTarget behind = makeTarget(0.f, 200.f, 0.f, 0.f);
+    checkNear("original: facing 0 (+z) -> eye = pos + (0, 211, -289)",
+              cam.compute_desired_eye(&behind), glm::vec3(0.f, 411.f, -289.f), 1e-3f);
+    // facing pi/2 -> forward +x -> eye = pos + (-289, 211, 0).
+    const CameraTarget plusX = makeTarget(10.f, 200.f, 20.f, kPi / 2.f);
+    checkNear("original: facing pi/2 (+x) -> eye = pos + (-289, 211, 0)",
+              cam.compute_desired_eye(&plusX), glm::vec3(-279.f, 411.f, 20.f), 1e-3f);
+    // facing pi -> forward -z -> the opposite side again.
+    const CameraTarget minusZ = makeTarget(0.f, 200.f, 0.f, kPi);
+    checkNear("original: facing pi (-z) -> eye = pos + (0, 211, 289)",
+              cam.compute_desired_eye(&minusZ), glm::vec3(0.f, 411.f, 289.f), 1e-3f);
+
+    // No target: still the preset's height, as the reference's fallback used its constant.
+    checkNear("original: compute_desired_eye(nullptr) = (0, 0, 211)",
+              cam.compute_desired_eye(nullptr), glm::vec3(0.f, 0.f, 211.f), 0.f);
+
+    // The aim update() builds is position + 138.
+    std::vector<CameraTarget*> pool{&behind};
+    cam.set_target_pool(pool);
+    cam.set_active_target(0);
+    cam.update(1.0 / 60.0);
+    checkNear("original: update() aim = position + 138y", cam.target(),
+              glm::vec3(0.f, 338.f, 0.f), 1e-6f);
+
+    // Convergence is the same per-call rule; only the desired eye changed. From the
+    // (0,0,0) seed, N calls leave 1 - 0.9^N of it: 10% of (0, 211, -289). The target
+    // sits at the origin so the arithmetic is the desired eye itself, as in section 2.
+    CameraTarget origin = makeTarget(0.f, 0.f, 0.f, 0.f);
+    ArenaCamera conv;
+    std::vector<CameraTarget*> cpool{&origin};
+    conv.set_target_pool(cpool);
+    conv.set_active_target(0);
+    conv.update(0.5, {});
+    checkNear("original: N=1 leaves 10% of (0, 211, -289)", conv.eye(),
+              glm::vec3(0.f, 21.1f, -28.9f), 1e-4f);
+    conv.update(0.5, {});
+    checkNear("original: N=2 leaves 19%", conv.eye(), glm::vec3(0.f, 40.09f, -54.91f), 1e-4f);
+    for (int i = 2; i < 10; ++i) conv.update(0.5, {});
+    checkNear("original: N=10 leaves 0.6513215599", conv.eye(),
+              glm::vec3(0.f, 137.428881f, -188.232831f), 1e-3f);
+
+    // The blocked path under the new framing: the same snap rule, a different segment.
+    {
+        // aim (0,138,0) -> desired (0,211,-289); |leg| = sqrt(73^2 + 289^2) = 298.077...
+        const glm::vec3 aim(0.f, 138.f, 0.f);
+        const glm::vec3 desired(0.f, 211.f, -289.f);
+        const glm::vec3 leg = desired - aim;
+        const float     len = glm::length(leg);
+        const glm::vec3 dir = leg / len;
+        info("original: |aim->desired| = " + f2s(len));
+        xm::Model model = quadAtZ(-144.5f, -500.f, 500.f, -100.f, 900.f);
+        const ModelIndex index = buildModelIndex(model);
+        const RayHit independent = raycastModel(model, index, aim, dir, len);
+        checkBool("original: quad at z=-144.5 is hit", independent.hit, true);
+        CameraCollision cc;
+        cc.setMesh(&model);
+        std::vector<CameraTarget*> hpool{&origin};
+        ArenaCamera hit;
+        hit.set_target_pool(hpool);
+        hit.set_active_target(0);
+        hit.update(1.0 / 60.0, CollisionQuery{&cc});
+        checkNear("original: blocked -> eye = aim + dir.(hit.dist - 20)",
+                  hit.eye(), aim + dir * (independent.dist - 20.f), 1e-3f);
+        ArenaCamera miss;
+        miss.set_target_pool(hpool);
+        miss.set_active_target(0);
+        miss.update(1.0 / 60.0);
+        checkNear("original: unblocked 10% lerp is much closer than the snap",
+                  miss.eye(), desired * 0.1f, 1e-4f);
+        checkBool("original: the snap lands past the lerp (both on the same ray)",
+                  glm::length(hit.eye() - aim) > glm::length(miss.eye()), true);
+    }
+
+    // The projection is the original's: fovy pi/4 (unchanged), near 50, far 150000.
+    const glm::mat4 proj = cam.proj_matrix(1280, 720);
+    checkMatExact("original: proj_matrix() == glm::perspectiveLH_ZO(pi/4, aspect, 50, 150000)",
+                  proj, glm::perspectiveLH_ZO(kPiOver4, 1280.f / 720.f, 50.f, 150000.f));
+    checkFloat("original: proj[1][1] = 1/tan(pi/8)", proj[1][1], 2.414213437f, 1e-6f);
+    checkFloat("original: proj[2][2] = far/(far-near) = 150000/149950", proj[2][2],
+               1.000333444f, 1e-7f);
+    checkFloat("original: proj[3][2] = -far.near/(far-near)", proj[3][2], -50.016672240f, 1e-5f);
+    // The vertical scale is what a pixel-height measurement rides on; it is unchanged
+    // from the remake's because both use pi/4 -- which is why only the distance moved.
+    const glm::mat4 ref = glm::perspectiveLH_ZO(kPiOver4, 1280.f / 720.f, 1.f, 100000.f);
+    checkFloat("original: the vertical scale matches the remake's fov (proj[1][1])",
+               proj[1][1], ref[1][1], 0.f);
 }
 
 }  // namespace
@@ -584,6 +714,7 @@ int main() {
     collisionCases();
     targetCases();
     matrixCases();
+    originalPresetCases();
 
     std::printf("\nchecks=%d failures=%d\n", g_checks, g_failures);
     std::printf("ARENA_CAMERA: %s\n", g_failures == 0 ? "ok" : "FAIL");

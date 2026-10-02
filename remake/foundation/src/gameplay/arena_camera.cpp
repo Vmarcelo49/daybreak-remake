@@ -56,17 +56,19 @@ CameraTarget* ArenaCamera::active_target() const {
 }
 
 glm::vec3 ArenaCamera::compute_desired_eye(const CameraTarget* t) const {
-    if (!t) return glm::vec3(0.0f, 0.0f, kHeightOffset);
+    if (!t) return glm::vec3(0.0f, 0.0f, m_preset.height);
 
     // The eye math has one implementation in the tree — render::arenaViewProj, which is
     // the same formula as the reference's (angle = facing - π/4 + nudge, XZ horizontal,
-    // the offset subtracted so the camera sits 45° off directly-behind). Its view/proj
-    // are the same glm calls update()/proj_matrix() make, so reading .eye out of it is
-    // exact; the aspect argument only feeds matrices that are discarded here.
+    // the offset subtracted so the camera sits behind the fighter at the preset's
+    // azimuth). Its view/proj are the same glm calls update()/proj_matrix() make, so
+    // reading .eye out of it is exact; the aspect argument only feeds matrices that are
+    // discarded here. The nudge carries the difference between the render helper's π/4
+    // baseline and the preset's, so no second copy of the azimuth math exists.
     render::ArenaCameraParams p;
     p.heightOffset   = effective_height();
     p.distanceOffset = effective_distance();
-    p.orbitNudge     = m_orbitNudge;
+    p.orbitNudge     = m_orbitNudge + (kRenderBaselineOrbit - m_preset.baselineOrbit);
     return render::arenaViewProj(*t, p, 1.0f).eye;
 }
 
@@ -78,8 +80,9 @@ void ArenaCamera::update(double /*dt*/, const CollisionQuery& collision) {
         return;
     }
 
-    // The aim is the fighter's position raised 50 units, not the position itself.
-    m_target = glm::vec3(t->position.x, t->position.y + 50.0f, t->position.z);
+    // The aim is the fighter's position raised by the preset's aim height, not the
+    // position itself (the remake raised it 50; the original aims at her neck).
+    m_target = glm::vec3(t->position.x, t->position.y + m_preset.aimHeight, t->position.z);
 
     const glm::vec3 desiredEye = compute_desired_eye(t);
 
@@ -115,10 +118,13 @@ void ArenaCamera::update(double /*dt*/, const CollisionQuery& collision) {
 }
 
 glm::mat4 ArenaCamera::proj_matrix(int viewport_w, int viewport_h) const {
+    // The aspect is the viewport's, not the original's constant 4/3: the original's own
+    // D3DXMatrixPerspectiveFovLH call passes 4/3 because its window was 800x600, and a
+    // foundation capture at another size must not be stretched to match a constant.
     const float aspect = (viewport_h > 0)
         ? static_cast<float>(viewport_w) / static_cast<float>(viewport_h)
         : 1.0f;
-    return glm::perspectiveLH_ZO(kFovY, aspect, kNearClip, kFarClip);
+    return glm::perspectiveLH_ZO(m_preset.fovY, aspect, m_preset.nearClip, m_preset.farClip);
 }
 
 }  // namespace gameplay
