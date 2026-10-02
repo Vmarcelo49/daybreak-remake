@@ -105,9 +105,30 @@ cap-at-refresh behaviour. On the web FIFO is the *only* present mode there is.
 WGSL is embedded in the binary (`src/shaders/demo_wgsl.h`, `model_wgsl.h`) rather
 than loaded from a file, because the web build has no filesystem.
 
-`.X`, `.cnv` and `.dat` are read from disk. On native targets that is the extracted
-game tree. On the web, the same code reads from Emscripten’s virtual filesystem,
-so a local verification build can preload a small asset subset as `/assets`:
+`.X`, `.cnv` and `.dat` are read through one seam (`src/assets/asset_source.*`):
+**the install's `daybreakXX.dat` bundles first, the filesystem second**. An install is
+found from whichever asset path the command line already carries, or named with
+`--install=<dir>`; with an extracted tree and no bundles, every read falls through to
+the filesystem exactly as before. The bundle path is the game's own: first match in
+`daybreak00/02/04/05/06/07` order, resolving case like the exe's `__stricmp`.
+
+The two sources are *not* interchangeable, which is why the order matters: 983 names
+ship in more than one bundle and 445 groups differ in bytes. `extract_dat.py` leaves the
+last copy in a tree while the game reads the first, so `data/rika/01.X` is 9,675,158
+bytes from the bundles (what DX9 loads — `remake/tests/parity-baseline/logs/asset-*.log`,
+index 6017) and 9,893,738 from the extracted tree. `--list` prints each model's byte
+count so the loaded copy is visible.
+
+A verification run needs no tree at all:
+
+```bash
+mkdir -p /tmp/install-only && ln -s "<game-dir>"/daybreak0*.dat /tmp/install-only/
+./build/linux/foundation_demo --install=/tmp/install-only \
+  --stage=/tmp/install-only/data/stage21 --character=/tmp/install-only/data/akane:0 --list
+```
+
+On the web, the same code reads from Emscripten’s virtual filesystem, so a local
+verification build can preload a small asset subset as `/assets`:
 
 ```bash
 mkdir -p /tmp/foundation-web-assets
@@ -170,6 +191,32 @@ New since the port landed, all verified the same way:
   SFX paths, gains applied) and `--input-test` (canned 6-frame tap with exact
   edge output). Media backends run on Linux and Wine; the browser gesture path
   and audible checks remain open.
+
+Phase 1 (reads installs, CPU raycast, debug prims):
+
+- Bundles are the primary asset source (see "Shaders and assets" above). Run with
+  only `daybreak0*.dat` symlinked into a scratch directory and every asset path
+  pointing inside it — nothing on disk — and `--versus` runs green on Linux and
+  Wine with byte-identical captures (480,015 B each): 12 models / 54 meshes /
+  55,095 vertices, 166 draws, coverage 150,052 px (93.78%), and identical
+  camera-smoothing, animation, HUD and audio counts. Wine reports the same
+  composition as Linux here, where the extracted-tree runs diverged 13 vs 12
+  models (a case-folding artifact this work fixed).
+- `--debug-prims` draws a deterministic line overlay (play-area box, aim cross,
+  desired-eye cross) as a second Load-preserving pass on the scene's encoder,
+  depth-tested against the scene's own depth attachment (dashes where the stage
+  occludes a line). Linux vs Wine captures are byte-identical at 1,080,015 B;
+  15 lines / 30 vertices / 0 dropped / 1 pass; coverage 225,692 px (62.69%),
+  luminance 0.046..0.928.
+- `physics/raycast.*` replaces `D3DXIntersect` (Möller–Trumbore, the reference's
+  two walkers and traversal order) and drives the arena eye clamp: the desired
+  eye is clamped against the stage's `collision_camera` mesh before smoothing,
+  with `--no-camera-clamp` as the A/B switch. Stages 04/14 ship a camera mesh
+  that parses to zero triangles and take the documented no-clamp degradation;
+  01/06/16/21 ship real geometry (180–628 triangles) and their shipped spawn
+  segment is unblocked, so the clamp is inert there. Measured cost: 5.5 µs/ray
+  on the largest shipped camera mesh — no BVH (201 µs/ray at 32,768 triangles is
+  where one would start to pay).
 
 ## Not here yet
 

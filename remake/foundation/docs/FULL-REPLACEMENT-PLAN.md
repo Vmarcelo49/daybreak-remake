@@ -1,7 +1,8 @@
 # Full replacement plan: drop DX9, WebGPU only
 
 Status: **executing**. Phase 0 (parity banking + preconditions) passed
-2026-10-02; Phase 1 not started. Nothing below deletes or rewrites anything
+2026-10-02; Phase 1 (foundation-complete) passed 2026-10-02. Phases 2–5 not
+started. Nothing below deletes or rewrites anything
 until its phase gate passes. This plan exists because "replace DX9" is a
 point of no return: after Phase 5 there is no DX9 build to compare against,
 so every proof must be banked *before* the cutover.
@@ -109,20 +110,59 @@ asset class with no banked DX9 capture (other stages, costumes, weapons),
 
 Independent pieces, subagent-suitable, each with its own verification:
 
-- [ ] **Bundle support.** Port `dat_bundle` + `dat_crypto` (XOR, tiny) +
+- [x] **Bundle support.** Port `dat_bundle` + `dat_crypto` (XOR, tiny) +
       `asset_manager` resolution; foundation reads `daybreakXX.dat` from an
       install, no extracted tree needed. Verify: same bytes as `extract_dat.py`
-      output, then byte-identical captures from bundle vs tree.
-- [ ] **CPU raycast.** Replace `D3DXIntersect` (brute force first, BVH if
+      output, then byte-identical captures from bundle vs tree. **Landed
+      `03eb045` + `edcb53c`**: 12,345/12,345 entries match the oracle, 0
+      structural mismatches. The second half of the verification does not hold
+      as written — the tree is not the same data (see the finding below) — so it
+      was replaced by the check that matters: an install-only run (nothing but
+      `daybreak0*.dat` reachable) renders the full vignette green on Linux and
+      Wine with byte-identical captures, 12 models / 54 meshes / 55,095
+      vertices, 166 draws, coverage 150,052 px (93.78%).
+- [x] **CPU raycast.** Replace `D3DXIntersect` (brute force first, BVH if
       profiles demand it). Verify against scripted rays; unblocks the arena
-      camera clamp hook.
-- [ ] **Debug prims.** Line drawing port (~100 lines). Verify visually once.
-- [ ] **CJK decision.** ASCII bitmap cannot do HUD Japanese. Options: system
-      fonts per platform, embedded CJK bitmap, SDF atlas. Decision first,
-      code after — this is the one Phase-1 item that can block Phase 2 HUD
-      fidelity, so decide early even if implementation lands later.
+      camera clamp hook. **Landed `03eb045`, wired `edcb53c`**: Möller–Trumbore
+      with the reference's two walkers and traversal order; 72 analytic checks,
+      an independent float64 cross-check (0 hit/miss disagreements), real-asset
+      invariants, and the clamp wired into the arena eye with an A/B switch.
+      No D3DXIntersect parity is claimed and none is possible: the DX9 binary
+      has no raycast probe (`main.cpp` includes `raycast.h`, never calls it).
+      Measured 5.5 µs/ray on the largest shipped camera mesh (628 triangles) —
+      brute force stays, a BVH only pays around 32k triangles (201 µs/ray).
+- [x] **Debug prims.** Line drawing port (~100 lines). Verify visually once.
+      **Landed `03eb045`**: the file the plan meant is a cube pass for un-RE'd
+      VFX with no line primitive in it, so this was built (not ported) with the
+      semantics that file does have; 111 geometry checks, wired as
+      `--debug-prims`, verified visually and byte-identical Linux vs Wine
+      (1,080,015 B). The cube capability it does have is *not* replaced by this
+      and must be covered before Phase 5 deletes `debug_prim.*` (see §8).
+- [x] **CJK decision.** ASCII bitmap cannot do HUD Japanese. Options: system
+      fonts per platform, embedded CJK bitmap, SDF atlas. Decision first, code
+      after. **Decided 2026-10-02 (user): in-process TrueType rasterization from
+      one fetched OFL font**, ASCII bitmap as fallback; evidence and rejected
+      options in `docs/CJK-TEXT.md`. Implementation is Phase 3.
 
 Gate: foundation reads installs, raycast + prims verified, CJK path chosen.
+**PASSED 2026-10-02.**
+
+**Finding that changes an assumption above (asset source):** "byte-identical
+captures from bundle vs tree" cannot hold, because the extracted tree is not
+the same data as the install. 983 names ship in more than one bundle, 445
+groups differ in bytes, and `extract_dat.py` writes the *last* copy into the
+tree while the game reads the *first* (`FUN_00653540` order). The foundation
+now reads bundles first, matching the game; the observable difference is real
+and was measured (`data/rika/01.X`: 9,675,158 B from bundles — the DX9 side's
+own number, `parity-baseline/logs/asset-*.log` index 6017 — versus 9,893,738 B
+from the tree). Consequence for the record: the foundation captures verified
+before this change rendered different rika/takano/akane/rena bytes than the DX9
+reference they were being compared against, so any *cross-implementation*
+comparison must be re-run bundle-first (the Linux-vs-Wine pairs remain valid,
+since both sides read the same source). A second consequence, fixed here rather
+than worked around: probing both spellings of a case-insensitive name loaded
+one file twice, which is the "+1 model / +909 vertices on Wine" divergence
+Phase 0 recorded; `AssetSource::resolve()` now returns a single path.
 
 ## 5. Phase 2 — gameplay port (supervised, mostly sequential)
 
@@ -184,7 +224,12 @@ Only after Phases 0–3 gates (4 if in scope) have passed, in this order:
    `remake/src/file_parser/*` as replaced, `remake/tools/{d3dx9,
    SDL2-2.30.10,SDL2_mixer-2.8.0}`, `webgpu-mvp/`, `webgpu-spike/`.
    Gameplay files (`fighter`, `projectile`, `scenes`, …) are *ported*, not
-   deleted — they move adapted, never vanish.
+   deleted — they move adapted, never vanish. **Precondition for deleting
+   `debug_prim.{h,cpp}`**: Phase 1 replaced the *plan's* idea of it (lines),
+   not what it is — a placeholder unlit-cube pass for un-RE'd VFX. Confirm the
+   effect path covers shots/sparks/aura before removing it, and if it does not,
+   that coverage is a Phase 3 deliverable rather than a silent loss of
+   function.
 3. Update in the same commit: D2 to past tense ("DX9 removed <date>, WebGPU
    only"), AGENTS.md rule 2 + halves table, both READMEs, CI (retire DX9
    jobs; foundation matrix stays version-gated).
