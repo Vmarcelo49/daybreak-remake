@@ -8,7 +8,7 @@ This repo has **two halves** with different rules:
 
 | Half | Path | Goal | Rule of thumb |
 |---|---|---|---|
-| **Product** | `remake/` | Playable modern port (C++23, SDL2 + D3D9) | All new game code goes here — see `remake/docs/decisions.md` |
+| **Product** | `remake/foundation/` | Playable modern port (C++17, SDL3 + WebGPU: `webgpu.h`, wgpu-native native, emdawnwebgpu web; Linux/Windows/web) | All new game code goes here — build with `./remake/foundation/build.sh {deps,linux,windows,web}`; see `remake/docs/decisions.md` D1–D6 |
 | **Research** | `research/` | Reverse-engineering evidence + readable-C pipeline | Nothing here runs the game; `research/recomp/` is never hand-edited |
 
 ## Repo map
@@ -33,7 +33,13 @@ daybreak-decomp/
 │   ├── progress/       coverage metrics (official)
 │   ├── tools/          ingest → generate_recomp → coverage_report
 │   └── extraction_phases/  raw phase dumps + prioritization JSONs
-├── remake/                             the playable remake
+├── remake/                             the product and its evidence
+│   ├── foundation/                     SDL3 + WebGPU product (C++17; Linux/Windows/web)
+│   ├── docs/decisions.md               binding D1–D6; docs/reference/ = 23 prints of the
+│   │                                   original game — the visual target (plan §6a)
+│   ├── tests/parity-baseline/          frozen DX9 bank — the behavioural oracle
+│   ├── tools/{asset-tools,hook-tracer} .dat/.cnv tools; original-exe hook tracer
+│   └── assets/shaders/effect_*.bin     10 dumps of the original's effect bytecode (evidence)
 ├── tools/launch_original.sh            run the original exe under Wine
 ├── Higurashi-Daybreak/                 local game install (gitignored)
 └── .github/                            index Action (see INDEX.md header)

@@ -8,19 +8,30 @@
 ## 1. What the game is
 
 A **2v2 3D arena fighter** set in the *Higurashi When They Cry* universe
-(Twilight Frontier / 07th Expansion, 2005; Kai expansion 2007).
+(Twilight Frontier / 07th Expansion, **2006** — first release 2006-08-13 at
+Comiket 70; Kai expansion 2007-04-22).
 Two teams of two fight in 3D stages modeled on series locations
 (Hinamizawa areas), each with its own layout, collision, and BGM.
 
-- **Roster**: 14 fighters (16 in Daybreak DX: +Hanyuu, +Natsumi).
-  Each has **3 selectable weapons** (the third needs the expansion),
-  which change the projectile/attack set.
+- **Roster**: **16 fighters**, keyed by character index 0–15
+  (`ASSET-CATALOG.md` §2.1–§2.2): the 2006 roster plus Hanyuu and Natsumi.
+  **46 weapons** — indices 0–13 have three each, Hanyuu (14) and Natsumi (15)
+  have **two** (§3.2–§3.3) — which change the projectile/attack set. The third
+  slot is the Kai/DX addition (item ids 33–46) and ships in this build, so a
+  picker must offer two weapons to those two characters, not three.
   ([Characters](https://higurashidaybreak.fandom.com/wiki/Characters))
-- **Stages**: ~12 (`stage01`–`stage06`, `stage11`–`stage15`, `stage21`
-  confirmed in shipped data), each with visible meshes plus separate
-  `collision.x` / `collision_camera.x` / `collision_tama.x`.
-- **Boot flow**: `movie/op.mpg` plays (skippable with any button) →
-  static main menu. Menu text is Japanese; a community mod translates it:
+- **Stages**: **13** shipped directories. `stageNN` is scene + time of day,
+  *not* a number (`ASSET-CATALOG.md` §1.1): `stage01/11/21` = schoolyard
+  day/sunset/**night**, `stage02/12` = village paddies, `stage03/13` = shrine
+  grounds, `stage04/14` = mountain stream, `stage05/15` = riverbed,
+  `stage06/16` = shrine upper. `stage21` is the **night** schoolyard (the
+  stage the DX9 remake hardcoded); there is no `stage22`–`stage26`. Each
+  ships visible meshes plus separate `collision.x` / `collision_camera.x` /
+  `collision_tama.x`.
+- **Boot flow** (target): `movie/op.mpg` plays (skippable with any button) →
+  title menu; in the foundation the movie path is stubbed
+  (`foundation/src/audio/video.h`), so it boots straight to the title screen.
+  Menu text is Japanese; a community mod translates it:
   **Story · Versus · Netplay · Option · Controller · Exit**.
 - **Modes**: Story (preset teams, bracketed fights + movies), Versus
   offline (split-screen, bots fill empty slots), Netplay (online/LAN),
@@ -40,18 +51,24 @@ Options/controller setup are built only as far as versus needs them.
 
 - **Melee button (X/格闘)**: combo starter; variants with held direction
   (horizontal + attack, vertical + attack), dash + attack, and aerial
-  versions. 3 tiers exist in data (`attackA/B/C`, `specialA/B/C`).
+  versions. 3 melee tiers exist as **move ids** (`0x28/0x29/0x2a` → animation
+  sets 2/3/5; `gameplay/fighter.h:160-165`), selected in the character `.dat`;
+  `attackA/B/C` and `specialA/B/C` are voice cue keys, not the tier names
+  (`gameplay/fighter.h:96-165`).
   There is **no dedicated heavy button** — heavy is likely a
   directional variant (input model still provisional, see §3.6).
 - **Shoot button (C)**: fires the equipped weapon's projectile
-  (`shotA/B/C`, `shotFinal`). Ammo is a **counted stock** (MAIN 6,
-  CHARGE 2), recharging over time — the HUD bar fill fraction *is* the
-  recharge readout (model as fractional stock, not bullets + timer).
+  (`shotA/B/C` = the binary's shot moves 300/301/302; `shotFinal`). Ammo is a
+  **counted stock** (MAIN 6, CHARGE 2), recharging over time — the HUD bar fill
+  fraction *is* the recharge readout (model as fractional stock, not bullets +
+  timer).
 - **Shot tiers** ([Basics](https://higurashidaybreak.fandom.com/wiki/Basics)):
   **NS** Neutral Shot (tap, or under the yellow threshold), **CS** Charge
   Shot (yellow filled), **FCS** Full Charge Shot (red maxed). The charge
   meter **also fills while holding the Special button**, not just shoot.
-- **Reload states** (`reloadOK/NG`) gate projectile users between volleys.
+- **Reload gate**: a projectile user is held between volleys; `reloadOK`/
+  `reloadNG` are **voice cue keys**, not states (§3.4). The window itself is
+  `gameplay/fighter.h:441`, :485 (`reloadNG` after firing).
 - **Special button (S)**: three roles, in priority order —
   1. **Activate Hypermode** when its bar is full (§3.4),
   2. **EX move** while Hypermode is active ([Hypermode](https://higurashidaybreak.fandom.com/wiki/Hypermode)),
@@ -73,17 +90,25 @@ Options/controller setup are built only as far as versus needs them.
   observation and §3.6 describe **holding jump** to fly. Both models are
   in the spec until re-checked in the original; we implement hold-jump.
 - Aerial/landing attack variants (j.A, LA, ADA) ride on these states.
-- Guard (**D**, hold), tag (`tagfront/tagback/tagOK` swap the active
-  partner in 2v2), provoke (taunt), revival and KO/down states round out
-  the 40+ animation states in the binary (full list:
-  `docs/reverse-engineering.md` §14).
+- Guard (**D**, hold), tag (the active partner swaps in 2v2 — the tag
+  animation itself is un-RE'd, `gameplay/fighter.h:142-143`), provoke (taunt),
+  revival and KO/down states round out the original's ~40 move ids. The
+  "40+ animation states" are **not** a name table in the binary: every shipped
+  `.X` names its sets `Anim-1`…`Anim-124` and the state→set mapping ships in
+  each character's `data/<char>/NN.dat` (`gameplay/fighter.h:96-165`).
 
 ### 3.3 Camera
 
 Always locked onto an enemy fighter. A **target button cycles** enemies;
-**holding it aims at your ally** instead. Camera keeps 300 height / 800
-distance offsets, orbits at 45° baseline, and spring-collides against
-`collision_camera.x` (RE: `reverse-engineering.md` §14).
+**holding it aims at your ally** instead. Camera keeps **height 211 /
+distance 289** offsets with the aim raised **138** units and sits **directly
+behind** the locked fighter (baseline orbit 0, not 45°), and spring-collides
+against `collision_camera.x` (fitted with 0.0 px residual —
+`foundation/src/gameplay/arena_camera.h:75-82`,
+`foundation/tests/arena_camera_test.cpp:604`). Projection is the original's
+own: fov π/4, near 50, far 150000 from `0x6338ae`; the old 300/800 constants
+are a different projection's near/far offsets
+(`foundation/src/gameplay/arena_camera.h:110-112`), not a framing.
 
 ### 3.4 Meters
 
@@ -106,19 +131,29 @@ distance offsets, orbits at 45° baseline, and spring-collides against
   The battle setting ゲージ増加量 (gauge rate, default 100%) scales fill.
 - **Not the same as `LIMIT`**: the top-corner `LIMIT %` is the balloon
   lose condition (§3.5). The bottom-left bar is this gauge.
-- Mapping to RE states: `oyashiro` / `oyashiroB` (binary string table
-  @0x2b73xx) are the aura states; plus `HPcheck` (low HP),
-  `nearWin/nearLose`, `guard/guarded`, `spark` (hit VFX trigger).
+- Mapping to RE keys: `oyashiro`/`oyashiroB`, `HPcheck`, `nearWIN`/`nearLOSE`,
+  `guard`/`guarded`, `spark`, `reloadOK`/`reloadNG`, `tagfront`/`tagback`/`tagOK`
+  are **voice cue keys** in the exe's 16-byte-stride table at VMA 0x6b73b0
+  (file 0x2b73b0), consumed only by `FUN_00431e70` (0x432042) to build
+  `data/voice/<char>/<key>/%03d.wav` — they are not animation, aura or reload
+  states. Animation is index-based: each rig names its sets `Anim-1`…`Anim-124`
+  and the state→set mapping ships in each character's `data/<char>/NN.dat`
+  (`gameplay/fighter.h:96-165`). Tag mechanics themselves are un-RE'd
+  (`gameplay/fighter.h:142-143`).
 
 ### 3.5 Winning — the balloon
 
 Each team has a **balloon** at the screen edge with a **`LIMIT` readout
-(both default 100%) — the team loses when its balloon EXCEEDS its limit**,
-not at a fixed 100%. Battle settings add a **per-team balloon-size
-handicap %** (spec multiplier on capacity).
+(both default 100%) — the team loses when its balloon **reaches** its limit**
+(`>=`, not past it — `gameplay/match_economy.h:30-36`, pinned by
+`foundation/tests/match_economy_test.cpp:153`), not at a fixed 100%.
+Battle settings add a **per-team balloon-size handicap %** (spec multiplier
+on capacity).
 A KO fills ~20–23% (observed +21%); the KO'd fighter **respawns
-airborne**. KO presentation is sting (撃破！) → inflate → floating `+N%`
-delta. Hitting the downed fighter scores **Overkill: +1/hit**
+airborne** (the target — **not implemented**: `Fighter::reset()` sets
+`m_grounded = true` at the stored spawn, `gameplay/fighter.cpp:58-70`, called
+from `gameplay/match.cpp:55`). KO presentation is sting (撃破！) → inflate →
+floating `+N%` delta. Hitting the downed fighter scores **Overkill: +1/hit**
 (captured; wiki says 1–2%) for **3 seconds max**, until the lock-on
 indicator turns gray.
 ([Basics](https://higurashidaybreak.fandom.com/wiki/Basics),
@@ -140,8 +175,12 @@ From the controller-setup capture (`docs/reference/controller-setup.webp`):
 | Q | Tactics (作戦, unmodeled) | — |
 | W | Pause | — (ESC quits) |
 
-1P = keyboard; P2–P4 = pads (buttons 1–8). The 11-function/7-slot
-mapping in our input layer is still provisional (see `input_manager.h`).
+1P = keyboard; P2–P4 = pads (buttons 1–8). The input layer is the foundation's
+**13-action** model (arrows + Z/X/C/A/S/D/Q/W,
+`foundation/src/input/input.h:19-33`), with the 1P scancodes pinned by
+static_asserts (`input_sdl3.h:38`, `pin_tables.cpp:20-46`); P2–P4 pad layouts
+remain the unverified half. The original's internal 7-slot polling loop is
+deliberately not mirrored.
 Menus vs battle accept different keys — menu handling must be
 slot/context-aware, not a single global confirm/cancel pair.
 
@@ -150,9 +189,10 @@ slot/context-aware, not a single global confirm/cancel pair.
 Versus doubles as a training mode via function keys
 ([Basics](https://higurashidaybreak.fandom.com/wiki/Basics)):
 **F1** max HP for everyone + both balloons to 0%, **F2** CPUs off
-(stand still), **F3** CPUs on, **F4** max Hypermode. Our `F2` currently
-toggles animation debug in `Scene_Gameplay` — it moves when these land,
-since F2 is the original's CPU-off key. F12 (screenshot) is ours.
+(stand still), **F3** CPUs on, **F4** max Hypermode. The foundation has no
+F-key debug hooks yet (its only raw key is ESC to quit, `src/main.cpp:2225`);
+F2 is reserved for the original's CPU-off key, so animation debug must move off
+it when these land. Captures are made with `--out`, not an F12 screenshot.
 
 ### 3.7 Versus flow (captured end-to-end)
 
@@ -169,24 +209,29 @@ flags, never saves**. Full shot log: `docs/reference/README.md`.
 
 ## 4. Build plan (ordered)
 
-Status key: ✅ in remake · 🔶 partial · ❌ missing. Current code truth
-in `README.md` + audit notes; RE truth in `reverse-engineering.md`.
+Status key: ✅ in the foundation (`remake/foundation/`) · 🔶 partial · ❌ missing.
+Code truth: `foundation/README.md` + `foundation/docs/ROADMAP-PENDING.md`; the
+DX9 remake this table was written against is deleted (cutover commit `5a63db3`,
+`pre-webgpu-cutover` tag `37ed31d`) and its rows survive only as provenance.
+RE truth: `reverse-engineering.md` (camera numbers corrected by
+`foundation/src/gameplay/arena_camera.h`); the "Now" column below still leans on
+the deleted tree in places and is marked where it does.
 
 | # | System | Now | Work |
 |---|---|---|---|
-| 1 | Melee + hit detection | ✅ one swing + dash/aerial stand-ins; damage wired | Wire `D3DXIntersect` raycast (exists) into fighter-vs-fighter checks; damage numbers (light 5 / heavy 12 / special 25); hitstun/knockdown/KO transitions. **Remaining:** FA/HA directional variants, LA/StepA inputs, special 25 |
-| 2 | HP / KO / respawn / balloon | ✅ HP 100, KO, airborne respawn, balloon +21% | HP=100, KO state, airborne respawn, balloon 20–23%/KO vs per-team LIMIT (+size handicap %), KO sting → inflate → +N% delta, 3-beat result, loop back to team select |
+| 1 | Melee + hit detection | ✅ one swing + dash/aerial stand-ins; damage wired | Wire `physics/raycast.cpp` (Möller–Trumbore — it replaces the deleted DX9 `D3DXIntersect`; already used by shots at `gameplay/projectile.cpp:75` and the camera clamp) into fighter-vs-fighter checks; damage numbers (light 5 / heavy 12 / special 25; `gameplay/fighter.h:282-283`); hitstun/knockdown/KO transitions. **Remaining:** FA/HA directional variants, LA/StepA inputs, special 25 |
+| 2 | HP / KO / respawn / balloon | 🔶 HP 100, KO, **ground** respawn, balloon +21% | HP=100, KO state, **airborne** respawn (**not implemented**: `Fighter::reset()` sets `m_grounded = true` at the stored spawn, `gameplay/fighter.cpp:58-70`, called from `gameplay/match.cpp:55`), balloon 20–23%/KO vs per-team LIMIT (+size handicap %), KO sting → inflate → +N% delta, 3-beat result, loop back to team select |
 | 3 | Projectiles + charge | ✅ tiers, fractional stocks, reload gate, tama channel, sparks | `shotA/B/C` + tap/yellow/red tiers, **fractional ammo stocks** (MAIN 6, CHARGE 2, fill = recharge readout), reload gating, `collision_tama.x` channel, hit sparks |
 | 4 | Movement full set | ✅ dash/backdash/sidestep + air dash, hold-jump flight | Double-tap dash (8-way + air), hold-jump fly timer, dash+attack and aerial variants |
 | 5 | Stamina + limit gauge | ✅ bar + 3 modes; aura/EX are placeholders | **Contextual** stamina drain + fast refill. Hypermode bar per §3.4: fill by damage dealt/taken per mode, S to activate (Kakera auto on death), 15/25 s durations, damage ×0.75/×1.5 (Oyashiro), ×0.20/×1.5 (Kakera), stun rules, Friendship recharge boost. Remaining: real aura VFX (cube stand-in), per-character EX content (`shotFinal` anim fired), ゲージ増加量 battle setting |
 | 6 | Tag + teams | ❌ | `tagfront/tagback/tagOK`, partner AI-or-player control swap, 2v2 slots |
 | 7 | Overkill | ❌ | Downed-hit detection, **+1/hit** within the **3 s** window, gray-lock cutoff |
 | 8 | Bots | ❌ (P2 is a dummy) | AI: approach/retreat, melee range checks, block/dash reactions, difficulty tiers for empty versus slots |
-| 9 | Split-screen | ❌ (RE'd: 4 viewports 256×448 in 800×600) | Viewport grid (1/2/4), per-player ArenaCamera |
-| 10 | Versus frontend | 🔶 title partial; select scenes missing | Team → char → weapon/costume → hypermode → controller → ready → stage/settings → VS sting → result sequence (all captured in `docs/reference/`); punishment/titles as session flags |
+| 9 | Split-screen | ❌ (RE'd: 4 viewports as a **400×300** quadrant grid in 800×600 — `research/decompiled/FUN_006396f0.c:63-66`, :82-96; the old 256×448 reading came from the options-screen ctor `FUN_00402890`, not the split path) | Viewport grid (1/2/4), per-player ArenaCamera |
+| 10 | Versus frontend | ✅ **title** (`foundation/src/ui/screen_title.*`, `--screen=title`); select/VS/result missing | Team → char → weapon/costume → hypermode → controller → ready → stage/settings → VS sting → result sequence (all captured in `docs/reference/`; order per `ROADMAP-PENDING.md` §E); punishment/titles as session flags |
 | 11 | LAN netplay | ❌ (DirectPlay 8 documented, not portable) | Replace, don't port: delay-based (original uses input delay ~3) lockstep over UDP, default port **37564**, `addresslist.txt` server list, lobby (8 max, team/member lock, chat flag, host-start), char/stage sync, desync hash |
 | 12 | Options / controller setup | ❌ stubs | Bindings table (Z/X/C/A/S/D/Q/W + arrows, 1P kbd / P2-4 pads) persisted; 4 toggles + 4 sliders; input-model redesign first (11 functions, 7 slots) |
-| 13 | Story mode | ❌ (OP video plays) | Deferred: prologue/staffroll playback + preset-team ladder, no branching/saves |
+| 13 | Story mode | ❌ (video player is a stub reporting `Unimplemented` — `foundation/src/audio/video.h`; no movie plays) | Deferred: prologue/staffroll playback + preset-team ladder, no branching/saves |
 
 ### Milestone cut
 

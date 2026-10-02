@@ -7,15 +7,16 @@ Twilight Frontier / 07th Expansion).
 
 | | `remake/` — the product | `research/` — the evidence |
 |---|---|---|
-| What | Playable C++23 remake (SDL2 + D3D9, migrating to SDL3 + WebGPU per D2) | 3,191 decompiled functions, readable-C pipeline, RE reports |
-| Start | `remake/README.md`, then `remake/docs/decisions.md` | `docs/overview.md`, then `docs/pipeline.md` |
-| Rules | Game code only; original `.X` stay, renderer migrating to WebGPU | `recomp/` never hand-edited; `symbols/` is truth |
+| What | Playable versus match verified on Linux (native) and Windows (Wine) — C++17 + SDL3 + WebGPU (`webgpu.h`: wgpu-native natively, emdawnwebgpu on the web) in `remake/foundation/`, built for Linux, Windows and the web. Not claimed for web or macOS: the web build has only run as the plain demo without game assets, and macOS has never been executed (`remake/foundation/docs/ROADMAP-PENDING.md` §G) | 3,191 decompiled functions, readable-C pipeline, RE reports |
+| Start | `remake/foundation/README.md`, then `remake/docs/decisions.md` | `docs/overview.md`, then `docs/pipeline.md` |
+| Rules | Game code only; the original `.X`/`.cnv`/`.dat` load exactly as shipped; the renderer is SDL3 + WebGPU since the Phase 5 cutover (DX9 dropped 2026-10-02) | `recomp/` never hand-edited; `symbols/` is truth |
 
 ## Layout
 
 ```
 daybreak-decomp/
-├── README.md / INDEX.md / INDEX.json   this map + generated index
+├── AGENTS.md / README.md               the two-halves map + hard rules (read first), then this map
+├── INDEX.md / INDEX.json               generated index (regenerate with python3 .github/scripts/generate_index.py; the committed copy predates the Phase 5 cutover)
 ├── docs/                               English docs
 │   ├── overview.md                     repo map + key findings
 │   ├── pipeline.md                     how research artifacts flow
@@ -32,7 +33,11 @@ daybreak-decomp/
 │   ├── progress/       coverage metrics (official)
 │   ├── tools/          ingest → generate_recomp → coverage_report
 │   └── extraction_phases/  raw phase dumps + prioritization data
-├── remake/                             the remake (own README + docs)
+├── remake/                             the product, and the evidence it is measured against
+│   ├── foundation/                     SDL3 + WebGPU product (build.sh deps|linux|windows|web)
+│   ├── docs/                           decisions.md, game-spec.md, reference/ (prints of the ORIGINAL)
+│   ├── tests/parity-baseline/          frozen DX9 reference bank — the behavioural A/B
+│   └── tools/                          asset-tools/ (dat, sjis), hook-tracer/ (hooks the original exe)
 ├── tools/launch_original.sh            run the original exe under Wine
 ├── Higurashi-Daybreak/                 local game install (gitignored)
 └── .github/                            index Action
@@ -64,10 +69,15 @@ grep -l "pattern" research/decompiled/*.c
 # Rebuild the repo index
 python3 .github/scripts/generate_index.py
 
-# Build the remake (one-time toolchain fetch first)
-./remake/scripts/fetch_deps.sh && ./remake/build.sh
+# Build the product (deps once, then a target)
+./remake/foundation/build.sh deps                 # pinned third-party sources
+./remake/foundation/build.sh linux                # also: windows, web, all
+./remake/foundation/build/linux/foundation_demo --frames=300
 
-# Run the original for side-by-side comparison
+# Host toolchain + fonts only (optional, no sudo)
+./remake/scripts/fetch_deps.sh
+
+# Drive the original under Wine to capture new ground-truth prints (see remake/docs/reference/)
 ./tools/launch_original.sh
 ```
 
