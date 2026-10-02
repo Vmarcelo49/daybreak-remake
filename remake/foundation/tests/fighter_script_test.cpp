@@ -1269,7 +1269,8 @@ void test_facing() {
     e.update(nullptr, &dead, kDt);
     check_bits("dead opponent does not steer facing", 0.0f, e.facing_yaw());
 
-    // Render data: world matrix = translate * rotateY (FUN_00420b30).
+    // Render data: world matrix = translate * rotateY(facing + 180°) (FUN_00420b30;
+    // see modelMatrix() — the shipped rigs are authored facing -Z).
     Fighter m;
     m.init(nullptr, nullptr, glm::vec3(10, 20, 30), 0.0f);
     const glm::mat4 ident = m.modelMatrix();
@@ -1279,14 +1280,19 @@ void test_facing() {
     Fighter m2;
     m2.init(nullptr, nullptr, glm::vec3(0, 0, 0), 1.5707964f);
     const glm::mat4 rot = m2.modelMatrix();
-    // D3DXMatrixRotationY(+90°) in the row-vector convention maps +Z to +X;
+    // D3DXMatrixRotationY(+90° + 180°) in the row-vector convention maps +Z to -X;
     // glm::rotate(theta, +Y) is the same matrix in the column-vector convention.
+    // +Z is the rig's BACK, so -Z (its front, measured on the shipped SkinWeights)
+    // is what must land on the movement forward: yaw 90° faces +X.
     const glm::vec3 p = glm::vec3(rot * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f));
-    check_near("modelMatrix rotateY(90): +Z maps to +X", 1.0, p.x, 1e-6);
-    check_near("modelMatrix rotateY(90): +Z maps to 0 on Y", 0.0, p.y, 1e-6);
-    check_near("modelMatrix rotateY(90): +Z maps to 0 on Z", 0.0, p.z, 1e-6);
+    check_near("modelMatrix rotateY(90+180): +Z maps to -X", -1.0, p.x, 1e-6);
+    check_near("modelMatrix rotateY(90+180): +Z maps to 0 on Y", 0.0, p.y, 1e-6);
+    check_near("modelMatrix rotateY(90+180): +Z maps to 0 on Z", 0.0, p.z, 1e-6);
+    const glm::vec3 front = glm::vec3(rot * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f));
+    check_near("modelMatrix rotateY(90+180): rig front -Z maps to the +X facing", 1.0,
+               front.x, 1e-6);
     const glm::vec3 q = glm::vec3(rot * glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
-    check_near("modelMatrix rotateY(90): +X maps to -Z", -1.0, q.z, 1e-6);
+    check_near("modelMatrix rotateY(90+180): +X maps to +Z", 1.0, q.z, 1e-6);
 }
 
 // ===========================================================================

@@ -254,9 +254,10 @@ public:
 
     // --- render data (the DX9 render(IDirect3DDevice9*) split) ---
     // World matrix the DX9 build pushed as D3DTS_WORLD (FUN_00420b30):
-    // RotationY(facing) then Translation(position), i.e. T * R in glm's
-    // column-vector convention. The foundation renderer passes this to
-    // xm::DrawUniform::model.
+    // RotationY(facing + 180°) then Translation(position), i.e. T * R in glm's
+    // column-vector convention. The half turn maps the rigs' own front (-Z, measured
+    // on the shipped SkinWeights — see fighter.cpp) onto the movement facing. The
+    // foundation renderer passes this to xm::DrawUniform::model.
     glm::mat4 modelMatrix() const;
 
     // game::IFighterPose: position / facing / animation time / alive, for the

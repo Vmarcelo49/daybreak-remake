@@ -693,8 +693,34 @@ glm::mat4 Fighter::modelMatrix() const {
     // The original game uses D3DXMatrixRotationY + D3DXMatrixTranslation and
     // composes rot * trans in the row-vector convention (fighter.cpp:667-672),
     // i.e. rotate then translate → T * R for glm's column-vector matrices.
+    //
+    // The yaw carries a half turn that the port dropped.
+    //
+    // The original's world-matrix update rotates by -(angle + 90°) (FUN_00420b30 at
+    // 0x420b30: D3DXMatrixRotationY((field_5c + 90 + field_64 + field_30) * -pi/180)),
+    // and the aim point derived from the same angle is pos + (x, 145, z) with x/z its
+    // sine/cosine pair (FUN_00420880 at 0x420880). For one fixed model axis to land on
+    // that direction at EVERY yaw, the angle must be measured from +X (angle = 90° -
+    // yaw): with a yaw-based angle, -(angle + 90°) swings the front by 2·yaw instead.
+    // In this tree's convention, forward = (sin yaw, 0, cos yaw) (fighter.cpp:667),
+    // that is Ry(yaw + 180°).
+    //
+    // The rigs are authored facing -Z, which is why the half turn belongs here:
+    //   * their own geometry puts the face at -Z — data/rena/00.X's "eye" mesh (22
+    //     verts, y 112..124) spans z -5.9..+1.1 while the hair spans -12.3..+26.4, and
+    //     both ankle→ball vectors are (0, -14.2, -10.6) / (0, -14.5, -11.0). The frames
+    //     those meshes hang off are identity and no bind frame carries a half turn
+    //     (Bip00's is 89.2° about Y, the meshes' own is identity);
+    //   * an identity model matrix from a -Z camera shows her face, and the DX9
+    //     reference draws exactly that — it sets D3DTS_WORLD to identity for skinned
+    //     meshes (x_model_loader.cpp:711) — yet from the +Z camera its log records at
+    //     (183,500,779) with the fighter at (0,200,0) it shows her back
+    //     (tests/parity-baseline/captures/fighter-p1-rena.png);
+    //   * the print the arena camera was fitted to (docs/reference/battle-hud.webp)
+    //     shows the player's back with the eye behind her.
     return glm::translate(glm::mat4(1.0f), m_position) *
-           glm::rotate(glm::mat4(1.0f), m_facing, glm::vec3(0.0f, 1.0f, 0.0f));
+           glm::rotate(glm::mat4(1.0f), m_facing + glm::pi<float>(),
+                       glm::vec3(0.0f, 1.0f, 0.0f));
 }
 
 game::FighterPose Fighter::pose() const {
