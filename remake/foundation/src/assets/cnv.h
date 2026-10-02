@@ -39,6 +39,10 @@
 #include <unordered_map>
 #include <vector>
 
+// Textures load through the same byte seam as the models (bundle-first, filesystem
+// otherwise) instead of opening files themselves.
+#include "asset_source.h"
+
 namespace xm {
 
 struct CnvImage {
@@ -223,12 +227,14 @@ TextureCache::TextureCache(std::string directory, ReadFn reader)
     if (reader) {
         read_ = std::move(reader);
     } else {
+        // Bundle-first through the same seam the model loader uses, then the filesystem.
         // Names are UTF-8 (that is how they are stored and how Shift-JIS references
         // resolve). On Windows a narrow fopen() reads them in the ANSI code page, so
         // every non-ASCII texture silently misses; u8path carries them through as wide
         // characters instead. This is the filesystem half of the same encoding problem
         // the Shift-JIS conversion solves for the name itself.
         read_ = [](const std::string& name, std::vector<uint8_t>& out) {
+            if (fnd::assets::assetSource().read(name, out)) return true;
             std::ifstream f(std::filesystem::u8path(name), std::ios::binary);
             if (!f) return false;
             f.seekg(0, std::ios::end);

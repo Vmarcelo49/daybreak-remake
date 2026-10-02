@@ -24,12 +24,18 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "gpu/gpu.h"
+#include "assets/asset_source.h"
 #include "platform/platform.h"
 #include "platform/surface.h"
 #include "platform/web_pack.h"
 #include "render/arena_camera.h"
 #include "render/debug_prims.h"
 #include "render/scene_renderer.h"
+// After the renderer on purpose: raycast.h includes assets/xmodel.h without
+// XMODEL_WEBGPU (its queries need the mesh arrays, not the GPU helpers), and xmodel.h's
+// include guard means a first include without that macro would hide xm::CameraUniform
+// from scene_renderer.h further down.
+#include "physics/raycast.h"
 #include "ui/hud.h"
 #include "ui/sprite.h"
 #include "game/hud_bridge.h"
@@ -72,6 +78,8 @@ struct Options {
     float       dt   = 1.f / 60.f;
 
     std::string camera = "auto";   // auto|player|front|top|bounds
+    std::string install;           // dir holding daybreakXX.dat; auto-detected when empty
+    bool        noCameraClamp = false;   // A/B switch for the arena eye clamp
     bool        noTextures = false;
     bool        noFog      = false;
     bool        unlit      = false;
@@ -116,6 +124,9 @@ void usage() {
         "  --hud-test         composite a synthetic HUD into --out captures\n"
         "  --debug-prims      draw a deterministic debug line overlay (play-area box,\n"
         "                     aim cross, desired-eye cross under --camera=arena)\n"
+        "  --install=<dir>    use this game install's daybreakXX.dat bundles; when\n"
+        "                     omitted, the install is inferred from the asset paths\n"
+        "  --no-camera-clamp  A/B switch: skip the arena eye's collision_camera clamp\n"
         "  --audio-test         run the audio backend self-check and exit\n"
         "  --audio-file=<path>  with --audio-test: decode a real file as well\n"
         "  --input-test         run the input backend self-check and exit\n"
@@ -154,6 +165,8 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--list") o.list = true;
         else if (a == "--hud-test") o.hudTest = true;
         else if (a == "--debug-prims") o.debugPrims = true;
+        else if (!(v = val("--install=")).empty()) o.install = v;
+        else if (a == "--no-camera-clamp") o.noCameraClamp = true;
         else if (a == "--audio-test") o.audioTest = true;
         else if (a == "--input-test") o.inputTest = true;
         else if (!(v = val("--enemy=")).empty()) o.enemy = v;
@@ -318,10 +331,14 @@ xm::Scene loadScene(const Options& o, std::string& error, size_t* enemyBegin = n
 }
 
 void listScene(const xm::Scene& scene) {
+    // The byte count is printed because it is the only way to tell which copy of a
+    // duplicated name was loaded: bundles and an extracted tree can differ for the same
+    // path (assets/asset_source.h), and that difference decides which model renders.
     for (const xm::SceneModel& sm : scene.models)
-        std::printf("  %-10s %-46s meshes=%-3zu anims=%-4zu frames=%-4zu%s\n", sm.role.c_str(),
-                    sm.source.c_str(), sm.model.meshes.size(), sm.model.anims.size(),
-                    sm.model.frames.size(), sm.attachFrame >= 0 ? " (bone-attached)" : "");
+        std::printf("  %-10s %-46s bytes=%-9zu meshes=%-3zu anims=%-4zu frames=%-4zu%s\n",
+                    sm.role.c_str(), sm.source.c_str(), sm.sourceBytes, sm.model.meshes.size(),
+                    sm.model.anims.size(), sm.model.frames.size(),
+                    sm.attachFrame >= 0 ? " (bone-attached)" : "");
     std::printf("  %zu models, %zu meshes, %zu vertices, %zu submeshes, %zu palette matrices\n",
                 scene.models.size(), scene.totalMeshes(), scene.totalVertices(),
                 scene.totalSubmeshes(), scene.paletteSize());
@@ -382,6 +399,7 @@ struct App {
     render::DebugLineBatch       debugLines;   // rebuilt per frame, capacity kept
     glm::vec3                    debugBoundsLo{0.f}, debugBoundsHi{0.f};
     bool                         haveDebugBounds = false;
+    game::physics::CameraCollision cameraCollision;   // arena eye clamp, per stage
     ui::SpriteRenderer           uiRenderer;
     ui::HudComposer              hudComposer;
     bool                         uiReady = false;
@@ -536,16 +554,16 @@ bool initTriangle(App& app) {
 // Shared by versus BGM streaming; the --audio-test file path keeps its own
 // inline version because its reporting differs. Loop points are file-rate
 // samples, so anything but 44100 stereo is refused rather than misaligned.
+// Reads go through the asset source, so an install with only its .dat bundles
+// plays BGM without an extracted tree.
 static bool loadBgmTrack(const std::string& oggPath, fnd::audio::Sdl3Engine& engine,
                          fnd::audio::DecodedOgg& decoded, fnd::audio::LoopPlayer& loop,
                          std::string& error) {
-    std::ifstream f(oggPath, std::ios::binary);
-    if (!f) {
+    std::vector<uint8_t> bytes;
+    if (!fnd::assets::assetSource().read(oggPath, bytes)) {
         error = "cannot open " + oggPath;
         return false;
     }
-    const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)),
-                                     std::istreambuf_iterator<char>());
     if (!fnd::audio::decode_ogg_s16(bytes.data(), bytes.size(), decoded) || !decoded.ok ||
         decoded.srcRate != 44100 || decoded.srcChannels != 2) {
         error = "BGM decode failed or not 44100 stereo: " + oggPath;
@@ -558,13 +576,11 @@ static bool loadBgmTrack(const std::string& oggPath, fnd::audio::Sdl3Engine& eng
         return false;
     }
     sflPath.replace(dot, std::string::npos, ".sfl");
-    std::ifstream sf(sflPath, std::ios::binary);
-    if (!sf) {
+    std::vector<uint8_t> sfl;
+    if (!fnd::assets::assetSource().read(sflPath, sfl)) {
         error = "missing loop sheet " + sflPath;
         return false;
     }
-    const std::vector<uint8_t> sfl((std::istreambuf_iterator<char>(sf)),
-                                   std::istreambuf_iterator<char>());
     const fnd::audio::SflLoop region =
         fnd::audio::parse_sfl_loop(sfl.data(), sfl.size(), 44100);
     if (!region.valid) {
@@ -634,13 +650,11 @@ static bool initVersus(App& app) {
             return false;
     }
     if (!app.opts.sfx.empty()) {
-        std::ifstream f(app.opts.sfx, std::ios::binary);
-        if (!f) {
+        std::vector<uint8_t> bytes;
+        if (!fnd::assets::assetSource().read(app.opts.sfx, bytes)) {
             app.error = "cannot open " + app.opts.sfx;
             return false;
         }
-        const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)),
-                                         std::istreambuf_iterator<char>());
         fnd::audio::SfxHandle h = fnd::audio::kInvalidSfx;
         switch (fnd::audio::detect_format(bytes.data(), bytes.size())) {
             case fnd::audio::BlobFormat::Ogg:
@@ -749,6 +763,33 @@ static void tickVersus(App& app, uint64_t frame) {
 }
 
 bool initScene(App& app) {
+    // Install discovery: the .dat bundles are the game's own source of truth, and where
+    // they exist they win over an extracted tree (asset_source.h explains why the two
+    // differ). The install is inferred from whichever asset path the command line
+    // already carries, so existing capture command lines keep working verbatim;
+    // --install= overrides when a path points somewhere unexpected.
+    if (!app.opts.install.empty()) {
+        fnd::assets::assetSource().openInstall(app.opts.install);
+    } else {
+        for (const std::string* p : {&app.opts.stage, &app.opts.character, &app.opts.enemy,
+                                     &app.opts.weapon, &app.opts.model, &app.opts.effect}) {
+            if (p->empty()) continue;
+            const std::string dir = fnd::assets::AssetSource::findInstallDir(*p);
+            if (!dir.empty()) {
+                fnd::assets::assetSource().openInstall(dir);
+                break;
+            }
+        }
+    }
+    const fnd::assets::AssetSource& src = fnd::assets::assetSource();
+    if (src.bundlesOpen()) {
+        std::printf("assets       : %zu/%zu .dat bundle(s) from %s\n",
+                    src.bundles().bundles().size(), fnd::assets::DatBundleSet::kBundleCount,
+                    src.installDir().c_str());
+    } else {
+        std::printf("assets       : filesystem only (no daybreakXX.dat install found)\n");
+    }
+
     try {
         app.scene = loadScene(app.opts, app.error, &app.enemyBegin);
     } catch (const std::exception& e) {
@@ -762,6 +803,19 @@ bool initScene(App& app) {
         return true;
     }
     xm::resolveSceneTextures(app.scene);
+
+    // The arena camera clamp's geometry: the one model with the camera collision role.
+    // Stages without it (and the two whose file parses to zero triangles) keep the
+    // documented degradation — no clamp, smoothing only (game/camera_collision.h:33-35).
+    for (size_t i = 0; i < app.scene.models.size(); ++i) {
+        if (app.scene.models[i].role == "collision_camera") {
+            app.cameraCollision.setMesh(&app.scene.models[i].model);
+            std::printf("camera clamp : %s, %s\n", app.scene.models[i].source.c_str(),
+                        app.cameraCollision.empty() ? "empty mesh, no clamp"
+                                                    : "camera collision mesh loaded");
+            break;
+        }
+    }
 
     // ---- pose: bind pose, or one animation set driven through the Controller
     app.controllers.resize(app.scene.models.size());
@@ -1351,8 +1405,21 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             // Captures step the spring with the fixed --dt, not wall time: the
             // eye must be as deterministic as the pose or captures would drift.
             const double stepDt = capturing ? (double)app->opts.dt : delta;
-            app->eye = render::arenaSmoothEyeDt(app->prevEye, app->arenaDesired,
-                                                (float)stepDt, 0.1f);
+            // Clamp the desired eye against the stage's camera collision mesh before
+            // smoothing, exactly as the reference composes it (arena_camera.cpp:106-131):
+            // one query, the 20-unit margin inside arenaClampEye, no second refine pass.
+            // Stages without camera geometry answer "no hit" and this is a pass-through.
+            glm::vec3 desired = app->arenaDesired;
+            if (!app->opts.noCameraClamp) {
+                const game::CameraClampResult clamp =
+                    app->cameraCollision.queryClamp({app->target, desired});
+                if (clamp.hit) {
+                    const float segment = glm::length(desired - app->target);
+                    desired = render::arenaClampEye(app->target, desired,
+                                                    game::clampHitDistance(clamp, segment));
+                }
+            }
+            app->eye = render::arenaSmoothEyeDt(app->prevEye, desired, (float)stepDt, 0.1f);
             app->prevEye = app->eye;
         }
         // One matrix, built once and handed to both the scene pass and the prims pass:

@@ -56,6 +56,7 @@ target_include_directories(glm INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/third_part
 # for the sibling text decision and tests/dat_bundle_bytes.cpp for the parity proof).
 add_library(foundation_assets STATIC
     src/assets/assets.cpp
+    src/assets/asset_source.cpp
     src/assets/dat_bundle.cpp
     src/assets/dat_crypto.cpp)
 target_include_directories(foundation_assets PUBLIC src/assets)
@@ -111,8 +112,15 @@ add_library(foundation_game STATIC src/game/game_check.cpp)
 target_include_directories(foundation_game PUBLIC src)
 target_link_libraries(foundation_game PUBLIC foundation_ui glm)
 
+# Collision queries over loaded meshes: the D3DXIntersect replacement (CPU
+# triangle raycast) plus the arena camera clamp's physics side. No WebGPU and no
+# window, so gameplay code links it without a device.
+add_library(foundation_physics STATIC src/physics/raycast.cpp)
+target_include_directories(foundation_physics PUBLIC src)
+target_link_libraries(foundation_physics PUBLIC foundation_assets glm)
+
 add_executable(foundation_demo src/main.cpp)
-target_link_libraries(foundation_demo PRIVATE foundation_render foundation_ui foundation_media foundation_game)
+target_link_libraries(foundation_demo PRIVATE foundation_render foundation_ui foundation_media foundation_game foundation_physics)
 
 # Host-side tests. Native-only on purpose: the Windows target is cross-compiled and
 # the web target cannot run a host binary, so neither can execute them, and building
@@ -138,7 +146,8 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # Skips itself with a clear message when $GAME_DIR (or the default install) is
     # absent, so the suite stays runnable on a checkout without the game data.
     add_executable(dat_bundle_bytes tests/dat_bundle_bytes.cpp
-                   src/assets/dat_bundle.cpp src/assets/dat_crypto.cpp)
+                   src/assets/dat_bundle.cpp src/assets/dat_crypto.cpp
+                   src/assets/asset_source.cpp)
     target_include_directories(dat_bundle_bytes PRIVATE src)
     add_test(NAME dat_bundle_bytes COMMAND dat_bundle_bytes)
 endif()

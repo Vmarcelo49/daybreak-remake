@@ -57,7 +57,10 @@ struct SceneModel {
     Model        model;
     TextureCache textures{std::string()};
     std::string  source;        // path it came from, for logs
-    std::string  role;          // "stage", "collision", "character", "weapon"
+    size_t       sourceBytes = 0;  // bytes read for this model; the loader's own record
+                                   // of which copy it got (bundles and the extracted tree
+                                   // can hold different copies of the same name)
+    std::string  role;          // "stage", "collision", "collision_camera", "character", "weapon"
     int          index = -1;    // stage sub-model number (0..7), else -1
     // Collision meshes are loaded for geometry queries and framing, never drawn: the
     // original keeps them in their own slots (stage+0x20/0x24/0x28) and its render
@@ -94,7 +97,8 @@ struct Scene {
         hi = glm::vec3(-1e30f);
         bool any = false;
         for (const auto& m : models) {
-            const bool want = playArea ? (m.role == "collision") : m.drawable;
+            const bool want = playArea ? (m.role == "collision" || m.role == "collision_camera")
+                                       : m.drawable;
             if (!want) continue;
             for (const auto& mesh : m.model.meshes)
                 for (const auto& v : mesh.vertices) {
@@ -161,23 +165,19 @@ void resolveSceneTextures(Scene& scene);
 #include <cstring>
 #include <filesystem>
 
+// The byte seam: bundle-first when an install is open, filesystem otherwise.
+#include "asset_source.h"
+
 namespace fs = std::filesystem;
 
 namespace xm {
 namespace detail {
 
 bool readWholeFile(const std::string& path, std::vector<uint8_t>& out) {
-    std::FILE* f = std::fopen(path.c_str(), "rb");
-    if (!f) return false;
-    std::fseek(f, 0, SEEK_END);
-    long n = std::ftell(f);
-    std::fseek(f, 0, SEEK_SET);
-    if (n <= 0) { std::fclose(f); return false; }
-    out.resize((size_t)n);
-    size_t got = std::fread(out.data(), 1, (size_t)n, f);
-    std::fclose(f);
-    out.resize(got);
-    return got > 0;
+    // Bundle-first when an install is open, filesystem otherwise. This is the one place
+    // the asset layer's bytes come from, which is why the .dat reader is wired here and
+    // not into each loader (see assets/asset_source.h for the duplicate-name reason).
+    return fnd::assets::assetSource().read(path, out);
 }
 
 int32_t rdI32(const uint8_t* p) {
@@ -198,8 +198,7 @@ std::string joinPath(const std::string& dir, const std::string& name) {
 // stage whose 07.X is absent (the common case) is still a valid stage.
 void addModel(Scene& scene, const std::string& path, const std::string& role,
               int index, const SceneOptions& opt, bool drawable = true) {
-    std::error_code ec;
-    if (!fs::exists(path, ec)) return;
+    if (!fnd::assets::assetSource().exists(path)) return;
 
     SceneModel sm;
     try {
@@ -207,6 +206,7 @@ void addModel(Scene& scene, const std::string& path, const std::string& role,
         if (!readWholeFile(path, bytes))
             throw std::runtime_error("cannot read " + path);
         sm.model = loadMemory(bytes.data(), bytes.size());
+        sm.sourceBytes = bytes.size();
     } catch (const std::exception& e) {
         std::fprintf(stderr, "[scene] %s: %s\n", path.c_str(), e.what());
         return;
@@ -217,6 +217,37 @@ void addModel(Scene& scene, const std::string& path, const std::string& role,
     sm.drawable = drawable;
     sm.textures = TextureCache(path.substr(0, path.find_last_of("/\\") + 1));
     scene.models.push_back(std::move(sm));
+}
+
+// True for a model file name with a ".x" extension in any case — the test both directory
+// fallbacks below need.
+bool hasXExtension(const std::string& path) {
+    const size_t dot = path.find_last_of('.');
+    if (dot == std::string::npos) return false;
+    std::string ext = path.substr(dot);
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return (char)std::tolower(c); });
+    return ext == ".x";
+}
+
+// Appends the first ".x" directly inside `dir`, for the case where the .dat named nothing
+// usable. Bundle entries are tried first on purpose: their order is stable (bundle, then
+// table) while fs::directory_iterator's is not, and this pick ends up in captures.
+void addFirstX(Scene& scene, const std::string& dir, const std::string& role,
+               const SceneOptions& opt) {
+    for (const std::string& key : fnd::assets::assetSource().listDir(dir)) {
+        if (hasXExtension(key)) {
+            addModel(scene, key, role, -1, opt);
+            return;
+        }
+    }
+    std::error_code ec;
+    for (const auto& e : fs::directory_iterator(dir, ec)) {
+        if (hasXExtension(e.path().string())) {
+            addModel(scene, e.path().string(), role, -1, opt);
+            return;
+        }
+    }
 }
 
 void readEnv(const std::string& path, StageEnv& env) {
@@ -282,19 +313,8 @@ Scene loadCharacter(const std::string& baseDir, const std::string& character, in
     }
 
     detail::addModel(scene, detail::joinPath(dir, modelName), "character", -1, opt);
-    if (scene.models.empty()) {
-        // Some costumes ship a differently numbered model; take whatever is there.
-        std::error_code ec;
-        for (const auto& e : fs::directory_iterator(dir, ec)) {
-            std::string ext = e.path().extension().string();
-            std::transform(ext.begin(), ext.end(), ext.begin(),
-                           [](unsigned char c) { return (char)std::tolower(c); });
-            if (ext == ".x") {
-                detail::addModel(scene, e.path().string(), "character", -1, opt);
-                break;
-            }
-        }
-    }
+    if (scene.models.empty())
+        detail::addFirstX(scene, dir, "character", opt);   // differently numbered costume
     return scene;
 }
 
@@ -302,23 +322,41 @@ Scene loadStage(const std::string& stageDir, const SceneOptions& opt) {
     Scene scene;
     scene.source = stageDir;
 
-    // FUN_004011f0: exactly eight slots, `%02d.x` or `%02db.x`.
+    // FUN_004011f0: exactly eight slots, `%02d.x` or `%02db.x`. The case fallback below
+    // is only for a case-sensitive filesystem: the bundle lookup folds case like the exe
+    // (__stricmp at 0x00663c20), so a bundle-only install resolves either spelling.
     for (int i = 0; i < 8; ++i) {
         char buf[32];
         std::snprintf(buf, sizeof buf, opt.variantB ? "%02db.X" : "%02d.X", i);
         std::string path = detail::joinPath(stageDir, buf);
-        std::error_code ec;
-        if (!fs::exists(path, ec)) {
+        if (!fnd::assets::assetSource().exists(path)) {
             std::snprintf(buf, sizeof buf, opt.variantB ? "%02db.x" : "%02d.x", i);
             path = detail::joinPath(stageDir, buf);
         }
         detail::addModel(scene, path, "stage", i, opt);
     }
     if (opt.includeCollision) {
-        detail::addModel(scene, detail::joinPath(stageDir, "collision.x"), "collision", -1, opt, false);
-        detail::addModel(scene, detail::joinPath(stageDir, "collision.X"), "collision", -1, opt, false);
-        detail::addModel(scene, detail::joinPath(stageDir, "collision_camera.X"), "collision", -1, opt, false);
-        detail::addModel(scene, detail::joinPath(stageDir, "collision_tama.x"), "collision", -1, opt, false);
+        // One probe per collision channel; the reference keeps exactly three (general,
+        // camera, projectile — remake/src/maps/stage.h:11-14 in physics/raycast.h terms).
+        // The candidate pairs exist because the shipped stages disagree on case: stages
+        // 04 and 14 store "collision_camera.x" lowercase, the rest ".X". resolve() folds
+        // case when the source can (bundles do, like the exe) and returns one path, so a
+        // channel is never loaded twice.
+        struct Channel {
+            const char* role;
+            const char* upper;
+            const char* lower;
+        };
+        static constexpr Channel kChannels[] = {
+            {"collision", "collision.X", "collision.x"},
+            {"collision_camera", "collision_camera.X", "collision_camera.x"},
+            {"collision", "collision_tama.X", "collision_tama.x"},
+        };
+        for (const Channel& ch : kChannels) {
+            const std::string path = fnd::assets::assetSource().resolve(
+                {detail::joinPath(stageDir, ch.upper), detail::joinPath(stageDir, ch.lower)});
+            if (!path.empty()) detail::addModel(scene, path, ch.role, -1, opt, false);
+        }
     }
     detail::readEnv(detail::joinPath(stageDir, "env.dat"), scene.env);
     return scene;
@@ -331,11 +369,7 @@ Scene loadWeapon(const std::string& bulletDir, int slot, const Model* attachTo,
 
     // A direct .X path is accepted too: weapons also ship as data/item/NN.X, and the
     // per-character table that picks between them is not parsed.
-    std::error_code fec;
-    if (fs::is_regular_file(bulletDir, fec)) {
-        const size_t slash = bulletDir.find_last_of("/\\");
-        const std::string dir = (slash == std::string::npos) ? std::string()
-                                                             : bulletDir.substr(0, slash + 1);
+    if (fnd::assets::assetSource().exists(bulletDir)) {
         detail::addModel(scene, bulletDir, "weapon", -1, opt);
         for (SceneModel& sm : scene.models) {
             if (!attachTo) break;
@@ -346,7 +380,6 @@ Scene loadWeapon(const std::string& bulletDir, int slot, const Model* attachTo,
                 std::fprintf(stderr, "[scene] %s: no Bip01_Prop1/Prop2 in the character rig\n",
                              bulletDir.c_str());
         }
-        (void)dir;
         return scene;
     }
 
@@ -360,12 +393,20 @@ Scene loadWeapon(const std::string& bulletDir, int slot, const Model* attachTo,
     if (detail::readWholeFile(detail::joinPath(bulletDir, name), bytes))
         modelName = readDatModelName(bytes.data(), bytes.size());
     if (modelName.empty()) {
+        for (const std::string& key : fnd::assets::assetSource().listDir(bulletDir)) {
+            if (detail::hasXExtension(key)) {
+                modelName = key.substr(key.find_last_of('/') + 1);
+                break;
+            }
+        }
+    }
+    if (modelName.empty()) {
         std::error_code ec;
         for (const auto& e : fs::directory_iterator(bulletDir, ec)) {
-            std::string ext = e.path().extension().string();
-            std::transform(ext.begin(), ext.end(), ext.begin(),
-                           [](unsigned char c) { return (char)std::tolower(c); });
-            if (ext == ".x") { modelName = e.path().filename().string(); break; }
+            if (detail::hasXExtension(e.path().string())) {
+                modelName = e.path().filename().string();
+                break;
+            }
         }
     }
     if (modelName.empty()) {
