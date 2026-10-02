@@ -255,9 +255,54 @@ LIMIT 100%, bgm pushed 153,600 frames, 0 wraps).
 
 ## 6. Phase 3 — fidelity (RE + assets as needed)
 
+**Landed so far (`275212d`, `47875f0`, `de4057e`):** camera parity with the DX9
+reference (trace-exact, including frame 1), solid cubes for shots/sparks/auras,
+`--size=WxH` so a foundation frame can be 800x600 like a banked one,
+`tests/compare_frames.py` as the gate's instrument, the CJK text layer (500
+checks) with a regenerated full-CP932 table, and fixed-function lighting parity
+(RMSE 0.324 → 0.085 on three cases, exposure matched to ±0.003).
+
+**A verification invariant this phase had to be corrected about, recorded
+2026-10-03 because it invalidates a general claim Phase 2 made.** Linux-native
+and Wine captures are byte-identical only when no animation is evaluated:
+
+| content | Linux vs Wine |
+|---|---|
+| bare stage, no characters | **byte-identical** |
+| one character, bind pose (no animation bound) | **byte-identical** |
+| any frame with an animation evaluated | differs, from **1 byte at frame 1** to 8,124 bytes at frame 110 (tapshot, 800x600) |
+
+The divergence is in the pose path, not the renderer: `slerp`/`normalize`/trig
+in the animation evaluator land 1 ULP apart between MinGW and glibc, and a
+vertex that moves by 1 ULP pushes a few pixels across an 8-bit bucket boundary
+(bright shading makes more pixels cross, which is why the lighting fix widened
+a pre-existing gap rather than creating one). Consequences, stated plainly:
+
+* Phase 2's byte-identical match pairs (dash frame 150, KO frame 2600) remain
+  true *measurements* — those frames were insensitive — but they are not a
+  general invariant and must not be cited as one.
+* The Phase 3 gate therefore compares frames with `compare_frames.py`'s RMSE /
+  coverage / luminance, not with `cmp`, and the exact-integer oracle for
+  gameplay behaviour stays the `DAYBREAK_CAMINFO` trace (positions and states,
+  which still match to the unit across both implementations and both targets).
+* Making the evaluator bit-reproducible across compilers would mean a
+  deterministic math layer; not attempted, and not needed for the gate.
+
 - [ ] Effect techniques completed (trails via `FUN_00633ca0`, per-effect
       factors, billboard yaw vs original).
-- [ ] CJK implementation from the Phase 1 decision.
+- [x] CJK implementation from the Phase 1 decision. **Landed `47875f0`**:
+      `ui::TextLayer` (stb_truetype, on-demand glyph cache, uploadable RGBA8
+      atlas, `\c` colour runs, integer fixed-point advances), 500 checks,
+      bitmap fallback bit-for-bit identical to `ui::measureText`. Not wired to
+      the HUD yet on purpose — the gate frame's HUD is ASCII; the CJK strings
+      (適当, the menu) belong to the menus item below. The same test found the
+      shipped CP932 table was generated from texture filenames only and could
+      not convert 15 code points used by menu text; regenerated full-CP932.
+- [ ] Animation pose correctness. **The top open bug**: with any animation
+      bound the skinned model tumbles (upright at frame 1, inverted by frame
+      15). The DX9 A/B cannot catch it — it binds zero animation sets for
+      shipped characters, so its captures are all bind pose. Also the reason
+      Linux/Wine byte-identity stops at animated frames (see the table above).
 - [ ] Video if D6 scope reaches it (pl_mpeg vendor + uploader; still
       stubbed until then).
 - [ ] Menus/title/opening scenes after gameplay (D6 order: versus first).
