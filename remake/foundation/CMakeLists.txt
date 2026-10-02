@@ -90,8 +90,12 @@ add_library(foundation_ui STATIC
     src/ui/sprite.cpp
     src/ui/font.cpp
     src/ui/hud.cpp
+    src/ui/text.cpp
     src/ui/fallback.cpp)
 target_include_directories(foundation_ui PUBLIC src)
+# stb_truetype for the CJK rasterizer, alongside the vendored stb_vorbis the media
+# layer uses (foundation_media adds the same directory).
+target_include_directories(foundation_ui PRIVATE third_party/stb)
 target_link_libraries(foundation_ui PUBLIC foundation)
 
 # Media/input contracts and tables. Header-only by design (they unit-test
@@ -199,6 +203,15 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
 
     # The cube pass's geometry: device-free, like debug_prims_geometry. It defines both
     # geometry-only guards, so it compiles the two headers without any WebGPU header.
+    # The CJK text layer: device-free (it rasterizes into host memory), and it links
+    # the bitmap font in because half its contract is "bit-for-bit identical to
+    # ui::measureText/ui::layoutText when no font is loaded". It SKIPs without the
+    # fetched font, which is not committed (scripts/fetch_deps.sh pins its sha256).
+    add_executable(text_test tests/text_test.cpp src/ui/text.cpp src/ui/font.cpp)
+    target_include_directories(text_test PRIVATE src third_party/stb)
+    target_link_libraries(text_test PRIVATE glm)
+    add_test(NAME text_test COMMAND text_test)
+
     add_executable(unlit_cube_geometry tests/unlit_cube_geometry.cpp)
     target_include_directories(unlit_cube_geometry PRIVATE src)
     target_link_libraries(unlit_cube_geometry PRIVATE glm)

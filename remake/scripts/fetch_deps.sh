@@ -242,6 +242,48 @@ ok "libvorbis: ${VORBIS_DIR}/lib/"
 # ----------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------
+# 7b) CJK text: one OFL Japanese font for the foundation's in-process rasterizer.
+#     docs/CJK-TEXT.md decided this (option B): the HUD and the menus need Japanese,
+#     the D3DX/GDI font path is gone, and the embedded 5x7 ASCII atlas cannot draw it.
+#     stb_truetype (vendored, public domain, third_party/stb/stb_truetype.h) rasterizes
+#     it at run time, so the only external artefact is the font file itself, and that is
+#     fetched here rather than committed: the repo never carries the game's assets, and
+#     a 16 MB OFL font is not an exception.
+#     The sha256 is pinned because the rasterizer's output is only reproducible against
+#     a known font file (src/ui/text.h states the determinism contract, and
+#     tests/text_test.cpp hashes the atlas it produces).
+# ----------------------------------------------------------------------------
+# Under the foundation tree: that is where the demo and tests look for it.
+CJK_DIR="${ROOT}/foundation/third_party/fonts"
+CJK_FONT="${CJK_DIR}/NotoSansCJKjp-Regular.otf"
+CJK_URL="https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJKjp-Regular.otf"
+# sha256 of the file this URL served on 2026-10-02 (Noto CJK Sans JP Regular, OFL 1.1).
+CJK_SHA256="68a3fc98800b2a27b371f2fb79991daf3633bd89309d4ffaa6946fd587f375b5"
+mkdir -p "${CJK_DIR}"
+if [[ ${FORCE} -eq 1 ]] && [[ -f "${CJK_FONT}" ]]; then rm -f "${CJK_FONT}"; fi
+if [[ ! -f "${CJK_FONT}" ]]; then
+    log "fetching Noto Sans CJK JP (OFL, ~16 MB) for the CJK text layer"
+    curl -fL --retry 3 -o "${CJK_FONT}.tmp" "${CJK_URL}" || die "CJK font download failed"
+    mv "${CJK_FONT}.tmp" "${CJK_FONT}"
+else
+    ok "CJK font already present"
+fi
+# Verify, always: a moved URL or a rewritten upstream file must fail here rather than
+# silently change every glyph the HUD draws.
+if command -v sha256sum >/dev/null 2>&1; then
+    actual="$(sha256sum "${CJK_FONT}" | cut -d' ' -f1)"
+    if [[ "${actual}" != "${CJK_SHA256}" ]]; then
+        die "CJK font sha256 mismatch: expected ${CJK_SHA256}, got ${actual}"
+    fi
+    ok "cjk font sha256 verified"
+else
+    warn "sha256sum unavailable; skipping the font hash check"
+fi
+ok "cjk font: ${CJK_FONT}"
+echo "  note: the font is not committed; src/ui/text.h falls back to the ASCII atlas"
+echo "        when it is absent, and tests/text_test.cpp SKIPs."
+
+# ----------------------------------------------------------------------------
 # 8) Summary
 # ----------------------------------------------------------------------------
 echo
