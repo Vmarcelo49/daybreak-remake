@@ -302,6 +302,26 @@ Consequences already visible, measured 2026-10-03 against `battle-hud.webp`:
   than both.
 * RMSE against the print is 0.298 versus 0.064 against the remake's frame.
   The 0.064 was a real result against the wrong target.
+* **Wrong stage variant** (owner's catch, verified 2026-10-03). The school
+  stage ships as a scene with day and night variants, and every comparison so
+  far used `stage21` — the DX9 remake hardcodes it
+  (`remake/src/core/scenes.cpp:481-489`) — which is the **night** variant
+  (env.dat fog `rgb(0.06 0.08 0.20)`, the darkest of all 13 stages at max
+  luminance 0.659). `stage-select-school.webp` names the stage the prints
+  show: **雛見沢分校 校庭 (schoolyard) — 昼 (day)**. Searching the install for
+  the CP932 bytes of 校庭 locates the scene in `stage01`, `stage02`,
+  `stage11`, `stage12` and `stage21`, which the fog colours then sort into
+  day (`01`: 0.30/0.39/0.47, `02`: 0.28/0.34/0.36), warm/sunset (`12`:
+  0.35/0.20/0.18) and night (`21`). So the brightness gap in the row above is
+  mostly the variant, not the lighting: comparisons against the prints must
+  use `stage01`/`stage02` (whichever the print's wall/ground textures identify
+  — a framing-independent question, being settled by the camera track). The
+  DX9 frames stay valid for *behaviour* on whatever stage they used.
+* The stage-select print also specs a whole front-end screen: `STAGE SELECT`
+  with the stage name + time of day, a thumbnail, and `BATTLE SETTING` rows
+  (制限時間, 体力値, ゲージ増加量, 青チーム風船サイズ, 赤チーム風船サイズ) over
+  `戦闘開始` / `戻る` — the level of detail the front-end tracks can work
+  from.
 
 **Where the gate frame stands (2026-10-03, against the DX9 remake).** Against the three banked DX9
 frames at 800x600, after camera parity, lighting parity, the animation-set fix
