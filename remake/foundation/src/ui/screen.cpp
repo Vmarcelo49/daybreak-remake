@@ -1,0 +1,177 @@
+// ui/screen.cpp — the screen ids, the factory and the 25-frame fade.
+// The header carries the provenance; this file is the transcription of
+// FUN_00657c80 (switcher) and FUN_004020a0 (factory) as a host-side machine.
+#include "ui/screen.h"
+
+#include <cctype>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
+#include "ui/screen_title.h"
+
+namespace ui {
+namespace {
+
+// The RE'd ids of screen.h, by the lowercase name a `--screen=` argument may use. One
+// table, in this translation unit: an id is its ScreenId row plus its name here.
+struct ScreenName {
+    const char* name;
+    ScreenId    id;
+};
+constexpr ScreenName kScreenNames[] = {
+    {"opening", ScreenId::Opening},           {"title", ScreenId::Title},
+    {"select", ScreenId::Select},             {"prologue", ScreenId::Prologue},
+    {"storyteam", ScreenId::StoryTeam},       {"options", ScreenId::Options},
+    {"keyconfig", ScreenId::KeyConfig},       {"storyadv", ScreenId::StoryAdv},
+    {"vsintro", ScreenId::VsIntro},           {"battle", ScreenId::Battle},
+    {"netplay", ScreenId::NetplayMenu},       {"netplaylobby", ScreenId::NetplayLobby},
+    {"netplayentry", ScreenId::NetplayEntry}, {"gameover", ScreenId::GameOver},
+    {"staffroll", ScreenId::StaffRoll},       {"quit", ScreenId::Quit},
+};
+
+bool equalsIgnoreCase(const char* a, const char* b) {
+    for (; *a && *b; ++a, ++b)
+        if (std::tolower((unsigned char)*a) != std::tolower((unsigned char)*b)) return false;
+    return *a == '\0' && *b == '\0';
+}
+
+// FUN_004020a0's switch as one table: the ids the port can construct and the
+// constructor for each. A screen therefore lands as one row here plus its own builder
+// — screenAvailable() and makeScreen() read the same list, so "would go to X" and
+// "goes to X" cannot drift.
+struct ScreenEntry {
+    ScreenId id;
+    std::unique_ptr<Screen> (*make)(SpriteRenderer&, std::string&);
+};
+constexpr ScreenEntry kScreens[] = {
+    {ScreenId::Title, &makeTitleScreen},
+};
+
+}  // namespace
+
+bool screenAvailable(ScreenId id) {
+    for (const ScreenEntry& e : kScreens)
+        if (e.id == id) return true;
+    return false;
+}
+
+std::unique_ptr<Screen> makeScreen(ScreenId id, SpriteRenderer& batch, std::string& error) {
+    for (const ScreenEntry& e : kScreens)
+        if (e.id == id) return e.make(batch, error);
+    // Quit is the factory's own `default` (FUN_004020a0 returns null for 0x16): no
+    // scene is the normal way to leave, so it is not an error. Any other id is a
+    // screen the port has not built yet, which is.
+    if (id != ScreenId::Quit) {
+        char id_text[16];
+        std::snprintf(id_text, sizeof(id_text), "0x%02x", (int)id);
+        error = std::string("scene ") + id_text + " has no screen yet";
+    }
+    return nullptr;
+}
+
+bool parseScreenId(const char* text, ScreenId& out) {
+    if (!text) return false;
+    while (*text == ' ') ++text;
+    // Numbers first: "1" and "0x01" are the ids as the RE writes them, and a future id
+    // may have no name yet. Base 10 unless the "0x" is spelled out, so "016" is 16 and
+    // not an octal surprise.
+    if (*text >= '0' && *text <= '9') {
+        const int base = (text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) ? 16 : 10;
+        char* end = nullptr;
+        const long value = std::strtol(text, &end, base);
+        while (end && *end == ' ') ++end;
+        if (!end || *end != '\0') return false;
+        out = (ScreenId)value;
+        return true;
+    }
+    // Names, with an optional "screen"/"scene" prefix.
+    for (const char* prefix : {"screen", "scene"}) {
+        const size_t n = std::strlen(prefix);
+        if (std::strncmp(text, prefix, n) == 0) {
+            text += n;
+            while (*text == ' ' || *text == ':' || *text == '=' || *text == '-') ++text;
+            break;
+        }
+    }
+    for (const ScreenName& s : kScreenNames)
+        if (equalsIgnoreCase(text, s.name)) {
+            out = s.id;
+            return true;
+        }
+    return false;
+}
+
+uint8_t ScreenStack::fadeAlpha8(int frame) {
+    if (frame <= 0) return 0;
+    if (frame >= 0x18) return 0xff;   // FUN_00657c80.c:24-28 pins 0xff000000 from 0x18
+    return (uint8_t)(frame * 10 + 5);
+}
+
+bool ScreenStack::begin(ScreenId id, Factory factory, std::string& error) {
+    factory_ = std::move(factory);
+    current_ = factory_ ? factory_(id) : nullptr;
+    if (!current_) {
+        if (error.empty()) error = "cannot start on the requested screen";
+        finished_ = true;
+        currentId_ = target_ = ScreenId::Quit;
+        return false;
+    }
+    currentId_ = target_ = id;
+    fade_ = 0;
+    finished_ = false;
+    return true;
+}
+
+ScreenId ScreenStack::update(const ScreenInput& in) {
+    if (!current_) return currentId_;
+
+    // FUN_00657ef0.c:29-34: the update runs every frame, whether or not a fade is in
+    // flight, and its return value is the next id.
+    const ScreenId next = current_->update(in);
+
+    if (target_ != currentId_) {
+        // Fading out: FUN_00657c80.c:32-64 increments the counter once per frame and
+        // swaps at 0x19, so the old screen is alive for all 25 fade frames.
+        if (++fade_ >= kFadeFrames) {
+            fade_ = kFadeFrames;
+            current_ = factory_ ? factory_(target_) : nullptr;   // vtable slot 2
+            if (!current_) {
+                // The factory's default: no scene, and the loop tears the app down
+                // (FUN_00657c80.c:58 and FUN_00657ef0.c:49-53).
+                finished_ = true;
+                currentId_ = target_;
+                return currentId_;
+            }
+            currentId_ = target_;
+        }
+        return currentId_;
+    }
+
+    if (next != currentId_) {
+        target_ = next;   // latched; see the header's second difference
+        fade_ = 1;
+        return currentId_;
+    }
+    // Fading in: FUN_00657c80.c:12-31's `param_2 == current` branch walks the counter
+    // back down, which is the same 25-frame ramp in reverse.
+    if (fade_ > 0) --fade_;
+    return currentId_;
+}
+
+void ScreenStack::draw(SpriteRenderer& batch) const {
+    if (current_) current_->draw(batch);
+    if (fade_ > 0)
+        batch.pushSolid(UiRect{0.f, 0.f, (float)batch.viewportW(), (float)batch.viewportH()},
+                        UiColor{0.f, 0.f, 0.f, fadeAlpha8(fade_) / 255.f});
+}
+
+bool drawScreenFrame(const ScreenStack& stack, SpriteRenderer& batch, uint32_t w, uint32_t h,
+                     WGPUCommandEncoder encoder, WGPUTextureView view, WGPUTextureFormat format,
+                     std::string& error) {
+    batch.beginFrame(w, h);
+    stack.draw(batch);
+    return batch.render(encoder, view, format, error);
+}
+
+}  // namespace ui

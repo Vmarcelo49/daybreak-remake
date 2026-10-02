@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  fetch_deps.sh — bootstrap the daybreak cross-compile toolchain on Linux.
+#  fetch_deps.sh — host toolchain and fonts for the SDL3 + WebGPU foundation.
 #
 #  No sudo / root required. Downloads and extracts (into tools/):
 #     - CMake 4.x  + Ninja           (pip wheels, into tools/python)
 #     - MinGW-w64 GCC 14 (posix)     (Debian .deb packages, into tools/mingw)
-#     - SDL2 2.30.10 MinGW dev zip   (into tools/SDL2-2.30.10)
-#     - d3dx9_43.dll x64             (from a mirror, into tools/d3dx9)
+#     - radare2 5.9.8 + runtime libs (optional: RE of the original binary)
+#  plus the two font files the foundation's text layer pins (into
+#  foundation/third_party/fonts).
+#
+#  The foundation's own third-party sources (glm, stb, WebGPU-distribution,
+#  sdl3webgpu, SDL3 for MinGW) come from foundation/scripts/fetch_deps.sh.
 #
 #  Usage:
 #     ./scripts/fetch_deps.sh            # download everything missing
@@ -22,18 +26,17 @@ TOOLS="${ROOT}/tools"
 FORCE=0
 if [[ "${1:-}" == "--force" || "${1:-}" == "-f" ]]; then FORCE=1; fi
 
-mkdir -p "${TOOLS}/debs" "${TOOLS}/mingw" "${TOOLS}/d3dx9"
-mkdir -p "${ROOT}/third_party"
+mkdir -p "${TOOLS}/debs" "${TOOLS}/mingw"
 
 log()  { printf "\033[1;34m[fetch_deps]\033[0m %s\n" "$*"; }
 ok()   { printf "\033[1;32m[fetch_deps]\033[0m %s\n" "$*"; }
 warn() { printf "\033[1;33m[fetch_deps]\033[0m %s\n" "$*" >&2; }
 die()  { printf "\033[1;31m[fetch_deps]\033[0m %s\n" "$*" >&2; exit 1; }
 
-have() { [[ -e "$1" ]]; }
-
 # ----------------------------------------------------------------------------
 # 1) CMake + Ninja via a self-contained venv (no system Python pollution)
+#    A system cmake/ninja works too — foundation/build.sh uses whatever is on
+#    PATH — so this venv is the pinned fallback rather than a requirement.
 # ----------------------------------------------------------------------------
 VENV="${TOOLS}/python"
 if [[ ${FORCE} -eq 1 ]] && [[ -d "${VENV}" ]]; then rm -rf "${VENV}"; fi
@@ -54,6 +57,9 @@ ok "ninja:  $(${VENV}/bin/ninja --version)"
 
 # ----------------------------------------------------------------------------
 # 2) MinGW-w64 GCC 14 (POSIX, x86-64) from Debian packages
+#    The foundation's Windows target
+#    (foundation/cmake/toolchains/mingw-w64-x86_64.cmake) resolves these
+#    compilers from PATH, so add ${TOOLS}/mingw/usr/bin to it before building.
 # ----------------------------------------------------------------------------
 MINGW_BIN="${TOOLS}/mingw/usr/bin/x86_64-w64-mingw32-g++-posix"
 if [[ ${FORCE} -eq 1 ]] && [[ -d "${TOOLS}/mingw/usr" ]]; then rm -rf "${TOOLS}/mingw/usr"; fi
@@ -80,74 +86,8 @@ else
 fi
 ok "mingw:  $(${MINGW_BIN} --version | head -1)"
 
-# Sanity: confirm DX9 headers + libs ship with MinGW sysroot
-SYSROOT="${TOOLS}/mingw/usr/x86_64-w64-mingw32"
-[[ -f "${SYSROOT}/include/d3d9.h"   ]] || die "d3d9.h missing in MinGW sysroot"
-[[ -f "${SYSROOT}/lib/libd3d9.a"   ]] || die "libd3d9.a missing"
-[[ -f "${SYSROOT}/lib/libd3dx9.a"  ]] || die "libd3dx9.a missing"
-ok "dx9:    headers + libs OK"
-
 # ----------------------------------------------------------------------------
-# 3) SDL2 2.30.10 MinGW dev package (official release)
-# ----------------------------------------------------------------------------
-SDL2_VER="2.30.10"
-SDL2_ROOT="${TOOLS}/SDL2-${SDL2_VER}"
-SDL2_ZIP="${TOOLS}/SDL2-devel-${SDL2_VER}-mingw.zip"
-SDL2_URL="https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VER}/SDL2-devel-${SDL2_VER}-mingw.zip"
-
-if [[ ${FORCE} -eq 1 ]] && [[ -d "${SDL2_ROOT}" ]]; then rm -rf "${SDL2_ROOT}"; fi
-if [[ ! -d "${SDL2_ROOT}" ]]; then
-    if [[ ! -f "${SDL2_ZIP}" ]]; then
-        log "downloading SDL2 ${SDL2_VER} MinGW dev"
-        curl -fL --retry 3 -o "${SDL2_ZIP}" "${SDL2_URL}" || die "SDL2 download failed"
-    fi
-    log "extracting SDL2"
-    (cd "${TOOLS}" && unzip -q -o "$(basename "${SDL2_ZIP}")")
-fi
-[[ -f "${SDL2_ROOT}/x86_64-w64-mingw32/include/SDL2/SDL.h" ]] || die "SDL2 headers missing"
-ok "sdl2:   ${SDL2_ROOT}"
-
-# ----------------------------------------------------------------------------
-# 4) d3dx9_43.dll (x64) — required at RUNTIME for D3DXLoadMeshHierarchyFromX.
-#    The MinGW sysroot ships the import lib (libd3dx9.a), but not the DLL.
-#    We pull it from a known mirror; if every mirror fails, instruct the
-#    user to install the DirectX End-User Runtime (June 2010).
-# ----------------------------------------------------------------------------
-D3DX9_DLL="${TOOLS}/d3dx9/d3dx9_43.dll"
-if [[ ${FORCE} -eq 1 ]] && [[ -f "${D3DX9_DLL}" ]]; then rm -f "${D3DX9_DLL}"; fi
-
-if [[ ! -f "${D3DX9_DLL}" ]]; then
-    log "fetching d3dx9_43.dll (x64) — runtime dep for .x loader"
-
-    # Mirror 1: DirectX redist DLLs hosted on a public GitHub release.
-    D3DX9_URLS=(
-        "https://github.com/sneha-belur/d3dx9/releases/download/v0.1/d3dx9_43_x64.dll"
-        "https://raw.githubusercontent.com/MichaelMoroz/CppD3D11Tutorial/main/redist/d3dx9_43_x64.dll"
-    )
-    fetched=0
-    for url in "${D3DX9_URLS[@]}"; do
-        if curl -fL --retry 2 -o "${D3DX9_DLL}.tmp" "${url}" 2>/dev/null; then
-            mv "${D3DX9_DLL}.tmp" "${D3DX9_DLL}"
-            fetched=1
-            break
-        fi
-    done
-
-    if [[ ${fetched} -eq 0 ]]; then
-        warn "Could not auto-fetch d3dx9_43.dll from a mirror."
-        warn "On a Windows machine, install the DirectX End-User Runtime (June 2010)"
-        warn "  → https://www.microsoft.com/en-us/download/details.aspx?id=8109"
-        warn "or copy d3dx9_43.dll (x64) into ${TOOLS}/d3dx9/ manually."
-        warn "The build will still succeed; only the runtime needs the DLL."
-    else
-        ok "d3dx9:  ${D3DX9_DLL}"
-    fi
-else
-    ok "d3dx9 already present: ${D3DX9_DLL}"
-fi
-
-# ----------------------------------------------------------------------------
-# 5) radare2 (for reverse-engineering the original DaybreakDX.exe)
+# 3) radare2 (for reverse-engineering the original DaybreakDX.exe)
 #    Optional — only needed when analyzing the original binary.  Installed
 #    from the Ubuntu archive (Debian trixie doesn't ship radare2) plus the
 #    runtime libs (libcapstone5, libzip5, libmagic1t64, libxxhash0, liblz4-1).
@@ -186,70 +126,102 @@ R2_VERSION="$(LD_LIBRARY_PATH="${R2_LIB_DIR}:${LD_LIBRARY_PATH:-}" "${R2_BIN}" -
 ok "radare2: ${R2_VERSION}"
 
 # ----------------------------------------------------------------------------
-# 6) SDL2_mixer + libvorbis (audio engine)
-#    SDL2_mixer is SDL2's audio mixer — supports WAV, OGG (via libvorbis),
-#    MP3, MOD.  We grab the MinGW dev package (matches our SDL2 2.30.10)
-#    and the libvorbis + libogg runtime DLLs from xiph.org.
+# 4) Video: no external dependency. Story-mode video is out of scope by
+#    decision (foundation/src/audio/video.h is an explicit stub), so no MPEG
+#    decoder is vendored and nothing is fetched here.
 # ----------------------------------------------------------------------------
-SDL_MIXER_VER="2.8.0"
-SDL_MIXER_DIR="${TOOLS}/SDL2_mixer-${SDL_MIXER_VER}"
-SDL_MIXER_ZIP="${TOOLS}/SDL2_mixer-devel-${SDL_MIXER_VER}-mingw.zip"
-SDL_MIXER_URL="https://github.com/libsdl-org/SDL_mixer/releases/download/release-${SDL_MIXER_VER}/SDL2_mixer-devel-${SDL_MIXER_VER}-mingw.zip"
 
-if [[ ! -d "${SDL_MIXER_DIR}" ]]; then
-    log "downloading SDL2_mixer ${SDL_MIXER_VER} MinGW dev"
-    curl -fsSL -o "${SDL_MIXER_ZIP}" "${SDL_MIXER_URL}" \
-        || die "SDL2_mixer download failed"
-    (cd "${TOOLS}" && unzip -q -o "$(basename "${SDL_MIXER_ZIP}")")
-    rm -f "${SDL_MIXER_ZIP}"
+# ----------------------------------------------------------------------------
+# 5) CJK text: one OFL Japanese font for the foundation's in-process rasterizer.
+#     docs/CJK-TEXT.md decided this (option B): the HUD and the menus need Japanese,
+#     the DX9 font path is gone, and the embedded 5x7 ASCII atlas cannot draw it.
+#     stb_truetype (vendored, public domain, third_party/stb/stb_truetype.h) rasterizes
+#     it at run time, so the only external artefact is the font file itself, and that is
+#     fetched here rather than committed: the repo never carries the game's assets, and
+#     a 16 MB OFL font is not an exception.
+#     The sha256 is pinned because the rasterizer's output is only reproducible against
+#     a known font file (src/ui/text.h states the determinism contract, and
+#     tests/text_test.cpp hashes the atlas it produces).
+# ----------------------------------------------------------------------------
+# Under the foundation tree: that is where the demo and tests look for it.
+CJK_DIR="${ROOT}/foundation/third_party/fonts"
+CJK_FONT="${CJK_DIR}/NotoSansCJKjp-Regular.otf"
+CJK_URL="https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJKjp-Regular.otf"
+# sha256 of the file this URL served on 2026-10-02 (Noto CJK Sans JP Regular, OFL 1.1).
+CJK_SHA256="68a3fc98800b2a27b371f2fb79991daf3633bd89309d4ffaa6946fd587f375b5"
+mkdir -p "${CJK_DIR}"
+if [[ ${FORCE} -eq 1 ]] && [[ -f "${CJK_FONT}" ]]; then rm -f "${CJK_FONT}"; fi
+if [[ ! -f "${CJK_FONT}" ]]; then
+    log "fetching Noto Sans CJK JP (OFL, ~16 MB) for the CJK text layer"
+    curl -fL --retry 3 -o "${CJK_FONT}.tmp" "${CJK_URL}" || die "CJK font download failed"
+    mv "${CJK_FONT}.tmp" "${CJK_FONT}"
 else
-    ok "SDL2_mixer already present"
+    ok "CJK font already present"
 fi
-ok "sdl_mixer: ${SDL_MIXER_DIR}"
-
-# libvorbis + libogg runtime DLLs (downloaded from xiph.org).
-# SDL2_mixer dynamically loads these at runtime if they're in the PATH.
-VORBIS_DIR="${TOOLS}/libvorbis-mingw"
-mkdir -p "${VORBIS_DIR}/lib"
-if [[ ! -f "${VORBIS_DIR}/lib/libvorbis-0.dll" ]]; then
-    log "downloading libvorbis + libogg runtime DLLs (xiph.org)"
-    curl -fsSL -o /tmp/libvorbis-win.zip \
-        "https://downloads.xiph.org/releases/vorbis/libvorbis-1.3.7-win.zip" || true
-    if [[ -f /tmp/libvorbis-win.zip ]]; then
-        mkdir -p /tmp/libvorbis-extract
-        (cd /tmp/libvorbis-extract && unzip -q -o /tmp/libvorbis-win.zip)
-        find /tmp/libvorbis-extract -name "*.dll" -exec cp {} "${VORBIS_DIR}/lib/" \;
-        rm -rf /tmp/libvorbis-extract /tmp/libvorbis-win.zip
+# Verify, always: a moved URL or a rewritten upstream file must fail here rather than
+# silently change every glyph the HUD draws.
+if command -v sha256sum >/dev/null 2>&1; then
+    actual="$(sha256sum "${CJK_FONT}" | cut -d' ' -f1)"
+    if [[ "${actual}" != "${CJK_SHA256}" ]]; then
+        die "CJK font sha256 mismatch: expected ${CJK_SHA256}, got ${actual}"
     fi
-    curl -fsSL -o /tmp/libogg-win.zip \
-        "https://downloads.xiph.org/releases/ogg/libogg-1.3.5-win.zip" || true
-    if [[ -f /tmp/libogg-win.zip ]]; then
-        mkdir -p /tmp/libogg-extract
-        (cd /tmp/libogg-extract && unzip -q -o /tmp/libogg-win.zip)
-        find /tmp/libogg-extract -name "*.dll" -exec cp {} "${VORBIS_DIR}/lib/" \;
-        rm -rf /tmp/libogg-extract /tmp/libogg-win.zip
-    fi
+    ok "cjk font sha256 verified"
 else
-    ok "libvorbis DLLs already present"
+    warn "sha256sum unavailable; skipping the font hash check"
 fi
-ok "libvorbis: ${VORBIS_DIR}/lib/"
+ok "cjk font: ${CJK_FONT}"
+echo "  note: the font is not committed; src/ui/text.h falls back to the ASCII atlas"
+echo "        when it is absent, and tests/text_test.cpp SKIPs."
 
 # ----------------------------------------------------------------------------
-# 7) Video playback: no external dependency.
-#    MPEG1/MP2 decoding is handled by pl_mpeg (MIT, single-file C library)
-#    vendored at src/third_party/pl_mpeg.h. Previously this step downloaded
-#    the FFmpeg shared build (~30 MB of DLLs); that is no longer needed.
+# 6) HUD text: the Latin face the DX9 reference actually rendered with.
+#     The reference builds its HUD font with D3DXCreateFontA(device, 22, 0, FW_BOLD, ...,
+#     "Arial", ...). Under the Wine prefix the parity baseline was banked in, fontconfig
+#     resolves "Arial" to Liberation Sans and FW_BOLD selects the Bold face, so that is
+#     the file the foundation's HUD has to reproduce: cell 22 -> em 20, and the integer
+#     advance table only comes out of em 20 (foundation/tests/hud_text_test.cpp pins it
+#     against the banked frames in tests/parity-baseline/). The .deb below is the
+#     stablest direct URL for 2.1.5 — the pagure tarball stops at 2.00.1 and the
+#     GitHub release carries no binary asset.
 # ----------------------------------------------------------------------------
+LATIN_FONT="${CJK_DIR}/LiberationSans-Bold.ttf"
+LATIN_DEB_URL="https://deb.debian.org/debian/pool/main/f/fonts-liberation/fonts-liberation_2.1.5-3_all.deb"
+LATIN_DEB_SHA256="3d5c47480067b9615f6bf9b0eda6eefcab9d837af609827015445e8e759b5b8c"
+# sha256 of the TTF inside that .deb (upstream Liberation 2.1.5, SIL OFL 1.1).
+LATIN_SHA256="1b5f2da6f4cadce4c05b9ecebe3a6fcd374eb95ae443605e799f4c3287978939"
+if [[ ${FORCE} -eq 1 ]] && [[ -f "${LATIN_FONT}" ]]; then rm -f "${LATIN_FONT}"; fi
+if [[ ! -f "${LATIN_FONT}" ]]; then
+    command -v ar >/dev/null || die "ar (binutils) is needed to unpack the Liberation .deb"
+    log "fetching Liberation Sans Bold (OFL, the reference's Arial substitute)"
+    tmp="$(mktemp -d)"
+    curl -fL --retry 3 -o "${tmp}/lib.deb" "${LATIN_DEB_URL}" || die "Liberation download failed"
+    if command -v sha256sum >/dev/null 2>&1; then
+        actual="$(sha256sum "${tmp}/lib.deb" | cut -d' ' -f1)"
+        [[ "${actual}" == "${LATIN_DEB_SHA256}" ]] || die "Liberation .deb sha256 mismatch: expected ${LATIN_DEB_SHA256}, got ${actual}"
+    fi
+    ( cd "${tmp}" && ar x lib.deb data.tar.xz \
+      && tar xJf data.tar.xz ./usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf ) \
+        || die "unpacking the Liberation .deb failed"
+    mv "${tmp}/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" "${LATIN_FONT}"
+    rm -rf "${tmp}"
+else
+    ok "Liberation Sans Bold already present"
+fi
+if command -v sha256sum >/dev/null 2>&1; then
+    actual="$(sha256sum "${LATIN_FONT}" | cut -d' ' -f1)"
+    [[ "${actual}" == "${LATIN_SHA256}" ]] || die "Liberation font sha256 mismatch: expected ${LATIN_SHA256}, got ${actual}"
+    ok "latin font sha256 verified"
+fi
+ok "latin font: ${LATIN_FONT}"
 
 # ----------------------------------------------------------------------------
-# 8) Summary
+# 7) Summary
 # ----------------------------------------------------------------------------
 echo
 ok "All dependencies ready under ${TOOLS}"
 echo
 echo "Next:"
-echo "  ./build.sh                # configure + build daybreak.exe"
-echo "  ls -lh build/daybreak.exe build/SDL2.dll build/d3dx9_43.dll"
+echo "  PATH=\"${TOOLS}/mingw/usr/bin:\${PATH}\"   # for the foundation's Windows target"
+echo "  foundation/scripts/fetch_deps.sh          # third-party sources (glm, stb, webgpu, SDL3)"
+echo "  foundation/build.sh linux                 # configure + build + test"
 echo "  ./scripts/r2.sh rabin2 -I path/to/DaybreakDX.exe   # reverse-engineering"
-echo "  ls third_party/           # miniaudio.h + stb_vorbis.c"
-echo "  ls src/third_party/       # pl_mpeg.h (video decoder)"

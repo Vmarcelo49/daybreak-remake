@@ -1,0 +1,163 @@
+WARNING: radv is not a conformant Vulkan implementation, testing use only.
+MESA-EGL: warning: DRI3 error: Could not get DRI3 device
+MESA-EGL: warning: Ensure your X server supports DRI3 to get accelerated rendering
+WARNING: radv is not a conformant Vulkan implementation, testing use only.
+MESA-EGL: warning: DRI3 error: Could not get DRI3 device
+MESA-EGL: warning: Ensure your X server supports DRI3 to get accelerated rendering
+[daybreak] d3d: depth-stencil format = 75 (800x600)
+[daybreak] input: 0 gamepad(s) + keyboard (player 0)
+[daybreak] bundle: daybreak00.dat (7677 entries)
+[daybreak] bundle: daybreak02.dat (10 entries)
+[daybreak] bundle: daybreak04.dat (4434 entries)
+[daybreak] bundle: daybreak05.dat (41 entries)
+[daybreak] bundle: daybreak06.dat (5 entries)
+[daybreak] bundle: daybreak07.dat (178 entries)
+[daybreak] 6/6 archives loaded
+[daybreak] EffectSystem: 10/10 effects loaded from assets/shaders
+[daybreak] Gameplay: P1=0 P2=1, loading fighters + BGM...
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/rika/01.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x128 (header_bpp=32, actual_bpp=32, size=131089)
+[daybreak] XModel textures: 11 resolved, 0 missed
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/takano/00.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x128 (header_bpp=32, actual_bpp=32, size=131089)
+[daybreak] XModel textures: 11 resolved, 0 missed
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/00.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x128 (header_bpp=32, actual_bpp=32, size=131089)
+[daybreak] XModel textures: 2 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/00.X (0 anims)
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/01.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 16x16 (header_bpp=24, actual_bpp=32, size=1041)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] XModel textures: 40 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/01.X (0 anims)
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/02.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 32x32 (header_bpp=32, actual_bpp=32, size=4113)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 256x256 (header_bpp=32, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x256 (header_bpp=32, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=32, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=32, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] XModel textures: 36 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/02.X (0 anims)
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/03.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 256x256 (header_bpp=32, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] XModel textures: 4 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/03.X (0 anims)
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/04.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 32x64 (header_bpp=24, actual_bpp=32, size=8209)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x64 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] XModel textures: 4 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/04.X (0 anims)
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/05.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=24, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=24, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 32x32 (header_bpp=32, actual_bpp=32, size=4113)
+[daybreak] UIImage: CNV 64x64 (header_bpp=24, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=24, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 32x32 (header_bpp=24, actual_bpp=32, size=4113)
+[daybreak] XModel textures: 47 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/05.X (0 anims)
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/06.X  (animations=0, tracks bound=0)
+[daybreak] XModel textures: 8 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/06.X (0 anims)
+[daybreak] Stage: 7 meshes loaded
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/collision_tama.x  (animations=0, tracks bound=0)
+[daybreak] Stage: tama collision loaded
+[daybreak] Gameplay: custom P1 spawn (0,200,0)
+[daybreak] hypermode: P1=FRIENDSHIP P2=OYASHIRO
+[daybreak] audio: Mix_LoadMUS(C:\users\marcelo\AppData\Local\Temp\daybreak_bgm_000000.ogg) failed: Unrecognized audio format
+[daybreak] scene → Gameplay
+[daybreak] cam eye=(70,50,-38) p1=(0,200,0,battlestart) p2=(-2200,200,-1363,battlestart)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] cam eye=(188,499,775) p1=(0,200,0,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fps=62.8 scene=Gameplay frames=63
+[daybreak] screenshot: fighter-p1-rika.bmp
+[daybreak] cam eye=(183,500,779) p1=(0,200,0,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fps=62.7 scene=Gameplay frames=126
+[daybreak] main loop ended after 150 frames

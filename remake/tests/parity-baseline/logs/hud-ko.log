@@ -1,0 +1,412 @@
+WARNING: radv is not a conformant Vulkan implementation, testing use only.
+MESA-EGL: warning: DRI3 error: Could not get DRI3 device
+MESA-EGL: warning: Ensure your X server supports DRI3 to get accelerated rendering
+WARNING: radv is not a conformant Vulkan implementation, testing use only.
+MESA-EGL: warning: DRI3 error: Could not get DRI3 device
+MESA-EGL: warning: Ensure your X server supports DRI3 to get accelerated rendering
+[daybreak] d3d: depth-stencil format = 75 (800x600)
+[daybreak] input: 0 gamepad(s) + keyboard (player 0)
+[daybreak] bundle: daybreak00.dat (7677 entries)
+[daybreak] bundle: daybreak02.dat (10 entries)
+[daybreak] bundle: daybreak04.dat (4434 entries)
+[daybreak] bundle: daybreak05.dat (41 entries)
+[daybreak] bundle: daybreak06.dat (5 entries)
+[daybreak] bundle: daybreak07.dat (178 entries)
+[daybreak] 6/6 archives loaded
+[daybreak] EffectSystem: 10/10 effects loaded from assets/shaders
+[daybreak] input script: scripts/ko.txt (56 events)
+[daybreak] Gameplay: P1=0 P2=1, loading fighters + BGM...
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/rika/01.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x128 (header_bpp=32, actual_bpp=32, size=131089)
+[daybreak] XModel textures: 11 resolved, 0 missed
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/takano/00.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x128 (header_bpp=32, actual_bpp=32, size=131089)
+[daybreak] XModel textures: 11 resolved, 0 missed
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/00.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x128 (header_bpp=32, actual_bpp=32, size=131089)
+[daybreak] XModel textures: 2 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/00.X (0 anims)
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/01.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 16x16 (header_bpp=24, actual_bpp=32, size=1041)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] XModel textures: 40 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/01.X (0 anims)
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/02.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 32x32 (header_bpp=32, actual_bpp=32, size=4113)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 256x256 (header_bpp=32, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x256 (header_bpp=32, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=32, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=32, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] XModel textures: 36 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/02.X (0 anims)
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/03.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 256x256 (header_bpp=32, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] XModel textures: 4 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/03.X (0 anims)
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/04.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 32x64 (header_bpp=24, actual_bpp=32, size=8209)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x64 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] XModel textures: 4 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/04.X (0 anims)
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/05.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=24, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=24, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 32x32 (header_bpp=32, actual_bpp=32, size=4113)
+[daybreak] UIImage: CNV 64x64 (header_bpp=24, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=24, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 32x32 (header_bpp=24, actual_bpp=32, size=4113)
+[daybreak] XModel textures: 47 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/05.X (0 anims)
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/06.X  (animations=0, tracks bound=0)
+[daybreak] XModel textures: 8 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/06.X (0 anims)
+[daybreak] Stage: 7 meshes loaded
+[daybreak] XModel: InMemory returned no anim controller — retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/collision_tama.x  (animations=0, tracks bound=0)
+[daybreak] Stage: tama collision loaded
+[daybreak] Gameplay: custom P1 spawn (-2000,200,-1200)
+[daybreak] hypermode: P1=FRIENDSHIP P2=OYASHIRO
+[daybreak] audio: Mix_LoadMUS(C:\users\marcelo\AppData\Local\Temp\daybreak_bgm_000000.ogg) failed: Unrecognized audio format
+[daybreak] scene → Gameplay
+[daybreak] cam eye=(-129,50,-157) p1=(-2000,200,-1200,battlestart) p2=(-2200,200,-1363,battlestart)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] cam eye=(-1910,499,-406) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fps=62.3 scene=Gameplay frames=63
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] fighter took 4 damage → HP=96
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fps=62.7 scene=Gameplay frames=126
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,shotA) p2=(-2200,200,-1363,idle)
+[daybreak] fighter took 4 damage → HP=92
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fps=62.8 scene=Gameplay frames=189
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fps=62.6 scene=Gameplay frames=252
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] fighter took 4 damage → HP=88
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fps=62.6 scene=Gameplay frames=315
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,shotA) p2=(-2200,200,-1363,idle)
+[daybreak] fighter took 4 damage → HP=84
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fps=62.7 scene=Gameplay frames=378
+[daybreak] fighter state → idle (timer=0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fps=62.7 scene=Gameplay frames=441
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] fighter took 4 damage → HP=80
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fps=62.9 scene=Gameplay frames=504
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,shotA) p2=(-2200,200,-1363,idle)
+[daybreak] fighter took 4 damage → HP=76
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fps=63.2 scene=Gameplay frames=568
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] fps=62.9 scene=Gameplay frames=631
+[daybreak] fighter took 4 damage → HP=72
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fps=63.1 scene=Gameplay frames=695
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,shotA) p2=(-2200,200,-1363,idle)
+[daybreak] fighter took 4 damage → HP=68
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fps=62.9 scene=Gameplay frames=758
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] fighter took 4 damage → HP=64
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fps=62.9 scene=Gameplay frames=821
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fps=63.1 scene=Gameplay frames=885
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,shotA) p2=(-2200,200,-1363,idle)
+[daybreak] fighter took 4 damage → HP=60
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fps=62.7 scene=Gameplay frames=948
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] fighter took 4 damage → HP=56
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fps=63.0 scene=Gameplay frames=1011
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] fps=62.9 scene=Gameplay frames=1074
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,shotA) p2=(-2200,200,-1363,idle)
+[daybreak] fighter took 4 damage → HP=52
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fps=62.9 scene=Gameplay frames=1137
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] fighter took 4 damage → HP=48
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fps=62.9 scene=Gameplay frames=1200
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,shotA) p2=(-2200,200,-1363,idle)
+[daybreak] fps=63.0 scene=Gameplay frames=1263
+[daybreak] fighter took 4 damage → HP=44
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fps=62.9 scene=Gameplay frames=1326
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] fighter took 4 damage → HP=40
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fps=62.9 scene=Gameplay frames=1389
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,shotA) p2=(-2200,200,-1363,idle)
+[daybreak] fighter took 4 damage → HP=36
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fps=62.9 scene=Gameplay frames=1452
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fps=62.9 scene=Gameplay frames=1515
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] fighter took 4 damage → HP=32
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fps=62.9 scene=Gameplay frames=1578
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,shotA) p2=(-2200,200,-1363,idle)
+[daybreak] fighter took 4 damage → HP=28
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fps=62.8 scene=Gameplay frames=1641
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] fps=63.0 scene=Gameplay frames=1704
+[daybreak] fighter took 4 damage → HP=24
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fps=62.9 scene=Gameplay frames=1767
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,shotA) p2=(-2200,200,-1363,idle)
+[daybreak] fighter took 4 damage → HP=20
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fps=62.9 scene=Gameplay frames=1830
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] fps=63.1 scene=Gameplay frames=1894
+[daybreak] fighter took 4 damage → HP=16
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fps=62.9 scene=Gameplay frames=1957
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,shotA) p2=(-2200,200,-1363,idle)
+[daybreak] fighter took 4 damage → HP=12
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fps=62.9 scene=Gameplay frames=2020
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] fighter took 4 damage → HP=8
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fps=63.1 scene=Gameplay frames=2084
+[daybreak] fighter state → idle (timer=0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fps=63.1 scene=Gameplay frames=2148
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,shotA) p2=(-2200,200,-1363,idle)
+[daybreak] fighter took 4 damage → HP=4
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fps=63.0 scene=Gameplay frames=2211
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] fighter took 4 damage → HP=0
+[daybreak] fighter state → damageKO (timer=0)
+[daybreak] KO! side=1 balloon=21% (LIMIT 100%)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fps=62.8 scene=Gameplay frames=2274
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,damageKO)
+[daybreak] screenshot: hud-ko-a.bmp
+[daybreak] screenshot: hud-ko-b.bmp
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] fps=62.9 scene=Gameplay frames=2337
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,shotA) p2=(-2200,200,-1363,damageKO)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fps=62.8 scene=Gameplay frames=2400
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,damageKO)
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] side 1 respawned
+[daybreak] fighter took 4 damage → HP=96
+[daybreak] fighter state → damage (timer=59)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] screenshot: hud-ko-c.bmp
+[daybreak] fighter state → idle (timer=0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fps=62.8 scene=Gameplay frames=2463
+[daybreak] fighter state → shotA (timer=0)
+[daybreak] fired shotA (stock 5.0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,shotA) p2=(-2200,200,-1363,idle)
+[daybreak] fighter took 4 damage → HP=92
+[daybreak] fighter state → damage (timer=0)
+[daybreak] fps=62.9 scene=Gameplay frames=2526
+[daybreak] fighter state → idle (timer=0)
+[daybreak] fighter state → idle (timer=0)
+[daybreak] cam eye=(-1919,500,-404) p1=(-2000,200,-1200,idle) p2=(-2200,200,-1363,idle)
+[daybreak] fps=62.9 scene=Gameplay frames=2589
+[daybreak] main loop ended after 2600 frames

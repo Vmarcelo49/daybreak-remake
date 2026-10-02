@@ -1,0 +1,23 @@
+WARNING: radv is not a conformant Vulkan implementation, testing use only.
+MESA-EGL: warning: DRI3 error: Could not get DRI3 device
+MESA-EGL: warning: Ensure your X server supports DRI3 to get accelerated rendering
+WARNING: radv is not a conformant Vulkan implementation, testing use only.
+MESA-EGL: warning: DRI3 error: Could not get DRI3 device
+MESA-EGL: warning: Ensure your X server supports DRI3 to get accelerated rendering
+[daybreak] d3d: depth-stencil format = 75 (800x600)
+[daybreak] input: 0 gamepad(s) + keyboard (player 0)
+[daybreak] bundle: daybreak00.dat (7677 entries)
+[daybreak] bundle: daybreak02.dat (10 entries)
+[daybreak] bundle: daybreak04.dat (4434 entries)
+[daybreak] bundle: daybreak05.dat (41 entries)
+[daybreak] bundle: daybreak06.dat (5 entries)
+[daybreak] bundle: daybreak07.dat (178 entries)
+[daybreak] 6/6 archives loaded
+[daybreak] EffectSystem: 10/10 effects loaded from assets/shaders
+[daybreak] Title: loading background...
+[daybreak] UIImage: CNV 800x600 (header_bpp=24, actual_bpp=32, size=1920017)
+[daybreak] Title: background loaded (800x600)
+[daybreak] scene → Title
+[daybreak] fps=62.9 scene=Title frames=63
+[daybreak] screenshot: title-100.bmp
+[daybreak] main loop ended after 120 frames

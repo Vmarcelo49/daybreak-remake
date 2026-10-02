@@ -1,16 +1,39 @@
-# daybreak — Higurashi Daybreak remake (playable 2v2 arena fighter)
+# daybreak — Higurashi Daybreak port (2v2 arena fighter)
+
+The product is [`foundation/`](foundation/README.md): **SDL3 + WebGPU**
+(`webgpu.h`, wgpu-native on native targets and emdawnwebgpu on the web),
+built for **Linux, Windows and the web**, loading the game's real stages,
+characters, weapons, effects and HUD. Build and run instructions live
+there.
+
+The **DX9 + SDL2 remake this README used to describe was dropped** in the
+Phase 5 cutover (2026-10-02; D2 reversed in
+[`docs/decisions.md`](docs/decisions.md)): its tree is deleted and
+`remake/build.sh` is gone. The A/B reference is now the **banked evidence**
+in [`tests/parity-baseline/`](tests/parity-baseline/README.md) plus the
+original's prints in [`docs/reference/`](docs/reference/README.md) — not a
+buildable DX9 binary. The cutover's deletion list, what was kept and the
+rollback tag `pre-webgpu-cutover` (`37ed31d`) are in
+[`foundation/docs/FULL-REPLACEMENT-PLAN.md`](foundation/docs/FULL-REPLACEMENT-PLAN.md) §8;
+what is still pending is in
+[`foundation/docs/ROADMAP-PENDING.md`](foundation/docs/ROADMAP-PENDING.md).
+
+Start here for context: [`docs/decisions.md`](docs/decisions.md) (binding
+scope/tech decisions) · [`docs/game-spec.md`](docs/game-spec.md) (what the
+game is) · [`docs/reference/README.md`](docs/reference/README.md) (23
+ground-truth prints of the original) ·
+[`docs/placeholders.md`](docs/placeholders.md) and
+[`docs/roadmap.md`](docs/roadmap.md) (the removed DX9 remake's record,
+historical).
+
+---
+
+## The DX9 remake (removed 2026-10-02 — kept as the port's record)
 
 C++23 + SDL2 + Direct3D 9, cross-compiled from Linux to **Windows x64**
 (MinGW-w64, CMake + Ninja). Boots straight into a versus match: two
 fighters, stage meshes, lock-on camera, melee combat with HP/KO/balloon
 economy, HUD, and BGM.
-
-Start here for context: [`docs/game-spec.md`](docs/game-spec.md) (what the
-game is + build plan) · [`docs/decisions.md`](docs/decisions.md) (binding
-scope/tech decisions) · [`docs/reference/README.md`](docs/reference/README.md)
-(21 ground-truth captures) · [`docs/placeholders.md`](docs/placeholders.md)
-(shipped stand-ins vs their targets) ·
-[`docs/roadmap.md`](docs/roadmap.md) (PT roadmap).
 
 ## Quick start
 

@@ -1,0 +1,3 @@
+# Jump probe: one JUMP tap; capture while airborne (stamina bar also shows).
+80 JUMP
+86 -

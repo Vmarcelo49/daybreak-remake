@@ -1,0 +1,3 @@
+# Guard probe: hold GUARD; capture while blocking (contextual stamina bar).
+80 GUARD
+115 -

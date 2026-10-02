@@ -1,0 +1,333 @@
+WARNING: radv is not a conformant Vulkan implementation, testing use only.
+MESA-EGL: warning: DRI3 error: Could not get DRI3 device
+MESA-EGL: warning: Ensure your X server supports DRI3 to get accelerated rendering
+WARNING: radv is not a conformant Vulkan implementation, testing use only.
+MESA-EGL: warning: DRI3 error: Could not get DRI3 device
+MESA-EGL: warning: Ensure your X server supports DRI3 to get accelerated rendering
+[daybreak] d3d: depth-stencil format = 75 (800x600)
+[daybreak] input: 0 gamepad(s) + keyboard (player 0)
+[daybreak] bundle: daybreak00.dat (7677 entries)
+[daybreak] bundle: daybreak02.dat (10 entries)
+[daybreak] bundle: daybreak04.dat (4434 entries)
+[daybreak] bundle: daybreak05.dat (41 entries)
+[daybreak] bundle: daybreak06.dat (5 entries)
+[daybreak] bundle: daybreak07.dat (178 entries)
+[daybreak] 6/6 archives loaded
+[daybreak] EffectSystem: 10/10 effects loaded from assets/shaders
+[daybreak] Gameplay: P1=0 P2=1, loading fighters + BGM...
+[daybreak] XModel: InMemory returned no anim controller â€” retrying with file-based loader
+[daybreak] XModel loaded: data/rika/01.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x128 (header_bpp=32, actual_bpp=32, size=131089)
+[daybreak] XModel textures: 11 resolved, 0 missed
+[daybreak] XModel: InMemory returned no anim controller â€” retrying with file-based loader
+[daybreak] XModel loaded: data/takano/00.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x128 (header_bpp=32, actual_bpp=32, size=131089)
+[daybreak] XModel textures: 11 resolved, 0 missed
+[daybreak] XModel: InMemory returned no anim controller â€” retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/00.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x128 (header_bpp=32, actual_bpp=32, size=131089)
+[daybreak] XModel textures: 2 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/00.X (0 anims)
+[daybreak] XModel: InMemory returned no anim controller â€” retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/01.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 16x16 (header_bpp=24, actual_bpp=32, size=1041)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] XModel textures: 40 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/01.X (0 anims)
+[daybreak] XModel: InMemory returned no anim controller â€” retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/02.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 32x32 (header_bpp=32, actual_bpp=32, size=4113)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 256x256 (header_bpp=32, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x256 (header_bpp=32, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=32, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 256x256 (header_bpp=32, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] XModel textures: 36 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/02.X (0 anims)
+[daybreak] XModel: InMemory returned no anim controller â€” retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/03.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 256x256 (header_bpp=32, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 128x128 (header_bpp=32, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=32, actual_bpp=32, size=16401)
+[daybreak] XModel textures: 4 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/03.X (0 anims)
+[daybreak] XModel: InMemory returned no anim controller â€” retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/04.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 256x256 (header_bpp=24, actual_bpp=32, size=262161)
+[daybreak] UIImage: CNV 32x64 (header_bpp=24, actual_bpp=32, size=8209)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 256x64 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] XModel textures: 4 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/04.X (0 anims)
+[daybreak] XModel: InMemory returned no anim controller â€” retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/05.X  (animations=0, tracks bound=0)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=24, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=24, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 32x32 (header_bpp=32, actual_bpp=32, size=4113)
+[daybreak] UIImage: CNV 64x64 (header_bpp=24, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 128x128 (header_bpp=24, actual_bpp=32, size=65553)
+[daybreak] UIImage: CNV 64x64 (header_bpp=24, actual_bpp=32, size=16401)
+[daybreak] UIImage: CNV 32x32 (header_bpp=24, actual_bpp=32, size=4113)
+[daybreak] XModel textures: 47 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/05.X (0 anims)
+[daybreak] XModel: InMemory returned no anim controller â€” retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/06.X  (animations=0, tracks bound=0)
+[daybreak] XModel textures: 8 resolved, 0 missed
+[daybreak] Stage: loaded data/stage21/06.X (0 anims)
+[daybreak] Stage: 7 meshes loaded
+[daybreak] mesh data/stage21/00.X: verts=90 faces=132 bbox=(-53850,-3486,-52233)-(53850,59718,55466)
+[daybreak] mesh data/stage21/00.X: verts=22 faces=18 bbox=(-46598,12022,-34420)-(46598,36463,48214)
+[daybreak] mesh data/stage21/01.X: verts=5939 faces=3358 bbox=(-20666,-1563,-7926)-(7166,831,27838)
+[daybreak] mesh data/stage21/01.X: verts=2436 faces=1218 bbox=(-28888,-1584,-16919)-(12915,5445,31629)
+[daybreak] mesh data/stage21/01.X: verts=7666 faces=4823 bbox=(-6505,-713,-7270)-(2812,1706,27011)
+[daybreak] mesh data/stage21/01.X: verts=1498 faces=894 bbox=(1572,-25,-3310)-(2146,27,2243)
+[daybreak] mesh data/stage21/01.X: verts=1978 faces=1022 bbox=(-11876,-773,-405)-(46,1150,15984)
+[daybreak] mesh data/stage21/02.X: verts=9197 faces=5464 bbox=(-23682,-2039,-13501)-(11694,6188,29021)
+[daybreak] mesh data/stage21/02.X: verts=3027 faces=2007 bbox=(-3260,-443,-4202)-(3208,320,4908)
+[daybreak] mesh data/stage21/03.X: verts=426 faces=224 bbox=(-3246,-81,-4412)-(3222,256,2359)
+[daybreak] mesh data/stage21/04.X: verts=25 faces=32 bbox=(712,-21,-3669)-(3046,-21,1120)
+[daybreak] mesh data/stage21/04.X: verts=4 faces=2 bbox=(-3038,-21,102)-(-2437,-21,773)
+[daybreak] mesh data/stage21/04.X: verts=61 faces=56 bbox=(-2448,-365,-4369)-(3041,315,3592)
+[daybreak] mesh data/stage21/04.X: verts=112 faces=56 bbox=(-3116,-21,2116)-(2826,-21,2326)
+[daybreak] mesh data/stage21/05.X: verts=2887 faces=1682 bbox=(1026,-25,-3341)-(1961,505,-2386)
+[daybreak] mesh data/stage21/05.X: verts=81 faces=43 bbox=(-3245,-31,-1006)-(-1964,244,1168)
+[daybreak] mesh data/stage21/05.X: verts=1183 faces=665 bbox=(747,-24,-246)-(2625,869,762)
+[daybreak] mesh data/stage21/05.X: verts=286 faces=260 bbox=(2276,-20,737)-(2557,220,1095)
+[daybreak] mesh data/stage21/05.X: verts=1366 faces=720 bbox=(1972,-27,-1586)-(2561,322,-968)
+[daybreak] mesh data/stage21/05.X: verts=948 faces=490 bbox=(1960,-23,-2257)-(2365,302,-1777)
+[daybreak] mesh data/stage21/05.X: verts=111 faces=60 bbox=(847,-36,-2419)-(961,1104,-2266)
+[daybreak] mesh data/stage21/05.X: verts=317 faces=236 bbox=(-2821,-27,206)-(-2650,202,678)
+[daybreak] mesh data/stage21/05.X: verts=7114 faces=3798 bbox=(960,-26,-2444)-(2081,859,-412)
+[daybreak] mesh data/stage21/06.X: verts=517 faces=278 bbox=(2193,-39,1160)-(3144,1254,2223)
+[daybreak] mesh data/stage21/06.X: verts=517 faces=278 bbox=(1379,-39,-4431)-(2383,1254,-3467)
+[daybreak] mesh data/stage21/06.X: verts=551 faces=278 bbox=(-758,-39,-4263)-(109,1066,-3515)
+[daybreak] mesh data/stage21/06.X: verts=551 faces=278 bbox=(-2443,-39,-4260)-(-1623,1066,-3554)
+[daybreak] mat data/stage21/00.X/(frame)[0]: want=kumo.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/00.X/(frame)[0]: want=kumo01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[0]: want=ƒAƒXƒtƒ@ƒ‹ƒg’†ŠÔ09.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[1]: want=ÎŠ_‚»‚Ì‚Q01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[2]: want=‚­‚³‚Ş‚ç06.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[3]: want=‚­‚³‚Ş‚ç’†ŠÔ02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[4]: want=Z’ëÅ08.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[5]: want=Z’ë»05.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[6]: want=Z’ëÅ¶’†ŠÔ9.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[7]: want=Z’ë»‘¬02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[8]: want=ƒAƒXƒtƒ@ƒ‹ƒg05.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[9]: want=Î’i07.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[10]: want=ÎŠ_¬11.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[11]: want=Î’i‘01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[12]: want=Î•Çã06.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[13]: want=Šâ•Ç04ƒeƒXƒg.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[14]: want=Î•Çã‚‚04.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[0]: want=R‘‹ßŒi01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[0]: want=ƒK[ƒhƒŒ[ƒ‹03.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[1]: want=ƒ}ƒ“ƒz[ƒ‹10.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[2]: want=ƒ}ƒ“ƒz[ƒ‹‘å01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[3]: want=“d’Œ–Ø08.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[4]: want=“d’ŒL02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[5]: want=‹r—§09.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[6]: want=ò•W¯3.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[7]: want=“dü01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[0]: want=ÌŞÛ¯¸04.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[1]: want=ƒpƒ“ƒW[03.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[2]: want=‹r—§09.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[3]: want=ã—t‚Á‚Ï03.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[0]: want=Š¢09.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[1]: want=–¯‰Æ12.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[2]: want=ƒgƒ^ƒ“”Â03.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[3]: want=¬‰®”ÂB04.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[4]: want=¬‰®”Â04.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[5]: want=–¯‰Æ•½‰®05.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[6]: want=–¯‰Æ•½‰®s01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[7]: want=ƒgƒ^ƒ“.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[8]: want=‘‹ƒ[.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[9]: want=¬‰®”Âƒp[ƒc19.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[10]: want=–¯‰Æ•½‰®03.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/01.X/(frame)[11]: want=ƒgƒ^ƒ“.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[0]: want=–ØÈƒGƒl03.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[1]: want=–ØÈƒGƒl‘å01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[2]: want=–ØÈƒGƒl‘å02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[3]: want=–ØÈƒGƒl01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[4]: want=–ØÈƒGƒl02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[5]: want=–ØÈƒGƒl¬01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[6]: want=ŠÛ–ØÈƒGƒl01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[7]: want=’n–ÊƒNƒ[ƒo[03.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[8]: want=ã—t‚Á‚Ï03.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[9]: want=à‚Ì–Ø.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[10]: want=L—t÷02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[11]: want=‘ã02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[12]: want=—t‚Á‚ÏW’†.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[13]: want=‘01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[14]: want=lQ01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[15]: want=^–Ø‘å01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[16]: want=–ØÅVŠ²04.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[17]: want=–Î‚İã01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[18]: want=–ØÅVŠ²04.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[19]: want=^–Ø‚Ì—tã‚©‚ç.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[20]: want=‘03.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[21]: want=G‘01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[22]: want=X—Ñ05.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[23]: want=X—Ñ03.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[24]: want=X—Ñ04.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[25]: want=X—Ñ02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[26]: want=X—Ñ06.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[0]: want=‘03.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[1]: want=‘01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[2]: want=à‚Ì–Ø.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[3]: want=L—t÷02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[4]: want=G‘01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[5]: want=ã—t‚Á‚Ï03.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[6]: want=’n–Ê—t‚Á‚Ï‚ÌƒRƒs[.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[7]: want=–Î‚İã01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/02.X/(frame)[8]: want=–ØÅVŠ²04.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/03.X/(frame)[0]: want=—t‚Á‚Ï’n–Ê02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/03.X/(frame)[1]: want=’Ó05.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/03.X/(frame)[2]: want=– 09.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/03.X/(frame)[3]: want=’n–ÊƒNƒ[ƒo[03.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/04.X/(frame)[0]: want=ZÉ‰e02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/04.X/(frame)[0]: want=‰eâ01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/04.X/(frame)[0]: want=shadow01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/04.X/(frame)[0]: want=è‚·‚è‰e.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[0]: want=“d’Œ–Ø08.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[1]: want=ƒvƒŒƒnƒu•Ç05.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[2]: want=Š¢09.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[3]: want=¬‰®”Âƒp[ƒc19.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[4]: want=ƒTƒbƒV01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[5]: want=ƒhƒA02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[6]: want=ZÉƒ~ƒj‘‹02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[7]: want=‹r—§09.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[0]: want=ÎŠ_‚»‚Ì‚Q01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[1]: want=Z’ëÅ08.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[0]: want=Âƒgƒ^ƒ“‚Ì11.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[1]: want=Š¢09.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[2]: want=¬‰®”Âƒp[ƒc19.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[3]: want=ƒTƒbƒV01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[4]: want=ƒhƒA02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[5]: want=K‚Ñ04.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[6]: want=ZÉƒ~ƒj‘‹02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[7]: want=‘qŒÉ‘å”à02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[8]: want=‘‹ƒ[.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[0]: want=ƒhƒ‰ƒ€ŠÊ.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[1]: want=ƒhƒ‰ƒ€ŠÊÔ02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[0]: want=¬‰®”Âƒp[ƒc19.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[1]: want=¬‰®”Â04.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[2]: want=¬‰®”ÂB04.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[3]: want=ƒTƒbƒV01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[4]: want=Š¢09.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[0]: want=ƒgƒ^ƒ“”Â03.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[1]: want=¬‰®”Âƒp[ƒc19.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[2]: want=¬‰®”ÂB04.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[3]: want=ƒTƒbƒV01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[4]: want=ƒhƒA02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[0]: want=“d’Œ–Ø08.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[0]: want=ƒhƒ‰ƒ€ŠÊ.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[1]: want=ƒhƒ‰ƒ€ŠÊÔ02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[2]: want=Ä‹p˜F05.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[0]: want=¬‰®”ÂB04.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[1]: want=¬‰®”Âƒp[ƒc19.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[2]: want=ƒ}ƒ“ƒz[ƒ‹10.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[3]: want=ZÉƒ~ƒj‘‹02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[4]: want=ƒgƒ^ƒ“”Â03.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[5]: want=ƒTƒbƒV01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[6]: want=ƒhƒA02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[7]: want=Š¢09.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[8]: want=‹r—§09.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[9]: want=ÌŞÛ¯¸04.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[10]: want=…ˆù‚İê¬0.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/05.X/(frame)[11]: want=ÖŒû02.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/06.X/(frame)[0]: want=^–Ø‘å01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/06.X/(frame)[1]: want=–ØÅVŠ²04.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/06.X/(frame)[0]: want=^–Ø‘å01.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/06.X/(frame)[1]: want=–ØÅVŠ²04.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/06.X/(frame)[0]: want=–ØÅVŠ²04.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/06.X/(frame)[1]: want=^–Ø‚Ì—tã‚©‚ç.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/06.X/(frame)[0]: want=–ØÅVŠ²04.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mat data/stage21/06.X/(frame)[1]: want=^–Ø‚Ì—tã‚©‚ç.bmp bound=1 diffuse=(1.00,1.00,1.00,1.00) power=0.0
+[daybreak] mesh P1 fighter: verts=1569 faces=1858 bbox=(-42,0,-6)-(42,122,20)
+[daybreak] mesh P1 fighter: verts=96 faces=160 bbox=(-18,37,-6)-(18,70,23)
+[daybreak] mesh P1 fighter: verts=22 faces=28 bbox=(-12,101,-6)-(12,114,0)
+[daybreak] mesh P1 fighter: verts=278 faces=314 bbox=(-17,68,-10)-(17,128,29)
+[daybreak] mesh P2 fighter: verts=462 faces=586 bbox=(-17,94,-6)-(17,146,29)
+[daybreak] mesh P2 fighter: verts=1218 faces=1684 bbox=(-47,9,-6)-(47,139,22)
+[daybreak] mesh P2 fighter: verts=178 faces=158 bbox=(-13,0,-6)-(13,15,18)
+[daybreak] mesh P2 fighter: verts=24 faces=32 bbox=(-12,131,-6)-(12,142,1)
+[daybreak] XModel: InMemory returned no anim controller â€” retrying with file-based loader
+[daybreak] XModel loaded: data/stage21/collision_tama.x  (animations=0, tracks bound=0)
+[daybreak] Stage: tama collision loaded
+[daybreak] Gameplay: custom P1 spawn (0,200,0)
+[daybreak] hypermode: P1=FRIENDSHIP P2=OYASHIRO
+[daybreak] audio: Mix_LoadMUS(C:\users\marcelo\AppData\Local\Temp\daybreak_bgm_000000.ogg) failed: Unrecognized audio format
+[daybreak] scene â†’ Gameplay
+[daybreak] cam eye=(70,50,-38) p1=(0,200,0,battlestart) p2=(-2200,200,-1363,battlestart)
+[daybreak] screenshot: fighter-bind.bmp
+[daybreak] main loop ended after 10 frames

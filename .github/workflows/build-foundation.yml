@@ -1,0 +1,71 @@
+name: Build foundation (Linux / Windows / Web)
+
+# The point of the foundation is that one source tree builds for every target, so
+# CI builds all three rather than the one the runner happens to be.
+
+# It runs ONLY when remake/foundation/VERSION changes. These builds are slow, and
+# during early development a build on every push is noise rather than signal: bump
+# the version when the foundation is worth re-verifying across the whole matrix, or
+# use workflow_dispatch to run it by hand.
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'remake/foundation/VERSION' ]
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build SDL3 from source
+        # Ubuntu 24.04 has no libsdl3-dev, and SDL publishes no Linux devel
+        # binary, so CI builds it — which is also the documented fallback for a
+        # developer whose distribution is behind.
+        run: |
+          git clone --depth 1 --branch release-3.4.16 https://github.com/libsdl-org/SDL.git
+          cmake -S SDL -B sdl -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PWD/sdl-prefix" -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
+          cmake --build sdl
+          cmake --install sdl
+      - name: Fetch pinned deps
+        run: remake/foundation/scripts/fetch_deps.sh
+      - name: Configure and build
+        run: |
+          cmake -S remake/foundation -B build -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PWD/sdl-prefix"
+          cmake --build build
+
+  windows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install MinGW-w64
+        run: sudo apt-get update && sudo apt-get install -y g++-mingw-w64-x86-64 ninja-build
+      - name: Fetch pinned deps
+        run: remake/foundation/scripts/fetch_deps.sh
+      - name: Configure and build
+        run: |
+          cmake -S remake/foundation -B build -GNinja \
+            -DCMAKE_TOOLCHAIN_FILE=remake/foundation/cmake/toolchains/mingw-w64-x86_64.cmake \
+            -DSDL3_DIR="$PWD/remake/foundation/third_party/SDL3-mingw/x86_64-w64-mingw32/lib/cmake/SDL3"
+          cmake --build build
+      - name: Check the executable exists
+        run: test -f build/foundation_demo.exe
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          # The version verified locally during bring-up (emcc 6.0.10).
+          version: 6.0.10
+      - name: Fetch pinned deps
+        run: remake/foundation/scripts/fetch_deps.sh
+      - name: Configure and build
+        run: |
+          emcmake cmake -S remake/foundation -B build -GNinja
+          cmake --build build
+      - name: Check the web artifacts exist
+        run: |
+          test -f build/foundation_demo.html
+          test -f build/foundation_demo.wasm

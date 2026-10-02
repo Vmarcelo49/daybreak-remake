@@ -7,9 +7,9 @@ Twilight Frontier / 07th Expansion).
 
 | | `remake/` — the product | `research/` — the evidence |
 |---|---|---|
-| What | Playable C++23 remake (SDL2 + D3D9, 800×600 arena fighter) | 3,191 decompiled functions, readable-C pipeline, RE reports |
+| What | Playable C++23 remake (SDL2 + D3D9, migrating to SDL3 + WebGPU per D2) | 3,191 decompiled functions, readable-C pipeline, RE reports |
 | Start | `remake/README.md`, then `remake/docs/decisions.md` | `docs/overview.md`, then `docs/pipeline.md` |
-| Rules | Game code only; DX9 + original `.X` stay | `recomp/` never hand-edited; `symbols/` is truth |
+| Rules | Game code only; original `.X` stay, renderer migrating to WebGPU | `recomp/` never hand-edited; `symbols/` is truth |
 
 ## Layout
 

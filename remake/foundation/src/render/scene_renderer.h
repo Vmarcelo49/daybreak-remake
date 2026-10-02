@@ -1,0 +1,347 @@
+#pragma once
+// Draws an xm::Scene: depth buffer, textured pipeline, per-draw uniforms, stage
+// camera and fog. This is the second — and last — place outside gpu/ that includes
+// webgpu.h, because building render pipelines is not something gpu/ wraps; the
+// asset layer's xm::wgpuVertexLayout() is the contract between the two, which is
+// why the asset header has to be pulled in with XMODEL_WEBGPU defined.
+#include <webgpu/webgpu.h>
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#include <glm/glm.hpp>
+
+#include "gpu/gpu.h"
+
+// xmodel.h only declares its WebGPU helpers when this is set, and webgpu.h is
+// already in scope above (the header has to be included first).
+#define XMODEL_WEBGPU
+#include "scene.h"
+
+namespace render {
+
+// The depth format every extra pass must declare in its pipeline. WebGPU validates a
+// pipeline's depth format against the attachment view's and rejects the whole command
+// buffer on a mismatch, so this is not a preference: it is the format ensureDepth
+// creates, named once instead of guessed per pass.
+inline constexpr WGPUTextureFormat kSceneDepthFormat = WGPUTextureFormat_Depth24PlusStencil8;
+
+// ---------------------------------------------------------------------------------------
+// Mip chain for uploaded stage textures.
+//
+// Why it exists: the original filters stage textures LINEAR **with mips** — its device
+// state block sets sampler 0 MAG/MIN/MIP all to D3DTEXF_LINEAR, once at device creation
+// and again on every Reset (research/decompiled/FUN_00654f00.c:45-47, called from
+// FUN_00654b90.c:63 and FUN_00654d90.c:32). D3D9's default D3DSAMP_MIPFILTER is
+// D3DTEXF_NONE, so that write is the game asking for it, and it is the state the prints
+// were taken under. The other two sampler properties this renderer must not invent:
+// across the whole decompiled dump the only sampler types written anywhere are ADDRESSU/V
+// (1, 2), BORDERCOLOR (4) and MAG/MIN/MIPFILTER (5, 6, 7), and sampler 0 receives *only*
+// those three filters — 33 call sites over 7 functions, every value either 1 (POINT) or 2
+// (LINEAR). So sampler 0's address modes stay at D3D9's WRAP (Repeat), and
+// D3DSAMP_MAXANISOTROPY (type 10), MIPMAPLODBIAS (8) and MAXMIPLEVEL (9) are never written
+// at all: anisotropy 1, no LOD bias, no level clamp. D3DTEXF_ANISOTROPIC (value 3) never
+// appears either; where the value 3 does appear it is ADDRESSU/V on samplers 1 and 2 in
+// FUN_00651110, i.e. D3DTADDRESS_MIRROR, a different enum.
+//
+// Which textures have a chain is the same evidence's other half: the original does not
+// *generate* levels, it ships them as precomputed art beside the base image, and only the
+// stage directories do — `X.cnv` (128x128) + `X_1.cnv` (64x64) + `X_2.cnv` (32x32), 85
+// such groups in stage01 (all 13 stage dirs surveyed). Character, weapon, effect, aura and
+// item directories ship none. The loader probes `%s_%d.bmp` from the base name upward,
+// creates the texture with exactly the number of levels it found (`D3DXCreateTexture(...,
+// levelCount, ...)`) and fills each one with LockRect(level), halving the width per level
+// (research/decompiled/FUN_00656c80.c:87-88 and :107-118; reached from the .X material name
+// via FUN_00661f60 -> FUN_0064ecd0 -> FUN_006560c0). So a character texture is created with
+// MipLevels = 1 in the original: it has no mips to filter with, and MIPFILTER = LINEAR
+// degenerates to level 0 for it. This renderer therefore chains `role == "stage"` models
+// only; the role is the closest signal it has to "this texture's directory ships levels",
+// which is what the original actually tests.
+//
+// Content check on the shipped levels: shadow01_1.cnv is a 2x2 box average of shadow01.cnv
+// to within a mean |delta| of 1.59/255, against 67.97/255 for a shifted control. Those
+// files are the higher-fidelity source and the asset layer hands this renderer only level 0,
+// so the chain below is generated instead; a box filter is the standard choice for a
+// generated chain, and it averages raw bytes because D3D9's own filter and the shipped
+// levels are byte-space too (the texture is RGBA8Unorm, not sRGB, and the shader treats the
+// sampled value as linear).
+//
+// Both live here, and not in the .cpp, so tests/lighting_test.cpp can pin the arithmetic
+// with no device: a wrong level count or a filter that mishandles odd dimensions changes
+// every minified pixel in a frame and shows up nowhere else. That test links the asset
+// layer but not the render library, so these have to be inline to be reachable from it —
+// a .cpp definition would need a CMakeLists change to be testable at all.
+// ---------------------------------------------------------------------------------------
+
+// Levels a full chain has: floor(log2(max(w, h))) + 1, i.e. down to a 1-wide/tall edge.
+// An empty image has no chain to speak of; buildMipChain returns no levels for one.
+inline uint32_t mipLevelCount(uint32_t width, uint32_t height) {
+    if (width == 0 || height == 0) return 1;
+    uint32_t levels = 1;
+    for (uint32_t m = width > height ? width : height; m > 1; m >>= 1) ++levels;
+    return levels;
+}
+
+// Builds `levels` for one RGBA8 image: levels[0] is the base image as authored (uploaded
+// unchanged, so a texture sampled at level 0 is byte-identical to before), then each next
+// level is the 2x2 box average of the one above at half the size (floor). An odd
+// dimension therefore drops its last column/row, the rule D3DX's own box chain uses; at
+// the bottom a level of width or height 1 averages the samples that exist along the other
+// axis only. Alpha is averaged with colour: these are alpha-tested cutouts, and the
+// reference's shipped levels carry authored alpha at every level.
+inline void buildMipChain(const uint8_t* rgba, uint32_t width, uint32_t height,
+                          std::vector<std::vector<uint8_t>>& levels) {
+    levels.clear();
+    if (rgba == nullptr || width == 0 || height == 0) return;
+    levels.reserve(mipLevelCount(width, height));
+    levels.emplace_back(rgba, rgba + (size_t)width * height * 4);
+    for (uint32_t w = width, h = height; w > 1 || h > 1;) {
+        const uint32_t dw = w > 1 ? w / 2 : 1;
+        const uint32_t dh = h > 1 ? h / 2 : 1;
+        const std::vector<uint8_t>& src = levels.back();
+        std::vector<uint8_t> dst((size_t)dw * dh * 4);
+        for (uint32_t y = 0; y < dh; ++y) {
+            for (uint32_t x = 0; x < dw; ++x) {
+                // The source block is 2x2, narrowing to 2x1/1x2/1x1 only when a
+                // dimension is already 1 — the samples that exist, never a clamped
+                // duplicate of one that does not.
+                uint32_t sum[4] = {0, 0, 0, 0};
+                uint32_t n = 0;
+                for (uint32_t sy = 2 * y; sy < 2 * y + 2 && sy < h; ++sy) {
+                    for (uint32_t sx = 2 * x; sx < 2 * x + 2 && sx < w; ++sx) {
+                        const uint8_t* texel = src.data() + ((size_t)sy * w + sx) * 4;
+                        for (int c = 0; c < 4; ++c) sum[c] += texel[c];
+                        ++n;
+                    }
+                }
+                uint8_t* out = dst.data() + ((size_t)y * dw + x) * 4;
+                for (int c = 0; c < 4; ++c) out[c] = (uint8_t)((sum[c] + n / 2) / n);
+            }
+        }
+        levels.push_back(std::move(dst));
+        w = dw;
+        h = dh;
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// The fixed-function light and clear colour the DX9 gameplay pass installs. Every value
+// is read straight off remake/src/core/scenes.cpp:736-769 — the state block the banked
+// reference frames were rendered with, i.e. this track's specification — and they are
+// named here rather than inlined at the draw site so tests/lighting_test.cpp can pin
+// them device-free. They are load-bearing to the third decimal: a stage lit with any other plausible triple lands 1.5x..2.7x off, and
+// nothing short of a 480000-pixel comparison shows it.
+//
+// The shader evaluates lit = Ca*(Ga + La) + Cd*Ld*saturate(N.L); model_wgsl.h names which
+// D3D state selects each term. No RE address is cited for the numbers because
+// research/decompiled holds no SetLight/LightEnable call site and no 0.35/0.20/0.85 float
+// immediate to attribute them to — the DX9 pass is the specification.
+// ---------------------------------------------------------------------------------------
+inline constexpr glm::vec3 kLightDirection{0.5f, -1.0f, 0.5f};  // light 0 Direction (scenes.cpp:767)
+inline constexpr float kLightDiffuse   = 0.85f;                 // light 0 Diffuse   (scenes.cpp:765)
+inline constexpr float kLightAmbient   = 0.20f;                 // light 0 Ambient   (scenes.cpp:766)
+inline constexpr float kGlobalAmbient  = 0.35f;                 // D3DRS_AMBIENT     (scenes.cpp:746)
+// D3DCOLOR_XRGB(40, 42, 54), the gameplay target's clear colour (scenes.cpp:736-737).
+inline constexpr uint8_t kClearRed = 40, kClearGreen = 42, kClearBlue = 54;
+
+// Where a frame goes. One struct so a swapchain frame and an offscreen capture run
+// the same draw path; the format selects (and caches) the pipeline.
+struct Target {
+    WGPUCommandEncoder encoder   = nullptr;
+    WGPUTextureView    colorView = nullptr;
+    WGPUTextureFormat  format    = WGPUTextureFormat_Undefined;
+    uint32_t           width     = 0;
+    uint32_t           height    = 0;
+};
+
+// Draw-time switches, as opposed to upload-time ones (Options).
+struct Appearance {
+    bool fog   = true;   // linear fog from StageEnv (env.dat)
+    bool unlit = false;  // skip the lambert term: raw texture/vertex colour
+};
+
+struct Options {
+    bool textures = true;   // resolve .cnv textures; false binds a 1x1 white instead
+};
+
+struct Stats {
+    size_t draws           = 0;
+    size_t textures        = 0;
+    size_t paletteMatrices = 0;
+    int    textured        = 0;
+    int    untextured      = 0;
+    int    decals          = 0;
+    int    effects         = 0;
+    int    billboarded     = 0;   // effect draws that yaw to the camera (EFFECTS-BILLBOARD.md)
+};
+
+// Which blend/depth/cull variant draws an item. The order below is also the
+// submission order: lit opaque geometry first, multiply decals over it, additive
+// effect cards last. Classification lives in scene_renderer.cpp (classifyPass);
+// the asset layer's SceneModel::role is the only effect signal the renderer may
+// read, because shipped material terms do not distinguish effect cards (R2).
+enum class Pass : uint8_t { Opaque = 0, Decal = 1, Effect = 2 };
+
+class SceneRenderer {
+public:
+    SceneRenderer() = default;
+    ~SceneRenderer();
+    SceneRenderer(const SceneRenderer&) = delete;
+    SceneRenderer& operator=(const SceneRenderer&) = delete;
+
+    // Borrows device/queue/instance from the context; owns everything it creates.
+    bool init(const gpu::Context&, std::string& error);
+    void shutdown();
+
+    // Uploads geometry, textures and the draw list for `scene`. `worlds` is the posed
+    // hierarchy per model (in scene order), `modelMatrices` the entity transform per
+    // model — a weapon's is its owning character's attachment frame.
+    bool setScene(const xm::Scene& scene, const std::vector<std::vector<glm::mat4>>& worlds,
+                  const std::vector<glm::mat4>& modelMatrices, const Options&, std::string& error);
+
+    // Re-fills the palette storage from a new pose. Animation changes the pose every
+    // frame while the geometry stays put, so this is deliberately not part of
+    // setScene: uploading vertex and index buffers per frame would be the whole cost
+    // of the scene for nothing.
+    void updatePose(const std::vector<std::vector<glm::mat4>>& worlds);
+
+    // Re-points every draw at new per-model transforms (entity placement, weapon
+    // bones following animated rigs). DrawUniforms rebuild from draws_ on every
+    // render(), so this takes effect on the next frame; a no-op before setScene.
+    void setModelMatrices(const std::vector<glm::mat4>& modelMatrices);
+
+    void setCamera(const glm::mat4& viewProj);
+    // Camera eye in world space, for effect-card billboarding. The viewProj alone
+    // cannot yield it (a perspective product does not separate into eye and
+    // projection), and main.cpp is the only caller that knows the eye — so until
+    // the caller wires this, billboarding stays dormant and every capture is
+    // byte-identical to before. See EFFECTS-BILLBOARD.md.
+    void setEye(const glm::vec3& eye);
+    void setFog(const xm::StageEnv&);
+    void setAppearance(const Appearance&);
+
+    bool render(const Target&, std::string& error);
+
+    // Optional UI compositing for verification captures: invoked after the 3D pass
+    // into the capture encoder, before copy-to-readback. Uses only WebGPU types so
+    // render/ never includes ui/ headers; the caller adapts. Null keeps current
+    // behavior, and existing captures byte-identical.
+    using UiHook = bool (*)(WGPUCommandEncoder, WGPUTextureView, WGPUTextureFormat,
+                            uint32_t, uint32_t, void* userdata);
+    // Renders width x height offscreen into an RGBA8Unorm texture and reads the pixels
+    // back (RGBA8, tightly packed). Only verification needs this; the window path
+    // never calls it. Non-square matters for verification: the DX9 reference frames
+    // are 800x600, and comparing them against a square capture would measure the
+    // aspect ratio rather than the renderer.
+    // Captures a frame that has no 3D scene — a front-end screen — by running only the UI
+    // hook into a cleared target. `capture()` cannot serve this: it renders the scene first
+    // and fails with "renderer has no scene" when nothing was ever submitted, which is
+    // every menu frame. The two share one implementation so the readback path cannot drift.
+    bool captureUi(uint32_t width, uint32_t height, std::vector<uint8_t>& rgba,
+                   std::string& error, UiHook uiHook = nullptr, void* uiUserdata = nullptr);
+
+    bool capture(uint32_t width, uint32_t height, std::vector<uint8_t>& rgba,
+                 std::string& error, UiHook uiHook = nullptr, void* uiUserdata = nullptr);
+    bool captureImpl(uint32_t width, uint32_t height, std::vector<uint8_t>& rgba,
+                     std::string& error, UiHook uiHook, void* uiUserdata, bool withScene);
+
+    bool capture(uint32_t size, std::vector<uint8_t>& rgba, std::string& error,
+                 UiHook uiHook = nullptr, void* uiUserdata = nullptr) {
+        return capture(size, size, rgba, error, uiHook, uiUserdata);
+    }
+
+    const Stats& stats() const { return stats_; }
+
+    // The depth attachment the last frame rendered into, so a later pass on the same
+    // encoder can depth-test against the scene instead of drawing over it (debug_prims
+    // is the caller). Owned here and valid until the next render()/capture(); the
+    // format is pinned to Depth24PlusStencil8, which such a pass must match, because
+    // WebGPU validates attachment formats rather than coercing them.
+    WGPUTextureView depthView() const { return depthView_; }
+
+private:
+    struct DrawItem {
+        WGPUBuffer vbuf = nullptr, ibuf = nullptr;   // borrowed; owned by buffers_
+        uint32_t   firstIndex = 0, indexCount = 0;
+        uint32_t   paletteOffset = 0;
+        uint32_t   flags = 0;                        // from the material, per draw
+        int        texture = -1;                     // -1 -> the 1x1 white fallback
+        Pass       pass = Pass::Opaque;
+        size_t     modelIndex = 0;   // owning model, for per-frame re-placement
+        glm::mat4  model{1.f};
+        glm::vec4  baseColor{1.f};                   // material diffuse (D3DX faceColor)
+        // Cylindrical-billboard candidate: mesh-space pivot (submesh bounds center),
+        // authored facing yaw, plus the verdict from setScene. Only Effect-pass
+        // draws from unskinned meshes are ever marked; ground-plane cards are
+        // excluded (see .cpp).
+        glm::vec3  bbCenter{0.f};
+        float      bbYaw0 = 0.f;
+        bool       billboard = false;
+    };
+
+    // What updatePose() needs to rebuild one mesh's slice of the palette storage.
+    struct MeshRecord {
+        const xm::Model* model = nullptr;
+        const xm::Mesh*  mesh  = nullptr;
+        size_t           modelIndex = 0;
+        uint32_t         paletteOffset = 0;
+    };
+
+    struct Texture {
+        WGPUTexture     tex  = nullptr;
+        WGPUTextureView view = nullptr;
+    };
+
+    struct Pipelines {
+        WGPUTextureFormat format = WGPUTextureFormat_Undefined;
+        WGPURenderPipeline opaque = nullptr;   // lit, depth-writing
+        WGPURenderPipeline decal  = nullptr;   // multiply blend, no depth write, no cull
+        WGPURenderPipeline effect = nullptr;   // additive, unlit, no depth write, no cull
+    };
+
+    WGPURenderPipeline pipelineFor(WGPUTextureFormat, Pass, std::string& error);
+    bool ensureDepth(uint32_t width, uint32_t height, std::string& error);
+    bool buildBindings(std::string& error);
+
+    WGPUInstance instance_ = nullptr;   // borrowed from the context
+    WGPUDevice   device_   = nullptr;
+    WGPUQueue    queue_    = nullptr;
+
+    WGPUBindGroupLayout bindGroupLayouts_[3] = {nullptr, nullptr, nullptr};
+    WGPUPipelineLayout  pipelineLayout_ = nullptr;
+    WGPUShaderModule    shader_ = nullptr;
+    WGPUSampler         sampler_ = nullptr;
+
+    WGPUTexture     whiteTex_ = nullptr;
+    WGPUTextureView whiteView_ = nullptr;
+    WGPUBindGroup   cameraGroup_ = nullptr;
+    WGPUBindGroup   drawGroup_ = nullptr;                    // group 1, dynamic offset
+    std::vector<WGPUBindGroup> textureGroups_;               // [0] = white, then one per texture
+
+    WGPUBuffer cameraBuffer_ = nullptr;
+    WGPUBuffer drawBuffer_ = nullptr;
+    WGPUBuffer paletteBuffer_ = nullptr;
+
+    std::vector<Pipelines> pipelines_;
+    std::vector<DrawItem>  draws_;
+    std::vector<MeshRecord> meshes_;
+    std::vector<WGPUBuffer> buffers_;      // owned vertex/index buffers
+    std::vector<Texture>    textures_;     // owned, deduplicated by image
+    std::vector<glm::mat4>  palette_;      // CPU copy, uploaded by updatePose()
+
+    WGPUTexture     depthTex_ = nullptr;
+    WGPUTextureView depthView_ = nullptr;
+    uint32_t        depthWidth_ = 0, depthHeight_ = 0;
+
+    xm::CameraUniform camera_{};
+    Appearance        appearance_{};
+    Stats             stats_{};
+    // Billboard eye. haveEye_ is false until setEye() runs, which keeps the
+    // billboard path dormant (and captures byte-identical) on callers that were
+    // written before it existed.
+    glm::vec3         eye_{0.f};
+    bool              haveEye_ = false;
+};
+
+}  // namespace render

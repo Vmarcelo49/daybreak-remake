@@ -1,3 +1,0 @@
-# Tap C = tap-tier shot; release well under the yellow threshold.
-80 SHOOT
-84 -

@@ -14,21 +14,27 @@ modern port. No bit-matching against the original binary is attempted.
 
 | | `remake/` (product) | `research/` (evidence) |
 |---|---|---|
-| Language | C++23, SDL2 + D3D9 | C11 dumps, Python pipeline, JSON |
+| Language | C++17, SDL3 + WebGPU (D2) | C11 dumps, Python pipeline, JSON |
 | Rule | **All new game code goes here** | Nothing here runs the game |
-| Entry docs | `remake/README.md` → `remake/docs/decisions.md` | `docs/overview.md` → `docs/pipeline.md` |
-| Build | `remake/scripts/fetch_deps.sh` (once), then `remake/build.sh` | `python3 research/tools/coverage_report.py` (no deps) |
+| Entry docs | `remake/foundation/README.md` → `remake/docs/decisions.md` | `docs/overview.md` → `docs/pipeline.md` |
+| Build | `remake/foundation/build.sh deps` (once), then `./remake/foundation/build.sh {linux,windows,web}` | `python3 research/tools/coverage_report.py` (no deps) |
 
 ## Hard rules (violations = reverted work)
 
 1. **Never hand-edit `research/recomp/`.** Generated output; edits are
    overwritten. Source of truth is `research/symbols/`.
-2. **`remake/` keeps DX9 + original `.X` files.** No renderer migration,
-   no conversion pipeline — binding decisions in
-   `remake/docs/decisions.md` (read D1–D5 before touching `remake/`).
+2. **`remake/` keeps the original `.X` files — no conversion pipeline.**
+   The renderer is **SDL3 + WebGPU** (D2): `webgpu.h`, wgpu-native on
+   native targets and emdawnwebgpu on the web, built from
+   `remake/foundation/`. DX9 was **dropped** in the Phase 5 cutover
+   (2026-10-02) and its tree is deleted; the A/B reference is now the
+   **banked evidence** in `remake/tests/parity-baseline/` plus the
+   original's prints in `remake/docs/reference/`, not a buildable binary.
+   Binding decisions in `remake/docs/decisions.md` (read D1–D6 before
+   touching `remake/`).
 3. **`mvp/` is gone.** Retired 2026-10-01 after its contents were ported.
    Don't recreate it; decomp provenance lives in `research/`.
-4. **Comment policy in `remake/src/`:** explain *why*, cite RE provenance
+4. **Comment policy in `remake/`:** explain *why*, cite RE provenance
    (`FUN_xxxxxx`, addresses). No restatement comments, no dead code.
 5. **Run `coverage_report.py` before committing** research changes.
 6. **Full diff review before EVERY commit** — see the section below.
@@ -63,8 +69,10 @@ daybreak-decomp/
 ├── research/        binary_data/ (evidence) · decompiled/ (raw dump, read-only)
 │                    recomp/ (generated) · symbols/ (truth) · progress/ (metrics)
 │                    tools/ (ingest→generate→coverage) · extraction_phases/
-├── remake/          src/{core,render,file_parser,gameplay,physics,input,maps,audio,assets}/
-│                    tools/{asset-tools,hook-tracer}/ assets/shaders/ docs/ tests/
+├── remake/          foundation/   the product: SDL3 + WebGPU, Linux/Windows/web (D2)
+│                    docs/         decisions, the original's prints (reference/), history
+│                    tests/parity-baseline/  frozen DX9 reference bank (Phase 0)
+│                    tools/{asset-tools,hook-tracer}/ assets/shaders/
 ├── tools/launch_original.sh   run the ORIGINAL exe under Wine (repo-root relative)
 ├── Higurashi-Daybreak/        local game install — gitignored, never commit
 └── .github/                   index Action (regenerates INDEX on push)
@@ -73,10 +81,10 @@ daybreak-decomp/
 ## Common commands
 
 ```bash
-# Remake
-./remake/build.sh                                   # cross-compile Linux→Win x64
-./remake/build.sh --clean                           # wipe build/ after a move
-./remake/build.sh -dat daybreak00.dat -list         # inspect a bundle (needs game .dats)
+# Remake — the product is remake/foundation/ (DX9 removed in the Phase 5 cutover)
+./remake/foundation/build.sh deps                   # once: pinned third-party sources
+./remake/foundation/build.sh linux                  # also windows, web, all
+./remake/foundation/build/linux/foundation_demo --frames=300
 ./tools/launch_original.sh                          # drive the original under Wine
 
 # Research (all offline, stdlib-only Python)
@@ -91,7 +99,7 @@ python3 .github/scripts/generate_index.py           # refresh INDEX.md/json
 
 Prefixes: `feat/fix/docs/chore/refactor/recomp:/symbols:`.
 C11 in research (`PascalCase` funcs, `FUN_<addr>` until reviewed);
-C++23 in remake. Full rules: `docs/conventions.md`.
+C++17 in the foundation. Full rules: `docs/conventions.md`.
 
 ## Git
 

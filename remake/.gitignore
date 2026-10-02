@@ -1,8 +1,6 @@
 # Build artifacts
 /build/
-/build-*/
-/out/
-/tests/visual/out/
+/tests/visual/tests/parity-baseline/captures-full/
 
 # IDE / OS
 .vscode/
