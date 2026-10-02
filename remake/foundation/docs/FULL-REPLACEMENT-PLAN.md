@@ -199,6 +199,21 @@ and Wine, captures + console numbers recorded. This gate *is* D2's spirit.
 - [ ] Video if D6 scope reaches it (pl_mpeg vendor + uploader; still
       stubbed until then).
 - [ ] Menus/title/opening scenes after gameplay (D6 order: versus first).
+      **Known trap, recorded 2026-10-02 (owner)**: the scene named `title` is a
+      misnomer — `Scene_Title` draws only `data/select/bg00.cnv`, the shared
+      *select-screen* panel background (the 青組/赤組 diamond layer of
+      `docs/reference/team-select.webp`), with no portraits, labels or cursor.
+      The real main menu is a **shrine** with six Japanese items (ストーリー /
+      対戦 / 通信対戦 / 環境設定 / 操作設定 / 終了, `docs/reference/title-menu.webp`)
+      and is not reachable from the CLI at all. Any capture or note labelled
+      "title" today is therefore the select background — this mislabelling has
+      already misled one reviewer, so the frontend port should rename the scene
+      and treat the shrine menu as unimplemented rather than "placeholder art".
+      Full inventory: `remake/docs/placeholders.md` §13.
+- [ ] CJK implementation from the Phase 1 decision (decision recorded in
+      `docs/CJK-TEXT.md`, no code yet). The menu text above is the strongest
+      evidence that it is needed: the first screen the player sees is Japanese,
+      and so is every item on it.
 
 Gate: D2's letter — a complete in-game frame matching the banked DX9
 reference. Until this passes, DX9 stays buildable (unchanged from today).

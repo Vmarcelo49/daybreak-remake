@@ -2,7 +2,13 @@
 # Reference captures live in remake/docs/reference/. Empty ref = remake-only
 # (no ground truth pins that frame yet). -script paths resolve against the
 # staging dir (run.sh links scripts/ there); -shot BMPs land in staging too.
-title-100|title-menu.webp|90|-scene title -frames 120 -shot 100=title-100.bmp
+# title-100 has NO ground truth on purpose (empty ref, 2026-10-02). `-scene title`
+# draws only data/select/bg00.cnv, the select screen's panel background — not the main
+# menu, which is a shrine with six Japanese items (docs/reference/title-menu.webp) and
+# is unreachable from the CLI. Comparing that background against title-menu.webp
+# produced a meaningless RMSE; against team-select.webp it would still lack the
+# portraits, labels and cursor. See remake/docs/placeholders.md §13.
+title-100||90|-scene title -frames 120 -shot 100=title-100.bmp
 gameplay-120|battle-hud.webp|120|-frames 150 -shot 120=gameplay-120.bmp
 gameplay-yard|battle-hud.webp|120|-spawn 0,200,0 -frames 150 -shot 120=gameplay-yard.bmp
 gameplay-school|battle-hud.webp|120|-spawn 2800,200,-800 -frames 130 -shot 110=gameplay-school.bmp

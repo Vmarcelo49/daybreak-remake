@@ -45,6 +45,13 @@ Read against `remake/docs/reference/*.webp` (the ground-truth captures):
 - **`撃破!`** (KO banner) is a large styled graphic, also art, not font text.
 - **Menus** (`hypermode-select.webp` and friends) are dense Japanese —
   `恐怖のオヤシロモード`, `自分がダメージを受けた後で発動`, `決定`, `戻る`.
+- **The main menu itself** (`title-menu.webp`) is the shrine scene with the
+  ひぐらしデイブレイク logo and six Japanese items — `ストーリー`, `対戦`,
+  `通信対戦`, `環境設定`, `操作設定`, `終了`. This is the *first* screen the
+  player sees, so it is the strongest evidence for this decision: a port that
+  cannot draw CJK cannot draw the front end at all. (Note that the scene named
+  `title` in `remake/src` is not this screen — it draws the select-screen
+  background; see `remake/docs/placeholders.md` §13.)
 - **Result screens** (`result-report.webp`) are a full page of Japanese
   dialogue with player-name lines.
 - The original's own window title arrives as Shift-JIS mojibake in the

@@ -47,7 +47,7 @@ GREEN — DX9 reference banked** (see "Reproducibility" and "Gaps").
 
 | capture | command essence | shows |
 |---|---|---|
-| `title-100.png` | `-scene title -frames 120 -shot 100` | title screen, frame 100 |
+| `title-100.png` | `-scene title -frames 120 -shot 100` | **not the main menu** — `Scene_Title` loads only `data/select/bg00.cnv`, the shared select-screen background (the 青組/赤組 panels). It matches the panel layer of `docs/reference/team-select.webp`; the portraits, labels and cursor of that screen are not drawn. The captured **main menu** is the shrine with six Japanese items (`docs/reference/title-menu.webp`) and is not reachable from the CLI at all (`-scene` special-cases only `title`; the name is a misnomer). See `remake/docs/placeholders.md` §13. |
 | `gameplay-default.png` | `-frames 150 -shot 120` | versus idle, default env.dat spawns |
 | `gameplay-school.png` | `-spawn 2800,200,-800` | versus idle, school-building viewpoint |
 | `fighter-p1-<rika,takano,akane,rena>.png` | `-p1 N -p2 M -spawn 0,200,0` | each of the 4 reachable fighters as P1, player camera |
