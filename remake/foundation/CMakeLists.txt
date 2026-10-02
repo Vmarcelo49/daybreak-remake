@@ -119,8 +119,19 @@ add_library(foundation_physics STATIC src/physics/raycast.cpp)
 target_include_directories(foundation_physics PUBLIC src)
 target_link_libraries(foundation_physics PUBLIC foundation_assets glm)
 
+# The ported game truth (FULL-REPLACEMENT-PLAN.md Phase 2): the match economy and
+# the HUD value computation lifted out of remake/src, so the WebGPU path runs the
+# game's own rules instead of a scripted vignette. hud_fill.cpp is the one TU here
+# that reaches ui/ -> webgpu.h (through game/hud_bridge.h), which foundation_ui
+# supplies; the rest is std + glm.
+add_library(foundation_gameplay STATIC
+    src/gameplay/match_economy.cpp
+    src/gameplay/hud_fill.cpp)
+target_include_directories(foundation_gameplay PUBLIC src)
+target_link_libraries(foundation_gameplay PRIVATE foundation_ui)
+
 add_executable(foundation_demo src/main.cpp)
-target_link_libraries(foundation_demo PRIVATE foundation_render foundation_ui foundation_media foundation_game foundation_physics)
+target_link_libraries(foundation_demo PRIVATE foundation_render foundation_ui foundation_media foundation_game foundation_physics foundation_gameplay)
 
 # Host-side tests. Native-only on purpose: the Windows target is cross-compiled and
 # the web target cannot run a host binary, so neither can execute them, and building
@@ -150,6 +161,14 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                    src/assets/asset_source.cpp)
     target_include_directories(dat_bundle_bytes PRIVATE src)
     add_test(NAME dat_bundle_bytes COMMAND dat_bundle_bytes)
+
+    # Economy + HUD fill: device-free, and it links match_economy.cpp only —
+    # hud_fill.cpp's bridge half needs webgpu.h, so the test includes just the
+    # value header (the seam TU is compiled by foundation_gameplay).
+    add_executable(match_economy_test tests/match_economy_test.cpp
+                   src/gameplay/match_economy.cpp)
+    target_include_directories(match_economy_test PRIVATE src)
+    add_test(NAME match_economy_test COMMAND match_economy_test)
 endif()
 
 if(EMSCRIPTEN)
