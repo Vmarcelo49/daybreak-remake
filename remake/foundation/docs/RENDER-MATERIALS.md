@@ -54,15 +54,19 @@ all emissive on characters/weapons (`akane/00.X` face `e=(0.91,0.75,0.68)`,
   FFP equation. Specular stays off for the same reason the DX9 reference leaves
   it off (`SPECULARENABLE` is never enabled there) plus power ≈ 0 almost
   everywhere. The shader now says so in two lines at the term.
-- **Mipmaps: not added.** The sampler advertises `Nearest` on a single level,
-  unchanged. Minification aliasing without mips is real, but adding mips moves
-  every minified pixel with no original/DX9 frame to validate against — the
-  exact unproven-gain case the track rules exclude. Revisit with a reference frame.
+- **Mipmaps: stage textures carry a generated chain.** The sampler is
+  Linear/Linear/Linear with mipFilter Linear
+  (`src/render/scene_renderer.cpp:182-184`), and only `role == stage` models
+  upload more than one level (`src/render/scene_renderer.cpp:393-405`; chain
+  math in `src/render/scene_renderer.h:79-126`, pinned by
+  `tests/lighting_test.cpp:160-213`). Non-stage roles stay single-level,
+  where MIPFILTER LINEAR degenerates to level 0.
 - **Alpha-test threshold: corrected 0.5 → 8/255 (GE semantics kept).** The old
   0.5 had no provenance (the shader comment itself described the original's
-  `0x08`/GE); the in-tree DX9 reference sets `ALPHAREF 0x08` / `ALPHAFUNC GE` in
-  *two* places — the asset viewer (`x_model_renderer.cpp`) and the actual
-  gameplay scene (`scenes.cpp`). Effect on captures: stage01 9636 px (6.02%,
+  `0x08`/GE); the now-deleted in-tree DX9 tree set `ALPHAREF 0x08` /
+  `ALPHAFUNC GE` in *two* places — the asset viewer (`x_model_renderer.cpp`)
+  and the actual gameplay scene (`scenes.cpp`) — history, not a live path.
+  Effect on captures: stage01 9636 px (6.02%,
   max Δ99) confined to foliage/ground-card soft edges the artist authored with
   alpha in (0.03, 0.5); stage21 1082 px (0.68%, max Δ21); akane 88 px (0.06%);
   weapon and lone-effect captures byte-identical. Direction matches the DX9
@@ -86,11 +90,14 @@ Linux-new vs Windows/Wine-new (MinGW cross-build in `/tmp/fwin`, run under Wine)
 ## Not verified
 
 - No original-exe or DX9-remake pixel comparison anywhere in R1/R4 (no DX9 run
-  in this session); the alpha-ref correction is validated against the in-tree
-  DX9 reference states + authored-alpha reasoning, not against a DX9 frame.
+  in this session); the alpha-ref correction is validated against the deleted
+  DX9 tree's states (history, not a live path) + authored-alpha reasoning,
+  not against a DX9 frame.
 - EffectInstance instances: absent in all surveyed assets, but bzip payloads were
   only checked post-decode via the parser (no converted-text hits), not at token
   level — a perverse packing could hide one; unlikely, stated for completeness.
-- Stale comment in parent-owned `src/assets/cnv.h` (`keyOutWhite` docs say the
-  WebGPU path presents decals "without a stencil" — R3 now adds one; one-line
-  touch-up for the parent).
+- Stale comment in parent-owned `src/assets/xmodel.h:305` (`kDrawAlphaTest`
+  docs still read "discard alpha < 0.5"): the shader threshold is 8/255 with
+  GE semantics (`src/shaders/model_wgsl.h:107-111`), and the definition-site
+  comment should read 8/255 GE so it agrees with the shader — one-line
+  touch-up for the parent.

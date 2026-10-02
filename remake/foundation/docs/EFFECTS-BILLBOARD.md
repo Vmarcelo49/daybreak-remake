@@ -1,8 +1,15 @@
 # EFFECTS-BILLBOARD — cylindrical camera-facing for effect cards
 
-Owned files changed: `src/render/scene_renderer.{h,cpp}` (verdict, eye, yaw).
-`src/shaders/model_wgsl.h` untouched (no shader change needed); `src/render/arena_camera.h`
-untouched (another track owns it); no texture-name routing added (deliberately excluded).
+> **Status: research for `ROADMAP-PENDING.md` B1, not a gameplay effect path.**
+> Match-mode shots/sparks/auras render as untextured `debug_prims.h` cubes
+> (`src/main.cpp`, `src/render/debug_prims.h`); `--effect` cards exercise only the
+> verification scaffolding (additive Effect pass, cylindrical yaw). Nothing here
+> changes gameplay VFX.
+
+Owned files changed: `src/render/scene_renderer.{h,cpp}` (classifyBillboard verdict,
+`setEye` eye, render-time yaw) plus the `src/main.cpp` wiring (`renderer.setEye` next
+to `setCamera`) that activates it. `src/shaders/model_wgsl.h` untouched (no shader
+change needed); no texture-name routing added (deliberately excluded).
 
 ## Choice: cylindrical, not spherical — and why
 
@@ -14,9 +21,12 @@ Spherical billboarding was rejected on surveyed geometry:
   Proof on pixels: `--effect=aura/03.X --camera=top` changes **50 px / 65536**
   old-vs-new (edge rasterization of the two vertical cards), while the floor card
   keeps its authored orientation by construction (it is never marked).
-- Vertical phenomena (`effect/05.X` single YZ quad, `衝撃波縦`-style shockwaves,
-  `aura/04.X` body-band cylinder) read as uprights; the arena camera stays near
-  level (spawn + 320), so a Y-only yaw faces them without ever laying them flat.
+- Uprights that pass the ground rule yaw (`effect/05.X` YZ quad, `aura/03.X`
+  verticals, crossed sets); `aura/04.X` (mean `|normal.y|` 0.60) and `aura/06.x`
+  (0.65) are ground-dominant by the 0.5 rule and keep their authored orientation —
+  the yaw helps single quads, not capped bands or box-like outliers. The arena
+  camera stays near level (spawn + 320), so a Y-only yaw faces them without ever
+  laying them flat.
 - Y-symmetric geometry (rings, bands, beam fans) is rotation-invariant around Y,
   so yawing it is at worst harmless.
 
@@ -57,16 +67,25 @@ du.model = T(Cw) · Ry(yaw) · T(−Cw) · model
 
 An overhead camera (`|d|² ≤ 1e-6`) keeps the authored orientation instead of
 spinning on the yaw singularity. `setEye()` is a new setter because the viewProj
-matrix alone cannot yield the eye (a perspective product does not separate), and
-`main.cpp` — which owns the eye — is parent-owned: until the parent wires it,
-`haveEye_` is false, the block is skipped, and every capture is byte-identical.
+matrix alone cannot yield the eye (a perspective product does not separate). It is
+wired in-repo: `src/main.cpp` calls `renderer.setEye(app.eye)` next to `setCamera`
+every frame, so `haveEye_` is true and marked Effect draws yaw in current captures;
+the dormant switch (`haveEye_` false, byte-identical) applies only to callers that
+never call `setEye()`, not to the repo demo.
 
-## Verification (all `/tmp` builds; repo `main.cpp`/`build/` untouched)
+## Verification — historical shim results (deleted `/tmp/eshim` copy; not re-runnable)
 
-- Shim: `cp -a remake/foundation /tmp/eshim` (build/ excluded), `cmake -B
-  /tmp/eshim/build/linux` + build; the *copy's* `main.cpp` calls
+The rows below come from a deleted `/tmp/eshim` copy whose `main.cpp` wired `setEye`
+behind `ESHIM_NO_EYE` (with `ESHIM_PLANT` for the mixed frame only); that copy exists
+nowhere in the tree, so no entry can be re-run. Because in-repo `main.cpp` now wires
+`setEye` unconditionally, current captures include billboarding and these old-vs-new
+deltas do not describe the present tree. Re-verify by capturing `--effect` cards with
+and without the `setEye` call before citing deltas.
+
+- Shim (history): `cp -a remake/foundation /tmp/eshim` (build/ excluded), `cmake -B
+  /tmp/eshim/build/linux` + build; the *copy's* `main.cpp` called
   `renderer.setEye(app.eye)` (gated on `ESHIM_NO_EYE` unset) and, for the mixed
-  frame only, `ESHIM_PLANT` moves ride-along effects to the eye/aim midpoint at
+  frame only, `ESHIM_PLANT` moved ride-along effects to the eye/aim midpoint at
   30x. Old binary = repo `remake/foundation/build/linux/foundation_demo`
   (pre-change). New binary = shim build. Sizes 256 (cards) / 400 (stages).
 
@@ -99,5 +118,6 @@ matrix alone cannot yield the eye (a perspective product does not separate), and
   difference with no reference to check against.
 - `hikari`-style beam fans rotate rigidly with the yaw; their authored burst
   direction is relative to the attack, which verification captures do not model.
-- In-repo `main.cpp` does not call `setEye()` yet (parent-owned): the feature is
-  dormant there by design until the parent wires the game/arena camera eye.
+- In-repo `main.cpp` wires `setEye()` unconditionally (next to `setCamera`), so the
+  billboard block is live in current captures; the dormant-switch rows above describe
+  the historical shim copy gated behind `ESHIM_NO_EYE`, not the present tree.

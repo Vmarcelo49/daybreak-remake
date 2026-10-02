@@ -7,18 +7,24 @@ Local paths below are machine-local and gitignored, never committed.
 
 **Production path: plain web build + HTTP fetch/streaming of per-pack assets,
 cached in the browser (IndexedDB/OPFS), with Emscripten preload kept only for
-local renderer verification.** The fetch half of this is now implemented
-(`src/platform/web_pack.{h,cpp}` + `scripts/make_pack.py`); the persistence
-half (IndexedDB/OPFS) is still open.
+local renderer verification.** Both halves of this are now implemented:
+the fetch half (`src/platform/web_pack.{h,cpp}` + `scripts/make_pack.py`)
+and the IDBFS persistence half (`fetchWebPack` mount + sync with
+hash-pinned cache skip) — see the Runtime-fetch and Persistence sections,
+both green.
 
 - The engine (`foundation_demo.wasm` 3.67 MB + `.js` 0.48 MB + `.html` 22 KB)
   ships with **no assets**. At startup it fetches named asset packs
   (character ~12 MB, stage ~20 MB, see §3) over HTTP into the Emscripten
   virtual filesystem, then runs the unchanged asset layer (`xm::loadStage` /
   `loadCharacter` / `loadWeapon`).
-- Packs are content-addressed (hash in the URL/filename) and cached in
-  IndexedDB (or OPFS) after first download, so repeat visits cost no network.
-  BGM (49 MB) and movie audio are **streamed, never preloaded**.
+- Packs are manifest-addressed, not content-addressed:
+  `scripts/make_pack.py` lists plain relative paths (the game's
+  Shift-JIS-derived UTF-8 names, percent-encoded), and
+  `src/platform/web_pack.cpp:170-186` validates the cache by
+  manifest-text hash (FNV-1a) plus file presence, refetching everything on
+  mismatch. Per-file content hashes in URLs would be a future manifest
+  revision. BGM (49 MB) and movie audio are **streamed, never preloaded**.
 - The user supplies the data: a local folder picker, a self-hosted pack URL,
   or a first-run importer that reads their own install. The web release
   **never redistributes game files** (commercial data, §4).
@@ -227,9 +233,11 @@ browser harness can read it. No new asset mechanism, no layering change.
       const double now = plat::now();
 ```
 
-Follow-up (separate decision, same seam): a fetch→MEMFS pack loader behind the
-same `FOUNDATION_WEB_ASSET` injection point, so the verification build can
-exercise the production download path against local pack URLs.
+Follow-up (landed): the fetch→`/packs/` loader behind the same
+`FOUNDATION_WEB_ASSET` injection point is implemented
+(`src/platform/web_pack.cpp`, manifests via `scripts/make_pack.py` with
+`asset=`/`base=`/paths, `?pack=` handling at `src/main.cpp:1734-1741`)
+with IDBFS caching — the 'future decision' framing above is closed.
 
 ## 5. Not verified
 
@@ -237,7 +245,7 @@ exercise the production download path against local pack URLs.
 - `toDataURL()` on a hardware adapter / real vsync (SwiftShader only here).
 - `toDataURL()` blank-frame race under load; headed-Chromium screenshot path
   (no Xvfb here, per BUILD-web.md).
-- HTTP pack fetch/streaming, IndexedDB/OPFS persistence, range requests,
-  BGM streaming: design only, no code.
+- OPFS alternative, range requests, BGM/movie streaming, hardware-adapter
+  runs: still open (fetch + IDBFS persistence are implemented, per §§1–2).
 - macOS anything (out of scope per PORT-PLAN).
 - Full-tree or multi-pack web load (only `akane:0`, 12 MB, exercised).

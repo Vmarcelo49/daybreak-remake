@@ -2,7 +2,7 @@
 
 Binary: `DaybreakDX.exe` (2.8 MB)
 Source: original Higurashi Daybreak Kai (2007) executable, uploaded by user
-Analyzed with: `radare2 5.9.8` (`scripts/r2.sh` wrapper)
+Analyzed with: `radare2 5.9.8` (`remake/scripts/r2.sh` wrapper)
 
 ## 1. PE header
 
@@ -43,7 +43,7 @@ Analyzed with: `radare2 5.9.8` (`scripts/r2.sh` wrapper)
 | `OLEAUT32.dll`| COM automation                                          |
 | `IMM32.dll`   | Input Method Manager (Japanese text input)             |
 
-**Note**: the game ships with `d3dx9_25.dll` (DX9 March 2006 SDK). Our port links `d3dx9_43.dll` (June 2010). The mesh-hierarchy / animation-controller API is unchanged between versions; the only difference is the import lib name. **Action item**: when we ship the port, we can use either d3dx9_25 (matches original) or d3dx9_43 (we already have it). For binary compatibility with the original game's asset format, the version doesn't matter — only the API matters.
+**Note**: the game ships with `d3dx9_25.dll` (DX9 March 2006 SDK). The foundation does not link any D3DX — it parses `.X` itself (`foundation/src/assets/xmodel.h`: `xm::loadMemory`, `xmodel.h:267`) on the SDL3 + WebGPU path — so there is no `d3dx9_43` import to pick. The DLL version only matters to the frozen DX9 reference bank under `remake/tests/parity-baseline/`, not to what we ship.
 
 ## 4. .DAT parser — confirmed bit-exact match
 
@@ -177,7 +177,7 @@ Microsoft (R) D3DX9 Shader Compiler 9.06.168.0000   (D3DX9 embedded shader compi
 | Entry filename offset        | `0` (260 bytes)                | `0` (`kFilenameBytes = 260`)    | ✅     |
 | Entry length offset          | `260` (`+0x104`)               | `260` (`kLengthOffset`)         | ✅     |
 | Entry offset offset          | `264` (`+0x108`)               | `264` (`kOffsetOffset`)         | ✅     |
-| Filename encoding            | Shift-JIS (CP932)              | CP932 via Win32 MultiByteToWideChar | ✅ |
+| Filename encoding            | Shift-JIS (CP932)              | CP932 via the generated `sjis_table.h` table (`foundation/src/assets/dat_bundle.cpp:42`, `decode_sjis_table`; table from `remake/tools/asset-tools/gen_sjis_table.py`) | ✅ |
 | File data cipher             | `key = (off>>1)&0xff \| 0x08`  | `file_data_key(offset)`         | ✅     |
 
 **Verdict**: our `dat_bundle.cpp` is **bit-exact compatible** with the original game's `.DAT` reader. Ready to consume real game assets.
@@ -226,11 +226,17 @@ bool load_x(XModel* out, const char* path) {
     CloseHandle(h);
 
     // 2. Parse it in memory via D3DXLoadMeshHierarchyFromXInMemory.
-    //    Notable: flags = 0x220 (= D3DXMESH_32BIT | D3DXMESH_NPATCHES).
+    //    Notable: flags = 0x220 (= D3DXMESH_MANAGED = D3DXMESH_VB_MANAGED |
+    //    D3DXMESH_IB_MANAGED, 0x020 | 0x200: managed-pool vertex and index
+    //    buffers). This is NOT D3DXMESH_32BIT (0x001) | D3DXMESH_NPATCHES
+    //    (0x4000) — that pair would read 0x4001. The flag only tells D3DX
+    //    where to keep buffers, nothing about index width or subdivision,
+    //    so there is no N-patch divergence to chase in the loader.
     ID3DXAllocateHierarchy* alloc = ...;  // global at 0x6d16f8
     HRESULT hr = D3DXLoadMeshHierarchyFromXInMemory(
         buf, filesize,
-        0x220,                     // <-- mesh flags (32-bit + N-patches)
+        0x220,                     // <-- mesh flags (MANAGED = VB_MANAGED | IB_MANAGED:
+                                     //     managed-pool vertex and index buffers)
         device,
         alloc,
         nullptr,                   // user data callback (NULL)
@@ -270,19 +276,20 @@ bool load_x(XModel* out, const char* path) {
 
 **Key takeaways for the port:**
 
-- The game uses `D3DXLoadMeshHierarchyFromXInMemory` (in-memory), **not**
-  `D3DXLoadMeshHierarchyFromXA` (file-based).  Our `XModel::load` currently
-  uses the file-based variant, which is OK functionally — D3DX parses both
-  the same way.  But for parity (and to avoid the Wine in-memory loader
-  bug that X2Blend documents), we should switch to in-memory loading:
-  read the file into a `std::vector<uint8_t>`, then call the InMemory
-  variant.
+- The game parses in memory (`FUN_0064d940` calls
+  `D3DXLoadMeshHierarchyFromXInMemory`). The foundation does the same shape
+  without D3DX: `xm::loadFile` (`xmodel.h:269`) reads the file into memory
+  and parses via `xm::loadMemory` (`xmodel.h:267`, `2051`), which handles
+  all three shipped `.X` encodings. There is no file-based D3DX call and
+  no `D3DXMESH_SYSTEMMEM` flag left to switch — that guidance predates the
+  Phase 5 cutover that deleted the DX9 tree.
 
-- The mesh flags `0x220` (`D3DXMESH_32BIT | D3DXMESH_NPATCHES`) tell D3DX
-  to use 32-bit indices and to honor N-patch subdivision surfaces.  We
-  currently pass `D3DXMESH_SYSTEMMEM` (0x10).  Not a problem for the
-  loader's internal clone (D3DX ignores the flags it doesn't need), but
-  it's a divergence from the original.
+- The mesh flags `0x220` (`D3DXMESH_MANAGED` = `D3DXMESH_VB_MANAGED` |
+  `D3DXMESH_IB_MANAGED`, `0x020` | `0x200`) tell D3DX to keep vertex and
+  index buffers in the managed pool. This is NOT `D3DXMESH_32BIT` (`0x001`)
+  | `D3DXMESH_NPATCHES` (`0x4000`) — that pair would read `0x4001`. The
+  flag says nothing about index width or subdivision, so there is no
+  N-patch divergence to chase in the loader.
 
 - The skeleton is a **3ds Max Biped** — frame names start with `Bip01_`
   (`Bip01_Head`, `Bip01_Spine`, `Bip01_Prop1`, `Bip01_Prop2`, ...).  Any
@@ -311,9 +318,13 @@ The naming is in Japanese:
 
 **Implication for the port:** we need a `Stage` struct that owns three
 XModel handles for collision, and the asset manager should load all three
-when a stage is selected.  Our `physics::raycast_model` already operates
-on a `D3DXFRAME*`, so it works against any of the three collision meshes
-unchanged.
+when a stage is selected. Our `game::physics::raycastModel` already
+operates on an `xm::Model` (`foundation/src/physics/raycast.h:135`), so
+it works against any of the three collision meshes unchanged. The
+closest-hit shape (`raycastModel`, `raycast.h:135`) and the early-out
+shape (`raycastModelAny`, `raycast.h:140`) mirror `FUN_0042d3b0` /
+`FUN_0042cd50` and `FUN_0042d2c0` respectively — the snake_case
+`raycast_model*` names belong to the deleted DX9 side.
 
 ## 10. Collision — how the game does it
 
@@ -409,24 +420,24 @@ actual hit test still being a triangle raycast.
 
 | Aspect                              | Binary (DaybreakDX.exe)                  | Our port                              | Status |
 |-------------------------------------|------------------------------------------|---------------------------------------|--------|
-| Loader API                          | `D3DXLoadMeshHierarchyFromXInMemory`     | `D3DXLoadMeshHierarchyFromXA`         | ⚠️ functionally equivalent, switch to InMemory for parity |
-| Mesh flags                          | `0x220` (32BIT \| NPATCHES)              | `D3DXMESH_SYSTEMMEM` (0x10)           | ⚠️ diverges, but works for non-N-patch meshes |
-| Animation tracks bound at load      | up to 2                                  | 1 (track 0)                           | ⚠️ we should bind 2 for blend support |
+| Loader API                          | `D3DXLoadMeshHierarchyFromXInMemory`     | `xm::loadMemory` via `xm::loadFile` (`xmodel.h:267-269`), no D3DX | matches (in-memory shape, own parser) |
+| Mesh flags                          | `0x220` (MANAGED = VB_MANAGED \| IB_MANAGED) | n/a — the custom loader takes no D3DX flags word | matches (nothing to diverge) |
+| Animation tracks bound at load      | up to 2                                  | `xm::Controller` blends up to `kMaxTracks = 8` with 2-track base/overlay support (`xmodel.h:221`) | matches |
 | Skeleton naming convention          | 3ds Max Biped (`Bip01_*`)                | no special handling                   | ✅ works (D3DXFrameFind accepts any name) |
 | Per-frame transform during raycast  | none (ray in model space)                | none (raycast.h documents this)       | ✅ matches |
 | Raycast entry point                 | `D3DXIntersect` per mesh container       | `D3DXIntersect` per mesh container    | ✅ matches |
 | Recursive frame walk                | `pFrameFirstChild` (+0x48) + `pFrameSibling` (+0x4c) | same                       | ✅ matches |
 | Any-hit early-out variant           | yes (`fcn.0042d2c0`)                     | yes (`raycast_model_any`)             | ✅ matches |
 | Closest-hit variant                 | yes (`fcn.0042d3b0`, `fcn.0042cd50`)     | yes (`raycast_model`)                 | ✅ matches |
-| Stage collision mesh separation     | 3 files (collision / collision_camera / collision_tama) | single XModel, no Stage struct yet | ❌ stage struct needed → **DONE** (see `src/maps/stage.cpp`) |
+| Stage collision mesh separation     | 3 files (collision / collision_camera / collision_tama) | DONE — the three roles are selected in `foundation/src/assets/scene.h` (role field, `scene.h:63`; `includeCollision`, `scene.h:129`; name table, `scene.h:352-353`) with stage IDs in `stage_catalog.h` | matches | (There is no `src/maps/stage.cpp`; `remake/src/**` was deleted in the Phase 5 cutover.) |
 
 ## 12. radare2 setup (for future sessions)
 
-`scripts/r2.sh` wraps `r2` and the various `r2*` tools (`rabin2`, `rafind2`, `rahash2`, `rasm2`, etc.) with the correct `LD_LIBRARY_PATH` and `MAGIC` env vars. The radare2 install itself lives under `tools/r2/` and is fetched by `scripts/fetch_deps.sh` (see the r2 block at the bottom of that script).
+`remake/scripts/r2.sh` wraps `r2` and the various `r2*` tools (`rabin2`, `rafind2`, `rahash2`, `rasm2`, etc.) with the correct `LD_LIBRARY_PATH` and `MAGIC` env vars. The radare2 install itself lives under `remake/tools/r2/` and is fetched by `remake/scripts/fetch_deps.sh` (see the r2 block in `fetch_deps.sh`).
 
 ```bash
-./scripts/r2.sh rabin2 -I path/to/DaybreakDX.exe
-./scripts/r2.sh r2 -q -c 'aaa; pdf @ fcn.00662d10' path/to/DaybreakDX.exe
+./remake/scripts/r2.sh rabin2 -I path/to/DaybreakDX.exe
+./remake/scripts/r2.sh r2 -q -c 'aaa; pdf @ fcn.00662d10' path/to/DaybreakDX.exe
 ```
 
 ## 13. Validation against real game assets
@@ -519,8 +530,9 @@ This confirms:
 
 Our `DatBundle` C++ parser is **confirmed bit-exact compatible** with the
 real game's `.DAT` files (not just the spec we reverse-engineered —
-against actual shipped assets). The `XModel::load_from_memory` path
-works for all three `.X` encodings. We are unblocked to start M1
+against actual shipped assets). The `xm::loadMemory` path
+(`foundation/src/assets/xmodel.h:267`) handles all three `.X` encodings
+transparently. We are unblocked to start M1
 (asset manager).
 
 ## 14. Camera system (RE round 2 — focused investigation)
@@ -681,9 +693,10 @@ the target button, the code:
 
 We don't have the exact global pointer name yet — that needs dynamic
 analysis (running the game under a debugger) or further static RE of
-the input dispatch code.  For the port, we'll mirror this design: the
-`ArenaCamera` holds a `target_fighter` index and a `cycle_target()`
-method.
+the input dispatch code.  For the port, we mirror this design: the
+`gameplay::ArenaCamera` holds a target pool and a `cycle_target()`
+method (`foundation/src/gameplay/arena_camera.h:180-188`:
+`set_target_pool`, `set_active_target`, `cycle_target`).
 
 ### 14.7 Float constants used by the camera
 
@@ -755,7 +768,9 @@ Based on the RE findings, the port's `ArenaCamera` should:
 
 - **Exact target-switch button**: we know it exists but haven't found
   the input dispatch code.  Need to either (a) run the game under a
-  debugger and break on `ArenaCamera::set_target`, or (b) trace xrefs
+  debugger and break on `gameplay::ArenaCamera::set_active_target`
+  (`arena_camera.h:180ff`) rather than the nonexistent `set_target`, or
+  (b) trace xrefs
   to the global "current camera target" pointer once we identify it.
 - **Auto-target vs manual**: does the camera auto-switch when the
   current target dies, or only on button press?

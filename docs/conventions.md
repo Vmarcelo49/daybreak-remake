@@ -5,12 +5,17 @@
 > `docs/archive/conventions.md` (authoritative if they conflict — but
 > they shouldn't; fix drift when found).
 
-## 1. C standard
+## 1. Language standard (by zone)
 
-- **C11** (`-std=c11`).
-- Rationale: `//` comments, declarations anywhere in a block,
-  `stdint.h`, `_Static_assert`, anonymous unions.
+- **`research/` is C11** (`-std=c11`).
+- **`remake/foundation/` is C++17** (`CMAKE_CXX_STANDARD 17`, with
+  `CMAKE_C_STANDARD 11` alongside) over SDL3 + WebGPU.
+- Rationale for C11 in research: `//` comments, declarations anywhere in a
+  block, `stdint.h`, `_Static_assert`, anonymous unions.
 - No bit-matching against the original binary is attempted.
+- §§2–5 below are research/recomp conventions (`PascalCase` funcs,
+  `FUN_<addr>` for unreviewed) unless a rule explicitly applies to the
+  foundation — product contributors follow the foundation's C++17, not C11.
 
 ## 2. Types
 

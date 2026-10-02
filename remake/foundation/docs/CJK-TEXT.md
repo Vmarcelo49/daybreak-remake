@@ -36,33 +36,52 @@ have zero hits in `research/decompiled/`; only this GDI path).
 Read against `remake/docs/reference/*.webp` (the ground-truth captures):
 
 - **In-battle HUD**: mostly Latin — `LIMIT 100%`, `MAIN`, `CHARGE`, `HP`,
-  `STAMINA`, `com`, `0%`, `OYASHIRO` — **plus at least one CJK string**: the
-  label `適当` (`battle-hud.webp`, `battle-stamina.webp`, `ko-moment.webp`,
-  bottom-left above the OYASHIRO bar; what it labels is not yet RE'd, the
-  glyphs are what matters here). The rounded boxes flanking it are
-  **button-icon art**, not font glyphs: at 400% zoom each box contains a
-  dash, not a character. They are textures and need no font work.
+  `STAMINA`, `com`, `0%`, `OYASHIRO` — plus one CJK-looking label: the
+  `適当` in the boxed tactics/command cell (`battle-hud.webp`,
+  `battle-stamina.webp`, `ko-moment.webp`, bottom-left above the OYASHIRO
+  bar). That cell is atlas art, not a font string: it is the P03
+  `CommandLabel` cell (`src/ui/hud_atlas.h:77`, drawn at
+  `src/ui/hud.cpp:323-328`), and `HudComposer::compose` returns after the
+  battle composition when the game's sheets resolve, never touching the
+  text path. The text HUD below it is the asset-less fallback only. The
+  GDI/Shift-JIS path serves result quote, chat and story mode only. The
+  rounded boxes flanking the label are **button-icon art**, not font
+  glyphs: at 400% zoom each box contains a dash, not a character. They are
+  textures and need no font work.
 - **`撃破!`** (KO banner) is a large styled graphic, also art, not font text.
-- **Menus** (`hypermode-select.webp` and friends) are dense Japanese —
-  `恐怖のオヤシロモード`, `自分がダメージを受けた後で発動`, `決定`, `戻る`.
+- **Menus** (`hypermode-select.webp` and friends) are atlas art, not font
+  text: the `.rdata` walk finds 183 Shift-JIS strings and not one menu
+  label (FRONTEND-PLAN §§4.1–4.2), so the select/options/keyconfig/netplay
+  pages need sprite/cell draws, never a rasterizer. Fonts are created in
+  exactly five sites — story ADV `FUN_0040e720`, netplay menu
+  `FUN_00412110`, battle/result block `FUN_00633ca0`, chat
+  `FUN_00645840` (×2) — none of them a menu label.
 - **The main menu itself** (`title-menu.webp`) is the shrine scene with the
   ひぐらしデイブレイク logo and six Japanese items — `ストーリー`, `対戦`,
-  `通信対戦`, `環境設定`, `操作設定`, `終了`. This is the *first* screen the
-  player sees, so it is the strongest evidence for this decision: a port that
-  cannot draw CJK cannot draw the front end at all. (Note that the scene named
-  `title` in `remake/src` is not this screen — it draws the select-screen
-  background; see `remake/docs/placeholders.md` §13.)
+  `通信対戦`, `環境設定`, `操作設定`, `終了`. Those six labels are pixels
+  in `data/title/title.cnv`, not font text: scene 1 is all atlas art with
+  no text path (the exe contains no menu label strings and creates no font
+  in scene 1 — `src/ui/screen_title.h:1-5`, cells at x=400/y=285/stride
+  48). The front end renders today with zero font code — the screen stack
+  (`src/ui/screen.h:39-56` `ScreenId` list, `--screen=title` in
+  `src/main.cpp`) proves it. So the title menu argues nothing for this
+  decision; its weight moves to the three real GDI consumers (result
+  quote/report, chat, story ADV per FRONTEND-PLAN §4.2–4.3). (History: the
+  scene named `title` in the deleted `remake/src` tree drew the
+  select-screen background; see `remake/docs/placeholders.md` §13. The
+  live title evidence is `src/ui/screen_title.{h,cpp}` + FRONTEND-PLAN
+  §4.2.)
 - **Result screens** (`result-report.webp`) are a full page of Japanese
   dialogue with player-name lines.
 - The original's own window title arrives as Shift-JIS mojibake in the
   reference capture (`battle-stamina.webp`), which is the same path showing
   through: Shift-JIS bytes rendered by a non-Japanese text stack.
 
-Consequence for the plan: the `--versus` D2 gate frame **does** contain CJK
-(`適当`), so an ASCII-only bitmap font cannot match it. The Phase 1 warning
-was correct; the mitigation is this decision, not a Phase 2 blocker — Phase 2
-can build the HUD with the Latin labels and the correct label geometry, and
-the CJK string lands with this decision's implementation in Phase 3.
+Consequence for the plan: the `--versus` D2 gate frame needs no CJK font
+coverage — its `適当` command cell is the P03 atlas cell above, and Phase 2
+builds the HUD with the Latin labels and the correct label geometry. The
+font requirement is reserved for result quote/report, netplay chat and
+story ADV text, and this decision's implementation lands in Phase 3.
 
 ## 3. The three options
 
@@ -79,7 +98,8 @@ canvas `measureText`/`fillText` into an atlas.
   (§4 of the plan, used for every capture claim so far) is impossible when
   Linux native rasterizes with fontconfig/FreeType and Wine rasterizes with
   GDI. Env-dependent face availability is exactly the failure the DX9 HUD
-  already hit (`remake/src/render/hud.h`: "Wine often lacks CJK fonts").
+  already hit (Wine often lacks CJK fonts — see the banked DX9 parity
+  evidence in `remake/tests/parity-baseline/`).
 
 ### B. In-process TrueType rasterization from one fetched font
 
@@ -87,9 +107,12 @@ Vendor `stb_truetype` (public domain, single header — the same class of
 dependency as the rest of `third_party/`), fetch one OFL-licensed Japanese
 font (e.g. Noto Sans CJK JP) through `scripts/fetch_deps.sh` — **fetched,
 never committed**, like SDL3 and wgpu-native — and rasterize glyphs on demand
-into the existing UI atlas path. Keep the Shift-JIS decoder and the `\c`
-colour-code semantics from `FUN_0065dad0` so strings render as the game means
-them. ASCII bitmap stays as the zero-dependency fallback.
+into the existing UI atlas path. Keep the `FUN_0065dad0` control-code
+semantics (`\c` colours per `FUN_0065e450`, `\e` reset, multi-byte-aware
+stepping per `FUN_0065e3a0`), re-implemented over UTF-8 in
+`src/ui/text.cpp` with Shift-JIS decoded on the way in via
+`xm::sjisToUtf8` (`src/assets/cnv.h:193`) — never a Shift-JIS walk inside
+the text layer. ASCII bitmap stays as the zero-dependency fallback.
 
 - Pro: **one code path on Linux, Windows and web** → captures stay
   byte-identical, which is what every previous phase's evidence rests on.
@@ -136,11 +159,13 @@ one rasterizer across Linux/Windows/web keeps the byte-identical capture
 discipline that every phase's evidence rests on; the font is fetched like the
 other third-party dependencies and never committed; `stb_truetype` is
 public-domain and single-header, the same class as the existing vendored deps.
-Concretely: vendor `stb_truetype.h` under `third_party/`, fetch Noto Sans CJK
-JP (OFL) in `scripts/fetch_deps.sh` alongside SDL3/wgpu-native, rasterize into
-the existing UI atlas (`src/ui/`), port the Shift-JIS walk and `\c` colour
-codes from `FUN_0065dad0`, and keep `ui/fallback.h`'s degraded path when the
-font is absent.
+Concretely: vendor `stb_truetype.h` under `third_party/` (done via
+`remake/foundation/scripts/fetch_deps.sh` at the pinned `STB_COMMIT`), fetch Noto Sans CJK
+JP (OFL) and Liberation Sans Bold in `remake/scripts/fetch_deps.sh` (the host
+toolchain + fonts script, which writes both into `foundation/third_party/fonts/`) — rasterize into the existing UI atlas
+(`src/ui/`), port the `FUN_0065dad0` `\c` colour codes over UTF-8 with
+Shift-JIS decoded caller-side (`xm::sjisToUtf8`, `src/assets/cnv.h:193`),
+and keep `ui/fallback.h`'s degraded path when the font is absent.
 
 Implementation lands in Phase 3, in the plan's order — Phase 2 builds the HUD
 with the Latin labels, reserving the `適当` label position from the reference

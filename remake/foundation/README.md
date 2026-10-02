@@ -1,10 +1,14 @@
 # foundation — the multi-platform base
 
 SDL3 + WebGPU (`webgpu.h`) in one CMake project that builds for **Linux, Windows
-and the web**, and for macOS wherever the toolchain allows. This is the base the
-renderer migration (decision D2) lands on: it is still not a game — no gameplay, no
-HUD, no camera controller — but it now loads and draws Daybreak's real stages,
-characters and weapons.
+(MinGW cross-compile) and the web (Emscripten)**: `./build.sh deps` once, then
+`./build.sh linux|windows|web`. macOS is not attempted — no Mac available (see the
+table below). This is the base the renderer migration (decision D2) lands on: it is
+now a playable match as well as a viewer — `--match` runs the ported
+fighter/projectile simulation with the live match economy and HUD values
+(`src/gameplay/match.cpp`), `--versus` keeps the scripted capture vignette, and
+`--camera=arena` follows the ported arena camera (`src/gameplay/arena_camera.cpp`).
+It loads and draws Daybreak's real stages, characters and weapons.
 
 ## Build
 
@@ -43,8 +47,15 @@ without a display:
 ./build/linux/foundation_demo --character=<data/akane:0> --hud-test --out=hud.ppm
 ./build/linux/foundation_demo --audio-test
 ./build/linux/foundation_demo --input-test
+./build/linux/foundation_demo --screen=title --out=title.ppm --frames=30  # title screen, not an asset (--script= drives its menu)
 ./build/linux/foundation_demo --list                    # what a spec loads, then exit
 ```
+
+`--camera` takes `auto|player|front|top|bounds|arena`. `--no-anim` binds no
+animation set (bind pose, like the banked frames) and `--fog` is opt-in: the
+reference never enables `FOGENABLE` (`FUN_00650a30` writes the parameters but never
+the state), so a fogged frame cannot match a banked one — leave both off for a gate
+capture.
 
 The demo prints which adapter and backend it got, the surface's formats and
 present modes, what the asset layer loaded and how many textures resolved, and a
@@ -60,7 +71,13 @@ src/assets/     the Daybreak asset layer: .X meshes/animation, .cnv textures,
                 Shift-JIS name resolution, stage/character/weapon scene assembly
 src/render/     draws an xm::Scene — depth buffer, pipelines, per-draw uniforms,
                 camera and fog
-src/shaders/    WGSL, embedded in the binary
+src/shaders/    WGSL, embedded in the binary (demo, model, ui, debug_line)
+src/gameplay/   the ported simulation and match loop (fighter, projectile, match,
+                match economy, hud_fill) — what --match/--versus run
+src/game/       interfaces (fighter pose, HUD values, camera collision, effect events)
+src/ui/         sprite/font/HUD/screens (--hud-test, --screen=title)
+src/audio/ + src/input/   backends (--audio-test, --input-test)
+src/physics/raycast.*     the D3DXIntersect replacement (Möller–Trumbore)
 src/main.cpp    the app: SDL3 main callbacks, one code path for native and web
 ```
 
@@ -102,8 +119,9 @@ cap-at-refresh behaviour. On the web FIFO is the *only* present mode there is.
 
 ## Shaders and assets
 
-WGSL is embedded in the binary (`src/shaders/demo_wgsl.h`, `model_wgsl.h`) rather
-than loaded from a file, because the web build has no filesystem.
+WGSL is embedded in the binary (`src/shaders/demo_wgsl.h`, `model_wgsl.h`,
+`ui_wgsl.h`, `debug_line_wgsl.h`) rather than loaded from a file, because the web
+build has no filesystem.
 
 `.X`, `.cnv` and `.dat` are read through one seam (`src/assets/asset_source.*`):
 **the install's `daybreakXX.dat` bundles first, the filesystem second**. An install is
@@ -150,25 +168,30 @@ Browser-side persistence (IndexedDB/OPFS) is the remaining open half; see
 ## Playing a match
 
 `--match` runs the real game: the fighter/projectile simulation, the match economy
-(balloon / LIMIT / KO clock) and the live HUD values are ported from `remake/src` and
-drive the frame, instead of the versus vignette's frame-index script.
+(balloon / LIMIT / KO clock) and the live HUD values live in `src/gameplay/`
+(`fighter.cpp`, `projectile.cpp`, `match.cpp`, `match_economy.cpp`, `hud_fill.cpp`),
+ported from the deleted DX9 tree (`pre-webgpu-cutover` tag), and drive the frame,
+instead of the versus vignette's frame-index script.
 
 ```bash
 ./build/linux/foundation_demo --headless --match --install=<game-dir> \
   --stage=<game-dir>/data/stage21 --character=<game-dir>/data/rika:0 \
   --enemy=<game-dir>/data/takano:0 --spawn=0,200,0 --spawn2=-2200,200,-1363 \
-  --script=remake/tests/visual/scripts/dash.txt --frames=150 --out=match.ppm --size=400
+  --script=../tests/parity-baseline/scripts/melee.txt --frames=150 --out=match.ppm --size=400
 ```
 
 - `--script=<file>` drives P1 with the DX9 visual-suite format; without it P1 is live
   device input. `--script2=<file>` drives P2; without it P2 takes no input, which is
-  exactly what the DX9 scene passes.
+  exactly what the DX9 scene passes. Scripts live at `../tests/parity-baseline/scripts/`
+  (`melee.txt` is one MELEE tap at frame 80; also `guard.txt`, `heavy.txt`, `jump.txt`,
+  `lock_p2.txt`) — one `<frame> TOKEN` per line (`src/input/input.h:85`).
 - `--spawn` / `--spawn2` override the stage's `env.dat` spawns (the match uses
   `env.dat`, not the DX9 remake's hardcoded pair, which its comment misdescribes).
-- `DAYBREAK_CAMINFO=1` prints the same trace line the DX9 build prints, so
-  `tests/compare_match_traces.py <dx9.log> <foundation.log>` diffs the two
-  implementations. Six scripted cases currently agree exactly (worst position delta
-  0 units over 59 samples × 2 fighters).
+- `DAYBREAK_CAMINFO=1` prints the trace the banked DX9 logs hold, field for field
+  (`src/main.cpp:1087`), so `tests/compare_match_traces.py` diffs a foundation run
+  against `../tests/parity-baseline/logs/`. The deleted DX9 tree is reachable only
+  via the `pre-webgpu-cutover` tag. Six scripted cases currently agree exactly
+  (worst position delta 0 units over 59 samples × 2 fighters).
 - `--headless` needs no display at all and still renders on the real GPU. That matters
   for verification: Mesa's Vulkan WSI cannot present on Xvfb (no DRI3), so a windowed
   run there silently falls back to software GL while Wine gets RADV — two different
@@ -192,15 +215,23 @@ Every "ran" row printed `RESULT: ok` with real frame timings; per-target command
 and outputs are in `docs/BUILD-linux.md`, `docs/BUILD-windows.md` and
 `docs/BUILD-web.md`.
 
+Host-side and device-free by design (`CMakeLists.txt`): `ctest` runs 13 tests —
+geometry (`debug_prims_geometry`, `unlit_cube_geometry`), `raycast_analytic`,
+`dat_bundle_bytes` (skips without a game install), `match_economy_test`,
+`fighter_script_test`, `arena_camera_test`, `animation_pose_test`, `lighting_test`,
+`text_test`, `hud_sprite_table`, `hud_text_test` and `screen_stack_test`. Cross
+(Windows) and web targets do not build them.
+
 The asset path is verified the same way, offscreen, where it produces numbers
 rather than a window: a stage at its spawn point, a character and a weapon each
 report coverage and the luminance range of the frame, and `--no-textures` renders
 the same scene untextured for comparison. Linux and Windows/Wine produce
 byte-identical captures of the same asset, which is the point of the exercise —
-one renderer, three targets. The two frames the reference implementation's own
-captures were kept for (stage01 at the player camera, akane plus a weapon at the
-front camera) come out pixel-identical here, so the port is not an approximation
-of the shader and draw path it replaces.
+one renderer, three targets. The two frames kept from the deleted DX9 tree's own
+captures (stage01 at the player camera, akane plus a weapon at the front camera;
+the tree itself is reachable only via the `pre-webgpu-cutover` tag) come out
+pixel-identical here, so the port is not an approximation of the shader and draw
+path it replaces.
 
 New since the port landed, all verified the same way:
 
@@ -215,6 +246,9 @@ New since the port landed, all verified the same way:
   integer triangle wave, weapons re-attach to live prop bones every frame, and
   every number is a pure function of the frame index — Linux vs Wine captures
   byte-identical, including camera smoothing, animation, and audio counts.
+- `--screen=title` boots the title screen instead of an asset (`--script=` drives
+  its menu, `--out` captures it); see `docs/FRONTEND-PLAN.md`. Only title is
+  implemented; select/VS/result are pending per `docs/ROADMAP-PENDING.md` §E.
 - `foundation_ui` (sprite batch, bitmap font, HUD composer, diagnostics) is wired
   into the demo; `foundation_media` now carries the real SDL3 audio and input
   backends, verified in-engine with `--audio-test` (440 Hz tone through music +
@@ -250,11 +284,14 @@ Phase 1 (reads installs, CPU raycast, debug prims):
 
 ## Not here yet
 
-Deliberately out of scope for the foundation: game code itself, video decoding
-(explicit stub), and live-pad/browser-gesture verification. Asset loading,
-depth-buffered 3D drawing, HUD compositing, audio/input backends (including OGG
-Vorbis decode of all shipped BGM plus `.sfl` loop streaming) and the game
-camera path are in place; what is still missing before DX9 can be retired
-(gate D2) is the frame having to *match* the original's, which needs
-game-driven state (real HP, fighter positions, effect spawns) rather than test
-rigs.
+Deliberately out of scope for the foundation: video decoding (explicit stub) and
+live-pad/browser-gesture verification. The match loop, economy and HUD values are
+ported and gated (`docs/FULL-REPLACEMENT-PLAN.md` §5); what remains is fidelity and
+breadth — battle-frame fidelity (B–D) and front-end breadth (E–F), not the
+simulation itself. See `docs/ROADMAP-PENDING.md` for what is actually still open.
+
+Where to read next: plan and handoff in `docs/FULL-REPLACEMENT-PLAN.md` (§5 quirks,
+§8 cutover) then `docs/ROADMAP-PENDING.md`; assets in `remake/docs/ASSET-CATALOG.md`;
+HUD tables in `docs/BATTLE-HUD-SPEC.md`; screens in `docs/FRONTEND-PLAN.md`;
+per-target build logs in `docs/BUILD-linux.md`, `docs/BUILD-windows.md` and
+`docs/BUILD-web.md`.

@@ -1,20 +1,25 @@
-# WebGPU port completion plan
+# WebGPU port completion plan (post-cutover record)
 
 This is the remaining-work plan for finishing the Daybreak renderer port on
-`feat/webgpu-groundwork`. It covers foundation-adjacent systems only. Full
-gameplay/netplay, story mode, and DX9 removal are separate decisions and are not
-claimed here. `webgpu-mvp/` and `webgpu-spike/` remain untouched retirement-bound
-prototypes until the port work they informed is complete.
+`main`. The product is `remake/foundation/` (SDL3 + WebGPU, C++17,
+`CMAKE_CXX_STANDARD 17`, 13 ctest tests). It covers foundation-adjacent
+systems only. Full gameplay/netplay and story mode are separate decisions
+and are not claimed here. `webgpu-mvp/` and `webgpu-spike/` were deleted in
+the Phase 5 cutover (2026-10-02) after the port work they informed landed;
+`remake/src/` was deleted in the same cutover, as was the DX9 tree.
 
 ## Non-goals
 
 - No verification on macOS by us. Code should stay portable where that is free,
   but macOS execution is explicitly out of scope unless external users provide it.
-- No edits to `remake/src/` by this track. Another agent owns that tree; the
-  foundation may read DX9/remake behavior as reference, but integration happens on
-  the foundation side.
+- No edits outside the track's owner files without the parent. (History: a
+  separate `remake/src/` tree existed before the Phase 5 cutover and was
+  owned by another agent; it has since been deleted.)
 - No game data committed. Local extracted game files stay ignored.
-- No DX9 removal. D2 keeps DX9 buildable as the A/B reference until parity passes.
+- No DX9 tree. DX9 was dropped in the Phase 5 cutover (2026-10-02); the A/B
+  reference is now the banked evidence in `remake/tests/parity-baseline/`
+  plus the original's prints in `remake/docs/reference/`, not a buildable
+  binary. (History: D2 kept DX9 buildable as the A/B reference until then.)
 
 ## Standing rules
 
@@ -27,13 +32,16 @@ prototypes until the port work they informed is complete.
   coverage/luminance numbers, byte-identical checks where claimed.
 - Web asset work stays local-only. The browser can run preloaded verification data,
   but no copyrighted data enters the repository.
-- Shared integration files are parent-owned until a track is ready to merge:
-  `CMakeLists.txt`, `src/main.cpp`, `README.md`, top-level decisions.
+- Shared integration files are parent-owned: `CMakeLists.txt`,
+  `src/main.cpp`, `README.md`, top-level decisions. Landed seams already
+  wire `--audio-test`/`--audio-file`/`--input-test`/`--hud-test`/`--screen`/
+  `--versus`/`--match` through `src/main.cpp` into `foundation_media`,
+  `foundation_game` and `foundation_gameplay`.
 - One `#if` per real platform difference; no speculative compatibility shims.
 - Proof beats prose: every completed workstream ends with commands run, observed
   output, artifacts, and explicit “not verified” items.
 
-## Track R — renderer parity toward the D2 gate
+## Track R — renderer parity toward the D2 gate (in progress on main)
 
 Owner files: `src/render/*`, `src/shaders/model*.h`, `docs/RENDER-*.md`.
 Read-only elsewhere except reported integration patches.
@@ -58,10 +66,15 @@ Acceptance: representative stage/character/weapon/animation captures, byte-ident
 Linux/Windows where claimed, plus explicit notes for effect cases that remain out
 of scope.
 
-## Track U — 2D/UI/HUD layer
+## Track U — 2D/UI/HUD layer (landed in skeleton; fidelity open)
 
 Owner files: new `src/ui/*`, `src/shaders/ui_*.h`, `docs/UI-*.md`.
 Read-only elsewhere except reported integration patches.
+
+Status (post-cutover): the screen stack and HUD composition have landed —
+`src/ui/screen.{h,cpp}` + `screen_title` with `--screen=title` wired in
+`src/main.cpp`, and the HUD composer with the atlas-art battle path.
+What remains is fidelity work, not scaffolding:
 
 1. U1 — sprite/quad batch. Textured 2D quads with alpha blending, texture upload
    from CNV/BMP-backed images, scissor/viewport-safe coordinates.
@@ -75,11 +88,16 @@ Read-only elsewhere except reported integration patches.
 Acceptance: HUD elements render in the same frame pipeline verification captures,
 with pixel/coverage evidence where headless capture supports it.
 
-## Track W — web runtime assets and pixel verification
+## Track W — web runtime assets and pixel verification (fetch + cache landed)
 
 Owner files: `docs/WEB-ASSETS.md`, new web-asset runtime helpers if needed,
 browser verification notes. Parent retains `CMakeLists.txt` and `main.cpp`
 integration until the design is accepted.
+
+Status (post-cutover): the fetch→`/packs/` loader plus IDBFS persistence
+have landed (`src/platform/web_pack.cpp` via `scripts/make_pack.py`,
+`?pack=` handling in `src/main.cpp`). What remains is the release
+hardening below:
 
 1. W1 — runtime delivery design. Compare embedded subset, Emscripten preload
    packaging, HTTP fetch/streaming, and IndexedDB/cache behavior. Choose the
@@ -93,10 +111,16 @@ integration until the design is accepted.
 Acceptance: a real release asset path is specified and the verified subset is
 narrow; local-only test data remain out of git.
 
-## Track M — media and input modules
+## Track M — media and input modules (backends landed; callers pending)
 
 Owner files: new `src/audio/*`, `src/input/*`, `docs/MEDIA-*.md`, isolated tests.
-No `main.cpp` integration until parent accepts the interfaces.
+`main.cpp` integration has landed (`--audio-test`/`--audio-file`,
+`--input-test` via `runAudioTest`/`runInputTest`).
+
+Status (post-cutover): `src/audio/audio_engine.cpp` +
+`src/input/input_backend.cpp` compile into `foundation_media` and the
+harness seams above exercise them. What remains is caller-side work, not
+the backends themselves:
 
 1. M1 — audio inventory and backend. Survey SFX/BGM/movie-audio needs from the
    remake reference, then implement SDL3 audio playback/streaming behind a small
@@ -111,21 +135,28 @@ No `main.cpp` integration until parent accepts the interfaces.
 Acceptance: working modules with interfaces, tests/metrics, and explicit platform
 caveats; integration happens through the parent.
 
-## Merge order
+## Merge order (post-cutover: complete)
 
-1. Independent modules and docs land first: new `src/ui/*`, `src/audio/*`,
+1. Independent modules and docs landed: `src/ui/*`, `src/audio/*`,
    `src/input/*`, web runtime helpers, shaders, per-track docs.
-2. Parent integrates shared seams: `CMakeLists.txt`, `src/main.cpp`, README,
-   top-level verification table.
+2. Parent integrated the shared seams: `CMakeLists.txt`, `src/main.cpp`,
+   README, top-level verification table.
 3. Parent reruns the three-target matrix and asset captures before each commit.
-4. Retirement of `webgpu-mvp/` and `webgpu-spike/` happens only after the port
-   work they informed is complete and merged.
+4. Retirement of `webgpu-mvp/` and `webgpu-spike/` is done — both trees
+   were deleted in the Phase 5 cutover, as were `remake/src/` and the DX9
+   tree.
 
-## Current checkpoint
+## Current checkpoint (on `main`)
 
 - Linux and Windows/Wine render textured stages/characters/weapons with
   byte-identical captures where claimed.
-- Web builds and runs; local preload renders a real character scene with textures
-  resolved. Web pixel proof and production asset delivery remain open.
-- D2 gate is not passed: the frame must still match the original, which needs
-  effects, the 2D pass and the game camera.
+- Web builds and runs; the fetch→`/packs/` loader with IDBFS caching
+  resolves real scenes, and local preload renders a real character scene
+  with textures resolved. Production asset hardening (OPFS alternative,
+  range requests, BGM/movie streaming) remains open.
+- Screens, HUD composition and the playable `--match` simulation have
+  landed (`src/ui/screen*.{h,cpp}`, HUD composer, `src/gameplay/*`).
+- D2 gate is not passed: the frame must still match the original's prints
+  in `remake/docs/reference/` (checked against the banked evidence in
+  `remake/tests/parity-baseline/`), which needs effects, the remaining 2D
+  fidelity and the game camera.

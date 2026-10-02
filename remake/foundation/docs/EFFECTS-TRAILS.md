@@ -1,5 +1,11 @@
 # EFFECTS-TRAILS — finding: no trail geometry ships; documented, not built
 
+> **Status: research for `ROADMAP-PENDING.md` B1, not a gameplay effect path.**
+> Match-mode shots/sparks/auras render as untextured `debug_prims.h` cubes
+> (`src/main.cpp`, `src/render/debug_prims.h`); `--effect` cards exercise only the
+> verification scaffolding (additive Effect pass, cylindrical yaw). Nothing here
+> changes gameplay VFX.
+
 No owned files changed. Per the track order (survey `data/trail/` and aura/effect
 meshes first; build only if the assets carry trail data), this records the survey
 and why there is nothing to implement against.
@@ -16,8 +22,11 @@ sets.
 - Case-insensitive byte search for `trail` across all of `Higurashi-Daybreak/data/`
   (effect, aura, bullet, item, stages included): **zero files**. No `.X` material
   names a trail texture; no `data/effect/*.dat` payload mentions one.
-- `grep -rn -i trail remake/src/ research/symbols/`: no trail system, no ribbon
-  builder, no trail render state anywhere in the remake or the symbol map.
+- `grep -rn -i trail remake/foundation/src research/symbols/`: no trail system, no
+  ribbon builder, no trail render state (only unrelated `trailing-*` tokens and one
+  CP932 `trail byte` comment).
+  Case-insensitive search across `Higurashi-Daybreak/data/` likewise returns zero
+  files.
 - The sole consumer is the original binary itself: `DaybreakDX.exe` contains the
   format string `data/trail/%02d.bmp`, loaded by **`FUN_00633ca0`** into a runtime
   texture table — loop `local_124 = 0..9`, `wsprintfA("data/trail/%02d.bmp")`,
@@ -32,16 +41,18 @@ Trail geometry is **procedural**: the exe keeps indexed trail textures and (per 
 genre — sword/afterimage ribbons) must extrude ribbon strips from motion history
 at runtime. The producers — sample points, widths, lifetimes, UV scroll, blend
 state — live in unmapped exe logic; no shipped mesh, frame, or animation carries
-them, and the foundation's parsed material (`diffuse/power/specular/emissive/
-texture`, `xmodel.h`) has no field that could drive a ribbon even if one were
-invented. Any `src/render/*` trail builder written now would be fan fiction
+them, and the foundation's parsed material
+(`diffuse/power/specular/emissive/texture/effectFile`, `src/assets/xmodel.h`) has no
+field that could drive a ribbon: `effectFile` is a filename binding (empty on every
+shipped asset), and no vertex carries trail parameters. Any `src/render/*` trail
+builder written now would be fan fiction
 dressed as a port: geometry sources, update rules, and the card→texture-index
 mapping would all be guesses with no reference frame to check against.
 
 Aura/effect meshes corroborate the absence: all 12 surveyed files (`aura/00–05.X`,
-`06.x`, `effect/01,02,04,05,08,14`) are static unskinned cards/fans/rings with
-`anims=1` spin-or-scale sets — none is a ribbon, none carries per-vertex trail
-parameters, and none names `data/trail/*`.
+`06.x`, `effect/01,02,04,05,08,14`) are unskinned cards/fans/rings with a single
+`Anim-1` set each (spin-or-scale; durs 240–9600 ticks) — none is a ribbon, none
+carries per-vertex trail parameters, and none names `data/trail/*`.
 
 ## What would unblock trail rendering (parent-owned RE, not this track)
 

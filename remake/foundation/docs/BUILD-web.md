@@ -1,7 +1,9 @@
 # Web (Emscripten)
 
 ```bash
-./build.sh web                                  # sources ~/emsdk/emsdk_env.sh (EMSDK= overrides)
+cd remake/foundation   # all paths below are relative to here
+./build.sh deps     # once (populates third_party/, CMakeLists.txt:27-29)
+./build.sh web      # sources ~/emsdk/emsdk_env.sh (EMSDK= overrides)
 python3 -m http.server 8177 -d build/web
 # open http://127.0.0.1:8177/foundation_demo.html
 ```
@@ -10,15 +12,21 @@ The page needs a WebGPU-capable browser and, because wasm is fetched with
 `fetch()`, an HTTP origin — `file://` does not work.
 
 Verified with emcc 6.0.10, the Emscripten port of SDL3 3.4.2, and emdawnwebgpu
-(Dawn v20250517.163311) as fetched by `third_party/webgpu`. Nothing in this
+(Dawn v20250517.163311). `scripts/fetch_deps.sh` (via `build.sh deps`) fetches
+the pinned WebGPU-distribution sources into `third_party/webgpu`, and that CMake
+project downloads the prebuilt runtime at configure time — emdawnwebgpu on the
+web (`third_party/webgpu/emdawnwebgpu/CMakeLists.txt:35`). Nothing in this
 project selects Dawn: the WebGPU-distribution CMake project switches to the
 Emscripten port on its own as soon as it is configured through `emcmake`.
 
 ## Reading the result
 
-Diagnostics go to the browser console. There is no argv on the web, so
-`--frames=N` never arrives and the demo renders until the app exits — which is
-the intent for a browser demo. **Press Escape in the page** (the demo's own quit
+Diagnostics go to the browser console. There is no shell argv on the web, so
+flags such as `--frames=N` never arrive and the demo renders until the app
+exits — but one asset argument does: `?asset=` (a single CLI arg), `?pack=`
+(manifest URL fetched into `/packs/`, `asset=` line wins), then the
+configure-time `FOUNDATION_WEB_ASSET` (`src/main.cpp:1732-1755`) — which is the
+intent for a browser demo. **Press Escape in the page** (the demo's own quit
 path) to reach `SDL_AppQuit`, which is what prints the timing summary and
 `RESULT: ok`:
 
@@ -67,6 +75,10 @@ cmake --build build/web-assets
 python3 -m http.server 8178 -d build/web-assets
 # open http://127.0.0.1:8178/foundation_demo.html
 ```
+
+For a quick local check, `?asset=--character=/assets/akane:0` in the page URL
+beats rebuilding with `-DFOUNDATION_WEB_ASSET` (see the `?asset=` / `?pack=`
+query paths above).
 
 The expected console evidence is the same shape as native asset runs: the loaded
 model/mesh/vertex counts, resolved texture counts, generated draws and GPU

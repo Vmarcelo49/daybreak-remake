@@ -1,5 +1,11 @@
 # EFFECTS-BLEND — per-effect factors: surveyed, not wired; uniform additive kept
 
+> **Status: research for `ROADMAP-PENDING.md` B1, not a gameplay effect path.**
+> Match-mode shots/sparks/auras render as untextured `debug_prims.h` cubes
+> (`src/main.cpp`, `src/render/debug_prims.h`); `--effect` cards exercise only the
+> verification scaffolding (additive Effect pass, cylindrical yaw). Nothing here
+> changes gameplay VFX.
+
 No owned files changed. Per the track order (per-effect blend factors driven by
 parsed material/technique data *where it exists*; otherwise say so and keep the
 current path), this records what was surveyed and why `SRC_ALPHA, ONE` stays
@@ -34,17 +40,29 @@ foundation parser; texture names below SJIS-decoded where ASCII):
   `FUN_0064ff80` "CreateAllShaders" — sizes match the decompile's `0xd6c, 0xe38,
   0x32c, …` lengths verbatim) each carry **exactly one technique**
   (`SampleTexhnique` — the original's typo, 1 occurrence per blob) with distinct
-  parameter sets: `MaterialColor` (0/1/7), `Alpha` (5/6), `MulColor` (8), bare
-  `mTransform+Tex0` (9). Per-effect factors would therefore be per-effect-*index*
-  — but **no card→effect-index mapping exists in any parsed data**: all 491
-  shipped `.X` files define the `EffectInstance` template and zero instantiate
-  it (RENDER-MATERIALS.md survey), so D3DX hands the reference loader an empty
-  effect list for every asset, and the foundation parser drops nested instances
-  before the renderer could ever see them (parent-owned asset layer).
-- The DX9 remake receives `pEffectInstances` in `create_mesh_container` and only
-  **logs** the filename; it never calls `SetTechnique`/`BeginPass` (no occurrences
-  in `remake/src/`). Technique binding is unimplemented on both paths — the "10
-  compiled effect shaders" are loaded (`EffectSystem`) and never bound.
+  parameter sets: `MaterialColor` in 0/1/7 only, `Alpha` in 5/6 only, `MulColor` in
+  8 only. Blobs 2/3/4/9 all lack color params: 9 is `mTransform`+`Tex0` without
+  light terms, 3/4 add light transforms, and 2 has no `Tex0` at all. The
+  per-index→mesh-category binding is still unknown, so no factor table follows from
+  this survey. Per-effect factors would therefore be per-effect-*index*
+  — but **no card→effect-index mapping exists**: all 491 binary `.X` files (of the
+  728-file corpus) define the `EffectInstance` template and zero instantiate it, so
+  D3DX hands the reference loader an empty effect list for every asset. Nested
+  `EffectInstance` children now parse into `Material::effectFile`
+  (`src/assets/xmodel.h:1400-1407`; zero shipped materials carry one per the 728-file
+  reload in `RENDER-MATERIALS.md`). Technique binding stays unimplemented because the
+  renderer never reads `effectFile` — the gap moved from the parser to the renderer
+  binding, which is `ROADMAP-PENDING.md` work.
+- The retired DX9 remake (tree deleted; see the frozen bank in
+  `remake/tests/parity-baseline/` and `remake/docs/placeholders.md`) received
+  `pEffectInstances` in `create_mesh_container`, logged the filename, and never bound
+  a technique. That path is historical evidence only — verify future technique claims
+  against `FUN_0064ff80` behavior and original frames, not against the deleted tree.
+  Technique binding is unimplemented: the ten blobs in
+  `remake/assets/shaders/effect_0..9.bin` are never loaded by the foundation — there
+  is no `EffectSystem` here — and never bound anywhere. The historical DX9 remake
+  loaded all 10 and bound none (parity-baseline logs); the foundation path does not
+  get that far.
 
 ## What stays
 
@@ -56,8 +74,9 @@ with the planted-frame monotonicity re-verified this session: a billboarded
 ## What would unblock per-effect factors (all parent-owned or RE)
 
 1. Asset layer parses nested `MeshMaterialList`-level `EffectInstance` children
-   into `Material` (filename + params) — the R1 follow-up already reported to the
-   parent — *and* a shipped asset carrying one is found (none observed to date).
+   into `Material` — landed as `Material::effectFile`
+   (`src/assets/xmodel.h:1400-1407`), with zero shipped materials carrying one —
+   *and* a shipped asset carrying one is found (none observed to date).
 2. RE maps effect-blob index → mesh category (which of the 10 effects draws
    which cards) and decodes each blob's pass states at `FUN_0064ff80`'s callers.
 3. A renderer-side factor table keyed on that binding, verified against a DX9 /

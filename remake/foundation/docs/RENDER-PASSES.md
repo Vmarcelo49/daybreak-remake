@@ -49,15 +49,24 @@ Verification — `/tmp`-only caller shim (a copied `main.cpp` in `/tmp`, repo
   (`effect/01.X`: 0 px) — the new pass cannot alter any existing capture.
 
 Out of scope (labeled, not claimed): trails, hit sparks beyond `hit.X`/`hit2`,
-billboarding (cards are not camera-facing here), per-effect blend factors from
-the 10 compiled effect shaders (technique binding unimplemented on both paths),
-any effect routing by texture name (would be a second provisional heuristic;
-deliberately not added).
+per-effect blend factors from the 10 compiled effect shaders (technique
+binding unimplemented on both paths), any effect routing by texture name
+(would be a second provisional heuristic; deliberately not added).
+Billboarding is in scope and landed: effect cards yaw to face the camera
+cylindrically around world Y — the verdict is geometry-only in
+`classifyBillboard` (`src/render/scene_renderer.cpp:55-100`), dormant until
+`setEye()` runs, then folded into the draw model matrix
+(`:457-460`, `:567-570`, `:761-773`; header documents it at
+`src/render/scene_renderer.h:214-220,268-280`). Ground-plane cards stay put.
 
 Parent-owned follow-up, now landed: `--effect=<file>` loads one card with the
 effect role (standalone, or riding along with any other asset the way a weapon
 rides a character), and the `main.cpp` draws line prints the effects count.
-Nested `EffectInstance` parsing is still open (see `RENDER-MATERIALS.md`).
+Nested `EffectInstance` parsing landed as `Material::effectFile` in
+`readMaterialBody`, covering named and inline materials
+(`src/assets/xmodel.h:1400-1407`). Routing in `classifyPass` is deliberately
+unchanged until an asset actually carries an effect file
+(`src/render/scene_renderer.cpp:41-45`).
 
 ## R3 — decal overlap: DX9 stencil guard, verified on captures
 

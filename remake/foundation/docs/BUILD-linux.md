@@ -1,15 +1,30 @@
 # Linux (native)
 
 ```bash
-./build.sh deps     # once
+cd remake/foundation   # all paths below are relative to here
+./build.sh deps        # once
 ./build.sh linux
-LD_LIBRARY_PATH=$PWD/build/linux ./build/linux/foundation_demo --frames=180
+./build/linux/foundation_demo --frames=180
 ```
 
 Requires SDL3 (the system package; verified with 3.4.16) and a Vulkan-capable
-driver. `third_party/webgpu` fetches the prebuilt wgpu-native runtime and
-`target_copy_webgpu_binaries` places `libwgpu_native.so` next to the executable,
-which is why `LD_LIBRARY_PATH` is only needed when running from elsewhere.
+driver. `scripts/fetch_deps.sh` (via `build.sh deps`) fetches the pinned
+WebGPU-distribution sources into `third_party/webgpu`, and that CMake project
+downloads the prebuilt wgpu-native runtime at configure time. The binary carries
+a build-tree RUNPATH to its configure-time wgpu directory (confirm with
+`readelf -d`), so in place it just runs; `target_copy_webgpu_binaries`
+(`CMakeLists.txt:278`) still stages a `libwgpu_native.so` beside the executable
+for anything that moves the binary away from that directory — point
+`LD_LIBRARY_PATH` at the executable's own directory only in that case.
+
+Native checks need two local-only faces in `third_party/fonts/` (gitignored;
+fetched by `remake/scripts/fetch_deps.sh`, the host-toolchain-and-fonts script —
+not by `build.sh deps`, which only fetches third-party sources): `NotoSansCJKjp-Regular.otf`, the CJK face
+`text_test` looks for (`tests/text_test.cpp:406`), and
+`LiberationSans-Bold.ttf`, the Latin face `hud_text_test` needs. Without them
+those two tests SKIP (they print where they looked); everything else in the
+13-test suite runs. `FOUNDATION_CJK_FONT` (resp. `FOUNDATION_LATIN_FONT`) or
+argv[1] overrides the search.
 
 Observed (Arch, Mesa 26.2.3, RADV, Wayland session):
 
@@ -38,6 +53,7 @@ a frame-rate claim.
 
 - Backend: wgpu-native → Vulkan.
 - Present modes offered: Mailbox, Fifo, Immediate. FIFO is selected.
-- Wayland works through `SDL_GetWGPUSurface` (the X11 path is there too, but the
-  wgpu-native prebuilt crashed on a headless Xvfb server during bring-up; that is
-  a test-environment artifact, not a desktop X11 result).
+- Wayland works through `SDL_GetWGPUSurface` (`src/platform/surface.cpp:18`),
+  which is also the X11 route — one native path, not two. A headless Xvfb server
+  crashed the wgpu-native prebuilt during bring-up; that is a test-environment
+  artifact, not a desktop X11 result.

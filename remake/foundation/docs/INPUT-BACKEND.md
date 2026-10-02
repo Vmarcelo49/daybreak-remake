@@ -1,7 +1,7 @@
 # INPUT-BACKEND — SDL3 polling backend (Track M)
 
 Owner files: `src/input/input_backend.{h,cpp}`, this doc. Parent-owned seams
-(`CMakeLists.txt`, `src/main.cpp`) are sketched in §5, not edited.
+(`CMakeLists.txt`, `src/main.cpp`) are recorded in §5 as landed.
 
 Layering, unchanged: `input.h` owns the device-free model (13 actions,
 edges, deadzone, script parsing), `input_sdl3.h` owns the pinned tables and
@@ -108,16 +108,16 @@ inside the deadzone, stable across re-polls); script playback with exact
 edge/timer output incl. `-`, comments and unknown-token lines; the public
 header compiles with no SDL headers present.
 
-## 5. Proposed integration (parent-owned, NOT applied)
+## 5. Integration (landed)
 
 ```cmake
-# CMakeLists.txt — compile the backend into foundation_media:
+# CMakeLists.txt — backend compiled into foundation_media (landed):
 #   target_sources(foundation_media PRIVATE src/input/input_backend.cpp)
 #   (foundation_media already links SDL3 on non-Emscripten targets.)
 ```
 
 ```cpp
-// main.cpp — future --input-test mode sketch:
+// main.cpp — --input-test mode (landed as runInputTest):
 //   #include "input/input_backend.h"
 //   // App gains: fnd::input::Backend input; bool inputTest = false;
 //   //   uint64_t inputFrame = 0; std::string inputScript;
@@ -141,4 +141,6 @@ header compiles with no SDL headers present.
   P2–P4 map stays provisional regardless.
 - No browser run: web behaviour is documented from the SDL3/Emscripten
   contract, not executed.
-- No `main.cpp`/CMake wiring: sketched above, parent decides.
+- `main.cpp`/CMake wiring has landed (§5: `foundation_media` compiles
+  `src/input/input_backend.cpp`, `src/main.cpp` wires `--input-test`
+  through `runInputTest`).

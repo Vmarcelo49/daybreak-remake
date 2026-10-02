@@ -56,22 +56,25 @@ What remains decoder-side:
   `Region MM:SS.mmm to MM:SS.mmm` label (end), failing on mismatch rather
   than looping the wrong bars; `LoopPlayer` streams decoded PCM through any
   `Engine` in chunks, wrapping at the loop end. `--audio-test --audio-file`
-  streams every `.sfl` pair through two full wraps with exact accounting.
+  streams that file's sibling `.sfl` through two full wraps with exact
+  accounting, per invocation (`src/main.cpp:1599-1650`).
 - Movie audio: MP2 frames → `interleave_lr_s16` (already in `audio_sdl3.h`) →
   `push_music_s16` — waiting on the video decision, not on audio.
 
 No engine change is needed for any of these; they are new callers of the two
 push paths, not a new backend.
 
-## Verification (headless, SDL dummy driver)
+## Verification: in-engine `--audio-file` (headless, SDL dummy driver)
 
 In-engine `--audio-test` extends the harness: `--audio-file=<path>` decodes
 a real shipped file through the bank (ogg/wav/cnv by format detection) and
-fires it once. All 21 shipped BGM files decode with `RESULT: ok`, and decoded
+fires it once, plus that file's sibling `.sfl` two-wrap check when one
+parses. All 21 shipped BGM files decode with `RESULT: ok` (one invocation
+per file), and decoded
 sample counts match `ffprobe` durations to within container padding on every
 file (e.g. `01.ogg`: 94.09 s vs 4,149,248 samples).
 
-## Verification (headless, SDL dummy driver)
+## Verification: SDL-free decode harness (headless, SDL dummy driver)
 
 Harness sources live only in `/tmp/audio-verify/` (never committed);
 test tones/bytes are synthesized in code — no game data, no hardware.
@@ -123,10 +126,10 @@ rejection; music push/drain accounting; gated push/play dropped with queues
 unchanged; post-unlock push accepted; re-gate drops again; null-gate native
 push; closed-engine silence.
 
-## Proposed wiring (parent-owned, NOT applied)
+## Landed wiring (was: proposed, parent-owned)
 
 ```cmake
-# CMakeLists.txt — backend TU joins the existing header-only media lib:
+# CMakeLists.txt — backend TU in the media lib (landed):
 #   target_sources(foundation_media PRIVATE src/audio/audio_engine.cpp)
 #   if(NOT EMSCRIPTEN)
 #     target_link_libraries(foundation_media PUBLIC SDL3::SDL3)
@@ -135,7 +138,7 @@ push; closed-engine silence.
 ```
 
 ```cpp
-// main.cpp — future --audio-test mode sketch (needs game/CLI owner approval):
+// main.cpp — --audio-test mode (landed as runAudioTest, src/main.cpp:1530):
 //   static fnd::audio::UnlockGate gate =
 //   #ifdef __EMSCRIPTEN__
 //     fnd::audio::UnlockGate(fnd::audio::UnlockState::Gated);
@@ -146,19 +149,24 @@ push; closed-engine silence.
 //   if (wants_audio_test) {
 //     audio.open(fnd::audio::Spec{});
 //     audio.set_volumes(fnd::audio::Volumes{});
-//     // --tone <hz>: synthesize N frames, audio.push_music_s16(...)
-//     // --wav <path>: read blob, audio.load_wav(...) + audio.play(h, SfxBus::Sfx)
+//     // --audio-file=<path>: format-detected decode (ogg/wav/cnv), single-file
+//     // fire, plus the sibling-.sfl two-wrap loop check per invocation.
 //     // SDL_AppEvent: on finger/key/pad-down -> gate.unlock()
 //   }
 // Backend .cpp already includes <SDL3/SDL.h>; no pin asserts needed here
 // (no SDL codes are pinned by this module — that stays in pin_tables.cpp).
 ```
 
+Still genuinely future callers (not the seam above): movie-audio MP2 frames
+and gameplay BGM wiring.
+
 ## Explicitly not verified
 
 - No audible playback check (subjective; dummy driver only).
-- No BGM file streaming or `.sfl` loop points — implemented (see above); all
-  20 pairs stream two wraps with exact accounting on Linux and Wine.
+- BGM file streaming and `.sfl` loop points are implemented (see above);
+  each `--audio-file` invocation streams its sibling pair through two
+  wraps with exact accounting (banked runs cover the shipped pairs on Linux
+  and Wine).
 - No MP3 decoding — detection only; nothing shipped is MP3, so no decoder.
 - OGG Vorbis decodes (all 21 BGM files, durations cross-checked with ffprobe).
 - No browser gesture run — gate logic executed natively; web AudioContext

@@ -58,5 +58,9 @@ remake/tools/xvfb/usr/bin/Xvfb :99 -screen 0 1280x800x24 &
 DISPLAY=:99 wine build/windows/foundation_demo.exe --frames=120
 ```
 
-`build/wine_frame.png` is a screenshot of the window taken this way: the
-rotating vertex-coloured triangle, i.e. the WebGPU pipeline really drawing.
+The Xvfb fallback needs a local X server toolchain at `remake/tools/xvfb`
+(local-only, not fetched by `build.sh deps`; `xvfb-run` must not wrap
+agent-browser's own Xvfb) and `build/wine_frame.png` is a local capture, not a
+committed reference — re-take it with the `DISPLAY=:99 wine ...` command above
+rather than expecting it in the checkout; a re-taken capture shows the rotating
+vertex-coloured triangle, i.e. the WebGPU pipeline really drawing.

@@ -1,16 +1,23 @@
 # Track M — media and input (foundation side)
 
-Owner files: `src/audio/*`, `src/input/*`, this doc. No `main.cpp` / CMake
-integration — that seam is parent-owned until the interfaces are accepted.
+Owner files: `src/audio/*`, `src/input/*`, this doc. The `main.cpp` / CMake
+seam has landed (`--audio-test`/`--audio-file`, `--input-test` via
+`runAudioTest`/`runInputTest`; `src/audio/audio_engine.cpp` +
+`src/input/input_backend.cpp` compile into `foundation_media`).
 
-## 1. Inventory (remake reference, read-only)
+## 1. Inventory (pre-cutover survey — reference tree deleted, findings kept)
 
 Surveyed `remake/src/audio/audio_engine.{h,cpp}`,
 `remake/src/input/input_manager.{h,cpp}`,
 `remake/src/render/video_player.{h,cpp}`, `remake/src/third_party/pl_mpeg.h`,
 `remake/src/core/scenes.cpp`, `remake/docs/{reverse-engineering,placeholders,
 roadmap}.md`, `remake/tools/asset-tools/cnv_convert.py`. Nothing there was
-edited; all paths below are the reference's.
+edited; all paths below are the reference's. Note: the `remake/src/**` paths
+above were deleted in the Phase 5 cutover (2026-10-02) — treat their rows as
+transcribed findings. Live provenance is the foundation (`src/audio/*`,
+`src/input/*`, `src/gameplay/*`) plus the surviving
+`remake/tools/asset-tools/cnv_convert.py` and the banked
+`remake/tests/parity-baseline/` evidence.
 
 ### Audio
 
@@ -140,23 +147,24 @@ Pinned codes additionally verified against the real SDL 3.4.16 headers
 (`check_sdl_pin.cpp`: 25 `static_assert`s vs `SDL_SCANCODE_*` /
 `SDL_GAMEPAD_BUTTON_*` — all hold; compile-only, no link).
 
-## 5. Proposed integration (parent-owned, NOT applied)
+## 5. Integration (landed)
 
 ```cmake
-# CMakeLists.txt — new static lib beside foundation_render:
+# CMakeLists.txt — media lib beside foundation_render (landed):
 add_library(foundation_media STATIC
-  src/audio/media_backend.cpp    # future: SDL3 stream + gamepad poll
-  src/input/input_backend.cpp)   # future: event drain + tables here
+  src/audio/audio_engine.cpp   # SDL3 stream backend: load_ogg (stb_vorbis) + bank/play/gate
+  src/input/input_backend.cpp) # event drain + tables: init/poll/script driver
 target_include_directories(foundation_media PUBLIC src)
 target_link_libraries(foundation_media PUBLIC foundation)
 if(NOT EMSCRIPTEN)
   target_link_libraries(foundation_media PUBLIC SDL3::SDL3)
 endif()
-# + link foundation_media into foundation_demo when the backends exist.
+# + foundation_media is linked into foundation_demo.
 ```
 
 ```cpp
-// main.cpp — unlock on first gesture, poll input before scene update:
+// main.cpp — unlock on first gesture, poll input before scene update (landed
+// as runAudioTest/runInputTest, src/main.cpp:1530/1659):
 //   static fnd::audio::UnlockGate gate =
 //   #ifdef __EMSCRIPTEN__
 //     fnd::audio::UnlockGate(fnd::audio::UnlockState::Gated);
@@ -168,6 +176,13 @@ endif()
 // Backend .cpps must also: static_assert(kScUp == SDL_SCANCODE_UP, …)
 // against the real SDL3 headers so the pinned tables cannot drift.
 ```
+
+Landed on top of this: OGG Vorbis decode (`Sdl3Engine::load_ogg` via
+vendored stb_vorbis), `.sfl` loop parsing (`parse_sfl_loop` in
+`src/audio/audio_format.h:161`) with `LoopPlayer` chunk streaming
+(`src/audio/audio.h:123`), and the SDL3 audio/input backends
+(`src/audio/audio_engine.cpp`, `src/input/input_backend.cpp`) behind the
+`--audio-test`/`--input-test` seams (`src/main.cpp:1527+`).
 
 ## 6. Platform caveats
 
@@ -181,8 +196,10 @@ endif()
 ## 7. Explicitly not verified
 
 - No audible playback check (subjective; no device in this environment).
-- No `movie/op.mpg` decode — no game data in the repo; stub only.
-- No BGM loop-point (`.sfl`) handling — format noted from `win.sfl`, parsing deferred to the streaming backend.
-- No OGG/MP3 *decoding* — detection only; decoders (vorbisfile/minimp3 or SDL3 stream helpers) belong to the backend `.cpp`.
-- No live gamepad or browser run — tables pinned against SDL 3.4.16 headers; web behaviour documented from the SDL3/Emscripten contract, not executed.
-- No `main.cpp`/CMake wiring — proposed above, parent decides.
+- No `movie/op.mpg` decode — no game data in the repo; stub only
+  (`src/audio/video.h` `StubPlayer`).
+- No MP3 *decoding* — detection only, correctly absent (nothing shipped is
+  MP3).
+- No live gamepad or browser-gesture execution — tables pinned against SDL
+  3.4.16 headers; web behaviour documented from the SDL3/Emscripten
+  contract, not executed.
