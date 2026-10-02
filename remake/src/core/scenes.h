@@ -12,7 +12,11 @@
 //  is re-checked; it may need merging into the Title→Team transition.
 //
 //  Original scene IDs (LoadNextScene, FUN_00406310 — via retired mvp):
-//    TITLE=0, SELECT=1, VS_LOAD=2, BATTLE=3, CONNECT=7, BATTLE_RUN=8.
+//    Scene ids are the original's: factory FUN_004020a0, ids 0x00-0x15, and the
+//    transitions are the update functions' return values. The retired mvp/
+//    mapping that used to be quoted here (TITLE=0, SELECT=1, VS_LOAD=2,
+//    BATTLE=3, CONNECT=7, BATTLE_RUN=8) does NOT describe them - see
+//    remake/foundation/docs/FRONTEND-PLAN.md §1.2 for the real table.
 //  Our classes cover a different (remake-specific) flow, but new scenes
 //  that map 1:1 to original states should reuse these numbers in comments.
 //  Related original offsets: GameState frame_counter +0x2e14,
