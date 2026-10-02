@@ -1,0 +1,33 @@
+# host input devices at regen start (2026-10-02T02:41:55Z)
+by-id
+by-path
+event0
+event1
+event10
+event11
+event12
+event13
+event14
+event15
+event16
+event17
+event18
+event19
+event2
+event20
+event21
+event3
+event4
+event5
+event6
+event7
+event8
+event9
+js0
+mice
+mouse0
+mouse1
+mouse2
+# bluetooth (8BitDo is wireless):
+./regen.sh: linha 205: hcitool: comando não encontrado
+(no bt query tool/timeout)

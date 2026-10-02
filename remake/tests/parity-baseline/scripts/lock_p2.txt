@@ -1,0 +1,7 @@
+# Target-switch probe: hold HEAVY then tap GUARD (Guard just_pressed while
+# AttackB held) to cycle the arena camera from P1 to P2 (scenes.cpp:
+# "Target switch: Guard + AttackB"). Capture at 120, ~80 frames after the
+# switch, so the camera spring (0.1/frame lerp) has converged on P2.
+40 HEAVY
+41 HEAVY GUARD
+42 -

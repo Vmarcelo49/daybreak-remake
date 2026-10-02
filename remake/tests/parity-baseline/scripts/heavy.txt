@@ -1,0 +1,3 @@
+# Heavy swing probe: one HEAVY tap (AttackB state); capture mid-swing.
+80 HEAVY
+86 -

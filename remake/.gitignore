@@ -3,6 +3,7 @@
 /build-*/
 /out/
 /tests/visual/out/
+/tests/parity-baseline/captures-full/
 
 # IDE / OS
 .vscode/
