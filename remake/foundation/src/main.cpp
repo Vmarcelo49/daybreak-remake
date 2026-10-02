@@ -700,12 +700,26 @@ static bool loadBgmTrack(const std::string& oggPath, fnd::audio::Sdl3Engine& eng
 // Linux and Wine agree bit for bit). Character models translate; stage models
 // stay identity; weapons re-resolve against P1's live prop bone every frame,
 // unlike the bind-pose snapshot the single-asset path keeps.
+//
+// The facing is applied here as well, not just the translation. A character
+// placed with the identity rotation shows its *back*, because these rigs are
+// authored facing -Z — measured in the asset itself: data/rena/00.X's eye mesh
+// lies entirely at z <= +1.1 while the hair reaches z = +26.4, and both
+// ankle-to-ball vectors run down -Z. Fighter::modelMatrix carries the half turn
+// for a live match (via the original's own FUN_00420b30 rotation, whose angle
+// is measured from +X); this scripted path bypasses that class, so it needs the
+// same convention or the vignette renders both fighters back-to-front.
 static void placeVersusFighters(App& app, const glm::vec3& p1, const glm::vec3& p2) {
     for (size_t i = 0; i < app.scene.models.size(); ++i) {
         const xm::SceneModel& sm = app.scene.models[i];
         if (sm.role != "character") continue;
-        const glm::vec3& base = (i >= app.enemyBegin) ? p2 : p1;
-        app.modelMatrices[i] = glm::translate(glm::mat4(1.f), base);
+        const bool second = i >= app.enemyBegin;
+        const glm::vec3& base = second ? p2 : p1;
+        // The versus spawns' facings, as the reference spawns them: 0 and pi
+        // (remake/src/core/scenes.cpp:535, mirrored by MatchConfig above).
+        const float yaw = second ? glm::pi<float>() : 0.f;
+        app.modelMatrices[i] = glm::translate(glm::mat4(1.f), base) *
+                               glm::rotate(glm::mat4(1.f), yaw + glm::pi<float>(), glm::vec3(0.f, 1.f, 0.f));
     }
     for (size_t i = 0; i < app.scene.models.size(); ++i) {
         const xm::SceneModel& sm = app.scene.models[i];
