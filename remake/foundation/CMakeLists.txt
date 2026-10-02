@@ -90,9 +90,13 @@ add_library(foundation_ui STATIC
     src/ui/sprite.cpp
     src/ui/font.cpp
     src/ui/hud.cpp
+    src/ui/hud_atlas.cpp
     src/ui/text.cpp
     src/ui/fallback.cpp)
 target_include_directories(foundation_ui PUBLIC src)
+# hud_atlas.cpp decodes HUD sheets through xm::decodeCnvImage, which assets/ owns: state it
+# here so a target linking foundation_ui alone still links.
+target_link_libraries(foundation_ui PUBLIC foundation_assets)
 # stb_truetype for the CJK rasterizer, alongside the vendored stb_vorbis the media
 # layer uses (foundation_media adds the same directory).
 target_include_directories(foundation_ui PRIVATE third_party/stb)
@@ -228,6 +232,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(text_test PRIVATE src third_party/stb)
     target_link_libraries(text_test PRIVATE glm)
     add_test(NAME text_test COMMAND text_test)
+
+    # The battle HUD's sprite table and draw geometry: device-free arithmetic over the
+    # transcribed .rdata anchors, so it needs the headers' include path and webgpu.h only.
+    add_executable(hud_sprite_table tests/hud_sprite_table.cpp)
+    target_include_directories(hud_sprite_table PRIVATE src)
+    target_link_libraries(hud_sprite_table PRIVATE webgpu)
+    add_test(NAME hud_sprite_table COMMAND hud_sprite_table)
 
     # The HUD's text metrics against the banked DX9 frames: device-free (it rasterizes
     # into host memory), it pins the reference's GDI advance table, the baseline offset

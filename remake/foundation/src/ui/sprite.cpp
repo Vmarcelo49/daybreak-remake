@@ -178,6 +178,8 @@ bool SpriteRenderer::createTexture(Texture& t, uint32_t w, uint32_t h, const voi
     td.format = WGPUTextureFormat_RGBA8Unorm;
     td.mipLevelCount = 1;
     td.sampleCount = 1;
+    t.w = w;
+    t.h = h;
     t.tex = wgpuDeviceCreateTexture(device_, &td);
     if (t.tex) {
         WGPUTexelCopyTextureInfo dst = {};
@@ -260,6 +262,39 @@ bool SpriteRenderer::pushTextured(int texture, const UiRect& dst, const UiRect& 
     q.texture = texture;
     q.clip = clip;
     return pushQuad(q);
+}
+
+bool SpriteRenderer::textureSize(int texture, uint32_t& w, uint32_t& h) const {
+    if (texture < 0 || (size_t)texture >= textures_.size()) return false;
+    const Texture& t = textures_[texture];
+    if (!t.tex || t.w == 0 || t.h == 0) return false;
+    w = t.w;
+    h = t.h;
+    return true;
+}
+
+bool SpriteRenderer::pushSprite(int texture, const UiRect& src, float pivotX, float pivotY,
+                                float x, float y, UiColor tint, const UiClip& clip) {
+    uint32_t tw = 0, th = 0;
+    if (src.w <= 0.f || src.h <= 0.f || !textureSize(texture, tw, th)) return false;
+    return pushTextured(texture, spriteDst(x, y, src.w, src.h, pivotX, pivotY),
+                        UiRect{src.x / (float)tw, src.y / (float)th, src.w / (float)tw,
+                               src.h / (float)th},
+                        tint, clip);
+}
+
+bool SpriteRenderer::pushFill(int texture, const UiRect& src, float pivotX, float pivotY,
+                              float frac, FillMode mode, float x, float y, UiColor tint,
+                              const UiClip& clip) {
+    if (frac <= 0.f || src.w <= 0.f || src.h <= 0.f) return false;
+    if (frac > 1.f) frac = 1.f;
+    uint32_t tw = 0, th = 0;
+    if (!textureSize(texture, tw, th)) return false;
+    const UiRect dst = fillDst(spriteDst(x, y, src.w, src.h, pivotX, pivotY), frac, mode);
+    const UiRect cut = fillSrc(UiRect{src.x / (float)tw, src.y / (float)th, src.w / (float)tw,
+                                      src.h / (float)th},
+                               frac, mode);
+    return pushTextured(texture, dst, cut, tint, clip);
 }
 
 WGPURenderPipeline SpriteRenderer::pipelineFor(WGPUTextureFormat format, std::string& error) {

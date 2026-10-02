@@ -215,7 +215,82 @@ void HudComposer::bar(SpriteRenderer& batch, const UiRect& r, float frac, UiColo
     if (fw > 0) batch.pushSolid(UiRect{r.x, r.y, (float)fw, r.h}, fill);
 }
 
+bool HudComposer::ensureBattleAtlas(SpriteRenderer& batch) {
+    if (battleTried_) return battleAtlas_.ready();
+    battleTried_ = true;
+    std::string error;
+    if (battleAtlas_.upload(batch, error)) {
+        std::fprintf(stderr, "[fnd::ui] battle HUD atlases loaded (P00/P01/P02 via assetSource)\n");
+        return true;
+    }
+    // Missing game data is the normal asset-less case, not an error: say which sheet
+    // and keep the text HUD, so a capture without an install still renders a HUD.
+    std::fprintf(stderr, "[fnd::ui] battle HUD atlases unavailable (%s); text HUD in use\n",
+                 error.c_str());
+    return false;
+}
+
+void HudComposer::composeBattle(SpriteRenderer& batch, const HudState& st) {
+    // FUN_00644150's anchors, in its own draw order. Single-player scale is 1.0 and
+    // the viewport origin is (0,0) (FUN_0063a130 @0x0063a130, FUN_006396f0
+    // @0x006396f0), which is why these are plain 800x600 pixels. The 2P path halves
+    // them through FUN_00644150's param_4; the port's HUD is the 1P path.
+    const UiColor white = kHudWhite;
+
+    // HP: frame 0x642632, then the live fill 0x64424e (slot 0) on top. FUN_00644150
+    // also draws a lagging "ghost" fill first (slot 2 = P02 (0,496,230,14), red)
+    // whose value is a separate lagging HP the port does not model; at 100% HP,
+    // which is what the reference frame shows, the two coincide exactly, so leaving
+    // it out changes no verified pixel.
+    battleAtlas_.draw(batch, HudIcon::HpFrame, 505.f, 565.f, white);
+    battleAtlas_.fill(batch, HudIcon::HpFill, st.hp / 100.f, 505.f, 565.f);
+
+    // OYASHIRO fan gauge: frame 0x64428d at (55,488), gradient fill through
+    // FUN_00645690 (scale + FUN_00645250) at the same anchor, MAX label at (64,534)
+    // once charged (0x6443e6). The original picks the fill cell by hud+0x318 (team
+    // 0 here, FUN_00642c50 @0x00642cf8-0x642e5b) and alternates the charged pair on
+    // the frame counter; the composer has no clock, so the first of the pair is drawn.
+    battleAtlas_.draw(batch, HudIcon::FanFrame, 55.f, 488.f, white);
+    const float gauge = st.hyperGauge < 0.f ? 0.f : (st.hyperGauge > 1.f ? 1.f : st.hyperGauge);
+    battleAtlas_.fill(batch, st.hyperActive || st.hyperReady ? HudIcon::FanFillReady
+                                                             : HudIcon::FanFillCharging,
+                      gauge, 55.f, 488.f);
+    if (st.hyperReady && !st.hyperActive) battleAtlas_.draw(batch, HudIcon::MaxLabel, 64.f, 534.f);
+
+    // MAIN and CHARGE: frame, count, then fill (0x6448e5 / 0x64491d / 0x64495d /
+    // 0x64499d / 0x6449ef / 0x644ac8). The fill strip switches to the grey slot when
+    // the stock is empty, which is the count's only effect on the bar.
+    battleAtlas_.draw(batch, HudIcon::MainFrame, 623.f, 471.f, white);
+    battleAtlas_.draw(batch, HudIcon::ChargeFrame, 597.f, 517.f, white);
+    battleAtlas_.number(batch, st.mainWhole, 702.f, 443.f, white);
+    battleAtlas_.number(batch, st.chargeWhole, 676.f, 489.f, white);
+    battleAtlas_.fill(batch, st.mainWhole > 0 ? HudIcon::MainFill : HudIcon::MainFillEmpty,
+                      st.mainFrac, 623.f, 471.f);
+    if (st.chargeWhole > 0) {
+        battleAtlas_.fill(batch, HudIcon::ChargeFill, st.chargeFrac, 597.f, 517.f);
+        // The C-held tier meter rides the CHARGE pill's lower half (0x644b0d /
+        // 0x644b48 at y 525). HudState carries the tier as its resolved colour
+        // (game/hud_bridge.h): the two real tiers are the surveyed red and yellow,
+        // and the idle grey is not a tier at all, so it draws nothing.
+        if (st.holdVisible && st.holdColor.r > 0.9f)
+            battleAtlas_.fill(batch, st.holdColor.g > 0.6f ? HudIcon::ChargeTierYellow
+                                                          : HudIcon::ChargeTierRed,
+                              st.holdFrac, 597.f, 525.f);
+    } else {
+        battleAtlas_.fill(batch, HudIcon::ChargeFillEmpty, st.chargeFrac, 597.f, 517.f);
+    }
+}
+
 void HudComposer::compose(SpriteRenderer& batch, const HudState& st, const HudRects& layout) {
+    // Art first: when the game's own sheets are there, the original's composition is
+    // the whole HUD. Everything the DX9 text path draws beyond it (the RELOAD gate
+    // tag, the unlabelled corner "0", the "READY (S)" hint) is that path's own
+    // invention and is deliberately not mixed in — a frame is either the original's
+    // HUD or the remake's stand-in, never half of each.
+    if (ensureBattleAtlas(batch)) {
+        composeBattle(batch, st);
+        return;
+    }
     char buf[256];
     // Top corners: balloon % over LIMIT (%.0f%% / LIMIT %.0f%% per side).
     std::snprintf(buf, sizeof buf, "%.0f%%", st.balloon[0]);

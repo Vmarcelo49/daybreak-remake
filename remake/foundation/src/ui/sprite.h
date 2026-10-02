@@ -47,6 +47,50 @@ struct UiClip {
     float x = 0.f, y = 0.f, w = 0.f, h = 0.f;
 };
 
+// Gauge-fill growth direction. This is the original's sprite+0xa8 read by
+// FUN_00645250 @0x645250: 0 grows right, 1 grows up, 2 grows left.
+enum class FillMode : uint8_t { Right = 0, Up = 1, Left = 2 };
+
+// Destination of a pivot-anchored sprite, in viewport pixels. The original's
+// FUN_00655d60 @0x65584b computes `x - pivotX*scaleX` (and the y twin) into the
+// quad's top-left, with the size from FUN_00655b20's srcW/srcH; DX9 then
+// subtracts another 0.5 px to land on texel centres. A 1:1 blit here already
+// puts pixel centres on texel centres (pixelsToNdc maps pixel edges to NDC and
+// the sampler reads at the centre), so the half-pixel is not repeated.
+inline UiRect spriteDst(float x, float y, float srcW, float srcH, float pivotX, float pivotY,
+                        float scale = 1.f) {
+    return UiRect{x - pivotX * scale, y - pivotY * scale, srcW * scale, srcH * scale};
+}
+
+// FUN_00645250's clipped fill: `frac` of the sprite, growing along `mode`.
+inline UiRect fillDst(const UiRect& dst, float frac, FillMode mode) {
+    switch (mode) {
+        case FillMode::Up:
+            return UiRect{dst.x, dst.y + dst.h * (1.f - frac), dst.w, dst.h * frac};
+        case FillMode::Left:
+            return UiRect{dst.x + dst.w * (1.f - frac), dst.y, dst.w * frac, dst.h};
+        case FillMode::Right:
+        default:
+            return UiRect{dst.x, dst.y, dst.w * frac, dst.h};
+    }
+}
+
+// The matching source sub-rect. The original grows the UV with the same frac
+// (sprite+0xd = frac*(u1-u0)+u0), so a half-full bar squeezes the whole gradient
+// into half the width instead of cropping it — which is why a 3/6 ammo bar shows
+// the full ramp.
+inline UiRect fillSrc(const UiRect& src, float frac, FillMode mode) {
+    switch (mode) {
+        case FillMode::Up:
+            return UiRect{src.x, src.y + src.h * (1.f - frac), src.w, src.h * frac};
+        case FillMode::Left:
+            return UiRect{src.x + src.w * (1.f - frac), src.y, src.w * frac, src.h};
+        case FillMode::Right:
+        default:
+            return UiRect{src.x, src.y, src.w * frac, src.h};
+    }
+}
+
 // Clamps a clip to the viewport. Pure host-side so layout code is unit-testable
 // without a device.
 inline UiClip clampClip(const UiClip& c, const UiViewport& vp) {
@@ -155,6 +199,20 @@ public:
     bool pushTextured(int texture, const UiRect& dst, const UiRect& uv, UiColor tint,
                       const UiClip& clip = {});
 
+    // The original's sprite draw, in atlas pixels: FUN_00655b20 @0x655b20 stores
+    // (srcX, srcY, srcW, srcH) and the pivot (params 7/8), FUN_00655d60 @0x655d60
+    // draws it at (x - pivotX, y - pivotY) at size srcW x srcH. A transcribed
+    // sprite table therefore drives this verbatim, with no UV arithmetic at the
+    // call site. False when the slot is not a live texture (nothing is pushed).
+    bool pushSprite(int texture, const UiRect& src, float pivotX, float pivotY, float x, float y,
+                    UiColor tint = {}, const UiClip& clip = {});
+    // FUN_00645250 @0x645250: the same anchor, `frac` of the sub-rect drawn.
+    bool pushFill(int texture, const UiRect& src, float pivotX, float pivotY, float frac,
+                  FillMode mode, float x, float y, UiColor tint = {}, const UiClip& clip = {});
+
+    // Pixel size of an uploaded slot; false for an id this batch does not hold.
+    bool textureSize(int texture, uint32_t& w, uint32_t& h) const;
+
     // Encodes the batch as one Load-preserving pass over `view` (the 3D frame
     // stays underneath). `encoder` is the caller's — typically the same encoder
     // the scene renderer just recorded into — so HUD and 3D share one submit
@@ -172,6 +230,7 @@ private:
         WGPUTexture     tex = nullptr;
         WGPUTextureView view = nullptr;
         WGPUBindGroup   group = nullptr;
+        uint32_t        w = 0, h = 0;   // kept so pixel sub-rects can become UVs
     };
     struct Pipeline {
         WGPUTextureFormat  format = WGPUTextureFormat_Undefined;

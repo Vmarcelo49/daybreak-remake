@@ -1,29 +1,33 @@
 #pragma once
 // Battle HUD composition: bars, meters, labels and layout rules.
 //
-// Mirrors the DX9 battle HUD assembled in remake/src/core/scenes.cpp (itself
-// laid out from docs/reference/battle-hud.webp): balloon % + LIMIT in the top
-// corners, MAIN/CHARGE stocks plus HP bottom-right, the hypermode gauge
-// bottom-left, a contextual stamina bar, and the centred "KO!" sting. Colours
-// and anchors are transcribed from those call sites — see docs/UI-DESIGN.md
-// for the mapping — so a future wiring produces the same arrangement.
+// Two compositions share this class. The **art HUD** is the original's own: sprite
+// sub-rects from data/object/P00..P02.cnv drawn at the layout constants in
+// .rdata 0x6a4c90..0x6a4cd8 by FUN_00644150 @0x00644150 — the bar frames, the HP
+// ramp, the MAIN/CHARGE fills and counts, and the OYASHIRO fan gauge. The **text
+// HUD** is the DX9 remake's Arial labels + flat bars (remake/src/core/scenes.cpp),
+// which is what this file drew before the atlases were wired; it stays as the
+// fallback whenever an atlas is missing, and it is the only path for a build with
+// no game data. Which one runs is decided per frame in compose().
 //
-// Labels are drawn with the reference's own text metrics when the pinned font chain is
-// present (ui/text.h's loadFontChain): the DX9 HUD builds an Arial Bold 22 px cell with
-// D3DXCreateFontA and lays it out through GetCharWidth32A, and under the Wine stack
-// that banked the frames "Arial" resolves to Liberation Sans Bold. With no font file the
-// bitmap atlas draws them instead, byte for byte as before — a fetch failure must not
-// change a frame, and the currency of this HUD is frame parity.
+// The split of duties is unchanged: HudState is plain data the game fills per
+// frame (no clock, no device), computeHudLayout derives the DX9 text layout from
+// the live viewport, and HudComposer turns the two into quads in the caller's
+// batch. The art path uses fixed 800x600-space anchors, not computeHudLayout:
+// single-player HUD coordinates are absolute screen pixels (scale 1.0, viewport
+// origin (0,0) — FUN_0063a130 @0x0063a130 sets 1.0 when DAT_006cfba0 == 1, the
+// 1P case, and FUN_006396f0 @0x006396f0's SetRect is 0,0,800,600).
 //
-// Split of duties: HudState is plain data the game fills per frame (no clock,
-// no device); computeHudLayout derives every rect from the live viewport size
-// (pure host-side, unit-tested); HudComposer turns the two into sprite/text
-// quads in the caller's batch. Variable-delta fit falls out of that split:
-// the caller rebuilds state and re-composes every frame, like the DX9 path
-// which re-issues text/bar calls between BeginScene and EndScene.
+// The text path's labels still come from the reference's own metrics when the
+// pinned font chain is present (ui/text.h's loadFontChain): the DX9 HUD builds an
+// Arial Bold 22 px cell with D3DXCreateFontA and lays it out through
+// GetCharWidth32A, and under the Wine stack that banked the frames "Arial"
+// resolves to Liberation Sans Bold. With no font file the bitmap atlas draws them
+// instead, byte for byte as before — a fetch failure must not change a frame.
 #include <string>
 
 #include "ui/font.h"
+#include "ui/hud_atlas.h"
 #include "ui/sprite.h"
 #include "ui/text.h"
 
@@ -61,6 +65,8 @@ inline const UiColor kHudTierYellow = fromRgb8(255, 230, 80);
 inline const UiColor kHudTierIdle = fromRgb8(120, 120, 120);
 
 // Per-frame game state feeding the HUD. Fractions are 0..1 (clamped at draw).
+// The art composition draws from these fields too: hp, mainWhole/mainFrac,
+// chargeWhole/chargeFrac, the hold tier, and the hyper gauge/ready/active triple.
 struct HudState {
     float balloon[2] = {0.f, 0.f};   // corner percentages vs the LIMIT below
     float limit = 100.f;             // shared LIMIT both corners compare against
@@ -121,13 +127,24 @@ public:
     bool uploadFont(SpriteRenderer& batch, std::string& error);
     int  atlasTexture() const { return atlas_; }
 
-    // Turns state + layout into batch quads: bars as back+fill solids, labels
-    // as atlas quads. Reads nothing but its arguments, so any frame's HUD is a
-    // pure function of that frame's game state.
+    // Turns state + layout into batch quads. Draws the original's art HUD when its
+    // atlases are available; otherwise the DX9 text/bars HUD below, byte for byte.
+    // Reads nothing but its arguments plus the one-shot atlas load, so any frame's
+    // HUD is a pure function of that frame's game state.
     void compose(SpriteRenderer& batch, const HudState& st, const HudRects& layout);
 
 private:
     void bar(SpriteRenderer& batch, const UiRect& r, float frac, UiColor fill);
+    // The original's composition, in FUN_00644150's own draw order: HP frame + fill,
+    // the fan gauge (frame, clipped gradient, MAX), MAIN frame + count + fill,
+    // CHARGE frame + count + fills. Elements whose atlas or state the port does not
+    // have yet — the balloon %/LIMIT readouts, the com bar and targeting brackets,
+    // STAMINA, the boxed tactics label, the round stings — are simply not drawn here;
+    // they land in the spec's priority order (BATTLE-HUD-SPEC.md §5 items 4-9).
+    void composeBattle(SpriteRenderer& batch, const HudState& st);
+    // One-shot resolve + upload of P00/P01/P02. False (and a single stderr line)
+    // leaves the text HUD in place, which is the documented asset-less behaviour.
+    bool ensureBattleAtlas(SpriteRenderer& batch);
     // One label through whichever text path is live. See the header comment: the two
     // produce the same arrangement from different metrics, and the bitmap one is what
     // the HUD drew before the TrueType path existed.
@@ -138,6 +155,8 @@ private:
     // upload alone and stops label drawing rather than sampling stale UVs.
     bool refreshTextAtlas(SpriteRenderer& batch, std::string& error);
 
+    HudAtlas battleAtlas_;
+    bool     battleTried_ = false;   // one load attempt, never one per frame
     int  atlas_ = -1;             // bitmap fallback; -1 when the chain is live
     TextLayer text_;              // the reference's metrics, empty without a font
     int       textAtlas_ = -1;
