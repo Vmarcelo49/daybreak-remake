@@ -39,6 +39,7 @@
 #include "physics/raycast.h"
 #include "ui/hud.h"
 #include "ui/sprite.h"
+#include "ui/screen.h"
 #include "game/hud_bridge.h"
 #include "game/fighter_pose.h"
 #include "gameplay/arena_camera.h"
@@ -97,6 +98,7 @@ struct Options {
     bool        noAnim     = false;   // bind pose: the DX9 reference binds no sets
     bool        unlit      = false;
     bool        list       = false;
+    std::string screen;          // --screen=<id|name>: boot a front-end screen
 };
 
 bool hasAsset(const Options& o) {
@@ -143,6 +145,8 @@ void usage() {
         "                     banked reference frame (worth 0.037 RMSE)\n"
         "  --unlit            skip the lambert term\n"
         "  --list             print what was loaded and exit\n"
+        "  --screen=<id|name> boot a front-end screen (title, 1, 0x01, ...) instead of\n"
+        "                     an asset; --script= drives its menu and --out captures it\n"
         "  --effect=<file.x>  load one card with the effect role (additive pass)\n"
         "  --hud-test         composite a synthetic HUD into --out captures\n"
         "  --debug-prims      draw a deterministic debug line overlay (play-area box,\n"
@@ -215,6 +219,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--match") o.match = true;
         else if (!(v = val("--script=")).empty()) o.script = v;
         else if (!(v = val("--script2=")).empty()) o.script2 = v;
+        else if (!(v = val("--screen=")).empty()) o.screen = v;
         else if (!(v = val("--spawn=")).empty() || !(v = val("--spawn2=")).empty()) {
             // Match the KEY, not the whole argument: `a` carries the value too, so
             // `a == "--spawn2"` is never true and both flags would write slot 0.
@@ -267,8 +272,9 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         error = "--enemy needs --versus or --match (P2 placement and rig ownership live there)";
         return false;
     }
-    if ((!o.script.empty() || !o.script2.empty() || o.hasSpawn[0] || o.hasSpawn[1]) && !o.match) {
-        error = "--script/--script2/--spawn/--spawn2 need --match";
+    if ((!o.script.empty() || !o.script2.empty() || o.hasSpawn[0] || o.hasSpawn[1]) &&
+        !o.match && o.screen.empty()) {
+        error = "--script/--script2/--spawn/--spawn2 need --match or --screen";
         return false;
     }
     if (o.headless && o.out.empty()) {
@@ -276,7 +282,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         return false;
     }
     if (!o.out.empty()) {
-        if (!hasAsset(o)) {
+        if (!hasAsset(o) && o.screen.empty()) {
             error = "--out needs an asset argument; the triangle demo draws into the window";
             return false;
         }
@@ -483,6 +489,8 @@ struct App {
     bool                         haveDebugBounds = false;
     game::physics::CameraCollision cameraCollision;   // arena eye clamp, per stage
     ui::SpriteRenderer           uiRenderer;
+    ui::ScreenStack              screens;          // front end: current screen + fade
+    bool                         screensMode = false;
     ui::HudComposer              hudComposer;
     bool                         uiReady = false;
     render::Options              renderOptions;
@@ -1089,6 +1097,14 @@ static void traceMatch(App& app) {
                 app.eye.x, app.eye.y, app.eye.z, a.position().x, a.position().y, a.position().z,
                 gameplay::state_to_anim_name(a.state()), b.position().x, b.position().y,
                 b.position().z, gameplay::state_to_anim_name(b.state()));
+    // The set that actually plays, next to the state it came from, and whether it was the
+    // fallback. `state_to_anim_name` stays the compared field: the DX9 side of the trace
+    // binds no animation sets at all, so it has no set to print and changing that field
+    // would destroy the only cross-implementation oracle this project has. The fallback
+    // flag is what keeps an unmapped state (Guard, Jump, TagOut) visible instead of silent.
+    std::printf("[daybreak] anim p1=set %d %s%s p2=set %d %s%s\n",
+                a.anim_set_index(), a.anim_set_name(), a.anim_fallback() ? " (fallback)" : "",
+                b.anim_set_index(), b.anim_set_name(), b.anim_fallback() ? " (fallback)" : "");
 }
 
 // The DX9 side drew every shot, hit spark and hypermode aura as an unlit cube
@@ -1668,6 +1684,45 @@ bool runInputTest(App& app) {
     return ok;
 }
 
+// --screen: the front end's entry point. The stack is built with the app's own
+// makeScreen factory, so an id the port has not implemented is the factory's `default`
+// — no scene, no fake transition (ui/screen.h) — and the input backend is the same one
+// --match uses, so a script drives the menu through the vocabulary the DX9 suite speaks.
+bool initScreens(App& app) {
+    ui::ScreenId id = ui::ScreenId::Quit;
+    if (!ui::parseScreenId(app.opts.screen.c_str(), id)) {
+        app.error = "unknown --screen=" + app.opts.screen;
+        return false;
+    }
+    // No asset path on this command line to infer the install from: --install= is the
+    // hint, and assetSource() falls back to the filesystem (running from the install
+    // dir works).
+    if (!app.opts.install.empty()) fnd::assets::assetSource().openInstall(app.opts.install);
+    // No scene is ever submitted on this path, but the capture readback lives in
+    // SceneRenderer (device/queue/instance plus the mapped-buffer copy), so a --out menu
+    // frame needs it initialized even though render() is never called.
+    if (!app.renderer.init(app.ctx, app.error)) return false;
+    if (!app.uiRenderer.init(app.ctx.device, app.ctx.queue, app.error)) return false;
+    app.uiReady = true;
+    auto factory = [&app](ui::ScreenId sid) {
+        return ui::makeScreen(sid, app.uiRenderer, app.error);
+    };
+    if (!app.screens.begin(id, factory, app.error)) return false;
+    if (!app.matchInput.init()) {
+        app.error = "--screen needs the input backend";
+        return false;
+    }
+    app.matchInputReady = true;
+    if (!app.opts.script.empty() && !app.matchInput.load_script(app.opts.script.c_str())) {
+        app.error = "cannot read input script " + app.opts.script;
+        return false;
+    }
+    app.screensMode = true;
+    std::printf("screen       : %s (0x%02x)\n", app.screens.screen()->name(),
+                (int)app.screens.current());
+    return true;
+}
+
 }  // namespace
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
@@ -1753,7 +1808,9 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     if (app->opts.audioTest) return runAudioTest(*app) ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
     if (app->opts.inputTest) return runInputTest(*app) ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
 
-    const bool ok = hasAsset(app->opts) ? initScene(*app) : initTriangle(*app);
+    const bool ok = !app->opts.screen.empty() ? initScreens(*app)
+                   : hasAsset(app->opts)       ? initScene(*app)
+                                               : initTriangle(*app);
     if (!ok) return SDL_APP_FAILURE;
 
     app->startTime = app->lastTime = plat::now();
@@ -1786,6 +1843,20 @@ bool hudTestHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat
     const ui::HudState state = hk->hasState ? hk->state : syntheticHudState();
     hk->hud->compose(*hk->ui, state, ui::computeHudLayout((int)w, (int)h));
     return hk->ui->render(enc, view, format, *hk->error);
+}
+
+// The --screen capture's one hook: drawScreenFrame is the same three calls the window
+// path makes, so a --out capture cannot drift from what the window shows.
+struct ScreenCaptureHook {
+    const ui::ScreenStack* screens = nullptr;
+    ui::SpriteRenderer*    ui = nullptr;
+    std::string*           error = nullptr;
+};
+
+bool screenCaptureHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat format,
+                       uint32_t w, uint32_t h, void* ud) {
+    auto* sk = static_cast<ScreenCaptureHook*>(ud);
+    return ui::drawScreenFrame(*sk->screens, *sk->ui, w, h, enc, view, format, *sk->error);
 }
 
 // The overlay's line set: a pure function of loaded state (bounds, aim, desired eye), so
@@ -1889,7 +1960,66 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         traceMatch(*app);
     }
 
-    if (hasAsset(app->opts)) {
+    if (app->screensMode) {
+        // The stack ticks on app->frames, the same 1-based index the DX9 suite's input
+        // scripts are written in (tickMatch keys its scripts on matchFrame for the same
+        // reason). Confirm is Jump — Z, the menu confirm — and cancel is AttackA (X).
+        app->matchInput.tick_script(app->frames);
+        app->matchInput.poll();
+        ui::ScreenInput in;
+        in.up      = app->matchInput.any_just_pressed(fnd::input::Up);
+        in.down    = app->matchInput.any_just_pressed(fnd::input::Down);
+        in.left    = app->matchInput.any_just_pressed(fnd::input::Left);
+        in.right   = app->matchInput.any_just_pressed(fnd::input::Right);
+        in.confirm = app->matchInput.any_just_pressed(fnd::input::Jump);
+        in.cancel  = app->matchInput.any_just_pressed(fnd::input::AttackA);
+        app->screens.update(in);
+        // 終了 reaches here: its item returns 0x16, the factory has no such scene, and
+        // the switcher reads the null scene as "no scene: quit" (ui/screen.h).
+        if (app->screens.finished()) return SDL_APP_SUCCESS;
+
+        if (capturing) {
+            if (app->frames >= (uint64_t)app->opts.frames) {
+                std::vector<uint8_t> rgba;
+                ScreenCaptureHook hook{&app->screens, &app->uiRenderer, &app->error};
+                // captureUi: a menu frame has no 3D scene, so the scene pass is skipped
+                // and the UI hook draws onto the cleared target (scene_renderer.h).
+                if (!app->renderer.captureUi((uint32_t)app->opts.sizeW,
+                                             (uint32_t)app->opts.sizeH, rgba, app->error,
+                                             screenCaptureHook, &hook))
+                    return SDL_APP_FAILURE;
+                reportCoverage(rgba, app->opts.sizeW, app->opts.sizeH);
+                writePpm(app->opts.out, rgba, app->opts.sizeW, app->opts.sizeH);
+                return SDL_APP_SUCCESS;
+            }
+            return SDL_APP_CONTINUE;   // wait for the capture frame, as the asset path does
+        }
+
+        gpu::Frame frame;
+        if (!gpu::beginFrame(app->ctx, app->sc, frame, app->error)) return SDL_APP_FAILURE;
+        // Clear first: the UI pass loads (sprite.cpp:468), the screen art is authored
+        // 800x600, and a larger window would otherwise present undefined backbuffer
+        // pixels around it. Same opaque-black background captureUi gives a --out frame.
+        WGPURenderPassColorAttachment clear = {};
+        clear.view = frame.view;
+        clear.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+        clear.loadOp = WGPULoadOp_Clear;
+        clear.storeOp = WGPUStoreOp_Store;
+        clear.clearValue = WGPUColor{0.0, 0.0, 0.0, 1.0};
+        WGPURenderPassDescriptor clearPass = {};
+        clearPass.colorAttachmentCount = 1;
+        clearPass.colorAttachments = &clear;
+        WGPURenderPassEncoder clearRp =
+            wgpuCommandEncoderBeginRenderPass(frame.encoder, &clearPass);
+        wgpuRenderPassEncoderEnd(clearRp);
+        wgpuRenderPassEncoderRelease(clearRp);
+        if (!ui::drawScreenFrame(app->screens, app->uiRenderer, app->sc.width, app->sc.height,
+                                 frame.encoder, frame.view, app->sc.format, app->error)) {
+            gpu::endFrame(app->ctx, app->sc, frame);
+            return SDL_APP_FAILURE;
+        }
+        if (!gpu::endFrame(app->ctx, app->sc, frame)) return SDL_APP_FAILURE;
+    } else if (hasAsset(app->opts)) {
         const uint32_t w = capturing ? (uint32_t)app->opts.sizeW : app->sc.width;
         const uint32_t h = capturing ? (uint32_t)app->opts.sizeH : app->sc.height;
         // Not in match mode: tickMatch already stepped the ported reference camera,

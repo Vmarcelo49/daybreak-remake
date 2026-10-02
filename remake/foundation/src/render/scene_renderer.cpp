@@ -847,6 +847,17 @@ bool SceneRenderer::render(const Target& target, std::string& error) {
 
 bool SceneRenderer::capture(uint32_t width, uint32_t height, std::vector<uint8_t>& rgba,
                            std::string& error, UiHook uiHook, void* uiUserdata) {
+    return captureImpl(width, height, rgba, error, uiHook, uiUserdata, /*withScene=*/true);
+}
+
+bool SceneRenderer::captureUi(uint32_t width, uint32_t height, std::vector<uint8_t>& rgba,
+                             std::string& error, UiHook uiHook, void* uiUserdata) {
+    return captureImpl(width, height, rgba, error, uiHook, uiUserdata, /*withScene=*/false);
+}
+
+bool SceneRenderer::captureImpl(uint32_t width, uint32_t height, std::vector<uint8_t>& rgba,
+                               std::string& error, UiHook uiHook, void* uiUserdata,
+                               bool withScene) {
     if (!device_) {
         error = "renderer not initialized";
         return false;
@@ -875,7 +886,22 @@ bool SceneRenderer::capture(uint32_t width, uint32_t height, std::vector<uint8_t
     target.format = WGPUTextureFormat_RGBA8Unorm;
     target.width = width;
     target.height = height;
-    if (ok) ok = render(target, error);
+    if (ok && withScene) ok = render(target, error);
+    else if (ok) {
+        // No scene: clear the target to opaque black so the UI is composited over a defined
+        // background rather than uninitialised memory.
+        WGPURenderPassColorAttachment att = {};
+        att.view = colorView;
+        att.loadOp = WGPULoadOp_Clear;
+        att.storeOp = WGPUStoreOp_Store;
+        att.clearValue = WGPUColor{0.0, 0.0, 0.0, 1.0};
+        WGPURenderPassDescriptor rp = {};
+        rp.colorAttachmentCount = 1;
+        rp.colorAttachments = &att;
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &rp);
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+    }
     if (ok && uiHook) ok = uiHook(encoder, colorView, td.format, width, height, uiUserdata);
 
     std::vector<uint8_t> padded;

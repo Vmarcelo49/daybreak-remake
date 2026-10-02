@@ -234,8 +234,18 @@ public:
     // never calls it. Non-square matters for verification: the DX9 reference frames
     // are 800x600, and comparing them against a square capture would measure the
     // aspect ratio rather than the renderer.
+    // Captures a frame that has no 3D scene — a front-end screen — by running only the UI
+    // hook into a cleared target. `capture()` cannot serve this: it renders the scene first
+    // and fails with "renderer has no scene" when nothing was ever submitted, which is
+    // every menu frame. The two share one implementation so the readback path cannot drift.
+    bool captureUi(uint32_t width, uint32_t height, std::vector<uint8_t>& rgba,
+                   std::string& error, UiHook uiHook = nullptr, void* uiUserdata = nullptr);
+
     bool capture(uint32_t width, uint32_t height, std::vector<uint8_t>& rgba,
                  std::string& error, UiHook uiHook = nullptr, void* uiUserdata = nullptr);
+    bool captureImpl(uint32_t width, uint32_t height, std::vector<uint8_t>& rgba,
+                     std::string& error, UiHook uiHook, void* uiUserdata, bool withScene);
+
     bool capture(uint32_t size, std::vector<uint8_t>& rgba, std::string& error,
                  UiHook uiHook = nullptr, void* uiUserdata = nullptr) {
         return capture(size, size, rgba, error, uiHook, uiUserdata);

@@ -92,7 +92,9 @@ add_library(foundation_ui STATIC
     src/ui/hud.cpp
     src/ui/hud_atlas.cpp
     src/ui/text.cpp
-    src/ui/fallback.cpp)
+    src/ui/fallback.cpp
+    src/ui/screen.cpp
+    src/ui/screen_title.cpp)
 target_include_directories(foundation_ui PUBLIC src)
 # hud_atlas.cpp decodes HUD sheets through xm::decodeCnvImage, which assets/ owns: state it
 # here so a target linking foundation_ui alone still links.
@@ -254,6 +256,15 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(unlit_cube_geometry PRIVATE src)
     target_link_libraries(unlit_cube_geometry PRIVATE glm)
     add_test(NAME unlit_cube_geometry COMMAND unlit_cube_geometry)
+
+    # The front-end screen stack and the title menu's cursor machine: device-free (the
+    # stack's factory is injected, so transitions run against fake screens). It links
+    # foundation_ui for makeScreen -> screen_title -> hud_atlas -> sprite, but never
+    # creates a device.
+    add_executable(screen_stack_test tests/screen_stack_test.cpp)
+    target_include_directories(screen_stack_test PRIVATE src)
+    target_link_libraries(screen_stack_test PRIVATE foundation_ui glm)
+    add_test(NAME screen_stack_test COMMAND screen_stack_test)
 endif()
 
 if(EMSCRIPTEN)
