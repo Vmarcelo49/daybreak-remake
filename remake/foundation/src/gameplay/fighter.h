@@ -8,8 +8,10 @@
 //
 //  RE findings (docs/reverse-engineering.md):
 //    - 40+ animation state names in .data: attackA/B/C, guard, damage,
-//      damagedown, damageKO, battlestart, recovery, etc.
-//    - Animation sets are looked up BY NAME via lstrcmpiA (case-insensitive).
+//      damagedown, damageKO, battlestart, recovery, etc. They are the VOICE cue
+//      keys (data/voice/<char>/<key>/NNN.wav, FUN_00431e70 at 0x432042), not
+//      animation names; the states select animation-set INDICES (see the table
+//      above state_to_anim_set).
 //    - fcn.0041f580 = per-player update (3096 bytes): timers at +0x828
 //      (just-pressed), +0xa0 (action frames remaining), +0x7ac (=30 when
 //      action starts, 0.5s at 60fps).
@@ -26,7 +28,7 @@
 //  mode's damage/stun/recharge modifiers, and an EX move on S. The
 //  original's "auto-activate at full" rule (pre-DX) is not modelled.
 //
-//  State machine (simplified from the 40+ anim states; input mapping is
+//  State machine (simplified from the original's ~40 move ids; input mapping is
 //  provisional — see input.h: the original has ONE melee key (X),
 //  no dedicated heavy key, and separate shoot/special/tactics keys):
 //    Idle → Walk → Idle            (stick moved / released)
@@ -35,9 +37,9 @@
 //    Idle/Walk → AttackB → Idle    (heavy — currently same-key stand-in,
 //                                   real game uses directional variants)
 //    Idle/Walk → ShootA/B/C → Idle (C released: tap/yellow/red tier, 20 frames;
-//                                   tiers map to the binary's shotA/B/C anim
-//                                   states @0x2b7560+; costs + reloadNG gating
-//                                   live in projectile.h)
+//                                   tiers map to the binary's weapon shot moves
+//                                   300/301/302; costs + reloadNG gating live
+//                                   in projectile.h)
 //    Idle/Walk/Run/Jump → Jump     (Z: leap; hold to fly on the fly timer)
 //    tap,tap dir → Run             (ground dash) or Run-air (air dash, once
 //                                   per airtime); X mid-dash = dash attack,
@@ -67,7 +69,9 @@ namespace gameplay {
 // below read exactly like the source's `input::Action` / `input::PlayerInput`.
 namespace input = fnd::input;
 
-// Fighter states — mirror the original game's animation state names.
+// Fighter states. The original has no such enum: its state is a "move id"
+// (`[player+0xadec]`, see the table below), and these are the port's names for
+// the move ids it models.
 enum class FighterState : int {
     Idle        = 0,   // standing, no input
     Walk        = 1,   // moving (stick/d-pad)
@@ -81,19 +85,120 @@ enum class FighterState : int {
     KO          = 9,   // defeated
     BattleStart = 10,  // round start pose
     TagOut      = 11,  // 2v2: tagged out (partner tagged in)
-    ShootA      = 12,  // tap shot fired (anim "shotA")
-    ShootB      = 13,  // yellow charge released (anim "shotB")
-    ShootC      = 14,  // red charge released (anim "shotC")
+    ShootA      = 12,  // tap shot fired
+    ShootB      = 13,  // yellow charge released
+    ShootC      = 14,  // red charge released
     Jump        = 15,  // airborne (leap, fly, or falling out of an air dash)
-    ShotFinal   = 16,  // Hypermode EX move (anim "shotFinal")
+    ShotFinal   = 16,  // Hypermode EX move
 };
 
-// Maps FighterState → animation set name (matching the .X file's named
-// AnimationSets).  The original game uses lstrcmpiA for case-insensitive
-// matching, so the name must match the AnimationSet name in the .X file.
+// ---------------------------------------------------------------------------
+// State → animation set index (the original's selection).
+//
+// The original never looks an animation up by name. A fighter's state IS a
+// "move id" (`[player+0xadec]`), and a move names animation-set indices in the
+// character's own `data/<char>/NN.dat`:
+//
+//   FUN_00428510 (0x428510) switches on `[player+0xadec]`; every case value is a
+//   move id present in the shipped .dat files (measured on rena/mion/rika/
+//   satoko/keiichi/shion/hanyu 00–02.dat).
+//   FUN_00421080 (0x421080) starts a move: `[+0xadec] = [+0xadf0] = moveId`,
+//   `[+0xade0] = &moves[moveId]` (28-byte entries), then FUN_00421100(0).
+//   FUN_00421100 (0x421100) takes phase 0 of that move —
+//   `FUN_004244e0(&move->phases, phaseIndex)` is a std::vector index (0x4244e0
+//   is a _Vector_iterator over the container at move+8) — and binds the phase's
+//   FIRST dword to both tracks: `FUN_00421410(0, phase[0])` and
+//   `FUN_00421410(1, phase[0])` (0x421410 sets the set for the track).
+//   FUN_0041e180 (0x41e180) fills the per-player 124-entry animation table
+//   (+0x75e0, stride 0x38) from the .dat's animation table, whose entry i is
+//   `controller->GetAnimationSet(i)` — FUN_0064e8b0 (0x64e8b0) is
+//   GetAnimationSet + ID3DXAnimationSet::GetDuration. So the .dat's index is the
+//   D3DX set index, i.e. this port's `Model::anims` index (Parser::finish
+//   already reversed the file order to match D3DX; see xmodel.h:1615-1623).
+//   FUN_0041f580 (0x41f580, per-player update) reads the same `phase[0]` back
+//   as the current animation index and cross-fades its weight.
+//
+// The state/move KEY table at VMA 0x6b73b0 (16-byte stride: addattack, attackA …
+// specialC) is NOT this mapping: the only code that indexes it is the voice
+// system inside FUN_00431e70 (0x432042: `shl edx,4; add edx,0x6b73b0`) which
+// wsprintfA's `data/voice/<char>/<key>/%03d.wav` (formats at 0x6a281c/0x6a2830/
+// 0x6a2844). Those names never appear in a .X, whose sets are `Anim-1`…`Anim-124`.
+//
+// Rows below: port state → (move id, first-phase set index). The move id is
+// recorded because it is the citation; the index is what the model plays. The
+// set index is per-character data, but the shipped rigs order the 124 sets
+// identically and the .dat files agree on the index for every shared move id
+// (measured across the 11 character .dat files above), so one table serves all
+// characters — except for the weapon-specific moves (300+, see ShootA/B/C),
+// whose indices differ per character and are therefore taken from rena's
+// weapon-1 slot (data/rena/00.dat, weapon id 1).
+//
+// Not settled (deliberately left to the set-0 default rather than guessed):
+//   * Guard — the block key's move is not pinned; the "guard"/"guarded" voice
+//     keys exist (indices 12/13) but no call site with a constant key was found.
+//   * Jump — the original's air state is driven by the locomotion system
+//     (FUN_004235d0's {state,dir,timer}), not by a move id, and that system's
+//     animation consumer was not located.
+//   * TagOut — "recovery" is a voice key, not a move; the 2v2 tag animation is
+//     un-RE'd.
+// ---------------------------------------------------------------------------
+inline int state_to_anim_set(FighterState s) {
+    switch (s) {
+        // move 0 → Anim-124: the player reset (0x41de68) sets [+0xadec] = 0 and
+        // calls FUN_00421080(0); FUN_00428510 returns to 0 whenever nothing else
+        // applies. Its single phase names set 0.
+        case FighterState::Idle:        return 0;
+        // Moves 0x14/0x17/0x18/0x1b (20/23/24/27) are the four directional walk
+        // chains — the only 3-phase, 5-frame-per-phase moves in the .dat, selected
+        // by FUN_0043ded0 (0x43ded0: `FUN_00421080(0x14)` when the direction field
+        // is 1 and the fighter faces its movement, 0x17/0x18/0x1b for 4/3/2).
+        // 0x14 = the forward one; its first phase is set 13.
+        case FighterState::Walk:        return 13;
+        // Move 0x1e (30) is the same function's other branch (backpedal), the only
+        // 3-phase 10-frame chain (54,55,56) — the fastest locomotion set.
+        case FighterState::Run:         return 54;
+        // Moves 0x28/0x29/0x2a (40/41/42) are the melee chain: each is started in
+        // 22-26 of the ~100 per-character move scripts (the most common attack
+        // moves after the locomotion ones), and their first phases are 2, 3, 5.
+        case FighterState::AttackA:     return 2;
+        case FighterState::AttackB:     return 3;
+        case FighterState::AttackC:     return 5;
+        // Move 0x67 (103) is the "cannot act" reaction FUN_00428510 plays in cases
+        // 0xe7/0xca; its chain is (95, 27) — the launched pose then the ground.
+        case FighterState::Hit:         return 95;
+        // Move 0xc4 (196) is the grounded reaction (cases 0xc4/0xc6/199); its
+        // chain (28, 29) is the lying pose.
+        case FighterState::Knockdown:   return 28;
+        // Move 0xcb (203) is the KO chain (cases 0xc9/0xcc/0xce): (97, 37).
+        case FighterState::KO:          return 97;
+        // Move 0xc2 (194) is the round reset's pose: FUN_004219a0 (0x4219a0)
+        // restores HP/inputs and plays it; its single phase is 43.
+        case FighterState::BattleStart: return 43;
+        // Moves 0x12c/0x12d/0x12e (300/301/302) are the weapon's shot moves — the
+        // character scripts start them 20+ times each and the AI reads the shot
+        // move id out of the weapon parameter block (`[+0x64]`/`[+0x68]` of
+        // `[input+0x10]`, FUN_00637950:350-357). rena weapon 1: 31/33/34.
+        case FighterState::ShootA:      return 31;
+        case FighterState::ShootB:      return 33;
+        case FighterState::ShootC:      return 34;
+        // Move 0x1f7 (503) is the EX/finisher move FUN_00422bd0 falls back to
+        // (`if (result == 0x1f7) FUN_00421080(0x1f7)`); its phase is 69.
+        case FighterState::ShotFinal:   return 69;
+        case FighterState::Guard:
+        case FighterState::Jump:
+        case FighterState::TagOut:
+        default:                        return -1;
+    }
+}
+
+// The trace's per-fighter field. It stays the STATE name on purpose: the DX9
+// build this trace is diffed against binds no animation sets at all (its d3dx9
+// under Wine returns no controller — see tests/visual/out/*.log), so it has no
+// set to print, and compare_match_traces.py asserts these names match exactly.
+// The set actually bound is exposed by Fighter::anim_set_index()/anim_set_name().
 inline const char* state_to_anim_name(FighterState s) {
     switch (s) {
-        case FighterState::Idle:        return "idle";      // may not exist → falls back to track 0
+        case FighterState::Idle:        return "idle";
         case FighterState::Walk:        return "walk";
         case FighterState::Run:         return "run";
         case FighterState::AttackA:     return "attackA";
@@ -108,11 +213,6 @@ inline const char* state_to_anim_name(FighterState s) {
         case FighterState::ShootA:      return "shotA";
         case FighterState::ShootB:      return "shotB";
         case FighterState::ShootC:      return "shotC";
-        // No jump/dash/fly name exists in the binary's anim-state table
-        // (@0x2b73xx holds attackA/C, shotA/C, guard, damage... but no
-        // locomotion beyond the .X defaults), so this misses and the
-        // track-0 fallback in try_switch_animation applies until the real
-        // locomotion anims are identified.
         case FighterState::Jump:        return "jump";
         case FighterState::ShotFinal:   return "shotFinal";
         default: return nullptr;
@@ -317,6 +417,17 @@ public:
     bool               is_alive()   const { return m_hp > 0; }
     bool               airborne()   const { return !m_grounded; }
     const xm::Model*   model()      const { return m_model; }
+    // Which set is bound right now, and whether it is the fallback. The original's
+    // index is state_to_anim_set(m_state); -1 means nothing is bound (no model, no
+    // sets, or animation switched off). anim_set_name() is the model's own set name
+    // ("Anim-124" for index 0 of a shipped rig), or "" when none is bound.
+    int                anim_set_index() const { return m_animSetIdx; }
+    const char*        anim_set_name() const;
+    // True when the state has no row in the original's table, or this model has too
+    // few sets for its index: the fighter then plays set 0 (the bind-anchored
+    // default) instead of the state's set. Exposed so the fallback is not silent —
+    // the trace wiring in main.cpp and tests/fighter_script_test.cpp read it.
+    bool               anim_fallback() const { return m_animFallback; }
     // Fractional stocks feed the HUD bars directly (ammo-bar.webp).
     float main_frac() const { return m_main.value / FighterConstants::kMainMax; }
     float charge_frac() const {
@@ -356,7 +467,8 @@ private:
     // --- state machine ---
     FighterState m_state       = FighterState::Idle;
     int          m_stateTimer  = 0;    // frames remaining in current state
-    int          m_animSetIdx  = -1;   // cached animation set index for current state
+    int          m_animSetIdx  = -1;   // set bound for the current state (-1 = none)
+    bool         m_animFallback = false;  // m_animSetIdx is the set-0 default
     bool         m_didHitThisSwing = false;  // melee connected already this swing
 
     // --- hypermode (spec §3.4; numbers in hypermode_params) ---
@@ -440,9 +552,10 @@ private:
 //     headers; the port report carries the field-by-field check.
 //  3. Model/animation: XModel* m_model (which owned mesh + ID3DXAnimationController)
 //     → const xm::Model* m_model + xm::Controller* m_anim, both borrowed, bound
-//     through bind()/init(). try_switch_animation() looks the state name up with
-//     xm::Model::findAnim (exact) and then a case-folded scan, reproducing the
-//     lstrcmpiA lookup the RE notes describe.
+//     through bind()/init(). try_switch_animation() binds the index
+//     state_to_anim_set(state) — the original's move → phase → set chain (see the
+//     table above) — and only falls back to set 0 when the table has no row for the
+//     state or the model is shorter than the index.
 //  4. render(IDirect3DDevice9*) is deleted, not ported. Its three products are
 //     now data: modelMatrix() (the world matrix), pose() (camera/pose lookup)
 //     and the aura accessors (colour/radius/centre, in model space). The

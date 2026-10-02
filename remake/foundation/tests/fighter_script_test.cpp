@@ -97,6 +97,14 @@ void check_u32(const char* what, std::uint32_t expected, std::uint32_t got) {
                 pass ? "ok" : "FAIL");
 }
 
+void check_str(const char* what, const char* expected, const char* got) {
+    const bool pass = std::strcmp(expected, got) == 0;
+    ++g_checks;
+    if (!pass) ++g_fails;
+    std::printf("  %-52s exp %-14s got %-14s %s\n", what, expected, got,
+                pass ? "ok" : "FAIL");
+}
+
 // Bit-exact float compare: the printed bit patterns are the evidence.
 void check_bits(const char* what, float expected, float got) {
     std::uint32_t eb = 0, gb = 0;
@@ -1296,42 +1304,86 @@ void test_facing() {
 }
 
 // ===========================================================================
-//  Case 12 — animation binding: case-insensitive lookup + set-0 fallback
+//  Case 12 — animation binding: the original's state → set index table
 // ===========================================================================
+// The shipped .X files name their sets "Anim-1"…"Anim-124" and the original
+// binds INDICES (state → move id → the move's first phase; see the table above
+// state_to_anim_set in gameplay/fighter.h). These checks pin the table's rows
+// and, just as important, that the two fallbacks are reported rather than
+// silently looking like a mapped state.
 void test_anim_binding() {
-    section("12. animation binding (case-insensitive lookup, set-0 fallback)");
-    // The .X set names in the shipped data are lower-case; the state names are
-    // mixed case ("attackA"), so an exact-only lookup would fall back to set 0.
-    const xm::Model model = make_anim_model({"idle", "attacka", "damage", "shotc"});
+    section("12. animation binding (state -> set index table + reported fallback)");
+
+    // A shipped-shaped rig: 124 sets, named the way the .X files name them. The
+    // model's index i is the D3DX set i (Parser::finish reverses file order), so
+    // the names here are the reverse of the file's "Anim-1"…"Anim-124".
+    std::vector<std::string> names;
+    for (int i = 0; i < 124; ++i) names.push_back("Anim-" + std::to_string(124 - i));
+    const xm::Model model = make_anim_model(names);
     xm::Controller ctrl;
     ctrl.bind(&model);
 
     Fighter f;
     f.init(&model, &ctrl, glm::vec3(0, 0, 0), 0.0f);
-    check_int("BattleStart has no set -> falls back to set 0", 0,
-              ctrl.trackAnimationSet(0));
+    // BattleStart is the round reset's pose: move 0xc2 (FUN_004219a0 at 0x4219a0
+    // restores HP/inputs then plays it), whose single phase names set 43.
+    check_int("BattleStart binds the round-reset pose (43)", 43, ctrl.trackAnimationSet(0));
+    check_bool("BattleStart is a mapped state", false, f.anim_fallback());
+    check_str("set 43's own name", "Anim-81", f.anim_set_name());
     check_bool("model() is exposed", true, f.model() == &model);
 
-    f.set_state(FighterState::AttackA);
-    check_int("case-folded lookup finds \"attacka\" for AttackA", 1,
-              ctrl.trackAnimationSet(0));
-    f.set_state(FighterState::Hit);
-    check_int("exact lookup finds \"damage\" for Hit", 2, ctrl.trackAnimationSet(0));
-    f.set_state(FighterState::ShootC);
-    check_int("case-folded lookup finds \"shotc\" for ShootC", 3,
-              ctrl.trackAnimationSet(0));
-    f.set_state(FighterState::Guard);   // no "guard" set in this model
-    check_int("missing set falls back to set 0", 0, ctrl.trackAnimationSet(0));
-    f.set_state(FighterState::Idle);
-    check_int("exact lookup finds \"idle\" for Idle", 0, ctrl.trackAnimationSet(0));
+    struct Row { FighterState state; int set; const char* name; };
+    const Row rows[] = {
+        {FighterState::Idle,        0,  "Anim-124"},  // move 0 (reset 0x41de68)
+        {FighterState::Walk,        13, "Anim-111"},  // move 0x14, forward walk
+        {FighterState::Run,         54, "Anim-70"},   // move 0x1e, fastest chain
+        {FighterState::AttackA,     2,  "Anim-122"},  // melee chain 0x28/0x29/0x2a
+        {FighterState::AttackB,     3,  "Anim-121"},
+        {FighterState::AttackC,     5,  "Anim-119"},
+        {FighterState::Hit,         95, "Anim-29"},   // move 0x67 (cases 0xe7/0xca)
+        {FighterState::Knockdown,   28, "Anim-96"},   // move 0xc4
+        {FighterState::KO,          97, "Anim-27"},   // move 0xcb (cases 0xc9/0xcc)
+        {FighterState::ShootA,      31, "Anim-93"},   // weapon shot moves 300/301/302
+        {FighterState::ShootB,      33, "Anim-91"},
+        {FighterState::ShootC,      34, "Anim-90"},
+        {FighterState::ShotFinal,   69, "Anim-55"},   // move 0x1f7 (EX fallback)
+    };
+    for (const Row& r : rows) {
+        f.set_state(r.state);
+        check_int("state binds its set index", r.set, ctrl.trackAnimationSet(0));
+        check_int("anim_set_index() agrees", r.set, f.anim_set_index());
+        check_str("anim_set_name() is the model's own name", r.name, f.anim_set_name());
+        check_bool("mapped state reports no fallback", false, f.anim_fallback());
+    }
+
+    // The three states the table deliberately leaves open (see the "not settled"
+    // list in fighter.h): they must play set 0 AND say so.
+    for (FighterState s : {FighterState::Guard, FighterState::Jump, FighterState::TagOut}) {
+        f.set_state(s);
+        check_int("unmapped state falls back to set 0", 0, ctrl.trackAnimationSet(0));
+        check_bool("unmapped state reports the fallback", true, f.anim_fallback());
+    }
+
+    // A model shorter than the table's index is the other fallback path.
+    const xm::Model shortModel = make_anim_model({"a", "b"});
+    xm::Controller shortCtrl;
+    shortCtrl.bind(&shortModel);
+    Fighter g;
+    g.init(&shortModel, &shortCtrl, glm::vec3(0, 0, 0), 0.0f);   // BattleStart -> 43
+    check_int("index past the model's sets falls back to 0", 0, shortCtrl.trackAnimationSet(0));
+    check_bool("short model reports the fallback", true, g.anim_fallback());
+    g.set_state(FighterState::Idle);                             // index 0 fits
+    check_int("index 0 fits a short model", 0, shortCtrl.trackAnimationSet(0));
+    check_bool("in-range index clears the fallback", false, g.anim_fallback());
 
     // A model with no sets at all must not bind anything.
     const xm::Model empty;
     xm::Controller emptyCtrl;
     emptyCtrl.bind(&empty);
-    Fighter g;
-    g.init(&empty, &emptyCtrl, glm::vec3(0, 0, 0), 0.0f);
+    Fighter h;
+    h.init(&empty, &emptyCtrl, glm::vec3(0, 0, 0), 0.0f);
     check_int("no sets -> no track bound", -1, emptyCtrl.trackAnimationSet(0));
+    check_str("no sets -> no name", "", h.anim_set_name());
 
     // A fighter with no model at all must not crash or bind.
     Fighter none;
@@ -1339,16 +1391,16 @@ void test_anim_binding() {
     check_bool("null model is accepted", true, none.model() == nullptr);
 
     // pose() reports the controller's playhead.
-    Fighter h;
-    h.init(&model, &ctrl, glm::vec3(0, 0, 0), 0.0f);
-    h.update(nullptr, nullptr, kDt);
-    check_near("pose().animTime advances with dt", kDt, h.pose().animTime, 1e-6);
-    check_bits("pose().position.x", 0.0f, h.pose().position.x);
-    check_bool("pose().alive", true, h.pose().alive);
-    check_near("pose().facingYaw", 0.0, h.pose().facingYaw, 0.0);
-    h.set_hp(1);
-    h.take_damage(5, nullptr);
-    check_bool("pose().alive clears on KO", false, h.pose().alive);
+    Fighter k;
+    k.init(&model, &ctrl, glm::vec3(0, 0, 0), 0.0f);
+    k.update(nullptr, nullptr, kDt);
+    check_near("pose().animTime advances with dt", kDt, k.pose().animTime, 1e-6);
+    check_bits("pose().position.x", 0.0f, k.pose().position.x);
+    check_bool("pose().alive", true, k.pose().alive);
+    check_near("pose().facingYaw", 0.0, k.pose().facingYaw, 0.0);
+    k.set_hp(1);
+    k.take_damage(5, nullptr);
+    check_bool("pose().alive clears on KO", false, k.pose().alive);
     // render::ArenaTarget sync keeps the camera path working.
     render::ArenaTarget target;
     h.sync_target(target);

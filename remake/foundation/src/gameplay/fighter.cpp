@@ -15,25 +15,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace gameplay {
-namespace {
-
-// ASCII case fold for the animation-set lookup. The shipped .X animation-set
-// names are ASCII (the loader stores them raw, xmodel.h:150), and the original
-// matched them with lstrcmpiA, so a byte-wise fold of 'A'-'Z' is the same
-// predicate without a locale.
-bool ascii_case_equal(const std::string& a, const char* b) {
-    std::size_t i = 0;
-    for (; i < a.size() && b[i] != '\0'; ++i) {
-        char ca = a[i];
-        char cb = b[i];
-        if (ca >= 'A' && ca <= 'Z') ca = static_cast<char>(ca - 'A' + 'a');
-        if (cb >= 'A' && cb <= 'Z') cb = static_cast<char>(cb - 'A' + 'a');
-        if (ca != cb) return false;
-    }
-    return i == a.size() && b[i] == '\0';
-}
-
-}  // namespace
 
 void Fighter::bind(const xm::Model* model, xm::Controller* anim) {
     m_model = model;
@@ -393,6 +374,7 @@ void Fighter::set_animate(bool on) {
     if (m_animate == on) return;
     m_animate = on;
     m_animSetIdx = -1;
+    m_animFallback = false;   // no set is bound while animation is off
     if (m_anim) {
         // With animation off no track may stay bound: evalLocal then leaves every
         // frame at its bind T/R/S, which is the pose the renderer uploads.
@@ -408,39 +390,34 @@ void Fighter::try_switch_animation() {
     if (!m_animate) return;
     if (!m_model || !m_anim) return;
     if (m_animSetIdx >= 0) return;  // already set for this state
+    if (m_model->anims.empty()) return;
 
-    const char* anim_name = state_to_anim_name(m_state);
-    if (!anim_name) return;
+    // The original's selection: state → move id → the move's first phase → set
+    // index (see the table above state_to_anim_set in fighter.h). The index is
+    // the D3DX set index, which is this model's `anims` index.
+    const int want = state_to_anim_set(m_state);
+    if (want >= 0 && static_cast<std::size_t>(want) < m_model->anims.size()) {
+        m_anim->setAnimation(want);
+        m_animSetIdx = want;
+        m_animFallback = false;
+        return;
+    }
 
-    // The original looks the set up by name with lstrcmpiA (case-insensitive,
-    // fighter.h:7). xm::Model::findAnim is an exact match (xmodel.h:1781), so
-    // the exact hit is tried first — which is what the DX9 remake's
-    // switch_to_animation(name) does today (file_parser/x_model_loader.cpp:557)
-    // — and a case-folded scan over the sets follows it.
-    int idx = m_model->findAnim(anim_name);
-    if (idx < 0) {
-        for (std::size_t i = 0; i < m_model->anims.size(); ++i) {
-            if (ascii_case_equal(m_model->anims[i].name, anim_name)) {
-                idx = static_cast<int>(i);
-                break;
-            }
-        }
+    // Fallback, deliberately visible: states the table does not cover (Guard,
+    // Jump, TagOut — see the table's "not settled" list) and models with fewer
+    // sets than the index play set 0, the bind-anchored default, and report it
+    // through anim_fallback() instead of silently looking like a mapped state.
+    m_anim->setAnimation(0);
+    m_animSetIdx = 0;
+    m_animFallback = true;
+}
+
+const char* Fighter::anim_set_name() const {
+    if (!m_model || m_animSetIdx < 0 ||
+        static_cast<std::size_t>(m_animSetIdx) >= m_model->anims.size()) {
+        return "";
     }
-    if (idx >= 0) {
-        // The DX9 build only recorded "a set was bound" (fighter.cpp:373);
-        // the real index is kept here, which its `m_animSetIdx >= 0` guard
-        // reads identically.
-        m_anim->setAnimation(idx);
-        m_animSetIdx = idx;
-    } else {
-        // (Many .X files don't have an "idle" animation; the default
-        //  track 0 animation is the idle/standing pose.) Same fallback as the
-        //  DX9 build: no name matched and the model has sets → bind set 0.
-        if (!m_model->anims.empty()) {
-            m_anim->setAnimation(0);
-            m_animSetIdx = 0;
-        }
-    }
+    return m_model->anims[static_cast<std::size_t>(m_animSetIdx)].name.c_str();
 }
 
 void Fighter::take_damage(int amount, Fighter* source) {

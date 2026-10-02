@@ -323,6 +323,12 @@ Consequences already visible, measured 2026-10-03 against `battle-hud.webp`:
   `戦闘開始` / `戻る` — the level of detail the front-end tracks can work
   from.
 
+**Open bug found by the animation track (2026-10-03).** The foundation's own `env.dat`
+spawn parse puts P2 at `(-1363, 200, -2200)` where the DX9 log for the same case has
+`(-2200, 200, -1363)` — x and z swapped. The trace comparison was made fair by passing
+`--spawn2` explicitly, so this is a *loader* bug, not a comparison artefact, and it will
+misplace every default-spawned match. Not yet investigated.
+
 **Where the gate frame stands (2026-10-03, against the DX9 remake).** Against the three banked DX9
 frames at 800x600, after camera parity, lighting parity, the animation-set fix
 and the HUD text metrics: overall RMSE 0.063988 / 0.063431 / 0.056068 on
