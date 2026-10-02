@@ -58,6 +58,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -1610,6 +1611,16 @@ private:
             a.channels.erase(std::remove_if(a.channels.begin(), a.channels.end(),
                              [](const Channel& c) { return c.frame < 0; }), a.channels.end());
         }
+
+        // The reference controller enumerates the sets in reverse file order, and the game
+        // binds by that index: FUN_0064d940 loads GetAnimationSet(0)/(1), and the fighter
+        // states pass bare indices. Measured on the DLL the original ships (Microsoft
+        // d3dx9_25.dll, native under Wine) for data/rika/01.X: set 0 is "Anim-124", the
+        // file's last AnimationSet, and set i = file set (N-1-i) for all 124 — the same
+        // DLL agrees on 4800 source ticks/s and on every key's S/R/T, so the index order
+        // was the only divergence. In file order index 0 was a 170-degree rigid root flip
+        // instead of the default whose first key reproduces the bind pose.
+        std::reverse(m_.anims.begin(), m_.anims.end());
 
         for (auto& r : raws_) m_.meshes.push_back(buildMesh(r));
 

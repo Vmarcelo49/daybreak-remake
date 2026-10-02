@@ -201,14 +201,20 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(arena_camera_test PRIVATE glm)
     add_test(NAME arena_camera_test COMMAND arena_camera_test)
 
-    # The cube pass's geometry: device-free, like debug_prims_geometry. It defines both
-    # geometry-only guards, so it compiles the two headers without any WebGPU header.
+    # The .X animation path against the shipped rigs: defines XMODEL_IMPLEMENTATION
+    # itself (same reason as raycast_analytic), sweeps data/<name>/<NN>.X at run time,
+    # and skips itself when the install is absent.
+    add_executable(animation_pose_test tests/animation_pose_test.cpp)
+    target_include_directories(animation_pose_test PRIVATE src)
+    target_link_libraries(animation_pose_test PRIVATE glm)
+    add_test(NAME animation_pose_test COMMAND animation_pose_test)
+
     # The DX9 pass's fixed-function light and clear constants: device-free, and pinned
     # because the numbers are load-bearing to the third decimal (a wrong triple lands
-    # 1.5x..2.7x off and only a 480000-pixel comparison shows it).
-    # It includes render/scene_renderer.h for the constants, so it needs that header's
-    # own include path (webgpu.h from the imported target) even though it never creates
-    # a device; foundation_assets supplies src/assets for scene.h.
+    # 1.5x..2.7x off and only a 480000-pixel comparison shows it). It includes
+    # render/scene_renderer.h for them, so it needs that header's own include path
+    # (webgpu.h from the imported target) although it never creates a device;
+    # foundation_assets supplies src/assets for scene.h.
     add_executable(lighting_test tests/lighting_test.cpp)
     target_include_directories(lighting_test PRIVATE src)
     target_link_libraries(lighting_test PRIVATE foundation_assets webgpu glm)
@@ -223,6 +229,8 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(text_test PRIVATE glm)
     add_test(NAME text_test COMMAND text_test)
 
+    # The cube pass's geometry: device-free, like debug_prims_geometry. It defines both
+    # geometry-only guards, so it compiles the two headers without any WebGPU header.
     add_executable(unlit_cube_geometry tests/unlit_cube_geometry.cpp)
     target_include_directories(unlit_cube_geometry PRIVATE src)
     target_link_libraries(unlit_cube_geometry PRIVATE glm)

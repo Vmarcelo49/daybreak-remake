@@ -93,6 +93,7 @@ struct Options {
     bool        noCameraClamp = false;   // A/B switch for the arena eye clamp
     bool        noTextures = false;
     bool        fog        = false;   // opt-in: the DX9 reference renders unfogged
+    bool        noAnim     = false;   // bind pose: the DX9 reference binds no sets
     bool        unlit      = false;
     bool        list       = false;
 };
@@ -130,6 +131,10 @@ void usage() {
         "                     has one, else framed bounds)\n"
         "  --anim=N --time=S --dt=S   pose with animation set N, seek and step\n"
         "  --no-textures      draw untextured, for an A/B of texture resolution\n"
+        "  --no-anim          bind no animation set: render the bind pose. The DX9\n"
+        "                     reference binds none either (its d3dx9 under Wine\n"
+        "                     returns no animation controller at all), so a gate frame\n"
+        "                     must be bind pose to be comparable with a banked one\n"
         "  --fog              apply the stage's env.dat fog. Off by default because\n"
         "                     the DX9 reference never sets FOGENABLE: its gameplay\n"
         "                     pass writes the fog parameters (FUN_00650a30) and never\n"
@@ -194,6 +199,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--audio-file=")).empty()) o.audioFile = v;
         else if (a == "--no-textures") o.noTextures = true;
         else if (a == "--fog") o.fog = true;
+        else if (a == "--no-anim") o.noAnim = true;
         else if (a == "--unlit") o.unlit = true;
         else if (a == "--list") o.list = true;
         else if (a == "--hud-test") o.hudTest = true;
@@ -814,6 +820,12 @@ static bool initMatch(App& app) {
         }
     }
     app.match.reset(config, models, anims, tamaMesh, tamaMesh ? &tamaIndex : nullptr);
+    // Bind pose on request: the DX9 reference renders no animation (its d3dx9 under
+    // Wine hands back no controller), so this is what makes a gate frame comparable.
+    if (app.opts.noAnim) {
+        for (int i = 0; i < 2; ++i) app.match.fighter(i).set_animate(false);
+        std::printf("match anim   : off (bind pose)\n");
+    }
     std::printf("match        : P1 %s at (%.0f,%.0f,%.0f), P2 %s at (%.0f,%.0f,%.0f), tama=%s\n",
                 app.scene.models[p1].source.c_str(), config.spawn[0].x, config.spawn[0].y,
                 config.spawn[0].z, app.scene.models[p2].source.c_str(), config.spawn[1].x,

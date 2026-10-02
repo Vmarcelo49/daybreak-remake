@@ -214,7 +214,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // 6. Update the animation playhead. The DX9 XModel::update() clamped dt to
     // 0.1 s against post-stall jumps (file_parser/x_model_loader.cpp:588-590);
     // xm::Controller::advanceTime does not, so the clamp lives here.
-    if (m_anim) {
+    if (m_anim && m_animate) {
         const float animDt = (dt > 0.1) ? 0.1f : static_cast<float>(dt);
         m_anim->advanceTime(animDt);
     }
@@ -389,7 +389,23 @@ void Fighter::set_state(FighterState new_state) {
     try_switch_animation();
 }
 
+void Fighter::set_animate(bool on) {
+    if (m_animate == on) return;
+    m_animate = on;
+    m_animSetIdx = -1;
+    if (m_anim) {
+        // With animation off no track may stay bound: evalLocal then leaves every
+        // frame at its bind T/R/S, which is the pose the renderer uploads.
+        for (int t = 0; t < xm::Controller::kMaxTracks; ++t) {
+            m_anim->setTrackEnable(t, false);
+            m_anim->setTrackAnimationSet(t, -1);
+        }
+    }
+    if (m_animate) try_switch_animation();
+}
+
 void Fighter::try_switch_animation() {
+    if (!m_animate) return;
     if (!m_model || !m_anim) return;
     if (m_animSetIdx >= 0) return;  // already set for this state
 

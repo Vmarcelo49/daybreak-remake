@@ -238,6 +238,13 @@ public:
     // the one place the split is joined (see PORT NOTES 3).
     void bind(const xm::Model* model, xm::Controller* anim);
 
+    // Verification toggle (the parent wires --no-anim to it): with animation off no
+    // set is bound and no playhead advances, so the fighter renders the bind pose and
+    // a gate frame is comparable with the DX9 reference, which binds 0 sets. The pose
+    // then comes from evalLocal's bind defaults rather than from any animation set.
+    void set_animate(bool on);
+    bool animate() const { return m_animate; }
+
     // Update the fighter for this frame.
     // `input` = the player's input (or nullptr for AI/dummy).
     // `opponent` = the other fighter (lock-on facing, and the target of an
@@ -334,6 +341,7 @@ private:
     // --- visual ---
     const xm::Model* m_model = nullptr;   // borrowed
     xm::Controller*  m_anim  = nullptr;   // borrowed; owns the playhead
+    bool             m_animate = true;    // false = bind pose (see set_animate)
 
     // --- transform ---
     glm::vec3    m_position   {0, 0, 0};
