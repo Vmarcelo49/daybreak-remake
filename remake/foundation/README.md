@@ -147,6 +147,36 @@ browser (verified: Akane, 18 files, 4,216 frames at 60 fps, `RESULT: ok`).
 Browser-side persistence (IndexedDB/OPFS) is the remaining open half; see
 `docs/WEB-ASSETS-RUNTIME.md`.
 
+## Playing a match
+
+`--match` runs the real game: the fighter/projectile simulation, the match economy
+(balloon / LIMIT / KO clock) and the live HUD values are ported from `remake/src` and
+drive the frame, instead of the versus vignette's frame-index script.
+
+```bash
+./build/linux/foundation_demo --headless --match --install=<game-dir> \
+  --stage=<game-dir>/data/stage21 --character=<game-dir>/data/rika:0 \
+  --enemy=<game-dir>/data/takano:0 --spawn=0,200,0 --spawn2=-2200,200,-1363 \
+  --script=remake/tests/visual/scripts/dash.txt --frames=150 --out=match.ppm --size=400
+```
+
+- `--script=<file>` drives P1 with the DX9 visual-suite format; without it P1 is live
+  device input. `--script2=<file>` drives P2; without it P2 takes no input, which is
+  exactly what the DX9 scene passes.
+- `--spawn` / `--spawn2` override the stage's `env.dat` spawns (the match uses
+  `env.dat`, not the DX9 remake's hardcoded pair, which its comment misdescribes).
+- `DAYBREAK_CAMINFO=1` prints the same trace line the DX9 build prints, so
+  `tests/compare_match_traces.py <dx9.log> <foundation.log>` diffs the two
+  implementations. Six scripted cases currently agree exactly (worst position delta
+  0 units over 59 samples × 2 fighters).
+- `--headless` needs no display at all and still renders on the real GPU. That matters
+  for verification: Mesa's Vulkan WSI cannot present on Xvfb (no DRI3), so a windowed
+  run there silently falls back to software GL while Wine gets RADV — two different
+  rasterizers, which would make a Linux/Wine capture pair meaningless.
+- Known behaviour quirks are kept from the reference and listed in
+  `docs/FULL-REPLACEMENT-PLAN.md` §5 (a one-way Guard state, two unreachable
+  constants, Kakera's no-op drain) rather than quietly fixed under a parity port.
+
 ## What is verified, and what is not
 
 Verified by building and running; see `docs/BUILD-*.md` for per-target detail.

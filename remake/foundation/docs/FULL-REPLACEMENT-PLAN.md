@@ -1,11 +1,11 @@
 # Full replacement plan: drop DX9, WebGPU only
 
 Status: **executing**. Phase 0 (parity banking + preconditions) passed
-2026-10-02; Phase 1 (foundation-complete) passed 2026-10-02. Phases 2–5 not
-started. Nothing below deletes or rewrites anything
-until its phase gate passes. This plan exists because "replace DX9" is a
-point of no return: after Phase 5 there is no DX9 build to compare against,
-so every proof must be banked *before* the cutover.
+2026-10-02; Phase 1 (foundation-complete) passed 2026-10-02; Phase 2 (gameplay
+port) passed 2026-10-02. Phases 3–5 not started. Nothing below deletes or
+rewrites anything until its phase gate passes. This plan exists because
+"replace DX9" is a point of no return: after Phase 5 there is no DX9 build to
+compare against, so every proof must be banked *before* the cutover.
 
 ## 0. Objective and definition of done
 
@@ -168,28 +168,90 @@ Phase 0 recorded; `AssetSource::resolve()` now returns a single path.
 
 The ~2.5k lines of game truth, translated file by file. Order matters:
 
-- [ ] **2a. Math-type swap.** `D3DXVECTOR3` → `glm::vec3` (already a
+- [x] **2a. Math-type swap.** `D3DXVECTOR3` → `glm::vec3` (already a
       foundation dep) across `gameplay/`, `physics/`, `maps/`, `core/`
       headers. Purely mechanical, compiles without D3D headers afterwards.
       Verify: full rebuild + unit-level spot checks (positions, matrices).
-- [ ] **2b. Fighter + projectile.** Port `fighter.cpp`/`projectile.cpp`
+      **Done inside the port, not by editing `remake/src`**: the ported gameplay
+      is glm-only and includes no D3D header, which is the item's actual goal,
+      while `remake/src` stays untouched and buildable as the A/B reference
+      (§1.2, and the Phase 3 gate requires DX9 to stay unchanged). The
+      mechanical equivalence is pinned by the port's own tests — all 25
+      `FighterConstants`, every enum value and every tuning row compared against
+      the source, plus matrix checks (yaw 90° maps +Z to +X).
+- [x] **2b. Fighter + projectile.** Port `fighter.cpp`/`projectile.cpp`
       logic onto foundation interfaces (`IFighterPose`, effect queue, HUD
       bridge, input actions, audio cues). Update/render split: `render()`
       methods lose their `IDirect3DDevice9*` and become data for the
       foundation renderer. Verify: scripted-playback matches (positions,
       HP, ammo over fixed input scripts, Linux vs Wine identical).
-- [ ] **2c. Gameplay scene.** `scenes.cpp` gameplay path: match flow, live
+      **Landed `d88c55a`**: `Fighter` implements `game::IFighterPose` and
+      exposes `modelMatrix()`; `render()` is deleted in both classes and its
+      per-cube data (size/colour/fade) is exposed instead. Verified against the
+      DX9 build itself: six scripted cases, 59 samples × 2 fighters, worst
+      position delta **0 units**, animation states equal — including the
+      2600-frame KO case (44 samples) and the dash displacement at frame 121.
+      The KO console lines match byte for byte (modulo Wine's CRLF). Host tests:
+      395 checks for the port, 5/5 under ctest.
+- [x] **2c. Gameplay scene.** `scenes.cpp` gameplay path: match flow, live
       HUD values, effect spawning from combat, camera targets from live
       fighters. The versus vignette graduates here — same CLI shape, real
-      state instead of scripted timeline.
-- [ ] **2d. Stage/maps, manager, bootstrap, main.** Remaining flow + boot.
+      state instead of scripted timeline. **Landed `d4612c0` + `d88c55a`**:
+      `gameplay::Match` reproduces the reference's per-frame order (including
+      its asymmetry), `MatchEconomy` the balloon/LIMIT/KO clock, and
+      `fillHudValues` the HUD maths; the demo's `--match` drives them with a
+      scripted or live P1 and a scripted-or-dummy P2, camera from the locked
+      fighter's live pose with the reference's Guard+AttackB target switch, and
+      combat hits push effect events. `--versus` stays as the deterministic
+      capture vignette (it is banked evidence), which is why it was not deleted.
+- [x] **2d. Stage/maps, manager, bootstrap, main.** Remaining flow + boot.
       `main.cpp` game boot replaces `d3d_init` with foundation init; dat
-      tools and capture modes re-homed.
-- [ ] **2e. Input/audio wiring.** Tables and backends exist; wire live
+      tools and capture modes re-homed. **Partially done**: the match boot,
+      stage/spawn/collision-channel loading, capture modes and the `--headless`
+      path are in the foundation's `main.cpp`; the scene *manager* and the
+      front-end/bootstrap flow are not ported, because D6 puts menus after
+      versus and Phase 3 owns them. The dat tools stay in `remake/tools/`
+      (Phase 5 audit).
+- [x] **2e. Input/audio wiring.** Tables and backends exist; wire live
       mapping, BGM selection per scene, SFX triggers from combat events.
+      **Mostly done**: P1 is live device input with the DX9 script override
+      (`--script`), P2 a script (`--script2`) or the reference's dummy, and the
+      match plays the reference's BGM (`data/bgm/01.ogg` + `.sfl`, 153,600
+      frames pushed over 150 frames). **Combat SFX triggers are not wired** —
+      the DX9 gameplay scene plays none (only BGM), so this is a fidelity item
+      for Phase 3 against the original, not a parity gap.
 
 Gate: playable versus match (two fighters, HP, KO, stage, BGM) on Linux
 and Wine, captures + console numbers recorded. This gate *is* D2's spirit.
+**PASSED 2026-10-02.** Evidence: the six-case trace parity above; Linux and
+Wine headless runs of the same match producing **byte-identical** captures
+(480,015 B each, coverage 156,633/160,000 = 97.90%, luminance 0.025..1.000)
+with live HUD, animated fighters and the ported economy; and the console
+numbers recorded in `d88c55a` (150 frames, hp1=100 hp2=100, balloon 0%/0%,
+LIMIT 100%, bgm pushed 153,600 frames, 0 wraps).
+
+**Open from Phase 2, carried forward (not blockers):**
+1. **Guard has no input-driven exit** in the DX9 remake's state machine — a
+   one-way state that drains stamina until damage or reset, while the same
+   file's header documents "Idle/Walk → Guard → Idle (block key held)". The
+   port keeps parity and its test pins the quirk, so a fix will show up as a
+   test failure; fixing it is a product decision (it changes behaviour vs the
+   DX9 reference and vs the banked `action-guard` capture, which holds the
+   button and so is unaffected).
+2. **Unreachable constants**: `kJumpSpeed` (380) is overwritten by the 40 u/s
+   fly rise on the same frame, and `kFlyMaxAlt` (420) is never reached (peak
+   49.25). Kakera's HP drain rounds to 0 at 60 Hz.
+3. **Animation lookup differs from the DX9 remake on purpose**: the port
+   matches set names case-insensitively (the original's `lstrcmpiA`), while
+   the DX9 loader compares with `==`. The DX9 build also binds 0 sets for
+   shipped characters, so its fighters never animate; the foundation's do.
+   This is the one expected divergence in a trace A/B (it does not affect the
+   state names the traces compare).
+4. **Side 1's HUD block** has no destination in `GameHudValues`/`ui::HudState`
+   (the DX9 layout draws only `fighters[0]` outside the two balloon corners).
+5. **The match camera clamps** (Phase 1's `collision_camera` clamp) where the
+   DX9 remake's is unclamped — deliberate, and the reason `--no-camera-clamp`
+   exists for A/B.
 
 ## 6. Phase 3 — fidelity (RE + assets as needed)
 
