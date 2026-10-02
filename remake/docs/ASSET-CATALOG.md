@@ -252,16 +252,45 @@ print; 15 is by elimination plus its own texture name.
   dword `4` followed by a **260-byte NUL-padded model name** — the `.X` to
   load. The `.X` itself is **not** implied by the number.
 * The `.X` numbering inside a folder is a **variant slot within one
-  costume**, not a character index and not a LOD. Measured: `data/rena/00.X`,
-  `01.X`, `02.X` all report the **same 4 meshes / 1964 vertices** but render
-  with different textures (`00`/`01` = white top with blue collar, `02` =
-  yellow top) — equal mesh counts do **not** mean "same model".
-* The **`.dat` index that selects among them is unresolved.** `FUN_0064ab30`
-  passes per-slot bytes held in the exe at `+0x5318`, `+0x532c`, `+0x5330`,
-  `+0x5334` into `FUN_0041e180(name, dat_index, ?, costume_suffix, ?)`; the
-  remake's `loadCharacter()` currently just takes the first readable `.dat`.
-  Do not assume the index means LOD, pose or damage state — none of those
-  fits "identical geometry, different texture".
+  costume**, not a character index and not a LOD — and *which* file a slot
+  loads is the name inside that slot's `.dat`, so the number does not always
+  equal the slot (`rika/02.dat` names `00.X`). In a **base** folder the
+  variants are texture-only: `data/rena/00.X`, `01.X`, `02.X` all report the
+  same 4 meshes / 1964 vertices but render with different textures (`00`/`01` =
+  white top with blue collar, `02` = yellow top). In a **costume** folder they
+  can differ in geometry as well — `data/rena_B/01.X` = 5 meshes / 2050 verts
+  but `data/rena_B/00.X` and `02.X` = 6 / 2124. Equal mesh counts do **not**
+  mean "same model", and unequal ones do not mean "different costume".
+* The **`.dat` index is the character's weapon slot 0–2** (resolved; it was
+  open in the first edition of this file). It is *not* a LOD, pose or damage
+  state, and it is not the costume. The chain, from the exe:
+
+  1. `FUN_0064ab30` (VMA `0x64ab30`) loads one character per player slot and
+     passes `FUN_0041e180(name, dat_index, ?, costume, ?)`; `dat_index` is the
+     dword read at `obj + 0x5318 + slot*4` (`0x64ab94`, `0x64abec`). `obj` is
+     the global scene object at **`0x6ca820`** (`mov $0x6ca820,%ecx` before the
+     call, e.g. `0x406821`, `0x411c8d`), so the field is the global
+     `0x6cfb38[slot]`.
+  2. `LoadNextScene` fills that array from the **select screen's per-player
+     weapon index**: `0x4066c8` stores `pGameState + 0x2e60 + slot*4` into
+     `0x6cfb38[slot]`. The same loop stores `pGameState + 0x2e80` (a *different*
+     selector, the costume) into `0x6cfb4c[slot]` = `obj + 0x532c`, which is
+     `FUN_0041e180`'s costume argument — the `_B`…`_F` switch. For a random
+     character the weapon slot is `rand() % 3` (`0x406736`) and the costume is
+     forced to 0 (`0x406704`); the enemy team's slots 2 and 3 get their random
+     weapon index in `FUN_006492f0` (`0x6493e7`, `0x64943b`, writing
+     `obj + 0x5320` / `obj + 0x5324`, i.e. elements 2 and 3 of the same array).
+  3. `FUN_0041e180` builds `data/%s/%02d.dat` with that index
+     (`FUN_0041e180.c:58`) and reads a dword at file offset **0x114** — the
+     **weapon id**, which it hands to `FUN_00433eb0` (`FUN_0041e180.c:227`),
+     the function that opens `data/item/%03d.dat` (`FUN_00433eb0.c:51`).
+     §3.3 is the resulting mapping.
+
+  Consequence for a loader: the model variant is *per weapon slot* — the
+  character is drawn with the `.X` its `<slot>.dat` names, so `rena` shows
+  `00.x` with weapon 1, `01.X` with weapon 2 and `02.X` with weapon 3. The
+  variants differ only in texture (measured), so a loader that ignores the
+  index still gets correct geometry and the wrong textures.
 * `.dat` → `.X` for the first slot (measured, tree copies):
 
   | char | 00.dat | 01.dat | 02.dat | | char | 00.dat | 01.dat | 02.dat |
@@ -312,6 +341,19 @@ Consequences a reader must not get wrong:
 
   Total 67 slot-directories. A UI that offers 6 costumes to everyone is
   wrong for 10 of the 16 characters.
+* **All 67 slot-directories ship.** Measured against the *bundle* entry tables,
+  not the tree: every costume directory's model file is present in a bundle
+  (`data/rena_c/00.x`, `data/ohishi_b/00.x`, …), nearly all of them in
+  `daybreak04.dat`. `data/ohishi_b/` is the bundle's own spelling — the
+  bundle carries `data/ohishi_b/00.x` lowercase, so this is not a tree
+  artifact.
+* The **`.dat` descriptor is never inside a costume directory**:
+  `data/ohishi_b/` has no `00.dat`. The loader always opens
+  `data/<char>/NN.dat` and takes only the *model* from the costume directory.
+  A census that counts `.dat` files per directory therefore sees 3 in
+  `data/rena/` and 0 in `data/rena_C/` — that is correct, not a hole.
+* Two **Photoshop source files ship** (bundle and tree): `data/keiichi/ひぐらし目.psd`
+  and `data/ohishi_b/服2.psd`. Dead weight — no loader should read them.
 * The **frill texture** is a reliable marker of the frilled/maid slot, and
   that slot sits **wherever the character's list puts it**:
   `フリル02.bmp` appears in `akane_B`, `chie_C`, `hanyu_E`, `keiichi_D`,
@@ -342,27 +384,139 @@ of `data/mion` as Mion rests on the **folder name**, the **voice folder
 `data/voice/mion/`** and the index order (01 = elder twin per `D18`), not
 on this texture.
 
-### 2.6 Costume identification — what is established, what is not
+### 2.6 Costume identification — all 67 slots
 
-Established (`print`-tier render-and-look, 12 of 67 slot-directories):
+Every one of the 67 slot-directories is identified below from **two shipped
+sources that agree row for row**:
 
-| Slot dir | Outfit |
-|---|---|
-| `data/rena/`, `data/satoko/` | default outfit (Rena: white sailor top, blue collar, blue pleated skirt; Satoko: green dress, yellow shoes) |
-| `data/rena_B` | nurse dress + cap |
-| `data/rena_C`, `data/satoko_C` | gym kit (white shirt, shorts) |
-| `data/rena_D`, `data/satoko_D` | navy **school swimsuit** |
-| `data/rena_E` | frilled dark dress (the フリル slot for Rena) |
-| `data/rena_F` | casual hoodie + shorts |
-| `data/satoko_B` | casual (pink top, shorts) |
-| `data/satoko_E` | blue one-piece swimsuit (a *second* swimsuit) |
-| `data/satoko_F` | black-and-white **maid** outfit (the フリル slot for Satoko) |
+* **render-and-look** — one headless frame per slot:
+  `foundation_demo --headless --character=<install>/data/<char>:<N> --frames=1
+  --out=… --size=512x512`, N = 0…5. `N` is the *ordinal* slot and the loader
+  appends the letter itself — passing an already-suffixed directory
+  (`…/data/rena_C:2`) loads **nothing**. The demo resolves assets
+  **bundle-first** and prints the directory it resolved, e.g.
+  `scene …/data/rena_C: 1 model(s), 3 meshes, 1779 vertices`; each slot's model
+  file was confirmed present in a bundle (§2.4), so these are the shipped
+  outfits, not tree copies. That log line is also where the geometry column
+  comes from.
+* **the shipped costume-icon atlas `data/select/cosNN.cnv`** — one 256×256
+  sprite sheet per character index holding a **3×2 grid of chibi figures, one
+  cell per costume slot in slot order** (cell 0 top-left … cell 5
+  bottom-right). Like the other `.cnv` art it is stored bottom-up — `-flip` it
+  before reading. Slots a character does not have are padded with a
+  **byte-identical copy of cell 0**: counting distinct cells (by
+  bounding-box-normalised pixel diff) gives 1 for `kasai`, 2 for
+  `tomitake`/`ohishi`/`akasaka`, 3 for `irie`/`akane`, 4 for `chie`/`keiichi`,
+  5 for `hanyu`/`takano` and 6 for the other six — **exactly the §2.4 directory
+  census for all 16 characters**. So "the atlas has six cells" must never be
+  read as "this character has six costumes".
 
-**Unresolved: 55 of the 67 costume slots.** I did not render the remaining
-14 characters. Do not extrapolate `_B`/`_C`/… meanings across characters —
-§2.4 already shows the two characters I did render disagree. To close a
-row, render it: `foundation_demo --headless --character=Higurashi-Daybreak/data/<char>:<N>`
-(0–5) and look at the frame.
+Outfit names are ours (`print` tier: what the render shows, corroborated by the
+matching chibi cell). `Δ` is against that character's slot 0.
+
+**What the geometry column measures.** Each row is the model that slot N
+actually loads when *both* selectors are N — the costume directory's copy of
+the `.X` that slot's `.dat` names (`--character=<install>/data/<char>:N` drives
+both, §2.3). Geometry is a property of the (costume, weapon slot) pair, not of
+the costume alone: `data/rena_B` loads 5 meshes / 2050 verts for weapon slot 1
+(`01.X`) but 6 / 2124 for slots 0 and 2 (`00.X` / `02.X`). Within a *base*
+folder the variants are texture-only (`rena/00.X` = `01.X` = `02.X` =
+4 / 1964). A preview that always loads `00.X` therefore looks right for the
+default costume and wrong for several others.
+
+| Slot dir | Outfit (what the render shows) | Meshes / verts (Δ) |
+|---|---|---|
+| `data/rena/` | school uniform — white sailor top, blue collar, blue pleated skirt | 4 / 1964 |
+| `data/rena_B` | nurse — white dress + white cap | 5 / 2050 (+1 / +86) |
+| `data/rena_C` | gym kit — white T-shirt + shorts | 3 / 1779 (−1 / −185) |
+| `data/rena_D` | navy school swimsuit | 3 / 1807 (−1 / −157) |
+| `data/rena_E` | dark frilled dress (フリル slot) | 4 / 2240 (+276) |
+| `data/rena_F` | casual — blue/white top + shorts | 4 / 2034 (+70) |
+| `data/mion/` | school uniform — white top, yellow tie, pink pleated skirt | 4 / 2096 |
+| `data/mion_B` | casual — yellow T-shirt, blue jeans, white shirt tied at the waist | 4 / 1972 (−124) |
+| `data/mion_C` | gym kit | 3 / 1856 (−1 / −240) |
+| `data/mion_D` | navy school swimsuit | 3 / 1896 (−1 / −200) |
+| `data/mion_E` | dark frilled dress (フリル slot) | 4 / 2327 (+231) |
+| `data/mion_F` | casual — white top + red shorts | 4 / 1999 (−97) |
+| `data/keiichi/` | school — white shirt + dark trousers | 3 / 1958 |
+| `data/keiichi_B` | casual — dark red tank top, green shorts, red sneakers | 3 / 1935 (−23) |
+| `data/keiichi_C` | gym kit — white T-shirt + navy shorts | 3 / 1953 (−5) |
+| `data/keiichi_D` | **maid** — black dress, white apron, headdress (フリル slot) | 6 / 2532 (+3 / +574) |
+| `data/satoko/` | green dress (default) | 4 / 1889 |
+| `data/satoko_B` | casual — pink top + blue shorts | 3 / 1851 (−1 / −38) |
+| `data/satoko_C` | gym kit | 3 / 1750 (−1 / −139) |
+| `data/satoko_D` | navy school swimsuit | 3 / 1774 (−1 / −115) |
+| `data/satoko_E` | blue one-piece swimsuit | 3 / 1935 (−1 / +46) |
+| `data/satoko_F` | **maid** — black dress, white apron, headdress (フリル slot) | 5 / 2284 (+1 / +395) |
+| `data/rika/` | school uniform — white top, red ribbon, dark skirt | 4 / 1965 |
+| `data/rika_B` | green dress (casual) | 4 / 1749 (−216) |
+| `data/rika_C` | gym kit | 3 / 1653 (−1 / −312) |
+| `data/rika_D` | navy school swimsuit | 3 / 1590 (−1 / −375) |
+| `data/rika_E` | shrine-maiden style — white top + crimson hakama | 3 / 1685 (−1 / −280) |
+| `data/rika_F` | dark frilled dress (フリル slot) | 4 / 2069 (+104) |
+| `data/shion/` | school uniform — white sailor top + navy pleated skirt | 4 / 2326 |
+| `data/shion_B` | casual — cream striped sleeveless top, dark olive buttoned skirt, black pumps | 3 / 2134 (−1 / −192) |
+| `data/shion_C` | gym kit | 3 / 2081 (−1 / −245) |
+| `data/shion_D` | navy school swimsuit | 3 / 2098 (−1 / −228) |
+| `data/shion_E` | dark frilled dress (フリル slot) | 4 / 2528 (+202) |
+| `data/shion_F` | casual — white top + navy shorts | 4 / 2319 (−7) |
+| `data/tomitake/` | default — cap, olive tank top, light trousers, glasses | 4 / 1637 |
+| `data/tomitake_B` | green military-style uniform — jacket, shirt, tie (**provisional** label; the chibi cell shows epaulettes/medals) | 3 / 2006 (−1 / +369) |
+| `data/takano/` | green cardigan, pink shirt, dark trousers | 4 / 1882 |
+| `data/takano_B` | nurse — white dress + cap | 4 / 1903 (+21) |
+| `data/takano_C` | black beret, dark jacket/coat, shorts, black knee-high socks (**provisional** label "winter/coat") | 7 / 2136 (+3 / +254) |
+| `data/takano_D` | dark frilled dress (フリル slot) | 4 / 2236 (+354) |
+| `data/takano_E` | pink two-piece swimsuit (bikini) | 3 / 1818 (−1 / −64) |
+| `data/ohishi/` | default — grey shirt, red tie, red suspenders, khaki trousers, white shoes | 2 / 1681 |
+| `data/ohishi_b` | blue yukata (directory name is lowercase, §2.4) | 3 / 1606 (+1 / −75) |
+| `data/akasaka/` | default — cream jacket, dark shirt, blue trousers | 3 / 1886 |
+| `data/akasaka_B` | blue yukata | 3 / 1930 (+44) |
+| `data/irie/` | white lab coat + dark trousers (doctor) | 6 / 2060 |
+| `data/irie_B` | casual — pale yellow shirt + light trousers | 4 / 1776 (−2 / −284) |
+| `data/irie_C` | sports/cheer jersey — red body, white sleeves, white trousers (**provisional** label) | 4 / 1787 (−2 / −273) |
+| `data/chie/` | white sleeveless dress / apron dress | 4 / 2229 |
+| `data/chie_B` | dark navy long-sleeve dress, white collar, white cross armband — nurse-style (**provisional**) | 4 / 2344 (+115) |
+| `data/chie_C` | dark frilled dress (フリル slot) | 4 / 2477 (+248) |
+| `data/chie_D` | white two-piece swimsuit (bikini) | 3 / 2061 (−1 / −168) |
+| `data/kasai/` | black suit + sunglasses — the only slot this character has | 4 / 1472 |
+| `data/akane/` | black kimono + blue obi | 8 / 2195 |
+| `data/akane_B` | dark frilled dress (フリル slot) | 5 / 2344 (−3 / +149) |
+| `data/akane_C` | dark two-piece swimsuit (bikini) | 3 / 1931 (−5 / −264) |
+| `data/hanyu/` | shrine maiden — white top + red hakama | 5 / 2266 |
+| `data/hanyu_B` | school uniform — light blue sailor top + red plaid skirt | 6 / 2249 (+1 / −17) |
+| `data/hanyu_C` | gym kit | 4 / 1976 (−1 / −290) |
+| `data/hanyu_D` | navy school swimsuit | 4 / 1993 (−1 / −273) |
+| `data/hanyu_E` | light-blue frilled dress (フリル slot) | 5 / 2471 (+205) |
+| `data/natumi/` | white dress with orange trim and ribbon | 4 / 2185 |
+| `data/natumi_B` | pink camisole top + navy plaid skirt | 4 / 2053 (−132) |
+| `data/natumi_C` | gym kit | 3 / 1908 (−1 / −277) |
+| `data/natumi_D` | navy school swimsuit | 3 / 1976 (−1 / −209) |
+| `data/natumi_E` | dark frilled dress (フリル slot) | 4 / 2411 (+226) |
+| `data/natumi_F` | casual — light top + red shorts | 4 / 2185 (±0) |
+
+What the table establishes beyond the names:
+
+* **The フリル slot is a family, not one outfit.** All 11 characters whose slot
+  carries `フリル02.bmp` render as a frilled dress: `rena_E`, `mion_E`,
+  `shion_E`, `rika_F`, `takano_D`, `chie_C`, `akane_B`, `natumi_E` (dark) and
+  `hanyu_E` (light blue) — plus two **maid** variants with a white apron and
+  headdress, `satoko_F` and `keiichi_D`. The texture is the reliable marker;
+  the letter is not (§2.4).
+* **A costume is a geometry change, not only a texture change.** The 67 slots
+  run 2–8 meshes and 1472–2532 vertices. The largest are `akane` slot 0
+  (8 meshes, kimono), `takano_C` (7), and `irie` slot 0 / `hanyu_B` /
+  `keiichi_D` (6). Slot 0 is **not** the heaviest model for most characters —
+  13 of 16 by vertex count and 6 of 16 by mesh count — so "default = the full
+  model" is wrong.
+* **Four rows are provisional** and marked above: the render shows the outfit,
+  but the *label* is ours and another reading is possible — `chie_B`
+  (nurse-style dark dress), `takano_C` (dark beret/coat), `irie_C`
+  (sports/cheer jersey), `tomitake_B` (green military-style uniform). Every
+  other row is unambiguous in the render **and** matches its chibi cell.
+* **Costume index 0 is the unsuffixed directory**, not `_B`: the select
+  screen's costume index maps 0 → `data/<char>/`, 1 → `data/<char>_B/` …
+  5 → `data/<char>_F/` (`FUN_0041e180.c:68-86`). Do not "fix" a UI by
+  shifting the list by one.
 
 ---
 
@@ -373,7 +527,14 @@ row, render it: `foundation_demo --headless --character=Higurashi-Daybreak/data/
 **No.** A weapon is **never** a mesh inside `data/<char>/`. The chain is:
 
 1. `data/item/NNN.dat` — weapon definitions, loaded as `"data/item/%03d.dat"`
-   (`%03d` = the weapon id). There are 46: `001.dat` … `046.dat`.
+   (`%03d` = the weapon id). There are 46: `001.dat` … `046.dat`. **The id is
+   not picked by the UI directly**: it is a dword at offset **`0x114`** of the
+   character's own `data/<char>/<weapon_slot>.dat`, read by `FUN_0041e180`
+   (`FUN_0041e180.c:99-106`: re-open, seek `0x108` via `FUN_00653960.c:11`,
+   then seven 4-byte reads) and handed to `FUN_00433eb0`
+   (`FUN_0041e180.c:227`), which opens the item file. §3.3 is the resulting
+   46-way mapping; §2.3 explains why the character `.dat` index is the weapon
+   slot and not a LOD or pose.
 2. `data/item/NNN.ini` — **plain-text** parameters for ids **001–028**
    (029–046 have none, in the tree *and* in every bundle — not a missing
    extraction). The `.ini` carries `bulletType`, `weaponType`,
@@ -381,7 +542,11 @@ row, render it: `foundation_demo --headless --character=Higurashi-Daybreak/data/
    `XFileName` + `TextureName` + attach offsets (`mx/my/mz`, `x1/y1/z1`),
    `[MagazineN]` ammo/reload/charge, and **`[BulletN]` records whose
    Shift-JIS trailing comments name the attack** (e.g. `[Bullet0];通常ナタ投げ横回転`).
-   These comments are the single most useful string source for weapons.
+   These comments are the single most useful string source for weapons — with
+   two caveats: the `.ini` is a developer export that the engine never opens
+   (the `.dat` is the shipped form of the same parameters), and for ids 009,
+   013 and 026 its `XFileName` list is **stale** against the `.dat` that ships
+   — see trap #22.
 3. `data/item/NN.X` — the **held weapon meshes** (63 files: `00.X`–`80.X`,
    mixed case, plus `katana*.cnv` / `M870012.cnv` / `mp5.cnv` /
    `スタンガン.cnv` / `アイアン.cnv` / `ウォーターガン.cnv` / `ＲＰＧ.cnv` …).
@@ -394,9 +559,10 @@ row, render it: `foundation_demo --headless --character=Higurashi-Daybreak/data/
    `.cnv`s. The `.ini`'s `bulletType` equals the number of `[BulletN]`
    rows and selects this group.
 5. **Attachment**: the weapon model hangs off the character rig's
-   `Bip01_Prop1` (primary) / `Bip01_Prop2` frames; per-weapon local offset
-   comes from the item table (`FUN_00433eb0`). Not parsed by the remake —
-   a weapon currently sits at the attachment bone itself.
+   `Bip01_Prop1` (primary) / `Bip01_Prop2` frames; the per-weapon local offset
+   (`mx/my/mz`, `x1/y1/z1`) is read from the item's own `.dat` by
+   `FUN_00433eb0`. Not parsed by the remake — a weapon currently sits at the
+   attachment bone itself.
 
 So: **weapons are separate assets** (`data/item/` + `data/bullet/`), bound
 to a character by a table, attached to a prop bone. The character `.X`
@@ -412,10 +578,12 @@ panel in `remake/docs/reference/weapon-select-rena.webp` reads
 `data/select/w00.cnv` contains exactly that, over the 竜宮レナ nameplate.
 Tier: `print` (shipped select texture — the source the capture shows).
 
-Order in each cell = the select screen's weapon order (▲▼). **46 weapons
-total** for 16 characters: indices 0–13 have three each, 14 and 15 have
-two. That 46 equals the 46 `data/item/NNN.dat` — a useful cross-check, but
-see §3.3: the ids are **not** in this order.
+Order in each cell = the select screen's weapon order (▲▼), which is also the
+character's `.dat` index order (§2.3). **46 weapons total** for 16 characters:
+indices 0–13 have three each, 14 and 15 have two. That 46 equals the 46
+`data/item/NNN.dat` — a useful cross-check, but the *ids* are **not** in this
+order (they run by weapon slot, not by character); §3.3 gives the id for each
+row of this table.
 
 | Idx | Owner | Weapon 1 | Weapon 2 | Weapon 3 |
 |---|---|---|---|---|
@@ -440,52 +608,159 @@ Two of these are worth calling out because they name their owner inside a
 *weapon* row — useful when a data row is all you have: `w03` contains
 **沙都子**のトラップ講座 and `w10` contains **入江**特製… ×3.
 
-### 3.3 Weapon ids ↔ owners: partly resolved
+### 3.3 Weapon ids ↔ (owner, weapon slot): resolved
 
-The full 46-way mapping from `data/item/NNN.dat` to (character, weapon slot)
-is **unresolved** — no string table for it exists in the exe (it has no
-Shift-JIS names at all), and the ids are demonstrably **not** in character
-order: id 001 is Rena's cleaver + Zippo, but id 002 is a multi-gun set
-(`ハンドガン` / `バズーカ` / `ガトリング`, 5 models) that matches Ōishi's
-押収品倉庫, while 003 *is* Rena's axe (`斧爆破` / `ガソリン飛沫` / `ケンタ砲`,
-`gageTextureName = "renaono_gage.bmp"`). So "id N ≈ character N/3" is wrong
-— do not use it.
+**All 46 ids are pinned.** The mapping is in the character `.dat` files
+themselves: each `data/<char>/NN.dat` carries the weapon id as a dword at
+offset **`0x114`** (`FUN_0041e180.c:99-106` reads it, `:227` hands it to
+`FUN_00433eb0`), and `NN` is the select screen's weapon slot (§2.3). Reading
+that field out of all 46 files gives a **bijection onto 1…46** — no id claimed
+twice, none missing, none out of range:
 
-Pinned by the `.ini`'s own Shift-JIS attack comments (`RE`) — owner
-attributions marked *(inferred)* where the comment identifies the weapon but
-not the character:
+* ids **1–16** = weapon slot **0** of character indices 00–13
+* ids **17–28** = weapon slot **1** of the same 14
+* ids **29–32** = the two weapons each of Natsumi (29, 30) and Hanyu (31, 32)
+* ids **33–46** = weapon slot **2** of the same 14
 
-| id | Pinned content | Owner |
-|---|---|---|
-| 001 | 通常ナタ投げ / ジッポ本体・爆発 / 必殺鉈 | **Rena** (愛用の鉈) |
-| 003 | 斧爆破 / ガソリン飛沫 / ケンタ砲; `renaono_gage` | **Rena** (刃こぼれした斧) |
-| 005 | フルスイング打法 / バスター衝撃波 | **Keiichi** (転校生のバット) |
-| 008 | ロケット花火 / パラシュート / まきびし | **Satoko** (花火セット) |
-| 011, 022 | 毒注射弾 / 毒ガス弾 / 致死毒注射器 | **Takano** |
-| 012 | 広域フラッシュ / **富竹**フラッシュカーニバル | **Tomitake** |
-| 013, 026 | 注射器キャノン / 回復フィールド; メス / 拡散医療砲 | **Irie** |
-| 014, 025 | 定規 / 火葬定規; コンパス / 分度器 | **Chie** |
-| 015, 027 | ショットガン / 狙撃 / スナイパー; マシンガン / ミサイル | **Kasai** |
-| 016, 028 | 交差剣閃 / 連閃 / ヨコウェーブ; 突き / 居合 / 縮地 | **Akane** |
-| 017 | 設置ショット罠 / トラップ LV1–3 / 地球破壊爆弾 | **Satoko** |
-| 018 | クラブ投げ / 爆裂アイアン | **Keiichi** |
-| 021 | フェイタルフレーム / 角材 / フレーム残像 | *(inferred)* Ōishi's ハイパーアーム / frame |
-| 002 | ハンドガン / バズーカ / ガトリング | *(inferred)* Ōishi's 押収品倉庫 |
-| 019 | スプレー / 「汚物は消毒ですよ」 | *(inferred)* a spray-type weapon |
-| 023 | 通常投げ消費 / スタングレネード | *(inferred)* throwing weapon |
-| 024 | 風圧弾 / 竜口拳 / 真空波 | *(inferred)* Akasaka's 波動系 |
-| 004 | 通常水ショット / 収束水流砲 | *(inferred)* Mion's 水鉄砲 |
-| 006, 007, 009, 010, 020 | comments absent or generic | **unresolved** |
+There is **no exe-side (character, slot) → id table to dump**, which is why
+the first edition could not find one: `FUN_00433eb0` is the item *loader*
+(`FUN_00433eb0.c:51` opens `data/item/%03d.dat` with the id it is handed), and
+the id itself ships in the character `.dat`. Searching the exe for the 14
+three-id triples (e.g. rena's 1/3/33 as little-endian dwords) finds nothing —
+the expected result for a data-driven chain, not a missing table.
 
-**Unresolved: 31 of 46 ids** have no owner attribution (and ids 029–046 have
-no `.ini` at all, so their comments are unavailable). What was ruled out as
-a shortcut: exe string scan (no names), numerical order (disproved above),
-`gageTextureName` as an owner key — there are only four gage textures
-(`rena_gage`, `mion_gage`, `renaono_gage`, `mionbi-mu_gage`) shared across
-weapons of different owners, so it names a *gauge style*, not a character.
-Closing this needs the exe's item table
-(`FUN_00433eb0`'s per-weapon offset table and its caller), which is the
-obvious next RE target.
+14 × 3 + 2 × 2 = 46, matching the 46 item files and the 46 names in §3.2. The
+names below are the shipped weapon-select atlas names for that (owner, slot)
+(`print`, §3.2); the corroboration column is `RE` string evidence from the
+id's own files.
+
+| id | Owner (char_index) | Slot | Weapon (atlas name) | Corroboration |
+|---|---|---|---|---|
+| 001 | rena (00) | 0 | 愛用の鉈 | `.ini`: 通常ナタ投げ / 必殺鉈; mesh `01.x` material `nata` + 鉈02.bmp |
+| 002 | mion (01) | 0 | コテ拳銃 | `.ini`: ハンドガン / バズーカ / ガトリング + 覚醒; mesh `04.x` = a Tokarev pistol (トカレフ02.bmp) |
+| 003 | rena (00) | 1 | 刃こぼれした斧 | `.ini`: 斧爆破 / ガソリン飛沫 / ケンタ砲; mesh `11.x` material `ono` (斧) |
+| 004 | mion (01) | 1 | 特注の水鉄砲 | `.ini`: 通常水ショット / 収束水流砲; meshes `05.x`/`10.x`/`13.x` 水鉄砲.bmp / ウォーターガン.bmp |
+| 005 | keiichi (02) | 0 | 転校生のバット | `.ini`: フルスイング打法 / バスター衝撃波; mesh `02.x` 金属バット08.bmp |
+| 006 | shion (05) | 0 | ゴシックナイフ | `.ini` comments empty; mesh `14.x` material `knife` + ナイフ.bmp |
+| 007 | rika (04) | 0 | 儀式用の鍬 | `.ini` names her: **梨花**ビームα / チャージショット; mesh `15.x` material `kuwa` (鍬) + 鍬.bmp |
+| 008 | satoko (03) | 0 | 特選花火セット | `.ini`: ロケット花火 / パラシュート / まきびし; **no held mesh** (thrown fireworks) |
+| 009 | ohishi (08) | 0 | 愛用の拳銃 | `.ini`: ハンドガン / **手錠投げ** (handcuffs); mesh `46.x` トカレフ02.bmp |
+| 010 | akasaka (09) | 0 | 波動の極意書 | `.ini`: 波動弾 / 必殺波動弾; **no held mesh** (bare hands) |
+| 011 | takano (07) | 0 | 毒薬入り注射器 | `.ini`: 毒注射弾 / 致死毒注射器; mesh `25.x` 注射器.bmp |
+| 012 | tomitake (06) | 0 | サバイバルカメラ | `.ini` names him: **富竹**フラッシュカーニバル / 広域フラッシュ; mesh `16.x` カメラ.bmp |
+| 013 | irie (10) | 0 | 入江特製医療セット | `.ini`: 注射器キャノン / 回復フィールド; meshes `26.x`/`45.x` 注射器Ｂ.bmp |
+| 014 | chie (11) | 0 | 授業用T字定規 | `.ini`: 定規 / 火葬定規; mesh `42.x` 定規2.bmp |
+| 015 | kasai (12) | 0 | ショットガン | `.ini`: ショットガン弾丸 / 狙撃弾丸; mesh `20.x` material `M870` + M870012.bmp |
+| 016 | akane (13) | 0 | 無銘 | `.ini`: 交差剣閃 / 連閃 / ヨコウェーブ; meshes `30`–`32.x` material `katana` |
+| 017 | satoko (03) | 1 | 沙都子のトラップ講座 | `.ini`: 設置ショット罠 / トラップ LV1–3 / 地球破壊爆弾; **no held mesh** (placed traps) |
+| 018 | keiichi (02) | 1 | 無敵アイアン | `.ini`: クラブ投げ / 爆裂アイアン; mesh `40.x` アイアン.bmp (an iron bar) |
+| 019 | rika (04) | 1 | 村鋭女用モップ | `.ini`: スプレー / 「汚物は消毒ですよ」; mesh `35.x` モップ.bmp + 催涙スプレー (36–38.x) |
+| 020 | shion (05) | 1 | 改造スタンガン | `.ini` comments empty; mesh `41.x` スタンガン.bmp |
+| 021 | tomitake (06) | 1 | 霊能写真撮影機 | `.ini`: フェイタルフレーム / 角材 / フレーム残像; mesh `44.x` カメラ02.bmp + `24.x` 角材01.bmp |
+| 022 | takano (07) | 1 | 毒ガススプレー缶 | `.ini`: ガス弾小 / 毒ガス領域 / 必殺毒ガス種; mesh `25.x` (shared injector model) |
+| 023 | ohishi (08) | 1 | ハイパーアーム | `.ini`: 通常投げ消費 / チャージ消費 / スタングレネード; **no held mesh** (the arm is the weapon) |
+| 024 | akasaka (09) | 1 | 空手の極意書 | `.ini`: 風圧弾 / 竜口拳 / 真空波; **no held mesh** (bare hands) |
+| 025 | chie (11) | 1 | 授業用コンパス | `.ini`: コンパス / 分度器 / 必殺ドリルキャノン; no distinct mesh (generic gun props) |
+| 026 | irie (10) | 1 | 入江特製入院セット | `.ini`: メス左 / 右 / 拡散医療砲; meshes `47.x`/`48.x` 注射器C.bmp |
+| 027 | kasai (12) | 1 | マシンガン | `.ini`: マシンガン弾丸 / ミサイルランチャー; mesh `28.x` material `tompson` (Thompson) |
+| 028 | akane (13) | 1 | 玉弾き | `.ini`: 突き / 居合 / 縮地; meshes `21`–`23.x` material `katana` + katana.bmp |
+| 029 | natumi (15) | 0 | おかーさんの包丁 | mesh `50.x` material `houtyou` (包丁) — a kitchen knife |
+| 030 | natumi (15) | 1 | おばーちゃんの鎌 | mesh `53.x` のこぎり.bmp — the *mesh* is a saw; the display name is the atlas's |
+| 031 | hanyu (14) | 0 | 神の世界 | **no held mesh** |
+| 032 | hanyu (14) | 1 | 鬼狩柳桜 | mesh `52.x` textures **鬼狩.bmp / 鬼狩エフェクト02.bmp** — the mesh names the weapon |
+| 033 | rena (00) | 2 | 鉄塊鉈 | mesh `102.x` material `nata` (鉈) + ドラゴン鉈.bmp — a heavy cleaver |
+| 034 | keiichi (02) | 2 | 証拠隠滅シャベル | mesh `103.x` = shaft + blade; it reuses the kitchen-knife material/texture |
+| 035 | mion (01) | 2 | 暴徒鎮圧放水銃 | mesh `05.x` ウォーターガン.bmp — a water gun |
+| 036 | shion (05) | 2 | 地下祭具殿の鎌 | meshes `54.x` ×2 + `55.x` textured **鞭.bmp** (whip) — a segmented chain; the display name is a sickle |
+| 037 | rika (04) | 2 | 祭具殿の鎌 | mesh `51.x` material `kuwa` + **鎌.bmp** — a sickle |
+| 038 | satoko (03) | 2 | 誘導花火セット | **no held mesh** |
+| 039 | ohishi (08) | 2 | 押収品倉庫 | meshes `12.x` (一斗缶, a can), `00.x` (バケツ, bucket / `kyatatu`), `40.x` (アイアン, iron bar), `41.x` (スタンガン) — a pile of confiscated junk |
+| 040 | akasaka (09) | 2 | 刹那の極意書 | **no held mesh** |
+| 041 | takano (07) | 2 | 支援用発信機 | no distinct mesh (shares `25.x`) |
+| 042 | tomitake (06) | 2 | サブマシンガン | mesh `59.x` material `mp5` + mp5.bmp — a submachine gun |
+| 043 | irie (10) | 2 | 入江特製応援セット | mesh `78.x` 注射器Ｄ.bmp — a syringe |
+| 044 | chie (11) | 2 | 授業用チョーク | no distinct mesh (shares `42.x`, the ruler) |
+| 045 | kasai (12) | 2 | スナイパーライフル | mesh `79.x` + **ドラグノフ.bmp** (Dragunov) — a scoped rifle |
+| 046 | akane (13) | 2 | 居合い刀 | meshes `56`–`58.x` material `katana` + katana02.bmp — a katana |
+
+**Two independent string sources agree with the pairing**, and neither was
+used to *derive* it:
+
+1. **The `.ini`'s own attack names** (`[BulletN];…`) describe the weapon's
+   behaviour for 26 of the 28 ids that ship an `.ini` (006 and 020 have empty
+   comment lists, and 029–046 have no `.ini` at all — see §3.1). The names
+   land on the right owner: 手錠投げ (throwing handcuffs) on 009 = the
+   detective's 愛用の拳銃; **梨花**ビームα on 007 = Rika; **富竹**フラッシュ
+   カーニバル on 012; 設置ショット罠 / トラップ LV1–3 on 017; コンパス /
+   分度器 on 025; ショットガン / 狙撃 on 015; マシンガン / ミサイル on 027.
+   Where an id was pinned before this pass, the new mapping never contradicts
+   it.
+2. **The item mesh's material and `TextureFilename` strings** — the shipped
+   `.dat` names the meshes and the meshes name themselves: M870012.bmp on 015,
+   `tompson` on 027, mp5.bmp on 042, ドラグノフ on 045, 水鉄砲 on 004,
+   スタンガン on 020, 注射器 on 011, カメラ on 012, 定規2 on 014, `katana` on
+   016/028/046, 鎌 on 037, `houtyou` (包丁) on 029, 鬼狩 on 032, and
+   バケツ / 一斗缶 / アイアン / スタンガン on 039. Rendering the meshes agrees
+   (`102.X` = a heavy cleaver, `50.X` = a kitchen knife, `51.X` = a sickle,
+   `05.X` = a water gun, `59.X` = an SMG, `79.X` = a scoped rifle).
+   **But a mesh is not an owner key**: `08.X` (ＲＰＧ) and `09.X` (ガトリング)
+   are generic props referenced by twelve different ids — see trap #23.
+3. **The eight ids that name no mesh at all are exactly the eight atlas
+   entries for a thrown, placed or bare-handed weapon**: 008 and 038
+   (fireworks sets), 017 (trap course), 023 (hyper arm), 024 and 040 (karate /
+   setsuna manuals), 031 (the god's world) and 010 (wave manual). 8 for 8 —
+   a weapon you never hold is a weapon with no `XFileName`.
+
+**What this corrects.** The first edition inferred *002 = Ōishi's 押収品倉庫*
+from 002's multi-gun contents (`ハンドガン` / `バズーカ` / `ガトリング`, five
+mesh slots). That is wrong twice over. 002 lives in `data/mion/00.dat`, so it
+is **Mion's コテ拳銃** — a Tokarev-pattern pistol whose charge "awakens" into
+the bazooka and gatling modes (`gageTextureName = mion_gage.bmp`) — and the
+real **039** is the junk pile (can, bucket, iron bar, stun gun), which is what
+押収品倉庫 means. Ōishi's three are 009 (Tokarev) / 023 (no held mesh) / 039
+(junk pile) = 愛用の拳銃 / ハイパーアーム / 押収品倉庫 in atlas order, and
+Mion's are 002 (handgun) / 004 (water gun) / 035 (water gun) =
+コテ拳銃 / 特注の水鉄砲 / 暴徒鎮圧放水銃.
+
+Two residual soft spots, stated rather than papered over: the **display
+names** for 041 (支援用発信機), 044 (授業用チョーク) and 025 (授業用コンパス)
+rest on the atlas alone — their meshes are shared or generic — and the mapping
+assumes the atlas's row order *is* the select order. That assumption is what
+the row-for-row corroboration above tests: for every character, `.dat` slot 0
+and slot 1 both land on the atlas rows the `.ini`/mesh strings describe, so
+the order is not in doubt; only the three atlas-only names above would move if
+it were.
+
+### 3.4 Reproducing the id mapping
+
+No exe disassembly is needed for the mapping itself — the ids are in the data:
+
+```python
+import struct, glob, os
+for char in ("rena","mion","keiichi","satoko","rika","shion","tomitake","takano",
+             "ohishi","akasaka","irie","chie","kasai","akane","hanyu","natumi"):
+    for f in sorted(glob.glob(f"Higurashi-Daybreak/data/{char}/*.dat")):
+        slot = int(os.path.basename(f)[:2])          # 0,1,2 = the weapon slot
+        wid  = struct.unpack_from("<I", open(f,"rb").read(), 0x114)[0]
+        print(f"{wid:03d} <- {char} slot {slot}")
+```
+
+* This reads the **tree** copy for convenience. The same field was read out of
+  **every bundle copy of these files** — 87 copies of the 46 `.dat`s across
+  `daybreak00.dat` (28), `daybreak04.dat` (46) and `daybreak07.dat` (13), via
+  the XOR-decoded entry tables as in `remake/tools/asset-tools/extract_dat.py`
+  — and matches the tree value in all 87. The character `.dat` *sizes* differ
+  between bundle and tree (§0.1); this field does not.
+* The `.dat` layout used: dword version (`4`) at 0, 260-byte model name at 4,
+  then at `0x108`/`0x10c`/`0x110`/`0x114`/`0x118`/`0x11c`/`0x120` the seven
+  dwords `FUN_0041e180` reads after seeking to `0x108`; `0x114` is the weapon
+  id and `0x120` is the count of the per-bone records that follow.
+* Mesh and texture names for an id come from `data/item/NNN.dat` (ASCII
+  strings: the gage `.bmp`, then `XFileName`/`TextureName` pairs), and the
+  meshes' own texture names from the `.X` files — uncompressed ones with a
+  `TextureFilename` regex, MSZIP ones (`xof 0303bzip0032`) via
+  `webgpu-mvp/tools/x2txt.py` (its `convert()` returns the text form; do not
+  edit `research/recomp/`, and do not run `generate_recomp.py`).
 
 ---
 
@@ -517,6 +792,13 @@ read before writing new code or docs.
 | 19 | `data/voice/` suffixes | `_B` like the model folders | voice uses **`data/voice/%s`** and **`data/voice/%sB`** (no underscore) in one path literal and `%s_B` / `%s_C` in others. The model folders use `_B`; the voice folders mostly do not. Two conventions for the same idea. | exe path literals |
 | 20 | `data/select/P01.cnv` | consistent casing | capital `P`, while `p02.cnv`, `p03.cnv` are lowercase. Third case inconsistency in the tree (with `ohishi_b` and `NN.x`/`NN.X`). | dir listing |
 | 21 | stages 1, 2 and 6 | three different places | all three reference the branch school's textures; scene 6 is the shrine looking **down over** the school and town (床板 / 町 / 雲上01), scenes 1 and 2 are the schoolyard and the paddies below it. Distinguishing them by "does it mention 校庭" does not work — see §1.3. | texture sets |
+| 22 | `data/item/NNN.ini` | "the weapon parameters the engine reads" | a **developer export**, not a runtime file: only 28 of the 46 ids ship one (001–028, tree *and* bundles), the engine opens only `NNN.dat`, and for **009 / 013 / 026 the `.ini`'s `XFileName` list is stale** against the shipped `.dat` (009: `04.x` vs `46.x`; 013: `08.x` vs `45.x`; 026: `07.x`/`08.x` vs `47.x`/`48.x`). Take meshes from the `.dat`, attack names from the `.ini`. | compared all 28 pairs: 25 agree, 3 do not |
+| 23 | a weapon's mesh, or `gageTextureName` | "this names the owner" | neither does. `08.X` (ＲＰＧ) and `09.X` (ガトリング) are **generic props referenced by twelve ids**, and the four gage textures are gauge *styles*. Reading 002's Tokarev/RPG/gatling contents as Ōishi's 押収品倉庫 is exactly this trap: 002 is Mion's コテ拳銃 and 039 (can / bucket / iron bar / stun gun) is the warehouse. Owner = the folder whose `<slot>.dat` carries the id. | §3.3 |
+| 24 | `data/select/cosNN.cnv` | "a costume icon; 16 files = 16 costumes" | one **3×2 chibi grid per character index**, one cell per costume slot in slot order, stored bottom-up (`-flip`). Unused slots are padded with a **byte-identical copy of cell 0** — measured: kasai 1 distinct cell, tomitake/ohishi/akasaka 2, irie/akane 3, chie/keiichi 4, hanyu/takano 5, six characters 6. Counting cells over-counts; the file index is the character, never a costume. | §2.6 |
+| 25 | exe byte table at VMA `0x6b71c0` (file `0x2b71c0`) | "the per-character costume count" | it is the **select screen's costume-cycle bound**: `0x4071a9`/`0x4071ee`/`0x40720e` divide the costume index (`pGameState + 0x2e80`) by `table[char]`, so the reachable indices are `0 … table-1`. The values are `[5,5,3,5,5,5,2,4,2,2,3,3,1,2,4,5]` — the shipped directory count **minus one** for 11 of 16 characters (so e.g. `rena_F` is unreachable through that cycle) and the full count for kasai/irie/akasaka/ohishi/tomitake. It agrees with neither the directories nor the atlas (which agree with each other). Do not use it as a costume count; see §6. | disassembly `0x40718a-0x407226`; §2.6 census |
+| 26 | `data/<char>/NN.dat` | "the NN-th weapon of this character" | `NN` is the **weapon slot** (0–2) chosen in the select screen, and the *item id* is a separate dword at `0x114`. Reading the index as the id asks for `data/item/000.dat`, which does not exist. | §2.3, §3.3 |
+| 27 | `data/<char>_B/00.dat` | "each costume folder carries its own descriptor" | costume folders carry **no `.dat` at all** (measured across all 67); the descriptor always comes from `data/<char>/NN.dat` and only the *model* is fetched from the costume folder. This is why `data/ohishi_b/` (lowercase) works despite having no `.dat`. | §2.4 |
+| 28 | `data/keiichi/ひぐらし目.psd`, `data/ohishi_b/服2.psd` | "an asset the game reads" | **Photoshop source files** that ship in the bundles and the tree. No exe path literal or data file references them. | bundle entry tables; literal scan |
 
 ---
 
@@ -576,15 +858,19 @@ char_index = 0..15   # the select-screen order; keys data/select/{NN,iNN,cosNN,w
                      # data/talk/cNN-*.cnv, data/win/NNa|b.cnv
 ```
 
-**Weapons** — `<owner>/weapon<slot>` with the Japanese name in the label:
+**Weapons** — `<owner>/weapon<slot>` with the Japanese name in the label, plus
+the `data/item/NNN.dat` id wherever a file has to be named:
 
 ```
-rena/weapon0   愛用の鉈          rena/weapon1   刃こぼれした斧
-irie/weapon0   入江特製医療セット  chie/weapon1   授業用コンパス
+rena/weapon0  = 001 愛用の鉈          rena/weapon1  = 003 刃こぼれした斧
+irie/weapon0  = 013 入江特製医療セット  chie/weapon1  = 025 授業用コンパス
+hanyu/weapon1 = 032 鬼狩柳桜
 ```
 
-(slot order = the select screen's ▲▼ order, §3.2; a two-weapon character has
-no `weapon2` — Hanyu and Natsumi only.)
+(slot order = the select screen's ▲▼ order = the character `.dat` index order,
+§3.2/§3.3; a two-weapon character has no `weapon2` — Hanyu and Natsumi only.
+Never key on the id's numeric order: it runs by weapon slot, not by character,
+so 001/002/003 are not one character's three weapons.)
 
 **Stage sub-models** — `submodel <i>` plus `alternate=true|false` for the
 `b` set; never call the `b` file "model NN b".
@@ -605,17 +891,18 @@ not repeat it.
 | 2 | The select screen's own labels for the sunset and night variations | The variation row exists and shows 昼 (`stage-select-school.webp`); no capture of the other values. Ruled out: no variation-name string anywhere in the data. |
 | 1 | Which `stageNN` the `stage-select-school.webp` print is actually showing | The print carries the name and the 昼 variation but **not** the id. `stage01` is the best fit (day variant; the full schoolyard set incl. `校舎影02` + `焼却炉05` + arena furniture, matching the print's school-building thumbnail), but scenes 2 and 6 also reference school textures, so the binding is inference, not read-off. |
 | 1 | The exact in-fiction split between scene 3 (`shrine_grounds`, offering box / curtain / red lanterns) and scene 6 (`shrine_upper`, floor boards / red roof / town below) | Both are the shrine complex with a shared texture vocabulary and distinct sets; the vantage reading of scene 6 is inferred from 床板/町/雲上01 plus the render, and `stage06`'s tree copy diverges from the bundle. |
-| 55 | Costume identity, 55 of 67 slot-directories | Only Rena and Satoko were rendered. Extrapolating letters across characters is disproved by those two (§2.4). |
-| 12 | Which `.dat` index (00/01/02) selects which `.X` variant, and what the variants are for | `FUN_0064ab30` passes per-slot exe bytes at `+0x5318`/`+0x532c`/`+0x5330`/`+0x5334` into `FUN_0041e180`; the writer of those arrays was not traced. Ruled out: LOD, pose and damage state — the variants have identical mesh/vertex counts and differ only by texture. |
-| 31 | Weapon `data/item/NNN.dat` id → (character, weapon slot), for 31 of 46 ids | No exe string table; numerical order disproved (id 002 ≠ Rena's 2nd weapon); `gageTextureName` disproved as an owner key (4 shared style names). Pinned ids are in §3.3. |
+| 4 | Costume rows identified but **provisional** — `data/chie_B` (nurse-style dark dress), `data/takano_C` (black beret + dark coat), `data/irie_C` (sports/cheer jersey), `data/tomitake_B` (green military-style uniform) | The render is unambiguous about the *garment* and its `cosNN.cnv` chibi cell agrees, but the label is ours and a second reading is defensible: chie_B's white cross armband could be a school-nurse or a matron dress; takano_C's coat could be a raincoat or a winter coat; irie_C's red jersey could be a cheer, baseball or PE top; tomitake_B's jacket could be a suit rather than a uniform. Recorded as seen rather than guessed — §2.6. |
+| 1 | Why the select screen's costume cycle cannot reach the **last** costume of 11 characters | The cycle bound is the exe byte table at `0x6b71c0` (read at `0x4071a9`/`0x4071ee`/`0x40720e` inside `FUN_00406850`), which is *shipped costume directories − 1* for rena, mion, keiichi, satoko, rika, shion, takano, chie, akane, hanyu and natumi (so `rena_F` is unreachable through it) and the full count for kasai, irie, akasaka, ohishi, tomitake. Either those last slots are reached another way (unlock, another menu) or the table is off by one in this build. The directories and `data/select/cosNN.cnv` agree with each other and are the authority for what *exists*; what the menu *offers* is unresolved. |
 | 4 | `data/camera/a01.X` (role), whether the `a` prefix is a variant flag, and the value of the config byte `stage+0x2c` that switches the `b` sub-model set | Only `"data/camera/01.x"` is referenced by an exe literal; the `b`-set flag byte is documented in `scene.h` from `FUN_004011f0` but I did not trace what writes it. |
 | 1 | Surname of 夏美 (index 15 / `data/natumi`) | Only the given name appears (texture `夏美髪の毛`, and no dialogue — index 15 has no `data/talk` portraits and no scenario lines). The folder name is the only romanisation source. |
 | 2 | The index ↔ folder link for indices **14** (`hanyu`) and **15** (`natumi`) | By elimination: 14 of the 16 indices are name-pinned and there are exactly 16 character folders, so the two left take the two remaining indices. Corroborated for 14 by the weapon semantics (神の世界 / 鬼狩柳桜) and for 15 by the given-name texture 夏美髪の毛, but **not** read off a shipped index+name pair. |
 | 1 | A **texture-based** identity check for the Sonozaki twins (unresolved as a method, not as an identity) | The twins' identities are settled by folder name, voice folder and twin-age dialogue (`D18`), but *not* by the textures: `mion/詩音髪の毛05.cnv` and `mion_B/魅音髪の毛05.cnv` are byte-identical (md5 `48fcd6cd…`), so no texture-name test can tell the folders apart. Do not try to re-derive it from textures. |
 
-**Total unresolved: 115 items**
-(5 + 2 + 1 + 1 + 55 + 12 + 31 + 4 + 1 + 2 + 1), dominated by the 55
-unidentified costume slots and the 31 unpinned weapon ids. No row in this
+**Total unresolved: 22 items**
+(5 + 2 + 1 + 1 + 4 + 1 + 4 + 1 + 2 + 1). The two families that dominated the
+first edition are **closed**: the 55 unidentified costume slots (§2.6) and the
+31 unpinned weapon ids (§3.3), plus the `.dat` variant question — the index is
+the weapon slot (§2.3). What is left is small and specific. No row in this
 document is filled in from plausibility.
 
 ---
@@ -648,14 +935,46 @@ So the next agent can re-run instead of re-deriving:
   the exe `.text` is useless — executable code decodes to kanji; do not
   repeat it.
 * **Render-and-look.** One headless frame per stage (`--stage=`), one per
-  costume slot (`--character=<install>/data/<name>:<N>`), plus the
+  costume slot (`--character=<install>/data/<name>:<N>`, N = 0…5 — the *base*
+  directory plus the ordinal; an already-suffixed directory loads nothing),
+  one per weapon mesh (`--model=<install>/data/item/NN.X`), plus the
   `data/select` and `data/object` icons converted with
   `remake/tools/asset-tools/cnv_convert.py` and viewed. All 13 stages, all 16
-  index portraits, weapon/costume icon sheets, 6 Rena slots, 6 Satoko slots.
+  index portraits, weapon/costume icon sheets, **all 67 costume slots** (a
+  chibi-cell ↔ render comparison per character), and the 18 weapon meshes whose
+  own names were not decisive.
+* **The costume-icon atlas as a second source.** `data/select/cosNN.cnv` is a
+  256×256, 3×2 chibi grid per character index, one cell per costume slot,
+  stored bottom-up. Convert with `cnv_convert.py`, `-flip`, split into six
+  cells, and compare the cells **after normalising each figure to its own ink
+  bounding box** — a raw pixel diff between cells reports large differences for
+  identical figures that sit at different offsets in their cell. Unused slots
+  are byte-identical to cell 0, which is how the per-character costume count is
+  read off the atlas. Cross-checked against the §2.4 directory census: 16/16
+  characters agree.
+* **The exe as a data source.** `objdump -d Higurashi-Daybreak/DaybreakDX.exe`
+  (VMA → file offset = `vma − 0x400000`, `.data` at VMA 0x6b7000) is what
+  resolved the item-id chain: the scene object is the global `0x6ca820`, its
+  weapon-slot array is `0x6cfb38[4]` (`obj+0x5318`), filled from
+  `pGameState + 0x2e60` in `LoadNextScene` (`0x4066c8`), while the costume
+  selector is `pGameState + 0x2e80` → `obj+0x532c` (`0x4066f6`). Static tables
+  worth dumping again: `0x6b710c` (team composition per scenario),
+  `0x6b71c0` (costume-cycle bound), `0x6b7100` (scenario → `teamNN.dat`).
+* **The character `.dat` as a key–value file.** dword `4` at 0, 260-byte model
+  name at 4, then seven dwords at `0x108…0x120` (weapon id at `0x114`) and a
+  per-bone record array whose count is at `0x120`. Read the same field from the
+  bundle copies to confirm the tree copy is not a variant — §3.4 has the code.
+* **The item `.dat` / `.X` pair as an identity oracle.** `data/item/NNN.dat`
+  holds ASCII `XFileName`/`TextureName` pairs; the meshes those name carry
+  their own `Material` names and `TextureFilename` strings (M870012.bmp,
+  `tompson`, mp5.bmp, ドラグノフ, 鎌, 包丁, 鬼狩, …). This is the second,
+  independent source in §3.3 — and the place where "a mesh names the owner"
+  was disproved (trap #23).
 * **Select-screen text atlases.** `data/select/wNN.cnv` are 512×512 text
   atlases drawn bottom-up; convert, `-flip`, crop the text band and upscale
   (~3–4×) to read. This is the source of §3.2 and of the weapon-blurb check
   against `weapon-select-rena.webp`.
+
 * **Dialogue as an identity oracle.** `data/scenario/D*-*.txt` are CP932
   plain text with `character cNN-M.bmp` + `front N` + a line. Cross-indexing
   names mentioned against speaker indices, plus self-introductions
@@ -669,5 +988,11 @@ So the next agent can re-run instead of re-deriving:
 ### Not copied, not modified
 
 No game asset bytes, screenshots or extracted files were added to the repo.
-No repo file was modified other than the creation of this document.
-`remake/src/file_parser/x_model_loader.cpp` was not touched.
+Scratch work for the pass that closed §2.6 and §3.3 (renders, montages, bundle
+reads, item-mesh conversions) stayed under `/tmp`; the only derived files
+inside the install are the `.bmp`s that `cnv_convert.py` writes next to the
+`data/select` `.cnv`s, which §7 of the first edition already documents. This
+document is the only repo file that pass changed; the stage/character work of
+the first edition is untouched. `remake/src/file_parser/x_model_loader.cpp`
+was not touched, no `research/` file was touched, and `generate_recomp.py` was
+not run.
