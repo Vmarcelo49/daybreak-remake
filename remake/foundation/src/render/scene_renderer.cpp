@@ -806,8 +806,8 @@ bool SceneRenderer::render(const Target& target, std::string& error) {
     return true;
 }
 
-bool SceneRenderer::capture(uint32_t size, std::vector<uint8_t>& rgba, std::string& error,
-                           UiHook uiHook, void* uiUserdata) {
+bool SceneRenderer::capture(uint32_t width, uint32_t height, std::vector<uint8_t>& rgba,
+                           std::string& error, UiHook uiHook, void* uiUserdata) {
     if (!device_) {
         error = "renderer not initialized";
         return false;
@@ -817,14 +817,14 @@ bool SceneRenderer::capture(uint32_t size, std::vector<uint8_t>& rgba, std::stri
     WGPUTextureDescriptor td = {};
     td.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc;
     td.dimension = WGPUTextureDimension_2D;
-    td.size = WGPUExtent3D{size, size, 1};
+    td.size = WGPUExtent3D{width, height, 1};
     td.format = WGPUTextureFormat_RGBA8Unorm;
     td.mipLevelCount = 1;
     td.sampleCount = 1;
     WGPUTexture colorTex = wgpuDeviceCreateTexture(device_, &td);
     WGPUTextureView colorView = colorTex ? wgpuTextureCreateView(colorTex, nullptr) : nullptr;
-    const uint32_t rowPitch = alignedRowPitch(size);
-    const uint64_t readbackBytes = (uint64_t)rowPitch * size;
+    const uint32_t rowPitch = alignedRowPitch(width);
+    const uint64_t readbackBytes = (uint64_t)rowPitch * height;
     WGPUBuffer readback = gpu::createBuffer(
         device_, readbackBytes, WGPUBufferUsage_MapRead | WGPUBufferUsage_CopyDst, nullptr);
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
@@ -834,20 +834,21 @@ bool SceneRenderer::capture(uint32_t size, std::vector<uint8_t>& rgba, std::stri
     target.encoder = encoder;
     target.colorView = colorView;
     target.format = WGPUTextureFormat_RGBA8Unorm;
-    target.width = target.height = size;
+    target.width = width;
+    target.height = height;
     if (ok) ok = render(target, error);
-    if (ok && uiHook) ok = uiHook(encoder, colorView, td.format, size, size, uiUserdata);
+    if (ok && uiHook) ok = uiHook(encoder, colorView, td.format, width, height, uiUserdata);
 
     std::vector<uint8_t> padded;
     if (ok) {
         WGPUTexelCopyBufferInfo dst = {};
         dst.buffer = readback;
         dst.layout.bytesPerRow = rowPitch;
-        dst.layout.rowsPerImage = size;
+        dst.layout.rowsPerImage = height;
         WGPUTexelCopyTextureInfo src = {};
         src.texture = colorTex;
         src.aspect = WGPUTextureAspect_All;
-        const WGPUExtent3D extent{size, size, 1};
+        const WGPUExtent3D extent{width, height, 1};
         wgpuCommandEncoderCopyTextureToBuffer(encoder, &src, &dst, &extent);
         WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(encoder, nullptr);
         wgpuQueueSubmit(queue_, 1, &cmd);
@@ -855,10 +856,10 @@ bool SceneRenderer::capture(uint32_t size, std::vector<uint8_t>& rgba, std::stri
         ok = gpu::readBuffer(instance_, readback, 0, readbackBytes, padded, error);
     }
     if (ok) {
-        rgba.assign((size_t)size * size * 4, 0);
-        for (uint32_t y = 0; y < size; ++y)
-            std::memcpy(rgba.data() + (size_t)y * size * 4, padded.data() + (size_t)y * rowPitch,
-                        (size_t)size * 4);
+        rgba.assign((size_t)width * height * 4, 0);
+        for (uint32_t y = 0; y < height; ++y)
+            std::memcpy(rgba.data() + (size_t)y * width * 4,
+                        padded.data() + (size_t)y * rowPitch, (size_t)width * 4);
     } else if (error.empty()) {
         error = "capture setup failed (texture, readback buffer or encoder)";
     }

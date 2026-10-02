@@ -21,6 +21,12 @@
 
 namespace render {
 
+// The depth format every extra pass must declare in its pipeline. WebGPU validates a
+// pipeline's depth format against the attachment view's and rejects the whole command
+// buffer on a mismatch, so this is not a preference: it is the format ensureDepth
+// creates, named once instead of guessed per pass.
+inline constexpr WGPUTextureFormat kSceneDepthFormat = WGPUTextureFormat_Depth24PlusStencil8;
+
 // Where a frame goes. One struct so a swapchain frame and an offscreen capture run
 // the same draw path; the format selects (and caches) the pipeline.
 struct Target {
@@ -105,11 +111,17 @@ public:
     // behavior, and existing captures byte-identical.
     using UiHook = bool (*)(WGPUCommandEncoder, WGPUTextureView, WGPUTextureFormat,
                             uint32_t, uint32_t, void* userdata);
-    // Renders size x size offscreen into an RGBA8Unorm texture and reads the pixels
+    // Renders width x height offscreen into an RGBA8Unorm texture and reads the pixels
     // back (RGBA8, tightly packed). Only verification needs this; the window path
-    // never calls it.
+    // never calls it. Non-square matters for verification: the DX9 reference frames
+    // are 800x600, and comparing them against a square capture would measure the
+    // aspect ratio rather than the renderer.
+    bool capture(uint32_t width, uint32_t height, std::vector<uint8_t>& rgba,
+                 std::string& error, UiHook uiHook = nullptr, void* uiUserdata = nullptr);
     bool capture(uint32_t size, std::vector<uint8_t>& rgba, std::string& error,
-                 UiHook uiHook = nullptr, void* uiUserdata = nullptr);
+                 UiHook uiHook = nullptr, void* uiUserdata = nullptr) {
+        return capture(size, size, rgba, error, uiHook, uiUserdata);
+    }
 
     const Stats& stats() const { return stats_; }
 

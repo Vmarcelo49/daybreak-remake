@@ -40,6 +40,7 @@
 #include "ui/sprite.h"
 #include "game/hud_bridge.h"
 #include "game/fighter_pose.h"
+#include "gameplay/arena_camera.h"
 #include "gameplay/match.h"
 #include "gameplay/hud_fill.h"
 #include "audio/audio.h"
@@ -75,7 +76,9 @@ struct Options {
 
     // Offscreen capture. Empty `out` means "draw into the window".
     std::string out;
-    int         size   = 512;
+    int         sizeW  = 512;   // --size=N (square) or --size=WxH
+    int         sizeH  = 512;   // the DX9 reference frames are 800x600, so the
+                                // offscreen capture has to do non-square
     int         frames = 0;        // 0 = until the window is closed
 
     // Animation: --anim selects a set on every model that has it, --time seeks to a
@@ -118,7 +121,9 @@ void usage() {
         "                       --character=<baseDir>/<name>[:costume] |\n"
         "                       --weapon=<dir or .x>[:slot] | --effect=<file.x]] [options]\n"
         "  --out=<file.ppm>   render offscreen and write a PPM (verification path)\n"
-        "  --size=N           offscreen size in pixels (default 512)\n"
+        "  --size=N|WxH       offscreen size in pixels (default 512; WxH for a\n"
+        "                     non-square frame, e.g. 800x600 to match a banked\n"
+        "                     DX9 reference frame)\n"
         "  --frames=N         stop after N frames (0 = until the window closes)\n"
         "  --camera=MODE      auto|player|front|top|bounds|arena\n"
         "                     (default auto: the stage's spawn point when env.dat\n"
@@ -172,7 +177,11 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--weapon=")).empty()) o.weapon = v;
         else if (!(v = val("--effect=")).empty()) o.effect = v;
         else if (!(v = val("--out=")).empty()) o.out = v;
-        else if (!(v = val("--size=")).empty()) o.size = std::atoi(v.c_str());
+        else if (!(v = val("--size=")).empty()) {
+            const size_t x = v.find('x');
+            o.sizeW = std::atoi(v.c_str());
+            o.sizeH = (x == std::string::npos) ? o.sizeW : std::atoi(v.c_str() + x + 1);
+        }
         else if (!(v = val("--frames=")).empty()) o.frames = std::atoi(v.c_str());
         else if (!(v = val("--anim=")).empty()) o.anim = std::atoi(v.c_str());
         else if (!(v = val("--time=")).empty()) o.time = (float)std::atof(v.c_str());
@@ -216,7 +225,8 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
             o.model = a;   // a bare path is a single .X, as in the reference tool
         }
     }
-    if (o.size < 16) o.size = 16;
+    if (o.sizeW < 16) o.sizeW = 16;
+    if (o.sizeH < 16) o.sizeH = 16;
     if (o.frames < 0) o.frames = 0;
     if (o.versus) {
         // Versus is a scripted capture vignette, not an exploration mode: it needs
@@ -452,6 +462,8 @@ struct App {
     render::SceneRenderer        renderer;
     render::DebugPrims           debugPrims;
     render::DebugLineBatch       debugLines;   // rebuilt per frame, capacity kept
+    render::CubeBatch            matchCubes{2048};
+    render::CubeBatch            auraCubes{64};   // additive, drawn in its own pass
     glm::vec3                    debugBoundsLo{0.f}, debugBoundsHi{0.f};
     bool                         haveDebugBounds = false;
     game::physics::CameraCollision cameraCollision;   // arena eye clamp, per stage
@@ -472,6 +484,8 @@ struct App {
     bool                         matchMode = false;
     uint64_t                     matchFrame = 0;      // 1-based, the DX9's frame_count+1
     int                          lockedFighter = 0;   // camera target; Guard+AttackB cycles
+    gameplay::ArenaCamera        matchCamera;         // the ported reference camera
+    gameplay::CameraTarget       arenaTargets[2];     // refreshed from the live fighters
     fnd::input::Backend          matchInput;          // P1 device + script override
     bool                         matchInputReady = false;
     fnd::input::PlayerState      p2State;             // P2 script state (unused when dummy)
@@ -844,6 +858,13 @@ static bool initMatch(App& app) {
     }
     app.matchMode = true;
     app.lockedFighter = 0;
+    // The camera starts pristine: eye (0,0,0), converging at 10% per update exactly
+    // like the reference's ArenaCamera (gameplay/arena_camera.cpp). That seed is what
+    // makes the first trace line comparable — the DX9's own frame-1 eye is one 10%
+    // step from the origin, not the converged position.
+    app.matchCamera = gameplay::ArenaCamera{};
+    app.matchCamera.set_target_pool({&app.arenaTargets[0], &app.arenaTargets[1]});
+    app.matchCamera.set_active_target(app.lockedFighter);
     return true;
 }
 
@@ -919,20 +940,27 @@ static void tickMatch(App& app, double dt) {
     }
     app.matchFxEvents += app.matchFx.drain().size();
 
-    // Camera: the locked fighter's live pose, with the reference's target switch
-    // (Guard just_pressed while AttackB is held, scenes.cpp:644-646).
-    if (p1) {
-        const bool switchNow = p1->just_pressed[fnd::input::Guard] && p1->down[fnd::input::AttackB];
-        if (switchNow) {
-            const int other = 1 - app.lockedFighter;
-            if (app.match.fighter(other).is_alive()) app.lockedFighter = other;
-        }
+    // Camera: the ported reference camera (gameplay/arena_camera.{h,cpp}), fed the
+    // live fighters. The target switch is the reference's (Guard just_pressed while
+    // AttackB is held, scenes.cpp:644-646) and the pool does the dead-skip itself.
+    for (int i = 0; i < 2; ++i) {
+        const gameplay::Fighter& f = app.match.fighter(i);
+        app.arenaTargets[i].position = f.position();
+        app.arenaTargets[i].facingYaw = f.facing_yaw();
+        app.arenaTargets[i].alive = f.is_alive();
     }
-    const game::FighterPose pose = app.match.fighter(app.lockedFighter).pose();
-    const render::ArenaFrame af = render::arenaViewProj(
-        game::arenaTargetFrom(pose), render::ArenaCameraParams{}, 16.f / 9.f);
-    app.target = af.aim;
-    app.arenaDesired = af.eye;
+    if (p1 && p1->just_pressed[fnd::input::Guard] && p1->down[fnd::input::AttackB])
+        app.matchCamera.cycle_target(true);
+    // No collision query: the DX9 match scene updates its camera with a null collision
+    // frame (scenes.cpp:729). The foundation's clamp stays one argument away —
+    // update(dt, {&app.cameraCollision}) — and is the original-fidelity path, not the
+    // parity one. The blend is per call by design (the reference ignores dt).
+    app.matchCamera.update(dt);
+    app.eye = app.matchCamera.eye();
+    app.target = app.matchCamera.target();
+    app.lockedFighter = app.matchCamera.active_target_index() < 0
+                            ? app.lockedFighter
+                            : app.matchCamera.active_target_index();
 
     // HUD: the ported value computation, fed from the live fighter (side 0, which is
     // the only side the DX9 layout draws outside the two balloon corners).
@@ -990,20 +1018,30 @@ static void traceMatch(App& app) {
                 b.position().z, gameplay::state_to_anim_name(b.state()));
 }
 
-// The DX9 side drew every shot and spark as an unlit cube (render::UnlitCubePass);
-// the foundation draws the same stand-in through the Phase 1 debug pass, from the
-// port's own per-cube data (Projectile::kCubeSize/color, Spark::size/color). Appends
-// to the caller's batch so the debug overlay can share the pass.
-static void appendMatchCubes(App& app) {
+// The DX9 side drew every shot, hit spark and hypermode aura as an unlit cube
+// (remake/src/render/debug_prim.cpp — a cube pass, not a line pass). The foundation
+// draws the same cubes from the port's own per-cube data: Projectile::kCubeSize/color
+// and Spark::size/color feed the opaque batch, Fighter::aura_* the additive one. That
+// keeps a banked reference frame and a foundation frame of the same case comparable
+// content-wise instead of differing by a wireframe. Rebuilt, never appended.
+static void fillMatchCubes(App& app) {
+    app.matchCubes.clear();
+    app.auraCubes.clear();
     for (const gameplay::Projectile& p : app.match.shots().shots()) {
         if (!p.alive) continue;
-        app.debugLines.box(p.pos - glm::vec3(gameplay::Projectile::kCubeSize),
-                           p.pos + glm::vec3(gameplay::Projectile::kCubeSize), p.color());
+        app.matchCubes.add(p.pos, gameplay::Projectile::kCubeSize, p.color());
     }
     for (const gameplay::Spark& s : app.match.shots().sparks()) {
         if (!s.alive) continue;
-        const float h = s.size() * 0.5f;
-        app.debugLines.box(s.pos - glm::vec3(h), s.pos + glm::vec3(h), s.color());
+        app.matchCubes.add(s.pos, s.size() * 0.5f, s.color());
+    }
+    // The aura is the reference render's second, additive cube pass, drawn in the
+    // fighter's own space: its local centre through the fighter's model matrix.
+    for (int i = 0; i < 2; ++i) {
+        const gameplay::Fighter& f = app.match.fighter(i);
+        if (!f.aura_active()) continue;
+        const glm::vec3 at = glm::vec3(f.modelMatrix() * glm::vec4(f.aura_center_local(), 1.f));
+        app.auraCubes.add(at, f.aura_radius(), f.aura_color());
     }
 }
 
@@ -1313,22 +1351,22 @@ bool initScene(App& app) {
 // background" test is the renderer's own clear colour, so coverage counts pixels the
 // scene actually reached.
 // ---------------------------------------------------------------------------------------
-void writePpm(const std::string& path, const std::vector<uint8_t>& rgba, int size) {
+void writePpm(const std::string& path, const std::vector<uint8_t>& rgba, int w, int h) {
     std::FILE* f = std::fopen(path.c_str(), "wb");
     if (!f) {
         std::fprintf(stderr, "cannot write %s\n", path.c_str());
         return;
     }
-    std::fprintf(f, "P6\n%d %d\n255\n", size, size);
-    for (int i = 0; i < size * size; ++i) std::fwrite(rgba.data() + i * 4, 1, 3, f);
+    std::fprintf(f, "P6\n%d %d\n255\n", w, h);
+    for (int i = 0; i < w * h; ++i) std::fwrite(rgba.data() + i * 4, 1, 3, f);
     std::fclose(f);
     std::printf("wrote %s\n", path.c_str());
 }
 
-void reportCoverage(const std::vector<uint8_t>& rgba, int size) {
+void reportCoverage(const std::vector<uint8_t>& rgba, int w, int h) {
     int covered = 0;
     float minLum = 1.f, maxLum = 0.f;
-    for (int i = 0; i < size * size; ++i) {
+    for (int i = 0; i < w * h; ++i) {
         const uint8_t* p = rgba.data() + i * 4;
         if (p[0] < 20 && p[1] < 22 && p[2] < 26) continue;   // clear colour
         const float lum = (0.2126f * p[0] + 0.7152f * p[1] + 0.0722f * p[2]) / 255.f;
@@ -1336,8 +1374,8 @@ void reportCoverage(const std::vector<uint8_t>& rgba, int size) {
         minLum = std::min(minLum, lum);
         maxLum = std::max(maxLum, lum);
     }
-    std::printf("coverage: %d px of %d (%.2f%%)  luminance %.3f..%.3f\n", covered, size * size,
-                100.0 * covered / (double)(size * size), minLum, maxLum);
+    std::printf("coverage: %d px of %d (%.2f%%)  luminance %.3f..%.3f\n", covered, w * h,
+                100.0 * covered / (double)(w * h), minLum, maxLum);
 }
 
 void report(App& app) {
@@ -1656,7 +1694,6 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
 struct HudTestHook {
     ui::SpriteRenderer* ui = nullptr;
     ui::HudComposer*    hud = nullptr;
-    uint32_t            size = 0;
     std::string*        error = nullptr;
     ui::HudState        state;
     bool                hasState = false;   // false -> syntheticHudState()
@@ -1709,6 +1746,8 @@ struct CaptureHook {
     HudTestHook*                  hud = nullptr;    // null -> no UI pass
     render::DebugPrims*           prims = nullptr;  // null -> no prims pass
     const render::DebugLineBatch* lines = nullptr;
+    const render::CubeBatch*      solid = nullptr;   // shots + sparks (opaque)
+    const render::CubeBatch*      additive = nullptr;   // hypermode auras
     glm::mat4                     viewProj{1.f};
     render::DebugPrims::Options   primOptions;
     std::string*                  error = nullptr;
@@ -1718,6 +1757,21 @@ bool captureHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat
                  uint32_t w, uint32_t h, void* ud) {
     auto* ck = static_cast<CaptureHook*>(ud);
     if (ck->hud && !hudTestHook(enc, view, format, w, h, ck->hud)) return false;
+    if (ck->solid && !ck->solid->empty()) {
+        const render::Target t{enc, view, format, w, h};
+        render::DebugPrims::Options o;   // depth-tested, the reference's opaque cube pass
+        if (!ck->prims->drawCubes(t, ck->viewProj, *ck->solid, ck->renderer->depthView(), o,
+                                  *ck->error))
+            return false;
+    }
+    if (ck->additive && !ck->additive->empty()) {
+        const render::Target t{enc, view, format, w, h};
+        render::DebugPrims::Options o;
+        o.additive = true;   // SrcAlpha/One, the aura pass's blend
+        if (!ck->prims->drawCubes(t, ck->viewProj, *ck->additive, ck->renderer->depthView(), o,
+                                  *ck->error))
+            return false;
+    }
     if (ck->prims && ck->lines && !ck->lines->empty()) {
         const render::Target target{enc, view, format, w, h};
         if (!ck->prims->draw(target, ck->viewProj, *ck->lines, ck->renderer->depthView(),
@@ -1762,9 +1816,11 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     }
 
     if (hasAsset(app->opts)) {
-        const uint32_t w = capturing ? (uint32_t)app->opts.size : app->sc.width;
-        const uint32_t h = capturing ? (uint32_t)app->opts.size : app->sc.height;
-        if (app->opts.camera == "arena") {
+        const uint32_t w = capturing ? (uint32_t)app->opts.sizeW : app->sc.width;
+        const uint32_t h = capturing ? (uint32_t)app->opts.sizeH : app->sc.height;
+        // Not in match mode: tickMatch already stepped the ported reference camera,
+        // and this block's spring would overwrite its eye with the demo's own framing.
+        if (app->opts.camera == "arena" && !app->matchMode) {
             // First frame seeds from the desired eye, so single-frame captures stay
             // exactly deterministic; longer runs converge through the dt-correct
             // spring instead of snapping.
@@ -1794,8 +1850,13 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         }
         // One matrix, built once and handed to both the scene pass and the prims pass:
         // the overlay is only correct if it is projected exactly like the frame under it.
-        const glm::mat4 vp = viewProj(app->eye, app->target, (float)w / (float)h,
-                                      app->cameraRadius, app->sceneReach);
+        // Match frames use the reference camera's own projection (fov pi/4, near 1,
+        // far 100000) and view, so a foundation frame and a banked DX9 frame of the
+        // same case differ by their content, not by their projection.
+        const glm::mat4 vp = app->matchMode
+            ? app->matchCamera.proj_matrix((int)w, (int)h) * app->matchCamera.view_matrix()
+            : viewProj(app->eye, app->target, (float)w / (float)h,
+                       app->cameraRadius, app->sceneReach);
         app->renderer.setCamera(vp);
         app->renderer.setEye(app->eye);
 
@@ -1803,8 +1864,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             // --out without --frames means one frame, so the last frame is always defined.
             if (app->frames >= (uint64_t)app->opts.frames) {
                 std::vector<uint8_t> rgba;
-                HudTestHook hook{&app->uiRenderer, &app->hudComposer,
-                                 (uint32_t)app->opts.size, &app->error};
+                HudTestHook hook{&app->uiRenderer, &app->hudComposer, &app->error};
                 if (app->versusMode || app->matchMode) {
                     hook.state = app->versusHud;
                     hook.hasState = true;
@@ -1821,17 +1881,22 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 if (app->opts.debugPrims || app->matchMode) {
                     if (app->opts.debugPrims) fillDebugLines(*app);
                     else app->debugLines.clear();
-                    if (app->matchMode) appendMatchCubes(*app);
+                    if (app->matchMode) fillMatchCubes(*app);
                     cap.prims = &app->debugPrims;
                     cap.lines = &app->debugLines;
+                    if (app->matchMode) {
+                        cap.solid = &app->matchCubes;
+                        cap.additive = &app->auraCubes;
+                    }
                 }
                 const bool useHook = useHud || cap.prims;
-                if (!app->renderer.capture((uint32_t)app->opts.size, rgba, app->error,
+                if (!app->renderer.capture((uint32_t)app->opts.sizeW,
+                                           (uint32_t)app->opts.sizeH, rgba, app->error,
                                            useHook ? captureHook : nullptr,
                                            useHook ? &cap : nullptr))
                     return SDL_APP_FAILURE;
-                reportCoverage(rgba, app->opts.size);
-                writePpm(app->opts.out, rgba, app->opts.size);
+                reportCoverage(rgba, app->opts.sizeW, app->opts.sizeH);
+                writePpm(app->opts.out, rgba, app->opts.sizeW, app->opts.sizeH);
                 if (app->opts.debugPrims) {
                     const render::DebugPrims::Stats& ds = app->debugPrims.stats();
                     std::printf("debug prims : %zu line(s), %zu vertices, %zu dropped, %zu pass(es)\n",
@@ -1885,7 +1950,26 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         if (app->opts.debugPrims || app->matchMode) {
             if (app->opts.debugPrims) fillDebugLines(*app);
             else app->debugLines.clear();
-            if (app->matchMode) appendMatchCubes(*app);
+            if (app->matchMode) fillMatchCubes(*app);
+            if (app->matchMode && !app->matchCubes.empty()) {
+                render::DebugPrims::Options cubeOptions;
+                if (!app->debugPrims.drawCubes(target, vp, app->matchCubes,
+                                               app->renderer.depthView(), cubeOptions,
+                                               app->error)) {
+                    gpu::endFrame(app->ctx, app->sc, frame);
+                    return SDL_APP_FAILURE;
+                }
+            }
+            if (app->matchMode && !app->auraCubes.empty()) {
+                render::DebugPrims::Options cubeOptions;
+                cubeOptions.additive = true;
+                if (!app->debugPrims.drawCubes(target, vp, app->auraCubes,
+                                               app->renderer.depthView(), cubeOptions,
+                                               app->error)) {
+                    gpu::endFrame(app->ctx, app->sc, frame);
+                    return SDL_APP_FAILURE;
+                }
+            }
             render::DebugPrims::Options primOptions;   // depth-tested: lines behind walls hide
             if (!app->debugPrims.draw(target, vp, app->debugLines, app->renderer.depthView(),
                                       primOptions, app->error)) {

@@ -126,6 +126,7 @@ target_link_libraries(foundation_physics PUBLIC foundation_assets glm)
 # here that reaches ui/ -> webgpu.h (through game/hud_bridge.h), which foundation_ui
 # supplies; the simulation half is std + glm + the ported raycast.
 add_library(foundation_gameplay STATIC
+    src/gameplay/arena_camera.cpp
     src/gameplay/fighter.cpp
     src/gameplay/projectile.cpp
     src/gameplay/match.cpp
@@ -186,6 +187,22 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(fighter_script_test PRIVATE src)
     target_link_libraries(fighter_script_test PRIVATE glm)
     add_test(NAME fighter_script_test COMMAND fighter_script_test)
+
+    # The arena camera: game state only (no device). Compiles the ported raycast in
+    # directly, like the two tests above; it builds its xm::Model fixtures by hand, so
+    # it must not link foundation_assets (which defines XMODEL_IMPLEMENTATION).
+    add_executable(arena_camera_test tests/arena_camera_test.cpp
+                   src/gameplay/arena_camera.cpp src/physics/raycast.cpp)
+    target_include_directories(arena_camera_test PRIVATE src)
+    target_link_libraries(arena_camera_test PRIVATE glm)
+    add_test(NAME arena_camera_test COMMAND arena_camera_test)
+
+    # The cube pass's geometry: device-free, like debug_prims_geometry. It defines both
+    # geometry-only guards, so it compiles the two headers without any WebGPU header.
+    add_executable(unlit_cube_geometry tests/unlit_cube_geometry.cpp)
+    target_include_directories(unlit_cube_geometry PRIVATE src)
+    target_link_libraries(unlit_cube_geometry PRIVATE glm)
+    add_test(NAME unlit_cube_geometry COMMAND unlit_cube_geometry)
 endif()
 
 if(EMSCRIPTEN)

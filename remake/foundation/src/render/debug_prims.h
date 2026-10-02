@@ -93,6 +93,63 @@ struct DebugVertex {
     DebugColor color = kWhite;
 };
 
+// A solid cube: 12 triangles, the DX9 pass's own vertex order (debug_prim.cpp:71-90),
+// which is what the game draws for every shot, hit spark and hypermode aura. Kept in
+// this header rather than a second pass class because it is the same pass in the DX9
+// source — same shader, same states, only the primitive topology differs.
+inline constexpr size_t kCubeVertices = 36;
+inline constexpr size_t kCubeTriangles = 12;
+
+// Half-extent `h`: the cube spans centre +/- h on every axis.
+inline void buildCube(const glm::vec3& c, float h, DebugColor color, DebugVertex* out) {
+    const float x0 = c.x - h, x1 = c.x + h;
+    const float y0 = c.y - h, y1 = c.y + h;
+    const float z0 = c.z - h, z1 = c.z + h;
+    const DebugVertex v[kCubeVertices] = {
+        {{x0, y0, z0}, color}, {{x0, y1, z0}, color}, {{x1, y1, z0}, color},
+        {{x0, y0, z0}, color}, {{x1, y1, z0}, color}, {{x1, y0, z0}, color},
+        {{x0, y0, z1}, color}, {{x1, y1, z1}, color}, {{x0, y1, z1}, color},
+        {{x0, y0, z1}, color}, {{x1, y0, z1}, color}, {{x1, y1, z1}, color},
+        {{x0, y0, z0}, color}, {{x0, y0, z1}, color}, {{x0, y1, z1}, color},
+        {{x0, y0, z0}, color}, {{x0, y1, z1}, color}, {{x0, y1, z0}, color},
+        {{x1, y0, z0}, color}, {{x1, y1, z1}, color}, {{x1, y0, z1}, color},
+        {{x1, y0, z0}, color}, {{x1, y1, z0}, color}, {{x1, y1, z1}, color},
+        {{x0, y1, z0}, color}, {{x0, y1, z1}, color}, {{x1, y1, z1}, color},
+        {{x0, y1, z0}, color}, {{x1, y1, z1}, color}, {{x1, y1, z0}, color},
+        {{x0, y0, z0}, color}, {{x1, y0, z1}, color}, {{x0, y0, z1}, color},
+        {{x0, y0, z0}, color}, {{x1, y0, z0}, color}, {{x1, y0, z1}, color},
+    };
+    for (size_t i = 0; i < kCubeVertices; ++i) out[i] = v[i];
+}
+
+// A frame's worth of cubes, in submission order: no sorting, no dedup, so two runs of
+// the same frame upload byte-identical buffers. `limit` is a constructor argument so
+// the drop path stays testable on the host.
+class CubeBatch {
+public:
+    explicit CubeBatch(size_t limit = 1024) : limit_(limit) {}
+    void clear() { verts_.clear(); dropped_ = 0; }
+    void add(const glm::vec3& center, float halfExtent, DebugColor color) {
+        if (verts_.size() + kCubeVertices > limit_) {
+            dropped_ += kCubeVertices;
+            return;
+        }
+        DebugVertex v[kCubeVertices];
+        buildCube(center, halfExtent, color, v);
+        verts_.insert(verts_.end(), v, v + kCubeVertices);
+    }
+    const std::vector<DebugVertex>& vertices() const { return verts_; }
+    size_t cubes() const { return verts_.size() / kCubeVertices; }
+    size_t droppedVertices() const { return dropped_; }
+    bool empty() const { return verts_.empty(); }
+    size_t limit() const { return limit_; }
+
+private:
+    std::vector<DebugVertex> verts_;
+    size_t                   limit_;
+    size_t                   dropped_ = 0;
+};
+
 // ---- vertex generation (device-free) -------------------------------------------------
 
 // Appends one segment: 2 vertices, `a` first.
@@ -262,7 +319,8 @@ public:
 
     struct Stats {
         size_t lines = 0;            // segments the last submission drew
-        size_t vertices = 0;         // == 2 * lines, after any trim
+        size_t cubes = 0;            // cubes the last drawCubes submission drew
+        size_t vertices = 0;         // == 2 * lines (or 36 * cubes), after any trim
         size_t droppedVertices = 0;  // trimmed by kMaxVertices, or reported by the batch
         size_t passes = 0;           // 1 when a pass was recorded, 0 when nothing was queued
     };
@@ -286,6 +344,9 @@ public:
               WGPUTextureView depthView, const Options&, std::string& error);
     bool draw(const Target&, const glm::mat4& viewProj, const DebugLineBatch&,
               WGPUTextureView depthView, const Options&, std::string& error);
+    // The DX9 pass's other half: solid cubes, same shader and states, triangle topology.
+    bool drawCubes(const Target&, const glm::mat4& viewProj, const CubeBatch&,
+                   WGPUTextureView depthView, const Options&, std::string& error);
 
     // Overlay convenience: no depth attachment, default Options (straight alpha). It
     // takes no Options on purpose — a caller that wants additive or the depth test has
@@ -312,11 +373,12 @@ private:
         WGPUTextureFormat  format = WGPUTextureFormat_Undefined;
         uint8_t            depthMode = kNoDepth;
         uint8_t            blend = 0;   // 0 = straight alpha, 1 = additive
+        uint8_t            topology = 0;   // 0 = line list, 1 = triangle list
         WGPURenderPipeline pipeline = nullptr;
     };
 
     WGPURenderPipeline pipelineFor(WGPUTextureFormat, uint8_t depthMode, uint8_t blend,
-                                   std::string& error);
+                                   uint8_t topology, std::string& error);
     bool               ensureVertexBuffer(uint64_t bytes, std::string& error);
 
     WGPUDevice device_ = nullptr;   // borrowed
