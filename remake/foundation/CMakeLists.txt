@@ -51,8 +51,13 @@ add_library(glm INTERFACE)
 target_include_directories(glm INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/glm")
 
 # The Daybreak asset layer: .X/.cnv decoding and scene assembly, unchanged from the
-# backend it was proved on.
-add_library(foundation_assets STATIC src/assets/assets.cpp)
+# backend it was proved on. dat_bundle/dat_crypto read the shipped daybreakXX.dat
+# archives, so an install can be used without extracting it (see docs/CJK-TEXT.md
+# for the sibling text decision and tests/dat_bundle_bytes.cpp for the parity proof).
+add_library(foundation_assets STATIC
+    src/assets/assets.cpp
+    src/assets/dat_bundle.cpp
+    src/assets/dat_crypto.cpp)
 target_include_directories(foundation_assets PUBLIC src/assets)
 target_link_libraries(foundation_assets PUBLIC glm)
 
@@ -70,7 +75,12 @@ endif()
 
 # The scene renderer is the one layer above gpu/ that also needs the asset layer: it
 # builds the pipelines raw WebGPU requires and consumes xm::Vertex / xm::DrawUniform.
-add_library(foundation_render STATIC src/render/scene_renderer.cpp)
+# debug_prims is its line-list sibling: a second pass over the same encoder, used to
+# annotate a frame (capture diagnostics), with a device-free geometry half the host
+# test below exercises.
+add_library(foundation_render STATIC
+    src/render/scene_renderer.cpp
+    src/render/debug_prims.cpp)
 target_link_libraries(foundation_render PUBLIC foundation foundation_assets)
 
 # The 2D/UI layer: sprite batch, bitmap font, HUD composition, diagnostics. Same
@@ -103,6 +113,35 @@ target_link_libraries(foundation_game PUBLIC foundation_ui glm)
 
 add_executable(foundation_demo src/main.cpp)
 target_link_libraries(foundation_demo PRIVATE foundation_render foundation_ui foundation_media foundation_game)
+
+# Host-side tests. Native-only on purpose: the Windows target is cross-compiled and
+# the web target cannot run a host binary, so neither can execute them, and building
+# them there would only add a target nothing runs. All three are device-free by design:
+# debug_prims_geometry compiles the renderer's geometry half without webgpu.h,
+# raycast_analytic needs only glm and real .X collision meshes, and dat_bundle_bytes
+# needs python3 plus a local install at run time (it skips itself without one).
+if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
+    enable_testing()
+
+    add_executable(debug_prims_geometry tests/debug_prims_geometry.cpp)
+    target_include_directories(debug_prims_geometry PRIVATE src)
+    target_link_libraries(debug_prims_geometry PRIVATE glm)
+    add_test(NAME debug_prims_geometry COMMAND debug_prims_geometry)
+
+    # Links only glm: the test defines XMODEL_IMPLEMENTATION itself (it loads real .X
+    # collision meshes), so foundation_assets would be a duplicate-definition error.
+    add_executable(raycast_analytic tests/raycast_analytic.cpp src/physics/raycast.cpp)
+    target_include_directories(raycast_analytic PRIVATE src)
+    target_link_libraries(raycast_analytic PRIVATE glm)
+    add_test(NAME raycast_analytic COMMAND raycast_analytic)
+
+    # Skips itself with a clear message when $GAME_DIR (or the default install) is
+    # absent, so the suite stays runnable on a checkout without the game data.
+    add_executable(dat_bundle_bytes tests/dat_bundle_bytes.cpp
+                   src/assets/dat_bundle.cpp src/assets/dat_crypto.cpp)
+    target_include_directories(dat_bundle_bytes PRIVATE src)
+    add_test(NAME dat_bundle_bytes COMMAND dat_bundle_bytes)
+endif()
 
 if(EMSCRIPTEN)
     set_target_properties(foundation_demo PROPERTIES SUFFIX ".html")

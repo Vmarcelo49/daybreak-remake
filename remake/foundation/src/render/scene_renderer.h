@@ -113,6 +113,13 @@ public:
 
     const Stats& stats() const { return stats_; }
 
+    // The depth attachment the last frame rendered into, so a later pass on the same
+    // encoder can depth-test against the scene instead of drawing over it (debug_prims
+    // is the caller). Owned here and valid until the next render()/capture(); the
+    // format is pinned to Depth24PlusStencil8, which such a pass must match, because
+    // WebGPU validates attachment formats rather than coercing them.
+    WGPUTextureView depthView() const { return depthView_; }
+
 private:
     struct DrawItem {
         WGPUBuffer vbuf = nullptr, ibuf = nullptr;   // borrowed; owned by buffers_

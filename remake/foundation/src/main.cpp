@@ -28,6 +28,7 @@
 #include "platform/surface.h"
 #include "platform/web_pack.h"
 #include "render/arena_camera.h"
+#include "render/debug_prims.h"
 #include "render/scene_renderer.h"
 #include "ui/hud.h"
 #include "ui/sprite.h"
@@ -50,6 +51,7 @@ struct Options {
     // triangle demo; an effect file may ride along with any of them.
     std::string model, stage, character, weapon, effect;
     bool        hudTest = false;   // composite a synthetic HUD into --out captures
+    bool        debugPrims = false; // draw the deterministic debug line overlay
     bool        audioTest = false; // run the audio backend self-check and exit
     std::string audioFile;       // with --audio-test: decode a real file too
     bool        inputTest = false; // run the input backend self-check and exit
@@ -112,6 +114,8 @@ void usage() {
         "  --list             print what was loaded and exit\n"
         "  --effect=<file.x>  load one card with the effect role (additive pass)\n"
         "  --hud-test         composite a synthetic HUD into --out captures\n"
+        "  --debug-prims      draw a deterministic debug line overlay (play-area box,\n"
+        "                     aim cross, desired-eye cross under --camera=arena)\n"
         "  --audio-test         run the audio backend self-check and exit\n"
         "  --audio-file=<path>  with --audio-test: decode a real file as well\n"
         "  --input-test         run the input backend self-check and exit\n"
@@ -149,6 +153,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--unlit") o.unlit = true;
         else if (a == "--list") o.list = true;
         else if (a == "--hud-test") o.hudTest = true;
+        else if (a == "--debug-prims") o.debugPrims = true;
         else if (a == "--audio-test") o.audioTest = true;
         else if (a == "--input-test") o.inputTest = true;
         else if (!(v = val("--enemy=")).empty()) o.enemy = v;
@@ -373,6 +378,10 @@ struct App {
     std::vector<std::vector<glm::mat4>> worlds;
     std::vector<glm::mat4>       modelMatrices;
     render::SceneRenderer        renderer;
+    render::DebugPrims           debugPrims;
+    render::DebugLineBatch       debugLines;   // rebuilt per frame, capacity kept
+    glm::vec3                    debugBoundsLo{0.f}, debugBoundsHi{0.f};
+    bool                         haveDebugBounds = false;
     ui::SpriteRenderer           uiRenderer;
     ui::HudComposer              hudComposer;
     bool                         uiReady = false;
@@ -811,6 +820,20 @@ bool initScene(App& app) {
     glm::vec3 slo(1e30f), shi(-1e30f);
     app.scene.bounds(slo, shi, /*playArea=*/false);
 
+    // The debug overlay's box: the play area when the stage declares one, because the
+    // full bounds include the sky dome and would frame the whole world. Kept here so
+    // the overlay is a pure function of loaded state, never of the clock.
+    glm::vec3 plo(1e30f), phi(-1e30f);
+    if (app.scene.bounds(plo, phi, /*playArea=*/true)) {
+        app.debugBoundsLo = plo;
+        app.debugBoundsHi = phi;
+        app.haveDebugBounds = true;
+    } else if (slo.x <= shi.x) {
+        app.debugBoundsLo = slo;
+        app.debugBoundsHi = shi;
+        app.haveDebugBounds = true;
+    }
+
     const bool haveSpawn = app.scene.env.present;
     const glm::vec3 spawnEye = haveSpawn ? app.scene.env.points[0] : glm::vec3(0.f);
     const std::string mode = app.opts.camera;
@@ -874,6 +897,8 @@ bool initScene(App& app) {
         if (!app.hudComposer.uploadFont(app.uiRenderer, app.error)) return false;
         app.uiReady = true;
     }
+
+    if (app.opts.debugPrims && !app.debugPrims.init(app.ctx, app.error)) return false;
 
     const render::Stats& st = app.renderer.stats();
     std::printf("scene %s: %zu model(s), %zu meshes, %zu vertices, %zu palette matrices\n",
@@ -946,6 +971,7 @@ void report(App& app) {
 void teardown(App& app) {
     if (app.versusAudioOn) app.versusAudio.close();
     if (app.uiReady) app.uiRenderer.shutdown();
+    app.debugPrims.shutdown();
     app.renderer.shutdown();
     if (app.bindGroup) wgpuBindGroupRelease(app.bindGroup);
     if (app.pipeline) wgpuRenderPipelineRelease(app.pipeline);
@@ -1234,6 +1260,56 @@ bool hudTestHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat
     return hk->ui->render(enc, view, format, *hk->error);
 }
 
+// The overlay's line set: a pure function of loaded state (bounds, aim, desired eye), so
+// two runs of the same frame upload identical bytes — no clock, no RNG, no container
+// iteration whose order could vary. render/debug_prims.h documents why captures care.
+//
+// The eye->aim ray is deliberately NOT drawn: the camera always looks at the aim (and
+// sits at the desired eye), so such a segment is edge-on and invisible. The arena mode
+// marks the desired eye with its own cross instead — the point the clamp and the
+// smoothing spring pull towards, and the one place a camera bug shows up.
+void fillDebugLines(App& app) {
+    app.debugLines.clear();
+    float cross = 40.f;
+    if (app.haveDebugBounds) {
+        app.debugLines.box(app.debugBoundsLo, app.debugBoundsHi, render::kYellow);
+        // Sized from the box so the cross reads at any framing distance: a fixed 40
+        // units is sub-pixel in a stage whose play area spans thousands.
+        cross = std::max(20.f, 0.015f * glm::length(app.debugBoundsHi - app.debugBoundsLo));
+    }
+    app.debugLines.cross(app.target, cross, render::kRed);
+    if (app.opts.camera == "arena")
+        app.debugLines.cross(app.arenaDesired, cross * 0.75f, render::kCyan);
+}
+
+// capture() owns its colour and depth textures and takes ONE hook, so the UI pass and
+// the prims pass share this one: HUD first (it is the frame's overlay), prims second.
+// Both preserve the frame they annotate (LoadOp_Load), so the order between them is
+// the only difference. The depth view is read inside the hook, never before it: the
+// scene pass creates it, and a capture-sized run has no earlier render to borrow from.
+struct CaptureHook {
+    render::SceneRenderer*        renderer = nullptr;
+    HudTestHook*                  hud = nullptr;    // null -> no UI pass
+    render::DebugPrims*           prims = nullptr;  // null -> no prims pass
+    const render::DebugLineBatch* lines = nullptr;
+    glm::mat4                     viewProj{1.f};
+    render::DebugPrims::Options   primOptions;
+    std::string*                  error = nullptr;
+};
+
+bool captureHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat format,
+                 uint32_t w, uint32_t h, void* ud) {
+    auto* ck = static_cast<CaptureHook*>(ud);
+    if (ck->hud && !hudTestHook(enc, view, format, w, h, ck->hud)) return false;
+    if (ck->prims && ck->lines && !ck->lines->empty()) {
+        const render::Target target{enc, view, format, w, h};
+        if (!ck->prims->draw(target, ck->viewProj, *ck->lines, ck->renderer->depthView(),
+                             ck->primOptions, *ck->error))
+            return false;
+    }
+    return true;
+}
+
 SDL_AppResult SDL_AppIterate(void* appstate) {
     auto* app = static_cast<App*>(appstate);
 
@@ -1279,8 +1355,11 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                                                 (float)stepDt, 0.1f);
             app->prevEye = app->eye;
         }
-        app->renderer.setCamera(viewProj(app->eye, app->target, (float)w / (float)h,
-                                        app->cameraRadius, app->sceneReach));
+        // One matrix, built once and handed to both the scene pass and the prims pass:
+        // the overlay is only correct if it is projected exactly like the frame under it.
+        const glm::mat4 vp = viewProj(app->eye, app->target, (float)w / (float)h,
+                                      app->cameraRadius, app->sceneReach);
+        app->renderer.setCamera(vp);
         app->renderer.setEye(app->eye);
 
         if (capturing) {
@@ -1294,12 +1373,28 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     hook.hasState = true;
                 }
                 const bool useHud = (app->opts.hudTest || app->versusMode) && app->uiReady;
+                CaptureHook cap;
+                cap.renderer = &app->renderer;
+                cap.error = &app->error;
+                cap.viewProj = vp;
+                if (useHud) cap.hud = &hook;
+                if (app->opts.debugPrims) {
+                    fillDebugLines(*app);
+                    cap.prims = &app->debugPrims;
+                    cap.lines = &app->debugLines;
+                }
+                const bool useHook = useHud || cap.prims;
                 if (!app->renderer.capture((uint32_t)app->opts.size, rgba, app->error,
-                                           useHud ? hudTestHook : nullptr,
-                                           useHud ? &hook : nullptr))
+                                           useHook ? captureHook : nullptr,
+                                           useHook ? &cap : nullptr))
                     return SDL_APP_FAILURE;
                 reportCoverage(rgba, app->opts.size);
                 writePpm(app->opts.out, rgba, app->opts.size);
+                if (app->opts.debugPrims) {
+                    const render::DebugPrims::Stats& ds = app->debugPrims.stats();
+                    std::printf("debug prims : %zu line(s), %zu vertices, %zu dropped, %zu pass(es)\n",
+                                ds.lines, ds.vertices, ds.droppedVertices, ds.passes);
+                }
                 if (app->versusMode) {
                     std::printf("versus: %llu frames, hp1=%.0f hp2=%.0f, bgm pushed %llu frames, %llu wraps, sfx plays %llu, fx events %llu\n",
                                 (unsigned long long)app->frames, (double)app->versusHud.hp, 100.0,
@@ -1328,6 +1423,15 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         if (!app->renderer.render(target, app->error)) {
             gpu::endFrame(app->ctx, app->sc, frame);
             return SDL_APP_FAILURE;
+        }
+        if (app->opts.debugPrims) {
+            fillDebugLines(*app);
+            render::DebugPrims::Options primOptions;   // depth-tested: lines behind walls hide
+            if (!app->debugPrims.draw(target, vp, app->debugLines, app->renderer.depthView(),
+                                      primOptions, app->error)) {
+                gpu::endFrame(app->ctx, app->sc, frame);
+                return SDL_APP_FAILURE;
+            }
         }
         if (!gpu::endFrame(app->ctx, app->sc, frame)) return SDL_APP_FAILURE;
     } else {
