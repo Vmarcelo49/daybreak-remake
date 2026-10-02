@@ -8,6 +8,13 @@
 // and anchors are transcribed from those call sites — see docs/UI-DESIGN.md
 // for the mapping — so a future wiring produces the same arrangement.
 //
+// Labels are drawn with the reference's own text metrics when the pinned font chain is
+// present (ui/text.h's loadFontChain): the DX9 HUD builds an Arial Bold 22 px cell with
+// D3DXCreateFontA and lays it out through GetCharWidth32A, and under the Wine stack
+// that banked the frames "Arial" resolves to Liberation Sans Bold. With no font file the
+// bitmap atlas draws them instead, byte for byte as before — a fetch failure must not
+// change a frame, and the currency of this HUD is frame parity.
+//
 // Split of duties: HudState is plain data the game fills per frame (no clock,
 // no device); computeHudLayout derives every rect from the live viewport size
 // (pure host-side, unit-tested); HudComposer turns the two into sprite/text
@@ -18,12 +25,21 @@
 
 #include "ui/font.h"
 #include "ui/sprite.h"
+#include "ui/text.h"
 
 namespace ui {
 
-// Text scale for HUD labels. The DX9 HUD font is 22 px high; the 7 px bitmap
-// at scale 3 is 21 px, the closest integer scale, keeping measurement exact.
+// Text scale for HUD labels on the bitmap fallback. The DX9 HUD font is 22 px high; the
+// 7 px bitmap at scale 3 is 21 px, the closest integer scale, keeping measurement exact.
+// The TrueType path draws at scale 1: ui/text.h's chain is loaded at the reference's own
+// design size, so its layout is already in viewport pixels.
 inline constexpr float kHudTextScale = 3.f;
+
+// Name under third_party/fonts/ of one link in the HUD's font chain.
+struct HudFontFiles {
+    const char* latin = "LiberationSans-Bold.ttf";
+    const char* cjk = "NotoSansCJKjp-Regular.otf";
+};
 
 // Surveyed DX9 HUD colours (D3DCOLOR_XRGB values from scenes.cpp).
 inline const UiColor kHudWhite = fromRgb8(255, 255, 255);
@@ -37,6 +53,8 @@ inline const UiColor kHudHyperIdleFill = fromRgb8(170, 170, 170);
 inline const UiColor kHudHyperReadyText = fromRgb8(255, 255, 120);
 inline const UiColor kHudStaminaFill = fromRgb8(255, 255, 255);
 inline const UiColor kHudKoText = fromRgb8(255, 60, 60);
+// scenes.cpp:829 draws a bare yellow "0" at (4, 4) with no state behind it.
+inline const UiColor kHudMarkerText = fromRgb8(255, 255, 0);
 // Charge-hold tier colours (§3.1 charge attacks): red/yellow tiers, grey below.
 inline const UiColor kHudTierRed = fromRgb8(255, 70, 50);
 inline const UiColor kHudTierYellow = fromRgb8(255, 230, 80);
@@ -75,6 +93,7 @@ struct HudRects {
     UiRect holdBar;
     UiRect hpText, hpBar;
     UiRect hyperText, hyperBar;
+    UiRect markerText;          // the unlabelled corner "0", scenes.cpp:829
     UiRect staminaText, staminaBar;
     float  koCenterX = 0.f;
     float  koY = 0.f;
@@ -95,9 +114,10 @@ class HudComposer {
 public:
     HudComposer() = default;
 
-    // Uploads the bitmap atlas once (cached); idempotent. Bars compose without
-    // it when upload fails — text is skipped, never fatal — which is also the
-    // asset-less fallback behaviour.
+    // Uploads the atlas the labels will be drawn from: the fetched font chain's if it
+    // loads, the bitmap atlas otherwise. Idempotent. Bars compose without either when
+    // the upload fails — text is skipped, never fatal — which is also the asset-less
+    // fallback behaviour.
     bool uploadFont(SpriteRenderer& batch, std::string& error);
     int  atlasTexture() const { return atlas_; }
 
@@ -108,8 +128,21 @@ public:
 
 private:
     void bar(SpriteRenderer& batch, const UiRect& r, float frac, UiColor fill);
+    // One label through whichever text path is live. See the header comment: the two
+    // produce the same arrangement from different metrics, and the bitmap one is what
+    // the HUD drew before the TrueType path existed.
+    void drawText(SpriteRenderer& batch, const char* text, float x, float y, UiColor color);
+    void drawTextCentered(SpriteRenderer& batch, const char* text, float centerX, float y,
+                          UiColor color);
+    // Uploads the chain's glyph atlas, growing in place. False leaves the previous
+    // upload alone and stops label drawing rather than sampling stale UVs.
+    bool refreshTextAtlas(SpriteRenderer& batch, std::string& error);
 
-    int atlas_ = -1;
+    int  atlas_ = -1;             // bitmap fallback; -1 when the chain is live
+    TextLayer text_;              // the reference's metrics, empty without a font
+    int       textAtlas_ = -1;
+    bool      textAtlasOk_ = true;
+    uint64_t  textAtlasRevision_ = 0;
 };
 
 }  // namespace ui

@@ -229,6 +229,14 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(text_test PRIVATE glm)
     add_test(NAME text_test COMMAND text_test)
 
+    # The HUD's text metrics against the banked DX9 frames: device-free (it rasterizes
+    # into host memory), it pins the reference's GDI advance table, the baseline offset
+    # and the rasterizer's placement, and it SKIPs without the fetched Latin face
+    # (scripts/fetch_deps.sh pins its sha256).
+    add_executable(hud_text_test tests/hud_text_test.cpp src/ui/text.cpp src/ui/font.cpp)
+    target_include_directories(hud_text_test PRIVATE src third_party/stb)
+    add_test(NAME hud_text_test COMMAND hud_text_test)
+
     # The cube pass's geometry: device-free, like debug_prims_geometry. It defines both
     # geometry-only guards, so it compiles the two headers without any WebGPU header.
     add_executable(unlit_cube_geometry tests/unlit_cube_geometry.cpp)

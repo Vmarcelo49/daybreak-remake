@@ -32,6 +32,17 @@
 // multiply per coordinate, so no floating-point accumulation can make two targets
 // disagree. loadFont() documents the rest of the determinism contract.
 //
+// Two metric modes, because the reference frames were rendered by GDI and GDI's
+// arithmetic is not stb_truetype's:
+//   loadFont()      — size the face by stb's "pixel height" (ascent..descent). Generic
+//                     TrueType metrics; advances stay fractional.
+//   loadFontChain() — size every face by the LOGFONT cell height the reference passes
+//                     to CreateFontIndirect, and reproduce what GDI then reports:
+//                     advances rounded to whole pixels (GetCharWidth32A) and the first
+//                     baseline at tmAscent - tmExternalLeading below the origin (where
+//                     D3DXFont's DrawText puts it). Measured against the banked DX9
+//                     frames in tests/hud_text_test.cpp.
+//
 // This header is GPU-free like ui/font.h: measurement, rasterization and atlas
 // generation are host-side code, unit-tested without a device. Uploading the atlas is
 // one SpriteRenderer::addTexture of atlasRGBA() (RGBA8, top-down, straight alpha,
@@ -152,6 +163,32 @@ struct TextLayout {
 };
 
 // ---------------------------------------------------------------------------
+// Font chain
+// ---------------------------------------------------------------------------
+
+// One face of a fallback chain: the font bytes plus the LOGFONT cell height
+// (lfHeight) the reference asked CreateFontIndirect for. `cellHeightPx` is what fixes
+// the em — em = cellHeight * unitsPerEm / (ascent - descent), rounded — so it is an
+// input to the metrics, not a cosmetic size.
+struct FontFace {
+    std::vector<uint8_t> bytes;
+    float                cellHeightPx = 22.f;
+};
+
+// TrueType/OpenType faces the layer can draw, searched in order: the first face whose
+// cmap has a code point supplies its glyph and advance. That is the port's stand-in
+// for GDI font linking, where one logical font is backed by several faces and a
+// character the primary lacks is served by the linked one.
+using FontChain = std::vector<FontFace>;
+
+// Repo-relative directories holding the fetched fonts (scripts/fetch_deps.sh writes
+// them under the foundation's third_party/fonts/), nullptr-terminated. One list, so the
+// HUD and the tests cannot disagree about where a pinned font lives; the callers decide
+// what to resolve them against (the HUD uses the working directory, the tests also walk
+// up from argv[0]). Nothing here is committed.
+const char* const* fontSearchRoots();
+
+// ---------------------------------------------------------------------------
 // Glyph cache + dynamic atlas
 // ---------------------------------------------------------------------------
 
@@ -174,7 +211,8 @@ public:
     // copy). `pixelHeight` is the design size in whole texels — the size glyphs are
     // rasterized at, and the unit the caller's scale multiplies: load at 21 and draw at
     // scale 1 to match the HUD's 21 px bitmap text at scale 3, or load at 7 and draw at
-    // scale 3. Integer design sizes keep the metric math exact.
+    // scale 3. Integer design sizes keep the metric math exact. This is the single-face
+    // generic-TrueType mode; loadFontChain() is the reference's.
     //
     // Determinism contract, per docs/CJK-TEXT.md §4 (Linux == Windows == web):
     //   * metrics: hmtx/hhea values are integers; advance64 = round(v * px * 64 / em)
@@ -196,10 +234,27 @@ public:
     // The bytes are trusted input: stb_truetype does no range checking on malformed
     // fonts (its own banner says so), so verify the pinned hash at fetch time.
     bool loadFont(std::vector<uint8_t> fontData, float pixelHeight, std::string& error);
+
+    // The reference's metric mode (see the header comment). Every face is sized from
+    // its own cell height, advances are whole pixels exactly as GetCharWidth32A reports
+    // them, and the first baseline sits at the primary face's tmAscent minus its
+    // tmExternalLeading — where the DX9 HUD's DrawText lands. The atlas is rasterized
+    // from the same bytes either way; only the metric arithmetic differs.
+    //
+    // An empty chain, an unparsable face, or one with no usable vertical metrics fails
+    // the call and leaves the layer bitmap-only, so the no-font contract below is the
+    // single fallback for every failure.
+    bool loadFontChain(const FontChain& chain, std::string& error);
+
     void unloadFont();
-    bool fontLoaded() const { return fontLoaded_; }
-    const char* mode() const { return fontLoaded_ ? "truetype" : "bitmap-only"; }
+    bool fontLoaded() const { return !faces_.empty(); }
+    const char* mode() const { return fontLoaded() ? "truetype" : "bitmap-only"; }
+    // The design size in whole texels the layer rasterizes at: loadFont's pixel height,
+    // or the em loadFontChain derived from the cell height.
     float pixelHeight() const { return (float)designPx_; }
+    size_t faceCount() const { return faces_.size(); }
+    // Font units per em of the face that supplies `cp`, or 0 when no face does.
+    int faceUnitsPerEm(uint32_t cp) const;
 
     // ASCII from the font (default) or from the bitmap atlas. The switch exists to land
     // one CJK label without re-rasterizing every verified Latin HUD label in the same
@@ -244,6 +299,15 @@ public:
     size_t atlasFullDrops() const { return atlasFullDrops_; }
 
 private:
+    // 1/64 px per font unit, carried as the exact rational num/den: the scale is an
+    // integer ratio, so no target can disagree about a glyph's advance.
+    struct Face {
+        std::vector<uint8_t> data;
+        void*                info = nullptr;   // stbtt_fontinfo*, allocated on load
+        int32_t              scaleNum = 0;
+        int32_t              scaleDen = 1;
+    };
+
     struct Resolved {
         int32_t     advance64 = 0;
         int         x0 = 0, y0 = 0, w = 0, h = 0;
@@ -257,18 +321,24 @@ private:
     bool placeTile(int w, int h, int& tileX, int& tileY);
     void growAtlas();
     void resetAtlas();
-    int32_t unitsToFixed64(int v) const;
+    // Clears every face and resets the layer to the bitmap-only metric state.
+    void clearFaces();
+    // Parses and appends one face; the caller sets the metric scale.
+    bool addFace(std::vector<uint8_t> bytes, std::string& error);
+    // First face whose cmap covers `cp`, or nullptr. The chain order is the fallback
+    // order, and it is fixed once loaded, so a glyph cached under `cp` stays valid.
+    const Face* faceFor(uint32_t cp) const;
 
-    std::vector<uint8_t> fontData_;
-    bool                 fontLoaded_ = false;
-    bool                 fontAscii_ = true;   // ASCII: font when loaded, else bitmap
-    int                  designPx_ = 0;
-    int                  ascent_ = 0, descent_ = 0, lineGap_ = 0, em_ = 0;
+    std::vector<Face> faces_;                 // chain order; [0] is the primary
+
+    bool fontAscii_ = true;   // ASCII: font when loaded, else bitmap
+    int  designPx_ = 0;
+    bool gdiMetrics_ = false;                 // whole-pixel advances (reference mode)
+    int32_t originOffset64_ = 0;              // per-quad x offset (reference placement)
     // Defaults are the no-font state, so a default-constructed layer already lays text
     // out like the bitmap font (line height 8, no ascent) before loadFont() is called.
-    int32_t              ascent64_ = 0;
-    int32_t              lineHeight64_ = kLineHeight * kFixedOne;
-    void*                font_ = nullptr;     // stbtt_fontinfo*, allocated on load
+    int32_t ascent64_ = 0;
+    int32_t lineHeight64_ = kLineHeight * kFixedOne;
 
     std::map<uint32_t, GlyphInfo> cache_;     // ordered: a deterministic dump order
 

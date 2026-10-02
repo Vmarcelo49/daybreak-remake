@@ -70,6 +70,11 @@ void check(bool cond, const std::string& what) {
     if (!cond) fail(what);
 }
 
+void checkEq(long long got, long long want, const std::string& what) {
+    check(got == want, what + " (expected " + std::to_string(want) + ", got " +
+                           std::to_string(got) + ")");
+}
+
 std::string f2s(float v) {
     char b[64];
     std::snprintf(b, sizeof b, "%.9g", (double)v);
@@ -919,6 +924,62 @@ int main(int argc, char** argv) {
         check(!ranges.loadFont({}, 21.f, rerr), "empty font data must be rejected");
         check(std::strcmp(ranges.mode(), "bitmap-only") == 0,
               "rejected loads must leave the layer bitmap-only");
+    }
+
+    // -------------------------------------------------- 6b. the reference's metric mode
+    // loadFontChain sizes a face from the LOGFONT cell height instead of stb's pixel
+    // height, then reproduces what GDI reports for it: whole-pixel advances and a
+    // baseline at tmAscent - tmExternalLeading. The HUD's Latin face and its exact
+    // advance table live in tests/hud_text_test.cpp; here the CJK face proves the mode
+    // itself, and a two-face chain proves the fallback across faces.
+    std::printf("\n== 6b. loadFontChain: GDI cell metrics and face fallback\n");
+    {
+        ui::TextLayer chainLayer;
+        std::string cerr2;
+        ui::FontChain one;
+        one.push_back(ui::FontFace{fontBytes, 22.f});
+        check(chainLayer.loadFontChain(one, cerr2), "a one-face chain must load: " + cerr2);
+        checkEq((int)chainLayer.pixelHeight(), 15,
+                "cell 22 over Noto CJK (1160+288 of 1000) is an em of 15 px");
+        checkEq(chainLayer.faceUnitsPerEm(0x9069 /* 適 */), 1000, "the CJK face's upem");
+        const ui::TextLayout cjk = chainLayer.layout("\xe9\x81\xa9");   // 適
+        check(cjk.items.size() == 1 && cjk.items[0].advance64 % ui::kFixedOne == 0,
+              "an advance in the reference mode is a whole pixel");
+        const ui::TextLayout latin = chainLayer.layout("A");
+        check(latin.items.size() == 1 && latin.items[0].advance64 % ui::kFixedOne == 0,
+              "ASCII in the reference mode is a whole pixel too");
+        std::printf("  cell 22 -> em %.0f px, 'A' advance %d units, CJK advance %d units\n",
+                    chainLayer.pixelHeight(), (int)latin.items[0].advance64,
+                    (int)cjk.items[0].advance64);
+
+        // GDI font linking, as a chain: the first face that has the code point supplies
+        // it. Checked against the Latin face when it is on disk (the HUD's face).
+        fs::path latinPath;
+        static const char* kLatinName = "LiberationSans-Bold.ttf";
+        for (const char* const* root = ui::fontSearchRoots(); root && *root; ++root) {
+            latinPath = findUpwards(fs::current_path(), fs::path(*root) / kLatinName);
+            if (!latinPath.empty()) break;
+        }
+        std::vector<uint8_t> latinBytes;
+        if (latinPath.empty() || !readFile(latinPath, latinBytes)) {
+            std::printf("  (no Latin face on disk: chain fallback not checked)\n");
+        } else {
+            ui::TextLayer linked;
+            ui::FontChain both;
+            both.push_back(ui::FontFace{latinBytes, 22.f});
+            both.push_back(ui::FontFace{fontBytes, 22.f});
+            check(linked.loadFontChain(both, cerr2), "the two-face chain must load: " + cerr2);
+            checkEq(linked.faceCount(), 2, "two faces");
+            checkEq(linked.faceUnitsPerEm('A'), 2048, "'A' must come from the Latin face");
+            checkEq(linked.faceUnitsPerEm(0x9069), 1000, "CJK must come from the CJK face");
+            const ui::TextLayout mixed = linked.layout("HP \xe9\x81\xa9");
+            check(mixed.items.size() == 4, "HP + CJK is four items");
+            checkEq((int)mixed.items[0].advance64, 14 * ui::kFixedOne, "H from the Latin face");
+            checkEq((int)mixed.items[3].advance64, (int)cjk.items[0].advance64,
+                    "the CJK glyph keeps the CJK face's advance");
+            std::printf("  chain [Latin, CJK]: 'A' upem %d, CJK upem %d, \"HP 適\" width %d units\n",
+                        linked.faceUnitsPerEm('A'), linked.faceUnitsPerEm(0x9069), mixed.width64);
+        }
     }
 
     // ---------------------------------------------------------- 7. fallback parity

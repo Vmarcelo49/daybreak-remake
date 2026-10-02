@@ -284,6 +284,46 @@ echo "  note: the font is not committed; src/ui/text.h falls back to the ASCII a
 echo "        when it is absent, and tests/text_test.cpp SKIPs."
 
 # ----------------------------------------------------------------------------
+# 7c) HUD text: the Latin face the DX9 reference actually rendered with.
+#     The reference builds its HUD font with D3DXCreateFontA(device, 22, 0, FW_BOLD, ...,
+#     "Arial", ...) (remake/src/render/hud.cpp:18). Under the Wine prefix the visual suite
+#     runs in, fontconfig resolves "Arial" to Liberation Sans and FW_BOLD selects the Bold
+#     face, so that is the file the foundation's HUD has to reproduce: cell 22 -> em 20,
+#     and the integer advance table only comes out of em 20 (tests/hud_text_test.cpp pins
+#     it against the frames). The .deb below is the stablest direct URL for 2.1.5 — the
+#     pagure tarball stops at 2.00.1 and the GitHub release carries no binary asset.
+# ----------------------------------------------------------------------------
+LATIN_FONT="${CJK_DIR}/LiberationSans-Bold.ttf"
+LATIN_DEB_URL="https://deb.debian.org/debian/pool/main/f/fonts-liberation/fonts-liberation_2.1.5-3_all.deb"
+LATIN_DEB_SHA256="3d5c47480067b9615f6bf9b0eda6eefcab9d837af609827015445e8e759b5b8c"
+# sha256 of the TTF inside that .deb (upstream Liberation 2.1.5, SIL OFL 1.1).
+LATIN_SHA256="1b5f2da6f4cadce4c05b9ecebe3a6fcd374eb95ae443605e799f4c3287978939"
+if [[ ${FORCE} -eq 1 ]] && [[ -f "${LATIN_FONT}" ]]; then rm -f "${LATIN_FONT}"; fi
+if [[ ! -f "${LATIN_FONT}" ]]; then
+    command -v ar >/dev/null || die "ar (binutils) is needed to unpack the Liberation .deb"
+    log "fetching Liberation Sans Bold (OFL, the reference's Arial substitute)"
+    tmp="$(mktemp -d)"
+    curl -fL --retry 3 -o "${tmp}/lib.deb" "${LATIN_DEB_URL}" || die "Liberation download failed"
+    if command -v sha256sum >/dev/null 2>&1; then
+        actual="$(sha256sum "${tmp}/lib.deb" | cut -d' ' -f1)"
+        [[ "${actual}" == "${LATIN_DEB_SHA256}" ]] || die "Liberation .deb sha256 mismatch: expected ${LATIN_DEB_SHA256}, got ${actual}"
+    fi
+    ( cd "${tmp}" && ar x lib.deb data.tar.xz \
+      && tar xJf data.tar.xz ./usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf ) \
+        || die "unpacking the Liberation .deb failed"
+    mv "${tmp}/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" "${LATIN_FONT}"
+    rm -rf "${tmp}"
+else
+    ok "Liberation Sans Bold already present"
+fi
+if command -v sha256sum >/dev/null 2>&1; then
+    actual="$(sha256sum "${LATIN_FONT}" | cut -d' ' -f1)"
+    [[ "${actual}" == "${LATIN_SHA256}" ]] || die "Liberation font sha256 mismatch: expected ${LATIN_SHA256}, got ${actual}"
+    ok "latin font sha256 verified"
+fi
+ok "latin font: ${LATIN_FONT}"
+
+# ----------------------------------------------------------------------------
 # 8) Summary
 # ----------------------------------------------------------------------------
 echo

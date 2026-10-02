@@ -116,11 +116,7 @@ void SpriteRenderer::shutdown() {
     for (Pipeline& p : pipelines_)
         if (p.pipeline) wgpuRenderPipelineRelease(p.pipeline);
     pipelines_.clear();
-    for (Texture& t : textures_) {
-        if (t.group) wgpuBindGroupRelease(t.group);
-        if (t.view) wgpuTextureViewRelease(t.view);
-        if (t.tex) wgpuTextureRelease(t.tex);
-    }
+    for (Texture& t : textures_) destroyTexture(t);
     textures_.clear();
     if (vpGroup_) wgpuBindGroupRelease(vpGroup_);
     if (vpBuffer_) wgpuBufferRelease(vpBuffer_);
@@ -144,15 +140,37 @@ void SpriteRenderer::shutdown() {
 }
 
 int SpriteRenderer::addTexture(uint32_t w, uint32_t h, const void* rgba, std::string& error) {
+    Texture t;
+    if (!createTexture(t, w, h, rgba, error)) return -1;
+    textures_.push_back(t);
+    return (int)textures_.size() - 1;
+}
+
+bool SpriteRenderer::updateTexture(int slot, uint32_t w, uint32_t h, const void* rgba,
+                                   std::string& error) {
+    if (slot < 0 || (size_t)slot >= textures_.size()) {
+        error = "ui texture slot " + std::to_string(slot) + " does not exist";
+        return false;
+    }
+    // Build first, swap after: a failed upload must leave the old texture renderable
+    // rather than a null slot that the next frame would sample.
+    Texture t;
+    if (!createTexture(t, w, h, rgba, error)) return false;
+    destroyTexture(textures_[slot]);
+    textures_[slot] = t;
+    return true;
+}
+
+bool SpriteRenderer::createTexture(Texture& t, uint32_t w, uint32_t h, const void* rgba,
+                                   std::string& error) {
     if (!device_) {
         error = "sprite renderer not initialized";
-        return -1;
+        return false;
     }
     if (w == 0 || h == 0 || w > 8192 || h > 8192 || !rgba) {
         error = "texture dimensions out of range or null pixels";
-        return -1;
+        return false;
     }
-    Texture t;
     WGPUTextureDescriptor td = {};
     td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
     td.dimension = WGPUTextureDimension_2D;
@@ -173,9 +191,8 @@ int SpriteRenderer::addTexture(uint32_t w, uint32_t h, const void* rgba, std::st
     }
     if (!t.tex || !t.view) {
         error = "ui texture upload failed (device out of memory?)";
-        if (t.view) wgpuTextureViewRelease(t.view);
-        if (t.tex) wgpuTextureRelease(t.tex);
-        return -1;
+        destroyTexture(t);
+        return false;
     }
     WGPUBindGroupEntry entries[2] = {};
     entries[0].binding = 0;
@@ -189,21 +206,22 @@ int SpriteRenderer::addTexture(uint32_t w, uint32_t h, const void* rgba, std::st
     t.group = wgpuDeviceCreateBindGroup(device_, &bgDesc);
     if (!t.group) {
         error = "ui texture bind group creation failed";
-        wgpuTextureViewRelease(t.view);
-        wgpuTextureRelease(t.tex);
-        return -1;
+        destroyTexture(t);
+        return false;
     }
-    textures_.push_back(t);
-    return (int)textures_.size() - 1;
+    return true;
+}
+
+void SpriteRenderer::destroyTexture(Texture& t) {
+    if (t.group) wgpuBindGroupRelease(t.group);
+    if (t.view) wgpuTextureViewRelease(t.view);
+    if (t.tex) wgpuTextureRelease(t.tex);
+    t = Texture{};
 }
 
 void SpriteRenderer::clearTextures() {
     // Slot 0 is structural (solids sample it); anything above is scene content.
-    for (size_t i = 1; i < textures_.size(); ++i) {
-        if (textures_[i].group) wgpuBindGroupRelease(textures_[i].group);
-        if (textures_[i].view) wgpuTextureViewRelease(textures_[i].view);
-        if (textures_[i].tex) wgpuTextureRelease(textures_[i].tex);
-    }
+    for (size_t i = 1; i < textures_.size(); ++i) destroyTexture(textures_[i]);
     if (!textures_.empty()) textures_.resize(1);
 }
 
