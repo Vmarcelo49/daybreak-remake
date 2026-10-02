@@ -1030,6 +1030,44 @@ static void tickMatch(App& app, double dt) {
                            f1.state() == gameplay::FighterState::Guard ||
                            f1.state() == gameplay::FighterState::Jump;
     app.versusHud = gameplay::hudStateFor(app.match.economy(), hf);
+    // The composer is clock-free by design, so the frame counter the original's
+    // alternations and pulse read (FUN_00644150's `(frame % 0x1e) / 0xf` flash pair and the
+    // balloon popup's growth) is carried in the state instead of read from a clock.
+    app.versusHud.hudFrame = (int)app.matchFrame;
+    // The boxed tactics readout (P03's 128x64 cells: 0 適当, 1 格闘, 2 射撃, 3 集中,
+    // 4 各個, 5 後退). Cell 0 is 適当, which is what the original's own screen shows; the
+    // tactic system itself is not ported yet, so the default stance is the honest value
+    // rather than a guess at a state the simulation does not have.
+    app.versusHud.commandCell = 0;
+
+    // Per-fighter HUD: the original projects the fighter's own world point with its raw
+    // view-projection and draws the ring, the target's com bar and the alert marker from it
+    // (FUN_00643230 @0x643e38; `x = (clip.x/clip.w)*400 + 400`, `y = (-clip.y/clip.w)*300 +
+    // 300`). The camera is already updated above, so the matrices are this frame's.
+    {
+        // The same matrix the frame itself is drawn with (see the render path's
+        // `matchCamera.proj_matrix * matchCamera.view_matrix`), because the original's HUD
+        // projects through the D3D view/projection that is current for the frame.
+        const glm::mat4 hudVp =
+            app.matchCamera.proj_matrix(800, 600) * app.matchCamera.view_matrix();
+        for (int i = 0; i < 2; ++i) {
+            const gameplay::Fighter& f = app.match.fighter(i);
+            game::projectFighterHud(&hudVp[0][0], f.position().x, f.position().y,
+                                    f.position().z, app.versusHud.fighters[i]);
+            // The ring and the com bar mark the fighter you are *not* following: the
+            // original's own screen battle-hud.webp has the camera behind the player with
+            // the red ring and the `com` tag on the opponent ahead of her. The camera's
+            // locked target is the one being followed, so this is the inverse of it.
+            app.versusHud.fighters[i].target = (i != app.lockedFighter);
+            // Slot 0 is 1P and slot 4 is com in the tag atlas (P01 (320,256,64,32) rows);
+            // the red copies sit four rows down, which is the tagSheet index.
+            app.versusHud.fighters[i].slot = (i == 0) ? 0 : 4;
+            app.versusHud.fighters[i].tagSheet = (i == 0) ? 0 : 1;
+            app.versusHud.fighters[i].hp = (float)f.hp() / 100.f;
+            app.versusHud.fighters[i].hpLag = app.versusHud.fighters[i].hp;
+            app.versusHud.fighters[i].alertDir = -1;
+        }
+    }
 
     if (f.roundOver) {
         app.matchRoundOverFrame = app.matchFrame;
@@ -1137,6 +1175,7 @@ static void tickVersus(App& app, uint64_t frame) {
     app.arenaDesired = af.eye;
 
     app.versusHud = game::makeHudState(timelineHud(frame, N));
+    app.versusHud.hudFrame = (int)frame;
 
     if (app.versusAudioOn)
         app.versusBgmPushed += app.versusLoop.push_next(app.versusAudio, 1024);

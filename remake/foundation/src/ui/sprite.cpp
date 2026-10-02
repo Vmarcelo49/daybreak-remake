@@ -3,6 +3,8 @@
 // gpu/ owns shader-module creation and buffer helpers (it tracks the header
 // spelling both backends accept); ui/ consumes them exactly as render/ does,
 // which keeps the backend choice a build decision rather than a code change.
+#include <cmath>
+
 #include "gpu/gpu.h"
 #include "shaders/ui_wgsl.h"
 
@@ -274,13 +276,20 @@ bool SpriteRenderer::textureSize(int texture, uint32_t& w, uint32_t& h) const {
 }
 
 bool SpriteRenderer::pushSprite(int texture, const UiRect& src, float pivotX, float pivotY,
-                                float x, float y, UiColor tint, const UiClip& clip) {
+                                float x, float y, float scale, float rotDeg, UiColor tint,
+                                const UiClip& clip) {
     uint32_t tw = 0, th = 0;
     if (src.w <= 0.f || src.h <= 0.f || !textureSize(texture, tw, th)) return false;
-    return pushTextured(texture, spriteDst(x, y, src.w, src.h, pivotX, pivotY),
-                        UiRect{src.x / (float)tw, src.y / (float)th, src.w / (float)tw,
-                               src.h / (float)th},
-                        tint, clip);
+    UiQuad q;
+    q.dst = spriteDst(x, y, src.w, src.h, pivotX, pivotY, scale);
+    q.uv = UiRect{src.x / (float)tw, src.y / (float)th, src.w / (float)tw, src.h / (float)th};
+    q.color = tint;
+    q.texture = texture;
+    q.clip = clip;
+    q.rotDeg = rotDeg;
+    q.rotCx = x;
+    q.rotCy = y;
+    return pushQuad(q);
 }
 
 bool SpriteRenderer::pushFill(int texture, const UiRect& src, float pivotX, float pivotY,
@@ -433,12 +442,25 @@ bool SpriteRenderer::render(WGPUCommandEncoder encoder, WGPUTextureView view,
         } else {
             runs.push_back(Run{slot, sx, sy, sw, sh, 0, 1});
         }
-        const float x0 = q.dst.x, y0 = q.dst.y, x1 = q.dst.x + q.dst.w, y1 = q.dst.y + q.dst.h;
         const float u0 = q.uv.x, v0 = q.uv.y, u1 = q.uv.x + q.uv.w, v1 = q.uv.y + q.uv.h;
-        verts.push_back(UiVertex{x0, y0, u0, v0, q.color.r, q.color.g, q.color.b, q.color.a});
-        verts.push_back(UiVertex{x1, y0, u1, v0, q.color.r, q.color.g, q.color.b, q.color.a});
-        verts.push_back(UiVertex{x0, y1, u0, v1, q.color.r, q.color.g, q.color.b, q.color.a});
-        verts.push_back(UiVertex{x1, y1, u1, v1, q.color.r, q.color.g, q.color.b, q.color.a});
+        // FUN_00655d60's rotation: the four corners turn about the draw anchor by
+        // sprite[0x8c] degrees, with y down — x' = (x-cx)cos - (y-cy)sin + cx — which
+        // is the pair its cos/sin helpers compute. Unrotated quads skip the trig.
+        float xs[4] = {q.dst.x, q.dst.x + q.dst.w, q.dst.x, q.dst.x + q.dst.w};
+        float ys[4] = {q.dst.y, q.dst.y, q.dst.y + q.dst.h, q.dst.y + q.dst.h};
+        if (q.rotDeg != 0.f) {
+            const float rad = q.rotDeg * 3.14159265358979323846f / 180.f;
+            const float cs = std::cos(rad), sn = std::sin(rad);
+            for (int k = 0; k < 4; ++k) {
+                const float dx = xs[k] - q.rotCx, dy = ys[k] - q.rotCy;
+                xs[k] = q.rotCx + dx * cs - dy * sn;
+                ys[k] = q.rotCy + dx * sn + dy * cs;
+            }
+        }
+        verts.push_back(UiVertex{xs[0], ys[0], u0, v0, q.color.r, q.color.g, q.color.b, q.color.a});
+        verts.push_back(UiVertex{xs[1], ys[1], u1, v0, q.color.r, q.color.g, q.color.b, q.color.a});
+        verts.push_back(UiVertex{xs[2], ys[2], u0, v1, q.color.r, q.color.g, q.color.b, q.color.a});
+        verts.push_back(UiVertex{xs[3], ys[3], u1, v1, q.color.r, q.color.g, q.color.b, q.color.a});
     }
     if (verts.empty()) return true;
     wgpuQueueWriteBuffer(queue_, vbuf_, 0, verts.data(), verts.size() * sizeof(UiVertex));

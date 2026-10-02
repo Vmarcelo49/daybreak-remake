@@ -24,6 +24,7 @@
 // GetCharWidth32A, and under the Wine stack that banked the frames "Arial"
 // resolves to Liberation Sans Bold. With no font file the bitmap atlas draws them
 // instead, byte for byte as before — a fetch failure must not change a frame.
+#include <cmath>
 #include <string>
 
 #include "ui/font.h"
@@ -64,6 +65,50 @@ inline const UiColor kHudTierRed = fromRgb8(255, 70, 50);
 inline const UiColor kHudTierYellow = fromRgb8(255, 230, 80);
 inline const UiColor kHudTierIdle = fromRgb8(120, 120, 120);
 
+// One fighter's per-fighter HUD (FUN_00643230 @0x00643230, plus the target-bar
+// drawer at 0x00643e38). The two anchors are the same world point projected twice:
+// the ring uses the fighter's position + 70 world units (FUN_00643230.c:52) and the
+// com bar + 150 (:173), and the bar's y then drops another 32 px (0x6acf48). The
+// original divides by the transformed w — D3DXVec4Transform leaves w = 1 for its
+// affine matrix, so the divide is invisible there — and maps to
+// (x*400 + 400, -y*300 + 300) (FUN_00643230.c:56-58). game/hud_bridge.h's
+// projectFighterHud() is the port's version of that arithmetic.
+struct HudFighterHud {
+    float ringX = 0.f, ringY = 0.f;   // projected point of position + 70 units
+    float barX = 0.f, barY = 0.f;     // projected point of position + 150 units, -32 px
+    float ringDeg = 0.f;              // 9 * hud+0x30c (FUN_00643230 @0x64344d); frame/2 is added
+    bool  visible = false;            // in front of the camera (the original's clip.w > 0)
+    bool  target = false;             // the locked target: red ring + its com bar
+    int   slot = 0;                   // 0..4 -> 1P/2P/3P/4P/com tag cell (0x643a93)
+    int   tagSheet = 0;               // 0 blue rows, 1 red rows (0x64408c)
+    float hp = 1.f;                   // 0..1, hud+0x7a4 / 10000: the live com-bar fill
+    float hpLag = 1.f;                // 0..1, hud+0x7a8 / 10000: the ghost under it
+    int   alertDir = -1;              // -1 none, else 0 top 1 bottom 2 left 3 right (0x643722)
+};
+
+// The world lifts FUN_00643230 projects its two per-fighter anchors at (FUN_00643230.c:52
+// and :173) and the screen drop it applies to the com bar afterwards (0x6acf48 = 32.0f).
+// game/hud_bridge.h's projectFighterHud() is the arithmetic that uses them.
+inline constexpr float kHudRingLift = 70.f;
+inline constexpr float kHudBarLift = 150.f;
+inline constexpr float kHudBarDrop = 32.f;
+
+// FUN_00643230's screen mapping on its own (FUN_00643230.c:58-59): a clip-space point
+// already divided by w maps to the 800x600 frame. Separate from the matrix multiply so
+// the mapping is unit-testable without a camera.
+inline void hudProjectClip(float ndcX, float ndcY, float& x, float& y) {
+    x = ndcX * 400.f + 400.f;
+    y = -ndcY * 300.f + 300.f;
+}
+
+// FUN_00644150 @0x644bb4-0x644bf2: a corner balloon's scale is
+// (pct*1.5 + 20 + sin(pulse*3 deg)*20) / 100 of its 192 px art — the sine is the
+// change pulse's wobble, so a resting balloon (pulse 0) is exactly (pct*1.5 + 20)/100.
+inline float hudBalloonScale(float pct, int pulse) {
+    const float wobble = std::sin((float)pulse * 3.f * 3.14159265358979323846f / 180.f) * 20.f;
+    return (pct * 1.5f + 20.f + wobble) / 100.f;
+}
+
 // Per-frame game state feeding the HUD. Fractions are 0..1 (clamped at draw).
 // The art composition draws from these fields too: hp, mainWhole/mainFrac,
 // chargeWhole/chargeFrac, the hold tier, and the hyper gauge/ready/active triple.
@@ -80,6 +125,7 @@ struct HudState {
     UiColor holdColor = kHudTierIdle;
     float hp = 100.f;                // 0..100
     std::string hyperName = "FRIENDSHIP";
+    int   hyperRow = 0;              // the caption row (0 OYASHIRO, 1 FRIENDSHIP, 2 KAKERA)
     float   hyperGauge = 0.f;
     bool    hyperActive = false;
     bool    hyperReady = false;      // full gauge, S activates
@@ -88,11 +134,25 @@ struct HudState {
     bool  staminaVisible = false;    // contextual: dash/guard/airborne only
     float staminaFrac = 0.f;
     bool  koVisible = false;         // elapsed < stingUntil in the DX9 path
+    // The original's frame counter (`*param_1`, the HUD object's first field) and the
+    // values its clock-driven elements read. The composer itself stays clock-free —
+    // it draws whatever these say — so the seam is explicit: the caller advances
+    // hudFrame once per HUD frame and owns the HP lag ramp.
+    int   hudFrame = 0;
+    float hpLag = 100.f;             // hud+0x7a8: the ghost fill's lagging percentage
+    int   commandCell = -1;          // hud+0x310: boxed tactics cell; < 0 hides it
+    float commandScale = 0.f;        // hud+0x314: extra scale, 0 draws at 1.0
+    // hud+0x78e0 / hud+0x78e8: a balloon corner's change popup. FUN_006431d0
+    // @0x6431d0 arms a 60-frame countdown and the value to show when a corner's value
+    // changes, FUN_006430f0 @0x6430f0 decrements it; the small green font draws it at
+    // (110, 30 + pulse/2) while it runs (0x644d5b). 0 means "no popup".
+    int   balloonPulse[2] = {0, 0};
+    int   balloonPulseValue[2] = {0, 0};
+    HudFighterHud fighters[2];       // FUN_00643230's per-fighter entries
 };
 
 // Every rect/position compose() needs, derived from the live viewport.
-struct HudRects {
-    UiRect balloonL, limitL;    // text origins (w/h unused, kept for uniformity)
+struct HudRects {    UiRect balloonL, limitL;    // text origins (w/h unused, kept for uniformity)
     UiRect balloonR, limitR;
     UiRect mainText, mainBar;
     UiRect chargeText, chargeBar;
@@ -135,14 +195,18 @@ public:
 
 private:
     void bar(SpriteRenderer& batch, const UiRect& r, float frac, UiColor fill);
-    // The original's composition, in FUN_00644150's own draw order: HP frame + fill,
-    // the fan gauge (frame, clipped gradient, MAX), MAIN frame + count + fill,
-    // CHARGE frame + count + fills. Elements whose atlas or state the port does not
-    // have yet — the balloon %/LIMIT readouts, the com bar and targeting brackets,
-    // STAMINA, the boxed tactics label, the round stings — are simply not drawn here;
-    // they land in the spec's priority order (BATTLE-HUD-SPEC.md §5 items 4-9).
+    // The original's composition, in FUN_00644150's own draw order: HP frame + ghost
+    // + live fill, the fan gauge (frame, clipped gradient, MAX, caption), STAMINA,
+    // the boxed command label, MAIN frame + count + fill, CHARGE frame + count +
+    // fills, then the two balloon corners. Elements whose atlas or state the port
+    // does not have are simply not drawn here; what is deliberately left out and why
+    // is recorded in the track's report, not silently mixed in.
     void composeBattle(SpriteRenderer& batch, const HudState& st);
-    // One-shot resolve + upload of P00/P01/P02. False (and a single stderr line)
+    // FUN_00643230 + the target-bar drawer at 0x00643e38: the targeting ring, the
+    // target's com bar (frame, lagging fill, live fill, 1P/2P/3P/com tag) and the
+    // P06 off-screen alert marker, all hung off one projected point per fighter.
+    void composeFighters(SpriteRenderer& batch, const HudState& st);
+    // One-shot resolve + upload of every HUD sheet. False (and a single stderr line)
     // leaves the text HUD in place, which is the documented asset-less behaviour.
     bool ensureBattleAtlas(SpriteRenderer& batch);
     // One label through whichever text path is live. See the header comment: the two

@@ -152,6 +152,12 @@ struct UiQuad {
     UiColor color{};
     int     texture = -1;   // -1 selects the 1x1 white fallback (solid quads)
     UiClip  clip{};
+    // FUN_00655d60 rotates the quad's corners about (x + sprite[0x23], y + sprite[0x24])
+    // by sprite[0x8c] degrees (FUN_006451f0 @0x6451f0), i.e. about the draw anchor for
+    // every HUD sprite (their [0x23]/[0x24] are zero). rotDeg == 0 keeps the axis-aligned
+    // fast path, which is every quad but the targeting ring.
+    float   rotDeg = 0.f;
+    float   rotCx = 0.f, rotCy = 0.f;
 };
 
 // GPU vertex: pixel position, UV, straight-alpha tint. Must match ui_wgsl.
@@ -201,12 +207,17 @@ public:
 
     // The original's sprite draw, in atlas pixels: FUN_00655b20 @0x655b20 stores
     // (srcX, srcY, srcW, srcH) and the pivot (params 7/8), FUN_00655d60 @0x655d60
-    // draws it at (x - pivotX, y - pivotY) at size srcW x srcH. A transcribed
-    // sprite table therefore drives this verbatim, with no UV arithmetic at the
-    // call site. False when the slot is not a live texture (nothing is pushed).
+    // draws it at (x - pivotX*scale, y - pivotY*scale) at size srcW*scale x srcH*scale.
+    // `scale` is FUN_00408250 @0x408250 (sprite+0x84/+0x88); `rotDeg` is FUN_006451f0
+    // @0x6451f0 (sprite+0x8c). A transcribed sprite table therefore drives this
+    // verbatim, with no UV arithmetic at the call site. False when the slot is not a
+    // live texture (nothing is pushed).
     bool pushSprite(int texture, const UiRect& src, float pivotX, float pivotY, float x, float y,
-                    UiColor tint = {}, const UiClip& clip = {});
-    // FUN_00645250 @0x645250: the same anchor, `frac` of the sub-rect drawn.
+                    float scale = 1.f, float rotDeg = 0.f, UiColor tint = {},
+                    const UiClip& clip = {});
+    // FUN_00645250 @0x645250: the same anchor, `frac` of the sub-rect drawn. Scale is
+    // fixed at 1: every HUD fill is drawn at the viewport scale (FUN_00645690's third
+    // argument is param_4, which is 1.0 in the single-player path).
     bool pushFill(int texture, const UiRect& src, float pivotX, float pivotY, float frac,
                   FillMode mode, float x, float y, UiColor tint = {}, const UiClip& clip = {});
 

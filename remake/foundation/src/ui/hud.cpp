@@ -58,6 +58,47 @@ bool loadHudChain(TextLayer& layer, const HudFontFiles& files, std::string& erro
     return layer.loadFontChain(chain, error);
 }
 
+// One balloon corner, both halves of FUN_00644150's loop over `side` (0 left, 1
+// right): the growing balloon sprite, the LIMIT label + its value at half scale, the
+// big white percentage readout with its '%' glyph, and — while the corner's change
+// pulse runs — the small green popup riding the balloon's top edge. The anchors are
+// the .rdata immediates 0x6a3298/0x6a4c8c (balloon x, 85/715), 0x6a2c70 (balloon y,
+// 140), 0x6a19b8/0x6a1c80 (label x, 70/700), 0x6a16e8 (readout x, 110) and
+// 0x6a4c88/0x6a4c90/0x6a4c84 (right/left LIMIT x, 740/138/768).
+void composeBalloonCorner(const HudAtlas& atlas, SpriteRenderer& batch, const HudState& st,
+                          int side) {
+    const float balloonX = side == 0 ? 85.f : 715.f;
+    const float labelX = side == 0 ? 70.f : 700.f;
+    const float readoutX = side == 0 ? 110.f : 740.f;
+    const float limitX = side == 0 ? 138.f : 768.f;
+    const float pct = st.balloon[side] < 0.f ? 0.f : st.balloon[side];
+    const int pulse = st.balloonPulse[side];
+    atlas.draw(batch, side == 0 ? HudIcon::BalloonLeft : HudIcon::BalloonRight, balloonX, 140.f,
+               hudBalloonScale(pct, pulse));
+    atlas.draw(batch, HudIcon::LimitLabel, labelX, 110.f);
+    atlas.number(batch, HudFont::BigWhite, (int)(pct + 0.5f), readoutX, 80.f);
+    atlas.glyph(batch, HudFont::BigWhite, 5, 1, readoutX, 78.f);   // '%', cell (5,1)
+    atlas.number(batch, HudFont::BigWhite, (int)(st.limit + 0.5f), limitX, 110.f, 0.5f);
+    atlas.glyph(batch, HudFont::BigWhite, 5, 1, limitX, 110.f, 0.5f);
+    // 0x644d5b: the popup exists only while the pulse runs, at (x, 30 + pulse/2) — it
+    // slides up as the pulse counts down. Small green font: digits 0..9, then
+    // '+'/'-'/'.'/'%' at cells 10..13, 28 px per step (32 + the font's -4 leading).
+    if (pulse > 0) {
+        const float y = 30.f + (float)pulse * 0.5f;
+        const int value = st.balloonPulseValue[side];
+        atlas.number(batch, HudFont::SmallGreen, value, readoutX, y);
+        // FUN_00431b50's sign cell: the popup's call passes flag 1 (0x644d93), which
+        // draws one more cell past the digits — the '+' for a positive value, the '-'
+        // for a negative one — where the next digit would have gone. FUN_00431ce0
+        // places a named cell four pixels left of its argument, hence the +4.
+        int digits = 1;
+        for (int v = value < 0 ? -value : value; v >= 10; v /= 10) ++digits;
+        atlas.glyph(batch, HudFont::SmallGreen, value < 0 ? 11 : 10, 0,
+                    readoutX - 28.f - 28.f * (float)digits + 4.f, y);
+        atlas.glyph(batch, HudFont::SmallGreen, 13, 0, readoutX, y);
+    }
+}
+
 }  // namespace
 
 HudRects computeHudLayout(int viewW, int viewH) {
@@ -236,34 +277,62 @@ void HudComposer::composeBattle(SpriteRenderer& batch, const HudState& st) {
     // @0x006396f0), which is why these are plain 800x600 pixels. The 2P path halves
     // them through FUN_00644150's param_4; the port's HUD is the 1P path.
     const UiColor white = kHudWhite;
+    const int frame = st.hudFrame;
 
-    // HP: frame 0x642632, then the live fill 0x64424e (slot 0) on top. FUN_00644150
-    // also draws a lagging "ghost" fill first (slot 2 = P02 (0,496,230,14), red)
-    // whose value is a separate lagging HP the port does not model; at 100% HP,
-    // which is what the reference frame shows, the two coincide exactly, so leaving
-    // it out changes no verified pixel.
-    battleAtlas_.draw(batch, HudIcon::HpFrame, 505.f, 565.f, white);
-    battleAtlas_.fill(batch, HudIcon::HpFill, st.hp / 100.f, 505.f, 565.f);
+    // HP: frame 0x6c7f60 @0x644187, the lagging ghost fill (hud+0x40c, P02 (0,496))
+    // at 0x6441cc, then the live fill. Below 2500/10000 (0x6441de) the live fill
+    // alternates its slot every 15 frames — slot 0 (P02 (0,480)) and slot 1
+    // (P02 (256,480), the pale ramp) — which is the original's low-HP flash.
+    battleAtlas_.draw(batch, HudIcon::HpFrame, 505.f, 565.f, 1.f, 0.f, white);
+    battleAtlas_.fill(batch, HudIcon::HpFillGhost, st.hpLag / 100.f, 505.f, 565.f);
+    const bool lowHp = st.hp < 25.f;
+    const bool flashOn = lowHp && ((frame % 0x1e) / 0xf) != 0;
+    battleAtlas_.fill(batch, flashOn ? HudIcon::HpFillPale : HudIcon::HpFill, st.hp / 100.f,
+                      505.f, 565.f);
 
     // OYASHIRO fan gauge: frame 0x64428d at (55,488), gradient fill through
     // FUN_00645690 (scale + FUN_00645250) at the same anchor, MAX label at (64,534)
-    // once charged (0x6443e6). The original picks the fill cell by hud+0x318 (team
-    // 0 here, FUN_00642c50 @0x00642cf8-0x642e5b) and alternates the charged pair on
-    // the frame counter; the composer has no clock, so the first of the pair is drawn.
-    battleAtlas_.draw(batch, HudIcon::FanFrame, 55.f, 488.f, white);
+    // once charged (0x6443e6), and the hypermode caption at (183,548) whose row is
+    // hud+0x318 (0x644859). The original picks the fill cell by hud+0x318 (team 0
+    // here, FUN_00642c50 @0x00642cf8-0x642e5b) and, while charged, alternates the
+    // pair on (frame % 0x1e) / 0xf (0x6446b0) — the same counter as the HP flash.
+    battleAtlas_.draw(batch, HudIcon::FanFrame, 55.f, 488.f, 1.f, 0.f, white);
     const float gauge = st.hyperGauge < 0.f ? 0.f : (st.hyperGauge > 1.f ? 1.f : st.hyperGauge);
-    battleAtlas_.fill(batch, st.hyperActive || st.hyperReady ? HudIcon::FanFillReady
-                                                             : HudIcon::FanFillCharging,
-                      gauge, 55.f, 488.f);
+    if (st.hyperActive || st.hyperReady) {
+        battleAtlas_.fill(batch, ((frame % 0x1e) / 0xf) != 0 ? HudIcon::FanFillReadyAlt
+                                                             : HudIcon::FanFillReady,
+                          gauge, 55.f, 488.f);
+    } else {
+        battleAtlas_.fill(batch, HudIcon::FanFillCharging, gauge, 55.f, 488.f);
+    }
     if (st.hyperReady && !st.hyperActive) battleAtlas_.draw(batch, HudIcon::MaxLabel, 64.f, 534.f);
+    battleAtlas_.cell(batch, HudIcon::FanCaption, 0, st.hyperRow, 183.f, 548.f, 1.f, 0.f, white);
+
+    // STAMINA: frame 0x6ca5a0 @0x64476d at (400,517) and the fill slot hud+0x4b8
+    // (P01 (320,0,107,6), pivot (53,3) — it grows right from the frame's centre).
+    // The original's gate is the fill's own value, hud+0x834 < 1000 (0x644758), i.e.
+    // the bar is shown exactly while stamina is not full.
+    if (st.staminaFrac < 1.f) {
+        battleAtlas_.draw(batch, HudIcon::StaminaFrame, 400.f, 517.f, 1.f, 0.f, white);
+        battleAtlas_.fill(batch, HudIcon::StaminaFill, st.staminaFrac, 400.f, 517.f);
+    }
+
+    // Boxed tactics/command label (0x6448ad): P03 (0,0,128,64) pivot (64,32), cell
+    // (v % 4, v / 4) of hud+0x310, at (216,520); hud+0x314 adds to the scale, and a
+    // negative cell index hides it (0x6447d7).
+    if (st.commandCell >= 0) {
+        const float cmdScale = st.commandScale > 0.f ? st.commandScale + 1.f : 1.f;
+        battleAtlas_.cell(batch, HudIcon::CommandLabel, st.commandCell % 4, st.commandCell / 4,
+                          216.f, 520.f, cmdScale, 0.f, white);
+    }
 
     // MAIN and CHARGE: frame, count, then fill (0x6448e5 / 0x64491d / 0x64495d /
     // 0x64499d / 0x6449ef / 0x644ac8). The fill strip switches to the grey slot when
     // the stock is empty, which is the count's only effect on the bar.
-    battleAtlas_.draw(batch, HudIcon::MainFrame, 623.f, 471.f, white);
-    battleAtlas_.draw(batch, HudIcon::ChargeFrame, 597.f, 517.f, white);
-    battleAtlas_.number(batch, st.mainWhole, 702.f, 443.f, white);
-    battleAtlas_.number(batch, st.chargeWhole, 676.f, 489.f, white);
+    battleAtlas_.draw(batch, HudIcon::MainFrame, 623.f, 471.f, 1.f, 0.f, white);
+    battleAtlas_.draw(batch, HudIcon::ChargeFrame, 597.f, 517.f, 1.f, 0.f, white);
+    battleAtlas_.number(batch, HudFont::BigWhite, st.mainWhole, 702.f, 443.f);
+    battleAtlas_.number(batch, HudFont::BigWhite, st.chargeWhole, 676.f, 489.f);
     battleAtlas_.fill(batch, st.mainWhole > 0 ? HudIcon::MainFill : HudIcon::MainFillEmpty,
                       st.mainFrac, 623.f, 471.f);
     if (st.chargeWhole > 0) {
@@ -279,6 +348,46 @@ void HudComposer::composeBattle(SpriteRenderer& batch, const HudState& st) {
     } else {
         battleAtlas_.fill(batch, HudIcon::ChargeFillEmpty, st.chargeFrac, 597.f, 517.f);
     }
+
+    // Both balloon corners (0x644bfc-0x644e25), left then right.
+    composeBalloonCorner(battleAtlas_, batch, st, 0);
+    composeBalloonCorner(battleAtlas_, batch, st, 1);
+}
+
+void HudComposer::composeFighters(SpriteRenderer& batch, const HudState& st) {
+    const UiColor white = kHudWhite;
+    for (int i = 0; i < 2; ++i) {
+        const HudFighterHud& f = st.fighters[i];
+        if (!f.visible) continue;
+        // The targeting ring (0x643431-0x64353d): P03's 128x128 ring cell (0,1) is the
+        // red one, drawn about the fighter's position + 70 units. Its scale is
+        // (0.1*hud+0x30c + 1) and its rotation 9*hud+0x30c + frame/2 (0x643447,
+        // 0x64346c) — the frame term is why the prints show the arcs at four
+        // different angles from the atlas' diagonal.
+        if (f.target)
+            battleAtlas_.cell(batch, HudIcon::Ring, 0, 1, f.ringX, f.ringY, 1.f,
+                              f.ringDeg + (float)st.hudFrame * 0.5f, white);
+        // The target's com bar (the drawer at 0x643fa7): frame, the lagging fill
+        // (hud+0xb0 = P01 (320,352,80,6)) then the live one (hud+0x4 =
+        // P01 (320,320,80,6)), both pivot (40,3) so they grow right from the bar's
+        // left edge, and the tag cell at (+24,+16) — 1P/2P/3P in row 0, 4P/com in row
+        // 1, the red copies four rows down (0x64408c).
+        if (f.target) {
+            battleAtlas_.draw(batch, HudIcon::ComBarFrame, f.barX, f.barY, 1.f, 0.f, white);
+            battleAtlas_.fill(batch, HudIcon::ComBarFillGhost, f.hpLag, f.barX, f.barY);
+            battleAtlas_.fill(batch, HudIcon::ComBarFill, f.hp, f.barX, f.barY);
+            battleAtlas_.cell(batch, HudIcon::TagCell, f.slot % 3, f.slot / 3 + 4 * f.tagSheet,
+                              f.barX + 24.f, f.barY + 16.f, 1.f, 0.f, white);
+        }
+        // The off-screen alert marker (0x643722-0x6437d0): the pale P06 pentagon on
+        // the screen edge the fighter went off, at (400,64) top, (400,536) bottom,
+        // (64,300) left, (736,300) right.
+        if (f.alertDir >= 0 && f.alertDir < 4) {
+            const float ax = f.alertDir == 2 ? 64.f : (f.alertDir == 3 ? 736.f : 400.f);
+            const float ay = f.alertDir == 0 ? 64.f : (f.alertDir == 1 ? 536.f : 300.f);
+            battleAtlas_.draw(batch, HudIcon::AlertPale, ax, ay, 1.f, 0.f, white);
+        }
+    }
 }
 
 void HudComposer::compose(SpriteRenderer& batch, const HudState& st, const HudRects& layout) {
@@ -288,6 +397,13 @@ void HudComposer::compose(SpriteRenderer& batch, const HudState& st, const HudRe
     // invention and is deliberately not mixed in — a frame is either the original's
     // HUD or the remake's stand-in, never half of each.
     if (ensureBattleAtlas(batch)) {
+        composeFighters(batch, st);
+        // The round stings sit between the fighters and the corners: FUN_0063a130
+        // @0x63a4b4 draws them centred at (400,300) at the viewport scale times a
+        // per-slot float. The port draws the KO sting at the 0.5 the spec measured on
+        // the print; the scale/alpha tween the original runs is the caller's to add
+        // by scaling this call, not something the composer can invent.
+        if (st.koVisible) battleAtlas_.draw(batch, HudIcon::KoSting, 400.f, 300.f, 0.5f);
         composeBattle(batch, st);
         return;
     }

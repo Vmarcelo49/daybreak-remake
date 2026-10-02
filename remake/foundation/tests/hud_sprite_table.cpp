@@ -27,6 +27,7 @@
 #include <cmath>
 #include <cstdio>
 
+#include "game/hud_bridge.h"
 #include "ui/hud_atlas.h"
 #include "ui/sprite.h"
 
@@ -34,6 +35,7 @@ namespace {
 
 using ui::FillMode;
 using ui::HudDigit;
+using ui::HudFont;
 using ui::HudIcon;
 using ui::HudSheet;
 using ui::HudSprite;
@@ -111,6 +113,8 @@ void testSpriteTable() {
         {HudIcon::FanFrame, HudSheet::P01, {0.f, 256.f, 300.f, 128.f}, 45.f, 21.f},
         {HudIcon::MaxLabel, HudSheet::P00, {384.f, 384.f, 128.f, 128.f}, 64.f, 64.f},
         {HudIcon::HpFill, HudSheet::P02, {0.f, 480.f, 230.f, 14.f}, 0.f, 0.f},
+        {HudIcon::HpFillPale, HudSheet::P02, {256.f, 480.f, 230.f, 14.f}, 0.f, 0.f},
+        {HudIcon::HpFillGhost, HudSheet::P02, {0.f, 496.f, 230.f, 14.f}, 0.f, 0.f},
         {HudIcon::MainFill, HudSheet::P01, {320.f, 128.f, 160.f, 6.f}, 0.f, 0.f},
         {HudIcon::MainFillEmpty, HudSheet::P01, {320.f, 144.f, 160.f, 6.f}, 0.f, 0.f},
         {HudIcon::ChargeFill, HudSheet::P01, {320.f, 64.f, 160.f, 6.f}, 0.f, 0.f},
@@ -119,6 +123,21 @@ void testSpriteTable() {
         {HudIcon::ChargeTierRed, HudSheet::P01, {320.f, 112.f, 160.f, 5.f}, 0.f, 0.f},
         {HudIcon::FanFillCharging, HudSheet::P02, {0.f, 0.f, 230.f, 91.f}, 0.f, 0.f},
         {HudIcon::FanFillReady, HudSheet::P02, {0.f, 288.f, 230.f, 91.f}, 0.f, 0.f},
+        {HudIcon::FanFillReadyAlt, HudSheet::P02, {0.f, 384.f, 230.f, 91.f}, 0.f, 0.f},
+        {HudIcon::FanCaption, HudSheet::P01, {0.f, 384.f, 128.f, 32.f}, 0.f, 0.f},
+        {HudIcon::BalloonLeft, HudSheet::P00, {0.f, 320.f, 192.f, 192.f}, 96.f, 160.f},
+        {HudIcon::BalloonRight, HudSheet::P00, {192.f, 320.f, 192.f, 192.f}, 96.f, 160.f},
+        {HudIcon::LimitLabel, HudSheet::P00, {384.f, 320.f, 96.f, 32.f}, 56.f, 8.f},
+        {HudIcon::StaminaFrame, HudSheet::P01, {64.f, 0.f, 192.f, 64.f}, 96.f, 32.f},
+        {HudIcon::StaminaFill, HudSheet::P01, {320.f, 0.f, 107.f, 6.f}, 53.f, 3.f},
+        {HudIcon::CommandLabel, HudSheet::P03, {0.f, 0.f, 128.f, 64.f}, 64.f, 32.f},
+        {HudIcon::Ring, HudSheet::P03, {0.f, 128.f, 128.f, 128.f}, 64.f, 64.f},
+        {HudIcon::ComBarFrame, HudSheet::P01, {320.f, 192.f, 192.f, 64.f}, 96.f, 32.f},
+        {HudIcon::ComBarFill, HudSheet::P01, {320.f, 320.f, 80.f, 6.f}, 40.f, 3.f},
+        {HudIcon::ComBarFillGhost, HudSheet::P01, {320.f, 352.f, 80.f, 6.f}, 40.f, 3.f},
+        {HudIcon::TagCell, HudSheet::P01, {320.f, 256.f, 64.f, 32.f}, 32.f, 16.f},
+        {HudIcon::AlertPale, HudSheet::P06, {0.f, 128.f, 128.f, 128.f}, 64.f, 64.f},
+        {HudIcon::KoSting, HudSheet::P09, {0.f, 256.f, 512.f, 256.f}, 256.f, 128.f},
     };
     for (const Row& r : rows) {
         checkRect("src", r.src, S(r.icon).src);
@@ -143,6 +162,22 @@ void testFrameAnchors() {
         {HudIcon::ChargeFrame, 597.f, 517.f, {581.f, 490.f, 192.f, 64.f}},
         {HudIcon::FanFrame, 55.f, 488.f, {10.f, 467.f, 300.f, 128.f}},
         {HudIcon::MaxLabel, 64.f, 534.f, {0.f, 470.f, 128.f, 128.f}},
+        // The balloon corners: the readout cluster's own top-lefts, which the print
+        // measures as "0%" ink (73,83)-(106,103) for the number cell and (116,84)
+        // for the '%' — both reproduced by these two anchors.
+        {HudIcon::LimitLabel, 70.f, 110.f, {14.f, 102.f, 96.f, 32.f}},
+        {HudIcon::BalloonLeft, 85.f, 140.f, {-11.f, -20.f, 192.f, 192.f}},
+        {HudIcon::LimitLabel, 700.f, 110.f, {644.f, 102.f, 96.f, 32.f}},
+        {HudIcon::BalloonRight, 715.f, 140.f, {619.f, -20.f, 192.f, 192.f}},
+        {HudIcon::StaminaFrame, 400.f, 517.f, {304.f, 485.f, 192.f, 64.f}},
+        {HudIcon::StaminaFill, 400.f, 517.f, {347.f, 514.f, 107.f, 6.f}},
+        {HudIcon::CommandLabel, 216.f, 520.f, {152.f, 488.f, 128.f, 64.f}},
+        {HudIcon::Ring, 400.f, 162.f, {336.f, 98.f, 128.f, 128.f}},
+        {HudIcon::ComBarFrame, 400.f, 99.f, {304.f, 67.f, 192.f, 64.f}},
+        {HudIcon::ComBarFill, 400.f, 99.f, {360.f, 96.f, 80.f, 6.f}},
+        {HudIcon::TagCell, 424.f, 115.f, {392.f, 99.f, 64.f, 32.f}},
+        {HudIcon::AlertPale, 400.f, 64.f, {336.f, 0.f, 128.f, 128.f}},
+        {HudIcon::KoSting, 400.f, 300.f, {144.f, 172.f, 512.f, 256.f}},
     };
     for (const auto& r : rows) {
         const HudSprite& s = S(r.icon);
@@ -181,14 +216,16 @@ void testFillGeometry() {
     checkFloat("mode 0 dst width at 0%", 0.f, ui::fillDst(dst, 0.f, FillMode::Right).w);
 }
 
-// FUN_00431a50's font: 12 cells of 64x64 from P00 (0,0), 8 per row, advance
-// 64 + (-27) = 37, drawn least-significant first at x - 64 (FUN_00431b50).
-// The print's `6` at anchor (702,443) has ink at game (667,448)-(696,467); P00's
-// cell (384,0) has its `6` ink at +29..+59 x, +4..+24 y, i.e. (638+29, 443+4).
+// FUN_00431a50's fonts. Big white: 12 cells of 64x64 from P00 (0,0), 8 per row,
+// leading 0xc1e00000 = -28, so the advance is 64 - 28 = 36; drawn least-significant
+// first at x - 64 (FUN_00431b50). The print's `6` at anchor (702,443) has ink at game
+// (667,448)-(696,467); P00's cell (384,0) has its `6` ink at +29..+59 x, +4..+24 y.
+// The LIMIT readout's "100" at (138,110) half scale is the print's multi-digit case:
+// its three cells sit at 106/88/70, which the print's ink confirms (119/101/90).
 void testNumberRun() {
-    std::printf("number font (FUN_00431a50 @0x6431a50, FUN_00431b50 @0x431b50):\n");
+    std::printf("number fonts (FUN_00431a50 @0x6431a50, FUN_00431b50 @0x431b50):\n");
     HudDigit d[10];
-    int n = ui::hudDigitRun(6, 702.f, 443.f, d);
+    int n = ui::hudDigitRun(HudFont::BigWhite, 6, 702.f, 443.f, 1.f, d);
     checkInt("one digit for 6", 1, n);
     checkRect("6 cell", {384.f, 0.f, 64.f, 64.f}, d[0].src);
     checkFloat("6 cell x", 638.f, d[0].x);
@@ -196,29 +233,145 @@ void testNumberRun() {
     checkInt("6 ink left  (print 667)", 667, (long long)(d[0].x + 29.f));
     checkNear("6 ink top   (print 448)", 448, (int)(d[0].y + 4.f));
 
-    n = ui::hudDigitRun(2, 676.f, 489.f, d);
+    n = ui::hudDigitRun(HudFont::BigWhite, 2, 676.f, 489.f, 1.f, d);
     checkInt("one digit for 2", 1, n);
     checkRect("2 cell", {128.f, 0.f, 64.f, 64.f}, d[0].src);
     checkFloat("2 cell x", 612.f, d[0].x);
     checkInt("2 ink left  (print 641)", 640, (long long)(d[0].x + 28.f));
 
-    // Two digits: the units cell keeps the anchor, the tens cell steps left by 37.
-    n = ui::hudDigitRun(12, 702.f, 443.f, d);
+    // Two digits: the units cell keeps the anchor, the tens cell steps left by 36.
+    n = ui::hudDigitRun(HudFont::BigWhite, 12, 702.f, 443.f, 1.f, d);
     checkInt("two digits for 12", 2, n);
     checkRect("12 units cell", {128.f, 0.f, 64.f, 64.f}, d[0].src);
     checkFloat("12 units x", 638.f, d[0].x);
     checkRect("12 tens cell", {64.f, 0.f, 64.f, 64.f}, d[1].src);
-    checkFloat("12 tens x", 601.f, d[1].x);
+    checkFloat("12 tens x", 602.f, d[1].x);
 
     // 8 and 9 live in the font's second row; 0 is still one digit.
-    n = ui::hudDigitRun(9, 702.f, 443.f, d);
+    n = ui::hudDigitRun(HudFont::BigWhite, 9, 702.f, 443.f, 1.f, d);
     checkRect("9 cell", {64.f, 64.f, 64.f, 64.f}, d[0].src);
-    n = ui::hudDigitRun(0, 702.f, 443.f, d);
+    n = ui::hudDigitRun(HudFont::BigWhite, 0, 702.f, 443.f, 1.f, d);
     checkInt("one digit for 0", 1, n);
     checkRect("0 cell", {0.f, 0.f, 64.f, 64.f}, d[0].src);
-    n = ui::hudDigitRun(100, 702.f, 443.f, d);
+    n = ui::hudDigitRun(HudFont::BigWhite, 100, 702.f, 443.f, 1.f, d);
     checkInt("three digits for 100", 3, n);
-    checkFloat("100 leading cell x", 564.f, d[2].x);
+    checkFloat("100 leading cell x", 566.f, d[2].x);
+
+    // The LIMIT readout: same font at half scale, ending on x = 138 (0x6a4c90).
+    n = ui::hudDigitRun(HudFont::BigWhite, 100, 138.f, 110.f, 0.5f, d);
+    checkInt("three digits for the LIMIT value", 3, n);
+    checkFloat("LIMIT units cell x", 106.f, d[0].x);
+    checkFloat("LIMIT units cell scale", 0.5f, d[0].scale);
+    checkFloat("LIMIT tens cell x", 88.f, d[1].x);
+    checkFloat("LIMIT hundreds cell x", 70.f, d[2].x);
+
+    // The small green font (0x6c9050): 32x32 cells from P00 (0,256), 15 per row,
+    // leading -4, digits 0..9 then '+ - . %' at 10..13. The balloon popup uses it.
+    n = ui::hudDigitRun(HudFont::SmallGreen, 21, 110.f, 50.f, 1.f, d);
+    checkInt("two small digits for 21", 2, n);
+    checkRect("small units cell", {32.f, 256.f, 32.f, 32.f}, d[0].src);
+    checkFloat("small units x", 78.f, d[0].x);
+    checkRect("small tens cell", {64.f, 256.f, 32.f, 32.f}, d[1].src);
+    checkFloat("small tens x", 50.f, d[1].x);
+}
+
+// FUN_00431ce0's cell draw is a *single* font cell, placed at x + scale*leading — the
+// reason the readout's '%' sits four pixels left of its anchor at scale 1 and two at
+// half scale. The cells are the ones the atlas holds: the big font's '%' is (5,1) =
+// P00 (320,64) (its second white row reads "8 9 … % /"), the small green font's is
+// (13,0) = P00 (416,256).
+void testFontCells() {
+    std::printf("font cells (FUN_00431ce0 @0x431ce0):\n");
+    const ui::HudFontSpec& big = ui::hudFont(HudFont::BigWhite);
+    const ui::HudFontSpec& small = ui::hudFont(HudFont::SmallGreen);
+    checkFloat("big leading (0xc1e00000)", -28.f, big.leading);
+    checkInt("big cells per row", 8, big.perRow);
+    checkFloat("small leading (0xc0800000)", -4.f, small.leading);
+    checkInt("small cells per row", 15, small.perRow);
+    checkRect("big '%' cell (5,1)", {320.f, 64.f, 64.f, 64.f},
+              UiRect{big.base.x + 5.f * big.base.w, big.base.y + 1.f * big.base.h, big.base.w,
+                     big.base.h});
+    checkRect("small '%' cell (13,0)", {416.f, 256.f, 32.f, 32.f},
+              UiRect{small.base.x + 13.f * small.base.w, small.base.y, small.base.w,
+                     small.base.h});
+    // The draw offset the print shows: (110,78) for the left corner's '%'.
+    checkFloat("'%' draw x at scale 1", 82.f, 110.f + 1.f * big.leading);
+    checkFloat("'%' draw x at scale 0.5", 124.f, 138.f + 0.5f * big.leading);
+}
+
+// FUN_00655830's cell draw: a sprite built by FUN_006556c0/55690 stores its own rect
+// as the cell pitch, so cell (cx, cy) is the atlas rect offset by (cx*w, cy*h). The
+// per-fighter HUD depends on exactly that: P03's ring cells are 128 px apart and the
+// command label's are 128x64, P01's tag cells 64x32.
+void testCellGeometry() {
+    std::printf("cell draws (FUN_00655830 @0x655830):\n");
+    const auto cellAt = [](HudIcon icon, int cx, int cy) {
+        const HudSprite& s = S(icon);
+        return UiRect{s.src.x + (float)cx * s.src.w, s.src.y + (float)cy * s.src.h, s.src.w,
+                      s.src.h};
+    };
+    // The print's red ring is P03's (0,256,128,128) cell — the print's ink sits at
+    // (368,130)-(433,195) inside the 128x128 quad centred on the projected point.
+    checkRect("ring cell (0,1)", {0.f, 256.f, 128.f, 128.f}, cellAt(HudIcon::Ring, 0, 1));
+    // The command label's cells: 0 適当, 1 格闘, 2 射撃, 3 集中, 4 各個, 5 後退. The
+    // print's boxed 適当 is cell 0 at (216,520), whose quad origin is (152,488).
+    checkRect("command cell (0,0)", {0.f, 0.f, 128.f, 64.f}, cellAt(HudIcon::CommandLabel, 0, 0));
+    checkRect("command cell (3,1)", {384.f, 64.f, 128.f, 64.f},
+              cellAt(HudIcon::CommandLabel, 3, 1));
+    // The tag rows: 1P/2P/3P in row 0, 4P/com in row 1, the red copies four rows on.
+    checkRect("tag cell (1,0) '2P'", {384.f, 256.f, 64.f, 32.f}, cellAt(HudIcon::TagCell, 1, 0));
+    checkRect("tag cell (1,5) red 'com'", {384.f, 416.f, 64.f, 32.f},
+              cellAt(HudIcon::TagCell, 1, 5));
+    // The hypermode caption: the row is hud+0x318, and daybreak04's P01 (the copy
+    // assetSource() resolves) holds OYASHIRO/FRIENDSHIP/KAKERA at 32-px rows.
+    checkRect("caption row 0", {0.f, 384.f, 128.f, 32.f}, cellAt(HudIcon::FanCaption, 0, 0));
+    checkRect("caption row 2", {0.f, 448.f, 128.f, 32.f}, cellAt(HudIcon::FanCaption, 0, 2));
+}
+
+// FUN_00643230's projection and the two lifts it hangs the per-fighter HUD on, plus
+// the balloon scale formula. All pure arithmetic, so no camera is needed: an
+// orthographic matrix that maps world units to NDC at 1/100 stands in for the fitted
+// arena camera.
+void testProjectionAndBalloon() {
+    std::printf("per-fighter projection (FUN_00643230 @0x64333c) and balloon scale:\n");
+    float x = 0.f, y = 0.f;
+    ui::hudProjectClip(0.f, 0.f, x, y);
+    checkFloat("clip origin x", 400.f, x);
+    checkFloat("clip origin y", 300.f, y);
+    ui::hudProjectClip(0.5f, -0.5f, x, y);
+    checkFloat("clip (0.5,-0.5) x", 600.f, x);
+    checkFloat("clip (0.5,-0.5) y", 450.f, y);
+
+    // Column-major ortho: x_ndc = wx/400, y_ndc = wy/300 (so 300 world units is the
+    // half-height), w = 1. Screen y grows downward, so +70 units lands 70 px up.
+    float vp[16] = {0.f};
+    vp[0] = 1.f / 400.f;
+    vp[5] = 1.f / 300.f;
+    vp[10] = 1.f;
+    vp[15] = 1.f;
+    game::GameFighterHud f;
+    checkInt("a fighter at the origin is visible", 1,
+             game::projectFighterHud(vp, 0.f, 0.f, 0.f, f) ? 1 : 0);
+    checkFloat("ring x at the origin", 400.f, f.ringX);
+    checkFloat("ring y at +70 units", 230.f, f.ringY);
+    checkFloat("bar x at the origin", 400.f, f.barX);
+    checkFloat("bar y at +150 units, -32 px", 118.f, f.barY);
+    checkFloat("ring lift constant (FUN_00643230.c:52)", 70.f, ui::kHudRingLift);
+    checkFloat("bar lift constant (FUN_00643230.c:173)", 150.f, ui::kHudBarLift);
+    checkFloat("bar drop constant (0x6acf48)", 32.f, ui::kHudBarDrop);
+    // Behind the eye: the original's `0 < clip.z` gate means no draw at all.
+    float behind[16] = {0.f};
+    behind[0] = behind[5] = behind[10] = 1.f;
+    behind[15] = -1.f;
+    checkInt("a fighter behind the eye is not visible", 0,
+             game::projectFighterHud(behind, 0.f, 0.f, 0.f, f) ? 1 : 0);
+
+    // The balloon: (pct*1.5 + 20 + sin(pulse*3 deg)*20)/100. At 0% with no pulse the
+    // print's balloon is the 0.2-scale tip; the print's 43% balloon (ko-moment.webp)
+    // is 0.845.
+    checkFloat("balloon scale at 0%, rest", 0.2f, ui::hudBalloonScale(0.f, 0));
+    checkFloat("balloon scale at 43%, rest", 0.845f, ui::hudBalloonScale(43.f, 0));
+    checkFloat("balloon scale at 0%, pulse 30", 0.4f, ui::hudBalloonScale(0.f, 30));
 }
 
 // The composer draws the art HUD only once every sheet is uploaded; before that
@@ -246,6 +399,9 @@ int main() {
     testFrameAnchors();
     testFillGeometry();
     testNumberRun();
+    testFontCells();
+    testCellGeometry();
+    testProjectionAndBalloon();
     testFallbackState();
     std::printf("\nchecks: %d, failures: %d\n", g_checks, g_failed);
     std::printf("HUD_SPRITE_TABLE: %s\n", g_failed == 0 ? "ok" : "FAIL");
