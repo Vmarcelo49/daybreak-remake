@@ -16,4 +16,6 @@ content (different hashes) — both slots are kept.
 
 Copyright Twilight Frontier / 07th Expansion — fair use for
 interoperability; do not redistribute separately.
-Loader: `src/render/effect_system.*` (P3.1 of `docs/port-from-mvp-plan.md`).
+Loader: the DX9 `src/render/effect_system.*` was deleted in the Phase 5 cutover;
+these dumps are kept as evidence of the original's effect bytecode, and nothing
+in the product loads them yet.

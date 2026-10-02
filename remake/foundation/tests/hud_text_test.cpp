@@ -29,7 +29,7 @@
 //      labels in gameplay-tapshot measure that offset (sub-pixel profile correlation:
 //      +0.90..+1.05 px before, 0.00 after), and it comes from the rasterizer, not the
 //      layout: GDI's own DrawTextA puts the ink where the layout says. Wine's builtin
-//      d3dx9_43.dll — the DLL remake/build.sh copies next to daybreak.exe — is what
+    // the DLL next to the executable
 //      D3DXFont's placement differs in.
 //
 //  Final line: "HUDTEXT: ok (n checks)" or "HUDTEXT: FAIL (n of m checks failed)".

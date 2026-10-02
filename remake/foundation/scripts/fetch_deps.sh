@@ -26,12 +26,17 @@ fetch_zip() {  # url destdir name
 
 fetch_zip "https://github.com/g-truc/glm/archive/refs/tags/${GLM_VERSION}.zip" "$tp/glm" "glm ${GLM_VERSION}"
 
-# stb_vorbis.c is a single file, not a zip: fetch the pinned raw blob directly.
-if [ ! -e "$tp/stb/stb_vorbis.c" ]; then
-    echo "  stb_vorbis (pinned ${STB_COMMIT}): fetching"
-    mkdir -p "$tp/stb"
-    curl -fsSL "https://raw.githubusercontent.com/nothings/stb/${STB_COMMIT}/stb_vorbis.c" -o "$tp/stb/stb_vorbis.c"
-fi
+# stb_vorbis.c and stb_truetype.h are single files, not zips: fetch the pinned raw blobs
+# directly. stb_truetype.h is a hard requirement (ui/text.cpp includes it and CMake puts
+# third_party/stb on the include path), and it used to be fetched by nothing: the build
+# only succeeded where the header happened to already exist, so a fresh checkout failed.
+for f in stb_vorbis.c stb_truetype.h; do
+    if [ ! -e "$tp/stb/$f" ]; then
+        echo "  $f (pinned ${STB_COMMIT}): fetching"
+        mkdir -p "$tp/stb"
+        curl -fsSL "https://raw.githubusercontent.com/nothings/stb/${STB_COMMIT}/$f" -o "$tp/stb/$f"
+    fi
+done
 fetch_zip "https://github.com/eliemichel/WebGPU-distribution/archive/${WEBGPU_DIST_COMMIT}.zip" "$tp/webgpu" "WebGPU-distribution"
 fetch_zip "https://github.com/eliemichel/sdl3webgpu/archive/${SDL3WEBGPU_COMMIT}.zip" "$tp/sdl3webgpu" "sdl3webgpu"
 

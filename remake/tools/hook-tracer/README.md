@@ -17,7 +17,9 @@ Verbatim copies from the frozen `mvp/hook/` (see `docs/decisions.md` D1 —
 Build (from this dir):
 
 ```bash
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=../../cmake/toolchain-mingw-x86_64.cmake
+The DX9-era x86_64 MinGW toolchain file this used to point at was deleted in the
+Phase 5 cutover; this hook targets the 32-bit original, so build it with an i686
+cross-toolchain of your own rather than the project one.
 cmake --build build
 ```
 

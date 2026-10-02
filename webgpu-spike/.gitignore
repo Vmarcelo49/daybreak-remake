@@ -1,5 +1,0 @@
-# Fetched WebGPU/SDL dependency sources (see CMakeLists.txt); re-fetched, never committed.
-extern/
-
-# Local build trees.
-build/
