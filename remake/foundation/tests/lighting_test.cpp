@@ -146,6 +146,74 @@ void clearColourCases() {
           std::to_string(render::kClearBlue), "54");
 }
 
+// ---------------------------------------------------------------------------------------
+// The stage mip chain (scene_renderer.h's buildMipChain / mipLevelCount)
+//
+// Why these values: the sampler now advertises `mipmapFilter: linear` on a chain this
+// renderer generates, so a wrong level count or a filter that mishandles non-power-of-two
+// art changes every minified pixel in a frame — and nothing else in the test suite is
+// device-free enough to notice. The reference's own chains are 3 levels for a 128x128
+// stage texture (X.cnv + X_1.cnv + X_2.cnv, shipped art the asset layer does not expose
+// here); this renderer uploads the full chain instead, which is the standard rule.
+// ---------------------------------------------------------------------------------------
+void mipChainCases() {
+    section("mipLevelCount — full chain, floor(log2(max)) + 1");
+
+    check(render::mipLevelCount(1, 1) == 1, "1x1 -> 1 level", std::to_string(render::mipLevelCount(1, 1)), "1");
+    check(render::mipLevelCount(128, 128) == 8, "128x128 -> 8 levels", std::to_string(render::mipLevelCount(128, 128)), "8");
+    // A 128x128 stage texture ships 3 levels as art; the generated chain goes further,
+    // which only matters past the point the reference would have clamped anyway.
+    info("reference chain depth for a 128x128 stage texture is 3 (shipped X_1/X_2)");
+    check(render::mipLevelCount(256, 128) == 9, "256x128 -> 9 (max dimension)", std::to_string(render::mipLevelCount(256, 128)), "9");
+    check(render::mipLevelCount(300, 200) == 9, "300x200 (NPOT) -> 9", std::to_string(render::mipLevelCount(300, 200)), "9");
+    check(render::mipLevelCount(0, 4) == 1, "empty dimension -> 1", std::to_string(render::mipLevelCount(0, 4)), "1");
+
+    section("buildMipChain — level 0 byte-identical, then 2x2 box averages");
+
+    // A 4x4 grey ramp: level 1's first texel averages 0,1,4,5 = 10 -> (10+2)/4 = 3.
+    std::vector<uint8_t> img((size_t)4 * 4 * 4);
+    for (int y = 0; y < 4; ++y) {
+        for (int x = 0; x < 4; ++x) {
+            uint8_t* t = img.data() + ((size_t)y * 4 + x) * 4;
+            t[0] = (uint8_t)(y * 4 + x);
+            t[1] = (uint8_t)(255 - (y * 4 + x));
+            t[2] = 7;
+            t[3] = (uint8_t)(y * 4 + x);
+        }
+    }
+    std::vector<std::vector<uint8_t>> levels;
+    render::buildMipChain(img.data(), 4, 4, levels);
+    check(levels.size() == 3, "4x4 -> 3 levels", std::to_string(levels.size()), "3");
+    check(levels[0] == img, "level 0 is the uploaded image verbatim",
+          std::to_string(levels[0].size()) + " B", std::to_string(img.size()) + " B");
+    check(levels[1].size() == (size_t)2 * 2 * 4, "level 1 is 2x2", std::to_string(levels[1].size()), "16");
+    check(levels[2].size() == (size_t)1 * 1 * 4, "level 2 is 1x1", std::to_string(levels[2].size()), "4");
+    check(levels[1][0] == 3, "level 1 texel 0: mean(0,1,4,5) rounds half up to 3",
+          std::to_string(levels[1][0]), "3");
+    // The green channel is the same ramp inverted: mean(255,254,251,250) = 252.5 -> 253.
+    check(levels[1][1] == 253, "level 1 texel 1: the 255-ramp green averages to 253",
+          std::to_string(levels[1][1]), "253");
+    check(levels[1][3] == 3, "level 1 alpha mirrors the red ramp", std::to_string(levels[1][3]), "3");
+    check(levels[2][2] == 7, "level 2 keeps the constant channel", std::to_string(levels[2][2]), "7");
+
+    // Odd dimensions drop the remainder column/row rather than averaging a phantom
+    // neighbour: a 3x3 of distinct bytes averages exactly the top-left 2x2.
+    std::vector<uint8_t> odd((size_t)3 * 3 * 4, 0);
+    for (size_t i = 0; i < 9; ++i)
+        for (int c = 0; c < 4; ++c) odd[i * 4 + c] = (uint8_t)(10 * (int)i);
+    render::buildMipChain(odd.data(), 3, 3, levels);
+    check(levels.size() == 2, "3x3 -> 2 levels", std::to_string(levels.size()), "2");
+    check(levels[1].size() == 4, "3x3 -> 1x1", std::to_string(levels[1].size()), "4");
+    check(levels[1][0] == (0 + 10 + 30 + 40 + 2) / 4, "3x3 keeps the top-left 2x2 only (20)",
+          std::to_string(levels[1][0]), std::to_string((0 + 10 + 30 + 40 + 2) / 4));
+
+    // Guardships: an empty image yields no levels instead of a bad allocation.
+    render::buildMipChain(nullptr, 8, 8, levels);
+    check(levels.empty(), "null image -> no levels", std::to_string(levels.size()), "0");
+    render::buildMipChain(img.data(), 0, 8, levels);
+    check(levels.empty(), "zero width -> no levels", std::to_string(levels.size()), "0");
+}
+
 }  // namespace
 
 int main() {
@@ -153,6 +221,7 @@ int main() {
     derivedCases();
     equationCases();
     clearColourCases();
+    mipChainCases();
 
     std::printf("\nchecks=%d failures=%d\n", g_checks, g_failures);
     std::printf("LIGHTING: %s\n", g_failures == 0 ? "ok" : "FAIL");

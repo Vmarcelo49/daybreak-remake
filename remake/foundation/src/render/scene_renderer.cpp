@@ -175,10 +175,13 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
     pipelineLayout_ = wgpuDeviceCreatePipelineLayout(device_, &plDesc);
 
     WGPUSamplerDescriptor sd = {};
+    // The original's sampler 0 in WebGPU terms: MIP is LINEAR too, and address modes and
+    // anisotropy are left at the D3D9 defaults the original never overrides — the header's
+    // mip note carries the call-site survey that says so.
     sd.addressModeU = sd.addressModeV = sd.addressModeW = WGPUAddressMode_Repeat;
     sd.magFilter = WGPUFilterMode_Linear;
     sd.minFilter = WGPUFilterMode_Linear;
-    sd.mipmapFilter = WGPUMipmapFilterMode_Nearest;
+    sd.mipmapFilter = WGPUMipmapFilterMode_Linear;
     sd.lodMinClamp = 0.f;
     sd.lodMaxClamp = 32.f;
     sd.maxAnisotropy = 1;
@@ -381,24 +384,49 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                         if (pass == Pass::Decal) xm::keyOutWhite(*img);
                         auto it = texIndex.find(img);
                         if (it == texIndex.end()) {
+                            // Only stage textures get a chain: the reference's other
+                            // textures are created with MipLevels = 1 because their
+                            // directories ship no levels. The header's mip note carries
+                            // that evidence, the original's MIPFILTER state, and why the
+                            // chain is box filtered here instead of read from the shipped
+                            // _N files.
+                            const bool mipmapped = sm.role == "stage";
+                            std::vector<std::vector<uint8_t>> levels;
+                            if (mipmapped)
+                                buildMipChain(img->rgba.data(), img->width, img->height, levels);
+                            const uint32_t levelCount =
+                                mipmapped ? (uint32_t)levels.size() : 1u;
                             Texture tex;
                             WGPUTextureDescriptor td = {};
                             td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
                             td.dimension = WGPUTextureDimension_2D;
                             td.size = WGPUExtent3D{img->width, img->height, 1};
                             td.format = WGPUTextureFormat_RGBA8Unorm;
-                            td.mipLevelCount = 1;
+                            td.mipLevelCount = levelCount;
                             td.sampleCount = 1;
                             tex.tex = wgpuDeviceCreateTexture(device_, &td);
                             if (tex.tex) {
                                 WGPUTexelCopyTextureInfo dst = {};
                                 dst.texture = tex.tex;
                                 dst.aspect = WGPUTextureAspect_All;
-                                WGPUTexelCopyBufferLayout layout = {};
-                                layout.bytesPerRow = img->width * 4;
-                                layout.rowsPerImage = img->height;
-                                wgpuQueueWriteTexture(queue_, &dst, img->rgba.data(),
-                                                      img->rgba.size(), &layout, &td.size);
+                                for (uint32_t level = 0; level < levelCount; ++level) {
+                                    const uint32_t lw = std::max(1u, img->width >> level);
+                                    const uint32_t lh = std::max(1u, img->height >> level);
+                                    WGPUTexelCopyBufferLayout layout = {};
+                                    layout.bytesPerRow = lw * 4;
+                                    layout.rowsPerImage = lh;
+                                    dst.mipLevel = level;
+                                    const WGPUExtent3D extent{lw, lh, 1};
+                                    // A single-level texture uploads its base image exactly
+                                    // as it did before mips existed. writeTexture is a packed
+                                    // copy, so unlike copyBufferToTexture it needs no
+                                    // 256-byte row pitch and odd-sized CNV levels upload
+                                    // as-is.
+                                    const std::vector<uint8_t>& pixels =
+                                        mipmapped ? levels[level] : img->rgba;
+                                    wgpuQueueWriteTexture(queue_, &dst, pixels.data(),
+                                                          pixels.size(), &layout, &extent);
+                                }
                                 tex.view = wgpuTextureCreateView(tex.tex, nullptr);
                             }
                             if (!tex.tex || !tex.view) {

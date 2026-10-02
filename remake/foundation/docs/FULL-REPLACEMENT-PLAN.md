@@ -329,9 +329,25 @@ and the HUD text metrics: overall RMSE 0.063988 / 0.063431 / 0.056068 on
 tapshot f110 / dash f95 / school f110, with luminance means within 0.002-0.004
 of the reference. What is left, in measured order:
 
-1. **Stage/sky detail** — RMSE ~0.061 over 74% of the pixels. The reference
-   uses a LINEAR **mip** filter; the foundation has no mipmaps. That is the
-   largest single remaining item and it is a renderer feature, not a bug.
+1. **Stage/sky detail** — RMSE ~0.061 over 74% of the pixels. This was
+   attributed here to the reference filtering LINEAR **with mips** while the
+   foundation had none. **Corrected 2026-10-03: that attribution was wrong.**
+   The *original* does filter with mips — sampler 0 sets MAG/MIN/MIP all
+   D3DTEXF_LINEAR (`FUN_00654f00.c:45-47`) and the mips are shipped art
+   (`X.cnv` + `X_1.cnv` + `X_2.cnv`, only for the stage dirs) — but the **DX9
+   remake does not**: it creates textures with MipLevels=1
+   (`remake/src/render/ui_image.cpp:61`) and sets only MIN/MAG
+   (`remake/src/core/scenes.cpp:760-761`), leaving D3D9's default
+   MIPFILTER=NONE. So mips genuinely fix the foundation against the *prints*,
+   and they *widen* any residual measured against the DX9 frames. The three
+   banked gate numbers above therefore need re-banking before they are quoted
+   again, and a DX9-frame comparison is no longer the right instrument for
+   this item — the prints are.
+   Mips are implemented (stage-role textures only, matching the shipped-art
+   coverage; box filter; level 0 byte-identical by construction), measured
+   0.255956 -> 0.254041 against `battle-hud.webp`, with every masked scene band
+   improving and the minified-band gradient ratio falling from 1.25-1.78x the
+   print's to 0.52-0.68x.
 2. **Text rasterizer weight** — the HUD's residual is now purely that
    `stb_truetype` has no hinter, so a stem GDI snaps to one full column spreads
    over two half-covered ones. Positional error is gone: every HUD label's best

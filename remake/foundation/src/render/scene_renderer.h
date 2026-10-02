@@ -28,6 +28,104 @@ namespace render {
 inline constexpr WGPUTextureFormat kSceneDepthFormat = WGPUTextureFormat_Depth24PlusStencil8;
 
 // ---------------------------------------------------------------------------------------
+// Mip chain for uploaded stage textures.
+//
+// Why it exists: the original filters stage textures LINEAR **with mips** — its device
+// state block sets sampler 0 MAG/MIN/MIP all to D3DTEXF_LINEAR, once at device creation
+// and again on every Reset (research/decompiled/FUN_00654f00.c:45-47, called from
+// FUN_00654b90.c:63 and FUN_00654d90.c:32). D3D9's default D3DSAMP_MIPFILTER is
+// D3DTEXF_NONE, so that write is the game asking for it, and it is the state the prints
+// were taken under. The other two sampler properties this renderer must not invent:
+// across the whole decompiled dump the only sampler types written anywhere are ADDRESSU/V
+// (1, 2), BORDERCOLOR (4) and MAG/MIN/MIPFILTER (5, 6, 7), and sampler 0 receives *only*
+// those three filters — 33 call sites over 7 functions, every value either 1 (POINT) or 2
+// (LINEAR). So sampler 0's address modes stay at D3D9's WRAP (Repeat), and
+// D3DSAMP_MAXANISOTROPY (type 10), MIPMAPLODBIAS (8) and MAXMIPLEVEL (9) are never written
+// at all: anisotropy 1, no LOD bias, no level clamp. D3DTEXF_ANISOTROPIC (value 3) never
+// appears either; where the value 3 does appear it is ADDRESSU/V on samplers 1 and 2 in
+// FUN_00651110, i.e. D3DTADDRESS_MIRROR, a different enum.
+//
+// Which textures have a chain is the same evidence's other half: the original does not
+// *generate* levels, it ships them as precomputed art beside the base image, and only the
+// stage directories do — `X.cnv` (128x128) + `X_1.cnv` (64x64) + `X_2.cnv` (32x32), 85
+// such groups in stage01 (all 13 stage dirs surveyed). Character, weapon, effect, aura and
+// item directories ship none. The loader probes `%s_%d.bmp` from the base name upward,
+// creates the texture with exactly the number of levels it found (`D3DXCreateTexture(...,
+// levelCount, ...)`) and fills each one with LockRect(level), halving the width per level
+// (research/decompiled/FUN_00656c80.c:87-88 and :107-118; reached from the .X material name
+// via FUN_00661f60 -> FUN_0064ecd0 -> FUN_006560c0). So a character texture is created with
+// MipLevels = 1 in the original: it has no mips to filter with, and MIPFILTER = LINEAR
+// degenerates to level 0 for it. This renderer therefore chains `role == "stage"` models
+// only; the role is the closest signal it has to "this texture's directory ships levels",
+// which is what the original actually tests.
+//
+// Content check on the shipped levels: shadow01_1.cnv is a 2x2 box average of shadow01.cnv
+// to within a mean |delta| of 1.59/255, against 67.97/255 for a shifted control. Those
+// files are the higher-fidelity source and the asset layer hands this renderer only level 0,
+// so the chain below is generated instead; a box filter is the standard choice for a
+// generated chain, and it averages raw bytes because D3D9's own filter and the shipped
+// levels are byte-space too (the texture is RGBA8Unorm, not sRGB, and the shader treats the
+// sampled value as linear).
+//
+// Both live here, and not in the .cpp, so tests/lighting_test.cpp can pin the arithmetic
+// with no device: a wrong level count or a filter that mishandles odd dimensions changes
+// every minified pixel in a frame and shows up nowhere else. That test links the asset
+// layer but not the render library, so these have to be inline to be reachable from it —
+// a .cpp definition would need a CMakeLists change to be testable at all.
+// ---------------------------------------------------------------------------------------
+
+// Levels a full chain has: floor(log2(max(w, h))) + 1, i.e. down to a 1-wide/tall edge.
+// An empty image has no chain to speak of; buildMipChain returns no levels for one.
+inline uint32_t mipLevelCount(uint32_t width, uint32_t height) {
+    if (width == 0 || height == 0) return 1;
+    uint32_t levels = 1;
+    for (uint32_t m = width > height ? width : height; m > 1; m >>= 1) ++levels;
+    return levels;
+}
+
+// Builds `levels` for one RGBA8 image: levels[0] is the base image as authored (uploaded
+// unchanged, so a texture sampled at level 0 is byte-identical to before), then each next
+// level is the 2x2 box average of the one above at half the size (floor). An odd
+// dimension therefore drops its last column/row, the rule D3DX's own box chain uses; at
+// the bottom a level of width or height 1 averages the samples that exist along the other
+// axis only. Alpha is averaged with colour: these are alpha-tested cutouts, and the
+// reference's shipped levels carry authored alpha at every level.
+inline void buildMipChain(const uint8_t* rgba, uint32_t width, uint32_t height,
+                          std::vector<std::vector<uint8_t>>& levels) {
+    levels.clear();
+    if (rgba == nullptr || width == 0 || height == 0) return;
+    levels.reserve(mipLevelCount(width, height));
+    levels.emplace_back(rgba, rgba + (size_t)width * height * 4);
+    for (uint32_t w = width, h = height; w > 1 || h > 1;) {
+        const uint32_t dw = w > 1 ? w / 2 : 1;
+        const uint32_t dh = h > 1 ? h / 2 : 1;
+        const std::vector<uint8_t>& src = levels.back();
+        std::vector<uint8_t> dst((size_t)dw * dh * 4);
+        for (uint32_t y = 0; y < dh; ++y) {
+            for (uint32_t x = 0; x < dw; ++x) {
+                // The source block is 2x2, narrowing to 2x1/1x2/1x1 only when a
+                // dimension is already 1 — the samples that exist, never a clamped
+                // duplicate of one that does not.
+                uint32_t sum[4] = {0, 0, 0, 0};
+                uint32_t n = 0;
+                for (uint32_t sy = 2 * y; sy < 2 * y + 2 && sy < h; ++sy) {
+                    for (uint32_t sx = 2 * x; sx < 2 * x + 2 && sx < w; ++sx) {
+                        const uint8_t* texel = src.data() + ((size_t)sy * w + sx) * 4;
+                        for (int c = 0; c < 4; ++c) sum[c] += texel[c];
+                        ++n;
+                    }
+                }
+                uint8_t* out = dst.data() + ((size_t)y * dw + x) * 4;
+                for (int c = 0; c < 4; ++c) out[c] = (uint8_t)((sum[c] + n / 2) / n);
+            }
+        }
+        levels.push_back(std::move(dst));
+        w = dw;
+        h = dh;
+    }
+}
+
+// ---------------------------------------------------------------------------------------
 // The fixed-function light and clear colour the DX9 gameplay pass installs. Every value
 // is read straight off remake/src/core/scenes.cpp:736-769 — the state block the banked
 // reference frames were rendered with, i.e. this track's specification — and they are
