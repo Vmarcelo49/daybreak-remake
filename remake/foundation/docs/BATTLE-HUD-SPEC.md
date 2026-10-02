@@ -105,7 +105,7 @@ texture art or GDI text (see §4).
 | 11 | Overhead HP bar + nameplate | each fighter's HP over the head | not separable in this print | — | art | `FUN_00643230`; projected at `(clip*400+400, -clip*300+300)` + 70.0 world units up (FUN_00643230.c:56-58) |
 | 12 | OYASHIRO fan gauge (frame) | hypermode/limit gauge, bottom-left | (42,481)-(300,597) | (44,475)-(302,591) | art | P01 (0,256,300,128) pivot (45,21); anchor (55,488); sprite 0x6c7cb8 — FUN_00642510.c:45, FUN_00644150.c:29 |
 | 13 | Gauge gradient fill | fills the fan | inside #12 (empty at 0%) | — | art | P02 (0,0,256,96) / P12 (0,0,256,96); per-player slots `hud+0x610+i*0xac`, `FUN_00642c50` selects the colour cell — FUN_00644150.c:35/46, FUN_00642c50.c:29-31 |
-| 14 | Boxed `適当` label | tactics/command readout | (153,509)-(274,543) | (155,503)-(276,537) | art | P03 row-1 cell 0, atlas (1,13)-(127,52); RE anchor (183,548) cell 128x32 from P01 (0,384,128,32) — **provenance conflict, §6 Q2**; FUN_00644150.c:48/66/84 |
+| 14 | Boxed `適当` label | tactics/command readout | (153,509)-(274,543) | (155,503)-(276,537) | art | **P03 (0,0,128,64) pivot (64,32)**, cells 128x64, sprite `0x6ca140` (`FUN_00642510` @0x642993-0x6429ae, `.c:68`), anchor **(216,520)** = `.rdata` 0x6a4cb8/0x6a4cbc (`FUN_00644150.c:102-104`, @0x644859-0x6448ad), cell from `hud+0x310` (col = v mod 4, row = v div 4) -> quad (152,488), art (153,502)-(278,539). Print match: mean |diff| 0.00 |
 | 15 | `MAX` label | gauge full | not visible (0%) | — | art | P00 (384,384,128,128) pivot (64,64); anchor (64,534); sprite 0x6c7b78 — FUN_00644150.c:42 |
 | 16 | STAMINA bar | dash/jump/block stamina | not visible in this print | — | art | P01 (64,0,192,64) pivot (96,32) frame + P02 (0,480,230,14) fill; anchor (400,517); sprites 0x6ca5a0 / slot 0x2b4 — FUN_00644150.c:88-89 |
 | 17 | `MAIN` bar + `main` word | shots loaded | outline (611,470)-(786,492); fill (621,477)-(781,483) | outline (613,464)-(788,486); fill (623,471)-(783,477) | art | P01 (64,128,192,64) pivot (96,32) = 0x6ca6e0; fill = a 160x6 P01 strip (slot +0x768/+0x814/+0x8c0/+0x96c = atlas (320,128)/(320,64)/(320,144)/(320,80)); anchor (623,471) — FUN_00642510.c:47, FUN_00644150.c:107, slot table §8 |
@@ -114,7 +114,7 @@ texture art or GDI text (see §4).
 | 20 | `2` CHARGE count | charge count | (630,485)-(680,515) | (632,479)-(682,509) | art | P00 white digits; anchor (676,489) — FUN_00644150.c:112 |
 | 21 | `HP` bar (frame) | own HP | (495,564)-(748,600) | (497,558)-(750,594) | art | P01 (32,192,256,64) pivot (13,25); anchor (505,565); sprite 0x6c7f60 — FUN_00642510.c:43, FUN_00644150.c:23 |
 | 22 | `HP` fill (yellow→orange) | HP value | (503,571)-(733,585) | (505,565)-(735,579) | art | P02 (0,480,230,14) at 1:1 (230x14); drawn twice (value + lag ghost) — FUN_00644150.c:25,27 |
-| 23 | Command indicator | per-slot tactics icon | not visible | anchor (216,520) | art | P02/P12 (0,0,256,96) cell draw, cell index from `hud+0x310` — FUN_00644150.c:102 |
+| 23 | Hypermode name caption (OYASHIRO) | hypermode label inside the fan | art (196,558)-(298,569) | — | art | P01 (0,384+32*hmode,128,32), sprite `0x6c7df8` (`FUN_00642510.c:53`, @0x64276f-0x642789), anchor (183,548) = 0x6a4cc4/0x6a4cc8, hmode = `hud+0x318`; `FUN_00644150.c:48/66/84` (@0x644443/0x6445c4/0x644745). Rows: 0 OYASHIRO, 1 FRIENDSHIP, 2 KAKERA |
 | 24 | STAMINA/command centre overlay | contextual | not visible | anchor (400,300)/(400,200)/(400,400) | art | FUN_0063a130.c:84-98 |
 | 25 | KO sting `撃破!` | KO banner | not in this print (see `ko-moment.webp`) | — | art | P09 (0,256,512,256) → 256x128 at 1:1; sprite in FUN_00633ca0.c:77 |
 | 26 | Round countdown `3 2 1` | pre-battle | not in this print | — | art | P09 (0,0,192,256),(192,0,192,256),(384,0,128,256) → 96x128 / 96x128 / 64x128 — FUN_00633ca0.c:79-81 |
@@ -139,7 +139,8 @@ texture art or GDI text (see §4).
 ## 3. Asset inventory
 
 Bundle read order matters: `AssetSource` resolves the **first** matching entry in
-`daybreak00..06` order (`remake/foundation/src/assets/asset_source.h`). The exe asks for
+precedence order (earliest-registered archive wins; `remake/foundation/src/assets/dat_bundle.cpp`).
+The exe asks for
 `data/object/*.bmp` but the archives ship `*.cnv` — the loader maps the extension
 (`FUN_006560c0` @0x006560c0 → `FUN_00656c80`; `cnv` header reverse-engineered from
 `FUN_00665e70`, documented in `remake/tools/asset-tools/cnv_convert.py`). **Two of these
@@ -255,20 +256,45 @@ bars), largest first. "Size" = what a track must produce.
    `DAT_006cfdb0 == 2`) — not yet read. **Next step:** read `FUN_0064c1e0` (0x0064c1e0) and
    `FUN_00431b50`'s real signature (the decompiler's parameter mapping contradicts its call
    sites: the call passes the value first, the body uses the second parameter as the value).
-2. **The boxed `適当` label's sprite provenance is contradictory.** The code
-   (`FUN_00644150.c:48`, disassembly @0x644443-0x644448) draws static sprite `0x6c7df8`, which
-   `FUN_00642510.c:53` defines as **`P01` (0,384,128,32)**, cell 128x32, pivot (0,0), anchored
-   (183,548) → a 128x32 quad at frame (183,548)-(311,580). But: (a) the print's box is
-   (155,503)-(276,537) — off by (-28,-45); (b) in the shipped `daybreak00.dat` P01 the region
-   (0,384,128,32) is the **FRIENDSHIP fan**, and in `daybreak04.dat`'s P01 it is the separate
-   `OYASHIRO` caption text — neither contains a boxed `適当`; (c) the box's art *is* in
-   `data/object/P03.cnv` row-1 cell 0 at (1,13)-(127,52) (126x39), which matches the measurement.
-   **Hypothesis (needs one check):** the reference prints come from `daybreakdx_111s.exe`
-   (3,052,112 B, 2014) while the corpus is `DaybreakDX.exe` (2,920,448 B, 2007), and the two
-   builds ship different `data/object/P01.cnv` — already demonstrated to differ between
-   `daybreak00.dat` and `daybreak04.dat`. **Next step:** run the 1.11s build under Wine with a
-   file-trace (or compare the two exes' `data/object/P01.bmp`-adjacent immediates) to see whether
-   its 0x6c7df8-equivalent points at P03 instead.
+2. **[RESOLVED 2026-10-03] The boxed `適当` label's sprite provenance.** The conflict came
+   from attributing the `(183,548)` draw to the label. The label is **not** a `P01` sprite.
+
+   * **Boxed `適当` = static sprite `0x6ca140` = `data/object/p03.cnv` (0,0,128,64), pivot
+     (64,32)**, cells 128x64. Created at the *end* of `FUN_00642510` — disassembly
+     @0x642993-0x6429ae (`push 0x20; push 0x40; push 0x40; push 0x80; push 0; push 0;
+     push [0x6c7f44]; mov ecx,0x6ca140; call 0x6556c0`), decompiled `FUN_00642510.c:68`
+     (the file's last line). Constructor semantics: `FUN_006556c0.c:15-28`.
+   * **Draw site** `FUN_00644150.c:102-104` / disassembly @0x644859-0x6448ad:
+     `FUN_00655830(216*scale + vpLeft, 520*scale + vpTop, v mod 4, v div 4)` with
+     `v = (int8)hud+0x310` (anchors `.rdata` 0x6a4cb8 = 216.0f, 0x6a4cbc = 520.0f; arg3 =
+     cell column, arg4 = cell row, `FUN_00655830.c:15-21`). Cell values: 0 `適当`
+     (yellow), 1 `格闘`, 2 `射撃`, 3 `集中`, 4 `各個`, 5 `後退`.
+   * **Anchor arithmetic**: pivot (64,32) gives quad origin (152,488) at 1P scale; the
+     cell's art is (1,14)-(126,51), i.e. **(153,502)-(278,539)** — the measured print box
+     (155,503)-(276,537) within the antialiased rim. The print quad against `P03`
+     (0,0,128,64) measures mean |diff| **0.00**; the same search over every other atlas in
+     every bundle scores 38-100.
+   * **Atlas**: `data/object/p03.cnv` ships in **`daybreak00.dat` only** (1,048,593 B,
+     entry offset 1,345,326,464, sha1 `103c62a7...`).
+   * The **`(183,548)` anchor is a different element**: static sprite `0x6c7df8` = `P01`
+     **(0,384,128,32)** (`FUN_00642510.c:53`, @0x64276f-0x642789) is the **hypermode name
+     caption**, drawn with cell row = `hud+0x318` (0 `OYASHIRO`, 1 `FRIENDSHIP`, 2 `KAKERA`)
+     at `FUN_00644150.c:48/66/84` (@0x644443/0x6445c4/0x644745). In `battle-hud.webp` that
+     is the `OYASHIRO` word at frame (196,558)-(298,569). The (-28,-45) gap was therefore an
+     artefact of comparing the *tactics label* with the *caption's* anchor.
+   * **Which `P01` the print used**: **`daybreak04.dat`'s** (sha1 `6ebc4967...`, entry
+     offset 922,144,239), not `daybreak00.dat`'s (`6830e6ee...`). Fan quad and caption quad
+     mean |diff| are 3.20 / 2.65 for the DX atlas against 10.39 / 100.51 for the 2006 one.
+     Reason: the exe registers daybreak07, then **04**, then **00** (0x64d4d4 / 0x64d4ee /
+     0x64d4fe) and the earlier-registered archive wins a duplicate name — which is why
+     `assets/dat_bundle.cpp`'s bundle order is precedence order, not file-number order.
+   * **Build**: `daybreakdx_111s.exe` is not a build — it is an LHA self-extracting patch
+     (7-Zip: `Type = Lzh`, payload at 28162) whose payload `DaybreakDX.exe`
+     (sha1 `f009a521...`) and `daybreak07.dat` (`eb315a27...`) are byte-identical to the
+     installed files. The 2006 `daybreak.exe` is excluded: it holds no
+     `P01 (0,384,128,32)` sprite and no 183.0f/548.0f anchors, so it cannot draw the
+     print's caption. The prints are the corpus `DaybreakDX.exe` v1.11.
+
 3. **Exact pivot semantics of `FUN_00655b20` params 7/8.** The model
    "quad top-left = (x - param7, y - param8), size = srcW x srcH at scale" reproduces the HP fill
    and the MAIN fill **exactly** and the OYASHIRO frame within ~4 px, but several sprites carry

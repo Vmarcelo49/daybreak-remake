@@ -20,9 +20,11 @@
 //      textures, .dat, .cnv, audio, a movie) are read through DatBundleSet and
 //      their sha256 must equal the oracle's sha256 for the same entry, and the
 //      extracted-tree file's sha256 where that file is the same copy.
-//   3. Multi-bundle order — DatBundleSet must pick the first bundle in
-//      daybreak00/02/04/05/06/07 order that has the name, matching the DX9
-//      logs (parity-baseline/logs/asset-*.log: data/rika/01.X -> daybreak00,
+//   3. Multi-bundle order — DatBundleSet must pick the earliest-*registered*
+//      bundle that has the name (daybreak07, 04, 00, then 05, 02, 06 — the
+//      exe's registration order, which decides duplicates; its name table's
+//      00/04/07/05/02/06 is the open sequence, a different thing), matching the
+//      DX9 logs (parity-baseline/logs/asset-*.log: data/rika/01.X -> daybreak00,
 //      index 6017, 9675158 bytes) and the oracle's independent archive scan.
 //   4. Negative cases — missing asset, out-of-bounds entry, truncated/corrupt
 //      headers and an all-zero 65535-entry table must fail cleanly (no crash,
@@ -352,6 +354,15 @@ def sha(data):
 
 
 tables = {a: read_table(a) for a in ARCHIVES}
+
+# Duplicate names resolve to the *earliest-registered* archive, which is not the
+# file-number order the tables above are emitted in (that order keeps the table
+# parity check aligned with the on-disk sequence). The exe registers daybreak07,
+# then daybreak04, then daybreak00 (0x64d4d4 / 0x64d4ee / 0x64d4fe) before the
+# rest, so 04 beats 00 for data/object/P01.cnv - measurably: the original's own
+# battle-hud.webp matches daybreak04's fan and caption art, not daybreak00's.
+PRECEDENCE = ["daybreak07.dat", "daybreak04.dat", "daybreak00.dat",
+              "daybreak05.dat", "daybreak02.dat", "daybreak06.dat"]
 names = open(os.path.join(workdir, "names.txt"), encoding="utf-8").read().splitlines()
 dirs = open(os.path.join(workdir, "dirs.txt"), encoding="utf-8").read().splitlines()
 
@@ -363,15 +374,27 @@ with open(os.path.join(workdir, "oracle.tsv"), "w", encoding="utf-8") as out:
 
     for si, want in enumerate(names):
         resolved = False
-        for bi, a in enumerate(ARCHIVES):
+        # Every copy is reported (the S records), in *file-number* order so the row
+        # indices keep matching the T records above; the resolved one (R) is chosen in
+        # PRECEDENCE order and carries that order's index, which is also the order
+        # DatBundleSet::bundleFileName() exposes.
+        copies = []
+        for ai, a in enumerate(ARCHIVES):
             for ei, (raw, size, off) in enumerate(tables[a]):
-                if ed.safe_filename(raw) != want:
-                    continue
-                h = sha(read_payload(a, off, size))
-                out.write("S\t%d\t%d\t%d\t%d\t%s\n" % (si, bi, ei, size, h))
-                if not resolved:
-                    out.write("R\t%d\t%d\t%d\t%d\t%s\n" % (si, bi, ei, size, h))
-                    resolved = True
+                if ed.safe_filename(raw) == want:
+                    copies.append((ai, ei, size, a))
+        for ai, ei, size, a in copies:
+            h = sha(read_payload(a, off if False else tables[a][ei][2], size))
+            out.write("S\t%d\t%d\t%d\t%d\t%s\n" % (si, ai, ei, size, h))
+        for pi, a in enumerate(PRECEDENCE):
+            hit = [c for c in copies if c[3] == a]
+            if not hit:
+                continue
+            ai, ei, size, _ = hit[0]
+            h = sha(read_payload(a, tables[a][ei][2], size))
+            out.write("R\t%d\t%d\t%d\t%d\t%s\n" % (si, pi, ei, size, h))
+            resolved = True
+            break
         if not resolved:
             out.write("R\t%d\t-1\t0\t0\t-\n" % si)
 
@@ -423,6 +446,21 @@ struct Oracle {
     std::vector<std::pair<std::size_t, std::string>> dirs;   // count, sha of sorted raw names
     std::string log;
 };
+
+// The oracle script emits one table per archive in *file-number* order, while
+// DatBundleSet's arrays are in precedence order (a duplicate resolves to the earliest
+// registered archive, not the lowest-numbered one). Pair the two by name so a future
+// reorder cannot silently compare the wrong tables — which is exactly what happened when
+// the precedence order was corrected.
+std::size_t oracleTableFor(const char* bundleName) {
+    static const char* const kOracleOrder[] = {
+        "daybreak00.dat", "daybreak02.dat", "daybreak04.dat",
+        "daybreak05.dat", "daybreak06.dat", "daybreak07.dat",
+    };
+    for (std::size_t i = 0; i < sizeof(kOracleOrder) / sizeof(kOracleOrder[0]); ++i)
+        if (std::strcmp(kOracleOrder[i], bundleName) == 0) return i;
+    return static_cast<std::size_t>(-1);
+}
 
 Oracle run_oracle(const std::string& repo, const std::string& game, const fs::path& work) {
     Oracle o;
@@ -602,7 +640,9 @@ int main(int argc, char** argv) {
     std::vector<std::string> nameDiffExamples;
     for (std::size_t bi = 0; bi < set.bundles().size() && oracle.ran; ++bi) {
         const DatBundle& b = set.bundles()[bi];
-        const std::vector<OracleTableEntry>& ot = oracle.tables[bi];
+        const std::size_t oi = oracleTableFor(DatBundleSet::bundleFileName(bi));
+        const std::vector<OracleTableEntry>& ot =
+            oi < oracle.tables.size() ? oracle.tables[oi] : oracle.tables[bi];
         if (b.entries().size() != ot.size()) {
             fail(std::string("bundle ") + DatBundleSet::bundleFileName(bi) + ": entry count " +
                  std::to_string(b.entries().size()) + " != oracle " + std::to_string(ot.size()));
@@ -638,7 +678,9 @@ int main(int argc, char** argv) {
             fail(std::string("oracle did not resolve sample ") + kSamples[si]);
             continue;
         }
-        const std::vector<OracleTableEntry>& ot = oracle.tables[os.ownerBundle];
+        const std::size_t obi = oracleTableFor(DatBundleSet::bundleFileName(os.ownerBundle));
+        const std::vector<OracleTableEntry>& ot =
+            obi < oracle.tables.size() ? oracle.tables[obi] : oracle.tables[os.ownerBundle];
         if (os.ownerIndex < ot.size()) {
             const std::string want(kSamples[si]);
             if (hex_bytes(want) != ot[os.ownerIndex].nameHex) {
@@ -794,11 +836,24 @@ int main(int argc, char** argv) {
             const std::size_t oi = static_cast<std::size_t>(owner - &set.bundles()[0]);
             std::printf("\nbundle order: data/rika/01.X -> %s#%u len=%u (daybreak04 has idx 2411 "
                         "len=9893738)\n", DatBundleSet::bundleFileName(oi), e->index, e->length);
-            check(oi == 0, "first-match order must pick daybreak00 for data/rika/01.X");
+            // Assert the *bundle by name*, not by array index: the index is now a
+            // precedence position (daybreak07 first). The expected owner is daybreak04,
+            // not daybreak00: both ship data/rika/01.X and 04 is the earlier-registered of
+            // the two, so 04 wins under the rule the exe's registration order implies and
+            // the P01 pixel test confirms. The DX9 remake's own log reports daybreak00
+            // here because that port resolves duplicates in file-number order — this is a
+            // case where the foundation is now more faithful than the A/B, and the
+            // logs/asset-*.log expectation is superseded rather than broken.
+            check(std::string(DatBundleSet::bundleFileName(oi)) == "daybreak04.dat",
+                  "data/rika/01.X must resolve to daybreak04.dat (earliest-registered copy)");
         }
         // The duplicate is still individually addressable through its own bundle.
-        const DatBundle* b04 = set.bundle(2);
-        check(b04 && b04->isOpen(), "bundle 2 (daybreak04.dat) must be open");
+        const DatBundle* b04 = nullptr;
+        for (std::size_t bi = 0; bi < set.bundles().size(); ++bi) {
+            if (std::string(DatBundleSet::bundleFileName(bi)) == "daybreak04.dat")
+                b04 = set.bundle(bi);
+        }
+        check(b04 && b04->isOpen(), "daybreak04.dat must be open");
         if (b04) {
             const DatEntry* e04 = b04->find("data/rika/01.X");
             check(e04 != nullptr, "daybreak04 must contain data/rika/01.X");
@@ -1011,12 +1066,15 @@ int main(int argc, char** argv) {
         for (std::size_t bi = 0; bi < set.bundles().size() && shown < 5; ++bi) {
             for (const DatEntry& e : set.bundles()[bi].entries()) {
                 const std::size_t ei = e.index;
-                if (ei >= oracle.tables[bi].size()) continue;
-                if (hex_bytes(e.name) != oracle.tables[bi][ei].nameHex) {
+                const std::size_t oi = oracleTableFor(DatBundleSet::bundleFileName(bi));
+                const std::vector<OracleTableEntry>& ot =
+                    oi < oracle.tables.size() ? oracle.tables[oi] : oracle.tables[bi];
+                if (ei >= ot.size()) continue;
+                if (hex_bytes(e.name) != ot[ei].nameHex) {
                     std::printf("    %s#%u raw=%s mine=%s oracle=%s\n",
                                 DatBundleSet::bundleFileName(bi), e.index,
                                 hex_bytes(e.rawName).c_str(), hex_bytes(e.name).c_str(),
-                                oracle.tables[bi][ei].nameHex.c_str());
+                                ot[ei].nameHex.c_str());
                     if (++shown >= 5) break;
                 }
             }

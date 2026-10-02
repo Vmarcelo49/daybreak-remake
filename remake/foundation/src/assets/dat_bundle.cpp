@@ -255,10 +255,28 @@ bool DatBundle::read(const DatEntry& entry, std::vector<uint8_t>& out) const {
 // DatBundleSet
 // ---------------------------------------------------------------------------
 
+// Bundle order is *precedence* order, not file-number order: a name that ships in more
+// than one archive resolves to the one registered earliest, and the exe registers
+// daybreak07, then daybreak04, then daybreak00 (0x64d4d4 / 0x64d4ee / 0x64d4fe) before the
+// rest. Its own name table (.rdata 0x6a5598: daybreak00, 04, 07, 05, 02, 06 — 01 and 03 do
+// not appear) is the *open* sequence, which is a different thing and is not what decides a
+// duplicate; a Wine file trace shows that same open order.
+//
+// This was the other way round here (00, 02, 04, 05, 06, 07) and it is measurably wrong:
+// `data/object/P01.cnv` ships in daybreak00 (sha1 6830e6ee, fan captions baked into the
+// wedges) and daybreak04 (6ebc4967, captions split into a three-row strip). The original's
+// own screen battle-hud.webp matches daybreak04's art against a daybreak00 control — fan
+// quad mean |diff| 3.20 vs 10.39, caption quad 2.65 vs 100.51 — so 04 must beat 00, and
+// resolving P01 to 00 drew the wrong fan and no caption strip.
+//
+// The first three entries are the RE'd registration order. The tail (05, 02, 06) follows
+// the name table because their registration sites were not traced; no shipped name is
+// known to be duplicated across just those three, so the tail order is untested rather
+// than verified.
 const char* DatBundleSet::bundleFileName(std::size_t i) {
     static const char* const kOrder[kBundleCount] = {
-        "daybreak00.dat", "daybreak02.dat", "daybreak04.dat",
-        "daybreak05.dat", "daybreak06.dat", "daybreak07.dat",
+        "daybreak07.dat", "daybreak04.dat", "daybreak00.dat",
+        "daybreak05.dat", "daybreak02.dat", "daybreak06.dat",
     };
     return i < kBundleCount ? kOrder[i] : "";
 }
