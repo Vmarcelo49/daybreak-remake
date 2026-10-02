@@ -10,11 +10,40 @@ namespace {
 
 namespace fs = std::filesystem;
 
+// Lexical path normalization: backslashes to slashes, duplicate slashes collapsed,
+// "." and ".." resolved. Needed because a caller can hand in a path like
+// "<stage>/../bgm/01.ogg", whose bundle key is "data/bgm/01.ogg" — the archives store
+// resolved names and matching is by string. Purely lexical: no filesystem access, so
+// the result is identical on every target. The filesystem fallback still uses the
+// caller's original string, where the OS resolves the path itself.
 std::string normalize(std::string p) {
     for (char& c : p)
         if (c == '\\') c = '/';
-    while (p.size() > 1 && p.back() == '/') p.pop_back();
-    return p;
+
+    const bool absolute = !p.empty() && p.front() == '/';
+    std::vector<std::string> parts;
+    size_t start = 0;
+    while (start <= p.size()) {
+        const size_t slash = p.find('/', start);
+        const std::string seg =
+            p.substr(start, slash == std::string::npos ? std::string::npos : slash - start);
+        if (seg == "..") {
+            if (!parts.empty() && parts.back() != "..") parts.pop_back();
+            else if (!absolute) parts.push_back("..");
+        } else if (!seg.empty() && seg != ".") {
+            parts.push_back(seg);
+        }
+        if (slash == std::string::npos) break;
+        start = slash + 1;
+    }
+
+    std::string out = absolute ? "/" : std::string();
+    for (size_t i = 0; i < parts.size(); ++i) {
+        if (i) out += '/';
+        out += parts[i];
+    }
+    if (out.empty()) out = absolute ? "/" : ".";
+    return out;
 }
 
 // The filesystem half. Kept byte-for-byte equivalent to the fopen() path the asset layer

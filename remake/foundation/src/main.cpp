@@ -40,6 +40,8 @@
 #include "ui/sprite.h"
 #include "game/hud_bridge.h"
 #include "game/fighter_pose.h"
+#include "gameplay/match.h"
+#include "gameplay/hud_fill.h"
 #include "audio/audio.h"
 #include "audio/audio_engine.h"
 #include "game/effect_events.h"
@@ -63,6 +65,11 @@ struct Options {
     bool        inputTest = false; // run the input backend self-check and exit
     std::string enemy;           // versus P2, same spec syntax as --character
     bool        versus = false;  // scripted two-fighter vignette (capture-oriented)
+    bool        match = false;   // playable match: the ported simulation, not a script
+    std::string script;          // P1 input script (device override, DX9 format)
+    std::string script2;         // P2 input script; absent -> dummy, like the DX9
+    bool        hasSpawn[2] = {false, false};   // --spawn / --spawn2 x,y,z
+    glm::vec3   spawn[2] = {glm::vec3(0.f), glm::vec3(0.f)};
     std::string bgm;             // versus BGM track (.ogg; sibling .sfl looped)
     std::string sfx;             // versus hit cue (.cnv)
 
@@ -78,6 +85,7 @@ struct Options {
     float       dt   = 1.f / 60.f;
 
     std::string camera = "auto";   // auto|player|front|top|bounds
+    bool        headless = false;  // no window/surface: offscreen captures only
     std::string install;           // dir holding daybreakXX.dat; auto-detected when empty
     bool        noCameraClamp = false;   // A/B switch for the arena eye clamp
     bool        noTextures = false;
@@ -127,6 +135,9 @@ void usage() {
         "  --install=<dir>    use this game install's daybreakXX.dat bundles; when\n"
         "                     omitted, the install is inferred from the asset paths\n"
         "  --no-camera-clamp  A/B switch: skip the arena eye's collision_camera clamp\n"
+        "  --headless         no window, no surface, no swapchain: render straight to\n"
+        "                     offscreen captures (needs --out). Lets verification run\n"
+        "                     where no presentable display exists, on the real GPU\n"
         "  --audio-test         run the audio backend self-check and exit\n"
         "  --audio-file=<path>  with --audio-test: decode a real file as well\n"
         "  --input-test         run the input backend self-check and exit\n"
@@ -136,6 +147,15 @@ void usage() {
         "                     --character, --enemy and --frames>=30\n"
         "  --bgm=<file.ogg>   versus BGM track played through the loop player\n"
         "  --sfx=<file.cnv>    versus hit cue fired at scripted hits\n"
+        "  --match            playable match: the ported fighter simulation, the real\n"
+        "                     match economy and live HUD values (needs --stage,\n"
+        "                     --character and --enemy, like --versus)\n"
+        "  --script=<file>    P1 input script for --match (\"<frame> TOKEN...\" lines,\n"
+        "                     the DX9 visual-suite format); absent -> live device\n"
+        "  --script2=<file>   P2 input script; absent -> P2 takes no input (dummy,\n"
+        "                     exactly what the DX9 scene does)\n"
+        "  --spawn=x,y,z      P1 start position (default: the stage's env.dat point)\n"
+        "  --spawn2=x,y,z     P2 start position\n"
         "With no asset argument the spinning-triangle demo runs.\n");
 }
 
@@ -167,10 +187,26 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--debug-prims") o.debugPrims = true;
         else if (!(v = val("--install=")).empty()) o.install = v;
         else if (a == "--no-camera-clamp") o.noCameraClamp = true;
+        else if (a == "--headless") o.headless = true;
         else if (a == "--audio-test") o.audioTest = true;
         else if (a == "--input-test") o.inputTest = true;
         else if (!(v = val("--enemy=")).empty()) o.enemy = v;
         else if (a == "--versus") o.versus = true;
+        else if (a == "--match") o.match = true;
+        else if (!(v = val("--script=")).empty()) o.script = v;
+        else if (!(v = val("--script2=")).empty()) o.script2 = v;
+        else if (!(v = val("--spawn=")).empty() || !(v = val("--spawn2=")).empty()) {
+            // Match the KEY, not the whole argument: `a` carries the value too, so
+            // `a == "--spawn2"` is never true and both flags would write slot 0.
+            const int slot = (a.rfind("--spawn2=", 0) == 0) ? 1 : 0;
+            if (std::sscanf(v.c_str(), "%f,%f,%f", &o.spawn[slot].x, &o.spawn[slot].y,
+                            &o.spawn[slot].z) == 3)
+                o.hasSpawn[slot] = true;
+            else {
+                error = a + " needs x,y,z";
+                return false;
+            }
+        }
         else if (!(v = val("--bgm=")).empty()) o.bgm = v;
         else if (!(v = val("--sfx=")).empty()) o.sfx = v;
         else if (a.rfind("--", 0) == 0) {
@@ -196,8 +232,26 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         }
         if (o.camera == "auto") o.camera = "arena";
         if (o.anim < 0) o.anim = 0;
+    } else if (o.match) {
+        // A match is the real simulation, so it needs the same full cast as versus
+        // (the reference's Scene_Gameplay loads exactly two fighters) and the arena
+        // follow camera; its length is the caller's business.
+        if (o.stage.empty() || o.character.empty() || o.enemy.empty()) {
+            error = "--match needs --stage, --character and --enemy";
+            return false;
+        }
+        if (o.camera == "auto") o.camera = "arena";
+        if (o.anim < 0) o.anim = 0;
     } else if (!o.enemy.empty()) {
-        error = "--enemy needs --versus (P2 placement and rig ownership live there)";
+        error = "--enemy needs --versus or --match (P2 placement and rig ownership live there)";
+        return false;
+    }
+    if ((!o.script.empty() || !o.script2.empty() || o.hasSpawn[0] || o.hasSpawn[1]) && !o.match) {
+        error = "--script/--script2/--spawn/--spawn2 need --match";
+        return false;
+    }
+    if (o.headless && o.out.empty()) {
+        error = "--headless needs --out: there is no window to present to";
         return false;
     }
     if (!o.out.empty()) {
@@ -249,10 +303,11 @@ xm::Scene loadScene(const Options& o, std::string& error, size_t* enemyBegin = n
     sopt.includeCollision = true;   // framing only; never drawn
 
     xm::Scene scene;
-    if (o.versus) {
-        // Versus composes explicitly: stage, P1 (+P1 weapon on P1's rig, never
-        // models[0]), then P2. Validation guarantees all three specs; env.dat
-        // spawn points place the fighters later.
+    if (o.versus || o.match) {
+        // Versus and match compose the same way: stage, P1 (+P1 weapon on P1's rig,
+        // never models[0]), then P2 — which is what Scene_Gameplay loads
+        // (scenes.cpp:469-495) and what both modes need. Validation guarantees all
+        // three specs; env.dat spawn points place the fighters later.
         scene = xm::loadStage(o.stage, sopt);
         appendCharacter(scene, o.character, sopt);
         if (!o.weapon.empty()) {
@@ -410,6 +465,24 @@ struct App {
     glm::vec3                    arenaDesired{0.f};
     glm::vec3                    prevEye{0.f};
     bool                         havePrevEye = false;
+
+    // Playable match (Phase 2): the ported simulation drives the fighters, the HUD
+    // values and the effects, instead of the versus vignette's frame-index script.
+    gameplay::Match              match;
+    bool                         matchMode = false;
+    uint64_t                     matchFrame = 0;      // 1-based, the DX9's frame_count+1
+    int                          lockedFighter = 0;   // camera target; Guard+AttackB cycles
+    fnd::input::Backend          matchInput;          // P1 device + script override
+    bool                         matchInputReady = false;
+    fnd::input::PlayerState      p2State;             // P2 script state (unused when dummy)
+    std::vector<fnd::input::ScriptEvent> p2Script;
+    size_t                       p2ScriptPos = 0;
+    uint32_t                     p2Mask = 0;
+    size_t                       matchRig[2] = {0, 0};   // controller index per fighter
+    uint64_t                     matchShots = 0, matchSparks = 0, matchHits = 0;
+    uint64_t                     matchRoundOverFrame = 0;
+    game::EffectEventQueue       matchFx;
+    uint64_t                     matchFxEvents = 0;
 
     // Versus vignette state (only when opts.versus): P2 range, spawn bases,
     // audio streaming, effect accounting, and the current timeline HUD.
@@ -614,8 +687,8 @@ static void placeVersusFighters(App& app, const glm::vec3& p1, const glm::vec3& 
                          sm.source.c_str(), sm.attachFrame);
             continue;
         }
-        app.modelMatrices[i] = app.worlds[app.p1Rig][(size_t)sm.attachFrame];
-    }
+        app.modelMatrices[i] =
+            app.modelMatrices[app.p1Rig] * app.worlds[app.p1Rig][(size_t)sm.attachFrame];    }
     app.renderer.setModelMatrices(app.modelMatrices);
 }
 
@@ -678,6 +751,262 @@ static bool initVersus(App& app) {
     placeVersusFighters(app, app.p1Base, app.p2Base);
     return true;
 }
+
+// Match one-time setup (Scene_Gameplay::on_enter, scenes.cpp:465-595): bind the two
+// fighters to the scene's character models, place them at the stage's spawns, and
+// load the input scripts. The spawns are env.dat's points — the stage's own data and
+// what the original reads — not the DX9 remake's hardcoded pair, which its comment
+// claims are the env values but are not (stage21 env.dat holds (-463,200,-2200) and
+// (-1363,200,-2200); the DX9 code hardcodes (1393,200,-463) and (-2200,200,-1363)).
+static bool initMatch(App& app) {
+    if (!app.scene.env.present && (!app.opts.hasSpawn[0] || !app.opts.hasSpawn[1])) {
+        app.error = "--match needs a stage with env.dat spawns, or --spawn/--spawn2";
+        return false;
+    }
+    const size_t p1 = firstCharacter(app.scene, 0);
+    const size_t p2 = firstCharacter(app.scene, app.enemyBegin);
+    if (p1 >= app.scene.models.size() || p2 >= app.scene.models.size()) {
+        app.error = "--match found no P1/P2 character model";
+        return false;
+    }
+
+    gameplay::MatchConfig config;
+    const glm::vec3 envP1 = app.scene.env.points[0];
+    const glm::vec3 envP2 = app.scene.env.points[1];
+    config.spawn[0] = app.opts.hasSpawn[0] ? app.opts.spawn[0] : envP1;
+    config.spawn[1] = app.opts.hasSpawn[1] ? app.opts.spawn[1] : envP2;
+    // Facing 0 and pi, as the reference spawns them (scenes.cpp:535).
+    config.facing[0] = 0.0f;
+    config.facing[1] = 3.14159f;
+
+    const xm::Model* models[2] = {&app.scene.models[p1].model, &app.scene.models[p2].model};
+    xm::Controller*  anims[2] = {&app.controllers[p1], &app.controllers[p2]};
+    app.matchRig[0] = p1;
+    app.matchRig[1] = p2;
+
+    // The projectile channel (fcn.004011f0's collision_tama.x): optional, and shots
+    // fly to expiry when the stage ships none (the reference's open-field case).
+    const xm::Model* tamaMesh = nullptr;
+    static game::physics::ModelIndex tamaIndex;
+    for (const xm::SceneModel& sm : app.scene.models) {
+        if (sm.role == "collision" && sm.source.find("collision_tama") != std::string::npos) {
+            tamaMesh = &sm.model;
+            tamaIndex = game::physics::buildModelIndex(sm.model);
+            break;
+        }
+    }
+    app.match.reset(config, models, anims, tamaMesh, tamaMesh ? &tamaIndex : nullptr);
+    std::printf("match        : P1 %s at (%.0f,%.0f,%.0f), P2 %s at (%.0f,%.0f,%.0f), tama=%s\n",
+                app.scene.models[p1].source.c_str(), config.spawn[0].x, config.spawn[0].y,
+                config.spawn[0].z, app.scene.models[p2].source.c_str(), config.spawn[1].x,
+                config.spawn[1].y, config.spawn[1].z, tamaMesh ? "loaded" : "missing");
+
+    if (!app.matchInput.init()) {
+        app.error = "--match needs the input backend";
+        return false;
+    }
+    app.matchInputReady = true;
+
+    // BGM: the reference plays data/bgm/01.ogg on entering the match (scenes.cpp:473,
+    // 570-591), looped through the .sfl sheet. --bgm overrides the track; a build
+    // without an audio device keeps running silently, as the DX9 side does.
+    const std::string bgm = app.opts.bgm.empty() ? (app.opts.stage + "/../bgm/01.ogg")
+                                                 : app.opts.bgm;
+    if (app.versusAudio.open(fnd::audio::Spec{})) {
+        app.versusAudioOn = true;
+        if (!loadBgmTrack(bgm, app.versusAudio, app.versusBgm, app.versusLoop, app.error)) {
+            std::fprintf(stderr, "[daybreak] match: BGM unavailable (%s), running silent\n",
+                         app.error.c_str());
+            app.error.clear();
+        } else {
+            std::printf("match bgm    : %s\n", bgm.c_str());
+        }
+    }
+    if (!app.opts.script.empty() && !app.matchInput.load_script(app.opts.script.c_str())) {
+        app.error = "cannot read input script " + app.opts.script;
+        return false;
+    }
+    if (!app.opts.script2.empty()) {
+        std::ifstream f(app.opts.script2);
+        if (!f) {
+            app.error = "cannot read P2 input script " + app.opts.script2;
+            return false;
+        }
+        std::string line;
+        while (std::getline(f, line)) {
+            uint64_t frame = 0;
+            uint32_t mask = 0;
+            if (fnd::input::parse_script_line(line.c_str(), frame, mask))
+                app.p2Script.push_back({frame, mask});
+        }
+        std::printf("[fnd::input] script2: %s (%zu events)\n", app.opts.script2.c_str(),
+                    app.p2Script.size());
+    }
+    app.matchMode = true;
+    app.lockedFighter = 0;
+    return true;
+}
+
+// Places the two fighters' models from the live simulation. modelMatrix() is the
+// reference's world matrix (translation + Y rotation, FUN_00420b30). A bone-attached
+// weapon is a separate model, so its world transform is the rig's model matrix
+// composed with the bone's model-space matrix — the same composition the versus path
+// needs, which it got wrong (it used the bone matrix alone, so a weapon would have
+// been placed at the origin instead of in the fighter's hand).
+static void placeMatchFighters(App& app) {
+    for (size_t i = 0; i < app.scene.models.size(); ++i) {
+        if (i == app.matchRig[0])      app.modelMatrices[i] = app.match.fighter(0).modelMatrix();
+        else if (i == app.matchRig[1]) app.modelMatrices[i] = app.match.fighter(1).modelMatrix();
+    }
+    for (size_t i = 0; i < app.scene.models.size(); ++i) {
+        const xm::SceneModel& sm = app.scene.models[i];
+        if (sm.attachFrame < 0) continue;
+        const size_t rig = (i >= app.enemyBegin) ? app.matchRig[1] : app.matchRig[0];
+        if (rig >= app.worlds.size() || (size_t)sm.attachFrame >= app.worlds[rig].size()) {
+            std::fprintf(stderr, "[scene] %s: attachment frame %d unusable, drawing at the origin\n",
+                         sm.source.c_str(), sm.attachFrame);
+            continue;
+        }
+        app.modelMatrices[i] = app.modelMatrices[rig] * app.worlds[rig][(size_t)sm.attachFrame];
+    }
+    app.renderer.setModelMatrices(app.modelMatrices);
+}
+
+// One match frame: the reference's order lives in gameplay::Match::step; this adds
+// what the scene added around it — input polling, the camera's target switch, the
+// HUD values, the effect events and the debug cubes.
+static void tickMatch(App& app, double dt) {
+    ++app.matchFrame;   // 1-based, matching the DX9's frame_count + 1
+
+    // P2: a script drives it when given; otherwise it takes no input, which is
+    // exactly what the DX9 scene passes (scenes.cpp:680).
+    const fnd::input::PlayerState* p2 = nullptr;
+    if (!app.p2Script.empty()) {
+        while (app.p2ScriptPos < app.p2Script.size() &&
+               app.p2Script[app.p2ScriptPos].frame <= app.matchFrame) {
+            app.p2Mask = app.p2Script[app.p2ScriptPos].mask;
+            ++app.p2ScriptPos;
+        }
+        for (int a = 0; a < fnd::input::ActionCount; ++a)
+            app.p2State.down[a] = (app.p2Mask & (1u << a)) != 0;
+        fnd::input::compute_edges(app.p2State);
+        p2 = &app.p2State;
+    }
+
+    const fnd::input::PlayerState* p1 = nullptr;
+    if (app.matchInputReady) {
+        app.matchInput.tick_script(app.matchFrame);
+        app.matchInput.poll();
+        p1 = &app.matchInput.player(0);
+    }
+
+    const gameplay::MatchFrame f = app.match.step(p1, p2, dt);
+    placeMatchFighters(app);
+    if (app.versusAudioOn)
+        app.versusBgmPushed += app.versusLoop.push_next(app.versusAudio, 1024);
+    app.matchShots += (uint64_t)f.shotsSpawned;
+    app.matchSparks += (uint64_t)f.muzzleSparks;
+    for (int i = 0; i < 2; ++i)
+        if (f.meleeHit[i]) ++app.matchHits;
+
+    // Combat effects: a card at the victim for each connected hit, retired by the
+    // next one — the versus vignette's FIFO discipline, driven by real combat.
+    if (f.meleeHit[0] || f.meleeHit[1]) {
+        const int victim = f.meleeHit[0] ? 1 : 0;
+        const glm::vec3 at = app.match.fighter(victim).position() + glm::vec3(0.f, 100.f, 0.f);
+        app.matchFx.pushSpawn((uint32_t)app.matchHits, at, 0, 12.f);
+        if (app.matchHits > 1) app.matchFx.pushKill((uint32_t)(app.matchHits - 1));
+    }
+    app.matchFxEvents += app.matchFx.drain().size();
+
+    // Camera: the locked fighter's live pose, with the reference's target switch
+    // (Guard just_pressed while AttackB is held, scenes.cpp:644-646).
+    if (p1) {
+        const bool switchNow = p1->just_pressed[fnd::input::Guard] && p1->down[fnd::input::AttackB];
+        if (switchNow) {
+            const int other = 1 - app.lockedFighter;
+            if (app.match.fighter(other).is_alive()) app.lockedFighter = other;
+        }
+    }
+    const game::FighterPose pose = app.match.fighter(app.lockedFighter).pose();
+    const render::ArenaFrame af = render::arenaViewProj(
+        game::arenaTargetFrom(pose), render::ArenaCameraParams{}, 16.f / 9.f);
+    app.target = af.aim;
+    app.arenaDesired = af.eye;
+
+    // HUD: the ported value computation, fed from the live fighter (side 0, which is
+    // the only side the DX9 layout draws outside the two balloon corners).
+    const gameplay::Fighter& f1 = app.match.fighter(0);
+    gameplay::HudFillInput hf;
+    hf.p1.hp = f1.hp();
+    hf.p1.alive = f1.is_alive();
+    hf.p1.mainWhole = f1.main_whole();
+    hf.p1.mainFrac = f1.main_frac();
+    hf.p1.reloadOk = f1.reload_ok();
+    hf.p1.chargeWhole = f1.charge_whole();
+    hf.p1.chargeFrac = f1.charge_frac();
+    hf.p1.shootHeld = p1 && p1->down[fnd::input::Shoot];
+    hf.p1.chargeHoldFrac = f1.charge_hold_frac();
+    switch (f1.charge_tier()) {   // ShotTier -> HoldTier (scenes.cpp:847-851)
+        case gameplay::ShotTier::Red:    hf.p1.chargeTier = game::HoldTier::Red; break;
+        case gameplay::ShotTier::Yellow: hf.p1.chargeTier = game::HoldTier::Yellow; break;
+        default:                         hf.p1.chargeTier = game::HoldTier::Idle; break;
+    }
+    const gameplay::HypermodeParams hp = gameplay::hypermode_params(f1.hypermode());
+    hf.p1.hyperName = hp.name;
+    hf.p1.hyperGauge = f1.hyper_gauge();
+    hf.p1.hyperActive = f1.hyper_active();
+    hf.p1.hyperReady = f1.hyper_ready();
+    hf.p1.hyperSecondsLeft = f1.hyper_seconds_left();
+    hf.p1.hyperAura = game::GameRgb{(float)gameplay::rgbR(hp.aura) / 255.f,
+                                    (float)gameplay::rgbG(hp.aura) / 255.f,
+                                    (float)gameplay::rgbB(hp.aura) / 255.f};
+    hf.p1.stamina = f1.stamina();
+    // The reference's contextual gate is the state, not airborne() (scenes.cpp:879-882).
+    hf.p1.staminaVisible = f1.state() == gameplay::FighterState::Run ||
+                           f1.state() == gameplay::FighterState::Guard ||
+                           f1.state() == gameplay::FighterState::Jump;
+    app.versusHud = gameplay::hudStateFor(app.match.economy(), hf);
+
+    if (f.roundOver) {
+        app.matchRoundOverFrame = app.matchFrame;
+        std::printf("[daybreak] match: round over on side %d at frame %llu\n",
+                    f.roundOverSide, (unsigned long long)app.matchFrame);
+    }
+}
+
+// The trace the DX9 build prints under DAYBREAK_CAMINFO, reproduced field for field
+// so `tests/compare_match_traces.py` can diff the two implementations. The probe
+// fires on render calls 1, 61, 121, ... (scenes.cpp:802-805: `probe++ % 60 == 0`).
+static void traceMatch(App& app) {
+    if (!std::getenv("DAYBREAK_CAMINFO")) return;
+    if ((app.matchFrame - 1) % 60 != 0) return;
+    const gameplay::Fighter& a = app.match.fighter(0);
+    const gameplay::Fighter& b = app.match.fighter(1);
+    std::printf("[daybreak] cam eye=(%.0f,%.0f,%.0f) p1=(%.0f,%.0f,%.0f,%s) "
+                "p2=(%.0f,%.0f,%.0f,%s)\n",
+                app.eye.x, app.eye.y, app.eye.z, a.position().x, a.position().y, a.position().z,
+                gameplay::state_to_anim_name(a.state()), b.position().x, b.position().y,
+                b.position().z, gameplay::state_to_anim_name(b.state()));
+}
+
+// The DX9 side drew every shot and spark as an unlit cube (render::UnlitCubePass);
+// the foundation draws the same stand-in through the Phase 1 debug pass, from the
+// port's own per-cube data (Projectile::kCubeSize/color, Spark::size/color). Appends
+// to the caller's batch so the debug overlay can share the pass.
+static void appendMatchCubes(App& app) {
+    for (const gameplay::Projectile& p : app.match.shots().shots()) {
+        if (!p.alive) continue;
+        app.debugLines.box(p.pos - glm::vec3(gameplay::Projectile::kCubeSize),
+                           p.pos + glm::vec3(gameplay::Projectile::kCubeSize), p.color());
+    }
+    for (const gameplay::Spark& s : app.match.shots().sparks()) {
+        if (!s.alive) continue;
+        const float h = s.size() * 0.5f;
+        app.debugLines.box(s.pos - glm::vec3(h), s.pos + glm::vec3(h), s.color());
+    }
+}
+
 
 // Timeline HUD for one versus frame: scripted hits at 30/55/80% drain P1 to
 // 10, the last 3 frames are the KO sting, hyper fills to READY near the end.
@@ -850,6 +1179,8 @@ bool initScene(App& app) {
 
     if (app.opts.versus) {
         if (!initVersus(app)) return false;
+    } else if (app.opts.match) {
+        if (!initMatch(app)) return false;
     }
 
     // ---- framing. A stage's visible set includes an inverted sky dome far larger than
@@ -946,13 +1277,17 @@ bool initScene(App& app) {
     // The HUD test rig: same renderer, same swapchain format, one deterministic
     // synthetic HUD composited into --out captures. Font upload is fatal here (a
     // capture without labels would silently prove less); in a game it is not.
-    if (app.opts.hudTest || (app.versusMode && !app.opts.out.empty())) {
+    // A match always wants it: the HUD values are live game state, not a test rig.
+    if (app.opts.hudTest || app.matchMode || (app.versusMode && !app.opts.out.empty())) {
         if (!app.uiRenderer.init(app.ctx.device, app.ctx.queue, app.error)) return false;
         if (!app.hudComposer.uploadFont(app.uiRenderer, app.error)) return false;
         app.uiReady = true;
     }
 
-    if (app.opts.debugPrims && !app.debugPrims.init(app.ctx, app.error)) return false;
+    // The match draws its shots and sparks as cubes (the DX9 stand-in), so the debug
+    // pass is initialized whenever a match runs, not only under --debug-prims.
+    if ((app.opts.debugPrims || app.matchMode) && !app.debugPrims.init(app.ctx, app.error))
+        return false;
 
     const render::Stats& st = app.renderer.stats();
     std::printf("scene %s: %zu model(s), %zu meshes, %zu vertices, %zu palette matrices\n",
@@ -1034,18 +1369,26 @@ void teardown(App& app) {
     if (app.sc.surface) wgpuSurfaceRelease(app.sc.surface);
     gpu::destroyContext(app.ctx);
     if (app.window) SDL_DestroyWindow(app.window);
-    if (app.window) plat::shutdown();
+    plat::shutdown();   // SDL_Quit; headless initialized SDL too, just without video
 }
 
 // Re-poses from the controllers after advancing the clock. The pose is a pure
 // function of elapsed time, so the frame delta may be whatever the display gives us.
+//
+// In a match the two fighter controllers are skipped: the ported Fighter advances its
+// own animation inside update() (fighter.cpp:219), exactly as the DX9 model did, and
+// advancing them here as well would run the fighters' animation at double speed.
 void advanceAnimation(App& app, double delta) {
     bool moved = false;
-    for (xm::Controller& c : app.controllers) {
+    for (size_t i = 0; i < app.controllers.size(); ++i) {
+        xm::Controller& c = app.controllers[i];
         if (!c.model()) continue;
+        if (app.matchMode && (i == app.matchRig[0] || i == app.matchRig[1])) continue;
         c.advanceTime((float)delta);
         moved = true;
     }
+    // A match still needs the pose refreshed: the fighters moved their own tracks.
+    if (app.matchMode) moved = true;
     if (!moved) return;
     for (size_t i = 0; i < app.controllers.size(); ++i)
         if (app.controllers[i].model()) app.controllers[i].evalWorld(app.worlds[i]);
@@ -1248,32 +1591,52 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
         return SDL_APP_FAILURE;
     }
 
-    if (!plat::init(app->error)) return SDL_APP_FAILURE;
+    // Headless verification: no window, no surface, no swapchain, so the adapter is
+    // requested without a presentation target. That is what lets a machine with no
+    // DRI3/Wayland display render on the real GPU: Mesa's Vulkan WSI cannot present
+    // on Xvfb ("No DRI3 support detected - required for presentation"), and wgpu then
+    // falls back to software GL, which would make a Linux/Wine capture pair compare
+    // two different rasterizers.
+    if (app->opts.headless) {
+        if (!SDL_Init(SDL_INIT_EVENTS)) {
+            app->error = SDL_GetError();
+            return SDL_APP_FAILURE;
+        }
+        if (!gpu::createContext(app->ctx, nullptr, app->error)) return SDL_APP_FAILURE;
+        std::printf("=== daybreak foundation ===\n");
+        std::printf("video driver : headless (no window, no surface)\n");
+        std::printf("adapter      : %s [%s]\n", app->ctx.adapterName.c_str(),
+                    app->ctx.backend.c_str());
+    } else {
+        if (!plat::init(app->error)) return SDL_APP_FAILURE;
 
-    app->window = plat::createWindow("daybreak foundation", 960, 540, app->error);
-    if (!app->window) return SDL_APP_FAILURE;
+        app->window = plat::createWindow("daybreak foundation", 960, 540, app->error);
+        if (!app->window) return SDL_APP_FAILURE;
 
-    // instance -> surface -> adapter/device: the surface has to exist before the
-    // adapter is chosen, because it is requested as "compatible with" it.
-    if (!gpu::createInstance(app->ctx, app->error)) return SDL_APP_FAILURE;
-    app->sc.surface = plat::createSurface(app->ctx.instance, app->window);
-    if (!app->sc.surface) {
-        app->error = "surface creation failed";
-        return SDL_APP_FAILURE;
+        // instance -> surface -> adapter/device: the surface has to exist before the
+        // adapter is chosen, because it is requested as "compatible with" it.
+        if (!gpu::createInstance(app->ctx, app->error)) return SDL_APP_FAILURE;
+        app->sc.surface = plat::createSurface(app->ctx.instance, app->window);
+        if (!app->sc.surface) {
+            app->error = "surface creation failed";
+            return SDL_APP_FAILURE;
+        }
+        if (!gpu::createContext(app->ctx, app->sc.surface, app->error)) return SDL_APP_FAILURE;
+
+        int w = 960, h = 540;
+        SDL_GetWindowSizeInPixels(app->window, &w, &h);
+        if (!gpu::configureSwapchain(app->ctx, app->sc, (uint32_t)w, (uint32_t)h, app->error))
+            return SDL_APP_FAILURE;
+
+        std::printf("=== daybreak foundation ===\n");
+        std::printf("video driver : %s\n", plat::videoDriver());
+        std::printf("adapter      : %s [%s]\n", app->ctx.adapterName.c_str(),
+                    app->ctx.backend.c_str());
+        std::printf("surface      : %dx%d, %d format(s), %d present mode(s), fifo=%s\n", w, h,
+                    app->sc.formatCount, app->sc.presentModeCount,
+                    app->sc.supportsFifo ? "yes" : "no");
+        std::printf("present mode : %s\n", gpu::presentModeName(app->sc.presentMode));
     }
-    if (!gpu::createContext(app->ctx, app->sc.surface, app->error)) return SDL_APP_FAILURE;
-
-    int w = 960, h = 540;
-    SDL_GetWindowSizeInPixels(app->window, &w, &h);
-    if (!gpu::configureSwapchain(app->ctx, app->sc, (uint32_t)w, (uint32_t)h, app->error))
-        return SDL_APP_FAILURE;
-
-    std::printf("=== daybreak foundation ===\n");
-    std::printf("video driver : %s\n", plat::videoDriver());
-    std::printf("adapter      : %s [%s]\n", app->ctx.adapterName.c_str(), app->ctx.backend.c_str());
-    std::printf("surface      : %dx%d, %d format(s), %d present mode(s), fifo=%s\n", w, h,
-                app->sc.formatCount, app->sc.presentModeCount, app->sc.supportsFifo ? "yes" : "no");
-    std::printf("present mode : %s\n", gpu::presentModeName(app->sc.presentMode));
 
     if (app->opts.audioTest) return runAudioTest(*app) ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
     if (app->opts.inputTest) return runInputTest(*app) ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
@@ -1390,6 +1753,13 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     }
 
     if (app->versusMode) tickVersus(*app, app->frames);
+    if (app->matchMode) {
+        // The match runs on the same fixed step the DX9 harness uses (1/60) whenever
+        // it is capturing, and on the real delta in a live window — the reference's
+        // own split (fixed step for the suite, wall time otherwise).
+        tickMatch(*app, capturing ? app->opts.dt : delta);
+        traceMatch(*app);
+    }
 
     if (hasAsset(app->opts)) {
         const uint32_t w = capturing ? (uint32_t)app->opts.size : app->sc.width;
@@ -1435,18 +1805,23 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 std::vector<uint8_t> rgba;
                 HudTestHook hook{&app->uiRenderer, &app->hudComposer,
                                  (uint32_t)app->opts.size, &app->error};
-                if (app->versusMode) {
+                if (app->versusMode || app->matchMode) {
                     hook.state = app->versusHud;
                     hook.hasState = true;
                 }
-                const bool useHud = (app->opts.hudTest || app->versusMode) && app->uiReady;
+                const bool useHud = (app->opts.hudTest || app->versusMode || app->matchMode) &&
+                                    app->uiReady;
                 CaptureHook cap;
                 cap.renderer = &app->renderer;
                 cap.error = &app->error;
                 cap.viewProj = vp;
                 if (useHud) cap.hud = &hook;
-                if (app->opts.debugPrims) {
-                    fillDebugLines(*app);
+                // One batch for both sources: the debug overlay and the match's
+                // shots/sparks share the pass, so neither can clobber the other.
+                if (app->opts.debugPrims || app->matchMode) {
+                    if (app->opts.debugPrims) fillDebugLines(*app);
+                    else app->debugLines.clear();
+                    if (app->matchMode) appendMatchCubes(*app);
                     cap.prims = &app->debugPrims;
                     cap.lines = &app->debugLines;
                 }
@@ -1461,6 +1836,22 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     const render::DebugPrims::Stats& ds = app->debugPrims.stats();
                     std::printf("debug prims : %zu line(s), %zu vertices, %zu dropped, %zu pass(es)\n",
                                 ds.lines, ds.vertices, ds.droppedVertices, ds.passes);
+                }
+                if (app->matchMode) {
+                    const gameplay::MatchEconomy& eco = app->match.economy();
+                    std::printf("match: %llu frames, hp1=%d hp2=%d, balloon=%.0f%%/%.0f%% "
+                                "(LIMIT %.0f%%), shots=%llu sparks=%llu hits=%llu, "
+                                "fx events=%llu, bgm pushed %llu frames, %llu wraps, roundOver=%d\n",
+                                (unsigned long long)app->matchFrame, app->match.fighter(0).hp(),
+                                app->match.fighter(1).hp(), (double)eco.balloon(0),
+                                (double)eco.balloon(1), (double)eco.limit(),
+                                (unsigned long long)app->matchShots,
+                                (unsigned long long)app->matchSparks,
+                                (unsigned long long)app->matchHits,
+                                (unsigned long long)app->matchFxEvents,
+                                (unsigned long long)app->versusBgmPushed,
+                                (unsigned long long)app->versusLoop.loops_completed(),
+                                app->matchRoundOverFrame ? 1 : 0);
                 }
                 if (app->versusMode) {
                     std::printf("versus: %llu frames, hp1=%.0f hp2=%.0f, bgm pushed %llu frames, %llu wraps, sfx plays %llu, fx events %llu\n",
@@ -1491,8 +1882,10 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             gpu::endFrame(app->ctx, app->sc, frame);
             return SDL_APP_FAILURE;
         }
-        if (app->opts.debugPrims) {
-            fillDebugLines(*app);
+        if (app->opts.debugPrims || app->matchMode) {
+            if (app->opts.debugPrims) fillDebugLines(*app);
+            else app->debugLines.clear();
+            if (app->matchMode) appendMatchCubes(*app);
             render::DebugPrims::Options primOptions;   // depth-tested: lines behind walls hide
             if (!app->debugPrims.draw(target, vp, app->debugLines, app->renderer.depthView(),
                                       primOptions, app->error)) {

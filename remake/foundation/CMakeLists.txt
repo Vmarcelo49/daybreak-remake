@@ -119,16 +119,22 @@ add_library(foundation_physics STATIC src/physics/raycast.cpp)
 target_include_directories(foundation_physics PUBLIC src)
 target_link_libraries(foundation_physics PUBLIC foundation_assets glm)
 
-# The ported game truth (FULL-REPLACEMENT-PLAN.md Phase 2): the match economy and
-# the HUD value computation lifted out of remake/src, so the WebGPU path runs the
-# game's own rules instead of a scripted vignette. hud_fill.cpp is the one TU here
-# that reaches ui/ -> webgpu.h (through game/hud_bridge.h), which foundation_ui
-# supplies; the rest is std + glm.
+# The ported game truth (FULL-REPLACEMENT-PLAN.md Phase 2): fighter/projectile
+# simulation, the match loop that composes them in the reference's order, the match
+# economy and the HUD value computation — lifted out of remake/src so the WebGPU path
+# runs the game's own rules instead of a scripted vignette. hud_fill.cpp is the one TU
+# here that reaches ui/ -> webgpu.h (through game/hud_bridge.h), which foundation_ui
+# supplies; the simulation half is std + glm + the ported raycast.
 add_library(foundation_gameplay STATIC
+    src/gameplay/fighter.cpp
+    src/gameplay/projectile.cpp
+    src/gameplay/match.cpp
     src/gameplay/match_economy.cpp
     src/gameplay/hud_fill.cpp)
 target_include_directories(foundation_gameplay PUBLIC src)
-target_link_libraries(foundation_gameplay PRIVATE foundation_ui)
+target_link_libraries(foundation_gameplay
+    PUBLIC foundation_physics
+    PRIVATE foundation_ui)
 
 add_executable(foundation_demo src/main.cpp)
 target_link_libraries(foundation_demo PRIVATE foundation_render foundation_ui foundation_media foundation_game foundation_physics foundation_gameplay)
@@ -169,6 +175,17 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                    src/gameplay/match_economy.cpp)
     target_include_directories(match_economy_test PRIVATE src)
     add_test(NAME match_economy_test COMMAND match_economy_test)
+
+    # The ported simulation: compiles the gameplay sources directly, like
+    # raycast_analytic above, because the test defines XMODEL_IMPLEMENTATION itself
+    # (it builds synthetic xm::Models), so linking foundation_assets as well would be
+    # a duplicate-definition error.
+    add_executable(fighter_script_test tests/fighter_script_test.cpp
+                   src/gameplay/fighter.cpp src/gameplay/projectile.cpp
+                   src/physics/raycast.cpp)
+    target_include_directories(fighter_script_test PRIVATE src)
+    target_link_libraries(fighter_script_test PRIVATE glm)
+    add_test(NAME fighter_script_test COMMAND fighter_script_test)
 endif()
 
 if(EMSCRIPTEN)
