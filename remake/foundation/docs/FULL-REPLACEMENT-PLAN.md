@@ -262,6 +262,38 @@ reference (trace-exact, including frame 1), solid cubes for shots/sparks/auras,
 checks) with a regenerated full-CP932 table, and fixed-function lighting parity
 (RMSE 0.324 → 0.085 on three cases, exposure matched to ±0.003).
 
+**Where the gate frame stands (2026-10-03).** Against the three banked DX9
+frames at 800x600, after camera parity, lighting parity, the animation-set fix
+and the HUD text metrics: overall RMSE 0.063988 / 0.063431 / 0.056068 on
+tapshot f110 / dash f95 / school f110, with luminance means within 0.002-0.004
+of the reference. What is left, in measured order:
+
+1. **Stage/sky detail** — RMSE ~0.061 over 74% of the pixels. The reference
+   uses a LINEAR **mip** filter; the foundation has no mipmaps. That is the
+   largest single remaining item and it is a renderer feature, not a bug.
+2. **Text rasterizer weight** — the HUD's residual is now purely that
+   `stb_truetype` has no hinter, so a stem GDI snaps to one full column spreads
+   over two half-covered ones. Positional error is gone: every HUD label's best
+   integer shift is (0,0).
+3. **Open items from the tracks, recorded rather than smuggled in:**
+   * The KO sting is misplaced in the port: the reference centres it at
+     `rect.top + 39` (DrawText DT_CENTER|DT_VCENTER in a 100 px box) while
+     `computeHudLayout` puts `koY` at the band top, 39 px high. It needs the KO
+     capture case, which is why it was not changed with the HUD metrics.
+   * The corner marker the reference draws at (4,4) is reproduced as the
+     remake's unlabelled yellow "0" (`scenes.cpp:829`). The *original's*
+     battle-hud reference has a yellow marker in that corner, so the real fix is
+     to draw the original's art there instead of a digit.
+   * The reference's rasterizer places glyphs 1 px left of the pen — that is
+     Wine's builtin `d3dx9_43`, the DLL the visual suite ships (the Microsoft
+     redist is 1 px right and 1 px lower). The constant flips to 0 if the frames
+     are ever re-banked against the redist.
+   * `state_to_anim_name`'s "idle"/"walk" names can never match sets named
+     "Anim-N", so a fighter always falls back to index 0 — now the correct
+     bind-anchored default, but the original's per-state anim indices are still
+     unmapped, and `remake/docs/placeholders.md` §5's "40+ named animation sets"
+     claim looks unsupported.
+
 **A verification invariant this phase had to be corrected about, recorded
 2026-10-03 because it invalidates a general claim Phase 2 made.** Linux-native
 and Wine captures are byte-identical only when no animation is evaluated:
