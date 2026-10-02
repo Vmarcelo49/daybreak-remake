@@ -33,7 +33,9 @@
 #include "ui/sprite.h"
 #include "game/hud_bridge.h"
 #include "game/fighter_pose.h"
+#include "audio/audio.h"
 #include "audio/audio_engine.h"
+#include "game/effect_events.h"
 #include "input/input_backend.h"
 #include "input/input_sdl3.h"
 #include "shaders/demo_wgsl.h"
@@ -51,6 +53,10 @@ struct Options {
     bool        audioTest = false; // run the audio backend self-check and exit
     std::string audioFile;       // with --audio-test: decode a real file too
     bool        inputTest = false; // run the input backend self-check and exit
+    std::string enemy;           // versus P2, same spec syntax as --character
+    bool        versus = false;  // scripted two-fighter vignette (capture-oriented)
+    std::string bgm;             // versus BGM track (.ogg; sibling .sfl looped)
+    std::string sfx;             // versus hit cue (.cnv)
 
     // Offscreen capture. Empty `out` means "draw into the window".
     std::string out;
@@ -72,7 +78,7 @@ struct Options {
 
 bool hasAsset(const Options& o) {
     return !o.model.empty() || !o.stage.empty() || !o.character.empty() || !o.weapon.empty() ||
-           !o.effect.empty();
+           !o.effect.empty() || !o.enemy.empty();
 }
 
 // A Windows path starts with a drive-letter colon, so a `:N` suffix is only a suffix
@@ -109,6 +115,12 @@ void usage() {
         "  --audio-test         run the audio backend self-check and exit\n"
         "  --audio-file=<path>  with --audio-test: decode a real file as well\n"
         "  --input-test         run the input backend self-check and exit\n"
+        "  --enemy=<baseDir>/<name>[:costume]  versus P2 fighter (needs --versus)\n"
+        "  --versus           scripted vignette: stage + P1 + P2, arena follow,\n"
+        "                     timeline HUD, BGM loop, SFX cues; needs --stage,\n"
+        "                     --character, --enemy and --frames>=30\n"
+        "  --bgm=<file.ogg>   versus BGM track played through the loop player\n"
+        "  --sfx=<file.cnv>    versus hit cue fired at scripted hits\n"
         "With no asset argument the spinning-triangle demo runs.\n");
 }
 
@@ -139,6 +151,10 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--hud-test") o.hudTest = true;
         else if (a == "--audio-test") o.audioTest = true;
         else if (a == "--input-test") o.inputTest = true;
+        else if (!(v = val("--enemy=")).empty()) o.enemy = v;
+        else if (a == "--versus") o.versus = true;
+        else if (!(v = val("--bgm=")).empty()) o.bgm = v;
+        else if (!(v = val("--sfx=")).empty()) o.sfx = v;
         else if (a.rfind("--", 0) == 0) {
             error = "unknown option " + a;
             return false;
@@ -148,6 +164,24 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
     }
     if (o.size < 16) o.size = 16;
     if (o.frames < 0) o.frames = 0;
+    if (o.versus) {
+        // Versus is a scripted capture vignette, not an exploration mode: it needs
+        // the full cast, a timeline long enough for hits plus a KO sting, and the
+        // follow camera and animation the vignette is built on.
+        if (o.stage.empty() || o.character.empty() || o.enemy.empty()) {
+            error = "--versus needs --stage, --character and --enemy";
+            return false;
+        }
+        if (o.frames < 30) {
+            error = "--versus needs --frames>=30 for the scripted timeline";
+            return false;
+        }
+        if (o.camera == "auto") o.camera = "arena";
+        if (o.anim < 0) o.anim = 0;
+    } else if (!o.enemy.empty()) {
+        error = "--enemy needs --versus (P2 placement and rig ownership live there)";
+        return false;
+    }
     if (!o.out.empty()) {
         if (!hasAsset(o)) {
             error = "--out needs an asset argument; the triangle demo draws into the window";
@@ -165,22 +199,61 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
 // Scene assembly and camera (mirrors the reference tool's --stage/--character/--weapon
 // handling, which is itself the shape of FUN_004011f0 / FUN_0064ab30 / FUN_00433eb0)
 // ---------------------------------------------------------------------------------------
-xm::Scene loadScene(const Options& o, std::string& error) {
+// Loads one character spec (base/name[:costume]) into the scene, returning the
+// first appended model index. Shared by --character, --enemy and versus P2 so
+// the three spellings cannot drift apart.
+static size_t appendCharacter(xm::Scene& scene, const std::string& spec,
+                             const xm::SceneOptions& sopt) {
+    std::string s;
+    int costume = 0;
+    splitSuffix(spec, s, costume);
+    const size_t slash = s.find_last_of("/\\");
+    const std::string base = (slash == std::string::npos) ? "." : s.substr(0, slash);
+    const std::string name = (slash == std::string::npos) ? s : s.substr(slash + 1);
+    const size_t begin = scene.models.size();
+    xm::Scene c = xm::loadCharacter(base, name, costume, sopt);
+    if (scene.source.empty()) scene.source = c.source;
+    for (auto& sm : c.models) scene.models.push_back(std::move(sm));
+    return begin;
+}
+
+// First model with the character role at or after `from`; scene.models.size()
+// when there is none. Weapon rig ownership and P1/P2 ranges key on this.
+static size_t firstCharacter(const xm::Scene& scene, size_t from) {
+    for (size_t i = from; i < scene.models.size(); ++i)
+        if (scene.models[i].role == "character") return i;
+    return scene.models.size();
+}
+
+xm::Scene loadScene(const Options& o, std::string& error, size_t* enemyBegin = nullptr) {
     xm::SceneOptions sopt;
     sopt.resolveTextures = !o.noTextures;
     sopt.includeCollision = true;   // framing only; never drawn
 
     xm::Scene scene;
-    if (!o.stage.empty()) {
+    if (o.versus) {
+        // Versus composes explicitly: stage, P1 (+P1 weapon on P1's rig, never
+        // models[0]), then P2. Validation guarantees all three specs; env.dat
+        // spawn points place the fighters later.
+        scene = xm::loadStage(o.stage, sopt);
+        appendCharacter(scene, o.character, sopt);
+        if (!o.weapon.empty()) {
+            size_t p1 = firstCharacter(scene, 0);
+            std::string wspec;
+            int slot = 0;
+            splitSuffix(o.weapon, wspec, slot);
+            const xm::Model* rig =
+                p1 < scene.models.size() ? &scene.models[p1].model : nullptr;
+            xm::Scene w = xm::loadWeapon(wspec, slot, rig, sopt);
+            for (auto& sm : w.models) scene.models.push_back(std::move(sm));
+        }
+        if (enemyBegin) *enemyBegin = scene.models.size();
+        appendCharacter(scene, o.enemy, sopt);
+        scene.source = o.stage;
+    } else if (!o.stage.empty()) {
         scene = xm::loadStage(o.stage, sopt);
     } else if (!o.character.empty()) {
-        std::string spec;
-        int costume = 0;
-        splitSuffix(o.character, spec, costume);
-        const size_t slash = spec.find_last_of("/\\");
-        const std::string base = (slash == std::string::npos) ? "." : spec.substr(0, slash);
-        const std::string name = (slash == std::string::npos) ? spec : spec.substr(slash + 1);
-        scene = xm::loadCharacter(base, name, costume, sopt);
+        appendCharacter(scene, o.character, sopt);
         // A weapon rides a bone of the character, so it can only be attached once the
         // character's rig exists.
         if (!o.weapon.empty()) {
@@ -311,6 +384,22 @@ struct App {
     glm::vec3                    prevEye{0.f};
     bool                         havePrevEye = false;
 
+    // Versus vignette state (only when opts.versus): P2 range, spawn bases,
+    // audio streaming, effect accounting, and the current timeline HUD.
+    bool                         versusMode = false;
+    size_t                       enemyBegin = 0;   // first P2 model index
+    size_t                       p1Rig = 0;        // first P1 character model
+    glm::vec3                    p1Base{0.f}, p2Base{0.f};
+    fnd::audio::Sdl3Engine        versusAudio;
+    bool                         versusAudioOn = false;
+    fnd::audio::DecodedOgg        versusBgm;
+    fnd::audio::LoopPlayer        versusLoop;
+    fnd::audio::SfxHandle         versusSfx = fnd::audio::kInvalidSfx;
+    game::EffectEventQueue        versusFx;
+    uint64_t                     versusSfxPlays = 0, versusFxEvents = 0;
+    uint64_t                     versusBgmPushed = 0;
+    ui::HudState                 versusHud;
+
     double   startTime = 0.0;
     double   lastTime = 0.0;
     double   deltaSum = 0.0;
@@ -434,9 +523,225 @@ bool initTriangle(App& app) {
 }
 
 // The whole scene path: load, pose, frame, upload. Everything after this is per-frame.
+// Decodes a BGM track plus its sibling .sfl loop into engine-ready state.
+// Shared by versus BGM streaming; the --audio-test file path keeps its own
+// inline version because its reporting differs. Loop points are file-rate
+// samples, so anything but 44100 stereo is refused rather than misaligned.
+static bool loadBgmTrack(const std::string& oggPath, fnd::audio::Sdl3Engine& engine,
+                         fnd::audio::DecodedOgg& decoded, fnd::audio::LoopPlayer& loop,
+                         std::string& error) {
+    std::ifstream f(oggPath, std::ios::binary);
+    if (!f) {
+        error = "cannot open " + oggPath;
+        return false;
+    }
+    const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)),
+                                     std::istreambuf_iterator<char>());
+    if (!fnd::audio::decode_ogg_s16(bytes.data(), bytes.size(), decoded) || !decoded.ok ||
+        decoded.srcRate != 44100 || decoded.srcChannels != 2) {
+        error = "BGM decode failed or not 44100 stereo: " + oggPath;
+        return false;
+    }
+    std::string sflPath = oggPath;
+    const size_t dot = sflPath.find_last_of('.');
+    if (dot == std::string::npos) {
+        error = "BGM path needs an extension to find its .sfl sibling";
+        return false;
+    }
+    sflPath.replace(dot, std::string::npos, ".sfl");
+    std::ifstream sf(sflPath, std::ios::binary);
+    if (!sf) {
+        error = "missing loop sheet " + sflPath;
+        return false;
+    }
+    const std::vector<uint8_t> sfl((std::istreambuf_iterator<char>(sf)),
+                                   std::istreambuf_iterator<char>());
+    const fnd::audio::SflLoop region =
+        fnd::audio::parse_sfl_loop(sfl.data(), sfl.size(), 44100);
+    if (!region.valid) {
+        error = "unparsable loop sheet " + sflPath;
+        return false;
+    }
+    loop.set_source(decoded.stereo44100.data(), decoded.stereo44100.size() / 2);
+    loop.set_loop(region.startSample, region.endSample);
+    (void)engine;
+    return true;
+}
+
+// Places both fighters for one versus frame: P1 static at its spawn, P2
+// strafing on an integer triangle wave (±150 units, no trig anywhere, so
+// Linux and Wine agree bit for bit). Character models translate; stage models
+// stay identity; weapons re-resolve against P1's live prop bone every frame,
+// unlike the bind-pose snapshot the single-asset path keeps.
+static void placeVersusFighters(App& app, const glm::vec3& p1, const glm::vec3& p2) {
+    for (size_t i = 0; i < app.scene.models.size(); ++i) {
+        const xm::SceneModel& sm = app.scene.models[i];
+        if (sm.role != "character") continue;
+        const glm::vec3& base = (i >= app.enemyBegin) ? p2 : p1;
+        app.modelMatrices[i] = glm::translate(glm::mat4(1.f), base);
+    }
+    for (size_t i = 0; i < app.scene.models.size(); ++i) {
+        const xm::SceneModel& sm = app.scene.models[i];
+        if (sm.attachFrame < 0) continue;
+        if (app.p1Rig >= app.worlds.size() ||
+            (size_t)sm.attachFrame >= app.worlds[app.p1Rig].size()) {
+            std::fprintf(stderr, "[scene] %s: attachment frame %d unusable, drawing at the origin\n",
+                         sm.source.c_str(), sm.attachFrame);
+            continue;
+        }
+        app.modelMatrices[i] = app.worlds[app.p1Rig][(size_t)sm.attachFrame];
+    }
+    app.renderer.setModelMatrices(app.modelMatrices);
+}
+
+// Versus one-time setup, after load/pose/bind and before framing: ranges,
+// spawn bases, audio decode, initial placement for the setScene bake.
+static bool initVersus(App& app) {
+    if (!app.scene.env.present) {
+        app.error = "versus needs a stage with env.dat spawns";
+        return false;
+    }
+    app.p1Rig = firstCharacter(app.scene, 0);
+    if (app.p1Rig >= app.scene.models.size()) {
+        app.error = "versus found no P1 character model";
+        return false;
+    }
+    if (firstCharacter(app.scene, app.enemyBegin) >= app.scene.models.size()) {
+        app.error = "versus found no P2 character model";
+        return false;
+    }
+    app.p1Base = app.scene.env.points[0];
+    app.p2Base = app.scene.env.points[1];
+    if (!app.opts.bgm.empty() || !app.opts.sfx.empty()) {
+        if (!app.versusAudio.open(fnd::audio::Spec{})) {
+            app.error = "versus audio needs an audio device (SDL_AUDIO_DRIVER=dummy works headless)";
+            return false;
+        }
+        app.versusAudioOn = true;
+    }
+    if (!app.opts.bgm.empty()) {
+        if (!loadBgmTrack(app.opts.bgm, app.versusAudio, app.versusBgm, app.versusLoop,
+                          app.error))
+            return false;
+    }
+    if (!app.opts.sfx.empty()) {
+        std::ifstream f(app.opts.sfx, std::ios::binary);
+        if (!f) {
+            app.error = "cannot open " + app.opts.sfx;
+            return false;
+        }
+        const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)),
+                                         std::istreambuf_iterator<char>());
+        fnd::audio::SfxHandle h = fnd::audio::kInvalidSfx;
+        switch (fnd::audio::detect_format(bytes.data(), bytes.size())) {
+            case fnd::audio::BlobFormat::Ogg:
+                h = app.versusAudio.load_ogg(bytes.data(), bytes.size());
+                break;
+            case fnd::audio::BlobFormat::Wav:
+                h = app.versusAudio.load_wav(bytes.data(), bytes.size());
+                break;
+            case fnd::audio::BlobFormat::CnvPcm:
+                h = app.versusAudio.load_cnv(bytes.data(), bytes.size());
+                break;
+            default: break;
+        }
+        if (h < 0) {
+            app.error = "versus SFX decode failed for " + app.opts.sfx;
+            return false;
+        }
+        app.versusSfx = h;
+    }
+    app.versusMode = true;
+    placeVersusFighters(app, app.p1Base, app.p2Base);
+    return true;
+}
+
+// Timeline HUD for one versus frame: scripted hits at 30/55/80% drain P1 to
+// 10, the last 3 frames are the KO sting, hyper fills to READY near the end.
+// Pure function of the frame index — the determinism the captures rely on.
+static game::GameHudValues timelineHud(uint64_t frame, uint64_t frames) {
+    const uint64_t h1 = (3 * frames) / 10, h2 = (55 * frames) / 100, h3 = (8 * frames) / 10;
+    game::GameHudValues v;
+    v.balloon[0] = 87.f;
+    v.balloon[1] = 42.f;
+    v.limit = 100.f;
+    v.mainWhole = 5;
+    v.mainFrac = (double)(frame % 30) / 30.0;
+    v.reloading = ((frame / 30) % 2 == 0);
+    v.chargeWhole = 2;
+    v.chargeFrac = (double)(frame % 40) / 40.0;
+    v.holdVisible = true;
+    v.holdFrac = 0.5f;
+    v.holdTier = game::HoldTier::Yellow;
+    float hp = 100.f;
+    if (frame >= h1) hp -= 30.f;
+    if (frame >= h2) hp -= 30.f;
+    if (frame >= h3) hp -= 30.f;
+    v.hp = hp;
+    v.hyperName = "OYASHIRO";
+    v.hyperGauge = (float)((double)frame / (double)(frames - 5));
+    if (v.hyperGauge > 1.f) v.hyperGauge = 1.f;
+    v.hyperReady = frame >= frames - 5;
+    v.hyperAura = game::GameRgb{1.f, 1.f, 1.f};
+    v.staminaVisible = true;
+    v.staminaFrac = (float)(((frame * 7) % 60) / 60.0);
+    v.koVisible = (frame > frames - 3);
+    if (v.koVisible) v.hp = 0.f;
+    return v;
+}
+
+// One versus frame: strafe, placements, follow camera, timeline HUD, audio
+// chunk, scripted SFX, effect events. Everything nondeterministic-input-free:
+// positions, HUD, audio counts and events are pure functions of the frame.
+static void tickVersus(App& app, uint64_t frame) {
+    const uint64_t N = (uint64_t)app.opts.frames;
+    const int64_t H = ((int64_t)N + 1) / 2;
+    const int64_t ph = ((int64_t)frame - 1) % H;
+    double tri = (double)ph / (double)H;
+    if ((((int64_t)frame - 1) / H) % 2 == 1) tri = 1.0 - tri;
+    const glm::vec3 p1 = app.p1Base;
+    const glm::vec3 p2 = app.p2Base + glm::vec3((float)(300.0 * (tri - 0.5)), 0.f, 0.f);
+    placeVersusFighters(app, p1, p2);
+
+    game::FighterPose pose;
+    pose.position = (p1 + p2) * 0.5f;
+    pose.facingYaw = 0.f;
+    const render::ArenaFrame af = render::arenaViewProj(
+        game::arenaTargetFrom(pose), render::ArenaCameraParams{}, 16.f / 9.f);
+    app.target = af.aim;
+    app.arenaDesired = af.eye;
+
+    app.versusHud = game::makeHudState(timelineHud(frame, N));
+
+    if (app.versusAudioOn)
+        app.versusBgmPushed += app.versusLoop.push_next(app.versusAudio, 1024);
+    // Scripted hits live here, not in the audio block: effect events must flow
+    // whether or not --bgm/--sfx configured an audio device.
+    const uint64_t h1 = (3 * N) / 10, h2 = (55 * N) / 100, h3 = (8 * N) / 10;
+    static const int kHitChannels[3] = {16, 17, 18};
+    int hit = -1;
+    if (frame == h1) hit = 0;
+    else if (frame == h2) hit = 1;
+    else if (frame == h3) hit = 2;
+    if (hit >= 0) {
+        if (app.versusAudioOn && app.versusSfx >= 0) {
+            fnd::audio::PlayRequest req;
+            req.channel = kHitChannels[hit];
+            if (app.versusAudio.play(app.versusSfx, fnd::audio::SfxBus::Sfx, req) >= 0)
+                ++app.versusSfxPlays;
+        }
+        // Spawn now, retire the previous hit's card: lifetimes are scripted,
+        // not simulated — what matters here is FIFO order and exact counts.
+        app.versusFx.pushSpawn((uint32_t)(hit + 1), (p1 + p2) * 0.5f, 0, 5.f);
+        if (hit > 0) app.versusFx.pushKill((uint32_t)hit);
+    }
+    if (frame == N) app.versusFx.pushKill(3);
+    app.versusFxEvents += app.versusFx.drain().size();
+}
+
 bool initScene(App& app) {
     try {
-        app.scene = loadScene(app.opts, app.error);
+        app.scene = loadScene(app.opts, app.error, &app.enemyBegin);
     } catch (const std::exception& e) {
         app.error = std::string("load failed: ") + e.what();
         return false;
@@ -478,6 +783,10 @@ bool initScene(App& app) {
             continue;
         }
         app.modelMatrices[i] = app.worlds[(size_t)rigIndex][(size_t)sm.attachFrame];
+    }
+
+    if (app.opts.versus) {
+        if (!initVersus(app)) return false;
     }
 
     // ---- framing. A stage's visible set includes an inverted sky dome far larger than
@@ -560,7 +869,7 @@ bool initScene(App& app) {
     // The HUD test rig: same renderer, same swapchain format, one deterministic
     // synthetic HUD composited into --out captures. Font upload is fatal here (a
     // capture without labels would silently prove less); in a game it is not.
-    if (app.opts.hudTest) {
+    if (app.opts.hudTest || (app.versusMode && !app.opts.out.empty())) {
         if (!app.uiRenderer.init(app.ctx.device, app.ctx.queue, app.error)) return false;
         if (!app.hudComposer.uploadFont(app.uiRenderer, app.error)) return false;
         app.uiReady = true;
@@ -635,6 +944,7 @@ void report(App& app) {
 }
 
 void teardown(App& app) {
+    if (app.versusAudioOn) app.versusAudio.close();
     if (app.uiReady) app.uiRenderer.shutdown();
     app.renderer.shutdown();
     if (app.bindGroup) wgpuBindGroupRelease(app.bindGroup);
@@ -905,6 +1215,8 @@ struct HudTestHook {
     ui::HudComposer*    hud = nullptr;
     uint32_t            size = 0;
     std::string*        error = nullptr;
+    ui::HudState        state;
+    bool                hasState = false;   // false -> syntheticHudState()
 };
 
 ui::HudState syntheticHudState() {
@@ -917,7 +1229,8 @@ bool hudTestHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat
                  uint32_t w, uint32_t h, void* ud) {
     auto* hk = static_cast<HudTestHook*>(ud);
     hk->ui->beginFrame(w, h);
-    hk->hud->compose(*hk->ui, syntheticHudState(), ui::computeHudLayout((int)w, (int)h));
+    const ui::HudState state = hk->hasState ? hk->state : syntheticHudState();
+    hk->hud->compose(*hk->ui, state, ui::computeHudLayout((int)w, (int)h));
     return hk->ui->render(enc, view, format, *hk->error);
 }
 
@@ -946,6 +1259,8 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         advanceAnimation(*app, delta);
     }
 
+    if (app->versusMode) tickVersus(*app, app->frames);
+
     if (hasAsset(app->opts)) {
         const uint32_t w = capturing ? (uint32_t)app->opts.size : app->sc.width;
         const uint32_t h = capturing ? (uint32_t)app->opts.size : app->sc.height;
@@ -957,8 +1272,11 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 app->prevEye = app->arenaDesired;
                 app->havePrevEye = true;
             }
+            // Captures step the spring with the fixed --dt, not wall time: the
+            // eye must be as deterministic as the pose or captures would drift.
+            const double stepDt = capturing ? (double)app->opts.dt : delta;
             app->eye = render::arenaSmoothEyeDt(app->prevEye, app->arenaDesired,
-                                                (float)delta, 0.1f);
+                                                (float)stepDt, 0.1f);
             app->prevEye = app->eye;
         }
         app->renderer.setCamera(viewProj(app->eye, app->target, (float)w / (float)h,
@@ -971,13 +1289,25 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 std::vector<uint8_t> rgba;
                 HudTestHook hook{&app->uiRenderer, &app->hudComposer,
                                  (uint32_t)app->opts.size, &app->error};
-                const bool useHud = app->opts.hudTest && app->uiReady;
+                if (app->versusMode) {
+                    hook.state = app->versusHud;
+                    hook.hasState = true;
+                }
+                const bool useHud = (app->opts.hudTest || app->versusMode) && app->uiReady;
                 if (!app->renderer.capture((uint32_t)app->opts.size, rgba, app->error,
                                            useHud ? hudTestHook : nullptr,
                                            useHud ? &hook : nullptr))
                     return SDL_APP_FAILURE;
                 reportCoverage(rgba, app->opts.size);
                 writePpm(app->opts.out, rgba, app->opts.size);
+                if (app->versusMode) {
+                    std::printf("versus: %llu frames, hp1=%.0f hp2=%.0f, bgm pushed %llu frames, %llu wraps, sfx plays %llu, fx events %llu\n",
+                                (unsigned long long)app->frames, (double)app->versusHud.hp, 100.0,
+                                (unsigned long long)app->versusBgmPushed,
+                                (unsigned long long)app->versusLoop.loops_completed(),
+                                (unsigned long long)app->versusSfxPlays,
+                                (unsigned long long)app->versusFxEvents);
+                }
                 return SDL_APP_SUCCESS;
             }
             return SDL_APP_CONTINUE;

@@ -159,6 +159,11 @@ New since the port landed, all verified the same way:
   pass in-repo (`effect/01.X`: 11 effect draws, 17.95% coverage, no black quads).
 - `--hud-test` composites a deterministic synthetic HUD into `--out` captures
   through the renderer's UI hook — the first in-engine HUD-over-3D frame.
+- `--versus` runs a scripted two-fighter vignette (stage + P1 + P2, arena
+  follow, timeline HUD, BGM loop, SFX cues, effect queue): P2 strafes on an
+  integer triangle wave, weapons re-attach to live prop bones every frame, and
+  every number is a pure function of the frame index — Linux vs Wine captures
+  byte-identical, including camera smoothing, animation, and audio counts.
 - `foundation_ui` (sprite batch, bitmap font, HUD composer, diagnostics) is wired
   into the demo; `foundation_media` now carries the real SDL3 audio and input
   backends, verified in-engine with `--audio-test` (440 Hz tone through music +

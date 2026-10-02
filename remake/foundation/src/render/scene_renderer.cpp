@@ -363,6 +363,7 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                 d.firstIndex = sub.firstIndex;
                 d.indexCount = sub.indexCount;
                 d.paletteOffset = paletteOffset;
+                d.modelIndex = mi;
                 d.model = model;
 
                 const xm::Material& mat =
@@ -525,6 +526,12 @@ void SceneRenderer::updatePose(const std::vector<std::vector<glm::mat4>>& worlds
     }
     wgpuQueueWriteBuffer(queue_, paletteBuffer_, 0, palette_.data(),
                          palette_.size() * sizeof(glm::mat4));
+}
+
+void SceneRenderer::setModelMatrices(const std::vector<glm::mat4>& modelMatrices) {
+    if (draws_.empty() || modelMatrices.empty()) return;
+    for (DrawItem& d : draws_)
+        if (d.modelIndex < modelMatrices.size()) d.model = modelMatrices[d.modelIndex];
 }
 
 void SceneRenderer::setCamera(const glm::mat4& viewProj) { camera_.viewProj = viewProj; }

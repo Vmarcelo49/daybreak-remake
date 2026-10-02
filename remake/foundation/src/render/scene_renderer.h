@@ -82,6 +82,11 @@ public:
     // of the scene for nothing.
     void updatePose(const std::vector<std::vector<glm::mat4>>& worlds);
 
+    // Re-points every draw at new per-model transforms (entity placement, weapon
+    // bones following animated rigs). DrawUniforms rebuild from draws_ on every
+    // render(), so this takes effect on the next frame; a no-op before setScene.
+    void setModelMatrices(const std::vector<glm::mat4>& modelMatrices);
+
     void setCamera(const glm::mat4& viewProj);
     // Camera eye in world space, for effect-card billboarding. The viewProj alone
     // cannot yield it (a perspective product does not separate into eye and
@@ -116,6 +121,7 @@ private:
         uint32_t   flags = 0;                        // from the material, per draw
         int        texture = -1;                     // -1 -> the 1x1 white fallback
         Pass       pass = Pass::Opaque;
+        size_t     modelIndex = 0;   // owning model, for per-frame re-placement
         glm::mat4  model{1.f};
         glm::vec4  baseColor{1.f};                   // material diffuse (D3DX faceColor)
         // Cylindrical-billboard candidate: mesh-space pivot (submesh bounds center),
