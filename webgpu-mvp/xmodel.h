@@ -1,0 +1,2090 @@
+// xmodel.h — DirectX 9 ".x" loader + skeletal animation for WebGPU (wgpu-native).
+//
+// Single header, C++17, depends only on GLM.
+//
+//   #define XMODEL_IMPLEMENTATION   // in exactly ONE .cpp file, before including
+//   #define XMODEL_WEBGPU           // optional: vertex-layout helpers (include webgpu.h first)
+//   #include "xmodel.h"
+//
+// What you get:
+//   * xm::Model       frames, meshes (GPU-ready vertex/index data), animation sets
+//   * xm::Vertex      pos / normal / uv / color + 4 bone indices + 4 weights, 80 bytes
+//   * xm::Controller  2-track animation blending (the D3DX controller subset the game uses)
+//   * evalPose()      sample an animation -> one world matrix per frame
+//   * buildPalette()  pose -> per-mesh skinning matrices, ready for a storage buffer
+//
+// Encodings — all three the game ships are read directly, no conversion step:
+//   "xof 0303txt 0032"   text
+//   "xof 0303bin 0032"   binary token stream (16-bit tokens; see BinaryToText below)
+//   "xof 0303bzip0032"   MSZIP-compressed binary; inflated in memory, no dependencies
+//   "xof 0302txt 0064"   older header (collision meshes); float size is honoured
+//
+// Format facts verified against the shipped assets (see tools/x2txt.py, the Python
+// reference implementation this code was ported from, and tools/parse_corpus.*):
+//   * Binary .x uses 16-bit tokens, not the 32-bit tokens the MSDN text implies.
+//   * Binary files omit the standard template definitions (D3DX pre-registers
+//     them), so the built-in table below is required to read them at all.
+//   * Declared template members are flattened into INTEGER_LIST / REALNUM_LIST
+//     runs; only undeclared children and "{ ref }" are real nested objects.
+//   * MSZIP blocks are chained: each block's DEFLATE stream uses the previous
+//     32 KB of output as its LZ77 dictionary, so blocks cannot be decoded in
+//     isolation. The framing is  u32 total, then per block
+//     u16 outSize, u16 compSize, "CK", deflate.
+//
+// Conventions (kept identical to DX9 so existing art and game data still work):
+//   * LEFT-handed space, +Y up, triangles wound clockwise when viewed from the front.
+//   * Matrices are stored row-vector in the file and transposed on load into GLM's
+//     column-vector form, so you use them as  v' = M * v  and  world = parent * local.
+//     No translation step is needed anywhere in the hierarchy or palette.
+//   * Quaternion keys need NO conjugation; a plain (w,x,y,z) read reproduces the
+//     matrix D3DX would build (GLM's mat3_cast is the transpose of D3DX's row-vector
+//     form, which is exactly the column-vector equivalent). Kept switchable for A/B.
+//   * UV origin is top-left, same as WebGPU -> no V flip needed.
+//   * Feed the projection through unchanged (no proj[1][1] negation) and set
+//     frontFace = "cw". Verified by rendering real assets offscreen, not assumed:
+//     see tools/wgpu_smoke.cpp and model.wgsl.
+//
+// Not supported: N-patches, DeclData tangents (parsed and counted, not consumed),
+// multi-UV sets, >4 influences per vertex (weakest are dropped and the rest
+// renormalised; the shipped rigs stay within 4 — XSkinMeshHeader is captured so
+// this can be asserted at load time).
+
+#pragma once
+
+#ifndef GLM_ENABLE_EXPERIMENTAL
+#define GLM_ENABLE_EXPERIMENTAL
+#endif
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+namespace xm {
+
+// ---------------------------------------------------------------------------------------
+// Data model
+// ---------------------------------------------------------------------------------------
+
+struct Vertex {
+    glm::vec3  pos;
+    glm::vec3  normal;
+    glm::vec2  uv;
+    glm::vec4  color{1.f};                 // MeshVertexColors, white when absent
+    glm::uvec4 bones{0u, 0u, 0u, 0u};      // indices into Mesh::bones
+    glm::vec4  weights{1.f, 0.f, 0.f, 0.f};
+};
+
+struct Material {
+    glm::vec4   diffuse{1.f};
+    float       power = 0.f;
+    glm::vec3   specular{0.f};
+    glm::vec3   emissive{0.f};
+    std::string texture;   // raw bytes as stored (Shift-JIS in the shipped assets)
+};
+
+struct Submesh {           // one draw call: indices [firstIndex, firstIndex + indexCount)
+    uint32_t firstIndex = 0;
+    uint32_t indexCount = 0;
+    int      material   = 0;
+};
+
+struct Bone {
+    std::string name;
+    int         frame  = -1;               // index into Model::frames, -1 if unresolved
+    glm::mat4   offset{1.f};               // mesh space -> bone space (inverse bind)
+};
+
+struct SkinHeader {                        // XSkinMeshHeader, when the file has one
+    bool present = false;
+    int  maxWeightsPerVertex = 0;
+    int  maxWeightsPerFace   = 0;
+    int  bones               = 0;
+};
+
+struct Mesh {
+    std::string           name;
+    int                   frame = -1;      // frame this mesh hangs off, -1 = none
+    bool                  skinned = false;
+    std::vector<Vertex>   vertices;
+    std::vector<uint32_t> indices;
+    std::vector<Submesh>  submeshes;
+    std::vector<Material> materials;
+    std::vector<Bone>     bones;           // palette order; empty when !skinned
+    SkinHeader            skinHeader;
+    int                   droppedInfluences = 0;  // weights beyond the top 4
+    bool                  hasVertexColors   = false;
+};
+
+struct Frame {
+    std::string name;
+    int         parent = -1;
+    glm::mat4   bindLocal{1.f};
+    // Bind pose split into T/R/S: channels that animate only some components keep
+    // the rest from here, which is what D3DX does when a set has no key for them.
+    glm::vec3   bindS{1.f};
+    glm::vec3   bindT{0.f};
+    glm::quat   bindR{1.f, 0.f, 0.f, 0.f};
+};
+
+template <class T> struct Key { float t; T v; };   // t in animation ticks
+
+struct Channel {
+    std::string                 frameName;
+    int                         frame = -1;
+    std::vector<Key<glm::quat>> rot;
+    std::vector<Key<glm::vec3>> scale;
+    std::vector<Key<glm::vec3>> pos;
+    // Matrix keys (keyType 3/4) are decomposed into the SRT channels at load time so
+    // every track blends in the same space; see the parser's normaliseAnimations().
+};
+
+struct AnimSet {
+    std::string          name;
+    float                duration = 0.f;   // ticks
+    std::vector<Channel> channels;
+};
+
+struct LoadStats {
+    std::string encoding;                  // "txt", "bin" or "bzip"
+    int frames = 0, meshes = 0, materials = 0, animSets = 0, channels = 0;
+    int rotKeys = 0, posKeys = 0, scaleKeys = 0, matrixKeys = 0;
+    int vertices = 0, triangles = 0, submeshes = 0;
+    int skinBones = 0, droppedInfluences = 0, maxInfluencesSeen = 0;
+    int meshesWithVertexColors = 0;
+    bool hadDeclData = false, hadVertexDuplication = false, hadEffectInstance = false;
+    double convertMs = 0.0, parseMs = 0.0;  // binary -> text, then text -> Model
+    std::string toString() const;
+};
+
+struct LoadOptions {
+    // .x rotation keys are stored (w,x,y,z) and map straight onto glm::quat; see the
+    // convention note at the top. Flip only if an A/B test says otherwise.
+    bool conjugateQuats = false;
+
+    // Used when the file has no AnimTicksPerSecond object. 4800 is the D3DX default.
+    float ticksPerSecond = 4800.f;
+
+    // When non-null, receives the text form produced for binary/MSZIP inputs
+    // (empty for text inputs). Debugging aid; costs one extra copy.
+    std::string* convertedTextOut = nullptr;
+};
+
+struct Model {
+    std::vector<Frame>   frames;   // parents always come before children
+    std::vector<Mesh>    meshes;
+    std::vector<AnimSet> anims;
+    float                ticksPerSecond = 4800.f;
+    LoadStats            stats;
+
+    int findFrame(const std::string& n) const;
+    int findAnim(const std::string& n) const;
+    int findMesh(const std::string& n) const;
+
+    // Sample one animation (nullptr = bind pose) at `seconds` -> world matrix per frame.
+    void evalPose(const AnimSet* anim, float seconds, bool loop,
+                  std::vector<glm::mat4>& worldOut) const;
+
+    // Skinning matrices for one mesh, ready to memcpy into a palette storage buffer.
+    // Unskinned meshes get a single matrix: the frame's world transform.
+    void buildPalette(const Mesh& m, const std::vector<glm::mat4>& world,
+                      std::vector<glm::mat4>& out) const;
+
+    // Total palette matrices over all meshes; use as the storage-buffer length.
+    size_t paletteSize() const;
+};
+
+// ---------------------------------------------------------------------------------------
+// Controller — the subset of ID3DXAnimationController the game actually drives.
+//
+// Each track plays one animation set with its own time, speed, weight and enable flag;
+// a track that is disabled or has weight 0 contributes nothing. Per frame the enabled
+// tracks are blended incrementally in track order:
+//
+//     value = mix(value, trackValue, trackWeight / (accumulatedWeight + trackWeight))
+//
+// which reduces to "track N wins" when it is the only weighted track, and gives a proper
+// weighted average when several are active. Frames a track does not animate keep whatever
+// the earlier tracks produced, so an upper-body overlay on track 1 leaves the legs from
+// track 0 alone — the base/overlay split the original game relies on.
+// ---------------------------------------------------------------------------------------
+class Controller {
+public:
+    static constexpr int kMaxTracks = 8;
+
+    void bind(const Model* m) { model_ = m; }
+    const Model* model() const { return model_; }
+
+    void  setTrackAnimationSet(int track, int animIndex);   // -1 clears the track
+    int   trackAnimationSet(int track) const;
+    void  setTrackEnable(int track, bool on);
+    bool  trackEnable(int track) const;
+    void  setTrackWeight(int track, float w);               // clamped to [0,1]
+    float trackWeight(int track) const;
+    void  setTrackSpeed(int track, float s);
+    float trackSpeed(int track) const;
+    void  setTrackPosition(int track, double seconds);
+    double trackPosition(int track) const;
+    void  setTrackLoop(int track, bool loop);
+    bool  trackLoop(int track) const;
+
+    bool setAnimation(int animIndex, bool loop = true);     // convenience: track 0 only
+
+    void   advanceTime(float dt);                           // seconds, already scaled
+    double time() const;                                    // longest active track time
+
+    // Blended pose for the current time. Frames no enabled track touches stay at bind pose.
+    void evalWorld(std::vector<glm::mat4>& worldOut) const;
+    void evalLocal(std::vector<glm::vec3>& pos, std::vector<glm::quat>& rot,
+                   std::vector<glm::vec3>& scale) const;
+
+private:
+    struct Track {
+        int    anim   = -1;
+        bool   enable = false;
+        bool   loop   = true;
+        float  weight = 0.f;
+        float  speed  = 1.f;
+        double time   = 0.0;
+    };
+    bool valid(int t) const { return t >= 0 && t < kMaxTracks; }
+    Track*       track(int t) { return valid(t) ? &tracks_[t] : nullptr; }
+    const Track* track(int t) const { return valid(t) ? &tracks_[t] : nullptr; }
+
+    const Model* model_ = nullptr;
+    Track        tracks_[kMaxTracks];
+};
+
+// Throws std::runtime_error on failure. `data` is not retained.
+Model loadMemory(const void* data, size_t size, const LoadOptions& opt = {});
+Model loadMemory(const std::string& data, const LoadOptions& opt = {});
+Model loadFile(const std::string& path, const LoadOptions& opt = {});
+
+}  // namespace xm
+
+// ---------------------------------------------------------------------------------------
+// Optional WebGPU helpers. Define XMODEL_WEBGPU and include <webgpu/webgpu.h> first.
+//
+// Bind group contract expected by model.wgsl (the shader shipped next to this header):
+//   group 0, binding 0  uniform Camera { mat4 viewProj; vec4 lightDir; vec4 lightColor; vec4 ambient; }
+//   group 1, binding 0  uniform Draw   (dynamic offset; see DrawUniform below)
+//   group 1, binding 1  storage readonly array<mat4x4<f32>, N>  (bone palettes)
+//   group 2, binding 0  texture_2d<f32>
+//   group 2, binding 1  sampler
+// ---------------------------------------------------------------------------------------
+#ifdef XMODEL_WEBGPU
+
+#include <array>
+#include <cstddef>
+
+namespace xm {
+
+inline constexpr uint64_t kVertexAttributeCount = 6;
+
+// Per-draw uniform, 96 bytes of payload. Bound with a dynamic offset, so each record
+// must start on a minUniformBufferOffsetAlignment boundary (256 on every current
+// adapter) — see kDrawStride.
+struct DrawUniform {
+    glm::mat4 model{1.f};          // entity -> world; identity when the palette bakes it
+    glm::vec4 baseColor{1.f};      // multiplies the material diffuse and vertex colour
+    uint32_t  paletteOffset = 0;   // first palette matrix for this mesh
+    uint32_t  flags = 0;
+    uint32_t  pad[2] = {0u, 0u};
+};
+
+inline constexpr uint32_t kDrawTextured  = 1u << 0;   // sample group 2
+inline constexpr uint32_t kDrawUnlit     = 1u << 1;   // skip the lambert term
+inline constexpr uint32_t kDrawAlphaTest = 1u << 2;   // discard alpha < 0.5
+
+inline constexpr uint64_t kDrawStride = 256;          // == minUniformBufferOffsetAlignment
+
+struct CameraUniform {
+    // LH view * LH projection, used as-is: wgpu normalizes NDC to Y-up for every
+    // backend, so unlike a raw Vulkan port there is NO proj[1][1] negation here.
+    // Getting this wrong renders every model upside down; see tools/wgpu_smoke.cpp.
+    glm::mat4 viewProj{1.f};
+    glm::vec4 lightDir{0.f, -1.f, 0.f, 0.f};
+    glm::vec4 lightColor{1.f};
+    glm::vec4 ambient{0.25f};
+    // Stage fog from env.dat: the original sets FOGTABLEMODE = LINEAR with these
+    // start/end values and colour (FUN_00650a30), so this reproduces it exactly.
+    glm::vec4 fogColor{0.f, 0.f, 0.f, 1.f};
+    glm::vec4 fogParams{0.f, 0.f, 0.f, 0.f};   // x = start, y = end, z = enabled
+};
+
+// Fills `attrs` (which must hold kVertexAttributeCount entries) and returns a layout
+// pointing at it. The array must outlive the pipeline-creation call.
+inline WGPUVertexBufferLayout wgpuVertexLayout(WGPUVertexAttribute (&attrs)[kVertexAttributeCount]) {
+    // Field-by-field: WGPUVertexAttribute has no aggregate-assignment in C++.
+    struct Attr { WGPUVertexFormat format; uint64_t offset; uint32_t location; };
+    const Attr spec[kVertexAttributeCount] = {
+        {WGPUVertexFormat_Float32x3, offsetof(Vertex, pos),     0},
+        {WGPUVertexFormat_Float32x3, offsetof(Vertex, normal),  1},
+        {WGPUVertexFormat_Float32x2, offsetof(Vertex, uv),      2},
+        {WGPUVertexFormat_Float32x4, offsetof(Vertex, color),   3},
+        {WGPUVertexFormat_Uint32x4,  offsetof(Vertex, bones),   4},
+        {WGPUVertexFormat_Float32x4, offsetof(Vertex, weights), 5},
+    };
+    for (uint64_t i = 0; i < kVertexAttributeCount; ++i) {
+        attrs[i].format = spec[i].format;
+        attrs[i].offset = spec[i].offset;
+        attrs[i].shaderLocation = spec[i].location;
+    }
+
+    WGPUVertexBufferLayout layout = {};
+    layout.arrayStride    = sizeof(Vertex);
+    layout.stepMode       = WGPUVertexStepMode_Vertex;
+    layout.attributeCount = kVertexAttributeCount;
+    layout.attributes     = attrs;
+    return layout;
+}
+
+}  // namespace xm
+
+#endif  // XMODEL_WEBGPU
+
+// =======================================================================================
+// Implementation
+// =======================================================================================
+#ifdef XMODEL_IMPLEMENTATION
+#ifndef XMODEL_IMPLEMENTATION_DONE
+#define XMODEL_IMPLEMENTATION_DONE
+
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <functional>
+#include <map>
+#include <stdexcept>
+#include <unordered_map>
+
+namespace xm {
+namespace detail {
+
+// ---------------------------------------------------------------------------------------
+// Small helpers
+// ---------------------------------------------------------------------------------------
+inline uint16_t rd16(const uint8_t* p) { return (uint16_t)(p[0] | (p[1] << 8)); }
+inline uint32_t rd32(const uint8_t* p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+inline std::string trimNul(const std::string& s) {
+    size_t z = s.find('\0');
+    return z == std::string::npos ? s : s.substr(0, z);
+}
+
+// ---------------------------------------------------------------------------------------
+// DEFLATE (RFC 1951) — enough to inflate MSZIP blocks, no dependencies.
+//
+// Classic bit-at-a-time Huffman decode, as in zlib's reference "puff" decompressor.
+// Decoding appends to a caller-owned buffer that may already hold earlier data: MSZIP
+// chains blocks through a shared 32 KB window, and a plain growing output vector makes
+// those back-references resolve without any explicit dictionary bookkeeping.
+// ---------------------------------------------------------------------------------------
+class Inflater {
+public:
+    static constexpr int kMaxBits = 15;
+
+    struct Huffman {
+        short count[kMaxBits + 1];
+        short symbol[288];
+    };
+
+    // Returns the number of input bytes consumed, or 0 on error. `out` is appended to.
+    static size_t decode(const uint8_t* in, size_t len, std::vector<uint8_t>& out) {
+        Inflater s(in, len, out);
+        if (!s.loops()) return 0;
+        // Whole bytes still buffered were read but never used; the stream is
+        // self-terminating and byte aligned, so hand the leftover back.
+        size_t consumed = s.inPos_ - (size_t)(s.bitCnt_ >> 3);
+        return consumed > len ? 0 : consumed;
+    }
+
+private:
+    Inflater(const uint8_t* in, size_t len, std::vector<uint8_t>& out)
+        : in_(in), len_(len), out_(out) {}
+
+    // -- bit reader
+    int bits(int need) {
+        long val = bitBuf_;
+        while (bitCnt_ < need) {
+            if (inPos_ >= len_) return -1;
+            val |= (long)in_[inPos_++] << bitCnt_;
+            bitCnt_ += 8;
+        }
+        bitBuf_ = (int)(val >> need);
+        bitCnt_ -= need;
+        return (int)(val & ((1L << need) - 1));
+    }
+    void alignByte() { bitBuf_ = 0; bitCnt_ = 0; }
+
+    int decodeSym(const Huffman& h) {
+        int len, code = 0, first = 0, index = 0;
+        for (len = 1; len <= kMaxBits; len++) {
+            int b = bits(1);
+            if (b < 0) return -1;
+            code |= b;
+            int count = h.count[len];
+            if (code - count < first) return h.symbol[index + (code - first)];
+            index += count;
+            first += count;
+            first <<= 1;
+            code <<= 1;
+        }
+        return -1;
+    }
+
+    static bool construct(Huffman& h, const uint8_t* lengths, int n) {
+        for (int len = 0; len <= kMaxBits; len++) h.count[len] = 0;
+        for (int sym = 0; sym < n; sym++) h.count[lengths[sym]]++;
+        if (h.count[0] == n) return true;                 // no codes at all: legal
+        int left = 1;
+        for (int len = 1; len <= kMaxBits; len++) {
+            left <<= 1;
+            left -= h.count[len];
+            if (left < 0) return false;                   // over-subscribed
+        }
+        short offs[kMaxBits + 2];
+        offs[1] = 0;
+        for (int len = 1; len < kMaxBits; len++) offs[len + 1] = (short)(offs[len] + h.count[len]);
+        for (int sym = 0; sym < n; sym++)
+            if (lengths[sym] != 0) h.symbol[offs[lengths[sym]]++] = (short)sym;
+        return true;
+    }
+
+    bool put(int byte) { out_.push_back((uint8_t)byte); return true; }
+    bool copy(int dist, int len) {
+        if (dist <= 0 || (size_t)dist > out_.size()) return false;
+        size_t from = out_.size() - (size_t)dist;
+        for (int i = 0; i < len; ++i) {
+            // Distinct byte first: push_back may reallocate and the source is inside
+            // the very vector being grown (overlapping matches are legal in DEFLATE).
+            const uint8_t b = out_[from + (size_t)i];
+            out_.push_back(b);
+        }
+        return true;
+    }
+
+    bool stored() {
+        alignByte();
+        if (inPos_ + 4 > len_) return false;
+        int len = in_[inPos_] | (in_[inPos_ + 1] << 8);
+        int nlen = in_[inPos_ + 2] | (in_[inPos_ + 3] << 8);
+        inPos_ += 4;
+        if (nlen != (len ^ 0xffff)) return false;
+        if (inPos_ + (size_t)len > len_) return false;
+        for (int i = 0; i < len; ++i) out_.push_back(in_[inPos_++]);
+        return true;
+    }
+
+    bool fixed(Huffman& lencode, Huffman& distcode) {
+        uint8_t lengths[288];
+        int sym = 0;
+        for (; sym < 144; sym++) lengths[sym] = 8;
+        for (; sym < 256; sym++) lengths[sym] = 9;
+        for (; sym < 280; sym++) lengths[sym] = 7;
+        for (; sym < 288; sym++) lengths[sym] = 8;
+        if (!construct(lencode, lengths, 288)) return false;
+        for (sym = 0; sym < 30; sym++) lengths[sym] = 5;
+        return construct(distcode, lengths, 30);
+    }
+
+    bool dynamic(Huffman& lencode, Huffman& distcode) {
+        static const short order[19] =
+            {16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
+        int nlen = 0, ndist = 0, ncode = 0;
+        int hlit = bits(5); if (hlit < 0) return false;
+        int hdist = bits(5); if (hdist < 0) return false;
+        int hclen = bits(4); if (hclen < 0) return false;
+        nlen = hlit + 257;
+        ndist = hdist + 1;
+        ncode = hclen + 4;
+        if (nlen > 286 || ndist > 30) return false;
+
+        uint8_t lengths[320];
+        std::memset(lengths, 0, sizeof(lengths));
+        for (int i = 0; i < ncode; i++) {
+            int v = bits(3);
+            if (v < 0) return false;
+            lengths[order[i]] = (uint8_t)v;
+        }
+        Huffman lencodeTmp;
+        if (!construct(lencodeTmp, lengths, 19)) return false;
+
+        int index = 0;
+        while (index < nlen + ndist) {
+            int sym = decodeSym(lencodeTmp);
+            if (sym < 0) return false;
+            if (sym < 16) {
+                lengths[index++] = (uint8_t)sym;
+            } else {
+                int len = 0;
+                if (sym == 16) {
+                    if (index == 0) return false;
+                    len = lengths[index - 1];
+                    int n = bits(2); if (n < 0) return false;
+                    sym = 3 + n;
+                } else if (sym == 17) {
+                    int n = bits(3); if (n < 0) return false;
+                    sym = 3 + n;
+                } else {
+                    int n = bits(7); if (n < 0) return false;
+                    sym = 11 + n;
+                }
+                if (index + sym > nlen + ndist) return false;
+                while (sym--) lengths[index++] = (uint8_t)len;
+            }
+        }
+        if (lengths[256] == 0) return false;   // no end-of-block code
+        if (!construct(lencode, lengths, nlen)) return false;
+        return construct(distcode, lengths + nlen, ndist);
+    }
+
+    bool codes(const Huffman& lencode, const Huffman& distcode) {
+        static const short lens[29] =
+            {3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
+             35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258};
+        static const short lext[29] =
+            {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
+             3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
+        static const short dists[30] =
+            {1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
+             257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145,
+             8193, 12289, 16385, 24577};
+        static const short dext[30] =
+            {0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+             7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13};
+
+        for (;;) {
+            int sym = decodeSym(lencode);
+            if (sym < 0) return false;
+            if (sym < 256) {
+                put(sym);
+            } else if (sym == 256) {
+                return true;
+            } else {
+                sym -= 257;
+                if (sym >= 29) return false;
+                int e = bits(lext[sym]); if (e < 0) return false;
+                int len = lens[sym] + e;
+                int dsym = decodeSym(distcode);
+                if (dsym < 0 || dsym >= 30) return false;
+                e = bits(dext[dsym]); if (e < 0) return false;
+                if (!copy(dists[dsym] + e, len)) return false;
+            }
+        }
+    }
+
+    bool loops() {
+        int last = 0;
+        do {
+            last = bits(1);
+            if (last < 0) return false;
+            int type = bits(2);
+            if (type < 0) return false;
+            Huffman lencode, distcode;
+            if (type == 0) {
+                if (!stored()) return false;
+            } else if (type == 1) {
+                if (!fixed(lencode, distcode)) return false;
+                if (!codes(lencode, distcode)) return false;
+            } else if (type == 2) {
+                if (!dynamic(lencode, distcode)) return false;
+                if (!codes(lencode, distcode)) return false;
+            } else {
+                return false;
+            }
+        } while (!last);
+        return true;
+    }
+
+    const uint8_t*      in_;
+    size_t              len_;
+    std::vector<uint8_t>& out_;
+    size_t              inPos_ = 0;
+    int                 bitBuf_ = 0, bitCnt_ = 0;
+};
+
+// MSZIP: "xof 0303bzip0032", u32 total uncompressed size (including the 16-byte
+// header), then blocks of [u16 outSize][u16 compSize]["CK"][deflate]. Blocks share a
+// 32 KB window, so they decode into one continuous buffer.
+inline bool decompressMSZip(const uint8_t* header16, const uint8_t* payload, size_t n,
+                            std::vector<uint8_t>& out, std::string& err) {
+    (void)header16;
+    if (n < 4) { err = "bzip payload truncated"; return false; }
+    size_t total = rd32(payload);
+    if (total < 16) { err = "bzip size field too small"; return false; }
+    size_t want = total - 16;
+    out.clear();
+    out.reserve(want);
+
+    size_t pos = 4;
+    int block = 0;
+    while (out.size() < want) {
+        if (pos + 4 > n) { err = "bzip block header truncated"; return false; }
+        size_t blockOut  = rd16(payload + pos);
+        size_t blockComp = rd16(payload + pos + 2);
+        pos += 4;
+        if (pos + 2 > n || payload[pos] != 'C' || payload[pos + 1] != 'K') {
+            err = "bzip block " + std::to_string(block) + ": missing CK signature";
+            return false;
+        }
+        pos += 2;
+        size_t before = out.size();
+        size_t used = Inflater::decode(payload + pos, n - pos, out);
+        if (used == 0) { err = "bzip block " + std::to_string(block) + ": inflate failed"; return false; }
+        if (used + 2 != blockComp) {
+            err = "bzip block " + std::to_string(block) + ": compressed size " +
+                  std::to_string(used + 2) + ", header says " + std::to_string(blockComp);
+            return false;
+        }
+        if (out.size() - before != blockOut) {
+            err = "bzip block " + std::to_string(block) + ": produced " +
+                  std::to_string(out.size() - before) + " bytes, header says " +
+                  std::to_string(blockOut);
+            return false;
+        }
+        pos += used;
+        ++block;
+    }
+    if (out.size() != want) { err = "bzip: decoded size mismatch"; return false; }
+    return true;
+}
+
+// ---------------------------------------------------------------------------------------
+// Binary token stream -> text
+//
+// The binary form is a tokenised text form: every declared template member is flattened
+// into INTEGER_LIST / REALNUM_LIST runs, and only undeclared children and "{ ref }"
+// appear as real objects. Emitting text and reusing the text parser keeps one build path
+// (and gives a dumpable artefact when something looks wrong); the cost is one string
+// per binary model, which is the price of not having two parsers to keep in sync.
+// ---------------------------------------------------------------------------------------
+enum BinToken : uint16_t {
+    kName = 1, kString = 2, kInteger = 3, kGuid = 5, kIntList = 6, kFloatList = 7,
+    kOBrace = 10, kCBrace = 11, kOParen = 12, kCParen = 13,
+    kOBracket = 14, kCBracket = 15, kOAngle = 16, kCAngle = 17,
+    kDot = 18, kComma = 19, kSemi = 20, kTemplate = 31,
+    kWord = 40, kDword = 41, kFloat = 42, kDouble = 43,
+    kChar = 44, kUchar = 45, kSword = 46, kSdword = 47,
+    kVoid = 48, kLpstr = 49, kUnicode = 50, kCstring = 51, kArray = 52,
+};
+
+inline bool isPrimToken(uint16_t t) {
+    return (t >= kWord && t <= kCstring);
+}
+inline bool isFloatToken(uint16_t t) { return t == kFloat || t == kDouble; }
+inline bool isStringToken(uint16_t t) { return t == kLpstr || t == kUnicode || t == kCstring; }
+
+inline const char* primTokenName(uint16_t t) {
+    switch (t) {
+        case kWord: return "WORD";      case kDword: return "DWORD";
+        case kFloat: return "FLOAT";    case kDouble: return "DOUBLE";
+        case kChar: return "CHAR";      case kUchar: return "UCHAR";
+        case kSword: return "SWORD";    case kSdword: return "SDWORD";
+        case kVoid: return "VOID";      case kLpstr: return "STRING";
+        case kUnicode: return "UNICODE";case kCstring: return "CSTRING";
+        default: return "?";
+    }
+}
+
+class BinaryToText {
+public:
+    // Assets are shallow (frames, meshes, materials); anything deeper is corrupt and
+    // must not be allowed to blow the stack.
+    static constexpr int kMaxNesting = 64;
+
+    BinaryToText(const uint8_t* data, size_t n, size_t start, bool float64)
+        : d_(data), n_(n), p_(start), f64_(float64) {
+        seedStandardTemplates();
+    }
+
+    std::string run() {
+        while (p_ < n_) {
+            size_t save = p_;
+            uint16_t t = u16();
+            if (failed_) break;
+            p_ = save;
+            if (t == kTemplate) {
+                parseTemplate();
+            } else if (t == kName || isPrimToken(t)) {
+                object();
+                out_ += '\n';
+            } else {
+                fail("unexpected top-level token " + std::to_string(t));
+                break;
+            }
+        }
+        return std::move(out_);
+    }
+
+    bool ok() const { return !failed_; }
+    const std::string& error() const { return err_; }
+
+private:
+    // -- primitive readers
+    uint16_t u16() {
+        if (p_ + 2 > n_) { fail("truncated stream"); return 0; }
+        uint16_t v = rd16(d_ + p_); p_ += 2; return v;
+    }
+    uint32_t u32() {
+        if (p_ + 4 > n_) { fail("truncated stream"); return 0; }
+        uint32_t v = rd32(d_ + p_); p_ += 4; return v;
+    }
+    std::string bytes(size_t n) {
+        if (p_ + n > n_) { fail("truncated stream"); return {}; }
+        std::string s((const char*)d_ + p_, n); p_ += n; return s;
+    }
+    // Consumes the NAME token itself.
+    std::string readName() {
+        uint16_t t = u16();
+        if (t != kName) { fail("expected NAME token, got " + std::to_string(t)); return {}; }
+        return nameBody();
+    }
+    // For the many places where the token was already peeked/consumed.
+    std::string nameBody() { return bytes(u32()); }
+    std::string readString() {
+        uint16_t t = u16();
+        if (t != kString) { fail("expected STRING token, got " + std::to_string(t)); return {}; }
+        std::string s = bytes(u32());
+        uint16_t term = u16();
+        if (term != kComma && term != kSemi) fail("bad string terminator");
+        return trimNul(s);
+    }
+    [[noreturn]] void fail(const std::string& msg) {
+        failed_ = true;
+        err_ = "binary .x at offset " + std::to_string(p_) + ": " + msg;
+        throw std::runtime_error(err_);
+    }
+
+    // -- templates
+    struct Member {
+        enum Kind { Prim, Array, Ref } kind = Prim;
+        uint16_t    typeToken = 0;   // Prim; for arrays, 0 means element is a Ref
+        std::string typeName;        // Ref / array-of-template element name
+        std::string name;
+        bool        elemIsRef = false;
+        std::vector<int32_t>     dimConst;
+        std::vector<std::string> dimName;
+    };
+    struct Template { std::string name; std::vector<Member> members; };
+
+    Member parseMember(uint16_t t) {
+        Member m;
+        if (t == kArray) {
+            m.kind = Member::Array;
+            uint16_t et = u16();
+            if (isPrimToken(et)) {
+                m.typeToken = et; m.typeName = primTokenName(et); m.elemIsRef = false;
+            } else if (et == kName) {
+                m.typeName = nameBody(); m.elemIsRef = true;
+            } else {
+                fail("bad array element type " + std::to_string(et));
+            }
+            m.name = readName();
+            for (;;) {
+                uint16_t u = u16();
+                if (u == kSemi) break;
+                if (u != kOBracket) fail("bad array dimension token " + std::to_string(u));
+                uint16_t dt = u16();
+                if (dt == kInteger) m.dimConst.push_back((int32_t)u32());
+                else if (dt == kName) m.dimName.push_back(nameBody());
+                else fail("bad dimension token " + std::to_string(dt));
+                if (u16() != kCBracket) fail("expected CBRACKET");
+            }
+            return m;
+        }
+        if (isPrimToken(t)) {
+            m.kind = Member::Prim; m.typeToken = t; m.typeName = primTokenName(t);
+            size_t save = p_;
+            if (u16() == kName) m.name = nameBody(); else p_ = save;
+            if (u16() != kSemi) fail("expected SEMICOLON after primitive member");
+            return m;
+        }
+        if (t == kName) {
+            m.kind = Member::Ref; m.typeName = nameBody();
+            size_t save = p_;
+            if (u16() == kName) m.name = nameBody(); else p_ = save;
+            if (u16() != kSemi) fail("expected SEMICOLON after template member");
+            return m;
+        }
+        fail("bad member token " + std::to_string(t));
+    }
+
+    void parseTemplate() {
+        uint16_t t = u16();
+        if (t != kTemplate) fail("expected TEMPLATE token");
+        Template tpl;
+        tpl.name = readName();
+        if (u16() != kOBrace) fail("expected OBRACE in template");
+        if (u16() != kGuid) fail("expected GUID in template");
+        bytes(16);
+        for (;;) {
+            uint16_t mt = u16();
+            if (mt == kCBrace) break;
+            if (mt == kOBracket) {                 // [ ... ] open/restricted marker
+                int depth = 1;
+                while (depth) {
+                    uint16_t u = u16();
+                    if (u == kOBracket) ++depth;
+                    else if (u == kCBracket) --depth;
+                }
+                continue;
+            }
+            tpl.members.push_back(parseMember(mt));
+        }
+        templates_[tpl.name] = std::move(tpl);
+    }
+
+    // -- number cursor: pulls from INTEGER_LIST / REALNUM_LIST runs, refilling when the
+    //    run is exhausted or the requested kind changes (the writer never mixes kinds).
+    struct Cursor {
+        explicit Cursor(BinaryToText* owner) : c(owner) {}
+        BinaryToText* c;
+        std::vector<double> items;
+        bool isFloat = false, valid = false;
+        size_t i = 0;
+
+        void refill(bool wantFloat) {
+            if (valid && i < items.size())
+                c->fail("number list kind mismatch (wanted " +
+                        std::string(wantFloat ? "float" : "int") + ")");
+            uint16_t t = c->u16();
+            if (t != kIntList && t != kFloatList)
+                c->fail("expected number list, got token " + std::to_string(t));
+            uint32_t cnt = c->u32();
+            // Bound the count against the untouched input before allocating: a corrupt
+            // length field would otherwise ask for gigabytes before any check runs.
+            const size_t perItem = (t == kFloatList && c->f64_) ? 8 : 4;
+            if ((size_t)cnt * perItem > c->n_ - c->p_) c->fail("number list longer than input");
+            items.clear();
+            items.resize(cnt);
+            if (t == kFloatList) {
+                if (c->f64_) {
+                    if (c->p_ + (size_t)cnt * 8 > c->n_) c->fail("truncated float list");
+                    for (uint32_t k = 0; k < cnt; ++k) {
+                        double v; uint64_t bits = (uint64_t)rd32(c->d_ + c->p_) |
+                                                  ((uint64_t)rd32(c->d_ + c->p_ + 4) << 32);
+                        std::memcpy(&v, &bits, 8); c->p_ += 8; items[k] = v;
+                    }
+                } else {
+                    if (c->p_ + (size_t)cnt * 4 > c->n_) c->fail("truncated float list");
+                    for (uint32_t k = 0; k < cnt; ++k) {
+                        uint32_t bits = rd32(c->d_ + c->p_); c->p_ += 4;
+                        float f; std::memcpy(&f, &bits, 4); items[k] = (double)f;
+                    }
+                }
+                isFloat = true;
+            } else {
+                if (c->p_ + (size_t)cnt * 4 > c->n_) c->fail("truncated integer list");
+                for (uint32_t k = 0; k < cnt; ++k) {
+                    items[k] = (double)(int32_t)rd32(c->d_ + c->p_); c->p_ += 4;
+                }
+                isFloat = false;
+            }
+            valid = true;
+            i = 0;
+        }
+        double num(bool wantFloat) {
+            if (!valid || i >= items.size() || isFloat != wantFloat) refill(wantFloat);
+            return items[i++];
+        }
+        bool drained() const { return !valid || i >= items.size(); }
+    };
+
+    // -- output helpers
+    void nl() { out_ += '\n'; out_.append((size_t)depth_ * 2, ' '); }
+    void emitFloat(double v) {
+        char buf[40];
+        if (v == (long long)v && std::fabs(v) < 1e15) {
+            std::snprintf(buf, sizeof buf, "%lld", (long long)v);
+        } else {
+            std::snprintf(buf, sizeof buf, "%.9g", v);
+        }
+        out_ += buf;
+    }
+    // Names in the binary data can contain anything, including '{', '}' and spaces
+    // (the shipped rigs have frames named "_{_f_B" and "_X_J_[_g"). Emitting such a
+    // name bare would desynchronise the text parser, so quote when it is not a plain
+    // identifier. The lexer returns quoted content verbatim as a single token.
+    static bool nameNeedsQuotes(const std::string& s) {
+        if (s.empty()) return true;
+        for (unsigned char c : s) {
+            if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == ';' || c == ',' ||
+                c == '{' || c == '}' || c == '"' || c >= 0x80) return true;
+        }
+        return false;
+    }
+    void emitNameToken(const std::string& s) {
+        if (nameNeedsQuotes(s)) emitString(s);
+        else out_ += s;
+    }
+
+    void emitString(const std::string& raw) {
+        // Always quoted: a CP932 trail byte can be '{', '}' or ';'.
+        out_ += '"';
+        for (char ch : raw) {
+            if (ch == '"' || ch == '\\') out_ += '\\';
+            out_ += ch;
+        }
+        out_ += '"';
+    }
+
+    // -- objects
+    void object() {
+        uint16_t t = u16();
+        std::string tpl;
+        if (t == kName) tpl = nameBody();
+        else if (isPrimToken(t)) tpl = primTokenName(t);
+        else fail("bad object identifier token " + std::to_string(t));
+
+        std::string inst;
+        bool haveInst = false;
+        size_t save = p_;
+        if (u16() == kName) { inst = nameBody(); haveInst = true; }
+        else p_ = save;
+
+        if (u16() != kOBrace) fail("expected OBRACE for object " + tpl);
+        save = p_;
+        if (u16() == kGuid) bytes(16); else p_ = save;
+
+        out_ += tpl;
+        // Instance names only matter for objects the parser looks up by name; keeping
+        // them everywhere would turn "MeshNormals Foo" into a header the parser cannot
+        // match against its known child names.
+        if (haveInst && !inst.empty() &&
+            (tpl == "Frame" || tpl == "Mesh" || tpl == "Material" ||
+             tpl == "AnimationSet" || tpl == "Animation")) {
+            out_ += ' ';
+            emitNameToken(inst);
+        }
+        out_ += " {";
+        ++depth_;
+
+        if (depth_ >= kMaxNesting) fail("object nesting too deep");
+        auto it = templates_.find(tpl);
+        if (it == templates_.end()) fail("object of unknown template " + tpl);
+
+        // Member dimensions resolve against the object's own members (and, for nested
+        // refs, the enclosing ones), so each object gets a fresh scope chain.
+        std::vector<std::map<std::string, double>> savedScopes;
+        savedScopes.swap(scopes_);
+        scopes_.emplace_back();
+        for (const Member& m : it->second.members) {
+            nl();
+            readMember(m);
+        }
+        readChildren();
+        scopes_.clear();
+        scopes_.swap(savedScopes);
+
+        --depth_;
+        nl();
+        out_ += '}';
+    }
+
+    void readChildren() {
+        for (;;) {
+            size_t save = p_;
+            uint16_t t = u16();
+            if (t == kCBrace) return;
+            if (t == kOBrace) {                        // { Name }
+                if (u16() != kName) fail("bad data reference");
+                std::string ref = nameBody();
+                size_t s2 = p_;
+                if (u16() == kGuid) bytes(16); else p_ = s2;
+                if (u16() != kCBrace) fail("bad data reference end");
+                nl();
+                out_ += "{ ";
+                emitNameToken(ref);
+                out_ += " }";
+                continue;
+            }
+            p_ = save;
+            nl();
+            object();
+        }
+    }
+
+    // -- member values
+    void readMember(const Member& m) {
+        if (m.kind == Member::Prim) {
+            if (isStringToken(m.typeToken)) {
+                if (!cur_.drained()) fail("pending numbers before string member");
+                emitString(readString());
+                out_ += ';';
+                return;
+            }
+            double v = cur_.num(isFloatToken(m.typeToken));
+            if (!m.name.empty()) scopes_.back()[m.name] = v;
+            emitFloat(v);
+            out_ += ';';
+            return;
+        }
+        if (m.kind == Member::Array) {
+            size_t count = resolveCount(m);
+            for (size_t i = 0; i < count; ++i) {
+                if (i) out_ += ',';
+                if (m.elemIsRef) readRef(m.typeName);
+                else emitFloat(cur_.num(isFloatToken(m.typeToken)));
+            }
+            out_ += ';';
+            return;
+        }
+        readRef(m.typeName);
+    }
+
+    void readRef(const std::string& typeName) {
+        auto it = templates_.find(typeName);
+        if (it == templates_.end()) fail("unknown member template " + typeName);
+        scopes_.emplace_back();
+        for (const Member& m : it->second.members) readMember(m);
+        scopes_.pop_back();
+    }
+
+    size_t resolveCount(const Member& m) {
+        size_t n = 1;
+        for (int32_t c : m.dimConst) n *= (size_t)c;
+        for (const std::string& d : m.dimName) {
+            bool found = false;
+            for (auto s = scopes_.rbegin(); s != scopes_.rend() && !found; ++s) {
+                auto v = s->find(d);
+                if (v != s->end()) { n *= (size_t)v->second; found = true; }
+            }
+            if (!found) fail("unresolved dimension '" + d + "' for member " + m.name);
+        }
+        return n;
+    }
+
+    // D3DX pre-registers the standard templates and its binary writer therefore omits
+    // their definitions, so a reader that only trusts in-file templates cannot resolve
+    // "Frame" or "Mesh" at all. In-file definitions (mesh extensions such as SkinWeights
+    // and the effect templates) are parsed later and override these.
+    void seedStandardTemplates() {
+        auto prim = [](uint16_t t, const char* nm) {
+            Member m; m.kind = Member::Prim; m.typeToken = t;
+            m.typeName = primTokenName(t); m.name = nm; return m;
+        };
+        auto arrN = [](uint16_t t, const char* nm, int32_t n) {
+            Member m; m.kind = Member::Array; m.typeToken = t;
+            m.typeName = primTokenName(t); m.name = nm; m.dimConst = {n}; return m;
+        };
+        auto arrP = [](uint16_t t, const char* nm, const char* countMember) {
+            Member m; m.kind = Member::Array; m.typeToken = t;
+            m.typeName = primTokenName(t); m.name = nm; m.dimName = {countMember}; return m;
+        };
+        auto arrR = [](const char* elem, const char* nm, const char* countMember) {
+            Member m; m.kind = Member::Array; m.elemIsRef = true;
+            m.typeName = elem; m.name = nm; m.dimName = {countMember}; return m;
+        };
+        auto ref = [](const char* tn, const char* nm) {
+            Member m; m.kind = Member::Ref; m.typeName = tn; m.name = nm; return m;
+        };
+        auto def = [&](const char* name, std::vector<Member> members) {
+            Template t; t.name = name; t.members = std::move(members);
+            templates_[t.name] = std::move(t);
+        };
+
+        def("Header", {prim(kWord, "major"), prim(kWord, "minor"), prim(kDword, "flags")});
+        def("Vector", {prim(kFloat, "x"), prim(kFloat, "y"), prim(kFloat, "z")});
+        def("Coords2d", {prim(kFloat, "u"), prim(kFloat, "v")});
+        def("Quaternion", {prim(kFloat, "s"), ref("Vector", "v")});
+        def("Matrix4x4", {arrN(kFloat, "matrix", 16)});
+        def("ColorRGBA", {prim(kFloat, "red"), prim(kFloat, "green"),
+                          prim(kFloat, "blue"), prim(kFloat, "alpha")});
+        def("ColorRGB", {prim(kFloat, "red"), prim(kFloat, "green"), prim(kFloat, "blue")});
+        def("IndexedColor", {prim(kDword, "index"), ref("ColorRGBA", "indexColor")});
+        def("Boolean", {prim(kWord, "truefalse")});
+        def("Boolean2d", {ref("Boolean", "u"), ref("Boolean", "v")});
+        def("Material", {ref("ColorRGBA", "faceColor"), prim(kFloat, "power"),
+                         ref("ColorRGB", "specularColor"), ref("ColorRGB", "emissiveColor")});
+        def("TextureFilename", {prim(kLpstr, "filename")});
+        def("MeshFace", {prim(kDword, "nFaceVertexIndices"),
+                         arrP(kDword, "faceVertexIndices", "nFaceVertexIndices")});
+        def("MeshFaceWraps", {prim(kDword, "nFaceWrapValues"),
+                              arrR("Boolean2d", "faceWrapValues", "nFaceWrapValues")});
+        def("MeshTextureCoords", {prim(kDword, "nTextureCoords"),
+                                  arrR("Coords2d", "textureCoords", "nTextureCoords")});
+        def("MeshNormals", {prim(kDword, "nNormals"),
+                            arrR("Vector", "normals", "nNormals"),
+                            prim(kDword, "nFaceNormals"),
+                            arrR("MeshFace", "faceNormals", "nFaceNormals")});
+        def("MeshVertexColors", {prim(kDword, "nVertexColors"),
+                                 arrR("IndexedColor", "vertexColors", "nVertexColors")});
+        def("MeshMaterialList", {prim(kDword, "nMaterials"), prim(kDword, "nFaceIndexes"),
+                                 arrP(kDword, "faceIndexes", "nFaceIndexes")});
+        def("Mesh", {prim(kDword, "nVertices"), arrR("Vector", "vertices", "nVertices"),
+                     prim(kDword, "nFaces"), arrR("MeshFace", "faces", "nFaces")});
+        def("FrameTransformMatrix", {ref("Matrix4x4", "frameMatrix")});
+        def("Frame", {});
+        def("AnimTicksPerSecond", {prim(kDword, "AnimTicksPerSecond")});
+        def("FloatKeys", {prim(kDword, "nValues"), arrP(kFloat, "values", "nValues")});
+        def("TimedFloatKeys", {prim(kDword, "time"), ref("FloatKeys", "tfkeys")});
+        def("AnimationKey", {prim(kDword, "keyType"), prim(kDword, "nKeys"),
+                             arrR("TimedFloatKeys", "keys", "nKeys")});
+        def("AnimationOptions", {prim(kDword, "openclosed"), prim(kDword, "positionquality")});
+        def("Animation", {});
+        def("AnimationSet", {});
+        def("VertexElement", {prim(kDword, "Type"), prim(kDword, "Method"),
+                              prim(kDword, "Usage"), prim(kDword, "UsageIndex")});
+        def("DeclData", {prim(kDword, "nElements"),
+                         arrR("VertexElement", "Elements", "nElements"),
+                         prim(kDword, "nDWords"), arrP(kDword, "data", "nDWords")});
+        def("XSkinMeshHeader", {prim(kWord, "nMaxSkinWeightsPerVertex"),
+                                prim(kWord, "nMaxSkinWeightsPerFace"),
+                                prim(kWord, "nBones")});
+        def("VertexDuplicationIndices", {prim(kDword, "nIndices"),
+                                         prim(kDword, "nOriginalVertices"),
+                                         arrP(kDword, "indices", "nIndices")});
+        def("SkinWeights", {prim(kLpstr, "transformNodeName"), prim(kDword, "nWeights"),
+                            arrP(kDword, "vertexIndices", "nWeights"),
+                            arrP(kFloat, "weights", "nWeights"),
+                            ref("Matrix4x4", "matrixOffset")});
+        // Seen in the shipped stage files rather than assumed:
+        def("FVFData", {prim(kDword, "dwFVF"), prim(kDword, "nDWords"),
+                        arrP(kDword, "data", "nDWords")});
+        def("EffectInstance", {prim(kLpstr, "EffectFilename")});
+    }
+
+    const uint8_t* d_;
+    size_t         n_, p_;
+    bool           f64_;
+    bool           failed_ = false;
+    std::string    err_;
+    std::string    out_;
+    int            depth_ = 0;
+    Cursor         cur_{this};
+    std::map<std::string, Template> templates_;
+    std::vector<std::map<std::string, double>> scopes_;
+};
+
+// ---------------------------------------------------------------------------------------
+// Text lexer. Whitespace, ';' and ',' are all separators; that is all the numeric data
+// needs, and it makes the tokeniser insensitive to the punctuation differences between
+// D3DX-written text files and the text this loader generates for binary ones.
+// ---------------------------------------------------------------------------------------
+class Lexer {
+public:
+    explicit Lexer(const std::string& s, size_t start = 0) : src_(s), p_(start) {}
+
+    const std::string& peek() {
+        if (!has_) { has_ = read(buf_); if (!has_) buf_.clear(); }
+        return buf_;
+    }
+    std::string next() {
+        std::string t;
+        if (has_) {
+            t = std::move(buf_);
+            has_ = false;
+            if (t.empty() && eof_) fail("unexpected end of file");
+            return t;
+        }
+        if (!read(t)) fail("unexpected end of file");
+        return t;
+    }
+    bool eof() { peek(); return eof_ && !has_; }
+    bool lastQuoted() const { return quoted_; }
+
+    float     F() { return std::strtof(next().c_str(), nullptr); }
+    int       I() { return (int)std::strtol(next().c_str(), nullptr, 10); }
+    glm::vec2 V2() { float x = F(), y = F(); return {x, y}; }
+    glm::vec3 V3() { float x = F(), y = F(), z = F(); return {x, y, z}; }
+    glm::mat4 M4() {
+        glm::mat4 m;
+        float* f = &m[0][0];
+        for (int i = 0; i < 16; ++i) f[i] = F();
+        return m;
+    }
+
+    [[noreturn]] void fail(const std::string& msg) const {
+        size_t line = 1;
+        for (size_t i = 0; i < p_ && i < src_.size(); ++i) if (src_[i] == '\n') ++line;
+        throw std::runtime_error("x-file parse error (line " + std::to_string(line) + "): " + msg);
+    }
+
+private:
+    bool read(std::string& out) {
+        out.clear();
+        quoted_ = false;
+        for (;;) {
+            while (p_ < src_.size()) {
+                char c = src_[p_];
+                if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == ';' || c == ',') ++p_;
+                else break;
+            }
+            if (p_ >= src_.size()) { eof_ = true; return false; }
+            char c = src_[p_];
+            if (c == '#' || (c == '/' && p_ + 1 < src_.size() && src_[p_ + 1] == '/')) {
+                while (p_ < src_.size() && src_[p_] != '\n') ++p_;
+                continue;
+            }
+            if (c == '{' || c == '}') { out = std::string(1, c); ++p_; return true; }
+            if (c == '"') {
+                ++p_;
+                while (p_ < src_.size() && src_[p_] != '"') {
+                    if (src_[p_] == '\\' && p_ + 1 < src_.size() && src_[p_ + 1] == '"') ++p_;
+                    out += src_[p_++];
+                }
+                if (p_ < src_.size()) ++p_;
+                quoted_ = true;
+                return true;
+            }
+            while (p_ < src_.size()) {
+                c = src_[p_];
+                if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == ';' || c == ',' ||
+                    c == '{' || c == '}' || c == '"') break;
+                out += c; ++p_;
+            }
+            return true;
+        }
+    }
+
+    const std::string& src_;
+    size_t             p_;
+    std::string        buf_;
+    bool               has_ = false, eof_ = false, quoted_ = false;
+};
+
+// ---------------------------------------------------------------------------------------
+// Text -> Model
+// ---------------------------------------------------------------------------------------
+struct RawSkin {
+    std::string           bone;
+    std::vector<uint32_t> idx;
+    std::vector<float>    w;
+    glm::mat4             offset{1.f};
+};
+
+struct RawMesh {
+    std::string                        name;
+    int                                frame = -1;
+    std::vector<glm::vec3>             pos;
+    std::vector<std::vector<uint32_t>> faces;
+    std::vector<glm::vec3>             normals;
+    std::vector<std::vector<uint32_t>> nfaces;
+    std::vector<glm::vec2>             uvs;
+    std::vector<glm::vec4>             colors;    // per position index
+    std::vector<uint32_t>              faceMat;
+    std::vector<Material>              mats;
+    std::vector<RawSkin>               skins;
+    SkinHeader                         skinHeader;
+};
+
+template <class T, class L>
+inline T sampleKeys(const std::vector<Key<T>>& k, float t, L lerp) {
+    if (k.empty()) return T{};
+    if (t <= k.front().t || k.size() == 1) return k.front().v;
+    if (t >= k.back().t) return k.back().v;
+    auto hi = std::upper_bound(k.begin(), k.end(), t,
+                               [](float tt, const Key<T>& a) { return tt < a.t; });
+    auto lo = hi - 1;
+    float span = hi->t - lo->t;
+    float a = span > 0 ? (t - lo->t) / span : 0.f;
+    return lerp(lo->v, hi->v, a);
+}
+
+class Parser {
+public:
+    Parser(Lexer& lx, Model& m, const LoadOptions& o) : lx_(lx), m_(m), opt_(o) {}
+
+    void run() {
+        while (!lx_.eof()) {
+            std::string t = lx_.next();
+            if (t == "template")                  { header(); skipBody(); }
+            else if (t == "Frame")                { parseFrame(-1); }
+            else if (t == "Mesh")                 { parseMesh(-1); }
+            else if (t == "Material")             { Material mt; std::string n = header(); readMaterialBody(mt); if (!n.empty()) named_[n] = mt; }
+            else if (t == "AnimTicksPerSecond")   { header(); m_.ticksPerSecond = (float)lx_.I(); skipBody(); }
+            else if (t == "AnimationSet")         { parseAnimSet(); }
+            else if (t == "EffectInstance" || t == "DeclData" || t == "FVFData") {
+                if (t == "DeclData") m_.stats.hadDeclData = true;
+                if (t == "EffectInstance") m_.stats.hadEffectInstance = true;
+                header(); skipBody();
+            }
+            else                                  { header(); skipBody(); }
+        }
+        finish();
+    }
+
+private:
+    // Reads an optional (possibly multi-word) name up to and including '{'.
+    std::string header() {
+        std::string name;
+        for (;;) {
+            std::string t = lx_.next();
+            if (t == "{") break;
+            if (!name.empty()) name += ' ';
+            name += t;
+        }
+        return name;
+    }
+    void skipBody() {
+        int depth = 1;
+        while (depth > 0) {
+            std::string t = lx_.next();
+            if (t == "{") ++depth;
+            else if (t == "}") --depth;
+        }
+    }
+    // onObj(t) must consume the child's header itself and return true if it handled it.
+    void children(const std::function<bool(const std::string&)>& onObj,
+                  const std::function<void(const std::string&)>& onRef = {}) {
+        // Every nesting level in the text form funnels through here, so one guard
+        // bounds the recursion for frames and meshes alike. RAII so a parse error
+        // thrown from deeper down still unwinds the counter.
+        struct DepthGuard {
+            int& d;
+            explicit DepthGuard(int& depth) : d(depth) { ++d; }
+            ~DepthGuard() { --d; }
+        } guard(depth_);
+        if (depth_ > kMaxNesting) lx_.fail("nesting too deep");
+        for (;;) {
+            std::string t = lx_.next();
+            if (t == "}") return;
+            if (t == "{") {
+                std::string r, w;
+                while ((w = lx_.next()) != "}") r += (r.empty() ? "" : " ") + w;
+                if (onRef) onRef(r);
+                continue;
+            }
+            if (!(onObj && onObj(t))) { header(); skipBody(); }
+        }
+    }
+    void skipRest() { children({}, {}); }
+
+    void parseFrame(int parent) {
+        Frame f;
+        f.name = header();
+        f.parent = parent;
+        int idx = (int)m_.frames.size();
+        m_.frames.push_back(f);
+        children([&](const std::string& t) {
+            if (t == "FrameTransformMatrix") {
+                header();
+                m_.frames[idx].bindLocal = lx_.M4();
+                skipRest();
+                return true;
+            }
+            if (t == "Frame") { parseFrame(idx); return true; }
+            if (t == "Mesh")  { parseMesh(idx);  return true; }
+            return false;
+        });
+    }
+
+    void readMaterialBody(Material& mt) {
+        mt.diffuse  = {lx_.F(), lx_.F(), lx_.F(), lx_.F()};
+        mt.power    = lx_.F();
+        mt.specular = lx_.V3();
+        mt.emissive = lx_.V3();
+        children([&](const std::string& t) {
+            if (t == "TextureFilename") {
+                header();
+                std::string v = lx_.next();
+                mt.texture = lx_.lastQuoted() ? v : trimNul(v);
+                skipRest();
+                return true;
+            }
+            return false;
+        });
+    }
+
+    void parseMesh(int frame) {
+        RawMesh r;
+        r.name = header();
+        r.frame = frame;
+
+        int nv = lx_.I();
+        if (nv < 0 || nv > (1 << 26)) lx_.fail("mesh vertex count out of range");
+        r.pos.resize((size_t)nv);
+        for (auto& p : r.pos) p = lx_.V3();
+
+        int nf = lx_.I();
+        if (nf < 0 || nf > (1 << 26)) lx_.fail("mesh face count out of range");
+        r.faces.resize((size_t)nf);
+        for (auto& f : r.faces) {
+            int n = lx_.I();
+            if (n < 0 || n > 4096) lx_.fail("face vertex count out of range");
+            f.resize((size_t)n);
+            for (auto& i : f) i = (uint32_t)lx_.I();
+        }
+
+        children([&](const std::string& t) {
+            if (t == "MeshNormals") {
+                header();
+                int n = lx_.I();
+                if (n < 0 || n > (1 << 26)) lx_.fail("normal count out of range");
+                r.normals.resize((size_t)n);
+                for (auto& v : r.normals) v = lx_.V3();
+                int nfn = lx_.I();
+                if (nfn < 0 || nfn > (1 << 26)) lx_.fail("face-normal count out of range");
+                r.nfaces.resize((size_t)nfn);
+                for (auto& f : r.nfaces) {
+                    int c = lx_.I();
+                    if (c < 0 || c > 4096) lx_.fail("face-normal arity out of range");
+                    f.resize((size_t)c);
+                    for (auto& i : f) i = (uint32_t)lx_.I();
+                }
+                skipRest();
+                return true;
+            }
+            if (t == "MeshTextureCoords") {
+                header();
+                int n = lx_.I();
+                if (n < 0 || n > (1 << 26)) lx_.fail("uv count out of range");
+                r.uvs.resize((size_t)n);
+                for (auto& v : r.uvs) v = lx_.V2();
+                skipRest();
+                return true;
+            }
+            if (t == "MeshVertexColors") {
+                header();
+                int n = lx_.I();
+                if (n < 0 || n > (1 << 26)) lx_.fail("vertex colour count out of range");
+                r.colors.assign(r.pos.size(), glm::vec4(1.f));
+                for (int i = 0; i < n; ++i) {
+                    int idx = lx_.I();
+                    glm::vec4 c{lx_.F(), lx_.F(), lx_.F(), lx_.F()};
+                    if (idx >= 0 && (size_t)idx < r.colors.size()) r.colors[(size_t)idx] = c;
+                }
+                skipRest();
+                return true;
+            }
+            if (t == "XSkinMeshHeader") {
+                header();
+                r.skinHeader.present = true;
+                r.skinHeader.maxWeightsPerVertex = lx_.I();
+                r.skinHeader.maxWeightsPerFace   = lx_.I();
+                r.skinHeader.bones               = lx_.I();
+                skipRest();
+                return true;
+            }
+            if (t == "VertexDuplicationIndices") {
+                header();
+                m_.stats.hadVertexDuplication = true;
+                skipBody();
+                return true;
+            }
+            if (t == "DeclData") {
+                header();
+                m_.stats.hadDeclData = true;
+                skipBody();
+                return true;
+            }
+            if (t == "MeshMaterialList") {
+                header();
+                lx_.I();                 // nMaterials (the actual list follows)
+                int nfi = lx_.I();
+                if (nfi < 0 || nfi > (1 << 26)) lx_.fail("face-material count out of range");
+                r.faceMat.resize((size_t)nfi);
+                for (auto& i : r.faceMat) i = (uint32_t)lx_.I();
+                children([&](const std::string& c) {
+                    if (c == "Material") {
+                        Material mt;
+                        std::string n = header();
+                        readMaterialBody(mt);
+                        if (!n.empty()) named_[n] = mt;
+                        r.mats.push_back(mt);
+                        return true;
+                    }
+                    return false;
+                }, [&](const std::string& ref) {
+                    auto it = named_.find(ref);
+                    r.mats.push_back(it != named_.end() ? it->second : Material{});
+                });
+                return true;
+            }
+            if (t == "SkinWeights") {
+                header();
+                RawSkin s;
+                s.bone = lx_.next();
+                int n = lx_.I();
+                if (n < 0 || n > (1 << 26)) lx_.fail("skin weight count out of range");
+                s.idx.resize((size_t)n);
+                s.w.resize((size_t)n);
+                for (auto& i : s.idx) i = (uint32_t)lx_.I();
+                for (auto& w : s.w) w = lx_.F();
+                s.offset = lx_.M4();
+                skipRest();
+                r.skins.push_back(std::move(s));
+                return true;
+            }
+            return false;
+        });
+        raws_.push_back(std::move(r));
+    }
+
+    void parseAnimSet() {
+        AnimSet set;
+        set.name = header();
+        children([&](const std::string& t) {
+            if (t != "Animation") return false;
+            header();
+            Channel ch;
+            children([&](const std::string& c) {
+                if (c != "AnimationKey") return false;
+                header();
+                int type = lx_.I();
+                int nkeys = lx_.I();
+                if (nkeys < 0 || nkeys > (1 << 24)) lx_.fail("animation key count out of range");
+                for (int k = 0; k < nkeys; ++k) {
+                    float time = (float)lx_.I();
+                    int nvals = lx_.I();
+                    if (nvals < 0 || nvals > 64) lx_.fail("animation key arity out of range");
+                    if (type == 0 && nvals == 4) {
+                        float w = lx_.F(), x = lx_.F(), y = lx_.F(), z = lx_.F();
+                        glm::quat q(w, x, y, z);            // .x stores (s, v) == (w, x, y, z)
+                        if (opt_.conjugateQuats) q = glm::conjugate(q);
+                        ch.rot.push_back({time, q});
+                    } else if (type == 1 && nvals == 3) {
+                        ch.scale.push_back({time, lx_.V3()});
+                    } else if (type == 2 && nvals == 3) {
+                        ch.pos.push_back({time, lx_.V3()});
+                    } else if ((type == 3 || type == 4) && nvals == 16) {
+                        glm::mat4 m = lx_.M4();
+                        glm::vec3 s, t, skew; glm::vec4 persp; glm::quat r;
+                        if (glm::decompose(m, s, r, t, skew, persp)) {
+                            ch.scale.push_back({time, s});
+                            ch.rot.push_back({time, glm::normalize(r)});
+                            ch.pos.push_back({time, t});
+                        }
+                        m_.stats.matrixKeys++;
+                    } else {
+                        for (int i = 0; i < nvals; ++i) lx_.F();
+                    }
+                }
+                skipRest();
+                return true;
+            }, [&](const std::string& ref) { ch.frameName = ref; });
+            set.channels.push_back(std::move(ch));
+            return true;
+        });
+        m_.anims.push_back(std::move(set));
+    }
+
+    void finish() {
+        for (auto& f : m_.frames) {
+            glm::vec3 skew; glm::vec4 persp;
+            if (!glm::decompose(f.bindLocal, f.bindS, f.bindR, f.bindT, skew, persp)) {
+                f.bindS = {1.f, 1.f, 1.f};
+                f.bindR = glm::quat(1.f, 0.f, 0.f, 0.f);
+                f.bindT = glm::vec3(f.bindLocal[3]);
+            }
+            f.bindR = glm::normalize(f.bindR);
+        }
+
+        for (auto& a : m_.anims) {
+            for (auto& c : a.channels) {
+                c.frame = m_.findFrame(c.frameName);
+                auto upd = [&](const auto& v) { if (!v.empty()) a.duration = std::max(a.duration, v.back().t); };
+                upd(c.rot); upd(c.scale); upd(c.pos);
+                // Keys must be sorted for the sampler; D3DX writers emit them ordered but
+                // a sorted guarantee here removes the assumption.
+                auto byTime = [](const auto& x, const auto& y) { return x.t < y.t; };
+                std::sort(c.rot.begin(), c.rot.end(), byTime);
+                std::sort(c.scale.begin(), c.scale.end(), byTime);
+                std::sort(c.pos.begin(), c.pos.end(), byTime);
+            }
+            a.channels.erase(std::remove_if(a.channels.begin(), a.channels.end(),
+                             [](const Channel& c) { return c.frame < 0; }), a.channels.end());
+        }
+
+        for (auto& r : raws_) m_.meshes.push_back(buildMesh(r));
+
+        m_.stats.frames   = (int)m_.frames.size();
+        m_.stats.meshes   = (int)m_.meshes.size();
+        m_.stats.animSets = (int)m_.anims.size();
+        for (const auto& a : m_.anims) {
+            m_.stats.channels += (int)a.channels.size();
+            for (const auto& c : a.channels) {
+                m_.stats.rotKeys += (int)c.rot.size();
+                m_.stats.posKeys += (int)c.pos.size();
+                m_.stats.scaleKeys += (int)c.scale.size();
+            }
+        }
+    }
+
+    Mesh buildMesh(const RawMesh& r) {
+        Mesh out;
+        out.name = r.name;
+        out.frame = r.frame;
+        out.materials = r.mats;
+        if (out.materials.empty()) out.materials.push_back(Material{});
+        out.skinned = !r.skins.empty();
+        out.skinHeader = r.skinHeader;
+        out.hasVertexColors = !r.colors.empty();
+        if (out.hasVertexColors) m_.stats.meshesWithVertexColors++;
+
+        for (const auto& s : r.skins) {
+            Bone b;
+            b.name = s.bone;
+            b.offset = s.offset;
+            b.frame = m_.findFrame(s.bone);
+            out.bones.push_back(b);
+        }
+        m_.stats.skinBones += (int)out.bones.size();
+
+        // Per-position influences, strongest first. The shipped rigs stay within
+        // XSkinMeshHeader's limit, but files in the wild can exceed 4, so extras are
+        // dropped and the remainder renormalised rather than silently mis-weighted.
+        struct Influences { std::array<std::pair<uint32_t, float>, 8> v{}; int n = 0; };
+        std::vector<Influences> infl;
+        if (out.skinned) {
+            infl.assign(r.pos.size(), {});
+            for (uint32_t bi = 0; bi < r.skins.size(); ++bi) {
+                const RawSkin& s = r.skins[bi];
+                for (size_t k = 0; k < s.idx.size() && k < s.w.size(); ++k) {
+                    if (s.idx[k] >= infl.size() || !(s.w[k] > 0.f)) continue;
+                    Influences& in = infl[s.idx[k]];
+                    if (in.n < (int)in.v.size()) {
+                        in.v[in.n++] = {bi, s.w[k]};
+                    } else {
+                        auto mn = std::min_element(in.v.begin(), in.v.end(),
+                                    [](const auto& a, const auto& b) { return a.second < b.second; });
+                        if (s.w[k] > mn->second) { *mn = {bi, s.w[k]}; out.droppedInfluences++; }
+                    }
+                }
+            }
+            for (auto& in : infl) {
+                std::sort(in.v.begin(), in.v.begin() + in.n,
+                          [](const auto& a, const auto& b) { return a.second > b.second; });
+                m_.stats.maxInfluencesSeen = std::max(m_.stats.maxInfluencesSeen, in.n);
+            }
+        }
+
+        std::vector<glm::vec3> autoN;
+        bool haveN = !r.normals.empty() && r.nfaces.size() == r.faces.size();
+        if (!haveN) {
+            autoN.assign(r.pos.size(), glm::vec3(0));
+            for (const auto& f : r.faces)
+                for (size_t i = 1; i + 1 < f.size(); ++i) {
+                    if (f[0] >= r.pos.size() || f[i] >= r.pos.size() || f[i + 1] >= r.pos.size())
+                        continue;
+                    // LH + clockwise front faces: cross(a - b, c - b) points outward.
+                    glm::vec3 n = glm::cross(r.pos[f[i + 1]] - r.pos[f[0]], r.pos[f[i]] - r.pos[f[0]]);
+                    autoN[f[0]] += n; autoN[f[i]] += n; autoN[f[i + 1]] += n;
+                }
+            for (auto& n : autoN) if (glm::dot(n, n) > 0.f) n = glm::normalize(n);
+        }
+
+        // One GPU vertex per unique (position, normal) pair; uv and colour follow the
+        // position index, which is how the .x format stores them.
+        std::unordered_map<uint64_t, uint32_t> remap;
+        auto emit = [&](uint32_t pi, uint32_t ni) -> uint32_t {
+            uint64_t key = ((uint64_t)pi << 32) | ni;
+            auto it = remap.find(key);
+            if (it != remap.end()) return it->second;
+            Vertex v{};
+            v.pos    = r.pos[pi];
+            v.normal = haveN ? r.normals[ni] : autoN[pi];
+            v.uv     = pi < r.uvs.size() ? r.uvs[pi] : glm::vec2(0.f);
+            v.color  = pi < r.colors.size() ? r.colors[pi] : glm::vec4(1.f);
+            if (out.skinned) {
+                float sum = 0.f;
+                const Influences& in = infl[pi];
+                for (int k = 0; k < 4; ++k) {
+                    if (k < in.n) { v.bones[k] = in.v[k].first; v.weights[k] = in.v[k].second; sum += v.weights[k]; }
+                }
+                if (sum > 0.f) v.weights /= sum;
+                else { v.bones = glm::uvec4(0u); v.weights = glm::vec4(1.f, 0.f, 0.f, 0.f); }
+            }
+            uint32_t id = (uint32_t)out.vertices.size();
+            out.vertices.push_back(v);
+            remap.emplace(key, id);
+            return id;
+        };
+
+        std::vector<std::vector<uint32_t>> buckets(out.materials.size());
+        for (size_t fi = 0; fi < r.faces.size(); ++fi) {
+            const auto& f = r.faces[fi];
+            if (f.size() < 3) continue;
+            bool bad = false;
+            for (uint32_t idx : f) if (idx >= r.pos.size()) { bad = true; break; }
+            if (bad) continue;
+            uint32_t mat = fi < r.faceMat.size() ? r.faceMat[fi]
+                         : (r.faceMat.size() == 1 ? r.faceMat[0] : 0u);
+            if (mat >= buckets.size()) mat = 0;
+            auto corner = [&](size_t c) -> uint32_t {
+                uint32_t pi = f[c];
+                uint32_t ni = 0;
+                if (haveN && fi < r.nfaces.size() && c < r.nfaces[fi].size()) {
+                    ni = r.nfaces[fi][c];
+                    if (ni >= r.normals.size()) ni = 0;
+                }
+                return emit(pi, ni);
+            };
+            uint32_t c0 = corner(0);
+            for (size_t i = 1; i + 1 < f.size(); ++i) {
+                buckets[mat].push_back(c0);
+                buckets[mat].push_back(corner(i));
+                buckets[mat].push_back(corner(i + 1));
+            }
+        }
+        for (size_t mi = 0; mi < buckets.size(); ++mi) {
+            if (buckets[mi].empty()) continue;
+            Submesh s;
+            s.firstIndex = (uint32_t)out.indices.size();
+            s.indexCount = (uint32_t)buckets[mi].size();
+            s.material   = (int)mi;
+            out.indices.insert(out.indices.end(), buckets[mi].begin(), buckets[mi].end());
+            out.submeshes.push_back(s);
+        }
+
+        m_.stats.vertices      += (int)out.vertices.size();
+        m_.stats.triangles     += (int)out.indices.size() / 3;
+        m_.stats.submeshes     += (int)out.submeshes.size();
+        m_.stats.materials     += (int)out.materials.size();
+        m_.stats.droppedInfluences += out.droppedInfluences;
+        return out;
+    }
+
+    static constexpr int                      kMaxNesting = 64;
+    int                                       depth_ = 0;
+    Lexer&                                    lx_;
+    Model&                                    m_;
+    const LoadOptions&                        opt_;
+    std::vector<RawMesh>                      raws_;
+    std::unordered_map<std::string, Material> named_;
+};
+
+}  // namespace detail
+
+// ---------------------------------------------------------------------------------------
+// Model
+// ---------------------------------------------------------------------------------------
+inline int Model::findFrame(const std::string& n) const {
+    for (size_t i = 0; i < frames.size(); ++i) if (frames[i].name == n) return (int)i;
+    return -1;
+}
+inline int Model::findAnim(const std::string& n) const {
+    for (size_t i = 0; i < anims.size(); ++i) if (anims[i].name == n) return (int)i;
+    return -1;
+}
+inline int Model::findMesh(const std::string& n) const {
+    for (size_t i = 0; i < meshes.size(); ++i) if (meshes[i].name == n) return (int)i;
+    return -1;
+}
+
+inline void Model::evalPose(const AnimSet* a, float seconds, bool loop,
+                            std::vector<glm::mat4>& world) const {
+    using namespace detail;
+    std::vector<glm::vec3> S(frames.size()), T(frames.size());
+    std::vector<glm::quat> R(frames.size());
+    for (size_t i = 0; i < frames.size(); ++i) {
+        S[i] = frames[i].bindS;
+        R[i] = frames[i].bindR;
+        T[i] = frames[i].bindT;
+    }
+    if (a && a->duration > 0.f) {
+        float tick = seconds * ticksPerSecond;
+        tick = loop ? std::fmod(tick, a->duration) : std::min(tick, a->duration);
+        if (tick < 0) tick += a->duration;
+        for (const Channel& c : a->channels) {
+            if (!c.scale.empty())
+                S[c.frame] = sampleKeys(c.scale, tick, [](auto& x, auto& y, float t) { return glm::mix(x, y, t); });
+            if (!c.pos.empty())
+                T[c.frame] = sampleKeys(c.pos, tick, [](auto& x, auto& y, float t) { return glm::mix(x, y, t); });
+            if (!c.rot.empty())
+                R[c.frame] = sampleKeys(c.rot, tick, [](auto& x, auto& y, float t) { return glm::slerp(x, y, t); });
+        }
+        for (size_t i = 0; i < frames.size(); ++i) if (glm::dot(R[i], R[i]) > 0.f) R[i] = glm::normalize(R[i]);
+    }
+
+    std::vector<glm::mat4> local(frames.size());
+    for (size_t i = 0; i < frames.size(); ++i)
+        local[i] = glm::translate(glm::mat4(1.f), T[i]) * glm::mat4_cast(R[i]) *
+                   glm::scale(glm::mat4(1.f), S[i]);
+
+    world.resize(frames.size());
+    for (size_t i = 0; i < frames.size(); ++i)
+        world[i] = frames[i].parent < 0 ? local[i] : world[frames[i].parent] * local[i];
+}
+
+inline void Model::buildPalette(const Mesh& m, const std::vector<glm::mat4>& world,
+                                std::vector<glm::mat4>& out) const {
+    if (!m.skinned) {
+        out.assign(1, m.frame >= 0 && (size_t)m.frame < world.size() ? world[m.frame] : glm::mat4(1.f));
+        return;
+    }
+    out.resize(m.bones.size());
+    for (size_t i = 0; i < m.bones.size(); ++i) {
+        const Bone& b = m.bones[i];
+        const glm::mat4& w = (b.frame >= 0 && (size_t)b.frame < world.size())
+                                 ? world[b.frame] : glm::mat4(1.f);
+        out[i] = w * b.offset;
+    }
+}
+
+inline size_t Model::paletteSize() const {
+    size_t n = 0;
+    for (const Mesh& m : meshes) n += m.skinned ? m.bones.size() : 1;
+    return n;
+}
+
+// ---------------------------------------------------------------------------------------
+// Controller
+// ---------------------------------------------------------------------------------------
+inline void Controller::setTrackAnimationSet(int t, int animIndex) {
+    if (Track* tr = track(t)) tr->anim = animIndex;
+}
+inline int Controller::trackAnimationSet(int t) const {
+    const Track* tr = track(t);
+    return tr ? tr->anim : -1;
+}
+inline void Controller::setTrackEnable(int t, bool on) {
+    if (Track* tr = track(t)) tr->enable = on;
+}
+inline bool Controller::trackEnable(int t) const {
+    const Track* tr = track(t);
+    return tr && tr->enable;
+}
+inline void Controller::setTrackWeight(int t, float w) {
+    if (Track* tr = track(t)) tr->weight = glm::clamp(w, 0.f, 1.f);
+}
+inline float Controller::trackWeight(int t) const {
+    const Track* tr = track(t);
+    return tr ? tr->weight : 0.f;
+}
+inline void Controller::setTrackSpeed(int t, float s) {
+    if (Track* tr = track(t)) tr->speed = s;
+}
+inline float Controller::trackSpeed(int t) const {
+    const Track* tr = track(t);
+    return tr ? tr->speed : 1.f;
+}
+inline void Controller::setTrackPosition(int t, double seconds) {
+    if (Track* tr = track(t)) tr->time = seconds;
+}
+inline double Controller::trackPosition(int t) const {
+    const Track* tr = track(t);
+    return tr ? tr->time : 0.0;
+}
+inline void Controller::setTrackLoop(int t, bool loop) {
+    if (Track* tr = track(t)) tr->loop = loop;
+}
+inline bool Controller::trackLoop(int t) const {
+    const Track* tr = track(t);
+    return tr && tr->loop;
+}
+
+inline bool Controller::setAnimation(int animIndex, bool loop) {
+    if (!model_ || animIndex < 0 || (size_t)animIndex >= model_->anims.size()) return false;
+    for (int i = 0; i < kMaxTracks; ++i) {
+        tracks_[i].enable = false;
+        tracks_[i].weight = 0.f;
+        tracks_[i].time = 0.0;
+    }
+    tracks_[0] = Track{};
+    tracks_[0].anim = animIndex;
+    tracks_[0].enable = true;
+    tracks_[0].weight = 1.f;
+    tracks_[0].loop = loop;
+    return true;
+}
+
+inline void Controller::advanceTime(float dt) {
+    if (!model_) return;
+    for (Track& t : tracks_) {
+        if (!t.enable || t.anim < 0) continue;
+        t.time += (double)dt * (double)t.speed;
+        if (t.time < 0.0) t.time = 0.0;
+    }
+}
+
+inline double Controller::time() const {
+    double best = 0.0;
+    for (const Track& t : tracks_)
+        if (t.enable && t.anim >= 0) best = std::max(best, t.time);
+    return best;
+}
+
+inline void Controller::evalLocal(std::vector<glm::vec3>& pos, std::vector<glm::quat>& rot,
+                                  std::vector<glm::vec3>& scale) const {
+    using namespace detail;
+    const size_t nf = model_ ? model_->frames.size() : 0;
+    pos.assign(nf, glm::vec3(0.f));
+    scale.assign(nf, glm::vec3(1.f));
+    rot.assign(nf, glm::quat(1.f, 0.f, 0.f, 0.f));
+    if (!model_) return;
+    for (size_t i = 0; i < nf; ++i) {
+        pos[i]   = model_->frames[i].bindT;
+        rot[i]   = model_->frames[i].bindR;
+        scale[i] = model_->frames[i].bindS;
+    }
+
+    std::vector<float> accW(nf, 0.f);
+    for (const Track& t : tracks_) {
+        if (!t.enable || t.weight <= 0.f || t.anim < 0) continue;
+        if ((size_t)t.anim >= model_->anims.size()) continue;
+        const AnimSet& set = model_->anims[(size_t)t.anim];
+        if (set.duration <= 0.f) continue;
+
+        double seconds = t.time;
+        float tick = (float)(seconds * (double)model_->ticksPerSecond);
+        tick = t.loop ? std::fmod(tick, set.duration) : std::min(tick, set.duration);
+        if (tick < 0.f) tick += set.duration;
+
+        for (const Channel& c : set.channels) {
+            if (c.frame < 0 || (size_t)c.frame >= nf) continue;
+            float w = t.weight;
+            float aw = accW[c.frame];
+            float alpha = w / (aw + w);       // incremental weighted blend
+            if (!c.scale.empty()) {
+                glm::vec3 v = sampleKeys(c.scale, tick, [](auto& x, auto& y, float f) { return glm::mix(x, y, f); });
+                scale[c.frame] = aw <= 0.f ? v : glm::mix(scale[c.frame], v, alpha);
+            }
+            if (!c.pos.empty()) {
+                glm::vec3 v = sampleKeys(c.pos, tick, [](auto& x, auto& y, float f) { return glm::mix(x, y, f); });
+                pos[c.frame] = aw <= 0.f ? v : glm::mix(pos[c.frame], v, alpha);
+            }
+            if (!c.rot.empty()) {
+                glm::quat v = sampleKeys(c.rot, tick, [](auto& x, auto& y, float f) { return glm::slerp(x, y, f); });
+                if (glm::dot(v, v) > 0.f) v = glm::normalize(v);
+                rot[c.frame] = aw <= 0.f ? v : glm::slerp(rot[c.frame], v, alpha);
+            }
+            accW[c.frame] = aw + w;
+        }
+    }
+    for (size_t i = 0; i < nf; ++i) if (glm::dot(rot[i], rot[i]) > 0.f) rot[i] = glm::normalize(rot[i]);
+}
+
+inline void Controller::evalWorld(std::vector<glm::mat4>& world) const {
+    std::vector<glm::vec3> S, T;
+    std::vector<glm::quat> R;
+    evalLocal(T, R, S);
+    const size_t nf = model_ ? model_->frames.size() : 0;
+    std::vector<glm::mat4> local(nf);
+    for (size_t i = 0; i < nf; ++i)
+        local[i] = glm::translate(glm::mat4(1.f), T[i]) * glm::mat4_cast(R[i]) *
+                   glm::scale(glm::mat4(1.f), S[i]);
+    world.resize(nf);
+    for (size_t i = 0; i < nf; ++i)
+        world[i] = model_->frames[i].parent < 0 ? local[i]
+                                                : world[model_->frames[i].parent] * local[i];
+}
+
+inline std::string LoadStats::toString() const {
+    char buf[512];
+    std::snprintf(buf, sizeof buf,
+        "%s: %d frames, %d meshes, %d materials, %d anim sets, %d channels "
+        "(rot %d / pos %d / scale %d / mat %d), %d verts, %d tris, %d submeshes, "
+        "%d skin bones, max influences %d, dropped %d, %d colour meshes%s%s%s",
+        encoding.c_str(), frames, meshes, materials, animSets, channels,
+        rotKeys, posKeys, scaleKeys, matrixKeys, vertices, triangles, submeshes,
+        skinBones, maxInfluencesSeen, droppedInfluences, meshesWithVertexColors,
+        hadDeclData ? ", DeclData" : "", hadVertexDuplication ? ", VertexDuplicationIndices" : "",
+        hadEffectInstance ? ", EffectInstance" : "");
+    return buf;
+}
+
+// ---------------------------------------------------------------------------------------
+// Entry points
+// ---------------------------------------------------------------------------------------
+namespace detail {
+
+// `start` skips the 16-byte "xof ..." header for on-disk text files. Text produced by
+// the binary converter has no header, so it starts at 0. Getting this wrong does not
+// fail loudly: the lexer treats the header line as the name of an unknown object and
+// swallows the first real object along with it, which silently drops geometry from
+// any text asset whose first entry is a Frame or Mesh rather than a template.
+inline void parseTextInto(Model& m, const std::string& text, size_t start,
+                          const LoadOptions& opt) {
+    Lexer lx(text, start);
+    Parser(lx, m, opt).run();
+}
+
+inline Model parseBinaryStream(const uint8_t* data, size_t size, size_t start, bool float64,
+                               const char* encoding, const LoadOptions& opt,
+                               std::chrono::steady_clock::time_point t0) {
+    auto t1 = std::chrono::steady_clock::now();
+    BinaryToText conv(data, size, start, float64);
+    std::string text = conv.run();
+    if (!conv.ok()) throw std::runtime_error(conv.error());
+    if (opt.convertedTextOut) *opt.convertedTextOut = text;
+    auto t2 = std::chrono::steady_clock::now();
+
+    Model m;
+    m.stats.encoding = encoding;
+    m.ticksPerSecond = opt.ticksPerSecond;
+    parseTextInto(m, text, 0, opt);
+    auto t3 = std::chrono::steady_clock::now();
+    m.stats.convertMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    m.stats.parseMs   = std::chrono::duration<double, std::milli>(t3 - t2).count();
+    return m;
+}
+
+}  // namespace detail
+
+inline Model loadMemory(const void* data, size_t size, const LoadOptions& opt) {
+    using namespace detail;
+    if (!data || size < 16) throw std::runtime_error("x-file too short");
+    const uint8_t* p = (const uint8_t*)data;
+    if (std::memcmp(p, "xof ", 4) != 0) throw std::runtime_error("not a DirectX .x file");
+
+    char fmt[5] = {0};
+    std::memcpy(fmt, p + 8, 4);
+    const bool float64 = std::memcmp(p + 12, "0064", 4) == 0;
+    std::string fmtStr(fmt);
+    while (!fmtStr.empty() && fmtStr.back() == ' ') fmtStr.pop_back();
+    auto t0 = std::chrono::steady_clock::now();
+
+    if (fmtStr == "txt") {
+        Model m;
+        m.stats.encoding = "txt";
+        m.ticksPerSecond = opt.ticksPerSecond;   // AnimTicksPerSecond overrides if present
+        parseTextInto(m, std::string((const char*)p, size), 16, opt);
+        auto t1 = std::chrono::steady_clock::now();
+        m.stats.parseMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        return m;
+    }
+    if (fmtStr == "bin") {
+        return parseBinaryStream(p, size, 16, float64, "bin", opt, t0);
+    }
+    if (fmtStr == "bzip" || fmtStr == "tzip") {
+        std::vector<uint8_t> out;
+        std::string err;
+        if (!decompressMSZip(p, p + 16, size - 16, out, err))
+            throw std::runtime_error("MSZIP: " + err);
+        // A decompressed payload carries no header of its own, so the token stream
+        // starts at offset 0. "tzip" would decompress to text: sniff and fall through.
+        if (out.size() >= 4 && std::memcmp(out.data(), "xof ", 4) == 0) {
+            Model m;
+            m.stats.encoding = "tzip";
+            m.ticksPerSecond = opt.ticksPerSecond;
+            parseTextInto(m, std::string((const char*)out.data(), out.size()), 0, opt);
+            auto t1 = std::chrono::steady_clock::now();
+            m.stats.parseMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
+            return m;
+        }
+        return parseBinaryStream(out.data(), out.size(), 0, float64, "bzip", opt, t0);
+    }
+    throw std::runtime_error("unsupported .x encoding '" + fmtStr + "'");
+}
+
+inline Model loadMemory(const std::string& data, const LoadOptions& opt) {
+    return loadMemory(data.data(), data.size(), opt);
+}
+
+inline Model loadFile(const std::string& path, const LoadOptions& opt) {
+    std::FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) throw std::runtime_error("cannot open " + path);
+    std::fseek(f, 0, SEEK_END);
+    long n = std::ftell(f);
+    std::fseek(f, 0, SEEK_SET);
+    if (n < 0) { std::fclose(f); throw std::runtime_error("cannot size " + path); }
+    std::string buf((size_t)n, '\0');
+    size_t got = std::fread(&buf[0], 1, (size_t)n, f);
+    std::fclose(f);
+    buf.resize(got);
+    return loadMemory(buf, opt);
+}
+
+}  // namespace xm
+#endif  // XMODEL_IMPLEMENTATION_DONE
+#endif  // XMODEL_IMPLEMENTATION
