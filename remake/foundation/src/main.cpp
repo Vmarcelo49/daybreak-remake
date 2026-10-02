@@ -25,6 +25,7 @@
 
 #include "gpu/gpu.h"
 #include "assets/asset_source.h"
+#include "assets/stage_catalog.h"
 #include "platform/platform.h"
 #include "platform/surface.h"
 #include "platform/web_pack.h"
@@ -329,6 +330,10 @@ xm::Scene loadScene(const Options& o, std::string& error, size_t* enemyBegin = n
         // (scenes.cpp:469-495) and what both modes need. Validation guarantees all
         // three specs; env.dat spawn points place the fighters later.
         scene = xm::loadStage(o.stage, sopt);
+        // Say what the directory *is*, not just where it is: stage21 is the schoolyard at
+        // night, which is how every early comparison ended up measured on the wrong
+        // variant (remake/docs/ASSET-CATALOG.md §1, docs/FULL-REPLACEMENT-PLAN.md §6a).
+        std::printf("stage        : %s\n", assets::describeStage(o.stage).c_str());
         appendCharacter(scene, o.character, sopt);
         if (!o.weapon.empty()) {
             size_t p1 = firstCharacter(scene, 0);
