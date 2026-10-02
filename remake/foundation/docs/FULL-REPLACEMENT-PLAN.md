@@ -262,7 +262,48 @@ reference (trace-exact, including frame 1), solid cubes for shots/sparks/auras,
 checks) with a regenerated full-CP932 table, and fixed-function lighting parity
 (RMSE 0.324 → 0.085 on three cases, exposure matched to ±0.003).
 
-**Where the gate frame stands (2026-10-03).** Against the three banked DX9
+## 6a. Fidelity target, corrected 2026-10-03 (owner)
+
+**The visual target is the original game's screens, not the DX9 remake's
+frames.** `remake/docs/reference/*.webp` holds 23 prints of the running
+original — one per screen: `title-menu` (the shrine main menu), `team-select`,
+`char-select-rena`, `weapon-select-rena`, `stage-select-*`,
+`hypermode-select`, `controller-select`/`-setup`, `option-screen`,
+`vs-intro`, `battle-hud`, `battle-stamina`, `ko-moment`, `ready-confirm`,
+`result-*`, `netplay-*`, `soft-keyboard`, `opening-frame-01`, `ammo-bar`.
+Those are the specification for what the game looks like. The DX9 remake is
+**not**: it is itself unfinished (its fighters never animate, its VFX are
+untextured cube stand-ins, its HUD is a text-only sketch of the original's
+art, and it carries a debug marker), so matching it pixel-for-pixel means
+matching a stand-in and calling it done.
+
+The two oracles therefore have different jobs, and claims must name which one
+they used:
+
+| oracle | what it can still settle |
+|---|---|
+| DX9 remake frames (`tests/visual/out/`, `tests/parity-baseline/`) | behaviour: positions, states, economy, trace equality (`compare_match_traces.py`). Still exact, still valuable. |
+| the 23 prints (`docs/reference/`) | appearance: camera framing, HUD layout and art, VFX, stage look, and every screen the foundation does not have yet |
+
+Consequences already visible, measured 2026-10-03 against `battle-hud.webp`:
+
+* **Framing**: the print's player character is ~3x larger and stands with her
+  feet at the HUD line; the foundation's is mid-frame and small. The arena
+  camera currently ported is the *remake's* (height 300, distance 800), which
+  is not the original's framing — the remake is closer to the original here
+  than the foundation is. This supersedes the "camera parity" claim: it is
+  parity with the remake, not with the game.
+* **HUD**: the print's HUD is art — a fan-shaped OYASHIRO gauge, a boxed 適当
+  label, shaped bars/panels, a "com" bar, an alert balloon, targeting
+  brackets, a counter. The remake draws plain Arial text and flat bars, which
+  is what the foundation reproduced. The gap is art and layout, not metrics.
+* **Brightness**: the print's mean luminance is 0.621 against the
+  foundation's 0.492 (and the DX9 remake's 0.490) — the original is brighter
+  than both.
+* RMSE against the print is 0.298 versus 0.064 against the remake's frame.
+  The 0.064 was a real result against the wrong target.
+
+**Where the gate frame stands (2026-10-03, against the DX9 remake).** Against the three banked DX9
 frames at 800x600, after camera parity, lighting parity, the animation-set fix
 and the HUD text metrics: overall RMSE 0.063988 / 0.063431 / 0.056068 on
 tapshot f110 / dash f95 / school f110, with luminance means within 0.002-0.004
