@@ -1,11 +1,14 @@
 # Full replacement plan: drop DX9, WebGPU only
 
-Status: **executing**. Phase 0 (parity banking + preconditions) passed
-2026-10-02; Phase 1 (foundation-complete) passed 2026-10-02; Phase 2 (gameplay
-port) passed 2026-10-02. Phases 3–5 not started. Nothing below deletes or
-rewrites anything until its phase gate passes. This plan exists because
-"replace DX9" is a point of no return: after Phase 5 there is no DX9 build to
-compare against, so every proof must be banked *before* the cutover.
+Status: **executed — cutover complete 2026-10-02.** Phase 0 (parity banking
++ preconditions) passed 2026-10-02; Phase 1 (foundation-complete) passed
+2026-10-02; Phase 2 (gameplay port) passed 2026-10-02; Phase 3 (fidelity)
+landed against the corrected target (§6a), with its remaining items tracked
+rather than blocking; Phase 4 (netplay) is out of scope for the cutover (D6,
+design first); **Phase 5 was executed 2026-10-02 and the DX9 tree is deleted**
+(§8). This plan existed because "replace DX9" is a point of no return: every
+proof was banked *before* the cutover, and the rollback point is the
+`pre-webgpu-cutover` tag (`37ed31d`).
 
 ## 0. Objective and definition of done
 
@@ -24,6 +27,10 @@ Done means, on `main`:
 Out of scope for the replacement itself (tracked separately, not blocking
 the cutover): macOS execution (never tested by us), netplay (D6, design
 first), story-mode video (stubbed by decision).
+
+**Status 2026-10-02:** the zero-reference and deletion bullets hold; the
+versus match is green on Linux and Wine; web and macOS execution are exactly
+as recorded in §8.5 and `ROADMAP-PENDING.md` — not claimed beyond that.
 
 ## 1. Rules of the migration
 
@@ -323,11 +330,16 @@ Consequences already visible, measured 2026-10-03 against `battle-hud.webp`:
   `戦闘開始` / `戻る` — the level of detail the front-end tracks can work
   from.
 
-**Open bug found by the animation track (2026-10-03).** The foundation's own `env.dat`
-spawn parse puts P2 at `(-1363, 200, -2200)` where the DX9 log for the same case has
-`(-2200, 200, -1363)` — x and z swapped. The trace comparison was made fair by passing
-`--spawn2` explicitly, so this is a *loader* bug, not a comparison artefact, and it will
-misplace every default-spawned match. Not yet investigated.
+**Spawn question, reframed 2026-10-03 (an earlier note here called it a loader bug; that was
+wrong).** The foundation's `env.dat` read matches the original's own reader —
+`FUN_004011f0` takes four header ints at 0x14-0x20 and then four triples at 0x24, stride
+12, in stored order, which is exactly `readEnv` in `src/assets/scene.h`. There is no DX9
+loader to compare against either: the DX9 side hardcoded its spawns (see
+`pre-webgpu-cutover:remake/src/core/scenes.cpp:527-535`), which is *why* the trace had to
+pass `--spawn2` explicitly. So the open question is not the parse but the *consumer*: which
+of the four stored points a versus match uses, and in what order. Next step is to read the
+consumer of `param_1[0x11..0x1c]` (offsets 0x44-0x70) rather than the parser. See
+`docs/ROADMAP-PENDING.md` item A1.
 
 **Where the gate frame stands (2026-10-03, against the DX9 remake).** Against the three banked DX9
 frames at 800x600, after camera parity, lighting parity, the animation-set fix
@@ -438,7 +450,10 @@ a pre-existing gap rather than creating one). Consequences, stated plainly:
       and so is every item on it.
 
 Gate: D2's letter — a complete in-game frame matching the banked DX9
-reference. Until this passes, DX9 stays buildable (unchanged from today).
+reference. **Superseded 2026-10-02:** §6a corrected the visual target to the
+original's prints, the match against those was measured (§6a, D2 reversal),
+and the cutover (§8) executed with the remaining items tracked here and in
+`ROADMAP-PENDING.md`. DX9 is no longer buildable, by design.
 
 ## 7. Phase 4 — netplay (design first, D6)
 
@@ -448,32 +463,67 @@ MSVC/MinGW/Emscripten toolchains, desync detection, and what "LAN-first"
 excludes. Separate plan, separate review — listed here only so it is not
 forgotten.
 
-## 8. Phase 5 — cutover (the actual drop)
+## 8. Phase 5 — cutover (**executed 2026-10-02**)
 
-Only after Phases 0–3 gates (4 if in scope) have passed, in this order:
+Executed in the order below; this section is now the record, not a to-do.
+Steps are the original plan's, annotated with what actually happened.
 
-1. Flip the default: foundation build becomes *the* build (`remake/build.sh`
-   targets it; DX9 build moves to `remake/build-dx9.sh` temporarily or is
-   removed outright — decide at the time, default to remove).
-2. Delete, in one reviewed commit: `remake/src/render/{x_model_renderer,
-   hud,ui_image,video_player,effect_system,debug_prim,arena_camera}
-   .{h,cpp}` as replaced (arena_camera math already lives in foundation),
-   `remake/src/file_parser/*` as replaced, `remake/tools/{d3dx9,
-   SDL2-2.30.10,SDL2_mixer-2.8.0}`, `webgpu-mvp/`, `webgpu-spike/`.
-   Gameplay files (`fighter`, `projectile`, `scenes`, …) are *ported*, not
-   deleted — they move adapted, never vanish. **Precondition for deleting
-   `debug_prim.{h,cpp}`**: Phase 1 replaced the *plan's* idea of it (lines),
-   not what it is — a placeholder unlit-cube pass for un-RE'd VFX. Confirm the
-   effect path covers shots/sparks/aura before removing it, and if it does not,
-   that coverage is a Phase 3 deliverable rather than a silent loss of
-   function.
-3. Update in the same commit: D2 to past tense ("DX9 removed <date>, WebGPU
-   only"), AGENTS.md rule 2 + halves table, both READMEs, CI (retire DX9
-   jobs; foundation matrix stays version-gated).
-4. Verify: clean-checkout build of all three targets, versus match green,
-   `grep` count from Phase 0 at **zero**.
+1. **The default flipped — by deletion, not retargeting.** `remake/build.sh`
+   was deleted outright instead of being repointed at the foundation: the
+   foundation already has its own build
+   (`remake/foundation/build.sh linux|windows|web|all`), so there is no
+   `build-dx9.sh` and no second build to keep in step.
+2. **Deleted** in the cutover change: `remake/src/` in full (core, render,
+   file_parser, gameplay, physics, input, maps, audio, assets, `main.cpp`),
+   `remake/CMakeLists.txt`, `remake/build.sh`, `remake/launch_daybreak.sh`,
+   `remake/cmake/`, the DX9 test fixtures (`remake/tests/visual/`,
+   `gen_test_dat.py`, `*.x`, `test_bundle.dat`), and the prototypes
+   `webgpu-mvp/` + `webgpu-spike/`. The DX9 toolchain payloads
+   `remake/tools/{d3dx9,SDL2-2.30.10,SDL2_mixer-2.8.0}` are local-only
+   (gitignored) and go with the same cutover per §1.5 — they cannot appear in
+   the commit, so their removal is a disk action, not a diff. The
+   `debug_prim.*` precondition resolved
+   the other way: the cube pass *was* a placeholder for un-RE'd VFX, the
+   foundation carries the same cube capability in
+   `foundation/src/render/debug_prims.*`, and the real effect path
+   (trails/auras/billboards) is an open item in `ROADMAP-PENDING.md` rather
+   than a silent loss of function.
+3. **Deliberately kept.** `remake/tests/parity-baseline/` — the Phase 0 bank,
+   now a **frozen archive** (`regen.sh` needs the deleted
+   `remake/build/daybreak.exe`, so it documents provenance and cannot
+   regenerate; the README says so); `remake/docs/` — `decisions.md` (D2
+   reversed, in place), `game-spec.md`, the 23 original prints in
+   `reference/`, and `roadmap.md`/`placeholders.md` as the DX9 record;
+   `remake/tools/{asset-tools,hook-tracer}`, `remake/assets/shaders/`,
+   `remake/scripts/` and the host toolchain, pending the §1.5 audit.
+4. **Docs updated in the same change.** `decisions.md` D2 reversal (dated,
+   with the measured evidence and what replaces the A/B), `AGENTS.md` rule 2 +
+   halves table + map + commands, `remake/README.md` (foundation is the
+   product; the DX9 body is marked as the record), `roadmap.md` and
+   `placeholders.md` status plus the animation-key correction, and the new
+   `foundation/docs/ROADMAP-PENDING.md` for everything still open.
+5. **Verification — stated at its real strength.** The Phase 0
+   D3D9/SDL2-family grep target is zero by construction: the tree that held
+   all 35 files is gone. The foundation builds Linux/Windows/web and runs
+   offscreen green on Linux and Wine; the **web** plain demo has been run in
+   headless Chromium (SwiftShader) and printed `RESULT: ok`, but a browser run
+   *with game assets in the versus scene* is still unverified, and **macOS
+   execution remains unverified** (standing rule). "A playable versus match
+   runs on all three targets" is therefore **not** claimed for web or macOS —
+   both are carried in `ROADMAP-PENDING.md`.
+6. **One correction made after the fact, recorded here so it is not lost
+   (§6a's own mip attribution).** §6a originally blamed the DX9-frame residual
+   on the reference filtering *with* mips. That was wrong: the DX9 remake
+   builds textures with `MipLevels=1` (`remake/src/render/ui_image.cpp:61` —
+   deleted in this cutover; see the `pre-webgpu-cutover` tag) and sets only
+   MIN/MAG (`remake/src/core/scenes.cpp:760-761`), leaving D3D9's default
+   `MIPFILTER=NONE`. So the three DX9 gate numbers in §6a (0.063988 / 0.063431
+   / 0.056068) predate mips and **must be re-banked before being quoted
+   again**; the original's prints are the right instrument, and against
+   `battle-hud.webp` the stage band moved 0.255956 → 0.254041 with the shipped
+   levels still to be wired (`ROADMAP-PENDING.md`).
 
-Rollback: `pre-webgpu-cutover` tag + this branch, which is kept until the
+Rollback: `pre-webgpu-cutover` tag (`37ed31d`) + this branch, kept until the
 release after the cutover.
 
 ## 9. Risk register

@@ -1,5 +1,16 @@
 # Roadmap: Higurashi Daybreak — Port de Gameplay
 
+> **Histórico — o produto agora é [`foundation/`](../foundation/README.md).**
+> Este roadmap descreve o remake DX9 + SDL2, **removido no cutover da Fase 5
+> (2026-10-02)**: `remake/src/`, `remake/build.sh` e os milestones abaixo não
+> existem mais como código. A referência que ficou é o banco de evidência
+> (`../tests/parity-baseline/`) mais as capturas do original
+> (`reference/README.md`); decisão em [`decisions.md`](decisions.md) D2,
+> histórico completo em
+> [`../foundation/docs/FULL-REPLACEMENT-PLAN.md`](../foundation/docs/FULL-REPLACEMENT-PLAN.md) §8.
+> O trabalho pendente está em
+> [`../foundation/docs/ROADMAP-PENDING.md`](../foundation/docs/ROADMAP-PENDING.md).
+
 ## Escopo revisado (após contexto do user + RE round 3)
 
 **DENTRO de escopo:** mesma estrutura de jogo do original — máquina de estados
@@ -78,10 +89,15 @@ Backgrounds de cada cena (via BMPs no `daybreak00.dat`):
 **Sem DirectShow import** — o jogo deve usar WinMM (`MciSendCommand`?) ou
 um decoder MPEG próprio.  Confirmar quando implementarmos.
 
-### Estado de animação do fighter (40+ sub-estados)
+### Estado de animação do fighter (a tabela é de chaves de VOZ)
 
-A string table `.data` em `0x6b73b0`-`0x6b7xxx` contém os nomes de
-sub-estados de gameplay/anim que o fighter usa pra voice cues e anim:
+A tabela `.data` em `0x6b73b0`/`0x6b73c0` (stride 16, 39 nomes) é a tabela de
+chaves de **voice cue**, não nomes de animação — medido 2026-10-02. O único
+consumidor é o sistema de voz em `FUN_00431e70` (`shl edx,4; add edx,0x6b73b0`),
+que monta `data/voice/<char>/<key>/%03d.wav`. Os `AnimationSet` dos `.X`
+chamam-se `Anim-1`…`Anim-124`, e o mapa estado→set vem do `.dat` de cada
+personagem (índice da fase do move). Ver `placeholders.md` §5 e
+`foundation/src/gameplay/fighter.h`:
 
 ```
 attackA, attackB, attackC         → 3 tiers de light/heavy/special attacks
@@ -293,4 +309,6 @@ combat (M5/M6/M7 antigos) virou M8 (um milestone único, mais coeso).
 ## Referências
 
 - Engenharia reversa do binário: `docs/reverse-engineering.md` (sections 1-14)
-- Estado da implementação: `README.md`
+- Estado atual do produto: `foundation/README.md` e
+  `foundation/docs/ROADMAP-PENDING.md`
+- Este roadmap (histórico): `README.md` do remake, seções do DX9 removido

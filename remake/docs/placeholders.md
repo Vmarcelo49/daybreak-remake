@@ -1,8 +1,14 @@
-# Placeholders — how they should be, how they are now
+# Placeholders — how they should be, how they were (DX9, removed)
 
-> Stand-ins currently shipped in `remake/src/`. Each entry states the target
-> behaviour (**Should be**, with its provenance) and the shipped stand-in
-> (**Now**), so the difference is visible without reading the code. Nothing
+> **Historical (2026-10-02).** This inventory was written against the DX9
+> tree in `remake/src/`, which was deleted in the Phase 5 cutover; the
+> product is now `remake/foundation/`. It is kept because the "should be"
+> targets and their provenance still stand — the port's own open gaps are
+> tracked in `foundation/docs/ROADMAP-PENDING.md`.
+>
+> Each entry states the target behaviour (**Should be**, with its
+> provenance) and the stand-in the DX9 remake shipped (**Now**), so the
+> difference is visible without reading the (now deleted) code. Nothing
 > here is a plan or an estimate — it is a status inventory.
 >
 > Provenance keys: `capture` = `docs/reference/*.webp` (original-game
@@ -62,19 +68,32 @@ the `D24S8` depth-stencil). `assets/asset_manager.cpp`,
 
 ## 5. Character animation
 
-**Should be** — the binary's 40+ named animation sets (`attackA/B/C`,
-`shotA/B/C`, `shotFinal`, `damage`, `damagedown`, `damageKO`, `guard`,
-`guarded`, `battlestart`, `recovery`, `revival`, `spark`, `fire`,
-`reloadOK/NG`, `tagfront/tagback/tagOK`, `oyashiro/oyashiroB`, …) matched
-case-insensitively (`lstrcmpiA`), with **up to 2 tracks bound at load** for
-upper/lower-body blending, and per-move data from `data/<char>/NN.dat`.
+**Should be** — the original binds an animation **index**, not a name. A
+fighter's state *is* a move id (`[player+0xadec]`): `FUN_00428510` switches on
+it, `FUN_00421080` starts the move and caches its 28-byte entry, and
+`FUN_00421100` takes phase 0 and binds that phase's first dword to **both**
+tracks (`FUN_00421410(0, phase[0])` and `(1, phase[0])`). `FUN_0041e180`
+fills the per-player 124-entry animation table from the controller's own sets,
+so the `.dat` index *is* the D3DX set index, and the per-move data ships in
+`data/<char>/NN.dat`.
 
-**Now** — every fighter model loads with **0 animation sets**: the character
-animation data lives in separate `.dat` files that are not loaded, so the
-name lookup in `try_switch_animation()` always misses and falls back to
-track 0. Poses are static (bind pose); a state change only changes the logged
-name. `F2` animation debug lists an empty set table. The loader itself would
-bind up to 2 tracks for a model that has sets; no loaded model does.
+**Correction, measured 2026-10-02.** The 39-entry ASCII table at
+`0x6b73b0`/`0x6b73c0` (16-byte stride: `attackA/B/C`, `guard`, `recovery`,
+`tagfront`, …) is **not** an animation-name table: its only indexer is the
+voice system in `FUN_00431e70` (`shl edx,4; add edx,0x6b73b0`), which builds
+`data/voice/<char>/<key>/%03d.wav`. Shipped `.X` rigs name their
+`AnimationSet`s `Anim-1`…`Anim-124`, so no `attackA` ever appears in a model —
+the earlier "40+ named animation sets matched case-insensitively" reading of
+this table was wrong (and `ASSET-CATALOG.md` trap 15 inherits the error).
+The port plays these indices in `foundation/src/gameplay/fighter.h`
+(`state_to_anim_set`), with Guard/Jump/TagOut still on the reported fallback.
+
+**Now (DX9, removed)** — every fighter model loaded with **0 animation sets**:
+the character animation data lives in separate `.dat` files that were not
+loaded, so the name lookup in `try_switch_animation()` always missed and fell
+back to track 0. Poses were static (bind pose); a state change only changed the
+logged name. `F2` animation debug listed an empty set table. The loader itself
+would bind up to 2 tracks for a model that has sets; no loaded model did.
 `gameplay/fighter.cpp`, `file_parser/x_model_loader.cpp`.
 
 ## 6. Melee move set
@@ -168,6 +187,16 @@ decode (`Mix_LoadMUS ... Unrecognized audio format`), so matches run silent.
 **Now** — that one stage21 pair is hardcoded for every stage, both fighters
 at the same flat height, so uneven terrain buries them at some spawns (see
 the visual suite's delta D5). `core/scenes.cpp`.
+
+**Correction, measured 2026-10-02.** The "(x, z, y)" reading above is the DX9
+hardcode's, not the original's: `FUN_004011f0.c:42-64` reads four header ints
+(0x14–0x20), then four 3-int spawn points at 0x24 (stride 12) in stored order.
+The installed `data/stage21/env.dat` (and `data/stage01/env.dat`) holds
+`(-463,200,-2200)`, `(-1363,200,-2200)`, `(-406,200,-105)`,
+`(-1363,200,-105)` there; the DX9 pair starts one int earlier (0x20) and reads
+(x, z, y), which is where its `(1393,-463,200)` came from. Which of the four
+points a versus match spawns at, and with which component order, is still
+open — see `foundation/docs/ROADMAP-PENDING.md`.
 
 ## 13. Frontend scenes
 

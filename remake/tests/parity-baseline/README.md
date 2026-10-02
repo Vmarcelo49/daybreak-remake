@@ -6,6 +6,13 @@
 > Every later claim of the form "X matches DX9" must cite an artifact
 > below, never memory.
 
+> **Frozen 2026-10-02.** The Phase 5 cutover deleted the DX9 tree and
+> `remake/build.sh`, so `regen.sh` can no longer run here: this bank is now a
+> read-only archive of DX9 output and — together with the original's prints in
+> `remake/docs/reference/` — the A/B reference D2 points at. Regenerating would
+> need the `pre-webgpu-cutover` tag (`37ed31d`) and a rebuilt DX9 tree; the
+> cutover record is `remake/foundation/docs/FULL-REPLACEMENT-PLAN.md` §8.
+
 Banked 2026-10-02 on `feat/webgpu-groundwork` @ `320a8263`
 with `remake/build/daybreak.exe` sha256
 `847c2f8405c8216bb2d6d5ba7059e394e302eb607b3004da367388ee6e7948d6`.
@@ -14,7 +21,8 @@ GREEN — DX9 reference banked** (see "Reproducibility" and "Gaps").
 
 ## Contents
 
-- `regen.sh` — regenerates everything below. Only existing binary flags;
+- `regen.sh` — the regeneration recipe (needs the deleted DX9 build, so it is
+  provenance now, not a runnable script). Only existing binary flags;
   no `remake/src` changes (see "Gaps" for what flags cannot reach).
 - `manifest.tsv` — name, exact command, exit, frames, file, bytes, sha256.
   Hashes cover exactly the committed `captures/` files (verified:
@@ -76,8 +84,14 @@ main-loop render index everywhere (scripts, `-shot`); logic is fixed 1/60.
 
 ## Regen (exact commands)
 
+> **Not runnable after the 2026-10-02 cutover** — kept so the provenance of
+> every artifact above is checkable. It needs the DX9 build (`remake/build.sh`,
+> deleted) and the P1 scripts under `remake/tests/visual/` (deleted). Restoring
+> means checking out `pre-webgpu-cutover` in a scratch tree and rebuilding
+> there; never regenerate this bank in place from the WebGPU tree.
+
 ```bash
-./remake/build.sh                         # build first
+./remake/build.sh                         # build first (deleted 2026-10-02)
 cd remake/tests/parity-baseline
 ./regen.sh                                # full set: 33 runs, ~6 min on this host
 ./regen.sh <substring>                    # subset — REWRITES manifest.tsv with
