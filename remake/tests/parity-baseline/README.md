@@ -115,6 +115,14 @@ pixels RMSE 0 — root cause: `convert` embeds `date:create/modify` PNG
 chunks. Fixed with `-strip` on both convert lines; re-ran full set, then
 3/3 MATCH. Lesson recorded in `regen.sh` comment.)
 
+Full replay (2026-10-02): every case re-run on `:96` → 33 passed / 0
+failed, all **36/36 capture sha256 identical** to the banked set, with
+no capture file modified in `git status` afterwards. What does differ
+between runs is the `fps=` line each log prints once (wall-clock
+measurement, e.g. 62.9 vs 62.6): the committed logs are the banking
+run's, and any future replay will show that line drift while the
+captures stay byte-stable.
+
 ## Bayeux count (must reach zero by Phase 5)
 
 `git grep -l -E "d3d9|D3D9|D3DX|SDL2|SDL_mixer|DirectX|Direct3D|DirectInput|DirectPlay|DirectSound" -- remake/src | grep -v third_party`

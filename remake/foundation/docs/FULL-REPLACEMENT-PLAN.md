@@ -1,6 +1,7 @@
 # Full replacement plan: drop DX9, WebGPU only
 
-Status: **plan, not execution**. Nothing below deletes or rewrites anything
+Status: **executing**. Phase 0 (parity banking + preconditions) passed
+2026-10-02; Phase 1 not started. Nothing below deletes or rewrites anything
 until its phase gate passes. This plan exists because "replace DX9" is a
 point of no return: after Phase 5 there is no DX9 build to compare against,
 so every proof must be banked *before* the cutover.
@@ -45,29 +46,64 @@ first), story-mode video (stubbed by decision).
 
 ## 2. Preconditions (all required before Phase 1)
 
-- [ ] `feat/webgpu-groundwork` reviewed and merged to `main`, or the
+- [x] `feat/webgpu-groundwork` reviewed and merged to `main`, or the
       replacement continues on the branch with `main` frozen for `remake/`.
-- [ ] Coordination with the other `remake/src` agent: clean tree or explicit
+      **Continues on the branch** (2026-10-02): `main` is at `37ed31d` and is
+      an ancestor of the branch head; no `main` commit touches `remake/`.
+- [x] Coordination with the other `remake/src` agent: clean tree or explicit
       handoff. Their `x_model_loader.cpp` work must land first or move.
-- [ ] Tag `main` as `pre-webgpu-cutover` — the rollback point. Deletion
-      without this tag is not permitted by this plan.
-- [ ] The versus vignette (`--versus`) runs green on Linux and Wine from a
-      clean checkout, so Phase 1 starts from a verified base.
+      **Handoff recorded 2026-10-02**: that file stays uncommitted and dirty
+      (`DAYBREAK_MESH_FLAGS` / `DAYBREAK_ANIM_DEBUG` probes gated behind env
+      vars) and is untouched by this work — no commit here stages it. Standing
+      split until they land or confirm a pause: **they own
+      `remake/src/file_parser/`; this migration does not edit `remake/src` at
+      all** (Phase 1–2 land in `remake/foundation/` first). Any edit needed on
+      their side stops the phase and is reported, never worked around.
+- [x] Tag `main` as `pre-webgpu-cutover` — the rollback point. Deletion
+      without this tag is not permitted by this plan. Created 2026-10-02 on
+      `37ed31d` (annotated; pushed with the branch).
+- [x] The versus vignette (`--versus`) runs green on Linux and Wine from a
+      clean checkout, so Phase 1 starts from a verified base. Verified
+      2026-10-02: both targets `RESULT: ok`, PPMs byte-identical (480,015 B),
+      coverage 150,160/160,000 px (93.85%), draws 167, and the strict pair
+      (P1 = P2 = `akane/00.X`, same asset bytes both targets) is bit-for-bit
+      equal including camera smoothing, animation, HUD and audio counts.
 
 ## 3. Phase 0 — parity banking (before any deletion)
 
 Bank the DX9 reference outputs that all later "matches" claims cite:
 
-- [ ] Full capture suite from the DX9 build: every stage at player camera,
+- [x] Full capture suite from the DX9 build: every stage at player camera,
       every fighter/costume (front + bind pose + one animation frame),
       weapons, effects, HUD states. Command lines + PPMs archived under
       `remake/tests/parity-baseline/` (new, committed — small sizes only;
-      large sets stay as scripts that regenerate them).
-- [ ] Console-output logs for the same runs (draw counts, texture
-      resolution, timing summaries).
-- [ ] `git grep -E "d3d9|D3D9|D3DX|SDL2|SDL_mixer|DirectX|Direct3D|DirectInput|DirectPlay|DirectSound" remake/src --include='*.cpp' --include='*.h' | grep -v third_party`
+      large sets stay as scripts that regenerate them). **Banked 2026-10-02 in
+      `cd82bd6`**: 33 cases / 36 captures (200x150 PNG8, 530,149 B total), all
+      exit 0, zero duplicate hashes, `regen.sh` regenerates the set. A full
+      replay reproduced **36/36 sha256 identical**. The plan's item list is
+      wider than what the DX9 binary's flags can reach — see the deviation
+      note below.
+- [x] Console-output logs for the same runs (draw counts, texture
+      resolution, timing summaries). 47 logs committed (`logs/`), plus
+      `-dat -list` inventories and `-asset-info` probes.
+- [x] `git grep -E "d3d9|D3D9|D3DX|SDL2|SDL_mixer|DirectX|Direct3D|DirectInput|DirectPlay|DirectSound" remake/src --include='*.cpp' --include='*.h' | grep -v third_party`
       recorded as the Bayeux count: **29 files** at plan time. Phase 5 ends
-      at zero.
+      at zero. **Re-measured 2026-10-02: 35 files** (list in the baseline
+      README) — the plan-time number was an undercount, not a regression. The
+      Phase 5 target is unchanged: zero.
+
+**Deviation (recorded, not silently dropped):** "every stage", "every
+costume", weapons and effect isolation are *not* bankable from the current
+DX9 binary — it has no `-stage` flag (stage21 is hardcoded), `-p1`/`-p2`
+clamp to four indices with one fixed `.X` each, there are no weapon models in
+the remake at all, loaded models bind 0 animation sets, and effects spawn only
+from combat. Producing those captures would mean adding flags to DX9 code that
+Phase 5 deletes, while §2 forbids editing `remake/src` under the standing
+handoff. The baseline therefore banks what the shipped flags reach and lists
+the remaining 10 gaps explicitly (flag + what is missing) in
+`remake/tests/parity-baseline/README.md`. Consequence to keep in mind: for an
+asset class with no banked DX9 capture (other stages, costumes, weapons),
+"matches the original" is not a claim this baseline can support.
 
 ## 4. Phase 1 — foundation-complete (parallelizable)
 
