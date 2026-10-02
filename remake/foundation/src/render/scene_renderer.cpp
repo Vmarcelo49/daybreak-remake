@@ -703,10 +703,19 @@ bool SceneRenderer::render(const Target& target, std::string& error) {
     // Camera, light and fog, in a local copy: the light is a fixed world-space key,
     // because the original has no dynamic lighting for 3D passes, only these D3D light
     // registers — and drawing must not rewrite the state the caller set.
+    //
+    // The values are the DX9 gameplay pass's, named in the header with their scenes.cpp
+    // provenance. Two of them are not literal copies: the direction is normalised (D3D
+    // normalises it for the N.L dot product, and the shader would otherwise have to), and
+    // the two ambient terms arrive pre-summed because the fixed-function equation
+    // multiplies the material ambient by their sum once, Ca*(Ga + La). Light 0's Specular
+    // is zero-initialised and D3DRS_SPECULARENABLE is never set (default FALSE), so there
+    // is no specular term to carry.
     xm::CameraUniform camera = camera_;
-    camera.lightDir = glm::vec4(glm::normalize(glm::vec3(0.3f, -0.8f, 0.5f)), 0.f);
-    camera.lightColor = glm::vec4(1.f, 0.98f, 0.95f, 1.f);
-    camera.ambient = glm::vec4(0.35f, 0.36f, 0.40f, 1.f);
+    camera.lightDir = glm::vec4(glm::normalize(kLightDirection), 0.f);
+    camera.lightColor = glm::vec4(kLightDiffuse, kLightDiffuse, kLightDiffuse, 1.f);
+    const float ambientSum = kGlobalAmbient + kLightAmbient;
+    camera.ambient = glm::vec4(ambientSum, ambientSum, ambientSum, 1.f);
     if (!appearance_.fog) camera.fogParams.z = 0.f;
     wgpuQueueWriteBuffer(queue_, cameraBuffer_, 0, &camera, sizeof camera);
 
@@ -746,7 +755,9 @@ bool SceneRenderer::render(const Target& target, std::string& error) {
     color.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
     color.loadOp = WGPULoadOp_Clear;
     color.storeOp = WGPUStoreOp_Store;
-    color.clearValue = WGPUColor{0.05, 0.06, 0.08, 1.0};
+    // The DX9 clear, byte for byte (scenes.cpp:736): it shows through wherever no
+    // geometry lands, so the background is part of the frame the gate compares.
+    color.clearValue = WGPUColor{kClearRed / 255.f, kClearGreen / 255.f, kClearBlue / 255.f, 1.0};
 
     WGPURenderPassDepthStencilAttachment depth = {};
     depth.view = depthView_;

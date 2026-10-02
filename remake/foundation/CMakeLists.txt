@@ -203,6 +203,17 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
 
     # The cube pass's geometry: device-free, like debug_prims_geometry. It defines both
     # geometry-only guards, so it compiles the two headers without any WebGPU header.
+    # The DX9 pass's fixed-function light and clear constants: device-free, and pinned
+    # because the numbers are load-bearing to the third decimal (a wrong triple lands
+    # 1.5x..2.7x off and only a 480000-pixel comparison shows it).
+    # It includes render/scene_renderer.h for the constants, so it needs that header's
+    # own include path (webgpu.h from the imported target) even though it never creates
+    # a device; foundation_assets supplies src/assets for scene.h.
+    add_executable(lighting_test tests/lighting_test.cpp)
+    target_include_directories(lighting_test PRIVATE src)
+    target_link_libraries(lighting_test PRIVATE foundation_assets webgpu glm)
+    add_test(NAME lighting_test COMMAND lighting_test)
+
     # The CJK text layer: device-free (it rasterizes into host memory), and it links
     # the bitmap font in because half its contract is "bit-for-bit identical to
     # ui::measureText/ui::layoutText when no font is loaded". It SKIPs without the

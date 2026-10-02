@@ -92,7 +92,7 @@ struct Options {
     std::string install;           // dir holding daybreakXX.dat; auto-detected when empty
     bool        noCameraClamp = false;   // A/B switch for the arena eye clamp
     bool        noTextures = false;
-    bool        noFog      = false;
+    bool        fog        = false;   // opt-in: the DX9 reference renders unfogged
     bool        unlit      = false;
     bool        list       = false;
 };
@@ -130,7 +130,11 @@ void usage() {
         "                     has one, else framed bounds)\n"
         "  --anim=N --time=S --dt=S   pose with animation set N, seek and step\n"
         "  --no-textures      draw untextured, for an A/B of texture resolution\n"
-        "  --no-fog           ignore the stage's env.dat fog\n"
+        "  --fog              apply the stage's env.dat fog. Off by default because\n"
+        "                     the DX9 reference never sets FOGENABLE: its gameplay\n"
+        "                     pass writes the fog parameters (FUN_00650a30) and never\n"
+        "                     enables the state, so a fogged frame cannot match a\n"
+        "                     banked reference frame (worth 0.037 RMSE)\n"
         "  --unlit            skip the lambert term\n"
         "  --list             print what was loaded and exit\n"
         "  --effect=<file.x>  load one card with the effect role (additive pass)\n"
@@ -189,7 +193,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--camera=")).empty()) o.camera = v;
         else if (!(v = val("--audio-file=")).empty()) o.audioFile = v;
         else if (a == "--no-textures") o.noTextures = true;
-        else if (a == "--no-fog") o.noFog = true;
+        else if (a == "--fog") o.fog = true;
         else if (a == "--unlit") o.unlit = true;
         else if (a == "--list") o.list = true;
         else if (a == "--hud-test") o.hudTest = true;
@@ -1302,7 +1306,7 @@ bool initScene(App& app) {
     }
 
     app.renderOptions.textures = !app.opts.noTextures;
-    app.appearance.fog = !app.opts.noFog;
+    app.appearance.fog = app.opts.fog;
     app.appearance.unlit = app.opts.unlit;
 
     if (!app.renderer.init(app.ctx, app.error)) return false;

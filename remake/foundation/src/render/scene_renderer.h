@@ -27,6 +27,26 @@ namespace render {
 // creates, named once instead of guessed per pass.
 inline constexpr WGPUTextureFormat kSceneDepthFormat = WGPUTextureFormat_Depth24PlusStencil8;
 
+// ---------------------------------------------------------------------------------------
+// The fixed-function light and clear colour the DX9 gameplay pass installs. Every value
+// is read straight off remake/src/core/scenes.cpp:736-769 — the state block the banked
+// reference frames were rendered with, i.e. this track's specification — and they are
+// named here rather than inlined at the draw site so tests/lighting_test.cpp can pin
+// them device-free. They are load-bearing to the third decimal: a stage lit with any other plausible triple lands 1.5x..2.7x off, and
+// nothing short of a 480000-pixel comparison shows it.
+//
+// The shader evaluates lit = Ca*(Ga + La) + Cd*Ld*saturate(N.L); model_wgsl.h names which
+// D3D state selects each term. No RE address is cited for the numbers because
+// research/decompiled holds no SetLight/LightEnable call site and no 0.35/0.20/0.85 float
+// immediate to attribute them to — the DX9 pass is the specification.
+// ---------------------------------------------------------------------------------------
+inline constexpr glm::vec3 kLightDirection{0.5f, -1.0f, 0.5f};  // light 0 Direction (scenes.cpp:767)
+inline constexpr float kLightDiffuse   = 0.85f;                 // light 0 Diffuse   (scenes.cpp:765)
+inline constexpr float kLightAmbient   = 0.20f;                 // light 0 Ambient   (scenes.cpp:766)
+inline constexpr float kGlobalAmbient  = 0.35f;                 // D3DRS_AMBIENT     (scenes.cpp:746)
+// D3DCOLOR_XRGB(40, 42, 54), the gameplay target's clear colour (scenes.cpp:736-737).
+inline constexpr uint8_t kClearRed = 40, kClearGreen = 42, kClearBlue = 54;
+
 // Where a frame goes. One struct so a swapchain frame and an offscreen capture run
 // the same draw path; the format selects (and caches) the pipeline.
 struct Target {
