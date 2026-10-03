@@ -554,6 +554,14 @@ struct App {
     double   deltaMin = 1e30;
     double   deltaMax = 0.0;
     uint64_t frames = 0;
+    // D1 render-FPS meter: frames per wall-clock second over a rolling half
+    // second, exactly what the top-right counter shows (rendering only — the
+    // original floats with machine speed, fixed logic ticks underneath). The
+    // shown value starts at 60 and freezes there whenever a capture fixes dt,
+    // so --out frames stay deterministic pixel-for-pixel.
+    double   fpsWindow = 0.0;
+    int      fpsFrames = 0;
+    int      fpsShown = 60;
 
     std::string error;
 };
@@ -1179,6 +1187,8 @@ static void tickMatch(App& app, double dt) {
                            f1.state() == gameplay::FighterState::Guard ||
                            f1.state() == gameplay::FighterState::Jump;
     app.versusHud = gameplay::hudStateFor(app.match.economy(), hf);
+    // D1: the render-FPS counter rides the HUD state (60 while capturing).
+    app.versusHud.fps = app.fpsShown;
     // The composer is clock-free by design, so the frame counter the original's
     // alternations and pulse read (FUN_00644150's `(frame % 0x1e) / 0xf` flash pair and the
     // balloon popup's growth) is carried in the state instead of read from a clock.
@@ -1334,6 +1344,7 @@ static void tickVersus(App& app, uint64_t frame) {
 
     app.versusHud = game::makeHudState(timelineHud(frame, N));
     app.versusHud.hudFrame = (int)frame;
+    app.versusHud.fps = app.fpsShown;   // D1: same render-FPS counter as match
 
     if (app.versusAudioOn)
         app.versusBgmPushed += app.versusLoop.push_next(app.versusAudio, 1024);
@@ -2094,6 +2105,22 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     ++app->frames;
 
     const bool capturing = !app->opts.out.empty();
+
+    // Render-FPS meter tick (D1): wall-clock frames per second, frozen at 60
+    // while capturing so the counter cannot make two --out runs differ.
+    if (capturing) {
+        app->fpsShown = 60;
+        app->fpsWindow = 0.0;
+        app->fpsFrames = 0;
+    } else if (app->frames > 1) {  // first delta includes setup time
+        app->fpsWindow += delta;
+        ++app->fpsFrames;
+        if (app->fpsWindow >= 0.5) {
+            app->fpsShown = (int)std::lround((double)app->fpsFrames / app->fpsWindow);
+            app->fpsWindow = 0.0;
+            app->fpsFrames = 0;
+        }
+    }
 
     if (capturing) {
         // Verify with real time, not with a fixed step: the pose follows the clock, so

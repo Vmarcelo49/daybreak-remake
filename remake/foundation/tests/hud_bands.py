@@ -79,6 +79,9 @@ BANDS = {
     # scene-only control: no HUD element of either composition is here, so this is
     # the floor a HUD band cannot beat while the framing differs.
     "scene-floor":  (300, 250, 200, 120),
+    # D1 render-FPS counter: the print's "181" ink is game (763,2)-(793,7);
+    # the port draws SmallYellow half-scale right-aligned at (800,0).
+    "fps-counter":  (755, 0, 45, 15),
 }
 
 # name: ((game x, y, w, h), ink mode) — the sprite rects as drawn, for the shape

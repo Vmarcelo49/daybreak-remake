@@ -248,14 +248,17 @@ bars), largest first. "Size" = what a track must produce.
 
 ## 6. Open questions
 
-1. **Where is the top-right counter (`181`) drawn?** `FUN_00644150.c:177-198` is the only
-   `DAT_006cf3c4`-based counter, and it anchors at (416,10)/(428,10)/(442,10) — top-centre,
-   gated on `DAT_006cf3c0 != 0`, value `(DAT_006cf3c4 + 0x3b) / 0x3c`. The print's `181` is at
-   frame (761,0)-(797,12) in the **yellow** small digits. Ruled out: `FUN_00644150`'s three
-   anchors (wrong x, wrong digit colour); `FUN_0064c1e0` (called from FUN_00644150.c:213 when
-   `DAT_006cfdb0 == 2`) — not yet read. **Next step:** read `FUN_0064c1e0` (0x0064c1e0) and
-   `FUN_00431b50`'s real signature (the decompiler's parameter mapping contradicts its call
-   sites: the call passes the value first, the body uses the second parameter as the value).
+1. **[RESOLVED 2026-10-03] Where is the top-right counter (`181`) drawn?**
+   It is the render-FPS counter, not a game value: `FUN_006396f0` draws
+   `DAT_006d18a4` right-aligned at (800,0), scale 0.5, unconditionally
+   (`FUN_00431b20(DAT_006d18a4, 0x44480000, 0, 0x3f000000, 0)`); the value is
+   a render-thread present count (`FUN_006580a0` bumps `DAT_006d18a8` per
+   present). `FUN_00644150`'s top-centre counter and `FUN_0064c1e0` were the
+   wrong element — retired, not read. Port: `HudFont::SmallYellow`
+   (P00 y288, 32 px pitch), `HudState::fps` (60 pinned in captures),
+   `composeBattle` at (800,0,0.5); see ROADMAP-PENDING.md D1. The print's
+   ink re-measures to (761-791, 8-13), i.e. game (763-793, 2-7) — the old
+   (761,0)-(797,12) box was loose.
 2. **[RESOLVED 2026-10-03] The boxed `適当` label's sprite provenance.** The conflict came
    from attributing the `(183,548)` draw to the label. The label is **not** a `P01` sprite.
 

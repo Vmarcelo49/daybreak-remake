@@ -352,6 +352,11 @@ void HudComposer::composeBattle(SpriteRenderer& batch, const HudState& st) {
     // Both balloon corners (0x644bfc-0x644e25), left then right.
     composeBalloonCorner(battleAtlas_, batch, st, 0);
     composeBalloonCorner(battleAtlas_, batch, st, 1);
+
+    // Render-FPS counter, top-right (FUN_006396f0 @0x6396f0: DAT_006d18a4
+    // right-aligned at x=800, y=0, scale 0.5). Always drawn in battle — no
+    // gate surrounds the call — in the small yellow P00 row.
+    battleAtlas_.number(batch, HudFont::SmallYellow, st.fps, 800.f, 0.f, 0.5f);
 }
 
 void HudComposer::composeFighters(SpriteRenderer& batch, const HudState& st) {
@@ -364,9 +369,21 @@ void HudComposer::composeFighters(SpriteRenderer& batch, const HudState& st) {
         // (0.1*hud+0x30c + 1) and its rotation 9*hud+0x30c + frame/2 (0x643447,
         // 0x64346c) — the frame term is why the prints show the arcs at four
         // different angles from the atlas' diagonal.
-        if (f.target)
+        //
+        // The print shows TWO arcs because the target gets a second draw of the
+        // same cell (0x643545-0x64354b, gated on local_31 — this fighter is the
+        // viewer's locked target): same position/scale/cell, but the rotation
+        // is negated WITHOUT the 9*hud+0x30c term (FUN_006451f0(-frame/2)).
+        // Counter-rotating arcs, exactly what the print's upper and lower red
+        // arcs are. The port's f.target is that gate (target-valid is implied).
+        // The 9*hud+0x30c term itself stays 0 (ringDeg): the +0x30c field's
+        // driver is unmapped, so arc 1 turns on frame/2 alone for now.
+        if (f.target) {
             battleAtlas_.cell(batch, HudIcon::Ring, 0, 1, f.ringX, f.ringY, 1.f,
                               f.ringDeg + (float)st.hudFrame * 0.5f, white);
+            battleAtlas_.cell(batch, HudIcon::Ring, 0, 1, f.ringX, f.ringY, 1.f,
+                              -(float)st.hudFrame * 0.5f, white);
+        }
         // The target's com bar (the drawer at 0x643fa7): frame, the lagging fill
         // (hud+0xb0 = P01 (320,352,80,6)) then the live one (hud+0x4 =
         // P01 (320,320,80,6)), both pivot (40,3) so they grow right from the bar's

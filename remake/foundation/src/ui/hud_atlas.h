@@ -168,11 +168,12 @@ struct HudFontSpec {
     float    leading;     // 0xc1e00000 = -28.0f for the big fonts, 0xc0800000 = -4.0f small
 };
 
-enum class HudFont : uint8_t { BigWhite = 0, SmallGreen, Count };
+enum class HudFont : uint8_t { BigWhite = 0, SmallGreen, SmallYellow, Count };
 
 inline constexpr HudFontSpec kHudFonts[] = {
     /* BigWhite   0x6c8000 */ {HudSheet::P00, {0.f, 0.f, 64.f, 64.f}, 8, -28.f},
     /* SmallGreen 0x6c9050 */ {HudSheet::P00, {0.f, 256.f, 32.f, 32.f}, 15, -4.f},
+    /* SmallYellow          */ {HudSheet::P00, {0.f, 288.f, 32.f, 32.f}, 15, 0.f},
 };
 static_assert(sizeof(kHudFonts) / sizeof(kHudFonts[0]) == (size_t)HudFont::Count,
               "font table and HudFont must stay in step");

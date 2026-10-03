@@ -393,43 +393,79 @@ come before the visible work.
 
 The HUD's remaining gaps are listed verbatim in commit `0294916`'s "Still
 open, deliberately" paragraph; the pointers below are from
-`BATTLE-HUD-SPEC.md`.
+`BATTLE-HUD-SPEC.md`. Rewritten 2026-10-03 in plain language: each item now
+says what you SEE on screen, not just which function draws it.
 
-### D1. The top-right counter `181`
+### D1. The top-right counter `181` — DONE (it is the render-FPS counter)
 
-* **Evidence.** `BATTLE-HUD-SPEC.md` §6 Q1 (lines 251-258): the only
-  `DAT_006cf3c4` counter (`FUN_00644150.c:177-198`) anchors top-**centre**
-  with a different digit colour; the print's `181` is top-right
-  (`(761,0)-(797,12)`) in P00 yellow. The next step named there is reading
-  `FUN_0064c1e0` (`0x0064c1e0`, called from `FUN_00644150.c:213` when
-  `DAT_006cfdb0 == 2`); `FUN_00431b50`'s signature is also contradictory.
-* **Sketch.** Read `FUN_0064c1e0` and rescan P00's small-digit bands for the
-  yellow set (Q5: `y 210-250` and `y 308-330`); then draw at the print's
-  anchor, gated the way the original gates it.
+* **What you see.** Yellow 3D digits at the top-right edge reading `181`.
+  Owner-confirmed: this is the **rendering FPS counter** — fixed-timestep
+  logic underneath, uncapped rendering on top (which is also why netplay
+  stays deterministic), and the number floats with machine speed, render
+  only, never logic.
+* **How the original draws it.** `FUN_006396f0` (the per-frame battle render)
+  draws `DAT_006d18a4` right-aligned at x=800, y=0, scale 0.5
+  (`FUN_00431b20(DAT_006d18a4, 0x44480000, 0, 0x3f000000, 0)`), unconditionally
+  — no gate surrounds the call, so it is always on in battle. The value is a
+  render-thread present count (`FUN_006580a0` bumps `DAT_006d18a8` per
+  present in a worker thread; the per-second reduction into `DAT_006d18a4`
+  was not located and does not matter — the port measures its own presents).
+  A sibling counter draws two `FUN_0063bf40` counts at x=20 top-left; its
+  values are unmapped (decompiler arg confusion) and out of scope.
+* **What the port does.** `HudFont::SmallYellow` (`hud_atlas.h`: P00 row
+  y288–319, 32 px cells, pitch 32, leading 0 — measured off the atlas; the
+  old Q5 guess bands were wrong, and a 28 px pitch fails at cell 6),
+  `HudState::fps` (default 60), drawn in `composeBattle` at (800,0,0.5).
+  The App meters wall-clock renders over a rolling half second; fixed-dt
+  captures pin the display at 60 so `--out` frames stay deterministic
+  (a live counter would make `hud-all` nondeterministic run to run).
+  Unit-tested (`hud_sprite_table`: the "181" layout — units x=784 stepping
+  16 px left — plus the font spec). Measured: our "60" ink is game
+  (772–796, 2–7) against the print's (763–793, 2–7) — same height (scale
+  confirmed), same right edge family (anchor 800 in both; 3 px is
+  threshold noise), narrower only because "60" is two digits. Draws
+  unchanged (177, HUD is one batch).
+* **Not this.** The `DAT_006cf3c4` top-centre counter and `FUN_0064c1e0`
+  are a different element; the sketch's old next step is retired.
 
-### D2. The mirrored second ring and the `9*hud+0x30c` angle term
+### D2. The mirrored second ring — DONE (counter-rotating arcs)
 
-* **Evidence.** Commit `0294916`: "the mirrored second ring and the
-  `9*hud+0x30c` angle term (unidentified field)". The port draws one ring,
-  substituted as `f.ringDeg + hudFrame*0.5` (`src/ui/hud.cpp:362-369`,
-  `src/ui/hud.h:79`, `src/game/hud_values.h:35`).
-* **Sketch.** Identify the HUD struct field at `+0x30c` as read in
-  `FUN_00643230` (`@0x64344d`) and whether the second ring is the same
-  drawer with the mirrored cell (the print's two arcs); then add the mirror
-  and the real angle term, re-measuring against `battle-hud.webp`.
+* **What you see.** The red ring around the targeted fighter is really two
+  arc groups sweeping opposite ways (in the print: arcs above, below, left
+  and right of her — one P03 four-arc cell drawn twice, counter-rotated).
+* **How the original draws it.** `FUN_00643230` draws the P03 ring cell once
+  rotated `+(frame/2 + 9*hud+0x30c)`, then — gated on local_31, i.e. this
+  fighter is the viewer's locked target — draws the same cell at the same
+  anchor/scale rotated `-(frame/2)` with NO 9-term (`0x643545-0x64354b`).
+* **What the port does.** `composeFighters` now draws both arcs under the
+  existing `f.target` gate (the target-valid half of local_31 is implied).
+  Verified structurally (same cell/anchor/scale, mirrored rotation, correct
+  gate) and visually across frames (arcs at ±50° in frame 100 vs ±75° in
+  frame 150 — counter-rotation live). Single-frame RMSE is phase lottery
+  (0.3888 → 0.4025: added red pixels at non-print phases), so the band is
+  reported, not chased — same confound class as the mirrored fighter pose.
+* **Remaining.** The `9*hud+0x30c` term itself (`ringDeg`): the `+0x30c`
+  field's driver is unmapped, so arc 1 turns on `frame/2` alone. Needs the
+  HUD-struct writer, not more draw code.
 
-### D3. Other fighters' com bars, round countdown, team stings
+### D3. Other fighters' com bars, round countdown, team stings — TRIAGED (correctly absent)
 
-* **Evidence.** Commit `0294916`: the print's com bar is the **target's**
-  drawer (`0x643e38`); `FUN_00643230`'s other-fighters bar is a different
-  sprite set and is not drawn. Round stings have assets and layout
-  (`BATTLE-HUD-SPEC.md` §5 item 7: `P09/P04/P05/P08` via
-  `FUN_00633ca0.c:77-86`) but "the demo's match has no round timer or
-  winning team to drive them".
-* **Sketch.** (a) Port the per-fighter bar (frame, ghost fill, live fill,
-  tag cell) for every visible fighter. (b) Add round-timer and
-  winning-team state to `gameplay::Match`/`MatchEconomy`, then drive the
-  `3 2 1` countdown and the `赤組/青組 大勝利` sting through `HudState`.
+* **What you see (and don't).** The print shows exactly one com bar with its
+  `com` tag, over the targeted (distant) fighter — which is exactly what the
+  port draws (target's drawer, `0x643e38`: frame + ghost + live fill + tag
+  cell). Nothing is missing in this frame.
+* **Why the rest stays out.** The "other-fighters bar" (a different sprite
+  set in `FUN_00643230`'s per-fighter loop) only matters with 3–4 fighters
+  on screen (allies, extra enemies); this port's match is 1v1, and the
+  followed fighter correctly carries no bar. Round countdown (`3 2 1`) and
+  team stings (`赤組/青組 大勝利`) are transients absent from the print and
+  need new gameplay state first (round timer, winning team in
+  `gameplay::Match`/`MatchEconomy` driving `HudState`); their art and layout
+  are already surveyed (`BATTLE-HUD-SPEC.md` §5 item 7, `P09/P04/P05/P08`
+  via `FUN_00633ca0.c:77-86`). No parity pixels depend on any of it.
+* **Sketch.** (a) Other-fighters bars come with the third fighter, not
+  before. (b) Countdown/stings come with `Match` round state — gameplay
+  breadth, not parity; schedule it with the front-end track (E), not here.
 
 ## E. Front end (`FRONTEND-PLAN.md` is the spec)
 

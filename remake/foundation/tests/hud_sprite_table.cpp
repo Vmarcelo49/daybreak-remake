@@ -273,6 +273,21 @@ void testNumberRun() {
     checkFloat("small units x", 78.f, d[0].x);
     checkRect("small tens cell", {64.f, 256.f, 32.f, 32.f}, d[1].src);
     checkFloat("small tens x", 50.f, d[1].x);
+
+    // The small yellow font (D1 FPS counter): 32x32 cells from P00 (0,288), 15
+    // per row, leading 0 — the 32 px pitch is measured off the atlas (a 28 px
+    // pitch like SmallGreen's fails at cell 6). The print's "181" anchors at
+    // (800,0) half scale: units cell x = 800-16, stepping 16 px left per digit.
+    n = ui::hudDigitRun(HudFont::SmallYellow, 181, 800.f, 0.f, 0.5f, d);
+    checkInt("three yellow digits for 181", 3, n);
+    checkRect("181 units cell", {32.f, 288.f, 32.f, 32.f}, d[0].src);
+    checkFloat("181 units cell x", 784.f, d[0].x);
+    checkRect("181 tens cell", {256.f, 288.f, 32.f, 32.f}, d[1].src);
+    checkFloat("181 tens cell x", 768.f, d[1].x);
+    checkRect("181 hundreds cell", {32.f, 288.f, 32.f, 32.f}, d[2].src);
+    checkFloat("181 hundreds cell x", 752.f, d[2].x);
+    checkFloat("181 cell y", 0.f, d[0].y);
+    checkFloat("181 cell scale", 0.5f, d[0].scale);
 }
 
 // FUN_00431ce0's cell draw is a *single* font cell, placed at x + scale*leading — the
@@ -294,6 +309,14 @@ void testFontCells() {
     checkRect("small '%' cell (13,0)", {416.f, 256.f, 32.f, 32.f},
               UiRect{small.base.x + 13.f * small.base.w, small.base.y, small.base.w,
                      small.base.h});
+    // The small yellow row (D1): same 10+4 layout one row down, zero leading.
+    const ui::HudFontSpec& yellow = ui::hudFont(HudFont::SmallYellow);
+    checkFloat("yellow base y", 288.f, yellow.base.y);
+    checkFloat("yellow leading", 0.f, yellow.leading);
+    checkInt("yellow cells per row", 15, yellow.perRow);
+    checkRect("yellow '%' cell (13,0)", {416.f, 288.f, 32.f, 32.f},
+              UiRect{yellow.base.x + 13.f * yellow.base.w, yellow.base.y, yellow.base.w,
+                     yellow.base.h});
     // The draw offset the print shows: (110,78) for the left corner's '%'.
     checkFloat("'%' draw x at scale 1", 82.f, 110.f + 1.f * big.leading);
     checkFloat("'%' draw x at scale 0.5", 124.f, 138.f + 0.5f * big.leading);

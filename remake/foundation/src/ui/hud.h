@@ -149,6 +149,12 @@ struct HudState {
     int   balloonPulse[2] = {0, 0};
     int   balloonPulseValue[2] = {0, 0};
     HudFighterHud fighters[2];       // FUN_00643230's per-fighter entries
+    // Render-FPS counter, top-right (FUN_006396f0 draws DAT_006d18a4
+    // right-aligned at x=800, y=0, scale 0.5 in the small yellow P00 digits).
+    // Rendering only — never logic (the original floats with machine speed;
+    // the print reads 181). Default 60 keeps captures deterministic; the
+    // caller owns the live value, the composer just draws it.
+    int   fps = 60;
 };
 
 // Every rect/position compose() needs, derived from the live viewport.
