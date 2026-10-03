@@ -1349,19 +1349,62 @@ void test_anim_binding() {
         {FighterState::ShotFinal,   69, "Anim-55"},   // move 0x1f7 (EX fallback)
     };
     for (const Row& r : rows) {
-        f.set_state(r.state);
-        check_int("state binds its set index", r.set, ctrl.trackAnimationSet(0));
-        check_int("anim_set_index() agrees", r.set, f.anim_set_index());
-        check_str("anim_set_name() is the model's own name", r.name, f.anim_set_name());
-        check_bool("mapped state reports no fallback", false, f.anim_fallback());
+        // A fresh fighter per row: init() hard-cuts BattleStart (43) with a
+        // full 60-frame state timer, so every row blends 43 -> target and no
+        // expiry can inject an Idle blend mid-row (13 rows x 8 updates on one
+        // fighter would overrun the timer).
+        Fighter fr;
+        fr.init(&model, &ctrl, glm::vec3(0, 0, 0), 0.0f);
+        fr.set_state(r.state);
+        // Move changes blend (FUN_004211f0/FUN_00421240 + FUN_0041f580
+        // weights): the old set stays on track 0 while the new set starts on
+        // track 1 from t=0, then kAnimBlendTicks updates commit both tracks.
+        check_int("new set starts on track 1", r.set, ctrl.trackAnimationSet(1));
+        check_int("old set holds on track 0 mid-blend", 43, ctrl.trackAnimationSet(0));
+        check_near("blend opens at full old weight", 1.0f, ctrl.trackWeight(0), 1e-6);
+        check_near("blend opens at zero new weight", 0.0f, ctrl.trackWeight(1), 1e-6);
+        check_int("anim_set_index() agrees", r.set, fr.anim_set_index());
+        check_str("anim_set_name() is the model's own name", r.name, fr.anim_set_name());
+        check_bool("mapped state reports no fallback", false, fr.anim_fallback());
+        for (int t = 0; t < FighterConstants::kAnimBlendTicks; ++t)
+            fr.update(nullptr, nullptr, kDt);
+        check_int("blend commits track 0", r.set, ctrl.trackAnimationSet(0));
+        check_int("blend commits track 1", r.set, ctrl.trackAnimationSet(1));
+        check_near("committed track 0 is full weight", 1.0f, ctrl.trackWeight(0), 1e-6);
+        check_near("committed track 1 is full weight", 1.0f, ctrl.trackWeight(1), 1e-6);
     }
+
+    // Chained blends on one fighter propagate the old set: Idle completes
+    // 43 -> 0, Walk blends 0 -> 13, and an AttackA interruption 3 ticks in
+    // only retargets track 1 (FUN_00421240 rebinds track 1 alone): track 0
+    // keeps the old set and the weights continue from their live values, so
+    // the pose never snaps. 19 updates total, inside the 60-frame state
+    // timer, so no expiry interferes.
+    f.set_state(FighterState::Idle);
+    for (int t = 0; t < FighterConstants::kAnimBlendTicks; ++t)
+        f.update(nullptr, nullptr, kDt);
+    check_int("first blend settles on track 0", 0, ctrl.trackAnimationSet(0));
+    f.set_state(FighterState::Walk);
+    check_int("chained blend holds the previous set", 0, ctrl.trackAnimationSet(0));
+    check_int("chained blend targets track 1", 13, ctrl.trackAnimationSet(1));
+    for (int t = 0; t < 3; ++t) f.update(nullptr, nullptr, kDt);
+    f.set_state(FighterState::AttackA);   // interrupts: track 1 -> 2, no snap
+    check_int("interruption keeps the old set on track 0", 0, ctrl.trackAnimationSet(0));
+    check_int("interruption retargets track 1", 2, ctrl.trackAnimationSet(1));
+    check_near("weights continue through the interruption", 0.375f,
+               ctrl.trackWeight(1), 1e-6);
+    for (int t = 0; t < FighterConstants::kAnimBlendTicks; ++t)
+        f.update(nullptr, nullptr, kDt);
+    check_int("interrupted blend settles", 2, ctrl.trackAnimationSet(0));
 
     // The three states the table deliberately leaves open (see the "not settled"
     // list in fighter.h): they must play set 0 AND say so.
     for (FighterState s : {FighterState::Guard, FighterState::Jump, FighterState::TagOut}) {
         f.set_state(s);
-        check_int("unmapped state falls back to set 0", 0, ctrl.trackAnimationSet(0));
+        check_int("unmapped state falls back to set 0", 0, ctrl.trackAnimationSet(1));
         check_bool("unmapped state reports the fallback", true, f.anim_fallback());
+        for (int t = 0; t < FighterConstants::kAnimBlendTicks; ++t)
+            f.update(nullptr, nullptr, kDt);
     }
 
     // A model shorter than the table's index is the other fallback path.

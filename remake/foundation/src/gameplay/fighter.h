@@ -118,6 +118,16 @@ enum class FighterState : int {
 //   FUN_0041f580 (0x41f580, per-player update) reads the same `phase[0]` back
 //   as the current animation index and cross-fades its weight.
 //
+//   Move CHANGES blend instead of cutting: FUN_004211f0 takes the new move id
+//   and FUN_00421240(0) binds its phase 0 to track 1 only, while track 0 keeps
+//   showing the old move; FUN_0041f580's per-tick loop then decays the old
+//   weights and raises the new ones (the +0xae14/0xae18 counters bound the
+//   window). The port mirrors this: a state change keeps the old set on
+//   track 0, binds the new set on track 1 from t=0, ramps the weights over
+//   kAnimBlendTicks ticks, and commits both tracks to the new set. The
+//   initial bind (no old set) and same-set rebinds cut directly to both
+//   tracks, which is the FUN_00421100 steady state.
+//
 // The state/move KEY table at VMA 0x6b73b0 (16-byte stride: addattack, attackA …
 // specialC) is NOT this mapping: the only code that indexes it is the voice
 // system inside FUN_00431e70 (0x432042: `shl edx,4; add edx,0x6b73b0`) which
@@ -309,6 +319,13 @@ struct FighterConstants {
     static constexpr float kGuardDrainSec  = 25.0f;  // block-hold drain
     static constexpr float kFlyDrainSec    = 30.0f;  // flight drain
     static constexpr float kStaminaRegenSec = 60.0f; // grounded refill rate
+    // Move-change cross-fade length in update ticks (~0.13 s at 60 fps).
+    // INFERRED: the original's blend runs off the +0xae14/0xae18 counters
+    // under FUN_0041f580, whose initial value was not located in the
+    // decompiled tree — only the mechanism (old decays, new rises) is read.
+    // 8 ticks follows fighting-game convention; the number stands until a
+    // dynamic oracle pins it.
+    static constexpr int   kAnimBlendTicks = 8;
 };
 
 // Handoff from Fighter (input/charge side) to the scene (spawn/collide side):
@@ -469,6 +486,8 @@ private:
     int          m_stateTimer  = 0;    // frames remaining in current state
     int          m_animSetIdx  = -1;   // set bound for the current state (-1 = none)
     bool         m_animFallback = false;  // m_animSetIdx is the set-0 default
+    int          m_blendTicks  = 0;    // cross-fade ticks left (0 = steady state)
+    int          m_blendTotal  = 1;    // blend length the weights interpolate over
     bool         m_didHitThisSwing = false;  // melee connected already this swing
 
     // --- hypermode (spec §3.4; numbers in hypermode_params) ---
@@ -503,6 +522,16 @@ private:
                               double dt);
     void update_facing(const Fighter* opp, double dt);
     void try_switch_animation();
+    // One cross-fade tick (the FUN_0041f580 weight half): the old set on
+    // track 0 decays 1 -> 0 while the new set on track 1 rises 0 -> 1, then
+    // both tracks commit to the new set (the FUN_00421100 steady state).
+    void tick_blend();
+    // End-of-blend commit: track 0 takes over track 1's set at its playhead
+    // at full weight, restoring the FUN_00421100 both-tracks steady state.
+    void commit_blend();
+    // Unbind every track (bind pose). Round resets and animation-off share
+    // it: both need "no set bound", and only try_switch_animation may bind.
+    void clear_tracks();
 
     // Check if the current state allows movement (not attacking/stunned).
     bool can_act() const;

@@ -39,6 +39,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_state = FighterState::BattleStart;
     m_stateTimer = FighterConstants::kBattleStartFrames;
     m_animSetIdx = -1;   // bind() looked the previous state up; BattleStart wins
+    clear_tracks();      // a round reset is a fresh bind, never a blend
     m_main = AmmoStock{FighterConstants::kMainMax, FighterConstants::kMainMax,
                        FighterConstants::kMainPerSec};
     m_charge = AmmoStock{FighterConstants::kChargeMax, FighterConstants::kChargeMax,
@@ -64,6 +65,7 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_state = FighterState::BattleStart;
     m_stateTimer = FighterConstants::kBattleStartFrames;
     m_animSetIdx = -1;
+    clear_tracks();      // same fresh-bind rule as init()
     m_vy = 0.0f;
     m_grounded = true;
     m_groundY = pos.y;
@@ -198,6 +200,9 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     if (m_anim && m_animate) {
         const float animDt = (dt > 0.1) ? 0.1f : static_cast<float>(dt);
         m_anim->advanceTime(animDt);
+        // One cross-fade step per tick (the FUN_0041f580 weight half), so the
+        // blend stays deterministic under the fixed-dt capture.
+        tick_blend();
     }
 }
 
@@ -375,15 +380,20 @@ void Fighter::set_animate(bool on) {
     m_animate = on;
     m_animSetIdx = -1;
     m_animFallback = false;   // no set is bound while animation is off
-    if (m_anim) {
-        // With animation off no track may stay bound: evalLocal then leaves every
-        // frame at its bind T/R/S, which is the pose the renderer uploads.
-        for (int t = 0; t < xm::Controller::kMaxTracks; ++t) {
-            m_anim->setTrackEnable(t, false);
-            m_anim->setTrackAnimationSet(t, -1);
-        }
-    }
+    m_blendTicks = 0;         // and no cross-fade is in flight
+    clear_tracks();
     if (m_animate) try_switch_animation();
+}
+
+// No track may stay bound through a fresh bind: evalLocal then leaves every
+// frame at its bind T/R/S, which is the pose the renderer uploads, and the
+// next try_switch_animation() hard-cuts instead of blending from stale sets.
+void Fighter::clear_tracks() {
+    if (!m_anim) return;
+    for (int t = 0; t < xm::Controller::kMaxTracks; ++t) {
+        m_anim->setTrackEnable(t, false);
+        m_anim->setTrackAnimationSet(t, -1);
+    }
 }
 
 void Fighter::try_switch_animation() {
@@ -395,26 +405,82 @@ void Fighter::try_switch_animation() {
     // The original's selection: state → move id → the move's first phase → set
     // index (see the table above state_to_anim_set in fighter.h). The index is
     // the D3DX set index, which is this model's `anims` index.
-    //
-    // FUN_00421100 binds phase[0] to BOTH tracks (track 0 and 1, weight 1.0
-    // each); FUN_0041f580 then cross-fades track 1 to later phases. The
-    // composite is a no-op at bind time (same set, same weight) but is the
-    // starting state every move begins in.
     const int want = state_to_anim_set(m_state);
-    if (want >= 0 && static_cast<std::size_t>(want) < m_model->anims.size()) {
-        m_anim->setAnimationBothTracks(want);
-        m_animSetIdx = want;
-        m_animFallback = false;
-        return;
-    }
+    const int resolved =
+        (want >= 0 && static_cast<std::size_t>(want) < m_model->anims.size())
+            ? want
+            : 0;
+    const bool fallback = (resolved != want) || (want < 0);
 
+    // Move-change blend (FUN_004211f0/FUN_00421240 + FUN_0041f580 weights):
+    // the old set stays on track 0 while the new set starts on track 1, and
+    // tick_blend() cross-fades them. A mid-blend interruption only retargets
+    // track 1 (the original rebinds track 1 alone): the weights continue from
+    // their current values so the pose never snaps. The initial bind and
+    // same-set rebinds cut both tracks at once (the FUN_00421100 steady state).
+    const int old = m_anim->trackAnimationSet(0);
+    if (old >= 0 && old != resolved &&
+        static_cast<std::size_t>(old) < m_model->anims.size()) {
+        const float w1 = m_anim->trackWeight(1);
+        m_anim->setTrackAnimationSet(1, resolved);
+        m_anim->setTrackPosition(1, 0.0);
+        m_anim->setTrackEnable(1, true);
+        m_anim->setTrackLoop(1, true);
+        if (m_blendTicks <= 0) {
+            m_anim->setTrackWeight(0, 1.f);
+            m_anim->setTrackWeight(1, 0.f);
+            m_blendTicks = FighterConstants::kAnimBlendTicks;
+        } else {
+            // Continue the ramp where it is: remaining ticks from the live
+            // track-1 weight, so the next tick_blend() step is continuous.
+            m_blendTicks = std::max(
+                1, static_cast<int>((1.f - w1) *
+                                   static_cast<float>(FighterConstants::kAnimBlendTicks) +
+                                   0.5f));
+        }
+        m_blendTotal = FighterConstants::kAnimBlendTicks;
+    } else {
+        m_anim->setAnimationBothTracks(resolved);
+        m_blendTicks = 0;
+    }
+    m_animSetIdx = resolved;
     // Fallback, deliberately visible: states the table does not cover (Guard,
     // Jump, TagOut — see the table's "not settled" list) and models with fewer
     // sets than the index play set 0, the bind-anchored default, and report it
     // through anim_fallback() instead of silently looking like a mapped state.
-    m_anim->setAnimationBothTracks(0);
-    m_animSetIdx = 0;
-    m_animFallback = true;
+    m_animFallback = fallback;
+}
+
+void Fighter::commit_blend() {
+    if (!m_anim) return;
+    const int cur = m_anim->trackAnimationSet(1);
+    if (cur >= 0) {
+        m_anim->setTrackAnimationSet(0, cur);
+        m_anim->setTrackPosition(0, m_anim->trackPosition(1));
+        m_anim->setTrackEnable(0, true);
+        m_anim->setTrackLoop(0, true);
+    }
+    m_anim->setTrackWeight(0, 1.f);
+    m_anim->setTrackWeight(1, 0.f);
+    m_blendTicks = 0;
+}
+
+void Fighter::tick_blend() {
+    if (!m_anim || m_blendTicks <= 0) return;
+    if (--m_blendTicks <= 0) {
+        // Steady state: both tracks on the new set at full weight, which is
+        // the FUN_00421100 bind the blend started from (same set twice is a
+        // no-op through the ordered weighted blend).
+        commit_blend();
+        m_anim->setTrackWeight(1, 1.f);
+        return;
+    }
+    // FUN_0041f580's ramp is linear in the remaining counter (old decays by
+    // remaining/total, new rises complementarily), so lerp the two weights.
+    const float t =
+        1.f - static_cast<float>(m_blendTicks) / static_cast<float>(m_blendTotal);
+    m_anim->setTrackWeight(0, 1.f - t);
+    m_anim->setTrackWeight(1, t);
 }
 
 const char* Fighter::anim_set_name() const {

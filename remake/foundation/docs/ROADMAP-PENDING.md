@@ -167,7 +167,11 @@ come before the visible work.
 * **Evidence (measured).** Commit `8fae1f9`: round start (set 43) 0.3933,
   walk (set 13) 0.2749, the closest single set in the whole rig (91, from
   the shot finisher) 0.3003 — against idle's own band 0.2747. The original
-  clones **two controllers per model** (`FUN_00464d94`) and the `.dat`
+  clones **two controllers per model** (`FUN_0064d940`: the
+  `for (local_24 = 0; local_24 < 2)` clone loop at
+  `research/decompiled/FUN_0064d940.c:60-68`; earlier notes cited a
+  transposed `FUN_00464d94`, which does not exist — corrected 2026-10-03)
+  and the `.dat`
   animation entries carry per-track floats at `+0xc` and `+0x10`
   (`research/decompiled/FUN_0041e180.c:145,149` — offsets verified this
   pass, the *weight* semantics are inferred), cross-faded by
@@ -179,29 +183,84 @@ come before the visible work.
   read the weight fields `FUN_0041f580` actually consumes, bind `phase[0]`
   to both tracks as `FUN_00421100` does, then re-measure the pose band
   against `battle-hud.webp` (the instrument that produced 0.2747).
-* **Result (done, commit `563a3e3`).** `xm::Controller` already carried 8
-  tracks with an ordered weighted blend, so the gap was the bind: added
+* **Result (in progress, commit `563a3e3` is scaffolding, not the close).**
+  `xm::Controller` already carried 8 tracks with an ordered weighted blend,
+  so the first gap was the bind: added
   `Controller::setAnimationBothTracks()` (the `FUN_00421100` starting state)
   and `Fighter::try_switch_animation()` now uses it on both the mapped and
   fallback paths. The weight fields `FUN_0041f580` consumes are the per-track
   table at `player+0x75e0 + i*0x38` (track 0 at `+0xc`, track 1 at `+0x10`)
-  plus the cross-fade counters at `+0xae14/0xae18` — read, not guessed.
-  **Measured:** the idle band is unchanged at **0.2772** — at bind time both
-  tracks hold the same set at weight 1.0, so the weighted blend is a no-op
-  and the composite only diverges once `FUN_0041f580` starts cross-fading
-  track 1. The track mechanism is the foundation for that cross-fade, now in
-  place; it does not by itself move the static idle band.
+  plus the cross-fade counters at `+0xae14/0xae18` — read, not guessed
+  (the `+0xc/+0x10` mapping derives at `research/decompiled/FUN_00421410.c:30-35`:
+  the two `0x3f800000` writes land exactly on those slots).
+  **Correction 2026-10-03:** the `563a3e3` entry reported "idle band
+  unchanged at 0.2772" — that number is the **scene-floor control band**
+  (`tests/hud_bands.py --bands scene-floor` on the post-change capture
+  `/tmp/bh_p0.ppm` re-runs at 0.2772), not the pose band (0.2747 in commit
+  `8fae1f9`). Scene-floor is pose-insensitive by construction
+  (`hud_bands.py`: "scene-only control"), so the reading is vacuous as pose
+  evidence; and the no-op is analytically guaranteed anyway (same set, same
+  `t=0`, weights 1.0/1.0 through the incremental blend is `mix(v,v,·) = v`).
+  **Still open after `563a3e3` (the rest of the sketch):** the
+  interrupt-side rebind — `FUN_00421240` (track-1-only) with its driver
+  `FUN_004211f0` — and `FUN_0041f580`'s per-tick weight evolution are
+  unported; the port binds once per state and ticks both tracks identically,
+  so track 1 can never diverge. Within-move phase advance
+  (`FUN_004212f0`'s cursor over the `.dat` phase durations) is a further,
+  separate step. Then re-measure a **pose-relevant** band
+  (`per-fighter` / `ring` / `com-bar`, or the `8fae1f9` pose protocol),
+  never scene-floor.
+* **Result (continued 2026-10-03 — move-change blend ported).** The
+  interrupt path is now in place: `Fighter::set_state` keeps the old set on
+  track 0 and binds the new set on track 1 from t=0
+  (`FUN_004211f0`/`FUN_00421240`), `tick_blend()` ramps the weights
+  1->0 / 0->1 over `kAnimBlendTicks = 8` ticks (INFERRED duration — the
+  `+0xae14/0xae18` initial value was not located; only the decay/rise
+  mechanism is read), then `commit_blend()` restores the both-tracks steady
+  state. Mid-blend interruptions only retarget track 1 with the live weights
+  preserved, so the pose never snaps; `init`/`reset` share a `clear_tracks`
+  fresh bind. A/B against the pre-blend binary (stash-built) on the
+  BattleStart(43)->Idle(0) transition, per-fighter band RMSE:
+  frame 55: **0.0000** (pre-transition control), frame 61: **0.0536**,
+  frame 64: **0.0508**, frame 68: **0.0000** (committed), frame 75:
+  **0.0000**, and frame 150 byte-identical — the composite exists exactly
+  inside the 8-tick window and converges to the same steady state, so all
+  static parity numbers stand. `fighter_script_test` case 12 pins the
+  semantics (track-1 target, weight ramp, commit, interruption retarget).
+  **Remaining:** within-move phase advance (`FUN_004212f0` cursor + phase
+  durations from the `.dat` move table, still unparsed — the STL-serialized
+  map layout defeated a transcription attempt), the blend duration, and any
+  print-parity gain (none expected: the print is steady-state idle).
+* **Overlay negative result (this pass).** The two dev-only tools added in
+  `a96f6bf` (`tools/anim_sets_dump.cpp`, `tools/anim_frames_dump.cpp`;
+  build with `g++ -std=c++17 -O1 -I src -I third_party/glm
+  tools/anim_sets_dump.cpp -o /tmp/asd`) were built to hunt base
+  (full-body) vs overlay (arms-only) sets. Run on `data/rena/00.X`: all
+  **124 sets are full-body** (typical 37 bones incl. legs+torso; minimum 14
+  bones on set 17, none arms-only). No base/overlay split exists in the
+  shipped sets, which constrains what the composite can be: same-set binds
+  plus cross-faded phase changes, not bone-masked overlays (D3DX tracks have
+  no bone masks anyway).
 * **Weapon (separate, not started).** The print's raised blade is why the
   capture can't match the band, and it is a distinct task from the track
   composite. Measured on the install: `data/bullet/001/03.X` (rena's weapon-1
-  cleaver) has **one** anim set — the spin (`dur=880`) — so the idle pose
-  needs no weapon anim at all, the weapon must stay rigid on the hand bone.
-  Three gaps, each blocking: (a) the per-weapon local offset
-  (`FUN_00433eb0`, position + two rotations) is un-parsed, so a loaded weapon
-  sits un-rotated on `Bip01_Prop1`; (b) the weapon's ring mesh renders in the
-  opaque pass with no alpha-test, so its black background shows instead of
-  vanishing (the additive effect pass would make black add zero); (c) driving
-  its single set makes it spin in idle. None of these is part of B2.
+  cleaver) has **one** anim set (`dur=880`, verified with
+  `tools/anim_sets_dump.cpp`) — the idle pose needs no weapon anim at all,
+  the weapon must stay rigid on the hand bone. Three gaps, each blocking:
+  (a) the per-weapon local offset (`FUN_00433eb0`, position + rotation
+  floats read from `data/item/*.dat` at `FUN_00433eb0.c:93-110` and passed
+  to `FUN_0042fe90`) is un-parsed — `loadWeapon` (`src/assets/scene.h`)
+  attaches to `Bip01_Prop1` with no offset, so a loaded weapon sits
+  un-rotated on the hand; (b) **hypothesis, unverified:** the weapon's ring
+  mesh may show its black background instead of vanishing — but the stated
+  mechanism ("no alpha-test") contradicts `src/render/scene_renderer.cpp:470`,
+  where every textured draw gets `kDrawAlphaTest`, so if the symptom is real
+  the cause is likelier the texture's own alpha (or an untextured mesh), and
+  no ring mesh has even been identified (the file's 3 meshes are unnamed);
+  needs a weapon-in-frame capture before it is claimed; (c) **hypothesis,
+  unverified:** the single set was described as "the spin", but no
+  rotation-key analysis was done (3 channels on 3 unnamed bones), and nothing
+  in the tree drives weapon animations today. None of these is part of B2.
 
 ### B3. Mips: feed the shipped levels instead of the box chain
 

@@ -1,5 +1,8 @@
 // anim_frames_dump.cpp — dev-only: print the frame (bone) list of a .X, with
 // parent chain, so the weapon/prop attachment is visible.
+//
+//   g++ -std=c++17 -O1 -I src -I third_party/glm tools/anim_frames_dump.cpp -o /tmp/afd
+//   /tmp/afd <path-to-00.X> | grep -i prop
 
 #define XMODEL_IMPLEMENTATION
 #include "assets/xmodel.h"
