@@ -48,6 +48,7 @@
 #include "audio/audio.h"
 #include "audio/audio_engine.h"
 #include "game/effect_events.h"
+#include "game/fx_cards.h"
 #include "input/input_backend.h"
 #include "input/input_sdl3.h"
 #include "shaders/demo_wgsl.h"
@@ -522,18 +523,13 @@ struct App {
     uint64_t                     matchFxEvents = 0;
     // B1: the live effect cards the renderer draws from the event queues above.
     // `fxAssets` is the asset table the events' `asset` field indexes into
-    // (game/effect_events.h); `liveFx` is this frame's card set, owned here.
+    // (game/effect_events.h); `liveFx` is this frame's card set, owned here —
+    // the set itself (game::LiveFxCard) and its update rules live in
+    // game/fx_cards.h, unit-tested in tests/fx_cards_test.cpp.
     struct FxAsset { int sceneIndex = -1; };
     std::vector<FxAsset> fxAssets;
     int fxAuraIndex[2] = {-1, -1};   // per-fighter aura card, match mode
-    struct LiveFxCard {
-        std::uint32_t id;
-        int      asset;
-        glm::vec3 position;
-        float    ttl = 0.f;
-        float    age = 0.f;
-    };
-    std::vector<LiveFxCard> liveFx;
+    std::vector<game::LiveFxCard> liveFx;
 
     // Versus vignette state (only when opts.versus): P2 range, spawn bases,
     // audio streaming, effect accounting, and the current timeline HUD.
@@ -1031,36 +1027,13 @@ static void buildFxAssets(App& app) {
     std::printf("fx assets    : %zu card(s) in the effect table\n", app.fxAssets.size());
 }
 
-// Drains the gameplay's event queue into the live card set and ages it: a spawn
-// replaces a card of the same id (the push sites' FIFO discipline), a kill retires
-// by id, and ttl expiry retires the rest. The renderer owns the live set from here
-// on (game/effect_events.h).
+// Drains the gameplay's event queue into the live card set. The spawn /
+// kill-by-id / ttl-expiry rules live in game/fx_cards.h (unit-tested there);
+// this only moves the drained events over and counts them.
 static void updateFxCards(App& app, game::EffectEventQueue& q, uint64_t& events, float dt) {
     const std::vector<game::EffectEvent> ev = q.drain();
     events += ev.size();
-    for (const game::EffectEvent& e : ev) {
-        if (e.type == game::EffectEvent::Type::Kill) {
-            app.liveFx.erase(std::remove_if(app.liveFx.begin(), app.liveFx.end(),
-                                            [&](const App::LiveFxCard& c) { return c.id == e.id; }),
-                             app.liveFx.end());
-            continue;
-        }
-        App::LiveFxCard* slot = nullptr;
-        for (App::LiveFxCard& c : app.liveFx)
-            if (c.id == e.id) { slot = &c; break; }
-        if (slot) {
-            slot->asset = e.asset;
-            slot->position = e.position;
-            slot->ttl = e.ttlSeconds;
-            slot->age = 0.f;
-        } else {
-            app.liveFx.push_back(App::LiveFxCard{e.id, e.asset, e.position, e.ttlSeconds, 0.f});
-        }
-    }
-    for (App::LiveFxCard& c : app.liveFx) c.age += dt;
-    app.liveFx.erase(std::remove_if(app.liveFx.begin(), app.liveFx.end(),
-                                    [](const App::LiveFxCard& c) { return c.age >= c.ttl; }),
-                     app.liveFx.end());
+    game::updateLiveFxCards(app.liveFx, ev, dt);
 }
 
 // Per-frame placement of the live cards: every asset model is hidden with a zero
@@ -1072,7 +1045,7 @@ static void placeFxCards(App& app) {
     for (const App::FxAsset& a : app.fxAssets)
         if (a.sceneIndex >= 0) app.modelMatrices[(size_t)a.sceneIndex] = glm::mat4(0.f);
     if (app.opts.debugPrims) return;   // the cube A/B view draws no cards
-    for (const App::LiveFxCard& c : app.liveFx) {
+    for (const game::LiveFxCard& c : app.liveFx) {
         if (c.asset < 0 || (size_t)c.asset >= app.fxAssets.size()) continue;
         const int mi = app.fxAssets[(size_t)c.asset].sceneIndex;
         if (mi < 0) continue;
@@ -1127,6 +1100,9 @@ static void tickMatch(App& app, double dt) {
 
     // Combat effects: a card at the victim for each connected hit, retired by the
     // next one — the versus vignette's FIFO discipline, driven by real combat.
+    // INFERRED lifetime (12 s): the original's per-effect factors are un-RE'd
+    // (ROADMAP-PENDING.md B1 sketch b); full-bright, no fade. Kill-chaining
+    // retires every card but the last on the next hit; the final one lingers.
     if (f.meleeHit[0] || f.meleeHit[1]) {
         const int victim = f.meleeHit[0] ? 1 : 0;
         const glm::vec3 at = app.match.fighter(victim).position() + glm::vec3(0.f, 100.f, 0.f);
@@ -1369,6 +1345,8 @@ static void tickVersus(App& app, uint64_t frame) {
         }
         // Spawn now, retire the previous hit's card: lifetimes are scripted,
         // not simulated — what matters here is FIFO order and exact counts.
+        // INFERRED lifetime (5 s): the original's per-effect factors are
+        // un-RE'd (ROADMAP-PENDING.md B1 sketch b); full-bright, no fade.
         app.versusFx.pushSpawn((uint32_t)(hit + 1), (p1 + p2) * 0.5f, 0, 5.f);
         if (hit > 0) app.versusFx.pushKill((uint32_t)hit);
     }

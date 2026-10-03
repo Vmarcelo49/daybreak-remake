@@ -1,8 +1,10 @@
 # EFFECTS-BILLBOARD — cylindrical camera-facing for effect cards
 
 > **Status: research for `ROADMAP-PENDING.md` B1, not a gameplay effect path.**
-> Match-mode shots/sparks/auras render as untextured `debug_prims.h` cubes
-> (`src/main.cpp`, `src/render/debug_prims.h`); `--effect` cards exercise only the
+> Match-mode shots/sparks still render as untextured `debug_prims.h` cubes,
+> but auras and melee-hit bursts draw their real cards by default (B1 commit
+> `c0c2f4e`; `--debug-prims` keeps the all-cube A/B). `--effect` cards
+> exercise only the
 > verification scaffolding (additive Effect pass, cylindrical yaw). Nothing here
 > changes gameplay VFX.
 

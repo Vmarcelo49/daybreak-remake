@@ -198,6 +198,12 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(fighter_script_test PRIVATE glm)
     add_test(NAME fighter_script_test COMMAND fighter_script_test)
 
+    # The effect-card live set: header-only game logic (glm + std), no device.
+    add_executable(fx_cards_test tests/fx_cards_test.cpp)
+    target_include_directories(fx_cards_test PRIVATE src)
+    target_link_libraries(fx_cards_test PRIVATE glm)
+    add_test(NAME fx_cards_test COMMAND fx_cards_test)
+
     # The arena camera: game state only (no device). Compiles the ported raycast in
     # directly, like the two tests above; it builds its xm::Model fixtures by hand, so
     # it must not link foundation_assets (which defines XMODEL_IMPLEMENTATION).
