@@ -1,0 +1,24 @@
+<?xml version="1.0" standalone="no"?>
+<!-- traced from data/object/P00..P03.cnv via docs/hud-vectors/trace_hud.py; fill = sampled atlas ink -->
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 20010904//EN"
+ "http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd">
+<svg data-native-size="32x32" data-glyph='digit-green-4' version="1.0" xmlns="http://www.w3.org/2000/svg"
+ width="96.000000pt" height="96.000000pt" viewBox="0 0 96.000000 96.000000"
+ preserveAspectRatio="xMidYMid meet">
+<metadata>
+Created by potrace 1.16, written by Peter Selinger 2001-2019
+</metadata>
+<g transform="translate(0.000000,96.000000) scale(0.100000,-0.100000)"
+fill="#1BFFA1" data-sampled-ink="#1BFFA1" stroke="none">
+<path d="M240 465 c0 -33 -4 -45 -15 -45 -12 0 -15 -13 -15 -60 0 -47 3 -60
+15 -60 8 0 15 -7 15 -15 0 -8 7 -15 15 -15 8 0 15 -7 15 -15 0 -10 10 -15 30
+-15 20 0 30 -5 30 -15 0 -12 17 -15 90 -15 73 0 90 -3 90 -15 0 -8 -7 -15 -15
+-15 -10 0 -15 -10 -15 -30 l0 -30 75 0 75 0 0 30 c0 20 5 30 15 30 8 0 15 7
+15 15 0 10 10 15 30 15 27 0 30 3 30 30 0 20 -5 30 -15 30 -10 0 -15 10 -15
+30 0 20 5 30 15 30 11 0 15 12 15 45 0 33 4 45 15 45 11 0 15 12 15 45 l0 45
+-75 0 -75 0 0 -30 c0 -20 -5 -30 -15 -30 -11 0 -15 -12 -15 -45 0 -33 -4 -45
+-15 -45 -11 0 -15 -12 -15 -45 l0 -45 -60 0 c-47 0 -60 3 -60 15 0 8 -7 15
+-15 15 -8 0 -15 7 -15 15 0 8 -7 15 -15 15 -11 0 -15 12 -15 45 0 33 4 45 15
+45 11 0 15 12 15 45 l0 45 -75 0 -75 0 0 -45z"/>
+</g>
+</svg>

@@ -1,0 +1,18 @@
+<?xml version="1.0" standalone="no"?>
+<!-- traced from data/object/P00..P03.cnv via docs/hud-vectors/trace_hud.py; fill = sampled atlas ink -->
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 20010904//EN"
+ "http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd">
+<svg data-native-size="32x32" data-glyph='digit-green-+' version="1.0" xmlns="http://www.w3.org/2000/svg"
+ width="96.000000pt" height="96.000000pt" viewBox="0 0 96.000000 96.000000"
+ preserveAspectRatio="xMidYMid meet">
+<metadata>
+Created by potrace 1.16, written by Peter Selinger 2001-2019
+</metadata>
+<g transform="translate(0.000000,96.000000) scale(0.100000,-0.100000)"
+fill="#1BFFA1" data-sampled-ink="#1BFFA1" stroke="none">
+<path d="M480 435 c0 -33 -4 -45 -15 -45 -10 0 -15 -10 -15 -30 l0 -30 -90 0
+c-73 0 -90 -3 -90 -15 0 -12 15 -15 75 -15 l75 0 0 -60 0 -60 30 0 c27 0 30 3
+30 30 0 20 5 30 15 30 10 0 15 10 15 30 l0 30 90 0 c73 0 90 3 90 15 0 12 -15
+15 -75 15 l-75 0 0 75 0 75 -30 0 c-29 0 -30 -2 -30 -45z"/>
+</g>
+</svg>
