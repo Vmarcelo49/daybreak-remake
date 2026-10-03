@@ -495,7 +495,9 @@ void Fighter::take_damage(int amount, Fighter* source) {
     const HypermodeParams& mine = hypermode_params(m_hypermode);
 
     if (m_state == FighterState::Guard) {
-        // Blocking reduces damage to 20%.
+        // Blocking reduces damage to 20% (PROVISIONAL: genre-standard, but the
+        // original's guard damage gate is unmapped — see the Guard note above
+        // state_to_anim_set in fighter.h).
         amount = std::max(1, amount / 5);
     }
 

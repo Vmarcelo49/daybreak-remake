@@ -351,23 +351,43 @@ come before the visible work.
 
 ## C. Animation states
 
-### C1. Guard / Jump / TagOut mapping
+### C1. Guard / Jump mapping (TagOut reframed, see below)
 
-* **What.** Three states keep the reported set-0 fallback instead of their
-  real animation.
-* **Evidence (inferred, from the port's own RE notes).**
-  `src/gameplay/fighter.h:136-143`: guard's voice keys exist (indices 12/13)
-  but no call site with a constant move key was found; the air state comes
-  from the locomotion system `FUN_004235d0`'s `{state,dir,timer}`, not a
-  move id, and its animation consumer was not located; "recovery" is a voice
-  key, and the 2v2 tag animation is un-RE'd. `Fighter::anim_fallback()`
+* **What.** Two states keep the reported set-0 fallback instead of their
+  real animation; a third was a mistaken mechanic.
+* **Evidence (inferred, from the port's own RE notes, corrected 2026-10-03).**
+  `src/gameplay/fighter.h:146-163`: guard's voice keys exist (indices 12/13,
+  shipped for all 12 characters) but the corpus holds no `FUN_0064ae10`
+  key-12 play site, so the "no call site" result now rests on two independent
+  searches; blocking may be a damage-path flag rather than a move id at all.
+  Jump: the port's leap/fly/fall may span several of `FUN_0043ded0`'s air
+  branches (`FUN_00421080(0x168/0x15e/0x1cc/500/0x1f5)`), and pinning one
+  needs the jump input-bit mapping, which is not located; `FUN_004235d0` is
+  steering (relation index + relative angle from `FUN_0041f580`), not the
+  jump driver as earlier notes claimed. `Fighter::anim_fallback()`
   reports each case, so the gap is visible. The move-id switch itself is 49
   cases in `FUN_00428510` (count from commit `8fae1f9`; not recounted here).
-* **Sketch.** (a) Locate the locomotion system's animation consumer (who
-  reacts to `FUN_004235d0`'s state) and bind its set for Jump. (b) Find
-  guard's move id among the `FUN_00428510` cases the port's table does not
-  claim, checking it against the move list in the character `.dat`s.
-  (c) Leave TagOut on the fallback until the tag mechanic itself is ported.
+* **TagOut — reframed, not mapped (owner observation 2026-10-03).** There is
+  no character swap: control never transfers between fighters, and the only
+  switch mechanic is the reticle target cycle (`FUN_00421e30`, which also
+  plays the 0xd/0xe/0xf switch cues). The swap story traces to old PT
+  `remake/docs/roadmap.md:127-128`, an inference from voice-dir names
+  (`tagfront`/`tagback`/`tagOK`) that `remake/docs/game-spec.md:93` and then
+  `fighter.h` repeated. Those keys sit between `tactics` and `thank` in the
+  16-byte key table — a team-communication cluster (orders, callouts,
+  thanks), consistent with COM-partner coordination, not a swap. Consequences
+  landed: the `TagOut` state (never entered by anything) keeps its fallback
+  with corrected comments; LockSwitch tap now cycles the camera target in
+  match mode beside the DX9 combo (camera-only in this 1v1 port — shots fly
+  the facing, which tracks the single enemy; hold-for-ally needs allies).
+  "recovery" stays as the state's trace name (the voice key exists; the
+  state never occurs, so no trace changes).
+* **Sketch.** (a) Jump: map the jump input bit first, then read which of the
+  `FUN_0043ded0` air branches it selects — not the reverse. (b) Guard: look
+  for the block flag read on the incoming-damage path, not another
+  `FUN_00428510` case hunt (46 labels, ~40 unclaimed — blind). (c) TagOut:
+  closed as reframed above; the remaining switch work is multi-enemy
+  reticle/aim, not animation.
 
 ## D. HUD leftovers
 

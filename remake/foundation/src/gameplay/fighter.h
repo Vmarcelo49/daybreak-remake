@@ -84,7 +84,9 @@ enum class FighterState : int {
     Knockdown   = 8,   // knocked down
     KO          = 9,   // defeated
     BattleStart = 10,  // round start pose
-    TagOut      = 11,  // 2v2: tagged out (partner tagged in)
+    TagOut      = 11,  // reserved, never entered: no character swap exists —
+                        // the reticle only changes targets (FUN_00421e30), and the
+                        // "tag" voice cluster is partner callouts (see below)
     ShootA      = 12,  // tap shot fired
     ShootB      = 13,  // yellow charge released
     ShootC      = 14,  // red charge released
@@ -145,12 +147,25 @@ enum class FighterState : int {
 //
 // Not settled (deliberately left to the set-0 default rather than guessed):
 //   * Guard — the block key's move is not pinned; the "guard"/"guarded" voice
-//     keys exist (indices 12/13) but no call site with a constant key was found.
-//   * Jump — the original's air state is driven by the locomotion system
-//     (FUN_004235d0's {state,dir,timer}), not by a move id, and that system's
-//     animation consumer was not located.
-//   * TagOut — "recovery" is a voice key, not a move; the 2v2 tag animation is
-//     un-RE'd.
+//     keys exist (indices 12/13, shipped for all 12 characters) but the corpus
+//     holds no FUN_0064ae10 key-12 play site, so no call site was found that
+//     way either. Blocking may be a damage-path flag rather than a move —
+//     next step is the flag read on incoming damage, not another case hunt.
+//   * Jump — the port's leap/fly/fall may span several original moves (the
+//     locomotion selector FUN_0043ded0's air branches start 0x168/0x15e/0x1cc
+//     among others), and pinning one needs the jump input-bit mapping, which
+//     is not located. Note: FUN_004235d0 is steering (called from FUN_0041f580
+//     with a relation index and a relative angle), not air locomotion —
+//     earlier notes misread it as the jump driver.
+//   * TagOut — no such mechanic: control never transfers between fighters
+//     (input slots are per fixed index; the only switch in the original is
+//     the reticle target cycle, FUN_00421e30, wired to LockSwitch tap in
+//     main.cpp). The "tag" story came from voice-dir names (tagfront/
+//     tagback/tagOK, shipped for all characters) sitting beside tactics and
+//     thank in the key table — partner callouts, not a swap. "recovery" is a
+//     voice key of unknown cue (knockdown-recovery and round-transition both
+//     fit; neither is pinned). The state is never entered and stays on the
+//     fallback.
 // ---------------------------------------------------------------------------
 inline int state_to_anim_set(FighterState s) {
     switch (s) {

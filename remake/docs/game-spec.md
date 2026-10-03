@@ -90,8 +90,10 @@ Options/controller setup are built only as far as versus needs them.
   observation and §3.6 describe **holding jump** to fly. Both models are
   in the spec until re-checked in the original; we implement hold-jump.
 - Aerial/landing attack variants (j.A, LA, ADA) ride on these states.
-- Guard (**D**, hold), tag (the active partner swaps in 2v2 — the tag
-  animation itself is un-RE'd, `gameplay/fighter.h:142-143`), provoke (taunt),
+- Guard (**D**, hold), tag (CORRECTED 2026-10-03: no partner swap exists —
+  control never transfers; the reticle only changes targets, `FUN_00421e30`,
+  and the tag* voice keys are partner callouts — see ROADMAP-PENDING.md C1),
+  provoke (taunt),
   revival and KO/down states round out the original's ~40 move ids. The
   "40+ animation states" are **not** a name table in the binary: every shipped
   `.X` names its sets `Anim-1`…`Anim-124` and the state→set mapping ships in

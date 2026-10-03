@@ -507,7 +507,8 @@ struct App {
     gameplay::Match              match;
     bool                         matchMode = false;
     uint64_t                     matchFrame = 0;      // 1-based, the DX9's frame_count+1
-    int                          lockedFighter = 0;   // camera target; Guard+AttackB cycles
+    int                          lockedFighter = 0;   // camera target; LockSwitch tap
+                                                     // cycles (Guard+AttackB too, per DX9)
     gameplay::ArenaCamera        matchCamera;         // the ported reference camera
     gameplay::CameraTarget       arenaTargets[2];     // refreshed from the live fighters
     fnd::input::Backend          matchInput;          // P1 device + script override
@@ -1118,6 +1119,12 @@ static void tickMatch(App& app, double dt) {
     // Camera: the ported reference camera (gameplay/arena_camera.{h,cpp}), fed the
     // live fighters. The target switch is the reference's (Guard just_pressed while
     // AttackB is held, scenes.cpp:644-646) and the pool does the dead-skip itself.
+    // LockSwitch tap is the original's own reticle switch (input.h: tap = cycle
+    // enemy): no character swap exists — the "tag" voice cluster (tagfront/
+    // tagback/tagOK beside tactics/thank) is partner callouts, and the only
+    // switch mechanic in the original is the target cycle (FUN_00421e30). In
+    // this 1v1 port that is camera-only (shots fly the facing, which tracks
+    // the single enemy); hold-for-ally needs allies first.
     for (int i = 0; i < 2; ++i) {
         const gameplay::Fighter& f = app.match.fighter(i);
         app.arenaTargets[i].position = f.position();
@@ -1125,6 +1132,8 @@ static void tickMatch(App& app, double dt) {
         app.arenaTargets[i].alive = f.is_alive();
     }
     if (p1 && p1->just_pressed[fnd::input::Guard] && p1->down[fnd::input::AttackB])
+        app.matchCamera.cycle_target(true);
+    if (p1 && p1->just_pressed[fnd::input::LockSwitch])
         app.matchCamera.cycle_target(true);
     // No collision query: the DX9 match scene updates its camera with a null collision
     // frame (scenes.cpp:729). The foundation's clamp stays one argument away —
