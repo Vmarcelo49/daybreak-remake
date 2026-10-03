@@ -15,7 +15,8 @@ remake/tools/asset-tools/cnv_convert.py documents: byte 0 = bpp, +5 u32
 height, +9 u32 width, +13 u32 compressed, +17 pixel data, 32bpp BGRA),
 cut the glyph cells named in src/ui/hud_atlas.h's font table
 (FUN_00642510 @0x00642510 builds the fonts, FUN_00431b50 @0x00431b50 lays
-the right-aligned runs), threshold each cell to a mask, upscale 3x and
+the right-aligned runs), threshold each cell to a mask, upscale 4x with a
+subpixel smoothing pass (anti-staircase — see SMOOTH_SIGMA) and
 trace with potrace, then emit one .svg per glyph plus preview renders
 via rsvg-convert at native cell size (1x) and 4x.
 
@@ -48,7 +49,15 @@ DATA = os.environ.get(
 )
 SVG_DIR = os.path.join(HERE, "svg")
 PREV_DIR = os.path.join(HERE, "previews")
-UPSCALE = 3  # trace at 3x for smoother beziers; SVG scales back down
+UPSCALE = 4  # trace at 4x; SVG scales back down
+# Anti-staircase: the NEAREST upscale turns every pixel edge into a 4x4 block
+# corner, which potrace would fossilize as jaggies visible at big sizes (no
+# true straight survives). A 1.0px blur in upscaled space (0.25 native px)
+# rounds the block corners back toward the designed outline before the
+# re-threshold; ink boxes are unchanged (verified per glyph: identical bbox
+# and pixel count at 1x). Flat-cut terminals stay flat — the blur is an
+# order of magnitude below the stroke width.
+SMOOTH_SIGMA = 1.0
 
 
 def decode_cnv(path):
@@ -86,14 +95,16 @@ def mask_of(cell, thresh=100, mode="flat"):
 
 def trace_cell(name, cell, fill, thresh=100, turd=4, mode="flat",
                native=None):
-    """Threshold, upscale, potrace, and write svg/<name>.svg. Returns path.
+    """Threshold, smooth, upscale, potrace, and write svg/<name>.svg. Returns path.
 
-    The SVG keeps potrace's own 3x coordinate space (viewBox) so no
+    The SVG keeps potrace's own 4x coordinate space (viewBox) so no
     precision is lost; data-native-size records the atlas cell it stands
     for, and rsvg -w/-h (see preview()) does the sizing."""
     m = mask_of(cell, thresh, mode)
     w, h = m.size
     big = m.resize((w * UPSCALE, h * UPSCALE), Image.NEAREST)
+    big = big.filter(ImageFilter.GaussianBlur(SMOOTH_SIGMA))
+    big = big.point(lambda v: 0 if v < 128 else 255)
     pbm = os.path.join("/tmp", "hudtrace_%s.pbm" % name)
     big.save(pbm)
     r = subprocess.run(

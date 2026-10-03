@@ -3,14 +3,14 @@
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 20010904//EN"
  "http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd">
 <svg data-native-size="32x32" data-glyph='digit-green-.' version="1.0" xmlns="http://www.w3.org/2000/svg"
- width="96.000000pt" height="96.000000pt" viewBox="0 0 96.000000 96.000000"
+ width="128.000000pt" height="128.000000pt" viewBox="0 0 128.000000 128.000000"
  preserveAspectRatio="xMidYMid meet">
 <metadata>
 Created by potrace 1.16, written by Peter Selinger 2001-2019
 </metadata>
-<g transform="translate(0.000000,96.000000) scale(0.100000,-0.100000)"
+<g transform="translate(0.000000,128.000000) scale(0.100000,-0.100000)"
 fill="#1BFFA1" data-sampled-ink="#1BFFA1" stroke="none">
-<path d="M690 150 c0 -29 2 -30 45 -30 43 0 45 1 45 30 0 29 -2 30 -45 30 -43
-0 -45 -1 -45 -30z"/>
+<path d="M924 226 c-17 -44 -1 -61 56 -61 l55 0 0 35 0 35 -53 3 c-39 2 -54
+-1 -58 -12z"/>
 </g>
 </svg>

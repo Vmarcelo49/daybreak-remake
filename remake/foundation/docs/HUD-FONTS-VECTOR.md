@@ -92,10 +92,11 @@ install — nothing game-owned is written into the repo):
 
 * Decodes the 32bpp uncompressed CNV sheets itself (same header the
   asset-tools document) and cuts the exact `hud_atlas.h` cells.
-* `flat` mode: luminance-threshold → upscale 3x → potrace
-  (`--turdsize 4 --alphamax 1 --opttolerance 0.4`) → one `.svg` per glyph
-  with the sampled ink pinned as `fill` + `data-sampled-ink` and the atlas
-  cell as `data-native-size`. SVG keeps potrace's 3x coordinate space
+* `flat` mode: luminance-threshold → upscale 4x → subpixel smoothing
+  (`SMOOTH_SIGMA` 1.0px in upscaled space = 0.25 native px) → re-threshold →
+  potrace (`--turdsize 4 --alphamax 1 --opttolerance 0.4`) → one `.svg` per
+  glyph with the sampled ink pinned as `fill` + `data-sampled-ink` and the
+  atlas cell as `data-native-size`. SVG keeps potrace's 4x coordinate space
   (viewBox scales losslessly).
 * `edge` mode (P03 badge cells only): traces the FIND_EDGES response, so
   the yellow-badge/orange-rim/white-dash plate becomes one outline plate
@@ -112,7 +113,13 @@ with `python3 trace_hud.py`). Review order: `COMPARE-white-row.png`,
 
 Fidelity notes (honest): traces match ink boxes to the pixel at 1x
 (compare plates); AA rims are threshold choices, not data — 1px rim
-differences vs the atlas are expected. Gradient fills (MAX, stings) are
+differences vs the atlas are expected. The first pass fossilized the
+NEAREST-upscale staircase into the outlines (visible jaggies at big sizes,
+no true straight); the smoothing pass fixes it — verified per set, old vs
+new 1x renders: white 0, red 0, green 4, yellow 4, words 4, stings 4 px
+total ink drift, with straight diagonals and flat-cut terminals at 16x
+(see §2 `SMOOTH_SIGMA`). Badge edge-plates shifted more (~14 px each —
+edge-mode input, still complete outlines). Gradient fills (MAX, stings) are
 silhouettes + recorded stops, not multi-stop vectors yet. The P03 plates
 are outlines awaiting a two-ink split.
 
