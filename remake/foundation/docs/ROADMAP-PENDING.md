@@ -179,6 +179,29 @@ come before the visible work.
   read the weight fields `FUN_0041f580` actually consumes, bind `phase[0]`
   to both tracks as `FUN_00421100` does, then re-measure the pose band
   against `battle-hud.webp` (the instrument that produced 0.2747).
+* **Result (done, commit `563a3e3`).** `xm::Controller` already carried 8
+  tracks with an ordered weighted blend, so the gap was the bind: added
+  `Controller::setAnimationBothTracks()` (the `FUN_00421100` starting state)
+  and `Fighter::try_switch_animation()` now uses it on both the mapped and
+  fallback paths. The weight fields `FUN_0041f580` consumes are the per-track
+  table at `player+0x75e0 + i*0x38` (track 0 at `+0xc`, track 1 at `+0x10`)
+  plus the cross-fade counters at `+0xae14/0xae18` — read, not guessed.
+  **Measured:** the idle band is unchanged at **0.2772** — at bind time both
+  tracks hold the same set at weight 1.0, so the weighted blend is a no-op
+  and the composite only diverges once `FUN_0041f580` starts cross-fading
+  track 1. The track mechanism is the foundation for that cross-fade, now in
+  place; it does not by itself move the static idle band.
+* **Weapon (separate, not started).** The print's raised blade is why the
+  capture can't match the band, and it is a distinct task from the track
+  composite. Measured on the install: `data/bullet/001/03.X` (rena's weapon-1
+  cleaver) has **one** anim set — the spin (`dur=880`) — so the idle pose
+  needs no weapon anim at all, the weapon must stay rigid on the hand bone.
+  Three gaps, each blocking: (a) the per-weapon local offset
+  (`FUN_00433eb0`, position + two rotations) is un-parsed, so a loaded weapon
+  sits un-rotated on `Bip01_Prop1`; (b) the weapon's ring mesh renders in the
+  opaque pass with no alpha-test, so its black background shows instead of
+  vanishing (the additive effect pass would make black add zero); (c) driving
+  its single set makes it spin in idle. None of these is part of B2.
 
 ### B3. Mips: feed the shipped levels instead of the box chain
 
