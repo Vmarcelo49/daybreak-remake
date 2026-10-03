@@ -520,6 +520,20 @@ struct App {
     uint64_t                     matchRoundOverFrame = 0;
     game::EffectEventQueue       matchFx;
     uint64_t                     matchFxEvents = 0;
+    // B1: the live effect cards the renderer draws from the event queues above.
+    // `fxAssets` is the asset table the events' `asset` field indexes into
+    // (game/effect_events.h); `liveFx` is this frame's card set, owned here.
+    struct FxAsset { int sceneIndex = -1; };
+    std::vector<FxAsset> fxAssets;
+    int fxAuraIndex[2] = {-1, -1};   // per-fighter aura card, match mode
+    struct LiveFxCard {
+        std::uint32_t id;
+        int      asset;
+        glm::vec3 position;
+        float    ttl = 0.f;
+        float    age = 0.f;
+    };
+    std::vector<LiveFxCard> liveFx;
 
     // Versus vignette state (only when opts.versus): P2 range, spawn bases,
     // audio streaming, effect accounting, and the current timeline HUD.
@@ -945,6 +959,136 @@ static void placeMatchFighters(App& app) {
     app.renderer.setModelMatrices(app.modelMatrices);
 }
 
+// The effect asset table the gameplay events index into (game/effect_events.h:
+// `asset` is a table index, never a path). Slot 0 is the melee-hit card, resolved
+// through the effect manager's per-slot descriptor (FUN_0042eba0: data/effect/%03d.dat
+// is a u32 mesh count, then NUL-padded 4-byte model names); the auras are
+// FUN_00633ca0's data/aura/%02d.x table, slot 0 — the slot-to-fighter rule is
+// unmapped RE, so both fighters share the same card. A missing file is not fatal:
+// the asset keeps sceneIndex -1 and the debug cubes stay the visible representation.
+static std::string effectDatModel(const std::vector<uint8_t>& d) {
+    if (d.size() < 8) return {};
+    const uint32_t n = (uint32_t)d[0] | ((uint32_t)d[1] << 8) | ((uint32_t)d[2] << 16) |
+                       ((uint32_t)d[3] << 24);
+    for (uint32_t i = 0; i < n && (size_t)(4 + i * 4 + 4) <= d.size(); ++i) {
+        const char* s = (const char*)d.data() + 4 + i * 4;
+        if (!s[0]) continue;
+        size_t len = 0;
+        while (len < 4 && s[len]) ++len;
+        return std::string(s, len);
+    }
+    return {};
+}
+
+static int addFxCard(App& app, const std::string& path) {
+    const int index = (int)app.scene.models.size();
+    xm::SceneModel sm;
+    try {
+        // Bundle-first through the same seam the scene loader uses (scene.h).
+        std::vector<uint8_t> bytes;
+        if (!fnd::assets::assetSource().read(path, bytes))
+            throw std::runtime_error("cannot read " + path);
+        sm.model = xm::loadMemory(bytes.data(), bytes.size());
+        sm.sourceBytes = bytes.size();
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "[fx] %s: %s\n", path.c_str(), e.what());
+        return -1;
+    }
+    sm.source = path;
+    sm.role = "effect";   // the additive, billboarded pass (scene_renderer)
+    // The effect cards' textures ship split across two directories (measured: the
+    // hitC*/muzzle/aura .cnv files sit in data/aura/ while the hitb*/g* set sits in
+    // data/effect/), so the cache falls back from the card's own directory to aura/.
+    const std::string dir = path.substr(0, path.find_last_of("/\\") + 1);
+    const std::string auraDir = dir + "../aura/";
+    sm.textures = xm::TextureCache(dir, [auraDir](const std::string& p,
+                                                  std::vector<uint8_t>& out) {
+        if (fnd::assets::assetSource().read(p, out)) return true;
+        const size_t slash = p.find_last_of("/\\");
+        const std::string name = slash == std::string::npos ? p : p.substr(slash + 1);
+        return fnd::assets::assetSource().read(auraDir + name, out);
+    });
+    app.scene.models.push_back(std::move(sm));
+    app.modelMatrices.push_back(glm::mat4(0.f));   // hidden until a card goes live
+    return index;
+}
+
+static void buildFxAssets(App& app) {
+    const std::string dataDir = app.opts.stage + "/..";
+    std::vector<uint8_t> dat;
+    const std::string hitName =
+        fnd::assets::assetSource().read(dataDir + "/effect/000.dat", dat) ? effectDatModel(dat)
+                                                                          : std::string();
+    app.fxAssets.push_back(App::FxAsset{addFxCard(app, dataDir + "/effect/" + hitName)});
+    if (app.opts.match) {
+        const int a0 = addFxCard(app, dataDir + "/aura/00.X");
+        const int a1 = addFxCard(app, dataDir + "/aura/00.X");
+        app.fxAssets.push_back(App::FxAsset{a0});
+        app.fxAssets.push_back(App::FxAsset{a1});
+        app.fxAuraIndex[0] = a0;
+        app.fxAuraIndex[1] = a1;
+    }
+    std::printf("fx assets    : %zu card(s) in the effect table\n", app.fxAssets.size());
+}
+
+// Drains the gameplay's event queue into the live card set and ages it: a spawn
+// replaces a card of the same id (the push sites' FIFO discipline), a kill retires
+// by id, and ttl expiry retires the rest. The renderer owns the live set from here
+// on (game/effect_events.h).
+static void updateFxCards(App& app, game::EffectEventQueue& q, uint64_t& events, float dt) {
+    const std::vector<game::EffectEvent> ev = q.drain();
+    events += ev.size();
+    for (const game::EffectEvent& e : ev) {
+        if (e.type == game::EffectEvent::Type::Kill) {
+            app.liveFx.erase(std::remove_if(app.liveFx.begin(), app.liveFx.end(),
+                                            [&](const App::LiveFxCard& c) { return c.id == e.id; }),
+                             app.liveFx.end());
+            continue;
+        }
+        App::LiveFxCard* slot = nullptr;
+        for (App::LiveFxCard& c : app.liveFx)
+            if (c.id == e.id) { slot = &c; break; }
+        if (slot) {
+            slot->asset = e.asset;
+            slot->position = e.position;
+            slot->ttl = e.ttlSeconds;
+            slot->age = 0.f;
+        } else {
+            app.liveFx.push_back(App::LiveFxCard{e.id, e.asset, e.position, e.ttlSeconds, 0.f});
+        }
+    }
+    for (App::LiveFxCard& c : app.liveFx) c.age += dt;
+    app.liveFx.erase(std::remove_if(app.liveFx.begin(), app.liveFx.end(),
+                                    [](const App::LiveFxCard& c) { return c.age >= c.ttl; }),
+                     app.liveFx.end());
+}
+
+// Per-frame placement of the live cards: every asset model is hidden with a zero
+// matrix, then the live ones get theirs. The cards are unskinned and the Effect
+// pass billboards them at render time (scene_renderer), so only the model matrix
+// moves each frame; setModelMatrices uploads it at the end of the placement call
+// that follows.
+static void placeFxCards(App& app) {
+    for (const App::FxAsset& a : app.fxAssets)
+        if (a.sceneIndex >= 0) app.modelMatrices[(size_t)a.sceneIndex] = glm::mat4(0.f);
+    if (app.opts.debugPrims) return;   // the cube A/B view draws no cards
+    for (const App::LiveFxCard& c : app.liveFx) {
+        if (c.asset < 0 || (size_t)c.asset >= app.fxAssets.size()) continue;
+        const int mi = app.fxAssets[(size_t)c.asset].sceneIndex;
+        if (mi < 0) continue;
+        app.modelMatrices[(size_t)mi] = glm::translate(glm::mat4(1.f), c.position);
+    }
+    // The aura is fighter state, not an event: it follows the fighter's own model
+    // matrix in the fighter's local space — the data path the aura cube used.
+    for (int i = 0; i < 2; ++i) {
+        if (app.fxAuraIndex[i] < 0) continue;
+        const gameplay::Fighter& f = app.match.fighter(i);
+        if (!f.aura_active()) continue;
+        app.modelMatrices[(size_t)app.fxAuraIndex[i]] =
+            f.modelMatrix() * glm::translate(glm::mat4(1.f), f.aura_center_local());
+    }
+}
+
 // One match frame: the reference's order lives in gameplay::Match::step; this adds
 // what the scene added around it — input polling, the camera's target switch, the
 // HUD values, the effect events and the debug cubes.
@@ -974,7 +1118,6 @@ static void tickMatch(App& app, double dt) {
     }
 
     const gameplay::MatchFrame f = app.match.step(p1, p2, dt);
-    placeMatchFighters(app);
     if (app.versusAudioOn)
         app.versusBgmPushed += app.versusLoop.push_next(app.versusAudio, 1024);
     app.matchShots += (uint64_t)f.shotsSpawned;
@@ -990,7 +1133,11 @@ static void tickMatch(App& app, double dt) {
         app.matchFx.pushSpawn((uint32_t)app.matchHits, at, 0, 12.f);
         if (app.matchHits > 1) app.matchFx.pushKill((uint32_t)(app.matchHits - 1));
     }
-    app.matchFxEvents += app.matchFx.drain().size();
+    // The cards must be placed before placeMatchFighters uploads the model
+    // matrices (it ends with setModelMatrices), so they land this frame.
+    updateFxCards(app, app.matchFx, app.matchFxEvents, (float)dt);
+    placeFxCards(app);
+    placeMatchFighters(app);
 
     // Camera: the ported reference camera (gameplay/arena_camera.{h,cpp}), fed the
     // live fighters. The target switch is the reference's (Guard just_pressed while
@@ -1119,9 +1266,10 @@ static void traceMatch(App& app) {
 // The DX9 side drew every shot, hit spark and hypermode aura as an unlit cube
 // (remake/src/render/debug_prim.cpp — a cube pass, not a line pass). The foundation
 // draws the same cubes from the port's own per-cube data: Projectile::kCubeSize/color
-// and Spark::size/color feed the opaque batch, Fighter::aura_* the additive one. That
-// keeps a banked reference frame and a foundation frame of the same case comparable
-// content-wise instead of differing by a wireframe. Rebuilt, never appended.
+// and Spark::size/color feed the opaque batch. The cubes stay the shots' and sparks'
+// representation — their real VFX are trails, which are RE-blocked (EFFECTS-TRAILS.md)
+// — while the aura now draws its actual card by default; its cube only appears under
+// --debug-prims, which is the A/B against the old all-cube view. Rebuilt, never appended.
 static void fillMatchCubes(App& app) {
     app.matchCubes.clear();
     app.auraCubes.clear();
@@ -1133,7 +1281,8 @@ static void fillMatchCubes(App& app) {
         if (!s.alive) continue;
         app.matchCubes.add(s.pos, s.size() * 0.5f, s.color());
     }
-    // The aura is the reference render's second, additive cube pass, drawn in the
+    if (!app.opts.debugPrims) return;   // the real aura card is the default view
+    // The aura cube: the reference render's second, additive cube pass, drawn in the
     // fighter's own space: its local centre through the fighter's model matrix.
     for (int i = 0; i < 2; ++i) {
         const gameplay::Fighter& f = app.match.fighter(i);
@@ -1189,7 +1338,6 @@ static void tickVersus(App& app, uint64_t frame) {
     if ((((int64_t)frame - 1) / H) % 2 == 1) tri = 1.0 - tri;
     const glm::vec3 p1 = app.p1Base;
     const glm::vec3 p2 = app.p2Base + glm::vec3((float)(300.0 * (tri - 0.5)), 0.f, 0.f);
-    placeVersusFighters(app, p1, p2);
 
     game::FighterPose pose;
     pose.position = (p1 + p2) * 0.5f;
@@ -1225,7 +1373,11 @@ static void tickVersus(App& app, uint64_t frame) {
         if (hit > 0) app.versusFx.pushKill((uint32_t)hit);
     }
     if (frame == N) app.versusFx.pushKill(3);
-    app.versusFxEvents += app.versusFx.drain().size();
+    // The scripted timeline has no clock: cards age at the capture's fixed step
+    // (1/60), keeping a versus run a pure function of the frame index.
+    updateFxCards(app, app.versusFx, app.versusFxEvents, 1.f / 60.f);
+    placeFxCards(app);
+    placeVersusFighters(app, p1, p2);
 }
 
 bool initScene(App& app) {
@@ -1319,6 +1471,10 @@ bool initScene(App& app) {
     } else if (app.opts.match) {
         if (!initMatch(app)) return false;
     }
+    // B1: the effect asset table (hit card, plus the fighters' aura cards in match
+    // mode), pushed as extra scene models before the renderer bakes the draw list.
+    if (app.opts.match || app.opts.versus)
+        buildFxAssets(app);
 
     // ---- framing. A stage's visible set includes an inverted sky dome far larger than
     // the play area, and env.dat's fog ends around 10000 units, so a bounds-fit camera

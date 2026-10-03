@@ -106,12 +106,38 @@ come before the visible work.
 
 ## B. Battle visuals
 
-### B1. VFX: auras and effects first, trails are RE-blocked
+### B1. VFX: auras and effects first, trails are RE-blocked — **partially done**
 
-* **What.** Shots and sparks are drawn as `debug_prims.h` cubes; the aura
-  models and the effect instances' own meshes/textures are not drawn;
-  per-effect factors and the billboard yaw against the original are not
-  matched.
+* **Progress (this pass).** The aura and hit-effect classes now draw their
+  real cards, replacing the cube A/B one class at a time as sketched:
+  `src/main.cpp` builds a renderer effect-asset table at match/versus start
+  (`buildFxAssets`): asset 0 is the melee-hit card, resolved through
+  `data/effect/000.dat` (measured header: u32 mesh count, then 4-byte
+  NUL-padded names — slot 000 names `14.X`, the hitC-textured card), and in
+  match mode assets 1–2 are `data/aura/00.X`, `FUN_00633ca0`'s first aura
+  slot. The gameplay `EffectEventQueue`s (`game/effect_events.h`) are no
+  longer drained to nothing: `updateFxCards` owns the live card set (spawn /
+  kill-by-id / ttl expiry) and `placeFxCards` writes the per-frame model
+  matrices, so the existing `Pass::Effect` additive pass and cylindrical
+  billboard (`scene_renderer.cpp`) draw them. The aura follows fighter state
+  through the fighter's own model matrix, in local space, exactly where the
+  cube used to. `--debug-prims` is the A/B: with it, the old all-cube view
+  (aura cube included) renders and the cards are hidden; without it, the
+  cards render and the aura cube does not. Shot/spark cubes stay as-is:
+  their real VFX are trails, which remain RE-blocked below. Two measured
+  facts the port needed: the cards' textures ship split across two
+  directories (the hitC*/muzzle/aura `.cnv` set sits in `data/aura/`, the
+  hitb*/g* set in `data/effect/`), so the card texture cache falls back from
+  the card's own directory to `data/aura/`; and `aura/00.X` is a 54.6-unit
+  icosahedron-ish blob while `effect/14.X` is a 137.4-unit quad plus four
+  76-unit beams, which is why no scale factor was needed in the first pass.
+  **Unknown (unchanged):** the slot→fighter rule for `FUN_00633ca0`'s seven
+  aura slots (both fighters share slot 0 for now), the per-effect factors
+  (sketch b), and the trail strip (sketch c).
+* **What (remaining).** Shots and sparks are still drawn as `debug_prims.h`
+  cubes (their real VFX are trails, RE-blocked below); the aura slot→fighter
+  rule is unmapped (both fighters share slot 0); per-effect factors and the
+  billboard yaw against the original are not matched.
 * **Evidence (read/measured).** `FUN_00633ca0` loads **10** trail textures
   (`data/trail/%02d.bmp`, loop `< 10`) and **7** aura models
   (`data/aura/%02d.x`, loop `< 7`) — `research/recomp/FUN_00633ca0.c:52-60`.
