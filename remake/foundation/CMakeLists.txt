@@ -204,6 +204,16 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(fx_cards_test PRIVATE glm)
     add_test(NAME fx_cards_test COMMAND fx_cards_test)
 
+    # The env.dat spawn contract: owns the scene/cnv/xmodel implementations
+    # itself (see the test header), so like the XMODEL_IMPLEMENTATION tests
+    # it must not link foundation_assets. Skips without a game install.
+    add_executable(env_spawn_test tests/env_spawn_test.cpp
+                   src/assets/asset_source.cpp src/assets/dat_bundle.cpp
+                   src/assets/dat_crypto.cpp)
+    target_include_directories(env_spawn_test PRIVATE src)
+    target_link_libraries(env_spawn_test PRIVATE glm)
+    add_test(NAME env_spawn_test COMMAND env_spawn_test)
+
     # The arena camera: game state only (no device). Compiles the ported raycast in
     # directly, like the two tests above; it builds its xm::Model fixtures by hand, so
     # it must not link foundation_assets (which defines XMODEL_IMPLEMENTATION).

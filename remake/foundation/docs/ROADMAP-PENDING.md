@@ -53,16 +53,24 @@ come before the visible work.
   verbatim** from `scene + 0x44 + slot*12` into the fighter's position
   (`*dest = *src; dest[1]=src[1]; dest[2]=src[2]`) — **no axis swap**, so the
   file's `(a,b,c)` is the vec3 `(x,y,z)` (the middle `200` is the y-up
-  height). The slot is the fighter's own `+8` field, read as the index arg
-  (Ghidra elides it in `FUN_0041dcb0`'s `FUN_00423420(param_1+5, param_1[2])`
-  call — the `+5` is the *dest* `fighter+0x14`, the `[2]` is the *index*
-  `*(fighter+8)`; confirmed against the bytes at `0x41dcb0`). `FUN_0064ab30(i)`
-  creates the four fighters in slot order 0..3, so **P1 takes `points[0]` and
-  P2 `points[1]`** — the two `z=-2200` points in stage01/stage21. The port's
-  `readEnv` + `points[0]`/`points[1]` default was already correct; the old
-  "trace A/B only matched with `--spawn2`" was matching the deleted DX9
-  build's hardcoded pair, not the original's env.dat pick. Provenance added to
-  `src/main.cpp` (`initMatch` comment). No code change required.
+  height). The slot is read as the fighter's own `+8` field, `+0x14` the dest
+  (Ghidra elides the index in `FUN_0041dcb0`'s
+  `FUN_00423420(param_1+5, param_1[2])` call — the `+5` is the *dest*
+  `fighter+0x14`, the `[2]` is the *index* `*(fighter+8)`; the call shape
+  fits exactly, though no writer of the slot field was located, so the
+  field's meaning is triangulated inference, not a confirmed store).
+  `FUN_0064ab30(i)` creates the four fighters in slot order 0..3 (with four
+  consecutive `FUN_0041dcb0` applications beside it), so **P1 takes
+  `points[0]` and P2 `points[1]`** — the two `z=-2200` points in
+  stage01/stage21. The port's `readEnv` + `points[0]`/`points[1]` default was
+  already correct; the old "trace A/B only matched with `--spawn2`" was
+  matching the deleted DX9 build's hardcoded pair, not the original's
+  env.dat pick. Provenance added to `src/main.cpp` (`initMatch` comment).
+  The sketch's `compare_match_traces.py` re-run is moot (the DX9 tree it
+  compared against is deleted); port-side determinism is pinned by
+  `fighter_script_test` case 14 instead. Pinned by `tests/env_spawn_test.cpp`
+  (ctest): both stages' fog/header/points through the port's own `readEnv`,
+  the shared spawn region, and the far/near pairing. No code change required.
 
 ### A2. The exact viewpoint within `stage01` — the instrument for every print claim
 
@@ -90,8 +98,13 @@ come before the visible work.
   print cast (rena/mion), `--match --frames=150 --size=800x600`: scene-floor
   RMSE **0.2772** (P1 `points[0]`), 0.2908 (`points[1]`), 0.3162 (`points[2]`),
   0.2961 (`points[3]`). The winner is **P1 at `points[0]`
-  `(-463,200,-2200)`, P2 at `points[1]`** — landing exactly on the documented
-  0.2755 floor, and corroborating A1 (P1=`points[0]`) by an independent method.
+  `(-463,200,-2200)`, P2 at `points[1]`** — within 0.002 of the documented
+  0.2755 floor (**correction 2026-10-03:** the original entry said "landing
+  exactly on"; 0.2772 is near, not equal), and corroborating A1
+  (P1=`points[0]`) by an independent method. Re-runnable as
+  `tests/pin_viewpoint.py` (same four captures, same instruments, winner and
+  tolerances asserted — reproduced 2026-10-03 to all four decimals on the
+  post-B1/B2 binary).
   Whole-frame context: 0.2567 / 0.2438 / 0.2699 / 0.2478 (config 1 lower, but
   whole-frame is confounded by the mirrored fighter pose and HUD art; the
   scene band is the prescribed instrument). Converged trace eye
