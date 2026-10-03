@@ -212,6 +212,39 @@ void mipChainCases() {
     check(levels.empty(), "null image -> no levels", std::to_string(levels.size()), "0");
     render::buildMipChain(img.data(), 0, 8, levels);
     check(levels.empty(), "zero width -> no levels", std::to_string(levels.size()), "0");
+
+    section("mipSiblingName / mipShippedDimsOk — the shipped-level substitution rule");
+
+    // FUN_00656c80's %s_%d.bmp walk starts at _1: the name surgery only touches
+    // the ASCII tail, so Shift-JIS stems survive byte-identical.
+    check(render::mipSiblingName("wall.bmp", 1) == "wall_1.bmp", "wall.bmp level 1 -> wall_1.bmp",
+          render::mipSiblingName("wall.bmp", 1), "wall_1.bmp");
+    check(render::mipSiblingName("wall.bmp", 2) == "wall_2.bmp", "wall.bmp level 2 -> wall_2.bmp",
+          render::mipSiblingName("wall.bmp", 2), "wall_2.bmp");
+    check(render::mipSiblingName("noext", 1) == "noext_1", "extensionless name takes the suffix bare",
+          render::mipSiblingName("noext", 1), "noext_1");
+    check(render::mipSiblingName("", 1).empty(), "empty name -> empty sibling",
+          std::to_string(render::mipSiblingName("", 1).size()), "0");
+    check(render::mipSiblingName("wall.bmp", 0).empty(), "level 0 is never a sibling",
+          std::to_string(render::mipSiblingName("wall.bmp", 0).size()), "0");
+
+    // The FUN_00656c80 width gate: exactly the halved dims (floor, min 1), else
+    // the box level stays. stage01's survey: all 85 _1 and 57/58 _2 match; the
+    // one _2 sized like a _1 (64x64 base, 32x32 _2) must not substitute.
+    check(render::mipShippedDimsOk(256, 256, 128, 128, 1), "256 -> 128 at level 1",
+          "true", "true");
+    check(render::mipShippedDimsOk(256, 256, 64, 64, 2), "256 -> 64 at level 2",
+          "true", "true");
+    check(!render::mipShippedDimsOk(64, 64, 32, 32, 2), "64 -> 32 at level 2 rejected (wants 16)",
+          "false", "false");
+    check(!render::mipShippedDimsOk(256, 256, 128, 128, 2), "level-1 dims rejected at level 2",
+          "false", "false");
+    check(!render::mipShippedDimsOk(256, 256, 127, 128, 1), "off-by-one width rejected",
+          "false", "false");
+    check(render::mipShippedDimsOk(3, 3, 1, 1, 1), "odd dims floor-halve (3 -> 1)",
+          "true", "true");
+    check(!render::mipShippedDimsOk(256, 256, 0, 128, 1), "empty sibling rejected",
+          "false", "false");
 }
 
 }  // namespace

@@ -387,13 +387,39 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                             // Only stage textures get a chain: the reference's other
                             // textures are created with MipLevels = 1 because their
                             // directories ship no levels. The header's mip note carries
-                            // that evidence, the original's MIPFILTER state, and why the
-                            // chain is box filtered here instead of read from the shipped
-                            // _N files.
+                            // that evidence, the original's MIPFILTER state, and the
+                            // box filter's byte-space rationale; levels 1-2 prefer
+                            // the shipped _N siblings (B3), the box staying as the
+                            // fallback past them and for missing art.
                             const bool mipmapped = sm.role == "stage";
                             std::vector<std::vector<uint8_t>> levels;
-                            if (mipmapped)
+                            if (mipmapped) {
                                 buildMipChain(img->rgba.data(), img->width, img->height, levels);
+                                // B3: levels 1-2 come from the shipped `base_1`/`base_2`
+                                // files when present (FUN_00656c80 fills one D3DX
+                                // level per `%s_%d.bmp`), the box level staying as
+                                // the fallback otherwise. The lookup rides the
+                                // same bundle-first cache as the base texture.
+                                // The chain truncates to the shipped depth, which
+                                // is D3DXCreateTexture's MipLevels=1+#files:
+                                // sampling past the smallest shipped level clamps
+                                // there on the original too. (The one observed
+                                // misfit, a _2 sized like a _1, truncates to a
+                                // clean 2-level chain here; the original would
+                                // leave that level unfilled.)
+                                uint32_t shipped = 0;
+                                for (uint32_t l = 1; l <= 2 && l < levels.size(); ++l) {
+                                    const xm::CnvImage* sib = sm.textures.get(
+                                        mipSiblingName(mat.texture, l));
+                                    if (sib && !sib->empty() &&
+                                        mipShippedDimsOk(img->width, img->height, sib->width,
+                                                         sib->height, l)) {
+                                        levels[l] = sib->rgba;
+                                        shipped = l;
+                                    }
+                                }
+                                if (shipped > 0) levels.resize(shipped + 1);
+                            }
                             const uint32_t levelCount =
                                 mipmapped ? (uint32_t)levels.size() : 1u;
                             Texture tex;

@@ -61,9 +61,10 @@ inline constexpr WGPUTextureFormat kSceneDepthFormat = WGPUTextureFormat_Depth24
 //
 // Content check on the shipped levels: shadow01_1.cnv is a 2x2 box average of shadow01.cnv
 // to within a mean |delta| of 1.59/255, against 67.97/255 for a shifted control. Those
-// files are the higher-fidelity source and the asset layer hands this renderer only level 0,
-// so the chain below is generated instead; a box filter is the standard choice for a
-// generated chain, and it averages raw bytes because D3D9's own filter and the shipped
+// files are the higher-fidelity source: levels 1-2 upload the shipped bytes when the
+// sibling is present at exactly the halved dims (the FUN_00656c80 width gate), and the
+// generated box below is only the fallback past them and for missing art. The filter
+// averages raw bytes because D3D9's own filter and the shipped
 // levels are byte-space too (the texture is RGBA8Unorm, not sRGB, and the shader treats the
 // sampled value as linear).
 //
@@ -81,6 +82,33 @@ inline uint32_t mipLevelCount(uint32_t width, uint32_t height) {
     uint32_t levels = 1;
     for (uint32_t m = width > height ? width : height; m > 1; m >>= 1) ++levels;
     return levels;
+}
+
+// Shipped mip sibling name: "foo.bmp" -> "foo_1.bmp" (FUN_00656c80's
+// `%s_%d.bmp` walk; the observed numbering offset is 0, so shipped levels
+// start at _1 and stop at _2). Byte-surgical on purpose: material names are
+// Shift-JIS, so only the ASCII tail is touched — split at the last dot, and
+// a name without one takes the suffix bare. Empty in, empty out (the cache
+// resolves empty to nothing anyway).
+inline std::string mipSiblingName(const std::string& base, uint32_t level) {
+    if (base.empty() || level == 0) return {};
+    const size_t dot = base.find_last_of('.');
+    if (dot == std::string::npos) return base + "_" + std::to_string(level);
+    return base.substr(0, dot) + "_" + std::to_string(level) + ".bmp";
+}
+
+// Whether a shipped sibling may stand in for chain level `level`: exactly the
+// halved dimensions (floor, clamped at 1 — the same rule buildMipChain uses),
+// which is what FUN_00656c80's per-level width gate demands before it copies
+// a level in. Anything else keeps the generated box level (B3 sketch
+// fallback); the original would truncate the chain there instead — the one
+// observed case is a _2 sized like a _1, where truncation would alias harder.
+inline bool mipShippedDimsOk(uint32_t baseW, uint32_t baseH, uint32_t sibW, uint32_t sibH,
+                             uint32_t level) {
+    if (level == 0 || level >= 32 || sibW == 0 || sibH == 0) return false;
+    const uint32_t ew = (baseW >> level) > 0 ? (baseW >> level) : 1u;
+    const uint32_t eh = (baseH >> level) > 0 ? (baseH >> level) : 1u;
+    return sibW == ew && sibH == eh;
 }
 
 // Builds `levels` for one RGBA8 image: levels[0] is the base image as authored (uploaded

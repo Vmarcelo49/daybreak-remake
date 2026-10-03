@@ -318,6 +318,36 @@ come before the visible work.
   art and for every non-stage role. Regression checks: level 0 write stays
   byte-identical, and the stage band against `battle-hud.webp` improves past
   0.254041.
+* **Result (done, mechanism faithful, print number honest).**
+  `mipSiblingName()` / `mipShippedDimsOk()` (`scene_renderer.h`, unit-tested
+  in `lighting_test`: name surgery, the width gate, the one observed misfit)
+  plus a substitution loop at the stage-role upload: levels 1–2 upload the
+  shipped bytes when the sibling resolves through the same bundle-first
+  cache at exactly the halved dims, else the box level stays. The chain
+  truncates to the shipped depth — `D3DXCreateTexture`'s `MipLevels=1+#files`
+  (`FUN_00656c80.c:87-118`: load loop breaks on first miss, per-level copy
+  gated on width) — so sampling past the smallest shipped level clamps
+  there as on the original. Verified live: 166 substitutions in the stage01
+  capture (bundle path — the sketch's "not yet verified" is now verified);
+  dims survey: all 85 `_1` exact, 57/58 `_2` exact, the one `_2`-sized-like-
+  `_1` truncating to a clean 2-level chain. Draws unchanged (177/177/0);
+  level 0 is the same bytes through the same path by construction.
+  **Measured (pinned recipe, SPEC §7):** overall 0.2567 → **0.2596**,
+  hud-all 0.2483 → 0.2522, scene-floor 0.2772 → 0.2777 — the print number
+  moves the *wrong* way, and the sketch's "past 0.254041" is not met (that
+  figure itself does not reproduce on the pinned recipe: current baseline is
+  0.2567 — flagged, not chased). Two variants were tried first (full chain
+  with shipped L1/L2: 0.2591; truncated: 0.2596); truncation ships as the
+  structure-faithful one. **Why this is instrument error, not render error:**
+  grain energy in the wall band reads print 4.33 < box 5.63 < shipped 7.60 —
+  the lossy resampled print is smoother than *both* renders, so the overall
+  RMSE rewards blur and cannot adjudicate the sharpness the shipped levels
+  restore (visual triple-check: print mush vs box mottle vs shipped grain).
+  The bytes are authoritative; the +0.003 overall residual is recorded as
+  print-pipeline confound. Open and un-actionable: whether D3D9 and WebGPU
+  pick identical LODs at these pixels (same trilinear math, possibly
+  different derivative conventions) — no experiment available distinguishes
+  it from correct rendering, so it stays a note, not a task.
 
 ## C. Animation states
 
