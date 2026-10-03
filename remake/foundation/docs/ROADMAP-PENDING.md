@@ -391,6 +391,31 @@ counts, and the team-select diamond's y anchor discrepancy. Scenes 2 and
   offscreen, and record the adapter/backend lines. Nothing in the code is
   claimed to block it; nothing has been run.
 
+### G3. Texture coverage: two install data gaps, checked by `tests/showcase.py`
+
+* **What.** Full texture coverage of the asset pipeline has **not** been
+  claimed. A 16-character × 13-stage sweep found 43 untextured draws, all
+  reducing to gaps in the installed game data — not loader bugs. This is the
+  baseline to re-check in the future.
+* **Evidence (measured, this pass).** `tests/showcase.py --check` runs every
+  (character, stage) pair headless and reads the demo's own
+  `draws: N (X textured, Y untextured)` line, so the loader is the oracle.
+  Result: **165/208 pass, 43 flag, zero pipeline failures**. The 43 reduce to
+  two install gaps:
+  - **stage05 / stage15** — the stage `.X` scenes name dust/particle
+    textures as `.bmp` (e.g. `01`–`05`, `08`, `11`) that have no `.cnv` in
+    these two dirs; the cache resolves `.bmp`→`.cnv` and misses 4 per stage,
+    on every character.
+  - **kasai** — `data/kasai/00.X` references a `g` texture present
+    **nowhere** in the install (checked `g.cnv`/`g.bmp` across `data/`);
+    2 untextured draws on every stage.
+  Both are data the install does not ship, so the loader is doing the right
+  thing (reporting the miss, not fabricating a texture).
+* **Check in the future.** Re-run `tests/showcase.py --check` after any
+  install update, re-extraction, or new character/stage. The two gaps above
+  are the known baseline; any **new** untextured draw is a regression (a
+  loader or cache bug), not a data gap, and needs investigation.
+
 ## H. Out of scope (stated, not scheduled)
 
 * **Netplay and video stay out of scope by D6** (LAN netplay is a
