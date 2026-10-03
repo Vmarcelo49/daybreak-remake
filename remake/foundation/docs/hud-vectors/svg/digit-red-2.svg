@@ -3,12 +3,24 @@
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 20010904//EN"
  "http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd">
 <svg data-native-size="64x64" data-glyph='digit-red-2' version="1.0" xmlns="http://www.w3.org/2000/svg"
- width="256.000000pt" height="256.000000pt" viewBox="0 0 256.000000 256.000000"
+ width="512.000000pt" height="512.000000pt" viewBox="0 0 512.000000 512.000000"
  preserveAspectRatio="xMidYMid meet">
 <metadata>
 Created by potrace 1.16, written by Peter Selinger 2001-2019
 </metadata>
-<g transform="translate(0.000000,256.000000) scale(0.100000,-0.100000)"
-fill="#FF0000" data-sampled-ink="#FF0000" stroke="none">
+<g transform="translate(0.000000,512.000000) scale(0.100000,-0.100000)"
+fill="#000000" data-sampled-ink="#000000" stroke="none">
+<path d="M2940 4273 c-198 -24 -267 -74 -339 -248 -102 -244 -75 -350 119
+-469 132 -81 127 -92 -95 -214 -286 -156 -429 -345 -561 -738 -82 -245 3 -394
+246 -433 86 -14 1927 -15 1999 -1 280 53 459 507 264 668 -134 110 -131 126
+37 218 664 363 531 1035 -237 1196 -103 21 -1287 39 -1433 21z"/>
 </g>
-</svg>
+<g transform="translate(0.000000,512.000000) scale(0.100000,-0.100000)"
+fill="#FF0000" data-sampled-ink="#FF0000" stroke="none">
+<path d="M2985 4035 c-5 -2 -27 -6 -47 -10 -91 -15 -172 -155 -125 -216 33
+-43 39 -44 567 -49 593 -7 636 -14 686 -118 66 -139 -104 -244 -422 -262 -601
+-34 -1101 -273 -1257 -600 -107 -223 -123 -316 -60 -357 46 -30 1920 -28 1978
+3 67 35 110 156 72 205 -34 44 -32 44 -662 49 -643 5 -638 5 -651 56 -30 118
+252 271 566 309 579 69 919 188 1072 376 226 277 23 549 -452 608 -76 10
+-1238 15 -1265 6z"/>
+</g></svg>

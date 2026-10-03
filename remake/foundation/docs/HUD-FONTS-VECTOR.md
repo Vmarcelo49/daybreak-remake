@@ -103,12 +103,15 @@ install — nothing game-owned is written into the repo):
 
 * Decodes the 32bpp uncompressed CNV sheets itself (same header the
   asset-tools document) and cuts the exact `hud_atlas.h` cells.
-* `flat` mode: luminance-threshold → upscale 4x → subpixel smoothing
-  (`SMOOTH_SIGMA` 1.0px in upscaled space = 0.25 native px) → re-threshold →
-  potrace (`--turdsize 4 --alphamax 1 --opttolerance 0.4`) → one `.svg` per
-  glyph with the sampled ink pinned as `fill` + `data-sampled-ink` and the
-  atlas cell as `data-native-size`. SVG keeps potrace's 4x coordinate space
-  (viewBox scales losslessly).
+* `flat` mode: per-cell ink weight (luminance, or one channel for red ink
+  whose luminance would not survive binarization — always × alpha) and cell
+  alpha, each bicubic-upscaled 8x, blurred proportionally
+  (`BLUR_NATIVE` 0.8 original px), cut at 0.5, potrace-traced
+  (`--turdsize 4 --alphamax 1 --opttolerance 1.0`) into TWO layers:
+  silhouette (alpha) below in the outline color, ink fill above. Flat art
+  uses a black silhouette + ink fill (the sprite-outline convention);
+  `edge` mode (P03 badge cells only) keeps the single outline plate. SVG
+  keeps potrace's own coordinate space (viewBox scales losslessly).
 * `edge` mode (P03 badge cells only): traces the FIND_EDGES response, so
   the yellow-badge/orange-rim/white-dash plate becomes one outline plate
   instead of one merged blob.
@@ -122,17 +125,17 @@ MAIN/CHARGE/HP/STAMINA/OYASHIRO words, 6 command cells, OVER KILL!!/DOWN!/PAUSE)
 with `python3 trace_hud.py`). Review order: `COMPARE-white-row.png`,
 `COMPARE-green-row.png`, `COMPARE-word-limit.png`, `COMPARE-cmd-0.png`.
 
-Fidelity notes (honest): traces match ink boxes to the pixel at 1x
-(compare plates); AA rims are threshold choices, not data — 1px rim
-differences vs the atlas are expected. The first pass fossilized the
-NEAREST-upscale staircase into the outlines (visible jaggies at big sizes,
-no true straight); the smoothing pass fixes it — verified per set, old vs
-new 1x renders: white 0, red 0, green 4, yellow 4, words 4, stings 4 px
-total ink drift, with straight diagonals and flat-cut terminals at 16x
-(see §2 `SMOOTH_SIGMA`). Badge edge-plates shifted more (~14 px each —
-edge-mode input, still complete outlines). Gradient fills (MAX, stings) are
+Fidelity notes (honest): the first pass fossilized the NEAREST-upscale
+staircase into the outlines (visible jaggies at big sizes, no true
+straight); a smoothing pass fixed the worst of it, but its single-layer
+output stayed lumpy on diagonals. The current two-layer pipeline
+(`vectorize_sprites.py` logic: bicubic 8x, proportional blur, silhouette +
+fill) renders clean straights and flat-cut terminals at 16x — verify on
+the `COMPARE-*-row.png` plates, which are rebuilt by every regen.
+Gradient fills (MAX, stings) are
 silhouettes + recorded stops, not multi-stop vectors yet. The P03 plates
-are outlines awaiting a two-ink split.
+are outlines awaiting a two-ink split. Badge edge-plates shifted more (~14 px each —
+edge-mode input, still complete outlines).
 
 ## 3. Recommendation: SDF-atlas first, TTF chain already covers the rest
 
