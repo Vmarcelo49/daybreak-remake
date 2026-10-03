@@ -809,6 +809,15 @@ static bool initVersus(App& app) {
 // what the original reads — not the DX9 remake's hardcoded pair, which its comment
 // claims are the env values but are not (stage21 env.dat holds (-463,200,-2200) and
 // (-1363,200,-2200); the DX9 code hardcodes (1393,200,-463) and (-2200,200,-1363)).
+//
+// Which point, and in what order, is settled by the original's own consumer
+// FUN_00423420 (0x00423420): it copies three floats verbatim from
+// scene+0x44+slot*12 into the fighter's position — no axis swap, so the file's
+// (a,b,c) is the vec3 (x,y,z), y=200 the height. The fighter's slot is read from
+// its own +8 field, and FUN_0064ab30 creates the four fighters in slot order 0..3,
+// so P1 takes points[0] and P2 points[1] (the two z=-2200 points in stage01/stage21).
+// This is why the old DX9 trace A/B only matched with an explicit --spawn2: it was
+// matching the deleted DX9 build's hardcoded pair, not the original's env.dat pick.
 static bool initMatch(App& app) {
     if (!app.scene.env.present && (!app.opts.hasSpawn[0] || !app.opts.hasSpawn[1])) {
         app.error = "--match needs a stage with env.dat spawns, or --spawn/--spawn2";

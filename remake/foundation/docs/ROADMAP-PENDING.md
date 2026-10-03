@@ -47,15 +47,22 @@ come before the visible work.
   at all — `pre-webgpu-cutover:remake/src/core/scenes.cpp:527-535` is a
   hardcode plus that comment — so "compare against the DX9 loader" has
   nothing to compare, and the plan's word "loader bug" overstates what was
-  established. **Still unknown:** which of the four points a versus match
-  spawns a given fighter at, and whether the stored order is `(x, y, z)`.
-* **Sketch.** Find the consumer of the scene object's spawn fields
-  (`FUN_004011f0` writes them at `param_1[0x11..0x1c]`, i.e. byte offsets
-  `0x44`–`0x70`) in `research/decompiled/`: grep for the match-start code
-  that indexes them by team/slot, then set `points[]` use (and any axis
-  swap) to what it does. Re-run
-  `tests/compare_match_traces.py` with no `--spawn2` once it lands; until
-  then every print-parity capture should state its explicit spawn.
+  established.
+* **Resolved (this pass).** The consumer is `FUN_00423420`
+  (`research/decompiled/FUN_00423420.c`): it copies **three floats
+  verbatim** from `scene + 0x44 + slot*12` into the fighter's position
+  (`*dest = *src; dest[1]=src[1]; dest[2]=src[2]`) — **no axis swap**, so the
+  file's `(a,b,c)` is the vec3 `(x,y,z)` (the middle `200` is the y-up
+  height). The slot is the fighter's own `+8` field, read as the index arg
+  (Ghidra elides it in `FUN_0041dcb0`'s `FUN_00423420(param_1+5, param_1[2])`
+  call — the `+5` is the *dest* `fighter+0x14`, the `[2]` is the *index*
+  `*(fighter+8)`; confirmed against the bytes at `0x41dcb0`). `FUN_0064ab30(i)`
+  creates the four fighters in slot order 0..3, so **P1 takes `points[0]` and
+  P2 `points[1]`** — the two `z=-2200` points in stage01/stage21. The port's
+  `readEnv` + `points[0]`/`points[1]` default was already correct; the old
+  "trace A/B only matched with `--spawn2`" was matching the deleted DX9
+  build's hardcoded pair, not the original's env.dat pick. Provenance added to
+  `src/main.cpp` (`initMatch` comment). No code change required.
 
 ### A2. The exact viewpoint within `stage01` — the instrument for every print claim
 
@@ -78,6 +85,24 @@ come before the visible work.
   and keep the minimum scene-band RMSE (`tests/hud_bands.py` reports the
   bands; `tests/compare_frames.py` the whole-frame number). Record the
   winner in the capture recipe so later numbers stay comparable.
+* **Resolved (this pass, second route).** Four converged captures, P1 on each
+  env point with P2 on its pair-mate (far pair `z=-2200`, near pair `z=-105`),
+  print cast (rena/mion), `--match --frames=150 --size=800x600`: scene-floor
+  RMSE **0.2772** (P1 `points[0]`), 0.2908 (`points[1]`), 0.3162 (`points[2]`),
+  0.2961 (`points[3]`). The winner is **P1 at `points[0]`
+  `(-463,200,-2200)`, P2 at `points[1]`** — landing exactly on the documented
+  0.2755 floor, and corroborating A1 (P1=`points[0]`) by an independent method.
+  Whole-frame context: 0.2567 / 0.2438 / 0.2699 / 0.2478 (config 1 lower, but
+  whole-frame is confounded by the mirrored fighter pose and HUD art; the
+  scene band is the prescribed instrument). Converged trace eye
+  `(-174,411,-2200)` = P1+`(289,211,0)` — the preset offset exactly, and the
+  sim faces the fighters toward each other. Gotchas for the recipe: match
+  frames render through `gameplay::ArenaCamera` (original preset), **not** the
+  static `camera arena at ...` log line (remake-preset seed, overwritten by
+  the first tick); `--frames` must be ≥121 (eye converges 10%/call from the
+  origin — the frame-1 eye is unconverged); capturing fixes `--dt` at 1/60 so
+  the run is deterministic; the match path passes a null collision frame, so
+  the eye is unclamped. Recipe recorded in `BATTLE-HUD-SPEC.md` §7.
 
 ## B. Battle visuals
 

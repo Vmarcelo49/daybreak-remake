@@ -334,6 +334,7 @@ this document can be re-derived with the tools already here:
 | dump one `.cnv` atlas to an image | extract the entry, then `python3 remake/tools/asset-tools/cnv_convert.py <file.cnv> <out.png>` (32bpp; keep RGBA) |
 | sub-rect / alpha bounding boxes / connected components | any image tool; the sprite table in §3 already gives the rects, so this is only needed to check a claim |
 | measure the print | `remake/docs/reference/battle-hud.webp`, converted to PNG; remember the (-2,+6) print-vs-frame offset from the top of this document |
+| print-parity capture vs `battle-hud.webp` (pinned spawn, `ROADMAP-PENDING.md` A2) | `remake/foundation/build/linux/foundation_demo --headless --out=/tmp/bh_p0.ppm --stage=<data>/stage01 --character=<data>/rena --enemy=<data>/mion --match --camera=arena --spawn=-463,200,-2200 --spawn2=-1363,200,-2200 --frames=150 --size=800x600`, then `python3 remake/foundation/tests/hud_bands.py /tmp/bh_p0.ppm --bands scene-floor` (expect 0.2772). Pinned: P1 `points[0]`, P2 `points[1]`; converged eye `(-174,411,-2200)`. `--frames` ≥121 is load-bearing (match eye converges 10%/call from the origin); the `camera arena at ...` log line is the static remake-preset seed, not the rendered match camera (`gameplay::ArenaCamera`, original preset); capturing fixes `--dt` at 1/60, so the run is deterministic |
 | string and address lookups in the exe | `research/tools/` and the PE section map in `research/binary_data/metadata.txt` (VA ↔ file offset) |
 
 ## 8. Appendix — per-player HUD sprite slots (`FUN_00642a00`, 0x00642a00)
