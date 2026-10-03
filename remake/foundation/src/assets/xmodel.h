@@ -238,6 +238,12 @@ public:
 
     bool setAnimation(int animIndex, bool loop = true);     // convenience: track 0 only
 
+    // FUN_00421100: the original binds a move's phase[0] to BOTH tracks
+    // (FUN_00421410(0, idx) and FUN_00421410(1, idx), weight 1.0 each). The
+    // composite is a no-op until FUN_0041f580 cross-fades track 1 to a later
+    // phase; this is the starting state every move begins in.
+    bool setAnimationBothTracks(int animIndex, bool loop = true);
+
     void   advanceTime(float dt);                           // seconds, already scaled
     double time() const;                                    // longest active track time
 
@@ -1912,6 +1918,23 @@ bool Controller::setAnimation(int animIndex, bool loop) {
     tracks_[0].enable = true;
     tracks_[0].weight = 1.f;
     tracks_[0].loop = loop;
+    return true;
+}
+
+bool Controller::setAnimationBothTracks(int animIndex, bool loop) {
+    if (!model_ || animIndex < 0 || (size_t)animIndex >= model_->anims.size()) return false;
+    for (int i = 0; i < kMaxTracks; ++i) {
+        tracks_[i].enable = false;
+        tracks_[i].weight = 0.f;
+        tracks_[i].time = 0.0;
+    }
+    for (int t = 0; t < 2; ++t) {
+        tracks_[t] = Track{};
+        tracks_[t].anim = animIndex;
+        tracks_[t].enable = true;
+        tracks_[t].weight = 1.f;
+        tracks_[t].loop = loop;
+    }
     return true;
 }
 

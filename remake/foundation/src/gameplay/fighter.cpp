@@ -395,9 +395,14 @@ void Fighter::try_switch_animation() {
     // The original's selection: state → move id → the move's first phase → set
     // index (see the table above state_to_anim_set in fighter.h). The index is
     // the D3DX set index, which is this model's `anims` index.
+    //
+    // FUN_00421100 binds phase[0] to BOTH tracks (track 0 and 1, weight 1.0
+    // each); FUN_0041f580 then cross-fades track 1 to later phases. The
+    // composite is a no-op at bind time (same set, same weight) but is the
+    // starting state every move begins in.
     const int want = state_to_anim_set(m_state);
     if (want >= 0 && static_cast<std::size_t>(want) < m_model->anims.size()) {
-        m_anim->setAnimation(want);
+        m_anim->setAnimationBothTracks(want);
         m_animSetIdx = want;
         m_animFallback = false;
         return;
@@ -407,7 +412,7 @@ void Fighter::try_switch_animation() {
     // Jump, TagOut — see the table's "not settled" list) and models with fewer
     // sets than the index play set 0, the bind-anchored default, and report it
     // through anim_fallback() instead of silently looking like a mapped state.
-    m_anim->setAnimation(0);
+    m_anim->setAnimationBothTracks(0);
     m_animSetIdx = 0;
     m_animFallback = true;
 }
