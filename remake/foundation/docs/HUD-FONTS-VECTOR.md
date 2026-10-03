@@ -1,11 +1,22 @@
 # HUD fonts vector survey (Phase 5, multi-resolution groundwork)
 
-> Status: survey + first artifacts, uncommitted. No product code touched
-> (`src/`, `tests/` unchanged); everything here is docs plus a generator
-> script. Binding constraints from `remake/docs/decisions.md` D1–D6 were
-> checked: no `.X` handling involved (D3), no comment-policy surface (D5 —
-> no `remake/` code), no scope change (D6). Game art is read from the local
-> gitignored install and never committed.
+> Status: **WIP — survey done, glyphs need hand cleanup.** The traces are
+> clean outlines, not finished letterforms: any curve the smoothing
+> oversimplified, and any terminal/join that should be geometrically true
+> (flat cuts, exact straights), wants a pass in an SVG-capable image editor
+> (Inkscape or equivalent). Edit the per-glyph files in `hud-vectors/svg/`
+> directly, then add `data-hand-tuned="1"` to the root `<svg>` element —
+> `trace_hud.py` skips marked files on regen so hand work is never
+> overwritten (it says which files it skipped). Unmarked files remain
+> machine-generated from the atlas; re-running the script refreshes those
+> and their previews only.
+>
+> No product code touched (`src/`, `tests/` unchanged); everything here is
+> docs plus a generator script. Binding constraints from
+> `remake/docs/decisions.md` D1–D6 were checked: no `.X` handling involved
+> (D3), no comment-policy surface (D5 — no `remake/` code), no scope change
+> (D6). Game art is read from the local gitignored install and never
+> committed.
 
 ## 0. Method
 

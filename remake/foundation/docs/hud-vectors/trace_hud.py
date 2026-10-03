@@ -29,6 +29,10 @@ rsvg-convert (both are stock distro packages).
 Usage:
     python3 trace_hud.py            # writes svg/ and previews/ beside itself
     DAYBREAK_DATA=/path/to/data python3 trace_hud.py
+
+    Hand cleanup (WIP state): edit svg/<stem>.svg in an SVG-capable image
+    editor, add data-hand-tuned="1" to the root <svg> element, re-run this
+    script — the marked file is kept (previews still refresh from it).
 """
 
 import os
@@ -236,6 +240,17 @@ def main():
                 p = alt if os.path.exists(alt) else p
             cache[sheet] = decode_cnv(p)
         cell = cache[sheet].crop(box)
+        # Hand-tuned glyphs (WIP state — see HUD-FONTS-VECTOR.md): an
+        # `data-hand-tuned` mark on the root <svg> keeps the regen from
+        # overwriting image-editor work. Previews still refresh from the
+        # marked file so the compare plates track the hand art.
+        marked = os.path.join(SVG_DIR, stem + ".svg")
+        if os.path.exists(marked):
+            with open(marked) as f:
+                if "data-hand-tuned" in f.read():
+                    print("kept   %-22s (hand-tuned, not retraced)" % stem)
+                    preview(marked, stem, cell.size[0], cell.size[1])
+                    continue
         svg = trace_cell(stem, cell, fill, thresh, mode=mode,
                          native=cell.size)
         preview(svg, stem, cell.size[0], cell.size[1])
