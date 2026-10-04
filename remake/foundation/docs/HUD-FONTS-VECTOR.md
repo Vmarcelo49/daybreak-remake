@@ -1,15 +1,15 @@
 # HUD fonts vector survey (Phase 5, multi-resolution groundwork)
 
-> Status: **WIP — survey done, glyphs need hand cleanup.** The traces are
-> clean outlines, not finished letterforms: any curve the smoothing
-> oversimplified, and any terminal/join that should be geometrically true
-> (flat cuts, exact straights), wants a pass in an SVG-capable image editor
-> (Inkscape or equivalent). Edit the per-glyph files in `hud-vectors/svg/`
-> directly, then add `data-hand-tuned="1"` to the root `<svg>` element —
-> `trace_hud.py` skips marked files on regen so hand work is never
-> overwritten (it says which files it skipped). Unmarked files remain
-> machine-generated from the atlas; re-running the script refreshes those
-> and their previews only.
+> Status: **WIP — adopted delivery, not hand-finished.** Whole-sheet vectors
+> (`hud-vectors/sheets/`) are a second agent's delivery, kept verbatim with
+> its pipeline and compare plates; the previous per-glyph set was removed on
+> adoption (git history keeps it). No hand pass has happened yet: any curve
+> the tracing oversimplified, and any terminal/join that should be
+> geometrically true, still wants an SVG-capable image editor. WARNING:
+> `pipeline/build_all.py` regenerates the sheets from scratch, so hand edits
+> inside `sheets/*.svg` are overwritten on rebuild — there is no hand-tuned
+> guard in that pipeline yet. Until one lands, hand work lives outside the
+> regen path: edit a copy, or finish a sheet and do not rebuild it.
 >
 > No product code touched (`src/`, `tests/` unchanged); everything here is
 > docs plus a generator script. Binding constraints from
@@ -95,57 +95,64 @@ per ROADMAP-PENDING.md D1).
 | Netplay `number.cnv` | `data/network/number.cnv` 256x256: white digits + `接続中` + `接続に失敗` + red IP-entry dashes/frame | small white caps | `#FFFFFF`, red `#FF0000` dashes | same Noto CJK treatment; digits join the P00 digit program |
 | GDI provenance | `FUN_0065d870` CreateFontA FW_BOLD SHIFTJIS, face `ＭＳ ゴシック` (CJK-TEXT.md §1) | — | — | Noto Sans CJK JP is the standard OFL substitute for MS Gothic; Liberation Sans Bold Italic substitutes the Latin side |
 
-## 2. What was created (`docs/hud-vectors/`)
+## 2. Vector source art (`docs/hud-vectors/`)
 
-`trace_hud.py` (stdlib + PIL + `potrace` + `rsvg-convert`; game data read
-only via `$DAYBREAK_DATA`, defaulting to the repo-relative gitignored
-install — nothing game-owned is written into the repo):
+> Status: **WIP — adopted delivery, not hand-finished.** The whole-sheet
+> vectors below are a second agent's delivery (`vendor/hud_vetorizado_v2.zip`,
+> kept verbatim as reference, sha256 `e45a01b5…3102`), adopted because they
+> beat the previous per-glyph traces on every axis that matters here:
+> true straight edges at high magnification, fitted multi-stop gradients
+> (balloons, MAX/sting chrome), glow bars, and full kana menu rows the old
+> set had punted to TTF. The previous per-glyph set (`svg/`, `previews/`,
+> `trace_hud.py`) was removed on adoption; git history keeps it.
+>
+> **Hand-edit warning:** `pipeline/build_all.py` regenerates the sheets from
+> scratch, so hand edits inside `sheets/*.svg` are overwritten on rebuild —
+> there is no hand-tuned guard in that pipeline yet (one is wanted: skip
+> sheets carrying a marker, same convention as before). Until it lands, hand
+> work lives outside the regen path: edit a copy, or finish a sheet and do
+> not rebuild it.
 
-* Decodes the 32bpp uncompressed CNV sheets itself (same header the
-  asset-tools document) and cuts the exact `hud_atlas.h` cells.
-* `flat` mode: per-cell ink weight (luminance, or one channel for red ink
-  whose luminance would not survive binarization — always × alpha) and cell
-  alpha, each bicubic-upscaled 8x, blurred proportionally
-  (`BLUR_NATIVE` 0.8 original px), cut at 0.5, potrace-traced
-  (`--turdsize 4 --alphamax 1 --opttolerance 1.0`) into TWO layers:
-  silhouette (alpha) below in the outline color, ink fill above. Flat art
-  uses a black silhouette + ink fill (the sprite-outline convention);
-  `edge` mode (P03 badge cells only) keeps the single outline plate. SVG
-  keeps potrace's own coordinate space (viewBox scales losslessly).
-* `edge` mode (P03 badge cells only): traces the FIND_EDGES response, so
-  the yellow-badge/orange-rim/white-dash plate becomes one outline plate
-  instead of one merged blob.
-* Renders every glyph at native cell size (`*-1x.png`) and 4x (`*-4x.png`)
-  with rsvg-convert — the resolution-independence proof — plus
-  `COMPARE-*.png` plates (original strip over the 4x vector render).
+Layout:
 
-Output: **67 SVGs** (all four P00 digit rows incl. `% / + - .`, LIMIT, MAX,
-MAIN/CHARGE/HP/STAMINA/OYASHIRO words, 6 command cells, OVER KILL!!/DOWN!/PAUSE)
-+ 134 size previews + 12 compare plates (~1.4 MB total, all regenerable
-with `python3 trace_hud.py`). Review order: `COMPARE-white-row.png`,
-`COMPARE-green-row.png`, `COMPARE-word-limit.png`, `COMPARE-cmd-0.png`.
+* `sheets/p00.svg p01/p02/p03/p06/p09/system.svg` — the seven HUD sheets as
+  whole-sheet vectors in native 512 atlas coordinates (directly cuttable by
+  the `hud_atlas.h` boxes when the SDF bake needs glyphs). Compare plates
+  in `comparacoes/cmp_*.png` are original-vs-vector at 2x (original left,
+  vector right); p00 measures ~4.8/255 mean-abs — AA/threshold, not
+  structure.
+* `pipeline/` — the generator: per-sheet recipes (`stage_p00.py`
+  `stage_p01.py` `stage_p03.py` `stage_p09.py`, `stage1.py`), shared helpers
+  (`polish.py`: potrace tracing, fitted multi-stop `linearGradient`s with
+  RMS error, glow bars, vtracer multicolor; `balloon.py`: radial-gradient
+  balloons with least-squares-fitted blobs), `cmp.py` (plate builder +
+  diff metric), `build_all.py` (runs everything), `vectorize_sprites.py`
+  (two-layer sprite tracer), `LEIAME.txt` (upstream notes, PT-BR).
+  Needs: the 7 sheet PNGs as `hud/*.png` inputs (decode the
+  `data/object/*.cnv` with the game's own decoder — e.g. the PNG set
+  previously shipped alongside), plus `potracer vtracer resvg-py
+  opencv-python-headless numpy scipy pillow`. Regen here was NOT
+  re-executed (resvg-py absent); the committed sheets/plates are the
+  delivered artifacts, verified by direct render + diff, not rebuilt.
+* `vendor/hud_vetorizado_v2.zip` — the delivery exactly as received.
+* `comparacoes/` — the delivered original-vs-vector plates (kept as the
+  review record; re-runnable via `pipeline/cmp.py` once inputs exist).
 
-Fidelity notes (honest): the first pass fossilized the NEAREST-upscale
-staircase into the outlines (visible jaggies at big sizes, no true
-straight); a smoothing pass fixed the worst of it, but its single-layer
-output stayed lumpy on diagonals. The current two-layer pipeline
-(`vectorize_sprites.py` logic: bicubic 8x, proportional blur, silhouette +
-fill) renders clean straights and flat-cut terminals at 16x — verify on
-the `COMPARE-*-row.png` plates, which are rebuilt by every regen.
-Gradient fills (MAX, stings) are
-silhouettes + recorded stops, not multi-stop vectors yet. The P03 plates
-are outlines awaiting a two-ink split. Badge edge-plates shifted more (~14 px each —
-edge-mode input, still complete outlines).
+Fidelity notes (honest): digits render clean straights and flat-cut
+terminals at 16x — verify on any `cmp_*.png` digit row. Gradients are
+fitted multi-stop approximations with recorded RMS (see `fit_gradient`),
+not sampled LUTs; glow/rim treatments are parametric re-builds. Kana menu
+rows are traced letterforms, same WIP status as everything else.
 
 ## 3. Recommendation: SDF-atlas first, TTF chain already covers the rest
 
 | Option | Plug-in seam | Verdict |
 |---|---|---|
-| **(a) SDF-atlas pipeline** (bake `svg/` to signed-distance cells at build, sample in the HUD shader) | `HudAtlas::upload` gains the SDF sheet; `number()`/`glyph()` keep their signatures — same cells, same `hudDigitRun` layout the `hud_sprite_table` test pins; only the texture bytes and the sampler change. `ready()` fallback (text HUD) is untouched | **Recommended for the digit rows + LIMIT/MAX/words.** Exact letterforms (traced, not approximated), one pipeline for all scales, tiny seam, and the SDF smoothstep absorbs the 1px threshold rims. Next: a `bake_sdf.py` (svg → distance field via the same rsvg renders) + one `pushSdfSprite` path in `ui/sprite.h` + a shader branch |
+| **(a) SDF-atlas pipeline** (bake whole-sheet vectors to signed-distance cells at build, sample in the HUD shader) | `HudAtlas::upload` gains the SDF sheet; `number()`/`glyph()` keep their signatures — same `hud_atlas.h` boxes (cut glyphs out of `sheets/` the same way), same `hudDigitRun` layout the `hud_sprite_table` test pins; only the texture bytes and the sampler change. `ready()` fallback (text HUD) is untouched | **Recommended for the digit rows + LIMIT/MAX/words.** Exact letterforms (traced, not approximated), one pipeline for all scales, tiny seam, and the SDF smoothstep absorbs the 1px threshold rims. Next: a `bake_sdf.py` (sheet SVG → distance field via rsvg renders) + one `pushSdfSprite` path in `ui/sprite.h` + a shader branch |
 | **(b) stb_truetype-loaded TTFs** (Nunito Black Italic / M PLUS Rounded 1c Bold fetched like Noto into `third_party/fonts/`) | `TextLayer::loadFontChain` — zero new code, CJK-TEXT.md option B already decided and landed | **Recommended for everything unbounded**: chat names, result/report text, stings-if-ever-dynamic. Rejected for the fixed HUD lettering: Nunito is close but visibly not the game's cut (width, terminals), and the chrome/gradient/rim treatments would still need custom layering per element |
 | **(c) hand/SVG paths as runtime textures** (rasterize per size) | `HudAtlas::draw/cell` with a second sheet set | Rejected as the steady state: per-size raster Uploads + no SDF smoothing = the blur problem returns at every new resolution. The SVGs stay as the *source* plates (checked in, reviewable), not the runtime |
 
-Concrete next steps, in order: (1) `bake_sdf.py` + SDF sampler behind the existing `ready()` fallback (no parity risk — fallback stays until the SDF render matches); (2) two-ink split for MAX/stings (outline plate + gradient fill, stops recorded in §1b/§1d); (3) fetch Nunito Black Italic + M PLUS Rounded 1c Bold into `third_party/fonts/` for label-prototype work only; (4) leave the P03 badge and name grid as atlas art (E6 widget renders cells, TTF renders names).
+Concrete next steps, in order: (1) `bake_sdf.py` + SDF sampler behind the existing `ready()` fallback (no parity risk — fallback stays until the SDF render matches); (2) hand-tune pass in an SVG editor over `sheets/` (see WIP status in §2); (3) fetch Nunito Black Italic + M PLUS Rounded 1c Bold into `third_party/fonts/` for label-prototype work only; (4) leave the P03 badge and name grid as atlas art (E6 widget renders cells, TTF renders names).
 
 ## 4. Open questions (no Wine/GPU needed for any of this)
 

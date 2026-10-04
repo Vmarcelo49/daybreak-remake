@@ -1,0 +1,7 @@
+pip install potracer vtracer resvg-py opencv-python-headless numpy scipy pillow
+Coloque os PNGs originais em ./hud/ (p00.png, P01.png, p02.png, p03.png, p06.png, p09.png, system.png) e rode:
+    python build_all.py
+Os SVGs saem em ./all/*_new.svg. cmp.py compara SVG x PNG original.
+polish.py   = helpers (traçado potrace, ajuste de linearGradient, barra com glow, vtracer)
+balloon.py  = balões (degradê radial + blobs ajustados por minimos quadrados)
+stage_*.py  = receita de cada sheet (parametros de glow/halo calibrados contra os pixels)
