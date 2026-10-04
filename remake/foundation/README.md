@@ -321,8 +321,11 @@ process-local.
 Story video decoding remains an explicit stub. Live-pad and browser-gesture
 verification remain open. The four-fighter battle path builds and passes the
 Linux test suite, but an asset-backed four-fighter run remains unverified. Its
-VS/result presentation and extra HUD bars remain two-fighter layouts. Renderer
-options (the first three options rows are
+VS/result presentation and extra HUD bars remain two-fighter layouts. An
+opt-in 3v3/4v4 mode would be a new remake feature (six/eight fighters total);
+its implementation handoff is in
+[`docs/ROADMAP-PENDING.md`](docs/ROADMAP-PENDING.md#future-remake-only-experiment-3v3-and-4v4).
+Renderer options (the first three options rows are
 marked unavailable), original earned titles and full result-quote selection are
 still pending. Battle fidelity includes unresolved animation/VFX details; LAN
 netplay awaits its own implementation. The Linux CTest suite has 24 tests,

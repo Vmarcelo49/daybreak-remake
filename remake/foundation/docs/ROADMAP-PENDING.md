@@ -48,6 +48,68 @@ selected panel's corresponding env slot. Standalone parity captures retain
 their existing 0/1 spawn recipe. COM battle input is a
 deterministic port sparring policy, not recovered original AI.
 
+### Future remake-only experiment: 3v3 and 4v4
+
+This is a new feature for the remake; the original game does not have 3v3 or
+4v4. Keep it opt-in and describe it as an experiment, not as recovered game
+behavior. The current match path holds at most four fighters total: two teams
+with one or two members each, selected from panels 0/1 (blue) and 2/3 (red).
+That is not a 4v4 implementation. A 3v3 match needs six fighters total and a
+4v4 match needs eight.
+
+When asked to implement either mode, use this sequence:
+
+1. **Define the roster contract first.** Add an explicit experimental team-size
+   choice and a stable roster entry per fighter containing at least team side,
+   character/weapon choices, and human-controller-or-COM assignment. Keep
+   `fighterIndex`, menu panel, and controller index separate; they stop being
+   interchangeable once each team has more than two members. Represent the
+   chosen side on every fighter and require exactly three or four entries per
+   side before launching. Preserve the existing two- and four-total-fighter
+   flows when the experiment is not selected.
+2. **Raise the simulation capacity as one change.** Introduce a named maximum
+   of eight and use it consistently in `MatchConfig`, `MatchFrame`, `Match`,
+   `MatchEconomy`, launch data, and the host's rig, bot-input, and camera-target
+   storage. Remove the current four-fighter clamp in `loadScene` and audit each
+   loop, fixed array, and result/HUD index in `src/main.cpp`; do not merely set
+   `fighterCount` to six or eight. Keep team economy at two sides, but track
+   each fighter's KO/respawn clock separately and award balloon progress to
+   that fighter's side exactly once per KO. Continue excluding allies from
+   melee targets and projectiles, and retarget living opponents after KOs with
+   a deterministic roster-order tie break.
+3. **Give extra fighters safe, repeatable spawns.** The original environment
+   spawn data is for its four-fighter limit. Use existing team positions as
+   anchors and assign additional members deterministic formation offsets that
+   respect stage bounds and avoid overlap. Reuse the same member-specific
+   spawn/facing data after respawn. Never read a fifth or later environment
+   point unless a new format has actually been established.
+4. **Extend the front end and presentation for a roster, not two portraits.**
+   `FrontendState::slots`, `resultStats`, `kFrontendBattleSlots`,
+   `FrontendLaunch`, and the selection/VS/result screens currently assume at
+   most four panels and two primary participants. Add a team-roster selection
+   flow (for example, scrollable member rows) with per-member character,
+   weapon, hypermode, and controller/COM choices. Load every selected model
+   and weapon. Show team balloon state plus a readable alive/KO summary; choose
+   a camera framing policy that can keep group fights visible. Results should
+   retain per-member combat stats while naming the winning team. If quotes or
+   portraits still use a captain, label that as an experiment instead of
+   implying original multi-member result fidelity.
+5. **Prove both sizes independently.** Add host coverage for exact 3v3/4v4
+   rosters, side assignment, launch rejection for incomplete teams, target and
+   friendly-fire rules, simultaneous deaths, per-member respawns, and team
+   round-over. Check boundaries for 2, 4, 6, and 8 fighters so existing modes
+   and unused slots do not regress. Then run asset-backed 6- and 8-fighter
+   matches on representative stages; verify model/weapon attachments, spawn
+   spacing, camera/HUD readability, results, and frame time. Keep these tests
+   separate from original-binary parity expectations.
+
+Primary extension points are `src/gameplay/match.h`, `match.cpp`,
+`match_economy.h`, `match_economy.cpp`, `projectile.h`, and `projectile.cpp`,
+the UI state and selection/VS/result files under `src/ui/`, and the
+roster-loading, input, camera, HUD, and results paths in `src/main.cpp`. These
+are remake product changes; do not edit generated `research/recomp/` or present
+the new rules as reverse-engineered facts.
+
 Recovered details: the roster anchors/order/costume limits are the tables
 at `0x6b71d0/0x6b7210/0x6b7250/0x6b7290`; the stage constructor's count
 makes the school stage three-way and other stages two-way. Result report
