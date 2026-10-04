@@ -24,7 +24,7 @@ std::string respawnLogLine(int side) {
 
 void MatchEconomy::reset() {
     m_balloon[0] = m_balloon[1] = 0.0f;  // scenes.cpp:562
-    m_koAt[0] = m_koAt[1] = -1.0;        // scenes.cpp:563
+    for (double& koAt : m_koAt) koAt = -1.0; // scenes.cpp:563; port extension tracks each panel
     m_elapsed = 0.0;                     // scenes.cpp:592
     m_stingUntil = -1.0;                 // scenes.cpp:593
     m_roundOver = false;
@@ -76,6 +76,46 @@ MatchStepResult MatchEconomy::update(const bool alive[kSideCount]) {
             r.respawned[i] = true;
             m_koAt[i] = -1.0;
             log(respawnLogLine(i));
+        }
+    }
+    return r;
+}
+
+MatchStepResult MatchEconomy::update(const bool alive[kMatchFighterCount],
+                                     const int side[kMatchFighterCount]) {
+    MatchStepResult r;
+    if (m_roundOver) {
+        r.roundOver = true;
+        r.roundOverSide = m_roundOverSide;
+        return r;
+    }
+    if (m_timeLimit > 0 && m_elapsed >= m_timeLimit) {
+        m_roundOver = r.roundOver = true;
+        m_roundOverSide = r.roundOverSide = m_balloon[0] == m_balloon[1] ? -1 :
+            (m_balloon[0] > m_balloon[1] ? 0 : 1);
+        return r;
+    }
+    for (int i = 0; i < kMatchFighterCount; ++i) {
+        if (side[i] < 0 || side[i] >= kSideCount) continue;
+        const int team = side[i];
+        if (!alive[i] && m_koAt[i] < 0.0) {
+            m_koAt[i] = m_elapsed;
+            m_balloon[team] += m_koIncrement[team];
+            log(koLogLine(team, m_balloon[team], m_limit));
+            if (balloonBursts(m_balloon[team], m_limit)) {
+                log(burstLogLine(team));
+                m_roundOver = true;
+                m_roundOverSide = team;
+                r.roundOver = true;
+                r.roundOverSide = team;
+                return r;
+            }
+            m_stingUntil = m_elapsed + kKoStingSec;
+        }
+        if (!alive[i] && m_koAt[i] >= 0.0 && m_elapsed - m_koAt[i] >= kRespawnSec) {
+            r.respawned[i] = true;
+            m_koAt[i] = -1.0;
+            log(respawnLogLine(team));
         }
     }
     return r;

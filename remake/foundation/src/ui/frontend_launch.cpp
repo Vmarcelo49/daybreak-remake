@@ -31,9 +31,7 @@ bool choice(const FrontendSlot& slot,std::string& character,std::string& weapon,
 }
 const char* frontendCharacterDirectory(int index) { return index >= 0 && index < 16 ? dirs[index] : nullptr; }
 bool frontendLaunch(const FrontendState& state,FrontendLaunch& out,std::string& error,uint32_t seed) {
-    for(int i : {1,3}) if(state.slots[i].ready && state.slots[i].controller<4) {
-        error="front end: four-player battles are not implemented; use the two upper panels"; return false;
-    }
+    out = {};
     seed ^= 0x9e3779b9u;
     seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5;
     const auto& randomStage = assets::kStages[seed % (sizeof(assets::kStages)/sizeof(assets::kStages[0]))];
@@ -42,7 +40,32 @@ bool frontendLaunch(const FrontendState& state,FrontendLaunch& out,std::string& 
         error="front end: invalid stage variation"; return false;
     }
     char path[32]; std::snprintf(path,sizeof(path),"data/stage%02d",stage); out.stage=path;
-    return choice(state.slots[0],out.character,out.weapon,out.weaponId,error) &&
-           choice(state.slots[2],out.enemy,out.enemyWeapon,out.enemyWeaponId,error);
+    for (int panel = 0; panel < 4; ++panel) {
+        const bool required = panel == 0 || panel == 2;
+        const FrontendSlot& selected = state.slots[panel];
+        if (!required && selected.character < 0) continue;
+        FrontendLaunch::Fighter& fighter = out.fighters[out.fighterCount];
+        fighter.panel = panel;
+        if (!choice(selected, fighter.character, fighter.weapon, fighter.weaponId, error)) return false;
+        ++out.fighterCount;
+    }
+    if (out.fighterCount < 2) {
+        error = "front end: both teams need at least one selected fighter";
+        return false;
+    }
+    // Keep the legacy VS/result fields mapped to the primary blue and red panels.
+    for (int i = 0; i < out.fighterCount; ++i) {
+        const auto& fighter = out.fighters[i];
+        if (fighter.panel == 0) {
+            out.character = fighter.character;
+            out.weapon = fighter.weapon;
+            out.weaponId = fighter.weaponId;
+        } else if (fighter.panel == 2) {
+            out.enemy = fighter.character;
+            out.enemyWeapon = fighter.weapon;
+            out.enemyWeaponId = fighter.weaponId;
+        }
+    }
+    return true;
 }
 }

@@ -192,13 +192,15 @@ public:
 
     // Advance shots (fighter hits → take_damage + spark; tama-channel wall
     // hits → spark; expiry → silent free) and age sparks. fighters[0..n-1]
-    // are all potential victims except `owner`. `tamaModel`/`tamaIndex` are the
-    // loaded collision_tama.x and its traversal order (physics/raycast.h), or
-    // null when the stage ships none (then shots fly until expiry — open-field
+    // are potential victims except `owner`; when `fighterSides` is supplied,
+    // teammates are excluded too. `tamaModel`/`tamaIndex` are the loaded
+    // collision_tama.x and its traversal order (physics/raycast.h), or null
+    // when the stage ships none (then shots fly until expiry — open-field
     // fallback).
     void update(double dt, Fighter* fighters, int fighterCount,
                 const xm::Model* tamaModel,
-                const game::physics::ModelIndex* tamaIndex);
+                const game::physics::ModelIndex* tamaIndex,
+                const int* fighterSides = nullptr);
 
     // DX9 render() split: the foundation renderer walks the live entries of
     // these two fixed arrays (index order, no sorting) and draws each as the

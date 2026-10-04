@@ -19,7 +19,7 @@
 ## Implementation update — 2026-10-04
 
 The front end now runs title → team/character/weapon/hypermode/controller
-selection → stage settings → VS → countdown → a two-fighter match →
+selection → stage settings → VS → countdown → two- or four-fighter matches →
 victory/quote/report → selection. The earlier evidence and sketches below
 remain the historical handoff; these status notes supersede their claims
 that these screens or their audio do not exist.
@@ -27,11 +27,11 @@ that these screens or their audio do not exist.
 | Item | Current status | Remaining work |
 |---|---|---|
 | D2 | Complete: both arcs and the 15-tick lock-switch pulse | None for the recovered ring transform |
-| D3 | Countdown and winning-team sting implemented | Extra fighter bars require a 3–4 fighter match; original countdown trigger/timing remains unverified |
-| E1 | Selection, real atlases, roster tables, costumes, weapons, controller slots, seeded COM choices and entry voices implemented | Battle accepts only slots 0/2; four-fighter launch and exact original navigation parity remain open |
+| D3 | Countdown and winning-team sting implemented; four-fighter simulation builds and passes host tests | Extra fighter bars; original countdown trigger/timing and asset-backed four-fighter run remain unverified |
+| E1 | Selection, real atlases, roster tables, costumes, weapons, controller slots, seeded COM choices and entry voices implemented; selected panels load into the four-fighter match path | Four-fighter HUD/VS/result presentation and exact original navigation parity remain open; asset-backed launch remains unverified |
 | E2 | Stage/variation and all five battle settings implemented and connected | Original balloon-capacity and timed-round winner rules need recovery; current normalized capacity and timed comparison are port rules |
 | E3 | Volumes, fullscreen, native resolution selection and keyboard/gamepad rebinding implemented | Three renderer controls are unavailable; settings are process-local |
-| E4 | 109-update VS transition implemented for the two active fighters | Four-fighter presentation; confirm-to-skip is a port extension |
+| E4 | 109-update VS transition implemented | Four-fighter VS presentation; confirm-to-skip is a port extension |
 | E5 | Sting, quote, voice, actual participant stats and draw handling implemented | Original earned titles and outcome-specific quote selection; missing single quotes use that character's self-pair script |
 | E6 | Reusable two-page atlas keyboard implemented and tested | Netplay host remains outside D6 scope |
 | F1 | Four menu SEs, entry/result voices and menu BGM connected | Hardware audio listening remains separate from dummy-device verification |
@@ -42,9 +42,10 @@ that these screens or their audio do not exist.
 Implementation lives in `src/ui/screen_select.*`, `screen_stage_select.*`,
 `screen_options.*`, `screen_vs.*`, `screen_result.*`, `soft_keyboard.*`,
 `frontend_launch.*` and `frontend_settings.*`; the host in `src/main.cpp`
-loads the selected assets and applies `MatchConfig`. The two active upper
-panels use original env slots 0 (blue) and 2 (red); standalone parity captures
-retain their existing 0/1 spawn recipe. COM battle input is a
+loads the selected assets and applies `MatchConfig`. A 1v1 match uses upper
+panels and env slots 0 (blue) and 2 (red); a multi-fighter match uses each
+selected panel's corresponding env slot. Standalone parity captures retain
+their existing 0/1 spawn recipe. COM battle input is a
 deterministic port sparring policy, not recovered original AI.
 
 Recovered details: the roster anchors/order/costume limits are the tables
@@ -549,7 +550,7 @@ already landed on the screen stack (`src/ui/screen_title.*`, commit
 `c67ead3`), so new screens follow that pattern: device-free update returning
 the next screen id, a factory for construction, tests against fakes.
 
-### E1. Select page 0 — IMPLEMENTED (four-fighter launch remains open)
+### E1. Select page 0 — IMPLEMENTED (four-fighter presentation remains open)
 
 * **What.** One state machine for team → character → weapon → hypermode →
   PLAYER/COM → ready, covering **six of the 23 prints** (team-select,

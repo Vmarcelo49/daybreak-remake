@@ -12,6 +12,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -75,6 +76,9 @@ struct Options {
     bool        inputTest = false; // run the input backend self-check and exit
     std::string enemyWeapon;
     std::string enemy;           // versus P2, same spec syntax as --character
+    std::array<std::string, 4> battleCharacters{};
+    std::array<std::string, 4> battleWeapons{};
+    int battleFighterCount = 0;
     bool        versus = false;  // scripted two-fighter vignette (capture-oriented)
     bool        match = false;   // playable match: the ported simulation, not a script
     std::string script;          // P1 input script (device override, DX9 format)
@@ -348,6 +352,22 @@ xm::Scene loadScene(const Options& o, std::string& error, size_t* enemyBegin = n
         // night, which is how every early comparison ended up measured on the wrong
         // variant (remake/docs/ASSET-CATALOG.md §1, docs/FULL-REPLACEMENT-PLAN.md §6a).
         std::printf("stage        : %s\n", assets::describeStage(o.stage).c_str());
+        if (o.match && o.battleFighterCount > 0) {
+            for (int i = 0; i < o.battleFighterCount && i < 4; ++i) {
+                const size_t rig = appendCharacter(scene, o.battleCharacters[i], sopt);
+                if (i == 1 && enemyBegin) *enemyBegin = rig;
+                if (o.battleWeapons[i].empty()) continue;
+                std::string weaponSpec;
+                int weaponSlot = 0;
+                splitSuffix(o.battleWeapons[i], weaponSpec, weaponSlot);
+                const size_t character = firstCharacter(scene, rig);
+                if (character >= scene.models.size()) throw std::runtime_error("battle fighter rig is missing");
+                xm::Scene weapon = xm::loadWeapon(weaponSpec, weaponSlot, &scene.models[character].model, sopt);
+                for (auto& model : weapon.models) scene.models.push_back(std::move(model));
+            }
+            scene.source = o.stage;
+            return scene;
+        }
         appendCharacter(scene, o.character, sopt);
         if (!o.weapon.empty()) {
             size_t p1 = firstCharacter(scene, 0);
@@ -514,7 +534,7 @@ struct App {
     uint64_t                     menuVoicePlays = 0;
     fnd::audio::DecodedOgg        menuBgm;
     fnd::audio::LoopPlayer        menuLoop;
-    fnd::input::PlayerState       botInput[2];
+    fnd::input::PlayerState       botInput[4];
 
     ui::HudComposer              hudComposer;
     bool                         uiReady = false;
@@ -535,14 +555,15 @@ struct App {
     int                          lockedFighter = 0;   // camera target; LockSwitch tap
                                                      // cycles (Guard+AttackB too, per DX9)
     gameplay::ArenaCamera        matchCamera;         // the ported reference camera
-    gameplay::CameraTarget       arenaTargets[2];     // refreshed from the live fighters
+    gameplay::CameraTarget       arenaTargets[4];     // refreshed from the live fighters
     fnd::input::Backend          matchInput;          // P1 device + script override
     bool                         matchInputReady = false;
     fnd::input::PlayerState      p2State;             // P2 script state (unused when dummy)
     std::vector<fnd::input::ScriptEvent> p2Script;
     size_t                       p2ScriptPos = 0;
     uint32_t                     p2Mask = 0;
-    size_t                       matchRig[2] = {0, 0};   // controller index per fighter
+    size_t                       matchRig[4] = {0, 0, 0, 0};   // controller index per fighter
+    ui::FrontendLaunch           battleLaunch;
     uint64_t                     matchShots = 0, matchSparks = 0, matchHits = 0;
     uint64_t                     matchRoundOverFrame = 0;
     game::EffectEventQueue       matchFx;
@@ -856,42 +877,69 @@ static bool initVersus(App& app) {
 // This is why the old DX9 trace A/B only matched with an explicit --spawn2: it was
 // matching the deleted DX9 build's hardcoded pair, not the original's env.dat pick.
 static bool initMatch(App& app) {
+    if (app.frontendMatch && !app.scene.env.present) {
+        app.error = "four-panel battles need all four env.dat spawn points";
+        return false;
+    }
     if (!app.scene.env.present && (!app.opts.hasSpawn[0] || !app.opts.hasSpawn[1])) {
         app.error = "--match needs a stage with env.dat spawns, or --spawn/--spawn2";
         return false;
     }
-    const size_t p1 = firstCharacter(app.scene, 0);
-    const size_t p2 = firstCharacter(app.scene, app.enemyBegin);
-    if (p1 >= app.scene.models.size() || p2 >= app.scene.models.size()) {
-        app.error = "--match found no P1/P2 character model";
+    std::array<size_t, 4> rigs{{app.scene.models.size(), app.scene.models.size(),
+                                app.scene.models.size(), app.scene.models.size()}};
+    int fighterCount = app.frontendMatch ? app.battleLaunch.fighterCount : 2;
+    if (app.frontendMatch) {
+        int found = 0;
+        for (size_t i = 0; i < app.scene.models.size() && found < fighterCount; ++i)
+            if (app.scene.models[i].role == "character") rigs[found++] = i;
+        if (found != fighterCount) {
+            app.error = "front end: loaded character rigs do not match the selected roster";
+            return false;
+        }
+    } else {
+        rigs[0] = firstCharacter(app.scene, 0);
+        rigs[1] = firstCharacter(app.scene, app.enemyBegin);
+    }
+    if (fighterCount < 2 || fighterCount > 4 || rigs[0] >= app.scene.models.size() ||
+        rigs[1] >= app.scene.models.size()) {
+        app.error = "--match found an invalid fighter roster";
         return false;
     }
 
     gameplay::MatchConfig config;
+    config.fighterCount = fighterCount;
     if (app.frontendMatch) {
         config.healthPercent = app.frontend.health;
         config.gaugePercent = app.frontend.gauge;
         config.timeLimit = app.frontend.timeLimit;
         config.balloonSize[0] = app.frontend.blueBalloon;
         config.balloonSize[1] = app.frontend.redBalloon;
-        for (int i = 0; i < 2; ++i) {
+        for (int i = 0; i < fighterCount; ++i) {
+            const int panel = app.battleLaunch.fighters[i].panel;
+            config.side[i] = panel < 2 ? 0 : 1;
+            config.spawn[i] = app.scene.env.points[panel];
+            config.facing[i] = config.side[i] == 0 ? 0.f : 3.14159f;
             config.startHP[i] = app.frontend.health;
-            config.hyper[i] = (gameplay::Hypermode)app.frontend.slots[ui::kFrontendBattleSlots[i]].hypermode;
+            config.hyper[i] = (gameplay::Hypermode)app.frontend.slots[panel].hypermode;
         }
     }
     const glm::vec3 envP1 = app.scene.env.points[0];
     // FUN_00423420 indexes spawns by the selected panel; parity captures retain slots 0/1.
     const glm::vec3 envP2 = app.scene.env.points[app.frontendMatch ? ui::kFrontendBattleSlots[1] : 1];
-    config.spawn[0] = app.opts.hasSpawn[0] ? app.opts.spawn[0] : envP1;
-    config.spawn[1] = app.opts.hasSpawn[1] ? app.opts.spawn[1] : envP2;
-    // Facing 0 and pi, as the reference spawns them (scenes.cpp:535).
-    config.facing[0] = 0.0f;
-    config.facing[1] = 3.14159f;
+    if (!app.frontendMatch) {
+        config.spawn[0] = app.opts.hasSpawn[0] ? app.opts.spawn[0] : envP1;
+        config.spawn[1] = app.opts.hasSpawn[1] ? app.opts.spawn[1] : envP2;
+        config.facing[0] = 0.0f;
+        config.facing[1] = 3.14159f;
+    }
 
-    const xm::Model* models[2] = {&app.scene.models[p1].model, &app.scene.models[p2].model};
-    xm::Controller*  anims[2] = {&app.controllers[p1], &app.controllers[p2]};
-    app.matchRig[0] = p1;
-    app.matchRig[1] = p2;
+    const xm::Model* models[4] = {};
+    xm::Controller* anims[4] = {};
+    for (int i = 0; i < fighterCount; ++i) {
+        models[i] = &app.scene.models[rigs[i]].model;
+        anims[i] = &app.controllers[rigs[i]];
+        app.matchRig[i] = rigs[i];
+    }
 
     // The projectile channel (fcn.004011f0's collision_tama.x): optional, and shots
     // fly to expiry when the stage ships none (the reference's open-field case).
@@ -908,13 +956,10 @@ static bool initMatch(App& app) {
     // Bind pose on request: the DX9 reference renders no animation (its d3dx9 under
     // Wine hands back no controller), so this is what makes a gate frame comparable.
     if (app.opts.noAnim) {
-        for (int i = 0; i < 2; ++i) app.match.fighter(i).set_animate(false);
+        for (int i = 0; i < fighterCount; ++i) app.match.fighter(i).set_animate(false);
         std::printf("match anim   : off (bind pose)\n");
     }
-    std::printf("match        : P1 %s at (%.0f,%.0f,%.0f), P2 %s at (%.0f,%.0f,%.0f), tama=%s\n",
-                app.scene.models[p1].source.c_str(), config.spawn[0].x, config.spawn[0].y,
-                config.spawn[0].z, app.scene.models[p2].source.c_str(), config.spawn[1].x,
-                config.spawn[1].y, config.spawn[1].z, tamaMesh ? "loaded" : "missing");
+    std::printf("match        : %d fighters, tama=%s\n", fighterCount, tamaMesh ? "loaded" : "missing");
 
     if (!app.matchInput.init()) {
         app.error = "--match needs the input backend";
@@ -965,7 +1010,9 @@ static bool initMatch(App& app) {
     // makes the first trace line comparable — the DX9's own frame-1 eye is one 10%
     // step from the origin, not the converged position.
     app.matchCamera = gameplay::ArenaCamera{};
-    app.matchCamera.set_target_pool({&app.arenaTargets[0], &app.arenaTargets[1]});
+    std::vector<gameplay::CameraTarget*> cameraPool;
+    for (int i = 0; i < app.match.config().fighterCount; ++i) cameraPool.push_back(&app.arenaTargets[i]);
+    app.matchCamera.set_target_pool(cameraPool);
     app.matchCamera.set_active_target(app.lockedFighter);
     return true;
 }
@@ -978,13 +1025,18 @@ static bool initMatch(App& app) {
 // been placed at the origin instead of in the fighter's hand).
 static void placeMatchFighters(App& app) {
     for (size_t i = 0; i < app.scene.models.size(); ++i) {
-        if (i == app.matchRig[0])      app.modelMatrices[i] = app.match.fighter(0).modelMatrix();
-        else if (i == app.matchRig[1]) app.modelMatrices[i] = app.match.fighter(1).modelMatrix();
+        for (int fighter = 0; fighter < app.match.config().fighterCount; ++fighter)
+            if (i == app.matchRig[fighter]) {
+                app.modelMatrices[i] = app.match.fighter(fighter).modelMatrix();
+                break;
+            }
     }
     for (size_t i = 0; i < app.scene.models.size(); ++i) {
         const xm::SceneModel& sm = app.scene.models[i];
         if (sm.attachFrame < 0) continue;
-        const size_t rig = (i >= app.enemyBegin) ? app.matchRig[1] : app.matchRig[0];
+        size_t rig = app.matchRig[0];
+        for (int fighter = 1; fighter < app.match.config().fighterCount; ++fighter)
+            if (app.matchRig[fighter] < i && app.matchRig[fighter] > rig) rig = app.matchRig[fighter];
         if (rig >= app.worlds.size() || (size_t)sm.attachFrame >= app.worlds[rig].size()) {
             std::fprintf(stderr, "[scene] %s: attachment frame %d unusable, drawing at the origin\n",
                          sm.source.c_str(), sm.attachFrame);
@@ -1118,26 +1170,38 @@ static void tickMatch(App& app, double dt) {
         p1 = &app.matchInput.player(0);
     }
 
+    const fnd::input::PlayerState* inputs[4] = {p1, p2, nullptr, nullptr};
     if (app.frontendMatch) {
         app.matchInput.tick_script(app.frames);
         app.matchInput.poll();
-        const fnd::input::PlayerState* chosen[2];
-        for (int i = 0; i < 2; ++i) {
-            const int controller = app.frontend.slots[ui::kFrontendBattleSlots[i]].controller;
-            if (controller >= 0 && controller < 4) chosen[i] = &app.matchInput.player(controller);
+        for (int i = 0; i < app.match.config().fighterCount; ++i) {
+            const int panel = app.battleLaunch.fighters[i].panel;
+            const int controller = app.frontend.slots[panel].controller;
+            if (controller >= 0 && controller < 4) inputs[i] = &app.matchInput.player(controller);
             else {
-                gameplay::updateBotInput(app.botInput[i],app.match.fighter(i),app.match.fighter(1-i),app.matchFrame);
-                chosen[i] = &app.botInput[i];
+                int target = -1;
+                float nearest = 1.0e30f;
+                for (int j = 0; j < app.match.config().fighterCount; ++j) {
+                    if (app.match.config().side[i] == app.match.config().side[j] ||
+                        !app.match.fighter(j).is_alive()) continue;
+                    const glm::vec3 d = app.match.fighter(j).position() - app.match.fighter(i).position();
+                    const float distance = d.x*d.x + d.z*d.z;
+                    if (distance < nearest) { nearest = distance; target = j; }
+                }
+                if (target >= 0)
+                    gameplay::updateBotInput(app.botInput[i], app.match.fighter(i),
+                                             app.match.fighter(target), app.matchFrame);
+                inputs[i] = &app.botInput[i];
             }
         }
-        p1 = chosen[0]; p2 = chosen[1];
+        p1 = inputs[0];
     }
-    const gameplay::MatchFrame f = app.match.step(p1, p2, dt);
+    const gameplay::MatchFrame f = app.match.step(inputs, dt);
     if (app.versusAudioOn)
         app.versusBgmPushed += app.versusLoop.push_next(app.versusAudio, 1024);
     app.matchShots += (uint64_t)f.shotsSpawned;
     app.matchSparks += (uint64_t)f.muzzleSparks;
-    for (int i = 0; i < 2; ++i)
+    for (int i = 0; i < app.match.config().fighterCount; ++i)
         if (f.meleeHit[i]) ++app.matchHits;
 
     // Combat effects: a card at the victim for each connected hit, retired by the
@@ -1145,9 +1209,9 @@ static void tickMatch(App& app, double dt) {
     // INFERRED lifetime (12 s): the original's per-effect factors are un-RE'd
     // (ROADMAP-PENDING.md B1 sketch b); full-bright, no fade. Kill-chaining
     // retires every card but the last on the next hit; the final one lingers.
-    if (f.meleeHit[0] || f.meleeHit[1]) {
-        const int victim = f.meleeHit[0] ? 1 : 0;
-        const glm::vec3 at = app.match.fighter(victim).position() + glm::vec3(0.f, 100.f, 0.f);
+    for (int i = 0; i < app.match.config().fighterCount; ++i) {
+        if (!f.meleeHit[i] || f.meleeVictim[i] < 0) continue;
+        const glm::vec3 at = app.match.fighter(f.meleeVictim[i]).position() + glm::vec3(0.f, 100.f, 0.f);
         app.matchFx.pushSpawn((uint32_t)app.matchHits, at, 0, 12.f);
         if (app.matchHits > 1) app.matchFx.pushKill((uint32_t)(app.matchHits - 1));
     }
@@ -1166,7 +1230,7 @@ static void tickMatch(App& app, double dt) {
     // switch mechanic in the original is the target cycle (FUN_00421e30). In
     // this 1v1 port that is camera-only (shots fly the facing, which tracks
     // the single enemy); hold-for-ally needs allies first.
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < app.match.config().fighterCount; ++i) {
         const gameplay::Fighter& f = app.match.fighter(i);
         app.arenaTargets[i].position = f.position();
         app.arenaTargets[i].facingYaw = f.facing_yaw();
@@ -1237,12 +1301,18 @@ static void tickMatch(App& app, double dt) {
     // Per-fighter appearance state; projection is resolved with the render viewport below.
     {
         for (int i = 0; i < 2; ++i) {
-            const gameplay::Fighter& f = app.match.fighter(i);
+            int fighterIndex = i;
+            if (app.frontendMatch) {
+                const int panel = ui::kFrontendBattleSlots[i];
+                for (int j = 0; j < app.battleLaunch.fighterCount; ++j)
+                    if (app.battleLaunch.fighters[j].panel == panel) fighterIndex = j;
+            }
+            const gameplay::Fighter& f = app.match.fighter(fighterIndex);
             // The ring and the com bar mark the fighter you are *not* following: the
             // original's own screen battle-hud.webp has the camera behind the player with
             // the red ring and the `com` tag on the opponent ahead of her. The camera's
             // locked target is the one being followed, so this is the inverse of it.
-            app.versusHud.fighters[i].target = (i != app.lockedFighter);
+            app.versusHud.fighters[i].target = (fighterIndex != app.lockedFighter);
             app.versusHud.fighters[i].ringPulse = app.ringPulse;
             // Slot 0 is 1P and slot 4 is com in the tag atlas (P01 (320,256,64,32) rows);
             // the red copies sit four rows down, which is the tagSheet index.
@@ -1703,7 +1773,11 @@ void advanceAnimation(App& app, double delta) {
     for (size_t i = 0; i < app.controllers.size(); ++i) {
         xm::Controller& c = app.controllers[i];
         if (!c.model()) continue;
-        if (app.matchMode && (i == app.matchRig[0] || i == app.matchRig[1])) continue;
+        bool matchRig = false;
+        if (app.matchMode)
+            for (int fighter = 0; fighter < app.match.config().fighterCount; ++fighter)
+                matchRig = matchRig || i == app.matchRig[fighter];
+        if (matchRig) continue;
         c.advanceTime((float)delta);
         moved = true;
     }
@@ -1924,6 +1998,7 @@ static bool enterFrontendBattle(App& app) {
     }
     ui::FrontendLaunch launch;
     if (!ui::frontendLaunch(app.frontend, launch, app.error, (uint32_t)app.frames)) return false;
+    app.battleLaunch = launch;
     app.frontendMatch = true;
     app.frontendBattleReady = false;
     app.frontend.resultStats = {};
@@ -1932,18 +2007,22 @@ static bool enterFrontendBattle(App& app) {
     app.opts.enemy = launch.enemy;
     app.opts.weapon = launch.weapon;
     app.opts.enemyWeapon = launch.enemyWeapon;
+    app.opts.battleFighterCount = launch.fighterCount;
+    for (int i = 0; i < launch.fighterCount; ++i) {
+        app.opts.battleCharacters[i] = launch.fighters[i].character;
+        app.opts.battleWeapons[i] = launch.fighters[i].weapon;
+    }
     app.opts.match = true;
     app.opts.camera = "arena";
     app.matchFrame = app.matchRoundOverFrame = 0;
-    app.botInput[0] = {}; app.botInput[1] = {};
+    for (auto& input : app.botInput) input = {};
     app.matchHits = app.matchShots = app.matchSparks = 0;
     app.liveFx.clear(); app.fxAssets.clear();
     app.matchFx.drain();
     if (!initScene(app)) return false;
     app.versusAudio.set_volumes(ui::frontendSettings().volumes);
     app.matchMode = false;
-    std::printf("[menu] battle: %s vs %s on %s (two fighters)\n",
-                launch.character.c_str(),launch.enemy.c_str(),launch.stage.c_str());
+    std::printf("[menu] battle: %d fighters on %s\n", launch.fighterCount, launch.stage.c_str());
     return true;
 }
 
@@ -2386,9 +2465,10 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         if (app->frontendMatch && app->match.economy().roundOver()) {
             const int loser = app->match.economy().roundOverSide();
             app->frontend.resultWinner = loser < 0 ? -1 : 1 - loser;
-            for (int i = 0; i < 2; ++i) {
+            for (int i = 0; i < app->match.config().fighterCount; ++i) {
                 const auto& stats = app->match.fighter(i).stats();
-                app->frontend.resultStats[ui::kFrontendBattleSlots[i]] = {stats.kos,stats.deaths,stats.damageDealt,stats.damageTaken};
+                const int panel = app->battleLaunch.fighters[i].panel;
+                app->frontend.resultStats[panel] = {stats.kos,stats.deaths,stats.damageDealt,stats.damageTaken};
             }
             app->matchMode = false;
             app->frontendBattleReady = false;
@@ -2537,7 +2617,13 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             // FUN_00643230 projects through the same camera and aspect used for the frame.
             const auto layout = ui::computeBattleHudLayout(w,h);
             for (int i = 0; i < 2; ++i) {
-                const auto& fighter = app->match.fighter(i);
+                int fighterIndex = i;
+                if (app->frontendMatch) {
+                    const int panel = ui::kFrontendBattleSlots[i];
+                    for (int j = 0; j < app->battleLaunch.fighterCount; ++j)
+                        if (app->battleLaunch.fighters[j].panel == panel) fighterIndex = j;
+                }
+                const auto& fighter = app->match.fighter(fighterIndex);
                 game::projectFighterHud(&vp[0][0],fighter.position().x,fighter.position().y,
                                        fighter.position().z,app->versusHud.fighters[i],
                                        layout.width,layout.height);

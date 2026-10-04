@@ -23,6 +23,7 @@ namespace gameplay {
 
 // Two sides, +21% balloon per KO, LIMIT 100% (spec §3.5; scenes.cpp:705, 708).
 inline constexpr int    kSideCount    = 2;
+inline constexpr int    kMatchFighterCount = 4;
 inline constexpr float  kBalloonPerKo = 21.0f;
 inline constexpr float  kBalloonLimit = 100.0f;
 inline constexpr double kKoStingSec   = 2.0;  // "KO!" sting (ASCII stand-in)
@@ -49,7 +50,7 @@ std::string respawnLogLine(int side);
 // facing) for a respawned side (the economy owns no positions), and the
 // round-over transition.
 struct MatchStepResult {
-    bool respawned[kSideCount] = {false, false};
+    bool respawned[kMatchFighterCount] = {false, false, false, false};
     bool roundOver = false;
     int  roundOverSide = -1;
 };
@@ -79,11 +80,12 @@ public:
     // (scenes.cpp:710-711), so no post-burst frame exists in the reference —
     // pinning that keeps a caller which ignores roundOver from inventing one.
     MatchStepResult update(const bool alive[kSideCount]);
+    MatchStepResult update(const bool alive[kMatchFighterCount], const int side[kMatchFighterCount]);
 
     // --- state the flow and the HUD read back ---
     float  balloon(int side) const { return m_balloon[side]; }
     float  limit() const { return m_limit; }
-    double koAt(int side) const { return m_koAt[side]; }  // -1 = alive
+    double koAt(int fighter) const { return m_koAt[fighter]; }  // -1 = alive
     double stingUntil() const { return m_stingUntil; }    // -1 = never stung
     double elapsed() const { return m_elapsed; }
     // scenes.cpp:889 (m_elapsed < m_stingUntil): strict, so the sting is gone
@@ -102,7 +104,7 @@ private:
     float  m_limit = kBalloonLimit;
     float  m_koIncrement[2] = {kBalloonPerKo, kBalloonPerKo};
     int    m_timeLimit = 0;
-    double m_koAt[kSideCount] = {-1.0, -1.0};
+    double m_koAt[kMatchFighterCount] = {-1.0, -1.0, -1.0, -1.0};
     double m_stingUntil = -1.0;
     double m_elapsed = 0.0;
     // No reference counterpart: DX9 leaves the scene on the burst frame.

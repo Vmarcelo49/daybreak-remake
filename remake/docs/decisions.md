@@ -176,8 +176,11 @@ comments — when a decision changes.
   (`Prologue`/`StoryTeam`/`StoryAdv`, `foundation/src/ui/screen.h:43-47`)
   but their builders remain absent. The front end now builds title, selection,
   stage settings, options/key config, VS intro and result screens; its playable
-  battle is 1v1. Original four-fighter layouts, result earned titles and three
-  renderer options remain pending. Story-mode video stays stubbed
+  battle path now supports up to four selected fighters, and the Linux build
+  and host tests pass. An asset-backed four-fighter run remains unverified.
+  The VS/result presentation and extra HUD bars still use
+  two-fighter layouts; result earned titles and three renderer options remain
+  pending. Story-mode video stays stubbed
   (`foundation/docs/ROADMAP-PENDING.md` §H). No
   branching, saves, or localization is planned. Non-goals listed in
   `game-spec.md` §5 stand.

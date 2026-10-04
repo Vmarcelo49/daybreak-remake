@@ -51,5 +51,38 @@ int main() {
     economy.tick(.1); economy.update(dead);
     economy.tick(1); economy.update(alive);
     CHECK(economy.roundOverSide() == 0);
+
+    gameplay::Match teamMatch;
+    gameplay::MatchConfig teamConfig;
+    teamConfig.fighterCount = 3;
+    teamConfig.side[0] = teamConfig.side[1] = 0;
+    teamConfig.side[2] = teamConfig.side[3] = 1;
+    teamConfig.spawn[1] = glm::vec3(-900,0,0);
+    teamConfig.spawn[2] = glm::vec3(900,0,0);
+    teamConfig.spawn[3] = glm::vec3(1200,0,0);
+    const xm::Model* teamModels[4] = {};
+    xm::Controller* teamAnimations[4] = {};
+    teamMatch.reset(teamConfig,teamModels,teamAnimations,nullptr,nullptr);
+    teamMatch.economy().setLogFile(nullptr);
+    const fnd::input::PlayerState* teamInputs[4] = {};
+    teamMatch.step(teamInputs,1./60.);
+    CHECK(teamMatch.config().fighterCount == 3);
+    CHECK(teamMatch.economy().balloon(0) == 0.f && teamMatch.economy().balloon(1) == 0.f);
+    teamConfig.fighterCount = 4;
+    teamMatch.reset(teamConfig,teamModels,teamAnimations,nullptr,nullptr);
+    teamMatch.economy().setLogFile(nullptr);
+    teamMatch.step(teamInputs,1./60.);
+    CHECK(teamMatch.config().fighterCount == 4);
+    CHECK(teamMatch.economy().balloon(0) == 0.f && teamMatch.economy().balloon(1) == 0.f);
+
+    gameplay::MatchEconomy teamEconomy(nullptr);
+    teamEconomy.set_round_rules(0,config.balloonSize);
+    const bool teamAlive[4] = {true,true,false,true};
+    const int sides[4] = {0,0,1,1};
+    teamEconomy.tick(.01);
+    CHECK(teamEconomy.update(teamAlive,sides).respawned[2] == false);
+    CHECK(teamEconomy.balloon(0) == 0.f && teamEconomy.balloon(1) == 10.5f);
+    teamEconomy.tick(3.0);
+    CHECK(teamEconomy.update(teamAlive,sides).respawned[2]);
     std::puts("FRONTEND_BATTLE: ok");
 }

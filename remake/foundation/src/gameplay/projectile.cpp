@@ -49,7 +49,8 @@ void ProjectilePool::spawn_spark(const glm::vec3& pos, float life) {
 
 void ProjectilePool::update(double dt, Fighter* fighters, int fighterCount,
                             const xm::Model* tamaModel,
-                            const game::physics::ModelIndex* tamaIndex) {
+                            const game::physics::ModelIndex* tamaIndex,
+                            const int* fighterSides) {
     const float step = static_cast<float>(dt);
 
     for (auto& s : m_shots) {
@@ -85,9 +86,14 @@ void ProjectilePool::update(double dt, Fighter* fighters, int fighterCount,
         // Fighter hits: XZ-radius check, consistent with try_melee_hit
         // (the arena plays flat until jumping/fly lands — no jump state yet).
         // Downed fighters are skipped: hitting them is Overkill (milestone 7).
+        int ownerSide = -1;
+        if (fighterSides)
+            for (int i = 0; i < fighterCount; ++i)
+                if (&fighters[i] == s.owner) { ownerSide = fighterSides[i]; break; }
         for (int i = 0; i < fighterCount; ++i) {
             Fighter& f = fighters[i];
-            if (&f == s.owner || !f.is_alive()) continue;
+            if (&f == s.owner || !f.is_alive() ||
+                (ownerSide >= 0 && fighterSides[i] == ownerSide)) continue;
             const glm::vec3& fp = f.position();
             const float dx = fp.x - s.pos.x;
             const float dz = fp.z - s.pos.z;
