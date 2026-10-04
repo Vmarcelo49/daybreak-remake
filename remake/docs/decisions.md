@@ -233,3 +233,31 @@ comments — when a decision changes.
 - Rationale: battle uses the available display area while preserved menu
   art keeps its intended proportions. Anchor math supports future HUD
   additions without resolution-specific coordinate tables.
+
+## D9 — Live simulation is fixed at 64 Hz (2026-10-04)
+
+- The owner selected **64 Hz** for the playable port and its simulation tests.
+  `foundation/src/gameplay/fixed_step.h` is the shared rate/accumulator contract.
+  Rendering remains independently paced by the swapchain. Gameplay, bots, menu
+  updates and frame-counted timers advance on logic ticks rather than presents.
+- Device polling happens once per render. Keyboard/gamepad button events and
+  sampled held states queue into tick inputs so a short tap survives a render
+  stall or a render with no simulation tick. Each edge is consumed once;
+  catch-up ticks keep held input without repeating edges.
+- Catch-up is bounded to eight ticks per render. Excess whole-tick wall time is
+  discarded after long stalls; simulation time advances only by executed ticks.
+  This is an offline overload policy, not a completed network clock protocol.
+- Fighter position/yaw, attachments, aura placement, camera and HUD marker
+  projection use interpolated presentation transforms. Authoritative gameplay
+  state remains tick-based. The round-start countdown stays three seconds;
+  existing integer combat windows otherwise retain their tick counts at 64 Hz.
+- Historical `--out` recipes intentionally bypass the live accumulator: one
+  capture update per frame with explicit `--dt` (default 1/60 s), no presentation
+  interpolation. Their script numbering and banked visual evidence stay usable.
+  Standalone viewers and `--versus` retain their prior presentation clocks.
+- This implements the fixed-clock/input prerequisite shared by
+  [issue #5](https://github.com/Vmarcelo49/daybreak-decomp/issues/5) and
+  [issue #3](https://github.com/Vmarcelo49/daybreak-decomp/issues/3).
+  Save/restore, serializable RNG, authoritative snapshots/state hashes,
+  resimulation and cross-platform determinism audits remain open under #3;
+  neither rollback nor network transport is implemented by this decision.

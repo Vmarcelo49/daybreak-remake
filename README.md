@@ -54,8 +54,8 @@ audio volumes and keyboard/gamepad rebinding for the current session.
 
 Four-fighter battles, three renderer controls and original result-title/quote
 fidelity remain open. See `remake/foundation/docs/ROADMAP-PENDING.md` for current
-status and `remake/docs/decisions.md` D1–D8 for binding decisions. The native
-suite has 24 tests; Linux, Windows cross-build and web builds pass.
+status and `remake/docs/decisions.md` D1–D9 for binding decisions. The native
+suite has 25 tests; Linux, Windows cross-build and web builds pass.
 
 ## Original binary summary
 

@@ -155,6 +155,31 @@ changes. Real-asset captures checked 1920×1080 and 3440×1440 battle layout,
 3440×1440 selection, and an irregular 1373×777 menu viewport. Layout tests also
 cover portrait, 4:3 and clipped/rotated sprites.
 
+## Fixed-tick implementation update — 2026-10-04
+
+Issue #5 now has a live 64 Hz accumulator, tick-indexed input/scripts and bot
+cadence, bounded catch-up, queued short keyboard/gamepad taps, and interpolated
+fighter/camera presentation. The owner-selected rate and explicit legacy capture
+exception are binding decision D9. Tests compare two- and four-fighter matches
+at 30/60/144 Hz rendering with simulation fixed at 64 Hz; long stalls and
+zero-tick renders cannot erase or repeat input edges. The original countdown
+trigger is still unrecovered; the port's countdown remains three seconds.
+
+Effect models now load before scene model pointers are borrowed by fighters,
+controllers and collision queries. The full-flow run exposed a projectile
+collision crash from those pointers becoming invalid when effect appends moved
+scene storage; ordering scene assembly before binding fixes that lifetime.
+
+Verification: 25 Linux host tests pass; Linux/Windows/web builds succeed.
+The native Wayland match separates render counts from 64 Hz logic ticks, and
+real-asset frontend smoke reaches results and selection. The saved legacy melee
+capture remains byte-identical. Details are in `BUILD-linux.md`.
+
+This is the first offline prerequisite for issue #3, not rollback completion.
+Snapshot/save/restore, explicit RNG/state hashes, cross-platform determinism and
+network transport remain open. Basic playability work continues through issues
+#6–#23 and the ordered Linux release tracker #24.
+
 ## A. Correctness and the measurement instruments (do first)
 
 These gate every number the other items are judged by, which is why they

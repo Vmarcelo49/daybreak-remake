@@ -7,6 +7,7 @@
 // input_manager.{h,cpp} and MEDIA-INPUT.md §1, read-only.
 
 #include "input/input_backend.h"
+#include "input/tick_input.h"
 
 #include <SDL3/SDL.h>
 
@@ -102,10 +103,12 @@ void Backend::shutdown() {
     for (bool& k : suppressedKeys_) k = false;
     for (auto& player : suppressedButtons_) for (bool& button : player) button = false;
     clear_script();
+    tickSamples_.clear();
+    for (auto& state : eventStates_) state = {};
     inited_ = false;
 }
 
-void Backend::poll() {
+void Backend::poll(bool applyScript) {
     if (!inited_) return;
     drain_key_events();
     repoll_gamepads();
@@ -125,11 +128,23 @@ void Backend::poll() {
     // Script replaces P0's held set wholesale inside poll() (before edges),
     // so scripted taps derive just_pressed/just_released exactly like played
     // ones — the remake's visual-validation contract.
-    if (script_active_) {
+    if (script_active_ && applyScript) {
         PlayerState& p = players_[0];
         for (int a = 0; a < ActionCount; ++a) p.down[a] = (script_mask_ & (1u << a)) != 0;
     }
-    for (int i = 0; i < kMaxPlayers; ++i) compute_edges(players_[i]);
+    for (int i = 0; i < kMaxPlayers; ++i) {
+        compute_edges(players_[i]);
+        eventStates_[i] = players_[i];
+    }
+    if (applyScript) tickSamples_.clear();
+}
+
+void Backend::sample_tick_inputs(TickInput (&pending)[kMaxPlayers]) {
+    // KEY_DOWN/UP can both arrive during a stalled render. A held-state poll
+    // alone erases the tap; queue event snapshots before the final device state.
+    for (const auto& sample : tickSamples_) pending[sample.player].sample(sample.state);
+    tickSamples_.clear();
+    for (int i = 0; i < kMaxPlayers; ++i) pending[i].sample(players_[i]);
 }
 
 const PlayerState& Backend::player(int index) const {
@@ -165,6 +180,32 @@ void Backend::note_key(int scancode, bool pressed) {
     if (scancode < 0 || scancode >= kKeyHeldSize) return;
     key_held_[scancode] = pressed;
     if (!pressed) suppressedKeys_[scancode] = false;
+    record_button(0, scancode, pressed && !suppressedKeys_[scancode]);
+}
+
+void Backend::note_gamepad_button(int player, int button, bool pressed) {
+    if (player < 1 || player >= kMaxPlayers || button < 0 || button >= SDL_GAMEPAD_BUTTON_COUNT) return;
+    if (!pressed) suppressedButtons_[player][button] = false;
+    record_button(player, button, pressed && !suppressedButtons_[player][button]);
+}
+
+void Backend::record_button(int player, int code, bool down) {
+    PlayerState& state = eventStates_[player];
+    const int* bindings = player == 0 ? keyboard_ : buttons_[player];
+    bool changed = false;
+    for (int a = 0; a < ActionCount; ++a) {
+        if (bindings[a] != code) continue;
+        changed = changed || state.down[a] != down;
+        state.down[a] = down;
+    }
+    if (player == 0) {
+        state.stick_x = state.down[Right] ? 32767 : (state.down[Left] ? -32768 : 0);
+        state.stick_y = state.down[Down] ? 32767 : (state.down[Up] ? -32768 : 0);
+    } else {
+        stick_to_digital(state.stick_x, state.stick_y, state.down[Left], state.down[Right],
+                         state.down[Up], state.down[Down]);
+    }
+    if (changed) tickSamples_.push_back({player, state});
 }
 
 void Backend::suppress_key(int scancode) {
@@ -181,6 +222,10 @@ void Backend::note_focus_lost() {
     // would read a key nobody holds anymore.
     for (bool& k : key_held_) k = false;
     for (bool& k : suppressedKeys_) k = false;
+    bool held = false;
+    for (bool down : eventStates_[0].down) held = held || down;
+    eventStates_[0] = {};
+    if (held) tickSamples_.push_back({0, eventStates_[0]});
 }
 
 bool Backend::load_script(const char* path) {
@@ -214,6 +259,14 @@ void Backend::tick_script(uint64_t frame) {
         script_mask_ = script_[script_pos_].mask;
         ++script_pos_;
     }
+}
+
+void Backend::sample_script(PlayerState& state, uint64_t tick) {
+    tick_script(tick);
+    for (int a = 0; a < ActionCount; ++a) state.down[a] = (script_mask_ & (1u << a)) != 0;
+    // Scripted intent must not inherit a physical device's analog deflection.
+    state.stick_x = state.stick_y = state.stick_rx = state.stick_ry = 0;
+    compute_edges(state);
 }
 
 void Backend::clear_script() {

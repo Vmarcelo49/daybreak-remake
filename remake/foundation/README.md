@@ -113,9 +113,21 @@ Both are the same C API. The differences that are real, and where they live:
 
 ## Frame model
 
-Live simulation uses variable delta: `SDL_AppIterate` measures real elapsed
-time and hands it to the game. Deterministic `--out` captures use `--dt`
-(default 1/60 s), and frontend animation timelines advance per update.
+Live gameplay and frontend updates use **64 Hz** simulation ticks, independent
+of render frequency. The host samples devices once per render, queues input
+transitions (including taps completed between polls), and consumes each edge
+once on a tick. Catch-up is capped at eight ticks per render; excess whole-tick
+wall time is discarded after long stalls, retaining the fractional phase. Fighter
+positions/yaw and the battle camera interpolate for rendering without changing
+simulation state. The round-start countdown remains three seconds.
+
+Deterministic `--out` captures deliberately keep one update per capture frame
+and explicit `--dt` (default 1/60 s), with interpolation disabled. Standalone
+match scripts use match ticks; frontend scripts use global logic ticks. This
+preserves historical capture recipes rather than claiming they test live 64 Hz
+pacing. Integer move/reload windows retain their tick counts at the chosen port
+cadence. Standalone asset viewers and the scripted `--versus` vignette retain
+their existing presentation clocks.
 Present pacing belongs to the swapchain — FIFO is
 selected whenever the platform offers it, which is the original game's
 cap-at-refresh behaviour. On the web FIFO is the *only* present mode there is.
@@ -220,7 +232,7 @@ Every "ran" row printed `RESULT: ok` with real frame timings; per-target command
 and outputs are in `docs/BUILD-linux.md`, `docs/BUILD-windows.md` and
 `docs/BUILD-web.md`.
 
-Host-side tests run without a GPU (`CMakeLists.txt`): the Linux suite has 24
+Host-side tests run without a GPU (`CMakeLists.txt`): the Linux suite has 25
 tests covering geometry, raycasts, asset parsing/spawns, gameplay/economy,
 animation/lighting, caption fonts/text, HUD/menu layouts, input/rebinding and
 frontend selection/VS/results. Asset-dependent checks skip when the install is

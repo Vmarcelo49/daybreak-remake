@@ -43,11 +43,11 @@ delta max   : 9.498 ms
 RESULT: ok
 ```
 
-The spread between `delta min` and `delta max` is the point: the frame loop takes
-real elapsed time and nothing imposes a fixed step. Frame *pacing* is the
-swapchain's job (FIFO), not the loop's — note that under a compositor with no real
-vsync the loop can run faster than the display, which is expected here and is not
-a frame-rate claim.
+The log above is an earlier triangle/render benchmark. Its variable render
+intervals do not describe current gameplay timing: live gameplay and frontend
+updates now use the 64 Hz accumulator described in decision D9. Render pacing
+remains the swapchain's job (FIFO); rendering may run faster than the display
+under a compositor without real vsync.
 
 ## Implementation notes
 
@@ -57,3 +57,24 @@ a frame-rate claim.
   which is also the X11 route — one native path, not two. A headless Xvfb server
   crashed the wgpu-native prebuilt during bring-up; that is a test-environment
   artifact, not a desktop X11 result.
+
+
+## Fixed-tick verification — 2026-10-04
+
+- All 25 Linux CTest tests pass. `fixed_step_test` pins simulation to 64 Hz
+  and compares two- and four-fighter input replays at 30/60/144 Hz rendering,
+  including movement, shots, KO/respawn, economy and camera state. Input tests
+  cover taps completed between polls and single-consumption during catch-up.
+- A native Wayland/RADV stage21 match rendered 180 frames in 1.003 seconds,
+  executing 63 logic ticks with the 64 Hz clock; its fractional remainder and
+  first setup sample account for the partial final tick. It returned `RESULT: ok`.
+  Audio used the dummy device; this is not a hardware listening check.
+- The 4,700-frame real-asset frontend smoke recipe in `ROADMAP-PENDING.md`
+  reached battle, result voice/report and selection again with `RESULT: ok`.
+- The 150-frame stage21 Rika/Takano melee capture at 400×400, with explicit
+  spawns `(0,200,0)` / `(-2200,200,-1363)`, was byte-identical to a capture
+  saved before the fixed-tick changes. This checks the deliberate legacy
+  1/60 capture path, not live 64 Hz timing.
+- Linux, Windows cross-build and web builds succeed. These builds do not
+  establish cross-platform deterministic rollback; issue #3 still requires
+  snapshots, save/restore, state hashes and resimulation evidence.

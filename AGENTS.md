@@ -30,7 +30,7 @@ modern port. No bit-matching against the original binary is attempted.
    (2026-10-02) and its tree is deleted; the A/B reference is now the
    **banked evidence** in `remake/tests/parity-baseline/` plus the
    original's prints in `remake/docs/reference/`, not a buildable binary.
-   Binding decisions in `remake/docs/decisions.md` (read D1–D8 before
+   Binding decisions in `remake/docs/decisions.md` (read D1–D9 before
    touching `remake/`).
 3. **`mvp/` is gone.** Retired 2026-10-01 after its contents were ported.
    Don't recreate it; decomp provenance lives in `research/`.
@@ -74,7 +74,7 @@ open; consult `remake/foundation/docs/ROADMAP-PENDING.md` before choosing work.
   edge/center HUD anchors. Project fighter markers through the battle camera.
   Menus retain a centered, clipped 4:3 canvas with black bars. Native Options
   selects resolution; browser canvas and headless `--size` control theirs.
-- **Verification:** 24 native host tests; Linux/Windows/web builds. Browser
+- **Verification:** 25 native host tests; Linux/Windows/web builds. Browser
   game-data runs are verified on software WebGPU; browser visual parity,
   hardware browser adapters and macOS execution remain unverified.
 

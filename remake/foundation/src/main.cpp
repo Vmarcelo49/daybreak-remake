@@ -49,6 +49,7 @@
 #include "game/fighter_pose.h"
 #include "gameplay/arena_camera.h"
 #include "gameplay/match.h"
+#include "gameplay/fixed_step.h"
 #include "gameplay/bot_input.h"
 #include "gameplay/hud_fill.h"
 #include "audio/audio.h"
@@ -57,6 +58,7 @@
 #include "game/effect_descriptor.h"
 #include "game/fx_cards.h"
 #include "input/input_backend.h"
+#include "input/tick_input.h"
 #include "input/input_sdl3.h"
 #include "shaders/demo_wgsl.h"
 
@@ -600,6 +602,13 @@ struct App {
     double   deltaMin = 1e30;
     double   deltaMax = 0.0;
     uint64_t frames = 0;
+    uint64_t logicTicks = 0;
+    gameplay::FixedStep logicClock;
+    fnd::input::TickInput pendingInput[4];
+    fnd::input::PlayerState tickInput[4], scriptInput;
+    game::FighterPose previousFighter[4];
+    glm::vec3 previousMatchEye{0.f}, previousMatchTarget{0.f};
+    float matchAlpha = 1.f;
     // D1 render-FPS meter: frames per wall-clock second over a rolling half
     // second, exactly what the top-right counter shows (rendering only — the
     // original floats with machine speed, fixed logic ticks underneath). The
@@ -1014,10 +1023,28 @@ static bool initMatch(App& app) {
     for (int i = 0; i < app.match.config().fighterCount; ++i) cameraPool.push_back(&app.arenaTargets[i]);
     app.matchCamera.set_target_pool(cameraPool);
     app.matchCamera.set_active_target(app.lockedFighter);
+    for (int i = 0; i < fighterCount; ++i) app.previousFighter[i] = app.match.fighter(i).pose();
+    app.previousMatchEye = app.matchCamera.eye();
+    app.previousMatchTarget = app.matchCamera.target();
     return true;
 }
 
-// Places the two fighters' models from the live simulation. modelMatrix() is the
+static glm::vec3 matchRenderPosition(const App& app, int fighter) {
+    return glm::mix(app.previousFighter[fighter].position,
+                    app.match.fighter(fighter).position(), app.matchAlpha);
+}
+
+static glm::mat4 matchRenderMatrix(const App& app, int fighter) {
+    if (app.matchAlpha == 1.f) return app.match.fighter(fighter).modelMatrix();
+    const float previous = app.previousFighter[fighter].facingYaw;
+    const float current = app.match.fighter(fighter).facing_yaw();
+    const float yaw = previous + std::remainder(current - previous, glm::two_pi<float>()) * app.matchAlpha;
+    // FUN_00420b30: the authored rig faces -Z; retain Fighter::modelMatrix's half turn.
+    return glm::translate(glm::mat4(1.f), matchRenderPosition(app, fighter)) *
+        glm::rotate(glm::mat4(1.f), yaw + glm::pi<float>(), glm::vec3(0.f,1.f,0.f));
+}
+
+// Places each fighter's model from the live simulation. modelMatrix() is the
 // reference's world matrix (translation + Y rotation, FUN_00420b30). A bone-attached
 // weapon is a separate model, so its world transform is the rig's model matrix
 // composed with the bone's model-space matrix — the same composition the versus path
@@ -1027,7 +1054,7 @@ static void placeMatchFighters(App& app) {
     for (size_t i = 0; i < app.scene.models.size(); ++i) {
         for (int fighter = 0; fighter < app.match.config().fighterCount; ++fighter)
             if (i == app.matchRig[fighter]) {
-                app.modelMatrices[i] = app.match.fighter(fighter).modelMatrix();
+                app.modelMatrices[i] = matchRenderMatrix(app, fighter);
                 break;
             }
     }
@@ -1137,16 +1164,20 @@ static void placeFxCards(App& app) {
         const gameplay::Fighter& f = app.match.fighter(i);
         if (!f.aura_active()) continue;
         app.modelMatrices[(size_t)app.fxAuraIndex[i]] =
-            f.modelMatrix() * glm::translate(glm::mat4(1.f), f.aura_center_local());
+            matchRenderMatrix(app, i) * glm::translate(glm::mat4(1.f), f.aura_center_local());
     }
 }
 
 // One match frame: the reference's order lives in gameplay::Match::step; this adds
-// what the scene added around it — input polling, the camera's target switch, the
+// what the scene added around it — tick inputs, the camera's target switch, the
 // HUD values, the effect events and the debug cubes.
 static void tickMatch(App& app, double dt) {
     if (app.ringPulse > 0) --app.ringPulse;
-    ++app.matchFrame;   // 1-based, matching the DX9's frame_count + 1
+    for (int i = 0; i < app.match.config().fighterCount; ++i)
+        app.previousFighter[i] = app.match.fighter(i).pose();
+    app.previousMatchEye = app.matchCamera.eye();
+    app.previousMatchTarget = app.matchCamera.target();
+    ++app.matchFrame;   // 1-based simulation tick, matching banked captures
 
     // P2: a script drives it when given; otherwise it takes no input, which is
     // exactly what the DX9 scene passes (scenes.cpp:680).
@@ -1164,20 +1195,14 @@ static void tickMatch(App& app, double dt) {
     }
 
     const fnd::input::PlayerState* p1 = nullptr;
-    if (app.matchInputReady && !app.frontendMatch) {
-        app.matchInput.tick_script(app.matchFrame);
-        app.matchInput.poll();
-        p1 = &app.matchInput.player(0);
-    }
+    if (app.matchInputReady && !app.frontendMatch) p1 = &app.tickInput[0];
 
     const fnd::input::PlayerState* inputs[4] = {p1, p2, nullptr, nullptr};
     if (app.frontendMatch) {
-        app.matchInput.tick_script(app.frames);
-        app.matchInput.poll();
         for (int i = 0; i < app.match.config().fighterCount; ++i) {
             const int panel = app.battleLaunch.fighters[i].panel;
             const int controller = app.frontend.slots[panel].controller;
-            if (controller >= 0 && controller < 4) inputs[i] = &app.matchInput.player(controller);
+            if (controller >= 0 && controller < 4) inputs[i] = &app.tickInput[controller];
             else {
                 int target = -1;
                 float nearest = 1.0e30f;
@@ -1197,6 +1222,8 @@ static void tickMatch(App& app, double dt) {
         p1 = inputs[0];
     }
     const gameplay::MatchFrame f = app.match.step(inputs, dt);
+    for (int i = 0; i < app.match.config().fighterCount; ++i)
+        if (f.respawned[i]) app.previousFighter[i] = app.match.fighter(i).pose();
     if (app.versusAudioOn)
         app.versusBgmPushed += app.versusLoop.push_next(app.versusAudio, 1024);
     app.matchShots += (uint64_t)f.shotsSpawned;
@@ -1215,11 +1242,7 @@ static void tickMatch(App& app, double dt) {
         app.matchFx.pushSpawn((uint32_t)app.matchHits, at, 0, 12.f);
         if (app.matchHits > 1) app.matchFx.pushKill((uint32_t)(app.matchHits - 1));
     }
-    // The cards must be placed before placeMatchFighters uploads the model
-    // matrices (it ends with setModelMatrices), so they land this frame.
     updateFxCards(app, app.matchFx, app.matchFxEvents, (float)dt);
-    placeFxCards(app);
-    placeMatchFighters(app);
 
     // Camera: the ported reference camera (gameplay/arena_camera.{h,cpp}), fed the
     // live fighters. The target switch is the reference's (Guard just_pressed while
@@ -1249,6 +1272,11 @@ static void tickMatch(App& app, double dt) {
     app.matchCamera.update(dt);
     app.eye = app.matchCamera.eye();
     app.target = app.matchCamera.target();
+    // The first camera tick has no valid earlier view to interpolate from.
+    if (app.matchFrame == 1) {
+        app.previousMatchEye = app.eye;
+        app.previousMatchTarget = app.target;
+    }
     app.lockedFighter = app.matchCamera.active_target_index() < 0
                             ? app.lockedFighter
                             : app.matchCamera.active_target_index();
@@ -1516,6 +1544,10 @@ bool initScene(App& app) {
         return true;
     }
     xm::resolveSceneTextures(app.scene);
+    app.modelMatrices.assign(app.scene.models.size(), glm::mat4(1.f));
+    // FUN_00633ca0's effect models extend the scene. Finish that growth before
+    // fighters, animation controllers or collision queries borrow model pointers.
+    if (app.opts.match || app.opts.versus) buildFxAssets(app);
 
     // The arena camera clamp's geometry: the one model with the camera collision role.
     // Stages without it (and the two whose file parses to zero triangles) keep the
@@ -1546,7 +1578,6 @@ bool initScene(App& app) {
     }
     // A weapon is placed by the owning character's attachment bone: the original hangs
     // them off Bip01_Prop1/Prop2 and draws nothing else for them (FUN_00433eb0).
-    app.modelMatrices.assign(app.scene.models.size(), glm::mat4(1.f));
     int rigIndex = -1;
     for (size_t i = 0; i < app.scene.models.size(); ++i)
         if (app.scene.models[i].role == "character") { rigIndex = (int)i; break; }
@@ -1566,10 +1597,6 @@ bool initScene(App& app) {
     } else if (app.opts.match) {
         if (!initMatch(app)) return false;
     }
-    // B1: the effect asset table (hit card, plus the fighters' aura cards in match
-    // mode), pushed as extra scene models before the renderer bakes the draw list.
-    if (app.opts.match || app.opts.versus)
-        buildFxAssets(app);
 
     // ---- framing. A stage's visible set includes an inverted sky dome far larger than
     // the play area, and env.dat's fog ends around 10000 units, so a bounds-fit camera
@@ -1732,8 +1759,11 @@ void reportCoverage(const std::vector<uint8_t>& rgba, int w, int h) {
 void report(App& app) {
     const double elapsed = plat::now() - app.startTime;
     const double avg = app.frames ? app.deltaSum / (double)app.frames : 0.0;
-    std::printf("\n-- frame timing (variable delta, no fixed step) --\n");
+    std::printf("\n-- render frame timing (wall-clock delta) --\n");
     std::printf("frames      : %llu in %.3f s\n", (unsigned long long)app.frames, elapsed);
+    if (app.opts.match || !app.opts.screen.empty())
+        std::printf("logic       : %llu ticks, %s\n", (unsigned long long)app.logicTicks,
+                    app.opts.out.empty() ? "64 Hz" : "explicit capture cadence");
     if (app.frames > 1) {
         std::printf("delta avg   : %.3f ms (%.1f fps)\n", avg * 1000.0, avg > 0 ? 1.0 / avg : 0.0);
         std::printf("delta min   : %.3f ms\n", app.deltaMin * 1000.0);
@@ -1954,24 +1984,26 @@ bool runInputTest(App& app) {
 // a port flow rule, independent of the original's unlocated trigger sequence.
 class RoundStartScreen final : public ui::Screen {
 public:
-    RoundStartScreen(ui::SpriteRenderer& batch, bool& ready, std::string& error) : ready_(ready) {
+    RoundStartScreen(ui::SpriteRenderer& batch, bool& ready, int tickRate, std::string& error)
+        : ready_(ready), tickRate_(tickRate) {
         ui::uploadCnvSheet(batch, "data/object/P09", sheet_, error);
     }
     bool loaded() const { return sheet_ >= 0; }
     ui::ScreenId update(const ui::ScreenInput&) override {
-        if (++frame_ >= 180) ready_ = true;
+        if (++frame_ >= 3 * tickRate_) ready_ = true;
         return ui::ScreenId::Battle;
     }
     const char* name() const override { return "countdown"; }
     void draw(ui::SpriteRenderer& batch) const override {
         batch.pushSolid({0,0,800,600},{0,0,0,1});
-        const int n = std::min(2, frame_ / 60);
+        const int n = std::min(2, frame_ / tickRate_);
         const float w = n == 2 ? 128.f : 192.f;
         batch.pushSprite(sheet_, {n*192.f,0,w,256},w/2,128,400,300,.5f);
     }
 private:
     bool& ready_;
     int frame_ = 0, sheet_ = -1;
+    int tickRate_;
 };
 
 static void playFrontendMusic(App& app, ui::ScreenId id) {
@@ -1997,7 +2029,7 @@ static bool enterFrontendBattle(App& app) {
         app.frontend.slots[ui::kFrontendBattleSlots[i]].controller = i == 0 ? 0 : 4;
     }
     ui::FrontendLaunch launch;
-    if (!ui::frontendLaunch(app.frontend, launch, app.error, (uint32_t)app.frames)) return false;
+    if (!ui::frontendLaunch(app.frontend, launch, app.error, (uint32_t)app.logicTicks)) return false;
     app.battleLaunch = launch;
     app.frontendMatch = true;
     app.frontendBattleReady = false;
@@ -2051,7 +2083,8 @@ bool initScreens(App& app) {
         playFrontendMusic(app, sid);
         if (sid == ui::ScreenId::Battle) {
             if (!enterFrontendBattle(app)) return nullptr;
-            auto countdown = std::make_unique<RoundStartScreen>(app.uiRenderer, app.frontendBattleReady, app.error);
+            auto countdown = std::make_unique<RoundStartScreen>(app.uiRenderer, app.frontendBattleReady,
+                app.opts.out.empty() ? gameplay::FixedStep::tickRate : 60, app.error);
             if (!countdown->loaded()) return nullptr;
             return countdown;
         }
@@ -2414,11 +2447,68 @@ bool captureHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat
     return true;
 }
 
+static SDL_AppResult tickFrontend(App& state) {
+    App* app = &state;
+    auto anyPressed = [&](fnd::input::Action action) {
+        for (const auto& player : app->tickInput) if (player.just_pressed[action]) return true;
+        return false;
+    };
+    ui::ScreenInput in;
+    in.up      = anyPressed(fnd::input::Up);
+    in.down    = anyPressed(fnd::input::Down);
+    in.left    = anyPressed(fnd::input::Left);
+    in.right   = anyPressed(fnd::input::Right);
+    in.confirm = anyPressed(fnd::input::Jump);
+    in.cancel  = anyPressed(fnd::input::AttackA);
+    in.separatePlayers = true;
+    for (int p = 0; p < 4; ++p) {
+        const auto& input = app->tickInput[p];
+        auto& buttons = in.players[p];
+        buttons.up = input.just_pressed[fnd::input::Up];
+        buttons.down = input.just_pressed[fnd::input::Down];
+        buttons.left = input.just_pressed[fnd::input::Left];
+        buttons.right = input.just_pressed[fnd::input::Right];
+        buttons.confirm = input.just_pressed[fnd::input::Jump];
+        buttons.cancel = input.just_pressed[fnd::input::AttackA];
+    }
+    const ui::ScreenId previousScreen = app->screens.current();
+    app->screens.update(in);
+    if (previousScreen != app->screens.current() && app->screens.current() == ui::ScreenId::Battle)
+        app->lastTime = plat::now();
+    if (!app->error.empty()) return SDL_APP_FAILURE;
+    if (app->menuAudio.music_queued_frames() < 4096)
+        app->menuLoop.push_next(app->menuAudio, 1024);
+    const std::string voice = app->screens.takeVoice();
+    if (!voice.empty()) {
+        auto& source = fnd::assets::assetSource();
+        const size_t dot = voice.find_last_of('.');
+        const std::string stem = dot == std::string::npos ? voice : voice.substr(0,dot);
+        const std::string path = source.resolve({stem+".cnv",stem+".wav"});
+        const auto handle = loadSoundAsset(app->menuAudio,path);
+        if (app->menuAudio.play(handle,fnd::audio::SfxBus::Voice) >= 0) ++app->menuVoicePlays;
+    }
+    if (app->screens.current() == ui::ScreenId::Battle && app->frontendBattleReady && app->screens.fadeFrame() == 0) {
+        app->screensMode = false;
+        app->matchMode = true;
+        return SDL_APP_CONTINUE;
+    }
+    const int cue = app->screens.takeSound();
+    if (cue >= 0 && cue < 4 && app->menuSounds[cue] >= 0) {
+        app->menuAudio.stop(fnd::audio::kUiChannel);
+        if (app->menuAudio.play(app->menuSounds[cue], fnd::audio::SfxBus::Ui) >= 0)
+            ++app->menuSoundPlays[cue];
+    }
+    // 終了 reaches here: its item returns 0x16, the factory has no such scene, and
+    // the switcher reads the null scene as "no scene: quit" (ui/screen.h).
+    if (app->screens.finished()) return app->error.empty() ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
+
+    return SDL_APP_CONTINUE;
+}
+
 SDL_AppResult SDL_AppIterate(void* appstate) {
     auto* app = static_cast<App*>(appstate);
 
-    // The whole frame model, in three lines: real elapsed time in, no fixed step,
-    // no accumulator. Present pacing is the swapchain's job (FIFO).
+    // Rendering measures wall time; combat and menu frame counters use 64 Hz ticks.
     const double now = plat::now();
     const double delta = now - app->lastTime;
     app->lastTime = now;
@@ -2451,84 +2541,68 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         // Verify with real time, not with a fixed step: the pose follows the clock, so
         // a capture after N frames of --dt is the pose at N * dt seconds.
         if (app->opts.anim >= 0 && app->frames > 1) advanceAnimation(*app, (double)app->opts.dt);
-    } else if (!app->controllers.empty()) {
+    } else if (!app->controllers.empty() && !app->matchMode && !app->frontendMatch) {
         advanceAnimation(*app, delta);
     }
 
     if (app->versusMode) tickVersus(*app, app->frames);
-    if (app->matchMode) {
-        // The match runs on the same fixed step the DX9 harness uses (1/60) whenever
-        // it is capturing, and on the real delta in a live window — the reference's
-        // own split (fixed step for the suite, wall time otherwise).
-        tickMatch(*app, capturing ? app->opts.dt : delta);
-        traceMatch(*app);
-        if (app->frontendMatch && app->match.economy().roundOver()) {
-            const int loser = app->match.economy().roundOverSide();
-            app->frontend.resultWinner = loser < 0 ? -1 : 1 - loser;
-            for (int i = 0; i < app->match.config().fighterCount; ++i) {
-                const auto& stats = app->match.fighter(i).stats();
-                const int panel = app->battleLaunch.fighters[i].panel;
-                app->frontend.resultStats[panel] = {stats.kos,stats.deaths,stats.damageDealt,stats.damageTaken};
+    if (app->matchInputReady) {
+        app->matchInput.poll(false);
+        app->matchInput.sample_tick_inputs(app->pendingInput);
+    }
+    const int ticks = capturing ? 1 : app->logicClock.advance(app->frames > 1 ? delta : 0.0);
+    app->matchAlpha = capturing ? 1.f : app->logicClock.alpha();
+    for (int tick = 0; tick < ticks; ++tick) {
+        ++app->logicTicks;
+        for (int p = 0; p < 4; ++p) app->tickInput[p] = app->pendingInput[p].consume();
+        if (app->matchInput.script_active()) {
+            const uint64_t scriptTick = app->frontendMatch || app->screensMode
+                ? app->logicTicks : app->matchFrame + 1;
+            app->matchInput.sample_script(app->scriptInput, scriptTick);
+            app->tickInput[0] = app->scriptInput;
+        }
+        if (app->matchMode) {
+            if (!capturing) advanceAnimation(*app, gameplay::FixedStep::seconds);
+            tickMatch(*app, capturing ? app->opts.dt : gameplay::FixedStep::seconds);
+            traceMatch(*app);
+            if (app->frontendMatch && app->match.economy().roundOver()) {
+                const int loser = app->match.economy().roundOverSide();
+                app->frontend.resultWinner = loser < 0 ? -1 : 1 - loser;
+                for (int i = 0; i < app->match.config().fighterCount; ++i) {
+                    const auto& stats = app->match.fighter(i).stats();
+                    const int panel = app->battleLaunch.fighters[i].panel;
+                    app->frontend.resultStats[panel] = {stats.kos,stats.deaths,stats.damageDealt,stats.damageTaken};
+                }
+                app->matchMode = false;
+                app->frontendBattleReady = false;
+                app->versusAudio.clear_music();
+                app->screens.request(ui::ScreenId::Result);
+                app->screensMode = true;
+                const SDL_AppResult result = tickFrontend(*app);
+                if (result != SDL_APP_CONTINUE) return result;
             }
-            app->matchMode = false;
-            app->frontendBattleReady = false;
-            app->versusAudio.clear_music();
-            app->screens.request(ui::ScreenId::Result);
-            app->screensMode = true;
+        } else if (app->screensMode) {
+            const SDL_AppResult result = tickFrontend(*app);
+            if (result != SDL_APP_CONTINUE) return result;
+            // Loading a new battle must not turn asset-load time into combat ticks.
+            if (app->matchMode) {
+                app->lastTime = plat::now();
+                return SDL_APP_CONTINUE;
+            }
+        }
+    }
+
+    if (app->matchMode) {
+        app->versusHud.fps = app->fpsShown;
+        placeFxCards(*app);
+        placeMatchFighters(*app);
+        if (app->matchFrame > 0) {
+            app->eye = glm::mix(app->previousMatchEye, app->matchCamera.eye(), app->matchAlpha);
+            app->target = glm::mix(app->previousMatchTarget, app->matchCamera.target(), app->matchAlpha);
         }
     }
 
     if (app->screensMode) {
-        // The stack ticks on app->frames, the same 1-based index the DX9 suite's input
-        // scripts are written in (tickMatch keys its scripts on matchFrame for the same
-        // reason). Confirm is Jump — Z, the menu confirm — and cancel is AttackA (X).
-        app->matchInput.tick_script(app->frames);
-        app->matchInput.poll();
-        ui::ScreenInput in;
-        in.up      = app->matchInput.any_just_pressed(fnd::input::Up);
-        in.down    = app->matchInput.any_just_pressed(fnd::input::Down);
-        in.left    = app->matchInput.any_just_pressed(fnd::input::Left);
-        in.right   = app->matchInput.any_just_pressed(fnd::input::Right);
-        in.confirm = app->matchInput.any_just_pressed(fnd::input::Jump);
-        in.cancel  = app->matchInput.any_just_pressed(fnd::input::AttackA);
-        in.separatePlayers = true;
-        for (int p = 0; p < 4; ++p) {
-            const auto& input = app->matchInput.player(p);
-            auto& buttons = in.players[p];
-            buttons.up = input.just_pressed[fnd::input::Up];
-            buttons.down = input.just_pressed[fnd::input::Down];
-            buttons.left = input.just_pressed[fnd::input::Left];
-            buttons.right = input.just_pressed[fnd::input::Right];
-            buttons.confirm = input.just_pressed[fnd::input::Jump];
-            buttons.cancel = input.just_pressed[fnd::input::AttackA];
-        }
-        app->screens.update(in);
-        if (!app->error.empty()) return SDL_APP_FAILURE;
-        if (app->menuAudio.music_queued_frames() < 4096)
-            app->menuLoop.push_next(app->menuAudio, 1024);
-        const std::string voice = app->screens.takeVoice();
-        if (!voice.empty()) {
-            auto& source = fnd::assets::assetSource();
-            const size_t dot = voice.find_last_of('.');
-            const std::string stem = dot == std::string::npos ? voice : voice.substr(0,dot);
-            const std::string path = source.resolve({stem+".cnv",stem+".wav"});
-            const auto handle = loadSoundAsset(app->menuAudio,path);
-            if (app->menuAudio.play(handle,fnd::audio::SfxBus::Voice) >= 0) ++app->menuVoicePlays;
-        }
-        if (app->screens.current() == ui::ScreenId::Battle && app->frontendBattleReady && app->screens.fadeFrame() == 0) {
-            app->screensMode = false;
-            app->matchMode = true;
-            return SDL_APP_CONTINUE;
-        }
-        const int cue = app->screens.takeSound();
-        if (cue >= 0 && cue < 4 && app->menuSounds[cue] >= 0) {
-            app->menuAudio.stop(fnd::audio::kUiChannel);
-            if (app->menuAudio.play(app->menuSounds[cue], fnd::audio::SfxBus::Ui) >= 0)
-                ++app->menuSoundPlays[cue];
-        }
-        // 終了 reaches here: its item returns 0x16, the factory has no such scene, and
-        // the switcher reads the null scene as "no scene: quit" (ui/screen.h).
-        if (app->screens.finished()) return app->error.empty() ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
 
         if (capturing) {
             if (app->frames >= (uint64_t)app->opts.frames) {
@@ -2609,8 +2683,13 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         // Match frames use the reference camera's own projection (fov pi/4, near 1,
         // far 100000) and view, so a foundation frame and a banked DX9 frame of the
         // same case differ by their content, not by their projection.
+        // Retain the camera's valid view when every target is dead; lookAt
+        // cannot construct a basis from coincident eye/aim. Captures use its exact view.
+        const glm::mat4 matchView = capturing || app->eye == app->target
+            ? app->matchCamera.view_matrix()
+            : glm::lookAtLH(app->eye, app->target, glm::vec3(0.f,1.f,0.f));
         const glm::mat4 vp = app->matchMode
-            ? app->matchCamera.proj_matrix((int)w, (int)h) * app->matchCamera.view_matrix()
+            ? app->matchCamera.proj_matrix((int)w, (int)h) * matchView
             : viewProj(app->eye, app->target, (float)w / (float)h,
                        app->cameraRadius, app->sceneReach);
         if (app->matchMode) {
@@ -2623,9 +2702,9 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     for (int j = 0; j < app->battleLaunch.fighterCount; ++j)
                         if (app->battleLaunch.fighters[j].panel == panel) fighterIndex = j;
                 }
-                const auto& fighter = app->match.fighter(fighterIndex);
-                game::projectFighterHud(&vp[0][0],fighter.position().x,fighter.position().y,
-                                       fighter.position().z,app->versusHud.fighters[i],
+                const auto position = matchRenderPosition(*app, fighterIndex);
+                game::projectFighterHud(&vp[0][0],position.x,position.y,
+                                       position.z,app->versusHud.fighters[i],
                                        layout.width,layout.height);
             }
         }
@@ -2813,7 +2892,15 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
                 const int player = app->matchInput.gamepad_player((int32_t)event->gbutton.which);
                 app->matchInput.suppress_gamepad_button(player,(int)event->gbutton.button);
                 ui::submitBindingInput(false, player, (int)event->gbutton.button);
+            } else {
+                const int player = app->matchInput.gamepad_player((int32_t)event->gbutton.which);
+                app->matchInput.note_gamepad_button(player, (int)event->gbutton.button, true);
             }
+            break;
+        case SDL_EVENT_GAMEPAD_BUTTON_UP:
+            app->matchInput.note_gamepad_button(
+                app->matchInput.gamepad_player((int32_t)event->gbutton.which),
+                (int)event->gbutton.button, false);
             break;
         case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
             if (app->window) {

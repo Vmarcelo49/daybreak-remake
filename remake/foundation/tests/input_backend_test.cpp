@@ -1,8 +1,9 @@
 #include "input/input_backend.h"
+#include "input/tick_input.h"
 #include <SDL3/SDL.h>
 #include <cstdio>
 
-int main() {
+int main(int argc, char** argv) {
     int failures = 0;
     auto check = [&](bool value, const char* name) {
         if (!value) { std::fprintf(stderr,"FAIL %s\n",name); ++failures; }
@@ -49,6 +50,50 @@ int main() {
         backend.note_key(SDL_SCANCODE_F,true);
         backend.poll();
         check(backend.player(0).just_pressed[Jump],"focus loss also clears stale suppression");
+    }
+    {
+        fnd::input::Backend backend;
+        using namespace fnd::input;
+        check(backend.init(), "event input initialized");
+        TickInput ticks[kMaxPlayers];
+        backend.note_key(SDL_SCANCODE_Z,true);
+        backend.note_key(SDL_SCANCODE_Z,false);
+        backend.note_gamepad_button(1,SDL_GAMEPAD_BUTTON_EAST,true);
+        backend.note_gamepad_button(1,SDL_GAMEPAD_BUTTON_EAST,false);
+        backend.poll(false);
+        backend.sample_tick_inputs(ticks);
+        check(!backend.player(0).down[Jump], "short tap ends released before poll");
+        check(ticks[0].consume().just_pressed[Jump], "stalled-render keyboard press retained");
+        check(ticks[0].consume().just_released[Jump], "stalled-render keyboard release retained");
+        check(!ticks[0].consume().just_pressed[Jump], "catch-up does not repeat keyboard tap");
+        check(ticks[1].consume().just_pressed[Jump], "stalled-render pad press retained");
+        check(ticks[1].consume().just_released[Jump], "stalled-render pad release retained");
+        backend.suppress_key(SDL_SCANCODE_Z);
+        backend.note_key(SDL_SCANCODE_Z,true);
+        backend.poll(false);
+        backend.sample_tick_inputs(ticks);
+        check(!ticks[0].consume().just_pressed[Jump], "binding capture suppresses queued key press");
+    }
+    if (argc > 1) {
+        fnd::input::Backend backend;
+        using namespace fnd::input;
+        check(backend.init() && backend.load_script(argv[1]), "tick script loaded");
+        PlayerState scripted;
+        backend.sample_script(scripted,1);
+        check(scripted.just_pressed[Down] && scripted.down[Down], "script press on tick one");
+        backend.sample_script(scripted,1);
+        check(!scripted.just_pressed[Down], "repeated script tick cannot repeat edge");
+        backend.sample_script(scripted,2);
+        check(scripted.just_released[Down], "script release on tick two");
+        backend.sample_script(scripted,3);
+        check(scripted.just_pressed[Jump], "script advances without device polling");
+        backend.note_key(SDL_SCANCODE_RIGHT,true);
+        backend.poll(false);
+        check(backend.player(0).down[Right] && !backend.player(0).down[Jump], "device sample excludes script override");
+        check(scripted.stick_x == 0 && scripted.stick_y == 0, "script does not inherit physical axes");
+        backend.tick_script(3);
+        backend.poll();
+        check(backend.player(0).down[Jump] && !backend.player(0).down[Right], "legacy polling keeps script override");
     }
     SDL_Quit();
     std::printf("input_backend_test: %d failures\n",failures);

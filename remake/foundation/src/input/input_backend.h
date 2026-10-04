@@ -22,6 +22,7 @@
 #include "input/input.h"
 
 namespace fnd::input {
+class TickInput;
 
 // One frame-indexed held-set, mirroring the remake's ScriptEvent.
 struct ScriptEvent {
@@ -44,8 +45,10 @@ class Backend {
 
     // One frame: pump OS input, absorb queued key events, re-poll hotplug,
     // read keyboard (P0) + gamepads (P1-P3), apply the script override to P0,
-    // then derive edges for every player. Call before the scene update.
-    void poll();
+    // then derive edges for every player. Live fixed-tick hosts pass false
+    // and sample_script separately; the default retains capture/test callers.
+    void poll(bool applyScript = true);
+    void sample_tick_inputs(TickInput (&pending)[kMaxPlayers]);
 
     const PlayerState& player(int index) const;
     DeviceType device(int index) const;
@@ -58,6 +61,7 @@ class Backend {
     // harvests the queue itself, so forwarding is optional and idempotent.
     // `scancode` is the numeric SDL_Scancode; out-of-range values are ignored.
     void note_key(int scancode, bool pressed);
+    void note_gamepad_button(int player, int button, bool pressed);
     void suppress_key(int scancode);
     void suppress_gamepad_button(int player, int button);
     bool set_keyboard_binding(Action action, int scancode);
@@ -71,6 +75,8 @@ class Backend {
     // (1-based render index); poll applies.
     bool load_script(const char* path);
     void tick_script(uint64_t frame);
+    // Advance scripts at simulation cadence without sampling SDL again.
+    void sample_script(PlayerState& state, uint64_t tick);
     void clear_script();
     bool script_active() const { return script_active_; }
 
@@ -87,12 +93,16 @@ class Backend {
     bool suppressedButtons_[kMaxPlayers][26] = {};
     int keyboard_[ActionCount];
     int buttons_[kMaxPlayers][ActionCount];
+    struct TickSample { int player; PlayerState state; };
+    std::vector<TickSample> tickSamples_;
+    PlayerState eventStates_[kMaxPlayers];
 
     std::vector<ScriptEvent> script_;
     size_t script_pos_ = 0;
     uint32_t script_mask_ = 0;
     bool script_active_ = false;
 
+    void record_button(int player, int code, bool down);
     void repoll_gamepads();
     void drain_key_events();
     void update_keyboard();
