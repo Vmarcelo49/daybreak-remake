@@ -151,6 +151,7 @@ add_library(foundation_gameplay STATIC
     src/gameplay/projectile.cpp
     src/gameplay/match.cpp
     src/gameplay/match_economy.cpp
+    src/gameplay/weapon_definition.cpp
     src/gameplay/hud_fill.cpp)
 target_include_directories(foundation_gameplay PUBLIC src)
 target_link_libraries(foundation_gameplay
@@ -257,6 +258,14 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_executable(stage_movement_test tests/stage_movement_test.cpp)
     target_link_libraries(stage_movement_test PRIVATE foundation_gameplay)
     add_test(NAME stage_movement_test COMMAND stage_movement_test)
+
+    # The per-weapon combat definitions (issue #9): the data/item/NNN.dat reader
+    # transcribed from FUN_00433eb0, every shipped weapon swept, and a match smoke run
+    # for all 46 legal character/weapon selections. Device-free; the shipped-data parts
+    # skip themselves when the install is absent.
+    add_executable(weapon_definition_test tests/weapon_definition_test.cpp)
+    target_link_libraries(weapon_definition_test PRIVATE foundation_gameplay)
+    add_test(NAME weapon_definition_test COMMAND weapon_definition_test)
 
     # The per-fighter combat target (issue #8): cycling, hold-for-ally, the 15-tick
     # switch pulse, the KO/invalid-index fallbacks and the Match wiring that makes

@@ -291,7 +291,139 @@ in the `DAYBREAK_CAMINFO` trace and in the rendered frame, confirming the no-Loc
 path is untouched. A capture that presses LockSwitch differs by design: that is the
 camera retarget and the ring's new owner.
 
-## A. Correctness and the measurement instruments (do first)
+## Per-weapon combat definitions — 2026-10-04
+
+Issue #9's selection data now reaches combat. `src/gameplay/weapon_definition.h/.cpp`
+parse the original files device-free; `frontendLaunch` loads them; `MatchConfig::weapon`
+carries them into `Fighter`. A weapon selection changes magazine sizes, charge
+thresholds, per-shot costs, volley counts, projectile damage and hit radius.
+
+### What the data actually is
+
+Two files, two readers, and a correction to the premise the issue was written against.
+
+`data/item/NNN.dat` (FUN_00433eb0, 0x433eb0, read through FUN_00653760 = ReadFile):
+dword slotCount, dword bulletCount, a 30-byte gauge name, two gauge heights,
+`slotCount` attachments of {30-byte mesh, 30-byte texture, 9 floats}, then **two**
+magazines of six ints, then `bulletCount` bullets of four ints. Note the first dword is
+the **attachment count** (2..12 across the shipped set), not a version.
+
+`data/bullet/<weaponId>/<type>.dat` (FUN_005f8510, 0x5f8510), reached because
+FUN_00433eb0:152 hands each bullet's `type * 10 + status` to FUN_005f80c0, which builds
+`data/bullet/%03d/%03d.dat`. Each effect record is 0x80 bytes, of which **80 bytes at
+record offset 0x30 are read verbatim in one call**. Those are the per-weapon combat
+scalars; `BulletParameter` names them from FUN_00637950 (0x637950), the hit-resolution
+function that consumes them.
+
+**Correction worth recording.** An earlier reading of this work treated the item file's
+magazine block as recovered ammo. It is not: a corpus-wide scan finds no function that
+reads those fields (`+ 0x64)` returns zero hits across all 3191 decompiled functions).
+The block is parsed and never consumed in this corpus. The remake still uses it to size
+magazines, but that is a **port rule**, and the header says so. The original's charge is
+a 100-point gauge with a 120-frame decay window, **not** a hold duration — so
+`yellow_hold_sec()`/`red_hold_sec()` are also port rules, not recovered behaviour.
+
+### Coverage table — 46 legal selections
+
+Per-weapon magazine figures below are read from `data/item/NNN.dat`. `hp/rad/base` are
+`hpDamage / hitRadius / baseDamage` from the tier's `data/bullet/<id>/<type>.dat` block.
+`—` means the tier found no bullet for that magazine and keeps the shared table.
+
+| char | slot | id | slots | bullets | m0 num | m0 reload | m1 num | m1 reload | chg0 | chg1 | tap hp/rad/base | charged hp/rad/base |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| rena | 0 | 1 | 2 | 18 | 6 | 300 | 2 | 300 | 60 | 180 | 75/30/1750 | — |
+| rena | 1 | 3 | 3 | 10 | 1 | 360 | 15 | 40 | 60 | 300 | 100/165/2500 | — |
+| rena | 2 | 33 | 2 | 12 | 1 | 180 | 1 | 360 | 60 | 300 | 50/150/2000 | 30/70/1000 |
+| mion | 0 | 2 | 5 | 12 | 30 | 40 | 4 | 420 | 60 | 180 | 20/9/500 | 50/45/1500 |
+| mion | 1 | 4 | 5 | 9 | 8 | 150 | 20 | 60 | 60 | 240 | 35/14/1250 | 15/18/400 |
+| mion | 2 | 35 | 5 | 10 | 4 | 360 | 10 | 90 | 60 | 240 | 125/20/2250 | — |
+| keiichi | 0 | 5 | 3 | 10 | 8 | 300 | 2 | 420 | 60 | 180 | 75/25/1750 | 100/40/2250 |
+| keiichi | 1 | 18 | 2 | 12 | 6 | 360 | 3 | 540 | 60 | 180 | 75/30/1750 | — |
+| keiichi | 2 | 34 | 3 | 10 | 15 | 45 | 3 | 360 | 60 | 180 | 35/25/1250 | 100/60/2750 |
+| satoko | 0 | 8 | 2 | 17 | 20 | 60 | 16 | 40 | 60 | 300 | — | 25/15/750 |
+| satoko | 1 | 17 | 2 | 25 | 10 | 180 | 4 | 600 | 60 | 600 | 15/50/500 | — |
+| satoko | 2 | 38 | 2 | 15 | 10 | 180 | 3 | 480 | 60 | 600 | — | — |
+| rika | 0 | 7 | 2 | 9 | 8 | 40 | 8 | 90 | 60 | 240 | 40/18/1400 | 30/20/1400 |
+| rika | 1 | 19 | 6 | 12 | 60 | 20 | 4 | 150 | 60 | 150 | 10/25/500 | 20/0/1000 |
+| rika | 2 | 37 | 2 | 17 | 8 | 270 | 6 | 120 | 60 | 120 | — | 30/35/1250 |
+| shion | 0 | 6 | 2 | 10 | 8 | 420 | 1 | 300 | 60 | 180 | 75/30/1750 | 50/30/500 |
+| shion | 1 | 20 | 2 | 12 | 2 | 180 | 2 | 600 | 60 | 180 | 25/50/1250 | — |
+| shion | 2 | 36 | 3 | 18 | 5 | 300 | 4 | 240 | 60 | 180 | 65/30/1000 | 75/10/1750 |
+| tomitake | 0 | 12 | 5 | 12 | 12 | 240 | 1 | 480 | 60 | 480 | 50/150/1750 | 50/2000/1000 |
+| tomitake | 1 | 21 | 5 | 12 | 6 | 720 | 1 | 360 | 60 | 300 | 50/20/1500 | 125/30/2500 |
+| tomitake | 2 | 42 | 5 | 10 | 30 | 40 | 2 | 360 | 60 | 480 | 15/15/450 | — |
+| takano | 0 | 11 | 3 | 12 | 20 | 90 | 4 | 480 | 60 | 300 | 20/10/— | 100/25/— |
+| takano | 1 | 22 | 3 | 15 | 15 | 120 | 4 | 210 | 60 | 300 | 75/30/— | — |
+| takano | 2 | 41 | 3 | 25 | 6 | 280 | 5 | 120 | 60 | 300 | — | — |
+| ohishi | 0 | 9 | 3 | 11 | 6 | 420 | 2 | 360 | 60 | 300 | 100/15/2250 | — |
+| ohishi | 1 | 23 | 2 | 7 | 1 | 150 | 1 | 360 | 60 | 120 | 50/0/1750 | 50/0/1750 |
+| ohishi | 2 | 39 | 12 | 28 | 4 | 300 | 3 | 360 | 60 | 480 | — | — |
+| akasaka | 0 | 10 | 2 | 11 | 6 | 240 | 3 | 480 | 60 | 180 | 50/25/1500 | 100/40/2750 |
+| akasaka | 1 | 24 | 2 | 10 | 4 | 360 | 3 | 240 | 60 | 180 | 100/50/2000 | — |
+| akasaka | 2 | 40 | 2 | 10 | 4 | 360 | 4 | 480 | 60 | 180 | — | — |
+| irie | 0 | 13 | 5 | 20 | 15 | 70 | 3 | 480 | 60 | 300 | 35/10/750 | 100/30/1500 |
+| irie | 1 | 26 | 5 | 13 | 2 | 180 | 4 | 360 | 60 | 300 | 40/30/1250 | 100/20/2250 |
+| irie | 2 | 43 | 4 | 16 | 10 | 90 | 3 | 480 | 60 | 300 | 35/10/1000 | 100/30/1750 |
+| chie | 0 | 14 | 5 | 12 | 10 | 150 | 1 | 270 | 60 | 180 | 50/20/1500 | 50/40/1500 |
+| chie | 1 | 25 | 5 | 12 | 4 | 240 | 10 | 120 | 60 | 300 | 15/20/750 | 35/50/1250 |
+| chie | 2 | 44 | 5 | 10 | 20 | 60 | 3 | 360 | 60 | 360 | 30/20/750 | 75/40/1500 |
+| kasai | 0 | 15 | 5 | 12 | 6 | 420 | 3 | 540 | 60 | 210 | 50/0/1250 | 125/30/2500 |
+| kasai | 1 | 27 | 5 | 15 | 30 | 60 | 12 | 180 | 60 | 600 | 15/15/450 | 35/25/1350 |
+| kasai | 2 | 45 | 3 | 13 | 6 | 360 | 4 | 480 | 60 | 240 | 100/15/2000 | 150/20/2500 |
+| akane | 0 | 16 | 5 | 10 | 5 | 480 | 6 | 300 | 60 | 300 | 100/30/2000 | 75/65/2000 |
+| akane | 1 | 28 | 5 | 12 | 4 | 300 | 5 | 360 | 60 | 300 | 100/60/2000 | 75/0/2000 |
+| akane | 2 | 46 | 5 | 8 | 5 | 480 | 3 | 360 | 60 | 300 | 100/0/2000 | 100/15/2000 |
+| hanyu | 0 | 31 | 2 | 9 | 6 | 360 | 3 | 360 | 60 | 1200 | 40/30/— | 75/80/1750 |
+| hanyu | 1 | 32 | 3 | 18 | 6 | 320 | 8 | 420 | 60 | 240 | 35/20/1400 | — |
+| natumi | 0 | 29 | 3 | 10 | 6 | 360 | 2 | 360 | 60 | 360 | 75/30/1750 | 75/0/1750 |
+| natumi | 1 | 30 | 2 | 12 | 6 | 300 | 1 | 1200 | 60 | 180 | 20/20/750 | 30/45/500 |
+
+Every one of the 46 resolves a bullet-parameter file; there are **78 distinct
+(hpDamage, hitRadius, baseDamage, tier-1 move, tier-2 move) signatures** across 46
+weapons, so the roster is not a re-skin of one profile.
+
+### Status per parameter
+
+| parameter | status | source |
+|---|---|---|
+| attachment count, mesh/texture names, 9 transforms | **recovered** | FUN_00433eb0:96-120, 909/909 cross-checked against the shipped `.ini` mirrors |
+| gauge texture + both heights | **recovered** | FUN_00433eb0:67-71 |
+| bullet table (magazine, shotNum, type, status) | **recovered** | FUN_00433eb0:148-156 |
+| bullet param id = `type*10 + status` | **recovered** | FUN_00433eb0:155 -> FUN_005f80c0:99 |
+| **hpDamage, baseDamage, reflect** | **recovered** | block indices 5/0/6, consumed by FUN_00637950:280,426,300 |
+| **hitRadius** | **recovered** | record +0x24, FUN_00637950:91,107 |
+| **charge-tier-1 / tier-2 shot move ids** | **recovered** | block indices 13/14, FUN_00637950:345-347 -> FUN_00421080 |
+| gauge gain A/B (100 fills a gauge), hitstun frames | **recovered, not yet wired** | indices 7/8/9/10, FUN_00637950:334-347 |
+| magazine capacity rule (`num`, else `num*reloadTime`) | **recovered arithmetic, unconsumed** | FUN_00433eb0:135-143 — see the correction above |
+| magazine sizing / per-shot cost / refill rate | **PORT RULE** | the block is never read by the corpus |
+| charge thresholds as hold seconds | **PORT RULE** | the original uses a 100-point gauge with a 120-frame decay, FUN_00637950:333-347 |
+| tier -> which bullet fires | **PORT RULE** | the binding happens in code absent from the corpus; the count itself is the file's |
+| projectile **speed** and **lifetime** | **provisional, shared** | absent from every item and bullet record |
+| **EX move** per weapon | **not implemented** | move ids 500-503 dispatch in FUN_00428510:12-19 and 503 is `shotFinal`, but the per-weapon binding is unrecovered |
+| melee range / damage per weapon | **provisional, shared** | not in the item or bullet data |
+
+The last four rows are why this is **not** a completion of issue #9: weapons now change
+damage, hit radius, magazine size, charge length, per-shot cost and volley count, but
+projectile speed/lifetime and the EX move are still shared or missing.
+
+### Verification
+
+709 checks in `tests/weapon_definition_test.cpp` (28 host tests, all passing): the
+FUN_00433eb0 layout against a synthesized buffer; the FUN_005f8510 combat block field by
+field; the capacity rule including the unrecovered types; move/ownership and every
+rejection path; the 46-combination inventory and the hanyu/natumi two-weapon rule; all
+46 shipped item files swept with per-field invariants; representative families spanning
+distinct capacities and charge thresholds; per-weapon damage and radius reaching a real
+`Fighter`; and a 240-tick match smoke run of **every** legal selection. Linux, Windows
+cross-build and web builds succeed. The standalone `--match` 1v1 capture is
+**byte-identical** to the pre-change binary, because that path binds no weapon and keeps
+the historical shared tuning.
+
+**Bug the tests caught during this work**, worth keeping in mind for the next reader:
+`Fighter::main_frac()` divided by the hardcoded `kMainMax` instead of the stock's own
+`max`, so any weapon-resized magazine would have driven the HUD bar to nonsense.
+
+
 
 These gate every number the other items are judged by, which is why they
 come before the visible work.

@@ -58,6 +58,7 @@
 #include "assets/xmodel.h"          // xm::Model / xm::Controller (non-owning)
 #include "game/fighter_pose.h"      // game::IFighterPose / game::FighterPose
 #include "gameplay/projectile.h"
+#include "gameplay/weapon_definition.h"
 #include "input/input.h"
 #include "render/arena_camera.h"    // for render::ArenaTarget
 
@@ -413,6 +414,41 @@ public:
     void take_damage(int amount, Fighter* source = nullptr);
     void set_state(FighterState new_state);
 
+    // ---- selected weapon (gameplay/weapon_definition.h, issue #9) ----
+    // Binds the parsed data/item/NNN.dat for the selected weapon. Borrowed, like the
+    // model; null keeps the historical shared tuning, which is what the standalone
+    // --match trace path passes. A non-null weapon sizes this fighter's magazines and
+    // charge thresholds from the file instead of the shared 6/2 constants.
+    void set_weapon(const WeaponDefinition* weapon);
+    const WeaponDefinition* weapon() const { return m_weapon; }
+
+    // Binds the decoded data/bullet/<id>/<type>.dat scalars for a charge level, taken
+    // from the weapon's own bullet table. These ARE recovered — FUN_005f8510's verbatim
+    // 80-byte block, consumed by FUN_00637950 — unlike the magazine block. `level` is 1
+    // (tap) or 2 (charged); a null argument clears it.
+    void set_bullet_parameter(int level, const BulletParameter* parameter);
+    const BulletParameter* bullet_parameter(int level) const {
+        return m_bulletParams[(level == 2) ? 1 : 0];
+    }
+
+    // ShotParams for this fighter's tier. Damage and hit radius come from the bound
+    // BulletParameter when there is one; speed and lifetime stay the shared provisional
+    // table, which the coverage table records as not recovered.
+    ShotParams shot_params_for(ShotTier tier) const;
+
+    // The recovered charge thresholds in SECONDS. FUN_00433eb0's per-magazine
+    // chargeMax is a tick count (the shipped values run 60..1200, and 180 is the same
+    // 0xb4 the ally hold is written with), converted through the fixed tick. PORT RULE:
+    // the original's charge is a 100-point gauge with a 120-frame decay window, not a
+    // hold timer, so this conversion is a design choice, not recovered behaviour.
+    float yellow_hold_sec() const;
+    float red_hold_sec() const;
+
+    // How many projectiles one trigger of this tier releases. PORT RULE: the tier ->
+    // bullet binding is not recovered, so this picks the lowest-type bullet drawing
+    // from the magazine that tier spends; the COUNT is the file's own shotNum.
+    int shot_count(ShotTier tier) const;
+
     // --- hypermode (spec §3.4) ---
     void set_hypermode(Hypermode m) { m_hypermode = m; }
     // Launch-time state injection (the suite's stand-in for the original's
@@ -470,10 +506,11 @@ public:
     // the trace wiring in main.cpp and tests/fighter_script_test.cpp read it.
     bool               anim_fallback() const { return m_animFallback; }
     // Fractional stocks feed the HUD bars directly (ammo-bar.webp).
-    float main_frac() const { return m_main.value / FighterConstants::kMainMax; }
-    float charge_frac() const {
-        return m_charge.value / FighterConstants::kChargeMax;
-    }
+    // Divide by the stock's OWN max, not the kMainMax/kChargeMax constants: a bound
+    // weapon resizes both pools from data/item/NNN.dat, and the HUD bar is a fraction of
+    // whatever the pool currently is. With no weapon max still equals the constant.
+    float main_frac() const { return m_main.frac(); }
+    float charge_frac() const { return m_charge.frac(); }
     int main_whole() const { return m_main.whole(); }
     int charge_whole() const { return m_charge.whole(); }
     // 0..1 across the full hold (red threshold = 1); colors the HUD meter.
@@ -527,8 +564,16 @@ private:
     int          m_hitsActive   = 0;      // hits taken since activation
 
     // --- shots (spec §3.1; costs/reload in projectile.h) ---
-    AmmoStock    m_main;         // MAIN fractional stock (max 6)
-    AmmoStock    m_charge;       // CHARGE fractional stock (max 2)
+    //
+    // PORT RULE, see weapon_definition.h: the magazine block this reads IS parsed by the
+    // original (FUN_00433eb0:121-143) but no function in the corpus consumes it, so the
+    // pool geometry below is the remake's design. What is recovered — per-weapon damage,
+    // hit radius, hitstun, gauge gain and the two charge-tier move ids — arrives through
+    // m_bulletParams instead.
+    const WeaponDefinition* m_weapon = nullptr;   // borrowed
+    const BulletParameter*  m_bulletParams[2] = {nullptr, nullptr};  // per charge level
+    AmmoStock    m_main;         // MAIN pool (charge level 1)
+    AmmoStock    m_charge;       // CHARGE pool (charge level 2)
     float        m_chargeHeld = 0.0f;  // seconds C held (resets on release)
     int          m_reloadTimer = 0;    // reloadNG window (frames, 0 = reloadOK)
     PendingShot  m_pending;      // armed shot awaiting scene spawn
@@ -568,6 +613,10 @@ private:
 
     // C-release firing: picks the tier from hold time, then fire_shot().
     void try_fire();
+
+    // (Re)builds m_main/m_charge from m_weapon, or restores the historical fractional
+    // stocks when no weapon is bound. Called on bind and on reset.
+    void apply_weapon_ammo();
 
     // Spends the tier's stock, opens the reloadNG window, and arms
     // m_pending for the scene. Silently drops when reloading or broke (the

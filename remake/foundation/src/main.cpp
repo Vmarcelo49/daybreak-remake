@@ -570,6 +570,14 @@ struct App {
     uint32_t                     p2Mask = 0;
     size_t                       matchRig[4] = {0, 0, 0, 0};   // controller index per fighter
     ui::FrontendLaunch           battleLaunch;
+    // Parsed data/item/NNN.dat for every weapon the front end selected, indexed by
+    // fighter (issue #9). Owned here so the pointers MatchConfig::weapon hands out
+    // outlive the match. Empty on the standalone --match path, which keeps the
+    // historical shared tuning and its banked trace.
+    std::vector<std::unique_ptr<gameplay::WeaponDefinition>> weaponDefs;
+    // Decoded data/bullet/<weaponId>/<type>.dat parameters, parallel to weaponDefs:
+    // [fighter][chargeLevel-1]. Borrowed by the fighters, so it must outlive them.
+    std::vector<std::array<std::unique_ptr<gameplay::BulletParameter>, 2>> bulletParams;
     uint64_t                     matchShots = 0, matchSparks = 0, matchHits = 0;
     uint64_t                     matchRoundOverFrame = 0;
     game::EffectEventQueue       matchFx;
@@ -894,6 +902,64 @@ static bool initVersus(App& app) {
 // so P1 takes points[0] and P2 points[1] (the two z=-2200 points in stage01/stage21).
 // This is why the old DX9 trace A/B only matched with an explicit --spawn2: it was
 // matching the deleted DX9 build's hardcoded pair, not the original's env.dat pick.
+// Loads and parses one weapon's data/item/NNN.dat into app.weaponDefs[fighter].
+// FUN_00433eb0 builds the path as "data/item/%03d.dat" from the item id the selection
+// data carries; the parse itself is gameplay::WeaponDefinition::parse, transcribed from
+// that reader. Returns false only when the file is missing or short, which is a hard
+// error: a selected weapon with no definition would silently fight with shared tuning.
+static bool loadWeaponDefinition(App& app, int fighter, int itemId, std::string& error) {
+    char path[64];
+    std::snprintf(path, sizeof(path), "data/item/%03d.dat", itemId);
+    std::vector<uint8_t> bytes;
+    if (!fnd::assets::assetSource().read(path, bytes)) {
+        error = std::string("cannot read ") + path;
+        return false;
+    }
+    auto definition = std::make_unique<gameplay::WeaponDefinition>();
+    std::string parseError;
+    if (!definition->parse(itemId, bytes.data(), bytes.size(), parseError)) {
+        error = std::string(path) + ": " + parseError;
+        return false;
+    }
+    if (static_cast<int>(app.weaponDefs.size()) <= fighter)
+        app.weaponDefs.resize(static_cast<size_t>(fighter) + 1);
+    app.weaponDefs[static_cast<size_t>(fighter)] = std::move(definition);
+    return true;
+}
+
+// Decodes the data/bullet/<weaponId>/<type>.dat parameters for one charge level out of a
+// parsed weapon. FUN_00433eb0:152 hands each bullet entry's `type * 10 + status` to
+// FUN_005f80c0, which builds "data/bullet/%03d/%03d.dat" with `type` as the file and
+// passes `status` to FUN_005f8510 as the variant. A missing file is not fatal: the
+// fighter keeps the shared provisional shot table and the coverage table records that
+// combination's projectile parameters as unrecovered.
+static bool loadBulletParameter(const App& app, int fighter, int level,
+                                const gameplay::WeaponDefinition& weapon,
+                                std::unique_ptr<gameplay::BulletParameter>& out) {
+    const gameplay::MagazineDefinition& mag = weapon.magazineForChargeLevel(level);
+    // Deterministic tier -> bullet choice, matching Fighter::shot_count's rule.
+    const int wantMagazine = mag.chargeLevel - 1;
+    const gameplay::BulletDefinition* best = nullptr;
+    for (int i = 0; i < weapon.bulletCount; ++i) {
+        const gameplay::BulletDefinition& b = weapon.bullets[i];
+        if (b.magazine != wantMagazine) continue;
+        if (!best || b.type < best->type) best = &b;
+    }
+    if (!best) return false;
+    char path[64];
+    std::snprintf(path, sizeof(path), "data/bullet/%03d/%03d.dat", weapon.id, best->type);
+    std::vector<uint8_t> bytes;
+    if (!fnd::assets::assetSource().read(path, bytes)) return false;
+    auto parameter = std::make_unique<gameplay::BulletParameter>();
+    std::string err;
+    if (!gameplay::parseBulletParameter(bytes.data(), bytes.size(), best->status,
+                                        *parameter, err))
+        return false;
+    out = std::move(parameter);
+    (void)fighter;
+    return true;
+}
+
 static bool initMatch(App& app) {
     if (app.frontendMatch && !app.scene.env.present) {
         app.error = "four-panel battles need all four env.dat spawn points";
@@ -939,6 +1005,11 @@ static bool initMatch(App& app) {
             config.facing[i] = config.side[i] == 0 ? 0.f : 3.14159f;
             config.startHP[i] = app.frontend.health;
             config.hyper[i] = (gameplay::Hypermode)app.frontend.slots[panel].hypermode;
+            // The selected weapon's own combat definition (issue #9): magazine sizes,
+            // charge thresholds, per-shot costs and volley counts come from the item
+            // file, not from a shared table.
+            if (i < static_cast<int>(app.weaponDefs.size()) && app.weaponDefs[i])
+                config.weapon[i] = app.weaponDefs[i].get();
         }
     }
     const glm::vec3 envP1 = app.scene.env.points[0];
@@ -969,6 +1040,14 @@ static bool initMatch(App& app) {
     const xm::Model* tamaMesh = app.projectileCollisionMesh;
     app.match.reset(config, models, anims, tamaMesh,
                     tamaMesh ? &app.projectileCollisionIndex : nullptr, movement);
+    // Hand each fighter its recovered projectile parameters. Match::reset has already
+    // bound the weapon (MatchConfig::weapon), which sized the magazines.
+    for (int i = 0; i < fighterCount; ++i)
+        for (int level = 1; level <= 2; ++level)
+            if (i < static_cast<int>(app.bulletParams.size()))
+                app.match.fighter(i).set_bullet_parameter(
+                    level, app.bulletParams[static_cast<size_t>(i)]
+                               [static_cast<size_t>(level - 1)].get());
     // Bind pose on request: the DX9 reference renders no animation (its d3dx9 under
     // Wine hands back no controller), so this is what makes a gate frame comparable.
     if (app.opts.noAnim) {
@@ -2100,6 +2179,23 @@ static bool enterFrontendBattle(App& app) {
     ui::FrontendLaunch launch;
     if (!ui::frontendLaunch(app.frontend, launch, app.error, (uint32_t)app.logicTicks)) return false;
     app.battleLaunch = launch;
+    // Parse every selected weapon's combat definition now, so the battle has real
+    // per-weapon tuning by the time initMatch builds MatchConfig (issue #9).
+    app.weaponDefs.clear();
+    app.weaponDefs.resize(static_cast<size_t>(launch.fighterCount));
+    app.bulletParams.clear();
+    app.bulletParams.resize(static_cast<size_t>(launch.fighterCount));
+    for (int i = 0; i < launch.fighterCount; ++i)
+        if (!loadWeaponDefinition(app, i, launch.fighters[i].weaponId, app.error))
+            return false;
+    // The recovered per-weapon projectile parameters: damage, hit radius, hitstun and the
+    // two charge-tier move ids. A level with no matching bullet file simply stays empty,
+    // which is the shared provisional table for that shot.
+    for (int i = 0; i < launch.fighterCount; ++i)
+        for (int level = 1; level <= 2; ++level)
+            loadBulletParameter(app, i, level, *app.weaponDefs[static_cast<size_t>(i)],
+                                app.bulletParams[static_cast<size_t>(i)]
+                                          [static_cast<size_t>(level - 1)]);
     app.frontendMatch = true;
     app.frontendBattleReady = false;
     app.frontend.resultStats = {};

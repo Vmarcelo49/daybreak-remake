@@ -21,7 +21,10 @@ void ProjectilePool::clear() {
 
 bool ProjectilePool::spawn(const glm::vec3& pos, const glm::vec3& dir,
                            ShotTier tier, Fighter* owner) {
-    const ShotParams p = shot_params(tier);
+    // Damage and hit radius come from the firing fighter's weapon when it bound one
+    // (data/bullet/<id>/<type>.dat, via FUN_005f8510's verbatim block); otherwise the
+    // shared provisional table. Speed and lifetime are provisional for every weapon.
+    const ShotParams p = owner ? owner->shot_params_for(tier) : shot_params(tier);
     for (auto& s : m_shots) {
         if (s.alive) continue;
         s.alive = true;
@@ -55,7 +58,8 @@ void ProjectilePool::update(double dt, Fighter* fighters, int fighterCount,
 
     for (auto& s : m_shots) {
         if (!s.alive) continue;
-        const ShotParams p = shot_params(s.tier);
+        const ShotParams p = s.owner ? s.owner->shot_params_for(s.tier)
+                                   : shot_params(s.tier);
 
         s.age += step;
         if (s.age >= p.lifeSec) {

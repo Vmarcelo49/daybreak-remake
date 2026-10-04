@@ -59,6 +59,12 @@ struct MatchConfig {
     float     startGauge[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     int       startHP[4]    = {FighterConstants::kMaxHP, FighterConstants::kMaxHP,
                                FighterConstants::kMaxHP, FighterConstants::kMaxHP};
+    // The selected weapon's parsed data/item/NNN.dat, one pointer per fighter. Borrowed
+    // and optional: a null entry keeps the historical shared tuning, which is what the
+    // standalone --match trace path relies on. A non-null entry gives that fighter its
+    // own magazine sizes, charge thresholds, per-shot costs and volley counts, so two
+    // fighters with different weapons genuinely fight differently (issue #9).
+    const WeaponDefinition* weapon[4] = {nullptr, nullptr, nullptr, nullptr};
 };
 
 // What one frame did, for the trace, the flow and the effect queue.

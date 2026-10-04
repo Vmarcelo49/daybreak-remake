@@ -25,6 +25,8 @@ void Match::reset(const MatchConfig& config, const xm::Model* model[4], xm::Cont
         m_fighters[i].set_hypermode(config.hyper[i]);
         m_fighters[i].set_hyper_gauge(config.startGauge[i]);
         m_fighters[i].set_hp(config.startHP[i]);
+        // Before init()/reset(), which size the magazines from it.
+        m_fighters[i].set_weapon(config.weapon[i]);
     }
     m_shots.clear();
     m_locks.reset(m_config.fighterCount, m_config.side);
