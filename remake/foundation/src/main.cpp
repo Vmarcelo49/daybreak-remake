@@ -556,7 +556,8 @@ struct App {
     gameplay::Match              match;
     bool                         matchMode = false;
     uint64_t                     matchFrame = 0;      // 1-based, the DX9's frame_count+1
-    int                          ringPulse = 0;
+    int                          lockHeldTicks = 0;   // LockSwitch held with no fresh tap;
+                                                      // at kLockHoldTicks it aims an ally
     int                          lockedFighter = 0;   // camera target; LockSwitch tap
                                                      // cycles (Guard+AttackB too, per DX9)
     gameplay::ArenaCamera        matchCamera;         // the ported reference camera
@@ -1021,7 +1022,7 @@ static bool initMatch(App& app) {
     }
     app.matchMode = true;
     app.lockedFighter = 0;
-    app.ringPulse = 0;
+    app.lockHeldTicks = 0;
     // The camera starts pristine: eye (0,0,0), converging at 10% per update exactly
     // like the reference's ArenaCamera (gameplay/arena_camera.cpp). That seed is what
     // makes the first trace line comparable — the DX9's own frame-1 eye is one 10%
@@ -1176,11 +1177,19 @@ static void placeFxCards(App& app) {
     }
 }
 
+// How long LockSwitch must be HELD, with no fresh tap, before the selection moves to an
+// ally (input.h: "hold = aim ally"). PORT RULE: the hold itself is recovered
+// (FUN_00421e30's 0xb4, re-pinned by FUN_0041f580:244), but the gesture length that
+// raises it is not in the corpus, so this threshold only has to be long enough that a tap
+// still physically held does not undo itself — a couple of fixed ticks.
+static constexpr int kLockHoldTicks = 2;
+
 // One match frame: the reference's order lives in gameplay::Match::step; this adds
 // what the scene added around it — tick inputs, the camera's target switch, the
 // HUD values, the effect events and the debug cubes.
 static void tickMatch(App& app, double dt) {
-    if (app.ringPulse > 0) --app.ringPulse;
+    // The 15-tick switch pulse is not counted here: Match's lock table owns and decays
+    // it (gameplay/target_lock.h, FUN_004201a0), so the HUD reads one source of truth.
     for (int i = 0; i < app.match.config().fighterCount; ++i)
         app.previousFighter[i] = app.match.fighter(i).pose();
     app.previousMatchEye = app.matchCamera.eye();
@@ -1212,16 +1221,17 @@ static void tickMatch(App& app, double dt) {
             const int controller = app.frontend.slots[panel].controller;
             if (controller >= 0 && controller < 4) inputs[i] = &app.tickInput[controller];
             else {
-                int target = -1;
-                float nearest = 1.0e30f;
-                for (int j = 0; j < app.match.config().fighterCount; ++j) {
-                    if (app.match.config().side[i] == app.match.config().side[j] ||
-                        !app.match.fighter(j).is_alive()) continue;
-                    const glm::vec3 d = app.match.fighter(j).position() - app.match.fighter(i).position();
-                    const float distance = d.x*d.x + d.z*d.z;
-                    if (distance < nearest) { nearest = distance; target = j; }
-                }
-                if (target >= 0)
+                // The COM aims at the lock its fighter already carries, which is the same
+                // target the fighter itself faces and shoots at (gameplay/match.cpp). An
+                // ally lock is deliberately NOT used: a bot would walk up to its partner.
+                const int locked = app.match.locked_target(i);
+                const int target = (locked != gameplay::kNoTarget &&
+                                    app.match.config().side[i] !=
+                                        app.match.config().side[locked] &&
+                                    app.match.fighter(locked).is_alive())
+                                       ? locked
+                                       : app.match.melee_target(i);
+                if (target != gameplay::kNoTarget)
                     gameplay::updateBotInput(app.botInput[i], app.match.fighter(i),
                                              app.match.fighter(target), app.matchFrame);
                 inputs[i] = &app.botInput[i];
@@ -1252,27 +1262,53 @@ static void tickMatch(App& app, double dt) {
     }
     updateFxCards(app, app.matchFx, app.matchFxEvents, (float)dt);
 
+    // The viewer is the fighter on panel kFrontendBattleSlots[0] (1P). It is the fighter
+    // whose LockSwitch gestures are read, and the owner of the combat lock the HUD reticle
+    // and ring pulse are driven from. A PANEL index; the lookup yields a FIGHTER index,
+    // and the controller slot (frontend.slots[panel].controller) is a third, distinct
+    // index space (see gameplay/target_lock.h).
+    int viewerIndex = 0;
+    if (app.frontendMatch)
+        for (int j = 0; j < app.battleLaunch.fighterCount; ++j)
+            if (app.battleLaunch.fighters[j].panel == ui::kFrontendBattleSlots[0]) {
+                viewerIndex = j;
+                break;
+            }
+
     // Camera: the ported reference camera (gameplay/arena_camera.{h,cpp}), fed the
-    // live fighters. The target switch is the reference's (Guard just_pressed while
-    // AttackB is held, scenes.cpp:644-646) and the pool does the dead-skip itself.
-    // LockSwitch tap is the original's own reticle switch (input.h: tap = cycle
-    // enemy): no character swap exists — the "tag" voice cluster (tagfront/
-    // tagback/tagOK beside tactics/thank) is partner callouts, and the only
-    // switch mechanic in the original is the target cycle (FUN_00421e30). In
-    // this 1v1 port that is camera-only (shots fly the facing, which tracks
-    // the single enemy); hold-for-ally needs allies first.
+    // live fighters. The pool does the dead-skip itself, and a real target change arms
+    // the retarget blend so a switch lands fast without cutting.
     for (int i = 0; i < app.match.config().fighterCount; ++i) {
         const gameplay::Fighter& f = app.match.fighter(i);
         app.arenaTargets[i].position = f.position();
         app.arenaTargets[i].facingYaw = f.facing_yaw();
         app.arenaTargets[i].alive = f.is_alive();
     }
-    if (p1 && (p1->just_pressed[fnd::input::LockSwitch] ||
-               (p1->just_pressed[fnd::input::Guard] && p1->down[fnd::input::AttackB]))) {
+    // LockSwitch is the original's target switch (input.h: tap = cycle enemy,
+    // hold = aim ally) and it is TWO writes, not one. The cycle is FUN_00421e30's: it
+    // moves the camera's followed player AND re-picks the viewer's combat target
+    // (FUN_00421f30's +0x304) through the recovered wrap-around index walk. They are
+    // kept separate from here on — the camera owns who is followed, gameplay/
+    // target_lock.h owns who each fighter attacks — so two players can hold different
+    // locks while the camera follows one player.
+    if (p1 && p1->just_pressed[fnd::input::LockSwitch]) {
+        app.match.cycle_locked_target(viewerIndex, true);
         app.matchCamera.cycle_target(true);
-        // FUN_00421e30/FUN_004201a0: a 15-tick lock pulse, not a persistent angle.
-        app.ringPulse = 15;
+        app.lockHeldTicks = 0;
+    } else if (p1 && p1->down[fnd::input::LockSwitch]) {
+        // Held past the threshold, so the tap above is not undone by the finger still
+        // being on the button. PORT RULE: the original's hold is recovered as the
+        // 180-tick dwell FUN_0041f580:244 re-pins on an ally selection, but the gesture
+        // length that raises it is not, so this threshold is a port constant.
+        if (++app.lockHeldTicks >= kLockHoldTicks) app.match.lock_ally_target(viewerIndex);
+    } else {
+        app.lockHeldTicks = 0;
     }
+    // The DX9 reference's own camera switch (Guard just_pressed while AttackB is held,
+    // scenes.cpp:644-646): a camera decision only, so it moves the camera and nothing
+    // else.
+    if (p1 && p1->just_pressed[fnd::input::Guard] && p1->down[fnd::input::AttackB])
+        app.matchCamera.cycle_target(true);
     // Scripted/offscreen standalone runs retain the banked null-query camera path;
     // live matches clamp the eye against collision_camera.x unless the A/B switch asks
     // for the historical unclamped behavior. The blend remains per call as in the port.
@@ -1339,6 +1375,13 @@ static void tickMatch(App& app, double dt) {
 
     // Per-fighter appearance state; projection is resolved with the render viewport below.
     {
+        // The viewer's own lock names the fighter its ring and com bar belong to.
+        // FUN_00643230:61 reads the target-valid flag as (+0x304 > -1) on the fighter
+        // being drawn, and 0x421e30/0x421f30's +0x30c pulse as its scale and arc twist
+        // (hud.h:83-86), so both come from the viewer's lock and not from which player
+        // the camera happens to be following.
+        const int lockedTarget = app.match.locked_target(viewerIndex);
+        const int viewPulse    = app.match.lock_pulse(viewerIndex);
         for (int i = 0; i < 2; ++i) {
             int fighterIndex = i;
             if (app.frontendMatch) {
@@ -1347,12 +1390,10 @@ static void tickMatch(App& app, double dt) {
                     if (app.battleLaunch.fighters[j].panel == panel) fighterIndex = j;
             }
             const gameplay::Fighter& f = app.match.fighter(fighterIndex);
-            // The ring and the com bar mark the fighter you are *not* following: the
-            // original's own screen battle-hud.webp has the camera behind the player with
-            // the red ring and the `com` tag on the opponent ahead of her. The camera's
-            // locked target is the one being followed, so this is the inverse of it.
-            app.versusHud.fighters[i].target = (fighterIndex != app.lockedFighter);
-            app.versusHud.fighters[i].ringPulse = app.ringPulse;
+            app.versusHud.fighters[i].target = (fighterIndex == lockedTarget);
+            // The pulse belongs to the fighter that switched, so only the viewer's own
+            // HUD entry scales and twists; a partner's ring stays at rest.
+            app.versusHud.fighters[i].ringPulse = (i == 0) ? viewPulse : 0;
             // Slot 0 is 1P and slot 4 is com in the tag atlas (P01 (320,256,64,32) rows);
             // the red copies sit four rows down, which is the tagSheet index.
             app.versusHud.fighters[i].slot = app.frontendMatch

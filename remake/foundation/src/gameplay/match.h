@@ -7,6 +7,7 @@
 // whole content of this file:
 //
 //   1. advance the match clock            (scenes.cpp:610)
+//   1b. maintain each fighter's combat lock (FUN_0041f580:216-248) — see target_lock.h
 //   2. fighters update in panel order      (679-680 for the 1v1 reference) — P1 sees P2's previous
 //      state and P2 sees P1's already-updated state; the reference is asymmetric
 //      here and the port keeps it, because facing/lock-on and the Oyashiro burst
@@ -19,6 +20,9 @@
 //
 // Camera target switching (Guard + AttackB, scenes.cpp:644-646) is NOT here: it is a
 // camera decision, so it lives with the camera in the demo, reading the same inputs.
+// The per-fighter combat target is ALSO not the camera's: gameplay/target_lock.h holds
+// one lock per fighter and the camera keeps its own followed-player selection, so two
+// players can be locked onto different enemies at the same time (issue #8).
 // Rendering is not here either — the fighters expose modelMatrix()/pose() and the
 // pool exposes its shots, which is what the foundation renderer consumes.
 //
@@ -33,6 +37,7 @@
 #include "gameplay/fighter.h"
 #include "gameplay/match_economy.h"
 #include "gameplay/projectile.h"
+#include "gameplay/target_lock.h"
 #include "input/input.h"
 #include "physics/raycast.h"
 
@@ -85,6 +90,33 @@ public:
                     const fnd::input::PlayerState* p2Input, double dt);
     MatchFrame step(const fnd::input::PlayerState* inputs[4], double dt);
 
+    // ---- per-fighter combat target (gameplay/target_lock.h) ---------------------
+    // Each fighter owns a lock on another fighter's INDEX, kept independently of
+    // whichever player the camera follows. This is the port of FUN_00421f30's +0x304
+    // and FUN_00421e30's ally hold, and it is what facing, shots and the melee victim
+    // read. The camera's own target selection (gameplay/arena_camera.h) is separate
+    // state and does not move these.
+    //
+    // Every index in this block is a fighter index — the same one `fighter(i)` takes
+    // and the one MatchConfig::side/spawn use — not a panel slot, not a controller slot
+    // and not a team. Calls are inert for an out-of-range fighter index.
+    int  locked_target(int fighter) const { return m_locks.target(fighter); }
+    // True when this fighter's selection is an ally and the recovered hold is live
+    // (FUN_00421e30's 0xb4, re-pinned by FUN_0041f580:244).
+    bool lock_holds_ally(int fighter) const { return m_locks.holding_ally(fighter); }
+    // Ticks left in the recovered 15-tick switch pulse (FUN_00421e30's +0x30c), which
+    // the ring reads as a scale and arc advance (FUN_00643230:71-72).
+    int  lock_pulse(int fighter) const { return m_locks.pulse(fighter); }
+    // Tap (LockSwitch): cycle to the next living enemy. Landed on the only enemy, or
+    // with none alive, the lock is left alone.
+    void cycle_locked_target(int fighter, bool forward = true);
+    // Hold (LockSwitch): aim at an ally, arming the recovered hold.
+    void lock_ally_target(int fighter);
+    // The melee victim for fighter i: its locked target when that target is a living
+    // HOSTILE, otherwise the nearest living hostile. An ally lock never makes a fighter
+    // punch its own partner, and it never leaves it unable to attack.
+    int  melee_target(int fighter) const;
+
     Fighter&       fighter(int i)       { return m_fighters[i]; }
     const Fighter& fighter(int i) const { return m_fighters[i]; }
     ProjectilePool&       shots()       { return m_shots; }
@@ -99,9 +131,14 @@ public:
     // reported in MatchFrame so the caller can push effect cards for them.
 
 private:
+    // The fighters' current liveness as one 4-wide array. The lock table, the melee
+    // victim and the economy all need it, so it is read in one place.
+    void liveness(bool out[4]) const;
+
     Fighter            m_fighters[4];
     ProjectilePool     m_shots;
     MatchEconomy       m_economy;
+    TargetLocks        m_locks;
     MatchConfig        m_config;
     const xm::Model*   m_tamaMesh = nullptr;
     const game::physics::ModelIndex* m_tamaIndex = nullptr;

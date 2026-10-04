@@ -70,7 +70,11 @@ struct HudFighterHud {
     float barX = 0.f, barY = 0.f;     // projected point of position + 150 units, -32 px
     int   ringPulse = 0;              // fighter+0x30c: 15-frame target-switch countdown
     bool  visible = false;            // in front of the camera (the original's clip.w > 0)
-    bool  target = false;             // the locked target: red ring + its com bar
+    bool  target = false;             // the fighter the VIEWER has locked on: red ring
+                                     // + its com bar. FUN_00643230:61 gates this on the
+                                     // selection being valid (fighter+0x304 > -1), so it is
+                                     // a per-viewer flag, not a camera one.
+                                     // main.cpp fills it from Match::locked_target.
     int   slot = 0;                   // 0..4 -> 1P/2P/3P/4P/com tag cell (0x643a93)
     int   tagSheet = 0;               // 0 blue rows, 1 red rows (0x64408c)
     float hp = 1.f;                   // 0..1, hud+0x7a4 / 10000: the live com-bar fill

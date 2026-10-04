@@ -223,6 +223,74 @@ This explicit 1/64 capture checks asset-backed integration; device-free tests
 exercise live tick semantics. Virtual-controller checks are not physical
 controller testing, and dummy audio is not a listening check.
 
+## Per-fighter combat target — 2026-10-04
+
+Issue #8's blocker is fixed. Each fighter now owns a lock on another fighter,
+independent of which player the camera follows. `src/gameplay/target_lock.h` holds
+the rules; `Match` owns the table and is what `step()` reads, so facing, shots and the
+melee victim all follow the selection. `Match::step()` no longer re-picks the nearest
+living enemy every tick — that was a function-local with no accessor, so nothing could
+be locked, held or observed.
+
+**Recovered, with provenance.** `FUN_00421e30` (0x421e30) is the cycle writer: it stores
+the selection, writes the 15-tick pulse at `+0x30c`, **clears** the combat target at
+`+0x304`, and compares the selected player's team against player 0's — equal arms the
+ally hold `0xb4` at `+0x848` and plays cue 0xe (0xf when the mode flag `+0x845` is set),
+different clears the hold and plays cue 0xd. `FUN_00421f30` (0x421f30) is the direct
+set: a valid index is adopted with a fresh pulse and a cleared hold, and **any other
+index stores `0xffffffff` and touches nothing else** — which is the port's
+"invalid targets never produce an index" rule, kept exactly. `FUN_004201a0` (0x4201a0)
+decrements the pulse. `FUN_0041f580:216-248` is the maintenance pass: a validity
+predicate whose failure clears the lock and re-picks by walking `(selection + 1) %
+count` with a wrap and a skip, committing only when the walk lands somewhere new
+(`:238`); then the ally hold **re-pinned to 0xb4 every tick** while the selection is an
+ally and decremented otherwise. `FUN_0063c2a0` (0x63c2a0) is the dispatcher that reaches
+both writers — command 0x2a calls `FUN_00421e30`, command 0x2b calls `FUN_00421f30`.
+
+**Port rules, explicitly not RE.** The candidate walk skips dead fighters and the owner;
+the original's own walk skips the `+0xaecc`/`+0xaed0` pair that commands 0x20/0x21 set
+and clear, and what that pair represents is not recovered. Tap cycles hostiles and hold
+picks an ally — the reading of `input.h`'s "tap = cycle enemy, hold = aim ally"; the
+original's cycle is not gated on team. With no valid lock the fallback takes the first
+hostile in index order rather than the nearest, which keeps it deterministic. The first
+selection a fighter ever takes is acquired silently: nobody pressed anything, and
+pulsing all four rings at round start would be a lie the HUD then animates. The
+hold-gesture threshold is a port constant. `+0xaecc`, `+0xaed0`, `+0xaed8`, `+0x845`,
+`+0x318` and the `+0xaecb` "busy" flag in the validity predicate are all still
+unmapped, so those guards of the original predicate are not modelled.
+
+**Behaviour.** A valid lock is never re-picked, so a nearer unselected enemy cannot
+silently override it; only a tap or an invalid lock moves it. A lock naming an ally is
+aim-only — `Match::melee_target()` returns it only when it is a living hostile, and
+otherwise falls back to the nearest living hostile, so an ally can be faced and shot at
+but never hit and a fighter holding an ally is never left unable to attack.
+`ProjectilePool::update` already excluded allies from shot collisions and still does.
+The HUD ring and com bar now mark the fighter the **viewer** has selected, driven from
+that viewer's lock pulse — previously the ring was the inverse of the camera's target,
+so it moved onto the player's own fighter whenever the camera switched, and the field's
+own comment already said it should be "the locked target". The COM bot aims at its
+fighter's lock, which deleted the duplicate nearest-enemy scan that sat in `main.cpp`.
+
+**Camera.** The camera keeps its own followed-player selection — that separation is the
+point of the issue. A real target change now arms a retarget window (10 calls at blend
+0.45 instead of the reference's 0.1) so a switch lands fast without cutting or
+overshooting; the window is armed only by an actual change, so a match that never
+switches — every banked 1v1 capture — stays on the reference rate.
+
+**Verification.** 154 checks in `tests/target_lock_test.cpp` (27 host tests total, all
+passing) cover 2v2 tap cycling and wrapping, backward cycling, ally-skipping in both
+directions, the one-enemy no-op, independent per-fighter locks on all four fighters,
+240 ticks of a closer enemy failing to steal a lock, KO of the target and of the owner,
+respawn, dead allies, every invalid-index branch, out-of-range owners, the hold pin and
+countdown, the 15-tick pulse and its clamp, index-space distinctness, facing and melee
+following a far locked target while a near one stands closer, ally locks never producing
+a hostile victim, and the camera's retarget window plus the no-boost cases. Linux,
+Windows cross-build and web builds succeed. A real-asset 1v1 capture (stage01,
+Rika/Takano, 200 frames at 1/64) is **byte-identical** to the pre-change binary, both
+in the `DAYBREAK_CAMINFO` trace and in the rendered frame, confirming the no-LockSwitch
+path is untouched. A capture that presses LockSwitch differs by design: that is the
+camera retarget and the ring's new owner.
+
 ## A. Correctness and the measurement instruments (do first)
 
 These gate every number the other items are judged by, which is why they

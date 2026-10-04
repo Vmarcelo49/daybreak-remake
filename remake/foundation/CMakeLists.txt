@@ -258,6 +258,14 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(stage_movement_test PRIVATE foundation_gameplay)
     add_test(NAME stage_movement_test COMMAND stage_movement_test)
 
+    # The per-fighter combat target (issue #8): cycling, hold-for-ally, the 15-tick
+    # switch pulse, the KO/invalid-index fallbacks and the Match wiring that makes
+    # facing and melee follow the lock. Drives TargetLocks directly and Match through
+    # its public API; both live in foundation_gameplay.
+    add_executable(target_lock_test tests/target_lock_test.cpp)
+    target_link_libraries(target_lock_test PRIVATE foundation_gameplay)
+    add_test(NAME target_lock_test COMMAND target_lock_test)
+
     # The .X animation path against the shipped rigs: defines XMODEL_IMPLEMENTATION
     # itself (same reason as raycast_analytic), sweeps data/<name>/<NN>.X at run time,
     # and skips itself when the install is absent.

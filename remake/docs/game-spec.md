@@ -112,6 +112,12 @@ own: fov π/4, near 50, far 150000 from `0x6338ae`; the old 300/800 constants
 are a different projection's near/far offsets
 (`foundation/src/gameplay/arena_camera.h:110-112`), not a framing.
 
+The **combat target is not the camera**: each fighter holds its own, from
+`foundation/src/gameplay/target_lock.h` (`FUN_00421e30`/`FUN_00421f30`'s
+`+0x304` and the `0xb4` ally hold), so two players can hold different targets
+while the camera follows one of them. Facing, shots and the melee victim read
+the lock; the camera's followed player is separate state.
+
 ### 3.4 Meters
 
 - **Stamina**: spent by dashing, **jumping**, and holding block — and the

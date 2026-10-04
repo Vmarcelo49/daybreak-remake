@@ -28,7 +28,9 @@ void ArenaCamera::set_target_pool(const std::vector<CameraTarget*>& fighters) {
 void ArenaCamera::set_active_target(int index) {
     if (index < 0 || index >= static_cast<int>(m_pool.size())) return;
     if (!m_pool[index] || !m_pool[index]->alive) return;
+    if (m_activeIdx == index) return;
     m_activeIdx = index;
+    armRetarget();
 }
 
 void ArenaCamera::cycle_target(bool forward) {
@@ -41,11 +43,19 @@ void ArenaCamera::cycle_target(bool forward) {
     for (int steps = 0; steps < n; ++steps) {
         i = forward ? (i + 1) % n : (i - 1 + n) % n;
         if (m_pool[i] && m_pool[i]->alive) {
+            // A cycle that lands back where it started (one fighter, or every other one
+            // dead) is not a retarget and arms no boost — that is what keeps a 1v1's
+            // banked trace on the reference's 10% blend.
+            if (i != m_activeIdx) armRetarget();
             m_activeIdx = i;
             return;
         }
     }
     // No alive fighters found — keep the current target.
+}
+
+float ArenaCamera::followBlend() const {
+    return m_retargetTicks > 0 ? kRetargetBlend : kFollowBlend;
 }
 
 CameraTarget* ArenaCamera::active_target() const {
@@ -105,13 +115,17 @@ void ArenaCamera::update(double /*dt*/, const CollisionQuery& collision) {
                 const float clampDist = std::max(0.0f, hit.hitDist - kCollisionMargin);
                 m_eye = m_target + dir * clampDist;
             } else {
-                m_eye = render::arenaSmoothEye(m_eye, desiredEye, kFollowBlend);
+                m_eye = render::arenaSmoothEye(m_eye, desiredEye, followBlend());
             }
         }
     } else {
-        // No collision frame configured: the 10%-per-call follow, nothing else.
-        m_eye = render::arenaSmoothEye(m_eye, desiredEye, kFollowBlend);
+        // No collision frame configured: the follow lerp, nothing else.
+        m_eye = render::arenaSmoothEye(m_eye, desiredEye, followBlend());
     }
+
+    // The retarget boost is a per-call window, so it is consumed after the lerp that
+    // used it (see followBlend).
+    if (m_retargetTicks > 0) --m_retargetTicks;
 
     m_up   = glm::vec3(0.0f, 1.0f, 0.0f);
     m_view = glm::lookAtLH(m_eye, m_target, m_up);

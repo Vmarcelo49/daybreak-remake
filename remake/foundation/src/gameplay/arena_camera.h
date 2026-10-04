@@ -180,11 +180,14 @@ public:
     void set_target_pool(const std::vector<CameraTarget*>& fighters);
 
     // Sets the active target by index. Does nothing when the index is out of range
-    // or the fighter there is dead.
+    // or the fighter there is dead. A real change also arms the retarget blend
+    // (kRetargetBlend) for kRetargetTicks calls; re-selecting the current target is not
+    // a retarget and arms nothing.
     void set_active_target(int index);
 
     // Cycles to the next alive fighter, wrapping. Dead fighters are skipped; with
-    // none alive the current target is kept. `forward` false cycles backward.
+    // none alive the current target is kept. `forward` false cycles backward. As with
+    // set_active_target, landing on a different fighter arms the retarget blend.
     void cycle_target(bool forward = true);
 
     int           active_target_index() const { return m_activeIdx; }
@@ -240,6 +243,10 @@ private:
     std::vector<CameraTarget*> m_pool;
     int                        m_activeIdx = -1;
 
+    // Retarget window: calls left where followBlend() uses kRetargetBlend instead of
+    // the reference's kFollowBlend. See armRetarget().
+    int m_retargetTicks = 0;
+
     // Orbit nudge and the visual-validation overrides.
     float m_orbitNudge = 0.0f;
     float m_heightOverride = -1.0f;   // <0 = preset height
@@ -256,6 +263,25 @@ private:
     // preset. kFollowBlend is per CALL, not per second (arena_camera.cpp:123-136).
     static constexpr float kFollowBlend      = 0.1f;
     static constexpr float kCollisionMargin  = 20.0f;       // arena_camera.cpp:115
+
+    // ---- retarget blend (issue #8) -------------------------------------------
+    // The reference's 10%-per-call follow is a FOLLOWING camera's rate: over the ~40
+    // calls it takes to converge, the old target has long left the screen, and the
+    // switch reads as a slow drift. Switching targets is a different event, and at 0.1
+    // it is the slowest part of a fight. kRetargetBlend converges in ~7 calls instead
+    // while keeping the same exponential form, so the path stays smooth — no cut, no
+    // overshoot — and the camera is back on the new fighter before the next exchange.
+    //
+    // PORT RULE, not recovered: the corpus pins the 0.1 follow (arena_camera.cpp:123-
+    // 136) but nothing reads a switch-rate branch, and FUN_00421e30/FUN_00421f30 only
+    // write the lock. The window is armed by a real target CHANGE, so a match that never
+    // switches — every banked 1v1 capture, and any single-fighter pool — is bit-for-bit
+    // on the reference's blend.
+    static constexpr float kRetargetBlend     = 0.45f;
+    static constexpr int   kRetargetTicks     = 10;
+
+    void armRetarget() { m_retargetTicks = kRetargetTicks; }
+    float followBlend() const;
 };
 
 }  // namespace gameplay

@@ -34,7 +34,7 @@ struct GameFighterHud {
     float barX = 0.f, barY = 0.f;     // projected position + 150 units, then -32 HUD units
     int ringPulse = 0;                // fighter+0x30c target-switch countdown
     bool  visible = false;            // in front of the camera
-    bool  target = false;             // the locked target: red ring + its com bar
+    bool  target = false;             // the fighter the viewer has locked on (ring + com bar)
     int   slot = 0;                   // 0..4 -> 1P/2P/3P/4P/com
     int   tagSheet = 0;               // 0 blue tag rows, 1 red
     float hp = 1.f;                   // hud+0x7a4 / 10000

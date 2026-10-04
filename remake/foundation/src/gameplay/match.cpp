@@ -27,8 +27,50 @@ void Match::reset(const MatchConfig& config, const xm::Model* model[4], xm::Cont
         m_fighters[i].set_hp(config.startHP[i]);
     }
     m_shots.clear();
+    m_locks.reset(m_config.fighterCount, m_config.side);
     m_economy.reset();
     m_economy.set_round_rules(config.timeLimit, config.balloonSize);
+}
+
+void Match::liveness(bool out[4]) const {
+    for (int i = 0; i < 4; ++i) out[i] = m_fighters[i].is_alive();
+}
+
+void Match::cycle_locked_target(int fighter, bool forward) {
+    if (fighter < 0 || fighter >= m_config.fighterCount) return;
+    bool alive[4];
+    liveness(alive);
+    m_locks.cycle_enemy(fighter, forward, alive);
+}
+
+void Match::lock_ally_target(int fighter) {
+    if (fighter < 0 || fighter >= m_config.fighterCount) return;
+    bool alive[4];
+    liveness(alive);
+    m_locks.select_ally(fighter, alive);
+}
+
+int Match::melee_target(int fighter) const {
+    if (fighter < 0 || fighter >= m_config.fighterCount) return kNoTarget;
+    bool alive[4];
+    liveness(alive);
+    // The locked target when it is a living hostile (FUN_00421f30's +0x304). Allies are
+    // excluded here unconditionally: an ally may be aimed at, never attacked.
+    const int locked = m_locks.target(fighter);
+    if (m_locks.targetable(fighter, locked, alive) && !m_locks.is_ally(fighter, locked))
+        return locked;
+    // Otherwise, and only otherwise, proximity picks: nearest living hostile. This is
+    // what keeps a fighter attacking while it is holding an ally lock, and it can never
+    // reach an ally because the hostile test is on the same line as the lock test.
+    float nearest = 1.0e30f;
+    int victim = kNoTarget;
+    for (int j = 0; j < m_config.fighterCount; ++j) {
+        if (m_locks.is_ally(fighter, j) || !m_fighters[j].is_alive()) continue;
+        const glm::vec3 d = m_fighters[j].position() - m_fighters[fighter].position();
+        const float distance = d.x * d.x + d.z * d.z;
+        if (distance < nearest) { nearest = distance; victim = j; }
+    }
+    return victim;
 }
 
 MatchFrame Match::step(const fnd::input::PlayerState* p1Input,
@@ -41,31 +83,32 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[4], double dt) {
     MatchFrame out;
     m_economy.tick(dt);   // scenes.cpp:610
 
-    // Keep panel order stable. Each fighter tracks the nearest living opponent;
-    // two-fighter matches therefore retain the reference's P1-then-P2 update order.
-    int targets[4] = {-1, -1, -1, -1};
+    // Maintain the per-fighter locks first: FUN_0041f580 does its validity fallback and
+    // ally-hold pin before anything reads the selection, and the fighters below read it
+    // on this same tick. This snapshot is the liveness as of the tick's START; `alive`
+    // further down is re-read after the fighters move, which is what the economy needs.
+    bool aliveAtStart[4];
+    liveness(aliveAtStart);
+    m_locks.step(aliveAtStart);
+
+    // Each fighter faces, aims and shoots at ITS OWN locked target (FUN_00421f30's
+    // +0x304), which is what lets two players hold independent locks. Panel order still
+    // decides the update order, so a two-fighter match keeps the reference's P1-then-P2
+    // asymmetry. A lock naming an ally is passed through as-is: that is the hold gesture.
     for (int i = 0; i < m_config.fighterCount; ++i) {
-        float nearest = 1.0e30f;
-        for (int j = 0; j < m_config.fighterCount; ++j) {
-            if (i == j || m_config.side[i] == m_config.side[j] || !m_fighters[j].is_alive()) continue;
-            const glm::vec3 d = m_fighters[j].position() - m_fighters[i].position();
-            const float distance = d.x * d.x + d.z * d.z;
-            if (distance < nearest) { nearest = distance; targets[i] = j; }
-        }
-        if (targets[i] < 0) {
-            for (int j = 0; j < m_config.fighterCount; ++j)
-                if (i != j && m_config.side[i] != m_config.side[j]) { targets[i] = j; break; }
-        }
-        if (targets[i] >= 0)
-            m_fighters[i].update(inputs ? inputs[i] : nullptr, &m_fighters[targets[i]], dt,
-                                 m_movementCollision);
-        else
-            m_fighters[i].update(inputs ? inputs[i] : nullptr, nullptr, dt,
-                                 m_movementCollision);
+        const int target = m_locks.target(i);
+        m_fighters[i].update(inputs ? inputs[i] : nullptr,
+                             (target != kNoTarget && target < m_config.fighterCount)
+                                 ? &m_fighters[target] : nullptr,
+                             dt, m_movementCollision);
     }
 
+    // Melee resolves against the locked target when it is a living hostile, else the
+    // nearest living hostile. try_melee_hit re-checks liveness, and melee_target() never
+    // returns an ally, so an ally can be aimed at but never hit (projectile.h already
+    // excludes allies from shot collisions).
     for (int i = 0; i < m_config.fighterCount; ++i) {
-        const int target = targets[i];
+        const int target = melee_target(i);
         if (target >= 0 && m_fighters[i].try_melee_hit(m_fighters[target])) {
             out.meleeHit[i] = true;
             out.meleeVictim[i] = target;
