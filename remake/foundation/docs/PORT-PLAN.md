@@ -96,17 +96,27 @@ integration until the design is accepted.
 
 Status (post-cutover): the fetch→`/packs/` loader plus IDBFS persistence
 have landed (`src/platform/web_pack.cpp` via `scripts/make_pack.py`,
-`?pack=` handling in `src/main.cpp`). What remains is the release
-hardening below:
+`?pack=` handling in `src/main.cpp`). That loader fetches every file in a
+manifest before use; it is still the verification path, not the target
+per-asset production loader. The accepted self-hosting direction and ordered
+implementation steps are in [`WEB-DELIVERY-PLAN.md`](WEB-DELIVERY-PLAN.md).
+What remains:
 
-1. W1 — runtime delivery design. Compare embedded subset, Emscripten preload
-   packaging, HTTP fetch/streaming, and IndexedDB/cache behavior. Choose the
-   production path for a real release, not only verification.
-2. W2 — browser asset proofs. Extend web verification beyond console/scene stats
+1. W1 — prepare owner-supplied game data on the host. Preserve bundle lookup
+   precedence while unpacking once into persistent storage and generating a
+   versioned asset catalog.
+2. W2 — per-asset runtime delivery. Serve catalogued assets from the same-origin
+   Docker service; add asynchronous browser requests and independent caching.
+3. W3 — startup and match dependency groups. Load front-end essentials at
+   startup and the selected match's full dependencies during the VS transition.
+4. W4 — compression and transfer measurements. Compare standard HTTP
+   compression with optional per-asset codecs before selecting a custom format.
+5. W5 — browser asset proofs. Extend web verification beyond console/scene stats
    toward pixel evidence, within headless-canvas limits; use offscreen readback or
    another supported capture method where available.
-3. W3 — web asset constraints. Document size/memory, CORS/HTTPS/localhost behavior,
-   subset strategy, licensing/data handling, and what still cannot run in-browser.
+6. W6 — web asset constraints. Document size/memory, HTTPS/localhost behavior,
+   cache limits, data handling, transfer measurements, and what remains
+   unverified in-browser.
 
 Acceptance: a real release asset path is specified and the verified subset is
 narrow; local-only test data remain out of git.
