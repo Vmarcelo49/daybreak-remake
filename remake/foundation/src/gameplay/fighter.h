@@ -411,7 +411,11 @@ public:
     // --- combat ---
     // `source` applies the attacker's Hypermode damage bonus and earns its
     // gauge (Friendship). Pass nullptr for environmental damage.
-    void take_damage(int amount, Fighter* source = nullptr);
+    // `hitstunFrames` overrides the hit-stun length when >= 0: FUN_00637950:308 writes
+    // the attacker's weapon block defenderHitstun (blob index 10, record +0x58) into
+    // the victim's +0xa0 action counter, so the stun length is per weapon. Negative
+    // keeps the shared kHitStunFrames.
+    void take_damage(int amount, Fighter* source = nullptr, int hitstunFrames = -1);
     void set_state(FighterState new_state);
 
     // ---- selected weapon (gameplay/weapon_definition.h, issue #9) ----

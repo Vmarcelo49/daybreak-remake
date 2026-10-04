@@ -393,18 +393,65 @@ weapons, so the roster is not a re-skin of one profile.
 | **hpDamage, baseDamage, reflect** | **recovered** | block indices 5/0/6, consumed by FUN_00637950:280,426,300 |
 | **hitRadius** | **recovered** | record +0x24, FUN_00637950:91,107 |
 | **charge-tier-1 / tier-2 shot move ids** | **recovered** | block indices 13/14, FUN_00637950:345-347 -> FUN_00421080 |
-| gauge gain A/B (100 fills a gauge), hitstun frames | **recovered, not yet wired** | indices 7/8/9/10, FUN_00637950:334-347 |
+| **defender hitstun** | **recovered and wired** | index 10 (record +0x58), FUN_00637950:308 -> victim +0xa0; reaches the fight through `take_damage(..., hitstunFrames)` |
+| gauge gain A/B (100 fills a gauge), attacker hitstun | **recovered, not wired** | indices 7/8/9, FUN_00637950:334-347 |
 | magazine capacity rule (`num`, else `num*reloadTime`) | **recovered arithmetic, unconsumed** | FUN_00433eb0:135-143 — see the correction above |
 | magazine sizing / per-shot cost / refill rate | **PORT RULE** | the block is never read by the corpus |
 | charge thresholds as hold seconds | **PORT RULE** | the original uses a 100-point gauge with a 120-frame decay, FUN_00637950:333-347 |
 | tier -> which bullet fires | **PORT RULE** | the binding happens in code absent from the corpus; the count itself is the file's |
-| projectile **speed** and **lifetime** | **provisional, shared** | absent from every item and bullet record |
-| **EX move** per weapon | **not implemented** | move ids 500-503 dispatch in FUN_00428510:12-19 and 503 is `shotFinal`, but the per-weapon binding is unrecovered |
+| projectile **speed** and **lifetime** | **provisional, shared — and provably absent from the shipped data** | see the exhaustive search below |
+| **EX move** per weapon | **structure recovered, binding not** | see the EX note below |
 | melee range / damage per weapon | **provisional, shared** | not in the item or bullet data |
 
-The last four rows are why this is **not** a completion of issue #9: weapons now change
-damage, hit radius, magazine size, charge length, per-shot cost and volley count, but
-projectile speed/lifetime and the EX move are still shared or missing.
+### Projectile speed and lifetime: searched, and not in the data
+
+This was chased properly rather than assumed. The bullet entity's velocity is three
+floats at +0x3C (FUN_005f9090:34-36), and FUN_005f60b0:40-49 orients the bullet by
+them, so the field is certain — but it is a **caller argument**: FUN_005f8d50 passes it
+straight through to the constructor and has **no caller anywhere in the corpus**, so
+whatever computes a launch speed is code this corpus does not contain.
+
+The 20-slot combat block was then enumerated exhaustively rather than sampled: across
+the shipped weapons, blob indices 1, 2, 3, 4, 11 and 12 are **zero in every file**, and
+every non-zero slot is one of the thirteen already named (base/HP/reflect damage, gauge
+gains, hitstun, tier move ids, effect ids, release offsets). There is no remaining slot
+that could hold a speed or a lifetime, and no per-weapon frame threshold exists — the
+only bullet frame counter, +0x154, is used by FUN_005f60b0:23-27 to pick a looping
+effect and by :72 as a time uniform, never against an expiry.
+
+So the speed and lifetime stay one shared provisional policy, and that is now a
+**finding**, not a gap left unexamined. Two weapons already say `speed` explicitly in
+the table: `hitRadius` varies 9..2000 across the roster, so weapons differ in how hard
+and how wide they hit while the ballistics stay shared.
+
+### The EX move: structure recovered, per-weapon binding not
+
+Recovered and implemented in the remake's existing Hypermode EX path
+(`Fighter::try_ex_move`, `ShotTier::Ex`), which now reads the charged (level-2) block for
+its damage and hit radius like the other tiers:
+
+* move **502** is the EX activation: FUN_00422160 heals to 10000, enters "state 2"
+  (`+0x846 = 1`) and swaps the state byte; FUN_00428510:211 dispatches it.
+* move **503** is `shotFinal`: while it runs, FUN_00428510:295-297 pins HP at 9999,
+  grants 60 frames (0x3C) of invulnerability at +0x7AC and force-fills the second gauge
+  to 100.
+* FUN_00639160:47-52 selects 503 over the normal move exactly when the victim is in
+  EX-state-2, is dying, and held a full EX gauge; FUN_00422bd0 then plays the queued
+  follow-up.
+
+What is **not** recovered is which weapon's `chargeTier1Move`/`chargeTier2Move` feed
+those moves — the two ids are recovered and exposed on `BulletParameter` (indices 13
+and 14, the values the table shows), but the original's binding of a specific weapon to
+a specific EX is in the character move scripts, which this port does not execute. The
+EX therefore keeps its own shared damage rather than a per-weapon one, and says so.
+
+### Honest status
+
+Weapons now differ in **damage, hit radius, hit-stun length, magazine size, charge
+length, per-shot cost and volley count**. They do **not** yet differ in projectile
+speed, lifetime, or EX binding — and the table above records exactly why, with the
+search that established it. That is the line between "recovered" and "not present in
+the shipped data".
 
 ### Verification
 

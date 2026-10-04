@@ -554,7 +554,7 @@ const char* Fighter::anim_set_name() const {
     return m_model->anims[static_cast<std::size_t>(m_animSetIdx)].name.c_str();
 }
 
-void Fighter::take_damage(int amount, Fighter* source) {
+void Fighter::take_damage(int amount, Fighter* source, int hitstunFrames) {
     if (!is_alive()) return;
     const HypermodeParams& mine = hypermode_params(m_hypermode);
 
@@ -617,7 +617,10 @@ void Fighter::take_damage(int amount, Fighter* source) {
         }
         if (stun) {
             set_state(FighterState::Hit);
-            m_stateTimer = FighterConstants::kHitStunFrames;
+            // The stun a weapon inflicts is that weapon's own (FUN_00637950:308); a
+            // weapon that specifies none keeps the shared default.
+            m_stateTimer = hitstunFrames > 0 ? hitstunFrames
+                                             : FighterConstants::kHitStunFrames;
         }
     }
 }

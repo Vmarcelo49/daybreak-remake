@@ -23,7 +23,9 @@ bool ProjectilePool::spawn(const glm::vec3& pos, const glm::vec3& dir,
                            ShotTier tier, Fighter* owner) {
     // Damage and hit radius come from the firing fighter's weapon when it bound one
     // (data/bullet/<id>/<type>.dat, via FUN_005f8510's verbatim block); otherwise the
-    // shared provisional table. Speed and lifetime are provisional for every weapon.
+    // shared provisional table. Speed and lifetime are provisional for every weapon:
+    // they are absent from every shipped record (see the coverage table). Every tier
+    // above Tap draws the charged (level-2) block, including the EX.
     const ShotParams p = owner ? owner->shot_params_for(tier) : shot_params(tier);
     for (auto& s : m_shots) {
         if (s.alive) continue;

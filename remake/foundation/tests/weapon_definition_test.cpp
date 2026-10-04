@@ -326,6 +326,104 @@ void testBulletParameterParser() {
 }
 
 // ---------------------------------------------------------------------------
+// 1c. Recovered hit-stun reaches the victim; unrecoverable fields stay shared.
+// ---------------------------------------------------------------------------
+void testHitstunIsPerWeapon() {
+    section("behavior: per-weapon hit-stun");
+    gameplay::BulletParameter quick;
+    quick.hpDamage = 50;
+    quick.defenderHitstun = 7;
+    gameplay::BulletParameter heavy;
+    heavy.hpDamage = 50;
+    heavy.defenderHitstun = 45;
+
+    auto fighter = [](const glm::vec3& at) {
+        auto f = std::make_unique<gameplay::Fighter>();
+        f->init(nullptr, nullptr, at, 0.0f);
+        return f;
+    };
+    {
+        auto victim = fighter(glm::vec3(0, 0, 0));
+        gameplay::Fighter attacker;
+        attacker.init(nullptr, nullptr, glm::vec3(0, 0, 100), 0.0f);
+        victim->take_damage(10, &attacker, quick.defenderHitstun);
+        check(victim->state() == gameplay::FighterState::Hit, "a hit staggers the victim");
+        // Walk the stun down the way a match does and record when it clears.
+        fnd::input::PlayerState idle{};
+        int frames = 0;
+        while (victim->state() == gameplay::FighterState::Hit && frames < 200) {
+            fnd::input::compute_edges(idle);
+            victim->update(&idle, nullptr, 1.0 / 64.0);
+            ++frames;
+        }
+        check(frames == quick.defenderHitstun,
+              "the stun lasts exactly the weapon's defenderHitstun frames");
+    }
+    {
+        // Same weapon-free call keeps the shared constant.
+        auto victim = fighter(glm::vec3(0, 0, 0));
+        gameplay::Fighter attacker;
+        attacker.init(nullptr, nullptr, glm::vec3(0, 0, 100), 0.0f);
+        victim->take_damage(10, &attacker);
+        fnd::input::PlayerState idle{};
+        int frames = 0;
+        while (victim->state() == gameplay::FighterState::Hit && frames < 200) {
+            fnd::input::compute_edges(idle);
+            victim->update(&idle, nullptr, 1.0 / 64.0);
+            ++frames;
+        }
+        check(frames == gameplay::FighterConstants::kHitStunFrames,
+              "with no weapon the shared kHitStunFrames still applies");
+    }
+    {
+        // A zero in the weapon means "this entry inflicts no stun", so the default must
+        // win over it rather than a zero-length stun.
+        auto victim = fighter(glm::vec3(0, 0, 0));
+        gameplay::Fighter attacker;
+        attacker.init(nullptr, nullptr, glm::vec3(0, 0, 100), 0.0f);
+        gameplay::BulletParameter none;
+        none.defenderHitstun = 0;
+        victim->take_damage(10, &attacker, none.defenderHitstun);
+        fnd::input::PlayerState idle{};
+        int frames = 0;
+        while (victim->state() == gameplay::FighterState::Hit && frames < 200) {
+            fnd::input::compute_edges(idle);
+            victim->update(&idle, nullptr, 1.0 / 64.0);
+            ++frames;
+        }
+        check(frames == gameplay::FighterConstants::kHitStunFrames,
+              "a zero weapon hitstun falls back to the shared default");
+    }
+}
+
+void testUnrecoveredFieldsStayShared() {
+    section("behavior: fields with no evidence stay shared");
+    // Speed and lifetime are provably absent from the item and bullet records, so no
+    // weapon may change them. This pins that: if someone later adds a per-weapon speed
+    // without recovering one, this fails.
+    auto fastW = parseOrNull(1, synthDat(2, 1, {6, 2, 300, 0, 60, 1},
+                                         {2, 2, 300, 0, 180, 2}, {{0, 3, 0, 0}}));
+    auto slowW = parseOrNull(2, synthDat(2, 1, {60, 2, 20, 0, 60, 1},
+                                         {4, 2, 600, 0, 600, 2}, {{0, 1, 0, 0}}));
+    check(fastW && slowW, "both weapons parse");
+    if (!fastW || !slowW) return;
+    gameplay::Fighter fast, slow;
+    fast.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    slow.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    fast.set_weapon(fastW.get());
+    slow.set_weapon(slowW.get());
+    for (int tier = 0; tier < 4; ++tier) {
+        const auto t = static_cast<gameplay::ShotTier>(tier);
+        check(fast.shot_params_for(t).speed == slow.shot_params_for(t).speed,
+              "shot speed is shared: it is absent from the shipped weapon data");
+        check(fast.shot_params_for(t).lifeSec == slow.shot_params_for(t).lifeSec,
+              "shot lifetime is shared: likewise absent");
+    }
+    check(fast.main_whole() != slow.main_whole(),
+          "while magazine size, which IS in the data, still differs");
+}
+
+// ---------------------------------------------------------------------------
 // 2. The shipped inventory.
 // ---------------------------------------------------------------------------
 fs::path findInstall(int argc, char** argv) {
@@ -656,6 +754,8 @@ int main(int argc, char** argv) {
     const fs::path install = findInstall(argc, argv);
     testParser();
     testBulletParameterParser();
+    testHitstunIsPerWeapon();
+    testUnrecoveredFieldsStayShared();
     testWeaponDrivesFighter();
     testInventory(install);
     testRepresentativeFamilies(install);
