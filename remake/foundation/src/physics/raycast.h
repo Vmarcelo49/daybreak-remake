@@ -10,9 +10,10 @@
 //     sphere/AABB/OBB code exists (remake/src/physics/raycast.h:7-9). This module
 //     reproduces that query surface: closest hit (raycast_model, raycast.h:64) and
 //     the early-out yes/no variant (raycast_model_any, raycast.h:73).
-//   * Three collision meshes per stage — collision.x, collision_camera.x,
-//     collision_tama.x (raycast.h:11-14). The camera clamp consumes the camera one
-//     through game::ICameraCollision below (game/camera_collision.h).
+//   * FUN_004011f0 loads three collision files per stage. collision.x supplies separate
+//     movement and ground query purposes; collision_camera.x is camera-only, and
+//     collision_tama.x is projectile-only (remake/src/maps/stage.h:11-14).
+//     The camera clamp consumes its mesh through game::ICameraCollision below.
 //   * Hits are reported as face index + barycentric u,v + distance along the ray
 //     (raycast.h:21-25), and `maxDist <= 0` means "no cutoff" (raycast.cpp:66).
 //   * NO frame transform. The reference walks D3DXFRAME but never multiplies by a
@@ -144,6 +145,88 @@ bool raycastModelAny(const xm::Model& model, const ModelIndex& index, const glm:
 // allocation). Per-frame paths hold a ModelIndex; CameraCollision below does.
 RayHit raycastModel(const xm::Model& model, const glm::vec3& origin, const glm::vec3& dir,
                     float maxDist = 0.f, RaycastStats* stats = nullptr);
+
+// A walkable surface found in the stage's ground channel. The normal is kept so
+// callers and tests can distinguish a valid support plane from a vertical wall.
+struct GroundHit {
+    bool      hit = false;
+    float     height = 0.f;
+    glm::vec3 point{0.f};
+    glm::vec3 normal{0.f, 1.f, 0.f};
+    int32_t   mesh = -1;
+    uint32_t  faceIndex = 0;
+};
+
+struct MovementResult {
+    glm::vec3 position{0.f};
+    bool      grounded = false;
+    bool      hitWall = false;
+};
+
+// FUN_004011f0 establishes collision.x as the general fighter channel, and the existing
+// D3DXIntersect replacement preserves its triangle queries. Movement and ground support
+// use distinct queries over that same model. The 20-unit radius follows the movement
+// measurements in FighterConstants (fighter.h, RE section 14.7); body height, step-up
+// and step-down remain provisional port rules. Sweeps cover the full requested segment,
+// independent of dash speed, and slide the remaining displacement along wall normals.
+class MovementCollision {
+public:
+    // Both arguments are borrowed from the fully assembled scene. They are often the
+    // same collision.x model, but separate bindings keep each purpose explicit.
+    void setMeshes(const xm::Model* movementMesh, const xm::Model* groundMesh);
+
+    const xm::Model* movementMesh() const { return movementMesh_; }
+    const xm::Model* groundMesh() const { return groundMesh_; }
+    bool empty() const { return movementTriangles_ == 0 && groundTriangles_ == 0; }
+    bool hasGround() const { return groundTriangles_ != 0; }
+
+    // Searches [referenceY - maxDrop, referenceY + maxRise], choosing the highest
+    // upward-facing ground triangle under (x,z). maxRise/maxDrop are provisional port
+    // rules; the original collision mesh supplies the geometry, not these tolerances.
+    GroundHit groundAt(float x, float z, float referenceY,
+                       float maxRise, float maxDrop) const;
+
+    // Sweeps from `start` to `desired` in XZ, following reachable ground when
+    // grounded. Airborne movement gets the same wall sweep but keeps its Y for the
+    // fighter's vertical integrator. The sweep is a continuous set of rays offset
+    // around the fighter footprint, with multiple body-height samples.
+    MovementResult move(const glm::vec3& start, const glm::vec3& desired,
+                        bool grounded) const;
+
+    // Project a preferred env.dat/override spawn onto a walkable surface. If that
+    // point is unusable, select the nearest valid supplied spawn, then the nearest
+    // walkable triangle centroid. Returns a finite fallback if the stage has no
+    // movement geometry.
+    glm::vec3 resolveSpawn(const glm::vec3& preferred,
+                          const glm::vec3* candidates = nullptr,
+                          size_t candidateCount = 0) const;
+
+    // Used by the fighter's last-safe-position recovery. A missing collision file is
+    // intentionally permissive; invalid non-finite values are still rejected.
+    bool validPosition(const glm::vec3& position) const;
+
+    static constexpr float kFighterRadius = 20.f;
+    static constexpr float kFighterHeight = 145.f;
+    static constexpr float kMaxStepUp = 50.f;
+    static constexpr float kMaxStepDown = 120.f;
+
+private:
+    const xm::Model* movementMesh_ = nullptr;
+    const xm::Model* groundMesh_ = nullptr;
+    ModelIndex movementIndex_;
+    ModelIndex groundIndex_;
+    size_t movementTriangles_ = 0;
+    size_t groundTriangles_ = 0;
+    glm::vec3 boundsMin_{0.f};
+    glm::vec3 boundsMax_{0.f};
+    bool haveBounds_ = false;
+
+    RayHit firstWallHit(const glm::vec3& start, const glm::vec3& delta) const;
+    glm::vec3 slideSegment(const glm::vec3& start, const glm::vec3& delta,
+                           bool& hitWall) const;
+    bool insideHorizontalBounds(float x, float z) const;
+    GroundHit nearestGround(float x, float z) const;
+};
 
 // The physics side of the arena camera clamp (game/camera_collision.h:36-40): the
 // distance from the aim to the first collision_camera.x blocker along the

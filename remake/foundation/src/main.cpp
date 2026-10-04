@@ -341,7 +341,7 @@ static size_t firstCharacter(const xm::Scene& scene, size_t from) {
 xm::Scene loadScene(const Options& o, std::string& error, size_t* enemyBegin = nullptr) {
     xm::SceneOptions sopt;
     sopt.resolveTextures = !o.noTextures;
-    sopt.includeCollision = true;   // framing only; never drawn
+    sopt.includeCollision = true;   // framing and gameplay queries; never drawn
 
     xm::Scene scene;
     if (o.versus || o.match) {
@@ -523,6 +523,9 @@ struct App {
     glm::vec3                    debugBoundsLo{0.f}, debugBoundsHi{0.f};
     bool                         haveDebugBounds = false;
     game::physics::CameraCollision cameraCollision;   // arena eye clamp, per stage
+    game::physics::MovementCollision movementCollision; // borrowed collision.x movement/ground meshes
+    const xm::Model* projectileCollisionMesh = nullptr;
+    game::physics::ModelIndex projectileCollisionIndex;
     ui::SpriteRenderer           uiRenderer;
     ui::ScreenStack              screens;          // front end: current screen + fade
     bool                         screensMode = false;
@@ -620,6 +623,11 @@ struct App {
 
     std::string error;
 };
+
+static bool historicalMatchCapture(const App& app) {
+    return !app.frontendMatch &&
+           (!app.opts.out.empty() || !app.opts.script.empty() || !app.opts.script2.empty());
+}
 
 bool buildTrianglePipeline(App& app) {
     WGPUShaderModule shader = gpu::createShaderModule(app.ctx.device, shaders::kDemoWGSL);
@@ -950,25 +958,25 @@ static bool initMatch(App& app) {
         app.matchRig[i] = rigs[i];
     }
 
-    // The projectile channel (fcn.004011f0's collision_tama.x): optional, and shots
-    // fly to expiry when the stage ships none (the reference's open-field case).
-    const xm::Model* tamaMesh = nullptr;
-    static game::physics::ModelIndex tamaIndex;
-    for (const xm::SceneModel& sm : app.scene.models) {
-        if (sm.role == "collision" && sm.source.find("collision_tama") != std::string::npos) {
-            tamaMesh = &sm.model;
-            tamaIndex = game::physics::buildModelIndex(sm.model);
-            break;
-        }
-    }
-    app.match.reset(config, models, anims, tamaMesh, tamaMesh ? &tamaIndex : nullptr);
+    // Standalone --match captures/scripts are the historical unclamped trace path:
+    // their positions and camera samples remain comparable to the banked recipes.
+    // Interactive --match and front-end battles use collision.x movement/ground
+    // queries; no collision model keeps the existing open-field fallback.
+    const game::physics::MovementCollision* movement =
+        historicalMatchCapture(app) || app.movementCollision.empty()
+            ? nullptr : &app.movementCollision;
+    const xm::Model* tamaMesh = app.projectileCollisionMesh;
+    app.match.reset(config, models, anims, tamaMesh,
+                    tamaMesh ? &app.projectileCollisionIndex : nullptr, movement);
     // Bind pose on request: the DX9 reference renders no animation (its d3dx9 under
     // Wine hands back no controller), so this is what makes a gate frame comparable.
     if (app.opts.noAnim) {
         for (int i = 0; i < fighterCount; ++i) app.match.fighter(i).set_animate(false);
         std::printf("match anim   : off (bind pose)\n");
     }
-    std::printf("match        : %d fighters, tama=%s\n", fighterCount, tamaMesh ? "loaded" : "missing");
+    std::printf("match        : %d fighters, movement/ground=%s, projectile=%s\n",
+                fighterCount, movement && !movement->empty() ? "loaded" : "disabled",
+                tamaMesh ? "loaded" : "missing");
 
     if (!app.matchInput.init()) {
         app.error = "--match needs the input backend";
@@ -1265,11 +1273,14 @@ static void tickMatch(App& app, double dt) {
         // FUN_00421e30/FUN_004201a0: a 15-tick lock pulse, not a persistent angle.
         app.ringPulse = 15;
     }
-    // No collision query: the DX9 match scene updates its camera with a null collision
-    // frame (scenes.cpp:729). The foundation's clamp stays one argument away —
-    // update(dt, {&app.cameraCollision}) — and is the original-fidelity path, not the
-    // parity one. The blend is per call by design (the reference ignores dt).
-    app.matchCamera.update(dt);
+    // Scripted/offscreen standalone runs retain the banked null-query camera path;
+    // live matches clamp the eye against collision_camera.x unless the A/B switch asks
+    // for the historical unclamped behavior. The blend remains per call as in the port.
+    const gameplay::CollisionQuery cameraQuery =
+        (!historicalMatchCapture(app) && !app.opts.noCameraClamp)
+            ? gameplay::CollisionQuery{&app.cameraCollision}
+            : gameplay::CollisionQuery{};
+    app.matchCamera.update(dt, cameraQuery);
     app.eye = app.matchCamera.eye();
     app.target = app.matchCamera.target();
     // The first camera tick has no valid earlier view to interpolate from.
@@ -1549,18 +1560,35 @@ bool initScene(App& app) {
     // fighters, animation controllers or collision queries borrow model pointers.
     if (app.opts.match || app.opts.versus) buildFxAssets(app);
 
-    // The arena camera clamp's geometry: the one model with the camera collision role.
-    // Stages without it (and the two whose file parses to zero triangles) keep the
-    // documented degradation — no clamp, smoothing only (game/camera_collision.h:33-35).
+    // Effects are part of SceneModel storage too, so finish appending them before
+    // borrowing any model pointers for fighters or collision queries.
+    const xm::Model* movementMesh = nullptr;
+    const xm::Model* groundMesh = nullptr;
+    const xm::Model* cameraMesh = nullptr;
+    app.projectileCollisionMesh = nullptr;
     for (size_t i = 0; i < app.scene.models.size(); ++i) {
-        if (app.scene.models[i].role == "collision_camera") {
-            app.cameraCollision.setMesh(&app.scene.models[i].model);
-            std::printf("camera clamp : %s, %s\n", app.scene.models[i].source.c_str(),
-                        app.cameraCollision.empty() ? "empty mesh, no clamp"
-                                                    : "camera collision mesh loaded");
-            break;
+        const xm::SceneModel& sm = app.scene.models[i];
+        if (sm.hasCollisionChannel(xm::StageCollisionChannel::Movement)) movementMesh = &sm.model;
+        if (sm.hasCollisionChannel(xm::StageCollisionChannel::Ground)) groundMesh = &sm.model;
+        if (sm.hasCollisionChannel(xm::StageCollisionChannel::Projectile)) {
+            app.projectileCollisionMesh = &sm.model;
+            app.projectileCollisionIndex = game::physics::buildModelIndex(sm.model);
         }
+        if (sm.hasCollisionChannel(xm::StageCollisionChannel::Camera)) cameraMesh = &sm.model;
     }
+    app.movementCollision.setMeshes(movementMesh, groundMesh);
+    app.cameraCollision.setMesh(cameraMesh);
+    if (movementMesh)
+        std::printf("movement collision : collision.x (%s)\n",
+                    app.movementCollision.empty() ? "empty mesh" : "swept query loaded");
+    if (groundMesh)
+        std::printf("ground collision   : collision.x (%s)\n",
+                    app.movementCollision.empty() ? "empty mesh" : "surface query loaded");
+    if (app.projectileCollisionMesh)
+        std::printf("projectile collision: collision_tama.x\n");
+    if (cameraMesh)
+        std::printf("camera collision   : collision_camera.x (%s)\n",
+                    app.cameraCollision.empty() ? "empty mesh, no clamp" : "loaded");
 
     // ---- pose: bind pose, or one animation set driven through the Controller
     app.controllers.resize(app.scene.models.size());

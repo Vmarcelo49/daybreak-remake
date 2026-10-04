@@ -384,7 +384,8 @@ public:
     // `opponent` = the other fighter (lock-on facing, and the target of an
     // Oyashiro activation burst — hence non-const).
     // `dt` = delta time in seconds.
-    void update(const input::PlayerState* input, Fighter* opponent, double dt);
+    void update(const input::PlayerState* input, Fighter* opponent, double dt,
+                const game::physics::MovementCollision* collision = nullptr);
 
     // --- render data (the DX9 render(IDirect3DDevice9*) split) ---
     // World matrix the DX9 build pushed as D3DTS_WORLD (FUN_00420b30):
@@ -497,6 +498,7 @@ private:
 
     // --- transform ---
     glm::vec3    m_position   {0, 0, 0};
+    glm::vec3    m_safePosition{0, 0, 0};  // last stage-supported position for invalid-world recovery
     glm::vec3    m_velocity   {0, 0, 0};
     float        m_facing     = 0.0f;   // yaw (radians, around Y)
 

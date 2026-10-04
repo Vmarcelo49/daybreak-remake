@@ -4,17 +4,23 @@
 namespace gameplay {
 
 void Match::reset(const MatchConfig& config, const xm::Model* model[4], xm::Controller* anim[4],
-                  const xm::Model* tamaMesh, const game::physics::ModelIndex* tamaIndex) {
+                  const xm::Model* tamaMesh, const game::physics::ModelIndex* tamaIndex,
+                  const game::physics::MovementCollision* movementCollision) {
     m_config = config;
     m_tamaMesh = tamaMesh;
     m_tamaIndex = tamaIndex;
+    m_movementCollision = movementCollision;
 
     m_config.fighterCount = config.fighterCount < 2 ? 2 : (config.fighterCount > 4 ? 4 : config.fighterCount);
     for (int i = 0; i < m_config.fighterCount; ++i) {
+        if (m_movementCollision) {
+            m_config.spawn[i] = m_movementCollision->resolveSpawn(
+                config.spawn[i], config.spawn, static_cast<size_t>(m_config.fighterCount));
+        }
         m_fighters[i].clear_stats();
         m_fighters[i].set_battle_rates(config.healthPercent, config.gaugePercent);
-        if (model[i]) m_fighters[i].init(model[i], anim[i], config.spawn[i], config.facing[i]);
-        else         m_fighters[i].reset(config.spawn[i], config.facing[i]);
+        if (model[i]) m_fighters[i].init(model[i], anim[i], m_config.spawn[i], config.facing[i]);
+        else         m_fighters[i].reset(m_config.spawn[i], config.facing[i]);
         // init() resets these, so the launch-time injection follows it (scenes.cpp:546-549).
         m_fighters[i].set_hypermode(config.hyper[i]);
         m_fighters[i].set_hyper_gauge(config.startGauge[i]);
@@ -50,8 +56,12 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[4], double dt) {
             for (int j = 0; j < m_config.fighterCount; ++j)
                 if (i != j && m_config.side[i] != m_config.side[j]) { targets[i] = j; break; }
         }
-        if (targets[i] >= 0) m_fighters[i].update(inputs ? inputs[i] : nullptr, &m_fighters[targets[i]], dt);
-        else m_fighters[i].update(inputs ? inputs[i] : nullptr, nullptr, dt);
+        if (targets[i] >= 0)
+            m_fighters[i].update(inputs ? inputs[i] : nullptr, &m_fighters[targets[i]], dt,
+                                 m_movementCollision);
+        else
+            m_fighters[i].update(inputs ? inputs[i] : nullptr, nullptr, dt,
+                                 m_movementCollision);
     }
 
     for (int i = 0; i < m_config.fighterCount; ++i) {
@@ -82,7 +92,14 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[4], double dt) {
     for (int i = 0; i < m_config.fighterCount; ++i) {
         // The reference calls Fighter::reset here; the economy only reports the flag
         // because it owns no positions (see match_economy.h).
-        if (eco.respawned[i]) m_fighters[i].reset(m_config.spawn[i], m_config.facing[i]);
+        if (eco.respawned[i]) {
+            const glm::vec3 spawn = m_movementCollision
+                ? m_movementCollision->resolveSpawn(m_config.spawn[i], m_config.spawn,
+                                                    static_cast<size_t>(m_config.fighterCount))
+                : m_config.spawn[i];
+            m_config.spawn[i] = spawn;
+            m_fighters[i].reset(spawn, m_config.facing[i]);
+        }
         out.respawned[i] = eco.respawned[i];
     }
     out.roundOver = eco.roundOver;

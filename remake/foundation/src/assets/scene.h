@@ -31,6 +31,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -38,6 +39,23 @@
 #include "cnv.h"      // declarations; define CNV_IMPLEMENTATION in exactly one .cpp
 
 namespace xm {
+
+// The original stage has three files but four query purposes: collision.x feeds
+// both fighter movement and ground support, collision_tama.x is projectile-only,
+// and collision_camera.x clamps the camera. Keep the purposes distinct even where
+// two queries share one loaded model.
+enum class StageCollisionChannel : uint8_t {
+    Movement  = 1u << 0,
+    Ground    = 1u << 1,
+    Projectile = 1u << 2,
+    Camera    = 1u << 3,
+};
+
+using StageCollisionMask = uint8_t;
+
+constexpr StageCollisionMask collisionMask(StageCollisionChannel channel) {
+    return static_cast<StageCollisionMask>(channel);
+}
 
 // env.dat, as consumed by FUN_00650a30: linear fog plus stage bounds/spawn points.
 struct StageEnv {
@@ -60,12 +78,17 @@ struct SceneModel {
     size_t       sourceBytes = 0;  // bytes read for this model; the loader's own record
                                    // of which copy it got (bundles and the extracted tree
                                    // can hold different copies of the same name)
-    std::string  role;          // "stage", "collision", "collision_camera", "character", "weapon"
+    std::string  role;          // stage, collision channel, character, or weapon
+    StageCollisionMask collisionChannels = 0;
     int          index = -1;    // stage sub-model number (0..7), else -1
     // Collision meshes are loaded for geometry queries and framing, never drawn: the
     // original keeps them in their own slots (stage+0x20/0x24/0x28) and its render
     // loop only walks the eight visible sub-model slots.
     bool         drawable = true;
+
+    bool hasCollisionChannel(StageCollisionChannel channel) const {
+        return (collisionChannels & collisionMask(channel)) != 0;
+    }
 
     // Set for weapons: the frame on the owning character this model rides. The item
     // table's per-weapon local offset (position + two rotations, FUN_00433eb0) is not
@@ -97,7 +120,9 @@ struct Scene {
         hi = glm::vec3(-1e30f);
         bool any = false;
         for (const auto& m : models) {
-            const bool want = playArea ? (m.role == "collision" || m.role == "collision_camera")
+            const bool want = playArea ? (m.hasCollisionChannel(StageCollisionChannel::Movement) ||
+                                          m.hasCollisionChannel(StageCollisionChannel::Ground) ||
+                                          m.hasCollisionChannel(StageCollisionChannel::Camera))
                                        : m.drawable;
             if (!want) continue;
             for (const auto& mesh : m.model.meshes)
@@ -126,7 +151,7 @@ struct Scene {
 
 struct SceneOptions {
     bool resolveTextures = true;    // decode .cnv files next to each model
-    bool includeCollision = false;  // collision.x / collision_camera.x / collision_tama.x
+    bool includeCollision = false;  // load movement/ground, projectile, and camera meshes
     bool variantB = false;          // the `%02db.x` detail set (config byte stage+0x2c)
     int  animIndex = -1;            // bind an animation set by index on characters
 };
@@ -197,7 +222,8 @@ std::string joinPath(const std::string& dir, const std::string& name) {
 // Appends a model, or reports why it could not be loaded. Failures are not fatal: a
 // stage whose 07.X is absent (the common case) is still a valid stage.
 void addModel(Scene& scene, const std::string& path, const std::string& role,
-              int index, const SceneOptions& opt, bool drawable = true) {
+              int index, const SceneOptions& opt, bool drawable = true,
+              StageCollisionMask collisionChannels = 0) {
     if (!fnd::assets::assetSource().exists(path)) return;
 
     SceneModel sm;
@@ -215,6 +241,7 @@ void addModel(Scene& scene, const std::string& path, const std::string& role,
     sm.role = role;
     sm.index = index;
     sm.drawable = drawable;
+    sm.collisionChannels = collisionChannels;
     sm.textures = TextureCache(path.substr(0, path.find_last_of("/\\") + 1));
     scene.models.push_back(std::move(sm));
 }
@@ -346,16 +373,21 @@ Scene loadStage(const std::string& stageDir, const SceneOptions& opt) {
             const char* role;
             const char* upper;
             const char* lower;
+            StageCollisionMask channels;
         };
         static constexpr Channel kChannels[] = {
-            {"collision", "collision.X", "collision.x"},
-            {"collision_camera", "collision_camera.X", "collision_camera.x"},
-            {"collision", "collision_tama.X", "collision_tama.x"},
+            {"collision_movement_ground", "collision.X", "collision.x",
+             collisionMask(StageCollisionChannel::Movement) | collisionMask(StageCollisionChannel::Ground)},
+            {"collision_camera", "collision_camera.X", "collision_camera.x",
+             collisionMask(StageCollisionChannel::Camera)},
+            {"collision_projectile", "collision_tama.X", "collision_tama.x",
+             collisionMask(StageCollisionChannel::Projectile)},
         };
         for (const Channel& ch : kChannels) {
             const std::string path = fnd::assets::assetSource().resolve(
                 {detail::joinPath(stageDir, ch.upper), detail::joinPath(stageDir, ch.lower)});
-            if (!path.empty()) detail::addModel(scene, path, ch.role, -1, opt, false);
+            if (!path.empty()) detail::addModel(scene, path, ch.role, -1, opt, false,
+                                                ch.channels);
         }
     }
     detail::readEnv(detail::joinPath(stageDir, "env.dat"), scene.env);

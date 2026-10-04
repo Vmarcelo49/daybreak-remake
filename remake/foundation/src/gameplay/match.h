@@ -73,8 +73,11 @@ public:
     // One-time setup after the models are loaded. `anim` and the tama mesh/index are
     // borrowed and must outlive the match; pass nullptr for a stage that ships no
     // collision_tama.x (shots then fly to expiry — the reference's open-field case).
+    // `movementCollision` is borrowed too; collision.x supplies separate movement and
+    // ground queries when present. A null pointer preserves historical trace captures.
     void reset(const MatchConfig& config, const xm::Model* model[4], xm::Controller* anim[4],
-               const xm::Model* tamaMesh, const game::physics::ModelIndex* tamaIndex);
+               const xm::Model* tamaMesh, const game::physics::ModelIndex* tamaIndex,
+               const game::physics::MovementCollision* movementCollision = nullptr);
 
     // The two-input overload preserves the trace path; the roster overload accepts
     // one optional input per configured fighter, in launch order.
@@ -102,6 +105,7 @@ private:
     MatchConfig        m_config;
     const xm::Model*   m_tamaMesh = nullptr;
     const game::physics::ModelIndex* m_tamaIndex = nullptr;
+    const game::physics::MovementCollision* m_movementCollision = nullptr;
 };
 
 }  // namespace gameplay

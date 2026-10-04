@@ -832,3 +832,41 @@ counts, and the team-select diamond's y anchor discrepancy. Scenes 2 and
   design-first Phase 4; story-mode video stays stubbed). They are named
   here only so the next session does not re-litigate it: the versus loop and
   the front end come first.
+
+## Stage collision implementation update — 2026-10-04
+
+Issue #7 is implemented in `src/physics/raycast.*`, `src/gameplay/{fighter,match}.*`,
+`src/assets/scene.h` and the match host in `src/main.cpp`. The loader records four
+query purposes separately: movement and ground both use `collision.x`, projectiles
+use `collision_tama.x`, and the live camera uses `collision_camera.x` (the three file
+loads are recovered in `FUN_004011f0`). `collision_tama.x` now has its own scene role
+and typed channel instead of sharing the general collision label.
+
+The movement query sweeps a 20-unit-radius, 145-unit-high body stencil across each
+requested horizontal segment, filters wall triangles, and removes the wall-normal
+part of the remaining displacement so fighters slide. Ground height comes from
+upward-facing triangles; slopes are accepted up to normal-Y 0.45, steps up to 50
+units and drops up to 120 units are followed, and airborne descent sweeps the full
+vertical interval before landing. The radius follows the existing 20-unit movement
+measurement in `FighterConstants` (RE section 14.7); body height and movement thresholds
+are provisional port rules. The stage's `env.dat` spawn XZ coordinates
+are preserved while Y is projected to support geometry. Invalid spawns fall back to
+the nearest valid supplied env slot, then a walkable triangle centroid; invalid runtime
+positions return to the fighter's last supported point. Respawns reuse the resolved
+slot position.
+
+Scene models remain borrowed by fighters and collision queries. `initScene()` finishes
+loading effect cards before it binds any scene-model pointer or builds a model index;
+the front-end battle rebuild follows the same order before resetting the match. The
+standalone scripted/offscreen `--match` capture remains the unclamped historical path
+for both movement and camera traces. Interactive matches use the movement and camera
+queries, and `--no-camera-clamp` retains the explicit camera A/B override.
+
+Verification: all 26 Linux CTest tests pass. The new movement test passes 34 synthetic
+checks for flat ground, slopes, low/high steps, wall sliding, corners, long dash sweeps,
+airborne landing, spawn recovery and respawn. Its optional local-data run adds checks
+for the movement mesh and original spawn slots 0/2 on stages 01, 04, 06, 15 and 21
+(49 checks total). An asset-backed front-end battle capture loaded all four collision
+channels and completed with `RESULT: ok`; the standalone melee trace still matches its
+banked fighter positions and states exactly. Windows/web rebuilds have not been run
+for this update.

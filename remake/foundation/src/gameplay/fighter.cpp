@@ -32,6 +32,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
                    const glm::vec3& pos, float facing) {
     bind(model, anim);
     m_position = pos;
+    m_safePosition = pos;
     m_facing = facing;
     m_velocity = glm::vec3(0, 0, 0);
     m_hp = m_maxHP;
@@ -59,6 +60,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
 
 void Fighter::reset(const glm::vec3& pos, float facing) {
     m_position = pos;
+    m_safePosition = pos;
     m_facing = facing;
     m_velocity = glm::vec3(0, 0, 0);
     m_hp = m_maxHP;
@@ -96,7 +98,8 @@ bool Fighter::can_move() const {
            m_state == FighterState::Run || m_state == FighterState::Jump;
 }
 
-void Fighter::update(const input::PlayerState* input, Fighter* opponent, double dt) {
+void Fighter::update(const input::PlayerState* input, Fighter* opponent, double dt,
+                     const game::physics::MovementCollision* collision) {
     m_time += dt;
 
     // Hypermode first: it can activate this frame (S), expire, or drain
@@ -133,11 +136,29 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     }
 
     // 3. Update movement (if the state allows it).
+    const glm::vec3 movementStart = m_position;
     if (can_move() && input) {
         update_movement(input, opponent, dt);
     } else {
         m_velocity *= 0.8f;
         m_position += m_velocity * static_cast<float>(dt);
+    }
+    if (collision) {
+        // FUN_0041f580 owns the source's per-player update, while the collision mesh
+        // contract comes from FUN_004011f0. Body size and step thresholds are port rules.
+        const game::physics::MovementResult moved = collision->move(movementStart, m_position,
+                                                                     m_grounded);
+        m_position = moved.position;
+        m_grounded = moved.grounded;
+        if (m_grounded) {
+            m_groundY = m_position.y;
+            m_vy = 0.f;
+        }
+        if (dt > 0.0) {
+            const float inverseDt = 1.f / static_cast<float>(dt);
+            m_velocity.x = (m_position.x - movementStart.x) * inverseDt;
+            m_velocity.z = (m_position.z - movementStart.z) * inverseDt;
+        }
     }
 
     // 4. Update facing (always face the opponent).
@@ -180,14 +201,29 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         } else if (!dashHang) {
             m_vy -= FighterConstants::kGravity * step;
         }
+        const float previousY = m_position.y;
         m_position.y += m_vy * step;
         const float ceiling = m_groundY + FighterConstants::kFlyMaxAlt;
         if (m_position.y > ceiling) {
             m_position.y = ceiling;
             if (m_vy > 0.0f) m_vy = 0.0f;
         }
-        if (m_position.y <= m_groundY) {
+        bool landed = false;
+        if (collision && collision->hasGround() && m_vy <= 0.f &&
+            m_position.y <= previousY) {
+            const game::physics::GroundHit support = collision->groundAt(
+                m_position.x, m_position.z, previousY, 1.f,
+                std::max(0.f, previousY - m_position.y) + 1.f);
+            if (support.hit) {
+                m_position.y = support.height;
+                m_groundY = support.height;
+                landed = true;
+            }
+        } else if ((!collision || !collision->hasGround()) && m_position.y <= m_groundY) {
             m_position.y = m_groundY;
+            landed = true;
+        }
+        if (landed) {
             m_vy = 0.0f;
             m_grounded = true;
             m_flyLeft = FighterConstants::kFlyTimeSec;
@@ -197,6 +233,23 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
                 set_state(FighterState::Idle);
             }
             m_dashAir = false;
+        }
+    }
+
+    if (collision) {
+        if (!collision->validPosition(m_position)) {
+            // An invalid override or a fall beyond the stage mesh returns to the last
+            // supported point. Match::reset projects env.dat spawns before this can run.
+            m_position = m_safePosition;
+            m_groundY = m_safePosition.y;
+            m_velocity = glm::vec3(0.f);
+            m_vy = 0.f;
+            m_grounded = true;
+            m_flyLeft = FighterConstants::kFlyTimeSec;
+            m_dashAir = false;
+            m_airDashed = false;
+        } else if (m_grounded) {
+            m_safePosition = m_position;
         }
     }
 

@@ -252,6 +252,12 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(arena_camera_test PRIVATE glm)
     add_test(NAME arena_camera_test COMMAND arena_camera_test)
 
+    # Swept stage movement, ground support, landing and match spawn recovery. Synthetic
+    # geometry runs everywhere; passing a local data/ directory also checks real stages.
+    add_executable(stage_movement_test tests/stage_movement_test.cpp)
+    target_link_libraries(stage_movement_test PRIVATE foundation_gameplay)
+    add_test(NAME stage_movement_test COMMAND stage_movement_test)
+
     # The .X animation path against the shipped rigs: defines XMODEL_IMPLEMENTATION
     # itself (same reason as raycast_analytic), sweeps data/<name>/<NN>.X at run time,
     # and skips itself when the install is absent.
