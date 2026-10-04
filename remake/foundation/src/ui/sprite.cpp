@@ -234,6 +234,7 @@ void SpriteRenderer::beginFrame(uint32_t viewportW, uint32_t viewportH) {
     viewport_.h = viewportH;
     quads_.clear();
     dropped_ = 0;
+    resetCanvasTransform();
 }
 
 bool SpriteRenderer::pushQuad(const UiQuad& q) {
@@ -241,7 +242,7 @@ bool SpriteRenderer::pushQuad(const UiQuad& q) {
         ++dropped_;
         return false;
     }
-    quads_.push_back(q);
+    quads_.push_back(transformQuad(q, canvas_, canvasClip_));
     return true;
 }
 

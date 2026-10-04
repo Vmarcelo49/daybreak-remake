@@ -1,4 +1,5 @@
 #pragma once
+#include "input/input.h"
 // SDL3 device mapping for Track M (tables only, no polling here).
 //
 // Why tables instead of a poll loop: polling needs a window, events and
@@ -59,6 +60,11 @@ inline constexpr int kPadLock = 9;    // left shoulder
 inline constexpr int kPadSpecial = 10;  // right shoulder
 inline constexpr int kPadTactics = 4;   // back
 inline constexpr int kPadPause = 6;     // start (5 is guide, not start)
+inline constexpr int kPadButtonByAction[ActionCount] = {
+    kPadDpadUp, kPadDpadDown, kPadDpadLeft, kPadDpadRight,
+    kPadMelee, -1, kPadGuard, kPadShoot, kPadJump,
+    kPadSpecial, kPadTactics, kPadLock, kPadPause,
+};
 
 // Web gamepad caveats (integration, not tables):
 // - Browsers expose pads only after a button press AND only on secure

@@ -21,12 +21,12 @@ Emscripten port on its own as soon as it is configured through `emcmake`.
 
 ## Reading the result
 
-Diagnostics go to the browser console. There is no shell argv on the web, so
-flags such as `--frames=N` never arrive and the demo renders until the app
-exits — but one asset argument does: `?asset=` (a single CLI arg), `?pack=`
-(manifest URL fetched into `/packs/`, `asset=` line wins), then the
-configure-time `FOUNDATION_WEB_ASSET` (`src/main.cpp:1732-1755`) — which is the
-intent for a browser demo. **Press Escape in the page** (the demo's own quit
+Diagnostics go to the browser console. Browser arguments come from `?asset=`
+(a single CLI arg), `?pack=` (manifest URL fetched into `/packs/`, `asset=` line
+wins), then the configure-time `FOUNDATION_WEB_ASSET`. Additional flags go in
+`?args=`, separated by `|`, including `--frames=N`, `--match` and the other
+asset paths (`src/main.cpp`, web argument bootstrap). Percent-encode query values
+when paths contain URL punctuation. **Press Escape in the page** (the demo's own quit
 path) to reach `SDL_AppQuit`, which is what prints the timing summary and
 `RESULT: ok`:
 
@@ -84,6 +84,36 @@ The expected console evidence is the same shape as native asset runs: the loaded
 model/mesh/vertex counts, resolved texture counts, generated draws and GPU
 textures, followed by the frame report and `RESULT: ok`. Game data and the
 generated `.data` package stay out of the repository.
+
+## Game-data run verified (2026-10-03)
+
+A separate `build/web-roadmap` build preloaded the original extracted `stage01`,
+`rena`, `mion`, `aura`, `effect` and `object` folders at `/assets`, plus the font
+folder at `/third_party/fonts`. From the foundation directory:
+
+```bash
+source "${EMSDK:-$HOME/emsdk}/emsdk_env.sh"
+emcmake cmake -S . -B build/web-roadmap -GNinja \
+  -DFOUNDATION_WEB_ASSETS=/tmp/daybreak-web-assets \
+  "-DCMAKE_EXE_LINKER_FLAGS=--preload-file $PWD/third_party/fonts@/third_party/fonts"
+cmake --build build/web-roadmap
+python3 -m http.server 8179 -d build/web-roadmap
+# foundation_demo.html?args=--stage=/assets/stage01|--character=/assets/rena:0|--enemy=/assets/mion:0|--versus|--camera=arena|--frames=300
+```
+
+Chromium with `agent-browser --webgpu` used `google swiftshader
+[WebGPU(browser)]`, a 960×540 FIFO surface, and resolved all 167 stage textures
+with zero misses. The scripted versus run produced 175 draws and 114 GPU
+textures, completed 300 frames in 4.993 seconds (60.2 fps), and printed
+`RESULT: ok`.
+
+Replacing `--versus|--frames=300` with `--match` exercised the live match with
+Rena and Mion, loaded projectile assets, and produced 177 draws and 116 GPU
+textures. Escape closed it after 411 frames in 6.876 seconds (60.1 fps), also
+with `RESULT: ok`. BGM was unavailable because this local subset omitted `bgm`;
+the match continued silently. This verifies game-data loading, draw submission
+and match execution on software WebGPU. Screenshots still captured a black
+canvas, so visual parity and hardware browser rendering remain unverified.
 
 ## Implementation notes
 

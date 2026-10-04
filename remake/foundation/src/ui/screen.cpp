@@ -9,6 +9,10 @@
 #include <cstring>
 
 #include "ui/screen_title.h"
+#include "ui/screen_select.h"
+#include "ui/screen_vs.h"
+#include "ui/screen_options.h"
+#include "ui/screen_result.h"
 
 namespace ui {
 namespace {
@@ -27,7 +31,8 @@ constexpr ScreenName kScreenNames[] = {
     {"vsintro", ScreenId::VsIntro},           {"battle", ScreenId::Battle},
     {"netplay", ScreenId::NetplayMenu},       {"netplaylobby", ScreenId::NetplayLobby},
     {"netplayentry", ScreenId::NetplayEntry}, {"gameover", ScreenId::GameOver},
-    {"staffroll", ScreenId::StaffRoll},       {"quit", ScreenId::Quit},
+    {"result", ScreenId::Result},             {"staffroll", ScreenId::StaffRoll},
+    {"quit", ScreenId::Quit},
 };
 
 bool equalsIgnoreCase(const char* a, const char* b) {
@@ -37,28 +42,39 @@ bool equalsIgnoreCase(const char* a, const char* b) {
 }
 
 // FUN_004020a0's switch as one table: the ids the port can construct and the
-// constructor for each. A screen therefore lands as one row here plus its own builder
-// — screenAvailable() and makeScreen() read the same list, so "would go to X" and
-// "goes to X" cannot drift.
+// constructor for each. Battle is hosted by the application because it owns simulation.
 struct ScreenEntry {
     ScreenId id;
-    std::unique_ptr<Screen> (*make)(SpriteRenderer&, std::string&);
+    std::unique_ptr<Screen> (*make)(SpriteRenderer&, FrontendState&, std::string&);
 };
 constexpr ScreenEntry kScreens[] = {
-    {ScreenId::Title, &makeTitleScreen},
+    {ScreenId::Title, [](SpriteRenderer& batch, FrontendState&, std::string& error) { return makeTitleScreen(batch,error); }},
+    {ScreenId::Options, [](SpriteRenderer& batch, FrontendState&, std::string& error) { return makeOptionsScreen(batch,error); }},
+    {ScreenId::KeyConfig, [](SpriteRenderer& batch, FrontendState&, std::string& error) { return makeKeyConfigScreen(batch,error); }},
+    {ScreenId::Select, &makeSelectScreen},
+    {ScreenId::VsIntro, &makeVsScreen},
+    {ScreenId::Result, &makeResultScreen},
 };
 
 }  // namespace
 
 bool screenAvailable(ScreenId id) {
+    // Battle presentation owns live simulation and is constructed by the application.
+    if (id == ScreenId::Battle) return true;
     for (const ScreenEntry& e : kScreens)
         if (e.id == id) return true;
     return false;
 }
 
 std::unique_ptr<Screen> makeScreen(ScreenId id, SpriteRenderer& batch, std::string& error) {
+    static FrontendState state;
+    return makeScreen(id, batch, state, error);
+}
+
+std::unique_ptr<Screen> makeScreen(ScreenId id, SpriteRenderer& batch, FrontendState& state,
+                                   std::string& error) {
     for (const ScreenEntry& e : kScreens)
-        if (e.id == id) return e.make(batch, error);
+        if (e.id == id) return e.make(batch, state, error);
     // Quit is the factory's own `default` (FUN_004020a0 returns null for 0x16): no
     // scene is the normal way to leave, so it is not an error. Any other id is a
     // screen the port has not built yet, which is.
@@ -162,7 +178,7 @@ ScreenId ScreenStack::update(const ScreenInput& in) {
 void ScreenStack::draw(SpriteRenderer& batch) const {
     if (current_) current_->draw(batch);
     if (fade_ > 0)
-        batch.pushSolid(UiRect{0.f, 0.f, (float)batch.viewportW(), (float)batch.viewportH()},
+        batch.pushSolid(UiRect{0.f, 0.f, 800.f, 600.f},
                         UiColor{0.f, 0.f, 0.f, fadeAlpha8(fade_) / 255.f});
 }
 
@@ -170,7 +186,12 @@ bool drawScreenFrame(const ScreenStack& stack, SpriteRenderer& batch, uint32_t w
                      WGPUCommandEncoder encoder, WGPUTextureView view, WGPUTextureFormat format,
                      std::string& error) {
     batch.beginFrame(w, h);
+    batch.pushSolid({0.f, 0.f, float(w), float(h)}, {0.f, 0.f, 0.f, 1.f});
+    const UiCanvasTransform canvas = fitCanvas({w, h});
+    batch.setCanvasTransform(canvas.scale, canvas.x, canvas.y);
+    batch.setCanvasClip({true, 0.f, 0.f, 800.f, 600.f});
     stack.draw(batch);
+    batch.resetCanvasTransform();
     return batch.render(encoder, view, format, error);
 }
 

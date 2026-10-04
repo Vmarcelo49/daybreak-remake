@@ -397,6 +397,20 @@ void testProjectionAndBalloon() {
     checkFloat("balloon scale at 0%, pulse 30", 0.4f, ui::hudBalloonScale(0.f, 30));
 }
 
+void testTargetSwitchPulse() {
+    const auto idle = ui::hudRingTransform(100, 0);
+    checkFloat("idle ring scale", 1.f, idle.scale);
+    checkFloat("idle first arc", 50.f, idle.firstDeg);
+    checkFloat("idle second arc", -50.f, idle.secondDeg);
+    const auto switched = ui::hudRingTransform(100, 15);
+    checkFloat("target switch ring scale", 2.5f, switched.scale);
+    checkFloat("target switch first arc twist", 185.f, switched.firstDeg);
+    checkFloat("target switch second arc excludes twist", -50.f, switched.secondDeg);
+    const auto settling = ui::hudRingTransform(114, 1);
+    checkFloat("last target switch pulse scale", 1.1f, settling.scale);
+    checkFloat("last target switch pulse twist", 66.f, settling.firstDeg);
+}
+
 // The composer draws the art HUD only once every sheet is uploaded; before that
 // (and with no game data at all) HudComposer::compose keeps the text/bars path.
 void testFallbackState() {
@@ -425,6 +439,7 @@ int main() {
     testFontCells();
     testCellGeometry();
     testProjectionAndBalloon();
+    testTargetSwitchPulse();
     testFallbackState();
     std::printf("\nchecks: %d, failures: %d\n", g_checks, g_failed);
     std::printf("HUD_SPRITE_TABLE: %s\n", g_failed == 0 ? "ok" : "FAIL");

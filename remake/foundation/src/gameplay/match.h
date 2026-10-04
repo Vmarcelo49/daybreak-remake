@@ -42,6 +42,9 @@ namespace gameplay {
 // stand, which hypermode each carries, and the launch-time state injections the
 // visual suite uses to reach a state without a wind-up.
 struct MatchConfig {
+    int healthPercent = 100, gaugePercent = 100;
+    int timeLimit = 0;
+    int balloonSize[2] = {100, 100};
     glm::vec3 spawn[2]  = {glm::vec3(0.f), glm::vec3(0.f)};
     float     facing[2] = {0.0f, 3.14159f};
     Hypermode hyper[2]  = {Hypermode::Friendship, Hypermode::Oyashiro};

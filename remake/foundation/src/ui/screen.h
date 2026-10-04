@@ -24,6 +24,7 @@
 //     scene returns on every frame of the fade; every screen in the RE table returns a
 //     constant while fading, so latching is equivalent and gives the stack a one-shot
 //     "go to id" API.
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -52,6 +53,7 @@ enum class ScreenId : int {
     NetplayEntry = 0x0d,   // FUN_00419f10 (name/IP), deferred
     GameOver     = 0x14,   // FUN_00403d70
     StaffRoll    = 0x15,   // FUN_0040e0b0
+    Result       = 0x17,   // Port presentation id; original results are owned by the battle module.
     Quit         = 0x16,   // the factory's default: no scene, the loop tears down
 };
 
@@ -59,8 +61,14 @@ enum class ScreenId : int {
 // original merges all four input slots into one set of counters (FUN_00410f60.c:81-100)
 // so a pad confirm works from any slot; confirm is Jump (Z — docs/reference/README.md's
 // control correction notes Z is confirmed in menus) and cancel is AttackA (X).
+struct ScreenButtons {
+    bool up = false, down = false, left = false, right = false, confirm = false, cancel = false;
+};
 struct ScreenInput {
     bool up = false, down = false, left = false, right = false, confirm = false, cancel = false;
+    int player = 0;
+    bool separatePlayers = false;
+    std::array<ScreenButtons,4> players{};
 };
 
 // One front-end screen. update is the original's vtable slot 3: the return value is the
@@ -72,6 +80,9 @@ public:
     // The original's draw (slot 1). The stack has already called batch.beginFrame().
     virtual void draw(SpriteRenderer& batch) const = 0;
     virtual const char* name() const = 0;
+    // FUN_0064aed0 system-bank ids; the host owns playback.
+    virtual int takeSound() { return -1; }
+    virtual std::string takeVoice() { return {}; }
 };
 
 // FUN_004020a0's switch as a predicate: true for the ids the port can construct. The
@@ -82,7 +93,10 @@ bool screenAvailable(ScreenId id);
 // Constructs the screen for an id, or returns null (with `error` naming the id) when
 // there is none — the factory's own `default` behaviour, which the switcher turns into
 // "no scene" (FUN_00657c80.c:58, FUN_00657ef0.c:49-53).
+struct FrontendState;
 std::unique_ptr<Screen> makeScreen(ScreenId id, SpriteRenderer& batch, std::string& error);
+std::unique_ptr<Screen> makeScreen(ScreenId id, SpriteRenderer& batch, FrontendState& state,
+                                   std::string& error);
 
 // "--screen=<id|name>": decimal, 0x-prefixed hex, or the lowercase name (a leading
 // "scene"/"screen" is accepted). Device-free, so the CLI contract is testable.
@@ -111,10 +125,14 @@ public:
     // One frame: the current screen's update, then the switcher. Returns the current id
     // after the frame (Quit once the stack has finished).
     ScreenId update(const ScreenInput& in);
+    void request(ScreenId id) { target_ = id; fade_ = 1; }
 
-    // Current screen, then the fade overlay (a full-viewport black quad at the frame's
-    // alpha). Call between beginFrame and render.
+    // Current screen, then the fade overlay in the 800x600 menu canvas.
+    // Call between beginFrame and render.
     void draw(SpriteRenderer& batch) const;
+
+    int takeSound() { return current_ ? current_->takeSound() : -1; }
+    std::string takeVoice() { return current_ ? current_->takeVoice() : std::string{}; }
 
     bool     finished() const { return finished_; }
     ScreenId current() const { return currentId_; }

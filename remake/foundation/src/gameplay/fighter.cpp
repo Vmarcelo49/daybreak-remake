@@ -34,7 +34,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_position = pos;
     m_facing = facing;
     m_velocity = glm::vec3(0, 0, 0);
-    m_hp = FighterConstants::kMaxHP;
+    m_hp = m_maxHP;
     m_stamina = static_cast<float>(FighterConstants::kMaxStamina);
     m_state = FighterState::BattleStart;
     m_stateTimer = FighterConstants::kBattleStartFrames;
@@ -60,7 +60,7 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_position = pos;
     m_facing = facing;
     m_velocity = glm::vec3(0, 0, 0);
-    m_hp = FighterConstants::kMaxHP;
+    m_hp = m_maxHP;
     m_stamina = static_cast<float>(FighterConstants::kMaxStamina);
     m_state = FighterState::BattleStart;
     m_stateTimer = FighterConstants::kBattleStartFrames;
@@ -492,6 +492,7 @@ const char* Fighter::anim_set_name() const {
 }
 
 void Fighter::take_damage(int amount, Fighter* source) {
+    if (!is_alive()) return;
     const HypermodeParams& mine = hypermode_params(m_hypermode);
 
     if (m_state == FighterState::Guard) {
@@ -520,18 +521,23 @@ void Fighter::take_damage(int amount, Fighter* source) {
                                        .fillPerDamageDealt);
     gain_gauge(amount * mine.fillPerDamageTaken);
 
+    const int landed = std::min(m_hp, amount);
+    m_stats.damageTaken += landed;
+    if (source) source->m_stats.damageDealt += landed;
     m_hp = std::max(0, m_hp - amount);
 
     if (m_hp <= 0) {
         // Kakera fires on the killing blow instead of dying (spec §3.4).
         if (mine.autoOnDeath && !m_hyperActive && m_gauge >= 1.0f) {
-            m_hp = FighterConstants::kMaxHP;
+            m_hp = m_maxHP;
             m_gauge = 0.0f;
             m_hyperActive = true;
             m_hyperTimer = mine.durationSec;
             m_hitsActive = 0;
             return;
         }
+        ++m_stats.deaths;
+        if (source) ++source->m_stats.kos;
         set_state(FighterState::KO);
         m_stateTimer = 0;  // permanent until round reset
     } else {
@@ -558,9 +564,8 @@ void Fighter::take_damage(int amount, Fighter* source) {
 // ---------------------------------------------------------------------------
 void Fighter::gain_gauge(float fraction) {
     if (m_hyperActive || fraction <= 0.0f || !is_alive()) return;
-    // The battle setting ゲージ増加量 (gauge rate) scales this once the
-    // settings screen exists (spec §3.4).
-    m_gauge = std::min(1.0f, m_gauge + fraction);
+    // DAT_006cf3bc is the select page gauge percentage (FUN_0040acb0).
+    m_gauge = std::min(1.0f, m_gauge + fraction * m_gaugeRate);
 }
 
 bool Fighter::try_activate_hypermode(Fighter* opponent) {
@@ -602,7 +607,7 @@ void Fighter::update_hypermode(double dt, Fighter* opponent) {
     // Kakera trades its HP for the buff: 100% -> 1% over the duration, and
     // the mode ends (bonuses dropped, still alive at 1%) when it bottoms out.
     if (p.autoOnDeath) {
-        const float drain = (FighterConstants::kMaxHP - 1.0f) / p.durationSec;
+        const float drain = (m_maxHP - 1.0f) / p.durationSec;
         m_hp = std::max(1, m_hp - static_cast<int>(drain * static_cast<float>(dt) + 0.5f));
         if (m_hp <= 1) m_hyperTimer = 0.0f;
     }

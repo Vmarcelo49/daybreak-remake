@@ -13,7 +13,8 @@
 // It is also where the per-fighter HUD's projection lives: the two screen points
 // FUN_00643230 draws its ring and com bar at are camera arithmetic, not HUD layout,
 // so the caller that owns the view-projection matrix computes them here and the HUD
-// layer only ever sees screen pixels. The matrix is taken as a raw column-major
+// layer only sees logical HUD coordinates; its uniform scale maps those to
+// viewport pixels. The matrix is taken as a raw column-major
 // float[16] — glm's storage order — so this header stays free of even glm.
 #include <string>
 
@@ -53,12 +54,12 @@ inline int hyperRowFor(const std::string& name) {
 // when w == 1. False when the point is at or behind the eye, which is the original's
 // `0 < clip.z` gate (FUN_00643230.c:179) — a point there has no screen position.
 inline bool projectHudPoint(const float viewProj[16], float wx, float wy, float wz, float& x,
-                            float& y) {
+                            float& y, float width = 800.f, float height = 600.f) {
     const float cx = viewProj[0] * wx + viewProj[4] * wy + viewProj[8] * wz + viewProj[12];
     const float cy = viewProj[1] * wx + viewProj[5] * wy + viewProj[9] * wz + viewProj[13];
     const float cw = viewProj[3] * wx + viewProj[7] * wy + viewProj[11] * wz + viewProj[15];
     if (!(cw > 0.f)) return false;
-    ui::hudProjectClip(cx / cw, cy / cw, x, y);
+    ui::hudProjectClip(cx / cw, cy / cw, x, y, width, height);
     return true;
 }
 
@@ -71,10 +72,10 @@ inline bool projectHudPoint(const float viewProj[16], float wx, float wy, float 
 // versus/match paths hold the latter and should not have to copy through the bridge.
 template <class HudEntry>
 inline bool projectFighterHud(const float viewProj[16], float wx, float wy, float wz,
-                              HudEntry& out) {
-    out.visible = projectHudPoint(viewProj, wx, wy + ui::kHudRingLift, wz, out.ringX, out.ringY);
+                              HudEntry& out, float width = 800.f, float height = 600.f) {
+    out.visible = projectHudPoint(viewProj, wx, wy + ui::kHudRingLift, wz, out.ringX, out.ringY, width, height);
     float bx = 0.f, by = 0.f;
-    if (projectHudPoint(viewProj, wx, wy + ui::kHudBarLift, wz, bx, by)) {
+    if (projectHudPoint(viewProj, wx, wy + ui::kHudBarLift, wz, bx, by, width, height)) {
         out.barX = bx;
         out.barY = by - ui::kHudBarDrop;
     }
@@ -121,7 +122,7 @@ inline ui::HudState makeHudState(const GameHudValues& v) {
         st.fighters[i].ringY = v.fighters[i].ringY;
         st.fighters[i].barX = v.fighters[i].barX;
         st.fighters[i].barY = v.fighters[i].barY;
-        st.fighters[i].ringDeg = v.fighters[i].ringDeg;
+        st.fighters[i].ringPulse = v.fighters[i].ringPulse;
         st.fighters[i].visible = v.fighters[i].visible;
         st.fighters[i].target = v.fighters[i].target;
         st.fighters[i].slot = v.fighters[i].slot;

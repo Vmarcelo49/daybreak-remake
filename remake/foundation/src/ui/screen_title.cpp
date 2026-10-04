@@ -43,14 +43,14 @@ bool TitleScreen::loaded() const {
 }
 
 ScreenId TitleScreen::update(const ScreenInput& in) {
-    if (menu_.update(in) != TitleAction::Activated) return ScreenId::Title;
+    const TitleAction action = menu_.update(in);
+    sound_ = action == TitleAction::Moved ? 2 : (action == TitleAction::Activated ? 0 : -1);
+    if (action != TitleAction::Activated) return ScreenId::Title;
 
     const TitleEntry& entry = kTitleEntries[menu_.selected()];
     if (entry.next == ScreenId::Quit || screenAvailable(entry.next)) return entry.next;
 
-    // The port has the title and nothing else yet. The item stays selectable, the press
-    // is logged once with what it would do, and the title keeps drawing: a fade to a
-    // screen that does not exist would be the fake transition the plan warns about.
+    // Story and network scenes remain outside this offline front-end track (D6).
     std::printf("[title] item %d %s -> scene 0x%02x: no screen yet, staying on the title\n",
                 menu_.selected(), entry.label, (int)entry.next);
     return ScreenId::Title;

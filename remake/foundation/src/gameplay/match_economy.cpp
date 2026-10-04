@@ -31,6 +31,15 @@ void MatchEconomy::reset() {
     m_roundOverSide = -1;
 }
 
+void MatchEconomy::set_round_rules(int timeLimit, const int balloonSize[2]) {
+    m_timeLimit = timeLimit > 0 ? timeLimit : 0;
+    for (int i = 0; i < 2; ++i) {
+        const int size = balloonSize[i] < 40 ? 40 : (balloonSize[i] > 200 ? 200 : balloonSize[i]);
+        // The 1v1 port normalizes balloon capacity to the HUD's shared 100% LIMIT.
+        m_koIncrement[i] = kBalloonPerKo * 100.f / size;
+    }
+}
+
 void MatchEconomy::tick(double dt) {
     m_elapsed += dt;  // scenes.cpp:610
 }
@@ -42,10 +51,16 @@ MatchStepResult MatchEconomy::update(const bool alive[kSideCount]) {
         r.roundOverSide = m_roundOverSide;
         return r;
     }
+    if (m_timeLimit > 0 && m_elapsed >= m_timeLimit) {
+        m_roundOver = r.roundOver = true;
+        m_roundOverSide = r.roundOverSide = m_balloon[0] == m_balloon[1] ? -1 :
+            (m_balloon[0] > m_balloon[1] ? 0 : 1);
+        return r;
+    }
     for (int i = 0; i < kSideCount; ++i) {
         if (!alive[i] && m_koAt[i] < 0.0) {
             m_koAt[i] = m_elapsed;
-            m_balloon[i] += kBalloonPerKo;
+            m_balloon[i] += m_koIncrement[i];
             log(koLogLine(i, m_balloon[i], m_limit));
             if (balloonBursts(m_balloon[i], m_limit)) {
                 log(burstLogLine(i));

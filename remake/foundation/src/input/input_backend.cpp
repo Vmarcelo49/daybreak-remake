@@ -19,6 +19,7 @@
 // The backend reads the pinned tables, so it re-pins what it touches: a
 // renumbered SDL would otherwise misbind silently instead of failing loudly.
 // (Table shape — 13 slots, pad Start=6 — is pin_tables.cpp's job.)
+static_assert(SDL_GAMEPAD_BUTTON_COUNT == 26, "suppression array drifted");
 static_assert(SDL_SCANCODE_COUNT == 512, "key-held array size drifted");
 static_assert(fnd::input::sdl3::kScUp == SDL_SCANCODE_UP, "P1 up drifted");
 static_assert(fnd::input::sdl3::kScDown == SDL_SCANCODE_DOWN, "P1 down drifted");
@@ -53,7 +54,25 @@ namespace {
 const PlayerState kEmptyPlayer;
 }  // namespace
 
-Backend::Backend() : devices_{}, pads_{}, key_held_{} {}
+Backend::Backend() : devices_{}, pads_{}, key_held_{} {
+    for (int a = 0; a < ActionCount; ++a) {
+        keyboard_[a] = sdl3::kP1ScancodeByAction[a];
+        for (auto& row : buttons_) row[a] = sdl3::kPadButtonByAction[a];
+    }
+}
+
+bool Backend::set_keyboard_binding(Action action, int scancode) {
+    if (action < 0 || action >= ActionCount || scancode < -1 || scancode >= kKeyHeldSize) return false;
+    keyboard_[action] = scancode;
+    return true;
+}
+
+bool Backend::set_gamepad_binding(int player, Action action, int button) {
+    if (player < 0 || player >= kMaxPlayers || action < 0 || action >= ActionCount ||
+        button < -1 || button >= SDL_GAMEPAD_BUTTON_COUNT) return false;
+    buttons_[player][action] = button;
+    return true;
+}
 
 Backend::~Backend() { shutdown(); }
 
@@ -80,6 +99,8 @@ void Backend::shutdown() {
     SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
     // A re-init must start clean, never holding a key the window forgot.
     for (bool& k : key_held_) k = false;
+    for (bool& k : suppressedKeys_) k = false;
+    for (auto& player : suppressedButtons_) for (bool& button : player) button = false;
     clear_script();
     inited_ = false;
 }
@@ -121,6 +142,13 @@ DeviceType Backend::device(int index) const {
     return devices_[index];
 }
 
+int Backend::gamepad_player(int32_t instanceId) const {
+    for (int p = 1; p < kMaxPlayers; ++p)
+        if (pads_[p] && SDL_GetGamepadID(static_cast<SDL_Gamepad*>(pads_[p])) == (SDL_JoystickID)instanceId)
+            return p;
+    return -1;
+}
+
 bool Backend::any_just_pressed(Action action) const {
     for (int i = 0; i < kMaxPlayers; ++i)
         if (players_[i].just_pressed[action]) return true;
@@ -136,12 +164,23 @@ bool Backend::any_down(Action action) const {
 void Backend::note_key(int scancode, bool pressed) {
     if (scancode < 0 || scancode >= kKeyHeldSize) return;
     key_held_[scancode] = pressed;
+    if (!pressed) suppressedKeys_[scancode] = false;
+}
+
+void Backend::suppress_key(int scancode) {
+    if (scancode >= 0 && scancode < kKeyHeldSize) suppressedKeys_[scancode] = true;
+}
+
+void Backend::suppress_gamepad_button(int player, int button) {
+    if (player >= 0 && player < kMaxPlayers && button >= 0 && button < SDL_GAMEPAD_BUTTON_COUNT)
+        suppressedButtons_[player][button] = true;
 }
 
 void Backend::note_focus_lost() {
     // A lost window drops KEY_UP on most drivers; without this the next poll
     // would read a key nobody holds anymore.
     for (bool& k : key_held_) k = false;
+    for (bool& k : suppressedKeys_) k = false;
 }
 
 bool Backend::load_script(const char* path) {
@@ -269,18 +308,17 @@ void Backend::update_keyboard() {
     // reach SDL's internal array (verified headless), while keys already down
     // at startup never produce events. Both agree on ordinary presses.
     auto key_down = [&](int sc) {
-        if (sc < 0) return false;
+        if (sc < 0 || (sc < kKeyHeldSize && suppressedKeys_[sc])) return false;
         if (sc < kKeyHeldSize && key_held_[sc]) return true;
         return kb && sc < num && kb[sc];
     };
     PlayerState& p = players_[0];
-    for (int a = 0; a < ActionCount; ++a) p.down[a] = key_down(sdl3::kP1ScancodeByAction[a]);
+    for (int a = 0; a < ActionCount; ++a) p.down[a] = key_down(keyboard_[a]);
     // No analog source on a keyboard: sticks are synthesised from the digital
     // D-pad, verbatim from the remake.
     p.stick_x = p.down[Right] ? 32767 : (p.down[Left] ? -32768 : 0);
     p.stick_y = p.down[Down] ? 32767 : (p.down[Up] ? -32768 : 0);
-    // Q is both Tactics and camera-left by construction (same scancode), E is
-    // camera-right only; the orbit stick agrees with the actions by design.
+    // Camera nudges retain Q/E independently of configurable action bindings.
     p.stick_rx = key_down(sdl3::kScCamRight) ? 32767 : (key_down(sdl3::kScCamLeft) ? -32768 : 0);
     p.stick_ry = 0;
 }
@@ -289,23 +327,12 @@ void Backend::update_gamepad(int index) {
     SDL_Gamepad* pad = static_cast<SDL_Gamepad*>(pads_[index]);
     if (!pad) return;
     PlayerState& p = players_[index];
-    p.down[Up] = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
-    p.down[Down] = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
-    p.down[Left] = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
-    p.down[Right] = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
-    // PROVISIONAL P2-P4 map, carried over verbatim from the remake: the
-    // original pads are buttons 1-8 with exact layout unknown, so this stays
-    // labelled provisional until captures say otherwise. AttackB has no key
-    // or button anywhere and stays exist-but-unbound.
-    p.down[AttackA] = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_WEST);
-    p.down[AttackB] = false;
-    p.down[Guard] = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_SOUTH);
-    p.down[Jump] = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_EAST);
-    p.down[Shoot] = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_NORTH);
-    p.down[Special] = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER);
-    p.down[LockSwitch] = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER);
-    p.down[Tactics] = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_BACK);
-    p.down[Pause] = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_START);
+    for (int a = 0; a < ActionCount; ++a) {
+        const int b = buttons_[index][a];
+        const bool pressed = b >= 0 && SDL_GetGamepadButton(pad, (SDL_GamepadButton)b);
+        if (b >= 0 && !pressed) suppressedButtons_[index][b] = false;
+        p.down[a] = pressed && !suppressedButtons_[index][b];
+    }
     p.stick_x = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFTX);
     p.stick_y = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFTY);
     p.stick_rx = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_RIGHTX);

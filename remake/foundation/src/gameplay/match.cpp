@@ -10,6 +10,8 @@ void Match::reset(const MatchConfig& config, const xm::Model* model[2], xm::Cont
     m_tamaIndex = tamaIndex;
 
     for (int i = 0; i < 2; ++i) {
+        m_fighters[i].clear_stats();
+        m_fighters[i].set_battle_rates(config.healthPercent, config.gaugePercent);
         if (model[i]) m_fighters[i].init(model[i], anim[i], config.spawn[i], config.facing[i]);
         else         m_fighters[i].reset(config.spawn[i], config.facing[i]);
         // init() resets these, so the launch-time injection follows it (scenes.cpp:546-549).
@@ -19,6 +21,7 @@ void Match::reset(const MatchConfig& config, const xm::Model* model[2], xm::Cont
     }
     m_shots.clear();
     m_economy.reset();
+    m_economy.set_round_rules(config.timeLimit, config.balloonSize);
 }
 
 MatchFrame Match::step(const fnd::input::PlayerState* p1Input,

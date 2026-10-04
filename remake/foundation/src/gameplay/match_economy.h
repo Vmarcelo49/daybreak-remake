@@ -6,7 +6,8 @@
 // out of the DX9 scene so the SDL3+WebGPU path runs and host-tests it with no
 // device, and so the HUD values become a pure function of economy + fighters.
 //
-// Ported verbatim, quirks included — a caller inherits both:
+// Default rules preserve the reference's quirks; the front end additionally
+// supplies a time limit and per-side balloon capacity. A caller inherits both:
 //  * "just died" keys off koAt[i] < 0 (scenes.cpp:703), so a fighter revived by
 //    anything other than this 3 s respawn keeps its stale koAt and its next
 //    death adds no balloon;
@@ -62,13 +63,15 @@ public:
     // Scene_Gameplay::on_enter (scenes.cpp:562-563, 592-593). m_limit is NOT
     // reset — on_enter does not touch it either (member initializer, scenes.h:184).
     void reset();
+    void set_round_rules(int timeLimit, const int balloonSize[2]);
 
     // One frame of the clock, exactly scenes.cpp:610. Call once per frame,
     // before update().
     void tick(double dt);
 
     // The bookkeeping block (scenes.cpp:701-721), side 0 then side 1: a fighter
-    // that just died stamps koAt[i] = elapsed, adds 21% balloon and arms the 2 s
+    // that just died stamps koAt[i] = elapsed, adds the capacity-adjusted KO
+    // increment (21% at default capacity) and arms the 2 s
     // sting; at or past LIMIT the round is over; a dead fighter 3 s past its KO
     // respawns (reported in the result, koAt back to -1).
     //
@@ -97,6 +100,8 @@ private:
 
     float  m_balloon[kSideCount] = {0.0f, 0.0f};
     float  m_limit = kBalloonLimit;
+    float  m_koIncrement[2] = {kBalloonPerKo, kBalloonPerKo};
+    int    m_timeLimit = 0;
     double m_koAt[kSideCount] = {-1.0, -1.0};
     double m_stingUntil = -1.0;
     double m_elapsed = 0.0;

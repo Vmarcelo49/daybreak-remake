@@ -6,57 +6,8 @@
 namespace ui {
 namespace {
 
-// The cell height the DX9 HUD asks D3DXCreateFontA for (remake/src/render/hud.cpp:18:
-// `D3DXCreateFontA(device, 22, 0, FW_BOLD, ...)`). Positive height is the cell, not the
-// character, which is exactly why the em has to be derived rather than passed.
+// Retain the banked DX9 HUD's 22 px caption cell before viewport scaling.
 constexpr float kHudCellHeightPx = 22.f;
-
-// Whole-file read; `found` distinguishes "no such font" (fall back to the bitmap atlas)
-// from an empty file (which loadFontChain rejects with a message).
-std::vector<uint8_t> readFile(const std::string& path, bool& found) {
-    found = false;
-    std::FILE* f = std::fopen(path.c_str(), "rb");
-    if (!f) return {};
-    std::fseek(f, 0, SEEK_END);
-    const long n = std::ftell(f);
-    std::fseek(f, 0, SEEK_SET);
-    std::vector<uint8_t> bytes;
-    if (n > 0) {
-        bytes.resize((size_t)n);
-        found = std::fread(bytes.data(), 1, (size_t)n, f) == (size_t)n;
-    }
-    std::fclose(f);
-    return found ? bytes : std::vector<uint8_t>{};
-}
-
-// Reads one face of the chain from the first root that has it.
-std::vector<uint8_t> readFontFile(const char* name, bool& found) {
-    for (const char* const* root = fontSearchRoots(); root && *root; ++root) {
-        std::vector<uint8_t> bytes = readFile(std::string(*root) + name, found);
-        if (found) return bytes;
-    }
-    found = false;
-    return {};
-}
-
-// The reference's chain, in fallback order. Latin first because that is the face the
-// banked frames were rendered with; the CJK face is second because Arial has no
-// Japanese glyphs and the hypermode label is Japanese — GDI answers that with font
-// linking, this chain with the next face. The Latin face is required: without it the
-// HUD keeps the bitmap atlas, since a CJK-only chain would silently re-render every
-// verified Latin label in a face the reference never used.
-bool loadHudChain(TextLayer& layer, const HudFontFiles& files, std::string& error) {
-    bool found = false;
-    std::vector<uint8_t> latin = readFontFile(files.latin, found);
-    if (!found) return false;   // no font fetched: the bitmap atlas is the answer
-    FontChain chain;
-    chain.push_back(FontFace{std::move(latin), kHudCellHeightPx});
-    if (files.cjk && *files.cjk) {
-        std::vector<uint8_t> cjk = readFontFile(files.cjk, found);
-        if (found) chain.push_back(FontFace{std::move(cjk), kHudCellHeightPx});
-    }
-    return layer.loadFontChain(chain, error);
-}
 
 // One balloon corner, both halves of FUN_00644150's loop over `side` (0 left, 1
 // right): the growing balloon sprite, the LIMIT label + its value at half scale, the
@@ -66,11 +17,11 @@ bool loadHudChain(TextLayer& layer, const HudFontFiles& files, std::string& erro
 // 140), 0x6a19b8/0x6a1c80 (label x, 70/700), 0x6a16e8 (readout x, 110) and
 // 0x6a4c88/0x6a4c90/0x6a4c84 (right/left LIMIT x, 740/138/768).
 void composeBalloonCorner(const HudAtlas& atlas, SpriteRenderer& batch, const HudState& st,
-                          int side) {
-    const float balloonX = side == 0 ? 85.f : 715.f;
-    const float labelX = side == 0 ? 70.f : 700.f;
-    const float readoutX = side == 0 ? 110.f : 740.f;
-    const float limitX = side == 0 ? 138.f : 768.f;
+                          int side, const BattleHudLayout& layout) {
+    const float balloonX = side == 0 ? 85.f : layout.width-85.f;
+    const float labelX = side == 0 ? 70.f : layout.width-100.f;
+    const float readoutX = side == 0 ? 110.f : layout.width-60.f;
+    const float limitX = side == 0 ? 138.f : layout.width-32.f;
     const float pct = st.balloon[side] < 0.f ? 0.f : st.balloon[side];
     const int pulse = st.balloonPulse[side];
     atlas.draw(batch, side == 0 ? HudIcon::BalloonLeft : HudIcon::BalloonRight, balloonX, 140.f,
@@ -129,9 +80,9 @@ HudRects computeHudLayout(int viewW, int viewH) {
     // Centred stamina pair, shown only while spent (dash/guard/airborne).
     l.staminaText = UiRect{W * 0.5f - 100.f, H - 60.f, 0.f, 0.f};
     l.staminaBar = UiRect{W * 0.5f - 100.f, H - 38.f, 200.f, 12.f};
-    // KO sting: horizontally centred band at y=220 (DX9 centered(220, 100)).
+    // Retain the reference's 80 px offset above viewport center (y=220 at 800x600).
     l.koCenterX = W * 0.5f;
-    l.koY = 220.f;
+    l.koY = H*.5f-80.f;
     return l;
 }
 
@@ -158,7 +109,7 @@ void pushTextCentered(SpriteRenderer& batch, int atlasTexture, const char* text,
 bool HudComposer::uploadFont(SpriteRenderer& batch, std::string& error) {
     if (atlas_ >= 0 || textAtlas_ >= 0) return true;
     std::string fontError;
-    if (loadHudChain(text_, HudFontFiles{}, fontError)) {
+    if (loadCaptionFont(text_, kHudCellHeightPx, fontError)) {
         // Warm every ASCII glyph the HUD can print, so the atlas uploaded here is the one
         // the frames compose against: a tile added later would move every tile's UV
         // denominator and force the refresh below mid-frame.
@@ -170,9 +121,7 @@ bool HudComposer::uploadFont(SpriteRenderer& batch, std::string& error) {
         return true;
     }
     if (!fontError.empty()) {
-        // A font that is present but unusable is a fetch problem (a truncated download),
-        // not a missing asset: say so and still draw, because a HUD without labels is
-        // worse than one in the fallback face.
+        // Keep labels available when the caption face is missing or unusable.
         std::fprintf(stderr, "[fnd::ui] hud font chain rejected (%s); using the bitmap atlas\n",
                      fontError.c_str());
     }
@@ -222,11 +171,7 @@ void HudComposer::drawText(SpriteRenderer& batch, const char* text, float x, flo
     std::string error;
     const TextLayout laid = text_.layout(text);
     if (!refreshTextAtlas(batch, error)) return;
-    std::vector<GlyphQuad> glyphs;
-    text_.buildQuads(laid, x, y, 1.f, glyphs);
-    for (const GlyphQuad& g : glyphs)
-        batch.pushTextured(textAtlas_, UiRect{g.x, g.y, g.w, g.h},
-                           UiRect{g.u0, g.v0, g.u1 - g.u0, g.v1 - g.v0}, color);
+    drawCaptionLayout(batch,text_,laid,textAtlas_,atlas_,x,y,1.f,color);
 }
 
 void HudComposer::drawTextCentered(SpriteRenderer& batch, const char* text, float centerX,
@@ -239,13 +184,7 @@ void HudComposer::drawTextCentered(SpriteRenderer& batch, const char* text, floa
     std::string error;
     const TextLayout laid = text_.layout(text);
     if (!refreshTextAtlas(batch, error)) return;
-    std::vector<GlyphQuad> glyphs;
-    // The bitmap layer centres the block on centerX (ui::layoutTextCentered); the font
-    // layer starts from a pen, so the block's measured width is what moves.
-    text_.buildQuads(laid, centerX - laid.width(1.f) * 0.5f, y, 1.f, glyphs);
-    for (const GlyphQuad& g : glyphs)
-        batch.pushTextured(textAtlas_, UiRect{g.x, g.y, g.w, g.h},
-                           UiRect{g.u0, g.v0, g.u1 - g.u0, g.v1 - g.v0}, color);
+    drawCaptionLayout(batch,text_,laid,textAtlas_,atlas_,centerX-laid.width(1.f)*.5f,y,1.f,color);
 }
 
 void HudComposer::bar(SpriteRenderer& batch, const UiRect& r, float frac, UiColor fill) {
@@ -271,11 +210,8 @@ bool HudComposer::ensureBattleAtlas(SpriteRenderer& batch) {
     return false;
 }
 
-void HudComposer::composeBattle(SpriteRenderer& batch, const HudState& st) {
-    // FUN_00644150's anchors, in its own draw order. Single-player scale is 1.0 and
-    // the viewport origin is (0,0) (FUN_0063a130 @0x0063a130, FUN_006396f0
-    // @0x006396f0), which is why these are plain 800x600 pixels. The 2P path halves
-    // them through FUN_00644150's param_4; the port's HUD is the 1P path.
+void HudComposer::composeBattle(SpriteRenderer& batch, const HudState& st, const BattleHudLayout& layout) {
+    // Edge anchors retain FUN_00644150's margins at the reference resolution.
     const UiColor white = kHudWhite;
     const int frame = st.hudFrame;
 
@@ -283,12 +219,12 @@ void HudComposer::composeBattle(SpriteRenderer& batch, const HudState& st) {
     // at 0x6441cc, then the live fill. Below 2500/10000 (0x6441de) the live fill
     // alternates its slot every 15 frames — slot 0 (P02 (0,480)) and slot 1
     // (P02 (256,480), the pale ramp) — which is the original's low-HP flash.
-    battleAtlas_.draw(batch, HudIcon::HpFrame, 505.f, 565.f, 1.f, 0.f, white);
-    battleAtlas_.fill(batch, HudIcon::HpFillGhost, st.hpLag / 100.f, 505.f, 565.f);
+    battleAtlas_.draw(batch, HudIcon::HpFrame, layout.hp.x, layout.hp.y, 1.f, 0.f, white);
+    battleAtlas_.fill(batch, HudIcon::HpFillGhost, st.hpLag / 100.f, layout.hp.x, layout.hp.y);
     const bool lowHp = st.hp < 25.f;
     const bool flashOn = lowHp && ((frame % 0x1e) / 0xf) != 0;
     battleAtlas_.fill(batch, flashOn ? HudIcon::HpFillPale : HudIcon::HpFill, st.hp / 100.f,
-                      505.f, 565.f);
+                      layout.hp.x, layout.hp.y);
 
     // OYASHIRO fan gauge: frame 0x64428d at (55,488), gradient fill through
     // FUN_00645690 (scale + FUN_00645250) at the same anchor, MAX label at (64,534)
@@ -296,25 +232,25 @@ void HudComposer::composeBattle(SpriteRenderer& batch, const HudState& st) {
     // hud+0x318 (0x644859). The original picks the fill cell by hud+0x318 (team 0
     // here, FUN_00642c50 @0x00642cf8-0x642e5b) and, while charged, alternates the
     // pair on (frame % 0x1e) / 0xf (0x6446b0) — the same counter as the HP flash.
-    battleAtlas_.draw(batch, HudIcon::FanFrame, 55.f, 488.f, 1.f, 0.f, white);
+    battleAtlas_.draw(batch, HudIcon::FanFrame, layout.fan.x, layout.fan.y, 1.f, 0.f, white);
     const float gauge = st.hyperGauge < 0.f ? 0.f : (st.hyperGauge > 1.f ? 1.f : st.hyperGauge);
     if (st.hyperActive || st.hyperReady) {
         battleAtlas_.fill(batch, ((frame % 0x1e) / 0xf) != 0 ? HudIcon::FanFillReadyAlt
                                                              : HudIcon::FanFillReady,
-                          gauge, 55.f, 488.f);
+                          gauge, layout.fan.x, layout.fan.y);
     } else {
-        battleAtlas_.fill(batch, HudIcon::FanFillCharging, gauge, 55.f, 488.f);
+        battleAtlas_.fill(batch, HudIcon::FanFillCharging, gauge, layout.fan.x, layout.fan.y);
     }
-    if (st.hyperReady && !st.hyperActive) battleAtlas_.draw(batch, HudIcon::MaxLabel, 64.f, 534.f);
-    battleAtlas_.cell(batch, HudIcon::FanCaption, 0, st.hyperRow, 183.f, 548.f, 1.f, 0.f, white);
+    if (st.hyperReady && !st.hyperActive) battleAtlas_.draw(batch, HudIcon::MaxLabel, layout.maxLabel.x, layout.maxLabel.y);
+    battleAtlas_.cell(batch, HudIcon::FanCaption, 0, st.hyperRow, layout.fanCaption.x, layout.fanCaption.y, 1.f, 0.f, white);
 
     // STAMINA: frame 0x6ca5a0 @0x64476d at (400,517) and the fill slot hud+0x4b8
     // (P01 (320,0,107,6), pivot (53,3) — it grows right from the frame's centre).
     // The original's gate is the fill's own value, hud+0x834 < 1000 (0x644758), i.e.
     // the bar is shown exactly while stamina is not full.
     if (st.staminaFrac < 1.f) {
-        battleAtlas_.draw(batch, HudIcon::StaminaFrame, 400.f, 517.f, 1.f, 0.f, white);
-        battleAtlas_.fill(batch, HudIcon::StaminaFill, st.staminaFrac, 400.f, 517.f);
+        battleAtlas_.draw(batch, HudIcon::StaminaFrame, layout.stamina.x, layout.stamina.y, 1.f, 0.f, white);
+        battleAtlas_.fill(batch, HudIcon::StaminaFill, st.staminaFrac, layout.stamina.x, layout.stamina.y);
     }
 
     // Boxed tactics/command label (0x6448ad): P03 (0,0,128,64) pivot (64,32), cell
@@ -323,20 +259,20 @@ void HudComposer::composeBattle(SpriteRenderer& batch, const HudState& st) {
     if (st.commandCell >= 0) {
         const float cmdScale = st.commandScale > 0.f ? st.commandScale + 1.f : 1.f;
         battleAtlas_.cell(batch, HudIcon::CommandLabel, st.commandCell % 4, st.commandCell / 4,
-                          216.f, 520.f, cmdScale, 0.f, white);
+                          layout.command.x, layout.command.y, cmdScale, 0.f, white);
     }
 
     // MAIN and CHARGE: frame, count, then fill (0x6448e5 / 0x64491d / 0x64495d /
     // 0x64499d / 0x6449ef / 0x644ac8). The fill strip switches to the grey slot when
     // the stock is empty, which is the count's only effect on the bar.
-    battleAtlas_.draw(batch, HudIcon::MainFrame, 623.f, 471.f, 1.f, 0.f, white);
-    battleAtlas_.draw(batch, HudIcon::ChargeFrame, 597.f, 517.f, 1.f, 0.f, white);
-    battleAtlas_.number(batch, HudFont::BigWhite, st.mainWhole, 702.f, 443.f);
-    battleAtlas_.number(batch, HudFont::BigWhite, st.chargeWhole, 676.f, 489.f);
+    battleAtlas_.draw(batch, HudIcon::MainFrame, layout.main.x, layout.main.y, 1.f, 0.f, white);
+    battleAtlas_.draw(batch, HudIcon::ChargeFrame, layout.charge.x, layout.charge.y, 1.f, 0.f, white);
+    battleAtlas_.number(batch, HudFont::BigWhite, st.mainWhole, layout.mainCount.x, layout.mainCount.y);
+    battleAtlas_.number(batch, HudFont::BigWhite, st.chargeWhole, layout.chargeCount.x, layout.chargeCount.y);
     battleAtlas_.fill(batch, st.mainWhole > 0 ? HudIcon::MainFill : HudIcon::MainFillEmpty,
-                      st.mainFrac, 623.f, 471.f);
+                      st.mainFrac, layout.main.x, layout.main.y);
     if (st.chargeWhole > 0) {
-        battleAtlas_.fill(batch, HudIcon::ChargeFill, st.chargeFrac, 597.f, 517.f);
+        battleAtlas_.fill(batch, HudIcon::ChargeFill, st.chargeFrac, layout.charge.x, layout.charge.y);
         // The C-held tier meter rides the CHARGE pill's lower half (0x644b0d /
         // 0x644b48 at y 525). HudState carries the tier as its resolved colour
         // (game/hud_bridge.h): the two real tiers are the surveyed red and yellow,
@@ -344,45 +280,33 @@ void HudComposer::composeBattle(SpriteRenderer& batch, const HudState& st) {
         if (st.holdVisible && st.holdColor.r > 0.9f)
             battleAtlas_.fill(batch, st.holdColor.g > 0.6f ? HudIcon::ChargeTierYellow
                                                           : HudIcon::ChargeTierRed,
-                              st.holdFrac, 597.f, 525.f);
+                              st.holdFrac, layout.chargeTier.x, layout.chargeTier.y);
     } else {
-        battleAtlas_.fill(batch, HudIcon::ChargeFillEmpty, st.chargeFrac, 597.f, 517.f);
+        battleAtlas_.fill(batch, HudIcon::ChargeFillEmpty, st.chargeFrac, layout.charge.x, layout.charge.y);
     }
 
     // Both balloon corners (0x644bfc-0x644e25), left then right.
-    composeBalloonCorner(battleAtlas_, batch, st, 0);
-    composeBalloonCorner(battleAtlas_, batch, st, 1);
+    composeBalloonCorner(battleAtlas_, batch, st, 0, layout);
+    composeBalloonCorner(battleAtlas_, batch, st, 1, layout);
 
     // Render-FPS counter, top-right (FUN_006396f0 @0x6396f0: DAT_006d18a4
     // right-aligned at x=800, y=0, scale 0.5). Always drawn in battle — no
     // gate surrounds the call — in the small yellow P00 row.
-    battleAtlas_.number(batch, HudFont::SmallYellow, st.fps, 800.f, 0.f, 0.5f);
+    battleAtlas_.number(batch, HudFont::SmallYellow, st.fps, layout.fps.x, layout.fps.y, 0.5f);
 }
 
-void HudComposer::composeFighters(SpriteRenderer& batch, const HudState& st) {
+void HudComposer::composeFighters(SpriteRenderer& batch, const HudState& st, const BattleHudLayout& layout) {
     const UiColor white = kHudWhite;
     for (int i = 0; i < 2; ++i) {
         const HudFighterHud& f = st.fighters[i];
         if (!f.visible) continue;
-        // The targeting ring (0x643431-0x64353d): P03's 128x128 ring cell (0,1) is the
-        // red one, drawn about the fighter's position + 70 units. Its scale is
-        // (0.1*hud+0x30c + 1) and its rotation 9*hud+0x30c + frame/2 (0x643447,
-        // 0x64346c) — the frame term is why the prints show the arcs at four
-        // different angles from the atlas' diagonal.
-        //
-        // The print shows TWO arcs because the target gets a second draw of the
-        // same cell (0x643545-0x64354b, gated on local_31 — this fighter is the
-        // viewer's locked target): same position/scale/cell, but the rotation
-        // is negated WITHOUT the 9*hud+0x30c term (FUN_006451f0(-frame/2)).
-        // Counter-rotating arcs, exactly what the print's upper and lower red
-        // arcs are. The port's f.target is that gate (target-valid is implied).
-        // The 9*hud+0x30c term itself stays 0 (ringDeg): the +0x30c field's
-        // driver is unmapped, so arc 1 turns on frame/2 alone for now.
+        // FUN_00643230 gates the counter-rotating red arcs on the viewer's target.
         if (f.target) {
-            battleAtlas_.cell(batch, HudIcon::Ring, 0, 1, f.ringX, f.ringY, 1.f,
-                              f.ringDeg + (float)st.hudFrame * 0.5f, white);
-            battleAtlas_.cell(batch, HudIcon::Ring, 0, 1, f.ringX, f.ringY, 1.f,
-                              -(float)st.hudFrame * 0.5f, white);
+            const auto ring = hudRingTransform(st.hudFrame, f.ringPulse);
+            battleAtlas_.cell(batch, HudIcon::Ring, 0, 1, f.ringX, f.ringY, ring.scale,
+                              ring.firstDeg, white);
+            battleAtlas_.cell(batch, HudIcon::Ring, 0, 1, f.ringX, f.ringY, ring.scale,
+                              ring.secondDeg, white);
         }
         // The target's com bar (the drawer at 0x643fa7): frame, the lagging fill
         // (hud+0xb0 = P01 (320,352,80,6)) then the live one (hud+0x4 =
@@ -400,40 +324,51 @@ void HudComposer::composeFighters(SpriteRenderer& batch, const HudState& st) {
         // the screen edge the fighter went off, at (400,64) top, (400,536) bottom,
         // (64,300) left, (736,300) right.
         if (f.alertDir >= 0 && f.alertDir < 4) {
-            const float ax = f.alertDir == 2 ? 64.f : (f.alertDir == 3 ? 736.f : 400.f);
-            const float ay = f.alertDir == 0 ? 64.f : (f.alertDir == 1 ? 536.f : 300.f);
+            const float ax = f.alertDir == 2 ? 64.f : (f.alertDir == 3 ? layout.width-64.f : layout.width*.5f);
+            const float ay = f.alertDir == 0 ? 64.f : (f.alertDir == 1 ? layout.height-64.f : layout.height*.5f);
             battleAtlas_.draw(batch, HudIcon::AlertPale, ax, ay, 1.f, 0.f, white);
         }
     }
 }
 
-void HudComposer::compose(SpriteRenderer& batch, const HudState& st, const HudRects& layout) {
+void HudComposer::compose(SpriteRenderer& batch, const HudState& st) {
+    const auto battle = computeBattleHudLayout(batch.viewportW(),batch.viewportH());
+    batch.setCanvasTransform(battle.scale);
+    struct ResetTransform { SpriteRenderer& batch; ~ResetTransform() { batch.resetCanvasTransform(); } } reset{batch};
+    const auto layout = computeHudLayout(int(battle.width),int(battle.height));
     // Art first: when the game's own sheets are there, the original's composition is
     // the whole HUD. Everything the DX9 text path draws beyond it (the RELOAD gate
     // tag, the unlabelled corner "0", the "READY (S)" hint) is that path's own
     // invention and is deliberately not mixed in — a frame is either the original's
     // HUD or the remake's stand-in, never half of each.
     if (ensureBattleAtlas(batch)) {
-        composeFighters(batch, st);
+        composeFighters(batch, st, battle);
         // The round stings sit between the fighters and the corners: FUN_0063a130
         // @0x63a4b4 draws them centred at (400,300) at the viewport scale times a
         // per-slot float. The port draws the KO sting at the 0.5 the spec measured on
         // the print; the scale/alpha tween the original runs is the caller's to add
         // by scaling this call, not something the composer can invent.
-        if (st.koVisible) battleAtlas_.draw(batch, HudIcon::KoSting, 400.f, 300.f, 0.5f);
-        composeBattle(batch, st);
+        if (st.koVisible) battleAtlas_.draw(batch, HudIcon::KoSting, battle.ko.x, battle.ko.y, 0.5f);
+        composeBattle(batch, st, battle);
         return;
     }
+    // New linked glyphs can grow the atlas and change queued quads' UV denominator.
+    if (textAtlas_ >= 0) text_.layout(st.hyperName.c_str());
     char buf[256];
+    auto rightLabel = [&](const char* value, const UiRect& anchor, UiColor color) {
+        const float width = textAtlas_ >= 0 ? text_.layout(value).width(1.f)
+                                            : measureText(value,kHudTextScale).width;
+        drawText(batch,value,anchor.x+100.f-width,anchor.y,color);
+    };
     // Top corners: balloon % over LIMIT (%.0f%% / LIMIT %.0f%% per side).
     std::snprintf(buf, sizeof buf, "%.0f%%", st.balloon[0]);
     drawText(batch, buf, layout.balloonL.x, layout.balloonL.y, kHudWhite);
     std::snprintf(buf, sizeof buf, "LIMIT %.0f%%", st.limit);
     drawText(batch, buf, layout.limitL.x, layout.limitL.y, kHudLimitLeft);
     std::snprintf(buf, sizeof buf, "%.0f%%", st.balloon[1]);
-    drawText(batch, buf, layout.balloonR.x, layout.balloonR.y, kHudWhite);
+    rightLabel(buf,layout.balloonR,kHudWhite);
     std::snprintf(buf, sizeof buf, "LIMIT %.0f%%", st.limit);
-    drawText(batch, buf, layout.limitR.x, layout.limitR.y, kHudLimitRight);
+    rightLabel(buf,layout.limitR,kHudLimitRight);
 
     drawText(batch, "0", layout.markerText.x, layout.markerText.y, kHudMarkerText);
 

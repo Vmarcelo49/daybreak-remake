@@ -353,6 +353,8 @@ struct PendingShot {
     glm::vec3     dir   {0, 0, 1};
 };
 
+struct CombatStats { int kos = 0, deaths = 0, damageDealt = 0, damageTaken = 0; };
+
 class Fighter : public game::IFighterPose {
 public:
     Fighter() = default;
@@ -420,9 +422,15 @@ public:
     // Startup HP (-hp): lets a test reach a lethal-hit path without a
     // wind-up (Kakera's death save, Overkill's downed window).
     void set_hp(int hp) {
-        m_hp = hp < 1 ? 1 : (hp > FighterConstants::kMaxHP ? FighterConstants::kMaxHP
-                                                           : hp);
+        m_hp = hp < 1 ? 1 : (hp > m_maxHP ? m_maxHP : hp);
     }
+    void set_battle_rates(int healthPercent, int gaugePercent) {
+        m_maxHP = healthPercent < 50 ? 50 : (healthPercent > 200 ? 200 : healthPercent);
+        m_gaugeRate = (gaugePercent < 50 ? 50 : (gaugePercent > 200 ? 200 : gaugePercent)) / 100.f;
+    }
+    int max_hp() const { return m_maxHP; }
+    const CombatStats& stats() const { return m_stats; }
+    void clear_stats() { m_stats = {}; }
     Hypermode hypermode() const { return m_hypermode; }
     bool  hyper_active() const { return m_hyperActive; }
     bool  hyper_ready() const { return m_gauge >= 1.0f && !m_hyperActive; }
@@ -494,6 +502,9 @@ private:
 
     // --- stats ---
     int          m_hp          = FighterConstants::kMaxHP;
+    int          m_maxHP       = FighterConstants::kMaxHP;
+    float        m_gaugeRate   = 1.f;
+    CombatStats  m_stats;
     float        m_stamina     = static_cast<float>(FighterConstants::kMaxStamina);
 
     // --- state machine ---

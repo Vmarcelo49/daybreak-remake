@@ -74,10 +74,7 @@ inline constexpr TitleEntry kTitleEntries[kTitleItemCount] = {
 static_assert(sizeof(kTitleEntries) / sizeof(kTitleEntries[0]) == (size_t)kTitleItemCount,
               "entry table and TitleItem must stay in step");
 
-// What one update did, so the caller can play the SE the original plays there (FUN_
-// 0064aed0: 0 on confirm, 2 on a cursor move) without the state machine needing an audio
-// seam. Audio is not wired on this screen yet; the screen logs the transition instead of
-// faking it.
+// FUN_0064aed0: confirm=0, cursor=2. The host consumes the screen cue.
 enum class TitleAction : uint8_t { None, Moved, Activated };
 
 // FUN_00410f60.c:138-145's cursor machine, device-free. The original's vertical counter
@@ -107,10 +104,12 @@ public:
     // without its menu would draw a bare background, so makeTitleScreen() refuses to
     // hand one out rather than presenting a screen the port cannot account for.
     bool loaded() const;
+    int takeSound() override { const int id = sound_; sound_ = -1; return id; }
 
 private:
     int       sheets_[kTitleSheetCount] = {-1, -1, -1};
     TitleMenu menu_;
+    int sound_ = -1;
 };
 
 // makeScreen(ScreenId::Title)'s constructor. Null (with `error`) when one of the three

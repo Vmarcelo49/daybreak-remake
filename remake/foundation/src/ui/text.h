@@ -181,11 +181,11 @@ struct FontFace {
 // character the primary lacks is served by the linked one.
 using FontChain = std::vector<FontFace>;
 
-// Repo-relative directories holding the fetched fonts (scripts/fetch_deps.sh writes
-// them under the foundation's third_party/fonts/), nullptr-terminated. One list, so the
+// Repo-relative directories holding bundled captions and fetched Japanese/reference fonts,
+// nullptr-terminated. One list, so the
 // HUD and the tests cannot disagree about where a pinned font lives; the callers decide
 // what to resolve them against (the HUD uses the working directory, the tests also walk
-// up from argv[0]). Nothing here is committed.
+// up from argv[0]).
 const char* const* fontSearchRoots();
 
 // ---------------------------------------------------------------------------

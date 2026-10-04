@@ -33,6 +33,7 @@ if(EMSCRIPTEN)
     # SDL3 is supplied by the Emscripten port; it also owns the <canvas>.
     add_compile_options(-sUSE_SDL=3)
     add_link_options(-sUSE_SDL=3 -sASYNCIFY=1 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576 -sFETCH=1 -lidbfs.js)
+    add_link_options("SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts@/assets/fonts")
     # Local game data can be mounted at /assets for browser verification. Both stay
     # local-only: the data is copyrighted and build/ is ignored, so this never changes
     # what the plain web build contains.
@@ -89,12 +90,21 @@ target_link_libraries(foundation_render PUBLIC foundation foundation_assets)
 add_library(foundation_ui STATIC
     src/ui/sprite.cpp
     src/ui/font.cpp
+    src/ui/caption.cpp
     src/ui/hud.cpp
     src/ui/hud_atlas.cpp
     src/ui/text.cpp
     src/ui/fallback.cpp
     src/ui/screen.cpp
-    src/ui/screen_title.cpp)
+    src/ui/screen_title.cpp
+    src/ui/screen_select.cpp
+    src/ui/screen_stage_select.cpp
+    src/ui/screen_vs.cpp
+    src/ui/screen_result.cpp
+    src/ui/frontend_launch.cpp
+    src/ui/frontend_settings.cpp
+    src/ui/screen_options.cpp
+    src/ui/soft_keyboard.cpp)
 target_include_directories(foundation_ui PUBLIC src)
 # hud_atlas.cpp decodes HUD sheets through xm::decodeCnvImage, which assets/ owns: state it
 # here so a target linking foundation_ui alone still links.
@@ -149,6 +159,25 @@ target_link_libraries(foundation_gameplay
 
 add_executable(foundation_demo src/main.cpp)
 target_link_libraries(foundation_demo PRIVATE foundation_render foundation_ui foundation_media foundation_game foundation_physics foundation_gameplay)
+
+set(CAPTION_CJK_FONT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/NotoSansCJKjp-Regular.otf")
+if(EMSCRIPTEN)
+    set_property(TARGET foundation_demo APPEND PROPERTY LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/gyrotrope-black.otf")
+    if(EXISTS "${CAPTION_CJK_FONT}")
+        target_link_options(foundation_demo PRIVATE "SHELL:--preload-file ${CAPTION_CJK_FONT}@/assets/fonts/NotoSansCJKjp-Regular.otf")
+        set_property(TARGET foundation_demo APPEND PROPERTY LINK_DEPENDS "${CAPTION_CJK_FONT}")
+    endif()
+else()
+    add_custom_target(foundation_caption_fonts
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts" "$<TARGET_FILE_DIR:foundation_demo>/assets/fonts")
+    add_dependencies(foundation_demo foundation_caption_fonts)
+    if(EXISTS "${CAPTION_CJK_FONT}")
+        add_custom_command(TARGET foundation_caption_fonts POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CAPTION_CJK_FONT}" "$<TARGET_FILE_DIR:foundation_demo>/assets/fonts/NotoSansCJKjp-Regular.otf")
+    endif()
+endif()
 
 # Host-side tests. Native-only on purpose: the Windows target is cross-compiled and
 # the web target cannot run a host binary, so neither can execute them, and building
@@ -251,12 +280,25 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(text_test PRIVATE glm)
     add_test(NAME text_test COMMAND text_test)
 
+    add_executable(caption_font_test tests/caption_font_test.cpp)
+    target_link_libraries(caption_font_test PRIVATE foundation_ui)
+    add_test(NAME caption_font_test COMMAND caption_font_test)
+    set_tests_properties(caption_font_test PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
     # The battle HUD's sprite table and draw geometry: device-free arithmetic over the
     # transcribed .rdata anchors, so it needs the headers' include path and webgpu.h only.
     add_executable(hud_sprite_table tests/hud_sprite_table.cpp)
     target_include_directories(hud_sprite_table PRIVATE src)
     target_link_libraries(hud_sprite_table PRIVATE webgpu)
     add_test(NAME hud_sprite_table COMMAND hud_sprite_table)
+    add_executable(canvas_layout_test tests/canvas_layout_test.cpp)
+    target_include_directories(canvas_layout_test PRIVATE src)
+    target_link_libraries(canvas_layout_test PRIVATE webgpu)
+    add_test(NAME canvas_layout_test COMMAND canvas_layout_test)
+    add_executable(hud_layout_test tests/hud_layout_test.cpp)
+    target_include_directories(hud_layout_test PRIVATE src)
+    target_link_libraries(hud_layout_test PRIVATE webgpu)
+    add_test(NAME hud_layout_test COMMAND hud_layout_test)
 
     # The HUD's text metrics against the banked DX9 frames: device-free (it rasterizes
     # into host memory), it pins the reference's GDI advance table, the baseline offset
@@ -277,6 +319,17 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # stack's factory is injected, so transitions run against fake screens). It links
     # foundation_ui for makeScreen -> screen_title -> hud_atlas -> sprite, but never
     # creates a device.
+    add_executable(input_backend_test tests/input_backend_test.cpp)
+    target_link_libraries(input_backend_test PRIVATE foundation_media)
+    add_test(NAME input_backend_test COMMAND input_backend_test)
+    add_executable(frontend_battle_test tests/frontend_battle_test.cpp)
+    target_link_libraries(frontend_battle_test PRIVATE foundation_gameplay)
+    add_test(NAME frontend_battle_test COMMAND frontend_battle_test)
+    foreach(frontend_test select_menu_test stage_vs_test frontend_config_test result_screen_test)
+        add_executable(${frontend_test} tests/${frontend_test}.cpp)
+        target_link_libraries(${frontend_test} PRIVATE foundation_ui glm)
+        add_test(NAME ${frontend_test} COMMAND ${frontend_test})
+    endforeach()
     add_executable(screen_stack_test tests/screen_stack_test.cpp)
     target_include_directories(screen_stack_test PRIVATE src)
     target_link_libraries(screen_stack_test PRIVATE foundation_ui glm)

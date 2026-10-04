@@ -5,8 +5,8 @@
 // hud.cpp (D3DXSprite bars: back quad at full width plus a fill quad truncated
 // to (int)(w * frac)) and ui_image.cpp (XYZRHW quads, Z disabled, SrcAlpha /
 /// InvSrcAlpha blending). Positions stay in viewport pixels with a top-left
-// origin so those call sites transfer verbatim; the ui_wgsl vertex shader maps
-// them to NDC.
+// origin so those call sites transfer verbatim. An optional canvas transform
+// uniformly scales them before the ui_wgsl vertex shader maps them to NDC.
 //
 // Frame model: immediate mode, rebuilt every frame from the caller's state —
 // the batch holds no clock and no accumulator, so a variable-delta caller just
@@ -14,6 +14,7 @@
 // and FIFO pacing stays the swapchain's job exactly as in the 3D path.
 #include <webgpu/webgpu.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -46,6 +47,40 @@ struct UiClip {
     bool  enabled = false;
     float x = 0.f, y = 0.f, w = 0.f, h = 0.f;
 };
+
+struct UiCanvasTransform {
+    float scale = 1.f;
+    float x = 0.f, y = 0.f;
+};
+
+// The shipped menu art is 800x600; preserve that aspect rather
+// than stretching its portraits when the window has a different shape.
+inline UiCanvasTransform fitCanvas(const UiViewport& vp, float width = 800.f,
+                                  float height = 600.f) {
+    if (width <= 0.f || height <= 0.f) return {0.f, 0.f, 0.f};
+    const float scale = std::min(float(vp.w) / width, float(vp.h) / height);
+    return {scale, (float(vp.w) - width * scale) * .5f,
+                   (float(vp.h) - height * scale) * .5f};
+}
+
+inline UiRect transformRect(const UiRect& rect, const UiCanvasTransform& canvas) {
+    return {rect.x * canvas.scale + canvas.x, rect.y * canvas.scale + canvas.y,
+            rect.w * canvas.scale, rect.h * canvas.scale};
+}
+
+inline UiClip transformClip(const UiClip& clip, const UiCanvasTransform& canvas) {
+    if (!clip.enabled) return clip;
+    const UiRect rect = transformRect({clip.x, clip.y, clip.w, clip.h}, canvas);
+    return {true, rect.x, rect.y, rect.w, rect.h};
+}
+
+inline UiClip intersectClip(const UiClip& a, const UiClip& b) {
+    if (!a.enabled) return b;
+    if (!b.enabled) return a;
+    const float x = std::max(a.x, b.x), y = std::max(a.y, b.y);
+    return {true, x, y, std::max(0.f, std::min(a.x + a.w, b.x + b.w) - x),
+                        std::max(0.f, std::min(a.y + a.h, b.y + b.h) - y)};
+}
 
 // Gauge-fill growth direction. This is the original's sprite+0xa8 read by
 // FUN_00645250 @0x645250: 0 grows right, 1 grows up, 2 grows left.
@@ -160,6 +195,16 @@ struct UiQuad {
     float   rotCx = 0.f, rotCy = 0.f;
 };
 
+inline UiQuad transformQuad(const UiQuad& quad, const UiCanvasTransform& canvas,
+                            const UiClip& canvasClip = {}) {
+    UiQuad out = quad;
+    out.dst = transformRect(quad.dst, canvas);
+    out.rotCx = quad.rotCx * canvas.scale + canvas.x;
+    out.rotCy = quad.rotCy * canvas.scale + canvas.y;
+    out.clip = transformClip(intersectClip(quad.clip, canvasClip), canvas);
+    return out;
+}
+
 // GPU vertex: pixel position, UV, straight-alpha tint. Must match ui_wgsl.
 struct UiVertex {
     float x, y, u, v, r, g, b, a;
@@ -197,7 +242,16 @@ public:
 
     // Starts a frame's batch. The viewport is re-taken every frame rather than
     // cached, so a resize between frames cannot desynchronise pixels from NDC.
+    // Canvas state resets so a preceding menu cannot transform the battle HUD.
     void beginFrame(uint32_t viewportW, uint32_t viewportH);
+    void setCanvasTransform(float scale, float offsetX = 0.f, float offsetY = 0.f) {
+        canvas_ = {scale, offsetX, offsetY};
+    }
+    void setCanvasClip(const UiClip& clip) { canvasClip_ = clip; }
+    void resetCanvasTransform() {
+        canvas_ = {};
+        canvasClip_ = {};
+    }
 
     // Pushes one quad; false when the batch is full (counted in dropped()).
     bool pushQuad(const UiQuad& q);
@@ -273,6 +327,8 @@ private:
     std::vector<UiQuad>   quads_;
 
     UiViewport viewport_{0, 0};
+    UiCanvasTransform canvas_{};
+    UiClip canvasClip_{};
     size_t     dropped_ = 0;
 };
 

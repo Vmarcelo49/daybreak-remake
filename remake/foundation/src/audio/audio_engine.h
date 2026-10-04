@@ -178,6 +178,7 @@ public:
     // the game data, so no second decoder is carried for it.
     SfxHandle load_ogg(const uint8_t* bytes, size_t size);
     void clear_bank();
+    void clear_music();
 
     // Fire a loaded buffer. req.channel >= 0 plays exactly there (returns -1
     // when out of range, busy, or the handle is stale); otherwise the first

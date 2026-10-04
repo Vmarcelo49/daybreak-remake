@@ -161,10 +161,13 @@ int hexDigit(uint8_t c) {
 }
 
 const char* const* fontSearchRoots() {
-    // Three spellings of the same place, because the demo runs from the repo root and
+    // Resolve bundled and fetched faces when the demo runs from the repo root and
     // the ctest binaries from the build tree; tests/text_test.cpp additionally probes
     // upwards and next to argv[0], which is what makes the build-dir case work.
     static const char* const kRoots[] = {
+        "remake/foundation/assets/fonts/",
+        "assets/fonts/",
+        "foundation/assets/fonts/",
         "remake/foundation/third_party/fonts/",
         "third_party/fonts/",
         "foundation/third_party/fonts/",

@@ -246,9 +246,22 @@ New since the port landed, all verified the same way:
   integer triangle wave, weapons re-attach to live prop bones every frame, and
   every number is a pure function of the frame index — Linux vs Wine captures
   byte-identical, including camera smoothing, animation, and audio counts.
-- `--screen=title` boots the title screen instead of an asset (`--script=` drives
-  its menu, `--out` captures it); see `docs/FRONTEND-PLAN.md`. Only title is
-  implemented; select/VS/result are pending per `docs/ROADMAP-PENDING.md` §E.
+- `--screen=title` boots the front end (`--script=` drives menus and `--out`
+  captures them). Title → character/weapon/hypermode/controller selection →
+  stage/battle settings → VS intro → live 1v1 battle → victory/quote/report →
+  select is connected. Slots 0 (blue) and 2 (red) fight; VS and results show only
+  those participants. Options apply fullscreen and four audio sliders; key config
+  rebinds keyboard/gamepad actions for the current session.
+  Runtime text uses the bundled Gyrotrope Black face with a Noto Japanese
+  fallback; new captions share `ui/caption.h` (see `assets/fonts/README.md`). The soft keyboard is
+  a reusable widget awaiting its netplay host. See `docs/FRONTEND-PLAN.md`.
+- Menu cursor/confirm/back/ready sounds use the shipped system bank, and the
+  result quote plays its shipped voice once. The report displays real KO, death
+  and damage totals; original earned titles and four-fighter layouts remain open.
+- Chromium software WebGPU has executed real stage01/Rena/Mion assets in both
+  scripted versus (300 frames, 60.2 fps) and live match (411 frames, 60.1 fps),
+  with `RESULT: ok`. Visual browser parity and hardware rendering remain
+  unverified; console evidence and the asset subset are in `docs/BUILD-web.md`.
 - `foundation_ui` (sprite batch, bitmap font, HUD composer, diagnostics) is wired
   into the demo; `foundation_media` now carries the real SDL3 audio and input
   backends, verified in-engine with `--audio-test` (440 Hz tone through music +
@@ -282,13 +295,29 @@ Phase 1 (reads installs, CPU raycast, debug prims):
   on the largest shipped camera mesh — no BVH (201 µs/ray at 32,768 triangles is
   where one would start to pay).
 
+## Display layout
+
+Battle rendering uses the actual viewport aspect automatically, including
+ultrawide and custom window sizes. HUD groups use scaled edge margins and center
+offsets; fighter markers project through the same camera as the scene. Menu art
+stays on a centered 4:3 canvas with black bars around it.
+
+Options includes native window/fullscreen resolution selection, with Desktop,
+common sizes and the display's available modes. Unsupported fullscreen modes
+are skipped. Browser sizing follows its canvas; fixed captures retain `--size`.
+Aspect is automatic, so there is no separate aspect selector. Settings remain
+process-local.
+
 ## Not here yet
 
-Deliberately out of scope for the foundation: video decoding (explicit stub) and
-live-pad/browser-gesture verification. The match loop, economy and HUD values are
-ported and gated (`docs/FULL-REPLACEMENT-PLAN.md` §5); what remains is fidelity and
-breadth — battle-frame fidelity (B–D) and front-end breadth (E–F), not the
-simulation itself. See `docs/ROADMAP-PENDING.md` for what is actually still open.
+Story video decoding remains an explicit stub. Live-pad and browser-gesture
+verification remain open. The playable front end currently launches
+1v1; four-fighter battles, renderer options (the first three options rows are
+marked unavailable), original earned titles and full result-quote selection are
+still pending. Battle fidelity includes unresolved animation/VFX details; LAN
+netplay awaits its own implementation. The Linux CTest suite has 24 tests,
+including frontend selection/configuration, VS/result timelines and HUD geometry.
+See `docs/ROADMAP-PENDING.md` for the remaining work.
 
 Where to read next: plan and handoff in `docs/FULL-REPLACEMENT-PLAN.md` (§5 quirks,
 §8 cutover) then `docs/ROADMAP-PENDING.md`; assets in `remake/docs/ASSET-CATALOG.md`;

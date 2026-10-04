@@ -40,14 +40,20 @@
 #include "ui/hud.h"
 #include "ui/sprite.h"
 #include "ui/screen.h"
+#include "ui/frontend_state.h"
+#include "ui/frontend_launch.h"
+#include "ui/hud_atlas.h"
+#include "ui/frontend_settings.h"
 #include "game/hud_bridge.h"
 #include "game/fighter_pose.h"
 #include "gameplay/arena_camera.h"
 #include "gameplay/match.h"
+#include "gameplay/bot_input.h"
 #include "gameplay/hud_fill.h"
 #include "audio/audio.h"
 #include "audio/audio_engine.h"
 #include "game/effect_events.h"
+#include "game/effect_descriptor.h"
 #include "game/fx_cards.h"
 #include "input/input_backend.h"
 #include "input/input_sdl3.h"
@@ -67,6 +73,7 @@ struct Options {
     bool        audioTest = false; // run the audio backend self-check and exit
     std::string audioFile;       // with --audio-test: decode a real file too
     bool        inputTest = false; // run the input backend self-check and exit
+    std::string enemyWeapon;
     std::string enemy;           // versus P2, same spec syntax as --character
     bool        versus = false;  // scripted two-fighter vignette (capture-oriented)
     bool        match = false;   // playable match: the ported simulation, not a script
@@ -354,6 +361,11 @@ xm::Scene loadScene(const Options& o, std::string& error, size_t* enemyBegin = n
         }
         if (enemyBegin) *enemyBegin = scene.models.size();
         appendCharacter(scene, o.enemy, sopt);
+        if (!o.enemyWeapon.empty()) {
+            const size_t p2 = firstCharacter(scene, enemyBegin ? *enemyBegin : 0);
+            xm::Scene weapon = xm::loadWeapon(o.enemyWeapon, 0, &scene.models[p2].model, sopt);
+            for (auto& model : weapon.models) scene.models.push_back(std::move(model));
+        }
         scene.source = o.stage;
     } else if (!o.stage.empty()) {
         scene = xm::loadStage(o.stage, sopt);
@@ -492,6 +504,18 @@ struct App {
     ui::SpriteRenderer           uiRenderer;
     ui::ScreenStack              screens;          // front end: current screen + fade
     bool                         screensMode = false;
+    bool                         frontendMatch = false;
+    bool                         frontendBattleReady = false;
+    bool                         rendererReady = false;
+    ui::FrontendState            frontend;
+    fnd::audio::Sdl3Engine        menuAudio;
+    fnd::audio::SfxHandle         menuSounds[4] = {-1, -1, -1, -1};
+    uint64_t                     menuSoundPlays[4] = {};
+    uint64_t                     menuVoicePlays = 0;
+    fnd::audio::DecodedOgg        menuBgm;
+    fnd::audio::LoopPlayer        menuLoop;
+    fnd::input::PlayerState       botInput[2];
+
     ui::HudComposer              hudComposer;
     bool                         uiReady = false;
     render::Options              renderOptions;
@@ -507,6 +531,7 @@ struct App {
     gameplay::Match              match;
     bool                         matchMode = false;
     uint64_t                     matchFrame = 0;      // 1-based, the DX9's frame_count+1
+    int                          ringPulse = 0;
     int                          lockedFighter = 0;   // camera target; LockSwitch tap
                                                      // cycles (Guard+AttackB too, per DX9)
     gameplay::ArenaCamera        matchCamera;         // the ported reference camera
@@ -762,6 +787,17 @@ static void placeVersusFighters(App& app, const glm::vec3& p1, const glm::vec3& 
     app.renderer.setModelMatrices(app.modelMatrices);
 }
 
+static fnd::audio::SfxHandle loadSoundAsset(fnd::audio::Sdl3Engine& engine, const std::string& path) {
+    std::vector<uint8_t> bytes;
+    if (path.empty() || !fnd::assets::assetSource().read(path, bytes)) return fnd::audio::kInvalidSfx;
+    switch (fnd::audio::detect_format(bytes.data(),bytes.size())) {
+        case fnd::audio::BlobFormat::Ogg: return engine.load_ogg(bytes.data(),bytes.size());
+        case fnd::audio::BlobFormat::Wav: return engine.load_wav(bytes.data(),bytes.size());
+        case fnd::audio::BlobFormat::CnvPcm: return engine.load_cnv(bytes.data(),bytes.size());
+        default: return fnd::audio::kInvalidSfx;
+    }
+}
+
 // Versus one-time setup, after load/pose/bind and before framing: ranges,
 // spawn bases, audio decode, initial placement for the setScene bake.
 static bool initVersus(App& app) {
@@ -793,29 +829,11 @@ static bool initVersus(App& app) {
             return false;
     }
     if (!app.opts.sfx.empty()) {
-        std::vector<uint8_t> bytes;
-        if (!fnd::assets::assetSource().read(app.opts.sfx, bytes)) {
-            app.error = "cannot open " + app.opts.sfx;
-            return false;
-        }
-        fnd::audio::SfxHandle h = fnd::audio::kInvalidSfx;
-        switch (fnd::audio::detect_format(bytes.data(), bytes.size())) {
-            case fnd::audio::BlobFormat::Ogg:
-                h = app.versusAudio.load_ogg(bytes.data(), bytes.size());
-                break;
-            case fnd::audio::BlobFormat::Wav:
-                h = app.versusAudio.load_wav(bytes.data(), bytes.size());
-                break;
-            case fnd::audio::BlobFormat::CnvPcm:
-                h = app.versusAudio.load_cnv(bytes.data(), bytes.size());
-                break;
-            default: break;
-        }
-        if (h < 0) {
+        app.versusSfx = loadSoundAsset(app.versusAudio, app.opts.sfx);
+        if (app.versusSfx < 0) {
             app.error = "versus SFX decode failed for " + app.opts.sfx;
             return false;
         }
-        app.versusSfx = h;
     }
     app.versusMode = true;
     placeVersusFighters(app, app.p1Base, app.p2Base);
@@ -850,8 +868,20 @@ static bool initMatch(App& app) {
     }
 
     gameplay::MatchConfig config;
+    if (app.frontendMatch) {
+        config.healthPercent = app.frontend.health;
+        config.gaugePercent = app.frontend.gauge;
+        config.timeLimit = app.frontend.timeLimit;
+        config.balloonSize[0] = app.frontend.blueBalloon;
+        config.balloonSize[1] = app.frontend.redBalloon;
+        for (int i = 0; i < 2; ++i) {
+            config.startHP[i] = app.frontend.health;
+            config.hyper[i] = (gameplay::Hypermode)app.frontend.slots[ui::kFrontendBattleSlots[i]].hypermode;
+        }
+    }
     const glm::vec3 envP1 = app.scene.env.points[0];
-    const glm::vec3 envP2 = app.scene.env.points[1];
+    // FUN_00423420 indexes spawns by the selected panel; parity captures retain slots 0/1.
+    const glm::vec3 envP2 = app.scene.env.points[app.frontendMatch ? ui::kFrontendBattleSlots[1] : 1];
     config.spawn[0] = app.opts.hasSpawn[0] ? app.opts.spawn[0] : envP1;
     config.spawn[1] = app.opts.hasSpawn[1] ? app.opts.spawn[1] : envP2;
     // Facing 0 and pi, as the reference spawns them (scenes.cpp:535).
@@ -907,7 +937,7 @@ static bool initMatch(App& app) {
             std::printf("match bgm    : %s\n", bgm.c_str());
         }
     }
-    if (!app.opts.script.empty() && !app.matchInput.load_script(app.opts.script.c_str())) {
+    if (!app.frontendMatch && !app.opts.script.empty() && !app.matchInput.load_script(app.opts.script.c_str())) {
         app.error = "cannot read input script " + app.opts.script;
         return false;
     }
@@ -929,6 +959,7 @@ static bool initMatch(App& app) {
     }
     app.matchMode = true;
     app.lockedFighter = 0;
+    app.ringPulse = 0;
     // The camera starts pristine: eye (0,0,0), converging at 10% per update exactly
     // like the reference's ArenaCamera (gameplay/arena_camera.cpp). That seed is what
     // makes the first trace line comparable — the DX9's own frame-1 eye is one 10%
@@ -966,24 +997,11 @@ static void placeMatchFighters(App& app) {
 
 // The effect asset table the gameplay events index into (game/effect_events.h:
 // `asset` is a table index, never a path). Slot 0 is the melee-hit card, resolved
-// through the effect manager's per-slot descriptor (FUN_0042eba0: data/effect/%03d.dat
-// is a u32 mesh count, then NUL-padded 4-byte model names); the auras are
+// through the effect manager's descriptor (FUN_0042eec0: version plus a
+// fixed 260-byte model path); the auras are
 // FUN_00633ca0's data/aura/%02d.x table, slot 0 — the slot-to-fighter rule is
-// unmapped RE, so both fighters share the same card. A missing file is not fatal:
+// not yet connected to the original state flags, so both fighters share the same card. A missing file is not fatal:
 // the asset keeps sceneIndex -1 and the debug cubes stay the visible representation.
-static std::string effectDatModel(const std::vector<uint8_t>& d) {
-    if (d.size() < 8) return {};
-    const uint32_t n = (uint32_t)d[0] | ((uint32_t)d[1] << 8) | ((uint32_t)d[2] << 16) |
-                       ((uint32_t)d[3] << 24);
-    for (uint32_t i = 0; i < n && (size_t)(4 + i * 4 + 4) <= d.size(); ++i) {
-        const char* s = (const char*)d.data() + 4 + i * 4;
-        if (!s[0]) continue;
-        size_t len = 0;
-        while (len < 4 && s[len]) ++len;
-        return std::string(s, len);
-    }
-    return {};
-}
 
 static int addFxCard(App& app, const std::string& path) {
     const int index = (int)app.scene.models.size();
@@ -1022,7 +1040,7 @@ static void buildFxAssets(App& app) {
     const std::string dataDir = app.opts.stage + "/..";
     std::vector<uint8_t> dat;
     const std::string hitName =
-        fnd::assets::assetSource().read(dataDir + "/effect/000.dat", dat) ? effectDatModel(dat)
+        fnd::assets::assetSource().read(dataDir + "/effect/000.dat", dat) ? game::effectModelPath(dat)
                                                                           : std::string();
     app.fxAssets.push_back(App::FxAsset{addFxCard(app, dataDir + "/effect/" + hitName)});
     if (app.opts.match) {
@@ -1075,6 +1093,7 @@ static void placeFxCards(App& app) {
 // what the scene added around it — input polling, the camera's target switch, the
 // HUD values, the effect events and the debug cubes.
 static void tickMatch(App& app, double dt) {
+    if (app.ringPulse > 0) --app.ringPulse;
     ++app.matchFrame;   // 1-based, matching the DX9's frame_count + 1
 
     // P2: a script drives it when given; otherwise it takes no input, which is
@@ -1093,12 +1112,26 @@ static void tickMatch(App& app, double dt) {
     }
 
     const fnd::input::PlayerState* p1 = nullptr;
-    if (app.matchInputReady) {
+    if (app.matchInputReady && !app.frontendMatch) {
         app.matchInput.tick_script(app.matchFrame);
         app.matchInput.poll();
         p1 = &app.matchInput.player(0);
     }
 
+    if (app.frontendMatch) {
+        app.matchInput.tick_script(app.frames);
+        app.matchInput.poll();
+        const fnd::input::PlayerState* chosen[2];
+        for (int i = 0; i < 2; ++i) {
+            const int controller = app.frontend.slots[ui::kFrontendBattleSlots[i]].controller;
+            if (controller >= 0 && controller < 4) chosen[i] = &app.matchInput.player(controller);
+            else {
+                gameplay::updateBotInput(app.botInput[i],app.match.fighter(i),app.match.fighter(1-i),app.matchFrame);
+                chosen[i] = &app.botInput[i];
+            }
+        }
+        p1 = chosen[0]; p2 = chosen[1];
+    }
     const gameplay::MatchFrame f = app.match.step(p1, p2, dt);
     if (app.versusAudioOn)
         app.versusBgmPushed += app.versusLoop.push_next(app.versusAudio, 1024);
@@ -1139,10 +1172,12 @@ static void tickMatch(App& app, double dt) {
         app.arenaTargets[i].facingYaw = f.facing_yaw();
         app.arenaTargets[i].alive = f.is_alive();
     }
-    if (p1 && p1->just_pressed[fnd::input::Guard] && p1->down[fnd::input::AttackB])
+    if (p1 && (p1->just_pressed[fnd::input::LockSwitch] ||
+               (p1->just_pressed[fnd::input::Guard] && p1->down[fnd::input::AttackB]))) {
         app.matchCamera.cycle_target(true);
-    if (p1 && p1->just_pressed[fnd::input::LockSwitch])
-        app.matchCamera.cycle_target(true);
+        // FUN_00421e30/FUN_004201a0: a 15-tick lock pulse, not a persistent angle.
+        app.ringPulse = 15;
+    }
     // No collision query: the DX9 match scene updates its camera with a null collision
     // frame (scenes.cpp:729). The foundation's clamp stays one argument away —
     // update(dt, {&app.cameraCollision}) — and is the original-fidelity path, not the
@@ -1158,7 +1193,7 @@ static void tickMatch(App& app, double dt) {
     // the only side the DX9 layout draws outside the two balloon corners).
     const gameplay::Fighter& f1 = app.match.fighter(0);
     gameplay::HudFillInput hf;
-    hf.p1.hp = f1.hp();
+    hf.p1.hp = f1.hp() * 100 / f1.max_hp();
     hf.p1.alive = f1.is_alive();
     hf.p1.mainWhole = f1.main_whole();
     hf.p1.mainFrac = f1.main_frac();
@@ -1199,30 +1234,22 @@ static void tickMatch(App& app, double dt) {
     // rather than a guess at a state the simulation does not have.
     app.versusHud.commandCell = 0;
 
-    // Per-fighter HUD: the original projects the fighter's own world point with its raw
-    // view-projection and draws the ring, the target's com bar and the alert marker from it
-    // (FUN_00643230 @0x643e38; `x = (clip.x/clip.w)*400 + 400`, `y = (-clip.y/clip.w)*300 +
-    // 300`). The camera is already updated above, so the matrices are this frame's.
+    // Per-fighter appearance state; projection is resolved with the render viewport below.
     {
-        // The same matrix the frame itself is drawn with (see the render path's
-        // `matchCamera.proj_matrix * matchCamera.view_matrix`), because the original's HUD
-        // projects through the D3D view/projection that is current for the frame.
-        const glm::mat4 hudVp =
-            app.matchCamera.proj_matrix(800, 600) * app.matchCamera.view_matrix();
         for (int i = 0; i < 2; ++i) {
             const gameplay::Fighter& f = app.match.fighter(i);
-            game::projectFighterHud(&hudVp[0][0], f.position().x, f.position().y,
-                                    f.position().z, app.versusHud.fighters[i]);
             // The ring and the com bar mark the fighter you are *not* following: the
             // original's own screen battle-hud.webp has the camera behind the player with
             // the red ring and the `com` tag on the opponent ahead of her. The camera's
             // locked target is the one being followed, so this is the inverse of it.
             app.versusHud.fighters[i].target = (i != app.lockedFighter);
+            app.versusHud.fighters[i].ringPulse = app.ringPulse;
             // Slot 0 is 1P and slot 4 is com in the tag atlas (P01 (320,256,64,32) rows);
             // the red copies sit four rows down, which is the tagSheet index.
-            app.versusHud.fighters[i].slot = (i == 0) ? 0 : 4;
+            app.versusHud.fighters[i].slot = app.frontendMatch
+                ? app.frontend.slots[ui::kFrontendBattleSlots[i]].controller : (i == 0 ? 0 : 4);
             app.versusHud.fighters[i].tagSheet = (i == 0) ? 0 : 1;
-            app.versusHud.fighters[i].hp = (float)f.hp() / 100.f;
+            app.versusHud.fighters[i].hp = (float)f.hp() / f.max_hp();
             app.versusHud.fighters[i].hpLag = app.versusHud.fighters[i].hp;
             app.versusHud.fighters[i].alertDir = -1;
         }
@@ -1558,7 +1585,8 @@ bool initScene(App& app) {
     app.appearance.fog = app.opts.fog;
     app.appearance.unlit = app.opts.unlit;
 
-    if (!app.renderer.init(app.ctx, app.error)) return false;
+    if (!app.rendererReady && !app.renderer.init(app.ctx, app.error)) return false;
+    app.rendererReady = true;
     if (!app.renderer.setScene(app.scene, app.worlds, app.modelMatrices, app.renderOptions,
                                app.error))
         return false;
@@ -1569,8 +1597,8 @@ bool initScene(App& app) {
     // synthetic HUD composited into --out captures. Font upload is fatal here (a
     // capture without labels would silently prove less); in a game it is not.
     // A match always wants it: the HUD values are live game state, not a test rig.
-    if (app.opts.hudTest || app.matchMode || (app.versusMode && !app.opts.out.empty())) {
-        if (!app.uiRenderer.init(app.ctx.device, app.ctx.queue, app.error)) return false;
+    if (app.opts.hudTest || app.matchMode || app.versusMode) {
+        if (!app.uiReady && !app.uiRenderer.init(app.ctx.device, app.ctx.queue, app.error)) return false;
         if (!app.hudComposer.uploadFont(app.uiRenderer, app.error)) return false;
         app.uiReady = true;
     }
@@ -1649,6 +1677,7 @@ void report(App& app) {
 }
 
 void teardown(App& app) {
+    app.menuAudio.close();
     if (app.versusAudioOn) app.versusAudio.close();
     if (app.uiReady) app.uiRenderer.shutdown();
     app.debugPrims.shutdown();
@@ -1847,6 +1876,77 @@ bool runInputTest(App& app) {
     return ok;
 }
 
+// Round-start art comes from FUN_00633ca0; the three-second 1v1 clock is
+// a port flow rule, independent of the original's unlocated trigger sequence.
+class RoundStartScreen final : public ui::Screen {
+public:
+    RoundStartScreen(ui::SpriteRenderer& batch, bool& ready, std::string& error) : ready_(ready) {
+        ui::uploadCnvSheet(batch, "data/object/P09", sheet_, error);
+    }
+    bool loaded() const { return sheet_ >= 0; }
+    ui::ScreenId update(const ui::ScreenInput&) override {
+        if (++frame_ >= 180) ready_ = true;
+        return ui::ScreenId::Battle;
+    }
+    const char* name() const override { return "countdown"; }
+    void draw(ui::SpriteRenderer& batch) const override {
+        batch.pushSolid({0,0,800,600},{0,0,0,1});
+        const int n = std::min(2, frame_ / 60);
+        const float w = n == 2 ? 128.f : 192.f;
+        batch.pushSprite(sheet_, {n*192.f,0,w,256},w/2,128,400,300,.5f);
+    }
+private:
+    bool& ready_;
+    int frame_ = 0, sheet_ = -1;
+};
+
+static void playFrontendMusic(App& app, ui::ScreenId id) {
+    if (!app.menuAudio.is_open()) return;
+    const int localSide = app.frontend.slots[0].controller < 4 ? 0 : 1;
+    const char* path = id == ui::ScreenId::Title ? "data/bgm/title.ogg" :
+        id == ui::ScreenId::Select ? "data/bgm/select01.ogg" :
+        id == ui::ScreenId::VsIntro ? "data/bgm/vs.ogg" :
+        id == ui::ScreenId::Result && app.frontend.resultWinner >= 0 ?
+            (app.frontend.resultWinner == localSide ? "data/bgm/win.ogg" : "data/bgm/lose.ogg") : nullptr;
+    app.menuAudio.clear_music();
+    app.menuLoop = fnd::audio::LoopPlayer{};
+    if (!path) return;
+    std::string failure;
+    if (!loadBgmTrack(path, app.menuAudio, app.menuBgm, app.menuLoop, failure))
+        std::fprintf(stderr, "[menu] %s\n", failure.c_str());
+}
+
+static bool enterFrontendBattle(App& app) {
+    // Direct --screen=vsintro/battle gets a usable two-fighter default.
+    for (int i = 0; i < 2; ++i) if (app.frontend.slots[ui::kFrontendBattleSlots[i]].character < 0) {
+        app.frontend.slots[ui::kFrontendBattleSlots[i]].character = i;
+        app.frontend.slots[ui::kFrontendBattleSlots[i]].controller = i == 0 ? 0 : 4;
+    }
+    ui::FrontendLaunch launch;
+    if (!ui::frontendLaunch(app.frontend, launch, app.error, (uint32_t)app.frames)) return false;
+    app.frontendMatch = true;
+    app.frontendBattleReady = false;
+    app.frontend.resultStats = {};
+    app.opts.stage = launch.stage;
+    app.opts.character = launch.character;
+    app.opts.enemy = launch.enemy;
+    app.opts.weapon = launch.weapon;
+    app.opts.enemyWeapon = launch.enemyWeapon;
+    app.opts.match = true;
+    app.opts.camera = "arena";
+    app.matchFrame = app.matchRoundOverFrame = 0;
+    app.botInput[0] = {}; app.botInput[1] = {};
+    app.matchHits = app.matchShots = app.matchSparks = 0;
+    app.liveFx.clear(); app.fxAssets.clear();
+    app.matchFx.drain();
+    if (!initScene(app)) return false;
+    app.versusAudio.set_volumes(ui::frontendSettings().volumes);
+    app.matchMode = false;
+    std::printf("[menu] battle: %s vs %s on %s (two fighters)\n",
+                launch.character.c_str(),launch.enemy.c_str(),launch.stage.c_str());
+    return true;
+}
+
 // --screen: the front end's entry point. The stack is built with the app's own
 // makeScreen factory, so an id the port has not implemented is the factory's `default`
 // — no scene, no fake transition (ui/screen.h) — and the input backend is the same one
@@ -1864,11 +1964,21 @@ bool initScreens(App& app) {
     // No scene is ever submitted on this path, but the capture readback lives in
     // SceneRenderer (device/queue/instance plus the mapped-buffer copy), so a --out menu
     // frame needs it initialized even though render() is never called.
-    if (!app.renderer.init(app.ctx, app.error)) return false;
-    if (!app.uiRenderer.init(app.ctx.device, app.ctx.queue, app.error)) return false;
+    if (!app.rendererReady && !app.renderer.init(app.ctx, app.error)) return false;
+    app.rendererReady = true;
+    if (!app.uiReady && !app.uiRenderer.init(app.ctx.device, app.ctx.queue, app.error)) return false;
     app.uiReady = true;
-    auto factory = [&app](ui::ScreenId sid) {
-        return ui::makeScreen(sid, app.uiRenderer, app.error);
+    auto factory = [&app](ui::ScreenId sid) -> std::unique_ptr<ui::Screen> {
+        playFrontendMusic(app, sid);
+        if (sid == ui::ScreenId::Battle) {
+            if (!enterFrontendBattle(app)) return nullptr;
+            auto countdown = std::make_unique<RoundStartScreen>(app.uiRenderer, app.frontendBattleReady, app.error);
+            if (!countdown->loaded()) return nullptr;
+            return countdown;
+        }
+        auto screen = ui::makeScreen(sid, app.uiRenderer, app.frontend, app.error);
+        if (screen) std::printf("[menu] scene: %s\n", screen->name());
+        return screen;
     };
     if (!app.screens.begin(id, factory, app.error)) return false;
     if (!app.matchInput.init()) {
@@ -1880,6 +1990,109 @@ bool initScreens(App& app) {
         app.error = "cannot read input script " + app.opts.script;
         return false;
     }
+    auto& settings = ui::frontendSettings();
+    settings.applyVolumes = [&app](const fnd::audio::Volumes& v) {
+        app.menuAudio.set_volumes(v);
+        app.versusAudio.set_volumes(v);
+    };
+    settings.resolutionAvailable = false;
+    settings.resolutions = {{0, 0}};
+    settings.resolutionIndex = 0;
+#if !defined(__EMSCRIPTEN__)
+    if (app.window) {
+        const SDL_DisplayID display = SDL_GetDisplayForWindow(app.window);
+        if (const SDL_DisplayMode* mode = SDL_GetDesktopDisplayMode(display))
+            settings.displayResolution = {mode->w, mode->h};
+        int width = 0, height = 0;
+        SDL_GetWindowSizeInPixels(app.window, &width, &height);
+        settings.currentResolution = {width, height};
+        constexpr ui::DisplayResolution common[] = {
+            {800,600},{960,540},{1024,768},{1280,720},{1280,960},{1600,900},
+            {1920,1080},{1920,1200},{2560,1080},{2560,1440},{3440,1440},{3840,2160}
+        };
+        auto addResolution = [&settings](ui::DisplayResolution size) {
+            if (size.width > 0 && size.height > 0 &&
+                std::find(settings.resolutions.begin(), settings.resolutions.end(), size) == settings.resolutions.end())
+                settings.resolutions.push_back(size);
+        };
+        for (const auto size : common) addResolution(size);
+        addResolution(settings.currentResolution);
+        int count = 0;
+        SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(display, &count);
+        if (modes) {
+            for (int i = 0; i < count; ++i) addResolution({modes[i]->w, modes[i]->h});
+            SDL_free(modes);
+        }
+        std::sort(settings.resolutions.begin() + 1, settings.resolutions.end(),
+            [](ui::DisplayResolution a, ui::DisplayResolution b) {
+                return a.width == b.width ? a.height < b.height : a.width < b.width;
+            });
+        const auto current = std::find(settings.resolutions.begin(), settings.resolutions.end(), settings.currentResolution);
+        settings.resolutionIndex = static_cast<int>(current - settings.resolutions.begin());
+        settings.resolutionAvailable = true;
+    }
+#endif
+    settings.applyResolution = [&app](const ui::DisplayResolution& requested) {
+#if defined(__EMSCRIPTEN__)
+        (void)app; (void)requested;
+        return false;
+#else
+        if (!app.window) return false;
+        auto& settings = ui::frontendSettings();
+        const SDL_DisplayID display = SDL_GetDisplayForWindow(app.window);
+        const SDL_DisplayMode* desktop = SDL_GetDesktopDisplayMode(display);
+        if (!desktop) return false;
+        settings.displayResolution = {desktop->w,desktop->h};
+        const bool useDesktop = requested.width == 0;
+        const int width = useDesktop ? desktop->w : requested.width;
+        const int height = useDesktop ? desktop->h : requested.height;
+        if (settings.fullscreen) {
+            SDL_DisplayMode mode;
+            if (!useDesktop && (!SDL_GetClosestFullscreenDisplayMode(display,width,height,0.f,true,&mode) ||
+                mode.w != width || mode.h != height)) return false;
+            return SDL_SetWindowFullscreenMode(app.window,useDesktop ? nullptr : &mode);
+        }
+        const float density = std::max(0.1f,SDL_GetWindowPixelDensity(app.window));
+        return SDL_SetWindowSize(app.window,static_cast<int>(std::lround(width/density)),
+            static_cast<int>(std::lround(height/density)));
+#endif
+    };
+    settings.applyFullscreen = [&app](bool enabled) {
+        auto& settings = ui::frontendSettings();
+        if (!app.window) { settings.fullscreen = false; return; }
+        const int previousResolution = settings.resolutionIndex;
+#if !defined(__EMSCRIPTEN__)
+        if (enabled && !settings.applyResolution(settings.resolutions[settings.resolutionIndex])) {
+            if (!settings.applyResolution(settings.resolutions[0])) { settings.fullscreen = false; return; }
+            settings.resolutionIndex = 0;
+        }
+#endif
+        if (!SDL_SetWindowFullscreen(app.window,enabled)) {
+            settings.fullscreen = !enabled;
+            settings.resolutionIndex = previousResolution;
+        }
+    };
+    settings.applyBindings = [&app]() {
+        const auto& settings = ui::frontendSettings();
+        for (int a = 0; a < fnd::input::ActionCount; ++a) {
+            app.matchInput.set_keyboard_binding((fnd::input::Action)a, settings.keyboard[a]);
+            for (int p = 0; p < 4; ++p)
+                app.matchInput.set_gamepad_binding(p, (fnd::input::Action)a, settings.gamepad[p][a]);
+        }
+    };
+    settings.applyBindings();
+    // FUN_00647e00 loads the system bank separately from gameplay data/se.
+    if (app.menuAudio.open(fnd::audio::Spec{})) {
+        app.menuAudio.set_volumes(settings.volumes);
+        for (int i = 0; i < 4; ++i) {
+            char stem[48];
+            std::snprintf(stem, sizeof(stem), "data/sysse/%03d", i);
+            const auto& source = fnd::assets::assetSource();
+            const std::string path = source.resolve({std::string(stem)+".cnv", std::string(stem)+".wav"});
+            app.menuSounds[i] = loadSoundAsset(app.menuAudio, path);
+        }
+    }
+    playFrontendMusic(app, id);
     app.screensMode = true;
     std::printf("screen       : %s (0x%02x)\n", app.screens.screen()->name(),
                 (int)app.screens.current());
@@ -1908,12 +2121,25 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
 #ifdef FOUNDATION_WEB_ASSET
         if (webAsset.empty()) webAsset = FOUNDATION_WEB_ASSET;
 #endif
-        if (!webAsset.empty()) {
-            static const char* webArgv[] = {"foundation_demo", nullptr};
-            webArgv[1] = webAsset.c_str();
-            argc = 2;
-            argv = const_cast<char**>(webArgv);
+        static std::vector<std::string> webArgs;
+        static std::vector<const char*> webArgv;
+        webArgs.clear();
+        webArgs.push_back("foundation_demo");
+        if (!webAsset.empty()) webArgs.push_back(webAsset);
+        // Local browser verification needs the same multi-asset recipe as native.
+        const std::string extra = plat::webQueryParam("args");
+        size_t begin = 0;
+        while (begin < extra.size()) {
+            const size_t end = extra.find('|', begin);
+            const std::string arg = extra.substr(begin, end == std::string::npos ? end : end - begin);
+            if (!arg.empty()) webArgs.push_back(arg);
+            if (end == std::string::npos) break;
+            begin = end + 1;
         }
+        webArgv.clear();
+        for (const auto& arg : webArgs) webArgv.push_back(arg.c_str());
+        argc = (int)webArgv.size();
+        argv = const_cast<char**>(webArgv.data());
     }
 #endif
     if (!parseArgs(argc, argv, app->opts, app->error)) {
@@ -1991,6 +2217,7 @@ struct HudTestHook {
     std::string*        error = nullptr;
     ui::HudState        state;
     bool                hasState = false;   // false -> syntheticHudState()
+    bool                referenceCoordinates = true;
 };
 
 ui::HudState syntheticHudState() {
@@ -1999,12 +2226,31 @@ ui::HudState syntheticHudState() {
     return game::syntheticHudState();
 }
 
+HudTestHook battleHudHook(App& app) {
+    HudTestHook hook{&app.uiRenderer, &app.hudComposer, &app.error};
+    if (app.matchMode || app.versusMode) {
+        hook.state = app.versusHud;
+        hook.hasState = true;
+        hook.referenceCoordinates = !app.matchMode;
+    }
+    return hook;
+}
+
 bool hudTestHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat format,
                  uint32_t w, uint32_t h, void* ud) {
     auto* hk = static_cast<HudTestHook*>(ud);
     hk->ui->beginFrame(w, h);
-    const ui::HudState state = hk->hasState ? hk->state : syntheticHudState();
-    hk->hud->compose(*hk->ui, state, ui::computeHudLayout((int)w, (int)h));
+    ui::HudState state = hk->hasState ? hk->state : syntheticHudState();
+    if (hk->referenceCoordinates) {
+        const auto layout = ui::computeBattleHudLayout(w,h);
+        for (auto& fighter : state.fighters) {
+            fighter.ringX += (layout.width-800.f)*.5f;
+            fighter.barX += (layout.width-800.f)*.5f;
+            fighter.ringY += (layout.height-600.f)*.5f;
+            fighter.barY += (layout.height-600.f)*.5f;
+        }
+    }
+    hk->hud->compose(*hk->ui, state);
     return hk->ui->render(enc, view, format, *hk->error);
 }
 
@@ -2137,6 +2383,19 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         // own split (fixed step for the suite, wall time otherwise).
         tickMatch(*app, capturing ? app->opts.dt : delta);
         traceMatch(*app);
+        if (app->frontendMatch && app->match.economy().roundOver()) {
+            const int loser = app->match.economy().roundOverSide();
+            app->frontend.resultWinner = loser < 0 ? -1 : 1 - loser;
+            for (int i = 0; i < 2; ++i) {
+                const auto& stats = app->match.fighter(i).stats();
+                app->frontend.resultStats[ui::kFrontendBattleSlots[i]] = {stats.kos,stats.deaths,stats.damageDealt,stats.damageTaken};
+            }
+            app->matchMode = false;
+            app->frontendBattleReady = false;
+            app->versusAudio.clear_music();
+            app->screens.request(ui::ScreenId::Result);
+            app->screensMode = true;
+        }
     }
 
     if (app->screensMode) {
@@ -2152,10 +2411,44 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         in.right   = app->matchInput.any_just_pressed(fnd::input::Right);
         in.confirm = app->matchInput.any_just_pressed(fnd::input::Jump);
         in.cancel  = app->matchInput.any_just_pressed(fnd::input::AttackA);
+        in.separatePlayers = true;
+        for (int p = 0; p < 4; ++p) {
+            const auto& input = app->matchInput.player(p);
+            auto& buttons = in.players[p];
+            buttons.up = input.just_pressed[fnd::input::Up];
+            buttons.down = input.just_pressed[fnd::input::Down];
+            buttons.left = input.just_pressed[fnd::input::Left];
+            buttons.right = input.just_pressed[fnd::input::Right];
+            buttons.confirm = input.just_pressed[fnd::input::Jump];
+            buttons.cancel = input.just_pressed[fnd::input::AttackA];
+        }
         app->screens.update(in);
+        if (!app->error.empty()) return SDL_APP_FAILURE;
+        if (app->menuAudio.music_queued_frames() < 4096)
+            app->menuLoop.push_next(app->menuAudio, 1024);
+        const std::string voice = app->screens.takeVoice();
+        if (!voice.empty()) {
+            auto& source = fnd::assets::assetSource();
+            const size_t dot = voice.find_last_of('.');
+            const std::string stem = dot == std::string::npos ? voice : voice.substr(0,dot);
+            const std::string path = source.resolve({stem+".cnv",stem+".wav"});
+            const auto handle = loadSoundAsset(app->menuAudio,path);
+            if (app->menuAudio.play(handle,fnd::audio::SfxBus::Voice) >= 0) ++app->menuVoicePlays;
+        }
+        if (app->screens.current() == ui::ScreenId::Battle && app->frontendBattleReady && app->screens.fadeFrame() == 0) {
+            app->screensMode = false;
+            app->matchMode = true;
+            return SDL_APP_CONTINUE;
+        }
+        const int cue = app->screens.takeSound();
+        if (cue >= 0 && cue < 4 && app->menuSounds[cue] >= 0) {
+            app->menuAudio.stop(fnd::audio::kUiChannel);
+            if (app->menuAudio.play(app->menuSounds[cue], fnd::audio::SfxBus::Ui) >= 0)
+                ++app->menuSoundPlays[cue];
+        }
         // 終了 reaches here: its item returns 0x16, the factory has no such scene, and
         // the switcher reads the null scene as "no scene: quit" (ui/screen.h).
-        if (app->screens.finished()) return SDL_APP_SUCCESS;
+        if (app->screens.finished()) return app->error.empty() ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
 
         if (capturing) {
             if (app->frames >= (uint64_t)app->opts.frames) {
@@ -2240,6 +2533,16 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             ? app->matchCamera.proj_matrix((int)w, (int)h) * app->matchCamera.view_matrix()
             : viewProj(app->eye, app->target, (float)w / (float)h,
                        app->cameraRadius, app->sceneReach);
+        if (app->matchMode) {
+            // FUN_00643230 projects through the same camera and aspect used for the frame.
+            const auto layout = ui::computeBattleHudLayout(w,h);
+            for (int i = 0; i < 2; ++i) {
+                const auto& fighter = app->match.fighter(i);
+                game::projectFighterHud(&vp[0][0],fighter.position().x,fighter.position().y,
+                                       fighter.position().z,app->versusHud.fighters[i],
+                                       layout.width,layout.height);
+            }
+        }
         app->renderer.setCamera(vp);
         app->renderer.setEye(app->eye);
 
@@ -2247,11 +2550,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             // --out without --frames means one frame, so the last frame is always defined.
             if (app->frames >= (uint64_t)app->opts.frames) {
                 std::vector<uint8_t> rgba;
-                HudTestHook hook{&app->uiRenderer, &app->hudComposer, &app->error};
-                if (app->versusMode || app->matchMode) {
-                    hook.state = app->versusHud;
-                    hook.hasState = true;
-                }
+                HudTestHook hook = battleHudHook(*app);
                 const bool useHud = (app->opts.hudTest || app->versusMode || app->matchMode) &&
                                     app->uiReady;
                 CaptureHook cap;
@@ -2360,6 +2659,13 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 return SDL_APP_FAILURE;
             }
         }
+        if (app->uiReady && (app->opts.hudTest || app->matchMode || app->versusMode)) {
+            HudTestHook hook = battleHudHook(*app);
+            if (!hudTestHook(frame.encoder,frame.view,app->sc.format,app->sc.width,app->sc.height,&hook)) {
+                gpu::endFrame(app->ctx,app->sc,frame);
+                return SDL_APP_FAILURE;
+            }
+        }
         if (!gpu::endFrame(app->ctx, app->sc, frame)) return SDL_APP_FAILURE;
     } else {
         app->spin += (float)delta * 1.2f;
@@ -2401,7 +2707,34 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
         case SDL_EVENT_QUIT:
             return SDL_APP_SUCCESS;
         case SDL_EVENT_KEY_DOWN:
+            if (ui::bindingCaptureActive()) {
+                app->matchInput.suppress_key((int)event->key.scancode);
+                if (event->key.key == SDLK_ESCAPE) ui::cancelBindingCapture();
+                else if (!event->key.repeat) ui::submitBindingInput(true, 0, (int)event->key.scancode);
+                return SDL_APP_CONTINUE;
+            }
+            app->matchInput.note_key((int)event->key.scancode, true);
             if (event->key.key == SDLK_ESCAPE) return SDL_APP_SUCCESS;
+            break;
+        case SDL_EVENT_KEY_UP:
+            app->matchInput.note_key((int)event->key.scancode, false);
+            break;
+        case SDL_EVENT_WINDOW_FOCUS_LOST:
+            app->matchInput.note_focus_lost();
+            break;
+        case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+            if (ui::bindingCaptureActive()) {
+                const int player = app->matchInput.gamepad_player((int32_t)event->gbutton.which);
+                app->matchInput.suppress_gamepad_button(player,(int)event->gbutton.button);
+                ui::submitBindingInput(false, player, (int)event->gbutton.button);
+            }
+            break;
+        case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
+            if (app->window) {
+                const SDL_DisplayID display = SDL_GetDisplayForWindow(app->window);
+                if (const SDL_DisplayMode* mode = SDL_GetDesktopDisplayMode(display))
+                    ui::frontendSettings().displayResolution = {mode->w,mode->h};
+            }
             break;
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: {
             // A resized window needs the swapchain reconfigured, not just a new
@@ -2410,6 +2743,17 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
             const uint32_t h = (uint32_t)event->window.data2;
             if (w && h && !gpu::configureSwapchain(app->ctx, app->sc, w, h, app->error))
                 return SDL_APP_FAILURE;
+            if (app->window && w && h) {
+                auto& settings = ui::frontendSettings();
+                settings.currentResolution = {static_cast<int>(w),static_cast<int>(h)};
+                if (settings.resolutionAvailable && !settings.fullscreen) {
+                    auto current = std::find(settings.resolutions.begin(),settings.resolutions.end(),settings.currentResolution);
+                    if (current == settings.resolutions.end()) {
+                        settings.resolutions.push_back(settings.currentResolution);
+                        settings.resolutionIndex = static_cast<int>(settings.resolutions.size()) - 1;
+                    } else settings.resolutionIndex = static_cast<int>(current - settings.resolutions.begin());
+                }
+            }
             break;
         }
         default:
@@ -2421,6 +2765,15 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 void SDL_AppQuit(void* appstate, SDL_AppResult) {
     auto* app = static_cast<App*>(appstate);
     if (!app) return;
+    if (!app->opts.screen.empty())
+        std::printf("menu-audio: confirm=%llu back=%llu cursor=%llu ready=%llu voices=%llu\n",
+            (unsigned long long)app->menuSoundPlays[0], (unsigned long long)app->menuSoundPlays[1],
+            (unsigned long long)app->menuSoundPlays[2], (unsigned long long)app->menuSoundPlays[3],
+            (unsigned long long)app->menuVoicePlays);
+    ui::frontendSettings().applyVolumes = {};
+    ui::frontendSettings().applyFullscreen = {};
+    ui::frontendSettings().applyResolution = {};
+    ui::frontendSettings().applyBindings = {};
     report(*app);
     teardown(*app);
     delete app;

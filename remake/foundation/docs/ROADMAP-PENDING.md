@@ -16,6 +16,82 @@
 > for the deleted DX9 tree refer to the `pre-webgpu-cutover` tag
 > (`37ed31d`).
 
+## Implementation update — 2026-10-04
+
+The front end now runs title → team/character/weapon/hypermode/controller
+selection → stage settings → VS → countdown → a two-fighter match →
+victory/quote/report → selection. The earlier evidence and sketches below
+remain the historical handoff; these status notes supersede their claims
+that these screens or their audio do not exist.
+
+| Item | Current status | Remaining work |
+|---|---|---|
+| D2 | Complete: both arcs and the 15-tick lock-switch pulse | None for the recovered ring transform |
+| D3 | Countdown and winning-team sting implemented | Extra fighter bars require a 3–4 fighter match; original countdown trigger/timing remains unverified |
+| E1 | Selection, real atlases, roster tables, costumes, weapons, controller slots, seeded COM choices and entry voices implemented | Battle accepts only slots 0/2; four-fighter launch and exact original navigation parity remain open |
+| E2 | Stage/variation and all five battle settings implemented and connected | Original balloon-capacity and timed-round winner rules need recovery; current normalized capacity and timed comparison are port rules |
+| E3 | Volumes, fullscreen, native resolution selection and keyboard/gamepad rebinding implemented | Three renderer controls are unavailable; settings are process-local |
+| E4 | 109-update VS transition implemented for the two active fighters | Four-fighter presentation; confirm-to-skip is a port extension |
+| E5 | Sting, quote, voice, actual participant stats and draw handling implemented | Original earned titles and outcome-specific quote selection; missing single quotes use that character's self-pair script |
+| E6 | Reusable two-page atlas keyboard implemented and tested | Netplay host remains outside D6 scope |
+| F1 | Four menu SEs, entry/result voices and menu BGM connected | Hardware audio listening remains separate from dummy-device verification |
+| G1 | Real-asset versus and live match executed in a browser | Hardware GPU and usable browser screenshots remain unverified |
+| G2 | Unverified | No macOS hardware available |
+| G3 | Rechecked: 165 pass, 43 known flags, 0 pipeline failures | Existing install texture gaps remain |
+
+Implementation lives in `src/ui/screen_select.*`, `screen_stage_select.*`,
+`screen_options.*`, `screen_vs.*`, `screen_result.*`, `soft_keyboard.*`,
+`frontend_launch.*` and `frontend_settings.*`; the host in `src/main.cpp`
+loads the selected assets and applies `MatchConfig`. The two active upper
+panels use original env slots 0 (blue) and 2 (red); standalone parity captures
+retain their existing 0/1 spawn recipe. COM battle input is a
+deterministic port sparring policy, not recovered original AI.
+
+Recovered details: the roster anchors/order/costume limits are the tables
+at `0x6b71d0/0x6b7210/0x6b7250/0x6b7290`; the stage constructor's count
+makes the school stage three-way and other stages two-way. Result report
+art is in `FUN_00633ca0` (header y=320, width=288). D2's writer is
+`FUN_00421e30`/`FUN_00421f30`, decrement `FUN_004201a0`: lock switch writes
+15 and ticks decrement it; the first arc adds 9 degrees per pulse tick,
+both arcs scale by `1 + 0.1*pulse`.
+
+B1 also received a parser correction: `FUN_0042eec0` reads a version dword
+then one fixed 260-byte model path at offset 4, not a mesh count and short
+name slots. `src/game/effect_descriptor.h` now checks that contract.
+Lifetime remains unresolved: all 22 installed descriptor variants have a
+zero raw lifetime field. `FUN_00436630` ticks instance `+0x130` against the
+variant referenced at `+0x120`; constructor/factory are `FUN_0042f820` /
+`FUN_0042f5e0`. Aura defaults in `FUN_004205e0` select 0/5/1, with an
+explicit override at `+0x7d4`; state overrides in `FUN_0042e110` select 2/3.
+These findings do not yet establish the complete mode mapping or a safe
+replacement for the placeholder effect lifetime. B1 trails and C1's
+unproven guard/jump writers remain open.
+
+Verification: native full-flow runs reached live battle and results with
+`RESULT: ok`, including a result voice. The browser asset run used
+SwiftShader (details in `BUILD-web.md`). The full texture sweep reproduced
+the existing 43 flags without new misses. Regression tests cover menu
+states, settings, launch mapping, results, descriptor parsing, ring pulse,
+match rules and combat statistics. All 24 Linux CTest tests pass; Linux,
+Windows cross-build and web asset builds succeed. Native smoke recipe:
+
+```bash
+SDL_AUDIODRIVER=dummy ./remake/foundation/build/linux/foundation_demo \
+  --headless --install=Higurashi-Daybreak --screen=title \
+  --script=remake/foundation/tests/scripts/frontend-smoke.txt \
+  --frames=4700 --out=/tmp/frontend-smoke.ppm --size=800x600
+```
+
+Display support now derives battle HUD anchors from the viewport, projects fighter
+markers through the actual battle camera, and keeps menus on a uniformly scaled
+4:3 canvas with black bars. Aspect handling is automatic, including ultrawide.
+Native Options offers Desktop/common/display-mode resolution choices; browser
+and headless rows show their externally controlled sizing. Linux native Wayland
+checks exercised window resize, fullscreen toggling and fullscreen resolution
+changes. Real-asset captures checked 1920×1080 and 3440×1440 battle layout,
+3440×1440 selection, and an irregular 1373×777 menu viewport. Layout tests also
+cover portrait, 4:3 and clipped/rotated sprites.
+
 ## A. Correctness and the measurement instruments (do first)
 
 These gate every number the other items are judged by, which is why they
@@ -125,8 +201,8 @@ come before the visible work.
   real cards, replacing the cube A/B one class at a time as sketched:
   `src/main.cpp` builds a renderer effect-asset table at match/versus start
   (`buildFxAssets`): asset 0 is the melee-hit card, resolved through
-  `data/effect/000.dat` (measured header: u32 mesh count = 3, then 4-byte
-  name slots — slot 000's first name is `14.X`), and in match mode assets
+  `data/effect/000.dat` (corrected header: version dword then a fixed 260-byte
+  model path — slot 000 names `14.X`), and in match mode assets
   1–2 are `data/aura/00.X`, `FUN_00633ca0`'s first aura slot. The gameplay
   `EffectEventQueue`s (`game/effect_events.h`) are no longer drained to
   nothing: `updateFxCards` owns the live card set (spawn / kill-by-id /
@@ -444,11 +520,10 @@ says what you SEE on screen, not just which function draws it.
   frame 150 — counter-rotation live). Single-frame RMSE is phase lottery
   (0.3888 → 0.4025: added red pixels at non-print phases), so the band is
   reported, not chased — same confound class as the mirrored fighter pose.
-* **Remaining.** The `9*hud+0x30c` term itself (`ringDeg`): the `+0x30c`
-  field's driver is unmapped, so arc 1 turns on `frame/2` alone. Needs the
-  HUD-struct writer, not more draw code.
+* **Resolved 2026-10-03.** The lock-switch writer/decrement and pulse
+  transform are implemented and tested; see the implementation update above.
 
-### D3. Other fighters' com bars, round countdown, team stings — TRIAGED (correctly absent)
+### D3. Other fighters' com bars, round countdown, team stings — PARTIAL (1v1 transients implemented)
 
 * **What you see (and don't).** The print shows exactly one com bar with its
   `com` tag, over the targeted (distant) fighter — which is exactly what the
@@ -474,7 +549,7 @@ already landed on the screen stack (`src/ui/screen_title.*`, commit
 `c67ead3`), so new screens follow that pattern: device-free update returning
 the next screen id, a factory for construction, tests against fakes.
 
-### E1. Select page 0 — the recommended next screen
+### E1. Select page 0 — IMPLEMENTED (four-fighter launch remains open)
 
 * **What.** One state machine for team → character → weapon → hypermode →
   PLAYER/COM → ready, covering **six of the 23 prints** (team-select,
@@ -491,7 +566,7 @@ the next screen id, a factory for construction, tests against fakes.
   implement the screen on the landed stack. The roster grid formula is
   plan §2.17.
 
-### E2. Select page 1 — STAGE SELECT + BATTLE SETTING
+### E2. Select page 1 — IMPLEMENTED (original match-rule fidelity remains open)
 
 * **Evidence.** Contract fully extracted (plan §2.9, lines 508-568): five
   knobs, their domains/steps, the eight-row list, confirm returns 9 = VS
@@ -503,7 +578,7 @@ the next screen id, a factory for construction, tests against fakes.
   (plan line 1093); capture the variation cycle with the original to settle
   the count.
 
-### E3. Options and key config
+### E3. Options and key config — PARTIAL (three renderer controls unavailable)
 
 * **Evidence.** Plan §1.3: both optional/deferrable. Option scope is tiny
   and closed — 4 toggles + 4 sliders (`option-screen.webp`); key config's
@@ -514,7 +589,7 @@ the next screen id, a factory for construction, tests against fakes.
   `src/audio/audio.h:26`). Defer toon/shadow toggles until the effect
   system exists (item B1).
 
-### E4. VS intro (scene 9)
+### E4. VS intro (scene 9) — IMPLEMENTED for 1v1
 
 * **Evidence.** `vs-intro.webp`; draw functions `FUN_004115f0`,
   `FUN_00411ae0`, `FUN_00411cb0` (plan line 112, §2.12 line 614); the
@@ -522,7 +597,7 @@ the next screen id, a factory for construction, tests against fakes.
 * **Sketch.** A skippable transition screen with the entry tween; portraits
   slide in and the VS animates centre.
 
-### E5. The result sequence (sting → quote → report)
+### E5. The result sequence (sting → quote → report) — PARTIAL (titles/quote selection remain open)
 
 * **Evidence.** Three beats in one screen: victory sting (`FUN_00633ca0`
   loads `P05`/`P08`), quote (`FUN_00635d40` result phase, sub-phase 0, GDI
@@ -532,7 +607,7 @@ the next screen id, a factory for construction, tests against fakes.
   work measured from the print with a pixel check, per the plan's own
   instruction.
 
-### E6. Soft keyboard
+### E6. Soft keyboard — DONE as reusable widget
 
 * **Evidence.** The grid **is** the name font: `data/chat/name_p1.cnv` grid
   cells (ASCII/kana), names stored as `(cellX,cellY)` pairs via
@@ -552,7 +627,7 @@ counts, and the team-select diamond's y anchor discrepancy. Scenes 2 and
 
 ## F. Audio
 
-### F1. A seam from the screen layer to the audio backend (menu SEs)
+### F1. A seam from the screen layer to the audio backend (menu SEs) — DONE
 
 * **What.** Menu cursor/confirm SEs are silent: the screen stack returns an
   action but cannot play a sound.
@@ -569,7 +644,7 @@ counts, and the team-select diamond's y anchor discrepancy. Scenes 2 and
 
 ## G. Verification debts — do not make these claims yet
 
-### G1. Web: the plain demo runs; the game assets in a browser do not
+### G1. Web — GAME DATA VERIFIED on software WebGPU; hardware/visual check remains open
 
 * **Evidence (measured).** `BUILD-web.md:32-47` records a real run —
   Chrome for Testing 152 headless, SwiftShader, 845 frames, 60.1 fps,

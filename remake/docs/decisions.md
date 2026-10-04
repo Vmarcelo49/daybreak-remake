@@ -121,8 +121,10 @@ comments — when a decision changes.
   below. Delivery differs — native reads the `.dat` bundles/disk, the web
   build fetches per-pack files from an extracted tree
   (`foundation/src/platform/web_pack.cpp`, `foundation/scripts/make_pack.py`)
-  — and a browser run with game data is still unverified
-  (`ROADMAP-PENDING.md` §G1).
+  — and Chromium software WebGPU has now executed the original stage01,
+  Rena and Mion assets in scripted versus and live match (`foundation/docs/BUILD-web.md`,
+  game-data verification 2026-10-03). Browser visual parity and hardware adapters
+  remain unverified.
 - Character/stage/collision meshes ship as `.X` in three encodings
   (`0302txt`, `0303bin`, `0303bzip`); the semantics to reproduce are the
   original loader's (`D3DXLoadMeshHierarchyFromXInMemory` frame trees,
@@ -172,7 +174,59 @@ comments — when a decision changes.
   (deterministic lockstep over UDP) is in scope.
 - Story mode is **not built**: the ids are registered
   (`Prologue`/`StoryTeam`/`StoryAdv`, `foundation/src/ui/screen.h:43-47`)
-  but only `Title` has a builder (`foundation/src/ui/screen.cpp:47-48`),
-  and story-mode video stays stubbed (`ROADMAP-PENDING.md` §H). No
+  but their builders remain absent. The front end now builds title, selection,
+  stage settings, options/key config, VS intro and result screens; its playable
+  battle is 1v1. Original four-fighter layouts, result earned titles and three
+  renderer options remain pending. Story-mode video stays stubbed
+  (`foundation/docs/ROADMAP-PENDING.md` §H). No
   branching, saves, or localization is planned. Non-goals listed in
   `game-spec.md` §5 stand.
+
+## D7 — Runtime captions use Gyrotrope Black (2026-10-04)
+
+- Use the user-selected `foundation/assets/fonts/gyrotrope-black.otf` for
+  runtime text, including HUD fallback captions, options, result text and
+  diagnostics. Future captions use the shared `ui::CaptionText` /
+  `ui::loadCaptionFont` path. Image-based labels and numerals retain their
+  original art.
+- Gyrotrope has no Japanese glyphs; Noto Sans CJK JP supplies Japanese
+  through font linking. Native builds package available fonts beside the
+  executable; web builds preload them. The embedded bitmap face remains
+  the fallback when a font or glyph is unavailable. Historical DX9 metric
+  tests retain their explicit reference face.
+- Rationale: the selected face matches the combat captions more closely
+  and gives future runtime text one consistent visual identity.
+
+## D8 — Automatic battle aspect; 4:3 menus; native resolution selection (2026-10-04)
+
+- Aspect is automatic: use the current render viewport for the battle
+  camera, including 4:3, 16:9, ultrawide and arbitrary window sizes. No
+  separate aspect selector is exposed; automatic handling fulfills the
+  user's preferred behavior without another setting to keep in sync.
+- Preserve the HUD art's proportions with uniform scaling based on the
+  smaller of `viewportWidth / 800` and `viewportHeight / 600`. Derive HUD
+  groups from edge margins and center offsets in the resulting logical
+  viewport; 800×600 remains the reference layout, not a fixed render size.
+  Project fighter rings and bars with the same view-projection matrix as
+  the scene, then map them into this logical viewport.
+- Menus use a centered, uniformly scaled 800×600 canvas, clipped to its
+  bounds with opaque black bars outside it. Their shipped backgrounds
+  remain 4:3 until replacement art is available. Apply the same transform
+  to text, sprite destinations, rotation anchors and clips.
+- Native Options exposes Resolution with Desktop, common window sizes
+  and available display modes. Windowed sizes are expressed in physical
+  pixels with pixel-density conversion; fullscreen cycles skip unsupported
+  exact sizes. Resize events reconfigure the swapchain. Desktop dimensions
+  refresh when the window moves to another display.
+- Browser resolution follows the canvas and fixed headless captures use
+  `--size`; their resolution row indicates external control. Display and
+  other frontend settings are process-local; persistence is future work.
+- Verification: 24 Linux tests pass; Linux, Windows cross-build and web
+  builds succeed. Native Wayland checks exercised resolution changes,
+  fullscreen on/off and fullscreen resolution changes. Real-asset battle
+  captures were inspected at 1920×1080 and 3440×1440; menus were checked at
+  3440×1440 and 1373×777, including black-bar pixels. The complete frontend
+  loop returned from battle/results to selection at 1920×1080.
+- Rationale: battle uses the available display area while preserved menu
+  art keeps its intended proportions. Anchor math supports future HUD
+  additions without resolution-specific coordinate tables.

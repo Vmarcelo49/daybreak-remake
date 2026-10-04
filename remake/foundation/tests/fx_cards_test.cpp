@@ -1,3 +1,4 @@
+#include "game/effect_descriptor.h"
 // =============================================================================
 //  fx_cards_test.cpp — host test for game/fx_cards.h (ROADMAP-PENDING.md B1):
 //  the live effect-card set — spawn replaces by id, kill retires by id,
@@ -64,6 +65,15 @@ game::EffectEvent killEv(std::uint32_t id) {
 }  // namespace
 
 int main() {
+    std::vector<uint8_t> descriptor(0x108,0);
+    descriptor[0] = 3;
+    const char model[] = "14.X";
+    for (size_t i = 0; i < sizeof(model); ++i) descriptor[4+i] = model[i];
+    descriptor[12] = 'X';
+    if (game::effectModelPath(descriptor) != "14.X") return 1;
+    for (size_t i = 4; i < descriptor.size(); ++i) descriptor[i] = 'X';
+    if (!game::effectModelPath(descriptor).empty() || !game::effectModelPath({}).empty()) return 1;
+
     std::printf("== fx_cards: live set lifecycle ==\n");
 
     // 1. A spawn lands with its fields carried over.

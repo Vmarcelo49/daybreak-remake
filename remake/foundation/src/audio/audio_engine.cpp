@@ -213,6 +213,10 @@ bool decode_ogg_s16(const uint8_t* bytes, size_t size, DecodedOgg& out) {
     return true;
 }
 
+void Sdl3Engine::clear_music() {
+    if (is_open()) SDL_ClearAudioStream(impl_->music);
+}
+
 void Sdl3Engine::clear_bank() {
     Impl& im = *impl_;
     im.bank.clear();

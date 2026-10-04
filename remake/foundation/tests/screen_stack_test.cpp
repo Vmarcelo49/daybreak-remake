@@ -158,30 +158,27 @@ void testQuit() {
     // A failed begin keeps the factory's message and reports itself finished, which is
     // what --screen with an unimplemented id hits.
     ScreenStack other;
-    std::string why = "scene 0x03 has no screen yet";
+    std::string why = "scene 0x0b has no screen yet";
     auto none = [](ScreenId) -> std::unique_ptr<Screen> { return nullptr; };
-    checkTrue("begin(Select) fails", !other.begin(ScreenId::Select, none, why));
-    checkTrue("the factory's error survives", why == "scene 0x03 has no screen yet");
+    checkTrue("begin(NetplayMenu) fails", !other.begin(ScreenId::NetplayMenu, none, why));
+    checkTrue("the factory's error survives", why == "scene 0x0b has no screen yet");
     checkTrue("a failed begin is finished", other.finished());
 }
 
-// FUN_004020a0's table, as the port has it: only the title has a constructor, and an
-// id without one is an error — except 0x16, which is the factory's own `default` and
-// means "leave" (FUN_00657c80.c:58 + FUN_00657ef0.c:44-46). This is the check that a
-// 終了 confirm does not leave a spurious error behind.
+// FUN_00657c80: unsupported scenes fail; quitting leaves no error.
 void testFactoryTable() {
     std::printf("\nfactory table (FUN_004020a0):\n");
     ui::SpriteRenderer batch;   // no device: only the id table is exercised
     std::string error;
     checkTrue("title is available", ui::screenAvailable(ScreenId::Title));
-    checkTrue("select is not built yet", !ui::screenAvailable(ScreenId::Select));
+    checkTrue("select is available", ui::screenAvailable(ScreenId::Select));
     checkTrue("quit is not a screen", !ui::screenAvailable(ScreenId::Quit));
     checkTrue("makeScreen(Quit) returns no screen", !ui::makeScreen(ScreenId::Quit, batch, error));
     checkTrue("quitting leaves no error behind", error.empty());
     error.clear();
-    checkTrue("makeScreen(Select) returns no screen",
-              !ui::makeScreen(ScreenId::Select, batch, error));
-    checkTrue("an unbuilt id names itself", error == "scene 0x03 has no screen yet");
+    checkTrue("makeScreen(NetplayMenu) returns no screen",
+              !ui::makeScreen(ScreenId::NetplayMenu, batch, error));
+    checkTrue("an unbuilt id names itself", error == "scene 0x0b has no screen yet");
 }
 
 // The six items, in the atlas' row order, and the ids FUN_00410f60.c:106-134 returns.

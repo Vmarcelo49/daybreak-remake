@@ -2,13 +2,7 @@
 // Fallback diagnostics: a minimal overlay that works when game assets — or
 // even the HUD's own font upload — are unavailable.
 //
-// The bitmap font is embedded, so "fonts unavailable" cannot happen the way it
-// does on the DX9 path (D3DXCreateFont failing under Wine without CJK fonts):
-// the atlas builds from static data with no OS call. What CAN be missing is
-// everything else — textures, scene, HUD state — and this overlay covers
-// exactly that: a translucent panel with device/status lines plus the failing
-// error string, drawn with solids and atlas glyphs only. No texture slot but
-// the renderer's own white fallback and the font atlas is touched.
+// Uses the shared caption face when available, with an embedded bitmap emergency fallback.
 #include <string>
 #include <vector>
 
@@ -17,7 +11,7 @@
 
 namespace ui {
 
-// Scale for diagnostic lines: 7 px * 2 = 14 px rows, half the HUD size so a
+// Diagnostic captions use a 14 px cell (bitmap emergency scale 2), so a
 // dozen lines still fit a 540 p frame.
 inline constexpr float kDiagTextScale = 2.f;
 inline constexpr float kDiagLineH = (float)kLineHeight * kDiagTextScale;   // 16
@@ -30,7 +24,7 @@ struct DiagPanel {
 };
 
 // Pure host-side: panel sizing is arithmetic, so tests pin it without a device.
-// Width fits the longest line at the diagnostic scale plus padding both sides.
+// Estimates bitmap width; the live caption path fits the actual proportional text.
 DiagPanel computeDiagPanel(int viewW, int viewH, size_t lineCount, size_t maxChars);
 
 // Pure host-side line builder: adapter/backend, surface state, then the error
@@ -47,7 +41,7 @@ public:
 
     // Same atlas ownership pattern as HudComposer: upload once, cache the id.
     bool uploadFont(SpriteRenderer& batch, std::string& error);
-    int  atlasTexture() const { return atlas_; }
+    int  atlasTexture() const { return captions_.atlasTexture() >= 0 ? captions_.atlasTexture() : atlas_; }
 
     // Draws the panel plus lines. Works with an empty scene and zero uploaded
     // game textures; when even the font upload failed, the panel still draws
@@ -56,6 +50,7 @@ public:
               const std::vector<std::string>& lines);
 
 private:
+    CaptionText captions_;
     int atlas_ = -1;
 };
 

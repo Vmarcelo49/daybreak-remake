@@ -7,7 +7,7 @@
 // shape (init once, tick/poll per frame). Devices stay fixed: P0 is the
 // verified keyboard layout, P1-P3 are gamepads; the original's P2-P4 pads
 // were buttons 1-8 with unknown layout, so no keyboard fallback is offered
-// there and unbound AttackB stays unbound.
+// there. AttackB is unbound by default and may be assigned in key configuration.
 //
 // This header is SDL-free on purpose: the tables in input_sdl3.h test
 // without SDL linked, and so does everything here (key state is tracked as
@@ -49,6 +49,7 @@ class Backend {
 
     const PlayerState& player(int index) const;
     DeviceType device(int index) const;
+    int gamepad_player(int32_t instanceId) const;
     bool any_just_pressed(Action action) const;
     bool any_down(Action action) const;
 
@@ -57,6 +58,10 @@ class Backend {
     // harvests the queue itself, so forwarding is optional and idempotent.
     // `scancode` is the numeric SDL_Scancode; out-of-range values are ignored.
     void note_key(int scancode, bool pressed);
+    void suppress_key(int scancode);
+    void suppress_gamepad_button(int player, int button);
+    bool set_keyboard_binding(Action action, int scancode);
+    bool set_gamepad_binding(int player, Action action, int button);
     void note_focus_lost();  // clears held keys (a lost window drops KEY_UP)
 
     // Deterministic driver, same line format as the remake
@@ -78,6 +83,10 @@ class Backend {
     void* pads_[kMaxPlayers];  // SDL_Gamepad* when open; void* keeps SDL out
     bool key_held_[kKeyHeldSize];
     bool inited_ = false;
+    bool suppressedKeys_[kKeyHeldSize] = {};
+    bool suppressedButtons_[kMaxPlayers][26] = {};
+    int keyboard_[ActionCount];
+    int buttons_[kMaxPlayers][ActionCount];
 
     std::vector<ScriptEvent> script_;
     size_t script_pos_ = 0;

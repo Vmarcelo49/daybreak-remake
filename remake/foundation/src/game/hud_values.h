@@ -31,8 +31,8 @@ struct GameRgb {
 // the HUD layer only draws at the point it is handed.
 struct GameFighterHud {
     float ringX = 0.f, ringY = 0.f;   // projected position + 70 world units
-    float barX = 0.f, barY = 0.f;     // projected position + 150 units, then -32 px
-    float ringDeg = 0.f;              // 9 * hud+0x30c
+    float barX = 0.f, barY = 0.f;     // projected position + 150 units, then -32 HUD units
+    int ringPulse = 0;                // fighter+0x30c target-switch countdown
     bool  visible = false;            // in front of the camera
     bool  target = false;             // the locked target: red ring + its com bar
     int   slot = 0;                   // 0..4 -> 1P/2P/3P/4P/com
@@ -124,7 +124,7 @@ inline GameHudValues syntheticHudValues() {
     v.fighters[0].ringY = 162.f;
     v.fighters[0].barX = 400.f;
     v.fighters[0].barY = 99.f;
-    v.fighters[0].ringDeg = 0.f;
+    v.fighters[0].ringPulse = 0;
     v.fighters[0].visible = true;
     v.fighters[0].target = true;
     v.fighters[0].slot = 4;      // "com"
