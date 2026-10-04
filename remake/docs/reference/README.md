@@ -4,6 +4,12 @@
 > `DaybreakDX.exe` (v1.11) with notes on what it pins down.
 > Shots live next to this file; add rows as new captures arrive.
 
+Implementation reminders in the table record the capture-time audit, including
+DX9-era `Scene_*` names and then-missing features. They are not a current work
+list. Consult [`../../foundation/docs/ROADMAP-PENDING.md`](../../foundation/docs/ROADMAP-PENDING.md)
+for implementation status and [`../decisions.md`](../decisions.md) for binding
+choices, including the 4:3 menu canvas and automatic battle aspect (D8).
+
 | Shot | Scene / moment | What it pins down |
 |---|---|---|
 | ![opening frame 1](opening-frame-01.webp) | `movie/op.mpg`, early frame: shrine interior, purple curtain, lone fighter (blue hair, red footwear) facing the altar | OP movie look (letterboxed, purple grade); our `VideoPlayer` must reproduce this framing — letterbox bars are in the video itself |

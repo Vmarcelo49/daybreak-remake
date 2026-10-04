@@ -3,8 +3,8 @@
 SDL3 + WebGPU (`webgpu.h`) in one CMake project that builds for **Linux, Windows
 (MinGW cross-compile) and the web (Emscripten)**: `./build.sh deps` once, then
 `./build.sh linux|windows|web`. macOS is not attempted — no Mac available (see the
-table below). This is the base the renderer migration (decision D2) lands on: it is
-now a playable match as well as a viewer — `--match` runs the ported
+table below). This is the product after the renderer migration (decision D2):
+it is a playable front end and match as well as a viewer — `--match` runs the ported
 fighter/projectile simulation with the live match economy and HUD values
 (`src/gameplay/match.cpp`), `--versus` keeps the scripted capture vignette, and
 `--camera=arena` follows the ported arena camera (`src/gameplay/arena_camera.cpp`).
@@ -47,7 +47,8 @@ without a display:
 ./build/linux/foundation_demo --character=<data/akane:0> --hud-test --out=hud.ppm
 ./build/linux/foundation_demo --audio-test
 ./build/linux/foundation_demo --input-test
-./build/linux/foundation_demo --screen=title --out=title.ppm --frames=30  # title screen, not an asset (--script= drives its menu)
+./build/linux/foundation_demo --install=<game-dir> --screen=title  # playable front end
+./build/linux/foundation_demo --install=<game-dir> --screen=title --out=title.ppm --frames=30
 ./build/linux/foundation_demo --list                    # what a spec loads, then exit
 ```
 
@@ -112,23 +113,27 @@ Both are the same C API. The differences that are real, and where they live:
 
 ## Frame model
 
-Variable delta, no fixed step, anywhere: `SDL_AppIterate` measures real elapsed
-time and hands it to the game. Present pacing belongs to the swapchain — FIFO is
+Live simulation uses variable delta: `SDL_AppIterate` measures real elapsed
+time and hands it to the game. Deterministic `--out` captures use `--dt`
+(default 1/60 s), and frontend animation timelines advance per update.
+Present pacing belongs to the swapchain — FIFO is
 selected whenever the platform offers it, which is the original game's
 cap-at-refresh behaviour. On the web FIFO is the *only* present mode there is.
 
 ## Shaders and assets
 
 WGSL is embedded in the binary (`src/shaders/demo_wgsl.h`, `model_wgsl.h`,
-`ui_wgsl.h`, `debug_line_wgsl.h`) rather than loaded from a file, because the web
-build has no filesystem.
+`ui_wgsl.h`, `debug_line_wgsl.h`) rather than loaded from a file, so every target
+uses the same shader source without runtime shader-file reads.
 
 `.X`, `.cnv` and `.dat` are read through one seam (`src/assets/asset_source.*`):
 **the install's `daybreakXX.dat` bundles first, the filesystem second**. An install is
 found from whichever asset path the command line already carries, or named with
 `--install=<dir>`; with an extracted tree and no bundles, every read falls through to
 the filesystem exactly as before. The bundle path is the game's own: first match in
-`daybreak00/02/04/05/06/07` order, resolving case like the exe's `__stricmp`.
+`daybreak07/04/00/05/02/06` registration order, resolving case like the exe's
+`__stricmp`. The first three registrations are recovered; the remaining tail
+is untested because no shipped duplicate is known to depend on its order.
 
 The two sources are *not* interchangeable, which is why the order matters: 983 names
 ship in more than one bundle and 445 groups differ in bytes. `extract_dat.py` leaves the
@@ -215,12 +220,15 @@ Every "ran" row printed `RESULT: ok` with real frame timings; per-target command
 and outputs are in `docs/BUILD-linux.md`, `docs/BUILD-windows.md` and
 `docs/BUILD-web.md`.
 
-Host-side and device-free by design (`CMakeLists.txt`): `ctest` runs 13 tests —
-geometry (`debug_prims_geometry`, `unlit_cube_geometry`), `raycast_analytic`,
-`dat_bundle_bytes` (skips without a game install), `match_economy_test`,
-`fighter_script_test`, `arena_camera_test`, `animation_pose_test`, `lighting_test`,
-`text_test`, `hud_sprite_table`, `hud_text_test` and `screen_stack_test`. Cross
-(Windows) and web targets do not build them.
+Host-side tests run without a GPU (`CMakeLists.txt`): the Linux suite has 24
+tests covering geometry, raycasts, asset parsing/spawns, gameplay/economy,
+animation/lighting, caption fonts/text, HUD/menu layouts, input/rebinding and
+frontend selection/VS/results. Asset-dependent checks skip when the install is
+unavailable. Cross (Windows) and web targets do not build the host tests.
+
+```bash
+ctest --test-dir build/linux --output-on-failure
+```
 
 The asset path is verified the same way, offscreen, where it produces numbers
 rather than a window: a stage at its spawn point, a character and a weapon each

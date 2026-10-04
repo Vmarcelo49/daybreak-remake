@@ -30,7 +30,7 @@ modern port. No bit-matching against the original binary is attempted.
    (2026-10-02) and its tree is deleted; the A/B reference is now the
    **banked evidence** in `remake/tests/parity-baseline/` plus the
    original's prints in `remake/docs/reference/`, not a buildable binary.
-   Binding decisions in `remake/docs/decisions.md` (read D1–D6 before
+   Binding decisions in `remake/docs/decisions.md` (read D1–D8 before
    touching `remake/`).
 3. **`mvp/` is gone.** Retired 2026-10-01 after its contents were ported.
    Don't recreate it; decomp provenance lives in `research/`.
@@ -59,6 +59,25 @@ no matter how small the change. Review every changed file for:
 Fix everything found (or explicitly justify keeping it) before
 committing. A skipped review is a process violation.
 
+## Current product guidance
+
+The front end runs title → selection → stage settings → VS/countdown → live
+1v1 battle → results → selection. Active fighters use panels/spawn slots 0
+(blue) and 2 (red); standalone parity recipes retain slots 0/1. Four-fighter
+launch, three renderer options and original result-title/quote fidelity remain
+open; consult `remake/foundation/docs/ROADMAP-PENDING.md` before choosing work.
+
+- **Runtime captions (D7):** use the shared `ui::CaptionText` /
+  `ui::loadCaptionFont` path with bundled Gyrotrope Black and the Japanese
+  fallback. Existing image labels retain their art.
+- **Display layout (D8):** battle uses automatic viewport aspect and scaled
+  edge/center HUD anchors. Project fighter markers through the battle camera.
+  Menus retain a centered, clipped 4:3 canvas with black bars. Native Options
+  selects resolution; browser canvas and headless `--size` control theirs.
+- **Verification:** 24 native host tests; Linux/Windows/web builds. Browser
+  game-data runs are verified on software WebGPU; browser visual parity,
+  hardware browser adapters and macOS execution remain unverified.
+
 ## Map
 
 ```
@@ -84,14 +103,16 @@ daybreak-decomp/
 # Remake — the product is remake/foundation/ (DX9 removed in the Phase 5 cutover)
 ./remake/foundation/build.sh deps                   # once: pinned third-party sources
 ./remake/foundation/build.sh linux                  # also windows, web, all
-./remake/foundation/build/linux/foundation_demo --frames=300
+./remake/foundation/build/linux/foundation_demo --frames=300  # plain triangle
+./remake/foundation/build/linux/foundation_demo --install=Higurashi-Daybreak --screen=title
+ctest --test-dir remake/foundation/build/linux --output-on-failure
 ./tools/launch_original.sh                          # drive the original under Wine
 
 # Research (all offline, stdlib-only Python)
 python3 research/tools/ingest.py --full
 python3 research/tools/generate_recomp.py
 python3 research/tools/coverage_report.py
-grep -rl "pattern" research/decompiled/*.c
+rg -l "pattern" research/decompiled
 python3 .github/scripts/generate_index.py           # refresh INDEX.md/json
 ```
 
@@ -106,11 +127,16 @@ C++17 in the foundation. Full rules: `docs/conventions.md`.
 `main` is the only branch in normal use (plus `recomp-auto` for the
 pipeline — stay out). Push scope: `research/decompiled`,
 `research/binary_data`, reviewed `research/symbols`, `research/progress`,
-docs. Never commit: `research/recomp/`, game files, keys, `*.full.json`,
-anything under `remake/build/` or `remake/tools/` toolchain dirs.
+docs, and reviewed source/tests/runtime caption assets under `remake/foundation/`.
+Never commit: `research/recomp/`, game files, keys, `*.full.json`,
+build outputs (`remake/build/`, `remake/foundation/build/`), fetched dependencies
+(`remake/foundation/third_party/`) or `remake/tools/` toolchain dirs.
 
 ## Local-only (present on disk, absent from git)
 
 `Higurashi-Daybreak/` (4.4GB game install), `remake/tools/` toolchain
 (MinGW/Python/SDL — re-fetch via `remake/scripts/fetch_deps.sh`),
-`remake/build/`. Don't reference absolute local paths in committed docs.
+`remake/build/`, `remake/foundation/build/` and fetched
+`remake/foundation/third_party/` dependencies/fonts. Gyrotrope Black is bundled
+source under `remake/foundation/assets/fonts/`, not a fetched dependency.
+Don't reference absolute local paths in committed docs.

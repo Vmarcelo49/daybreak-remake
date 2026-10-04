@@ -1,7 +1,8 @@
 # asset-tools — offline `.dat` / `.cnv` utilities
 
-Verbatim copies from the frozen `mvp/hook/` (see `docs/decisions.md` D1 —
-`mvp/` is read-only; if these need changes, change them **here**).
+Relocated from the retired `mvp/hook/` tree (see
+[`../../docs/decisions.md`](../../docs/decisions.md) D1). `mvp/` was deleted;
+maintain these utilities here.
 
 | Script | Purpose |
 |---|---|
@@ -10,6 +11,8 @@ Verbatim copies from the frozen `mvp/hook/` (see `docs/decisions.md` D1 —
 | `cnv_convert.py` | `.cnv` → `.bmp` / `.wav` (header sniffing: audio vs image). |
 | `cnv_pack.py` | Reverse: `.bmp` / `.wav` → `.cnv` (rejects compressed BMP, 24→32bpp promotion). |
 
-Usage details are in the script headers and the old `mvp/hook/README.md`.
-Runtime (in-game) CNV decoding is **not** implemented — convert offline
-with these, or see the M8 texture-provider note in `docs/port-from-mvp-plan.md` P3.2.
+Usage details are in each script's header. These are optional inspection and
+modding utilities: the product reads `.dat` bundles and decodes CNV textures
+and PCM audio at runtime in `../../foundation/src/assets/` and
+`../../foundation/src/audio/`. Offline conversion is not required to play.
+Keep the original `.X` models; do not introduce a conversion pipeline (D3).

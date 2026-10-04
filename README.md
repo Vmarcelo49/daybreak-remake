@@ -7,7 +7,7 @@ Twilight Frontier / 07th Expansion).
 
 | | `remake/` — the product | `research/` — the evidence |
 |---|---|---|
-| What | Playable versus match verified on Linux (native) and Windows (Wine) — C++17 + SDL3 + WebGPU (`webgpu.h`: wgpu-native natively, emdawnwebgpu on the web) in `remake/foundation/`, built for Linux, Windows and the web. Not claimed for web or macOS: the web build has only run as the plain demo without game assets, and macOS has never been executed (`remake/foundation/docs/ROADMAP-PENDING.md` §G) | 3,191 decompiled functions, readable-C pipeline, RE reports |
+| What | Playable versus match verified on Linux (native) and Windows (Wine) — C++17 + SDL3 + WebGPU (`webgpu.h`: wgpu-native natively, emdawnwebgpu on the web) in `remake/foundation/`, built for Linux, Windows and the web. Real-asset versus and live match also run on browser software WebGPU; browser visual parity/hardware rendering and macOS execution remain unverified (`remake/foundation/docs/ROADMAP-PENDING.md` §G) | 3,191 decompiled functions, readable-C pipeline, RE reports |
 | Start | `remake/foundation/README.md`, then `remake/docs/decisions.md` | `docs/overview.md`, then `docs/pipeline.md` |
 | Rules | Game code only; the original `.X`/`.cnv`/`.dat` load exactly as shipped; the renderer is SDL3 + WebGPU since the Phase 5 cutover (DX9 dropped 2026-10-02) | `recomp/` never hand-edited; `symbols/` is truth |
 
@@ -16,7 +16,7 @@ Twilight Frontier / 07th Expansion).
 ```
 daybreak-decomp/
 ├── AGENTS.md / README.md               the two-halves map + hard rules (read first), then this map
-├── INDEX.md / INDEX.json               generated index (regenerate with python3 .github/scripts/generate_index.py; the committed copy predates the Phase 5 cutover)
+├── INDEX.md / INDEX.json               generated index (python3 .github/scripts/generate_index.py; index Action on push)
 ├── docs/                               English docs
 │   ├── overview.md                     repo map + key findings
 │   ├── pipeline.md                     how research artifacts flow
@@ -43,7 +43,21 @@ daybreak-decomp/
 └── .github/                            index Action
 ```
 
-## Target summary
+## Current playable port
+
+The front end connects title, character/weapon/hypermode/controller selection,
+stage and battle settings, VS/countdown, live 1v1 battle and results. Runtime
+captions use Gyrotrope Black with a Japanese fallback. Battle camera and HUD
+adapt automatically to the viewport, including ultrawide; menu art stays in
+4:3 with black bars. Options includes native resolution/fullscreen selection,
+audio volumes and keyboard/gamepad rebinding for the current session.
+
+Four-fighter battles, three renderer controls and original result-title/quote
+fidelity remain open. See `remake/foundation/docs/ROADMAP-PENDING.md` for current
+status and `remake/docs/decisions.md` D1–D8 for binding decisions. The native
+suite has 24 tests; Linux, Windows cross-build and web builds pass.
+
+## Original binary summary
 
 | Field | Value |
 |---|---|
@@ -63,8 +77,8 @@ python3 research/tools/generate_recomp.py
 python3 research/tools/coverage_report.py   # run before committing
 
 # Search the evidence offline
-grep -r "pattern" research/binary_data/strings/
-grep -l "pattern" research/decompiled/*.c
+rg "pattern" research/binary_data/strings/
+rg -l "pattern" research/decompiled/
 
 # Rebuild the repo index
 python3 .github/scripts/generate_index.py
@@ -72,7 +86,9 @@ python3 .github/scripts/generate_index.py
 # Build the product (deps once, then a target)
 ./remake/foundation/build.sh deps                 # pinned third-party sources
 ./remake/foundation/build.sh linux                # also: windows, web, all
-./remake/foundation/build/linux/foundation_demo --frames=300
+./remake/foundation/build/linux/foundation_demo --frames=300  # plain triangle
+./remake/foundation/build/linux/foundation_demo --install=Higurashi-Daybreak --screen=title
+ctest --test-dir remake/foundation/build/linux --output-on-failure
 
 # Host toolchain + fonts only (optional, no sudo)
 ./remake/scripts/fetch_deps.sh
@@ -83,10 +99,11 @@ python3 .github/scripts/generate_index.py
 
 ## Conventions
 
-Commit prefixes (`feat/fix/docs/chore/refactor/recomp:/symbols:`), C11
-style, and push scope are defined in `docs/conventions.md`. The short
-version: never hand-edit `research/recomp/`; `research/symbols/` needs
-human review for promotion; run `coverage_report.py` before pushing.
+Commit prefixes (`feat/fix/docs/chore/refactor/recomp:/symbols:`), C11 research
+style and C++17 product rules are defined in `docs/conventions.md` and
+`AGENTS.md`. Never hand-edit `research/recomp/`; `research/symbols/` needs
+human review for promotion. Run `coverage_report.py` before committing research
+changes and review both unstaged and staged diffs before every commit.
 
 ## License
 

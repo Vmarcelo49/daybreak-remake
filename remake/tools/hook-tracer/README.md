@@ -1,27 +1,33 @@
 # hook-tracer — launcher injector + file-access tracer (dev tool)
 
-Verbatim copies from the frozen `mvp/hook/` (see `docs/decisions.md` D1 —
-`mvp/` is read-only; if these need changes, change them **here**).
+Relocated from the retired `mvp/hook/` tree (see
+[`../../docs/decisions.md`](../../docs/decisions.md) D1). `mvp/` was deleted;
+maintain this tracing tool here.
 
 | File | Purpose |
 |---|---|
 | `daybreak_launcher.c` | **Working.** Injects a DLL into the original `DaybreakDX.exe` via `CreateProcess(SUSPENDED)` + `VirtualAllocEx` / `WriteProcessMemory` / `CreateRemoteThread(LoadLibraryA)`. Defaults overridable via argv. |
 | `daybreak_hook.c` (v11) | **Tracer only — patches nothing.** IAT-hooks `CreateFileA` and logs opens of asset extensions (`.cnv/.bmp/.dat/.ogg/.wav/.x`, `data/`, `movie/`) with a reentrancy guard. Earlier versions (v1–v10) attempted inline `JMP rel32` patching for direct/archive/hybrid asset modes and crashed; v11 deliberately retreated to logging. |
-| `CMakeLists.txt` | Builds `daybreak_hook.dll` (SHARED) + `daybreak_launcher.exe`. |
+| `CMakeLists.txt` | Legacy build recipe for the DLL and launcher; source paths need repair (see below). |
 
 > Warning: `mvp/hook/README.md` describes Modes 0/1/2 hybrid patching —
-> that design is **not in the code**. See `docs/decisions.md` D4. Do not
+> that design is **not in the code**. See [`../../docs/decisions.md`](../../docs/decisions.md) D4. Do not
 > plan runtime loose-file loading around this tool; it is for RE tracing
 > (which files the original opens, in which order).
 
-Build (from this dir):
+Build from this directory with an installed i686 MinGW cross-compiler. The
+original executable and injected DLL are 32-bit; the product's Windows toolchain
+is 64-bit and does not apply here.
 
 ```bash
-The DX9-era x86_64 MinGW toolchain file this used to point at was deleted in the
-Phase 5 cutover; this hook targets the 32-bit original, so build it with an i686
-cross-toolchain of your own rather than the project one.
-cmake --build build
+mkdir -p build
+i686-w64-mingw32-gcc -shared daybreak_hook.c -o build/daybreak_hook.dll -luser32
+i686-w64-mingw32-gcc daybreak_launcher.c -o build/daybreak_launcher.exe -lkernel32 -luser32
 ```
+
+`CMakeLists.txt` still refers to the former `src/` location, while the
+relocated sources live beside this README; use the direct commands above until
+that build recipe is repaired.
 
 Note: the hook targets the 32-bit original exe; prefer the i686 toolchain
 for the DLL. Anti-virus may flag the injector (standard DLL-injection
