@@ -221,11 +221,21 @@ void Backend::note_focus_lost() {
     // A lost window drops KEY_UP on most drivers; without this the next poll
     // would read a key nobody holds anymore.
     for (bool& k : key_held_) k = false;
-    for (bool& k : suppressedKeys_) k = false;
-    bool held = false;
-    for (bool down : eventStates_[0].down) held = held || down;
-    eventStates_[0] = {};
-    if (held) tickSamples_.push_back({0, eventStates_[0]});
+    int count = 0;
+    const bool* keys = SDL_GetKeyboardState(&count);
+    for (int sc = 0; sc < kKeyHeldSize; ++sc)
+        suppressedKeys_[sc] = keys && sc < count && keys[sc];
+    // Pads continue reporting physical holds after the window loses focus.
+    // Require release before those buttons can act in the game again.
+    for (int p = 0; p < kMaxPlayers; ++p) {
+        if (p > 0) {
+            auto* pad = static_cast<SDL_Gamepad*>(pads_[p]);
+            for (int b = 0; b < SDL_GAMEPAD_BUTTON_COUNT; ++b)
+                suppressedButtons_[p][b] = pad && SDL_GetGamepadButton(pad, static_cast<SDL_GamepadButton>(b));
+        }
+        eventStates_[p] = {};
+        tickSamples_.push_back({p, eventStates_[p]});
+    }
 }
 
 bool Backend::load_script(const char* path) {

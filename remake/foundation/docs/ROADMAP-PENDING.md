@@ -180,6 +180,49 @@ Snapshot/save/restore, explicit RNG/state hashes, cross-platform determinism and
 network transport remain open. Basic playability work continues through issues
 #6–#23 and the ordered Linux release tracker #24.
 
+## Guard lifecycle update — 2026-10-04
+
+Issue #6's live blocker is fixed. Guard release is processed outside `can_act()`;
+release or missing input returns to Idle on the ground or Jump in the air,
+allowing the next action on that tick. Hit/KO retain priority. Guard clears its
+inherited action timer on entry and exits on the tick stamina reaches zero.
+An exhausted hold must be released before Guard can start again; stamina can
+recover and other actions remain available while that button is held. This
+re-entry rule is explicitly an interim port rule, not recovered binary behavior.
+Focus loss releases all players' queued buttons and suppresses physically held
+keyboard/pad buttons until release. Controller removal samples neutral input.
+
+Damage blocking still uses the existing provisional `max(1, amount / 5)` rule
+and guarded hits still enter Hit/KO. The corpus search found no
+`FUN_0064ae10` key-12 call; key-13 calls in `FUN_00421e30`/`FUN_00421f30`
+are target-switch cues, not an incoming-damage gate. The voice table loader
+`FUN_00431e70` establishes names, not block conditions. Directional block gates,
+attack exclusions and original damage reduction remain unrecovered. No damage
+fidelity is claimed by this fix. The old DX9 one-way Guard remains frozen
+in the evidence bank; playable updates and new captures use the corrected rule.
+No legacy runtime mode is needed for the release acceptance criteria.
+
+Verification: all 25 Linux host tests pass. Guard behavior tests run at 64 Hz
+and cover release into movement/jump/melee/shoot, grounded/airborne release,
+exhaustion/re-entry, missing input, and Hit/KO priority. The input integration
+test uses an SDL virtual controller to verify actual polling, focus loss,
+held-button suppression and unplugging through the fighter's Guard state.
+Linux, Windows cross-build and web builds pass. A real-asset stage21
+Rika/Takano run completes 850 ticks with Guard → Walk → Jump, exhaustion to
+Idle and a fresh Guard hold in its trace (`RESULT: ok`). Reproduce with:
+
+```bash
+SDL_AUDIODRIVER=dummy DAYBREAK_CAMINFO=1 ./remake/foundation/build/linux/foundation_demo \
+  --headless --install=Higurashi-Daybreak --match --stage=data/stage21 \
+  --character=data/rika --enemy=data/takano --frames=850 --size=400x400 \
+  --dt=0.015625 --script=remake/foundation/tests/scripts/guard-lifecycle.txt \
+  --out=/tmp/guard-lifecycle.ppm
+```
+
+This explicit 1/64 capture checks asset-backed integration; device-free tests
+exercise live tick semantics. Virtual-controller checks are not physical
+controller testing, and dummy audio is not a listening check.
+
 ## A. Correctness and the measurement instruments (do first)
 
 These gate every number the other items are judged by, which is why they

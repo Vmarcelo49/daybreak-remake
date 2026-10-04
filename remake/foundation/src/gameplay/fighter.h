@@ -505,6 +505,7 @@ private:
     int          m_maxHP       = FighterConstants::kMaxHP;
     float        m_gaugeRate   = 1.f;
     CombatStats  m_stats;
+    bool         m_guardExhausted = false;
     float        m_stamina     = static_cast<float>(FighterConstants::kMaxStamina);
 
     // --- state machine ---
@@ -622,7 +623,10 @@ private:
 //  7. The DX9 build's std::printf transition log is dropped: the simulation is
 //     required to be a pure function of (state, input, dt), and the parent's
 //     A/B comparison reads state traces, not stdout. No logic depends on it.
-//  8. Everything else is unchanged, including the update() ordering, the
+//  8. Guard release/exhaustion bypass the action-entry gate; an exhausted hold
+//     requires release before re-entry (issue #6). The historical one-way
+//     DX9 state is not a live rule. Damage reduction remains provisional.
+//  9. Remaining behavior retains the update() ordering, the
 //     integer/float mix of every timer, the double-tap window, the melee
 //     active-window rule and the hypermode arithmetic.
 // =============================================================================

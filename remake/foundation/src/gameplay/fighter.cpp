@@ -49,6 +49,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_pending = PendingShot{};
     m_vy = 0.0f;
     m_grounded = true;
+    m_guardExhausted = false;
     m_groundY = pos.y;
     m_flyLeft = FighterConstants::kFlyTimeSec;
     m_dashAir = false;
@@ -68,6 +69,7 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     clear_tracks();      // same fresh-bind rule as init()
     m_vy = 0.0f;
     m_grounded = true;
+    m_guardExhausted = false;
     m_groundY = pos.y;
     m_flyLeft = FighterConstants::kFlyTimeSec;
     m_dashAir = false;
@@ -113,6 +115,16 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         }
     }
 
+    // Guard is not actionable: release must bypass can_act(). Port rule until
+    // the incoming-damage block flag is recovered (FUN_00431e70's voice keys
+    // do not establish it). Exhaustion requires a release before another hold.
+    const bool guardHeld = input && input->down[input::Action::Guard];
+    if (!guardHeld) m_guardExhausted = false;
+    if (m_state == FighterState::Guard && (!guardHeld || m_stamina <= 0.0f)) {
+        if (guardHeld) m_guardExhausted = true;
+        set_state(m_grounded ? FighterState::Idle : FighterState::Jump);
+    }
+
     // 2. Update state machine (check input, transition states).
     // A lost action window (hit, KO) breaks any charge hold in progress.
     if (!can_act()) m_chargeHeld = 0.0f;
@@ -144,6 +156,10 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     if (m_state == FighterState::Guard) {
         m_stamina = std::max(0.0f, m_stamina - FighterConstants::kGuardDrainSec *
                              static_cast<float>(dt));
+        if (m_stamina <= 0.0f) {
+            m_guardExhausted = true;
+            set_state(m_grounded ? FighterState::Idle : FighterState::Jump);
+        }
     }
 
     // 5b. Vertical motion: hold-Z flight against the fly budget, else
@@ -279,16 +295,10 @@ void Fighter::update_state_machine(const input::PlayerState* input,
         if (m_pending.armed) return;
     }
 
-    // Guard (block key held).
-    if (input->down[input::Action::Guard]) {
-        if (m_state != FighterState::Guard) {
-            set_state(FighterState::Guard);
-        }
+    if (input->down[input::Action::Guard] && !m_guardExhausted && m_stamina > 0.0f) {
+        set_state(FighterState::Guard);
+        m_stateTimer = 0;
         return;
-    } else {
-        if (m_state == FighterState::Guard) {
-            set_state(FighterState::Idle);
-        }
     }
 
     bool moving = input->down[input::Action::Up] ||

@@ -320,7 +320,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # foundation_ui for makeScreen -> screen_title -> hud_atlas -> sprite, but never
     # creates a device.
     add_executable(input_backend_test tests/input_backend_test.cpp)
-    target_link_libraries(input_backend_test PRIVATE foundation_media)
+    target_link_libraries(input_backend_test PRIVATE foundation_media foundation_gameplay)
     add_test(NAME input_backend_test COMMAND input_backend_test
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/scripts/frontend-smoke.txt")
     add_executable(frontend_battle_test tests/frontend_battle_test.cpp)

@@ -27,11 +27,11 @@
 //  an a*b+c accumulation. stamina() returns an int (as in the DX9 source), so
 //  stamina checks are integer checks on the truncated value.
 //
-//  Source quirks found while deriving the expectations are pinned as tests and
-//  flagged in the comments: Guard has no input-driven exit, the leap velocity
-//  kJumpSpeed is overwritten by the fly rise on the same frame, Kakera's HP
+//  Source quirks found while deriving the expectations are pinned as tests:
+//  the leap velocity kJumpSpeed is overwritten by the fly rise on the same frame, Kakera's HP
 //  drain rounds to 0 at 60 Hz, and the Friendship gauge needs a 13th hit to
-//  clamp to 1.0. All four are in the DX9 source too.
+//  clamp to 1.0. These are in the DX9 source too. Guard release is corrected
+//  for live play.
 // =============================================================================
 
 #define XMODEL_IMPLEMENTATION   // this TU compiles the asset layer (as raycast_analytic does)
@@ -39,6 +39,7 @@
 #include "assets/xmodel.h"
 
 #include "gameplay/fighter.h"
+#include "gameplay/fixed_step.h"
 #include "gameplay/projectile.h"
 #include "physics/raycast.h"
 
@@ -294,12 +295,14 @@ void test_dash() {
     for (int i = 0; i < 40; ++i) tick(f, in);
     check_int("stamina back at cap after dash", 100, f.stamina());
 
-    // Stamina gate: drain it with a held guard (25/s), leave Guard through
-    // damage (see case 5 for why input cannot), then a double-tap must not dash.
+    // An exhausted hold breaks Guard before stamina can fund another dash.
     Fighter g = make_idle_fighter(glm::vec3(0, 0, 0));
     Input gi;
     gi.set(fnd::input::Action::Guard, true);
-    for (int i = 0; i < 300; ++i) tick(g, gi);
+    for (int i = 0; i < 300; ++i) {
+        tick(g, gi);
+        if (g.state() != FighterState::Guard) break;
+    }
     check_int("guard drained stamina to 0", 0, g.stamina());
     gi.set(fnd::input::Action::Guard, false);
     g.take_damage(5, nullptr);            // Hit: 15 frames with no regen
@@ -512,59 +515,93 @@ void test_hit_stun() {
 }
 
 // ===========================================================================
-//  Case 5 — guard drain (25/s), regen (60/s), stamina floor, Guard dead end
+//  Case 5 — live Guard lifecycle at the selected 64 Hz simulation cadence
 // ===========================================================================
 void test_guard_drain() {
-    section("5. guard drain (kGuardDrainSec 25/s) + regen (60/s)");
-    Fighter f = make_idle_fighter(glm::vec3(0, 0, 0));
+    section("5. Guard release, exhaustion and interruptions at 64 Hz");
+    auto step = [](Fighter& f, Input& in) {
+        fnd::input::compute_edges(in.p);
+        f.update(&in.p, nullptr, gameplay::FixedStep::seconds);
+    };
+    auto guarding = [&]() {
+        Fighter f = make_idle_fighter(glm::vec3(0));
+        Input in;
+        in.set(fnd::input::Guard, true);
+        step(f, in);
+        return f;
+    };
+    for (auto action : {fnd::input::Right, fnd::input::Jump, fnd::input::AttackA,
+                        fnd::input::Shoot}) {
+        Fighter f = guarding();
+        Input in;
+        in.set(action, true);
+        step(f, in);
+        if (action == fnd::input::Shoot) {
+            in.clear();
+            step(f, in);
+        }
+        const auto expected = action == fnd::input::Right ? FighterState::Walk :
+            action == fnd::input::Jump ? FighterState::Jump :
+            action == fnd::input::Shoot ? FighterState::ShootA : FighterState::AttackA;
+        check_int("release permits next action immediately", static_cast<int>(expected),
+                  static_cast<int>(f.state()));
+    }
+    Fighter f = make_idle_fighter(glm::vec3(0));
     Input in;
-    in.set(fnd::input::Action::Guard, true);
-    for (int i = 0; i < 60; ++i) tick(f, in);
-    check_int("guard state while held", static_cast<int>(FighterState::Guard),
-              static_cast<int>(f.state()));
-    check_int("stamina after 60 guarded frames (100 - 25)", 75, f.stamina());
+    in.set(fnd::input::Guard, true);
+    for (int i = 0; i < 64; ++i) step(f, in);
+    check_int("one second held drains 25 stamina", 75, f.stamina());
+    check_int("held Guard persists", static_cast<int>(FighterState::Guard), static_cast<int>(f.state()));
+    in.clear();
+    step(f, in);
+    check_int("release returns to Idle", static_cast<int>(FighterState::Idle), static_cast<int>(f.state()));
+    for (int i = 0; i < 64; ++i) step(f, in);
+    check_int("released Guard regenerates to cap", 100, f.stamina());
 
-    // SOURCE DEFECT, ported as-is: Guard has no input-driven exit. The only
-    // Guard -> Idle transition lives in update_state_machine
-    // (fighter.cpp:268-270), and that is gated by can_act(), which excludes
-    // Guard (fighter.cpp:72-75, 103-105). Releasing the key therefore leaves
-    // the fighter in Guard, still draining, until damage or reset.
-    in.set(fnd::input::Action::Guard, false);
-    tick(f, in);
-    check_int("releasing Guard does NOT leave Guard (source defect)",
-              static_cast<int>(FighterState::Guard), static_cast<int>(f.state()));
-    for (int i = 0; i < 10; ++i) tick(f, in);
-    check_int("stuck Guard keeps draining (75 - 11*0.4167)", 70, f.stamina());
+    in.set(fnd::input::Guard, true);
+    for (int i = 0; i < 256; ++i) step(f, in);
+    check_int("four seconds drain stamina to zero", 0, f.stamina());
+    check_int("exhaustion exits Guard on the draining tick", static_cast<int>(FighterState::Idle), static_cast<int>(f.state()));
+    for (int i = 0; i < 128; ++i) step(f, in);
+    check_int("holding exhausted Guard cannot re-enter", static_cast<int>(FighterState::Idle), static_cast<int>(f.state()));
+    check_int("exhausted hold allows stamina recovery", 100, f.stamina());
+    in.clear();
+    step(f, in);
+    in.set(fnd::input::Guard, true);
+    step(f, in);
+    check_int("fresh hold can guard again", static_cast<int>(FighterState::Guard), static_cast<int>(f.state()));
+    f.reset(glm::vec3(0), 0);
+    settle(f);
+    step(f, in);
+    check_int("round reset permits Guard", static_cast<int>(FighterState::Guard), static_cast<int>(f.state()));
 
-    // Damage is the way out: Hit (15 frames, no regen) -> Idle, then regen.
-    f.take_damage(5, nullptr);
-    check_int("damage leaves Guard", static_cast<int>(FighterState::Hit),
-              static_cast<int>(f.state()));
-    for (int i = 0; i < 15; ++i) tick(f, in);
-    check_int("stun ends in Idle", static_cast<int>(FighterState::Idle),
-              static_cast<int>(f.state()));
-    const int s_idle = f.stamina();
-    tick(f, in);
-    check_int("grounded regen resumes at 60/s (1/frame)", s_idle + 1, f.stamina());
+    Fighter lost = guarding();
+    lost.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+    check_int("missing controller input releases Guard", static_cast<int>(FighterState::Idle), static_cast<int>(lost.state()));
+    Fighter air = make_idle_fighter(glm::vec3(0));
+    Input ai;
+    ai.set(fnd::input::Jump, true);
+    step(air, ai);
+    ai.clear();
+    ai.set(fnd::input::Guard, true);
+    step(air, ai);
+    check_bool("airborne Guard entered", air.state() == FighterState::Guard, true);
+    ai.clear();
+    step(air, ai);
+    check_bool("airborne release returns to Jump", air.state() == FighterState::Jump && air.airborne(), true);
 
-    // Drain floors at 0.
-    Fighter g = make_idle_fighter(glm::vec3(0, 0, 0));
-    Input gi;
-    gi.set(fnd::input::Action::Guard, true);
-    for (int i = 0; i < 300; ++i) tick(g, gi);
-    check_int("guard drain floors at 0", 0, g.stamina());
-
-    // Stamina regen caps at kMaxStamina (leave Guard through damage first).
-    Fighter h = make_idle_fighter(glm::vec3(0, 0, 0));
-    Input hi;
-    hi.set(fnd::input::Action::Guard, true);
-    for (int i = 0; i < 30; ++i) tick(h, hi);
-    check_int("stamina after 30 guarded frames", 87, h.stamina());
-    hi.set(fnd::input::Action::Guard, false);
-    h.take_damage(5, nullptr);
-    for (int i = 0; i < 15; ++i) tick(h, hi);
-    for (int i = 0; i < 200; ++i) tick(h, hi);
-    check_int("stamina regen caps at 100", 100, h.stamina());
+    Fighter hit = guarding();
+    hit.take_damage(5);
+    in.clear();
+    step(hit, in);
+    check_int("release cannot cancel hitstun", static_cast<int>(FighterState::Hit), static_cast<int>(hit.state()));
+    in.set(fnd::input::Guard, true);
+    step(hit, in);
+    check_int("held Guard cannot cancel hitstun", static_cast<int>(FighterState::Hit), static_cast<int>(hit.state()));
+    hit.take_damage(1000);
+    in.clear();
+    step(hit, in);
+    check_int("release cannot cancel KO", static_cast<int>(FighterState::KO), static_cast<int>(hit.state()));
 }
 
 // ===========================================================================

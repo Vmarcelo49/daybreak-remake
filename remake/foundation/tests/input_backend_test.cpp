@@ -1,5 +1,7 @@
 #include "input/input_backend.h"
 #include "input/tick_input.h"
+#include "gameplay/fighter.h"
+#include "gameplay/fixed_step.h"
 #include <SDL3/SDL.h>
 #include <cstdio>
 
@@ -73,6 +75,54 @@ int main(int argc, char** argv) {
         backend.poll(false);
         backend.sample_tick_inputs(ticks);
         check(!ticks[0].consume().just_pressed[Jump], "binding capture suppresses queued key press");
+    }
+    {
+        using namespace fnd::input;
+        SDL_VirtualJoystickDesc desc{};
+        SDL_INIT_INTERFACE(&desc);
+        desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+        desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
+        desc.button_mask = 1u << SDL_GAMEPAD_BUTTON_SOUTH;
+        desc.name = "Guard lifecycle test";
+        const auto id = SDL_AttachVirtualJoystick(&desc);
+        check(id != 0, "virtual controller attached");
+        SDL_Joystick* joystick = SDL_OpenJoystick(id);
+        check(joystick != nullptr, "virtual controller opened");
+        Backend backend;
+        check(backend.init(), "controller input initialized");
+        backend.poll(false);
+        const int player = backend.gamepad_player(id);
+        check(player > 0, "controller assigned a player");
+        if (joystick && player > 0) {
+            TickInput ticks[kMaxPlayers];
+            gameplay::Fighter fighter;
+            auto sample = [&]() {
+                SDL_UpdateJoysticks();
+                backend.poll(false);
+                backend.sample_tick_inputs(ticks);
+                const auto state = ticks[player].consume();
+                fighter.update(&state, nullptr, gameplay::FixedStep::seconds);
+                return state;
+            };
+            SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_SOUTH, true);
+            check(sample().just_pressed[Guard], "controller Guard hold reaches tick");
+            check(fighter.state() == gameplay::FighterState::Guard, "controller hold starts fighter Guard");
+            backend.note_focus_lost();
+            check(sample().just_released[Guard], "focus loss releases controller Guard");
+            check(fighter.state() == gameplay::FighterState::Idle, "focus loss frees guarding fighter");
+            check(!sample().down[Guard], "physical hold cannot re-enter after focus loss");
+            SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_SOUTH, false);
+            sample();
+            SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_SOUTH, true);
+            check(sample().just_pressed[Guard], "fresh controller press works after focus loss");
+            SDL_DetachVirtualJoystick(id);
+            check(sample().just_released[Guard], "controller disconnect releases held Guard");
+            check(fighter.state() == gameplay::FighterState::Idle, "disconnect frees guarding fighter");
+            check(!sample().down[Guard], "disconnected Guard stays released");
+        } else if (id) {
+            SDL_DetachVirtualJoystick(id);
+        }
+        if (joystick) SDL_CloseJoystick(joystick);
     }
     if (argc > 1) {
         fnd::input::Backend backend;

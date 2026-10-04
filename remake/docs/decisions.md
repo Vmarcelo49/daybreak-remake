@@ -100,8 +100,9 @@ comments — when a decision changes.
 - **The DX9 behavioural oracle's role is retained as records.** The
   gameplay trace A/B (`compare_match_traces.py`) still runs against the
   banked DX9 logs, and the DX9 remake's quirks the port deliberately pins
-  (the one-way guard state, the unclamped camera A/B) stay documented and
-  tested. What ends is the ability to produce *new* DX9 frames: any new
+  stay documented in the bank. The one-way Guard defect was corrected
+  for playable updates in issue #6; the unclamped camera A/B remains tested.
+  What ends is the ability to produce *new* DX9 frames: any new
   behavioural claim now has to come from the original.
 - Rollback point: tag `pre-webgpu-cutover` (`37ed31d`), kept until the
   release after the cutover. This supersedes the "DX9 is not deleted"
