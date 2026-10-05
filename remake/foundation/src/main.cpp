@@ -111,6 +111,11 @@ struct Options {
     bool        fog        = false;   // opt-in: the DX9 reference renders unfogged
     bool        noAnim     = false;   // bind pose: the DX9 reference binds no sets
     bool        hitboxDebug = false;  // draw the recovered melee hit spheres (issue #10)
+    // Interactive animation browser: one rig, no stage, arrows change the set index
+    // and WASD orbits the camera. Exists because the state's anim-set table has
+    // unmapped entries (Jump/Guard/TagOut return -1) and set 2 does not look like an
+    // attack, which is only checkable by looking at the clips side by side.
+    bool        animPlayer = false;
     bool        unlit      = false;
     bool        list       = false;
     std::string screen;          // --screen=<id|name>: boot a front-end screen
@@ -148,6 +153,7 @@ void usage() {
         "                     (default auto: the stage's spawn point when env.dat\n"
         "                     has one, else framed bounds)\n"
         "  --anim=N --time=S --dt=S   pose with animation set N, seek and step\n"
+        "                     the set index, WASD orbits the camera, name on top\n"
         "  --no-textures      draw untextured, for an A/B of texture resolution\n"
         "  --no-anim          bind no animation set: render the bind pose. The DX9\n"
         "                     reference binds none either (its d3dx9 under Wine\n"
@@ -213,6 +219,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         }
         else if (!(v = val("--frames=")).empty()) o.frames = std::atoi(v.c_str());
         else if (!(v = val("--anim=")).empty()) o.anim = std::atoi(v.c_str());
+        else if (a == "--anim-player") o.animPlayer = true;
         else if (!(v = val("--time=")).empty()) o.time = (float)std::atof(v.c_str());
         else if (!(v = val("--dt=")).empty()) o.dt = (float)std::atof(v.c_str());
         else if (!(v = val("--camera=")).empty()) o.camera = v;
@@ -555,6 +562,15 @@ struct App {
     glm::vec3                    arenaDesired{0.f};
     glm::vec3                    prevEye{0.f};
     bool                         havePrevEye = false;
+
+    // --anim-player orbit. Kept separate from arenaCamera because this view has no
+    // arena, no follow and no clamp: the eye is a plain orbit around the rig's origin so
+    // a clip can be judged from any angle without the game camera in the way.
+    float                        apYaw = 0.6f, apPitch = 0.25f, apDist = 340.f;
+    int                          apIndex = 0;
+    double                       apTime = 0.0;       // seconds into the clip
+    double                       apLength = 1.0;     // the clip's own length
+    ui::CaptionText              apText;
 
     // Playable match (Phase 2): the ported simulation drives the fighters, the HUD
     // values and the effects, instead of the versus vignette's frame-index script.
@@ -1742,6 +1758,8 @@ bool initScene(App& app) {
     // ---- pose: bind pose, or one animation set driven through the Controller
     app.controllers.resize(app.scene.models.size());
     app.worlds.resize(app.scene.models.size());
+    if (app.opts.animPlayer) app.apIndex = std::min(app.opts.anim, app.scene.models.empty()
+                                       ? 0 : (int)app.scene.models[0].model.anims.size());
     for (size_t i = 0; i < app.scene.models.size(); ++i) {
         xm::Model& m = app.scene.models[i].model;
         if (app.opts.anim >= 0 && (size_t)app.opts.anim < m.anims.size()) {
@@ -2600,6 +2618,60 @@ void fillDebugLines(App& app) {
 // the prims pass share this one: HUD first (it is the frame's overlay), prims second.
 // Both preserve the frame they annotate (LoadOp_Load), so the order between them is
 // the only difference. The depth view is read inside the hook, never before it: the
+// --anim-player input. Arrows step the set index, WASD orbits. This view deliberately
+// ignores matchInput: a clip browser wants raw keys, not the gameplay action map, where
+// Up is bound to double-tap dash.
+static void animPlayerKey(App& app, SDL_Keycode key) {
+    int sets = 0;
+    if (!app.scene.models.empty()) sets = (int)app.scene.models[0].model.anims.size();
+    if (sets <= 0) return;
+    switch (key) {
+        case SDLK_RIGHT: case SDLK_UP:
+            app.apIndex = (app.apIndex + 1) % sets;
+            break;
+        case SDLK_LEFT: case SDLK_DOWN:
+            app.apIndex = (app.apIndex - 1 + sets) % sets;
+            break;
+        case SDLK_W: app.apPitch -= 0.08f; break;
+        case SDLK_S: app.apPitch += 0.08f; break;
+        case SDLK_A: app.apYaw -= 0.12f; break;
+        case SDLK_D: app.apYaw += 0.12f; break;
+        default: return;
+    }
+    app.apPitch = std::clamp(app.apPitch, -1.2f, 1.2f);
+    app.apTime = 0.0;   // a new clip starts at its beginning
+}
+
+// Advances the browsed clip and re-poses the rig. Runs in the frame loop so the clip
+// plays, is looped at its own length, and re-poses when the index changes.
+static void animPlayerTick(App& app, double dt) {
+    if (app.scene.models.empty()) return;
+    xm::Model& m = app.scene.models[0].model;
+    if (app.apIndex < 0 || app.apIndex >= (int)m.anims.size()) return;
+
+    xm::Controller& c = app.controllers[0];
+    if (app.apIndex != app.opts.anim) {
+        app.opts.anim = app.apIndex;
+        c.bind(&m);
+        c.setAnimation(app.apIndex, true);
+        // AnimSet::duration is in the file's own ticks; setTrackPosition takes SECONDS
+        // and converts through Model::ticksPerSecond (xmodel.h:1979). So the length is
+        // converted here once, and the per-frame seek stays in seconds.
+        const double tps = m.ticksPerSecond > 0.f ? (double)m.ticksPerSecond : 4800.0;
+        app.apLength = std::max(0.05, (double)m.anims[app.apIndex].duration / tps);
+        app.apTime = 0.0;
+    }
+    app.apTime += dt;
+    if (app.apTime > app.apLength) app.apTime = std::fmod(app.apTime, app.apLength);
+    c.setTrackPosition(0, app.apTime);
+    c.evalWorld(app.worlds[0]);
+
+    const float ch = std::cos(app.apPitch);
+    app.target = glm::vec3(0.f, 80.f, 0.f);
+    app.eye = app.target + glm::vec3(std::sin(app.apYaw) * ch, std::sin(app.apPitch),
+                                     std::cos(app.apYaw) * ch) * app.apDist;
+}
+
 // scene pass creates it, and a capture-sized run has no earlier render to borrow from.
 struct CaptureHook {
     render::SceneRenderer*        renderer = nullptr;
@@ -2754,6 +2826,10 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         app->matchInput.poll(false);
         app->matchInput.sample_tick_inputs(app->pendingInput);
     }
+    // The animation browser owns its own clock rather than the match's fixed step, so the
+    // clip advances at wall-clock rate and reads as a smooth player.
+    if (app->opts.animPlayer) animPlayerTick(*app, delta);
+
     const int ticks = capturing ? 1 : app->logicClock.advance(app->frames > 1 ? delta : 0.0);
     app->matchAlpha = capturing ? 1.f : app->logicClock.alpha();
     for (int tick = 0; tick < ticks; ++tick) {
@@ -3040,6 +3116,27 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 return SDL_APP_FAILURE;
             }
         }
+        if (app->opts.animPlayer && app->uiReady && !app->scene.models.empty()) {
+            char buf[160];
+            const xm::Model& m = app->scene.models[0].model;
+            const char* name = (app->apIndex >= 0 && app->apIndex < (int)m.anims.size())
+                                   ? m.anims[app->apIndex].name.c_str() : "(none)";
+            std::snprintf(buf, sizeof(buf), "[%d/%d]  %s", app->apIndex,
+                          (int)m.anims.size(), name);
+            const std::string line = buf;
+            const std::string hint = "arrows: set index    WASD: orbit";
+            std::string textError;
+            if (app->apText.load(app->uiRenderer, 14.f, textError) &&
+                app->apText.prepare(app->uiRenderer, {line, hint}, textError)) {
+                app->uiRenderer.beginFrame(app->sc.width, app->sc.height);
+                app->apText.draw(app->uiRenderer, line.c_str(), 24.f, 20.f, 1.f, ui::kHudWhite);
+                app->apText.draw(app->uiRenderer, hint.c_str(), 24.f, 40.f, 1.f, ui::kHudWhite);
+                if (!app->uiRenderer.render(frame.encoder, frame.view, app->sc.format, app->error)) {
+                    gpu::endFrame(app->ctx, app->sc, frame);
+                    return SDL_APP_FAILURE;
+                }
+            }
+        }
         if (app->uiReady && (app->opts.hudTest || app->matchMode || app->versusMode)) {
             HudTestHook hook = battleHudHook(*app);
             if (!hudTestHook(frame.encoder,frame.view,app->sc.format,app->sc.width,app->sc.height,&hook)) {
@@ -3096,6 +3193,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
             }
             app->matchInput.note_key((int)event->key.scancode, true);
             if (event->key.key == SDLK_ESCAPE) return SDL_APP_SUCCESS;
+            if (app->opts.animPlayer && !event->key.repeat) animPlayerKey(*app, event->key.key);
             break;
         case SDL_EVENT_KEY_UP:
             app->matchInput.note_key((int)event->key.scancode, false);
