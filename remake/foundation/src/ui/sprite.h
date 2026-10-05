@@ -329,8 +329,19 @@ private:
     WGPUBindGroupLayout texLayout_ = nullptr;
     WGPUPipelineLayout  layout_ = nullptr;
     WGPUSampler         sampler_ = nullptr;
-    WGPUBuffer          vpBuffer_ = nullptr;
-    WGPUBindGroup       vpGroup_ = nullptr;
+    // One uniform SLOT per render() call, addressed with a dynamic offset. A frame
+    // records several passes into ONE command buffer (a split-screen HUD pass per view,
+    // then the separator pass), and every wgpuQueueWriteBuffer lands before that buffer
+    // is submitted — so a single shared slot would leave every pass reading the LAST
+    // pass's value. That is exactly how the per-view HUD came out at half scale: the
+    // separator pass wrote the full target size last, and each cell's HUD was then drawn
+    // as if its 480x270 canvas were 960x540. Slots are reused round-robin across frames,
+    // which is safe because a queue write is ordered before the next submission.
+    static constexpr uint32_t kUniformSlots = 16;
+    static constexpr uint64_t kUniformStride = 256;  // minUniformBufferOffsetAlignment
+    WGPUBuffer          vpBuffer_ = nullptr;         // kUniformSlots * kUniformStride
+    WGPUBindGroup       vpGroup_ = nullptr;          // binding 0 with a dynamic offset
+    uint32_t            uniformSlot_ = 0;
     WGPUBuffer          vbuf_ = nullptr;
     WGPUBuffer          ibuf_ = nullptr;
 

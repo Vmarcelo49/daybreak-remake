@@ -46,6 +46,9 @@ bool SpriteRenderer::init(WGPUDevice device, WGPUQueue queue, std::string& error
     vpEntry.visibility = WGPUShaderStage_Vertex;
     vpEntry.buffer.type = WGPUBufferBindingType_Uniform;
     vpEntry.buffer.minBindingSize = sizeof(ViewportUniform);
+    // The binding is offset per pass (see kUniformSlots): a frame's passes share one
+    // buffer, so the value each pass reads must be its own.
+    vpEntry.buffer.hasDynamicOffset = true;
 
     WGPUBindGroupLayoutDescriptor bglDesc = {};
     bglDesc.entryCount = 1;
@@ -78,8 +81,9 @@ bool SpriteRenderer::init(WGPUDevice device, WGPUQueue queue, std::string& error
     sd.maxAnisotropy = 1;   // zero-init leaves 0, which the validator rejects
     sampler_ = wgpuDeviceCreateSampler(device_, &sd);
 
-    vpBuffer_ = gpu::createBuffer(device_, sizeof(ViewportUniform),
+    vpBuffer_ = gpu::createBuffer(device_, kUniformSlots * kUniformStride,
                                    WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst, nullptr);
+    uniformSlot_ = 0;
 
     if (!vpLayout_ || !texLayout_ || !layout_ || !sampler_ || !vpBuffer_) {
         error = "sprite renderer setup failed (layouts, sampler or viewport buffer)";
@@ -410,8 +414,11 @@ bool SpriteRenderer::render(WGPUCommandEncoder encoder, WGPUTextureView view,
     WGPURenderPipeline pipeline = pipelineFor(format, error);
     if (!pipeline) return false;
 
+    // This pass's own slot: the next render() in the same frame takes the next one, so a
+    // later pass can no longer overwrite what this one reads (issue: split-screen HUD).
+    const uint64_t uniformOffset = (uint64_t)(uniformSlot_++ % kUniformSlots) * kUniformStride;
     const ViewportUniform vu{(float)viewport_.w, (float)viewport_.h, 0.f, 0.f};
-    wgpuQueueWriteBuffer(queue_, vpBuffer_, 0, &vu, sizeof vu);
+    wgpuQueueWriteBuffer(queue_, vpBuffer_, uniformOffset, &vu, sizeof vu);
 
     // Expand the batch into vertices, one run per (texture, scissor) so a clip
     // change or texture change costs exactly one draw. Fully clipped quads are
@@ -483,7 +490,8 @@ bool SpriteRenderer::render(WGPUCommandEncoder encoder, WGPUTextureView view,
         return false;
     }
     wgpuRenderPassEncoderSetPipeline(pass, pipeline);
-    wgpuRenderPassEncoderSetBindGroup(pass, 0, vpGroup_, 0, nullptr);
+    const uint32_t dynamicOffset = (uint32_t)uniformOffset;
+    wgpuRenderPassEncoderSetBindGroup(pass, 0, vpGroup_, 1, &dynamicOffset);
     // Viewport origin is top-left in WebGPU (D3D convention, unlike Vulkan), so
     // pixel quads map 1:1 here on every backend with no #if. A split-screen view's
     // origin places its cell; the shader still maps the view's own w x h to NDC.
