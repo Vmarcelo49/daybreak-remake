@@ -301,11 +301,18 @@ inline HypermodeParams hypermode_params(Hypermode m) {
             false, false, false, 1.0f, 1.0f, packRgb(255, 255, 255)};
 }
 
-// Movement speed constants (from RE section 14.7 + gameplay tuning).
-// The original uses 20.0 as capsule radius and generous distances.
+// Movement speed constants: recovered per-tick locomotion × 60 Hz, not tuning.
+// The handlers move in units/tick with no ×dt (FUN_004202b0 builds displacement
+// as cos/sin(yaw)×speed; FUN_0042cb50/FUN_0042c970 add it raw), so u/s = 60 ×
+// the tick literal. Values vary per character and the handler↔fighter map is
+// unrecovered, so each constant is the modal handler value with the observed
+// range on record: walk 2.5–7.5/tick (150–450/s), dash 10–30/tick (600–1800/s),
+// air-dash 12.5–40/tick (750–2400/s). The old walk 80 / dash 200 / leap 380
+// were placeholders with no RE behind them.
 struct FighterConstants {
-    static constexpr float kWalkSpeed     = 80.0f;   // units/sec
-    static constexpr float kRunSpeed      = 200.0f;  // units/sec (dash)
+    static constexpr float kWalkSpeed     = 420.0f;  // 7.0/tick, the modal walk
+    static constexpr float kRunSpeed      = 900.0f;  // 15.0/tick, the modal dash;
+                                                     // phase-2 decay not modelled
     static constexpr float kTurnSpeed     = 8.0f;    // radians/sec (lerp factor)
     static constexpr int   kMaxHP         = 100;     // 0x64 in the binary
     static constexpr int   kMaxStamina    = 100;
@@ -327,17 +334,21 @@ struct FighterConstants {
     static constexpr int   kShotFrames    = 20;     // firing pose length
     static constexpr float kMuzzleForward = 60.0f;  // spawn ahead of fighter
     static constexpr float kMuzzleHeight  = 100.0f; // spawn above feet
-    // Air movement (spec §3.2; all provisional — no RE numbers yet).
-    static constexpr float kGravity       = 900.0f; // downward accel (u/s^2)
-    static constexpr float kJumpSpeed     = 380.0f; // leap initial vy (u/s)
-    static constexpr float kFlyRise       = 40.0f;  // vy while holding Z aloft
+    // Air movement: the leap matches the 0x29 fly-takeoff (vy 12.0/tick, 10.5 for
+    // flyer characters) under the shared g = 0.5/tick (FUN_00438310:457,474 and
+    // FUN_00428510's 0x3F00000 default branch). Sustained hold-climb reuses the
+    // takeoff scale — INFERRED from the g=0 hover states (0x28), not a timed rate;
+    // the ceiling and budget below are still the port's own.
+    static constexpr float kGravity       = 1800.0f; // downward accel (u/s^2)
+    static constexpr float kJumpSpeed     = 720.0f;  // leap initial vy (u/s)
+    static constexpr float kFlyRise       = 720.0f;  // vy while holding Z aloft
     static constexpr float kFlyTimeSec    = 1.2f;   // flight budget per airtime
     static constexpr float kFlyMaxAlt     = 420.0f; // ceiling above takeoff
     static constexpr float kAirControl    = 0.7f;   // stick authority airborne
     // Dashes (spec §3.2): double-tap a direction; airborne → air dash.
     static constexpr double kDoubleTapSec = 0.30;   // tap,tap window (seconds)
     static constexpr int   kDashFrames    = 20;     // committed dash length
-    static constexpr float kAirDashSpeed  = 260.0f; // ground dash uses kRunSpeed
+    static constexpr float kAirDashSpeed  = 1200.0f; // 20.0/tick, the modal air dash
     // Stamina spends (spec §3.4: dashing/jumping/block-hold spend it all).
     static constexpr float kDashStamina    = 20.0f;  // per dash (gated: no
                                                     // dash below this)

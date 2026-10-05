@@ -224,11 +224,11 @@ void test_idle_walk() {
     const float z1 = f.position().z;
     check_int("state while holding Up", static_cast<int>(FighterState::Walk),
               static_cast<int>(f.state()));
-    check_bits("first walk frame dz", 80.0f * kStep, z1 - 0.0f);
+    check_bits("first walk frame dz", 420.0f * kStep, z1 - 0.0f);
     for (int i = 0; i < 60; ++i) tick(f, in);
     const float z61 = f.position().z;
-    check_near("z after 61 walk frames", 80.0 * 61 * kDt, z61, 1e-3);
-    check_near("measured speed over 60 frames (u/s)", 80.0,
+    check_near("z after 61 walk frames", 420.0 * 61 * kDt, z61, 1e-3);
+    check_near("measured speed over 60 frames (u/s)", 420.0,
                (z61 - z1) / (60.0 * kDt), 1e-3);
     check_bits("x untouched by pure facing-forward walk", 0.0f, f.position().x);
 
@@ -248,13 +248,13 @@ void test_idle_walk() {
     Input fwd;
     fwd.set(fnd::input::Action::Up, true);
     for (int i = 0; i < 61; ++i) tick(hunter, fwd, &prey);
-    check_near("forward walks +X when facing +X", 80.0 * 61 * kDt,
+    check_near("forward walks +X when facing +X", 420.0 * 61 * kDt,
                hunter.position().x, 1e-3);
     check_near("no sideways drift while closing", 0.0, hunter.position().z, 1e-4);
     check_near("facing stays locked on the opponent", 1.5707964,
                hunter.facing_yaw(), 1e-6);
     check_near("the gap to the opponent shrinks by the walked distance",
-               500.0 - 80.0 * 61 * kDt,
+               500.0 - 420.0 * 61 * kDt,
                500.0 - hunter.position().x, 1e-3);
 
     // Stick deflection past the deadzone walks too (same 8000 threshold).
@@ -264,7 +264,7 @@ void test_idle_walk() {
     tick(s, si);
     check_int("stick past the deadzone enters Walk", static_cast<int>(FighterState::Walk),
               static_cast<int>(s.state()));
-    check_near("full stick walks at kWalkSpeed", 80.0 * kDt, s.position().x, 1e-6);
+    check_near("full stick walks at kWalkSpeed", 420.0 * kDt, s.position().x, 1e-6);
     si.p.stick_x = 4000;   // inside the 8000 deadzone
     tick(s, si);
     check_int("stick inside the deadzone is rest", static_cast<int>(FighterState::Idle),
@@ -298,7 +298,8 @@ void test_dash() {
     // Up maps to facing-forward = +Z (fighter.cpp:579), the same basis the walk
     // uses now: a tap and a hold agree about where "up" goes, so a dash fired
     // while walking keeps the line instead of reversing it.
-    check_bits("ground dash first-frame dz", 200.0f * kStep, f.position().z - z_before);
+    check_near("ground dash first-frame dz", 900.0 * kDt, f.position().z - z_before,
+               1e-5);
     // Stamina: 100 - 20 = 80, then the same frame's grounded regen (+60*dt)
     // runs because Run is an actionable state (fighter.cpp:124). stamina() is
     // an int, so the observable is 81.
@@ -309,8 +310,8 @@ void test_dash() {
     const float z_dash0 = f.position().z;
     for (int i = 0; i < 19; ++i) tick(f, in);
     const float z_dash19 = f.position().z;
-    check_near("dash travel over 20 frames", 200.0 * 20 * kDt, z_dash19 - z_before, 1e-3);
-    check_near("dash speed (u/s)", 200.0, (z_dash19 - z_dash0) / (19.0 * kDt), 1.0);
+    check_near("dash travel over 20 frames", 900.0 * 20 * kDt, z_dash19 - z_before, 1e-3);
+    check_near("dash speed (u/s)", 900.0, (z_dash19 - z_dash0) / (19.0 * kDt), 1.0);
     tick(f, in);
     check_int("dash expires after kDashFrames", static_cast<int>(FighterState::Idle),
               static_cast<int>(f.state()));
@@ -364,7 +365,7 @@ void test_dash() {
               static_cast<int>(a.state()));
     check_bool("air dash keeps the fighter airborne", true, a.airborne());
     check_bits("air dash hangs (y frozen)", y_air, a.position().y);
-    check_bits("air dash first-frame dz", 260.0f * kStep, a.position().z - z_air);
+    check_bits("air dash first-frame dz", 1200.0f * kStep, a.position().z - z_air);
     const int stamina_after_air = a.stamina();
     check_int("air dash spend is kDashStamina", stamina_before_air - 20,
               stamina_after_air);
@@ -649,10 +650,10 @@ void test_guard_drain() {
 //  Case 6 — jump / gravity / landing and the fly budget
 // ===========================================================================
 void test_air() {
-    section("6. jump/gravity/landing (kGravity 900, kJumpSpeed 380, fly 1.2 s)");
-    check_bits("kGravity", 900.0f, FighterConstants::kGravity);
-    check_bits("kJumpSpeed", 380.0f, FighterConstants::kJumpSpeed);
-    check_bits("kFlyRise", 40.0f, FighterConstants::kFlyRise);
+    section("6. jump/gravity/landing (kGravity 1800, kJumpSpeed 720, fly 1.2 s)");
+    check_bits("kGravity", 1800.0f, FighterConstants::kGravity);
+    check_bits("kJumpSpeed", 720.0f, FighterConstants::kJumpSpeed);
+    check_bits("kFlyRise", 720.0f, FighterConstants::kFlyRise);
     check_bits("kFlyTimeSec", 1.2f, FighterConstants::kFlyTimeSec);
     check_bits("kFlyMaxAlt", 420.0f, FighterConstants::kFlyMaxAlt);
 
@@ -663,20 +664,16 @@ void test_air() {
     check_bool("airborne on the leap frame", true, f.airborne());
     check_int("leap state", static_cast<int>(FighterState::Jump),
               static_cast<int>(f.state()));
-    // kJumpSpeed is written by try_jump and then overwritten in the same frame
-    // by the fly-rise branch, because just_pressed implies down[Jump] is held
-    // and the state is already Jump (fighter.cpp:140-151). The 380 u/s leap
-    // velocity is therefore never observable for a held key; the first frame
-    // rises at kFlyRise.
-    check_bits("leap frame rise uses kFlyRise, not kJumpSpeed", 40.0f * kStep,
-               f.position().y);
-    check_bool("a 380 u/s leap would have risen 6.33 units", f.position().y < 6.0f, true);
+    // try_jump writes kJumpSpeed, then the same frame's fly-rise branch overwrites
+    // it — but both are 720 now (the leap matches the 0x29 fly-takeoff vy 12/tick),
+    // so the overwrite is unobservable and the first frame rises 720*dt either way.
+    check_bits("leap frame rise", 720.0f * kStep, f.position().y);
     check_int("leap spends kJumpStamina and one fly tick", 89, f.stamina());
 
-    // Fly budget: count frames whose rise is kFlyRise * dt (the increment is a
-    // rounded float sum, so compare within 1e-5; the gravity increments differ
-    // by >0.25).
-    int fly_frames = 1;   // the leap frame above
+    // Powered climb: frames rising at kFlyRise * dt, until the kFlyMaxAlt ceiling
+    // caps the climb (720 u/s reaches 420 in 35 frames; the 1.2 s budget would
+    // allow ~73). The ceiling hold is by design — budget outlasts the climb.
+    int rise_frames = 1;   // the leap frame above
     float prev_y = f.position().y;
     float peak_y = prev_y;
     int peak_frame = 1;
@@ -684,36 +681,33 @@ void test_air() {
     for (int i = 2; i <= 200 && land_frame < 0; ++i) {
         tick(f, in);
         const float dy = f.position().y - prev_y;
-        if (std::fabs(dy - 40.0f * kStep) < 1e-5) ++fly_frames;
+        if (std::fabs(dy - 720.0f * kStep) < 1e-4) ++rise_frames;
         if (f.position().y > peak_y) { peak_y = f.position().y; peak_frame = i; }
         if (!f.airborne()) land_frame = i;
         prev_y = f.position().y;
     }
-    check_int("fly frames (kFlyTimeSec / dt, float-exact)", 73, fly_frames);
-    check_int("peak-altitude frame", 75, peak_frame);
-    check_near("peak altitude", 49.2500191, peak_y, 1e-4);
-    check_bool("kFlyMaxAlt ceiling never reached by the fly budget",
-               peak_y < FighterConstants::kFlyMaxAlt, true);
-    check_int("landing frame after the leap", 96, land_frame);
+    check_int("powered rise frames before the ceiling", 35, rise_frames);
+    check_int("peak-altitude frame", 35, peak_frame);
+    check_bits("the ceiling caps the climb at kFlyMaxAlt", 420.0f, peak_y);
+    check_int("landing frame after the leap", 114, land_frame);
     check_bits("landing snaps y to groundY", 0.0f, f.position().y);
     check_bool("grounded after landing", false, f.airborne());
     check_int("landing state", static_cast<int>(FighterState::Idle),
               static_cast<int>(f.state()));
     check_int("stamina after flight (no airborne regen)", 53, f.stamina());
 
-    // The fly budget resets on landing: jump again and it flies for 73 frames.
+    // The fly budget resets on landing: jump again and the climb caps at 420 again.
     in.set(fnd::input::Action::Jump, false);
     tick(f, in);
     in.set(fnd::input::Action::Jump, true);
     tick(f, in);
-    int fly_frames2 = 1;
-    float y2 = f.position().y;
+    float peak2 = f.position().y;
     for (int i = 2; i <= 100; ++i) {
         tick(f, in);
-        if (std::fabs((f.position().y - y2) - 40.0f * kStep) < 1e-5) ++fly_frames2;
-        y2 = f.position().y;
+        peak2 = std::max(peak2, f.position().y);
+        if (!f.airborne()) break;
     }
-    check_int("fly budget resets on landing", 73, fly_frames2);
+    check_bits("second flight caps at the ceiling again", 420.0f, peak2);
 
     // Gravity while airborne and not flying: vy loses kGravity*dt per frame.
     Fighter g = make_idle_fighter(glm::vec3(0, 0, 0));
@@ -722,11 +716,11 @@ void test_air() {
     tick(g, gi);
     gi.set(fnd::input::Action::Jump, false);
     tick(g, gi);
-    const float dy1 = g.position().y - 40.0f * kStep;
+    const float dy1 = g.position().y - 720.0f * kStep;
     tick(g, gi);
-    const float dy2 = g.position().y - 40.0f * kStep - dy1;
-    check_near("gravity step 1", 25.0 * kDt, dy1, 1e-5);
-    check_near("gravity step 2", 10.0 * kDt, dy2, 1e-5);
+    const float dy2 = g.position().y - 720.0f * kStep - dy1;
+    check_near("gravity step 1", 690.0 * kDt, dy1, 1e-5);
+    check_near("gravity step 2", 660.0 * kDt, dy2, 1e-5);
 
     // Air control scales walk speed by kAirControl while airborne.
     Fighter h = make_idle_fighter(glm::vec3(0, 0, 0));
@@ -738,7 +732,7 @@ void test_air() {
     const float x0 = h.position().x;
     hi.set(fnd::input::Action::Right, true);
     tick(h, hi);
-    check_near("air control scales walk speed by 0.7", 80.0 * 0.7 * kDt,
+    check_near("air control scales walk speed by 0.7", 420.0 * 0.7 * kDt,
                h.position().x - x0, 1e-5);
     check_bits("kAirControl", 0.7f, FighterConstants::kAirControl);
 }
@@ -1146,7 +1140,7 @@ void test_hypermode() {
         a.update(nullptr, nullptr, kDt);
         // Pushed away from the activator: A sits on B's +Z side, so the burst
         // sends it toward -Z at kRunSpeed with the Hit state's 0.8 friction.
-        check_near("knockback carries away at 0.8 friction", -200.0 * 0.8 * kDt,
+        check_near("knockback carries away at 0.8 friction", -900.0 * 0.8 * kDt,
                    a.position().z - az, 1e-4);
         in.set(fnd::input::Action::Special, false);
 
