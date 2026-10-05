@@ -185,7 +185,29 @@ bool configureSwapchain(Context& ctx, Swapchain& sc, uint32_t width, uint32_t he
     for (size_t i = 0; i < caps.presentModeCount; ++i)
         if (caps.presentModes[i] == WGPUPresentMode_Fifo) sc.supportsFifo = true;
 
+    // Prefer a non-sRGB 8-bit format: the whole pipeline works in byte (gamma)
+    // space — textures decode to raw bytes, lighting runs on those bytes, and
+    // the D3D9 reference wrote them straight to its gamma backbuffer. An sRGB
+    // swapchain gamma-encodes the image a SECOND time on present, pushing every
+    // 3D pixel toward white, while offscreen RGBA8Unorm captures convert nothing
+    // — correct captures, white live game (measured: RGBA8UnormSrgb on RADV).
+    // RGBA8Unorm first so live matches captures; BGRA8Unorm second for backends
+    // that only offer it; otherwise keep formats[0].
     sc.format = caps.formats[0];
+    for (size_t i = 0; i < caps.formatCount; ++i) {
+        if (caps.formats[i] == WGPUTextureFormat_RGBA8Unorm) {
+            sc.format = caps.formats[i];
+            break;
+        }
+    }
+    if (sc.format != WGPUTextureFormat_RGBA8Unorm) {
+        for (size_t i = 0; i < caps.formatCount; ++i) {
+            if (caps.formats[i] == WGPUTextureFormat_BGRA8Unorm) {
+                sc.format = caps.formats[i];
+                break;
+            }
+        }
+    }
     sc.presentMode = sc.supportsFifo ? WGPUPresentMode_Fifo : caps.presentModes[0];
     sc.width = width;
     sc.height = height;

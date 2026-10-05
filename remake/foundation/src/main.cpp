@@ -2846,6 +2846,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
         std::printf("surface      : %dx%d, %d format(s), %d present mode(s), fifo=%s\n", w, h,
                     app->sc.formatCount, app->sc.presentModeCount,
                     app->sc.supportsFifo ? "yes" : "no");
+        std::printf("surface format: 0x%x\n", (unsigned)app->sc.format);
         std::printf("present mode : %s\n", gpu::presentModeName(app->sc.presentMode));
     }
 
