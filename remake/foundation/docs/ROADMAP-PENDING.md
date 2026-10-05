@@ -335,9 +335,11 @@ Open, filed rather than invented:
   three frames later (FUN_00634760, FUN_00635d40:62-83), arming each view's centre sting for
   60 frames at 6.0→1.0 scale. The digit walk over P09's three cells is not in the corpus, so
   the port keeps its three-second countdown and shows the battle state with it.
-* **KO sting window.** FUN_00635d40:152-157 arms the KO sting for 0x5a (90 frames) and the
-  respawn sting for 0x78 (120 frames); `MatchEconomy::kKoStingSec = 2.0` (120 frames) is
-  therefore the respawn window. Issue #11 owns that constant — reported, not changed here.
+* **KO sting window.** FUN_00635d40:152-157 arms the KO sting for 0x5a (90 frames = 1.5 s,
+  re-armed every frame the fighter stays down) and the respawn presentation for 0x78 (120
+  frames) on the credit frame's headroom branch (@0x637173). Issue #11's
+  `MatchEconomy::kKoStingSec` is now 1.5 s accordingly; the 120-frame respawn presentation
+  is not modelled separately and stays on that issue's unresolved list.
 
 ## Guard lifecycle update — 2026-10-04
 
