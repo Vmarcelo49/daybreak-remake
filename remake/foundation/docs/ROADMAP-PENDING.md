@@ -1346,8 +1346,14 @@ counts, and the team-select diamond's y anchor discrepancy. Scenes 2 and
   channel); `Sdl3Engine::stop_bus(SfxBus)` is the bus-level seam issue #15 asked for.
 * **Remaining.** The pause-time policy is #15's (this layer has no pause test: a paused
   `Match::step` produces no events). A live slider drag during a battle was not exercised
-  interactively, though the engine applies `set_volumes` to every busy slot. The standalone
-  `--match`/`--versus` parity paths stay silent by design.
+  interactively, though the engine applies `set_volumes` to every busy slot. The hypermode cue
+  is exercised by the asset-backed COM 2v2 test but not by a live frontend round (the synthetic
+  pads never press Special and the four-pad selection walk produces no COM panel): wired and
+  unit-covered, live-unexercised. The standalone `--match`/`--versus` parity paths stay silent
+  by design. The real-device check is a *measurement*, not a listening check — `parec` on the
+  default sink's monitor captured the port's own streams at rms 0.25-0.40 across the battle
+  window after they were unmuted; PipeWire stream-restore had `foundation_demo` muted, which is
+  why the same run was silent beforehand.
 
 ### F1. A seam from the screen layer to the audio backend (menu SEs) — DONE
 
