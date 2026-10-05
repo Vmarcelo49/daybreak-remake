@@ -59,6 +59,7 @@
 #include "gameplay/result_title.h"
 #include "audio/audio.h"
 #include "audio/audio_engine.h"
+#include "audio/combat_audio.h"
 #include "game/effect_events.h"
 #include "game/effect_descriptor.h"
 #include "game/fx_cards.h"
@@ -67,6 +68,7 @@
 #include "input/input_sdl3.h"
 #include "input/synthetic_pad.h"
 #include "shaders/demo_wgsl.h"
+#include <unordered_map>
 
 namespace {
 
@@ -80,6 +82,7 @@ struct Options {
     bool        hudTest = false;   // composite a synthetic HUD into --out captures
     bool        debugPrims = false; // draw the deterministic debug line overlay
     bool        audioTest = false; // run the audio backend self-check and exit
+    bool        combatAudioLog = false;  // --combat-audio-log: name every resolved SE/voice
     std::string audioFile;       // with --audio-test: decode a real file too
     bool        inputTest = false; // run the input backend self-check and exit
     std::string enemyWeapon;
@@ -196,6 +199,7 @@ void usage() {
         "                     offscreen captures (needs --out). Lets verification run\n"
         "                     where no presentable display exists, on the real GPU\n"
         "  --audio-test         run the audio backend self-check and exit\n"
+        "  --combat-audio-log   log every dispatched combat SE/voice with its resolved file\n"
         "  --audio-file=<path>  with --audio-test: decode a real file as well\n"
         "  --input-test         run the input backend self-check and exit\n"
         "  --enemy=<baseDir>/<name>[:costume]  versus P2 fighter (needs --versus)\n"
@@ -260,6 +264,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--hitbox-debug") o.hitboxDebug = true;
         else if (a == "--headless") o.headless = true;
         else if (a == "--audio-test") o.audioTest = true;
+        else if (a == "--combat-audio-log") o.combatAudioLog = true;
         else if (a == "--input-test") o.inputTest = true;
         else if (!(v = val("--enemy=")).empty()) o.enemy = v;
         else if (a == "--versus") o.versus = true;
@@ -698,6 +703,19 @@ struct App {
     game::EffectEventQueue        versusFx;
     uint64_t                     versusSfxPlays = 0, versusFxEvents = 0;
     uint64_t                     versusBgmPushed = 0;
+    // Live combat audio (issue #16). The sink below adapts this App's battle engine and its
+    // lazy sample cache to fnd::audio::CombatAudio, which owns the policy: the recovered
+    // event -> voice/SE resolution, one voice channel per fighter, event identity and
+    // de-duplication, suspend/resume and per-match cleanup. `combatTick` is the fixed
+    // simulation tick the events are stamped with (the same clock the economy counts on).
+    struct CombatSink;
+    struct CombatEventSource;
+    std::unique_ptr<CombatSink>   combatSink;
+    std::unique_ptr<fnd::audio::CombatAudio> combatAudio;
+    std::unordered_map<std::string, fnd::audio::SfxHandle> combatSamples;  // stem -> handle
+    bool                         combatMatchStarted = false;
+    uint32_t                     combatTick = 0;
+    uint64_t                     combatEvents = 0, combatVoicePlays = 0, combatSePlays = 0;
     ui::HudState                 versusHud;
 
     double   startTime = 0.0;
@@ -1102,6 +1120,100 @@ static fnd::audio::SfxHandle loadSoundAsset(fnd::audio::Sdl3Engine& engine, cons
         case fnd::audio::BlobFormat::Wav: return engine.load_wav(bytes.data(),bytes.size());
         case fnd::audio::BlobFormat::CnvPcm: return engine.load_cnv(bytes.data(),bytes.size());
         default: return fnd::audio::kInvalidSfx;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Live combat audio (issue #16)
+// ---------------------------------------------------------------------------
+// The sink adapts the battle engine to fnd::audio::CombatAudio. Samples load lazily by stem
+// (the same resolve rule the rest of the host uses: .cnv first, then .wav), and the handle
+// cache keeps one decoded buffer per stem for the match's lifetime, so a repeated voice never
+// re-decodes. SE plays auto-pick inside the SFX bus; voice plays are pinned to the fighter's
+// own channel, which is what keeps two fighters from clobbering each other.
+struct App::CombatSink final : fnd::audio::CombatAudioSink {
+    explicit CombatSink(App& app) : app_(app) {}
+
+    int play(const std::string& stem, fnd::audio::SfxBus bus, int channel) override {
+        if (!app_.versusAudioOn) return -1;
+        const fnd::audio::SfxHandle handle = handle_for(stem);
+        if (handle < 0) return -1;
+        fnd::audio::PlayRequest req;
+        req.channel = channel;
+        return app_.versusAudio.play(handle, bus, req);
+    }
+    void stop(int channel) override { app_.versusAudio.stop(channel); }
+    void stop_bus(fnd::audio::SfxBus bus) override { app_.versusAudio.stop_bus(bus); }
+
+    fnd::audio::SfxHandle handle_for(const std::string& stem) {
+        const auto found = app_.combatSamples.find(stem);
+        if (found != app_.combatSamples.end()) return found->second;
+        const auto& source = fnd::assets::assetSource();
+        const std::string path = source.resolve({stem + ".cnv", stem + ".wav"});
+        const fnd::audio::SfxHandle handle = loadSoundAsset(app_.versusAudio, path);
+        app_.combatSamples.emplace(stem, handle);   // misses are cached too: one probe each
+        return handle;
+    }
+    // The original discovers an event's alternatives by probing NNN upward until the file is
+    // missing (FUN_00431e70:78-151). Same rule here, with a small cap so a pathological
+    // directory cannot walk forever.
+    int probe_alternatives(const std::string& dir, fnd::audio::VoiceEvent event, bool b_dir) {
+        int count = 0;
+        for (int i = 0; i < 4; ++i) {
+            const std::string stem = fnd::audio::voice_asset_stem(dir, event, b_dir, i);
+            if (stem.empty()) break;
+            if (handle_for(stem) < 0) break;
+            ++count;
+        }
+        return count;
+    }
+    App& app_;
+};
+
+// The events this port emits (issue #16). Only these are probed at match start; the rest of
+// the 40-name vocabulary stays available to fnd::audio::CombatAudio without a filesystem walk.
+static constexpr fnd::audio::VoiceEvent kCombatVoiceEvents[] = {
+    fnd::audio::VoiceEvent::BattleStart, fnd::audio::VoiceEvent::AttackA,
+    fnd::audio::VoiceEvent::Fire,        fnd::audio::VoiceEvent::Damage,
+    fnd::audio::VoiceEvent::DamageDown,  fnd::audio::VoiceEvent::Guard,
+    fnd::audio::VoiceEvent::Guarded,     fnd::audio::VoiceEvent::AttackKO,
+    fnd::audio::VoiceEvent::DamageKO,    fnd::audio::VoiceEvent::Revival,
+    fnd::audio::VoiceEvent::Oyashiro,
+};
+
+// Per-fighter voice setup for a battle: the character's own voice directory (FUN_0041e180's
+// data/voice/<name>) plus the alternatives of every event this port emits. The decoded-sample
+// cache is kept ACROSS matches on purpose — the stems are the same ones next round, and the
+// engine has no per-handle free — while the channels are released per match (end_match).
+static void setupCombatVoices(App& app) {
+    if (!app.combatAudio) return;
+    const int count = app.match.config().fighterCount;
+    app.combatAudio->begin_match(count);
+    app.combatMatchStarted = false;
+    app.combatTick = 0;
+    for (int i = 0; i < count; ++i) {
+        const int panel = app.battleLaunch.fighters[i].panel;
+        const int character = app.frontend.slots[panel].character;
+        const int weapon = app.frontend.slots[panel].weapon;
+        if (character < 0 || character >= gameplay::kCharacterCount) continue;
+        // PORT RULE: the B-persona voice directory. The install ships renaB/rikaB/chieB/
+        // hanyuB and FUN_0041e180:196-206 selects them per character, but the port only has
+        // the persona gate it recovered in #20 (character 0/4 with weapon slot 2); chie's and
+        // hanyu's persona gates are NOT recovered, so they keep their base directory.
+        const bool persona = (character == 0 || character == 4) && weapon == 2;
+        std::string dir = std::string("data/voice/") + gameplay::kCharacterDirs[character];
+        if (persona) dir += "B";
+        app.combatAudio->set_fighter_voice(i, dir, persona);
+        for (fnd::audio::VoiceEvent event : kCombatVoiceEvents) {
+            const int alternatives = app.combatSink->probe_alternatives(dir, event, persona);
+            app.combatAudio->set_voice_alternatives(i, event, alternatives);
+            if (app.opts.combatAudioLog && alternatives > 0)
+                std::printf("[combat-audio] fighter %d panel %d %s -> %s/%s%s alternatives=%d\n",
+                            i, panel, gameplay::kCharacterDirs[character], dir.c_str(),
+                            fnd::audio::voice_event_name(event),
+                            fnd::audio::voice_event_b_dir(event) && persona ? "_B" : "",
+                            alternatives);
+        }
     }
 }
 
@@ -2056,6 +2168,107 @@ static void sampleHudFill(gameplay::HudFighterValues& out, const gameplay::Fight
 // One match frame: the reference's order lives in gameplay::Match::step; this adds
 // what the scene added around it — tick inputs, the camera's target switch, the
 // HUD values, the effect events and the debug cubes.
+// ---------------------------------------------------------------------------
+// Live combat audio dispatch (issue #16)
+// ---------------------------------------------------------------------------
+// Every event below is read from the MatchFrame the fixed 64 Hz step just produced, so the
+// audio is a function of simulation state and not of what a render pass happened to see. Each
+// event is stamped with that frame's tick and a per-tick sequence, which is the identity
+// fnd::audio::CombatAudio de-duplicates on: the same frame replayed (a catch-up step, a
+// rollback resimulation) carries the same ids and plays nothing twice.
+// The adapter that lets the shared derivation read the live match (issue #16).
+struct App::CombatEventSource final : fnd::audio::CombatEventSource {
+    explicit CombatEventSource(const App& app) : app_(app) {}
+    int fighter_count() const override { return app_.match.config().fighterCount; }
+    bool alive(int fighter) const override {
+        return fighter >= 0 && fighter < app_.match.config().fighterCount &&
+               app_.match.fighter(fighter).is_alive();
+    }
+    const App& app_;
+};
+
+// The frame the simulation just produced, copied into the module's own view. Keeping the
+// derivation in fnd::audio (and the copy here) is what lets the asset-backed match test
+// exercise exactly the events the release path dispatches.
+static fnd::audio::CombatFrameView combatFrameView(const gameplay::MatchFrame& f) {
+    fnd::audio::CombatFrameView view;
+    for (int i = 0; i < 4; ++i) {
+        view.swing_started[i] = f.swingStarted[i];
+        view.shot_fired[i]    = f.shotFired[i];
+        view.hyper_started[i] = f.hyperStarted[i];
+        view.guard_started[i] = f.guardStarted[i];
+        view.respawned[i]     = f.respawned[i];
+        view.blocked[i]       = f.blocked[i];
+        view.melee_hit[i]     = f.meleeHit[i];
+        view.melee_victim[i]  = f.meleeVictim[i];
+        view.overkill_hits[i] = f.overkillHits[i];
+    }
+    view.shot_hit_count = f.shotHitCount < gameplay::MatchFrame::kMaxShotHits
+                              ? f.shotHitCount : gameplay::MatchFrame::kMaxShotHits;
+    for (int k = 0; k < view.shot_hit_count; ++k) {
+        view.shot_hits[k].shooter = f.shotHits[k].shooter;
+        view.shot_hits[k].victim  = f.shotHits[k].victim;
+        view.shot_hits[k].blocked = f.shotHits[k].blocked;
+    }
+    return view;
+}
+
+// Every event below comes from the MatchFrame the fixed 64 Hz step just produced, so the audio
+// is a function of simulation state and not of what a render pass happened to see. Each event
+// is stamped with that frame's tick and a per-tick sequence, which is the identity
+// fnd::audio::CombatAudio de-duplicates on: the same frame replayed (a catch-up step, a
+// rollback resimulation) carries the same ids and plays nothing twice.
+static void dispatchCombatAudio(App& app, const gameplay::MatchFrame& f) {
+    if (!app.combatAudio) return;
+    const uint32_t tick = (uint32_t)app.matchFrame;   // 1-based, same clock as the captures
+    App::CombatEventSource source(app);
+    const fnd::audio::CombatEventList list = fnd::audio::combat_events_for_frame(
+        source, combatFrameView(f), tick, !app.combatMatchStarted);
+    if (!app.combatMatchStarted && list.count > 0) app.combatMatchStarted = true;
+    for (int i = 0; i < list.count; ++i) {
+        const fnd::audio::CombatEvent& e = list.events[i];
+        app.combatAudio->dispatch(e);
+        ++app.combatEvents;
+        if (app.opts.combatAudioLog) {
+            // Evidence line: one per dispatched event, naming the file/SE the policy resolved
+            // (empty voice = the event has no line, -1 = no evidenced SE id).
+            const std::string& voice = app.combatAudio->last_voice_stem();
+            std::printf("[combat-audio] tick %u %-12s fighter=%d source=%d%s -> voice=%s se=%d\n",
+                        tick, fnd::audio::combat_event_name(e.kind), e.fighter, e.source,
+                        e.shot ? " (shot)" : "",
+                        voice.empty() ? "(none)" : voice.c_str(),
+                        app.combatAudio->last_se_id());
+        }
+    }
+}
+
+// "Stop everything this match started" (issue #16's cleanup entry point, named for #15's
+// leave path): releases the combat layer's voice channels and cuts the SFX bus. Null-safe, so
+// a leave path can call it whether or not a battle ever built the layer.
+static void stopCombatAudio(App& app) {
+    if (app.combatAudio) app.combatAudio->end_match();
+}
+
+// The match-end evidence: what was dispatched, what played, and how many voice channels the
+// layer still holds (issue #16's leak check). Called wherever the match ends.
+static void reportCombatAudio(App& app) {
+    if (!app.combatAudio) return;
+    const auto& stats = app.combatAudio->stats();
+    app.combatVoicePlays = (uint64_t)stats.voice_plays;
+    app.combatSePlays = (uint64_t)stats.se_plays;
+    if (!app.opts.combatAudioLog) return;
+    std::printf("[combat-audio] match end: events=%llu voice=%d se=%d duplicates=%d "
+                "suspended_drops=%d voice_missing=%d se_missing=%d channels_held=%d\n",
+                (unsigned long long)app.combatEvents, stats.voice_plays, stats.se_plays,
+                stats.duplicates, stats.suspended_drops, stats.voice_missing, stats.se_missing,
+                app.combatAudio->claimed_channels());
+    for (int k = 0; k < fnd::audio::kCombatEventKindCount; ++k)
+        if (stats.dispatched[k] > 0)
+            std::printf("[combat-audio]   %-12s %d\n",
+                        fnd::audio::combat_event_name((fnd::audio::CombatEventKind)k),
+                        stats.dispatched[k]);
+}
+
 static void tickMatch(App& app, double dt) {
     // The 15-tick switch pulse is not counted here: Match's lock table owns and decays
     // it (gameplay/target_lock.h, FUN_004201a0), so the HUD reads one source of truth.
@@ -2147,6 +2360,8 @@ static void tickMatch(App& app, double dt) {
     app.matchSparks += (uint64_t)f.muzzleSparks;
     for (int i = 0; i < app.match.config().fighterCount; ++i)
         if (f.meleeHit[i]) ++app.matchHits;
+    // Live combat audio (issue #16): the frame just produced is the event source.
+    dispatchCombatAudio(app, f);
     // The earned-title counters (issue #20). The original splits them the same way: the damage
     // functions credit the attacker's "to target/others" pair by whether the victim was its
     // lock (FUN_00639160), the hit functions credit the victim's "from target/others" pair by
@@ -2802,6 +3017,7 @@ void report(App& app) {
 
 void teardown(App& app) {
     app.menuAudio.close();
+    stopCombatAudio(app);
     if (app.versusAudioOn) app.versusAudio.close();
     if (app.uiReady) app.uiRenderer.shutdown();
     app.debugPrims.shutdown();
@@ -3189,6 +3405,12 @@ static bool enterFrontendBattle(App& app) {
     app.matchFx.drain();
     if (!initScene(app)) return false;
     app.versusAudio.set_volumes(ui::frontendSettings().volumes);
+    // Live combat audio (issue #16): the sink adapts this App's battle engine, the dispatcher
+    // owns the recovered event -> voice/SE policy. Built here, after the match exists, so the
+    // per-fighter voice directories come from the actual launch roster.
+    if (!app.combatSink) app.combatSink = std::make_unique<App::CombatSink>(app);
+    if (!app.combatAudio) app.combatAudio = std::make_unique<fnd::audio::CombatAudio>(*app.combatSink);
+    setupCombatVoices(app);
     app.matchMode = false;
     std::printf("[menu] battle: %d fighters on %s\n", launch.fighterCount, launch.stage.c_str());
     // The spawn each fighter starts from: MatchConfig keys it by the fighter's PANEL
@@ -3982,6 +4204,11 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 app->matchMode = false;
                 app->frontendBattleReady = false;
                 app->versusAudio.clear_music();
+                // The match is over: release every channel the combat layer claimed, so the
+                // result screen's own cues and the next match start from a clean bus
+                // (issue #16's repeated-match cleanup). The decoded sample cache stays.
+                reportCombatAudio(*app);
+                stopCombatAudio(*app);
                 app->screens.request(ui::ScreenId::Result);
                 app->screensMode = true;
                 const SDL_AppResult result = tickFrontend(*app);
