@@ -535,6 +535,16 @@ public:
     };
     HitboxDebug hitbox_debug() const;
 
+    // The victim's two hurtbox anchor OFFSETS from the fighter root, in model space,
+    // as FUN_0063dad0:241-245 builds them:
+    //   anchor0 = the Bip01_Head bone origin (transform of (0,0,0) by its frame)
+    //   anchor1 = the Bip01_Spine bone with the local offset (-50.0, 0, 0)
+    // Both are BONE positions, so they come from the rig's bind pose; a rig without
+    // those bones falls back to fractions of kFighterHeight (see melee_rules.h). These
+    // offsets are what the hit test AND the debug overlay both read, so they cannot
+    // disagree.
+    glm::vec3 hurtbox_anchor_offset(int index) const;
+
     // Aerial melee: the same melee control, played from the air with the aerial reach.
     void set_aerial_attack(bool aerial) { m_aerialAttack = aerial; }
     bool aerial_attack() const { return m_aerialAttack; }

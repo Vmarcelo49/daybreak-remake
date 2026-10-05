@@ -712,8 +712,8 @@ bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollis
     // is a port rule.
     const float bodyHeight = game::physics::MovementCollision::kFighterHeight;
     const float attackerY  = m_position.y + bodyHeight * m_meleeRules.chestHeightFrac;
-    const float headY       = target.m_position.y + bodyHeight * m_meleeRules.headHeightFrac;
-    const float chestY      = target.m_position.y + bodyHeight * m_meleeRules.chestHeightFrac;
+    const float headY       = target.m_position.y + target.hurtbox_anchor_offset(0).y;
+    const float chestY      = target.m_position.y + target.hurtbox_anchor_offset(1).y;
     const float dx = target.m_position.x - m_position.x;
     const float dz = target.m_position.z - m_position.z;
     const float horizontalSq = dx * dx + dz * dz;
@@ -804,11 +804,50 @@ void Fighter::set_weapon(const WeaponDefinition* weapon) {
     }
 }
 
+// Composes a frame's bind-pose world matrix by walking parent links. The rig stores each
+// frame's transform relative to its parent, so a bone's model-space position is the
+// product along that chain. Depth is bounded by the rig's own parent graph.
+static constexpr int kMaxBoneChain = 256;
+
+static glm::mat4 bindWorld(const xm::Model* model, int frame) {
+    glm::mat4 m{1.f};
+    // Follow parent links, not indices: each frame stores its transform relative to its
+    // parent, so the world matrix is their product along the chain. The guard is the
+    // rig's own parent graph rather than a trust assumption — a malformed parent cycle
+    // would otherwise spin here forever.
+    for (int steps = 0; frame >= 0 && frame < static_cast<int>(model->frames.size()) &&
+                       steps < kMaxBoneChain;
+         ++steps) {
+        m = model->frames[static_cast<size_t>(frame)].bindLocal * m;
+        frame = model->frames[static_cast<size_t>(frame)].parent;
+    }
+    return m;
+}
+
+glm::vec3 Fighter::hurtbox_anchor_offset(int index) const {
+    const float bodyHeight = game::physics::MovementCollision::kFighterHeight;
+    if (m_model) {
+        if (index == 0) {
+            // FUN_0063dad0:241 transforms (0,0,0) by the Head frame.
+            const int f = m_model->findFrame("Bip01_Head");
+            if (f >= 0) return glm::vec3(bindWorld(m_model, f)[3]);
+        } else {
+            // FUN_0063dad0:244 transforms (-50.0,0,0) by the Spine frame.
+            const int f = m_model->findFrame("Bip01_Spine");
+            if (f >= 0) return glm::vec3(bindWorld(m_model, f) * glm::vec4(-50.f, 0.f, 0.f, 1.f));
+        }
+    }
+    // No rig, or a rig without these bones: fractions of the collision body height. Only
+    // the body's SIZE is measured (#7); where the head sits on it is not.
+    const float frac = index == 0 ? m_meleeRules.headHeightFrac : m_meleeRules.chestHeightFrac;
+    return glm::vec3(0.f, bodyHeight * frac, 0.f);
+}
+
 Fighter::HitboxDebug Fighter::hitbox_debug() const {
     const float bodyHeight = game::physics::MovementCollision::kFighterHeight;
     HitboxDebug d;
-    d.anchors[0] = m_position + glm::vec3(0.0f, bodyHeight * m_meleeRules.headHeightFrac, 0.0f);
-    d.anchors[1] = m_position + glm::vec3(0.0f, bodyHeight * m_meleeRules.chestHeightFrac, 0.0f);
+    d.anchors[0] = m_position + hurtbox_anchor_offset(0);
+    d.anchors[1] = m_position + hurtbox_anchor_offset(1);
     d.anchorRadius = m_meleeRules.bodyRadius;
     d.attacking = (m_state == FighterState::AttackA || m_state == FighterState::AttackB) &&
                   m_meleeRules.is_active(m_meleeElapsed);
