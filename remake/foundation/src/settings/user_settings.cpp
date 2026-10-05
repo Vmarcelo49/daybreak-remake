@@ -134,6 +134,7 @@ UserSettings::UserSettings() {
 
 bool UserSettings::operator==(const UserSettings& other) const {
     return fullscreen == other.fullscreen && resolution == other.resolution &&
+           toonRendering == other.toonRendering &&
            volumes.master == other.volumes.master && volumes.music == other.volumes.music &&
            volumes.voice == other.volumes.voice && volumes.sfx == other.volumes.sfx &&
            keyboard == other.keyboard && gamepad == other.gamepad && padGuid == other.padGuid &&
@@ -188,6 +189,9 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
     // A v1 document's binding rows carry the removed heavy action at index 5; the rows are
     // read with the v1 width and the entry is dropped once the row parses (see the header).
     bool legacyLayout = false;
+    // A v2 document is migrated to v3 by adding the toon toggle at its default; nothing is
+    // dropped, so the report gets a context line rather than a warning (see the header).
+    bool v2Document = false;
     bool inSection = false;
     std::string section;
     std::istringstream stream(text);
@@ -211,8 +215,8 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
             }
             section = trimmed(line.substr(1, line.size() - 2));
             inSection = true;
-            if (section != "display" && section != "audio" && section != "bindings" &&
-                section != "controllers") {
+            if (section != "display" && section != "render" && section != "audio" &&
+                section != "bindings" && section != "controllers") {
                 error = "line " + std::to_string(lineNumber) + ": unknown section [" + section + "]";
                 return false;
             }
@@ -247,12 +251,14 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                     error = "line " + std::to_string(lineNumber) + ": version is not a number";
                     return false;
                 }
-                if (version != kSchemaVersion && version != kSchemaVersionLegacy) {
+                if (version != kSchemaVersion && version != kSchemaVersionLegacy &&
+                    version != kSchemaVersionV2) {
                     error = "unsupported config version " + std::to_string(version) +
                             " (this build writes " + std::to_string(kSchemaVersion) + ")";
                     return false;
                 }
                 legacyLayout = (version == kSchemaVersionLegacy);
+                v2Document = (version == kSchemaVersionV2);
                 sawVersion = true;
                 continue;
             }
@@ -270,6 +276,16 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                 DisplaySize size;
                 if (!parseDisplaySize(value, size)) warn("resolution: keeping the default");
                 else candidate.resolution = size;
+            } else {
+                warn("ignoring unknown key '" + key + "'");
+            }
+        } else if (section == "render") {
+            // v3's section. Read whatever the version line says: a key this build knows is
+            // never a reason to reject or warn (see the header).
+            if (key == "toon") {
+                bool on = false;
+                if (!parseBool(value, on)) warn("toon: keeping the default");
+                else candidate.toonRendering = on;
             } else {
                 warn("ignoring unknown key '" + key + "'");
             }
@@ -350,6 +366,10 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
         report.messages.push_back(
             "config version 1: migrated to " + std::to_string(kSchemaVersion) +
             " (the removed heavy-melee binding was dropped, every other binding kept)");
+    } else if (v2Document) {
+        report.messages.push_back(
+            "config version 2: migrated to " + std::to_string(kSchemaVersion) +
+            " (toon rendering defaults to off; every stored value kept)");
     }
     out = candidate;
     report.loaded = true;
@@ -370,6 +390,11 @@ std::string serialize(const UserSettings& settings) {
     if (settings.resolution.width <= 0 || settings.resolution.height <= 0) out << "desktop";
     else out << settings.resolution.width << "x" << settings.resolution.height;
     out << "\n\n";
+
+    out << "[render]\n"
+        << "# The Options screen's toon-rendering row (issue #21): the characters' diffuse\n"
+        << "# term reads the shipped data/directX/toon ramp instead of the linear N.L.\n"
+        << "toon = " << (settings.toonRendering ? "true" : "false") << "\n\n";
 
     out << "[audio]\n"
         << "master = " << settings.volumes.master << "\n"

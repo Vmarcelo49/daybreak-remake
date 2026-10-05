@@ -26,6 +26,7 @@ void applyUserSettings(FrontendSettings& settings, const settings::UserSettings&
     settings.keyboard = document.keyboard;
     settings.gamepad = document.gamepad;
     settings.fullscreen = document.fullscreen;
+    settings.toonRendering = document.toonRendering;
 }
 
 settings::UserSettings toUserSettings(const FrontendSettings& settings) {
@@ -34,6 +35,7 @@ settings::UserSettings toUserSettings(const FrontendSettings& settings) {
     document.keyboard = settings.keyboard;
     document.gamepad = settings.gamepad;
     document.fullscreen = settings.fullscreen;
+    document.toonRendering = settings.toonRendering;
     document.resolution = {settings.resolutionChoice.width, settings.resolutionChoice.height};
     return document;
 }

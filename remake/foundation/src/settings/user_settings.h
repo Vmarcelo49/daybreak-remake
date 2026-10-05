@@ -41,8 +41,16 @@ namespace settings {
 // v2 (issue #10) removed the port-invented heavy melee action: the binding rows lost their
 // sixth entry. A v1 file is MIGRATED, not rejected — its rows are read with the v1 layout
 // and the removed entry is dropped, so an existing config keeps every other binding.
-inline constexpr int kSchemaVersion = 2;
+//
+// v3 (issue #21) added the toon-rendering toggle ([render] toon). A v2 file is MIGRATED:
+// every value it carries is read as v2 wrote it, the new toggle takes its default (off,
+// which is what a v2 file meant — the option did not exist), and nothing is dropped, so
+// that migration reports context without a warning. The [render] section itself is read
+// whatever the version line says, so a hand-edited file is not rejected for naming a key
+// this build knows.
+inline constexpr int kSchemaVersion = 3;
 inline constexpr int kSchemaVersionLegacy = 1;
+inline constexpr int kSchemaVersionV2 = 2;
 // The v1 action count and the index the removed heavy action occupied in it.
 inline constexpr int kLegacyActionCount = 13;
 inline constexpr int kLegacyHeavyIndex = 5;
@@ -65,6 +73,10 @@ struct DisplaySize {
 struct UserSettings {
     bool        fullscreen = false;
     DisplaySize resolution{0, 0};
+    // Toon rendering (issue #21), the Options screen's first row. Off is the shipped
+    // default (DAT_006cfcec is zero-initialised) and the state every banked capture was
+    // made in.
+    bool        toonRendering = false;
     fnd::audio::Volumes volumes;
     std::array<int, fnd::input::ActionCount> keyboard{};
     std::array<std::array<int, fnd::input::ActionCount>, fnd::input::kMaxPlayers> gamepad{};

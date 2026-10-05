@@ -16,6 +16,10 @@ struct FrontendSettings {
     std::array<int, fnd::input::ActionCount> keyboard;
     std::array<std::array<int, fnd::input::ActionCount>, 4> gamepad;
     bool fullscreen = false;
+    // The Options screen's toon-rendering row (issue #21). Live state: main syncs it into
+    // the renderer's appearance every frame, so flipping the row needs no restart, and
+    // toUserSettings() carries it into the persisted document.
+    bool toonRendering = false;
     // The user's selection from the Options resolution row; {0,0} is desktop. This is
     // what gets persisted, and it changes ONLY when the row is cycled — the window's
     // actual pixel size lives in currentResolution/resolutionIndex, which the OS changes

@@ -128,9 +128,12 @@ struct Options {
     // attack, which is only checkable by looking at the clips side by side.
     bool        animPlayer = false;
     bool        unlit      = false;
-    // Toon rendering (issue #21): read the shipped ramp at the character draws' diffuse
-    // term. Off by default, the state every banked capture was made in.
+    // Toon rendering (issue #21). `toonSet` separates "the flag was passed" from the
+    // default: without it the live Options row governs, with it the flag wins — so a
+    // capture command line pins the state it asked for, and an interactive run is never
+    // overridden by a stale flag.
     bool        toon       = false;
+    bool        toonSet    = false;
     bool        list       = false;
     std::string screen;          // --screen=<id|name>: boot a front-end screen
     // Split-screen verification (issue #12): open this many local human views by
@@ -271,8 +274,8 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--fog") o.fog = true;
         else if (a == "--no-anim") o.noAnim = true;
         else if (a == "--unlit") o.unlit = true;
-        else if (a == "--toon") o.toon = true;
-        else if (a == "--no-toon") o.toon = false;
+        else if (a == "--toon") { o.toon = true; o.toonSet = true; }
+        else if (a == "--no-toon") { o.toon = false; o.toonSet = true; }
         else if (a == "--list") o.list = true;
         else if (a == "--hud-test") o.hudTest = true;
         else if (a == "--hud-probe") { o.hudTest = true; o.hudProbe = true; }
@@ -3423,8 +3426,11 @@ bool initScene(App& app) {
     app.renderOptions.textures = !app.opts.noTextures;
     app.appearance.fog = app.opts.fog;
     app.appearance.unlit = app.opts.unlit;
-    // Toon rendering (issue #21), off unless the capture asked for it.
-    app.appearance.toon = app.opts.toon;
+    // Toon rendering (issue #21): a capture flag wins; otherwise the persisted/live
+    // Options state, which the per-frame sync below keeps up to date so the row needs no
+    // restart (and the renderer no re-upload).
+    app.appearance.toon = app.opts.toonSet ? app.opts.toon
+                                           : ui::frontendSettings().toonRendering;
 
     if (!app.rendererReady && !app.renderer.init(app.ctx, app.error)) return false;
     app.rendererReady = true;
@@ -4657,6 +4663,18 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         app->matchInput.sample_tick_inputs(app->pendingInput);
     }
     pollUserSettings(*app, now);
+    // The toon toggle is a draw-time switch (issue #21): the Options row flips live state
+    // and the renderer's copy follows it here, so no scene re-upload and no restart is
+    // behind the change. Only the interactive frontend reaches this (settingsActive is
+    // false for every capture recipe), and an explicit --toon/--no-toon still wins.
+    if (app->settingsActive && app->rendererReady) {
+        const bool toon = app->opts.toonSet ? app->opts.toon
+                                            : ui::frontendSettings().toonRendering;
+        if (toon != app->appearance.toon) {
+            app->appearance.toon = toon;
+            app->renderer.setAppearance(app->appearance);
+        }
+    }
     // The animation browser owns its own clock rather than the match's fixed step, so the
     // clip advances at wall-clock rate and reads as a smooth player.
     if (app->opts.animPlayer) animPlayerTick(*app, delta);

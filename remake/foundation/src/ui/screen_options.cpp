@@ -37,6 +37,12 @@ public:
             if (in.left) player_ = (player_ + 3) % 4;
             if (in.right) player_ = (player_ + 1) % 4;
             if (in.confirm) armBindingCapture(player_,kBindingRowActions[row_]);
+        } else if (row_ == 0 && (in.left || in.right || in.confirm)) {
+            // Row 0 is the toon-rendering toggle (issue #21, DAT_006cfcec): left/right
+            // flips it like the other option rows. The renderer's appearance follows
+            // frontendSettings() every frame, so the change is in the next drawn frame —
+            // no restart, and nothing re-uploads.
+            settings.toonRendering = !settings.toonRendering;
         } else if (row_ == 3 && (in.left || in.right || in.confirm)) {
             settings.fullscreen = !settings.fullscreen;
             if (settings.applyFullscreen) settings.applyFullscreen(settings.fullscreen);
@@ -77,12 +83,22 @@ public:
             }
             text(batch,resolution,368,ys[8]+8,2);
             batch.pushSprite(sheets_[1],{256,448,32,32},0,0,144,ys[row_]);
-            for(int i=0;i<3;++i) text(batch,"UNAVAILABLE",550,ys[i],1.5f);
+            // Row 0 draws its real state in the original's own cells (FUN_00403470:25-26):
+            // the cell row is the toggle value at x=368 and its complement at x=464, so the
+            // pair always shows one bold and one plain option and inverts when it flips.
+            // The sheet's even cell row is the bold art (有効 at 368 with the toggle off),
+            // which is the original's own choice of which of the two reads bold.
+            batch.pushSprite(sheets_[1],{192,settings.toonRendering ? 32.f : 0.f,96,32},0,0,368,ys[0]);
+            batch.pushSprite(sheets_[1],{288,settings.toonRendering ? 0.f : 32.f,128,32},0,0,464,ys[0]);
+            // Rows 1 and 2 keep the generic message: shadows and texture resolution are
+            // still unimplemented slices of issue #21.
+            for(int i=1;i<3;++i) text(batch,"UNAVAILABLE",550,ys[i],1.5f);
             batch.pushSprite(sheets_[1],{192,settings.fullscreen ? 256.f : 288.f,96,32},0,0,368,224);
             batch.pushSprite(sheets_[1],{288,settings.fullscreen ? 288.f : 256.f,128,32},0,0,464,224);
             const int values[] = {settings.volumes.master,settings.volumes.music,settings.volumes.voice,settings.volumes.sfx};
             for(int i=0;i<4;++i) batch.pushSprite(sheets_[1],{192,448,96,32},0,0,368+values[i]*1.6f,ys[i+4]);
-            if (row_ < 3) text(batch,"SETTING NOT AVAILABLE",208,550,2);
+            if (row_ == 0) text(batch,"LEFT/RIGHT: TOON SHADING ON/OFF",176,550,2);
+            else if (row_ < 3) text(batch,"SETTING NOT AVAILABLE",208,550,2);
             else if (row_ == 8) text(batch,settings.resolutionAvailable ? "LEFT/RIGHT: CHANGE RESOLUTION" : "SIZE FOLLOWS THE VIEWPORT",144,550,2);
             else batch.pushSprite(sheets_[2],{0,(row_ == 9 ? 9 : row_ + 1)*48.f,512,48},0,0,144,528);
         } else {
