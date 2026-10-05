@@ -51,17 +51,22 @@ Options/controller setup are built only as far as versus needs them.
 
 - **Melee button (X/格闘)**: combo starter; variants with held direction
   (horizontal + attack, vertical + attack), dash + attack, and aerial
-  versions. 3 melee tiers exist as **move ids** (`0x28/0x29/0x2a` → animation
-  sets 2/3/5; `gameplay/fighter.h:160-165`), selected in the character `.dat`;
-  `attackA/B/C` and `specialA/B/C` are voice cue keys, not the tier names
-  (`gameplay/fighter.h:96-165`).
+  versions. The old `0x28/0x29/0x2a` → sets 2/3/5 interpretation is withdrawn:
+  moves 40/41/42 are jump-chain records, not a universal AttackA/B/C map. Weapon
+  attacks instead use the selected character/item move table; how the original
+  chooses among those moves is still unresolved. The names `attackA/B/C` and
+  `specialA/B/C` are voice-cue keys, not recovered attack tiers.
   There is **no dedicated heavy button** — heavy is likely a
   directional variant (input model still provisional, see §3.6).
-- **Shoot button (C)**: fires the equipped weapon's projectile
-  (`shotA/B/C` = the binary's shot moves 300/301/302; `shotFinal`). Ammo is a
-  **counted stock** (MAIN 6, CHARGE 2), recharging over time — the HUD bar fill
-  fraction *is* the recharge readout (model as fractional stock, not bullets +
-  timer).
+- **Shoot button (C)**: fires the equipped weapon's projectile in the remake.
+  The binary's 300→301→302 sequence is a conditional character-move transition,
+  not an established shooting or charge-tier chain; blob fields +0x64/+0x68 are
+  read in hit-resolution, not established shot selectors. The string keys `shotA`,
+  `shotB`, `shotC`, and `shotFinal` are labels only, not proof of projectile types
+  or firing animations. The tap/yellow/red mapping therefore remains provisional.
+  Ammo is a **counted stock** (MAIN 6, CHARGE 2), recharging over time — the HUD
+  bar fill fraction *is* the recharge readout (model as fractional stock, not
+  bullets + timer).
 - **Shot tiers** ([Basics](https://higurashidaybreak.fandom.com/wiki/Basics)):
   **NS** Neutral Shot (tap, or under the yellow threshold), **CS** Charge
   Shot (yellow filled), **FCS** Full Charge Shot (red maxed). The charge
@@ -90,14 +95,15 @@ Options/controller setup are built only as far as versus needs them.
   observation and §3.6 describe **holding jump** to fly. Both models are
   in the spec until re-checked in the original; we implement hold-jump.
 - Aerial/landing attack variants (j.A, LA, ADA) ride on these states.
-- Guard (**D**, hold), tag (CORRECTED 2026-10-03: no partner swap exists —
-  control never transfers; the reticle only changes targets, `FUN_00421e30`,
-  and the tag* voice keys are partner callouts — see ROADMAP-PENDING.md C1),
+- Guard (**D**, hold), tag (CORRECTED 2026-10-03: a partner swap is not established —
+  current evidence shows control never transfers in the covered front-end flow;
+  the reticle changes targets via `FUN_00421e30`, and tag* voice keys alone do
+  not establish a fighter swap — see ROADMAP-PENDING.md C1),
   provoke (taunt),
   revival and KO/down states round out the original's ~40 move ids. The
   "40+ animation states" are **not** a name table in the binary: every shipped
   `.X` names its sets `Anim-1`…`Anim-124` and the state→set mapping ships in
-  each character's `data/<char>/NN.dat` (`gameplay/fighter.h:96-165`).
+  each character's `data/<char>/NN.dat` (see `foundation/docs/ANIMATION-SETS.md`).
 
 ### 3.3 Camera
 
@@ -146,8 +152,8 @@ the lock; the camera's followed player is separate state.
   `data/voice/<char>/<key>/%03d.wav` — they are not animation, aura or reload
   states. Animation is index-based: each rig names its sets `Anim-1`…`Anim-124`
   and the state→set mapping ships in each character's `data/<char>/NN.dat`
-  (`gameplay/fighter.h:96-165`). Tag mechanics themselves are un-RE'd
-  (`gameplay/fighter.h:142-143`).
+  (see `foundation/docs/ANIMATION-SETS.md`). Tag/swap mechanics remain unresolved;
+  those voice keys do not establish them.
 
 ### 3.5 Winning — the balloon
 
@@ -227,12 +233,12 @@ the deleted tree in places and is marked where it does.
 
 | # | System | Now | Work |
 |---|---|---|---|
-| 1 | Melee + hit detection | ✅ one swing + dash/aerial stand-ins; damage wired | Wire `physics/raycast.cpp` (Möller–Trumbore — it replaces the deleted DX9 `D3DXIntersect`; already used by shots at `gameplay/projectile.cpp:75` and the camera clamp) into fighter-vs-fighter checks; damage numbers (light 5 / heavy 12 / special 25; `gameplay/fighter.h:282-283`); hitstun/knockdown/KO transitions. **Remaining:** FA/HA directional variants, LA/StepA inputs, special 25 |
+| 1 | Melee + hit detection | ✅ weapon-move hit data wired | Damage and hitstun are read from character/weapon move phases where present; light 5 / heavy 12 / special 25 remain old port assumptions without selector/value evidence. **Remaining:** original input branches, FA/HA variants, LA/StepA inputs and per-character special behavior |
 | 2 | HP / KO / respawn / balloon | 🔶 HP 100, KO, **ground** respawn, balloon +21% | HP=100, KO state, **airborne** respawn (**not implemented**: `Fighter::reset()` sets `m_grounded = true` at the stored spawn, `gameplay/fighter.cpp:58-70`, called from `gameplay/match.cpp:55`), balloon 20–23%/KO vs per-team LIMIT (+size handicap %), KO sting → inflate → +N% delta, 3-beat result, loop back to team select |
-| 3 | Projectiles + charge | ✅ tiers, fractional stocks, reload gate, tama channel, sparks | `shotA/B/C` + tap/yellow/red tiers, **fractional ammo stocks** (MAIN 6, CHARGE 2, fill = recharge readout), reload gating, `collision_tama.x` channel, hit sparks |
+| 3 | Projectiles + charge | ✅ port tiers, fractional stocks, reload gate, tama channel, sparks | Tap/yellow/red tiers are port rules; `shotA/B/C` labels have no established tier/animation mapping. **Fractional ammo stocks** (MAIN 6, CHARGE 2, fill = recharge readout), reload gating, `collision_tama.x` channel, hit sparks |
 | 4 | Movement full set | ✅ dash/backdash/sidestep + air dash, hold-jump flight | Double-tap dash (8-way + air), hold-jump fly timer, dash+attack and aerial variants |
-| 5 | Stamina + limit gauge | ✅ bar + 3 modes; aura/EX are placeholders | **Contextual** stamina drain + fast refill. Hypermode bar per §3.4: fill by damage dealt/taken per mode, S to activate (Kakera auto on death), 15/25 s durations, damage ×0.75/×1.5 (Oyashiro), ×0.20/×1.5 (Kakera), stun rules, Friendship recharge boost. Remaining: real aura VFX (cube stand-in), per-character EX content (`shotFinal` anim fired), ゲージ増加量 battle setting |
-| 6 | Tag + teams | ❌ | `tagfront/tagback/tagOK`, partner AI-or-player control swap, 2v2 slots |
+| 5 | Stamina + limit gauge | ✅ bar + 3 modes; aura/EX are placeholders | **Contextual** stamina drain + fast refill. Hypermode bar per §3.4: fill by damage dealt/taken per mode, S to activate (Kakera auto on death), 15/25 s durations, damage ×0.75/×1.5 (Oyashiro), ×0.20/×1.5 (Kakera), stun rules, Friendship recharge boost. Remaining: real aura VFX (cube stand-in), per-character EX content (move 503 is a conditional EX follow-up; its animation/string-key binding is unresolved), ゲージ増加量 battle setting |
+| 6 | Teams and partner control | ❌ | 2v2 slots and partner control remain open; the tag voice keys alone do not establish a swap mechanic |
 | 7 | Overkill | ❌ | Downed-hit detection, **+1/hit** within the **3 s** window, gray-lock cutoff |
 | 8 | Bots | ❌ (P2 is a dummy) | AI: approach/retreat, melee range checks, block/dash reactions, difficulty tiers for empty versus slots |
 | 9 | Split-screen | ❌ (RE'd: 4 viewports as a **400×300** quadrant grid in 800×600 — `research/decompiled/FUN_006396f0.c:63-66`, :82-96; the old 256×448 reading came from the options-screen ctor `FUN_00402890`, not the split path) | Viewport grid (1/2/4), per-player ArenaCamera |

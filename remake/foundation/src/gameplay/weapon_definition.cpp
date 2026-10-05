@@ -269,8 +269,8 @@ bool parseBulletParameter(const uint8_t* bytes, size_t size, int status,
                     out.gaugeGainB       = blob[0x08];   // record +0x50
                     out.attackerHitstun  = blob[0x09];   // record +0x54
                     out.defenderHitstun  = blob[0x0a];   // record +0x58
-                    out.chargeTier1Move  = blob[0x0d];   // record +0x64
-                    out.chargeTier2Move  = blob[0x0e];   // record +0x68
+                    out.hitResolutionField64 = blob[0x0d];   // record +0x64
+                    out.hitResolutionField68 = blob[0x0e];   // record +0x68
                     out.hitEffect        = blob[0x0f];   // record +0x6C
                     out.secondaryEffect  = blob[0x10];   // record +0x70
                     out.releaseOffsetA   = blob[0x11];   // record +0x74

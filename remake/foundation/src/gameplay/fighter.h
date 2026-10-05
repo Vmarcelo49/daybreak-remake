@@ -7,11 +7,11 @@
 //  NOTES" at the bottom of this header.
 //
 //  RE findings (docs/reverse-engineering.md):
-//    - 40+ animation state names in .data: attackA/B/C, guard, damage,
-//      damagedown, damageKO, battlestart, recovery, etc. They are the VOICE cue
-//      keys (data/voice/<char>/<key>/NNN.wav, FUN_00431e70 at 0x432042), not
-//      animation names; the states select animation-set INDICES (see the table
-//      above state_to_anim_set).
+//    - The 39 strings including attackA/B/C and shotA/B/C are voice-cue keys
+//      loaded by FUN_00431e70, not animation names. The original binds clips
+//      through move IDs and each character/weapon NN.dat phase tags. Attack and
+//      dash defaults called out below are port inferences where raw selectors
+//      remain unresolved (docs/ANIMATION-SETS.md).
 //    - fcn.0041f580 = per-player update (3096 bytes): timers at +0x828
 //      (just-pressed), +0xa0 (action frames remaining), +0x7ac (=30 when
 //      action starts, 0.5s at 60fps).
@@ -28,27 +28,15 @@
 //  mode's damage/stun/recharge modifiers, and an EX move on S. The
 //  original's "auto-activate at full" rule (pre-DX) is not modelled.
 //
-//  State machine (simplified from the original's ~40 move ids; input mapping is
-//  provisional — see input.h: the original has ONE melee key (X),
-//  no dedicated heavy key, and separate shoot/special/tactics keys):
-//    Idle → Walk → Idle            (stick moved / released)
-//    Idle → Run → Idle             (dash: double-tap direction)
-//    Idle/Walk → AttackA → Idle    (melee key — light, 30 frames)
-//    Idle/Walk → AttackB → Idle    (heavy — currently same-key stand-in,
-//                                   real game uses directional variants)
-//    Idle/Walk → ShootA/B/C → Idle (C released: tap/yellow/red tier, 20 frames;
-//                                   tiers map to the binary's weapon shot moves
-//                                   300/301/302; costs + reloadNG gating live
-//                                   in projectile.h)
-//    Idle/Walk/Run/Jump → Jump     (Z: leap; hold to fly on the fly timer)
-//    tap,tap dir → Run             (ground dash) or Run-air (air dash, once
-//                                   per airtime); X mid-dash = dash attack,
-//                                   X airborne = aerial (same swing, gravity
-//                                   keeps running underneath it)
-//    Idle/Walk → Guard → Idle      (block key held)
-//    Any → Hit → Idle              (took damage, 15 frames stun)
-//    Any → Knockdown → KO          (HP reached 0)
-//    BattleStart → Idle            (round start pose, 60 frames)
+//  State machine (port inputs are simplified from the original's move graph):
+//    Idle ↔ Walk                   (stick or d-pad movement)
+//    Idle ↔ Run                    (double-tap dash; forward/back move selectors)
+//    AttackA                       (one melee input; neutral ground uses move 300,
+//                                   while dash/air animation selectors are unresolved)
+//    ShootA/B/C                    (port charge tiers; firing animation selector unresolved)
+//    Jump / Guard                  (port states with unresolved animation selectors)
+//    Any → Hit / Knockdown / KO    (reaction selectors recovered from move dispatch)
+//    BattleStart → Idle            (round reset move selector recovered)
 // =============================================================================
 #pragma once
 
@@ -72,9 +60,8 @@ namespace gameplay {
 // below read exactly like the source's `input::Action` / `input::PlayerInput`.
 namespace input = fnd::input;
 
-// Fighter states. The original has no such enum: its state is a "move id"
-// (`[player+0xadec]`, see the table below), and these are the port's names for
-// the move ids it models.
+// Fighter states are port labels. The executable stores move IDs directly in
+// `[player+0xadec]`; only recovered port-state selectors map to those IDs.
 enum class FighterState : int {
     Idle        = 0,   // standing, no input
     Walk        = 1,   // moving (stick/d-pad)
@@ -90,147 +77,50 @@ enum class FighterState : int {
     TagOut      = 11,  // reserved, never entered: no character swap exists —
                         // the reticle only changes targets (FUN_00421e30), and the
                         // "tag" voice cluster is partner callouts (see below)
-    ShootA      = 12,  // tap shot fired
-    ShootB      = 13,  // yellow charge released
-    ShootC      = 14,  // red charge released
+    ShootA      = 12,  // provisional firing-state label
+    ShootB      = 13,  // provisional firing-state label
+    ShootC      = 14,  // provisional firing-state label
     Jump        = 15,  // airborne (leap, fly, or falling out of an air dash)
-    ShotFinal   = 16,  // Hypermode EX move
+    ShotFinal   = 16,  // provisional port label for the EX firing state
 };
 
-// ---------------------------------------------------------------------------
-// State → animation set index (the original's selection).
-//
-// The original never looks an animation up by name. A fighter's state IS a
-// "move id" (`[player+0xadec]`), and a move names animation-set indices in the
-// character's own `data/<char>/NN.dat`:
-//
-//   FUN_00428510 (0x428510) switches on `[player+0xadec]`; every case value is a
-//   move id present in the shipped .dat files (measured on rena/mion/rika/
-//   satoko/keiichi/shion/hanyu 00–02.dat).
-//   FUN_00421080 (0x421080) starts a move: `[+0xadec] = [+0xadf0] = moveId`,
-//   `[+0xade0] = &moves[moveId]` (28-byte entries), then FUN_00421100(0).
-//   FUN_00421100 (0x421100) takes phase 0 of that move —
-//   `FUN_004244e0(&move->phases, phaseIndex)` is a std::vector index (0x4244e0
-//   is a _Vector_iterator over the container at move+8) — and binds the phase's
-//   FIRST dword to both tracks: `FUN_00421410(0, phase[0])` and
-//   `FUN_00421410(1, phase[0])` (0x421410 sets the set for the track).
-//   FUN_0041e180 (0x41e180) fills the per-player 124-entry animation table
-//   (+0x75e0, stride 0x38) from the .dat's animation table, whose entry i is
-//   `controller->GetAnimationSet(i)` — FUN_0064e8b0 (0x64e8b0) is
-//   GetAnimationSet + ID3DXAnimationSet::GetDuration. So the .dat's index is the
-//   D3DX set index, i.e. this port's `Model::anims` index (Parser::finish
-//   already reversed the file order to match D3DX; see xmodel.h:1615-1623).
-//   FUN_0041f580 (0x41f580, per-player update) reads the same `phase[0]` back
-//   as the current animation index and cross-fades its weight.
-//
-//   Move CHANGES blend instead of cutting: FUN_004211f0 takes the new move id
-//   and FUN_00421240(0) binds its phase 0 to track 1 only, while track 0 keeps
-//   showing the old move; FUN_0041f580's per-tick loop then decays the old
-//   weights and raises the new ones (the +0xae14/0xae18 counters bound the
-//   window). The port mirrors this: a state change keeps the old set on
-//   track 0, binds the new set on track 1 from t=0, ramps the weights over
-//   kAnimBlendTicks ticks, and commits both tracks to the new set. The
-//   initial bind (no old set) and same-set rebinds cut directly to both
-//   tracks, which is the FUN_00421100 steady state.
-//
-// The state/move KEY table at VMA 0x6b73b0 (16-byte stride: addattack, attackA …
-// specialC) is NOT this mapping: the only code that indexes it is the voice
-// system inside FUN_00431e70 (0x432042: `shl edx,4; add edx,0x6b73b0`) which
-// wsprintfA's `data/voice/<char>/<key>/%03d.wav` (formats at 0x6a281c/0x6a2830/
-// 0x6a2844). Those names never appear in a .X, whose sets are `Anim-1`…`Anim-124`.
-//
-// Rows below: port state → (move id, first-phase set index). The move id is
-// recorded because it is the citation; the index is what the model plays. The
-// set index is per-character data, but the shipped rigs order the 124 sets
-// identically and the .dat files agree on the index for every shared move id
-// (measured across the 11 character .dat files above), so one table serves all
-// characters — except for the weapon-specific moves (300+, see ShootA/B/C),
-// whose indices differ per character and are therefore taken from rena's
-// weapon-1 slot (data/rena/00.dat, weapon id 1).
-//
-// Not settled (deliberately left to the set-0 default rather than guessed):
-//   * Guard — the block key's move is not pinned; the "guard"/"guarded" voice
-//     keys exist (indices 12/13, shipped for all 12 characters) but the corpus
-//     holds no FUN_0064ae10 key-12 play site, so no call site was found that
-//     way either. Blocking may be a damage-path flag rather than a move —
-//     next step is the flag read on incoming damage, not another case hunt.
-//   * Jump — partly settled: with a move table bound the airtime plays move 41
-//     ([3,4]) while rising and move 43 ([43]) while falling, switching on the
-//     vertical-velocity sign; takeoff 40 and land 44 have no driver yet, and the
-//     locomotion selector's air branches (0x168/0x15e/0x1cc among others) are
-//     still unmapped. Note: FUN_004235d0 is steering (called from FUN_0041f580
-//     with a relation index and a relative angle), not air locomotion —
-//     earlier notes misread it as the jump driver.
-//   * TagOut — no such mechanic: control never transfers between fighters
-//     (input slots are per fixed index; the only switch in the original is
-//     the reticle target cycle, FUN_00421e30, wired to LockSwitch tap in
-//     main.cpp). The "tag" story came from voice-dir names (tagfront/
-//     tagback/tagOK, shipped for all characters) sitting beside tactics and
-//     thank in the key table — partner callouts, not a swap. "recovery" is a
-//     voice key of unknown cue (knockdown-recovery and round-transition both
-//     fit; neither is pinned). The state is never entered and stays on the
-//     fallback.
-// ---------------------------------------------------------------------------
-inline int state_to_anim_set(FighterState s) {
+// The executable binds a move's first phase to the animation controller
+// (FUN_00421080 → FUN_00421100 → FUN_00421410). The phase section tag is the
+// controller set index in that character's NN.dat (FUN_0041e180); the port must
+// therefore resolve state → evidenced move ID → this fighter's table → phase
+// tag. Missing selectors and rows stay unresolved instead of borrowing a set
+// from another character/weapon or interpreting a voice key as an animation.
+// These state/move pairs are supported by reset and dispatch paths in
+// FUN_0041de68, FUN_004219a0, and FUN_00428510. Contextual moves are carried by
+// their transition; unlocated selectors return -1.
+inline int state_to_move_id(FighterState s) {
     switch (s) {
-        // move 0 → Anim-124: the player reset (0x41de68) sets [+0xadec] = 0 and
-        // calls FUN_00421080(0); FUN_00428510 returns to 0 whenever nothing else
-        // applies. Its single phase names set 0.
-        case FighterState::Idle:        return 0;
-        // Move 10 is the walk: a single phase naming set 1 (measured across every
-        // shipped character .dat; controller index 1 is the walk clip in
-        // --anim-player). An earlier revision named move 0x14 (20) here, but its
-        // phases [13, 14, 15] are dash startup/loop/recovery (issue #26).
-        case FighterState::Walk:        return 1;
-        // Move 0x14 (20) is the forward dash chain, selected by FUN_0043ded0
-        // (0x43ded0: `FUN_00421080(0x14)`); its first phase names set 13, the dash
-        // startup (0x17/0x18/0x1b are the other directional dash chains). An earlier
-        // revision named move 0x1e (30) here, but its phases [54, 55, 56] are the
-        // jump-forward chain (issue #26). The port's Run IS the double-tap dash.
-        case FighterState::Run:         return 13;
-        // KNOWN-WRONG placeholders (issue #26), values unchanged pending the weapon
-        // dimension: moves 0x28/0x29/0x2a (40/41/42) are the JUMP chain — first
-        // phases 2, 3, 5, all zero combat — not the melee chain they were mistaken
-        // for. No character has an unarmed attack; real attacks are the weapon
-        // moves (300+: first phases 31/33/34 nata, 39/40 kick, 51–53 lunge), whose
-        // sets differ per character and costume. AttackA must resolve to the
-        // equipped weapon's set; until then these rows play the jump clips.
-        case FighterState::AttackA:     return 2;
-        case FighterState::AttackB:     return 3;
-        case FighterState::AttackC:     return 5;
-        // Move 0x67 (103) is the "cannot act" reaction FUN_00428510 plays in cases
-        // 0xe7/0xca; its chain is (95, 27) — the launched pose then the ground.
-        case FighterState::Hit:         return 95;
-        // Move 0xc4 (196) is the grounded reaction (cases 0xc4/0xc6/199); its
-        // chain (28, 29) is the lying pose.
-        case FighterState::Knockdown:   return 28;
-        // Move 0xcb (203) is the KO chain (cases 0xc9/0xcc/0xce): (97, 37).
-        case FighterState::KO:          return 97;
-        // Move 0xc2 (194) is the round reset's pose: FUN_004219a0 (0x4219a0)
-        // restores HP/inputs and plays it; its single phase is 43.
-        case FighterState::BattleStart: return 43;
-        // Moves 0x12c/0x12d/0x12e (300/301/302) are the weapon's shot moves — the
-        // character scripts start them 20+ times each and the AI reads the shot
-        // move id out of the weapon parameter block (`[+0x64]`/`[+0x68]` of
-        // `[input+0x10]`, FUN_00637950:350-357). rena weapon 1: 31/33/34.
-        case FighterState::ShootA:      return 31;
-        case FighterState::ShootB:      return 33;
-        case FighterState::ShootC:      return 34;
-        // Move 0x1f7 (503) is the EX/finisher move FUN_00422bd0 falls back to
-        // (`if (result == 0x1f7) FUN_00421080(0x1f7)`); its phase is 69.
-        case FighterState::ShotFinal:   return 69;
+        case FighterState::Idle:        return 0;   // reset: FUN_0041de68
+        case FighterState::Walk:        return 10;  // walk dispatch: FUN_00428510
+        case FighterState::Hit:         return 103; // reaction dispatch
+        case FighterState::Knockdown:   return 196; // grounded reaction dispatch
+        case FighterState::KO:          return 203; // KO reaction dispatch
+        case FighterState::BattleStart: return 194; // round reset: FUN_004219a0
+        case FighterState::Run:
+        case FighterState::AttackA:
+        case FighterState::AttackB:
+        case FighterState::AttackC:
         case FighterState::Guard:
+        case FighterState::ShootA:
+        case FighterState::ShootB:
+        case FighterState::ShootC:
         case FighterState::Jump:
+        case FighterState::ShotFinal:
         case FighterState::TagOut:
         default:                        return -1;
     }
 }
-
-// The trace's per-fighter field. It stays the STATE name on purpose: the DX9
-// build this trace is diffed against binds no animation sets at all (its d3dx9
-// under Wine returns no controller — see tests/visual/out/*.log), so it has no
-// set to print, and compare_match_traces.py asserts these names match exactly.
-// The set actually bound is exposed by Fighter::anim_set_index()/anim_set_name().
+// The trace's per-fighter field is a port state label, not a recovered animation
+// binding. The DX9 build this trace is diffed against binds no animation sets at all
+// (its d3dx9 under Wine returns no controller — see tests/visual/out/*.log), so it
+// has no set to print, and compare_match_traces.py asserts these names match exactly.
+// The set actually bound is exposed by Fighter::anim_set_index()/anim_set_name();
+// the shot labels below do not assert links to the executable's numeric move states.
 inline const char* state_to_anim_name(FighterState s) {
     switch (s) {
         case FighterState::Idle:        return "idle";
@@ -249,7 +139,7 @@ inline const char* state_to_anim_name(FighterState s) {
         case FighterState::ShootB:      return "shotB";
         case FighterState::ShootC:      return "shotC";
         case FighterState::Jump:        return "jump";
-        case FighterState::ShotFinal:   return "shotFinal";
+        case FighterState::ShotFinal:   return "shotFinal"; // provisional port label
         default: return nullptr;
     }
 }
@@ -332,7 +222,7 @@ struct FighterConstants {
     static constexpr float kChargePerSec  = 0.3f;   // CHARGE refill rate
     static constexpr float kYellowHoldSec = 0.45f;  // hold → yellow tier
     static constexpr float kRedHoldSec    = 1.10f;  // hold → red tier
-    static constexpr int   kShotFrames    = 20;     // firing pose length
+    static constexpr int   kShotStateFrames = 20;   // provisional shot-state duration
     static constexpr float kMuzzleForward = 60.0f;  // spawn ahead of fighter
     static constexpr float kMuzzleHeight  = 100.0f; // spawn above feet
     // Air movement: the leap matches the 0x29 fly-takeoff (vy 12.0/tick, 10.5 for
@@ -357,13 +247,6 @@ struct FighterConstants {
     static constexpr float kGuardDrainSec  = 25.0f;  // block-hold drain
     static constexpr float kFlyDrainSec    = 30.0f;  // flight drain
     static constexpr float kStaminaRegenSec = 60.0f; // grounded refill rate
-    // Move-change cross-fade length in update ticks (~0.13 s at 60 fps).
-    // INFERRED: the original's blend runs off the +0xae14/0xae18 counters
-    // under FUN_0041f580, whose initial value was not located in the
-    // decompiled tree — only the mechanism (old decays, new rises) is read.
-    // 8 ticks follows fighting-game convention; the number stands until a
-    // dynamic oracle pins it.
-    static constexpr int   kAnimBlendTicks = 8;
 };
 
 // One swing's resolved numbers (issue #26 steps 3–4). Data-driven when a move
@@ -462,20 +345,16 @@ public:
 
     // ---- character move table (gameplay/character_moves.h, issue #26) ----
     // Binds the parsed data/<char>/NN.dat for this fighter's own rig. Borrowed,
-    // like the model and the weapon; null keeps the legacy shared tuning (the
-    // state_to_anim_set rows and MeleeRules), which is what the standalone
-    // --match trace path and the install-free tests rely on.
+    // like the model and the weapon; null keeps legacy shared melee tuning and
+    // leaves animation states without a recovered table binding on set 0.
     void set_moves(const CharacterMoves* moves);
     const CharacterMoves* moves() const { return m_moves; }
-    // The character-.dat move the current (or most recent) swing plays, or -1
-    // when the swing is the legacy shared one. Exposed so tests pin the
-    // situation → move mapping without needing a model.
+    // The character-.dat move currently used for melee tuning. Exposed for
+    // combo-bound evidence checks.
     int attack_move_id() const { return m_attackMoveId; }
-    // The dash/air move the current locomotion plays (try_dash / try_jump pick
-    // it; Jump re-picks it when the vertical velocity changes sign). -1 keeps
-    // the legacy table row. Same borrowed-table rules as the swing.
+    // Port candidate for a grounded Up/Down dash (an input-to-move inference);
+    // -1 means no candidate is used, including side and air dashes.
     int dash_move_id() const { return m_dashMoveId; }
-    int jump_move_id() const { return m_jumpMoveId; }
 
     // ---- selected weapon (gameplay/weapon_definition.h, issue #9) ----
     // Binds the parsed data/item/NNN.dat for the selected weapon. Borrowed, like the
@@ -618,15 +497,15 @@ public:
     bool               is_alive()   const { return m_hp > 0; }
     bool               airborne()   const { return !m_grounded; }
     const xm::Model*   model()      const { return m_model; }
-    // Which set is bound right now, and whether it is the fallback. The original's
-    // index is state_to_anim_set(m_state); -1 means nothing is bound (no model, no
-    // sets, or animation switched off). anim_set_name() is the model's own set name
-    // ("Anim-124" for index 0 of a shipped rig), or "" when none is bound.
+    // Which set is bound right now, and whether it is the fallback. The index
+    // comes from the bound move table's phase tag; -1 means nothing is bound.
+    // anim_set_name() is the model's own set name ("Anim-124" at index 0 on a
+    // shipped rig), or "" when none is bound.
     int                anim_set_index() const { return m_animSetIdx; }
     const char*        anim_set_name() const;
-    // True when the state has no row in the original's table, or this model has too
-    // few sets for its index: the fighter then plays set 0 (the bind-anchored
-    // default) instead of the state's set. Exposed so the fallback is not silent —
+    // True when a state selector or table row is unresolved, or its set index
+    // does not fit the model: the fighter then plays set 0. Exposed so the fallback
+    // is not silent —
     // the trace wiring in main.cpp and tests/fighter_script_test.cpp read it.
     bool               anim_fallback() const { return m_animFallback; }
     // Fractional stocks feed the HUD bars directly (ammo-bar.webp).
@@ -676,8 +555,11 @@ private:
     int          m_stateTimer  = 0;    // frames remaining in current state
     int          m_animSetIdx  = -1;   // set bound for the current state (-1 = none)
     bool         m_animFallback = false;  // m_animSetIdx is the set-0 default
-    int          m_blendTicks  = 0;    // cross-fade ticks left (0 = steady state)
-    int          m_blendTotal  = 1;    // blend length the weights interpolate over
+    bool         m_animationBoundThisUpdate = false;
+    int          m_blendTicks  = -1;   // source countdown; negative means no class blend
+    int          m_blendTotal  = 0;    // destination set's +0x1c normalization value
+    int          m_phaseIndex = 0;     // current section within the selected move
+    int          m_moveElapsedTicks = 0;  // integer counter reset at each section bind
     // Per-swing hit accounting (issue #10): a bit per victim index, plus a count, both
     // cleared when the state changes so one swing can hit several opponents once each.
     unsigned     m_swingHits = 0;
@@ -687,10 +569,7 @@ private:
                                            // data-driven swings override it via m_swing
     const CharacterMoves* m_moves = nullptr;  // borrowed move table (issue #26)
     int          m_attackMoveId = -1;       // move the current swing plays (-1 legacy)
-    int          m_dashMoveId = -1;         // move the current dash plays (-1 legacy)
-    int          m_jumpMoveId = -1;         // move the current airtime plays (-1 legacy)
-    int          m_phaseIndex = 0;          // phase of the current move being shown
-    float        m_phaseTime = 0.0f;        // seconds played of that phase
+    int          m_dashMoveId = -1;         // inferred grounded dash candidate, or unresolved
     MeleeSwing   m_swing{};                 // this swing's resolved numbers
     bool         m_aerialAttack = false;   // this swing is the aerial variant
 
@@ -705,9 +584,9 @@ private:
     //
     // PORT RULE, see weapon_definition.h: the magazine block this reads IS parsed by the
     // original (FUN_00433eb0:121-143) but no function in the corpus consumes it, so the
-    // pool geometry below is the remake's design. What is recovered — per-weapon damage,
-    // hit radius, hitstun, gauge gain and the two charge-tier move ids — arrives through
-    // m_bulletParams instead.
+    // pool geometry below is the remake's design. Recovered per-weapon damage, hit radius,
+    // hitstun and gauge gain arrive through m_bulletParams. Blob fields +0x64/+0x68 are
+    // also decoded there, but their hit-resolution use does not establish shot-tier moves.
     const WeaponDefinition* m_weapon = nullptr;   // borrowed
     const BulletParameter*  m_bulletParams[2] = {nullptr, nullptr};  // per charge level
     AmmoStock    m_main;         // MAIN pool (charge level 1)
@@ -740,12 +619,10 @@ private:
                               double dt);
     void update_facing(const Fighter* opp, double dt);
     void try_switch_animation();
-    // One cross-fade tick (the FUN_0041f580 weight half): the old set on
-    // track 0 decays 1 -> 0 while the new set on track 1 rises 0 -> 1, then
-    // both tracks commit to the new set (the FUN_00421100 steady state).
+    void bind_animation_set(int setIndex);
+    // One source countdown tick for the recovered Rena+2 blend callback.
     void tick_blend();
-    // End-of-blend commit: track 0 takes over track 1's set at its playhead
-    // at full weight, restoring the FUN_00421100 both-tracks steady state.
+    // End-of-blend commit restores the controller's both-tracks steady state.
     void commit_blend();
     // Unbind every track (bind pose). Round resets and animation-off share
     // it: both need "no set bound", and only try_switch_animation may bind.
@@ -785,17 +662,9 @@ private:
     // animation state is un-RE'd.
     void apply_knockback(const glm::vec3& dir, float speed);
 
-    // Situation → character-.dat move id for a melee press (issue #26 step 3),
-    // or -1 when no table is bound or the situation's move is absent. The map
-    // is provisional: FUN_0043ded0 gates several attack moves per situation on
-    // unrecovered flags, so each row is the best-evidenced candidate —
-    //   dash (press while Run) → 330, the lunge ("dash forward + attack", nata)
-    //   air                     → 340, the single-phase weapon aerial ([88])
-    //   ground                  → 300, the ground neutral (first phase 31)
-    // — with 320 (ground branch at FUN_0043ded0:311, frame-1 startup) on record
-    // as the alternative for ground/air, and the kicks (310/311) unused for lack
-    // of a recovered selection rule. A costume that drops the row's move falls
-    // through to any weapon-family move present rather than the jump clip.
+    // Current move choice for combat tuning. Its port-context heuristic does not
+    // establish an animation selector; animation resolution uses the separate
+    // confirmed ID below.
     int resolve_attack_move(bool dashAttack, bool aerial) const;
     // Fills m_swing from the move's first combat entry (or the legacy tuning
     // when there is no table, no move, or no combat entry).
@@ -803,26 +672,15 @@ private:
     // A move counts when the table ships it with at least one phase (a costume
     // that drops the move must not resolve to a phaseless id).
     int present_move(int id) const;
-    // Dash direction → dash move (Up 20 / Down 27 / Left 24 / Right 23, all
-    // first-phase verified), or -1. Forward/back are solid (case yaw offsets 0
-    // and +180 in FUN_00438310, plus the visuals). The Left/Right ORDER follows
-    // only the observed startup sets (19 left, 22 right) and is UNVERIFIED
-    // under mirroring — if playtest says a sidestep plays backwards, swap the
-    // two rows; it is a one-line change. A missing row falls back to 20, then
-    // legacy.
+    // Facing-relative forward/back (moves 20/27 in FUN_00438310). Side-dash
+    // move order has no recovered link to the port's left/right inputs.
     int dash_move_for(input::Action dir) const;
-    // Rising (leap/fly) → 41, falling → 43, or -1. Takeoff 40 and land 44 have
-    // no driver in this machine yet.
-    int jump_move_for(bool rising) const;
-    // The move whose phases the current state plays, or -1 for the legacy row.
+    // The move whose phases the current state plays, or -1 if its selector is
+    // not recovered. Only the grounded neutral 300 attack path is established.
     int state_move_id() const;
-    // Plays each phase of a multi-phase move once through, holding the last:
-    // without it every attack loops its startup on track 1. The per-phase
-    // length is the clip's own duration — the original's countdown source is
-    // unrecovered, so this is an approximation, but a strictly better-shaped
-    // one than a startup loop. No table, single phase, or missing model:
-    // no-op, legacy behaviour exactly.
-    void advance_phase(float animDt);
+    // Mirrors the source handler tail: elapsed move ticks advance once per update,
+    // and the NN.dat set gate controls whether the current phase advances.
+    void advance_animation_phase();
 
     // Shared pulse for the aura's alpha + radius (DX9 render did both from one
     // expression; kept single-sourced so they cannot drift).
@@ -842,10 +700,9 @@ private:
 //     headers; the port report carries the field-by-field check.
 //  3. Model/animation: XModel* m_model (which owned mesh + ID3DXAnimationController)
 //     → const xm::Model* m_model + xm::Controller* m_anim, both borrowed, bound
-//     through bind()/init(). try_switch_animation() binds the index
-//     state_to_anim_set(state) — the original's move → phase → set chain (see the
-//     table above) — and only falls back to set 0 when the table has no row for the
-//     state or the model is shorter than the index.
+//     through bind()/init(). try_switch_animation() resolves the selected move's
+//     first phase through the bound NN.dat and falls back to set 0 when the move
+//     selector or row is unknown, or the model lacks the named set.
 //  4. render(IDirect3DDevice9*) is deleted, not ported. Its three products are
 //     now data: modelMatrix() (the world matrix), pose() (camera/pose lookup)
 //     and the aura accessors (colour/radius/centre, in model space). The

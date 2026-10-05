@@ -6,10 +6,10 @@
 //  kept identical so the two can be diffed. Deviations are listed in "PORT
 //  NOTES" at the bottom of this header.
 //
-//  RE provenance (DaybreakDX.exe string table @0x2b7530-0x2b75a0, same table
-//  that holds attackA/B/C): shotA/shotB/shotC are per-tier firing animations,
-//  shotFinal is reserved for the super (out of scope here), reloadNG/reloadOK
-//  gate volleys, and spark + fire are hit/muzzle VFX triggers. Stage channel
+//  The string table @0x2b7530-0x2b75a0 contains shotA/shotB/shotC/shotFinal
+//  alongside attackA/B/C, but the decompiled corpus does not establish that these
+//  are per-tier firing animations or map them to the port's tap/yellow/red tiers.
+//  The port keeps those names as provisional labels. Stage channel
 //  provenance: fcn.004011f0 loads collision_tama.x ("tama" = ball) as the
 //  projectile-only mesh, queried here through game::physics::raycastModel.
 //  Capture provenance: battle-hud.webp pins MAIN 6 / CHARGE 2 counters;
@@ -69,26 +69,16 @@ inline constexpr std::uint8_t rgbA(Rgb c) {
     return static_cast<std::uint8_t>((c >> 24) & 0xffu);
 }
 
-// Tap = quick black shot; Yellow/Red = charged releases at the two hold
-// thresholds (spec §3.1); Ex = the Hypermode EX move on S, whose reserved
-// animation is "shotFinal" in the binary's string table (@0x2b7590). Each
-// tier maps 1:1 to a firing animation state.
+// Tap/Yellow/Red and their hold thresholds are port tiers; the string-table labels
+// below are provisional names, not a recovered tier-to-firing-animation mapping.
+// Ex follows the remake's Hypermode path; the original has a move-503 finisher, but
+// the label "shotFinal" does not by itself prove an animation binding.
 enum class ShotTier : std::uint8_t {
-    Tap    = 0,  // "shotA"
-    Yellow = 1,  // "shotB"
-    Red    = 2,  // "shotC"
-    Ex     = 3,  // "shotFinal"
+    Tap    = 0,
+    Yellow = 1,
+    Red    = 2,
+    Ex     = 3,
 };
-
-inline const char* shot_tier_anim(ShotTier t) {
-    switch (t) {
-        case ShotTier::Tap:    return "shotA";
-        case ShotTier::Yellow: return "shotB";
-        case ShotTier::Red:    return "shotC";
-        case ShotTier::Ex:     return "shotFinal";
-    }
-    return "shotA";
-}
 
 // Per-tier tuning (all provisional — only the 6/2 stock counts are pinned).
 struct ShotParams {

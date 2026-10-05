@@ -100,33 +100,19 @@ personagem (índice da fase do move). Ver `placeholders.md` §5 e
 `foundation/src/gameplay/fighter.h`:
 
 ```
-attackA, attackB, attackC         → 3 tiers de light/heavy/special attacks
-attackKO, damageKO                → KO animations
-backattack, backdamage            → back attacks (presumably when getting hit from behind)
-battlestart                       → round start animation
-damage, damagedown                → taking damage (down = knocked down?)
-fire, shotA, shotB, shotC, shotFinal → 4 projectile types (hadoukens, supers)
-guard, guarded                    → blocking state
-HPcheck                           → low HP state
-intercept                         → counter-attack state
-missdamage                        → missed attack recovery
-nearLose, nearWin                 → dramatic near-loss / near-win states
-oyashiro, oyashiroB               → "Oyashiro" = the Higurashi deity — special move?
-poison                            → status effect
-provoke                           → taunt
-recovery                          → getting up from knockdown
-reloadNG, reloadOK                → reload states (for projectile-using fighters)
-revival                           → revive state (team mechanic for 2v2?)
-spark                             → hit spark (VFX trigger)
-specialA, specialB, specialC      → 3 special moves per fighter
-tactics                           → pre-fight tactic pose
-tagback, tagfront, tagOK          → tag-team mechanics (2v2 specific!)
-thank                             → win/thank animation
+attackA/B/C, specialA/B/C, shotA/B/C/Final → voice-cue key strings; gameplay meanings and animation/projectile mappings unresolved
+attackKO, damageKO, backattack, backdamage, battlestart, damage, damagedown,
+fire, guard, guarded, HPcheck, intercept, missdamage, nearLose, nearWin,
+oyashiro, oyashiroB, poison, provoke, recovery, reloadNG, reloadOK, revival,
+spark, tactics, tagback, tagfront, tagOK, thank → remaining voice-cue key strings;
+                                                    names alone do not prove state behavior
 ```
 
-**`tagback/tagfront/tagOK`** confirmam que **2v2 tem tag mechanics** — um
-fighter pode "tag" o parceiro pra entrar.  Isso vai refletir no design do
-state machine.
+This inventory is not a map of 40+ recovered animation states. The executable
+indexes these strings to construct `data/voice/<char>/<key>/%03d.wav`
+(`FUN_00431e70`); model animations are `Anim-1`…`Anim-124`, selected by
+per-character move-table indices. In particular, `tagback/tagfront/tagOK` do
+not establish a tag-in/tag-out mechanic or a 2v2 swap.
 
 ## Arquitetura revisada: Scene State Machine
 
@@ -163,7 +149,7 @@ auto-contida com `enter()`, `update(dt)`, `render()`, `exit()`.  O
 │  Scene_Gameplay                                                │
 │   - 2v2 arena fighter, 800×600, split-screen or shared        │
 │   - Camera always locks on one fighter, Tab cycles target     │
-│   - Tag mechanics (tagback/tagfront/tagOK)                    │
+│   - Partner control / any tag-swap mechanic unresolved         │
 │   - On KO → Scene_Result                                       │
 │   v                                                             │
 │  Scene_Result (data/select/w%02d.bmp winner portrait)         │
@@ -259,21 +245,20 @@ escolhendo teams e costume, chegando ao gameplay.
 cada uma mostrando a arena do ponto de vista daquele player.
 
 ### M8 — Fighter + combat (melee + projectiles)
-**Objetivo**: combate funcional com todos os estados do RE.
+**Objetivo**: combate funcional com os estados relevantes do jogo, separando evidência RE das regras de port ainda provisórias.
 
 - `src/gameplay/fighter.{h,cpp}` — struct com HP, stamina, position,
   velocity, current animation state
-- State machine com 40+ estados mapeados do RE:
-  idle, walk, run, dash, jump, attackA/B/C, attackKO, damage, damagedown,
-  damageKO, backattack, backdamage, battlestart, fire, shotA/B/C/Final,
-  guard, guarded, HPcheck, intercept, missdamage, nearLose, nearWin,
-  oyashiro, poison, provoke, recovery, reloadOK/NG, revival, spark,
-  specialA/B/C, tactics, tagback, tagfront, tagOK, thank
+- Separar os fatos recuperados (move IDs e índices de fase nos `.dat`) das
+  escolhas provisórias de input/combate. Os nomes `attackA/B/C`, `shotA/B/C`
+  etc. são chaves de voice-cue; não são nomes de animação nem um mapa de estados.
 - Hit detection via raycast (M5 do roadmap antigo, agora M8)
-- Tag mechanics: tagfront/tagback/tagOK (2v2 troca de fighter ativo)
-- Damage model: 100 HP, light=5, heavy=12, special=25
+- Não inferir tag/swap de `tagfront/tagback/tagOK`: só chamadas de voz não
+  demonstram troca de fighter ativo.
+- Damage model e tiers continuam parcialmente port rules até seleção e valores
+  terem evidência suficiente.
 
-**Critério de sucesso**: 2v2 jogável, com tag, KO, result screen.
+**Critério de sucesso**: batalha 2v2 jogável, KO e result screen; mecânicas de swap só se implementadas como feature explicitamente rotulada ou recuperadas por evidência adicional.
 
 ### M9 — Polimento
 - HUD (HP/stamina, timer, character names)

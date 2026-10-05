@@ -38,7 +38,6 @@
 // =============================================================================
 #define XMODEL_IMPLEMENTATION
 #include "assets/xmodel.h"
-#include "gameplay/fighter.h"   // state_to_anim_set: the table checked against each rig
 
 #include <algorithm>
 #include <cctype>
@@ -124,27 +123,8 @@ bool checkModel(const fs::path& file, PoseStats& stats, std::string& error) {
     if (model.anims.empty() || model.anims[0].duration <= 0.f) return false;
     if (model.frames.empty()) { error = "no frames"; return false; }
 
-    // Every state the port maps must fit the rig it will play on. The table in
-    // gameplay/fighter.h names indices into the same 124-entry list the .dat files
-    // and the .X files share (state → move → first phase → D3DX set index); a row
-    // past the end would silently fall back to set 0, which is exactly the bug the
-    // table exists to remove. Rows that are deliberately -1 (Guard, Jump, TagOut —
-    // see the table's "not settled" list) are skipped, and so are rigs shorter than
-    // the table: the shipped set is 124 sets (21 rigs have 137, 6 have 133, and
-    // data/satoko/01.X is a 39-set outlier), and a short rig is what the runtime
-    // fallback — reported through Fighter::anim_fallback() — is for.
-    if (model.anims.size() >= 124) {
-        for (int s = 0; s <= static_cast<int>(gameplay::FighterState::ShotFinal); ++s) {
-            const int idx = gameplay::state_to_anim_set(static_cast<gameplay::FighterState>(s));
-            if (idx < 0) continue;
-            if (static_cast<size_t>(idx) >= model.anims.size()) {
-                error = "state " + std::to_string(s) + " names set " + std::to_string(idx) +
-                        " but " + file.filename().string() + " has " +
-                        std::to_string(model.anims.size()) + " sets";
-                return false;
-            }
-        }
-    }
+    // Runtime move selection is verified against each fighter's bound NN.dat in
+    // melee_rules_test. This test focuses on .X ordering and pose invariants.
 
     std::vector<glm::mat4> bind, world;
     model.evalPose(nullptr, 0.f, false, bind);

@@ -1173,6 +1173,7 @@ static bool loadCharacterMoves(App& app, int fighter, const std::string& rigSour
     std::string parent, base;
     splitRigDir(rigSource, parent, base);
     const int character = gameplay::characterIndexForDir(base);
+    moves->set_character_index(character);
     if (expectedId > 0 && moves->weapon_id() != expectedId) {
         if (hard) {
             error = "fighter " + std::to_string(fighter) + ": " + path +
@@ -2566,9 +2567,10 @@ static bool enterFrontendBattle(App& app) {
     for (int i = 0; i < launch.fighterCount; ++i)
         if (!loadWeaponDefinition(app, i, launch.fighters[i].weaponId, app.error))
             return false;
-    // The recovered per-weapon projectile parameters: damage, hit radius, hitstun and the
-    // two charge-tier move ids. A level with no matching bullet file simply stays empty,
-    // which is the shared provisional table for that shot.
+    // Load the recovered per-weapon projectile parameters. Damage, hit radius and hitstun
+    // are used here; blob fields +0x64/+0x68 are retained as decoded values, but their
+    // hit-resolution use does not establish a charge-tier shot selector. A level with no
+    // matching bullet file stays empty, the shared provisional table for that port tier.
     for (int i = 0; i < launch.fighterCount; ++i)
         for (int level = 1; level <= 2; ++level)
             loadBulletParameter(app, i, level, *app.weaponDefs[static_cast<size_t>(i)],

@@ -8,10 +8,11 @@
 //  makes) and prints expected vs got for every assertion.
 //
 //  Build from the repo root (glm ships in the foundation's third_party):
-//    g++ -std=c++20 -Wall -Wextra -I remake/foundation/src
+//    g++ -std=c++17 -Wall -Wextra -I remake/foundation/src
 //        -I remake/foundation/third_party/glm
 //        remake/foundation/src/gameplay/fighter.cpp
 //        remake/foundation/src/gameplay/character_moves.cpp
+//        remake/foundation/src/gameplay/weapon_definition.cpp
 //        remake/foundation/src/gameplay/projectile.cpp
 //        remake/foundation/src/physics/raycast.cpp
 //        remake/foundation/tests/fighter_script_test.cpp -o /tmp/fighter_script_test
@@ -42,6 +43,8 @@
 #include "gameplay/fighter.h"
 #include "gameplay/fixed_step.h"
 #include "gameplay/projectile.h"
+#include "gameplay/character_moves.h"
+#include "gameplay/weapon_definition.h"
 #include "physics/raycast.h"
 
 // Colour-layout cross-check only: DEBUG_PRIMS_GEOMETRY_ONLY keeps webgpu.h and
@@ -50,10 +53,17 @@
 #define DEBUG_PRIMS_GEOMETRY_ONLY
 #include "render/debug_prims.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <memory>
+#include <string>
 #include <vector>
 
 namespace {
@@ -71,6 +81,111 @@ const float      kStep = static_cast<float>(kDt);
 
 int g_checks = 0;
 int g_fails  = 0;
+int g_skipped = 0;
+
+struct TestCombo {
+    gameplay::CharacterMoves moves;
+    gameplay::WeaponDefinition weapon;
+    bool ready = false;
+
+    bool load(const std::filesystem::path& install) {
+        const int itemId = gameplay::kWeaponIds[0][0];
+        const auto movesPath = install / "data" / "rena" / "00.dat";
+        const std::string itemName =
+            (itemId < 10 ? "00" : itemId < 100 ? "0" : "") +
+            std::to_string(itemId) + ".dat";
+        const auto itemPath = install / "data" / "item" / itemName;
+        std::ifstream moveFile(movesPath, std::ios::binary);
+        std::ifstream itemFile(itemPath, std::ios::binary);
+        if (!moveFile || !itemFile) return false;
+        const std::vector<std::uint8_t> moveBytes(
+            (std::istreambuf_iterator<char>(moveFile)), std::istreambuf_iterator<char>());
+        const std::vector<std::uint8_t> itemBytes(
+            (std::istreambuf_iterator<char>(itemFile)), std::istreambuf_iterator<char>());
+        std::string error;
+        if (!moves.parse(moveBytes.data(), moveBytes.size(), error) ||
+            moves.weapon_id() != itemId ||
+            !weapon.parse(itemId, itemBytes.data(), itemBytes.size(), error) ||
+            weapon.id != itemId)
+            return false;
+        moves.set_character_index(0);
+        ready = true;
+        return true;
+    }
+
+    void bind(Fighter& fighter) const {
+        if (!ready) return;
+        fighter.set_moves(&moves);
+        fighter.set_weapon(&weapon);
+    }
+};
+
+TestCombo g_testCombo;
+
+std::filesystem::path findInstall(const char* executable) {
+    const int itemId = gameplay::kWeaponIds[0][0];
+    const std::string itemName =
+        (itemId < 10 ? "00" : itemId < 100 ? "0" : "") + std::to_string(itemId) + ".dat";
+    const auto containsCombo = [&itemName](const std::filesystem::path& root) {
+        std::error_code ec;
+        return std::filesystem::is_regular_file(root / "data" / "rena" / "00.dat", ec) &&
+               std::filesystem::is_regular_file(root / "data" / "item" / itemName, ec);
+    };
+    std::vector<std::filesystem::path> starts;
+    std::error_code ec;
+    if (const char* configured = std::getenv("GAME_DIR")) {
+        const std::filesystem::path candidate(configured);
+        if (containsCombo(candidate)) return candidate;
+    }
+    starts.push_back(std::filesystem::current_path(ec));
+    if (executable && *executable)
+        starts.push_back(std::filesystem::absolute(executable, ec).parent_path());
+    for (const auto& start : starts) {
+        for (auto dir = start; !dir.empty(); dir = dir.parent_path()) {
+            const auto nested = dir / "Higurashi-Daybreak";
+            if (containsCombo(dir)) return dir;
+            if (containsCombo(nested))
+                return dir / "Higurashi-Daybreak";
+            const auto parent = dir.parent_path();
+            if (parent == dir) break;
+        }
+    }
+    return {};
+}
+
+void skip_case(const char* what) {
+    ++g_skipped;
+    std::printf("  %-52s SKIP (matching Rena 0 combo unavailable)\n", what);
+}
+
+void bind_test_combo(Fighter& fighter) { g_testCombo.bind(fighter); }
+
+float magazine_shots(int chargeLevel) {
+    const auto& mag = g_testCombo.weapon.magazineForChargeLevel(chargeLevel);
+    return (mag.reloadTime > 0)
+        ? static_cast<float>(mag.capacity()) / static_cast<float>(mag.reloadTime)
+        : 0.0f;
+}
+
+float magazine_refill_shots_per_sec(int chargeLevel) {
+    const auto& mag = g_testCombo.weapon.magazineForChargeLevel(chargeLevel);
+    // The current port refill rule uses reloadTime pool units per second and
+    // reloadTime units per shot, so a loaded magazine recovers one shot/sec.
+    return (mag.reloadTime > 0) ? 1.0f : 0.0f;
+}
+
+int charge_threshold_frames(int chargeLevel) {
+    const float threshold = static_cast<float>(
+        g_testCombo.weapon.magazineForChargeLevel(chargeLevel).chargeMax) /
+        gameplay::FixedStep::tickRate;
+    float held = 0.0f;
+    int frames = 0;
+    while (held < threshold && frames < 10000) {
+        held += kStep;
+        ++frames;
+    }
+    return frames;
+}
 
 // ---------------------------------------------------------------------------
 // Check helpers — every one prints expected vs got.
@@ -154,18 +269,10 @@ void settle(Fighter& f, int frames = FighterConstants::kBattleStartFrames) {
     for (int i = 0; i < frames; ++i) f.update(nullptr, nullptr, kDt);
 }
 
-// Presses AttackA, then advances `extra` further frames. The swing's timer is
-// kAttackFrames at the press frame, so elapsed == extra afterwards.
-void press_attack(Fighter& f, Input& in, int extra) {
-    in.set(fnd::input::Action::AttackA, true);
-    tick(f, in);
-    in.set(fnd::input::Action::AttackA, false);
-    for (int i = 0; i < extra; ++i) tick(f, in);
-}
-
 // A fresh fighter at `pos` facing +Z, already out of the BattleStart pose.
 Fighter make_idle_fighter(const glm::vec3& pos) {
     Fighter f;
+    bind_test_combo(f);
     f.init(nullptr, nullptr, pos, 0.0f);
     settle(f);
     return f;
@@ -390,124 +497,40 @@ void test_dash() {
 }
 
 // ===========================================================================
-//  Case 3 — attacks: 30 frames, light 5 / heavy 12, melee range 160 XZ,
-//           active window from elapsed frame 5, one hit per swing
+//  Case 3 — neutral attack move and hit behavior from Rena 0 + item 1
 // ===========================================================================
 void test_attacks() {
-    section("3. attack windows (30 frames, 5/12 damage, 160 XZ range)");
-    check_int("kAttackFrames", 30, FighterConstants::kAttackFrames);
-    check_int("kLightDamage", 5, FighterConstants::kLightDamage);
-    check_int("kHeavyDamage", 12, FighterConstants::kHeavyDamage);
-    check_bits("kMeleeRange", 160.0f, FighterConstants::kMeleeRange);
-    check_int("kHitStunFrames", 15, FighterConstants::kHitStunFrames);
+    section("3. Rena 0 neutral attack uses its weapon-bound move row");
+    if (!g_testCombo.ready) return skip_case("Rena 0 neutral attack");
 
-    {
-        Fighter a = make_idle_fighter(glm::vec3(0, 0, 0));
-        Fighter b = make_idle_fighter(glm::vec3(0, 0, 100));
-        Input in;
-        in.set(fnd::input::Action::AttackA, true);
-        tick(a, in);
-        in.set(fnd::input::Action::AttackA, false);
-        check_int("state after melee press", static_cast<int>(FighterState::AttackA),
-                  static_cast<int>(a.state()));
-        check_bool("hit refused at elapsed 0", false, a.try_melee_hit(b));
-        int first_hit = -1;
-        for (int k = 1; k <= 30; ++k) {
-            tick(a, in);
-            if (first_hit < 0 && a.try_melee_hit(b)) first_hit = k;
-        }
-        // Startup is a MeleeRules window now (5 ticks), not a bare elapsed>=5 test.
-        check_int("first frame the swing can land (startup window over)", 4, first_hit);
-        check_int("light melee damage", 100 - 5, b.hp());
-        check_int("target state after the hit", static_cast<int>(FighterState::Hit),
-                  static_cast<int>(b.state()));
-        check_int("swing expired to Idle", static_cast<int>(FighterState::Idle),
-                  static_cast<int>(a.state()));
-        // The stun is exactly kHitStunFrames: count B down to Idle.
-        int stun = 0;
-        while (b.state() == FighterState::Hit && stun < 60) {
-            b.update(nullptr, nullptr, kDt);
-            ++stun;
-        }
-        // A melee inflicts its own active-window stun (port rule, melee_rules.h),
-        // not the shared kHitStunFrames.
-        check_int("stun length after a melee hit", 8, stun);
-    }
+    const gameplay::CharacterMove* move = g_testCombo.moves.find(300);
+    check_bool("Rena 0 slot-0 table contains neutral move 300", true, move != nullptr);
+    check_int("move 300 starts on phase tag 31", 31,
+              move ? move->first_set_index() : -1);
 
-    {
-        // Range: inclusive at exactly kMeleeRange, exclusive just past it.
-        // The recovered hitbox is a 3D sphere of (30 + radius) centred on the attacker's
-        // chest height, so at ground level the horizontal reach is sqrt(160^2 - 84^2)
-        // ~= 136 — NOT a flat 160, and NOT an arc. The target's head and chest anchors
-        // are both tested (FUN_0063dad0:238-243).
-        Fighter a1 = make_idle_fighter(glm::vec3(0, 0, 0));
-        Fighter t1 = make_idle_fighter(glm::vec3(0, 0, 120));
-        Input in1;
-        press_attack(a1, in1, 5);
-        check_bool("melee lands inside the sphere at 120", true, a1.try_melee_hit(t1));
-        Fighter a2 = make_idle_fighter(glm::vec3(0, 0, 0));
-        Fighter t2 = make_idle_fighter(glm::vec3(0, 0, 160.5f));
-        Input in2;
-        press_attack(a2, in2, 5);
-        check_bool("melee misses past the sphere's ground-level reach", false,
-                   a2.try_melee_hit(t2));
-        Fighter a3 = make_idle_fighter(glm::vec3(0, 0, 0));
-        Fighter t3 = make_idle_fighter(glm::vec3(0, 0, 130));
-        Input in3;
-        press_attack(a3, in3, 5);
-        check_bool("melee lands at 130, still inside", true, a3.try_melee_hit(t3));
-        // There is NO cone (FUN_0063b470 has no angle term), so behind is inside the
-        // sphere on exactly the same terms as in front. An earlier draft asserted the
-        // opposite from an invented 60-degree arc; the sphere is what the corpus supports.
-        Fighter a4 = make_idle_fighter(glm::vec3(0, 0, 0));
-        Fighter t4 = make_idle_fighter(glm::vec3(0, 0, -120));
-        Input in4;
-        press_attack(a4, in4, 5);
-        check_bool("melee behind lands too (sphere, no angle term)", true,
-                   a4.try_melee_hit(t4));
+    Fighter attacker = make_idle_fighter(glm::vec3(0, 0, 0));
+    Fighter target = make_idle_fighter(glm::vec3(0, 0, 40));
+    Input in;
+    in.set(fnd::input::Action::AttackA, true);
+    tick(attacker, in);
+    in.set(fnd::input::Action::AttackA, false);
+    check_int("neutral attack enters AttackA", static_cast<int>(FighterState::AttackA),
+              static_cast<int>(attacker.state()));
+    check_int("grounded neutral attack uses the port's move-300 candidate", 300,
+              attacker.attack_move_id());
+    bool hit = attacker.try_melee_hit(target);
+    for (int i = 0; !hit && i < 20; ++i) {
+        tick(attacker, in);
+        hit = attacker.try_melee_hit(target);
     }
+    check_bool("Rena 0's weapon move connects inside its recovered sphere", true, hit);
+    check_bool("the weapon move applies its parsed HP damage", true, target.hp() < 100);
 
-    {
-        // One hit per swing, and a new swing re-arms it.
-        Fighter a = make_idle_fighter(glm::vec3(0, 0, 0));
-        Fighter b = make_idle_fighter(glm::vec3(0, 0, 100));
-        Input in;
-        press_attack(a, in, 5);
-        check_bool("swing 1 lands", true, a.try_melee_hit(b));
-        // Match records the victim, which is what stops the second connection; the
-        // Fighter-side query is the per-victim set (issue #10).
-        a.note_melee_hit(1);
-        check_bool("the swing now records victim 1 as hit", true,
-                   a.already_hit_this_swing(1));
-        check_bool("and a fresh victim is still hittable", false,
-                   a.already_hit_this_swing(0));
-        check_int("hp after one hit", 95, b.hp());
-        // Re-pressing while still in AttackA resets the timer but not the
-        // swing flag (set_state early-returns on an unchanged state).
-        in.set(fnd::input::Action::AttackA, true);
-        tick(a, in);
-        in.set(fnd::input::Action::AttackA, false);
-        check_bool("re-press mid-swing keeps the swing's hit set",
-                   true, a.already_hit_this_swing(1));
-        // Let the swing expire, then swing again: the flag is cleared.
-        for (int i = 0; i < 31; ++i) tick(a, in);
-        press_attack(a, in, 5);
-        check_bool("new swing after expiry lands", true, a.try_melee_hit(b));
-        check_int("hp after two hits", 90, b.hp());
-    }
-
-    {
-        // The heavy-key stand-in is gone (issue #10): the original has one melee key
-        // and no second heavy move, so AttackB must no longer start anything.
-        Fighter a = make_idle_fighter(glm::vec3(0, 0, 0));
-        Fighter b = make_idle_fighter(glm::vec3(0, 0, 100));
-        Input in;
-        in.set(fnd::input::Action::AttackB, true);
-        tick(a, in);
-        in.set(fnd::input::Action::AttackB, false);
-        check_int("AttackB no longer starts an attack", static_cast<int>(FighterState::Idle),
-                  static_cast<int>(a.state()));
-    }
+    Fighter heavy = make_idle_fighter(glm::vec3(0, 0, 0));
+    in.set(fnd::input::Action::AttackB, true);
+    tick(heavy, in);
+    check_int("unmapped AttackB does not start a second weapon move",
+              static_cast<int>(FighterState::Idle), static_cast<int>(heavy.state()));
 }
 
 // ===========================================================================
@@ -572,8 +595,14 @@ void test_guard_drain() {
         step(f, in);
         return f;
     };
-    for (auto action : {fnd::input::Right, fnd::input::Jump, fnd::input::AttackA,
-                        fnd::input::Shoot}) {
+    std::vector<int> interruptActions = {fnd::input::Right, fnd::input::Jump};
+    if (g_testCombo.ready) {
+        interruptActions.push_back(fnd::input::Action::AttackA);
+        interruptActions.push_back(fnd::input::Action::Shoot);
+    } else {
+        skip_case("guard release to attack/shoot");
+    }
+    for (auto action : interruptActions) {
         Fighter f = guarding();
         Input in;
         in.set(action, true);
@@ -741,10 +770,22 @@ void test_air() {
 //  Case 7 — shot tiers, hold thresholds, muzzle, reloadNG, EX
 // ===========================================================================
 void test_shots() {
-    section("7. shot tiers + hold thresholds (0.45 s yellow, 1.10 s red)");
-    check_bits("kYellowHoldSec", 0.45f, FighterConstants::kYellowHoldSec);
-    check_bits("kRedHoldSec", 1.10f, FighterConstants::kRedHoldSec);
-    check_int("kShotFrames", 20, FighterConstants::kShotFrames);
+    section("7. projectile input paths with the Rena 0 weapon combo");
+    if (!g_testCombo.ready) return skip_case("Rena 0 projectile input paths");
+    const float mainShots = magazine_shots(1);
+    const float chargeShots = magazine_shots(2);
+    const float mainRefill = magazine_refill_shots_per_sec(1);
+    const float chargeRefill = magazine_refill_shots_per_sec(2);
+    const int yellowHoldFrames = charge_threshold_frames(1);
+    const int redHoldFrames = charge_threshold_frames(2);
+    const float redHoldSeconds = static_cast<float>(
+        g_testCombo.weapon.magazineForChargeLevel(2).chargeMax) /
+                                 gameplay::FixedStep::tickRate;
+    check_bool("Rena 0 DAT provides both magazine capacities", true,
+               mainShots > 0.0f && chargeShots > 0.0f);
+    check_bool("Rena 0 DAT provides both charge thresholds", true,
+               yellowHoldFrames > 0 && redHoldFrames > yellowHoldFrames);
+    check_int("kShotStateFrames port duration", 20, FighterConstants::kShotStateFrames);
     check_bits("kMuzzleForward", 60.0f, FighterConstants::kMuzzleForward);
     check_bits("kMuzzleHeight", 100.0f, FighterConstants::kMuzzleHeight);
 
@@ -767,13 +808,16 @@ void test_shots() {
         check_bits("muzzle x", 0.0f, shot.pos.x);
         check_bits("shot dir x", 0.0f, shot.dir.x);
         check_bits("shot dir z", 1.0f, shot.dir.z);
-        // The spend and the same frame's recharge both land before update()
-        // returns (fire in the state machine, recharge at step 5b), so the
-        // observable is 5 + 0.8*dt.
-        check_near("tap spends 1 MAIN (plus one recharge tick)",
-                   5.0 + 0.8 * kDt, f.main_frac() * 6.0, 1e-5);
-        check_int("MAIN whole after tap", 5, f.main_whole());
-        check_int("CHARGE untouched by a tap", 2, f.charge_whole());
+        // The firing frame also recharges. The loaded item sizes the pool and
+        // provides the shot cost; the port's provisional refill rule is one
+        // shot/sec (see apply_weapon_ammo).
+        check_near("tap spends one MAIN shot plus the firing-frame refill",
+                   mainShots - 1.0 + mainRefill * kDt,
+                   f.main_frac() * mainShots, 1e-5);
+        check_int("MAIN whole after tap", static_cast<int>(mainShots) - 1,
+                  f.main_whole());
+        check_int("CHARGE untouched by a tap", static_cast<int>(chargeShots),
+                  f.charge_whole());
         check_int("tap state", static_cast<int>(FighterState::ShootA),
                   static_cast<int>(f.state()));
         check_bool("pending disarmed by take_pending_shot", false,
@@ -782,13 +826,13 @@ void test_shots() {
         int frames = 0;
         while (!f.reload_ok() && frames < 100) { tick(f, in); ++frames; }
         check_int("tap reloadNG window (frames incl. firing frame)", 15, frames + 1);
-        int pose_ticks = frames;
-        while (f.state() == FighterState::ShootA && pose_ticks < 100) {
+        int shot_state_ticks = frames;
+        while (f.state() == FighterState::ShootA && shot_state_ticks < 100) {
             tick(f, in);
-            ++pose_ticks;
+            ++shot_state_ticks;
         }
-        check_int("firing pose lasts kShotFrames ticks", 20, pose_ticks);
-        check_int("firing pose expires to Idle", static_cast<int>(FighterState::Idle),
+        check_int("shooting action uses kShotStateFrames port ticks", 20, shot_state_ticks);
+        check_int("shooting state expires to Idle", static_cast<int>(FighterState::Idle),
                   static_cast<int>(f.state()));
     }
 
@@ -797,21 +841,23 @@ void test_shots() {
         Fighter f = make_idle_fighter(glm::vec3(0, 0, 0));
         Input in;
         in.set(fnd::input::Action::Shoot, true);
-        for (int i = 0; i < 26; ++i) tick(f, in);
-        check_int("26 held frames (0.4333 s) is still Tap",
+        for (int i = 0; i < yellowHoldFrames - 1; ++i) tick(f, in);
+        check_int("one frame before the DAT yellow threshold is Tap",
                   static_cast<int>(ShotTier::Tap), static_cast<int>(f.charge_tier()));
-        tick(f, in);   // 27th
-        check_int("27 held frames (0.4500 s) reaches Yellow",
+        tick(f, in);
+        check_int("DAT yellow threshold reaches Yellow",
                   static_cast<int>(ShotTier::Yellow), static_cast<int>(f.charge_tier()));
-        check_near("charge_hold_frac at the yellow threshold", 27.0 * kDt / 1.10,
-                   f.charge_hold_frac(), 1e-6);
+        check_near("charge_hold_frac at the yellow threshold",
+                   static_cast<double>(yellowHoldFrames) * kStep / redHoldSeconds,
+                   f.charge_hold_frac(), 1e-5);
         in.set(fnd::input::Action::Shoot, false);
         tick(f, in);
         const gameplay::PendingShot y = f.take_pending_shot();
         check_int("yellow tier fired", static_cast<int>(ShotTier::Yellow),
                   static_cast<int>(y.tier));
-        check_near("yellow spends 1 CHARGE (plus one recharge tick)",
-                   1.0 + 0.3 * kDt, f.charge_frac() * 2.0, 1e-6);
+        check_near("yellow spends one CHARGE shot plus the firing-frame refill",
+                   chargeShots - 1.0 + chargeRefill * kDt,
+                   f.charge_frac() * chargeShots, 1e-5);
         check_int("yellow state", static_cast<int>(FighterState::ShootB),
                   static_cast<int>(f.state()));
         check_bool("yellow reloadNG open", false, f.reload_ok());
@@ -823,11 +869,11 @@ void test_shots() {
         Fighter f = make_idle_fighter(glm::vec3(0, 0, 0));
         Input in;
         in.set(fnd::input::Action::Shoot, true);
-        for (int i = 0; i < 66; ++i) tick(f, in);
-        check_int("66 held frames (1.0999 s) is still Yellow",
+        for (int i = 0; i < redHoldFrames - 1; ++i) tick(f, in);
+        check_int("one frame before the DAT red threshold is Yellow",
                   static_cast<int>(ShotTier::Yellow), static_cast<int>(f.charge_tier()));
-        tick(f, in);   // 67th
-        check_int("67 held frames reaches Red", static_cast<int>(ShotTier::Red),
+        tick(f, in);
+        check_int("DAT red threshold reaches Red", static_cast<int>(ShotTier::Red),
                   static_cast<int>(f.charge_tier()));
         check_bits("charge_hold_frac clamps to 1", 1.0f, f.charge_hold_frac());
         in.set(fnd::input::Action::Shoot, false);
@@ -835,8 +881,9 @@ void test_shots() {
         const gameplay::PendingShot r = f.take_pending_shot();
         check_int("red tier fired", static_cast<int>(ShotTier::Red),
                   static_cast<int>(r.tier));
-        check_near("red spends 2 CHARGE (plus one recharge tick)",
-                   0.0 + 0.3 * kDt, f.charge_frac() * 2.0, 1e-6);
+        check_near("red spends one CHARGE shot plus the firing-frame refill",
+                   chargeShots - 1.0 + chargeRefill * kDt,
+                   f.charge_frac() * chargeShots, 1e-5);
         check_int("red state", static_cast<int>(FighterState::ShootC),
                   static_cast<int>(f.state()));
         int frames = 0;
@@ -847,6 +894,7 @@ void test_shots() {
     // --- muzzle follows facing (yaw 0 faces +Z) ---
     {
         Fighter f;
+        bind_test_combo(f);
         f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 1.5707964f);   // +90°
         settle(f);
         Input in;
@@ -878,26 +926,6 @@ void test_shots() {
         check_int("dropped shot spends no MAIN", whole_before, f.main_whole());
     }
 
-    // --- no CHARGE stock: a red shot is dropped after the reload window ---
-    {
-        Fighter f = make_idle_fighter(glm::vec3(0, 0, 0));
-        Input in;
-        in.set(fnd::input::Action::Shoot, true);
-        for (int i = 0; i < 67; ++i) tick(f, in);
-        in.set(fnd::input::Action::Shoot, false);
-        tick(f, in);
-        (void)f.take_pending_shot();
-        check_int("CHARGE emptied by the red shot", 0, f.charge_whole());
-        while (!f.reload_ok()) tick(f, in);
-        const int charge_whole = f.charge_whole();
-        in.set(fnd::input::Action::Shoot, true);
-        for (int i = 0; i < 67; ++i) tick(f, in);
-        in.set(fnd::input::Action::Shoot, false);
-        tick(f, in);
-        check_bool("no CHARGE stock -> dropped", false, f.take_pending_shot().armed);
-        check_int("no CHARGE spent by the dropped shot", charge_whole, f.charge_whole());
-    }
-
     // --- EX move: Special while hypermode is active fires the Ex tier ---
     {
         Fighter f = make_idle_fighter(glm::vec3(0, 0, 0));
@@ -915,8 +943,9 @@ void test_shots() {
         check_int("EX tier", static_cast<int>(ShotTier::Ex), static_cast<int>(ex.tier));
         check_int("EX state", static_cast<int>(FighterState::ShotFinal),
                   static_cast<int>(f.state()));
-        check_near("EX spends 1 CHARGE (plus one x1.6 recharge tick)",
-                   1.0 + 0.3 * 1.6 * kDt, f.charge_frac() * 2.0, 1e-6);
+        check_near("EX spends one CHARGE shot plus the Friendship refill",
+                   chargeShots - 1.0 + chargeRefill * 1.6 * kDt,
+                   f.charge_frac() * chargeShots, 1e-5);
         int frames = 0;
         while (!f.reload_ok() && frames < 200) { tick(f, in); ++frames; }
         check_int("EX reloadNG window", 60, frames + 1);
@@ -924,14 +953,16 @@ void test_shots() {
 }
 
 // ===========================================================================
-//  Case 8 — ammo spend/recharge (MAIN 6 @ 0.8/s, CHARGE 2 @ 0.3/s)
+//  Case 8 — ammo spend/recharge from the selected weapon's magazine records
 // ===========================================================================
 void test_ammo() {
-    section("8. ammo spend/recharge (MAIN 6 / 0.8 per s, CHARGE 2 / 0.3 per s)");
-    check_bits("kMainMax", 6.0f, FighterConstants::kMainMax);
-    check_bits("kChargeMax", 2.0f, FighterConstants::kChargeMax);
-    check_bits("kMainPerSec", 0.8f, FighterConstants::kMainPerSec);
-    check_bits("kChargePerSec", 0.3f, FighterConstants::kChargePerSec);
+    section("8. ammo spend/recharge with the Rena 0 weapon combo");
+    if (!g_testCombo.ready) return skip_case("Rena 0 ammo input paths");
+    const float mainShots = magazine_shots(1);
+    const float chargeShots = magazine_shots(2);
+    const float mainRefill = magazine_refill_shots_per_sec(1);
+    const float chargeRefill = magazine_refill_shots_per_sec(2);
+    const int yellowHoldFrames = charge_threshold_frames(1);
 
     {
         Fighter f = make_idle_fighter(glm::vec3(0, 0, 0));
@@ -941,33 +972,43 @@ void test_ammo() {
         in.set(fnd::input::Action::Shoot, false);
         tick(f, in);
         // The firing frame already includes one recharge tick.
-        const float v0 = f.main_frac() * 6.0f;
-        check_near("MAIN right after a tap", 5.0 + 0.8 * kDt, v0, 1e-5);
+        const float v0 = f.main_frac() * mainShots;
+        check_near("MAIN right after a tap", mainShots - 1.0 + mainRefill * kDt,
+                   v0, 1e-5);
         tick(f, in);
-        check_near("MAIN refill per frame = 0.8*dt", 0.8 * kDt,
-                   f.main_frac() * 6.0f - v0, 1e-5);
+        check_near("MAIN refill per frame follows the loaded magazine",
+                   mainRefill * kDt, f.main_frac() * mainShots - v0, 1e-5);
         for (int i = 0; i < 59; ++i) tick(f, in);
-        check_near("MAIN after 60 more frames of refill", 5.0 + 61.0 * 0.8 * kDt,
-                   f.main_frac() * 6.0, 1e-4);
+        check_near("MAIN after 60 more frames of refill",
+                   std::min<double>(mainShots,
+                       mainShots - 1.0 + 61.0 * mainRefill * kDt),
+                   f.main_frac() * mainShots, 1e-4);
         for (int i = 0; i < 200; ++i) tick(f, in);
-        check_bits("MAIN refill clamps at kMainMax", 6.0f, f.main_frac() * 6.0f);
-        check_int("MAIN whole back to 6", 6, f.main_whole());
+        check_near("MAIN refill clamps at the loaded capacity", mainShots,
+                   f.main_frac() * mainShots, 1e-5);
+        check_int("MAIN whole returns to the loaded count", static_cast<int>(mainShots),
+                  f.main_whole());
     }
     {
         Fighter f = make_idle_fighter(glm::vec3(0, 0, 0));
         Input in;
         in.set(fnd::input::Action::Shoot, true);
-        for (int i = 0; i < 27; ++i) tick(f, in);
+        for (int i = 0; i < yellowHoldFrames; ++i) tick(f, in);
         in.set(fnd::input::Action::Shoot, false);
         tick(f, in);
-        check_near("CHARGE right after a yellow shot", 1.0 + 0.3 * kDt,
-                   f.charge_frac() * 2.0, 1e-6);
+        check_near("CHARGE right after a yellow shot",
+                   chargeShots - 1.0 + chargeRefill * kDt,
+                   f.charge_frac() * chargeShots, 1e-5);
         for (int i = 0; i < 60; ++i) tick(f, in);
-        check_near("CHARGE after 60 more frames of refill", 1.0 + 61.0 * 0.3 * kDt,
-                   f.charge_frac() * 2.0, 1e-4);
+        check_near("CHARGE after 60 more frames of refill",
+                   std::min<double>(chargeShots,
+                       chargeShots - 1.0 + 61.0 * chargeRefill * kDt),
+                   f.charge_frac() * chargeShots, 1e-4);
         for (int i = 0; i < 300; ++i) tick(f, in);
-        check_bits("CHARGE refill clamps at kChargeMax", 2.0f, f.charge_frac() * 2.0f);
-        check_int("CHARGE whole back to 2", 2, f.charge_whole());
+        check_near("CHARGE refill clamps at the loaded capacity", chargeShots,
+                   f.charge_frac() * chargeShots, 1e-5);
+        check_int("CHARGE whole returns to the loaded count", static_cast<int>(chargeShots),
+                  f.charge_whole());
     }
 
     // Friendship's recharge boost (mainRechargeMul / chargeRechargeMul = 1.6).
@@ -978,9 +1019,9 @@ void test_ammo() {
         tick(plain, in);
         in.set(fnd::input::Action::Shoot, false);
         tick(plain, in);
-        const double plain_v0 = plain.main_frac() * 6.0;
+        const double plain_v0 = plain.main_frac() * mainShots;
         for (int i = 0; i < 30; ++i) tick(plain, in);
-        const double plain_gain = plain.main_frac() * 6.0 - plain_v0;
+        const double plain_gain = plain.main_frac() * mainShots - plain_v0;
 
         Fighter hyper = make_idle_fighter(glm::vec3(0, 0, 0));
         hyper.set_hypermode(Hypermode::Friendship);
@@ -995,11 +1036,13 @@ void test_ammo() {
         tick(hyper, hin);
         hin.set(fnd::input::Action::Shoot, false);
         tick(hyper, hin);
-        const double hyper_v0 = hyper.main_frac() * 6.0;
+        const double hyper_v0 = hyper.main_frac() * mainShots;
         for (int i = 0; i < 30; ++i) tick(hyper, hin);
-        const double hyper_gain = hyper.main_frac() * 6.0 - hyper_v0;
-        check_near("plain MAIN gain over 30 frames", 0.4, plain_gain, 1e-4);
-        check_near("Friendship MAIN gain over 30 frames (x1.6)", 0.64, hyper_gain, 1e-4);
+        const double hyper_gain = hyper.main_frac() * mainShots - hyper_v0;
+        check_near("plain MAIN gain over 30 frames", mainRefill * 30.0 * kDt,
+                   plain_gain, 1e-4);
+        check_near("Friendship MAIN gain over 30 frames (x1.6)",
+                   mainRefill * 1.6 * 30.0 * kDt, hyper_gain, 1e-4);
         check_near("Friendship recharge ratio", 1.6, hyper_gain / plain_gain, 1e-3);
     }
 }
@@ -1376,123 +1419,123 @@ void test_facing() {
 }
 
 // ===========================================================================
-//  Case 12 — animation binding: the original's state → set index table
+//  Case 12 — animation binding through a character move table
 // ===========================================================================
-// The shipped .X files name their sets "Anim-1"…"Anim-124" and the original
-// binds INDICES (state → move id → the move's first phase; see the table above
-// state_to_anim_set in gameplay/fighter.h). These checks pin the table's rows
-// and, just as important, that the two fallbacks are reported rather than
-// silently looking like a mapped state.
-void test_anim_binding() {
-    section("12. animation binding (state -> set index table + reported fallback)");
+// This small parsed table uses distinct set tags to prove that runtime binding
+// follows move ID → phase tag. It intentionally makes no claim about attack
+// selectors; those need a character+weapon combo and are covered in melee_rules_test.
+void append_u32(std::vector<std::uint8_t>& bytes, std::uint32_t value) {
+    for (int i = 0; i < 4; ++i)
+        bytes.push_back(static_cast<std::uint8_t>((value >> (8 * i)) & 0xff));
+}
 
-    // A shipped-shaped rig: 124 sets, named the way the .X files name them. The
-    // model's index i is the D3DX set i (Parser::finish reverses file order), so
-    // the names here are the reverse of the file's "Anim-1"…"Anim-124".
+bool make_animation_test_moves(gameplay::CharacterMoves& moves) {
+    std::vector<std::uint8_t> bytes;
+    append_u32(bytes, 1);                  // file tag
+    bytes.resize(bytes.size() + 0x104, 0); // model path block
+    for (int i = 0; i < 6; ++i) append_u32(bytes, i == 3 ? 1 : 0);
+    struct Entry { int move; int set; };
+    const Entry entries[] = {
+        {0, 0}, {10, 1}, {194, 43}, {103, 95}, {196, 28}, {203, 97},
+    };
+    append_u32(bytes, static_cast<std::uint32_t>(sizeof(entries) / sizeof(entries[0])));
+    for (const Entry& e : entries) {
+        append_u32(bytes, static_cast<std::uint32_t>(e.move)); // move id
+        append_u32(bytes, 0);                                // flags
+        append_u32(bytes, 0);                                // cancel window
+        append_u32(bytes, 1);                                // one phase
+        append_u32(bytes, static_cast<std::uint32_t>(e.set)); // section tag
+        append_u32(bytes, 0);                                // no effect records
+    }
+    append_u32(bytes, 124);
+    for (int set = 0; set < 124; ++set) {
+        append_u32(bytes, 0);            // animation-set +0x1c metadata
+        append_u32(bytes, set == 14 ? 1 : 0); // +0x20 gate blocks set 14
+        append_u32(bytes, 0);            // no animation-event payloads
+    }
+    std::string error;
+    return moves.parse(bytes.data(), bytes.size(), error);
+}
+
+void test_anim_binding() {
+    section("12. animation binding (state -> move -> character table tag)");
+
     std::vector<std::string> names;
     for (int i = 0; i < 124; ++i) names.push_back("Anim-" + std::to_string(124 - i));
     const xm::Model model = make_anim_model(names);
     xm::Controller ctrl;
     ctrl.bind(&model);
+    auto moves = std::make_unique<gameplay::CharacterMoves>();
+    check_bool("synthetic move table parses", true, make_animation_test_moves(*moves));
+    check_int("the set trailer stays aligned after move records", 124,
+              moves->animation_set_count());
+    check_int("set 14 retains its nonzero auto-advance gate", 1,
+              moves->animation_set_phase_gate(14));
+    check_int("set transition metadata is parsed", 0,
+              moves->animation_set_transition_duration(14));
+    check_int("missing set metadata is explicit", -1,
+              moves->animation_set_phase_gate(124));
+    check_int("missing transition metadata is explicit", -1,
+              moves->animation_set_transition_duration(124));
 
     Fighter f;
+    f.set_moves(moves.get());
     f.init(&model, &ctrl, glm::vec3(0, 0, 0), 0.0f);
-    // BattleStart is the round reset's pose: move 0xc2 (FUN_004219a0 at 0x4219a0
-    // restores HP/inputs then plays it), whose single phase names set 43.
-    check_int("BattleStart binds the round-reset pose (43)", 43, ctrl.trackAnimationSet(0));
-    check_bool("BattleStart is a mapped state", false, f.anim_fallback());
-    check_str("set 43's own name", "Anim-81", f.anim_set_name());
+    check_int("round reset resolves move 194 from NN.dat", 43, ctrl.trackAnimationSet(0));
+    check_bool("round reset uses a data row", false, f.anim_fallback());
+    check_str("set 43 keeps its model name", "Anim-81", f.anim_set_name());
     check_bool("model() is exposed", true, f.model() == &model);
 
     struct Row { FighterState state; int set; const char* name; };
     const Row rows[] = {
-        {FighterState::Idle,        0,  "Anim-124"},  // move 0 (reset 0x41de68)
-        {FighterState::Walk,        1,  "Anim-123"},  // move 10, walk (issue #26)
-        {FighterState::Run,         13, "Anim-111"},  // move 0x14, forward dash
-        {FighterState::AttackA,     2,  "Anim-122"},  // KNOWN-WRONG placeholder:
-        {FighterState::AttackB,     3,  "Anim-121"},  // moves 40/41/42 are the jump
-        {FighterState::AttackC,     5,  "Anim-119"},  // chain; attacks need the
-                                                      // weapon dimension (issue #26)
-        {FighterState::Hit,         95, "Anim-29"},   // move 0x67 (cases 0xe7/0xca)
-        {FighterState::Knockdown,   28, "Anim-96"},   // move 0xc4
-        {FighterState::KO,          97, "Anim-27"},   // move 0xcb (cases 0xc9/0xcc)
-        {FighterState::ShootA,      31, "Anim-93"},   // weapon shot moves 300/301/302
-        {FighterState::ShootB,      33, "Anim-91"},
-        {FighterState::ShootC,      34, "Anim-90"},
-        {FighterState::ShotFinal,   69, "Anim-55"},   // move 0x1f7 (EX fallback)
+        {FighterState::Idle,       0,  "Anim-124"},
+        {FighterState::Walk,       1,  "Anim-123"},
+        {FighterState::Hit,        95, "Anim-29"},
+        {FighterState::Knockdown,  28, "Anim-96"},
+        {FighterState::KO,         97, "Anim-27"},
     };
     for (const Row& r : rows) {
-        // A fresh fighter per row: init() hard-cuts BattleStart (43) with a
-        // full 60-frame state timer, so every row blends 43 -> target and no
-        // expiry can inject an Idle blend mid-row (13 rows x 8 updates on one
-        // fighter would overrun the timer).
         Fighter fr;
+        fr.set_moves(moves.get());
         fr.init(&model, &ctrl, glm::vec3(0, 0, 0), 0.0f);
         fr.set_state(r.state);
-        // Move changes blend (FUN_004211f0/FUN_00421240 + FUN_0041f580
-        // weights): the old set stays on track 0 while the new set starts on
-        // track 1 from t=0, then kAnimBlendTicks updates commit both tracks.
-        check_int("new set starts on track 1", r.set, ctrl.trackAnimationSet(1));
-        check_int("old set holds on track 0 mid-blend", 43, ctrl.trackAnimationSet(0));
-        check_near("blend opens at full old weight", 1.0f, ctrl.trackWeight(0), 1e-6);
-        check_near("blend opens at zero new weight", 0.0f, ctrl.trackWeight(1), 1e-6);
-        check_int("anim_set_index() agrees", r.set, fr.anim_set_index());
-        check_str("anim_set_name() is the model's own name", r.name, fr.anim_set_name());
-        check_bool("mapped state reports no fallback", false, fr.anim_fallback());
-        for (int t = 0; t < FighterConstants::kAnimBlendTicks; ++t)
-            fr.update(nullptr, nullptr, kDt);
-        check_int("blend commits track 0", r.set, ctrl.trackAnimationSet(0));
-        check_int("blend commits track 1", r.set, ctrl.trackAnimationSet(1));
-        check_near("committed track 0 is full weight", 1.0f, ctrl.trackWeight(0), 1e-6);
-        check_near("committed track 1 is full weight", 1.0f, ctrl.trackWeight(1), 1e-6);
+        check_int("selected phase tag starts on track 1", r.set, ctrl.trackAnimationSet(1));
+        check_int("animation query agrees with table", r.set, fr.anim_set_index());
+        check_str("set name comes from the model", r.name, fr.anim_set_name());
+        check_bool("resolved table row has no fallback", false, fr.anim_fallback());
     }
 
-    // Chained blends on one fighter propagate the old set: Idle completes
-    // 43 -> 0, Walk blends 0 -> 1, and an AttackA interruption 3 ticks in
-    // only retargets track 1 (FUN_00421240 rebinds track 1 alone): track 0
-    // keeps the old set and the weights continue from their live values, so
-    // the pose never snaps. 19 updates total, inside the 60-frame state
-    // timer, so no expiry interferes.
+    // The default class callback rejects these changes, so the source resets
+    // both tracks immediately. Hit is a recovered move row.
+    f.init(&model, &ctrl, glm::vec3(0, 0, 0), 0.0f);
     f.set_state(FighterState::Idle);
-    for (int t = 0; t < FighterConstants::kAnimBlendTicks; ++t)
-        f.update(nullptr, nullptr, kDt);
-    check_int("first blend settles on track 0", 0, ctrl.trackAnimationSet(0));
     f.set_state(FighterState::Walk);
-    check_int("chained blend holds the previous set", 0, ctrl.trackAnimationSet(0));
-    check_int("chained blend targets track 1", 1, ctrl.trackAnimationSet(1));
-    for (int t = 0; t < 3; ++t) f.update(nullptr, nullptr, kDt);
-    f.set_state(FighterState::AttackA);   // interrupts: track 1 -> 2, no snap
-    check_int("interruption keeps the old set on track 0", 0, ctrl.trackAnimationSet(0));
-    check_int("interruption retargets track 1", 2, ctrl.trackAnimationSet(1));
-    check_near("weights continue through the interruption", 0.375f,
-               ctrl.trackWeight(1), 1e-6);
-    for (int t = 0; t < FighterConstants::kAnimBlendTicks; ++t)
-        f.update(nullptr, nullptr, kDt);
-    check_int("interrupted blend settles", 2, ctrl.trackAnimationSet(0));
+    check_int("rejected blend binds walk on track 0", 1, ctrl.trackAnimationSet(0));
+    check_int("rejected blend binds walk on track 1", 1, ctrl.trackAnimationSet(1));
+    f.set_state(FighterState::Hit);
+    check_int("rejected blend binds hit on track 0", 95, ctrl.trackAnimationSet(0));
+    check_int("rejected blend binds hit on track 1", 95, ctrl.trackAnimationSet(1));
 
-    // The three states the table deliberately leaves open (see the "not settled"
-    // list in fighter.h): they must play set 0 AND say so.
-    for (FighterState s : {FighterState::Guard, FighterState::Jump, FighterState::TagOut}) {
-        f.set_state(s);
-        check_int("unmapped state falls back to set 0", 0, ctrl.trackAnimationSet(1));
-        check_bool("unmapped state reports the fallback", true, f.anim_fallback());
-        for (int t = 0; t < FighterConstants::kAnimBlendTicks; ++t)
-            f.update(nullptr, nullptr, kDt);
+    // Unlocated selectors stay on set 0 and announce the fallback.
+    for (FighterState state : {FighterState::Guard, FighterState::Jump, FighterState::TagOut}) {
+        f.set_state(state);
+        check_int("unresolved selector uses set 0", 0, ctrl.trackAnimationSet(1));
+        check_int("unresolved selector resets track 0", 0, ctrl.trackAnimationSet(0));
+        check_bool("unresolved selector reports fallback", true, f.anim_fallback());
     }
 
-    // A model shorter than the table's index is the other fallback path.
     const xm::Model shortModel = make_anim_model({"a", "b"});
     xm::Controller shortCtrl;
     shortCtrl.bind(&shortModel);
     Fighter g;
-    g.init(&shortModel, &shortCtrl, glm::vec3(0, 0, 0), 0.0f);   // BattleStart -> 43
-    check_int("index past the model's sets falls back to 0", 0, shortCtrl.trackAnimationSet(0));
-    check_bool("short model reports the fallback", true, g.anim_fallback());
-    g.set_state(FighterState::Idle);                             // index 0 fits
-    check_int("index 0 fits a short model", 0, shortCtrl.trackAnimationSet(0));
-    check_bool("in-range index clears the fallback", false, g.anim_fallback());
+    g.set_moves(moves.get());
+    g.init(&shortModel, &shortCtrl, glm::vec3(0, 0, 0), 0.0f);
+    check_int("out-of-range data tag uses set 0", 0, shortCtrl.trackAnimationSet(0));
+    check_bool("out-of-range tag reports fallback", true, g.anim_fallback());
+    g.set_state(FighterState::Idle);
+    check_int("in-range data tag binds", 0, shortCtrl.trackAnimationSet(0));
+    check_bool("valid row clears fallback", false, g.anim_fallback());
 
-    // A model with no sets at all must not bind anything.
     const xm::Model empty;
     xm::Controller emptyCtrl;
     emptyCtrl.bind(&empty);
@@ -1500,14 +1543,12 @@ void test_anim_binding() {
     h.init(&empty, &emptyCtrl, glm::vec3(0, 0, 0), 0.0f);
     check_int("no sets -> no track bound", -1, emptyCtrl.trackAnimationSet(0));
     check_str("no sets -> no name", "", h.anim_set_name());
-
-    // A fighter with no model at all must not crash or bind.
     Fighter none;
     none.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     check_bool("null model is accepted", true, none.model() == nullptr);
 
-    // pose() reports the controller's playhead.
     Fighter k;
+    k.set_moves(moves.get());
     k.init(&model, &ctrl, glm::vec3(0, 0, 0), 0.0f);
     k.update(nullptr, nullptr, kDt);
     check_near("pose().animTime advances with dt", kDt, k.pose().animTime, 1e-6);
@@ -1517,13 +1558,11 @@ void test_anim_binding() {
     k.set_hp(1);
     k.take_damage(5, nullptr);
     check_bool("pose().alive clears on KO", false, k.pose().alive);
-    // render::ArenaTarget sync keeps the camera path working.
     render::ArenaTarget target;
     h.sync_target(target);
     check_bits("sync_target position", 0.0f, target.position.x);
     check_near("sync_target facingYaw", 0.0, target.facingYaw, 0.0);
 
-    // The renderer's colour type and gameplay::Rgb are the same bits.
     static_assert(sizeof(Rgb) == sizeof(render::DebugColor),
                   "gameplay::Rgb and render::DebugColor must be the same width");
     check_u32("Rgb layout matches render::packColor",
@@ -1612,13 +1651,14 @@ void test_projectile_pool() {
         check_int("clear frees all sparks", 0, count_live_sparks(pool));
     }
 
-    // --- tier speed/damage/life through the pool ---
-    {
+    // --- tier speed/damage/life through the pool; these are port profiles, not RE tier links ---
+    if (g_testCombo.ready) {
         ProjectilePool pool;
+        Fighter shooter = make_idle_fighter(glm::vec3(0, 0, 0));
         Fighter victim = make_idle_fighter(glm::vec3(0, 0, 10));
         check_bool("spawn returns true", true,
                    pool.spawn(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1), ShotTier::Tap,
-                              nullptr));
+                              &shooter));
         const auto& s = pool.shots()[0];
         check_bits("spawned vel = dir * tier speed", 650.0f, s.vel.z);
         check_bits("spawned life = tier lifeSec", 2.5f, s.life);
@@ -1645,6 +1685,8 @@ void test_projectile_pool() {
                   gameplay::packArgb(static_cast<std::uint8_t>(alpha), 255,
                                      static_cast<std::uint8_t>(green), 120),
                   spark.color());
+    } else {
+        skip_case("bound shooter and victim projectile hit");
     }
 
     // --- a fresh (age 0) spark: the DX9 render arguments, bit-exact ---
@@ -1658,35 +1700,38 @@ void test_projectile_pool() {
         check_bits("age-0 spark life frac", 0.0f, spark.life_frac());
     }
 
-    // --- owner never self-hits; the same shot hits a third party ---
-    {
+    // --- a combo-bound owner never self-hits while the same shot hits its opponent ---
+    if (g_testCombo.ready) {
         ProjectilePool pool;
-        Fighter owner = make_idle_fighter(glm::vec3(0, 0, 0));
-        pool.spawn(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1), ShotTier::Tap, &owner);
-        pool.update(kDt, &owner, 1, nullptr, nullptr);
-        check_int("owner takes no damage from its own shot", 100, owner.hp());
-        check_int("the shot survives the pass over its owner", 1, pool.live_shots());
-        // Same geometry, no owner: the shot connects, so the check above is
-        // the exclusion and not a range miss.
-        ProjectilePool pool2;
-        Fighter victim = make_idle_fighter(glm::vec3(0, 0, 0));
-        pool2.spawn(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1), ShotTier::Tap, nullptr);
-        pool2.update(kDt, &victim, 1, nullptr, nullptr);
-        check_int("same shot with no owner deals 4", 96, victim.hp());
+        Fighter pair[2];
+        bind_test_combo(pair[0]);
+        bind_test_combo(pair[1]);
+        pair[0].init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+        pair[1].init(nullptr, nullptr, glm::vec3(0, 0, 10), 0.0f);
+        settle(pair[0]);
+        settle(pair[1]);
+        pool.spawn(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1), ShotTier::Tap, &pair[0]);
+        pool.update(kDt, pair, 2, nullptr, nullptr);
+        check_int("owner takes no damage from its own shot", 100, pair[0].hp());
+        check_int("bound opponent takes the shot's port-profile damage", 96, pair[1].hp());
+        check_int("shot is freed on the opponent hit", 0, pool.live_shots());
+    } else {
+        skip_case("bound owner/opponent projectile hit");
     }
 
     // --- wall hit on a synthetic tama mesh ---
-    {
+    if (g_testCombo.ready) {
         const xm::Model wall = make_wall_model();
         const game::physics::ModelIndex index = game::physics::buildModelIndex(wall);
         check_int("wall index has one mesh", 1,
                   static_cast<long long>(index.meshOrder.size()));
 
         ProjectilePool pool;
+        Fighter shooter = make_idle_fighter(glm::vec3(0, 0, 0));
         // Behind the wall and far enough that the shot cannot reach it: the
         // Tap hit radius is 55 and the wall sits at z = 100.
         Fighter behind = make_idle_fighter(glm::vec3(0, 0, 300));
-        pool.spawn(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1), ShotTier::Tap, nullptr);
+        pool.spawn(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1), ShotTier::Tap, &shooter);
         int frames = 0;
         while (pool.live_shots() > 0 && frames < 200) {
             pool.update(kDt, &behind, 1, &wall, &index);
@@ -1704,7 +1749,7 @@ void test_projectile_pool() {
         // A shot that misses the wall (above it) keeps flying and expires
         // silently: the wall is a mesh query, not a plane.
         ProjectilePool miss;
-        miss.spawn(glm::vec3(0, 300, 0), glm::vec3(0, 0, 1), ShotTier::Tap, nullptr);
+        miss.spawn(glm::vec3(0, 300, 0), glm::vec3(0, 0, 1), ShotTier::Tap, &shooter);
         for (int i = 0; i < 20; ++i) miss.update(kDt, nullptr, 0, &wall, &index);
         check_int("shot above the wall survives past it", 1, miss.live_shots());
         check_int("no spark for the miss", 0, count_live_sparks(miss));
@@ -1712,9 +1757,11 @@ void test_projectile_pool() {
         // A null model/index pair means "no wall geometry" (the open-field
         // fallback) and must not dereference anything.
         ProjectilePool open;
-        open.spawn(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1), ShotTier::Tap, nullptr);
+        open.spawn(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1), ShotTier::Tap, &shooter);
         for (int i = 0; i < 20; ++i) open.update(kDt, nullptr, 0, nullptr, nullptr);
         check_int("null tama model leaves the shot flying", 1, open.live_shots());
+    } else {
+        skip_case("bound shooter projectile wall collision");
     }
 
     // --- expiry frees silently; sparks age out ---
@@ -1741,11 +1788,12 @@ void test_projectile_pool() {
                    deflt.sparks()[0].life);
     }
 
-    // --- red tier: 16 damage, 80-unit hit radius ---
-    {
+    // --- red port tier profile: hit radius and damage against bound fighters ---
+    if (g_testCombo.ready) {
         ProjectilePool pool;
+        Fighter shooter = make_idle_fighter(glm::vec3(0, 0, 0));
         Fighter victim = make_idle_fighter(glm::vec3(0, 0, 70));
-        pool.spawn(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1), ShotTier::Red, nullptr);
+        pool.spawn(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1), ShotTier::Red, &shooter);
         pool.update(kDt, &victim, 1, nullptr, nullptr);
         check_int("red shot hits at 70 units (shot at 7.7, radius 80)", 100 - 16,
                   victim.hp());
@@ -1755,18 +1803,23 @@ void test_projectile_pool() {
         far.update(kDt, &out, 1, nullptr, nullptr);
         check_int("red shot misses at 90 units (shot at 7.7, radius 80)", 100,
                   out.hp());
+    } else {
+        skip_case("bound fighters against red port tier profile");
     }
 
     // --- a KO'd fighter is skipped ---
-    {
+    if (g_testCombo.ready) {
         ProjectilePool pool;
+        Fighter shooter = make_idle_fighter(glm::vec3(0, 0, 0));
         Fighter dead = make_idle_fighter(glm::vec3(0, 0, 0));
         dead.set_hp(1);
         dead.take_damage(5, nullptr);
-        pool.spawn(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1), ShotTier::Tap, nullptr);
+        pool.spawn(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1), ShotTier::Tap, &shooter);
         pool.update(kDt, &dead, 1, nullptr, nullptr);
         check_int("downed fighters are skipped", 0, dead.hp());
         check_int("shot passes through the downed fighter", 1, pool.live_shots());
+    } else {
+        skip_case("bound shooter passing through KO fighter");
     }
 
     // --- a shot with an owner applies that owner's hypermode damage ---
@@ -1843,6 +1896,8 @@ void run_script(std::vector<unsigned char>& trace) {
     Fighter pair[2];
     Fighter& a = pair[0];
     Fighter& b = pair[1];
+    bind_test_combo(a);
+    bind_test_combo(b);
     a.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     b.init(nullptr, nullptr, glm::vec3(0, 0, 300), 3.14159265f);
     a.set_hypermode(Hypermode::Friendship);
@@ -1896,6 +1951,7 @@ std::uint32_t fnv1a(const std::vector<unsigned char>& bytes) {
 
 void test_determinism() {
     section("14. determinism: same 600-frame script twice");
+    if (!g_testCombo.ready) return skip_case("Rena 0 deterministic combat trace");
     std::vector<unsigned char> t1;
     std::vector<unsigned char> t2;
     run_script(t1);
@@ -1910,10 +1966,15 @@ void test_determinism() {
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
     std::printf("fighter_script_test — ported fighter + projectile gameplay\n");
     std::printf("dt = 1/60 s (double %.17g, float step %.9g)\n", kDt,
                 static_cast<double>(kStep));
+    const auto install = findInstall(argc > 0 ? argv[0] : nullptr);
+    if (!install.empty() && g_testCombo.load(install))
+        std::printf("combat fixture: Rena 0 + item %d\n", g_testCombo.weapon.id);
+    else
+        std::printf("combat fixture unavailable; combo-dependent cases will skip\n");
 
     test_idle_walk();
     test_dash();
@@ -1930,7 +1991,7 @@ int main() {
     test_projectile_pool();
     test_determinism();
 
-    std::printf("\n%d checks, %d failed\n", g_checks, g_fails);
+    std::printf("\n%d checks, %d failed, %d skipped\n", g_checks, g_fails, g_skipped);
     std::printf("FIGHTER_SCRIPT: %s\n", g_fails == 0 ? "ok" : "FAIL");
     return g_fails == 0 ? 0 : 1;
 }

@@ -163,12 +163,14 @@ struct BulletParameter {
     int baseDamage       = 0;  // blob[0] (+0x30) — 10000-based, FUN_00637950:426
     int hpDamage         = 0;  // blob[5] (+0x44) — the HP actually removed, :280
     int reflectDamage    = 0;  // blob[6] (+0x48) — dealt back to the attacker, :300
-    int gaugeGainA       = 0;  // blob[0x1C] (+0x4C) — 100 fills a charge gauge, :334
+    int gaugeGainA       = 0;  // blob[7] (+0x4C) — 100 fills a charge gauge, :334
     int gaugeGainB       = 0;  // blob[8] (+0x50) — the second gauge, :345
     int attackerHitstun  = 0;  // blob[9] (+0x54) — frames written to the attacker's +0xa0
     int defenderHitstun  = 0;  // blob[10] (+0x58) — frames written to the victim's, :308
-    int chargeTier1Move  = 0;  // blob[13] (+0x64) — shot move id at gauge 100..199
-    int chargeTier2Move  = 0;  // blob[14] (+0x68) — shot move id at gauge >= 200
+    // Recovered fields read in FUN_00637950's hit-resolution path and followed by a
+    // state change on param_3 at :536-537; shooter/launch-animation role is unproven.
+    int hitResolutionField64 = 0;  // blob[13] (+0x64); shooter-selector role unproven
+    int hitResolutionField68 = 0;  // blob[14] (+0x68); shooter-selector role unproven
     int hitEffect        = 0;  // blob[0x3C] (+0x6C) — impact effect id, :232-250
     int secondaryEffect  = 0;  // blob[16] (+0x70) — EX/secondary impact, :221-228
     int releaseOffsetA   = 0;  // blob[17] (+0x74) — written to player+0x87c on tier-up

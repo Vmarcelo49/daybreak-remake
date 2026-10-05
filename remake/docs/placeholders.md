@@ -85,10 +85,18 @@ voice system in `FUN_00431e70` (`shl edx,4; add edx,0x6b73b0`), which builds
 `AnimationSet`s `Anim-1`…`Anim-124`, so no `attackA` ever appears in a model —
 the earlier "40+ named animation sets matched case-insensitively" reading of
 this table was wrong (and `ASSET-CATALOG.md` trap 15 inherits the error).
-The port plays these indices in `foundation/src/gameplay/fighter.h`
-(`state_to_anim_set`), with Guard/Jump/TagOut still on the reported fallback.
+**Foundation correction (2026-10-05).** The current renderer resolves source-
+supported port states through a verified character + weapon `NN.dat` table, then
+binds its phase tag. It has no parallel state-to-set table. Neutral grounded
+attack → 300 and Up/Down ground dash → 20/27 are explicit port inferences; the
+original initial-input selectors depend on player fields the port does not model.
+Air/side dash, projectile, jump, guard, and contextual attack selectors remain
+unresolved. Phase changes use the rig's rounded D3DX period and the trailer's
+`+0x20` counter/phase gate; that field does not establish clip playback looping.
+Only Rena slot 2 transitions 1→31/34/39 have a recovered cross-fade callback.
+See `foundation/docs/ANIMATION-SETS.md` for current details.
 
-**Now (DX9, removed)** — every fighter model loaded with **0 animation sets**:
+**Historical DX9 status (backend removed in Phase 5)** — every fighter model loaded with **0 animation sets**:
 the character animation data lives in separate `.dat` files that were not
 loaded, so the name lookup in `try_switch_animation()` always missed and fell
 back to track 0. Poses were static (bind pose); a state change only changed the

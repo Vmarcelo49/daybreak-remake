@@ -10,6 +10,8 @@ namespace gameplay {
 namespace {
 
 constexpr int kMaxEntriesPerMove  = 32;   // guards the read against a corrupt count
+constexpr int kMaxAnimationEventsPerSet = 4096;
+constexpr size_t kAnimationEventBytes = 0x84;
 
 }  // namespace
 
@@ -18,6 +20,12 @@ CharacterMoves::~CharacterMoves() { release(); }
 void CharacterMoves::release() noexcept {
     m_count    = 0;
     m_weaponId = 0;
+    m_characterIndex = -1;
+    m_animationSetCount = 0;
+    for (int i = 0; i < kMaxAnimationSets; ++i) {
+        m_animationSetTransitionDuration[i] = 0;
+        m_animationSetPhaseGate[i] = 0;
+    }
     m_loaded   = false;
 }
 
@@ -76,12 +84,14 @@ bool CharacterMoves::parse(const uint8_t* bytes, size_t size, std::string& error
             error = "character moves: truncated move " + std::to_string(mi);
             return false;
         }
-        // A duplicate id would make find() ambiguous; the shipped files do not have one.
-        if (has(id)) {
-            error = "character moves: duplicate move id " + std::to_string(id);
-            return false;
-        }
-        CharacterMove& move = m_moves[m_count];
+        // FUN_0041e180 writes each row to player + 0x880 + moveId * 0x1c;
+        // repeated IDs therefore replace the earlier row instead of making the
+        // whole character table invalid (for example, Rena 02.dat repeats 311).
+        int storedIndex = -1;
+        for (int i = 0; i < m_count; ++i)
+            if (m_moves[i].id == id) storedIndex = i;
+        const bool newMove = storedIndex < 0;
+        CharacterMove& move = m_moves[newMove ? m_count : storedIndex];
         move = CharacterMove{};
         move.id = id;
         move.recordFlags = flags;
@@ -134,15 +144,48 @@ bool CharacterMoves::parse(const uint8_t* bytes, size_t size, std::string& error
                 entry.attackerHitstun = combat[0x09];
                 entry.defenderHitstun = combat[0x0a];
                 entry.reactionMove    = combat[0x0d];
-                entry.chargeTier1Move = combat[0x0e];
-                entry.chargeTier2Move = combat[0x0f];
+                entry.combatField0E = combat[0x0e];
+                entry.combatField0F = combat[0x0f];
                 // The stream is always consumed whole; storage keeps the first entries
                 // (the cap covers everything shipped: at most 19 per phase, move 350).
                 if (phase.entryCount < MovePhase::kMaxPhaseEntries)
                     phase.entries[phase.entryCount++] = entry;
             }
         }
-        ++m_count;
+        if (newMove) ++m_count;
+    }
+
+    // FUN_0041e180 continues past the move records with one animation-set row per
+    // controller index. It computes the set period from D3DX, then reads file +0x1c,
+    // the +0x20 auto-advance gate, and the timed animation-event records. Retain both
+    // timing values and consume the variable event payloads so later rows stay aligned.
+    int animationSetCount = 0;
+    if (!u32(animationSetCount) || animationSetCount < 0 ||
+        animationSetCount > kMaxAnimationSets) {
+        error = "character moves: implausible animation-set count";
+        return false;
+    }
+    m_animationSetCount = animationSetCount;
+    for (int set = 0; set < animationSetCount; ++set) {
+        int transitionDuration = 0, phaseGate = 0, eventCount = 0;
+        if (!u32(transitionDuration) || !u32(phaseGate) || !u32(eventCount) ||
+            eventCount < 0 || eventCount > kMaxAnimationEventsPerSet) {
+            error = "character moves: truncated animation-set row " + std::to_string(set);
+            return false;
+        }
+        const size_t eventBytes = static_cast<size_t>(eventCount) * kAnimationEventBytes;
+        if (eventBytes > size - offset) {
+            error = "character moves: truncated animation events for set " +
+                    std::to_string(set);
+            return false;
+        }
+        m_animationSetTransitionDuration[set] = transitionDuration;
+        m_animationSetPhaseGate[set] = phaseGate;
+        offset += eventBytes;
+    }
+    if (offset != size) {
+        error = "character moves: unexpected trailing data";
+        return false;
     }
     m_loaded = true;
     error.clear();
@@ -164,6 +207,16 @@ int CharacterMoves::cancel_window(int moveId) const {
 int CharacterMoves::first_set_index(int moveId) const {
     const CharacterMove* m = find(moveId);
     return m ? m->first_set_index() : -1;
+}
+
+int CharacterMoves::animation_set_phase_gate(int setIndex) const {
+    if (!m_loaded || setIndex < 0 || setIndex >= m_animationSetCount) return -1;
+    return m_animationSetPhaseGate[setIndex];
+}
+
+int CharacterMoves::animation_set_transition_duration(int setIndex) const {
+    if (!m_loaded || setIndex < 0 || setIndex >= m_animationSetCount) return -1;
+    return m_animationSetTransitionDuration[setIndex];
 }
 
 }  // namespace gameplay

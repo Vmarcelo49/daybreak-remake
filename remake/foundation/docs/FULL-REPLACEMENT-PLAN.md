@@ -383,11 +383,11 @@ of the reference. What is left, in measured order:
      Wine's builtin `d3dx9_43`, the DLL the visual suite ships (the Microsoft
      redist is 1 px right and 1 px lower). The constant flips to 0 if the frames
      are ever re-banked against the redist.
-   * `state_to_anim_name`'s "idle"/"walk" names can never match sets named
-     "Anim-N", so a fighter always falls back to index 0 — now the correct
-     bind-anchored default, but the original's per-state anim indices are still
-     unmapped, and `remake/docs/placeholders.md` §5's "40+ named animation sets"
-     claim looks unsupported.
+   * Historical state at the DX9 cutover: `state_to_anim_name`'s "idle"/"walk"
+     labels did not match the `.X` sets named "Anim-N". The current foundation
+     resolves supported states from each fighter's `NN.dat`; the remaining
+     selector limits and corrected voice-key finding are tracked in
+     `ANIMATION-SETS.md` and `remake/docs/placeholders.md` §5.
 
 **A verification invariant this phase had to be corrected about, recorded
 2026-10-03 because it invalidates a general claim Phase 2 made.** Linux-native

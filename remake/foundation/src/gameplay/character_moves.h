@@ -16,14 +16,12 @@
 //   moveCount x {
 //     u32  moveId           (:109)  — indexes player+0x880 + id*0x1C (FUN_00421080:15)
 //     u32  recordFlags      (:111)
-//     u32  cancelWindow     (:112)  - see the correction below: a CANCEL WINDOW,
-//                                not a duration. The duration is at phase+0x1C,
-//                                which this parser does not reach.
+//     u32  cancelWindow     (:112)  - cancel-window threshold, not a phase duration.
 //     u32  sectionCount     (:113)
 //     sectionCount x {
 //       u32  sectionTag     (:116)
 //       u32  entryCount     (:117)
-//       entryCount x {              the 0x80-byte effect record, in FILE order
+//       entryCount x {              0x9a-byte file payload decoded into a 0x80-byte object
 //         char name[30]             (:120)
 //         u32  v04                 (:122)
 //         f32  v0c, v10, v14       (:123-125)
@@ -34,29 +32,30 @@
 //       }
 //     }
 //   }
+//   u32  animationSetCount       (:155)
+//   animationSetCount x {
+//     u32  transitionMetadata    (runtime set record +0x1c)
+//     u32  phaseAdvanceGate      (runtime +0x20; zero permits phase change, nonzero keeps elapsed advancing)
+//     u32  animationEventCount
+//     animationEventCount x { 0x84-byte animation-event payload }
+//   }
 //
 // VERIFIED against the shipped data, not assumed: parsing
 // Higurashi-Daybreak/data/rena/00.dat yields 122 move records whose ids are 0, 10, 11,
 // 12, 20, 23, 24, 27, 28, 30, 40..45, 100..113, ... up to 503 - the families
-// gameplay/fighter.h documents (walks 20/23/24/27, the 0x28-0x2D group, shots
-// 300/301/302).
+// gameplay/fighter.h documents (walks 20/23/24/27, the 0x28-0x2D group, and
+// numeric 300-series transitions whose shooting/charge meaning is unproven).
 //
-// CORRECTION: record +0x04 is NOT a phase duration. It is a file-loaded constant with
-// no writer anywhere in the binary's .text, only ever read as a threshold against a
-// frame budget (35 sites in FUN_0043ded0, e.g. `move[4] <= player[0xce0]`) - i.e. a
-// CANCEL WINDOW. The real per-phase duration lives at phase+0x1C, which this parser does
-// not reach. An earlier draft called +0x04 a frame count and argued it from the shot
-// chain's 20/30/50 progression; that argument is WITHDRAWN - 20/30/50 is as consistent
-// with a cancel threshold as with a duration.
+// CORRECTION: move record +0x04 is NOT a phase duration. It is a cancel-window threshold.
+// Phase timing is separate: FUN_0041e180 loads each set's +0x1c blend value and +0x20
+// advance gate; the rounded D3DX period is constructed from the matching rig at runtime.
+// Effect record v04 remains separate and feeds FUN_004212f0's event cursor.
 
-// WHAT IS NOT HERE, and matters for melee: moves 40/41/42 — the jump chain
-// (section tags [2]/[3,4]/[5,43], issue #26), not the melee chain they were mistaken
-// for — have an all-zero combat block (and 0x2B is not a melee hit at all: it is the
-// universal cancel-out move, started from ~2000 sites). Real melee reach, damage and
-// window lengths live in the 300-family weapon phases (Prop/Toe-bone entries with
-// non-zero combat) and the per-character handler virtuals this port does not execute.
-// gameplay/melee_rules.h therefore treats every melee number as an explicit port rule
-// and says so, rather than inventing geometry that looks recovered.
+// WHAT IS NOT HERE, and matters for melee: moves 40/41/42 are the jump chain
+// (section tags [2]/[3,4]/[5,43]), not the melee chain; 0x2B is a universal cancel-out
+// move. Nonzero hit entries live in weapon-specific 300-family phases. The port reads
+// those fields for its swing, while attack-selector flags and the game's hit-handler
+// virtuals remain outside this parser.
 
 #include <cstddef>
 #include <cstdint>
@@ -77,12 +76,13 @@ struct MoveEntry {
     int gaugeGainB      = 0;   // combat[0x08]
     int attackerHitstun = 0;   // combat[0x09]
     int defenderHitstun = 0;   // combat[0x0a]
-    int reactionMove    = 0;   // combat[0x0d] — FUN_0063ba80's hit-reaction category.
-                               // Same file offset BulletParameter calls chargeTier1Move;
-                               // the meaning is context-dependent (victim reaction for
-                               // a melee hit, shot move id for a bullet).
-    int chargeTier1Move = 0;   // combat[0x0e]
-    int chargeTier2Move = 0;   // combat[0x0f]
+    int reactionMove    = 0;   // combat[0x0d] — passed through FUN_0063ba80 as a
+                               // hit-reaction category in melee resolution. At the
+                               // corresponding bullet-record offset +0x64, the value is
+                               // read during FUN_00637950 hit handling; that use does
+                               // not prove it selects the shooter's launch animation.
+    int combatField0E = 0;     // consumed in character move hit-resolution context
+    int combatField0F = 0;     // role as a shooter selector is not established
 
     // A move entry with no combat block is decorative (a pose, a trail, a sound). The
     // locomotion chain is entirely made of these, which is the whole reason melee geometry
@@ -135,6 +135,10 @@ public:
 
     bool parse(const uint8_t* bytes, size_t size, std::string& error);
     bool valid() const { return m_loaded; }
+    // The NN.dat body carries an item id but no roster id; the asset loader supplies
+    // the character directory so class callbacks stay bound to a verified combo.
+    void set_character_index(int index) { m_characterIndex = index; }
+    int  character_index() const { return m_characterIndex; }
 
     int  count() const { return m_count; }
     const CharacterMove* find(int moveId) const;
@@ -143,6 +147,11 @@ public:
     // weapon slot and the id agrees with kWeaponIds in all 46 shipped files.
     // 0 when unloaded. Lets callers check they joined the right combo.
     int  weapon_id() const { return m_weaponId; }
+    int  animation_set_count() const { return m_animationSetCount; }
+    // Raw animation-set +0x1c/+0x20 values, or -1 when the index is absent. The
+    // first seeds an eligible class blend; the second gates elapsed-count advance.
+    int  animation_set_transition_duration(int setIndex) const;
+    int  animation_set_phase_gate(int setIndex) const;
     int  cancel_window(int moveId) const;   // record +0x04: a CANCEL-WINDOW threshold,
                                            // NOT a duration; 0 when the move is absent
     // First-phase set index for a move, or -1 when the move is absent or phaseless —
@@ -150,12 +159,17 @@ public:
     int  first_set_index(int moveId) const;
 
     static constexpr int kMaxMoves = 512;
+    static constexpr int kMaxAnimationSets = 512;
 
 private:
     void release() noexcept;
     CharacterMove m_moves[kMaxMoves]{};
     int           m_count = 0;
     int           m_weaponId = 0;   // header dword 3 (file offset 0x114)
+    int           m_characterIndex = -1;  // supplied by the directory-based asset loader
+    int           m_animationSetCount = 0;
+    int           m_animationSetTransitionDuration[kMaxAnimationSets]{};
+    int           m_animationSetPhaseGate[kMaxAnimationSets]{};
     bool          m_loaded = false;
 };
 

@@ -379,7 +379,7 @@ Per-weapon magazine figures below are read from `data/item/NNN.dat`. `hp/rad/bas
 | natumi | 1 | 30 | 2 | 12 | 6 | 300 | 1 | 1200 | 60 | 180 | 20/20/750 | 30/45/500 |
 
 Every one of the 46 resolves a bullet-parameter file; there are **78 distinct
-(hpDamage, hitRadius, baseDamage, tier-1 move, tier-2 move) signatures** across 46
+(hpDamage, hitRadius, baseDamage, blob[13], blob[14]) value signatures** across 46
 weapons, so the roster is not a re-skin of one profile.
 
 ### Status per parameter
@@ -392,7 +392,7 @@ weapons, so the roster is not a re-skin of one profile.
 | bullet param id = `type*10 + status` | **recovered** | FUN_00433eb0:155 -> FUN_005f80c0:99 |
 | **hpDamage, baseDamage, reflect** | **recovered** | block indices 5/0/6, consumed by FUN_00637950:280,426,300 |
 | **hitRadius** | **recovered** | record +0x24, FUN_00637950:91,107 |
-| **charge-tier-1 / tier-2 shot move ids** | **recovered** | block indices 13/14, FUN_00637950:345-347 -> FUN_00421080 |
+| **blob indices 13/14** | **values recovered; role unresolved** | FUN_00637950:345-347 reads bullet fields +0x64/+0x68 during hit-resolution; the subsequent state change does not establish tier-shot selection |
 | **defender hitstun** | **recovered and wired** | index 10 (record +0x58), FUN_00637950:308 -> victim +0xa0; reaches the fight through `take_damage(..., hitstunFrames)` |
 | gauge gain A/B (100 fills a gauge), attacker hitstun | **recovered, not wired** | indices 7/8/9, FUN_00637950:334-347 |
 | magazine capacity rule (`num`, else `num*reloadTime`) | **recovered arithmetic, unconsumed** | FUN_00433eb0:135-143 — see the correction above |
@@ -414,7 +414,7 @@ whatever computes a launch speed is code this corpus does not contain.
 The 20-slot combat block was then enumerated exhaustively rather than sampled: across
 the shipped weapons, blob indices 1, 2, 3, 4, 11 and 12 are **zero in every file**, and
 every non-zero slot is one of the thirteen already named (base/HP/reflect damage, gauge
-gains, hitstun, tier move ids, effect ids, release offsets). There is no remaining slot
+gains, hitstun, blob indices 13/14, effect ids, release offsets). There is no remaining slot
 that could hold a speed or a lifetime, and no per-weapon frame threshold exists — the
 only bullet frame counter, +0x154, is used by FUN_005f60b0:23-27 to pick a looping
 effect and by :72 as a time uniform, never against an expiry.
@@ -432,18 +432,19 @@ its damage and hit radius like the other tiers:
 
 * move **502** is the EX activation: FUN_00422160 heals to 10000, enters "state 2"
   (`+0x846 = 1`) and swaps the state byte; FUN_00428510:211 dispatches it.
-* move **503** is `shotFinal`: while it runs, FUN_00428510:295-297 pins HP at 9999,
-  grants 60 frames (0x3C) of invulnerability at +0x7AC and force-fills the second gauge
-  to 100.
+* move **503** is a conditional EX follow-up: while it runs, FUN_00428510:295-297
+  pins HP at 9999, grants 60 frames (0x3C) of invulnerability at +0x7AC and force-fills
+  the second gauge to 100. This numeric move id is not established as the animation
+  for the separate string key `shotFinal`.
 * FUN_00639160:47-52 selects 503 over the normal move exactly when the victim is in
   EX-state-2, is dying, and held a full EX gauge; FUN_00422bd0 then plays the queued
   follow-up.
 
-What is **not** recovered is which weapon's `chargeTier1Move`/`chargeTier2Move` feed
-those moves — the two ids are recovered and exposed on `BulletParameter` (indices 13
-and 14, the values the table shows), but the original's binding of a specific weapon to
-a specific EX is in the character move scripts, which this port does not execute. The
-EX therefore keeps its own shared damage rather than a per-weapon one, and says so.
+The per-weapon values at blob indices 13/14 are recovered, but their role is unresolved:
+FUN_00637950 reads fields +0x64/+0x68 in hit-resolution, not an established tier-shot
+selector. The original's binding of a specific weapon to an EX follow-up is also
+unresolved; this port does not execute the relevant character move scripts. The EX
+therefore keeps its own shared damage rather than a per-weapon one, and says so.
 
 ### Honest status
 
@@ -606,10 +607,13 @@ implemented rather than guessed.
 It is a file-loaded constant with **no writer anywhere in the binary's `.text`**, read
 only as a threshold against a frame budget (35 sites in `FUN_0043ded0`, e.g.
 `move[4] <= player[0xce0]`) — i.e. a **cancel window**. The real duration is at
-`phase+0x1C`, which `character_moves.cpp` does not reach. An earlier draft called `+0x04`
-a frame count and argued it from the shot chain's 20/30/50 progression; that argument is
-**withdrawn**, since 20/30/50 is equally consistent with three cancel thresholds.
-`CharacterMove::cancelWindow` is named for what it is.
+the animation set's D3DX period, constructed from the matching `.X` rig by
+`FUN_0041e180`; trailer `+0x1c` is cross-fade metadata, and `+0x20` gates phase
+auto-advance (`FUN_004c57f0` / `FUN_00438310`). The parser now consumes both trailer
+values and the event payload. An earlier draft called `+0x04` a frame count and argued
+it from a numerical sequence; that animation/shot-chain inference is **withdrawn**
+because the relevant move roles are not established by the corpus.
+`CharacterMove::cancelWindow` is named for what is recovered.
 
 ### CORRECTION 3 — what the melee move records actually contain
 
@@ -747,6 +751,18 @@ connects twice.
 
 ### B2. The idle pose is a composite: two controllers per model
 
+**Current animation correction (2026-10-05).** The earlier sketch below mixed the timed
+effect cursor with phase changes and generalized one observed cross-fade. The phase tails
+in `FUN_004c57f0` and `FUN_00438310` increment elapsed count and call `FUN_00421100(next)`
+only when rounded D3DX period `<` elapsed and the active set's `+0x20` gate is zero.
+`FUN_004212f0` remains the separate timed-effect cursor. Trailer `+0x1c` seeds the old-set
+blend countdown and the destination set's value normalizes weights. `FUN_0064ab30` passes
+character/slot to `FUN_00649790`; its `(0,2)` branch constructs the class whose vtable
+`+0x20` callback is `FUN_0064c8a0`, allowing only `1→31/34/39`. Rena's roster slot 2
+joins to item 33, and the matching `02.dat` supplies the blend values. The old universal
+eight-tick blend is retracted.
+The current implementation and tests are documented in `ANIMATION-SETS.md`.
+
 * **What.** The print's lowered-arm idle is not any single shipped set, and
   the port binds one set per state.
 * **Evidence (measured).** Commit `8fae1f9`: round start (set 43) 0.3933,
@@ -786,25 +802,25 @@ connects twice.
   (`hud_bands.py`: "scene-only control"), so the reading is vacuous as pose
   evidence; and the no-op is analytically guaranteed anyway (same set, same
   `t=0`, weights 1.0/1.0 through the incremental blend is `mix(v,v,·) = v`).
-  **Still open after `563a3e3` (the rest of the sketch):** the
+  **Status at that commit (historical, superseded 2026-10-05):** the
   interrupt-side rebind — `FUN_00421240` (track-1-only) with its driver
   `FUN_004211f0` — and `FUN_0041f580`'s per-tick weight evolution are
   unported; the port binds once per state and ticks both tracks identically,
-  so track 1 can never diverge. Within-move phase advance
-  (`FUN_004212f0`'s cursor over the `.dat` phase durations) is a further,
-  separate step. Then re-measure a **pose-relevant** band
+  so track 1 can never diverge. The earlier attribution of phase advance to
+  `FUN_004212f0`'s event cursor and `.dat` phase durations was also incorrect;
+  that interpretation is withdrawn. Then re-measure a **pose-relevant** band
   (`per-fighter` / `ring` / `com-bar`, or the `8fae1f9` pose protocol),
   never scene-floor.
-* **Result (continued 2026-10-03 — move-change blend ported).** The
+* **Historical result (2026-10-03 — first move-change blend port).** The
   interrupt path is now in place: `Fighter::set_state` keeps the old set on
   track 0 and binds the new set on track 1 from t=0
   (`FUN_004211f0`/`FUN_00421240`), `tick_blend()` ramps the weights
   1->0 / 0->1 over `kAnimBlendTicks = 8` ticks (INFERRED duration — the
   `+0xae14/0xae18` initial value was not located; only the decay/rise
   mechanism is read), then `commit_blend()` restores the both-tracks steady
-  state. Mid-blend interruptions only retarget track 1 with the live weights
-  preserved, so the pose never snaps; `init`/`reset` share a `clear_tracks`
-  fresh bind. A/B against the pre-blend binary (stash-built) on the
+  state. This fixed eight-tick implementation predates the callback and timing
+  recovery above; its weights and capture do not establish the corrected behavior.
+  `init`/`reset` share a `clear_tracks` fresh bind. A/B against the pre-blend binary on the
   BattleStart(43)->Idle(0) transition, per-fighter band RMSE:
   frame 55: **0.0000** (pre-transition control), frame 61: **0.0536**,
   frame 64: **0.0508**, frame 68: **0.0000** (committed), frame 75:
@@ -812,10 +828,8 @@ connects twice.
   inside the 8-tick window and converges to the same steady state, so all
   static parity numbers stand. `fighter_script_test` case 12 pins the
   semantics (track-1 target, weight ramp, commit, interruption retarget).
-  **Remaining:** within-move phase advance (`FUN_004212f0` cursor + phase
-  durations from the `.dat` move table, still unparsed — the STL-serialized
-  map layout defeated a transcription attempt), the blend duration, and any
-  print-parity gain (none expected: the print is steady-state idle).
+  That test and capture describe the old implementation only; the correction
+  above supersedes its blend and phase rules.
 * **Overlay negative result (this pass).** The two dev-only tools added in
   `a96f6bf` (`tools/anim_sets_dump.cpp`, `tools/anim_frames_dump.cpp`;
   build with `g++ -std=c++17 -O1 -I src -I third_party/glm

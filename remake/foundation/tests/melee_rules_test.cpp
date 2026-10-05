@@ -1,22 +1,23 @@
 // =============================================================================
 //  melee_rules_test.cpp — issue #10: directional, aerial and multi-target melee.
 //
-//  Pins the acceptance criteria directly:
+//  Pins the current combat-port behavior against weapon-bound move data:
 //    * ground melee cannot hit a distant airborne fighter just because XZ overlaps;
-//    * an aerial swing is reachable through the documented control and reaches what a
-//      ground swing cannot;
-//    * facing decides — a fighter behind the swing is out of it;
+//    * the situation selects a weapon move for aerial swings, which still use 3D reach;
+//    * the recovered sphere has no angle term, so a target behind can connect;
 //    * a solid barrier between them blocks the swing;
 //    * one swing can hit SEVERAL opponents, each exactly once;
 //    * allies are never hit;
 //    * recovery is a real lockout, and an interrupted attack does not keep hitting;
 //    * the heavy-key stand-in is gone.
 //
-//  Also parses the shipped character move tables when an install is present, to assert
-//  the claim the animation mapping rests on (issue #26): each phase's section tag is
-//  the animation set index — move 10 opens on 1 (walk), move 20 runs [13,14,15]
-//  (dash), move 30 opens on 54, move 40 on 2 — and moves 40/41/42 are the jump
-//  chain with no combat block, while the 300-family weapon phases carry real hits.
+//  Also parses the shipped character move tables when an install is present, to check
+//  recovered file facts (issue #26): each phase's section tag is treated as the
+//  animation-set index — move 10 opens on 1 (walk), move 20 lists [13,14,15],
+//  move 30 opens on 54, move 40 on 2 — and moves 40/41/42 are the jump chain with no
+//  combat block, while 300-family weapon phases carry real hits. The common neutral
+//  attack input uses a documented port inference for move 300; source selectors remain
+//  conditional on player fields that this simplified state machine does not model.
 //
 //  Build (CMake target `melee_rules_test`):
 //    cmake --build remake/foundation/build/linux --target melee_rules_test
@@ -81,14 +82,14 @@ Fighter idle_at(const glm::vec3& at, float facing = 0.0f) {
     return f;
 }
 
-// Presses melee once and advances to the middle of the active window.
+// Press once and advance through the bound weapon move's own startup window.
 void swing_to_active(Fighter& f, int extraTicks = 0) {
     input::PlayerState in;
     in.down[input::Action::AttackA] = true;
-    tick(f, in);                       // the press itself: set_state -> begin_melee_swing
+    tick(f, in);
     in.down[input::Action::AttackA] = false;
-    const gameplay::MeleeRules rules;
-    for (int i = 0; i < rules.startupTicks + extraTicks; ++i) tick(f, in);
+    for (int i = 0; i < 240 && !f.melee_in_active(); ++i) tick(f, in);
+    for (int i = 0; i < extraTicks && f.melee_in_active(); ++i) tick(f, in);
 }
 
 // Presses melee once and advances to exactly `elapsed` swing ticks (the press tick
@@ -103,9 +104,8 @@ void swing_to_elapsed(Fighter& f, int elapsed) {
 }
 
 // A 124-set synthetic rig, named like the shipped files (index i = "Anim-(124-i)"),
-// so animation-set assertions read the same as the fighter_script_test's. Clips run
-// durationTicks long at 4800 ticks/s: the 100 s default HOLDS every phase (no
-// advancement), while a short rig (225 ticks ≈ 3 ticks at 1/64) steps phases.
+// so animation-set assertions use the same controller indices. `durationTicks` controls
+// the D3DX period threshold used by the phase-boundary regression.
 void bind_synthetic_rig(Fighter& f, xm::Model& model, xm::Controller& ctrl,
                         const glm::vec3& at, float durationTicks = 480000.0f) {
     model.anims.clear();
@@ -189,41 +189,77 @@ bool load_moves(const fs::path& install, const char* character, const char* nn,
     const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)),
                                      std::istreambuf_iterator<char>());
     std::string err;
-    return out.parse(bytes.data(), bytes.size(), err);
+    if (!out.parse(bytes.data(), bytes.size(), err)) return false;
+    out.set_character_index(gameplay::characterIndexForDir(character));
+    return true;
+}
+
+// Generic Fighter combat checks still use a real roster pairing: Rena 0's parsed
+// move table and its matching slot-0 item. FUN_0041e180's NN.dat header carries the
+// item id at +0x114, verified against kWeaponIds for every shipped table.
+struct CombatCombo {
+    std::unique_ptr<gameplay::CharacterMoves> moves =
+        std::make_unique<gameplay::CharacterMoves>();
+    gameplay::WeaponDefinition weapon;
+
+    bool load(const fs::path& install) {
+        const int itemId = gameplay::kWeaponIds[0][0];
+        return load_moves(install, "rena", "00.dat", *moves) &&
+               moves->weapon_id() == itemId && load_weapon(install, itemId, weapon) &&
+               weapon.id == itemId;
+    }
+    void bind(Fighter& fighter) const {
+        fighter.set_moves(moves.get());
+        fighter.set_weapon(&weapon);
+    }
+};
+
+bool requireCombatCombo(const fs::path& install, CombatCombo& combo,
+                        const char* testName) {
+    if (combo.load(install)) return true;
+    skip(testName);
+    return false;
 }
 
 // ---------------------------------------------------------------------------
 // Vertical separation — the issue's headline criterion.
 // ---------------------------------------------------------------------------
-void testVerticalSeparation() {
+void testVerticalSeparation(const fs::path& install) {
     section("vertical separation");
+    CombatCombo combo;
+    if (!requireCombatCombo(install, combo, "vertical separation (no install found)")) return;
     Fighter attacker = idle_at(glm::vec3(0, 0, 0));
-    Fighter grounded = idle_at(glm::vec3(0, 0, 80));
-    Fighter airborne  = idle_at(glm::vec3(0, 0, 80));
+    Fighter grounded = idle_at(glm::vec3(0, 0, 40));
+    Fighter airborne  = idle_at(glm::vec3(0, 0, 40));
+    combo.bind(attacker);
+    combo.bind(grounded);
+    combo.bind(airborne);
     // Settling is 70 ticks of gravity, so a target placed high would land before the
     // swing. Settle first, THEN re-place it: BattleStart costs nothing here because
     // only the attacker's windows are under test.
-    airborne.reset(glm::vec3(0, 400, 80), 0.0f);   // same XZ, 400 up
+    airborne.reset(glm::vec3(0, 400, 40), 0.0f);   // same XZ, 400 up
 
-    checkInt(80, static_cast<int>(grounded.position().z),
-             "the grounded target stands 80 units ahead");
+    checkInt(40, static_cast<int>(grounded.position().z),
+             "the grounded target stands within Rena 0's move radius");
     checkInt(400, static_cast<int>(airborne.position().y),
              "the airborne target stands 400 units up at the same XZ");
     swing_to_active(attacker);
     check(attacker.try_melee_hit(grounded), "ground melee connects with a grounded target");
     check(grounded.hp() < 100, "and it does damage");
 
-    // Same XZ overlap, but 400 units above the swing's vertical reach.
+    // Same XZ overlap, but 400 units above the weapon swing's vertical reach.
     Fighter a2 = idle_at(glm::vec3(0, 0, 0));
+    combo.bind(a2);
     swing_to_active(a2);
     check(!a2.try_melee_hit(airborne),
           "ground melee refuses a target 400 units up at identical XZ");
     checkInt(100, airborne.hp(), "and the airborne fighter takes nothing");
 
-    // An aerial swing reaches further vertically, per melee_rules.h. The swing kind is
-    // chosen by the fighter's situation AT THE PRESS, so the attacker must be airborne
-    // when it presses -- set_aerial_attack() before the press is overwritten on purpose.
+    // The swing kind and move are chosen by the fighter's situation AT THE PRESS, so
+    // the attacker must be airborne when it presses; airborne height, not a separate
+    // aerial hitbox shape, is what closes the gap to this target.
     Fighter a3 = idle_at(glm::vec3(0, 0, 0));
+    combo.bind(a3);
     {
         input::PlayerState jump;
         jump.down[input::Action::Jump] = true;
@@ -236,10 +272,10 @@ void testVerticalSeparation() {
     // the same predicate, so the swing KIND is not what decides a hit -- the 3D distance
     // to the victim's head/chest anchors is. What an aerial swing buys is that the
     // attacker has RISEN, closing the vertical gap to a target that is off the floor.
-    airborne.reset(glm::vec3(0, 76, 60), 0.0f);   // level with the jumped attacker's chest
+    airborne.reset(glm::vec3(0, a3.position().y, 30), 0.0f);
     check(a3.try_melee_hit(airborne),
           "an airborne attacker reaches a target at its own height");
-    airborne.reset(glm::vec3(0, 500, 60), 0.0f);
+    airborne.reset(glm::vec3(0, a3.position().y + 500.0f, 30), 0.0f);
     check(!a3.try_melee_hit(airborne),
           "and still not one far above the sphere's 30+radius reach");
 
@@ -247,9 +283,12 @@ void testVerticalSeparation() {
     // while a large one does not. (The fighter's own altitude is irrelevant: both are
     // measured as a difference, which is what makes a stage with height work.)
     Fighter a4 = idle_at(glm::vec3(0, 0, 0));
-    Fighter levelNeighbour = idle_at(glm::vec3(0, 0, 60));
-    Fighter muchHigher     = idle_at(glm::vec3(0, 0, 60));
-    muchHigher.reset(glm::vec3(0, 600, 60), 0.0f);
+    Fighter levelNeighbour = idle_at(glm::vec3(0, 0, 30));
+    Fighter muchHigher     = idle_at(glm::vec3(0, 0, 30));
+    combo.bind(a4);
+    combo.bind(levelNeighbour);
+    combo.bind(muchHigher);
+    muchHigher.reset(glm::vec3(0, 600, 40), 0.0f);
     swing_to_active(a4);
     check(a4.try_melee_hit(levelNeighbour), "a level neighbour is reachable");
     check(!a4.try_melee_hit(muchHigher), "one 600 units above is not");
@@ -258,16 +297,20 @@ void testVerticalSeparation() {
 // ---------------------------------------------------------------------------
 // Facing.
 // ---------------------------------------------------------------------------
-void testFacing() {
+void testFacing(const fs::path& install) {
     section("the recovered hitbox is a sphere, not a cone");
-    // FUN_0063b470 is a hard 3D sphere test with no angle term, so a target behind the
-    // attacker is hit on exactly the same terms as one in front. This pins that, and
-    // pins what DID replace the invented cone: the victim's two anchor spheres.
+    CombatCombo combo;
+    if (!requireCombatCombo(install, combo, "facing (no install found)")) return;
+    // FUN_0063b470 is a hard 3D sphere test with no angle term. Use distances inside
+    // Rena 0's weapon move radius; the bound table/item define this swing's geometry.
     Fighter front = idle_at(glm::vec3(0, 0, 0));
-    Fighter ahead  = idle_at(glm::vec3(0, 0, 100));
-    Fighter rear   = idle_at(glm::vec3(0, 0, -100));
+    Fighter ahead  = idle_at(glm::vec3(0, 0, 40));
+    Fighter rear   = idle_at(glm::vec3(0, 0, -40));
+    combo.bind(front);
+    combo.bind(ahead);
+    combo.bind(rear);
     swing_to_active(front);
-    check(front.try_melee_hit(ahead), "a target 100 ahead is in the sphere");
+    check(front.try_melee_hit(ahead), "a target 40 ahead is in the weapon move's sphere");
     check(front.try_melee_hit(rear), "a target directly behind is EQUALLY in the sphere");
 
     // The attack sphere is 30 (recovered body radius) + MeleeRules::radius, in 3D, so
@@ -282,11 +325,14 @@ void testFacing() {
     // Reach is 3D, so the same horizontal gap that connects on the floor is decided by
     // the vertical difference: at 60 apart the opponent connects, at 400 it cannot.
     Fighter swinger = idle_at(glm::vec3(0, 0, 0));
+    Fighter level = idle_at(glm::vec3(0, 0, 40));
+    combo.bind(swinger);
+    combo.bind(level);
     swing_to_active(swinger);
-    Fighter level = idle_at(glm::vec3(0, 0, 60));
-    check(swinger.try_melee_hit(level), "an opponent 60 away and level connects");
-    Fighter high = idle_at(glm::vec3(0, 0, 60));
-    high.reset(glm::vec3(0, 400, 60), 0.0f);
+    check(swinger.try_melee_hit(level), "an opponent 40 away and level connects");
+    Fighter high = idle_at(glm::vec3(0, 0, 40));
+    combo.bind(high);
+    high.reset(glm::vec3(0, 400, 40), 0.0f);
     check(!swinger.try_melee_hit(high),
           "the same opponent 400 above does not, because the sphere is 3D");
 }
@@ -310,37 +356,47 @@ xm::Model wall_between_fighters() {
     return model;
 }
 
-void testBarriers() {
+void testBarriers(const fs::path& install) {
     section("solid barriers block the swing");
+    CombatCombo combo;
+    if (!requireCombatCombo(install, combo, "barriers (no install found)")) return;
     xm::Model model = wall_between_fighters();
     game::physics::MovementCollision collision;
     const xm::Model* mesh = &model;
     collision.setMeshes(mesh, nullptr);
 
     // Without collision the same pair connects: proves the wall is what stops it.
-    Fighter open = idle_at(glm::vec3(0, 0, -60));
-    Fighter far  = idle_at(glm::vec3(0, 0, 60));   // 120 apart: inside the 160 reach
+    Fighter open = idle_at(glm::vec3(0, 0, -20));
+    Fighter far  = idle_at(glm::vec3(0, 0, 20));
+    combo.bind(open);
+    combo.bind(far);
     swing_to_active(open);
     check(open.try_melee_hit(far), "with no collision the swing reaches across");
 
-    Fighter walled = idle_at(glm::vec3(0, 0, -60));
-    Fighter behindWall = idle_at(glm::vec3(0, 0, 60));   // fresh: `far` was hit above
+    Fighter walled = idle_at(glm::vec3(0, 0, -20));
+    Fighter behindWall = idle_at(glm::vec3(0, 0, 20));
+    combo.bind(walled);
+    combo.bind(behindWall);
     swing_to_active(walled);
     check(!walled.try_melee_hit(behindWall, &collision),
           "a wall between them blocks the swing");
     checkInt(100, behindWall.hp(), "and the fighter behind it takes nothing");
 
     // No barrier in the way -> still connects even with collision present.
-    Fighter clear = idle_at(glm::vec3(300, 0, -60));
-    Fighter clearTarget = idle_at(glm::vec3(300, 0, 60));
+    Fighter clear = idle_at(glm::vec3(300, 0, -20));
+    Fighter clearTarget = idle_at(glm::vec3(300, 0, 20));
+    combo.bind(clear);
+    combo.bind(clearTarget);
     swing_to_active(clear);
     check(clear.try_melee_hit(clearTarget, &collision),
           "a clear line still connects with collision loaded");
 
     // An empty collision is permissive, matching the no-collision.x case.
     game::physics::MovementCollision empty;
-    Fighter permissive = idle_at(glm::vec3(0, 0, -60));
-    Fighter permissiveTarget = idle_at(glm::vec3(0, 0, 60));
+    Fighter permissive = idle_at(glm::vec3(0, 0, -20));
+    Fighter permissiveTarget = idle_at(glm::vec3(0, 0, 20));
+    combo.bind(permissive);
+    combo.bind(permissiveTarget);
     swing_to_active(permissive);
     check(permissive.try_melee_hit(permissiveTarget, &empty),
           "an empty collision model does not block anything");
@@ -349,11 +405,16 @@ void testBarriers() {
 // ---------------------------------------------------------------------------
 // Multiple opponents, per-swing accounting, ally exclusion.
 // ---------------------------------------------------------------------------
-void testMultipleOpponentsAndAllies() {
+void testMultipleOpponentsAndAllies(const fs::path& install) {
     section("multiple opponents, per-swing accounting, ally exclusion");
+    CombatCombo combo;
+    if (!requireCombatCombo(install, combo, "multiple opponents (no install found)")) return;
     Fighter attacker = idle_at(glm::vec3(0, 0, 0));
-    Fighter enemyA = idle_at(glm::vec3(-60, 0, 90));
-    Fighter enemyB = idle_at(glm::vec3(60, 0, 90));
+    Fighter enemyA = idle_at(glm::vec3(-20, 0, 35));
+    Fighter enemyB = idle_at(glm::vec3(20, 0, 35));
+    combo.bind(attacker);
+    combo.bind(enemyA);
+    combo.bind(enemyB);
     swing_to_active(attacker);
 
     const int hpA = enemyA.hp(), hpB = enemyB.hp();
@@ -379,8 +440,10 @@ void testMultipleOpponentsAndAllies() {
 // ---------------------------------------------------------------------------
 // Startup / active / recovery, and interruption.
 // ---------------------------------------------------------------------------
-void testWindowsAndRecovery() {
+void testWindowsAndRecovery(const fs::path& install) {
     section("startup, active, recovery and interruption");
+    CombatCombo combo;
+    if (!requireCombatCombo(install, combo, "windows and recovery (no install found)")) return;
     const gameplay::MeleeRules rules;
     check(rules.total_ticks() == 30, "the window split still totals the historical 30 ticks");
     check(rules.is_startup(0) && rules.is_startup(rules.startupTicks - 1),
@@ -396,7 +459,9 @@ void testWindowsAndRecovery() {
 
     // A swing that never reaches the active window cannot hit.
     Fighter early = idle_at(glm::vec3(0, 0, 0));
-    Fighter earlyTarget = idle_at(glm::vec3(0, 0, 80));
+    Fighter earlyTarget = idle_at(glm::vec3(0, 0, 40));
+    combo.bind(early);
+    combo.bind(earlyTarget);
     input::PlayerState in;
     in.down[input::Action::AttackA] = true;
     tick(early, in);
@@ -404,31 +469,38 @@ void testWindowsAndRecovery() {
 
     // Recovery is a lockout: once it opens the swing cannot hit again.
     Fighter recovering = idle_at(glm::vec3(0, 0, 0));
+    Fighter victim = idle_at(glm::vec3(0, 0, 40));
+    combo.bind(recovering);
+    combo.bind(victim);
     swing_to_active(recovering);
-    Fighter victim = idle_at(glm::vec3(0, 0, 80));
     check(recovering.try_melee_hit(victim), "it lands during the active window");
-    for (int i = 0; i < rules.activeTicks; ++i) tick(recovering, in);
+    input::PlayerState released;
+    for (int i = 0; i < rules.activeTicks; ++i) tick(recovering, released);
     check(recovering.melee_in_recovery(), "the swing is in recovery");
     check(!recovering.try_melee_hit(victim), "and cannot land again during recovery");
 
     // Being hit interrupts the attack outright.
     Fighter interrupted = idle_at(glm::vec3(0, 0, 0));
+    Fighter aggressor = idle_at(glm::vec3(0, 0, 40));
+    combo.bind(interrupted);
+    combo.bind(aggressor);
     swing_to_active(interrupted);
-    Fighter aggressor = idle_at(glm::vec3(0, 0, 80));
     interrupted.take_damage(5, &aggressor);   // the swing's OWNER is hit mid-swing
     tick(interrupted, in);
     checkInt(static_cast<int>(FighterState::Hit), static_cast<int>(interrupted.state()),
              "a fighter hit mid-swing is interrupted into Hit");
-    Fighter interruptedTarget = idle_at(glm::vec3(0, 0, 80));
+    Fighter interruptedTarget = idle_at(glm::vec3(0, 0, 40));
+    combo.bind(interruptedTarget);
     check(!interrupted.try_melee_hit(interruptedTarget),
           "and its interrupted swing cannot land");
 
     // The whole swing still expires on its own.
     Fighter expiring = idle_at(glm::vec3(0, 0, 0));
+    combo.bind(expiring);
     swing_to_active(expiring);
-    input::PlayerState released;   // NOT `in`: that one still held the melee key, which
-                                   // would re-press on the first tick and re-arm the timer.
-    for (int i = 0; i < rules.total_ticks(); ++i) tick(expiring, released);
+    input::PlayerState expiryReleased;   // NOT `in`: that one still held the melee key,
+                                         // which would re-press and re-arm the timer.
+    for (int i = 0; i < rules.total_ticks(); ++i) tick(expiring, expiryReleased);
     checkInt(static_cast<int>(FighterState::Idle), static_cast<int>(expiring.state()),
              "the swing expires back to Idle");
 }
@@ -436,9 +508,12 @@ void testWindowsAndRecovery() {
 // ---------------------------------------------------------------------------
 // The heavy-key stand-in is gone.
 // ---------------------------------------------------------------------------
-void testHeavyKeyUnbound() {
+void testHeavyKeyUnbound(const fs::path& install) {
     section("the heavy-key stand-in is removed");
+    CombatCombo combo;
+    if (!requireCombatCombo(install, combo, "heavy key (no install found)")) return;
     Fighter f = idle_at(glm::vec3(0, 0, 0));
+    combo.bind(f);
     input::PlayerState in;
     in.down[input::Action::AttackB] = true;
     tick(f, in);
@@ -450,6 +525,7 @@ void testHeavyKeyUnbound() {
 
     // The single melee key still works.
     Fighter m = idle_at(glm::vec3(0, 0, 0));
+    combo.bind(m);
     input::PlayerState mi;
     mi.down[input::Action::AttackA] = true;
     tick(m, mi);
@@ -460,16 +536,22 @@ void testHeavyKeyUnbound() {
 // ---------------------------------------------------------------------------
 // Match-level: ally exclusion survives the multi-candidate rewrite.
 // ---------------------------------------------------------------------------
-void testMatchAllyExclusion() {
+void testMatchAllyExclusion(const fs::path& install) {
     section("Match: ally exclusion and multi-hit in a real match");
+    CombatCombo combo;
+    if (!requireCombatCombo(install, combo, "match ally exclusion (no install found)")) return;
     gameplay::Match match;
     gameplay::MatchConfig config;
     config.fighterCount = 4;
+    for (int i = 0; i < 4; ++i) {
+        config.moves[i] = combo.moves.get();
+        config.weapon[i] = &combo.weapon;
+    }
     config.side[0] = config.side[1] = 0;
     config.side[2] = config.side[3] = 1;
     config.spawn[0] = glm::vec3(0, 0, 0);
-    config.spawn[1] = glm::vec3(-70, 0, 80);    // ally, inside the swing
-    config.spawn[2] = glm::vec3(70, 0, 80);     // enemy, inside the swing
+    config.spawn[1] = glm::vec3(-10, 0, 35);    // ally, inside Rena 0's move sphere
+    config.spawn[2] = glm::vec3(10, 0, 35);     // enemy, inside the same sphere
     config.spawn[3] = glm::vec3(0, 0, 300);     // enemy, out of reach
     config.facing[0] = 0.0f;
     config.facing[1] = 0.0f;
@@ -511,7 +593,7 @@ void testMatchAllyExclusion() {
 }
 
 // ---------------------------------------------------------------------------
-// The load-bearing claim: the melee chain has no recoverable geometry.
+// The load-bearing claim: only weapon-bound moves carry combat geometry.
 // ---------------------------------------------------------------------------
 fs::path findInstall(int argc, char** argv) {
     if (argc > 1) return fs::path(argv[1]);
@@ -543,7 +625,7 @@ void testCharacterMoveTable(const fs::path& install) {
     }
     const char* dirs[4] = {"rena", "keiichi", "mion", "satoko"};
     int parsed = 0;
-    int withShotChain = 0;
+    int withMoveChain = 0;
     for (const char* d : dirs) {
         std::ifstream in(install / "data" / d / "00.dat", std::ios::binary);
         if (!in) continue;
@@ -555,23 +637,31 @@ void testCharacterMoveTable(const fs::path& install) {
             check(false, "every character move table parses");
             continue;
         }
+        const int characterIndex = gameplay::characterIndexForDir(d);
+        const int itemId = gameplay::kWeaponIds[characterIndex][0];
+        gameplay::WeaponDefinition weapon;
+        if (moves.weapon_id() != itemId || !load_weapon(install, itemId, weapon) ||
+            weapon.id != itemId) {
+            check(false, "the character table joins its slot-0 item data");
+            continue;
+        }
+        moves.set_character_index(characterIndex);
         ++parsed;
         check(moves.count() > 50, "a character ships more than 50 moves");
         // The documented families must be present in the parsed data.
         check(moves.has(20) && moves.has(23) && moves.has(24) && moves.has(27),
-              "the four directional walk moves (20/23/24/27) are present");
+              "the four directional dash moves (20/23/24/27) are present");
         check(moves.has(40) && moves.has(41) && moves.has(42),
               "the 40/41/42 jump chain is present");
-        // The shot chain's move ids are the character's own (fighter.h notes they are
-        // per character), so this only asserts where the character actually ships them.
+        // FUN_00445ee0:412-422 conditionally transitions 300→301→302. This checks
+        // only that these numeric move ids exist in the character table; it does not
+        // identify shot cues, charge tiers, or a firing-animation selector.
         if (moves.has(300) && moves.has(301) && moves.has(302)) {
-            ++withShotChain;
-            // Record +0x04 is a CANCEL WINDOW, not a duration (it has no writer in the
-            // binary and is only read as a threshold). Assert it parses, not that it
-            // means anything - the shot chain's 20/30/50 reads like a progression but is
-            // equally consistent with three cancel thresholds.
+            ++withMoveChain;
+            // Record +0x04 is read as a cancel-window threshold in FUN_0043ded0,
+            // not established as a phase duration or a tier-specific shot timing.
             check(moves.cancel_window(300) > 0,
-                  "the tap shot carries a cancel-window threshold");
+                  "move 300 carries a parsed cancel-window threshold");
         }
         // THE CLAIM, corrected by issue #26: moves 40/41/42 are the JUMP chain, not
         // the melee chain, and they carry no combat block. Real melee numbers live
@@ -601,10 +691,20 @@ void testCharacterMoveTable(const fs::path& install) {
         check(moves.first_set_index(30) == 54,
               "move 30 (jump-forward) opens on set 54, not the dash");
         check(moves.first_set_index(40) == 2,
-              "move 40 (jump startup) opens on set 2: AttackA->2 plays a jump clip");
+              "move 40 (jump startup) has phase tag 2; this does not map port AttackA");
         check(moves.first_set_index(300) == 31,
               "move 300 (weapon) opens on set 31: attacks are weapon sets");
         if (std::string(d) == "rena") {
+            checkInt(124, moves.animation_set_count(),
+                     "Rena 00 has 124 animation-set metadata rows");
+            checkInt(0, moves.animation_set_phase_gate(13),
+                     "set 13 +0x20 permits automatic phase advance");
+            checkInt(1, moves.animation_set_phase_gate(14),
+                     "set 14 +0x20 blocks automatic phase advance");
+            checkInt(0, moves.animation_set_phase_gate(73),
+                     "set 73 gate remains aligned after eventful rows");
+            checkInt(-1, moves.animation_set_phase_gate(124),
+                     "out-of-range set metadata is unresolved");
             const gameplay::CharacterMove* big = moves.find(350);
             check(big && big->sectionCount >= 1 && big->phases[0].entryCount == 19,
                   "move 350's 19-effect phase parses whole (no silent truncation)");
@@ -623,18 +723,19 @@ void testCharacterMoveTable(const fs::path& install) {
                     }
             check(hitAt7, "rena move 301's hit entry fires on frame 7 at radius 20");
         }
-        // By contrast the shot chain does carry one.
-        const gameplay::CharacterMove* shot = moves.find(301);
-        bool shotHasCombat = false;
-        if (shot)
-            for (int p = 0; p < shot->sectionCount; ++p)
-                for (int e = 0; e < shot->phases[p].entryCount; ++e)
-                    if (shot->phases[p].entries[e].has_combat()) shotHasCombat = true;
-        check(shotHasCombat, "a shot move DOES carry combat data (parser is not reading zeros)");
+        // Verify the parser retains combat data on numeric move 301. This describes
+        // the character-table entry only; it does not assign the move a projectile role.
+        const gameplay::CharacterMove* move301 = moves.find(301);
+        bool move301HasCombat = false;
+        if (move301)
+            for (int p = 0; p < move301->sectionCount; ++p)
+                for (int e = 0; e < move301->phases[p].entryCount; ++e)
+                    if (move301->phases[p].entries[e].has_combat()) move301HasCombat = true;
+        check(move301HasCombat, "numeric move 301 parses combat data");
     }
     checkInt(4, parsed, "all four sampled characters parsed");
-    check(withShotChain >= 1,
-          "at least one sampled character ships the 300/301/302 shot chain");
+    check(withMoveChain >= 1,
+          "at least one sampled character contains moves 300, 301, and 302");
 
     // A truncated file must be rejected, not read past.
     gameplay::CharacterMoves m;
@@ -646,9 +747,10 @@ void testCharacterMoveTable(const fs::path& install) {
 }
 
 // ---------------------------------------------------------------------------
-// Data-driven swings (issue #26 steps 3–4): with rena's table bound, the swing
-// resolves to the situation's own move — its animation set, reach, damage and
-// stun — instead of the legacy shared numbers. Rena 00.dat reference values:
+// Data-driven swings (issue #26 steps 3–4): with rena's table and matching item
+// bound, hit data comes from the selected move. Only the grounded move-300
+// animation selector is currently mapped; dash/air animation contexts remain
+// visible fallbacks until their binary selector flags are represented. Rena 00.dat:
 //   move 300 (ground): set 31, hit frame 4, next effect 10, hr 20, hp 50, dSt 6
 //   move 330 (dash):   set 51, hit frame 6, next effect 11, hr 25, hp 75, dSt 6
 //   move 340 (air):    set 88, hit frame 16, next effect 21, hr 20, hp 75, dSt 6
@@ -662,6 +764,10 @@ void testDataDrivenGroundSwing(const fs::path& install) {
         skip("data-driven ground swing (no install found)");
         return;
     }
+    if (moves.weapon_id() != gameplay::kWeaponIds[0][0]) {
+        check(false, "Rena 0 move table's header matches item 1");
+        return;
+    }
     xm::Model model;
     xm::Controller ctrl;
     Fighter attacker;
@@ -672,7 +778,12 @@ void testDataDrivenGroundSwing(const fs::path& install) {
     // this suite refuses: behaviour must come from character AND weapon together.
     gameplay::WeaponDefinition weapon;
     gameplay::BulletParameter tapParam, chgParam;
-    check(load_weapon(install, 1, weapon), "rena item 1 (slot 0) parses");
+    if (!load_weapon(install, gameplay::kWeaponIds[0][0], weapon) ||
+        weapon.id != gameplay::kWeaponIds[0][0]) {
+        check(false, "Rena 0's slot-0 item parses and matches the move table");
+        return;
+    }
+    check(true, "Rena 0's slot-0 item parses and matches the move table");
     attacker.set_weapon(&weapon);
     check(attacker.weapon() == &weapon, "the slot-0 weapon is bound with the table");
     if (load_bullet_params(install, weapon, tapParam, chgParam)) {
@@ -686,6 +797,8 @@ void testDataDrivenGroundSwing(const fs::path& install) {
     }
     Fighter victim;
     bind_synthetic_rig(victim, model, ctrl, glm::vec3(0, 0, 40));
+    victim.set_moves(&moves);
+    victim.set_weapon(&weapon);
 
     input::PlayerState in;
     in.down[input::Action::AttackA] = true;
@@ -693,10 +806,11 @@ void testDataDrivenGroundSwing(const fs::path& install) {
     in.down[input::Action::AttackA] = false;
     checkInt(static_cast<int>(FighterState::AttackA),
              static_cast<int>(attacker.state()), "the press enters AttackA");
-    checkInt(300, attacker.attack_move_id(), "a grounded press resolves move 300");
+    checkInt(300, attacker.attack_move_id(),
+             "the port's grounded neutral candidate uses move 300");
     checkInt(31, attacker.anim_set_index(),
-             "and binds set 31 (nata swing), not the jump clip");
-    check(!attacker.anim_fallback(), "with no fallback flag");
+             "the inferred neutral mapping reads Rena 00 move 300's first set");
+    check(!attacker.anim_fallback(), "the port inference resolves through the bound combo");
 
     // Startup is the hit's own frame (4): earlier ticks cannot land.
     tick(attacker, in);
@@ -711,6 +825,8 @@ void testDataDrivenGroundSwing(const fs::path& install) {
     // Reach is 30 + 20 in 3D: 40 connects, 60 does not.
     Fighter far;
     bind_synthetic_rig(far, model, ctrl, glm::vec3(0, 0, 60));
+    far.set_moves(&moves);
+    far.set_weapon(&weapon);
     check(!attacker.try_melee_hit(far), "60 units is past the 30+20 sphere");
 
     // Active until the next effect (frame 10), then recovery locks the swing out.
@@ -740,6 +856,16 @@ void testDataDrivenDashAndAir(const fs::path& install) {
         skip("data-driven air swing (no install found)");
         return;
     }
+    if (moves.weapon_id() != gameplay::kWeaponIds[0][0]) {
+        check(false, "Rena 0 move table's header matches item 1");
+        return;
+    }
+    gameplay::WeaponDefinition weapon;
+    if (!load_weapon(install, gameplay::kWeaponIds[0][0], weapon) ||
+        weapon.id != moves.weapon_id()) {
+        check(false, "Rena 0 slot-0 item parses and matches its move table");
+        return;
+    }
     // Dash attack: double-tap Run, then melee while still dashing.
     {
         xm::Model model;
@@ -747,6 +873,9 @@ void testDataDrivenDashAndAir(const fs::path& install) {
         Fighter dasher;
         bind_synthetic_rig(dasher, model, ctrl, glm::vec3(0, 0, 0));
         dasher.set_moves(&moves);
+        dasher.set_weapon(&weapon);
+        check(dasher.weapon() == &weapon && weapon.id == gameplay::kWeaponIds[0][0],
+              "the dash attack binds its matching Rena 0 weapon");
         input::PlayerState in;
         in.down[input::Action::Up] = true;
         tick(dasher, in);
@@ -761,11 +890,15 @@ void testDataDrivenDashAndAir(const fs::path& install) {
         tick(dasher, in);
         in.down[input::Action::AttackA] = false;
         checkInt(330, dasher.attack_move_id(), "a dash press resolves the lunge (330)");
-        checkInt(51, dasher.anim_set_index(), "binding set 51, not the jump clip");
+        checkInt(0, dasher.anim_set_index(),
+                 "dash attack selector is unresolved; no lunge clip is guessed");
+        check(dasher.anim_fallback(), "dash attack reports its animation fallback");
         // The dash carried the fighter forward; meet it where it is (reach 55).
         const float z = dasher.position().z;
         Fighter victim;
         bind_synthetic_rig(victim, model, ctrl, glm::vec3(0, 0, z + 45));
+        victim.set_moves(&moves);
+        victim.set_weapon(&weapon);
         for (int i = 0; i < 5; ++i) tick(dasher, in);   // elapsed 6: the hit frame
         check(dasher.try_melee_hit(victim), "the lunge connects inside 30+25");
         checkInt(99, victim.hp(), "for the weapon's scaled damage (75 -> 1)");
@@ -777,6 +910,9 @@ void testDataDrivenDashAndAir(const fs::path& install) {
         Fighter flyer;
         bind_synthetic_rig(flyer, model, ctrl, glm::vec3(0, 0, 0));
         flyer.set_moves(&moves);
+        flyer.set_weapon(&weapon);
+        check(flyer.weapon() == &weapon && weapon.id == gameplay::kWeaponIds[0][0],
+              "the aerial attack binds its matching Rena 0 weapon");
         input::PlayerState jump;
         jump.down[input::Action::Jump] = true;
         tick(flyer, jump);
@@ -789,14 +925,20 @@ void testDataDrivenDashAndAir(const fs::path& install) {
         in.down[input::Action::AttackA] = false;
         check(flyer.aerial_attack(), "the airborne press flags the aerial swing");
         checkInt(340, flyer.attack_move_id(), "resolving the weapon aerial (340)");
-        checkInt(88, flyer.anim_set_index(), "binding set 88");
+        checkInt(0, flyer.anim_set_index(),
+                 "air attack selector is unresolved; no aerial clip is guessed");
+        check(flyer.anim_fallback(), "air attack reports its animation fallback");
         Fighter early;
         bind_synthetic_rig(early, model, ctrl, flyer.position());
+        early.set_moves(&moves);
+        early.set_weapon(&weapon);
         check(!flyer.try_melee_hit(early), "no hit during the 16-frame startup");
         for (int i = 0; i < 15; ++i) tick(flyer, in);   // elapsed 16: the hit frame
         // Meet the risen attacker at its own height (reach 50 in 3D).
         Fighter victim;
         bind_synthetic_rig(victim, model, ctrl, glm::vec3(0, 0, 0));
+        victim.set_moves(&moves);
+        victim.set_weapon(&weapon);
         victim.reset(glm::vec3(flyer.position().x, flyer.position().y,
                                flyer.position().z + 30),
                      0.0f);
@@ -806,26 +948,33 @@ void testDataDrivenDashAndAir(const fs::path& install) {
 }
 
 void testDataDrivenFallback(const fs::path& install) {
-    section("no table, no data: the legacy swing survives");
-    // A costume that drops the situation's move (rena/02 repoints 330 to a bare
-    // phase; a table with no 300-family at all) must fall back cleanly, and a
-    // fighter with no table bound must behave exactly like the pre-#26 machine.
-    Fighter bare = idle_at(glm::vec3(0, 0, 0));
-    checkInt(-1, bare.attack_move_id(), "no table means no move id");
-    checkInt(-1, bare.anim_set_index(), "no model means no set bound");
-    check(!bare.moves(), "and no table bound");
-
-    gameplay::CharacterMoves moves;
-    if (!load_moves(install, "rena", "00.dat", moves)) {
-        skip("bound-but-missing move falls back (no install found)");
-        return;
+    section("projectile firing has no recovered animation selector");
+    CombatCombo combo;
+    if (!requireCombatCombo(install, combo,
+                            "projectile animation selector (no install found)")) return;
+    xm::Model model;
+    xm::Controller ctrl;
+    Fighter bound;
+    bind_synthetic_rig(bound, model, ctrl, glm::vec3(0, 0, 0));
+    combo.bind(bound);
+    input::PlayerState charge;
+    charge.down[input::Action::Shoot] = true;
+    tick(bound, charge);
+    charge.down[input::Action::Shoot] = false;
+    tick(bound, charge);
+    checkInt(static_cast<int>(FighterState::ShootA), static_cast<int>(bound.state()),
+             "a released tap fires through the projectile input path");
+    const gameplay::PendingShot shot = bound.take_pending_shot();
+    check(shot.armed, "the matching weapon combo produces a projectile");
+    checkInt(0, bound.anim_set_index(),
+             "shot cue does not borrow Rena's weapon swing set");
+    check(bound.anim_fallback(), "unmapped projectile animation reports fallback");
+    for (FighterState state : {FighterState::ShootB, FighterState::ShootC,
+                               FighterState::ShotFinal}) {
+        bound.set_state(state);
+        checkInt(0, bound.anim_set_index(), "unmapped shot tier stays on set 0");
+        check(bound.anim_fallback(), "unmapped shot tier reports fallback");
     }
-    // Move 302 exists for rena but has no bearing on the ground swing; the
-    // fallback path is exercised by asking for a move the table lacks.
-    check(moves.find(9999) == nullptr, "an absent move id finds nothing");
-    Fighter bound = idle_at(glm::vec3(0, 0, 0));
-    bound.set_moves(&moves);
-    checkInt(-1, bound.attack_move_id(), "no swing yet means no move id");
 }
 
 void testMatchDataDriven(const fs::path& install) {
@@ -844,11 +993,23 @@ void testMatchDataDriven(const fs::path& install) {
     config.spawn[1] = glm::vec3(0, 0, 40);   // inside the 30+20 sphere
     config.moves[0] = &moves;
     config.moves[1] = &moves;
+    gameplay::WeaponDefinition weapon;
+    if (moves.weapon_id() != gameplay::kWeaponIds[0][0] ||
+        !load_weapon(install, gameplay::kWeaponIds[0][0], weapon) ||
+        weapon.id != moves.weapon_id()) {
+        check(false, "Rena 0 slot-0 item parses and matches its move table");
+        return;
+    }
+    check(true, "Rena 0 slot-0 item parses and matches its move table");
+    config.weapon[0] = &weapon;
+    config.weapon[1] = &weapon;
     const xm::Model* models[4] = {};
     xm::Controller* anims[4] = {};
     match.reset(config, models, anims, nullptr, nullptr);
     const input::PlayerState* idle[4] = {};
     for (int i = 0; i < 70; ++i) match.step(idle, 1.0 / 64.0);
+    check(match.fighter(0).weapon() == &weapon && match.fighter(1).weapon() == &weapon,
+          "both match attackers carry the Rena 0 slot-0 weapon");
     const int hpBefore = match.fighter(1).hp();
     input::PlayerState melee{};
     melee.down[input::Action::AttackA] = true;
@@ -869,12 +1030,10 @@ void testMatchDataDriven(const fs::path& install) {
 }
 
 // ---------------------------------------------------------------------------
-// Every legal combo runs: each character × each shipped NN.dat × each legal
-// weapon slot parses its moves + item (+ best-effort bullets) and survives a
-// 120-tick bout with sane state. Which NN.dat the original pairs with which
-// weapon slot is still open (issue #26), so this sweeps the cross product
-// rather than asserting the join — and it is the standing rule that no test
-// exercises a bare fighter where a combo exists.
+// Every legal combo runs: each character × each shipped NN.dat is paired with
+// its own NN weapon slot and survives a 120-tick bout with sane state. The file header
+// at +0x114 carries that item id, verified against kWeaponIds (46/46); cross-slot
+// pairings are not original game combos and must not be tested as such.
 // ---------------------------------------------------------------------------
 void testEveryComboRuns(const fs::path& install) {
     section("every character x costume-dat x weapon combo runs");
@@ -886,7 +1045,7 @@ void testEveryComboRuns(const fs::path& install) {
     int attempted = 0, ran = 0;
     for (int c = 0; c < gameplay::kCharacterCount; ++c) {
         const char* dir = gameplay::kCharacterDirs[c];
-        for (int nn = 0; nn < 3; ++nn) {
+        for (int nn = 0; nn < gameplay::weaponCountForCharacter(c); ++nn) {
             char nnname[16];
             std::snprintf(nnname, sizeof(nnname), "%02d.dat", nn);
             gameplay::CharacterMoves moves;
@@ -898,127 +1057,251 @@ void testEveryComboRuns(const fs::path& install) {
                             moves.weapon_id(), gameplay::kWeaponIds[c][nn]);
                 check(false, "every NN.dat carries its own slot's weapon id");
             }
-            for (int w = 0; w < gameplay::weaponCountForCharacter(c); ++w) {
-                const int id = gameplay::kWeaponIds[c][w];
-                gameplay::WeaponDefinition weapon;
-                if (!load_weapon(install, id, weapon)) {
-                    check(false, "every roster item file parses");
-                    continue;
-                }
-                ++attempted;
-                // Best effort, like the live path: absent files keep shared tuning,
-                // and an all-zero parameter decodes to the shared table anyway.
-                gameplay::BulletParameter tap, chg;
-                load_bullet_params(install, weapon, tap, chg);
-                gameplay::Match match;
-                gameplay::MatchConfig config;
-                config.fighterCount = 2;
-                config.side[0] = 0;
-                config.side[1] = 1;
-                config.spawn[0] = glm::vec3(0, 0, 0);
-                config.spawn[1] = glm::vec3(300, 0, 0);
-                config.moves[0] = config.moves[1] = &moves;
-                config.weapon[0] = config.weapon[1] = &weapon;
-                const xm::Model* models[4] = {};
-                xm::Controller* anims[4] = {};
-                match.reset(config, models, anims, nullptr, nullptr);
-                for (int f = 0; f < 2; ++f) {
-                    match.fighter(f).set_bullet_parameter(1, &tap);
-                    match.fighter(f).set_bullet_parameter(2, &chg);
-                }
-                const input::PlayerState* idle[4] = {};
-                for (int i = 0; i < 70; ++i) match.step(idle, 1.0 / 64.0);
-                for (int tick = 0; tick < 120; ++tick) {
-                    input::PlayerState p1{}, p2{};
-                    p1.down[input::Action::Shoot] = true;
-                    p2.down[input::Action::Shoot] = true;
-                    if (tick == 0) p1.down[input::Action::AttackA] = true;
-                    input::compute_edges(p1);
-                    input::compute_edges(p2);
-                    const input::PlayerState* in[4] = {&p1, &p2, nullptr, nullptr};
-                    match.step(in, 1.0 / 64.0);
-                }
-                const auto& f0 = match.fighter(0);
-                const auto& f1 = match.fighter(1);
-                const bool sane =
-                    f0.hp() >= 0 && f0.hp() <= f0.max_hp() &&
-                    f1.hp() >= 0 && f1.hp() <= f1.max_hp() &&
-                    f0.main_frac() >= 0.0f && f0.main_frac() <= 1.0f &&
-                    f0.charge_frac() >= 0.0f && f0.charge_frac() <= 1.0f;
-                if (!sane) {
-                    std::printf("  INSANE: %s with item %03d\n",
-                                gameplay::comboSlotLabel(c, w).c_str(), id);
-                    check(false, "a combo bout stays within sane state");
-                } else {
-                    ++ran;
-                }
+            const int w = nn;
+            const int id = gameplay::kWeaponIds[c][w];
+            gameplay::WeaponDefinition weapon;
+            if (!load_weapon(install, id, weapon) || weapon.id != id) {
+                check(false, "the NN.dat slot's matching item file parses");
+                continue;
+            }
+            ++attempted;
+            // Best effort, like the live path: absent files keep shared tuning,
+            // and an all-zero parameter decodes to the shared table anyway.
+            gameplay::BulletParameter tap, chg;
+            load_bullet_params(install, weapon, tap, chg);
+            gameplay::Match match;
+            gameplay::MatchConfig config;
+            config.fighterCount = 2;
+            config.side[0] = 0;
+            config.side[1] = 1;
+            config.spawn[0] = glm::vec3(0, 0, 0);
+            config.spawn[1] = glm::vec3(300, 0, 0);
+            config.moves[0] = config.moves[1] = &moves;
+            config.weapon[0] = config.weapon[1] = &weapon;
+            const xm::Model* models[4] = {};
+            xm::Controller* anims[4] = {};
+            match.reset(config, models, anims, nullptr, nullptr);
+            for (int f = 0; f < 2; ++f) {
+                match.fighter(f).set_bullet_parameter(1, &tap);
+                match.fighter(f).set_bullet_parameter(2, &chg);
+            }
+            const input::PlayerState* idle[4] = {};
+            for (int i = 0; i < 70; ++i) match.step(idle, 1.0 / 64.0);
+            for (int tick = 0; tick < 120; ++tick) {
+                input::PlayerState p1{}, p2{};
+                p1.down[input::Action::Shoot] = true;
+                p2.down[input::Action::Shoot] = true;
+                if (tick == 0) p1.down[input::Action::AttackA] = true;
+                input::compute_edges(p1);
+                input::compute_edges(p2);
+                const input::PlayerState* in[4] = {&p1, &p2, nullptr, nullptr};
+                match.step(in, 1.0 / 64.0);
+            }
+            const auto& f0 = match.fighter(0);
+            const auto& f1 = match.fighter(1);
+            const bool sane =
+                f0.hp() >= 0 && f0.hp() <= f0.max_hp() &&
+                f1.hp() >= 0 && f1.hp() <= f1.max_hp() &&
+                f0.main_frac() >= 0.0f && f0.main_frac() <= 1.0f &&
+                f0.charge_frac() >= 0.0f && f0.charge_frac() <= 1.0f;
+            if (!sane) {
+                std::printf("  INSANE: %s with item %03d\n",
+                            gameplay::comboSlotLabel(c, w).c_str(), id);
+                check(false, "a combo bout stays within sane state");
+            } else {
+                ++ran;
             }
         }
     }
     std::printf("  combos attempted: %d\n", attempted);
     checkInt(attempted, ran, "every attempted combo ran sane");
-    check(attempted > 100, "the sweep covers the full roster cross product");
+    checkInt(46, attempted, "the sweep covers all legal character/item-slot combos");
 }
 
 // ---------------------------------------------------------------------------
-// Phase advancement: a multi-phase move plays each phase once through (by clip
-// length) and holds the last, instead of looping its startup. Short rig:
-// 225 ticks at 4800/s ≈ 3 ticks per phase at 1/64. Rena 00.dat reference:
-//   attack 300 → [31, 73, 74]; forward dash 20 → [13, 14, 15].
+// Section transitions use the D3DX period rounded by the original loader, a
+// strict elapsed > period boundary, and the NN.dat set +0x20 auto-advance gate.
+// Controller clip looping stays at the remake default; +0x20 does not establish it.
 // ---------------------------------------------------------------------------
-void testPhaseAdvancement(const fs::path& install) {
-    section("phase advancement (no startup loops)");
-    gameplay::CharacterMoves moves;
-    if (!load_moves(install, "rena", "00.dat", moves)) {
-        skip("phase advancement (no install found)");
-        skip("dash phase advancement (no install found)");
-        return;
-    }
-    // Ground attack: 31 held 3 ticks, then 73, then 74 holds the swing out.
+void testAnimationPhaseProgression(const fs::path& install) {
+    section("animation phases follow D3DX periods and NN.dat gates");
+    CombatCombo combo;
+    if (!requireCombatCombo(install, combo,
+                            "animation phase progression (no install found)")) return;
+    checkInt(124, combo.moves->animation_set_count(),
+             "Rena 00 trailer has one row per animation set");
+    checkInt(0, combo.moves->animation_set_phase_gate(13),
+             "dash startup set 13 auto-advances");
+    checkInt(1, combo.moves->animation_set_phase_gate(14),
+             "dash continuation set 14 is explicitly gated");
+    checkInt(0, combo.moves->animation_set_phase_gate(73),
+             "attack continuation set 73 auto-advances after event data");
+
+    // A 9,600-key-tick synthetic clip at 4,800 ticks/s has a verified D3DX
+    // period of 2 seconds; FUN_0066b668 rounds it to 2 and the source switches
+    // only when integer elapsed ticks become greater than 2.
     {
         xm::Model model;
         xm::Controller ctrl;
-        Fighter attacker;
-        bind_synthetic_rig(attacker, model, ctrl, glm::vec3(0, 0, 0), 225.0f);
-        attacker.set_moves(&moves);
+        Fighter dash;
+        bind_synthetic_rig(dash, model, ctrl, glm::vec3(0, 0, 0), 9600.0f);
+        dash.set_moves(combo.moves.get());
+        dash.set_weapon(&combo.weapon);
+        double_tap(dash, input::Action::Up);
+        checkInt(13, dash.anim_set_index(), "dash starts on table phase zero");
+        check(ctrl.trackLoop(0), "zero +0x20 does not override controller playback mode");
+        check(std::abs(ctrl.trackPosition(0)) < 1e-9,
+              "a newly selected state starts at position zero");
+        input::PlayerState idle;
+        tick(dash, idle);
+        checkInt(13, dash.anim_set_index(), "period equality does not advance");
+        tick(dash, idle);
+        checkInt(14, dash.anim_set_index(), "strictly greater elapsed period advances");
+        check(ctrl.trackLoop(0), "nonzero +0x20 does not set clip playback mode");
+        check(std::abs(ctrl.trackPosition(0)) < 1e-9,
+              "the newly bound phase stays at zero on its transition tick");
+        tick(dash, idle);
+        check(std::abs(ctrl.trackPosition(0) - 1.0 / 64.0) < 1e-9,
+              "the bound phase advances on the following stable tick");
+        for (int i = 0; i < 10; ++i) tick(dash, idle);
+        checkInt(14, dash.anim_set_index(), "nonzero +0x20 gate holds the next phase");
+    }
+
+    // FUN_0066b668 uses x87 ROUND, which is nearest-even under the game's default
+    // floating-point mode. A half-period of 0.5 rounds to zero, unlike lround().
+    {
+        xm::Model model;
+        xm::Controller ctrl;
+        Fighter dash;
+        bind_synthetic_rig(dash, model, ctrl, glm::vec3(0, 0, 0));
+        model.anims[13].duration = 2400.0f;  // 0.5 seconds at 4,800 ticks/second
+        dash.set_moves(combo.moves.get());
+        dash.set_weapon(&combo.weapon);
+        double_tap(dash, input::Action::Up);
+        checkInt(14, dash.anim_set_index(), "nearest-even zero threshold advances on elapsed tick 1");
+    }
+
+    // Rena's neutral move 300 has three ungated phase sets. Each new section
+    // resets its move-local elapsed counter before another period can expire.
+    {
+        xm::Model model;
+        xm::Controller ctrl;
+        Fighter attack;
+        bind_synthetic_rig(attack, model, ctrl, glm::vec3(0, 0, 0), 9600.0f);
+        attack.set_moves(combo.moves.get());
+        attack.set_weapon(&combo.weapon);
         input::PlayerState in;
         in.down[input::Action::AttackA] = true;
-        tick(attacker, in);
+        tick(attack, in);
         in.down[input::Action::AttackA] = false;
-        checkInt(31, attacker.anim_set_index(), "the swing opens on phase 0 (31)");
-        tick(attacker, in);
-        tick(attacker, in);
-        tick(attacker, in);   // ~3 ticks of clip: phase 1
-        checkInt(73, attacker.anim_set_index(), "then steps to phase 1 (73)");
-        tick(attacker, in);
-        tick(attacker, in);
-        tick(attacker, in);   // ~3 more: phase 2, held
-        checkInt(74, attacker.anim_set_index(), "then holds the last phase (74)");
-        for (int i = 0; i < 15; ++i) tick(attacker, in);
-        checkInt(74, attacker.anim_set_index(), "the last phase never advances past");
+        checkInt(31, attack.anim_set_index(), "neutral move 300 starts on set 31");
+        tick(attack, in);
+        checkInt(31, attack.anim_set_index(), "first section holds through period equality");
+        tick(attack, in);
+        checkInt(73, attack.anim_set_index(), "move 300 advances after the strict boundary");
+        check(std::abs(ctrl.trackPosition(0)) < 1e-9,
+              "move 300's new phase stays at zero on the switch tick");
+        tick(attack, in);
+        checkInt(73, attack.anim_set_index(), "next section gets a fresh elapsed counter");
+        tick(attack, in);
+        checkInt(73, attack.anim_set_index(), "second section also holds at equality");
+        tick(attack, in);
+        checkInt(74, attack.anim_set_index(), "move 300 advances to its final phase");
     }
-    // Forward dash: 13, then 14, then 15 holds for the rest of the dash.
+}
+
+// FUN_0064c8a0 permits a blend only for Rena's weapon slot 2, from set 1 to
+// 31/34/39. Its two countdown values come from the bound NN.dat set rows.
+void testClassSpecificAnimationBlend(const fs::path& install) {
+    section("the recovered Rena 2 animation blend uses NN.dat timing");
+    gameplay::CharacterMoves moves;
+    if (!load_moves(install, "rena", "02.dat", moves)) {
+        skip("Rena 2 animation blend (no install found)");
+        return;
+    }
+    gameplay::WeaponDefinition weapon;
+    if (moves.weapon_id() != gameplay::kWeaponIds[0][2] ||
+        !load_weapon(install, moves.weapon_id(), weapon) || weapon.id != moves.weapon_id()) {
+        skip("Rena 2 animation blend (matching item unavailable)");
+        return;
+    }
+    checkInt(33, moves.weapon_id(), "Rena 2 table binds its matching item 33");
+    checkInt(0, moves.character_index(), "the move table carries its loaded roster identity");
+    // FUN_0041e180 indexes rows by move ID, clears an existing phase vector,
+    // and then writes the later row into that same slot. Rena 02 repeats 311;
+    // its second record at file offset 0x7116 replaces the earlier set-40 row.
+    const gameplay::CharacterMove* repeated = moves.find(311);
+    checkInt(1, repeated ? repeated->sectionCount : -1,
+             "repeated move 311 resolves to one overwritten phase");
+    checkInt(34, repeated ? repeated->first_set_index() : -1,
+             "last move 311 row wins with phase tag 34");
+    checkInt(4, repeated ? repeated->phases[0].entryCount : -1,
+             "the winning move 311 row keeps its four entries");
+    checkInt(10, moves.animation_set_transition_duration(1),
+             "old set 1 seeds the callback countdown with 10");
+    checkInt(20, moves.animation_set_transition_duration(31),
+             "new set 31 supplies the 20-tick ramp denominator");
+    checkInt(20, moves.animation_set_transition_duration(34),
+             "new set 34 supplies its own ramp denominator");
+    checkInt(10, moves.animation_set_transition_duration(39),
+             "new set 39 supplies its own ramp denominator");
+
+    auto startBlend = [&](Fighter& fighter, xm::Model& model, xm::Controller& ctrl) {
+        bind_synthetic_rig(fighter, model, ctrl, glm::vec3(0, 0, 0));
+        fighter.set_moves(&moves);
+        fighter.set_weapon(&weapon);
+        fighter.set_state(FighterState::Walk);
+    };
+    input::PlayerState attack;
+    attack.down[input::Action::AttackA] = true;
+    input::PlayerState idle;
     {
         xm::Model model;
         xm::Controller ctrl;
-        Fighter dasher;
-        bind_synthetic_rig(dasher, model, ctrl, glm::vec3(0, 0, 0), 225.0f);
-        dasher.set_moves(&moves);
-        double_tap(dasher, input::Action::Up);
-        checkInt(20, dasher.dash_move_id(), "the dash resolves move 20");
-        checkInt(13, dasher.anim_set_index(), "opening on dash startup (13)");
-        input::PlayerState idle;
-        for (int i = 0; i < 3; ++i) tick(dasher, idle);
-        checkInt(14, dasher.anim_set_index(), "then the dash loop (14)");
-        for (int i = 0; i < 3; ++i) tick(dasher, idle);
-        checkInt(15, dasher.anim_set_index(), "then recovery holds (15)");
+        Fighter fighter;
+        startBlend(fighter, model, ctrl);
+        checkInt(1, fighter.anim_set_index(), "walk supplies callback old set 1");
+        tick(fighter, attack);
+        checkInt(31, fighter.anim_set_index(), "Rena 2 neutral move targets set 31");
+        checkInt(1, ctrl.trackAnimationSet(0), "old pose remains on track 0 during blend");
+        checkInt(31, ctrl.trackAnimationSet(1), "new pose starts on track 1");
+        check(std::abs(ctrl.trackWeight(0) - 0.5f) < 1e-6f,
+              "the parsed 10/20 durations start the old set at half weight");
+        check(std::abs(ctrl.trackWeight(1) - 0.5f) < 1e-6f,
+              "the parsed 10/20 durations start the new set at half weight");
+
+        attack.down[input::Action::AttackA] = false;
+        tick(fighter, idle);
+        check(std::abs(ctrl.trackWeight(0) - 0.45f) < 1e-6f,
+              "the next source countdown step leaves 45 percent on the old set");
+        check(std::abs(ctrl.trackWeight(1) - 0.55f) < 1e-6f,
+              "the next source countdown step gives 55 percent to the new set");
+        for (int i = 0; i < 9; ++i) tick(fighter, idle);
+        checkInt(31, ctrl.trackAnimationSet(0), "the source countdown commits after 11 updates");
+        checkInt(31, ctrl.trackAnimationSet(1), "both tracks settle on the requested set");
+    }
+    {
+        xm::Model model;
+        xm::Controller ctrl;
+        Fighter interrupted;
+        startBlend(interrupted, model, ctrl);
+        attack.down[input::Action::AttackA] = true;
+        tick(interrupted, attack);
+        attack.down[input::Action::AttackA] = false;
+        const int hitSet = moves.first_set_index(103);
+        check(hitSet >= 0, "the interruption target exists in Rena 2's table");
+        interrupted.set_state(FighterState::Hit);
+        checkInt(hitSet, ctrl.trackAnimationSet(0),
+                 "a callback-rejected interruption hard-binds track 0");
+        checkInt(hitSet, ctrl.trackAnimationSet(1),
+                 "a callback-rejected interruption hard-binds track 1");
     }
 }
 
 // ---------------------------------------------------------------------------
-// Directional dashes: double-tap a direction and the dash plays that
-// direction's move — Up 20 ([13..]), Down 27 ([16..]), Left 24 ([19..]),
-// Right 23 ([22..]). Long rig: phases hold, so the first set pins the row.
+// Up/Down ground dash mappings are port inferences from the directional clip
+// families; source input selectors depend on opaque state/cancel fields. Side and
+// air-dash animation selectors stay unresolved.
 // ---------------------------------------------------------------------------
 void testDirectionalDashes(const fs::path& install) {
     section("directional dash animation sets");
@@ -1027,20 +1310,18 @@ void testDirectionalDashes(const fs::path& install) {
         skip("directional dash sets (no install found)");
         return;
     }
-    struct Case {
-        int action;
-        int move;
-        int set;
-        const char* name;
-        bool exact;  // forward/back are pinned; sides pin the family pair —
-                     // Left/Right ORDER is unverified under mirroring, so the
-                     // test accepts either side move with its own first set.
-    };
+    gameplay::WeaponDefinition weapon;
+    if (moves.weapon_id() != gameplay::kWeaponIds[0][0] ||
+        !load_weapon(install, moves.weapon_id(), weapon) || weapon.id != moves.weapon_id()) {
+        skip("directional dash sets (matching item unavailable)");
+        return;
+    }
+    struct Case { int action; int move; int set; const char* name; bool known; };
     const Case cases[] = {
         {input::Action::Up, 20, 13, "forward", true},
         {input::Action::Down, 27, 16, "back", true},
-        {input::Action::Left, 24, 19, "left", false},
-        {input::Action::Right, 23, 22, "right", false},
+        {input::Action::Left, -1, 0, "left", false},
+        {input::Action::Right, -1, 0, "right", false},
     };
     for (const Case& c : cases) {
         xm::Model model;
@@ -1048,35 +1329,72 @@ void testDirectionalDashes(const fs::path& install) {
         Fighter f;
         bind_synthetic_rig(f, model, ctrl, glm::vec3(0, 0, 0));
         f.set_moves(&moves);
+        f.set_weapon(&weapon);
         double_tap(f, c.action);
         checkInt(static_cast<int>(FighterState::Run), static_cast<int>(f.state()),
                  "double-tap dashes");
         char what[96];
-        if (c.exact) {
+        if (c.known) {
             std::snprintf(what, sizeof(what), "%s dash resolves move %d", c.name, c.move);
             checkInt(c.move, f.dash_move_id(), what);
             std::snprintf(what, sizeof(what), "%s dash opens on set %d", c.name, c.set);
             checkInt(c.set, f.anim_set_index(), what);
         } else {
-            // Either side move with ITS first set: (24,19) or (23,22).
-            const int gotMove = f.dash_move_id();
-            const int gotSet = f.anim_set_index();
-            const bool pair =
-                (gotMove == 24 && gotSet == 19) || (gotMove == 23 && gotSet == 22);
-            std::snprintf(what, sizeof(what), "%s dash plays a side pair (got %d/%d)",
-                          c.name, gotMove, gotSet);
-            check(pair, what);
+            std::snprintf(what, sizeof(what), "%s selector remains unresolved", c.name);
+            checkInt(c.move, f.dash_move_id(), what);
+            checkInt(c.set, f.anim_set_index(), "unresolved side dash uses set 0");
+            check(f.anim_fallback(), "unresolved side dash reports fallback");
         }
+    }
+
+    // Changing the direction during an active Run state changes the port's
+    // inferred move candidate without changing its state label; the animation
+    // must rebind instead of keeping the previous dash clip.
+    {
+        xm::Model model;
+        xm::Controller ctrl;
+        Fighter f;
+        bind_synthetic_rig(f, model, ctrl, glm::vec3(0, 0, 0));
+        f.set_moves(&moves);
+        f.set_weapon(&weapon);
+        double_tap(f, input::Action::Up);
+        checkInt(13, f.anim_set_index(), "up dash begins on its inferred move-20 clip");
+        double_tap(f, input::Action::Down);
+        checkInt(static_cast<int>(FighterState::Run), static_cast<int>(f.state()),
+                 "a second dash keeps the Run port state");
+        checkInt(27, f.dash_move_id(), "down dash replaces the candidate with move 27");
+        checkInt(16, f.anim_set_index(), "same-state dash rebinds to move 27's clip");
+        check(!f.anim_fallback(), "the ground dash inference resolves through the table");
+    }
+
+    // Reusing a ground input mapping for airborne dashes is unverified, so leave
+    // the aerial Run on the explicit default pose.
+    {
+        xm::Model model;
+        xm::Controller ctrl;
+        Fighter f;
+        bind_synthetic_rig(f, model, ctrl, glm::vec3(0, 0, 0));
+        f.set_moves(&moves);
+        f.set_weapon(&weapon);
+        input::PlayerState jump;
+        jump.down[input::Action::Jump] = true;
+        tick(f, jump);
+        jump.down[input::Action::Jump] = false;
+        tick(f, jump);
+        double_tap(f, input::Action::Up);
+        checkInt(static_cast<int>(FighterState::Run), static_cast<int>(f.state()),
+                 "air double-tap still enters the port dash state");
+        checkInt(-1, f.dash_move_id(), "air dash has no inferred ground move candidate");
+        checkInt(0, f.anim_set_index(), "unmapped air dash uses set 0");
+        check(f.anim_fallback(), "unmapped air dash reports its animation fallback");
     }
 }
 
 // ---------------------------------------------------------------------------
-// Roster variation: the locomotion/jump rows are universal (same tags in all
+// Roster variation: the move-table tags are shared where verified (same tags in all
 // 16 characters × all NN files — verified by dump, pinned here for keiichi and
 // mion), while weapon rows differ per character AND the machine reads whatever
-// the bound table says: keiichi's dash-attack opens on 39 where Rena 0's opens
-// on 51, and rena/02's dash opens on 54 (jump-forward startup + dash recovery
-// — surprising, but move ids outrank set expectations by design).
+// the bound table says. Attack selectors stay separate from phase-tag facts.
 // ---------------------------------------------------------------------------
 void testRosterVariation(const fs::path& install) {
     section("roster variation: shared locomotion, per-character attacks");
@@ -1091,13 +1409,25 @@ void testRosterVariation(const fs::path& install) {
         skip("roster variation (no install found)");
         return;
     }
+    gameplay::WeaponDefinition keiichiWeapon;
+    gameplay::WeaponDefinition mionWeapon;
+    gameplay::WeaponDefinition rena2Weapon;
+    if (keiichi->weapon_id() != gameplay::kWeaponIds[2][0] ||
+        mion->weapon_id() != gameplay::kWeaponIds[1][0] ||
+        rena2->weapon_id() != gameplay::kWeaponIds[0][2] ||
+        !load_weapon(install, keiichi->weapon_id(), keiichiWeapon) ||
+        !load_weapon(install, mion->weapon_id(), mionWeapon) ||
+        !load_weapon(install, rena2->weapon_id(), rena2Weapon)) {
+        check(false, "roster tables join their character-specific slot items");
+        return;
+    }
     for (const gameplay::CharacterMoves* moves : {keiichi.get(), mion.get()}) {
         const gameplay::CharacterMove* dash = moves->find(20);
         check(dash && dash->sectionCount == 3 && dash->phase_set_index(0) == 13 &&
                   dash->phase_set_index(1) == 14 && dash->phase_set_index(2) == 15,
               "non-rena dash phases are [13, 14, 15]");
-        checkInt(3, moves->first_set_index(41), "non-rena rise opens on set 3");
-        checkInt(43, moves->first_set_index(43), "non-rena fall opens on set 43");
+        checkInt(3, moves->first_set_index(41), "move 41's first phase tag is 3");
+        checkInt(43, moves->first_set_index(43), "move 43's first phase tag is 43");
         checkInt(19, moves->first_set_index(24), "non-rena side move 24 opens on 19");
         checkInt(22, moves->first_set_index(23), "non-rena side move 23 opens on 22");
     }
@@ -1105,30 +1435,35 @@ void testRosterVariation(const fs::path& install) {
              "keiichi's lunge opens on 39, not Rena 0's 51");
     checkInt(54, rena2->first_set_index(20),
              "rena/02's dash opens on 54: the file may surprise, ids win");
-    // Live: keiichi's dash-attack plays HIS set, not Rena 0's.
+    // Live: combat tuning's candidate does not override the unresolved dash
+    // animation selector with a character-family guess.
     {
         xm::Model model;
         xm::Controller ctrl;
         Fighter dasher;
         bind_synthetic_rig(dasher, model, ctrl, glm::vec3(0, 0, 0));
         dasher.set_moves(keiichi.get());
+        dasher.set_weapon(&keiichiWeapon);
+        check(dasher.weapon() == &keiichiWeapon &&
+                  keiichiWeapon.id == gameplay::kWeaponIds[2][0],
+              "the dash attack binds its matching Keiichi 0 weapon");
         double_tap(dasher, input::Action::Up);
         input::PlayerState in;
         in.down[input::Action::AttackA] = true;
         tick(dasher, in);
         in.down[input::Action::AttackA] = false;
         checkInt(330, dasher.attack_move_id(), "keiichi dash press resolves 330");
-        checkInt(39, dasher.anim_set_index(), "binding set 39, not 51");
+        checkInt(0, dasher.anim_set_index(), "dash animation remains on explicit fallback");
+        check(dasher.anim_fallback(), "dash animation fallback is reported");
     }
 }
 
 // ---------------------------------------------------------------------------
-// Jump animation: the airtime climbs on move 41 (set 3) and falls on move 43
-// (set 43), switching on the vertical-velocity sign. Long rig: no phase steps,
-// so the sets pin the move switch itself.
+// Jump's original input/state selector is not located. Physics still runs, but
+// animation remains on the reported fallback instead of switching on vy sign.
 // ---------------------------------------------------------------------------
-void testJumpAnimation(const fs::path& install) {
-    section("jump animation follows rise and fall");
+void testJumpAnimationFallback(const fs::path& install) {
+    section("jump animation remains unresolved without the original selector");
     gameplay::CharacterMoves moves;
     if (!load_moves(install, "rena", "00.dat", moves)) {
         skip("jump animation (no install found)");
@@ -1139,17 +1474,23 @@ void testJumpAnimation(const fs::path& install) {
     Fighter f;
     bind_synthetic_rig(f, model, ctrl, glm::vec3(0, 0, 0));
     f.set_moves(&moves);
+    gameplay::WeaponDefinition weapon;
+    if (!load_weapon(install, moves.weapon_id(), weapon)) {
+        skip("jump animation (matching item unavailable)");
+        return;
+    }
+    f.set_weapon(&weapon);
     input::PlayerState jump;
     jump.down[input::Action::Jump] = true;
     tick(f, jump);
     tick(f, jump);
-    checkInt(41, f.jump_move_id(), "the climb resolves move 41");
-    checkInt(3, f.anim_set_index(), "playing rise set 3, not idle");
+    checkInt(0, f.anim_set_index(), "unmapped jump uses set 0");
+    check(f.anim_fallback(), "unmapped jump reports fallback");
     jump.down[input::Action::Jump] = false;
     for (int i = 0; i < 33; ++i) tick(f, jump);   // vy crosses zero ~tick 26
     check(f.airborne(), "still airborne on the way down");
-    checkInt(43, f.jump_move_id(), "the fall switches to move 43");
-    checkInt(43, f.anim_set_index(), "playing fall set 43");
+    checkInt(0, f.anim_set_index(), "fall keeps the unresolved fallback");
+    check(f.anim_fallback(), "fall does not imply a recovered move ID");
     for (int i = 0; i < 30; ++i) tick(f, jump);
     checkInt(static_cast<int>(FighterState::Idle), static_cast<int>(f.state()),
              "landing returns to Idle");
@@ -1161,23 +1502,24 @@ void testJumpAnimation(const fs::path& install) {
 int main(int argc, char** argv) {
     std::printf("MELEE_RULES_TEST\n");
     const fs::path install = findInstall(argc, argv);
-    testVerticalSeparation();
-    testFacing();
-    testBarriers();
-    testMultipleOpponentsAndAllies();
-    testWindowsAndRecovery();
-    testHeavyKeyUnbound();
-    testMatchAllyExclusion();
+    testVerticalSeparation(install);
+    testFacing(install);
+    testBarriers(install);
+    testMultipleOpponentsAndAllies(install);
+    testWindowsAndRecovery(install);
+    testHeavyKeyUnbound(install);
+    testMatchAllyExclusion(install);
     testCharacterMoveTable(install);
     testDataDrivenGroundSwing(install);
     testDataDrivenDashAndAir(install);
     testDataDrivenFallback(install);
     testMatchDataDriven(install);
     testEveryComboRuns(install);
-    testPhaseAdvancement(install);
+    testAnimationPhaseProgression(install);
+    testClassSpecificAnimationBlend(install);
     testDirectionalDashes(install);
     testRosterVariation(install);
-    testJumpAnimation(install);
+    testJumpAnimationFallback(install);
     std::printf("\nMELEE_RULES: %s (%d checks, %d failed, %d skipped)\n",
                 failures == 0 ? "ok" : "FAIL", checks, failures, skipped);
     return failures == 0 ? 0 : 1;
