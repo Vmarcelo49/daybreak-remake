@@ -47,6 +47,8 @@
 #include "ui/frontend_settings.h"
 #include "game/hud_bridge.h"
 #include "game/fighter_pose.h"
+#include "game/match_view.h"
+#include "game/view_layout.h"
 #include "gameplay/arena_camera.h"
 #include "gameplay/match.h"
 #include "gameplay/fixed_step.h"
@@ -60,6 +62,7 @@
 #include "input/input_backend.h"
 #include "input/tick_input.h"
 #include "input/input_sdl3.h"
+#include "input/synthetic_pad.h"
 #include "shaders/demo_wgsl.h"
 
 namespace {
@@ -119,6 +122,10 @@ struct Options {
     bool        unlit      = false;
     bool        list       = false;
     std::string screen;          // --screen=<id|name>: boot a front-end screen
+    // Split-screen verification (issue #12): open this many local human views by
+    // assigning controllers 0..N-1 to the battle panels, so a headless run exercises the
+    // per-controller camera/HUD path. 0 (default) keeps the historical single-view flow.
+    int         localPlayers = 0;
 };
 
 bool hasAsset(const Options& o) {
@@ -203,6 +210,11 @@ void usage() {
         "                     exactly what the DX9 scene does)\n"
         "  --spawn=x,y,z      P1 start position (default: the stage's env.dat point)\n"
         "  --spawn2=x,y,z     P2 start position\n"
+        "  --local-players=N  verification: open N local human views (1..4) by assigning\n"
+        "                     controllers 0..N-1 to the battle panels and give a\n"
+        "                     controller with no attached pad a deterministic synthetic\n"
+        "                     press pattern. Synthetic input is not physical-pad evidence;\n"
+        "                     a real pad for that controller takes precedence\n"
         "With no asset argument the spinning-triangle demo runs.\n");
 }
 
@@ -266,6 +278,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         }
         else if (!(v = val("--bgm=")).empty()) o.bgm = v;
         else if (!(v = val("--sfx=")).empty()) o.sfx = v;
+        else if (!(v = val("--local-players=")).empty()) o.localPlayers = std::atoi(v.c_str());
         else if (a.rfind("--", 0) == 0) {
             error = "unknown option " + a;
             return false;
@@ -276,6 +289,14 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
     if (o.sizeW < 16) o.sizeW = 16;
     if (o.sizeH < 16) o.sizeH = 16;
     if (o.frames < 0) o.frames = 0;
+    if (o.localPlayers < 0 || o.localPlayers > 4) {
+        error = "--local-players takes 0..4 (the four controller slots)";
+        return false;
+    }
+    if (o.localPlayers > 0 && o.screen.empty()) {
+        error = "--local-players needs --screen (the front end owns the controller slots)";
+        return false;
+    }
     if (o.versus) {
         // Versus is a scripted capture vignette, not an exploration mode: it needs
         // the full cast, a timeline long enough for hits plus a KO sting, and the
@@ -585,11 +606,11 @@ struct App {
     gameplay::Match              match;
     bool                         matchMode = false;
     uint64_t                     matchFrame = 0;      // 1-based, the DX9's frame_count+1
-    int                          lockHeldTicks = 0;   // LockSwitch held with no fresh tap;
-                                                      // at kLockHoldTicks it aims an ally
-    int                          lockedFighter = 0;   // camera target; LockSwitch tap
-                                                     // cycles (Guard+AttackB too, per DX9)
-    gameplay::ArenaCamera        matchCamera;         // the ported reference camera
+    // Per-controller views of the live match (issue #12). Views exist for HUMAN
+    // controllers only; a COM slot never allocates one. `matchViewCount` is how many of
+    // the four are live this match, and the simulation is stepped once regardless of it.
+    game::MatchView              matchViews[game::kMaxHumanViews];
+    int                          matchViewCount = 0;
     gameplay::CameraTarget       arenaTargets[4];     // refreshed from the live fighters
     fnd::input::Backend          matchInput;          // P1 device + script override
     bool                         matchInputReady = false;
@@ -652,7 +673,6 @@ struct App {
     fnd::input::TickInput pendingInput[4];
     fnd::input::PlayerState tickInput[4], scriptInput;
     game::FighterPose previousFighter[4];
-    glm::vec3 previousMatchEye{0.f}, previousMatchTarget{0.f};
     float matchAlpha = 1.f;
     // D1 render-FPS meter: frames per wall-clock second over a rolling half
     // second, exactly what the top-right counter shows (rendering only — the
@@ -669,6 +689,33 @@ struct App {
 static bool historicalMatchCapture(const App& app) {
     return !app.frontendMatch &&
            (!app.opts.out.empty() || !app.opts.script.empty() || !app.opts.script2.empty());
+}
+
+// --local-players' synthetic pads (see input/synthetic_pad.h): a controller with no
+// attached device takes the deterministic pattern for THIS tick, applied after the device
+// sample so a real pad always wins. Per tick and not per render on purpose — through the
+// backend's event feed the absent device's cleared state is re-sampled every render, which
+// degenerates the pattern into alternating one-tick taps whose density depends on the frame
+// rate; a per-tick override keeps the run deterministic and pace-independent.
+void driveSyntheticLocalPads(App& app) {
+    const int humans = std::clamp(app.opts.localPlayers, 0, 4);
+    if (humans <= 1 || !app.matchMode) return;
+    for (int controller = 1; controller < humans; ++controller) {
+        if (app.matchInput.device(controller) != fnd::input::DeviceType::None) continue;
+        const fnd::input::SyntheticPadState pad =
+            fnd::input::syntheticPadState(controller, app.matchFrame);
+        fnd::input::PlayerState& state = app.tickInput[controller];
+        state.down[fnd::input::Up] = pad.up;
+        state.down[fnd::input::Down] = pad.down;
+        state.down[fnd::input::Left] = pad.left;
+        state.down[fnd::input::Right] = pad.right;
+        state.down[fnd::input::AttackA] = pad.melee;
+        state.down[fnd::input::Shoot] = pad.shoot;
+        state.down[fnd::input::Jump] = pad.jump;
+        state.down[fnd::input::Guard] = pad.guard;
+        state.down[fnd::input::LockSwitch] = pad.lock;
+        fnd::input::compute_edges(state);
+    }
 }
 
 bool buildTrianglePipeline(App& app) {
@@ -1451,20 +1498,44 @@ static bool initMatch(App& app) {
                     app.p2Script.size());
     }
     app.matchMode = true;
-    app.lockedFighter = 0;
-    app.lockHeldTicks = 0;
-    // The camera starts pristine: eye (0,0,0), converging at 10% per update exactly
-    // like the reference's ArenaCamera (gameplay/arena_camera.cpp). That seed is what
-    // makes the first trace line comparable — the DX9's own frame-1 eye is one 10%
-    // step from the origin, not the converged position.
-    app.matchCamera = gameplay::ArenaCamera{};
+    // Views exist per HUMAN CONTROLLER (issue #12), keyed exactly as FUN_006396f0 keys
+    // its per-view context: a controller with no human owns no view, and COM fighters
+    // therefore never take one. The standalone --match path is the historical single
+    // view on controller 0; FUN_0040d130:115-119 covers the same no-human case by
+    // forcing one view on controller 0.
+    int controllerOfFighter[4] = {-1, -1, -1, -1};
+    if (app.frontendMatch) {
+        for (int i = 0; i < fighterCount; ++i) {
+            const int panel = app.battleLaunch.fighters[i].panel;
+            const int controller = app.frontend.slots[panel].controller;
+            controllerOfFighter[i] = (controller >= 0 && controller < 4) ? controller : -1;
+        }
+    } else {
+        controllerOfFighter[0] = 0;
+    }
+    game::HumanView viewList[game::kMaxHumanViews];
+    app.matchViewCount = game::buildHumanViews(controllerOfFighter, fighterCount, viewList);
     std::vector<gameplay::CameraTarget*> cameraPool;
-    for (int i = 0; i < app.match.config().fighterCount; ++i) cameraPool.push_back(&app.arenaTargets[i]);
-    app.matchCamera.set_target_pool(cameraPool);
-    app.matchCamera.set_active_target(app.lockedFighter);
+    for (int i = 0; i < app.match.config().fighterCount; ++i)
+        cameraPool.push_back(&app.arenaTargets[i]);
+    for (int v = 0; v < game::kMaxHumanViews; ++v) {
+        game::MatchView& view = app.matchViews[v];
+        view = game::MatchView{};
+        if (v >= app.matchViewCount) continue;
+        view.controller = viewList[v].controller;
+        view.fighter = viewList[v].fighter;
+        view.followed = viewList[v].fighter;
+        // The camera starts pristine: eye (0,0,0), converging at 10% per update exactly
+        // like the reference's ArenaCamera (gameplay/arena_camera.cpp). That seed is what
+        // makes the first trace line comparable — the DX9's own frame-1 eye is one 10%
+        // step from the origin, not the converged position.
+        view.camera = gameplay::ArenaCamera{};
+        view.camera.set_target_pool(cameraPool);
+        view.camera.set_active_target(view.followed);
+        view.previousEye = view.camera.eye();
+        view.previousTarget = view.camera.target();
+    }
     for (int i = 0; i < fighterCount; ++i) app.previousFighter[i] = app.match.fighter(i).pose();
-    app.previousMatchEye = app.matchCamera.eye();
-    app.previousMatchTarget = app.matchCamera.target();
     return true;
 }
 
@@ -1481,6 +1552,74 @@ static glm::mat4 matchRenderMatrix(const App& app, int fighter) {
     // FUN_00420b30: the authored rig faces -Z; retain Fighter::modelMatrix's half turn.
     return glm::translate(glm::mat4(1.f), matchRenderPosition(app, fighter)) *
         glm::rotate(glm::mat4(1.f), yaw + glm::pi<float>(), glm::vec3(0.f,1.f,0.f));
+}
+
+// Which fighter one of the two per-fighter HUD entries draws (FUN_00643230's ring + com
+// bar). Entry order is the front end's primary panel pair, or 0/1 without one.
+static int hudEntryFighter(const App& app, int entry) {
+    if (!app.frontendMatch) return entry;
+    const int panel = ui::kFrontendBattleSlots[entry];
+    for (int j = 0; j < app.battleLaunch.fighterCount; ++j)
+        if (app.battleLaunch.fighters[j].panel == panel) return j;
+    return entry;
+}
+
+// One view as the frame renders it: the camera/cell the scene pass uses for that view and
+// the HUD frame drawn over it. Built per frame from the match's per-view state, so a view's
+// camera, markers and values all come from the same controller.
+struct FrameView {
+    // The scene/prims camera. Its rect is left empty for a single-view frame — the whole
+    // target — so that frame takes the historical render path with no viewport calls at all.
+    render::ViewCamera camera;
+    game::ViewRect     cell;   // the cell geometry the HUD pass and the report use
+    ui::HudState       hud;
+};
+
+// Fills `out` with this frame's views: the cell each one occupies (game/view_layout.h's
+// recovered FUN_006396f0 geometry), the camera pose for it — interpolated for presentation,
+// or the exact camera while capturing, exactly as the single-view path did — and that view's
+// HUD with its markers projected through its own view-projection (D8). Always at least one
+// entry, so a single-view frame takes the historical render path with one cell covering the
+// target.
+static void buildFrameViews(App& app, uint32_t width, uint32_t height,
+                            std::vector<FrameView>& out) {
+    out.clear();
+    const game::SplitLayout layout = game::splitLayoutFor(app.matchViewCount);
+    const bool capturing = !app.opts.out.empty();
+    for (int v = 0; v < app.matchViewCount; ++v) {
+        const game::MatchView& view = app.matchViews[v];
+        if (!view.active()) continue;
+        const game::ViewRect rect = game::viewCell(layout, v, width, height);
+        if (rect.empty()) continue;
+        FrameView frameView;
+        frameView.cell = rect;
+        frameView.camera.rect = app.matchViewCount > 1
+            ? render::ViewportRect{rect.x, rect.y, rect.w, rect.h}
+            : render::ViewportRect{};
+        frameView.camera.eye = glm::mix(view.previousEye, view.camera.eye(), app.matchAlpha);
+        const glm::vec3 target = glm::mix(view.previousTarget, view.camera.target(), app.matchAlpha);
+        // matchAlpha is 1 while capturing (D9's historical one-update-per-frame recipes),
+        // and the reference view is then the camera's own — lookAtLH cannot construct a
+        // basis from coincident eye/aim, which happens while every target is dead.
+        const glm::mat4 viewMatrix = capturing || frameView.camera.eye == target
+            ? view.camera.view_matrix()
+            : glm::lookAtLH(frameView.camera.eye, target, glm::vec3(0.f,1.f,0.f));
+        // Each view uses its OWN cell aspect, which is D8's automatic-aspect rule applied
+        // to a split screen; the original's cells were always 4:3 400x300.
+        frameView.camera.viewProj =
+            view.camera.proj_matrix((int)rect.w, (int)rect.h) * viewMatrix;
+        frameView.hud = view.hud;
+        // FUN_00643230 projects each fighter's ring and com bar through the same camera
+        // and viewport the frame uses — here, through this view's.
+        const ui::BattleHudLayout hudLayout = ui::computeBattleHudLayout((int)rect.w, (int)rect.h);
+        for (int i = 0; i < 2; ++i) {
+            const glm::vec3 position = matchRenderPosition(app, hudEntryFighter(app, i));
+            game::projectFighterHud(&frameView.camera.viewProj[0][0], position.x, position.y,
+                                    position.z, frameView.hud.fighters[i], hudLayout.width,
+                                    hudLayout.height);
+        }
+        out.push_back(frameView);
+    }
 }
 
 // Places each fighter's model from the live simulation. modelMatrix() is the
@@ -1614,6 +1753,41 @@ static void placeFxCards(App& app) {
 // still physically held does not undo itself — a couple of fixed ticks.
 static constexpr int kLockHoldTicks = 2;
 
+// One fighter's HUD-side values (gameplay/hud_fill.h's HudFighterValues), sampled from the
+// live fighter and the input that drives it. Split out of tickMatch because each view
+// samples its OWN fighter and controller with the same rules (issue #12).
+static void sampleHudFill(gameplay::HudFighterValues& out, const gameplay::Fighter& f,
+                          const fnd::input::PlayerState* input) {
+    out.hp = f.hp() * 100 / f.max_hp();
+    out.alive = f.is_alive();
+    out.mainWhole = f.main_whole();
+    out.mainFrac = f.main_frac();
+    out.reloadOk = f.reload_ok();
+    out.chargeWhole = f.charge_whole();
+    out.chargeFrac = f.charge_frac();
+    out.shootHeld = input && input->down[fnd::input::Shoot];
+    out.chargeHoldFrac = f.charge_hold_frac();
+    switch (f.charge_tier()) {   // ShotTier -> HoldTier (scenes.cpp:847-851)
+        case gameplay::ShotTier::Red:    out.chargeTier = game::HoldTier::Red; break;
+        case gameplay::ShotTier::Yellow: out.chargeTier = game::HoldTier::Yellow; break;
+        default:                         out.chargeTier = game::HoldTier::Idle; break;
+    }
+    const gameplay::HypermodeParams hp = gameplay::hypermode_params(f.hypermode());
+    out.hyperName = hp.name;
+    out.hyperGauge = f.hyper_gauge();
+    out.hyperActive = f.hyper_active();
+    out.hyperReady = f.hyper_ready();
+    out.hyperSecondsLeft = f.hyper_seconds_left();
+    out.hyperAura = game::GameRgb{(float)gameplay::rgbR(hp.aura) / 255.f,
+                                  (float)gameplay::rgbG(hp.aura) / 255.f,
+                                  (float)gameplay::rgbB(hp.aura) / 255.f};
+    out.stamina = f.stamina();
+    // The reference's contextual gate is the state, not airborne() (scenes.cpp:879-882).
+    out.staminaVisible = f.state() == gameplay::FighterState::Run ||
+                         f.state() == gameplay::FighterState::Guard ||
+                         f.state() == gameplay::FighterState::Jump;
+}
+
 // One match frame: the reference's order lives in gameplay::Match::step; this adds
 // what the scene added around it — tick inputs, the camera's target switch, the
 // HUD values, the effect events and the debug cubes.
@@ -1622,8 +1796,6 @@ static void tickMatch(App& app, double dt) {
     // it (gameplay/target_lock.h, FUN_004201a0), so the HUD reads one source of truth.
     for (int i = 0; i < app.match.config().fighterCount; ++i)
         app.previousFighter[i] = app.match.fighter(i).pose();
-    app.previousMatchEye = app.matchCamera.eye();
-    app.previousMatchTarget = app.matchCamera.target();
     ++app.matchFrame;   // 1-based simulation tick, matching banked captures
 
     // P2: a script drives it when given; otherwise it takes no input, which is
@@ -1641,6 +1813,9 @@ static void tickMatch(App& app, double dt) {
         p2 = &app.p2State;
     }
 
+    // Standalone --match: P1 is the live device (or its script override) and P2 the script
+    // or dummy. A front-end match replaces both with the controller each fighter is
+    // assigned to (issue #12), which is also what gives each view its own input.
     const fnd::input::PlayerState* p1 = nullptr;
     if (app.matchInputReady && !app.frontendMatch) p1 = &app.tickInput[0];
 
@@ -1667,7 +1842,6 @@ static void tickMatch(App& app, double dt) {
                 inputs[i] = &app.botInput[i];
             }
         }
-        p1 = inputs[0];
     }
     const gameplay::MatchFrame f = app.match.step(inputs, dt);
     for (int i = 0; i < app.match.config().fighterCount; ++i)
@@ -1692,148 +1866,122 @@ static void tickMatch(App& app, double dt) {
     }
     updateFxCards(app, app.matchFx, app.matchFxEvents, (float)dt);
 
-    // The viewer is the fighter on panel kFrontendBattleSlots[0] (1P). It is the fighter
-    // whose LockSwitch gestures are read, and the owner of the combat lock the HUD reticle
-    // and ring pulse are driven from. A PANEL index; the lookup yields a FIGHTER index,
-    // and the controller slot (frontend.slots[panel].controller) is a third, distinct
-    // index space (see gameplay/target_lock.h).
-    int viewerIndex = 0;
-    if (app.frontendMatch)
-        for (int j = 0; j < app.battleLaunch.fighterCount; ++j)
-            if (app.battleLaunch.fighters[j].panel == ui::kFrontendBattleSlots[0]) {
-                viewerIndex = j;
-                break;
-            }
-
-    // Camera: the ported reference camera (gameplay/arena_camera.{h,cpp}), fed the
-    // live fighters. The pool does the dead-skip itself, and a real target change arms
-    // the retarget blend so a switch lands fast without cutting.
+    // The camera and HUD state below run per view; the targets they read are refreshed
+    // once here from the live fighters. The pool does the dead-skip itself, and a real
+    // target change arms the retarget blend so a switch lands fast without cutting.
     for (int i = 0; i < app.match.config().fighterCount; ++i) {
-        const gameplay::Fighter& f = app.match.fighter(i);
-        app.arenaTargets[i].position = f.position();
-        app.arenaTargets[i].facingYaw = f.facing_yaw();
-        app.arenaTargets[i].alive = f.is_alive();
+        const gameplay::Fighter& fighter = app.match.fighter(i);
+        app.arenaTargets[i].position = fighter.position();
+        app.arenaTargets[i].facingYaw = fighter.facing_yaw();
+        app.arenaTargets[i].alive = fighter.is_alive();
     }
-    // LockSwitch is the original's target switch (input.h: tap = cycle enemy,
-    // hold = aim ally) and it is TWO writes, not one. The cycle is FUN_00421e30's: it
-    // moves the camera's followed player AND re-picks the viewer's combat target
-    // (FUN_00421f30's +0x304) through the recovered wrap-around index walk. They are
-    // kept separate from here on — the camera owns who is followed, gameplay/
-    // target_lock.h owns who each fighter attacks — so two players can hold different
-    // locks while the camera follows one player.
-    if (p1 && p1->just_pressed[fnd::input::LockSwitch]) {
-        app.match.cycle_locked_target(viewerIndex, true);
-        app.matchCamera.cycle_target(true);
-        app.lockHeldTicks = 0;
-    } else if (p1 && p1->down[fnd::input::LockSwitch]) {
-        // Held past the threshold, so the tap above is not undone by the finger still
-        // being on the button. PORT RULE: the original's hold is recovered as the
-        // 180-tick dwell FUN_0041f580:244 re-pins on an ally selection, but the gesture
-        // length that raises it is not, so this threshold is a port constant.
-        if (++app.lockHeldTicks >= kLockHoldTicks) app.match.lock_ally_target(viewerIndex);
-    } else {
-        app.lockHeldTicks = 0;
-    }
-    // The DX9 reference's own camera switch (Guard just_pressed while AttackB is held,
-    // scenes.cpp:644-646): a camera decision only, so it moves the camera and nothing
-    // else.
-    if (p1 && p1->just_pressed[fnd::input::Guard] && p1->down[fnd::input::AttackB])
-        app.matchCamera.cycle_target(true);
-    // Scripted/offscreen standalone runs retain the banked null-query camera path;
-    // live matches clamp the eye against collision_camera.x unless the A/B switch asks
-    // for the historical unclamped behavior. The blend remains per call as in the port.
+
+    // Camera and HUD, once per human view (issue #12). The original runs this same loop
+    // over controller slots (FUN_006396f0:108-188), and each view's state is keyed by its
+    // controller: the camera follows that view's own fighter, its LockSwitch gestures
+    // re-pick that view's target, and its HUD is filled from that fighter's resources.
+    // The MATCH itself was stepped once above, before this loop — views never advance it.
     const gameplay::CollisionQuery cameraQuery =
         (!historicalMatchCapture(app) && !app.opts.noCameraClamp)
             ? gameplay::CollisionQuery{&app.cameraCollision}
             : gameplay::CollisionQuery{};
-    app.matchCamera.update(dt, cameraQuery);
-    app.eye = app.matchCamera.eye();
-    app.target = app.matchCamera.target();
-    // The first camera tick has no valid earlier view to interpolate from.
-    if (app.matchFrame == 1) {
-        app.previousMatchEye = app.eye;
-        app.previousMatchTarget = app.target;
-    }
-    app.lockedFighter = app.matchCamera.active_target_index() < 0
-                            ? app.lockedFighter
-                            : app.matchCamera.active_target_index();
+    for (int v = 0; v < app.matchViewCount; ++v) {
+        game::MatchView& view = app.matchViews[v];
+        if (!view.active() || view.fighter >= app.match.config().fighterCount) continue;
+        const fnd::input::PlayerState* viewInput = inputs[view.fighter];
+        // LockSwitch is the original's target switch (input.h: tap = cycle enemy,
+        // hold = aim ally) and it is TWO writes, not one. The cycle is FUN_00421e30's: it
+        // moves the camera's followed player AND re-picks the viewer's combat target
+        // (FUN_00421f30's +0x304) through the recovered wrap-around index walk. They are
+        // kept separate from here on — the camera owns who is followed, gameplay/
+        // target_lock.h owns who each fighter attacks — so two players hold different
+        // locks while each camera follows its own player.
+        if (viewInput && viewInput->just_pressed[fnd::input::LockSwitch]) {
+            app.match.cycle_locked_target(view.fighter, true);
+            view.camera.cycle_target(true);
+            view.lockHeldTicks = 0;
+        } else if (viewInput && viewInput->down[fnd::input::LockSwitch]) {
+            // Held past the threshold, so the tap above is not undone by the finger still
+            // being on the button. PORT RULE: the original's hold is recovered as the
+            // 180-tick dwell FUN_0041f580:244 re-pins on an ally selection, but the gesture
+            // length that raises it is not, so this threshold is a port constant.
+            if (++view.lockHeldTicks >= kLockHoldTicks)
+                app.match.lock_ally_target(view.fighter);
+        } else {
+            view.lockHeldTicks = 0;
+        }
+        // The DX9 reference's own camera switch (Guard just_pressed while AttackB is held,
+        // scenes.cpp:644-646): a camera decision only, so it moves the camera and nothing
+        // else.
+        if (viewInput && viewInput->just_pressed[fnd::input::Guard] &&
+            viewInput->down[fnd::input::AttackB])
+            view.camera.cycle_target(true);
+        // Scripted/offscreen standalone runs retain the banked null-query camera path;
+        // live matches clamp the eye against collision_camera.x unless the A/B switch asks
+        // for the historical unclamped behavior. The blend remains per call as in the port.
+        view.camera.update(dt,cameraQuery);
+        if (view.camera.active_target_index() >= 0) view.followed = view.camera.active_target_index();
+        // The first camera tick has no valid earlier view to interpolate from.
+        if (app.matchFrame == 1 || !view.primed) {
+            view.previousEye = view.camera.eye();
+            view.previousTarget = view.camera.target();
+            view.primed = true;
+        }
 
-    // HUD: the ported value computation, fed from the live fighter (side 0, which is
-    // the only side the DX9 layout draws outside the two balloon corners).
-    const gameplay::Fighter& f1 = app.match.fighter(0);
-    gameplay::HudFillInput hf;
-    hf.p1.hp = f1.hp() * 100 / f1.max_hp();
-    hf.p1.alive = f1.is_alive();
-    hf.p1.mainWhole = f1.main_whole();
-    hf.p1.mainFrac = f1.main_frac();
-    hf.p1.reloadOk = f1.reload_ok();
-    hf.p1.chargeWhole = f1.charge_whole();
-    hf.p1.chargeFrac = f1.charge_frac();
-    hf.p1.shootHeld = p1 && p1->down[fnd::input::Shoot];
-    hf.p1.chargeHoldFrac = f1.charge_hold_frac();
-    switch (f1.charge_tier()) {   // ShotTier -> HoldTier (scenes.cpp:847-851)
-        case gameplay::ShotTier::Red:    hf.p1.chargeTier = game::HoldTier::Red; break;
-        case gameplay::ShotTier::Yellow: hf.p1.chargeTier = game::HoldTier::Yellow; break;
-        default:                         hf.p1.chargeTier = game::HoldTier::Idle; break;
-    }
-    const gameplay::HypermodeParams hp = gameplay::hypermode_params(f1.hypermode());
-    hf.p1.hyperName = hp.name;
-    hf.p1.hyperGauge = f1.hyper_gauge();
-    hf.p1.hyperActive = f1.hyper_active();
-    hf.p1.hyperReady = f1.hyper_ready();
-    hf.p1.hyperSecondsLeft = f1.hyper_seconds_left();
-    hf.p1.hyperAura = game::GameRgb{(float)gameplay::rgbR(hp.aura) / 255.f,
-                                    (float)gameplay::rgbG(hp.aura) / 255.f,
-                                    (float)gameplay::rgbB(hp.aura) / 255.f};
-    hf.p1.stamina = f1.stamina();
-    // The reference's contextual gate is the state, not airborne() (scenes.cpp:879-882).
-    hf.p1.staminaVisible = f1.state() == gameplay::FighterState::Run ||
-                           f1.state() == gameplay::FighterState::Guard ||
-                           f1.state() == gameplay::FighterState::Jump;
-    app.versusHud = gameplay::hudStateFor(app.match.economy(), hf);
-    // D1: the render-FPS counter rides the HUD state (60 while capturing).
-    app.versusHud.fps = app.fpsShown;
-    // The composer is clock-free by design, so the frame counter the original's
-    // alternations and pulse read (FUN_00644150's `(frame % 0x1e) / 0xf` flash pair and the
-    // balloon popup's growth) is carried in the state instead of read from a clock.
-    app.versusHud.hudFrame = (int)app.matchFrame;
-    // The boxed tactics readout (P03's 128x64 cells: 0 適当, 1 格闘, 2 射撃, 3 集中,
-    // 4 各個, 5 後退). Cell 0 is 適当, which is what the original's own screen shows; the
-    // tactic system itself is not ported yet, so the default stance is the honest value
-    // rather than a guess at a state the simulation does not have.
-    app.versusHud.commandCell = 0;
+        // This view's HUD: the ported value computation (gameplay/hud_fill.h, unchanged),
+        // fed from the view's own fighter. Which side goes where is the DX9 layout's:
+        // the balloon corners are the only two-side readout (side 0 left, side 1 right),
+        // every other field belongs to the viewer's fighter.
+        gameplay::HudFillInput hf;
+        sampleHudFill(hf.p1, app.match.fighter(view.fighter), viewInput);
+        view.hud = gameplay::hudStateFor(app.match.economy(), hf);
+        // D1: the render-FPS counter rides the HUD state (60 while capturing). The
+        // original draws it once, outside its view loop (FUN_006396f0:203-210), so only
+        // the first view carries it.
+        view.hud.fps = app.fpsShown;
+        view.hud.showFps = (v == 0);
+        // The composer is clock-free by design, so the frame counter the original's
+        // alternations and pulse read (FUN_00644150's `(frame % 0x1e) / 0xf` flash pair and
+        // the balloon popup's growth) is carried in the state instead of read from a clock.
+        view.hud.hudFrame = (int)app.matchFrame;
+        // The boxed tactics readout (P03's 128x64 cells: 0 適当, 1 格闘, 2 射撃, 3 集中,
+        // 4 各個, 5 後退). Cell 0 is 適当, which is what the original's own screen shows;
+        // the tactic system itself is not ported yet, so the default stance is the honest
+        // value rather than a guess at a state the simulation does not have.
+        view.hud.commandCell = 0;
 
-    // Per-fighter appearance state; projection is resolved with the render viewport below.
-    {
-        // The viewer's own lock names the fighter its ring and com bar belong to.
-        // FUN_00643230:61 reads the target-valid flag as (+0x304 > -1) on the fighter
-        // being drawn, and 0x421e30/0x421f30's +0x30c pulse as its scale and arc twist
-        // (hud.h:83-86), so both come from the viewer's lock and not from which player
-        // the camera happens to be following.
-        const int lockedTarget = app.match.locked_target(viewerIndex);
-        const int viewPulse    = app.match.lock_pulse(viewerIndex);
+        // Per-fighter appearance state; projection happens per view with that view's
+        // matrix (D8), below. The viewer's own lock names the fighter its ring and com bar
+        // belong to: FUN_00643230:61 reads the target-valid flag as (+0x304 > -1) on the
+        // fighter being drawn, and 0x421e30/0x421f30's +0x30c pulse as its scale and arc
+        // twist (hud.h:83-86), so both come from the view's own lock and not from which
+        // player its camera happens to follow.
+        const int lockedTarget = app.match.locked_target(view.fighter);
+        const int viewPulse = app.match.lock_pulse(view.fighter);
         for (int i = 0; i < 2; ++i) {
-            int fighterIndex = i;
-            if (app.frontendMatch) {
-                const int panel = ui::kFrontendBattleSlots[i];
-                for (int j = 0; j < app.battleLaunch.fighterCount; ++j)
-                    if (app.battleLaunch.fighters[j].panel == panel) fighterIndex = j;
-            }
+            const int fighterIndex = hudEntryFighter(app, i);
             const gameplay::Fighter& f = app.match.fighter(fighterIndex);
-            app.versusHud.fighters[i].target = (fighterIndex == lockedTarget);
-            // The pulse belongs to the fighter that switched, so only the viewer's own
-            // HUD entry scales and twists; a partner's ring stays at rest.
-            app.versusHud.fighters[i].ringPulse = (i == 0) ? viewPulse : 0;
+            view.hud.fighters[i].target = (fighterIndex == lockedTarget);
+            // The pulse belongs to the fighter that switched, so only that fighter's HUD
+            // entry scales and twists; partners' rings stay at rest.
+            view.hud.fighters[i].ringPulse = (fighterIndex == view.fighter) ? viewPulse : 0;
             // Slot 0 is 1P and slot 4 is com in the tag atlas (P01 (320,256,64,32) rows);
             // the red copies sit four rows down, which is the tagSheet index.
-            app.versusHud.fighters[i].slot = app.frontendMatch
+            view.hud.fighters[i].slot = app.frontendMatch
                 ? app.frontend.slots[ui::kFrontendBattleSlots[i]].controller : (i == 0 ? 0 : 4);
-            app.versusHud.fighters[i].tagSheet = (i == 0) ? 0 : 1;
-            app.versusHud.fighters[i].hp = (float)f.hp() / f.max_hp();
-            app.versusHud.fighters[i].hpLag = app.versusHud.fighters[i].hp;
-            app.versusHud.fighters[i].alertDir = -1;
+            view.hud.fighters[i].tagSheet = (i == 0) ? 0 : 1;
+            view.hud.fighters[i].hp = (float)f.hp() / f.max_hp();
+            view.hud.fighters[i].hpLag = view.hud.fighters[i].hp;
+            view.hud.fighters[i].alertDir = -1;
         }
     }
+
+    // The banked trace (tests/compare_match_traces.py) prints the eye the reference camera
+    // reported for the primary view, so keep app.eye/app.target on it: the render loop
+    // later replaces them with the interpolated presentation values.
+    const game::MatchView& primary = app.matchViews[0];
+    app.eye = primary.camera.eye();
+    app.target = primary.camera.target();
 
     if (f.roundOver) {
         app.matchRoundOverFrame = app.matchFrame;
@@ -2560,6 +2708,48 @@ static bool enterFrontendBattle(App& app) {
         app.frontend.slots[ui::kFrontendBattleSlots[i]].character = i;
         app.frontend.slots[ui::kFrontendBattleSlots[i]].controller = i == 0 ? 0 : 4;
     }
+    // --local-players=N (verification): open N local human views by assigning controllers
+    // 0..N-1 in panel order. One or two humans fight the 1v1 panel pair (0 blue, 2 red);
+    // three or four use all four panels as a 2v2, where the human-less panel stays COM and
+    // must not allocate a view (issue #12). This is the same controller-slot order
+    // FUN_0040d130 counts humans in and FUN_006396f0 keys views by.
+    if (app.opts.localPlayers > 0) {
+        static constexpr int kDuelPanels[2] = {0, 2};
+        static constexpr int kTeamPanels[4] = {0, 1, 2, 3};
+        const int humans = app.opts.localPlayers;
+        const int panelCount = humans <= 2 ? 2 : 4;
+        const int* panels = humans <= 2 ? kDuelPanels : kTeamPanels;
+        // Roster picks that actually gear up: a character whose slot-0 item does not join
+        // fails the launch loudly (rule 7), and an install gap in one character's item data
+        // must not turn a --local-players run into a false negative about split-screen.
+        int chosen[4] = {-1, -1, -1, -1};
+        for (int i = 0; i < panelCount; ++i) {
+            for (int candidate = 0; candidate < gameplay::kCharacterCount && chosen[i] < 0;
+                 ++candidate) {
+                bool used = false;
+                for (int j = 0; j < i; ++j) used = used || chosen[j] == candidate;
+                if (used) continue;
+                std::string mesh;
+                int itemId = 0;
+                if (resolveFighterWeapon(gameplay::kCharacterDirs[candidate], "", mesh, itemId) &&
+                    !mesh.empty())
+                    chosen[i] = candidate;
+            }
+            if (chosen[i] < 0) chosen[i] = i;   // nothing usable: let the loud error fire
+        }
+        for (int i = 0; i < panelCount; ++i) {
+            ui::FrontendSlot& slot = app.frontend.slots[panels[i]];
+            if (slot.character < 0) slot.character = chosen[i];
+            slot.controller = i < humans ? i : 4;
+        }
+        // Keep the match to the panels this flag selected: a panel left over from an
+        // earlier menu run would silently add a fighter (and a COM slot) to the roster.
+        for (int i = 0; i < 4; ++i) {
+            bool selected = false;
+            for (int j = 0; j < panelCount; ++j) selected = selected || panels[j] == i;
+            if (!selected) app.frontend.slots[i] = ui::FrontendSlot{};
+        }
+    }
     ui::FrontendLaunch launch;
     if (!ui::frontendLaunch(app.frontend, launch, app.error, (uint32_t)app.logicTicks)) return false;
     app.battleLaunch = launch;
@@ -2873,14 +3063,27 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
 // The --hud-test rig: one deterministic synthetic HUD, composited into --out captures
 // through the renderer's UiHook (same encoder, same 3D-then-UI order a game uses).
 // Fixed values, so captures stay byte-identical across runs and targets.
+//
+// A match composites one pass per human view (issue #12): each pass draws its view's own
+// HUD state into that view's cell. Everything else is one pass over the whole target, which
+// is exactly what this hook did before split-screen existed.
 // ---------------------------------------------------------------------------------------
+struct HudPass {
+    ui::HudState  state;
+    bool          hasState = false;   // false -> syntheticHudState()
+    bool          referenceCoordinates = true;
+    ui::UiViewport viewport{};        // cell inside the render target (x/y = 0 when single)
+};
+
 struct HudTestHook {
     ui::SpriteRenderer* ui = nullptr;
     ui::HudComposer*    hud = nullptr;
     std::string*        error = nullptr;
-    ui::HudState        state;
-    bool                hasState = false;   // false -> syntheticHudState()
-    bool                referenceCoordinates = true;
+    std::vector<HudPass> passes;
+    // The split-screen separators, drawn after every view (FUN_006396f0:191-195). Empty
+    // for a single view, which is the historical path.
+    std::vector<ui::UiRect> separators;
+    ui::UiViewport          target{};
 };
 
 ui::HudState syntheticHudState() {
@@ -2891,30 +3094,96 @@ ui::HudState syntheticHudState() {
 
 HudTestHook battleHudHook(App& app) {
     HudTestHook hook{&app.uiRenderer, &app.hudComposer, &app.error};
-    if (app.matchMode || app.versusMode) {
-        hook.state = app.versusHud;
-        hook.hasState = true;
-        hook.referenceCoordinates = !app.matchMode;
+    if (app.versusMode) {
+        hook.passes.push_back(HudPass{app.versusHud, true, true, {}});
     }
     return hook;
+}
+
+// The match's HUD passes: one per rendered view, in view order, each carrying the state
+// that view's controller filled at tick time and the cell geometry gave it.
+void appendMatchHudPasses(App& app, const std::vector<FrameView>& views, uint32_t width,
+                          uint32_t height, HudTestHook& hook) {
+    hook.target = ui::UiViewport{width, height, 0, 0};
+    for (const FrameView& view : views) {
+        HudPass pass;
+        pass.state = view.hud;
+        pass.hasState = true;
+        // A match view's markers were already projected into its own logical viewport, so
+        // they need no reference-coordinate shift; the versus vignette still does.
+        pass.referenceCoordinates = false;
+        pass.viewport = ui::UiViewport{(uint32_t)view.cell.w, (uint32_t)view.cell.h,
+                                       (uint32_t)view.cell.x, (uint32_t)view.cell.y};
+        hook.passes.push_back(std::move(pass));
+    }
+    const int separators = game::separatorCount(game::splitLayoutFor(app.matchViewCount));
+    for (int i = 0; i < separators; ++i) {
+        const game::ViewRect rect = game::separatorRect(i, width, height);
+        hook.separators.push_back(ui::UiRect{rect.x, rect.y, rect.w, rect.h});
+    }
+}
+
+// The split-screen evidence line: which layout ran, and per view its controller, its
+// fighter, its cell and the HUD values that view actually drew. Printed on the capture
+// frame and periodically by --local-players, so a headless run shows independent per-view
+// cameras and HUD values without reading pixels.
+void reportMatchViews(const App& app, uint32_t width, uint32_t height) {
+    const game::SplitLayout layout = game::splitLayoutFor(app.matchViewCount);
+    std::printf("[split] layout=%s views=%d target=%ux%u\n",
+                layout == game::SplitLayout::Single ? "single"
+                                                    : (layout == game::SplitLayout::Two ? "two" : "four"),
+                app.matchViewCount, width, height);
+    for (int v = 0; v < app.matchViewCount; ++v) {
+        const game::MatchView& view = app.matchViews[v];
+        if (!view.active()) continue;
+        const game::ViewRect rect = game::viewCell(layout, v, width, height);
+        const ui::HudState& hud = view.hud;
+        std::printf("[split] view %d: controller=%d fighter=%d cell=(%.0f,%.0f,%.0f,%.0f) "
+                    "hp=%.0f main=%d charge=%d stamina=%.2f hyper=%s gauge=%.2f "
+                    "target=%d ringPulse=%d\n",
+                    v, view.controller, view.fighter, rect.x, rect.y, rect.w, rect.h, hud.hp,
+                    hud.mainWhole, hud.chargeWhole, hud.staminaFrac, hud.hyperName.c_str(),
+                    hud.hyperGauge, hud.fighters[0].target || hud.fighters[1].target ? 1 : 0,
+                    hud.fighters[0].ringPulse ? hud.fighters[0].ringPulse
+                                              : hud.fighters[1].ringPulse);
+    }
 }
 
 bool hudTestHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat format,
                  uint32_t w, uint32_t h, void* ud) {
     auto* hk = static_cast<HudTestHook*>(ud);
-    hk->ui->beginFrame(w, h);
-    ui::HudState state = hk->hasState ? hk->state : syntheticHudState();
-    if (hk->referenceCoordinates) {
-        const auto layout = ui::computeBattleHudLayout(w,h);
-        for (auto& fighter : state.fighters) {
-            fighter.ringX += (layout.width-800.f)*.5f;
-            fighter.barX += (layout.width-800.f)*.5f;
-            fighter.ringY += (layout.height-600.f)*.5f;
-            fighter.barY += (layout.height-600.f)*.5f;
-        }
+    if (hk->passes.empty()) {
+        HudPass pass;
+        pass.viewport = ui::UiViewport{w, h, 0, 0};
+        hk->passes.push_back(std::move(pass));
     }
-    hk->hud->compose(*hk->ui, state);
-    return hk->ui->render(enc, view, format, *hk->error);
+    for (const HudPass& pass : hk->passes) {
+        // A pass with no cell of its own is the whole target — the versus vignette, the
+        // synthetic --hud-test frame and every pre-split-screen capture path.
+        const ui::UiViewport viewport = pass.viewport.w && pass.viewport.h
+            ? pass.viewport
+            : ui::UiViewport{w, h, 0, 0};
+        hk->ui->beginFrame(viewport);
+        ui::HudState state = pass.hasState ? pass.state : syntheticHudState();
+        if (pass.referenceCoordinates) {
+            const auto layout = ui::computeBattleHudLayout(viewport.w,viewport.h);
+            for (auto& fighter : state.fighters) {
+                fighter.ringX += (layout.width-800.f)*.5f;
+                fighter.barX += (layout.width-800.f)*.5f;
+                fighter.ringY += (layout.height-600.f)*.5f;
+                fighter.barY += (layout.height-600.f)*.5f;
+            }
+        }
+        hk->hud->compose(*hk->ui, state);
+        if (!hk->ui->render(enc, view, format, *hk->error)) return false;
+    }
+    if (!hk->separators.empty()) {
+        hk->ui->beginFrame(hk->target);
+        for (const ui::UiRect& rect : hk->separators)
+            hk->ui->pushSolid(rect, ui::UiColor{0.f, 0.f, 0.f, 1.f});
+        if (!hk->ui->render(enc, view, format, *hk->error)) return false;
+    }
+    return true;
 }
 
 // The --screen capture's one hook: drawScreenFrame is the same three calls the window
@@ -3020,7 +3289,10 @@ struct CaptureHook {
     const render::CubeBatch*      solid = nullptr;   // shots + sparks (opaque)
     const render::CubeBatch*      additive = nullptr;   // hypermode auras
     const render::CubeBatch*      hitbox  = nullptr;   // --hitbox-debug melee spheres
-    glm::mat4                     viewProj{1.f};
+    // One entry per view for the overlay passes: the same matrix and cell the scene pass
+    // drew with, so a view's cubes and lines land in that view (issue #12). An entry with
+    // an empty rect is the single-view frame, whose passes keep the full-target viewport.
+    std::vector<render::ViewCamera> views;
     render::DebugPrims::Options   primOptions;
     std::string*                  error = nullptr;
 };
@@ -3029,35 +3301,41 @@ bool captureHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat
                  uint32_t w, uint32_t h, void* ud) {
     auto* ck = static_cast<CaptureHook*>(ud);
     if (ck->hud && !hudTestHook(enc, view, format, w, h, ck->hud)) return false;
-    if (ck->solid && !ck->solid->empty()) {
-        const render::Target t{enc, view, format, w, h};
-        render::DebugPrims::Options o;   // depth-tested, the reference's opaque cube pass
-        if (!ck->prims->drawCubes(t, ck->viewProj, *ck->solid, ck->renderer->depthView(), o,
-                                  *ck->error))
-            return false;
-    }
-    // Straight alpha (not additive): a translucent hit volume should tint what is behind
-    // it rather than blow out, so overlapping fighters stay readable.
-    if (ck->hitbox && !ck->hitbox->empty()) {
-        const render::Target t{enc, view, format, w, h};
-        render::DebugPrims::Options o;
-        if (!ck->prims->drawCubes(t, ck->viewProj, *ck->hitbox, ck->renderer->depthView(), o,
-                                  *ck->error))
-            return false;
-    }
-    if (ck->additive && !ck->additive->empty()) {
-        const render::Target t{enc, view, format, w, h};
-        render::DebugPrims::Options o;
-        o.additive = true;   // SrcAlpha/One, the aura pass's blend
-        if (!ck->prims->drawCubes(t, ck->viewProj, *ck->additive, ck->renderer->depthView(), o,
-                                  *ck->error))
-            return false;
-    }
-    if (ck->prims && ck->lines && !ck->lines->empty()) {
-        const render::Target target{enc, view, format, w, h};
-        if (!ck->prims->draw(target, ck->viewProj, *ck->lines, ck->renderer->depthView(),
-                             ck->primOptions, *ck->error))
-            return false;
+    if (!ck->prims) return true;
+    const render::Target target{enc, view, format, w, h};
+    for (const render::ViewCamera& frameView : ck->views) {
+        const render::ViewportRect& rect = frameView.rect;
+        if (ck->solid && !ck->solid->empty()) {
+            render::DebugPrims::Options o;   // depth-tested, the reference's opaque cube pass
+            o.viewport = rect;
+            if (!ck->prims->drawCubes(target, frameView.viewProj, *ck->solid,
+                                      ck->renderer->depthView(), o, *ck->error))
+                return false;
+        }
+        // Straight alpha (not additive): a translucent hit volume should tint what is behind
+        // it rather than blow out, so overlapping fighters stay readable.
+        if (ck->hitbox && !ck->hitbox->empty()) {
+            render::DebugPrims::Options o;
+            o.viewport = rect;
+            if (!ck->prims->drawCubes(target, frameView.viewProj, *ck->hitbox,
+                                      ck->renderer->depthView(), o, *ck->error))
+                return false;
+        }
+        if (ck->additive && !ck->additive->empty()) {
+            render::DebugPrims::Options o;
+            o.additive = true;   // SrcAlpha/One, the aura pass's blend
+            o.viewport = rect;
+            if (!ck->prims->drawCubes(target, frameView.viewProj, *ck->additive,
+                                      ck->renderer->depthView(), o, *ck->error))
+                return false;
+        }
+        if (ck->lines && !ck->lines->empty()) {
+            render::DebugPrims::Options o = ck->primOptions;
+            o.viewport = rect;
+            if (!ck->prims->draw(target, frameView.viewProj, *ck->lines,
+                                 ck->renderer->depthView(), o, *ck->error))
+                return false;
+        }
     }
     return true;
 }
@@ -3174,6 +3452,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     for (int tick = 0; tick < ticks; ++tick) {
         ++app->logicTicks;
         for (int p = 0; p < 4; ++p) app->tickInput[p] = app->pendingInput[p].consume();
+        driveSyntheticLocalPads(*app);
         if (app->matchInput.script_active()) {
             const uint64_t scriptTick = app->frontendMatch || app->screensMode
                 ? app->logicTicks : app->matchFrame + 1;
@@ -3184,6 +3463,11 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             if (!capturing) advanceAnimation(*app, gameplay::FixedStep::seconds);
             tickMatch(*app, capturing ? app->opts.dt : gameplay::FixedStep::seconds);
             traceMatch(*app);
+            // --local-players evidence: the per-view cameras/HUD values every 128 ticks,
+            // bounded by the run's own length so a long run cannot flood the log.
+            if (app->opts.localPlayers > 0 && app->matchFrame % 128 == 0)
+                reportMatchViews(*app, capturing ? (uint32_t)app->opts.sizeW : app->sc.width,
+                                 capturing ? (uint32_t)app->opts.sizeH : app->sc.height);
             if (app->frontendMatch && app->match.economy().roundOver()) {
                 // The economy reports the WINNING side (issue #11); the DX9 port
                 // reported the burst side here and this line inverted it.
@@ -3213,13 +3497,8 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     }
 
     if (app->matchMode) {
-        app->versusHud.fps = app->fpsShown;
         placeFxCards(*app);
         placeMatchFighters(*app);
-        if (app->matchFrame > 0) {
-            app->eye = glm::mix(app->previousMatchEye, app->matchCamera.eye(), app->matchAlpha);
-            app->target = glm::mix(app->previousMatchTarget, app->matchCamera.target(), app->matchAlpha);
-        }
     }
 
     if (app->screensMode) {
@@ -3298,35 +3577,33 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             app->eye = render::arenaSmoothEyeDt(app->prevEye, desired, (float)stepDt, 0.1f);
             app->prevEye = app->eye;
         }
-        // One matrix, built once and handed to both the scene pass and the prims pass:
-        // the overlay is only correct if it is projected exactly like the frame under it.
-        // Match frames use the reference camera's own projection (fov pi/4, near 1,
-        // far 100000) and view, so a foundation frame and a banked DX9 frame of the
-        // same case differ by their content, not by their projection.
-        // Retain the camera's valid view when every target is dead; lookAt
-        // cannot construct a basis from coincident eye/aim. Captures use its exact view.
-        const glm::mat4 matchView = capturing || app->eye == app->target
-            ? app->matchCamera.view_matrix()
-            : glm::lookAtLH(app->eye, app->target, glm::vec3(0.f,1.f,0.f));
-        const glm::mat4 vp = app->matchMode
-            ? app->matchCamera.proj_matrix((int)w, (int)h) * matchView
-            : viewProj(app->eye, app->target, (float)w / (float)h,
-                       app->cameraRadius, app->sceneReach);
+        // This frame's views (issue #12): a match builds one per human controller — its own
+        // camera, its own cell and its own HUD — while every other asset path keeps the one
+        // historical view, whose matrix the scene and prims passes have always shared.
+        // Match frames use the reference camera's own projection (fov pi/4, near 50,
+        // far 150000) so a foundation frame and a banked DX9 frame of the same case differ
+        // by their content, not by their projection.
+        std::vector<FrameView> frameViews;
+        std::vector<render::ViewCamera> frameCameras;
+        glm::mat4 vp;
         if (app->matchMode) {
-            // FUN_00643230 projects through the same camera and aspect used for the frame.
-            const auto layout = ui::computeBattleHudLayout(w,h);
-            for (int i = 0; i < 2; ++i) {
-                int fighterIndex = i;
-                if (app->frontendMatch) {
-                    const int panel = ui::kFrontendBattleSlots[i];
-                    for (int j = 0; j < app->battleLaunch.fighterCount; ++j)
-                        if (app->battleLaunch.fighters[j].panel == panel) fighterIndex = j;
-                }
-                const auto position = matchRenderPosition(*app, fighterIndex);
-                game::projectFighterHud(&vp[0][0],position.x,position.y,
-                                       position.z,app->versusHud.fighters[i],
-                                       layout.width,layout.height);
-            }
+            buildFrameViews(*app, w, h, frameViews);
+            for (const FrameView& view : frameViews) frameCameras.push_back(view.camera);
+            vp = frameCameras.front().viewProj;
+            // The primary view's interpolated presentation eye/aim: the paths that read
+            // app.eye/app.target (billboard eye, debug crosses) stay on the first player.
+            app->eye = frameCameras.front().eye;
+            app->target = glm::mix(app->matchViews[0].previousTarget,
+                                   app->matchViews[0].camera.target(), app->matchAlpha);
+        } else {
+            // Every other path: one view over the whole target, the matrix the scene and
+            // prims passes have always shared in this branch.
+            vp = viewProj(app->eye, app->target, (float)w / (float)h, app->cameraRadius,
+                          app->sceneReach);
+            render::ViewCamera camera;
+            camera.viewProj = vp;
+            camera.eye = app->eye;
+            frameCameras.push_back(camera);
         }
         app->renderer.setCamera(vp);
         app->renderer.setEye(app->eye);
@@ -3336,12 +3613,13 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             if (app->frames >= (uint64_t)app->opts.frames) {
                 std::vector<uint8_t> rgba;
                 HudTestHook hook = battleHudHook(*app);
+                if (app->matchMode) appendMatchHudPasses(*app, frameViews, w, h, hook);
                 const bool useHud = (app->opts.hudTest || app->versusMode || app->matchMode) &&
                                     app->uiReady;
                 CaptureHook cap;
                 cap.renderer = &app->renderer;
                 cap.error = &app->error;
-                cap.viewProj = vp;
+                cap.views = frameCameras;
                 if (useHud) cap.hud = &hook;
                 // One batch for both sources: the debug overlay and the match's
                 // shots/sparks share the pass, so neither can clobber the other.
@@ -3358,10 +3636,14 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     }
                 }
                 const bool useHook = useHud || cap.prims;
+                // Only more than one view takes the split-screen scene pass; a single view
+                // keeps render()'s exact commands (and the banked captures' pixels).
+                const std::vector<render::ViewCamera>* viewArg =
+                    app->matchMode && frameCameras.size() > 1 ? &frameCameras : nullptr;
                 if (!app->renderer.capture((uint32_t)app->opts.sizeW,
                                            (uint32_t)app->opts.sizeH, rgba, app->error,
                                            useHook ? captureHook : nullptr,
-                                           useHook ? &cap : nullptr))
+                                           useHook ? &cap : nullptr, viewArg))
                     return SDL_APP_FAILURE;
                 reportCoverage(rgba, app->opts.sizeW, app->opts.sizeH);
                 writePpm(app->opts.out, rgba, app->opts.sizeW, app->opts.sizeH);
@@ -3371,6 +3653,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                                 ds.lines, ds.vertices, ds.droppedVertices, ds.passes);
                 }
                 if (app->matchMode) {
+                    reportMatchViews(*app, w, h);
                     const gameplay::MatchEconomy& eco = app->match.economy();
                     std::printf("match: %llu frames, hp1=%d hp2=%d, balloon=%.0f%%/%.0f%% "
                                 "(LIMIT %.0f%%/%.0f%%), shots=%llu sparks=%llu hits=%llu, "
@@ -3421,7 +3704,10 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         target.format = app->sc.format;
         target.width = app->sc.width;
         target.height = app->sc.height;
-        if (!app->renderer.render(target, app->error)) {
+        const bool multiView = app->matchMode && frameCameras.size() > 1;
+        const bool sceneOk = multiView ? app->renderer.renderViews(target, frameCameras, app->error)
+                                       : app->renderer.render(target, app->error);
+        if (!sceneOk) {
             gpu::endFrame(app->ctx, app->sc, frame);
             return SDL_APP_FAILURE;
         }
@@ -3429,41 +3715,48 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             if (app->opts.debugPrims) fillDebugLines(*app);
             else app->debugLines.clear();
             if (app->matchMode) fillMatchCubes(*app);
-            if (app->matchMode && !app->matchCubes.empty()) {
-                render::DebugPrims::Options cubeOptions;
-                if (!app->debugPrims.drawCubes(target, vp, app->matchCubes,
-                                               app->renderer.depthView(), cubeOptions,
-                                               app->error)) {
+            for (const render::ViewCamera& camera : frameCameras) {
+                if (app->matchMode && !app->matchCubes.empty()) {
+                    render::DebugPrims::Options cubeOptions;
+                    cubeOptions.viewport = camera.rect;
+                    if (!app->debugPrims.drawCubes(target, camera.viewProj, app->matchCubes,
+                                                   app->renderer.depthView(), cubeOptions,
+                                                   app->error)) {
+                        gpu::endFrame(app->ctx, app->sc, frame);
+                        return SDL_APP_FAILURE;
+                    }
+                }
+                if (app->matchMode && app->opts.hitboxDebug && !app->hitboxCubes.empty()) {
+                    // Straight alpha (not additive): the volume should tint what is behind
+                    // it rather than blow out, so overlapping fighters stay readable.
+                    render::DebugPrims::Options hitboxOptions;
+                    hitboxOptions.viewport = camera.rect;
+                    if (!app->debugPrims.drawCubes(target, camera.viewProj, app->hitboxCubes,
+                                                   app->renderer.depthView(), hitboxOptions,
+                                                   app->error)) {
+                        gpu::endFrame(app->ctx, app->sc, frame);
+                        return SDL_APP_FAILURE;
+                    }
+                }
+                if (app->matchMode && !app->auraCubes.empty()) {
+                    render::DebugPrims::Options cubeOptions;
+                    cubeOptions.additive = true;
+                    cubeOptions.viewport = camera.rect;
+                    if (!app->debugPrims.drawCubes(target, camera.viewProj, app->auraCubes,
+                                                   app->renderer.depthView(), cubeOptions,
+                                                   app->error)) {
+                        gpu::endFrame(app->ctx, app->sc, frame);
+                        return SDL_APP_FAILURE;
+                    }
+                }
+                // depth-tested: lines behind walls hide
+                render::DebugPrims::Options primOptions;
+                primOptions.viewport = camera.rect;
+                if (!app->debugPrims.draw(target, camera.viewProj, app->debugLines,
+                                          app->renderer.depthView(), primOptions, app->error)) {
                     gpu::endFrame(app->ctx, app->sc, frame);
                     return SDL_APP_FAILURE;
                 }
-            }
-            if (app->matchMode && app->opts.hitboxDebug && !app->hitboxCubes.empty()) {
-                // Straight alpha (not additive): the volume should tint what is behind
-                // it rather than blow out, so overlapping fighters stay readable.
-                render::DebugPrims::Options hitboxOptions;
-                if (!app->debugPrims.drawCubes(target, vp, app->hitboxCubes,
-                                               app->renderer.depthView(), hitboxOptions,
-                                               app->error)) {
-                    gpu::endFrame(app->ctx, app->sc, frame);
-                    return SDL_APP_FAILURE;
-                }
-            }
-            if (app->matchMode && !app->auraCubes.empty()) {
-                render::DebugPrims::Options cubeOptions;
-                cubeOptions.additive = true;
-                if (!app->debugPrims.drawCubes(target, vp, app->auraCubes,
-                                               app->renderer.depthView(), cubeOptions,
-                                               app->error)) {
-                    gpu::endFrame(app->ctx, app->sc, frame);
-                    return SDL_APP_FAILURE;
-                }
-            }
-            render::DebugPrims::Options primOptions;   // depth-tested: lines behind walls hide
-            if (!app->debugPrims.draw(target, vp, app->debugLines, app->renderer.depthView(),
-                                      primOptions, app->error)) {
-                gpu::endFrame(app->ctx, app->sc, frame);
-                return SDL_APP_FAILURE;
             }
         }
         if (app->opts.animPlayer && app->uiReady && !app->scene.models.empty()) {
@@ -3489,6 +3782,8 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         }
         if (app->uiReady && (app->opts.hudTest || app->matchMode || app->versusMode)) {
             HudTestHook hook = battleHudHook(*app);
+            if (app->matchMode)
+                appendMatchHudPasses(*app, frameViews, app->sc.width, app->sc.height, hook);
             if (!hudTestHook(frame.encoder,frame.view,app->sc.format,app->sc.width,app->sc.height,&hook)) {
                 gpu::endFrame(app->ctx,app->sc,frame);
                 return SDL_APP_FAILURE;

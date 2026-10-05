@@ -27,7 +27,7 @@ that these screens or their audio do not exist.
 | Item | Current status | Remaining work |
 |---|---|---|
 | D2 | Complete: both arcs and the 15-tick lock-switch pulse | None for the recovered ring transform |
-| D3 | Countdown and winning-team sting implemented; four-fighter simulation builds and passes host tests | Extra fighter bars; original countdown trigger/timing and asset-backed four-fighter run remain unverified |
+| D3 | Countdown and winning-team sting implemented; four-fighter simulation builds and passes host tests | Extra fighter bars; original countdown trigger/timing remain unverified (the asset-backed four-fighter run now exists: issue #12's four-human 2v2) |
 | E1 | Selection, real atlases, roster tables, costumes, weapons, controller slots, seeded COM choices and entry voices implemented; selected panels load into the four-fighter match path | Four-fighter HUD/VS/result presentation and exact original navigation parity remain open; asset-backed launch remains unverified |
 | E2 | Stage/variation and all five battle settings implemented and connected; the balloon capacity, KO/Overkill credit and timed-round rules are recovered (2026-10-05, issue #11) | Between-rounds red-capacity creep and the KO move's own respawn clock remain; see the issue #11 update below |
 | E3 | Volumes, fullscreen, native resolution selection and keyboard/gamepad rebinding implemented | Three renderer controls are unavailable; settings are process-local |
@@ -37,7 +37,8 @@ that these screens or their audio do not exist.
 | F1 | Four menu SEs, entry/result voices and menu BGM connected | Hardware audio listening remains separate from dummy-device verification |
 | G1 | Real-asset versus and live match executed in a browser | Hardware GPU and usable browser screenshots remain unverified |
 | G2 | Unverified | No macOS hardware available |
-| G3 | Rechecked: 165 pass, 43 known flags, 0 pipeline failures | Existing install texture gaps remain |
+| G3 | Rechecked: 165 pass, 43 known flags, 0 pipeline failures | Existing install gaps remain; two roster characters (Satoko, item 008; Takano, item 011) currently fail the loud gear-up join on this install |
+| #12 | One view per human controller: its own camera, cell and HUD values, match still stepped once; recovered one/two/four-cell layouts, viewport + scissor per view, per-view marker projection | Three-human layout is the original's four-cell grid with an empty cell (port policy for the placeholder); physical-pad, interactive resize/fullscreen and non-Linux execution unverified — `docs/SPLIT-SCREEN.md` |
 
 Implementation lives in `src/ui/screen_select.*`, `screen_stage_select.*`,
 `screen_options.*`, `screen_vs.*`, `screen_result.*`, `soft_keyboard.*`,
@@ -179,6 +180,44 @@ This is the first offline prerequisite for issue #3, not rollback completion.
 Snapshot/save/restore, explicit RNG/state hashes, cross-platform determinism and
 network transport remain open. Basic playability work continues through issues
 #6–#23 and the ordered Linux release tracker #24.
+
+## Split-screen implementation update — 2026-10-04 (issue #12)
+
+Local versus now renders one view per **human controller**: its own camera, its own cell on
+the render target and its own HUD values, while the match is stepped once at 64 Hz. The
+layouts are the original's own, recovered from `FUN_006396f0` @ `0x006396f0` — one full
+800×600 frame; two 400×300 views at top-left and bottom-right; the four-cell TL/BL/TR/BR grid
+for four humans; and, for three humans, that same four-cell grid with the human-less cell left
+empty (the original marks it `-1` and skips it, `:74-81`/`:109`). `FUN_0040d130:105-119` is
+the human count that selects the layout and also the no-human fallback to one view on
+controller 0. Views are keyed by controller slot, as the original keys them
+(`game+0x44b4`, per-view context at `game+0x454c + slot*0x160`).
+
+Implementation: `src/game/view_layout.h` (recovered geometry + controller-keyed assignment),
+`src/game/match_view.h` (per-view camera/HUD context), `renderViews()` in
+`src/render/scene_renderer.*` (one pass, colour and depth cleared once, viewport **and**
+scissor set per view, per-view camera uniform and per-view draw uniforms for billboards),
+per-view cells for the debug-prim overlays, an origin on `ui::UiViewport` for per-view HUD
+batches, and the per-view camera/HUD loop in `src/main.cpp`.
+
+Explicit port policies (not recovered): per-view aspect is automatic per D8 rather than the
+original's fixed 4:3 cells; separator thickness scales from the original's one pixel;
+a human-less cell keeps the clear colour because the placeholder sprite was not identified;
+the FPS counter is drawn in the first view only (the original draws it once, outside its view
+loop). `--local-players=N` is a verification instrument with a deterministic synthetic pad
+pattern for controllers with no device — synthetic input, not physical-pad evidence.
+
+Verification: 30/30 Linux host tests pass (`view_layout_test` pins the cells, the assignment,
+per-view projection and the guard that 1-view and 4-view runs end in identical simulation
+state with identical tick/audio counts; `hud_layout_test` covers per-view HUD layout, including
+the original's 0.5 scale for a 400×300 view; `arena_camera_test` §7 covers independent per-view
+cameras). Single-view parity against a pristine `HEAD` build is byte-identical for `--match`,
+`--versus`, `--screen=battle` (800×600 and 1920×1080) and `--hud-test`. Asset-backed runs:
+two humans at 800×600 (two views, separate HUD values), three humans (four-cell grid with one
+empty cell), four humans at 1920×1080 (2v2, 142 melee hits, one KO credited, round over and the
+result screen reached), ultrawide 3440×1440 and odd 1373×777. A windowed Wayland run exercised
+the window path with two views. Physical gamepads, interactive resize/fullscreen and non-Linux
+execution remain unverified. Details, provenance and the exact commands: `docs/SPLIT-SCREEN.md`.
 
 ## Guard lifecycle update — 2026-10-04
 

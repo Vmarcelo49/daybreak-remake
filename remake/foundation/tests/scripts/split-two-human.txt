@@ -1,0 +1,99 @@
+# P0 taps for the split-screen verification run (issue #12).
+#
+# WHY a script: a headless run's only real device is the keyboard, which is controller 0
+# (`--local-players` drives controllers 1..3 with its synthetic pattern and never overrides a
+# device). This stands in for P0 so that both humans in the two-view run act: a melee swing,
+# a shot, a step and a lock switch, repeating on a period the match can read.
+#
+# Frames are front-end logic ticks (the capture cadence is one tick per frame); the first
+# 180 are the round-start countdown, so the taps begin after it.
+200 LEFT
+216 -
+230 MELEE
+238 -
+250 SHOOT
+258 -
+270 DOWN
+286 -
+300 DOWN
+306 -
+320 JUMP
+326 -
+340 LOCK
+344 -
+360 LEFT
+376 -
+390 MELEE
+398 -
+410 SHOOT
+418 -
+430 RIGHT
+446 -
+460 DOWN
+476 -
+470 DOWN
+476 -
+490 JUMP
+496 -
+510 MELEE
+518 -
+530 SHOOT
+538 -
+550 LEFT
+566 -
+580 MELEE
+588 -
+600 DOWN
+616 -
+620 DOWN
+626 -
+640 JUMP
+646 -
+660 LOCK
+664 -
+680 RIGHT
+696 -
+700 MELEE
+708 -
+720 SHOOT
+728 -
+740 LEFT
+756 -
+760 DOWN
+776 -
+780 DOWN
+786 -
+800 JUMP
+806 -
+820 MELEE
+828 -
+840 SHOOT
+848 -
+860 RIGHT
+876 -
+880 MELEE
+888 -
+900 DOWN
+916 -
+920 DOWN
+926 -
+940 JUMP
+946 -
+960 LOCK
+964 -
+980 LEFT
+996 -
+1000 MELEE
+1008 -
+1020 SHOOT
+1028 -
+1040 DOWN
+1056 -
+1060 DOWN
+1066 -
+1080 JUMP
+1086 -
+1100 MELEE
+1108 -
+1120 SHOOT
+1128 -

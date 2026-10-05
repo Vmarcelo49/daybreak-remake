@@ -278,6 +278,15 @@ New since the port landed, all verified the same way:
 - Menu cursor/confirm/back/ready sounds use the shipped system bank, and the
   result quote plays its shipped voice once. The report displays real KO, death
   and damage totals; original earned titles and four-fighter layouts remain open.
+- Local split-screen: one view per human controller, each with its own camera,
+  cell and HUD values, with the match still stepped once at 64 Hz. The layouts are
+  the original's (`FUN_006396f0`): one full frame, two 400×300 views at top-left
+  and bottom-right, or the four-cell TL/BL/TR/BR grid — three humans reuse the grid
+  and leave the human-less cell empty. Each view sets both a viewport and a scissor
+  so views cannot bleed into each other, and its markers project through its own
+  camera. `--local-players=N` opens N local views for verification, filling
+  pad-less controllers with synthetic input (not physical-pad evidence). See
+  [`docs/SPLIT-SCREEN.md`](docs/SPLIT-SCREEN.md).
 - Chromium software WebGPU has executed real stage01/Rena/Mion assets in both
   scripted versus (300 frames, 60.2 fps) and live match (411 frames, 60.1 fps),
   with `RESULT: ok`. Visual browser parity and hardware rendering remain
@@ -332,16 +341,19 @@ process-local.
 
 Story video decoding remains an explicit stub. Live-pad and browser-gesture
 verification remain open. The four-fighter battle path builds and passes the
-Linux test suite, but an asset-backed four-fighter run remains unverified. Its
-VS/result presentation and extra HUD bars remain two-fighter layouts. An
+Linux test suite, and an asset-backed four-human 2v2 run now completes (two
+humans are covered too, see [`docs/SPLIT-SCREEN.md`](docs/SPLIT-SCREEN.md)),
+but its VS/result presentation and extra HUD bars remain two-fighter layouts.
+An
 opt-in 3v3/4v4 mode would be a new remake feature (six/eight fighters total);
 its implementation handoff is in
 [`docs/ROADMAP-PENDING.md`](docs/ROADMAP-PENDING.md#future-remake-only-experiment-3v3-and-4v4).
 Renderer options (the first three options rows are
 marked unavailable), original earned titles and full result-quote selection are
 still pending. Battle fidelity includes unresolved animation/VFX details; LAN
-netplay awaits its own implementation. The Linux CTest suite has 24 tests,
-including frontend selection/configuration, VS/result timelines and HUD geometry.
+netplay awaits its own implementation. The Linux CTest suite has 30 tests,
+including frontend selection/configuration, VS/result timelines, HUD geometry and
+the split-screen layout/assignment guards.
 See `docs/ROADMAP-PENDING.md` for the remaining work.
 
 Where to read next: plan and handoff in `docs/FULL-REPLACEMENT-PLAN.md` (§5 quirks,
