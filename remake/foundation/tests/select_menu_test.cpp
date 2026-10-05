@@ -1,4 +1,7 @@
 #include "ui/screen_select.h"
+#include "assets/asset_source.h"
+#include <cstdlib>
+#include <filesystem>
 #include "input/synthetic_pad.h"
 #include <cstdio>
 
@@ -110,6 +113,41 @@ int main() {
         check(rosterState.slots[i].character == expected[i], "the panel picks its documented character");
         check(rosterState.slots[i].controller == i, "the panel keeps its own controller");
         check(rosterState.slots[i].ready, "the panel is ready");
+    }
+    // Issue #20's penalty session flag: a player who earned the penalty title last round has
+    // their costume forced to the character's own penalty cell when they confirm a character
+    // (FUN_00409340:165-172 reads DAT_006b72a0[character]). The table lives in the installed
+    // exe, so the assertion is conditional: without it the flag cannot force anything.
+    {
+        // The costume table lives in the installed exe, so the flag can only force a cell when
+        // an install is open (the host opens one before any screen exists).
+        std::filesystem::path game = std::filesystem::path("Higurashi-Daybreak");
+        if (const char* env = std::getenv("GAME_DIR")) game = std::filesystem::path(env);
+        for (std::filesystem::path r = std::filesystem::current_path(); !r.empty();
+             r = r.parent_path()) {
+            if (std::filesystem::is_directory(r / "Higurashi-Daybreak" / "data")) {
+                game = r / "Higurashi-Daybreak";
+                break;
+            }
+            if (r == r.parent_path()) break;
+        }
+        const bool exe = std::filesystem::exists(game / "DaybreakDX.exe");
+        if (exe) fnd::assets::AssetSource::instance().openInstall(game.string());
+        ui::FrontendState penaltyState;
+        penaltyState.penaltyDecided[0] = true;
+        ui::SelectMenu penaltyMenu(penaltyState);
+        penaltyMenu.update(confirm);
+        check(penaltyState.slots[0].character == 0, "the penalized panel picks its character");
+        penaltyMenu.update(confirm);
+        const int forced = penaltyState.slots[0].costume;
+        if (exe) check(forced == 5, "the penalty flag forces Rena's penalty costume cell");
+        else check(forced == 0, "without the exe the penalty flag forces nothing");
+        // A panel without the flag keeps its own costume.
+        ui::FrontendState cleanState;
+        ui::SelectMenu cleanMenu(cleanState);
+        cleanMenu.update(confirm);
+        cleanMenu.update(confirm);
+        check(cleanState.slots[0].costume == 0, "an unflagged panel keeps its costume");
     }
     std::printf("select_menu_test: %d failures\n",failures);
     return failures ? 1 : 0;

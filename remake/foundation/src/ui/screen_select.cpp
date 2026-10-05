@@ -15,16 +15,23 @@ int cycle(int value, int delta, int count) { return (value + count + delta) % co
 // stays out of this repository. -1 when the exe is not reachable.
 int penaltyCostume(int character) {
     static std::vector<uint8_t> table;
-    static bool tried = false;
-    if (!tried) {
-        tried = true;
+    // Loaded on first use WITH an install open and cached only on success: a screen built before
+    // the install exists (a unit test, or a capture path that opens it later) must not latch an
+    // empty table for the rest of the process.
+    if (table.empty()) {
         const std::string& install = fnd::assets::assetSource().installDir();
+        if (install.empty()) return -1;
+        std::vector<uint8_t> loaded;
         std::string error;
-        if (install.empty() ||
-            !fnd::assets::readExeBytes(install + "/DaybreakDX.exe", 0x6b72a0, 16, table, error)) {
-            table.clear();
-            if (!install.empty()) std::fprintf(stderr, "[select] penalty costumes: %s\n", error.c_str());
+        if (!fnd::assets::readExeBytes(install + "/DaybreakDX.exe", 0x6b72a0, 16, loaded, error)) {
+            static bool reported = false;
+            if (!reported) {
+                reported = true;
+                std::fprintf(stderr, "[select] penalty costumes: %s\n", error.c_str());
+            }
+            return -1;
         }
+        table = std::move(loaded);
     }
     if (character < 0 || (size_t)character >= table.size()) return -1;
     const int value = table[(size_t)character];
