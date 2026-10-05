@@ -581,6 +581,32 @@ void CameraCollision::setMesh(const xm::Model* cameraMesh) {
     }
 }
 
+bool segmentBlocked(const glm::vec3& from, const glm::vec3& to, const xm::Model* model,
+                    const ModelIndex* index) {
+    if (model == nullptr) return false;
+    const glm::vec3 leg = to - from;
+    const float     len = glm::length(leg);
+    if (!(len > 0.0f)) return false;              // degenerate (and NaN) is not a blocker
+    const glm::vec3 dir = leg / len;
+
+    if (index != nullptr) {
+        // One early-out ray is enough for a thin wall, but a stepper keeps a fast swing
+        // from tunnelling past a single-triangle barrier: the camera clamp solves the
+        // same problem by taking the closest hit over the whole segment, and this takes
+        // the same raycast, only stopping at the first blocker.
+        constexpr float kStep = 40.0f;
+        for (float travelled = 0.0f; travelled < len; travelled += kStep) {
+            const float reach = std::min(kStep, len - travelled);
+            if (raycastModelAny(*model, *index, from + dir * travelled, dir, reach))
+                return true;
+        }
+        return false;
+    }
+    // No cached traversal order: build one for this call (the header notes that
+    // variant allocates per call, which is fine for a one-off query).
+    return raycastModel(*model, from, dir, len).hit;
+}
+
 CameraClampResult CameraCollision::queryClamp(const CameraClampQuery& q) const {
     CameraClampResult r;
     if (triangles_ == 0 || !mesh_) return r;   // no camera geometry: the contract's "no hit"

@@ -571,6 +571,101 @@ come before the visible work.
   the run is deterministic; the match path passes a null collision frame, so
   the eye is unclamped. Recipe recorded in `BATTLE-HUD-SPEC.md` §7.
 
+## Directional, aerial and multi-target melee — 2026-10-04
+
+Issue #10's melee is rebuilt against evidence where evidence exists and against explicit
+port rules where it does not. Three premises had to be corrected during the work, and the
+corrections changed the implementation.
+
+### CORRECTION 1 — the melee hitbox is a sphere, not a cone
+
+`FUN_00637950` (0x637950) is the hit resolver for bullets **and** players; it never
+branches on attacker type, it just reads the weapon/phase record at `*(entity+0x10)`. On
+`weapon+0x08` it picks between two tests:
+
+* `== 0` -> `FUN_0063b470`: a hard **3D sphere**, `dist^2 < (30.0 + weaponRadius)^2`.
+* `!= 0` -> `FUN_0063b4d0`: point-to-**segment** distance against the same bound, i.e. a
+  capsule between two anchors.
+
+Neither has an angle term. An earlier draft of this work invented a 60-degree swing cone;
+it is gone, and `melee_rules.h` now reproduces the sphere. The `30.0` is the literal
+`0x41f00000` the original passes as the body radius — recovered, not a tuned constant.
+
+The victim's extent is the real vertical limit and it is **anatomical**: `FUN_0063dad0`
+builds exactly **two** victim anchors, from the `Bip01_Head` and `Bip01_Spine` bones
+(spine at -50.0). A fighter is a head sphere and a chest sphere and nothing else, which
+is why legs cannot be hit. The port reproduces the two-anchor shape.
+
+A directional filter **does** exist — `weapon+0x2C` is an 8-way facing mask filtered at
+`FUN_00637950:383-385` — but its bit order is unverified and it selects which *inbound*
+faces are hittable rather than shaping the volume, so it is deliberately **not**
+implemented rather than guessed.
+
+### CORRECTION 2 — move record `+0x04` is not a phase duration
+
+It is a file-loaded constant with **no writer anywhere in the binary's `.text`**, read
+only as a threshold against a frame budget (35 sites in `FUN_0043ded0`, e.g.
+`move[4] <= player[0xce0]`) — i.e. a **cancel window**. The real duration is at
+`phase+0x1C`, which `character_moves.cpp` does not reach. An earlier draft called `+0x04`
+a frame count and argued it from the shot chain's 20/30/50 progression; that argument is
+**withdrawn**, since 20/30/50 is equally consistent with three cancel thresholds.
+`CharacterMove::cancelWindow` is named for what it is.
+
+### CORRECTION 3 — what the melee move records actually contain
+
+`src/gameplay/character_moves.{h,cpp}` parses `data/<char>/NN.dat` (same reader shape as
+the weapon files: `FUN_0041e180` and `FUN_005f8510` are the same code twice) and
+reproduces each character's move inventory: rena parses 122 records whose ids are exactly
+the families `fighter.h` documents. But the `0x28-0x2D` group every character ships has
+an **entirely zero combat block**, and `0x2B` is not a melee hit at all — it is the
+universal cancel-out move, started from ~2000 sites. Per-character melee radius, damage
+and timing are produced by a per-character handler-class **virtual at vtable slot 0x20**
+(`FUN_00421410.c:15`, across ~46 classes), not by any file. So the melee **values** are
+port rules; only the **shape** above is recovered, and `melee_rules.h` says so.
+
+### What the evidence settled about input
+
+The corpus has **exactly one attack bit** — `weapon+0x28 & 0x100`, used 1378 times — and
+no heavy or strong bit anywhere. That is the evidence for what was already the right call:
+**`AttackB` is removed** and no longer starts anything. The swing is chosen by the
+fighter's situation at the press (grounded or airborne), not by a second key.
+
+### What changed in behaviour
+
+* **Vertical separation** now works: the sphere is 3D, so a fighter off the floor cannot
+  be hit by a grounded swing at identical XZ — the issue's headline criterion, which the
+  old XZ-only test made impossible.
+* **Barriers.** `game::physics::segmentBlocked` (new, on `raycastModelAny`'s early-out
+  walk — the same occlusion shape the camera clamp uses) rejects a swing through the
+  stage. An absent or empty collision mesh stays permissive, as movement does.
+* **Several opponents, each once.** The single `m_didHitThisSwing` flag could not express
+  a swing clipping two people; it is now a per-victim set, cleared when the swing ends.
+  `Match::step` evaluates every hostile in the volume with ally exclusion still the single
+  filter on that loop.
+* **Recovery** is a real lockout, and an interrupted attack cannot land.
+
+### Verification
+
+80 checks in `tests/melee_rules_test.cpp` (29 host tests, all passing) cover the issue's
+list: aerial separation, attacks through walls (with the same pair proving it connects
+when the wall is removed), multiple opponents, repeated contact, interrupted attacks,
+recovery lockout, and the unbound heavy key. `fighter_script_test`'s melee section was
+updated rather than deleted, so its range and one-hit-per-swing coverage still runs —
+including an assertion that a target **behind** the attacker connects, which is the
+sphere's actual behaviour and the opposite of what the withdrawn cone claimed. The move
+table sweep skips without an install and asserts the melee-has-no-geometry claim when one
+is present. Linux, Windows cross-build and web builds succeed; the standalone `--match` 1v1
+capture is byte-identical (melee does not fire in it) and the front-end smoke still
+reaches `RESULT: ok`.
+
+**Two bugs this work caught in itself**: the vertical test measured the victim's feet
+against its own position, so it was always zero; and a per-victim hit set needs Match to
+record each hit, so calling `try_melee_hit` twice without `note_melee_hit` correctly
+connects twice.
+
+**Next dig, highest value**: the ~46 per-character handler classes behind vtable slot
+0x20, which is where per-character melee hitboxes, damage and timing actually live.
+
 ## B. Battle visuals
 
 ### B1. VFX: auras and effects first, trails are RE-blocked — **partially done**

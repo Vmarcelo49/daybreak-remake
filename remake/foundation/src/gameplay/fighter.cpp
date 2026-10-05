@@ -134,6 +134,11 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     if (can_act() && input) {
         update_state_machine(input, opponent, dt);
     }
+    // The swing clock drives startup/active/recovery (melee_rules.h). It advances on
+    // every tick the attack state is held, including recovery, so the recovery window is
+    // a real lockout rather than a label.
+    if (m_state == FighterState::AttackA || m_state == FighterState::AttackB)
+        ++m_meleeElapsed;
 
     // 3. Update movement (if the state allows it).
     const glm::vec3 movementStart = m_position;
@@ -279,18 +284,16 @@ void Fighter::update_state_machine(const input::PlayerState* input,
                                     Fighter* opponent, double dt) {
     if (!input) return;
 
-    // AttackA (melee key in the original: X). Provisional mapping —
-    // see input.h (no dedicated heavy key exists).
+    // Melee is ONE key in the original (X), and there is no second heavy attack to bind:
+    // the corpus tests exactly one attack bit, `weapon+0x28 & 0x100` (1378 uses), and no
+    // heavy/strong bit anywhere (input.h). The stand-in that
+    // used to sit on AttackB is gone: the button now does nothing, and the swing that
+    // plays is chosen by the fighter's situation at the press — grounded, mid-dash or
+    // airborne — rather than by a second key. Issue #10.
     if (input->just_pressed[input::Action::AttackA]) {
+        set_aerial_attack(!m_grounded);
         set_state(FighterState::AttackA);
-        m_stateTimer = FighterConstants::kAttackFrames;
-        return;
-    }
-
-    // AttackB (heavy stand-in — unbound by default; see input.h).
-    if (input->just_pressed[input::Action::AttackB]) {
-        set_state(FighterState::AttackB);
-        m_stateTimer = FighterConstants::kAttackFrames;
+        m_stateTimer = m_meleeRules.total_ticks();
         return;
     }
 
@@ -434,7 +437,10 @@ void Fighter::set_state(FighterState new_state) {
     if (m_state == new_state) return;
     m_state = new_state;
     m_animSetIdx = -1;  // force animation re-lookup
-    m_didHitThisSwing = false;  // new swing may hit again
+    // Leaving the attack state ends this swing: the per-victim hit set clears so a
+    // fresh swing may connect again (issue #10's per-swing accounting).
+    if (new_state == FighterState::AttackA || new_state == FighterState::AttackB)
+        begin_melee_swing();
     try_switch_animation();
 }
 
@@ -689,34 +695,60 @@ void Fighter::apply_knockback(const glm::vec3& dir, float speed) {
     m_stateTimer = FighterConstants::kHitStunFrames;
 }
 
-bool Fighter::try_melee_hit(Fighter& target) {
-    if (m_state != FighterState::AttackA && m_state != FighterState::AttackB) {
-        return false;
-    }
-    if (m_didHitThisSwing || !target.is_alive()) {
-        return false;
-    }
-    // Active window: skip the first few startup frames so the swing has
-    // to actually come out (mirrors +0xa0 action-frames counting down).
-    const int elapsed = FighterConstants::kAttackFrames - m_stateTimer;
-    if (elapsed < 5) {
-        return false;
-    }
+bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollision* collision) {
+    // Only the light/chain melee plays this path; the EX and shots go elsewhere.
+    if (m_state != FighterState::AttackA && m_state != FighterState::AttackB) return false;
+    if (!m_meleeRules.is_active(m_meleeElapsed)) return false;
+    if (!target.is_alive()) return false;
 
+    // The recovered hitbox: FUN_00637950 picks a 3D sphere test (FUN_0063b470) whose
+    // predicate is dist < 30.0 + weaponRadius, run against the victim's TWO anchors.
+    // FUN_0063dad0:238-243 builds those from the Head and Spine bones, so a fighter is
+    // a head sphere and a chest sphere and nothing else - which is the real vertical
+    // limit, and why a swing cannot reach legs.
+    //
+    // Melee has no weapon+0x24 record of its own (the 0x28-0x2D move records are all
+    // zero), so MeleeRules::radius stands in for it. The SHAPE is recovered; the value
+    // is a port rule.
+    const float bodyHeight = game::physics::MovementCollision::kFighterHeight;
+    const float attackerY  = m_position.y + bodyHeight * m_meleeRules.chestHeightFrac;
+    const float headY       = target.m_position.y + bodyHeight * m_meleeRules.headHeightFrac;
+    const float chestY      = target.m_position.y + bodyHeight * m_meleeRules.chestHeightFrac;
     const float dx = target.m_position.x - m_position.x;
     const float dz = target.m_position.z - m_position.z;
-    const float distSq = dx * dx + dz * dz;
-    const float range = FighterConstants::kMeleeRange;
-    if (distSq > range * range) {
-        return false;
+    const float horizontalSq = dx * dx + dz * dz;
+
+    const float toHead = (horizontalSq) + (headY - attackerY) * (headY - attackerY);
+    const float toChest = (horizontalSq) + (chestY - attackerY) * (chestY - attackerY);
+    if (!m_meleeRules.sphere_hits(toHead) && !m_meleeRules.sphere_hits(toChest)) return false;
+
+    // Solid barriers: the swing must not reach through the stage. #7's collision already
+    // answers segment queries for the camera; the fighter's own mesh is the same
+    // collision.x, so a melee line uses it too. A missing mesh is permissive, which is
+    // what the reference does when collision.x is absent.
+    if (collision && !collision->empty()) {
+        const glm::vec3 from = m_position + glm::vec3(0.0f, attackerY - m_position.y, 0.0f);
+        const glm::vec3 to = target.m_position + glm::vec3(0.0f, chestY - target.m_position.y, 0.0f);
+        if (game::physics::segmentBlocked(from, to, collision->movementMesh())) return false;
     }
 
-    m_didHitThisSwing = true;
-    const int dmg = (m_state == FighterState::AttackB)
-        ? FighterConstants::kHeavyDamage
-        : FighterConstants::kLightDamage;
-    target.take_damage(dmg, this);
+    const int dmg = (m_state == FighterState::AttackB) ? FighterConstants::kHeavyDamage
+                                                       : FighterConstants::kLightDamage;
+    target.take_damage(dmg, this, m_meleeHitstun());
     return true;
+}
+
+void Fighter::begin_melee_swing(int victimIndexBase) {
+    (void)victimIndexBase;
+    m_swingHits = 0;
+    m_swingHitCount = 0;
+    m_meleeElapsed = 0;
+}
+
+void Fighter::note_melee_hit(int victimIndex) {
+    if (victimIndex < 0 || victimIndex >= 4) return;
+    m_swingHits |= (1u << victimIndex);
+    ++m_swingHitCount;
 }
 
 float Fighter::yellow_hold_sec() const {

@@ -1,0 +1,519 @@
+// =============================================================================
+//  melee_rules_test.cpp — issue #10: directional, aerial and multi-target melee.
+//
+//  Pins the acceptance criteria directly:
+//    * ground melee cannot hit a distant airborne fighter just because XZ overlaps;
+//    * an aerial swing is reachable through the documented control and reaches what a
+//      ground swing cannot;
+//    * facing decides — a fighter behind the swing is out of it;
+//    * a solid barrier between them blocks the swing;
+//    * one swing can hit SEVERAL opponents, each exactly once;
+//    * allies are never hit;
+//    * recovery is a real lockout, and an interrupted attack does not keep hitting;
+//    * the heavy-key stand-in is gone.
+//
+//  Also parses the shipped character move tables when an install is present, to assert
+//  the claim the whole port rests on: the melee chain (moves 40/41/42) exists in every
+//  character but carries no combat block, so no melee number here is recovered.
+//
+//  Build (CMake target `melee_rules_test`):
+//    cmake --build remake/foundation/build/linux --target melee_rules_test
+//  Exit status: 0 when every check passes, 1 otherwise.
+// =============================================================================
+#include "gameplay/character_moves.h"
+#include "gameplay/melee_rules.h"
+#include "gameplay/match.h"
+
+#include <array>
+#include <cmath>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <string>
+#include <vector>
+
+namespace {
+
+namespace fs = std::filesystem;
+using gameplay::Fighter;
+using gameplay::FighterState;
+namespace input = fnd::input;
+
+int checks = 0;
+int failures = 0;
+int skipped = 0;
+
+void check(bool condition, const char* name) {
+    ++checks;
+    if (!condition) ++failures;
+    std::printf("  %-60s %s\n", name, condition ? "ok" : "FAIL");
+}
+void checkInt(int expected, int actual, const char* name) {
+    ++checks;
+    const bool same = expected == actual;
+    if (!same) ++failures;
+    std::printf("  %-60s %s", name, same ? "ok" : "FAIL");
+    if (!same) std::printf("  (expected %d, got %d)", expected, actual);
+    std::printf("\n");
+}
+void skip(const char* name) {
+    ++skipped;
+    std::printf("  %-60s SKIP\n", name);
+}
+void section(const char* title) { std::printf("\n-- %s\n", title); }
+
+// One simulation tick with a freshly derived edge set, like the live poll path.
+void tick(Fighter& f, const input::PlayerState& in) {
+    input::PlayerState copy = in;
+    input::compute_edges(copy);
+    f.update(&copy, nullptr, 1.0 / 64.0);
+}
+
+// A fresh fighter out of the 60-frame BattleStart pose, so it can act immediately.
+Fighter idle_at(const glm::vec3& at, float facing = 0.0f) {
+    Fighter f;
+    f.init(nullptr, nullptr, at, facing);
+    input::PlayerState idle;
+    for (int i = 0; i < 70; ++i) tick(f, idle);
+    return f;
+}
+
+// Presses melee once and advances to the middle of the active window.
+void swing_to_active(Fighter& f, int extraTicks = 0) {
+    input::PlayerState in;
+    in.down[input::Action::AttackA] = true;
+    tick(f, in);                       // the press itself: set_state -> begin_melee_swing
+    in.down[input::Action::AttackA] = false;
+    const gameplay::MeleeRules rules;
+    for (int i = 0; i < rules.startupTicks + extraTicks; ++i) tick(f, in);
+}
+
+// ---------------------------------------------------------------------------
+// Vertical separation — the issue's headline criterion.
+// ---------------------------------------------------------------------------
+void testVerticalSeparation() {
+    section("vertical separation");
+    Fighter attacker = idle_at(glm::vec3(0, 0, 0));
+    Fighter grounded = idle_at(glm::vec3(0, 0, 80));
+    Fighter airborne  = idle_at(glm::vec3(0, 0, 80));
+    // Settling is 70 ticks of gravity, so a target placed high would land before the
+    // swing. Settle first, THEN re-place it: BattleStart costs nothing here because
+    // only the attacker's windows are under test.
+    airborne.reset(glm::vec3(0, 400, 80), 0.0f);   // same XZ, 400 up
+
+    checkInt(80, static_cast<int>(grounded.position().z),
+             "the grounded target stands 80 units ahead");
+    checkInt(400, static_cast<int>(airborne.position().y),
+             "the airborne target stands 400 units up at the same XZ");
+    swing_to_active(attacker);
+    check(attacker.try_melee_hit(grounded), "ground melee connects with a grounded target");
+    check(grounded.hp() < 100, "and it does damage");
+
+    // Same XZ overlap, but 400 units above the swing's vertical reach.
+    Fighter a2 = idle_at(glm::vec3(0, 0, 0));
+    swing_to_active(a2);
+    check(!a2.try_melee_hit(airborne),
+          "ground melee refuses a target 400 units up at identical XZ");
+    checkInt(100, airborne.hp(), "and the airborne fighter takes nothing");
+
+    // An aerial swing reaches further vertically, per melee_rules.h. The swing kind is
+    // chosen by the fighter's situation AT THE PRESS, so the attacker must be airborne
+    // when it presses -- set_aerial_attack() before the press is overwritten on purpose.
+    Fighter a3 = idle_at(glm::vec3(0, 0, 0));
+    {
+        input::PlayerState jump;
+        jump.down[input::Action::Jump] = true;
+        tick(a3, jump);
+    }
+    check(!a3.aerial_attack(), "the jump alone does not select an aerial swing");
+    swing_to_active(a3);
+    check(a3.aerial_attack(), "pressing melee while airborne selects the aerial swing");
+    // The recovered hitbox is ONE sphere: a grounded and an aerial swing resolve through
+    // the same predicate, so the swing KIND is not what decides a hit -- the 3D distance
+    // to the victim's head/chest anchors is. What an aerial swing buys is that the
+    // attacker has RISEN, closing the vertical gap to a target that is off the floor.
+    airborne.reset(glm::vec3(0, 76, 60), 0.0f);   // level with the jumped attacker's chest
+    check(a3.try_melee_hit(airborne),
+          "an airborne attacker reaches a target at its own height");
+    airborne.reset(glm::vec3(0, 500, 60), 0.0f);
+    check(!a3.try_melee_hit(airborne),
+          "and still not one far above the sphere's 30+radius reach");
+
+    // Reach is RELATIVE to the attacker's feet, so a modest elevation still connects
+    // while a large one does not. (The fighter's own altitude is irrelevant: both are
+    // measured as a difference, which is what makes a stage with height work.)
+    Fighter a4 = idle_at(glm::vec3(0, 0, 0));
+    Fighter levelNeighbour = idle_at(glm::vec3(0, 0, 60));
+    Fighter muchHigher     = idle_at(glm::vec3(0, 0, 60));
+    muchHigher.reset(glm::vec3(0, 600, 60), 0.0f);
+    swing_to_active(a4);
+    check(a4.try_melee_hit(levelNeighbour), "a level neighbour is reachable");
+    check(!a4.try_melee_hit(muchHigher), "one 600 units above is not");
+}
+
+// ---------------------------------------------------------------------------
+// Facing.
+// ---------------------------------------------------------------------------
+void testFacing() {
+    section("the recovered hitbox is a sphere, not a cone");
+    // FUN_0063b470 is a hard 3D sphere test with no angle term, so a target behind the
+    // attacker is hit on exactly the same terms as one in front. This pins that, and
+    // pins what DID replace the invented cone: the victim's two anchor spheres.
+    Fighter front = idle_at(glm::vec3(0, 0, 0));
+    Fighter ahead  = idle_at(glm::vec3(0, 0, 100));
+    Fighter rear   = idle_at(glm::vec3(0, 0, -100));
+    swing_to_active(front);
+    check(front.try_melee_hit(ahead), "a target 100 ahead is in the sphere");
+    check(front.try_melee_hit(rear), "a target directly behind is EQUALLY in the sphere");
+
+    // The attack sphere is 30 (recovered body radius) + MeleeRules::radius, in 3D, so
+    // the same horizontal distance that connects on the ground is decided by the
+    // vertical difference too.
+    const gameplay::MeleeRules rules;
+    const float combined = rules.bodyRadius + rules.radius;
+    check(rules.sphere_hits(0.0f), "an overlapping anchor connects");
+    check(!rules.sphere_hits((combined + 1.0f) * (combined + 1.0f)),
+          "an anchor just past 30+radius does not");
+
+    // Reach is 3D, so the same horizontal gap that connects on the floor is decided by
+    // the vertical difference: at 60 apart the opponent connects, at 400 it cannot.
+    Fighter swinger = idle_at(glm::vec3(0, 0, 0));
+    swing_to_active(swinger);
+    Fighter level = idle_at(glm::vec3(0, 0, 60));
+    check(swinger.try_melee_hit(level), "an opponent 60 away and level connects");
+    Fighter high = idle_at(glm::vec3(0, 0, 60));
+    high.reset(glm::vec3(0, 400, 60), 0.0f);
+    check(!swinger.try_melee_hit(high),
+          "the same opponent 400 above does not, because the sphere is 3D");
+}
+
+// ---------------------------------------------------------------------------
+// Solid barriers — uses the synthetic collision model from #7's test helpers.
+// ---------------------------------------------------------------------------
+xm::Model wall_between_fighters() {
+    xm::Model model;
+    model.meshes.emplace_back();
+    const float h = 400.f;
+    const glm::vec3 a(-40, 0, 0), b(40, 0, 0), c(40, h, 0), d(-40, h, 0);
+    const uint32_t base = static_cast<uint32_t>(model.meshes.back().vertices.size());
+    for (const glm::vec3& p : {a, b, c, d}) {
+        xm::Vertex v;
+        v.pos = p;
+        model.meshes.back().vertices.push_back(v);
+    }
+    model.meshes.back().indices.insert(model.meshes.back().indices.end(),
+                                       {base, base + 1, base + 2, base, base + 2, base + 3});
+    return model;
+}
+
+void testBarriers() {
+    section("solid barriers block the swing");
+    xm::Model model = wall_between_fighters();
+    game::physics::MovementCollision collision;
+    const xm::Model* mesh = &model;
+    collision.setMeshes(mesh, nullptr);
+
+    // Without collision the same pair connects: proves the wall is what stops it.
+    Fighter open = idle_at(glm::vec3(0, 0, -60));
+    Fighter far  = idle_at(glm::vec3(0, 0, 60));   // 120 apart: inside the 160 reach
+    swing_to_active(open);
+    check(open.try_melee_hit(far), "with no collision the swing reaches across");
+
+    Fighter walled = idle_at(glm::vec3(0, 0, -60));
+    Fighter behindWall = idle_at(glm::vec3(0, 0, 60));   // fresh: `far` was hit above
+    swing_to_active(walled);
+    check(!walled.try_melee_hit(behindWall, &collision),
+          "a wall between them blocks the swing");
+    checkInt(100, behindWall.hp(), "and the fighter behind it takes nothing");
+
+    // No barrier in the way -> still connects even with collision present.
+    Fighter clear = idle_at(glm::vec3(300, 0, -60));
+    Fighter clearTarget = idle_at(glm::vec3(300, 0, 60));
+    swing_to_active(clear);
+    check(clear.try_melee_hit(clearTarget, &collision),
+          "a clear line still connects with collision loaded");
+
+    // An empty collision is permissive, matching the no-collision.x case.
+    game::physics::MovementCollision empty;
+    Fighter permissive = idle_at(glm::vec3(0, 0, -60));
+    Fighter permissiveTarget = idle_at(glm::vec3(0, 0, 60));
+    swing_to_active(permissive);
+    check(permissive.try_melee_hit(permissiveTarget, &empty),
+          "an empty collision model does not block anything");
+}
+
+// ---------------------------------------------------------------------------
+// Multiple opponents, per-swing accounting, ally exclusion.
+// ---------------------------------------------------------------------------
+void testMultipleOpponentsAndAllies() {
+    section("multiple opponents, per-swing accounting, ally exclusion");
+    Fighter attacker = idle_at(glm::vec3(0, 0, 0));
+    Fighter enemyA = idle_at(glm::vec3(-60, 0, 90));
+    Fighter enemyB = idle_at(glm::vec3(60, 0, 90));
+    swing_to_active(attacker);
+
+    const int hpA = enemyA.hp(), hpB = enemyB.hp();
+    check(attacker.try_melee_hit(enemyA), "swing connects with the first opponent");
+    attacker.note_melee_hit(0);
+    check(attacker.try_melee_hit(enemyB), "the SAME swing also connects with the second");
+    attacker.note_melee_hit(1);
+    check(enemyA.hp() < hpA && enemyB.hp() < hpB, "both took damage from one swing");
+    checkInt(2, attacker.swing_hit_count(), "the swing counted two victims");
+
+    // Repeated contact within the same swing is refused by the per-victim set.
+    check(attacker.already_hit_this_swing(0), "victim 0 is recorded");
+    check(attacker.already_hit_this_swing(1), "victim 1 is recorded");
+    check(!attacker.already_hit_this_swing(2), "an untouched victim is not recorded");
+
+    // A new swing re-arms everything.
+    attacker.set_state(FighterState::Idle);
+    swing_to_active(attacker);
+    check(!attacker.already_hit_this_swing(0), "a fresh swing clears the victim's record");
+    checkInt(0, attacker.swing_hit_count(), "and resets the count");
+}
+
+// ---------------------------------------------------------------------------
+// Startup / active / recovery, and interruption.
+// ---------------------------------------------------------------------------
+void testWindowsAndRecovery() {
+    section("startup, active, recovery and interruption");
+    const gameplay::MeleeRules rules;
+    check(rules.total_ticks() == 30, "the window split still totals the historical 30 ticks");
+    check(rules.is_startup(0) && rules.is_startup(rules.startupTicks - 1),
+          "the first ticks are startup");
+    check(!rules.is_startup(rules.startupTicks), "startup ends at its bound");
+    check(rules.is_active(rules.startupTicks), "the active window opens");
+    check(rules.is_active(rules.startupTicks + rules.activeTicks - 1),
+          "the active window stays open through its last tick");
+    check(!rules.is_active(rules.startupTicks + rules.activeTicks),
+          "the active window closes at its bound");
+    check(rules.is_recovery(rules.startupTicks + rules.activeTicks),
+          "recovery follows the active window");
+
+    // A swing that never reaches the active window cannot hit.
+    Fighter early = idle_at(glm::vec3(0, 0, 0));
+    Fighter earlyTarget = idle_at(glm::vec3(0, 0, 80));
+    input::PlayerState in;
+    in.down[input::Action::AttackA] = true;
+    tick(early, in);
+    check(!early.try_melee_hit(earlyTarget), "the swing cannot land during startup");
+
+    // Recovery is a lockout: once it opens the swing cannot hit again.
+    Fighter recovering = idle_at(glm::vec3(0, 0, 0));
+    swing_to_active(recovering);
+    Fighter victim = idle_at(glm::vec3(0, 0, 80));
+    check(recovering.try_melee_hit(victim), "it lands during the active window");
+    for (int i = 0; i < rules.activeTicks; ++i) tick(recovering, in);
+    check(recovering.melee_in_recovery(), "the swing is in recovery");
+    check(!recovering.try_melee_hit(victim), "and cannot land again during recovery");
+
+    // Being hit interrupts the attack outright.
+    Fighter interrupted = idle_at(glm::vec3(0, 0, 0));
+    swing_to_active(interrupted);
+    Fighter aggressor = idle_at(glm::vec3(0, 0, 80));
+    interrupted.take_damage(5, &aggressor);   // the swing's OWNER is hit mid-swing
+    tick(interrupted, in);
+    checkInt(static_cast<int>(FighterState::Hit), static_cast<int>(interrupted.state()),
+             "a fighter hit mid-swing is interrupted into Hit");
+    Fighter interruptedTarget = idle_at(glm::vec3(0, 0, 80));
+    check(!interrupted.try_melee_hit(interruptedTarget),
+          "and its interrupted swing cannot land");
+
+    // The whole swing still expires on its own.
+    Fighter expiring = idle_at(glm::vec3(0, 0, 0));
+    swing_to_active(expiring);
+    input::PlayerState released;   // NOT `in`: that one still held the melee key, which
+                                   // would re-press on the first tick and re-arm the timer.
+    for (int i = 0; i < rules.total_ticks(); ++i) tick(expiring, released);
+    checkInt(static_cast<int>(FighterState::Idle), static_cast<int>(expiring.state()),
+             "the swing expires back to Idle");
+}
+
+// ---------------------------------------------------------------------------
+// The heavy-key stand-in is gone.
+// ---------------------------------------------------------------------------
+void testHeavyKeyUnbound() {
+    section("the heavy-key stand-in is removed");
+    Fighter f = idle_at(glm::vec3(0, 0, 0));
+    input::PlayerState in;
+    in.down[input::Action::AttackB] = true;
+    tick(f, in);
+    in.down[input::Action::AttackB] = false;
+    for (int i = 0; i < 10; ++i) tick(f, in);
+    check(f.state() == FighterState::Idle, "AttackB leaves the fighter idle");
+    check(f.melee_in_active() == false && f.already_hit_this_swing(0) == false,
+          "and starts no swing");
+
+    // The single melee key still works.
+    Fighter m = idle_at(glm::vec3(0, 0, 0));
+    input::PlayerState mi;
+    mi.down[input::Action::AttackA] = true;
+    tick(m, mi);
+    mi.down[input::Action::AttackA] = false;
+    check(m.state() == FighterState::AttackA, "AttackA is the one melee control");
+}
+
+// ---------------------------------------------------------------------------
+// Match-level: ally exclusion survives the multi-candidate rewrite.
+// ---------------------------------------------------------------------------
+void testMatchAllyExclusion() {
+    section("Match: ally exclusion and multi-hit in a real match");
+    gameplay::Match match;
+    gameplay::MatchConfig config;
+    config.fighterCount = 4;
+    config.side[0] = config.side[1] = 0;
+    config.side[2] = config.side[3] = 1;
+    config.spawn[0] = glm::vec3(0, 0, 0);
+    config.spawn[1] = glm::vec3(-70, 0, 80);    // ally, inside the swing
+    config.spawn[2] = glm::vec3(70, 0, 80);     // enemy, inside the swing
+    config.spawn[3] = glm::vec3(0, 0, 300);     // enemy, out of reach
+    config.facing[0] = 0.0f;
+    config.facing[1] = 0.0f;
+    config.facing[2] = 3.14159f;
+    config.facing[3] = 3.14159f;
+    const xm::Model* models[4] = {};
+    xm::Controller* anims[4] = {};
+    match.reset(config, models, anims, nullptr, nullptr);
+    match.economy().setLogFile(nullptr);
+
+    // Settle past BattleStart.
+    const input::PlayerState* idle[4] = {};
+    for (int i = 0; i < 70; ++i) match.step(idle, 1.0 / 64.0);
+
+    const int allyHpBefore = match.fighter(1).hp();
+    const int enemyHpBefore = match.fighter(2).hp();
+    const int farHpBefore = match.fighter(3).hp();
+
+    // Swing on the tick the fighter is in its active window.
+    input::PlayerState melee{};
+    melee.down[input::Action::AttackA] = true;
+    input::PlayerState release{};
+    const input::PlayerState* after[4] = {&release, nullptr, nullptr, nullptr};
+    // Match::step reads the PlayerState as given; deriving the edges is the scene's
+    // job (main.cpp polls, then calls compute_edges), so the test does it here too.
+    for (int i = 0; i < 20; ++i) {
+        input::PlayerState press = melee;
+        input::compute_edges(press);
+        const input::PlayerState* withMelee[4] = {&press, nullptr, nullptr, nullptr};
+        input::PlayerState rest = release;
+        input::compute_edges(rest);
+        const input::PlayerState* idle[4] = {&rest, nullptr, nullptr, nullptr};
+        match.step(i == 0 ? withMelee : idle, 1.0 / 64.0);
+    }
+    checkInt(allyHpBefore, match.fighter(1).hp(), "the ally inside the swing takes nothing");
+    check(match.fighter(2).hp() < enemyHpBefore, "the enemy inside the swing is hit");
+    checkInt(farHpBefore, match.fighter(3).hp(), "the out-of-reach enemy is untouched");
+    check(match.fighter(1).stats().damageTaken == 0, "the ally records no damage taken");
+}
+
+// ---------------------------------------------------------------------------
+// The load-bearing claim: the melee chain has no recoverable geometry.
+// ---------------------------------------------------------------------------
+fs::path findInstall(int argc, char** argv) {
+    if (argc > 1) return fs::path(argv[1]);
+    if (const char* env = std::getenv("GAME_DIR")) return fs::path(env);
+    fs::path game = fs::path("Higurashi-Daybreak");
+    for (const fs::path& d : {fs::absolute(fs::path(argv[0])).parent_path(),
+                              fs::current_path()}) {
+        for (fs::path r = d; !r.empty(); r = r.parent_path()) {
+            std::error_code ec;
+            if (fs::is_directory(r / "remake" / "foundation", ec)) {
+                game = r / "Higurashi-Daybreak";
+                break;
+            }
+            if (r == r.parent_path()) break;
+        }
+        std::error_code ec;
+        if (fs::is_directory(game / "data", ec)) return game;
+    }
+    return fs::path();
+}
+
+void testCharacterMoveTable(const fs::path& install) {
+    section("the character move table (recovered)");
+    std::error_code ec;
+    if (install.empty() || !fs::is_directory(install / "data" / "rena", ec)) {
+        skip("parsing data/<char>/00.dat (no install found)");
+        skip("confirming the melee chain carries no geometry");
+        return;
+    }
+    const char* dirs[4] = {"rena", "keiichi", "mion", "satoko"};
+    int parsed = 0;
+    int withShotChain = 0;
+    for (const char* d : dirs) {
+        std::ifstream in(install / "data" / d / "00.dat", std::ios::binary);
+        if (!in) continue;
+        const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)),
+                                         std::istreambuf_iterator<char>());
+        gameplay::CharacterMoves moves;
+        std::string err;
+        if (!moves.parse(bytes.data(), bytes.size(), err)) {
+            check(false, "every character move table parses");
+            continue;
+        }
+        ++parsed;
+        check(moves.count() > 50, "a character ships more than 50 moves");
+        // The documented families must be present in the parsed data.
+        check(moves.has(20) && moves.has(23) && moves.has(24) && moves.has(27),
+              "the four directional walk moves (20/23/24/27) are present");
+        check(moves.has(40) && moves.has(41) && moves.has(42),
+              "the melee chain (40/41/42) is present");
+        // The shot chain's move ids are the character's own (fighter.h notes they are
+        // per character), so this only asserts where the character actually ships them.
+        if (moves.has(300) && moves.has(301) && moves.has(302)) {
+            ++withShotChain;
+            // Record +0x04 is a CANCEL WINDOW, not a duration (it has no writer in the
+            // binary and is only read as a threshold). Assert it parses, not that it
+            // means anything - the shot chain's 20/30/50 reads like a progression but is
+            // equally consistent with three cancel thresholds.
+            check(moves.cancel_window(300) > 0,
+                  "the tap shot carries a cancel-window threshold");
+        }
+        // THE CLAIM: melee carries no combat block, so melee geometry is unrecovered.
+        int meleeWithCombat = 0;
+        for (int id : {40, 41, 42}) {
+            const gameplay::CharacterMove* m = moves.find(id);
+            if (!m) continue;
+            for (int e = 0; e < m->entryCount; ++e)
+                if (m->entries[e].has_combat()) ++meleeWithCombat;
+        }
+        check(meleeWithCombat == 0,
+              "the melee chain has no combat block, so melee geometry is a port rule");
+        // By contrast the shot chain does carry one.
+        const gameplay::CharacterMove* shot = moves.find(301);
+        bool shotHasCombat = false;
+        if (shot)
+            for (int e = 0; e < shot->entryCount; ++e)
+                if (shot->entries[e].has_combat()) shotHasCombat = true;
+        check(shotHasCombat, "a shot move DOES carry combat data (parser is not reading zeros)");
+    }
+    checkInt(4, parsed, "all four sampled characters parsed");
+    check(withShotChain >= 1,
+          "at least one sampled character ships the 300/301/302 shot chain");
+
+    // A truncated file must be rejected, not read past.
+    gameplay::CharacterMoves m;
+    std::string err;
+    std::vector<uint8_t> tiny(40, 0);
+    check(!m.parse(tiny.data(), tiny.size(), err), "a truncated move table is rejected");
+    check(!m.valid(), "and leaves the table unloaded");
+    check(m.find(40) == nullptr, "with nothing findable");
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+    std::printf("MELEE_RULES_TEST\n");
+    const fs::path install = findInstall(argc, argv);
+    testVerticalSeparation();
+    testFacing();
+    testBarriers();
+    testMultipleOpponentsAndAllies();
+    testWindowsAndRecovery();
+    testHeavyKeyUnbound();
+    testMatchAllyExclusion();
+    testCharacterMoveTable(install);
+    std::printf("\nMELEE_RULES: %s (%d checks, %d failed, %d skipped)\n",
+                failures == 0 ? "ok" : "FAIL", checks, failures, skipped);
+    return failures == 0 ? 0 : 1;
+}

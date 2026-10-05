@@ -105,15 +105,21 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[4], double dt) {
                              dt, m_movementCollision);
     }
 
-    // Melee resolves against the locked target when it is a living hostile, else the
-    // nearest living hostile. try_melee_hit re-checks liveness, and melee_target() never
-    // returns an ally, so an ally can be aimed at but never hit (projectile.h already
-    // excludes allies from shot collisions).
+    // Melee evaluates EVERY hostile in the swing volume, not one chosen opponent: a
+    // swing that clips two people should connect with both, and the per-victim hit set
+    // stops either from being hit twice by the same swing. Ally exclusion is the filter
+    // below, which is the single place that rule lives (projectile.h has the same one).
     for (int i = 0; i < m_config.fighterCount; ++i) {
-        const int target = melee_target(i);
-        if (target >= 0 && m_fighters[i].try_melee_hit(m_fighters[target])) {
-            out.meleeHit[i] = true;
-            out.meleeVictim[i] = target;
+        for (int j = 0; j < m_config.fighterCount; ++j) {
+            if (i == j) continue;
+            if (m_config.side[i] == m_config.side[j]) continue;      // allies excluded
+            if (!m_fighters[j].is_alive()) continue;
+            if (m_fighters[i].already_hit_this_swing(j)) continue;   // once per swing
+            if (m_fighters[i].try_melee_hit(m_fighters[j], m_movementCollision)) {
+                m_fighters[i].note_melee_hit(j);
+                out.meleeHit[i] = true;
+                out.meleeVictim[i] = j;
+            }
         }
     }
 

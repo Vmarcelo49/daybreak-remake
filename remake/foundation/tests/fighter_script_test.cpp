@@ -392,7 +392,8 @@ void test_attacks() {
             tick(a, in);
             if (first_hit < 0 && a.try_melee_hit(b)) first_hit = k;
         }
-        check_int("first frame the swing can land (elapsed >= 5)", 5, first_hit);
+        // Startup is a MeleeRules window now (5 ticks), not a bare elapsed>=5 test.
+        check_int("first frame the swing can land (startup window over)", 4, first_hit);
         check_int("light melee damage", 100 - 5, b.hp());
         check_int("target state after the hit", static_cast<int>(FighterState::Hit),
                   static_cast<int>(b.state()));
@@ -404,31 +405,42 @@ void test_attacks() {
             b.update(nullptr, nullptr, kDt);
             ++stun;
         }
-        check_int("stun length after a melee hit", 15, stun);
+        // A melee inflicts its own active-window stun (port rule, melee_rules.h),
+        // not the shared kHitStunFrames.
+        check_int("stun length after a melee hit", 8, stun);
     }
 
     {
         // Range: inclusive at exactly kMeleeRange, exclusive just past it.
+        // The recovered hitbox is a 3D sphere of (30 + radius) centred on the attacker's
+        // chest height, so at ground level the horizontal reach is sqrt(160^2 - 84^2)
+        // ~= 136 — NOT a flat 160, and NOT an arc. The target's head and chest anchors
+        // are both tested (FUN_0063dad0:238-243).
         Fighter a1 = make_idle_fighter(glm::vec3(0, 0, 0));
-        Fighter t1 = make_idle_fighter(glm::vec3(0, 0, 160));
+        Fighter t1 = make_idle_fighter(glm::vec3(0, 0, 120));
         Input in1;
         press_attack(a1, in1, 5);
-        check_bool("melee lands at exactly 160 on Z", true, a1.try_melee_hit(t1));
+        check_bool("melee lands inside the sphere at 120", true, a1.try_melee_hit(t1));
         Fighter a2 = make_idle_fighter(glm::vec3(0, 0, 0));
         Fighter t2 = make_idle_fighter(glm::vec3(0, 0, 160.5f));
         Input in2;
         press_attack(a2, in2, 5);
-        check_bool("melee misses at 160.5 on Z", false, a2.try_melee_hit(t2));
+        check_bool("melee misses past the sphere's ground-level reach", false,
+                   a2.try_melee_hit(t2));
         Fighter a3 = make_idle_fighter(glm::vec3(0, 0, 0));
-        Fighter t3 = make_idle_fighter(glm::vec3(160, 0, 0));
+        Fighter t3 = make_idle_fighter(glm::vec3(0, 0, 130));
         Input in3;
         press_attack(a3, in3, 5);
-        check_bool("melee lands at exactly 160 on X", true, a3.try_melee_hit(t3));
+        check_bool("melee lands at 130, still inside", true, a3.try_melee_hit(t3));
+        // There is NO cone (FUN_0063b470 has no angle term), so behind is inside the
+        // sphere on exactly the same terms as in front. An earlier draft asserted the
+        // opposite from an invented 60-degree arc; the sphere is what the corpus supports.
         Fighter a4 = make_idle_fighter(glm::vec3(0, 0, 0));
-        Fighter t4 = make_idle_fighter(glm::vec3(0, 300, 0));  // Y is ignored
+        Fighter t4 = make_idle_fighter(glm::vec3(0, 0, -120));
         Input in4;
         press_attack(a4, in4, 5);
-        check_bool("melee is an XZ check (Y ignored)", true, a4.try_melee_hit(t4));
+        check_bool("melee behind lands too (sphere, no angle term)", true,
+                   a4.try_melee_hit(t4));
     }
 
     {
@@ -438,14 +450,21 @@ void test_attacks() {
         Input in;
         press_attack(a, in, 5);
         check_bool("swing 1 lands", true, a.try_melee_hit(b));
-        check_bool("same swing cannot hit twice", false, a.try_melee_hit(b));
+        // Match records the victim, which is what stops the second connection; the
+        // Fighter-side query is the per-victim set (issue #10).
+        a.note_melee_hit(1);
+        check_bool("the swing now records victim 1 as hit", true,
+                   a.already_hit_this_swing(1));
+        check_bool("and a fresh victim is still hittable", false,
+                   a.already_hit_this_swing(0));
         check_int("hp after one hit", 95, b.hp());
         // Re-pressing while still in AttackA resets the timer but not the
         // swing flag (set_state early-returns on an unchanged state).
         in.set(fnd::input::Action::AttackA, true);
         tick(a, in);
         in.set(fnd::input::Action::AttackA, false);
-        check_bool("re-press mid-swing keeps the swing flag", false, a.try_melee_hit(b));
+        check_bool("re-press mid-swing keeps the swing's hit set",
+                   true, a.already_hit_this_swing(1));
         // Let the swing expire, then swing again: the flag is cleared.
         for (int i = 0; i < 31; ++i) tick(a, in);
         press_attack(a, in, 5);
@@ -454,17 +473,16 @@ void test_attacks() {
     }
 
     {
+        // The heavy-key stand-in is gone (issue #10): the original has one melee key
+        // and no second heavy move, so AttackB must no longer start anything.
         Fighter a = make_idle_fighter(glm::vec3(0, 0, 0));
         Fighter b = make_idle_fighter(glm::vec3(0, 0, 100));
         Input in;
         in.set(fnd::input::Action::AttackB, true);
         tick(a, in);
         in.set(fnd::input::Action::AttackB, false);
-        check_int("state after heavy press", static_cast<int>(FighterState::AttackB),
+        check_int("AttackB no longer starts an attack", static_cast<int>(FighterState::Idle),
                   static_cast<int>(a.state()));
-        for (int i = 0; i < 5; ++i) tick(a, in);
-        check_bool("heavy lands", true, a.try_melee_hit(b));
-        check_int("heavy melee damage", 100 - 12, b.hp());
     }
 }
 

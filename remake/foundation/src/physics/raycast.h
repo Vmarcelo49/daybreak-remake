@@ -146,6 +146,15 @@ bool raycastModelAny(const xm::Model& model, const ModelIndex& index, const glm:
 RayHit raycastModel(const xm::Model& model, const glm::vec3& origin, const glm::vec3& dir,
                     float maxDist = 0.f, RaycastStats* stats = nullptr);
 
+// True when anything SOLID lies between `from` and `to`. Built on raycastModelAny's
+// early-out walk (raycast.cpp:94-120), which is the reference's own occlusion shape,
+// driven along the segment in the same short steps the camera clamp uses so a fast
+// swing cannot step past a thin wall. A null mesh or an empty index reports "not
+// blocked", which is what the reference does when collision.x is absent — melee then
+// passes, rather than every attack silently failing on a stage without collision.
+bool segmentBlocked(const glm::vec3& from, const glm::vec3& to, const xm::Model* model,
+                    const ModelIndex* index = nullptr);
+
 // A walkable surface found in the stage's ground channel. The normal is kept so
 // callers and tests can distinguish a valid support plane from a vertical wall.
 struct GroundHit {

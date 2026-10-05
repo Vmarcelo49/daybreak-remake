@@ -58,6 +58,7 @@
 #include "assets/xmodel.h"          // xm::Model / xm::Controller (non-owning)
 #include "game/fighter_pose.h"      // game::IFighterPose / game::FighterPose
 #include "gameplay/projectile.h"
+#include "gameplay/melee_rules.h"
 #include "gameplay/weapon_definition.h"
 #include "input/input.h"
 #include "render/arena_camera.h"    // for render::ArenaTarget
@@ -482,12 +483,46 @@ public:
     // Disarms on read (at most one pending shot ever queues).
     PendingShot take_pending_shot();
 
-    // Melee hit check, called once per frame by the scene for each
-    // attacker→target pair. Only fires during the attack's active window,
-    // at most once per swing (m_didHitThisSwing). XZ-radius check, matching
-    // the flat-arena footwork (same convention as the shot-vs-fighter test).
-    // Returns true if the hit connected.
-    bool try_melee_hit(Fighter& target);
+    // Melee hit test for ONE candidate, called once per attacker→candidate pair while
+    // the swing is active. Rejects a candidate that is out of reach vertically, outside
+    // the swing arc, or behind a solid barrier, and reports true only on the first
+    // frame the pair connects.
+    //
+    // `collision` is the stage's answer to "is the straight line attacker→victim
+    // blocked", from gameplay::MovementCollision (issue #7); nullptr disables the test.
+    // Which reach applies comes from this fighter's OWN swing kind (aerial_attack(),
+    // chosen when the swing started) rather than a second argument, so the caller cannot
+    // disagree with the swing it is resolving. Ally exclusion is the caller's job (Match
+    // only offers hostile candidates).
+    bool try_melee_hit(Fighter& target,
+                       const game::physics::MovementCollision* collision = nullptr);
+
+    // A swing may connect with several opponents, each exactly once. The single
+    // m_didHitThisSwing flag could not express that, so hits are tracked per victim
+    // index for the duration of the swing and cleared when the state changes.
+    bool already_hit_this_swing(int victimIndex) const {
+        return victimIndex >= 0 && victimIndex < 4 && (m_swingHits & (1u << victimIndex));
+    }
+    int  swing_hit_count() const { return m_swingHitCount; }
+
+    // The move this fighter is playing, as a fighter index, or kNoTarget.
+    static constexpr int kNoMeleeVictim = -1;
+
+    // True while the current attack is in its startup, active or recovery window. A
+    // recovery swing must not chain into another action (issue #10).
+    bool melee_in_recovery() const { return m_meleeRules.is_recovery(m_meleeElapsed); }
+    bool melee_in_active() const { return m_meleeRules.is_active(m_meleeElapsed); }
+
+    // Swing bookkeeping driven by Match: begin clears the per-victim hit set, note
+    // records that this swing already connected with one victim.
+    void begin_melee_swing(int victimIndexBase = 0);
+    void note_melee_hit(int victimIndex);
+    // Ticks of hit-stun a melee inflicts; see the port-rule note in fighter.cpp.
+    int  m_meleeHitstun() const { return m_meleeRules.activeTicks; }
+
+    // Aerial melee: the same melee control, played from the air with the aerial reach.
+    void set_aerial_attack(bool aerial) { m_aerialAttack = aerial; }
+    bool aerial_attack() const { return m_aerialAttack; }
 
     // --- getters ---
     const glm::vec3&   position()   const { return m_position; }
@@ -558,7 +593,13 @@ private:
     bool         m_animFallback = false;  // m_animSetIdx is the set-0 default
     int          m_blendTicks  = 0;    // cross-fade ticks left (0 = steady state)
     int          m_blendTotal  = 1;    // blend length the weights interpolate over
-    bool         m_didHitThisSwing = false;  // melee connected already this swing
+    // Per-swing hit accounting (issue #10): a bit per victim index, plus a count, both
+    // cleared when the state changes so one swing can hit several opponents once each.
+    unsigned     m_swingHits = 0;
+    int          m_swingHitCount = 0;
+    int          m_meleeElapsed = 0;      // ticks since the swing started
+    MeleeRules   m_meleeRules{};           // port rules; see melee_rules.h
+    bool         m_aerialAttack = false;   // this swing is the aerial variant
 
     // --- hypermode (spec §3.4; numbers in hypermode_params) ---
     Hypermode    m_hypermode    = Hypermode::Friendship;

@@ -151,6 +151,7 @@ add_library(foundation_gameplay STATIC
     src/gameplay/projectile.cpp
     src/gameplay/match.cpp
     src/gameplay/match_economy.cpp
+    src/gameplay/character_moves.cpp
     src/gameplay/weapon_definition.cpp
     src/gameplay/hud_fill.cpp)
 target_include_directories(foundation_gameplay PUBLIC src)
@@ -266,6 +267,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_executable(weapon_definition_test tests/weapon_definition_test.cpp)
     target_link_libraries(weapon_definition_test PRIVATE foundation_gameplay)
     add_test(NAME weapon_definition_test COMMAND weapon_definition_test)
+
+    # Issue #10: directional/aerial/multi-target melee. Needs the gameplay lib for
+    # Match/Fighter and the physics lib for the #7 collision mesh; the character move
+    # table parse is device-free and skips its shipped-data half without an install.
+    add_executable(melee_rules_test tests/melee_rules_test.cpp)
+    target_link_libraries(melee_rules_test PRIVATE foundation_gameplay)
+    add_test(NAME melee_rules_test COMMAND melee_rules_test)
 
     # The per-fighter combat target (issue #8): cycling, hold-for-ally, the 15-tick
     # switch pulse, the KO/invalid-index fallbacks and the Match wiring that makes
