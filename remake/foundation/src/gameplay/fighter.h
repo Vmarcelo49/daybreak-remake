@@ -175,18 +175,24 @@ inline int state_to_anim_set(FighterState s) {
         // calls FUN_00421080(0); FUN_00428510 returns to 0 whenever nothing else
         // applies. Its single phase names set 0.
         case FighterState::Idle:        return 0;
-        // Moves 0x14/0x17/0x18/0x1b (20/23/24/27) are the four directional walk
-        // chains — the only 3-phase, 5-frame-per-phase moves in the .dat, selected
-        // by FUN_0043ded0 (0x43ded0: `FUN_00421080(0x14)` when the direction field
-        // is 1 and the fighter faces its movement, 0x17/0x18/0x1b for 4/3/2).
-        // 0x14 = the forward one; its first phase is set 13.
-        case FighterState::Walk:        return 13;
-        // Move 0x1e (30) is the same function's other branch (backpedal), the only
-        // 3-phase 10-frame chain (54,55,56) — the fastest locomotion set.
-        case FighterState::Run:         return 54;
-        // Moves 0x28/0x29/0x2a (40/41/42) are the melee chain: each is started in
-        // 22-26 of the ~100 per-character move scripts (the most common attack
-        // moves after the locomotion ones), and their first phases are 2, 3, 5.
+        // Move 10 is the walk: a single phase naming set 1 (measured across every
+        // shipped character .dat; controller index 1 is the walk clip in
+        // --anim-player). An earlier revision named move 0x14 (20) here, but its
+        // phases [13, 14, 15] are dash startup/loop/recovery (issue #26).
+        case FighterState::Walk:        return 1;
+        // Move 0x14 (20) is the forward dash chain, selected by FUN_0043ded0
+        // (0x43ded0: `FUN_00421080(0x14)`); its first phase names set 13, the dash
+        // startup (0x17/0x18/0x1b are the other directional dash chains). An earlier
+        // revision named move 0x1e (30) here, but its phases [54, 55, 56] are the
+        // jump-forward chain (issue #26). The port's Run IS the double-tap dash.
+        case FighterState::Run:         return 13;
+        // KNOWN-WRONG placeholders (issue #26), values unchanged pending the weapon
+        // dimension: moves 0x28/0x29/0x2a (40/41/42) are the JUMP chain — first
+        // phases 2, 3, 5, all zero combat — not the melee chain they were mistaken
+        // for. No character has an unarmed attack; real attacks are the weapon
+        // moves (300+: first phases 31/33/34 nata, 39/40 kick, 51–53 lunge), whose
+        // sets differ per character and costume. AttackA must resolve to the
+        // equipped weapon's set; until then these rows play the jump clips.
         case FighterState::AttackA:     return 2;
         case FighterState::AttackB:     return 3;
         case FighterState::AttackC:     return 5;

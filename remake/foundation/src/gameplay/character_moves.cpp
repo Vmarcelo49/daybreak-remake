@@ -9,8 +9,7 @@
 namespace gameplay {
 namespace {
 
-constexpr int kMaxSectionsPerMove = 32;   // guards the read against a corrupt count
-constexpr int kMaxEntriesPerMove  = 32;
+constexpr int kMaxEntriesPerMove  = 32;   // guards the read against a corrupt count
 
 }  // namespace
 
@@ -67,7 +66,8 @@ bool CharacterMoves::parse(const uint8_t* bytes, size_t size, std::string& error
     for (int mi = 0; mi < moveCount; ++mi) {
         int id = 0, flags = 0, frames = 0, sections = 0;
         if (!u32(id) || !u32(flags) || !u32(frames) || !u32(sections) ||
-            id < 0 || id >= kMaxMoves || sections < 0 || sections > kMaxSectionsPerMove) {
+            id < 0 || id >= kMaxMoves || sections < 0 ||
+            sections > CharacterMove::kMaxSections) {
             error = "character moves: truncated move " + std::to_string(mi);
             return false;
         }
@@ -89,6 +89,11 @@ bool CharacterMoves::parse(const uint8_t* bytes, size_t size, std::string& error
                 error = "character moves: truncated section in move " + std::to_string(id);
                 return false;
             }
+            // The section tag IS the animation set index the original binds for this
+            // phase (FUN_00421100/FUN_0041f580 via phase[0] — issue #26).
+            MovePhase& phase = move.phases[s];
+            phase = MovePhase{};
+            phase.setIndex = sectionTag;
             for (int e = 0; e < entryCount; ++e) {
                 MoveEntry entry;
                 int v04 = 0, radius = 0;
@@ -114,6 +119,7 @@ bool CharacterMoves::parse(const uint8_t* bytes, size_t size, std::string& error
                     return false;
                 }
                 f32(); f32(); f32();          // v18, v1c, v20
+                entry.activeFrame = v04;
                 entry.hitRadius = radius;
                 entry.baseDamage      = combat[0x00];
                 entry.hpDamage        = combat[0x05];
@@ -125,9 +131,10 @@ bool CharacterMoves::parse(const uint8_t* bytes, size_t size, std::string& error
                 entry.reactionMove    = combat[0x0d];
                 entry.chargeTier1Move = combat[0x0e];
                 entry.chargeTier2Move = combat[0x0f];
-                // Keep the first entries; the cap is well above anything shipped.
-                if (move.entryCount < CharacterMove::kMaxEntries)
-                    move.entries[move.entryCount++] = entry;
+                // The stream is always consumed whole; storage keeps the first entries
+                // (the cap covers everything shipped: at most 19 per phase, move 350).
+                if (phase.entryCount < MovePhase::kMaxPhaseEntries)
+                    phase.entries[phase.entryCount++] = entry;
             }
         }
         ++m_count;
@@ -147,6 +154,11 @@ const CharacterMove* CharacterMoves::find(int moveId) const {
 int CharacterMoves::cancel_window(int moveId) const {
     const CharacterMove* m = find(moveId);
     return m ? m->cancelWindow : 0;
+}
+
+int CharacterMoves::first_set_index(int moveId) const {
+    const CharacterMove* m = find(moveId);
+    return m ? m->first_set_index() : -1;
 }
 
 }  // namespace gameplay

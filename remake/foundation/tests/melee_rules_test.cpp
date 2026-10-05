@@ -13,8 +13,10 @@
 //    * the heavy-key stand-in is gone.
 //
 //  Also parses the shipped character move tables when an install is present, to assert
-//  the claim the whole port rests on: the melee chain (moves 40/41/42) exists in every
-//  character but carries no combat block, so no melee number here is recovered.
+//  the claim the animation mapping rests on (issue #26): each phase's section tag is
+//  the animation set index — move 10 opens on 1 (walk), move 20 runs [13,14,15]
+//  (dash), move 30 opens on 54, move 40 on 2 — and moves 40/41/42 are the jump
+//  chain with no combat block, while the 300-family weapon phases carry real hits.
 //
 //  Build (CMake target `melee_rules_test`):
 //    cmake --build remake/foundation/build/linux --target melee_rules_test
@@ -457,7 +459,7 @@ void testCharacterMoveTable(const fs::path& install) {
         check(moves.has(20) && moves.has(23) && moves.has(24) && moves.has(27),
               "the four directional walk moves (20/23/24/27) are present");
         check(moves.has(40) && moves.has(41) && moves.has(42),
-              "the melee chain (40/41/42) is present");
+              "the 40/41/42 jump chain is present");
         // The shot chain's move ids are the character's own (fighter.h notes they are
         // per character), so this only asserts where the character actually ships them.
         if (moves.has(300) && moves.has(301) && moves.has(302)) {
@@ -469,22 +471,63 @@ void testCharacterMoveTable(const fs::path& install) {
             check(moves.cancel_window(300) > 0,
                   "the tap shot carries a cancel-window threshold");
         }
-        // THE CLAIM: melee carries no combat block, so melee geometry is unrecovered.
-        int meleeWithCombat = 0;
+        // THE CLAIM, corrected by issue #26: moves 40/41/42 are the JUMP chain, not
+        // the melee chain, and they carry no combat block. Real melee numbers live
+        // in the 300-family weapon phases (Prop/Toe-bone entries below).
+        int jumpChainCombat = 0;
         for (int id : {40, 41, 42}) {
             const gameplay::CharacterMove* m = moves.find(id);
             if (!m) continue;
-            for (int e = 0; e < m->entryCount; ++e)
-                if (m->entries[e].has_combat()) ++meleeWithCombat;
+            for (int p = 0; p < m->sectionCount; ++p)
+                for (int e = 0; e < m->phases[p].entryCount; ++e)
+                    if (m->phases[p].entries[e].has_combat()) ++jumpChainCombat;
         }
-        check(meleeWithCombat == 0,
-              "the melee chain has no combat block, so melee geometry is a port rule");
+        check(jumpChainCombat == 0,
+              "the 40/41/42 jump chain has no combat block");
+        // Issue #26 anchors: each phase's section tag is the animation set index the
+        // original binds (FUN_00421100/FUN_0041f580 via phase[0]).
+        check(moves.first_set_index(10) == 1,
+              "move 10 (walk) opens on set 1, not 13");
+        {
+            const gameplay::CharacterMove* dash = moves.find(20);
+            check(dash && dash->sectionCount == 3 &&
+                  dash->phase_set_index(0) == 13 &&
+                  dash->phase_set_index(1) == 14 &&
+                  dash->phase_set_index(2) == 15,
+                  "move 20 (dash) phases are [13, 14, 15]");
+        }
+        check(moves.first_set_index(30) == 54,
+              "move 30 (jump-forward) opens on set 54, not the dash");
+        check(moves.first_set_index(40) == 2,
+              "move 40 (jump startup) opens on set 2: AttackA->2 plays a jump clip");
+        check(moves.first_set_index(300) == 31,
+              "move 300 (weapon) opens on set 31: attacks are weapon sets");
+        if (std::string(d) == "rena") {
+            const gameplay::CharacterMove* big = moves.find(350);
+            check(big && big->sectionCount >= 1 && big->phases[0].entryCount == 19,
+                  "move 350's 19-effect phase parses whole (no silent truncation)");
+            // The damaging entry carries its in-phase frame (record v04): rena move
+            // 301's weapon hit lands on frame 7 at radius 20. Timings differ per
+            // character (keiichi 9, mion 10, satoko 17), which is why the hit
+            // window must come from data, not a shared constant (issue #26 step 4).
+            const gameplay::CharacterMove* swing = moves.find(301);
+            bool hitAt7 = false;
+            if (swing)
+                for (int p = 0; p < swing->sectionCount; ++p)
+                    for (int e = 0; e < swing->phases[p].entryCount; ++e) {
+                        const auto& en = swing->phases[p].entries[e];
+                        if (en.baseDamage > 0 && en.activeFrame == 7 && en.hitRadius == 20)
+                            hitAt7 = true;
+                    }
+            check(hitAt7, "rena move 301's hit entry fires on frame 7 at radius 20");
+        }
         // By contrast the shot chain does carry one.
         const gameplay::CharacterMove* shot = moves.find(301);
         bool shotHasCombat = false;
         if (shot)
-            for (int e = 0; e < shot->entryCount; ++e)
-                if (shot->entries[e].has_combat()) shotHasCombat = true;
+            for (int p = 0; p < shot->sectionCount; ++p)
+                for (int e = 0; e < shot->phases[p].entryCount; ++e)
+                    if (shot->phases[p].entries[e].has_combat()) shotHasCombat = true;
         check(shotHasCombat, "a shot move DOES carry combat data (parser is not reading zeros)");
     }
     checkInt(4, parsed, "all four sampled characters parsed");

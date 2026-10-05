@@ -1390,11 +1390,12 @@ void test_anim_binding() {
     struct Row { FighterState state; int set; const char* name; };
     const Row rows[] = {
         {FighterState::Idle,        0,  "Anim-124"},  // move 0 (reset 0x41de68)
-        {FighterState::Walk,        13, "Anim-111"},  // move 0x14, forward walk
-        {FighterState::Run,         54, "Anim-70"},   // move 0x1e, fastest chain
-        {FighterState::AttackA,     2,  "Anim-122"},  // melee chain 0x28/0x29/0x2a
-        {FighterState::AttackB,     3,  "Anim-121"},
-        {FighterState::AttackC,     5,  "Anim-119"},
+        {FighterState::Walk,        1,  "Anim-123"},  // move 10, walk (issue #26)
+        {FighterState::Run,         13, "Anim-111"},  // move 0x14, forward dash
+        {FighterState::AttackA,     2,  "Anim-122"},  // KNOWN-WRONG placeholder:
+        {FighterState::AttackB,     3,  "Anim-121"},  // moves 40/41/42 are the jump
+        {FighterState::AttackC,     5,  "Anim-119"},  // chain; attacks need the
+                                                      // weapon dimension (issue #26)
         {FighterState::Hit,         95, "Anim-29"},   // move 0x67 (cases 0xe7/0xca)
         {FighterState::Knockdown,   28, "Anim-96"},   // move 0xc4
         {FighterState::KO,          97, "Anim-27"},   // move 0xcb (cases 0xc9/0xcc)
@@ -1430,7 +1431,7 @@ void test_anim_binding() {
     }
 
     // Chained blends on one fighter propagate the old set: Idle completes
-    // 43 -> 0, Walk blends 0 -> 13, and an AttackA interruption 3 ticks in
+    // 43 -> 0, Walk blends 0 -> 1, and an AttackA interruption 3 ticks in
     // only retargets track 1 (FUN_00421240 rebinds track 1 alone): track 0
     // keeps the old set and the weights continue from their live values, so
     // the pose never snaps. 19 updates total, inside the 60-frame state
@@ -1441,7 +1442,7 @@ void test_anim_binding() {
     check_int("first blend settles on track 0", 0, ctrl.trackAnimationSet(0));
     f.set_state(FighterState::Walk);
     check_int("chained blend holds the previous set", 0, ctrl.trackAnimationSet(0));
-    check_int("chained blend targets track 1", 13, ctrl.trackAnimationSet(1));
+    check_int("chained blend targets track 1", 1, ctrl.trackAnimationSet(1));
     for (int t = 0; t < 3; ++t) f.update(nullptr, nullptr, kDt);
     f.set_state(FighterState::AttackA);   // interrupts: track 1 -> 2, no snap
     check_int("interruption keeps the old set on track 0", 0, ctrl.trackAnimationSet(0));

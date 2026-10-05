@@ -1,8 +1,11 @@
 # Animation set indices and the state → set mapping
 
-**Status:** analysis complete, no fix applied. The current `state_to_anim_set` table in
-`src/gameplay/fighter.h` is wrong and this document says why, what replaces it, and what
-still has to be recovered.
+**Status:** steps 1–2 partially applied — `CharacterMoves` now exposes each phase's
+set index and `state_to_anim_set` retargets Walk→1 (move 10) and Run→13 (move 20).
+AttackA/B/C stay on the old rows as marked placeholders pending the weapon
+dimension (step 3); phase durations, melee numbers and the #10 re-validation
+(steps 1b, 4, 5) are still open. The table history below is kept because it is
+the evidence for the remaining steps.
 
 Built from three sources, kept separate on purpose because they have different confidence:
 
@@ -153,12 +156,16 @@ against the logic tick rate.
 
 ## 7. What a fix requires, in order
 
-1. **Expose the phase set index in `character_moves.cpp`.** It currently models *effect*
-   records (30-byte name + combat block), which is a different structure from the phase list
-   (`{phaseField, frameCount}` + 150-byte frame records). Both parse the same file cleanly;
-   which offset belongs to which is not yet settled from the dump.
+1. **Expose the phase set index in `character_moves.cpp`.** DONE for the index:
+   each phase keeps its section tag (`MovePhase::setIndex`, `first_set_index()`),
+   which the file layout verifies end-to-end (moves end `0xb564`, the 124-entry
+   anim table lands exactly on EOF). NOT DONE: the phase *duration* — the file
+   dword seeding the +0x1C countdown is still unpinned (it hides inside the
+   phase-vector construction), and the anim-table frame records are facial
+   `.bmp` swaps, not timing, so they must not be read as durations.
 2. **Re-derive `state_to_anim_set` from move id → phase → index**, anchored on the verified
-   move 20 → `[13,14,15]` dash correspondence.
+   move 20 → `[13,14,15]` dash correspondence. DONE for locomotion (Walk→1,
+   Run→13); attack rows still pending step 3.
 3. **Add the weapon dimension** to attack-state resolution: `AttackA` must select the equipped
    weapon's set, using the per-character/per-weapon indices already flagged for moves 300+.
 4. **Un-port the melee constants.** Reach and damage move out of `melee_rules.h` and into the
