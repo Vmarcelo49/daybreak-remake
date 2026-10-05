@@ -21,8 +21,11 @@ namespace game {
 // One effect event. Spawn carries everything the renderer needs to instance
 // a card (world position + which effect asset to draw + lifetime); kill
 // retires a live card by id (hit-spark expiry, projectile.h lifetimes).
-// `asset` indexes the renderer's effect-asset table — never a file path, so
-// no asset-layer dependency leaks into gameplay code.
+// `id` is an EVENT INSTANCE id: the spawner allocates one per spawn from a
+// monotonic counter (issue #17), so two hits in the same tick are two instances and
+// each retires on its own ttl — never a reused FIFO slot. `asset` indexes the
+// renderer's effect-asset table — never a file path, so no asset-layer dependency
+// leaks into gameplay code.
 struct EffectEvent {
     enum class Type : std::uint8_t { Spawn, Kill };
 
