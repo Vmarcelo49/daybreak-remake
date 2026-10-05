@@ -52,6 +52,7 @@
 #include "game/match_view.h"
 #include "game/view_layout.h"
 #include "gameplay/arena_camera.h"
+#include "gameplay/battle_pause.h"
 #include "gameplay/match.h"
 #include "gameplay/fixed_step.h"
 #include "gameplay/bot_input.h"
@@ -613,6 +614,7 @@ struct App {
     double                       apTime = 0.0;       // seconds into the clip
     double                       apLength = 1.0;     // the clip's own length
     ui::CaptionText              apText;
+    ui::CaptionText              pauseText;
 
     // Playable match (Phase 2): the ported simulation drives the fighters, the HUD
     // values and the effects, instead of the versus vignette's frame-index script.
@@ -654,6 +656,13 @@ struct App {
     std::string                  settingsPath;
     bool                         settingsActive = false;
     bool                         settingsDirty = false;
+    // Battle pause (issue #15): the recovered freeze flag plus the port's menu cursor. The
+    // authoritative gate lives in Match (set_paused); this is the host's presentation and
+    // input state.
+    bool                         battlePaused = false;
+    gameplay::PauseMenu          pauseMenu;
+    fnd::audio::SfxHandle        pauseSound = fnd::audio::kInvalidSfx;
+    bool                         pauseSoundTried = false;
     bool                         settingsSaveReported = false;
     double                       settingsDirtyAt = 0.0;
     double                       settingsNextSaveAt = 0.0;
@@ -863,6 +872,260 @@ static void pollUserSettings(App& app, double now) {
     if (now < app.settingsNextSaveAt) return;
     flushUserSettings(app);
     if (app.settingsDirty) app.settingsNextSaveAt = now + 5.0;   // failed: try again later
+}
+
+// Defined beside the media helpers further down; the pause cue loads through it.
+static fnd::audio::SfxHandle loadSoundAsset(fnd::audio::Sdl3Engine& engine, const std::string& path);
+// Defined with the match setup further down; the standalone rematch rebuilds through it.
+static bool initMatch(App& app);
+
+// --- battle pause (issue #15) ------------------------------------------------------
+// The freeze itself is recovered: the original's pause flag scene+0x4430 gates its whole
+// battle update (FUN_00634f60 @0x635093-0x6350aa skips the frame counter and every
+// fighter/economy/camera step) and is toggled from the per-fighter pause action while the
+// live battle phase runs (@0x634fb3-0x635006, playing system SE 0x11). What the port adds
+// is the readable four-row menu, its captions and the leave-battle actions — see
+// gameplay/battle_pause.h for the full provenance and docs/PAUSE.md for the policy.
+
+// Pause is a live-battle feature of the interactive frontend only. Every capture and
+// replay path keeps its historical behaviour — --match, --versus, --hud-test,
+// --screen=battle captures, --out/--headless runs and bounded --frames runs never enter
+// the pause state — so their frames and traces are identical whether or not a pause key is
+// bound. Same shape as #19's usesUserConfig, for the same reason.
+static bool battlePauseAvailable(const App& app) {
+    return app.matchMode && app.opts.out.empty() && !app.opts.headless && app.opts.frames == 0;
+}
+
+// The controller slot that drives a frontend panel, or -1 for COM. The pause edge and the
+// menu read the controllers that actually own a fighter, not every open pad.
+static int panelController(const App& app, int panel) {
+    const int controller = app.frontend.slots[panel].controller;
+    return (controller >= 0 && controller < 4) ? controller : -1;
+}
+
+// The controller slots whose pause edge counts: a front-end battle's fighters' controllers,
+// or P1's device on the standalone --match path (the other live offline battle — its P2 is
+// the dummy the DX9 scene passes, so there is no COM to fight). Fills `out` and returns how
+// many slots there are.
+static int battlePauseControllers(const App& app, int out[4]) {
+    if (!app.frontendMatch) {
+        out[0] = 0;
+        return app.matchInputReady ? 1 : 0;
+    }
+    int count = 0;
+    for (int i = 0; i < app.battleLaunch.fighterCount && count < 4; ++i) {
+        const int controller = panelController(app, app.battleLaunch.fighters[i].panel);
+        if (controller >= 0) out[count++] = controller;
+    }
+    return count;
+}
+
+// The pause action edge, from the same controller slots the tactics gesture reads.
+static bool battlePausePressed(const App& app) {
+    int controllers[4] = {-1, -1, -1, -1};
+    const int count = battlePauseControllers(app, controllers);
+    for (int i = 0; i < count; ++i)
+        if (app.tickInput[controllers[i]].just_pressed[fnd::input::Pause]) return true;
+    return false;
+}
+
+// Combat SFX are the gameplay bus (channels 16..31, audio.h). While paused no new cue can
+// start (the match does not step) and this stops the ones already ringing, so a pause
+// cannot leave a hit cue playing over a frozen frame. BGM is deliberately left alone: the
+// original's pause path plays SE 0x11 and never touches the music stream.
+static void suspendCombatSfx(App& app) {
+    int first = 0, last = 0;
+    if (!fnd::audio::bus_range(fnd::audio::SfxBus::Sfx, first, last)) return;
+    for (int channel = first; channel <= last; ++channel) app.versusAudio.stop(channel);
+}
+
+// The recovered pause cue: system SE 0x11 (FUN_0064aed0(0x11), FUN_00634f60 @0x634fe8),
+// loaded from data/sysse/017 once and reused. A missing asset leaves the pause silent
+// rather than failing it.
+static void playPauseCue(App& app) {
+    if (!app.pauseSoundTried) {
+        app.pauseSoundTried = true;
+        char stem[48];
+        std::snprintf(stem, sizeof(stem), "data/sysse/%03d", 0x11);
+        const std::string path = fnd::assets::assetSource().resolve(
+            {std::string(stem) + ".cnv", std::string(stem) + ".wav"});
+        app.pauseSound = loadSoundAsset(app.menuAudio, path);
+    }
+    if (app.pauseSound >= 0) app.menuAudio.play(app.pauseSound, fnd::audio::SfxBus::Ui);
+}
+
+static void enterBattlePause(App& app, const char* reason) {
+    if (app.battlePaused) return;
+    app.battlePaused = true;
+    app.match.set_paused(true);   // the authoritative gate (gameplay/match.h)
+    app.pauseMenu.rows = app.frontendMatch ? gameplay::kPauseRowsWithSelection
+                                           : gameplay::kPauseRowsStandalone;
+    app.pauseMenu.reset();
+    suspendCombatSfx(app);
+    playPauseCue(app);
+    std::printf("[pause] paused (%s)\n", reason);
+}
+
+static void resumeBattle(App& app) {
+    if (!app.battlePaused) return;
+    app.battlePaused = false;
+    app.match.set_paused(false);
+    app.pauseMenu.reset();
+    // Nothing is replayed: the paused ticks drained the device queues, so a button held
+    // across the pause has no edge left to fire (the acceptance case) and the clock's
+    // remainder is exactly where the pause stopped it.
+    std::printf("[pause] resumed\n");
+}
+
+// Leaving a battle without a result: the same cleanup the round-over path performs, so a
+// return to selection or a rematch cannot inherit the finished match. enterFrontendBattle
+// is written to be re-entered (it clears weaponDefs/bulletParams, resets the counters and
+// rebuilds the scene), which is what makes repeated cycles safe.
+static void leaveBattleTo(App& app, ui::ScreenId next) {
+    app.matchMode = false;
+    app.frontendBattleReady = false;
+    app.versusAudio.clear_music();
+    app.screens.request(next);
+    app.screensMode = true;
+}
+
+// A rematch must replay the battle that was just left. The front end rolls a random stage
+// when none was chosen (frontend_launch.cpp:39, `state.stage == 0`), so the resolved stage
+// is pinned back into the front-end state before the battle is re-entered; the characters,
+// weapons and controllers already live there and are unchanged by a battle.
+static void pinFrontendStage(App& app) {
+    const size_t digits = app.opts.stage.find_first_of("0123456789");
+    if (digits == std::string::npos) return;
+    const int resolved = std::atoi(app.opts.stage.c_str() + digits);
+    if (resolved < 1 || resolved > 26) return;
+    app.frontend.stage = resolved % 10;
+    app.frontend.variation = resolved / 10;
+}
+
+static SDL_AppResult applyPauseChoice(App& app, gameplay::PauseChoice choice) {
+    switch (choice) {
+        case gameplay::PauseChoice::None:
+            return SDL_APP_CONTINUE;
+        case gameplay::PauseChoice::Resume:
+            resumeBattle(app);
+            return SDL_APP_CONTINUE;
+        case gameplay::PauseChoice::Rematch:
+            resumeBattle(app);
+            if (!app.frontendMatch) {
+                // Standalone harness: rebuild the same match in place (same opts, same
+                // scene), which is the whole of a rematch there.
+                if (!initMatch(app)) return SDL_APP_FAILURE;
+                std::printf("[pause] rematch\n");
+                return SDL_APP_CONTINUE;
+            }
+            pinFrontendStage(app);
+            // Through the VS intro, not straight back to Battle: ScreenStack::update only
+            // swaps when the target differs from the current id, so re-requesting Battle
+            // while the battle screen is current is a no-op (the factory would never run
+            // and the old match would keep playing). VS re-enters the battle properly,
+            // countdown included.
+            leaveBattleTo(app, ui::ScreenId::VsIntro);
+            std::printf("[pause] rematch\n");
+            return SDL_APP_CONTINUE;
+        case gameplay::PauseChoice::ReturnToSelection:
+            resumeBattle(app);
+            leaveBattleTo(app, ui::ScreenId::Select);
+            std::printf("[pause] return to selection\n");
+            return SDL_APP_CONTINUE;
+        case gameplay::PauseChoice::Quit:
+            std::printf("[pause] quit\n");
+            return SDL_APP_SUCCESS;
+    }
+    return SDL_APP_CONTINUE;
+}
+
+// One paused tick: the match is not stepped at all, only the menu is read. Called from the
+// tick loop in place of the battle tick, so the device queues are drained at the same
+// cadence they would be during play — which is what keeps a held button from arriving as a
+// stale edge on resume.
+static SDL_AppResult tickBattlePause(App& app) {
+    bool up = false, down = false, confirm = false, cancel = false;
+    int controllers[4] = {-1, -1, -1, -1};
+    const int count = battlePauseControllers(app, controllers);
+    for (int i = 0; i < count; ++i) {
+        const fnd::input::PlayerState& in = app.tickInput[controllers[i]];
+        // The pause action toggles back out, exactly like the original's key.
+        if (in.just_pressed[fnd::input::Pause]) {
+            resumeBattle(app);
+            return SDL_APP_CONTINUE;
+        }
+        up = up || in.just_pressed[fnd::input::Up];
+        down = down || in.just_pressed[fnd::input::Down];
+        confirm = confirm || in.just_pressed[fnd::input::Jump];
+        cancel = cancel || in.just_pressed[fnd::input::AttackA];
+    }
+    return applyPauseChoice(app, app.pauseMenu.update(up, down, confirm, cancel));
+}
+
+// A readable hint from the CURRENT bindings (P1 keyboard plus, when the pausing player has
+// a pad, that pad's button names), so a rebind shows up here with no second table.
+static std::string bindingHint(const App& app, fnd::input::Action action, int padPlayer) {
+    const auto& settings = ui::frontendSettings();
+    std::string out;
+    const int key = settings.keyboard[action];
+    if (key >= 0) {
+        const char* name = SDL_GetScancodeName(static_cast<SDL_Scancode>(key));
+        if (name && *name) out = name;
+    }
+    if (padPlayer >= 0 && padPlayer < 4) {
+        const int button = settings.gamepad[static_cast<size_t>(padPlayer)][action];
+        if (button >= 0) {
+            const char* name = SDL_GetGamepadStringForButton(static_cast<SDL_GamepadButton>(button));
+            if (name && *name) out += out.empty() ? name : std::string(" / ") + name;
+        }
+    }
+    return out.empty() ? "unbound" : out;
+}
+
+// The pause overlay: a system menu drawn once over the frozen frame (not per view, so a
+// split-screen match gets one readable menu instead of one per cell). Text goes through the
+// shared D7 caption path; a caption that cannot load leaves the pause working but silent on
+// screen rather than failing the frame.
+static bool drawBattlePauseOverlay(App& app, WGPUCommandEncoder encoder, WGPUTextureView view) {
+    if (!app.battlePaused || !app.uiReady) return true;
+    int padPlayer = 0;
+    if (app.frontendMatch) {
+        const int controller = panelController(app, ui::kFrontendBattleSlots[0]);
+        if (controller > 0) padPlayer = controller;
+    }
+    std::vector<std::string> lines;
+    lines.push_back("PAUSED");
+    for (int row = 0; row < app.pauseMenu.rows; ++row)
+        lines.push_back(std::string(row == app.pauseMenu.row ? "> " : "  ") +
+                        gameplay::pauseRowLabel(row, app.pauseMenu.rows));
+    lines.push_back(bindingHint(app, fnd::input::Up, padPlayer) + "/" +
+                    bindingHint(app, fnd::input::Down, padPlayer) + ": choose   " +
+                    bindingHint(app, fnd::input::Jump, padPlayer) + ": confirm   " +
+                    bindingHint(app, fnd::input::AttackA, padPlayer) + ": back   " +
+                    bindingHint(app, fnd::input::Pause, padPlayer) + ": resume");
+    std::string textError;
+    if (!app.pauseText.load(app.uiRenderer, 16.f, textError) ||
+        !app.pauseText.prepare(app.uiRenderer, lines, textError))
+        return true;
+    app.uiRenderer.beginFrame(app.sc.width, app.sc.height);
+    // Dim the frozen frame so the menu is readable over any stage (the same solid fill the
+    // screen stack's fade overlay uses).
+    app.uiRenderer.pushSolid(ui::UiRect{0.f, 0.f, static_cast<float>(app.sc.width),
+                                        static_cast<float>(app.sc.height)},
+                             ui::UiColor{0.f, 0.f, 0.f, 0.55f});
+    float y = static_cast<float>(app.sc.height) * 0.5f - 80.f;
+    const float x = static_cast<float>(app.sc.width) * 0.5f - 150.f;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        const bool title = i == 0;
+        const bool footer = i + 1 == lines.size();
+        const bool selected = !title && !footer && static_cast<int>(i) - 1 == app.pauseMenu.row;
+        const ui::UiColor color = title      ? ui::UiColor{1.f, 1.f, 1.f, 1.f}
+                                  : selected ? ui::UiColor{1.f, 0.8f, 0.3f, 1.f}
+                                             : ui::UiColor{0.85f, 0.85f, 0.9f, 1.f};
+        app.pauseText.draw(app.uiRenderer, lines[i].c_str(), x, y, footer ? 0.6f : 1.f, color, 1.f);
+        y += footer ? 20.f : 22.f;
+    }
+    return app.uiRenderer.render(encoder, view, app.sc.format, app.error);
 }
 
 // Defined beside the HUD helpers below: initMatch fills the roster while it assembles the
@@ -3385,6 +3648,9 @@ static bool enterFrontendBattle(App& app) {
                                           [static_cast<size_t>(level - 1)]);
     app.frontendMatch = true;
     app.frontendBattleReady = false;
+    app.battlePaused = false;   // a fresh battle never starts paused (issue #15)
+    app.match.set_paused(false);
+    app.pauseMenu.reset();
     app.frontend.resultStats = {};
     app.opts.stage = launch.stage;
     app.opts.character = launch.character;
@@ -4103,7 +4369,12 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     // clip advances at wall-clock rate and reads as a smooth player.
     if (app->opts.animPlayer) animPlayerTick(*app, delta);
 
-    const int ticks = capturing ? 1 : app->logicClock.advance(app->frames > 1 ? delta : 0.0);
+    // While paused the clock is not advanced at all, so paused wall time cannot become
+    // catch-up ticks when the pause ends; the paused ticks still run so the device queues
+    // are drained and the menu can be driven (issue #15).
+    const int ticks = capturing ? 1
+                    : (app->battlePaused ? 1
+                                         : app->logicClock.advance(app->frames > 1 ? delta : 0.0));
     app->matchAlpha = capturing ? 1.f : app->logicClock.alpha();
     for (int tick = 0; tick < ticks; ++tick) {
         ++app->logicTicks;
@@ -4116,6 +4387,15 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             app->tickInput[0] = app->scriptInput;
         }
         if (app->matchMode) {
+            if (app->battlePaused) {
+                const SDL_AppResult result = tickBattlePause(*app);
+                if (result != SDL_APP_CONTINUE) return result;
+                continue;   // frozen: no match step, no animation, no counters this tick
+            }
+            if (battlePauseAvailable(*app) && battlePausePressed(*app)) {
+                enterBattlePause(*app, "pause key");
+                continue;
+            }
             if (!capturing) advanceAnimation(*app, gameplay::FixedStep::seconds);
             tickMatch(*app, capturing ? app->opts.dt : gameplay::FixedStep::seconds);
             traceMatch(*app);
@@ -4513,6 +4793,10 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 }
             }
         }
+        if (!drawBattlePauseOverlay(*app, frame.encoder, frame.view)) {
+            gpu::endFrame(app->ctx, app->sc, frame);
+            return SDL_APP_FAILURE;
+        }
         if (app->uiReady && (app->opts.hudTest || app->matchMode || app->versusMode)) {
             HudTestHook hook = battleHudHook(*app);
             if (app->matchMode)
@@ -4570,14 +4854,34 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
                 return SDL_APP_CONTINUE;
             }
             app->matchInput.note_key((int)event->key.scancode, true);
-            if (event->key.key == SDLK_ESCAPE) return SDL_APP_SUCCESS;
+            if (event->key.key == SDLK_ESCAPE) {
+                // A live offline battle: Escape opens the pause menu (or leaves it) instead
+                // of killing the process — the audit's "Escape exits immediately" is what
+                // this replaces. Every capture/replay path keeps the old behaviour, and so
+                // does every menu screen.
+                if (battlePauseAvailable(*app)) {
+                    if (app->battlePaused) resumeBattle(*app);
+                    else enterBattlePause(*app, "Escape");
+                    return SDL_APP_CONTINUE;
+                }
+                return SDL_APP_SUCCESS;
+            }
             if (app->opts.animPlayer && !event->key.repeat) animPlayerKey(*app, event->key.key);
             break;
         case SDL_EVENT_KEY_UP:
             app->matchInput.note_key((int)event->key.scancode, false);
             break;
         case SDL_EVENT_WINDOW_FOCUS_LOST:
+            // #6's safety fix: held keys are dropped so a lost KEY_UP cannot hold Guard.
             app->matchInput.note_focus_lost();
+            // A live battle must not keep running (and keep taking damage) while the player
+            // cannot see or control it, so focus loss pauses it. Regaining focus does NOT
+            // auto-resume: the player resumes deliberately. A scripted verification run is
+            // left alone — its script owns the pause state, and a stray focus event must not
+            // make a recipe non-deterministic.
+            if (battlePauseAvailable(*app) && !app->battlePaused &&
+                !app->matchInput.script_active())
+                enterBattlePause(*app, "focus lost");
             break;
         case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
             if (ui::bindingCaptureActive()) {

@@ -429,6 +429,11 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_executable(damage_scale_test tests/damage_scale_test.cpp)
     target_link_libraries(damage_scale_test PRIVATE foundation_gameplay)
     add_test(NAME damage_scale_test COMMAND damage_scale_test)
+    # Issue #15's pause semantics: the match gate, the menu and the stale-edge rule.
+    # Device-free (no SDL, no assets), like the other gameplay tests.
+    add_executable(battle_pause_test tests/battle_pause_test.cpp)
+    target_link_libraries(battle_pause_test PRIVATE foundation_gameplay)
+    add_test(NAME battle_pause_test COMMAND battle_pause_test)
 
     # Issue #19's user configuration: the parser/validator, the atomic write and the
     # controller-placement policy. Device-free on purpose (the settings TU is std-only),

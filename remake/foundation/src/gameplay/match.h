@@ -126,6 +126,17 @@ public:
                const xm::Model* tamaMesh, const game::physics::ModelIndex* tamaIndex,
                const game::physics::MovementCollision* movementCollision = nullptr);
 
+    // Battle pause (issue #15). The original's pause flag (scene+0x4430) gates its entire
+    // battle update — FUN_00634f60 @0x635093-0x6350aa skips the frame counter and every
+    // fighter/economy/camera step while it is set — so the port gates its authoritative
+    // step the same way: a paused step() does nothing at all (no fighter tick, no economy
+    // tick, no respawn clock, no projectile motion, no FX event) and returns an empty
+    // frame. `dt` is never consumed and no timer is touched, so paused wall time cannot
+    // become catch-up ticks. The host also skips its own per-tick work (frame counter, COM
+    // decisions, HUD values) so the presented frame stays frozen; see battle_pause.h.
+    void set_paused(bool paused) { m_paused = paused; }
+    bool paused() const { return m_paused; }
+
     // The two-input overload preserves the trace path; the roster overload accepts
     // one optional input per configured fighter, in launch order.
     MatchFrame step(const fnd::input::PlayerState* p1Input,
@@ -183,6 +194,7 @@ private:
     // victim and the economy all need it, so it is read in one place.
     void liveness(bool out[4]) const;
 
+    bool               m_paused = false;   // issue #15; set_paused above
     Fighter            m_fighters[4];
     ProjectilePool     m_shots;
     MatchEconomy       m_economy;

@@ -86,6 +86,11 @@ MatchFrame Match::step(const fnd::input::PlayerState* p1Input,
 
 MatchFrame Match::step(const fnd::input::PlayerState* inputs[4], double dt) {
     MatchFrame out;
+    // Paused: the authoritative step does not run at all (issue #15). Nothing below this
+    // point executes — not the economy tick, not the fighters, not the projectile pool —
+    // and `dt` is dropped rather than accumulated, so paused wall time cannot be replayed
+    // as catch-up ticks on resume.
+    if (m_paused) return out;
     m_economy.tick(dt);   // scenes.cpp:610
 
     // Maintain the per-fighter locks first: FUN_0041f580 does its validity fallback and
