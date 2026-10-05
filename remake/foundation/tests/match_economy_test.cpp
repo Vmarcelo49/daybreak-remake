@@ -164,7 +164,9 @@ void testConstants() {
     checkInt("kBalloonSizeMin", 40, gameplay::kBalloonSizeMin);
     checkInt("kBalloonSizeMax", 200, gameplay::kBalloonSizeMax);
     checkInt("kBalloonSizeStep", 20, gameplay::kBalloonSizeStep);
-    checkDouble("kKoStingSec", 2.0, gameplay::kKoStingSec);   // 0x78 frames at 60 Hz
+    // The just-died branch's 0x5a (90 frames = 1.5 s); 0x78 (120 frames = 2.0 s) is the
+    // credit frame's headroom/respawn presentation, which the port does not model.
+    checkDouble("kKoStingSec", 1.5, gameplay::kKoStingSec);
     checkDouble("kRespawnSec", 3.0, gameplay::kRespawnSec);
     // FUN_00421930 returns capacity - balloon and FUN_00635d40 ends the round when it
     // is not > 0, i.e. the capacity itself already bursts.
@@ -270,7 +272,7 @@ void testReset() {
 }
 
 void testOneKo() {
-    std::printf("\n-- one KO: 20 + the reaction bonus = 21%%, koAt stamp, 2 s sting\n");
+    std::printf("\n-- one KO: 20 + the reaction bonus = 21%%, koAt stamp, 1.5 s sting\n");
     gameplay::MatchEconomy eco = quietEconomy();
     eco.reset();
 
@@ -285,7 +287,7 @@ void testOneKo() {
     checkFloat("balloon[1] untouched", 0.0f, eco.balloon(1));
     checkDouble("koAt[0] == elapsed at the KO", 1.0, eco.koAt(0));
     checkDouble("koAt[1] still -1", -1.0, eco.koAt(1));
-    checkDouble("stingUntil == koAt + 2.0", 3.0, eco.stingUntil());
+    checkDouble("stingUntil == koAt + 1.5", 2.5, eco.stingUntil());
     checkBool("respawned[0]", false, r.respawned[0]);
     checkBool("roundOver", false, r.roundOver);
     checkInt("roundOverSide (no round end yet)", -1, r.roundOverSide);
@@ -327,29 +329,28 @@ void testStingWindow() {
 
     gameplay::MatchEconomy a = quietEconomy();
     a.reset();
-    a.update(dead);  // KO at elapsed 0.0 -> stingUntil 2.0
-    checkDouble("stingUntil (KO at 0.0)", 2.0, a.stingUntil());
+    a.update(dead);  // KO at elapsed 0.0 -> stingUntil 1.5
+    checkDouble("stingUntil (KO at 0.0)", 1.5, a.stingUntil());
     checkBool("at 0.000: active", true, a.koStingActive());
     a.tick(1.0);
     checkBool("at 1.000: active", true, a.koStingActive());
-    a.tick(0.5);
     a.tick(0.25);
     a.tick(0.125);
-    a.tick(0.0625);  // 1.9375, binary-exact
-    checkDouble("elapsed", 1.9375, a.elapsed());
-    checkBool("at 1.9375 (just before): active", true, a.koStingActive());
-    a.tick(0.0625);  // 2.000 exactly
-    checkDouble("elapsed", 2.0, a.elapsed());
-    checkBool("at 2.000: NOT active (strict <)", false, a.koStingActive());
+    a.tick(0.0625);  // 1.4375, binary-exact
+    checkDouble("elapsed", 1.4375, a.elapsed());
+    checkBool("at 1.4375 (just before): active", true, a.koStingActive());
+    a.tick(0.0625);  // 1.500 exactly
+    checkDouble("elapsed", 1.5, a.elapsed());
+    checkBool("at 1.500: NOT active (strict <)", false, a.koStingActive());
     a.tick(1.0);
-    checkBool("at 3.000: still not active", false, a.koStingActive());
+    checkBool("at 2.500: still not active", false, a.koStingActive());
 
     gameplay::MatchEconomy b = quietEconomy();
     b.reset();
     b.update(dead);
-    b.tick(1.999);
-    checkDouble("elapsed (decimal 1.999)", 1.999, b.elapsed());
-    checkBool("at 1.999: active", true, b.koStingActive());
+    b.tick(1.499);
+    checkDouble("elapsed (decimal 1.499)", 1.499, b.elapsed());
+    checkBool("at 1.499: active", true, b.koStingActive());
 
     // A later KO re-arms (overwrites) the shared sting window (scenes.cpp:713).
     gameplay::MatchEconomy c = quietEconomy();
@@ -357,8 +358,8 @@ void testStingWindow() {
     c.update(dead);  // KO side 0 at 0.0
     c.tick(1.0);
     const bool dead1[2] = {false, false};
-    c.update(dead1);  // side 1 dies at 1.0: stingUntil moves 2.0 -> 3.0
-    checkDouble("stingUntil re-armed by the second KO", 3.0, c.stingUntil());
+    c.update(dead1);  // side 1 dies at 1.0: stingUntil moves 1.5 -> 2.5
+    checkDouble("stingUntil re-armed by the second KO", 2.5, c.stingUntil());
     checkBool("sting survives the first KO's expiry", true, c.koStingActive());
 }
 
@@ -438,7 +439,7 @@ void testKoAtBookkeeping() {
     r = eco.update(dead);  // second death
     checkDouble("koAt[0] re-stamped at 4.5", 4.5, eco.koAt(0));
     checkFloat("balloon[0] after 2 KOs", 42.0f, eco.balloon(0));
-    checkDouble("stingUntil re-armed to 6.5", 6.5, eco.stingUntil());
+    checkDouble("stingUntil re-armed to 6.0", 6.0, eco.stingUntil());
     checkBool("respawned[0] on the death frame", false, r.respawned[0]);
 
     // Quirk pinned from scenes.cpp:703: the just-died branch needs koAt < 0, so a
@@ -1151,9 +1152,9 @@ void testHudLowHpHighBalloon() {
     std::snprintf(text, sizeof text, "%s %.0fs", v.hyperName.c_str(), v.hyperSecondsLeft);
     checkStr("hyper active label text (composer's format)", "OYASHIRO 12s", text);
 
-    // 2.0 s after the 4th KO the sting window closes (strict <, scenes.cpp:889).
-    eco.tick(2.0);
-    checkBool("koVisible 2.0 s after the 4th KO", false,
+    // 1.5 s after the 4th KO the sting window closes (strict <, scenes.cpp:889).
+    eco.tick(1.5);
+    checkBool("koVisible 1.5 s after the 4th KO", false,
               gameplay::fillHudValues(eco, in).koVisible);
     checkFloat("balloon[0] unaffected by the wait", 84.0f, eco.balloon(0));
 }
@@ -1258,8 +1259,8 @@ void testHudHyperAndStamina() {
     eco.tick(1.0);
     checkBool("1.0 s into the sting: koVisible true", true,
               gameplay::fillHudValues(eco, in).koVisible);
-    eco.tick(1.0);  // 2.0 == stingUntil
-    checkBool("2.0 s after the KO: koVisible false (strict <)", false,
+    eco.tick(0.5);  // 1.5 == stingUntil
+    checkBool("1.5 s after the KO: koVisible false (strict <)", false,
               gameplay::fillHudValues(eco, in).koVisible);
 }
 

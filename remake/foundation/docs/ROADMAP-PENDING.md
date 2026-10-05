@@ -1287,9 +1287,15 @@ it), the per-character move handler's choice of the victim's reaction move for m
 (the port's shared swing passes "unspecified", i.e. `FUN_0063ba80`'s default 198),
 the unrecovered `[attacker+0x10]+0x28 & 0x800` branch of `FUN_0063ba80` (returns 191),
 and the KO move's per-phase durations (what would turn the 3 s port clock into the
-recovered one). Animation follow-up for issue #18: move 0xc2's descent/recovery and
-the KO chain (0xc0/0xc1 sets [117, 29]; 0xcb sets [97, 37]) are the clips that carry
-the respawn timing.
+recovered one). Presentation, also unresolved: the original arms one per-fighter
+triple (`[+0x43e4]/[+0x4404]/[+0x43f4]`) from two branches — a downed fighter that was
+NOT credited this frame gets `0x5a` (90 frames = 1.5 s KO sting, re-armed every frame,
+`FUN_00635d40` @0x6371ba-0x637230), while the credit frame's headroom branch gets
+`0x78` (120 frames = 2.0 s with flag 1, @0x637173-0x6371b8, the respawn presentation).
+The port keeps one shared 1.5 s window (`kKoStingSec`) and does not model the 2.0 s
+respawn presentation. Animation follow-up for issue #18: move 0xc2's descent/recovery
+and the KO chain (0xc0/0xc1 sets [117, 29]; 0xcb sets [97, 37]) are the clips that
+carry the respawn timing.
 
 Verification: all 30 Linux CTest tests pass. `match_economy_test` went from 210 to
 387 checks (capacity extremes, both timeout tiebreaks, the seeded generator,

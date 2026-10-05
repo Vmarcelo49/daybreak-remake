@@ -176,8 +176,10 @@ and `FUN_00421bd0` repositions it at `[fighter+0x18] = 1000.0f`
 `Fighter::respawn()`, with `[fighter+0xaecb]` modelled as the target-lock
 exclusion the dump shows it to be (read only by `FUN_0041f580`
 @0x41fe26-0x41fe73) and no damage immunity claimed. KO presentation is sting
-(撃破！) → inflate (0.5%/frame, `FUN_006430f0`) → floating `+N%` delta
-(60-frame readout, `FUN_006431d0`). Hitting the downed fighter scores
+(撃破！, 90 frames = 1.5 s while the fighter is down, `FUN_00635d40`
+@0x6371ba-0x637230) → inflate (0.5%/frame, `FUN_006430f0`) → floating `+N%` delta
+(60-frame readout, `FUN_006431d0`); the 120-frame 2.0 s arm at @0x637173 is the
+respawn presentation, which the port does not model separately. Hitting the downed fighter scores
 **Overkill: +1/hit** to that fighter's own team (`FUN_00637950`
 @0x638e0d-0x638e37) until it respawns — the port's KO clock; the original ends
 the window when the KO move's descent/recovery ends, which is also when the

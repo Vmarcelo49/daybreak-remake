@@ -85,7 +85,16 @@ inline constexpr float  kBalloonLimit = 100.0f;
 inline constexpr int    kBalloonSizeMin  = 40;   // FUN_0040acb0 @0x40af60-0x40afe2
 inline constexpr int    kBalloonSizeMax  = 200;
 inline constexpr int    kBalloonSizeStep = 20;
-inline constexpr double kKoStingSec   = 2.0;  // the 0x78 (=120 frame) KO presentation
+// The KO presentation window. The original arms a per-fighter triple
+// [+0x43e4]/[+0x4404]/[+0x43f4] from two branches of the same scan, and the values
+// differ: a fighter that is down and was NOT credited this frame gets 0x5a (90 frames
+// = 1.5 s at 60 Hz) with 8.0f and flag 0 — the KO sting, re-armed every such frame
+// (FUN_00635d40 @0x6371ba-0x637230) — while the credit frame's headroom branch uses
+// 0x78 (120 frames = 2.0 s) with the same 8.0f and flag 1 (@0x637173-0x6371b8, the
+// respawn presentation). This port keeps ONE shared window of this length, armed at
+// the KO credit; the 0x78 respawn presentation is not modelled separately and is
+// listed as an unresolved presentation item in ROADMAP-PENDING.md.
+inline constexpr double kKoStingSec   = 1.5;
 inline constexpr int    kBalloonDeltaTicks = 60;  // FUN_006431d0's 0x3c readout window
 inline constexpr double kRespawnSec   = 3.0;  // port KO clock; see the header note
 

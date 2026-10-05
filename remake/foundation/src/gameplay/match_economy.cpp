@@ -214,9 +214,11 @@ MatchStepResult MatchEconomy::updateImpl(const bool alive[kMatchFighterCount],
             m_balloonDelta[team] = amount;
             m_balloonDeltaTicks[team] = kBalloonDeltaTicks;
             log(koLogLine(team, m_balloon[team], m_capacity[team]));
-            // The KO presentation window (the DX9 stand-in's KO sting) is armed only
-            // while the side still has headroom: FUN_00635d40's headroom branch
-            // (@0x637173-0x6371b8) is the one that arms the 0x78-frame timer.
+            // The KO presentation window is armed only while the side still has
+            // headroom (FUN_00635d40 @0x637173-0x6371b8). The original re-arms its
+            // per-fighter 0x5a-frame timer every frame the fighter stays down and uses
+            // 0x78 on this credit frame only; the port keeps one shared window of
+            // kKoStingSec and does not model the 0x78 respawn presentation.
             if (!balloonBursts(m_balloon[team], m_capacity[team])) {
                 m_stingUntil = m_elapsed + kKoStingSec;
             }
