@@ -59,7 +59,8 @@ add_library(foundation_assets STATIC
     src/assets/assets.cpp
     src/assets/asset_source.cpp
     src/assets/dat_bundle.cpp
-    src/assets/dat_crypto.cpp)
+    src/assets/dat_crypto.cpp
+    src/assets/exe_strings.cpp)
 target_include_directories(foundation_assets PUBLIC src/assets)
 target_link_libraries(foundation_assets PUBLIC glm)
 
@@ -101,6 +102,7 @@ add_library(foundation_ui STATIC
     src/ui/screen_stage_select.cpp
     src/ui/screen_vs.cpp
     src/ui/screen_result.cpp
+    src/ui/result_quote.cpp
     src/ui/frontend_launch.cpp
     src/ui/frontend_settings.cpp
     src/settings/user_settings.cpp
@@ -156,7 +158,8 @@ add_library(foundation_gameplay STATIC
     src/gameplay/weapon_definition.cpp
     src/gameplay/bot_brain.cpp
     src/gameplay/bot_input.cpp
-    src/gameplay/hud_fill.cpp)
+    src/gameplay/hud_fill.cpp
+    src/gameplay/result_title.cpp)
 target_include_directories(foundation_gameplay PUBLIC src)
 target_link_libraries(foundation_gameplay
     PUBLIC foundation_physics
@@ -391,6 +394,14 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # Issue #13's participant roster and the screen geometry it drives: the 1v1/2v1/2v2
     # derivations, the four recovered VS slots, the result report's rows and the victory
     # layer's transition. Device-free (header-only tables plus the timeline).
+    # Issue #20's recovered result rules: the victory-quote plan (pair, persona, grade, the
+    # single-script fallback), the win-script alternatives, and the earned-title chain over the
+    # per-fighter record. Device-free; the shipped title names are checked when the install is
+    # present, like the other asset-backed tests.
+    add_executable(result_title_test tests/result_title_test.cpp)
+    target_link_libraries(result_title_test PRIVATE foundation_gameplay foundation_ui foundation_assets glm)
+    add_test(NAME result_title_test COMMAND result_title_test)
+
     add_executable(participant_layout_test tests/participant_layout_test.cpp)
     target_link_libraries(participant_layout_test PRIVATE foundation_ui glm)
     add_test(NAME participant_layout_test COMMAND participant_layout_test)
