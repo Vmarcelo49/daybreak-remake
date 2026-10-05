@@ -359,11 +359,18 @@ SimRun runFrames(int viewCount, int frames) {
     check(viewTotal == viewCount, "the run's views match the requested count");
 
     fnd::input::PlayerState bots[4];
+    gameplay::BotBrain botBrains[4];
     SimRun run;
     for (int frame = 0; frame < frames; ++frame) {
-        for (int i = 0; i < config.fighterCount; ++i)
-            gameplay::updateBotInput(bots[i], match.fighter(i), match.fighter((i + 1) % 4),
-                                     match.fighter(i).position().x > 0.f ? 1u : 0u);
+        // The tick the brain sees is the run's 1-based match frame, the same value the
+        // host passes (main.cpp's tickMatch); the two runs must stay comparable.
+        for (int i = 0; i < config.fighterCount; ++i) {
+            gameplay::BotContext bot;
+            bot.match = &match;
+            bot.fighterIndex = i;
+            bot.leaderTarget = (i + 1) % config.fighterCount;
+            gameplay::updateBotInput(botBrains[i], bot, bots[i], run.matchFrame + 1);
+        }
         const fnd::input::PlayerState* inputs[4] = {&bots[0], &bots[1], &bots[2], &bots[3]};
         ++run.ticks;
         ++run.audioPushes;   // the host's one audio push per tick (tickMatch)

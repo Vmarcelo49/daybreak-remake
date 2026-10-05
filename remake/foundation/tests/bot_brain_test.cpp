@@ -176,6 +176,11 @@ std::vector<uint8_t> renaMoveTable() {
                                        prop("Whiff", 7, 0, 0, 0)}}});
     addMove(b, 301, 12, {SynthPhase{33, {prop("Prop1", 7, 20, 1500, 12),
                                        prop("Whiff", 9, 0, 0, 0)}}});
+    // FUN_0041e180 continues past the move records with the animation-set rows: a
+    // count, then one [transitionDuration, phaseGate, eventCount, eventCount*0x84]
+    // row per set. This synthetic table exercises the move records only, so it
+    // declares zero sets — the parser rejects anything else as trailing data.
+    putU32(b, 0);
     return b;
 }
 
