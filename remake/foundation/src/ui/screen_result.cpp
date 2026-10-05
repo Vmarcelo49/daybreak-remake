@@ -1,66 +1,102 @@
 #include "ui/screen_result.h"
 #include <algorithm>
-#include <sstream>
 #include <cstdio>
 #include "assets/asset_source.h"
 #include "assets/cnv.h"
 #include "ui/hud_atlas.h"
 #include "ui/participants.h"
+#include "ui/result_quote.h"
 #include "ui/text.h"
 #include "ui/caption.h"
 
 namespace ui {
+
 ResultQuote parseResultQuote(const std::string& utf8) {
+    const std::vector<ResultQuoteEntry> entries = parseResultQuotes(utf8);
     ResultQuote quote;
-    std::istringstream lines(utf8);
-    std::string line;
-    while (std::getline(lines,line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (line.empty() || line[0] == '#') continue;
-        if (line.compare(0,6,"VOICE ") == 0 || line.compare(0,6,"voice ") == 0)
-            quote.voice = line.substr(6);
-        else { quote.text = line; break; }
+    if (!entries.empty()) {
+        quote.text = entries.front().text;
+        quote.voice = entries.front().voice;
     }
     return quote;
 }
+
 namespace {
 class ResultScreen final : public Screen {
 public:
-    ResultScreen(SpriteRenderer& batch, FrontendState& state, std::string& error) : state_(state), timeline_(state.resultWinner < 0) {
+    ResultScreen(SpriteRenderer& batch, FrontendState& state, std::string& error)
+        : state_(state), timeline_(state.resultWinner < 0) {
         // The winning TEAM (issue #13): resultWinner is the winning side (0 blue / 1 red,
         // MatchEconomy::roundOverSide), so the sting, the quote and the winner caption all
         // follow the team and never a single primary panel.
         const int side = state.resultWinner == 1 ? 1 : 0;
         participantCount_ = buildParticipants(state_.slots.data(), participants_);
-        // The quote belongs to the winning team's FIRST member (the original loads
-        // data/scenario/win/<char>.txt for the winning side's character).
-        int quoteCharacter = -1;
-        for (int i = 0; i < participantCount_ && quoteCharacter < 0; ++i)
-            if (participants_[i].team == side) quoteCharacter = participants_[i].character;
-        const char* stems[] = {side ? "data/object/P08" : "data/object/P05", "data/object/system"};
-        for (int i = 0; i < 3; ++i) {
-            if (state.resultWinner < 0 && i != 1) continue;
+        // The winning side's two selections in panel order (issue #20). A one-member side
+        // repeats its member: the port's 1v1, and every character ships a self-pair script.
+        int winnerCharacters[2] = {-1, -1};
+        int winnerWeapons[2] = {0, 0};
+        int winners = 0;
+        for (int i = 0; i < participantCount_ && winners < 2; ++i) {
+            if (participants_[i].team != side) continue;
+            winnerCharacters[winners] = participants_[i].character;
+            winnerWeapons[winners] = participants_[i].weapon;
+            ++winners;
+        }
+        // The winner art: one 512x512 sheet per winning slot, data/win/%02da, or %02db for the
+        // persona variant (character 0/4 with weapon 2) — FUN_00635d40:255-273 loads one per
+        // winning slot, so a 2v2 shows BOTH winners.
+        for (int i = 0; i < 2; ++i) {
+            winnerPersona_[i] = resultPersonaId(winnerCharacters[i], winnerWeapons[i]) !=
+                                winnerCharacters[i];
+            if (winnerCharacters[i] < 0) continue;
             char stem[64];
-            if (i >= 2) std::snprintf(stem,sizeof(stem),"data/win/%02da",std::max(0,quoteCharacter));
+            std::snprintf(stem, sizeof(stem), "data/win/%02d%c", winnerCharacters[i],
+                          winnerPersona_[i] ? 'b' : 'a');
             std::string failure;
-            if (!uploadCnvSheet(batch,i < 2 ? stems[i] : stem,sheets_[i],failure) && error.empty())
+            if (!uploadCnvSheet(batch, stem, winnerSheets_[i], failure) && error.empty())
                 error = failure;
         }
-        char path[96];
-        std::snprintf(path,sizeof(path),"data/scenario/win/%02d.txt",std::max(0,quoteCharacter));
-        std::vector<uint8_t> bytes;
-        auto& assets = fnd::assets::assetSource();
-        if (state.resultWinner >= 0) {
-            // Ordinary characters ship only pair scripts; a missing single quote uses that
-            // character's self-pair rather than attributing an absent teammate's voice.
-            if (!assets.read(path,bytes)) {
-                std::snprintf(path,sizeof(path),"data/scenario/win/%02d-%02d-1.txt",
-                              std::max(0,quoteCharacter),std::max(0,quoteCharacter));
-                assets.read(path,bytes);
-            }
-            if (!bytes.empty()) quote_ = parseResultQuote(xm::sjisToUtf8(std::string(bytes.begin(),bytes.end())));
+        const char* stems[] = {side ? "data/object/P08" : "data/object/P05", "data/object/system"};
+        for (int i = 0; i < 2; ++i) {
+            std::string failure;
+            if (!uploadCnvSheet(batch, stems[i], sheets_[i], failure) && error.empty())
+                error = failure;
         }
-        if (state.resultWinner >= 0 && quote_.text.empty() && error.empty()) error = "result: no shipped victory quotation resolved";
+        if (state.resultWinner >= 0 && winners > 0) {
+            // The grade needs the round's margin and the winners' HP, which the host measured
+            // when the round resolved (FUN_00635d40:288-318); the plan then names the pair
+            // script and the recovered single-script fallback (FUN_00635d40:323-346).
+            plan_ = planWinnerQuote(winnerCharacters, winnerWeapons, winners, state.resultMargin,
+                                    state.resultWinnersHurt);
+            auto& assets = fnd::assets::assetSource();
+            std::vector<uint8_t> bytes;
+            if (assets.read(plan_.pairScript, bytes) && !bytes.empty()) {
+                quotePath_ = plan_.pairScript;
+            } else if (assets.read(plan_.fallbackScript, bytes) && !bytes.empty()) {
+                quotePath_ = plan_.fallbackScript;
+            }
+            if (!bytes.empty()) {
+                entries_ = parseResultQuotes(
+                    xm::sjisToUtf8(std::string(bytes.begin(), bytes.end())));
+                const int pick = resultQuoteEntryIndex((int)entries_.size(), side, state.matchFrame);
+                if (pick >= 0) {
+                    quote_.text = entries_[(size_t)pick].text;
+                    quote_.voice = entries_[(size_t)pick].voice;
+                }
+            }
+        }
+        if (state.resultWinner >= 0 && quote_.text.empty() && error.empty())
+            error = "result: no shipped victory quotation resolved for " + plan_.pairScript;
+        if (state.resultWinner >= 0) {
+            // Evidence line: which script answered, which alternative was picked and which
+            // voice it names — the run's own record of the recovered rule's decision.
+            std::printf("[result] side %d pair %d-%d grade %d margin %d script %s "
+                        "persona %d/%d voice %s\n",
+                        side, plan_.pairA, plan_.pairB, plan_.grade, state.resultMargin,
+                        quotePath_.empty() ? plan_.pairScript.c_str() : quotePath_.c_str(),
+                        winnerPersona_[0] ? 1 : 0, winnerPersona_[1] ? 1 : 0,
+                        quote_.voice.empty() ? "(none)" : quote_.voice.c_str());
+        }
         if (!loadCaptionFont(text_,30.f,error)) return;
         if (text_.faceCount() != 2) { if (error.empty()) error = "result: fetch the pinned CJK fallback font"; return; }
         quoteLayout_ = text_.layout(quote_.text.c_str());
@@ -68,7 +104,7 @@ public:
         if (state.resultWinner >= 0)
             winnerLayout_ = text_.layout((std::string(teamLabel(side)) + " TEAM WINS").c_str());
         // One report row per ACTIVE participant (FUN_0063a740:64-85 walks all four slots),
-        // carrying that participant's own statistics.
+        // carrying that participant's earned title and its own statistics.
         for (int i = 0; i < participantCount_; ++i) {
             const auto& stats = state.resultStats[participants_[i].panel];
             char report[160];
@@ -76,12 +112,13 @@ public:
                           stats.kos,stats.deaths,stats.damageDealt,stats.damageTaken);
             statsLayout_[i] = text_.layout(report);
             rowLayout_[i] = text_.layout(participants_[i].combo().c_str());
+            titleLayout_[i] = text_.layout(state.resultTitleText[participants_[i].panel].c_str());
         }
         textSlot_ = batch.addTexture(text_.atlasWidth(),text_.atlasHeight(),text_.atlasRGBA().data(),error);
     }
     bool loaded() const {
-        if (sheets_[1] < 0) return false;
-        if (state_.resultWinner >= 0 && (sheets_[0] < 0 || sheets_[2] < 0)) return false;
+        if (sheets_[0] < 0 || sheets_[1] < 0) return false;
+        if (state_.resultWinner >= 0 && (winnerSheets_[0] < 0 || winnerSheets_[1] < 0)) return false;
         return textSlot_ >= 0 && (state_.resultWinner < 0 || !quote_.text.empty());
     }
     const char* name() const override { return "result"; }
@@ -112,9 +149,16 @@ public:
             return;
         }
         if (state_.resultWinner >= 0) {
-            // FUN_0063a740's quote bands, with one centered portrait for the winning team's
-            // first member.
-            batch.pushSprite(sheets_[2],{0,0,512,512},0,0,144,60);
+            // Both winners, at the recovered settled positions (FUN_0063a740's sub-phases 1/5
+            // draw them at (progress-32,60) and (progress+352,60)); the port slides them in over
+            // the quote phase instead of following that progress counter, whose rate the corpus
+            // does not pin. PORT RULE, animation only.
+            const float slide = std::min(1.f, (float)timeline_.frame() / 24.f);
+            const float x0 = -32.f - (1.f - slide) * 320.f;
+            const float x1 = 352.f + (1.f - slide) * 320.f;
+            if (winnerSheets_[0] >= 0) batch.pushTextured(winnerSheets_[0],{x0,60,512,512},{0,0,1,1},{});
+            if (winnerSheets_[1] >= 0) batch.pushTextured(winnerSheets_[1],{x1,60,512,512},{0,0,1,1},{});
+            // FUN_0063a740's quote bands: the black strip above and the black band below.
             batch.pushSolid({0,0,800,60},{0,0,0,1});
             batch.pushSolid({0,424,800,176},{0,0,0,1});
             drawText(batch,quoteLayout_,75,440);
@@ -128,15 +172,17 @@ public:
             batch.pushSprite(sheets_[1],{0,320,288,64},144,32,400,28);
             if (state_.resultWinner < 0) drawText(batch,drawLayout_,350,440);
             // FUN_0063a740:64-85: rows i = 0..3 at y = 100 + 72*i, the controller/COM badge
-            // at x = 150, revealed one row per 30 frames after a 30-frame lead-in. The port
-            // adds each participant's combo and statistics at the recovered text column.
+            // (system sheet, cell (controller,0)) at x = 200, the earned title at (300, y+32),
+            // revealed one row per 30 frames after a 30-frame lead-in. The combo and the
+            // statistics are the port's additions, placed around the recovered title line.
             const int revealed = resultRowsRevealed(timeline_.frame());
             for (int i = 0; i < participantCount_ && i < revealed; ++i) {
                 const ResultRow row = resultRow(i);
                 const int controller = std::clamp(participants_[i].controller,0,4);
                 batch.pushSprite(sheets_[1],{controller*64.f,384,64,32},0,0,row.badgeX,row.badgeY);
-                drawText(batch,rowLayout_[i],row.textX,row.textY,.55f);
-                drawText(batch,statsLayout_[i],row.textX,row.textY+24.f,.55f);
+                drawText(batch,rowLayout_[i],row.textX,row.textY,.5f);
+                drawText(batch,titleLayout_[i],row.textX,row.titleY,.8f);
+                drawText(batch,statsLayout_[i],row.textX,row.statsY,.5f);
             }
         }
     }
@@ -146,15 +192,21 @@ private:
     }
     FrontendState& state_;
     ResultTimeline timeline_;
+    WinnerQuotePlan plan_;
+    std::string quotePath_;
+    std::vector<ResultQuoteEntry> entries_;
     ResultQuote quote_;
     bool voiceTaken_ = false;
     TextLayer text_;
     TextLayout quoteLayout_, drawLayout_, statsLayout_[kParticipantCount];
-    TextLayout rowLayout_[kParticipantCount], winnerLayout_;
+    TextLayout rowLayout_[kParticipantCount], titleLayout_[kParticipantCount], winnerLayout_;
     Participant participants_[kParticipantCount];
     int participantCount_ = 0;
     mutable int bitmapSlot_ = -1;
-    int sheets_[3] = {-1,-1,-1}, textSlot_=-1, sound_=-1;
+    int sheets_[2] = {-1,-1};
+    int winnerSheets_[2] = {-1,-1};
+    bool winnerPersona_[2] = {false,false};
+    int textSlot_=-1, sound_=-1;
 };
 }
 std::unique_ptr<Screen> makeResultScreen(SpriteRenderer& batch, FrontendState& state,std::string& error) {

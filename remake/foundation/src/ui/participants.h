@@ -136,12 +136,15 @@ inline void vsSlotsFor(const Participant roster[kParticipantCount], int count,
     }
 }
 
-// One row of the result report (FUN_0063a740:64-85): the badge and the text column share the
-// row's y, the name cell sits 32 px lower, and rows step by 72.
+// One row of the result report (FUN_0063a740:64-85): the controller/COM badge sits at x = 200
+// (0x43480000), the earned title at (300, y + 32) — the composed title texture's line cell,
+// drawn at 0x43960000 = 300 — and rows step by 72 from y = 100. The port's combo and
+// statistics lines hang off the same column.
 struct ResultRow {
-    float badgeX = 150.f, badgeY = 0.f;
-    float nameX = 150.f, nameY = 0.f;
-    float textX = 280.f, textY = 0.f;
+    float badgeX = 200.f, badgeY = 0.f;
+    float textX = 300.f, textY = 0.f;
+    float titleY = 0.f;
+    float statsY = 0.f;
 };
 
 inline constexpr float kResultRowTop = 100.f;
@@ -149,7 +152,7 @@ inline constexpr float kResultRowStep = 72.f;
 
 inline ResultRow resultRow(int row) {
     const float y = kResultRowTop + kResultRowStep * (float)row;
-    return ResultRow{150.f, y, 150.f, y + 32.f, 280.f, y};
+    return ResultRow{200.f, y, 300.f, y, y + 32.f, y + 50.f};
 }
 
 // The report reveals rows progressively: FUN_0063a740:69 draws row i while

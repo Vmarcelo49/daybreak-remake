@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <string>
 
 namespace ui {
 // FUN_00409340 panel geometry: 0/1 blue, 2/3 red. The 1v1 match uses upper panels.
@@ -25,5 +26,24 @@ struct FrontendState {
     }
     int resultWinner = 0;
     std::array<ResultSlotStats, 4> resultStats{};
+    // Outcome numbers the result screen's quote rule reads (issue #20): the round's balloon
+    // margin and whether BOTH winners ended below half HP (FUN_00635d40:288-318), plus the
+    // match frame the quote alternative is picked from. The host measures them when the round
+    // resolves; they are outcome data, not settings.
+    int resultMargin = 0;
+    bool resultWinnersHurt = false;
+    uint64_t matchFrame = 0;
+    // SESSION state, never persisted (issue #19 owns permanent settings; the original keeps
+    // these in process globals too):
+    //   resultTitleText — the earned title each panel's fighter ended the round with, as the
+    //                   original's own name text (FUN_00430880's index into the table at VA
+    //                   0x6b7308, resolved by the host);
+    //   penaltyDecided— the original's per-player penalty flag DAT_006cfdf1, set when a player
+    //                   earns the penalty title (FUN_00635d40:377-380) and cleared when the
+    //                   panel is COM (FUN_0040d130:99-101). The port keys it by PANEL, which is
+    //                   a local player's stable identity (the original keys it by netplay slot
+    //                   and remembers the slot's panel in DAT_006cfdd9).
+    std::array<std::string, 4> resultTitleText{};
+    std::array<bool, 4> penaltyDecided{{false, false, false, false}};
 };
 }

@@ -56,6 +56,7 @@
 #include "gameplay/fixed_step.h"
 #include "gameplay/bot_input.h"
 #include "gameplay/hud_fill.h"
+#include "gameplay/result_title.h"
 #include "audio/audio.h"
 #include "audio/audio_engine.h"
 #include "game/effect_events.h"
@@ -623,6 +624,15 @@ struct App {
     // with no selection is absent, which is how a 1v1 stays a two-entry roster.
     ui::Participant              participants[ui::kParticipantCount];
     int                          participantCount = 0;
+    // The earned-title record's own counters (issue #20): what FUN_00430880 reads that this port
+    // can evidence from the frame's melee events — hits dealt/taken split by the lock each side
+    // held, and the hits landed on the local (1P) fighter. Damage totals come from
+    // Fighter::stats() and the capacities from the economy when the round resolves.
+    struct TitleHits {
+        int toTarget = 0, toOthers = 0, fromTarget = 0, fromOthers = 0, onLocalPlayer = 0;
+    };
+    TitleHits                    titleHits[4];
+    uint32_t                     titleRng = 0x9e3779b9u;   // session RNG for the penalty rolls
     // --local-players' menu clock: the tick the selection screen appeared, so the synthetic
     // pads' panel walk is timed from the screen and not from process start.
     bool                         selectSeen = false;
@@ -1610,6 +1620,9 @@ static bool initMatch(App& app) {
                     tamaMesh ? &app.projectileCollisionIndex : nullptr, movement);
     // The roster in panel order, with each entry linked to its MatchConfig index (issue #13).
     buildMatchRoster(app);
+    // The earned-title counters are per ROUND (the original clears the record with the round):
+    // a repeated round must not inherit the previous one's hits.
+    for (auto& hits : app.titleHits) hits = App::TitleHits{};
     // Hand each fighter its recovered projectile parameters. Match::reset has already
     // bound the weapon (MatchConfig::weapon), which sized the magazines.
     for (int i = 0; i < fighterCount; ++i)
@@ -2134,6 +2147,26 @@ static void tickMatch(App& app, double dt) {
     app.matchSparks += (uint64_t)f.muzzleSparks;
     for (int i = 0; i < app.match.config().fighterCount; ++i)
         if (f.meleeHit[i]) ++app.matchHits;
+    // The earned-title counters (issue #20). The original splits them the same way: the damage
+    // functions credit the attacker's "to target/others" pair by whether the victim was its
+    // lock (FUN_00639160), the hit functions credit the victim's "from target/others" pair by
+    // whether the two held each other (FUN_00423000), and both count the attacker's hits on the
+    // local player's fighter (FUN_00423000:22-25). Shot hits are NOT counted: the projectile
+    // pool reports no victim, so the melee/shot comparisons stay among the unresolved
+    // conditions (gameplay/result_title.h).
+    {
+        const int localFighter = app.matchViewCount > 0 ? app.matchViews[0].fighter : 0;
+        for (int i = 0; i < app.match.config().fighterCount; ++i) {
+            if (!f.meleeHit[i] || f.meleeVictim[i] < 0) continue;
+            const int victim = f.meleeVictim[i];
+            if (victim >= 4 || i >= 4) continue;
+            if (app.match.locked_target(i) == victim) ++app.titleHits[i].toTarget;
+            else ++app.titleHits[i].toOthers;
+            if (app.match.locked_target(victim) == i) ++app.titleHits[victim].fromTarget;
+            else ++app.titleHits[victim].fromOthers;
+            if (victim == localFighter) ++app.titleHits[i].onLocalPlayer;
+        }
+    }
 
     // Combat effects: a card at the victim for each connected hit, retired by the
     // next one — the versus vignette's FIFO discipline, driven by real combat.
@@ -3108,6 +3141,10 @@ static bool enterFrontendBattle(App& app) {
     ui::FrontendLaunch launch;
     if (!ui::frontendLaunch(app.frontend, launch, app.error, (uint32_t)app.logicTicks)) return false;
     app.battleLaunch = launch;
+    // The penalty flag is per PLAYER: a panel that is COM has no player, so its flag is cleared
+    // (FUN_0040d130:99-101 clears DAT_006cfdf1 for a panel whose controller byte says COM).
+    for (int panel = 0; panel < 4; ++panel)
+        if (app.frontend.slots[panel].controller >= 4) app.frontend.penaltyDecided[panel] = false;
     // The roster the VS screen, the battle HUD and the results all read (issue #13). Built
     // here because VS runs before the match exists; initMatch rebuilds it for the standalone
     // path and to link each entry to its MatchConfig index.
@@ -3868,11 +3905,79 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             if (app->frontendMatch && app->match.economy().roundOver()) {
                 // The economy reports the WINNING side (issue #11); the DX9 port
                 // reported the burst side here and this line inverted it.
-                app->frontend.resultWinner = app->match.economy().roundOverSide();
+                const gameplay::MatchEconomy& eco = app->match.economy();
+                app->frontend.resultWinner = eco.roundOverSide();
+                app->frontend.matchFrame = app->matchFrame;
+                // The quote rule's inputs (FUN_00635d40:288-318): the balloon margin, clamped
+                // by the winner's own capacity, and whether both winners ended below half HP.
+                {
+                    const int winner = std::max(0, app->frontend.resultWinner);
+                    const int loser = 1 - winner;
+                    const int winnerCapacity = (int)eco.capacity(winner);
+                    const int loserBalloon = (int)eco.balloon(loser);
+                    const int winnerBalloon = (int)eco.balloon(winner);
+                    app->frontend.resultMargin =
+                        std::min(winnerCapacity, loserBalloon) - winnerBalloon;
+                    bool hurt = true;
+                    for (int i = 0; i < app->match.config().fighterCount; ++i)
+                        if (app->match.config().side[i] == winner &&
+                            app->match.fighter(i).hp() * 2 >= app->match.fighter(i).max_hp())
+                            hurt = false;
+                    app->frontend.resultWinnersHurt = hurt;
+                }
                 for (int i = 0; i < app->match.config().fighterCount; ++i) {
                     const auto& stats = app->match.fighter(i).stats();
                     const int panel = app->battleLaunch.fighters[i].panel;
                     app->frontend.resultStats[panel] = {stats.kos,stats.deaths,stats.damageDealt,stats.damageTaken};
+                    // The earned title (issue #20): the recovered record + chain. The port fills
+                    // the fields it can evidence; the chain skips the conditions whose fields are
+                    // not recovered and says so through `resolved`.
+                    const int side = app->match.config().side[i];
+                    gameplay::ResultRecord record;
+                    record.teamCapacity = (int)eco.capacity(side);
+                    record.enemyCapacity = (int)eco.capacity(1 - side);
+                    record.koed = eco.koAt(i) >= 0 || !app->match.fighter(i).is_alive();
+                    // The port's stats are not split by the fighter's lock, so the damage sits in
+                    // the "others" bucket; the chain's split-specific damage conditions are among
+                    // the skipped ones. UNIT: the original's record is HP-scale damage (10000 per
+                    // fighter — FUN_00639160 subtracts the same value it credits from the victim's
+                    // +0x7a4) while this port's kMaxHP is 100, so the ×100 puts the record in the
+                    // unit the chain's `capacity * N / 100` thresholds are written in.
+                    record.damageToOthers = stats.damageDealt * 100;
+                    record.damageFromOthers = stats.damageTaken * 100;
+                    record.hitsToTarget = app->titleHits[i].toTarget;
+                    record.hitsToOthers = app->titleHits[i].toOthers;
+                    record.hitsFromTarget = app->titleHits[i].fromTarget;
+                    record.hitsFromOthers = app->titleHits[i].fromOthers;
+                    record.hitsOnLocalPlayer = app->titleHits[i].onLocalPlayer;
+                    bool resolved = false;
+                    const int title = gameplay::resultTitleIndex(record, app->titleRng, &resolved);
+                    static gameplay::ResultTitleTable titleTable;
+                    static bool titleTableTried = false;
+                    if (!titleTableTried) {
+                        titleTableTried = true;
+                        std::string titleError;
+                        const std::string& install = fnd::assets::assetSource().installDir();
+                        if (install.empty() ||
+                            !gameplay::loadResultTitles(install + "/DaybreakDX.exe", titleTable,
+                                                        titleError))
+                            std::fprintf(stderr, "[title] names unavailable: %s\n",
+                                         titleError.empty() ? "no install open" : titleError.c_str());
+                    }
+                    app->frontend.resultTitleText[panel] = titleTable.text(title);
+                    // The penalty title's session flag (FUN_00635d40:377-380), keyed by the panel
+                    // because that is a local player's stable identity here. Session state only:
+                    // it is never written to any settings file.
+                    if (title == gameplay::kResultTitlePenalty &&
+                        app->frontend.slots[panel].controller < 4)
+                        app->frontend.penaltyDecided[panel] = true;
+                    std::printf("[title] panel %d fighter %d side %d ko=%d dmg=%d/%d "
+                                "hits=%d+%d/%d+%d on1p=%d -> %d '%s'%s\n",
+                                panel, i, side, record.koed ? 1 : 0, record.damageDealt(),
+                                record.damageTaken(), record.hitsToTarget, record.hitsToOthers,
+                                record.hitsFromTarget, record.hitsFromOthers,
+                                record.hitsOnLocalPlayer, title, titleTable.text(title),
+                                resolved ? "" : " (chain reached unrecovered conditions)");
                 }
                 app->matchMode = false;
                 app->frontendBattleReady = false;

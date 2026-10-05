@@ -1,4 +1,6 @@
 #include "ui/screen_select.h"
+#include "assets/asset_source.h"
+#include "assets/exe_strings.h"
 #include "ui/frontend_launch.h"
 #include "ui/hud_atlas.h"
 #include "ui/screen_stage_select.h"
@@ -8,6 +10,26 @@
 namespace ui {
 namespace {
 int cycle(int value, int delta, int count) { return (value + count + delta) % count; }
+// The per-character penalty costume cell (VA 0x6b72a0 in DaybreakDX.exe, 16 bytes; 0 = the
+// character has none). Read from the installed exe, like the earned-title names, so the table
+// stays out of this repository. -1 when the exe is not reachable.
+int penaltyCostume(int character) {
+    static std::vector<uint8_t> table;
+    static bool tried = false;
+    if (!tried) {
+        tried = true;
+        const std::string& install = fnd::assets::assetSource().installDir();
+        std::string error;
+        if (install.empty() ||
+            !fnd::assets::readExeBytes(install + "/DaybreakDX.exe", 0x6b72a0, 16, table, error)) {
+            table.clear();
+            if (!install.empty()) std::fprintf(stderr, "[select] penalty costumes: %s\n", error.c_str());
+        }
+    }
+    if (character < 0 || (size_t)character >= table.size()) return -1;
+    const int value = table[(size_t)character];
+    return value > 0 ? value : -1;
+}
 }
 int SelectMenu::panel(int c) const { return cursor_[c] % 3 + cursor_[c] / 3 * 2; }
 int SelectMenu::owner(int p) const {
@@ -64,7 +86,17 @@ SelectAction SelectMenu::update(const ScreenInput& in, int c) {
     auto& slot = state_.slots[panel(c)];
     if (phase == SelectPhase::Character) {
         if (in.cancel) { slot = FrontendSlot{}; phase = SelectPhase::Team; }
-        else if (in.confirm) phase = SelectPhase::Weapon;
+        else if (in.confirm) {
+            // The penalty game's costume (issue #20): a player who earned the penalty title last
+            // round has their costume forced to the character's own penalty cell
+            // (FUN_00409340:165-172 reads DAT_006b72a0[character]; 0 means that character has
+            // none). The original also marks the panel forced/auto-ready there — that part is
+            // NOT implemented, so the player can still change this costume. Session state only:
+            // penaltyDecided lives in FrontendState and is never persisted.
+            const int penalty = penaltyCostume(slot.character);
+            if (penalty >= 0 && state_.penaltyDecided[panel(c)]) slot.costume = penalty;
+            phase = SelectPhase::Weapon;
+        }
         else if (in.up || in.down || in.left || in.right) {
             // DAT_006b71d0/7210 form a diamond, not a rectangular 4x4 roster.
             const int dx = in.left ? -1 : in.right ? 1 : 0;
