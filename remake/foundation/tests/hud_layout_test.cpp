@@ -73,5 +73,28 @@ int main() {
     const auto cellB = ui::computeBattleHudLayout(960,540);
     CHECK(near(cellA.hp.x,cellB.hp.x) && near(cellA.ko.y,cellB.ko.y));
 
+    // Issue #13: every active participant keeps a marker on screen. The off-screen alert
+    // edge is a port rule (the original's marker art and its four positions are recovered,
+    // 0x643722-0x6437d0, but not the rule that picks one): the nearest edge of the logical
+    // view, and the bottom edge for a fighter behind the eye.
+    {
+        ui::HudFighterHud fighter;
+        fighter.visible = true;
+        fighter.ringX = 400.f; fighter.ringY = 300.f;
+        CHECK(ui::hudAlertDirection(fighter,800.f,600.f) == -1);
+        fighter.ringX = -20.f;
+        CHECK(ui::hudAlertDirection(fighter,800.f,600.f) == 2);
+        fighter.ringX = 900.f;
+        CHECK(ui::hudAlertDirection(fighter,800.f,600.f) == 3);
+        fighter.ringX = 400.f; fighter.ringY = -40.f;
+        CHECK(ui::hudAlertDirection(fighter,800.f,600.f) == 0);
+        fighter.ringY = 700.f;
+        CHECK(ui::hudAlertDirection(fighter,800.f,600.f) == 1);
+        fighter.visible = false;
+        fighter.ringX = 400.f; fighter.ringY = 300.f;
+        CHECK(ui::hudAlertDirection(fighter,800.f,600.f) == 1);
+        // An absent view has no markers at all.
+        CHECK(ui::hudAlertDirection(fighter,0.f,0.f) == -1);
+    }
     std::puts("hud_layout_test: adaptive anchors and projection ok");
 }

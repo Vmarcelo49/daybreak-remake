@@ -57,6 +57,13 @@ inline const UiColor kHudTierRed = fromRgb8(255, 70, 50);
 inline const UiColor kHudTierYellow = fromRgb8(255, 230, 80);
 inline const UiColor kHudTierIdle = fromRgb8(120, 120, 120);
 
+// Who a fighter is from ONE view's point of view (issue #13). The original tells them
+// apart inside FUN_00643230: the ring's art row comes from the fighter's own action
+// counter and the viewer's lock, and the view's OWN fighter gets a second,
+// counter-rotating ring (`local_31`, FUN_00643230:44-77) — the owner marker. Ally and
+// enemy come from the match's side table.
+enum class HudFighterRole : uint8_t { Owner = 0, Ally = 1, Enemy = 2 };
+
 // One fighter's per-fighter HUD (FUN_00643230 @0x00643230, plus the target-bar
 // drawer at 0x00643e38). The two anchors are the same world point projected twice:
 // the ring uses the fighter's position + 70 world units (FUN_00643230.c:52) and the
@@ -65,6 +72,10 @@ inline const UiColor kHudTierIdle = fromRgb8(120, 120, 120);
 // affine matrix, so the divide is invisible there — and maps to
 // (x*400 + 400, -y*300 + 300) (FUN_00643230.c:56-58). game/hud_bridge.h's
 // projectFighterHud() is the port's version of that arithmetic.
+//
+// There is one entry per ACTIVE PARTICIPANT (issue #13), not per primary panel: the
+// original's HUD walks all four fighter slots (`for (local_64 = 0; local_64 < 4; ...)`,
+// FUN_006396f0.c:126-147) and FUN_00643230 chooses its ring art per fighter.
 struct HudFighterHud {
     float ringX = 0.f, ringY = 0.f;   // projected point of position + 70 units
     float barX = 0.f, barY = 0.f;     // projected point of position + 150 units, -32 px
@@ -75,12 +86,25 @@ struct HudFighterHud {
                                      // selection being valid (fighter+0x304 > -1), so it is
                                      // a per-viewer flag, not a camera one.
                                      // main.cpp fills it from Match::locked_target.
+    HudFighterRole role = HudFighterRole::Enemy;   // owner / ally / enemy, per view
+    // FUN_00643230:67-96 chooses the ring's art: row 0 (black) while the fighter has an
+    // action counter running (hud+0x7ac > 0), row 2 (green) while the fighter ITSELF has a
+    // target locked (fighter+0x304 > -1), row 1 (red) otherwise, and column 2 (the blinking
+    // hyper ring) while its hyper mode is up. The second, counter-rotating ring (local_31)
+    // marks the view's OWN fighter while that fighter has no lock of its own.
+    bool  acting = false;             // ring row 0: the fighter has an action running
+    bool  locked = false;             // ring row 2: the fighter has a target of its own
+    bool  hyper = false;              // ring column 2: the fighter's hyper mode is up
     int   slot = 0;                   // 0..4 -> 1P/2P/3P/4P/com tag cell (0x643a93)
     int   tagSheet = 0;               // 0 blue rows, 1 red rows (0x64408c)
     float hp = 1.f;                   // 0..1, hud+0x7a4 / 10000: the live com-bar fill
     float hpLag = 1.f;                // 0..1, hud+0x7a8 / 10000: the ghost under it
     int   alertDir = -1;              // -1 none, else 0 top 1 bottom 2 left 3 right (0x643722)
 };
+
+// One entry per selection panel: the HUD carries the whole active roster, so a 2v2 shows
+// four markers instead of two (issue #13).
+inline constexpr int kHudFighterCount = 4;
 
 // FUN_00421e30/FUN_00421f30 reset fighter+0x30c to 15; FUN_004201a0
 // decrements it. FUN_00643230 applies its scale to both arcs, its twist only to arc 1.
@@ -111,6 +135,29 @@ inline void hudProjectClip(float ndcX, float ndcY, float& x, float& y,
 inline float hudBalloonScale(float pct, int pulse) {
     const float wobble = std::sin((float)pulse * 3.f * 3.14159265358979323846f / 180.f) * 20.f;
     return (pct * 1.5f + 20.f + wobble) / 100.f;
+}
+
+// The off-screen alert marker's edge for one fighter's projected anchor: 0 top, 1 bottom,
+// 2 left, 3 right, -1 while the anchor is inside the logical viewport (the ring is then the
+// marker). PORT RULE: the original's marker art and its four positions are recovered
+// (0x643722-0x6437d0, FUN_00643230:110-152), but the rule that picks an edge is not in the
+// corpus, so the port takes the nearest edge measured on the outside distance; a fighter
+// behind the eye has no screen side and takes the bottom edge.
+inline int hudAlertDirection(const HudFighterHud& f, float width, float height) {
+    if (width <= 0.f || height <= 0.f) return -1;
+    if (f.visible && f.ringX >= 0.f && f.ringX <= width && f.ringY >= 0.f && f.ringY <= height)
+        return -1;
+    if (!f.visible) return 1;
+    const float left = f.ringX < 0.f ? -f.ringX : 0.f;
+    const float right = f.ringX > width ? f.ringX - width : 0.f;
+    const float top = f.ringY < 0.f ? -f.ringY : 0.f;
+    const float bottom = f.ringY > height ? f.ringY - height : 0.f;
+    const float worst = std::max(std::max(left, right), std::max(top, bottom));
+    if (worst <= 0.f) return -1;
+    if (worst == top) return 0;
+    if (worst == bottom) return 1;
+    if (worst == left) return 2;
+    return 3;
 }
 
 // Per-frame game state feeding the HUD. Fractions are 0..1 (clamped at draw).
@@ -152,7 +199,7 @@ struct HudState {
     // (110, 30 + pulse/2) while it runs (0x644d5b). 0 means "no popup".
     int   balloonPulse[2] = {0, 0};
     int   balloonPulseValue[2] = {0, 0};
-    HudFighterHud fighters[2];       // FUN_00643230's per-fighter entries
+    HudFighterHud fighters[kHudFighterCount];   // FUN_00643230's per-fighter entries
     // Render-FPS counter, top-right (FUN_006396f0 draws DAT_006d18a4
     // right-aligned at x=800, y=0, scale 0.5 in the small yellow P00 digits).
     // Rendering only — never logic (the original floats with machine speed;

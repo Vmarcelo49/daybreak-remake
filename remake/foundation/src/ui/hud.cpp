@@ -300,23 +300,43 @@ void HudComposer::composeBattle(SpriteRenderer& batch, const HudState& st, const
 
 void HudComposer::composeFighters(SpriteRenderer& batch, const HudState& st, const BattleHudLayout& layout) {
     const UiColor white = kHudWhite;
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < kHudFighterCount; ++i) {
         const HudFighterHud& f = st.fighters[i];
-        if (!f.visible) continue;
-        // FUN_00643230 gates the counter-rotating red arcs on the viewer's target.
-        if (f.target) {
-            const auto ring = hudRingTransform(st.hudFrame, f.ringPulse);
-            battleAtlas_.cell(batch, HudIcon::Ring, 0, 1, f.ringX, f.ringY, ring.scale,
+        // FUN_00643230:67-96: the ring's column (local_30) and row (local_28). Row 0 is the
+        // black "action running" ring, row 2 the green "this fighter has a lock" ring, row 1
+        // the plain red one; column 2 is the blinking hyper ring, drawn while the fighter's
+        // hyper mode is up and it has neither a lock nor an action. The shipped P03 rows are
+        // black (0,128), red (0,256) and green (0,384) — BATTLE-HUD-SPEC §10's "red =
+        // target" reading was the plain ring; the lock ring is the green one.
+        int col = 0;
+        int row = f.acting ? 0 : (f.locked ? 2 : 1);
+        if (f.hyper && !f.acting && !f.locked) {
+            col = 2;
+            // FUN_00643230:73-77 blinks between rows 0 and 1 every 15 frames when the
+            // fighter's +0x848 flag is clear; the port has no +0x848, so it takes the
+            // blinking branch (a labelled port rule).
+            row = (st.hudFrame % 0x1e) / 0xf;
+        }
+        const auto ring = hudRingTransform(st.hudFrame, f.ringPulse);
+        if (f.visible) {
+            // EVERY active fighter gets a ring — the original draws FUN_00643230 once per
+            // fighter slot (FUN_006396f0:126-147) — which is what keeps an ally or an
+            // opponent readable in a 2v2.
+            battleAtlas_.cell(batch, HudIcon::Ring, col, row, f.ringX, f.ringY, ring.scale,
                               ring.firstDeg, white);
-            battleAtlas_.cell(batch, HudIcon::Ring, 0, 1, f.ringX, f.ringY, ring.scale,
-                              ring.secondDeg, white);
+            // The view's OWN fighter gets the second, counter-rotating ring while it has no
+            // lock of its own (local_31, FUN_00643230:97-102).
+            if (f.role == HudFighterRole::Owner && !f.locked)
+                battleAtlas_.cell(batch, HudIcon::Ring, col, row, f.ringX, f.ringY, ring.scale,
+                                  ring.secondDeg, white);
         }
         // The target's com bar (the drawer at 0x643fa7): frame, the lagging fill
         // (hud+0xb0 = P01 (320,352,80,6)) then the live one (hud+0x4 =
         // P01 (320,320,80,6)), both pivot (40,3) so they grow right from the bar's
         // left edge, and the tag cell at (+24,+16) — 1P/2P/3P in row 0, 4P/com in row
-        // 1, the red copies four rows down (0x64408c).
-        if (f.target) {
+        // 1, the red copies four rows down (0x64408c). The tag is the panel's controller,
+        // so a 2v2 shows at a glance who is human and who is COM.
+        if (f.visible && f.target) {
             battleAtlas_.draw(batch, HudIcon::ComBarFrame, f.barX, f.barY, 1.f, 0.f, white);
             battleAtlas_.fill(batch, HudIcon::ComBarFillGhost, f.hpLag, f.barX, f.barY);
             battleAtlas_.fill(batch, HudIcon::ComBarFill, f.hp, f.barX, f.barY);
@@ -325,7 +345,8 @@ void HudComposer::composeFighters(SpriteRenderer& batch, const HudState& st, con
         }
         // The off-screen alert marker (0x643722-0x6437d0): the pale P06 pentagon on
         // the screen edge the fighter went off, at (400,64) top, (400,536) bottom,
-        // (64,300) left, (736,300) right.
+        // (64,300) left, (736,300) right. It is the only cue an off-screen participant
+        // has, so it is drawn for every roster entry that carries a direction.
         if (f.alertDir >= 0 && f.alertDir < 4) {
             const float ax = f.alertDir == 2 ? 64.f : (f.alertDir == 3 ? layout.width-64.f : layout.width*.5f);
             const float ay = f.alertDir == 0 ? 64.f : (f.alertDir == 1 ? layout.height-64.f : layout.height*.5f);

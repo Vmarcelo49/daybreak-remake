@@ -25,16 +25,27 @@ struct GameRgb {
     float r = 1.f, g = 1.f, b = 1.f;
 };
 
+// Who a fighter is from one view's point of view (issue #13). The gameplay side cannot
+// include ui/hud.h, so the enum is mirrored here and hud_bridge.h maps it 1:1.
+enum class GameHudRole : unsigned char { Owner = 0, Ally = 1, Enemy = 2 };
+
 // One fighter's per-fighter HUD entry (FUN_00643230 @0x00643230). Screen-space
 // because the projection is the camera's business: whoever owns the view-projection
 // matrix fills these (game/hud_bridge.h's projectFighterHud does the arithmetic), and
 // the HUD layer only draws at the point it is handed.
+//
+// One entry per ACTIVE PARTICIPANT (issue #13): the roster decides how many exist, and
+// `role` says who the fighter is from the view's own point of view.
 struct GameFighterHud {
     float ringX = 0.f, ringY = 0.f;   // projected position + 70 world units
     float barX = 0.f, barY = 0.f;     // projected position + 150 units, then -32 HUD units
     int ringPulse = 0;                // fighter+0x30c target-switch countdown
     bool  visible = false;            // in front of the camera
     bool  target = false;             // the fighter the viewer has locked on (ring + com bar)
+    GameHudRole role = GameHudRole::Enemy;   // owner / ally / enemy, per view
+    bool  acting = false;             // ring row 0: an action is running (hud+0x7ac > 0)
+    bool  locked = false;             // ring row 2: this fighter has a target of its own
+    bool  hyper = false;              // ring column 2: this fighter's hyper mode is up
     int   slot = 0;                   // 0..4 -> 1P/2P/3P/4P/com
     int   tagSheet = 0;               // 0 blue tag rows, 1 red
     float hp = 1.f;                   // hud+0x7a4 / 10000
@@ -74,7 +85,8 @@ struct GameHudValues {
     float commandScale = 0.f;       // hud+0x314: extra scale on that label
     int   balloonPulse[2] = {0, 0};         // hud+0x78e0: change popups
     int   balloonPulseValue[2] = {0, 0};    // hud+0x78e8
-    GameFighterHud fighters[2];     // FUN_00643230's per-fighter entries
+    // One entry per selection panel; the roster decides how many are filled (issue #13).
+    GameFighterHud fighters[4];     // FUN_00643230's per-fighter entries
 };
 
 // The synthetic --hud-test values from src/main.cpp (syntheticHudState),

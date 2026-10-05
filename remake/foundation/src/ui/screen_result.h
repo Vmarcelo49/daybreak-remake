@@ -20,6 +20,11 @@ public:
     }
     ResultPhase phase() const { return phase_; }
     int frame() const { return frame_; }
+    // The team sting's second layer (FUN_0063a130:89-98 draws the two halves at (400,200)
+    // and (400,400)): FUN_00635d40:196-205 arms it when the first layer's 0xb4-frame timer
+    // has 0x78 left — 60 frames in — and gives it 0x78 frames of its own, so both end
+    // together at 180.
+    bool victorySecondLayer() const { return frame_ >= 60; }
 private:
     ResultPhase phase_ = ResultPhase::Victory;
     int frame_ = 0;

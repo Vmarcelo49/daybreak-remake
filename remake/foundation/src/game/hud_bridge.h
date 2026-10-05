@@ -47,6 +47,15 @@ inline int hyperRowFor(const std::string& name) {
     return 0;
 }
 
+// The per-view role enum, mapped across the game/ui seam (issue #13).
+inline ui::HudFighterRole hudRoleFor(GameHudRole role) {
+    switch (role) {
+        case GameHudRole::Owner: return ui::HudFighterRole::Owner;
+        case GameHudRole::Ally:  return ui::HudFighterRole::Ally;
+        default:                 return ui::HudFighterRole::Enemy;
+    }
+}
+
 // FUN_00643230's projection (FUN_00643230.c:56-58): clip = viewProj * (world, 1), then
 // the screen mapping in ui::hudProjectClip. The original divides by a hard 1.0
 // because D3DXVec4Transform of a w = 1 point through its affine matrix leaves w = 1;
@@ -117,7 +126,7 @@ inline ui::HudState makeHudState(const GameHudValues& v) {
     st.balloonPulse[1] = v.balloonPulse[1];
     st.balloonPulseValue[0] = v.balloonPulseValue[0];
     st.balloonPulseValue[1] = v.balloonPulseValue[1];
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < ui::kHudFighterCount; ++i) {
         st.fighters[i].ringX = v.fighters[i].ringX;
         st.fighters[i].ringY = v.fighters[i].ringY;
         st.fighters[i].barX = v.fighters[i].barX;
@@ -125,6 +134,10 @@ inline ui::HudState makeHudState(const GameHudValues& v) {
         st.fighters[i].ringPulse = v.fighters[i].ringPulse;
         st.fighters[i].visible = v.fighters[i].visible;
         st.fighters[i].target = v.fighters[i].target;
+        st.fighters[i].role = hudRoleFor(v.fighters[i].role);
+        st.fighters[i].acting = v.fighters[i].acting;
+        st.fighters[i].locked = v.fighters[i].locked;
+        st.fighters[i].hyper = v.fighters[i].hyper;
         st.fighters[i].slot = v.fighters[i].slot;
         st.fighters[i].tagSheet = v.fighters[i].tagSheet;
         st.fighters[i].hp = v.fighters[i].hp;

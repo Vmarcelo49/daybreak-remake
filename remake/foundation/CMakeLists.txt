@@ -378,6 +378,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_executable(fixed_step_test tests/fixed_step_test.cpp)
     target_link_libraries(fixed_step_test PRIVATE foundation_gameplay)
     add_test(NAME fixed_step_test COMMAND fixed_step_test)
+    # Issue #13's participant roster and the screen geometry it drives: the 1v1/2v1/2v2
+    # derivations, the four recovered VS slots, the result report's rows and the victory
+    # layer's transition. Device-free (header-only tables plus the timeline).
+    add_executable(participant_layout_test tests/participant_layout_test.cpp)
+    target_link_libraries(participant_layout_test PRIVATE foundation_ui glm)
+    add_test(NAME participant_layout_test COMMAND participant_layout_test)
+
     foreach(frontend_test select_menu_test stage_vs_test frontend_config_test result_screen_test)
         add_executable(${frontend_test} tests/${frontend_test}.cpp)
         target_link_libraries(${frontend_test} PRIVATE foundation_ui glm)
