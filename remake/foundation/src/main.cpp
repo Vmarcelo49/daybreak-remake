@@ -43,6 +43,7 @@
 #include "ui/screen.h"
 #include "ui/frontend_state.h"
 #include "ui/frontend_launch.h"
+#include "ui/participants.h"
 #include "ui/hud_atlas.h"
 #include "ui/frontend_settings.h"
 #include "game/hud_bridge.h"
@@ -611,6 +612,15 @@ struct App {
     // the four are live this match, and the simulation is stepped once regardless of it.
     game::MatchView              matchViews[game::kMaxHumanViews];
     int                          matchViewCount = 0;
+    // The launch roster in PANEL order (issue #13): the one list VS, the battle HUD and the
+    // results all read, so the three screens cannot disagree about who is fighting. A slot
+    // with no selection is absent, which is how a 1v1 stays a two-entry roster.
+    ui::Participant              participants[ui::kParticipantCount];
+    int                          participantCount = 0;
+    // --local-players' menu clock: the tick the selection screen appeared, so the synthetic
+    // pads' panel walk is timed from the screen and not from process start.
+    bool                         selectSeen = false;
+    uint64_t                     selectEnterTick = 0;
     gameplay::CameraTarget       arenaTargets[4];     // refreshed from the live fighters
     fnd::input::Backend          matchInput;          // P1 device + script override
     bool                         matchInputReady = false;
@@ -691,6 +701,10 @@ static bool historicalMatchCapture(const App& app) {
            (!app.opts.out.empty() || !app.opts.script.empty() || !app.opts.script2.empty());
 }
 
+// Defined beside the HUD helpers below: initMatch fills the roster while it assembles the
+// match, and enterFrontendBattle fills it earlier so the VS screen can draw it.
+static void buildMatchRoster(App& app);
+
 // --local-players' synthetic pads (see input/synthetic_pad.h): a controller with no
 // attached device takes the deterministic pattern for THIS tick, applied after the device
 // sample so a real pad always wins. Per tick and not per render on purpose — through the
@@ -699,19 +713,39 @@ static bool historicalMatchCapture(const App& app) {
 // rate; a per-tick override keeps the run deterministic and pace-independent.
 void driveSyntheticLocalPads(App& app) {
     const int humans = std::clamp(app.opts.localPlayers, 0, 4);
-    if (humans <= 1 || !app.matchMode) return;
+    if (humans <= 1) return;
     for (int controller = 1; controller < humans; ++controller) {
         if (app.matchInput.device(controller) != fnd::input::DeviceType::None) continue;
-        const fnd::input::SyntheticPadState pad =
-            fnd::input::syntheticPadState(controller, app.matchFrame);
+        fnd::input::SyntheticPadState pad;
+        if (app.matchMode) {
+            pad = fnd::input::syntheticPadState(controller, app.matchFrame);
+        } else if (app.screensMode) {
+            // The selection screen's own clock: ticks since it appeared, so the panel walk
+            // starts when the screen does and not at process start.
+            if (app.screens.current() == ui::ScreenId::Select && !app.selectSeen) {
+                app.selectSeen = true;
+                app.selectEnterTick = app.logicTicks;
+            }
+            pad = fnd::input::syntheticMenuPadState(
+                controller, app.selectSeen ? app.logicTicks - app.selectEnterTick : 0);
+            // The VS presentation and the result beats advance on their own or on the run's
+            // own script taps, so the pads never skip them: an evidence run then sees the
+            // whole four-portrait assembly and the full victory -> quote -> report sequence
+            // instead of a single faded frame (ui/screen_vs.h, ui/screen_result.h).
+            if (app.screens.current() == ui::ScreenId::VsIntro ||
+                app.screens.current() == ui::ScreenId::Result)
+                pad.confirm = false;
+        } else {
+            continue;
+        }
         fnd::input::PlayerState& state = app.tickInput[controller];
         state.down[fnd::input::Up] = pad.up;
         state.down[fnd::input::Down] = pad.down;
         state.down[fnd::input::Left] = pad.left;
         state.down[fnd::input::Right] = pad.right;
-        state.down[fnd::input::AttackA] = pad.melee;
+        state.down[fnd::input::AttackA] = pad.melee || pad.cancel;
         state.down[fnd::input::Shoot] = pad.shoot;
-        state.down[fnd::input::Jump] = pad.jump;
+        state.down[fnd::input::Jump] = pad.jump || pad.confirm;
         state.down[fnd::input::Guard] = pad.guard;
         state.down[fnd::input::LockSwitch] = pad.lock;
         fnd::input::compute_edges(state);
@@ -1438,6 +1472,8 @@ static bool initMatch(App& app) {
     const xm::Model* tamaMesh = app.projectileCollisionMesh;
     app.match.reset(config, models, anims, tamaMesh,
                     tamaMesh ? &app.projectileCollisionIndex : nullptr, movement);
+    // The roster in panel order, with each entry linked to its MatchConfig index (issue #13).
+    buildMatchRoster(app);
     // Hand each fighter its recovered projectile parameters. Match::reset has already
     // bound the weapon (MatchConfig::weapon), which sized the magazines.
     for (int i = 0; i < fighterCount; ++i)
@@ -1554,14 +1590,60 @@ static glm::mat4 matchRenderMatrix(const App& app, int fighter) {
         glm::rotate(glm::mat4(1.f), yaw + glm::pi<float>(), glm::vec3(0.f,1.f,0.f));
 }
 
-// Which fighter one of the two per-fighter HUD entries draws (FUN_00643230's ring + com
-// bar). Entry order is the front end's primary panel pair, or 0/1 without one.
+// The launch roster (issue #13): the front end's four slots in panel order, or the
+// standalone --match pair (fighters 0/1 on panels 0/1, the historical recipe). `fighter`
+// links a roster entry to its MatchConfig index, which is a different index space.
+static void buildMatchRoster(App& app) {
+    if (app.frontendMatch) {
+        app.participantCount =
+            ui::buildParticipants(app.frontend.slots.data(), app.participants);
+        for (int i = 0; i < app.participantCount; ++i)
+            for (int j = 0; j < app.battleLaunch.fighterCount; ++j)
+                if (app.battleLaunch.fighters[j].panel == app.participants[i].panel)
+                    app.participants[i].fighter = j;
+        return;
+    }
+    // Standalone: two fighters on panels 0 and 1, controller 0 on the device/script and COM
+    // on the dummy opponent. The character index is resolved from the same spec the scene
+    // assembly used, so the HUD's combo label matches the rig that was loaded.
+    app.participantCount = app.match.config().fighterCount < 2 ? app.match.config().fighterCount : 2;
+    for (int i = 0; i < app.participantCount; ++i) {
+        ui::Participant& p = app.participants[i];
+        p = ui::Participant{};
+        p.panel = i;
+        p.team = i;
+        const std::string& spec = i == 0 ? app.opts.character : app.opts.enemy;
+        p.character = gameplay::characterIndexForDir(charDirForSpec(spec));
+        p.controller = i == 0 ? 0 : 4;
+        p.fighter = i;
+    }
+}
+
+// One HUD entry per roster entry: the participant's MatchConfig index, or -1 when the slot
+// has no participant (a 1v1 fills entries 0 and 1, a 2v2 all four).
 static int hudEntryFighter(const App& app, int entry) {
-    if (!app.frontendMatch) return entry;
-    const int panel = ui::kFrontendBattleSlots[entry];
-    for (int j = 0; j < app.battleLaunch.fighterCount; ++j)
-        if (app.battleLaunch.fighters[j].panel == panel) return j;
-    return entry;
+    if (entry < 0 || entry >= app.participantCount) return -1;
+    return app.participants[entry].fighter;
+}
+
+// Projects every active participant's markers through one view's camera into its HUD
+// (FUN_00643230 projects each fighter's ring and com bar through the same camera and viewport
+// the frame uses — here, through this view's), and resolves each one's off-screen alert edge.
+// Two callers: the frame path, with the interpolated camera the scene pass draws with, and the
+// --local-players evidence report, which needs real marker numbers on its own frame size.
+static void projectViewHud(const App& app, const float viewProj[16], float width, float height,
+                           ui::HudState& hud) {
+    for (int i = 0; i < ui::kHudFighterCount; ++i) {
+        const int fighterIndex = hudEntryFighter(app, i);
+        if (fighterIndex < 0) continue;
+        const glm::vec3 position = matchRenderPosition(app, fighterIndex);
+        game::projectFighterHud(viewProj, position.x, position.y, position.z, hud.fighters[i],
+                                width, height);
+        // An off-screen participant keeps a marker on the edge it left through. The original's
+        // edge choice is not recovered (only the four marker positions, 0x643722-0x6437d0), so
+        // this is a PORT RULE: the nearest edge of the view.
+        hud.fighters[i].alertDir = ui::hudAlertDirection(hud.fighters[i], width, height);
+    }
 }
 
 // One view as the frame renders it: the camera/cell the scene pass uses for that view and
@@ -1609,15 +1691,9 @@ static void buildFrameViews(App& app, uint32_t width, uint32_t height,
         frameView.camera.viewProj =
             view.camera.proj_matrix((int)rect.w, (int)rect.h) * viewMatrix;
         frameView.hud = view.hud;
-        // FUN_00643230 projects each fighter's ring and com bar through the same camera
-        // and viewport the frame uses — here, through this view's.
         const ui::BattleHudLayout hudLayout = ui::computeBattleHudLayout((int)rect.w, (int)rect.h);
-        for (int i = 0; i < 2; ++i) {
-            const glm::vec3 position = matchRenderPosition(app, hudEntryFighter(app, i));
-            game::projectFighterHud(&frameView.camera.viewProj[0][0], position.x, position.y,
-                                    position.z, frameView.hud.fighters[i], hudLayout.width,
-                                    hudLayout.height);
-        }
+        projectViewHud(app, &frameView.camera.viewProj[0][0], hudLayout.width, hudLayout.height,
+                       frameView.hud);
         out.push_back(frameView);
     }
 }
@@ -1958,21 +2034,46 @@ static void tickMatch(App& app, double dt) {
         // player its camera happens to follow.
         const int lockedTarget = app.match.locked_target(view.fighter);
         const int viewPulse = app.match.lock_pulse(view.fighter);
-        for (int i = 0; i < 2; ++i) {
+        // One HUD entry per ROSTER entry (issue #13): the participant's own fighter, its
+        // team and its controller. A 1v1 fills two, a 2v2 all four.
+        for (int i = 0; i < ui::kHudFighterCount; ++i) {
+            view.hud.fighters[i] = ui::HudFighterHud{};
             const int fighterIndex = hudEntryFighter(app, i);
+            if (fighterIndex < 0) continue;
+            const ui::Participant& p = app.participants[i];
             const gameplay::Fighter& f = app.match.fighter(fighterIndex);
+            // Owner / ally / enemy from THIS view's point of view: the original's owner is
+            // the fighter whose +0x300 equals the view player's (FUN_00643230:63-69), and
+            // the team is the match's side table.
+            const int viewSide = app.match.config().side[view.fighter];
+            view.hud.fighters[i].role = fighterIndex == view.fighter
+                ? ui::HudFighterRole::Owner
+                : (app.match.config().side[fighterIndex] == viewSide ? ui::HudFighterRole::Ally
+                                                                    : ui::HudFighterRole::Enemy);
             view.hud.fighters[i].target = (fighterIndex == lockedTarget);
+            // Ring art row 0 while the fighter is in an action (the original's action
+            // counter, hud+0x7ac > 0). PORT RULE: Fighter carries no action counter, so the
+            // action states that counter corresponds to stand in for it.
+            view.hud.fighters[i].acting = f.state() == gameplay::FighterState::AttackA ||
+                                          f.state() == gameplay::FighterState::AttackB ||
+                                          f.state() == gameplay::FighterState::AttackC ||
+                                          f.state() == gameplay::FighterState::Hit ||
+                                          f.state() == gameplay::FighterState::Knockdown ||
+                                          f.state() == gameplay::FighterState::KO;
+            // The fighter's OWN lock (green ring) is not the viewer's target: FUN_00643230
+            // reads fighter+0x304 for the ring and the view player's +0x304 for the com bar.
+            view.hud.fighters[i].locked = app.match.locked_target(fighterIndex) >= 0;
+            view.hud.fighters[i].hyper = f.hyper_active();
             // The pulse belongs to the fighter that switched, so only that fighter's HUD
             // entry scales and twists; partners' rings stay at rest.
             view.hud.fighters[i].ringPulse = (fighterIndex == view.fighter) ? viewPulse : 0;
             // Slot 0 is 1P and slot 4 is com in the tag atlas (P01 (320,256,64,32) rows);
             // the red copies sit four rows down, which is the tagSheet index.
-            view.hud.fighters[i].slot = app.frontendMatch
-                ? app.frontend.slots[ui::kFrontendBattleSlots[i]].controller : (i == 0 ? 0 : 4);
-            view.hud.fighters[i].tagSheet = (i == 0) ? 0 : 1;
+            view.hud.fighters[i].slot = p.controller;
+            view.hud.fighters[i].tagSheet = p.team;
             view.hud.fighters[i].hp = (float)f.hp() / f.max_hp();
             view.hud.fighters[i].hpLag = view.hud.fighters[i].hp;
-            view.hud.fighters[i].alertDir = -1;
+            view.hud.fighters[i].alertDir = -1;   // the render pass resolves it per view
         }
     }
 
@@ -2662,11 +2763,41 @@ bool runInputTest(App& app) {
 
 // Round-start art comes from FUN_00633ca0; the three-second 1v1 clock is
 // a port flow rule, independent of the original's unlocated trigger sequence.
+// The round-start countdown. Its art is the original's own: P09's three cells (0,0,192,256),
+// (192,0,192,256) and (384,0,128,256), registered by FUN_00633ca0 @0x633ca0 with pivots
+// (96,128), (96,128) and (64,128), drawn at the frame centre.
+//
+// TIMING (issue #13): the recovered pre-round phase is NOT three seconds — FUN_00634760
+// @0x634760 sets phase 1 and FUN_00635d40:62-83 hands over to the fight after THREE frames,
+// arming each view's centre sting for 0x3c = 60 frames at scale 6.0 shrinking to 1.0. The
+// code that walks the three digits is not in the corpus, so the port keeps its documented
+// three-second countdown (ROADMAP-PENDING's D3 row) rather than inventing a pace. What it
+// adds here is the BATTLE STATE around the digit: the round settings and every participant
+// (team, combo, controller), so the countdown shows who is about to fight.
 class RoundStartScreen final : public ui::Screen {
 public:
-    RoundStartScreen(ui::SpriteRenderer& batch, bool& ready, int tickRate, std::string& error)
-        : ready_(ready), tickRate_(tickRate) {
+    RoundStartScreen(ui::SpriteRenderer& batch, App& app, bool& ready, int tickRate,
+                     std::string& error)
+        : app_(app), ready_(ready), tickRate_(tickRate) {
         ui::uploadCnvSheet(batch, "data/object/P09", sheet_, error);
+        if (!loadCaptionFont(text_, 18.f, error)) return;
+        // The round's own settings, then one line per participant. The roster is the
+        // selection (issue #13), so a 2v2 lists four.
+        std::vector<std::string> lines;
+        char settings[96];
+        std::snprintf(settings, sizeof(settings), "TIME %ds   BALLOON %d%% / %d%%",
+                      app_.frontend.timeLimit, app_.frontend.blueBalloon,
+                      app_.frontend.redBalloon);
+        lines.push_back(settings);
+        settingsLayout_ = text_.layout(lines.back().c_str());
+        for (int i = 0; i < app_.participantCount; ++i) {
+            const ui::Participant& p = app_.participants[i];
+            lines.push_back(std::string(ui::teamLabel(p.team)) + "  " + p.combo() + "  " +
+                            ui::controllerLabel(p.controller));
+            rosterLayout_[i] = text_.layout(lines.back().c_str());
+        }
+        textSlot_ = batch.addTexture(text_.atlasWidth(), text_.atlasHeight(),
+                                     text_.atlasRGBA().data(), error);
     }
     bool loaded() const { return sheet_ >= 0; }
     ui::ScreenId update(const ui::ScreenInput&) override {
@@ -2679,11 +2810,25 @@ public:
         const int n = std::min(2, frame_ / tickRate_);
         const float w = n == 2 ? 128.f : 192.f;
         batch.pushSprite(sheet_, {n*192.f,0,w,256},w/2,128,400,300,.5f);
+        if (textSlot_ < 0) return;
+        drawCaptionLayout(batch, text_, settingsLayout_, textSlot_, bitmapSlot_, 40.f, 40.f, .8f,
+                          ui::kHudWhite, 2.f);
+        for (int i = 0; i < app_.participantCount; ++i)
+            drawCaptionLayout(batch, text_, rosterLayout_[i], textSlot_, bitmapSlot_, 40.f,
+                              70.f + 26.f * (float)i, .8f,
+                              app_.participants[i].team == 0 ? ui::kHudLimitLeft
+                                                             : ui::kHudLimitRight,
+                              2.f);
     }
 private:
+    App& app_;
     bool& ready_;
     int frame_ = 0, sheet_ = -1;
     int tickRate_;
+    ui::TextLayer text_;
+    ui::TextLayout settingsLayout_, rosterLayout_[ui::kParticipantCount];
+    mutable int bitmapSlot_ = -1;
+    int textSlot_ = -1;
 };
 
 static void playFrontendMusic(App& app, ui::ScreenId id) {
@@ -2753,6 +2898,10 @@ static bool enterFrontendBattle(App& app) {
     ui::FrontendLaunch launch;
     if (!ui::frontendLaunch(app.frontend, launch, app.error, (uint32_t)app.logicTicks)) return false;
     app.battleLaunch = launch;
+    // The roster the VS screen, the battle HUD and the results all read (issue #13). Built
+    // here because VS runs before the match exists; initMatch rebuilds it for the standalone
+    // path and to link each entry to its MatchConfig index.
+    buildMatchRoster(app);
     // Parse every selected weapon's combat definition now, so the battle has real
     // per-weapon tuning by the time initMatch builds MatchConfig (issue #9).
     app.weaponDefs.clear();
@@ -2795,6 +2944,15 @@ static bool enterFrontendBattle(App& app) {
     app.versusAudio.set_volumes(ui::frontendSettings().volumes);
     app.matchMode = false;
     std::printf("[menu] battle: %d fighters on %s\n", launch.fighterCount, launch.stage.c_str());
+    // The spawn each fighter starts from: MatchConfig keys it by the fighter's PANEL
+    // (FUN_00423420 indexes the stage's env points by the selected panel), so a 2v2 starts
+    // from four different points. Printed because how far apart teammates stand is the whole
+    // question behind the four-fighter spawn-crowding note in ROADMAP-PENDING.md.
+    for (int i = 0; i < launch.fighterCount; ++i) {
+        const glm::vec3& spawn = app.scene.env.points[launch.fighters[i].panel];
+        std::printf("[menu]   fighter %d panel %d spawn=(%.0f,%.0f,%.0f)\n", i,
+                    launch.fighters[i].panel, spawn.x, spawn.y, spawn.z);
+    }
     return true;
 }
 
@@ -2823,13 +2981,13 @@ bool initScreens(App& app) {
         playFrontendMusic(app, sid);
         if (sid == ui::ScreenId::Battle) {
             if (!enterFrontendBattle(app)) return nullptr;
-            auto countdown = std::make_unique<RoundStartScreen>(app.uiRenderer, app.frontendBattleReady,
+            auto countdown = std::make_unique<RoundStartScreen>(app.uiRenderer, app, app.frontendBattleReady,
                 app.opts.out.empty() ? gameplay::FixedStep::tickRate : 60, app.error);
             if (!countdown->loaded()) return nullptr;
             return countdown;
         }
         auto screen = ui::makeScreen(sid, app.uiRenderer, app.frontend, app.error);
-        if (screen) std::printf("[menu] scene: %s\n", screen->name());
+        if (screen) std::printf("[menu] scene: %s (tick %llu)\n", screen->name(), (unsigned long long)app.logicTicks);
         return screen;
     };
     if (!app.screens.begin(id, factory, app.error)) return false;
@@ -3129,23 +3287,39 @@ void appendMatchHudPasses(App& app, const std::vector<FrameView>& views, uint32_
 // cameras and HUD values without reading pixels.
 void reportMatchViews(const App& app, uint32_t width, uint32_t height) {
     const game::SplitLayout layout = game::splitLayoutFor(app.matchViewCount);
-    std::printf("[split] layout=%s views=%d target=%ux%u\n",
+    std::printf("[split] layout=%s views=%d target=%ux%u roster=%d\n",
                 layout == game::SplitLayout::Single ? "single"
                                                     : (layout == game::SplitLayout::Two ? "two" : "four"),
-                app.matchViewCount, width, height);
+                app.matchViewCount, width, height, app.participantCount);
     for (int v = 0; v < app.matchViewCount; ++v) {
         const game::MatchView& view = app.matchViews[v];
         if (!view.active()) continue;
         const game::ViewRect rect = game::viewCell(layout, v, width, height);
         const ui::HudState& hud = view.hud;
         std::printf("[split] view %d: controller=%d fighter=%d cell=(%.0f,%.0f,%.0f,%.0f) "
-                    "hp=%.0f main=%d charge=%d stamina=%.2f hyper=%s gauge=%.2f "
-                    "target=%d ringPulse=%d\n",
+                    "hp=%.0f main=%d charge=%d stamina=%.2f hyper=%s gauge=%.2f\n",
                     v, view.controller, view.fighter, rect.x, rect.y, rect.w, rect.h, hud.hp,
                     hud.mainWhole, hud.chargeWhole, hud.staminaFrac, hud.hyperName.c_str(),
-                    hud.hyperGauge, hud.fighters[0].target || hud.fighters[1].target ? 1 : 0,
-                    hud.fighters[0].ringPulse ? hud.fighters[0].ringPulse
-                                              : hud.fighters[1].ringPulse);
+                    hud.hyperGauge);
+        // Per-participant markers, projected through THIS view's camera on this frame's own
+        // cell: the entry's role, its tag (controller/COM), whether this view sees it and
+        // which edge its marker points at when it does not (issue #13's evidence line).
+        ui::HudState projected = hud;
+        const glm::mat4 viewProj = view.camera.proj_matrix((int)rect.w, (int)rect.h) *
+                                   view.camera.view_matrix();
+        projectViewHud(app, &viewProj[0][0], rect.w, rect.h, projected);
+        for (int i = 0; i < app.participantCount; ++i) {
+            const ui::HudFighterHud& f = projected.fighters[i];
+            const ui::Participant& p = app.participants[i];
+            std::printf("[split]   p%d panel=%d team=%d %s %s role=%s fighter=%d visible=%d "
+                        "target=%d acting=%d alert=%d hp=%.0f ring=(%.0f,%.0f)\n",
+                        i, p.panel, p.team, ui::controllerLabel(p.controller), p.combo().c_str(),
+                        f.role == ui::HudFighterRole::Owner
+                            ? "owner"
+                            : (f.role == ui::HudFighterRole::Ally ? "ally" : "enemy"),
+                        p.fighter, f.visible ? 1 : 0, f.target ? 1 : 0, f.acting ? 1 : 0,
+                        f.alertDir, f.hp * 100.f, f.ringX, f.ringY);
+        }
     }
 }
 
