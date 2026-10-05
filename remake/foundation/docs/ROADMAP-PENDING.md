@@ -1316,6 +1316,39 @@ counts, and the team-select diamond's y anchor discrepancy. Scenes 2 and
 
 ## F. Audio
 
+### F0. Live combat SEs and character voices — IMPLEMENTED (issue #16)
+
+* **What landed.** The frontend battle now dispatches attack, firing, hit, block, KO, respawn
+  and hypermode cues out of the fixed 64 Hz `MatchFrame`, through the battle engine, with the
+  recovered per-character voice vocabulary and the recovered SE ids.
+* **Recovered.** The voice vocabulary is a 40-entry table of 16-byte names at VA 0x6b73b0
+  (`addattack`, `attackA`..`specialC`); `FUN_00431e70` loads each event's alternatives from
+  `data/voice/<dir>/<event>/NNN.wav`, probing NNN upward until the file is missing, and uses the
+  `<event>_B` directory for exactly events 4/7/10/26 when the character's voice variant is B.
+  `FUN_0041e180:196-206` picks the directory (`data/voice/<name>` or `<name>B`; renaB/rikaB/
+  chieB/hanyuB ship). SE ids from their call sites: 9 = the blow that takes a LIVE fighter down
+  (FUN_00639160:57 melee, FUN_00637950:504 shot), 10 = a hit on an already-down body
+  (FUN_00637950:489), 0xb/0xc = the two victory-sting layers (FUN_00635d40:165, :203),
+  0x16/0x15 = the report appearing and its per-row tick (FUN_00635d40:495-508), 0x11 = a menu
+  press, 0xd/0xe/0xf = the target-switch gesture. The gameplay bank is `data/se/%03d.wav`, 32
+  slots (`FUN_0064ade0`'s `< 0x20` bound); the menu's `data/sysse` bank stays separate. One
+  voice channel per fighter mirrors the original's per-player audio object (`FUN_0064ada0`:
+  `scene+0x5600 + player*0x34`).
+* **Port rules, labelled.** The KO pair (attackKO for a melee blow, damageKO for a shot) is a
+  reading of the two names, not a recovered trigger. The swing/fire/block/respawn SE ids are
+  NOT recovered, so those events carry the character's voice only and `CombatCue::se_id` stays
+  -1. The alternative pick is deterministic from the event identity instead of the original's
+  `rand % count`. The B-persona voice directory is gated by the persona rule #20 recovered
+  (character 0/4 with weapon slot 2), so chie's and hanyu's B voices are unused.
+* **Identity.** `tick + kind + fighters + per-tick sequence`, with a duplicate-history ring:
+  a replayed frame or a rollback resimulation carries the same ids and plays nothing twice.
+  `end_match()` is "stop everything this match started" (cuts the SFX bus, releases every voice
+  channel); `Sdl3Engine::stop_bus(SfxBus)` is the bus-level seam issue #15 asked for.
+* **Remaining.** The pause-time policy is #15's (this layer has no pause test: a paused
+  `Match::step` produces no events). A live slider drag during a battle was not exercised
+  interactively, though the engine applies `set_volumes` to every busy slot. The standalone
+  `--match`/`--versus` parity paths stay silent by design.
+
 ### F1. A seam from the screen layer to the audio backend (menu SEs) — DONE
 
 * **What.** Menu cursor/confirm SEs are silent: the screen stack returns an

@@ -232,12 +232,13 @@ Every "ran" row printed `RESULT: ok` with real frame timings; per-target command
 and outputs are in `docs/BUILD-linux.md`, `docs/BUILD-windows.md` and
 `docs/BUILD-web.md`.
 
-Host-side tests run without a GPU (`CMakeLists.txt`): the Linux suite has 34
+Host-side tests run without a GPU (`CMakeLists.txt`): the Linux suite has 37
 tests covering geometry, raycasts, asset parsing/spawns, gameplay/economy,
 animation/lighting, caption fonts/text, HUD/menu layouts, split-screen view
 layout, the four-participant roster and screen geometry, the recovered result
-rules (the victory-quote plan and the earned-title chain), input/rebinding and
-frontend selection/VS/results. Asset-dependent checks skip when the install is
+rules (the victory-quote plan and the earned-title chain), the live combat audio
+policy (event identity, per-fighter voice channels, cleanup) with an asset-backed
+COM 2v2 over it, input/rebinding and frontend selection/VS/results. Asset-dependent checks skip when the install is
 unavailable. Cross (Windows) and web targets do not build the host tests.
 
 ```bash
