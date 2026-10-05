@@ -268,7 +268,11 @@ New since the port landed, all verified the same way:
   follow, timeline HUD, BGM loop, SFX cues, effect queue): P2 strafes on an
   integer triangle wave, weapons re-attach to live prop bones every frame, and
   every number is a pure function of the frame index — Linux vs Wine captures
-  byte-identical, including camera smoothing, animation, and audio counts.
+  byte-identical, including camera smoothing, animation, and audio counts. Its
+  scripted hits spawn the recovered hit card (`data/effect/000.dat` → `14.X`) with
+  the lifetime that model animates for (0.250 s), so a capture has to land within
+  ~15 frames of a hit: `--versus --frames=60` (the hits are at 30/55/80 % of
+  `--frames`) shows one, and a longer run shows none.
 - `--screen=title` boots the front end (`--script=` drives menus and `--out`
   captures them). Title → character/weapon/hypermode/controller selection →
   stage/battle settings → VS intro → live 1v1 battle → victory/quote/report →

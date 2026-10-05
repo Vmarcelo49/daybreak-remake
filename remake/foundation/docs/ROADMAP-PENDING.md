@@ -839,83 +839,105 @@ connects twice.
 
 ## B. Battle visuals
 
-### B1. VFX: auras and effects first, trails are RE-blocked — **partially done**
+### B1. VFX: the effect table, per-instance cards, trails are vestigial — **implemented (issue #17)**
 
-* **Progress (this pass).** The aura and hit-effect classes now draw their
-  real cards, replacing the cube A/B one class at a time as sketched:
-  `src/main.cpp` builds a renderer effect-asset table at match/versus start
-  (`buildFxAssets`): asset 0 is the melee-hit card, resolved through
-  `data/effect/000.dat` (corrected header: version dword then a fixed 260-byte
-  model path — slot 000 names `14.X`), and in match mode assets
-  1–2 are `data/aura/00.X`, `FUN_00633ca0`'s first aura slot. The gameplay
-  `EffectEventQueue`s (`game/effect_events.h`) are no longer drained to
-  nothing: `updateFxCards` owns the live card set (spawn / kill-by-id /
-  ttl expiry) and `placeFxCards` writes the per-frame model matrices, so
-  the existing `Pass::Effect` additive pass and cylindrical billboard
-  (`scene_renderer.cpp`) draw them. The aura follows fighter state
-  through the fighter's own model matrix in local space — verified
-  bit-for-bit the aura cube's transform (`modelMatrix() *
-  aura_center_local()`). `--debug-prims` is the A/B: with it, the old
-  all-cube view (aura cube included) renders and the cards are hidden;
-  without it, the cards render and the aura cube does not (A/B with a live
-  card differs by 0.08 RMSE in the fighter band). Shot/spark cubes stay
-  as-is: their real VFX are trails, which remain RE-blocked below.
-  Draw-count attribution, verified by rebuilding the pre-B1 binary:
-  parity capture was **167** draws / 0 effects, now **177** / 10 effects
-  (8 submeshes from `14.X` + 1 per aura card; versus is 175 / 8 with the
-  hit card alone) — pixels byte-identical, since hidden cards emit only
-  degenerate triangles. **Correction 2026-10-03:** commit `c0c2f4e`'s
-  message reports "177 draws ... unchanged", quoting the post-change count
-  as the baseline; pre-B1 was 167. The "broke nothing" substance (identical
-  pixels, 0 untextured) stands.
-  Two measured facts the port needed: the card texture cache falls back
-  from the card's own directory to `data/aura/`; and `aura/00.X` is a
-  54.6-unit cube-extent blob (12 verts, texture `炎上オーラ`) while
-  `effect/14.X` spans 20×178×137 units over 8 quads (1 `hitC01` + 7
-  `hitC05`), so both are fighter-scale with no scale factor in the first
-  pass. **Correction 2026-10-03:** the fallback never fires for either
-  shipped card — `hitC05.cnv` exists in `data/effect/` and `炎上オーラ.cnv`
-  in `data/aura/` — and no loaded card references the `muzzle`/`hitb`/`g`
-  textures the split story cites. It is untested defensive generality, not
-  a measured need; likewise "quad plus four beams" misdescribes 8 quads.
-  **Undisclosed tuning (now disclosed):** hit cards live **12 s**
-  (`tickMatch` pushSpawn) and versus cards 5 s, full-bright with no fade —
-  a frame-600 capture still shows a ~frame-105 hit blazing 8 s later.
-  Kill-chaining retires non-final cards on the next hit, but the last one
-  lingers. Both numbers are placeholders until sketch (b) recovers the
-  real factors; the roadmap's "unknown" stands.
-  **Unknown (unchanged, plus one addition):** the slot→fighter rule for
-  `FUN_00633ca0`'s seven aura slots (both fighters share slot 0 for now);
-  **new:** the slot→*mode* rule is equally unmapped — every mode shows
-  slot-0 art, flattening the per-mode aura colors (`hypermode_params`:
-  magenta Oyashiro, cyan Friendship) down to the `--debug-prims` view;
-  the per-effect factors (sketch b), and the trail strip (sketch c).
-* **What (remaining).** Shots and sparks are still drawn as `debug_prims.h`
-  cubes (their real VFX are trails, RE-blocked below); the aura slot→fighter
-  rule is unmapped (both fighters share slot 0); per-effect factors and the
-  billboard yaw against the original are not matched.
-* **Evidence (read/measured).** `FUN_00633ca0` loads **10** trail textures
-  (`data/trail/%02d.bmp`, loop `< 10`) and **7** aura models
-  (`data/aura/%02d.x`, loop `< 7`) — `research/recomp/FUN_00633ca0.c:52-60`.
-  Effect instances are already parsed off `.X` materials
-  (`src/assets/xmodel.h:1400-1407`, `Material::effectFile`), and the
-  renderer already classifies cylindrical billboards for `Pass::Effect`
-  (`src/render/scene_renderer.cpp:55,457`); `EFFECTS-BILLBOARD.md` has the
-  yaw survey and its measured per-view numbers. `EFFECTS-TRAILS.md` is a
-  **negative result**: no trail geometry ships, no `.X` names a trail
-  texture, and the table's owner (`param_1 + 0x4434…`) is not mapped to the
-  producer that writes ribbon vertices — so trails need RE, not a draw
-  path. **Unknown:** the per-effect factor table (there is no committed
-  pointer to it; `remake/assets/shaders/effect_*.bin` are extracted blobs
-  the DX9 remake never bound — historical `placeholders.md` §1).
-* **Sketch.** (a) Draw the aura/effect meshes the combat events and
-  `data/<char>/NN.dat` already spawn, replacing cubes one class at a time
-  and keeping `--debug-prims` as the A/B. (b) Recover the per-effect factors
-  from the original's effect code before touching tuning. (c) Trails: map
-  `FUN_00633ca0`'s table owner to the update that writes the strip
-  (`EFFECTS-TRAILS.md` §"What would unblock"), including the slot →
-  texture-index rule and the blend technique.
-
+* **The effect table is recovered.** `FUN_0042eba0` loads **100** descriptors,
+  `data/effect/%03d.dat`, into the manager at `scene+0x5210`, with a 1000-entry
+  0x1c-byte variant array, a 100-entry 0x38-byte descriptor array and 100 model
+  pointers. An **effect id is `type*10 + variant`**: `FUN_0042f5e0` (the manager's
+  create method, vtable `0x6a2500` +0x08) indexes the model/descriptor arrays with
+  `id/10` and the variant array with the full id. The install ships 22 of the 100
+  files, every one of them with exactly one variant.
+* **The descriptor carries NO lifetime.** `FUN_0042eec0` reads a version dword, a fixed
+  260-byte model path (`0x104`, relative to `data/effect/`), the variant count at file
+  offset **0x108** and the per-variant part records — and then takes the lifetime from
+  the **model's own first animation**: `FUN_0064e8b0(model, 0)` through the model's
+  vtable, divided by the float **0.016** at `0x6a2434` and rounded to whole frames
+  (`0x42f412-0x42f423` stores it into `descriptor[0]`). `FUN_00436630` ages the instance
+  once per frame (`+0x130`) and retires it when `descriptor[0] <= age`; `FUN_00436150`
+  drives the model's animation with `age * 0.016` seconds. That is the plain answer to
+  the audit's "all 22 installed descriptors report a zero raw lifetime": the number is
+  not in the file at all. The recovered lifetimes are the models' animation lengths,
+  0.150–1.000 s — the melee-hit card (`000.dat` → `14.X`) is **0.250 s**, so the port's
+  old 12 s placeholder was 48x too long.
+* **Variants own parts with frame windows.** `FUN_00436150` walks a variant's part list
+  and draws part *p* while `start <= (period ? age % period : age) < end` — the same
+  age counter that expires the instance. Every shipped file declares one variant, so the
+  port's variant half is a clamp, not a behaviour.
+* **The "aura" table is the attachment table.** `FUN_00633ca0` loads **7** models
+  `data/aura/%02d.x` into `scene+0x4498` (and 10 trail bitmaps into `scene+0x445c`).
+  Their textures name their roles: **0/1/5 = マズルフラッシュ 1/2/3** (the three muzzle
+  flashes), **2 = hitblue0000**, **3 = 炎上オーラ** (the burning aura), 4 = バケツ.
+  `FUN_004205e0` picks the slot from `player+0x7d4`, which `FUN_0042e110` sets from the
+  **move id** — 2 for `0x68/0x69/0xcc/0xcd` (hit/stagger), 3 for `0x6a/0x6b/0x6c/0xce`
+  (downed/burning) — and otherwise falls back to the mode latches `+0x844`/`+0x845`/
+  `+0x846` → slots 0/1/5, which the three sibling attack-start methods
+  `0x421fe0`/`0x4220e0`/`0x422160` set (the middle one has 47 call sites). It draws the
+  model **once per fighter matrix** (11 matrices at `player+0x38c`, stride 0x40).
+* **Status emitters** (`FUN_0042e110`): timers `+0x7ec`/`+0x7f0`/`+0x7f4` spawn effect
+  ids **60/90/80** every 15/10/15 frames (SE 34/37/35 every 60), `+0x7e0`/`+0x7e4` spawn
+  **400/390** every 30, and the downed/burning move family spawns **380 every 7 frames**
+  (SE 36 every 60) inside a ±50/0..+60 jitter box around the fighter.
+* **A shot's impact is in its own record.** `FUN_00637950:221-228` spawns the bullet
+  record's **+0x70** field as the impact effect (through `FUN_00435990` → the manager's
+  create), and `:232-250` plays its **+0x6C** field as an SE (`FUN_0064ae70` indexes the
+  scene's 256-entry `data/se` table at `scene+0x98`; 10/20/30 are three-SE families that
+  add `rand()%3`). The port had both fields parsed but **named the other way round**;
+  they are now `impactEffect` (+0x70) and `hitSound` (+0x6C). The shipped roster's
+  impact ids are 0/10/20/30 — descriptors 000/001/002/003, i.e. `14.X`/`12.X`.
+* **Trails are vestigial — the definitive negative result.** `FUN_00633ca0` loads the 10
+  `data/trail/%02d.bmp` bitmaps into `scene+0x445c`; the **only** code in the whole
+  binary that reads that array is the destructor `FUN_00634520` (`0x63473a`). There is no
+  vertex producer, no slot→texture selection and no blend technique to recover for
+  trails in `DaybreakDX.exe` — the feature was cut and the loader left behind. The port
+  therefore draws **no** trail ribbons, and says so instead of inventing them.
+* **Blend technique** is per model: `FUN_00436150` switches on the model's `+0x7c` and
+  sets the D3D state set for cases 1–4 (default: `FUN_00651110(1)`); the port's
+  `Pass::Effect` (additive, unlit, unculled, cylindrical billboard) is the equivalent
+  pass, and the survey in `EFFECTS-BILLBOARD.md` still holds.
+* **What changed in the port.** `game/effect_catalog.h` owns the table (descriptor
+  header, id mapping, the recovered lifetime arithmetic) and supersedes
+  `game/effect_descriptor.h`. Every card is one **instance** of one combat event with its
+  own id from a monotonic counter (the old code reused ids as a FIFO and kill-chained the
+  previous card on every hit, so overlapping hits retired unrelated effects), the live set
+  is **bounded** (`kMaxLiveFxCards = 128`, a counted drop, a tally in the run log) and
+  `SceneRenderer::setEffectInstances` draws one copy per live card — a scene model has one
+  placement, so before this N cards sharing one `.X` drew once. Effect models are
+  `SceneModel::instancesOnly`: they contribute templates, never a base draw, so the load
+  draw count does not grow with the table and only the live population adds draws.
+  Shots and sparks are **no longer cubes by default** (`--debug-prims` keeps the A/B).
+* **Verification.** 40/40 host tests (the new `effect_catalog_test` checks all 22
+  descriptors against their models and lifetimes; `fx_cards_test` pins per-instance
+  identity, the cap and the drop count). Asset-backed:
+  * 1v1, `--screen=battle --frames=11000` on `data/stage03`: 624 cards spawned, 621
+    expired, **0 dropped, peak 12/128**, 9937 live-shot refreshes, 0 unshipped ids; the
+    round finishes.
+  * four-fighter 2v2, `--screen=title --local-players=4 --script=tests/scripts/frontend-4p.txt
+    --frames=9600` on `data/stage21`: round over at frame 3600 with 120 spawned, **0
+    dropped, peak 6/128**.
+  * `--match` (close spawns, a `SHOOT` script) lands a hit and spawns its impact card;
+    the documented README `--match` recipe still fails on this install for the known
+    issue #9 item gap (takano 011), not for anything here.
+* **Port rules (all labelled in code).** The muzzle-flash slot↔firing-state assignment
+  (slots 0/1/5 by tier) is not established; the melee hit's effect id is the port's
+  existing choice (the original's melee path spawns none); the in-flight shot is drawn
+  with the effect its own record names because the original's projectile visual is not in
+  the shipped data; the cap's default is sized from the heaviest recovered emitter (8
+  cards per burning fighter, 32 for a four-fighter 2v2, ~4x headroom); the spawn jitter
+  uses a deterministic hash of (fighter, tick) where the original used `rand()`.
+* **Draw-count change (banked recipes).** Effect models are instance-only, so a scene's
+  own draw count **drops** by the hidden cards it used to submit and grows only with the
+  live population: the `--match`/battle load line went 177 → 169, versus 175 → 169, and
+  the front-end 2v2 191 with 4 decals. Pixels are unchanged when no card is live (the old
+  hidden cards emitted only degenerate triangles). The versus vignette's scripted card is
+  now the recovered `14.X` with its recovered 0.250 s lifetime, so a capture must be
+  taken within ~15 frames of a scripted hit: `--versus --frames=60` (the hits are at
+  30/55/80 % of `--frames`) instead of the old 5 s placeholder's any-frame recipe.
+* **Still open.** The muzzle-flash slot mapping and the per-bone aura repetition (the
+  port keeps the single local-space placement); the per-effect fade (nothing in
+  `FUN_00436150`/`FUN_00436630` ramps alpha — the animation itself carries the fade); the
+  descriptor's part windows are parsed by the reference but the port draws a card whole;
+  and the in-flight projectile visual, which no shipped data describes.
 ### B2. The idle pose is a composite: two controllers per model
 
 **Current animation correction (2026-10-05).** The earlier sketch below mixed the timed
