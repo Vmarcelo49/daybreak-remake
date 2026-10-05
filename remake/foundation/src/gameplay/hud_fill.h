@@ -71,9 +71,20 @@ struct HudFillInput {
 inline game::GameHudValues fillHudValues(const MatchEconomy& eco, const HudFillInput& in) {
     const HudFighterValues& f = in.p1;
     game::GameHudValues v;
+    // The animated value the original's own % readout formats (FUN_006430f0 eases
+    // hud+0x78f0 toward the credited value). The port keeps the RAW value here: the
+    // banked DX9 captures and tests/compare_match_traces.py were taken against it, and
+    // balloonDisplay() is exposed for a caller that wants the inflation animation.
     v.balloon[0] = eco.balloon(0);
     v.balloon[1] = eco.balloon(1);
     v.limit = eco.limit();
+    // The "+N%" popup: hud+0x78e0 is the 60-frame window FUN_006431d0 arms and
+    // hud+0x78e8 the signed amount it shows (scenes.cpp carried both as balloonPulse).
+    // Both sides are live now that the economy credits them per side.
+    for (int i = 0; i < 2; ++i) {
+        v.balloonPulse[i] = eco.balloonDeltaTicks(i);
+        v.balloonPulseValue[i] = eco.balloonDelta(i);
+    }
     v.mainWhole = f.mainWhole;
     v.mainFrac = f.mainFrac;
     v.reloading = !f.reloadOk;               // scenes.cpp:834 (reloadTag)

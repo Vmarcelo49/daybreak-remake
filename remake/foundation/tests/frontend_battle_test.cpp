@@ -38,19 +38,31 @@ int main() {
     CHECK(!botA.down[fnd::input::Guard]);
     for (int frame = 0; frame < 61; ++frame) match.step(nullptr,nullptr,1./60.);
     CHECK(match.economy().roundOver());
-    CHECK(match.economy().roundOverSide() == -1);
+    // Issue #11: a timed round always names a side. Fighter 1 was KO'd before the
+    // first step, so side 1 carries that KO's balloon and side 0 carries none: the
+    // LOWER balloon wins (FUN_00635d40 @0x636e9c-0x636ee9), i.e. side 0. The DX9 port
+    // returned -1 here; that draw exit does not exist in the original.
+    CHECK(match.economy().roundOverSide() == 0);
     gameplay::MatchEconomy economy(nullptr);
     economy.set_round_rules(0,config.balloonSize);
     economy.tick(.01);
     const bool dead[2] = {false,false};
     economy.update(dead);
-    CHECK(economy.balloon(0) == 52.5f && economy.balloon(1) == 10.5f);
+    // The credit is the raw 20 base, NOT a capacity-normalized value: the 40/200
+    // balloon-size handicap is the per-side LIMIT, not an increment multiplier
+    // (scene+0x43c4/+0x43c8 vs the 0x14 literal at FUN_00639160:0x6393b5).
+    CHECK(economy.balloon(0) == 20.f && economy.balloon(1) == 20.f);
+    CHECK(economy.capacity(0) == 40.f && economy.capacity(1) == 200.f);
+    CHECK(!economy.roundOver());
     const bool alive[2] = {true,true};
     economy.reset();
     economy.set_round_rules(1,config.balloonSize);
-    economy.tick(.1); economy.update(dead);
+    // Side 0 takes one KO and comes back; side 1 stays clean, so side 1 has the LOWER
+    // balloon when the clock runs out.
+    const bool side0Dead[2] = {false,true};
+    economy.tick(.1); economy.note_death(0); economy.update(side0Dead);
     economy.tick(1); economy.update(alive);
-    CHECK(economy.roundOverSide() == 0);
+    CHECK(economy.roundOverSide() == 1);
 
     gameplay::Match teamMatch;
     gameplay::MatchConfig teamConfig;
@@ -80,9 +92,12 @@ int main() {
     const bool teamAlive[4] = {true,true,false,true};
     const int sides[4] = {0,0,1,1};
     teamEconomy.tick(.01);
-    CHECK(teamEconomy.update(teamAlive,sides).respawned[2] == false);
-    CHECK(teamEconomy.balloon(0) == 0.f && teamEconomy.balloon(1) == 10.5f);
+    CHECK(teamEconomy.update(teamAlive,sides,4).respawned[2] == false);
+    // One KO credits the victim's own side with the raw base; the 40%/200% handicap
+    // only moves where that side's LIMIT is.
+    CHECK(teamEconomy.balloon(0) == 0.f && teamEconomy.balloon(1) == 20.f);
+    CHECK(teamEconomy.kos(1) == 1 && teamEconomy.kos(0) == 0);
     teamEconomy.tick(3.0);
-    CHECK(teamEconomy.update(teamAlive,sides).respawned[2]);
+    CHECK(teamEconomy.update(teamAlive,sides,4).respawned[2]);
     std::puts("FRONTEND_BATTLE: ok");
 }

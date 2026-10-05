@@ -139,9 +139,17 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[4], double dt) {
                    m_config.side); // scenes.cpp:697-699; allied fighters are not projectile targets
 
     bool alive[4] = {true, true, true, true};
-    for (int i = 0; i < m_config.fighterCount; ++i) alive[i] = m_fighters[i].is_alive();
+    int hp[4] = {0, 0, 0, 0};
+    for (int i = 0; i < m_config.fighterCount; ++i) {
+        alive[i] = m_fighters[i].is_alive();
+        // The timed round's second key sums each side's remaining HP
+        // (FUN_00635d40 @0x636ef4-0x636f8a); the scale does not matter, only the
+        // comparison, so the port's 0..max_hp crosses as-is.
+        hp[i] = m_fighters[i].hp();
+    }
     const MatchStepResult eco = m_config.fighterCount == 2
-        ? m_economy.update(alive) : m_economy.update(alive, m_config.side); // port team extension
+        ? m_economy.update(alive)  // the 1v1 trace path keeps the side == fighter mapping
+        : m_economy.update(alive, m_config.side, m_config.fighterCount, hp);
     for (int i = 0; i < m_config.fighterCount; ++i) {
         // The reference calls Fighter::reset here; the economy only reports the flag
         // because it owns no positions (see match_economy.h).
