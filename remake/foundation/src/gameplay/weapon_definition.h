@@ -210,9 +210,10 @@ inline int weaponSlotForItem(int character, int itemId) {
         if (kWeaponIds[character][w] == itemId) return w;
     return -1;
 }
-// "Rena 1": select-screen style combo label — capitalized roster name + 1-based
-// weapon slot (the ▲▼ order, = .dat index order, ASSET-CATALOG §3.2). Logs and
-// test messages name combos with both halves, never a bare character.
+// "Rena 1": combo label — capitalized roster name + weapon INDEX, so Rena 1 is
+// her second weapon and Keiichi 1 his Invincible Iron (atlas names in
+// ASSET-CATALOG §3.2). Logs and test messages name combos with both halves,
+// never a bare character.
 inline std::string comboSlotLabel(int character, int slot) {
     if (character < 0 || character >= kCharacterCount || slot < 0 ||
         slot >= kWeaponSlots)
@@ -220,7 +221,7 @@ inline std::string comboSlotLabel(int character, int slot) {
     std::string name = kCharacterDirs[character];
     if (!name.empty() && 'a' <= name[0] && name[0] <= 'z')
         name[0] = static_cast<char>(name[0] - ('a' - 'A'));
-    return name + " " + std::to_string(slot + 1);
+    return name + " " + std::to_string(slot);
 }
 // Legal weapon count for a character index: 2 for the last two, 3 otherwise.
 inline int weaponCountForCharacter(int character) {

@@ -765,11 +765,13 @@ void testRosterLabels() {
     checkInt(-1, gameplay::weaponSlotForItem(0, 0), "the sentinel 0 is no slot");
     checkInt(-1, gameplay::weaponSlotForItem(-1, 1), "no character means no slot");
     checkInt(-1, gameplay::weaponSlotForItem(99, 1), "a wild index means no slot");
-    // Combo labels: 1-based select-screen slots, both halves always named.
-    check(gameplay::comboSlotLabel(0, 0) == "Rena 1", "rena slot 0 labels Rena 1");
-    check(gameplay::comboSlotLabel(2, 1) == "Keiichi 2",
-          "keiichi slot 1 labels Keiichi 2 (his Invincible Iron)");
-    check(gameplay::comboSlotLabel(15, 1) == "Natumi 2", "natumi slot 1 labels Natumi 2");
+    // Combo labels carry the weapon INDEX: Rena 1 is her second weapon, and
+    // Keiichi 1 is his Invincible Iron (atlas names, ASSET-CATALOG §3.2).
+    check(gameplay::comboSlotLabel(0, 0) == "Rena 0", "rena slot 0 labels Rena 0");
+    check(gameplay::comboSlotLabel(0, 1) == "Rena 1", "rena slot 1 labels Rena 1");
+    check(gameplay::comboSlotLabel(2, 1) == "Keiichi 1",
+          "keiichi slot 1 labels Keiichi 1 (his Invincible Iron)");
+    check(gameplay::comboSlotLabel(15, 1) == "Natumi 1", "natumi slot 1 labels Natumi 1");
     check(gameplay::comboSlotLabel(-1, 0) == "?", "no character labels ?");
     check(gameplay::comboSlotLabel(0, 3) == "?", "no fourth slot labels ?");
 }

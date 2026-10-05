@@ -1019,6 +1019,9 @@ static bool resolveFighterWeapon(const std::string& charDir,
         const std::string num = path.substr(bulletPrefix.size());
         if (!num.empty() && num.find_first_not_of("0123456789") == std::string::npos) {
             itemId = std::atoi(num.c_str());
+            // Another character's item is not a join (a rena holding mion's gun
+            // would play nata swings over gun data — the false-claim trap).
+            if (gameplay::weaponSlotForItem(character, itemId) < 0) return false;
             meshSpec = explicitSpec;
             return true;
         }
@@ -1045,25 +1048,34 @@ static void attachFighterWeapon(xm::Scene& scene, const std::string& label,
                                 const std::string& charSpec,
                                 const std::string& weaponSpec, const xm::Model* rig,
                                 const xm::SceneOptions& sopt) {
+    const int character =
+        gameplay::characterIndexForDir(charDirForSpec(charSpec));
     std::string spec = weaponSpec;
     if (spec.empty()) {
-        std::string mesh;
-        int id = 0;
-        const int character =
-            gameplay::characterIndexForDir(charDirForSpec(charSpec));
-        if (resolveFighterWeapon(charDirForSpec(charSpec), spec, mesh, id) &&
-            !mesh.empty()) {
-            spec = mesh;
-            std::printf("[weapons] %s %s: item %03d (%s)\n", label.c_str(),
-                        gameplay::comboSlotLabel(
-                            character, gameplay::weaponSlotForItem(character, id))
-                            .c_str(),
-                        id, mesh.c_str());
-        } else {
-            std::printf("[weapons] %s (%s): no roster weapon, bare\n", label.c_str(),
+        // A roster fighter without an explicit weapon gears up with slot 0, and
+        // a roster fighter that cannot gear up fails the launch LOUDLY (rule 7:
+        // a silent bare fighter is a false claim). Only unknown (custom)
+        // characters keep the bare fallback, with a warning.
+        if (character < 0) {
+            std::printf("[weapons] %s (%s): unknown character, bare\n", label.c_str(),
                         charSpec.c_str());
             return;
         }
+        std::string mesh;
+        int id = 0;
+        if (!resolveFighterWeapon(charDirForSpec(charSpec), spec, mesh, id) ||
+            mesh.empty())
+            throw std::runtime_error(
+                label + " " + charSpec +
+                " has no weapon: slot-0 item " +
+                std::to_string(gameplay::kWeaponIds[character][0]) +
+                " unreadable — roster fighters must gear up");
+        spec = mesh;
+        std::printf("[weapons] %s %s: item %03d (%s)\n", label.c_str(),
+                    gameplay::comboSlotLabel(
+                        character, gameplay::weaponSlotForItem(character, id))
+                        .c_str(),
+                    id, mesh.c_str());
     }
     std::string path;
     int slot = 0;
@@ -1125,34 +1137,52 @@ static std::string movesPathForSlot(const std::string& rigSource, int slot) {
 // Loads and parses the fighter's data/<char>/NN.dat into app.moveDefs[fighter]:
 // the weapon slot's file when the slot is known (expectedId is that weapon's
 // item id, verified against the file's own 0x114 field), else the rig's own NN
-// file. Soft failure like the bullet parameters (unlike the weapon definition):
-// without a table the fighter keeps the legacy shared swing, and the log says so.
+// file. Hard mode (a bound weapon) reports through error for the caller to
+// fail the launch; soft mode keeps the legacy shared swing with a log line,
+// like the bullet parameters.
 static bool loadCharacterMoves(App& app, int fighter, const std::string& rigSource,
-                               int slot, int expectedId) {
+                               int slot, int expectedId, bool hard, std::string& error) {
     std::string path = movesPathForSlot(rigSource, slot);
     if (path.empty()) path = movesPathForRig(rigSource);
     if (path.empty()) return false;
     std::vector<uint8_t> bytes;
     if (!fnd::assets::assetSource().read(path, bytes)) {
-        std::printf("[moves] fighter %d: no %s, keeping the legacy swing\n", fighter,
-                    path.c_str());
+        // Hard for a fighter whose weapon is bound (its table must exist);
+        // soft otherwise, like the bullet parameters.
+        if (hard)
+            error = "fighter " + std::to_string(fighter) + ": no " + path +
+                    " for the bound weapon";
+        else
+            std::printf("[moves] fighter %d: no %s, keeping the legacy swing\n", fighter,
+                        path.c_str());
         return false;
     }
     auto moves = std::make_unique<gameplay::CharacterMoves>();
     std::string parseError;
     if (!moves->parse(bytes.data(), bytes.size(), parseError)) {
-        std::printf("[moves] fighter %d: %s: %s, keeping the legacy swing\n", fighter,
-                    path.c_str(), parseError.c_str());
+        if (hard)
+            error = "fighter " + std::to_string(fighter) + ": " + path + ": " +
+                    parseError;
+        else
+            std::printf("[moves] fighter %d: %s: %s, keeping the legacy swing\n",
+                        fighter, path.c_str(), parseError.c_str());
         return false;
     }
     // The file identifies its own weapon (0x114); a mismatch against the bound
-    // weapon means the NN↔weapon join broke, and the log must say so loudly.
+    // weapon means the NN↔weapon join broke. Loud in both modes, fatal in hard.
     std::string parent, base;
     splitRigDir(rigSource, parent, base);
     const int character = gameplay::characterIndexForDir(base);
-    if (expectedId > 0 && moves->weapon_id() != expectedId)
+    if (expectedId > 0 && moves->weapon_id() != expectedId) {
+        if (hard) {
+            error = "fighter " + std::to_string(fighter) + ": " + path +
+                    " carries weapon " + std::to_string(moves->weapon_id()) +
+                    ", expected " + std::to_string(expectedId);
+            return false;
+        }
         std::printf("[moves] fighter %d: %s carries weapon %d, expected %d\n", fighter,
                     path.c_str(), moves->weapon_id(), expectedId);
+    }
     const std::string combo =
         (character >= 0 && slot >= 0)
             ? " (" + gameplay::comboSlotLabel(character, slot) + ")" : "";
@@ -1281,8 +1311,16 @@ static bool initMatch(App& app) {
             }
             std::string mesh;
             int itemId = 0;
-            if (!resolveFighterWeapon(charDirForSpec(charSpec), explicitSpec, mesh,
-                                     itemId)) {
+            const std::string charDir = charDirForSpec(charSpec);
+            if (!resolveFighterWeapon(charDir, explicitSpec, mesh, itemId)) {
+                // Same rule as the mesh stage: a roster fighter with no joinable
+                // weapon fails loudly; only unknown characters fall back.
+                if (gameplay::characterIndexForDir(charDir) >= 0) {
+                    app.error = "fighter " + std::to_string(i) + " (" + charSpec +
+                                "): weapon '" + explicitSpec +
+                                "' joins no roster item — roster fighters must gear up";
+                    return false;
+                }
                 std::printf("[weapons] fighter %d (%s): no weapon join, shared tuning\n",
                             i, charSpec.c_str());
                 continue;
@@ -1327,8 +1365,18 @@ static bool initMatch(App& app) {
             slot = gameplay::weaponSlotForItem(gameplay::characterIndexForDir(base),
                                                expectedId);
         }
-        if (loadCharacterMoves(app, i, rigSource, slot, expectedId) &&
-            i < static_cast<int>(app.moveDefs.size()) && app.moveDefs[i])
+        std::string movesError;
+        if (!loadCharacterMoves(app, i, rigSource, slot, expectedId, expectedId > 0,
+                                movesError)) {
+            // A fighter whose weapon is bound must have its table; anything else
+            // keeps the legacy swing.
+            if (expectedId > 0) {
+                app.error = movesError;
+                return false;
+            }
+            continue;
+        }
+        if (i < static_cast<int>(app.moveDefs.size()) && app.moveDefs[i])
             config.moves[i] = app.moveDefs[i].get();
     }
 

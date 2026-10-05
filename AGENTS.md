@@ -43,12 +43,13 @@ modern port. No bit-matching against the original binary is attempted.
    attack (issue #26): battles, traces and tests always bind a character AND
    a weapon (move table + item data). A bare fighter is a false claim, not a
    simplification — tests that exercise one without the other are rejected.
-   Name combos as Name+N (1-based select-screen slot: `Rena 1`) or
+   Name combos as Name+N (weapon index: `Rena 1` is her second weapon) or
    Name+Weapon (`Keiichi Invincible Iron`; atlas names in
    `remake/docs/ASSET-CATALOG.md` §3.2). In code the helper is
    `gameplay::comboSlotLabel`; NN.dat number IS the weapon slot and file
    offset `0x114` carries the weapon id (verified 46/46 against
-   `kWeaponIds`).
+   `kWeaponIds`). A roster fighter that ends up with no weapon fails the
+   launch loudly — only unknown (custom) characters fall back with a warning.
 
 ## MANDATORY — full diff review before EVERY commit
 
