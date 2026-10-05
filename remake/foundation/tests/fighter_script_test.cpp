@@ -526,11 +526,8 @@ void test_attacks() {
     check_bool("Rena 0's weapon move connects inside its recovered sphere", true, hit);
     check_bool("the weapon move applies its parsed HP damage", true, target.hp() < 100);
 
-    Fighter heavy = make_idle_fighter(glm::vec3(0, 0, 0));
-    in.set(fnd::input::Action::AttackB, true);
-    tick(heavy, in);
-    check_int("unmapped AttackB does not start a second weapon move",
-              static_cast<int>(FighterState::Idle), static_cast<int>(heavy.state()));
+    // There is no second melee action to test: the enum has one attack key (issue #10), and
+    // the heavy stand-in's state and damage value are gone.
 }
 
 // ===========================================================================
@@ -1951,7 +1948,6 @@ void run_script(std::vector<unsigned char>& trace) {
         ia.set(fnd::input::Action::Special, ph == 58);
         ib.set(fnd::input::Action::Left, ph >= 5 && ph < 25);
         ib.set(fnd::input::Action::Up, ph >= 40 && ph < 45);
-        ib.set(fnd::input::Action::AttackB, ph == 35);
         ib.set(fnd::input::Action::Shoot, ph >= 45 && ph < 52);
         if (frame == 100) a.set_hyper_gauge(1.0f);
         if (frame == 320) b.set_hyper_gauge(1.0f);

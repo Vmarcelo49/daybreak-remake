@@ -509,19 +509,42 @@ void testWindowsAndRecovery(const fs::path& install) {
 // The heavy-key stand-in is gone.
 // ---------------------------------------------------------------------------
 void testHeavyKeyUnbound(const fs::path& install) {
-    section("the heavy-key stand-in is removed");
+    section("one key, three situations: the move family comes from the fighter's state");
+    {
+        CombatCombo family;
+        if (!requireCombatCombo(install, family, "move families (no install found)")) return;
+        Fighter f = idle_at(glm::vec3(0, 0, 0));
+        family.bind(f);
+        // Grounded neutral, mid-dash and airborne resolve to the table's own rows; the
+        // press never selects a family (the corpus has one attack bit).
+        checkInt(300, f.preview_melee_swing(false, false).moveId,
+                 "grounded neutral resolves move 300");
+        checkInt(330, f.preview_melee_swing(true, false).moveId,
+                 "a mid-dash press resolves move 330");
+        checkInt(340, f.preview_melee_swing(false, true).moveId,
+                 "an airborne press resolves move 340");
+        checkInt(31, family.moves->find(300)->first_set_index(), "move 300 plays set 31");
+        checkInt(51, family.moves->find(330)->first_set_index(), "move 330 plays set 51");
+        checkInt(88, family.moves->find(340)->first_set_index(), "move 340 plays set 88");
+        // No reachable swing reports the removed heavy stand-in's 12.
+        const gameplay::MeleeSwing swings[3] = {f.preview_melee_swing(false, false),
+                                                f.preview_melee_swing(true, false),
+                                                f.preview_melee_swing(false, true)};
+        for (const gameplay::MeleeSwing& sw : swings)
+            check(sw.damage != 12, "no situation uses the removed heavy damage value");
+    }
+
+    section("there is one melee key and no heavy variant");
     CombatCombo combo;
     if (!requireCombatCombo(install, combo, "heavy key (no install found)")) return;
-    Fighter f = idle_at(glm::vec3(0, 0, 0));
-    combo.bind(f);
-    input::PlayerState in;
-    in.down[input::Action::AttackB] = true;
-    tick(f, in);
-    in.down[input::Action::AttackB] = false;
-    for (int i = 0; i < 10; ++i) tick(f, in);
-    check(f.state() == FighterState::Idle, "AttackB leaves the fighter idle");
-    check(f.melee_in_active() == false && f.already_hit_this_swing(0) == false,
-          "and starts no swing");
+    // The action enum has no heavy entry at all any more (issue #10), so what is left to
+    // pin is that the recovered single key still starts a swing and that no reachable state
+    // carries the old stand-in damage. The heavy value is gone from FighterConstants.
+    Fighter m0 = idle_at(glm::vec3(0, 0, 0));
+    combo.bind(m0);
+    check(!m0.preview_melee_swing(false, false).dataDriven ||
+              m0.preview_melee_swing(false, false).damage != 12,
+          "no bound swing reports the removed heavy stand-in value (12)");
 
     // The single melee key still works.
     Fighter m = idle_at(glm::vec3(0, 0, 0));

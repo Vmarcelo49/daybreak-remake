@@ -73,7 +73,7 @@ GREEN — DX9 reference banked** (see "Reproducibility" and "Gaps").
 | `hud-kakera.png` | `-hyper 0,2 -gauge 0,1 -hp 100,3` + `scripts/hyper_lethal.txt` | Kakera death-save instead of KO |
 | `hud-ko-a/b/c.png` | `scripts/ko.txt`, 2600f, shots 2290/2330/2450 | KO sequence (25x4dmg): moment, banner, aftermath |
 | `action-melee.png` | `scripts/melee.txt` (MELEE tap f80), shot 82 | AttackA swing state, whiffed (P2 out of range) |
-| `action-heavy.png` | `scripts/heavy.txt` (HEAVY tap f80), P2 at 120 (< kMeleeRange 160), shot 95 | AttackB HIT: `took 12 damage → HP=88`, stun + knockback + gauge credit (RMSE 0.107 vs melee — genuinely different) |
+| `action-heavy.png` | `scripts/heavy.txt` (HEAVY tap f80), P2 at 120 (< kMeleeRange 160), shot 95 | **RETIRED (issue #10)**: this banked pair captured the DX9 tree's heavy stand-in, which the original never had (one attack bit, no heavy bit). The log stays as historical evidence; the recipe can no longer be regenerated because the `HEAVY` token and the action are gone |
 | `action-jump.png` | `scripts/jump.txt` (JUMP tap f80), shot 92 | airborne + stamina cost |
 | `action-guard.png` | `scripts/guard.txt` (GUARD hold f80), shot 100 | blocking + contextual stamina bar |
 

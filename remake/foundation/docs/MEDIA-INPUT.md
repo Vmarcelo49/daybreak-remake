@@ -48,10 +48,10 @@ transcribed findings. Live provenance is the foundation (`src/audio/*`,
 | Need | Reference finding |
 |---|---|
 | Shape | 4 players (`fcn.00634f60` loop `i = 0..3`); original polled 7 slots via DirectInput8 — deliberately **not** mirrored |
-| Action model | 13 actions from `controller-setup.webp`: Up/Down/Left/Right, melee (X), heavy (unbound — no key exists), guard (D), shoot (C), jump/confirm (Z), special (S), tactics (Q), lock-switch tap-cycle/hold-ally (A), pause (W) |
+| Action model | 12 actions from `controller-setup.webp`: Up/Down/Left/Right, melee (X), guard (D), shoot (C), jump/confirm (Z), special (S), tactics (Q), lock-switch tap-cycle/hold-ally (A), pause (W). There is ONE melee action: the corpus has one attack input bit and no heavy bit (issue #10 removed the stand-in) |
 | P1 layout | arrows + `Z X C A S D Q W`; P2–P4 use pads (buttons 1–8, exact map unknown) → provisional pad map (X=melee, A=guard, B=jump, Y=shoot, LB=lock, RB=special, Back=tactics, Start=pause) |
 | State | `down / prev_down / just_pressed / just_released`, analog sticks ±32767, `press_timer` 2-frame window (mirrors `+0x828`) |
-| Script driver | `<frame> <TOKEN>…` lines (`-` = release all, `#` = comment), tokens `UP DOWN LEFT RIGHT MELEE HEAVY GUARD SHOOT JUMP SPECIAL TACTICS LOCK PAUSE`; override applied inside `poll()` before edge computation |
+| Script driver | `<frame> <TOKEN>…` lines (`-` = release all, `#` = comment), tokens `UP DOWN LEFT RIGHT MELEE GUARD SHOOT JUMP SPECIAL TACTICS LOCK PAUSE`; override applied inside `poll()` before edge computation |
 
 ## 2. Interfaces added
 
@@ -128,7 +128,7 @@ Observed (Linux, GCC 16.2.1, SDL3 3.4.16 present but not linked):
 [input] deadzone: rest=0 edge=0 live=9000 neg=-9000
 [input] stick: left=1 right=0 up=1 down=0
 [input] script: f1=10,mask=0x180 f2=30,mask=0x0 skip=1
-[input] sdl3: p1_up=82 p1_melee=27 heavy=-1 pad_pause=6
+[input] sdl3: p1_up=82 p1_melee=27 p1_pause=26 pad_pause=6
 [input] RESULT: ok (17 checks)
 [video] probe: ps=1 wav_not_ps=1 empty=0
 [video] stub: recognised=1 status=unimplemented skippable=1 non_ps_rejected=1

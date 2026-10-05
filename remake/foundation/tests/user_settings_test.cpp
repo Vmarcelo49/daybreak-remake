@@ -77,9 +77,13 @@ int main() {
         settings::UserSettings defaults;
         checkInt("keyboard Up default", fnd::input::sdl3::kP1ScancodeByAction[fnd::input::Up],
                  defaults.keyboard[fnd::input::Up]);
-        checkInt("keyboard AttackB default (unbound)",
-                 fnd::input::sdl3::kP1ScancodeByAction[fnd::input::AttackB],
-                 defaults.keyboard[fnd::input::AttackB]);
+        checkInt("every action has a default binding (no unbound stand-in left)",
+                 fnd::input::sdl3::kP1ScancodeByAction[fnd::input::Pause],
+                 defaults.keyboard[fnd::input::Pause]);
+        for (int a = 0; a < fnd::input::ActionCount; ++a)
+            check(defaults.keyboard[static_cast<size_t>(a)] ==
+                      fnd::input::sdl3::kP1ScancodeByAction[a],
+                  "keyboard default for action " + std::to_string(a));
         checkInt("pad1 Guard default", fnd::input::sdl3::kPadButtonByAction[fnd::input::Guard],
                  defaults.gamepad[0][fnd::input::Guard]);
         checkInt("master default", 100, defaults.volumes.master);
@@ -99,7 +103,7 @@ int main() {
         original.resolution = {1280, 720};
         original.volumes = {80, 70, 60, 50};
         original.keyboard[fnd::input::Jump] = 42;
-        original.keyboard[fnd::input::AttackB] = -1;
+        original.keyboard[fnd::input::Guard] = -1;   // an explicitly unbound action
         original.gamepad[2][fnd::input::Guard] = 7;
         original.padGuid[1] = "030000005e0400008e02000000007801";
         original.padName[1] = "Xbox Wireless Controller";
@@ -134,10 +138,14 @@ int main() {
         std::string error;
         check(!parses("[display]\nfullscreen = true\n", out, error), "missing version is rejected");
         check(error.find("version") != std::string::npos, "the reason names the version line");
-        check(!parses("version = 2\n[display]\nfullscreen = true\n", out, error),
+        check(!parses("version = 3\n[display]\nfullscreen = true\n", out, error),
               "an unsupported version is rejected");
-        check(error.find("unsupported config version 2") != std::string::npos,
+        check(error.find("unsupported config version 3") != std::string::npos,
               "the reason names the version it found");
+        // v1 is the previous schema and is MIGRATED, not rejected (issue #10 removed the
+        // port-invented heavy binding, which shortened the binding rows).
+        check(parses("version = 1\n[display]\nfullscreen = true\n", out, error),
+              "the previous schema still loads");
         check(!parses("version = 1.0\n", out, error), "a non-integer version is rejected");
         check(parses("version = 1\nversion = 1\n", out, error),
               "a repeated version line is accepted (last wins)");
@@ -149,7 +157,7 @@ int main() {
         check(!settings::parse("version = 1\n[render]\ntoon = 1\n", out, error, report),
               "an unknown section is rejected");
         settings::UserSettings warned;
-        check(settings::parse("version = 1\n[audio]\nmaster = 40\nsurround = 1\n", warned, error, report),
+        check(settings::parse("version = 2\n[audio]\nmaster = 40\nsurround = 1\n", warned, error, report),
               "an unknown key inside a known section is tolerated");
         checkInt("the known key still applied", 40, warned.volumes.master);
         checkInt("one warning for the unknown key", 1, report.warnings);
@@ -221,7 +229,7 @@ int main() {
         settings::UserSettings out;
         std::string error;
         const std::string text =
-            "version = 1\n"
+            "version = 2\n"
             "[display]\n"
             "fullscreen = maybe\n"
             "resolution = 1280x720\n"
@@ -248,6 +256,59 @@ int main() {
                  fnd::input::sdl3::kPadButtonByAction[fnd::input::Guard], out.gamepad[0][fnd::input::Guard]);
         checkStr("a short GUID is still a usable identity", "short", out.padGuid[0]);
         checkInt("six warnings (5 values + the short row counts once each)", 6, report.warnings);
+        // A v1 row is one entry WIDER (the removed heavy binding), so the same text is a
+        // short row under v2 and a valid row under v1: the migration is what keeps an
+        // existing config loading.
+        {
+            settings::LoadReport legacyReport;
+            settings::UserSettings legacy;
+            std::string row;
+            for (int a = 0; a < fnd::input::ActionCount; ++a)
+                row += (a ? "," : "") + std::to_string(10 + a);
+            check(settings::parse("version = 2\n[bindings]\nkeyboard = " + row + "\n",
+                                  legacy, error, legacyReport),
+                  "the 12-entry row is the current width: " + error);
+            std::string stale;
+            for (int a = 0; a < 13; ++a) stale += (a ? "," : "") + std::to_string(10 + a);
+            // A wrong-width row is a VALUE error (that row keeps its defaults, the rest of
+            // the file still applies) — the module's documented rule.
+            settings::LoadReport staleReport;
+            settings::UserSettings staleOut;
+            check(settings::parse("version = 2\n[bindings]\nkeyboard = " + stale + "\n",
+                                  staleOut, error, staleReport),
+                  "a 13-entry row does not reject the file");
+            checkInt("it is one value warning", 1, staleReport.warnings);
+            checkInt("and that row kept the defaults",
+                     fnd::input::sdl3::kP1ScancodeByAction[fnd::input::Guard],
+                     staleOut.keyboard[fnd::input::Guard]);
+            settings::LoadReport migrated;
+            settings::UserSettings out2;
+            // The v1 row carries the removed heavy binding between AttackA and Guard: 13
+            // entries, with the sixth being the heavy key.
+            std::string v1row;
+            for (int a = 0; a < 13; ++a) v1row += (a ? "," : "") + std::to_string(100 + a);
+            std::string v1pad;
+            for (int a = 0; a < 13; ++a) v1pad += (a ? "," : "") + std::to_string(a % 20);
+            const std::string v1 = "version = 1\n[bindings]\nkeyboard = " + v1row +
+                                   "\npad1 = " + v1pad + "\n[audio]\nmaster = 70\n";
+            check(settings::parse(v1, out2, error, migrated), "a v1 config loads: " + error);
+            checkInt("and reports the migration", 1, migrated.warnings);
+            checkStr("bindings before the removed one are kept", "100",
+                     std::to_string(out2.keyboard[fnd::input::Up]));
+            checkStr("the entry AFTER the removed heavy binding shifted down", "106",
+                     std::to_string(out2.keyboard[fnd::input::Guard]));
+            checkInt("the removed heavy slot is gone: Guard is index 5",
+                     (int)fnd::input::Guard, 5);
+            checkInt("the last v1 entry lands on the last action", 112,
+                     out2.keyboard[fnd::input::Pause]);
+            checkInt("the pad row migrated the same way", 6 % 20,
+                     out2.gamepad[0][fnd::input::Guard]);
+            checkInt("and the rest of the file still applied", 70, out2.volumes.master);
+            // Saving after a migration writes the current schema.
+            const std::string saved = settings::serialize(out2);
+            check(saved.find("version = 2") != std::string::npos,
+                  "a migrated document saves as the current version");
+        }
         // Inline comments are not a feature: the value must parse whole.
         report = settings::LoadReport{};
         out = settings::UserSettings{};

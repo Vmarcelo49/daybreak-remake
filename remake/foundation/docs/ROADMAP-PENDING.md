@@ -792,9 +792,13 @@ port rules; only the **shape** above is recovered, and `melee_rules.h` says so.
 ### What the evidence settled about input
 
 The corpus has **exactly one attack bit** — `weapon+0x28 & 0x100`, used 1378 times — and
-no heavy or strong bit anywhere. That is the evidence for what was already the right call:
-**`AttackB` is removed** and no longer starts anything. The swing is chosen by the
-fighter's situation at the press (grounded or airborne), not by a second key.
+no heavy or strong bit anywhere, and the per-character move dispatchers (e.g.
+`FUN_00445ee0`) test that one bit and nothing else. The heavy stand-in is now gone from the
+code as well as from the design: the action enum, the `FighterState`, its damage value and
+its camera-switch use are all removed (issue #10), and the persisted binding schema moved to
+v2 with a v1 migration so an existing config still loads. The swing is chosen by the
+fighter's situation at the press (grounded, mid-dash or airborne) and by the bound move
+table's rows, never by a second key.
 
 ### What changed in behaviour
 
@@ -815,7 +819,7 @@ fighter's situation at the press (grounded or airborne), not by a second key.
 80 checks in `tests/melee_rules_test.cpp` (29 host tests, all passing) cover the issue's
 list: aerial separation, attacks through walls (with the same pair proving it connects
 when the wall is removed), multiple opponents, repeated contact, interrupted attacks,
-recovery lockout, and the unbound heavy key. `fighter_script_test`'s melee section was
+recovery lockout, and the situation→family mapping (300/330/340 with their set indices). `fighter_script_test`'s melee section was
 updated rather than deleted, so its range and one-hit-per-swing coverage still runs —
 including an assertion that a target **behind** the attacker connects, which is the
 sphere's actual behaviour and the opposite of what the withdrawn cone claimed. The move

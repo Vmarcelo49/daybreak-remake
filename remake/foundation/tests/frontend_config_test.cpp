@@ -94,6 +94,34 @@ int main() {
     settings::UserSettings reloaded;
     CHECK(settings::parse(settings::serialize(saved), reloaded, error, report));
     CHECK(reloaded == saved);
+    // Issue #10's schema migration reaches the live state: a v1 document (13-entry rows,
+    // with the removed heavy binding) loads, drops that entry, and every other binding
+    // lands on the right action.
+    {
+        std::string v1 = "version = 1\n[bindings]\nkeyboard = ";
+        for (int a = 0; a < 13; ++a) v1 += (a ? "," : "") + std::to_string(200 + a);
+        v1 += "\n";
+        settings::UserSettings migrated;
+        std::string migrationError;
+        settings::LoadReport migrationReport;
+        CHECK(settings::parse(v1, migrated, migrationError, migrationReport));
+        CHECK(migrationReport.warnings == 1);
+        ui::FrontendSettings fromV1;
+        ui::applyUserSettings(fromV1, migrated);
+        CHECK(fromV1.keyboard[fnd::input::Up] == 200);
+        CHECK(fromV1.keyboard[fnd::input::AttackA] == 204);
+        CHECK(fromV1.keyboard[fnd::input::Guard] == 206);   // the heavy entry was dropped
+        CHECK(fromV1.keyboard[fnd::input::Pause] == 212);
+        CHECK(ui::kBindingRowActions[4] == fnd::input::Jump);
+        CHECK(sizeof(ui::kBindingRowActions) / sizeof(ui::kBindingRowActions[0]) ==
+              (size_t)fnd::input::ActionCount);
+        bool seen[fnd::input::ActionCount] = {};
+        for (auto action : ui::kBindingRowActions) {
+            CHECK(!seen[action]);
+            seen[action] = true;
+        }
+        for (int a = 0; a < fnd::input::ActionCount; ++a) CHECK(seen[a]);
+    }
     ui::FrontendSettings fresh;
     fresh.resolutions = settings.resolutions;
     fresh.resolutionIndex = 2;   // what the new display happened to default to
