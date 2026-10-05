@@ -46,6 +46,7 @@
 #include "ui/participants.h"
 #include "ui/hud_atlas.h"
 #include "ui/frontend_settings.h"
+#include "settings/user_settings.h"
 #include "game/hud_bridge.h"
 #include "game/fighter_pose.h"
 #include "game/match_view.h"
@@ -629,6 +630,18 @@ struct App {
     gameplay::CameraTarget       arenaTargets[4];     // refreshed from the live fighters
     fnd::input::Backend          matchInput;          // P1 device + script override
     bool                         matchInputReady = false;
+    // Persisted user configuration (issue #19). `userSettings` is the last document we
+    // loaded or saved; the frame loop compares it against the live settings, so every
+    // change path (options, key config, a pad appearing) is caught without each screen
+    // having to announce itself. Empty path or settingsActive=false means this run is a
+    // capture/parity path or has no user config directory: nothing is read or written.
+    settings::UserSettings       userSettings;
+    std::string                  settingsPath;
+    bool                         settingsActive = false;
+    bool                         settingsDirty = false;
+    bool                         settingsSaveReported = false;
+    double                       settingsDirtyAt = 0.0;
+    double                       settingsNextSaveAt = 0.0;
     fnd::input::PlayerState      p2State;             // P2 script state (unused when dummy)
     std::vector<fnd::input::ScriptEvent> p2Script;
     size_t                       p2ScriptPos = 0;
@@ -704,6 +717,124 @@ struct App {
 static bool historicalMatchCapture(const App& app) {
     return !app.frontendMatch &&
            (!app.opts.out.empty() || !app.opts.script.empty() || !app.opts.script2.empty());
+}
+
+// --- persisted user settings (issue #19) ------------------------------------------
+// The config file is read and written ONLY on a plain interactive frontend run. Every
+// capture, replay or bounded run is a verification path: --match, --versus, --hud-test,
+// --out/--headless captures and the asset viewers must produce the same frames and the
+// same traces whether or not the user has a config file, so they neither read it nor
+// write it. --screen=<menu> without a capture is interactive and does use it.
+static bool usesUserConfig(const Options& o) {
+    return o.frames == 0 && o.out.empty() && !o.headless && !o.match && !o.versus &&
+           !o.hudTest && !o.list && !o.audioTest && !o.inputTest && o.anim < 0 &&
+           o.model.empty() && o.stage.empty() && o.character.empty() && o.effect.empty();
+}
+
+// Load before anything the frontend builds: the volumes and bindings are live state, so
+// they are in place before the first screen, and the display preference is applied later
+// (initScreens owns the resolution list). A malformed file, an unsupported version or an
+// unreadable directory all land here as "keep the defaults" plus a printed reason.
+static void loadUserSettings(App& app) {
+    app.settingsPath = settings::defaultConfigPath();
+    if (app.settingsPath.empty()) {
+        std::printf("[settings] no $XDG_CONFIG_HOME or $HOME: running with defaults, "
+                    "nothing will be written\n");
+        return;
+    }
+    settings::LoadReport report;
+    const bool loaded = settings::load(app.settingsPath, app.userSettings, report);
+    for (const std::string& message : report.messages)
+        std::printf("[settings] %s\n", message.c_str());
+    ui::applyUserSettings(ui::frontendSettings(), app.userSettings);
+    app.settingsActive = true;
+    std::printf("[settings] %s: %s\n", app.settingsPath.c_str(),
+                loaded ? "loaded" : "using defaults");
+}
+
+// The display half of the document, applied once the frontend has built the resolution
+// list and installed the SDL callbacks. An unavailable size falls back to desktop (index
+// 0) exactly like the Options screen's own cycle, so moving to a display that does not
+// offer the stored mode cannot fail the launch.
+static void applyPersistedDisplay(App& app) {
+    if (!app.settingsActive) return;
+    auto& settings = ui::frontendSettings();
+    if (!settings.resolutionAvailable) return;   // headless/web: no modes to choose from
+    std::vector<settings::DisplaySize> available;
+    available.reserve(settings.resolutions.size());
+    for (const ui::DisplayResolution& size : settings.resolutions)
+        available.push_back({size.width, size.height});
+    const int wanted = settings::chooseResolutionIndex(available, app.userSettings.resolution);
+    if (app.userSettings.resolution != settings::DisplaySize{})
+        std::printf("[settings] resolution %dx%d (%s)\n", app.userSettings.resolution.width,
+                    app.userSettings.resolution.height,
+                    wanted == 0 ? "not offered by this display, using desktop" : "restored");
+    settings.resolutionIndex = wanted;
+    settings.resolutionChoice = {app.userSettings.resolution.width, app.userSettings.resolution.height};
+    if (app.userSettings.fullscreen) {
+        settings.fullscreen = true;
+        if (settings.applyFullscreen) settings.applyFullscreen(true);
+        if (!settings.fullscreen)
+            std::printf("[settings] fullscreen unavailable: staying windowed\n");
+    } else if (wanted != 0) {
+        if (!settings.applyResolution(settings.resolutions[static_cast<size_t>(wanted)]) &&
+            !settings.applyResolution(settings.resolutions[0])) {
+            settings.resolutionIndex = 0;
+            std::printf("[settings] resolution unavailable: falling back to desktop\n");
+        }
+    }
+}
+
+static void flushUserSettings(App& app) {
+    if (!app.settingsActive || !app.settingsDirty) return;
+    std::string error;
+    if (settings::save(app.settingsPath, app.userSettings, error)) {
+        app.settingsDirty = false;
+        app.settingsSaveReported = false;
+        std::printf("[settings] saved %s\n", app.settingsPath.c_str());
+        return;
+    }
+    // Keep the dirty flag — a later attempt may succeed — but report once and back off,
+    // so an unwritable directory cannot turn into a per-frame retry storm. Nothing is
+    // written anywhere else: there is no fallback into the working directory.
+    if (!app.settingsSaveReported) {
+        app.settingsSaveReported = true;
+        std::printf("[settings] cannot save: %s\n", error.c_str());
+    }
+}
+
+// The pad identity is device state, not UI state: refresh it from the backend, then let
+// the comparison below notice it. A disconnected pad keeps the identity it had, which is
+// what keeps its bindings on the same player across a replug.
+static void pollUserSettings(App& app, double now) {
+    if (!app.settingsActive) return;
+    if (app.matchInputReady) {
+        for (int player = 0; player < fnd::input::kMaxPlayers; ++player) {
+            const std::string guid = app.matchInput.gamepad_guid(player);
+            if (guid.empty()) continue;
+            app.userSettings.padGuid[static_cast<size_t>(player)] = guid;
+            app.userSettings.padName[static_cast<size_t>(player)] = app.matchInput.gamepad_name(player);
+        }
+    }
+    settings::UserSettings current = ui::toUserSettings(ui::frontendSettings());
+    current.padGuid = app.userSettings.padGuid;
+    current.padName = app.userSettings.padName;
+    if (current != app.userSettings) {
+        app.userSettings = current;
+        app.settingsDirty = true;
+        app.settingsDirtyAt = now;
+    }
+    if (!app.settingsDirty) return;
+    // Write when the user has stopped changing things: leaving the two config screens, or
+    // a pause after the last change (which also covers a quit that never reaches the
+    // shutdown flush). Keeps a slider drag from writing the file on every step.
+    const bool inConfigScreen = app.screensMode &&
+        (app.screens.current() == ui::ScreenId::Options ||
+         app.screens.current() == ui::ScreenId::KeyConfig);
+    if (inConfigScreen && now - app.settingsDirtyAt < 2.0) return;
+    if (now < app.settingsNextSaveAt) return;
+    flushUserSettings(app);
+    if (app.settingsDirty) app.settingsNextSaveAt = now + 5.0;   // failed: try again later
 }
 
 // Defined beside the HUD helpers below: initMatch fills the roster while it assembles the
@@ -3170,6 +3301,13 @@ bool initScreens(App& app) {
         }
     };
     settings.applyBindings();
+    if (app.settingsActive) {
+        // Stable-controller identity: the hints have to be in place before the first pad
+        // poll, so a replugged pad is given back its player slot (issue #19).
+        for (int player = 0; player < fnd::input::kMaxPlayers; ++player)
+            app.matchInput.set_gamepad_guid_hint(player, app.userSettings.padGuid[static_cast<size_t>(player)]);
+        applyPersistedDisplay(app);
+    }
     // FUN_00647e00 loads the system bank separately from gameplay data/se.
     if (app.menuAudio.open(fnd::audio::Spec{})) {
         app.menuAudio.set_volumes(settings.volumes);
@@ -3286,6 +3424,11 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
 
     if (app->opts.audioTest) return runAudioTest(*app) ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
     if (app->opts.inputTest) return runInputTest(*app) ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
+
+    // Persisted settings land before any screen exists, so the first frame the frontend
+    // draws already uses the user's volumes and bindings (issue #19). Capture and parity
+    // runs skip this entirely — see usesUserConfig.
+    if (usesUserConfig(app->opts)) loadUserSettings(*app);
 
     const bool ok = !app->opts.screen.empty() ? initScreens(*app)
                    : hasAsset(app->opts)       ? initScene(*app)
@@ -3696,6 +3839,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         app->matchInput.poll(false);
         app->matchInput.sample_tick_inputs(app->pendingInput);
     }
+    pollUserSettings(*app, now);
     // The animation browser owns its own clock rather than the match's fixed step, so the
     // clip advances at wall-clock rate and reads as a smooth player.
     if (app->opts.animPlayer) animPlayerTick(*app, delta);
@@ -4159,6 +4303,7 @@ void SDL_AppQuit(void* appstate, SDL_AppResult) {
             (unsigned long long)app->menuSoundPlays[0], (unsigned long long)app->menuSoundPlays[1],
             (unsigned long long)app->menuSoundPlays[2], (unsigned long long)app->menuSoundPlays[3],
             (unsigned long long)app->menuVoicePlays);
+    flushUserSettings(*app);   // last chance for a change made after the last screen exit
     ui::frontendSettings().applyVolumes = {};
     ui::frontendSettings().applyFullscreen = {};
     ui::frontendSettings().applyResolution = {};
