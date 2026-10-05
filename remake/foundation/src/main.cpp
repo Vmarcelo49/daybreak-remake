@@ -663,6 +663,12 @@ struct App {
     gameplay::PauseMenu          pauseMenu;
     fnd::audio::SfxHandle        pauseSound = fnd::audio::kInvalidSfx;
     bool                         pauseSoundTried = false;
+    // A standalone --match script is indexed by the match frame (the banked traces depend on
+    // that), and the match frame freezes with the pause — so a scripted pause could never be
+    // resumed there. The paused ticks advance this offset instead, which keeps the script
+    // clock monotonic: no event is skipped while paused and none is replayed on resume.
+    // Zero for every capture/replay run, which never pause.
+    uint64_t                     pauseScriptAdvance = 0;
     bool                         settingsSaveReported = false;
     double                       settingsDirtyAt = 0.0;
     double                       settingsNextSaveAt = 0.0;
@@ -1044,6 +1050,7 @@ static SDL_AppResult applyPauseChoice(App& app, gameplay::PauseChoice choice) {
 // cadence they would be during play — which is what keeps a held button from arriving as a
 // stale edge on resume.
 static SDL_AppResult tickBattlePause(App& app) {
+    ++app.pauseScriptAdvance;   // keep the standalone script clock moving (see the member)
     bool up = false, down = false, confirm = false, cancel = false;
     int controllers[4] = {-1, -1, -1, -1};
     const int count = battlePauseControllers(app, controllers);
@@ -4382,7 +4389,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         driveSyntheticLocalPads(*app);
         if (app->matchInput.script_active()) {
             const uint64_t scriptTick = app->frontendMatch || app->screensMode
-                ? app->logicTicks : app->matchFrame + 1;
+                ? app->logicTicks : app->matchFrame + 1 + app->pauseScriptAdvance;
             app->matchInput.sample_script(app->scriptInput, scriptTick);
             app->tickInput[0] = app->scriptInput;
         }
