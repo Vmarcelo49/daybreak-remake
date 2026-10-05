@@ -178,6 +178,20 @@ struct RosterWeapon {
 };
 inline constexpr int kCharacterCount = 16;
 inline constexpr int kWeaponSlots = 3;
+// The roster in selection order (ASSET-CATALOG §3.3): directory names that also
+// index the kWeaponIds rows. Shared by the frontend selection and the standalone
+// match/weapon defaults so the two cannot disagree about who is who.
+inline constexpr const char* kCharacterDirs[kCharacterCount] = {
+    "rena",   "mion",    "keiichi", "satoko", "rika",  "shion",   "tomitake", "takano",
+    "ohishi", "akasaka", "irie",    "chie",   "kasai", "akane",   "hanyu",    "natumi",
+};
+// Roster index for a character directory basename ("rena" → 0), or -1 when the
+// spec names no roster character (custom paths keep the legacy bare fallback).
+inline int characterIndexForDir(const std::string& dir) {
+    for (int i = 0; i < kCharacterCount; ++i)
+        if (dir == kCharacterDirs[i]) return i;
+    return -1;
+}
 // Weapon ids per character, ASSET-CATALOG §3.3 / FUN_0041e180 (weapon id at DAT 0x114).
 // A trailing 0 is the "no weapon" sentinel.
 inline constexpr int kWeaponIds[kCharacterCount][kWeaponSlots] = {

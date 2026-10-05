@@ -139,6 +139,13 @@ void splitSuffix(const std::string& spec, std::string& path, int& value) {
     path = spec.substr(0, colon);
 }
 
+// Forward declarations: defined beside loadWeaponDefinition below, used by the
+// scene assembly above so a fighter without an explicit weapon still gears up.
+static std::string charDirForSpec(const std::string& spec);
+static bool resolveFighterWeapon(const std::string& charDir,
+                                 const std::string& explicitSpec, std::string& meshSpec,
+                                 int& itemId);
+
 void usage() {
     std::fprintf(stderr,
         "usage: foundation_demo [<model.x> | --model=<file.x> | --stage=<dir> |\n"
@@ -349,6 +356,13 @@ static size_t firstCharacter(const xm::Scene& scene, size_t from) {
     return scene.models.size();
 }
 
+// Forward declaration: defined beside loadWeaponDefinition below, used by the
+// scene assembly here so a fighter without an explicit weapon still gears up.
+static void attachFighterWeapon(xm::Scene& scene, const std::string& label,
+                                const std::string& charSpec,
+                                const std::string& weaponSpec, const xm::Model* rig,
+                                const xm::SceneOptions& sopt);
+
 xm::Scene loadScene(const Options& o, std::string& error, size_t* enemyBegin = nullptr) {
     xm::SceneOptions sopt;
     sopt.resolveTextures = !o.noTextures;
@@ -369,35 +383,29 @@ xm::Scene loadScene(const Options& o, std::string& error, size_t* enemyBegin = n
             for (int i = 0; i < o.battleFighterCount && i < 4; ++i) {
                 const size_t rig = appendCharacter(scene, o.battleCharacters[i], sopt);
                 if (i == 1 && enemyBegin) *enemyBegin = rig;
-                if (o.battleWeapons[i].empty()) continue;
-                std::string weaponSpec;
-                int weaponSlot = 0;
-                splitSuffix(o.battleWeapons[i], weaponSpec, weaponSlot);
                 const size_t character = firstCharacter(scene, rig);
                 if (character >= scene.models.size()) throw std::runtime_error("battle fighter rig is missing");
-                xm::Scene weapon = xm::loadWeapon(weaponSpec, weaponSlot, &scene.models[character].model, sopt);
-                for (auto& model : weapon.models) scene.models.push_back(std::move(model));
+                attachFighterWeapon(scene, "fighter " + std::to_string(i),
+                                    o.battleCharacters[i], o.battleWeapons[i],
+                                    &scene.models[character].model, sopt);
             }
             scene.source = o.stage;
             return scene;
         }
         appendCharacter(scene, o.character, sopt);
-        if (!o.weapon.empty()) {
+        {
             size_t p1 = firstCharacter(scene, 0);
-            std::string wspec;
-            int slot = 0;
-            splitSuffix(o.weapon, wspec, slot);
-            const xm::Model* rig =
-                p1 < scene.models.size() ? &scene.models[p1].model : nullptr;
-            xm::Scene w = xm::loadWeapon(wspec, slot, rig, sopt);
-            for (auto& sm : w.models) scene.models.push_back(std::move(sm));
+            attachFighterWeapon(scene, "P1", o.character, o.weapon,
+                                p1 < scene.models.size() ? &scene.models[p1].model
+                                                         : nullptr,
+                                sopt);
         }
         if (enemyBegin) *enemyBegin = scene.models.size();
         appendCharacter(scene, o.enemy, sopt);
-        if (!o.enemyWeapon.empty()) {
+        {
             const size_t p2 = firstCharacter(scene, enemyBegin ? *enemyBegin : 0);
-            xm::Scene weapon = xm::loadWeapon(o.enemyWeapon, 0, &scene.models[p2].model, sopt);
-            for (auto& model : weapon.models) scene.models.push_back(std::move(model));
+            attachFighterWeapon(scene, "P2", o.enemy, o.enemyWeapon,
+                                &scene.models[p2].model, sopt);
         }
         scene.source = o.stage;
     } else if (!o.stage.empty()) {
@@ -952,6 +960,113 @@ static bool loadWeaponDefinition(App& app, int fighter, int itemId, std::string&
     return true;
 }
 
+// Character directory basename for a "base/name[:costume]"-style spec
+// ("data/rena:2" → "rena"). A ":digits" tail is the costume selector
+// (splitSuffix above); anything else is path text and must not be cut.
+static std::string charDirForSpec(const std::string& spec) {
+    std::string path = spec;
+    const size_t colon = path.find_last_of(':');
+    if (colon != std::string::npos && colon + 1 < path.size() &&
+        std::isdigit((unsigned char)path[colon + 1]))
+        path = path.substr(0, colon);
+    const size_t slash = path.find_last_of("/\\");
+    return slash == std::string::npos ? path : path.substr(slash + 1);
+}
+
+// First mesh of an item file — exactly the field the frontend reads for the
+// weapon mesh (frontend_launch.cpp choice()). Empty when the slot ships no
+// mesh; false when the item file itself is missing or short.
+static bool readItemFirstMesh(int itemId, std::string& mesh) {
+    char path[64];
+    std::snprintf(path, sizeof(path), "data/item/%03d.dat", itemId);
+    std::vector<uint8_t> bytes;
+    if (!fnd::assets::assetSource().read(path, bytes)) return false;
+    gameplay::WeaponDefinition item;
+    std::string parseError;
+    if (!item.parse(itemId, bytes.data(), bytes.size(), parseError)) return false;
+    mesh = item.slots[0].meshName;
+    return true;
+}
+
+// Resolves a standalone fighter's weapon to (meshSpec, itemId) for one
+// character directory and explicit spec (possibly empty):
+//   empty spec      → the character's slot-0 legal weapon, mesh and id together;
+//   data/bullet/NNN → item id NNN (the bullet directory number IS the item id);
+//   anything else   → the spec's basename matched against the character's own
+//     items' first meshes (bounded: at most 3 small files per character).
+// False means no join exists — unknown character, unreadable item, or a mesh
+// no roster item ships — and the fighter keeps the legacy bare/shared tuning.
+// Which NN.dat the original pairs with the weapon is still open (issue #26),
+// so this joins mesh↔item only, never NN↔weapon.
+static bool resolveFighterWeapon(const std::string& charDir,
+                                 const std::string& explicitSpec, std::string& meshSpec,
+                                 int& itemId) {
+    const int character = gameplay::characterIndexForDir(charDir);
+    if (character < 0) return false;
+    if (explicitSpec.empty()) {
+        itemId = gameplay::kWeaponIds[character][0];
+        std::string mesh;
+        if (!readItemFirstMesh(itemId, mesh)) return false;
+        meshSpec = mesh.empty() ? "" : std::string("data/item/") + mesh;
+        return true;
+    }
+    std::string path;
+    int slot = 0;
+    splitSuffix(explicitSpec, path, slot);
+    (void)slot;
+    static const std::string bulletPrefix = "data/bullet/";
+    if (path.compare(0, bulletPrefix.size(), bulletPrefix) == 0) {
+        const std::string num = path.substr(bulletPrefix.size());
+        if (!num.empty() && num.find_first_not_of("0123456789") == std::string::npos) {
+            itemId = std::atoi(num.c_str());
+            meshSpec = explicitSpec;
+            return true;
+        }
+        return false;
+    }
+    const size_t slash = path.find_last_of("/\\");
+    const std::string base = slash == std::string::npos ? path : path.substr(slash + 1);
+    for (int w = 0; w < gameplay::weaponCountForCharacter(character); ++w) {
+        const int id = gameplay::kWeaponIds[character][w];
+        std::string mesh;
+        if (!readItemFirstMesh(id, mesh) || mesh != base) continue;
+        itemId = id;
+        meshSpec = explicitSpec;
+        return true;
+    }
+    return false;
+}
+
+// Attaches one fighter's weapon mesh: the explicit spec, or the character's
+// slot-0 legal weapon when empty — never bare by omission (every attack is a
+// weapon attack, issue #26). An unjoinable spec keeps the legacy bare fallback,
+// loudly. Used by every versus/match assembly path below.
+static void attachFighterWeapon(xm::Scene& scene, const std::string& label,
+                                const std::string& charSpec,
+                                const std::string& weaponSpec, const xm::Model* rig,
+                                const xm::SceneOptions& sopt) {
+    std::string spec = weaponSpec;
+    if (spec.empty()) {
+        std::string mesh;
+        int id = 0;
+        if (resolveFighterWeapon(charDirForSpec(charSpec), spec, mesh, id) &&
+            !mesh.empty()) {
+            spec = mesh;
+            std::printf("[weapons] %s %s defaults to item %03d (%s)\n", label.c_str(),
+                        charSpec.c_str(), id, mesh.c_str());
+        } else {
+            std::printf("[weapons] %s (%s): no roster weapon, bare\n", label.c_str(),
+                        charSpec.c_str());
+            return;
+        }
+    }
+    std::string path;
+    int slot = 0;
+    splitSuffix(spec, path, slot);
+    xm::Scene weapon = xm::loadWeapon(path, slot, rig, sopt);
+    for (auto& model : weapon.models) scene.models.push_back(std::move(model));
+}
+
 // The move table lives next to the rig's own model file: "<dir>/<char>[<costume>]/NN.X"
 // loads alongside "<dir>/<char>/NN.dat" (the .dat is always in the unsuffixed
 // directory and names the .X; see loadCharacter). Derives the second path from the
@@ -1099,6 +1214,55 @@ static bool initMatch(App& app) {
         config.spawn[1] = app.opts.hasSpawn[1] ? app.opts.spawn[1] : envP2;
         config.facing[0] = 0.0f;
         config.facing[1] = 3.14159f;
+        // Standalone matches never selected weapons: resolve each fighter to its
+        // character's legal combo (mesh attached at assembly; combat data here),
+        // so bare-handed shared-tuning fights cannot happen by omission. The
+        // frontend path arrives with weaponDefs filled and skips all of this.
+        for (int i = 0; i < fighterCount; ++i) {
+            if (i < static_cast<int>(app.weaponDefs.size()) && app.weaponDefs[i]) {
+                config.weapon[i] = app.weaponDefs[i].get();
+                continue;
+            }
+            std::string charSpec, explicitSpec;
+            if (app.opts.battleFighterCount > 0 && i < 4) {
+                charSpec = app.opts.battleCharacters[i];
+                explicitSpec = app.opts.battleWeapons[i];
+            } else if (i == 0) {
+                charSpec = app.opts.character;
+                explicitSpec = app.opts.weapon;
+            } else if (i == 1) {
+                charSpec = app.opts.enemy;
+                explicitSpec = app.opts.enemyWeapon;
+            } else {
+                continue;
+            }
+            std::string mesh;
+            int itemId = 0;
+            if (!resolveFighterWeapon(charDirForSpec(charSpec), explicitSpec, mesh,
+                                     itemId)) {
+                std::printf("[weapons] fighter %d (%s): no weapon join, shared tuning\n",
+                            i, charSpec.c_str());
+                continue;
+            }
+            std::string error;
+            if (!loadWeaponDefinition(app, i, itemId, error)) {
+                app.error = error;
+                return false;
+            }
+            config.weapon[i] = app.weaponDefs[i].get();
+        }
+        // Bullet parameters for the newly bound weapons (the frontend loads its
+        // own in enterFrontendBattle; missing files keep the shared table).
+        if (static_cast<int>(app.bulletParams.size()) < fighterCount)
+            app.bulletParams.resize(static_cast<size_t>(fighterCount));
+        for (int i = 0; i < fighterCount; ++i) {
+            if (i >= static_cast<int>(app.weaponDefs.size()) || !app.weaponDefs[i])
+                continue;
+            for (int level = 1; level <= 2; ++level)
+                loadBulletParameter(app, i, level, *app.weaponDefs[i],
+                                    app.bulletParams[static_cast<size_t>(i)]
+                                                  [static_cast<size_t>(level - 1)]);
+        }
     }
 
     const xm::Model* models[4] = {};

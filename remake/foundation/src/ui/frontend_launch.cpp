@@ -7,16 +7,14 @@
 
 namespace ui {
 namespace {
-const char* const dirs[16]={"rena","mion","keiichi","satoko","rika","shion","tomitake","takano","ohishi","akasaka","irie","chie","kasai","akane","hanyu","natumi"};
-// The weapon table itself lives in gameplay/weapon_definition.h (kWeaponIds), which is
-// also what the battle parses from; keeping one copy here stops the selection screen and
-// the simulation from disagreeing about what is selectable. ASSET-CATALOG §3.3.
+// The roster order lives with the weapon table it indexes
+// (gameplay::kCharacterDirs); one copy for selection and simulation.
 bool choice(const FrontendSlot& slot,std::string& character,std::string& weapon,int& id,std::string& error) {
     if(slot.character<0 || slot.character>=16 || slot.weapon<0 ||
        slot.weapon>=gameplay::weaponCountForCharacter(slot.character)) {
         error="front end: invalid character or weapon choice"; return false;
     }
-    character=std::string("data/")+dirs[slot.character]+":"+std::to_string(slot.costume);
+    character=std::string("data/")+gameplay::kCharacterDirs[slot.character]+":"+std::to_string(slot.costume);
     id=gameplay::kWeaponIds[slot.character][slot.weapon];
     char path[64]; std::snprintf(path,sizeof(path),"data/item/%03d.dat",id);
     std::vector<uint8_t> bytes;
@@ -32,7 +30,7 @@ bool choice(const FrontendSlot& slot,std::string& character,std::string& weapon,
     return true;
 }
 }
-const char* frontendCharacterDirectory(int index) { return index >= 0 && index < 16 ? dirs[index] : nullptr; }
+const char* frontendCharacterDirectory(int index) { return index >= 0 && index < 16 ? gameplay::kCharacterDirs[index] : nullptr; }
 bool frontendLaunch(const FrontendState& state,FrontendLaunch& out,std::string& error,uint32_t seed) {
     out = {};
     seed ^= 0x9e3779b9u;

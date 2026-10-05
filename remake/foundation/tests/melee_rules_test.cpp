@@ -118,6 +118,50 @@ void bind_synthetic_rig(Fighter& f, xm::Model& model, xm::Controller& ctrl,
     for (int i = 0; i < 70; ++i) tick(f, idle);
 }
 
+// Loads one shipped item definition; false when the install is absent.
+bool load_weapon(const fs::path& install, int itemId, gameplay::WeaponDefinition& out) {
+    std::error_code ec;
+    if (install.empty() || !fs::is_directory(install / "data" / "item", ec))
+        return false;
+    char rel[32];
+    std::snprintf(rel, sizeof(rel), "%03d.dat", itemId);
+    std::ifstream in(install / "data" / "item" / rel, std::ios::binary);
+    if (!in) return false;
+    const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)),
+                                     std::istreambuf_iterator<char>());
+    std::string err;
+    return out.parse(itemId, bytes.data(), bytes.size(), err);
+}
+
+// Decodes both charge levels' bullet parameters the way the live path does
+// (lowest-type bullet per magazine; missing files keep the shared table).
+// Returns true when at least one level armed.
+bool load_bullet_params(const fs::path& install, const gameplay::WeaponDefinition& weapon,
+                        gameplay::BulletParameter& tap, gameplay::BulletParameter& chg) {
+    bool any = false;
+    for (int level = 1; level <= 2; ++level) {
+        const int want = weapon.magazineForChargeLevel(level).chargeLevel - 1;
+        const gameplay::BulletDefinition* best = nullptr;
+        for (int i = 0; i < weapon.bulletCount; ++i) {
+            const gameplay::BulletDefinition& b = weapon.bullets[i];
+            if (b.magazine != want) continue;
+            if (!best || b.type < best->type) best = &b;
+        }
+        if (!best) continue;
+        char rel[48];
+        std::snprintf(rel, sizeof(rel), "bullet/%03d/%03d.dat", weapon.id, best->type);
+        std::ifstream in(install / "data" / rel, std::ios::binary);
+        if (!in) continue;
+        const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)),
+                                         std::istreambuf_iterator<char>());
+        std::string err;
+        gameplay::BulletParameter& slot = (level == 1) ? tap : chg;
+        any |= gameplay::parseBulletParameter(bytes.data(), bytes.size(), best->status,
+                                              slot, err);
+    }
+    return any;
+}
+
 // Loads one shipped character move table; false when the install is absent.
 bool load_moves(const fs::path& install, const char* character, const char* nn,
                 gameplay::CharacterMoves& out) {
@@ -607,6 +651,23 @@ void testDataDrivenGroundSwing(const fs::path& install) {
     Fighter attacker;
     bind_synthetic_rig(attacker, model, ctrl, glm::vec3(0, 0, 0));
     attacker.set_moves(&moves);
+    // The full live combo: rena's slot-0 weapon (item 1) with both bullet levels,
+    // exactly as initMatch binds them. A bare move table is the false-claim trap
+    // this suite refuses: behaviour must come from character AND weapon together.
+    gameplay::WeaponDefinition weapon;
+    gameplay::BulletParameter tapParam, chgParam;
+    check(load_weapon(install, 1, weapon), "rena item 1 (slot 0) parses");
+    attacker.set_weapon(&weapon);
+    check(attacker.weapon() == &weapon, "the slot-0 weapon is bound with the table");
+    if (load_bullet_params(install, weapon, tapParam, chgParam)) {
+        attacker.set_bullet_parameter(1, &tapParam);
+        attacker.set_bullet_parameter(2, &chgParam);
+        check(attacker.shot_params_for(gameplay::ShotTier::Tap).damage !=
+                  gameplay::shot_params(gameplay::ShotTier::Tap).damage,
+              "bound bullet data reaches the shots");
+    } else {
+        skip("bound bullet parameters (no bullet files ship them)");
+    }
     Fighter victim;
     bind_synthetic_rig(victim, model, ctrl, glm::vec3(0, 0, 40));
 
@@ -791,6 +852,88 @@ void testMatchDataDriven(const fs::path& install) {
              "one weapon-scaled point of damage, not the legacy 5");
 }
 
+// ---------------------------------------------------------------------------
+// Every legal combo runs: each character × each shipped NN.dat × each legal
+// weapon slot parses its moves + item (+ best-effort bullets) and survives a
+// 120-tick bout with sane state. Which NN.dat the original pairs with which
+// weapon slot is still open (issue #26), so this sweeps the cross product
+// rather than asserting the join — and it is the standing rule that no test
+// exercises a bare fighter where a combo exists.
+// ---------------------------------------------------------------------------
+void testEveryComboRuns(const fs::path& install) {
+    section("every character x costume-dat x weapon combo runs");
+    std::error_code ec;
+    if (install.empty() || !fs::is_directory(install / "data" / "item", ec)) {
+        skip("combo sweep (no install found)");
+        return;
+    }
+    int attempted = 0, ran = 0;
+    for (int c = 0; c < gameplay::kCharacterCount; ++c) {
+        const char* dir = gameplay::kCharacterDirs[c];
+        for (int nn = 0; nn < 3; ++nn) {
+            char nnname[16];
+            std::snprintf(nnname, sizeof(nnname), "%02d.dat", nn);
+            gameplay::CharacterMoves moves;
+            if (!load_moves(install, dir, nnname, moves)) continue;  // e.g. hanyu 02
+            for (int w = 0; w < gameplay::weaponCountForCharacter(c); ++w) {
+                const int id = gameplay::kWeaponIds[c][w];
+                gameplay::WeaponDefinition weapon;
+                if (!load_weapon(install, id, weapon)) {
+                    check(false, "every roster item file parses");
+                    continue;
+                }
+                ++attempted;
+                // Best effort, like the live path: absent files keep shared tuning,
+                // and an all-zero parameter decodes to the shared table anyway.
+                gameplay::BulletParameter tap, chg;
+                load_bullet_params(install, weapon, tap, chg);
+                gameplay::Match match;
+                gameplay::MatchConfig config;
+                config.fighterCount = 2;
+                config.side[0] = 0;
+                config.side[1] = 1;
+                config.spawn[0] = glm::vec3(0, 0, 0);
+                config.spawn[1] = glm::vec3(300, 0, 0);
+                config.moves[0] = config.moves[1] = &moves;
+                config.weapon[0] = config.weapon[1] = &weapon;
+                const xm::Model* models[4] = {};
+                xm::Controller* anims[4] = {};
+                match.reset(config, models, anims, nullptr, nullptr);
+                for (int f = 0; f < 2; ++f) {
+                    match.fighter(f).set_bullet_parameter(1, &tap);
+                    match.fighter(f).set_bullet_parameter(2, &chg);
+                }
+                const input::PlayerState* idle[4] = {};
+                for (int i = 0; i < 70; ++i) match.step(idle, 1.0 / 64.0);
+                for (int tick = 0; tick < 120; ++tick) {
+                    input::PlayerState p1{}, p2{};
+                    p1.down[input::Action::Shoot] = true;
+                    p2.down[input::Action::Shoot] = true;
+                    if (tick == 0) p1.down[input::Action::AttackA] = true;
+                    input::compute_edges(p1);
+                    input::compute_edges(p2);
+                    const input::PlayerState* in[4] = {&p1, &p2, nullptr, nullptr};
+                    match.step(in, 1.0 / 64.0);
+                }
+                const auto& f0 = match.fighter(0);
+                const auto& f1 = match.fighter(1);
+                const bool sane =
+                    f0.hp() >= 0 && f0.hp() <= f0.max_hp() &&
+                    f1.hp() >= 0 && f1.hp() <= f1.max_hp() &&
+                    f0.main_frac() >= 0.0f && f0.main_frac() <= 1.0f &&
+                    f0.charge_frac() >= 0.0f && f0.charge_frac() <= 1.0f;
+                if (!sane)
+                    check(false, "a combo bout stays within sane state");
+                else
+                    ++ran;
+            }
+        }
+    }
+    std::printf("  combos attempted: %d\n", attempted);
+    checkInt(attempted, ran, "every attempted combo ran sane");
+    check(attempted > 100, "the sweep covers the full roster cross product");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -808,6 +951,7 @@ int main(int argc, char** argv) {
     testDataDrivenDashAndAir(install);
     testDataDrivenFallback(install);
     testMatchDataDriven(install);
+    testEveryComboRuns(install);
     std::printf("\nMELEE_RULES: %s (%d checks, %d failed, %d skipped)\n",
                 failures == 0 ? "ok" : "FAIL", checks, failures, skipped);
     return failures == 0 ? 0 : 1;
