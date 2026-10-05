@@ -1807,19 +1807,52 @@ void test_projectile_pool() {
         skip_case("bound fighters against red port tier profile");
     }
 
-    // --- a KO'd fighter is skipped ---
+    // --- a KO'd fighter takes the hit: that is Overkill (issue #11) ---
+    // The shot is fired by a real fighter rather than a null owner (a character+weapon
+    // case, AGENTS rule 7): the tier parameters come from that owner, and with no
+    // weapon bound here they are the shared tuning and the unspecified hit category.
     if (g_testCombo.ready) {
         ProjectilePool pool;
         Fighter shooter = make_idle_fighter(glm::vec3(0, 0, 0));
         Fighter dead = make_idle_fighter(glm::vec3(0, 0, 0));
         dead.set_hp(1);
-        dead.take_damage(5, nullptr);
+        dead.take_damage(5, &shooter);
+        check_bits("the KO leaves the fighter down (hp 0)", 0, dead.hp());
+        check_bits("no Overkill credit before a hit lands", 0, dead.take_overkill_hits());
         pool.spawn(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1), ShotTier::Tap, &shooter);
         pool.update(kDt, &dead, 1, nullptr, nullptr);
-        check_int("downed fighters are skipped", 0, dead.hp());
-        check_int("shot passes through the downed fighter", 1, pool.live_shots());
+        check_int("the downed body stays at 0 HP", 0, dead.hp());
+        check_int("the shot is consumed by the downed body", 0, pool.live_shots());
+        // The credit is exactly one per hit and is drained once (FUN_00637950
+        // @0x638e0d-0x638e37); the scene decides the side.
+        check_int("one Overkill credit for one hit", 1, dead.take_overkill_hits());
+        check_int("the credit drains (counted once)", 0, dead.take_overkill_hits());
+        // One blow, one credit: the shot that KILLS arms the KO credit and must not
+        // also count as an Overkill hit (FUN_00637950 branches on the victim's HP
+        // before the damage, @0x638c20-0x638c35).
+        Fighter lethaled = make_idle_fighter(glm::vec3(0, 0, 0));
+        lethaled.set_hp(1);
+        const Fighter::DamageResult killing =
+            lethaled.take_damage(4, &shooter, -1, 0, /*shot=*/true);
+        check_bool("the killing blow reports Ko", true,
+                   killing == Fighter::DamageResult::Ko);
+        check_bool("the killing blow arms the KO credit", true, lethaled.pending_ko());
+        check_int("and scores no Overkill hit", 0, lethaled.take_overkill_hits());
+        // The overkill term is the UNCLAMPED shortfall: 1 HP - 4 damage = 3 below zero
+        // (FUN_00639160 @0x639399-0x6393a5 reads the raw field, which the port clamps
+        // for HP but keeps here).
+        const Fighter::KoCredit credit = lethaled.take_ko_credit();
+        check_int("the KO credit carries the unclamped overkill term", 3,
+                  credit.overkillHp);
+        check_bool("a shot kill takes the shot branch", true, credit.shot);
+        check_bool("the KO credit is drained once", false, lethaled.pending_ko());
+        // A hit on a LIVING fighter is not Overkill, and melee never offers a dead
+        // target at all (FUN_00639160 credits nothing for an already-dead body).
+        Fighter alive = make_idle_fighter(glm::vec3(0, 0, 0));
+        alive.take_damage(5, &shooter, -1, 0, /*shot=*/true);
+        check_bits("a living fighter scores no Overkill credit", 0, alive.take_overkill_hits());
     } else {
-        skip_case("bound shooter passing through KO fighter");
+        skip_case("bound shooter and Overkill on a KO fighter");
     }
 
     // --- a shot with an owner applies that owner's hypermode damage ---

@@ -623,6 +623,14 @@ private:
     // (FUN_00639160 @0x6392e8-0x639325).
     bool     m_koBonusLatch = false;
     bool     m_respawnLock = false;
+    // The victim's own reaction move as FUN_0063ba80's callers read it: this port's
+    // Knockdown state is the original's grounded reaction (move 0xc4/196, sets
+    // [28, 29] — the lying pose), and nothing else the port can enter is in the
+    // exclusion set {198,199,196}. The Hit state is the launched reaction (195/0xc3),
+    // which is not excluded.
+    int reaction_move() const {
+        return m_state == FighterState::Knockdown ? kReactionGrounded : 0;
+    }
 
     // --- state machine ---
     FighterState m_state       = FighterState::Idle;
@@ -739,15 +747,6 @@ private:
     // Current move choice for combat tuning. Its port-context heuristic does not
     // establish an animation selector; animation resolution uses the separate
     // confirmed ID below.
-    // The victim's own reaction move as FUN_0063ba80's callers read it: this port's
-    // Knockdown state is the original's grounded reaction (move 0xc4/196, sets
-    // [28, 29] — the lying pose), and nothing else the port can enter is in the
-    // exclusion set {198,199,196}. The Hit state is the launched reaction (195/0xc3),
-    // which is not excluded.
-    int reaction_move() const {
-        return m_state == FighterState::Knockdown ? kReactionGrounded : 0;
-    }
-
     // Situation → character-.dat move id for a melee press (issue #26 step 3),
     // or -1 when no table is bound or the situation's move is absent. The map
     // is provisional: FUN_0043ded0 gates several attack moves per situation on
