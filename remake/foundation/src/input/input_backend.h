@@ -7,7 +7,7 @@
 // shape (init once, tick/poll per frame). Devices stay fixed: P0 is the
 // verified keyboard layout, P1-P3 are gamepads; the original's P2-P4 pads
 // were buttons 1-8 with unknown layout, so no keyboard fallback is offered
-// there. AttackB is unbound by default and may be assigned in key configuration.
+// there. Every action is bound by default: the original has one melee input (issue #10).
 //
 // This header is SDL-free on purpose: the tables in input_sdl3.h test
 // without SDL linked, and so does everything here (key state is tracked as

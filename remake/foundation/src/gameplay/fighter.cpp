@@ -276,7 +276,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // The swing clock drives startup/active/recovery (melee_rules.h). It advances on
     // every tick the attack state is held, including recovery, so the recovery window is
     // a real lockout rather than a label.
-    if (m_state == FighterState::AttackA || m_state == FighterState::AttackB)
+    if (m_state == FighterState::AttackA)
         ++m_meleeElapsed;
 
     // 3. Update movement (if the state allows it).
@@ -438,11 +438,10 @@ void Fighter::update_state_machine(const input::PlayerState* input,
     if (!input) return;
 
     // Melee is ONE key in the original (X), and there is no second heavy attack to bind:
-    // the corpus tests exactly one attack bit, `weapon+0x28 & 0x100` (1378 uses), and no
-    // heavy/strong bit anywhere (input.h). The stand-in that
-    // used to sit on AttackB is gone: the button now does nothing, and the swing that
-    // plays is chosen by the fighter's situation at the press — grounded, mid-dash or
-    // airborne — rather than by a second key. Issue #10.
+    // the corpus tests exactly one attack bit, `[fighter+0x10]+0x28 & 0x100` (1378 uses),
+    // and no heavy/strong bit anywhere (input.h). The swing that plays is chosen by the
+    // fighter's situation at the press — grounded, mid-dash or airborne — and by the bound
+    // move table's chain rows, never by a second key (issue #10).
     if (input->just_pressed[input::Action::AttackA]) {
         // Combat tuning uses a situation-based candidate. The grounded neutral
         // animation uses a documented port inference to move 300; the source's
@@ -619,7 +618,7 @@ void Fighter::set_state(FighterState new_state) {
     m_moveElapsedTicks = 0;
     // Leaving the attack state ends this swing: the per-victim hit set clears so a
     // fresh swing may connect again (issue #10's per-swing accounting).
-    if (new_state == FighterState::AttackA || new_state == FighterState::AttackB)
+    if (new_state == FighterState::AttackA)
         begin_melee_swing();
     try_switch_animation();
 }
@@ -915,7 +914,7 @@ void Fighter::apply_knockback(const glm::vec3& dir, float speed) {
 
 bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollision* collision) {
     // Only the light/chain melee plays this path; the EX and shots go elsewhere.
-    if (m_state != FighterState::AttackA && m_state != FighterState::AttackB) return false;
+    if (m_state != FighterState::AttackA) return false;
     if (!m_swing.is_active(m_meleeElapsed)) return false;
     if (!target.is_alive()) return false;
 
@@ -951,13 +950,10 @@ bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollis
         if (game::physics::segmentBlocked(from, to, collision->movementMesh())) return false;
     }
 
-    // A data-driven swing carries its weapon entry's own damage; the legacy swing
-    // keeps the light/heavy split (AttackB is unreachable from input — the corpus
-    // has no heavy bit — but a directly-set AttackB keeps its historical value).
-    const int dmg = m_swing.dataDriven
-        ? m_swing.damage
-        : (m_state == FighterState::AttackB ? FighterConstants::kHeavyDamage
-                                            : FighterConstants::kLightDamage);
+    // A data-driven swing carries its move's own power (FUN_00639160's chain); the legacy
+    // swing keeps the shared light value. There is no heavy variant: the corpus has one
+    // melee input bit and no heavy bit at all (issue #10).
+    const int dmg = m_swing.dataDriven ? m_swing.damage : FighterConstants::kLightDamage;
     target.take_damage(dmg, this, m_swing.hitstun);
     return true;
 }
@@ -1207,7 +1203,7 @@ Fighter::HitboxDebug Fighter::hitbox_debug() const {
     d.anchors[0] = m_position + hurtbox_anchor_offset(0);
     d.anchors[1] = m_position + hurtbox_anchor_offset(1);
     d.anchorRadius = m_meleeRules.bodyRadius;
-    d.attacking = (m_state == FighterState::AttackA || m_state == FighterState::AttackB) &&
+    d.attacking = m_state == FighterState::AttackA &&
                   melee_in_active();
     if (d.attacking) {
         // The attack sphere is centred where try_melee_hit() measures from, so the two

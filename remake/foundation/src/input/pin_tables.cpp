@@ -32,7 +32,7 @@ static_assert(fnd::input::sdl3::kScPause == SDL_SCANCODE_W, "P1 pause drifted");
 static_assert(fnd::input::sdl3::kScCamRight == SDL_SCANCODE_E, "camera-right drifted");
 static_assert(sizeof(fnd::input::sdl3::kP1ScancodeByAction) /
                       sizeof(fnd::input::sdl3::kP1ScancodeByAction[0]) ==
-                  13,
+                  (size_t)fnd::input::ActionCount,
               "action table lost a slot");
 static_assert(fnd::input::sdl3::kPadDpadUp == SDL_GAMEPAD_BUTTON_DPAD_UP, "pad up drifted");
 static_assert(fnd::input::sdl3::kPadDpadDown == SDL_GAMEPAD_BUTTON_DPAD_DOWN, "pad down drifted");

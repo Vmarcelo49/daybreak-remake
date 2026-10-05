@@ -107,7 +107,7 @@ struct ActionName { fnd::input::Action action; const char* name; };
 constexpr ActionName kActionNames[] = {
     {fnd::input::Up, "up"},           {fnd::input::Down, "down"},
     {fnd::input::Left, "left"},       {fnd::input::Right, "right"},
-    {fnd::input::AttackA, "attack_a"}, {fnd::input::AttackB, "attack_b"},
+    {fnd::input::AttackA, "attack_a"},
     {fnd::input::Guard, "guard"},     {fnd::input::Shoot, "shoot"},
     {fnd::input::Jump, "jump"},       {fnd::input::Special, "special"},
     {fnd::input::Tactics, "tactics"}, {fnd::input::LockSwitch, "lock_switch"},
@@ -185,6 +185,9 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
 
     UserSettings candidate;   // defaults; only a clean parse reaches `out`
     bool sawVersion = false;
+    // A v1 document's binding rows carry the removed heavy action at index 5; the rows are
+    // read with the v1 width and the entry is dropped once the row parses (see the header).
+    bool legacyLayout = false;
     bool inSection = false;
     std::string section;
     std::istringstream stream(text);
@@ -244,11 +247,12 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                     error = "line " + std::to_string(lineNumber) + ": version is not a number";
                     return false;
                 }
-                if (version != kSchemaVersion) {
+                if (version != kSchemaVersion && version != kSchemaVersionLegacy) {
                     error = "unsupported config version " + std::to_string(version) +
                             " (this build writes " + std::to_string(kSchemaVersion) + ")";
                     return false;
                 }
+                legacyLayout = (version == kSchemaVersionLegacy);
                 sawVersion = true;
                 continue;
             }
@@ -286,26 +290,30 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
             }
         } else if (section == "bindings") {
             if (key == "keyboard") {
-                int row[fnd::input::ActionCount] = {};
+                int row[kLegacyActionCount] = {};
                 std::string why;
-                if (!parseBindingRow(value, row, fnd::input::ActionCount, -1, kMaxScancode, why))
+                const int width = legacyLayout ? kLegacyActionCount : fnd::input::ActionCount;
+                if (!parseBindingRow(value, row, width, -1, kMaxScancode, why))
                     warn("keyboard: " + why + ", keeping the defaults");
                 else
                     for (int a = 0; a < fnd::input::ActionCount; ++a)
-                        candidate.keyboard[static_cast<size_t>(a)] = row[a];
+                        candidate.keyboard[static_cast<size_t>(a)] =
+                            row[a < kLegacyHeavyIndex ? a : a + (legacyLayout ? 1 : 0)];
             } else if (key.size() > 3 && key.compare(0, 3, "pad") == 0 &&
                        key[3] >= '1' && key[3] <= '4') {
                 const int player = key[3] - '1';
                 if (key.size() != 4) {
                     warn("ignoring unknown key '" + key + "'");
                 } else {
-                    int row[fnd::input::ActionCount] = {};
+                    int row[kLegacyActionCount] = {};
                     std::string why;
-                    if (!parseBindingRow(value, row, fnd::input::ActionCount, -1, kMaxPadButton, why))
+                    const int width = legacyLayout ? kLegacyActionCount : fnd::input::ActionCount;
+                    if (!parseBindingRow(value, row, width, -1, kMaxPadButton, why))
                         warn(key + ": " + why + ", keeping the defaults");
                     else
                         for (int a = 0; a < fnd::input::ActionCount; ++a)
-                            candidate.gamepad[static_cast<size_t>(player)][static_cast<size_t>(a)] = row[a];
+                            candidate.gamepad[static_cast<size_t>(player)][static_cast<size_t>(a)] =
+                                row[a < kLegacyHeavyIndex ? a : a + (legacyLayout ? 1 : 0)];
                 }
             } else {
                 warn("ignoring unknown key '" + key + "'");
@@ -336,6 +344,12 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
     if (!sawVersion) {
         error = "missing version line";
         return false;
+    }
+    if (legacyLayout) {
+        ++report.warnings;
+        report.messages.push_back(
+            "config version 1: migrated to " + std::to_string(kSchemaVersion) +
+            " (the removed heavy-melee binding was dropped, every other binding kept)");
     }
     out = candidate;
     report.loaded = true;

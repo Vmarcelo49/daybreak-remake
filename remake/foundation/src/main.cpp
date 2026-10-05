@@ -2723,12 +2723,10 @@ static void tickMatch(App& app, double dt) {
         } else {
             view.lockHeldTicks = 0;
         }
-        // The DX9 reference's own camera switch (Guard just_pressed while AttackB is held,
-        // scenes.cpp:644-646): a camera decision only, so it moves the camera and nothing
-        // else.
-        if (viewInput && viewInput->just_pressed[fnd::input::Guard] &&
-            viewInput->down[fnd::input::AttackB])
-            view.camera.cycle_target(true);
+        // The DX9 reference's own camera switch (Guard just_pressed while its heavy key was
+        // held, scenes.cpp:644-646) went with that key: the original has one melee input and
+        // no heavy bit (issue #10), so target cycling is the recovered LockSwitch action
+        // alone (gameplay/target_lock.h).
         // Scripted/offscreen standalone runs retain the banked null-query camera path;
         // live matches clamp the eye against collision_camera.x unless the A/B switch asks
         // for the historical unclamped behavior. The blend remains per call as in the port.
@@ -2793,7 +2791,6 @@ static void tickMatch(App& app, double dt) {
             // counter, hud+0x7ac > 0). PORT RULE: Fighter carries no action counter, so the
             // action states that counter corresponds to stand in for it.
             view.hud.fighters[i].acting = f.state() == gameplay::FighterState::AttackA ||
-                                          f.state() == gameplay::FighterState::AttackB ||
                                           f.state() == gameplay::FighterState::AttackC ||
                                           f.state() == gameplay::FighterState::Hit ||
                                           f.state() == gameplay::FighterState::Knockdown ||

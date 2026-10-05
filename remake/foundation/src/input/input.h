@@ -14,23 +14,28 @@
 namespace fnd::input {
 
 // Verified 1P semantics from the remake (arrows + Z/X/C/A/S/D/Q/W); P2-P4
-// pads are buttons 1-8 with exact layout unknown, so AttackB stays exist-but-
-// unbound rather than guessed.
+// pads are buttons 1-8 with exact layout unknown.
+//
+// There is ONE melee action, because the corpus has one melee input bit: the move
+// dispatchers (the shared FUN_0043ded0 and every per-character twin, e.g. FUN_00445ee0)
+// test only `[fighter+0x10]+0x28 & 0x100` for attacks and no other input bit at all. The
+// heavy stand-in that used to sit at index 5 was a port invention and is gone (issue #10);
+// the swing a press plays is chosen by the fighter's situation (grounded, mid-dash,
+// airborne) and by the bound move table's rows.
 enum Action : int {
     Up = 0,
     Down = 1,
     Left = 2,
     Right = 3,
-    AttackA = 4,  // melee
-    AttackB = 5,  // heavy stand-in, unbound by default
-    Guard = 6,
-    Shoot = 7,
-    Jump = 8,  // doubles as menu confirm
-    Special = 9,
-    Tactics = 10,
-    LockSwitch = 11,  // tap = cycle enemy, hold = aim ally
-    Pause = 12,
-    ActionCount = 13,
+    AttackA = 4,  // melee (the original's single attack bit)
+    Guard = 5,
+    Shoot = 6,
+    Jump = 7,  // doubles as menu confirm
+    Special = 8,
+    Tactics = 9,
+    LockSwitch = 10,  // tap = cycle enemy, hold = aim ally
+    Pause = 11,
+    ActionCount = 12,
 };
 
 enum class DeviceType : int { None = 0, Keyboard = 1, Gamepad = 2 };
@@ -80,7 +85,7 @@ inline void stick_to_digital(int16_t lx, int16_t ly, bool& left, bool& right,
 
 // Script line format shared with the remake's visual-validation driver:
 // "<frame> <TOKEN>..."; "-" releases all; "#" starts a comment; blanks skip.
-// Tokens: UP DOWN LEFT RIGHT MELEE HEAVY GUARD SHOOT JUMP SPECIAL TACTICS
+// Tokens: UP DOWN LEFT RIGHT MELEE GUARD SHOOT JUMP SPECIAL TACTICS
 // LOCK PAUSE. Returns false for blank/comment lines (caller skips).
 inline bool parse_script_line(const char* line, uint64_t& frame_out,
                               uint32_t& mask_out) {
@@ -107,7 +112,6 @@ inline bool parse_script_line(const char* line, uint64_t& frame_out,
         else if (!std::strcmp(tok, "LEFT")) action = Left;
         else if (!std::strcmp(tok, "RIGHT")) action = Right;
         else if (!std::strcmp(tok, "MELEE")) action = AttackA;
-        else if (!std::strcmp(tok, "HEAVY")) action = AttackB;
         else if (!std::strcmp(tok, "GUARD")) action = Guard;
         else if (!std::strcmp(tok, "SHOOT")) action = Shoot;
         else if (!std::strcmp(tok, "JUMP")) action = Jump;

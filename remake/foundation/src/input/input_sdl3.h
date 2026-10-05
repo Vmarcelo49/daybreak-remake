@@ -33,12 +33,12 @@ inline constexpr int kScPause = 26;    // SDL_SCANCODE_W
 inline constexpr int kScCamLeft = 20;  // Q doubles as camera-left nudge
 inline constexpr int kScCamRight = 8;  // SDL_SCANCODE_E, camera-right nudge
 
-// Index by fnd::input::Action (0..12); -1 = unbound (AttackB has no key).
-// Order: Up Down Left Right | AttackA AttackB Guard Shoot | Jump Special
-// Tactics | LockSwitch Pause.
-inline constexpr int kP1ScancodeByAction[13] = {
+// Index by fnd::input::Action (0..11); -1 = unbound.
+// Order: Up Down Left Right | AttackA Guard Shoot | Jump Special Tactics |
+//        LockSwitch Pause.
+inline constexpr int kP1ScancodeByAction[ActionCount] = {
     kScUp, kScDown, kScLeft, kScRight,  // Up Down Left Right
-    kScMelee, -1, kScGuard, kScShoot,   // AttackA AttackB Guard Shoot
+    kScMelee, kScGuard, kScShoot,       // AttackA Guard Shoot
     kScJump, kScSpecial, kScTactics,    // Jump Special Tactics
     kScLock, kScPause,                 // LockSwitch Pause
 };
@@ -62,7 +62,7 @@ inline constexpr int kPadTactics = 4;   // back
 inline constexpr int kPadPause = 6;     // start (5 is guide, not start)
 inline constexpr int kPadButtonByAction[ActionCount] = {
     kPadDpadUp, kPadDpadDown, kPadDpadLeft, kPadDpadRight,
-    kPadMelee, -1, kPadGuard, kPadShoot, kPadJump,
+    kPadMelee, kPadGuard, kPadShoot, kPadJump,
     kPadSpecial, kPadTactics, kPadLock, kPadPause,
 };
 

@@ -35,8 +35,17 @@
 namespace settings {
 
 // Bumped whenever the key set or a key's meaning changes. A file whose version is not
-// this one is ignored WHOLE (never partially applied); the next save rewrites it.
-inline constexpr int kSchemaVersion = 1;
+// this one (or a version this build can migrate) is ignored WHOLE (never partially
+// applied); the next save rewrites it in the current version.
+//
+// v2 (issue #10) removed the port-invented heavy melee action: the binding rows lost their
+// sixth entry. A v1 file is MIGRATED, not rejected — its rows are read with the v1 layout
+// and the removed entry is dropped, so an existing config keeps every other binding.
+inline constexpr int kSchemaVersion = 2;
+inline constexpr int kSchemaVersionLegacy = 1;
+// The v1 action count and the index the removed heavy action occupied in it.
+inline constexpr int kLegacyActionCount = 13;
+inline constexpr int kLegacyHeavyIndex = 5;
 
 // The user config directory name under $XDG_CONFIG_HOME and the file inside it.
 inline constexpr const char* kAppDirectory = "daybreak-decomp";

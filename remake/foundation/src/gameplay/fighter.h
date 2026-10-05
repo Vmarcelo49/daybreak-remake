@@ -67,9 +67,10 @@ enum class FighterState : int {
     Idle        = 0,   // standing, no input
     Walk        = 1,   // moving (stick/d-pad)
     Run         = 2,   // dashing (double-tap)
-    AttackA     = 3,   // melee (provisional input; see input.h)
-    AttackB     = 4,   // heavy stand-in (no dedicated key in original)
-    AttackC     = 5,   // special attack (not yet mapped to input)
+    AttackA     = 3,   // melee (the original's single attack bit; see input.h)
+    AttackC     = 4,   // special attack (not yet mapped to input)
+    // 5 is the removed heavy stand-in's slot (issue #10). The values are labels, not
+    // persisted state, and keeping them stable avoids renumbering the remaining states.
     Guard       = 6,   // blocking (block key held)
     Hit         = 7,   // taking damage (stun)
     Knockdown   = 8,   // knocked down
@@ -104,7 +105,6 @@ inline int state_to_move_id(FighterState s) {
         case FighterState::BattleStart: return 194; // round reset: FUN_004219a0
         case FighterState::Run:
         case FighterState::AttackA:
-        case FighterState::AttackB:
         case FighterState::AttackC:
         case FighterState::Guard:
         case FighterState::ShootA:
@@ -128,7 +128,6 @@ inline const char* state_to_anim_name(FighterState s) {
         case FighterState::Walk:        return "walk";
         case FighterState::Run:         return "run";
         case FighterState::AttackA:     return "attackA";
-        case FighterState::AttackB:     return "attackB";
         case FighterState::AttackC:     return "attackC";
         case FighterState::Guard:       return "guard";
         case FighterState::Hit:         return "damage";
@@ -215,7 +214,6 @@ struct FighterConstants {
         // fallback when no move table is bound, and the Oyashiro activation burst
         // radius. Data-driven swings use their own hitRadius (30 + hr, FUN_0063b470).
     static constexpr int   kLightDamage   = 5;
-    static constexpr int   kHeavyDamage   = 12;
     // Shot economy (spec §3.1; counts pinned by battle-hud.webp, rest tuning).
     static constexpr float kMainMax       = 6.0f;   // MAIN stock
     static constexpr float kChargeMax     = 2.0f;   // CHARGE stock
