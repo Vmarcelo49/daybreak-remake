@@ -293,6 +293,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(round_rules_test PRIVATE foundation_gameplay)
     add_test(NAME round_rules_test COMMAND round_rules_test)
 
+    # Issue #14: the COM decision state — determinism, the recovered tactic table, the
+    # resource/availability gates, retargeting, ally exclusion and the wall/corner
+    # recovery, all against a synthetic "Rena 1" combo and the #7 collision sweeps.
+    add_executable(bot_brain_test tests/bot_brain_test.cpp)
+    target_link_libraries(bot_brain_test PRIVATE foundation_gameplay)
+    add_test(NAME bot_brain_test COMMAND bot_brain_test)
+
     # The .X animation path against the shipped rigs: defines XMODEL_IMPLEMENTATION
     # itself (same reason as raycast_analytic), sweeps data/<name>/<NN>.X at run time,
     # and skips itself when the install is absent.
