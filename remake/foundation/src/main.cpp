@@ -524,7 +524,7 @@ struct App {
     render::DebugLineBatch       debugLines;   // rebuilt per frame, capacity kept
     render::CubeBatch            matchCubes{2048};
     render::CubeBatch            auraCubes{64};   // additive, drawn in its own pass
-    render::CubeBatch            hitboxCubes{4096};  // --hitbox-debug: melee hit spheres
+    render::CubeBatch            hitboxCubes{4096};  // --hitbox-debug: hit/hurt volumes
     glm::vec3                    debugBoundsLo{0.f}, debugBoundsHi{0.f};
     bool                         haveDebugBounds = false;
     game::physics::CameraCollision cameraCollision;   // arena eye clamp, per stage
@@ -1526,6 +1526,14 @@ static void traceMatch(App& app) {
 // representation — their real VFX are trails, which are RE-blocked (EFFECTS-TRAILS.md)
 // — while the aura now draws its actual card by default; its cube only appears under
 // --debug-prims, which is the A/B against the old all-cube view. Rebuilt, never appended.
+// --hitbox-debug overlay colours. Green is what you can HURT, red is what HITS, and
+// grey is anything that is neither — the convention a future marker follows rather than
+// re-deciding. Grey is defined but not yet drawn: there is no third category today, and
+// an unused colour constant would be dead code.
+static constexpr render::DebugColor kHurtVolume  = render::packColor(0, 230, 60, 90);
+static constexpr render::DebugColor kHitVolume   = render::packColor(255, 40, 40, 110);
+static constexpr render::DebugColor kOtherVolume = render::packColor(150, 150, 150, 90);
+
 static void fillMatchCubes(App& app) {
     app.matchCubes.clear();
     app.auraCubes.clear();
@@ -1547,11 +1555,9 @@ static void fillMatchCubes(App& app) {
         for (int i = 0; i < app.match.config().fighterCount; ++i) {
             const gameplay::Fighter::HitboxDebug hb = app.match.fighter(i).hitbox_debug();
             for (const glm::vec3& anchor : hb.anchors)
-                app.hitboxCubes.addSphere(anchor, hb.anchorRadius,
-                                          render::packColor(255, 40, 40, 110));
+                app.hitboxCubes.addSphere(anchor, hb.anchorRadius, kHurtVolume);
             if (hb.attacking)
-                app.hitboxCubes.addSphere(hb.attackCenter, hb.attackRadius,
-                                          render::packColor(255, 0, 0, 70));
+                app.hitboxCubes.addSphere(hb.attackCenter, hb.attackRadius, kHitVolume);
         }
     }
 

@@ -817,7 +817,11 @@ Fighter::HitboxDebug Fighter::hitbox_debug() const {
         // can never disagree.
         d.attackCenter = m_position +
                          glm::vec3(0.0f, bodyHeight * m_meleeRules.chestHeightFrac, 0.0f);
-        d.attackRadius = m_meleeRules.bodyRadius + m_meleeRules.radius;
+        // The ATTACKER's own volume, which is MeleeRules::radius — the stand-in for
+        // weapon+0x24. It is deliberately NOT bodyRadius + radius: in
+        // FUN_0063b470 that sum is the combined test distance (the VICTIM's 30-unit body
+        // radius plus this), so drawing it would show the reach, not the attack volume.
+        d.attackRadius = m_meleeRules.radius;
     }
     return d;
 }
