@@ -215,26 +215,47 @@ void test_idle_walk() {
     check_int("state after 60 frames (pose expired)", static_cast<int>(FighterState::Idle),
               static_cast<int>(f.state()));
 
-    // Hold Up for 61 frames: up = -Z (fighter.cpp:307).
+    // Hold Up for 61 frames: up is facing-forward (lock-on movement — the camera
+    // sits behind the facing, so screen-up is toward the opponent; at yaw 0 that
+    // is +Z, validated against FUN_004235d0's relative-angle sectors).
     Input in;
     in.set(fnd::input::Action::Up, true);
     tick(f, in);   // first walk frame
     const float z1 = f.position().z;
     check_int("state while holding Up", static_cast<int>(FighterState::Walk),
               static_cast<int>(f.state()));
-    check_bits("first walk frame dz", -80.0f * kStep, z1 - 0.0f);
+    check_bits("first walk frame dz", 80.0f * kStep, z1 - 0.0f);
     for (int i = 0; i < 60; ++i) tick(f, in);
     const float z61 = f.position().z;
-    check_near("z after 61 walk frames", -80.0 * 61 * kDt, z61, 1e-3);
-    check_near("measured speed over 60 frames (u/s)", -80.0,
+    check_near("z after 61 walk frames", 80.0 * 61 * kDt, z61, 1e-3);
+    check_near("measured speed over 60 frames (u/s)", 80.0,
                (z61 - z1) / (60.0 * kDt), 1e-3);
-    check_bits("x untouched by pure -Z walk", 0.0f, f.position().x);
+    check_bits("x untouched by pure facing-forward walk", 0.0f, f.position().x);
 
     in.set(fnd::input::Action::Up, false);
     tick(f, in);
     check_int("state after releasing Up", static_cast<int>(FighterState::Idle),
               static_cast<int>(f.state()));
     check_bits("velocity zeroed on release (position frozen)", z61, f.position().z);
+
+    // The reported lock-on bug: forward must close on the locked opponent,
+    // wherever it stands — not march world -Z. Facing +X with the opponent
+    // down +X, holding Up walks +X and shrinks the gap.
+    Fighter hunter;
+    hunter.init(nullptr, nullptr, glm::vec3(0, 0, 0), 1.5707964f);
+    settle(hunter);
+    Fighter prey = make_idle_fighter(glm::vec3(500, 0, 0));
+    Input fwd;
+    fwd.set(fnd::input::Action::Up, true);
+    for (int i = 0; i < 61; ++i) tick(hunter, fwd, &prey);
+    check_near("forward walks +X when facing +X", 80.0 * 61 * kDt,
+               hunter.position().x, 1e-3);
+    check_near("no sideways drift while closing", 0.0, hunter.position().z, 1e-4);
+    check_near("facing stays locked on the opponent", 1.5707964,
+               hunter.facing_yaw(), 1e-6);
+    check_near("the gap to the opponent shrinks by the walked distance",
+               500.0 - 80.0 * 61 * kDt,
+               500.0 - hunter.position().x, 1e-3);
 
     // Stick deflection past the deadzone walks too (same 8000 threshold).
     Fighter s = make_idle_fighter(glm::vec3(0, 0, 0));
@@ -274,8 +295,9 @@ void test_dash() {
               static_cast<int>(f.state()));
     check_bool("dash is airborne flag", false, f.airborne());
 
-    // Up maps to facing-forward = +Z (fighter.cpp:579), the opposite of the
-    // walk direction for the same key — a source quirk, pinned here.
+    // Up maps to facing-forward = +Z (fighter.cpp:579), the same basis the walk
+    // uses now: a tap and a hold agree about where "up" goes, so a dash fired
+    // while walking keeps the line instead of reversing it.
     check_bits("ground dash first-frame dz", 200.0f * kStep, f.position().z - z_before);
     // Stamina: 100 - 20 = 80, then the same frame's grounded regen (+60*dt)
     // runs because Run is an actionable state (fighter.cpp:124). stamina() is

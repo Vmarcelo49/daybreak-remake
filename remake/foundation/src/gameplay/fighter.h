@@ -708,6 +708,12 @@ private:
     double       m_lastTap[4] = {-1.0, -1.0, -1.0, -1.0};  // Up/Down/Left/Right
 
     // --- movement helpers ---
+    // Screen (lock-on camera) direction → world direction. The eye sits behind
+    // the facing looking at the locked opponent, so screen-up is the facing
+    // (toward the opponent) and screen-right is 90° clockwise of it. Walk,
+    // dash and air control all share this basis, so a tap and a hold never
+    // disagree about where "up" goes.
+    glm::vec3 facing_relative(float screenRight, float screenUp) const;
     void update_movement(const input::PlayerState* input, const Fighter* opp, double dt);
     void update_state_machine(const input::PlayerState* input, Fighter* opponent,
                               double dt);

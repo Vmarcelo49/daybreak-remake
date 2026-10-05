@@ -382,6 +382,19 @@ void Fighter::update_state_machine(const input::PlayerState* input,
     }
 }
 
+// Screen direction → world direction under the lock-on camera: the eye sits
+// behind the facing looking at the locked opponent, so screen-up IS the facing.
+// The original classifies the same stick-vs-facing relative angle into its
+// directional variants (FUN_004235d0's 45°/135° sector bands feeding FUN_0043ded0's
+// 0x14/0x17/0x18/0x1b selection) — the evidence that input is facing-relative
+// rather than world-fixed. Up walks toward the locked opponent, not toward -Z.
+glm::vec3 Fighter::facing_relative(float screenRight, float screenUp) const {
+    const float fx = std::sin(m_facing);
+    const float fz = std::cos(m_facing);
+    // Right = up × facing in the left-handed yaw=0-faces-+Z world.
+    return glm::vec3(fz, 0.0f, -fx) * screenRight + glm::vec3(fx, 0.0f, fz) * screenUp;
+}
+
 void Fighter::update_movement(const input::PlayerState* input, const Fighter* opp, double dt) {
     (void)opp;
     if (!input) return;
@@ -395,29 +408,31 @@ void Fighter::update_movement(const input::PlayerState* input, const Fighter* op
         return;
     }
 
-    float dx = 0.0f, dz = 0.0f;
+    float screenRight = 0.0f, screenUp = 0.0f;
 
     if (std::abs(input->stick_x) > 8000 || std::abs(input->stick_y) > 8000) {
-        dx = static_cast<float>(input->stick_x) / 32768.0f;
-        dz = static_cast<float>(input->stick_y) / 32768.0f;
+        screenRight = static_cast<float>(input->stick_x) / 32768.0f;
+        screenUp = -static_cast<float>(input->stick_y) / 32768.0f;  // up is -Y
     } else {
-        if (input->down[input::Action::Left])  dx -= 1.0f;
-        if (input->down[input::Action::Right]) dx += 1.0f;
-        if (input->down[input::Action::Up])    dz -= 1.0f;  // up = -Z
-        if (input->down[input::Action::Down])  dz += 1.0f;
+        if (input->down[input::Action::Left])  screenRight -= 1.0f;
+        if (input->down[input::Action::Right]) screenRight += 1.0f;
+        if (input->down[input::Action::Up])    screenUp += 1.0f;
+        if (input->down[input::Action::Down])  screenUp -= 1.0f;
     }
 
+    // Facing-relative, like the dash below: screen-up is the facing direction.
+    glm::vec3 dir = facing_relative(screenRight, screenUp);
+
     // Normalize the direction vector (mirrors D3DXVec3Normalize in the original).
-    float len = std::sqrt(dx * dx + dz * dz);
+    float len = glm::length(dir);
     if (len > 0.001f) {
-        dx /= len;
-        dz /= len;
+        dir /= len;
 
         float speed = FighterConstants::kWalkSpeed;
         if (!m_grounded) speed *= FighterConstants::kAirControl;
 
-        m_velocity.x = dx * speed;
-        m_velocity.z = dz * speed;
+        m_velocity.x = dir.x * speed;
+        m_velocity.z = dir.z * speed;
     } else {
         m_velocity.x = 0.0f;
         m_velocity.z = 0.0f;
@@ -1039,16 +1054,14 @@ bool Fighter::try_dash(input::Action dir) {
     if (m_stamina < FighterConstants::kDashStamina) return false;
     if (!m_grounded && m_airDashed) return false;
 
-    // Facing-relative dash: Up is toward the opponent (the camera sits
-    // behind us, so screen-up ≈ forward), Down peels away, Left/Right
-    // sidestep. Right = up × facing (left-handed yaw=0-faces-+Z world).
-    const float fx = std::sin(m_facing);
-    const float fz = std::cos(m_facing);
+    // Facing-relative dash (see facing_relative): the tapped key is a screen
+    // direction — Up toward the opponent, Down away, Left/Right sidesteps —
+    // committed for the dash window.
     glm::vec3 d(0, 0, 0);
-    if (dir == input::Action::Up)         d = glm::vec3(fx, 0, fz);
-    else if (dir == input::Action::Down)  d = glm::vec3(-fx, 0, -fz);
-    else if (dir == input::Action::Right)  d = glm::vec3(fz, 0, -fx);
-    else                                  d = glm::vec3(-fz, 0, fx);
+    if (dir == input::Action::Up)         d = facing_relative(0.0f, 1.0f);
+    else if (dir == input::Action::Down)  d = facing_relative(0.0f, -1.0f);
+    else if (dir == input::Action::Right)  d = facing_relative(1.0f, 0.0f);
+    else                                  d = facing_relative(-1.0f, 0.0f);
 
     m_stamina -= FighterConstants::kDashStamina;
     m_dashDir = d;
