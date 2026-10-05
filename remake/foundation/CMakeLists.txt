@@ -153,6 +153,8 @@ add_library(foundation_gameplay STATIC
     src/gameplay/match_economy.cpp
     src/gameplay/character_moves.cpp
     src/gameplay/weapon_definition.cpp
+    src/gameplay/bot_brain.cpp
+    src/gameplay/bot_input.cpp
     src/gameplay/hud_fill.cpp)
 target_include_directories(foundation_gameplay PUBLIC src)
 target_link_libraries(foundation_gameplay
