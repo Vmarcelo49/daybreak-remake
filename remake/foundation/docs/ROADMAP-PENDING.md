@@ -1079,6 +1079,63 @@ The current implementation and tests are documented in `ANIMATION-SETS.md`.
   different derivative conventions) — no experiment available distinguishes
   it from correct rendering, so it stays a note, not a task.
 
+## Renderer options (issue #21) — recovered mapping, status 2026-10-05
+
+`FRONTEND-PLAN.md` §2.11 gives the three rows the options screen draws above the window toggle
+(`FUN_00403470.c:25-53`: toon `DAT_006cfcec`, shadows `DAT_006cfcea`, texture resolution
+`DAT_006cfceb`). This is what each one actually gates, from its read sites, and what the port can
+do with it.
+
+### Row 0 — toon rendering (`DAT_006cfcec`) — IMPLEMENTABLE
+
+* **Read site.** `FUN_006396f0:126-140`, the per-character draw inside the battle view loop:
+  `FUN_00651110(0)` selects the plain technique, and with the toggle on it selects **mode 1**
+  for a single view or **mode 7** for a split view (`FUN_00651110:9-30` maps 1 and 7 to
+  `FUN_00652220`, with `+0x28` carrying 0 or 7). `FUN_005f60b0:121-126` reads the same global
+  for the material path and calls `FUN_00651110(0|1)` there.
+* **What it is.** A technique switch, not a post effect: mode 0 is the fixed-function-lit
+  draw the port already reproduces (`model_wgsl.h:117-140`), modes 1/7 are a ramp-shaded
+  variant. The ramp is the shipped **`data/directX/toon.bmp`** (64x64 24-bit, loaded at
+  `FUN_00650410:19`; the install ships it as `data/directX/toon.cnv` — the bundles convert
+  .bmp to .cnv, `assets/cnv.h:258`). The split-screen variant differs only in a shader
+  constant, so one ramp covers both.
+* **Port plan.** Sample the ramp with the diffuse term in `model_wgsl.h` (replacing the
+  linear `NdotL` the fixed-function path uses) behind a uniform flag, upload the ramp through
+  the existing CNV image path, and re-apply on toggle so no restart is needed. The band
+  structure comes from the bitmap, never from a constant.
+* **Status: not implemented in this pass.** The recovered behaviour and the plan above are
+  the deliverable of the investigation step; the implementation is scheduled as its own
+  commit (shader + ramp upload + settings v3 + captures + frame times).
+
+### Row 1 — shadows (`DAT_006cfcea`) — IMPLEMENTABLE, NOT A BLOB
+
+* **Read site.** `FUN_006396f0:115-119`: with the toggle on, the view loop calls
+  `FUN_004207d0()` **once per fighter** (four times) *after* `FUN_00651110(2)` and before the
+  main character draw. `FUN_004207d0` is `FUN_0064e1a0(matrix)` + `FUN_00434970()`, and
+  `FUN_00434970` draws the character's own two sub-objects (body and weapon) through their
+  virtual draw. So the original's shadow is a **second draw of the character's meshes with a
+  projection matrix and the flat technique that mode 2 selects** (`FUN_00652880`) — a
+  projected character shadow, not a blob and not a shadow map.
+* **Port plan.** Reuse the model pass with a ground-projection matrix and an unlit dark
+  variant of the model shader; it needs a shader variant plus a per-fighter shadow draw in
+  the scene pass, which is why it is not in this pass.
+* **Status: not implemented.** The unavailable row must say so specifically (projected
+  character shadow, recovered but unimplemented) rather than the generic message.
+
+### Row 2 — texture resolution (`DAT_006cfceb`) — A LOADER POLICY, NOT A RUNTIME SAMPLER
+
+* **Read site.** `FUN_00647e00:96-101` (scene setup) and `FUN_00402be0:111-114` (the options
+  screen) both call `FUN_00687260(2)` when the toggle is off and `FUN_00687260(0)` when it is
+  on. That function is a one-line setter (`*this = value`), and the field it writes is read by
+  the texture loader: `FUN_00687010`/`FUN_006871f0` build the DDS pixel-format descriptor and
+  allocate the surface from it.
+* **What it is.** The toggle chooses the **texture preparation quality** at load time — full
+  resolution (2) versus a reduced preparation (0) — not a sampler or mip state applied at
+  draw time. WebGPU can express it, but only where the port prepares textures: a texture-size
+  or mip policy in the texture cache, which must rebuild the scene's textures when it changes.
+* **Status: not implemented.** The honest port equivalent is a texture-cache policy, so the
+  row keeps a specific unavailable message until that cache can rebuild in place.
+
 ## C. Animation states
 
 ### C1. Guard / Jump mapping (TagOut reframed, see below)
