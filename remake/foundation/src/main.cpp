@@ -81,6 +81,7 @@ struct Options {
     // triangle demo; an effect file may ride along with any of them.
     std::string model, stage, character, weapon, effect;
     bool        hudTest = false;   // composite a synthetic HUD into --out captures
+    bool        hudProbe = false;  // --hud-probe: corner markers for the placement test
     bool        debugPrims = false; // draw the deterministic debug line overlay
     bool        audioTest = false; // run the audio backend self-check and exit
     bool        combatAudioLog = false;  // --combat-audio-log: name every resolved SE/voice
@@ -191,6 +192,8 @@ void usage() {
         "                     an asset; --script= drives its menu and --out captures it\n"
         "  --effect=<file.x>  load one card with the effect role (additive pass)\n"
         "  --hud-test         composite a synthetic HUD into --out captures\n"
+        "  --hud-probe        with --hud-test: draw per-view corner markers so a capture\n"
+        "                     can be measured (split-screen HUD placement)\n"
         "  --debug-prims      draw a deterministic debug line overlay (play-area box,\n"
         "                     aim cross, desired-eye cross under --camera=arena)\n"
         "  --install=<dir>    use this game install's daybreakXX.dat bundles; when\n"
@@ -257,6 +260,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--unlit") o.unlit = true;
         else if (a == "--list") o.list = true;
         else if (a == "--hud-test") o.hudTest = true;
+        else if (a == "--hud-probe") { o.hudTest = true; o.hudProbe = true; }
         else if (a == "--debug-prims") o.debugPrims = true;
         else if (!(v = val("--install=")).empty()) o.install = v;
         else if (a == "--no-camera-clamp") o.noCameraClamp = true;
@@ -3991,6 +3995,7 @@ struct HudTestHook {
     ui::SpriteRenderer* ui = nullptr;
     ui::HudComposer*    hud = nullptr;
     std::string*        error = nullptr;
+    bool                probe = false;   // --hud-probe: per-view corner markers
     std::vector<HudPass> passes;
     // The split-screen separators, drawn after every view (FUN_006396f0:191-195). Empty
     // for a single view, which is the historical path.
@@ -4005,7 +4010,7 @@ ui::HudState syntheticHudState() {
 }
 
 HudTestHook battleHudHook(App& app) {
-    HudTestHook hook{&app.uiRenderer, &app.hudComposer, &app.error};
+    HudTestHook hook{&app.uiRenderer, &app.hudComposer, &app.error, app.opts.hudProbe};
     if (app.versusMode) {
         hook.passes.push_back(HudPass{app.versusHud, true, true, {}});
     }
@@ -4103,6 +4108,20 @@ bool hudTestHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat
             }
         }
         hk->hud->compose(*hk->ui, state);
+        if (hk->probe) {
+            // Two markers in the VIEW's own coordinates: the top-left and the
+            // bottom-right corner of this pass's viewport. A capture then pins the
+            // view -> target mapping exactly (tests/hud_cell_scale.py): correct means
+            // each cell's markers sit on that cell's corners, and the split-screen HUD
+            // scale defect moved them to half the cell instead. The composer leaves its
+            // canvas transform and clip set, so both are reset first — otherwise the
+            // markers inherit the HUD's own clip and half of them never reach the frame.
+            hk->ui->resetCanvasTransform();
+            const float mw = 6.f;
+            hk->ui->pushSolid({0.f, 0.f, mw, mw}, ui::UiColor{1.f, 0.f, 1.f, 1.f});
+            hk->ui->pushSolid({(float)viewport.w - mw, (float)viewport.h - mw, mw, mw},
+                              ui::UiColor{0.f, 1.f, 1.f, 1.f});
+        }
         if (!hk->ui->render(enc, view, format, *hk->error)) return false;
     }
     if (!hk->separators.empty()) {

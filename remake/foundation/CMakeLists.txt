@@ -197,6 +197,20 @@ endif()
 if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     enable_testing()
 
+    # The split-screen HUD placement check: a capture test, because the defect it pins
+    # lived in the GPU path (one shared viewport uniform rewritten by every pass), which
+    # no layout test can see. It renders two headless frames through --hud-probe, so it
+    # skips itself (exit 77) without a renderer or the game data.
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME hud_cell_scale
+                 COMMAND ${Python3_EXECUTABLE}
+                         "${CMAKE_CURRENT_SOURCE_DIR}/tests/hud_cell_scale.py"
+                         "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
+                         "${CMAKE_CURRENT_SOURCE_DIR}")
+        set_tests_properties(hud_cell_scale PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
+    endif()
+
     add_executable(debug_prims_geometry tests/debug_prims_geometry.cpp)
     target_include_directories(debug_prims_geometry PRIVATE src)
     target_link_libraries(debug_prims_geometry PRIVATE glm)
