@@ -224,7 +224,7 @@ comments — when a decision changes.
   refresh when the window moves to another display.
 - Browser resolution follows the canvas and fixed headless captures use
   `--size`; their resolution row indicates external control. Display and
-  other frontend settings are process-local; persistence is future work.
+  other frontend settings persist (D10).
 - Verification: 24 Linux tests pass; Linux, Windows cross-build and web
   builds succeed. Native Wayland checks exercised resolution changes,
   fullscreen on/off and fullscreen resolution changes. Real-asset battle
@@ -262,3 +262,46 @@ comments — when a decision changes.
   Save/restore, serializable RNG, authoritative snapshots/state hashes,
   resimulation and cross-platform determinism audits remain open under #3;
   neither rollback nor network transport is implemented by this decision.
+## D10 — User settings live in the XDG config directory, versioned and atomic (2026-10-05)
+
+- Display preferences, the four audio volumes and the keyboard/gamepad bindings
+  persist in `$XDG_CONFIG_HOME/daybreak-decomp/settings.conf` (falling back to
+  `~/.config/...`; only an absolute `$XDG_CONFIG_HOME` counts). The original keeps
+  the same settings in a flat binary `config.dat` beside its executable
+  (`FUN_006486c0` @0x6486c0 reads it, `FUN_006488d0` @0x6488d0 writes it); writing
+  into the install tree is what the issue forbids, and an unversioned, unvalidated
+  binary blob is what the port does not want.
+- The format is the port's own versioned INI-style document (schema version 1). A
+  file whose version is not the current one is ignored whole, never partially
+  applied; unknown keys inside a known section are ignored with a warning so a
+  newer schema cannot destroy older settings. Structure errors reject the whole
+  document, value errors default the one key. Defaults equal a first launch, and
+  deleting the file is the reset.
+- Writes are atomic: temp file in the same directory, `fsync`, `rename`, directory
+  `fsync`, mode 0600. A failure leaves the previous file untouched and reports once
+  (then backs off), and nothing is ever written into the checkout or the game
+  install.
+- Bindings stay per **player** — the original's unit (`config.dat`'s 0xd0-byte block
+  is four players x thirteen actions, and its key config has four player columns) —
+  and the port adds the stable identity the original lacks: the SDL GUID of the pad
+  that last used each slot, used to give a replugged pad back its player instead of
+  the lowest free enumeration slot.
+- Session state stays out: earned titles, result stats and match outcomes are not
+  persisted (the issue requires this, and the original's session flags are session
+  scoped). Adding such a key needs a scope decision, not a schema bump.
+- Only a plain interactive frontend run reads or writes the file; `--match`,
+  `--versus`, `--hud-test`, `--out`/`--headless` captures, the asset viewers and any
+  `--frames` run ignore it, so the banked captures and parity recipes are unchanged
+  by a user config.
+- Browser persistence (IndexedDB/OPFS) remains open, as recorded in
+  `foundation/docs/WEB-ASSETS-RUNTIME.md`; the web build keeps settings process-local.
+- Verification: 34 native host tests (the new `user_settings_test` covers the
+  parser, the validator, the atomic write and the controller policy); an isolated
+  `XDG_CONFIG_HOME` run proves save → restart → load → apply, and garbage,
+  `version = 99`, truncated, NUL-byte, unwritable, spaced-path and
+  unavailable-resolution cases all keep the port starting. Format and policies:
+  `foundation/docs/USER-SETTINGS.md`.
+- Rationale: settings that vanish on every launch make the options screen a demo;
+  a user config directory, a versioned schema and an atomic write are the smallest
+  set that makes them real without touching the install tree.
+

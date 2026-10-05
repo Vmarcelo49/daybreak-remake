@@ -30,7 +30,7 @@ that these screens or their audio do not exist.
 | D3 | Countdown and winning-team sting implemented; four-fighter simulation builds and passes host tests | The recovered pre-round phase is THREE frames, not three seconds, and the code that walks the P09 3/2/1 digits is not in the corpus, so the port keeps its three-second countdown (a documented flow rule) and now draws it with the battle state: the round's settings and all four participants. Stings recovered: per-view round-start 60 frames at 6.0→1.0 scale, per-view KO 90 frames (0x5a) and respawn 120 frames (0x78), the team victory sting two layers of 180/120 frames with the second armed 60 frames in (FUN_00635d40:152-205, FUN_0063a130:89-98). Issue #11's KO sting was corrected to 90 frames (1.5 s) by that issue's owner; the 120-frame respawn presentation remains unmodelled there |
 | E1 | Selection, real atlases, roster tables, costumes, weapons, controller slots, seeded COM choices and entry voices implemented; selected panels load into the four-fighter match path | Four-fighter presentation landed with issue #13: the roster (`src/ui/participants.h`) drives the HUD (one marker per participant with owner/ally/enemy/locked art), VS (four portraits, four name cells, combo + controller captions) and the results (four per-participant rows plus the winning TEAM). Exact original navigation parity remains open; the asset-backed launch is verified by issue #13's title→selection→VS→battle→results→selection run |
 | E2 | Stage/variation and all five battle settings implemented and connected; the balloon capacity, KO/Overkill credit and timed-round rules are recovered (2026-10-05, issue #11) | Between-rounds red-capacity creep and the KO move's own respawn clock remain; see the issue #11 update below |
-| E3 | Volumes, fullscreen, native resolution selection and keyboard/gamepad rebinding implemented | Three renderer controls are unavailable; settings are process-local |
+| E3 | Volumes, fullscreen, native resolution selection, keyboard/gamepad rebinding and their persistence implemented (issue #19) | Three renderer controls are unavailable; browser-side persistence (IndexedDB/OPFS) is open |
 | E4 | 109-update VS transition implemented; four participants land on the original's four portrait/name slots (FUN_00411cb0) with combo + controller captions | Confirm-to-skip is a port extension; a one-member team keeps the port's centred single slot (the original always has four players) |
 | E5 | Sting, quote, voice, actual participant stats and draw handling implemented; the report draws one row per ACTIVE participant (badge, combo, KO/death/damage) and names the winning TEAM | Original earned titles and outcome-specific quote selection; missing single quotes use that character's self-pair script; the two-layer victory sting's second layer is armed at frame 60 as recovered |
 | E6 | Reusable two-page atlas keyboard implemented and tested | Netplay host remains outside D6 scope |
@@ -1236,6 +1236,21 @@ the next screen id, a factory for construction, tests against fakes.
   to `fnd::audio` (the backend already has a UI channel,
   `src/audio/audio.h:26`). Defer toon/shadow toggles until the effect
   system exists (item B1).
+* **Persistence (issue #19, 2026-10-05).** Implemented. The settings live in
+  `$XDG_CONFIG_HOME/daybreak-decomp/settings.conf` (default `~/.config/...`),
+  schema version 1, written atomically (temp file in the same directory, fsync,
+  rename, directory fsync, mode 0600). They are loaded before the frontend builds
+  and validated first: an unsupported version, an unknown section or a malformed
+  line rejects the whole document (defaults, reason printed), a bad value defaults
+  only that key, and a stored resolution the display does not offer falls back to
+  desktop. Bindings stay per player — the original's own unit — and the pad-to-player
+  mapping is stabilised by the SDL GUID recorded per slot, so a replug cannot move
+  bindings to another pad. Session state (earned titles, result stats) is not
+  persisted. Only an interactive frontend run reads or writes the file: `--match`,
+  `--versus`, `--hud-test`, `--out`/`--headless` captures and any `--frames` run are
+  unchanged by a user config. Provenance and policies: `docs/USER-SETTINGS.md`,
+  decision D10. Remaining: browser-side persistence (IndexedDB/OPFS), and the three
+  renderer toggles (item B1/#21) still have no schema keys.
 
 ### E4. VS intro (scene 9) — IMPLEMENTED for 1v1
 

@@ -272,7 +272,7 @@ New since the port landed, all verified the same way:
   stage/battle settings → VS intro → live 1v1 battle → victory/quote/report →
   select is connected. Slots 0 (blue) and 2 (red) fight; VS and results show only
   those participants. Options apply fullscreen and four audio sliders; key config
-  rebinds keyboard/gamepad actions for the current session.
+  rebinds keyboard/gamepad actions. Both persist (issue #19).
   Runtime text uses the bundled Gyrotrope Black face with a Noto Japanese
   fallback; new captions share `ui/caption.h` (see `assets/fonts/README.md`). The soft keyboard is
   a reusable widget awaiting its netplay host. See `docs/FRONTEND-PLAN.md`.
@@ -343,8 +343,11 @@ stays on a centered 4:3 canvas with black bars around it.
 Options includes native window/fullscreen resolution selection, with Desktop,
 common sizes and the display's available modes. Unsupported fullscreen modes
 are skipped. Browser sizing follows its canvas; fixed captures retain `--size`.
-Aspect is automatic, so there is no separate aspect selector. Settings remain
-process-local.
+Aspect is automatic, so there is no separate aspect selector. Volumes,
+fullscreen, resolution and bindings persist in
+`$XDG_CONFIG_HOME/daybreak-decomp/settings.conf` (default `~/.config/...`), loaded
+and validated before the front end starts; delete the file to reset. See
+`docs/USER-SETTINGS.md`.
 
 ## Not here yet
 
