@@ -62,7 +62,7 @@
 #include "audio/audio_engine.h"
 #include "audio/combat_audio.h"
 #include "game/effect_events.h"
-#include "game/effect_descriptor.h"
+#include "game/effect_catalog.h"
 #include "game/fx_cards.h"
 #include "input/input_backend.h"
 #include "input/tick_input.h"
@@ -705,14 +705,26 @@ struct App {
     uint64_t                     matchRoundOverFrame = 0;
     game::EffectEventQueue       matchFx;
     uint64_t                     matchFxEvents = 0;
-    // B1: the live effect cards the renderer draws from the event queues above.
-    // `fxAssets` is the asset table the events' `asset` field indexes into
-    // (game/effect_events.h); `liveFx` is this frame's card set, owned here —
-    // the set itself (game::LiveFxCard) and its update rules live in
-    // game/fx_cards.h, unit-tested in tests/fx_cards_test.cpp.
-    struct FxAsset { int sceneIndex = -1; };
-    std::vector<FxAsset> fxAssets;
+    // B1/issue #17: the live effect cards the renderer draws from the event queues
+    // above. A card's `asset` is a scene-model index (the catalog's, or an attachment
+    // slot's); `liveFx` is this frame's card set, owned here — the set itself
+    // (game::LiveFxCard) and its update rules live in game/fx_cards.h, unit-tested in
+    // tests/fx_cards_test.cpp.
+    // Issue #17: the effect table. `fxCatalog` maps an effect id (type*10+variant,
+    // data/effect/%03d.dat) to its loaded card and its recovered lifetime; `fxAttach`
+    // holds FUN_00633ca0's seven data/aura/%02d.x attachment models, whose textures are
+    // the three muzzle flashes (slots 0/1/5), the blue hit (2) and the burning aura (3).
+    game::EffectCatalog fxCatalog;
+    int  fxAttach[7] = {-1, -1, -1, -1, -1, -1, -1};
+    float fxAttachSeconds[7] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
     int fxAuraIndex[2] = {-1, -1};   // per-fighter aura card, match mode
+    // One instance id per spawned card, monotonic for the whole run: two hits in the
+    // same tick are two instances and neither can retire the other (game/fx_cards.h).
+    uint32_t fxNextInstance = 1;
+    game::FxCardTally fxTally;       // cumulative spawn/drop/expire/kill counts
+    uint64_t fxBadEffect = 0;        // impact ids the install ships no descriptor for
+    uint64_t fxShotCards = 0;        // live-shot card refreshes (the in-flight visual)
+    size_t   fxPeakLive = 0;         // high-water mark of the live card set (bounded)
     std::vector<game::LiveFxCard> liveFx;
 
     // Versus vignette state (only when opts.versus): P2 range, spawn bases,
@@ -2316,6 +2328,9 @@ static int addFxCard(App& app, const std::string& path) {
     }
     sm.source = path;
     sm.role = "effect";   // the additive, billboarded pass (scene_renderer)
+    // Issue #17: an effect card is drawn per live instance, not as a base draw, so the
+    // scene's draw count does not grow with the size of the effect table.
+    sm.instancesOnly = true;
     // The effect cards' textures ship split across two directories (measured: the
     // hitC*/muzzle/aura .cnv files sit in data/aura/ while the hitb*/g* set sits in
     // data/effect/), so the cache falls back from the card's own directory to aura/.
@@ -2335,20 +2350,53 @@ static int addFxCard(App& app, const std::string& path) {
 
 static void buildFxAssets(App& app) {
     const std::string dataDir = app.opts.stage + "/..";
-    std::vector<uint8_t> dat;
-    const std::string hitName =
-        fnd::assets::assetSource().read(dataDir + "/effect/000.dat", dat) ? game::effectModelPath(dat)
-                                                                          : std::string();
-    app.fxAssets.push_back(App::FxAsset{addFxCard(app, dataDir + "/effect/" + hitName)});
-    if (app.opts.match) {
-        const int a0 = addFxCard(app, dataDir + "/aura/00.X");
-        const int a1 = addFxCard(app, dataDir + "/aura/00.X");
-        app.fxAssets.push_back(App::FxAsset{a0});
-        app.fxAssets.push_back(App::FxAsset{a1});
-        app.fxAuraIndex[0] = a0;
-        app.fxAuraIndex[1] = a1;
+    // Issue #17: load the install's effect table instead of one hard-coded card.
+    // FUN_0042eba0 loads 100 descriptors (data/effect/%03d.dat) into the manager at
+    // scene+0x5210; the install ships 22. The lifetime is NOT in the descriptor file --
+    // FUN_0042eec0 takes it from the model's own first animation, divided by 0.016 and
+    // rounded to frames (0x42f412-0x42f423) -- so it is read here from the loaded model.
+    int loaded = 0;
+    for (int type = 0; type < game::kEffectSlots; ++type) {
+        char rel[64];
+        std::snprintf(rel, sizeof(rel), "/effect/%03d.dat", type);
+        std::vector<uint8_t> dat;
+        if (!fnd::assets::assetSource().read(dataDir + rel, dat)) continue;
+        const game::EffectDescriptor desc = game::parseEffectDescriptor(dat);
+        if (!desc.present) {
+            std::fprintf(stderr, "[fx] %s: not an effect descriptor\n", rel);
+            continue;
+        }
+        const std::string model = dataDir + "/effect/" + desc.modelPath;
+        const int asset = addFxCard(app, model);
+        float seconds = 0.f;
+        if (asset >= 0) {
+            const xm::Model& m = app.scene.models[(size_t)asset].model;
+            if (!m.anims.empty() && m.ticksPerSecond > 0.f)
+                seconds = m.anims[0].duration / m.ticksPerSecond;
+        }
+        app.fxCatalog.add(type, desc, asset, seconds);
+        if (asset >= 0) ++loaded;
     }
-    std::printf("fx assets    : %zu card(s) in the effect table\n", app.fxAssets.size());
+    // FUN_00633ca0's attachment table: seven data/aura/%02d.x models, drawn on the
+    // fighter's own matrices (FUN_004205e0). Their textures name the roles: 0/1/5 are
+    // the three muzzle flashes, 2 the blue hit flash, 3 the burning aura, 4 a bucket.
+    for (int slot = 0; slot < 7; ++slot) {
+        char rel[32];
+        std::snprintf(rel, sizeof(rel), "/aura/%02d.x", slot);
+        app.fxAttach[slot] = addFxCard(app, dataDir + rel);
+        if (app.fxAttach[slot] >= 0) {
+            const xm::Model& m = app.scene.models[(size_t)app.fxAttach[slot]].model;
+            if (!m.anims.empty() && m.ticksPerSecond > 0.f)
+                app.fxAttachSeconds[slot] = m.anims[0].duration / m.ticksPerSecond;
+        }
+    }
+    if (app.opts.match) {
+        // The per-fighter aura follows the fighter's own model matrix (below), so it
+        // needs one card per fighter slot even though both may name the same model.
+        app.fxAuraIndex[0] = addFxCard(app, dataDir + "/aura/03.X");
+        app.fxAuraIndex[1] = addFxCard(app, dataDir + "/aura/03.X");
+    }
+    std::printf("fx assets    : %d effect descriptor(s), 7 attachment model(s)\n", loaded);
 }
 
 // Drains the gameplay's event queue into the live card set. The spawn /
@@ -2357,7 +2405,46 @@ static void buildFxAssets(App& app) {
 static void updateFxCards(App& app, game::EffectEventQueue& q, uint64_t& events, float dt) {
     const std::vector<game::EffectEvent> ev = q.drain();
     events += ev.size();
-    game::updateLiveFxCards(app.liveFx, ev, dt);
+    // The cap and the drop count live in game/fx_cards.h; the tally is cumulative so a
+    // run's log can prove the population stayed bounded (issue #17).
+    const game::FxCardTally t = game::updateLiveFxCards(app.liveFx, ev, dt);
+    if (app.liveFx.size() > app.fxPeakLive) app.fxPeakLive = app.liveFx.size();
+    app.fxTally.spawned += t.spawned;
+    app.fxTally.dropped += t.dropped;
+    app.fxTally.expired += t.expired;
+    app.fxTally.killed  += t.killed;
+}
+
+// The instance-id base for live-shot cards: the pool slot index is the low half, so one
+// card follows one shot for its whole flight. Kept far above the per-event instance
+// counter's range so the two id spaces cannot collide (a shot's flight is a few hundred
+// ticks, so the counter would need ~2^30 spawns to reach it).
+inline constexpr uint32_t kFxShotCardId = 0x40000000u;
+
+// Spawn one effect INSTANCE: a fresh id from the run's counter, the recovered lifetime
+// of `effectId` from the catalog, and the asset its descriptor loaded into. Returns
+// false when the install ships no such descriptor (the original leaves that table slot
+// null too), so a bad id is visible in the caller's own accounting rather than silently
+// drawing the wrong card.
+static bool spawnEffect(App& app, game::EffectEventQueue& queue, int effectId,
+                        const glm::vec3& at) {
+    const game::EffectEntry* entry = app.fxCatalog.find(effectId);
+    if (!entry || !entry->playable()) return false;
+    const float ttl = (float)app.fxCatalog.lifetime_ticks(effectId, 64.f) / 64.f;
+    queue.pushSpawn(app.fxNextInstance++, at, entry->asset, ttl);
+    return true;
+}
+
+// One attachment-model card (FUN_00633ca0's table) at a world point, with the model's
+// own animation as its lifetime. Attachment slots are not descriptor ids: the original
+// draws them on the fighter's matrices (FUN_004205e0), so they have no entry in
+// data/effect/ and no manager instance.
+static bool spawnAttachment(App& app, game::EffectEventQueue& queue, int slot,
+                            const glm::vec3& at) {
+    if (slot < 0 || slot >= 7 || app.fxAttach[slot] < 0) return false;
+    const float ttl = app.fxAttachSeconds[slot] > 0.f ? app.fxAttachSeconds[slot] : 0.1f;
+    queue.pushSpawn(app.fxNextInstance++, at, app.fxAttach[slot], ttl);
+    return true;
 }
 
 // Per-frame placement of the live cards: every asset model is hidden with a zero
@@ -2366,24 +2453,45 @@ static void updateFxCards(App& app, game::EffectEventQueue& q, uint64_t& events,
 // moves each frame; setModelMatrices uploads it at the end of the placement call
 // that follows.
 static void placeFxCards(App& app) {
-    for (const App::FxAsset& a : app.fxAssets)
-        if (a.sceneIndex >= 0) app.modelMatrices[(size_t)a.sceneIndex] = glm::mat4(0.f);
-    if (app.opts.debugPrims) return;   // the cube A/B view draws no cards
-    for (const game::LiveFxCard& c : app.liveFx) {
-        if (c.asset < 0 || (size_t)c.asset >= app.fxAssets.size()) continue;
-        const int mi = app.fxAssets[(size_t)c.asset].sceneIndex;
-        if (mi < 0) continue;
-        app.modelMatrices[(size_t)mi] = glm::translate(glm::mat4(1.f), c.position);
+    std::vector<render::SceneRenderer::EffectInstance> instances;
+    instances.reserve(app.liveFx.size() + 4);
+    if (!app.opts.debugPrims) {
+        for (const game::LiveFxCard& c : app.liveFx) {
+            if (c.asset < 0 || (size_t)c.asset >= app.scene.models.size()) continue;
+            instances.push_back({c.asset, glm::translate(glm::mat4(1.f), c.position)});
+        }
+        // The aura is fighter state, not an event: it follows the fighter's own model
+        // matrix in the fighter's local space. FUN_004205e0 draws it once per fighter
+        // matrix (11 of them); the port keeps the single local-space placement the aura
+        // cube used, which is the same transform without the per-bone repetition.
+        for (int i = 0; i < 2; ++i) {
+            if (app.fxAuraIndex[i] < 0) continue;
+            const gameplay::Fighter& f = app.match.fighter(i);
+            if (!f.aura_active()) continue;
+            instances.push_back({app.fxAuraIndex[i],
+                                 matchRenderMatrix(app, i) *
+                                     glm::translate(glm::mat4(1.f), f.aura_center_local())});
+        }
     }
-    // The aura is fighter state, not an event: it follows the fighter's own model
-    // matrix in the fighter's local space — the data path the aura cube used.
-    for (int i = 0; i < 2; ++i) {
-        if (app.fxAuraIndex[i] < 0) continue;
-        const gameplay::Fighter& f = app.match.fighter(i);
-        if (!f.aura_active()) continue;
-        app.modelMatrices[(size_t)app.fxAuraIndex[i]] =
-            matchRenderMatrix(app, i) * glm::translate(glm::mat4(1.f), f.aura_center_local());
-    }
+    app.renderer.setEffectInstances(instances);
+}
+
+// Issue #17's acceptance evidence: what the effect layer spawned, what the cap refused, and
+// the high-water mark of the live set. `dropped` must stay 0 unless the population really
+// reached the cap; `peak` is the number that has to stay bounded across a long 2v2.
+static void printFxSummary(const App& app) {
+    std::printf("fx cards     : events=%llu spawned=%llu dropped=%llu expired=%llu "
+                "killed=%llu peak=%zu/%zu, liveShots=%llu badEffectId=%llu, "
+                "effectDrawsAtExit=%d\n",
+                (unsigned long long)app.matchFxEvents,
+                (unsigned long long)app.fxTally.spawned,
+                (unsigned long long)app.fxTally.dropped,
+                (unsigned long long)app.fxTally.expired,
+                (unsigned long long)app.fxTally.killed,
+                app.fxPeakLive, game::kMaxLiveFxCards,
+                (unsigned long long)app.fxShotCards,
+                (unsigned long long)app.fxBadEffect,
+                app.renderer.stats().effects);
 }
 
 // Issue #14's acceptance evidence, from the run's own counters: how each COM moved,
@@ -2681,16 +2789,77 @@ static void tickMatch(App& app, double dt) {
         }
     }
 
-    // Combat effects: a card at the victim for each connected hit, retired by the
-    // next one — the versus vignette's FIFO discipline, driven by real combat.
-    // INFERRED lifetime (12 s): the original's per-effect factors are un-RE'd
-    // (ROADMAP-PENDING.md B1 sketch b); full-bright, no fade. Kill-chaining
-    // retires every card but the last on the next hit; the final one lingers.
+    // Combat effects (issue #17). Every card is one INSTANCE of one combat event: the
+    // muzzle flash of a shot that was fired, the impact effect the shot carried, the
+    // melee-hit card, the in-flight shot itself, and the burning aura's periodic puffs.
+    // Each gets its own id, so simultaneous hits cannot retire each other's cards (the
+    // old code kill-chained the previous hit's card on every new hit). Lifetimes are the
+    // models' own animation durations, recovered through FUN_0042eec0; nothing here is a
+    // fixed 12 s.
+    for (int i = 0; i < app.match.config().fighterCount && i < 4; ++i) {
+        // Muzzle flash: the recovered attachment models (FUN_00633ca0 slots 0/1/5 are the
+        // three マズルフラッシュ cards, selected by the three attack-start methods
+        // 0x421fe0/0x4220e0/0x422160). PORT RULE: which firing state owns which slot is
+        // not established, so the shot tier picks them in that order.
+        if (f.shotFired[i]) {
+            const gameplay::ShotTier tier = app.match.fighter(i).last_shot_tier();
+            const int slot = tier == gameplay::ShotTier::Tap      ? 0
+                             : tier == gameplay::ShotTier::Yellow ? 1
+                                                                  : 5;
+            spawnAttachment(app, app.matchFx, slot, f.shotPoints[i]);
+        }
+        // Hypermode: the recovered burning aura is attachment slot 3 (炎上オーラ), and
+        // FUN_0042e110 re-spawns effect 380 every 7 frames while the fighter is in the
+        // downed/burning move family. The cadence is the simulation tick, not the render
+        // rate, and the jitter is a deterministic function of (fighter, tick) — the
+        // original's rand()%100 - 50 box around the fighter's position.
+        if (app.match.fighter(i).aura_active() && app.matchFrame % 7 == 0) {
+            const uint32_t h = (uint32_t)(app.matchFrame / 7) * 2654435761u +
+                               (uint32_t)i * 40503u;
+            const glm::vec3 at = app.match.fighter(i).position() +
+                                 glm::vec3((float)(h % 100) - 50.f,
+                                           (float)((h >> 8) % 60),
+                                           (float)((h >> 16) % 100) - 50.f);
+            spawnEffect(app, app.matchFx, 380, at);
+        }
+    }
+    // Impact effects: the shot's own bullet record names the id (record +0x70 through
+    // FUN_00637950:221-228 -> FUN_00435990 -> the manager's create), spawned at the
+    // contact point the pool reported. A blocked hit still spawns in the original, so the
+    // effect is not gated on damage.
+    for (int k = 0; k < f.shotHitCount; ++k) {
+        const gameplay::MatchFrame::ShotHit& hit = f.shotHits[k];
+        if (!spawnEffect(app, app.matchFx, hit.effect, hit.point) && hit.effect >= 0)
+            ++app.fxBadEffect;
+    }
+    // Melee hits keep the port's existing choice of the hit card (id 0 -> 000.dat ->
+    // 14.X, the 8-quad hitC01/hitC05 card) now that its lifetime is recovered; the
+    // original's melee hit path spawns no effect of its own (FUN_00639160 has no manager
+    // call), so this is a PORT RULE, not a recovered binding.
     for (int i = 0; i < app.match.config().fighterCount; ++i) {
         if (!f.meleeHit[i] || f.meleeVictim[i] < 0) continue;
-        const glm::vec3 at = app.match.fighter(f.meleeVictim[i]).position() + glm::vec3(0.f, 100.f, 0.f);
-        app.matchFx.pushSpawn((uint32_t)app.matchHits, at, 0, 12.f);
-        if (app.matchHits > 1) app.matchFx.pushKill((uint32_t)(app.matchHits - 1));
+        const glm::vec3 at = app.match.fighter(f.meleeVictim[i]).position() +
+                             glm::vec3(0.f, 100.f, 0.f);
+        spawnEffect(app, app.matchFx, 0, at);
+    }
+    // The in-flight shot. PORT RULE: the original's projectile visual is not recoverable
+    // from the shipped data — the descriptor table has no projectile entries, the 10
+    // trail textures FUN_00633ca0 loads are never read by anything but the destructor
+    // (FUN_00634520), and a bullet record names only an attachment part ('Bip00'), never
+    // a model — so the port draws each live shot with the effect its own record names
+    // (the id it will spawn on impact). The card's id is the pool SLOT, so a shot
+    // refreshes one card in place for its whole flight.
+    {
+        const auto& shots = app.match.shots().shots();
+        for (size_t slot = 0; slot < shots.size(); ++slot) {
+            const gameplay::Projectile& p = shots[slot];
+            if (!p.alive) continue;
+            const game::EffectEntry* entry = app.fxCatalog.find(p.impactEffect);
+            if (!entry || !entry->playable()) continue;
+            app.matchFx.pushSpawn(kFxShotCardId + (uint32_t)slot, p.pos, entry->asset,
+                                  (float)app.fxCatalog.lifetime_ticks(p.impactEffect, 64.f) / 64.f);
+            ++app.fxShotCards;
+        }
     }
     updateFxCards(app, app.matchFx, app.matchFxEvents, (float)dt);
 
@@ -2846,6 +3015,7 @@ static void tickMatch(App& app, double dt) {
                     eco.roundEnd() == gameplay::RoundEnd::Timeout ? "time up" : "burst",
                     (unsigned long long)app.matchFrame);
         printComSummary(app);
+        printFxSummary(app);
     }
 }
 
@@ -2891,13 +3061,17 @@ static void fillMatchCubes(App& app) {
     app.matchCubes.clear();
     app.auraCubes.clear();
     app.hitboxCubes.clear();
-    for (const gameplay::Projectile& p : app.match.shots().shots()) {
-        if (!p.alive) continue;
-        app.matchCubes.add(p.pos, gameplay::Projectile::kCubeSize, p.color());
-    }
-    for (const gameplay::Spark& s : app.match.shots().sparks()) {
-        if (!s.alive) continue;
-        app.matchCubes.add(s.pos, s.size() * 0.5f, s.color());
+    // Issue #17: shots and sparks draw as real effect cards by default; these cubes are
+    // the explicit A/B view behind --debug-prims, which is also where the aura cube lives.
+    if (app.opts.debugPrims) {
+        for (const gameplay::Projectile& p : app.match.shots().shots()) {
+            if (!p.alive) continue;
+            app.matchCubes.add(p.pos, gameplay::Projectile::kCubeSize, p.color());
+        }
+        for (const gameplay::Spark& s : app.match.shots().sparks()) {
+            if (!s.alive) continue;
+            app.matchCubes.add(s.pos, s.size() * 0.5f, s.color());
+        }
     }
     // --hitbox-debug: the recovered melee hit spheres from issue #10, drawn as filled
     // translucent red volumes. These are the SAME anchors and radius try_melee_hit()
@@ -3001,14 +3175,13 @@ static void tickVersus(App& app, uint64_t frame) {
             if (app.versusAudio.play(app.versusSfx, fnd::audio::SfxBus::Sfx, req) >= 0)
                 ++app.versusSfxPlays;
         }
-        // Spawn now, retire the previous hit's card: lifetimes are scripted,
-        // not simulated — what matters here is FIFO order and exact counts.
-        // INFERRED lifetime (5 s): the original's per-effect factors are
-        // un-RE'd (ROADMAP-PENDING.md B1 sketch b); full-bright, no fade.
-        app.versusFx.pushSpawn((uint32_t)(hit + 1), (p1 + p2) * 0.5f, 0, 5.f);
-        if (hit > 0) app.versusFx.pushKill((uint32_t)hit);
+        // Issue #17: the recovered hit card (id 0 -> data/effect/000.dat -> 14.X) with the
+        // lifetime its own model animates for (0.250 s), and one INSTANCE per scripted
+        // hit. The old scripted 5 s placeholder and its kill-chaining are gone, so this
+        // capture shows a card only within its recovered lifetime of a hit: the recipe is
+        // `--versus --frames=<hit frame + 8>` (the hits are at 30/55/80% of --frames).
+        spawnEffect(app, app.versusFx, 0, (p1 + p2) * 0.5f);
     }
-    if (frame == N) app.versusFx.pushKill(3);
     // The scripted timeline has no clock: cards age at the capture's fixed step
     // (1/60), keeping a versus run a pure function of the frame index.
     updateFxCards(app, app.versusFx, app.versusFxEvents, 1.f / 60.f);
@@ -3699,7 +3872,13 @@ static bool enterFrontendBattle(App& app) {
     app.matchFrame = app.matchRoundOverFrame = 0;
     for (auto& input : app.botInput) input = {};
     app.matchHits = app.matchShots = app.matchSparks = 0;
-    app.liveFx.clear(); app.fxAssets.clear();
+    app.liveFx.clear();
+    app.fxCatalog.clear();
+    for (int& slot : app.fxAttach) slot = -1;
+    for (float& sec : app.fxAttachSeconds) sec = 0.f;
+    app.fxNextInstance = 1;
+    app.fxTally = game::FxCardTally{};
+    app.fxBadEffect = app.fxShotCards = 0;
     app.matchFx.drain();
     if (!initScene(app)) return false;
     app.versusAudio.set_volumes(ui::frontendSettings().volumes);
@@ -4736,8 +4915,10 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                                 (eco.roundEnd() == gameplay::RoundEnd::Burst ? "burst" : "running"),
                                 eco.kos(0), eco.kos(1), eco.overkills(0), eco.overkills(1),
                                 eco.respawns(0), eco.respawns(1), eco.timeLeft());
-                    // Issue #14's per-COM counters (see printComSummary).
+                    // Issue #14's per-COM counters (see printComSummary) and issue #17's
+                    // effect population (see printFxSummary).
                     printComSummary(*app);
+                    printFxSummary(*app);
                 }
                 if (app->versusMode) {
                     std::printf("versus: %llu frames, hp1=%.0f hp2=%.0f, bgm pushed %llu frames, %llu wraps, sfx plays %llu, fx events %llu\n",
@@ -4746,6 +4927,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                                 (unsigned long long)app->versusLoop.loops_completed(),
                                 (unsigned long long)app->versusSfxPlays,
                                 (unsigned long long)app->versusFxEvents);
+                    printFxSummary(*app);
                 }
                 return SDL_APP_SUCCESS;
             }
