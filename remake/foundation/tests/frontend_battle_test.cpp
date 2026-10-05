@@ -29,10 +29,19 @@ int main() {
     CHECK(match.fighter(0).stats().kos == 1);
     match.fighter(1).reset(config.spawn[1],0);
     CHECK(match.fighter(1).hp() == 200 && match.fighter(1).stats().deaths == 1);
+    // Issue #14: the COM decision state replaced the frame-modulo sparring policy. It is
+    // still deterministic — two brains on the SAME seed and the same view produce the same
+    // input for the same tick — and it does not sit on Guard when nothing threatens it.
+    gameplay::BotBrain brainA, brainB;
+    brainA.reset(4242);
+    brainB.reset(4242);
+    gameplay::BotContext ctx;
+    ctx.match = &match;
+    ctx.fighterIndex = 0;
     fnd::input::PlayerState botA, botB;
     for (uint64_t frame = 1; frame <= 100; ++frame) {
-        gameplay::updateBotInput(botA,match.fighter(0),match.fighter(1),frame);
-        gameplay::updateBotInput(botB,match.fighter(0),match.fighter(1),frame);
+        gameplay::updateBotInput(brainA,ctx,botA,frame);
+        gameplay::updateBotInput(brainB,ctx,botB,frame);
         for (int a = 0; a < fnd::input::ActionCount; ++a) CHECK(botA.down[a] == botB.down[a]);
     }
     CHECK(!botA.down[fnd::input::Guard]);
