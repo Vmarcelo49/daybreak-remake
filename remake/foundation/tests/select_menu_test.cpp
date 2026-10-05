@@ -1,4 +1,5 @@
 #include "ui/screen_select.h"
+#include "input/synthetic_pad.h"
 #include <cstdio>
 
 int main() {
@@ -81,6 +82,35 @@ int main() {
         check(a.character>=0 && a.character<16 && a.weapon>=0 && a.weapon<(a.character<14?3:2) && a.hypermode>=0 && a.hypermode<3 && a.costume>=0 && a.costume<ui::kSelectCostumes[a.character],"random COM choices stay in recovered bounds");
     }
     check(randomA.randomState!=42,"COM autofill advances random stream");
+    // Issue #13: the four pad-less controllers of a --local-players run walk the selection
+    // with the synthetic menu pattern and open the stage page with four DISTINCT characters
+    // and their own controllers. The picks are the pattern's documented ones — the diamond's
+    // 0/2/4/1 neighbours, which are the roster entries whose slot-0 items join on this install
+    // (Satoko, Oishi, Akasaka, Irie, Chie, Hanyu and Takano fail that join today).
+    ui::FrontendState rosterState;
+    ui::SelectMenu rosterMenu(rosterState);
+    ui::SelectAction last = ui::SelectAction::None;
+    for (uint64_t t = 0; t <= 200 && last != ui::SelectAction::Stage; ++t) {
+        rosterMenu.tick();
+        ui::ScreenInput frame;
+        frame.separatePlayers = true;
+        for (int c = 0; c < 4; ++c) {
+            const auto pad = fnd::input::syntheticMenuPadState(c, t);
+            auto& buttons = frame.players[c];
+            buttons.up = pad.up; buttons.down = pad.down;
+            buttons.left = pad.left; buttons.right = pad.right;
+            buttons.confirm = pad.confirm; buttons.cancel = pad.cancel;
+        }
+        last = rosterMenu.updateFrame(frame);
+    }
+    check(last == ui::SelectAction::Stage, "the four synthetic controllers open the stage page");
+    check(rosterState.stagePage, "the stage page is set");
+    const int expected[4] = {0, 2, 4, 1};
+    for (int i = 0; i < 4; ++i) {
+        check(rosterState.slots[i].character == expected[i], "the panel picks its documented character");
+        check(rosterState.slots[i].controller == i, "the panel keeps its own controller");
+        check(rosterState.slots[i].ready, "the panel is ready");
+    }
     std::printf("select_menu_test: %d failures\n",failures);
     return failures ? 1 : 0;
 }
