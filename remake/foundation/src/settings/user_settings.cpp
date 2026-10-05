@@ -1,0 +1,516 @@
+#include "settings/user_settings.h"
+
+#include <algorithm>
+#include <cctype>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
+
+#include "input/input_sdl3.h"
+
+namespace settings {
+namespace {
+
+// Bounds the parser before it allocates or loops: a hostile "config" cannot make the
+// port spend memory or time on it.
+constexpr size_t kMaxBytes = 64 * 1024;
+constexpr size_t kMaxLine = 512;
+constexpr size_t kMaxValueLength = 64;   // GUIDs are 32 hex chars; names are shorter
+constexpr int    kMaxDimension = 16384;  // generous ceiling for a stored pixel size
+
+std::string trimmed(const std::string& s) {
+    size_t begin = 0, end = s.size();
+    while (begin < end && std::isspace(static_cast<unsigned char>(s[begin]))) ++begin;
+    while (end > begin && std::isspace(static_cast<unsigned char>(s[end - 1]))) --end;
+    return s.substr(begin, end - begin);
+}
+
+bool parseInt(const std::string& text, int& out) {
+    if (text.empty() || text.size() > 12) return false;
+    const char* begin = text.c_str();
+    char* end = nullptr;
+    const long value = std::strtol(begin, &end, 10);
+    if (end != begin + text.size()) return false;   // trailing junk ("12abc", "1e9")
+    if (value < -1000000L || value > 1000000L) return false;
+    out = static_cast<int>(value);
+    return true;
+}
+
+bool parseBool(const std::string& text, bool& out) {
+    std::string lowered;
+    lowered.reserve(text.size());
+    for (const char c : text) lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    if (lowered == "1" || lowered == "true" || lowered == "yes" || lowered == "on") { out = true; return true; }
+    if (lowered == "0" || lowered == "false" || lowered == "no" || lowered == "off") { out = false; return true; }
+    return false;
+}
+
+// "1920x1080", "desktop" or "0x0". Anything else is a value error.
+bool parseDisplaySize(const std::string& text, DisplaySize& out) {
+    if (text == "desktop") { out = {0, 0}; return true; }
+    const size_t x = text.find('x');
+    if (x == std::string::npos) return false;
+    int width = 0, height = 0;
+    if (!parseInt(text.substr(0, x), width) || !parseInt(text.substr(x + 1), height)) return false;
+    if (width < 0 || height < 0 || width > kMaxDimension || height > kMaxDimension) return false;
+    out = {width, height};
+    return true;
+}
+
+bool validText(const std::string& value) {
+    if (value.size() > kMaxValueLength) return false;
+    for (const char c : value) {
+        const unsigned char u = static_cast<unsigned char>(c);
+        if (u < 0x20 || u == 0x7f) return false;   // no control bytes in a GUID/name
+    }
+    return true;
+}
+
+// A comma-separated action table: exactly fnd::input::ActionCount entries.
+bool parseBindingRow(const std::string& text, int* out, int count, int minimum, int maximum,
+                     std::string& why) {
+    std::vector<std::string> parts;
+    size_t begin = 0;
+    while (begin <= text.size()) {
+        const size_t comma = text.find(',', begin);
+        parts.push_back(trimmed(text.substr(begin, comma == std::string::npos ? comma : comma - begin)));
+        if (comma == std::string::npos) break;
+        begin = comma + 1;
+    }
+    if (static_cast<int>(parts.size()) != count) {
+        why = "expected " + std::to_string(count) + " values, got " + std::to_string(parts.size());
+        return false;
+    }
+    for (int i = 0; i < count; ++i) {
+        int value = 0;
+        if (!parseInt(parts[static_cast<size_t>(i)], value) || value < minimum || value > maximum) {
+            why = "entry " + std::to_string(i) + " is not in " + std::to_string(minimum) + ".." +
+                  std::to_string(maximum);
+            return false;
+        }
+        out[i] = value;
+    }
+    return true;
+}
+
+// The action names the file uses, in fnd::input::Action order. A name is self-describing
+// and survives an enum insertion, which a positional table would not.
+struct ActionName { fnd::input::Action action; const char* name; };
+constexpr ActionName kActionNames[] = {
+    {fnd::input::Up, "up"},           {fnd::input::Down, "down"},
+    {fnd::input::Left, "left"},       {fnd::input::Right, "right"},
+    {fnd::input::AttackA, "attack_a"}, {fnd::input::AttackB, "attack_b"},
+    {fnd::input::Guard, "guard"},     {fnd::input::Shoot, "shoot"},
+    {fnd::input::Jump, "jump"},       {fnd::input::Special, "special"},
+    {fnd::input::Tactics, "tactics"}, {fnd::input::LockSwitch, "lock_switch"},
+    {fnd::input::Pause, "pause"},
+};
+static_assert(sizeof(kActionNames) / sizeof(kActionNames[0]) == fnd::input::ActionCount,
+              "the persisted action names must cover every action");
+
+// The SDL button range the config accepts: -1 is "unbound", and the upper bound is the
+// same 26 the backend's suppression table pins.
+constexpr int kMaxPadButton = 25;
+// SDL_SCANCODE_COUNT, which the backend also pins.
+constexpr int kMaxScancode = 511;
+
+}  // namespace
+
+UserSettings::UserSettings() {
+    // The same tables the input backend starts from, so "no config" and "default config"
+    // are the same bindings.
+    for (int a = 0; a < fnd::input::ActionCount; ++a) keyboard[static_cast<size_t>(a)] = fnd::input::sdl3::kP1ScancodeByAction[a];
+    for (auto& pad : gamepad)
+        for (int a = 0; a < fnd::input::ActionCount; ++a) pad[static_cast<size_t>(a)] = fnd::input::sdl3::kPadButtonByAction[a];
+}
+
+bool UserSettings::operator==(const UserSettings& other) const {
+    return fullscreen == other.fullscreen && resolution == other.resolution &&
+           volumes.master == other.volumes.master && volumes.music == other.volumes.music &&
+           volumes.voice == other.volumes.voice && volumes.sfx == other.volumes.sfx &&
+           keyboard == other.keyboard && gamepad == other.gamepad && padGuid == other.padGuid &&
+           padName == other.padName;
+}
+
+std::string configDirectory(const char* xdgConfigHome, const char* home) {
+    // XDG: an empty or RELATIVE $XDG_CONFIG_HOME is invalid and falls back to
+    // $HOME/.config (base directory spec). A hostile value therefore cannot redirect the
+    // write into the working directory.
+    const std::string xdg = xdgConfigHome ? xdgConfigHome : "";
+    if (!xdg.empty() && xdg[0] == '/') return xdg + "/" + kAppDirectory;
+    const std::string base = home ? home : "";
+    if (base.empty()) return {};
+    return base + "/.config/" + kAppDirectory;
+}
+
+std::string configFilePath(const char* xdgConfigHome, const char* home) {
+    const std::string dir = configDirectory(xdgConfigHome, home);
+    return dir.empty() ? std::string() : dir + "/" + kFileName;
+}
+
+std::string defaultConfigPath() {
+    return configFilePath(std::getenv("XDG_CONFIG_HOME"), std::getenv("HOME"));
+}
+
+bool persistenceSupported() {
+#if defined(__EMSCRIPTEN__)
+    return false;
+#else
+    return true;
+#endif
+}
+
+bool parse(const std::string& text, UserSettings& out, std::string& error, LoadReport& report) {
+    // Reset only what this function owns: load() records `existed` before it calls here.
+    report.warnings = 0;
+    report.messages.clear();
+    report.loaded = false;
+    error.clear();
+    if (text.size() > kMaxBytes) {
+        error = "config is larger than " + std::to_string(kMaxBytes) + " bytes";
+        return false;
+    }
+    if (text.find('\0') != std::string::npos) {
+        error = "config contains a NUL byte (binary file?)";
+        return false;
+    }
+
+    UserSettings candidate;   // defaults; only a clean parse reaches `out`
+    bool sawVersion = false;
+    bool inSection = false;
+    std::string section;
+    std::istringstream stream(text);
+    std::string raw;
+    int lineNumber = 0;
+    while (std::getline(stream, raw)) {
+        ++lineNumber;
+        if (raw.size() > kMaxLine) {
+            error = "line " + std::to_string(lineNumber) + " is longer than " +
+                    std::to_string(kMaxLine) + " bytes";
+            return false;
+        }
+        if (!raw.empty() && raw.back() == '\r') raw.pop_back();
+        const std::string line = trimmed(raw);
+        if (line.empty() || line[0] == '#' || line[0] == ';') continue;
+
+        if (line.front() == '[') {
+            if (line.back() != ']') {
+                error = "line " + std::to_string(lineNumber) + ": unterminated section header";
+                return false;
+            }
+            section = trimmed(line.substr(1, line.size() - 2));
+            inSection = true;
+            if (section != "display" && section != "audio" && section != "bindings" &&
+                section != "controllers") {
+                error = "line " + std::to_string(lineNumber) + ": unknown section [" + section + "]";
+                return false;
+            }
+            continue;
+        }
+
+        const size_t equals = line.find('=');
+        if (equals == std::string::npos) {
+            error = "line " + std::to_string(lineNumber) + ": expected key = value";
+            return false;
+        }
+        const std::string key = trimmed(line.substr(0, equals));
+        const std::string value = trimmed(line.substr(equals + 1));
+        if (key.empty()) {
+            error = "line " + std::to_string(lineNumber) + ": empty key";
+            return false;
+        }
+        if (value.size() > kMaxLine) {
+            error = "line " + std::to_string(lineNumber) + ": value too long";
+            return false;
+        }
+
+        auto warn = [&](const std::string& what) {
+            ++report.warnings;
+            report.messages.push_back("line " + std::to_string(lineNumber) + ": " + what);
+        };
+
+        if (!inSection) {
+            if (key == "version") {
+                int version = 0;
+                if (!parseInt(value, version)) {
+                    error = "line " + std::to_string(lineNumber) + ": version is not a number";
+                    return false;
+                }
+                if (version != kSchemaVersion) {
+                    error = "unsupported config version " + std::to_string(version) +
+                            " (this build writes " + std::to_string(kSchemaVersion) + ")";
+                    return false;
+                }
+                sawVersion = true;
+                continue;
+            }
+            error = "line " + std::to_string(lineNumber) + ": key '" + key +
+                    "' before any section (only version = belongs here)";
+            return false;
+        }
+
+        if (section == "display") {
+            if (key == "fullscreen") {
+                bool on = false;
+                if (!parseBool(value, on)) warn("fullscreen: keeping the default");
+                else candidate.fullscreen = on;
+            } else if (key == "resolution") {
+                DisplaySize size;
+                if (!parseDisplaySize(value, size)) warn("resolution: keeping the default");
+                else candidate.resolution = size;
+            } else {
+                warn("ignoring unknown key '" + key + "'");
+            }
+        } else if (section == "audio") {
+            int* slot = nullptr;
+            if (key == "master") slot = &candidate.volumes.master;
+            else if (key == "music") slot = &candidate.volumes.music;
+            else if (key == "voice") slot = &candidate.volumes.voice;
+            else if (key == "sfx") slot = &candidate.volumes.sfx;
+            if (!slot) {
+                warn("ignoring unknown key '" + key + "'");
+            } else {
+                int volume = 0;
+                if (!parseInt(value, volume) || volume < 0 || volume > 100)
+                    warn(key + ": expected 0..100, keeping the default");
+                else
+                    *slot = volume;
+            }
+        } else if (section == "bindings") {
+            if (key == "keyboard") {
+                int row[fnd::input::ActionCount] = {};
+                std::string why;
+                if (!parseBindingRow(value, row, fnd::input::ActionCount, -1, kMaxScancode, why))
+                    warn("keyboard: " + why + ", keeping the defaults");
+                else
+                    for (int a = 0; a < fnd::input::ActionCount; ++a)
+                        candidate.keyboard[static_cast<size_t>(a)] = row[a];
+            } else if (key.size() > 3 && key.compare(0, 3, "pad") == 0 &&
+                       key[3] >= '1' && key[3] <= '4') {
+                const int player = key[3] - '1';
+                if (key.size() != 4) {
+                    warn("ignoring unknown key '" + key + "'");
+                } else {
+                    int row[fnd::input::ActionCount] = {};
+                    std::string why;
+                    if (!parseBindingRow(value, row, fnd::input::ActionCount, -1, kMaxPadButton, why))
+                        warn(key + ": " + why + ", keeping the defaults");
+                    else
+                        for (int a = 0; a < fnd::input::ActionCount; ++a)
+                            candidate.gamepad[static_cast<size_t>(player)][static_cast<size_t>(a)] = row[a];
+                }
+            } else {
+                warn("ignoring unknown key '" + key + "'");
+            }
+        } else if (section == "controllers") {
+            // padN_guid / padN_name. Values are opaque identity strings, kept only if
+            // they are printable and short; a wrong one just means no GUID preference.
+            if (key.size() > 5 && key.compare(0, 3, "pad") == 0 && key[3] >= '1' && key[3] <= '4') {
+                const int player = key[3] - '1';
+                const std::string field = key.substr(4);
+                if (field == "_guid" || field == "_name") {
+                    if (!validText(value)) {
+                        warn(key + ": unusable text, ignoring");
+                    } else if (field == "_guid") {
+                        candidate.padGuid[static_cast<size_t>(player)] = value;
+                    } else {
+                        candidate.padName[static_cast<size_t>(player)] = value;
+                    }
+                } else {
+                    warn("ignoring unknown key '" + key + "'");
+                }
+            } else {
+                warn("ignoring unknown key '" + key + "'");
+            }
+        }
+    }
+
+    if (!sawVersion) {
+        error = "missing version line";
+        return false;
+    }
+    out = candidate;
+    report.loaded = true;
+    return true;
+}
+
+std::string serialize(const UserSettings& settings) {
+    std::ostringstream out;
+    out << "# daybreak-decomp user settings (issue #19). Written atomically; delete this\n"
+        << "# file to reset every setting to its default. Session state (earned titles,\n"
+        << "# result stats) is deliberately not stored here.\n"
+        << "# Format and policies: remake/foundation/docs/USER-SETTINGS.md\n"
+        << "version = " << kSchemaVersion << "\n\n";
+
+    out << "[display]\n"
+        << "fullscreen = " << (settings.fullscreen ? "true" : "false") << "\n"
+        << "resolution = ";
+    if (settings.resolution.width <= 0 || settings.resolution.height <= 0) out << "desktop";
+    else out << settings.resolution.width << "x" << settings.resolution.height;
+    out << "\n\n";
+
+    out << "[audio]\n"
+        << "master = " << settings.volumes.master << "\n"
+        << "music = " << settings.volumes.music << "\n"
+        << "voice = " << settings.volumes.voice << "\n"
+        << "sfx = " << settings.volumes.sfx << "\n\n";
+
+    out << "[bindings]\n"
+        << "# One comma-separated value per action, in this order:\n";
+    constexpr size_t kNamesPerLine = 8;
+    const size_t nameCount = sizeof(kActionNames) / sizeof(kActionNames[0]);
+    for (size_t i = 0; i < nameCount; ++i) {
+        out << (i % kNamesPerLine == 0 ? "#   " : " ") << kActionNames[i].name;
+        if (i + 1 != nameCount) out << ",";
+        if (i % kNamesPerLine == kNamesPerLine - 1 || i + 1 == nameCount) out << "\n";
+    }
+    out << "# -1 is unbound. keyboard values are SDL scancodes; pad values are SDL gamepad\n"
+        << "# buttons (the same numbering the options screen prints).\n"
+        << "keyboard = ";
+    for (int a = 0; a < fnd::input::ActionCount; ++a)
+        out << (a ? ", " : "") << settings.keyboard[static_cast<size_t>(a)];
+    out << "\n";
+    for (int p = 0; p < fnd::input::kMaxPlayers; ++p) {
+        out << "pad" << (p + 1) << " = ";
+        for (int a = 0; a < fnd::input::ActionCount; ++a)
+            out << (a ? ", " : "") << settings.gamepad[static_cast<size_t>(p)][static_cast<size_t>(a)];
+        out << "\n";
+    }
+    out << "\n[controllers]\n"
+        << "# The controller that last used each player slot. Bindings stay on the PLAYER\n"
+        << "# (the original's keyconfig is per player); the GUID only decides which slot a\n"
+        << "# pad is given when it is plugged in, so a replug cannot move bindings to\n"
+        << "# another pad. Cleared when no pad has been seen yet.\n";
+    for (int p = 0; p < fnd::input::kMaxPlayers; ++p) {
+        out << "pad" << (p + 1) << "_guid = " << settings.padGuid[static_cast<size_t>(p)] << "\n";
+        out << "pad" << (p + 1) << "_name = " << settings.padName[static_cast<size_t>(p)] << "\n";
+    }
+    return out.str();
+}
+
+bool load(const std::string& path, UserSettings& out, LoadReport& report) {
+    report = LoadReport{};
+    if (!persistenceSupported() || path.empty()) {
+        report.messages.push_back("user settings are not persisted on this target");
+        return false;
+    }
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        report.messages.push_back("no config file at " + path + " (first launch)");
+        return false;
+    }
+    report.existed = true;
+    std::ostringstream buffer;
+    buffer << file.rdbuf();
+    if (file.bad()) {
+        report.messages.push_back("cannot read " + path);
+        return false;
+    }
+    std::string error;
+    if (!parse(buffer.str(), out, error, report)) {
+        report.loaded = false;
+        report.messages.push_back("ignoring " + path + ": " + error);
+        return false;
+    }
+    report.loaded = true;
+    return true;
+}
+
+bool save(const std::string& path, const UserSettings& settings, std::string& error) {
+    error.clear();
+    if (!persistenceSupported()) {
+        error = "user settings are not persisted on this target";
+        return false;
+    }
+    if (path.empty()) {
+        error = "no user config directory ($XDG_CONFIG_HOME/$HOME are unset)";
+        return false;
+    }
+    const size_t slash = path.find_last_of('/');
+    const std::string directory = slash == std::string::npos ? std::string(".") : path.substr(0, slash);
+    const std::string text = serialize(settings);
+
+    namespace fs = std::filesystem;
+    // The XDG path may not exist yet (first run, a nested value, a path with spaces), so
+    // create the whole directory; a failure here is the unwritable-directory case and is
+    // reported by the write below.
+    std::error_code ec;
+    fs::create_directories(directory, ec);
+
+#if defined(_WIN32) || defined(__EMSCRIPTEN__)
+    // Best-effort fallback for the non-Linux targets: still a temp file in the same
+    // directory and a rename, but without fsync (the issue's atomicity requirement is a
+    // Linux one; the Windows cross-build only has to compile and behave).
+    const std::string temp = path + ".tmp";
+    {
+        std::ofstream out(temp, std::ios::binary | std::ios::trunc);
+        if (!out) { error = "cannot write " + temp; return false; }
+        out << text;
+        out.flush();
+        if (!out) { error = "cannot write " + temp; return false; }
+    }
+    fs::rename(temp, path, ec);
+    if (ec) { fs::remove(temp, ec); error = "cannot replace " + path; return false; }
+    return true;
+#else
+    const std::string temp = path + ".tmp";
+    const int fd = ::open(temp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0) {
+        error = "cannot create " + temp;
+        return false;
+    }
+    // O_CREAT does not touch the mode of a file that already exists, and a leftover temp
+    // file from a crashed writer is exactly that: force the private mode every time.
+    ::fchmod(fd, 0600);
+    size_t written = 0;
+    while (written < text.size()) {
+        const ssize_t n = ::write(fd, text.data() + written, text.size() - written);
+        if (n <= 0) {
+            ::close(fd);
+            ::unlink(temp.c_str());
+            error = "cannot write " + temp;
+            return false;
+        }
+        written += static_cast<size_t>(n);
+    }
+    if (::fsync(fd) != 0) {
+        ::close(fd);
+        ::unlink(temp.c_str());
+        error = "cannot flush " + temp;
+        return false;
+    }
+    ::close(fd);
+    if (::rename(temp.c_str(), path.c_str()) != 0) {
+        ::unlink(temp.c_str());
+        error = "cannot replace " + path;
+        return false;
+    }
+    // fsync the directory so the rename itself is durable, not just the data.
+    const int dir = ::open(directory.c_str(), O_RDONLY);
+    if (dir >= 0) {
+        ::fsync(dir);
+        ::close(dir);
+    }
+    return true;
+#endif
+}
+
+int chooseResolutionIndex(const std::vector<DisplaySize>& available, DisplaySize stored) {
+    if (available.empty()) return 0;
+    // Desktop is always index 0 in the port's list (main.cpp builds it that way), so it
+    // is the fallback both for "the user chose desktop" and for "the display changed".
+    if (stored.width <= 0 || stored.height <= 0) return 0;
+    for (size_t i = 0; i < available.size(); ++i)
+        if (available[i] == stored) return static_cast<int>(i);
+    return 0;
+}
+
+}  // namespace settings

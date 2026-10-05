@@ -11,11 +11,32 @@ bool FrontendSettings::cycleResolution(int direction) {
     const int count = static_cast<int>(resolutions.size());
     for (int attempt = 1; attempt < count; ++attempt) {
         const int candidate = (resolutionIndex + (direction > 0 ? attempt : -attempt) + count) % count;
-        if (applyResolution(resolutions[candidate])) { resolutionIndex = candidate; return true; }
+        if (applyResolution(resolutions[candidate])) {
+            resolutionIndex = candidate;
+            resolutionChoice = resolutions[candidate];
+            return true;
+        }
     }
     return false;
 }
 FrontendSettings& frontendSettings() { static FrontendSettings settings; return settings; }
+
+void applyUserSettings(FrontendSettings& settings, const settings::UserSettings& document) {
+    settings.volumes = document.volumes;
+    settings.keyboard = document.keyboard;
+    settings.gamepad = document.gamepad;
+    settings.fullscreen = document.fullscreen;
+}
+
+settings::UserSettings toUserSettings(const FrontendSettings& settings) {
+    settings::UserSettings document;
+    document.volumes = settings.volumes;
+    document.keyboard = settings.keyboard;
+    document.gamepad = settings.gamepad;
+    document.fullscreen = settings.fullscreen;
+    document.resolution = {settings.resolutionChoice.width, settings.resolutionChoice.height};
+    return document;
+}
 bool bindingCaptureActive() { return capturePlayer >= 0; }
 void armBindingCapture(int player, int action) {
     if (player >= 0 && player < 4 && action >= 0 && action < fnd::input::ActionCount) {

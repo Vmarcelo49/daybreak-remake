@@ -103,6 +103,7 @@ add_library(foundation_ui STATIC
     src/ui/screen_result.cpp
     src/ui/frontend_launch.cpp
     src/ui/frontend_settings.cpp
+    src/settings/user_settings.cpp
     src/ui/screen_options.cpp
     src/ui/soft_keyboard.cpp)
 target_include_directories(foundation_ui PUBLIC src)
@@ -399,6 +400,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         target_link_libraries(${frontend_test} PRIVATE foundation_ui glm)
         add_test(NAME ${frontend_test} COMMAND ${frontend_test})
     endforeach()
+    # Issue #19's user configuration: the parser/validator, the atomic write and the
+    # controller-placement policy. Device-free on purpose (the settings TU is std-only),
+    # so it runs anywhere the host suite does.
+    add_executable(user_settings_test tests/user_settings_test.cpp src/settings/user_settings.cpp)
+    target_include_directories(user_settings_test PRIVATE src)
+    add_test(NAME user_settings_test COMMAND user_settings_test)
+
     add_executable(screen_stack_test tests/screen_stack_test.cpp)
     target_include_directories(screen_stack_test PRIVATE src)
     target_link_libraries(screen_stack_test PRIVATE foundation_ui glm)

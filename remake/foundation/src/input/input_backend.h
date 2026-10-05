@@ -15,10 +15,13 @@
 // live in input_backend.cpp, which static_asserts the table pins against
 // the real headers.
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
+#include "input/gamepad_identity.h"
 #include "input/input.h"
 
 namespace fnd::input {
@@ -68,6 +71,16 @@ class Backend {
     bool set_gamepad_binding(int player, Action action, int button);
     void note_focus_lost();  // clears held keys (a lost window drops KEY_UP)
 
+    // Stable-controller identity (issue #19): the GUID recorded for each player slot.
+    // A pad is opened into the slot whose hint matches its GUID when that slot is free,
+    // so a replugged pad keeps its player (and its bindings) instead of taking the
+    // lowest free slot. See input/gamepad_identity.h for the policy.
+    void set_gamepad_guid_hint(int player, const std::string& guid);
+    const std::string& gamepad_guid_hint(int player) const;
+    // The pad currently in that slot: its SDL GUID string and name, "" when empty.
+    std::string gamepad_guid(int player) const;
+    std::string gamepad_name(int player) const;
+
     // Deterministic driver, same line format as the remake
     // ("<frame> TOKEN...", "-" releases all, "#" comments). The override
     // replaces P0's held set wholesale inside poll(), so scripted taps get
@@ -93,6 +106,7 @@ class Backend {
     bool suppressedButtons_[kMaxPlayers][26] = {};
     int keyboard_[ActionCount];
     int buttons_[kMaxPlayers][ActionCount];
+    std::array<std::string, kMaxPlayers> guidHints_{};
     struct TickSample { int player; PlayerState state; };
     std::vector<TickSample> tickSamples_;
     PlayerState eventStates_[kMaxPlayers];

@@ -4,6 +4,7 @@
 #include <vector>
 #include "audio/audio.h"
 #include "input/input.h"
+#include "settings/user_settings.h"
 namespace ui {
 struct DisplayResolution {
     int width = 0, height = 0;
@@ -15,6 +16,12 @@ struct FrontendSettings {
     std::array<int, fnd::input::ActionCount> keyboard;
     std::array<std::array<int, fnd::input::ActionCount>, 4> gamepad;
     bool fullscreen = false;
+    // The user's selection from the Options resolution row; {0,0} is desktop. This is
+    // what gets persisted, and it changes ONLY when the row is cycled — the window's
+    // actual pixel size lives in currentResolution/resolutionIndex, which the OS changes
+    // on its own (a startup pixel-size event, a drag, a fullscreen transition). Storing
+    // the index instead would let a launch overwrite "desktop" with the current size.
+    DisplayResolution resolutionChoice;
     bool resolutionAvailable = false;
     std::vector<DisplayResolution> resolutions{{0, 0}};
     int resolutionIndex = 0;
@@ -27,6 +34,19 @@ struct FrontendSettings {
     std::function<void()> applyBindings;
 };
 FrontendSettings& frontendSettings();
+
+// --- persistence seam (issue #19) --------------------------------------------------
+// The document owns what is written to disk; these two copy the parts of it that are
+// plain live state. The display preference is deliberately NOT part of applyUserSettings:
+// turning a stored pixel size into a window size needs the current display's resolution
+// list, which only exists after the frontend has built it, so the host applies that half
+// (settings::chooseResolutionIndex + applyResolution/applyFullscreen).
+void applyUserSettings(FrontendSettings& settings, const settings::UserSettings& document);
+// The live state as a document. The stored resolution is `resolutionChoice` (the user's
+// pick from the Options row, {0,0} for desktop), never the window's current pixel size.
+// Pad identity is device state and stays with the host, which fills padGuid/padName in
+// before saving.
+settings::UserSettings toUserSettings(const FrontendSettings& settings);
 // The SDL event pump supplies physical input while the binding screen is armed.
 void submitBindingInput(bool keyboard, int player, int code);
 bool bindingCaptureActive();

@@ -11,6 +11,7 @@
 
 #include <SDL3/SDL.h>
 
+#include <array>
 #include <cstdio>
 #include <fstream>
 #include <string>
@@ -53,6 +54,15 @@ namespace fnd::input {
 
 namespace {
 const PlayerState kEmptyPlayer;
+
+// The pad's identity string: SDL's 32-hex-character GUID. Empty when the id is not a
+// pad (or SDL cannot say), which the placement policy reads as "no identity".
+std::string guidStringForId(SDL_JoystickID id) {
+    const SDL_GUID guid = SDL_GetGamepadGUIDForID(id);
+    char text[64] = {};
+    SDL_GUIDToString(guid, text, sizeof text);
+    return std::string(text);
+}
 }  // namespace
 
 Backend::Backend() : devices_{}, pads_{}, key_held_{} {
@@ -73,6 +83,31 @@ bool Backend::set_gamepad_binding(int player, Action action, int button) {
         button < -1 || button >= SDL_GAMEPAD_BUTTON_COUNT) return false;
     buttons_[player][action] = button;
     return true;
+}
+
+void Backend::set_gamepad_guid_hint(int player, const std::string& guid) {
+    if (player < 0 || player >= kMaxPlayers) return;
+    guidHints_[player] = guid;
+}
+
+const std::string& Backend::gamepad_guid_hint(int player) const {
+    static const std::string none;
+    return (player >= 0 && player < kMaxPlayers) ? guidHints_[player] : none;
+}
+
+std::string Backend::gamepad_guid(int player) const {
+    if (player < 0 || player >= kMaxPlayers) return {};
+    auto* pad = static_cast<SDL_Gamepad*>(pads_[player]);
+    if (!pad) return {};
+    return guidStringForId(SDL_GetGamepadID(pad));
+}
+
+std::string Backend::gamepad_name(int player) const {
+    if (player < 0 || player >= kMaxPlayers) return {};
+    auto* pad = static_cast<SDL_Gamepad*>(pads_[player]);
+    if (!pad) return {};
+    const char* name = SDL_GetGamepadName(pad);
+    return name ? std::string(name) : std::string();
 }
 
 Backend::~Backend() { shutdown(); }
@@ -326,15 +361,21 @@ void Backend::repoll_gamepads() {
                 }
             }
             if (known) continue;
-            for (int i = 1; i < kMaxPlayers; ++i) {
-                if (pads_[i]) continue;
+            // Stable-controller policy: a pad whose GUID is recorded for a free slot goes
+            // back to that player (so a replug cannot move its bindings); anything else
+            // takes the lowest free slot, which is the enumeration order this backend had
+            // before persistence existed. See input/gamepad_identity.h.
+            std::array<bool, kMaxPlayers> occupied{};
+            for (int i = 0; i < kMaxPlayers; ++i) occupied[i] = pads_[i] != nullptr;
+            occupied[0] = true;   // slot 0 is the keyboard
+            const int slot = preferredPadSlot(guidHints_, occupied, guidStringForId(ids[k]));
+            if (slot >= 0) {
                 // A failed open keeps the slot free for the next re-poll
                 // rather than burning a player on a dead pad.
                 if (SDL_Gamepad* opened = SDL_OpenGamepad(ids[k])) {
-                    pads_[i] = opened;
-                    devices_[i] = DeviceType::Gamepad;
+                    pads_[slot] = opened;
+                    devices_[slot] = DeviceType::Gamepad;
                 }
-                break;
             }
         }
         SDL_free(ids);
