@@ -69,8 +69,8 @@ struct MoveEntry {
     std::string effectName;
     int activeFrame     = 0;   // record v04: in-phase frame this effect fires on
     int hitRadius       = 0;   // record +0x24
-    int baseDamage      = 0;   // combat[0x00]
-    int hpDamage        = 0;   // combat[0x05]
+    int baseDamage      = 0;   // combat[0x00] — the melee HP power (FUN_00639160)
+    int hpDamage        = 0;   // combat[0x05] — the victim's gauge feed, not HP
     int reflectDamage   = 0;   // combat[0x06]
     int gaugeGainA      = 0;   // combat[0x07]
     int gaugeGainB      = 0;   // combat[0x08]

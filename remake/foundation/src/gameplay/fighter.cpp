@@ -18,6 +18,59 @@
 namespace gameplay {
 namespace {
 
+// --- the two recovered damage chains (one place, so they cannot drift) --------------
+// MELEE, FUN_00639160 @0x639160-0x6391b0 (dump :21-23):
+//   victim[+0x7a4] -= ((((power * attacker[+0x7c8]) / 100) * victim[+0x7cc]) / 100) * 100
+//                     / scene[+0x43cc];
+// SHOT, FUN_00637950 @0x637950 (dump :317-328 and :425-431):
+//   local_2c = ((tier * 100) / scene[+0x43cc]) * bullet[+0x3c] / 100;   // tier: victim
+//   victim[+0x7a4] -= ((((baseDamage * local_2c) / 100) * attacker[+0x7c8]) / 100)
+//                     * victim[+0x7cc]) / 100;
+// The HP field is the record's FIRST damage slot — combat[0x00] / blob[0] (+0x30), named
+// `baseDamage` in this port. The +0x44 slot (combat[0x05] / blob[5], `hpDamage`) is NOT HP
+// damage: FUN_00637950:280 accumulates it into the victim's own gauge (and the melee path
+// never reads it at all). Reading hpDamage here is what made every hit remove ~1 HP.
+//
+// The stat and setting factors are the live neutral values, cited where they are set:
+//   attacker[+0x7c8] = 100   attack  (FUN_0043ded0 @0x43dee3-0x43dee6, reset every frame)
+//   victim[+0x7cc]   = 50    defense (FUN_0043ded0 @0x43dee9-0x43dee9)
+//   scene[+0x43cc]   = 100   the battle's health setting (FUN_00633ca0 @0x633cf3-0x633cf6)
+// so a neutral melee hit is `power / 2` and a neutral first-hit shot is `baseDamage / 2`
+// on the original's 10000-based pool. The port's HP runs 0..maxHP, so the recovered figure
+// is scaled onto that range (the same convention the KO/Overkill economy already uses).
+//
+// NOT modelled, and deliberately: the combo damage scaling (the victim's +0x7b0 counter
+// steps the shot chain's tier to 70/50/33% on later hits — the port has no combo counter),
+// bullet[+0x3c]'s per-bullet multiplier (its condition is unrecovered), and the
+// `baseDamage > 9999 && head hit` /3 rule (the port's shot test has no head/chest split).
+// Each would only *reduce* damage, so the port is conservative, not generous.
+inline constexpr int kPoolScale = 10000;         // the original's HP pool
+inline constexpr int kNeutralAttackStat = 100;   // FUN_0043ded0 @0x43dee3
+inline constexpr int kNeutralDefenseStat = 50;   // FUN_0043ded0 @0x43dee9
+inline constexpr int kNeutralSetting = 100;      // FUN_00633ca0 @0x633cf3
+
+// The melee chain, integer steps in the original's order (each division truncates).
+int meleePoolDamage(int power) {
+    if (power <= 0) return 0;
+    return ((((power * kNeutralAttackStat) / 100) * kNeutralDefenseStat) / 100) * 100 /
+           kNeutralSetting;
+}
+
+// The shot chain, first hit of a combo (tier 100) and no per-bullet multiplier.
+int shotPoolDamage(int baseDamage) {
+    if (baseDamage <= 0) return 0;
+    const int tier = ((100 * 100) / kNeutralSetting) * 100 / 100;
+    return ((((baseDamage * tier) / 100) * kNeutralAttackStat) / 100) * kNeutralDefenseStat / 100;
+}
+
+// The recovered 10000-based figure on the port's 0..maxHP range.
+int portDamage(int poolDamage, int maxHP) {
+    if (poolDamage <= 0 || maxHP <= 0) return 0;
+    return static_cast<int>(static_cast<float>(poolDamage) * static_cast<float>(maxHP) /
+                                static_cast<float>(kPoolScale) +
+                            0.5f);
+}
+
 struct AnimationBlendRule {
     int characterIndex;
     int weaponId;
@@ -1047,13 +1100,11 @@ MeleeSwing Fighter::resolve_swing(int moveId) const {
     // 311 → 11, 330 → 5). A last-entry hit keeps the legacy 8-tick window.
     if (nextFrame > hit->activeFrame) swing.activeTicks = nextFrame - hit->activeFrame;
     if (hit->hitRadius > 0) swing.radius = static_cast<float>(hit->hitRadius);
-    // hpDamage is the HP actually removed from the original's 10000-based pool
-    // (FUN_00637950:280), scaled onto 0..maxHP exactly like shot_params_for.
-    // A zero-hpDamage hit (e.g. move 351's gauge-only chip) keeps legacy damage.
-    if (hit->hpDamage > 0 && m_maxHP > 0)
-        swing.damage = std::max(1, static_cast<int>(
-            static_cast<float>(hit->hpDamage) * static_cast<float>(m_maxHP) / 10000.0f +
-            0.5f));
+    // The melee HP damage is the move's combat[0x00] power through FUN_00639160's chain
+    // (see the top of this file). A hit with no power at all keeps the legacy value, which
+    // is also what a move table with no combat entry falls back to.
+    if (hit->baseDamage > 0 && m_maxHP > 0)
+        swing.damage = std::max(1, portDamage(meleePoolDamage(hit->baseDamage), m_maxHP));
     if (hit->defenderHitstun > 0) swing.hitstun = hit->defenderHitstun;
     return swing;
 }
@@ -1183,12 +1234,11 @@ ShotParams Fighter::shot_params_for(ShotTier tier) const {
     ShotParams params = shot_params(tier);
     const BulletParameter* b = bullet_parameter((tier == ShotTier::Tap) ? 1 : 2);
     if (!b) return params;
-    // FUN_00637950:280 removes hpDamage from the victim's 10000-based HP pool. The
-    // remake's HP runs 0..m_maxHP, so the recovered number is scaled onto that range
-    // rather than used raw; the radius is already a world-space length.
-    if (b->hpDamage > 0 && m_maxHP > 0)
-        params.damage = static_cast<int>(
-            static_cast<float>(b->hpDamage) * static_cast<float>(m_maxHP) / 10000.0f + 0.5f);
+    // FUN_00637950 @0x637950's chain removes blob[0] (baseDamage) from the victim's
+    // 10000-based pool; see the top of this file for the field mapping and the neutral
+    // factors. The radius is already a world-space length.
+    if (b->baseDamage > 0 && m_maxHP > 0)
+        params.damage = portDamage(shotPoolDamage(b->baseDamage), m_maxHP);
     if (b->hitRadius > 0) params.hitRadius = static_cast<float>(b->hitRadius);
     return params;
 }

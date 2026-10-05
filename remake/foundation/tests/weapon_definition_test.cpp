@@ -310,9 +310,10 @@ void testBulletParameterParser() {
 
     f.set_bullet_parameter(1, &src);
     const gameplay::ShotParams armed = f.shot_params_for(gameplay::ShotTier::Tap);
-    // hpDamage 75 on the original's 10000 HP maps onto the remake's 0..maxHP range.
-    const int expected = static_cast<int>(75.0f * static_cast<float>(f.max_hp()) / 10000.0f + 0.5f);
-    checkInt(expected, armed.damage, "the recovered hpDamage replaces the shared value");
+    // baseDamage 1750 through FUN_00637950's chain (@0x637950): 1750 * 100/100 * 50/100 =
+    // 875 on the original's 10000-based pool, i.e. 9 HP on this port's 0..maxHP range. The
+    // record's +0x44 field (hpDamage) is the victim's gauge feed (:280), not HP.
+    checkInt(9, armed.damage, "the recovered baseDamage replaces the shared value");
     checkInt(30, static_cast<int>(armed.hitRadius), "and the recovered hit radius is used");
     check(armed.damage != bare.damage, "a weapon genuinely changes what a shot does");
     check(f.shot_params_for(gameplay::ShotTier::Red).damage == redBare.damage,

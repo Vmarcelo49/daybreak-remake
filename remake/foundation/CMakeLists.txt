@@ -425,6 +425,11 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         target_link_libraries(${frontend_test} PRIVATE foundation_ui glm)
         add_test(NAME ${frontend_test} COMMAND ${frontend_test})
     endforeach()
+    # The two recovered damage chains, pinned against real combo data (Rena + item 001).
+    add_executable(damage_scale_test tests/damage_scale_test.cpp)
+    target_link_libraries(damage_scale_test PRIVATE foundation_gameplay)
+    add_test(NAME damage_scale_test COMMAND damage_scale_test)
+
     # Issue #19's user configuration: the parser/validator, the atomic write and the
     # controller-placement policy. Device-free on purpose (the settings TU is std-only),
     # so it runs anywhere the host suite does.

@@ -160,8 +160,8 @@ private:
 struct BulletParameter {
     std::string effectName;
     int hitRadius        = 0;  // record +0x24, consumed as a float by FUN_00637950:91,107
-    int baseDamage       = 0;  // blob[0] (+0x30) — 10000-based, FUN_00637950:426
-    int hpDamage         = 0;  // blob[5] (+0x44) — the HP actually removed, :280
+    int baseDamage       = 0;  // blob[0] (+0x30) — the HP power, 10000-based, :426
+    int hpDamage         = 0;  // blob[5] (+0x44) — the victim's GAUGE feed, :280 (not HP)
     int reflectDamage    = 0;  // blob[6] (+0x48) — dealt back to the attacker, :300
     int gaugeGainA       = 0;  // blob[7] (+0x4C) — 100 fills a charge gauge, :334
     int gaugeGainB       = 0;  // blob[8] (+0x50) — the second gauge, :345

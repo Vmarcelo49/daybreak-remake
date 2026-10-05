@@ -751,11 +751,14 @@ void testCharacterMoveTable(const fs::path& install) {
 // bound, hit data comes from the selected move. Only the grounded move-300
 // animation selector is currently mapped; dash/air animation contexts remain
 // visible fallbacks until their binary selector flags are represented. Rena 00.dat:
-//   move 300 (ground): set 31, hit frame 4, next effect 10, hr 20, hp 50, dSt 6
-//   move 330 (dash):   set 51, hit frame 6, next effect 11, hr 25, hp 75, dSt 6
-//   move 340 (air):    set 88, hit frame 16, next effect 21, hr 20, hp 75, dSt 6
-// Damage scales hpDamage off the original's 10000-based pool (all three round to
-// 1 on 100 HP); reach is 30 + hr in 3D against the two anchors.
+//   move 300 (ground): set 31, hit frame 4, next effect 10, hr 20, base 1500, dSt 6
+//   move 330 (dash):   set 51, hit frame 6, next effect 11, hr 25, base 1500, dSt 6
+//   move 340 (air):    set 88, hit frame 16, next effect 21, hr 20, base 1750, dSt 6
+// Damage is combat[0x00] (baseDamage) through FUN_00639160 @0x639160: power * 100/100
+// (attacker +0x7c8) * 50/100 (victim +0x7cc) * 100/100 (scene +0x43cc) on the original's
+// 10000-based pool, which is 8 / 8 / 9 HP on this port's 100 HP scale. The record's
+// combat[0x05] field is the victim's gauge feed, not HP. Reach is 30 + hr in 3D against
+// the two anchors.
 // ---------------------------------------------------------------------------
 void testDataDrivenGroundSwing(const fs::path& install) {
     section("data-driven ground swing (rena move 300)");
@@ -818,7 +821,8 @@ void testDataDrivenGroundSwing(const fs::path& install) {
     check(!attacker.try_melee_hit(victim), "no hit during the 4-frame startup");
     tick(attacker, in);   // elapsed 4: the hit frame
     check(attacker.try_melee_hit(victim), "the hit lands on its own frame");
-    checkInt(99, victim.hp(), "damage is the weapon's own hpDamage, scaled (50 -> 1)");
+    checkInt(92, victim.hp(),
+             "move 300's combat[0] power: 1500 -> 750 -> 8 HP (FUN_00639160)");
     checkInt(static_cast<int>(FighterState::Hit), static_cast<int>(victim.state()),
              "the victim staggers");
 
@@ -901,7 +905,7 @@ void testDataDrivenDashAndAir(const fs::path& install) {
         victim.set_weapon(&weapon);
         for (int i = 0; i < 5; ++i) tick(dasher, in);   // elapsed 6: the hit frame
         check(dasher.try_melee_hit(victim), "the lunge connects inside 30+25");
-        checkInt(99, victim.hp(), "for the weapon's scaled damage (75 -> 1)");
+        checkInt(92, victim.hp(), "move 330's power: 1500 -> 750 -> 8 HP");
     }
     // Air attack: leap, then melee while airborne.
     {
@@ -943,7 +947,7 @@ void testDataDrivenDashAndAir(const fs::path& install) {
                                flyer.position().z + 30),
                      0.0f);
         check(flyer.try_melee_hit(victim), "the aerial connects at its own height");
-        checkInt(99, victim.hp(), "for the weapon's scaled damage");
+        checkInt(91, victim.hp(), "move 340's power: 1750 -> 875 -> 9 HP");
     }
 }
 
@@ -1025,8 +1029,8 @@ void testMatchDataDriven(const fs::path& install) {
     }
     checkInt(300, match.fighter(0).attack_move_id(),
              "the match swing resolved move 300");
-    checkInt(hpBefore - 1, match.fighter(1).hp(),
-             "one weapon-scaled point of damage, not the legacy 5");
+    checkInt(hpBefore - 8, match.fighter(1).hp(),
+             "move 300's recovered 8 HP, not the legacy 5 and not the old 1");
 }
 
 // ---------------------------------------------------------------------------
