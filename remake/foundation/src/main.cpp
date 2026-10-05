@@ -1593,10 +1593,12 @@ static std::string charDirForSpec(const std::string& spec) {
     return slash == std::string::npos ? path : path.substr(slash + 1);
 }
 
-// First mesh of an item file — exactly the field the frontend reads for the
-// weapon mesh (frontend_launch.cpp choice()). Empty when the slot ships no
-// mesh; false when the item file itself is missing or short.
-static bool readItemFirstMesh(int itemId, std::string& mesh) {
+// The item's first NON-EMPTY attachment mesh. The original walks every slot and loads
+// each slot whose 30-byte name is non-empty, skipping the empty ones (FUN_00433eb0:90-116,
+// the `if (local_140[0] != '\0')` guard at :111), so a mesh that lives in a later slot IS
+// the item's mesh and an item whose every slot is empty simply has none to draw.
+// False means the item file itself is missing or unparseable — a real error.
+static bool readItemMesh(int itemId, std::string& mesh) {
     char path[64];
     std::snprintf(path, sizeof(path), "data/item/%03d.dat", itemId);
     std::vector<uint8_t> bytes;
@@ -1604,7 +1606,13 @@ static bool readItemFirstMesh(int itemId, std::string& mesh) {
     gameplay::WeaponDefinition item;
     std::string parseError;
     if (!item.parse(itemId, bytes.data(), bytes.size(), parseError)) return false;
-    mesh = item.slots[0].meshName;
+    mesh.clear();
+    for (int slot = 0; slot < item.slotCount; ++slot) {
+        if (!item.slots[slot].meshName.empty()) {
+            mesh = item.slots[slot].meshName;
+            break;
+        }
+    }
     return true;
 }
 
@@ -1613,9 +1621,11 @@ static bool readItemFirstMesh(int itemId, std::string& mesh) {
 //   empty spec      → the character's slot-0 legal weapon, mesh and id together;
 //   data/bullet/NNN → item id NNN (the bullet directory number IS the item id);
 //   anything else   → the spec's basename matched against the character's own
-//     items' first meshes (bounded: at most 3 small files per character).
-// False means no join exists — unknown character, unreadable item, or a mesh
-// no roster item ships — and the fighter keeps the legacy bare/shared tuning.
+//     items' meshes (bounded: at most 3 small files per character).
+// False means no join exists — unknown character, unreadable item, or a mesh no roster
+// item ships. An item that parses but ships no mesh at all is a JOIN with an empty mesh:
+// the fighter is armed with that item (its move table, bullets and damage) and has no
+// attachment to draw, which is the original's own behaviour (FUN_00433eb0:111).
 // Which NN.dat the original pairs with the weapon is still open (issue #26),
 // so this joins mesh↔item only, never NN↔weapon.
 static bool resolveFighterWeapon(const std::string& charDir,
@@ -1626,7 +1636,7 @@ static bool resolveFighterWeapon(const std::string& charDir,
     if (explicitSpec.empty()) {
         itemId = gameplay::kWeaponIds[character][0];
         std::string mesh;
-        if (!readItemFirstMesh(itemId, mesh)) return false;
+        if (!readItemMesh(itemId, mesh)) return false;
         meshSpec = mesh.empty() ? "" : std::string("data/item/") + mesh;
         return true;
     }
@@ -1652,7 +1662,7 @@ static bool resolveFighterWeapon(const std::string& charDir,
     for (int w = 0; w < gameplay::weaponCountForCharacter(character); ++w) {
         const int id = gameplay::kWeaponIds[character][w];
         std::string mesh;
-        if (!readItemFirstMesh(id, mesh) || mesh != base) continue;
+        if (!readItemMesh(id, mesh) || mesh.empty() || mesh != base) continue;
         itemId = id;
         meshSpec = explicitSpec;
         return true;
@@ -1683,19 +1693,26 @@ static void attachFighterWeapon(xm::Scene& scene, const std::string& label,
         }
         std::string mesh;
         int id = 0;
-        if (!resolveFighterWeapon(charDirForSpec(charSpec), spec, mesh, id) ||
-            mesh.empty())
+        if (!resolveFighterWeapon(charDirForSpec(charSpec), spec, mesh, id))
             throw std::runtime_error(
                 label + " " + charSpec +
                 " has no weapon: slot-0 item " +
                 std::to_string(gameplay::kWeaponIds[character][0]) +
                 " unreadable — roster fighters must gear up");
+        const std::string combo =
+            gameplay::comboSlotLabel(character, gameplay::weaponSlotForItem(character, id));
+        if (mesh.empty()) {
+            // Parsed, and no slot ships a mesh: NOT a failure. The fighter is armed with
+            // the item — its move table, bullets and damage are bound by the id — and the
+            // original skips the attachment load for exactly this case (FUN_00433eb0:111).
+            std::printf("[weapons] %s %s: item %03d, armed; the item ships no attachment mesh"
+                        " to draw\n",
+                        label.c_str(), combo.c_str(), id);
+            return;
+        }
         spec = mesh;
-        std::printf("[weapons] %s %s: item %03d (%s)\n", label.c_str(),
-                    gameplay::comboSlotLabel(
-                        character, gameplay::weaponSlotForItem(character, id))
-                        .c_str(),
-                    id, mesh.c_str());
+        std::printf("[weapons] %s %s: item %03d (%s)\n", label.c_str(), combo.c_str(), id,
+                    mesh.c_str());
     }
     std::string path;
     int slot = 0;

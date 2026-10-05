@@ -436,7 +436,9 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
 
     foreach(frontend_test select_menu_test stage_vs_test frontend_config_test result_screen_test)
         add_executable(${frontend_test} tests/${frontend_test}.cpp)
-        target_link_libraries(${frontend_test} PRIVATE foundation_ui glm)
+        # foundation_gameplay: frontend_launch.cpp reads the item's attachment meshes
+        # through gameplay::WeaponDefinition (issue #23's gear-up fix).
+        target_link_libraries(${frontend_test} PRIVATE foundation_ui foundation_gameplay glm)
         add_test(NAME ${frontend_test} COMMAND ${frontend_test})
     endforeach()
     # The two recovered damage chains, pinned against real combo data (Rena + item 001).
@@ -458,7 +460,9 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
 
     add_executable(screen_stack_test tests/screen_stack_test.cpp)
     target_include_directories(screen_stack_test PRIVATE src)
-    target_link_libraries(screen_stack_test PRIVATE foundation_ui glm)
+    # foundation_gameplay: frontend_launch.cpp reads the item's attachment meshes through
+    # gameplay::WeaponDefinition (issue #23's gear-up fix), so the UI layer needs it here.
+    target_link_libraries(screen_stack_test PRIVATE foundation_ui foundation_gameplay glm)
     add_test(NAME screen_stack_test COMMAND screen_stack_test)
 endif()
 

@@ -18,15 +18,25 @@ bool choice(const FrontendSlot& slot,std::string& character,std::string& weapon,
     id=gameplay::kWeaponIds[slot.character][slot.weapon];
     char path[64]; std::snprintf(path,sizeof(path),"data/item/%03d.dat",id);
     std::vector<uint8_t> bytes;
-    if(!fnd::assets::assetSource().read(path,bytes) || bytes.size()<76) {
+    if(!fnd::assets::assetSource().read(path,bytes)) {
         error=std::string("front end: cannot read ")+path; return false;
     }
-    // FUN_00433eb0: 2 dwords + 30-byte gauge name + 2 dwords, then first 30-byte mesh name.
-    size_t end=46;
-    while(end<76 && bytes[end]) ++end;
-    if(end==76) { error="front end: unterminated item mesh name"; return false; }
+    // The item's first non-empty attachment mesh, through the real parser (no second copy
+    // of the slot layout). FUN_00433eb0:90-116 walks every slot and skips the empty names
+    // (:111), so a mesh in a later slot is the item's mesh, and an item with none is legal
+    // — the id above is what arms the fighter, and the mesh is only what it draws.
+    gameplay::WeaponDefinition item;
+    std::string parseError;
+    if(!item.parse(id,bytes.data(),bytes.size(),parseError)) {
+        error="front end: "+parseError; return false;
+    }
     weapon.clear();
-    if(end>46) weapon="data/item/"+std::string(reinterpret_cast<const char*>(bytes.data()+46),end-46);
+    for(int slot=0;slot<item.slotCount;++slot) {
+        if(!item.slots[slot].meshName.empty()) {
+            weapon="data/item/"+item.slots[slot].meshName;
+            break;
+        }
+    }
     return true;
 }
 }
