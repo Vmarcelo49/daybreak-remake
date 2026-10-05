@@ -90,7 +90,6 @@ public:
             for (int a = 0; a < fnd::input::ActionCount; ++a) {
                 const float y = 128 + a * 32.f;
                 if (a == row_) batch.pushSolid({332 + player_ * 64.f,y,60,32},{0.15f,0.3f,0.6f,0.7f});
-                if (a == 12) text(batch,"HEAVY",176,y+8,2);
                 for (int p = 0; p < 4; ++p) {
                     const int code = p == 0 ? settings.keyboard[kBindingRowActions[a]] : settings.gamepad[p][kBindingRowActions[a]];
                     const float x = 336 + p * 64.f;
