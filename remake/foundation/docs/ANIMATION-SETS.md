@@ -4,9 +4,12 @@
 each phase's set index, `state_to_anim_set` retargets Walk→1 (move 10) and Run→13
 (move 20), and bound fighters resolve each swing to the situation's own weapon
 move (sets, reach, damage, stun from the 300-family hit entries). AttackA/B/C
-table rows stay as marked placeholders for the table-free path; open follow-ups
-are the phase-duration source, the attack-sphere centre, the selector flags, and
-the vtable+0x20 handler hits. The table history below is kept because it is
+table rows stay as marked placeholders for the table-free path. The NN↔weapon
+join is closed since: NN.dat number IS the weapon slot and file offset `0x114`
+carries the weapon id (verified 46/46 against `kWeaponIds`), so battles load
+the slot's own table. Open follow-ups are the phase-duration source, the
+attack-sphere centre, the selector flags, and the vtable+0x20 handler hits.
+The table history below is kept because it is
 the evidence for those.
 
 Built from three sources, kept separate on purpose because they have different confidence:
@@ -173,7 +176,10 @@ against the logic tick rate.
    DONE provisionally: `Fighter::resolve_attack_move` picks 330 (dash) / 340 (air) /
    300 (ground) from the bound table with family fallback, and the swing binds the
    move's first-phase set. Each row cites its evidence; the selector flags behind
-   the choice (+0x84/+0x830) are still unrecovered.
+   the choice (+0x84/+0x830) are still unrecovered. The NN↔weapon join behind
+   the binding is closed: NN.dat number is the weapon slot and file offset
+   `0x114` carries the id (46/46 against `kWeaponIds`), so the battle loads the
+   slot's own table, never the rig costume's.
 4. **Un-port the melee constants.** Reach and damage move out of `melee_rules.h` and into the
    `WeaponDefinition` recovered by issue #9.
    DONE via the character table rather than the item file (that is where the hits

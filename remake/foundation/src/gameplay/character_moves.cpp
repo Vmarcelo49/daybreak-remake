@@ -16,8 +16,9 @@ constexpr int kMaxEntriesPerMove  = 32;   // guards the read against a corrupt c
 CharacterMoves::~CharacterMoves() { release(); }
 
 void CharacterMoves::release() noexcept {
-    m_count  = 0;
-    m_loaded = false;
+    m_count    = 0;
+    m_weaponId = 0;
+    m_loaded   = false;
 }
 
 bool CharacterMoves::parse(const uint8_t* bytes, size_t size, std::string& error) {
@@ -50,13 +51,17 @@ bool CharacterMoves::parse(const uint8_t* bytes, size_t size, std::string& error
         return false;
     }
     offset += 0x104;
+    // Six header dwords; index 3 (file offset 0x114) is the table's own weapon
+    // id, read on to the item loader (FUN_0041e180.c:99-106 → FUN_00433eb0).
+    // NN is the weapon slot, and all 46 shipped files agree with kWeaponIds.
+    int headerVals[6] = {0, 0, 0, 0, 0, 0};
     for (int i = 0; i < 6; ++i) {
-        int scratch = 0;
-        if (!u32(scratch)) {
+        if (!u32(headerVals[i])) {
             error = "character moves: truncated header block";
             return false;
         }
     }
+    m_weaponId = headerVals[3];
     int moveCount = 0;
     if (!u32(moveCount) || moveCount < 0 || moveCount > kMaxMoves) {
         error = "character moves: implausible move count";

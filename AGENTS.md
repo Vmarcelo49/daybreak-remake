@@ -39,6 +39,16 @@ modern port. No bit-matching against the original binary is attempted.
 5. **Run `coverage_report.py` before committing** research changes.
 6. **Full diff review before EVERY commit** — see the section below.
    Not optional, no size exemption.
+7. **Character+weapon combos, never bare fighters.** Every attack is a weapon
+   attack (issue #26): battles, traces and tests always bind a character AND
+   a weapon (move table + item data). A bare fighter is a false claim, not a
+   simplification — tests that exercise one without the other are rejected.
+   Name combos as Name+N (1-based select-screen slot: `Rena 1`) or
+   Name+Weapon (`Keiichi Invincible Iron`; atlas names in
+   `remake/docs/ASSET-CATALOG.md` §3.2). In code the helper is
+   `gameplay::comboSlotLabel`; NN.dat number IS the weapon slot and file
+   offset `0x114` carries the weapon id (verified 46/46 against
+   `kWeaponIds`).
 
 ## MANDATORY — full diff review before EVERY commit
 

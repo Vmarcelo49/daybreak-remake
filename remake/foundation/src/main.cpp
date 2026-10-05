@@ -1049,11 +1049,16 @@ static void attachFighterWeapon(xm::Scene& scene, const std::string& label,
     if (spec.empty()) {
         std::string mesh;
         int id = 0;
+        const int character =
+            gameplay::characterIndexForDir(charDirForSpec(charSpec));
         if (resolveFighterWeapon(charDirForSpec(charSpec), spec, mesh, id) &&
             !mesh.empty()) {
             spec = mesh;
-            std::printf("[weapons] %s %s defaults to item %03d (%s)\n", label.c_str(),
-                        charSpec.c_str(), id, mesh.c_str());
+            std::printf("[weapons] %s %s: item %03d (%s)\n", label.c_str(),
+                        gameplay::comboSlotLabel(
+                            character, gameplay::weaponSlotForItem(character, id))
+                            .c_str(),
+                        id, mesh.c_str());
         } else {
             std::printf("[weapons] %s (%s): no roster weapon, bare\n", label.c_str(),
                         charSpec.c_str());
@@ -1069,21 +1074,16 @@ static void attachFighterWeapon(xm::Scene& scene, const std::string& label,
 
 // The move table lives next to the rig's own model file: "<dir>/<char>[<costume>]/NN.X"
 // loads alongside "<dir>/<char>/NN.dat" (the .dat is always in the unsuffixed
-// directory and names the .X; see loadCharacter). Derives the second path from the
-// first, or "" when the rig source has no usable form.
-static std::string movesPathForRig(const std::string& rigSource) {
+// directory and names the .X; see loadCharacter). Splits the rig source into the
+// parent dir and the costume-stripped character dir; the .dat does not carry the
+// _B.._F costume suffix (jump table at 0x41ef86).
+static void splitRigDir(const std::string& rigSource, std::string& parent,
+                        std::string& base) {
     const size_t slash = rigSource.find_last_of('/');
     const std::string dir = slash == std::string::npos ? "" : rigSource.substr(0, slash);
-    const std::string file =
-        slash == std::string::npos ? rigSource : rigSource.substr(slash + 1);
-    const size_t dot = file.find_last_of('.');
-    const std::string stem = dot == std::string::npos ? file : file.substr(0, dot);
-    if (stem.empty()) return "";
     const size_t dslash = dir.find_last_of('/');
-    const std::string parent = dslash == std::string::npos ? "" : dir.substr(0, dslash);
-    std::string base = dslash == std::string::npos ? dir : dir.substr(dslash + 1);
-    // Costume directories carry a _B.._F suffix (jump table at 0x41ef86); the .dat
-    // does not.
+    parent = dslash == std::string::npos ? "" : dir.substr(0, dslash);
+    base = dslash == std::string::npos ? dir : dir.substr(dslash + 1);
     static const char* kSuffix[5] = {"_B", "_C", "_D", "_E", "_F"};
     for (const char* s : kSuffix) {
         const size_t n = std::strlen(s);
@@ -1092,15 +1092,45 @@ static std::string movesPathForRig(const std::string& rigSource) {
             break;
         }
     }
+}
+
+// Legacy rig-file path: the NN of the rig's own model file. Only used when no
+// weapon slot is bound; the slot-indexed path below is the joined one.
+static std::string movesPathForRig(const std::string& rigSource) {
+    const size_t slash = rigSource.find_last_of('/');
+    const std::string file =
+        slash == std::string::npos ? rigSource : rigSource.substr(slash + 1);
+    const size_t dot = file.find_last_of('.');
+    const std::string stem = dot == std::string::npos ? file : file.substr(0, dot);
+    if (stem.empty()) return "";
+    std::string parent, base;
+    splitRigDir(rigSource, parent, base);
     if (base.empty()) return "";
     return (parent.empty() ? base : parent + "/" + base) + "/" + stem + ".dat";
 }
 
-// Loads and parses the rig's data/<char>/NN.dat into app.moveDefs[fighter].
-// Soft failure like the bullet parameters (unlike the weapon definition): without
-// a table the fighter keeps the legacy shared swing, and the log says so.
-static bool loadCharacterMoves(App& app, int fighter, const std::string& rigSource) {
-    const std::string path = movesPathForRig(rigSource);
+// Joined path: NN IS the weapon slot (each NN.dat carries its weapon id at file
+// offset 0x114, agreeing with kWeaponIds 46/46). This is the one the battles use
+// whenever the fighter's weapon is known.
+static std::string movesPathForSlot(const std::string& rigSource, int slot) {
+    if (slot < 0) return "";
+    std::string parent, base;
+    splitRigDir(rigSource, parent, base);
+    if (base.empty()) return "";
+    char nn[8];
+    std::snprintf(nn, sizeof(nn), "%02d.dat", slot);
+    return (parent.empty() ? base : parent + "/" + base) + "/" + nn;
+}
+
+// Loads and parses the fighter's data/<char>/NN.dat into app.moveDefs[fighter]:
+// the weapon slot's file when the slot is known (expectedId is that weapon's
+// item id, verified against the file's own 0x114 field), else the rig's own NN
+// file. Soft failure like the bullet parameters (unlike the weapon definition):
+// without a table the fighter keeps the legacy shared swing, and the log says so.
+static bool loadCharacterMoves(App& app, int fighter, const std::string& rigSource,
+                               int slot, int expectedId) {
+    std::string path = movesPathForSlot(rigSource, slot);
+    if (path.empty()) path = movesPathForRig(rigSource);
     if (path.empty()) return false;
     std::vector<uint8_t> bytes;
     if (!fnd::assets::assetSource().read(path, bytes)) {
@@ -1115,6 +1145,19 @@ static bool loadCharacterMoves(App& app, int fighter, const std::string& rigSour
                     path.c_str(), parseError.c_str());
         return false;
     }
+    // The file identifies its own weapon (0x114); a mismatch against the bound
+    // weapon means the NN↔weapon join broke, and the log must say so loudly.
+    std::string parent, base;
+    splitRigDir(rigSource, parent, base);
+    const int character = gameplay::characterIndexForDir(base);
+    if (expectedId > 0 && moves->weapon_id() != expectedId)
+        std::printf("[moves] fighter %d: %s carries weapon %d, expected %d\n", fighter,
+                    path.c_str(), moves->weapon_id(), expectedId);
+    const std::string combo =
+        (character >= 0 && slot >= 0)
+            ? " (" + gameplay::comboSlotLabel(character, slot) + ")" : "";
+    std::printf("[moves] fighter %d%s: %s (%d moves)\n", fighter, combo.c_str(),
+                path.c_str(), moves->count());
     if (static_cast<int>(app.moveDefs.size()) <= fighter)
         app.moveDefs.resize(static_cast<size_t>(fighter) + 1);
     app.moveDefs[static_cast<size_t>(fighter)] = std::move(moves);
@@ -1271,10 +1314,20 @@ static bool initMatch(App& app) {
         models[i] = &app.scene.models[rigs[i]].model;
         anims[i] = &app.controllers[rigs[i]];
         app.matchRig[i] = rigs[i];
-        // Each fighter fights with its own rig's move table (phase → set indices
-        // and the 300-family hit records, issue #26), on both the frontend and
-        // the standalone paths. A missing table keeps the legacy shared swing.
-        if (loadCharacterMoves(app, i, app.scene.models[rigs[i]].source) &&
+        // Each fighter fights with its weapon slot's move table (NN = slot, id at
+        // file 0x114 — not the rig's costume variant), on both the frontend and
+        // the standalone paths. Without a bound weapon the rig's own NN file
+        // stands in; a missing table keeps the legacy shared swing.
+        const std::string& rigSource = app.scene.models[rigs[i]].source;
+        std::string parent, base;
+        splitRigDir(rigSource, parent, base);
+        int slot = -1, expectedId = -1;
+        if (config.weapon[i]) {
+            expectedId = config.weapon[i]->id;
+            slot = gameplay::weaponSlotForItem(gameplay::characterIndexForDir(base),
+                                               expectedId);
+        }
+        if (loadCharacterMoves(app, i, rigSource, slot, expectedId) &&
             i < static_cast<int>(app.moveDefs.size()) && app.moveDefs[i])
             config.moves[i] = app.moveDefs[i].get();
     }

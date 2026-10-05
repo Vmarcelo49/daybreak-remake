@@ -200,6 +200,28 @@ inline constexpr int kWeaponIds[kCharacterCount][kWeaponSlots] = {
     {9, 23, 39},  {10, 24, 40}, {13, 26, 43},  {14, 25, 44},
     {15, 27, 45}, {16, 28, 46}, {31, 32, 0},  {29, 30, 0},
 };
+// Weapon slot holding an item id in a character's row, or -1. The file-level
+// proof: every data/<char>/NN.dat carries its weapon id at file offset 0x114
+// (FUN_0041e180.c:99-106 reads it on to FUN_00433eb0), NN is the weapon slot,
+// and all 46 files agree with this table exactly.
+inline int weaponSlotForItem(int character, int itemId) {
+    if (character < 0 || character >= kCharacterCount || itemId <= 0) return -1;
+    for (int w = 0; w < kWeaponSlots; ++w)
+        if (kWeaponIds[character][w] == itemId) return w;
+    return -1;
+}
+// "Rena 1": select-screen style combo label — capitalized roster name + 1-based
+// weapon slot (the ▲▼ order, = .dat index order, ASSET-CATALOG §3.2). Logs and
+// test messages name combos with both halves, never a bare character.
+inline std::string comboSlotLabel(int character, int slot) {
+    if (character < 0 || character >= kCharacterCount || slot < 0 ||
+        slot >= kWeaponSlots)
+        return "?";
+    std::string name = kCharacterDirs[character];
+    if (!name.empty() && 'a' <= name[0] && name[0] <= 'z')
+        name[0] = static_cast<char>(name[0] - ('a' - 'A'));
+    return name + " " + std::to_string(slot + 1);
+}
 // Legal weapon count for a character index: 2 for the last two, 3 otherwise.
 inline int weaponCountForCharacter(int character) {
     if (character < 0 || character >= kCharacterCount) return 0;

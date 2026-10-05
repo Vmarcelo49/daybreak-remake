@@ -8,7 +8,10 @@
 // FILE LAYOUT, in FUN_0041e180's own read order:
 //   u32  tag                (:61)
 //   260-byte model path block (:62, 0x104)
-//   u32  x6                 (:99-104) — +0x324,+0x328,+0x32C,+0x330 plus two locals
+//   u32  x6                 (:99-104) — +0x324,+0x328,+0x32C,+0x330 plus two locals.
+//     Index 3 of the six (file offset 0x114) is the table's own WEAPON ID, read
+//     on to the item loader (:104 → FUN_00433eb0): NN is the weapon slot, and all
+//     46 shipped files agree with kWeaponIds exactly (exposed as weapon_id()).
 //   u32  moveCount          (:106, local_14)
 //   moveCount x {
 //     u32  moveId           (:109)  — indexes player+0x880 + id*0x1C (FUN_00421080:15)
@@ -136,6 +139,10 @@ public:
     int  count() const { return m_count; }
     const CharacterMove* find(int moveId) const;
     bool has(int moveId) const { return find(moveId) != nullptr; }
+    // The table's own weapon id (header dword 3, file offset 0x114): NN is the
+    // weapon slot and the id agrees with kWeaponIds in all 46 shipped files.
+    // 0 when unloaded. Lets callers check they joined the right combo.
+    int  weapon_id() const { return m_weaponId; }
     int  cancel_window(int moveId) const;   // record +0x04: a CANCEL-WINDOW threshold,
                                            // NOT a duration; 0 when the move is absent
     // First-phase set index for a move, or -1 when the move is absent or phaseless —
@@ -148,6 +155,7 @@ private:
     void release() noexcept;
     CharacterMove m_moves[kMaxMoves]{};
     int           m_count = 0;
+    int           m_weaponId = 0;   // header dword 3 (file offset 0x114)
     bool          m_loaded = false;
 };
 

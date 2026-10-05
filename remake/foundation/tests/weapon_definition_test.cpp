@@ -749,6 +749,31 @@ void testRepresentativeFamilies(const fs::path& install) {
 
 }  // namespace
 
+void testRosterLabels() {
+    section("device-free: roster index, weapon slot, combo labels (AGENTS.md rule 7)");
+    checkInt(0, gameplay::characterIndexForDir("rena"), "rena is roster index 0");
+    checkInt(2, gameplay::characterIndexForDir("keiichi"), "keiichi is roster index 2");
+    checkInt(15, gameplay::characterIndexForDir("natumi"), "natumi is roster index 15");
+    checkInt(-1, gameplay::characterIndexForDir("bogus"), "an unknown dir maps nowhere");
+    checkInt(-1, gameplay::characterIndexForDir(""), "an empty dir maps nowhere");
+    // Slot is the inverse of the kWeaponIds row: rena {1,3,33}, keiichi {5,18,34}.
+    checkInt(0, gameplay::weaponSlotForItem(0, 1), "rena item 1 is slot 0");
+    checkInt(1, gameplay::weaponSlotForItem(0, 3), "rena item 3 is slot 1");
+    checkInt(2, gameplay::weaponSlotForItem(0, 33), "rena item 33 is slot 2");
+    checkInt(1, gameplay::weaponSlotForItem(2, 18), "keiichi item 18 is slot 1");
+    checkInt(-1, gameplay::weaponSlotForItem(0, 18), "keiichi's item is no rena slot");
+    checkInt(-1, gameplay::weaponSlotForItem(0, 0), "the sentinel 0 is no slot");
+    checkInt(-1, gameplay::weaponSlotForItem(-1, 1), "no character means no slot");
+    checkInt(-1, gameplay::weaponSlotForItem(99, 1), "a wild index means no slot");
+    // Combo labels: 1-based select-screen slots, both halves always named.
+    check(gameplay::comboSlotLabel(0, 0) == "Rena 1", "rena slot 0 labels Rena 1");
+    check(gameplay::comboSlotLabel(2, 1) == "Keiichi 2",
+          "keiichi slot 1 labels Keiichi 2 (his Invincible Iron)");
+    check(gameplay::comboSlotLabel(15, 1) == "Natumi 2", "natumi slot 1 labels Natumi 2");
+    check(gameplay::comboSlotLabel(-1, 0) == "?", "no character labels ?");
+    check(gameplay::comboSlotLabel(0, 3) == "?", "no fourth slot labels ?");
+}
+
 int main(int argc, char** argv) {
     std::printf("WEAPON_DEFINITION_TEST\n");
     const fs::path install = findInstall(argc, argv);
@@ -757,6 +782,7 @@ int main(int argc, char** argv) {
     testHitstunIsPerWeapon();
     testUnrecoveredFieldsStayShared();
     testWeaponDrivesFighter();
+    testRosterLabels();
     testInventory(install);
     testRepresentativeFamilies(install);
     testEverySelectionSmoke(install);

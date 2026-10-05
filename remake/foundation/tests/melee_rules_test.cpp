@@ -875,6 +875,13 @@ void testEveryComboRuns(const fs::path& install) {
             std::snprintf(nnname, sizeof(nnname), "%02d.dat", nn);
             gameplay::CharacterMoves moves;
             if (!load_moves(install, dir, nnname, moves)) continue;  // e.g. hanyu 02
+            // The file identifies its own weapon (0x114): the NN number IS the
+            // slot, so the parsed id must equal this row's id for that slot.
+            if (moves.weapon_id() != gameplay::kWeaponIds[c][nn]) {
+                std::printf("  JOIN BREAK: %s/%s weapon_id %d != %d\n", dir, nnname,
+                            moves.weapon_id(), gameplay::kWeaponIds[c][nn]);
+                check(false, "every NN.dat carries its own slot's weapon id");
+            }
             for (int w = 0; w < gameplay::weaponCountForCharacter(c); ++w) {
                 const int id = gameplay::kWeaponIds[c][w];
                 gameplay::WeaponDefinition weapon;
@@ -922,10 +929,13 @@ void testEveryComboRuns(const fs::path& install) {
                     f1.hp() >= 0 && f1.hp() <= f1.max_hp() &&
                     f0.main_frac() >= 0.0f && f0.main_frac() <= 1.0f &&
                     f0.charge_frac() >= 0.0f && f0.charge_frac() <= 1.0f;
-                if (!sane)
+                if (!sane) {
+                    std::printf("  INSANE: %s with item %03d\n",
+                                gameplay::comboSlotLabel(c, w).c_str(), id);
                     check(false, "a combo bout stays within sane state");
-                else
+                } else {
                     ++ran;
+                }
             }
         }
     }
