@@ -3,17 +3,54 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <unordered_map>
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "assets/asset_source.h"
 #include "shaders/model_wgsl.h"
 
 namespace render {
 namespace {
 
 WGPUStringView sv(const char* s) { return WGPUStringView{s, WGPU_STRLEN}; }
+
+// The shipped toon ramp (issue #21). FUN_00650410:19 asks for "data/directx/toon.bmp"
+// (the exe's own lowercase spelling) and the archives ship the .cnv conversion, which is
+// what the extracted tree carries too — so both spellings are probed through
+// AssetSource::resolve(), the case-folding lookup that keeps a case-insensitive bundle
+// source from loading one file twice.
+constexpr const char* kToonRampCandidates[] = {"data/directX/toon.cnv", "data/directx/toon.cnv"};
+
+// Decodes the ramp through the foundation's one CNV decoder. Returns false with a reason
+// rather than throwing: a build without the game data must still run.
+bool loadToonRamp(xm::CnvImage& out, std::string& why) {
+    std::vector<std::string> candidates;
+    for (const char* name : kToonRampCandidates) candidates.emplace_back(name);
+    const std::string path = fnd::assets::assetSource().resolve(candidates);
+    if (path.empty()) {
+        why = "no " + candidates[0] + " in any open bundle or on the filesystem";
+        return false;
+    }
+    std::vector<uint8_t> bytes;
+    if (!fnd::assets::assetSource().read(path, bytes)) {
+        why = "cannot read " + path;
+        return false;
+    }
+    try {
+        out = xm::decodeCnvImage(bytes.data(), bytes.size());
+    } catch (const std::exception& e) {
+        why = path + ": " + e.what();
+        return false;
+    }
+    if (out.empty()) {
+        why = path + ": decoded to no pixels";
+        return false;
+    }
+    return true;
+}
 
 // Baked shadow decals are identified by name, exactly as the DX9 fix does: the
 // "shadow*" family plus the 影 (kage) names the stages use for 校舎影02 / 手すり影 /
@@ -132,13 +169,24 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
         return false;
     }
 
-    // group 0: camera. group 1: draw + palette. group 2: texture + sampler. The draw
-    // uniform is bound with a dynamic offset, so one buffer serves every draw.
-    WGPUBindGroupLayoutEntry cameraEntry = {};
-    cameraEntry.binding = 0;
-    cameraEntry.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
-    cameraEntry.buffer.type = WGPUBufferBindingType_Uniform;
-    cameraEntry.buffer.minBindingSize = sizeof(xm::CameraUniform);
+    // group 0: camera + the toon ramp. group 1: draw + palette. group 2: texture + sampler.
+    // The draw uniform is bound with a dynamic offset, so one buffer serves every draw.
+    WGPUBindGroupLayoutEntry cameraEntries[3] = {};
+    cameraEntries[0].binding = 0;
+    cameraEntries[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+    cameraEntries[0].buffer.type = WGPUBufferBindingType_Uniform;
+    cameraEntries[0].buffer.minBindingSize = sizeof(xm::CameraUniform);
+    // The toon ramp (issue #21) rides the camera group: one scene-wide image, like the
+    // light, not a per-material texture. It is bound in every frame — the shader samples
+    // it unconditionally (WGSL allows textureSample only in uniform control flow) — so
+    // the group is complete whether or not the toggle is on.
+    cameraEntries[1].binding = 1;
+    cameraEntries[1].visibility = WGPUShaderStage_Fragment;
+    cameraEntries[1].texture.sampleType = WGPUTextureSampleType_Float;
+    cameraEntries[1].texture.viewDimension = WGPUTextureViewDimension_2D;
+    cameraEntries[2].binding = 2;
+    cameraEntries[2].visibility = WGPUShaderStage_Fragment;
+    cameraEntries[2].sampler.type = WGPUSamplerBindingType_Filtering;
 
     WGPUBindGroupLayoutEntry drawEntries[2] = {};
     drawEntries[0].binding = 0;
@@ -160,8 +208,8 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
     textureEntries[1].sampler.type = WGPUSamplerBindingType_Filtering;
 
     WGPUBindGroupLayoutDescriptor bglDesc = {};
-    bglDesc.entryCount = 1;
-    bglDesc.entries = &cameraEntry;
+    bglDesc.entryCount = 3;
+    bglDesc.entries = cameraEntries;
     bindGroupLayouts_[0] = wgpuDeviceCreateBindGroupLayout(device_, &bglDesc);
     bglDesc.entryCount = 2;
     bglDesc.entries = drawEntries;
@@ -187,6 +235,20 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
     sd.maxAnisotropy = 1;
     sampler_ = wgpuDeviceCreateSampler(device_, &sd);
 
+    // The toon ramp's own sampler (issue #21): clamp, because u = N.L = 1 has to read the
+    // bright end of the bitmap and WRAP would blend it with the dark end there. Filtering
+    // stays LINEAR, the D3D9 default the original's sampler 0 carries, which suits the
+    // shipped 64-wide gradient; the ramp has one level, so the mip filter never runs.
+    WGPUSamplerDescriptor rsd = {};
+    rsd.addressModeU = rsd.addressModeV = rsd.addressModeW = WGPUAddressMode_ClampToEdge;
+    rsd.magFilter = WGPUFilterMode_Linear;
+    rsd.minFilter = WGPUFilterMode_Linear;
+    rsd.mipmapFilter = WGPUMipmapFilterMode_Linear;
+    rsd.lodMinClamp = 0.f;
+    rsd.lodMaxClamp = 32.f;
+    rsd.maxAnisotropy = 1;
+    toonRampSampler_ = wgpuDeviceCreateSampler(device_, &rsd);
+
     // The untextured fallback: binds where a material has no resolvable texture, so
     // the shader's unconditional sample stays valid.
     const uint32_t white = 0xffffffffu;
@@ -209,23 +271,65 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
         whiteView_ = wgpuTextureCreateView(whiteTex_, nullptr);
     }
 
+    // The toon ramp (issue #21), decoded through the foundation's one CNV path and
+    // uploaded once: it is a 64x64 RGBA8 bitmap with no mip chain, because the original
+    // creates it from that single file (FUN_00650410:19) and never generates levels. A
+    // missing or undecodable ramp is a warning, not a failure: the toggle stays inert
+    // (toonRampReady_ false) and the frame is the pre-#21 one, never a constant ramp
+    // standing in for the shipped bitmap.
+    xm::CnvImage ramp;
+    std::string rampWhy;
+    if (loadToonRamp(ramp, rampWhy)) {
+        WGPUTextureDescriptor rtd = {};
+        rtd.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+        rtd.dimension = WGPUTextureDimension_2D;
+        rtd.size = WGPUExtent3D{ramp.width, ramp.height, 1};
+        rtd.format = WGPUTextureFormat_RGBA8Unorm;
+        rtd.mipLevelCount = 1;
+        rtd.sampleCount = 1;
+        toonRampTex_ = wgpuDeviceCreateTexture(device_, &rtd);
+        if (toonRampTex_) {
+            WGPUTexelCopyTextureInfo dst = {};
+            dst.texture = toonRampTex_;
+            dst.aspect = WGPUTextureAspect_All;
+            WGPUTexelCopyBufferLayout layout = {};
+            layout.bytesPerRow = ramp.width * 4;
+            layout.rowsPerImage = ramp.height;
+            wgpuQueueWriteTexture(queue_, &dst, ramp.rgba.data(), ramp.rgba.size(), &layout,
+                                  &rtd.size);
+            toonRampView_ = wgpuTextureCreateView(toonRampTex_, nullptr);
+        }
+        if (!toonRampView_) rampWhy = "ramp texture creation failed";
+        toonRampReady_ = toonRampView_ != nullptr;
+    }
+    if (!toonRampReady_) {
+        std::fprintf(stderr, "[render] toon ramp unavailable (%s): toon rendering stays off\n",
+                     rampWhy.c_str());
+        toonRampView_ = whiteView_;   // the binding still has to be valid
+    }
+
     cameraBuffer_ = gpu::createBuffer(device_, sizeof(xm::CameraUniform),
                                       WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst, nullptr);
 
     if (!bindGroupLayouts_[0] || !bindGroupLayouts_[1] || !bindGroupLayouts_[2] ||
-        !pipelineLayout_ || !sampler_ || !whiteView_ || !cameraBuffer_) {
+        !pipelineLayout_ || !sampler_ || !whiteView_ || !cameraBuffer_ || !toonRampSampler_ ||
+        !toonRampView_) {
         error = "renderer setup failed (bind group layout, sampler or buffer)";
         return false;
     }
 
-    WGPUBindGroupEntry camEntry = {};
-    camEntry.binding = 0;
-    camEntry.buffer = cameraBuffer_;
-    camEntry.size = sizeof(xm::CameraUniform);
+    WGPUBindGroupEntry camEntries[3] = {};
+    camEntries[0].binding = 0;
+    camEntries[0].buffer = cameraBuffer_;
+    camEntries[0].size = sizeof(xm::CameraUniform);
+    camEntries[1].binding = 1;
+    camEntries[1].textureView = toonRampView_;
+    camEntries[2].binding = 2;
+    camEntries[2].sampler = toonRampSampler_;
     WGPUBindGroupDescriptor bgDesc = {};
     bgDesc.layout = bindGroupLayouts_[0];
-    bgDesc.entryCount = 1;
-    bgDesc.entries = &camEntry;
+    bgDesc.entryCount = 3;
+    bgDesc.entries = camEntries;
     cameraGroup_ = wgpuDeviceCreateBindGroup(device_, &bgDesc);
     if (!cameraGroup_) {
         error = "camera bind group creation failed";
@@ -277,6 +381,15 @@ void SceneRenderer::shutdown() {
     depthTex_ = nullptr;
     depthWidth_ = depthHeight_ = 0;
 
+    // The ramp first: toonRampView_ may be an alias of whiteView_ (no game data), so the
+    // alias is only recognisable while both pointers are still live.
+    if (toonRampView_ && toonRampView_ != whiteView_) wgpuTextureViewRelease(toonRampView_);
+    if (toonRampTex_) wgpuTextureRelease(toonRampTex_);
+    toonRampView_ = nullptr;
+    toonRampTex_ = nullptr;
+    toonRampReady_ = false;
+    if (toonRampSampler_) wgpuSamplerRelease(toonRampSampler_);
+    toonRampSampler_ = nullptr;
     if (whiteView_) wgpuTextureViewRelease(whiteView_);
     if (whiteTex_) wgpuTextureRelease(whiteTex_);
     whiteView_ = nullptr;
@@ -479,6 +592,14 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                     ++stats_.untextured;
                 }
                 d.pass = pass;
+                // The original's toon technique covers the per-character draw
+                // (FUN_006396f0:126-140) and the object material path FUN_005f60b0:121-126,
+                // which draws a fighter's body and weapon together — so the port's
+                // character and weapon models are the draws the ramp may replace, and the
+                // stage keeps its fixed-function lighting. PORT RULE (issue #21): the role
+                // is the port's stand-in for "drawn by the toon technique"; the original
+                // selects it with a technique switch, not a material term.
+                d.toon = (sm.role == "character" || sm.role == "weapon");
                 // Diffuse rides baseColor the way D3DX feeds faceColor to the pipeline;
                 // the renderer used to shade everything white. Observed tinted materials
                 // all live in non-drawn collision meshes, so no capture changes from
@@ -889,7 +1010,12 @@ void SceneRenderer::fillDrawData(const glm::vec3& eye, bool haveEye, size_t firs
             }
         }
         du.paletteOffset = draws_[i].paletteOffset;
-        du.flags = draws_[i].flags | (appearance_.unlit ? xm::kDrawUnlit : 0u);
+        // The toon bit is decided here, per frame, from the appearance switch: the toggle
+        // is a draw-time state change with no re-upload behind it. A scene with no ramp
+        // (no game data) never sets it, so ON degrades to OFF rather than to an invented
+        // curve.
+        du.flags = draws_[i].flags | (appearance_.unlit ? xm::kDrawUnlit : 0u) |
+                   (appearance_.toon && draws_[i].toon && toonRampReady_ ? xm::kDrawToon : 0u);
         du.baseColor = draws_[i].baseColor;
         std::memcpy(dst + (i - first) * xm::kDrawStride, &du, sizeof du);
     }
@@ -905,14 +1031,21 @@ bool SceneRenderer::ensureViewCameras(std::string& error) {
             error = "view camera buffer creation failed";
             return false;
         }
-        WGPUBindGroupEntry entry = {};
-        entry.binding = 0;
-        entry.buffer = viewCameraBuffers_[i];
-        entry.size = sizeof(xm::CameraUniform);
+        WGPUBindGroupEntry entries[3] = {};
+        entries[0].binding = 0;
+        entries[0].buffer = viewCameraBuffers_[i];
+        entries[0].size = sizeof(xm::CameraUniform);
+        // Every view camera group carries the same scene-wide toon ramp as the
+        // single-view one: the split-screen path rebinds group 0 per view, and a group
+        // missing these entries is a layout mismatch the whole frame is rejected for.
+        entries[1].binding = 1;
+        entries[1].textureView = toonRampView_;
+        entries[2].binding = 2;
+        entries[2].sampler = toonRampSampler_;
         WGPUBindGroupDescriptor desc = {};
         desc.layout = bindGroupLayouts_[0];
-        desc.entryCount = 1;
-        desc.entries = &entry;
+        desc.entryCount = 3;
+        desc.entries = entries;
         viewCameraGroups_[i] = wgpuDeviceCreateBindGroup(device_, &desc);
         if (!viewCameraGroups_[i]) {
             error = "view camera bind group creation failed";

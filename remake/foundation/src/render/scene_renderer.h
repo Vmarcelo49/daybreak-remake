@@ -214,6 +214,10 @@ inline constexpr size_t kMaxViewCameras = 4;
 struct Appearance {
     bool fog   = true;   // linear fog from StageEnv (env.dat)
     bool unlit = false;  // skip the lambert term: raw texture/vertex colour
+    // Toon ramp (issue #21): read the shipped ramp at the diffuse term on the draws the
+    // original's toon technique covers (characters and their weapons). Off by default,
+    // and with it off the lighting arithmetic is the pre-existing one bit for bit.
+    bool toon  = false;
 };
 
 struct Options {
@@ -362,6 +366,9 @@ private:
         // True for an extra draw added by setEffectInstances: its matrix comes from the
         // instance list, so the per-model upload must not overwrite it.
         bool       instance = false;
+        // This draw is one the original's toon technique covers (character or weapon):
+        // the appearance switch turns it into kDrawToon at uniform-fill time.
+        bool       toon = false;
     };
 
     // What updatePose() needs to rebuild one mesh's slice of the palette storage.
@@ -421,6 +428,15 @@ private:
 
     WGPUTexture     whiteTex_ = nullptr;
     WGPUTextureView whiteView_ = nullptr;
+    // The toon ramp (issue #21), uploaded once at init through the same bundle-first
+    // read + xm::decodeCnvImage the texture cache uses. `toonRampView_` falls back to
+    // whiteView_ when the game data has no ramp, and `toonRampReady_` stays false so the
+    // toon flag is never set: without the shipped bitmap the toggle has nothing honest
+    // to sample, and ON must not become a constant standing in for it.
+    WGPUTexture     toonRampTex_ = nullptr;
+    WGPUTextureView toonRampView_ = nullptr;
+    WGPUSampler     toonRampSampler_ = nullptr;
+    bool            toonRampReady_ = false;
     WGPUBindGroup   cameraGroup_ = nullptr;
     WGPUBindGroup   drawGroup_ = nullptr;                    // group 1, dynamic offset
     std::vector<WGPUBindGroup> textureGroups_;               // [0] = white, then one per texture

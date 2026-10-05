@@ -5,6 +5,8 @@
 //
 // Bind groups, matching the contract documented in xmodel.h:
 //   group 0, binding 0   Camera uniform   (xm::CameraUniform)
+//   group 0, binding 1   toon ramp        (the shipped data/directX/toon.bmp, issue #21)
+//   group 0, binding 2   ramp sampler     (clamp, linear)
 //   group 1, binding 0   Draw uniform     (xm::DrawUniform, bound with a dynamic offset)
 //   group 1, binding 1   palette storage  (one mat4x4<f32> per bone, see buildPalette)
 //   group 2, binding 0   texture_2d<f32>  (1x1 white when the draw is untextured)
@@ -41,6 +43,8 @@ struct Draw {
 };
 
 @group(0) @binding(0) var<uniform> cam : Camera;
+@group(0) @binding(1) var toonRampTex : texture_2d<f32>;
+@group(0) @binding(2) var toonRampSampler : sampler;
 @group(1) @binding(0) var<uniform> draw : Draw;
 @group(1) @binding(1) var<storage, read> palette : array<mat4x4<f32>>;
 @group(2) @binding(0) var albedoTex : texture_2d<f32>;
@@ -49,6 +53,7 @@ struct Draw {
 const FLAG_TEXTURED   : u32 = 1u;
 const FLAG_UNLIT      : u32 = 2u;
 const FLAG_ALPHA_TEST : u32 = 4u;
+const FLAG_TOON       : u32 = 8u;
 
 struct VSOut {
   @builtin(position) clip   : vec4<f32>,
@@ -112,9 +117,18 @@ fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
   }
 
   var lit = vec3<f32>(1.0, 1.0, 1.0);
+  // Both lighting inputs and the toon ramp are computed before the branch: WGSL allows
+  // textureSample only where derivatives are defined (the same reason the albedo sample
+  // sits above the alpha test), and the values cost nothing when the draw is unlit.
+  let n = normalize(in.normal);
+  let l = normalize(-cam.lightDir.xyz);
+  let ndl = saturate(dot(n, l));
+  // Toon ramp (issue #21). The shipped data/directX/toon.bmp read at the diffuse term:
+  // u = N.L, v = 0.5 (the bitmap is constant down its columns), clamped by the sampler
+  // so N.L = 1 reads the bright end instead of wrapping to the dark one. The ramp's
+  // band structure comes from the bitmap alone — no constant stands in for it.
+  let ramp = textureSample(toonRampTex, toonRampSampler, vec2<f32>(ndl, 0.5)).r;
   if ((draw.flags & FLAG_UNLIT) == 0u) {
-    let n = normalize(in.normal);
-    let l = normalize(-cam.lightDir.xyz);
     // Fixed-function D3D9 lighting, the equation the reference's state block selects
     // (remake/src/core/scenes.cpp:745-769 sets LIGHTING TRUE, D3DRS_AMBIENT 0.35 and
     // light 0 = DIRECTIONAL diffuse 0.85 / ambient 0.20 / dir (0.5,-1,0.5)):
@@ -135,9 +149,13 @@ fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
     //
     // saturate, not abs: D3D clamps N.L at 0, so a surface facing away from the light
     // keeps the ambient term alone instead of being lit at full strength.
-    let ndl = saturate(dot(n, l));
+    //
+    // The toon flag swaps that saturate(N.L) for the ramp sample and nothing else: the
+    // ambient term stays linear, which is what makes the two states differ only in the
+    // diffuse banding the ramp carries.
+    let diffuse = select(ndl, ramp, (draw.flags & FLAG_TOON) != 0u);
     lit = draw.baseColor.rgb * cam.ambient.rgb
-        + in.color.rgb * cam.lightColor.rgb * ndl;
+        + in.color.rgb * cam.lightColor.rgb * diffuse;
   }
 
   // Emissive, specular and power stay parsed-but-unused (R4): the fixed-function

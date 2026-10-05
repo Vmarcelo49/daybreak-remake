@@ -281,6 +281,8 @@ Model loadFile(const std::string& path, const LoadOptions& opt = {});
 //
 // Bind group contract expected by model.wgsl (the shader shipped next to this header):
 //   group 0, binding 0  uniform Camera { mat4 viewProj; vec4 lightDir; vec4 lightColor; vec4 ambient; }
+//   group 0, binding 1  texture_2d<f32>  (the toon ramp, issue #21)
+//   group 0, binding 2  sampler
 //   group 1, binding 0  uniform Draw   (dynamic offset; see DrawUniform below)
 //   group 1, binding 1  storage readonly array<mat4x4<f32>, N>  (bone palettes)
 //   group 2, binding 0  texture_2d<f32>
@@ -309,6 +311,11 @@ struct DrawUniform {
 inline constexpr uint32_t kDrawTextured  = 1u << 0;   // sample group 2
 inline constexpr uint32_t kDrawUnlit     = 1u << 1;   // skip the lambert term
 inline constexpr uint32_t kDrawAlphaTest = 1u << 2;   // discard alpha < 0.5
+// Read the shipped toon ramp at the diffuse term instead of the linear N.L (issue #21).
+// Set per frame by SceneRenderer::fillDrawData from the appearance switch, so the toggle
+// needs no re-upload; with the bit clear the shader's lighting is the fixed-function term
+// bit for bit, which is what keeps the banked captures still.
+inline constexpr uint32_t kDrawToon      = 1u << 3;
 
 inline constexpr uint64_t kDrawStride = 256;          // == minUniformBufferOffsetAlignment
 

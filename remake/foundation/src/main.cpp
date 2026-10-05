@@ -128,6 +128,9 @@ struct Options {
     // attack, which is only checkable by looking at the clips side by side.
     bool        animPlayer = false;
     bool        unlit      = false;
+    // Toon rendering (issue #21): read the shipped ramp at the character draws' diffuse
+    // term. Off by default, the state every banked capture was made in.
+    bool        toon       = false;
     bool        list       = false;
     std::string screen;          // --screen=<id|name>: boot a front-end screen
     // Split-screen verification (issue #12): open this many local human views by
@@ -190,6 +193,10 @@ void usage() {
         "                     enables the state, so a fogged frame cannot match a\n"
         "                     banked reference frame (worth 0.037 RMSE)\n"
         "  --unlit            skip the lambert term\n"
+        "  --toon | --no-toon toon rendering (issue #21): the character and weapon draws\n"
+        "                     read the shipped data/directX/toon ramp at their diffuse\n"
+        "                     term instead of the linear N.L. Off by default, which is the\n"
+        "                     state every banked capture was made in\n"
         "  --list             print what was loaded and exit\n"
         "  --screen=<id|name> boot a front-end screen (title, 1, 0x01, ...) instead of\n"
         "                     an asset; --script= drives its menu and --out captures it\n"
@@ -264,6 +271,8 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--fog") o.fog = true;
         else if (a == "--no-anim") o.noAnim = true;
         else if (a == "--unlit") o.unlit = true;
+        else if (a == "--toon") o.toon = true;
+        else if (a == "--no-toon") o.toon = false;
         else if (a == "--list") o.list = true;
         else if (a == "--hud-test") o.hudTest = true;
         else if (a == "--hud-probe") { o.hudTest = true; o.hudProbe = true; }
@@ -3414,6 +3423,8 @@ bool initScene(App& app) {
     app.renderOptions.textures = !app.opts.noTextures;
     app.appearance.fog = app.opts.fog;
     app.appearance.unlit = app.opts.unlit;
+    // Toon rendering (issue #21), off unless the capture asked for it.
+    app.appearance.toon = app.opts.toon;
 
     if (!app.rendererReady && !app.renderer.init(app.ctx, app.error)) return false;
     app.rendererReady = true;
