@@ -32,7 +32,7 @@ that these screens or their audio do not exist.
 | E2 | Stage/variation and all five battle settings implemented and connected; the balloon capacity, KO/Overkill credit and timed-round rules are recovered (2026-10-05, issue #11) | Between-rounds red-capacity creep and the KO move's own respawn clock remain; see the issue #11 update below |
 | E3 | Volumes, fullscreen, native resolution selection, keyboard/gamepad rebinding and their persistence implemented (issue #19) | Three renderer controls are unavailable; browser-side persistence (IndexedDB/OPFS) is open |
 | E4 | 109-update VS transition implemented; four participants land on the original's four portrait/name slots (FUN_00411cb0) with combo + controller captions | Confirm-to-skip is a port extension; a one-member team keeps the port's centred single slot (the original always has four players) |
-| E5 | Sting, quote, voice, actual participant stats and draw handling implemented; the report draws one row per ACTIVE participant (badge, combo, KO/death/damage) and names the winning TEAM | Original earned titles and outcome-specific quote selection; missing single quotes use that character's self-pair script; the two-layer victory sting's second layer is armed at frame 60 as recovered |
+| E5 | Sting, quote, voice, actual participant stats and draw handling implemented; the report draws one row per ACTIVE participant (badge at the recovered x 200, the earned title at 300/y+32, combo and KO/death/damage) and names the winning TEAM. Issue #20 recovered the quote rule (winning pair, persona variant, outcome grade 1..4, the 16/17 single-script fallback, one of the file's several alternatives) and the earned-title chain over the per-fighter record, with the names read from the exe's own table at VA 0x6b7308 | The title chain's conditions whose fields are not recovered are SKIPPED and flagged (`[title] ... (chain reached unrecovered conditions)`): +0x20, +0x48, +0x54, +0x58, +0x5c, +0x60, +0x64, +0x68, +0x6c, +0x70, +0x74, +0x78, +0x7c/+0x80 and the damage-event pair. The original also marks a penalized panel forced/auto-ready (FUN_00409340:170-172); the port only forces the costume. With the current balance a round's damage and hit totals rarely reach the damage-heavy thresholds, so most rounds end on the chain's own fallback or a low-threshold title |
 | E6 | Reusable two-page atlas keyboard implemented and tested | Netplay host remains outside D6 scope |
 | F1 | Four menu SEs, entry/result voices and menu BGM connected | Hardware audio listening remains separate from dummy-device verification |
 | G1 | Real-asset versus and live match executed in a browser | Hardware GPU and usable browser screenshots remain unverified |
@@ -1260,15 +1260,41 @@ the next screen id, a factory for construction, tests against fakes.
 * **Sketch.** A skippable transition screen with the entry tween; portraits
   slide in and the VS animates centre.
 
-### E5. The result sequence (sting → quote → report) — PARTIAL (titles/quote selection remain open)
+### E5. The result sequence (sting → quote → report) — IMPLEMENTED (issue #20 closed the titles and the quote selection)
 
 * **Evidence.** Three beats in one screen: victory sting (`FUN_00633ca0`
   loads `P05`/`P08`), quote (`FUN_00635d40` result phase, sub-phase 0, GDI
   text), report (`result-report.webp`). The report's layout function is
   **not isolated** (plan §7 item 2, lines 1253-1256; coverage line 837).
-* **Sketch.** One screen with three states; treat the report page as new
-  work measured from the print with a pixel check, per the plan's own
-  instruction.
+* **Issue #20's recovery.**
+  * **Quote selection** (`ui/result_quote.h`, FUN_00635d40:246-353): the winning side's two
+    selections are persona-substituted (character 0 or 4 with weapon slot 2 → ids 16/17 and
+    the `data/win/%02db` art; the same gate picks the B-variant entry voice in
+    FUN_00409340:180-186), sorted into `data/scenario/win/<min>-<max>-<grade>.txt`, with the
+    grade from `min(winnerCapacity, loserBalloon) - winnerBalloon` (<30 → 3, or 4 when both
+    winners are below half HP; <50 → 2; else 1). A missing pair script falls back to the
+    single script of whichever id is 16 or 17, else 17. Files hold several VOICE/quote
+    alternatives and the original picks one at random; the port's pick is deterministic per
+    round. The 1v1 self-pair is a PORT RULE — the original always fields two per side, and all
+    16 self-pair scripts ship.
+  * **Earned titles** (`gameplay/result_title.h`, FUN_00430880 @0x430880): a 41-entry name
+    table at VA 0x6b7308 (read from the installed exe by `assets/exe_strings.h`, so the game's
+    text stays out of the repository), chosen from the fighter's own record at fighter+0xaedc.
+    The record's fields were read from their writers: capacities (FUN_00634980), the KO'd
+    selector (FUN_00635d40 writes capacity - balloon), damage dealt/taken split by the lock
+    (FUN_00639160 / FUN_00637950), hits dealt/taken split by a mutual lock and hits landed on
+    the local player's fighter (FUN_00423000 / FUN_004230e0), melee vs shot hits, and the
+    damage-event pairs. The chain has a KO'd branch and a standing branch and ends on index 26.
+  * **Session flags** (FrontendState, never persisted): the penalty flag `DAT_006cfdf1` set
+    when a player earns the penalty title (FUN_00635d40:377-380), cleared when the panel is COM
+    (FUN_0040d130:99-101), and the penalty costume table `DAT_006b72a0` (VA 0x6b72a0) that the
+    flag forces on the next selection (FUN_00409340:165-172). `DAT_006cfdfc` (a per-player
+    counter with no recovered reader) is deliberately not modelled.
+  * **Not recovered, skipped and flagged:** the record fields +0x20, +0x48, +0x54, +0x58,
+    +0x5c, +0x60, +0x64, +0x68, +0x6c, +0x70, +0x74, +0x78 and +0x7c/+0x80 (the two float
+    accumulators and the frame pair), plus the damage-event counters the port does not fill.
+    Every condition reading one is marked UNRESOLVED in `gameplay/result_title.cpp`; the chain
+    skips it and reports `resolved = false`, and the host logs the flag.
 
 ### E6. Soft keyboard — DONE as reusable widget
 

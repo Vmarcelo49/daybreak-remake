@@ -232,10 +232,11 @@ Every "ran" row printed `RESULT: ok` with real frame timings; per-target command
 and outputs are in `docs/BUILD-linux.md`, `docs/BUILD-windows.md` and
 `docs/BUILD-web.md`.
 
-Host-side tests run without a GPU (`CMakeLists.txt`): the Linux suite has 32
+Host-side tests run without a GPU (`CMakeLists.txt`): the Linux suite has 34
 tests covering geometry, raycasts, asset parsing/spawns, gameplay/economy,
 animation/lighting, caption fonts/text, HUD/menu layouts, split-screen view
-layout, the four-participant roster and screen geometry, input/rebinding and
+layout, the four-participant roster and screen geometry, the recovered result
+rules (the victory-quote plan and the earned-title chain), input/rebinding and
 frontend selection/VS/results. Asset-dependent checks skip when the install is
 unavailable. Cross (Windows) and web targets do not build the host tests.
 
@@ -291,6 +292,13 @@ New since the port landed, all verified the same way:
   device-free four-participant run possible
   (`tests/scripts/frontend-4p.txt`). See
   [`docs/SPLIT-SCREEN.md`](docs/SPLIT-SCREEN.md).
+- Result fidelity: the winning side's own pair script and voice answer the quote
+  (both winners' portraits, the persona variant for Rena/Rika with weapon slot 2,
+  the recovered 16/17 single-script fallback), and the report shows each
+  participant's earned title from the game's own 41-entry table, read out of the
+  installed exe. Titles whose conditions depend on fields this port has not
+  recovered are flagged in the log rather than guessed. See
+  `docs/ROADMAP-PENDING.md`'s E5 section.
 - Four-fighter presentation: the four selection panels are one roster that VS,
   the countdown, the battle HUD and the results all read, so a 2v2 shows four
   portraits and nameplates, four per-view HUD markers (owner/ally/enemy/locked
