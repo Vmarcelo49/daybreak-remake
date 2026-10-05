@@ -248,6 +248,10 @@ void SceneRenderer::shutdown() {
     if (drawGroup_) wgpuBindGroupRelease(drawGroup_);
     if (cameraGroup_) wgpuBindGroupRelease(cameraGroup_);
     drawGroup_ = cameraGroup_ = nullptr;
+    for (size_t i = 0; i < kMaxViewCameras; ++i) {
+        if (viewCameraGroups_[i]) wgpuBindGroupRelease(viewCameraGroups_[i]);
+        viewCameraGroups_[i] = nullptr;
+    }
 
     for (WGPUBuffer b : buffers_)
         if (b) wgpuBufferRelease(b);
@@ -262,6 +266,10 @@ void SceneRenderer::shutdown() {
     if (drawBuffer_) wgpuBufferRelease(drawBuffer_);
     if (cameraBuffer_) wgpuBufferRelease(cameraBuffer_);
     paletteBuffer_ = drawBuffer_ = cameraBuffer_ = nullptr;
+    for (WGPUBuffer& b : viewCameraBuffers_) {
+        if (b) wgpuBufferRelease(b);
+        b = nullptr;
+    }
 
     if (depthView_) wgpuTextureViewRelease(depthView_);
     if (depthTex_) wgpuTextureRelease(depthTex_);
@@ -517,7 +525,11 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
     paletteBuffer_ = gpu::createBuffer(device_, palette_.size() * sizeof(glm::mat4),
                                        WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst,
                                        palette_.data());
-    drawBuffer_ = gpu::createBuffer(device_, xm::kDrawStride * draws_.size(),
+    // One draw block per view: the split-screen pass rewrites the per-draw uniforms for
+    // each view's camera (billboard yaw is per camera), so the buffer holds kMaxViewCameras
+    // copies and the single-view path keeps using offset 0 exactly as before.
+    drawBuffer_ = gpu::createBuffer(device_, (uint64_t)xm::kDrawStride * draws_.size() *
+                                                 kMaxViewCameras,
                                     WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst, nullptr);
     if (!paletteBuffer_ || !drawBuffer_) {
         error = "uniform/storage buffer creation failed";
@@ -744,6 +756,81 @@ WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, Pass pas
 }
 
 bool SceneRenderer::render(const Target& target, std::string& error) {
+    return renderImpl(target, nullptr, error);
+}
+
+bool SceneRenderer::renderViews(const Target& target, const std::vector<ViewCamera>& views,
+                                std::string& error) {
+    if (views.size() <= 1) return renderImpl(target, nullptr, error);
+    if (views.size() > kMaxViewCameras) {
+        error = "too many views for one frame";
+        return false;
+    }
+    return renderImpl(target, &views, error);
+}
+
+// Per-draw uniforms for one camera eye. `haveEye` false keeps the historical
+// no-billboard behaviour of callers written before setEye existed.
+void SceneRenderer::fillDrawData(const glm::vec3& eye, bool haveEye, size_t first, size_t count,
+                                 uint8_t* dst) {
+    for (size_t i = first; i < first + count; ++i) {
+        xm::DrawUniform du;
+        du.model = draws_[i].model;
+        // Cylindrical billboard: yaw the card around its own (posed) center so its
+        // plane faces the camera, preserving world up. Unskinned effect meshes pose
+        // as world = model * palette[0] * pos, so folding T(C)*Ry*T(-C) into the
+        // model matrix rotates the posed card rigidly. The yaw is relative to the
+        // card's authored facing (bbYaw0): a YZ-plane card's normal starts at +X,
+        // so facing the camera needs yaw - 90°, not yaw. Overhead camera (|d| ~ 0)
+        // keeps the authored orientation instead of spinning on a singularity.
+        if (draws_[i].billboard && haveEye && draws_[i].paletteOffset < palette_.size()) {
+            const glm::mat4 fw = draws_[i].model * palette_[draws_[i].paletteOffset];
+            const glm::vec3 c = glm::vec3(fw * glm::vec4(draws_[i].bbCenter, 1.f));
+            const glm::vec2 d = glm::vec2(eye.x - c.x, eye.z - c.z);
+            if (glm::dot(d, d) > 1e-6f) {
+                const float yaw = std::atan2(d.x, d.y) - draws_[i].bbYaw0;
+                const glm::mat4 t1 = glm::translate(glm::mat4(1.f), c);
+                const glm::mat4 t0 = glm::translate(glm::mat4(1.f), -c);
+                du.model = t1 * glm::rotate(glm::mat4(1.f), yaw, glm::vec3(0.f, 1.f, 0.f)) *
+                           t0 * draws_[i].model;
+            }
+        }
+        du.paletteOffset = draws_[i].paletteOffset;
+        du.flags = draws_[i].flags | (appearance_.unlit ? xm::kDrawUnlit : 0u);
+        du.baseColor = draws_[i].baseColor;
+        std::memcpy(dst + (i - first) * xm::kDrawStride, &du, sizeof du);
+    }
+}
+
+bool SceneRenderer::ensureViewCameras(std::string& error) {
+    if (viewCameraGroups_[0]) return true;
+    for (size_t i = 0; i < kMaxViewCameras; ++i) {
+        viewCameraBuffers_[i] = gpu::createBuffer(device_, sizeof(xm::CameraUniform),
+                                                  WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst,
+                                                  nullptr);
+        if (!viewCameraBuffers_[i]) {
+            error = "view camera buffer creation failed";
+            return false;
+        }
+        WGPUBindGroupEntry entry = {};
+        entry.binding = 0;
+        entry.buffer = viewCameraBuffers_[i];
+        entry.size = sizeof(xm::CameraUniform);
+        WGPUBindGroupDescriptor desc = {};
+        desc.layout = bindGroupLayouts_[0];
+        desc.entryCount = 1;
+        desc.entries = &entry;
+        viewCameraGroups_[i] = wgpuDeviceCreateBindGroup(device_, &desc);
+        if (!viewCameraGroups_[i]) {
+            error = "view camera bind group creation failed";
+            return false;
+        }
+    }
+    return true;
+}
+
+bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamera>* views,
+                               std::string& error) {
     if (!device_ || !drawGroup_) {
         error = "renderer has no scene";
         return false;
@@ -753,6 +840,10 @@ bool SceneRenderer::render(const Target& target, std::string& error) {
         return false;
     }
     if (!ensureDepth(target.width, target.height, error)) return false;
+
+    const bool multiView = views != nullptr;
+    const size_t viewCount = multiView ? views->size() : 1;
+    if (multiView && !ensureViewCameras(error)) return false;
 
     // Camera, light and fog, in a local copy: the light is a fixed world-space key,
     // because the original has no dynamic lighting for 3D passes, only these D3D light
@@ -771,36 +862,24 @@ bool SceneRenderer::render(const Target& target, std::string& error) {
     const float ambientSum = kGlobalAmbient + kLightAmbient;
     camera.ambient = glm::vec4(ambientSum, ambientSum, ambientSum, 1.f);
     if (!appearance_.fog) camera.fogParams.z = 0.f;
-    wgpuQueueWriteBuffer(queue_, cameraBuffer_, 0, &camera, sizeof camera);
-
-    std::vector<uint8_t> drawData((size_t)xm::kDrawStride * draws_.size(), 0);
-    for (size_t i = 0; i < draws_.size(); ++i) {
-        xm::DrawUniform du;
-        du.model = draws_[i].model;
-        // Cylindrical billboard: yaw the card around its own (posed) center so its
-        // plane faces the camera, preserving world up. Unskinned effect meshes pose
-        // as world = model * palette[0] * pos, so folding T(C)*Ry*T(-C) into the
-        // model matrix rotates the posed card rigidly. The yaw is relative to the
-        // card's authored facing (bbYaw0): a YZ-plane card's normal starts at +X,
-        // so facing the camera needs yaw - 90°, not yaw. Overhead camera (|d| ~ 0)
-        // keeps the authored orientation instead of spinning on a singularity.
-        if (draws_[i].billboard && haveEye_ &&
-            draws_[i].paletteOffset < palette_.size()) {
-            const glm::mat4 fw = draws_[i].model * palette_[draws_[i].paletteOffset];
-            const glm::vec3 c = glm::vec3(fw * glm::vec4(draws_[i].bbCenter, 1.f));
-            const glm::vec2 d = glm::vec2(eye_.x - c.x, eye_.z - c.z);
-            if (glm::dot(d, d) > 1e-6f) {
-                const float yaw = std::atan2(d.x, d.y) - draws_[i].bbYaw0;
-                const glm::mat4 t1 = glm::translate(glm::mat4(1.f), c);
-                const glm::mat4 t0 = glm::translate(glm::mat4(1.f), -c);
-                du.model = t1 * glm::rotate(glm::mat4(1.f), yaw, glm::vec3(0.f, 1.f, 0.f)) *
-                           t0 * draws_[i].model;
-            }
+    if (!multiView) {
+        wgpuQueueWriteBuffer(queue_, cameraBuffer_, 0, &camera, sizeof camera);
+    } else {
+        for (size_t v = 0; v < viewCount; ++v) {
+            xm::CameraUniform viewCamera = camera;
+            viewCamera.viewProj = (*views)[v].viewProj;
+            wgpuQueueWriteBuffer(queue_, viewCameraBuffers_[v], 0, &viewCamera, sizeof viewCamera);
         }
-        du.paletteOffset = draws_[i].paletteOffset;
-        du.flags = draws_[i].flags | (appearance_.unlit ? xm::kDrawUnlit : 0u);
-        du.baseColor = draws_[i].baseColor;
-        std::memcpy(drawData.data() + i * xm::kDrawStride, &du, sizeof du);
+    }
+
+    std::vector<uint8_t> drawData((size_t)xm::kDrawStride * draws_.size() *
+                                  (multiView ? viewCount : 1), 0);
+    if (!multiView) {
+        fillDrawData(eye_, haveEye_, 0, draws_.size(), drawData.data());
+    } else {
+        for (size_t v = 0; v < viewCount; ++v)
+            fillDrawData((*views)[v].eye, true, 0, draws_.size(),
+                         drawData.data() + v * draws_.size() * xm::kDrawStride);
     }
     wgpuQueueWriteBuffer(queue_, drawBuffer_, 0, drawData.data(), drawData.size());
 
@@ -835,36 +914,52 @@ bool SceneRenderer::render(const Target& target, std::string& error) {
         error = "render pass could not be started";
         return false;
     }
-    wgpuRenderPassEncoderSetBindGroup(pass, 0, cameraGroup_, 0, nullptr);
+    if (!multiView) wgpuRenderPassEncoderSetBindGroup(pass, 0, cameraGroup_, 0, nullptr);
 
     // Pipelines bind lazily: draws are sorted by pass, so each of the at most three
     // pipelines binds once, and a scene with no decals or effects never creates
-    // those pipelines at all.
-    WGPURenderPipeline boundPipelines[3] = {nullptr, nullptr, nullptr};
-    Pass current = Pass::Opaque;
-    bool haveCurrent = false;
-    for (size_t i = 0; i < draws_.size(); ++i) {
-        const DrawItem& d = draws_[i];
-        if (!haveCurrent || d.pass != current) {
-            WGPURenderPipeline& slot = boundPipelines[(int)d.pass];
-            if (!slot && !(slot = pipelineFor(target.format, d.pass, error))) {
-                wgpuRenderPassEncoderEnd(pass);
-                wgpuRenderPassEncoderRelease(pass);
-                return false;
-            }
-            wgpuRenderPassEncoderSetPipeline(pass, slot);
-            if (d.pass == Pass::Decal) wgpuRenderPassEncoderSetStencilReference(pass, 0);
-            current = d.pass;
-            haveCurrent = true;
+    // those pipelines at all. The split-screen path sets them up again per view, because
+    // a view is a complete draw of the scene.
+    for (size_t view = 0; view < viewCount; ++view) {
+        uint32_t drawBase = 0;
+        if (multiView) {
+            const ViewportRect& rect = (*views)[view].rect;
+            if (rect.empty()) continue;
+            // Viewport and scissor to the same cell: the viewport places the projection,
+            // and the scissor is what keeps this view's fragments out of its neighbours'
+            // cells (a viewport alone does not clip in WebGPU).
+            wgpuRenderPassEncoderSetViewport(pass, rect.x, rect.y, rect.w, rect.h, 0.f, 1.f);
+            wgpuRenderPassEncoderSetScissorRect(pass, (uint32_t)rect.x, (uint32_t)rect.y,
+                                                (uint32_t)rect.w, (uint32_t)rect.h);
+            wgpuRenderPassEncoderSetBindGroup(pass, 0, viewCameraGroups_[view], 0, nullptr);
+            drawBase = (uint32_t)(view * draws_.size() * xm::kDrawStride);
         }
-        const uint32_t offset = (uint32_t)(i * xm::kDrawStride);
-        wgpuRenderPassEncoderSetBindGroup(pass, 1, drawGroup_, 1, &offset);
-        wgpuRenderPassEncoderSetBindGroup(pass, 2, textureGroups_[(size_t)(d.texture + 1)], 0,
-                                          nullptr);
-        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, d.vbuf, 0, WGPU_WHOLE_SIZE);
-        wgpuRenderPassEncoderSetIndexBuffer(pass, d.ibuf, WGPUIndexFormat_Uint32, 0,
-                                            WGPU_WHOLE_SIZE);
-        wgpuRenderPassEncoderDrawIndexed(pass, d.indexCount, 1, d.firstIndex, 0, 0);
+        WGPURenderPipeline boundPipelines[3] = {nullptr, nullptr, nullptr};
+        Pass current = Pass::Opaque;
+        bool haveCurrent = false;
+        for (size_t i = 0; i < draws_.size(); ++i) {
+            const DrawItem& d = draws_[i];
+            if (!haveCurrent || d.pass != current) {
+                WGPURenderPipeline& slot = boundPipelines[(int)d.pass];
+                if (!slot && !(slot = pipelineFor(target.format, d.pass, error))) {
+                    wgpuRenderPassEncoderEnd(pass);
+                    wgpuRenderPassEncoderRelease(pass);
+                    return false;
+                }
+                wgpuRenderPassEncoderSetPipeline(pass, slot);
+                if (d.pass == Pass::Decal) wgpuRenderPassEncoderSetStencilReference(pass, 0);
+                current = d.pass;
+                haveCurrent = true;
+            }
+            const uint32_t offset = drawBase + (uint32_t)(i * xm::kDrawStride);
+            wgpuRenderPassEncoderSetBindGroup(pass, 1, drawGroup_, 1, &offset);
+            wgpuRenderPassEncoderSetBindGroup(pass, 2, textureGroups_[(size_t)(d.texture + 1)], 0,
+                                              nullptr);
+            wgpuRenderPassEncoderSetVertexBuffer(pass, 0, d.vbuf, 0, WGPU_WHOLE_SIZE);
+            wgpuRenderPassEncoderSetIndexBuffer(pass, d.ibuf, WGPUIndexFormat_Uint32, 0,
+                                                WGPU_WHOLE_SIZE);
+            wgpuRenderPassEncoderDrawIndexed(pass, d.indexCount, 1, d.firstIndex, 0, 0);
+        }
     }
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
@@ -872,18 +967,20 @@ bool SceneRenderer::render(const Target& target, std::string& error) {
 }
 
 bool SceneRenderer::capture(uint32_t width, uint32_t height, std::vector<uint8_t>& rgba,
-                           std::string& error, UiHook uiHook, void* uiUserdata) {
-    return captureImpl(width, height, rgba, error, uiHook, uiUserdata, /*withScene=*/true);
+                           std::string& error, UiHook uiHook, void* uiUserdata,
+                           const std::vector<ViewCamera>* views) {
+    return captureImpl(width, height, rgba, error, uiHook, uiUserdata, /*withScene=*/true, views);
 }
 
 bool SceneRenderer::captureUi(uint32_t width, uint32_t height, std::vector<uint8_t>& rgba,
-                             std::string& error, UiHook uiHook, void* uiUserdata) {
-    return captureImpl(width, height, rgba, error, uiHook, uiUserdata, /*withScene=*/false);
+                             std::string& error, UiHook uiHook, void* uiUserdata,
+                             const std::vector<ViewCamera>* views) {
+    return captureImpl(width, height, rgba, error, uiHook, uiUserdata, /*withScene=*/false, views);
 }
 
 bool SceneRenderer::captureImpl(uint32_t width, uint32_t height, std::vector<uint8_t>& rgba,
                                std::string& error, UiHook uiHook, void* uiUserdata,
-                               bool withScene) {
+                               bool withScene, const std::vector<ViewCamera>* views) {
     if (!device_) {
         error = "renderer not initialized";
         return false;
@@ -912,8 +1009,9 @@ bool SceneRenderer::captureImpl(uint32_t width, uint32_t height, std::vector<uin
     target.format = WGPUTextureFormat_RGBA8Unorm;
     target.width = width;
     target.height = height;
-    if (ok && withScene) ok = render(target, error);
-    else if (ok) {
+    if (ok && withScene) {
+        ok = (views && views->size() > 1) ? renderViews(target, *views, error) : render(target, error);
+    } else if (ok) {
         // No scene: clear the target to opaque black so the UI is composited over a defined
         // background rather than uninitialised memory.
         WGPURenderPassColorAttachment att = {};

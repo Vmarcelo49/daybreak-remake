@@ -377,6 +377,10 @@ public:
         // false: SrcAlpha/OneMinusSrcAlpha, the scene's opaque-pass pair.
         // true:  SrcAlpha/One, the DX9 UnlitCubePass(alphaBlend = true) pair.
         bool additive = false;
+        // The split-screen cell this pass draws into (issue #12). Empty — the default —
+        // leaves the full-attachment viewport alone, so a single-view frame is
+        // byte-identical to one drawn before the multi-view path existed.
+        ViewportRect viewport{};
     };
 
     struct Stats {

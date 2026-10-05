@@ -339,6 +339,16 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(hud_layout_test PRIVATE webgpu)
     add_test(NAME hud_layout_test COMMAND hud_layout_test)
 
+    # Issue #12's split-screen plumbing: the recovered one/two/four-cell geometry, the
+    # controller-keyed view assignment, per-view projection into each view's own aspect,
+    # the synthetic pad pattern, and the guard that rendering N views does not multiply
+    # simulation or audio updates (it steps a real Match and compares a 1-view with a
+    # 4-view run). Device-free; links foundation_gameplay for Match/Fighter and the HUD fill.
+    add_executable(view_layout_test tests/view_layout_test.cpp)
+    target_include_directories(view_layout_test PRIVATE src)
+    target_link_libraries(view_layout_test PRIVATE foundation_gameplay glm webgpu)
+    add_test(NAME view_layout_test COMMAND view_layout_test)
+
     # The HUD's text metrics against the banked DX9 frames: device-free (it rasterizes
     # into host memory), it pins the reference's GDI advance table, the baseline offset
     # and the rasterizer's placement, and it SKIPs without the fetched Latin face

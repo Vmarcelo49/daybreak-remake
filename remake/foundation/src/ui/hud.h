@@ -158,6 +158,9 @@ struct HudState {
     // Rendering only — never logic (the original floats with machine speed;
     // the print reads 181). Default 60 keeps captures deterministic; the
     // caller owns the live value, the composer just draws it.
+    // `showFps` exists for split-screen: the original draws this counter once per frame,
+    // outside its view loop (FUN_006396f0:203-210), so only the first view sets it.
+    bool  showFps = true;
     int   fps = 60;
 };
 

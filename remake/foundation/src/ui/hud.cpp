@@ -291,8 +291,11 @@ void HudComposer::composeBattle(SpriteRenderer& batch, const HudState& st, const
 
     // Render-FPS counter, top-right (FUN_006396f0 @0x6396f0: DAT_006d18a4
     // right-aligned at x=800, y=0, scale 0.5). Always drawn in battle — no
-    // gate surrounds the call — in the small yellow P00 row.
-    battleAtlas_.number(batch, HudFont::SmallYellow, st.fps, layout.fps.x, layout.fps.y, 0.5f);
+    // gate surrounds the call — in the small yellow P00 row. The split-screen caller
+    // keeps it in the first view only, because the original draws it once, outside its
+    // view loop (FUN_006396f0:203-210).
+    if (st.showFps)
+        battleAtlas_.number(batch, HudFont::SmallYellow, st.fps, layout.fps.x, layout.fps.y, 0.5f);
 }
 
 void HudComposer::composeFighters(SpriteRenderer& batch, const HudState& st, const BattleHudLayout& layout) {

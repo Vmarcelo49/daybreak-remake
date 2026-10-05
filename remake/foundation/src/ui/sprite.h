@@ -36,8 +36,15 @@ struct UiRect {
     float x = 0.f, y = 0.f, w = 0.f, h = 0.f;
 };
 
+// A pixel rect inside the render target: w/h are the logical viewport the quads are
+// authored in, x/y where that viewport sits on the target. The split-screen HUD draws one
+// of these per view (issue #12), which is the original's own arrangement — FUN_006396f0
+// sets a D3D viewport per view and FUN_0063a130 draws that view's HUD with the cell origin
+// as its offset (`FUN_0063a130(game, controller, rect.left, rect.top)`, :185-186).
+// x/y stay at 0 for every single-view surface, so their pixels do not move.
 struct UiViewport {
     uint32_t w = 0, h = 0;
+    uint32_t x = 0, y = 0;
 };
 
 // Optional per-quad clip in viewport pixels. Disabled means unclipped; enabling
@@ -243,7 +250,12 @@ public:
     // Starts a frame's batch. The viewport is re-taken every frame rather than
     // cached, so a resize between frames cannot desynchronise pixels from NDC.
     // Canvas state resets so a preceding menu cannot transform the battle HUD.
-    void beginFrame(uint32_t viewportW, uint32_t viewportH);
+    void beginFrame(uint32_t viewportW, uint32_t viewportH) {
+        beginFrame(UiViewport{viewportW, viewportH, 0, 0});
+    }
+    // The split-screen form: quads are authored in the view's own w x h logical space and
+    // land at (x, y) on the target, with the scissor clipped to that cell.
+    void beginFrame(const UiViewport& viewport);
     void setCanvasTransform(float scale, float offsetX = 0.f, float offsetY = 0.f) {
         canvas_ = {scale, offsetX, offsetY};
     }

@@ -183,6 +183,33 @@ struct Target {
     uint32_t           height    = 0;
 };
 
+// ---------------------------------------------------------------------------------------
+// Per-view rendering (issue #12): the same scene drawn once per local player into
+// disjoint cells of one render target.
+//
+// This is the original's own split-screen shape, FUN_006396f0 @0x006396f0: one D3D
+// viewport per view — FUN_00650ab0 @0x00650ab0 writes X/Y/Width/Height and calls
+// SetViewport, invoked with the cell rect before each view draws (:121-122) over the
+// 400x300 quadrant table at :63-66 and :82-96 — the scene drawn once per view (:111), the
+// view's HUD composed afterwards (:185). Depth is shared and cleared once: the cells are
+// disjoint, so a later view can never see an earlier one's depth, which is why the port
+// clears once and sets viewport AND scissor to the same cell for every view.
+// ---------------------------------------------------------------------------------------
+struct ViewportRect {
+    float x = 0.f, y = 0.f, w = 0.f, h = 0.f;
+    bool empty() const { return w <= 0.f || h <= 0.f; }
+};
+
+// One view's camera and the cell it draws into. `eye` is per view because effect-card
+// billboarding faces the camera that draws the card, not the frame's first camera.
+struct ViewCamera {
+    glm::mat4    viewProj{1.f};
+    glm::vec3    eye{0.f};
+    ViewportRect rect{};   // empty -> the whole target (the single-view path)
+};
+
+inline constexpr size_t kMaxViewCameras = 4;
+
 // Draw-time switches, as opposed to upload-time ones (Options).
 struct Appearance {
     bool fog   = true;   // linear fog from StageEnv (env.dat)
@@ -251,6 +278,13 @@ public:
 
     bool render(const Target&, std::string& error);
 
+    // One pass, N views (issue #12). Colour and depth clear once, then each view sets its
+    // own viewport and scissor to its cell, binds that view's camera uniform and draws the
+    // whole scene. `views.size() <= 1` defers to render() — the byte-identical single-view
+    // path the banked captures and parity recipes were made with — and at most
+    // kMaxViewCameras views are accepted.
+    bool renderViews(const Target&, const std::vector<ViewCamera>& views, std::string& error);
+
     // Optional UI compositing for verification captures: invoked after the 3D pass
     // into the capture encoder, before copy-to-readback. Uses only WebGPU types so
     // render/ never includes ui/ headers; the caller adapts. Null keeps current
@@ -266,13 +300,18 @@ public:
     // hook into a cleared target. `capture()` cannot serve this: it renders the scene first
     // and fails with "renderer has no scene" when nothing was ever submitted, which is
     // every menu frame. The two share one implementation so the readback path cannot drift.
+    // `views` is the split-screen variant of the scene pass: null (or a single view) keeps
+    // the historical camera_ path, more than one goes through renderViews.
     bool captureUi(uint32_t width, uint32_t height, std::vector<uint8_t>& rgba,
-                   std::string& error, UiHook uiHook = nullptr, void* uiUserdata = nullptr);
+                   std::string& error, UiHook uiHook = nullptr, void* uiUserdata = nullptr,
+                   const std::vector<ViewCamera>* views = nullptr);
 
     bool capture(uint32_t width, uint32_t height, std::vector<uint8_t>& rgba,
-                 std::string& error, UiHook uiHook = nullptr, void* uiUserdata = nullptr);
+                 std::string& error, UiHook uiHook = nullptr, void* uiUserdata = nullptr,
+                 const std::vector<ViewCamera>* views = nullptr);
     bool captureImpl(uint32_t width, uint32_t height, std::vector<uint8_t>& rgba,
-                     std::string& error, UiHook uiHook, void* uiUserdata, bool withScene);
+                     std::string& error, UiHook uiHook, void* uiUserdata, bool withScene,
+                     const std::vector<ViewCamera>* views);
 
     bool capture(uint32_t size, std::vector<uint8_t>& rgba, std::string& error,
                  UiHook uiHook = nullptr, void* uiUserdata = nullptr) {
@@ -331,6 +370,20 @@ private:
     WGPURenderPipeline pipelineFor(WGPUTextureFormat, Pass, std::string& error);
     bool ensureDepth(uint32_t width, uint32_t height, std::string& error);
     bool buildBindings(std::string& error);
+    // The shared scene pass. `views` null (or a single entry) is the single-view path:
+    // camera_, cameraBuffer_, drawBuffer_ offset 0, no viewport/scissor calls. More than
+    // one entry is the split-screen path, and needs ensureViewCameras().
+    bool renderImpl(const Target&, const std::vector<ViewCamera>* views, std::string& error);
+    // One camera uniform buffer + bind group per view cell, created on first use. Four
+    // separate buffers rather than one strided buffer: an offset binding has to respect
+    // the adapter's minUniformBufferOffsetAlignment, and separate buffers cannot get it
+    // wrong (the uniform itself is tens of bytes).
+    bool ensureViewCameras(std::string& error);
+    // Per-draw uniforms for draws [first, first+count) under one camera eye, written at
+    // `dst` with xm::kDrawStride spacing. Split out because billboard yaw is per camera:
+    // each view needs its own copy of the draw block.
+    void fillDrawData(const glm::vec3& eye, bool haveEye, size_t first, size_t count,
+                      uint8_t* dst);
 
     WGPUInstance instance_ = nullptr;   // borrowed from the context
     WGPUDevice   device_   = nullptr;
@@ -348,6 +401,10 @@ private:
     std::vector<WGPUBindGroup> textureGroups_;               // [0] = white, then one per texture
 
     WGPUBuffer cameraBuffer_ = nullptr;
+    // Split-screen camera slots (issue #12): one uniform buffer and bind group per view
+    // cell, created by ensureViewCameras() the first time a frame has more than one view.
+    WGPUBuffer   viewCameraBuffers_[kMaxViewCameras] = {};
+    WGPUBindGroup viewCameraGroups_[kMaxViewCameras] = {};
     WGPUBuffer drawBuffer_ = nullptr;
     WGPUBuffer paletteBuffer_ = nullptr;
 

@@ -706,6 +706,60 @@ void originalPresetCases() {
                proj[1][1], ref[1][1], 0.f);
 }
 
+// 7. Per-view cameras (issue #12): the original holds one camera per controller slot —
+// FUN_006396f0 renders each view with its own per-controller context and its LockSwitch walk
+// moves that view's followed player — so one ArenaCamera per view is the unit. What matters
+// is that they are INDEPENDENT: two views follow different fighters, cycling one leaves the
+// other untouched, and each projects its own cell aspect.
+void splitViewCameraCases() {
+    section("7. per-view cameras: independent targets and per-cell projection");
+    CameraTarget blue = makeTarget(0.f, 200.f, 0.f, 0.f);
+    CameraTarget red = makeTarget(1200.f, 200.f, 400.f, kPi);
+    std::vector<CameraTarget*> pool{&blue, &red};
+
+    ArenaCamera views[2];
+    for (ArenaCamera& cam : views) {
+        cam.set_preset(ArenaCameraPreset::original());
+        cam.set_target_pool(pool);
+    }
+    views[0].set_active_target(0);
+    views[1].set_active_target(1);
+    for (int i = 0; i < 200; ++i) {
+        views[0].update(1.0 / 60.0);
+        views[1].update(1.0 / 60.0);
+    }
+    checkInt("view 0 follows fighter 0", views[0].active_target_index(), 0);
+    checkInt("view 1 follows fighter 1", views[1].active_target_index(), 1);
+    check(glm::length(views[0].eye() - views[1].eye()) > 100.f,
+          "two views following different fighters have different eyes", v3s(views[0].eye()),
+          v3s(views[1].eye()));
+
+    // Cycling one view's lock moves that view only: the other keeps both its index and the
+    // eye it had converged on. A shared camera would fail this.
+    const glm::vec3 view1Eye = views[1].eye();
+    const int view1Index = views[1].active_target_index();
+    views[0].cycle_target(true);
+    views[0].update(1.0 / 60.0);
+    checkInt("cycling view 0 does not move view 1's lock", views[1].active_target_index(),
+             view1Index);
+    checkNear("cycling view 0 does not move view 1's eye", views[1].eye(), view1Eye, 0.f);
+    checkInt("view 0's own cycle did move view 0", views[0].active_target_index(), 1);
+
+    // Each view projects its own cell: the same camera state at two cell aspects gives two
+    // different horizontal scales, each exactly glm::perspectiveLH_ZO at that aspect. This is
+    // what lets a 400x300 quadrant and an ultrawide cell share one camera class (D8).
+    const glm::mat4 quadrant = views[1].proj_matrix(400, 300);
+    const glm::mat4 wide = views[1].proj_matrix(1720, 720);
+    checkMatExact("a 400x300 view projects at 4:3",
+                  quadrant, glm::perspectiveLH_ZO(kPiOver4, 400.f / 300.f, 50.f, 150000.f));
+    checkMatExact("an ultrawide view projects at its own aspect",
+                  wide, glm::perspectiveLH_ZO(kPiOver4, 1720.f / 720.f, 50.f, 150000.f));
+    checkFloat("the vertical scale is aspect-independent (same fov)", quadrant[1][1],
+               wide[1][1], 0.f);
+    check(std::fabs(quadrant[0][0] - wide[0][0]) > 0.1f,
+          "the horizontal scale differs per cell aspect", f2s(quadrant[0][0]), f2s(wide[0][0]));
+}
+
 }  // namespace
 
 int main() {
@@ -715,6 +769,7 @@ int main() {
     targetCases();
     matrixCases();
     originalPresetCases();
+    splitViewCameraCases();
 
     std::printf("\nchecks=%d failures=%d\n", g_checks, g_failures);
     std::printf("ARENA_CAMERA: %s\n", g_failures == 0 ? "ok" : "FAIL");

@@ -229,9 +229,8 @@ void SpriteRenderer::clearTextures() {
     if (!textures_.empty()) textures_.resize(1);
 }
 
-void SpriteRenderer::beginFrame(uint32_t viewportW, uint32_t viewportH) {
-    viewport_.w = viewportW;
-    viewport_.h = viewportH;
+void SpriteRenderer::beginFrame(const UiViewport& viewport) {
+    viewport_ = viewport;
     quads_.clear();
     dropped_ = 0;
     resetCanvasTransform();
@@ -486,16 +485,20 @@ bool SpriteRenderer::render(WGPUCommandEncoder encoder, WGPUTextureView view,
     wgpuRenderPassEncoderSetPipeline(pass, pipeline);
     wgpuRenderPassEncoderSetBindGroup(pass, 0, vpGroup_, 0, nullptr);
     // Viewport origin is top-left in WebGPU (D3D convention, unlike Vulkan), so
-    // pixel quads map 1:1 here on every backend with no #if.
-    wgpuRenderPassEncoderSetViewport(pass, 0.f, 0.f, (float)viewport_.w, (float)viewport_.h,
-                                     0.f, 1.f);
+    // pixel quads map 1:1 here on every backend with no #if. A split-screen view's
+    // origin places its cell; the shader still maps the view's own w x h to NDC.
+    wgpuRenderPassEncoderSetViewport(pass, (float)viewport_.x, (float)viewport_.y,
+                                     (float)viewport_.w, (float)viewport_.h, 0.f, 1.f);
     wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vbuf_, 0, WGPU_WHOLE_SIZE);
     wgpuRenderPassEncoderSetIndexBuffer(pass, ibuf_, WGPUIndexFormat_Uint16, 0,
                                         WGPU_WHOLE_SIZE);
     for (const Run& r : runs) {
         wgpuRenderPassEncoderSetBindGroup(pass, 1, textures_[(size_t)r.texture].group, 0,
                                           nullptr);
-        wgpuRenderPassEncoderSetScissorRect(pass, r.sx, r.sy, r.sw, r.sh);
+        // The run's scissor is in the view's own pixels; the cell origin moves it onto
+        // the target, and the view's clamp above keeps it inside the attachment.
+        wgpuRenderPassEncoderSetScissorRect(pass, r.sx + viewport_.x, r.sy + viewport_.y,
+                                            r.sw, r.sh);
         wgpuRenderPassEncoderDrawIndexed(pass, r.quadCount * 6, 1, r.firstQuad * 6, 0, 0);
     }
     wgpuRenderPassEncoderEnd(pass);

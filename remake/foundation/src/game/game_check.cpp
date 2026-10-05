@@ -13,9 +13,15 @@
 #include "game/fighter_pose.h"
 #include "game/hud_bridge.h"
 #include "game/hud_values.h"
+#include "game/match_view.h"
+#include "game/view_layout.h"
 
 static_assert(std::is_default_constructible<game::FighterPose>::value,
               "FighterPose must stay aggregate-constructible for arenaTargetFrom");
 static_assert(std::is_default_constructible<game::GameHudValues>::value,
               "GameHudValues must stay aggregate-constructible for syntheticHudValues");
 static_assert(sizeof(game::EffectEventQueue) > 0u, "effect queue must be a complete type");
+static_assert(std::is_default_constructible<game::MatchView>::value,
+              "MatchView must stay default-constructible: a frame's views are filled in place");
+static_assert(game::kMaxHumanViews == game::viewCellCount(game::SplitLayout::Four),
+              "the view array and the four-cell grid must agree");

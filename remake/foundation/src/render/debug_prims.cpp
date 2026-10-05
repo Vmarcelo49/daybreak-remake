@@ -36,6 +36,19 @@ constexpr uint64_t kMinVertexBytes = 4096;
 static_assert(sizeof(DebugVertex) == 16, "DebugVertex must stay 16 bytes with no padding");
 static_assert(offsetof(DebugVertex, color) == 12, "DebugVertex colour must sit at offset 12");
 
+// Split-screen cells (issue #12): the overlay pass draws into one view's cell, so it
+// needs the same viewport and scissor the scene pass used for that cell — the viewport
+// places the projection, the scissor keeps the overlay out of its neighbours' cells.
+// An empty rect leaves WebGPU's default full-attachment viewport untouched, which is the
+// single-view path every banked capture was made with.
+void applyViewport(WGPURenderPassEncoder pass, const DebugPrims::Options& options) {
+    const ViewportRect& r = options.viewport;
+    if (r.empty()) return;
+    wgpuRenderPassEncoderSetViewport(pass, r.x, r.y, r.w, r.h, 0.f, 1.f);
+    wgpuRenderPassEncoderSetScissorRect(pass, (uint32_t)r.x, (uint32_t)r.y, (uint32_t)r.w,
+                                        (uint32_t)r.h);
+}
+
 }  // namespace
 
 DebugPrims::~DebugPrims() { shutdown(); }
@@ -305,6 +318,7 @@ bool DebugPrims::drawVertices(const Target& target, const glm::mat4& viewProj,
     }
     wgpuRenderPassEncoderSetPipeline(pass, pipeline);
     wgpuRenderPassEncoderSetBindGroup(pass, 0, group_, 0, nullptr);
+    applyViewport(pass, options);
     wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vbuf_, 0, WGPU_WHOLE_SIZE);
     wgpuRenderPassEncoderDraw(pass, (uint32_t)accepted, 1, 0, 0);
     wgpuRenderPassEncoderEnd(pass);
@@ -372,6 +386,7 @@ bool DebugPrims::drawCubes(const Target& target, const glm::mat4& viewProj,
     }
     wgpuRenderPassEncoderSetPipeline(pass, pipeline);
     wgpuRenderPassEncoderSetBindGroup(pass, 0, group_, 0, nullptr);
+    applyViewport(pass, options);
     wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vbuf_, 0, WGPU_WHOLE_SIZE);
     wgpuRenderPassEncoderDraw(pass, (uint32_t)verts.size(), 1, 0, 0);
     wgpuRenderPassEncoderEnd(pass);

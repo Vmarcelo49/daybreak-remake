@@ -33,5 +33,45 @@ int main() {
     }
     const auto invalid = ui::computeBattleHudLayout(0,0);
     CHECK(invalid.scale == 1 && invalid.width == 800 && invalid.height == 600);
+
+    // Split-screen views (issue #12): the same anchor rules applied inside each view's own
+    // cell, which is where FUN_0063a130 draws a view's HUD — at the cell's origin and, for
+    // more than one view, at the 0.5 scale its :49-51 selects. The layout is view-LOCAL: a
+    // cell's anchors depend on its size, never on where the cell sits on the target.
+    for (const auto cell : {ui::UiViewport{400,300},   // 800x600 four-cell (the original's)
+                            ui::UiViewport{960,540},   // 1920x1080 four-cell
+                            ui::UiViewport{1720,720},  // 3440x1440 four-cell (ultrawide)
+                            ui::UiViewport{540,960},   // 1080x1920 four-cell (portrait)
+                            ui::UiViewport{686,388}}) {
+        const auto layout = ui::computeBattleHudLayout(cell.w,cell.h);
+        CHECK(near(layout.width*layout.scale,cell.w));
+        CHECK(near(layout.height*layout.scale,cell.h));
+        CHECK(layout.width >= 800.f - .001f || cell.w < 800.f);
+        CHECK(layout.height >= 600.f - .001f || cell.h < 600.f);
+        // Every anchor the composer uses must land inside the view it draws into.
+        for (const auto& anchor : {layout.hp, layout.fan, layout.maxLabel, layout.fanCaption,
+                                   layout.stamina, layout.command, layout.main, layout.charge,
+                                   layout.mainCount, layout.chargeCount, layout.ko}) {
+            CHECK(anchor.x >= 0.f && anchor.x <= layout.width + .001f);
+            CHECK(anchor.y >= 0.f && anchor.y <= layout.height + .001f);
+        }
+        // Centre anchors are the centre OF THE VIEW (the KO sting and the marker origin).
+        CHECK(near(layout.ko.x*layout.scale,cell.w*.5f));
+        CHECK(near(layout.ko.y*layout.scale,cell.h*.5f));
+        // Edge anchors stay on the view's own edges, which is what keeps a split-screen
+        // HUD from drifting into a neighbour's cell.
+        CHECK(near(layout.hp.x*layout.scale,cell.w - 295.f*layout.scale));
+        CHECK(near(layout.hp.y*layout.scale,cell.h - 35.f*layout.scale));
+        CHECK(near(layout.fps.x*layout.scale,float(cell.w)));
+    }
+    // The original's own split-screen scale: a 400x300 view is exactly half of 800x600
+    // (FUN_006396f0's quadrant cells + FUN_0063a130's local_8 = 0.5).
+    const auto quadrant = ui::computeBattleHudLayout(400,300);
+    CHECK(quadrant.scale == .5f && quadrant.width == 800.f && quadrant.height == 600.f);
+    // A view's anchors do not depend on its origin on the target.
+    const auto cellA = ui::computeBattleHudLayout(960,540);
+    const auto cellB = ui::computeBattleHudLayout(960,540);
+    CHECK(near(cellA.hp.x,cellB.hp.x) && near(cellA.ko.y,cellB.ko.y));
+
     std::puts("hud_layout_test: adaptive anchors and projection ok");
 }
