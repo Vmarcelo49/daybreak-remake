@@ -49,6 +49,17 @@
 //      kMainMax/kChargeMax and the refill rate stay provisional per the coverage table.
 //      Do not cite this block as evidence for the ammo model.
 //
+// DAT vs PORT RULE, field by field (audited across all 46 roster items):
+//   num, type, reloadTime, intervalTime, chargeMax, chargeLevel — DAT (this layout).
+//   capacity formula above — recovered (FUN_00433eb0:135-143).
+//   num IS the shot count: all 46 roster magazines are type 2, and capacity /
+//     cost divides out to exactly num (1..60) in all 92 pools, so the HUD count
+//     shows num, never pool units. intervalTime is 0 on every roster item, so
+//     volley pacing is unmodelled (nothing to pace against).
+//   cost-per-shot = reloadTime, refill = one shot's worth per second, the
+//     chargeMax tick→second conversion, and all legacy 6/2 counts — PORT RULES.
+//      — the corpus consumes none of this block, so any consumption is design.
+//
 // WHERE THE REAL COMBAT NUMBERS ARE — data/bullet/<weaponId>/<type>.dat.
 // FUN_00433eb0:152 hands each bullet entry's `type * 10 + status` to FUN_005f80c0
 // (0x5f80c0), which builds the path `data/bullet/%03d/%03d.dat` with `type` as the file

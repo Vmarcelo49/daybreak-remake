@@ -118,10 +118,15 @@ inline ShotParams shot_params(ShotTier t) {
 
 // Fractional ammo stock: the HUD bar fill IS this value / max (ammo-bar.webp),
 // so recharge is a continuous refill, not bullets + a separate cooldown icon.
+// The HUD *count* is a different thing: whole shots remaining (the magazine's
+// num), not raw pool units. Time-valued magazines (type 1/2) size the pool as
+// num*reloadTime and spend reloadTime per shot, so rena's tap pool reads 1800
+// while the count must read 6 — unitsPerShot bridges the two.
 struct AmmoStock {
     float max     = 1.0f;
     float value   = 1.0f;
     float perSec  = 0.5f;  // refill rate (provisional tuning)
+    float unitsPerShot = 1.0f;  // pool units per displayed shot (magazine reloadTime)
 
     void recharge(double dt, float rateMul = 1.0f) {
         value += perSec * rateMul * static_cast<float>(dt);
@@ -133,7 +138,11 @@ struct AmmoStock {
         if (value < 0.0f) value = 0.0f;
     }
     float frac() const { return (max > 0.0f) ? value / max : 0.0f; }
-    int whole() const { return static_cast<int>(value); }  // HUD digit
+    int whole() const {  // HUD digit: whole SHOTS left, never pool units
+        if (unitsPerShot <= 0.0f) return static_cast<int>(value);
+        const int shots = static_cast<int>(value / unitsPerShot);
+        return shots < 0 ? 0 : shots;
+    }
 };
 
 struct Projectile {

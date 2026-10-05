@@ -1024,6 +1024,11 @@ void Fighter::apply_weapon_ammo() {
     m_charge = AmmoStock{chgMag.capacity() > 0 ? chgMax : FighterConstants::kChargeMax,
                          chgMag.capacity() > 0 ? chgMax : FighterConstants::kChargeMax,
                          chgRate > 0.0f ? chgRate : FighterConstants::kChargePerSec};
+    // The HUD count shows shots (magazine num), not pool units: one shot costs
+    // reloadTime units, so dividing reads num back out (1800/300 = 6 for rena).
+    if (tapMag.reloadTime > 0) m_main.unitsPerShot = static_cast<float>(tapMag.reloadTime);
+    if (chgMag.reloadTime > 0)
+        m_charge.unitsPerShot = static_cast<float>(chgMag.reloadTime);
 }
 
 float Fighter::charge_hold_frac() const {

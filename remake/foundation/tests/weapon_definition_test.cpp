@@ -592,10 +592,12 @@ void testWeaponDrivesFighter() {
     fast.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     fast.set_weapon(fastW.get());
     check(fast.weapon() == fastW.get(), "set_weapon binds the parsed definition");
-    checkInt(6 * 300, static_cast<int>(fast.main_whole()),
-             "the tap magazine is sized num*reloadTime from the file");
+    checkInt(6, fast.main_whole(),
+             "the HUD count shows shots (num = 6), not pool units (1800)");
+    checkInt(2, fast.charge_whole(),
+             "and the charge count shows shots too (600/300 = 2)");
     check(std::fabs(fast.main_frac() - 1.0f) < 1e-4f,
-          "and starts full (FUN_00433eb0 initialises current from capacity)");
+          "while the bar still fills from the pool (FUN_00433eb0 initialises current from capacity)");
     check(std::fabs(fast.yellow_hold_sec() - 60.0f / 64.0f) < 1e-5f,
           "the yellow threshold is the level-1 chargeMax in ticks");
     check(std::fabs(fast.red_hold_sec() - 180.0f / 64.0f) < 1e-5f,
@@ -610,7 +612,7 @@ void testWeaponDrivesFighter() {
     gameplay::Fighter heavy;
     heavy.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     heavy.set_weapon(heavyW.get());
-    checkInt(60 * 20, heavy.main_whole(), "a different weapon gives a different pool");
+    checkInt(60, heavy.main_whole(), "a different weapon holds 60 shots (1200/20)");
     check(heavy.red_hold_sec() > 3.0f * 3.0f,
           "and a much longer charge (600 ticks vs 180)");
     check(heavy.main_whole() != fast.main_whole(),
@@ -640,7 +642,7 @@ void testWeaponDrivesFighter() {
             gameplay::Fighter f;
             f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
             f.set_weapon(w.get());
-            checkInt(200, f.main_whole(), "capacity is 2 shots * 100 units");
+            checkInt(2, f.main_whole(), "the count shows 2 shots, not 200 pool units");
             // Settle out of the 60-frame BattleStart pose, then tap-fire.
             fnd::input::PlayerState idle{};
             for (int i = 0; i < 70; ++i) {
