@@ -1,4 +1,5 @@
 #include "ui/screen_select.h"
+#include "ui/frontend_launch.h"
 #include "assets/asset_source.h"
 #include <cstdlib>
 #include <filesystem>
@@ -142,6 +143,48 @@ int main() {
         const int forced = penaltyState.slots[0].costume;
         if (exe) check(forced == 5, "the penalty flag forces Rena's penalty costume cell");
         else check(forced == 0, "without the exe the penalty flag forces nothing");
+        // Gear-up resolution for every roster pick (the issue #23 defect): the launch
+        // resolves the item's first NON-EMPTY attachment mesh, and an item that ships no
+        // mesh at all is ARMED, not fatal. FUN_00433eb0:90-116 walks every slot and loads
+        // each non-empty name, skipping the empty ones at :111; the item's own data (move
+        // table, bullets, damage) is read regardless of whether any mesh loaded.
+        if (exe) {
+            auto launch = [](int character, int weapon, ui::FrontendLaunch& out,
+                             std::string& err) {
+                ui::FrontendState state;
+                state.slots[0].character = character;
+                state.slots[0].weapon = weapon;
+                state.slots[2].character = 0;
+                state.slots[2].weapon = 0;
+                return ui::frontendLaunch(state, out, err, 1u);
+            };
+            // (a) a mesh in a LATER slot is the item's mesh: takano's item 011 carries
+            // 25.x in slot 2, and the slot-0-only reading produced an empty spec.
+            ui::FrontendLaunch slot2;
+            std::string launchError;
+            check(launch(7, 0, slot2, launchError),
+                  "takano + item 011 launches");
+            check(slot2.fighters[0].weaponId == 11, "and binds item 011");
+            check(slot2.fighters[0].weapon == "data/item/25.x",
+                  "with item 011's slot-2 mesh, not slot 0's empty name");
+            // (b) no mesh anywhere is legal: satoko's item 008 is armed and undrawn.
+            ui::FrontendLaunch bare;
+            check(launch(3, 0, bare, launchError),
+                  "satoko + item 008 launches");
+            check(bare.fighters[0].weaponId == 8, "and binds item 008");
+            check(bare.fighters[0].weapon.empty(), "with no attachment mesh to draw");
+            // (c) an unreadable item is still a loud failure that names the file.
+            fnd::assets::AssetSource::instance().closeInstall();
+            ui::FrontendLaunch broken;
+            check(!launch(7, 0, broken, launchError),
+                  "an unreadable item still fails the launch");
+            check(launchError.find("data/item/011.dat") != std::string::npos,
+                  "and the error names the file it could not read");
+            fnd::assets::AssetSource::instance().openInstall(game.string());
+        } else {
+            check(true, "no install: the gear-up resolution is skipped");
+        }
+
         // A panel without the flag keeps its own costume.
         ui::FrontendState cleanState;
         ui::SelectMenu cleanMenu(cleanState);
