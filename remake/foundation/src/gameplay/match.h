@@ -145,6 +145,10 @@ public:
     MatchEconomy&         economy()     { return m_economy; }
     const MatchEconomy&   economy() const { return m_economy; }
     const MatchConfig&    config() const { return m_config; }
+    // The stage's movement/ground channel (issue #7), borrowed as passed to reset().
+    // Read-only query surface: the COM brain probes it to know which directions the stage
+    // allows (gameplay/bot_brain.h). Null keeps the historical no-collision behaviour.
+    const game::physics::MovementCollision* collision() const { return m_movementCollision; }
 
     // Rendering is the caller's: shots()/sparks() expose position, tier and age, which
     // is exactly what the DX9 side drew as unlit cubes (its stand-in for un-RE'd VFX)

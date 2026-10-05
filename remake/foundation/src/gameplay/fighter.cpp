@@ -1011,10 +1011,14 @@ void Fighter::advance_animation_phase() {
 }
 
 void Fighter::build_melee_swing(int moveId) {
-    m_swing = MeleeSwing{};  // legacy shared swing; data overwrites below
-    if (!m_moves || moveId < 0) return;
+    m_swing = resolve_swing(moveId);
+}
+
+MeleeSwing Fighter::resolve_swing(int moveId) const {
+    MeleeSwing swing;  // legacy shared swing; data overwrites below
+    if (!m_moves || moveId < 0) return swing;
     const CharacterMove* move = m_moves->find(moveId);
-    if (!move) return;
+    if (!move) return swing;
     // The hit is the first combat entry across the phases in order (e.g. rena 300
     // phase 74 entry 1: Prop1, frame 4, hr 20). Whiff/trail phases carry no combat.
     const MoveEntry* hit = nullptr;
@@ -1029,23 +1033,24 @@ void Fighter::build_melee_swing(int moveId) {
             }
         }
     }
-    if (!hit) return;
-    m_swing.dataDriven = true;
-    m_swing.moveId = moveId;
+    if (!hit) return swing;
+    swing.dataDriven = true;
+    swing.moveId = moveId;
     // The hit goes live on its own in-phase frame (rena 300 → 4, 301 → 7).
-    m_swing.startupTicks = hit->activeFrame;
+    swing.startupTicks = hit->activeFrame;
     // ... and lives until the phase's next effect fires (300 → 6, 301 → 9,
     // 311 → 11, 330 → 5). A last-entry hit keeps the legacy 8-tick window.
-    if (nextFrame > hit->activeFrame) m_swing.activeTicks = nextFrame - hit->activeFrame;
-    if (hit->hitRadius > 0) m_swing.radius = static_cast<float>(hit->hitRadius);
+    if (nextFrame > hit->activeFrame) swing.activeTicks = nextFrame - hit->activeFrame;
+    if (hit->hitRadius > 0) swing.radius = static_cast<float>(hit->hitRadius);
     // hpDamage is the HP actually removed from the original's 10000-based pool
     // (FUN_00637950:280), scaled onto 0..maxHP exactly like shot_params_for.
     // A zero-hpDamage hit (e.g. move 351's gauge-only chip) keeps legacy damage.
     if (hit->hpDamage > 0 && m_maxHP > 0)
-        m_swing.damage = std::max(1, static_cast<int>(
+        swing.damage = std::max(1, static_cast<int>(
             static_cast<float>(hit->hpDamage) * static_cast<float>(m_maxHP) / 10000.0f +
             0.5f));
-    if (hit->defenderHitstun > 0) m_swing.hitstun = hit->defenderHitstun;
+    if (hit->defenderHitstun > 0) swing.hitstun = hit->defenderHitstun;
+    return swing;
 }
 
 float Fighter::yellow_hold_sec() const {
@@ -1283,10 +1288,8 @@ bool Fighter::try_dash(input::Action dir) {
 
 void Fighter::try_fire() { fire_shot(charge_tier()); }
 
-void Fighter::fire_shot(ShotTier tier) {
+float Fighter::shot_cost(ShotTier tier) const {
     const ShotParams p = shot_params_for(tier);
-    // Tap draws MAIN, charged tiers and the EX move draw CHARGE.
-    AmmoStock& stock = (tier == ShotTier::Tap) ? m_main : m_charge;
     // With a weapon bound the cost is that magazine's reloadTime in pool units (the
     // same field the pool was sized from, FUN_00433eb0:130); without one it stays the
     // provisional fractional 1/2 of the shared table.
@@ -1296,8 +1299,20 @@ void Fighter::fire_shot(ShotTier tier) {
             m_weapon->magazineForChargeLevel((tier == ShotTier::Tap) ? 1 : 2);
         if (mag.reloadTime > 0) cost = static_cast<float>(mag.reloadTime);
     }
-    if (m_reloadTimer > 0 || !stock.can_spend(cost)) return;  // reloadNG: drop
-    stock.spend(cost);
+    return cost;
+}
+
+bool Fighter::can_fire(ShotTier tier) const {
+    const AmmoStock& stock = (tier == ShotTier::Tap) ? m_main : m_charge;
+    return m_reloadTimer <= 0 && stock.can_spend(shot_cost(tier));
+}
+
+void Fighter::fire_shot(ShotTier tier) {
+    const ShotParams p = shot_params_for(tier);
+    // Tap draws MAIN, charged tiers and the EX move draw CHARGE.
+    AmmoStock& stock = (tier == ShotTier::Tap) ? m_main : m_charge;
+    if (!can_fire(tier)) return;  // reloadNG / no stock: drop
+    stock.spend(shot_cost(tier));
     m_reloadTimer = p.reloadFrames;
 
     // Muzzle ahead of the fighter at chest height, aimed along facing

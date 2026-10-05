@@ -441,6 +441,13 @@ public:
     // table, which the coverage table records as not recovered.
     ShotParams shot_params_for(ShotTier tier) const;
 
+    // The pool units one shot of this tier costs, and whether it can fire at all right
+    // now (reload window closed and that tier's own stock can pay the cost). fire_shot()
+    // applies exactly these two gates, so a caller that asks first never loses a shot to
+    // the silent drop (gameplay/bot_brain.h's shoot gate).
+    float shot_cost(ShotTier tier) const;
+    bool  can_fire(ShotTier tier) const;
+
     // The recovered charge thresholds in SECONDS. FUN_00433eb0's per-magazine
     // chargeMax is a tick count (the shipped values run 60..1200, and 180 is the same
     // 0xb4 the ally hold is written with), converted through the fixed tick. PORT RULE:
@@ -508,11 +515,33 @@ public:
     // The move this fighter is playing, as a fighter index, or kNoTarget.
     static constexpr int kNoMeleeVictim = -1;
 
+    // True while this fighter may start an action (can_act(), exposed for callers that
+    // are not the state machine). A COM must not request a move the state machine would
+    // drop: attacking mid-swing or during the respawn lock is exactly that (bot_brain.h).
+    bool actionable() const { return can_act(); }
+    // The Guard hold is refused while exhausted until the key is released (issue #6).
+    // Exposed so a COM asks before holding instead of pressing into the lockout.
+    bool guard_exhausted() const { return m_guardExhausted; }
+
     // True while the current attack is in its startup, active or recovery window. A
     // recovery swing must not chain into another action (issue #10). The windows
     // are this swing's own (data-driven when moves are bound, legacy otherwise).
     bool melee_in_recovery() const { return m_swing.is_recovery(m_meleeElapsed); }
     bool melee_in_active() const { return m_swing.is_active(m_meleeElapsed); }
+
+    // The swing this fighter WOULD start right now for the given situation — the same
+    // resolution set_state(AttackA) performs at the press, without touching state. A COM
+    // reads it to decide whether a press can connect (reach and startup), instead of
+    // pressing and hoping. (gameplay/bot_brain.h.)
+    MeleeSwing preview_melee_swing(bool dashAttack, bool aerial) const {
+        return resolve_swing(resolve_attack_move(dashAttack, aerial));
+    }
+    // The horizontal distance at which that swing can connect: the recovered
+    // `bodyRadius + radius` sphere (FUN_0063b470 via melee_rules.h), which
+    // try_melee_hit() applies. Nothing else is a melee range in this port.
+    float melee_reach(bool dashAttack, bool aerial) const {
+        return m_meleeRules.bodyRadius + preview_melee_swing(dashAttack, aerial).radius;
+    }
 
     // Swing bookkeeping driven by Match: begin clears the per-victim hit set, note
     // records that this swing already connected with one victim.
@@ -759,6 +788,10 @@ private:
     // of a recovered selection rule. A costume that drops the row's move falls
     // through to any weapon-family move present rather than the jump clip.
     int resolve_attack_move(bool dashAttack, bool aerial) const;
+    // The resolved numbers for one move id: the move's first combat entry, or the
+    // legacy tuning when there is no table, no move, or no combat entry. Shared by
+    // build_melee_swing() (which binds it) and preview_melee_swing() (which does not).
+    MeleeSwing resolve_swing(int moveId) const;
     // Fills m_swing from the move's first combat entry (or the legacy tuning
     // when there is no table, no move, or no combat entry).
     void build_melee_swing(int moveId);
