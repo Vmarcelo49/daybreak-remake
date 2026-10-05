@@ -1291,7 +1291,7 @@ recovered one). Animation follow-up for issue #18: move 0xc2's descent/recovery 
 the KO chain (0xc0/0xc1 sets [117, 29]; 0xcb sets [97, 37]) are the clips that carry
 the respawn timing.
 
-Verification: all 30 Linux CTest tests pass. `match_economy_test` grew from 121 to
+Verification: all 30 Linux CTest tests pass. `match_economy_test` went from 210 to
 387 checks (capacity extremes, both timeout tiebreaks, the seeded generator,
 simultaneous deaths, both-side bursts, the Overkill window and its cutoff, the
 single-counted credit audit, the inflate/popup arithmetic); the new `round_rules_test`
