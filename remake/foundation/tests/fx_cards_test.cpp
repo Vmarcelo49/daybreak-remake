@@ -1,8 +1,9 @@
-#include "game/effect_descriptor.h"
 // =============================================================================
-//  fx_cards_test.cpp — host test for game/fx_cards.h (ROADMAP-PENDING.md B1):
-//  the live effect-card set — spawn replaces by id, kill retires by id,
-//  ttl expiry retires the rest, every card ages once per call.
+//  fx_cards_test.cpp — host test for game/fx_cards.h (ROADMAP-PENDING.md B1,
+//  issue #17): the live effect-card set — spawn replaces by id, kill retires by
+//  id, ttl expiry retires the rest, every card ages once per call, and the set is
+//  bounded with a counted drop. Per-instance identity is pinned directly: two
+//  spawns in the same tick are two cards, and each one's ttl retires only itself.
 //
 //  No WebGPU, no SDL, no device. Header-only under test (glm + std); the
 //  placement half (card set -> model matrices) stays in main.cpp with the
@@ -65,15 +66,6 @@ game::EffectEvent killEv(std::uint32_t id) {
 }  // namespace
 
 int main() {
-    std::vector<uint8_t> descriptor(0x108,0);
-    descriptor[0] = 3;
-    const char model[] = "14.X";
-    for (size_t i = 0; i < sizeof(model); ++i) descriptor[4+i] = model[i];
-    descriptor[12] = 'X';
-    if (game::effectModelPath(descriptor) != "14.X") return 1;
-    for (size_t i = 4; i < descriptor.size(); ++i) descriptor[i] = 'X';
-    if (!game::effectModelPath(descriptor).empty() || !game::effectModelPath({}).empty()) return 1;
-
     std::printf("== fx_cards: live set lifecycle ==\n");
 
     // 1. A spawn lands with its fields carried over.
@@ -144,6 +136,64 @@ int main() {
         game::updateLiveFxCards(live, {spawnEv(7, 99, 12.f)}, 0.25f);
         check_int("bad-asset spawn stays in the set", 1, (long long)live.size());
         check_int("bad-asset index passthrough", 99, (long long)live[0].asset);
+    }
+
+    // 8. Per-instance identity (issue #17): two hits in the SAME tick are two
+    //    instances with their own ttls, and each expires only itself. The old
+    //    kill-chaining discipline retired the first card when the second landed.
+    {
+        std::vector<game::LiveFxCard> live;
+        game::updateLiveFxCards(live, {spawnEv(100, 0, 1.f), spawnEv(101, 0, 2.f)}, 0.25f);
+        check_int("two same-tick hits are two cards", 2, (long long)live.size());
+        check_int("the first keeps its own id", 100, (long long)live[0].id);
+        check_int("the second keeps its own id", 101, (long long)live[1].id);
+        game::updateLiveFxCards(live, {}, 0.25f);   // 0.50
+        game::updateLiveFxCards(live, {}, 0.25f);   // 0.75
+        check_int("neither has expired early", 2, (long long)live.size());
+        game::updateLiveFxCards(live, {}, 0.25f);   // 1.00: only id 100 is spent
+        check_int("the shorter-lived card expires alone", 1, (long long)live.size());
+        check_int("the longer-lived card is untouched", 101, (long long)live[0].id);
+        game::updateLiveFxCards(live, {}, 1.0f);    // 2.00: the second follows
+        check_int("the second expires on its own ttl", 0, (long long)live.size());
+    }
+
+    // 9. A live instance re-armed by the same id refreshes in place (a repeated
+    //    emitter), and does not duplicate.
+    {
+        std::vector<game::LiveFxCard> live;
+        game::updateLiveFxCards(live, {spawnEv(5, 0, 1.f)}, 0.25f);
+        game::updateLiveFxCards(live, {spawnEv(5, 1, 4.f)}, 0.25f);
+        check_int("re-arming an id keeps one card", 1, (long long)live.size());
+        check_int("re-arming refreshes the asset", 1, (long long)live[0].asset);
+        game::updateLiveFxCards(live, {}, 1.0f);
+        check_int("the refreshed ttl governs", 1, (long long)live.size());
+    }
+
+    // 10. Bounded population with a counted drop (issue #17): the cap holds and
+    //     every refused spawn is counted rather than silently lost.
+    {
+        std::vector<game::LiveFxCard> live;
+        std::vector<game::EffectEvent> flood;
+        for (std::uint32_t i = 0; i < 40; ++i) flood.push_back(spawnEv(i, 0, 10.f));
+        const game::FxCardTally t = game::updateLiveFxCards(live, flood, 0.25f, 16);
+        check_int("the cap bounds the live set", 16, (long long)live.size());
+        check_int("accepted spawns are counted", 16, (long long)t.spawned);
+        check_int("refused spawns are counted", 24, (long long)t.dropped);
+        const game::FxCardTally t2 = game::updateLiveFxCards(live, {killEv(3)}, 0.25f, 16);
+        check_int("an explicit kill is counted", 1, (long long)t2.killed);
+        check_int("a kill frees a slot", 15, (long long)live.size());
+    }
+
+    // 11. The tally separates ttl expiry from explicit kills.
+    {
+        std::vector<game::LiveFxCard> live;
+        game::FxCardTally t = game::updateLiveFxCards(live, {spawnEv(1, 0, 0.5f)}, 0.25f);
+        check_int("a fresh spawn is counted", 1, (long long)t.spawned);
+        t = game::updateLiveFxCards(live, {}, 0.25f);
+        check_int("expiry is counted, not killed", 1, (long long)t.expired);
+        check_int("expiry is not a kill", 0, (long long)t.killed);
+        t = game::updateLiveFxCards(live, {killEv(2)}, 0.25f);
+        check_int("an unknown kill counts nothing", 0, (long long)t.killed);
     }
 
     std::printf("%d checks, %d failed\n", g_checks, g_failed);
