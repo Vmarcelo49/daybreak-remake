@@ -122,6 +122,9 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[4], double dt) {
                 m_fighters[i].note_melee_hit(j);
                 out.meleeHit[i] = true;
                 out.meleeVictim[i] = j;
+                // The victim's own state at the landing frame decides the block report
+                // (issue #16); it is read here, before anything can change it this tick.
+                if (m_fighters[j].state() == FighterState::Guard) out.blocked[j] = true;
             }
         }
     }
@@ -131,6 +134,7 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[4], double dt) {
         if (shot.armed && m_fighters[i].is_alive()) {
             if (m_shots.spawn(shot.pos, shot.dir, shot.tier, &m_fighters[i])) {
                 ++out.shotsSpawned;
+                out.shotFired[i] = true;
                 m_shots.spawn_spark(shot.pos, 0.2f);   // muzzle flash
                 ++out.muzzleSparks;
             }
@@ -138,6 +142,26 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[4], double dt) {
     }
     m_shots.update(dt, m_fighters, m_config.fighterCount, m_tamaMesh, m_tamaIndex,
                    m_config.side); // scenes.cpp:697-699; allied fighters are not projectile targets
+    // The pool resolved its own contacts; carry them into the frame so audio/effects key
+    // off the same hits the damage path applied (issue #16).
+    for (int i = 0; i < m_shots.contact_count() && out.shotHitCount < MatchFrame::kMaxShotHits; ++i) {
+        const ProjectilePool::ShotContact& c = m_shots.contact(i);
+        if (c.victim < 0 || c.victim >= m_config.fighterCount) continue;
+        MatchFrame::ShotHit& hit = out.shotHits[out.shotHitCount++];
+        hit.shooter = c.shooter;
+        hit.victim  = c.victim;
+        hit.blocked = m_fighters[c.victim].state() == FighterState::Guard;
+        if (hit.blocked) out.blocked[c.victim] = true;
+    }
+
+    // The per-fighter edges the frame carries to audio/effects (issue #16): a swing
+    // armed, hypermode activated. Both latches are drained here exactly once, the same
+    // discipline as the KO credit below.
+    for (int i = 0; i < m_config.fighterCount; ++i) {
+        out.swingStarted[i] = m_fighters[i].take_swing_start();
+        out.hyperStarted[i] = m_fighters[i].take_hyper_start();
+        out.guardStarted[i] = m_fighters[i].take_guard_start();
+    }
 
     // Hand the economy what it cannot see for itself: the KO/Overkill events that
     // landed this frame (issue #11). Each is drained exactly once — a KO credit is

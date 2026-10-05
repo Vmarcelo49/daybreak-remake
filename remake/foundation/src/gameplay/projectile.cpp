@@ -57,6 +57,7 @@ void ProjectilePool::update(double dt, Fighter* fighters, int fighterCount,
                             const game::physics::ModelIndex* tamaIndex,
                             const int* fighterSides) {
     const float step = static_cast<float>(dt);
+    m_contactCount = 0;  // this update's contacts only (issue #16)
 
     for (auto& s : m_shots) {
         if (!s.alive) continue;
@@ -96,9 +97,14 @@ void ProjectilePool::update(double dt, Fighter* fighters, int fighterCount,
         // (FUN_00637950 @0x638e0d-0x638e37), while its melee path credits nothing and
         // never offers a dead candidate (FUN_00639160 @0x63938d-0x639393).
         int ownerSide = -1;
+        int ownerIndex = -1;
         if (fighterSides)
             for (int i = 0; i < fighterCount; ++i)
                 if (&fighters[i] == s.owner) { ownerSide = fighterSides[i]; break; }
+        // The owner's index is what the audio/effect event needs (issue #16), and it is
+        // valid without fighterSides: a lone --match pool passes none.
+        for (int i = 0; i < fighterCount; ++i)
+            if (&fighters[i] == s.owner) { ownerIndex = i; break; }
         // The blow's hit category is the RAW record +0x64 dword of the bullet block the
         // shot was fired with (FUN_00637950 @0x638c26); the victim's own reaction move
         // is derived from it by FUN_0063ba80. A weapon with no bound block keeps 0,
@@ -117,6 +123,8 @@ void ProjectilePool::update(double dt, Fighter* fighters, int fighterCount,
             const float dz = fp.z - s.pos.z;
             if (dx * dx + dz * dz > p.hitRadius * p.hitRadius) continue;
             s.alive = false;
+            if (m_contactCount < static_cast<int>(m_contacts.size()))
+                m_contacts[static_cast<size_t>(m_contactCount++)] = ShotContact{ownerIndex, i};
             f.take_damage(p.damage, s.owner, -1, hitCategory, /*shot=*/true);
             spawn_spark(s.pos, 0.35f);
             break;

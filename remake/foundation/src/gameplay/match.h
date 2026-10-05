@@ -90,6 +90,29 @@ struct MatchFrame {
     int  muzzleSparks  = 0;
     bool meleeHit[4]   = {false, false, false, false};  // i hit an opposing fighter this frame
     int meleeVictim[4] = {-1, -1, -1, -1};
+    // --- live combat events (issue #16) -------------------------------------------------
+    // The simulation reports what happened; audio and effects consume it. Every flag here
+    // is an EDGE armed by the transition itself (Fighter::take_swing_start /
+    // take_hyper_start, the pool's spawn, the economy's respawn) and drained exactly once,
+    // so re-reading a frame cannot replay an event and a fixed 64 Hz tick cannot miss one.
+    bool swingStarted[4] = {false, false, false, false};  // i armed a melee swing
+    bool shotFired[4]    = {false, false, false, false};  // i's shot was accepted by the pool
+    bool hyperStarted[4] = {false, false, false, false};  // i activated hypermode
+    bool guardStarted[4] = {false, false, false, false};  // i raised its guard
+    // A landed hit's victim was guarding. The port's guard gate is provisional
+    // (Fighter::take_damage's 20% block), so this is a port rule, not the original's.
+    bool blocked[4]      = {false, false, false, false};
+    // Shot -> fighter contacts the pool resolved this frame, in pool order. The melee path
+    // reports one victim per attacker above; a shot volley can connect with several
+    // fighters in one tick, so this is its own list.
+    static constexpr int kMaxShotHits = 8;
+    struct ShotHit {
+        int  shooter = -1;
+        int  victim  = -1;
+        bool blocked = false;
+    };
+    int     shotHitCount = 0;
+    ShotHit shotHits[kMaxShotHits];
 };
 
 class Match {

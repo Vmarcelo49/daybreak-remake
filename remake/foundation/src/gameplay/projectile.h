@@ -201,6 +201,18 @@ public:
                 const game::physics::ModelIndex* tamaIndex,
                 const int* fighterSides = nullptr);
 
+    // Shot -> fighter contacts the last update() resolved, in the pool's own
+    // iteration order (issue #16). The pool owns the hit test, so it reports the
+    // pair instead of letting the caller re-derive it; a volley can connect with
+    // several fighters in one frame, hence an array rather than one slot.
+    // Cleared at the top of every update().
+    struct ShotContact {
+        int shooter = -1;  // index into the fighters array update() was given
+        int victim  = -1;
+    };
+    int contact_count() const { return m_contactCount; }
+    const ShotContact& contact(int i) const { return m_contacts[static_cast<size_t>(i)]; }
+
     // DX9 render() split: the foundation renderer walks the live entries of
     // these two fixed arrays (index order, no sorting) and draws each as the
     // unlit cube the DX9 pass drew — Projectile::kCubeSize / color() and
@@ -213,6 +225,8 @@ public:
 private:
     std::array<Projectile, kMaxShots>  m_shots{};
     std::array<Spark, kMaxSparks>      m_sparks{};
+    std::array<ShotContact, kMaxShots> m_contacts{};
+    int                                m_contactCount = 0;
 };
 
 }  // namespace gameplay

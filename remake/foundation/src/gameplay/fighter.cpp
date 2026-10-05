@@ -463,6 +463,7 @@ void Fighter::update_state_machine(const input::PlayerState* input,
     if (input->down[input::Action::Guard] && !m_guardExhausted && m_stamina > 0.0f) {
         set_state(FighterState::Guard);
         m_stateTimer = 0;
+        m_guardStartedPending = true;  // the guard edge for the frame report (issue #16)
         return;
     }
 
@@ -814,6 +815,7 @@ bool Fighter::try_activate_hypermode(Fighter* opponent) {
     m_hyperActive = true;
     m_hyperTimer = p.durationSec;
     m_hitsActive = 0;
+    m_hyperStartedPending = true;  // the activation edge for the frame report (issue #16)
 
     // Oyashiro's activation shoves anyone in melee range away, no damage.
     if (opponent && opponent->is_alive()) {
@@ -1012,6 +1014,9 @@ void Fighter::advance_animation_phase() {
 
 void Fighter::build_melee_swing(int moveId) {
     m_swing = resolve_swing(moveId);
+    // The swing is armed here and nowhere else, so this is the attack event's own edge
+    // (FUN_0043ffc0's swing entry); the frame report drains it (issue #16).
+    m_swingStartedPending = true;
 }
 
 MeleeSwing Fighter::resolve_swing(int moveId) const {

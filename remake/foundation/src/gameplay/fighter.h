@@ -390,6 +390,29 @@ public:
         return n;
     }
 
+    // One-frame event latches for the frame report (issue #16). Same discipline as the
+    // KO credit above: the transition arms the latch exactly once, the simulation drains
+    // it into MatchFrame, so an event cannot fire twice or be missed by a tick.
+    bool pending_swing_start() const { return m_swingStartedPending; }
+    bool take_swing_start() {
+        const bool armed = m_swingStartedPending;
+        m_swingStartedPending = false;
+        return armed;
+    }
+    bool pending_guard_start() const { return m_guardStartedPending; }
+    bool take_guard_start() {
+        const bool armed = m_guardStartedPending;
+        m_guardStartedPending = false;
+        return armed;
+    }
+    bool pending_hyper_start() const { return m_hyperStartedPending; }
+    bool take_hyper_start() {
+        const bool armed = m_hyperStartedPending;
+        m_hyperStartedPending = false;
+        return armed;
+    }
+
+
     // --- respawn (issue #11) ---
     // FUN_004219a0 (0x4219a0) is a full state restore — HP at both +0x7a4 and +0x7a8
     // back to full, +0x7c0/+0x7c4/+0x7dc.. cleared, the action counter +0x7ac = 30,
@@ -645,6 +668,9 @@ private:
     // --- KO / Overkill credit (issue #11) ---
     KoCredit m_koCredit{};
     bool     m_koPending = false;
+    bool     m_swingStartedPending = false;
+    bool     m_guardStartedPending = false;
+    bool     m_hyperStartedPending = false;
     int      m_overkillHits = 0;
     // The per-life latch the shot path keeps at victim+0x84c (FUN_00637950 @0x638c81,
     // cleared by the respawn at FUN_004219a0 @0x421a08): the killing-blow reaction
