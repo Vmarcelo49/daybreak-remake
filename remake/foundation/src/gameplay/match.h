@@ -77,7 +77,15 @@ struct MatchFrame {
     bool koSting       = false;  // economy: KO sting window is running
     bool respawned[4]  = {false, false, false, false};
     bool roundOver     = false;
+    // The WINNING side once roundOver (MatchEconomy::roundOverSide; issue #11). -1
+    // only before the round ends — a timed round always resolves to a side.
     int  roundOverSide = -1;
+    // Issue #11's credits, per fighter: the balloon % a KO added this frame and how
+    // many hits landed on an already-down body. Both are already applied to the
+    // economy; they are reported so effects/audio/results can key off the event
+    // without re-deriving it (the KO credit is one-shot by construction).
+    int  koCredits[4]     = {0, 0, 0, 0};
+    int  overkillHits[4]  = {0, 0, 0, 0};
     int  shotsSpawned  = 0;      // accepted by the pool this frame
     int  muzzleSparks  = 0;
     bool meleeHit[4]   = {false, false, false, false};  // i hit an opposing fighter this frame
@@ -125,7 +133,9 @@ public:
     void lock_ally_target(int fighter);
     // The melee victim for fighter i: its locked target when that target is a living
     // HOSTILE, otherwise the nearest living hostile. An ally lock never makes a fighter
-    // punch its own partner, and it never leaves it unable to attack.
+    // punch its own partner, and it never leaves it unable to attack. A fighter still
+    // in its airborne respawn re-entry is skipped: the original's target lock treats
+    // [fighter+0xaecb] as "not selectable" (FUN_0041f580 @0x41fe26-0x41fe73).
     int  melee_target(int fighter) const;
 
     Fighter&       fighter(int i)       { return m_fighters[i]; }

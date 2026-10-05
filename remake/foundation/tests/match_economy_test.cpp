@@ -207,7 +207,12 @@ void testConstants() {
              gameplay::reactionMoveForHitCategory(0, false));
     checkInt("category 102 -> 192 (the bullet-001 level-1 dword)", 192,
              gameplay::reactionMoveForHitCategory(102, false));
-    checkInt("category 100 -> 197", 197, gameplay::reactionMoveForHitCategory(100, false));
+    // The switch compares the raw dword (0x63babf), so a character move's 16.16
+    // spelling of 100 is not the same input as a bullet's plain 100.
+    checkInt("category 0x640000 (16.16 for 100) -> the default 198", 198,
+             gameplay::reactionMoveForHitCategory(0x640000, false));
+    checkInt("category 100 -> 197 (a bullet's plain 100)", 197,
+             gameplay::reactionMoveForHitCategory(100, false));
     checkInt("category 130 -> 193", 193, gameplay::reactionMoveForHitCategory(130, false));
     checkInt("airborne victim -> 199 whatever the category", 199,
              gameplay::reactionMoveForHitCategory(102, true));

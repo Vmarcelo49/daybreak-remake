@@ -91,21 +91,33 @@ void ProjectilePool::update(double dt, Fighter* fighters, int fighterCount,
 
         // Fighter hits: XZ-radius check, consistent with try_melee_hit
         // (the arena plays flat until jumping/fly lands — no jump state yet).
-        // Downed fighters are skipped: hitting them is Overkill (milestone 7).
+        // A DOWNED fighter is a valid target here: the original's shot path credits
+        // Overkill (+1 to the victim's own side) and still consumes the shot
+        // (FUN_00637950 @0x638e0d-0x638e37), while its melee path credits nothing and
+        // never offers a dead candidate (FUN_00639160 @0x63938d-0x639393).
         int ownerSide = -1;
         if (fighterSides)
             for (int i = 0; i < fighterCount; ++i)
                 if (&fighters[i] == s.owner) { ownerSide = fighterSides[i]; break; }
+        // The blow's hit category is the RAW record +0x64 dword of the bullet block the
+        // shot was fired with (FUN_00637950 @0x638c26); the victim's own reaction move
+        // is derived from it by FUN_0063ba80. A weapon with no bound block keeps 0,
+        // which takes that function's default branch.
+        int hitCategory = 0;
+        if (s.owner) {
+            const BulletParameter* bullet =
+                s.owner->bullet_parameter(s.tier == ShotTier::Tap ? 1 : 2);
+            if (bullet) hitCategory = bullet->hitResolutionField64;
+        }
         for (int i = 0; i < fighterCount; ++i) {
             Fighter& f = fighters[i];
-            if (&f == s.owner || !f.is_alive() ||
-                (ownerSide >= 0 && fighterSides[i] == ownerSide)) continue;
+            if (&f == s.owner || (ownerSide >= 0 && fighterSides[i] == ownerSide)) continue;
             const glm::vec3& fp = f.position();
             const float dx = fp.x - s.pos.x;
             const float dz = fp.z - s.pos.z;
             if (dx * dx + dz * dz > p.hitRadius * p.hitRadius) continue;
             s.alive = false;
-            f.take_damage(p.damage, s.owner);
+            f.take_damage(p.damage, s.owner, -1, hitCategory, /*shot=*/true);
             spawn_spark(s.pos, 0.35f);
             break;
         }

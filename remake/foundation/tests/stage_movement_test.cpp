@@ -230,12 +230,29 @@ void testSpawnAndRecovery() {
     near(150.f, recovered.x, 0.1f, "invalid spawn uses nearest valid env slot X");
     near(150.f, recovered.z, 0.1f, "invalid spawn uses nearest valid env slot Z");
 
-    match.fighter(0).take_damage(1000);
+    // A clean KO: damage equal to the HP pool, so the recovered overkill term is 0 and
+    // the balloon stays under its LIMIT (a 1000-point hit would be a tenfold overkill
+    // and legitimately bursts — FUN_00639160 @0x6393a5 divides by 1000 with no cap).
+    match.fighter(0).take_damage(match.fighter(0).max_hp());
     match.step(nullptr, nullptr, 1.0 / 64.0);
     const gameplay::MatchFrame respawn = match.step(nullptr, nullptr, 10.0);
     check(respawn.respawned[0], "KO respawn fires through the match economy");
-    near(-100.f, match.fighter(0).position().x, 0.1f, "respawn returns to the fighter's original slot");
-    near(0.f, match.fighter(0).position().y, 0.1f, "respawn is projected back onto valid ground");
+    near(-100.f, match.fighter(0).position().x, 0.1f,
+         "respawn keeps the fighter's original slot X");
+    near(-100.f, match.fighter(0).position().z, 0.1f,
+         "respawn keeps the fighter's original slot Z");
+    near(gameplay::FighterConstants::kRespawnAirY, match.fighter(0).position().y, 0.1f,
+         "respawn re-enters at the recovered air height ([fighter+0x18] = 1000.0f, "
+         "FUN_00421bd0 @0x421c62-0x421c65)");
+    check(match.fighter(0).airborne(), "the respawn re-entry is airborne");
+    check(match.fighter(0).respawn_locked(),
+          "the respawn re-entry is not targetable until it lands ([fighter+0xaecb])");
+    check(match.fighter(0).hp() == match.fighter(0).max_hp(), "the respawn restores HP");
+    for (int i = 0; i < 300 && match.fighter(0).airborne(); ++i)
+        match.step(nullptr, nullptr, 1.0 / 64.0);
+    check(!match.fighter(0).airborne(), "the respawned fighter falls back onto the stage");
+    check(!match.fighter(0).respawn_locked(), "the respawn lock ends on landing");
+    near(0.f, match.fighter(0).position().y, 0.1f, "landed on the stage floor");
 }
 
 int32_t readI32(const std::array<uint8_t, 0x54>& bytes, size_t offset) {

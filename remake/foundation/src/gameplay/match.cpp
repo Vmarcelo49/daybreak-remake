@@ -70,6 +70,7 @@ int Match::melee_target(int fighter) const {
     int victim = kNoTarget;
     for (int j = 0; j < m_config.fighterCount; ++j) {
         if (m_locks.is_ally(fighter, j) || !m_fighters[j].is_alive()) continue;
+        if (m_fighters[j].respawn_locked()) continue;  // not selectable until it lands
         const glm::vec3 d = m_fighters[j].position() - m_fighters[fighter].position();
         const float distance = d.x * d.x + d.z * d.z;
         if (distance < nearest) { nearest = distance; victim = j; }
@@ -138,6 +139,19 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[4], double dt) {
     m_shots.update(dt, m_fighters, m_config.fighterCount, m_tamaMesh, m_tamaIndex,
                    m_config.side); // scenes.cpp:697-699; allied fighters are not projectile targets
 
+    // Hand the economy what it cannot see for itself: the KO/Overkill events that
+    // landed this frame (issue #11). Each is drained exactly once — a KO credit is
+    // armed only by the blow that took HP to zero, and the overkill counter counts
+    // hits — so a complete match cannot double-credit either.
+    for (int i = 0; i < m_config.fighterCount; ++i) {
+        if (m_fighters[i].pending_ko()) {
+            const Fighter::KoCredit credit = m_fighters[i].take_ko_credit();
+            m_economy.note_death(i, credit.overkillHp, credit.reactionBonus, credit.shot);
+        }
+        for (int hit = m_fighters[i].take_overkill_hits(); hit > 0; --hit)
+            m_economy.note_overkill_hit(i);
+    }
+
     bool alive[4] = {true, true, true, true};
     int hp[4] = {0, 0, 0, 0};
     for (int i = 0; i < m_config.fighterCount; ++i) {
@@ -148,20 +162,28 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[4], double dt) {
         hp[i] = m_fighters[i].hp();
     }
     const MatchStepResult eco = m_config.fighterCount == 2
-        ? m_economy.update(alive)  // the 1v1 trace path keeps the side == fighter mapping
+        // The 1v1 trace path keeps the side == fighter mapping; the HP totals still
+        // cross, so the timed round's second key applies in 1v1 as well
+        // (FUN_00635d40 @0x636ef4-0x636f8a).
+        ? m_economy.update(alive, hp)
         : m_economy.update(alive, m_config.side, m_config.fighterCount, hp);
     for (int i = 0; i < m_config.fighterCount; ++i) {
-        // The reference calls Fighter::reset here; the economy only reports the flag
-        // because it owns no positions (see match_economy.h).
+        // The reference calls FUN_004219a0/Fighter::reset here; the economy only
+        // reports the flag because it owns no positions (see match_economy.h).
         if (eco.respawned[i]) {
             const glm::vec3 spawn = m_movementCollision
                 ? m_movementCollision->resolveSpawn(m_config.spawn[i], m_config.spawn,
                                                     static_cast<size_t>(m_config.fighterCount))
                 : m_config.spawn[i];
             m_config.spawn[i] = spawn;
-            m_fighters[i].reset(spawn, m_config.facing[i]);
+            // The respawn is airborne (FighterConstants::kRespawnAirY) and keeps this
+            // fighter's own spawn slot and team.
+            m_fighters[i].respawn(spawn, m_config.facing[i],
+                                  FighterConstants::kRespawnAirY);
         }
         out.respawned[i] = eco.respawned[i];
+        out.koCredits[i] = eco.koCredits[i];
+        out.overkillHits[i] = eco.overkillCredits[i];
     }
     out.roundOver = eco.roundOver;
     out.roundOverSide = eco.roundOverSide;

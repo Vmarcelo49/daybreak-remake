@@ -284,6 +284,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(target_lock_test PRIVATE foundation_gameplay)
     add_test(NAME target_lock_test COMMAND target_lock_test)
 
+    # Issue #11: KO -> Overkill -> respawn, team credits, capacity extremes,
+    # simultaneous deaths/bursts and the timed-round winner, driven through Match so
+    # Fighter::take_damage, the projectile pool and MatchFrame are all covered.
+    add_executable(round_rules_test tests/round_rules_test.cpp)
+    target_link_libraries(round_rules_test PRIVATE foundation_gameplay)
+    add_test(NAME round_rules_test COMMAND round_rules_test)
+
     # The .X animation path against the shipped rigs: defines XMODEL_IMPLEMENTATION
     # itself (same reason as raycast_analytic), sweeps data/<name>/<NN>.X at run time,
     # and skips itself when the install is absent.

@@ -21,6 +21,16 @@
 //   scene+0x43c8  balloon capacity, red       ─┘ settings; default 100 at
 //                 FUN_00633ca0 @0x634432-0x634452, range 40..200 step 20 in
 //                 FUN_0040acb0 @0x40af57-0x40afe2
+//
+// CAPACITY GROWTH: there is none inside a round. The battle state machine mutates
+// scene+0x43c8 exactly once, in its case 4 (FUN_00635d40 @0x63691c-0x63692b:
+// `if (cap_red > 0x46) cap_red -= 5`), and that branch is the between-rounds
+// transition — it runs the battle reset (FUN_00634760), re-wires the balloon entries
+// (FUN_00634980), resets all four fighters (FUN_0041dcb0 x4) and drops the phase back
+// to 1. So the red side's capacity SHRINKS by 5% per continued round (a multi-round
+// handicap creep) and never grows. This port plays one round per match, so the rule is
+// recorded but NOT implemented; a campaign/rematch flow must add it (UNRESOLVED, with
+// the site above as the starting point).
 //   scene+0x43d4  time limit in SECONDS (0 = ∞), scene+0x43d8 its frame countdown
 //                 (FUN_00634760 @0x6347d1-0x6347dd: countdown = limit * 0x3c)
 //   scene+0x442c  the winning side, scene+0x4424 the losing slot (result indexing)
@@ -97,12 +107,13 @@ inline constexpr bool balloonBursts(float balloon, float capacity) {
 }
 
 // FUN_0063ba80 (0x63ba80): the victim's reaction move for a hit category.
-// `category` is the move/bullet entry's combat[0x0d] (the port's
-// MeleeSwing::hitCategory / BulletParameter::chargeTier1Move, both record +0x64 —
-// the exact dword the original passes at 0x638c26); `victimAirborne` is that
-// fighter's own airborne flag; `weaponFlag800` is the unrecovered
-// `[attacker+0x10]+0x28 & 0x800` test that returns 191. 191 keeps its literal
-// because nothing in the corpus names what that flag means.
+// `category` is the RAW dword at record +0x64 — the exact value the original pushes
+// at 0x638c26 — and the function's own switch compares it against small integers
+// (0x63babf: `sub eax,0x64; cmp eax,0x83; ja default`), so a bullet's plain 102 maps
+// to 192 while a character move's 16.16 spelling of the same number (0x640000) takes
+// the default branch. `victimAirborne` is that fighter's own airborne flag;
+// `weaponFlag800` is the unrecovered `[attacker+0x10]+0x28 & 0x800` test that returns
+// 191. 191 keeps its literal because nothing in the corpus names that flag.
 inline constexpr int reactionMoveForHitCategory(int category, bool victimAirborne,
                                                 bool weaponFlag800 = false) {
     if (victimAirborne) return kReactionAirborne;

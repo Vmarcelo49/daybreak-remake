@@ -1837,8 +1837,13 @@ static void tickMatch(App& app, double dt) {
 
     if (f.roundOver) {
         app.matchRoundOverFrame = app.matchFrame;
-        std::printf("[daybreak] match: round over on side %d at frame %llu\n",
-                    f.roundOverSide, (unsigned long long)app.matchFrame);
+        // Issue #11: roundOverSide is the WINNER (the original's scene+0x442c), and
+        // roundEnd() says which rule ended it — a balloon burst or the time limit.
+        const gameplay::MatchEconomy& eco = app.match.economy();
+        std::printf("[daybreak] match: round over, side %d wins (%s) at frame %llu\n",
+                    f.roundOverSide,
+                    eco.roundEnd() == gameplay::RoundEnd::Timeout ? "time up" : "burst",
+                    (unsigned long long)app.matchFrame);
     }
 }
 
@@ -3180,8 +3185,9 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             tickMatch(*app, capturing ? app->opts.dt : gameplay::FixedStep::seconds);
             traceMatch(*app);
             if (app->frontendMatch && app->match.economy().roundOver()) {
-                const int loser = app->match.economy().roundOverSide();
-                app->frontend.resultWinner = loser < 0 ? -1 : 1 - loser;
+                // The economy reports the WINNING side (issue #11); the DX9 port
+                // reported the burst side here and this line inverted it.
+                app->frontend.resultWinner = app->match.economy().roundOverSide();
                 for (int i = 0; i < app->match.config().fighterCount; ++i) {
                     const auto& stats = app->match.fighter(i).stats();
                     const int panel = app->battleLaunch.fighters[i].panel;
@@ -3367,11 +3373,12 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 if (app->matchMode) {
                     const gameplay::MatchEconomy& eco = app->match.economy();
                     std::printf("match: %llu frames, hp1=%d hp2=%d, balloon=%.0f%%/%.0f%% "
-                                "(LIMIT %.0f%%), shots=%llu sparks=%llu hits=%llu, "
+                                "(LIMIT %.0f%%/%.0f%%), shots=%llu sparks=%llu hits=%llu, "
                                 "fx events=%llu, bgm pushed %llu frames, %llu wraps, roundOver=%d\n",
                                 (unsigned long long)app->matchFrame, app->match.fighter(0).hp(),
                                 app->match.fighter(1).hp(), (double)eco.balloon(0),
-                                (double)eco.balloon(1), (double)eco.limit(),
+                                (double)eco.balloon(1), (double)eco.capacity(0),
+                                (double)eco.capacity(1),
                                 (unsigned long long)app->matchShots,
                                 (unsigned long long)app->matchSparks,
                                 (unsigned long long)app->matchHits,
@@ -3379,6 +3386,15 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                                 (unsigned long long)app->versusBgmPushed,
                                 (unsigned long long)app->versusLoop.loops_completed(),
                                 app->matchRoundOverFrame ? 1 : 0);
+                    // Issue #11's single-counted audit: one KO credit per death, one
+                    // Overkill credit per hit, one respawn per return.
+                    std::printf("match round : winner=%d (%s), KOs=%d/%d overkill=%d/%d "
+                                "respawns=%d/%d, time left=%.1fs\n",
+                                eco.roundOverSide(),
+                                eco.roundEnd() == gameplay::RoundEnd::Timeout ? "time up" :
+                                (eco.roundEnd() == gameplay::RoundEnd::Burst ? "burst" : "running"),
+                                eco.kos(0), eco.kos(1), eco.overkills(0), eco.overkills(1),
+                                eco.respawns(0), eco.respawns(1), eco.timeLeft());
                 }
                 if (app->versusMode) {
                     std::printf("versus: %llu frames, hp1=%.0f hp2=%.0f, bgm pushed %llu frames, %llu wraps, sfx plays %llu, fx events %llu\n",

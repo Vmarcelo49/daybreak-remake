@@ -125,14 +125,62 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     try_switch_animation();
 }
 
+void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
+    // FUN_004219a0's state restore, then FUN_00421bd0's airborne reposition. The
+    // fighter keeps its team and its spawn slot (the port's deliberate deviation from
+    // the original's random X/Z inside the stage bounds).
+    m_position = glm::vec3(spawn.x, airY, spawn.z);
+    m_safePosition = spawn;
+    m_facing = facing;
+    m_velocity = glm::vec3(0, 0, 0);
+    m_vy = 0.0f;
+    m_grounded = false;   // FUN_00421bd0's Y is above the floor: the fighter falls in
+    m_groundY = spawn.y;
+    m_flyLeft = FighterConstants::kFlyTimeSec;
+    m_dashAir = false;
+    m_airDashed = false;
+    m_hp = m_maxHP;
+    m_stamina = static_cast<float>(FighterConstants::kMaxStamina);
+    m_guardExhausted = false;
+    // Move 0xc2 (194) plays on re-entry; its set is 43, which is exactly the set
+    // state_to_anim_set(BattleStart) binds. The timer is held at 0 so the landing —
+    // not a frame count — ends the pose.
+    m_state = FighterState::BattleStart;
+    m_stateTimer = 0;
+    m_animSetIdx = -1;
+    clear_tracks();
+    m_attackMoveId = -1;
+    m_dashMoveId = -1;
+    m_phaseIndex = 0;
+    m_swing = MeleeSwing{};
+    m_chargeHeld = 0.0f;
+    m_reloadTimer = 0;
+    m_pending = PendingShot{};
+    // FUN_004219a0 clears the KO-bonus latch (+0x84c = 0, @0x421a08-0x421a0b) and the
+    // recovery fields; the magazines are restored from their own capacity by the same
+    // per-player rule reset() uses (FUN_0041f580), and the pending credits belong to
+    // the death that just ended.
+    m_main.value = m_main.max;
+    m_charge.value = m_charge.max;
+    m_koBonusLatch = false;
+    m_koPending = false;
+    m_koCredit = KoCredit{};
+    m_overkillHits = 0;
+    m_respawnLock = true;   // [fighter+0xaecb] = 1 (@0x421a6c): not targetable yet
+    try_switch_animation();
+}
+
 bool Fighter::can_act() const {
+    // The respawn re-entry is a control lock: FUN_004219a0 starts move 0xc2 and the
+    // fighter cannot act again until it lands (move 0xc2's own descent state ends on
+    // touchdown, FUN_00428510's case 0xc2: `[0x84] != 0 && [0x10] < 0` -> move 0x2c).
+    if (m_respawnLock) return false;
     return m_state == FighterState::Idle || m_state == FighterState::Walk ||
            m_state == FighterState::Run || m_state == FighterState::Jump;
 }
 
 bool Fighter::can_move() const {
-    return m_state == FighterState::Idle || m_state == FighterState::Walk ||
-           m_state == FighterState::Run || m_state == FighterState::Jump;
+    return can_act();
 }
 
 void Fighter::update(const input::PlayerState* input, Fighter* opponent, double dt,
@@ -294,6 +342,14 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         } else if (m_grounded) {
             m_safePosition = m_position;
         }
+    }
+
+    // The respawn re-entry ends the moment the fighter is back on its feet: the
+    // original's move 0xc2 hands over to move 0x2c on touchdown, which is also when
+    // [fighter+0xaecb] stops mattering (FUN_004201a0 zeroes it every frame).
+    if (m_respawnLock && m_grounded) {
+        m_respawnLock = false;
+        if (m_state == FighterState::BattleStart) set_state(FighterState::Idle);
     }
 
     // 5b. Recharge ammo continuously (the HUD sweep IS this refill —
@@ -644,8 +700,17 @@ const char* Fighter::anim_set_name() const {
     return m_model->anims[static_cast<std::size_t>(m_animSetIdx)].name.c_str();
 }
 
-void Fighter::take_damage(int amount, Fighter* source, int hitstunFrames) {
-    if (!is_alive()) return;
+Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hitstunFrames,
+                                           int hitCategory, bool shot) {
+    if (!is_alive()) {
+        // Already down: this is Overkill. The original credits exactly +1 per hit to
+        // the victim's own side and does not touch HP, the KO clock or the death count
+        // (FUN_00637950 @0x638e0d-0x638e37; the melee path credits nothing at all for
+        // an already-dead body, FUN_00639160 @0x63938d-0x639393, and the port keeps
+        // that: melee never offers a dead target).
+        if (shot) ++m_overkillHits;
+        return DamageResult::Overkill;
+    }
     const HypermodeParams& mine = hypermode_params(m_hypermode);
 
     if (m_state == FighterState::Guard) {
@@ -677,7 +742,11 @@ void Fighter::take_damage(int amount, Fighter* source, int hitstunFrames) {
     const int landed = std::min(m_hp, amount);
     m_stats.damageTaken += landed;
     if (source) source->m_stats.damageDealt += landed;
-    m_hp = std::max(0, m_hp - amount);
+    // The KO credit needs the UNCLAMPED result: the original's overkill term is
+    // computed from how far below zero HP went (FUN_00639160 @0x639399-0x6393a5).
+    const int hpAfter = m_hp - amount;
+    const int overkillHp = hpAfter < 0 ? -hpAfter : 0;
+    m_hp = std::max(0, hpAfter);
 
     if (m_hp <= 0) {
         // Kakera fires on the killing blow instead of dying (spec §3.4).
@@ -687,12 +756,21 @@ void Fighter::take_damage(int amount, Fighter* source, int hitstunFrames) {
             m_hyperActive = true;
             m_hyperTimer = mine.durationSec;
             m_hitsActive = 0;
-            return;
+            return DamageResult::Hit;
         }
         ++m_stats.deaths;
         if (source) ++source->m_stats.kos;
         set_state(FighterState::KO);
         m_stateTimer = 0;  // permanent until round reset
+        // The credit the scene hands to MatchEconomy (FUN_0063ba80 picks the victim's
+        // reaction move from the blow's category and its own airborne flag).
+        const int reaction = reactionMoveForHitCategory(hitCategory, airborne());
+        const bool latchFree = !shot || !m_koBonusLatch;
+        const bool bonus = downedReactionBonus(reaction, reaction_move(), latchFree, shot);
+        if (bonus && shot) m_koBonusLatch = true;
+        m_koCredit = KoCredit{overkillHp, bonus, shot};
+        m_koPending = true;
+        return DamageResult::Ko;
     } else {
         // Stun rules while active: Kakera ignores stun entirely, Oyashiro
         // skips every other hit ("avoids being stunned every other hit" —
@@ -713,6 +791,7 @@ void Fighter::take_damage(int amount, Fighter* source, int hitstunFrames) {
                                              : FighterConstants::kHitStunFrames;
         }
     }
+    return DamageResult::Hit;
 }
 
 // ---------------------------------------------------------------------------

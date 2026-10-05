@@ -46,6 +46,7 @@
 #include "assets/xmodel.h"          // xm::Model / xm::Controller (non-owning)
 #include "game/fighter_pose.h"      // game::IFighterPose / game::FighterPose
 #include "gameplay/character_moves.h"  // CharacterMoves (borrowed move table)
+#include "gameplay/match_economy.h"    // the KO/Overkill credit rules (issue #11)
 #include "gameplay/projectile.h"
 #include "gameplay/melee_rules.h"
 #include "gameplay/weapon_definition.h"
@@ -236,6 +237,10 @@ struct FighterConstants {
     static constexpr float kFlyTimeSec    = 1.2f;   // flight budget per airtime
     static constexpr float kFlyMaxAlt     = 420.0f; // ceiling above takeoff
     static constexpr float kAirControl    = 0.7f;   // stick authority airborne
+    // Airborne respawn height: FUN_00421bd0 writes [fighter+0x18] = 0x447a0000
+    // (@0x421c62-0x421c65) after FUN_004219a0's state restore, so a revived fighter
+    // re-enters in the air and falls back in. ABSOLUTE stage units, not a delta.
+    static constexpr float kRespawnAirY   = 1000.0f;
     // Dashes (spec §3.2): double-tap a direction; airborne → air dash.
     static constexpr double kDoubleTapSec = 0.30;   // tap,tap window (seconds)
     static constexpr int   kDashFrames    = 20;     // committed dash length
@@ -334,14 +339,72 @@ public:
     Rgb       aura_color() const;
 
     // --- combat ---
+    // What one damage event did (issue #11). The scene reads it to credit the balloon
+    // exactly once per event; a caller that only cares about HP may ignore it.
+    enum class DamageResult : unsigned char {
+        Hit,       // HP lost, the fighter is still up
+        Overkill,  // the target was already down: +1 balloon, no new KO credit
+        Ko,        // this blow took it to 0: one KO credit is pending
+    };
+
+    // The KO credit the economy needs (FUN_00639160 @0x639399-0x6393c6 for melee,
+    // FUN_00637950 @0x638cad-0x638d35 for shots): how far below zero the blow drove
+    // HP, whether the killing blow's reaction was the downed one, and which of the two
+    // increment formulas applies.
+    struct KoCredit {
+        int  overkillHp = 0;
+        bool reactionBonus = false;
+        bool shot = false;
+    };
+
     // `source` applies the attacker's Hypermode damage bonus and earns its
     // gauge (Friendship). Pass nullptr for environmental damage.
     // `hitstunFrames` overrides the hit-stun length when >= 0: FUN_00637950:308 writes
     // the attacker's weapon block defenderHitstun (blob index 10, record +0x58) into
     // the victim's +0xa0 action counter, so the stun length is per weapon. Negative
     // keeps the shared kHitStunFrames.
-    void take_damage(int amount, Fighter* source = nullptr, int hitstunFrames = -1);
+    // `hitCategory` is the RAW record +0x64 dword the original feeds FUN_0063ba80
+    // (@0x638c26) to pick the victim's reaction move; 0 is "unspecified", which takes
+    // that function's default branch (198, the downed reaction) exactly as any
+    // unmatched value does. `shot` marks projectile damage, whose increment formula and
+    // already-down credit differ from melee's (see match_economy.h).
+    DamageResult take_damage(int amount, Fighter* source = nullptr, int hitstunFrames = -1,
+                             int hitCategory = 0, bool shot = false);
     void set_state(FighterState new_state);
+
+    // A hit on an already-down fighter credits the balloon but must not re-enter the
+    // KO state, restart the death clock or count another death. The scene drains the
+    // pending credit into MatchEconomy, so it is counted exactly once.
+    bool pending_ko() const { return m_koPending; }
+    KoCredit take_ko_credit() {
+        m_koPending = false;
+        const KoCredit c = m_koCredit;
+        m_koCredit = KoCredit{};
+        return c;
+    }
+    // Hits that landed on this fighter while it was already down (Overkill). Drained
+    // by the scene, one note_overkill_hit() per hit.
+    int take_overkill_hits() {
+        const int n = m_overkillHits;
+        m_overkillHits = 0;
+        return n;
+    }
+
+    // --- respawn (issue #11) ---
+    // FUN_004219a0 (0x4219a0) is a full state restore — HP at both +0x7a4 and +0x7a8
+    // back to full, +0x7c0/+0x7c4/+0x7dc.. cleared, the action counter +0x7ac = 30,
+    // +0x834 = 1000, the KO-bonus latch +0x84c = 0, 0xaeb8..0xaec7 zeroed, velocities
+    // and +0x54 zeroed — and FUN_00421bd0 then repositions the fighter (a random point
+    // inside the stage bounds in the original; this port keeps the fighter's OWN spawn
+    // slot, which is the identity the issue requires) at the recovered air height. Move
+    // 0xc2 (194) plays on re-entry, whose set is 43 — the set this port's BattleStart
+    // plays — and [fighter+0xaecb] = 1 marks the fighter as not selectable by the
+    // target lock until it is back on its feet.
+    void respawn(const glm::vec3& spawn, float facing, float airY);
+    // True from respawn() until the fighter lands. READ BY TARGET SELECTION ONLY: the
+    // original's flag is read exclusively by FUN_0041f580's lock-validity test
+    // (@0x41fe26-0x41fe73), so there is NO damage immunity to claim here.
+    bool respawn_locked() const { return m_respawnLock; }
 
     // ---- character move table (gameplay/character_moves.h, issue #26) ----
     // Binds the parsed data/<char>/NN.dat for this fighter's own rig. Borrowed,
@@ -550,6 +613,17 @@ private:
     bool         m_guardExhausted = false;
     float        m_stamina     = static_cast<float>(FighterConstants::kMaxStamina);
 
+    // --- KO / Overkill credit (issue #11) ---
+    KoCredit m_koCredit{};
+    bool     m_koPending = false;
+    int      m_overkillHits = 0;
+    // The per-life latch the shot path keeps at victim+0x84c (FUN_00637950 @0x638c81,
+    // cleared by the respawn at FUN_004219a0 @0x421a08): the killing-blow reaction
+    // bonus is once per life for shots. The melee path has no such test
+    // (FUN_00639160 @0x6392e8-0x639325).
+    bool     m_koBonusLatch = false;
+    bool     m_respawnLock = false;
+
     // --- state machine ---
     FighterState m_state       = FighterState::Idle;
     int          m_stateTimer  = 0;    // frames remaining in current state
@@ -665,6 +739,26 @@ private:
     // Current move choice for combat tuning. Its port-context heuristic does not
     // establish an animation selector; animation resolution uses the separate
     // confirmed ID below.
+    // The victim's own reaction move as FUN_0063ba80's callers read it: this port's
+    // Knockdown state is the original's grounded reaction (move 0xc4/196, sets
+    // [28, 29] — the lying pose), and nothing else the port can enter is in the
+    // exclusion set {198,199,196}. The Hit state is the launched reaction (195/0xc3),
+    // which is not excluded.
+    int reaction_move() const {
+        return m_state == FighterState::Knockdown ? kReactionGrounded : 0;
+    }
+
+    // Situation → character-.dat move id for a melee press (issue #26 step 3),
+    // or -1 when no table is bound or the situation's move is absent. The map
+    // is provisional: FUN_0043ded0 gates several attack moves per situation on
+    // unrecovered flags, so each row is the best-evidenced candidate —
+    //   dash (press while Run) → 330, the lunge ("dash forward + attack", nata)
+    //   air                     → 340, the single-phase weapon aerial ([88])
+    //   ground                  → 300, the ground neutral (first phase 31)
+    // — with 320 (ground branch at FUN_0043ded0:311, frame-1 startup) on record
+    // as the alternative for ground/air, and the kicks (310/311) unused for lack
+    // of a recovered selection rule. A costume that drops the row's move falls
+    // through to any weapon-family move present rather than the jump clip.
     int resolve_attack_move(bool dashAttack, bool aerial) const;
     // Fills m_swing from the move's first combat entry (or the legacy tuning
     // when there is no table, no move, or no combat entry).

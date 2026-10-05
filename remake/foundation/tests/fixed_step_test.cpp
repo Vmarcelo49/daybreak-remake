@@ -61,9 +61,14 @@ static void replay(Run &run, int renderHz, int fighterCount)
             input.down[fnd::input::Shoot]   = run.ticks >= 150 && run.ticks < 170;
             input.down[fnd::input::AttackA] = run.ticks == 200;
             fnd::input::compute_edges(input);
-            // Exercise the KO clock across render grouping as well as movement.
+            // Exercise the KO clock across render grouping as well as movement. A
+            // clean KO (damage == the HP pool) keeps the recovered overkill term at 0;
+            // a 1000-point hit would be a tenfold overkill and legitimately bursts the
+            // balloon, because FUN_00639160's -HP/1000 term is uncapped.
             if (run.ticks == 240)
-                run.match.fighter(fighterCount - 1).take_damage(1000, &run.match.fighter(0));
+                run.match.fighter(fighterCount - 1)
+                    .take_damage(run.match.fighter(fighterCount - 1).max_hp(),
+                                 &run.match.fighter(0));
             const fnd::input::PlayerState *inputs[4] = {&input, nullptr, nullptr, nullptr};
             const auto frame = run.match.step(inputs, gameplay::FixedStep::seconds);
             run.shots += frame.shotsSpawned;
