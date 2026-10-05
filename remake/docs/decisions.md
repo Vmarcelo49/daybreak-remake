@@ -305,3 +305,41 @@ comments — when a decision changes.
   a user config directory, a versioned schema and an atomic write are the smallest
   set that makes them real without touching the install tree.
 
+## D11 — Battle pause freezes the authoritative step; the menu is a port feature (2026-10-05)
+
+- The freeze is recovered: the original's pause flag `scene+0x4430` gates its whole battle
+  update (`FUN_00634f60` @0x635093-0x6350aa skips the frame counter and every
+  fighter/economy/camera step) and is toggled from the per-fighter pause action while the
+  live round runs (@0x634fb3-0x635006, playing system SE 0x11). The port gates its
+  authoritative step the same way (`Match::set_paused`), so a paused step touches nothing
+  and drops `dt` instead of accumulating it: paused wall time cannot become catch-up ticks.
+- The readable four-row menu (Resume / Rematch / Return to selection / Quit to desktop), its
+  captions on the shared D7 path and its key hints read from the current bindings are a
+  **port feature**, labelled as such: the original's recovered pause UI is the "PAUSE" cell
+  of `data/object/system.cnv` plus a もう一度挑戦しますか？ rematch prompt, and it has no
+  return-to-selection row. The standalone `--match` harness has no selection screen behind
+  it, so its menu is three rows.
+- Input: the paused ticks keep draining the device queues, so a button held across the pause
+  has no edge to fire on resume while a fresh press still works. Escape opens the pause in a
+  live battle instead of quitting the process. Focus loss drops held keys (#6) and pauses a
+  live battle; a disconnected pad already reads as released (#6's backend path) and the
+  keyboard can always reach the menu. A scripted run is exempt from the focus-loss auto-pause
+  so a stray focus event cannot make a recipe non-deterministic.
+- Audio: gameplay SFX (bus Sfx) are stopped on pause, BGM keeps playing (the original's pause
+  path never touches the music stream), and the recovered SE 0x11 plays on the UI bus. The
+  expectation is published to the #16 combat-audio work, which owns no pause policy.
+- Only a live offline battle that is not a capture or bounded run may pause (`--match`,
+  `--versus`, `--hud-test`, `--screen=battle` captures, `--out`/`--headless` and any
+  `--frames` run are excluded), so every parity recipe is byte-identical with the pause
+  unused. A scripted standalone run gets `App::pauseScriptAdvance` so its match-frame-indexed
+  script clock stays monotonic across a pause; it is zero for every run that never pauses.
+- Verification: 36 native host tests including the device-free `battle_pause_test` (frozen
+  economy/KO/respawn clocks, the held-button rule, the menu); asset-backed runs for pause
+  mid-attack, rematch twice (same stage, identical scene/asset counts each cycle), return to
+  selection and quit; and a mid-respawn run where 600 paused ticks (three times the 3 s
+  window) produce no respawn and the respawn follows the resume. Linux, Windows cross-build
+  and web builds succeed. Policy and provenance: `foundation/docs/PAUSE.md`.
+- Rationale: a P1 offline release needs a way out of a battle that is not "kill the
+  process", and the freeze has to be the authoritative step rather than a rendering trick,
+  or timers keep running behind a still picture.
+
