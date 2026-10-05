@@ -157,21 +157,40 @@ the lock; the camera's followed player is separate state.
 
 ### 3.5 Winning — the balloon
 
-Each team has a **balloon** at the screen edge with a **`LIMIT` readout
-(both default 100%) — the team loses when its balloon **reaches** its limit**
-(`>=`, not past it — `gameplay/match_economy.h:30-36`, pinned by
-`foundation/tests/match_economy_test.cpp:153`), not at a fixed 100%.
-Battle settings add a **per-team balloon-size handicap %** (spec multiplier
-on capacity).
-A KO fills ~20–23% (observed +21%); the KO'd fighter **respawns
-airborne** (the target — **not implemented**: `Fighter::reset()` sets
-`m_grounded = true` at the stored spawn, `gameplay/fighter.cpp:58-70`, called
-from `gameplay/match.cpp:55`). KO presentation is sting (撃破！) → inflate →
-floating `+N%` delta. Hitting the downed fighter scores **Overkill: +1/hit**
-(captured; wiki says 1–2%) for **3 seconds max**, until the lock-on
-indicator turns gray.
+Each team has a **balloon** at the screen edge with its own **`LIMIT` readout**
+(default 100%) — the team loses when its balloon **reaches** its own limit
+(`>=`, not past it; the original computes `capacity - balloon < 1` in
+`FUN_00421930` @0x42194e-0x421955 and tests it in `FUN_00635d40`
+@0x6370dc-0x6370e3). Battle settings add a **per-team balloon-size handicap %**
+(40..200, step 20, default 100 — `FUN_0040acb0` @0x40af57-0x40afe2), and it IS
+the per-side LIMIT: the increment is not scaled by it (`gameplay/match_economy.h`,
+`capacity(side)`/`limit()`).
+
+A KO credits the **victim's own team** with 20% plus an overkill term plus a
+one-shot reaction bonus (`FUN_00639160` @0x639399-0x6393c6 melee,
+`FUN_00637950` @0x638cad-0x638d35 shots), which is where the observed +21%
+comes from. The KO'd fighter **respawns airborne**: `FUN_004219a0` restores the
+full state (gated on the side still having balloon headroom, @0x4219aa-0x4219bd)
+and `FUN_00421bd0` repositions it at `[fighter+0x18] = 1000.0f`
+(@0x421c62-0x421c65) before move 0xc2 plays the descent — implemented in
+`Fighter::respawn()`, with `[fighter+0xaecb]` modelled as the target-lock
+exclusion the dump shows it to be (read only by `FUN_0041f580`
+@0x41fe26-0x41fe73) and no damage immunity claimed. KO presentation is sting
+(撃破！) → inflate (0.5%/frame, `FUN_006430f0`) → floating `+N%` delta
+(60-frame readout, `FUN_006431d0`). Hitting the downed fighter scores
+**Overkill: +1/hit** to that fighter's own team (`FUN_00637950`
+@0x638e0d-0x638e37) until it respawns — the port's KO clock; the original ends
+the window when the KO move's descent/recovery ends, which is also when the
+lock-on indicator turns gray.
 ([Basics](https://higurashidaybreak.fandom.com/wiki/Basics),
 [Overkill](https://higurashidaybreak.fandom.com/wiki/Overkill))
+
+A timed round compares the two balloons **lower-first** (the balloon counts your
+own team's KOs, so the lower one is the healthier team), then the two teams'
+total remaining HP, then `FUN_0065d150() % 2`
+(`FUN_00635d40` @0x636e90-0x636fd0). There is no draw exit: the winner is always
+a side, and the port resolves the final tie with its own seeded generator
+(`gameplay/rng.h`).
 
 ### 3.6 Controls (authoritative table)
 
@@ -234,7 +253,7 @@ the deleted tree in places and is marked where it does.
 | # | System | Now | Work |
 |---|---|---|---|
 | 1 | Melee + hit detection | ✅ weapon-move hit data wired | Damage and hitstun are read from character/weapon move phases where present; light 5 / heavy 12 / special 25 remain old port assumptions without selector/value evidence. **Remaining:** original input branches, FA/HA variants, LA/StepA inputs and per-character special behavior |
-| 2 | HP / KO / respawn / balloon | 🔶 HP 100, KO, **ground** respawn, balloon +21% | HP=100, KO state, **airborne** respawn (**not implemented**: `Fighter::reset()` sets `m_grounded = true` at the stored spawn, `gameplay/fighter.cpp:58-70`, called from `gameplay/match.cpp:55`), balloon 20–23%/KO vs per-team LIMIT (+size handicap %), KO sting → inflate → +N% delta, 3-beat result, loop back to team select |
+| 2 | HP / KO / respawn / balloon | ✅ HP 100, KO, **airborne** respawn (`Fighter::respawn()`), Overkill +1/hit, per-team LIMIT, 20+bonus%/KO | Remaining: the KO move's own descent/recovery as the respawn clock (the port uses one 3 s KO clock — `match_economy.h` port rules), the random stage-bounds respawn point (the port keeps the spawn slot), the between-rounds red-capacity creep (`FUN_00635d40` case 4 @0x63691c-0x63692b, multi-round only), the 3-beat result sequence and the loop back to team select (issues #13/#20) |
 | 3 | Projectiles + charge | ✅ port tiers, fractional stocks, reload gate, tama channel, sparks | Tap/yellow/red tiers are port rules; `shotA/B/C` labels have no established tier/animation mapping. **Fractional ammo stocks** (MAIN 6, CHARGE 2, fill = recharge readout), reload gating, `collision_tama.x` channel, hit sparks |
 | 4 | Movement full set | ✅ dash/backdash/sidestep + air dash, hold-jump flight | Double-tap dash (8-way + air), hold-jump fly timer, dash+attack and aerial variants |
 | 5 | Stamina + limit gauge | ✅ bar + 3 modes; aura/EX are placeholders | **Contextual** stamina drain + fast refill. Hypermode bar per §3.4: fill by damage dealt/taken per mode, S to activate (Kakera auto on death), 15/25 s durations, damage ×0.75/×1.5 (Oyashiro), ×0.20/×1.5 (Kakera), stun rules, Friendship recharge boost. Remaining: real aura VFX (cube stand-in), per-character EX content (move 503 is a conditional EX follow-up; its animation/string-key binding is unresolved), ゲージ増加量 battle setting |

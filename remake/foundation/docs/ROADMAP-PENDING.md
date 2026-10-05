@@ -29,7 +29,7 @@ that these screens or their audio do not exist.
 | D2 | Complete: both arcs and the 15-tick lock-switch pulse | None for the recovered ring transform |
 | D3 | Countdown and winning-team sting implemented; four-fighter simulation builds and passes host tests | Extra fighter bars; original countdown trigger/timing and asset-backed four-fighter run remain unverified |
 | E1 | Selection, real atlases, roster tables, costumes, weapons, controller slots, seeded COM choices and entry voices implemented; selected panels load into the four-fighter match path | Four-fighter HUD/VS/result presentation and exact original navigation parity remain open; asset-backed launch remains unverified |
-| E2 | Stage/variation and all five battle settings implemented and connected | Original balloon-capacity and timed-round winner rules need recovery; current normalized capacity and timed comparison are port rules |
+| E2 | Stage/variation and all five battle settings implemented and connected; the balloon capacity, KO/Overkill credit and timed-round rules are recovered (2026-10-05, issue #11) | Between-rounds red-capacity creep and the KO move's own respawn clock remain; see the issue #11 update below |
 | E3 | Volumes, fullscreen, native resolution selection and keyboard/gamepad rebinding implemented | Three renderer controls are unavailable; settings are process-local |
 | E4 | 109-update VS transition implemented | Four-fighter VS presentation; confirm-to-skip is a port extension |
 | E5 | Sting, quote, voice, actual participant stats and draw handling implemented | Original earned titles and outcome-specific quote selection; missing single quotes use that character's self-pair script |
@@ -1226,3 +1226,78 @@ for the movement mesh and original spawn slots 0/2 on stages 01, 04, 06, 15 and 
 channels and completed with `RESULT: ok`; the standalone melee trace still matches its
 banked fighter positions and states exactly. Windows/web rebuilds have not been run
 for this update.
+
+## KO, Overkill, respawn and victory rules — 2026-10-05
+
+Issue #11 is implemented in `src/gameplay/{match_economy,fighter,match,projectile}.*`,
+`src/gameplay/rng.h`, `src/gameplay/hud_fill.h` and the result/HUD print in
+`src/main.cpp`. The battle scene is a global singleton at base `0x6cafec`
+(`[fighter+0x23c]` is set to it at `0x41d9c2`), which is what made the economy
+readable: its balloon array is `scene+0x12ac`/`+0x12b8`, twelve bytes per side
+(`{int side; int balloon %; int capacity}`, `FUN_00634980` @0x6349a2-0x6349df), and
+the two capacities are the battle settings 青/赤チーム風船サイズ at `scene+0x43c4`/
+`+0x43c8` (`FUN_00633ca0` @0x634432-0x634452 defaults both to 100, `FUN_0040acb0`
+@0x40af57-0x40afe2 steps 40..200 by 20 and wraps at the ends).
+
+Recovered and implemented:
+
+* **The handicap is the LIMIT, not an increment multiplier.** A KO adds the raw
+  increment to the victim's own side (`FUN_00639650` @0x639650 through
+  `[victim+0xc]`); a side bursts when `capacity - balloon < 1` (`FUN_00421930`
+  @0x42194e-0x421955, tested in `FUN_00635d40` @0x6370dc-0x6370e3). The normalized
+  100%-LIMIT port rule is gone.
+* **KO increment** = 20 (0x14) + overkill + a one-shot reaction bonus: melee
+  `-HP/1000` uncapped (`FUN_00639160` @0x639399-0x6393c6), shots
+  `min(-HP/500, 5)` plus +1 below -3500 and +1 below -4500 (`FUN_00637950`
+  @0x638cad-0x638d35). The bonus is the killing blow's reaction landing the victim
+  in the downed/airborne reaction (`FUN_0063ba80` @0x63ba80) while it was not
+  already down; the shot path latches it once per life at `victim+0x84c`.
+* **Overkill**: a hit on a body already at HP <= 0 credits exactly +1 to that body's
+  side and nothing else (`FUN_00637950` @0x638e0d-0x638e37). The melee path credits
+  nothing there at all, which is why the port's melee never offers a dead candidate.
+* **Timed round**: the LOWER balloon wins, then the higher total remaining HP, then
+  `FUN_0065d150() % 2` (`FUN_00635d40` @0x636e90-0x636fd0). There is no draw exit,
+  and the port's old inverted comparison plus its `-1` draw are both gone. The final
+  tie uses the port's own seeded generator (`gameplay/rng.h`) so a replay resolves
+  the same tie.
+* **Airborne respawn**: `FUN_004219a0` is a full state restore gated on the side
+  still having balloon headroom (@0x4219aa-0x4219bd), then `FUN_00421bd0` repositions
+  the fighter at `[fighter+0x18] = 1000.0f` (@0x421c62-0x421c65) and move 0xc2 plays
+  the descent. `Fighter::respawn()` implements that; `[fighter+0xaecb]` is modelled
+  as the target-lock exclusion the dump shows it to be (read only by `FUN_0041f580`
+  @0x41fe26-0x41fe73), with no damage immunity claimed.
+* **Simultaneous outcomes**: every participant is credited in one pass, each exactly
+  once, and when both sides run out of balloon in the same frame the winner comes
+  from the highest participating fighter index — the original's own slot-order scan
+  (`FUN_00635d40` @0x6370a7-0x637171), made explicit so no loop order can change it.
+
+Explicit port rules, all listed in `match_economy.h`: the burst is detected in the
+same `update()` that credits it (the original sees it one frame later, because the
+per-frame flag `fighter+0xaeca` is cleared at the end of each frame); the countdown
+is seconds rather than frames, keeping a 64 Hz limit honest; `kRespawnSec` (3 s) is a
+single KO clock where the original runs the KO move's phases and respawns 30 frames
+into the second one (`FUN_00428510` @0x42a14d-0x42a17d); and the respawn keeps the
+fighter's own spawn slot where the original picks a random X/Z inside the stage
+bounds (the issue requires spawn identity to be preserved).
+
+Unresolved, recorded rather than guessed: the between-rounds red-capacity creep
+(`FUN_00635d40` case 4 @0x63691c-0x63692b, `if (cap_red > 0x46) cap_red -= 5`, run
+with the battle reset — multi-round only, so this single-round port does not carry
+it), the per-character move handler's choice of the victim's reaction move for melee
+(the port's shared swing passes "unspecified", i.e. `FUN_0063ba80`'s default 198),
+the unrecovered `[attacker+0x10]+0x28 & 0x800` branch of `FUN_0063ba80` (returns 191),
+and the KO move's per-phase durations (what would turn the 3 s port clock into the
+recovered one). Animation follow-up for issue #18: move 0xc2's descent/recovery and
+the KO chain (0xc0/0xc1 sets [117, 29]; 0xcb sets [97, 37]) are the clips that carry
+the respawn timing.
+
+Verification: all 30 Linux CTest tests pass. `match_economy_test` grew from 121 to
+387 checks (capacity extremes, both timeout tiebreaks, the seeded generator,
+simultaneous deaths, both-side bursts, the Overkill window and its cutoff, the
+single-counted credit audit, the inflate/popup arithmetic); the new `round_rules_test`
+adds 114 checks driving Match end to end (1v1 and 2v2 KO -> Overkill -> respawn, the
+killing-blow-versus-Overkill split, capacity extremes at 40%/200%, simultaneous
+deaths, both-side bursts including through Overkill, and winner reporting).
+`fighter_script_test` (576 checks), `fixed_step_test` and `stage_movement_test` moved
+their stale expectations to the recovered rules. Windows/web rebuilds have not been
+run for this update.
