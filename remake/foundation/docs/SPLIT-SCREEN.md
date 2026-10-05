@@ -72,7 +72,12 @@ viewer's own combat target — so one camera per view is the right unit.
    and fills a pad-less controller's tick input from `src/input/synthetic_pad.h`, a pure
    `(controller, tick)` pattern. It is **synthetic input**: no physical controller was
    exercised, and controller 0 (the keyboard) is never overridden. Without the flag nothing
-   changes.
+   changes. The pattern taps LockSwitch only when `--lock-taps` is passed: that tap retargets
+   a view's camera, and with four views each sweeping between fighters it is indistinguishable
+   from a camera defect at a glance. A played battle never retargets itself — the camera
+   changes target only on a LockSwitch tap, or on the recovered `Guard`+heavy gesture, which
+   needs a binding the heavy stand-in does not have — so `--lock-taps` exists to exercise the
+   per-view retarget path on request.
 
 ## Verification (2026-10-04, Linux, RADV, headless captures)
 

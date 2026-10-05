@@ -134,6 +134,9 @@ struct Options {
     // assigning controllers 0..N-1 to the battle panels, so a headless run exercises the
     // per-controller camera/HUD path. 0 (default) keeps the historical single-view flow.
     int         localPlayers = 0;
+    // --lock-taps: let those synthetic pads also tap LockSwitch (the per-view camera
+    // retarget). Off by default so an evidence run's cameras hold their fighters.
+    bool        lockTaps = false;
 };
 
 bool hasAsset(const Options& o) {
@@ -226,6 +229,9 @@ void usage() {
         "                     controller with no attached pad a deterministic synthetic\n"
         "                     press pattern. Synthetic input is not physical-pad evidence;\n"
         "                     a real pad for that controller takes precedence\n"
+        "  --lock-taps        let the synthetic pads tap LockSwitch too (the per-view\n"
+        "                     camera retarget). Off by default: four views each sweeping\n"
+        "                     between fighters reads as a camera defect, not a gesture\n"
         "With no asset argument the spinning-triangle demo runs.\n");
 }
 
@@ -292,6 +298,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--bgm=")).empty()) o.bgm = v;
         else if (!(v = val("--sfx=")).empty()) o.sfx = v;
         else if (!(v = val("--local-players=")).empty()) o.localPlayers = std::atoi(v.c_str());
+        else if (a == "--lock-taps") o.lockTaps = true;
         else if (a.rfind("--", 0) == 0) {
             error = "unknown option " + a;
             return false;
@@ -1156,7 +1163,7 @@ void driveSyntheticLocalPads(App& app) {
         if (app.matchInput.device(controller) != fnd::input::DeviceType::None) continue;
         fnd::input::SyntheticPadState pad;
         if (app.matchMode) {
-            pad = fnd::input::syntheticPadState(controller, app.matchFrame);
+            pad = fnd::input::syntheticPadState(controller, app.matchFrame, app.opts.lockTaps);
         } else if (app.screensMode) {
             // The selection screen's own clock: ticks since it appeared, so the panel walk
             // starts when the screen does and not at process start.

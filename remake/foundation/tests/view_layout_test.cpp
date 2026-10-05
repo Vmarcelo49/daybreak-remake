@@ -312,10 +312,25 @@ void syntheticPadCases() {
         anyAtAll = anyAtAll || p1.any();
         differs = differs ||
                   p1.left != p2.left || p1.melee != p2.melee || p1.shoot != p2.shoot ||
-                  p1.jump != p2.jump || p1.guard != p2.guard || p1.lock != p2.lock;
+                  p1.jump != p2.jump || p1.guard != p2.guard;
     }
     check(anyAtAll, "the synthetic pad is never silent");
     check(differs, "two synthetic pads differ (views cannot be one repeated view)");
+    // The LockSwitch tap is opt-in: by default no view retargets its camera (four views
+    // each sweeping between fighters reads as a camera defect), and --lock-taps restores
+    // the per-view tap so that path stays exercised on request.
+    bool lockByDefault = false, lockWhenAsked = false, lockDiffers = false;
+    for (uint64_t tick = 1; tick <= 768; ++tick) {
+        const SyntheticPadState quiet = fnd::input::syntheticPadState(1, tick);
+        const SyntheticPadState taps = fnd::input::syntheticPadState(1, tick, true);
+        const SyntheticPadState taps2 = fnd::input::syntheticPadState(2, tick, true);
+        lockByDefault = lockByDefault || quiet.lock;
+        lockWhenAsked = lockWhenAsked || taps.lock;
+        lockDiffers = lockDiffers || taps.lock != taps2.lock;
+    }
+    check(!lockByDefault, "the synthetic pad does not retarget the camera unless asked");
+    check(lockWhenAsked, "--lock-taps restores the per-view LockSwitch tap");
+    check(lockDiffers, "the --lock-taps pattern is per controller, not shared");
     // The pattern is total: controller 0 and an out-of-range index still yield a defined,
     // non-empty state (only controllers 1..3 ever receive it).
     check(fnd::input::syntheticPadState(0, 100).any() &&
