@@ -171,8 +171,17 @@ struct BulletParameter {
     // state change on param_3 at :536-537; shooter/launch-animation role is unproven.
     int hitResolutionField64 = 0;  // blob[13] (+0x64); shooter-selector role unproven
     int hitResolutionField68 = 0;  // blob[14] (+0x68); shooter-selector role unproven
-    int hitEffect        = 0;  // blob[0x3C] (+0x6C) — impact effect id, :232-250
-    int secondaryEffect  = 0;  // blob[16] (+0x70) — EX/secondary impact, :221-228
+    // Record +0x6C. NOT an effect: FUN_00637950:232-250 switches on it and calls
+    // FUN_0064ae70(id, matrix, 1), which indexes the scene's 256-entry SE table at
+    // scene+0x98 (FUN_00647e00 fills it from data/se/%03d.wav). Values 10/20/30 are
+    // three-SE families: the switch adds rand()%3, so 10 -> 10..12, 20 -> 20..22,
+    // 30 -> 30..32.
+    int hitSound         = 0;
+    // Record +0x70. The impact EFFECT id: FUN_00637950:221-228 spawns it through
+    // FUN_00435990(id, pos, matrix, victim) -> the effect manager's create method
+    // (FUN_0042f5e0). The id is type*10+variant into data/effect/%03d.dat, so the
+    // shipped roster's 0/10/20/30 are descriptors 000/001/002/003 (issue #17).
+    int impactEffect     = 0;
     int releaseOffsetA   = 0;  // blob[17] (+0x74) — written to player+0x87c on tier-up
     int releaseOffsetB   = 0;  // blob[18] (+0x78) — written to player+0x878 on tier-up
 };

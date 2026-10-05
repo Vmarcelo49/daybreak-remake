@@ -36,6 +36,7 @@ bool ProjectilePool::spawn(const glm::vec3& pos, const glm::vec3& dir,
         s.age   = 0.0f;
         s.life  = p.lifeSec;
         s.owner = owner;
+        s.impactEffect = owner ? owner->impact_effect(tier) : -1;
         return true;
     }
     return false;
@@ -123,8 +124,13 @@ void ProjectilePool::update(double dt, Fighter* fighters, int fighterCount,
             const float dz = fp.z - s.pos.z;
             if (dx * dx + dz * dz > p.hitRadius * p.hitRadius) continue;
             s.alive = false;
-            if (m_contactCount < static_cast<int>(m_contacts.size()))
-                m_contacts[static_cast<size_t>(m_contactCount++)] = ShotContact{ownerIndex, i};
+            if (m_contactCount < static_cast<int>(m_contacts.size())) {
+                ShotContact& c = m_contacts[static_cast<size_t>(m_contactCount++)];
+                c.shooter = ownerIndex;
+                c.victim  = i;
+                c.point   = s.pos;
+                c.effect  = s.impactEffect;
+            }
             f.take_damage(p.damage, s.owner, -1, hitCategory, /*shot=*/true);
             spawn_spark(s.pos, 0.35f);
             break;

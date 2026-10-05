@@ -97,6 +97,9 @@ struct MatchFrame {
     // so re-reading a frame cannot replay an event and a fixed 64 Hz tick cannot miss one.
     bool swingStarted[4] = {false, false, false, false};  // i armed a melee swing
     bool shotFired[4]    = {false, false, false, false};  // i's shot was accepted by the pool
+    // Where that shot left the muzzle (issue #17): the effect layer spawns the muzzle
+    // flash from the event's own position instead of re-deriving it from the pose.
+    glm::vec3 shotPoints[4] = {glm::vec3(0.f), glm::vec3(0.f), glm::vec3(0.f), glm::vec3(0.f)};
     bool hyperStarted[4] = {false, false, false, false};  // i activated hypermode
     bool guardStarted[4] = {false, false, false, false};  // i raised its guard
     // A landed hit's victim was guarding. The port's guard gate is provisional
@@ -110,6 +113,11 @@ struct MatchFrame {
         int  shooter = -1;
         int  victim  = -1;
         bool blocked = false;
+        // Issue #17: the contact point and the impact effect id the shot carried
+        // (bullet record +0x70). The effect layer spawns one instance per hit from
+        // these, so overlapping hits cannot retire each other's cards.
+        glm::vec3 point{0.f};
+        int  effect = -1;
     };
     int     shotHitCount = 0;
     ShotHit shotHits[kMaxShotHits];

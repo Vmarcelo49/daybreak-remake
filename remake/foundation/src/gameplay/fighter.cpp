@@ -1353,6 +1353,11 @@ float Fighter::shot_cost(ShotTier tier) const {
     return cost;
 }
 
+int Fighter::impact_effect(ShotTier tier) const {
+    const BulletParameter* bullet = m_bulletParams[(tier == ShotTier::Tap) ? 0 : 1];
+    return bullet ? bullet->impactEffect : -1;
+}
+
 bool Fighter::can_fire(ShotTier tier) const {
     const AmmoStock& stock = (tier == ShotTier::Tap) ? m_main : m_charge;
     return m_reloadTimer <= 0 && stock.can_spend(shot_cost(tier));

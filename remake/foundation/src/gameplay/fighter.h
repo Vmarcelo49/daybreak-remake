@@ -469,6 +469,15 @@ public:
     float shot_cost(ShotTier tier) const;
     bool  can_fire(ShotTier tier) const;
 
+    // The impact effect id this fighter's bound bullet record names for a tier
+    // (record +0x70, FUN_00637950:221-228), or -1 when no block is bound. The shot
+    // carries it to its contact so the effect layer never guesses (issue #17).
+    int impact_effect(ShotTier tier) const;
+    // The tier of the last shot this fighter armed. The armed flag is drained by
+    // take_pending_shot(); the tier stays, which is what the muzzle-flash selector needs
+    // on the tick the frame reports shotFired (issue #17).
+    ShotTier last_shot_tier() const { return m_pending.tier; }
+
     // The recovered charge thresholds in SECONDS. FUN_00433eb0's per-magazine
     // chargeMax is a tick count (the shipped values run 60..1200, and 180 is the same
     // 0xb4 the ally hold is written with), converted through the fixed tick. PORT RULE:

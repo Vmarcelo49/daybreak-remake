@@ -271,8 +271,8 @@ bool parseBulletParameter(const uint8_t* bytes, size_t size, int status,
                     out.defenderHitstun  = blob[0x0a];   // record +0x58
                     out.hitResolutionField64 = blob[0x0d];   // record +0x64
                     out.hitResolutionField68 = blob[0x0e];   // record +0x68
-                    out.hitEffect        = blob[0x0f];   // record +0x6C
-                    out.secondaryEffect  = blob[0x10];   // record +0x70
+                    out.hitSound         = blob[0x0f];   // record +0x6C (SE, not an effect)
+                    out.impactEffect     = blob[0x10];   // record +0x70 (effect id)
                     out.releaseOffsetA   = blob[0x11];   // record +0x74
                     out.releaseOffsetB   = blob[0x12];   // record +0x78
                     error.clear();

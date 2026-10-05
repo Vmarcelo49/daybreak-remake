@@ -140,6 +140,7 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[4], double dt) {
             if (m_shots.spawn(shot.pos, shot.dir, shot.tier, &m_fighters[i])) {
                 ++out.shotsSpawned;
                 out.shotFired[i] = true;
+                if (i < 4) out.shotPoints[i] = shot.pos;
                 m_shots.spawn_spark(shot.pos, 0.2f);   // muzzle flash
                 ++out.muzzleSparks;
             }
@@ -156,6 +157,8 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[4], double dt) {
         hit.shooter = c.shooter;
         hit.victim  = c.victim;
         hit.blocked = m_fighters[c.victim].state() == FighterState::Guard;
+        hit.point   = c.point;
+        hit.effect  = c.effect;
         if (hit.blocked) out.blocked[c.victim] = true;
     }
 

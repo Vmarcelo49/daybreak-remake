@@ -247,8 +247,8 @@ std::vector<uint8_t> synthBulletDat(int status, const gameplay::BulletParameter&
     blob[0x0a] = b.defenderHitstun;
     blob[0x0d] = b.hitResolutionField64;
     blob[0x0e] = b.hitResolutionField68;
-    blob[0x0f] = b.hitEffect;
-    blob[0x10] = b.secondaryEffect;
+    blob[0x0f] = b.hitSound;
+    blob[0x10] = b.impactEffect;
     blob[0x11] = b.releaseOffsetA;
     blob[0x12] = b.releaseOffsetB;
     for (int i = 0; i < 20; ++i) d.u32(blob[i]);
@@ -265,7 +265,7 @@ void testBulletParameterParser() {
     src.gaugeGainA = 100; src.gaugeGainB = 40;
     src.attackerHitstun = 0; src.defenderHitstun = 0;
     src.hitResolutionField64 = 102; src.hitResolutionField68 = 113;
-    src.hitEffect = 21; src.secondaryEffect = 30;
+    src.hitSound = 21; src.impactEffect = 30;
     src.releaseOffsetA = 500; src.releaseOffsetB = 1500;
     const auto bytes = synthBulletDat(0, src);
 
@@ -282,8 +282,8 @@ void testBulletParameterParser() {
     checkInt(40, out.gaugeGainB, "blob[8] is the second gauge gain");
     checkInt(102, out.hitResolutionField64, "blob[13] (+0x64) value decodes");
     checkInt(113, out.hitResolutionField68, "blob[14] (+0x68) value decodes");
-    checkInt(21, out.hitEffect, "blob[15] is the impact effect id");
-    checkInt(30, out.secondaryEffect, "blob[16] is the secondary effect id");
+    checkInt(21, out.hitSound, "blob[15] (+0x6C) is the impact SE id");
+    checkInt(30, out.impactEffect, "blob[16] (+0x70) is the impact effect id");
     checkInt(500, out.releaseOffsetA, "blob[17] is the tier-up release offset A");
     checkInt(1500, out.releaseOffsetB, "blob[18] is the tier-up release offset B");
 

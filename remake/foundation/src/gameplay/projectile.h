@@ -144,6 +144,11 @@ struct Projectile {
     float         life  = 0.0f;
     Fighter*      owner = nullptr;  // firing fighter; never self-hits, and
                                     // its Hypermode scales the damage dealt
+    // The impact effect id the shot was FIRED with (bullet record +0x70, via
+    // Fighter::impact_effect). Carried on the projectile so the contact can report the
+    // effect the shot would have spawned in the original (FUN_00637950:221-228) without
+    // re-deriving the weapon binding at hit time (issue #17).
+    int           impactEffect = -1;
 
     // DX9 render() split: the shot's unlit cube half-size was a literal at the
     // draw call (projectile.cpp:117) and its colour is the tier tint.
@@ -209,6 +214,8 @@ public:
     struct ShotContact {
         int shooter = -1;  // index into the fighters array update() was given
         int victim  = -1;
+        glm::vec3 point{0.f};  // where the shot met the victim (issue #17 effects)
+        int effect = -1;       // the shot's impact effect id, -1 when unbound
     };
     int contact_count() const { return m_contactCount; }
     const ShotContact& contact(int i) const { return m_contacts[static_cast<size_t>(i)]; }
