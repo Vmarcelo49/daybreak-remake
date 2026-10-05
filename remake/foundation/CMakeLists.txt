@@ -257,6 +257,14 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(fx_cards_test PRIVATE glm)
     add_test(NAME fx_cards_test COMMAND fx_cards_test)
 
+    # Issue #17: the effect table (descriptor header, id space, recovered lifetimes)
+    # and, when the install is present, all 22 shipped descriptors against their models.
+    # Defines XMODEL_IMPLEMENTATION itself, same reason as raycast_analytic.
+    add_executable(effect_catalog_test tests/effect_catalog_test.cpp)
+    target_include_directories(effect_catalog_test PRIVATE src)
+    target_link_libraries(effect_catalog_test PRIVATE glm)
+    add_test(NAME effect_catalog_test COMMAND effect_catalog_test)
+
     # The env.dat spawn contract: owns the scene/cnv/xmodel implementations
     # itself (see the test header), so like the XMODEL_IMPLEMENTATION tests
     # it must not link foundation_assets. Skips without a game install.
