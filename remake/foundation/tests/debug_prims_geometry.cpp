@@ -432,6 +432,55 @@ void testRay() {
     checkInt("degenerate rays append nothing", 0, (long long)skipped.size());
 }
 
+// The --hitbox-debug overlay's sphere. Device-free, like everything else here: the
+// geometry half of debug_prims.h is compiled without WebGPU precisely so a debug
+// primitive can be pinned on the host.
+void testSphere() {
+    std::printf("\n-- sphere: filled UV sphere for --hitbox-debug --\n");
+    // Device-free by construction: this file compiles the geometry half of debug_prims.h
+    // with no WebGPU, so a debug primitive is pinnable on the host.
+    render::CubeBatch batch;
+    batch.addSphere(glm::vec3(10.f, 20.f, 30.f), 30.f, render::packColor(255, 40, 40, 110), 8, 6);
+    // 8 slices x 6 stacks x 6 vertices: two triangles per quad, stack-major then
+    // slice-major.
+    checkInt("vertex count", 8 * 6 * 6, (long long)batch.vertices().size());
+
+    render::CubeBatch again;
+    again.addSphere(glm::vec3(10.f, 20.f, 30.f), 30.f, render::packColor(255, 40, 40, 110), 8, 6);
+    bool same = batch.vertices().size() == again.vertices().size();
+    for (size_t i = 0; same && i < batch.vertices().size(); ++i) {
+        const DebugVertex& x = batch.vertices()[i];
+        const DebugVertex& y = again.vertices()[i];
+        same = x.pos == y.pos && x.color == y.color;
+    }
+    checkBool("same arguments give a byte-identical buffer", true, same);
+
+    bool onSurface = true;
+    for (const DebugVertex& v : batch.vertices()) {
+        const float dx = v.pos.x - 10.f, dy = v.pos.y - 20.f, dz = v.pos.z - 30.f;
+        const float d = std::sqrt(dx * dx + dy * dy + dz * dz);
+        if (std::fabs(d - 30.f) > 0.01f) onSurface = false;
+    }
+    checkBool("every vertex lies on the sphere surface", true, onSurface);
+
+    // The overlay's translucency IS the alpha channel, so it has to survive.
+    checkInt("alpha preserved in the vertex colour", 110,
+             (long long)render::colorA(batch.vertices()[0].color));
+
+    // Degenerate inputs ask for nothing and must emit nothing.
+    render::CubeBatch empty;
+    empty.addSphere(glm::vec3(0, 0, 0), 0.f, render::kRed);
+    empty.addSphere(glm::vec3(0, 0, 0), 30.f, render::kRed, 2, 8);
+    checkInt("a degenerate sphere emits nothing", 0, (long long)empty.vertices().size());
+    checkBool("and reports empty", true, empty.empty());
+
+    // The drop path respects the batch limit, like the cube's.
+    render::CubeBatch capped(64);
+    capped.addSphere(glm::vec3(0, 0, 0), 30.f, render::kRed, 12, 8);   // 576 > 64
+    checkBool("an over-limit sphere is dropped, not truncated", true, capped.empty());
+    checkBool("and counted as dropped vertices", true, capped.droppedVertices() > 0);
+}
+
 void testBatchReuse() {
     std::printf("\n-- batch: per-frame growth and reuse --\n");
     DebugLineBatch batch;
@@ -575,6 +624,7 @@ int main() {
     testAabbOutline();
     testCross();
     testRay();
+    testSphere();
     testBatchReuse();
     testClipConvention();
 

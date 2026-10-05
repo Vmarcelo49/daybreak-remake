@@ -520,6 +520,21 @@ public:
     // Ticks of hit-stun a melee inflicts; see the port-rule note in fighter.cpp.
     int  m_meleeHitstun() const { return m_meleeRules.activeTicks; }
 
+    // Debug view of the recovered melee hitbox (issue #10). Data only, so drawing stays
+    // in the render layer: `anchors` are the victim's TWO spheres -- head and chest, the
+    // Head and Spine bones FUN_0063dad0:238-243 builds -- and `attack*` is the attack
+    // sphere FUN_0063b470 tests, present only while a swing is in its active window.
+    // The same anchors and radius try_melee_hit() uses, so what this draws is what the
+    // simulation actually tests rather than a second description of it.
+    struct HitboxDebug {
+        glm::vec3 anchors[2]{};
+        float     anchorRadius = 0.f;
+        bool      attacking    = false;
+        glm::vec3 attackCenter{};
+        float     attackRadius = 0.f;
+    };
+    HitboxDebug hitbox_debug() const;
+
     // Aerial melee: the same melee control, played from the air with the aerial reach.
     void set_aerial_attack(bool aerial) { m_aerialAttack = aerial; }
     bool aerial_attack() const { return m_aerialAttack; }

@@ -110,6 +110,7 @@ struct Options {
     bool        noTextures = false;
     bool        fog        = false;   // opt-in: the DX9 reference renders unfogged
     bool        noAnim     = false;   // bind pose: the DX9 reference binds no sets
+    bool        hitboxDebug = false;  // draw the recovered melee hit spheres (issue #10)
     bool        unlit      = false;
     bool        list       = false;
     std::string screen;          // --screen=<id|name>: boot a front-end screen
@@ -225,6 +226,9 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--debug-prims") o.debugPrims = true;
         else if (!(v = val("--install=")).empty()) o.install = v;
         else if (a == "--no-camera-clamp") o.noCameraClamp = true;
+        // Debug overlay: draw the recovered melee hit spheres (issue #10). Off by
+        // default so no capture and no trace is affected by it.
+        else if (a == "--hitbox-debug") o.hitboxDebug = true;
         else if (a == "--headless") o.headless = true;
         else if (a == "--audio-test") o.audioTest = true;
         else if (a == "--input-test") o.inputTest = true;
@@ -520,6 +524,7 @@ struct App {
     render::DebugLineBatch       debugLines;   // rebuilt per frame, capacity kept
     render::CubeBatch            matchCubes{2048};
     render::CubeBatch            auraCubes{64};   // additive, drawn in its own pass
+    render::CubeBatch            hitboxCubes{4096};  // --hitbox-debug: melee hit spheres
     glm::vec3                    debugBoundsLo{0.f}, debugBoundsHi{0.f};
     bool                         haveDebugBounds = false;
     game::physics::CameraCollision cameraCollision;   // arena eye clamp, per stage
@@ -1524,6 +1529,7 @@ static void traceMatch(App& app) {
 static void fillMatchCubes(App& app) {
     app.matchCubes.clear();
     app.auraCubes.clear();
+    app.hitboxCubes.clear();
     for (const gameplay::Projectile& p : app.match.shots().shots()) {
         if (!p.alive) continue;
         app.matchCubes.add(p.pos, gameplay::Projectile::kCubeSize, p.color());
@@ -1532,6 +1538,23 @@ static void fillMatchCubes(App& app) {
         if (!s.alive) continue;
         app.matchCubes.add(s.pos, s.size() * 0.5f, s.color());
     }
+    // --hitbox-debug: the recovered melee hit spheres from issue #10, drawn as filled
+    // translucent red volumes. These are the SAME anchors and radius try_melee_hit()
+    // tests (Fighter::hitbox_debug() reads the fighter's own rules), so the overlay
+    // cannot drift from the simulation. Separate from matchCubes so it can be toggled
+    // without changing what the shots/sparks pass submits.
+    if (app.opts.hitboxDebug) {
+        for (int i = 0; i < app.match.config().fighterCount; ++i) {
+            const gameplay::Fighter::HitboxDebug hb = app.match.fighter(i).hitbox_debug();
+            for (const glm::vec3& anchor : hb.anchors)
+                app.hitboxCubes.addSphere(anchor, hb.anchorRadius,
+                                          render::packColor(255, 40, 40, 110));
+            if (hb.attacking)
+                app.hitboxCubes.addSphere(hb.attackCenter, hb.attackRadius,
+                                          render::packColor(255, 0, 0, 70));
+        }
+    }
+
     if (!app.opts.debugPrims) return;   // the real aura card is the default view
     // The aura cube: the reference render's second, additive cube pass, drawn in the
     // fighter's own space: its local centre through the fighter's model matrix.
@@ -2579,6 +2602,7 @@ struct CaptureHook {
     const render::DebugLineBatch* lines = nullptr;
     const render::CubeBatch*      solid = nullptr;   // shots + sparks (opaque)
     const render::CubeBatch*      additive = nullptr;   // hypermode auras
+    const render::CubeBatch*      hitbox  = nullptr;   // --hitbox-debug melee spheres
     glm::mat4                     viewProj{1.f};
     render::DebugPrims::Options   primOptions;
     std::string*                  error = nullptr;
@@ -2592,6 +2616,15 @@ bool captureHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat
         const render::Target t{enc, view, format, w, h};
         render::DebugPrims::Options o;   // depth-tested, the reference's opaque cube pass
         if (!ck->prims->drawCubes(t, ck->viewProj, *ck->solid, ck->renderer->depthView(), o,
+                                  *ck->error))
+            return false;
+    }
+    // Straight alpha (not additive): a translucent hit volume should tint what is behind
+    // it rather than blow out, so overlapping fighters stay readable.
+    if (ck->hitbox && !ck->hitbox->empty()) {
+        const render::Target t{enc, view, format, w, h};
+        render::DebugPrims::Options o;
+        if (!ck->prims->drawCubes(t, ck->viewProj, *ck->hitbox, ck->renderer->depthView(), o,
                                   *ck->error))
             return false;
     }
@@ -2899,6 +2932,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     if (app->matchMode) {
                         cap.solid = &app->matchCubes;
                         cap.additive = &app->auraCubes;
+                        if (app->opts.hitboxDebug) cap.hitbox = &app->hitboxCubes;
                     }
                 }
                 const bool useHook = useHud || cap.prims;
@@ -2967,6 +3001,17 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 render::DebugPrims::Options cubeOptions;
                 if (!app->debugPrims.drawCubes(target, vp, app->matchCubes,
                                                app->renderer.depthView(), cubeOptions,
+                                               app->error)) {
+                    gpu::endFrame(app->ctx, app->sc, frame);
+                    return SDL_APP_FAILURE;
+                }
+            }
+            if (app->matchMode && app->opts.hitboxDebug && !app->hitboxCubes.empty()) {
+                // Straight alpha (not additive): the volume should tint what is behind
+                // it rather than blow out, so overlapping fighters stay readable.
+                render::DebugPrims::Options hitboxOptions;
+                if (!app->debugPrims.drawCubes(target, vp, app->hitboxCubes,
+                                               app->renderer.depthView(), hitboxOptions,
                                                app->error)) {
                     gpu::endFrame(app->ctx, app->sc, frame);
                     return SDL_APP_FAILURE;

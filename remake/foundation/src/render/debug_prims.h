@@ -125,6 +125,50 @@ inline void buildCube(const glm::vec3& c, float h, DebugColor color, DebugVertex
 // A frame's worth of cubes, in submission order: no sorting, no dedup, so two runs of
 // the same frame upload byte-identical buffers. `limit` is a constructor argument so
 // the drop path stays testable on the host.
+// Filled UV sphere: slices x stacks quads, two triangles each, so
+// slices * stacks * 6 vertices. Vertex order is stack-major then slice-major and the
+// surface point is
+//   x = cx + r * sin(phi) * cos(theta),  y = cy + r * cos(phi),  z = cz + r * sin(phi) * sin(theta)
+// with phi the stack angle (0 at the top pole) and theta the slice angle. Appending in
+// that fixed order is what keeps the buffer byte-identical between runs.
+inline void buildSphere(const glm::vec3& c, float r, DebugColor color, int slices,
+                        int stacks, std::vector<DebugVertex>& out) {
+    if (!(r > 0.f) || slices < 3 || stacks < 2) return;
+    const float kPi = 3.14159265358979323846f;
+    auto point = [&](int stack, int slice, glm::vec3& out3) {
+        const float phi = kPi * static_cast<float>(stack) / static_cast<float>(stacks);
+        const float theta = 2.0f * kPi * static_cast<float>(slice) / static_cast<float>(slices);
+        const float sp = std::sin(phi);
+        out3 = c + glm::vec3(r * sp * std::cos(theta), r * std::cos(phi),
+                             r * sp * std::sin(theta));
+    };
+    glm::vec3 a00, a01, a10, a11;
+    for (int st = 0; st < stacks; ++st) {
+        for (int sl = 0; sl < slices; ++sl) {
+            const int sl1 = (sl + 1) % slices;   // wraps so the seam closes
+            point(st, sl, a00);
+            point(st, sl1, a01);
+            point(st + 1, sl, a10);
+            point(st + 1, sl1, a11);
+            out.push_back({{a00.x, a00.y, a00.z}, color});
+            out.push_back({{a10.x, a10.y, a10.z}, color});
+            out.push_back({{a11.x, a11.y, a11.z}, color});
+            out.push_back({{a00.x, a00.y, a00.z}, color});
+            out.push_back({{a11.x, a11.y, a11.z}, color});
+            out.push_back({{a01.x, a01.y, a01.z}, color});
+        }
+    }
+}
+
+// Builds a filled UV sphere as triangle-list vertices in CubeBatch's layout. Device-free
+// and deterministic: vertex order is stack-major then slice-major, with no dedup, so two
+// runs of the same arguments upload byte-identical buffers — the property the Linux/Wine
+// capture A/B relies on. Poles are emitted as degenerate triangles (two of the three
+// vertices coincide), which costs one wasted triangle per pole and avoids a branch in the
+// inner loop that would make the order tessellation-dependent.
+void buildSphere(const glm::vec3& center, float radius, DebugColor color, int slices,
+                 int stacks, std::vector<DebugVertex>& out);
+
 class CubeBatch {
 public:
     explicit CubeBatch(size_t limit = 1024) : limit_(limit) {}
@@ -137,6 +181,24 @@ public:
         DebugVertex v[kCubeVertices];
         buildCube(center, halfExtent, color, v);
         verts_.insert(verts_.end(), v, v + kCubeVertices);
+    }
+    // A FILLED sphere, so a translucent hit volume reads as a volume rather than as a
+    // wireframe. Same pipeline and same alpha semantics as the cube: the caller passes a
+    // colour whose alpha the blend consumes, and the geometry helper below emits the same
+    // DebugVertex layout (position + packed D3DCOLOR), so nothing downstream changes.
+    //
+    // Why it lives here rather than in the line pass: DebugLineBatch is segments, which
+    // cannot express a filled translucent shape. Reusing CubeBatch means one pipeline,
+    // one blend mode and no new bind group for a debug view.
+    //
+    // `slices`/`stacks` are the tessellation; the defaults are deliberately coarse
+    // because this is an overlay, and the vertex cost is (slices * stacks * 6).
+    void addSphere(const glm::vec3& center, float radius, DebugColor color,
+                   int slices = 12, int stacks = 8) {
+        const size_t need = static_cast<size_t>(slices) * static_cast<size_t>(stacks) * 6;
+        if (!(radius > 0.f) || slices < 3 || stacks < 2) return;
+        if (verts_.size() + need > limit_) { dropped_ += need; return; }
+        buildSphere(center, radius, color, slices, stacks, verts_);
     }
     const std::vector<DebugVertex>& vertices() const { return verts_; }
     size_t cubes() const { return verts_.size() / kCubeVertices; }

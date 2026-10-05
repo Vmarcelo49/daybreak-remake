@@ -804,6 +804,24 @@ void Fighter::set_weapon(const WeaponDefinition* weapon) {
     }
 }
 
+Fighter::HitboxDebug Fighter::hitbox_debug() const {
+    const float bodyHeight = game::physics::MovementCollision::kFighterHeight;
+    HitboxDebug d;
+    d.anchors[0] = m_position + glm::vec3(0.0f, bodyHeight * m_meleeRules.headHeightFrac, 0.0f);
+    d.anchors[1] = m_position + glm::vec3(0.0f, bodyHeight * m_meleeRules.chestHeightFrac, 0.0f);
+    d.anchorRadius = m_meleeRules.bodyRadius;
+    d.attacking = (m_state == FighterState::AttackA || m_state == FighterState::AttackB) &&
+                  m_meleeRules.is_active(m_meleeElapsed);
+    if (d.attacking) {
+        // The attack sphere is centred where try_melee_hit() measures from, so the two
+        // can never disagree.
+        d.attackCenter = m_position +
+                         glm::vec3(0.0f, bodyHeight * m_meleeRules.chestHeightFrac, 0.0f);
+        d.attackRadius = m_meleeRules.bodyRadius + m_meleeRules.radius;
+    }
+    return d;
+}
+
 void Fighter::set_bullet_parameter(int level, const BulletParameter* parameter) {
     const int i = (level == 2) ? 1 : 0;
     if (m_bulletParams[i] == parameter) return;
