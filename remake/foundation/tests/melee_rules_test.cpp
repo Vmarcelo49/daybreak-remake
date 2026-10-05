@@ -31,6 +31,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -1031,12 +1032,15 @@ void testDirectionalDashes(const fs::path& install) {
         int move;
         int set;
         const char* name;
+        bool exact;  // forward/back are pinned; sides pin the family pair —
+                     // Left/Right ORDER is unverified under mirroring, so the
+                     // test accepts either side move with its own first set.
     };
     const Case cases[] = {
-        {input::Action::Up, 20, 13, "forward"},
-        {input::Action::Down, 27, 16, "back"},
-        {input::Action::Left, 24, 19, "left"},
-        {input::Action::Right, 23, 22, "right"},
+        {input::Action::Up, 20, 13, "forward", true},
+        {input::Action::Down, 27, 16, "back", true},
+        {input::Action::Left, 24, 19, "left", false},
+        {input::Action::Right, 23, 22, "right", false},
     };
     for (const Case& c : cases) {
         xm::Model model;
@@ -1048,10 +1052,73 @@ void testDirectionalDashes(const fs::path& install) {
         checkInt(static_cast<int>(FighterState::Run), static_cast<int>(f.state()),
                  "double-tap dashes");
         char what[96];
-        std::snprintf(what, sizeof(what), "%s dash resolves move %d", c.name, c.move);
-        checkInt(c.move, f.dash_move_id(), what);
-        std::snprintf(what, sizeof(what), "%s dash opens on set %d", c.name, c.set);
-        checkInt(c.set, f.anim_set_index(), what);
+        if (c.exact) {
+            std::snprintf(what, sizeof(what), "%s dash resolves move %d", c.name, c.move);
+            checkInt(c.move, f.dash_move_id(), what);
+            std::snprintf(what, sizeof(what), "%s dash opens on set %d", c.name, c.set);
+            checkInt(c.set, f.anim_set_index(), what);
+        } else {
+            // Either side move with ITS first set: (24,19) or (23,22).
+            const int gotMove = f.dash_move_id();
+            const int gotSet = f.anim_set_index();
+            const bool pair =
+                (gotMove == 24 && gotSet == 19) || (gotMove == 23 && gotSet == 22);
+            std::snprintf(what, sizeof(what), "%s dash plays a side pair (got %d/%d)",
+                          c.name, gotMove, gotSet);
+            check(pair, what);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Roster variation: the locomotion/jump rows are universal (same tags in all
+// 16 characters × all NN files — verified by dump, pinned here for keiichi and
+// mion), while weapon rows differ per character AND the machine reads whatever
+// the bound table says: keiichi's dash-attack opens on 39 where Rena 0's opens
+// on 51, and rena/02's dash opens on 54 (jump-forward startup + dash recovery
+// — surprising, but move ids outrank set expectations by design).
+// ---------------------------------------------------------------------------
+void testRosterVariation(const fs::path& install) {
+    section("roster variation: shared locomotion, per-character attacks");
+    // One table is ~2.3 MB of fixed-size phase storage: heap-allocate, since
+    // three of them would overflow the stack.
+    auto keiichi = std::make_unique<gameplay::CharacterMoves>();
+    auto mion = std::make_unique<gameplay::CharacterMoves>();
+    auto rena2 = std::make_unique<gameplay::CharacterMoves>();
+    if (!load_moves(install, "keiichi", "00.dat", *keiichi) ||
+        !load_moves(install, "mion", "00.dat", *mion) ||
+        !load_moves(install, "rena", "02.dat", *rena2)) {
+        skip("roster variation (no install found)");
+        return;
+    }
+    for (const gameplay::CharacterMoves* moves : {keiichi.get(), mion.get()}) {
+        const gameplay::CharacterMove* dash = moves->find(20);
+        check(dash && dash->sectionCount == 3 && dash->phase_set_index(0) == 13 &&
+                  dash->phase_set_index(1) == 14 && dash->phase_set_index(2) == 15,
+              "non-rena dash phases are [13, 14, 15]");
+        checkInt(3, moves->first_set_index(41), "non-rena rise opens on set 3");
+        checkInt(43, moves->first_set_index(43), "non-rena fall opens on set 43");
+        checkInt(19, moves->first_set_index(24), "non-rena side move 24 opens on 19");
+        checkInt(22, moves->first_set_index(23), "non-rena side move 23 opens on 22");
+    }
+    checkInt(39, keiichi->first_set_index(330),
+             "keiichi's lunge opens on 39, not Rena 0's 51");
+    checkInt(54, rena2->first_set_index(20),
+             "rena/02's dash opens on 54: the file may surprise, ids win");
+    // Live: keiichi's dash-attack plays HIS set, not Rena 0's.
+    {
+        xm::Model model;
+        xm::Controller ctrl;
+        Fighter dasher;
+        bind_synthetic_rig(dasher, model, ctrl, glm::vec3(0, 0, 0));
+        dasher.set_moves(keiichi.get());
+        double_tap(dasher, input::Action::Up);
+        input::PlayerState in;
+        in.down[input::Action::AttackA] = true;
+        tick(dasher, in);
+        in.down[input::Action::AttackA] = false;
+        checkInt(330, dasher.attack_move_id(), "keiichi dash press resolves 330");
+        checkInt(39, dasher.anim_set_index(), "binding set 39, not 51");
     }
 }
 
@@ -1109,6 +1176,7 @@ int main(int argc, char** argv) {
     testEveryComboRuns(install);
     testPhaseAdvancement(install);
     testDirectionalDashes(install);
+    testRosterVariation(install);
     testJumpAnimation(install);
     std::printf("\nMELEE_RULES: %s (%d checks, %d failed, %d skipped)\n",
                 failures == 0 ? "ok" : "FAIL", checks, failures, skipped);

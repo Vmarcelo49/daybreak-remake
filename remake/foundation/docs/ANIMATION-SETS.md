@@ -171,6 +171,11 @@ against the logic tick rate.
 2. **Re-derive `state_to_anim_set` from move id → phase → index**, anchored on the verified
    move 20 → `[13,14,15]` dash correspondence. DONE for locomotion (Walk→1,
    Run→13); attack rows still pending step 3.
+   Roster check: the locomotion/jump rows (10/20/23/24/27/28/30/40–44) carry
+   IDENTICAL tags in all 16 characters × all NN files — with one exception,
+   rena/02's move 20 is `[54,55,15]`, which the machine plays as-is (move ids
+   outrank set expectations). Weapon rows vary per character/costume and are
+   read from the bound table, never assumed.
 3. **Add the weapon dimension** to attack-state resolution: `AttackA` must select the equipped
    weapon's set, using the per-character/per-weapon indices already flagged for moves 300+.
    DONE provisionally: `Fighter::resolve_attack_move` picks 330 (dash) / 340 (air) /
@@ -182,7 +187,11 @@ against the logic tick rate.
    slot's own table, never the rig costume's.
    Follow-up states now also resolve through the table: dashes play their
    direction's move (Up 20 / Down 27 / Left 24 / Right 23) and Jump plays 41
-   rising / 43 falling, switching on the vertical-velocity sign. Multi-phase
+   rising / 43 falling, switching on the vertical-velocity sign. Forward/back
+   are solid (case yaw offsets 0 and +180 in FUN_00438310); the Left/Right ORDER
+   is open — the side cases set -0.05 and +90.0, which is NOT a clean ±90 pair,
+   so the assignment follows only the observed startup sets and needs a
+   playtest confirmation. Multi-phase
    moves play each phase once through (by clip length, holding the last) instead
    of looping the startup — the per-phase length is the clip's own duration,
    an approximation, since the original's countdown source is unrecovered.

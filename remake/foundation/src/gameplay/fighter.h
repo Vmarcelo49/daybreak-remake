@@ -804,9 +804,12 @@ private:
     // that drops the move must not resolve to a phaseless id).
     int present_move(int id) const;
     // Dash direction → dash move (Up 20 / Down 27 / Left 24 / Right 23, all
-    // first-phase verified), or -1. Left→24 / Right→23 follows the observed
-    // sets (19 left-startup, 22 right-startup); screen-vs-character mirroring
-    // is unverified, and a missing row falls back to 20, then legacy.
+    // first-phase verified), or -1. Forward/back are solid (case yaw offsets 0
+    // and +180 in FUN_00438310, plus the visuals). The Left/Right ORDER follows
+    // only the observed startup sets (19 left, 22 right) and is UNVERIFIED
+    // under mirroring — if playtest says a sidestep plays backwards, swap the
+    // two rows; it is a one-line change. A missing row falls back to 20, then
+    // legacy.
     int dash_move_for(input::Action dir) const;
     // Rising (leap/fly) → 41, falling → 43, or -1. Takeoff 40 and land 44 have
     // no driver in this machine yet.
