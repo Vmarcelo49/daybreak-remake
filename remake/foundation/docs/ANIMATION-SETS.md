@@ -180,6 +180,12 @@ against the logic tick rate.
    the binding is closed: NN.dat number is the weapon slot and file offset
    `0x114` carries the id (46/46 against `kWeaponIds`), so the battle loads the
    slot's own table, never the rig costume's.
+   Follow-up states now also resolve through the table: dashes play their
+   direction's move (Up 20 / Down 27 / Left 24 / Right 23) and Jump plays 41
+   rising / 43 falling, switching on the vertical-velocity sign. Multi-phase
+   moves play each phase once through (by clip length, holding the last) instead
+   of looping the startup — the per-phase length is the clip's own duration,
+   an approximation, since the original's countdown source is unrecovered.
 4. **Un-port the melee constants.** Reach and damage move out of `melee_rules.h` and into the
    `WeaponDefinition` recovered by issue #9.
    DONE via the character table rather than the item file (that is where the hits

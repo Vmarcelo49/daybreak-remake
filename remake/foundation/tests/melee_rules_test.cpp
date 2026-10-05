@@ -102,20 +102,35 @@ void swing_to_elapsed(Fighter& f, int elapsed) {
 }
 
 // A 124-set synthetic rig, named like the shipped files (index i = "Anim-(124-i)"),
-// so animation-set assertions read the same as the fighter_script_test's.
+// so animation-set assertions read the same as the fighter_script_test's. Clips run
+// durationTicks long at 4800 ticks/s: the 100 s default HOLDS every phase (no
+// advancement), while a short rig (225 ticks ≈ 3 ticks at 1/64) steps phases.
 void bind_synthetic_rig(Fighter& f, xm::Model& model, xm::Controller& ctrl,
-                        const glm::vec3& at) {
+                        const glm::vec3& at, float durationTicks = 480000.0f) {
     model.anims.clear();
+    model.ticksPerSecond = 4800.0f;
     for (int i = 0; i < 124; ++i) {
         xm::AnimSet a;
         a.name = "Anim-" + std::to_string(124 - i);
-        a.duration = 60.0f;
+        a.duration = durationTicks;
         model.anims.push_back(a);
     }
     ctrl.bind(&model);
     f.init(&model, &ctrl, at, 0.0f);
     input::PlayerState idle;
     for (int i = 0; i < 70; ++i) tick(f, idle);
+}
+
+// Double-tap a direction: the second press chains into a committed dash.
+void double_tap(Fighter& f, int action) {
+    input::PlayerState in;
+    in.down[action] = true;
+    tick(f, in);
+    in.down[action] = false;
+    tick(f, in);
+    in.down[action] = true;
+    tick(f, in);
+    in.down[action] = false;
 }
 
 // Loads one shipped item definition; false when the install is absent.
@@ -944,6 +959,136 @@ void testEveryComboRuns(const fs::path& install) {
     check(attempted > 100, "the sweep covers the full roster cross product");
 }
 
+// ---------------------------------------------------------------------------
+// Phase advancement: a multi-phase move plays each phase once through (by clip
+// length) and holds the last, instead of looping its startup. Short rig:
+// 225 ticks at 4800/s ≈ 3 ticks per phase at 1/64. Rena 00.dat reference:
+//   attack 300 → [31, 73, 74]; forward dash 20 → [13, 14, 15].
+// ---------------------------------------------------------------------------
+void testPhaseAdvancement(const fs::path& install) {
+    section("phase advancement (no startup loops)");
+    gameplay::CharacterMoves moves;
+    if (!load_moves(install, "rena", "00.dat", moves)) {
+        skip("phase advancement (no install found)");
+        skip("dash phase advancement (no install found)");
+        return;
+    }
+    // Ground attack: 31 held 3 ticks, then 73, then 74 holds the swing out.
+    {
+        xm::Model model;
+        xm::Controller ctrl;
+        Fighter attacker;
+        bind_synthetic_rig(attacker, model, ctrl, glm::vec3(0, 0, 0), 225.0f);
+        attacker.set_moves(&moves);
+        input::PlayerState in;
+        in.down[input::Action::AttackA] = true;
+        tick(attacker, in);
+        in.down[input::Action::AttackA] = false;
+        checkInt(31, attacker.anim_set_index(), "the swing opens on phase 0 (31)");
+        tick(attacker, in);
+        tick(attacker, in);
+        tick(attacker, in);   // ~3 ticks of clip: phase 1
+        checkInt(73, attacker.anim_set_index(), "then steps to phase 1 (73)");
+        tick(attacker, in);
+        tick(attacker, in);
+        tick(attacker, in);   // ~3 more: phase 2, held
+        checkInt(74, attacker.anim_set_index(), "then holds the last phase (74)");
+        for (int i = 0; i < 15; ++i) tick(attacker, in);
+        checkInt(74, attacker.anim_set_index(), "the last phase never advances past");
+    }
+    // Forward dash: 13, then 14, then 15 holds for the rest of the dash.
+    {
+        xm::Model model;
+        xm::Controller ctrl;
+        Fighter dasher;
+        bind_synthetic_rig(dasher, model, ctrl, glm::vec3(0, 0, 0), 225.0f);
+        dasher.set_moves(&moves);
+        double_tap(dasher, input::Action::Up);
+        checkInt(20, dasher.dash_move_id(), "the dash resolves move 20");
+        checkInt(13, dasher.anim_set_index(), "opening on dash startup (13)");
+        input::PlayerState idle;
+        for (int i = 0; i < 3; ++i) tick(dasher, idle);
+        checkInt(14, dasher.anim_set_index(), "then the dash loop (14)");
+        for (int i = 0; i < 3; ++i) tick(dasher, idle);
+        checkInt(15, dasher.anim_set_index(), "then recovery holds (15)");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Directional dashes: double-tap a direction and the dash plays that
+// direction's move — Up 20 ([13..]), Down 27 ([16..]), Left 24 ([19..]),
+// Right 23 ([22..]). Long rig: phases hold, so the first set pins the row.
+// ---------------------------------------------------------------------------
+void testDirectionalDashes(const fs::path& install) {
+    section("directional dash animation sets");
+    gameplay::CharacterMoves moves;
+    if (!load_moves(install, "rena", "00.dat", moves)) {
+        skip("directional dash sets (no install found)");
+        return;
+    }
+    struct Case {
+        int action;
+        int move;
+        int set;
+        const char* name;
+    };
+    const Case cases[] = {
+        {input::Action::Up, 20, 13, "forward"},
+        {input::Action::Down, 27, 16, "back"},
+        {input::Action::Left, 24, 19, "left"},
+        {input::Action::Right, 23, 22, "right"},
+    };
+    for (const Case& c : cases) {
+        xm::Model model;
+        xm::Controller ctrl;
+        Fighter f;
+        bind_synthetic_rig(f, model, ctrl, glm::vec3(0, 0, 0));
+        f.set_moves(&moves);
+        double_tap(f, c.action);
+        checkInt(static_cast<int>(FighterState::Run), static_cast<int>(f.state()),
+                 "double-tap dashes");
+        char what[96];
+        std::snprintf(what, sizeof(what), "%s dash resolves move %d", c.name, c.move);
+        checkInt(c.move, f.dash_move_id(), what);
+        std::snprintf(what, sizeof(what), "%s dash opens on set %d", c.name, c.set);
+        checkInt(c.set, f.anim_set_index(), what);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Jump animation: the airtime climbs on move 41 (set 3) and falls on move 43
+// (set 43), switching on the vertical-velocity sign. Long rig: no phase steps,
+// so the sets pin the move switch itself.
+// ---------------------------------------------------------------------------
+void testJumpAnimation(const fs::path& install) {
+    section("jump animation follows rise and fall");
+    gameplay::CharacterMoves moves;
+    if (!load_moves(install, "rena", "00.dat", moves)) {
+        skip("jump animation (no install found)");
+        return;
+    }
+    xm::Model model;
+    xm::Controller ctrl;
+    Fighter f;
+    bind_synthetic_rig(f, model, ctrl, glm::vec3(0, 0, 0));
+    f.set_moves(&moves);
+    input::PlayerState jump;
+    jump.down[input::Action::Jump] = true;
+    tick(f, jump);
+    tick(f, jump);
+    checkInt(41, f.jump_move_id(), "the climb resolves move 41");
+    checkInt(3, f.anim_set_index(), "playing rise set 3, not idle");
+    jump.down[input::Action::Jump] = false;
+    for (int i = 0; i < 33; ++i) tick(f, jump);   // vy crosses zero ~tick 26
+    check(f.airborne(), "still airborne on the way down");
+    checkInt(43, f.jump_move_id(), "the fall switches to move 43");
+    checkInt(43, f.anim_set_index(), "playing fall set 43");
+    for (int i = 0; i < 30; ++i) tick(f, jump);
+    checkInt(static_cast<int>(FighterState::Idle), static_cast<int>(f.state()),
+             "landing returns to Idle");
+    checkInt(0, f.anim_set_index(), "and the idle set comes back");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -962,6 +1107,9 @@ int main(int argc, char** argv) {
     testDataDrivenFallback(install);
     testMatchDataDriven(install);
     testEveryComboRuns(install);
+    testPhaseAdvancement(install);
+    testDirectionalDashes(install);
+    testJumpAnimation(install);
     std::printf("\nMELEE_RULES: %s (%d checks, %d failed, %d skipped)\n",
                 failures == 0 ? "ok" : "FAIL", checks, failures, skipped);
     return failures == 0 ? 0 : 1;

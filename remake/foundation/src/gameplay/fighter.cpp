@@ -41,6 +41,10 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_state = FighterState::BattleStart;
     m_stateTimer = FighterConstants::kBattleStartFrames;
     m_attackMoveId = -1;   // no swing in flight across a round reset
+    m_dashMoveId = -1;
+    m_jumpMoveId = -1;
+    m_phaseIndex = 0;
+    m_phaseTime = 0.0f;
     m_swing = MeleeSwing{};
     m_animSetIdx = -1;   // bind() looked the previous state up; BattleStart wins
     clear_tracks();      // a round reset is a fresh bind, never a blend
@@ -68,6 +72,10 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_state = FighterState::BattleStart;
     m_stateTimer = FighterConstants::kBattleStartFrames;
     m_attackMoveId = -1;
+    m_dashMoveId = -1;
+    m_jumpMoveId = -1;
+    m_phaseIndex = 0;
+    m_phaseTime = 0.0f;
     m_swing = MeleeSwing{};
     m_animSetIdx = -1;
     clear_tracks();      // same fresh-bind rule as init()
@@ -245,6 +253,20 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         }
     }
 
+    // Airtime move switch: the leap/fly climbs on the rising move, the fall
+    // plays the falling one (vy >= 0 counts as rising so the ceiling pin, which
+    // zeroes vy, keeps the climb pose). A landing above already left Jump.
+    if (m_state == FighterState::Jump && m_moves) {
+        const int want = jump_move_for(m_vy >= 0.0f);
+        if (want != m_jumpMoveId) {
+            m_jumpMoveId = want;
+            m_animSetIdx = -1;
+            m_phaseIndex = 0;
+            m_phaseTime = 0.0f;
+            try_switch_animation();
+        }
+    }
+
     if (collision) {
         if (!collision->validPosition(m_position)) {
             // An invalid override or a fall beyond the stage mesh returns to the last
@@ -281,6 +303,9 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         // One cross-fade step per tick (the FUN_0041f580 weight half), so the
         // blend stays deterministic under the fixed-dt capture.
         tick_blend();
+        // ...then one phase step: a multi-phase move plays each phase once
+        // through instead of looping its startup.
+        advance_phase(animDt);
     }
 }
 
@@ -463,6 +488,8 @@ void Fighter::set_state(FighterState new_state) {
     if (m_state == new_state) return;
     m_state = new_state;
     m_animSetIdx = -1;  // force animation re-lookup
+    m_phaseIndex = 0;   // a new state starts its move on phase 0
+    m_phaseTime = 0.0f;
     // Leaving the attack state ends this swing: the per-victim hit set clears so a
     // fresh swing may connect again (issue #10's per-swing accounting).
     if (new_state == FighterState::AttackA || new_state == FighterState::AttackB)
@@ -500,13 +527,19 @@ void Fighter::try_switch_animation() {
     // The original's selection: state → move id → the move's first phase → set
     // index (see the table above state_to_anim_set in fighter.h). The index is
     // the D3DX set index, which is this model's `anims` index. A data-driven
-    // melee swing (issue #26) plays its own move's first phase instead of the
-    // table's placeholder row: with no bound table, or no move for the swing,
-    // the table row stands.
+    // state (AttackA swing, dash, airtime — issue #26) plays its own move's
+    // current phase instead of the table's placeholder row: with no bound
+    // table, or no move for the state, the table row stands.
     int want = state_to_anim_set(m_state);
-    if (m_state == FighterState::AttackA && m_moves && m_attackMoveId >= 0) {
-        const int data = m_moves->first_set_index(m_attackMoveId);
-        if (data >= 0) want = data;
+    const int move = state_move_id();
+    if (m_moves && move >= 0) {
+        const CharacterMove* resolved = m_moves->find(move);
+        if (resolved && resolved->sectionCount > 0) {
+            const int phase =
+                std::max(0, std::min(m_phaseIndex, resolved->sectionCount - 1));
+            const int data = resolved->phase_set_index(phase);
+            if (data >= 0) want = data;
+        }
     }
     const int resolved =
         (want >= 0 && static_cast<std::size_t>(want) < m_model->anims.size())
@@ -799,29 +832,80 @@ void Fighter::set_moves(const CharacterMoves* moves) {
 
 int Fighter::resolve_attack_move(bool dashAttack, bool aerial) const {
     if (!m_moves) return -1;
-    // A move counts when the table ships it with at least one phase (a costume
-    // that drops the row's move must not resolve to a phaseless id).
-    auto present = [&](int id) {
-        const CharacterMove* m = m_moves->find(id);
-        return (m && m->first_set_index() >= 0) ? id : -1;
-    };
     if (dashAttack) {
-        const int lunge = present(330);
+        const int lunge = present_move(330);
         if (lunge >= 0) return lunge;
     } else if (aerial) {
-        const int air = present(340);
+        const int air = present_move(340);
         if (air >= 0) return air;
     } else {
-        const int neutral = present(300);
+        const int neutral = present_move(300);
         if (neutral >= 0) return neutral;
     }
     // Fallback within the weapon family (mion/satoko drop 302, rena/02 repoints
     // 330): any weapon move present beats the legacy jump clip.
     for (int id : {300, 330, 340, 310, 311, 302, 301}) {
-        const int m = present(id);
+        const int m = present_move(id);
         if (m >= 0) return m;
     }
     return -1;
+}
+
+int Fighter::present_move(int id) const {
+    if (!m_moves) return -1;
+    // A move counts when the table ships it with at least one phase (a costume
+    // that drops the row's move must not resolve to a phaseless id).
+    const CharacterMove* m = m_moves->find(id);
+    return (m && m->first_set_index() >= 0) ? id : -1;
+}
+
+int Fighter::dash_move_for(input::Action dir) const {
+    if (!m_moves) return -1;
+    int primary = 20;
+    if (dir == input::Action::Down) primary = 27;
+    else if (dir == input::Action::Left) primary = 24;
+    else if (dir == input::Action::Right) primary = 23;
+    const int row = present_move(primary);
+    if (row >= 0) return row;
+    return present_move(20);  // -1 when even the forward dash is absent
+}
+
+int Fighter::jump_move_for(bool rising) const {
+    if (!m_moves) return -1;
+    return present_move(rising ? 41 : 43);
+}
+
+int Fighter::state_move_id() const {
+    switch (m_state) {
+        case FighterState::AttackA: return m_attackMoveId;
+        case FighterState::Run:     return m_dashMoveId;
+        case FighterState::Jump:    return m_jumpMoveId;
+        default:                    return -1;
+    }
+}
+
+void Fighter::advance_phase(float animDt) {
+    if (!m_moves || !m_model || m_model->anims.empty()) return;
+    const int move = state_move_id();
+    if (move < 0) return;
+    const CharacterMove* m = m_moves->find(move);
+    if (!m || m->sectionCount < 2 || m_phaseIndex + 1 >= m->sectionCount) return;
+    const int set = m->phase_set_index(m_phaseIndex);
+    if (set < 0 || static_cast<std::size_t>(set) >= m_model->anims.size()) return;
+    const float tps = m_model->ticksPerSecond > 0.0f ? m_model->ticksPerSecond : 4800.0f;
+    const float duration = m_model->anims[static_cast<std::size_t>(set)].duration;
+    if (duration <= 0.0f) return;
+    m_phaseTime += animDt;
+    if (m_phaseTime * tps < duration) return;
+    const int next = m->phase_set_index(m_phaseIndex + 1);
+    if (next < 0 || static_cast<std::size_t>(next) >= m_model->anims.size()) return;
+    ++m_phaseIndex;
+    m_phaseTime = 0.0f;
+    // Hard cut, not a blend: the phases of one committed move run back to back,
+    // and the blend bookkeeping belongs to move changes, not phase steps.
+    m_anim->setAnimationBothTracks(next);
+    m_blendTicks = 0;
+    m_animSetIdx = next;
 }
 
 void Fighter::build_melee_swing(int moveId) {
@@ -1049,6 +1133,8 @@ void Fighter::try_jump() {
     m_stamina = std::max(0.0f, m_stamina - FighterConstants::kJumpStamina);
     m_grounded = false;
     m_vy = FighterConstants::kJumpSpeed;
+    // The leap starts rising, so the airtime opens on the rising move.
+    m_jumpMoveId = jump_move_for(true);
     set_state(FighterState::Jump);
     m_stateTimer = 0;  // physics-driven: gravity/landing own this state
 }
@@ -1070,6 +1156,7 @@ bool Fighter::try_dash(input::Action dir) {
 
     m_stamina -= FighterConstants::kDashStamina;
     m_dashDir = d;
+    m_dashMoveId = dash_move_for(dir);
     m_dashAir = !m_grounded;
     if (m_dashAir) {
         m_airDashed = true;

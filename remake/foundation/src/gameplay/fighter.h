@@ -154,10 +154,11 @@ enum class FighterState : int {
 //     holds no FUN_0064ae10 key-12 play site, so no call site was found that
 //     way either. Blocking may be a damage-path flag rather than a move —
 //     next step is the flag read on incoming damage, not another case hunt.
-//   * Jump — the port's leap/fly/fall may span several original moves (the
-//     locomotion selector FUN_0043ded0's air branches start 0x168/0x15e/0x1cc
-//     among others), and pinning one needs the jump input-bit mapping, which
-//     is not located. Note: FUN_004235d0 is steering (called from FUN_0041f580
+//   * Jump — partly settled: with a move table bound the airtime plays move 41
+//     ([3,4]) while rising and move 43 ([43]) while falling, switching on the
+//     vertical-velocity sign; takeoff 40 and land 44 have no driver yet, and the
+//     locomotion selector's air branches (0x168/0x15e/0x1cc among others) are
+//     still unmapped. Note: FUN_004235d0 is steering (called from FUN_0041f580
 //     with a relation index and a relative angle), not air locomotion —
 //     earlier notes misread it as the jump driver.
 //   * TagOut — no such mechanic: control never transfers between fighters
@@ -470,6 +471,11 @@ public:
     // when the swing is the legacy shared one. Exposed so tests pin the
     // situation → move mapping without needing a model.
     int attack_move_id() const { return m_attackMoveId; }
+    // The dash/air move the current locomotion plays (try_dash / try_jump pick
+    // it; Jump re-picks it when the vertical velocity changes sign). -1 keeps
+    // the legacy table row. Same borrowed-table rules as the swing.
+    int dash_move_id() const { return m_dashMoveId; }
+    int jump_move_id() const { return m_jumpMoveId; }
 
     // ---- selected weapon (gameplay/weapon_definition.h, issue #9) ----
     // Binds the parsed data/item/NNN.dat for the selected weapon. Borrowed, like the
@@ -681,6 +687,10 @@ private:
                                            // data-driven swings override it via m_swing
     const CharacterMoves* m_moves = nullptr;  // borrowed move table (issue #26)
     int          m_attackMoveId = -1;       // move the current swing plays (-1 legacy)
+    int          m_dashMoveId = -1;         // move the current dash plays (-1 legacy)
+    int          m_jumpMoveId = -1;         // move the current airtime plays (-1 legacy)
+    int          m_phaseIndex = 0;          // phase of the current move being shown
+    float        m_phaseTime = 0.0f;        // seconds played of that phase
     MeleeSwing   m_swing{};                 // this swing's resolved numbers
     bool         m_aerialAttack = false;   // this swing is the aerial variant
 
@@ -790,6 +800,26 @@ private:
     // Fills m_swing from the move's first combat entry (or the legacy tuning
     // when there is no table, no move, or no combat entry).
     void build_melee_swing(int moveId);
+    // A move counts when the table ships it with at least one phase (a costume
+    // that drops the move must not resolve to a phaseless id).
+    int present_move(int id) const;
+    // Dash direction → dash move (Up 20 / Down 27 / Left 24 / Right 23, all
+    // first-phase verified), or -1. Left→24 / Right→23 follows the observed
+    // sets (19 left-startup, 22 right-startup); screen-vs-character mirroring
+    // is unverified, and a missing row falls back to 20, then legacy.
+    int dash_move_for(input::Action dir) const;
+    // Rising (leap/fly) → 41, falling → 43, or -1. Takeoff 40 and land 44 have
+    // no driver in this machine yet.
+    int jump_move_for(bool rising) const;
+    // The move whose phases the current state plays, or -1 for the legacy row.
+    int state_move_id() const;
+    // Plays each phase of a multi-phase move once through, holding the last:
+    // without it every attack loops its startup on track 1. The per-phase
+    // length is the clip's own duration — the original's countdown source is
+    // unrecovered, so this is an approximation, but a strictly better-shaped
+    // one than a startup loop. No table, single phase, or missing model:
+    // no-op, legacy behaviour exactly.
+    void advance_phase(float animDt);
 
     // Shared pulse for the aura's alpha + radius (DX9 render did both from one
     // expression; kept single-sourced so they cannot drift).
