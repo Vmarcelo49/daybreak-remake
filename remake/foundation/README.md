@@ -232,9 +232,10 @@ Every "ran" row printed `RESULT: ok` with real frame timings; per-target command
 and outputs are in `docs/BUILD-linux.md`, `docs/BUILD-windows.md` and
 `docs/BUILD-web.md`.
 
-Host-side tests run without a GPU (`CMakeLists.txt`): the Linux suite has 25
+Host-side tests run without a GPU (`CMakeLists.txt`): the Linux suite has 32
 tests covering geometry, raycasts, asset parsing/spawns, gameplay/economy,
-animation/lighting, caption fonts/text, HUD/menu layouts, input/rebinding and
+animation/lighting, caption fonts/text, HUD/menu layouts, split-screen view
+layout, the four-participant roster and screen geometry, input/rebinding and
 frontend selection/VS/results. Asset-dependent checks skip when the install is
 unavailable. Cross (Windows) and web targets do not build the host tests.
 
@@ -285,8 +286,16 @@ New since the port landed, all verified the same way:
   and leave the human-less cell empty. Each view sets both a viewport and a scissor
   so views cannot bleed into each other, and its markers project through its own
   camera. `--local-players=N` opens N local views for verification, filling
-  pad-less controllers with synthetic input (not physical-pad evidence). See
+  pad-less controllers with synthetic input (not physical-pad evidence); in the
+  front end they also walk their own selection panel, which is what makes a
+  device-free four-participant run possible
+  (`tests/scripts/frontend-4p.txt`). See
   [`docs/SPLIT-SCREEN.md`](docs/SPLIT-SCREEN.md).
+- Four-fighter presentation: the four selection panels are one roster that VS,
+  the countdown, the battle HUD and the results all read, so a 2v2 shows four
+  portraits and nameplates, four per-view HUD markers (owner/ally/enemy/locked
+  art plus off-screen edge markers) and four per-participant report rows with the
+  winning team named. See `docs/ROADMAP-PENDING.md`'s issue #13 update.
 - Chromium software WebGPU has executed real stage01/Rena/Mion assets in both
   scripted versus (300 frames, 60.2 fps) and live match (411 frames, 60.1 fps),
   with `RESULT: ok`. Visual browser parity and hardware rendering remain

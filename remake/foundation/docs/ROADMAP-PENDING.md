@@ -27,12 +27,12 @@ that these screens or their audio do not exist.
 | Item | Current status | Remaining work |
 |---|---|---|
 | D2 | Complete: both arcs and the 15-tick lock-switch pulse | None for the recovered ring transform |
-| D3 | Countdown and winning-team sting implemented; four-fighter simulation builds and passes host tests | Extra fighter bars; original countdown trigger/timing remain unverified (the asset-backed four-fighter run now exists: issue #12's four-human 2v2) |
-| E1 | Selection, real atlases, roster tables, costumes, weapons, controller slots, seeded COM choices and entry voices implemented; selected panels load into the four-fighter match path | Four-fighter HUD/VS/result presentation and exact original navigation parity remain open; asset-backed launch remains unverified |
+| D3 | Countdown and winning-team sting implemented; four-fighter simulation builds and passes host tests | The recovered pre-round phase is THREE frames, not three seconds, and the code that walks the P09 3/2/1 digits is not in the corpus, so the port keeps its three-second countdown (a documented flow rule) and now draws it with the battle state: the round's settings and all four participants. Stings recovered: per-view round-start 60 frames at 6.0→1.0 scale, per-view KO 90 frames (0x5a) and respawn 120 frames (0x78), the team victory sting two layers of 180/120 frames with the second armed 60 frames in (FUN_00635d40:152-205, FUN_0063a130:89-98). Issue #11's KO sting was corrected to 90 frames (1.5 s) by that issue's owner; the 120-frame respawn presentation remains unmodelled there |
+| E1 | Selection, real atlases, roster tables, costumes, weapons, controller slots, seeded COM choices and entry voices implemented; selected panels load into the four-fighter match path | Four-fighter presentation landed with issue #13: the roster (`src/ui/participants.h`) drives the HUD (one marker per participant with owner/ally/enemy/locked art), VS (four portraits, four name cells, combo + controller captions) and the results (four per-participant rows plus the winning TEAM). Exact original navigation parity remains open; the asset-backed launch is verified by issue #13's title→selection→VS→battle→results→selection run |
 | E2 | Stage/variation and all five battle settings implemented and connected; the balloon capacity, KO/Overkill credit and timed-round rules are recovered (2026-10-05, issue #11) | Between-rounds red-capacity creep and the KO move's own respawn clock remain; see the issue #11 update below |
 | E3 | Volumes, fullscreen, native resolution selection and keyboard/gamepad rebinding implemented | Three renderer controls are unavailable; settings are process-local |
-| E4 | 109-update VS transition implemented | Four-fighter VS presentation; confirm-to-skip is a port extension |
-| E5 | Sting, quote, voice, actual participant stats and draw handling implemented | Original earned titles and outcome-specific quote selection; missing single quotes use that character's self-pair script |
+| E4 | 109-update VS transition implemented; four participants land on the original's four portrait/name slots (FUN_00411cb0) with combo + controller captions | Confirm-to-skip is a port extension; a one-member team keeps the port's centred single slot (the original always has four players) |
+| E5 | Sting, quote, voice, actual participant stats and draw handling implemented; the report draws one row per ACTIVE participant (badge, combo, KO/death/damage) and names the winning TEAM | Original earned titles and outcome-specific quote selection; missing single quotes use that character's self-pair script; the two-layer victory sting's second layer is armed at frame 60 as recovered |
 | E6 | Reusable two-page atlas keyboard implemented and tested | Netplay host remains outside D6 scope |
 | F1 | Four menu SEs, entry/result voices and menu BGM connected | Hardware audio listening remains separate from dummy-device verification |
 | G1 | Real-asset versus and live match executed in a browser | Hardware GPU and usable browser screenshots remain unverified |
@@ -218,6 +218,36 @@ empty cell), four humans at 1920×1080 (2v2, 142 melee hits, one KO credited, ro
 result screen reached), ultrawide 3440×1440 and odd 1373×777. A windowed Wayland run exercised
 the window path with two views. Physical gamepads, interactive resize/fullscreen and non-Linux
 execution remain unverified. Details, provenance and the exact commands: `docs/SPLIT-SCREEN.md`.
+
+## Issue #13 update — four-fighter presentation
+
+The front end's four selection panels are now one roster that the HUD, VS and the results all
+read (`src/ui/participants.h`: panel, team, fighter index and controller stay separate index
+spaces). Verified end to end on real assets with
+`--screen=title --local-players=4 --script=tests/scripts/frontend-4p.txt`: title → selection →
+VS (four portraits, four name cells, four combo/controller captions) → countdown (settings and
+all four participants) → 2v2 battle (four views, four markers each, per-view roles and
+off-screen alert markers) → results (four per-participant rows and "RED TEAM WINS") →
+selection. 32/32 Linux host tests pass, including the new device-free
+`participant_layout_test` (1v1/2v1/2v2 rosters, the four recovered VS slots, the report's rows
+and the victory layer's frame-60 transition).
+
+Open, filed rather than invented:
+
+* **Spawn spacing (policy item, LABELLED).** `MatchConfig` keys each fighter's spawn to its
+  PANEL (`FUN_00423420` indexes the stage's env points by the selected panel), so a 2v2 starts
+  from the stage's own four points. On `data/stage21` they are 900+ units apart
+  (`(-463,200,-2200)`, `(-1363,200,-2200)`, `(-406,200,-105)`, `(-1363,200,-105)`), so the
+  crowding issue #12 saw is stage-dependent; any formation that spreads teammates further
+  would be a port policy with no evidence behind it. `[menu]   fighter N panel P spawn=...` now
+  prints them at battle entry.
+* **Countdown trigger/timing.** Recovered: the round reset sets phase 1 and the fight starts
+  three frames later (FUN_00634760, FUN_00635d40:62-83), arming each view's centre sting for
+  60 frames at 6.0→1.0 scale. The digit walk over P09's three cells is not in the corpus, so
+  the port keeps its three-second countdown and shows the battle state with it.
+* **KO sting window.** FUN_00635d40:152-157 arms the KO sting for 0x5a (90 frames) and the
+  respawn sting for 0x78 (120 frames); `MatchEconomy::kKoStingSec = 2.0` (120 frames) is
+  therefore the respawn window. Issue #11 owns that constant — reported, not changed here.
 
 ## Guard lifecycle update — 2026-10-04
 
@@ -1075,7 +1105,7 @@ already landed on the screen stack (`src/ui/screen_title.*`, commit
 `c67ead3`), so new screens follow that pattern: device-free update returning
 the next screen id, a factory for construction, tests against fakes.
 
-### E1. Select page 0 — IMPLEMENTED (four-fighter presentation remains open)
+### E1. Select page 0 — IMPLEMENTED (four-fighter presentation landed, issue #13)
 
 * **What.** One state machine for team → character → weapon → hypermode →
   PLAYER/COM → ready, covering **six of the 23 prints** (team-select,

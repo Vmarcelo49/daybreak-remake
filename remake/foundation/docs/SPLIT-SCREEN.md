@@ -129,5 +129,37 @@ ctest --test-dir remake/foundation/build/linux --output-on-failure
 ```
 
 The per-view evidence is the `[split]` block the host prints every 128 match ticks and on the
-capture frame: layout, view count, target size, then each view's controller, fighter, cell,
-HP, MAIN/CHARGE stocks, stamina, hyper name/gauge and target/ring-pulse flags.
+capture frame: layout, view count, target size, roster size, then each view's controller,
+fighter, cell, HP, MAIN/CHARGE stocks, stamina and hyper name/gauge, followed by one line per
+ACTIVE PARTICIPANT (issue #13) with its panel, team, controller/COM, combo label, per-view role
+(owner/ally/enemy), projected visibility, target and acting flags, off-screen alert edge, HP and
+ring anchor.
+
+## Issue #13 — four participants in every view
+
+The roster (`src/ui/participants.h`) is built once per launch and read by VS, the countdown, the
+battle HUD and the results, so all four screens agree on who is fighting:
+
+* **HUD.** `ui::HudState` carries one entry per participant (not per primary panel). Each entry
+  draws the original's ring — row 1 red as the plain ring, row 2 green while that fighter has a
+  lock of its own, row 0 black while an action runs, column 2 the blinking hyper ring
+  (FUN_00643230:67-96) — plus a second counter-rotating ring for the view's own fighter while it
+  has no lock (`local_31`), the viewer's target's com bar with the panel's controller/COM tag,
+  and an edge marker for a participant this view cannot see. The edge choice is a PORT RULE (the
+  original's art and its four positions are recovered, the rule that picks one is not); the
+  `[split]` block reports it as `alert=N`.
+* **VS.** Four portraits and four name cells on the original's slots (`FUN_00411cb0`), each with
+  a combo + controller caption (a D7 port extension; the original's screen has no such text).
+* **Countdown.** The original's P09 3/2/1 cells at the frame centre, now drawn with the round's
+  settings and the four participants. The recovered pre-round phase is three frames and the
+  digit walk is not in the corpus, so the three-second pace stays a documented port rule.
+* **Results.** One report row per participant (badge at x 150, combo and statistics at x 280,
+  `y = 100 + 72*i`, revealed one row per 30 frames — FUN_0063a740:64-85) and the winning TEAM in
+  words next to the two-layer sting, whose second layer is armed 60 frames in (FUN_00635d40).
+
+Evidence run (real assets, deterministic): `--screen=title --local-players=4
+--script=tests/scripts/frontend-4p.txt` reached VS at tick 439, `4 fighters on data/stage21`,
+round over on side 1 (time up) at match frame 3600, the result screen at tick 4375 and back to
+selection at tick 4984. The synthetic pads also walk the selection for controllers 1..3, so the
+run needs no devices; `--local-players` never overrides a real pad and never skips the VS or
+result beats.
