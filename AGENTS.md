@@ -73,10 +73,14 @@ committing. A skipped review is a process violation.
 ## Current product guidance
 
 The front end runs title → selection → stage settings → VS/countdown → live
-1v1 battle → results → selection. Active fighters use panels/spawn slots 0
-(blue) and 2 (red); standalone parity recipes retain slots 0/1. Four-fighter
-launch, three renderer options and original result-title/quote fidelity remain
-open; consult `remake/foundation/docs/ROADMAP-PENDING.md` before choosing work.
+battle → results → selection, for 1v1 and for four-fighter 2v2 with one camera
+and HUD per human controller (split-screen; `--local-players=N` drives pad-less
+controllers for verification). Active fighters use panels/spawn slots 0 (blue)
+and 2 (red); standalone parity recipes retain slots 0/1. COM fighters run the
+recovered decision state, and the battle HUD, VS and results present every
+participant. The three renderer options and original result-title/quote fidelity
+remain open; consult `remake/foundation/docs/ROADMAP-PENDING.md` before choosing
+work.
 
 - **Runtime captions (D7):** use the shared `ui::CaptionText` /
   `ui::loadCaptionFont` path with bundled Gyrotrope Black and the Japanese
@@ -85,9 +89,11 @@ open; consult `remake/foundation/docs/ROADMAP-PENDING.md` before choosing work.
   edge/center HUD anchors. Project fighter markers through the battle camera.
   Menus retain a centered, clipped 4:3 canvas with black bars. Native Options
   selects resolution; browser canvas and headless `--size` control theirs.
-- **Verification:** 25 native host tests; Linux/Windows/web builds. Browser
+- **Verification:** 33 native host tests; Linux/Windows/web builds. Browser
   game-data runs are verified on software WebGPU; browser visual parity,
-  hardware browser adapters and macOS execution remain unverified.
+  hardware browser adapters and macOS execution remain unverified. The
+  integrated tree is verified end to end by a four-view 2v2 capture and the
+  four-player title→selection→VS→battle→results→selection loop.
 
 ## Map
 
