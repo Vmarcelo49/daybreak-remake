@@ -3128,9 +3128,6 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             const std::string line = buf;
             const std::string hint = "arrows: set index    WASD: orbit";
             std::string textError;
-            if (getenv("DBG_TEXT") && app->frames == 2)
-                std::fprintf(stderr, "[apText] load/prepare error: '%s' atlas=%d\n",
-                             textError.c_str(), app->apText.atlasTexture());
             if (app->apText.load(app->uiRenderer, 14.f, textError) &&
                 app->apText.prepare(app->uiRenderer, {line, hint}, textError)) {
                 app->uiRenderer.beginFrame(app->sc.width, app->sc.height);
