@@ -266,6 +266,20 @@ public:
     // render(), so this takes effect on the next frame; a no-op before setScene.
     void setModelMatrices(const std::vector<glm::mat4>& modelMatrices);
 
+    // Effect-card INSTANCES (issue #17). A scene model has exactly one placement in
+    // modelMatrices, so N live cards that share one .X could only ever draw once — the
+    // last card won. An instance list adds extra draws of an already-loaded model at
+    // arbitrary matrices, which is what a bounded live-card set needs. Instances are
+    // rebuilt into the draw list on change; they are meant for Effect-pass models (they
+    // are appended last, inside that pass), and setModelMatrices() leaves them alone.
+    struct EffectInstance {
+        int       modelIndex = -1;
+        glm::mat4 model{1.f};
+    };
+    void setEffectInstances(const std::vector<EffectInstance>& instances);
+    // Grows the per-draw uniform buffer (and rebinds it) when the draw list outgrows it.
+    bool ensureDrawCapacity(size_t draws, std::string& error);
+
     void setCamera(const glm::mat4& viewProj);
     // Camera eye in world space, for effect-card billboarding. The viewProj alone
     // cannot yield it (a perspective product does not separate into eye and
@@ -345,6 +359,9 @@ private:
         glm::vec3  bbCenter{0.f};
         float      bbYaw0 = 0.f;
         bool       billboard = false;
+        // True for an extra draw added by setEffectInstances: its matrix comes from the
+        // instance list, so the per-model upload must not overwrite it.
+        bool       instance = false;
     };
 
     // What updatePose() needs to rebuild one mesh's slice of the palette storage.
@@ -354,6 +371,14 @@ private:
         size_t           modelIndex = 0;
         uint32_t         paletteOffset = 0;
     };
+
+    // The scene's own draws, before instances: setEffectInstances() rebuilds draws_ from
+    // these so a frame with no instances costs exactly what it did before.
+    size_t drawCapacity_ = 0;   // draws the uniform buffer currently holds (per view)
+    std::vector<DrawItem> baseDrawList_;   // setScene's own draws, for the fallback path
+    int    baseEffects_ = 0, baseDecals_ = 0;   // setScene's counts, before instances
+    std::vector<DrawItem> drawTemplates_;
+    std::vector<EffectInstance> effectInstances_;
 
     struct Texture {
         WGPUTexture     tex  = nullptr;

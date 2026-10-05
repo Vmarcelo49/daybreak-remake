@@ -85,6 +85,12 @@ struct SceneModel {
     // original keeps them in their own slots (stage+0x20/0x24/0x28) and its render
     // loop only walks the eight visible sub-model slots.
     bool         drawable = true;
+    // Instance-only effect cards (issue #17): the model is loaded and its draws are
+    // built as TEMPLATES, but no base draw is emitted. SceneRenderer::setEffectInstances
+    // then draws one copy per live card, so the default draw count stays where it was and
+    // only the bounded live population adds draws (a hidden card's degenerate triangles
+    // are no longer paid for on every frame).
+    bool         instancesOnly = false;
 
     bool hasCollisionChannel(StageCollisionChannel channel) const {
         return (collisionChannels & collisionMask(channel)) != 0;

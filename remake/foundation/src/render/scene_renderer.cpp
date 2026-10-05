@@ -502,6 +502,13 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                 // The original's 3D passes alpha-test: without it the foliage and
                 // ground cards draw as opaque quads.
                 if (d.texture >= 0) d.flags |= xm::kDrawTextured | xm::kDrawAlphaTest;
+                // An instance-only card contributes a template, never a base draw: its
+                // copies come from setEffectInstances (issue #17). It is not counted in
+                // the scene stats either — those describe what a frame draws.
+                if (sm.instancesOnly) {
+                    drawTemplates_.push_back(d);
+                    continue;
+                }
                 draws_.push_back(d);
             }
         }
@@ -517,41 +524,49 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
     // and effect glows add over the shadowed ground rather than under it. The
     // decal-after-opaque half reproduces the original's decal-pass-last order; the
     // effect-last half is the renderer's choice, unverified against the original.
+    // The instance-only templates are ordered with them so an instance lands in the same
+    // pass group its model would have.
     std::stable_partition(draws_.begin(), draws_.end(),
                           [](const DrawItem& d) { return d.pass == Pass::Opaque; });
     std::stable_partition(draws_.begin(), draws_.end(),
                           [](const DrawItem& d) { return d.pass != Pass::Effect; });
+    std::stable_partition(drawTemplates_.begin(), drawTemplates_.end(),
+                          [](const DrawItem& d) { return d.pass != Pass::Effect; });
+    // The instance source of truth: the base draws in their final pass order, then the
+    // instance-only templates. Instance copies are appended after them (inside the Effect
+    // group, which is last).
+    // Instance-only templates were counted by the per-draw stats above (texture/pass
+    // bookkeeping happens before the push); a template is not a draw, so take them back
+    // out and let setEffectInstances' copies stand for themselves.
+    {
+        int tTextured = 0, tUntextured = 0, tDecals = 0, tEffects = 0;
+        for (const DrawItem& d : drawTemplates_) {
+            if (d.texture >= 0) ++tTextured; else ++tUntextured;
+            if (d.pass == Pass::Decal) ++tDecals;
+            else if (d.pass == Pass::Effect) ++tEffects;
+        }
+        stats_.textured -= tTextured;
+        stats_.untextured -= tUntextured;
+        stats_.decals -= tDecals;
+        stats_.effects -= tEffects;
+    }
+    baseDrawList_ = draws_;
+    drawTemplates_.insert(drawTemplates_.end(), draws_.begin(), draws_.end());
+    effectInstances_.clear();
 
     paletteBuffer_ = gpu::createBuffer(device_, palette_.size() * sizeof(glm::mat4),
                                        WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst,
                                        palette_.data());
+    if (!paletteBuffer_) {
+        error = "storage buffer creation failed";
+        return false;
+    }
     // One draw block per view: the split-screen pass rewrites the per-draw uniforms for
     // each view's camera (billboard yaw is per camera), so the buffer holds kMaxViewCameras
-    // copies and the single-view path keeps using offset 0 exactly as before.
-    drawBuffer_ = gpu::createBuffer(device_, (uint64_t)xm::kDrawStride * draws_.size() *
-                                                 kMaxViewCameras,
-                                    WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst, nullptr);
-    if (!paletteBuffer_ || !drawBuffer_) {
-        error = "uniform/storage buffer creation failed";
-        return false;
-    }
-
-    WGPUBindGroupEntry drawEntries[2] = {};
-    drawEntries[0].binding = 0;
-    drawEntries[0].buffer = drawBuffer_;
-    drawEntries[0].size = sizeof(xm::DrawUniform);
-    drawEntries[1].binding = 1;
-    drawEntries[1].buffer = paletteBuffer_;
-    drawEntries[1].size = palette_.size() * sizeof(glm::mat4);
-    WGPUBindGroupDescriptor bgDesc = {};
-    bgDesc.layout = bindGroupLayouts_[1];
-    bgDesc.entryCount = 2;
-    bgDesc.entries = drawEntries;
-    drawGroup_ = wgpuDeviceCreateBindGroup(device_, &bgDesc);
-    if (!drawGroup_) {
-        error = "draw bind group creation failed";
-        return false;
-    }
+    // copies and the single-view path keeps using offset 0 exactly as before. The effect
+    // instances of setEffectInstances() grow the draw list after this point, so the
+    // capacity is tracked and grown on demand (ensureDrawCapacity).
+    if (!ensureDrawCapacity(draws_.size(), error)) return false;
 
     // Group 2 differs only by the texture view, so one bind group per texture; slot 0
     // is the white fallback every untextured draw indexes into.
@@ -562,6 +577,7 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
         entries[0].textureView = (i == 0) ? whiteView_ : textures_[i - 1].view;
         entries[1].binding = 1;
         entries[1].sampler = sampler_;
+        WGPUBindGroupDescriptor bgDesc = {};
         bgDesc.layout = bindGroupLayouts_[2];
         bgDesc.entryCount = 2;
         bgDesc.entries = entries;
@@ -576,6 +592,8 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
     stats_.draws = draws_.size();
     stats_.textures = textures_.size();
     stats_.paletteMatrices = palette_.size();
+    baseEffects_ = stats_.effects;
+    baseDecals_ = stats_.decals;
     return true;
 }
 
@@ -597,7 +615,82 @@ void SceneRenderer::updatePose(const std::vector<std::vector<glm::mat4>>& worlds
 void SceneRenderer::setModelMatrices(const std::vector<glm::mat4>& modelMatrices) {
     if (draws_.empty() || modelMatrices.empty()) return;
     for (DrawItem& d : draws_)
-        if (d.modelIndex < modelMatrices.size()) d.model = modelMatrices[d.modelIndex];
+        if (!d.instance && d.modelIndex < modelMatrices.size())
+            d.model = modelMatrices[d.modelIndex];
+}
+
+bool SceneRenderer::ensureDrawCapacity(size_t draws, std::string& error) {
+    if (draws <= drawCapacity_ && drawGroup_) return true;
+    if (drawGroup_) wgpuBindGroupRelease(drawGroup_);
+    drawGroup_ = nullptr;
+    if (drawBuffer_) wgpuBufferRelease(drawBuffer_);
+    drawBuffer_ = nullptr;
+    // A little headroom: a growing live-card set would otherwise recreate the buffer on
+    // almost every frame while it fills up.
+    const size_t want = draws + draws / 4 + 16;
+    drawBuffer_ = gpu::createBuffer(device_, (uint64_t)xm::kDrawStride * want * kMaxViewCameras,
+                                    WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst, nullptr);
+    if (!drawBuffer_) {
+        error = "draw uniform buffer creation failed";
+        return false;
+    }
+    WGPUBindGroupEntry drawEntries[2] = {};
+    drawEntries[0].binding = 0;
+    drawEntries[0].buffer = drawBuffer_;
+    drawEntries[0].size = sizeof(xm::DrawUniform);
+    drawEntries[1].binding = 1;
+    drawEntries[1].buffer = paletteBuffer_;
+    drawEntries[1].size = palette_.size() * sizeof(glm::mat4);
+    WGPUBindGroupDescriptor bgDesc = {};
+    bgDesc.layout = bindGroupLayouts_[1];
+    bgDesc.entryCount = 2;
+    bgDesc.entries = drawEntries;
+    drawGroup_ = wgpuDeviceCreateBindGroup(device_, &bgDesc);
+    if (!drawGroup_) {
+        error = "draw bind group creation failed";
+        return false;
+    }
+    drawCapacity_ = want;
+    return true;
+}
+
+void SceneRenderer::setEffectInstances(const std::vector<EffectInstance>& instances) {
+    if (instances.size() == effectInstances_.size() &&
+        std::equal(instances.begin(), instances.end(), effectInstances_.begin(),
+                   [](const EffectInstance& a, const EffectInstance& b) {
+                       return a.modelIndex == b.modelIndex && a.model == b.model;
+                   }))
+        return;   // unchanged: keep the current draw list (the common frame)
+    effectInstances_ = instances;
+    draws_.clear();
+    draws_.reserve(drawTemplates_.size() + instances.size());
+    for (const DrawItem& t : drawTemplates_) draws_.push_back(t);
+    for (const EffectInstance& e : instances) {
+        for (const DrawItem& t : drawTemplates_) {
+            if ((int)t.modelIndex != e.modelIndex) continue;
+            DrawItem d = t;
+            d.model = e.model;
+            d.instance = true;
+            draws_.push_back(d);
+        }
+    }
+    int instEffects = 0, instDecals = 0;
+    for (const DrawItem& d : draws_)
+        if (d.instance) {
+            if (d.pass == Pass::Effect) ++instEffects;
+            else if (d.pass == Pass::Decal) ++instDecals;
+        }
+    stats_.effects = baseEffects_ + instEffects;
+    stats_.decals  = baseDecals_ + instDecals;
+    stats_.draws   = draws_.size();
+    std::string error;
+    if (!ensureDrawCapacity(draws_.size(), error)) {
+        // No error channel here: drop the instances and keep the frame valid rather than
+        // submit a draw list the uniform buffer cannot describe.
+        std::fprintf(stderr, "[render] effect instances dropped: %s\n", error.c_str());
+        effectInstances_.clear();
+        draws_ = baseDrawList_;   // the scene's own draws, with no instance copies
+    }
 }
 
 void SceneRenderer::setCamera(const glm::mat4& viewProj) { camera_.viewProj = viewProj; }
