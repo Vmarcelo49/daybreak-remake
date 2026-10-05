@@ -46,8 +46,98 @@ Implementation lives in `src/ui/screen_select.*`, `screen_stage_select.*`,
 loads the selected assets and applies `MatchConfig`. A 1v1 match uses upper
 panels and env slots 0 (blue) and 2 (red); a multi-fighter match uses each
 selected panel's corresponding env slot. Standalone parity captures retain
-their existing 0/1 spawn recipe. COM battle input is a
-deterministic port sparring policy, not recovered original AI.
+their existing 0/1 spawn recipe. COM battle input is a deterministic decision state
+built on the recovered tactic cells and timers — see "COM decision state and tactics"
+below; the fixed-frame sparring policy it replaced is gone.
+
+## COM decision state and tactics — 2026-10-05
+
+Issue #14. `gameplay/bot_input.h`'s old policy (walk at the opponent, press
+melee/shoot/special on frame modulos) is deleted. A COM is now a deterministic decision
+state in `src/gameplay/bot_brain.{h,cpp}`, with `bot_input.{h,cpp}` as the host seam
+(Match state → `BotView` → the tick's input). 97 host checks cover it
+(`tests/bot_brain_test.cpp`), including an asset-backed four-combo 2v2.
+
+**Recovered.**
+
+* **Tactic cells.** Player `+0x310` is a 6-valued cell, `+0x314` its HUD timer.
+  `FUN_0041f580:291-295` cycles it `(cell + 1) % 6` on the Tactics press, mirrors it
+  onto player 0's cell and writes `+0x314 = 2.0f` (0x40000000); `FUN_004201a0:13-15`
+  drains that by 0.2/frame to -6.0 and `FUN_00644150:92-96` fades the boxed readout with
+  it. `FUN_00421730:11` resets the cell to 0 at round start; `FUN_0063c2a0` case 0x2d
+  writes it from a character script. The port keeps ONE team cell (which is what the
+  mirroring produces) and drives `ui::HudState::commandCell` from the same value, so the
+  readout cannot disagree with the decision.
+* **Per-cell weights**, read verbatim from `FUN_0043f4d0:22-63`: rangeScale / engage /
+  power = 1.0/100/100 (cell 0 適当), 0.25/50/200 (1 格闘), 2.5/200/50 (2 射撃),
+  1.0/100/100 (3 集中, 4 各個), 7.0/5/5 (5 後退). `engage` percent-gates the
+  movement/attack branch (`:235`), `power` the in-range dash branch (`:194`, inside
+  `dist² < 250000`), and rangeScale scales the advance re-roll threshold
+  (`250000 * c² <= dist²`, `:154`) — 125 / 500 / 1250 / 3500 units.
+* **Decision inputs**: squared XZ distance to the current target (`FUN_0042d980`,
+  dx² + dz² against the `+0x38` target pointer); the distance to the first surface along
+  the line to that target, kept in `player+0x80` by `FUN_0042cc90`'s D3DXIntersect walk
+  (`FUN_0042d2c0`, default 10000.0) and read as "is the target behind something" at
+  `:240`; airborne `+0x84`; move id `+0xadec`; the 0..1000 resource `+0x834`
+  (`0x28a < +0x834`, `500 < +0x834` at `:79,116`); the mode latches `+0x844/845/846`;
+  and the shared MT19937 `FUN_0065d150` for every probability gate.
+* **Decision outputs** the port mirrors: an 8-way movement direction (`+0x278/+0x27c`,
+  mapped onto 45° yaw steps by `FUN_00421780`); attack requests `+0x284/+0x288`, which
+  the act function consumes and then writes 0x14 back into (a 20-tick re-request lockout,
+  `FUN_0043ded0:140-141`); a retarget request `+0x28c`; a shot request `+0x2b8`; the
+  dash selector `+0x830` (1..4 → air dash moves 0x14/0x17/0x18/0x1b, ground
+  jump-forward 0x1e, `FUN_0043ded0:61-107`); and the four jitter timers
+  `+0x864` (lateral, ±200), `+0x868` (advance/retreat, sign from the rangeScale test),
+  `+0x86c` (airborne reposition, 1% per tick, 10..129 ticks) and `+0x870` (power-attack
+  window, 1/450 per tick, 180..359 ticks — active better than half the time).
+* **Target selection is the AI's own**: `FUN_00421c80` measures both players and writes
+  `+0x28c = 1` only when the pick differs from its `+0x300`; cells 3/4 instead compare
+  that field with player 0's (集中 wants the same target, 各個 a different one).
+* **COM class selection**: `FUN_006492f0:14-38` picks one of three per-character AI
+  classes per slot with `rng % 3` (reduced to `% 2` for rena and rika), and
+  `FUN_00649790(characterId, kind)` builds it from the class table at 0x6a4e10. There is
+  no difficulty setting in the original.
+
+**Port rules (provisional, labelled in code).** The original steers by absolute yaw
+(`FUN_00421780`/`FUN_0042db10`); this port's fighters are lock-on facing-relative
+(#8), so the brain emits the same intent through the four direction keys and probes the
+world direction that intent resolves to. The original has no path search — its only
+obstacle input is the `+0x80` line distance — so the directional probes, the wall-side
+memory and the bounded stuck recovery are the port's answer to the issue's "must not
+remain blocked at a wall or corner", built on #7's sweeps. Ammo/stamina/reload and
+guard-exhaustion gates are the port's resource model (#6/#9). `BotDifficulty`
+(Relaxed/Standard/Sharp, default Standard) scales the plan window, the recovered
+weights and the defensive chances; it is a documented port policy because the original
+randomises one of three AI classes instead. Two further port rules keep a COM in the
+fight: outside `1.6 *` the cell's engagement band the lateral jitter is dropped and the
+advance forced, and the forward push stops once the target is inside the swing (the
+recovered walk is a distance band, not a footsies rule — measured, a COM without it
+crossed a 240-unit gap eleven times in 900 ticks and never pressed). The port's charge
+hold is mobile, so a COM closes while it charges; a 格闘 cell taps only and only from
+outside its band, because a full charge costs the fighter its firing pose.
+
+**Verification.** `ctest` = 31/31 (97 checks in `bot_brain_test`, which skips its
+asset-backed section without an install). Asset-backed 1v1:
+
+```bash
+SDL_AUDIODRIVER=dummy ./remake/foundation/build/linux/foundation_demo \
+  --headless --install=Higurashi-Daybreak --screen=battle \
+  --frames=11000 --out=/tmp/battle.ppm --size=320x240
+```
+
+fights Rena 0 against Mion 0 (COM) on `data/stage03` (shrine grounds, collision.x and
+collision_tama.x loaded) and **finishes**: time up at frame 10800, side 1 (the COM)
+wins with the idle human at HP 30/100. Its own counters for that match: moved 52196,
+melee 51 pressed / 35 withheld while mid-move, 112 shots started / 101 fired / 34
+refusals, 18 dashes, 1 jump, 1 hyper activation, 209 wall probes refused with a single
+bounded recovery, 170 direction changes.
+
+**Open.** A *front-end* four-fighter run cannot start on this install: the select
+screen's auto-fill (deterministic, `FrontendState::nextRandom`) gives panel 2 chie,
+whose slot-0 item `data/item/014.dat` fails `readItemFirstMesh`, and the rule-7 gear-up
+check then aborts the launch (`fighter 1 data/chie:0 has no weapon`). That is issue #9's
+item-data gap, not the COM layer; the 2v2 evidence is the asset-backed host run above
+(four shipped combos, walled stage, COM-only sides).
 
 ### Future remake-only experiment: 3v3 and 4v4
 

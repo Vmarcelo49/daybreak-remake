@@ -582,6 +582,11 @@ struct App {
     fnd::audio::DecodedOgg        menuBgm;
     fnd::audio::LoopPlayer        menuLoop;
     fnd::input::PlayerState       botInput[4];
+    // One COM decision state per fighter slot (issue #14) plus the recovered tactics
+    // readout the whole team shares (gameplay/bot_input.h). The brains are reseeded from
+    // the match seed when a match resets, so a run replays from its seed alone.
+    gameplay::BotBrain            botBrains[4];
+    gameplay::TacticReadout       tacticReadout;
 
     ui::HudComposer              hudComposer;
     bool                         uiReady = false;
@@ -1488,6 +1493,11 @@ static bool initMatch(App& app) {
         for (int i = 0; i < fighterCount; ++i) app.match.fighter(i).set_animate(false);
         std::printf("match anim   : off (bind pose)\n");
     }
+    // Fresh COM decision state for this match: one RNG stream per fighter index, derived
+    // from the one match seed, so the whole match replays from that seed alone (issue #14).
+    for (int i = 0; i < 4; ++i)
+        app.botBrains[i].reset(gameplay::bot_seed(gameplay::MatchRng::kDefaultSeed, i));
+    app.tacticReadout.reset();
     std::printf("match        : %d fighters, movement/ground=%s, projectile=%s\n",
                 fighterCount, movement && !movement->empty() ? "loaded" : "disabled",
                 tamaMesh ? "loaded" : "missing");
@@ -1822,6 +1832,41 @@ static void placeFxCards(App& app) {
     }
 }
 
+// Issue #14's acceptance evidence, from the run's own counters: how each COM moved,
+// what it asked for, every request the resource gates refused (a refused move that is not
+// retried in a loop) and the bounded wall recovery. `blocked` counts probes whose wanted
+// direction the stage refused; `stuck` the recoveries that fired. Printed at round over
+// and again at the end of a capture run, so a match that never finishes still reports.
+static void printComSummary(const App& app) {
+    for (int i = 0; i < app.match.config().fighterCount; ++i) {
+        const gameplay::BotStats& bs = app.botBrains[i].stats();
+        if (bs.ticks == 0) continue;   // a human slot
+        std::printf("match com %d : tactic=%s action=%s moved=%.0f, "
+                    "melee=%llu blockedMelee=%llu shots=%llu fired=%llu "
+                    "blockedShot=%llu, dash=%llu jump=%llu guard=%llu "
+                    "evade=%llu hyper=%llu retarget=%llu, "
+                    "wallTicks=%llu stuck=%llu turns=%llu\n",
+                    i,
+                    gameplay::bot_tactic_name(app.botBrains[i].tactic()),
+                    gameplay::bot_action_name(app.botBrains[i].decision().action),
+                    (double)bs.distanceMoved,
+                    (unsigned long long)bs.meleePresses,
+                    (unsigned long long)bs.meleeBlocked,
+                    (unsigned long long)bs.shotsStarted,
+                    (unsigned long long)bs.shotsFired,
+                    (unsigned long long)bs.shotBlocked,
+                    (unsigned long long)bs.dashStarts,
+                    (unsigned long long)bs.jumps,
+                    (unsigned long long)bs.guards,
+                    (unsigned long long)bs.evades,
+                    (unsigned long long)bs.hypers,
+                    (unsigned long long)bs.retargets,
+                    (unsigned long long)bs.blockedTicks,
+                    (unsigned long long)bs.stuckRecoveries,
+                    (unsigned long long)bs.directionChanges);
+    }
+}
+
 // How long LockSwitch must be HELD, with no fresh tap, before the selection moves to an
 // ally (input.h: "hold = aim ally"). PORT RULE: the hold itself is recovered
 // (FUN_00421e30's 0xb4, re-pinned by FUN_0041f580:244), but the gesture length that
@@ -1895,6 +1940,40 @@ static void tickMatch(App& app, double dt) {
     const fnd::input::PlayerState* p1 = nullptr;
     if (app.matchInputReady && !app.frontendMatch) p1 = &app.tickInput[0];
 
+    // The viewer is the fighter on panel kFrontendBattleSlots[0] (1P). A PANEL index; the
+    // lookup yields a FIGHTER index, and the controller slot is a third, distinct index
+    // space (see gameplay/target_lock.h). Read before the step because the COM brains want
+    // the leader's lock, and again below for the HUD.
+    int viewerIndex = 0;
+    if (app.frontendMatch)
+        for (int j = 0; j < app.battleLaunch.fighterCount; ++j)
+            if (app.battleLaunch.fighters[j].panel == ui::kFrontendBattleSlots[0]) {
+                viewerIndex = j;
+                break;
+            }
+
+    // The recovered tactics gesture: any human pressing Tactics cycles the team cell, which
+    // FUN_0041f580:291-295 mirrors onto player 0's +0x310, and every COM reads that cell.
+    // Keeping ONE cell is exactly what the mirroring produces.
+    {
+        bool pressed = false;
+        if (app.frontendMatch) {
+            for (int i = 0; i < app.battleLaunch.fighterCount && !pressed; ++i) {
+                const int controller =
+                    app.frontend.slots[app.battleLaunch.fighters[i].panel].controller;
+                if (controller >= 0 && controller < 4)
+                    pressed = app.tickInput[controller].just_pressed[fnd::input::Tactics];
+            }
+        } else if (p1) {
+            pressed = p1->just_pressed[fnd::input::Tactics];
+        }
+        if (pressed) {
+            const gameplay::BotTactic cell = app.tacticReadout.press();
+            for (gameplay::BotBrain& brain : app.botBrains) brain.set_tactic(cell);
+        }
+        app.tacticReadout.tick();
+    }
+
     const fnd::input::PlayerState* inputs[4] = {p1, p2, nullptr, nullptr};
     if (app.frontendMatch) {
         for (int i = 0; i < app.match.config().fighterCount; ++i) {
@@ -1902,19 +1981,15 @@ static void tickMatch(App& app, double dt) {
             const int controller = app.frontend.slots[panel].controller;
             if (controller >= 0 && controller < 4) inputs[i] = &app.tickInput[controller];
             else {
-                // The COM aims at the lock its fighter already carries, which is the same
-                // target the fighter itself faces and shoots at (gameplay/match.cpp). An
-                // ally lock is deliberately NOT used: a bot would walk up to its partner.
-                const int locked = app.match.locked_target(i);
-                const int target = (locked != gameplay::kNoTarget &&
-                                    app.match.config().side[i] !=
-                                        app.match.config().side[locked] &&
-                                    app.match.fighter(locked).is_alive())
-                                       ? locked
-                                       : app.match.melee_target(i);
-                if (target != gameplay::kNoTarget)
-                    gameplay::updateBotInput(app.botInput[i], app.match.fighter(i),
-                                             app.match.fighter(target), app.matchFrame);
+                // COM. The decision state owns the target pick, the movement, the presses
+                // and the retarget request; gameplay/bot_input.h turns that into this
+                // fighter's input for the tick (issue #14).
+                gameplay::BotContext bot;
+                bot.match = &app.match;
+                bot.fighterIndex = i;
+                bot.leaderTarget = app.match.locked_target(viewerIndex);
+                gameplay::updateBotInput(app.botBrains[i], bot, app.botInput[i],
+                                         app.matchFrame);
                 inputs[i] = &app.botInput[i];
             }
         }
@@ -1942,6 +2017,8 @@ static void tickMatch(App& app, double dt) {
     }
     updateFxCards(app, app.matchFx, app.matchFxEvents, (float)dt);
 
+    // The viewer is the fighter on panel kFrontendBattleSlots[0] (1P); its index was
+    // resolved before the step, above.
     // The camera and HUD state below run per view; the targets they read are refreshed
     // once here from the live fighters. The pool does the dead-skip itself, and a real
     // target change arms the retarget blend so a switch lands fast without cutting.
@@ -2021,10 +2098,11 @@ static void tickMatch(App& app, double dt) {
         // the balloon popup's growth) is carried in the state instead of read from a clock.
         view.hud.hudFrame = (int)app.matchFrame;
         // The boxed tactics readout (P03's 128x64 cells: 0 適当, 1 格闘, 2 射撃, 3 集中,
-        // 4 各個, 5 後退). Cell 0 is 適当, which is what the original's own screen shows;
-        // the tactic system itself is not ported yet, so the default stance is the honest
-        // value rather than a guess at a state the simulation does not have.
-        view.hud.commandCell = 0;
+        // 4 各個, 5 後退). The cell IS the COM decision state's tactic: gameplay/bot_input.h
+        // owns the recovered pairing of the +0x310 cell with the +0x314 display timer
+        // (FUN_0041f580:291-295 writes it, FUN_004201a0:13-15 drains it, FUN_00644150:92-96
+        // fades it), so what the HUD draws and what the COM obeys cannot drift apart.
+        view.hud.commandCell = app.tacticReadout.hud_cell();
 
         // Per-fighter appearance state; projection happens per view with that view's
         // matrix (D8), below. The viewer's own lock names the fighter its ring and com bar
@@ -2093,6 +2171,7 @@ static void tickMatch(App& app, double dt) {
                     f.roundOverSide,
                     eco.roundEnd() == gameplay::RoundEnd::Timeout ? "time up" : "burst",
                     (unsigned long long)app.matchFrame);
+        printComSummary(app);
     }
 }
 
@@ -3826,7 +3905,9 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     std::printf("debug prims : %zu line(s), %zu vertices, %zu dropped, %zu pass(es)\n",
                                 ds.lines, ds.vertices, ds.droppedVertices, ds.passes);
                 }
-                if (app->matchMode) {
+                // The front-end battle runs the same Match as --match, so its end-of-run
+                // summary (and issue #14's per-COM counters) is printed for it too.
+                if (app->matchMode || app->frontendMatch) {
                     reportMatchViews(*app, w, h);
                     const gameplay::MatchEconomy& eco = app->match.economy();
                     std::printf("match: %llu frames, hp1=%d hp2=%d, balloon=%.0f%%/%.0f%% "
@@ -3852,6 +3933,8 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                                 (eco.roundEnd() == gameplay::RoundEnd::Burst ? "burst" : "running"),
                                 eco.kos(0), eco.kos(1), eco.overkills(0), eco.overkills(1),
                                 eco.respawns(0), eco.respawns(1), eco.timeLeft());
+                    // Issue #14's per-COM counters (see printComSummary).
+                    printComSummary(*app);
                 }
                 if (app->versusMode) {
                     std::printf("versus: %llu frames, hp1=%.0f hp2=%.0f, bgm pushed %llu frames, %llu wraps, sfx plays %llu, fx events %llu\n",
