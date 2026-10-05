@@ -86,8 +86,9 @@ int main() {
     for (int i = 0; i < 4; ++i) {
         const ui::ResultRow row = ui::resultRow(i);
         CHECK(row.badgeY == 100.f + 72.f * (float)i);
-        CHECK(row.badgeX == 150.f && row.textX == 280.f);
-        CHECK(row.nameY == row.badgeY + 32.f && row.textY == row.badgeY);
+        CHECK(row.badgeX == 200.f && row.textX == 300.f);
+        CHECK(row.titleY == row.badgeY + 32.f && row.textY == row.badgeY);
+        CHECK(row.statsY == row.badgeY + 50.f);
     }
     // One row appears every 30 frames after a 30-frame lead-in, and never more than four.
     CHECK(ui::resultRowsRevealed(0) == 0 && ui::resultRowsRevealed(29) == 0);
