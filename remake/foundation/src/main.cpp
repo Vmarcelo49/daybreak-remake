@@ -1889,7 +1889,9 @@ bool initScene(App& app) {
     // synthetic HUD composited into --out captures. Font upload is fatal here (a
     // capture without labels would silently prove less); in a game it is not.
     // A match always wants it: the HUD values are live game state, not a test rig.
-    if (app.opts.hudTest || app.matchMode || app.versusMode) {
+    // The animation browser draws its set name through the same sprite/caption path, so
+    // it needs the UI renderer even though it is not a match and draws no battle HUD.
+    if (app.opts.hudTest || app.matchMode || app.versusMode || app.opts.animPlayer) {
         if (!app.uiReady && !app.uiRenderer.init(app.ctx.device, app.ctx.queue, app.error)) return false;
         if (!app.hudComposer.uploadFont(app.uiRenderer, app.error)) return false;
         app.uiReady = true;
@@ -3126,6 +3128,9 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             const std::string line = buf;
             const std::string hint = "arrows: set index    WASD: orbit";
             std::string textError;
+            if (getenv("DBG_TEXT") && app->frames == 2)
+                std::fprintf(stderr, "[apText] load/prepare error: '%s' atlas=%d\n",
+                             textError.c_str(), app->apText.atlasTexture());
             if (app->apText.load(app->uiRenderer, 14.f, textError) &&
                 app->apText.prepare(app->uiRenderer, {line, hint}, textError)) {
                 app->uiRenderer.beginFrame(app->sc.width, app->sc.height);
