@@ -224,7 +224,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # a duplicate-definition error.
     add_executable(fighter_script_test tests/fighter_script_test.cpp
                    src/gameplay/fighter.cpp src/gameplay/projectile.cpp
-                   src/physics/raycast.cpp)
+                   src/gameplay/character_moves.cpp src/physics/raycast.cpp)
     target_include_directories(fighter_script_test PRIVATE src)
     target_link_libraries(fighter_script_test PRIVATE glm)
     add_test(NAME fighter_script_test COMMAND fighter_script_test)

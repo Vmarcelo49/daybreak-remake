@@ -1,11 +1,13 @@
 # Animation set indices and the state → set mapping
 
-**Status:** steps 1–2 partially applied — `CharacterMoves` now exposes each phase's
-set index and `state_to_anim_set` retargets Walk→1 (move 10) and Run→13 (move 20).
-AttackA/B/C stay on the old rows as marked placeholders pending the weapon
-dimension (step 3); phase durations, melee numbers and the #10 re-validation
-(steps 1b, 4, 5) are still open. The table history below is kept because it is
-the evidence for the remaining steps.
+**Status:** steps 1–5 applied as far as the evidence goes — `CharacterMoves` exposes
+each phase's set index, `state_to_anim_set` retargets Walk→1 (move 10) and Run→13
+(move 20), and bound fighters resolve each swing to the situation's own weapon
+move (sets, reach, damage, stun from the 300-family hit entries). AttackA/B/C
+table rows stay as marked placeholders for the table-free path; open follow-ups
+are the phase-duration source, the attack-sphere centre, the selector flags, and
+the vtable+0x20 handler hits. The table history below is kept because it is
+the evidence for those.
 
 Built from three sources, kept separate on purpose because they have different confidence:
 
@@ -168,10 +170,21 @@ against the logic tick rate.
    Run→13); attack rows still pending step 3.
 3. **Add the weapon dimension** to attack-state resolution: `AttackA` must select the equipped
    weapon's set, using the per-character/per-weapon indices already flagged for moves 300+.
+   DONE provisionally: `Fighter::resolve_attack_move` picks 330 (dash) / 340 (air) /
+   300 (ground) from the bound table with family fallback, and the swing binds the
+   move's first-phase set. Each row cites its evidence; the selector flags behind
+   the choice (+0x84/+0x830) are still unrecovered.
 4. **Un-port the melee constants.** Reach and damage move out of `melee_rules.h` and into the
    `WeaponDefinition` recovered by issue #9.
+   DONE via the character table rather than the item file (that is where the hits
+   live: 300-family phase combat blocks): radius, scaled hpDamage, defenderHitstun
+   and startup/active from entry frames. Recovery tail (17) and the attack-sphere
+   centre stay port rules, as do the 40/400-family hits.
 5. **Re-validate the issue #10 melee tests**, which were written against a punch that does not
    exist.
+   DONE: the legacy-swing tests stand as fallback coverage (a table-free fighter
+   behaves exactly as before), and new data-driven sections pin the resolved
+   moves, sets, reach, damage, stun and windows against rena/00.dat.
 
 ## 8. The tool that made this possible
 

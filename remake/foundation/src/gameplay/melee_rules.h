@@ -36,13 +36,22 @@
 // implemented here rather than guessed.
 //
 // ---------------------------------------------------------------------------
-// WHAT WAS NOT RECOVERED
+// WHAT WAS NOT RECOVERED — and what since was (issue #26 steps 3–4)
 // ---------------------------------------------------------------------------
-// Per-character melee radius, damage and phase durations are not in data/<char>/NN.dat at
-// all: the 0x28-0x2D group every character ships parses with an entirely zero combat
-// block. They are produced by a per-character handler-class virtual at vtable slot 0x20
-// (called from FUN_00421410.c:15, implemented across ~46 classes). So the VALUES here are
-// port rules; the SHAPE above is recovered.
+// The 300-family weapon phases DO carry per-move melee numbers, read from the
+// bound CharacterMoves table by Fighter::build_melee_swing: the hit entry's
+// hitRadius (record +0x24), hpDamage (combat[5], 10000-based like shots),
+// defenderHitstun (combat[10]) and in-phase frame (record v04, the startup).
+// The active window runs to the phase's next effect frame. What stays a port
+// rule even there: the recovery tail (17 ticks) and the attack-sphere centre
+// (the chest; the original may centre on the weapon bone, which would extend
+// the effective reach — unmeasured).
+//
+// Still genuinely unrecovered: the 40/41/42 and 400-family hits, produced by a
+// per-character handler-class virtual at vtable slot 0x20 (called from
+// FUN_00421410.c:15, implemented across ~46 classes), and the situation → move
+// selection flags in FUN_0043ded0. So the VALUES below are port rules that a
+// table-bound swing overrides; the SHAPE above is recovered.
 //
 // What IS recovered about melee input, and it justifies removing the second key: the
 // corpus has exactly one attack bit - `weapon+0x28 & 0x100`, used 1378 times - and no
@@ -50,9 +59,10 @@
 // from the remake; the swing is chosen by the fighter's situation at the press.
 //
 // PORT RULES below are chosen to be defensible rather than arbitrary:
-//   * The attack sphere's radius stands in for `weapon+0x24`, which melee has no record
-//     for. It keeps the recovered `30 + radius` form, so the moment a weapon radius IS
-//     recovered only this one number changes.
+//   * The attack sphere's radius stands in for `weapon+0x24` when no move table
+//     is bound. A bound table supplies the hit entry's own hitRadius instead, so
+//     this number only governs the legacy swing (and the --hitbox-debug volume
+//     for it). It keeps the recovered `30 + radius` form either way.
 //   * The body radius is the recovered literal 30.0, not a new constant.
 //   * The two victim anchors are placed as fractions of the collision body height (145,
 //     physics/raycast.h, measured in #7) rather than as fresh magic numbers.

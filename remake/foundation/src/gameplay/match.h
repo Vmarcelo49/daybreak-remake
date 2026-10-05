@@ -65,6 +65,11 @@ struct MatchConfig {
     // own magazine sizes, charge thresholds, per-shot costs and volley counts, so two
     // fighters with different weapons genuinely fight differently (issue #9).
     const WeaponDefinition* weapon[4] = {nullptr, nullptr, nullptr, nullptr};
+    // The fighter's parsed data/<char>/NN.dat move table, one pointer per fighter.
+    // Borrowed and optional like the weapon: a null entry keeps the legacy shared
+    // melee swing, while a bound table resolves each swing to the equipped move's
+    // own animation set, reach, damage and stun (issue #26).
+    const CharacterMoves* moves[4] = {nullptr, nullptr, nullptr, nullptr};
 };
 
 // What one frame did, for the trace, the flow and the effect queue.

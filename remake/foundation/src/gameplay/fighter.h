@@ -57,6 +57,7 @@
 
 #include "assets/xmodel.h"          // xm::Model / xm::Controller (non-owning)
 #include "game/fighter_pose.h"      // game::IFighterPose / game::FighterPose
+#include "gameplay/character_moves.h"  // CharacterMoves (borrowed move table)
 #include "gameplay/projectile.h"
 #include "gameplay/melee_rules.h"
 #include "gameplay/weapon_definition.h"
@@ -311,7 +312,9 @@ struct FighterConstants {
     static constexpr int   kAttackFrames  = 30;      // 0x1e = 0.5s at 60fps
     static constexpr int   kHitStunFrames = 15;      // ~0.25s stun
     static constexpr int   kBattleStartFrames = 60;  // 1.0s intro pose
-    static constexpr float kMeleeRange    = 160.0f;  // XZ reach of melee swings
+    static constexpr float kMeleeRange    = 160.0f;  // legacy shared reach: the
+        // fallback when no move table is bound, and the Oyashiro activation burst
+        // radius. Data-driven swings use their own hitRadius (30 + hr, FUN_0063b470).
     static constexpr int   kLightDamage   = 5;
     static constexpr int   kHeavyDamage   = 12;
     // Shot economy (spec §3.1; counts pinned by battle-hud.webp, rest tuning).
@@ -349,6 +352,26 @@ struct FighterConstants {
     // 8 ticks follows fighting-game convention; the number stands until a
     // dynamic oracle pins it.
     static constexpr int   kAnimBlendTicks = 8;
+};
+
+// One swing's resolved numbers (issue #26 steps 3–4). Data-driven when a move
+// table is bound: windows, reach, damage and stun come from the situation's
+// move hit entry. Otherwise the legacy shared tuning below, so a fighter with
+// no moves bound behaves exactly like the pre-#26 machine.
+struct MeleeSwing {
+    bool  dataDriven = false;
+    int   moveId = -1;      // character-.dat move this swing plays (-1 = legacy)
+    int   startupTicks  = 5;
+    int   activeTicks   = 8;
+    int   recoveryTicks = 17;
+    float radius = 130.0f;                            // stands in for weapon+0x24
+    int   damage = FighterConstants::kLightDamage;
+    int   hitstun = 8;                                // legacy active-window stun
+    int total_ticks() const { return startupTicks + activeTicks + recoveryTicks; }
+    bool is_active(int elapsed) const {
+        return elapsed >= startupTicks && elapsed < startupTicks + activeTicks;
+    }
+    bool is_recovery(int elapsed) const { return elapsed >= startupTicks + activeTicks; }
 };
 
 // Handoff from Fighter (input/charge side) to the scene (spawn/collide side):
@@ -424,6 +447,18 @@ public:
     // keeps the shared kHitStunFrames.
     void take_damage(int amount, Fighter* source = nullptr, int hitstunFrames = -1);
     void set_state(FighterState new_state);
+
+    // ---- character move table (gameplay/character_moves.h, issue #26) ----
+    // Binds the parsed data/<char>/NN.dat for this fighter's own rig. Borrowed,
+    // like the model and the weapon; null keeps the legacy shared tuning (the
+    // state_to_anim_set rows and MeleeRules), which is what the standalone
+    // --match trace path and the install-free tests rely on.
+    void set_moves(const CharacterMoves* moves);
+    const CharacterMoves* moves() const { return m_moves; }
+    // The character-.dat move the current (or most recent) swing plays, or -1
+    // when the swing is the legacy shared one. Exposed so tests pin the
+    // situation → move mapping without needing a model.
+    int attack_move_id() const { return m_attackMoveId; }
 
     // ---- selected weapon (gameplay/weapon_definition.h, issue #9) ----
     // Binds the parsed data/item/NNN.dat for the selected weapon. Borrowed, like the
@@ -515,16 +550,18 @@ public:
     static constexpr int kNoMeleeVictim = -1;
 
     // True while the current attack is in its startup, active or recovery window. A
-    // recovery swing must not chain into another action (issue #10).
-    bool melee_in_recovery() const { return m_meleeRules.is_recovery(m_meleeElapsed); }
-    bool melee_in_active() const { return m_meleeRules.is_active(m_meleeElapsed); }
+    // recovery swing must not chain into another action (issue #10). The windows
+    // are this swing's own (data-driven when moves are bound, legacy otherwise).
+    bool melee_in_recovery() const { return m_swing.is_recovery(m_meleeElapsed); }
+    bool melee_in_active() const { return m_swing.is_active(m_meleeElapsed); }
 
     // Swing bookkeeping driven by Match: begin clears the per-victim hit set, note
     // records that this swing already connected with one victim.
     void begin_melee_swing(int victimIndexBase = 0);
     void note_melee_hit(int victimIndex);
-    // Ticks of hit-stun a melee inflicts; see the port-rule note in fighter.cpp.
-    int  m_meleeHitstun() const { return m_meleeRules.activeTicks; }
+    // Ticks of hit-stun a melee inflicts: the swing's own (the weapon entry's
+    // defenderHitstun when moves are bound, the legacy active-window stun else).
+    int  m_meleeHitstun() const { return m_swing.hitstun; }
 
     // Debug view of the recovered melee hitbox (issue #10). Data only, so drawing stays
     // in the render layer: `anchors` are the victim's TWO spheres -- head and chest, the
@@ -629,7 +666,11 @@ private:
     unsigned     m_swingHits = 0;
     int          m_swingHitCount = 0;
     int          m_meleeElapsed = 0;      // ticks since the swing started
-    MeleeRules   m_meleeRules{};           // port rules; see melee_rules.h
+    MeleeRules   m_meleeRules{};           // legacy tuning + recovered shape;
+                                           // data-driven swings override it via m_swing
+    const CharacterMoves* m_moves = nullptr;  // borrowed move table (issue #26)
+    int          m_attackMoveId = -1;       // move the current swing plays (-1 legacy)
+    MeleeSwing   m_swing{};                 // this swing's resolved numbers
     bool         m_aerialAttack = false;   // this swing is the aerial variant
 
     // --- hypermode (spec §3.4; numbers in hypermode_params) ---
@@ -716,6 +757,22 @@ private:
     // the Hit state's friction branch to carry the push; the real knockback
     // animation state is un-RE'd.
     void apply_knockback(const glm::vec3& dir, float speed);
+
+    // Situation → character-.dat move id for a melee press (issue #26 step 3),
+    // or -1 when no table is bound or the situation's move is absent. The map
+    // is provisional: FUN_0043ded0 gates several attack moves per situation on
+    // unrecovered flags, so each row is the best-evidenced candidate —
+    //   dash (press while Run) → 330, the lunge ("dash forward + attack", nata)
+    //   air                     → 340, the single-phase weapon aerial ([88])
+    //   ground                  → 300, the ground neutral (first phase 31)
+    // — with 320 (ground branch at FUN_0043ded0:311, frame-1 startup) on record
+    // as the alternative for ground/air, and the kicks (310/311) unused for lack
+    // of a recovered selection rule. A costume that drops the row's move falls
+    // through to any weapon-family move present rather than the jump clip.
+    int resolve_attack_move(bool dashAttack, bool aerial) const;
+    // Fills m_swing from the move's first combat entry (or the legacy tuning
+    // when there is no table, no move, or no combat entry).
+    void build_melee_swing(int moveId);
 
     // Shared pulse for the aura's alpha + radius (DX9 render did both from one
     // expression; kept single-sourced so they cannot drift).

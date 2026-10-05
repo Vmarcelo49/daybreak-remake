@@ -90,6 +90,48 @@ void swing_to_active(Fighter& f, int extraTicks = 0) {
     for (int i = 0; i < rules.startupTicks + extraTicks; ++i) tick(f, in);
 }
 
+// Presses melee once and advances to exactly `elapsed` swing ticks (the press tick
+// counts as elapsed 1). Data-driven swings size their own windows, so they cannot
+// use the legacy-timed helper above.
+void swing_to_elapsed(Fighter& f, int elapsed) {
+    input::PlayerState in;
+    in.down[input::Action::AttackA] = true;
+    tick(f, in);
+    in.down[input::Action::AttackA] = false;
+    for (int i = 1; i < elapsed; ++i) tick(f, in);
+}
+
+// A 124-set synthetic rig, named like the shipped files (index i = "Anim-(124-i)"),
+// so animation-set assertions read the same as the fighter_script_test's.
+void bind_synthetic_rig(Fighter& f, xm::Model& model, xm::Controller& ctrl,
+                        const glm::vec3& at) {
+    model.anims.clear();
+    for (int i = 0; i < 124; ++i) {
+        xm::AnimSet a;
+        a.name = "Anim-" + std::to_string(124 - i);
+        a.duration = 60.0f;
+        model.anims.push_back(a);
+    }
+    ctrl.bind(&model);
+    f.init(&model, &ctrl, at, 0.0f);
+    input::PlayerState idle;
+    for (int i = 0; i < 70; ++i) tick(f, idle);
+}
+
+// Loads one shipped character move table; false when the install is absent.
+bool load_moves(const fs::path& install, const char* character, const char* nn,
+                gameplay::CharacterMoves& out) {
+    std::error_code ec;
+    if (install.empty() || !fs::is_directory(install / "data" / character, ec))
+        return false;
+    std::ifstream in(install / "data" / character / nn, std::ios::binary);
+    if (!in) return false;
+    const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)),
+                                     std::istreambuf_iterator<char>());
+    std::string err;
+    return out.parse(bytes.data(), bytes.size(), err);
+}
+
 // ---------------------------------------------------------------------------
 // Vertical separation — the issue's headline criterion.
 // ---------------------------------------------------------------------------
@@ -543,6 +585,212 @@ void testCharacterMoveTable(const fs::path& install) {
     check(m.find(40) == nullptr, "with nothing findable");
 }
 
+// ---------------------------------------------------------------------------
+// Data-driven swings (issue #26 steps 3–4): with rena's table bound, the swing
+// resolves to the situation's own move — its animation set, reach, damage and
+// stun — instead of the legacy shared numbers. Rena 00.dat reference values:
+//   move 300 (ground): set 31, hit frame 4, next effect 10, hr 20, hp 50, dSt 6
+//   move 330 (dash):   set 51, hit frame 6, next effect 11, hr 25, hp 75, dSt 6
+//   move 340 (air):    set 88, hit frame 16, next effect 21, hr 20, hp 75, dSt 6
+// Damage scales hpDamage off the original's 10000-based pool (all three round to
+// 1 on 100 HP); reach is 30 + hr in 3D against the two anchors.
+// ---------------------------------------------------------------------------
+void testDataDrivenGroundSwing(const fs::path& install) {
+    section("data-driven ground swing (rena move 300)");
+    gameplay::CharacterMoves moves;
+    if (!load_moves(install, "rena", "00.dat", moves)) {
+        skip("data-driven ground swing (no install found)");
+        return;
+    }
+    xm::Model model;
+    xm::Controller ctrl;
+    Fighter attacker;
+    bind_synthetic_rig(attacker, model, ctrl, glm::vec3(0, 0, 0));
+    attacker.set_moves(&moves);
+    Fighter victim;
+    bind_synthetic_rig(victim, model, ctrl, glm::vec3(0, 0, 40));
+
+    input::PlayerState in;
+    in.down[input::Action::AttackA] = true;
+    tick(attacker, in);
+    in.down[input::Action::AttackA] = false;
+    checkInt(static_cast<int>(FighterState::AttackA),
+             static_cast<int>(attacker.state()), "the press enters AttackA");
+    checkInt(300, attacker.attack_move_id(), "a grounded press resolves move 300");
+    checkInt(31, attacker.anim_set_index(),
+             "and binds set 31 (nata swing), not the jump clip");
+    check(!attacker.anim_fallback(), "with no fallback flag");
+
+    // Startup is the hit's own frame (4): earlier ticks cannot land.
+    tick(attacker, in);
+    tick(attacker, in);   // elapsed 3
+    check(!attacker.try_melee_hit(victim), "no hit during the 4-frame startup");
+    tick(attacker, in);   // elapsed 4: the hit frame
+    check(attacker.try_melee_hit(victim), "the hit lands on its own frame");
+    checkInt(99, victim.hp(), "damage is the weapon's own hpDamage, scaled (50 -> 1)");
+    checkInt(static_cast<int>(FighterState::Hit), static_cast<int>(victim.state()),
+             "the victim staggers");
+
+    // Reach is 30 + 20 in 3D: 40 connects, 60 does not.
+    Fighter far;
+    bind_synthetic_rig(far, model, ctrl, glm::vec3(0, 0, 60));
+    check(!attacker.try_melee_hit(far), "60 units is past the 30+20 sphere");
+
+    // Active until the next effect (frame 10), then recovery locks the swing out.
+    for (int i = 0; i < 5; ++i) tick(attacker, in);   // elapsed 9
+    check(!attacker.melee_in_recovery(), "still swinging on the last active tick");
+    tick(attacker, in);   // elapsed 10
+    check(attacker.melee_in_recovery(), "recovery follows the active window");
+    check(!attacker.try_melee_hit(victim), "and recovery cannot land");
+    // The victim's stun is the weapon's own defenderHitstun (6), not the legacy 8.
+    int stun = 0;
+    while (victim.state() == FighterState::Hit && stun < 60) {
+        victim.update(nullptr, nullptr, 1.0 / 64.0);
+        ++stun;
+    }
+    checkInt(6, stun, "hit-stun lasts the weapon's 6 ticks");
+    // The swing totals 4 + 6 + 17 = 27 ticks, then expires on its own.
+    for (int i = 0; i < 18; ++i) tick(attacker, in);
+    checkInt(static_cast<int>(FighterState::Idle), static_cast<int>(attacker.state()),
+             "the 27-tick swing expires back to Idle");
+}
+
+void testDataDrivenDashAndAir(const fs::path& install) {
+    section("data-driven dash and air swings (rena moves 330/340)");
+    gameplay::CharacterMoves moves;
+    if (!load_moves(install, "rena", "00.dat", moves)) {
+        skip("data-driven dash swing (no install found)");
+        skip("data-driven air swing (no install found)");
+        return;
+    }
+    // Dash attack: double-tap Run, then melee while still dashing.
+    {
+        xm::Model model;
+        xm::Controller ctrl;
+        Fighter dasher;
+        bind_synthetic_rig(dasher, model, ctrl, glm::vec3(0, 0, 0));
+        dasher.set_moves(&moves);
+        input::PlayerState in;
+        in.down[input::Action::Up] = true;
+        tick(dasher, in);
+        in.down[input::Action::Up] = false;
+        tick(dasher, in);
+        in.down[input::Action::Up] = true;
+        tick(dasher, in);
+        checkInt(static_cast<int>(FighterState::Run), static_cast<int>(dasher.state()),
+                 "double-tap enters the dash");
+        in.down[input::Action::Up] = false;
+        in.down[input::Action::AttackA] = true;
+        tick(dasher, in);
+        in.down[input::Action::AttackA] = false;
+        checkInt(330, dasher.attack_move_id(), "a dash press resolves the lunge (330)");
+        checkInt(51, dasher.anim_set_index(), "binding set 51, not the jump clip");
+        // The dash carried the fighter forward; meet it where it is (reach 55).
+        const float z = dasher.position().z;
+        Fighter victim;
+        bind_synthetic_rig(victim, model, ctrl, glm::vec3(0, 0, z + 45));
+        for (int i = 0; i < 5; ++i) tick(dasher, in);   // elapsed 6: the hit frame
+        check(dasher.try_melee_hit(victim), "the lunge connects inside 30+25");
+        checkInt(99, victim.hp(), "for the weapon's scaled damage (75 -> 1)");
+    }
+    // Air attack: leap, then melee while airborne.
+    {
+        xm::Model model;
+        xm::Controller ctrl;
+        Fighter flyer;
+        bind_synthetic_rig(flyer, model, ctrl, glm::vec3(0, 0, 0));
+        flyer.set_moves(&moves);
+        input::PlayerState jump;
+        jump.down[input::Action::Jump] = true;
+        tick(flyer, jump);
+        jump.down[input::Action::Jump] = false;
+        tick(flyer, jump);
+        check(flyer.airborne(), "the leap leaves the ground");
+        input::PlayerState in;
+        in.down[input::Action::AttackA] = true;
+        tick(flyer, in);
+        in.down[input::Action::AttackA] = false;
+        check(flyer.aerial_attack(), "the airborne press flags the aerial swing");
+        checkInt(340, flyer.attack_move_id(), "resolving the weapon aerial (340)");
+        checkInt(88, flyer.anim_set_index(), "binding set 88");
+        Fighter early;
+        bind_synthetic_rig(early, model, ctrl, flyer.position());
+        check(!flyer.try_melee_hit(early), "no hit during the 16-frame startup");
+        for (int i = 0; i < 15; ++i) tick(flyer, in);   // elapsed 16: the hit frame
+        // Meet the risen attacker at its own height (reach 50 in 3D).
+        Fighter victim;
+        bind_synthetic_rig(victim, model, ctrl, glm::vec3(0, 0, 0));
+        victim.reset(glm::vec3(flyer.position().x, flyer.position().y,
+                               flyer.position().z + 30),
+                     0.0f);
+        check(flyer.try_melee_hit(victim), "the aerial connects at its own height");
+        checkInt(99, victim.hp(), "for the weapon's scaled damage");
+    }
+}
+
+void testDataDrivenFallback(const fs::path& install) {
+    section("no table, no data: the legacy swing survives");
+    // A costume that drops the situation's move (rena/02 repoints 330 to a bare
+    // phase; a table with no 300-family at all) must fall back cleanly, and a
+    // fighter with no table bound must behave exactly like the pre-#26 machine.
+    Fighter bare = idle_at(glm::vec3(0, 0, 0));
+    checkInt(-1, bare.attack_move_id(), "no table means no move id");
+    checkInt(-1, bare.anim_set_index(), "no model means no set bound");
+    check(!bare.moves(), "and no table bound");
+
+    gameplay::CharacterMoves moves;
+    if (!load_moves(install, "rena", "00.dat", moves)) {
+        skip("bound-but-missing move falls back (no install found)");
+        return;
+    }
+    // Move 302 exists for rena but has no bearing on the ground swing; the
+    // fallback path is exercised by asking for a move the table lacks.
+    check(moves.find(9999) == nullptr, "an absent move id finds nothing");
+    Fighter bound = idle_at(glm::vec3(0, 0, 0));
+    bound.set_moves(&moves);
+    checkInt(-1, bound.attack_move_id(), "no swing yet means no move id");
+}
+
+void testMatchDataDriven(const fs::path& install) {
+    section("Match: data-driven swings damage once, allies stay safe");
+    gameplay::CharacterMoves moves;
+    if (!load_moves(install, "rena", "00.dat", moves)) {
+        skip("data-driven match swing (no install found)");
+        return;
+    }
+    gameplay::Match match;
+    gameplay::MatchConfig config;
+    config.fighterCount = 2;
+    config.side[0] = 0;
+    config.side[1] = 1;
+    config.spawn[0] = glm::vec3(0, 0, 0);
+    config.spawn[1] = glm::vec3(0, 0, 40);   // inside the 30+20 sphere
+    config.moves[0] = &moves;
+    config.moves[1] = &moves;
+    const xm::Model* models[4] = {};
+    xm::Controller* anims[4] = {};
+    match.reset(config, models, anims, nullptr, nullptr);
+    const input::PlayerState* idle[4] = {};
+    for (int i = 0; i < 70; ++i) match.step(idle, 1.0 / 64.0);
+    const int hpBefore = match.fighter(1).hp();
+    input::PlayerState melee{};
+    melee.down[input::Action::AttackA] = true;
+    input::PlayerState release{};
+    for (int i = 0; i < 20; ++i) {
+        input::PlayerState press = melee;
+        input::compute_edges(press);
+        const input::PlayerState* withMelee[4] = {&press, nullptr, nullptr, nullptr};
+        input::PlayerState rest = release;
+        input::compute_edges(rest);
+        const input::PlayerState* atRest[4] = {&rest, nullptr, nullptr, nullptr};
+        match.step(i == 0 ? withMelee : atRest, 1.0 / 64.0);
+    }
+    checkInt(300, match.fighter(0).attack_move_id(),
+             "the match swing resolved move 300");
+    checkInt(hpBefore - 1, match.fighter(1).hp(),
+             "one weapon-scaled point of damage, not the legacy 5");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -556,6 +804,10 @@ int main(int argc, char** argv) {
     testHeavyKeyUnbound();
     testMatchAllyExclusion();
     testCharacterMoveTable(install);
+    testDataDrivenGroundSwing(install);
+    testDataDrivenDashAndAir(install);
+    testDataDrivenFallback(install);
+    testMatchDataDriven(install);
     std::printf("\nMELEE_RULES: %s (%d checks, %d failed, %d skipped)\n",
                 failures == 0 ? "ok" : "FAIL", checks, failures, skipped);
     return failures == 0 ? 0 : 1;

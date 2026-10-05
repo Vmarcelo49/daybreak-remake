@@ -74,7 +74,10 @@ struct MoveEntry {
     int gaugeGainB      = 0;   // combat[0x08]
     int attackerHitstun = 0;   // combat[0x09]
     int defenderHitstun = 0;   // combat[0x0a]
-    int reactionMove    = 0;   // combat[0x0d] — FUN_0063ba80's hit-reaction category
+    int reactionMove    = 0;   // combat[0x0d] — FUN_0063ba80's hit-reaction category.
+                               // Same file offset BulletParameter calls chargeTier1Move;
+                               // the meaning is context-dependent (victim reaction for
+                               // a melee hit, shot move id for a bullet).
     int chargeTier1Move = 0;   // combat[0x0e]
     int chargeTier2Move = 0;   // combat[0x0f]
 

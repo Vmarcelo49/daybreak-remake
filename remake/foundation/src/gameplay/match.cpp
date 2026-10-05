@@ -27,6 +27,8 @@ void Match::reset(const MatchConfig& config, const xm::Model* model[4], xm::Cont
         m_fighters[i].set_hp(config.startHP[i]);
         // Before init()/reset(), which size the magazines from it.
         m_fighters[i].set_weapon(config.weapon[i]);
+        // After init()/reset(): the move table only feeds swings started later.
+        m_fighters[i].set_moves(config.moves[i]);
     }
     m_shots.clear();
     m_locks.reset(m_config.fighterCount, m_config.side);

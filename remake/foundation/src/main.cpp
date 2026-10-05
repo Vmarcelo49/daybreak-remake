@@ -599,6 +599,10 @@ struct App {
     // Decoded data/bullet/<weaponId>/<type>.dat parameters, parallel to weaponDefs:
     // [fighter][chargeLevel-1]. Borrowed by the fighters, so it must outlive them.
     std::vector<std::array<std::unique_ptr<gameplay::BulletParameter>, 2>> bulletParams;
+    // Parsed data/<char>/NN.dat move tables, indexed by fighter (issue #26). Owned
+    // here so the pointers MatchConfig::moves hands out outlive the match. Empty
+    // when the rig's .dat cannot be found, which keeps the legacy shared swing.
+    std::vector<std::unique_ptr<gameplay::CharacterMoves>> moveDefs;
     uint64_t                     matchShots = 0, matchSparks = 0, matchHits = 0;
     uint64_t                     matchRoundOverFrame = 0;
     game::EffectEventQueue       matchFx;
@@ -948,6 +952,60 @@ static bool loadWeaponDefinition(App& app, int fighter, int itemId, std::string&
     return true;
 }
 
+// The move table lives next to the rig's own model file: "<dir>/<char>[<costume>]/NN.X"
+// loads alongside "<dir>/<char>/NN.dat" (the .dat is always in the unsuffixed
+// directory and names the .X; see loadCharacter). Derives the second path from the
+// first, or "" when the rig source has no usable form.
+static std::string movesPathForRig(const std::string& rigSource) {
+    const size_t slash = rigSource.find_last_of('/');
+    const std::string dir = slash == std::string::npos ? "" : rigSource.substr(0, slash);
+    const std::string file =
+        slash == std::string::npos ? rigSource : rigSource.substr(slash + 1);
+    const size_t dot = file.find_last_of('.');
+    const std::string stem = dot == std::string::npos ? file : file.substr(0, dot);
+    if (stem.empty()) return "";
+    const size_t dslash = dir.find_last_of('/');
+    const std::string parent = dslash == std::string::npos ? "" : dir.substr(0, dslash);
+    std::string base = dslash == std::string::npos ? dir : dir.substr(dslash + 1);
+    // Costume directories carry a _B.._F suffix (jump table at 0x41ef86); the .dat
+    // does not.
+    static const char* kSuffix[5] = {"_B", "_C", "_D", "_E", "_F"};
+    for (const char* s : kSuffix) {
+        const size_t n = std::strlen(s);
+        if (base.size() > n && base.compare(base.size() - n, n, s) == 0) {
+            base.erase(base.size() - n);
+            break;
+        }
+    }
+    if (base.empty()) return "";
+    return (parent.empty() ? base : parent + "/" + base) + "/" + stem + ".dat";
+}
+
+// Loads and parses the rig's data/<char>/NN.dat into app.moveDefs[fighter].
+// Soft failure like the bullet parameters (unlike the weapon definition): without
+// a table the fighter keeps the legacy shared swing, and the log says so.
+static bool loadCharacterMoves(App& app, int fighter, const std::string& rigSource) {
+    const std::string path = movesPathForRig(rigSource);
+    if (path.empty()) return false;
+    std::vector<uint8_t> bytes;
+    if (!fnd::assets::assetSource().read(path, bytes)) {
+        std::printf("[moves] fighter %d: no %s, keeping the legacy swing\n", fighter,
+                    path.c_str());
+        return false;
+    }
+    auto moves = std::make_unique<gameplay::CharacterMoves>();
+    std::string parseError;
+    if (!moves->parse(bytes.data(), bytes.size(), parseError)) {
+        std::printf("[moves] fighter %d: %s: %s, keeping the legacy swing\n", fighter,
+                    path.c_str(), parseError.c_str());
+        return false;
+    }
+    if (static_cast<int>(app.moveDefs.size()) <= fighter)
+        app.moveDefs.resize(static_cast<size_t>(fighter) + 1);
+    app.moveDefs[static_cast<size_t>(fighter)] = std::move(moves);
+    return true;
+}
+
 // Decodes the data/bullet/<weaponId>/<type>.dat parameters for one charge level out of a
 // parsed weapon. FUN_00433eb0:152 hands each bullet entry's `type * 10 + status` to
 // FUN_005f80c0, which builds "data/bullet/%03d/%03d.dat" with `type` as the file and
@@ -1049,6 +1107,12 @@ static bool initMatch(App& app) {
         models[i] = &app.scene.models[rigs[i]].model;
         anims[i] = &app.controllers[rigs[i]];
         app.matchRig[i] = rigs[i];
+        // Each fighter fights with its own rig's move table (phase → set indices
+        // and the 300-family hit records, issue #26), on both the frontend and
+        // the standalone paths. A missing table keeps the legacy shared swing.
+        if (loadCharacterMoves(app, i, app.scene.models[rigs[i]].source) &&
+            i < static_cast<int>(app.moveDefs.size()) && app.moveDefs[i])
+            config.moves[i] = app.moveDefs[i].get();
     }
 
     // Standalone --match captures/scripts are the historical unclamped trace path:

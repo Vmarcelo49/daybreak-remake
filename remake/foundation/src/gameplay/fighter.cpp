@@ -40,6 +40,8 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_stamina = static_cast<float>(FighterConstants::kMaxStamina);
     m_state = FighterState::BattleStart;
     m_stateTimer = FighterConstants::kBattleStartFrames;
+    m_attackMoveId = -1;   // no swing in flight across a round reset
+    m_swing = MeleeSwing{};
     m_animSetIdx = -1;   // bind() looked the previous state up; BattleStart wins
     clear_tracks();      // a round reset is a fresh bind, never a blend
     apply_weapon_ammo();
@@ -65,6 +67,8 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_stamina = static_cast<float>(FighterConstants::kMaxStamina);
     m_state = FighterState::BattleStart;
     m_stateTimer = FighterConstants::kBattleStartFrames;
+    m_attackMoveId = -1;
+    m_swing = MeleeSwing{};
     m_animSetIdx = -1;
     clear_tracks();      // same fresh-bind rule as init()
     m_vy = 0.0f;
@@ -291,9 +295,16 @@ void Fighter::update_state_machine(const input::PlayerState* input,
     // plays is chosen by the fighter's situation at the press — grounded, mid-dash or
     // airborne — rather than by a second key. Issue #10.
     if (input->just_pressed[input::Action::AttackA]) {
+        // The swing is chosen by the fighter's situation AT THE PRESS — mid-dash,
+        // airborne, or grounded — and resolved to the bound move table's own move,
+        // whose animation set, reach, damage and stun the swing then carries
+        // (issue #26). With no table bound the legacy shared swing plays.
+        const bool dashAttack = (m_state == FighterState::Run);
         set_aerial_attack(!m_grounded);
+        m_attackMoveId = resolve_attack_move(dashAttack, !m_grounded);
+        build_melee_swing(m_attackMoveId);
         set_state(FighterState::AttackA);
-        m_stateTimer = m_meleeRules.total_ticks();
+        m_stateTimer = m_swing.total_ticks();
         return;
     }
 
@@ -473,8 +484,15 @@ void Fighter::try_switch_animation() {
 
     // The original's selection: state → move id → the move's first phase → set
     // index (see the table above state_to_anim_set in fighter.h). The index is
-    // the D3DX set index, which is this model's `anims` index.
-    const int want = state_to_anim_set(m_state);
+    // the D3DX set index, which is this model's `anims` index. A data-driven
+    // melee swing (issue #26) plays its own move's first phase instead of the
+    // table's placeholder row: with no bound table, or no move for the swing,
+    // the table row stands.
+    int want = state_to_anim_set(m_state);
+    if (m_state == FighterState::AttackA && m_moves && m_attackMoveId >= 0) {
+        const int data = m_moves->first_set_index(m_attackMoveId);
+        if (data >= 0) want = data;
+    }
     const int resolved =
         (want >= 0 && static_cast<std::size_t>(want) < m_model->anims.size())
             ? want
@@ -698,7 +716,7 @@ void Fighter::apply_knockback(const glm::vec3& dir, float speed) {
 bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollision* collision) {
     // Only the light/chain melee plays this path; the EX and shots go elsewhere.
     if (m_state != FighterState::AttackA && m_state != FighterState::AttackB) return false;
-    if (!m_meleeRules.is_active(m_meleeElapsed)) return false;
+    if (!m_swing.is_active(m_meleeElapsed)) return false;
     if (!target.is_alive()) return false;
 
     // The recovered hitbox: FUN_00637950 picks a 3D sphere test (FUN_0063b470) whose
@@ -707,9 +725,9 @@ bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollis
     // a head sphere and a chest sphere and nothing else - which is the real vertical
     // limit, and why a swing cannot reach legs.
     //
-    // Melee has no weapon+0x24 record of its own (the 0x28-0x2D move records are all
-    // zero), so MeleeRules::radius stands in for it. The SHAPE is recovered; the value
-    // is a port rule.
+    // The radius is the swing's own weapon hitRadius when a move table is bound
+    // (issue #26: e.g. rena move 300's 20); otherwise MeleeRules::radius stands in
+    // for the unrecovered weapon+0x24. The SHAPE is recovered in both cases.
     const float bodyHeight = game::physics::MovementCollision::kFighterHeight;
     const float attackerY  = m_position.y + bodyHeight * m_meleeRules.chestHeightFrac;
     const float headY       = target.m_position.y + target.hurtbox_anchor_offset(0).y;
@@ -720,7 +738,8 @@ bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollis
 
     const float toHead = (horizontalSq) + (headY - attackerY) * (headY - attackerY);
     const float toChest = (horizontalSq) + (chestY - attackerY) * (chestY - attackerY);
-    if (!m_meleeRules.sphere_hits(toHead) && !m_meleeRules.sphere_hits(toChest)) return false;
+    const float combined = m_meleeRules.bodyRadius + m_swing.radius;
+    if (toHead >= combined * combined && toChest >= combined * combined) return false;
 
     // Solid barriers: the swing must not reach through the stage. #7's collision already
     // answers segment queries for the camera; the fighter's own mesh is the same
@@ -732,9 +751,14 @@ bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollis
         if (game::physics::segmentBlocked(from, to, collision->movementMesh())) return false;
     }
 
-    const int dmg = (m_state == FighterState::AttackB) ? FighterConstants::kHeavyDamage
-                                                       : FighterConstants::kLightDamage;
-    target.take_damage(dmg, this, m_meleeHitstun());
+    // A data-driven swing carries its weapon entry's own damage; the legacy swing
+    // keeps the light/heavy split (AttackB is unreachable from input — the corpus
+    // has no heavy bit — but a directly-set AttackB keeps its historical value).
+    const int dmg = m_swing.dataDriven
+        ? m_swing.damage
+        : (m_state == FighterState::AttackB ? FighterConstants::kHeavyDamage
+                                            : FighterConstants::kLightDamage);
+    target.take_damage(dmg, this, m_swing.hitstun);
     return true;
 }
 
@@ -749,6 +773,78 @@ void Fighter::note_melee_hit(int victimIndex) {
     if (victimIndex < 0 || victimIndex >= 4) return;
     m_swingHits |= (1u << victimIndex);
     ++m_swingHitCount;
+}
+
+void Fighter::set_moves(const CharacterMoves* moves) {
+    if (m_moves == moves) return;
+    m_moves = moves;
+    // The table only feeds swings started after the bind; an in-flight legacy
+    // swing keeps the numbers it started with.
+}
+
+int Fighter::resolve_attack_move(bool dashAttack, bool aerial) const {
+    if (!m_moves) return -1;
+    // A move counts when the table ships it with at least one phase (a costume
+    // that drops the row's move must not resolve to a phaseless id).
+    auto present = [&](int id) {
+        const CharacterMove* m = m_moves->find(id);
+        return (m && m->first_set_index() >= 0) ? id : -1;
+    };
+    if (dashAttack) {
+        const int lunge = present(330);
+        if (lunge >= 0) return lunge;
+    } else if (aerial) {
+        const int air = present(340);
+        if (air >= 0) return air;
+    } else {
+        const int neutral = present(300);
+        if (neutral >= 0) return neutral;
+    }
+    // Fallback within the weapon family (mion/satoko drop 302, rena/02 repoints
+    // 330): any weapon move present beats the legacy jump clip.
+    for (int id : {300, 330, 340, 310, 311, 302, 301}) {
+        const int m = present(id);
+        if (m >= 0) return m;
+    }
+    return -1;
+}
+
+void Fighter::build_melee_swing(int moveId) {
+    m_swing = MeleeSwing{};  // legacy shared swing; data overwrites below
+    if (!m_moves || moveId < 0) return;
+    const CharacterMove* move = m_moves->find(moveId);
+    if (!move) return;
+    // The hit is the first combat entry across the phases in order (e.g. rena 300
+    // phase 74 entry 1: Prop1, frame 4, hr 20). Whiff/trail phases carry no combat.
+    const MoveEntry* hit = nullptr;
+    int nextFrame = -1;
+    for (int p = 0; p < move->sectionCount && !hit; ++p) {
+        const MovePhase& ph = move->phases[p];
+        for (int e = 0; e < ph.entryCount; ++e) {
+            if (ph.entries[e].has_combat()) {
+                hit = &ph.entries[e];
+                if (e + 1 < ph.entryCount) nextFrame = ph.entries[e + 1].activeFrame;
+                break;
+            }
+        }
+    }
+    if (!hit) return;
+    m_swing.dataDriven = true;
+    m_swing.moveId = moveId;
+    // The hit goes live on its own in-phase frame (rena 300 → 4, 301 → 7).
+    m_swing.startupTicks = hit->activeFrame;
+    // ... and lives until the phase's next effect fires (300 → 6, 301 → 9,
+    // 311 → 11, 330 → 5). A last-entry hit keeps the legacy 8-tick window.
+    if (nextFrame > hit->activeFrame) m_swing.activeTicks = nextFrame - hit->activeFrame;
+    if (hit->hitRadius > 0) m_swing.radius = static_cast<float>(hit->hitRadius);
+    // hpDamage is the HP actually removed from the original's 10000-based pool
+    // (FUN_00637950:280), scaled onto 0..maxHP exactly like shot_params_for.
+    // A zero-hpDamage hit (e.g. move 351's gauge-only chip) keeps legacy damage.
+    if (hit->hpDamage > 0 && m_maxHP > 0)
+        m_swing.damage = std::max(1, static_cast<int>(
+            static_cast<float>(hit->hpDamage) * static_cast<float>(m_maxHP) / 10000.0f +
+            0.5f));
+    if (hit->defenderHitstun > 0) m_swing.hitstun = hit->defenderHitstun;
 }
 
 float Fighter::yellow_hold_sec() const {
@@ -850,17 +946,18 @@ Fighter::HitboxDebug Fighter::hitbox_debug() const {
     d.anchors[1] = m_position + hurtbox_anchor_offset(1);
     d.anchorRadius = m_meleeRules.bodyRadius;
     d.attacking = (m_state == FighterState::AttackA || m_state == FighterState::AttackB) &&
-                  m_meleeRules.is_active(m_meleeElapsed);
+                  melee_in_active();
     if (d.attacking) {
         // The attack sphere is centred where try_melee_hit() measures from, so the two
         // can never disagree.
         d.attackCenter = m_position +
                          glm::vec3(0.0f, bodyHeight * m_meleeRules.chestHeightFrac, 0.0f);
-        // The ATTACKER's own volume, which is MeleeRules::radius — the stand-in for
-        // weapon+0x24. It is deliberately NOT bodyRadius + radius: in
+        // The ATTACKER's own volume, which is the swing's radius — the weapon's own
+        // hitRadius when moves are bound, the MeleeRules stand-in for weapon+0x24
+        // otherwise. It is deliberately NOT bodyRadius + radius: in
         // FUN_0063b470 that sum is the combined test distance (the VICTIM's 30-unit body
         // radius plus this), so drawing it would show the reach, not the attack volume.
-        d.attackRadius = m_meleeRules.radius;
+        d.attackRadius = m_swing.radius;
     }
     return d;
 }

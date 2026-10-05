@@ -11,6 +11,7 @@
 //    g++ -std=c++20 -Wall -Wextra -I remake/foundation/src
 //        -I remake/foundation/third_party/glm
 //        remake/foundation/src/gameplay/fighter.cpp
+//        remake/foundation/src/gameplay/character_moves.cpp
 //        remake/foundation/src/gameplay/projectile.cpp
 //        remake/foundation/src/physics/raycast.cpp
 //        remake/foundation/tests/fighter_script_test.cpp -o /tmp/fighter_script_test
