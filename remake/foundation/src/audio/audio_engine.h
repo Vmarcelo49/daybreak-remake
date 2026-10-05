@@ -186,6 +186,9 @@ public:
     // music push) rather than stealing a live voice. Gated drops, as above.
     int play(SfxHandle h, SfxBus bus, const PlayRequest& req = PlayRequest{});
     void stop(int channel);
+    // Stop every channel of one bus (the pause/leave seam: one call instead of a
+    // 16..31 loop). One-shots do not resume — a stopped cue is cut, never queued.
+    void stop_bus(SfxBus bus);
     void stop_all_sfx();
     bool channel_busy(int channel) const;
 

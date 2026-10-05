@@ -263,6 +263,12 @@ void Sdl3Engine::stop(int channel) {
     impl_->slot_busy[channel] = false;
 }
 
+void Sdl3Engine::stop_bus(SfxBus bus) {
+    int first = 0, last = -1;
+    if (!bus_range(bus, first, last)) return;
+    for (int c = first; c <= last; ++c) stop(c);
+}
+
 void Sdl3Engine::stop_all_sfx() {
     if (!is_open()) return;
     for (int i = 0; i < kMaxSfxChannels; ++i) stop(i);

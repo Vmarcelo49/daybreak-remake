@@ -121,6 +121,7 @@ target_link_libraries(foundation_ui PUBLIC foundation)
 # anywhere), so this library is one TU of static_asserts against the real SDL3
 # headers: the tables cannot drift from SDL3 without failing every target build.
 add_library(foundation_media STATIC src/input/pin_tables.cpp src/audio/audio_engine.cpp
+    src/audio/combat_audio.cpp
                           src/input/input_backend.cpp)
 target_include_directories(foundation_media PUBLIC src)
 target_include_directories(foundation_media PRIVATE third_party/stb)
@@ -398,6 +399,19 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # single-script fallback), the win-script alternatives, and the earned-title chain over the
     # per-fighter record. Device-free; the shipped title names are checked when the install is
     # present, like the other asset-backed tests.
+    # Issue #16's live combat audio policy: event identity, de-duplication, per-fighter
+    # voice channels, suspend/resume and repeated-match cleanup. Device-free (a recording
+    # sink stands in for the engine).
+    add_executable(combat_audio_test tests/combat_audio_test.cpp)
+    target_link_libraries(combat_audio_test PRIVATE foundation_media glm)
+    add_test(NAME combat_audio_test COMMAND combat_audio_test)
+
+    # Issue #16's asset-backed live match: four shipped combos, a COM 2v2 with a full gauge
+    # and low HP, the real event derivation and the real (probed) voice files, twice.
+    add_executable(combat_audio_match_test tests/combat_audio_match_test.cpp)
+    target_link_libraries(combat_audio_match_test PRIVATE foundation_gameplay foundation_media glm)
+    add_test(NAME combat_audio_match_test COMMAND combat_audio_match_test)
+
     add_executable(result_title_test tests/result_title_test.cpp)
     target_link_libraries(result_title_test PRIVATE foundation_gameplay foundation_ui foundation_assets glm)
     add_test(NAME result_title_test COMMAND result_title_test)
