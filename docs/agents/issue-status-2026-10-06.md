@@ -655,3 +655,31 @@ Gaussian + re-threshold fix) is done and committed, and what remains is **manual
 subagent cannot do honestly. The decision is whether to (a) do that hand pass, (b) accept the traced
 outlines as-is with their known flat terminals and staircased diagonals, or (c) drop the vector-HUD
 goal and keep the bitmap atlas at the shipped resolution. **Not started pending that call.**
+
+## Round 16 — #44 merged (the select entry's flash)
+
+**The issue's lead was a red herring.** `DAT_006cfba0`/`(&DAT_006cfba4)[…]` are the participating
+**human slot list** (`FUN_0040d130:108-111` appends each slot whose controller is a pad), not a count
+and an alpha list. The real flash is the select scene's own draw tail — `FUN_0040b2b0:466-475`
+(research) / `:480-489` (live, same body) — two full-screen 800x600 quads via
+`FUN_00651860(0,0,800,600, alpha8 << 24 | 0xffffff)`: **white**, `(tick-25)*24+15` over 25..34 and
+`(55-tick)*12+15` over 35..54, so 30 ticks with a single fully-opaque tick 35.
+
+**And mode 2 is a cell selection, not a tint**, argued from both sides: `FUN_00655830` has no colour
+parameter at all (its `param_4`/`param_5` appear only in the UV block, in **both** binaries), *and*
+cell (2,1) of `data/select/i00.cnv` decodes as **100 % opaque white** where the other five cells are
+coloured chibi frames.
+
+**Verified by the coordinator on the merged tree**: ctest 53/53; the peak frame's canvas mean is
+**254.73/255**; the **settled frame is byte-identical to the same capture on `main`**
+(`md5 300f8666c675b2f23a602c719d6c61fb`) while the peak differs (`2a9d52fa…`) — so the change is real
+and confined to the flash window, and both hashes reproduce the worker's reported values exactly. The
+measured alpha matches the recovered curve at **delta 0.00/255 on every tick 20..59**. All four gate
+ladders and final captures unchanged.
+
+**Reported, out of scope**: the scene-internal page cross-fade (`FUN_0040b1f0:23-24`, a black quad
+from `(byte)(scene+0x3c42) << 24` ramped ±15/tick, committing only at exactly 0xff) is a **different
+mechanism** from the `ScreenStack` 25-frame `(n*10+5) << 24` fade the port uses to cover the page
+swap — different timing *and* different alpha. Worth its own issue if exactness is wanted there.
+Also: `data/select/i00.cnv` stores identical art in cells 0, 2 and 4, which is why several distinct
+scene ticks render byte-identical frames.
