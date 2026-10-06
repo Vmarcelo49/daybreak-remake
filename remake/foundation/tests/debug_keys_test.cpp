@@ -25,9 +25,13 @@
 //      F4 and Escape's leave request are measured.
 //
 //  No GPU, no window, no device and no game install: the match runs with the historical null
-//  models/weapons, as in the other data-free gameplay tests. The asset-backed half of this
-//  issue's evidence — a live 2v2 with character+weapon combos — is the
-//  docs/RELEASE-CHECKLIST.md recipe run with --debug-keys= and DAYBREAK_DEBUG_KEYS=1.
+//  models/weapons, as in the other data-free gameplay tests. No character+weapon combo is
+//  bound here and none is claimed (AGENTS rule 7): the damage calls are state injection and
+//  every measurement is of a debug key's own write or of the movement/attack state it stopped,
+//  never of a combat outcome. The combos fight in the asset-backed half — a live 2v2 on
+//  data/stage03 with Rena 0 / Mion 0 / Mion 0 / Rika 0 (three of them on controllers 0-2 and
+//  Rika 0 the COM) — which is the docs/RELEASE-CHECKLIST.md recipe run with --debug-keys=
+//  and DAYBREAK_DEBUG_KEYS=1.
 //
 //  Build (the CMake target is `debug_keys_test`):
 //    cmake --build remake/foundation/build/linux --target debug_keys_test
