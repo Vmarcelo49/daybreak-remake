@@ -4703,8 +4703,8 @@ bool initScreens(App& app) {
                         "--install=\"/path/to/Higurashi-Daybreak\"";
             return false;
         }
-        std::printf("[install] no --install=, no DAYBREAK_INSTALL and no remembered folder: "
-                    "reading data/ from the current directory\n");
+        std::printf("[install] no usable folder was named or remembered: reading data/ from "
+                    "the current directory\n");
     }
     // No scene is ever submitted on this path, but the capture readback lives in
     // SceneRenderer (device/queue/instance plus the mapped-buffer copy), so a --out menu
