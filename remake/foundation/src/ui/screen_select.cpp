@@ -167,6 +167,11 @@ SelectAction SelectMenu::updateFrame(const ScreenInput& in, int* sound) {
 
 SelectScreen::SelectScreen(SpriteRenderer& batch, FrontendState& state, std::string& error)
     : state_(state), menu_(state), batch_(batch) {
+    // The scene's own state, as FUN_00408330:143-158 initialises it: this constructor IS the
+    // original's scene-3 constructor, so an entry that follows a battle (FUN_00403b70 returns 3)
+    // starts with the same empty selection as a fresh title->select trip. Settings that live
+    // outside the scene survive — see FrontendState::beginSelection.
+    state_.beginSelection();
     const char* paths[] = {"bg00","bg01","p00","P01","P02","p03","s1p","s2p","s3p","s4p"};
     auto load = [&](const char* stem,int& slot) {
         std::string failure;

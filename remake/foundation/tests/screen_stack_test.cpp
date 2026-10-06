@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "ui/screen.h"
+#include "ui/frontend_state.h"
 #include "ui/screen_title.h"
 #include "ui/sprite.h"
 
@@ -169,15 +170,17 @@ void testQuit() {
 void testFactoryTable() {
     std::printf("\nfactory table (FUN_004020a0):\n");
     ui::SpriteRenderer batch;   // no device: only the id table is exercised
+    ui::FrontendState state;    // the factory's state is the caller's (issue #45)
     std::string error;
     checkTrue("title is available", ui::screenAvailable(ScreenId::Title));
     checkTrue("select is available", ui::screenAvailable(ScreenId::Select));
     checkTrue("quit is not a screen", !ui::screenAvailable(ScreenId::Quit));
-    checkTrue("makeScreen(Quit) returns no screen", !ui::makeScreen(ScreenId::Quit, batch, error));
+    checkTrue("makeScreen(Quit) returns no screen",
+              !ui::makeScreen(ScreenId::Quit, batch, state, error));
     checkTrue("quitting leaves no error behind", error.empty());
     error.clear();
     checkTrue("makeScreen(NetplayMenu) returns no screen",
-              !ui::makeScreen(ScreenId::NetplayMenu, batch, error));
+              !ui::makeScreen(ScreenId::NetplayMenu, batch, state, error));
     checkTrue("an unbuilt id names itself", error == "scene 0x0b has no screen yet");
 }
 

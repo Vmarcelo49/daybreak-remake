@@ -154,7 +154,8 @@ public:
         const auto previous = timeline_.phase();
         const bool done = timeline_.update(input.confirm);
         sound_ = previous != timeline_.phase() && input.confirm ? 0 : -1;
-        if (done) { state_.stagePage = false; for (auto& slot : state_.slots) slot.ready = false; }
+        // Leaving for the selection is a fresh select entry: its own construction clears the
+        // selection, the stage page and the ready flags (issue #45, FUN_00408330:143-158).
         return done ? ScreenId::Select : ScreenId::Result;
     }
     std::string takeVoice() override {

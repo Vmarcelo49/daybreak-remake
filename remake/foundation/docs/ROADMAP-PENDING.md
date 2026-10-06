@@ -1404,6 +1404,25 @@ the next screen id, a factory for construction, tests against fakes.
   (mechanical read), reconcile the diamond y anchor against the print, then
   implement the screen on the landed stack. The roster grid formula is
   plan §2.17.
+* **Lifecycle (issue #45).** The selection belongs to the select *scene*, not
+  to the process. The original destroys the current scene and constructs the
+  next one through the factory on every switch (`FUN_00657c80:51-58`), and
+  scene 3's constructor initialises every field the scene owns —
+  cursor `+0x3c48`, character `+0x3c58`, panel owner `+0x3c80`, controller
+  phase `+0x3c90`, owned panel `+0x3ca0`, controller `+0x3cf8`, weapon
+  `+0x3d08`, hypermode `+0x3d18`, costume `+0x3d28`, ready `+0x3d38`, the
+  per-slot flags `+0x3cb0`/`+0x3cd4`, the stage page flag `+0x3c40` and the
+  stage pair `+0x3d48`/`+0x3d4c` (`FUN_00408330:143-158`; the first-pass
+  corpus and the live original on the Ghidra bridge agree). Versus mode's
+  battle returns scene 3 when the match is over (`FUN_00403b70`), so a
+  title→select trip and a result→select return both start empty. The port
+  therefore clears on **entry** (`ui::FrontendState::beginSelection`, called by
+  the select screen's own constructor) and keeps what the original keeps
+  outside the scene: the stage page's settings (`DAT_006cf3c0` /
+  `3b8` / `3bc` / `3b0` / `3b4`), the RNG, the round's outcome data and the
+  penalty flag `DAT_006cfdf1` (issue #20). A pause-menu *Rematch* never
+  constructs the select scene, so it still replays the same fighters with the
+  same settings (that is what `pinFrontendStage` is for).
 
 ### E2. Select page 1 — IMPLEMENTED (original match-rule fidelity remains open)
 

@@ -109,8 +109,9 @@ a pad in use. It is a verification instrument, not a feature.
 ```
 
 `--local-players=2` opens two local views: controller 0 is the keyboard,
-driven by the script, and controller 1 is the synthetic pad that walks panel 2
-and accepts the OK cell. What the transcript must show (quoted from the run):
+driven by the script, and controller 1 is the synthetic pad that reaches the OK
+cell and keeps the stage-page timing. What the transcript must show (quoted from
+the run):
 
 ```
 [menu] scene: title (tick 0)
@@ -142,9 +143,21 @@ The `[split]` blocks prove who fought, in which view:
 [split]   p1 panel=2 team=1 2P Keiichi 1 role=enemy ...
 ```
 
-Every round keeps the same settings and ends at the 60 s time limit (match
-frame 3600); the **stage is re-rolled per round** (`FrontendState::stage`
-stays 0 = random), which is why the three rounds run on stage04/06/15.
+Every round keeps the same *settings* and ends at the 60 s time limit (match
+frame 3600); the **stage is re-rolled per round** (entering the select scene
+resets `FrontendState::stage` to 0 = random), which is why the three rounds run
+on stage04/06/15. The **selection is re-made per round**: entering the select
+scene starts an empty selection (issue #45, `FUN_00408330:143-158`), so a
+rematch round replays the panel taps before it walks the stage page (§3.4).
+
+The red fighter is the OK path's first random COM roll, not the synthetic pad's
+pick: the pad's own select panel is the grid's start cell (panel 1 for
+controller 1, `syntheticMenuStartPanel`), which the duel pair {0,2} discards in
+`enterFrontendBattle`, so panel 2 is filled by `FUN_0040d130`'s COM roll —
+measured `Keiichi 1` = character 2 / weapon 1, exactly the first draw of
+`FrontendState::nextRandom` from its seed. It is re-rolled on every fresh
+selection (measured `Kasai 0`, then `Chie 1`); the pad's job in this gate is the
+OK cell and the stage-page timing.
 
 ### 3.2 One human with COM, three rounds
 
@@ -169,8 +182,10 @@ transcript shows the same tick ladder as §3.1 (`34/446/4382/4984`, then
 [split]   p1 panel=2 team=1 COM Chie 0 role=enemy ...
 ```
 
-`COM Chie 0` is the COM opponent the OK path rolled; the single view is the
-one human's own camera.
+`COM Chie 0` is the COM opponent the OK path rolled for round 1; the single view
+is the one human's own camera. Every round re-enters an empty selection, so the
+OK path rolls again (`Chie 1`, then `Irie 2` measured) — the COM opponent, like
+the stage, is per round.
 
 ### 3.3 Four fighters (2v2), three rounds
 
@@ -207,21 +222,27 @@ RESULT: ok
 
 The four picks are the pattern's documented distinct roster entries
 (`0/2/4/1` = Rena/Keiichi/Rika/Mion), each with weapon slot 0 — every fighter
-is a character+weapon combo, never a bare fighter.
+is a character+weapon combo, never a bare fighter. The pads re-pick exactly
+those four in every round, because a rematch round's selection starts empty.
 
 ### 3.4 The scripts' own rules (read before editing them)
 
 * Ticks are **front-end logic ticks**; the capture path runs exactly one per
   frame, so tap ticks are exact.
 * Round 1 is the measured cycle of `tests/scripts/frontend-4p.txt`. A rematch
-  round only walks the stage page to START: the settings carry over in
-  `FrontendState`, and replaying the *value* taps would wrap them (measured:
-  a rematch that replayed them played 240 s/175 % where round 1 had
+  round re-picks its panels first — entering the select scene starts an empty
+  selection (issue #45, `FUN_00408330:143-158`) — and then walks the stage page
+  to START. Only the *value* taps are left out: the stage page's settings live
+  in the original's process globals (`DAT_006cf3c0` / `3b8` / `3bc` / `3b0` /
+  `3b4`) and persist across entries, so replaying them would wrap them
+  (measured: a rematch that replayed them played 240 s/175 % where round 1 had
   60 s/50 %).
-* The synthetic pads stay neutral while the stage page is open, and their
-  roster nudge only runs when their panel still has to be picked; both are
-  what make a rematch round behave like the first one (see the commit that
-  added these scripts).
+* The taps that re-pick a panel open with an explicit release: the previous
+  round's battle taps leave Jump held into the selection screen, and a held
+  button is not a press edge.
+* The synthetic pads stay neutral while the stage page is open, and they walk
+  their own panels on every entry (a fresh selection always has one to pick).
+  An extended run (the eight-round row of §6) repeats that block per round.
 * **A windowed (live) run is not the same clock.** The live loop steps the
   simulation at 64 Hz, while a capture steps once per rendered frame, so a round
   lasts 3840 ticks there and 3600 here: the rematch blocks above (whose offsets
@@ -365,7 +386,10 @@ regression test:
    (the run left to the title), and their directions moved the stage page's
    settings cursor (a rematch played 240 s/175 %). Fixed in `src/main.cpp`
    and `src/input/synthetic_pad.h` (regression test in
-   `tests/select_menu_test.cpp`).
+   `tests/select_menu_test.cpp`). Issue #45 then removed the nudge's condition
+   altogether: a re-entered selection screen is empty
+   (`FrontendState::beginSelection`), so the pads always walk their panels and
+   the nudge is never a cursor move.
 
 Two evidence gaps were closed as part of the same work: the `[menu] battle:`
 line now prints the round's settings, and the display callbacks print what a
