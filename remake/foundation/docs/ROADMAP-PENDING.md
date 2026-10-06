@@ -1478,6 +1478,52 @@ the next screen id, a factory for construction, tests against fakes.
   a 50-unit select radius and a 60-unit minimum icon spacing, **no** position
   between two icons can be unselected — the empty-space state only exists
   outside the diamond.
+* **Row/entry transitions (issue #43, 2026-10-06) — recovered, and the issue
+  named the wrong one of the two.** The select scene has **two** entry
+  transitions, and #43's report ("the weapon/hypermode/controller rows are
+  swapped in instantly") describes the second, while #43's recovered animation
+  is the first:
+  1. **The 16 roster icons' entry reveal.** `scene+0x3d50+i*4` ramps 0 -> 1 in
+     steps of 0.1 and slot `i` only starts once the tick has passed `i + 5`
+     (`FUN_004090a0:24-26`, same loop `FUN_0041bae0:37-40`; the constructor
+     zeroes the array and the tick, `FUN_00408330:0x408c96`/`0x408eff`), so the
+     slots start one tick apart and each settles ten ticks later. The draw
+     consumes the value at `FUN_0040b2b0:96-104` as the **PAIR**
+     `FUN_0040da60(value, 2.0 - value)` — `+0x84` = x scale, `+0x88` = y scale,
+     which `FUN_00655830:0x65583f-0x6558db` multiplies into the quad's pivot and
+     cell size (`x0 = x - pivotX*sx, w = srcW*sx`, likewise y). It is a scale,
+     **not** an offset: the sprite is `v` times as wide and `2-v` times as tall.
+     `FUN_0040da60` is called on the objects at `scene+0x150c+i*0xa0`, whose
+     `i%02d.bmp` textures and (40,80) pivot come from `FUN_00408330:0x408be7-
+     0x408c14` — the 16 chibis of the diamond, which is where the port applies
+     it. The draw's own other argument — the atlas cell `(2,1)` while `v < 1`,
+     else `(0,0)` — selects the flashing cell: that half, and the screen flash,
+     stay issue #44's (confirmed there: "the same per-slot ramp").
+  2. **The phase rows' slide.** `FUN_00409340:589-595` — the per-panel update's
+     own tail — restarts `0x3cc4[controller]` at 300.0 (`0x43960000`) whenever
+     that controller's phase changed during the call, then takes 20.0
+     (`_DAT_006a16c4`) off it while it is above 0.0 (`_DAT_006a16c8`).
+     `FUN_0040b2b0:0x40c09f-0x40c0c4` signs it by the panel's column
+     (`1 - 2*(panel < 2)`) and adds it to the x of that panel's phase header and
+     of every phase row, so the left column's rows start 300 px to the LEFT of
+     their place and travel right and the right column's start 300 px right and
+     travel left: 280, 260, ... 0 over the 15 ticks after a phase change. That
+     is the human's "slides in from the left to the right". The sibling write in
+     the same tail — the READY banner's uniform scale `0x3cb4 = 4.0`
+     (`0x40800000`) decaying by 0.2 to 1.0, drawn through `FUN_00408250` at
+     `FUN_0040b2b0:0x40ca2b` — is **not** implemented here (it is a per-panel
+     state, not a phase row) and is left for a follow-up.
+  Both run on the fixed tick (the scene's own counter and one update per tick).
+  The port keys the slide by **controller** (as the original writes it) and
+  signs it by the **panel** the draw is drawing (as the original reads it).
+  Device-free test: `tests/select_row_slidein_test.cpp` (ramp, stagger, the
+  `(v, 2-v)` quad and the slide's 15-tick arithmetic); evidence recipe
+  `tests/scripts/select-slidein.txt` with captures at ticks 47/50/53 against the
+  settled 61+ frame (tick 53 measures 140.0 units of slide on the nameplate band
+  against the recovered 300 - 20*8 = 140, and the chibi reveal is visible as
+  narrow stretched icons with the not-yet-started slots absent); the four
+  scripted gate runs re-measured with the same characters
+  (`RELEASE-CHECKLIST.md` §3).
 
 ### E2. Select page 1 — IMPLEMENTED (original match-rule fidelity remains open)
 

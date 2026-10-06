@@ -67,20 +67,23 @@ data. It is also registered in the host suite (`ctest -R launcher_test`).
 ctest --test-dir remake/foundation/build/linux --output-on-failure
 ```
 
-* **With the game install present**: `100% tests passed out of 50`.
+* **With the game install present**: `100% tests passed out of 51`
+  (re-measured 2026-10-06 with issue #43's `select_row_slidein_test` added).
 * **Without any game data** (the CI runner's state — no `Higurashi-Daybreak/`):
-  `100% tests passed out of 50`, with `hud_cell_scale`, `toon_ramp`,
+  the same six tests go `Skipped` (exit 77) — `hud_cell_scale`, `toon_ramp`,
   `npr_experiments`, `npr_normals_test`, `controller_scene_lifetime_test` and
-  `device_isolation_test`
-  reported as `Skipped` (exit 77) and `weapon_definition_test` skipping its
-  fully-skipped sweep. CI needs no copyrighted data.
-  Both counts re-measured 2026-10-06, install present and install absent; the
-  no-data run was taken in a checkout with no symlink at all, which is exactly the
-  runner's state (#28's worker measured the same 100%-passed-with-skips shape). The
-  denominator is the number of *registered* tests and grows whenever a suite is
+  `device_isolation_test` — with `weapon_definition_test` skipping its
+  fully-skipped sweep, which was the measured 50-test shape of 2026-10-06.
+  #43's `select_row_slidein_test` is device-free AND data-free (no install, no
+  adapter, no screen), so it neither skips nor changes which tests skip: the
+  no-data count is that measurement plus one, 51 — not re-measured here, because
+  the shared install symlink must not be hidden to produce it. CI needs no
+  copyrighted data.
+  The denominator is the number of *registered* tests and grows whenever a suite is
   added (42 when this document was written, 45 when #28 re-measured it, 50 after
   #42's `bgm_loop_test`, #45's `frontend_lifecycle_test` and #46's
-  `controller_scene_lifetime_test`, 49 after #29's `device_isolation_test`), so
+  `controller_scene_lifetime_test`, 49 after #29's `device_isolation_test`, 51 after
+  #43's `select_row_slidein_test`), so
   read the command's own summary rather than this line when the two disagree —
   the invariant to check is *100% passed* with the asset-dependent tests Skipped
   and none Failed.
