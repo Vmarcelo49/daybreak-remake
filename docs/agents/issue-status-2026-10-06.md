@@ -570,3 +570,38 @@ value is `< 1.0` (`FUN_0040b2b0:99-104` sets `local_2c = 2` while revealing, 0 a
 screen flash built from `DAT_006cfba4` (`FUN_0040d130:33,109-117`, set by `FUN_00417c20:43-47`,
 written around `FUN_0041bae0:52-60`). It was told to pin what mode 2 does (cell selection vs tint vs
 both) before implementing it, and that a fallback is allowed only if labelled a port rule.
+
+## Round 13 — the two in-flight workers' findings (both substantial)
+
+**#44: the issue's own candidate globals were a red herring.** The issue pointed at `DAT_006cfba0` /
+`(&DAT_006cfba4)[DAT_006cfba0]` as the screen flash's alpha list. They are not: they are the
+participating **human slot list** (`FUN_0040d130:108-111` appends slot k when controller < 4;
+`FUN_00417c20:43-48` takes the pad-0 slot). The flash is drawn by the select scene's own draw —
+`FUN_0040b2b0:466-475` (corpus) / `:480-489` (live original, same) — two full-screen 800x600 quads,
+**white**, with alpha windows tick 25..34 = `(tick-25)*24+15` (15..231) and tick 35..54 =
+`(55-tick)*12+15` (255..27): **peak 255 on tick 35 alone, 30 ticks total**. Confirmed against the
+rendered frames by probing pure-black canvas pixels: the measured alpha matches the recovered curve
+with **delta 0.00/255 on every tick 20..59**.
+
+**And mode 2 is a cell selection, not a tint.** `FUN_0040b2b0:124-131` calls
+`FUN_00655830(x, y, local_2c, bVar1)` with `local_2c = 2` while the value is < 1.0, so the revealing
+branch draws atlas cell (col 2, row 1) and the settled branch (0,0). `FUN_00655830` has **no colour
+parameter** — its `param_4/param_5` only build the quad's UVs (`:21-28`). Measured on the install:
+cell (2,1) of `data/select/i00/i01/i07/i15.cnv` is **100% opaque white** where the other five cells
+are coloured art. So the cell explains the white exactly and **no tint was invented**.
+
+**#47: the tick ladders did NOT move — measured, not argued.** All four release-gate runs are
+identical tick-for-tick before and after:
+
+| run | ladder |
+|---|---|
+| `frontend-4p` (4p, 9600) | title 0 \| select 34 \| vs 446 \| [countdown 180] \| result 4382 \| select 4984 \| vs 5584 \| [countdown 180] \| result 9520 |
+| `1v1-rematch` (2p, 15500) | title 0 \| select 34 \| vs 446 \| [countdown 180] \| result 4382 \| select 4984 \| vs 5310 \| [countdown 180] \| result 9246 \| select 9848 \| vs 10174 \| [countdown 180] \| result 14110 \| select 14712 |
+| `com-rematch` (1p, 15500) | identical to 1v1-rematch, tick for tick |
+| `2v2-rematch` (4p, 15500) | identical to 1v1-rematch, tick for tick |
+
+Its prediction held: front-end script ticks key on `logicTicks` with `frontendMatch` true, so
+`matchFrame` cannot shift them. **`RELEASE-CHECKLIST.md` §3.1-§3.3 and the script headers need no
+edit.** The four runs' final captured frames are also byte-identical before/after (`2483c3aa…` 4p,
+`8cc49e6c…` 1v1 and 2v2, `b813155d…` com). Its device-free test **fails when the black quad is
+temporarily re-added**, so it is not vacuous.
