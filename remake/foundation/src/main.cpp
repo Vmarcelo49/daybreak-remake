@@ -40,6 +40,7 @@
 #include "physics/raycast.h"
 #include "movie/movie_player.h"
 #include "ui/hud.h"
+#include "ui/pause_layout.h"
 #include "ui/sprite.h"
 #include "ui/screen.h"
 #include "ui/screen_countdown.h"
@@ -133,6 +134,10 @@ struct Options {
     std::string model, stage, character, weapon, effect;
     bool        hudTest = false;   // composite a synthetic HUD into --out captures
     bool        hudProbe = false;  // --hud-probe: corner markers for the placement test
+    // --pause-overlay=N: enter the battle pause at match frame N and composite the pause
+    // overlay into the --out capture. The only way a headless run can photograph the pause
+    // menu, which is otherwise reachable only by pressing the key in a live window.
+    int         pauseOverlay = 0;
     bool        debugPrims = false; // draw the deterministic debug line overlay
     bool        audioTest = false; // run the audio backend self-check and exit
     bool        combatAudioLog = false;  // --combat-audio-log: name every resolved SE/voice
@@ -604,6 +609,13 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--list") o.list = true;
         else if (a == "--hud-test") o.hudTest = true;
         else if (a == "--hud-probe") { o.hudTest = true; o.hudProbe = true; }
+        else if (!(v = val("--pause-overlay=")).empty()) {
+            o.pauseOverlay = std::atoi(v.c_str());
+            if (o.pauseOverlay <= 0) {
+                error = "--pause-overlay takes a match frame > 0";
+                return false;
+            }
+        }
         else if (a == "--debug-prims") o.debugPrims = true;
         else if (!(v = val("--install=")).empty()) o.install = v;
         else if (a == "--no-camera-clamp") o.noCameraClamp = true;
@@ -726,6 +738,9 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
             return false;
         }
         if (o.frames == 0) o.frames = 1;   // a capture with no frame count means one frame
+    } else if (o.pauseOverlay > 0) {
+        error = "--pause-overlay is a capture instrument: it needs --out";
+        return false;
     }
     for (const char* mode : {"auto", "player", "front", "top", "bounds", "arena"})
         if (o.camera == mode) return true;
@@ -1038,6 +1053,11 @@ struct App {
 
     ui::HudComposer              hudComposer;
     bool                         uiReady = false;
+    // The pause overlay's own batch (issue #50): a second SpriteRenderer, so the overlay's
+    // pass and the battle HUD's passes cannot read each other's queued geometry. See
+    // drawBattlePauseOverlay for what a shared one did.
+    ui::SpriteRenderer           pauseUi;
+    bool                         pauseUiReady = false;
     render::Options              renderOptions;
     render::Appearance           appearance;
     glm::vec3                    eye{0.f}, target{0.f};
@@ -1434,6 +1454,17 @@ static void enterBattlePause(App& app, const char* reason) {
     app.pauseMenu.rows = app.frontendMatch ? gameplay::kPauseRowsWithSelection
                                            : gameplay::kPauseRowsStandalone;
     app.pauseMenu.reset();
+    // The overlay's own batch is created with the first pause of the process. Not in
+    // initScene: the frontend turns matchMode on only when the countdown ends, so a
+    // `--screen=battle` run builds its scene before that block's condition is true — the
+    // pause is the one point every path that can pause shares, and a run that never pauses
+    // pays nothing. A failure here is silent like a caption that will not load (below):
+    // the pause still works, it just has no menu on screen. A local error keeps it out of
+    // App::error, which is what the run's RESULT line reports.
+    if (!app.pauseUiReady) {
+        std::string uiError;
+        app.pauseUiReady = app.pauseUi.init(app.ctx.device, app.ctx.queue, uiError);
+    }
     suspendCombatSfx(app);
     playPauseCue(app);
     std::printf("[pause] paused (%s)\n", reason);
@@ -1556,12 +1587,27 @@ static std::string bindingHint(const App& app, fnd::input::Action action, int pa
     return out.empty() ? "unbound" : out;
 }
 
+// The caption cell the pause menu rasterizes at. Fixed on purpose: CaptionText::load
+// rasterizes once and keeps the atlas (ui/caption.cpp), so the drawn size has to come from
+// the draw scale, exactly as the HUD's own caption path does it. 32 px is the face's
+// design cell — the layout's own resolution-relative size is kPauseFontFrac of the target.
+static constexpr float kPauseFontCellPx = 32.f;
+
 // The pause overlay: a system menu drawn once over the frozen frame (not per view, so a
 // split-screen match gets one readable menu instead of one per cell). Text goes through the
 // shared D7 caption path; a caption that cannot load leaves the pause working but silent on
 // screen rather than failing the frame.
-static bool drawBattlePauseOverlay(App& app, WGPUCommandEncoder encoder, WGPUTextureView view) {
-    if (!app.battlePaused || !app.uiReady) return true;
+//
+// It owns its batching: `app.pauseUi`, not the battle HUD's `app.uiRenderer`. A SpriteRenderer
+// hands every pass in a frame the same vertex buffer, written at offset 0 by each render()
+// call, and all of a frame's writes land before its single submission — so a renderer shared
+// with the HUD gives this pass the HUD's vertices (its dim quad took the reticle's geometry
+// and drew it with the 1x1 white fallback, issue #50 defect 1, and its first quads ghosted
+// the HUD's art, defect 2). Two renderers cannot see each other's batches at all, which is
+// what makes that ownership explicit; see docs/PAUSE.md §"Why the overlay owns a renderer".
+static bool drawBattlePauseOverlay(App& app, WGPUCommandEncoder encoder, WGPUTextureView view,
+                                   uint32_t width, uint32_t height, WGPUTextureFormat format) {
+    if (!app.battlePaused || !app.pauseUiReady || width == 0 || height == 0) return true;
     int padPlayer = 0;
     if (app.frontendMatch) {
         const int controller = panelController(app, ui::kFrontendBattleSlots[0]);
@@ -1578,17 +1624,30 @@ static bool drawBattlePauseOverlay(App& app, WGPUCommandEncoder encoder, WGPUTex
                     bindingHint(app, fnd::input::AttackA, padPlayer) + ": back   " +
                     bindingHint(app, fnd::input::Pause, padPlayer) + ": resume");
     std::string textError;
-    if (!app.pauseText.load(app.uiRenderer, 16.f, textError) ||
-        !app.pauseText.prepare(app.uiRenderer, lines, textError))
+    if (!app.pauseText.load(app.pauseUi, kPauseFontCellPx, textError) ||
+        !app.pauseText.prepare(app.pauseUi, lines, textError))
         return true;
-    app.uiRenderer.beginFrame(app.sc.width, app.sc.height);
+    // Title, rows, footer: the sizes are ratios of the canvas (ui/pause_layout.h — a port
+    // decision, the original has no readable menu), and each line's measured width is what
+    // sizes the panel.
+    const auto lineScale = [&](size_t i) {
+        if (i == 0) return ui::kPauseTitleScale;
+        return i + 1 == lines.size() ? ui::kPauseFooterScale : 1.f;
+    };
+    std::vector<ui::PauseLine> measured;
+    measured.reserve(lines.size());
+    for (size_t i = 0; i < lines.size(); ++i)
+        measured.push_back(ui::PauseLine{app.pauseText.width(lines[i].c_str()), lineScale(i)});
+    const ui::PauseOverlayLayout layout =
+        ui::computePauseOverlayLayout(width, height, kPauseFontCellPx, measured);
+    if (!layout.valid) return true;
+    app.pauseUi.beginFrame(width, height);
     // Dim the frozen frame so the menu is readable over any stage (the same solid fill the
-    // screen stack's fade overlay uses).
-    app.uiRenderer.pushSolid(ui::UiRect{0.f, 0.f, static_cast<float>(app.sc.width),
-                                        static_cast<float>(app.sc.height)},
-                             ui::UiColor{0.f, 0.f, 0.f, 0.55f});
-    float y = static_cast<float>(app.sc.height) * 0.5f - 80.f;
-    const float x = static_cast<float>(app.sc.width) * 0.5f - 150.f;
+    // screen stack's fade overlay uses), then the panel the block sits on (defect 4).
+    app.pauseUi.pushSolid(ui::UiRect{0.f, 0.f, static_cast<float>(width),
+                                     static_cast<float>(height)},
+                          ui::UiColor{0.f, 0.f, 0.f, 0.55f});
+    app.pauseUi.pushSolid(layout.panel, layout.panelColor);
     for (size_t i = 0; i < lines.size(); ++i) {
         const bool title = i == 0;
         const bool footer = i + 1 == lines.size();
@@ -1596,10 +1655,11 @@ static bool drawBattlePauseOverlay(App& app, WGPUCommandEncoder encoder, WGPUTex
         const ui::UiColor color = title      ? ui::UiColor{1.f, 1.f, 1.f, 1.f}
                                   : selected ? ui::UiColor{1.f, 0.8f, 0.3f, 1.f}
                                              : ui::UiColor{0.85f, 0.85f, 0.9f, 1.f};
-        app.pauseText.draw(app.uiRenderer, lines[i].c_str(), x, y, footer ? 0.6f : 1.f, color, 1.f);
-        y += footer ? 20.f : 22.f;
+        app.pauseText.draw(app.pauseUi, lines[i].c_str(), layout.textX,
+                           layout.firstY + layout.pitch * static_cast<float>(i),
+                           layout.drawScale * lineScale(i), color, 1.f);
     }
-    return app.uiRenderer.render(encoder, view, app.sc.format, app.error);
+    return app.pauseUi.render(encoder, view, format, app.error);
 }
 
 // Defined beside the HUD helpers below: initMatch fills the roster while it assembles the
@@ -4178,6 +4238,7 @@ void teardown(App& app) {
     stopCombatAudio(app);
     if (app.versusAudioOn) app.versusAudio.close();
     if (app.uiReady) app.uiRenderer.shutdown();
+    if (app.pauseUiReady) app.pauseUi.shutdown();
     app.debugPrims.shutdown();
     app.renderer.shutdown();
     if (app.bindGroup) wgpuBindGroupRelease(app.bindGroup);
@@ -5197,11 +5258,21 @@ struct CaptureHook {
     std::vector<render::ViewCamera> views;
     render::DebugPrims::Options   primOptions;
     std::string*                  error = nullptr;
+    // The paused capture's App, so the frame carries the pause overlay in the live frame's
+    // own order (overlay first, HUD passes over it). Null in every unpaused capture, which
+    // is every capture but --pause-overlay=N. `void*` because App lives in this file's
+    // anonymous namespace while CaptureHook is what the tests include.
+    void*                         pauseApp = nullptr;
 };
 
 bool captureHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat format,
                  uint32_t w, uint32_t h, void* ud) {
     auto* ck = static_cast<CaptureHook*>(ud);
+    if (ck->pauseApp) {
+        App& paused = *static_cast<App*>(ck->pauseApp);
+        if (paused.battlePaused &&
+            !drawBattlePauseOverlay(paused, enc, view, w, h, format)) return false;
+    }
     if (ck->hud && !hudTestHook(enc, view, format, w, h, ck->hud)) return false;
     if (!ck->prims) return true;
     const render::Target target{enc, view, format, w, h};
@@ -5416,6 +5487,13 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             }
             if (battlePauseAvailable(*app) && battlePausePressed(*app)) {
                 enterBattlePause(*app, "pause key");
+                continue;
+            }
+            // --pause-overlay=N's pause, on the tick the match frame reaches N — the same
+            // entry the key uses, so the capture that follows is a real paused frame.
+            // Parsed only with --out, so no played run can reach this.
+            if (app->opts.pauseOverlay > 0 && app->matchFrame >= (uint64_t)app->opts.pauseOverlay) {
+                enterBattlePause(*app, "--pause-overlay");
                 continue;
             }
             if (!capturing) advanceAnimation(*app, gameplay::FixedStep::seconds);
@@ -5678,6 +5756,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 cap.renderer = &app->renderer;
                 cap.error = &app->error;
                 cap.views = frameCameras;
+                if (app->battlePaused) cap.pauseApp = app;
                 if (useHud) cap.hud = &hook;
                 // One batch for both sources: the debug overlay and the match's
                 // shots/sparks share the pass, so neither can clobber the other.
@@ -5870,7 +5949,8 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 }
             }
         }
-        if (!drawBattlePauseOverlay(*app, frame.encoder, frame.view)) {
+        if (!drawBattlePauseOverlay(*app, frame.encoder, frame.view, app->sc.width,
+                                    app->sc.height, app->sc.format)) {
             gpu::endFrame(app->ctx, app->sc, frame);
             return SDL_APP_FAILURE;
         }

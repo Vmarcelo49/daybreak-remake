@@ -67,14 +67,17 @@ data. It is also registered in the host suite (`ctest -R launcher_test`).
 ctest --test-dir remake/foundation/build/linux --output-on-failure
 ```
 
-* **With the game install present**: `100% tests passed out of 55`
-  (re-measured 2026-10-06 with issue #39's `live_camera_smoothness_test` added; 54 was
-  the count after issue #48's `debug_keys_test`, 53 after issue #47's
-  `countdown_overlay_test`, 52 after issue #51's `lock_switch_camera_test`).
+* **With the game install present**: `100% tests passed out of 57`
+  (re-measured 2026-10-06 with issue #50's `pause_overlay_layout_test` and
+  `pause_overlay_panel` added; 55 was the count after issue #39's
+  `live_camera_smoothness_test`, 54 after issue #48's `debug_keys_test`, 53 after issue
+  #47's `countdown_overlay_test`, 52 after issue #51's `lock_switch_camera_test`).
 * **Without any game data** (the CI runner's state — no `Higurashi-Daybreak/`):
   the same six tests go `Skipped` (exit 77) — `hud_cell_scale`, `toon_ramp`,
   `npr_experiments`, `npr_normals_test`, `controller_scene_lifetime_test` and
-  `device_isolation_test` — with `weapon_definition_test` skipping its
+  `device_isolation_test` — plus issue #50's `pause_overlay_panel`, which renders a real
+  paused battle and so skips itself with those six, making seven; with
+  `weapon_definition_test` skipping its
   fully-skipped sweep, which was the measured 50-test shape of 2026-10-06.
   #43's `select_row_slidein_test` is device-free AND data-free (no install, no
   adapter, no screen), so it neither skips nor changes which tests skip: the
@@ -85,20 +88,19 @@ ctest --test-dir remake/foundation/build/linux --output-on-failure
   hand-built match; the second draws the real countdown screen through a device-less
   `SpriteRenderer` and asserts on the pushed batch), so neither skips nor changes which
   tests skip: each adds one to both counts, which is how 51 became 53, and the six
-  skipping tests are unchanged. #48's `debug_keys_test` is in that same class too (it
-  compiles `src/main.cpp`, drives `tickMatch` and builds its match with null models), so
-  it also adds one to both counts: 54 registered, the same 54 with six Skipped in a
-  data-free tree. #39's `live_camera_smoothness_test` is in that class as well (it
-  compiles `src/main.cpp`, composes live frames through `tickMatch` and
-  `buildFrameViews`, and binds a synthetic Rena 1 combo instead of an install), so it
-  adds one to both counts: 55 registered, the same 55 with six Skipped without data.
+  skipping tests are unchanged through #39's `live_camera_smoothness_test` (55 registered,
+  the same 55 with six Skipped without data). #50's `pause_overlay_layout_test` is in that
+  same device-free class (it calls `ui::computePauseOverlayLayout` and nothing else), so it
+  adds one to both counts; its `pause_overlay_panel` needs the install and joins the skip
+  list above. The merged count is therefore **57 registered**, with **seven** Skipped in a
+  data-free tree.
   The denominator is the number of *registered* tests and grows whenever a suite is
   added (42 when this document was written, 45 when #28 re-measured it, 50 after
   #42's `bgm_loop_test`, #45's `frontend_lifecycle_test` and #46's
   `controller_scene_lifetime_test`, 49 after #29's `device_isolation_test`, 51 after
   #43's `select_row_slidein_test`, 52 after #51's `lock_switch_camera_test`, 53 after
   #47's `countdown_overlay_test`, 54 after #48's `debug_keys_test`, 55 after #39's
-  # `live_camera_smoothness_test`), so
+  # `live_camera_smoothness_test`, 57 after #50's two pause-overlay suites), so
   read the command's own summary rather than this line when the two disagree —
   the invariant to check is *100% passed* with the asset-dependent tests Skipped
   and none Failed. Issue #40 added no suite: its device-free half (the recovered

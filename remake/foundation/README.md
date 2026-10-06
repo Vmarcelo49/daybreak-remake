@@ -247,9 +247,10 @@ Every "ran" row printed `RESULT: ok` with real frame timings; per-target command
 and outputs are in `docs/BUILD-linux.md`, `docs/BUILD-windows.md` and
 `docs/BUILD-web.md`.
 
-Host-side tests run without a GPU (`CMakeLists.txt`): the Linux suite has 37
+Host-side tests run without a GPU (`CMakeLists.txt`): the Linux suite has 57
 tests covering geometry, raycasts, asset parsing/spawns, gameplay/economy,
-animation/lighting, caption fonts/text, HUD/menu layouts, split-screen view
+animation/lighting, caption fonts/text, HUD/menu layouts (including the pause
+overlay's port-rule layout and its rendered frame), split-screen view
 layout, the four-participant roster and screen geometry, the recovered result
 rules (the victory-quote plan and the earned-title chain), the live combat audio
 policy (event identity, per-fighter voice channels, cleanup) with an asset-backed
@@ -405,7 +406,7 @@ its implementation handoff is in
 [`docs/ROADMAP-PENDING.md`](docs/ROADMAP-PENDING.md#future-remake-only-experiment-3v3-and-4v4).
 Renderer options (the first three options rows are marked unavailable) remain
 pending (issue #21). Battle fidelity includes unresolved animation/VFX details;
-LAN netplay awaits its own implementation. The Linux CTest suite has 55 tests (2026-10-06),
+LAN netplay awaits its own implementation. The Linux CTest suite has 57 tests (2026-10-06),
 including frontend selection/configuration, VS/result timelines, HUD geometry, the
 split-screen layout/assignment guards, issue #51's LockSwitch/camera guard, issue
 #47's countdown gate/overlay test, issue #48's in-battle debug-key suite and issue
