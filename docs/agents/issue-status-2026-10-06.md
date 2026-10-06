@@ -800,3 +800,41 @@ check that could never have failed.
 and `decisions.md` D9). The capture path pins the presentation blend to 1, so anything living in
 presentation-time interpolation, per-frame smoothing, alpha blending or input-driven per-frame state
 is invisible to captures. When evidence looks flat, that is the first place to look.
+
+## Round 22 — #50 and #34 merged (57 tests), and a new defect filed
+
+### #50 — the pause overlay (the human's screenshot)
+
+**Defects 1 and 2 were one bug, and the human's lead held with a correction to the mechanism.** The
+white quad *is* the targeting image, but drawn by the **pause overlay's own pass**. `beginFrame` does
+clear the quad queue, so the overlay never adopted the HUD's quads — what every pass shares is the
+**vertex buffer**: each `render()` writes it at offset 0 and all of a frame's writes complete before
+its single submission, so a pass reads the **last** write plus the tail of the longest earlier one.
+The overlay pushed 546 quads and the HUD 32, and the HUD's **first** quad is the first fighter's
+reticle cell — so the overlay's dim rectangle drew as that reticle textured with the 1×1 white
+fallback. The #17 and #21 leads were ruled out with data (reticle suppression removes it; `--no-toon`
+reproduces it byte-for-byte; the run reports `fx events=0`).
+
+Fixed by giving the overlay its own `SpriteRenderer` (`App::pauseUi`). **Verified by the coordinator**:
+ctest 57/57; paused-frame near-white pixels fall to 2660 against the pre-fix block alone at 10890; the
+unpaused 4-view capture is byte-identical to `main`; and the frame shows the panel, the legible rows
+and no white block. The layout is a labelled **port rule** (the original's pause has no readable menu).
+
+### New defect filed: #56 — the aliasing corrupts every multi-view UI frame
+
+**The same buffer aliasing is not pause-specific.** In a 4-view frame the separator pass (written
+last) overwrites the first 8 vertices of every HUD pass, so **each view's first two quads — fighter
+0's reticle — are replaced by separator bars**, and every cell's remaining quads read whichever view
+wrote last. `hud_cell_scale.py` structurally cannot see it: every pass pushes its probe markers at
+identical coordinates. Fixing it properly (per-render vertex regions) **changes unpaused split-screen
+pixels**, which is why it is its own issue rather than a rider on #50.
+
+### #34 — the muzzle slot, and a premise that dissolved
+
+The issue asked which firing state maps to which muzzle slot. **There is no tier→slot relation in the
+original**: the slot comes from the fighter's per-**slot** fire-mode byte `+0x318`, set once
+(`FUN_0063c2a0:267-277` dispatches on it alone; the story/team setup fills CPU slots with `rand()%3`).
+So one fighter shows one muzzle model for a whole match. The port has no `+0x318`, so the slot stays a
+**port rule, now labelled with the reason** rather than an unproven guess. Verified: ctest 57/57, the
+capture byte-identical, and `effect_catalog_test` pins the three muzzle slots against the shipped
+`TextureFilename` blocks.
