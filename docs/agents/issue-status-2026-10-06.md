@@ -749,3 +749,31 @@ a GPU. Two things were made non-negotiable:
 fractional-alpha mode are both examples of the same thing — *the port needs headless ways to exercise
 paths that captures bypass*. When a future issue's evidence looks flat, that is the first place to
 look.
+
+## Round 20 — #33 merged, and the coordinator's own premise was the wrong one
+
+I briefed #33 with the hope that the simple route would be available: "11 is the original's
+**capacity**, not a claim that anything fills it", so the worker could prove single-instance
+equivalence and keep one draw. **That was false, and the enumeration the brief asked for is what
+disproves it.**
+
+`FUN_004205e0`'s loop draws once per matrix in a fixed eleven-slot array at `player+0x38c`
+(stride `0x40`). `FUN_0041e180` resolves eleven **fixed bone names** once per character;
+`FUN_00421010` copies them in every frame with a blind `MOVSD.REP` and **no presence test**; the draw
+walks them all. Across the install: of **139** models, **92 carry all eleven** attach points and
+**47 carry none — none is partially equipped**. The array is always fully populated when the draw
+runs. Verified on the merged tree: the enumeration reproduces exactly, and the no-aura capture is
+byte-identical to `main` (`md5 dc1bdcf852285040bc97c7540a8e5c03`). With the aura live,
+`effectDrawsAtExit` goes 10 → 40 beside seven live hit cards — `40 = 7 + 11 × 3`, exactly ten extra
+instances.
+
+**The lesson, which applies to the coordinator as much as to the workers**: I wrote the convenient
+hypothesis into the brief as if it were a finding ("11 is capacity"), and it would have produced a
+false documentation commit if the worker had trusted me. Several issues in this batch arrived with a
+wrong premise and the workers corrected them; this is the first time the *brief* was the source.
+Ask for the enumeration first and let it decide the route, rather than naming the route and asking
+for an enumeration that supports it.
+
+**Also reported**: six of the seven shipped attachment models load and are **never drawn** (only
+hypermode draws one) — the muzzle-flash, blue-hit and downed states have no attachment at all, and
+each would now need the same per-point placement. That is #17's spawn side.
