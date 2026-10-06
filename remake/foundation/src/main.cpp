@@ -170,8 +170,9 @@ struct Options {
     // assigning controllers 0..N-1 to the battle panels, so a headless run exercises the
     // per-controller camera/HUD path. 0 (default) keeps the historical single-view flow.
     int         localPlayers = 0;
-    // --lock-taps: let those synthetic pads also tap LockSwitch (the per-view camera
-    // retarget). Off by default so an evidence run's cameras hold their fighters.
+    // --lock-taps: let those synthetic pads also tap LockSwitch (the per-view combat-target
+    // cycle; issue #51 — the gesture never re-points a camera). Off by default so an
+    // evidence run's fighters hold their targets and their framing stays put.
     bool        lockTaps = false;
 };
 
@@ -304,8 +305,9 @@ void usage() {
         "                     press pattern. Synthetic input is not physical-pad evidence;\n"
         "                     a real pad for that controller takes precedence\n"
         "  --lock-taps        let the synthetic pads tap LockSwitch too (the per-view\n"
-        "                     camera retarget). Off by default: four views each sweeping\n"
-        "                     between fighters reads as a camera defect, not a gesture\n"
+        "                     combat-target cycle; a camera is never re-pointed). Off by\n"
+        "                     default: four views each re-picking targets is churn an\n"
+        "                     evidence run does not need\n"
         "With no asset argument the spinning-triangle demo runs.\n");
 }
 
@@ -3223,15 +3225,19 @@ static void tickMatch(App& app, double dt) {
         if (!view.active() || view.fighter >= app.match.config().fighterCount) continue;
         const fnd::input::PlayerState* viewInput = inputs[view.fighter];
         // LockSwitch is the original's target switch (input.h: tap = cycle enemy,
-        // hold = aim ally) and it is TWO writes, not one. The cycle is FUN_00421e30's: it
-        // moves the camera's followed player AND re-picks the viewer's combat target
-        // (FUN_00421f30's +0x304) through the recovered wrap-around index walk. They are
-        // kept separate from here on — the camera owns who is followed, gameplay/
-        // target_lock.h owns who each fighter attacks — so two players hold different
-        // locks while each camera follows its own player.
+        // hold = aim ally) and it re-picks that view's COMBAT target alone. The recovered
+        // target-change writer FUN_00421e30 stores the fighter's own +0x300 (the selection),
+        // +0x304 (cleared), +0x30c (the 15-tick pulse), +0x308 (the target's team field) and
+        // +0x848 (the ally hold) — and no view, camera or followed-player state. Its other
+        // caller settles it: the command dispatcher FUN_0063c2a0 case 0x2a applies a REMOTE
+        // player's target switch, which would be nonsense if it moved the local camera. So
+        // the tap must not touch the camera: a view follows its own fighter for the whole
+        // match (issue #51), which is also what keeps every split-screen cell stable (issue
+        // #12). The camera owns who is followed (gameplay/arena_camera.h), gameplay/
+        // target_lock.h owns who each fighter attacks, so two players hold different locks
+        // while each camera follows its own player.
         if (viewInput && viewInput->just_pressed[fnd::input::LockSwitch]) {
             app.match.cycle_locked_target(view.fighter, true);
-            view.camera.cycle_target(true);
             view.lockHeldTicks = 0;
         } else if (viewInput && viewInput->down[fnd::input::LockSwitch]) {
             // Held past the threshold, so the tap above is not undone by the finger still
@@ -3245,8 +3251,9 @@ static void tickMatch(App& app, double dt) {
         }
         // The DX9 reference's own camera switch (Guard just_pressed while its heavy key was
         // held, scenes.cpp:644-646) went with that key: the original has one melee input and
-        // no heavy bit (issue #10), so target cycling is the recovered LockSwitch action
-        // alone (gameplay/target_lock.h).
+        // no heavy bit (issue #10), so re-picking the combat target is the recovered
+        // LockSwitch action alone (gameplay/target_lock.h) — nothing in a match re-points a
+        // view's camera any more (issue #51).
         // Scripted/offscreen standalone runs retain the banked null-query camera path;
         // live matches clamp the eye against collision_camera.x unless the A/B switch asks
         // for the historical unclamped behavior. The blend remains per call as in the port.
@@ -3261,6 +3268,12 @@ static void tickMatch(App& app, double dt) {
         view.previousEye = view.camera.eye();
         view.previousTarget = view.camera.target();
         view.camera.update(dt,cameraQuery);
+        // Mirror the camera's own selection back into the view. Since issue #51 the tap no
+        // longer cycles the camera and nothing else in a match calls cycle_target, so this
+        // is the construction value for the whole match; it stays because view.followed IS
+        // the per-view "who am I following" the split-screen evidence line prints and
+        // tests/lock_switch_camera_test.cpp asserts, and dropping the mirror would let the
+        // two silently disagree the day anything re-points a camera again.
         if (view.camera.active_target_index() >= 0) view.followed = view.camera.active_target_index();
 
         // This view's HUD: the ported value computation (gameplay/hud_fill.h, unchanged),
@@ -4754,11 +4767,15 @@ void reportMatchViews(const App& app, uint32_t width, uint32_t height) {
         if (!view.active()) continue;
         const game::ViewRect rect = game::viewCell(layout, v, width, height);
         const ui::HudState& hud = view.hud;
-        std::printf("[split] view %d: controller=%d fighter=%d cell=(%.0f,%.0f,%.0f,%.0f) "
+        // `followed` is the camera's own followed fighter, next to `fighter`, the one it
+        // must follow for the whole match (issue #51): printing both makes a cell whose
+        // camera left its fighter visible in the report instead of only in the pixels.
+        std::printf("[split] view %d: controller=%d fighter=%d followed=%d "
+                    "cell=(%.0f,%.0f,%.0f,%.0f) "
                     "hp=%.0f main=%d charge=%d stamina=%.2f hyper=%s gauge=%.2f\n",
-                    v, view.controller, view.fighter, rect.x, rect.y, rect.w, rect.h, hud.hp,
-                    hud.mainWhole, hud.chargeWhole, hud.staminaFrac, hud.hyperName.c_str(),
-                    hud.hyperGauge);
+                    v, view.controller, view.fighter, view.followed, rect.x, rect.y, rect.w,
+                    rect.h, hud.hp, hud.mainWhole, hud.chargeWhole, hud.staminaFrac,
+                    hud.hyperName.c_str(), hud.hyperGauge);
         // Per-participant markers, projected through THIS view's camera on this frame's own
         // cell: the entry's role, its tag (controller/COM), whether this view sees it and
         // which edge its marker points at when it does not (issue #13's evidence line).

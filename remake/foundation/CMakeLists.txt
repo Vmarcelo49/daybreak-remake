@@ -387,6 +387,19 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(target_lock_test PRIVATE foundation_gameplay)
     add_test(NAME target_lock_test COMMAND target_lock_test)
 
+    # Issue #51: the LockSwitch tap re-points the combat target and NOT the camera. It
+    # compiles src/main.cpp into its own TU (SDL_MAIN_HANDLED, like
+    # controller_scene_lifetime_test) and drives tickMatch(), so what it pins is the tap
+    # handler the player actually presses. Device-free, data-free and window-free: the
+    # match runs with the historical null models (the test never attacks, so no combat
+    # claim rides on it) and it links what main.cpp needs.
+    add_executable(lock_switch_camera_test tests/lock_switch_camera_test.cpp)
+    target_include_directories(lock_switch_camera_test PRIVATE src)
+    target_link_libraries(lock_switch_camera_test PRIVATE foundation_render foundation_ui
+        foundation_media foundation_game foundation_physics foundation_gameplay
+        foundation_movie)
+    add_test(NAME lock_switch_camera_test COMMAND lock_switch_camera_test)
+
     # Issue #11: KO -> Overkill -> respawn, team credits, capacity extremes,
     # simultaneous deaths/bursts and the timed-round winner, driven through Match so
     # Fighter::take_damage, the projectile pool and MatchFrame are all covered.

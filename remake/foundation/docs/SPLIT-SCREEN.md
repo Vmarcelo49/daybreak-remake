@@ -24,8 +24,11 @@ in it. Nothing here is inferred from genre convention.
 | A human-less cell only gets a centre placeholder | `FUN_006396f0.c:196-201` draws at `(cell.left + 200, cell.top + 150)` for each `-1` slot. |
 
 Per-fighter targeting is already per fighter (`gameplay/target_lock.h`, issue #8), and the
-original's LockSwitch walk (`FUN_00421e30`/`FUN_00421f30`) moves the followed player and the
-viewer's own combat target — so one camera per view is the right unit.
+original's LockSwitch writers (`FUN_00421e30`/`FUN_00421f30`) move the viewer's own **combat
+target** only — no view, camera or followed-player field is written (issue #51; the same writer
+is reached from the network dispatcher `FUN_0063c2a0` case 0x2a for a REMOTE player's switch).
+So a view's camera follows its own fighter for the whole match, and one camera per view is the
+right unit.
 
 ## What the port does
 
@@ -72,12 +75,12 @@ viewer's own combat target — so one camera per view is the right unit.
    and fills a pad-less controller's tick input from `src/input/synthetic_pad.h`, a pure
    `(controller, tick)` pattern. It is **synthetic input**: no physical controller was
    exercised, and controller 0 (the keyboard) is never overridden. Without the flag nothing
-   changes. The pattern taps LockSwitch only when `--lock-taps` is passed: that tap retargets
-   a view's camera, and with four views each sweeping between fighters it is indistinguishable
-   from a camera defect at a glance. A played battle never retargets itself — the camera
-   changes target only on a LockSwitch tap, or on the recovered `Guard`+heavy gesture, which
-   needs a binding the heavy stand-in does not have — so `--lock-taps` exists to exercise the
-   per-view retarget path on request.
+   changes. The pattern taps LockSwitch only when `--lock-taps` is passed: that tap re-picks a
+   view's **combat target** (never its camera — issue #51), and with four views each cycling
+   their targets it is churn indistinguishable from a defect at a glance. A played battle only
+   re-targets when a human asks (the LockSwitch tap or hold); the DX9 build's other switch, the
+   `Guard`+heavy gesture, needs a binding the heavy stand-in does not have — so `--lock-taps`
+   exists to exercise the per-view gesture path on request.
 
 ## Verification (2026-10-04, Linux, RADV, headless captures)
 
@@ -145,10 +148,11 @@ ctest --test-dir remake/foundation/build/linux --output-on-failure
 
 The per-view evidence is the `[split]` block the host prints every 128 match ticks and on the
 capture frame: layout, view count, target size, roster size, then each view's controller,
-fighter, cell, HP, MAIN/CHARGE stocks, stamina and hyper name/gauge, followed by one line per
-ACTIVE PARTICIPANT (issue #13) with its panel, team, controller/COM, combo label, per-view role
-(owner/ally/enemy), projected visibility, target and acting flags, off-screen alert edge, HP and
-ring anchor.
+fighter, **`followed=` — the camera's own followed fighter, which must equal `fighter` for the
+whole match (issue #51)** — cell, HP, MAIN/CHARGE stocks, stamina and hyper name/gauge, followed
+by one line per ACTIVE PARTICIPANT (issue #13) with its panel, team, controller/COM, combo label,
+per-view role (owner/ally/enemy), projected visibility, target and acting flags, off-screen alert
+edge, HP and ring anchor.
 
 ## Issue #13 — four participants in every view
 

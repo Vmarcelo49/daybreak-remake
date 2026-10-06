@@ -470,6 +470,17 @@ in the `DAYBREAK_CAMINFO` trace and in the rendered frame, confirming the no-Loc
 path is untouched. A capture that presses LockSwitch differs by design: that is the
 camera retarget and the ring's new owner.
 
+**Corrected by issue #51 (2026-10-06).** The LockSwitch tap must not move the camera. The
+recovered writer `FUN_00421e30` stores only the fighter's own target state (`+0x300`,
+`+0x304` cleared, `+0x30c` pulse, `+0x308`, `+0x848` + cue) and its other caller
+(`FUN_0063c2a0` case 0x2a) applies a REMOTE player's switch, so the tap above — which then
+also called `ArenaCamera::cycle_target` — was wrong: it re-pointed the camera's followed
+player at the enemy, the reported "the whole camera moves onto the enemy". The tap now
+re-picks the combat target only and a view follows its own fighter for the whole match;
+`ArenaCamera::cycle_target` keeps no match caller (it stays as the ported reference API,
+pinned by `tests/arena_camera_test.cpp`) and `tests/lock_switch_camera_test.cpp` pins the
+rule by driving `tickMatch` in a 1v1 and a four-view 2v2.
+
 ## Per-weapon combat definitions — 2026-10-04
 
 Issue #9's selection data now reaches combat. `src/gameplay/weapon_definition.h/.cpp`
@@ -1335,6 +1346,8 @@ stage-aware colour) and the recommendation: `foundation/docs/NPR-EXPERIMENTS.md`
   with corrected comments; LockSwitch tap now cycles the camera target in
   match mode beside the DX9 combo (camera-only in this 1v1 port — shots fly
   the facing, which tracks the single enemy; hold-for-ally needs allies).
+  Corrected by issue #51: the tap re-picks the COMBAT target only and never the
+  camera, so this bullet's "cycles the camera target" no longer describes it.
   "recovery" stays as the state's trace name (the voice key exists; the
   state never occurs, so no trace changes).
 * **What is left.** (a) The projectile and TagOut selectors, and the side/air
