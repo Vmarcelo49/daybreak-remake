@@ -19,7 +19,12 @@
 //    * the cursor wrap, (i+1)%6 down / (i+5)%6 up, and up's priority over down
 //      (FUN_00410f60.c:47-65 tests 0xc8 before 0xd0);
 //    * the three draw anchors FUN_00410d60.c:34-36 + FUN_004114f0.c:17-22 produce,
-//      through the same spriteDst() the sprite batch uses.
+//      through the same spriteDst() the sprite batch uses;
+//    * issue #40's recovered movie skip: which keys count (FUN_00404ff0 @0x404ff0 tests
+//      vkeys 0x1c/0xb8/0x38, i.e. Return or either Alt) and which must not (the menu's own
+//      confirm/cancel — a skip on Z would be an invented input), plus the opening scene's
+//      host seam reporting itself instead of building a screen that cannot work. No movie
+//      file is involved: the predicate is a function of the held-key state.
 // =============================================================================
 
 #include <cstdio>
@@ -29,6 +34,7 @@
 
 #include "ui/screen.h"
 #include "ui/frontend_state.h"
+#include "ui/screen_opening.h"
 #include "ui/screen_title.h"
 #include "ui/sprite.h"
 
@@ -184,6 +190,36 @@ void testFactoryTable() {
     checkTrue("an unbuilt id names itself", error == "scene 0x0b has no screen yet");
 }
 
+// Issue #40's skip input: the recovered key set, and the host seam that keeps the opening
+// scene from being built without the engine and backend it reads.
+void testMovieSkip() {
+    std::printf("\nmovie skip input (FUN_00404ff0 @0x404ff0):\n");
+    auto held = [](int sc) { return sc == 40 || sc == 226 || sc == 230; };
+    checkInt("three recovered keys", 3, (long long)ui::kMovieSkipScancodeCount);
+    checkInt("Return (VK 0x1c) is one", 40, (long long)ui::kMovieSkipScancodes[0]);
+    checkTrue("Return held skips", ui::movieSkipHeld([&](int sc) { return sc == 40; }));
+    checkTrue("left Alt held skips", ui::movieSkipHeld([&](int sc) { return sc == 226; }));
+    checkTrue("right Alt held skips", ui::movieSkipHeld([&](int sc) { return sc == 230; }));
+    // The port's menu grammar, which the original does NOT read here: Z (Jump, 29) is menu
+    // confirm and X (AttackA, 27) is cancel. A skip on either would be an invented input.
+    checkTrue("menu confirm does not skip", !ui::movieSkipHeld([&](int sc) { return sc == 29; }));
+    checkTrue("menu cancel does not skip", !ui::movieSkipHeld([&](int sc) { return sc == 27; }));
+    checkTrue("nothing held does not skip", !ui::movieSkipHeld([&](int) { return false; }));
+    checkTrue("a held key is not an edge", ui::movieSkipHeld(held));
+
+    std::printf("\nopening scene host seam (ui/screen.h setOpeningHost):\n");
+    ui::SpriteRenderer batch;   // no device: the id table is what is exercised
+    ui::FrontendState state;
+    std::string error;
+    checkTrue("opening is a screen the factory knows", ui::screenAvailable(ScreenId::Opening));
+    // With the host seams unset (a device-free test), the entry must report the missing
+    // host rather than build an opening screen with a null engine.
+    checkTrue("makeScreen(Opening) without a host returns no screen",
+              !ui::makeScreen(ScreenId::Opening, batch, state, error));
+    checkTrue("and says which seam is missing",
+              error == "the opening scene needs its audio engine and input backend");
+}
+
 // The six items, in the atlas' row order, and the ids FUN_00410f60.c:106-134 returns.
 void testTitleEntries() {
     std::printf("\ntitle items (FUN_00410f60.c:106-134):\n");
@@ -299,6 +335,7 @@ int main() {
     testTransitionTimeline();
     testQuit();
     testFactoryTable();
+    testMovieSkip();
     testTitleEntries();
     testTitleCursor();
     testDrawAnchors();

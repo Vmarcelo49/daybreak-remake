@@ -32,6 +32,8 @@
 
 #include "ui/sprite.h"
 
+namespace fnd::input { class Backend; }
+
 namespace ui {
 
 // The scene ids the RE proves (FUN_004020a0's switch; FRONTEND-PLAN.md §1.2 lists every
@@ -100,6 +102,14 @@ public:
 // from "goes to X" instead of pretending a transition happened.
 bool screenAvailable(ScreenId id);
 
+class MovieAudio;
+// Scene 0x00's host-owned seams (ui/screen_opening.h): the movie's audio output, the input
+// backend its recovered skip keys are read from, and which file it plays (--movie; empty
+// keeps the original's op.mpg). The host installs them before the first screen exists; with
+// either pointer left null, constructing the opening scene reports that instead of building
+// one that cannot work — which is what a device-free test gets.
+void setOpeningHost(MovieAudio* audio, fnd::input::Backend* input, std::string movie);
+
 // Constructs the screen for an id, or returns null (with `error` naming the id) when
 // there is none — the factory's own `default` behaviour, which the switcher turns into
 // "no scene" (FUN_00657c80.c:58, FUN_00657ef0.c:49-53). The caller owns `state` (the App's
@@ -150,6 +160,10 @@ public:
     ScreenId current() const { return currentId_; }
     int      fadeFrame() const { return fade_; }          // 0 = no overlay
     const Screen* screen() const { return current_.get(); }
+    // The same screen, non-const: one screen owns a one-shot the host has to drain (the
+    // opening scene's recovered BGM start, ui/screen_opening.h), and the stack is the host's
+    // only handle on the live screen.
+    Screen*  mutableScreen() { return current_.get(); }
 
 private:
     std::unique_ptr<Screen> current_;

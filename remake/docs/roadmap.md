@@ -79,11 +79,19 @@ Backgrounds de cada cena (via BMPs no `daybreak00.dat`):
 
 ### Vídeos (4 total, no daybreak06.dat)
 
+Skip **medido** em 2026-10-06 (issue #40): `FUN_00404ff0` @0x404ff0 (update da cena 0x00,
+vtable slot 3 de `0x6a14ec`) testa o buffer de teclado cru via `FUN_006586d0` @0x6586d0
+(`*(byte*)(kb+0x20+code) & 0x80`) nos vkeys **0x1c (VK_RETURN)**, **0xb8** e **0x38
+(VK_MENU)** — ou seja **Enter ou qualquer Alt, segurado**, não "qualquer botão". A tabela
+antiga dizia "qualquer botão do controle"; a metade de pad existe no laço
+(:0x4050f3-0x405155, três contadores por jogador com os bytes de botão de
+`FUN_006585f0`), mas o RE não nomeia esses offsets, então o port não inventa um botão.
+
 | Arquivo | Quando toca | Skip |
 |---|---|---|
-| `movie/op.mpg` | No boot, antes do title | Sim, qualquer botão do controle |
-| `movie/prologue.mpg` | Início do story mode | Sim (story mode fora de escopo, mas se rodarmos o opening, o skip é igual) |
-| `movie/staffroll.mpg` | Fim do story mode | — |
+| `movie/op.mpg` | No boot, antes do title | Sim: Enter ou Alt, segurado (recuperado; ver acima) |
+| `movie/prologue.mpg` | Início do story mode | Sim, mesma cena (`FUN_00405520`; story mode fora de escopo) |
+| `movie/staffroll.mpg` | Fim do story mode | Roda pelo mesmo player; a cena 0x15 é `FUN_004052b0`/`FUN_004053d0` |
 | `movie/staffroll2.mpg` | Alternativo do staffroll | — |
 
 **Sem DirectShow import** — o jogo deve usar WinMM (`MciSendCommand`?) ou

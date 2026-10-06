@@ -7,8 +7,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+#include <utility>
 
 #include "ui/screen_title.h"
+#include "ui/screen_opening.h"
 #include "ui/screen_select.h"
 #include "ui/screen_vs.h"
 #include "ui/screen_options.h"
@@ -41,13 +44,32 @@ bool equalsIgnoreCase(const char* a, const char* b) {
     return *a == '\0' && *b == '\0';
 }
 
+// Scene 0x00's host-owned seams: the movie's audio output, the input backend whose raw key
+// state the recovered skip reads (ui/screen_opening.h), and which file it plays. They arrive
+// through setOpeningHost instead of the factory's argument list because ui::makeScreen's
+// signature is deliberately the original factory's own (FUN_004020a0); the two pointers stay
+// null in a test, and the entry then reports the missing host rather than building a screen
+// that cannot work.
+MovieAudio*          gOpeningAudio = nullptr;
+fnd::input::Backend* gOpeningInput = nullptr;
+std::string          gOpeningMovie = fnd::movie::kOpeningMovie;
+
 // FUN_004020a0's switch as one table: the ids the port can construct and the
 // constructor for each. Battle is hosted by the application because it owns simulation.
 struct ScreenEntry {
     ScreenId id;
     std::unique_ptr<Screen> (*make)(SpriteRenderer&, FrontendState&, std::string&);
 };
-constexpr ScreenEntry kScreens[] = {
+// Not constexpr: scene 0x00's entry reads the host seams above.
+const ScreenEntry kScreens[] = {
+    {ScreenId::Opening, [](SpriteRenderer& batch, FrontendState&, std::string& error) {
+         if (!gOpeningInput || !gOpeningAudio) {
+             error = "the opening scene needs its audio engine and input backend";
+             return std::unique_ptr<Screen>{};
+         }
+         return makeOpeningScreen(batch, *gOpeningInput, *gOpeningAudio, gOpeningMovie,
+                                  error);
+     }},
     {ScreenId::Title, [](SpriteRenderer& batch, FrontendState&, std::string& error) { return makeTitleScreen(batch,error); }},
     {ScreenId::Options, [](SpriteRenderer& batch, FrontendState&, std::string& error) { return makeOptionsScreen(batch,error); }},
     {ScreenId::KeyConfig, [](SpriteRenderer& batch, FrontendState&, std::string& error) { return makeKeyConfigScreen(batch,error); }},
@@ -57,6 +79,12 @@ constexpr ScreenEntry kScreens[] = {
 };
 
 }  // namespace
+
+void setOpeningHost(MovieAudio* audio, fnd::input::Backend* input, std::string movie) {
+    gOpeningAudio = audio;
+    gOpeningInput = input;
+    if (!movie.empty()) gOpeningMovie = std::move(movie);
+}
 
 bool screenAvailable(ScreenId id) {
     // Battle presentation owns live simulation and is constructed by the application.

@@ -97,6 +97,7 @@ add_library(foundation_ui STATIC
     src/ui/text.cpp
     src/ui/fallback.cpp
     src/ui/screen.cpp
+    src/ui/screen_opening.cpp
     src/ui/screen_title.cpp
     src/ui/screen_select.cpp
     src/ui/screen_stage_select.cpp
@@ -115,7 +116,9 @@ target_link_libraries(foundation_ui PUBLIC foundation_assets)
 # stb_truetype for the CJK rasterizer, alongside the vendored stb_vorbis the media
 # layer uses (foundation_media adds the same directory).
 target_include_directories(foundation_ui PRIVATE third_party/stb)
-target_link_libraries(foundation_ui PUBLIC foundation)
+# foundation_movie: the screen factory's opening entry (issue #40) lives in this layer and
+# calls the movie player, so every target that links foundation_ui needs the player too.
+target_link_libraries(foundation_ui PUBLIC foundation foundation_movie)
 
 # Media/input contracts and tables. Header-only by design (they unit-test
 # anywhere), so this library is one TU of static_asserts against the real SDL3
@@ -128,6 +131,17 @@ target_include_directories(foundation_media PRIVATE third_party/stb)
 if(NOT EMSCRIPTEN)
     target_link_libraries(foundation_media PUBLIC SDL3::SDL3)
 endif()
+
+# The movies (issue #40): pl_mpeg (pinned, third_party/pl_mpeg) behind one player class,
+# and the opening scene that drives it. Its own target rather than a few files in ui/ or
+# media/ because it is the one layer that owns a third-party decoder, and because the web
+# target must not pull one in: movie_player.cpp compiles to a stub under EMSCRIPTEN, so
+# this target builds everywhere and decodes only natively.
+add_library(foundation_movie STATIC
+    src/movie/movie_player.cpp)
+target_include_directories(foundation_movie PUBLIC src)
+target_include_directories(foundation_movie PRIVATE third_party/pl_mpeg)
+target_link_libraries(foundation_movie PUBLIC foundation foundation_media)
 
 # Game-facing interfaces: header-only (glm+std, plus hud_bridge.h over ui/), so
 # this library is a check TU that forces every target to compile them — the
@@ -167,7 +181,9 @@ target_link_libraries(foundation_gameplay
     PRIVATE foundation_ui)
 
 add_executable(foundation_demo src/main.cpp)
-target_link_libraries(foundation_demo PRIVATE foundation_render foundation_ui foundation_media foundation_game foundation_physics foundation_gameplay)
+# foundation_movie comes after foundation_ui on purpose: the opening scene lives in the UI
+# layer and calls into the player, and static libraries resolve in this order.
+target_link_libraries(foundation_demo PRIVATE foundation_render foundation_ui foundation_media foundation_game foundation_physics foundation_gameplay foundation_movie)
 
 set(CAPTION_CJK_FONT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/NotoSansCJKjp-Regular.otf")
 if(EMSCRIPTEN)

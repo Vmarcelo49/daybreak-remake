@@ -33,14 +33,14 @@ transcribed findings. Live provenance is the foundation (`src/audio/*`,
 | Movie audio | MP2 stereo 44100 Hz via pl_mpeg; float[−1,1] → S16 stereo chunks drained by `Mix_HookMusic` callback |
 | Original API | `WINMM.dll` import; DirectSound-era 44.1 kHz stereo throughout |
 
-### Video (`.mpg` decision: **stub** — see §3)
+### Video (`.mpg`: implemented in issue #40 — see §3)
 
 | Need | Reference finding |
 |---|---|
 | Files | `movie/op.mpg` (boot), `movie/prologue.mpg`, `movie/staffroll{,2}.mpg`; story FMVs also fill `daybreak06.dat` (439 MB, 5 entries) |
 | Codec | MPEG-PS (MPEG1 video + MP2 audio); decoded by vendored pl_mpeg (~4300-line single header, `remake/src/third_party/pl_mpeg.h`) |
 | Presentation | video → DX9 texture (`plm_frame_to_bgra`, alpha pre-set 255) drawn as a fullscreen quad; audio via the `Mix_HookMusic` chunk queue above |
-| Behaviour | boot plays `op.mpg`, **skippable on any button** (`Scene_Opening`) |
+| Behaviour | boot plays `op.mpg`; the skip is **Enter or either Alt**, held (recovered — see §3.1) |
 | Framing | letterbox bars are baked into the video itself (reference capture `opening-frame-01`) |
 
 ### Input
@@ -64,7 +64,8 @@ test anywhere. SDL3 numeric codes are pinned as constants; the future backend
 | `src/audio/audio_format.h` | `detect_format` (WAV/OGG/MP3/MPEG-PS/CNV magic), `parse_wav`, `float_to_s16`, `drain_bytes`, `volume_gain` |
 | `src/audio/audio.h` | `Spec` (44100/stereo/2048 — what every source already is), channel reservation (`kUiChannel/kVoiceFirst…/kSfxLast`), `Volumes` + `bus_gain`, `UnlockGate`, `Engine` contract + `NullEngine` |
 | `src/audio/audio_sdl3.h` | `to_device_spec`, `interleave_lr_s16` (MP2 1152-frame path), `may_push` unlock rule |
-| `src/audio/video.h` | `is_mpeg_ps` probe, `StubPlayer` (`Unimplemented`, `skippable() == true`), `ycrcb_to_rgb` (BT.601, RGBA order) for the future uploader |
+| `src/movie/movie_player.{h,cpp}` | the movie itself (issue #40): pl_mpeg behind one class, YCrCb→RGBA, PCM to a sink. Replaces the deleted `src/audio/video.h` stub |
+| `src/ui/screen_opening.{h,cpp}` | scene 0x00: the recovered skip, the BGM one-shot, the 800x600 blit |
 | `src/input/input.h` | `Action` (13), `DeviceType`, `PlayerState`, `compute_edges`, `apply_deadzone` / `stick_to_digital` (deadzone 8000), `parse_script_line` |
 | `src/input/input_sdl3.h` | P1 scancode table (verified against SDL 3.4.16 headers), provisional pad button table, web gamepad caveats |
 
@@ -73,22 +74,50 @@ tree, and its file-path API is what forces the remake through temp files.
 `SDL_AudioStream` takes pushed PCM and resamples, so BGM/voice/movie audio
 converge on one push path and the temp-file dance disappears.
 
-## 3. Video decision: stub, with reasons
+## 3. Video: implemented (issue #40)
 
-**Implement or stub: stub.** Not silent — `StubPlayer::open()` recognises an
-MPEG-PS blob and reports `Unimplemented`, so the boot-movie call site can be
-wired now without anyone mistaking it for working.
+The stub is gone. `src/movie/movie_player.cpp` is the whole decoder — pl_mpeg
+(pinned by `scripts/fetch_deps.sh`, MIT, `package/LICENSES/pl_mpeg-*.txt`) is one
+header, `PL_MPEG_IMPLEMENTATION` is defined in that one translation unit, and the
+player is one class: open → `plm_decode(dt)` per tick → YCrCb→RGBA → the UI
+renderer's existing `updateTexture` → one scaled quad. There is no background
+thread, no plane/shader path, no seek, and no second screen: the staff roll runs
+through the same scene via `--movie=`.
 
-1. Cost vs gate: a real port vendors ~4300 lines of pl_mpeg plus a new WebGPU
-   texture-upload path, while the D2 gate (a matching *in-game* frame) never
-   needs video.
-2. Data: every `.mpg` is copyrighted game data, absent from the repo and from
-   CI; verification would be subjective playback, not a number.
-3. Web delivery of those bytes is Track W's open question (preload vs
-   fetch/streaming); decoding before that path exists builds on sand.
-4. The behaviour contract (play `op.mpg` at boot, any-button skip,
-   letterbox-in-video) is recorded above and in the stub so the future
-   implementer starts from requirements, not archaeology.
+What the earlier "stub" decision got right and what changed:
+
+1. Cost: still ~4400 lines of vendored decoder, but no new WebGPU path — the
+   upload is the one the HUD already uses. The decode is CPU-side BT.601
+   (`13.03 → 5.20` mean |d| against ffmpeg after the limited-range fix, see the
+   comment on `convertFrameToRgba`).
+2. Data: unchanged. Every `.mpg` is copyrighted game data, absent from the repo
+   and from CI. The evidence for it is therefore a **local** run, and the
+   device-free half is the skip predicate (`tests/screen_stack_test.cpp`).
+3. Web: **not** implemented in wasm, deliberately. A browser decodes video
+   itself (`HTMLVideoElement`/WebCodecs → `copyExternalImageToTexture`), and
+   `movie_player.cpp` compiles to a stub under `__EMSCRIPTEN__` that reports
+   exactly that instead of pretending. Serving the `.mpg` is Track W's question
+   (preload vs fetch/streaming).
+4. The behaviour contract is now the recovered one, not the placeholder's —
+   see §3.1.
+
+### 3.1 The recovered opening scene (FUN_00404eb0 / FUN_00404ff0)
+
+Read from the **original** `DaybreakDX.exe` (md5 `a136ddc01bd7ef355b759b88ac89e02c`)
+through the Ghidra bridge; `research/decompiled/` is a patched copy of the same
+build and agrees on every address quoted here.
+
+| Element | Address | Finding |
+|---|---|---|
+| Scene constructor | `FUN_00404eb0` @0x404eb0 | `FUN_0065c080("movie/op.mpg")`; `FUN_00655af0(spr,0,0,0x280,0x1e0)` = a 640x480 blit; `FUN_00408250(0x3fa00000)` = scale **1.25**, i.e. 800x600 on screen |
+| Update (vtable slot 3 of 0x6a14ec) | `FUN_00404ff0` @0x404ff0 | end-of-stream check `FUN_00405250` → return 0; start on the first tick (`FUN_0065c950`, BGM `data/bgm/titlesemi.ogg`); skip → `FUN_0065c990`, BGM `title.ogg`, return 1 |
+| Skip keys | :0x405025, :0x405038, :0x40504e | `FUN_006586d0` tests the raw keyboard buffer (`*(byte*)(kb+0x20+code) & 0x80`) for vkeys **0x1c (VK_RETURN)**, **0xb8**, **0x38 (VK_MENU)** — Enter or either Alt, HELD, never an edge |
+| Pad half | :0x4050f3-:0x405155 | the same loop also breaks on three per-player counter fields (+0x9c/+0xa0/+0xb8) fed by `FUN_006585f0`'s pad button bytes. **Not implemented**: the RE names no button for those offsets, and the port does not invent one |
+| Port rule | `src/ui/screen_opening.h` RULE 1/2 | the vkey → SDL-scancode mapping, and "no hold gate" |
+
+The file the exe opens is `movie/op.mpg` only because it has already made `data/`
+its working directory; on disk it is `data/movie/op.mpg`, which is the path the
+port resolves (and the one `--movie=` takes).
 
 ## 4. Deterministic tests (scratch, under `/tmp`)
 
@@ -196,8 +225,11 @@ vendored stb_vorbis), `.sfl` loop parsing (`parse_sfl_loop` in
 ## 7. Explicitly not verified
 
 - No audible playback check (subjective; no device in this environment).
-- No `movie/op.mpg` decode — no game data in the repo; stub only
-  (`src/audio/video.h` `StubPlayer`).
+- No `movie/op.mpg` decode in CI — no game data in the repo; the movie evidence is a local
+  run, and the device-free half is the skip predicate in `tests/screen_stack_test.cpp`.
+- No audible movie check (no audio device in this environment): the A/V evidence is the
+  decoder's frame clock against the PCM the sink accepted, not a listening test.
+- The web movie path is a stub that reports itself (see §3, item 3); it is not executed.
 - No MP3 *decoding* — detection only, correctly absent (nothing shipped is
   MP3).
 - No live gamepad or browser-gesture execution — tables pinned against SDL
