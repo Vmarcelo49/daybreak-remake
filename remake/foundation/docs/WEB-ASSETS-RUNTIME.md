@@ -5,6 +5,18 @@ Local paths below are machine-local and gitignored, never committed.
 
 ## 1. Recommendation (W1)
 
+> **Superseded in part (issue #4, 2026-10-06).** The recommended shape below —
+> HTTP fetch of per-load-unit assets with browser-managed persistence — is what
+> `webdelivery/` + `src/platform/asset_client.cpp` implement, but two details of
+> this section are now historical: the unit is **one asset**, not one pack (the
+> catalog's per-asset sha256 gives independent caching, and 435 catalogued names
+> in a real install share bytes with another name and are served from the cache
+> without a second request), and the mount is the **MEMFS root**, not `/packs/`,
+> because the front end addresses install-relative `data/...` (issue #58). The
+> `?pack=` loader described here still works as a local rig and is no longer the
+> production path.
+
+
 **Production path: plain web build + HTTP fetch/streaming of per-pack assets,
 cached in the browser (IndexedDB/OPFS), with Emscripten preload kept only for
 local renderer verification.** Both halves of this are now implemented:

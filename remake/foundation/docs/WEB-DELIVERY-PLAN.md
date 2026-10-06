@@ -1,8 +1,13 @@
 # Self-hosted web asset delivery plan
 
-Status: implementation plan, 2026-10-04. This plan describes the target for
-the self-hosted web version; the current manifest-based pack loader remains the
-verification path until the replacement is implemented.
+Status: **implemented (issue #4, 2026-10-06)** — the service lives in
+[`webdelivery/`](../webdelivery/README.md) and the client in
+`src/platform/{web_assets,asset_client}.{h,cpp}`. §"Where this plan was stale"
+below records what the implementation did differently and why; read it before
+treating any step below as still-current. The manifest-based pack loader
+(`?pack=`) remains in the tree for local verification but is no longer the
+production path — it mounts at `/packs/` while the front end addresses
+install-relative `data/...`, which is issue #58.
 
 ## Goal
 
@@ -189,3 +194,93 @@ results; measured data use and unverified platform cases are recorded.
 - No custom compression format until Step 6 demonstrates a clear benefit.
 - Browser downloads necessarily deliver the requested game assets to that
   browser; self-hosting keeps the project from hosting the game data itself.
+
+## Where this plan was stale
+
+Written 2026-10-04, implemented 2026-10-06 against a tree that had moved. Each
+item is a place the plan was followed in spirit rather than literally, with the
+measurement or the code that decided it.
+
+1. **The plan's two loading groups are not two lists of names.** The plan lists
+   assets ("shared title, selection … artwork", "selected stage models"). The
+   loaders do not read names, they read **directories**: `xm::loadStage` walks one
+   `data/stageNN/` (eight model slots, `collision*`, `env.dat`), `xm::loadCharacter`
+   one `data/<char>` plus the costume siblings `_B.._F`, `xm::loadWeapon` one
+   `data/bullet/%03d/` or a `data/item/` model (`src/assets/scene.h`). The groups
+   are therefore expressed as those scopes (`webdelivery/daybreak_web/groups.py`),
+   and the server expands each prefix from the catalog so a client never carries a
+   file list.
+
+2. **"Shared battle objects" is measurable, and the first guess was wrong.**
+   `data/effect/` and `data/aura/` were initially classified as startup art. A live
+   delivered match then asked for `data/aura/03.x` and the effect table reads
+   `data/effect/%03d.dat` (`buildFxAssets`, `src/main.cpp`), so both moved to the
+   match group — where the plan's own wording puts them. The grouping rules now
+   carry a fingerprint that a prepared catalog records, so changing a rule
+   invalidates the catalog instead of silently serving the old grouping.
+
+3. **The startup gate is not the whole startup group.** The plan's Step 4 says to
+   "mark only assets required by the first usable screen as the startup gate", but
+   its group list also puts the opening movie and menu music in startup. The
+   implementation fetches both and gates on neither: the movie is decoded by the
+   browser rather than by wasm (the `#if defined(__EMSCRIPTEN__)` stub in
+   `movie_player.cpp` — which, as the plan's own note suspected, had never been
+   compiled and does not play anything yet), and BGM is streamed by the audio path
+   instead of being decoded from memory. Dispatching gate assets before the
+   optional ones is worth **44 MB** of time-to-title on a cold load (140.3 MB →
+   96.3 MB measured).
+
+4. **The `.mpg` asset path in the code does not match the archives.** The plan says
+   the movie needs an asset path; `movie_player.h`'s `kOpeningMovie` is
+   `data/movie/op.mpg` while the archives store **`movie/op.mpg`** (prepared and
+   catalogued under that name). Nothing is broken today because the web build does
+   not decode the movie at all, but whoever implements the browser-side
+   `HTMLVideoElement`/WebCodecs path must use the archive spelling or the catalog
+   needs an alias. Filed as an open item on issue #4.
+
+5. **Step 1's acceptance said "compare representative duplicate and
+   non-duplicate asset bytes with `AssetSource`".** A representative sample is
+   weaker than the check that was actually possible: `tests/web_catalog_order.cpp`
+   compares **every** resolved name — 11,261 on a real install, 983 of them
+   duplicates — against the native `DatBundleSet`, and hashes the winners
+   independently with `sha256sum`. Its hermetic half writes synthetic `.DAT`
+   bundles with `dat_crypto`, so the ordering rule is tested with no game data at
+   all. Measured agreement: 0 mismatches.
+
+6. **Step 6's "evaluate LZ4 only if the measurements show a meaningful benefit"
+   resolved to "no LZ4".** Measured on a real install: `.x` models compress to
+   0.468 with gzip, while `.cnv` (186.9 MB), `.mpg` (1641.2 MB) and `.ogg`
+   (50.3 MB) do not compress at all. Standard HTTP `Content-Encoding: gzip` on the
+   compressible assets captures the win; a per-asset wrapper plus a browser decoder
+   would buy nothing on top of it.
+
+7. **"Preserve the winning bundle/source in the catalog" needed a second rule
+   beside precedence.** The catalogued spelling is not the only spelling the port
+   probes: the game's lookup folds ASCII case (`__stricmp`, 0x00663c20) and the
+   native layer reproduces that through the bundle index, while a delivered tree is
+   a plain filesystem that does not. Measured misses: `data/item/04.x` for a stored
+   `04.X` (the weapon model) and the battle HUD's `P00`/`P02` atlases for a stored
+   `p00.cnv`/`p02.cnv` (which silently fell back to the text HUD). Delivered assets
+   now also answer the probe spellings the port uses, as symlinks
+   (`webAssetCaseVariants`), and the host test pins them. This is a bounded set, not
+   the case-equivalence class; resolving case-insensitively at lookup time is the
+   general fix and is not implemented.
+
+## Verified end to end (2026-10-06)
+
+Chromium (Chrome for Testing, headless) on **software WebGPU**
+(`google swiftshader [WebGPU(browser)]`), against the Docker image serving the
+full prepared install from the host's own read-only mount:
+
+| What | Evidence |
+|---|---|
+| Cold startup gate | `494 request(s), 96.3 MB received`, then `screen: title (0x01)` |
+| Warm reload | `network 1 request(s), 0.0 MB received`, all 539 startup assets from the per-asset cache |
+| Match group | `756 assets, 131.9 MB`, `match group ready` before the battle started |
+| Live match | `49 model(s), 150 meshes, 56730 vertices`; `draws: 197 (169 textured, 0 untextured, 4 decals, 0 effects, 28 outlines), 156 GPU textures`; `battle HUD atlases loaded (P00/P01/P02)`; `frames : 300`, `RESULT: ok` |
+
+Those draw and texture counts are the **same numbers as the native capture** of the
+same match. Not verified: a hardware browser adapter, the browser-side movie
+playback (not implemented), selection→VS→battle driven by the front end in the
+browser (issue #59), and HTTPS behind a reverse proxy.
+
