@@ -67,10 +67,10 @@ data. It is also registered in the host suite (`ctest -R launcher_test`).
 ctest --test-dir remake/foundation/build/linux --output-on-failure
 ```
 
-* **With the game install present**: `100% tests passed out of 54`
-  (re-measured 2026-10-06 with issue #48's `debug_keys_test` added; 53 was the
-  count after issue #47's `countdown_overlay_test`, 52 after issue #51's
-  `lock_switch_camera_test`, 51 through issue #43's `select_row_slidein_test`).
+* **With the game install present**: `100% tests passed out of 55`
+  (re-measured 2026-10-06 with issue #39's `live_camera_smoothness_test` added; 54 was
+  the count after issue #48's `debug_keys_test`, 53 after issue #47's
+  `countdown_overlay_test`, 52 after issue #51's `lock_switch_camera_test`).
 * **Without any game data** (the CI runner's state — no `Higurashi-Daybreak/`):
   the same six tests go `Skipped` (exit 77) — `hud_cell_scale`, `toon_ramp`,
   `npr_experiments`, `npr_normals_test`, `controller_scene_lifetime_test` and
@@ -88,13 +88,17 @@ ctest --test-dir remake/foundation/build/linux --output-on-failure
   skipping tests are unchanged. #48's `debug_keys_test` is in that same class too (it
   compiles `src/main.cpp`, drives `tickMatch` and builds its match with null models), so
   it also adds one to both counts: 54 registered, the same 54 with six Skipped in a
-  data-free tree.
+  data-free tree. #39's `live_camera_smoothness_test` is in that class as well (it
+  compiles `src/main.cpp`, composes live frames through `tickMatch` and
+  `buildFrameViews`, and binds a synthetic Rena 1 combo instead of an install), so it
+  adds one to both counts: 55 registered, the same 55 with six Skipped without data.
   The denominator is the number of *registered* tests and grows whenever a suite is
   added (42 when this document was written, 45 when #28 re-measured it, 50 after
   #42's `bgm_loop_test`, #45's `frontend_lifecycle_test` and #46's
   `controller_scene_lifetime_test`, 49 after #29's `device_isolation_test`, 51 after
   #43's `select_row_slidein_test`, 52 after #51's `lock_switch_camera_test`, 53 after
-  #47's `countdown_overlay_test`, 54 after #48's `debug_keys_test`), so
+  #47's `countdown_overlay_test`, 54 after #48's `debug_keys_test`, 55 after #39's
+  # `live_camera_smoothness_test`), so
   read the command's own summary rather than this line when the two disagree —
   the invariant to check is *100% passed* with the asset-dependent tests Skipped
   and none Failed. Issue #40 added no suite: its device-free half (the recovered
@@ -325,6 +329,74 @@ those four in every round, because a rematch round's selection starts empty.
   capture path for round-by-round evidence; §5's windowed runs verify the window
   path itself (present, pacing, 64 Hz logic) and use the battle-screen script.
 
+### 3.5 The live path (issue #39): what a capture cannot see
+
+**A capture is not a live run, and the difference hid a real defect.** The camera
+defect fixed in `92b6d70` survived twenty-odd issues of verification — every
+capture below, this whole host suite and the owner's own measurements — because
+the capture path renders with `app.matchAlpha = 1` (D9's one-update-per-frame
+recipes) while `buildFrameViews` draws `glm::mix(previousEye, camera.eye(),
+matchAlpha)`. At alpha 1 that mix returns the current camera unchanged, so a
+capture was byte-perfect while a *played* battle swept the camera between the
+match's opening pose and the converged one on every frame (measured live: 19-938
+units/frame, median 387; after the fix ~4.2 units/frame). Anything that lives in
+presentation-time interpolation, per-frame smoothing, alpha blending or
+input-driven per-frame state is invisible to a capture for the same reason.
+
+Two things now cover it, and the first is the gate:
+
+```bash
+./build/linux/live_camera_smoothness_test
+```
+
+`tests/live_camera_smoothness_test.cpp` compiles `src/main.cpp` into its own TU
+and composes frames the way the frame loop does — `gameplay::FixedStep` decides
+the tick count and the presentation fraction, `tickMatch` steps the match,
+`buildFrameViews` builds the frame — then asserts on `FrameView::camera.eye`,
+the frame-view state the renderer consumes, not on pixels. Device-free,
+window-free and data-free (the fighters carry a synthetic Rena 1 combo). With the
+camera settled on a stationary, non-turning followed fighter, consecutive live
+frames must not move the rendered eye by more than **5 units**:
+
+```
+  measured 1v1, two views, 60 Hz ...: 399 frames x 2 view(s), alpha 0.000..0.933, ticks/frame 0 zero / 26 multi
+             rendered eye max step 0.0000 units, camera eye max step 0.0000, fighter drift 0.0000 (facing 0.0000 rad)
+  consecutive rendered frames do not sweep the camera eye          ok  (measured 0.000, limit 5.000)
+  ... the same at 144 Hz (frames with no tick) and 30 Hz 2v2 (two ticks per frame)
+```
+
+The check fires on the real defect: with `92b6d70`'s `previousEye` advance
+reverted on a scratch copy, the same binary run reports
+`rendered eye max step 1282.8557 units` at 60 Hz (763.6 at 144 Hz, 1228.3 for the
+4-view 2v2) and exits 1 — while the camera's own eye and the followed fighter are
+still exactly static, which is the defect's signature and nobody's else's.
+
+The second is the mode a capture can use. `--match-alpha=<0..1>` renders every
+headless frame at a fixed presentation fraction instead of pinning it to 1, so a
+capture sees the interpolation the live path sees:
+
+```bash
+./build/linux/foundation_demo --install=<game-dir> --headless --match \
+  --stage=data/stage21 --character=data/rena --enemy=data/mion \
+  --frames=3 --size=400x400 --match-alpha=0.5 --out=/tmp/live-alpha.ppm
+```
+
+Measured on that recipe: `--match-alpha=0.5` moves 74% of the pixels against the
+same command without it (mean |dRGB| 21.3 — the camera moved), `--match-alpha=1`
+is byte-identical to no flag at all (`f80d0368`), and a value outside `[0,1]` is
+rejected with `RESULT: --match-alpha takes a fraction in [0,1]`. **With the flag
+absent nothing changes**: the four §3 gates re-run after this landed produced the
+same `RESULT: ok` ladders and byte-identical final captures (4p `2483c3aa`, com
+`b813155d`, and 1v1/2v2 share `8cc49e6c` because both end on the same selection
+screen).
+
+**The manual floor stays.** The test drives the product's own live composition,
+but it is not a window: no compositor, no real frame pacing, no physical device
+and no user input. The step that covers those is still a played battle — run
+`--screen=battle --local-players=2` for 30 s and confirm the camera settles
+behind the fighter instead of sweeping, then take a hit and confirm it stays
+settled. That is the only part of this class a headless run cannot own.
+
 ## 4. Asset sweep — every legal selection and every stage
 
 ### 4.1 All 46 character/weapon selections
@@ -406,6 +478,13 @@ demo's own `--frames` summary (wall-clock deltas), not from a stopwatch.
 * **An interactive compositor-side window drag-resize** — resize was driven
   through the port's own Options resolution list; a mouse drag on the window
   edge was not simulated.
+* **A played battle's live camera, by eye** — §3.5's device-free test asserts the
+  live *composition* (the fixed-step clock, `tickMatch` and the interpolated
+  frame view) and `--match-alpha` lets a capture render that interpolation, but
+  neither is a window with a compositor, real pacing or a real device, and no run
+  here measures or watches the camera settle in a played battle. What would
+  settle it: the §3.5 manual step (30 s of `--screen=battle`, camera settles and
+  stays settled through a hit) on a real session.
 * **Windows, the web and macOS** — out of this issue's scope and not run for
   this checklist (their own docs carry their evidence).
 
@@ -477,7 +556,7 @@ fullscreen/resolution request actually did.
 ```bash
 cd remake/foundation
 ./build.sh linux
-ctest --test-dir build/linux --output-on-failure          # §2
+ctest --test-dir build/linux --output-on-failure          # §2 (includes §3.5's live-path test)
 ./build/linux/weapon_definition_test                      # §4.1
 python3 tests/showcase.py --check --out-dir /tmp/sweep    # §4.2
 for p in 2 1 4; do                                        # §3
@@ -487,6 +566,9 @@ for p in 2 1 4; do                                        # §3
     --headless --out=/tmp/rel-$s.ppm --size=1280x720 --frames=15500
 done
 ```
+
+`live_camera_smoothness_test` is the §3.5 gate and `ctest` runs it; a played
+battle (§3.5's manual step) is still the only thing that covers the window path.
 
 A run is green when it ends in `RESULT: ok`, every expected
 `[menu] scene:`/`match: round over` line above is present, and the `[split]`
