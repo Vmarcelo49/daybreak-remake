@@ -37,7 +37,7 @@ say() { printf '%s\n' "$*" >&2; }
 notify_gui() {
     [ -t 2 ] && return 0
     if command -v zenity >/dev/null 2>&1; then
-        zenity --error --title="Higurashi Daybreak" --text="$1" >/dev/null 2>&1
+        zenity --error --title="Higurashi Daybreak Kai Fan Remake" --text="$1" >/dev/null 2>&1
     elif command -v kdialog >/dev/null 2>&1; then
         kdialog --error "$1" >/dev/null 2>&1
     fi
@@ -46,7 +46,7 @@ notify_gui() {
 
 die() {
     say "[daybreak] $*"
-    notify_gui "Higurashi Daybreak could not start:
+    notify_gui "Higurashi Daybreak Kai Fan Remake could not start:
 
 $*"
     exit 1
@@ -79,7 +79,7 @@ done
 
 usage() {
     cat <<EOF
-daybreak ${version:-?} — Higurashi Daybreak (offline versus) for Linux
+daybreak ${version:-?} — Higurashi Daybreak Kai Fan Remake (offline versus) for Linux
 
 usage: daybreak [--install=DIR] [--screen=ID] [other flags]
 
@@ -301,7 +301,7 @@ if [ -z "$install" ]; then
         :
     else
         no_install_message
-        notify_gui "Higurashi Daybreak could not start: no game folder was found.
+        notify_gui "Higurashi Daybreak Kai Fan Remake could not start: no game folder was found.
 
 Point the launcher at your copy of the game:
     ./daybreak --install=\"/path/to/Higurashi-Daybreak\"

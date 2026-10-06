@@ -35,7 +35,7 @@ real GPU:
 
 ```
 $ wine build/windows/foundation_demo.exe --frames=120
-=== daybreak foundation ===
+=== Higurashi Daybreak Kai Fan Remake ===
 video driver : windows
 adapter      : AMD Radeon RX 9070 XT (RADV GFX1201) [Vulkan]
 surface      : 960x540, 7 format(s), 3 present mode(s), fifo=yes

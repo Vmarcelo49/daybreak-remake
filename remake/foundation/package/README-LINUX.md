@@ -1,4 +1,4 @@
-# Higurashi Daybreak — Linux release (offline versus)
+# Higurashi Daybreak Kai Fan Remake — Linux release (offline versus)
 
 This package is the playable port of *Higurashi Daybreak* (`DaybreakDX.exe`, Twilight
 Frontier / 07th Expansion) for 64-bit Linux: title screen, character/weapon selection,

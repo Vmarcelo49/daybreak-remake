@@ -40,7 +40,7 @@ agent-browser console
 Observed (Chrome for Testing 152, headless, SwiftShader):
 
 ```
-=== daybreak foundation ===
+=== Higurashi Daybreak Kai Fan Remake ===
 video driver : emscripten
 adapter      : google swiftshader [WebGPU(browser)]
 surface      : 960x540, 3 format(s), 1 present mode(s), fifo=yes

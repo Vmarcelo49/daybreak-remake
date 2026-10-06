@@ -132,7 +132,7 @@ agent-browser eval "(function(){return document.getElementById('canvas').toDataU
 ### 3.2 Console evidence (web-assets build, Chrome for Testing, SwiftShader)
 
 ```
-[log] === daybreak foundation ===
+[log] === Higurashi Daybreak Kai Fan Remake ===
 [log] video driver : emscripten
 [log] adapter      : google swiftshader [WebGPU(browser)]
 [log] surface      : 960x540, 3 format(s), 1 present mode(s), fifo=yes

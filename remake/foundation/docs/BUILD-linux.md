@@ -36,7 +36,7 @@ argv[1] overrides the search.
 Observed (Arch, Mesa 26.2.3, RADV, Wayland session):
 
 ```
-=== daybreak foundation ===
+=== Higurashi Daybreak Kai Fan Remake ===
 video driver : wayland
 adapter      : AMD Radeon RX 9070 XT (RADV GFX1201) [Vulkan]
 surface      : 960x540, 7 format(s), 3 present mode(s), fifo=yes

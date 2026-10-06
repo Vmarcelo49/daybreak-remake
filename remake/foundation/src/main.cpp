@@ -4491,14 +4491,14 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
             return SDL_APP_FAILURE;
         }
         if (!gpu::createContext(app->ctx, nullptr, app->error)) return SDL_APP_FAILURE;
-        std::printf("=== daybreak foundation ===\n");
+        std::printf("=== Higurashi Daybreak Kai Fan Remake ===\n");
         std::printf("video driver : headless (no window, no surface)\n");
         std::printf("adapter      : %s [%s]\n", app->ctx.adapterName.c_str(),
                     app->ctx.backend.c_str());
     } else {
         if (!plat::init(app->error)) return SDL_APP_FAILURE;
 
-        app->window = plat::createWindow("daybreak foundation", 960, 540, app->error);
+        app->window = plat::createWindow("Higurashi Daybreak Kai Fan Remake", 960, 540, app->error);
         if (!app->window) return SDL_APP_FAILURE;
 
         // instance -> surface -> adapter/device: the surface has to exist before the
@@ -4517,7 +4517,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
         if (!gpu::configureSwapchain(app->ctx, app->sc, (uint32_t)w, (uint32_t)h, app->error))
             return SDL_APP_FAILURE;
 
-        std::printf("=== daybreak foundation ===\n");
+        std::printf("=== Higurashi Daybreak Kai Fan Remake ===\n");
         std::printf("video driver : %s\n", plat::videoDriver());
         std::printf("adapter      : %s [%s]\n", app->ctx.adapterName.c_str(),
                     app->ctx.backend.c_str());
