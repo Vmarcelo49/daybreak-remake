@@ -223,6 +223,14 @@ struct Options {
     // cycle; issue #51 — the gesture never re-points a camera). Off by default so an
     // evidence run's fighters hold their targets and their framing stays put.
     bool        lockTaps = false;
+    // --match-alpha=<fraction> (issue #39): the presentation blend every rendered frame uses,
+    // overriding the product rule matchAlphaFor applies. Unset (< 0) keeps that rule — 1 while
+    // capturing (D9's one-update-per-frame recipes, where the blend must return the current
+    // camera so banked captures stay byte-identical) and the live clock's own fraction
+    // otherwise. A fixed fraction is what lets a HEADLESS recipe render the presentation
+    // interpolation buildFrameViews applies; at alpha 1 that blend is the identity, which is
+    // why the live camera defect (92b6d70) survived every capture-based gate.
+    float       matchAlpha = -1.f;
     // Issue #48's debug keys. `noDebugKeys` is the port's own switch, not the recovered gate
     // (gameplay/debug_keys.h): with it, the keys are inert whatever arrives. Default OFF, i.e.
     // the keys are live, because that is the original's state in a versus battle — and a
@@ -368,6 +376,11 @@ void usage() {
         "                     combat-target cycle; a camera is never re-pointed). Off by\n"
         "                     default: four views each re-picking targets is churn an\n"
         "                     evidence run does not need\n"
+        "  --match-alpha=<f>  render every frame at this fixed presentation fraction (0..1)\n"
+        "                     instead of the product rule (1 while capturing, the live\n"
+        "                     clock's own fraction otherwise). A capture then renders the\n"
+        "                     live interpolation buildFrameViews applies, which alpha 1\n"
+        "                     collapses to the current tick; absent, nothing changes\n"
         "  --no-debug-keys    make the original's in-battle debug keys inert (F1 full HP,\n"
         "                     F2 COMs off, F3 COMs on, F4 fill gauges, Escape leave). The\n"
         "                     keys are LIVE by default, which is the original's state in a\n"
@@ -625,6 +638,15 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--bgm=")).empty()) o.bgm = v;
         else if (!(v = val("--sfx=")).empty()) o.sfx = v;
         else if (!(v = val("--local-players=")).empty()) o.localPlayers = std::atoi(v.c_str());
+        else if (!(v = val("--match-alpha=")).empty()) {
+            char* end = nullptr;
+            o.matchAlpha = std::strtof(v.c_str(), &end);
+            if (end == v.c_str() || *end != '\0' ||
+                !(o.matchAlpha >= 0.f && o.matchAlpha <= 1.f)) {
+                error = "--match-alpha takes a fraction in [0,1]";
+                return false;
+            }
+        }
         else if (a == "--lock-taps") o.lockTaps = true;
         // Issue #48: the original's in-battle debug keys.
         else if (a == "--no-debug-keys") o.noDebugKeys = true;
@@ -1195,6 +1217,16 @@ struct App {
 static bool historicalMatchCapture(const App& app) {
     return !app.frontendMatch &&
            (!app.opts.out.empty() || !app.opts.script.empty() || !app.opts.script2.empty());
+}
+
+// The presentation blend a frame renders with. D9: a historical `--out` recipe steps one
+// update per frame and renders with no interpolation (alpha 1), which is what keeps the
+// banked captures byte-identical; a live frame renders with the fixed-step clock's own
+// fraction. `--match-alpha` overrides both with a fixed phase (issue #39), so a headless
+// recipe can render — and a test can assert on — the interpolation the live path applies.
+static float matchAlphaFor(const App& app, bool capturing) {
+    if (app.opts.matchAlpha >= 0.f) return app.opts.matchAlpha;
+    return capturing ? 1.f : app.logicClock.alpha();
 }
 
 // --- persisted user settings (issue #19) ------------------------------------------
@@ -2677,15 +2709,14 @@ struct FrameView {
 
 // Fills `out` with this frame's views: the cell each one occupies (game/view_layout.h's
 // recovered FUN_006396f0 geometry), the camera pose for it — interpolated for presentation,
-// or the exact camera while capturing, exactly as the single-view path did — and that view's
-// HUD with its markers projected through its own view-projection (D8). Always at least one
-// entry, so a single-view frame takes the historical render path with one cell covering the
-// target.
+// or the exact camera when nothing is interpolated (alpha 1), exactly as the single-view
+// path did — and that view's HUD with its markers projected through its own view-projection
+// (D8). Always at least one entry, so a single-view frame takes the historical render path
+// with one cell covering the target.
 static void buildFrameViews(App& app, uint32_t width, uint32_t height,
                             std::vector<FrameView>& out) {
     out.clear();
     const game::SplitLayout layout = game::splitLayoutFor(app.matchViewCount);
-    const bool capturing = !app.opts.out.empty();
     for (int v = 0; v < app.matchViewCount; ++v) {
         const game::MatchView& view = app.matchViews[v];
         if (!view.active()) continue;
@@ -2698,10 +2729,13 @@ static void buildFrameViews(App& app, uint32_t width, uint32_t height,
             : render::ViewportRect{};
         frameView.camera.eye = glm::mix(view.previousEye, view.camera.eye(), app.matchAlpha);
         const glm::vec3 target = glm::mix(view.previousTarget, view.camera.target(), app.matchAlpha);
-        // matchAlpha is 1 while capturing (D9's historical one-update-per-frame recipes),
-        // and the reference view is then the camera's own — lookAtLH cannot construct a
-        // basis from coincident eye/aim, which happens while every target is dead.
-        const glm::mat4 viewMatrix = capturing || frameView.camera.eye == target
+        // With nothing interpolated (alpha 1: D9's historical capture recipes, and the live
+        // clock's own 1.0 edge) the reference view is the camera's own. Any fractional alpha
+        // takes lookAtLH over the interpolated pose, which is what makes a --match-alpha
+        // capture render the presentation the live path renders — and lookAtLH cannot
+        // construct a basis from coincident eye/aim, which happens while every target is
+        // dead, so that case keeps the camera's own matrix too.
+        const glm::mat4 viewMatrix = app.matchAlpha == 1.f || frameView.camera.eye == target
             ? view.camera.view_matrix()
             : glm::lookAtLH(frameView.camera.eye, target, glm::vec3(0.f,1.f,0.f));
         // Each view uses its OWN cell aspect, which is D8's automatic-aspect rule applied
@@ -5363,7 +5397,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     const int ticks = capturing ? 1
                     : (app->battlePaused ? 1
                                          : app->logicClock.advance(app->frames > 1 ? delta : 0.0));
-    app->matchAlpha = capturing ? 1.f : app->logicClock.alpha();
+    app->matchAlpha = matchAlphaFor(*app, capturing);
     for (int tick = 0; tick < ticks; ++tick) {
         ++app->logicTicks;
         for (int p = 0; p < 4; ++p) app->tickInput[p] = app->pendingInput[p].consume();
