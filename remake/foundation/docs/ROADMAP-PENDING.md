@@ -1809,3 +1809,72 @@ deaths, both-side bursts including through Overkill, and winner reporting).
 `fighter_script_test` (576 checks), `fixed_step_test` and `stage_movement_test` moved
 their stale expectations to the recovered rules. Windows/web rebuilds have not been
 run for this update.
+
+## Controller lifetime across a scene swap (issue #46) — 2026-10-06
+
+`std::bad_alloc` at the start of a second match. The reporter's core (coredumpctl
+563299) faults in `xm::Controller::evalLocal` -> `operator new`: `nf` came out as
+66584576 and the request as 0x5555555555555580 bytes. That is not an out-of-memory
+condition — it is a `Controller::model_` pointing into a freed scene, whose
+`frames` vector header read as float data.
+
+Mechanism, all in the port's own structures: `Controller::model_` is a raw
+`const Model*` (`assets/xmodel.h:238`); `initMatch` binds the fighters' controllers
+to `&app.scene.models[rigs[i]].model` (`src/main.cpp:2259-2261`), where `rigs[i]` is
+the i-th `role == "character"` model — an index that moves with the stage;
+`initScene` replaces the whole scene (`:3522`) and `app.controllers.resize(...)`
+(`:3570`) only constructs and destroys entries, so a controller bound by an earlier
+round survived the swap still naming the freed `Model`; `advanceAnimation`
+(`:3855-3856`) then evaluates every controller with a non-null model. Measured with
+the front-end rematch recipe: match 1 (`stage04`) binds rigs 8/10, match 2
+(`stage15`/`stage21` by the stage roll) binds 7/9, and the stale pair is dereferenced
+on the next tick. Both failure modes are the same defect: the reporter's
+`std::bad_alloc` and a plain SIGSEGV, depending on what the allocator put back.
+
+Fix: `initScene` clears every controller binding before it replaces the scene
+(`:3510-3519`, `Controller::bind(nullptr)`). The invariant it restores: at every
+point `advanceAnimation` can run, a controller's `model_` is null or names a model of
+the CURRENT `app.scene.models`. Deliberately unchanged: the `advanceAnimation` model
+check itself — turning it into a silent skip would hide the next instance of this
+defect instead of fixing it.
+
+Neighbours checked, no second live instance: `app.worlds` is truncated by its own
+`resize` and then rewritten for every index of the new scene by the pose loop
+(`:3574-3584`; `Model::evalPose` resizes and fills the whole vector), so it cannot
+hand a stale pose to `buildPalette`; `app.match` and `app.matchRig` are written
+together by `initMatch` and the skip test reads only the first `fighterCount`
+entries; `app.modelMatrices` and the `sm.attachFrame` lookups (`:3590-3599`) are
+rebuilt per scene and bounds-checked. `--versus` binds no controller at all, and the
+standalone `--match` pause rematch (`:1277`) calls `initMatch` against the *same*
+scene, so nothing is freed there. Residual: between the swap and that same call's
+`initMatch`, the previous `Match` still holds raw model/controller pointers — unreached
+today because nothing ticks a match inside `initScene`, and the structural answer is
+for the scene to own its controllers and match rather than for `App` to index them
+alongside.
+
+Regression guard: `tests/controller_scene_lifetime_test.cpp` (registered with ctest;
+skips with exit 77 without the install, like the capture tests). It compiles
+`src/main.cpp` into its own TU to drive the real `initScene`/`initMatch` over
+`stage04` -> `stage15` -> `stage02`, asserts the invariant after each swap and then
+runs `advanceAnimation` once per swap. It FAILS against the pre-fix tree (controllers
+8/10 still naming the freed `stage04` scene) and passes with the fix. Limits, stated
+rather than implied: it needs the game install; it stops at `initScene`'s renderer
+stage (no WebGPU device is needed — the whole controller half runs before that); and
+it cannot observe the windowed path. Captures cannot see this class at all:
+`capturing` is `!opts.out.empty()` (`:4943`) and `advanceAnimation` runs only
+`if (!capturing)` (`:5018`), so every `--out`/`--headless` recipe skips the crashing
+function — the blind spot issue #39 owns.
+
+Verified on 2026-10-06 (Linux, RADV, four-view battles at ~180 fps): the non-capturing
+windowed recipe (`--screen=title --local-players=4 --no-devices
+--script=tests/scripts/frontend-2v2-rematch.txt`) died with `std::bad_alloc`/SIGABRT
+at the second scene swap before the fix, and after it ran round 1 (`stage04`) and
+round 2 (`stage21`) through their round-over and a third round (`stage01`) past its
+own swap, with no crash. That recipe cannot end by itself — its script stops at logic
+tick 14688 and the result screen needs confirms no synthetic pad sends outside the
+selection screen, while `--frames` disables the pause path (`battlePauseAvailable`) —
+so the terminating form of the same command adds `--frames=42000`: `RESULT: ok`,
+14965 logic ticks, 42000 frames in 239 s. A 5600-frame headless capture of the same
+recipe (which crosses the second swap and, before the fix, completes without
+crashing) is byte-identical before and after the change, so no capture recipe moves.
+`ctest` went from 45 to 46 tests, all passing; the MinGW Windows cross-build passes.
