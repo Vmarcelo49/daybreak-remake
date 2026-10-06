@@ -40,7 +40,7 @@ that these screens or their audio do not exist.
 | G1 | Real-asset versus and live match executed in a browser | Hardware GPU and usable browser screenshots remain unverified |
 | G2 | Unverified | No macOS hardware available |
 | G3 | Re-measured for the issue #23 release gate: **165 pass, 43 known flags, 0 pipeline failures** (16 characters × 13 stages = 208 runs) | Existing install gaps remain and are unchanged: stage05/stage15 miss 4 dust textures on every other character and `kasai` misses its `g` texture on every stage. The old note here — "two roster characters (Satoko, item 008; Takano, item 011) currently fail the loud gear-up join" — is STALE and was retired by E8: all 46 selections launch |
-| #12 | One view per human controller: its own camera, cell and HUD values, match still stepped once; recovered one/two/four-cell layouts, viewport + scissor per view, per-view marker projection | Three-human layout is the original's four-cell grid with an empty cell (port policy for the placeholder); non-Linux execution unverified. Physical pads and interactive resize/fullscreen were the other two gaps: the port's own Options screen now drives a resolution change and a fullscreen toggle on both Wayland and X11 (nested compositor, `[display]` lines in `docs/RELEASE-CHECKLIST.md` §5), but a compositor-side mouse drag on the window edge is still untested and no run has driven a physical pad — the pad attached to the gate machine perturbed runs until `--no-devices` was added, which is why the instrument exists — `docs/SPLIT-SCREEN.md` |
+| #12 | One view per human controller: its own camera, cell and HUD values, match still stepped once; recovered one/two/four-cell layouts, viewport + scissor per view, per-view marker projection | Three-human layout is the original's four-cell grid with an empty cell (port policy for the placeholder); non-Linux execution unverified. Physical pads and interactive resize/fullscreen were the other two gaps: the port's own Options screen now drives a resolution change and a fullscreen toggle on both Wayland and X11 (nested compositor, `[display]` lines in `docs/RELEASE-CHECKLIST.md` §5), but a compositor-side mouse drag on the window edge is still untested and no run has driven the attached physical pad — the pad attached to the gate machine perturbed runs until device isolation was added (issue #29: a verification run ignores physical devices by default, `--devices` asks for them back, an unfocused window takes no input) — `docs/SPLIT-SCREEN.md` |
 | #23 | Release gate: the checklist in `docs/RELEASE-CHECKLIST.md` demonstrates two humans (1v1), one human with COM and four humans (2v2) through three rounds each, the 46-selection sweep, the character × stage texture matrix, Wayland/X11, 30/60/high-refresh pacing, resize/fullscreen and an eight-round stability run | Three release-blocking defects were found and fixed by the gate (the 1v1 result screen never loaded; a rematch submitted released vertex buffers and aborted; rematch rounds diverged from round 1). Still unverified, and named as such in the checklist: a second GPU vendor, physical controllers, hardware audio listening, other distributions and an interactive compositor-side resize |
 
 Implementation lives in `src/ui/screen_select.*`, `screen_stage_select.*`,
@@ -1677,7 +1677,10 @@ settings, the display callbacks print what a fullscreen/resolution request
 actually did, and `--no-devices` keeps a verification run off physical input
 devices — SDL reports a connected pad whether or not the window has focus, and
 the pad attached to the gate machine moved menus and changed a HUD capture
-until the host suite and the demo-driving tools stopped reading devices.
+until the host suite and the demo-driving tools stopped reading devices. Issue
+#29 then made that the *default* for a verification run (the obstruction was
+opt-in, so any new recipe silently got contaminated results), added `--devices`
+to ask for the devices back, and made an unfocused window take no input.
 
 Still open, and stated as such in the checklist: a second GPU vendor, physical
 controllers, hardware audio listening, other distributions, an interactive

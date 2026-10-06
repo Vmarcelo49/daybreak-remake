@@ -380,8 +380,10 @@ and validated before the front end starts; delete the file to reset. See
 ## Not here yet
 
 Story video decoding remains an explicit stub. Live-pad and browser-gesture
-verification remain open (a pad attached to the gate machine perturbed runs
-until `--no-devices` existed; no run has driven a pad deliberately). The
+verification remain open: a pad attached to the gate machine perturbed runs
+until device isolation existed (issue #29 — a verification run ignores physical
+devices by default and an unfocused window takes no input), and no run drives
+that attached pad by hand; the pad-facing runs use SDL's virtual pad. The
 four-fighter battle path builds and passes the Linux test suite, and the release
 gate's four-human 2v2 completes three consecutive rounds with its VS/result
 presentation, per-view HUD markers and four-row report
