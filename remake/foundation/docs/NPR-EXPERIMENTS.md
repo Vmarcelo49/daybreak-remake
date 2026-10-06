@@ -250,7 +250,12 @@ pose; open them side by side.
    **`.../I_outline_half.png`** — the outline width, with `--toon` on.
 8. **`.../A_toon_on_stack.png`** — the recovered row and the stack together, which is what
    the recommended state would actually look like.
-9. **Gameplay distance** — the composed stack at 960×540 in a scripted versus:
+9. **Gameplay distance** — `remake/tests/npr-evidence/captures/GAMEPLAY_vs_off.png` vs
+   `.../GAMEPLAY_vs_stack.png`: the same scripted versus frame at 960×540 with the stack
+   off and on. This is the read that decides whether the stack is art or a filter, and it
+   is the one to judge the recommendation by. (Regenerate with the command below; this
+   capture IS deterministic — md5 `b6c2ded7` / `b6f7fea9` — unlike the 4-view battle
+   capture the identity table calls out.)
 
 ```bash
 cd remake/foundation/build/linux
