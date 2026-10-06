@@ -605,3 +605,35 @@ Its prediction held: front-end script ticks key on `logicTicks` with `frontendMa
 edit.** The four runs' final captured frames are also byte-identical before/after (`2483c3aa…` 4p,
 `8cc49e6c…` 1v1 and 2v2, `b813155d…` com). Its device-free test **fails when the black quad is
 temporarily re-added**, so it is not vacuous.
+
+## Round 14 — #47 merged, and a rebase near-miss worth remembering
+
+**#47 is the batch's biggest UX fix**: the pre-round countdown now draws over the live battle. The
+issue's part (b) was wrong — the match is *already* built at the VS→Battle hand-over, so nothing was
+reordered; the real cause was that `screensMode` drew the UI screen alone with `matchMode` false, so
+the arena existed and was **never rendered** under the countdown's opaque quad. Verified on the merged
+tree: ctest 53/53, countdown frames **99.20 %** (610) and **99.33 %** (730) non-black against
+**0.93 % / 0.72 %** before, and the frame shows the arena, both fighters, the roster captions and the
+"3" over them. All four gate ladders tick-for-tick identical, so §3.1-§3.3 are untouched.
+
+### The rebase lesson (this is the one to carry forward)
+
+**#47 extracted the per-view camera/HUD block out of `tickMatch` into `updateMatchViews()`, and its
+base predated #51.** Rebasing therefore presented #51's fix as a *deletion*: the conflict was a
+120-line "ours" body against a one-line "theirs" call, and taking it wholesale would have silently
+restored `view.camera.cycle_target(true)` and reverted #51 — while looking like a clean refactor.
+It was caught by grepping for `cycle_target` **after** resolving, not by reading the conflict.
+
+**Rule for every future rebase of a branch that predates merges to the same function: after
+resolving, grep for the specific identifiers the newer merges introduced** (`cycle_target`,
+`followed=`, `hudRingSecondCellColumn`, `resolveBootOpening`, …) rather than trusting that the
+conflict markers captured every change. A refactor-shaped conflict can swallow a semantic fix.
+
+### Two open questions for the human (from #47)
+
+1. **The arena camera now converges during the countdown**, so the old camera sweep-in on the first
+   battle frame is gone, and front-end battle captures past the countdown are deliberately not
+   byte-identical (frame 800: 905992 px vs 906168 px). Keep it, or advance the camera only in the
+   last N countdown ticks?
+2. **The battle HUD is still absent during the countdown** (its first frame is the round's first
+   tick). One condition on the HUD pass if it should be up.
