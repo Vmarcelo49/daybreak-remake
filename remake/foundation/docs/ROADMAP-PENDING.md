@@ -1210,6 +1210,27 @@ does with it, and what is still open.
   `data/directX/toon.cnv`, so the toggle is inert there until the pack includes it — the
   same "no game data" path as rule 4, not a silent substitution.
 
+### Issue #25 — the NPR experiment harness (2026-10-05) — DONE, OPT-IN
+
+Issue #25 is an experiment issue: it asks which modern anime/NPR techniques suit Daybreak,
+and its deliverable is controlled A/B evidence plus a recommendation, not a new art style.
+The harness landed as `--npr=<spec>` (one modifier per experiment: band curves, shadow
+tint, character key light, secondary lighting normals, generated shadow mask, stylized
+specular, rim, outline width) plus `--pose-step=<n>` and `--bench=<n>`. Everything is
+draw-time state on draws that already exist, and **`--npr` is off by default: the bind-pose
+capture with no flag and with `--npr=off` is byte-identical to the pre-#25 binary**
+(md5 `eb191e0f`), which `tests/npr_experiments.py` pins along with the specific visual
+property of every technique. The experiments take a second vertex entry point (`vs_npr`)
+rather than a branch inside `vs_main`, because a branch — or a `select` — changes how the
+driver compiles the unmodified path and the OFF frame moved by a pixel when that was tried.
+The secondary lighting normal is built once at upload from the bind-pose geometry
+(`src/render/npr_normals.h`, device-free) and rides its own vertex stream, so no existing
+vertex stride changes. Full evidence, per-arm cost, the authoring gaps (the generated mask
+and the generated normals are placeholders for authored data), the four experiments that
+were deliberately **not** run (J stepped pose, K unlit VFX, L impact presentation, M
+stage-aware colour) and the recommendation: `foundation/docs/NPR-EXPERIMENTS.md`; captures:
+`tests/npr-evidence/`.
+
 ### Row 1 — shadows (`DAT_006cfcea`) — IMPLEMENTABLE, NOT A BLOB
 
 * **Read site.** `FUN_006396f0:115-119`: with the toggle on, the view loop calls

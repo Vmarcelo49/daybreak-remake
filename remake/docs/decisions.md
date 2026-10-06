@@ -343,3 +343,32 @@ comments — when a decision changes.
   process", and the freeze has to be the authoritative step rather than a rendering trick,
   or timers keep running behind a still picture.
 
+## D12 — the NPR experiments are an opt-in harness beside the recovered toon row (2026-10-05)
+
+- Issue #25 asks for controlled A/B evidence about modern anime/NPR techniques, not for an
+  art direction. The port answer is one switch family, `--npr=<spec>`, in which every
+  technique is its own modifier and every modifier defaults to off. Nothing it adds is
+  recovered: the curves, tints, key light, secondary normals and generated shadow mask are
+  labelled as port-side experiments at their definitions, and the recovered toon row
+  (`--toon`, issue #21) is untouched — `--npr` composes with it, never edits it.
+- **The identity rule.** With no `--npr` flag, the renderer must produce the bytes it
+  produced before the harness existed. That is why the experiments take a second vertex
+  entry point (`vs_npr`) instead of a branch inside `vs_main`: a branch, or even a
+  `select`, changes how the driver compiles the unmodified path, and the OFF frame moved by
+  a pixel when that was tried. It is also why the secondary lighting normal rides its own
+  vertex stream rather than a new field in `xm::Vertex` (which moved a pixel the moment it
+  was added) and why the outline-width scale is folded into the recovered constant rather
+  than multiplied after it. `tests/npr_experiments.py` pins the identity on every run.
+- **Eligibility.** Only character and weapon surface draws are shaded by the experiments,
+  the same rule the recovered toon technique uses; a stage-only frame is byte-identical
+  with the whole stack on and off.
+- **Authoring.** The shadow mask and the secondary normals are *generated* from the
+  bind-pose geometry, because the install ships neither. They are placeholders for authored
+  data, and the recommendation in `foundation/docs/NPR-EXPERIMENTS.md` says so: the
+  switches are worth keeping, the generated data is not the final answer.
+- Verification: 45 host tests including the new `npr_experiments` rendered-frame pin and
+  the device-free `npr_normals_test`; Linux, Windows cross-build and web builds succeed.
+  Evidence, per-arm cost and the explicit "what the human should look at" list:
+  `foundation/docs/NPR-EXPERIMENTS.md`, captures under `remake/tests/npr-evidence/`.
+- Rationale: an experiment issue needs an instrument, and an instrument that changes the
+  baseline cannot measure it.

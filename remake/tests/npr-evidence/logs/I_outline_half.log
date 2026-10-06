@@ -1,0 +1,20 @@
+=== daybreak foundation ===
+video driver : headless (no window, no surface)
+adapter      : AMD Radeon RX 9070 XT (RADV GFX1201) [Vulkan]
+assets       : 6/6 .dat bundle(s) from /home/marcelo/Projetos/dbd-worktrees/issue-25/Higurashi-Daybreak
+[scene] /home/marcelo/Projetos/dbd-worktrees/issue-25/Higurashi-Daybreak/data/rena: 1 model(s), 4 meshes, 1964 vertices, textures 12 resolved / 0 missed
+scene /home/marcelo/Projetos/dbd-worktrees/issue-25/Higurashi-Daybreak/data/rena: 1 model(s), 4 meshes, 1964 vertices, 39 palette matrices
+bounds [-47 0 -12] .. [47 140 26]  radius 87
+camera auto at [107 129 -116] looking at [0 70 7] (distance 173)
+far plane reach 246 units (sky dome included)
+draws: 24 (12 textured, 0 untextured, 0 decals, 0 effects, 12 outlines), 5 GPU textures
+npr normals : 4 mesh(es), 1472 vertices with a secondary normal
+coverage: 478988 px of 480000 (99.79%)  luminance 0.021..1.000
+wrote /tmp/npr/ev/I_outline_half.ppm
+
+-- render frame timing (wall-clock delta) --
+frames      : 3 in 0.010 s
+delta avg   : 0.002 ms (595238.1 fps)
+delta min   : 0.001 ms
+delta max   : 0.004 ms
+RESULT: ok
