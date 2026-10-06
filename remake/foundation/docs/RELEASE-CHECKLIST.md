@@ -760,7 +760,7 @@ numbers to record per scenario (from the demo's own summary):
 | 1v1, three rounds | §3.1 | 15500 ticks | 10.690 s (pre-#30; **5.273 s** after it) | `peak=2/128`, `dropped=0`, `badEffectId=0` |
 | COM, three rounds | §3.2 | 15500 ticks | 12.110 s | `peak=2/128`, `dropped=0` |
 | 2v2, three rounds | §3.3 | 15500 ticks | 28.210 s | `peak=3/128` (`4/128` in rounds 2-3), `dropped=0` |
-| 2v2, eight rounds | `--local-players=4 --script=<the §3.3 script extended to eight rematch rounds> --frames=40000` | 40000 ticks | 56.694 s | `peak=6/128`, `spawned=124`, `expired=123`, `dropped=0` (measured before issue #32 — see below) |
+| 2v2, prolonged | `--local-players=4 --script=tests/scripts/frontend-2v2-longrun.txt --frames=40000` | 40000 ticks | 56.694 s | `peak=4/128`, `spawned=93`, `expired=93`, `dropped=0` (re-measured 2026-10-06 after #32) |
 
 (The wall times are from the demo's own summary on a shared machine — the
 owner's game was running — so treat them as an upper bound on the capture cost,
@@ -778,10 +778,21 @@ counters are the pre-#32 ones. The bound that row checks is unaffected — the s
 round 2 measured `spawned` 124 → 82, `peak` 6 → 4, `dropped=0`, and the peak can only fall
 when the shot cards leave the set.
 
-The eight-round run is the prolonged-match stability check: eight
+The prolonged run is the long-match stability check: repeated
 `match: round over` lines, `RESULT: ok`, no crash, and a bounded FX
-population (`peak=6/128` live cards, `dropped=0`, `badEffectId=0`) — the
-issue #17 acceptance number. Sampled `/proc/<pid>/status` during that run:
+population (`dropped=0`, `badEffectId=0`) — the issue #17 acceptance number.
+
+**It reaches FIVE rounds, not eight, and the script says so.** This row used to
+name a script that was never committed ("the §3.3 script extended to eight
+rematch rounds"), so its counters were unreproducible by anyone else. The
+committed `frontend-2v2-longrun.txt` reaches five complete rounds in 40000
+frames, with rounds 1-3 reproducing the §3.3 ladder exactly. **Eight is not
+reachable by extending the taps**: the replay is provably right for rounds 1-3,
+and from round 4 the selection screen stops advancing on time-shifted input
+because the menu navigation is **state-dependent** — a fixed `5xJUMP + 6xDOWN +
+JUMP` advances rounds 2 and 3 but not 4+. A true eight-round run needs per-round
+menu handling in the synthetic pad, which is a follow-up rather than something
+to fake here. Sampled `/proc/<pid>/status` during that run:
 peak `VmRSS` ≈ 380 MB, peak thread count 14, no upward trend across rounds.
 
 **The COM scenario's cost was measured, named and fixed (issue #30).** It used to
