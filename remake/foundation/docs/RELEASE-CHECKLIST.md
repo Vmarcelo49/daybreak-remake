@@ -123,12 +123,27 @@ jobs stay on the version-bump path: a `gate` job diffs the push and runs them wh
 
 ## 3. The acceptance runs (deterministic, real assets)
 
-All three use the committed scripts under `tests/scripts/`, run from
+All four use the committed scripts under `tests/scripts/`, run from
 `remake/foundation/`. They are **capture runs**: `--headless --out --frames`
 steps one logic tick per rendered frame (the demo prints
 `logic: N ticks, explicit capture cadence`), which is what makes the tap
 ticks in the scripts exact and the run reproducible. Run them with a warm
 page cache; each takes seconds to a minute.
+
+The four are §3.1 (§3.1's 1v1), §3.2 (com), §3.3 (2v2) and the four-player
+loop, whose command is:
+```bash
+./build/linux/foundation_demo --install=<game-dir> --screen=title \
+  --local-players=4 --script=tests/scripts/frontend-4p.txt \
+  --headless --out=/tmp/rel-4p.ppm --size=1280x720 --frames=9600
+```
+
+**Hashes quoted for these runs are the first eight hex digits of `sha256sum` of
+the written PPM.** An `md5sum` prefix of the same file is different — for the
+1v1 and 2v2 gates, sha256 `8cc49e6c` against md5 `3e4e892a` — so never compare
+one against the other. (This convention was implicit until it cost two readers
+an afternoon; the two digest families were being mixed with only the md5 ones
+labelled.)
 
 ### 3.0 Why a verification run ignores the physical devices (and when to ask for them)
 
@@ -395,8 +410,13 @@ is byte-identical to no flag at all (`f80d0368`), and a value outside `[0,1]` is
 rejected with `RESULT: --match-alpha takes a fraction in [0,1]`. **With the flag
 absent nothing changes**: the four §3 gates re-run after this landed produced the
 same `RESULT: ok` ladders and byte-identical final captures (4p `2483c3aa`, com
-`b813155d`, and 1v1/2v2 share `8cc49e6c` because both end on the same selection
-screen).
+`b813155d`, and 1v1/2v2 share `8cc49e6c`). The sharing is real but the obvious
+reason for it is not: 1v1 and 2v2 are byte-identical because both end on the
+**stage-select page** of the selection screen, while com's one-player run ends
+on the **character-panel page** (74.8 % of pixels differ between the two) and
+the 4p gate ends on the **result screen** at tick 9520. Why a one-player run
+lands on a different page was not chased — the observation is verified, the
+causal clause is not.
 
 **The manual floor stays.** The test drives the product's own live composition,
 but it is not a window: no compositor, no real frame pacing, no physical device
@@ -629,6 +649,7 @@ for p in 2 1 4; do                                        # §3
   ./build/linux/foundation_demo --install=<game-dir> --screen=title \
     --local-players=$p --script=tests/scripts/frontend-$s-rematch.txt \
     --headless --out=/tmp/rel-$s.ppm --size=1280x720 --frames=15500
+  sha256sum /tmp/rel-$s.ppm   # the digest §3 quotes (NOT md5sum)
 done
 ```
 
