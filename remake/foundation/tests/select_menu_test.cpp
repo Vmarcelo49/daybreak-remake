@@ -9,13 +9,25 @@
 int main() {
     int failures=0;
     auto check=[&](bool value,const char* name) { if(!value) {std::fprintf(stderr,"FAIL %s\n",name); ++failures;} };
+    // The character phase's cursor slides while a direction is held (issue #41, FUN_00409340
+    // :239-244): 4.0 units/tick horizontally, 3.0 vertically, so reaching a character takes as
+    // many ticks as the distance needs — Satoko sits 36 units up from Rena's seed, and only
+    // from the 15th tick (45 units) is she inside the recovered 30-unit select radius. The
+    // hold carries the press edge on its first tick and the held state after it, which is what
+    // main.cpp's front-end loop builds.
+    auto hold=[&](ui::SelectMenu& menu,ui::ScreenInput in,int ticks) {
+        for (int i=0;i<ticks;++i) {
+            if (i>0) in.up=in.down=in.left=in.right=false;
+            menu.update(in);
+        }
+    };
     ui::FrontendState state;
     ui::SelectMenu menu(state);
     ui::ScreenInput confirm; confirm.confirm=true;
     ui::ScreenInput cancel; cancel.cancel=true;
-    ui::ScreenInput up; up.up=true;
-    ui::ScreenInput down; down.down=true;
-    ui::ScreenInput right; right.right=true;
+    ui::ScreenInput up; up.up=true; up.upHeld=true;
+    ui::ScreenInput down; down.down=true; down.downHeld=true;
+    ui::ScreenInput right; right.right=true; right.rightHeld=true;
     ui::FrontendState costumeState;
     ui::SelectMenu costumeMenu(costumeState);
     costumeMenu.update(confirm);
@@ -23,13 +35,14 @@ int main() {
     for (int i=0;i<4;++i) costumeMenu.update(right);
     check(costumeState.slots[0].costume==4,"Rena's fifth costume is selectable");
     costumeMenu.update(cancel);
-    costumeMenu.update(right); costumeMenu.update(up); costumeMenu.update(up);
+    hold(costumeMenu,right,12);   // (0,216) -> (48,216)
+    hold(costumeMenu,up,60);      // -> (48,36): Kasai, whose costume table has one cell
     check(costumeState.slots[0].character==12 && costumeState.slots[0].costume==0,
           "changing to Kasai resets the out-of-range costume");
     menu.update(confirm);
     check(menu.phase()==ui::SelectPhase::Character,"team claims panel");
-    menu.update(up);
-    check(state.slots[0].character==3,"diamond nearest vertical cell");
+    hold(menu,up,15);
+    check(state.slots[0].character==3,"a held direction slides the cursor onto the next character");
     menu.update(confirm);
     menu.update(up);
     check(state.slots[0].weapon==2,"weapon wraps");
@@ -64,10 +77,13 @@ int main() {
     frameMenu.updateFrame(simultaneous);
     check(frameMenu.owner(0)==0 && frameMenu.owner(2)==2,"simultaneous claims stay separate");
     simultaneous.players={};
-    simultaneous.players[0].up=true;
-    simultaneous.players[2].right=true;
-    frameMenu.updateFrame(simultaneous);
-    check(frameState.slots[0].character==3 && frameState.slots[2].character!=3,"simultaneous directions are independent");
+    simultaneous.players[0].up=true; simultaneous.players[0].upHeld=true;
+    simultaneous.players[2].right=true; simultaneous.players[2].rightHeld=true;
+    for (int i=0;i<12;++i) frameMenu.updateFrame(simultaneous);   // 12 right ticks = one cell
+    simultaneous.players[0].up=false; simultaneous.players[2].right=false;
+    for (int i=0;i<3;++i) frameMenu.updateFrame(simultaneous);    // the holds continue: 15/15
+    check(frameState.slots[0].character==3 && frameState.slots[2].character==4,
+          "simultaneous directions are independent");
     simultaneous.players={};
     simultaneous.players[0].cancel=true;
     simultaneous.players[2].confirm=true;
@@ -88,9 +104,9 @@ int main() {
     check(randomA.randomState!=42,"COM autofill advances random stream");
     // Issue #13: the four pad-less controllers of a --local-players run walk the selection
     // with the synthetic menu pattern and open the stage page with four DISTINCT characters
-    // and their own controllers. The picks are the pattern's documented ones — the diamond's
-    // 0/2/4/1 neighbours, which are the roster entries whose slot-0 items join on this install
-    // (Satoko, Oishi, Akasaka, Irie, Chie, Hanyu and Takano fail that join today).
+    // and their own controllers. The picks are the pattern's documented 0/2/4/1
+    // (Rena/Keiichi/Rika/Mion), each with weapon slot 0 — the pattern holds its direction for
+    // the ticks the free cursor needs to reach that cell (issue #41).
     ui::FrontendState rosterState;
     ui::SelectMenu rosterMenu(rosterState);
     ui::SelectAction last = ui::SelectAction::None;
@@ -103,6 +119,8 @@ int main() {
             auto& buttons = frame.players[c];
             buttons.up = pad.up; buttons.down = pad.down;
             buttons.left = pad.left; buttons.right = pad.right;
+            buttons.upHeld = pad.up; buttons.downHeld = pad.down;
+            buttons.leftHeld = pad.left; buttons.rightHeld = pad.right;
             buttons.confirm = pad.confirm; buttons.cancel = pad.cancel;
         }
         last = rosterMenu.updateFrame(frame);
@@ -139,6 +157,8 @@ int main() {
             auto& buttons = frame.players[c];
             buttons.up = pad.up; buttons.down = pad.down;
             buttons.left = pad.left; buttons.right = pad.right;
+            buttons.upHeld = pad.up; buttons.downHeld = pad.down;
+            buttons.leftHeld = pad.left; buttons.rightHeld = pad.right;
             buttons.confirm = pad.confirm; buttons.cancel = pad.cancel;
         }
         rematchAction = rematchMenu.updateFrame(frame);

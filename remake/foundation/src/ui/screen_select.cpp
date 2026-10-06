@@ -4,8 +4,8 @@
 #include "ui/frontend_launch.h"
 #include "ui/hud_atlas.h"
 #include "ui/screen_stage_select.h"
+#include <algorithm>
 #include <cstdio>
-#include <limits>
 
 namespace ui {
 namespace {
@@ -82,8 +82,16 @@ SelectAction SelectMenu::update(const ScreenInput& in, int c) {
                 return SelectAction::Changed;
             }
             if (in.confirm && owner(panel(c)) < 0 && slot.character < 0) {
+                // FUN_00409340:114-127: the team confirm claims the panel, puts it on
+                // character 0 and seeds the free cursor (+0x3cd8/+0x3ce8) onto that
+                // character's own position — which is why the character phase never opens
+                // without a character under the cursor, and why the magnet's <20 window then
+                // holds the panel there. Issue #45's empty-on-entry selection therefore needs
+                // no special seed case: every fresh panel takes this path.
                 phase = SelectPhase::Character;
                 slot.character = 0;
+                cursorX_[c] = kSelectRosterX[0] * 48.f;
+                cursorY_[c] = kSelectRosterY[0] * 36.f;
                 return SelectAction::Changed;
             }
         }
@@ -92,53 +100,91 @@ SelectAction SelectMenu::update(const ScreenInput& in, int c) {
     }
     auto& slot = state_.slots[panel(c)];
     if (phase == SelectPhase::Character) {
-        if (in.cancel) { slot = FrontendSlot{}; phase = SelectPhase::Team; }
-        else if (in.confirm) {
-            // The penalty game's costume (issue #20): a player who earned the penalty title last
-            // round has their costume forced to the character's own penalty cell
-            // (FUN_00409340:165-172 reads DAT_006b72a0[character]; 0 means that character has
-            // none). The original also marks the panel forced/auto-ready there — that part is
-            // NOT implemented, so the player can still change this costume. Session state only:
-            // penaltyDecided lives in FrontendState and is never persisted.
-            const int penalty = penaltyCostume(slot.character);
-            if (penalty >= 0 && state_.penaltyDecided[panel(c)]) slot.costume = penalty;
-            phase = SelectPhase::Weapon;
-        }
-        else if (in.up || in.down || in.left || in.right) {
-            // DAT_006b71d0/7210 form a diamond, not a rectangular 4x4 roster.
-            const int dx = in.left ? -1 : in.right ? 1 : 0;
-            const int dy = in.up ? -1 : in.down ? 1 : 0;
-            int best = slot.character, score = std::numeric_limits<int>::max();
-            for (int i=0;i<16;++i) {
-                int x = kSelectRosterX[i]-kSelectRosterX[slot.character];
-                int y = kSelectRosterY[i]-kSelectRosterY[slot.character];
-                if (x*dx+y*dy <= 0) continue;
-                int distance = x*x+y*y + 4*(x*dy-y*dx)*(x*dy-y*dx);
-                if (distance < score) { score = distance; best = i; }
+        if (in.cancel) { slot = FrontendSlot{}; phase = SelectPhase::Team; return SelectAction::Changed; }
+        if (in.confirm) {
+            // PORT RULE (issue #41): the cursor may sit in empty space with character == -1,
+            // and a panel with nothing selected must not confirm its way forward. The original
+            // instead rolls a RANDOM character for the empty panel (FUN_00409340:305-317), and
+            // this port's version of that roll is the COM autofill the stage page applies to
+            // panels that are still unset — so refusing here leaves the panel for it. The
+            // press itself still plays the confirm SE, as the original's unconditional
+            // FUN_0064aed0(0) at :304 does.
+            if (slot.character >= 0) {
+                // The penalty game's costume (issue #20): a player who earned the penalty title
+                // last round has their costume forced to the character's own penalty cell
+                // (FUN_00409340:165-172 reads DAT_006b72a0[character]; 0 means that character has
+                // none). The original also marks the panel forced/auto-ready there — that part is
+                // NOT implemented, so the player can still change this costume. Session state only:
+                // penaltyDecided lives in FrontendState and is never persisted.
+                const int penalty = penaltyCostume(slot.character);
+                if (penalty >= 0 && state_.penaltyDecided[panel(c)]) slot.costume = penalty;
+                phase = SelectPhase::Weapon;
             }
-            slot.character = best;
-            slot.costume %= kSelectCostumes[best];
+            return SelectAction::Changed;
         }
-    } else {
-        if (in.left || in.right) slot.costume = cycle(slot.costume,in.left ? -1 : 1,kSelectCostumes[slot.character]);
-        if (phase == SelectPhase::Weapon) {
-            if (in.up || in.down) slot.weapon = cycle(slot.weapon,in.up ? -1 : 1,slot.character<14 ? 3 : 2);
-            if (in.confirm) phase = SelectPhase::Hypermode;
-            else if (in.cancel) { phase = SelectPhase::Character; slot.weapon = 0; }
-        } else if (phase == SelectPhase::Hypermode) {
-            if (in.up || in.down) slot.hypermode = cycle(slot.hypermode,in.up ? -1 : 1,3);
-            if (in.confirm) { phase = SelectPhase::Controller; slot.controller = c; }
-            else if (in.cancel) phase = SelectPhase::Weapon;
-        } else if (phase == SelectPhase::Controller) {
-            if (in.up || in.down) slot.controller = slot.controller == 4 ? c : 4;
-            if (in.confirm) {
-                // A controller may drive one panel, FUN_00409340 +0x3ca0.
-                if (slot.controller != 4)
-                    for (int i=0;i<4;++i) if (i!=panel(c) && state_.slots[i].controller==c)
-                        state_.slots[i].controller=4;
-                slot.ready=true; phase=SelectPhase::Ready; cooldown_[c]=16;
-            } else if (in.cancel) phase=SelectPhase::Hypermode;
+        // The free cursor (FUN_00409340:232-256): a fixed RATE per call on the SIGN of the
+        // stick — 4.0/tick horizontally (0x40800000) and 3.0/tick vertically (0x40400000) —
+        // clamped to [-200,200] (0xc3480000/0x43480000) and [-60,300] (0xc2700000/0x43960000).
+        // The order of the clamps is the original's; the two axes are independent. What
+        // accumulates is the HELD direction (screen.h's `*Held` fields): the original reads the
+        // stick every call, and a press edge alone would move the cursor 4 units and hand it
+        // straight back to the magnet below.
+        const bool left = in.leftHeld, right = in.rightHeld;
+        const bool up = in.upHeld, down = in.downHeld;
+        if (left) cursorX_[c] -= 4.f; else if (right) cursorX_[c] += 4.f;
+        if (up) cursorY_[c] -= 3.f; else if (down) cursorY_[c] += 3.f;
+        cursorX_[c] = std::clamp(cursorX_[c], -200.f, 200.f);
+        cursorY_[c] = std::clamp(cursorY_[c], -60.f, 300.f);
+        // The magnet (:257-270), only while the stick is CENTRED: a cursor within 20 units
+        // (400 squared) of the currently selected character snaps exactly onto it, so a
+        // release settles on the icon it picked. A panel with no selection has nothing to
+        // snap to, which is also how the original guards it (`-1 < character`).
+        if (!left && !right && !up && !down && slot.character >= 0) {
+            const float dx = kSelectRosterX[slot.character] * 48.f - cursorX_[c];
+            const float dy = kSelectRosterY[slot.character] * 36.f - cursorY_[c];
+            if (dx * dx + dy * dy < 400.f) {
+                cursorX_[c] = kSelectRosterX[slot.character] * 48.f;
+                cursorY_[c] = kSelectRosterY[slot.character] * 36.f;
+            }
         }
+        // Selection, every call (:272-300): the 50-unit pass (2500 squared) is the fallback and
+        // the 30-unit pass (900) overrides it. Both take the FIRST icon in roster order, so one
+        // pass recording each pass's first hit is the original's two loops.
+        int outer = -1, inner = -1;
+        for (int i = 0; i < 16; ++i) {
+            const float dx = kSelectRosterX[i] * 48.f - cursorX_[c];
+            const float dy = kSelectRosterY[i] * 36.f - cursorY_[c];
+            const float distance = dx * dx + dy * dy;
+            if (outer < 0 && distance < 2500.f) outer = i;
+            if (inner < 0 && distance < 900.f) inner = i;
+        }
+        const int chosen = inner >= 0 ? inner : outer;
+        if (chosen != slot.character) {
+            slot.character = chosen;
+            if (chosen < 0) return SelectAction::None;   // empty space is silent (:294)
+            slot.costume %= kSelectCostumes[chosen];
+            return SelectAction::Changed;   // the recovered cursor SE, FUN_0064aed0(2)
+        }
+        return SelectAction::None;
+    }
+    if (in.left || in.right) slot.costume = cycle(slot.costume,in.left ? -1 : 1,kSelectCostumes[slot.character]);
+    if (phase == SelectPhase::Weapon) {
+        if (in.up || in.down) slot.weapon = cycle(slot.weapon,in.up ? -1 : 1,slot.character<14 ? 3 : 2);
+        if (in.confirm) phase = SelectPhase::Hypermode;
+        else if (in.cancel) { phase = SelectPhase::Character; slot.weapon = 0; }
+    } else if (phase == SelectPhase::Hypermode) {
+        if (in.up || in.down) slot.hypermode = cycle(slot.hypermode,in.up ? -1 : 1,3);
+        if (in.confirm) { phase = SelectPhase::Controller; slot.controller = c; }
+        else if (in.cancel) phase = SelectPhase::Weapon;
+    } else if (phase == SelectPhase::Controller) {
+        if (in.up || in.down) slot.controller = slot.controller == 4 ? c : 4;
+        if (in.confirm) {
+            // A controller may drive one panel, FUN_00409340 +0x3ca0.
+            if (slot.controller != 4)
+                for (int i=0;i<4;++i) if (i!=panel(c) && state_.slots[i].controller==c)
+                    state_.slots[i].controller=4;
+            slot.ready=true; phase=SelectPhase::Ready; cooldown_[c]=16;
+        } else if (in.cancel) phase=SelectPhase::Hypermode;
     }
     return in.confirm || in.cancel || in.up || in.down || in.left || in.right ? SelectAction::Changed : SelectAction::None;
 }
@@ -157,6 +203,8 @@ SelectAction SelectMenu::updateFrame(const ScreenInput& in, int* sound) {
         ScreenInput playerInput;
         playerInput.up=buttons.up; playerInput.down=buttons.down;
         playerInput.left=buttons.left; playerInput.right=buttons.right;
+        playerInput.upHeld=buttons.upHeld; playerInput.downHeld=buttons.downHeld;
+        playerInput.leftHeld=buttons.leftHeld; playerInput.rightHeld=buttons.rightHeld;
         playerInput.confirm=buttons.confirm; playerInput.cancel=buttons.cancel;
         const auto action = apply(playerInput,player);
         if (action == SelectAction::Stage || action == SelectAction::Back) result = action;
@@ -271,8 +319,15 @@ void SelectScreen::draw(SpriteRenderer& b) const {
         int header=phase==SelectPhase::Character?0:phase==SelectPhase::Weapon?1:phase==SelectPhase::Hypermode?3:4;
         sprite(shared_[2],{0,float(header)*32,320,32},160,16,x,y+50);
         if(phase==SelectPhase::Character) {
-            sprite(shared_[5],{float(slot.character/8)*256,float(slot.character%8)*64,256,64},128,32,x,y+90);
-            sprite(shared_[2],{owner*128.f,384,128,128},64,64,kSelectRosterX[slot.character]*48.f+400,kSelectRosterY[slot.character]*36.f+150);
+            // The nameplate exists only for a real selection: the free cursor can sit in empty
+            // space with character == -1 (FUN_00409340:294).
+            if(slot.character>=0)
+                sprite(shared_[5],{float(slot.character/8)*256,float(slot.character%8)*64,256,64},128,32,x,y+90);
+            // The marker rides the CURSOR's position, not the selected icon's (+400/+150 are
+            // the icon draw's own offsets): the two come apart by up to the 30-unit select
+            // radius, and the cursor has to stay visible while it is over empty space. PORT
+            // RULE — the marker's anchor; the positions themselves are recovered.
+            sprite(shared_[2],{owner*128.f,384,128,128},64,64,menu_.cursorX(owner)+400,menu_.cursorY(owner)+150);
         } else if(phase==SelectPhase::Controller) {
             for(int row=0;row<2;++row) sprite(shared_[4],{0,float(320+row*128),256,64},128,32,x+row*8,y+110+row*20,1,false,{1,1,1,slot.controller==(row==0?owner:4)?1.f:.5f});
         } else {

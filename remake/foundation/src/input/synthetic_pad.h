@@ -72,57 +72,70 @@ inline int syntheticMenuStartPanel(int controller) {
 
 // The SELECT-screen pattern: `tick` counts ticks since the selection screen appeared.
 // Each pad-less controller walks ITS OWN panel — Team -> Character -> Weapon -> Hypermode ->
-// Controller -> Ready (screen_select.cpp's phases) — nudges the roster cursor a different
-// number of times so the four picks are not the same character, steers its cursor to the OK
-// cell (row 0, column 2: screen_select.cpp's `panel(c) = pos%3 + pos/3*2` grid, where column
-// 2 is the action column), and then keeps confirming so the stage page, VS, the countdown and
-// the results all advance. Offsets are per controller (12 ticks apart) so the panels do not
-// race each other.
+// Controller -> Ready (screen_select.cpp's phases) — lands the roster cursor on a different
+// character per panel, steers its cursor to the OK cell (row 0, column 2: screen_select.cpp's
+// `panel(c) = pos%3 + pos/3*2` grid, where column 2 is the action column), and then keeps
+// confirming so the stage page, VS, the countdown and the results all advance. Offsets are per
+// controller (12 ticks apart) so the panels do not race each other.
 //
 // The walk runs on every select entry, because entering the select scene starts an empty
 // selection (ui::FrontendState::beginSelection, FUN_00408330:143-158): a rematch round's screen
-// is as fresh as the first round's. The nudges therefore always move the ROSTER cursor, which
-// only happens in the character phase this walk reaches; the conditional nudge they replaced
-// existed because a re-entered screen kept the previous round's picks, and its nudge then moved
-// the CURSOR instead — it pushed controller 2 onto the Back cell (`pos == 5`), whose confirm
-// leaves to the title (measured on a rematch run, which ended at the title instead of the
-// second round).
+// is as fresh as the first round's. The roster nudge therefore always moves the ROSTER cursor,
+// which only happens in the character phase this walk reaches; the conditional nudge it
+// replaced existed because a re-entered screen kept the previous round's picks, and its nudge
+// then moved the CURSOR instead — it pushed controller 2 onto the Back cell (`pos == 5`), whose
+// confirm leaves to the title (measured on a rematch run, which ended at the title instead of
+// the second round).
+//
+// The roster nudge is a HOLD, not a tap: the character phase's cursor slides at a fixed rate
+// while a direction is down (FUN_00409340:239-244 — 4.0 units/tick horizontally, 3.0/tick
+// vertically, on the SIGN of the stick) and the <20-unit magnet (FUN_00409340:257-270) pulls a
+// one-tick tap straight back onto the character it started on. Each panel holds its own axis
+// for the ticks its target needs — one diamond step is 12 ticks either way (48/4.0 = 36/3.0),
+// so a two-cell reach is 24 — and lands EXACTLY on:
+//   controller 1 -> character 2 Keiichi (one column left, one row up: 12 + 12)
+//   controller 2 -> character 4 Rika    (one column right, one row up: 12 + 12)
+//   controller 3 -> character 1 Mion    (two columns left, two rows up: 24 + 24)
+// The same four picks the one-tick version documented (0/2/4/1 = Rena/Keiichi/Rika/Mion), each
+// with weapon slot 0 — a character+weapon combo, never a bare fighter.
 inline SyntheticPadState syntheticMenuPadState(int controller, uint64_t tick) {
     SyntheticPadState s;
     if (controller < 0 || controller > 3) return s;
     const uint64_t base = 4 + (uint64_t)controller * 12;
     if (tick < base) return s;
     const uint64_t t = tick - base;
-    // Roster nudge: one sequence per controller so the four panels land on distinct
-    // characters that also GEAR UP on this install. The selection diamond's one- and
-    // two-press neighbours of character 0 are 2 (left), 3 (up) and 4 (right), then
-    // 1 (left,left), 5 (left,up) and 10 (right,right); the slot-0 item join fails loudly for
-    // Satoko (3), Oishi (8), Akasaka (9), Irie (10), Chie (11), Hanyu (14) and Takano (7)
-    // today, so the four panels take 0 Rena, 2 Keiichi, 4 Rika and 1 Mion, all verified.
-    if (t == 4 || t == 6) {
-        switch (controller) {
-            case 1: s.left = t == 4; break;
-            case 2: s.right = t == 4; break;
-            case 3: s.left = true; break;
-            default: break;
-        }
-        if (s.any()) return s;
+    // Controller 0 is the keyboard, driven by the run's own script: it never nudges. The hold
+    // comes after the team confirm at t == 0 (which opens the character phase) and finishes
+    // well before the panel walk's next confirm, so no direction is down in another phase.
+    const uint64_t holdStart = 4;
+    const uint64_t reach = controller == 3 ? 24 : 12;
+    const uint64_t holdEnd = holdStart + reach;
+    const uint64_t upEnd = holdEnd + reach;
+    if (controller >= 1 && t >= holdStart && t < holdEnd) {
+        if (controller == 2) s.right = true; else s.left = true;
+        return s;
+    }
+    if (controller >= 1 && t >= holdEnd && t < upEnd) {
+        s.up = true;
+        return s;
     }
     switch (t) {
-        case 0: case 12: case 20: case 28: case 36:   // the five panel confirms
+        // The team confirm, then the four that leave character -> weapon -> hypermode ->
+        // controller -> ready. The gap after t == 0 is the roster hold above.
+        case 0: case 60: case 68: case 76: case 84:
             s.confirm = true;
             break;
         // Cursor to the OK cell from the start cell `c + (c > 1)`. The grid's axes are
         // swapped (screen_select.cpp: left/right cycle the row, up/down the column): 1 starts
         // on row 0 column 1 (one down), 2 and 3 start on row 1 (right, then down; 2 is one
         // column further left).
-        case 56:
+        case 104:
             s.right = controller >= 2;
             break;
-        case 60:
+        case 108:
             s.down = true;
             break;
-        case 62:
+        case 110:
             s.down = controller == 2;
             break;
         default:
