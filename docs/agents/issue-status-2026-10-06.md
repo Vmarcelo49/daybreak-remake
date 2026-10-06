@@ -39,7 +39,8 @@ Base commit for the whole batch: `main` @ `a35e36d`.
 | #40 | frontend | `feat/issue-40-opening-movie` @ `dbd-worktrees/issue-40` | dispatched (vendor pl_mpeg, simple) | in progress | — |
 | #49 | hud | `fix/issue-49-ring-lock-state` @ `dbd-worktrees/issue-49` | dispatched | in progress | — |
 | #43 | frontend | `feat/issue-43-select-row-slidein` @ `dbd-worktrees/issue-43` | dispatched | in progress | — |
-| #44, #47, #50, #2, #21, #32, #33, #34, #27, #51, #48, #30, #35, #36, #4, #39, #24, #3 | — | — | queued | — |
+| #43 | frontend | `feat/issue-43-select-row-slidein` | verified + merged | **MERGED** `86a8d2f` (worker `8587239`) — **issue premise was wrong** |
+| #44, #50, #2, #21, #32, #33, #34, #27, #51, #48, #30, #35, #36, #4, #39, #24, #3 | — | — | queued | — |
 
 `main` is at **48/48 ctest** with the install and **48/48 with five tests Skipped** in a checkout
 with no game data at all (measured, not inferred — see below).
@@ -376,3 +377,28 @@ the ladder, the stages and the settings — versus which follow the OK path's ra
 **The CI path filter behaves as designed.** Pushes that touch only `docs/**` produce no workflow run
 (verified: `a39ba7e` and `33ef9be` have none), while `52c0d88`'s touch of
 `remake/foundation/docs/RELEASE-CHECKLIST.md` triggered one, green.
+
+## Round 6 — #43 merged, and the issue's premise was wrong
+
+**#43's body attributed the recovered `0.1`/`i+5` ramp to the weapon/hypermode/controller rows. It
+is not that.** The ramp drives the **16 chibi icons' entry reveal** (`FUN_004090a0:24-26` /
+`FUN_0041bae0:37-40` over the objects at `scene+0x150c+i*0xa0`, the `i%02d.bmp` chibis). The row
+slide the human reported is a *different* recovered transition, `0x3cc4`: `FUN_00409340:589-595`
+sets 300.0 on a phase change and steps 20.0/tick while > 0, and `FUN_0040b2b0:0x40c09f-0x40c0c4`
+signs it by panel column and adds it to the header, the rows, the choice sprite and the arrow. The
+worker implemented **both**, each with its own provenance, rather than the invented one — and the
+question the issue said to pin first now has an answer.
+
+**`+0x84`/`+0x88` are the sprite quad's x and y SCALE**, consumed by `FUN_00655830`
+`@0x65583f-0x6558db` as `x0 = x - pivotX*sx`, `w = srcW*sx` (and the y pair likewise).
+`FUN_0040da60` writes the pair; `FUN_00408250` writes one value into both, which is the uniform
+case the port already modelled. So `(v, 2-v)` is a scale, **not** an x-offset.
+
+**Verified by me before merging**: ctest 50 → **51**; `select_row_slidein_test` shows the stagger
+directly (`slot 0` first step at tick 6, `slot 15` at tick 21); and the **settled select frame is
+byte-identical** before and after (`sha256 367fade4197d82d7d0ba0eba77136fd2b4729f42c3a410f259ee8df207478b87`),
+so the change only affects the transition window. I closed #43 with the correction rather than
+rewriting its body.
+
+**#44's premise is confirmed correct by that finding**: it said it shares the ramp with #43, and
+the ramp *is* the chibi reveal — so #44 can reuse `ui::SelectReveal` as-is.
