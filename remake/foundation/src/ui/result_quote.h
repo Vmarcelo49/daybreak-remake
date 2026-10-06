@@ -85,6 +85,14 @@ struct WinnerQuotePlan {
     std::string pairScript, fallbackScript;
 };
 
+// FUN_00635d40:255-273 loads one winner sheet per winning slot, so the art a side needs is
+// one portrait per MEMBER (a 2v2 shows both winners, a one-member side shows its one) — not
+// the two slots the quote pair always fills. Capped at the original's two slots.
+inline int winnerPortraitCount(int memberCount) {
+    if (memberCount <= 0) return 0;
+    return memberCount > 2 ? 2 : memberCount;
+}
+
 // Builds the plan for a winning side. `characters`/`weapons` are the side's slots in panel
 // order; a one-member side (the port's 1v1) repeats that member, which is the documented port
 // rule — the original always has two fighters per side, and every character ships a self-pair

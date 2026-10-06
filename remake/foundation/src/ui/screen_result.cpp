@@ -44,8 +44,9 @@ public:
         }
         // The winner art: one 512x512 sheet per winning slot, data/win/%02da, or %02db for the
         // persona variant (character 0/4 with weapon 2) — FUN_00635d40:255-273 loads one per
-        // winning slot, so a 2v2 shows BOTH winners.
-        for (int i = 0; i < 2; ++i) {
+        // winning slot, so a 2v2 shows BOTH winners and a one-member side shows its one.
+        winnerSlots_ = winnerPortraitCount(winners);
+        for (int i = 0; i < winners; ++i) {
             winnerPersona_[i] = resultPersonaId(winnerCharacters[i], winnerWeapons[i]) !=
                                 winnerCharacters[i];
             if (winnerCharacters[i] < 0) continue;
@@ -56,6 +57,9 @@ public:
             if (!uploadCnvSheet(batch, stem, winnerSheets_[i], failure) && error.empty())
                 error = failure;
         }
+        // The quote pair repeats a one-member side's fighter (planWinnerQuote), so the evidence
+        // line reports that member's persona for both pair slots.
+        if (winners == 1) winnerPersona_[1] = winnerPersona_[0];
         const char* stems[] = {side ? "data/object/P08" : "data/object/P05", "data/object/system"};
         for (int i = 0; i < 2; ++i) {
             std::string failure;
@@ -125,10 +129,25 @@ public:
         }
         textSlot_ = batch.addTexture(text_.atlasWidth(),text_.atlasHeight(),text_.atlasRGBA().data(),error);
     }
-    bool loaded() const {
-        if (sheets_[0] < 0 || sheets_[1] < 0) return false;
-        if (state_.resultWinner >= 0 && (winnerSheets_[0] < 0 || winnerSheets_[1] < 0)) return false;
-        return textSlot_ >= 0 && (state_.resultWinner < 0 || !quote_.text.empty());
+    // `error` names the reason a screen the port cannot present was refused: a silent null
+    // here used to end the run as a successful quit with the result screen missing.
+    bool loaded(std::string& error) const {
+        if (sheets_[0] < 0 || sheets_[1] < 0) {
+            if (error.empty()) error = "the result screen's sting/report art did not load";
+            return false;
+        }
+        for (int i = 0; i < winnerSlots_; ++i) {
+            if (winnerSheets_[i] < 0) {
+                if (error.empty())
+                    error = "the winning character's result portrait did not load";
+                return false;
+            }
+        }
+        if (textSlot_ < 0) {
+            if (error.empty()) error = "the result screen's caption atlas did not load";
+            return false;
+        }
+        return state_.resultWinner < 0 || !quote_.text.empty();
     }
     const char* name() const override { return "result"; }
     ScreenId update(const ScreenInput& input) override {
@@ -163,10 +182,18 @@ public:
             // the quote phase instead of following that progress counter, whose rate the corpus
             // does not pin. PORT RULE, animation only.
             const float slide = std::min(1.f, (float)timeline_.frame() / 24.f);
-            const float x0 = -32.f - (1.f - slide) * 320.f;
-            const float x1 = 352.f + (1.f - slide) * 320.f;
-            if (winnerSheets_[0] >= 0) batch.pushTextured(winnerSheets_[0],{x0,60,512,512},{0,0,1,1},{});
-            if (winnerSheets_[1] >= 0) batch.pushTextured(winnerSheets_[1],{x1,60,512,512},{0,0,1,1},{});
+            if (winnerSlots_ == 1) {
+                // A one-member side (the port's 1v1) has no recovered layout — the original
+                // always fields two winners — so its portrait keeps the centred position the
+                // 1v1 result screen shipped before the two-winner layout (PORT RULE).
+                if (winnerSheets_[0] >= 0)
+                    batch.pushTextured(winnerSheets_[0],{144.f,60,512,512},{0,0,1,1},{});
+            } else {
+                const float x0 = -32.f - (1.f - slide) * 320.f;
+                const float x1 = 352.f + (1.f - slide) * 320.f;
+                if (winnerSheets_[0] >= 0) batch.pushTextured(winnerSheets_[0],{x0,60,512,512},{0,0,1,1},{});
+                if (winnerSheets_[1] >= 0) batch.pushTextured(winnerSheets_[1],{x1,60,512,512},{0,0,1,1},{});
+            }
             // FUN_0063a740's quote bands: the black strip above and the black band below.
             batch.pushSolid({0,0,800,60},{0,0,0,1});
             batch.pushSolid({0,424,800,176},{0,0,0,1});
@@ -214,13 +241,14 @@ private:
     mutable int bitmapSlot_ = -1;
     int sheets_[2] = {-1,-1};
     int winnerSheets_[2] = {-1,-1};
+    int winnerSlots_ = 0;    // portraits the winning side draws (1 for the port's 1v1)
     bool winnerPersona_[2] = {false,false};
     int textSlot_=-1, sound_=-1;
 };
 }
 std::unique_ptr<Screen> makeResultScreen(SpriteRenderer& batch, FrontendState& state,std::string& error) {
     auto screen = std::make_unique<ResultScreen>(batch,state,error);
-    if (!screen->loaded()) return nullptr;
+    if (!screen->loaded(error)) return nullptr;
     return screen;
 }
 }
