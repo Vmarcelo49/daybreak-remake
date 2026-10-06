@@ -994,3 +994,33 @@ identity is checkable against shipped names, which is what makes it a recovery r
 stays a labelled port rule (46 per-weapon update functions, unrecovered). Consequence recorded: the
 shot is no longer an fx card, so the card counters legitimately fall while `shotModels` counts the same
 shots.
+
+## Round 27 — the last four dispatched, and #35 has already found a Windows crash
+
+**#35 has already justified itself.** It ran `foundation_demo.exe` under Wine and found a
+**Windows-only crash**: `std::filesystem::u8path(name)` **throws** on a name that is not valid UTF-8,
+and that name is a *normal event*, not a broken install — a Shift-JIS pair with no table entry passes
+through unconverted, and the cache also probes candidate spellings the bundle does not carry. On Linux
+the same name is simply a path that does not exist, so the miss stays a miss; on Windows it was
+**uncaught and reached `terminate()` before the first battle**. Fixed by making the conversion a miss
+(`cnv.h`, +14/−1). A link-time success could never have found this, which is exactly the issue's point.
+
+**Dispatched the remaining four**, all with the batch's standing constraints:
+
+- **#27** — the NPR evidence does not support its own recommendation. The load-bearing requirement is
+  the **no-op sanity check**: assert each arm's parameter has a visible effect at its extremes, so a
+  silent no-op cannot pass as a subtle improvement. That is the difference between "the technique is
+  subtle" and "the technique is not running". A technique that fails is recommended for **dropping** —
+  a successful result, not a failure.
+- **#24** — the Linux release roadmap and acceptance gate. Its "verified starting point" is dated
+  2026-10-04 and says **24 tests**; the tree has 58. The brief makes re-deriving the current state the
+  first job, and forbids moving a number that was not measured.
+- **#4** — the Dockerized one-origin web delivery, with the asset catalog's precedence **checked
+  against the native asset source** rather than re-derived, and the emcc/Docker availability reported
+  up front. An honest "implemented and unit-tested, browser-unverified because there is no emsdk here"
+  is a valid outcome; claiming a container ran when it did not is not.
+
+**Standing note**: the remaining issues are mostly *evidence and verification* work rather than
+feature work, and the batch's recurring lesson applies to all of them — **the premise is often the
+least reliable part of an issue**. Six issues so far arrived with a stated cause that measurement
+disproved, and two of those were the coordinator's own briefs.
