@@ -1250,7 +1250,7 @@ The current implementation and tests are documented in `ANIMATION-SETS.md`.
   different derivative conventions) — no experiment available distinguishes
   it from correct rendering, so it stays a note, not a task.
 
-## Renderer options (issue #21) — status 2026-10-05: row 0 landed, rows 1-2 open
+## Renderer options (issue #21) — status 2026-10-06: rows 0-1 landed, row 2 open
 
 `FRONTEND-PLAN.md` §2.11 gives the three rows the options screen draws above the window toggle
 (`FUN_00403470.c:25-53`: toon `DAT_006cfcec`, shadows `DAT_006cfcea`, texture resolution
@@ -1379,22 +1379,38 @@ were deliberately **not** run (J stepped pose, K unlit VFX, L impact presentatio
 stage-aware colour) and the recommendation: `foundation/docs/NPR-EXPERIMENTS.md`; captures:
 `tests/npr-evidence/`.
 
-### Row 1 — shadows (`DAT_006cfcea`) — IMPLEMENTABLE, NOT A BLOB
+### Row 1 — shadows (`DAT_006cfcea`) — IMPLEMENTED (LIGHT-SPACE SHADOW MAP)
 
-* **Read site.** `FUN_006396f0:115-119`: with the toggle on, the view loop calls
-  `FUN_004207d0()` **once per fighter** (four times) *after* `FUN_00651110(2)` and before the
-  main character draw. `FUN_004207d0` is `FUN_0064e1a0(matrix)` + `FUN_00434970()`, and
-  `FUN_00434970` draws the character's own two sub-objects (body and weapon) through their
-  virtual draw. So the original's shadow is a **second draw of the character's meshes with a
-  projection matrix and the flat technique that mode 2 selects** (`FUN_00652880`) — a
-  projected character shadow, not a blob and not a shadow map.
-* **Port plan.** Reuse the model pass with a ground-projection matrix and an unlit dark
-  variant of the model shader; it needs a shader variant plus a per-fighter shadow draw in
-  the scene pass, which is why it is not in this pass.
-* **Status: not implemented.** Until this slice lands, row 1 keeps its own message rather
-  than the generic `UNAVAILABLE`: the honest one is a projected character shadow, recovered
-  but unimplemented (e.g. `SHADOW: NOT IMPLEMENTED (PROJECTED CHARACTER SHADOW)`). The
-  toggle must not be offered as working before the second draw exists.
+* **What it is.** A light-space shadow map, not a projected silhouette. `FUN_006507c0`
+  builds a *light camera* per view — a hardcoded eye at `(1000, 1000000, 500000)` looking at
+  the frame camera's own eye, `D3DXMatrixPerspectiveFovLH` with fovy `0x3a89421f`
+  (0.0010471975) and near/far 300/800 units either side of that distance — and
+  `FUN_00652880` draws every fighter's own body and weapon (`FUN_004207d0` ->
+  `FUN_0064e1a0` + `FUN_00434970`) with it into a 1024x1024 `A8R8G8B8` target
+  (`FUN_00650410`) whose **alpha carries the caster's light NDC depth**. The stage's
+  technique mode 3 (`FUN_00652af0`, `effect_3.bin`) then samples that map projectively,
+  compares `own light depth + bias` (c9.w = -0.02, clamped at c10.x = 0.95) against the
+  stored alpha, and subtracts a flat 0.3 from its albedo where its own depth is behind it.
+  `D3DXMatrixShadow` is not in the original's import table at all, and a silhouette on a
+  plane has no per-texel depth, no bias, no clamp and no cleared 1.0 sentinel to compare
+  against — so the earlier "projected character shadow" reading of this row was wrong.
+* **The light does not depend on the map.** The direction is
+  `normalize(cameraEye - lightEye)`, a constant `(0, 2, 1)/sqrt(5)` (elevation 63.4 deg,
+  azimuth +Z) to within 0.1 degrees for any eye in the arena: the only per-frame input is
+  the frame camera's position, and no stage or `env.dat` field reaches this code. Shadows
+  therefore point the same way on every stage.
+* **Status: implemented** (issue #21 row 1). The recovery is in `docs/SHADOWS.md`; the
+  constants and the lookup live device-free in `src/render/shadow_map.h` (pinned by
+  `tests/shadow_map_test.cpp`) and the pass itself is `SceneRenderer`'s caster pass plus the
+  receiver branch in `src/shaders/model_wgsl.h` (pinned by `tests/character_shadow.py`).
+  The Options row 1 toggle is live and persists as `[render] shadows` in settings schema
+  v5, default off.
+* **One open item.** `cnd` in the original's `ps_1_1` is documented as `src0.a > 0.5`, and
+  with the recovered near/far a scene sits at `z/w` 0.13-0.44 while a fighter is only ~0.12
+  NDC deep, so a literal 0.5 threshold could never shadow a receiver — yet the original's
+  prints show ground shadows. The port reads it as the threshold-0 test (`own + bias >
+  map`), which is the reading under which the bias, the 0.95 clamp and the cleared-alpha
+  sentinel all do their jobs. Labelled as a PORT RULE in `docs/SHADOWS.md`.
 
 ### Row 2 — texture resolution (`DAT_006cfceb`) — A LOADER POLICY, NOT A RUNTIME SAMPLER
 

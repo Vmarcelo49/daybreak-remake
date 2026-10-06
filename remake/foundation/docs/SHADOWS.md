@@ -266,3 +266,45 @@ port rule with this reason. Nothing else about the pass depends on the choice.
    address mode; the receiver treats a projected coordinate outside `[0,1]` as
    "no caster" instead of reading a black border, which is what the original's
    `D3DTADDRESS_BORDER` + black border colour produces.
+
+## The port
+
+* **The numbers are device-free.** `src/render/shadow_map.h` carries the light eye, the
+  fovy, the near/far offsets, the bias/clamp/darkening and the two functions the pass is
+  built from (`shadowViewProj`, `shadowLookup`), with no WebGPU in sight.
+  `tests/shadow_map_test.cpp` pins every one of them against the addresses above, plus the
+  two properties the receiver depends on: a point on the light axis projects to the map's
+  centre, and a point down the light ray from a caster keeps the caster's map coordinate
+  while landing deeper. A wrong constant there moves every shadow in every frame without
+  breaking a draw, which is exactly what a device-free test is for.
+* **The pass.** `SceneRenderer` builds one shadow target per view (1024x1024 `RGBA8Unorm`,
+  `RenderAttachment | TextureBinding | CopySrc`), renders the character and weapon draws
+  into it with the two-group shadow pipeline (`vs_shadow` writes the light depth into
+  alpha), and binds it as `@group(3)` for the main pass. The receiver branch in
+  `fs_main` is the recovered comparison; `CameraUniform::shadowParams` carries
+  bias/clamp/enabled/darkening, so the shader and `kShadowDarken` cannot drift apart.
+* **Off is byte-identical.** With the option off the receiver branch is never entered
+  (`shadowParams.z == 0`) and the caster pass does not run, so a capture hashes exactly as
+  it did before the pass existed. Measured against a pre-change build of the same commit:
+  the 4-view battle recipe and the scripted 1v1-rematch gate both hash identical.
+* **The test.** `tests/character_shadow.py` renders the 4-view battle with no flag,
+  `--no-shadows` and `--shadows` and asserts the default is byte-identical to off, that ON
+  darkens a localized patch (0.40% of the frame, 2093 px, every one darker, none brighter)
+  in more than one view, and that a caster-free stage frame does not move at all. The
+  device-free `shadow_map_test` and this one are deliberately separate: one fails when a
+  constant is edited, the other when the pass stops drawing.
+* **Settings.** The toggle persists as `[render] shadows` in schema **v5**, default off.
+  v5 rather than v4 because issue #36 took v4 for `[game] install_dir` while this row was
+  in flight; a v3 or v4 document migrates additively (the toggle takes its default and
+  nothing else moves). The Options row 1 flip and the `--shadows`/`--no-shadows` flags are
+  the same field.
+* **Where the shadow is visible, and where it is not.** The light's window is only ~1170
+  units across and centred on the *frame camera's own eye* (recovered, not a port choice),
+  so a shadow only exists near whatever the camera follows: in the 4-view battle it lands
+  at the fighters' feet, and in a close-up standalone match on `stage01` it lands 100-160
+  units down the light ray from their feet — off the bottom of a frame that aims at the
+  chest, and outside the window for most of the visible ground. `stage01` also has its
+  ground collision disabled (`movement/ground=disabled`), so its fighters sit at the
+  `env.dat` spawn height (y = 200) while the visible ground plane is at y = 0: the cast
+  shadow is real but falls outside a close-up's visible ground. That is a pre-existing
+  stage/spawn question, not part of this pass.

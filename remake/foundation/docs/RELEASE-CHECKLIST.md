@@ -69,12 +69,13 @@ extended this suite and `user_settings_test` — no suite was added, which is wh
 ctest --test-dir remake/foundation/build/linux --output-on-failure
 ```
 
-* **With the game install present**: `100% tests passed out of 61`
-  (re-measured 2026-10-06 with issue #4's three delivery suites added; 58 was the count
-  after issue #56's `hud_view_geometry`; 57 was the count
-  after issue #50's `pause_overlay_layout_test` and `pause_overlay_panel`, 55 after issue
-  #39's `live_camera_smoothness_test`, 54 after issue #48's `debug_keys_test`, 53 after
-  issue #47's `countdown_overlay_test`, 52 after issue #51's `lock_switch_camera_test`).
+* **With the game install present**: `100% tests passed out of 63`
+  (re-measured 2026-10-06; 61 came from issue #4's three delivery suites, 58 from issue
+  #56's `hud_view_geometry`, 57 from issue #50's `pause_overlay_layout_test` and
+  `pause_overlay_panel`, 55 from issue #39's `live_camera_smoothness_test`, 54 from issue
+  #48's `debug_keys_test`, 53 from issue #47's `countdown_overlay_test`, and 52 from issue
+  #51's `lock_switch_camera_test`; issue #21 row 1 adds `shadow_map_test` and
+  `character_shadow`).
 * **Without any game data** (the CI runner's state — no `Higurashi-Daybreak/`):
   the same six tests go `Skipped` (exit 77) — `hud_cell_scale`, `toon_ramp`,
   `npr_experiments`, `npr_normals_test`, `controller_scene_lifetime_test` and
@@ -103,8 +104,11 @@ ctest --test-dir remake/foundation/build/linux --output-on-failure
   against synthetic `.DAT` bundles the test writes itself), `web_assets_test` (the
   host-testable half of the web asset client) and `web_catalog_order` (the archive
   ordering compared against the native reader; its hermetic half needs no game data and
-  its install half skips itself with the others). The merged count is therefore **61
-  registered**, with **eight** Skipped in a data-free tree.
+  its install half skips itself with the others). Issue #21 row 1 then added
+  `shadow_map_test`, which is device-free AND data-free (it links glm and nothing else) and
+  so adds one to both counts, and `character_shadow`, which renders frames like `toon_ramp`
+  and joins the skip list above. The merged count is therefore **63 registered**, with
+  **eight** Skipped in a data-free tree.
   The denominator is the number of *registered* tests and grows whenever a suite is
   added (42 when this document was written, 45 when #28 re-measured it, 50 after
   #42's `bgm_loop_test`, #45's `frontend_lifecycle_test` and #46's
@@ -112,7 +116,8 @@ ctest --test-dir remake/foundation/build/linux --output-on-failure
   #43's `select_row_slidein_test`, 52 after #51's `lock_switch_camera_test`, 53 after
   #47's `countdown_overlay_test`, 54 after #48's `debug_keys_test`, 55 after #39's
   # `live_camera_smoothness_test`, 57 after #50's two pause-overlay suites, 58 after
-  # #56's `hud_view_geometry`), so
+  # #56's `hud_view_geometry`, 61 after #4's three delivery suites, 63 after #21 row 1's
+  # `shadow_map_test` and `character_shadow`), so
   read the command's own summary rather than this line when the two disagree —
   the invariant to check is *100% passed* with the asset-dependent tests Skipped
   and none Failed. Issue #40 added no suite: its device-free half (the recovered
