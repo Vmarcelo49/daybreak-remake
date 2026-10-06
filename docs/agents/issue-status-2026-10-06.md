@@ -701,3 +701,26 @@ a fresh agent (`fb513d2c`) with two process rules added to its brief:
 work — the coordinator cannot recover it. Every brief in this batch already said "commit and report";
 this is the first time the absence of an *intermediate* commit actually cost work. Briefs for
 long-running issues should say **commit as you go** explicitly, not just "commit before reporting".
+
+## Round 18 — #48 merged (the recovered in-battle debug keys)
+
+F1 restore HP + balloons, F2 freeze COMs, F3 re-enable exactly the COM slots, F4 fill the metres,
+Escape leave via #15's own path. ctest 53 → **54**. Merged clean (`e2eb5f9` → `e6d9923`).
+
+**Verified by the coordinator**: with `--debug-keys=f2@400,f3@900` the COM's total displacement is
+**4054** units against **6225** in an identical control — what freezing it for the 500 ticks between
+the two keys should cost. The worker's `moved=0.00` figures were the per-window trace, not the total;
+worth remembering when reading their tables.
+
+**Three implementation notes worth keeping**: the AI enable flag is **new state** on `gameplay::Match`
+(the port had none — the bot brain simply ran for COM slots), and a cleared flag feeds the COM a
+zeroed `PlayerState` and skips its brain, which is the original's memset input block. F1's two scene
+counters needed no invention: `scene+0x12b0`/`+0x12bc` are the two sides' **balloon percentages**.
+The keys are sampled once per **simulation** tick at the top of `tickMatch`, not in the read-only
+`updateMatchViews` pass, so captures reproduce them. `--debug-keys=KEY@TICK` had to be **added**
+because #49 established that scripted input never reaches a front-end battle's human panel.
+
+**Latent trap reported, not fixed**: `Match::step(nullptr, …)` **skips the fighter's whole state
+machine**, so a fighter with no input keeps its locomotion state and plays its run animation in place.
+The F2 freeze therefore feeds a zeroed `PlayerState` rather than `nullptr`. Anyone who later means
+"no input" literally will hit this.
