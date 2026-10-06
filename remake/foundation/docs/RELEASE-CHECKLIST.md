@@ -171,16 +171,26 @@ the run):
 [menu] scene: select (tick 4984)
 [menu] scene: vs (tick 5310)                       <- round 2 (rematch)
 [menu] battle: 2 fighters on data/stage06 (time 60s, health 50%, gauge 100%, balloon 40%/40%)
-[daybreak] match: round over, side 0 wins (time up) at frame 3600
+[daybreak] match: round over, side 1 wins (time up) at frame 3600
+[result] side 1 pair 12-12 grade 3 margin 0 script data/scenario/win/12-12-3.txt persona 0/0 voice W12-12-7.wav
 [menu] scene: result (tick 9246)
 [menu] scene: select (tick 9848)
 [menu] scene: vs (tick 10174)                      <- round 3
 [menu] battle: 2 fighters on data/stage15 (time 60s, health 50%, gauge 100%, balloon 40%/40%)
 [daybreak] match: round over, side 1 wins (time up) at frame 3600
+[result] side 1 pair 11-11 grade 3 margin 0 script data/scenario/win/11-11-3.txt persona 0/0 voice W11-11-7.wav
 [menu] scene: result (tick 14110)
 [menu] scene: select (tick 14712)
 RESULT: ok
 ```
+
+> The tick ladder, the stages and every round's settings are stable, and those are
+> what this section checks. The **outcome lines are not**: rounds 2 and 3 were
+> re-measured on 2026-10-06 (the block previously quoted `side 0 wins` for round 2
+> and carried no result line for either). Side 1 wins all three here because the
+> red fighter is the OK path's random COM roll and the script only drives P1 — a
+> different roll changes the winner, the `pair`, the `script` and the `voice`
+> together, by design. Read the ladder, not the winner.
 
 The `[split]` blocks prove who fought, in which view:
 
