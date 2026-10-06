@@ -347,3 +347,32 @@ The first push after #28 landed turned CI red, and it was right to:
 After both: `gate` ✓ `linux` ✓ `windows` ✓ `web` ✓ on a `workflow_dispatch`, and `gate` ✓ `linux` ✓
 with `windows`/`web` **skipped** on an ordinary push to `main` — exactly the cadence #28 specified,
 now verified against real GitHub Actions rather than modelled.
+
+## Round 5 — coordinator's own verification while three workers run
+
+**The 8-round 2v2 stability gate passes on the merged tree.** This is the checklist's own strongest
+integration recipe (§6's row), and it is the first time it has run over everything merged in this
+batch — #45's selection lifecycle, #41's free cursor, #29's device isolation and #46's controller
+lifetime all working together:
+
+```
+--screen=title --local-players=4 --script=<8-round 2v2> --frames=40000
+EXIT=0   8 battles   8 rounds over
+fx cards : events=38029 spawned=124 dropped=0 expired=123 killed=0 peak=6/128,
+           liveShots=5500 badEffectId=0
+RESULT: ok
+```
+
+Those counters are exactly the ones `RELEASE-CHECKLIST.md` §6 quotes for that row
+(`peak=6/128`, `spawned=124`, `expired=123`, `dropped=0`), so the quoted block is still true.
+
+**§3.1's transcript was the only stale one.** A worker flagged that its quoted outcome lines no longer
+reproduced. I re-measured all three gate transcripts myself: §3.1 quoted `side 0 wins` for round 2 and
+carried no result line for either later round, while the run reports side 1 winning all three with
+pairs `2-2 / 12-12 / 11-11`; §3.2 and §3.3 still match their quotes **exactly**, down to
+`11-11 margin 21` and `1-4 margin 1`. Fixed §3.1 (`ec73b52`) and recorded which fields are stable —
+the ladder, the stages and the settings — versus which follow the OK path's random COM roll.
+
+**The CI path filter behaves as designed.** Pushes that touch only `docs/**` produce no workflow run
+(verified: `a39ba7e` and `33ef9be` have none), while `52c0d88`'s touch of
+`remake/foundation/docs/RELEASE-CHECKLIST.md` triggered one, green.
