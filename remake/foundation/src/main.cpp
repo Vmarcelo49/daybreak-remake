@@ -3904,6 +3904,25 @@ static bool openInstallOrReport(const std::string& dir, const char* source, std:
     return false;
 }
 
+// A folder a run actually opened becomes the remembered one (issue #36), so the next run —
+// a direct binary run, the packaged launcher, or a front end that reaches a match — starts
+// from the same place instead of discovering one again. Two gates keep that honest: only a
+// run that owns a user config writes anything (a capture never loads settings, so it can
+// neither write nor be perturbed), and only a folder the parser would read back is stored
+// (settings::storableInstallDir: absolute, and short enough for one line). A relative
+// `--install=Higurashi-Daybreak` therefore behaves exactly as it always has — used for this
+// run, not remembered, because "Higurashi-Daybreak" is this shell's working directory — and
+// a folder that came from the working-directory fallback is not remembered either, for the
+// same reason. The write goes through the usual dirty/save policy, so it is atomic and
+// reported like any other settings change.
+static void rememberInstallDir(App& app, const std::string& dir) {
+    if (!app.settingsActive || !settings::storableInstallDir(dir)) return;
+    if (app.userSettings.installDir == dir) return;
+    app.userSettings.installDir = dir;
+    ui::frontendSettings().installDir = dir;
+    app.settingsDirty = true;
+}
+
 bool initScene(App& app) {
     // Install discovery: the .dat bundles are the game's own source of truth, and where
     // they exist they win over an extracted tree (asset_source.h explains why the two
@@ -4637,11 +4656,13 @@ bool initScreens(App& app) {
         return false;
     }
     // Front-end install: --install= wins, then $DAYBREAK_INSTALL — the two spellings that
-    // make the binary usable on its own. The packaged launcher (package/daybreak) owns the
-    // wider search (saved preference, package directory, conventional locations) and
-    // always hands the chosen folder in as --install=, so the order is defined once, in
-    // package/README-LINUX.md. With neither, the historical filesystem fallback stays:
-    // running from the install directory (or an extracted tree) must keep working.
+    // make the binary usable on its own — then the folder a previous run remembered
+    // (settings.conf's [game] install_dir, issue #36), and last the historical filesystem
+    // fallback, because running from the install directory (or an extracted tree) must keep
+    // working. The packaged launcher (package/daybreak) owns the wider SEARCH (its own
+    // location, the working directory, conventional homes) and hands its choice in as
+    // --install=, which is also what makes the binary remember it — so where a folder is
+    // looked for stays defined once, in package/README-LINUX.md.
     std::string install = app.opts.install;
     const char* installSource = "--install=";
     if (install.empty()) {
@@ -4651,20 +4672,39 @@ bool initScreens(App& app) {
         }
     }
     if (!install.empty()) {
+        // An explicit folder that is unusable is a mistake worth failing on: silently
+        // falling through to the filesystem would report a missing asset several screens
+        // later instead of naming the wrong path.
         if (!openInstallOrReport(install, installSource, app.error)) return false;
         std::printf("[install] game folder: %s (from %s)\n", install.c_str(), installSource);
-    } else if (!fnd::assets::assetSource().exists("data/title/back00.cnv")) {
-        // No folder named and the working directory is not one either (neither a bundle
-        // install nor an extracted tree): the title art is the first read of a front-end
-        // run, so fail here naming the folder to point at instead of leaving a per-asset
-        // message from inside the title screen.
-        app.error = "no Higurashi Daybreak data found: neither --install= nor DAYBREAK_INSTALL "
-                    "was given and the current directory has no data/title/back00.cnv. Point "
-                    "the port at your game folder, e.g. --install=\"/path/to/Higurashi-Daybreak\"";
-        return false;
-    } else {
-        std::printf("[install] no --install= and no DAYBREAK_INSTALL: reading data/ from the "
-                    "current directory\n");
+        rememberInstallDir(app, install);
+    } else if (!app.userSettings.installDir.empty()) {
+        // The remembered folder is a hint for this run, not an instruction the user gave
+        // for it: a moved or deleted install must not brick the launch the way a wrong
+        // --install= does, so say what happened and fall through to the current directory.
+        const std::string& remembered = app.userSettings.installDir;
+        if (fnd::assets::assetSource().openInstall(remembered)) {
+            std::printf("[install] game folder: %s (from the remembered folder)\n",
+                        remembered.c_str());
+        } else {
+            std::printf("[install] ignoring the remembered folder %s: it is gone or holds no "
+                        "daybreakXX.dat\n", remembered.c_str());
+        }
+    }
+    if (!fnd::assets::assetSource().bundlesOpen()) {
+        if (!fnd::assets::assetSource().exists("data/title/back00.cnv")) {
+            // No folder was opened and the working directory is not one either (neither a
+            // bundle install nor an extracted tree): the title art is the first read of a
+            // front-end run, so fail here naming the folder to point at instead of leaving
+            // a per-asset message from inside the title screen.
+            app.error = "no Higurashi Daybreak data found: no --install=, no DAYBREAK_INSTALL, "
+                        "no remembered folder and no data/title/back00.cnv in the current "
+                        "directory. Point the port at your game folder, e.g. "
+                        "--install=\"/path/to/Higurashi-Daybreak\"";
+            return false;
+        }
+        std::printf("[install] no --install=, no DAYBREAK_INSTALL and no remembered folder: "
+                    "reading data/ from the current directory\n");
     }
     // No scene is ever submitted on this path, but the capture readback lives in
     // SceneRenderer (device/queue/instance plus the mapped-buffer copy), so a --out menu

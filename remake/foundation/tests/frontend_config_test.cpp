@@ -63,12 +63,18 @@ int main() {
     settings::UserSettings document;
     document.volumes = {10,20,30,40};
     document.fullscreen = true;
+    document.installDir = "/home/u/Games/Higurashi-Daybreak";
     document.keyboard[fnd::input::Jump] = 7;
     document.gamepad[3][fnd::input::Guard] = 9;
     ui::applyUserSettings(settings, document);
     CHECK(settings.volumes.master==10 && settings.volumes.music==20);
     CHECK(settings.volumes.voice==30 && settings.volumes.sfx==40);
     CHECK(settings.fullscreen);
+    // The remembered game folder (issue #36) is live state only so that the host's periodic
+    // document rebuild (toUserSettings, every frame) cannot erase it: it has to come back
+    // out, or the first save after a launch would forget the folder.
+    CHECK(settings.installDir == "/home/u/Games/Higurashi-Daybreak");
+    CHECK(ui::toUserSettings(settings).installDir == "/home/u/Games/Higurashi-Daybreak");
     CHECK(settings.keyboard[fnd::input::Jump]==7);
     CHECK(settings.gamepad[3][fnd::input::Guard]==9);
     // The stored resolution is the user's CHOICE, never the window's current pixel size:
@@ -171,5 +177,6 @@ int main() {
     CHECK(fresh.volumes.master==10 && fresh.volumes.sfx==40);
     CHECK(fresh.keyboard[fnd::input::Jump]==7 && fresh.gamepad[3][fnd::input::Guard]==9);
     CHECK(fresh.fullscreen);
+    CHECK(fresh.installDir == "/home/u/Games/Higurashi-Daybreak");   // a restart keeps the folder
     return 0;
 }

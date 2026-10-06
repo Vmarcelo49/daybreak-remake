@@ -20,10 +20,13 @@ forbids for the port.
 
 Delete the file to reset everything to its defaults; there is no separate reset file.
 
-## What is stored (schema version 3)
+## What is stored (schema version 4)
 
 ```ini
-version = 3
+version = 4
+
+[game]
+install_dir = /home/u/Games/Higurashi-Daybreak   # absolute; empty = none remembered
 
 [display]
 fullscreen = false
@@ -52,6 +55,20 @@ pad2_guid =
 …
 ```
 
+* `[game] install_dir` (issue #36) is the game folder a run last opened, so **one config
+  file owns the install path**: the packaged launcher reads this key and no longer keeps an
+  `install.conf` of its own, and a direct binary run honours the remembered folder instead
+  of discovering one from scratch. It is a **port** decision, not recovered behaviour — the
+  original reads its assets relative to its own executable and has no such setting, and how
+  a folder is *discovered* (the launcher's search order) is a separate concern that this key
+  does not change. The precedence per run is `--install=` → `$DAYBREAK_INSTALL` → this key →
+  the working directory; only a run that opens a folder writes it, and only when the folder
+  is **absolute** — `--install=Higurashi-Daybreak` means "here", which is that shell's
+  working directory, so it is used but never remembered. An unusable remembered folder
+  (moved, deleted, a partial copy) is reported and falls through to the working-directory
+  check instead of failing the launch, because it is a hint rather than an instruction. The
+  key is always present in the file (empty = nothing remembered): an *absent* key in a
+  current document therefore means a hand-edit or a lossy writer, and is warned about.
 * `resolution` is the user's **choice** from the Options resolution row, not the
   window's current size: `desktop` means "follow the display". A window drag, a
   startup pixel-size event or a fullscreen transition moves the live selection but
@@ -77,13 +94,16 @@ pad2_guid =
 | Version | Change | A file of this version |
 |---|---|---|
 | 1 | initial (`up, down, left, right, attack_a, attack_b, guard, …`, 13 entries) | migrated: the removed heavy-melee entry is dropped, every other binding kept, **one warning** |
-| 2 | issue #10 removed the port-invented heavy action, so the rows are 12 entries | migrated: every value read as v2 wrote it, `toon` takes its default (off), nothing dropped, **no warning** (a context line) |
-| 3 | issue #21 added `[render] toon` | current |
+| 2 | issue #10 removed the port-invented heavy action, so the rows are 12 entries | migrated: every value read as v2 wrote it, `toon` takes its default (off), no folder is remembered, nothing dropped, **no warning** (a context line) |
+| 3 | issue #21 added `[render] toon` | migrated: every value kept, `[game] install_dir` takes its default (empty), **no warning** (a context line) |
+| 4 | issue #36 added `[game] install_dir` | current |
 
 Migration is per document, never partial: the version line decides how the binding rows are
-read, and the next save writes the current version. The `[render]` section itself is read
-whatever the version line says, so a hand-edited file is not rejected for naming a key this
-build knows. A version this build cannot migrate (4 and up) is rejected whole.
+read, and the next save writes the current version. The `[render]` and `[game]` sections
+themselves are read whatever the version line says, so a hand-edited file is not rejected
+for naming a key this build knows. A version this build cannot migrate (5 and up) is
+rejected whole. A migration never drops a stored value; the only thing an older file cannot
+carry is a key that did not exist yet, and that key's default is what the older file meant.
 
 ## Controller identity policy (port decision)
 
@@ -117,6 +137,9 @@ list and the SDL callbacks exist (`applyPersistedDisplay`).
 | No file | First launch: defaults, no message beyond the path |
 | Unknown keys in a known section | Ignored with a warning; every other value still applies |
 | A value out of range / unparseable | **That key** keeps its default, warning counted, the rest applies |
+| `install_dir` empty | The documented "no folder remembered"; no warning |
+| `install_dir` relative, or longer than the 480 bytes one line allows | That key keeps its default (the folder is not remembered), warning counted, the rest applies; the run then discovers a folder as it did before |
+| `install_dir` missing from a **current** document | Warning: the file should carry it, so nothing is remembered. In an **older** document the migration line says the same thing without a second warning |
 | Missing or unsupported `version` | Whole file ignored, defaults, reason printed |
 | Unknown section, bad line, NUL byte, >64 KiB, >512-byte line | Whole file ignored, defaults, reason printed |
 | Stored resolution the display does not offer | Desktop (index 0); the preference is kept in the file |
@@ -148,22 +171,37 @@ Only a plain interactive frontend run reads or writes the file. Every capture, r
 and bounded run ignores it entirely — `--match`, `--versus`, `--hud-test`, `--out`
 captures, `--headless`, the asset viewers and anything with `--frames` — so the banked
 captures and parity recipes behave identically with and without a user config
-(`usesUserConfig` in `main.cpp`).
+(`usesUserConfig` in `main.cpp`). That gate is also what makes the remembered game folder
+safe to write: a capture cannot create the file, cannot rewrite it, and cannot be steered by
+it, so a capture with no file present stays byte-identical to one taken before the key
+existed.
 
 ## Verification
 
 * `user_settings_test` (device-free): defaults, round trip, versioning, malformed and
   hostile files, value ranges, paths (including a path with spaces), the atomic write
   (no temp leftovers, no clobbering on failure, owner-only mode), the resolution
-  fallback, the controller-placement policy, and both migrations (a v1 row losing the
-  removed heavy binding with one warning, a v2 document keeping every value and gaining
-  `toon` at its default with none).
+  fallback, the controller-placement policy, every migration (a v1 row losing the
+  removed heavy binding with one warning; a v2 document keeping every value and gaining
+  `toon` and the empty game folder; a v3 document keeping the toon toggle it stored and
+  gaining the empty game folder, neither with a warning) and the `[game] install_dir`
+  rules (empty = unchosen, absolute kept, relative and over-long refused with one warning
+  each, absent in a current document warned about, and a folder the writer cannot store
+  written as empty rather than as a line the reader would reject).
 * `frontend_config_test`: the document ↔ live-settings seam, including the resolution
-  choice rule and the toon toggle's round trip through `applyUserSettings` /
-  `toUserSettings`.
+  choice rule and the toon toggle's and the remembered folder's round trips through
+  `applyUserSettings` / `toUserSettings`.
+* `launcher_test.sh`: the launcher's search order, its failure messages, that it writes no
+  config file at all, that it reads the remembered folder out of `settings.conf`, that it
+  ignores a schema version it does not know, and the one-time migration of a retired
+  `install.conf`.
 * End to end, with an isolated `XDG_CONFIG_HOME`: first launch → change a volume →
   saved → restart loads it and does not rewrite the file → one step from the loaded
   value (40 → 45) proves the value was applied. Recovery was exercised with a garbage
   file, `version = 99`, a truncated file, a NUL byte, a config path that is a regular
   file (unwritable), a config directory with spaces, and a stored resolution the
-  display does not offer.
+  display does not offer. The install precedence was exercised the same way
+  (`--install=`/`$DAYBREAK_INSTALL` beating the saved folder, a saved absolute folder
+  used by a bare `--screen=title` run, a saved relative folder warned about and falling
+  through, nothing saved falling back to the working directory, and a saved folder that
+  is gone warned about instead of failing the launch).
