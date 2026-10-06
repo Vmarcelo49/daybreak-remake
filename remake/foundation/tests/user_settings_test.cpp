@@ -91,6 +91,7 @@ int main() {
         checkInt("voice default", 100, defaults.volumes.voice);
         checkInt("sfx default", 100, defaults.volumes.sfx);
         check(!defaults.fullscreen, "fullscreen default is off");
+        check(!defaults.toonRendering, "toon rendering default is off (the shipped state)");
         check(defaults.resolution == settings::DisplaySize{0, 0}, "resolution default is desktop");
         check(defaults.padGuid[0].empty() && defaults.padGuid[3].empty(),
               "no controller identity before a pad is seen");
@@ -102,6 +103,7 @@ int main() {
         original.fullscreen = true;
         original.resolution = {1280, 720};
         original.volumes = {80, 70, 60, 50};
+        original.toonRendering = true;
         original.keyboard[fnd::input::Jump] = 42;
         original.keyboard[fnd::input::Guard] = -1;   // an explicitly unbound action
         original.gamepad[2][fnd::input::Guard] = 7;
@@ -138,13 +140,15 @@ int main() {
         std::string error;
         check(!parses("[display]\nfullscreen = true\n", out, error), "missing version is rejected");
         check(error.find("version") != std::string::npos, "the reason names the version line");
-        check(!parses("version = 3\n[display]\nfullscreen = true\n", out, error),
+        check(!parses("version = 4\n[display]\nfullscreen = true\n", out, error),
               "an unsupported version is rejected");
-        check(error.find("unsupported config version 3") != std::string::npos,
+        check(error.find("unsupported config version 4") != std::string::npos,
               "the reason names the version it found");
-        // v1 is the previous schema and is MIGRATED, not rejected (issue #10 removed the
-        // port-invented heavy binding, which shortened the binding rows).
+        // v1 and v2 are previous schemas and are MIGRATED, not rejected (issue #10 removed
+        // the port-invented heavy binding; issue #21 added the toon toggle).
         check(parses("version = 1\n[display]\nfullscreen = true\n", out, error),
+              "the oldest schema still loads");
+        check(parses("version = 2\n[display]\nfullscreen = true\n", out, error),
               "the previous schema still loads");
         check(!parses("version = 1.0\n", out, error), "a non-integer version is rejected");
         check(parses("version = 1\nversion = 1\n", out, error),
@@ -154,7 +158,7 @@ int main() {
         // An unknown key is forward compatibility, not corruption; an unknown SECTION is
         // not, because a newer schema ships with a version bump.
         settings::LoadReport report;
-        check(!settings::parse("version = 1\n[render]\ntoon = 1\n", out, error, report),
+        check(!settings::parse("version = 1\n[netplay]\nrollback = 1\n", out, error, report),
               "an unknown section is rejected");
         settings::UserSettings warned;
         check(settings::parse("version = 2\n[audio]\nmaster = 40\nsurround = 1\n", warned, error, report),
@@ -173,7 +177,7 @@ int main() {
             "version = 1\n[display\nfullscreen = true\n",      // unterminated section
             "version = 1\n[display]\nfullscreen\n",            // no '='
             "version = 1\n[display]\n = true\n",               // empty key
-            "version = 1\n[render]\ntoon = 1\n",               // unknown section
+            "version = 1\n[netplay]\nrollback = 1\n",         // unknown section
         };
         for (const char* text : cases) {
             out = settings::UserSettings{};
@@ -306,7 +310,7 @@ int main() {
             checkInt("and the rest of the file still applied", 70, out2.volumes.master);
             // Saving after a migration writes the current schema.
             const std::string saved = settings::serialize(out2);
-            check(saved.find("version = 2") != std::string::npos,
+            check(saved.find("version = 3") != std::string::npos,
                   "a migrated document saves as the current version");
         }
         // Inline comments are not a feature: the value must parse whole.
@@ -324,6 +328,76 @@ int main() {
         check(settings::parse(hostile, out, error, report), "long text is a value error, not a rejection");
         check(out.padName[1].empty(), "an over-long name is dropped");
         checkStr("a valid sibling still applies", "ok", out.padGuid[2]);
+    }
+
+    std::printf("\n-- schema migrations: a v2 file keeps every value and gains v3's toggle\n");
+    {
+        // A v2 document as v2 wrote it: display, audio, both binding families and the
+        // controller identity, with the 12-entry rows issue #10 settled on.
+        std::string keyboard, pad;
+        for (int a = 0; a < fnd::input::ActionCount; ++a) {
+            keyboard += (a ? "," : "") + std::to_string(10 + a);
+            pad += (a ? "," : "") + std::to_string(a % 20);
+        }
+        const std::string v2 =
+            "version = 2\n"
+            "[display]\n"
+            "fullscreen = true\n"
+            "resolution = 1280x720\n"
+            "[audio]\n"
+            "master = 70\n"
+            "music = 60\n"
+            "voice = 50\n"
+            "sfx = 40\n"
+            "[bindings]\n"
+            "keyboard = " + keyboard + "\n"
+            "pad2 = " + pad + "\n"
+            "[controllers]\n"
+            "pad2_guid = 030000005e0400008e02000000007801\n";
+        settings::UserSettings migrated;
+        settings::LoadReport report;
+        std::string error;
+        check(settings::parse(v2, migrated, error, report), "a v2 document loads: " + error);
+        // Nothing is dropped by v2 -> v3 (the toggle did not exist, so it takes its
+        // default), which is why this migration is context and not a warning.
+        checkInt("a v2 migration drops nothing, so it reports no warning", 0, report.warnings);
+        check(!report.messages.empty() &&
+                  report.messages[0].find("version 2") != std::string::npos,
+              "and says which version it migrated from");
+        check(migrated.fullscreen, "the display toggle is kept");
+        check(migrated.resolution == settings::DisplaySize{1280, 720}, "the resolution is kept");
+        checkInt("master volume kept", 70, migrated.volumes.master);
+        checkInt("music volume kept", 60, migrated.volumes.music);
+        checkInt("voice volume kept", 50, migrated.volumes.voice);
+        checkInt("sfx volume kept", 40, migrated.volumes.sfx);
+        checkInt("keyboard row kept, first action", 10, migrated.keyboard[fnd::input::Up]);
+        checkInt("keyboard row kept, last action", 21, migrated.keyboard[fnd::input::Pause]);
+        checkInt("pad row kept on its own player", 5 % 20, migrated.gamepad[1][fnd::input::Guard]);
+        checkStr("controller identity kept", "030000005e0400008e02000000007801",
+                 migrated.padGuid[1]);
+        check(!migrated.toonRendering, "the v3 toggle takes its default (off) for a v2 file");
+        // The next save writes v3, and the toggle round-trips from there.
+        const std::string saved = settings::serialize(migrated);
+        check(saved.find("version = 3") != std::string::npos, "the next save writes v3");
+        check(saved.find("[render]") != std::string::npos && saved.find("toon = false") != std::string::npos,
+              "with the toggle written at its value");
+        settings::UserSettings reloaded;
+        check(parses(saved, reloaded, error), "the migrated document parses back: " + error);
+        check(reloaded == migrated, "and every value survives the migration");
+        migrated.toonRendering = true;
+        settings::UserSettings on;
+        check(parses(settings::serialize(migrated), on, error), "a v3 document with toon on parses");
+        check(on.toonRendering && on == migrated, "the toggle round-trips through the file");
+        // A wrong value for the new key is a value error like any other: that key keeps its
+        // default and the rest of the file still applies.
+        settings::LoadReport bad;
+        settings::UserSettings badOut;
+        check(settings::parse("version = 3\n[render]\ntoon = maybe\n[audio]\nmaster = 55\n",
+                              badOut, error, bad),
+              "a bad toon value does not reject the file");
+        check(!badOut.toonRendering, "toon kept its default");
+        checkInt("the rest of the file applied", 55, badOut.volumes.master);
+        checkInt("one warning", 1, bad.warnings);
     }
 
     std::printf("\n-- tolerant syntax: whitespace, comments, CRLF, desktop\n");

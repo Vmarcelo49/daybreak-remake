@@ -244,6 +244,17 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                          "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
                          "${CMAKE_CURRENT_SOURCE_DIR}")
         set_tests_properties(hud_cell_scale PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
+
+        # The toon toggle (issue #21): OFF must stay byte-identical to the default frame,
+        # ON must ramp the character draws in the shipped bitmap's direction, a stage-only
+        # frame must not move, and the 4-view path must ramp too. Same skip-without-a-
+        # renderer-or-data rule as the placement check above.
+        add_test(NAME toon_ramp
+                 COMMAND ${Python3_EXECUTABLE}
+                         "${CMAKE_CURRENT_SOURCE_DIR}/tests/toon_ramp.py"
+                         "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
+                         "${CMAKE_CURRENT_SOURCE_DIR}")
+        set_tests_properties(toon_ramp PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
     endif()
 
     add_executable(debug_prims_geometry tests/debug_prims_geometry.cpp)

@@ -122,6 +122,48 @@ int main() {
         }
         for (int a = 0; a < fnd::input::ActionCount; ++a) CHECK(seen[a]);
     }
+    // Issue #21's v2 -> v3 migration reaches the live state too: a v2 document carrying
+    // volumes and bindings loads with every value intact, and the toon toggle lands at its
+    // default (off) until the row flips it. The flip is live state — what the renderer
+    // reads each frame — and what toUserSettings() persists, so a restart restores it.
+    {
+        std::string v2Keyboard, v2Pad;
+        for (int a = 0; a < fnd::input::ActionCount; ++a) {
+            v2Keyboard += (a ? "," : "") + std::to_string(300 + a);
+            v2Pad += (a ? "," : "") + std::to_string(a % 20);
+        }
+        const std::string v2 = "version = 2\n[display]\nfullscreen = true\n"
+                               "[audio]\nmaster = 15\nmusic = 25\nvoice = 35\nsfx = 45\n"
+                               "[bindings]\nkeyboard = " + v2Keyboard + "\npad1 = " + v2Pad + "\n";
+        settings::UserSettings migrated;
+        std::string migrationError;
+        settings::LoadReport migrationReport;
+        CHECK(settings::parse(v2, migrated, migrationError, migrationReport));
+        CHECK(migrationReport.warnings == 0);   // v2 -> v3 drops nothing
+        ui::FrontendSettings fromV2;
+        ui::applyUserSettings(fromV2, migrated);
+        CHECK(fromV2.volumes.master == 15 && fromV2.volumes.music == 25);
+        CHECK(fromV2.volumes.voice == 35 && fromV2.volumes.sfx == 45);
+        CHECK(fromV2.fullscreen);
+        CHECK(fromV2.keyboard[fnd::input::Up] == 300);
+        CHECK(fromV2.keyboard[fnd::input::Guard] == 305);
+        CHECK(fromV2.keyboard[fnd::input::Pause] == 311);
+        CHECK(fromV2.gamepad[0][fnd::input::Guard] == 5 % 20);
+        CHECK(!fromV2.toonRendering);   // the v3 key defaults off for a v2 file
+        fromV2.toonRendering = true;    // the Options row's flip
+        const settings::UserSettings withToon = ui::toUserSettings(fromV2);
+        CHECK(withToon.toonRendering);
+        CHECK(withToon.volumes.master == 15 && withToon.keyboard[fnd::input::Guard] == 305);
+        settings::UserSettings reparsed;
+        std::string restartError;
+        settings::LoadReport restartReport;
+        CHECK(settings::parse(settings::serialize(withToon), reparsed, restartError, restartReport));
+        CHECK(reparsed == withToon);
+        ui::FrontendSettings afterRestart;
+        ui::applyUserSettings(afterRestart, reparsed);
+        CHECK(afterRestart.toonRendering);
+        CHECK(afterRestart.volumes.sfx == 45 && afterRestart.keyboard[fnd::input::Pause] == 311);
+    }
     ui::FrontendSettings fresh;
     fresh.resolutions = settings.resolutions;
     fresh.resolutionIndex = 2;   // what the new display happened to default to
