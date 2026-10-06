@@ -21,7 +21,7 @@ a new flag:
 | `off` | — | every experiment off; the default state |
 | `on` | D/E stack | soft bands + a camera-relative key + secondary normals + a restrained rim |
 | `bands:hard\|soft\|three`, `soft:<f>` | B | the banding curve: a hard step, a short smoothstep, or a second darker band |
-| `shadow:<#rrggbb>\|none` | C | the shadow tint (default `#dbc0c7`, a violet-grey) |
+| `shadow:<#rrggbb>\|none` | C | the shadow tint (default `#dbc0c7`, a violet-grey; the `on` preset uses `#e0c7d1`) |
 | `key:fixed\|cam\|off`, `keydir:<x,y,z>`, `keystr:<f>` | D | the character key light and its arm |
 | `normals\|nonormals`, `mask:<f>` | E/F | light the secondary normals; scale the generated shadow mask |
 | `spec\|nospec`, `spectint:`, `specstr:<f>` | G | stylized hard-threshold specular |
