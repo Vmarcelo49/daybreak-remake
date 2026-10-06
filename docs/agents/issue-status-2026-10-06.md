@@ -1024,3 +1024,51 @@ the same name is simply a path that does not exist, so the miss stays a miss; on
 feature work, and the batch's recurring lesson applies to all of them — **the premise is often the
 least reliable part of an issue**. Six issues so far arrived with a stated cause that measurement
 disproved, and two of those were the coordinator's own briefs.
+
+## Round 28 — #35 merged, and a harness failure that was not a failure
+
+### The operational lesson of the batch
+
+**My harness reported that five agents had "failed before finishing". They had not — all five were
+alive and working.** I believed the report and re-dispatched three of them, which put **two writers in
+three worktrees**. It was caught by one of the re-dispatched agents itself, which ran `ps` and found a
+live DSH tool call whose `PPID` was the web server, mid-run through its own capture sheet. The other
+two worktrees were confirmed the same way (`daybreak_web serve` on port 8177 for #4; a
+`foundation_demo` sweep for #24).
+
+**Consequences and the rules that follow:**
+
+- **A "failed" notification is not evidence of death.** Check for the process (`ps -eo pid,ppid,lstart,args`)
+  before concluding an agent is gone — twice now in this session a "finished/failed" agent has turned
+  out to be running (this and issue #50 earlier, which the human caught).
+- **Re-dispatching a long-running agent is dangerous by default**: two writers in one worktree is the
+  failure mode that has already cost this batch work three times (a `reset --hard` on #50, a lost
+  stash on #35, and this). The safe resume is *verify-only*, which is what the #27 replacement
+  proposed and what I accepted.
+- All three re-dispatches were stood down without reverting anything, so no work was destroyed: #21's
+  replacement had committed the shadow implementation (`ab9c127`) before standing down, and the
+  original will find it in the tree; #24's and #27's replacements made no commits at all.
+
+### #35 merged (`b21f79a`) — both targets ran, neither fully verified
+
+The issue's premise paid off twice. Running the artifacts found **two real crashes that no link-time
+success could ever show**:
+
+- **Windows**: `std::filesystem::u8path(name)` **throws** on a name that is not valid UTF-8 — and that
+  name is a *normal event*, not a broken install (a Shift-JIS pair with no table entry passes through
+  unconverted, and the cache probes candidate spellings the bundle does not carry). On Linux the same
+  name is just a path that does not exist; on Windows it was uncaught and reached `terminate()` **before
+  the first battle**.
+- **Web**: **emcc disables C++ exception *catching* by default**, so every `try` in the asset layer was
+  inert and every `throw` fatal — `Aborted(Assertion failed: Exception thrown, but exception catching
+  is not enabled)`. `-fexceptions` fixes it at +31 % wasm (6,249,962 → 8,186,870).
+
+What actually runs, recorded as a **"verified" ladder** in `RELEASE-CHECKLIST.md` §5.2 — *compiled <
+launched < title < battle < played*: **Windows** reaches the title and a live battle and completes a
+round→result→rematch cycle, then faults in round 2 (`CharacterMoves::find`, filed **#57**); **web**
+reaches title and a live match on a `/data` preload rig on **software WebGPU** (`google swiftshader`,
+clearly labelled), but the production `?pack=` path cannot (**#58**), a scripted front-end run never
+leaves the selection screen (**#59**), and a missing candidate texture is logged once per frame — 97
+lines in ~2 s (**#60**). **Nothing on any target is rung 5 (played).** Issue #40's movie decoder and
+its web stub were both executed for the first time: 684/684 frames on Windows, and the stub reports
+its gap and moves on in the browser rather than crashing.
