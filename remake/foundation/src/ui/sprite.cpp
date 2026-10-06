@@ -84,6 +84,7 @@ bool SpriteRenderer::init(WGPUDevice device, WGPUQueue queue, std::string& error
     vpBuffer_ = gpu::createBuffer(device_, kUniformSlots * kUniformStride,
                                    WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst, nullptr);
     uniformSlot_ = 0;
+    vertexSlot_ = 0;
 
     if (!vpLayout_ || !texLayout_ || !layout_ || !sampler_ || !vpBuffer_) {
         error = "sprite renderer setup failed (layouts, sampler or viewport buffer)";
@@ -374,7 +375,8 @@ WGPURenderPipeline SpriteRenderer::pipelineFor(WGPUTextureFormat format, std::st
 
 bool SpriteRenderer::ensureBuffers(std::string& error) {
     if (vbuf_ && ibuf_) return true;
-    vbuf_ = gpu::createBuffer(device_, sizeof(UiVertex) * kMaxQuads * 4,
+    // One region per render() call, not one buffer (kVertexSlots): see the header.
+    vbuf_ = gpu::createBuffer(device_, kVertexSlotStride * kVertexSlots,
                                WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst, nullptr);
     // Static index fan: two triangles per quad slot, built once. The batch cap
     // bounds this buffer, which is why the cap exists as a constant.
@@ -419,6 +421,8 @@ bool SpriteRenderer::render(WGPUCommandEncoder encoder, WGPUTextureView view,
     const uint64_t uniformOffset = (uint64_t)(uniformSlot_++ % kUniformSlots) * kUniformStride;
     const ViewportUniform vu{(float)viewport_.w, (float)viewport_.h, 0.f, 0.f};
     wgpuQueueWriteBuffer(queue_, vpBuffer_, uniformOffset, &vu, sizeof vu);
+    // ... and its own vertex region, for the same reason (issue #56).
+    const uint64_t vertexOffset = (uint64_t)(vertexSlot_++ % kVertexSlots) * kVertexSlotStride;
 
     // Expand the batch into vertices, one run per (texture, scissor) so a clip
     // change or texture change costs exactly one draw. Fully clipped quads are
@@ -470,7 +474,8 @@ bool SpriteRenderer::render(WGPUCommandEncoder encoder, WGPUTextureView view,
         verts.push_back(UiVertex{xs[3], ys[3], u1, v1, q.color.r, q.color.g, q.color.b, q.color.a});
     }
     if (verts.empty()) return true;
-    wgpuQueueWriteBuffer(queue_, vbuf_, 0, verts.data(), verts.size() * sizeof(UiVertex));
+    wgpuQueueWriteBuffer(queue_, vbuf_, vertexOffset, verts.data(),
+                         verts.size() * sizeof(UiVertex));
 
     // Load, not Clear: the UI composes over the 3D frame drawn earlier into the
     // same view. No depth attachment: DX9 disables Z for its 2D quads too.
@@ -497,7 +502,7 @@ bool SpriteRenderer::render(WGPUCommandEncoder encoder, WGPUTextureView view,
     // origin places its cell; the shader still maps the view's own w x h to NDC.
     wgpuRenderPassEncoderSetViewport(pass, (float)viewport_.x, (float)viewport_.y,
                                      (float)viewport_.w, (float)viewport_.h, 0.f, 1.f);
-    wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vbuf_, 0, WGPU_WHOLE_SIZE);
+    wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vbuf_, vertexOffset, WGPU_WHOLE_SIZE);
     wgpuRenderPassEncoderSetIndexBuffer(pass, ibuf_, WGPUIndexFormat_Uint16, 0,
                                         WGPU_WHOLE_SIZE);
     for (const Run& r : runs) {

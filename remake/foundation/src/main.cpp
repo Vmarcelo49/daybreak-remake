@@ -1600,12 +1600,14 @@ static constexpr float kPauseFontCellPx = 32.f;
 // screen rather than failing the frame.
 //
 // It owns its batching: `app.pauseUi`, not the battle HUD's `app.uiRenderer`. A SpriteRenderer
-// hands every pass in a frame the same vertex buffer, written at offset 0 by each render()
-// call, and all of a frame's writes land before its single submission — so a renderer shared
-// with the HUD gives this pass the HUD's vertices (its dim quad took the reticle's geometry
-// and drew it with the 1x1 white fallback, issue #50 defect 1, and its first quads ghosted
-// the HUD's art, defect 2). Two renderers cannot see each other's batches at all, which is
-// what makes that ownership explicit; see docs/PAUSE.md §"Why the overlay owns a renderer".
+// used to hand every pass in a frame the same vertex buffer, written at offset 0 by each
+// render() call, and all of a frame's writes land before its single submission — so a
+// renderer shared with the HUD gave this pass the HUD's vertices (its dim quad took the
+// reticle's geometry and drew it with the 1x1 white fallback, issue #50 defect 1, and its
+// first quads ghosted the HUD's art, defect 2). Issue #56 fixed that at the batch (one
+// vertex region per render() call, ui/sprite.h), so the second renderer is now ownership
+// rather than the only way to keep the two batches apart; see docs/PAUSE.md §"Why the
+// overlay owns a renderer".
 static bool drawBattlePauseOverlay(App& app, WGPUCommandEncoder encoder, WGPUTextureView view,
                                    uint32_t width, uint32_t height, WGPUTextureFormat format) {
     if (!app.battlePaused || !app.pauseUiReady || width == 0 || height == 0) return true;

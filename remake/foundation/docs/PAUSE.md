@@ -53,8 +53,8 @@ worth writing down because it is a property of the sprite batch, not of this men
 
 * `SpriteRenderer::beginFrame` does clear the quad queue, so the overlay never "adopted" the
   HUD's *quads*. What it shared was the **vertex buffer**: every `render()` call in the frame
-  writes the same buffer at offset 0, and (per WebGPU's queue ordering) all of a frame's
-  writes are performed before its single submission. The effective content of a frame is
+  wrote the same buffer at offset 0, and (per WebGPU's queue ordering) all of a frame's
+  writes are performed before its single submission. The effective content of a frame was
   therefore the LAST write, with the tail of the longest earlier write left behind it.
 * Measured on a paused single-view frame: the overlay's pass pushed 546 quads (its 55 % dim
   plus the caption's glyphs) and the HUD's pass 32 (its first quad being the first fighter's
@@ -71,16 +71,23 @@ worth writing down because it is a property of the sprite batch, not of this men
   frame (so it is not #17's effect cards).
 * With the overlay in its own renderer, its pass and the HUD's passes cannot see each other's
   vertices at all, and **unpaused captures are unchanged** — the overlay is not drawn when the
-  battle is not paused, and the split-screen HUD keeps its own (still aliased) path, so a
-  single-view, 2-view or 4-view unpaused capture hashes identically before and after.
+  battle is not paused, so a single-view, 2-view or 4-view unpaused capture hashed identically
+  before and after.
 
-One defect this deliberately does NOT fix: the same aliasing still corrupts *within* the
-battle HUD's own passes. In a 4-view frame the separator pass is the last write, so every
-view's first two quads (fighter 0's reticle circle and triangles) are replaced by the
-separator's thin bars, and each cell's remaining quads read whichever view wrote last. It is
-invisible to `hud_cell_scale.py` because every pass pushes its probe markers at identical
-coordinates, and repairing it would change unpaused split-screen pixels — a separate issue,
-reported rather than folded into this one.
+The aliasing itself is fixed as of issue #56, at the batch rather than per caller: each
+`render()` call now writes and binds its OWN vertex region (`src/ui/sprite.h`, `kVertexSlots`,
+the uniform path's rule), so no pass can read another's geometry. The second renderer stays:
+it is how the overlay owns its batching (a different lifecycle from the HUD's per-view
+passes), and #50's evidence and this document were measured with it. Removing it is a
+follow-up, not a repair — with the batch fixed it would be tidiness, not a fix.
+
+The defect that same aliasing caused *within* the battle HUD's own passes is what #56 fixed:
+in a 4-view frame the separator pass was the last write, so every view's first two quads
+(fighter 0's reticle circle and triangles) were replaced by the separator's thin bars and each
+cell's remaining quads read whichever view wrote last. `hud_cell_scale.py` cannot see it —
+every pass pushes its probe markers at identical coordinates — so #56 added
+`tests/hud_view_geometry.py`, which asserts on each view's own reticle anchors, and recorded
+the split-screen baselines that legitimately move in `RELEASE-CHECKLIST.md` §3.6.
 
 ## What freezes
 
