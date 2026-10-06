@@ -18,13 +18,27 @@
 //      recovered lifetime — the table prints it (the port's old 12 s placeholder was
 //      48x the recovered value for the melee-hit card).
 //
+//  The attachment half of the same loader (FUN_00633ca0's seven data/aura/%02d.x models,
+//  issue #33), device-free and against the install:
+//    * the eleven attach points FUN_0041e180 resolves on the fighter's rig and FUN_004205e0
+//      draws the attachment on, in slot order, and the resolve rule: one instance per
+//      resolved point, and none at all when a rig resolves none (never eleven copies of
+//      frame 0);
+//    * every shipped attachment is ONE unskinned model that carries no attach point of its
+//      own, and every shipped character model carries all eleven points. The eleven-
+//      iteration loop is therefore fully populated, so the port draws ELEVEN instances per
+//      active aura, not one. A future rig with a partial attach set fails here instead of
+//      quietly drawing fewer than the original.
+//
 //  Build: cmake --build remake/foundation/build/linux --target effect_catalog_test
 //  Exit status: 0 when every check passes, 1 otherwise.
 // =============================================================================
 #define XMODEL_IMPLEMENTATION
 #include "assets/xmodel.h"
+#include "game/aura_attach.h"
 #include "game/effect_catalog.h"
 
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -211,13 +225,134 @@ void testInstallTable(int argc, char** argv) {
     check(cat.lifetime_ticks(0, 64.f) < 64, "the recovered hit-card lifetime is under a second");
 }
 
+// ---------------------------------------------------------------------------
+// Issue #33. A rig stub for the device-free half: the resolve rule only asks a rig for
+// frames by name, so the rule is testable with no install and no asset layer.
+struct StubRig {
+    std::vector<std::string> frames;
+    int findFrame(const std::string& name) const {
+        for (size_t i = 0; i < frames.size(); ++i)
+            if (frames[i] == name) return (int)i;
+        return -1;
+    }
+};
+
+void testAuraAttachRule() {
+    section("device-free: the eleven attach points and the aura instance rule");
+    checkInt(7, game::kAuraSlots, "the attachment table has the recovered seven slots");
+    checkInt(11, game::kAuraAttachPoints, "the attach set has the recovered eleven points");
+    // The order IS the mapping: point i is the frame whose matrix lands at +0x38c + i*0x40.
+    check(std::string(game::kAuraAttachBone[0]) == "Bip00", "point 0 is Bip00 (player+0x64c)");
+    check(std::string(game::kAuraAttachBone[1]) == "Bip01_Head", "point 1 is Bip01_Head (0x650)");
+    check(std::string(game::kAuraAttachBone[2]) == "Bip01_Spine", "point 2 is Bip01_Spine (0x654)");
+    check(std::string(game::kAuraAttachBone[8]) == "Bip01_R_Hand", "point 8 is Bip01_R_Hand (0x668)");
+    check(std::string(game::kAuraAttachBone[10]) == "Bip00_R_Foot", "point 10 is Bip00_R_Foot (0x674)");
+
+    // The rule, through the function the product calls: ONE instance per RESOLVED attach
+    // point. A rig that resolves none draws none — the -1 sentinel, not frame 0, which
+    // would put eleven copies of the attachment on the root bone.
+    const game::AuraAttach none = game::resolveAuraAttach(StubRig{});
+    checkInt(0, none.found, "a rig with no attach point draws no aura instance");
+    checkInt(-1, none.frame[0], "an unresolved point stays -1, never frame 0");
+    const game::AuraAttach one = game::resolveAuraAttach(StubRig{{"obj1", "Bip01_Head"}});
+    checkInt(1, one.found, "a rig with one attach point draws one instance");
+    checkInt(1, one.frame[0], "the resolved point carries the rig's own frame index");
+
+    std::vector<std::string> all{"obj1"};
+    for (const char* bone : game::kAuraAttachBone) all.push_back(bone);
+    const game::AuraAttach full = game::resolveAuraAttach(StubRig{all});
+    checkInt(11, full.found, "a rig with all eleven draws eleven instances, not one");
+    checkInt(1, full.frame[0], "instance 0 is table point 0's frame");
+    checkInt(11, full.frame[10], "instance 10 is table point 10's frame");
+}
+
+void testInstallAuraTable(int argc, char** argv) {
+    section("asset-backed: the shipped attachments, and the rigs they are drawn on");
+    const fs::path install = findInstall(argc, argv);
+    std::error_code ec;
+    if (install.empty() || !fs::is_directory(install / "data", ec)) {
+        skip("the install's attachment table and character rigs (no install found)");
+        return;
+    }
+    // 1. FUN_00633ca0's seven models. Each is ONE model, so the instance count cannot come
+    //    from the attachment; six ship one mesh and 03.X (the burning aura) three.
+    const fs::path auraDir = install / "data" / "aura";
+    int attachments = 0;
+    for (int slot = 0; slot < game::kAuraSlots; ++slot) {
+        fs::path file;
+        for (const char* ext : {".x", ".X"}) {
+            char name[16];
+            std::snprintf(name, sizeof(name), "%02d%s", slot, ext);
+            if (fs::exists(auraDir / name, ec)) {
+                file = auraDir / name;
+                break;
+            }
+        }
+        if (file.empty()) {
+            char want[24];
+            std::snprintf(want, sizeof(want), "data/aura/%02d.x", slot);
+            check(false, std::string(want) + " is installed");
+            continue;
+        }
+        ++attachments;
+        const xm::Model m = xm::loadFile(file.string());
+        int skinned = 0;
+        for (const xm::Mesh& mesh : m.meshes) skinned += mesh.skinned ? 1 : 0;
+        const std::string label = file.filename().string();
+        check(!m.meshes.empty(), label + " ships at least one mesh");
+        checkInt(0, skinned, label + " is unskinned (the card is placed by one matrix)");
+        checkInt(0, game::resolveAuraAttach(m).found,
+                 label + " carries no attach point of its own (the rig supplies them)");
+        std::printf("        %-6s %2zu frame(s) %zu mesh(es) %4d vert(s) %zu anim(s), %.3f s\n",
+                    label.c_str(), m.frames.size(), m.meshes.size(), m.stats.vertices,
+                    m.anims.size(),
+                    m.anims.empty() ? 0.0
+                                    : (double)(m.anims[0].duration /
+                                               (m.ticksPerSecond > 0 ? m.ticksPerSecond : 1.f)));
+    }
+    checkInt(game::kAuraSlots, attachments, "the install ships all seven data/aura models");
+
+    // 2. The rigs. The eleven draws land because every character model carries all eleven
+    //    attach points; a rig with only some of them would draw FEWER than the original's
+    //    eleven (the original copies from the null frame pointer instead of skipping), so a
+    //    partial rig is what this enumeration exists to catch.
+    int models = 0, complete = 0, none = 0, partial = 0;
+    std::vector<std::string> partialNames;
+    for (const fs::directory_entry& dirEntry : fs::directory_iterator(install / "data", ec)) {
+        if (!dirEntry.is_directory(ec)) continue;
+        for (const fs::directory_entry& f : fs::directory_iterator(dirEntry.path(), ec)) {
+            const std::string name = f.path().filename().string();
+            if (name.size() != 4 || name[2] != '.' || (name[3] != 'X' && name[3] != 'x')) continue;
+            if (!std::isdigit((unsigned char)name[0]) || !std::isdigit((unsigned char)name[1]))
+                continue;
+            const xm::Model m = xm::loadFile(f.path().string());
+            if (m.frames.empty()) continue;
+            ++models;
+            const int found = game::resolveAuraAttach(m).found;
+            if (found == game::kAuraAttachPoints) ++complete;
+            else if (found == 0) ++none;
+            else {
+                ++partial;
+                partialNames.push_back(dirEntry.path().filename().string() + "/" + name);
+            }
+        }
+    }
+    std::printf("        %d model(s): %d carry all %d attach points, %d carry none\n", models,
+                complete, game::kAuraAttachPoints, none);
+    check(complete > 0, "the install ships character rigs with the full attach set");
+    checkInt(0, partial, "no shipped rig is partially equipped (0 or 11 points, never between)");
+    for (const std::string& name : partialNames) std::printf("        partial: %s\n", name.c_str());
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
-    std::puts("effect_catalog_test — issue #17 effect table");
+    std::puts("effect_catalog_test — issue #17 effect table, issue #33 attach points");
     testDescriptorHeader();
     testIdMappingAndLifetime();
     testInstallTable(argc, argv);
+    testAuraAttachRule();
+    testInstallAuraTable(argc, argv);
     std::printf("\n%d checks, %d failure(s)%s\n", checks, failures,
                 skipped ? " (with skips)" : "");
     return failures == 0 ? 0 : 1;

@@ -905,6 +905,19 @@ connects twice.
   `+0x846` → slots 0/1/5, which the three sibling attack-start methods
   `0x421fe0`/`0x4220e0`/`0x422160` set (the middle one has 47 call sites). It draws the
   model **once per fighter matrix** (11 matrices at `player+0x38c`, stride 0x40).
+* **The eleven draws are the rig's, and the port now makes all eleven** (issue #33). The
+  count is not a capacity waiting to be filled: `FUN_0041e180` resolves eleven fixed bone
+  names (`Bip00`, `Bip01_Head`, `Bip01_Spine`, `Bip01_L/R_Forearm`, `Bip00_L/R_Calf`,
+  `Bip01_L/R_Hand`, `Bip00_L/R_Foot`) into `player+0x64c..0x674`
+  (`0x41edfb-0x41ef4f`) once per character, and `FUN_00421010` copies their world matrices
+  into `player+0x38c + i*0x40` every frame (`0x42104f-0x421071`). All **92** shipped
+  character models carry all eleven and none is partially equipped (enumerated in
+  `tests/effect_catalog_test.cpp`), so every shipped attachment is drawn eleven times — the
+  old single local-space placement was not an equivalent. The card is now one instance per
+  attach point (`src/game/aura_attach.h`), which needed only the rig's posed bone matrices
+  (`app.worlds`); on a live hyper aura the card's draw count goes 1 → 11
+  (`effectDrawsAtExit` 10 → 40 beside seven live hit cards, the aura card being three
+  meshes).
 * **Status emitters** (`FUN_0042e110`): timers `+0x7ec`/`+0x7f0`/`+0x7f4` spawn effect
   ids **60/90/80** every 15/10/15 frames (SE 34/37/35 every 60), `+0x7e0`/`+0x7e4` spawn
   **400/390** every 30, and the downed/burning move family spawns **380 every 7 frames**
@@ -964,8 +977,7 @@ connects twice.
   now the recovered `14.X` with its recovered 0.250 s lifetime, so a capture must be
   taken within ~15 frames of a scripted hit: `--versus --frames=60` (the hits are at
   30/55/80 % of `--frames`) instead of the old 5 s placeholder's any-frame recipe.
-* **Still open.** The muzzle-flash slot mapping and the per-bone aura repetition (the
-  port keeps the single local-space placement); the per-effect fade (nothing in
+* **Still open.** The muzzle-flash slot mapping; the per-effect fade (nothing in
   `FUN_00436150`/`FUN_00436630` ramps alpha — the animation itself carries the fade); the
   descriptor's part windows are parsed by the reference but the port draws a card whole;
   and the in-flight projectile visual, which no shipped data describes.
