@@ -253,7 +253,7 @@ are named as such. Issue #35 ran the two cross targets for the first time and
 Per-target commands, transcripts and the honest list of what did not work are in
 `docs/BUILD-linux.md`, `docs/BUILD-windows.md` and `docs/BUILD-web.md`.
 
-Host-side tests run without a GPU (`CMakeLists.txt`): the Linux suite has 57
+Host-side tests run without a GPU (`CMakeLists.txt`): the Linux suite has 58
 tests covering geometry, raycasts, asset parsing/spawns, gameplay/economy,
 animation/lighting, caption fonts/text, HUD/menu layouts (including the pause
 overlay's port-rule layout and its rendered frame), split-screen view
@@ -410,7 +410,7 @@ presentation, per-view HUD markers and four-row report
 opt-in 3v3/4v4 mode would be a new remake feature (six/eight fighters total);
 its implementation handoff is in
 [`docs/ROADMAP-PENDING.md`](docs/ROADMAP-PENDING.md#future-remake-only-experiment-3v3-and-4v4).
-Renderer options (the first three options rows are marked unavailable) remain
+Renderer options (the first two options rows are marked unavailable) remain
 pending (issue #21). Battle fidelity includes unresolved animation/VFX details;
 LAN netplay awaits its own implementation. The Linux CTest suite has 58 tests (2026-10-06),
 including frontend selection/configuration, VS/result timelines, HUD geometry, the
