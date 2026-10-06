@@ -777,3 +777,26 @@ for an enumeration that supports it.
 **Also reported**: six of the seven shipped attachment models load and are **never drawn** (only
 hypermode draws one) — the muzzle-flash, blue-hit and downed states have no attachment at all, and
 each would now need the same per-point placement. That is #17's spawn side.
+
+## Round 21 — #39 merged: the verification stack now sees the live path
+
+**Option 1**: `--match-alpha=<0..1>` plus a device-free smoothness test asserting on **frame-view
+state, not pixels** — it drives the product's own composition (fixed-step clock → `tickMatch` →
+`buildFrameViews`), so it runs in CI with no GPU, window or game data. ctest 54 → **55**.
+
+**Verified by the coordinator by reconstructing the defect**, not by reading the report: moving the
+`previousEye`/`previousTarget` advance back after `camera.update()` and gating it on
+`matchFrame == 1` reproduces the reported numbers **exactly** — `1282.8557`, `763.6046` and
+`1228.3241` units against a `5.000` limit, `FAIL (25 checks, 3 failed)` — while the camera's own eye
+and the followed fighter stay exactly static. Restoring the file returns `ok (25 checks, 0 failed)`.
+The detector fires on the real defect.
+
+**The design decision that makes it a real check rather than a cosmetic one**:
+`buildFrameViews`' exact-camera shortcut was re-keyed from `capturing` to `app.matchAlpha == 1.f`.
+Without that, a fractional-alpha capture would still have drawn the camera's own view matrix — a
+check that could never have failed.
+
+**Standing consequence for every later issue**: **a capture is not a live run** (now in `AGENTS.md`
+and `decisions.md` D9). The capture path pins the presentation blend to 1, so anything living in
+presentation-time interpolation, per-frame smoothing, alpha blending or input-driven per-frame state
+is invisible to captures. When evidence looks flat, that is the first place to look.
