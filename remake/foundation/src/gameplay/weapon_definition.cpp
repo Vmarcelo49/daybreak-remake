@@ -39,9 +39,19 @@ public:
         m_offset += kWeaponNameField;
         return true;
     }
-    bool skip(size_t n) {
-        if (m_offset + n > m_size) return false;
-        m_offset += n;
+    // The 260-byte model block of a bullet or effect descriptor: fixed width, NUL-padded,
+    // read whole. FUN_005f8510:73 hands the bytes straight to wsprintfA("%s%s", dir, block),
+    // so the name ends at the first NUL. A block with no NUL at all is the one case the
+    // original reads past; here it yields an empty name (no model), which is the same
+    // outcome as a blank block rather than a second invented rule.
+    bool modelName(std::string& out) {
+        constexpr size_t kModelBlock = 0x104;
+        if (m_offset + kModelBlock > m_size) return false;
+        const char* p = reinterpret_cast<const char*>(m_bytes + m_offset);
+        size_t len = 0;
+        while (len < kModelBlock && p[len] != '\0') ++len;
+        out.assign(p, len < kModelBlock ? len : 0);
+        m_offset += kModelBlock;
         return true;
     }
     size_t offset() const { return m_offset; }
@@ -172,7 +182,10 @@ bool WeaponDefinition::parse(int itemId, const uint8_t* bytes, size_t size,
 
 // FUN_005f8510 (0x5f8510) — data/bullet/<weaponId>/<type>.dat.
 //   u32  leadingTag        (:71, FUN_00653760(local_26c,4))
-//   260-byte model path block (:72, 0x104)
+//   260-byte model path block (:72, 0x104) — the bullet's own model. The reader joins it
+//     to the bullet directory and loads it (:73-75, FUN_0064d940) before it reads a
+//     single combat field, and a load failure aborts the whole file, so this block is
+//     load-bearing data and not a comment field.
 //   u32  variantCount      (:79)
 //   variantCount x {
 //     u32  variantId       (:84)   -- compared against the caller's Status
@@ -204,7 +217,7 @@ bool parseBulletParameter(const uint8_t* bytes, size_t size, int status,
     }
     Cursor cur(bytes, size);
     int tag = 0;
-    if (!cur.i32(tag) || !cur.skip(0x104)) {
+    if (!cur.i32(tag) || !cur.modelName(out.modelName)) {
         error = "bullet parameter: truncated header";
         return false;
     }
