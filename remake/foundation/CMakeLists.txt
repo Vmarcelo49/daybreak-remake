@@ -395,6 +395,14 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME caption_font_test COMMAND caption_font_test)
     set_tests_properties(caption_font_test PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
+    # The packaged Linux entry point (issue #22): the launcher's game-folder search order,
+    # its persistence file and every failure message, driven against a sandbox package whose
+    # binary is a stub. Device-free, display-free and game-data-free — the launcher is the
+    # user-facing surface this issue ships, so it is tested like one.
+    add_test(NAME launcher_test
+             COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/launcher_test.sh"
+                     "${CMAKE_CURRENT_SOURCE_DIR}/package/daybreak")
+
     # The battle HUD's sprite table and draw geometry: device-free arithmetic over the
     # transcribed .rdata anchors, so it needs the headers' include path and webgpu.h only.
     add_executable(hud_sprite_table tests/hud_sprite_table.cpp)
