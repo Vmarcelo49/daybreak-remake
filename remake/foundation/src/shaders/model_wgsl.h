@@ -31,12 +31,23 @@ struct Camera {
   // original's fog, not an approximation of it. fogParams.zw: z = enabled.
   fogColor   : vec4<f32>,
   fogParams  : vec4<f32>,   // x = start, y = end, z = 1 when fog is on
+  // World-space camera eye (issue #25): the rim and stylized-specular experiments need a
+  // view vector, which a viewProj cannot be decomposed into cheaply per fragment.
+  eye        : vec4<f32>,
 };
 
 struct Draw {
   model         : mat4x4<f32>,   // entity -> world; identity when the palette bakes it
   baseColor     : vec4<f32>,     // multiplies material diffuse and vertex colour
   emissive      : vec4<f32>,     // the material's Emissive, the toon effect's MaterialColor
+  // NPR experiment parameters (issue #25), one slot per experiment: rgb is the colour it
+  // tints with and w its strength (or, for the band, the curve's softness). Zero on an
+  // unmodified renderer, so every branch below that reads them is dead there.
+  nprBand       : vec4<f32>,
+  nprKey        : vec4<f32>,
+  nprRim        : vec4<f32>,
+  nprSpec       : vec4<f32>,
+  nprMask       : vec4<f32>,   // x = scale on the generated shadow mask (issue #25, F)
   paletteOffset : u32,           // index of this mesh's first palette matrix
   flags         : u32,
   _pad0         : u32,
@@ -56,6 +67,22 @@ const FLAG_UNLIT      : u32 = 2u;
 const FLAG_ALPHA_TEST : u32 = 4u;
 const FLAG_TOON       : u32 = 8u;
 const FLAG_OUTLINE    : u32 = 16u;
+// NPR experiment bits (issue #25). Nothing here is recovered: these are the switches the
+// experiment harness adds on top of the recovered toon technique, all off by default.
+const FLAG_NPR_SHADOW  : u32 = 32u;    // nprBand.rgb tints the shadow band
+const FLAG_NPR_NORMALS : u32 = 64u;    // light the secondary normal, bias by its mask
+const FLAG_NPR_KEY     : u32 = 128u;   // add the character key light term
+const FLAG_NPR_SPEC    : u32 = 256u;   // stylized hard-threshold specular
+const FLAG_NPR_RIM     : u32 = 512u;   // character-only rim light
+
+// The band edges are experiment constants, not uniforms: they were fixed across the whole
+// grid below and a value that never changes belongs next to the code that reads it.
+const BAND_LO    : f32 = 0.25;   // the 3-band arm's lower edge
+const BAND_MID   : f32 = 0.50;   // the 2-band terminator
+const BAND_BIAS  : f32 = 0.22;   // how far the generated mask may move an edge
+const BAND_CORE  : f32 = 0.55;   // how much tint survives under the lower edge
+const NPR_RIM_POW : f32 = 2.0;
+const NPR_RIM_BOOST : f32 = 1.6;
 
 struct VSOut {
   @builtin(position) clip   : vec4<f32>,
@@ -63,7 +90,10 @@ struct VSOut {
   @location(1)       uv     : vec2<f32>,
   @location(2)       color  : vec4<f32>,
   @location(3)       viewZ  : f32,   // view-space depth, the fog coordinate
-  @location(4)       toonU  : f32,   // toon ramp coordinate, object-space N.L (issue #21)
+  // x = toon ramp coordinate (object-space N.L, issue #21), y = the generated
+  // shadow-threshold mask (issue #25), interpolated across the triangle.
+  @location(4)       toonU  : vec2<f32>,
+  @location(5)       wpos   : vec3<f32>,  // world-space position (the view vector's tail)
 };
 
 @vertex
@@ -92,7 +122,13 @@ fn vs_main(
   // constant (0, 0.287347883, 0.957826257) and the *object-space* normal (the shader's
   // `dp3 r0.x, v1, c9`), so the banding follows the character's own facing rather than
   // the world light the fixed-function path uses.
-  out.toonU = saturate(dot(nrm, vec3<f32>(0.0, 0.287347883, 0.957826257)));
+  // The toon ramp coordinate (issue #21): `min(max(N.L, 0), 1)` with the light direction
+  // BAKED IN as the constant (0, 0.287347883, 0.957826257) and the *object-space* normal
+  // (the shader's `dp3 r0.x, v1, c9`), so the banding follows the character's own facing
+  // rather than the world light the fixed-function path uses. The second component is the
+  // generated shadow mask (issue #25) and is a literal 0 here: this entry point is the one
+  // every pre-#25 capture was made with, and it must not change.
+  out.toonU = vec2<f32>(saturate(dot(nrm, vec3<f32>(0.0, 0.287347883, 0.957826257))), 0.0);
   if ((draw.flags & FLAG_OUTLINE) != 0u) {
     // Outline hull (issue #21). The original's outline pass offsets the clip position
     // along the world normal's x/y, scaled by the clip-space w, which makes the rim a
@@ -111,6 +147,7 @@ fn vs_main(
   // Uniform scale assumed; a rig with non-uniform bone scale would need the
   // inverse-transpose of the upper 3x3 here.
   out.normal = (world * vec4<f32>(nrm, 0.0)).xyz;
+  out.wpos   = (world * vec4<f32>(pos, 1.0)).xyz;
   out.uv     = uv;
   out.color  = color * draw.baseColor;
   // For a perspective projection the clip-space w IS the view depth, which is the
@@ -118,6 +155,105 @@ fn vs_main(
   // the same depth for both draws of one mesh.
   out.viewZ  = out.clip.w;
   return out;
+}
+
+@vertex
+fn vs_npr(
+  @location(0) pos     : vec3<f32>,
+  @location(1) nrm     : vec3<f32>,
+  @location(2) uv      : vec2<f32>,
+  @location(3) color   : vec4<f32>,
+  @location(4) bones   : vec4<u32>,
+  @location(5) weights : vec4<f32>,
+  @location(6) nprNrm  : vec4<f32>,
+) -> VSOut {
+  let o = draw.paletteOffset;
+
+  // Unskinned meshes carry a single-matrix palette, so this path covers both cases.
+  let skin = weights.x * palette[o + bones.x]
+           + weights.y * palette[o + bones.y]
+           + weights.z * palette[o + bones.z]
+           + weights.w * palette[o + bones.w];
+
+  let world = draw.model * skin;
+  let clip  = cam.viewProj * world * vec4<f32>(pos, 1.0);
+  // The secondary lighting normal (issue #25, E). (0,0,0,0) is "this mesh has no such
+  // normal", which is every mesh whose role the experiments do not cover; its w is the
+  // generated shadow mask (F).
+  let haveNpr = dot(nprNrm.xyz, nprNrm.xyz) > 0.25;
+  let nprNrmUse = select(nrm, nprNrm.xyz, haveNpr);
+
+  var out : VSOut;
+  // Toon ramp coordinate (issue #21). The original's toon effect computes it in its own
+  // vertex shader as `min(max(N.L, 0), 1)` with the light direction BAKED IN as the
+  // constant (0, 0.287347883, 0.957826257) and the *object-space* normal (the shader's
+  // `dp3 r0.x, v1, c9`), so the banding follows the character's own facing rather than
+  // the world light the fixed-function path uses.
+  // The toon ramp coordinate (issue #21): `min(max(N.L, 0), 1)` with the light direction
+  // BAKED IN as the constant (0, 0.287347883, 0.957826257) and the *object-space* normal
+  // (the shader's `dp3 r0.x, v1, c9`), so the banding follows the character's own facing
+  // rather than the world light the fixed-function path uses. The second component is the
+  // generated shadow mask (issue #25) and is a literal 0 here: this entry point is the one
+  // every pre-#25 capture was made with, and it must not change.
+  out.toonU = vec2<f32>(saturate(dot(nrm, vec3<f32>(0.0, 0.287347883, 0.957826257))),
+                        select(0.0, nprNrm.w, haveNpr));
+  if ((draw.flags & FLAG_OUTLINE) != 0u) {
+    // Outline hull (issue #21). The original's outline pass offsets the clip position
+    // along the world normal's x/y, scaled by the clip-space w, which makes the rim a
+    // constant screen width after the perspective divide: 0.00275 and 0.00366666657 NDC
+    // are 0.011/4 and 0.011/3, i.e. the same ~1.1 px at the original's 800x600 canvas.
+    // The 1e-6*w z push keeps the hull behind the model it surrounds, so the model's own
+    // depth wins everywhere except the rim that sticks out past the silhouette.
+    // The issue #25 outline experiment (I) scales both xy offsets by draw.nprBand.w and
+    // leaves the z push exactly as recovered, so a scaled rim is still behind the model.
+    let scale = draw.nprBand.w;
+    let wn = normalize((world * vec4<f32>(nrm, 0.0)).xyz);
+    out.clip = vec4<f32>(clip.x + wn.x * clip.w * (0.00275 * scale),
+                         clip.y + wn.y * clip.w * (0.00366666657 * scale),
+                         clip.z + clip.w * 0.000001,
+                         clip.w);
+  } else {
+    out.clip = clip;
+  }
+  // Uniform scale assumed; a rig with non-uniform bone scale would need the
+  // inverse-transpose of the upper 3x3 here.
+  out.normal = (world * vec4<f32>(nprNrmUse, 0.0)).xyz;
+  out.wpos   = (world * vec4<f32>(pos, 1.0)).xyz;
+  out.uv     = uv;
+  out.color  = color * draw.baseColor;
+  // For a perspective projection the clip-space w IS the view depth, which is the
+  // coordinate D3D's linear table fog uses. The outline branch keeps w, so this stays
+  // the same depth for both draws of one mesh.
+  out.viewZ  = out.clip.w;
+  return out;
+}
+
+// The banding curve the issue #25 experiments select (B: toon threshold / ramp). One
+// shape, three parameter sets, so the captures differ only in the curve:
+//   softness 0    -> a hard step at the edge (the hard 2-band read)
+//   softness > 0  -> a short smoothstep across [edge - softness, edge + softness]
+// `bias` is the generated per-vertex shadow mask (F): positive pushes the surface
+// towards light, negative towards shadow, which is what lets a region hold its band
+// through an extreme pose without touching the mesh.
+fn nprBandWeight(ndl : f32, edge : f32, softness : f32, bias : f32) -> f32 {
+  let e = clamp(edge + bias, 0.0, 1.0);
+  if (softness > 0.0) {
+    return smoothstep(e - softness, e + softness, ndl);
+  }
+  return select(0.0, 1.0, ndl >= e);
+}
+
+// The third band's own factor (B's 3-band arm): 1 everywhere the surface is lit, falling
+// to BAND_CORE below the lower edge. It multiplies the DIFFUSE term, not the tint weight:
+// scaling a weight that is already 0 in the shadow does nothing at all, which is what the
+// first two attempts at this arm measured (identical frame, byte for byte). A second band
+// is a darker SHADOW, so it has to scale the thing that is not already zero.
+fn nprBandCore(ndl : f32, edgeLow : f32, softness : f32, bias : f32) -> f32 {
+  let e2 = clamp(edgeLow + bias, 0.0, 1.0);
+  if (softness > 0.0) {
+    return BAND_CORE + (1.0 - BAND_CORE) * smoothstep(e2 - softness, e2 + softness, ndl);
+  }
+  return select(BAND_CORE, 1.0, ndl >= e2);
 }
 
 @fragment
@@ -156,11 +292,19 @@ fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
 
   // The shipped toon ramp, sampled unconditionally for the same uniform-control-flow
   // reason the albedo is (and it costs nothing on a draw that does not read it).
-  let ramp = textureSample(toonRampTex, toonRampSampler, vec2<f32>(in.toonU, 0.5)).r;
+  let ramp = textureSample(toonRampTex, toonRampSampler, vec2<f32>(in.toonU.x, 0.5)).r;
+
+  // The experiment bits are read once here; `nprAny` is what keeps the unmodified path
+  // bit-for-bit the arithmetic it always was.
+  let nprShadow  = (draw.flags & FLAG_NPR_SHADOW) != 0u;
+  let nprKey     = (draw.flags & FLAG_NPR_KEY) != 0u;
+  let nprSpec    = (draw.flags & FLAG_NPR_SPEC) != 0u;
+  let nprRim     = (draw.flags & FLAG_NPR_RIM) != 0u;
+  let nprAny     = nprShadow || nprKey || nprSpec || nprRim;
 
   var lit = vec3<f32>(1.0, 1.0, 1.0);
   if ((draw.flags & FLAG_UNLIT) == 0u) {
-    if ((draw.flags & FLAG_TOON) != 0u) {
+    if ((draw.flags & FLAG_TOON) != 0u && !nprAny) {
       // The original's toon pixel shader (ps_1_1, effect blob +0x4d0) is
       //
       //   tex t0 / tex t1 / tex t2
@@ -175,6 +319,10 @@ fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
       // MaterialColor being the material's Emissive (D3DMATERIAL9 +0x30). There is no
       // ambient term, no light colour and no vertex colour in this path: the effect
       // carries its own lighting, and the ramp is its only N.L term.
+      // PORT RULE (issue #25): when an NPR experiment is active on the same draw the
+      // experiment's own band function replaces this term. The recovered technique is not
+      // edited — the guard above is the whole interaction — and a capture with no --npr
+      // flag never reaches the branch below.
       lit = saturate(vec3<f32>(ramp) + draw.emissive.rgb - vec3<f32>(0.1));
     } else {
       let n = normalize(in.normal);
@@ -202,8 +350,56 @@ fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
       // keeps the ambient term alone instead of being lit at full strength. This branch
       // is the state every banked capture was made in and must stay bit for bit.
       let ndl = saturate(dot(n, l));
-      lit = draw.baseColor.rgb * cam.ambient.rgb
-          + in.color.rgb * cam.lightColor.rgb * ndl;
+      let ambient = draw.baseColor.rgb * cam.ambient.rgb;
+      var diffuse = in.color.rgb * cam.lightColor.rgb * ndl;
+      // Character key light (D, issue #25). A second lambert term from the character's
+      // own direction, added at draw.nprBand.w strength: the world light still carries
+      // the frame, the key only holds the face and the silhouette readable as the fighter
+      // turns away from it. Deliberately an ADD rather than a replacement — the "world
+      // light only" arm of the experiment is simply this term absent.
+      if (nprKey) {
+        diffuse = diffuse + in.color.rgb * cam.lightColor.rgb *
+                            saturate(dot(n, draw.nprKey.rgb)) * draw.nprKey.w;
+      }
+      if (nprShadow) {
+        // Colored shadows (C, issue #25): only the DIFFUSE side is tinted, and only the
+        // part the band function sends to shadow. Tinting the whole lit colour (the
+        // classic `shadow = base * 0.4` this experiment exists to replace) would drag the
+        // ambient term with it and grey out whites; tinting the diffuse alone keeps the
+        // world light's structure and shifts just the shadowed side's hue.
+        //
+        // draw.nprBand.w carries the softness for the 2-band arms and the softness
+        // NEGATED for the 3-band arm, which is how one float selects both the curve and
+        // whether there is a second edge (see fillDrawData).
+        let soft = abs(draw.nprBand.w);
+        let bias = (in.toonU.y - 0.5) * BAND_BIAS * draw.nprMask.x;
+        let w = nprBandWeight(ndl, BAND_MID, soft, bias);
+        diffuse = diffuse * mix(draw.nprBand.rgb, vec3<f32>(1.0), w);
+        if (draw.nprBand.w < 0.0) {
+          diffuse = diffuse * nprBandCore(ndl, BAND_LO, soft, bias);
+        }
+      }
+      lit = ambient + diffuse;
+      // Rim light (H, issue #25): a fresnel edge on the character alone. `1 - |n.v|`
+      // rather than `1 - n.v` so the term reads on both facings — a rim that only lights
+      // the light side cannot separate a silhouette that is turned away.
+      if (nprRim) {
+        let v = normalize(cam.eye.xyz - in.wpos);
+        let fres = pow(1.0 - abs(dot(n, v)), NPR_RIM_POW);
+        lit = lit + in.color.rgb * cam.lightColor.rgb * draw.nprRim.rgb *
+                    (fres * draw.nprRim.w * NPR_RIM_BOOST);
+      }
+      // Stylized specular (G, issue #25): a hard-threshold half-vector lobe instead of a
+      // physically-shaped highlight, so the highlight has a drawn edge and a fixed size
+      // rather than sliding and shrinking with the view. From the toon-shading literature,
+      // not from the original: the reference never enables D3DRS_SPECULARENABLE (R4).
+      if (nprSpec) {
+        let v = normalize(cam.eye.xyz - in.wpos);
+        let h = normalize(l + v);
+        let s = saturate(dot(n, h));
+        let high = smoothstep(0.86, 0.92, s) * step(0.001, ndl);
+        lit = lit + draw.nprSpec.rgb * high * draw.nprSpec.w;
+      }
     }
   }
 

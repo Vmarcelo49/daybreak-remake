@@ -387,6 +387,17 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # render/scene_renderer.h for them, so it needs that header's own include path
     # (webgpu.h from the imported target) although it never creates a device;
     # foundation_assets supplies src/assets for scene.h.
+    # The secondary lighting normals (issue #25, E/F): device-free on purpose — the
+    # failure modes (a cluster radius that merges a limb, a blend that flips a normal, a
+    # mask that is constant) are all geometry. Needs the install for a real mesh, so it
+    # skips itself (exit 77) without one, like the capture tests.
+    add_executable(npr_normals_test tests/npr_normals_test.cpp)
+    target_include_directories(npr_normals_test PRIVATE src)
+    target_link_libraries(npr_normals_test PRIVATE foundation_assets glm)
+    add_test(NAME npr_normals_test COMMAND npr_normals_test
+             "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak")
+    set_tests_properties(npr_normals_test PROPERTIES SKIP_RETURN_CODE 77)
+
     add_executable(lighting_test tests/lighting_test.cpp)
     target_include_directories(lighting_test PRIVATE src)
     target_link_libraries(lighting_test PRIVATE foundation_assets webgpu glm)

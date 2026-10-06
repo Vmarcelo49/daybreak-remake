@@ -6,8 +6,10 @@
 // why the asset header has to be pulled in with XMODEL_WEBGPU defined.
 #include <webgpu/webgpu.h>
 
+#include <cmath>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <glm/glm.hpp>
@@ -18,6 +20,10 @@
 // already in scope above (the header has to be included first).
 #define XMODEL_WEBGPU
 #include "scene.h"
+// After scene.h on purpose: npr_normals.h includes xmodel.h for the plain data types, and
+// xmodel.h is #pragma once — pulling it in before XMODEL_WEBGPU is defined would hide the
+// WebGPU half from every later include in this translation unit.
+#include "render/npr_normals.h"
 
 namespace render {
 
@@ -210,6 +216,22 @@ struct ViewCamera {
 
 inline constexpr size_t kMaxViewCameras = 4;
 
+// The banding curve a B experiment selects (issue #25). The shader implements all three
+// through nprBandWeight(); this is only which parameter set a draw is given.
+enum class NprBands : uint8_t {
+    Off = 0,     // no band experiment: the recovered arithmetic, untouched
+    Hard,        // a step at the terminator: the hard 2-band read
+    Soft,        // a short smoothstep across the terminator
+    Three,       // Soft plus a second, darker band under it (the chin/hair read)
+};
+
+// The key-light arm of a D experiment (issue #25).
+enum class NprKey : uint8_t {
+    Off = 0,       // world light only
+    Fixed,         // world light + a weak key fixed in the character's own frame
+    Camera,        // world light + a weak key that leans in from behind the camera
+};
+
 // Draw-time switches, as opposed to upload-time ones (Options).
 struct Appearance {
     bool fog   = true;   // linear fog from StageEnv (env.dat)
@@ -218,6 +240,63 @@ struct Appearance {
     // original's toon technique covers (characters and their weapons). Off by default,
     // and with it off the lighting arithmetic is the pre-existing one bit for bit.
     bool toon  = false;
+    // ---------------------------------------------------------------------------------
+    // NPR experiments (issue #25). Every field defaults to the state in which the
+    // fragment shader's arithmetic is the pre-#25 arithmetic bit for bit; none of them
+    // is recovered, and none of them is reachable without an explicit --npr flag. They
+    // are draw-time switches, so an experiment needs no re-upload — see
+    // SceneRenderer::fillDrawData and foundation/docs/NPR-EXPERIMENTS.md.
+    // ---------------------------------------------------------------------------------
+    NprBands   bands   = NprBands::Off;
+    float      bandSoftness = 0.06f;   // half-width of the smoothstep transition
+    // The shadow tint (C). The default is the "white cloth -> cool violet/blue-grey" the
+    // issue names, chosen over a neutral (1,1,1) because the neutral arm is the control
+    // and the control has to be asked for (`--npr=shadow:none`): a default that changes
+    // nothing would make `--npr=shadow` look like a no-op. Measured on the bind-pose
+    // capture, a near-white tint (0.88,0.78,0.82) moved no pixel at all at 8-bit — the
+    // shadowed diffuse is dark enough that a 12% tint rounds away — which is exactly why
+    // the default has to be a colour someone chose to see.
+    glm::vec3  shadowTint{0.86f, 0.74f, 0.78f};
+    NprKey     key     = NprKey::Off;
+    float      keyStrength = 0.35f;    // the key's share of the world light's diffuse
+    glm::vec3  keyDir{0.35f, -0.55f, 0.76f};   // character-relative key (NprKey::Fixed)
+    bool       smoothedNormals = false;   // light the secondary normals (E), keep the mesh
+    float      normalMaskBias  = 1.f;     // scale on the generated mask (F), 0 = ignore it
+    bool       specular  = false;         // stylized hard-threshold specular (G)
+    float      specStrength = 0.35f;
+    glm::vec3  specTint{1.f, 1.f, 1.f};
+    bool       rim       = false;         // character-only rim light (H)
+    float      rimStrength = 0.30f;
+    glm::vec3  rimTint{1.f, 1.f, 1.f};
+    float      outlineScale = 1.f;        // recovered hull width × this (I), 1 = recovered
+
+    // Copies the #25 experiment switches from `other` and NOTHING else: the recovered
+    // row (toon) and the frame options (fog, unlit) are not part of this harness, and an
+    // assignment of the whole struct silently reset the toon row when it was tried.
+    void copyExperimentsFrom(const Appearance& other) {
+        bands = other.bands;
+        bandSoftness = other.bandSoftness;
+        shadowTint = other.shadowTint;
+        key = other.key;
+        keyStrength = other.keyStrength;
+        keyDir = other.keyDir;
+        smoothedNormals = other.smoothedNormals;
+        normalMaskBias = other.normalMaskBias;
+        specular = other.specular;
+        specStrength = other.specStrength;
+        specTint = other.specTint;
+        rim = other.rim;
+        rimStrength = other.rimStrength;
+        rimTint = other.rimTint;
+        outlineScale = other.outlineScale;
+    }
+
+    // True when any #25 experiment is on, i.e. the fragment shader will take the NPR
+    // path. Only the fillDrawData predicates use this; the shader tests its own bits.
+    bool nprActive() const {
+        return bands != NprBands::Off || key != NprKey::Off || smoothedNormals ||
+               specular || rim;
+    }
 };
 
 struct Options {
@@ -234,6 +313,8 @@ struct Stats {
     int    effects         = 0;
     int    billboarded     = 0;   // effect draws that yaw to the camera (EFFECTS-BILLBOARD.md)
     int    outlines        = 0;   // toon outline hulls queued (issue #21)
+    int    nprMeshes       = 0;   // meshes given a secondary lighting normal (issue #25)
+    size_t nprVertices     = 0;   // vertices that received one
 };
 
 // Which blend/depth/cull variant draws an item. The order below is also the
@@ -330,6 +411,17 @@ public:
     bool capture(uint32_t width, uint32_t height, std::vector<uint8_t>& rgba,
                  std::string& error, UiHook uiHook = nullptr, void* uiUserdata = nullptr,
                  const std::vector<ViewCamera>* views = nullptr);
+
+    // Issue #25's cost measurement: render `frames` frames of the CURRENT scene state into
+    // one offscreen target, waiting for the GPU after each submit, and report the mean
+    // wall-clock milliseconds per frame in `msPerFrame`. This is the only honest number a
+    // headless run can produce — the per-iteration delta the demo already prints is a
+    // CPU-side loop delta (0.002 ms, i.e. the renderer never blocks), so it says nothing
+    // about what a technique costs. Absolute values are a fixed-rate function of this
+    // machine and driver; what the experiment compares is the same command with one
+    // switch flipped, on the same run of the same binary.
+    bool benchmark(uint32_t width, uint32_t height, int frames, double& msPerFrame,
+                   std::string& error, const std::vector<ViewCamera>* views = nullptr);
     bool captureImpl(uint32_t width, uint32_t height, std::vector<uint8_t>& rgba,
                      std::string& error, UiHook uiHook, void* uiUserdata, bool withScene,
                      const std::vector<ViewCamera>* views);
@@ -351,6 +443,10 @@ public:
 private:
     struct DrawItem {
         WGPUBuffer vbuf = nullptr, ibuf = nullptr;   // borrowed; owned by buffers_
+        // Borrowed secondary lighting-normal stream (issue #25), or the shared zero
+        // stream for a mesh that has none. Always valid: the pipeline's second vertex
+        // layout is present on every pass.
+        WGPUBuffer nprbuf = nullptr;
         uint32_t   firstIndex = 0, indexCount = 0;
         uint32_t   paletteOffset = 0;
         uint32_t   flags = 0;                        // from the material, per draw
@@ -374,6 +470,11 @@ private:
         // This draw is one the original's toon technique covers (character or weapon):
         // the appearance switch turns it into kDrawToon at uniform-fill time.
         bool       toon = false;
+        // Whether this mesh carries a secondary lighting normal (issue #25, E). The
+        // per-frame tint/strength an experiment uses rides the draw uniform instead,
+        // filled in fillDrawData from the appearance — the experiments are all
+        // artist-chosen values, so nothing per-material is read here.
+        bool       nprNormals = false;
     };
 
     // What updatePose() needs to rebuild one mesh's slice of the palette storage.
@@ -403,9 +504,21 @@ private:
         WGPURenderPipeline opaque = nullptr;   // lit, depth-writing
         WGPURenderPipeline decal  = nullptr;   // multiply blend, no depth write, no cull
         WGPURenderPipeline effect = nullptr;   // additive, unlit, no depth write, no cull
+        // The #25 experiment variant of each pass: the same state, but the vertex stage is
+        // shader entry `vs_npr`, which reads the secondary lighting-normal stream and the
+        // outline-width uniform. A SEPARATE entry point, not a branch inside one: a branch
+        // (or a `select`) changes how the driver compiles the unmodified path too, and the
+        // OFF frame moved by a pixel when it was tried — the identity every banked capture
+        // rests on. With no --npr flag this struct is never touched.
+        WGPURenderPipeline outlineNpr = nullptr;
+        WGPURenderPipeline opaqueNpr = nullptr;
+        WGPURenderPipeline decalNpr = nullptr;
+        WGPURenderPipeline effectNpr = nullptr;
     };
 
-    WGPURenderPipeline pipelineFor(WGPUTextureFormat, Pass, std::string& error);
+    // `npr` selects the experiment vertex entry point (issue #25); the pipeline is cached
+    // per (format, pass, entry) so enabling an experiment builds one extra variant.
+    WGPURenderPipeline pipelineFor(WGPUTextureFormat, Pass, bool npr, std::string& error);
     bool ensureDepth(uint32_t width, uint32_t height, std::string& error);
     bool buildBindings(std::string& error);
     // The shared scene pass. `views` null (or a single entry) is the single-view path:

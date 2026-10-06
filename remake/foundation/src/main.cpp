@@ -136,6 +136,19 @@ struct Options {
     // overridden by a stale flag.
     bool        toon       = false;
     bool        toonSet    = false;
+    // NPR experiment switches (issue #25). `nprSet` separates "the flag was passed" from
+    // the default for the same reason `toonSet` does: a capture command line pins the
+    // state it asked for, and an interactive run is never overridden by a stale flag.
+    // The whole family lives in one Appearance, built by parseNprSpec below.
+    render::Appearance npr{};
+    bool        nprSet     = false;
+    // Stepped animation presentation (issue #25 experiment J): quantise the pose clock to
+    // this many updates per second while the frame rate is untouched. 0 = off, and off is
+    // the only state any existing capture is in.
+    float       poseStep   = 0.f;
+    // --bench=N (issue #25): render N frames of the capture scene back to back, waiting
+    // for the GPU after each, and print the mean frame time. 0 = off.
+    int         bench      = 0;
     bool        list       = false;
     std::string screen;          // --screen=<id|name>: boot a front-end screen
     // Split-screen verification (issue #12): open this many local human views by
@@ -198,6 +211,23 @@ void usage() {
         "                     enables the state, so a fogged frame cannot match a\n"
         "                     banked reference frame (worth 0.037 RMSE)\n"
         "  --unlit            skip the lambert term\n"
+        "  --npr=<spec>       NPR experiment harness (issue #25), comma-separated and\n"
+        "                     applied left to right. Off by default; OFF is byte-identical\n"
+        "                     to the pre-experiment renderer. Modifiers:\n"
+        "                       off|on            all experiments off / the suggested stack\n"
+        "                       bands:hard|soft|three   the B curve (soft width via soft:<f>)\n"
+        "                       shadow:<#rrggbb>|none   the C shadow tint\n"
+        "                       key:fixed|cam|off, keydir:<x,y,z>, keystr:<f>   the D key\n"
+        "                       normals|nonormals, mask:<f>   the E/F secondary normals\n"
+        "                       spec|nospec, spectint:<#rrggbb>, specstr:<f>   the G specular\n"
+        "                       rim|norim, rimtint:<#rrggbb>, rimstr:<f>      the H rim\n"
+        "                       outline:<f>       the recovered hull width x this (I)\n"
+        "  --pose-step=<n>    stepped pose presentation (experiment J): pose updates per\n"
+        "                     second while the frame rate is untouched. 0 = off\n"
+        "  --bench=<n>        with --out: render n frames of the same scene back to back,\n"
+        "                     waiting for the GPU after each, and print the mean frame time.\n"
+        "                     This is the only number a headless run can quote for a\n"
+        "                     technique's cost (the per-iteration delta is a CPU loop delta)\n"
         "  --toon | --no-toon toon rendering (issue #21): the character and weapon draws\n"
         "                     read the shipped data/directX/toon ramp at their diffuse\n"
         "                     term instead of the linear N.L. Off by default, which is the\n"
@@ -252,6 +282,161 @@ void usage() {
         "With no asset argument the spinning-triangle demo runs.\n");
 }
 
+// ---------------------------------------------------------------------------------------
+// --npr=<spec> (issue #25): the experiment harness's one switch family.
+//
+// The spec is a comma-separated list of modifiers, applied left to right, so a capture
+// command line reads as the state it wants and a composed arm is a longer list rather
+// than a new flag:
+//
+//   off            every experiment off (the default, and the state the shader's
+//                  arithmetic is the pre-#25 arithmetic in)
+//   on             the issue's suggested D/E stack: soft bands, a camera-relative key,
+//                  secondary normals, a restrained rim. Deliberately not "everything":
+//                  the recommended set is the experiment's own hypothesis and a capture
+//                  must be able to test it as one arm.
+//   bands:hard|soft|three   the B experiment's three curves (soft is the default width)
+//   soft:<f>       the smoothstep's half-width (default 0.06)
+//   shadow:<#rrggbb>|none   the C experiment's tint (default a warm skin shadow)
+//   key:fixed|cam|off       the D experiment's arm; a weak key beside the world light
+//   keydir:<x,y,z> the character-relative key direction (NprKey::Fixed)
+//   keystr:<f>     the key's strength relative to the world light's diffuse (default 0.35)
+//   normals|nonormals       light the secondary normals (E) while keeping the mesh
+//   mask:<f>       scale on the generated shadow mask (F); 0 ignores it
+//   spec|nospec    stylized hard-threshold specular (G), tint from `spectint`
+//   spectint:<#rrggbb>, specstr:<f>
+//   rim|norim      character-only rim light (H), tint from `rimtint`
+//   rimtint:<#rrggbb>, rimstr:<f>
+//   outline:<f>    the recovered hull width times this (I); 1 is the recovered value
+//
+// Every colour defaults to neutral except the shadow tint, which defaults to the warm
+// skin shadow the issue names first: an experiment that has to be told its own colour is
+// one nobody can compare against the arm that has none.
+// ---------------------------------------------------------------------------------------
+bool parseNprColour(const std::string& text, glm::vec3& out) {
+    if (text.size() != 7 || text[0] != '#') return false;
+    unsigned rgb = 0;
+    for (int i = 1; i < 7; ++i) {
+        const char c = text[(size_t)i];
+        const int digit = (c >= '0' && c <= '9')   ? c - '0'
+                          : (c >= 'a' && c <= 'f') ? c - 'a' + 10
+                          : (c >= 'A' && c <= 'F') ? c - 'A' + 10
+                                                   : -1;
+        if (digit < 0) return false;
+        rgb = rgb * 16u + (unsigned)digit;
+    }
+    out = glm::vec3(((rgb >> 16) & 0xFF) / 255.f, ((rgb >> 8) & 0xFF) / 255.f,
+                    (rgb & 0xFF) / 255.f);
+    return true;
+}
+
+bool parseNprSpec(const std::string& spec, render::Appearance& a, std::string& error) {
+    size_t pos = 0;
+    while (pos <= spec.size()) {
+        const size_t comma = spec.find(',', pos);
+        std::string item = spec.substr(pos, comma == std::string::npos ? std::string::npos
+                                                                      : comma - pos);
+        pos = comma == std::string::npos ? spec.size() + 1 : comma + 1;
+        if (item.empty()) continue;
+        std::string arg;
+        const size_t colon = item.find(':');
+        if (colon != std::string::npos) {
+            arg = item.substr(colon + 1);
+            item = item.substr(0, colon);
+        }
+        // Compound modifiers whose argument is not a number are matched whole, before the
+        // split above can mistake their value for a sub-modifier.
+        if (item == "bands" && (arg == "hard" || arg == "soft" || arg == "three")) {
+            a.bands = arg == "hard"   ? render::NprBands::Hard
+                      : arg == "three" ? render::NprBands::Three
+                                       : render::NprBands::Soft;
+            continue;
+        }
+        if (item == "shadow" && arg == "none") {
+            a.shadowTint = glm::vec3(1.f);
+            continue;
+        }
+        if (item == "key" && (arg == "fixed" || arg == "cam" || arg == "off")) {
+            a.key = arg == "cam"   ? render::NprKey::Camera
+                    : arg == "off" ? render::NprKey::Off
+                                   : render::NprKey::Fixed;
+            continue;
+        }
+        const float value = (float)std::atof(arg.c_str());
+        if (item == "off") {
+            // The experiment state only: `--npr=off` must not disturb --toon/--no-toon,
+            // which is the recovered row and not part of this harness.
+            const bool fog = a.fog;
+            a = render::Appearance{};
+            a.fog = fog;
+        } else if (item == "on") {
+            a.bands = render::NprBands::Soft;
+            a.shadowTint = glm::vec3(0.88f, 0.78f, 0.82f);
+            a.key = render::NprKey::Camera;
+            a.smoothedNormals = true;
+            a.rim = true;
+            a.rimStrength = 0.22f;
+            a.rimTint = glm::vec3(1.f, 0.97f, 0.92f);
+        } else if (item == "bands") {
+            a.bands = render::NprBands::Soft;
+        } else if (item == "soft") {
+            a.bandSoftness = value;
+        } else if (item == "shadow") {
+            // Bare `shadow` keeps the appearance's default tint (the warm violet-grey the
+            // header documents) and only turns the experiment on; an explicit colour is
+            // the authoring override.
+            if (!arg.empty() && !parseNprColour(arg, a.shadowTint)) {
+                error = "--npr=shadow: wants #rrggbb, got '" + arg + "'";
+                return false;
+            }
+            if (a.bands == render::NprBands::Off) a.bands = render::NprBands::Soft;
+        } else if (item == "key") {
+            a.key = render::NprKey::Fixed;
+        } else if (item == "keydir") {
+            if (std::sscanf(arg.c_str(), "%f,%f,%f", &a.keyDir.x, &a.keyDir.y, &a.keyDir.z) != 3) {
+                error = "--npr=keydir: wants x,y,z, got '" + arg + "'";
+                return false;
+            }
+        } else if (item == "keystr") {
+            a.keyStrength = value;
+        } else if (item == "normals") {
+            a.smoothedNormals = true;
+        } else if (item == "nonormals") {
+            a.smoothedNormals = false;
+        } else if (item == "mask") {
+            a.normalMaskBias = value;
+        } else if (item == "spec") {
+            a.specular = true;
+        } else if (item == "nospec") {
+            a.specular = false;
+        } else if (item == "spectint") {
+            if (!parseNprColour(arg, a.specTint)) {
+                error = "--npr=spectint: wants #rrggbb, got '" + arg + "'";
+                return false;
+            }
+        } else if (item == "specstr") {
+            a.specStrength = value;
+        } else if (item == "rim") {
+            a.rim = true;
+        } else if (item == "norim") {
+            a.rim = false;
+        } else if (item == "rimtint") {
+            if (!parseNprColour(arg, a.rimTint)) {
+                error = "--npr=rimtint: wants #rrggbb, got '" + arg + "'";
+                return false;
+            }
+        } else if (item == "rimstr") {
+            a.rimStrength = value;
+        } else if (item == "outline") {
+            a.outlineScale = value;
+        } else {
+            error = "--npr: unknown modifier '" + item + "'";
+            return false;
+        }
+    }
+    return true;
+}
+
 bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -283,6 +468,24 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--unlit") o.unlit = true;
         else if (a == "--toon") { o.toon = true; o.toonSet = true; }
         else if (a == "--no-toon") { o.toon = false; o.toonSet = true; }
+        else if (!(v = val("--npr=")).empty()) {
+            if (!parseNprSpec(v, o.npr, error)) return false;
+            o.nprSet = true;
+        }
+        else if (!(v = val("--bench=")).empty()) {
+            o.bench = std::atoi(v.c_str());
+            if (o.bench < 0) {
+                error = "--bench takes a frame count";
+                return false;
+            }
+        }
+        else if (!(v = val("--pose-step=")).empty()) {
+            o.poseStep = (float)std::atof(v.c_str());
+            if (o.poseStep < 0.f) {
+                error = "--pose-step takes a non-negative updates-per-second rate";
+                return false;
+            }
+        }
         else if (a == "--list") o.list = true;
         else if (a == "--hud-test") o.hudTest = true;
         else if (a == "--hud-probe") { o.hudTest = true; o.hudProbe = true; }
@@ -3474,6 +3677,10 @@ bool initScene(App& app) {
     // restart (and the renderer no re-upload).
     app.appearance.toon = app.opts.toonSet ? app.opts.toon
                                            : ui::frontendSettings().toonRendering;
+    // NPR experiments (issue #25): the flag family is opt-in, so an absent --npr leaves
+    // every field at the appearance's default and the renderer takes the same path it
+    // took before this issue existed. `--npr=off` is the explicit form of that state.
+    if (app.opts.nprSet) app.appearance.copyExperimentsFrom(app.opts.npr);
 
     if (!app.rendererReady && !app.renderer.init(app.ctx, app.error)) return false;
     app.rendererReady = true;
@@ -3520,6 +3727,13 @@ bool initScene(App& app) {
     std::printf("draws: %zu (%d textured, %d untextured, %d decals, %d effects, %d outlines), %zu GPU textures\n",
                 st.draws, st.textured, st.untextured, st.decals, st.effects, st.outlines,
                 st.textures);
+    // The secondary lighting normals (issue #25, E/F) are built per mesh at upload, so
+    // whether a scene HAS them is a load-time fact worth reporting: an experiment that
+    // reports "no effect" because the stream was never built looks exactly like one that
+    // reports "no effect" because the technique is invisible.
+    if (st.nprMeshes > 0)
+        std::printf("npr normals : %d mesh(es), %zu vertices with a secondary normal\n",
+                    st.nprMeshes, st.nprVertices);
     return true;
 }
 
@@ -3599,6 +3813,15 @@ void teardown(App& app) {
 // own animation inside update() (fighter.cpp:219), exactly as the DX9 model did, and
 // advancing them here as well would run the fighters' animation at double speed.
 void advanceAnimation(App& app, double delta) {
+    // Stepped animation presentation (issue #25 experiment J): quantise the POSE clock to
+    // `poseStep` updates per second while the render clock keeps running. The scale is
+    // applied to the delta rather than to each track's absolute time, so the phase a run
+    // starts at (--time) is preserved and a capture stays reproducible; a delta shorter
+    // than one step advances nothing, which is the whole point.
+    if (app.opts.poseStep > 0.f) {
+        const double step = 1.0 / (double)app.opts.poseStep;
+        delta = std::floor(delta / step + 1e-9) * step;
+    }
     bool moved = false;
     for (size_t i = 0; i < app.controllers.size(); ++i) {
         xm::Controller& c = app.controllers[i];
@@ -5037,6 +5260,22 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     return SDL_APP_FAILURE;
                 reportCoverage(rgba, app->opts.sizeW, app->opts.sizeH);
                 writePpm(app->opts.out, rgba, app->opts.sizeW, app->opts.sizeH);
+                // Issue #25's cost measurement: the capture above proves what the frame
+                // looks like, this proves what it costs. Both run the same scene state;
+                // the benchmark allocates its own target so the capture's bytes are
+                // already on disk before it starts.
+                if (app->opts.bench > 0) {
+                    double ms = 0.0;
+                    if (!app->renderer.benchmark((uint32_t)app->opts.sizeW,
+                                                 (uint32_t)app->opts.sizeH, app->opts.bench,
+                                                 ms, app->error, viewArg))
+                        return SDL_APP_FAILURE;
+                    const render::Stats& bs = app->renderer.stats();
+                    std::printf("bench: %d frames, mean %.4f ms/frame (%.0f fps), "
+                                "%zu draws (%d outlines, %d effects)\n",
+                                app->opts.bench, ms, ms > 0.0 ? 1000.0 / ms : 0.0,
+                                bs.draws, bs.outlines, bs.effects);
+                }
                 if (app->opts.debugPrims) {
                     const render::DebugPrims::Stats& ds = app->debugPrims.stats();
                     std::printf("debug prims : %zu line(s), %zu vertices, %zu dropped, %zu pass(es)\n",

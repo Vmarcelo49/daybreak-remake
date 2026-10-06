@@ -69,6 +69,11 @@ namespace xm {
 // Data model
 // ---------------------------------------------------------------------------------------
 
+// Note (issue #25): the secondary lighting normal and its generated shadow mask are NOT
+// fields here. They ride a second vertex stream (NprVertex, declared below) precisely so
+// this struct — and therefore every vertex stride, every buffer size and every byte the
+// default path reads — stays exactly what it was. Adding a field here moved a pixel on the
+// bind-pose capture the moment it was tried.
 struct Vertex {
     glm::vec3  pos;
     glm::vec3  normal;
@@ -76,6 +81,16 @@ struct Vertex {
     glm::vec4  color{1.f};                 // MeshVertexColors, white when absent
     glm::uvec4 bones{0u, 0u, 0u, 0u};      // indices into Mesh::bones
     glm::vec4  weights{1.f, 0.f, 0.f, 0.f};
+};
+
+// Issue #25's secondary lighting normal, in its own vertex stream so the stream above is
+// untouched: xyz is the coarser normal the shading reads, w the generated
+// shadow-threshold bias in [0,1]. A mesh with no such stream binds a single zero vertex,
+// which the shader reads as "no secondary normal" and falls back to the geometric one.
+// Plain data, deliberately declared outside the WebGPU guard below: the device-free
+// normals builder and its test need it with no webgpu.h in scope.
+struct NprVertex {
+    glm::vec4 npr{0.f};
 };
 
 struct Material {
@@ -297,7 +312,7 @@ namespace xm {
 
 inline constexpr uint64_t kVertexAttributeCount = 6;
 
-// Per-draw uniform, 96 bytes of payload. Bound with a dynamic offset, so each record
+// Per-draw uniform, 176 bytes of payload. Bound with a dynamic offset, so each record
 // must start on a minUniformBufferOffsetAlignment boundary (256 on every current
 // adapter) — see kDrawStride.
 struct DrawUniform {
@@ -310,6 +325,21 @@ struct DrawUniform {
     // function path's ambient is the diffuse (D3DX sets Ambient := Diffuse for .X
     // materials), which is why baseColor carries that term instead.
     glm::vec4 emissive{0.f, 0.f, 0.f, 1.f};
+    // NPR experiment parameters (issue #25), one slot per experiment so a COMPOSED arm
+    // (the issue's suggested D/E stack runs bands, key, rim and normals together) keeps
+    // each one's own values. They shared one slot at first and the last writer won, which
+    // silently turned the composed capture into a rim-only one. Everything here is zero on
+    // an unmodified renderer, and the band thresholds are shader constants — see
+    // model_wgsl.h — because they were fixed across the whole grid and a uniform that
+    // never changes is a uniform that hides the values it was chosen for.
+    glm::vec4 nprBand{0.f};   // rgb = shadow tint, w = softness (0 = the hard step, <0 = 3-band)
+    glm::vec4 nprKey{0.f};    // xyz = character key direction, w = strength
+    glm::vec4 nprRim{0.f};    // rgb = rim tint, w = strength
+    glm::vec4 nprSpec{0.f};   // rgb = specular tint, w = strength
+    // x = how much of the generated shadow mask (F) the band curve is allowed to read.
+    // Its own slot rather than a bit, because 0 (the neutral arm) has to be expressible:
+    // the mask is a separate hypothesis from the curve and must not ride along with it.
+    glm::vec4 nprMask{0.f};
     uint32_t  paletteOffset = 0;   // first palette matrix for this mesh
     uint32_t  flags = 0;
     uint32_t  pad[2] = {0u, 0u};
@@ -328,6 +358,34 @@ inline constexpr uint32_t kDrawToon      = 1u << 3;
 // flat darkened material colour. A separate draw of the same mesh, as in the original.
 inline constexpr uint32_t kDrawOutline   = 1u << 4;
 
+// ---------------------------------------------------------------------------------------
+// NPR experiment bits (issue #25). These are the switches the experiment harness adds
+// ON TOP of the recovered toon technique: each one is set per draw by
+// SceneRenderer::fillDrawData from Appearance, so an experiment is a draw-time state
+// change with no re-upload behind it. With all of them clear the fragment shader takes
+// the same branch it took before this issue existed, which is what keeps every banked
+// capture byte-identical. They are NOT part of the recovered technique and carry no RE
+// provenance: see foundation/docs/NPR-EXPERIMENTS.md for what each one is.
+// ---------------------------------------------------------------------------------------
+// xyz = draw.nprBand.rgb as the shadow tint instead of a neutral-darkened diffuse; w =
+// the band softness, 0 being the hard 2-band step.
+inline constexpr uint32_t kDrawNprShadow = 1u << 5;
+// Shade with the secondary lighting normal (the NprVertex stream's xyz) instead of the
+// geometric one. Its w, the generated shadow mask, rides the toon coordinate's free
+// component instead — it is not a switch of its own: the band experiment reads it.
+inline constexpr uint32_t kDrawNprNormals = 1u << 6;
+// Add a character key light on top of the recovered world light (the experiment's "world
+// + weak character key" mode). The key is always a second term beside the world light,
+// never a replacement, so the stage's own lighting keeps anchoring the silhouette.
+inline constexpr uint32_t kDrawNprKey = 1u << 7;
+// Stylized specular: a hard-threshold half-vector lobe tinted by draw.nprBand.rgb.
+inline constexpr uint32_t kDrawNprSpec = 1u << 8;
+// Character-only rim light: edge term tinted by draw.nprBand.rgb, scaled by draw.nprBand.w.
+inline constexpr uint32_t kDrawNprRim = 1u << 9;
+// (There is deliberately no bit for the outline-width experiment: the outline entry point
+// reads draw.nprBand.w directly, so a bit that only ever meant "multiply by 1.0" would be
+// a switch with nothing behind it.)
+
 inline constexpr uint64_t kDrawStride = 256;          // == minUniformBufferOffsetAlignment
 
 struct CameraUniform {
@@ -342,7 +400,27 @@ struct CameraUniform {
     // start/end values and colour (FUN_00650a30), so this reproduces it exactly.
     glm::vec4 fogColor{0.f, 0.f, 0.f, 1.f};
     glm::vec4 fogParams{0.f, 0.f, 0.f, 0.f};   // x = start, y = end, z = enabled
+    // Camera eye in world space (issue #25). The rim and stylized-specular experiments
+    // need a view vector, and the viewProj alone cannot yield one; the renderer already
+    // knows the eye (setEye, for effect-card billboarding) and now publishes it here too.
+    // Nothing recovered reads it, so it changes no existing pixel.
+    glm::vec4 eye{0.f, 0.f, 0.f, 1.f};
 };
+
+// The secondary lighting-normal stream's layout (issue #25, attribute location 6), or a
+// null layout when a pipeline should not carry one. Returns by value so the caller owns
+// the single-element attribute array the descriptor points at.
+inline WGPUVertexBufferLayout wgpuNprVertexLayout(WGPUVertexAttribute (&attr)[1]) {
+    attr[0].format = WGPUVertexFormat_Float32x4;
+    attr[0].offset = 0;
+    attr[0].shaderLocation = 6;
+    WGPUVertexBufferLayout layout = {};
+    layout.arrayStride = sizeof(NprVertex);
+    layout.stepMode = WGPUVertexStepMode_Vertex;
+    layout.attributeCount = 1;
+    layout.attributes = attr;
+    return layout;
+}
 
 // Fills `attrs` (which must hold kVertexAttributeCount entries) and returns a layout
 // pointing at it. The array must outlive the pipeline-creation call.

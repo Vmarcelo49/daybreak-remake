@@ -10,12 +10,46 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "assets/asset_source.h"
+#include "platform/platform.h"
 #include "shaders/model_wgsl.h"
 
 namespace render {
 namespace {
 
 WGPUStringView sv(const char* s) { return WGPUStringView{s, WGPU_STRLEN}; }
+// The D experiment's key light (issue #25), resolved to the one uniform slot the shader
+// reads: a world-space direction the character-only term lights from (xyz) and the
+// strength the appearance carries (w). NprKey::Camera leans the key in from behind the
+// camera and above, which is what "camera-relative" buys in a fighting game — the face
+// stays lit while the stage's own key walks around the arena. NprKey::Fixed rotates the
+// appearance's direction by the character's own yaw, so the key follows the fighter and
+// neither the camera nor the stage.
+glm::vec3 nprKeyDirection(const glm::mat4& model, const glm::vec3& eye, bool haveEye,
+                          const Appearance& a) {
+    glm::vec3 dir = a.keyDir;
+    if (a.key == NprKey::Camera) {
+        const glm::vec3 p(model[3]);
+        glm::vec3 back(0.f, 0.f, -1.f);
+        if (haveEye) {
+            const glm::vec3 d(p.x - eye.x, p.y - eye.y, p.z - eye.z);
+            const glm::vec2 flat(d.x, d.z);
+            if (glm::dot(flat, flat) > 1e-6f) back = glm::normalize(glm::vec3(flat.x, 0.f, flat.y));
+        }
+        dir = glm::normalize(back + glm::vec3(0.f, 0.6f, 0.f));
+        return dir;   // already world space
+    }
+    // NprKey::Fixed: the direction is authored in the character's frame, so rotate it by
+    // the yaw the model matrix's basis carries. A degenerate basis keeps the raw value.
+    const glm::vec3 x(model[0]), z(model[2]);
+    const glm::vec2 fx(x.x, x.z), fz(z.x, z.z);
+    if (glm::dot(fx, fx) > 1e-8f && glm::dot(fz, fz) > 1e-8f) {
+        const glm::vec3 ex = glm::normalize(glm::vec3(fx.x, 0.f, fx.y));
+        const glm::vec3 ez = glm::normalize(glm::vec3(fz.x, 0.f, fz.y));
+        const glm::vec3 ey = glm::cross(ez, ex);
+        dir = glm::normalize(ex * a.keyDir.x + ey * a.keyDir.y + ez * a.keyDir.z);
+    }
+    return glm::normalize(dir);
+}
 
 // The shipped toon ramp (issue #21). FUN_00650410:19 asks for "data/directx/toon.bmp"
 // (the exe's own lowercase spelling) and the archives ship the .cnv conversion, which is
@@ -475,6 +509,34 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
             palette_.insert(palette_.end(), meshPalette.begin(), meshPalette.end());
             meshes_.push_back(MeshRecord{&sm.model, &mesh, mi, paletteOffset});
 
+            // Issue #25 experiment E/F: the secondary lighting normal and the generated
+            // shadow mask are built ONCE here, from the bind-pose geometry, and uploaded
+            // with the mesh. They are not part of the .X and are not animation-dependent:
+            // a skinned vertex's normal rotates with its bones through the palette, so a
+            // coarse normal authored in bind pose stays coarse through the whole clip.
+            // Only the roles the experiments shade get one; every other mesh keeps the
+            // (0,0,0,0) that tells the shader to use its geometric normal, which is what
+            // leaves the stage's shading untouched.
+            std::vector<xm::NprVertex> nprVerts;
+            const bool nprRole = (sm.role == "character" || sm.role == "weapon");
+            size_t nprFilled = 0;
+            if (nprRole) nprFilled = buildNprNormals(mesh, nprVerts);
+            if (nprFilled > 0) {
+                stats_.nprMeshes += 1;
+                stats_.nprVertices += nprFilled;
+            }
+            // One zero vertex stands in for "this mesh has no secondary normal", so every
+            // draw can bind slot 1 from the same code path. The shader treats a zero
+            // stream as absent (dot(npr,npr) > 0.25), which is what leaves the stage and
+            // every non-NPR mesh on its geometric normal.
+            const xm::NprVertex kNoNpr{};
+            WGPUBuffer nprbuf = gpu::createBuffer(
+                device_,
+                nprVerts.empty() ? sizeof(xm::NprVertex)
+                                 : nprVerts.size() * sizeof(xm::NprVertex),
+                WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst,
+                nprVerts.empty() ? &kNoNpr : nprVerts.data());
+
             WGPUBuffer vbuf = gpu::createBuffer(device_,
                                                 mesh.vertices.size() * sizeof(xm::Vertex),
                                                 WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst,
@@ -485,8 +547,9 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                                                 mesh.indices.data());
             buffers_.push_back(vbuf);
             buffers_.push_back(ibuf);
-            if (!vbuf || !ibuf) {
-                error = "vertex/index buffer creation failed for " + sm.source;
+            buffers_.push_back(nprbuf);
+            if (!vbuf || !ibuf || !nprbuf) {
+                error = "vertex/index/NPR buffer creation failed for " + sm.source;
                 return false;
             }
 
@@ -494,6 +557,7 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                 DrawItem d;
                 d.vbuf = vbuf;
                 d.ibuf = ibuf;
+                d.nprbuf = nprbuf;
                 d.firstIndex = sub.firstIndex;
                 d.indexCount = sub.indexCount;
                 d.paletteOffset = paletteOffset;
@@ -622,6 +686,9 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                 // white. Emissive is parsed but otherwise unused (R4), so nothing else
                 // reads it.
                 d.emissive = glm::vec4(mat.emissive, 1.f);
+                // Issue #25: which draws may light the secondary normal. The outline hull
+                // inherits the verdict below (harmless — the hull's entry point ignores it).
+                d.nprNormals = nprFilled > 0;
                 // Effect cards yaw to face the camera around world Y (cylindrical, not
                 // spherical: the world's up axis is load-bearing — ground cards lie in
                 // XZ, shockwaves read as verticals — and the arena camera stays near
@@ -912,7 +979,7 @@ bool SceneRenderer::ensureDepth(uint32_t width, uint32_t height, std::string& er
     return true;
 }
 
-WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, Pass pass,
+WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, Pass pass, bool npr,
                                               std::string& error) {
     Pipelines* entry = nullptr;
     for (Pipelines& p : pipelines_)
@@ -925,14 +992,25 @@ WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, Pass pas
         entry = &pipelines_.back();
         entry->format = format;
     }
-    WGPURenderPipeline& slot = pass == Pass::Outline  ? entry->outline
-                               : pass == Pass::Opaque ? entry->opaque
-                               : pass == Pass::Decal  ? entry->decal
-                                                      : entry->effect;
+    WGPURenderPipeline& slot =
+        npr ? (pass == Pass::Outline  ? entry->outlineNpr
+               : pass == Pass::Opaque ? entry->opaqueNpr
+               : pass == Pass::Decal  ? entry->decalNpr
+                                      : entry->effectNpr)
+            : (pass == Pass::Outline  ? entry->outline
+               : pass == Pass::Opaque ? entry->opaque
+               : pass == Pass::Decal  ? entry->decal
+                                      : entry->effect);
     if (slot) return slot;
 
     WGPUVertexAttribute attrs[xm::kVertexAttributeCount];
     WGPUVertexBufferLayout vbl = xm::wgpuVertexLayout(attrs);
+    // Second stream (issue #25): the secondary lighting normal. It is part of every
+    // pipeline rather than a variant, so enabling an experiment never rebuilds one; a
+    // mesh without the data binds its zero stream instead.
+    WGPUVertexAttribute nprAttr[1];
+    WGPUVertexBufferLayout nprVbl = xm::wgpuNprVertexLayout(nprAttr);
+    WGPUVertexBufferLayout vbls[2] = {vbl, nprVbl};
 
     // Each pass builds only on first use: the default captures draw no effect cards,
     // so eagerly creating every variant per format would mint pipelines nothing binds.
@@ -1014,9 +1092,12 @@ WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, Pass pas
         WGPURenderPipelineDescriptor rpd = {};
         rpd.layout = pipelineLayout_;
         rpd.vertex.module = shader_;
-        rpd.vertex.entryPoint = sv("vs_main");
-        rpd.vertex.bufferCount = 1;
-        rpd.vertex.buffers = &vbl;
+        // Issue #25: the experiment draws take the entry point that reads the secondary
+        // normal stream. Everything else about the pipeline is identical, so a scene with
+        // no experiment on builds exactly the pipelines it built before.
+        rpd.vertex.entryPoint = sv(npr ? "vs_npr" : "vs_main");
+        rpd.vertex.bufferCount = 2;
+        rpd.vertex.buffers = vbls;
         rpd.primitive.topology = WGPUPrimitiveTopology_TriangleList;
         // Assets are authored clockwise-front, left-handed.
         rpd.primitive.frontFace = WGPUFrontFace_CW;
@@ -1088,6 +1169,45 @@ void SceneRenderer::fillDrawData(const glm::vec3& eye, bool haveEye, size_t firs
                    (appearance_.toon && toonRampReady_ && draws_[i].toon ? xm::kDrawToon : 0u);
         du.baseColor = draws_[i].baseColor;
         du.emissive = draws_[i].emissive;
+        du.nprBand = glm::vec4(1.f, 1.f, 1.f, 0.f);
+        if (draws_[i].toon && draws_[i].pass == Pass::Opaque) {
+            // Issue #25 experiments, decided per frame like the toon bits: the whole
+            // harness is one draw-time state change, so an A/B needs no re-upload and the
+            // OFF path never enters this block. Each experiment writes its OWN uniform
+            // slot, so a composed arm keeps every one's values.
+            if (appearance_.smoothedNormals && draws_[i].nprNormals) {
+                du.flags |= xm::kDrawNprNormals;
+            }
+            if (appearance_.bands != NprBands::Off) {
+                du.flags |= xm::kDrawNprShadow;
+                du.nprMask = glm::vec4(appearance_.normalMaskBias, 0.f, 0.f, 0.f);
+                // w selects the curve: 0 is the hard step, +softness a 2-band smoothstep,
+                // -softness the 3-band arm (the shader negates it back and adds the lower
+                // edge). One float rather than a mode uniform, because the mode is a
+                // property of the curve the shader evaluates, not of the draw.
+                float soft = appearance_.bands == NprBands::Hard ? 0.f
+                                                                 : appearance_.bandSoftness;
+                if (appearance_.bands == NprBands::Three) soft = -soft;
+                du.nprBand = glm::vec4(appearance_.shadowTint, soft);
+            }
+            if (appearance_.key != NprKey::Off) {
+                du.flags |= xm::kDrawNprKey;
+                du.nprKey = glm::vec4(nprKeyDirection(draws_[i].model, eye, haveEye, appearance_),
+                                      appearance_.keyStrength);
+            }
+            if (appearance_.specular) {
+                du.flags |= xm::kDrawNprSpec;
+                du.nprSpec = glm::vec4(appearance_.specTint, appearance_.specStrength);
+            }
+            if (appearance_.rim) {
+                du.flags |= xm::kDrawNprRim;
+                du.nprRim = glm::vec4(appearance_.rimTint, appearance_.rimStrength);
+            }
+        } else if (draws_[i].pass == Pass::Outline) {
+            // The outline experiment's only control: the recovered width times a factor.
+            // Its own uniform so it cannot be confused with a surface tint.
+            du.nprBand = glm::vec4(1.f, 1.f, 1.f, appearance_.outlineScale);
+        }
         std::memcpy(dst + (i - first) * xm::kDrawStride, &du, sizeof du);
     }
 }
@@ -1154,6 +1274,10 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
     // is zero-initialised and D3DRS_SPECULARENABLE is never set (default FALSE), so there
     // is no specular term to carry.
     xm::CameraUniform camera = camera_;
+    // Issue #25: the rim/spec view vector needs an eye the fragment stage can read. It is
+    // the same value effect-card billboarding already uses, and haveEye_ is false only on
+    // callers written before either existed, where the term is off anyway.
+    camera.eye = glm::vec4(eye_, 1.f);
     camera.lightDir = glm::vec4(glm::normalize(kLightDirection), 0.f);
     camera.lightColor = glm::vec4(kLightDiffuse, kLightDiffuse, kLightDiffuse, 1.f);
     const float ambientSum = kGlobalAmbient + kLightAmbient;
@@ -1165,6 +1289,7 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
         for (size_t v = 0; v < viewCount; ++v) {
             xm::CameraUniform viewCamera = camera;
             viewCamera.viewProj = (*views)[v].viewProj;
+            viewCamera.eye = glm::vec4((*views)[v].eye, 1.f);
             wgpuQueueWriteBuffer(queue_, viewCameraBuffers_[v], 0, &viewCamera, sizeof viewCamera);
         }
     }
@@ -1233,6 +1358,7 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
         }
         WGPURenderPipeline boundPipelines[kPassCount] = {};
         Pass current = Pass::Opaque;
+        bool currentNpr = false;
         bool haveCurrent = false;
         for (size_t i = 0; i < draws_.size(); ++i) {
             const DrawItem& d = draws_[i];
@@ -1241,9 +1367,13 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
             // commands it issued before the hulls existed, which is what keeps every
             // banked capture byte-identical.
             if (d.pass == Pass::Outline && !(appearance_.toon && toonRampReady_)) continue;
-            if (!haveCurrent || d.pass != current) {
+            // Issue #25: only a surface draw the harness actually shades takes the
+            // experiment entry point. `nprActive` is the appearance's own predicate, so a
+            // run with no --npr flag never binds the second pipeline at all.
+            const bool nprDraw = appearance_.nprActive() && d.toon && d.pass == Pass::Opaque;
+            if (!haveCurrent || d.pass != current || nprDraw != currentNpr) {
                 WGPURenderPipeline& slot = boundPipelines[(int)d.pass];
-                if (!slot && !(slot = pipelineFor(target.format, d.pass, error))) {
+                if (!slot && !(slot = pipelineFor(target.format, d.pass, nprDraw, error))) {
                     wgpuRenderPassEncoderEnd(pass);
                     wgpuRenderPassEncoderRelease(pass);
                     return false;
@@ -1251,6 +1381,7 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
                 wgpuRenderPassEncoderSetPipeline(pass, slot);
                 if (d.pass == Pass::Decal) wgpuRenderPassEncoderSetStencilReference(pass, 0);
                 current = d.pass;
+                currentNpr = nprDraw;
                 haveCurrent = true;
             }
             const uint32_t offset = drawBase + (uint32_t)(i * xm::kDrawStride);
@@ -1258,6 +1389,7 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
             wgpuRenderPassEncoderSetBindGroup(pass, 2, textureGroups_[(size_t)(d.texture + 1)], 0,
                                               nullptr);
             wgpuRenderPassEncoderSetVertexBuffer(pass, 0, d.vbuf, 0, WGPU_WHOLE_SIZE);
+            wgpuRenderPassEncoderSetVertexBuffer(pass, 1, d.nprbuf, 0, WGPU_WHOLE_SIZE);
             wgpuRenderPassEncoderSetIndexBuffer(pass, d.ibuf, WGPUIndexFormat_Uint32, 0,
                                                 WGPU_WHOLE_SIZE);
             wgpuRenderPassEncoderDrawIndexed(pass, d.indexCount, 1, d.firstIndex, 0, 0);
@@ -1265,6 +1397,94 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
     }
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
+    return true;
+}
+
+bool SceneRenderer::benchmark(uint32_t width, uint32_t height, int frames, double& msPerFrame,
+                             std::string& error, const std::vector<ViewCamera>* views) {
+    if (!device_ || !drawGroup_) {
+        error = "renderer has no scene";
+        return false;
+    }
+    if (frames < 1 || width == 0 || height == 0) {
+        error = "benchmark needs a positive frame count and a non-empty target";
+        return false;
+    }
+    // A dedicated offscreen target, not the swapchain: a headless run has no surface and
+    // an interactive one would be measuring presentation. The readback the capture path
+    // needs is deliberately absent — copying 2 MB per frame would dominate the number.
+    WGPUTextureDescriptor td = {};
+    td.usage = WGPUTextureUsage_RenderAttachment;
+    td.dimension = WGPUTextureDimension_2D;
+    td.size = WGPUExtent3D{width, height, 1};
+    td.format = WGPUTextureFormat_RGBA8Unorm;
+    td.mipLevelCount = 1;
+    td.sampleCount = 1;
+    WGPUTexture colorTex = wgpuDeviceCreateTexture(device_, &td);
+    WGPUTextureView colorView = colorTex ? wgpuTextureCreateView(colorTex, nullptr) : nullptr;
+    if (!colorTex || !colorView) {
+        error = "benchmark target creation failed";
+        if (colorView) wgpuTextureViewRelease(colorView);
+        if (colorTex) wgpuTextureRelease(colorTex);
+        return false;
+    }
+    // Depth is the renderer's own attachment, sized by ensureDepth; it is created here on
+    // the benchmark's behalf and left for the next frame to reuse.
+    if (!ensureDepth(width, height, error)) {
+        wgpuTextureViewRelease(colorView);
+        wgpuTextureRelease(colorTex);
+        return false;
+    }
+
+    // Wait for the queue after every submit, so the measured span is the GPU's work and
+    // not the depth of the command queue. The wait is the same process-events loop the
+    // gpu layer's readback uses (gpu.cpp readBuffer), which is what makes this portable
+    // to a backend where the callback only fires while events are processed.
+    struct Wait { bool done = false; };
+    Wait wait;
+    auto onDone = [](WGPUQueueWorkDoneStatus, void* userdata1, void*) {
+        static_cast<Wait*>(userdata1)->done = true;
+    };
+
+    double total = 0.0;
+    for (int f = 0; f < frames; ++f) {
+        WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
+        if (!encoder) {
+            error = "benchmark encoder creation failed";
+            wgpuTextureViewRelease(colorView);
+            wgpuTextureRelease(colorTex);
+            return false;
+        }
+        Target target;
+        target.encoder = encoder;
+        target.colorView = colorView;
+        target.format = WGPUTextureFormat_RGBA8Unorm;
+        target.width = width;
+        target.height = height;
+        const bool ok = (views && views->size() > 1) ? renderViews(target, *views, error)
+                                                     : render(target, error);
+        WGPUCommandBuffer cmd = ok ? wgpuCommandEncoderFinish(encoder, nullptr) : nullptr;
+        if (cmd) wgpuQueueSubmit(queue_, 1, &cmd);
+        if (cmd) wgpuCommandBufferRelease(cmd);
+        wgpuCommandEncoderRelease(encoder);
+        if (!ok) {
+            wgpuTextureViewRelease(colorView);
+            wgpuTextureRelease(colorTex);
+            return false;
+        }
+        wait.done = false;
+        WGPUQueueWorkDoneCallbackInfo cb = {};
+        cb.mode = WGPUCallbackMode_AllowProcessEvents;
+        cb.callback = onDone;
+        cb.userdata1 = &wait;
+        const double t0 = plat::now();
+        wgpuQueueOnSubmittedWorkDone(queue_, cb);
+        while (!wait.done) wgpuInstanceProcessEvents(instance_);
+        total += plat::now() - t0;
+    }
+    wgpuTextureViewRelease(colorView);
+    wgpuTextureRelease(colorTex);
+    msPerFrame = 1000.0 * total / (double)frames;
     return true;
 }
 
