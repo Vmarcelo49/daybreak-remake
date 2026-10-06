@@ -69,6 +69,7 @@
 #include "game/effect_catalog.h"
 #include "game/aura_attach.h"
 #include "game/fx_cards.h"
+#include "game/muzzle_slot.h"
 #include "input/input_backend.h"
 #include "input/tick_input.h"
 #include "input/input_sdl3.h"
@@ -3617,16 +3618,15 @@ static bool tickMatch(App& app, double dt) {
     // models' own animation durations, recovered through FUN_0042eec0; nothing here is a
     // fixed 12 s.
     for (int i = 0; i < app.match.config().fighterCount && i < 4; ++i) {
-        // Muzzle flash: the recovered attachment models (FUN_00633ca0 slots 0/1/5 are the
-        // three マズルフラッシュ cards, selected by the three attack-start methods
-        // 0x421fe0/0x4220e0/0x422160). PORT RULE: which firing state owns which slot is
-        // not established, so the shot tier picks them in that order.
+        // Muzzle flash: FUN_00633ca0 slots 0/1/5 are the three マズルフラッシュ models. The
+        // original selects one by the fighter's per-slot fire-mode byte (+0x318) through
+        // the attack-start methods 0x421fe0/0x4220e0/0x422160, not by the shot's tier —
+        // game/muzzle_slot.h carries the recovered rule. PORT RULE: the port carries no
+        // such byte, so the shot tier picks among the same three slots.
         if (f.shotFired[i]) {
-            const gameplay::ShotTier tier = app.match.fighter(i).last_shot_tier();
-            const int slot = tier == gameplay::ShotTier::Tap      ? 0
-                             : tier == gameplay::ShotTier::Yellow ? 1
-                                                                  : 5;
-            spawnAttachment(app, app.matchFx, slot, f.shotPoints[i]);
+            spawnAttachment(app, app.matchFx,
+                            game::muzzleSlotForTier(app.match.fighter(i).last_shot_tier()),
+                            f.shotPoints[i]);
         }
         // Hypermode: the recovered burning aura is attachment slot 3 (炎上オーラ), and
         // FUN_0042e110 re-spawns effect 380 every 7 frames while the fighter is in the

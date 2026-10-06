@@ -897,14 +897,42 @@ connects twice.
   port's variant half is a clamp, not a behaviour.
 * **The "aura" table is the attachment table.** `FUN_00633ca0` loads **7** models
   `data/aura/%02d.x` into `scene+0x4498` (and 10 trail bitmaps into `scene+0x445c`).
-  Their textures name their roles: **0/1/5 = マズルフラッシュ 1/2/3** (the three muzzle
-  flashes), **2 = hitblue0000**, **3 = 炎上オーラ** (the burning aura), 4 = バケツ.
-  `FUN_004205e0` picks the slot from `player+0x7d4`, which `FUN_0042e110` sets from the
-  **move id** — 2 for `0x68/0x69/0xcc/0xcd` (hit/stagger), 3 for `0x6a/0x6b/0x6c/0xce`
-  (downed/burning) — and otherwise falls back to the mode latches `+0x844`/`+0x845`/
-  `+0x846` → slots 0/1/5, which the three sibling attack-start methods
-  `0x421fe0`/`0x4220e0`/`0x422160` set (the middle one has 47 call sites). It draws the
-  model **once per fighter matrix** (11 matrices at `player+0x38c`, stride 0x40).
+  Their textures name their roles, read from the models' own `TextureFilename` blocks:
+  **0/1/5 = マズルフラッシュ 1/2/3** (the three muzzle flashes), **2 = hitblue0000**,
+  **3 = 炎上オーラ** (the burning aura), 4 = バケツ, 6 unnamed. `FUN_004205e0:17-32` picks
+  the slot from `player+0x7d4`, which `FUN_0042e110` sets from the **move id** — 2 for
+  `0x68/0x69/0xcc/0xcd` (hit/stagger), 3 for `0x6a/0x6b/0x6c/0xce` (downed/burning) — and
+  otherwise falls back to three mode latches in a fixed priority: `+0x844` → slot 0,
+  `+0x846` → slot 5, `+0x845` → slot 1, and nothing at all when the three are clear. It
+  draws the model **once per fighter matrix** (11 matrices at `player+0x38c`, stride 0x40).
+* **Which firing state sets which latch is recovered, and it is not a tier** (issue #34).
+  One attack start per latch: `FUN_00421fe0:20` sets `+0x844` (slot 0), with its sibling
+  `FUN_00422060:22` as the other arm of the same state case (split on `fighter+0x3b`);
+  `FUN_004220e0:20` sets `+0x845` (slot 1); `FUN_00422160:20` sets `+0x846` (slot 5).
+  Which one runs is decided by the fighter's own byte **`+0x318`** and nothing else — the
+  battle input action `0x24` dispatches on it (`FUN_0063c2a0:267-277`: 0 → `FUN_00421fe0`,
+  2 → `FUN_00422160`, otherwise → `FUN_004220e0`) — and the move-id branches agree:
+  `FUN_00428510` runs `FUN_00421fe0`/`FUN_00422060` from its move-id 500 case (`:25`) and
+  its 501 case (`:170`), and `FUN_00422160` from its 502 (`:220`) and 503 (`:270`) cases,
+  while the 47 per-character handlers (`FUN_0043ded0:134-138` and siblings) call
+  `FUN_004220e0` from their own `+0x318 == 1` arm. The byte is **per slot, not per character
+  or weapon**: `FUN_0064ab30:36-38` loads it from `scene+0x5328+slot` through
+  `FUN_0041dc80:12`, and the story/team setup fills the two CPU slots with `rand()%3`
+  (`FUN_006492f0:20-22`). One fighter therefore shows one muzzle model for a whole match,
+  and **the original has no charge-tier → slot relation to recover**.
+* **The port's tier rule stays a labelled port rule** (issue #34). The port carries no
+  `+0x318` byte — no port screen writes it, no shipped data field feeds it, and
+  `gameplay/debug_keys.h` already records the same byte as the F4 gauge selector the port
+  cannot reproduce either — so the muzzle slot remains tap → 0, yellow → 1, red/EX → 5
+  (`src/game/muzzle_slot.h`). Both tables are pinned in `tests/effect_catalog_test.cpp`: the
+  recovered one injective over three modes, the port's colliding on slot 5, which is the
+  shape a per-fighter selector cannot produce. **The placement half is #17's, not this
+  issue's**: the port draws the muzzle card **once, at the shot point**, while
+  `FUN_004205e0` draws the selected attachment on the fighter's eleven rig matrices.
+  Measured on this tree, the muzzle card is live and drawn (suppressing that one spawn takes
+  `effectDrawsAtExit` 2 → 1 and `spawned` 2 → 1 for a single shot), so of the seven shipped
+  attachment models three (00/01/05, the muzzle flashes) are drawn, one (03) by the hyper
+  aura, and three (02 blue hit, 04 bucket, 06 unnamed) are loaded and never drawn.
 * **The eleven draws are the rig's, and the port now makes all eleven** (issue #33). The
   count is not a capacity waiting to be filled: `FUN_0041e180` resolves eleven fixed bone
   names (`Bip00`, `Bip01_Head`, `Bip01_Spine`, `Bip01_L/R_Forearm`, `Bip00_L/R_Calf`,
@@ -962,11 +990,12 @@ connects twice.
   * `--match` (close spawns, a `SHOOT` script) lands a hit and spawns its impact card;
     the documented README `--match` recipe still fails on this install for the known
     issue #9 item gap (takano 011), not for anything here.
-* **Port rules (all labelled in code).** The muzzle-flash slot↔firing-state assignment
-  (slots 0/1/5 by tier) is not established; the melee hit's effect id is the port's
-  existing choice (the original's melee path spawns none); the in-flight shot is drawn
-  with the effect its own record names because the original's projectile visual is not in
-  the shipped data; the cap's default is sized from the heaviest recovered emitter (8
+* **Port rules (all labelled in code).** The muzzle-flash slot is picked by the shot tier
+  because the port carries no `+0x318` fire-mode byte (the recovered selector is a per-slot
+  mode — see above; `src/game/muzzle_slot.h` names both tables); the melee hit's effect id is
+  the port's existing choice (the original's melee path spawns none); the in-flight shot is
+  drawn with the effect its own record names because the original's projectile visual is not
+  in the shipped data; the cap's default is sized from the heaviest recovered emitter (8
   cards per burning fighter, 32 for a four-fighter 2v2, ~4x headroom); the spawn jitter
   uses a deterministic hash of (fighter, tick) where the original used `rand()`.
 * **Draw-count change (banked recipes).** Effect models are instance-only, so a scene's
@@ -977,7 +1006,13 @@ connects twice.
   now the recovered `14.X` with its recovered 0.250 s lifetime, so a capture must be
   taken within ~15 frames of a scripted hit: `--versus --frames=60` (the hits are at
   30/55/80 % of `--frames`) instead of the old 5 s placeholder's any-frame recipe.
-* **Still open.** The muzzle-flash slot mapping; the per-effect fade (nothing in
+* **Still open.** Who writes `scene+0x5328+slot` — the source of the `+0x318` byte — for
+  slots 0/1 in versus mode: the reader chain is complete (`FUN_0064ab30:36-38` →
+  `FUN_0041dc80:12`) and so is the story/team path (`FUN_006492f0:20-22`, `rand()%3`), but
+  the writer of the two player slots is not in the dumped corpus (3191 of the binary's 4092
+  functions), so whether a player picks it or it is derived from the character is unresolved,
+  and until it is, no port can reproduce the original's muzzle choice. Also open: the
+  per-effect fade (nothing in
   `FUN_00436150`/`FUN_00436630` ramps alpha — the animation itself carries the fade); the
   descriptor's part windows are parsed by the reference but the port draws a card whole;
   and the in-flight projectile visual, which no shipped data describes.
