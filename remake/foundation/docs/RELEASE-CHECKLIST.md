@@ -113,7 +113,11 @@ ctest --test-dir remake/foundation/build/linux --output-on-failure
   movie-skip key set and the opening scene's host seam) is 12 more checks inside
   the existing `screen_stack_test`, so the denominator is unchanged and the
   movie itself needs the install — its evidence is a local run
-  (`docs/MEDIA-INPUT.md` §3.1).
+  (`docs/MEDIA-INPUT.md` §3.1). Issue #32 added no suite either: the recovered shot visual
+  is 7 more checks inside the existing `effect_catalog_test` (126 with the install) and 4
+  inside the existing `weapon_definition_test` (747 with the install, including its new
+  asset-backed sweep), so the denominator is unchanged at 57 and the with-install count
+  above is re-measured.
 
 The workflow (`.github/workflows/build-foundation.yml`, Linux job) runs this
 `ctest` step on every push to `main` that touches `remake/foundation/**` (issue
@@ -567,14 +571,26 @@ numbers to record per scenario (from the demo's own summary):
 
 | Scenario | Command | Frames/ticks | Wall time | Peak live FX cards |
 |---|---|---|---|---|
-| 1v1, three rounds | §3.1 | 15500 ticks | 10.690 s | `peak=4/128`, `dropped=0`, `badEffectId=0` |
-| COM, three rounds | §3.2 | 15500 ticks | 12.110 s | `peak=5/128`, `dropped=0` |
-| 2v2, three rounds | §3.3 | 15500 ticks | 28.210 s | `peak=6/128`, `dropped=0` |
-| 2v2, eight rounds | `--local-players=4 --script=<the §3.3 script extended to eight rematch rounds> --frames=40000` | 40000 ticks | 56.694 s | `peak=6/128`, `spawned=124`, `expired=123`, `dropped=0` |
+| 1v1, three rounds | §3.1 | 15500 ticks | 10.690 s | `peak=2/128`, `dropped=0`, `badEffectId=0` |
+| COM, three rounds | §3.2 | 15500 ticks | 12.110 s | `peak=2/128`, `dropped=0` |
+| 2v2, three rounds | §3.3 | 15500 ticks | 28.210 s | `peak=3/128` (`4/128` in rounds 2-3), `dropped=0` |
+| 2v2, eight rounds | `--local-players=4 --script=<the §3.3 script extended to eight rematch rounds> --frames=40000` | 40000 ticks | 56.694 s | `peak=6/128`, `spawned=124`, `expired=123`, `dropped=0` (measured before issue #32 — see below) |
 
 (The wall times are from the demo's own summary on a shared machine — the
 owner's game was running — so treat them as an upper bound on the capture cost,
 not a benchmark. The `logic:` count is the reproducible number.)
+
+**Issue #32 moved the shot out of the card set.** An in-flight shot now draws the bullet's
+own model as a direct renderer instance, so it no longer spawns, expires or counts as a live
+card; the three rows above were re-measured after that change, and the live-card counters
+drop by exactly the shot spawns (same tree, same recipes: 1v1 round 1 `spawned` 58 → 36 and
+`peak` 4 → 2; COM round 1 `spawned` 104 → 66 and `peak` 5 → 2; 2v2 round 1 `spawned`
+128 → 89 and `peak` 6 → 3). The shot placements themselves are unchanged and are now
+reported as `shotModels` (1v1 round 1: 1741, exactly the old `liveShots` count). The
+eight-round row was not re-run: its recipe needs the operator's extended script, so its
+counters are the pre-#32 ones. The bound that row checks is unaffected — the same script's
+round 2 measured `spawned` 124 → 82, `peak` 6 → 4, `dropped=0`, and the peak can only fall
+when the shot cards leave the set.
 
 The eight-round run is the prolonged-match stability check: eight
 `match: round over` lines, `RESULT: ok`, no crash, and a bounded FX
@@ -593,14 +609,21 @@ with no spatial pruning: 39 rays per probe (13 ring samples x 3 body heights),
 76,010 rays in one 15500-tick run, **987 faces scanned and 646 tested per ray** —
 2.9e9 triangle visits. `setMeshes` now stores each movement triangle's AABB and
 `firstWallHit` rejects on a slab predicate before touching the triangle
-(`sweepReachesBounds`, conservative by construction: a face the horizontal
-one-stride segment cannot reach holds no point within it). Faces per ray fell to
-**1.18** and intersections to **0.87**.
+(`sweepReachesBounds`; a face the horizontal one-stride segment cannot reach holds
+no point within it, with a 1e-5 parameter slack so an exact corner graze is kept —
+see the note below). Faces per ray fell to **1.18** and intersections to **0.87**.
 
 All 12 PPM captures of the two gate recipes and both `DAYBREAK_CAMINFO` traces are
 sha256-identical before and after, so this is a pure cost change. The residual
 2.30x is the **probe count** (0.53 probes/tick, ~6.8 ms each), not the query —
 closing it would mean changing COM decisions, which are pinned by tests.
+
+**The card counts in the table are lower than they were before issue #32**, which
+made the in-flight shot a direct instance instead of an fx card: the shot no longer
+occupies a card slot, so `peak`/`spawned` fell (1v1 58->36 spawned, 2v2 128->89)
+while the placement tally — `shotModels`, renamed from `liveShots` — still counts
+the same shots. The eight-round row's numbers predate that change and are annotated
+as such.
 
 ## 7. What the gate found (and what it now claims)
 

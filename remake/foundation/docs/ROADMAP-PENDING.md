@@ -957,12 +957,57 @@ connects twice.
   add `rand()%3`). The port had both fields parsed but **named the other way round**;
   they are now `impactEffect` (+0x70) and `hitSound` (+0x6C). The shipped roster's
   impact ids are 0/10/20/30 — descriptors 000/001/002/003, i.e. `14.X`/`12.X`.
+* **The in-flight shot draws its OWN model, and it ships (issue #32).** The visual of a
+  projectile while it is in flight is **not** an invented port choice any more. The bullet
+  file the shot was fired from opens with a **260-byte model block** naming a `.X` inside
+  its own `data/bullet/<weaponId>/` directory, and that model *is* the projectile:
+  * `FUN_005f8510` reads the tag and the block (`0x5f8574-0x5f8598`), joins the block to the
+    bullet's directory (`wsprintfA("%s%s")`, `0x5f85b7`) and calls `FUN_0064d940` — the same
+    `.X` loader `FUN_00633ca0` uses for `data/aura/%02d.x` — with the bullet's per-variant
+    model object in ECX (`0x5f85c7: MOV ECX,[EBP+0x10]` → `itemdef + 0x3c + variant*0x9c`).
+    A failed load aborts the whole file (`0x5f85d6`), so the block is load-bearing data, not
+    a comment field. The port's reader skipped it until this issue.
+  * The shot spawn `FUN_005f8d50` pushes that same object as the ctor's third argument
+    (`IMUL EAX,EAX,0x9c` at `0x5f8dbb`, `ADD EAX,[ECX+0x3c]` at `0x5f8dc4`, `PUSH` at
+    `0x5f8dc7`), and the shot ctor `FUN_005f9090` stores it at **`shot+0x120`** (`0x5f90f0`).
+  * The shot's render `FUN_005f60b0` — the object's vtable `0x6a4814` slot `+0x20`, called
+    once per frame for every registered object by `FUN_00435c20` (`CALL dword ptr [EDX+0x20]`
+    at `0x00435c90`) — composes the model's matrix at `model+0x5c` from the shot's own scale
+    (`+0x70/0x74/0x78`, `0x5f6185`), rotation and position (`+0x14/0x18/0x1c`), and draws it
+    (`0x5f640f`). The blend comes from the **record's `+0x7C`** (`0x5f63c2`, the port parses
+    `blob[0x13]`'s neighbours but not this field), and the shot's record pointer at
+    `shot+0x10` is selected in `FUN_005f5bf0` (`0x5f5c6b-0x5f5c8d`).
+  * The identity is checkable against the shipped names: `007`'s `[Bullet5]`
+    (レインオブ注射器, "rain of syringes") names `50.X`, which renders as a syringe; `008`'s
+    `[Bullet2]` (ロケット花火上昇, "rocket firework ascent") names `00.X`, a dart; Rena's
+    `001/000.dat` (通常ナタ投げ横回転, the nata throw) names `03.X`.
+  * **What the port now does**: `gameplay::BulletParameter::modelName` carries the block,
+    `main.cpp`'s `bindShotModels` loads it as an effect card for each bound weapon and charge
+    level, and `placeFxCards` draws one instance per live shot at the shot's own transform
+    with `game::shotModelMatrix` — a non-billboarded instance (the renderer's
+    `EffectInstance::billboard` opt-out), because the original composes a real matrix rather
+    than facing the camera. 92/92 roster (weapon, level) picks resolve to a shipped model;
+    9 of the 594 shipped bullet files name a model their directory does not ship, and no
+    roster pick can select one (`tests/weapon_definition_test.cpp` sweeps both).
+  * **The one port rule left, and it is labelled**: the AIM. `FUN_005f60b0` rotates with
+    `RotationYawPitchRoll(+0x2c, +0x30, +0x34)` then a `RotationZ` from the shot's direction
+    vector (`+0x3c/+0x40`, `0x5f62b2`) and a `RotationY` from `+0x5c/+0x64` (`0x5f6329`) —
+    the model's authored **+X** is the forward axis, which the shipped projectiles confirm
+    (dart, syringe and beams are all authored long along +X). *Which* direction a given
+    weapon's shot holds is written by that weapon's own update function (`FUN_005f7be0`
+    dispatches on the item id to 46 of them, `0x5f91c0..0x6322d0`) and the per-bullet
+    YawPitchRoll triple, and the port has recovered none of them, so it feeds the recovered
+    convention the shot's **velocity**. `src/game/shot_visual.h` names both halves and
+    `tests/effect_catalog_test.cpp` pins them.
 * **Trails are vestigial — the definitive negative result.** `FUN_00633ca0` loads the 10
   `data/trail/%02d.bmp` bitmaps into `scene+0x445c`; the **only** code in the whole
   binary that reads that array is the destructor `FUN_00634520` (`0x63473a`). There is no
   vertex producer, no slot→texture selection and no blend technique to recover for
   trails in `DaybreakDX.exe` — the feature was cut and the loader left behind. The port
-  therefore draws **no** trail ribbons, and says so instead of inventing them.
+  therefore draws **no** trail ribbons, and says so instead of inventing them. The
+  recovered shot draw corroborates it: `FUN_005f60b0` draws the bullet's mesh and its
+  per-bullet sprite definition and touches no `data/trail` slot, so the projectile path is
+  not the missing trail producer either.
 * **Blend technique** is per model: `FUN_00436150` switches on the model's `+0x7c` and
   sets the D3D state set for cases 1–4 (default: `FUN_00651110(1)`); the port's
   `Pass::Effect` (additive, unlit, unculled, cylindrical billboard) is the equivalent
@@ -977,25 +1022,38 @@ connects twice.
   placement, so before this N cards sharing one `.X` drew once. Effect models are
   `SceneModel::instancesOnly`: they contribute templates, never a base draw, so the load
   draw count does not grow with the table and only the live population adds draws.
-  Shots and sparks are **no longer cubes by default** (`--debug-prims` keeps the A/B).
+  Shots and sparks are **no longer cubes by default** (`--debug-prims` keeps the A/B), and
+  since issue #32 an in-flight shot is not a card at all: it is the bullet's own model,
+  placed directly as one instance per live shot (see the issue #32 bullet above), so the
+  card population is now combat events only.
 * **Verification.** 40/40 host tests (the new `effect_catalog_test` checks all 22
   descriptors against their models and lifetimes; `fx_cards_test` pins per-instance
-  identity, the cap and the drop count). Asset-backed:
-  * 1v1, `--screen=battle --frames=11000` on `data/stage03`: 624 cards spawned, 621
-    expired, **0 dropped, peak 12/128**, 9937 live-shot refreshes, 0 unshipped ids; the
-    round finishes.
+  identity, the cap and the drop count). Asset-backed (re-measured after issue #32, whose
+  shot-model instances left the card set — the `liveShots` refresh count of the #17 report
+  is now the placement tally `shotModels`, and the card counters drop by exactly those
+  spawns):
+  * 1v1, `--screen=battle --frames=11000` on `data/stage03`: 535 cards spawned, 535
+    expired, **0 dropped, peak 8/128**, 9934 shot-model placements, 0 unshipped ids; the
+    round finishes (time up at frame 10800, side 1). Baseline on the same tree before this
+    issue: 624 spawned, 621 expired, peak 12/128, `liveShots` 9937 — the 3-placement
+    difference is the counting point (the old tally ran in the logic tick, the new one in
+    the render frame), not the simulation: the run's COM counters are identical to the
+    digit.
   * four-fighter 2v2, `--screen=title --local-players=4 --script=tests/scripts/frontend-4p.txt
-    --frames=9600` on `data/stage21`: round over at frame 3600 with 120 spawned, **0
-    dropped, peak 6/128**.
+    --frames=9600` on `data/stage21`: round over at frame 3600 with 89 spawned, **0
+    dropped, peak 3/128** (baseline before this issue: 128 spawned, peak 6/128 — the
+    difference is the shot cards), 5027 placements in round 2.
   * `--match` (close spawns, a `SHOOT` script) lands a hit and spawns its impact card;
     the documented README `--match` recipe still fails on this install for the known
     issue #9 item gap (takano 011), not for anything here.
 * **Port rules (all labelled in code).** The muzzle-flash slot is picked by the shot tier
   because the port carries no `+0x318` fire-mode byte (the recovered selector is a per-slot
   mode — see above; `src/game/muzzle_slot.h` names both tables); the melee hit's effect id is
-  the port's existing choice (the original's melee path spawns none); the in-flight shot is
-  drawn with the effect its own record names because the original's projectile visual is not
-  in the shipped data; the cap's default is sized from the heaviest recovered emitter (8
+  the port's existing choice (the original's melee path spawns none); the in-flight shot's
+  **aim direction** is the port's — the model is the recovered one, but the per-weapon update
+  that fills the shot's own rotation fields is not recovered, so the model's authored +X is
+  aimed along the shot's velocity (`src/game/shot_visual.h`); the cap's default is sized from
+  the heaviest recovered emitter (8
   cards per burning fighter, 32 for a four-fighter 2v2, ~4x headroom); the spawn jitter
   uses a deterministic hash of (fighter, tick) where the original used `rand()`.
 * **Draw-count change (banked recipes).** Effect models are instance-only, so a scene's
@@ -1015,7 +1073,11 @@ connects twice.
   per-effect fade (nothing in
   `FUN_00436150`/`FUN_00436630` ramps alpha — the animation itself carries the fade); the
   descriptor's part windows are parsed by the reference but the port draws a card whole;
-  and the in-flight projectile visual, which no shipped data describes.
+  and the shot draw's own remaining unrecovered inputs — the per-bullet YawPitchRoll triple
+  at `+0x2c/+0x30/+0x34` and the 46 per-weapon update functions that fill them (issue #32
+  recovered the model, not the aim), the record's `+0x28` flag word (the port parses `v28`
+  but does not store it) and its `+0x7C` blend selector (`blob[0x13]`, which the port does
+  not parse at all).
 ### B2. The idle pose is a composite: two controllers per model
 
 **Current animation correction (2026-10-05).** The earlier sketch below mixed the timed
