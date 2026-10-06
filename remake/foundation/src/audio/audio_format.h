@@ -11,6 +11,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <string>
+#include <vector>
 
 namespace fnd::audio {
 
@@ -228,6 +230,65 @@ inline SflLoop parse_sfl_loop(const uint8_t* bytes, size_t size, uint32_t fileRa
     out.valid = true;
     out.startSample = cueStart;
     out.endSample = endSample;
+    return out;
+}
+
+// A track's loop sheet (.sfl), resolved. The sheet is optional and the original
+// plays without it: FUN_00668820 — which FUN_006683d0 calls at the end of its
+// success path, i.e. only after the track itself opened — first writes the
+// stream's loop start/end fields (+0x12e8, +0x12f0) from the constant at
+// 0x6a5630, reads as eight zero bytes = double 0.0 (the same initialiser as the
+// literal 0 in the first-pass dump, research/decompiled/FUN_00668820.c:24-25),
+// then rewrites the path's last three characters to "sfl" and only parses
+// cue/adtl when FUN_00653540 reports the sheet exists. No sheet therefore leaves
+// a zero-length loop region: the track plays once to EOF and nothing fails.
+enum class LoopSheet {
+    Parsed,      // cue/adtl read; `loop` carries the region
+    Absent,      // no sibling sheet: no loop region (recovered behaviour)
+    Unparsable,  // sheet present, cue/adtl unusable (port rule: only reported)
+};
+
+struct LoopSheetResult {
+    LoopSheet   status = LoopSheet::Absent;
+    SflLoop     loop;  // set only when status == Parsed
+    std::string note;  // non-empty only when status == Unparsable
+};
+
+// Sibling .sfl path for `trackPath`, or "" when the path carries no extension.
+// The original does not look for a dot — it overwrites the last three
+// characters outright — so replacing a known extension is the port's rule:
+// a path without one can then only mean "no sheet", never a mangled probe.
+inline std::string loop_sheet_path(const std::string& trackPath) {
+    const size_t dot = trackPath.find_last_of('.');
+    const size_t sep = trackPath.find_last_of("/\\");
+    if (dot == std::string::npos || (sep != std::string::npos && dot < sep))
+        return std::string();
+    return trackPath.substr(0, dot) + ".sfl";
+}
+
+// Resolves `trackPath`'s loop sheet through `read(path, out)`, which returns
+// false when the sheet is not there. A track with no usable sheet is a success
+// with no loop region, not a load failure — the original distinguishes absent
+// from unparsable nowhere and is silent in both cases, so telling them apart
+// here (status + note) is a PORT RULE for diagnosing a corrupt install.
+//
+// Callers must apply the result to the player either way: a LoopPlayer reused
+// across tracks keeps its previous region (set_source resets position and wrap
+// count only), so a track without a sheet has to clear it explicitly.
+template <typename ReadFn>
+inline LoopSheetResult resolve_loop_sheet(const std::string& trackPath, uint32_t fileRate,
+                                          ReadFn&& read) {
+    LoopSheetResult out;
+    const std::string sflPath = loop_sheet_path(trackPath);
+    std::vector<uint8_t> bytes;
+    if (sflPath.empty() || !read(sflPath, bytes)) return out;  // Absent: no loop region
+    out.loop = parse_sfl_loop(bytes.data(), bytes.size(), fileRate);
+    if (out.loop.valid) {
+        out.status = LoopSheet::Parsed;
+        return out;
+    }
+    out.status = LoopSheet::Unparsable;
+    out.note = "unparsable loop sheet " + sflPath;
     return out;
 }
 

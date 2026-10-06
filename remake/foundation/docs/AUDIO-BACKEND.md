@@ -57,7 +57,31 @@ What remains decoder-side:
   than looping the wrong bars; `LoopPlayer` streams decoded PCM through any
   `Engine` in chunks, wrapping at the loop end. `--audio-test --audio-file`
   streams that file's sibling `.sfl` through two full wraps with exact
-  accounting, per invocation (`src/main.cpp:1599-1650`).
+  accounting, per invocation (`src/main.cpp:3917-3990`).
+- **The `.sfl` is optional: no sheet means no loop region, and the track plays
+  once to EOF** (issue #42). This is recovered behaviour, not a choice.
+  `FUN_00668820` — which `FUN_006683d0` calls at the end of its success path,
+  i.e. only after the track itself opened — sets the stream's loop start/end
+  fields `+0x12e8`/`+0x12f0` from the constant at `0x6a5630` (eight zero bytes =
+  double `0.0`; the first pass states the same initialiser as a literal `0`,
+  `research/decompiled/FUN_00668820.c:24-25`), rewrites the path's last three
+  characters to `sfl`, and only parses cue/adtl `if (FUN_00653540(sflPath))` —
+  the existence check is the whole guard. No sheet therefore leaves a
+  **zero-length loop region**: play once to EOF, nothing fails, and the music
+  plays. `data/bgm/` on the shipped install is 21 `.ogg` with 20 `.sfl`;
+  `vs.ogg` — the VS screen's track, `FUN_00411ae0`'s
+  `FUN_0065b870("data/bgm/vs.ogg")` — is the one without a sheet, which is why
+  failing the load on a missing sheet silenced the VS screen.
+  `fnd::audio::resolve_loop_sheet` (`src/audio/audio_format.h`) is the single
+  decision both BGM loaders now use; the loaders always apply the result, since
+  a reused `LoopPlayer` keeps its previous region (`set_source` resets position
+  and wrap count only).
+  Telling *absent* from *unparsable* is a **port rule**, not recovered: the
+  original is silent in both cases (an unparsable sheet leaves the same `0.0`).
+  The port stays silent for an absent sheet — matching `FUN_00668820` — and
+  prints one informational line, once per load, for a sheet that is present but
+  unusable, so a corrupt install is diagnosable without looking like a fault.
+  `tests/bgm_loop_test` pins all three outcomes device-free.
 - Movie audio: MP2 frames → `interleave_lr_s16` (already in `audio_sdl3.h`) →
   `push_music_s16` — waiting on the video decision, not on audio.
 
@@ -68,11 +92,13 @@ push paths, not a new backend.
 
 In-engine `--audio-test` extends the harness: `--audio-file=<path>` decodes
 a real shipped file through the bank (ogg/wav/cnv by format detection) and
-fires it once, plus that file's sibling `.sfl` two-wrap check when one
-parses. All 21 shipped BGM files decode with `RESULT: ok` (one invocation
-per file), and decoded
-sample counts match `ffprobe` durations to within container padding on every
-file (e.g. `01.ogg`: 94.09 s vs 4,149,248 samples).
+fires it once, plus the loop check for that file's sibling `.sfl`: two full
+wraps with exact accounting when it parses, and — since issue #42 — one pass to
+EOF with the accepted-frame total printed when it does not (the no-sheet case
+names the missing sheet, the unusable case names the sheet as unparsable). All
+21 shipped BGM files decode with `RESULT: ok` (one invocation per file), and
+decoded sample counts match `ffprobe` durations to within container padding on
+every file (e.g. `01.ogg`: 94.09 s vs 4,149,248 samples).
 
 ## Verification: SDL-free decode harness (headless, SDL dummy driver)
 
@@ -166,9 +192,14 @@ and gameplay BGM wiring.
 - BGM file streaming and `.sfl` loop points are implemented (see above);
   each `--audio-file` invocation streams its sibling pair through two
   wraps with exact accounting (banked runs cover the shipped pairs on Linux
-  and Wine).
+  and Wine), or one pass to EOF with exact accounting when the track has no
+  usable sheet (`vs.ogg`, issue #42).
 - No MP3 decoding — detection only; nothing shipped is MP3, so no decoder.
 - OGG Vorbis decodes (all 21 BGM files, durations cross-checked with ffprobe).
+- The `--audio-test --audio-file` path resolves its file (and that file's
+  sibling `.sfl`) on the filesystem, not through the asset source, so it needs
+  a path the process can already open — unlike the BGM loaders, which read an
+  install that may hold only its `.dat` bundles.
 - No browser gesture run — gate logic executed natively; web AudioContext
   behaviour is per the SDL3/Emscripten contract, not executed.
 - `main.cpp`/CMake wiring for `--audio-test --audio-file` landed with the

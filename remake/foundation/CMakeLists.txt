@@ -511,6 +511,14 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(combat_audio_match_test PRIVATE foundation_gameplay foundation_media glm)
     add_test(NAME combat_audio_match_test COMMAND combat_audio_match_test)
 
+    # Issue #42: a BGM track's .sfl loop sheet is optional — absent and unusable
+    # sheets both mean "no loop region, play once to EOF" (FUN_00668820), while a
+    # sheet that parses still loops. Device-free: the install is a byte map and the
+    # sink is NullEngine, so no device and no game data are involved.
+    add_executable(bgm_loop_test tests/bgm_loop_test.cpp)
+    target_include_directories(bgm_loop_test PRIVATE src)
+    add_test(NAME bgm_loop_test COMMAND bgm_loop_test)
+
     add_executable(result_title_test tests/result_title_test.cpp)
     target_link_libraries(result_title_test PRIVATE foundation_gameplay foundation_ui foundation_assets glm)
     add_test(NAME result_title_test COMMAND result_title_test)
