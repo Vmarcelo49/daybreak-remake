@@ -222,10 +222,12 @@ is a character+weapon combo, never a bare fighter.
   roster nudge only runs when their panel still has to be picked; both are
   what make a rematch round behave like the first one (see the commit that
   added these scripts).
-* **A windowed (live) run is not the same clock**: it steps at 64 Hz and a
-  stalled frame can advance the clock past a scripted tap. The scripts above
-  are calibrated for the capture path; §5 uses windowed runs for the window
-  path itself, not for round-by-round timing.
+* **A windowed (live) run is not the same clock.** The live loop steps the
+  simulation at 64 Hz, while a capture steps once per rendered frame, so a round
+  lasts 3840 ticks there and 3600 here: the rematch blocks above (whose offsets
+  are measured in capture ticks) no longer line up after round 1. Use the
+  capture path for round-by-round evidence; §5's windowed runs verify the window
+  path itself (present, pacing, 64 Hz logic) and use the battle-screen script.
 
 ## 4. Asset sweep — every legal selection and every stage
 
@@ -253,7 +255,8 @@ Without an install the sweep skips itself and the test still passes
 python3 tests/showcase.py --check --out-dir /tmp/sweep
 ```
 
-Expected summary and the current baseline (re-measured for this checklist):
+Expected summary and the current baseline (re-measured for this checklist;
+the tool passes `--no-devices` itself, §3.0):
 
 ```
 asset check: 16 character(s) x 13 stage(s) -> 208 runs
