@@ -19,6 +19,8 @@
 
 #include <cerrno>
 #include <cstdlib>
+#include <cstring>
+#include <unistd.h>
 
 namespace plat {
 namespace {
@@ -69,6 +71,29 @@ bool writeFile(const std::string& path, const std::vector<uint8_t>& data) {
     const std::size_t wrote = data.empty() ? 0 : std::fwrite(data.data(), 1, data.size(), f);
     std::fclose(f);
     return wrote == data.size();
+}
+
+// Put one asset where the asset layer will look for it.
+//
+// The catalogued spelling becomes a file; the other spellings this port probes become
+// symlinks to it (webAssetCaseVariants carries the measured list and the reason). The
+// native layer resolves those spellings through the bundle index, which folds ASCII case
+// like the exe's __stricmp; a delivered tree is a plain filesystem, which does not, so
+// without the aliases a loader misses a file that is sitting right there.
+bool materialize(const std::string& id, const std::vector<uint8_t>& data) {
+    const std::string target = webAssetTargetPath(kWebAssetMount, id);
+    if (target.empty() || !writeFile(target, data)) return false;
+    // Every other spelling this port probes becomes a symlink to the same bytes.
+    for (const std::string& variant : webAssetCaseVariants(id)) {
+        if (variant == id) continue;
+        const std::string alias = webAssetTargetPath(kWebAssetMount, variant);
+        if (alias.empty() || alias == target || !makeDirs(alias)) continue;
+        if (symlink(target.c_str(), alias.c_str()) != 0 && errno != EEXIST) {
+            std::fprintf(stderr, "[delivery] no case alias %s -> %s (%s)\n", variant.c_str(),
+                         id.c_str(), std::strerror(errno));
+        }
+    }
+    return true;
 }
 
 bool readFile(const std::string& path, std::vector<uint8_t>& out) {
@@ -257,9 +282,7 @@ void AssetClient::poll() {
                 const bool hashOk = sizeOk && sha256Hex(job->data) == item.entry.sha256;
                 if (hashOk) {
                     bytesReceived_ += job->data.size();
-                    const std::string target =
-                        webAssetTargetPath(kWebAssetMount, item.entry.id);
-                    if (writeFile(target, job->data)) {
+                    if (materialize(item.entry.id, job->data)) {
                         if (cacheAvailable_ &&
                             writeFile(cachePathFor(item.entry.sha256), job->data)) {
                             dirty_ = true;
@@ -274,7 +297,8 @@ void AssetClient::poll() {
                         if (item.state == Item::State::Failed) {
                             ++progress.failed;
                             progress.bytesDone += item.entry.transferSize();
-                            std::fprintf(stderr, "[delivery] cannot write %s\n", target.c_str());
+                            std::fprintf(stderr, "[delivery] cannot write %s\n",
+                                         item.entry.id.c_str());
                         }
                     }
                 } else {
@@ -311,9 +335,19 @@ void AssetClient::poll() {
     // ------------------------------------------------------------------- dispatch
     const auto dispatch = [&](std::vector<Item>& items, AssetProgress& progress,
                               bool startupSet) {
-        for (std::size_t i = 0; i < items.size(); ++i) {
+        // Gate assets go first. The manifest is in id order, which puts BGM and the
+        // movie — fetched at startup but explicitly not part of the gate — ahead of the
+        // title and menu art the first usable screen is waiting for; with a six-request
+        // budget that ordering delayed the gate by everything queued in front of it
+        // (measured: 140.3 MB received by the time the gate was met, against a declared
+        // gate of 98.1 MB). Two passes make the gate the priority and leave the optional
+        // startup assets to fill the remaining slots.
+        for (int pass = 0; pass < 2; ++pass) {
+            const bool wantGate = pass == 0;
+            for (std::size_t i = 0; i < items.size(); ++i) {
             Item& item = items[i];
             if (item.state != Item::State::Pending) continue;
+            if (item.entry.gate != wantGate) continue;
             if (inflight_ >= kMaxInflight) return;
             // A cached copy is content-addressed: same hash means same bytes, so a warm
             // session answers without a request and without re-validating the server.
@@ -322,9 +356,7 @@ void AssetClient::poll() {
                 if (readFile(cachePathFor(item.entry.sha256), cached) &&
                     cached.size() == item.entry.size &&
                     sha256Hex(cached) == item.entry.sha256) {
-                    const std::string target =
-                        webAssetTargetPath(kWebAssetMount, item.entry.id);
-                    if (writeFile(target, cached)) {
+                    if (materialize(item.entry.id, cached)) {
                         item.state = Item::State::Ready;
                         ++progress.ready;
                         ++progress.cached;
@@ -339,6 +371,7 @@ void AssetClient::poll() {
             ++progress.inflight;
             ++networkRequests_;
             startFetch(base_ + "/api/asset/" + item.entry.id, false, startupSet, (int)i);
+            }
         }
     };
     dispatch(startupItems_, startup_, true);
@@ -366,7 +399,9 @@ bool AssetClient::waitForGate() {
 }
 
 bool AssetClient::waitForMatch() {
-    while (matchRequested_ && !match_.complete() && !failed_) {
+    // `match_.complete()` is false while the manifest is still in flight (an empty set is
+    // not complete), so this cannot return before the set is known.
+    while (matchRequested_ && !matchReady() && !failed_) {
         poll();
         emscripten_sleep(0);
     }

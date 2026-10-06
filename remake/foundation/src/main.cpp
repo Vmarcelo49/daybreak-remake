@@ -5139,8 +5139,14 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
             // spinning, so the page stays responsive; the optional startup assets (the
             // movie, BGM) keep loading from SDL_AppIterate's poll().
             const bool gateMet = client.waitForGate();
-            std::printf("[delivery] startup gate %s: %s\n", gateMet ? "met" : "NOT met",
-                        client.startupProgress().line("startup").c_str());
+            // The gate line is also the cold/warm measurement the issue asks for: a cold
+            // session pays the gate's transfer size here, a warm one pays nothing because
+            // every asset was answered from the per-asset cache.
+            std::printf("[delivery] startup gate %s: %s (network %llu request(s), %.1f MB "
+                        "received)\n", gateMet ? "met" : "NOT met",
+                        client.startupProgress().line("startup").c_str(),
+                        (unsigned long long)client.networkRequests(),
+                        double(client.bytesReceived()) / 1048576.0);
             if (!gateMet) {
                 app->error = "startup assets unavailable: " + client.error();
                 return SDL_APP_FAILURE;

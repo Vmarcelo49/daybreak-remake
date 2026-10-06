@@ -54,6 +54,24 @@ inline std::string sha256Hex(const std::vector<uint8_t>& data) {
     return sha256Hex(data.data(), data.size());
 }
 
+// Every spelling of one asset's path that the delivered tree has to answer.
+//
+// The game resolves a name with MSVC __stricmp (0x00663c20) — the bundle index folds
+// ASCII case — and the native layer reproduces that through the bundle lookup. The
+// delivered tree is a plain filesystem, which does not fold, so the port's own probe
+// spellings have to exist as paths. The first entry is the catalogued spelling; the
+// rest are the variants this port actually probes, measured rather than guessed:
+//
+//   data/item/04.X        probed as data/item/04.x        (weapon mesh)
+//   data/object/p00.cnv   probed as data/object/P00.cnv   (battle HUD atlas)
+//   data/directX/toon.cnv probed as data/directx/toon.cnv (toon ramp candidates)
+//
+// This is a bounded set, not the whole case-equivalence class (which is exponential in
+// the number of letters and could never be materialised): it covers the spellings the
+// loaders in this tree use. A future delivery could resolve case-insensitively at lookup
+// time instead, which is the general fix.
+std::vector<std::string> webAssetCaseVariants(const std::string& id);
+
 // Where one asset is materialised for the asset layer: `mount` + the logical id.
 // Returns "" when the id is not a safe relative path — an id is server-supplied text,
 // and the file it names is opened by the unchanged native reader, so this is the one
@@ -71,7 +89,11 @@ struct AssetProgress {
     uint64_t    bytesTotal = 0;  // sum of transferSize over the set
     uint64_t    bytesDone = 0;   // sum over ready + failed
 
-    bool complete() const { return ready + failed >= total; }
+    // An empty set is NOT complete: before a manifest arrives, total is 0, and a
+    // readiness barrier that read that as "done" would let a battle start with none of
+    // its assets requested (measured in a browser run — the match group's request was
+    // issued and the barrier returned immediately).
+    bool complete() const { return total > 0 && ready + failed >= total; }
     bool gateMet(std::size_t gateTotal) const { return ready + failed >= gateTotal; }
     double fraction() const {
         return total == 0 ? 1.0 : double(ready + failed) / double(total);

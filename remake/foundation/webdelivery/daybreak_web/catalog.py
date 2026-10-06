@@ -173,6 +173,7 @@ def prepare(install_dir: Path, out_dir: Path, *, includes: Sequence[str] = (),
                 and fingerprint_matches(existing, fingerprint)
                 and existing.get("prepare", {}).get("includes", []) == list(includes)
                 and existing.get("prepare", {}).get("gzip") == gzip_mode
+                and existing.get("prepare", {}).get("rules") == groups.rules_fingerprint()
                 and _prepared_files_present(out_dir, existing)):
             stats.reused = len(existing.get("assets", []))
             stats.seconds = time.monotonic() - started
@@ -267,7 +268,7 @@ def prepare(install_dir: Path, out_dir: Path, *, includes: Sequence[str] = (),
             "entryCount": sum(len(b.entries) for b in bundle_set.bundles),
         },
         "prepare": {"includes": list(includes), "gzip": gzip_mode,
-                    "hashCopies": hash_copies},
+                    "hashCopies": hash_copies, "rules": groups.rules_fingerprint()},
         "counts": {
             "assets": len(assets),
             "prepared": stats.prepared,
@@ -310,6 +311,7 @@ def _catalog_version(assets: Iterable[dict], fingerprint: dict,
     digest.update(("precedence=" + ",".join(BUNDLE_PRECEDENCE) + "\n").encode())
     digest.update(("includes=" + ",".join(includes) + "\n").encode())
     digest.update(f"gzip={gzip_mode}\n".encode())
+    digest.update(f"rules={groups.rules_fingerprint()}\n".encode())
     digest.update(json.dumps(fingerprint, sort_keys=True).encode())
     for asset in assets:
         digest.update(f"{asset['id']}\t{asset['size']}\t{asset['sha256']}\t"

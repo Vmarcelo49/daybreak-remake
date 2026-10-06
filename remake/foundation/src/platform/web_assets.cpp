@@ -212,6 +212,35 @@ std::string sha256Hex(const uint8_t* data, std::size_t size) {
     return hash.hex();
 }
 
+std::vector<std::string> webAssetCaseVariants(const std::string& id) {
+    std::vector<std::string> out{id};
+    const auto add = [&out](std::string candidate) {
+        if (candidate.empty()) return;
+        for (const std::string& seen : out)
+            if (seen == candidate) return;
+        out.push_back(std::move(candidate));
+    };
+    std::string lower = id, upper = id;
+    for (char& c : lower) c = (c >= 'A' && c <= 'Z') ? char(c - 'A' + 'a') : c;
+    for (char& c : upper) c = (c >= 'a' && c <= 'z') ? char(c - 'a' + 'A') : c;
+    add(lower);
+    add(upper);
+    // Upper-case file stem with a lower-case extension: the spelling the shipped HUD
+    // sheets are asked for ("P00.cnv" for a stored "p00.cnv"). Only the stem is folded —
+    // the directories keep their stored case, which is what the loaders use.
+    const std::size_t dot = id.find_last_of('.');
+    const std::size_t slash = id.find_last_of('/');
+    if (dot != std::string::npos && (slash == std::string::npos || dot > slash)) {
+        const std::size_t stemStart = slash == std::string::npos ? 0 : slash + 1;
+        std::string stem = id.substr(stemStart, dot - stemStart);
+        for (char& c : stem) c = (c >= 'a' && c <= 'z') ? char(c - 'a' + 'A') : c;
+        std::string ext = id.substr(dot);
+        for (char& c : ext) c = (c >= 'A' && c <= 'Z') ? char(c - 'A' + 'a') : c;
+        add(id.substr(0, stemStart) + stem + ext);
+    }
+    return out;
+}
+
 std::string webAssetTargetPath(const std::string& mount, const std::string& id) {
     if (id.empty() || id.size() > 512) return {};
     if (id.front() == '/' || id.front() == '\\') return {};

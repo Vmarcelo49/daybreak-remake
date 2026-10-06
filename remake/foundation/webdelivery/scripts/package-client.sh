@@ -12,7 +12,7 @@ set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
 source_dir=${1:-$here/../build/web}
-dest_dir=${2:-$here/client}
+dest_dir=${2:-$here/../client}
 
 if [[ ! -f "$source_dir/foundation_demo.wasm" ]]; then
     echo "package-client: no foundation_demo.wasm in $source_dir" >&2

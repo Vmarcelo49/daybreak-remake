@@ -51,17 +51,34 @@ STARTUP_PREFIXES: tuple[str, ...] = (
 #: Exact names the startup group also needs.
 STARTUP_NAMES: tuple[str, ...] = ("movie/op.mpg",)
 
-#: Shared HUD/battle art the plan puts in the second group but which is fixed
-#: (no stage or fighter in it), so it loads at startup with the rest of the HUD.
-#: ``data/effect/`` holds the effect textures and ``data/object/`` the sheets.
-SHARED_BATTLE_PREFIXES: tuple[str, ...] = ("data/effect/", "data/bullet/common/")
+#: Battle resources that every match needs and none of them owns. They belong to
+#: the MATCH group, not the startup group: the plan is explicit that the startup
+#: group is "shared HUD and other non-character artwork used across screens" and
+#: that "stage-specific effects and shared battle objects" arrive with the match.
+#: Measured, not guessed — a live delivered match asked for ``data/aura/03.x``
+#: and the effect table reads ``data/effect/%03d.dat`` plus the models and
+#: textures beside it (``buildFxAssets`` in src/main.cpp).
+MATCH_SHARED_PREFIXES: tuple[str, ...] = ("data/effect/", "data/aura/")
+
+
+def rules_fingerprint() -> str:
+    """Identity of the rule tables above.
+
+    A catalog records which group every asset was classified into, so changing a
+    rule has to invalidate a prepared catalog — otherwise a host who upgraded the
+    service would keep serving the old grouping until they deleted the volume.
+    """
+    import hashlib
+    blob = "\n".join(list(STARTUP_PREFIXES) + list(STARTUP_NAMES) +
+                     list(MATCH_SHARED_PREFIXES) + list(GATE_EXCLUDED_PREFIXES))
+    return hashlib.sha256(blob.encode()).hexdigest()[:16]
 
 
 def classify(asset_id: str) -> str:
     """Return ``startup``, ``match`` or ``other`` for one logical asset id."""
     if asset_id in STARTUP_NAMES:
         return STARTUP
-    for prefix in STARTUP_PREFIXES + SHARED_BATTLE_PREFIXES:
+    for prefix in STARTUP_PREFIXES:
         if asset_id.startswith(prefix):
             return STARTUP
     return OTHER
@@ -121,7 +138,7 @@ def match_asset_ids(catalog_assets: Iterable[dict], stage: str, slots: Sequence[
     (``081``) or ``item/NN`` ids; the caller resolves them from the selection,
     and this function only maps them to the loader's two weapon shapes.
     """
-    prefixes = match_prefixes(stage, slots)
+    prefixes = list(MATCH_SHARED_PREFIXES) + match_prefixes(stage, slots)
     for weapon in weapons:
         if weapon.startswith("item/"):
             prefixes.append(f"data/{weapon}")

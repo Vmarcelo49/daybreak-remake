@@ -185,6 +185,20 @@ def test_prepare(install: Path, out: Path) -> dict:
     check((out / ".gitignore").read_text().strip() == "*",
           "the prepared directory must carry its own ignore marker")
 
+    # A changed grouping rule must invalidate the prepared catalog: the groups are
+    # recorded per asset, so a host who upgraded the service would otherwise keep the
+    # old grouping until they deleted the volume.
+    stored = json.loads((out / "catalog.json").read_text())
+    check(stored["prepare"]["rules"] == groups.rules_fingerprint(),
+          "the catalog must record the grouping rules it was built with")
+    stored["prepare"]["rules"] = "stale-rules"
+    (out / "catalog.json").write_text(json.dumps(stored))
+    catalog_stale, stats_stale = catalog_mod.prepare(install, out)
+    check(stats_stale.reused == 0,
+          "a catalog built with different grouping rules must be rebuilt, not reused")
+    check(catalog_stale["prepare"]["rules"] == groups.rules_fingerprint(),
+          "the rebuilt catalog must carry the current rules")
+
     # Repeatable: the same install must not be re-extracted.
     catalog2, stats2 = catalog_mod.prepare(install, out)
     check(stats2.reused == len(catalog["assets"]) and stats2.prepared == 0,

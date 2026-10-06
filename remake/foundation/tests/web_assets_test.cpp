@@ -114,6 +114,33 @@ void testManifest() {
                 sizeof(kBad) / sizeof(kBad[0]));
 }
 
+void testCaseVariants() {
+    // The measured probes: a stored spelling that the port asks for in another case.
+    struct Case { const char* stored; const char* probe; };
+    static const Case kCases[] = {
+        {"data/object/p00.cnv", "data/object/P00.cnv"},
+        {"data/object/p02.cnv", "data/object/P02.cnv"},
+        {"data/item/04.X", "data/item/04.x"},
+        {"data/directX/toon.cnv", "data/directx/toon.cnv"},
+    };
+    for (const Case& c : kCases) {
+        const std::vector<std::string> variants = plat::webAssetCaseVariants(c.stored);
+        bool found = false;
+        for (const std::string& v : variants) found = found || v == c.probe;
+        check(found, std::string("variant set for ") + c.stored + " must contain " + c.probe);
+    }
+    const std::vector<std::string> variants = plat::webAssetCaseVariants("data/object/p00.cnv");
+    check(!variants.empty() && variants.front() == "data/object/p00.cnv",
+          "the catalogued spelling must come first");
+    for (std::size_t i = 0; i < variants.size(); ++i)
+        for (std::size_t j = i + 1; j < variants.size(); ++j)
+            check(variants[i] != variants[j], "the variant set must not repeat itself");
+    check(plat::webAssetCaseVariants("data/aura/00.X").size() <= 4,
+          "the variant set must stay bounded");
+    std::printf("case variants: %zu for data/object/p00.cnv, %zu measured probes covered\n",
+                variants.size(), sizeof(kCases) / sizeof(kCases[0]));
+}
+
 void testTargetPath() {
     check(plat::webAssetTargetPath("/assets", "data/rika/01.X") == "/assets/data/rika/01.X",
           "a plain id must land under the mount");
@@ -133,6 +160,9 @@ void testTargetPath() {
 }
 
 void testProgress() {
+    plat::AssetProgress empty;
+    check(!empty.complete() && empty.fraction() == 1.0,
+          "an unrequested set must not read as complete");
     plat::AssetProgress progress;
     progress.total = 4;
     progress.bytesTotal = 12u * 1048576u;
@@ -176,6 +206,7 @@ void testProgress() {
 int main() {
     testSha256();
     testManifest();
+    testCaseVariants();
     testTargetPath();
     testProgress();
     std::printf("\n");
