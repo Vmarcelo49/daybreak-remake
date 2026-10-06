@@ -86,7 +86,11 @@ ctest --test-dir remake/foundation/build/linux --output-on-failure
   #43's `select_row_slidein_test`), so
   read the command's own summary rather than this line when the two disagree —
   the invariant to check is *100% passed* with the asset-dependent tests Skipped
-  and none Failed.
+  and none Failed. Issue #40 added no suite: its device-free half (the recovered
+  movie-skip key set and the opening scene's host seam) is 12 more checks inside
+  the existing `screen_stack_test`, so the denominator is unchanged and the
+  movie itself needs the install — its evidence is a local run
+  (`docs/MEDIA-INPUT.md` §3.1).
 
 The workflow (`.github/workflows/build-foundation.yml`, Linux job) runs this
 `ctest` step on every push to `main` that touches `remake/foundation/**` (issue

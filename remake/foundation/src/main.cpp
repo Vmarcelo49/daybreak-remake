@@ -38,9 +38,11 @@
 // include guard means a first include without that macro would hide xm::CameraUniform
 // from scene_renderer.h further down.
 #include "physics/raycast.h"
+#include "movie/movie_player.h"
 #include "ui/hud.h"
 #include "ui/sprite.h"
 #include "ui/screen.h"
+#include "ui/screen_opening.h"
 #include "ui/frontend_state.h"
 #include "ui/frontend_launch.h"
 #include "ui/participants.h"
@@ -154,6 +156,15 @@ struct Options {
     int         bench      = 0;
     bool        list       = false;
     std::string screen;          // --screen=<id|name>: boot a front-end screen
+    // --movie=<path>: which file the opening scene plays (default data/movie/op.mpg — the
+    // original's FUN_00404eb0 @0x404eb0 opens it as "movie/op.mpg" from its data/ working
+    // directory). The staff roll is the same player and the same scene kind, so it is driven
+    // through this one screen rather than a second one.
+    std::string movie;
+    // A plain interactive launch boots scene 0x00 like the original does, unless a
+    // verification run owns the input (issue #40's criterion 4). Resolved after parsing,
+    // because it depends on the whole flag set; see resolveBootOpening.
+    bool        bootOpening = false;
     // Split-screen verification (issue #12): open this many local human views by
     // assigning controllers 0..N-1 to the battle panels, so a headless run exercises the
     // per-controller camera/HUD path. 0 (default) keeps the historical single-view flow.
@@ -237,7 +248,14 @@ void usage() {
         "                     state every banked capture was made in\n"
         "  --list             print what was loaded and exit\n"
         "  --screen=<id|name> boot a front-end screen (title, 1, 0x01, ...) instead of\n"
-        "                     an asset; --script= drives its menu and --out captures it\n"
+        "                     an asset; --script= drives its menu and --out captures it.\n"
+        "                     With no --screen and no asset, an interactive launch boots\n"
+        "                     the opening scene (0x00) like the original; a verification\n"
+        "                     run (--out/--headless/--script/...) never does, so no\n"
+        "                     evidence run pays for the movie decode (issue #40)\n"
+        "  --movie=<path>     with --screen=opening: which movie to play, relative to the\n"
+        "                     install (default data/movie/op.mpg). staffroll.mpg runs\n"
+        "                     through the same player this way\n"
         "  --effect=<file.x>  load one card with the effect role (additive pass)\n"
         "  --hud-test         composite a synthetic HUD into --out captures\n"
         "  --hud-probe        with --hud-test: draw per-view corner markers so a capture\n"
@@ -515,6 +533,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--script=")).empty()) o.script = v;
         else if (!(v = val("--script2=")).empty()) o.script2 = v;
         else if (!(v = val("--screen=")).empty()) o.screen = v;
+        else if (!(v = val("--movie=")).empty()) o.movie = v;
         else if (!(v = val("--spawn=")).empty() || !(v = val("--spawn2=")).empty()) {
             // Match the KEY, not the whole argument: `a` carries the value too, so
             // `a == "--spawn2"` is never true and both flags would write slot 0.
@@ -586,6 +605,14 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         error = "--headless needs --out: there is no window to present to";
         return false;
     }
+    if (!o.movie.empty() && !o.screen.empty()) {
+        // Same parse the boot uses, so "opening", "0x00" and "screen:opening" all agree.
+        ui::ScreenId id = ui::ScreenId::Quit;
+        if (!ui::parseScreenId(o.screen.c_str(), id) || id != ui::ScreenId::Opening) {
+            error = "--movie needs --screen=opening: that is the scene that plays a movie";
+            return false;
+        }
+    }
     if (o.devices && o.noDevices) {
         error = "--devices and --no-devices are opposites; pass one";
         return false;
@@ -635,6 +662,15 @@ static bool readPhysicalDevices(const Options& o) {
     if (o.noDevices) return false;
     if (o.devices) return true;
     return !verificationRunOwnsInput(o);
+}
+
+// A plain interactive launch is the original's boot: scene 0x00, the opening movie, then
+// the title. Everything else keeps the behaviour it had — an explicit --screen, an asset
+// viewer, and every verification run (which is exactly the runs whose startup must not
+// carry a 22.7 MB decode, issue #40's criterion 4). PORT RULE: the original has no such
+// switch, it simply boots scene 0x00 every time; the set that opts out is the port's.
+static bool resolveBootOpening(const Options& o) {
+    return o.screen.empty() && !hasAsset(o) && !verificationRunOwnsInput(o);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -865,6 +901,10 @@ struct App {
     bool                         rendererReady = false;
     ui::FrontendState            frontend;
     fnd::audio::Sdl3Engine        menuAudio;
+    // The opening movie's own output stream (issue #40): the original plays its audio
+    // beside the front end's BGM, and one engine has one music stream, so the movie gets
+    // its own. Lazily opened by the movie's first PCM frame.
+    ui::MovieAudio                movieAudio;
     fnd::audio::SfxHandle         menuSounds[4] = {-1, -1, -1, -1};
     uint64_t                     menuSoundPlays[4] = {};
     uint64_t                     menuVoicePlays = 0;
@@ -3846,6 +3886,7 @@ void report(App& app) {
 
 void teardown(App& app) {
     app.menuAudio.close();
+    app.movieAudio.close();
     stopCombatAudio(app);
     if (app.versusAudioOn) app.versusAudio.close();
     if (app.uiReady) app.uiRenderer.shutdown();
@@ -4147,7 +4188,10 @@ private:
 static void playFrontendMusic(App& app, ui::ScreenId id) {
     if (!app.menuAudio.is_open()) return;
     const int localSide = app.frontend.slots[0].controller < 4 ? 0 : 1;
-    const char* path = id == ui::ScreenId::Title ? "data/bgm/title.ogg" :
+    // Scene 0x00's own track (FUN_00404ff0:0x405096, "data/bgm/titlesemi.ogg" at 0x6a14c0)
+    // — the movie's audio is a separate stream and plays over it.
+    const char* path = id == ui::ScreenId::Opening ? "data/bgm/titlesemi.ogg" :
+        id == ui::ScreenId::Title ? "data/bgm/title.ogg" :
         id == ui::ScreenId::Select ? "data/bgm/select01.ogg" :
         id == ui::ScreenId::VsIntro ? "data/bgm/vs.ogg" :
         id == ui::ScreenId::Result && app.frontend.resultWinner >= 0 ?
@@ -4300,7 +4344,11 @@ static bool enterFrontendBattle(App& app) {
 // --match uses, so a script drives the menu through the vocabulary the DX9 suite speaks.
 bool initScreens(App& app) {
     ui::ScreenId id = ui::ScreenId::Quit;
-    if (!ui::parseScreenId(app.opts.screen.c_str(), id)) {
+    // No --screen and a plain launch means the original's boot scene, 0x00 (resolveBootOpening
+    // decided that); anything else here has to name an id the parser knows.
+    if (app.opts.screen.empty()) {
+        id = ui::ScreenId::Opening;
+    } else if (!ui::parseScreenId(app.opts.screen.c_str(), id)) {
         app.error = "unknown --screen=" + app.opts.screen;
         return false;
     }
@@ -4341,8 +4389,26 @@ bool initScreens(App& app) {
     app.rendererReady = true;
     if (!app.uiReady && !app.uiRenderer.init(app.ctx.device, app.ctx.queue, app.error)) return false;
     app.uiReady = true;
+    // The input backend has to exist before the first screen: scene 0x00 reads its raw key
+    // state for the recovered skip, and ui::makeScreen builds it through the host seams.
+    if (!app.matchInput.init()) {
+        app.error = "--screen needs the input backend";
+        return false;
+    }
+    app.matchInputReady = true;
+    app.matchInput.set_devices_enabled(readPhysicalDevices(app.opts));
+    if (!app.opts.script.empty() && !app.matchInput.load_script(app.opts.script.c_str())) {
+        app.error = "cannot read input script " + app.opts.script;
+        return false;
+    }
+    // Scene 0x00's host seams: its audio engine, the backend its skip keys are read from,
+    // and which file it plays (--movie, default the original's op.mpg).
+    ui::setOpeningHost(&app.movieAudio, &app.matchInput,
+                       app.opts.movie.empty() ? fnd::movie::kOpeningMovie : app.opts.movie);
     auto factory = [&app](ui::ScreenId sid) -> std::unique_ptr<ui::Screen> {
-        playFrontendMusic(app, sid);
+        // Scene 0x00 starts its own BGM from inside the scene, on the tick the movie starts
+        // (FUN_00404ff0:0x405096), so the factory must not pre-empt it here.
+        if (sid != ui::ScreenId::Opening) playFrontendMusic(app, sid);
         if (sid == ui::ScreenId::Battle) {
             if (!enterFrontendBattle(app)) return nullptr;
             auto countdown = std::make_unique<RoundStartScreen>(app.uiRenderer, app, app.frontendBattleReady,
@@ -4355,20 +4421,12 @@ bool initScreens(App& app) {
         return screen;
     };
     if (!app.screens.begin(id, factory, app.error)) return false;
-    if (!app.matchInput.init()) {
-        app.error = "--screen needs the input backend";
-        return false;
-    }
-    app.matchInput.set_devices_enabled(readPhysicalDevices(app.opts));
-    app.matchInputReady = true;
-    if (!app.opts.script.empty() && !app.matchInput.load_script(app.opts.script.c_str())) {
-        app.error = "cannot read input script " + app.opts.script;
-        return false;
-    }
     auto& settings = ui::frontendSettings();
     settings.applyVolumes = [&app](const fnd::audio::Volumes& v) {
         app.menuAudio.set_volumes(v);
         app.versusAudio.set_volumes(v);
+        // A live volume change while a movie plays has to reach the movie's own stream too.
+        app.movieAudio.set_volumes(v);
     };
     settings.resolutionAvailable = false;
     settings.resolutions = {{0, 0}};
@@ -4545,6 +4603,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
         usage();
         return SDL_APP_FAILURE;
     }
+    app->opts.bootOpening = resolveBootOpening(app->opts);
 
     // Headless verification: no window, no surface, no swapchain, so the adapter is
     // requested without a presentation target. That is what lets a machine with no
@@ -4603,9 +4662,9 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     // runs skip this entirely — see usesUserConfig.
     if (usesUserConfig(app->opts)) loadUserSettings(*app);
 
-    const bool ok = !app->opts.screen.empty() ? initScreens(*app)
-                   : hasAsset(app->opts)       ? initScene(*app)
-                                               : initTriangle(*app);
+    const bool ok = (!app->opts.screen.empty() || app->opts.bootOpening) ? initScreens(*app)
+                   : hasAsset(app->opts)                                ? initScene(*app)
+                                                                        : initTriangle(*app);
     if (!ok) return SDL_APP_FAILURE;
 
     app->startTime = app->lastTime = plat::now();
@@ -4964,8 +5023,18 @@ static SDL_AppResult tickFrontend(App& state) {
     }
     const ui::ScreenId previousScreen = app->screens.current();
     app->screens.update(in);
-    if (previousScreen != app->screens.current() && app->screens.current() == ui::ScreenId::Battle)
-        app->lastTime = plat::now();
+    if (previousScreen != app->screens.current()) {
+        // FUN_00404ff0:0x405096 starts the movie's BGM from inside the scene, on the tick the
+        // start call runs — i.e. on the first update after the scene was constructed. It is a
+        // one-shot the screen hands up rather than a takeSound() cue, because it names a track
+        // and the cue table is the system-SE bank.
+        if (app->screens.current() == ui::ScreenId::Opening) {
+            auto* opening = dynamic_cast<ui::OpeningScreen*>(app->screens.mutableScreen());
+            if (opening && opening->takeBgmRequest())
+                playFrontendMusic(*app, ui::ScreenId::Opening);
+        }
+        if (app->screens.current() == ui::ScreenId::Battle) app->lastTime = plat::now();
+    }
     if (!app->error.empty()) return SDL_APP_FAILURE;
     if (app->menuAudio.music_queued_frames() < 4096)
         app->menuBgmPushed += app->menuLoop.push_next(app->menuAudio, 1024);

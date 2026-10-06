@@ -69,6 +69,18 @@ class Backend {
     bool any_just_pressed(Action action) const;
     bool any_down(Action action) const;
 
+    // Raw keyboard state, by SDL_Scancode — the one read outside the Action map. The front
+    // end's opening movie is skipped by the keys the ORIGINAL tests directly on its
+    // keyboard buffer (ui/screen_opening.h recovers them: VK_RETURN and the two Alt codes),
+    // and those keys are deliberately not actions: routing them through the key-config
+    // screen would let a player rebind away the only way to skip a movie, and a remapped
+    // action would skip it on the wrong key. Fed by note_key like everything else, so the
+    // device gate (issue #29), the focus gate and suppression all still hold — a
+    // verification run's script and synthetic pads can never report a key down here.
+    bool key_down(int scancode) const {
+        return scancode >= 0 && scancode < kKeyHeldSize && key_held_[scancode];
+    }
+
     // Event feed. Under SDL3 callbacks the app forwards SDL_AppEvent keys
     // here (see docs/INPUT-BACKEND.md); under SDL_PollEvent loops poll()
     // harvests the queue itself, so forwarding is optional and idempotent.

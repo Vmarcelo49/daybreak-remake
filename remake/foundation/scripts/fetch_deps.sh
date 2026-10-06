@@ -12,6 +12,7 @@ SDL3WEBGPU_COMMIT=4fa9d70935e41c075f664b231ee10a64262a8ac7      # 2025-05-01
 SDL3_VERSION=3.4.16
 GLM_VERSION=1.0.1
 STB_COMMIT=2c980bb59875b0d32144a71867fbdebb2f77cd20   # nothings/stb master, v1.22 stb_vorbis
+PL_MPEG_COMMIT=c871f2be022ece7ef4f64230b4fb8e1fb9eb6023   # phoboslab/pl_mpeg master, 2025-12-30
 
 fetch_zip() {  # url destdir name
     local url=$1 dest=$2 name=$3 tmp
@@ -37,6 +38,19 @@ for f in stb_vorbis.c stb_truetype.h; do
         curl -fsSL "https://raw.githubusercontent.com/nothings/stb/${STB_COMMIT}/$f" -o "$tp/stb/$f"
     fi
 done
+
+# pl_mpeg (issue #40): MPEG-1 video + MP2 audio + MPEG-PS demux in one MIT header, the
+# decoder behind the opening/staff-roll movies. Same single-raw-blob pattern as stb above;
+# the upstream repository has no tags, so the pin is the commit the file's own README
+# revision matched when this was written. Only the header is fetched — pl_mpeg.c is the
+# same file with PL_MPEG_IMPLEMENTATION defined, and src/movie/movie_player.cpp is the one
+# translation unit in this tree that defines it.
+if [ ! -e "$tp/pl_mpeg/pl_mpeg.h" ]; then
+    echo "  pl_mpeg.h (pinned ${PL_MPEG_COMMIT}): fetching"
+    mkdir -p "$tp/pl_mpeg"
+    curl -fsSL "https://raw.githubusercontent.com/phoboslab/pl_mpeg/${PL_MPEG_COMMIT}/pl_mpeg.h" \
+        -o "$tp/pl_mpeg/pl_mpeg.h"
+fi
 fetch_zip "https://github.com/eliemichel/WebGPU-distribution/archive/${WEBGPU_DIST_COMMIT}.zip" "$tp/webgpu" "WebGPU-distribution"
 fetch_zip "https://github.com/eliemichel/sdl3webgpu/archive/${SDL3WEBGPU_COMMIT}.zip" "$tp/sdl3webgpu" "sdl3webgpu"
 

@@ -334,6 +334,13 @@ New since the port landed, all verified the same way:
   SFX paths, gains applied) and `--input-test` (canned 6-frame tap with exact
   edge output). Media backends run on Linux and Wine; the browser gesture path
   and audible checks remain open.
+- `foundation_movie` (issue #40) is the pl_mpeg-backed player behind scene 0x00.
+  A local run of the shipped `data/movie/op.mpg` presented 684/684 frames over 22.789 s of
+  decoder clock with the PCM 0.26-0.28 s ahead and steady (the audio lead, not
+  drift), and `--screen=opening --movie=data/movie/staffroll.mpg` presented
+  2840/2840 over 94.728 s; `--screen=title` and every capture recipe print no
+  movie line and pay no decode. The same run also showed the recovered skip:
+  Return at 2.469 s left for the title with `movie: skipped at frame 75`.
 
 Phase 1 (reads installs, CPU raycast, debug prims):
 
@@ -379,7 +386,12 @@ and validated before the front end starts; delete the file to reset. See
 
 ## Not here yet
 
-Story video decoding remains an explicit stub. Live-pad and browser-gesture
+The opening movie plays (issue #40): scene 0x00 boots on a plain launch, is skipped with
+Enter or either Alt (recovered from `FUN_00404ff0` @0x404ff0), and `--movie=` drives the
+staff roll through the same player. What is still open is the **web** movie path: a browser
+decodes video itself, so `src/movie/movie_player.cpp` compiles to a stub under Emscripten
+that reports the gap rather than shipping a second decoder into wasm
+([`docs/MEDIA-INPUT.md`](docs/MEDIA-INPUT.md) §3). Live-pad and browser-gesture
 verification remain open: a pad attached to the gate machine perturbed runs
 until device isolation existed (issue #29 — a verification run ignores physical
 devices by default and an unfocused window takes no input), and no run drives
