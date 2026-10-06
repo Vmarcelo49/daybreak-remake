@@ -637,3 +637,21 @@ conflict markers captured every change. A refactor-shaped conflict can swallow a
    last N countdown ticks?
 2. **The battle HUD is still absent during the countdown** (its first frame is the round's first
    tick). One condition on the HUD pass if it should be up.
+
+## Round 15 — dispatch notes and a decision the human needs to make
+
+**Dispatched #48** (the recovered in-battle debug keys F1/F2/F3/F4/Escape). Its issue body already
+carries the whole recovered map — the `DAT_006cfce9` gate, the DIK codes and each key's effect with
+its address in `FUN_00634f60` — so the worker was told to spend its time on implementation and proof
+rather than re-derivation. Two things it must not hand-wave: the per-fighter AI-enabled flag is
+**new state** (the port has no `+0x860` counterpart, because the bot brain simply runs for COM slots),
+and #49's report found `--lock-taps` never reached the front-end battle's human panel at
+`--screen=battle`, so scripted function keys may not land either — it must actually run whatever
+mechanism it claims.
+
+**#2 is not dispatchable and needs the human's decision.** Its own body says the work is *"each glyph
+needs a hand pass in an SVG-capable image editor"* — the pipeline (`trace_hud.py`, the 4x-upscale +
+Gaussian + re-threshold fix) is done and committed, and what remains is **manual art**, which a
+subagent cannot do honestly. The decision is whether to (a) do that hand pass, (b) accept the traced
+outlines as-is with their known flat terminals and staircased diagonals, or (c) drop the vector-HUD
+goal and keep the bitmap atlas at the shipped resolution. **Not started pending that call.**
