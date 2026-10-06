@@ -137,6 +137,14 @@ int main() {
         mate.role = ui::HudFighterRole::Enemy;
         CHECK(!ui::hudRingCounterRotates(mate));
 
+        // Issue #55: the counter-rotating copy is the TRIANGLES cell beside the circle, not the
+        // circle again. P03 carries the pair as two adjacent 128-px cells, so the second copy is
+        // one column along; drawing the same cell twice was the reported "two circular ones
+        // stacked". Pinned here so the same art cannot be drawn twice again without failing.
+        CHECK(ui::hudRingSecondCellColumn(0) == 1);   // plain pair:  circle 0, triangles 1
+        CHECK(ui::hudRingSecondCellColumn(2) == 3);   // hyper pair:  circle 2, triangles 3
+        CHECK(ui::hudRingSecondCellColumn(0) != 0);   // never the circle's own cell
+
         // ...and the same rule driven from the live lock table: an untouched 2v2 is four
         // red rings (this is the round-start regression the issue is about), and after ONE
         // fighter selects a target only that fighter is green.

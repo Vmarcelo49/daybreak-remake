@@ -143,6 +143,16 @@ inline bool hudRingCounterRotates(const HudFighterHud& f) {
     return f.role == HudFighterRole::Owner && !f.locked;
 }
 
+// The second copy is a DIFFERENT reticle, not the first one again (issue #55). P03 carries
+// the circular reticle and the four outward triangles as two adjacent 128-px cells, so the
+// counter-rotating copy is the next cell along: `col` selects the pair (0 plain, 2 hyper) and
+// the pair's second half is the triangles. Nothing in the recovered update distinguishes the
+// two cells -- FUN_00643230 passes the same cell argument to both FUN_00655830 calls -- so the
+// selection is read from the shipped sheet rather than from the call, and the human's report
+// of the original is what settles it: circle inside, triangles outside. Drawing the circle
+// twice was the reported defect.
+inline int hudRingSecondCellColumn(int col) { return col + 1; }
+
 // The world lifts FUN_00643230 projects its two per-fighter anchors at (FUN_00643230.c:52
 // and :173) and the screen drop it applies to the com bar afterwards (0x6acf48 = 32.0f).
 // game/hud_bridge.h's projectFighterHud() is the arithmetic that uses them.

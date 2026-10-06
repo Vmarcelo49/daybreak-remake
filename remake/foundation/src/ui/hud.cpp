@@ -320,11 +320,12 @@ void HudComposer::composeFighters(SpriteRenderer& batch, const HudState& st, con
             // opponent readable in a 2v2.
             battleAtlas_.cell(batch, HudIcon::Ring, col, row, f.ringX, f.ringY, ring.scale,
                               ring.firstDeg, white);
-            // The view's OWN fighter gets the second, counter-rotating ring while it has no
-            // lock of its own (local_31, FUN_00643230:97-102).
+            // The view's OWN fighter gets the second, counter-rotating reticle while it has no
+            // lock of its own (local_31, FUN_00643230:97-102). hudRingSecondCellColumn picks its
+            // cell: the triangles beside the circle, not the circle again (issue #55).
             if (hudRingCounterRotates(f))
-                battleAtlas_.cell(batch, HudIcon::Ring, col, row, f.ringX, f.ringY, ring.scale,
-                                  ring.secondDeg, white);
+                battleAtlas_.cell(batch, HudIcon::Ring, hudRingSecondCellColumn(col), row,
+                                  f.ringX, f.ringY, ring.scale, ring.secondDeg, white);
         }
         // The target's com bar (the drawer at 0x643fa7): frame, the lagging fill
         // (hud+0xb0 = P01 (320,352,80,6)) then the live one (hud+0x4 =
