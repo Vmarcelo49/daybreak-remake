@@ -861,3 +861,26 @@ by separator bars) and **#32** (the in-flight projectile visual: recover the sho
 the port rule with the reason, following #34's precedent). #32 was given the hypothesis worth testing
 early — that an in-flight projectile may be drawn by the *same* rig-attachment path as the muzzle
 flash, which would make it a rig-attached effect rather than a travelling model.
+
+## Round 24 — max subagents raised to 5; #36 and #35 dispatched
+
+The human raised the concurrency cap to **5** and asked to speed up, so two more went out alongside
+the three in flight (#30 the COM tick cost, #32 the in-flight projectile visual, #56 the vertex-buffer
+aliasing):
+
+- **#36** — one config file owns the install path. The whole coordinated change was already specified
+  by #22 in the issue body (schema v3 + additive migration, `installDir`, precedence after
+  `$DAYBREAK_INSTALL`, delete `install.conf` and its writer). The headline symptom is that the binary
+  cannot see the launcher's choice, so a direct run re-discovers from scratch.
+- **#35** — **actually running** the Windows and web targets, which the project has only ever
+  compiled. This one is doable on this box: `wine` **is** installed at `/usr/bin/wine`, the
+  `computer-use` skill drives a GUI in an **isolated headless KWin session** (so the user's desktop is
+  untouched), and `agent-browser` covers the web side. The acceptance criterion's own phrase is
+  "honestly scoped", so a target that reaches the title screen and crashes on battle is a *result*,
+  and a target that cannot run at all is also a result — and the brief requires correcting any doc
+  sentence the runs contradict.
+
+**Standing observation for the batch**: three of the highest-value issues left (#35, #39 done, #56)
+are not about game behaviour at all — they are about the project *believing* it verified something it
+did not. #39 was "captures cannot see the live path"; #35 is "compiled is not executed". Both were
+surfaced by other work rather than by the checklist.
