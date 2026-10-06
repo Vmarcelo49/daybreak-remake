@@ -36,6 +36,7 @@ struct Camera {
 struct Draw {
   model         : mat4x4<f32>,   // entity -> world; identity when the palette bakes it
   baseColor     : vec4<f32>,     // multiplies material diffuse and vertex colour
+  emissive      : vec4<f32>,     // the material's Emissive, the toon effect's MaterialColor
   paletteOffset : u32,           // index of this mesh's first palette matrix
   flags         : u32,
   _pad0         : u32,
@@ -54,6 +55,7 @@ const FLAG_TEXTURED   : u32 = 1u;
 const FLAG_UNLIT      : u32 = 2u;
 const FLAG_ALPHA_TEST : u32 = 4u;
 const FLAG_TOON       : u32 = 8u;
+const FLAG_OUTLINE    : u32 = 16u;
 
 struct VSOut {
   @builtin(position) clip   : vec4<f32>,
@@ -61,6 +63,7 @@ struct VSOut {
   @location(1)       uv     : vec2<f32>,
   @location(2)       color  : vec4<f32>,
   @location(3)       viewZ  : f32,   // view-space depth, the fog coordinate
+  @location(4)       toonU  : f32,   // toon ramp coordinate, object-space N.L (issue #21)
 };
 
 @vertex
@@ -81,16 +84,38 @@ fn vs_main(
            + weights.w * palette[o + bones.w];
 
   let world = draw.model * skin;
+  let clip  = cam.viewProj * world * vec4<f32>(pos, 1.0);
 
   var out : VSOut;
-  out.clip   = cam.viewProj * world * vec4<f32>(pos, 1.0);
+  // Toon ramp coordinate (issue #21). The original's toon effect computes it in its own
+  // vertex shader as `min(max(N.L, 0), 1)` with the light direction BAKED IN as the
+  // constant (0, 0.287347883, 0.957826257) and the *object-space* normal (the shader's
+  // `dp3 r0.x, v1, c9`), so the banding follows the character's own facing rather than
+  // the world light the fixed-function path uses.
+  out.toonU = saturate(dot(nrm, vec3<f32>(0.0, 0.287347883, 0.957826257)));
+  if ((draw.flags & FLAG_OUTLINE) != 0u) {
+    // Outline hull (issue #21). The original's outline pass offsets the clip position
+    // along the world normal's x/y, scaled by the clip-space w, which makes the rim a
+    // constant screen width after the perspective divide: 0.00275 and 0.00366666657 NDC
+    // are 0.011/4 and 0.011/3, i.e. the same ~1.1 px at the original's 800x600 canvas.
+    // The 1e-6*w z push keeps the hull behind the model it surrounds, so the model's own
+    // depth wins everywhere except the rim that sticks out past the silhouette.
+    let wn = normalize((world * vec4<f32>(nrm, 0.0)).xyz);
+    out.clip = vec4<f32>(clip.x + wn.x * clip.w * 0.00275,
+                         clip.y + wn.y * clip.w * 0.00366666657,
+                         clip.z + clip.w * 0.000001,
+                         clip.w);
+  } else {
+    out.clip = clip;
+  }
   // Uniform scale assumed; a rig with non-uniform bone scale would need the
   // inverse-transpose of the upper 3x3 here.
   out.normal = (world * vec4<f32>(nrm, 0.0)).xyz;
   out.uv     = uv;
   out.color  = color * draw.baseColor;
   // For a perspective projection the clip-space w IS the view depth, which is the
-  // coordinate D3D's linear table fog uses.
+  // coordinate D3D's linear table fog uses. The outline branch keeps w, so this stays
+  // the same depth for both draws of one mesh.
   out.viewZ  = out.clip.w;
   return out;
 }
@@ -109,6 +134,19 @@ fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
   // and an unbound stage reads white, which is why the untextured branch is 1.0.
   var albedo = select(vec4<f32>(1.0), texel, textured);
 
+  // Outline hull (issue #21): a flat colour and nothing else. The original's outline
+  // pass has NO pixel shader at all — its vertex shader writes the interpolated diffuse
+  // from a preshader that computed `MaterialColor * 0.285714286` — so the texture, the
+  // alpha test, the lighting and the fog never touch it. 0.285714286 is 2/7, the
+  // preshader's own constant (blob +0x934: `mul c5.xyz, (0.285714286, ...), c0.xyz`),
+  // and MaterialColor is the material's Emissive: the shipped character materials carry
+  // tinted values there (measured rim colours on rena's bind pose imply emissives from
+  // ~0.30 to ~0.92 per channel), so the outline is a dark rim tinted by the material it
+  // surrounds rather than a pure black one.
+  if ((draw.flags & FLAG_OUTLINE) != 0u) {
+    return vec4<f32>(draw.emissive.rgb * 0.285714286, draw.emissive.a);
+  }
+
   // The original's 3D passes alpha-test against ref 0x08 with GE — the DX9 renderer
   // sets ALPHAREF 0x08 / ALPHAFUNC GE, so texels at exactly 8/255 stay. A 0.5
   // threshold here used to eat soft foliage and ground-card edges the original keeps.
@@ -116,46 +154,57 @@ fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
     discard;
   }
 
+  // The shipped toon ramp, sampled unconditionally for the same uniform-control-flow
+  // reason the albedo is (and it costs nothing on a draw that does not read it).
+  let ramp = textureSample(toonRampTex, toonRampSampler, vec2<f32>(in.toonU, 0.5)).r;
+
   var lit = vec3<f32>(1.0, 1.0, 1.0);
-  // Both lighting inputs and the toon ramp are computed before the branch: WGSL allows
-  // textureSample only where derivatives are defined (the same reason the albedo sample
-  // sits above the alpha test), and the values cost nothing when the draw is unlit.
-  let n = normalize(in.normal);
-  let l = normalize(-cam.lightDir.xyz);
-  let ndl = saturate(dot(n, l));
-  // Toon ramp (issue #21). The shipped data/directX/toon.bmp read at the diffuse term:
-  // u = N.L, v = 0.5 (the bitmap is constant down its columns), clamped by the sampler
-  // so N.L = 1 reads the bright end instead of wrapping to the dark one. The ramp's
-  // band structure comes from the bitmap alone — no constant stands in for it.
-  let ramp = textureSample(toonRampTex, toonRampSampler, vec2<f32>(ndl, 0.5)).r;
   if ((draw.flags & FLAG_UNLIT) == 0u) {
-    // Fixed-function D3D9 lighting, the equation the reference's state block selects
-    // (remake/src/core/scenes.cpp:745-769 sets LIGHTING TRUE, D3DRS_AMBIENT 0.35 and
-    // light 0 = DIRECTIONAL diffuse 0.85 / ambient 0.20 / dir (0.5,-1,0.5)):
-    //
-    //   lit = Ca*(Ga + La) + Cd*Ld*saturate(N.L)
-    //
-    // Ca is the *material* ambient: D3DRS_AMBIENTMATERIALSOURCE defaults to
-    // D3DMCS_MATERIAL, and the DX9 loader forces material Ambient := Diffuse
-    // (x_model_loader.cpp:432), so baseColor carries both terms. Cd is vertex colour 1,
-    // because D3DRS_DIFFUSEMATERIALSOURCE defaults to D3DMCS_COLOR1 with
-    // D3DRS_COLORVERTEX TRUE — the stages' baked-light vertex colours (0.03..0.29 on
-    // stage21) are exactly this term, and are white on meshes that carry none.
-    //
-    // The placement of the vertex colour is measured, not assumed: fitting dx9/texel per
-    // pixel over 83k samples of the banked frame's stage21 ground gives 0.245 where that
-    // mesh's vertex colour is 0.244 (and 0.167 where it is 0.179) — the vertex colour
-    // scales the diffuse term alone, not the whole lit colour and not the ambient term.
-    //
-    // saturate, not abs: D3D clamps N.L at 0, so a surface facing away from the light
-    // keeps the ambient term alone instead of being lit at full strength.
-    //
-    // The toon flag swaps that saturate(N.L) for the ramp sample and nothing else: the
-    // ambient term stays linear, which is what makes the two states differ only in the
-    // diffuse banding the ramp carries.
-    let diffuse = select(ndl, ramp, (draw.flags & FLAG_TOON) != 0u);
-    lit = draw.baseColor.rgb * cam.ambient.rgb
-        + in.color.rgb * cam.lightColor.rgb * diffuse;
+    if ((draw.flags & FLAG_TOON) != 0u) {
+      // The original's toon pixel shader (ps_1_1, effect blob +0x4d0) is
+      //
+      //   tex t0 / tex t1 / tex t2
+      //   cnd r1, .., c0, c0        ; r1 = 0.1
+      //   sub r0, v0, r1            ; MaterialColor - 0.1
+      //   add_sat r0, t1, r0        ; + the ramp sample at (N.L, 0.5)
+      //   mul r0, t0, r0            ; * the albedo
+      //
+      // i.e. albedo * saturate(ramp + materialEmissive - 0.1), with t1 bound to the
+      // shipped data/directX/toon.bmp (the technique's "Tex1" parameter, which only the
+      // effect-based modes ever set — the plain mode never touches the ramp) and
+      // MaterialColor being the material's Emissive (D3DMATERIAL9 +0x30). There is no
+      // ambient term, no light colour and no vertex colour in this path: the effect
+      // carries its own lighting, and the ramp is its only N.L term.
+      lit = saturate(vec3<f32>(ramp) + draw.emissive.rgb - vec3<f32>(0.1));
+    } else {
+      let n = normalize(in.normal);
+      let l = normalize(-cam.lightDir.xyz);
+      // Fixed-function D3D9 lighting, the equation the reference's state block selects
+      // (remake/src/core/scenes.cpp:745-769 sets LIGHTING TRUE, D3DRS_AMBIENT 0.35 and
+      // light 0 = DIRECTIONAL diffuse 0.85 / ambient 0.20 / dir (0.5,-1,0.5)):
+      //
+      //   lit = Ca*(Ga + La) + Cd*Ld*saturate(N.L)
+      //
+      // Ca is the *material* ambient: D3DRS_AMBIENTMATERIALSOURCE defaults to
+      // D3DMCS_MATERIAL, and the DX9 loader forces material Ambient := Diffuse
+      // (x_model_loader.cpp:432), so baseColor carries both terms. Cd is vertex colour 1,
+      // because D3DRS_DIFFUSEMATERIALSOURCE defaults to D3DMCS_COLOR1 with
+      // D3DRS_COLORVERTEX TRUE — the stages' baked-light vertex colours (0.03..0.29 on
+      // stage21) are exactly this term, and are white on meshes that carry none.
+      //
+      // The placement of the vertex colour is measured, not assumed: fitting dx9/texel
+      // per pixel over 83k samples of the banked frame's stage21 ground gives 0.245 where
+      // that mesh's vertex colour is 0.244 (and 0.167 where it is 0.179) — the vertex
+      // colour scales the diffuse term alone, not the whole lit colour and not the
+      // ambient term.
+      //
+      // saturate, not abs: D3D clamps N.L at 0, so a surface facing away from the light
+      // keeps the ambient term alone instead of being lit at full strength. This branch
+      // is the state every banked capture was made in and must stay bit for bit.
+      let ndl = saturate(dot(n, l));
+      lit = draw.baseColor.rgb * cam.ambient.rgb
+          + in.color.rgb * cam.lightColor.rgb * ndl;
+    }
   }
 
   // Emissive, specular and power stay parsed-but-unused (R4): the fixed-function

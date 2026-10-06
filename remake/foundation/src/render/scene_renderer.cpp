@@ -340,6 +340,7 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
 
 void SceneRenderer::shutdown() {
     for (Pipelines& p : pipelines_) {
+        if (p.outline) wgpuRenderPipelineRelease(p.outline);
         if (p.opaque) wgpuRenderPipelineRelease(p.opaque);
         if (p.decal) wgpuRenderPipelineRelease(p.decal);
         if (p.effect) wgpuRenderPipelineRelease(p.effect);
@@ -605,6 +606,13 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                 // all live in non-drawn collision meshes, so no capture changes from
                 // this — it is the real per-material signal, wired rather than dropped.
                 d.baseColor = mat.diffuse;
+                // The toon effect's "MaterialColor" is the material's Emissive (issue #21):
+                // the original hands the effect `material + 0x30` of a D3DXMATERIAL, and
+                // the effect's own shading is `albedo * saturate(ramp + MaterialColor -
+                // 0.1)` — with the diffuse there instead, every character saturates to
+                // white. Emissive is parsed but otherwise unused (R4), so nothing else
+                // reads it.
+                d.emissive = glm::vec4(mat.emissive, 1.f);
                 // Effect cards yaw to face the camera around world Y (cylindrical, not
                 // spherical: the world's up axis is load-bearing — ground cards lie in
                 // XZ, shockwaves read as verticals — and the arena camera stays near
@@ -630,7 +638,26 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                     drawTemplates_.push_back(d);
                     continue;
                 }
+                // The toon state's second draw (issue #21): the same submesh once more as
+                // the outline hull. The original's technique is two passes over the same
+                // geometry, its pass 0 being the normal-offset hull with no pixel shader,
+                // so the port queues a second draw per eligible submesh and lets the
+                // frame-time switch decide whether it is submitted. Nothing is uploaded
+                // twice: it shares the vertex/index buffers and the palette slice.
+                const bool outline = d.toon && pass == Pass::Opaque;
                 draws_.push_back(d);
+                if (outline) {
+                    DrawItem hull = d;
+                    hull.pass = Pass::Outline;
+                    hull.flags = (d.flags & ~(xm::kDrawTextured | xm::kDrawAlphaTest |
+                                              xm::kDrawUnlit)) |
+                                 xm::kDrawOutline;
+                    hull.texture = -1;    // the outline samples nothing
+                    hull.billboard = false;
+                    hull.toon = false;    // its own flag, not the ramp term
+                    draws_.push_back(hull);
+                    ++stats_.outlines;
+                }
             }
         }
     }
@@ -640,17 +667,24 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
         return false;
     }
 
-    // Opaque geometry first, then the multiply decals over it, then additive effect
+    // Outline hulls first (issue #21: they belong behind the surfaces they surround),
+    // then opaque geometry, then the multiply decals over it, then additive effect
     // cards last: decals are coplanar with the ground and must not occlude anything,
     // and effect glows add over the shadowed ground rather than under it. The
     // decal-after-opaque half reproduces the original's decal-pass-last order; the
     // effect-last half is the renderer's choice, unverified against the original.
-    // The instance-only templates are ordered with them so an instance lands in the same
-    // pass group its model would have.
-    std::stable_partition(draws_.begin(), draws_.end(),
-                          [](const DrawItem& d) { return d.pass == Pass::Opaque; });
+    // (The original draws each character's hull immediately before that character's
+    // surface; depth testing makes the global order equivalent, and it keeps the pipeline
+    // switches to one per pass.) The instance-only templates are ordered with the base
+    // draws so an instance lands in the same pass group its model would have.
     std::stable_partition(draws_.begin(), draws_.end(),
                           [](const DrawItem& d) { return d.pass != Pass::Effect; });
+    std::stable_partition(draws_.begin(), draws_.end(),
+                          [](const DrawItem& d) {
+                              return d.pass == Pass::Outline || d.pass == Pass::Opaque;
+                          });
+    std::stable_partition(draws_.begin(), draws_.end(),
+                          [](const DrawItem& d) { return d.pass == Pass::Outline; });
     std::stable_partition(drawTemplates_.begin(), drawTemplates_.end(),
                           [](const DrawItem& d) { return d.pass != Pass::Effect; });
     // The instance source of truth: the base draws in their final pass order, then the
@@ -674,6 +708,17 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
     baseDrawList_ = draws_;
     drawTemplates_.insert(drawTemplates_.end(), draws_.begin(), draws_.end());
     effectInstances_.clear();
+    // (The original draws each character's hull immediately before that character's
+    // surface; depth testing makes the global order equivalent, and it keeps the
+    // pipeline switches to one per pass.)
+    std::stable_partition(draws_.begin(), draws_.end(),
+                          [](const DrawItem& d) { return d.pass != Pass::Effect; });
+    std::stable_partition(draws_.begin(), draws_.end(),
+                          [](const DrawItem& d) {
+                              return d.pass == Pass::Outline || d.pass == Pass::Opaque;
+                          });
+    std::stable_partition(draws_.begin(), draws_.end(),
+                          [](const DrawItem& d) { return d.pass == Pass::Outline; });
 
     paletteBuffer_ = gpu::createBuffer(device_, palette_.size() * sizeof(glm::mat4),
                                        WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst,
@@ -871,16 +916,24 @@ WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, Pass pas
         entry = &pipelines_.back();
         entry->format = format;
     }
-    WGPURenderPipeline& slot =
-        pass == Pass::Opaque ? entry->opaque : pass == Pass::Decal ? entry->decal : entry->effect;
+    WGPURenderPipeline& slot = pass == Pass::Outline  ? entry->outline
+                               : pass == Pass::Opaque ? entry->opaque
+                               : pass == Pass::Decal  ? entry->decal
+                                                      : entry->effect;
     if (slot) return slot;
 
     WGPUVertexAttribute attrs[xm::kVertexAttributeCount];
     WGPUVertexBufferLayout vbl = xm::wgpuVertexLayout(attrs);
 
     // Each pass builds only on first use: the default captures draw no effect cards,
-    // so eagerly creating all three per format would mint pipelines nothing binds.
+    // so eagerly creating every variant per format would mint pipelines nothing binds.
     auto makePipeline = [&](Pass kind) {
+        //   * outline is the toon state's hull (issue #21): the same lit/depth/blend
+        //     state as opaque but with FRONT faces culled, because the original's outline
+        //     pass draws the back faces of the normal-offset hull (its pass loop sets
+        //     D3DRS_CULLMODE = 2 there, i.e. cull clockwise = cull the CW-front faces)
+        //     so that only the rim sticking out past the model's silhouette survives the
+        //     depth test;
         //   * opaque draws lit, textured 3D geometry, alpha-blended;
         //   * decal reproduces the DX9 path for baked shadows —
         //     dest = src * dst (SRCBLEND = DESTCOLOR, DESTBLEND = ZERO), ZWRITEENABLE
@@ -921,8 +974,12 @@ WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, Pass pas
 
         WGPUDepthStencilState depth = {};
         depth.format = WGPUTextureFormat_Depth24PlusStencil8;
-        depth.depthWriteEnabled =
-            kind == Pass::Opaque ? WGPUOptionalBool_True : WGPUOptionalBool_False;
+        // The outline writes depth like the original's pass loop, which never touches
+        // ZWRITEENABLE: the hull has to lay down its own depth or the model drawn after
+        // it could not resolve against it.
+        depth.depthWriteEnabled = (kind == Pass::Opaque || kind == Pass::Outline)
+                                      ? WGPUOptionalBool_True
+                                      : WGPUOptionalBool_False;
         depth.depthCompare = WGPUCompareFunction_LessEqual;
         setStencilOps(depth.stencilFront);
         setStencilOps(depth.stencilBack);
@@ -955,8 +1012,12 @@ WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, Pass pas
         // Assets are authored clockwise-front, left-handed.
         rpd.primitive.frontFace = WGPUFrontFace_CW;
         // The original culls counter-clockwise for 3D (CULLMODE = 3) and disables
-        // culling for its 2D/effect passes, which is where the decals belong.
-        rpd.primitive.cullMode = kind == Pass::Opaque ? WGPUCullMode_Back : WGPUCullMode_None;
+        // culling for its 2D/effect passes, which is where the decals belong. The outline
+        // pass is the one place it culls the other way (CULLMODE = 2, the hull's front
+        // faces), so that is the one pipeline here with cullMode = Front.
+        rpd.primitive.cullMode = kind == Pass::Opaque  ? WGPUCullMode_Back
+                                 : kind == Pass::Outline ? WGPUCullMode_Front
+                                                         : WGPUCullMode_None;
         rpd.depthStencil = &depth;
         rpd.multisample.count = 1;
         rpd.multisample.mask = 0xFFFFFFFFu;
@@ -1010,13 +1071,14 @@ void SceneRenderer::fillDrawData(const glm::vec3& eye, bool haveEye, size_t firs
             }
         }
         du.paletteOffset = draws_[i].paletteOffset;
-        // The toon bit is decided here, per frame, from the appearance switch: the toggle
-        // is a draw-time state change with no re-upload behind it. A scene with no ramp
-        // (no game data) never sets it, so ON degrades to OFF rather than to an invented
-        // curve.
+        // The toon bits are decided here, per frame, from the appearance switch: the
+        // toggle is a draw-time state change with no re-upload behind it. A scene with no
+        // ramp (no game data) never sets them, so ON degrades to OFF rather than to an
+        // invented curve.
         du.flags = draws_[i].flags | (appearance_.unlit ? xm::kDrawUnlit : 0u) |
-                   (appearance_.toon && draws_[i].toon && toonRampReady_ ? xm::kDrawToon : 0u);
+                   (appearance_.toon && toonRampReady_ && draws_[i].toon ? xm::kDrawToon : 0u);
         du.baseColor = draws_[i].baseColor;
+        du.emissive = draws_[i].emissive;
         std::memcpy(dst + (i - first) * xm::kDrawStride, &du, sizeof du);
     }
 }
@@ -1160,11 +1222,16 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
             wgpuRenderPassEncoderSetBindGroup(pass, 0, viewCameraGroups_[view], 0, nullptr);
             drawBase = (uint32_t)(view * draws_.size() * xm::kDrawStride);
         }
-        WGPURenderPipeline boundPipelines[3] = {nullptr, nullptr, nullptr};
+        WGPURenderPipeline boundPipelines[kPassCount] = {};
         Pass current = Pass::Opaque;
         bool haveCurrent = false;
         for (size_t i = 0; i < draws_.size(); ++i) {
             const DrawItem& d = draws_[i];
+            // The outline hulls are queued with the scene but submitted only when the
+            // toon state is on (issue #21): with it off this loop issues exactly the
+            // commands it issued before the hulls existed, which is what keeps every
+            // banked capture byte-identical.
+            if (d.pass == Pass::Outline && !(appearance_.toon && toonRampReady_)) continue;
             if (!haveCurrent || d.pass != current) {
                 WGPURenderPipeline& slot = boundPipelines[(int)d.pass];
                 if (!slot && !(slot = pipelineFor(target.format, d.pass, error))) {

@@ -233,14 +233,17 @@ struct Stats {
     int    decals          = 0;
     int    effects         = 0;
     int    billboarded     = 0;   // effect draws that yaw to the camera (EFFECTS-BILLBOARD.md)
+    int    outlines        = 0;   // toon outline hulls queued (issue #21)
 };
 
 // Which blend/depth/cull variant draws an item. The order below is also the
-// submission order: lit opaque geometry first, multiply decals over it, additive
-// effect cards last. Classification lives in scene_renderer.cpp (classifyPass);
+// submission order: the toon outline hulls first (issue #21 — they belong behind the
+// surfaces they surround), then lit opaque geometry, then multiply decals over it, then
+// additive effect cards last. Classification lives in scene_renderer.cpp (classifyPass);
 // the asset layer's SceneModel::role is the only effect signal the renderer may
 // read, because shipped material terms do not distinguish effect cards (R2).
-enum class Pass : uint8_t { Opaque = 0, Decal = 1, Effect = 2 };
+enum class Pass : uint8_t { Outline = 0, Opaque = 1, Decal = 2, Effect = 3 };
+inline constexpr size_t kPassCount = 4;
 
 class SceneRenderer {
 public:
@@ -356,6 +359,8 @@ private:
         size_t     modelIndex = 0;   // owning model, for per-frame re-placement
         glm::mat4  model{1.f};
         glm::vec4  baseColor{1.f};                   // material diffuse (D3DX faceColor)
+        glm::vec4  emissive{0.f, 0.f, 0.f, 1.f};     // material Emissive (the toon effect's
+                                                     // MaterialColor, issue #21)
         // Cylindrical-billboard candidate: mesh-space pivot (submesh bounds center),
         // authored facing yaw, plus the verdict from setScene. Only Effect-pass
         // draws from unskinned meshes are ever marked; ground-plane cards are
@@ -394,6 +399,7 @@ private:
 
     struct Pipelines {
         WGPUTextureFormat format = WGPUTextureFormat_Undefined;
+        WGPURenderPipeline outline = nullptr;  // outline hull: front-face culled (issue #21)
         WGPURenderPipeline opaque = nullptr;   // lit, depth-writing
         WGPURenderPipeline decal  = nullptr;   // multiply blend, no depth write, no cull
         WGPURenderPipeline effect = nullptr;   // additive, unlit, no depth write, no cull

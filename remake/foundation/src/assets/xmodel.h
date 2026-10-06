@@ -303,6 +303,13 @@ inline constexpr uint64_t kVertexAttributeCount = 6;
 struct DrawUniform {
     glm::mat4 model{1.f};          // entity -> world; identity when the palette bakes it
     glm::vec4 baseColor{1.f};      // multiplies the material diffuse and vertex colour
+    // The material's Emissive, alpha 1. This is the original's "MaterialColor" for the
+    // toon effect (issue #21): the runtime material records are D3DXMATERIAL copies
+    // (0x48 bytes, FUN_00661f60:116 memcpy), so the float4 the effect is handed at
+    // material+0x30 is D3DMATERIAL9.Emissive, NOT the diffuse at +0x00 — the fixed-
+    // function path's ambient is the diffuse (D3DX sets Ambient := Diffuse for .X
+    // materials), which is why baseColor carries that term instead.
+    glm::vec4 emissive{0.f, 0.f, 0.f, 1.f};
     uint32_t  paletteOffset = 0;   // first palette matrix for this mesh
     uint32_t  flags = 0;
     uint32_t  pad[2] = {0u, 0u};
@@ -316,6 +323,10 @@ inline constexpr uint32_t kDrawAlphaTest = 1u << 2;   // discard alpha < 0.5
 // needs no re-upload; with the bit clear the shader's lighting is the fixed-function term
 // bit for bit, which is what keeps the banked captures still.
 inline constexpr uint32_t kDrawToon      = 1u << 3;
+// Draw the inverted-hull outline instead of the surface (issue #21): the vertex stage
+// offsets the clip position along the world normal and the fragment stage returns the
+// flat darkened material colour. A separate draw of the same mesh, as in the original.
+inline constexpr uint32_t kDrawOutline   = 1u << 4;
 
 inline constexpr uint64_t kDrawStride = 256;          // == minUniformBufferOffsetAlignment
 

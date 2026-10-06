@@ -3471,8 +3471,12 @@ bool initScene(App& app) {
         std::printf("fog from env.dat: %.0f..%.0f rgb(%.2f %.2f %.2f)%s\n", app.scene.env.fogStart,
                     app.scene.env.fogEnd, app.scene.env.fogColor.r, app.scene.env.fogColor.g,
                     app.scene.env.fogColor.b, app.scene.env.fogEnabled ? "" : " (disabled)");
-    std::printf("draws: %zu (%d textured, %d untextured, %d decals, %d effects), %zu GPU textures\n", st.draws,
-                st.textured, st.untextured, st.decals, st.effects, st.textures);
+    // `outlines` is the toon hulls queued for the character/weapon draws (issue #21): they
+    // are part of the draw list but are submitted only while the toggle is on, so they are
+    // named here rather than left to inflate the total unexplained.
+    std::printf("draws: %zu (%d textured, %d untextured, %d decals, %d effects, %d outlines), %zu GPU textures\n",
+                st.draws, st.textured, st.untextured, st.decals, st.effects, st.outlines,
+                st.textures);
     return true;
 }
 
