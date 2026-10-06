@@ -492,3 +492,32 @@ the issue's item 1 for symmetry.
   load-bearing claim (a hash, a pixel count, a failing test, a real CI run). Reports have been wrong
   or stale more than once — #45's stated cause, #43's stated ramp, #47's stated ordering, #28's
   "CI-clean already" premise and #26's whole body were each corrected by measurement.
+
+## Round 10 — the human's reticle report fixed on the spot (#55)
+
+The human reviewed #49's merge and reported that the reticle "is using the same reticle image twice —
+there are two reticle images, one circular and one with 4 triangles. right now there are two circular
+ones stacked... the original game has the circular one and the triangular one on the outside of the
+circle."
+
+**Confirmed in the code**: `hud.cpp` drew `HudIcon::Ring, col, row` for both copies, and
+`hudRingTransform` returns one scale, so the owner's two reticles were the same art at the same size
+differing only in rotation.
+
+**Confirmed in the art**: `data/object/p03.cnv` decodes to 512×512, and the band the port calls the
+ring's base row carries the reticle as a **pair of adjacent 128-px cells per column** — the circle,
+then the four outward triangles. The port modelled one cell and drew it twice; the triangles cell
+was referenced by nothing. (Decoded with `remake/tools/asset-tools/cnv_convert.py`; crops in
+`/tmp/ring_bands.png`.)
+
+**Fixed and verified from the pixels**: the second copy is now `hudRingSecondCellColumn(col)`
+(the next cell along), and a capture shows the unlocked owner with the circle plus the four triangles
+outside it while a locked fighter still draws its single green copy. `hudRingSecondCellColumn` is
+extracted beside `hudRingCounterRotates` so `hud_layout_test` pins which cell each copy uses — the
+new checks fail pre-change with `error: 'hudRingSecondCellColumn' is not a member of 'ui'`.
+
+**The honest caveat, recorded in the code**: `FUN_00643230` passes the *same* cell argument to both
+`FUN_00655830` calls, so the recovered update does not itself distinguish the two cells. The
+selection is read from the shipped sheet and settled by the human's description of the original — a
+labelled port rule, not a recovered one. The **row** rule (0 black/acting, 1 red/plain, 2 green/locked)
+is recovered and was not touched.
