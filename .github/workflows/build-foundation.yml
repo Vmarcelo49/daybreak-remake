@@ -67,6 +67,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install SDL3's build dependencies
+        # SDL's configure REFUSES to finish without an X11 or Wayland development
+        # library ("SDL could not find X11 or Wayland development libraries"),
+        # so the runner needs them before the source build below. This job had
+        # only ever run twice, on version bumps, and failed both times for this
+        # reason — which is what per-push CI was added to stop hiding (issue #28).
+        # The list is SDL's own README-linux set, minus the backends this port
+        # never asks for, so a configure warning cannot turn into a puzzle later.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev \
+            libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev \
+            libdecor-0-dev libdrm-dev libgbm-dev libegl1-mesa-dev \
+            libgl1-mesa-dev libgles2-mesa-dev libvulkan-dev \
+            libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
       - name: Build SDL3 from source
         # Ubuntu 24.04 has no libsdl3-dev, and SDL publishes no Linux devel
         # binary, so CI builds it — which is also the documented fallback for a
@@ -104,7 +120,7 @@ jobs:
       - name: Configure and build
         run: |
           cmake -S remake/foundation -B build -GNinja \
-            -DCMAKE_TOOLCHAIN_FILE=remake/foundation/cmake/toolchains/mingw-w64-x86_64.cmake \
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/remake/foundation/cmake/toolchains/mingw-w64-x86_64.cmake" \
             -DSDL3_DIR="$PWD/remake/foundation/third_party/SDL3-mingw/x86_64-w64-mingw32/lib/cmake/SDL3"
           cmake --build build
       - name: Check the executable exists
