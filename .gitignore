@@ -20,3 +20,10 @@ Thumbs.db
 !binary_data/functions/*.json
 
 Higurashi-Daybreak/
+
+# Web asset delivery (issue #4). The prepared tree and its catalog are derived from the
+# host's own game install: the tooling is committed, the data never is. `prepare` also
+# writes a .gitignore into its own output directory, so a host who points --out
+# somewhere else is covered without depending on this file.
+remake/foundation/webdelivery/client/
+remake/foundation/web-data/
