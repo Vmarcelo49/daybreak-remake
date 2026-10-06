@@ -26,8 +26,10 @@
   is C++17 + SDL3 + WebGPU (`webgpu.h`; wgpu-native native, emdawnwebgpu
   web) and builds Linux/Windows/web with
   `./remake/foundation/build.sh {deps,linux,windows,web}`; the Linux host
-  suite has 42 ctest tests (the Linux CI job runs them; asset-dependent ones
-  skip without the game data) and the offline release gate is
+  suite has 48 ctest tests (2026-10-06; the Linux CI job runs them on every push
+  that touches `remake/foundation/**`, and the asset-dependent ones
+  skip without the game data — measured counts in
+  `remake/foundation/docs/RELEASE-CHECKLIST.md` §2) and the offline release gate is
   `remake/foundation/docs/RELEASE-CHECKLIST.md`. See `remake/docs/decisions.md`
   D2 (reversed) and
   `remake/foundation/docs/FULL-REPLACEMENT-PLAN.md` §8. The mvp port
