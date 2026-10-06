@@ -66,13 +66,21 @@ data. It is also registered in the host suite (`ctest -R launcher_test`).
 ctest --test-dir remake/foundation/build/linux --output-on-failure
 ```
 
-* **With the game install present**: `100% tests passed out of 45`.
+* **With the game install present**: `100% tests passed out of 48`.
 * **Without any game data** (the CI runner's state — no `Higurashi-Daybreak/`):
-  `100% tests passed out of 45`, with `hud_cell_scale`, `toon_ramp`,
-  `npr_experiments` and `npr_normals_test` reported as `Skipped` (exit 77) and
-  `weapon_definition_test` skipping its fully-skipped sweep. CI needs no
-  copyrighted data. (Both counts re-measured 2026-10-06, install present and
-  install absent; the suite has grown from the 42 this document was written with.)
+  `100% tests passed out of 48`, with `hud_cell_scale`, `toon_ramp`,
+  `npr_experiments`, `npr_normals_test` and `controller_scene_lifetime_test`
+  reported as `Skipped` (exit 77) and `weapon_definition_test` skipping its
+  fully-skipped sweep. CI needs no copyrighted data.
+  Both counts re-measured 2026-10-06, install present and install absent; the
+  no-data run was taken in a checkout with no symlink at all, which is exactly the
+  runner's state (#28's worker measured the same 100%-passed-with-skips shape). The
+  denominator is the number of *registered* tests and grows whenever a suite is
+  added (42 when this document was written, 45 when #28 re-measured it, 48 after
+  #42's `bgm_loop_test`, #45's `frontend_lifecycle_test` and #46's
+  `controller_scene_lifetime_test`), so read the command's own summary rather than
+  this line when the two disagree — the invariant to check is *100% passed* with the
+  asset-dependent tests Skipped and none Failed.
 
 The workflow (`.github/workflows/build-foundation.yml`, Linux job) runs this
 `ctest` step on every push to `main` that touches `remake/foundation/**` (issue
