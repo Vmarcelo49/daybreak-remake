@@ -256,6 +256,26 @@ comments — when a decision changes.
   capture update per frame with explicit `--dt` (default 1/60 s), no presentation
   interpolation. Their script numbering and banked visual evidence stay usable.
   Standalone viewers and `--versus` retain their prior presentation clocks.
+- **A capture is not a live run (2026-10-06, issue #39).** Because those recipes
+  pin the presentation blend to 1, `buildFrameViews`' interpolated camera and HUD
+  transforms collapse onto the current tick, so a capture cannot see anything
+  that lives in the live interpolation, per-frame smoothing or input-driven
+  per-frame state. That is not hypothetical: the camera defect fixed in `92b6d70`
+  — the render snapshot never advanced after tick 1, so a played battle swept the
+  eye 19-938 units per frame — survived every capture-based gate, the host suite
+  and the owner's own measurements, because at alpha 1 the mix is the identity.
+  The live path therefore has its own gate:
+  `foundation/tests/live_camera_smoothness_test.cpp` composes frames the way the
+  frame loop does (fixed-step clock, `tickMatch`, `buildFrameViews`) and asserts
+  on frame-view state that consecutive frames with a stationary followed fighter
+  do not move the rendered eye more than 5 units (measured 0.0000 on this tree;
+  1282.9 with `92b6d70` reverted on a scratch copy). `--match-alpha=<0..1>` is
+  the capture-side companion: it renders a headless frame at a fixed fractional
+  phase so the interpolation is visible in pixels too, is off by default, and
+  leaves every existing recipe byte-identical. Neither replaces a played battle,
+  which remains the manual step in
+  `foundation/docs/RELEASE-CHECKLIST.md` §3.5: a window, a compositor, real
+  pacing and real devices are outside what any headless check owns.
 - This implements the fixed-clock/input prerequisite shared by
   [issue #5](https://github.com/Vmarcelo49/daybreak-decomp/issues/5) and
   [issue #3](https://github.com/Vmarcelo49/daybreak-decomp/issues/3).

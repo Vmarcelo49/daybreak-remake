@@ -405,10 +405,12 @@ its implementation handoff is in
 [`docs/ROADMAP-PENDING.md`](docs/ROADMAP-PENDING.md#future-remake-only-experiment-3v3-and-4v4).
 Renderer options (the first three options rows are marked unavailable) remain
 pending (issue #21). Battle fidelity includes unresolved animation/VFX details;
-LAN netplay awaits its own implementation. The Linux CTest suite has 54 tests (2026-10-06),
+LAN netplay awaits its own implementation. The Linux CTest suite has 55 tests (2026-10-06),
 including frontend selection/configuration, VS/result timelines, HUD geometry, the
 split-screen layout/assignment guards, issue #51's LockSwitch/camera guard, issue
-#47's countdown gate/overlay test and issue #48's in-battle debug-key suite. The
+#47's countdown gate/overlay test, issue #48's in-battle debug-key suite and issue
+#39's live-camera smoothness gate (the capture stack cannot see the live
+interpolation — see `docs/RELEASE-CHECKLIST.md` §3.5). The
 release gate — the checklist, the sweeps, the environment matrix and the stability run — is
 [`docs/RELEASE-CHECKLIST.md`](docs/RELEASE-CHECKLIST.md).
 See `docs/ROADMAP-PENDING.md` for the remaining work.

@@ -90,7 +90,7 @@ work.
   Menus retain a centered, clipped 4:3 canvas with black bars. Native Options
   selects resolution; browser canvas and headless `--size` control theirs.
 - **Verification:** the native host suite (`ctest --test-dir
-  remake/foundation/build/linux`) — 54 tests as of 2026-10-06, with the measured
+  remake/foundation/build/linux`) — 55 tests as of 2026-10-06, with the measured
   counts and the list that skips without game data in
   `remake/foundation/docs/RELEASE-CHECKLIST.md` §2; read `ctest`'s own summary
   rather than this line, since every added suite moves the denominator.
@@ -99,6 +99,10 @@ work.
   hardware browser adapters and macOS execution remain unverified. The
   integrated tree is verified end to end by a four-view 2v2 capture and the
   four-player title→selection→VS→battle→results→selection loop.
+  **A capture is not a live run** (D9, issue #39): the capture path pins the
+  presentation blend to 1, so the live interpolation has its own gate
+  (`live_camera_smoothness_test`) and its own manual step
+  (`RELEASE-CHECKLIST.md` §3.5).
 
 ## Map
 
