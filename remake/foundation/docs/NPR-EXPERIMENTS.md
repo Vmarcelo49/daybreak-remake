@@ -405,7 +405,7 @@ lands on, with that set's share printed beside it.
 |---|---|---|---|---|
 | **B bands** | nothing from the curve; with the shipped tint, a violet shadow whose edge is hard or short. No flat band, no drawn terminator | curve = byte-identical; hard vs soft (both tinted) differ on 0.4% of the figure, dE 0.24 | **no** (item 3) | **drop the band arm as documented** — the claim is false; re-implementing it (make the weight scale the diffuse) is ~3 lines but is a shading decision for a follow-up issue |
 | **C colour shadow** | the shadowed side reads cool violet instead of grey: 30% of the figure, -4.9 levels on those pixels, dE 8.4 | 11.1% visible, dE 2.54; face 14.8%, hair 16.2%, torso 14.4% | yes | **keep**, tint strength/colour is authoring; the default #dbc0c7 is deliberately gentle |
-| **D key light** | the face and the camera-side of the fighter lift; the *fixed* arm is ~3x the camera arm at the same strength | cam: 5.1% visible, dE 1.34, on 13.7% of the figure at dE 9.8; fixed: 15.0%, dE 4.17 | yes (close-up); at fight distance 0.8% of the P2 box | **keep the switch and drop the "preferred" label on `cam`**: `key:fixed` measurably does more at the same strength, and 0.35 is a floor, not a settled value (1.5 -> 12.0% visible) |
+| **D key light** | the face and the camera-side of the fighter lift; the *fixed* arm is ~3x the camera arm at the same strength | cam: 5.1% visible, dE 1.34, on 13.7% of the figure at dE 9.8 (**below the whole-figure bar at the default**); fixed: 15.0%, dE 4.17; monotone in the strength (0 -> 5.1 -> 12.0% visible at 0 / 0.35 / 1.5) | items 1-3 yes (the parameter is real and monotone, and it is not a no-op); item 4 only via the sheet, where the default's P2 box moves 0.8% | **keep the switch and drop the "preferred" label on `cam`**: `key:fixed` measurably does more at the same strength, and 0.35 is a floor, not a settled value - the recommendation is conditional on a strength that reads at fight distance |
 | **E secondary normals** | in the close-up: hair and skirt shade in broad, calm gradients and the figure darkens ~8.5 levels; in a fight: nothing at all | close-up 44.1% visible, dE 20.73, hair 81.6%; fight: byte-identical | **no** (item 3, fight scene) | **fix the reach defect first** (4 lines, §8.5), then re-measure; do not keep it on the close-up evidence alone |
 | **F generated mask** | with the tint on, it slides the shadow tint's boundary; with a neutral tint, nothing | mask 0 vs 1 neutral = byte-identical; tinted -1/0/1/3 = 21.9/16.4/11.4/0.6% visible | **no** (item 3) | **drop** (and with it the generated mask data §5 wanted replaced) |
 | **G specular** | a hard-edged highlight on the hair and the blade; the pixels it touches are strong | 16.2% visible, dE 7.24; affected 18.1% of the figure at dE 40.0; hair 19.8%, torso 13.0% | yes | **keep**, restrained; it is the arm whose change is a bright shape rather than a gradient |
@@ -452,7 +452,8 @@ is the violet-grey the tint asks for.
 
 ### 8.6 Recommendation, restated only for what passes
 
-**Keep the harness, keep C, D (with `fixed` re-labelled and a re-tuned strength), G, H (at
+**Keep the harness, keep C, D (with `fixed` re-labelled and a strength re-tuned until it
+reads at fight distance - at 0.35 the camera arm is below the whole-figure bar), G, H (at
 a lower default than 0.30) and the recovered outline width. Drop the B band arm as
 documented and F's generated mask. Do not recommend E on this evidence: it is the largest
 change in the close-up and a no-op in every fight scene.** No default changes: `--npr`
