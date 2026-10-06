@@ -235,7 +235,20 @@ TextureCache::TextureCache(std::string directory, ReadFn reader)
         // the Shift-JIS conversion solves for the name itself.
         read_ = [](const std::string& name, std::vector<uint8_t>& out) {
             if (fnd::assets::assetSource().read(name, out)) return true;
-            std::ifstream f(std::filesystem::u8path(name), std::ios::binary);
+            // u8path THROWS on a name that is not valid UTF-8, and that name is a normal
+            // event, not a broken install: a Shift-JIS pair with no table entry passes
+            // through unconverted (sjisToUtf8 above), and the cache also probes candidate
+            // spellings the bundle does not carry. On Linux the same name is just a path
+            // that does not exist, so the miss has to stay a miss on Windows too —
+            // uncaught, it reached terminate() and killed the process before the first
+            // battle (measured under Wine, issue #35).
+            std::filesystem::path path;
+            try {
+                path = std::filesystem::u8path(name);
+            } catch (const std::filesystem::filesystem_error&) {
+                return false;
+            }
+            std::ifstream f(path, std::ios::binary);
             if (!f) return false;
             f.seekg(0, std::ios::end);
             const std::streamoff n = f.tellg();
