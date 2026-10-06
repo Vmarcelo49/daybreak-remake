@@ -1072,3 +1072,40 @@ leaves the selection screen (**#59**), and a missing candidate texture is logged
 lines in ~2 s (**#60**). **Nothing on any target is rung 5 (played).** Issue #40's movie decoder and
 its web stub were both executed for the first time: 684/684 frames on Windows, and the stub reports
 its gap and moves on in the browser rather than crashing.
+
+## Round 29 — the gate audited, and its defects fixed
+
+**An independent audit of the release gate found that five of its eleven rows are ambiguous or not
+runnable as written.** The auditor ran checks 1-10 and re-measured everything: ctest 58/58 (143.68 s),
+the four gate digests reproduce (`2483c3aa` / `8cc49e6c` / `8cc49e6c` / `b813155d` — the same four the
+coordinator measured independently on `main`), `weapon_definition_test` 747/0, `launcher_test` 38/0,
+the package digest identical on two builds, `--match-alpha=0.5` = 74.0 % of pixels, and a windowed
+Wayland run green.
+
+**The defects, in the auditor's priority order:**
+
+1. **`RELEASE-CHECKLIST.md` §3.3 quoted ROUND 3's outcome line as round 1.** Round 1 deterministically
+   prints `grade 4 margin 21 script 00-02-4.txt voice W00-02-10.wav`; the doc said `grade 3 margin 0
+   script 00-02-3.txt`. **Fixed** (`81314ff`).
+2. **The eight-round stability row is not runnable** — its script (`<the §3.3 script extended to eight
+   rematch rounds>`) is not in `tests/scripts/`, and the committed three-round script at
+   `--frames=40000` prints **three** `match: round over` lines, not eight. The counters come from an
+   uncommitted operator script.
+3. **The sweep row cannot be wired to pass/fail** — `showcase.py`'s `check_matrix` returns False for
+   any non-passing cell, so a **correct** run with the 43 documented install gaps exits 1. **Fixed**
+   (`--allow-problems=N`, verified exiting 0 at 43 on this tree).
+4. **The §5 environment row has no committed recipe** — a plain background KWin launch dies silently
+   while its socket file survives, so "socket exists" proves nothing. The working form is an own
+   `XDG_RUNTIME_DIR` + `setsid dbus-run-session -- kwin_wayland --virtual --xwayland --socket <name>`.
+5. **Rows 2-5's `<game-dir>` and shorthand** — the working relative form from `remake/foundation/` is
+   `--install=../../Higurashi-Daybreak`, and the elided `--headless` is load-bearing (§3.4's own
+   warning: a windowed run steps at 64 Hz and prints a *different* ladder while still saying
+   `RESULT: ok`).
+
+**And the eighth stale claim**, which the earlier seven-claim sweep missed: `remake/foundation/README.md`
+**contradicted itself** — line 256 said 57 tests, line 415 said 58. Also fixed there: its renderer row
+and `ROADMAP-PENDING`'s E3 (twice) still said three controls unavailable. All in `81314ff`.
+
+**Standing lesson**: the gate's authority is "a second person gets the same numbers", so a row that
+cannot be run, or that exits non-zero on its own baseline, is worse than no row. Two of these were
+*measurement* defects, not typos.
