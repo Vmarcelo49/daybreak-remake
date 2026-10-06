@@ -28,6 +28,7 @@ void applyUserSettings(FrontendSettings& settings, const settings::UserSettings&
     settings.fullscreen = document.fullscreen;
     settings.toonRendering = document.toonRendering;
     settings.installDir = document.installDir;
+    settings.shadowRendering = document.shadowRendering;
 }
 
 settings::UserSettings toUserSettings(const FrontendSettings& settings) {
@@ -37,6 +38,7 @@ settings::UserSettings toUserSettings(const FrontendSettings& settings) {
     document.gamepad = settings.gamepad;
     document.fullscreen = settings.fullscreen;
     document.toonRendering = settings.toonRendering;
+    document.shadowRendering = settings.shadowRendering;
     document.resolution = {settings.resolutionChoice.width, settings.resolutionChoice.height};
     document.installDir = settings.installDir;
     return document;

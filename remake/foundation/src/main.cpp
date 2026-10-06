@@ -198,6 +198,10 @@ struct Options {
     // overridden by a stale flag.
     bool        toon       = false;
     bool        toonSet    = false;
+    // Character shadows (issue #21 row 1). Same `Set` split as the toon row: without the
+    // flag the live Options row governs, with it the capture command line wins.
+    bool        shadows    = false;
+    bool        shadowsSet = false;
     // NPR experiment switches (issue #25). `nprSet` separates "the flag was passed" from
     // the default for the same reason `toonSet` does: a capture command line pins the
     // state it asked for, and an interactive run is never overridden by a stale flag.
@@ -324,6 +328,11 @@ void usage() {
         "                     read the shipped data/directX/toon ramp at their diffuse\n"
         "                     term instead of the linear N.L. Off by default, which is the\n"
         "                     state every banked capture was made in\n"
+        "  --shadows | --no-shadows\n"
+        "                     character shadows (issue #21 row 1): every fighter's body\n"
+        "                     and weapon are drawn once more into a light-space map the\n"
+        "                     stage samples, so the fighters cast a shadow on the ground.\n"
+        "                     Off by default, the state every banked capture was made in\n"
         "  --list             print what was loaded and exit\n"
         "  --screen=<id|name> boot a front-end screen (title, 1, 0x01, ...) instead of\n"
         "                     an asset; --script= drives its menu and --out captures it.\n"
@@ -591,6 +600,8 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--unlit") o.unlit = true;
         else if (a == "--toon") { o.toon = true; o.toonSet = true; }
         else if (a == "--no-toon") { o.toon = false; o.toonSet = true; }
+        else if (a == "--shadows") { o.shadows = true; o.shadowsSet = true; }
+        else if (a == "--no-shadows") { o.shadows = false; o.shadowsSet = true; }
         else if (!(v = val("--npr=")).empty()) {
             if (!parseNprSpec(v, o.npr, error)) return false;
             o.nprSet = true;
@@ -4193,6 +4204,9 @@ bool initScene(App& app) {
     // restart (and the renderer no re-upload).
     app.appearance.toon = app.opts.toonSet ? app.opts.toon
                                            : ui::frontendSettings().toonRendering;
+    // Character shadows (issue #21 row 1): same rule as the toon row.
+    app.appearance.shadows = app.opts.shadowsSet ? app.opts.shadows
+                                                 : ui::frontendSettings().shadowRendering;
     // NPR experiments (issue #25): the flag family is opt-in, so an absent --npr leaves
     // every field at the appearance's default and the renderer takes the same path it
     // took before this issue existed. `--npr=off` is the explicit form of that state.
@@ -4273,6 +4287,29 @@ void writePpm(const std::string& path, const std::vector<uint8_t>& rgba, int w, 
     for (int i = 0; i < w * h; ++i) std::fwrite(rgba.data() + i * 4, 1, 3, f);
     std::fclose(f);
     std::printf("wrote %s\n", path.c_str());
+}
+
+// The shadow pass's own counts (issue #21 row 1): casters are the character/weapon draws
+// the light-space map received this frame, receivers the stage draws that sampled it. Both
+// are zero on a frame without the pass, so this is the honest check that a capture's
+// --shadows actually reached the renderer rather than silently staying off.
+// DSH_DUMP_SHADOW=<path>: write the first view's shadow map as a PGM after a capture.
+// Gated and read on demand — the map is the only artefact that separates "the caster pass
+// drew nothing" from "the receiver's lookup missed", and neither is visible in a frame.
+void maybeDumpShadowMap(App& app) {
+    const char* path = std::getenv("DSH_DUMP_SHADOW");
+    if (!path || !*path || !app.rendererReady) return;
+    std::string why;
+    if (!app.renderer.dumpShadowMap(path, why))
+        std::fprintf(stderr, "[shadow] dump failed: %s\n", why.c_str());
+    else
+        std::printf("shadow map dumped to %s\n", path);
+}
+
+void reportShadows(const render::Stats& st) {
+    if (st.shadowCasters > 0 || st.shadowReceivers > 0)
+        std::printf("shadows: %d caster draw(s) into the map, %d receiver draw(s) sampling it\n",
+                    st.shadowCasters, st.shadowReceivers);
 }
 
 void reportCoverage(const std::vector<uint8_t>& rgba, int w, int h) {
@@ -5749,8 +5786,11 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     if (app->settingsActive && app->rendererReady) {
         const bool toon = app->opts.toonSet ? app->opts.toon
                                             : ui::frontendSettings().toonRendering;
-        if (toon != app->appearance.toon) {
+        const bool shadows = app->opts.shadowsSet ? app->opts.shadows
+                                                  : ui::frontendSettings().shadowRendering;
+        if (toon != app->appearance.toon || shadows != app->appearance.shadows) {
             app->appearance.toon = toon;
+            app->appearance.shadows = shadows;
             app->renderer.setAppearance(app->appearance);
         }
     }
@@ -5943,6 +5983,8 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     return SDL_APP_FAILURE;
                 reportCoverage(rgba, app->opts.sizeW, app->opts.sizeH);
                 writePpm(app->opts.out, rgba, app->opts.sizeW, app->opts.sizeH);
+                reportShadows(app->renderer.stats());
+                maybeDumpShadowMap(*app);
                 return SDL_APP_SUCCESS;
             }
             return SDL_APP_CONTINUE;   // wait for the capture frame, as the asset path does
@@ -6106,6 +6148,8 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     return SDL_APP_FAILURE;
                 reportCoverage(rgba, app->opts.sizeW, app->opts.sizeH);
                 writePpm(app->opts.out, rgba, app->opts.sizeW, app->opts.sizeH);
+                reportShadows(app->renderer.stats());
+                maybeDumpShadowMap(*app);
                 // Issue #25's cost measurement: the capture above proves what the frame
                 // looks like, this proves what it costs. Both run the same scene state;
                 // the benchmark allocates its own target so the capture's bytes are

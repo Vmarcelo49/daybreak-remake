@@ -43,6 +43,11 @@ public:
             // frontendSettings() every frame, so the change is in the next drawn frame —
             // no restart, and nothing re-uploads.
             settings.toonRendering = !settings.toonRendering;
+        } else if (row_ == 1 && (in.left || in.right || in.confirm)) {
+            // Row 1 is the shadow row (issue #21 row 1, 影の表示 / DAT_006cfcea): the same
+            // live flip as row 0 — main.cpp's per-frame sync pushes it into the renderer's
+            // appearance, so the next drawn frame has it and nothing re-uploads.
+            settings.shadowRendering = !settings.shadowRendering;
         } else if (row_ == 3 && (in.left || in.right || in.confirm)) {
             settings.fullscreen = !settings.fullscreen;
             if (settings.applyFullscreen) settings.applyFullscreen(settings.fullscreen);
@@ -90,14 +95,23 @@ public:
             // which is the original's own choice of which of the two reads bold.
             batch.pushSprite(sheets_[1],{192,settings.toonRendering ? 32.f : 0.f,96,32},0,0,368,ys[0]);
             batch.pushSprite(sheets_[1],{288,settings.toonRendering ? 0.f : 32.f,128,32},0,0,464,ys[0]);
-            // Rows 1 and 2 keep the generic message: shadows and texture resolution are
-            // still unimplemented slices of issue #21.
-            for(int i=1;i<3;++i) text(batch,"UNAVAILABLE",550,ys[i],1.5f);
+            // Row 1 (影の表示) is the same pair one strip pair further down the sheet:
+            // FUN_00403470:27-28 gives the row the cells at index 2 and 3, and the sheet's
+            // 32px strips are the toon row's pair at v=0/32, the shadow row's at v=64/96
+            // and the texture row's (普通/低) at v=128/160 — which is where the last two
+            // strips sit in data/config/0002.cnv. Same u columns as row 0: the sheet keeps
+            // the bold value in the x=192 column and its complement at x=288.
+            batch.pushSprite(sheets_[1],{192,settings.shadowRendering ? 96.f : 64.f,96,32},0,0,368,ys[1]);
+            batch.pushSprite(sheets_[1],{288,settings.shadowRendering ? 64.f : 96.f,128,32},0,0,464,ys[1]);
+            // Row 2 keeps the generic message: texture resolution is still an
+            // unimplemented slice of issue #21.
+            text(batch,"UNAVAILABLE",550,ys[2],1.5f);
             batch.pushSprite(sheets_[1],{192,settings.fullscreen ? 256.f : 288.f,96,32},0,0,368,224);
             batch.pushSprite(sheets_[1],{288,settings.fullscreen ? 288.f : 256.f,128,32},0,0,464,224);
             const int values[] = {settings.volumes.master,settings.volumes.music,settings.volumes.voice,settings.volumes.sfx};
             for(int i=0;i<4;++i) batch.pushSprite(sheets_[1],{192,448,96,32},0,0,368+values[i]*1.6f,ys[i+4]);
             if (row_ == 0) text(batch,"LEFT/RIGHT: TOON SHADING ON/OFF",176,550,2);
+            else if (row_ == 1) text(batch,"LEFT/RIGHT: CHARACTER SHADOWS ON/OFF",160,550,2);
             else if (row_ < 3) text(batch,"SETTING NOT AVAILABLE",208,550,2);
             else if (row_ == 8) text(batch,settings.resolutionAvailable ? "LEFT/RIGHT: CHANGE RESOLUTION" : "SIZE FOLLOWS THE VIEWPORT",144,550,2);
             else batch.pushSprite(sheets_[2],{0,(row_ == 9 ? 9 : row_ + 1)*48.f,512,48},0,0,144,528);

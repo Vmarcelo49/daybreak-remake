@@ -241,6 +241,20 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
     textureEntries[1].visibility = WGPUShaderStage_Fragment;
     textureEntries[1].sampler.type = WGPUSamplerBindingType_Filtering;
 
+    // group 3: the character shadow map (issue #21 row 1). Its own group rather than two
+    // more entries in the camera group, because it is a per-VIEW image: the original runs
+    // its caster pass inside the per-view loop, so view N's ground must read view N's map.
+    // Binding it per view beside the camera keeps that shape without a second camera
+    // group layout.
+    WGPUBindGroupLayoutEntry shadowEntries[2] = {};
+    shadowEntries[0].binding = 0;
+    shadowEntries[0].visibility = WGPUShaderStage_Fragment;
+    shadowEntries[0].texture.sampleType = WGPUTextureSampleType_Float;
+    shadowEntries[0].texture.viewDimension = WGPUTextureViewDimension_2D;
+    shadowEntries[1].binding = 1;
+    shadowEntries[1].visibility = WGPUShaderStage_Fragment;
+    shadowEntries[1].sampler.type = WGPUSamplerBindingType_Filtering;
+
     WGPUBindGroupLayoutDescriptor bglDesc = {};
     bglDesc.entryCount = 3;
     bglDesc.entries = cameraEntries;
@@ -250,11 +264,18 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
     bindGroupLayouts_[1] = wgpuDeviceCreateBindGroupLayout(device_, &bglDesc);
     bglDesc.entries = textureEntries;
     bindGroupLayouts_[2] = wgpuDeviceCreateBindGroupLayout(device_, &bglDesc);
+    bglDesc.entries = shadowEntries;
+    bindGroupLayouts_[3] = wgpuDeviceCreateBindGroupLayout(device_, &bglDesc);
 
     WGPUPipelineLayoutDescriptor plDesc = {};
-    plDesc.bindGroupLayoutCount = 3;
+    plDesc.bindGroupLayoutCount = 4;
     plDesc.bindGroupLayouts = bindGroupLayouts_;
     pipelineLayout_ = wgpuDeviceCreatePipelineLayout(device_, &plDesc);
+    // The caster pass's layout: groups 0 and 1 only (the map is its target, not a binding).
+    WGPUBindGroupLayout casterLayouts[2] = {bindGroupLayouts_[0], bindGroupLayouts_[1]};
+    plDesc.bindGroupLayoutCount = 2;
+    plDesc.bindGroupLayouts = casterLayouts;
+    shadowPipelineLayout_ = wgpuDeviceCreatePipelineLayout(device_, &plDesc);
 
     WGPUSamplerDescriptor sd = {};
     // The original's sampler 0 in WebGPU terms: MIP is LINEAR too, and address modes and
@@ -282,6 +303,23 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
     rsd.lodMaxClamp = 32.f;
     rsd.maxAnisotropy = 1;
     toonRampSampler_ = wgpuDeviceCreateSampler(device_, &rsd);
+
+    // The shadow map's sampler (issue #21 row 1). The original's Tex1 is
+    // D3DTADDRESS_BORDER with a black border colour (FUN_00651110 case 3/4), which WebGPU
+    // has no address mode for; clamp + linear is the closest state, and the shader's own
+    // [0,1] range test supplies the border behaviour. Linear, because the map is a
+    // 1024x1024 depth image the original filters with sampler state 1's LINEAR default —
+    // and because a fighter's shadow is a few hundred texels wide, so the filter's
+    // softness is what the original's own shadows show.
+    WGPUSamplerDescriptor ssd = {};
+    ssd.addressModeU = ssd.addressModeV = ssd.addressModeW = WGPUAddressMode_ClampToEdge;
+    ssd.magFilter = WGPUFilterMode_Linear;
+    ssd.minFilter = WGPUFilterMode_Linear;
+    ssd.mipmapFilter = WGPUMipmapFilterMode_Linear;
+    ssd.lodMinClamp = 0.f;
+    ssd.lodMaxClamp = 32.f;
+    ssd.maxAnisotropy = 1;
+    shadowSampler_ = wgpuDeviceCreateSampler(device_, &ssd);
 
     // The untextured fallback: binds where a material has no resolvable texture, so
     // the shader's unconditional sample stays valid.
@@ -345,9 +383,34 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
     cameraBuffer_ = gpu::createBuffer(device_, sizeof(xm::CameraUniform),
                                       WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst, nullptr);
 
+    // The placeholder shadow map (issue #21 row 1): 1x1 opaque black, i.e. what the
+    // original's cleared 1024x1024 map reads as (alpha 1.0 = "nothing cast here"). It
+    // stands in for group 3 on every frame the shadow pass does not run, so the group is
+    // always complete and a run with shadows off allocates no 1024x1024 target at all.
+    const uint32_t black = 0xff000000u;
+    WGPUTextureDescriptor shd = {};
+    shd.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+    shd.dimension = WGPUTextureDimension_2D;
+    shd.size = WGPUExtent3D{1, 1, 1};
+    shd.format = WGPUTextureFormat_RGBA8Unorm;
+    shd.mipLevelCount = 1;
+    shd.sampleCount = 1;
+    shadowPlaceholderTex_ = wgpuDeviceCreateTexture(device_, &shd);
+    if (shadowPlaceholderTex_) {
+        WGPUTexelCopyTextureInfo dst = {};
+        dst.texture = shadowPlaceholderTex_;
+        dst.aspect = WGPUTextureAspect_All;
+        WGPUTexelCopyBufferLayout layout = {};
+        layout.bytesPerRow = 4;
+        layout.rowsPerImage = 1;
+        wgpuQueueWriteTexture(queue_, &dst, &black, 4, &layout, &shd.size);
+        shadowPlaceholderView_ = wgpuTextureCreateView(shadowPlaceholderTex_, nullptr);
+    }
+
     if (!bindGroupLayouts_[0] || !bindGroupLayouts_[1] || !bindGroupLayouts_[2] ||
-        !pipelineLayout_ || !sampler_ || !whiteView_ || !cameraBuffer_ || !toonRampSampler_ ||
-        !toonRampView_) {
+        !bindGroupLayouts_[3] || !pipelineLayout_ || !shadowPipelineLayout_ || !sampler_ ||
+        !whiteView_ || !cameraBuffer_ || !toonRampSampler_ || !toonRampView_ ||
+        !shadowSampler_ || !shadowPlaceholderView_) {
         error = "renderer setup failed (bind group layout, sampler or buffer)";
         return false;
     }
@@ -367,6 +430,20 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
     cameraGroup_ = wgpuDeviceCreateBindGroup(device_, &bgDesc);
     if (!cameraGroup_) {
         error = "camera bind group creation failed";
+        return false;
+    }
+
+    WGPUBindGroupEntry placeholderEntries[2] = {};
+    placeholderEntries[0].binding = 0;
+    placeholderEntries[0].textureView = shadowPlaceholderView_;
+    placeholderEntries[1].binding = 1;
+    placeholderEntries[1].sampler = shadowSampler_;
+    bgDesc.layout = bindGroupLayouts_[3];
+    bgDesc.entryCount = 2;
+    bgDesc.entries = placeholderEntries;
+    shadowPlaceholderGroup_ = wgpuDeviceCreateBindGroup(device_, &bgDesc);
+    if (!shadowPlaceholderGroup_) {
+        error = "shadow placeholder bind group creation failed";
         return false;
     }
     return true;
@@ -391,6 +468,19 @@ void SceneRenderer::shutdown() {
         if (viewCameraGroups_[i]) wgpuBindGroupRelease(viewCameraGroups_[i]);
         viewCameraGroups_[i] = nullptr;
     }
+    releaseShadowTargets();
+    if (shadowPlaceholderGroup_) wgpuBindGroupRelease(shadowPlaceholderGroup_);
+    if (shadowPlaceholderView_) wgpuTextureViewRelease(shadowPlaceholderView_);
+    if (shadowPlaceholderTex_) wgpuTextureRelease(shadowPlaceholderTex_);
+    shadowPlaceholderGroup_ = nullptr;
+    shadowPlaceholderView_ = nullptr;
+    shadowPlaceholderTex_ = nullptr;
+    if (shadowSampler_) wgpuSamplerRelease(shadowSampler_);
+    shadowSampler_ = nullptr;
+    if (shadowPipeline_) wgpuRenderPipelineRelease(shadowPipeline_);
+    if (shadowPipelineLayout_) wgpuPipelineLayoutRelease(shadowPipelineLayout_);
+    shadowPipeline_ = nullptr;
+    shadowPipelineLayout_ = nullptr;
 
     for (WGPUBuffer b : buffers_)
         if (b) wgpuBufferRelease(b);
@@ -674,6 +764,13 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                 // is the port's stand-in for "drawn by the toon technique"; the original
                 // selects it with a technique switch, not a material term.
                 d.toon = (sm.role == "character" || sm.role == "weapon");
+                // The character shadow's receiver (issue #21 row 1). The original's
+                // technique mode 3 (FUN_00401b80 -> FUN_00652af0) is selected for the
+                // stage object and is the only technique that reads the map's alpha, so
+                // the port's stage role is its stand-in — the same shape of PORT RULE as
+                // the toon role above. The appearance switch decides at uniform-fill time
+                // whether the bit is set.
+                d.receiver = (sm.role == "stage");
                 // Diffuse rides baseColor the way D3DX feeds faceColor to the pipeline;
                 // the renderer used to shade everything white. Observed tinted materials
                 // all live in non-drawn collision meshes, so no capture changes from
@@ -1172,7 +1269,10 @@ void SceneRenderer::fillDrawData(const glm::vec3& eye, bool haveEye, size_t firs
         // ramp (no game data) never sets them, so ON degrades to OFF rather than to an
         // invented curve.
         du.flags = draws_[i].flags | (appearance_.unlit ? xm::kDrawUnlit : 0u) |
-                   (appearance_.toon && toonRampReady_ && draws_[i].toon ? xm::kDrawToon : 0u);
+                   (appearance_.toon && toonRampReady_ && draws_[i].toon ? xm::kDrawToon : 0u) |
+                   (appearance_.shadows && draws_[i].receiver && draws_[i].pass == Pass::Opaque
+                        ? xm::kDrawShadowReceiver
+                        : 0u);
         du.baseColor = draws_[i].baseColor;
         du.emissive = draws_[i].emissive;
         du.nprBand = glm::vec4(1.f, 1.f, 1.f, 0.f);
@@ -1216,6 +1316,122 @@ void SceneRenderer::fillDrawData(const glm::vec3& eye, bool haveEye, size_t firs
         }
         std::memcpy(dst + (i - first) * xm::kDrawStride, &du, sizeof du);
     }
+}
+
+void SceneRenderer::releaseShadowTargets() {
+    for (ShadowTarget& t : shadowTargets_) {
+        if (t.group) wgpuBindGroupRelease(t.group);
+        if (t.depthView) wgpuTextureViewRelease(t.depthView);
+        if (t.depth) wgpuTextureRelease(t.depth);
+        if (t.view) wgpuTextureViewRelease(t.view);
+        if (t.tex) wgpuTextureRelease(t.tex);
+        t = ShadowTarget{};
+    }
+}
+
+bool SceneRenderer::dumpShadowMap(const std::string& path, std::string& error) {
+    if (!shadowTargets_[0].tex) {
+        error = "no shadow map was rendered";
+        return false;
+    }
+    const uint32_t w = kShadowMapSize, h = kShadowMapSize;
+    WGPUBuffer buffer = gpu::createBuffer(device_, (uint64_t)w * h * 4,
+                                          WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead, nullptr);
+    if (!buffer) {
+        error = "shadow dump buffer creation failed";
+        return false;
+    }
+    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
+    WGPUTexelCopyTextureInfo src = {};
+    src.texture = shadowTargets_[0].tex;
+    src.aspect = WGPUTextureAspect_All;
+    WGPUTexelCopyBufferInfo dst = {};
+    dst.buffer = buffer;
+    dst.layout.bytesPerRow = w * 4;
+    dst.layout.rowsPerImage = h;
+    const WGPUExtent3D extent = {w, h, 1};
+    wgpuCommandEncoderCopyTextureToBuffer(encoder, &src, &dst, &extent);
+    WGPUCommandBuffer commands = wgpuCommandEncoderFinish(encoder, nullptr);
+    wgpuQueueSubmit(queue_, 1, &commands);
+    wgpuCommandBufferRelease(commands);
+    wgpuCommandEncoderRelease(encoder);
+
+    std::vector<uint8_t> pixels;
+    if (!gpu::readBuffer(instance_, buffer, 0, (uint64_t)w * h * 4, pixels, error)) {
+        wgpuBufferRelease(buffer);
+        return false;
+    }
+    wgpuBufferRelease(buffer);
+    std::FILE* f = std::fopen(path.c_str(), "wb");
+    if (!f) {
+        error = "shadow dump could not be written to " + path;
+        return false;
+    }
+    // PGM of the alpha channel, which is where the caster's light depth lives.
+    std::fprintf(f, "P5\n%u %u\n255\n", w, h);
+    for (uint32_t i = 0; i < w * h; ++i) std::fputc(pixels[(size_t)i * 4 + 3], f);
+    std::fclose(f);
+    return true;
+}
+
+bool SceneRenderer::ensureShadowTarget(size_t view, std::string& error) {
+    if (view >= kMaxViewCameras) {
+        error = "shadow map requested for an out-of-range view";
+        return false;
+    }
+    if (shadowTargets_[view].group) return true;
+    ShadowTarget& t = shadowTargets_[view];
+
+    WGPUTextureDescriptor td = {};
+    // The map is a render target the caster pass writes and the stage samples, with the
+    // caster's depth in alpha — the original's A8R8G8B8 (FUN_00650410:0x650476) and
+    // nothing else: no mips, one level, the same as the original's CreateTexture call.
+    // CopySrc as well: the gated DSH_DUMP_SHADOW readback is the only way to tell an
+    // empty map from a receiver bug, and a usage flag is cheaper than a second texture.
+    td.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding |
+               WGPUTextureUsage_CopySrc;
+    td.dimension = WGPUTextureDimension_2D;
+    td.size = WGPUExtent3D{kShadowMapSize, kShadowMapSize, 1};
+    td.format = WGPUTextureFormat_RGBA8Unorm;
+    td.mipLevelCount = 1;
+    td.sampleCount = 1;
+    t.tex = wgpuDeviceCreateTexture(device_, &td);
+    if (t.tex) t.view = wgpuTextureCreateView(t.tex, nullptr);
+
+    WGPUTextureDescriptor dd = {};
+    dd.usage = WGPUTextureUsage_RenderAttachment;
+    dd.dimension = WGPUTextureDimension_2D;
+    dd.size = WGPUExtent3D{kShadowMapSize, kShadowMapSize, 1};
+    // The original's depth surface is D24S8 with an A8R8G8B8 fallback (FUN_00650410's
+    // second CreateTexture); the scene's own depth format is the port's equivalent and
+    // keeps one depth format across the renderer.
+    dd.format = kSceneDepthFormat;
+    dd.mipLevelCount = 1;
+    dd.sampleCount = 1;
+    t.depth = wgpuDeviceCreateTexture(device_, &dd);
+    if (t.depth) t.depthView = wgpuTextureCreateView(t.depth, nullptr);
+
+    if (!t.view || !t.depthView) {
+        error = "shadow map creation failed";
+        releaseShadowTargets();
+        return false;
+    }
+    WGPUBindGroupEntry entries[2] = {};
+    entries[0].binding = 0;
+    entries[0].textureView = t.view;
+    entries[1].binding = 1;
+    entries[1].sampler = shadowSampler_;
+    WGPUBindGroupDescriptor desc = {};
+    desc.layout = bindGroupLayouts_[3];
+    desc.entryCount = 2;
+    desc.entries = entries;
+    t.group = wgpuDeviceCreateBindGroup(device_, &desc);
+    if (!t.group) {
+        error = "shadow map bind group creation failed";
+        releaseShadowTargets();
+        return false;
+    }
+    return true;
 }
 
 bool SceneRenderer::ensureViewCameras(std::string& error) {
@@ -1289,13 +1505,22 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
     const float ambientSum = kGlobalAmbient + kLightAmbient;
     camera.ambient = glm::vec4(ambientSum, ambientSum, ambientSum, 1.f);
     if (!appearance_.fog) camera.fogParams.z = 0.f;
+    // Character shadows (issue #21 row 1): the light camera is per view, exactly as the
+    // original builds it (FUN_006507c0 runs inside the per-view loop). The pass only runs
+    // when there is an eye to anchor it to — the single-view path has one only after
+    // setEye(), and a caller that never set it keeps the pre-change frame.
+    const bool shadowsOn = appearance_.shadows && (multiView || haveEye_);
+    camera.shadowParams = glm::vec4(kShadowDepthBias, kShadowDepthClamp, shadowsOn ? 1.f : 0.f,
+                                    kShadowDarken);
     if (!multiView) {
+        if (shadowsOn) camera.shadowViewProj = shadowViewProj(eye_);
         wgpuQueueWriteBuffer(queue_, cameraBuffer_, 0, &camera, sizeof camera);
     } else {
         for (size_t v = 0; v < viewCount; ++v) {
             xm::CameraUniform viewCamera = camera;
             viewCamera.viewProj = (*views)[v].viewProj;
             viewCamera.eye = glm::vec4((*views)[v].eye, 1.f);
+            if (shadowsOn) viewCamera.shadowViewProj = shadowViewProj((*views)[v].eye);
             wgpuQueueWriteBuffer(queue_, viewCameraBuffers_[v], 0, &viewCamera, sizeof viewCamera);
         }
     }
@@ -1310,6 +1535,116 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
                          drawData.data() + v * draws_.size() * xm::kDrawStride);
     }
     wgpuQueueWriteBuffer(queue_, drawBuffer_, 0, drawData.data(), drawData.size());
+
+    // The shadow caster pass (issue #21 row 1), before the main pass and one per view: the
+    // original selects technique mode 2 and draws every fighter inside the per-view loop
+    // (FUN_006396f0:0x639b8c-0x639bc6), into a map its own view's stage draw then samples.
+    // The draws are the same character/weapon surfaces the toon technique covers (the
+    // original's FUN_004207d0 draws the fighter's body and weapon sub-objects), and the
+    // map is cleared to alpha 1.0 — the "nothing cast here" sentinel the receiver tests.
+    stats_.shadowCasters = 0;
+    stats_.shadowReceivers = 0;
+    if (shadowsOn) {
+        if (!shadowPipeline_) {
+            WGPUVertexAttribute attrs[xm::kVertexAttributeCount];
+            WGPUVertexBufferLayout vbl = xm::wgpuVertexLayout(attrs);
+            WGPUVertexAttribute nprAttr[1];
+            WGPUVertexBufferLayout nprVbl = xm::wgpuNprVertexLayout(nprAttr);
+            WGPUVertexBufferLayout vbls[2] = {vbl, nprVbl};
+            WGPUColorTargetState shadowTarget = {};
+            shadowTarget.format = WGPUTextureFormat_RGBA8Unorm;
+            shadowTarget.writeMask = WGPUColorWriteMask_All;
+            // No blending: the original's mode-2 entry sets SRCBLEND = ONE, DESTBLEND =
+            // ZERO, i.e. a plain overwrite of the target it just cleared.
+            WGPUDepthStencilState shadowDepth = {};
+            shadowDepth.format = kSceneDepthFormat;
+            shadowDepth.depthWriteEnabled = WGPUOptionalBool_True;
+            shadowDepth.depthCompare = WGPUCompareFunction_LessEqual;
+            setStencilOps(shadowDepth.stencilFront);
+            setStencilOps(shadowDepth.stencilBack);
+            shadowDepth.stencilReadMask = 0xFF;
+            shadowDepth.stencilWriteMask = 0xFF;
+            WGPUFragmentState fs = {};
+            fs.module = shader_;
+            fs.entryPoint = sv("fs_shadow");
+            fs.targetCount = 1;
+            fs.targets = &shadowTarget;
+            WGPURenderPipelineDescriptor rpd = {};
+            rpd.layout = shadowPipelineLayout_;
+            rpd.vertex.module = shader_;
+            rpd.vertex.entryPoint = sv("vs_shadow");
+            rpd.vertex.bufferCount = 2;
+            rpd.vertex.buffers = vbls;
+            rpd.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+            rpd.primitive.frontFace = WGPUFrontFace_CW;
+            // CULL_CCW, the mode-2 entry's own state (FUN_00652880:0x6528a4): the same
+            // winding rule the plain 3D path uses.
+            rpd.primitive.cullMode = WGPUCullMode_Back;
+            rpd.depthStencil = &shadowDepth;
+            rpd.multisample.count = 1;
+            rpd.multisample.mask = 0xFFFFFFFFu;
+            rpd.fragment = &fs;
+            shadowPipeline_ = wgpuDeviceCreateRenderPipeline(device_, &rpd);
+            if (!shadowPipeline_) {
+                error = "shadow pipeline creation failed";
+                return false;
+            }
+        }
+        for (size_t view = 0; view < viewCount; ++view) {
+            if (multiView && (*views)[view].rect.empty()) continue;
+            if (!ensureShadowTarget(view, error)) return false;
+            const ShadowTarget& map = shadowTargets_[view];
+            WGPURenderPassColorAttachment shadowColor = {};
+            shadowColor.view = map.view;
+            shadowColor.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+            shadowColor.loadOp = WGPULoadOp_Clear;
+            shadowColor.storeOp = WGPUStoreOp_Store;
+            // 0xff000000 in the original's Clear: black with alpha 1.0.
+            shadowColor.clearValue = WGPUColor{0.0, 0.0, 0.0, 1.0};
+            WGPURenderPassDepthStencilAttachment shadowDepthAttachment = {};
+            shadowDepthAttachment.view = map.depthView;
+            shadowDepthAttachment.depthLoadOp = WGPULoadOp_Clear;
+            shadowDepthAttachment.depthStoreOp = WGPUStoreOp_Store;
+            shadowDepthAttachment.depthClearValue = 1.0f;
+            shadowDepthAttachment.depthReadOnly = false;
+            shadowDepthAttachment.stencilLoadOp = WGPULoadOp_Clear;
+            shadowDepthAttachment.stencilStoreOp = WGPUStoreOp_Discard;
+            shadowDepthAttachment.stencilClearValue = 0;
+            shadowDepthAttachment.stencilReadOnly = false;
+            WGPURenderPassDescriptor shadowDesc = {};
+            shadowDesc.colorAttachmentCount = 1;
+            shadowDesc.colorAttachments = &shadowColor;
+            shadowDesc.depthStencilAttachment = &shadowDepthAttachment;
+            WGPURenderPassEncoder caster =
+                wgpuCommandEncoderBeginRenderPass(target.encoder, &shadowDesc);
+            if (!caster) {
+                error = "shadow pass could not be started";
+                return false;
+            }
+            wgpuRenderPassEncoderSetPipeline(caster, shadowPipeline_);
+            wgpuRenderPassEncoderSetBindGroup(
+                caster, 0, multiView ? viewCameraGroups_[view] : cameraGroup_, 0, nullptr);
+            const uint32_t casterBase =
+                multiView ? (uint32_t)(view * draws_.size() * xm::kDrawStride) : 0u;
+            for (size_t i = 0; i < draws_.size(); ++i) {
+                const DrawItem& d = draws_[i];
+                // The caster set is the toon technique's own surface set: the fighter's
+                // body and weapon, and not the outline hull (which the toon row marks with
+                // its own flag rather than `toon`).
+                if (!d.toon || d.pass != Pass::Opaque) continue;
+                const uint32_t offset = casterBase + (uint32_t)(i * xm::kDrawStride);
+                wgpuRenderPassEncoderSetBindGroup(caster, 1, drawGroup_, 1, &offset);
+                wgpuRenderPassEncoderSetVertexBuffer(caster, 0, d.vbuf, 0, WGPU_WHOLE_SIZE);
+                wgpuRenderPassEncoderSetVertexBuffer(caster, 1, d.nprbuf, 0, WGPU_WHOLE_SIZE);
+                wgpuRenderPassEncoderSetIndexBuffer(caster, d.ibuf, WGPUIndexFormat_Uint32, 0,
+                                                    WGPU_WHOLE_SIZE);
+                wgpuRenderPassEncoderDrawIndexed(caster, d.indexCount, 1, d.firstIndex, 0, 0);
+                ++stats_.shadowCasters;
+            }
+            wgpuRenderPassEncoderEnd(caster);
+            wgpuRenderPassEncoderRelease(caster);
+        }
+    }
 
     WGPURenderPassColorAttachment color = {};
     color.view = target.colorView;
@@ -1342,7 +1677,16 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
         error = "render pass could not be started";
         return false;
     }
-    if (!multiView) wgpuRenderPassEncoderSetBindGroup(pass, 0, cameraGroup_, 0, nullptr);
+    if (!multiView) {
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, cameraGroup_, 0, nullptr);
+        // Group 3 is the shadow map (issue #21 row 1): the real one when the caster pass
+        // ran this frame, the 1x1 "nothing cast here" placeholder otherwise. Bound
+        // whether or not the receiver branch is taken — WebGPU requires every binding of
+        // the pipeline layout to be set, and the shader only samples it behind the
+        // shadowParams.z guard.
+        wgpuRenderPassEncoderSetBindGroup(
+            pass, 3, shadowsOn ? shadowTargets_[0].group : shadowPlaceholderGroup_, 0, nullptr);
+    }
 
     // Pipelines bind lazily: draws are sorted by pass, so each of the at most three
     // pipelines binds once, and a scene with no decals or effects never creates
@@ -1360,6 +1704,9 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
             wgpuRenderPassEncoderSetScissorRect(pass, (uint32_t)rect.x, (uint32_t)rect.y,
                                                 (uint32_t)rect.w, (uint32_t)rect.h);
             wgpuRenderPassEncoderSetBindGroup(pass, 0, viewCameraGroups_[view], 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(
+                pass, 3, shadowsOn ? shadowTargets_[view].group : shadowPlaceholderGroup_, 0,
+                nullptr);
             drawBase = (uint32_t)(view * draws_.size() * xm::kDrawStride);
         }
         WGPURenderPipeline boundPipelines[kPassCount] = {};
@@ -1373,6 +1720,10 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
             // commands it issued before the hulls existed, which is what keeps every
             // banked capture byte-identical.
             if (d.pass == Pass::Outline && !(appearance_.toon && toonRampReady_)) continue;
+            // The receiver count is a per-frame fact, not a per-view one: view 0 alone
+            // reports it, so a 4-view frame does not multiply it by four.
+            if (view == 0 && appearance_.shadows && d.receiver && d.pass == Pass::Opaque)
+                ++stats_.shadowReceivers;
             // Issue #25: only a surface draw the harness actually shades takes the
             // experiment entry point. `nprActive` is the appearance's own predicate, so a
             // run with no --npr flag never binds the second pipeline at all.

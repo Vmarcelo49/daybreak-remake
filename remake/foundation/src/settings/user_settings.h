@@ -58,7 +58,14 @@ namespace settings {
 // document always carries it (serialize writes it empty when nothing is remembered), so a
 // MISSING key in a current document is a hand-edit and warns, while a value that is not a
 // usable folder warns and defaults that one key.
-inline constexpr int kSchemaVersion = 4;
+//
+// v5 (issue #21 row 1) added the character-shadow toggle ([render] shadows) the same way.
+// #36 and #21 both branched from v3 and both first called themselves v4; the merge gives
+// #36 the v4 slot it shipped in and puts the shadow toggle at v5, so a v4 document written
+// by a #36 build loads with its install_dir intact and the toggle defaulted off (what v4
+// meant, since the option did not exist there). Both migrations are additive and both are
+// reported.
+inline constexpr int kSchemaVersion = 5;
 inline constexpr int kSchemaVersionLegacy = 1;
 inline constexpr int kSchemaVersionV2 = 2;
 inline constexpr int kSchemaVersionV3 = 3;
@@ -95,6 +102,10 @@ struct UserSettings {
     // default (DAT_006cfcec is zero-initialised) and the state every banked capture was
     // made in.
     bool        toonRendering = false;
+    // Character shadows (issue #21 row 1), the Options screen's second row (影の表示).
+    // Off is the shipped default (DAT_006cfcea is zero-initialised) and the state every
+    // banked capture was made in.
+    bool        shadowRendering = false;
     fnd::audio::Volumes volumes;
     std::array<int, fnd::input::ActionCount> keyboard{};
     std::array<std::array<int, fnd::input::ActionCount>, fnd::input::kMaxPlayers> gamepad{};

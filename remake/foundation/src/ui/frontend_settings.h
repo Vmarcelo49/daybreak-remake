@@ -26,6 +26,9 @@ struct FrontendSettings {
     // the renderer's appearance every frame, so flipping the row needs no restart, and
     // toUserSettings() carries it into the persisted document.
     bool toonRendering = false;
+    // The Options screen's shadow row (issue #21 row 1, 影の表示). Live state on the same
+    // terms as the toon row above.
+    bool shadowRendering = false;
     // The user's selection from the Options resolution row; {0,0} is desktop. This is
     // what gets persisted, and it changes ONLY when the row is cycled — the window's
     // actual pixel size lives in currentResolution/resolutionIndex, which the OS changes
