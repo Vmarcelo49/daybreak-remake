@@ -33,6 +33,12 @@ jobs:
         run: |
           cmake -S remake/foundation -B build -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PWD/sdl-prefix"
           cmake --build build
+      - name: Host tests
+        # Issue #23: the suite runs here, not only on a developer's machine. The tests
+        # that need the original game data detect its absence and skip themselves (the
+        # rendered-frame checks exit 77, which CTest records as Skipped), so CI never
+        # needs the copyrighted install; anything asset-dependent stays local/opt-in.
+        run: ctest --test-dir build --output-on-failure
 
   windows:
     runs-on: ubuntu-latest

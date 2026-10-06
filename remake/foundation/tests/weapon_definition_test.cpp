@@ -714,7 +714,15 @@ void testEverySelectionSmoke(const fs::path& install) {
             check(sane, "a selection runs 240 ticks with sane state");
         }
     }
-    checkInt(46, ran, "all 46 legal selections ran a match");
+    // Without the install every selection above is skipped, so the count can only be
+    // asserted when there was data to run against. CI has no game data (issue #23: the
+    // host suite runs on the Linux build while asset checks stay local/opt-in), so an
+    // empty sweep is absent data, not a failure — a partially present install still
+    // fails here, which is what makes the check worth keeping.
+    if (ran == 0 && skippedHere > 0)
+        skip("all 46 legal selections ran a match (no install: every selection skipped)");
+    else
+        checkInt(46, ran, "all 46 legal selections ran a match");
     if (skippedHere > 0) {
         std::printf("  (%d selections skipped: no item file)\n", skippedHere);
         check(true, "skipped selections are absent data, not failures");
