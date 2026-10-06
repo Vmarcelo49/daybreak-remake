@@ -263,6 +263,18 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                          "${CMAKE_CURRENT_SOURCE_DIR}")
         set_tests_properties(hud_cell_scale PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
 
+        # Issue #56's split-screen HUD geometry: the same rendered-frame class as the
+        # placement check, asserting on the RETICLE instead of the probe markers. Those
+        # markers are pushed at identical coordinates in every view, so they cannot see
+        # which view's vertices a pass read; a reticle's anchor is a per-view number the
+        # demo prints. Same skip rule as the placement check.
+        add_test(NAME hud_view_geometry
+                 COMMAND ${Python3_EXECUTABLE}
+                         "${CMAKE_CURRENT_SOURCE_DIR}/tests/hud_view_geometry.py"
+                         "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
+                         "${CMAKE_CURRENT_SOURCE_DIR}")
+        set_tests_properties(hud_view_geometry PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
+
         # Issue #50's pause overlay pixels: a capture test for the same reason — the defect
         # was the overlay's pass reading the battle HUD's vertices out of the shared UI
         # buffer, which no layout test can see. It drives --pause-overlay=N (the same
