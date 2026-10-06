@@ -73,7 +73,9 @@ ctest --test-dir remake/foundation/build/linux --output-on-failure
   skipping its fully-skipped sweep. CI needs no copyrighted data.
 
 The workflow (`.github/workflows/build-foundation.yml`, Linux job) runs this
-`ctest` step; it triggers on a `remake/foundation/VERSION` change or manually.
+`ctest` step on every push to `main` that touches `remake/foundation/**` (issue
+#28), so a broken test cannot sit on `main`. The same workflow's Windows and Web
+jobs stay on the `remake/foundation/VERSION` bump or a manual dispatch.
 
 ## 3. The acceptance runs (deterministic, real assets)
 

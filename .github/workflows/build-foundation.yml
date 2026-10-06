@@ -1,16 +1,29 @@
 name: Build foundation (Linux / Windows / Web)
 
 # The point of the foundation is that one source tree builds for every target, so
-# CI builds all three rather than the one the runner happens to be.
+# the matrix below covers all three rather than the one the runner happens to be.
 
-# It runs ONLY when remake/foundation/VERSION changes. These builds are slow, and
-# during early development a build on every push is noise rather than signal: bump
-# the version when the foundation is worth re-verifying across the whole matrix, or
-# use workflow_dispatch to run it by hand.
+# Cadence (issue #28):
+#   push to main touching remake/foundation/**        -> linux
+#   push to main whose last commit bumps
+#   remake/foundation/VERSION                         -> linux + windows + web
+#   workflow_dispatch                                 -> linux + windows + web
+#
+# linux is the only job that runs `ctest`, so it runs on every push that touches
+# the foundation: one native build, and a broken test cannot sit on main. windows
+# (MinGW cross-build) and web (Emscripten) are the expensive half of the matrix and
+# stay on the version-bump path — the tradeoff issue #28 sanctions — enforced by the
+# `if:` on those two jobs, which skips them instead of queueing them. That `if:`
+# reads `github.event.head_commit.modified`, and that list describes only the last
+# commit of a push: put the bump in the last commit, or dispatch by hand, when it
+# rides along with other work. The workflow file is in `paths` too, so a trigger
+# edit is exercised by a run rather than assumed.
 on:
   push:
     branches: [ main ]
-    paths: [ 'remake/foundation/VERSION' ]
+    paths:
+      - 'remake/foundation/**'
+      - '.github/workflows/build-foundation.yml'
   workflow_dispatch:
 
 jobs:
@@ -41,6 +54,10 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
   windows:
+    # Version bumps and manual dispatch only; see the cadence note at the top.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.modified, 'remake/foundation/VERSION')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,6 +75,10 @@ jobs:
         run: test -f build/foundation_demo.exe
 
   web:
+    # Version bumps and manual dispatch only; see the cadence note at the top.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.modified, 'remake/foundation/VERSION')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
