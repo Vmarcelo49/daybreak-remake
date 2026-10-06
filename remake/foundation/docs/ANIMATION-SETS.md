@@ -4,9 +4,13 @@
 `data/<char>/NN.dat` table and advances sections using the recovered set period and `+0x20`
 gate. Grounded neutral melee → 300 and Up/Down ground dash → 20/27 are explicit port
 inferences; the executable's initial-input selectors depend on player fields the port does not
-model. Side/air dash, projectile, jump, and guard selectors remain unresolved and report
-`anim_fallback()` rather than borrowing a guessed clip. Cross-fades are gated by the recovered
-character-class callback; only Rena's slot-2 combo has a verified transition list.
+model. The jump chain (moves 40 → 41 → 42) is recovered and every attack move the port already
+resolves (300 / 330 / 340) plays its own table row. Side/air dash, projectile and TagOut
+selectors remain unresolved and report `anim_fallback()` rather than borrowing a guessed clip.
+Guard is not an unresolved selector at all: the source binds no move for a block, so the state
+holds the clip that was already playing and reports `anim_no_selector()`. Cross-fades are gated
+by the recovered character-class callback; only Rena's slot-2 combo has a verified transition
+list.
 
 | Evidence | What it establishes |
 |---|---|
@@ -101,8 +105,10 @@ move cancel windows, direction fields, and other player flags. A blanket `dash�
 `air→340`, or “pick any present weapon move” rule drops those conditions. The remake uses
 move 300 as its grounded-neutral default inference because it is a normal-attack target in the
 recovered handler; the handler selects it only through conditional branches, so this does not
-prove the fresh AttackA selector. Dash and aerial attack animation selectors stay unresolved
-until the port carries their branch state. Voice keys `shotA/B/C` are loaded as audio paths by `FUN_00431e70`;
+prove the fresh AttackA selector. Which of 300/330/340 a press should resolve is still an
+inference; once it has resolved, the swing plays that row's own phase tag (issue #31 — before
+that fix the presentation path only honoured 300 and showed set 0 for the other two). Voice keys
+`shotA/B/C` are loaded as audio paths by `FUN_00431e70`;
 they do not identify firing animation sets. The numeric 300-chain and EX helper paths also
 do not establish a universal projectile-animation link.
 
@@ -119,9 +125,19 @@ parallel raw set-index table.
 | BattleStart | 194 | Round reset calls `FUN_00421080(0xc2)` (`FUN_004219a0`). |
 | Hit / Knockdown / KO | 103 / 196 / 203 | Reaction dispatch rows in `FUN_00428510`; runtime uses each bound table's tag. |
 | Up / Down ground dash | 20 / 27 | Port inference from the directional families. Source selection is gated by opaque state/cancel fields in `FUN_0043ded0`; `FUN_00438310` handles an already-selected move. Air dash does not reuse this inference. |
-| Grounded neutral melee | 300 | Port default inference from a conditional normal-attack target in `FUN_0043ded0` / `FUN_00445ee0`; the fresh input selector is unresolved. |
+| Grounded neutral / dash / aerial melee | 300 / 330 / 340 | The *selector* stays a port inference from a conditional normal-attack target in `FUN_0043ded0` / `FUN_00445ee0`. Whichever of the three a press resolves plays its own table row; the presentation path no longer drops 330/340 (issue #31). |
+| Jump (launch / rise / fall) | 40 → 41 → 42 | Live `DaybreakDX.exe` (original, md5 `a136ddc01bd7ef355b759b88ac89e02c`) via the bridge: `FUN_0043ffc0` cases `0x28`/`0x29`/`0x2a` chain the three air rows — case `0x28` binds `0x29` once `FUN_004218c0`'s air gate passes, case `0x29` binds `0x2a` once `vy < 6.0`/tick (`0x40c00000`) with the row's second section active. Phase tags are the shipped jump clips: 40 → `[2]`, 41 → `[3,4]`, 42 → `[5,43]`. `FUN_004218c0`'s own budget is not carried, so the port plays row 40 for the launch tick and then follows vy. |
+| Guard | none | Live `FUN_00637950` (0x637950), blocked branch of the decompiled listing (:535-549): it writes the hit registry, the per-slot `0x100` marker and `[victim+0xaf30]`, and calls no move bind and no effect/voice helper, so a block is a damage-path branch, not a move. The predicate is `(|bearing - facing| > 45 \|\| (victimword & 0x2000)) && (victimword & 0x400) && !(attackerword & 8)`, where victimword is `[victim+0x10]+0x28` and attackerword is `[attacker+0x10]+0x2c`. Which physical buttons those two victim bits belong to is NOT recovered (the device button word carries `0x10 << slot`, and this is a different word whose builder is not located). The state therefore holds the clip that was playing (`anim_no_selector()`), which is not the same report as a miss. |
 | Side dash | unresolved | The table has moves 23 and 24, but current left/right inputs are not tied to either. |
-| Dash/aerial melee, shot, jump, guard, TagOut | unresolved | Current inputs do not carry enough recovered selector state. |
+| Shot, TagOut | unresolved | Current inputs do not carry enough recovered selector state. |
+
+Where a selector is unresolved, or the bound table ships no row for the resolved move, the
+fighter still plays set 0 and reports `anim_fallback()` — the two states differ in the reason,
+not in the number, and the trace prints the difference (`(no selector)` versus `(fallback)`).
+Both are legitimate in exactly one case: the recovered selector genuinely produces no clip (a
+block) or the character+weapon table genuinely has no such row (a costume that drops the jump
+chain). Everything else — the projectile, TagOut and side-dash families above — is a miss the
+port has not recovered yet, and the flag is what keeps it visible.
 
 For example, Rena 00.dat move 20 has phase tags `[13,14,15]`. The parser also reads every
 animation-set trailer row: the `+0x1c` transition value, `+0x20` phase/counter gate, and event
@@ -174,8 +190,8 @@ record's `+0x04` remains a cancel-window threshold, not a phase duration.
 | AttackA/B/C could use fixed sets 2/3/5 | Those are jump clips; the original attacks are weapon/context dependent. |
 | Voice keys or `shotA/B/C` name animation sets | They are voice cues; the firing animation selector is not recovered. |
 | `ShotFinal` can use set 69 because move 503 exists | The EX helper can choose state 503 in a linked action; no universal shot-animation link is shown. |
-| Jump should switch 41→43 based on `vy` | Move tags 41/43 exist, but the remake's jump input/state is not tied to those selectors. |
-| Left/Right can be assigned to moves 24/23 from startup appearance | The table tags are known; their mapping to current controls is not. |
+| Jump should switch 41→43 based on `vy` | The jump chain is moves 40 → 41 → 42 (`[2]`, `[3,4]`, `[5,43]`), advanced by `FUN_0043ffc0`'s air gate and a `vy < 6.0`/tick switch, not by mapping set 41 onto set 43 directly. |
+| Left/Right can be assigned to moves 24/23 from startup appearance | The table tags are known; their mapping to current controls is not. `[22,23,24]`/`[19,20,21]` are move 23/24's own air-dash rows, so those clips are not a guard pose. |
 | Every section advances after its `.X` clip duration | The source uses rounded D3DX period, strict `period < elapsed`, and the set's `+0x20` gate. |
 | `Phase+0x1c` is the move phase duration | Trailer `+0x1c` is blend metadata; phase timing comes from D3DX period plus `+0x20`. |
 | Every move change cross-fades for eight ticks | The class callback rejects most transitions; Rena slot 2 uses old/new `+0x1c` values. |
@@ -184,10 +200,18 @@ record's `+0x04` remains a cancel-window threshold, not a phase duration.
 ## 7. Verification coverage
 
 `fighter_script_test` checks the resolver's move-ID → table-tag path, immediate default-class
-switches, and explicit fallback status. `melee_rules_test` binds matching character/weapon
-tables, checks strict phase timing and the auto-advance gate, and verifies Rena slot 2's
-metadata-driven cross-fade. It also checks unsupported jump and side-dash selectors remain
-visible as fallbacks. `animation_pose_test` checks real rig ordering and pose invariants.
+switches, explicit fallback status, and the Guard hold (a bound clip is kept, not replaced by
+set 0). `melee_rules_test` binds matching character/weapon tables, checks strict phase timing
+and the auto-advance gate, and verifies Rena slot 2's metadata-driven cross-fade. It also runs
+the recovered jump chain row by row (launch / rise / section completion / fall), checks that an
+interruption hard-binds a reaction row off the jump clip, pins the attack rows 330 → set 51 and
+340 → set 88 that issue #31 lost, and sweeps all 46 legal combos through
+idle/walk/jump/guard/attack/hit/knockdown/KO, printing each combo's resolved set and flagging
+whatever still falls back. `animation_pose_test` checks real rig ordering and pose invariants.
+
+The live instrument is `DAYBREAK_CAMINFO=1`, whose `[daybreak] anim` line prints the playing set
+and the reason: `(no selector)` for the Guard hold, `(fallback)` for a selector or row this port
+has not recovered.
 
 The animation browser remains `--anim-player` (`--model=<rig.X> --anim-player [--anim=N]`):
 one rig, no stage, arrows step the set index, WASD orbits, and the set name/index are shown.

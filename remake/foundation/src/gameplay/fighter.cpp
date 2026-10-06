@@ -425,6 +425,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         // playhead and applying any eligible class blend for this same tick. A
         // FUN_00421100 bind resets both elapsed counters; the common update leaves
         // that newly selected set at position zero on this tick.
+        refresh_state_move();
         advance_animation_phase();
         if (!m_animationBoundThisUpdate) m_anim->advanceTime(animDt);
         // The recovered class-specific blend counter advances once per update,
@@ -613,9 +614,14 @@ void Fighter::update_facing(const Fighter* opp, double dt) {
 void Fighter::set_state(FighterState new_state) {
     if (m_state == new_state) return;
     m_state = new_state;
-    m_animSetIdx = -1;  // force animation re-lookup
-    m_phaseIndex = 0;
-    m_moveElapsedTicks = 0;
+    // A state with no selector (Guard) leaves the running move alone: the source's
+    // block branch never re-binds, so the move, its phase cursor and its clip keep
+    // going. Every other state starts a fresh row and a fresh phase.
+    if (state_has_animation_selector(new_state)) {
+        m_animSetIdx = -1;  // force animation re-lookup
+        m_phaseIndex = 0;
+        m_moveElapsedTicks = 0;
+    }
     // Leaving the attack state ends this swing: the per-victim hit set clears so a
     // fresh swing may connect again (issue #10's per-swing accounting).
     if (new_state == FighterState::AttackA)
@@ -628,6 +634,7 @@ void Fighter::set_animate(bool on) {
     m_animate = on;
     m_animSetIdx = -1;
     m_animFallback = false;   // no set is bound while animation is off
+    m_animNoSelector = false;  // and no clip is being held either
     m_blendTicks = -1;        // and no class-specific cross-fade is in flight
     clear_tracks();
     if (m_animate) try_switch_animation();
@@ -649,13 +656,26 @@ void Fighter::clear_tracks() {
 void Fighter::try_switch_animation() {
     if (!m_animate) return;
     if (!m_model || !m_anim) return;
-    if (m_animSetIdx >= 0) return;  // already set for this state
     if (m_model->anims.empty()) return;
+
+    const int move = state_move_id();
+    m_boundMoveId = move;  // what refresh_state_move() compares against next tick
+
+    if (!state_has_animation_selector(m_state)) {
+        // No selector for this state (Guard): the source binds nothing, so the move
+        // and the clip already playing continue. Only a state entered with nothing
+        // bound (animation was off) needs a clip, and the standing set is that clip —
+        // it is not a substituted guess, so it is not reported as a fallback.
+        if (m_animSetIdx < 0) bind_animation_set(0);
+        m_animNoSelector = true;
+        m_animFallback = false;
+        return;
+    }
+    if (m_animSetIdx >= 0) return;  // already set for this state
 
     // FUN_00421100 binds the current section tag through FUN_00421410. Resolve
     // it only from this fighter's bound NN.dat; there is no raw-set table.
     int want = -1;
-    const int move = state_move_id();
     if (m_moves && move >= 0) {
         const CharacterMove* resolved = m_moves->find(move);
         if (resolved) want = resolved->phase_set_index(m_phaseIndex);
@@ -670,6 +690,7 @@ void Fighter::try_switch_animation() {
     // Missing selectors/rows and invalid set indices use set 0 and remain
     // visible through anim_fallback(); they do not masquerade as recovered clips.
     m_animFallback = fallback;
+    m_animNoSelector = false;
 }
 
 void Fighter::bind_animation_set(int setIndex) {
@@ -1017,14 +1038,55 @@ int Fighter::dash_move_for(input::Action dir) const {
 
 int Fighter::state_move_id() const {
     switch (m_state) {
-        // Move 300 is a conditional target in FUN_0043ded0/FUN_00445ee0, not a
-        // recovered first-press selector. The remake uses it as a neutral-ground
-        // visual inference; dash/air candidates 330/340 stay unresolved.
+        // The swing's move was chosen at the press by resolve_attack_move: 300
+        // grounded neutral, 330 mid-dash, 340 airborne. Which of the three a fresh
+        // press selects is still a port inference, but the presentation must play
+        // the row that inference already bound — dropping 330/340 here is what made
+        // a live aerial swing show set 0 while its own table row is set 88 (issue #31).
         case FighterState::AttackA:
-            return m_attackMoveId == 300 ? 300 : -1;
+            return present_move(m_attackMoveId);
         case FighterState::Run:     return m_dashMoveId;
+        case FighterState::Jump:    return jump_chain_move();
+        // Guard binds nothing; see state_has_animation_selector for the recovered
+        // block path. try_switch_animation holds the playing clip for it.
+        case FighterState::Guard:   return -1;
         default:                    return state_to_move_id(m_state);
     }
+}
+
+int Fighter::jump_chain_move() const {
+    // The source's air chain is three rows the move executor advances by physics:
+    // live FUN_0043ffc0 case 0x28 binds 0x29 once FUN_004218c0's air gate passes,
+    // and case 0x29 binds 0x2a once vy < 6.0/tick with the row's second section
+    // active. Their phase tags are the shipped jump clips: 40 → [2] (startup),
+    // 41 → [3,4] (leaving the ground, up momentum), 42 → [5,43] (down momentum,
+    // falling). The port's single Jump label spans the whole airtime and resolves
+    // the same three rows; each row still advances its own sections through
+    // advance_animation_phase().
+    if (!m_moves) return -1;
+    // FUN_004218c0's gate is a per-character frame/phase budget this port does not
+    // carry, and the port's leap is airborne on the press tick: one startup tick is
+    // what plays the recovered move-40 set-2 clip without inventing a duration.
+    if (m_grounded || m_jumpStartup) return present_move(40);
+    if (m_vy >= FighterConstants::kJumpApexSpeed) return present_move(41);
+    return present_move(42);
+}
+
+void Fighter::refresh_state_move() {
+    // Only the air chain changes its move without a state change; every other port
+    // state resolves one row and rebinds through set_state()/try_dash(). The source
+    // rebinds the changed id through FUN_00421080, which resets the section cursor.
+    if (m_state != FighterState::Jump) {
+        m_jumpStartup = false;
+        return;
+    }
+    const int move = state_move_id();
+    m_jumpStartup = false;   // the launch tick's startup row is consumed either way
+    if (move == m_boundMoveId) return;
+    m_phaseIndex = 0;
+    m_moveElapsedTicks = 0;
+    m_animSetIdx = -1;
+    try_switch_animation();
 }
 
 void Fighter::advance_animation_phase() {
@@ -1291,6 +1353,9 @@ void Fighter::try_jump() {
     m_stamina = std::max(0.0f, m_stamina - FighterConstants::kJumpStamina);
     m_grounded = false;
     m_vy = FighterConstants::kJumpSpeed;
+    // The launch tick still plays the air chain's startup row (move 40 / set 2);
+    // refresh_state_move() consumes this once the rise has its own row.
+    m_jumpStartup = true;
     set_state(FighterState::Jump);
     m_stateTimer = 0;  // physics-driven: gravity/landing own this state
 }

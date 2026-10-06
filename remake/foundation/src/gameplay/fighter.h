@@ -116,6 +116,24 @@ inline int state_to_move_id(FighterState s) {
         default:                        return -1;
     }
 }
+// Guard is the one state with NO selector in the source, and that is a recovered
+// result rather than a gap: a block is a damage-path branch. Live `DaybreakDX.exe`
+// (original, md5 a136ddc01bd7ef355b759b88ac89e02c) via the bridge, `FUN_00637950`
+// (0x637950), blocked branch of the decompiled listing (:535-549): it writes the hit
+// registry, the per-slot `0x100` marker and `[victim+0xaf30]`, and calls no move bind
+// (FUN_00421080 / FUN_00421100 / FUN_00421410) and no effect or voice helper. The
+// predicate that reaches it is
+//   (|bearing - facing| > 45 || (victimword & 0x2000)) && (victimword & 0x400)
+//   && !(attackerword & 8)
+// with victimword = [victim+0x10]+0x28 and attackerword = [attacker+0x10]+0x2c, whose
+// 8 bit is the unblockable flag. Which physical buttons the two victim bits belong to
+// is NOT recovered — the device button word carries `0x10 << slot`, and this is a
+// different word whose builder is not located — so the port keeps its own Guard key.
+// A state that resolves to -1 for this reason must hold the clip already playing
+// instead of reporting a set-0 miss.
+inline bool state_has_animation_selector(FighterState s) {
+    return s != FighterState::Guard;
+}
 // The trace's per-fighter field is a port state label, not a recovered animation
 // binding. The DX9 build this trace is diffed against binds no animation sets at all
 // (its d3dx9 under Wine returns no controller — see tests/visual/out/*.log), so it
@@ -231,6 +249,10 @@ struct FighterConstants {
     // the ceiling and budget below are still the port's own.
     static constexpr float kGravity       = 1800.0f; // downward accel (u/s^2)
     static constexpr float kJumpSpeed     = 720.0f;  // leap initial vy (u/s)
+    // The source switches the air chain from "going up" to "coming down" when
+    // vy drops under the literal 0x40c00000 = 6.0 per tick (live FUN_0043ffc0
+    // case 0x29 → FUN_00421080(0x2a)); the fixed step is 60 Hz, so 360 u/s.
+    static constexpr float kJumpApexSpeed = 360.0f;
     static constexpr float kFlyRise       = 720.0f;  // vy while holding Z aloft
     static constexpr float kFlyTimeSec    = 1.2f;   // flight budget per airtime
     static constexpr float kFlyMaxAlt     = 420.0f; // ceiling above takeoff
@@ -630,6 +652,11 @@ public:
     // is not silent —
     // the trace wiring in main.cpp and tests/fighter_script_test.cpp read it.
     bool               anim_fallback() const { return m_animFallback; }
+    // True when the state has no selector at all and the playing clip is held on
+    // purpose (Guard; see state_has_animation_selector). Distinct from
+    // anim_fallback(): holding a clip is the source behaviour, while a fallback is
+    // a selector or table row this port has not recovered.
+    bool               anim_no_selector() const { return m_animNoSelector; }
     // Fractional stocks feed the HUD bars directly (ammo-bar.webp).
     // Divide by the stock's OWN max, not the kMainMax/kChargeMax constants: a bound
     // weapon resizes both pools from data/item/NNN.dat, and the HUD bar is a fraction of
@@ -699,6 +726,9 @@ private:
     int          m_stateTimer  = 0;    // frames remaining in current state
     int          m_animSetIdx  = -1;   // set bound for the current state (-1 = none)
     bool         m_animFallback = false;  // m_animSetIdx is the set-0 default
+    bool         m_animNoSelector = false;  // state has no selector: the clip is held
+    int          m_boundMoveId = -1;   // move whose phase bound m_animSetIdx (-1 = none)
+    bool         m_jumpStartup = false;  // launch tick: the air chain plays row 40 first
     bool         m_animationBoundThisUpdate = false;
     int          m_blendTicks  = -1;   // source countdown; negative means no class blend
     int          m_blendTotal  = 0;    // destination set's +0x1c normalization value
@@ -835,8 +865,17 @@ private:
     // move order has no recovered link to the port's left/right inputs.
     int dash_move_for(input::Action dir) const;
     // The move whose phases the current state plays, or -1 if its selector is
-    // not recovered. Only the grounded neutral 300 attack path is established.
+    // not recovered. Grounded neutral 300, the dash lunge 330 and the aerial 340
+    // are all bound rows now (issue #31); Jump resolves the recovered air chain.
     int state_move_id() const;
+    // The jump chain the source advances by physics (live FUN_0043ffc0 cases
+    // 0x28/0x29/0x2a): 40 on the ground, 41 while rising, 42 once vy falls under
+    // the apex literal. Each row's first phase tag is the jump clip.
+    int jump_chain_move() const;
+    // A state can change its move without changing its port label (only the air
+    // chain does today). The source rebinds through FUN_00421080 whenever the
+    // move id changes, so re-check the binding once per update.
+    void refresh_state_move();
     // Mirrors the source handler tail: elapsed move ticks advance once per update,
     // and the NN.dat set gate controls whether the current phase advances.
     void advance_animation_phase();

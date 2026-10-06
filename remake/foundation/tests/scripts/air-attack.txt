@@ -1,0 +1,12 @@
+# Airborne attack: leap, hold to fly, swing in the air, land.
+#
+# Issue #31's live reproduction. The round's BattleStart pose owns the first 60
+# frames, and the trace samples match frames 1, 61, 121, ...; the swing is
+# therefore pressed at 105 so it is still live at the 121 sample: state attackA,
+# airborne, resolved from Rena 0's move 340, whose shipped phase tag is set 88.
+# Before the fix that row was bound for the hit test but the presentation path
+# dropped it and showed set 0 (fallback).
+62 RIGHT
+65 JUMP
+105 MELEE
+140 -

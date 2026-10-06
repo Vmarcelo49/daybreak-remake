@@ -1266,22 +1266,47 @@ stage-aware colour) and the recommendation: `foundation/docs/NPR-EXPERIMENTS.md`
 
 ## C. Animation states
 
-### C1. Guard / Jump mapping (TagOut reframed, see below)
+### C1. Guard / Jump mapping (RESOLVED — issue #18; TagOut reframed, see below)
 
-* **What.** Two states keep the reported set-0 fallback instead of their
-  real animation; a third was a mistaken mechanic.
-* **Evidence (inferred, from the port's own RE notes, corrected 2026-10-03).**
-  `src/gameplay/fighter.h:146-163`: guard's voice keys exist (indices 12/13,
-  shipped for all 12 characters) but the corpus holds no `FUN_0064ae10`
-  key-12 play site, so the "no call site" result now rests on two independent
-  searches; blocking may be a damage-path flag rather than a move id at all.
-  Jump: the port's leap/fly/fall may span several of `FUN_0043ded0`'s air
-  branches (`FUN_00421080(0x168/0x15e/0x1cc/500/0x1f5)`), and pinning one
-  needs the jump input-bit mapping, which is not located; `FUN_004235d0` is
-  steering (relation index + relative angle from `FUN_0041f580`), not the
-  jump driver as earlier notes claimed. `Fighter::anim_fallback()`
-  reports each case, so the gap is visible. The move-id switch itself is 49
-  cases in `FUN_00428510` (count from commit `8fae1f9`; not recounted here).
+* **What.** Guard and Jump both reported the set-0 fallback instead of their
+  real animation; a third state was a mistaken mechanic.
+* **Jump — recovered (issue #18).** The air chain is three move rows the move
+  executor advances by physics: live `DaybreakDX.exe` (original, md5
+  `a136ddc01bd7ef355b759b88ac89e02c`) via the bridge, `FUN_0043ffc0` case
+  `0x28` binds `0x29` once `FUN_004218c0`'s air gate passes, and case `0x29`
+  binds `0x2a` once `vy < 6.0`/tick (`0x40c00000`) with the row's second
+  section active; `FUN_00421080(0x28)` in the act function's airborne branch is
+  the entry. Their `NN.dat` phase tags are the shipped jump clips — 40 → `[2]`
+  (startup), 41 → `[3,4]` (takeoff, up momentum), 42 → `[5,43]` (down momentum,
+  falling) — and `FUN_004218c0`'s own frame/phase budget is the one piece not
+  carried, so the port plays row 40 for the launch tick and then follows vy
+  (apex literal 6.0/tick = 360 u/s). `FUN_004235d0` is steering (relation index
+  + relative angle from `FUN_0041f580`), not the jump driver.
+* **Guard — recovered as "no selector" (issue #18).** Live `FUN_00637950`'s
+  blocked branch (`~:535-549`) writes the hit registry, the per-slot `0x100`
+  guard marker and `[victim+0xaf30]`, and calls no move bind and no
+  effect/voice helper. The block predicate is
+  `(|bearing - facing| > 45 || [weaponword+0x28] & 0x2000) &&
+   ([weaponword+0x28] & 0x400) && !([attackerweapon+0x2c] & 8)`. Which physical
+  button those two weapon-word bits belong to is NOT recoverable: the word is
+  not the device button word (that one carries bits `0x10 << slot`, live
+  `FUN_00657390:219`, and only its slot-4 bit `0x100` is ever tested for game
+  actions), those two bits appear exactly once each in the whole corpus, and the
+  word's builder is not located. The port therefore keeps its own Guard action
+  and holds the playing clip (`anim_no_selector()`), which is a report, not a
+  guess.
+* **Attack rows (issue #31).** The three attack selectors the port already
+  resolves (300 grounded, 330 mid-dash, 340 airborne) now play their own table
+  rows; only the *choice* among them remains a port inference. Before this the
+  presentation path honoured 300 alone, so a live aerial swing bound move 340
+  for its hit test and then showed set 0 while airborne. Which of `0x100`'s
+  neighbours gate the original's `FUN_00445ee0` transitions (300→301→302,
+  20→330/331, 23/24→330/331, 329/333/44→340) is still open.
+* **Evidence trail.** `FUN_00428510` (49-case move-id switch, count from
+  `8fae1f9`) is the per-move executor, not the selector hunt it once looked
+  like; `FUN_0043ded0` and its 46 per-character twins are the per-character act
+  functions (they read the AI request fields `+0x280..+0x2bc` and the human
+  intent fields `FUN_0041efe0` writes, so they serve both controller types).
 * **TagOut — reframed, not mapped (owner observation 2026-10-03).** There is
   no character swap: control never transfers between fighters, and the only
   switch mechanic is the reticle target cycle (`FUN_00421e30`, which also
@@ -1297,12 +1322,11 @@ stage-aware colour) and the recommendation: `foundation/docs/NPR-EXPERIMENTS.md`
   the facing, which tracks the single enemy; hold-for-ally needs allies).
   "recovery" stays as the state's trace name (the voice key exists; the
   state never occurs, so no trace changes).
-* **Sketch.** (a) Jump: map the jump input bit first, then read which of the
-  `FUN_0043ded0` air branches it selects — not the reverse. (b) Guard: look
-  for the block flag read on the incoming-damage path, not another
-  `FUN_00428510` case hunt (46 labels, ~40 unclaimed — blind). (c) TagOut:
-  closed as reframed above; the remaining switch work is multi-enemy
-  reticle/aim, not animation.
+* **What is left.** (a) The projectile and TagOut selectors, and the side/air
+  dash pair (moves 23/24; their `[22,23,24]`/`[19,20,21]` tags are air-dash rows,
+  not a guard pose). They keep the visible `anim_fallback()`. (b) The physical
+  identity of the two guard bits, which needs the weapon-word builder. (c) The
+  fresh AttackA selector's branch conditions.
 
 ## D. HUD leftovers
 

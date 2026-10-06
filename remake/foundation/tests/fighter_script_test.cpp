@@ -1513,12 +1513,22 @@ void test_anim_binding() {
     check_int("rejected blend binds hit on track 0", 95, ctrl.trackAnimationSet(0));
     check_int("rejected blend binds hit on track 1", 95, ctrl.trackAnimationSet(1));
 
-    // Unlocated selectors stay on set 0 and announce the fallback.
-    for (FighterState state : {FighterState::Guard, FighterState::Jump, FighterState::TagOut}) {
+    // Guard has no selector at all: the source's block path binds no move, so the
+    // clip that was already playing stays bound and is not reported as a miss.
+    f.set_state(FighterState::Hit);
+    f.set_state(FighterState::Guard);
+    check_int("guard holds the playing clip", 95, ctrl.trackAnimationSet(0));
+    check_int("guard holds it on both tracks", 95, ctrl.trackAnimationSet(1));
+    check_bool("guard is not a fallback", false, f.anim_fallback());
+    check_bool("guard reports the no-selector hold", true, f.anim_no_selector());
+    // Jump and TagOut do have selectors and this table ships no row for either, so
+    // they are misses: set 0, and the fallback stays visible.
+    for (FighterState state : {FighterState::Jump, FighterState::TagOut}) {
         f.set_state(state);
         check_int("unresolved selector uses set 0", 0, ctrl.trackAnimationSet(1));
         check_int("unresolved selector resets track 0", 0, ctrl.trackAnimationSet(0));
         check_bool("unresolved selector reports fallback", true, f.anim_fallback());
+        check_bool("unresolved selector is not a hold", false, f.anim_no_selector());
     }
 
     const xm::Model shortModel = make_anim_model({"a", "b"});
