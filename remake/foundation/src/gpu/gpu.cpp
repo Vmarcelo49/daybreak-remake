@@ -117,6 +117,18 @@ bool createContext(Context& ctx, WGPUSurface surface, std::string& error) {
     WGPURequestAdapterOptions opts = {};
     opts.compatibleSurface = surface;
     opts.powerPreference = WGPUPowerPreference_HighPerformance;
+#if defined(__linux__)
+    // Linux asks for Vulkan by name, which is the backend every Linux verification in
+    // this repo ran on (D2's evidence: RADV on Wayland) and the one the README requires
+    // ("a Vulkan driver"). It is also the difference between an actionable failure and a
+    // crash: with no Vulkan driver wgpu-native falls back to its GLES/EGL backend and
+    // panics inside wgpu-hal (`gles/egl.rs:899` unwraps a None EGL display, observed with
+    // VK_ICD_FILENAMES=/dev/null and no EGL vendor library), aborting the process before
+    // any message can be printed. Asking for Vulkan makes that machine report "no usable
+    // GPU adapter" plus the driver to install. Other targets keep the default backend set
+    // (DX12/Metal), which is what their builds were verified with.
+    opts.backendType = WGPUBackendType_Vulkan;
+#endif
     WGPURequestAdapterCallbackInfo acb = {};
     acb.mode = WGPUCallbackMode_AllowProcessEvents;
     acb.callback = onAdapter;
@@ -124,7 +136,18 @@ bool createContext(Context& ctx, WGPUSurface surface, std::string& error) {
     wgpuInstanceRequestAdapter(ctx.instance, &opts, acb);
     waitFor(wa);
     if (!wa.adapter) {
-        error = "no WebGPU adapter for this surface";
+        // User-facing: the packaged launcher surfaces this as the launch failure, so the
+        // message names the likely cause and the next step instead of the WebGPU call
+        // that returned nothing. A machine with no Vulkan driver (or a VM without GPU
+        // passthrough) is by far the common case.
+        error = surface
+                    ? "no usable GPU adapter: this port needs a Vulkan-capable GPU and its "
+                      "driver. Install or update your graphics driver (Mesa RADV/AMDVLK, "
+                      "NVIDIA or Intel) and start the game from a desktop session with a "
+                      "working Wayland or X11 display"
+                    : "no usable GPU adapter: this port needs a Vulkan-capable GPU and its "
+                      "driver. Install or update your graphics driver (Mesa RADV/AMDVLK, "
+                      "NVIDIA or Intel), or install a software Vulkan driver (Mesa lavapipe)";
         return false;
     }
     ctx.adapter = wa.adapter;
