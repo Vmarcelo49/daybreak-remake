@@ -6,7 +6,11 @@ namespace plat {
 
 bool init(std::string& error) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
-        error = SDL_GetError();
+        // User-facing: the launcher prints this as the launch failure, so keep SDL's own
+        // reason and add the one next step a missing display has.
+        error = std::string("could not start the video system (") + SDL_GetError() +
+                "). Start the game from a desktop session with a working Wayland or X11 "
+                "display";
         return false;
     }
     return true;
@@ -16,7 +20,10 @@ void shutdown() { SDL_Quit(); }
 
 SDL_Window* createWindow(const char* title, int w, int h, std::string& error) {
     SDL_Window* window = SDL_CreateWindow(title, w, h, SDL_WINDOW_RESIZABLE);
-    if (!window) error = SDL_GetError();
+    if (!window)
+        error = std::string("could not open a game window (") + SDL_GetError() +
+                "). Start the game from a desktop session with a working Wayland or X11 "
+                "display";
     return window;
 }
 

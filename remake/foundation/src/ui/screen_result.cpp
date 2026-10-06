@@ -98,7 +98,16 @@ public:
                         quote_.voice.empty() ? "(none)" : quote_.voice.c_str());
         }
         if (!loadCaptionFont(text_,30.f,error)) return;
-        if (text_.faceCount() != 2) { if (error.empty()) error = "result: fetch the pinned CJK fallback font"; return; }
+        if (text_.faceCount() != 2) {
+            // Same user-facing shape as caption.cpp's missing-face message: the Japanese
+            // fallback ships in the package's assets/fonts, so a missing one means the
+            // package was unpacked incompletely.
+            if (error.empty())
+                error = "the Japanese caption fallback (NotoSansCJKjp-Regular.otf) is missing "
+                        "from assets/fonts next to the executable — unpack the release "
+                        "archive again";
+            return;
+        }
         quoteLayout_ = text_.layout(quote_.text.c_str());
         if (state.resultWinner < 0) drawLayout_ = text_.layout("DRAW");
         if (state.resultWinner >= 0)

@@ -3189,6 +3189,31 @@ static void tickVersus(App& app, uint64_t frame) {
     placeVersusFighters(app, p1, p2);
 }
 
+// --- game folder: what counts as usable, and what to say when it is not -------------
+// An explicit folder (--install=, $DAYBREAK_INSTALL) must be a bundle install: openInstall
+// is the only route that can read a folder by name, because the filesystem fallback
+// resolves the asset layer's own relative keys ("data/...") against the working directory.
+// The extracted-tree route therefore stays what it always was — running the port from that
+// folder — and the message below says so instead of promising a read that cannot happen.
+//
+// A wrong folder is nearly always "pointed at the wrong one", so the message names it, says
+// what is missing and gives the next step; a developer backtrace is not an acceptable
+// user-facing failure. The packaged launcher prints the same shape when it finds no folder
+// at all (package/README-LINUX.md documents the search order).
+static std::string installUnusableMessage(const std::string& dir, const char* source) {
+    return std::string("no game data in \"") + dir + "\" (" + source +
+           "): the folder has no daybreakXX.dat files. Point at the folder that contains "
+           "daybreak00.dat (your Higurashi Daybreak install); an extracted data/ tree is "
+           "used by running the port from inside that folder instead";
+}
+
+// Opens `dir` as the game folder or reports why it cannot be one.
+static bool openInstallOrReport(const std::string& dir, const char* source, std::string& error) {
+    if (fnd::assets::assetSource().openInstall(dir)) return true;
+    error = installUnusableMessage(dir, source);
+    return false;
+}
+
 bool initScene(App& app) {
     // Install discovery: the .dat bundles are the game's own source of truth, and where
     // they exist they win over an extracted tree (asset_source.h explains why the two
@@ -3196,7 +3221,10 @@ bool initScene(App& app) {
     // already carries, so existing capture command lines keep working verbatim;
     // --install= overrides when a path points somewhere unexpected.
     if (!app.opts.install.empty()) {
-        fnd::assets::assetSource().openInstall(app.opts.install);
+        // An explicit folder that is unusable is a mistake worth failing on: silently
+        // falling through to the filesystem would report a missing asset several screens
+        // later instead of naming the wrong path.
+        if (!openInstallOrReport(app.opts.install, "--install=", app.error)) return false;
     } else {
         for (const std::string* p : {&app.opts.stage, &app.opts.character, &app.opts.enemy,
                                      &app.opts.weapon, &app.opts.model, &app.opts.effect}) {
@@ -3912,10 +3940,36 @@ bool initScreens(App& app) {
         app.error = "unknown --screen=" + app.opts.screen;
         return false;
     }
-    // No asset path on this command line to infer the install from: --install= is the
-    // hint, and assetSource() falls back to the filesystem (running from the install
-    // dir works).
-    if (!app.opts.install.empty()) fnd::assets::assetSource().openInstall(app.opts.install);
+    // Front-end install: --install= wins, then $DAYBREAK_INSTALL — the two spellings that
+    // make the binary usable on its own. The packaged launcher (package/daybreak) owns the
+    // wider search (saved preference, package directory, conventional locations) and
+    // always hands the chosen folder in as --install=, so the order is defined once, in
+    // package/README-LINUX.md. With neither, the historical filesystem fallback stays:
+    // running from the install directory (or an extracted tree) must keep working.
+    std::string install = app.opts.install;
+    const char* installSource = "--install=";
+    if (install.empty()) {
+        if (const char* env = std::getenv("DAYBREAK_INSTALL"); env && *env) {
+            install = env;
+            installSource = "DAYBREAK_INSTALL";
+        }
+    }
+    if (!install.empty()) {
+        if (!openInstallOrReport(install, installSource, app.error)) return false;
+        std::printf("[install] game folder: %s (from %s)\n", install.c_str(), installSource);
+    } else if (!fnd::assets::assetSource().exists("data/title/back00.cnv")) {
+        // No folder named and the working directory is not one either (neither a bundle
+        // install nor an extracted tree): the title art is the first read of a front-end
+        // run, so fail here naming the folder to point at instead of leaving a per-asset
+        // message from inside the title screen.
+        app.error = "no Higurashi Daybreak data found: neither --install= nor DAYBREAK_INSTALL "
+                    "was given and the current directory has no data/title/back00.cnv. Point "
+                    "the port at your game folder, e.g. --install=\"/path/to/Higurashi-Daybreak\"";
+        return false;
+    } else {
+        std::printf("[install] no --install= and no DAYBREAK_INSTALL: reading data/ from the "
+                    "current directory\n");
+    }
     // No scene is ever submitted on this path, but the capture readback lives in
     // SceneRenderer (device/queue/instance plus the mapped-buffer copy), so a --out menu
     // frame needs it initialized even though render() is never called.
@@ -4137,7 +4191,8 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
         if (!gpu::createInstance(app->ctx, app->error)) return SDL_APP_FAILURE;
         app->sc.surface = plat::createSurface(app->ctx.instance, app->window);
         if (!app->sc.surface) {
-            app->error = "surface creation failed";
+            app->error = "could not create a window surface: run the game from a desktop "
+                         "session with a working Wayland or X11 display";
             return SDL_APP_FAILURE;
         }
         if (!gpu::createContext(app->ctx, app->sc.surface, app->error)) return SDL_APP_FAILURE;

@@ -75,8 +75,11 @@ void TitleScreen::draw(SpriteRenderer& batch) const {
 std::unique_ptr<Screen> makeTitleScreen(SpriteRenderer& batch, std::string& error) {
     std::unique_ptr<TitleScreen> screen(new TitleScreen(batch, error));
     if (!screen->loaded()) {
-        if (error.empty())
-            error = "title: one of data/title/{back00,logo,title} did not load";
+        // Keep the asset-level reason (it names the file that missed) and add the one
+        // thing a user can act on: which folder to point the port at.
+        if (error.empty()) error = "the title screen art did not load";
+        error += " — point the port at your Higurashi Daybreak folder, e.g. "
+                 "--install=\"/path/to/Higurashi-Daybreak\"";
         return nullptr;
     }
     return screen;

@@ -21,7 +21,14 @@ std::vector<uint8_t> fontBytes(const char* file) {
 bool loadCaptionFont(TextLayer& layer, float cellHeight, std::string& error,
                      const char* primary, const char* fallback) {
     auto bytes = fontBytes(primary);
-    if (bytes.empty()) { error = std::string("caption font unavailable: ") + (primary ? primary : "(unset)"); return false; }
+    if (bytes.empty()) {
+        // User-facing: the packaged release ships this face in assets/fonts beside the
+        // executable (D7), so the fix is to restore the package, not to debug a loader.
+        error = std::string("caption font missing: ") + (primary ? primary : "(unset)") +
+                " was not found in assets/fonts next to the executable. The package looks "
+                "incomplete — unpack the release archive again";
+        return false;
+    }
     FontChain chain;
     chain.push_back({std::move(bytes), cellHeight});
     bytes = fontBytes(fallback);
