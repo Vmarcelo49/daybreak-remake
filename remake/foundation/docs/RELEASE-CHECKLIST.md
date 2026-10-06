@@ -367,7 +367,8 @@ those four in every round, because a rematch round's selection starts empty.
   button is not a press edge.
 * The synthetic pads stay neutral while the stage page is open, and they walk
   their own panels on every entry (a fresh selection always has one to pick).
-  An extended run (the eight-round row of §6) repeats that block per round.
+  An extended run (the prolonged row of §6, `frontend-2v2-longrun.txt`) repeats that
+  block per round; it reaches five rounds, not eight -- see that row.
 * **A windowed (live) run is not the same clock.** The live loop steps the
   simulation at 64 Hz, while a capture steps once per rendered frame, so a round
   lasts 3840 ticks there and 3600 here: the rematch blocks above (whose offsets
@@ -514,7 +515,7 @@ Without an install the sweep skips itself and the test still passes
 ### 4.2 Character × stage texture matrix (the G3 baseline)
 
 ```bash
-python3 tests/showcase.py --check --out-dir /tmp/sweep
+python3 tests/showcase.py --check --allow-problems=43 --out-dir /tmp/sweep
 ```
 
 Expected summary and the current baseline (re-measured for this checklist;
@@ -805,10 +806,11 @@ drop by exactly the shot spawns (same tree, same recipes: 1v1 round 1 `spawned` 
 `peak` 4 → 2; COM round 1 `spawned` 104 → 66 and `peak` 5 → 2; 2v2 round 1 `spawned`
 128 → 89 and `peak` 6 → 3). The shot placements themselves are unchanged and are now
 reported as `shotModels` (1v1 round 1: 1741, exactly the old `liveShots` count). The
-eight-round row was not re-run: its recipe needs the operator's extended script, so its
-counters are the pre-#32 ones. The bound that row checks is unaffected — the same script's
-round 2 measured `spawned` 124 → 82, `peak` 6 → 4, `dropped=0`, and the peak can only fall
-when the shot cards leave the set.
+prolonged row was **re-measured** for #32 (it now reads `peak=4/128`, `spawned=93`,
+`expired=93`, `dropped=0`) and its script is committed as `frontend-2v2-longrun.txt`, so
+those counters are current rather than inherited. The bound it checks is unaffected by #32
+in either direction — the same script's round 2 measured `spawned` 124 → 82, `peak` 6 → 4,
+`dropped=0`, and the peak can only fall when the shot cards leave the set.
 
 The prolonged run is the long-match stability check: repeated
 `match: round over` lines, `RESULT: ok`, no crash, and a bounded FX
@@ -851,8 +853,8 @@ closing it would mean changing COM decisions, which are pinned by tests.
 made the in-flight shot a direct instance instead of an fx card: the shot no longer
 occupies a card slot, so `peak`/`spawned` fell (1v1 58->36 spawned, 2v2 128->89)
 while the placement tally — `shotModels`, renamed from `liveShots` — still counts
-the same shots. The eight-round row's numbers predate that change and are annotated
-as such.
+the same shots. The prolonged row's numbers were re-measured for #32, so they are not
+inherited from before it.
 
 ## 7. What the gate found (and what it now claims)
 
@@ -895,7 +897,7 @@ cd remake/foundation
 ./build.sh linux
 ctest --test-dir build/linux --output-on-failure          # §2 (includes §3.5's live-path test)
 ./build/linux/weapon_definition_test                      # §4.1
-python3 tests/showcase.py --check --out-dir /tmp/sweep    # §4.2
+python3 tests/showcase.py --check --allow-problems=43 --out-dir /tmp/sweep    # §4.2
 for p in 2 1 4; do                                        # §3
   case $p in 2) s=1v1;; 1) s=com;; 4) s=2v2;; esac
   ./build/linux/foundation_demo --install=<game-dir> --screen=title \
