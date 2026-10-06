@@ -3493,6 +3493,17 @@ bool initScene(App& app) {
         std::printf("assets       : filesystem only (no daybreakXX.dat install found)\n");
     }
 
+    // A Controller holds a raw pointer to one SceneModel's Model (assets/xmodel.h:238), and
+    // assigning the new scene below frees the models those pointers name. resize() further
+    // down only constructs and destroys entries, so a controller bound by an earlier match
+    // survives the swap still pointing into the freed scene, and advanceAnimation
+    // (main.cpp:3855-3856) evaluates every controller with a non-null model: that is the
+    // reporter's std::bad_alloc (coredumpctl 563299 — evalLocal read a freed Model's frame
+    // list as nf = 66584576). Clear every binding before the scene it was made against dies.
+    // After this point a controller is bound only by the --anim loop below or by initMatch,
+    // and both of those name models of the scene that is current here.
+    for (xm::Controller& controller : app.controllers) controller.bind(nullptr);
+
     try {
         app.scene = loadScene(app.opts, app.error, &app.enemyBegin);
     } catch (const std::exception& e) {

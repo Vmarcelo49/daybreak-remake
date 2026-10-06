@@ -415,6 +415,22 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(lighting_test PRIVATE foundation_assets webgpu glm)
     add_test(NAME lighting_test COMMAND lighting_test)
 
+    # Issue #46: the Controller/Model ownership across a scene swap. It compiles
+    # src/main.cpp into its own TU (SDL_MAIN_HANDLED, so the app's SDL_App* entry points
+    # do not collide with the test's main) to drive the real initScene/initMatch rather
+    # than a copy of them, and it links what foundation_demo links because that is what
+    # main.cpp needs. The cost is one more compile of the app's largest TU; the
+    # alternative — testing a reimplementation of the swap — would not have caught the
+    # defect. Needs the install (skips itself, exit 77, without one), no device.
+    add_executable(controller_scene_lifetime_test tests/controller_scene_lifetime_test.cpp)
+    target_include_directories(controller_scene_lifetime_test PRIVATE src)
+    target_link_libraries(controller_scene_lifetime_test PRIVATE foundation_render
+        foundation_ui foundation_media foundation_game foundation_physics
+        foundation_gameplay)
+    add_test(NAME controller_scene_lifetime_test COMMAND controller_scene_lifetime_test
+             "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak")
+    set_tests_properties(controller_scene_lifetime_test PROPERTIES SKIP_RETURN_CODE 77)
+
     # The CJK text layer: device-free (it rasterizes into host memory), and it links
     # the bitmap font in because half its contract is "bit-for-bit identical to
     # ui::measureText/ui::layoutText when no font is loaded". It SKIPs without the
