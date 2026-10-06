@@ -19,6 +19,11 @@ public:
     SelectAction updateFrame(const ScreenInput& in, int* sound = nullptr);
     SelectPhase phase(int controller = 0) const { return phase_[controller]; }
     int cursor(int controller = 0) const { return cursor_[controller]; }
+    // The character phase's free cursor (FUN_00409340 case 2, +0x3cd8/+0x3ce8), in the
+    // roster's own units — the same space as kSelectRosterX[i]*48 and kSelectRosterY[i]*36,
+    // which is what the selection radii and the magnet measure against.
+    float cursorX(int controller = 0) const { return cursorX_[controller]; }
+    float cursorY(int controller = 0) const { return cursorY_[controller]; }
     int panel(int controller = 0) const;
     int owner(int panel) const;
     void tick();
@@ -26,6 +31,7 @@ private:
     FrontendState& state_;
     std::array<SelectPhase,4> phase_{};
     std::array<int,4> cursor_{{0,-1,-1,-1}}, cooldown_{};
+    std::array<float,4> cursorX_{}, cursorY_{};
 };
 class SelectScreen final : public Screen {
 public:

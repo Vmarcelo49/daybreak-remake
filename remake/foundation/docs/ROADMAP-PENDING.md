@@ -1419,11 +1419,15 @@ the next screen id, a factory for construction, tests against fakes.
   char-select, weapon-select, hypermode-select, controller-select,
   ready-confirm — plan lines 102-107, 1152).
 * **Evidence.** Layout and per-slot states: plan §2.3-2.8 (lines 338-507);
-  file plan: `src/ui/screens/select.cpp` (line 1092). Its one remaining
-  extraction job is the 16-cell roster grid table inside `FUN_0040b2b0`
-  (plan §7 item 1, lines 1247-1252); the second open geometry is the
-  team-select diamond's **y anchor 150 px below** the measured centres
-  (pivot vs quadrant origin, plan §2.3 lines 355-359).
+  file plan: `src/ui/screens/select.cpp` (line 1092). The **16-cell roster
+  positions** are no longer an open extraction job: they are
+  `DAT_006b71d0`/`DAT_006b7210` × 48/36, the table the port has carried as
+  `kSelectRosterX/Y` since the icons landed, and issue #41's cursor rule pins
+  them as the selection's own coordinate space. What is still unread in
+  `FUN_0040b2b0` is its per-panel **cell/anchor** set (plan §7 item 1, lines
+  1247-1252); the second open geometry is the team-select diamond's **y anchor
+  150 px below** the measured centres (pivot vs quadrant origin, plan §2.3
+  lines 355-359).
 * **Sketch.** First transcribe `FUN_0040b2b0`'s anchor/cell tables
   (mechanical read), reconcile the diamond y anchor against the print, then
   implement the screen on the landed stack. The roster grid formula is
@@ -1447,6 +1451,33 @@ the next screen id, a factory for construction, tests against fakes.
   penalty flag `DAT_006cfdf1` (issue #20). A pause-menu *Rematch* never
   constructs the select scene, so it still replays the same fighters with the
   same settings (that is what `pinFrontendStage` is for).
+* **Character-select cursor (issue #41, 2026-10-06) — recovered, and it replaces
+  the discrete grid walk.** `FUN_00409340` case 2 (`:232-300`) slides a FREE
+  cursor at a fixed **rate per call on the sign of the stick** (magnitude is
+  unused, so `ScreenInput`'s booleans are the whole input): 4.0/tick
+  horizontally (`0x40800000`) and 3.0/tick vertically (`0x40400000`), clamped to
+  `[-200,200]` (`0xc3480000`/`0x43480000`) and `[-60,300]`
+  (`0xc2700000`/`0x43960000`). While the stick is centred, a cursor within 20
+  units (400 squared) of the *currently selected* character snaps exactly onto
+  it (`:257-270`); the selection itself is re-made every call from two squared
+  radii — the first icon within 50 units (2500) is the fallback and the first
+  within 30 (900) overrides it, and neither means `character = -1`, the cursor
+  resting in empty space with nothing selected and no SE (`:294`), while a change
+  of character plays `FUN_0064aed0(2)` (`:284-288`, `:296-299`). Two **port
+  rules** sit on top: an empty panel's team confirm seeds the phase on character
+  0 and the cursor onto that position (`:114-127`, so issue #45's
+  empty-on-entry selection needs no special case), and the character confirm
+  **refuses** while `character == -1` — the original instead rolls a random
+  character for the empty panel (`:305-317`), which is this port's stage-page COM
+  autofill, so refusing leaves the panel to it. The marker now rides the
+  cursor's own position instead of the selected icon's (PORT RULE, the anchor
+  only). Device-free test: `tests/select_cursor_test.cpp`; Shion and Akasaka —
+  the off-grid icons the report named — are reachable in 12 + 36 ticks of held
+  direction, and the four scripted gate runs were re-measured with the same
+  characters selected (`RELEASE-CHECKLIST.md` §3). Property worth knowing: with
+  a 50-unit select radius and a 60-unit minimum icon spacing, **no** position
+  between two icons can be unselected — the empty-space state only exists
+  outside the diamond.
 
 ### E2. Select page 1 — IMPLEMENTED (original match-rule fidelity remains open)
 
