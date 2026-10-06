@@ -55,6 +55,7 @@
 #include "game/view_layout.h"
 #include "gameplay/arena_camera.h"
 #include "gameplay/battle_pause.h"
+#include "gameplay/debug_keys.h"
 #include "gameplay/match.h"
 #include "gameplay/fixed_step.h"
 #include "gameplay/bot_input.h"
@@ -78,6 +79,53 @@ namespace {
 // ---------------------------------------------------------------------------------------
 // Command line
 // ---------------------------------------------------------------------------------------
+// One scripted tap: the key reads as held on `tick` and on no other. The tick is
+// App::matchFrame, the 1-based simulation clock the banked captures and the input scripts
+// already use, so the injection a capture made is written on its command line. The key IS
+// the recovered DIK scancode (gameplay/debug_keys.h), not a second enum, so the injection
+// and the recovered map cannot drift apart.
+struct DebugKeyTap {
+    uint64_t tick = 0;
+    int      dik  = gameplay::kDikF2;
+};
+
+// The tap list's spelling: `--debug-keys=f2@300,f1@900` (keys case-insensitive, ESC as well as
+// ESCAPE). One parser so the usage text, the error and the test cannot disagree.
+bool parseDebugKeys(const std::string& spec, std::vector<DebugKeyTap>& out, std::string& error) {
+    size_t pos = 0;
+    while (pos <= spec.size()) {
+        const size_t comma = spec.find(',', pos);
+        std::string item = spec.substr(pos, comma == std::string::npos ? std::string::npos
+                                                                       : comma - pos);
+        pos = comma == std::string::npos ? spec.size() + 1 : comma + 1;
+        if (item.empty()) continue;
+        const size_t at = item.find('@');
+        if (at == std::string::npos) {
+            error = "--debug-keys wants <key>@<tick>, got '" + item + "'";
+            return false;
+        }
+        std::string name = item.substr(0, at);
+        for (char& c : name) c = (char)std::tolower((unsigned char)c);
+        int dik;
+        if (name == "esc" || name == "escape")    dik = gameplay::kDikEscape;
+        else if (name == "f1")                    dik = gameplay::kDikF1;
+        else if (name == "f2")                    dik = gameplay::kDikF2;
+        else if (name == "f3")                    dik = gameplay::kDikF3;
+        else if (name == "f4")                    dik = gameplay::kDikF4;
+        else {
+            error = "--debug-keys: unknown key '" + name + "' (f1, f2, f3, f4, esc)";
+            return false;
+        }
+        const long long tick = std::atoll(item.c_str() + at + 1);
+        if (tick < 1) {
+            error = "--debug-keys: the tick is 1-based, got '" + item.substr(at + 1) + "'";
+            return false;
+        }
+        out.push_back(DebugKeyTap{(uint64_t)tick, dik});
+    }
+    return true;
+}
+
 struct Options {
     // Asset selection. Exactly one of stage/character/weapon/model, or none for the
     // triangle demo; an effect file may ride along with any of them.
@@ -174,6 +222,17 @@ struct Options {
     // cycle; issue #51 — the gesture never re-points a camera). Off by default so an
     // evidence run's fighters hold their targets and their framing stays put.
     bool        lockTaps = false;
+    // Issue #48's debug keys. `noDebugKeys` is the port's own switch, not the recovered gate
+    // (gameplay/debug_keys.h): with it, the keys are inert whatever arrives. Default OFF, i.e.
+    // the keys are live, because that is the original's state in a versus battle — and a
+    // verification run cannot press a function key anyway (issue #29's device gate leaves
+    // key_down() false for every physical key), so the default changes no capture's bytes.
+    bool        noDebugKeys = false;
+    // --debug-keys=<key>@<tick>[,...]: scripted taps for an evidence run, on the SIMULATION
+    // tick clock. A key has to arrive on a tick boundary to be reproducible at all, and a
+    // physical F-key cannot be delivered to a headless run (no window, no events), so this is
+    // the injection path the F1-F4/Escape evidence uses.
+    std::vector<DebugKeyTap> debugKeyTaps;
 };
 
 bool hasAsset(const Options& o) {
@@ -308,6 +367,19 @@ void usage() {
         "                     combat-target cycle; a camera is never re-pointed). Off by\n"
         "                     default: four views each re-picking targets is churn an\n"
         "                     evidence run does not need\n"
+        "  --no-debug-keys    make the original's in-battle debug keys inert (F1 full HP,\n"
+        "                     F2 COMs off, F3 COMs on, F4 fill gauges, Escape leave). The\n"
+        "                     keys are LIVE by default, which is the original's state in a\n"
+        "                     versus battle: it has no story mode, so its\n"
+        "                     DAT_006cfce9 gate is always open in a battle here (a port\n"
+        "                     rule; docs/DEBUG-KEYS.md). This switch is for a run that\n"
+        "                     reads physical devices (--devices) and must not have a stray\n"
+        "                     F-key move its capture\n"
+        "  --debug-keys=SPEC  scripted taps for an evidence run: KEY@TICK[,...] with KEY one\n"
+        "                     of f1 f2 f3 f4 esc, TICK the 1-based simulation tick (the\n"
+        "                     clock the input scripts and the capture recipes use). KEY is\n"
+        "                     held on that tick alone, which every one of the five effects\n"
+        "                     makes enough: e.g. --debug-keys=f2@300,f3@600\n"
         "With no asset argument the spinning-triangle demo runs.\n");
 }
 
@@ -553,6 +625,11 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--sfx=")).empty()) o.sfx = v;
         else if (!(v = val("--local-players=")).empty()) o.localPlayers = std::atoi(v.c_str());
         else if (a == "--lock-taps") o.lockTaps = true;
+        // Issue #48: the original's in-battle debug keys.
+        else if (a == "--no-debug-keys") o.noDebugKeys = true;
+        else if (!(v = val("--debug-keys=")).empty()) {
+            if (!parseDebugKeys(v, o.debugKeyTaps, error)) return false;
+        }
         else if (a.rfind("--", 0) == 0) {
             error = "unknown option " + a;
             return false;
@@ -924,6 +1001,12 @@ struct App {
     fnd::audio::DecodedOgg        menuBgm;
     fnd::audio::LoopPlayer        menuLoop;
     fnd::input::PlayerState       botInput[4];
+    // The input a COM takes while F2 has its brain switched off (issue #48): the original
+    // memsets the fighter's whole input block in that case (FUN_00634f60:60-73), so the
+    // fighter's own state machine still runs and sees nothing held — it walks nowhere and
+    // presses nothing, and a locomotion state falls back to idle instead of freezing
+    // mid-stride. Never written, so it keeps zero edges and cannot fire a release.
+    fnd::input::PlayerState       neutralInput;
     // One COM decision state per fighter slot (issue #14) plus the recovered tactics
     // readout the whole team shares (gameplay/bot_input.h). The brains are reseeded from
     // the match seed when a match resets, so a run replays from its seed alone.
@@ -3179,12 +3262,117 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
     app.target = primary.camera.target();
 }
 
-static void tickMatch(App& app, double dt) {
+// ---------------------------------------------------------------------------------------
+// Issue #48: the original's in-battle debug keys (gameplay/debug_keys.h has the recovered
+// map, the gate and the two port rules). Three small pieces: which slots a key may call COM,
+// one tick's held set, and the gated evidence trace.
+// ---------------------------------------------------------------------------------------
+// The ownership test F3 is gated on. It is the SAME test the input build below uses to decide
+// between a controller and the bot brain — `controller` 0..3 is a human panel, anything else
+// is COM (4 is the selection screen's COM, ui/frontend_state.h) — which is the port's form of
+// the recovered `3 < DAT_006cfaf8…` (FUN_0040d130:70 writes 4 for an unset slot, :108 tests
+// `< 4`). A standalone --match has no COM slots at all: its two fighters are the device and
+// the script, so no key may re-enable a brain there.
+static void debugKeyComOwned(const App& app, bool out[4]) {
+    for (int i = 0; i < 4; ++i) out[i] = false;
+    if (!app.frontendMatch) return;
+    for (int i = 0; i < app.match.config().fighterCount; ++i) {
+        const int panel = app.battleLaunch.fighters[i].panel;
+        if (panel < 0 || panel >= 4) continue;
+        const int controller = app.frontend.slots[panel].controller;
+        out[i] = !(controller >= 0 && controller < gameplay::kComControllerType);
+    }
+}
+
+// One simulation tick's held key set: the physical keyboard (SDL scancodes for the same five
+// physical keys, pinned in input/input_sdl3.h) plus every tap --debug-keys scheduled for this
+// tick. The device read is a pure state read — with the issue #29 gate on, every physical key
+// reads released, so a verification run sees only its own taps.
+//
+// ESCAPE IS ONE KEY WITH TWO PORT BINDINGS: the original's recovered leave (scene+0x4a40 = 1)
+// and #15's "Escape opens the pause menu instead of quitting the process", which is bound in
+// SDL_AppEvent for exactly the sessions where the pause is available (docs/PAUSE.md). That
+// binding is issue #15's and is not this issue's to change, so where it applies the physical
+// key stays the pause key and the recovered leave is reached through the menu's return row;
+// everywhere else — a capture, a --frames run, the standalone harness — Escape is the
+// original's leave again. Scripted taps are never redirected: an explicit
+// --debug-keys=esc@T is the injection the evidence uses, and it leaves wherever it runs.
+static gameplay::DebugKeysHeld sampleDebugKeys(const App& app, uint64_t tick) {
+    gameplay::DebugKeysHeld held;
+    held.escape = !battlePauseAvailable(app) &&
+                  app.matchInput.key_down(fnd::input::sdl3::kScEscape);
+    held.f1     = app.matchInput.key_down(fnd::input::sdl3::kScF1);
+    held.f2     = app.matchInput.key_down(fnd::input::sdl3::kScF2);
+    held.f3     = app.matchInput.key_down(fnd::input::sdl3::kScF3);
+    held.f4     = app.matchInput.key_down(fnd::input::sdl3::kScF4);
+    for (const DebugKeyTap& tap : app.opts.debugKeyTaps) {
+        if (tap.tick != tick) continue;
+        switch (tap.dik) {
+            case gameplay::kDikEscape: held.escape = true; break;
+            case gameplay::kDikF1:     held.f1 = true;     break;
+            case gameplay::kDikF2:     held.f2 = true;     break;
+            case gameplay::kDikF3:     held.f3 = true;     break;
+            case gameplay::kDikF4:     held.f4 = true;     break;
+        }
+    }
+    return held;
+}
+
+// The evidence trace for this issue, off unless DAYBREAK_DEBUG_KEYS is set: one line per
+// fighter per tick, carrying exactly what the five keys are supposed to move. It exists
+// because the two things the criteria ask to MEASURE — a frozen COM's position over a window,
+// and the meters F1/F4 fill — are not in any existing report (the --local-players line prints
+// the HUD's own view values on request, every 128 ticks and only for the followed fighter,
+// and the COM summary prints cumulative brain counters). It runs after the tick, so the frame
+// events it prints are that tick's own. Behind an env var because it is one line per fighter
+// per tick, which no other run should pay for; a run without the variable cannot differ from
+// one before this issue.
+static void traceDebugKeys(const App& app, const gameplay::MatchFrame& frame) {
+    if (!std::getenv("DAYBREAK_DEBUG_KEYS")) return;
+    for (int i = 0; i < app.match.config().fighterCount; ++i) {
+        const gameplay::Fighter& f = app.match.fighter(i);
+        int controller = -1;
+        if (app.frontendMatch) {
+            const int panel = app.battleLaunch.fighters[i].panel;
+            if (panel >= 0 && panel < 4) controller = app.frontend.slots[panel].controller;
+        }
+        // This fighter's own shots still in flight: the per-fighter half of "no shot events",
+        // which the global matchShots counter cannot show.
+        int live = 0;
+        for (const gameplay::Projectile& p : app.match.shots().shots())
+            if (p.alive && p.owner == &f) ++live;
+        const glm::vec3& p = f.position();
+        std::printf("[debugkey] tick=%llu f=%d ctl=%d ai=%d pos=(%.2f,%.2f,%.2f) "
+                    "hp=%d/%d main=%.3f charge=%.3f hyper=%.3f state=%d swung=%d fired=%d "
+                    "live=%d matchShots=%llu\n",
+                    (unsigned long long)app.matchFrame, i, controller,
+                    app.match.ai_enabled(i) ? 1 : 0, p.x, p.y, p.z, f.hp(), f.max_hp(),
+                    (double)f.main_frac(), (double)f.charge_frac(), (double)f.hyper_gauge(),
+                    (int)f.state(), frame.swingStarted[i] ? 1 : 0, frame.shotFired[i] ? 1 : 0,
+                    live, (unsigned long long)app.matchShots);
+    }
+}
+
+// Returns true when this tick's Escape asked the battle to leave (the original's
+// scene+0x4a40 = 1); the caller resolves that through the existing leave path, after the tick
+// has finished, so a leaving frame still simulates and presents like any other.
+static bool tickMatch(App& app, double dt) {
     // The 15-tick switch pulse is not counted here: Match's lock table owns and decays
     // it (gameplay/target_lock.h, FUN_004201a0), so the HUD reads one source of truth.
     for (int i = 0; i < app.match.config().fighterCount; ++i)
         app.previousFighter[i] = app.match.fighter(i).pose();
     ++app.matchFrame;   // 1-based simulation tick, matching banked captures
+
+    // The debug keys, on the SIMULATION tick (D9): the key is sampled here, on the tick whose
+    // number is app.matchFrame, and its effect lands on that same tick, which is what makes
+    // the toggle reproducible — a capture replays the tick and gets the same battle. A key
+    // that changes simulation state belongs here rather than in the camera/HUD pass
+    // (updateMatchViews), which reads state and must not create it.
+    bool comOwned[4];
+    debugKeyComOwned(app, comOwned);
+    const bool debugLeave = gameplay::applyDebugKeys(app.match,
+                                                     sampleDebugKeys(app, app.matchFrame),
+                                                     comOwned, !app.opts.noDebugKeys);
 
     // P2: a script drives it when given; otherwise it takes no input, which is
     // exactly what the DX9 scene passes (scenes.cpp:680).
@@ -3247,7 +3435,7 @@ static void tickMatch(App& app, double dt) {
             const int panel = app.battleLaunch.fighters[i].panel;
             const int controller = app.frontend.slots[panel].controller;
             if (controller >= 0 && controller < 4) inputs[i] = &app.tickInput[controller];
-            else {
+            else if (app.match.ai_enabled(i)) {
                 // COM. The decision state owns the target pick, the movement, the presses
                 // and the retarget request; gameplay/bot_input.h turns that into this
                 // fighter's input for the tick (issue #14).
@@ -3259,6 +3447,17 @@ static void tickMatch(App& app, double dt) {
                                          app.matchFrame);
                 inputs[i] = &app.botInput[i];
             }
+            // A COM whose brain F2 switched off (issue #48's [fighter+0x860] counterpart)
+            // gets `neutralInput`: the original zeroes that slot's whole input block when the
+            // flag is clear (FUN_00634f60:60-73, keeping two edge fields) and gates the AI's
+            // own decision on the same flag (FUN_00421730:10), so the fighter sees nothing
+            // held — it stands still and attacks nothing, while every human slot's controller
+            // keeps driving its fighter. The brain is not ticked either: a decision that
+            // cannot be applied must not move the lock table or the brain's own timers.
+            // Note this is NOT the nullptr a standalone --match's dummy P2 passes: nullptr
+            // skips the state machine entirely and would leave the fighter in its last
+            // locomotion state, which is not what a zeroed input block does.
+            else inputs[i] = &app.neutralInput;
         }
     }
     const gameplay::MatchFrame f = app.match.step(inputs, dt);
@@ -3381,6 +3580,9 @@ static void tickMatch(App& app, double dt) {
         printComSummary(app);
         printFxSummary(app);
     }
+
+    traceDebugKeys(app, f);
+    return debugLeave;
 }
 
 // The trace the DX9 build prints under DAYBREAK_CAMINFO, reproduced field for field
@@ -5160,13 +5362,26 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 continue;
             }
             if (!capturing) advanceAnimation(*app, gameplay::FixedStep::seconds);
-            tickMatch(*app, capturing ? app->opts.dt : gameplay::FixedStep::seconds);
+            const bool debugLeave =
+                tickMatch(*app, capturing ? app->opts.dt : gameplay::FixedStep::seconds);
             traceMatch(*app);
             // --local-players evidence: the per-view cameras/HUD values every 128 ticks,
             // bounded by the run's own length so a long run cannot flood the log.
             if (app->opts.localPlayers > 0 && app->matchFrame % 128 == 0)
                 reportMatchViews(*app, capturing ? (uint32_t)app->opts.sizeW : app->sc.width,
                                  capturing ? (uint32_t)app->opts.sizeH : app->sc.height);
+            // Issue #48: Escape's leave request, taken after the tick has simulated and
+            // presented like any other. It resolves through the same path #15's "return to
+            // selection" row uses, and before the round-over branch below: when the round ends
+            // and Escape arrive on the same tick the leave wins, because an abort has no result
+            // screen (the original's flag is a scene-level leave and its own ordering with the
+            // round machine is not recovered).
+            if (debugLeave) {
+                leaveBattleTo(*app, ui::ScreenId::Select);
+                std::printf("[debugkey] escape: left the battle at frame %llu\n",
+                            (unsigned long long)app->matchFrame);
+                continue;
+            }
             if (app->frontendMatch && app->match.economy().roundOver()) {
                 // The economy reports the WINNING side (issue #11); the DX9 port
                 // reported the burst side here and this line inverted it.

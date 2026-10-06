@@ -260,6 +260,13 @@ public:
 
     // --- state the flow and the HUD read back ---
     float  balloon(int side) const { return m_balloon[side]; }
+    // F1 (issue #48): the original zeroes the two balloon counters at scene+0x12b0/+0x12bc
+    // (FUN_00634f60:173-174). Those ARE these percentages — the balloon entries at
+    // scene+0x12ac/+0x12b8 are 12 bytes of {side, balloon %, capacity}, FUN_00639650 credits
+    // the +0x04 and FUN_00635d40 reads it to name the round's winner — so the key zeroes both
+    // sides and the HUD's corners read 0 immediately. The credit popup (hud+0x78e0/+0x78e8)
+    // and the eased `balloonDisplay` value are NOT touched, matching the two raw stores.
+    void reset_balloons() { m_balloon[0] = 0.0f; m_balloon[1] = 0.0f; }
     // The animated value the original's own % readout formats (FUN_006430f0 eases
     // hud+0x78f0 toward the real value by 0.5 per frame; the KO'd side therefore
     // visibly inflates over ~42 frames).

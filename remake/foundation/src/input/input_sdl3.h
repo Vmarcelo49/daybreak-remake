@@ -33,6 +33,17 @@ inline constexpr int kScPause = 26;    // SDL_SCANCODE_W
 inline constexpr int kScCamLeft = 20;  // Q doubles as camera-left nudge
 inline constexpr int kScCamRight = 8;  // SDL_SCANCODE_E, camera-right nudge
 
+// The original's in-battle debug keys (issue #48). SDL scancodes are USB HID codes, NOT the
+// DIK codes FUN_00634f60 reads (gameplay/debug_keys.h names those), so the mapping lives here
+// where pin_tables.cpp can assert it against SDL: Escape DIK 0x01 -> HID 41, F1 DIK 0x3b ->
+// HID 58, F2 0x3c -> 59, F3 0x3d -> 60, F4 0x3e -> 61. Deliberately not actions: the debug
+// keys are not part of the 13-action vocabulary and must not be rebindable.
+inline constexpr int kScEscape = 41;  // SDL_SCANCODE_ESCAPE
+inline constexpr int kScF1 = 58;      // SDL_SCANCODE_F1
+inline constexpr int kScF2 = 59;      // SDL_SCANCODE_F2
+inline constexpr int kScF3 = 60;      // SDL_SCANCODE_F3
+inline constexpr int kScF4 = 61;      // SDL_SCANCODE_F4
+
 // Index by fnd::input::Action (0..11); -1 = unbound.
 // Order: Up Down Left Right | AttackA Guard Shoot | Jump Special Tactics |
 //        LockSwitch Pause.

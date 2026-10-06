@@ -174,6 +174,7 @@ add_library(foundation_gameplay STATIC
     src/gameplay/weapon_definition.cpp
     src/gameplay/bot_brain.cpp
     src/gameplay/bot_input.cpp
+    src/gameplay/debug_keys.cpp
     src/gameplay/hud_fill.cpp
     src/gameplay/result_title.cpp)
 target_include_directories(foundation_gameplay PUBLIC src)
@@ -400,6 +401,19 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         foundation_media foundation_game foundation_physics foundation_gameplay
         foundation_movie)
     add_test(NAME lock_switch_camera_test COMMAND lock_switch_camera_test)
+
+    # Issue #48: the original's in-battle debug keys (F1 HP/balloon restore, F2 COM off, F3
+    # COM on, F4 gauges, Escape leave) behind the recovered gate. The gameplay half is
+    # device-free over a hand-built Match; the acceptance half compiles src/main.cpp into its
+    # own TU (SDL_MAIN_HANDLED, like lock_switch_camera_test) and drives the product's own
+    # tickMatch(), so the fixed-step key sampling and the COM input gate are the shipped ones.
+    # --debug-keys' tick-keyed taps are the injection (a headless run has no key events).
+    add_executable(debug_keys_test tests/debug_keys_test.cpp)
+    target_include_directories(debug_keys_test PRIVATE src)
+    target_link_libraries(debug_keys_test PRIVATE foundation_render foundation_ui
+        foundation_media foundation_game foundation_physics foundation_gameplay
+        foundation_movie)
+    add_test(NAME debug_keys_test COMMAND debug_keys_test)
 
     # Issue #11: KO -> Overkill -> respawn, team credits, capacity extremes,
     # simultaneous deaths/bursts and the timed-round winner, driven through Match so
