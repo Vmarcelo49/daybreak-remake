@@ -136,9 +136,16 @@ fn vs_main(
     // are 0.011/4 and 0.011/3, i.e. the same ~1.1 px at the original's 800x600 canvas.
     // The 1e-6*w z push keeps the hull behind the model it surrounds, so the model's own
     // depth wins everywhere except the rim that sticks out past the silhouette.
+    // The issue #25 outline-width experiment (I) scales both xy offsets by
+    // draw.nprBand.w, which is 1.0 on every draw that did not ask for it, and leaves the
+    // z push exactly as recovered so a scaled rim is still behind the model. The scale is
+    // folded into the constant rather than applied after it: `* 0.00275 * 1.0` is not the
+    // same instruction as `* 0.00275` on this driver, and the difference showed up in the
+    // OFF frame's bytes.
+    let scale = draw.nprBand.w;
     let wn = normalize((world * vec4<f32>(nrm, 0.0)).xyz);
-    out.clip = vec4<f32>(clip.x + wn.x * clip.w * 0.00275,
-                         clip.y + wn.y * clip.w * 0.00366666657,
+    out.clip = vec4<f32>(clip.x + wn.x * clip.w * (0.00275 * scale),
+                         clip.y + wn.y * clip.w * (0.00366666657 * scale),
                          clip.z + clip.w * 0.000001,
                          clip.w);
   } else {
@@ -180,7 +187,8 @@ fn vs_npr(
   // The secondary lighting normal (issue #25, E). (0,0,0,0) is "this mesh has no such
   // normal", which is every mesh whose role the experiments do not cover; its w is the
   // generated shadow mask (F).
-  let haveNpr = dot(nprNrm.xyz, nprNrm.xyz) > 0.25;
+  let haveNpr = (draw.flags & FLAG_NPR_NORMALS) != 0u &&
+                dot(nprNrm.xyz, nprNrm.xyz) > 0.25;
   let nprNrmUse = select(nrm, nprNrm.xyz, haveNpr);
 
   var out : VSOut;
