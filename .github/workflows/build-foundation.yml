@@ -120,7 +120,7 @@ jobs:
       - name: Configure and build
         run: |
           cmake -S remake/foundation -B build -GNinja \
-            -DCMAKE_TOOLCHAIN_FILE=remake/foundation/cmake/toolchains/mingw-w64-x86_64.cmake \
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/remake/foundation/cmake/toolchains/mingw-w64-x86_64.cmake" \
             -DSDL3_DIR="$PWD/remake/foundation/third_party/SDL3-mingw/x86_64-w64-mingw32/lib/cmake/SDL3"
           cmake --build build
       - name: Check the executable exists
