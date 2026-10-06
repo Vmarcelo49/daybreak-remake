@@ -534,3 +534,39 @@ Two audited findings worth keeping: `ArenaCamera::cycle_target` now has **no pro
 as the ported reference API that `arena_camera_test`/`target_lock_test` pin, documented as such), and
 **none of the four release-gate scripts contains a LockSwitch gesture**, so the gate never exercised
 the tap path — which is why the camera defect survived it.
+
+## Round 12 — batch state and exactly what is in flight
+
+**`main` @ `f70ec38` (plus this commit), 52/52 ctest, CI green.** Fifteen issues closed or merged:
+#18, #26 (re-scoped), #28, #29, #37, #40, #41, #42, #43, #45, #46, #49, #51, #55.
+
+**Two workers were still running when this was written, both uncommitted.** Whoever picks this up
+should pulse them (a short status request has worked twice — one worker answered with a correction to
+its own issue that changed the fix), then verify, rebase onto `main`, merge and push.
+
+| worktree | branch | base | in flight |
+|---|---|---|---|
+| `../dbd-worktrees/issue-47` | `fix/issue-47-countdown-over-scene` | `86a8d2f` | 8 modified files, no commit |
+| `../dbd-worktrees/issue-44` | `feat/issue-44-chibi-reveal-flash` | `86a8d2f` | 3 modified files, no commit |
+
+Both bases predate **four** merges (`#43`, `#40`, `#51`, `#55`), and both are expected to overlap
+`src/main.cpp` and `src/ui/screen.cpp` because of #40. **That rebase is the coordinator's job, not the
+workers'** — both were told not to rebase. Two specifics that will bite:
+
+- #51 **added a `followed=` token to the `[split] view` evidence line**. Any captured baseline taken
+  before it will diff on that token, and it is not a regression.
+- #55 changed the owner's second reticle to the triangles cell in `hud.cpp`. A capture that includes
+  an unlocked owner's reticle will differ from any baseline taken before it, by design.
+
+**#47's worker's last status, which is a finding in its own right**: the issue says "the match is only
+loaded after the countdown", but the match is **already built** at the VS→Battle hand-over; the real
+cause is that `screensMode` draws only the UI screen while `matchMode` stays false, so the arena is
+never rendered. It predicted **no** tick-ladder movement by construction (front-end script ticks key
+on `logicTicks` with `frontendMatch` true, so `matchFrame` cannot shift them) and was asked to report
+the measured before/after diff of all four gate runs rather than the argument.
+
+**#44's remaining scope is precisely the two things #43 left**: the flashing mode while a slot's ramp
+value is `< 1.0` (`FUN_0040b2b0:99-104` sets `local_2c = 2` while revealing, 0 after) and the white
+screen flash built from `DAT_006cfba4` (`FUN_0040d130:33,109-117`, set by `FUN_00417c20:43-47`,
+written around `FUN_0041bae0:52-60`). It was told to pin what mode 2 does (cell selection vs tint vs
+both) before implementing it, and that a fallback is allowed only if labelled a port rule.
