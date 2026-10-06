@@ -560,8 +560,194 @@ demo's own `--frames` summary (wall-clock deltas), not from a stopwatch.
   here measures or watches the camera settle in a played battle. What would
   settle it: the §3.5 manual step (30 s of `--screen=battle`, camera settles and
   stays settled through a hit) on a real session.
-* **Windows, the web and macOS** — out of this issue's scope and not run for
-  this checklist (their own docs carry their evidence).
+* **macOS** — nothing has been executed on Apple hardware. What would settle
+  it: the §5.2 Windows recipe on a Mac (Dawn ships macos x64/aarch64 prebuilts).
+* **Windows and the web** — run for the first time with game data in issue #35;
+  §5.2 is that record and it is not a clean bill. Windows reached the title and a
+  battle and then faulted in a rematch (issue #57); the web reached both only on
+  a locally preloaded rig, and one web path (`?pack=`) still cannot (issue #58).
+  Read §5.2 before quoting either target as verified.
+
+## 5.2 Windows and the web, actually run (issue #35)
+
+Every issue in this batch reported "Windows/web build green", and neither artifact
+had ever been started with game data: a link-time success says nothing about
+startup, asset lookup, fonts, the adapter request or the emscripten file-loading
+path. This section is that run. It is a record of what the two targets *do*, and
+"verified" below means exactly one rung of this ladder — never a higher one:
+
+| rung | means |
+|---|---|
+| **compiled** | the cross-build linked |
+| **launched** | the artifact started, created a surface and printed the adapter line |
+| **title** | the front end loaded its own art/fonts and drew the title screen |
+| **battle** | a live match ran: simulation ticks, HUD, camera, draws |
+| **played** | a human drove a match with real devices, title to results |
+
+Nothing here is rung 5, on any target. (Linux's §3 captures are rung 4 and its
+§3.5 manual step is the rung-5 recipe.)
+
+### Windows — rungs 3 and 4, then a fault
+
+```bash
+cd remake/foundation
+./build.sh deps && ./build.sh windows
+# a) interactive boot (movie -> title), no script: the #40 movie decodes on Windows
+wine build/windows/foundation_demo.exe --install=Z:/<abs>/Higurashi-Daybreak --no-devices
+# b) front end, three rounds, two humans; --no-devices so only the script drives it
+wine build/windows/foundation_demo.exe --install=Z:/<abs>/Higurashi-Daybreak \
+  --screen=title --local-players=2 --no-devices \
+  --script=Z:/<abs>/remake/foundation/tests/scripts/frontend-1v1-rematch.txt
+```
+
+`wine --version` on this machine: **wine-11.19**. Run inside an isolated headless
+KWin session (`computer-use`'s default), so no window ever reached the real
+desktop. Wine picks its own Wayland driver; the log's own lines:
+
+```
+video driver : windows
+adapter      : AMD Radeon RX 9070 XT (RADV GFX1201) [Vulkan]
+surface      : 960x540, 7 format(s), 3 present mode(s), fifo=yes
+[install] game folder: Z:/.../Higurashi-Daybreak (from --install=)
+[menu] scene: opening (tick 0)
+movie        : data/movie/op.mpg (MPEG-1 system multiplex, 640x480, 29.97 fps, 22.79 s, MP2 44100 Hz stereo)
+movie        : ended after 684 frames decoded/684 presented (22.789 s), audio 22.857 s
+[menu] scene: title (tick 1485)
+[menu] scene: select (tick 34)   # run (b): the script's walk
+[menu] scene: vs (tick 446)
+[menu] battle: 2 fighters on data/stage04 (time 60s, health 50%, gauge 100%, balloon 40%/40%)
+[daybreak] match: round over, side 1 wins (time up) at frame 3840
+[menu] scene: result (tick 4634)
+[menu] scene: select (tick 5020)
+```
+
+What worked: the install's `.dat` bundles load (`assets: 6/6`), the title screen
+draws its Japanese text through the bundled Gyrotrope/CJK fonts, the selection,
+VS, countdown, live split-screen battle and results screens all render, a round
+completes on the time-up rule, and the movie decodes — issue #40's Windows half
+had never been executed either.
+
+What did **not** work, in the same run:
+
+1. **Round 2 faulted.** `[moves] fighter 1 (Kasai 0)` is followed by
+   `wine: Unhandled page fault on read access to 00007FFFF8483050 at address
+   00000001400B3810` — inside `gameplay::CharacterMoves::find(int) const`
+   (`x86_64-w64-mingw32-nm`/`addr2line` on the exe). It reproduces in the
+   headless capture run (identical recipe, `round over` at tick 4382 then the
+   fault at the round-2 rebuild) and in the windowed run, with a *different*
+   roster each time; the same recipe, the same roster and the same rematch on
+   Linux completes `RESULT: ok`. Filed as issue #57.
+2. **The texture fallback killed the process before the first battle** —
+   `std::filesystem::u8path` throws on a name that is not valid UTF-8, and raw
+   Shift-JIS texture names reach it whenever the bundle lookup misses. Fixed in
+   this change (`src/assets/cnv.h`); before the fix the run ended at
+   `[moves] fighter 1 (Keiichi 1)` with `terminate called after throwing an
+   instance of 'std::filesystem::filesystem_error'`.
+3. BGM/voice/`sysse` load from the install and play through SDL3's dummy device;
+   nothing listened to real hardware (same limit as §5.1).
+
+### Web — rung 3 (title) and rung 4 (battle), on a local rig
+
+Serving and browser: `python3 -m http.server` on the build directory, Chrome for
+Testing 152 through `agent-browser --webgpu` (headless). Adapter, every run:
+
+```
+adapter      : google swiftshader [WebGPU(browser)]
+surface      : 960x540, 3 format(s), 1 present mode(s), fifo=yes
+present mode : Fifo(vsync)
+```
+
+**Software WebGPU, labelled as such**: this box has a RADV device, but headless
+Chromium's WebGPU is SwiftShader here, so nothing below is hardware-adapter
+evidence. Compositor screenshots of a WebGPU canvas are still black; the pixels
+were read with `canvas.toDataURL('image/png')` (the §3.3 method) and are real
+frames.
+
+Three ways to get game data into the page were tried; only the third reached a
+battle, and the first is a defect:
+
+1. **`?pack=` runtime pack (the production delivery path) — no title, no battle.**
+   The fetch and mirror half works: `[pack] 766 files, 84.5 MB -> /packs/ from
+   http://127.0.0.1:8177/packs/manifest.txt`. But the front end and the fighter
+   weapon join address assets as install-relative `data/...` paths, which the
+   `/packs/` mount never satisfies, so the front-end gate reports
+   `RESULT: no Higurashi Daybreak data found: ... has no data/title/back00.cnv`
+   and the standalone match reports
+   `RESULT: load failed: P1 /packs/data/rena:0 has no weapon: slot-0 item 1
+   unreadable — roster fighters must gear up`. Cross-origin pack hosting also
+   fails closed (`RESULT: fetch http://127.0.0.1:8178/...: HTTP 0`) unless the
+   pack is same-origin — correct per `WEB-ASSETS-RUNTIME.md` §2, worth knowing
+   when reproducing. Filed as issue #58.
+2. **`--preload-file <subset>@/assets` (the recipe in `BUILD-web.md`) — now
+   aborts.** With the tree's current guard, a roster fighter whose slot-0 item
+   cannot be read throws; that recipe's subset has no `item/`, so the launch
+   fails. The guard is right (rule 7); the recipe needs updating.
+3. **`--preload-file <subset>@/data` — title and battle.** Mounting the subset
+   where the port's own relative paths already look (`/data`) is what makes a
+   browser run possible at all:
+
+```bash
+# once: a local subset (gitignored, never committed), the dirs a match touches
+mkdir -p /tmp/dbd-web/rig && cd Higurashi-Daybreak/data
+cp -a title select teamselect vs win talk trail scenario chat sysse keyconfig \
+      camera config object directX item effect aura bullet/001 bullet/002 \
+      stage01 rena mion /tmp/dbd-web/rig/
+cp remake/foundation/tests/scripts/frontend-1v1-rematch.txt /tmp/dbd-web/rig/
+cd remake/foundation && source ~/emsdk/emsdk_env.sh
+emcmake cmake -S . -B build/web-data -GNinja \
+  "-DCMAKE_EXE_LINKER_FLAGS=--preload-file /tmp/dbd-web/rig@/data"
+cmake --build build/web-data
+python3 -m http.server 8179 -d build/web-data
+# interactive boot: title screen (and the movie stub, below)
+#   http://127.0.0.1:8179/foundation_demo.html
+# a live match, no front end:
+#   ...?args=--stage=/data/stage01|--character=/data/rena:0|--enemy=/data/mion:0|--match|--frames=4000
+```
+
+The match ran: `[scene] /data/stage01: 13 model(s), ..., textures 168 resolved /
+0 missed`, both fighters geared as combos (`[weapons] P1 Rena 0: item 001`,
+`[weapons] P2 Mion 0: item 002`), `[moves] fighter 0 (Rena 0): /data/rena/00.dat
+(122 moves)`, `[moves] fighter 1 (Mion 0): /data/mion/00.dat (134 moves)`, 195
+draws (168 textured, 4 decals, 27 outlines) and 143 GPU textures, and the canvas
+readback shows Rena with her weapon facing Mion on the schoolyard stage with the
+HUD drawn. A 6000-frame scripted front-end run ended `RESULT: ok` (6763-6988
+logic ticks at 64 Hz, 53-57 fps).
+
+What did **not** work on the web:
+
+* **The movie is still a stub — and it is a clean, deliberate hole.** Issue #40's
+  `#if defined(__EMSCRIPTEN__)` path was compiled and run for the first time
+  here. An interactive launch logs
+  `[error] [movie] the web build does not decode movies in wasm: the browser must
+  play them (HTMLVideoElement/WebCodecs); see remake/foundation/docs/MEDIA-INPUT.md`
+  and moves on: `[menu] scene: opening (tick 0)` → `[menu] scene: title (tick 25)`.
+  No crash, no silence, exactly the documented gap. It is a gap to close (issue
+  #4's asset delivery), not a defect.
+* **Exceptions had to be enabled to get this far.** emcc disables C++ exception
+  *catching* by default, which made every `try` in the asset layer inert and every
+  `throw` fatal: the first missing candidate asset aborted the module with
+  `Aborted(Assertion failed: Exception thrown, but exception catching is not
+  enabled ...)` where Linux and Wine log the miss and walk on. Fixed in this
+  change (`CMakeLists.txt`, `-fexceptions`); cost measured on the same tree:
+  `foundation_demo.wasm` 6,249,962 → 8,186,870 bytes (+31%).
+* **A scripted front-end run does not leave the selection screen.** The same
+  script, the same build settings and the same roster reach VS and a battle on
+  Linux and under Wine, but in the browser the run sits on the select screen for
+  6000 frames (`menu-audio: confirm=179 back=19 cursor=61 ready=2`): confirms
+  arrive, panels rarely latch ready. The canvas readback confirms it frame after
+  frame. Filed as issue #59.
+* **Missing candidate assets are logged once per frame.** `data/select/p01.cnv`
+  (the file ships in `data/teamselect/`) produced 97 error lines in ~2 s on the
+  select screen — console spam, not a failure. Filed as issue #60.
+* Hardware-adapter WebGPU, real vsync and visual parity remain unverified, as in
+  `BUILD-web.md` §"Not verified".
+
+### Cleanup
+
+Every server, browser session and display started for this section was stopped:
+the two KWin sessions (`session_stop`, no `wayland-mcp-*` process or socket left),
+the `agent-browser` session, and all four `python3 -m http.server` instances.
+No window ever appeared on the real desktop.
 
 ## 6. Frame times, crashes and resource stability
 

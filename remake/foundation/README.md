@@ -237,18 +237,21 @@ instead of the versus vignette's frame-index script.
 
 ## What is verified, and what is not
 
-Verified by building and running; see `docs/BUILD-*.md` for per-target detail.
+"Built" and "verified" are not the same claim, and this table does not use them
+interchangeably. **Verified means run with the game's own data and reaching the
+title screen and a battle**; rungs below that (compiled, launched, triangle only)
+are named as such. Issue #35 ran the two cross targets for the first time and
+`docs/RELEASE-CHECKLIST.md` §5.2 is that record — read it before quoting either.
 
 | Target | Built | Ran | Backend observed |
 |---|---|---|---|
-| Linux | yes | yes | wgpu-native → Vulkan (RADV), FIFO, 7 formats |
-| Windows (Wine) | yes | yes | wgpu-native → Vulkan, same adapter as Linux |
-| Web (Chromium) | yes | yes | emdawnwebgpu → browser WebGPU, 60 fps, FIFO only |
+| Linux | yes | yes — verified (title, battle, results) | wgpu-native → Vulkan (RADV), FIFO, 7 formats |
+| Windows (Wine) | yes | yes — title + battle; a rematch then faults (issue #57) | wgpu-native → Vulkan, same adapter as Linux |
+| Web (Chromium) | yes | yes — title + a live match, on a `/data` preload rig, software adapter; the `?pack=` path cannot (issue #58) | emdawnwebgpu → browser WebGPU, 60 fps, FIFO only |
 | macOS | not attempted | — | no Mac available; Dawn ships macos x64/aarch64 prebuilts and `sdl3webgpu` has the Metal path, but nothing has been executed |
 
-Every "ran" row printed `RESULT: ok` with real frame timings; per-target commands
-and outputs are in `docs/BUILD-linux.md`, `docs/BUILD-windows.md` and
-`docs/BUILD-web.md`.
+Per-target commands, transcripts and the honest list of what did not work are in
+`docs/BUILD-linux.md`, `docs/BUILD-windows.md` and `docs/BUILD-web.md`.
 
 Host-side tests run without a GPU (`CMakeLists.txt`): the Linux suite has 57
 tests covering geometry, raycasts, asset parsing/spawns, gameplay/economy,

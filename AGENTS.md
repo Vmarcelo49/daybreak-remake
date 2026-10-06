@@ -94,9 +94,13 @@ work.
   counts and the list that skips without game data in
   `remake/foundation/docs/RELEASE-CHECKLIST.md` §2; read `ctest`'s own summary
   rather than this line, since every added suite moves the denominator.
-  Linux/Windows/web builds. Browser
-  game-data runs are verified on software WebGPU; browser visual parity,
-  hardware browser adapters and macOS execution remain unverified. The
+  Linux/Windows/web builds. **"Build green" is a link, not a run**: issue #35 ran
+  the Windows and web artifacts with game data for the first time and
+  `RELEASE-CHECKLIST.md` §5.2 is the record — Windows reaches the title and a
+  battle and then faults in a rematch (issue #57); the web reaches both on a
+  `/data` preload rig on software WebGPU (the `?pack=` path cannot, issue #58).
+  Browser visual parity, hardware browser adapters and macOS execution remain
+  unverified. The
   integrated tree is verified end to end by a four-view 2v2 capture and the
   four-player title→selection→VS→battle→results→selection loop.
   **A capture is not a live run** (D9, issue #39): the capture path pins the
