@@ -3,7 +3,7 @@
     python3 -m daybreak_web prepare --install /game --out /data
     python3 -m daybreak_web verify  --out /data
     python3 -m daybreak_web order   --install /game        # which bundle wins
-    python3 -m daybreak_web measure --out /data --match stage21:rena:0,mion:0
+    python3 -m daybreak_web measure --out /data --match stage21/rena:0,mion:0/001,002
     python3 -m daybreak_web serve   --out /data --client /client --port 8080
 
 `order` is the host's answer to "which copy does the game actually read?" and is
@@ -125,7 +125,9 @@ def _cmd_measure(args) -> int:
     print(f"\nstartup group\t{len(startup)}\t{raw / 1e6:.2f}\t{transfer / 1e6:.2f}\t"
           f"{transfer / raw if raw else 1:.3f}\t{gz}")
     for match in args.match or []:
-        parts = match.split(":")
+        # Fields are separated by '/', not ':', because a slot spec carries its own
+        # colon ("rena:0") and splitting on it silently dropped the weapons.
+        parts = match.split("/")
         stage = parts[0]
         slots = parts[1].split(",") if len(parts) > 1 and parts[1] else []
         weapons = parts[2].split(",") if len(parts) > 2 and parts[2] else []
@@ -175,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
     measure = sub.add_parser("measure", help="transfer sizes per extension and group")
     measure.add_argument("--out", required=True)
     measure.add_argument("--match", action="append", default=[],
-                         help="stage:char[:costume],char[:costume][:weapon,weapon]")
+                         help="stage/char[:costume],char[:costume]/weapon,weapon")
     measure.set_defaults(func=_cmd_measure)
 
     serve_cmd = sub.add_parser("serve", help="serve the client and the asset API")

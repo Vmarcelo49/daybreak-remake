@@ -51,7 +51,9 @@ there is nothing to install.
 
 Useful options: `--include <prefix>` (prepare only part of the install),
 `--hash-copies` (also hash the losing duplicate copies, which is what proves how many
-duplicate groups differ in bytes), `--gzip auto|off`.
+duplicate groups differ in bytes), `--gzip auto|off`. `measure --match` takes
+`stage/fighters/weapons` — slashes, because a fighter spec carries its own colon
+(`stage21/rena:0,mion:0/001,002`).
 
 ## The HTTP surface
 
@@ -62,7 +64,7 @@ duplicate groups differ in bytes), `--gzip auto|off`.
 | `GET /api/health` | Catalog version, asset count, prepared and transfer bytes. `503` when nothing is prepared. |
 | `GET /api/catalog` | The versioned catalog as JSON, with `ETag`/`304`. |
 | `GET /api/manifest/startup` | The startup group, one line per asset. |
-| `GET /api/manifest/match?stage=stage21&slot=rena:0&slot=mion:0&weapon=081` | The dependency set for a confirmed match. |
+| `GET /api/manifest/match?stage=stage21&slot=rena:0&slot=mion:0&weapon=001` | The dependency set for a confirmed match. |
 | `GET /api/asset/<logical-id>` | One asset. `ETag` is its sha256, `Cache-Control: immutable`, gzip when the catalog has a compressed copy. |
 
 Only catalogued ids are reachable — the request's own bytes never become a filesystem
