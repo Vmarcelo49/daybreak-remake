@@ -7,6 +7,13 @@ cd remake/foundation   # all paths below are relative to here
 ./build/linux/foundation_demo --frames=180
 ```
 
+Release artifact: `./scripts/package_linux.sh` builds and stages
+`build/package/daybreak-<version>-linux-x86_64.tar.gz` — the executable, the wgpu-native
+and SDL3 libraries it needs, the caption fonts, the third-party notices and the `daybreak`
+launcher, which finds the player's game folder and boots the title screen. The script
+verifies that no game data is inside the artifact and that `ldd` resolves nothing into
+`third_party/` or the build tree; the player-facing guide is `package/README-LINUX.md`.
+
 Requires SDL3 (the system package; verified with 3.4.16) and a Vulkan-capable
 driver. `scripts/fetch_deps.sh` (via `build.sh deps`) fetches the pinned
 WebGPU-distribution sources into `third_party/webgpu`, and that CMake project

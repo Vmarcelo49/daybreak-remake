@@ -33,6 +33,21 @@ Run the demo:
 python3 -m http.server 8177 -d build/web     # then open foundation_demo.html
 ```
 
+### The Linux release package
+
+A user does not build anything: `scripts/package_linux.sh` stages and archives
+`build/package/daybreak-<version>-linux-x86_64.tar.gz` through the install rules in
+`CMakeLists.txt` — the executable, the two libraries it needs (wgpu-native, SDL3), the
+caption fonts, the third-party notices, the `daybreak` launcher and
+[`package/README-LINUX.md`](package/README-LINUX.md). The launcher finds the player's own
+game folder (`--install=`, `$DAYBREAK_INSTALL`, the saved choice in the XDG config
+directory, then conventional locations), remembers it and boots the title screen; the
+guide documents the search order, the controls and what is not supported yet. The script
+also proves the two release claims: nothing under a game-data path is in the artifact, and
+`ldd` resolves every library inside the package or from the base system — never
+`third_party/` or the build tree. `tests/launcher_test.sh` covers the launcher's search
+order, persistence and failure messages without a device.
+
 With no asset argument it draws the spinning triangle. With one it loads the game's
 real assets and draws them (depth buffer, textures, per-draw uniforms, camera, stage
 fog), and `--out` renders offscreen and writes a PPM, which is how it gets verified
