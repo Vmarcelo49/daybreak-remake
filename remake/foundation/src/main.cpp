@@ -3981,7 +3981,13 @@ static bool enterFrontendBattle(App& app) {
     if (!app.combatAudio) app.combatAudio = std::make_unique<fnd::audio::CombatAudio>(*app.combatSink);
     setupCombatVoices(app);
     app.matchMode = false;
-    std::printf("[menu] battle: %d fighters on %s\n", launch.fighterCount, launch.stage.c_str());
+    // The round's own settings are part of the evidence line: a release run has to be able to
+    // say which match it played (a rematch keeps them; a fresh stage-page walk can change them).
+    std::printf("[menu] battle: %d fighters on %s (time %ds, health %d%%, gauge %d%%, "
+                "balloon %d%%/%d%%)\n",
+                launch.fighterCount, launch.stage.c_str(), app.frontend.timeLimit,
+                app.frontend.health, app.frontend.gauge, app.frontend.blueBalloon,
+                app.frontend.redBalloon);
     // The spawn each fighter starts from: MatchConfig keys it by the fighter's PANEL
     // (FUN_00423420 indexes the stage's env points by the selected panel), so a 2v2 starts
     // from four different points. Printed because how far apart teammates stand is the whole
@@ -4121,15 +4127,26 @@ bool initScreens(App& app) {
         const bool useDesktop = requested.width == 0;
         const int width = useDesktop ? desktop->w : requested.width;
         const int height = useDesktop ? desktop->h : requested.height;
+        bool applied = false;
         if (settings.fullscreen) {
             SDL_DisplayMode mode;
             if (!useDesktop && (!SDL_GetClosestFullscreenDisplayMode(display,width,height,0.f,true,&mode) ||
                 mode.w != width || mode.h != height)) return false;
-            return SDL_SetWindowFullscreenMode(app.window,useDesktop ? nullptr : &mode);
+            applied = SDL_SetWindowFullscreenMode(app.window,useDesktop ? nullptr : &mode);
+        } else {
+            const float density = std::max(0.1f,SDL_GetWindowPixelDensity(app.window));
+            applied = SDL_SetWindowSize(app.window,static_cast<int>(std::lround(width/density)),
+                static_cast<int>(std::lround(height/density)));
         }
-        const float density = std::max(0.1f,SDL_GetWindowPixelDensity(app.window));
-        return SDL_SetWindowSize(app.window,static_cast<int>(std::lround(width/density)),
-            static_cast<int>(std::lround(height/density)));
+        // Evidence for the release checklist's resize/fullscreen item: the requested size and
+        // what the window actually became (a compositor may round or refuse it).
+        if (applied) {
+            int w = 0, h = 0;
+            SDL_GetWindowSizeInPixels(app.window, &w, &h);
+            std::printf("[display] requested %dx%d%s, window now %dx%d\n", width, height,
+                        settings.fullscreen ? " fullscreen" : "", w, h);
+        }
+        return applied;
 #endif
     };
     settings.applyFullscreen = [&app](bool enabled) {
@@ -4145,7 +4162,13 @@ bool initScreens(App& app) {
         if (!SDL_SetWindowFullscreen(app.window,enabled)) {
             settings.fullscreen = !enabled;
             settings.resolutionIndex = previousResolution;
+            std::printf("[display] fullscreen %s refused by the window system\n",
+                        enabled ? "on" : "off");
+            return;
         }
+        int w = 0, h = 0;
+        SDL_GetWindowSizeInPixels(app.window, &w, &h);
+        std::printf("[display] fullscreen %s, window %dx%d\n", enabled ? "on" : "off", w, h);
     };
     settings.applyBindings = [&app]() {
         const auto& settings = ui::frontendSettings();
