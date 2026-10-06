@@ -90,7 +90,7 @@ work.
   Menus retain a centered, clipped 4:3 canvas with black bars. Native Options
   selects resolution; browser canvas and headless `--size` control theirs.
 - **Verification:** the native host suite (`ctest --test-dir
-  remake/foundation/build/linux`) — 52 tests as of 2026-10-06, with the measured
+  remake/foundation/build/linux`) — 53 tests as of 2026-10-06, with the measured
   counts and the list that skips without game data in
   `remake/foundation/docs/RELEASE-CHECKLIST.md` §2; read `ctest`'s own summary
   rather than this line, since every added suite moves the denominator.

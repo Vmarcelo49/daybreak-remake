@@ -42,11 +42,11 @@
 #include "ui/hud.h"
 #include "ui/sprite.h"
 #include "ui/screen.h"
+#include "ui/screen_countdown.h"
 #include "ui/screen_opening.h"
 #include "ui/frontend_state.h"
 #include "ui/frontend_launch.h"
 #include "ui/participants.h"
-#include "ui/hud_atlas.h"
 #include "ui/frontend_settings.h"
 #include "settings/user_settings.h"
 #include "game/hud_bridge.h"
@@ -903,6 +903,13 @@ struct App {
     bool                         screensMode = false;
     bool                         frontendMatch = false;
     bool                         frontendBattleReady = false;
+    // The pre-round countdown is up over the already-built battle (issue #47). Set by the
+    // Battle screen's factory, cleared the tick the countdown's clock ends (the same tick
+    // tickFrontend hands the frame to the match) — so it is true for exactly the 3 x tickRate
+    // ticks of the countdown. While it is true the screen stack still owns the frame and the
+    // render path draws the battle scene underneath it (ui::drawScreenOverlay), and the
+    // match is NOT stepped at all: that absence is the round-start input gate.
+    bool                         roundCountdown = false;
     bool                         rendererReady = false;
     ui::FrontendState            frontend;
     fnd::audio::Sdl3Engine        menuAudio;
@@ -3011,6 +3018,167 @@ static void reportCombatAudio(App& app) {
                         stats.dispatched[k]);
 }
 
+// The per-view presentation state — the arena camera each human view follows and that
+// view's HUD — refreshed from the CURRENT match state. Split out of tickMatch (issue #47)
+// because the pre-round countdown runs it every tick over a HELD round: the arena the digit
+// animates over then has a live camera instead of the (0,0,0) seed it is built with, while
+// nothing steps the simulation. `inputs` is the per-fighter input array tickMatch built;
+// the countdown passes none, which is what keeps every view gesture (LockSwitch) out of the
+// pre-round phase as well as out of the match itself.
+static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4], double dt) {
+    for (int i = 0; i < app.match.config().fighterCount; ++i) {
+        const gameplay::Fighter& fighter = app.match.fighter(i);
+        app.arenaTargets[i].position = fighter.position();
+        app.arenaTargets[i].facingYaw = fighter.facing_yaw();
+        app.arenaTargets[i].alive = fighter.is_alive();
+    }
+
+    // Camera and HUD, once per human view (issue #12). The original runs this same loop
+    // over controller slots (FUN_006396f0:108-188), and each view's state is keyed by its
+    // controller: the camera follows that view's own fighter, its LockSwitch gestures
+    // re-pick that view's target, and its HUD is filled from that fighter's resources.
+    // The caller owns the match step; this loop never advances the simulation.
+    const gameplay::CollisionQuery cameraQuery =
+        (!historicalMatchCapture(app) && !app.opts.noCameraClamp)
+            ? gameplay::CollisionQuery{&app.cameraCollision}
+            : gameplay::CollisionQuery{};
+    for (int v = 0; v < app.matchViewCount; ++v) {
+        game::MatchView& view = app.matchViews[v];
+        if (!view.active() || view.fighter >= app.match.config().fighterCount) continue;
+        const fnd::input::PlayerState* viewInput = inputs[view.fighter];
+        // LockSwitch is the original's target switch (input.h: tap = cycle enemy,
+        // hold = aim ally) and it re-picks that view's COMBAT target alone. The recovered
+        // target-change writer FUN_00421e30 stores the fighter's own +0x300 (the selection),
+        // +0x304 (cleared), +0x30c (the 15-tick pulse), +0x308 (the target's team field) and
+        // +0x848 (the ally hold) — and no view, camera or followed-player state. Its other
+        // caller settles it: the command dispatcher FUN_0063c2a0 case 0x2a applies a REMOTE
+        // player's target switch, which would be nonsense if it moved the local camera. So
+        // the tap must not touch the camera: a view follows its own fighter for the whole
+        // match (issue #51), which is also what keeps every split-screen cell stable (issue
+        // #12). The camera owns who is followed (gameplay/arena_camera.h), gameplay/
+        // target_lock.h owns who each fighter attacks, so two players hold different locks
+        // while each camera follows its own player.
+        if (viewInput && viewInput->just_pressed[fnd::input::LockSwitch]) {
+            app.match.cycle_locked_target(view.fighter, true);
+            view.lockHeldTicks = 0;
+        } else if (viewInput && viewInput->down[fnd::input::LockSwitch]) {
+            // Held past the threshold, so the tap above is not undone by the finger still
+            // being on the button. PORT RULE: the original's hold is recovered as the
+            // 180-tick dwell FUN_0041f580:244 re-pins on an ally selection, but the gesture
+            // length that raises it is not, so this threshold is a port constant.
+            if (++view.lockHeldTicks >= kLockHoldTicks)
+                app.match.lock_ally_target(view.fighter);
+        } else {
+            view.lockHeldTicks = 0;
+        }
+        // The DX9 reference's own camera switch (Guard just_pressed while its heavy key was
+        // held, scenes.cpp:644-646) went with that key: the original has one melee input and
+        // no heavy bit (issue #10), so re-picking the combat target is the recovered
+        // LockSwitch action alone (gameplay/target_lock.h) — nothing in a match re-points a
+        // view's camera any more (issue #51).
+        // Scripted/offscreen standalone runs retain the banked null-query camera path;
+        // live matches clamp the eye against collision_camera.x unless the A/B switch asks
+        // for the historical unclamped behavior. The blend remains per call as in the port.
+        // The render blends this tick's camera with the one the PREVIOUS tick ended on
+        // (glm::mix(previousEye, camera.eye(), matchAlpha) in buildFrameViews), so the
+        // snapshot has to advance once per tick, before the update. Advancing it only on
+        // the first tick left every live frame interpolating from the match's opening
+        // pose: the eye then swept between that pose and the current one as the tick
+        // fraction changed, which reads as a camera that never settles. Captures never
+        // showed it because matchAlpha is 1 while capturing, where the mix returns the
+        // current camera unchanged (D9's one-update-per-frame recipes).
+        view.previousEye = view.camera.eye();
+        view.previousTarget = view.camera.target();
+        view.camera.update(dt,cameraQuery);
+        // Mirror the camera's own selection back into the view. Since issue #51 the tap no
+        // longer cycles the camera and nothing else in a match calls cycle_target, so this
+        // is the construction value for the whole match; it stays because view.followed IS
+        // the per-view "who am I following" the split-screen evidence line prints and
+        // tests/lock_switch_camera_test.cpp asserts, and dropping the mirror would let the
+        // two silently disagree the day anything re-points a camera again.
+        if (view.camera.active_target_index() >= 0) view.followed = view.camera.active_target_index();
+
+        // This view's HUD: the ported value computation (gameplay/hud_fill.h, unchanged),
+        // fed from the view's own fighter. Which side goes where is the DX9 layout's:
+        // the balloon corners are the only two-side readout (side 0 left, side 1 right),
+        // every other field belongs to the viewer's fighter.
+        gameplay::HudFillInput hf;
+        sampleHudFill(hf.p1, app.match.fighter(view.fighter), viewInput);
+        view.hud = gameplay::hudStateFor(app.match.economy(), hf);
+        // D1: the render-FPS counter rides the HUD state (60 while capturing). The
+        // original draws it once, outside its view loop (FUN_006396f0:203-210), so only
+        // the first view carries it.
+        view.hud.fps = app.fpsShown;
+        view.hud.showFps = (v == 0);
+        // The composer is clock-free by design, so the frame counter the original's
+        // alternations and pulse read (FUN_00644150's `(frame % 0x1e) / 0xf` flash pair and
+        // the balloon popup's growth) is carried in the state instead of read from a clock.
+        view.hud.hudFrame = (int)app.matchFrame;
+        // The boxed tactics readout (P03's 128x64 cells: 0 適当, 1 格闘, 2 射撃, 3 集中,
+        // 4 各個, 5 後退). The cell IS the COM decision state's tactic: gameplay/bot_input.h
+        // owns the recovered pairing of the +0x310 cell with the +0x314 display timer
+        // (FUN_0041f580:291-295 writes it, FUN_004201a0:13-15 drains it, FUN_00644150:92-96
+        // fades it), so what the HUD draws and what the COM obeys cannot drift apart.
+        view.hud.commandCell = app.tacticReadout.hud_cell();
+
+        // Per-fighter appearance state; projection happens per view with that view's
+        // matrix (D8), below. The viewer's own lock names the fighter its ring and com bar
+        // belong to: FUN_00643230:61 reads the target-valid flag as (+0x304 > -1) on the
+        // fighter being drawn, and 0x421e30/0x421f30's +0x30c pulse as its scale and arc
+        // twist (hud.h:83-86), so both come from the view's own lock and not from which
+        // player its camera happens to follow.
+        const int lockedTarget = app.match.locked_target(view.fighter);
+        const int viewPulse = app.match.lock_pulse(view.fighter);
+        // One HUD entry per ROSTER entry (issue #13): the participant's own fighter, its
+        // team and its controller. A 1v1 fills two, a 2v2 all four.
+        for (int i = 0; i < ui::kHudFighterCount; ++i) {
+            view.hud.fighters[i] = ui::HudFighterHud{};
+            const int fighterIndex = hudEntryFighter(app, i);
+            if (fighterIndex < 0) continue;
+            const ui::Participant& p = app.participants[i];
+            const gameplay::Fighter& f = app.match.fighter(fighterIndex);
+            // Owner / ally / enemy from THIS view's point of view: the original's owner is
+            // the fighter whose +0x300 equals the view player's (FUN_00643230:63-69), and
+            // the team is the match's side table.
+            const int viewSide = app.match.config().side[view.fighter];
+            view.hud.fighters[i].role = fighterIndex == view.fighter
+                ? ui::HudFighterRole::Owner
+                : (app.match.config().side[fighterIndex] == viewSide ? ui::HudFighterRole::Ally
+                                                                    : ui::HudFighterRole::Enemy);
+            view.hud.fighters[i].target = (fighterIndex == lockedTarget);
+            // Ring art row 0 while the fighter is in an action (the original's action
+            // counter, hud+0x7ac > 0). PORT RULE: Fighter carries no action counter, so the
+            // action states that counter corresponds to stand in for it.
+            view.hud.fighters[i].acting = f.state() == gameplay::FighterState::AttackA ||
+                                          f.state() == gameplay::FighterState::AttackC ||
+                                          f.state() == gameplay::FighterState::Hit ||
+                                          f.state() == gameplay::FighterState::Knockdown ||
+                                          f.state() == gameplay::FighterState::KO;
+            // The fighter's OWN lock (green ring) is not the viewer's target: FUN_00643230
+            // reads fighter+0x304 for the ring and the view player's +0x304 for the com bar.
+            view.hud.fighters[i].locked = app.match.locked_target(fighterIndex) >= 0;
+            view.hud.fighters[i].hyper = f.hyper_active();
+            // The pulse belongs to the fighter that switched, so only that fighter's HUD
+            // entry scales and twists; partners' rings stay at rest.
+            view.hud.fighters[i].ringPulse = (fighterIndex == view.fighter) ? viewPulse : 0;
+            // Slot 0 is 1P and slot 4 is com in the tag atlas (P01 (320,256,64,32) rows);
+            // the red copies sit four rows down, which is the tagSheet index.
+            view.hud.fighters[i].slot = p.controller;
+            view.hud.fighters[i].tagSheet = p.team;
+            view.hud.fighters[i].hp = (float)f.hp() / f.max_hp();
+            view.hud.fighters[i].hpLag = view.hud.fighters[i].hp;
+            view.hud.fighters[i].alertDir = -1;   // the render pass resolves it per view
+        }
+    }
+
+    // The banked trace (tests/compare_match_traces.py) prints the eye the reference camera
+    // reported for the primary view, so keep app.eye/app.target on it: the render loop
+    // later replaces them with the interpolated presentation values.
+    const game::MatchView& primary = app.matchViews[0];
+    app.eye = primary.camera.eye();
+    app.target = primary.camera.target();
+}
+
 static void tickMatch(App& app, double dt) {
     // The 15-tick switch pulse is not counted here: Match's lock table owns and decays
     // it (gameplay/target_lock.h, FUN_004201a0), so the HUD reads one source of truth.
@@ -3199,162 +3367,7 @@ static void tickMatch(App& app, double dt) {
     }
     updateFxCards(app, app.matchFx, app.matchFxEvents, (float)dt);
 
-    // The viewer is the fighter on panel kFrontendBattleSlots[0] (1P); its index was
-    // resolved before the step, above.
-    // The camera and HUD state below run per view; the targets they read are refreshed
-    // once here from the live fighters. The pool does the dead-skip itself, and a real
-    // target change arms the retarget blend so a switch lands fast without cutting.
-    for (int i = 0; i < app.match.config().fighterCount; ++i) {
-        const gameplay::Fighter& fighter = app.match.fighter(i);
-        app.arenaTargets[i].position = fighter.position();
-        app.arenaTargets[i].facingYaw = fighter.facing_yaw();
-        app.arenaTargets[i].alive = fighter.is_alive();
-    }
-
-    // Camera and HUD, once per human view (issue #12). The original runs this same loop
-    // over controller slots (FUN_006396f0:108-188), and each view's state is keyed by its
-    // controller: the camera follows that view's own fighter, its LockSwitch gestures
-    // re-pick that view's target, and its HUD is filled from that fighter's resources.
-    // The MATCH itself was stepped once above, before this loop — views never advance it.
-    const gameplay::CollisionQuery cameraQuery =
-        (!historicalMatchCapture(app) && !app.opts.noCameraClamp)
-            ? gameplay::CollisionQuery{&app.cameraCollision}
-            : gameplay::CollisionQuery{};
-    for (int v = 0; v < app.matchViewCount; ++v) {
-        game::MatchView& view = app.matchViews[v];
-        if (!view.active() || view.fighter >= app.match.config().fighterCount) continue;
-        const fnd::input::PlayerState* viewInput = inputs[view.fighter];
-        // LockSwitch is the original's target switch (input.h: tap = cycle enemy,
-        // hold = aim ally) and it re-picks that view's COMBAT target alone. The recovered
-        // target-change writer FUN_00421e30 stores the fighter's own +0x300 (the selection),
-        // +0x304 (cleared), +0x30c (the 15-tick pulse), +0x308 (the target's team field) and
-        // +0x848 (the ally hold) — and no view, camera or followed-player state. Its other
-        // caller settles it: the command dispatcher FUN_0063c2a0 case 0x2a applies a REMOTE
-        // player's target switch, which would be nonsense if it moved the local camera. So
-        // the tap must not touch the camera: a view follows its own fighter for the whole
-        // match (issue #51), which is also what keeps every split-screen cell stable (issue
-        // #12). The camera owns who is followed (gameplay/arena_camera.h), gameplay/
-        // target_lock.h owns who each fighter attacks, so two players hold different locks
-        // while each camera follows its own player.
-        if (viewInput && viewInput->just_pressed[fnd::input::LockSwitch]) {
-            app.match.cycle_locked_target(view.fighter, true);
-            view.lockHeldTicks = 0;
-        } else if (viewInput && viewInput->down[fnd::input::LockSwitch]) {
-            // Held past the threshold, so the tap above is not undone by the finger still
-            // being on the button. PORT RULE: the original's hold is recovered as the
-            // 180-tick dwell FUN_0041f580:244 re-pins on an ally selection, but the gesture
-            // length that raises it is not, so this threshold is a port constant.
-            if (++view.lockHeldTicks >= kLockHoldTicks)
-                app.match.lock_ally_target(view.fighter);
-        } else {
-            view.lockHeldTicks = 0;
-        }
-        // The DX9 reference's own camera switch (Guard just_pressed while its heavy key was
-        // held, scenes.cpp:644-646) went with that key: the original has one melee input and
-        // no heavy bit (issue #10), so re-picking the combat target is the recovered
-        // LockSwitch action alone (gameplay/target_lock.h) — nothing in a match re-points a
-        // view's camera any more (issue #51).
-        // Scripted/offscreen standalone runs retain the banked null-query camera path;
-        // live matches clamp the eye against collision_camera.x unless the A/B switch asks
-        // for the historical unclamped behavior. The blend remains per call as in the port.
-        // The render blends this tick's camera with the one the PREVIOUS tick ended on
-        // (glm::mix(previousEye, camera.eye(), matchAlpha) in buildFrameViews), so the
-        // snapshot has to advance once per tick, before the update. Advancing it only on
-        // the first tick left every live frame interpolating from the match's opening
-        // pose: the eye then swept between that pose and the current one as the tick
-        // fraction changed, which reads as a camera that never settles. Captures never
-        // showed it because matchAlpha is 1 while capturing, where the mix returns the
-        // current camera unchanged (D9's one-update-per-frame recipes).
-        view.previousEye = view.camera.eye();
-        view.previousTarget = view.camera.target();
-        view.camera.update(dt,cameraQuery);
-        // Mirror the camera's own selection back into the view. Since issue #51 the tap no
-        // longer cycles the camera and nothing else in a match calls cycle_target, so this
-        // is the construction value for the whole match; it stays because view.followed IS
-        // the per-view "who am I following" the split-screen evidence line prints and
-        // tests/lock_switch_camera_test.cpp asserts, and dropping the mirror would let the
-        // two silently disagree the day anything re-points a camera again.
-        if (view.camera.active_target_index() >= 0) view.followed = view.camera.active_target_index();
-
-        // This view's HUD: the ported value computation (gameplay/hud_fill.h, unchanged),
-        // fed from the view's own fighter. Which side goes where is the DX9 layout's:
-        // the balloon corners are the only two-side readout (side 0 left, side 1 right),
-        // every other field belongs to the viewer's fighter.
-        gameplay::HudFillInput hf;
-        sampleHudFill(hf.p1, app.match.fighter(view.fighter), viewInput);
-        view.hud = gameplay::hudStateFor(app.match.economy(), hf);
-        // D1: the render-FPS counter rides the HUD state (60 while capturing). The
-        // original draws it once, outside its view loop (FUN_006396f0:203-210), so only
-        // the first view carries it.
-        view.hud.fps = app.fpsShown;
-        view.hud.showFps = (v == 0);
-        // The composer is clock-free by design, so the frame counter the original's
-        // alternations and pulse read (FUN_00644150's `(frame % 0x1e) / 0xf` flash pair and
-        // the balloon popup's growth) is carried in the state instead of read from a clock.
-        view.hud.hudFrame = (int)app.matchFrame;
-        // The boxed tactics readout (P03's 128x64 cells: 0 適当, 1 格闘, 2 射撃, 3 集中,
-        // 4 各個, 5 後退). The cell IS the COM decision state's tactic: gameplay/bot_input.h
-        // owns the recovered pairing of the +0x310 cell with the +0x314 display timer
-        // (FUN_0041f580:291-295 writes it, FUN_004201a0:13-15 drains it, FUN_00644150:92-96
-        // fades it), so what the HUD draws and what the COM obeys cannot drift apart.
-        view.hud.commandCell = app.tacticReadout.hud_cell();
-
-        // Per-fighter appearance state; projection happens per view with that view's
-        // matrix (D8), below. The viewer's own lock names the fighter its ring and com bar
-        // belong to: FUN_00643230:61 reads the target-valid flag as (+0x304 > -1) on the
-        // fighter being drawn, and 0x421e30/0x421f30's +0x30c pulse as its scale and arc
-        // twist (hud.h:83-86), so both come from the view's own lock and not from which
-        // player its camera happens to follow.
-        const int lockedTarget = app.match.locked_target(view.fighter);
-        const int viewPulse = app.match.lock_pulse(view.fighter);
-        // One HUD entry per ROSTER entry (issue #13): the participant's own fighter, its
-        // team and its controller. A 1v1 fills two, a 2v2 all four.
-        for (int i = 0; i < ui::kHudFighterCount; ++i) {
-            view.hud.fighters[i] = ui::HudFighterHud{};
-            const int fighterIndex = hudEntryFighter(app, i);
-            if (fighterIndex < 0) continue;
-            const ui::Participant& p = app.participants[i];
-            const gameplay::Fighter& f = app.match.fighter(fighterIndex);
-            // Owner / ally / enemy from THIS view's point of view: the original's owner is
-            // the fighter whose +0x300 equals the view player's (FUN_00643230:63-69), and
-            // the team is the match's side table.
-            const int viewSide = app.match.config().side[view.fighter];
-            view.hud.fighters[i].role = fighterIndex == view.fighter
-                ? ui::HudFighterRole::Owner
-                : (app.match.config().side[fighterIndex] == viewSide ? ui::HudFighterRole::Ally
-                                                                    : ui::HudFighterRole::Enemy);
-            view.hud.fighters[i].target = (fighterIndex == lockedTarget);
-            // Ring art row 0 while the fighter is in an action (the original's action
-            // counter, hud+0x7ac > 0). PORT RULE: Fighter carries no action counter, so the
-            // action states that counter corresponds to stand in for it.
-            view.hud.fighters[i].acting = f.state() == gameplay::FighterState::AttackA ||
-                                          f.state() == gameplay::FighterState::AttackC ||
-                                          f.state() == gameplay::FighterState::Hit ||
-                                          f.state() == gameplay::FighterState::Knockdown ||
-                                          f.state() == gameplay::FighterState::KO;
-            // The fighter's OWN lock (green ring) is not the viewer's target: FUN_00643230
-            // reads fighter+0x304 for the ring and the view player's +0x304 for the com bar.
-            view.hud.fighters[i].locked = app.match.locked_target(fighterIndex) >= 0;
-            view.hud.fighters[i].hyper = f.hyper_active();
-            // The pulse belongs to the fighter that switched, so only that fighter's HUD
-            // entry scales and twists; partners' rings stay at rest.
-            view.hud.fighters[i].ringPulse = (fighterIndex == view.fighter) ? viewPulse : 0;
-            // Slot 0 is 1P and slot 4 is com in the tag atlas (P01 (320,256,64,32) rows);
-            // the red copies sit four rows down, which is the tagSheet index.
-            view.hud.fighters[i].slot = p.controller;
-            view.hud.fighters[i].tagSheet = p.team;
-            view.hud.fighters[i].hp = (float)f.hp() / f.max_hp();
-            view.hud.fighters[i].hpLag = view.hud.fighters[i].hp;
-            view.hud.fighters[i].alertDir = -1;   // the render pass resolves it per view
-        }
-    }
-
-    // The banked trace (tests/compare_match_traces.py) prints the eye the reference camera
-    // reported for the primary view, so keep app.eye/app.target on it: the render loop
-    // later replaces them with the interpolated presentation values.
-    const game::MatchView& primary = app.matchViews[0];
-    app.eye = primary.camera.eye();
-    app.target = primary.camera.target();
+    updateMatchViews(app, inputs, dt);
 
     if (f.roundOver) {
         app.matchRoundOverFrame = app.matchFrame;
@@ -4131,75 +4144,10 @@ bool runInputTest(App& app) {
     return ok;
 }
 
-// Round-start art comes from FUN_00633ca0; the three-second 1v1 clock is
-// a port flow rule, independent of the original's unlocated trigger sequence.
-// The round-start countdown. Its art is the original's own: P09's three cells (0,0,192,256),
-// (192,0,192,256) and (384,0,128,256), registered by FUN_00633ca0 @0x633ca0 with pivots
-// (96,128), (96,128) and (64,128), drawn at the frame centre.
-//
-// TIMING (issue #13): the recovered pre-round phase is NOT three seconds — FUN_00634760
-// @0x634760 sets phase 1 and FUN_00635d40:62-83 hands over to the fight after THREE frames,
-// arming each view's centre sting for 0x3c = 60 frames at scale 6.0 shrinking to 1.0. The
-// code that walks the three digits is not in the corpus, so the port keeps its documented
-// three-second countdown (ROADMAP-PENDING's D3 row) rather than inventing a pace. What it
-// adds here is the BATTLE STATE around the digit: the round settings and every participant
-// (team, combo, controller), so the countdown shows who is about to fight.
-class RoundStartScreen final : public ui::Screen {
-public:
-    RoundStartScreen(ui::SpriteRenderer& batch, App& app, bool& ready, int tickRate,
-                     std::string& error)
-        : app_(app), ready_(ready), tickRate_(tickRate) {
-        ui::uploadCnvSheet(batch, "data/object/P09", sheet_, error);
-        if (!loadCaptionFont(text_, 18.f, error)) return;
-        // The round's own settings, then one line per participant. The roster is the
-        // selection (issue #13), so a 2v2 lists four.
-        std::vector<std::string> lines;
-        char settings[96];
-        std::snprintf(settings, sizeof(settings), "TIME %ds   BALLOON %d%% / %d%%",
-                      app_.frontend.timeLimit, app_.frontend.blueBalloon,
-                      app_.frontend.redBalloon);
-        lines.push_back(settings);
-        settingsLayout_ = text_.layout(lines.back().c_str());
-        for (int i = 0; i < app_.participantCount; ++i) {
-            const ui::Participant& p = app_.participants[i];
-            lines.push_back(std::string(ui::teamLabel(p.team)) + "  " + p.combo() + "  " +
-                            ui::controllerLabel(p.controller));
-            rosterLayout_[i] = text_.layout(lines.back().c_str());
-        }
-        textSlot_ = batch.addTexture(text_.atlasWidth(), text_.atlasHeight(),
-                                     text_.atlasRGBA().data(), error);
-    }
-    bool loaded() const { return sheet_ >= 0; }
-    ui::ScreenId update(const ui::ScreenInput&) override {
-        if (++frame_ >= 3 * tickRate_) ready_ = true;
-        return ui::ScreenId::Battle;
-    }
-    const char* name() const override { return "countdown"; }
-    void draw(ui::SpriteRenderer& batch) const override {
-        batch.pushSolid({0,0,800,600},{0,0,0,1});
-        const int n = std::min(2, frame_ / tickRate_);
-        const float w = n == 2 ? 128.f : 192.f;
-        batch.pushSprite(sheet_, {n*192.f,0,w,256},w/2,128,400,300,.5f);
-        if (textSlot_ < 0) return;
-        drawCaptionLayout(batch, text_, settingsLayout_, textSlot_, bitmapSlot_, 40.f, 40.f, .8f,
-                          ui::kHudWhite, 2.f);
-        for (int i = 0; i < app_.participantCount; ++i)
-            drawCaptionLayout(batch, text_, rosterLayout_[i], textSlot_, bitmapSlot_, 40.f,
-                              70.f + 26.f * (float)i, .8f,
-                              app_.participants[i].team == 0 ? ui::kHudLimitLeft
-                                                             : ui::kHudLimitRight,
-                              2.f);
-    }
-private:
-    App& app_;
-    bool& ready_;
-    int frame_ = 0, sheet_ = -1;
-    int tickRate_;
-    ui::TextLayer text_;
-    ui::TextLayout settingsLayout_, rosterLayout_[ui::kParticipantCount];
-    mutable int bitmapSlot_ = -1;
-    int textSlot_ = -1;
-};
+// The round-start countdown is ui/screen_countdown.{h,cpp} (issue #47): it is a screen,
+// like the other front-end scenes, and moving it there is what lets a device-free test
+// draw the real screen and assert the overlay policy. Its art, its three-cell PORT RULE
+// duration and the reason the phase is not a black screen are all documented there.
 
 static void playFrontendMusic(App& app, ui::ScreenId id) {
     if (!app.menuAudio.is_open()) return;
@@ -4426,10 +4374,37 @@ bool initScreens(App& app) {
         // (FUN_00404ff0:0x405096), so the factory must not pre-empt it here.
         if (sid != ui::ScreenId::Opening) playFrontendMusic(app, sid);
         if (sid == ui::ScreenId::Battle) {
+            // Issue #47: the VS intro has ended, and enterFrontendBattle has already built
+            // the whole match — scene, fighters, cameras, weapons, HUD state (initScene ->
+            // initMatch). The countdown screen added over it is presentation only: the
+            // round stays held (roundCountdown) until its clock ends, and the render path
+            // draws this screen's digit OVER the live battle scene instead of over black.
             if (!enterFrontendBattle(app)) return nullptr;
-            auto countdown = std::make_unique<RoundStartScreen>(app.uiRenderer, app, app.frontendBattleReady,
-                app.opts.out.empty() ? gameplay::FixedStep::tickRate : 60, app.error);
-            if (!countdown->loaded()) return nullptr;
+            ui::CountdownInfo info;
+            info.tickRate = app.opts.out.empty() ? gameplay::FixedStep::tickRate : 60;
+            char settings[96];
+            std::snprintf(settings, sizeof(settings), "TIME %ds   BALLOON %d%% / %d%%",
+                          app.frontend.timeLimit, app.frontend.blueBalloon,
+                          app.frontend.redBalloon);
+            info.settings = settings;
+            // The round's own settings, then one line per participant (issue #13): the
+            // roster is the selection, so a 2v2 lists four. Name combos, never bare
+            // fighters (AGENTS.md rule 7).
+            for (int i = 0; i < app.participantCount; ++i) {
+                const ui::Participant& p = app.participants[i];
+                info.roster.push_back({std::string(ui::teamLabel(p.team)) + "  " + p.combo() +
+                                           "  " + ui::controllerLabel(p.controller),
+                                       p.team == 0});
+            }
+            auto countdown = ui::makeCountdownScreen(app.uiRenderer, info,
+                                                     app.frontendBattleReady, app.error);
+            if (!countdown) return nullptr;
+            app.roundCountdown = true;
+            // The tick ladder's own record (the release gate quotes it): the countdown
+            // starts here, three cells of tickRate ticks, over the live battle.
+            std::printf("[menu] countdown: %d ticks over the live battle on %s (tick %llu)\n",
+                        info.tickRate * 3, app.opts.stage.c_str(),
+                        (unsigned long long)app.logicTicks);
             return countdown;
         }
         auto screen = ui::makeScreen(sid, app.uiRenderer, app.frontend, app.error);
@@ -4855,12 +4830,17 @@ struct ScreenCaptureHook {
     const ui::ScreenStack* screens = nullptr;
     ui::SpriteRenderer*    ui = nullptr;
     std::string*           error = nullptr;
+    // True for a screen drawn over an already-rendered scene (the countdown, issue #47):
+    // the background-less ui::drawScreenOverlay instead of ui::drawScreenFrame.
+    bool                   overlay = false;
 };
 
 bool screenCaptureHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat format,
                        uint32_t w, uint32_t h, void* ud) {
     auto* sk = static_cast<ScreenCaptureHook*>(ud);
-    return ui::drawScreenFrame(*sk->screens, *sk->ui, w, h, enc, view, format, *sk->error);
+    return sk->overlay
+        ? ui::drawScreenOverlay(*sk->screens, *sk->ui, w, h, enc, view, format, *sk->error)
+        : ui::drawScreenFrame(*sk->screens, *sk->ui, w, h, enc, view, format, *sk->error);
 }
 
 // The overlay's line set: a pure function of loaded state (bounds, aim, desired eye), so
@@ -5068,6 +5048,11 @@ static SDL_AppResult tickFrontend(App& state) {
         if (app->menuAudio.play(handle,fnd::audio::SfxBus::Voice) >= 0) ++app->menuVoicePlays;
     }
     if (app->screens.current() == ui::ScreenId::Battle && app->frontendBattleReady && app->screens.fadeFrame() == 0) {
+        // The countdown's clock ended and the stack's fade is done: the round starts on the
+        // NEXT tick (this frame was still the countdown's, drawn over the scene). Clearing
+        // the flag here is what lets the match's first step happen — before it, tickMatch is
+        // never called at all, so no input can reach the simulation during the countdown.
+        app->roundCountdown = false;
         app->screensMode = false;
         app->matchMode = true;
         return SDL_APP_CONTINUE;
@@ -5280,15 +5265,25 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 app->lastTime = plat::now();
                 return SDL_APP_CONTINUE;
             }
+            // The pre-round countdown's presentation (issue #47): the round is built but
+            // HELD — each view's arena camera converges on its own fighter and the HUD is
+            // filled from the spawn state, so the "3" already sits over a live arena. The
+            // simulation is not stepped and takes no input: keeping tickMatch out of the
+            // frame entirely IS the round-start gate, not a flag inside the step.
+            if (app->roundCountdown) {
+                const fnd::input::PlayerState* none[4] = {nullptr, nullptr, nullptr, nullptr};
+                updateMatchViews(*app, none,
+                                 capturing ? app->opts.dt : gameplay::FixedStep::seconds);
+            }
         }
     }
 
-    if (app->matchMode) {
+    if (app->matchMode || app->roundCountdown) {
         placeFxCards(*app);
         placeMatchFighters(*app);
     }
 
-    if (app->screensMode) {
+    if (app->screensMode && !app->roundCountdown) {
 
         if (capturing) {
             if (app->frames >= (uint64_t)app->opts.frames) {
@@ -5336,7 +5331,8 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         const uint32_t h = capturing ? (uint32_t)app->opts.sizeH : app->sc.height;
         // Not in match mode: tickMatch already stepped the ported reference camera,
         // and this block's spring would overwrite its eye with the demo's own framing.
-        if (app->opts.camera == "arena" && !app->matchMode) {
+        // The countdown is the same case (issue #47): its views carry the arena camera.
+        if (app->opts.camera == "arena" && !app->matchMode && !app->roundCountdown) {
             // First frame seeds from the desired eye, so single-frame captures stay
             // exactly deterministic; longer runs converge through the dt-correct
             // spring instead of snapping.
@@ -5373,7 +5369,10 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         std::vector<FrameView> frameViews;
         std::vector<render::ViewCamera> frameCameras;
         glm::mat4 vp;
-        if (app->matchMode) {
+        // A countdown frame takes the match's own camera path (issue #47): the match is
+        // built and its per-view cameras are already converging on the spawns, so the digit
+        // is drawn over the real arena, at the real split-screen cells.
+        if (app->matchMode || app->roundCountdown) {
             buildFrameViews(*app, w, h, frameViews);
             for (const FrameView& view : frameViews) frameCameras.push_back(view.camera);
             vp = frameCameras.front().viewProj;
@@ -5426,11 +5425,20 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 // Only more than one view takes the split-screen scene pass; a single view
                 // keeps render()'s exact commands (and the banked captures' pixels).
                 const std::vector<render::ViewCamera>* viewArg =
-                    app->matchMode && frameCameras.size() > 1 ? &frameCameras : nullptr;
+                    (app->matchMode || app->roundCountdown) && frameCameras.size() > 1
+                        ? &frameCameras : nullptr;
+                // A countdown capture renders the scene and composites the SCREEN over it
+                // (issue #47): its overlay hook is drawScreenOverlay — no opaque background
+                // — where a match frame composites the HUD and the prims.
+                ScreenCaptureHook overlay{&app->screens, &app->uiRenderer, &app->error,
+                                          /*overlay=*/true};
+                render::SceneRenderer::UiHook uiHook = nullptr;
+                void* uiData = nullptr;
+                if (app->roundCountdown) { uiHook = screenCaptureHook; uiData = &overlay; }
+                else if (useHook) { uiHook = captureHook; uiData = &cap; }
                 if (!app->renderer.capture((uint32_t)app->opts.sizeW,
                                            (uint32_t)app->opts.sizeH, rgba, app->error,
-                                           useHook ? captureHook : nullptr,
-                                           useHook ? &cap : nullptr, viewArg))
+                                           uiHook, uiData, viewArg))
                     return SDL_APP_FAILURE;
                 reportCoverage(rgba, app->opts.sizeW, app->opts.sizeH);
                 writePpm(app->opts.out, rgba, app->opts.sizeW, app->opts.sizeH);
@@ -5514,7 +5522,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         target.format = app->sc.format;
         target.width = app->sc.width;
         target.height = app->sc.height;
-        const bool multiView = app->matchMode && frameCameras.size() > 1;
+        const bool multiView = (app->matchMode || app->roundCountdown) && frameCameras.size() > 1;
         const bool sceneOk = multiView ? app->renderer.renderViews(target, frameCameras, app->error)
                                        : app->renderer.render(target, app->error);
         if (!sceneOk) {
@@ -5602,6 +5610,15 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 gpu::endFrame(app->ctx,app->sc,frame);
                 return SDL_APP_FAILURE;
             }
+        }
+        // The pre-round countdown, last: the screen stack's current screen over the scene
+        // pass above, with no background of its own (issue #47). The battle HUD is not part
+        // of it — the HUD belongs to the running round, and the first round tick draws it.
+        if (app->roundCountdown &&
+            !ui::drawScreenOverlay(app->screens, app->uiRenderer, app->sc.width, app->sc.height,
+                                   frame.encoder, frame.view, app->sc.format, app->error)) {
+            gpu::endFrame(app->ctx, app->sc, frame);
+            return SDL_APP_FAILURE;
         }
         if (!gpu::endFrame(app->ctx, app->sc, frame)) return SDL_APP_FAILURE;
     } else {

@@ -198,8 +198,12 @@ ScreenId ScreenStack::update(const ScreenInput& in) {
     return currentId_;
 }
 
-void ScreenStack::draw(SpriteRenderer& batch) const {
+void ScreenStack::drawContent(SpriteRenderer& batch) const {
     if (current_) current_->draw(batch);
+}
+
+void ScreenStack::draw(SpriteRenderer& batch) const {
+    drawContent(batch);
     if (fade_ > 0)
         batch.pushSolid(UiRect{0.f, 0.f, 800.f, 600.f},
                         UiColor{0.f, 0.f, 0.f, fadeAlpha8(fade_) / 255.f});
@@ -209,12 +213,38 @@ bool drawScreenFrame(const ScreenStack& stack, SpriteRenderer& batch, uint32_t w
                      WGPUCommandEncoder encoder, WGPUTextureView view, WGPUTextureFormat format,
                      std::string& error) {
     batch.beginFrame(w, h);
+    // The opaque menu background: a menu frame has no scene pass under it, so the screen is
+    // composited over a defined black (the same one captureUi gives a --out frame).
     batch.pushSolid({0.f, 0.f, float(w), float(h)}, {0.f, 0.f, 0.f, 1.f});
     const UiCanvasTransform canvas = fitCanvas({w, h});
     batch.setCanvasTransform(canvas.scale, canvas.x, canvas.y);
     batch.setCanvasClip({true, 0.f, 0.f, 800.f, 600.f});
+    // Screen + FUN_00657c80's fade quad, both in the 800x600 canvas. The background above
+    // already covers everything outside it, so a fade reads as a full-frame ramp — the
+    // menu path's established pixels, unchanged.
     stack.draw(batch);
     batch.resetCanvasTransform();
+    return batch.render(encoder, view, format, error);
+}
+
+bool drawScreenOverlay(const ScreenStack& stack, SpriteRenderer& batch, uint32_t w, uint32_t h,
+                       WGPUCommandEncoder encoder, WGPUTextureView view, WGPUTextureFormat format,
+                       std::string& error) {
+    batch.beginFrame(w, h);
+    // No background: the scene pass under this screen IS the background (issue #47), and
+    // dropping the quad is the whole point of the function.
+    const UiCanvasTransform canvas = fitCanvas({w, h});
+    batch.setCanvasTransform(canvas.scale, canvas.x, canvas.y);
+    batch.setCanvasClip({true, 0.f, 0.f, 800.f, 600.f});
+    stack.drawContent(batch);
+    batch.resetCanvasTransform();
+    // The fade, however, covers the WHOLE target here. FUN_00657c80's ramp is a full-frame
+    // one (the original faded the D3D9 backbuffer), and the canvas-space quad alone would
+    // leave the letterbox bars showing the scene mid-fade — a black rectangle in the middle
+    // of a live frame. One alpha rule for both: fadeAlpha8().
+    if (stack.fadeFrame() > 0)
+        batch.pushSolid({0.f, 0.f, float(w), float(h)},
+                        UiColor{0.f, 0.f, 0.f, ScreenStack::fadeAlpha8(stack.fadeFrame()) / 255.f});
     return batch.render(encoder, view, format, error);
 }
 
