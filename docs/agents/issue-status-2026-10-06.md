@@ -433,3 +433,28 @@ that container's element 0 faces **and has no lock of its own**. Nothing in the 
 another fighter's `+0x304`. The human's "second reticle when both are aiming at each other" was a
 misreading caused by the port's tick-1 auto-acquire, which meant the second copy never drew at all.
 The doc is corrected; the drawing code already had the right condition.
+
+## Round 8 — #40 merged (the opening movie)
+
+**pl_mpeg vendored** exactly as the human asked ("vendor pl mpeg, simple"): a pinned commit
+(`c871f2be…`) fetched as a single raw blob in `fetch_deps.sh` with the stb pattern, its MIT text in
+`remake/foundation/package/LICENSES/pl_mpeg-MIT.txt` and a row in that directory's table, and **one**
+player class (`src/movie/movie_player.{h,cpp}`) — decode → YCrCb→RGBA on the CPU → the HUD's existing
+`updateTexture` → one quad. No thread, no shader path, no second screen.
+
+**The skip was recovered, not invented**: `FUN_00404ff0`'s update tests `FUN_006586d0(0x1c)`, `0xb8`,
+`0x38` — raw virtual-key **down** tests, so **Enter or either Alt, held, never an edge**. (The docs
+had claimed "any controller button"; that was wrong and is corrected.) The pad half is recoverable as
+offsets but not as button names, so it was deliberately left unimplemented rather than guessed.
+`FUN_00408250(0x3fa00000)` = 1.25f is the sprite **scale**, i.e. the 640×480 movie drawn at exactly
+800×600 — the port's own menu canvas.
+
+**Verified by me on the merged tree**: `ended after 684 frames decoded/684 presented (22.789 s),
+audio 22.857 s` → `[menu] scene: title (tick 1485)` → `RESULT: ok`; the same-run A/V drift is flat at
++0.26–0.28 s (the deliberate audio lead, not accumulating); and a `--screen=title` capture emits
+**zero** `movie` lines, so no evidence run pays the 22.7 MB decode. `staffroll.mpg` runs through the
+same player to `RESULT: ok`.
+
+**One merge-time detail worth knowing**: `third_party/` is hardlinked per worktree, so the fetched
+`pl_mpeg.h` existed only in the worker's tree. A fresh checkout needs `./remake/foundation/build.sh
+deps` — which the coordinator ran in the primary before building the merge.
