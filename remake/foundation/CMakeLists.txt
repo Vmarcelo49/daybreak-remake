@@ -255,6 +255,18 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                          "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
                          "${CMAKE_CURRENT_SOURCE_DIR}")
         set_tests_properties(toon_ramp PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
+
+        # The NPR experiment harness (issue #25): for every technique it asserts the
+        # specific property the technique claims (a band is a step, a tint moves the
+        # shadowed side's hue, an additive term never removes light, lighting-only normals
+        # do not move the silhouette, a wider hull widens the rim), and that --npr=off is
+        # byte-identical to the default frame. Same skip-without-a-renderer rule.
+        add_test(NAME npr_experiments
+                 COMMAND ${Python3_EXECUTABLE}
+                         "${CMAKE_CURRENT_SOURCE_DIR}/tests/npr_experiments.py"
+                         "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
+                         "${CMAKE_CURRENT_SOURCE_DIR}")
+        set_tests_properties(npr_experiments PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
     endif()
 
     add_executable(debug_prims_geometry tests/debug_prims_geometry.cpp)
