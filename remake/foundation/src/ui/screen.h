@@ -61,11 +61,21 @@ enum class ScreenId : int {
 // original merges all four input slots into one set of counters (FUN_00410f60.c:81-100)
 // so a pad confirm works from any slot; confirm is Jump (Z — docs/reference/README.md's
 // control correction notes Z is confirmed in menus) and cancel is AttackA (X).
+//
+// `upHeld`/`downHeld`/`leftHeld`/`rightHeld` are the same four directions as HELD state
+// instead of this frame's edge. The select screen's free cursor is the one consumer that
+// needs it — it slides at a fixed rate per call while a direction is down
+// (FUN_00409340:239-244) — and it travels BESIDE the edge fields so that every other
+// front-end screen keeps its one-step-per-press grammar. PORT RULE: the port's input layer
+// is edge-based (just_pressed), and a synthetic pad's down-state is held for a whole hold,
+// so without this the same rule would behave differently per device.
 struct ScreenButtons {
     bool up = false, down = false, left = false, right = false, confirm = false, cancel = false;
+    bool upHeld = false, downHeld = false, leftHeld = false, rightHeld = false;
 };
 struct ScreenInput {
     bool up = false, down = false, left = false, right = false, confirm = false, cancel = false;
+    bool upHeld = false, downHeld = false, leftHeld = false, rightHeld = false;
     int player = 0;
     bool separatePlayers = false;
     std::array<ScreenButtons,4> players{};

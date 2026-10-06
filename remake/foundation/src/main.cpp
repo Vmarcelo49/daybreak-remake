@@ -1454,7 +1454,7 @@ void driveSyntheticLocalPads(App& app) {
             // starts when the screen does and not at process start. It restarts on every
             // Select entry — a rematch re-enters the selection screen, and a clock latched on
             // the first appearance left the pads stuck mid-pattern there: their cursor moves
-            // (keyed to the pattern's own ticks 56/60/62) never fired again, so no pad could
+            // (keyed to the pattern's own ticks) never fired again, so no pad could
             // reach the OK cell and the rematch round's stage page opened at a different tick
             // with different settings. Per-appearance, a rematch round runs the same walk as
             // the first one — and it has the same panels to walk, because entering the select
@@ -4930,6 +4930,10 @@ static SDL_AppResult tickFrontend(App& state) {
         for (const auto& player : app->tickInput) if (player.just_pressed[action]) return true;
         return false;
     };
+    auto anyDown = [&](fnd::input::Action action) {
+        for (const auto& player : app->tickInput) if (player.down[action]) return true;
+        return false;
+    };
     ui::ScreenInput in;
     in.up      = anyPressed(fnd::input::Up);
     in.down    = anyPressed(fnd::input::Down);
@@ -4937,6 +4941,12 @@ static SDL_AppResult tickFrontend(App& state) {
     in.right   = anyPressed(fnd::input::Right);
     in.confirm = anyPressed(fnd::input::Jump);
     in.cancel  = anyPressed(fnd::input::AttackA);
+    // The held state beside the edges (screen.h): the select screen's free cursor slides while
+    // a direction is down, which an edge alone cannot express on the keyboard path.
+    in.upHeld    = anyDown(fnd::input::Up);
+    in.downHeld  = anyDown(fnd::input::Down);
+    in.leftHeld  = anyDown(fnd::input::Left);
+    in.rightHeld = anyDown(fnd::input::Right);
     in.separatePlayers = true;
     for (int p = 0; p < 4; ++p) {
         const auto& input = app->tickInput[p];
@@ -4947,6 +4957,10 @@ static SDL_AppResult tickFrontend(App& state) {
         buttons.right = input.just_pressed[fnd::input::Right];
         buttons.confirm = input.just_pressed[fnd::input::Jump];
         buttons.cancel = input.just_pressed[fnd::input::AttackA];
+        buttons.upHeld = input.down[fnd::input::Up];
+        buttons.downHeld = input.down[fnd::input::Down];
+        buttons.leftHeld = input.down[fnd::input::Left];
+        buttons.rightHeld = input.down[fnd::input::Right];
     }
     const ui::ScreenId previousScreen = app->screens.current();
     app->screens.update(in);
