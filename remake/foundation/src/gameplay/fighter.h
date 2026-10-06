@@ -515,8 +515,9 @@ public:
 
     // --- hypermode (spec §3.4) ---
     void set_hypermode(Hypermode m) { m_hypermode = m; }
-    // Launch-time state injection (the suite's stand-in for the original's
-    // F-keys: F4 maxes Hypermode, wiki Basics §training). 0..1, clamped.
+    // Launch-time state injection, 0..1, clamped. It stood in for the original's F4 (wiki
+    // Basics §training: "F4 maxes Hypermode") until issue #48 implemented the key itself
+    // (fill_gauges below), and stays as the launch-time seam the visual suite drives.
     void set_hyper_gauge(float f) {
         m_gauge = f < 0.0f ? 0.0f : (f > 1.0f ? 1.0f : f);
     }
@@ -528,6 +529,23 @@ public:
     void set_battle_rates(int healthPercent, int gaugePercent) {
         m_maxHP = healthPercent < 50 ? 50 : (healthPercent > 200 ? 200 : healthPercent);
         m_gaugeRate = (gaugePercent < 50 ? 50 : (gaugePercent > 200 ? 200 : gaugePercent)) / 100.f;
+    }
+    // F1 (issue #48): the original writes HP AND max HP to 10000 at fighter+0x7a4/+0x7a8
+    // (FUN_00634f60:175-182, after the two balloon stores at :173-174), i.e. the fighter's
+    // full capacity in one store. The port's
+    // capacity is m_maxHP — 100 in the original's own units (10000/100, the ×100 UNIT note
+    // in main.cpp's result record) and scaled by the battle's HP setting — so "full" is
+    // m_maxHP and this writes HP alone: m_maxHP is the battle's configured capacity, not a
+    // value a debug key should rewrite. No clamp to 1, unlike set_hp(): a KO'd fighter is
+    // restored exactly as the original's raw store restores it.
+    void restore_full_hp() { m_hp = m_maxHP; }
+    // F4 (issue #48): the original fills ONE gauge per fighter, selected by its +0x318 byte
+    // (FUN_00634f60:184-204). The port carries no selector, so every meter it models is
+    // filled; debug_keys.h names the recovered arm behind each (MAIN, CHARGE, hypermode).
+    void fill_gauges() {
+        m_main.value = m_main.max;
+        m_charge.value = m_charge.max;
+        set_hyper_gauge(1.0f);
     }
     int max_hp() const { return m_maxHP; }
     const CombatStats& stats() const { return m_stats; }

@@ -34,6 +34,10 @@ void Match::reset(const MatchConfig& config, const xm::Model* model[4], xm::Cont
     m_locks.reset(m_config.fighterCount, m_config.side);
     m_economy.reset();
     m_economy.set_round_rules(config.timeLimit, config.balloonSize);
+    // Issue #48's F2/F3 flag: battle state like the lock table, so a rematch starts with every
+    // COM brain live again — the original sets it to 1 wherever a slot is bound to a battle
+    // (FUN_0041efa0:10, and FUN_00417200:47 when the roster assigns a COM slot).
+    for (int i = 0; i < 4; ++i) m_aiEnabled[i] = true;
 }
 
 void Match::liveness(bool out[4]) const {

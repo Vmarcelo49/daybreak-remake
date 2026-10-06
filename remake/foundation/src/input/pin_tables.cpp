@@ -30,6 +30,13 @@ static_assert(fnd::input::sdl3::kScTactics == SDL_SCANCODE_Q, "P1 tactics drifte
 static_assert(fnd::input::sdl3::kScLock == SDL_SCANCODE_A, "P1 lock drifted");
 static_assert(fnd::input::sdl3::kScPause == SDL_SCANCODE_W, "P1 pause drifted");
 static_assert(fnd::input::sdl3::kScCamRight == SDL_SCANCODE_E, "camera-right drifted");
+// The original's debug keys (issue #48): the one place the DIK scancodes FUN_00634f60 reads
+// are translated onto SDL's HID-based ones.
+static_assert(fnd::input::sdl3::kScEscape == SDL_SCANCODE_ESCAPE, "debug Escape drifted");
+static_assert(fnd::input::sdl3::kScF1 == SDL_SCANCODE_F1, "debug F1 drifted");
+static_assert(fnd::input::sdl3::kScF2 == SDL_SCANCODE_F2, "debug F2 drifted");
+static_assert(fnd::input::sdl3::kScF3 == SDL_SCANCODE_F3, "debug F3 drifted");
+static_assert(fnd::input::sdl3::kScF4 == SDL_SCANCODE_F4, "debug F4 drifted");
 static_assert(sizeof(fnd::input::sdl3::kP1ScancodeByAction) /
                       sizeof(fnd::input::sdl3::kP1ScancodeByAction[0]) ==
                   (size_t)fnd::input::ActionCount,

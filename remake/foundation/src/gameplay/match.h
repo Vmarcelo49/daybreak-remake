@@ -180,6 +180,25 @@ public:
     // [fighter+0xaecb] as "not selectable" (FUN_0041f580 @0x41fe26-0x41fe73).
     int  melee_target(int fighter) const;
 
+    // ---- per-fighter COM enable (issue #48) -------------------------------------------
+    // The port's counterpart of the original's [fighter+0x860], which its battle debug keys
+    // clear (F2) and set (F3). The original initializes it to 1 wherever a slot is bound to a
+    // battle (FUN_0041efa0:10, FUN_00417200:47) and its AI decision is gated on it
+    // (FUN_00421730:10), so this flag is battle state like the lock table, not the host's: it
+    // is reset with the match, and a capture reproduces it from the same tick-keyed key
+    // script that the rest of the simulation is a function of.
+    //
+    // The host is the only reader — a COM slot whose flag is clear is fed no input at all
+    // instead of its brain's decision (FUN_00421730 gates the AI on the same flag). It MUST
+    // only consult it for a slot no controller owns; F3 keeps that invariant (debug_keys.h).
+    // Out of range reads the default, so a caller cannot read a flag for a slot that has none.
+    bool ai_enabled(int fighter) const {
+        return fighter < 0 || fighter >= 4 ? true : m_aiEnabled[fighter];
+    }
+    void set_ai_enabled(int fighter, bool on) {
+        if (fighter >= 0 && fighter < 4) m_aiEnabled[fighter] = on;
+    }
+
     Fighter&       fighter(int i)       { return m_fighters[i]; }
     const Fighter& fighter(int i) const { return m_fighters[i]; }
     ProjectilePool&       shots()       { return m_shots; }
@@ -203,6 +222,8 @@ private:
     void liveness(bool out[4]) const;
 
     bool               m_paused = false;   // issue #15; set_paused above
+    // Issue #48's F2/F3 flag. True is the original's initialized value (FUN_0041efa0:10).
+    bool               m_aiEnabled[4] = {true, true, true, true};
     Fighter            m_fighters[4];
     ProjectilePool     m_shots;
     MatchEconomy       m_economy;

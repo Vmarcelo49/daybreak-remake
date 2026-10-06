@@ -67,10 +67,10 @@ data. It is also registered in the host suite (`ctest -R launcher_test`).
 ctest --test-dir remake/foundation/build/linux --output-on-failure
 ```
 
-* **With the game install present**: `100% tests passed out of 53`
-  (re-measured 2026-10-06 with issue #47's `countdown_overlay_test` added; 52 was the
-  count after issue #51's `lock_switch_camera_test`, 51 through issue #43's
-  `select_row_slidein_test`).
+* **With the game install present**: `100% tests passed out of 54`
+  (re-measured 2026-10-06 with issue #48's `debug_keys_test` added; 53 was the
+  count after issue #47's `countdown_overlay_test`, 52 after issue #51's
+  `lock_switch_camera_test`, 51 through issue #43's `select_row_slidein_test`).
 * **Without any game data** (the CI runner's state — no `Higurashi-Daybreak/`):
   the same six tests go `Skipped` (exit 77) — `hud_cell_scale`, `toon_ramp`,
   `npr_experiments`, `npr_normals_test`, `controller_scene_lifetime_test` and
@@ -85,13 +85,16 @@ ctest --test-dir remake/foundation/build/linux --output-on-failure
   hand-built match; the second draws the real countdown screen through a device-less
   `SpriteRenderer` and asserts on the pushed batch), so neither skips nor changes which
   tests skip: each adds one to both counts, which is how 51 became 53, and the six
-  skipping tests are unchanged.
+  skipping tests are unchanged. #48's `debug_keys_test` is in that same class too (it
+  compiles `src/main.cpp`, drives `tickMatch` and builds its match with null models), so
+  it also adds one to both counts: 54 registered, the same 54 with six Skipped in a
+  data-free tree.
   The denominator is the number of *registered* tests and grows whenever a suite is
   added (42 when this document was written, 45 when #28 re-measured it, 50 after
   #42's `bgm_loop_test`, #45's `frontend_lifecycle_test` and #46's
   `controller_scene_lifetime_test`, 49 after #29's `device_isolation_test`, 51 after
   #43's `select_row_slidein_test`, 52 after #51's `lock_switch_camera_test`, 53 after
-  #47's `countdown_overlay_test`), so
+  #47's `countdown_overlay_test`, 54 after #48's `debug_keys_test`), so
   read the command's own summary rather than this line when the two disagree —
   the invariant to check is *100% passed* with the asset-dependent tests Skipped
   and none Failed. Issue #40 added no suite: its device-free half (the recovered
