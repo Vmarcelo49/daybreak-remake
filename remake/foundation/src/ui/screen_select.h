@@ -30,8 +30,8 @@ inline constexpr int kSelectCostumes[16] = {5,5,3,5,5,5,2,4,2,2,3,3,1,2,4,5};
 // FUN_0040da60 is called on the roster objects at scene+0x150c+i*0xa0, whose `i%02d.bmp`
 // textures and 80x128 pivot (40,80) are set in FUN_00408330:0x408be7-0x408c14 from the handles
 // at scene+0x4c — the 16 chibi icons of the diamond, which is where this port applies it. The
-// draw's `local_2c` argument ((2,1) while v < 1, else (0,0)) selects the flashing atlas cell and
-// belongs to issue #44's reveal, not to this transform.
+// draw's own cell argument is issue #44's half (selectChibiCell below); this struct is the
+// transform.
 struct SelectReveal {
     static constexpr float kStep = .1f;     // 0x3dcccccd, _DAT_006a1984
     static constexpr float kSettled = 1.f;  // 0x3f800000, _DAT_006a16d0
@@ -45,7 +45,72 @@ struct SelectReveal {
     }
     float scaleX(int slot) const { return value[(size_t)slot]; }
     float scaleY(int slot) const { return 2.f - value[(size_t)slot]; }
+    // The draw's own `bVar1` (FUN_0040b2b0:100): this slot is still mid-reveal. It picks the
+    // flashing cell below and is the same test the ramp's guard uses.
+    bool revealing(int slot) const { return value[(size_t)slot] < kSettled; }
     std::array<float, 16> value{};
+};
+
+// The cell FUN_0040b2b0's roster loop draws a chibi from, as (column, row) of the `i%02d`
+// sheet's 80x128 grid, which the idle cycle already proves is 3 wide x 2 tall. Line numbers are
+// research/decompiled/FUN_0040b2b0.c (the loop is :96-131; the live original's copy is :97-133)
+// unless the live original is named.
+//
+//   * A slot one of the four panels has selected draws the idle cycle — the original's
+//     `iVar8 = (tick % 40) / 10; cell = (iVar8 + 1) % 3, (iVar8 + 1) / 3` at :107-112, i.e.
+//     cells (1,0) (2,0) (0,1) (1,1) over 40 ticks — at y + 150. That is a property of the
+//     PANEL match, not of the ramp, so a selected slot keeps the cycle while it reveals.
+//   * Any other slot draws `(local_2c, bVar1)` from the branch's else (:123-130, the call at
+//     :128-129) with `local_2c` = 2 while the value is < 1.0 and 0 after, and `bVar1` the same
+//     test: cell (2,1) while revealing, cell (0,0) once settled, at y + 160.
+//
+// The white is the CELL, not a tint: FUN_00655830 has no colour parameter at all, and its
+// param_4/param_5 are this column and row — they only build the quad's UVs
+// (`u = col * stepU + baseU`, `v = row * stepV + baseV`; :24-31 in research/decompiled, :21-28
+// in the live original). Measured on this install, cell (2,1) of `data/select/i00.cnv` (and
+// i01/i07/i15) is 100 % opaque white with mean RGB 255,255,255, where the other five cells are
+// the coloured chibi frames.
+struct SelectChibiCell {
+    int col = 0, row = 0;
+};
+inline SelectChibiCell selectChibiCell(bool selected, int sceneTick, bool revealing) {
+    if (selected) {
+        const int cell = (sceneTick % 40) / 10 + 1;
+        return SelectChibiCell{cell % 3, cell / 3};
+    }
+    return revealing ? SelectChibiCell{2, 1} : SelectChibiCell{0, 0};
+}
+
+// The scene's entry white flash (issue #44, criterion 2). FUN_0040b2b0's own tail — :466-475 in
+// research/decompiled/FUN_0040b2b0.c, :480-489 in the live original — draws a full-screen
+// 800x600 quad through FUN_00651860(0, 0, 800.0, 600.0, alpha8 << 24 | 0xffffff) over two tick
+// windows of the scene's own counter that meet at the peak:
+//
+//     tick 25..34:  alpha8 = (tick - 25) * 24 + 15  ->   15, 39, ... 231   (rise, '\x18')
+//     tick 35..54:  alpha8 = (55 - tick) * 12 + 15  ->  255, 243, ...  27   (fall, '\f')
+//
+// so it is drawn on exactly ticks 25..54 (30 ticks), is fully opaque on tick 35 alone, and is
+// the RGB the call spells out: `| 0xffffff` is WHITE. It is not the black cross-fade — that
+// one is FUN_0040b1f0:23-24's bare `(byte)(scene+0x3c42) << 24`, which the port already has as
+// ScreenStack's 25-frame fade, and the issue's candidate globals (DAT_006cfba0 /
+// (&DAT_006cfba4)[...]) are the participating human slots, not an alpha (FUN_0040d130:108-111).
+//
+// The byte casts in the original are exact over these windows (15..255, no wrap), so the
+// arithmetic here is the same values without them.
+struct SelectFlash {
+    static constexpr int kFirst = 25;      // window B opens: 0x18 < tick < 0x23, alpha 15
+    static constexpr int kPeak = 35;       // window A opens: 0x22 < tick < 0x37, alpha 255
+    static constexpr int kLast = 54;       // 0x37 is the first tick with no quad
+    static constexpr int kUpStep = 24;     // window B's '\x18'
+    static constexpr int kDownStep = 12;   // window A's '\f'
+    static constexpr int kBias = 15;       // the '+ 0xf' both windows carry
+    static int alpha8(int tick) {
+        if (tick < kFirst || tick > kLast) return 0;
+        if (tick < kPeak) return (tick - kFirst) * kUpStep + kBias;
+        return (kLast + 1 - tick) * kDownStep + kBias;
+    }
+    // What the draw pushes: that alpha over the 800x600 canvas, in the call's white.
+    static UiColor color(int tick) { return UiColor{1.f, 1.f, 1.f, alpha8(tick) / 255.f}; }
 };
 
 // FUN_00655830's quad for a sprite drawn with an independent x/y scale (see SelectReveal).

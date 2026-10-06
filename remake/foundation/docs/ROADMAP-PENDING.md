@@ -1565,6 +1565,53 @@ the next screen id, a factory for construction, tests against fakes.
   narrow stretched icons with the not-yet-started slots absent); the four
   scripted gate runs re-measured with the same characters
   (`RELEASE-CHECKLIST.md` §3).
+* **The reveal's flash and the entry screen flash (issue #44, 2026-10-06) — both
+  recovered, and the issue's candidate globals were the wrong ones.** The issue
+  pointed at `DAT_006cfba0` / `(&DAT_006cfba4)[...]` as a count and an alpha list.
+  They are not: `FUN_0040d130:108-111` appends each slot whose controller is a pad
+  (`(&DAT_006cfaf8)[slot] < 4`) to that list, so `DAT_006cfba0` is the number of
+  participating **human** players and the entries are their slot indices
+  (`FUN_00417c20:43-48` takes the pad-0 slot; `FUN_0041a260:47-48` is the
+  no-human fallback 1/0). The port's own two halves of the transition are:
+  1. **The flashing chibi is an atlas CELL, not a tint.** `FUN_0040b2b0:97-102`
+     sets `local_2c = 2` while a slot's value is `< 1.0` and 0 after, and its
+     non-selected branch (`:123-130` in `research/decompiled`, `:124-131` in the
+     live original via the bridge) is the only place that argument goes:
+     `FUN_00655830(x, y, local_2c, bVar1)`, with `bVar1` the same `< 1.0` test.
+     The pair is the cell's **column and row**, so an unselected slot draws
+     **(2,1) while revealing and (0,0) once settled** — and the cell is where the
+     white is: `FUN_00655830` has no colour parameter at all, its param_4/param_5
+     only build the quad's UVs (`:21-28`, `u = col*stepU + baseU`,
+     `v = row*stepV + baseV`). Measured on this install, cell (2,1) of
+     `data/select/i00/i01/i07/i15.cnv` is 100 % opaque white (mean RGB
+     255,255,255) where the other five cells are the coloured chibi frames. A slot
+     one of the panels has selected keeps its **idle cycle** instead
+     (`:107-112` — cells (1,0) (2,0) (0,1) (1,1) over 40 ticks), because that
+     branch tests the panel match, not the ramp.
+  2. **The screen flash is a WHITE full-screen quad with a recovered 30-tick
+     alpha curve.** The select scene's own draw ends with two overlapping quads —
+     `FUN_0040b2b0:466-475` in `research/decompiled`, `:480-489` in the live
+     original — `FUN_00651860(0, 0, 800.0, 600.0, alpha8 << 24 | 0xffffff)`:
+     `tick 25..34` at `(tick - 25) * 24 + 15` (15 -> 231) and `tick 35..54` at
+     `(55 - tick) * 12 + 15` (255 -> 27), nothing outside. The peak is **tick 35
+     alone at 255** (the byte casts are exact over both windows, so the port does
+     the same arithmetic without them). The `| 0xffffff` is why it is white: the
+     black sibling is `FUN_0040b1f0:23-24`'s bare `(byte)(scene+0x3c42) << 24`,
+     a scene-internal page cross-fade drawn *after* the scene, which the port
+     already has as `ScreenStack`'s 25-frame fade.
+  Both run on the scene's fixed tick, so the flash opens exactly as the black
+  scene-switch fade-in reaches zero (scene tick 25 is 25 frames after the swap)
+  and peaks five ticks after the last chibi settled (slot 15 settles at tick 30).
+  Device-free test: `tests/select_row_slidein_test.cpp`, extended with the cell
+  rule, the 30-tick window, the single-tick peak, the white colour and the
+  reveal/flash overlap. Evidence recipe `tests/scripts/select-slidein.txt` with
+  captures at frames 54, 58, 69 and 100 (scene ticks 20/24/35/66): ticks 20 and 24
+  show the white silhouettes — narrow and stretched for the slots early in their
+  ramp — beside coloured, settled chibis, tick 35 is the fully white canvas, and
+  tick 66 is settled and byte-identical to the same capture before this change.
+  The curve itself was measured off the rendered frames: probing canvas pixels
+  that are pure black in the settled frame gives an implied alpha that matches the
+  recovered one at **delta 0.00/255 on every tick 20..59**.
 
 ### E2. Select page 1 — IMPLEMENTED (original match-rule fidelity remains open)
 

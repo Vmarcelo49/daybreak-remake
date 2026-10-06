@@ -313,10 +313,12 @@ void SelectScreen::draw(SpriteRenderer& b) const {
     for(int i:kSelectRosterOrder) {
         bool selected=false;
         for(const auto& slot:state_.slots) selected |= slot.character==i;
-        int cell=selected ? (frames_%40)/10+1 : 0;
+        // FUN_0040b2b0:106-131: a selected slot's idle-cycle cell, else the (2,1) flashing cell
+        // while that slot's ramp is below 1.0 and (0,0) once it has settled.
+        const SelectChibiCell cell=selectChibiCell(selected,(int)frames_,reveal_.revealing(i));
         // FUN_0040b2b0:96-104: the slot's ramp is the (v, 2-v) scale pair on its own chibi quad,
         // about the (40,80) pivot FUN_00408330:0x408be7 gave it.
-        spriteScaled(chibi_[i],{float(cell%3)*80,float(cell/3)*128,80,128},40,80,
+        spriteScaled(chibi_[i],{float(cell.col)*80,float(cell.row)*128,80,128},40,80,
                kSelectRosterX[i]*48.f+400,kSelectRosterY[i]*36.f+(selected?150:160),
                reveal_.scaleX(i),reveal_.scaleY(i));
     }
@@ -369,6 +371,11 @@ void SelectScreen::draw(SpriteRenderer& b) const {
     }
     sprite(shared_[3],{256,64,128,64},64,32,336,550);
     sprite(shared_[3],{384,64,128,64},64,32,464,550);
+    // FUN_0040b2b0:466-475: the entry's full-screen WHITE flash, on the scene's own tick and
+    // over everything the scene drew. The black cross-fade FUN_0040b1f0:23-24 draws afterwards
+    // is the screen stack's own fade in this port, so it lands on top here too.
+    if(const UiColor flash=SelectFlash::color((int)frames_);flash.a>0.f)
+        b.pushSolid({0,0,800,600},flash);
 }
 std::unique_ptr<Screen> makeSelectScreen(SpriteRenderer& batch,FrontendState& state,std::string& error) {
     auto screen=std::make_unique<SelectScreen>(batch,state,error);
