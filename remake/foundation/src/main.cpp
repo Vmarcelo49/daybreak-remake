@@ -821,6 +821,7 @@ struct App {
     fnd::audio::SfxHandle         menuSounds[4] = {-1, -1, -1, -1};
     uint64_t                     menuSoundPlays[4] = {};
     uint64_t                     menuVoicePlays = 0;
+    uint64_t                     menuBgmPushed = 0;  // frames the menu stream accepted
     fnd::audio::DecodedOgg        menuBgm;
     fnd::audio::LoopPlayer        menuLoop;
     fnd::input::PlayerState       botInput[4];
@@ -1585,6 +1586,12 @@ bool initTriangle(App& app) {
 // samples, so anything but 44100 stereo is refused rather than misaligned.
 // Reads go through the asset source, so an install with only its .dat bundles
 // plays BGM without an extracted tree.
+//
+// Only the track itself is required. A missing or unusable loop sheet is "no
+// loop region" (resolve_loop_sheet, audio_format.h), so a track that ships
+// without one — data/bgm/vs.ogg is the only one on this install — plays once to
+// EOF instead of failing the load; the region is still written to the player,
+// which would otherwise keep the previous track's points.
 static bool loadBgmTrack(const std::string& oggPath, fnd::audio::Sdl3Engine& engine,
                          fnd::audio::DecodedOgg& decoded, fnd::audio::LoopPlayer& loop,
                          std::string& error) {
@@ -1598,26 +1605,18 @@ static bool loadBgmTrack(const std::string& oggPath, fnd::audio::Sdl3Engine& eng
         error = "BGM decode failed or not 44100 stereo: " + oggPath;
         return false;
     }
-    std::string sflPath = oggPath;
-    const size_t dot = sflPath.find_last_of('.');
-    if (dot == std::string::npos) {
-        error = "BGM path needs an extension to find its .sfl sibling";
-        return false;
-    }
-    sflPath.replace(dot, std::string::npos, ".sfl");
-    std::vector<uint8_t> sfl;
-    if (!fnd::assets::assetSource().read(sflPath, sfl)) {
-        error = "missing loop sheet " + sflPath;
-        return false;
-    }
-    const fnd::audio::SflLoop region =
-        fnd::audio::parse_sfl_loop(sfl.data(), sfl.size(), 44100);
-    if (!region.valid) {
-        error = "unparsable loop sheet " + sflPath;
-        return false;
-    }
+    const fnd::audio::LoopSheetResult sheet = fnd::audio::resolve_loop_sheet(
+        oggPath, 44100, [](const std::string& path, std::vector<uint8_t>& out) {
+            return fnd::assets::assetSource().read(path, out);
+        });
     loop.set_source(decoded.stereo44100.data(), decoded.stereo44100.size() / 2);
-    loop.set_loop(region.startSample, region.endSample);
+    loop.set_loop(sheet.loop.startSample, sheet.loop.endSample);
+    // The absent case stays silent, as FUN_00668820 is; only a sheet that is
+    // there but unusable earns a line, and this one is load-time, never per-frame.
+    if (!sheet.note.empty())
+        std::fprintf(stderr, "[bgm] %s: no loop region, playing to EOF "
+                             "[port rule: reported, FUN_00668820 is silent]\n",
+                     sheet.note.c_str());
     (void)engine;
     return true;
 }
@@ -3919,57 +3918,73 @@ bool runAudioTest(App& app) {
         // A sibling .sfl file carries the BGM loop region. When one parses,
         // stream the track through it twice in engine-sized chunks: this is the
         // production streaming path (decode once, push looped chunks), verified
-        // by exact frame accounting rather than by listening.
+        // by exact frame accounting rather than by listening. No sheet — or an
+        // unusable one — is still a playable track, not a failure: it streams to
+        // EOF once, which is what FUN_00668820's zero loop region means.
         if (std::string(kind) == "ogg") {
-            std::string sflPath = app.opts.audioFile;
-            const size_t dot = sflPath.find_last_of('.');
-            if (dot != std::string::npos) {
-                sflPath.replace(dot, std::string::npos, ".sfl");
-                std::ifstream sf(sflPath, std::ios::binary);
-                if (sf) {
-                    const std::vector<uint8_t> sfl((std::istreambuf_iterator<char>(sf)),
-                                                   std::istreambuf_iterator<char>());
-                    fnd::audio::DecodedOgg decoded;
-                    if (fnd::audio::decode_ogg_s16(bytes.data(), bytes.size(), decoded) &&
-                        decoded.ok && decoded.srcRate == 44100 && decoded.srcChannels == 2) {
-                        const fnd::audio::SflLoop loop =
-                            fnd::audio::parse_sfl_loop(sfl.data(), sfl.size(), 44100);
-                        if (loop.valid) {
-                            fnd::audio::LoopPlayer player;
-                            player.set_source(decoded.stereo44100.data(),
-                                              decoded.stereo44100.size() / 2);
-                            player.set_loop(loop.startSample, loop.endSample);
-                            size_t streamed = 0;
-                            // Two full loops, bounded: a runaway wrap would show
-                            // up here as iterations past the budget, not a hang.
-                            const size_t budget =
-                                (2 * (loop.endSample - loop.startSample) + loop.endSample) /
-                                    4096 +
-                                8;
-                            for (size_t i = 0; i < budget && player.loops_completed() < 2;
-                                 ++i)
-                                streamed += player.push_next(engine, 4096);
-                            // Two wraps land at end + (end - start): the opening
-                            // [0, end) pass plus one full [start, end) loop.
-                            const size_t expect =
-                                2 * (size_t)loop.endSample - loop.startSample;
-                            // The call containing the second wrap keeps pushing
-                            // into the third pass up to its chunk budget, so the
-                            // total overshoots by less than one chunk: wraps are
-                            // the exact signal, totals are bounded each side.
-                            std::printf("audio-test: loop %u..%u streamed %zu frames, %llu wraps\n",
-                                        loop.startSample, loop.endSample, streamed,
-                                        (unsigned long long)player.loops_completed());
-                            if (player.loops_completed() != 2 || streamed < expect ||
-                                streamed >= expect + 4096 ||
-                                player.position() < loop.startSample ||
-                                player.position() >= loop.endSample) {
-                                app.error = "loop streaming mismatch";
-                                return false;
-                            }
-                        } else {
-                            std::printf("audio-test: .sfl present but unparsable, loop test skipped\n");
-                        }
+            fnd::audio::DecodedOgg decoded;
+            if (fnd::audio::decode_ogg_s16(bytes.data(), bytes.size(), decoded) && decoded.ok &&
+                decoded.srcRate == 44100 && decoded.srcChannels == 2) {
+                // This mode reads through the filesystem rather than the asset
+                // source (it takes a path on the command line), so the sheet
+                // lookup follows the same path.
+                const fnd::audio::LoopSheetResult sheet = fnd::audio::resolve_loop_sheet(
+                    app.opts.audioFile, 44100,
+                    [](const std::string& path, std::vector<uint8_t>& out) {
+                        std::ifstream sf(path, std::ios::binary);
+                        if (!sf) return false;
+                        out.assign(std::istreambuf_iterator<char>(sf),
+                                   std::istreambuf_iterator<char>());
+                        return true;
+                    });
+                fnd::audio::LoopPlayer player;
+                player.set_source(decoded.stereo44100.data(), decoded.stereo44100.size() / 2);
+                player.set_loop(sheet.loop.startSample, sheet.loop.endSample);
+                size_t streamed = 0;
+                if (sheet.status == fnd::audio::LoopSheet::Parsed) {
+                    const uint32_t start = sheet.loop.startSample;
+                    const uint32_t end = sheet.loop.endSample;
+                    // Two full loops, bounded: a runaway wrap would show
+                    // up here as iterations past the budget, not a hang.
+                    const size_t budget = (2 * (size_t)(end - start) + end) / 4096 + 8;
+                    for (size_t i = 0; i < budget && player.loops_completed() < 2; ++i)
+                        streamed += player.push_next(engine, 4096);
+                    // Two wraps land at end + (end - start): the opening
+                    // [0, end) pass plus one full [start, end) loop.
+                    const size_t expect = 2 * (size_t)end - start;
+                    // The call containing the second wrap keeps pushing
+                    // into the third pass up to its chunk budget, so the
+                    // total overshoots by less than one chunk: wraps are
+                    // the exact signal, totals are bounded each side.
+                    std::printf("audio-test: loop %u..%u streamed %zu frames, %llu wraps\n",
+                                start, end, streamed,
+                                (unsigned long long)player.loops_completed());
+                    if (player.loops_completed() != 2 || streamed < expect ||
+                        streamed >= expect + 4096 || player.position() < start ||
+                        player.position() >= end) {
+                        app.error = "loop streaming mismatch";
+                        return false;
+                    }
+                } else {
+                    // One pass to EOF with no wrap; the push total is the
+                    // positive proof the whole track reached the engine.
+                    const size_t frames = decoded.stereo44100.size() / 2;
+                    const size_t budget = frames / 4096 + 16;
+                    for (size_t i = 0; i < budget && player.position() < frames; ++i)
+                        streamed += player.push_next(engine, 4096);
+                    if (sheet.status == fnd::audio::LoopSheet::Unparsable)
+                        std::printf("audio-test: %s [port rule: reported, FUN_00668820 is "
+                                    "silent]\n", sheet.note.c_str());
+                    else
+                        std::printf("audio-test: no loop sheet for %s, playing to EOF\n",
+                                    app.opts.audioFile.c_str());
+                    std::printf("audio-test: streamed %zu/%zu frames to EOF, %llu wraps\n",
+                                streamed, frames,
+                                (unsigned long long)player.loops_completed());
+                    if (streamed != frames || player.loops_completed() != 0 ||
+                        player.position() != frames) {
+                        app.error = "no-loop streaming mismatch";
+                        return false;
                     }
                 }
             }
@@ -4887,7 +4902,7 @@ static SDL_AppResult tickFrontend(App& state) {
         app->lastTime = plat::now();
     if (!app->error.empty()) return SDL_APP_FAILURE;
     if (app->menuAudio.music_queued_frames() < 4096)
-        app->menuLoop.push_next(app->menuAudio, 1024);
+        app->menuBgmPushed += app->menuLoop.push_next(app->menuAudio, 1024);
     const std::string voice = app->screens.takeVoice();
     if (!voice.empty()) {
         auto& source = fnd::assets::assetSource();
@@ -5562,10 +5577,12 @@ void SDL_AppQuit(void* appstate, SDL_AppResult) {
     auto* app = static_cast<App*>(appstate);
     if (!app) return;
     if (!app->opts.screen.empty())
-        std::printf("menu-audio: confirm=%llu back=%llu cursor=%llu ready=%llu voices=%llu\n",
+        std::printf("menu-audio: confirm=%llu back=%llu cursor=%llu ready=%llu voices=%llu "
+                    "bgm=%llu frames\n",
             (unsigned long long)app->menuSoundPlays[0], (unsigned long long)app->menuSoundPlays[1],
             (unsigned long long)app->menuSoundPlays[2], (unsigned long long)app->menuSoundPlays[3],
-            (unsigned long long)app->menuVoicePlays);
+            (unsigned long long)app->menuVoicePlays,
+            (unsigned long long)app->menuBgmPushed);
     flushUserSettings(*app);   // last chance for a change made after the last screen exit
     ui::frontendSettings().applyVolumes = {};
     ui::frontendSettings().applyFullscreen = {};
