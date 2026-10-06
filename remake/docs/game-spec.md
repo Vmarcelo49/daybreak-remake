@@ -224,10 +224,14 @@ slot/context-aware, not a single global confirm/cancel pair.
 Versus doubles as a training mode via function keys
 ([Basics](https://higurashidaybreak.fandom.com/wiki/Basics)):
 **F1** max HP for everyone + both balloons to 0%, **F2** CPUs off
-(stand still), **F3** CPUs on, **F4** max Hypermode. The foundation has no
-F-key debug hooks yet (its only raw key is ESC to quit, `src/main.cpp:2225`);
-F2 is reserved for the original's CPU-off key, so animation debug must move off
-it when these land. Captures are made with `--out`, not an F12 screenshot.
+(stand still), **F3** CPUs on, **F4** max Hypermode — plus **Escape**, which
+leaves the battle. The foundation implements all five (issue #48): the recovered
+gate (`DAT_006cfce9`: live in a versus battle, dead in story mode), sampling on
+the fixed-step boundary, `--no-debug-keys` and the `--debug-keys=KEY@TICK`
+injection. The recovered map, the addresses and the two port rules are in
+[`../foundation/docs/DEBUG-KEYS.md`](../foundation/docs/DEBUG-KEYS.md); F2's
+CPU-off meaning is that key's own, so animation debug stays off the function
+row. Captures are made with `--out`, not an F12 screenshot.
 
 ### 3.7 Versus flow (captured end-to-end)
 
