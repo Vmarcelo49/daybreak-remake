@@ -142,6 +142,19 @@ loop, whose command is:
   --headless --out=/tmp/rel-4p.ppm --size=1280x720 --frames=9600
 ```
 
+**`<game-dir>` has a working form, and copying the recipes literally does not
+give it.** Run from `remake/foundation/`, the install is at the *worktree root*,
+so the path is `--install=../../Higurashi-Daybreak` (or an absolute path).
+`--install=Higurashi-Daybreak` exits 1 with `no game data in
+"Higurashi-Daybreak"` — the bare name only resolves when the working directory
+is the repo or worktree root.
+
+**Do not elide `--headless` when repeating a recipe.** §3.4's own warning
+applies: a windowed run steps at the real 64 Hz clock instead of one logic tick
+per rendered frame, so it still prints `RESULT: ok` on a *different* ladder and
+the tick numbers below no longer mean anything. The shorthand in §3.1-§3.3
+("same with …") assumes every flag above it is carried.
+
 **Hashes quoted for these runs are the first eight hex digits of `sha256sum` of
 the written PPM.** An `md5sum` prefix of the same file is different — for the
 1v1 and 2v2 gates, sha256 `8cc49e6c` against md5 `3e4e892a` — so never compare
@@ -549,7 +562,20 @@ demo's own `--frames` summary (wall-clock deltas), not from a stopwatch.
   verification, combat voice/SE counts in the log), but nobody listened on
   real hardware.
 * **Other distributions / older Mesa / other compositors** — only CachyOS +
-  KWin 6.7.5 + Mesa RADV was exercised.
+  KWin 6.7.5 + Mesa RADV was exercised. **A windowed run needs the recipe below,
+  not a plain background launch**: `kwin_wayland` started naively dies silently
+  while leaving its socket file behind, so "the socket exists" proves nothing.
+  The working form (issue #24's audit) is a private runtime directory plus a
+  session bus:
+  ```bash
+  export XDG_RUNTIME_DIR=$(mktemp -d)
+  setsid dbus-run-session -- kwin_wayland --virtual --xwayland --socket dbd-test &
+  export WAYLAND_DISPLAY=dbd-test
+  ./build/linux/foundation_demo --install=../../Higurashi-Daybreak --screen=battle \
+      --local-players=2 --frames=1500
+  ```
+  A healthy run prints `present mode : Fifo(vsync)` and `logic : N ticks, 64 Hz`
+  and ends `RESULT: ok`; kill the session when done.
 * **An interactive compositor-side window drag-resize** — resize was driven
   through the port's own Options resolution list; a mouse drag on the window
   edge was not simulated.
