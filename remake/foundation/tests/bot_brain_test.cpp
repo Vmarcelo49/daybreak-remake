@@ -726,13 +726,18 @@ void testRetarget() {
     ctx3.fighterIndex = 1;
     BotBrain brain3;
     brain3.reset(3);
-    // Let the match's own maintenance acquire both locks (FUN_0041f580's fallback walk
-    // takes the first hostile), then confirm the COM sits on the leader's target.
+    // The leader (fighter 0) is the human: its lock comes from the LockSwitch gesture, so
+    // the test taps it. The COM then takes its OWN lock (issue #49: nothing is handed to
+    // it at round start) through the brain's retarget request, which lands on the same
+    // enemy because the recovered walk starts next to the COM's own index.
     for (int i = 0; i < 3; ++i) m3.step(nullptr, nullptr, 1.0 / 64.0);
-    checkInt(2, m3.locked_target(0), "the leader's lock settles on fighter 2");
+    checkInt(gameplay::kNoTarget, m3.locked_target(0), "no lock is handed out at round start");
+    m3.cycle_locked_target(0);
+    checkInt(2, m3.locked_target(0), "the leader's LockSwitch tap selects fighter 2");
     input::PlayerState in3;
-    for (int i = 1; i <= 4; ++i) gameplay::updateBotInput(brain3, ctx3, in3, (uint64_t)i);
-    checkInt(2, m3.locked_target(1), "without an order the COM takes the same enemy");
+    checkInt(gameplay::kNoTarget, m3.locked_target(1), "the COM starts unlocked too");
+    gameplay::updateBotInput(brain3, ctx3, in3, 1);
+    checkInt(2, m3.locked_target(1), "without an order the COM selects the same enemy itself");
     auto stepSwitch = [&](int ticks) {
         input::PlayerState idle;
         input::compute_edges(idle);

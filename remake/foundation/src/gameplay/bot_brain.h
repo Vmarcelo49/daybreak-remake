@@ -169,6 +169,11 @@ struct BotView {
     int   targetIndex  = -1;   // fighter index of `target`, -1 when none
     int   partnerIndex = -1;
     int   leaderTarget = -1;   // the viewer/leader's locked target, for cells 3/4
+    bool  lockHeld     = false;// fighter+0x304 > -1: this fighter holds a lock of its own.
+                               // `target` falls back to the nearest hostile, so it is
+                               // always set while an enemy lives; this is the only field
+                               // that says whether the fighter has actually SELECTED one.
+                               // The brain asks for a cycle while it is false (issue #49).
     int   hostileCount = 0;    // living hostiles, so a switch is only asked for when
                                // there is somewhere to switch to
     // The nearest hostile threat inside the horizon: a live projectile aimed at this

@@ -113,6 +113,36 @@ inline HudRingTransform hudRingTransform(int frame, int pulse) {
     return {1.f + pulse * .1f, frame * .5f + pulse * 9.f, -frame * .5f};
 }
 
+// FUN_00643230:67-96 chooses the ring's atlas cell: column 0 normally, column 2 for the
+// blinking hyper ring; row 0 (black) while an action counter runs, row 2 (green) while
+// the fighter ITSELF holds a lock (fighter+0x304 > -1), row 1 (the plain red ring)
+// otherwise. Split out of the composer so the rule is pinnable without a renderer — the
+// drawing (the two arcs, their pulses and the counter-rotating owner copy) stays in
+// HudComposer::composeFighters.
+struct HudRingCell { int col = 0; int row = 1; };
+inline HudRingCell hudRingCell(const HudFighterHud& f, int frame) {
+    HudRingCell cell;
+    cell.row = f.acting ? 0 : (f.locked ? 2 : 1);
+    if (f.hyper && !f.acting && !f.locked) {
+        cell.col = 2;
+        // FUN_00643230:73-77 blinks between rows 0 and 1 every 15 frames when the
+        // fighter's +0x848 flag is clear; the port has no +0x848, so it takes the
+        // blinking branch (a labelled port rule).
+        cell.row = (frame % 0x1e) / 0xf;
+    }
+    return cell;
+}
+
+// FUN_00643230:97-102 (local_31): the view's OWN fighter draws a SECOND, counter-rotating
+// arc pair at the same cell, and only while that fighter has no lock of its own
+// (owner+0x304 < 0). The original's owner test compares the drawn fighter's +0x300 with
+// the view player's; main.cpp:3267 maps that onto HudFighterRole::Owner, one per view
+// (issue #12). Issue #49's second symptom was this copy never appearing: `locked` was true
+// for everyone from the first tick.
+inline bool hudRingCounterRotates(const HudFighterHud& f) {
+    return f.role == HudFighterRole::Owner && !f.locked;
+}
+
 // The world lifts FUN_00643230 projects its two per-fighter anchors at (FUN_00643230.c:52
 // and :173) and the screen drop it applies to the com bar afterwards (0x6acf48 = 32.0f).
 // game/hud_bridge.h's projectFighterHud() is the arithmetic that uses them.

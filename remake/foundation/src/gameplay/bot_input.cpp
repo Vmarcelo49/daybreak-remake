@@ -39,6 +39,10 @@ void buildBotView(BotView& view, const BotContext& ctx) {
         view.target = &m.fighter(target);
         view.targetAlive = view.target->is_alive();
     }
+    // ...but a fallback target is not a selection. The lock table is the only thing that
+    // says whether this fighter has actually picked one (issue #49: nothing auto-selects
+    // at round start), and it is what the brain's request has to fill.
+    view.lockHeld = m.locked_target(self_index) >= 0;
 
     for (int j = 0; j < count; ++j) {
         if (j == self_index) continue;

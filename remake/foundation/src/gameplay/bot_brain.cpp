@@ -285,7 +285,11 @@ void BotBrain::compute(const BotView& view, uint64_t tick) {
     // cycle, bounded by its 15-tick pulse (target_lock.h).
     bool wantSwitch = false;
     if (view.hostileCount > 0) {
-        if (!hasTarget) {
+        // A COM acquires its own lock the way the player acquires theirs: by asking for
+        // the cycle. `hasTarget` cannot stand in for that — the view's target falls back
+        // to the nearest hostile, so it is set even when nothing has been selected — and
+        // since issue #49 nothing else hands a COM a lock at round start.
+        if (!hasTarget || !view.lockHeld) {
             wantSwitch = true;
         } else if (view.leaderTarget >= 0 && view.hostileCount > 1) {
             // 各個 separates from the leader, 集中 concentrates on its target

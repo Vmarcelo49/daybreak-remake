@@ -42,9 +42,14 @@
 //
 //   FUN_0041f580:216-248 (per-player update) — the maintenance pass:
 //     * a validity predicate over the selection; when it fails the lock is cleared
-//       (+0x304 = -1) and the player is re-picked by walking (selection + 1) % count,
-//       wrapping, skipping unusable candidates, and FUN_00421e30 is called only if the
-//       walk landed somewhere different (0x421f580:238);
+//       (+0x304 = -1, 0x421fecb) and the player is re-picked by walking
+//       (selection + 1) % count, wrapping, skipping unusable candidates, and
+//       FUN_00421e30 is called only if the walk landed somewhere different
+//       (0x421f580:238). The pass can only ever DROP a lock — FUN_00421e30's own body
+//       clears +0x304 too (0x421e96) and no store in the pass writes an index — so a
+//       fighter that never selected anything stays unlocked (issue #49). The port keeps
+//       the walk as the re-pick of a LOST target, which is what FUN_00421e30's
+//       clear-then-re-pick pair does for the original's followed selection;
 //     * then, if the selection shares player 0's team, +0x848 is **re-pinned to 0xb4
 //       every tick**; otherwise a non-zero +0x848 is decremented. The hold therefore
 //       reads as "the selection is currently on an ally" and survives indefinitely;
@@ -53,9 +58,11 @@
 //
 //   FUN_0063c2a0 (0x63c2a0) — the command dispatcher that reaches both writers: command
 //   0x2a calls FUN_00421e30 (the cycle) and command 0x2b calls FUN_00421f30 (the direct
-//   set). The same dispatcher owns the separate +0xaecc/+0xaed0 lock pair (commands
-//   0x20/0x21 set and clear it); what that pair represents is NOT recovered and is
-//   deliberately not modelled here.
+//   set, the port's LockSwitch). Every lock a round ever shows is written here or by the
+//   state-gated 0x421fe07 call: FUN_00421f30 is the only writer of a valid +0x304. The
+//   same dispatcher owns the separate +0xaecc/+0xaed0 lock pair (commands 0x20/0x21 set
+//   and clear it); what that pair represents is NOT recovered and is deliberately not
+//   modelled here.
 //
 // WHAT IS A PORT RULE (provisional, not reverse-engineered):
 //   * The candidate walk skips dead fighters and the owner. The original's own walk
@@ -127,6 +134,17 @@ public:
     // renderer reads it as the blink phase (FUN_00643230:78).
     bool holding_ally(int owner) const { return lock_at(owner).holdTicks > 0; }
 
+    // Which opponent a fighter with NO lock faces: the maintenance walk's pick — the
+    // first living hostile at or after the owner, wrapping (FUN_0041f580:229-237). This
+    // is the port's stand-in for the original's independent aim selection at +0x300, and
+    // it is what the old round-start acquisition wrote into the lock. It reports a
+    // TARGET, never a lock: nothing is stored, so no ring turns green and no pulse is
+    // raised (issue #49). Match::step feeds it to Fighter::update for facing only.
+    int fallback_target(int owner, const bool alive[4]) const {
+        if (owner < 0 || owner >= m_count) return kNoTarget;
+        return walk(owner, owner, /*forward=*/true, /*hostileOnly=*/true, alive);
+    }
+
     bool is_ally(int owner, int index) const {
         if (owner < 0 || owner >= m_count || index < 0 || index >= m_count) return false;
         return m_side[index] == m_side[owner];
@@ -181,22 +199,30 @@ public:
         for (int i = 0; i < m_count; ++i) m_locks[i].switched = false;
 
         for (int i = 0; i < m_count; ++i) {
-            if (!targetable(i, m_locks[i].target, alive)) {
+            // FUN_0041f580:216-241 (research numbering; 0x41fdea-0x41ff7a live) is a
+            // maintenance pass over a selection that has GONE BAD, never a first
+            // selection. Its branch clears +0x304 (0x421fecb) and ends in FUN_00421e30,
+            // whose own body clears +0x304 again (0x421e96); the only store that can make
+            // +0x304 valid is FUN_00421f30's (0x421f65), reached from the command
+            // dispatcher's LockSwitch command (FUN_0063c2a0 case 0x2b) and the
+            // state-gated call at 0x421fe07. A fighter that never selected anything
+            // therefore stays unlocked: the port must not invent a lock for it, and the
+            // HUD must draw its red ring until a gesture (Match::cycle_locked_target —
+            // the LockSwitch tap for a human, the COM brain's own retarget decision for a
+            // COM) hands it one. Issue #49.
+            if (m_locks[i].target != kNoTarget && !targetable(i, m_locks[i].target, alive)) {
                 // FUN_0041f580:229-240: clear, then re-pick by an index walk that only
-                // commits when it lands somewhere new. A VALID lock never reaches this
-                // branch, so distance can never take a lock away.
-                const bool hadSelection = m_locks[i].target != kNoTarget;
-                const int anchor = hadSelection ? m_locks[i].target : i;
+                // commits when it lands somewhere new (0x421f580:238). A VALID lock never
+                // reaches this branch, so distance can never take a lock away.
+                const int anchor = m_locks[i].target;
                 m_locks[i].target = kNoTarget;
                 const int next = walk(i, anchor, /*forward=*/true, /*hostileOnly=*/true,
                                       alive);
-                // Replacing a target that just died or left is a switch and raises the
-                // recovered pulse. Acquiring the FIRST selection is not: nobody pressed
-                // anything, and pulsing every fighter's ring at round start would be a
-                // lie the HUD then animates. The original's writer is the same one in
-                // both cases (0x421f580:239 calls FUN_00421e30), so this is a port rule.
-                if (next != kNoTarget && next != anchor)
-                    hadSelection ? adopt(i, next, false) : acquire(i, next);
+                // Replacing a target that just died or respawned is a switch and raises
+                // the recovered pulse. The walk skips the anchor by construction (it is
+                // untargetable, which is why the branch was taken), so any landing is
+                // somewhere new.
+                if (next != kNoTarget) adopt(i, next, false);
             }
             TargetLock& l = m_locks[i];
             if (l.target != kNoTarget && is_ally(i, l.target)) {
@@ -223,13 +249,6 @@ private:
             l.holdTicks  = ally ? kAllyHoldTicks : 0;
             l.switched   = true;
         }
-    }
-
-    // Taking the FIRST selection: the index is set, but nothing pulses and no switch is
-    // reported because no gesture happened (see step()'s fallback).
-    void acquire(int owner, int index) {
-        TargetLock& l = m_locks[owner];
-        if (index != kNoTarget) { l.target = index; l.holdTicks = 0; }
     }
 
     // The deterministic candidate walk: start next to `anchor` and wrap, skipping
