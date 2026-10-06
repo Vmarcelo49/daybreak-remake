@@ -39,8 +39,9 @@ that these screens or their audio do not exist.
 | F1 | Four menu SEs, entry/result voices and menu BGM connected | Hardware audio listening remains separate from dummy-device verification |
 | G1 | Real-asset versus and live match executed in a browser | Hardware GPU and usable browser screenshots remain unverified |
 | G2 | Unverified | No macOS hardware available |
-| G3 | Rechecked: 165 pass, 43 known flags, 0 pipeline failures | Existing install gaps remain; two roster characters (Satoko, item 008; Takano, item 011) currently fail the loud gear-up join on this install |
-| #12 | One view per human controller: its own camera, cell and HUD values, match still stepped once; recovered one/two/four-cell layouts, viewport + scissor per view, per-view marker projection | Three-human layout is the original's four-cell grid with an empty cell (port policy for the placeholder); physical-pad, interactive resize/fullscreen and non-Linux execution unverified — `docs/SPLIT-SCREEN.md` |
+| G3 | Re-measured for the issue #23 release gate: **165 pass, 43 known flags, 0 pipeline failures** (16 characters × 13 stages = 208 runs) | Existing install gaps remain and are unchanged: stage05/stage15 miss 4 dust textures on every other character and `kasai` misses its `g` texture on every stage. The old note here — "two roster characters (Satoko, item 008; Takano, item 011) currently fail the loud gear-up join" — is STALE and was retired by E8: all 46 selections launch |
+| #12 | One view per human controller: its own camera, cell and HUD values, match still stepped once; recovered one/two/four-cell layouts, viewport + scissor per view, per-view marker projection | Three-human layout is the original's four-cell grid with an empty cell (port policy for the placeholder); non-Linux execution unverified. Physical pads and interactive resize/fullscreen were the other two gaps: the port's own Options screen now drives a resolution change and a fullscreen toggle on both Wayland and X11 (nested compositor, `[display]` lines in `docs/RELEASE-CHECKLIST.md` §5), but a compositor-side mouse drag on the window edge is still untested and no run has driven a physical pad — the pad attached to the gate machine perturbed runs until `--no-devices` was added, which is why the instrument exists — `docs/SPLIT-SCREEN.md` |
+| #23 | Release gate: the checklist in `docs/RELEASE-CHECKLIST.md` demonstrates two humans (1v1), one human with COM and four humans (2v2) through three rounds each, the 46-selection sweep, the character × stage texture matrix, Wayland/X11, 30/60/high-refresh pacing, resize/fullscreen and an eight-round stability run | Three release-blocking defects were found and fixed by the gate (the 1v1 result screen never loaded; a rematch submitted released vertex buffers and aborted; rematch rounds diverged from round 1). Still unverified, and named as such in the checklist: a second GPU vendor, physical controllers, hardware audio listening, other distributions and an interactive compositor-side resize |
 
 Implementation lives in `src/ui/screen_select.*`, `screen_stage_select.*`,
 `screen_options.*`, `screen_vs.*`, `screen_result.*`, `soft_keyboard.*`,
@@ -1573,10 +1574,13 @@ counts, and the team-select diamond's y anchor discrepancy. Scenes 2 and
   claimed. A 16-character × 13-stage sweep found 43 untextured draws, all
   reducing to gaps in the installed game data — not loader bugs. This is the
   baseline to re-check in the future.
-* **Evidence (measured, this pass).** `tests/showcase.py --check` runs every
-  (character, stage) pair headless and reads the demo's own
+* **Evidence (measured, this pass — issue #23's release gate).** `tests/showcase.py --check`
+  runs every (character, stage) pair headless and reads the demo's own
   `draws: N (X textured, Y untextured)` line, so the loader is the oracle.
-  Result: **165/208 pass, 43 flag, zero pipeline failures**. The 43 reduce to
+  Re-measured 2026-10-05 with `--no-devices`: **165/208 pass, 43 flag, zero
+  pipeline failures** — the same baseline as the earlier pass, with the same
+  breakdown (30 cells at 4 untextured draws on stage05/stage15, 11 cells at 2
+  on `kasai`, 2 cells at 6 where both gaps overlap). The 43 reduce to
   two install gaps:
   - **stage05 / stage15** — the stage `.X` scenes name dust/particle
     textures as `.bmp` (e.g. `01`–`05`, `08`, `11`) that have no `.cnv` in
@@ -1591,6 +1595,54 @@ counts, and the team-select diamond's y anchor discrepancy. Scenes 2 and
   install update, re-extraction, or new character/stage. The two gaps above
   are the known baseline; any **new** untextured draw is a regression (a
   loader or cache bug), not a data gap, and needs investigation.
+* **Not a baseline item: gear-up.** Every one of the 46 legal
+  character/weapon selections launches and runs a match
+  (`tests/weapon_definition_test.cpp`: "all 46 legal selections ran a match",
+  743 checks, 0 failed, 0 skipped with the install present). The earlier
+  "Satoko, item 008 / Takano, item 011 fail the loud gear-up join" note was
+  retired by the E8 fix and is not part of this baseline.
+
+## Release gate — issue #23 validation update, 2026-10-05
+
+The offline Linux release is gated by
+[`RELEASE-CHECKLIST.md`](RELEASE-CHECKLIST.md): a second person can re-run the
+package build, the host suite, the three acceptance scenarios, the sweeps, the
+environment matrix and the stability run, and compare against the quoted lines.
+It demonstrated the acceptance criterion (two humans, one human with COM and
+four fighters, three rounds each) and it found three release-blocking defects,
+all fixed:
+
+1. **The 1v1 result screen never loaded.** Issue #20's two-winner art made
+   `ResultScreen::loaded()` require both winner sheets while a one-member
+   winning side loads one, so the screen refused, `ScreenStack` read the null
+   scene as "no scene" and the run ended as a *successful* quit with no results
+   screen. `winnerPortraitCount()` states the recovered rule (one portrait per
+   winning slot, FUN_00635d40:255-273); the one-member side draws its portrait
+   in the port's centred 1v1 position (PORT RULE: the original always fields two
+   winners), and `loaded()` now names the reason when it refuses.
+2. **A rematch aborted the process.** `SceneRenderer::setScene` released the
+   previous scene's buffers but kept `drawTemplates_`/`baseDrawList_`, so the
+   first live effect card after a rematch submitted a released vertex buffer:
+   wgpu-native panicked (`Buffer[Id(...)] does not exist`) and the run died with
+   exit 134 a few seconds into round 2.
+3. **Rematch rounds diverged from round 1.** The `--local-players` synthetic
+   pads' menu clock was latched on the first selection screen (a rematch could
+   not reach the OK cell), their roster nudge then moved the cursor onto the
+   Back cell (the run left to the title), and their directions moved the stage
+   page's settings cursor (a rematch played 240 s/175 % where the script asks
+   for 60 s/50 %).
+
+Two evidence gaps were closed with them: `[menu] battle:` prints the round's
+settings, the display callbacks print what a fullscreen/resolution request
+actually did, and `--no-devices` keeps a verification run off physical input
+devices — SDL reports a connected pad whether or not the window has focus, and
+the pad attached to the gate machine moved menus and changed a HUD capture
+until the host suite and the demo-driving tools stopped reading devices.
+
+Still open, and stated as such in the checklist: a second GPU vendor, physical
+controllers, hardware audio listening, other distributions, an interactive
+compositor-side resize, and Windows/web/macOS execution (not this issue's
+target; their own docs carry their evidence).
 
 ## H. Out of scope (stated, not scheduled)
 

@@ -110,8 +110,14 @@ viewer's own combat target — so one camera per view is the right unit.
   - one windowed Wayland run (`--local-players=2`, 960×540 window) to exercise the window path:
     two 480×270 views with independent HUD values, 64 Hz logic ticks independent of the 1500
     renders.
-- Not verified: physical gamepads (none attached — the runs above are synthetic input), an
-  interactive window resize/fullscreen toggle, and any non-Linux target execution.
+- Fullscreen and resolution: driven through the port's own Options screen in the nested
+  Wayland and X11 sessions (`[display] requested ... window now ...` lines quoted in
+  `RELEASE-CHECKLIST.md` §5). A compositor-side mouse drag on the window edge is still
+  untested.
+- Not verified: physical gamepads — a pad *was* attached to the gate machine and its live
+  input reached these runs' menus (SDL reports a controller whether or not the window has
+  focus), which is why every verification command now passes `--no-devices`; no run has
+  driven a pad deliberately. Also unverified: any non-Linux target execution.
 
 ## Commands used
 
@@ -128,8 +134,9 @@ ctest --test-dir remake/foundation/build/linux --output-on-failure
 ./build/linux/foundation_demo --headless --install=<game-dir> --screen=battle \
   --local-players=4 --frames=3200 --out=/tmp/four.ppm --size=1920x1080
 
-# the same with a window instead of a capture
-./build/linux/foundation_demo --install=<game-dir> --screen=battle \
+# the same with a window instead of a capture (--no-devices: a pad another
+# application is using would otherwise reach this run's menus)
+./build/linux/foundation_demo --install=<game-dir> --no-devices --screen=battle \
   --local-players=2 --script=tests/scripts/split-two-human.txt --frames=1500
 ```
 

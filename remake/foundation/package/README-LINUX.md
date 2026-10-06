@@ -96,8 +96,12 @@ saved in `$XDG_CONFIG_HOME/daybreak-decomp/settings.conf`.
   package; macOS has never been executed.
 - The **original game's own configuration** (`config.dat`) is not read or written; the port
   keeps its own settings file instead.
-- Character/weapon combinations the install is missing will stop a launch with a message
-  naming the combo — that is an install gap, not a crash.
+- Every legal character/weapon selection the install ships launches (all 46 are verified in
+  `tests/weapon_definition_test.cpp`). An item whose data ships no attachment mesh is still
+  armed — it just draws no attachment — so a missing mesh is not a launch failure.
+- The **victory voice** of some winning pairs is not in the install's `data/voice/win`
+  (the quote text still appears; only the spoken line is skipped). That is an install gap,
+  not a port error.
 
 ## 5. Troubleshooting
 

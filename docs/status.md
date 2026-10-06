@@ -25,8 +25,11 @@
   deleted in the Phase 5 cutover (2026-10-02, `5a63db3`); the foundation
   is C++17 + SDL3 + WebGPU (`webgpu.h`; wgpu-native native, emdawnwebgpu
   web) and builds Linux/Windows/web with
-  `./remake/foundation/build.sh {deps,linux,windows,web}`; 13 ctest
-  tests. See `remake/docs/decisions.md` D2 (reversed) and
+  `./remake/foundation/build.sh {deps,linux,windows,web}`; the Linux host
+  suite has 42 ctest tests (the Linux CI job runs them; asset-dependent ones
+  skip without the game data) and the offline release gate is
+  `remake/foundation/docs/RELEASE-CHECKLIST.md`. See `remake/docs/decisions.md`
+  D2 (reversed) and
   `remake/foundation/docs/FULL-REPLACEMENT-PLAN.md` §8. The mvp port
   record stays as history (`remake/docs/port-from-mvp-plan.md`; its
   `./build.sh` 17/17 refers to the deleted DX9 build). Only P3.1
@@ -36,7 +39,10 @@
   screen at RMSE 0.015970 against `remake/docs/reference/title-menu.webp`
   and the battle HUD bands ≤0.19; the frozen DX9 bank in
   `remake/tests/parity-baseline/` stays the behavioural oracle. Browser
-  runs with game assets and macOS are unverified. Open work:
+  runs with game assets and macOS are unverified. The Linux versus release is
+  gated by `remake/foundation/docs/RELEASE-CHECKLIST.md` (two humans, one human
+  with COM and four-fighter matches through repeated rounds; Wayland/X11;
+  30/60/high-refresh pacing; eight-round stability). Open work:
   `remake/foundation/docs/ROADMAP-PENDING.md`.
 
 ## Snapshot (2026-07-02, from `docs/archive/PROGRESSO.md`)

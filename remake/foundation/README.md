@@ -380,20 +380,22 @@ and validated before the front end starts; delete the file to reset. See
 ## Not here yet
 
 Story video decoding remains an explicit stub. Live-pad and browser-gesture
-verification remain open. The four-fighter battle path builds and passes the
-Linux test suite, and an asset-backed four-human 2v2 run now completes (two
-humans are covered too, see [`docs/SPLIT-SCREEN.md`](docs/SPLIT-SCREEN.md)),
-but its VS/result presentation and extra HUD bars remain two-fighter layouts.
-An
+verification remain open (a pad attached to the gate machine perturbed runs
+until `--no-devices` existed; no run has driven a pad deliberately). The
+four-fighter battle path builds and passes the Linux test suite, and the release
+gate's four-human 2v2 completes three consecutive rounds with its VS/result
+presentation, per-view HUD markers and four-row report
+([`docs/RELEASE-CHECKLIST.md`](docs/RELEASE-CHECKLIST.md) §3.3). An
 opt-in 3v3/4v4 mode would be a new remake feature (six/eight fighters total);
 its implementation handoff is in
 [`docs/ROADMAP-PENDING.md`](docs/ROADMAP-PENDING.md#future-remake-only-experiment-3v3-and-4v4).
-Renderer options (the first three options rows are
-marked unavailable), original earned titles and full result-quote selection are
-still pending. Battle fidelity includes unresolved animation/VFX details; LAN
-netplay awaits its own implementation. The Linux CTest suite has 30 tests,
+Renderer options (the first three options rows are marked unavailable) remain
+pending (issue #21). Battle fidelity includes unresolved animation/VFX details;
+LAN netplay awaits its own implementation. The Linux CTest suite has 42 tests,
 including frontend selection/configuration, VS/result timelines, HUD geometry and
-the split-screen layout/assignment guards.
+the split-screen layout/assignment guards. The release gate — the checklist, the
+sweeps, the environment matrix and the stability run — is
+[`docs/RELEASE-CHECKLIST.md`](docs/RELEASE-CHECKLIST.md).
 See `docs/ROADMAP-PENDING.md` for the remaining work.
 
 Where to read next: plan and handoff in `docs/FULL-REPLACEMENT-PLAN.md` (§5 quirks,

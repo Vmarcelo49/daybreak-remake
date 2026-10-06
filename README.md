@@ -46,16 +46,20 @@ daybreak-decomp/
 ## Current playable port
 
 The front end connects title, character/weapon/hypermode/controller selection,
-stage and battle settings, VS/countdown, live 1v1 battle and results. Runtime
-captions use Gyrotrope Black with a Japanese fallback. Battle camera and HUD
-adapt automatically to the viewport, including ultrawide; menu art stays in
-4:3 with black bars. Options includes native resolution/fullscreen selection,
-audio volumes and keyboard/gamepad rebinding for the current session.
+stage and battle settings, VS/countdown, live 1v1 **and four-fighter 2v2**
+battles, results and rematch. Runtime captions use Gyrotrope Black with a
+Japanese fallback. Battle camera and HUD adapt automatically to the viewport,
+including ultrawide; menu art stays in 4:3 with black bars. Options includes
+native resolution/fullscreen selection, audio volumes and keyboard/gamepad
+rebinding, all persisted. The four-fighter roster, the recovered victory quote
+and the earned-title report landed with issues #13/#20.
 
-Four-fighter battles, three renderer controls and original result-title/quote
-fidelity remain open. See `remake/foundation/docs/ROADMAP-PENDING.md` for current
-status and `remake/docs/decisions.md` D1–D9 for binding decisions. The native
-suite has 25 tests; Linux, Windows cross-build and web builds pass.
+Three renderer controls remain open (issue #21). See
+`remake/foundation/docs/ROADMAP-PENDING.md` for current status,
+`remake/foundation/docs/RELEASE-CHECKLIST.md` for the Linux release gate
+(acceptance runs, sweeps, environments, stability) and `remake/docs/decisions.md`
+D1–D9 for binding decisions. The native suite has 42 tests; Linux, Windows
+cross-build and web builds pass.
 
 ## Original binary summary
 
