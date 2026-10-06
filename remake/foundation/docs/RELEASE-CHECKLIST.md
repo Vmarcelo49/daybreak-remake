@@ -57,9 +57,11 @@ and the tarball (measured: `daybreak-0.1.0-linux-x86_64.tar.gz`, 19M,
 sha256 `769d9b7bfdd350d5b6608dc49278f21e2a43a2e56333b27a81dd89bbc11e3cf5`),
 and proves both release claims (no game data in the artifact; `ldd` resolves
 every library inside the package or from the base system).
-`launcher_test.sh` ends with `launcher_test: 30 checks, 0 failure(s)`; it drives
+`launcher_test.sh` ends with `launcher_test: 38 checks, 0 failure(s)`; it drives
 a sandbox package whose binary is a stub, so it needs no device, display or game
-data. It is also registered in the host suite (`ctest -R launcher_test`).
+data. It is also registered in the host suite (`ctest -R launcher_test`). (Issue #36
+extended this suite and `user_settings_test` — no suite was added, which is why the
+§2 count below is unchanged.)
 
 ## 2. Host suite (the CI job runs exactly this)
 

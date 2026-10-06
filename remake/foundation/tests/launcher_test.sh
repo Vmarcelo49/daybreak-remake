@@ -99,14 +99,38 @@ run "$pkg" "$work/home" "$work/config" "$work/data" "$work/cwd" --install="$game
 [ "$status" = 0 ] || bad "--install: expected exit 0, got $status"
 expect "--install: forwards the folder and the front end" "$out" "STUB --install=$game --screen=title"
 expect "--install: reports the source" "$err" "(--install=)"
-expect "--install: remembers the folder" "$(cat "$work/config/daybreak-decomp/install.conf" 2>/dev/null)" "directory=$game"
-expect "--install: persists a versioned file" "$(cat "$work/config/daybreak-decomp/install.conf" 2>/dev/null)" "version=1"
+# Issue #36: the BINARY owns the remembered folder (settings.conf), so the launcher must
+# write nothing at all — it forwards the folder and the binary persists what it opens.
+[ ! -e "$work/config/daybreak-decomp/install.conf" ] && ok || bad "--install: the launcher creates no install.conf"
+[ ! -e "$work/config/daybreak-decomp/settings.conf" ] && ok || bad "--install: the launcher writes no settings.conf either"
 
-# --- the saved choice, then $DAYBREAK_INSTALL ---------------------------------------
-run "$pkg" "$work/home" "$work/config" "$work/data" "$work/cwd"
-[ "$status" = 0 ] || bad "saved choice: expected exit 0, got $status"
-expect "saved choice: is used without a flag" "$out" "STUB --install=$game --screen=title"
-expect "saved choice: is named as the source" "$err" "(the saved choice)"
+# --- the remembered folder comes from settings.conf (written by the binary) ---------
+saved_config="$work/config-remembered/daybreak-decomp"
+mkdir -p "$saved_config"
+cat > "$saved_config/settings.conf" <<EOF
+version = 4
+
+[game]
+# The game folder this port last opened (issue #36).
+install_dir = $game
+
+[display]
+fullscreen = false
+EOF
+run "$pkg" "$work/home" "$work/config-remembered" "$work/data" "$work/cwd"
+[ "$status" = 0 ] || bad "remembered: expected exit 0, got $status"
+expect "remembered: is used without a flag" "$out" "STUB --install=$game --screen=title"
+expect "remembered: is named as the source" "$err" "(the remembered folder)"
+[ ! -e "$saved_config/install.conf" ] && ok || bad "remembered: the launcher writes no install.conf here either"
+
+# A settings.conf whose version this launcher does not know is not guessed at: the folder
+# is ignored and the search goes on (the binary would reject that whole document too).
+future_config="$work/config-future/daybreak-decomp"
+mkdir -p "$future_config"
+printf 'version = 5\n\n[game]\ninstall_dir = %s\n' "$game" > "$future_config/settings.conf"
+run "$pkg" "$work/home" "$work/config-future" "$work/data" "$work/cwd"
+[ "$status" = 1 ] || bad "unknown schema: expected the search to continue (exit 1), got $status"
+reject "unknown schema: its folder is not used" "$out" "STUB"
 
 env_home="$work/home-env"
 mkdir -p "$env_home" "$work/config-env"
@@ -150,13 +174,35 @@ run "$drop" "$work/home" "$work/config-fresh" "$work/data" "$work/cwd"
 [ "$status" = 0 ] || bad "drop-in: expected exit 0, got $status"
 expect "drop-in: uses the package folder" "$err" "(the package folder)"
 
-# --- an unusable saved choice falls through to the next candidate -------------------
+# --- a remembered folder that is gone falls through to the next candidate -----------
 mkdir -p "$work/config-stale/daybreak-decomp" "$work/data-stale/Higurashi-Daybreak"
-printf 'version=1\ndirectory=%s\n' "$work/gone" > "$work/config-stale/daybreak-decomp/install.conf"
+printf 'version = 4\n\n[game]\ninstall_dir = %s\n' "$work/gone" \
+    > "$work/config-stale/daybreak-decomp/settings.conf"
 make_install "$work/data-stale/Higurashi-Daybreak"
 run "$pkg" "$work/home" "$work/config-stale" "$work/data-stale" "$work/cwd"
-[ "$status" = 0 ] || bad "stale saved choice: expected exit 0, got $status"
-expect "stale saved choice: falls through to XDG data" "$err" "(XDG data)"
+[ "$status" = 0 ] || bad "stale remembered folder: expected exit 0, got $status"
+expect "stale remembered folder: falls through to XDG data" "$err" "(XDG data)"
+
+# --- the retired install.conf (issue #22) is migrated once, then removed ------------
+legacy="$work/config-legacy/daybreak-decomp"
+mkdir -p "$legacy"
+printf 'version=1\ndirectory=%s\n' "$game" > "$legacy/install.conf"
+run "$pkg" "$work/home" "$work/config-legacy" "$work/data" "$work/cwd"
+[ "$status" = 0 ] || bad "legacy install.conf: expected exit 0, got $status"
+expect "legacy install.conf: its folder is used" "$out" "STUB --install=$game --screen=title"
+expect "legacy install.conf: is named as the source" "$err" "(the old install.conf)"
+expect "legacy install.conf: the move is reported" "$err" "settings.conf"
+[ ! -e "$legacy/install.conf" ] && ok || bad "legacy install.conf: the retired file is removed"
+
+# A legacy file whose folder is gone is not better than any other dead candidate: the
+# search continues and the file stays where it is.
+stale_legacy="$work/config-legacy-stale/daybreak-decomp"
+mkdir -p "$stale_legacy"
+printf 'version=1\ndirectory=%s\n' "$work/gone" > "$stale_legacy/install.conf"
+run "$pkg" "$work/home" "$work/config-legacy-stale" "$work/data-stale" "$work/cwd"
+[ "$status" = 0 ] || bad "stale legacy install.conf: expected exit 0, got $status"
+expect "stale legacy install.conf: falls through to XDG data" "$err" "(XDG data)"
+[ -e "$stale_legacy/install.conf" ] && ok || bad "stale legacy install.conf: an unused one is left alone"
 
 # --- an incomplete package ----------------------------------------------------------
 broken="$work/broken package"
@@ -171,7 +217,7 @@ expect "incomplete package: says to unpack again" "$err" "Unpack the release arc
 run "$pkg" "$work/home" "$work/config" "$work/data" "$work/cwd" --help
 [ "$status" = 0 ] || bad "--help: expected exit 0, got $status"
 expect "--help: documents the search order" "$out" "XDG_DATA_HOME/Higurashi-Daybreak"
-expect "--help: documents the saved choice" "$out" "install.conf"
+expect "--help: documents the remembered folder" "$out" "settings.conf"
 run "$pkg" "$work/home" "$work/config" "$work/data" "$work/cwd" --version
 [ "$status" = 0 ] || bad "--version: expected exit 0, got $status"
 expect "--version: prints the packaged version" "$out" "daybreak 0.1.0"
