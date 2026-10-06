@@ -1,0 +1,40 @@
+# One host, their own install, one origin.
+#
+#   export DAYBREAK_INSTALL=/path/to/Higurashi-Daybreak
+#   ./scripts/package-client.sh ../build/web      # build/web from ./build.sh web
+#   docker compose up --build
+#   open http://localhost:8080/
+#
+# `prepare` is a one-shot: it unpacks the winning copy of every catalogued asset into
+# the named volume and writes the catalog next to it. `serve` waits for it to finish
+# successfully, so a restart reuses the volume instead of re-extracting 2 GB. The
+# install is mounted read-only in both, and neither the image nor the volume is ever
+# copied into Git.
+services:
+  prepare:
+    build: .
+    image: daybreak-webdelivery
+    restart: "no"
+    volumes:
+      - "${DAYBREAK_INSTALL:?set DAYBREAK_INSTALL to the folder holding daybreak00.dat}:/install:ro"
+      - daybreak-data:/data
+    command: ["prepare", "--install", "/install", "--out", "/data"]
+
+  serve:
+    image: daybreak-webdelivery
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - daybreak-data:/data
+      # Mounted so a changed install is refused with a clear 409 instead of being
+      # served stale; the server only reads it to compare the fingerprint.
+      - "${DAYBREAK_INSTALL:?set DAYBREAK_INSTALL to the folder holding daybreak00.dat}:/install:ro"
+    command: ["serve", "--out", "/data", "--client", "/app/client",
+              "--install", "/install", "--port", "8080"]
+
+volumes:
+  daybreak-data:

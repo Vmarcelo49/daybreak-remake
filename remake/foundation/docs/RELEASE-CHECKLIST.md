@@ -69,8 +69,9 @@ extended this suite and `user_settings_test` — no suite was added, which is wh
 ctest --test-dir remake/foundation/build/linux --output-on-failure
 ```
 
-* **With the game install present**: `100% tests passed out of 58`
-  (re-measured 2026-10-06 with issue #56's `hud_view_geometry` added; 57 was the count
+* **With the game install present**: `100% tests passed out of 61`
+  (re-measured 2026-10-06 with issue #4's three delivery suites added; 58 was the count
+  after issue #56's `hud_view_geometry`; 57 was the count
   after issue #50's `pause_overlay_layout_test` and `pause_overlay_panel`, 55 after issue
   #39's `live_camera_smoothness_test`, 54 after issue #48's `debug_keys_test`, 53 after
   issue #47's `countdown_overlay_test`, 52 after issue #51's `lock_switch_camera_test`).
@@ -97,8 +98,13 @@ ctest --test-dir remake/foundation/build/linux --output-on-failure
   adds one to both counts; its `pause_overlay_panel` needs the install and joins the skip
   list above. #56's `hud_view_geometry` is the same capture class as `hud_cell_scale` (it
   renders a real four-view battle and reads the frame), so it too needs the install and
-  joins that list. The merged count is therefore **58 registered**, with **eight** Skipped
-  in a data-free tree.
+  joins that list. Issue #4 added three suites and no skips: `web_delivery_test` (the
+  self-hosted service — prepare, catalog, verify and the same-origin HTTP surface, all
+  against synthetic `.DAT` bundles the test writes itself), `web_assets_test` (the
+  host-testable half of the web asset client) and `web_catalog_order` (the archive
+  ordering compared against the native reader; its hermetic half needs no game data and
+  its install half skips itself with the others). The merged count is therefore **61
+  registered**, with **eight** Skipped in a data-free tree.
   The denominator is the number of *registered* tests and grows whenever a suite is
   added (42 when this document was written, 45 when #28 re-measured it, 50 after
   #42's `bgm_loop_test`, #45's `frontend_lifecycle_test` and #46's

@@ -27,6 +27,7 @@
 #include "gpu/gpu.h"
 #include "assets/asset_source.h"
 #include "assets/stage_catalog.h"
+#include "platform/asset_client.h"
 #include "platform/platform.h"
 #include "platform/surface.h"
 #include "platform/web_pack.h"
@@ -4565,6 +4566,85 @@ static void playFrontendMusic(App& app, ui::ScreenId id) {
         std::fprintf(stderr, "[menu] %s\n", failure.c_str());
 }
 
+// Issue #4 (web delivery): ask the same-origin service for the assets this match needs.
+// A native run has no delivery client running, so this is a no-op there and the native
+// path is untouched. The set is the loader's own directory scopes (stage directory,
+// fighter directories with their costume sibling, the weapons' bullet directories); the
+// server expands each prefix from the catalog, so the client never guesses a file list.
+static void requestWebMatchGroup(const std::string& stageDir,
+                                 const std::vector<std::string>& slots,
+                                 const std::vector<int>& weaponIds) {
+    plat::AssetClient& client = plat::assetClient();
+    if (!client.running() || stageDir.empty() || slots.empty()) return;
+    std::string stage = stageDir;
+    const std::size_t slash = stage.find_last_of('/');
+    if (slash != std::string::npos) stage = stage.substr(slash + 1);   // "stage21"
+    std::vector<std::string> weapons;
+    for (int id : weaponIds) {
+        char buf[16];
+        std::snprintf(buf, sizeof(buf), "%03d", id);
+        weapons.push_back(buf);
+    }
+    if (!client.requestMatch(stage, slots, weapons)) return;
+    std::printf("[delivery] match group requested: %s, %zu fighter(s), %zu weapon(s)\n",
+                stage.c_str(), slots.size(), weapons.size());
+}
+
+// Issue #4 (web delivery): the same request for a standalone recipe. `--stage=`,
+// `--character=`/`--enemy=` and `--match` go straight to the battle with no VS
+// transition to hook, so the dependency set comes from the arguments instead — the
+// loaders' own directory scopes again, with each fighter's weapon bound (a battle is
+// always a character+weapon combo, issue #26). False means "nothing to wait for".
+static bool requestWebStandaloneGroup(App& app) {
+    plat::AssetClient& client = plat::assetClient();
+    if (!client.running() || app.opts.stage.empty()) return false;
+    std::vector<std::string> slots;
+    std::vector<int> weaponIds;
+    for (int i = 0; i < 4; ++i) {
+        std::string spec, explicitSpec;
+        if (app.opts.battleFighterCount > 0 && i < 4) {
+            spec = app.opts.battleCharacters[i];
+            explicitSpec = app.opts.battleWeapons[i];
+        } else if (i == 0) {
+            spec = app.opts.character;
+            explicitSpec = app.opts.weapon;
+        } else if (i == 1) {
+            spec = app.opts.enemy;
+            explicitSpec = app.opts.enemyWeapon;
+        } else {
+            continue;
+        }
+        if (spec.empty()) continue;
+        // splitSuffix's path half is unused here: charDirForSpec already drops the
+        // `:N` suffix and the directory part, which is exactly what the manifest needs.
+        std::string ignoredPath;
+        int costume = 0;
+        splitSuffix(spec, ignoredPath, costume);
+        const std::string dir = charDirForSpec(spec);
+        // A costume directory spelled out in the spec ("data/rena_B:0") is the same
+        // request as the index ("data/rena:1"); normalise so the server's prefix rule
+        // sees one shape.
+        std::string base = dir;
+        if (dir.size() > 2 && dir[dir.size() - 2] == '_' &&
+            dir.back() >= 'B' && dir.back() <= 'F') {
+            if (costume == 0) costume = dir.back() - 'A';
+            base = dir.substr(0, dir.size() - 2);
+        }
+        slots.push_back(base + ":" + std::to_string(costume));
+        std::string mesh;
+        int itemId = 0;
+        if (resolveFighterWeapon(dir, explicitSpec, mesh, itemId)) {
+            weaponIds.push_back(itemId);
+        } else {
+            const int character = gameplay::characterIndexForDir(dir);
+            if (character >= 0) weaponIds.push_back(gameplay::kWeaponIds[character][0]);
+        }
+    }
+    if (slots.empty()) return false;
+    requestWebMatchGroup(app.opts.stage, slots, weaponIds);
+    return client.matchRequested();
+}
+
 static bool enterFrontendBattle(App& app) {
     // Direct --screen=vsintro/battle gets a usable two-fighter default.
     for (int i = 0; i < 2; ++i) if (app.frontend.slots[ui::kFrontendBattleSlots[i]].character < 0) {
@@ -4616,6 +4696,33 @@ static bool enterFrontendBattle(App& app) {
     ui::FrontendLaunch launch;
     if (!ui::frontendLaunch(app.frontend, launch, app.error, (uint32_t)app.logicTicks)) return false;
     app.battleLaunch = launch;
+    // Issue #4: the match readiness barrier. This is the first moment the exact dependency
+    // set is known — a random stage is rolled inside frontendLaunch — so the request goes
+    // out here and the battle does not start until it has resolved. Resolved means ready or
+    // failed, never "partially loaded": a failed asset is reported and the run stops rather
+    // than entering a battle whose stage or fighter is half present.
+    {
+        std::vector<std::string> slots;
+        std::vector<int> weaponIds;
+        for (int i = 0; i < launch.fighterCount; ++i) {
+            const int panel = launch.fighters[i].panel;
+            const int costume =
+                (panel >= 0 && panel < 4) ? app.frontend.slots[panel].costume : 0;
+            slots.push_back(launch.fighters[i].character + ":" + std::to_string(costume));
+            weaponIds.push_back(launch.fighters[i].weaponId);
+        }
+        requestWebMatchGroup(launch.stage, slots, weaponIds);
+        plat::AssetClient& client = plat::assetClient();
+        if (client.running() && client.matchRequested()) {
+            const bool ready = client.waitForMatch();
+            std::printf("[delivery] match group %s: %s\n", ready ? "ready" : "INCOMPLETE",
+                        client.matchProgress().line("match").c_str());
+            if (!ready) {
+                app.error = "match assets unavailable: " + client.error();
+                return false;
+            }
+        }
+    }
     // The penalty flag is per PLAYER: a panel that is COM has no player, so its flag is cleared
     // (FUN_0040d130:99-101 clears DAT_006cfdf1 for a panel whose controller byte says COM).
     for (int panel = 0; panel < 4; ++panel)
@@ -4791,6 +4898,29 @@ bool initScreens(App& app) {
         // Scene 0x00 starts its own BGM from inside the scene, on the tick the movie starts
         // (FUN_00404ff0:0x405096), so the factory must not pre-empt it here.
         if (sid != ui::ScreenId::Opening) playFrontendMusic(app, sid);
+        // Issue #4: the VS presentation is where the selection is final, so the match
+        // group starts transferring as the animation begins instead of after it. A stage
+        // still set to "random" (state.stage == 0) is not requested here — the roll happens
+        // in frontendLaunch, and the barrier below requests the exact set then. Requesting
+        // twice is safe: the second set is served from the per-asset cache for anything the
+        // first one already materialised.
+        if (sid == ui::ScreenId::VsIntro && plat::assetClient().running() &&
+            app.frontend.stage != 0) {
+            std::vector<std::string> slots;
+            std::vector<int> weaponIds;
+            for (int panel = 0; panel < 4; ++panel) {
+                const ui::FrontendSlot& slot = app.frontend.slots[panel];
+                const char* dir = ui::frontendCharacterDirectory(slot.character);
+                if (!dir) continue;
+                slots.push_back(std::string(dir) + ":" + std::to_string(slot.costume));
+                if (slot.weapon >= 0 && slot.weapon < gameplay::weaponCountForCharacter(slot.character))
+                    weaponIds.push_back(gameplay::kWeaponIds[slot.character][slot.weapon]);
+            }
+            char stage[24];
+            std::snprintf(stage, sizeof(stage), "stage%02d",
+                          app.frontend.stage + app.frontend.variation * 10);
+            requestWebMatchGroup(stage, slots, weaponIds);
+        }
         if (sid == ui::ScreenId::Battle) {
             // Issue #47: the VS intro has ended, and enterFrontendBattle has already built
             // the whole match — scene, fighters, cameras, weapons, HUD state (initScene ->
@@ -4967,23 +5097,67 @@ bool initScreens(App& app) {
 
 }  // namespace
 
+#if defined(__EMSCRIPTEN__)
+// Whether this page asked for the per-asset delivery path. Read once: the query string
+// cannot change under a running wasm instance, and three call sites ask the same
+// question (the bootstrap, the standalone match request, the VS hook).
+static bool webDeliveryEnabled() {
+    static const bool enabled = [] {
+        const std::string value = plat::webQueryParam("delivery");
+        return !value.empty() && value != "0";
+    }();
+    return enabled;
+}
+#endif
+
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     auto* app = new App();
     *appstate = app;
 
 #if defined(__EMSCRIPTEN__)
-    // argv never reaches wasm, so the web build takes its asset three ways, in
-    // this order: ?pack=<manifest-url> (fetched into /packs/, asset= line wins),
-    // ?asset=<single CLI arg>, then the configure-time FOUNDATION_WEB_ASSET.
-    // Plain builds with none of these keep the triangle demo.
+    // argv never reaches wasm, so the web build takes its asset four ways, in this
+    // order: ?delivery=<base> (the self-hosted site's per-asset API, issue #4),
+    // ?pack=<manifest-url> (the older pack loader, kept for local verification),
+    // ?asset=<single CLI arg>, then the configure-time FOUNDATION_WEB_ASSET. Plain
+    // builds with none of these keep the triangle demo.
     {
         static std::string webAsset;
+        const std::string deliveryParam = plat::webQueryParam("delivery");
         const std::string packUrl = plat::webQueryParam("pack");
-        std::string packAsset;
-        if (!packUrl.empty() && !plat::fetchWebPack(packUrl, packAsset, app->error))
-            return SDL_APP_FAILURE;
-        webAsset = plat::webQueryParam("asset");
-        if (webAsset.empty()) webAsset = packAsset;
+        // The site's entry point is ?delivery=1 (this origin); ?delivery=<origin> names
+        // another one. The pack path stays available and unchanged beside it.
+        const bool delivery = webDeliveryEnabled();
+        if (delivery) {
+            plat::AssetClient& client = plat::assetClient();
+            const std::string base = (deliveryParam == "1") ? std::string() : deliveryParam;
+            if (!client.begin(base)) {
+                app->error = "asset delivery client refused to start";
+                return SDL_APP_FAILURE;
+            }
+            // The startup gate: every asset the first usable screen needs, fetched and
+            // validated one at a time. waitForGate yields to the browser rather than
+            // spinning, so the page stays responsive; the optional startup assets (the
+            // movie, BGM) keep loading from SDL_AppIterate's poll().
+            const bool gateMet = client.waitForGate();
+            // The gate line is also the cold/warm measurement the issue asks for: a cold
+            // session pays the gate's transfer size here, a warm one pays nothing because
+            // every asset was answered from the per-asset cache.
+            std::printf("[delivery] startup gate %s: %s (network %llu request(s), %.1f MB "
+                        "received)\n", gateMet ? "met" : "NOT met",
+                        client.startupProgress().line("startup").c_str(),
+                        (unsigned long long)client.networkRequests(),
+                        double(client.bytesReceived()) / 1048576.0);
+            if (!gateMet) {
+                app->error = "startup assets unavailable: " + client.error();
+                return SDL_APP_FAILURE;
+            }
+        } else if (!packUrl.empty()) {
+            std::string packAsset;
+            if (!plat::fetchWebPack(packUrl, packAsset, app->error)) return SDL_APP_FAILURE;
+            webAsset = packAsset;
+        }
+        const std::string assetParam = plat::webQueryParam("asset");
+        if (!assetParam.empty()) webAsset = assetParam;
 #ifdef FOUNDATION_WEB_ASSET
         if (webAsset.empty()) webAsset = FOUNDATION_WEB_ASSET;
 #endif
@@ -5002,6 +5176,10 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
             if (end == std::string::npos) break;
             begin = end + 1;
         }
+        // The hosted site opens on the front end: delivery mode exists to serve it, so
+        // with no explicit asset or args the default screen is the title rather than the
+        // asset-free triangle demo.
+        if (delivery && webAsset.empty() && extra.empty()) webArgs.push_back("--screen=title");
         webArgv.clear();
         for (const auto& arg : webArgs) webArgv.push_back(arg.c_str());
         argc = (int)webArgv.size();
@@ -5013,6 +5191,20 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
         return SDL_APP_FAILURE;
     }
     app->opts.bootOpening = resolveBootOpening(app->opts);
+#if defined(__EMSCRIPTEN__)
+    // Delivery mode with a standalone recipe: request the match's assets from the
+    // arguments and wait for them before the scene is built. A front-end run needs none
+    // of this — its barrier is the VS transition.
+    if (webDeliveryEnabled() && requestWebStandaloneGroup(*app)) {
+        const bool ready = plat::assetClient().waitForMatch();
+        std::printf("[delivery] match group %s: %s\n", ready ? "ready" : "INCOMPLETE",
+                    plat::assetClient().matchProgress().line("match").c_str());
+        if (!ready) {
+            app->error = "match assets unavailable: " + plat::assetClient().error();
+            return SDL_APP_FAILURE;
+        }
+    }
+#endif
 
     // Headless verification: no window, no surface, no swapchain, so the adapter is
     // requested without a presentation target. That is what lets a machine with no
@@ -5511,6 +5703,12 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         if (delta > app->deltaMax) app->deltaMax = delta;
     }
     ++app->frames;
+
+    // Issue #4: keep the delivery client's transfers moving during normal frames. It never
+    // blocks and never sleeps — one call per frame is what lets the optional startup assets
+    // (the movie, BGM) finish after the gate has already let the front end open, and what
+    // drives the match group while the VS presentation plays. Native builds no-op.
+    plat::assetClient().poll();
 
     const bool capturing = !app->opts.out.empty();
 

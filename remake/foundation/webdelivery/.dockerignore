@@ -1,0 +1,17 @@
+# The build context is this directory and nothing else.
+#
+# Everything excluded here is either a build artifact that scripts/package-client.sh
+# copies in deliberately, or a host's own prepared data. The game install itself is
+# never in the context: it is mounted at run time.
+**
+!Dockerfile
+!docker-compose.yml
+!daybreak_web/
+!daybreak_web/**
+!client/
+!client/**
+!scripts/
+!scripts/package-client.sh
+**/__pycache__/
+**/*.pyc
+client/*.map

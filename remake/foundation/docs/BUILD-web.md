@@ -21,9 +21,10 @@ Emscripten port on its own as soon as it is configured through `emcmake`.
 
 ## Reading the result
 
-Diagnostics go to the browser console. Browser arguments come from `?asset=`
-(a single CLI arg), `?pack=` (manifest URL fetched into `/packs/`, `asset=` line
-wins), then the configure-time `FOUNDATION_WEB_ASSET`. Additional flags go in
+Diagnostics go to the browser console. Browser arguments come from `?delivery=`
+(the self-hosted per-asset API, below), `?asset=` (a single CLI arg), `?pack=`
+(manifest URL fetched into `/packs/`, `asset=` line wins), then the configure-time
+`FOUNDATION_WEB_ASSET`. Additional flags go in
 `?args=`, separated by `|`, including `--frames=N`, `--match` and the other
 asset paths (`src/main.cpp`, web argument bootstrap). Percent-encode query values
 when paths contain URL punctuation. **Press Escape in the page** (the demo's own quit
@@ -58,6 +59,35 @@ On quit the runtime also logs `program exited (with status: 0), but
 keepRuntimeAlive() is set ... due to an async operation`. It is an ASYNCIFY
 side effect of the main loop, not a failure: the exit status is 0 and the report
 above has already been printed.
+
+## Self-hosted delivery (issue #4)
+
+The production shape is the same-origin service in
+[`webdelivery/`](../webdelivery/README.md): a host mounts their own install, the
+server prepares and catalogs it once, and the browser fetches individual assets.
+
+```bash
+python3 -m daybreak_web prepare --install /path/to/Higurashi-Daybreak --out /tmp/web-data
+python3 -m daybreak_web serve --out /tmp/web-data --client build/web --port 8177
+# open http://127.0.0.1:8177/ and follow "Start the client"
+```
+
+`?delivery=1` means "this origin"; `?delivery=<origin>` names another one. The
+client fetches the startup manifest, validates every asset against the catalog's
+sha256, materialises it at the path the port's own asset layer reads (`data/...`,
+`movie/...` — which is what issue #58 records the `?pack=` path cannot do), caches
+each asset independently by its content hash, and reports progress. A standalone
+recipe works too, and requests its own match group from the arguments:
+
+```bash
+# note the /data/... paths: the delivered tree is the MEMFS root
+foundation_demo.html?delivery=1&args=--stage=/data/stage21|--character=/data/rena:0|--enemy=/data/mion:0|--match|--frames=300
+```
+
+The startup gate (the assets the first usable screen needs) holds `SDL_AppInit`;
+optional startup assets (the movie, BGM) keep loading from `SDL_AppIterate`, and a
+front-end match requests its group when the VS screen appears and waits for it in
+`enterFrontendBattle`.
 
 ## Local asset preload for renderer verification
 
