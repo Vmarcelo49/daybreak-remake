@@ -884,3 +884,54 @@ aliasing):
 are not about game behaviour at all — they are about the project *believing* it verified something it
 did not. #39 was "captures cannot see the live path"; #35 is "compiled is not executed". Both were
 surfaced by other work rather than by the checklist.
+
+## Round 25 — #30 merged (the COM tick cost, 4.5x), and #21's shadow row dispatched
+
+### #30: measured, named AND fixed
+
+**Verified by the coordinator**: ctest 57/57; the COM gate run measures **12.382 s** against
+**64.329 s** on `main` (5.2x on a loaded box); and the 1v1 gate capture is **byte-identical**
+(`md5 3e4e892adaee5fa73f653689bb357319`, the hash this recipe has carried since #51).
+
+**The isolation matrix is the part worth keeping**: the issue's own comparison pitted a 1-human COM run
+against a 2-human run, so views, fighter count and script all differed at once. Separating them showed
+the script costs nothing (10.799 → 10.783 s, inside the spread), the views cost nothing (the 1-view arm
+is 5x the 2-view one), the round/card counts cost nothing (all arms ran 3 rounds; +31 % cards against
++400 % time) — and **the bot was 91.2 % of the run**. `--debug-keys=f2@1`, which #48 had *just* added,
+gave the clean A/B for free.
+
+**The named cost**: `BotBrain::probe_progress` → `MovementCollision::move` → `firstWallMove`'s
+`firstWallHit` walked **every triangle of the movement mesh once per ray** with no spatial pruning —
+39 rays per probe, 76,010 rays per run, 987 faces scanned and 646 tested per ray, ~2.9e9 triangle
+visits. Faces per ray **987 → 1.18**, intersections **646 → 0.87**.
+
+**The coordinator read the predicate himself**, because a wrong prune drops wall hits silently — the
+one failure mode no timing number reveals. Conservative on all three axes; an exactly-zero direction
+component is tested as containment so a grazing ray is kept rather than lost to a 1/0; `origin` is
+rebuilt per ring sample **and** per body height, so the y test is on the *actual* ray; and a mesh whose
+bounds array does not match its face count is walked **unpruned** rather than indexed out of range.
+
+**`RELEASE-CHECKLIST.md` §6 corrected** — its "~5x slower … the places to look if it ever matters" was
+about to become a false claim in the release gate's own document. It now records the fix, the
+mechanism and the residual (**2.30x, which is the probe count**, not the query).
+
+### #21 dispatched — row 1, character shadows
+
+The issue's **comments** are the real brief (the body says so), and they contain a great deal already:
+the read site `FUN_006396f0:115-119` → `FUN_004207d0` once per fighter after technique mode 2;
+`FUN_004207d0`'s callees resolve to a scene-graph transform update plus a draw of the character's own
+body and weapon sub-objects — so **the shadow is a second draw of the caster's own geometry**, not a
+blob, not a shadow map, not an authored mesh; and the research points at **planar projected shadows**
+with D3D9's `D3DXMatrixShadow(plane, light)`, which turns "recover a projection matrix" into "find two
+known inputs".
+
+**The human raised this row's priority** ("there is no shadows on the player characters; on the original
+the character shadows are the only real-time shadows"), so it is a visible gap in every match rather
+than an option-row nicety. The port's current light is the **DX9 remake's constant**
+(`kLightDirection{0.5f,-1.0f,0.5f}` citing `scenes.cpp`), not the original's — and a wrong sun makes
+every shadow point the wrong way, so the brief forbids inventing one and presenting it as recovered.
+
+**Also cleaned up**: the old `/home/marcelo/Projetos/dbd-worktrees/issue-21` was a **prunable** worktree
+whose directory had been deleted in an earlier session, still holding the branch
+`feat/issue-21-renderer-options` (the toon row, long since merged). Pruned, and the shadow row got a
+fresh worktree.
