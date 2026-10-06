@@ -402,6 +402,22 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         foundation_movie)
     add_test(NAME lock_switch_camera_test COMMAND lock_switch_camera_test)
 
+    # Issue #39: the live presentation path — the one the capture stack cannot see. The
+    # camera defect fixed in 92b6d70 lived in buildFrameViews' glm::mix(previousEye,
+    # camera.eye(), matchAlpha), which is the identity at the alpha 1 every capture recipe
+    # pins (D9), so no capture could ever have caught it. This compiles src/main.cpp into
+    # its own TU (SDL_MAIN_HANDLED, like lock_switch_camera_test), composes frames the way
+    # the frame loop does — the fixed-step clock, tickMatch, then buildFrameViews — and
+    # asserts on FrameView::camera.eye, the frame-view state the renderer consumes. No GPU,
+    # no window and no game data: the fighters carry a synthetic Rena 1 combo (AGENTS rule
+    # 7) and stand still.
+    add_executable(live_camera_smoothness_test tests/live_camera_smoothness_test.cpp)
+    target_include_directories(live_camera_smoothness_test PRIVATE src)
+    target_link_libraries(live_camera_smoothness_test PRIVATE foundation_render foundation_ui
+        foundation_media foundation_game foundation_physics foundation_gameplay
+        foundation_movie)
+    add_test(NAME live_camera_smoothness_test COMMAND live_camera_smoothness_test)
+
     # Issue #48: the original's in-battle debug keys (F1 HP/balloon restore, F2 COM off, F3
     # COM on, F4 gauges, Escape leave) behind the recovered gate. The gameplay half is
     # device-free over a hand-built Match; the acceptance half compiles src/main.cpp into its
