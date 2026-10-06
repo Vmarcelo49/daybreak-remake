@@ -445,6 +445,15 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
     meshes_.clear();
     palette_.clear();
     stats_ = Stats{};
+    // The instance sources are per-scene as well. drawTemplates_ holds this scene's draws plus
+    // its instance-only templates, and baseDrawList_ its no-instance fallback, so leaving them
+    // behind makes the next setEffectInstances() — the first live effect card — submit the
+    // PREVIOUS scene's records, whose vertex/index buffers were released a few lines above.
+    // wgpu-native panics on the dead handle; before that the draw reads the wrong texture. A
+    // rematch is exactly this path: a second match in the same process.
+    drawTemplates_.clear();
+    baseDrawList_.clear();
+    effectInstances_.clear();
 
     // Images are shared between materials, so upload each one once and index draws
     // into the result.
