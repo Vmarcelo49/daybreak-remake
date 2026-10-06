@@ -47,7 +47,9 @@ right unit.
 - `src/render/debug_prims.*` — the overlay passes take the view's cell as `Options::viewport`
   (empty = whole target), so cubes and lines land in their own view.
 - `src/ui/sprite.*` — `UiViewport` gained an origin; a batch draws its quads into that cell
-  and clips its scissor runs to it. `x/y = 0` for every single-view surface.
+  and clips its scissor runs to it. `x/y = 0` for every single-view surface. Each `render()`
+  call also takes its own vertex region (issue #56, below), so one view's pass cannot read
+  another view's geometry.
 - `src/main.cpp` — builds the views in `initMatch`, runs the per-view camera + HUD loop in
   `tickMatch` (one HUD fill per view through the existing `gameplay::hudStateFor`), and renders
   one pass per view plus the separator cross. Per-view HUD marker projection uses each view's
@@ -182,3 +184,24 @@ round over on side 1 (time up) at match frame 3600, the result screen at tick 43
 selection at tick 4984. The synthetic pads also walk the selection for controllers 1..3, so the
 run needs no devices; `--local-players` never overrides a real pad and never skips the VS or
 result beats.
+
+## Issue #56 — each pass's own vertices
+
+The per-view HUD passes and the separator pass all batch through ONE `SpriteRenderer`, and
+every `render()` call wrote the same vertex buffer at offset 0. A frame's queue writes all
+land before its single submission, so a pass read the LAST write plus the tail of the longest
+earlier one: in a 4-view frame the separator pass (2 quads) is written last, so each view's
+first two quads — fighter 0's reticle circle and triangles — came out as the separator's thin
+bars, and every cell's remaining quads were drawn at whichever view wrote last. Each view now
+writes and binds its own vertex region (`kVertexSlots` in `src/ui/sprite.h`, the uniform
+slots' own rule), so a pass cannot read another pass's geometry. This is a PORT rendering
+fix — there is no original behaviour to recover, the original drew its HUD through DX9's own
+per-call vertex handling.
+
+The single-view path writes and binds region 0 exactly as it wrote and bound the whole buffer,
+so it stays byte-identical; unpaused multi-view pixels move on purpose, and the recipes,
+hashes and the per-cell pixel counts are recorded in `RELEASE-CHECKLIST.md` §3.6.
+`tests/hud_view_geometry.py` pins it: every participant's reticle must be in the frame at that
+VIEW's own ring anchor (the demo's `[split]` line prints them), which `hud_cell_scale.py`
+structurally cannot express because every pass pushes its probe markers at identical
+coordinates.

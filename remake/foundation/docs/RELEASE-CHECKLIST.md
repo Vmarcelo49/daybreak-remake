@@ -69,16 +69,17 @@ extended this suite and `user_settings_test` — no suite was added, which is wh
 ctest --test-dir remake/foundation/build/linux --output-on-failure
 ```
 
-* **With the game install present**: `100% tests passed out of 57`
-  (re-measured 2026-10-06 with issue #50's `pause_overlay_layout_test` and
-  `pause_overlay_panel` added; 55 was the count after issue #39's
-  `live_camera_smoothness_test`, 54 after issue #48's `debug_keys_test`, 53 after issue
-  #47's `countdown_overlay_test`, 52 after issue #51's `lock_switch_camera_test`).
+* **With the game install present**: `100% tests passed out of 58`
+  (re-measured 2026-10-06 with issue #56's `hud_view_geometry` added; 57 was the count
+  after issue #50's `pause_overlay_layout_test` and `pause_overlay_panel`, 55 after issue
+  #39's `live_camera_smoothness_test`, 54 after issue #48's `debug_keys_test`, 53 after
+  issue #47's `countdown_overlay_test`, 52 after issue #51's `lock_switch_camera_test`).
 * **Without any game data** (the CI runner's state — no `Higurashi-Daybreak/`):
   the same six tests go `Skipped` (exit 77) — `hud_cell_scale`, `toon_ramp`,
   `npr_experiments`, `npr_normals_test`, `controller_scene_lifetime_test` and
   `device_isolation_test` — plus issue #50's `pause_overlay_panel`, which renders a real
-  paused battle and so skips itself with those six, making seven; with
+  paused battle, and issue #56's `hud_view_geometry`, which renders a real four-view
+  battle, so both skip themselves with those six, making eight; with
   `weapon_definition_test` skipping its
   fully-skipped sweep, which was the measured 50-test shape of 2026-10-06.
   #43's `select_row_slidein_test` is device-free AND data-free (no install, no
@@ -94,15 +95,18 @@ ctest --test-dir remake/foundation/build/linux --output-on-failure
   the same 55 with six Skipped without data). #50's `pause_overlay_layout_test` is in that
   same device-free class (it calls `ui::computePauseOverlayLayout` and nothing else), so it
   adds one to both counts; its `pause_overlay_panel` needs the install and joins the skip
-  list above. The merged count is therefore **57 registered**, with **seven** Skipped in a
-  data-free tree.
+  list above. #56's `hud_view_geometry` is the same capture class as `hud_cell_scale` (it
+  renders a real four-view battle and reads the frame), so it too needs the install and
+  joins that list. The merged count is therefore **58 registered**, with **eight** Skipped
+  in a data-free tree.
   The denominator is the number of *registered* tests and grows whenever a suite is
   added (42 when this document was written, 45 when #28 re-measured it, 50 after
   #42's `bgm_loop_test`, #45's `frontend_lifecycle_test` and #46's
   `controller_scene_lifetime_test`, 49 after #29's `device_isolation_test`, 51 after
   #43's `select_row_slidein_test`, 52 after #51's `lock_switch_camera_test`, 53 after
   #47's `countdown_overlay_test`, 54 after #48's `debug_keys_test`, 55 after #39's
-  # `live_camera_smoothness_test`, 57 after #50's two pause-overlay suites), so
+  # `live_camera_smoothness_test`, 57 after #50's two pause-overlay suites, 58 after
+  # #56's `hud_view_geometry`), so
   read the command's own summary rather than this line when the two disagree —
   the invariant to check is *100% passed* with the asset-dependent tests Skipped
   and none Failed. Issue #40 added no suite: its device-free half (the recovered
@@ -400,6 +404,49 @@ and no user input. The step that covers those is still a played battle — run
 `--screen=battle --local-players=2` for 30 s and confirm the camera settles
 behind the fighter instead of sweeping, then take a hit and confirm it stays
 settled. That is the only part of this class a headless run cannot own.
+
+### 3.6 Which baselines the sprite batch's per-pass vertices moved (issue #56)
+
+`SpriteRenderer` gave every pass in a frame the same vertex buffer, written at offset 0 by
+each `render()` call, and a frame's queue writes all land before its single submission — so
+a pass read the last pass's geometry plus the tail of the longest earlier one. The fix gives
+each `render()` call its own region, addressed by binding the vertex buffer at that region's
+byte offset (the uniform path's own rule, `src/ui/sprite.h`). The unpaused **single-view**
+path writes and binds region 0 exactly as it wrote and bound the whole buffer, so it is
+**byte-identical**; **multi-view** frames deliberately move, because they were reading
+another view's geometry before.
+
+| recipe (from `remake/foundation/`, install via `--install=`) | before | after |
+|---|---|---|
+| `--screen=battle --local-players=1 --frames=300 --size=960x540` | `db392ca6` | `db392ca6` (identical) |
+| `--match --stage=data/stage03 --character=data/rena --enemy=data/mion --frames=300 --size=800x600` | `10f6cbbd` | `10f6cbbd` (identical) |
+| `--screen=title --frames=200 --size=1280x720` | `a88d4de4` | `a88d4de4` (identical) |
+| `--screen=battle --hud-test --frames=5 --size=800x600` | `e9c61969` | `e9c61969` (identical) |
+| `--screen=battle --pause-overlay=300 --frames=481 --size=960x540` (#50's overlay) | `ea373b57` | `ea373b57` (identical) |
+| `--versus --stage=data/stage03 --character=data/rena --enemy=data/mion --frames=200 --size=800x600` | `0d0e8dd9` | `0d0e8dd9` (identical) |
+| `--screen=battle --local-players=2 --frames=300 --size=960x540` | `cf7983a7` | `60ce8237` (**moves**) |
+| `--screen=battle --local-players=4 --frames=300 --size=960x540` | `e3e9c445` | `0f30fad5` (**moves**) |
+| `--screen=battle --local-players=4 --frames=300 --size=1280x720` | `afba09df` | `09f0da41` (**moves**) |
+| `--screen=battle --local-players=4 --pause-overlay=300 --frames=481 --size=960x540` | `6162d455` | `6e27d5ac` (**moves**: the frozen HUD under the overlay) |
+
+Hashes are the first eight hex digits of `sha256sum` of the written PPM. The four §3 gates
+end on a single-view frame (the result or the selection screen), so all four keep their
+documented final captures exactly — 4p `2483c3aa`, 1v1 `8cc49e6c`, 2v2 `8cc49e6c`, com
+`b813155d` — and their `[menu] scene` / `[split]` ladders are unchanged. §4.2's sweep is
+`--match` without `--local-players`, so it is single-view and its problem counts cannot move
+either.
+
+What moved is the reticle: in the 960x540 four-view frame, 12,874 of 518,400 pixels (2.48%),
+by cell 6,062 / 2,882 / 3,388 / 542 — the FIRST view loses the most because it was reading
+the last view's geometry for everything but its two separator quads, and the LAST view loses
+the least because it was reading its own. The test that pins it is
+`tests/hud_view_geometry.py` (host suite, `ctest -R hud_view_geometry`): it asserts that
+every participant's reticle is in the frame at **that view's own** ring anchor, printed by
+the demo's own `[split]` line, and that the reticle at each cell's centre is within 8 px of
+that cell's own fighter's anchor. Before the fix it fails on five anchors (0 red reticle
+pixels at each, against 67-74 after) and on the centre reticle of the first view, whose
+centroid sits 18.5 px from its own anchor and 0.6 px from the last view's. `hud_cell_scale`
+cannot express this: it probes markers every pass pushes at identical coordinates.
 
 ## 4. Asset sweep — every legal selection and every stage
 
