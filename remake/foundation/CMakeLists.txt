@@ -76,6 +76,8 @@ add_library(foundation STATIC
     src/platform/platform.cpp
     src/platform/surface.cpp
     src/platform/web_pack.cpp
+    src/platform/web_assets.cpp
+    src/platform/asset_client.cpp
     src/gpu/gpu.cpp)
 target_include_directories(foundation PUBLIC src)
 target_link_libraries(foundation PUBLIC webgpu)
@@ -317,6 +319,15 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                          "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
                          "${CMAKE_CURRENT_SOURCE_DIR}")
         set_tests_properties(npr_experiments PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
+
+        # Issue #4's self-hosted delivery service: prepare/catalog/verify plus the
+        # same-origin HTTP surface, all against synthetic .DAT bundles the test writes
+        # itself. Device-free, game-data-free and network-free (127.0.0.1 only), so it
+        # runs everywhere the host suite runs and never skips.
+        add_test(NAME web_delivery_test
+                 COMMAND ${Python3_EXECUTABLE}
+                         "${CMAKE_CURRENT_SOURCE_DIR}/tests/web_delivery_test.py")
+        set_tests_properties(web_delivery_test PROPERTIES TIMEOUT 300)
     endif()
 
     add_executable(debug_prims_geometry tests/debug_prims_geometry.cpp)
@@ -338,6 +349,24 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                    src/assets/asset_source.cpp)
     target_include_directories(dat_bundle_bytes PRIVATE src)
     add_test(NAME dat_bundle_bytes COMMAND dat_bundle_bytes)
+
+    # Issue #4: the web catalog has to resolve duplicates exactly like the native asset
+    # layer, or a browser gets different bytes than the game reads. The hermetic half
+    # (synthetic .DAT bundles this test writes with dat_crypto, so no game data) always
+    # runs; the real-install half skips itself without an install, and the whole test
+    # skips when the webdelivery package or python3 is missing.
+    add_executable(web_catalog_order tests/web_catalog_order.cpp
+                   src/assets/dat_bundle.cpp src/assets/dat_crypto.cpp)
+    target_include_directories(web_catalog_order PRIVATE src)
+    add_test(NAME web_catalog_order COMMAND web_catalog_order)
+
+    # Issue #4: the host-testable half of the web asset client — the sha256 it
+    # validates responses with, the per-asset manifest parser, the id-to-path mapping
+    # the unchanged native reader later fopens, and the progress arithmetic the VS
+    # readiness barrier reads. The browser half compiles only under Emscripten.
+    add_executable(web_assets_test tests/web_assets_test.cpp src/platform/web_assets.cpp)
+    target_include_directories(web_assets_test PRIVATE src)
+    add_test(NAME web_assets_test COMMAND web_assets_test)
 
     # Economy + HUD fill: device-free, and it links match_economy.cpp only —
     # hud_fill.cpp's bridge half needs webgpu.h, so the test includes just the
