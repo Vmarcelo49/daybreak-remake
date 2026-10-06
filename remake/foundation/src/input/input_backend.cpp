@@ -145,16 +145,28 @@ void Backend::shutdown() {
 
 void Backend::poll(bool applyScript) {
     if (!inited_) return;
-    drain_key_events();
-    repoll_gamepads();
-    update_keyboard();
-    for (int i = 1; i < kMaxPlayers; ++i) {
-        if (devices_[i] == DeviceType::Gamepad) {
-            update_gamepad(i);
-        } else {
-            // A removed (or never present) pad reads as released, not frozen:
-            // clearing before edge computation turns a mid-hold removal into
-            // one just_released instead of a stuck hold.
+    if (devices_enabled_) {
+        drain_key_events();
+        repoll_gamepads();
+        update_keyboard();
+        for (int i = 1; i < kMaxPlayers; ++i) {
+            if (devices_[i] == DeviceType::Gamepad) {
+                update_gamepad(i);
+            } else {
+                // A removed (or never present) pad reads as released, not frozen:
+                // clearing before edge computation turns a mid-hold removal into
+                // one just_released instead of a stuck hold.
+                PlayerState& p = players_[i];
+                for (int a = 0; a < ActionCount; ++a) p.down[a] = false;
+                p.stick_x = p.stick_y = p.stick_rx = p.stick_ry = 0;
+            }
+        }
+    } else {
+        // --no-devices: the verification run owns every slot (script + synthetic pads).
+        // Reading a physical device here is what makes a capture depend on whoever is
+        // holding a pad: SDL reports a connected controller whether or not this window
+        // has focus, so a second game on the same machine moves this run's menus.
+        for (int i = 0; i < kMaxPlayers; ++i) {
             PlayerState& p = players_[i];
             for (int a = 0; a < ActionCount; ++a) p.down[a] = false;
             p.stick_x = p.stick_y = p.stick_rx = p.stick_ry = 0;
@@ -189,6 +201,10 @@ const PlayerState& Backend::player(int index) const {
 
 DeviceType Backend::device(int index) const {
     if (index < 0 || index >= kMaxPlayers) return DeviceType::None;
+    // --no-devices: no pad is present as far as the host is concerned, so a pad-less
+    // controller takes the synthetic pattern (driveSyntheticLocalPads) instead of being
+    // skipped for a device the run is ignoring.
+    if (!devices_enabled_) return index == 0 ? DeviceType::Keyboard : DeviceType::None;
     return devices_[index];
 }
 

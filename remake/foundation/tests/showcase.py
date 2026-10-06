@@ -66,7 +66,7 @@ def discover_stages():
 
 def run_capture(char, enemy, stage, frames, size, out, script=None, co_spawn=False):
     """One headless demo run. Returns (ok, textured, untextured, stderr_tail)."""
-    cmd = [str(BINARY), "--headless", f"--out={out}",
+    cmd = [str(BINARY), "--headless", "--no-devices", f"--out={out}",
            f"--stage={DATA / stage}", f"--character={DATA / char}",
            f"--enemy={DATA / enemy}", "--match", "--camera=arena",
            f"--frames={frames}", f"--size={size}"]

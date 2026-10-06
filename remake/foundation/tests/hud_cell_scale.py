@@ -26,7 +26,7 @@ SKIP = 77
 
 
 def run_demo(demo, install, out, args, cwd):
-    cmd = [demo, "--headless", "--install=" + install, "--out=" + out] + args
+    cmd = [demo, "--headless", "--no-devices", "--install=" + install, "--out=" + out] + args
     proc = subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                           text=True, timeout=600)
     if proc.returncode != 0 or "RESULT: ok" not in proc.stdout:

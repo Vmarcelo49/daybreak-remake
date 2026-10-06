@@ -55,6 +55,12 @@ class Backend {
 
     const PlayerState& player(int index) const;
     DeviceType device(int index) const;
+    // --no-devices (a verification instrument, not a player feature): poll() stops reading
+    // the keyboard and the gamepads and device() reports none of them, so a run is driven
+    // only by its script and by --local-players' synthetic pads. WHY it exists: SDL reports
+    // a connected controller whether or not this window has focus, so on a shared machine
+    // another application's pad moves this run's menus and changes its captures.
+    void set_devices_enabled(bool enabled) { devices_enabled_ = enabled; }
     int gamepad_player(int32_t instanceId) const;
     bool any_just_pressed(Action action) const;
     bool any_down(Action action) const;
@@ -102,6 +108,7 @@ class Backend {
     void* pads_[kMaxPlayers];  // SDL_Gamepad* when open; void* keeps SDL out
     bool key_held_[kKeyHeldSize];
     bool inited_ = false;
+    bool devices_enabled_ = true;
     bool suppressedKeys_[kKeyHeldSize] = {};
     bool suppressedButtons_[kMaxPlayers][26] = {};
     int keyboard_[ActionCount];

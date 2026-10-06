@@ -116,6 +116,8 @@ struct Options {
 
     std::string camera = "auto";   // auto|player|front|top|bounds
     bool        headless = false;  // no window/surface: offscreen captures only
+    // --no-devices: a verification run owns every input slot (script + synthetic pads).
+    bool        noDevices = false;
     std::string install;           // dir holding daybreakXX.dat; auto-detected when empty
     bool        noCameraClamp = false;   // A/B switch for the arena eye clamp
     bool        noTextures = false;
@@ -219,6 +221,11 @@ void usage() {
         "  --combat-audio-log   log every dispatched combat SE/voice with its resolved file\n"
         "  --audio-file=<path>  with --audio-test: decode a real file as well\n"
         "  --input-test         run the input backend self-check and exit\n"
+        "  --no-devices         ignore the keyboard and every gamepad: the run is driven\n"
+        "                     only by --script= and --local-players' synthetic pads. For\n"
+        "                     verification on a machine where another application holds a\n"
+        "                     pad: SDL reports a controller whether or not this window has\n"
+        "                     focus, so live pad input would move this run's menus\n"
         "  --enemy=<baseDir>/<name>[:costume]  versus P2 fighter (needs --versus)\n"
         "  --versus           scripted vignette: stage + P1 + P2, arena follow,\n"
         "                     timeline HUD, BGM loop, SFX cues; needs --stage,\n"
@@ -289,6 +296,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--audio-test") o.audioTest = true;
         else if (a == "--combat-audio-log") o.combatAudioLog = true;
         else if (a == "--input-test") o.inputTest = true;
+        else if (a == "--no-devices") o.noDevices = true;
         else if (!(v = val("--enemy=")).empty()) o.enemy = v;
         else if (a == "--versus") o.versus = true;
         else if (a == "--match") o.match = true;
@@ -2118,6 +2126,7 @@ static bool initMatch(App& app) {
         app.error = "--match needs the input backend";
         return false;
     }
+    app.matchInput.set_devices_enabled(!app.opts.noDevices);
     app.matchInputReady = true;
 
     // BGM: the reference plays data/bgm/01.ogg on entering the match (scenes.cpp:473,
@@ -4050,6 +4059,7 @@ bool initScreens(App& app) {
         app.error = "--screen needs the input backend";
         return false;
     }
+    app.matchInput.set_devices_enabled(!app.opts.noDevices);
     app.matchInputReady = true;
     if (!app.opts.script.empty() && !app.matchInput.load_script(app.opts.script.c_str())) {
         app.error = "cannot read input script " + app.opts.script;
