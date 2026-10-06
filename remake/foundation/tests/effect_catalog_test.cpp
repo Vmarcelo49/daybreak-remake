@@ -32,11 +32,18 @@
 //
 //  Build: cmake --build remake/foundation/build/linux --target effect_catalog_test
 //  Exit status: 0 when every check passes, 1 otherwise.
+//
+//  Issue #34 adds one device-free section: the muzzle-flash slot. It pins the RECOVERED
+//  selector (the fighter's per-slot fire-mode byte +0x318 picks the attack start, and each
+//  attack start sets one latch that FUN_004205e0 turns into a slot) next to the PORT RULE
+//  the spawn path uses (the shot tier picks among the same three models), so neither can
+//  drift and the port rule cannot be mistaken for a recovery. See game/muzzle_slot.h.
 // =============================================================================
 #define XMODEL_IMPLEMENTATION
 #include "assets/xmodel.h"
 #include "game/aura_attach.h"
 #include "game/effect_catalog.h"
+#include "game/muzzle_slot.h"
 
 #include <cctype>
 #include <cstdio>
@@ -266,6 +273,74 @@ void testAuraAttachRule() {
     checkInt(11, full.frame[10], "instance 10 is table point 10's frame");
 }
 
+void testMuzzleSlotRule() {
+    section("issue #34: the muzzle-flash slot — the recovered rule and the port rule");
+    // The three slots FUN_00633ca0 loads as muzzle flashes. The other four are the blue hit
+    // flash (2), the burning aura (3), the bucket (4) and an unnamed model (6): no attack
+    // start can select them, and a tier that did would be a visible bug rather than a taste
+    // question.
+    checkInt(3, game::kMuzzleFireModes, "three of the seven attachment slots are muzzle flashes");
+    checkInt(0, game::kMuzzleSlots[0], "マズルフラッシュ1 is slot 0 (data/aura/00.X)");
+    checkInt(1, game::kMuzzleSlots[1], "マズルフラッシュ2 is slot 1 (01.X)");
+    checkInt(5, game::kMuzzleSlots[2], "マズルフラッシュ3 is slot 5 (05.X)");
+    for (int slot = 0; slot < game::kAuraSlots; ++slot) {
+        const bool want = slot == 0 || slot == 1 || slot == 5;
+        check(want == game::isMuzzleSlot(slot),
+              "slot " + std::to_string(slot) +
+                  (want ? " is a muzzle flash" : " is not a muzzle flash"));
+    }
+
+    // RECOVERED on the live original (DaybreakDX.exe md5 a136ddc01bd7ef355b759b88ac89e02c):
+    // the battle input action 0x24 dispatches on the fighter's own +0x318 byte and nothing
+    // else (FUN_0063c2a0:267-277) into the attack start that sets one latch, which
+    // FUN_004205e0:17-32 turns into the slot. This is the assignment issue #34 asked for.
+    checkInt(0, game::muzzleSlotForFireMode(0),
+             "RECOVERED: mode 0 -> slot 0 (FUN_0063c2a0:270-271 -> FUN_00421fe0:20, +0x844)");
+    checkInt(1, game::muzzleSlotForFireMode(1),
+             "RECOVERED: mode 1 -> slot 1 (FUN_0063c2a0:276-277 -> FUN_004220e0:20, +0x845)");
+    checkInt(5, game::muzzleSlotForFireMode(2),
+             "RECOVERED: mode 2 -> slot 5 (FUN_0063c2a0:273-274 -> FUN_00422160:20, +0x846)");
+    checkInt(1, game::muzzleSlotForFireMode(3),
+             "a byte the game never stores takes the dispatch's else arm (slot 1), not 'nothing'");
+    check(game::muzzleSlotForFireMode(0) != game::muzzleSlotForFireMode(1) &&
+              game::muzzleSlotForFireMode(1) != game::muzzleSlotForFireMode(2),
+          "the three stored modes are injective: one fighter mode, one muzzle model");
+
+    // The port's own rule, through the function the spawn path calls.
+    checkInt(0, game::muzzleSlotForTier(gameplay::ShotTier::Tap),
+             "PORT RULE: tap -> slot 0 (マズルフラッシュ1)");
+    checkInt(1, game::muzzleSlotForTier(gameplay::ShotTier::Yellow),
+             "PORT RULE: yellow -> slot 1 (マズルフラッシュ2)");
+    checkInt(5, game::muzzleSlotForTier(gameplay::ShotTier::Red),
+             "PORT RULE: red -> slot 5 (マズルフラッシュ3)");
+    checkInt(5, game::muzzleSlotForTier(gameplay::ShotTier::Ex),
+             "PORT RULE: the EX move -> slot 5 (マズルフラッシュ3)");
+    static const struct {
+        gameplay::ShotTier tier;
+        const char* name;
+    } kTiers[] = {{gameplay::ShotTier::Tap, "tap"},
+                  {gameplay::ShotTier::Yellow, "yellow"},
+                  {gameplay::ShotTier::Red, "red"},
+                  {gameplay::ShotTier::Ex, "the EX move"}};
+    for (const auto& t : kTiers)
+        check(game::isMuzzleSlot(game::muzzleSlotForTier(t.tier)),
+              std::string(t.name) +
+                  " never selects the blue hit (2), the aura (3), the bucket (4) or 06.x (6)");
+
+    // Why this section exists at all: the two rules are different FUNCTIONS, not two
+    // readings of one. The recovered selector is per FIGHTER — one mode, one model for the
+    // whole match — while the port's maps four tiers onto three slots, so red and EX
+    // collide on slot 5. That collision is the shape a per-fighter selector cannot produce,
+    // and it is what makes presenting the tier map as "recovered" a false claim.
+    checkInt(game::muzzleSlotForTier(gameplay::ShotTier::Red),
+             game::muzzleSlotForTier(gameplay::ShotTier::Ex),
+             "the port rule collides (red and EX share slot 5), unlike the recovered table");
+    std::printf("        recovered selector: fighter+0x318, per slot from scene+0x5328+slot\n"
+                "        (FUN_0064ab30:36-38 -> FUN_0041dc80:12; rand()%%3 for the CPU slots,\n"
+                "        FUN_006492f0:20-22). The port carries no such byte, so the tier map\n"
+                "        above is a labelled port rule, not a recovery.\n");
+}
+
 void testInstallAuraTable(int argc, char** argv) {
     section("asset-backed: the shipped attachments, and the rigs they are drawn on");
     const fs::path install = findInstall(argc, argv);
@@ -347,11 +422,13 @@ void testInstallAuraTable(int argc, char** argv) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    std::puts("effect_catalog_test — issue #17 effect table, issue #33 attach points");
+    std::puts("effect_catalog_test — issue #17 effect table, issue #33 attach points, "
+              "issue #34 muzzle slot");
     testDescriptorHeader();
     testIdMappingAndLifetime();
     testInstallTable(argc, argv);
     testAuraAttachRule();
+    testMuzzleSlotRule();
     testInstallAuraTable(argc, argv);
     std::printf("\n%d checks, %d failure(s)%s\n", checks, failures,
                 skipped ? " (with skips)" : "");
