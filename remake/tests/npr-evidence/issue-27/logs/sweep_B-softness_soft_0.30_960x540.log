@@ -1,0 +1,22 @@
+# remake/foundation/build/linux/foundation_demo --headless --install=Higurashi-Daybreak --out=<workdir>/sweep_B-softness_soft_0.30_960x540.ppm --size=960x540 --character=Higurashi-Daybreak/data/rena:0 --weapon=Higurashi-Daybreak/data/item/01.x --no-anim --camera=bounds --frames=3 --npr=bands:soft,soft:0.3,shadow:none
+WARNING: radv is not a conformant Vulkan implementation, testing use only.
+=== Higurashi Daybreak Kai Fan Remake ===
+video driver : headless (no window, no surface)
+adapter      : AMD Radeon RX 9070 XT (RADV GFX1201) [Vulkan]
+assets       : 6/6 .dat bundle(s) from Higurashi-Daybreak
+[scene] Higurashi-Daybreak/data/rena: 2 model(s), 5 meshes, 2031 vertices, textures 13 resolved / 0 missed
+scene Higurashi-Daybreak/data/rena: 2 model(s), 5 meshes, 2031 vertices, 40 palette matrices
+bounds [-47 -9 -14] .. [47 140 26]  radius 90
+camera bounds at [163 147 -202] looking at [0 65 6] (distance 276)
+far plane reach 347 units (sky dome included)
+draws: 26 (13 textured, 0 untextured, 0 decals, 0 effects, 13 outlines), 6 GPU textures
+npr normals : 5 mesh(es), 1515 vertices with a secondary normal
+coverage: 518126 px of 518400 (99.95%)  luminance 0.020..1.000
+wrote <workdir>/sweep_B-softness_soft_0.30_960x540.ppm
+
+-- render frame timing (wall-clock delta) --
+frames      : 3 in 0.014 s
+delta avg   : 0.003 ms (301810.9 fps)
+delta min   : 0.001 ms
+delta max   : 0.008 ms
+RESULT: ok
