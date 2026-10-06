@@ -301,6 +301,10 @@ public:
     size_t   dropped() const { return dropped_; }
     uint32_t viewportW() const { return viewport_.w; }
     uint32_t viewportH() const { return viewport_.h; }
+    // The pushed batch, read-only. The quads are host-side until render(), so a test with
+    // no device can assert what a screen actually pushed (issue #47's overlay policy:
+    // no opaque full-canvas quad over the scene). Nothing in the runtime reads this.
+    const std::vector<UiQuad>& quadList() const { return quads_; }
 
 private:
     struct Texture {
