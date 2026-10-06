@@ -561,7 +561,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME participant_layout_test COMMAND participant_layout_test)
 
     foreach(frontend_test select_menu_test stage_vs_test frontend_config_test result_screen_test
-                         select_cursor_test)
+                         select_cursor_test select_row_slidein_test)
         add_executable(${frontend_test} tests/${frontend_test}.cpp)
         # foundation_gameplay: frontend_launch.cpp reads the item's attachment meshes
         # through gameplay::WeaponDefinition (issue #23's gear-up fix).

@@ -1,0 +1,16 @@
+# P0 taps that stop right after the character claim, so the Team -> Character row slide can be
+# captured mid-flight (issue #43). The head is tests/scripts/frontend-4p.txt's own: the title
+# screen's taps, then the JUMP at tick 46 that claims panel 0 and opens its character phase on
+# character 0 (FUN_00409340:114-127). Nothing follows, so the panel stays in that phase:
+# --frames=46..60 lands inside the 15-tick slide (the tick-46 change draws at 280, the last
+# step reaches 0 at tick 60) and --frames>=61 is the settled state to measure against.
+#
+#   ./build/linux/foundation_demo --install=<game-dir> --screen=title --local-players=1 \
+#     --script=tests/scripts/select-slidein.txt --headless --out=/tmp/slide.ppm \
+#     --size=1280x720 --frames=50
+2 DOWN
+8 -
+10 JUMP
+16 -
+46 JUMP
+52 -

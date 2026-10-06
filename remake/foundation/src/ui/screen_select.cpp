@@ -50,6 +50,14 @@ void SelectMenu::tick() {
 }
 SelectAction SelectMenu::update(const ScreenInput& in, int c) {
     if (c < 0 || c >= 4) return SelectAction::None;
+    const SelectPhase before = phase_[c];
+    const SelectAction action = updatePanel(in, c);
+    // FUN_00409340:589-595, the update's own tail: a phase change during this call restarts
+    // this controller's row slide at 300.0 and the same call already steps it once.
+    slide_.step(c, phase_[c] != before);
+    return action;
+}
+SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
     int& pos = cursor_[c];
     if(pos<0) {
         if(!(in.confirm || in.cancel || in.up || in.down || in.left || in.right)) return SelectAction::None;
@@ -243,6 +251,8 @@ bool SelectScreen::loaded() const {
 }
 ScreenId SelectScreen::update(const ScreenInput& in) {
     ++frames_;
+    // FUN_004090a0:9/24-26: the scene's tick, then the entry ramp, then the panels' input.
+    reveal_.tick((int)frames_);
     menu_.tick();
     if (!in.separatePlayers && (in.player < 0 || in.player >= 4)) return ScreenId::Select;
     if(stage_) {
@@ -279,6 +289,15 @@ void SelectScreen::draw(SpriteRenderer& b) const {
         if(b.textureSize(tex,w,h)) b.pushTextured(tex,{x-(src.w-px)*scale,y-py*scale,src.w*scale,src.h*scale},
             {(src.x+src.w)/w,src.y/h,-src.w/w,src.h/h},color);
     };
+    // The entry reveal's own draw: FUN_00655830's quad with an INDEPENDENT x/y scale (+0x84 /
+    // +0x88), where pushSprite is the uniform FUN_00655d60 path. Same UVs, so a settled slot
+    // (1,1) lands on exactly pushSprite's rect.
+    auto spriteScaled=[&](int tex,UiRect src,float px,float py,float x,float y,float sx,float sy) {
+        const UiRect dst=scaledSpriteDst(x,y,src.w,src.h,px,py,sx,sy);
+        uint32_t w=0,h=0;
+        if(dst.w<=0.f||dst.h<=0.f||!b.textureSize(tex,w,h)) return;
+        b.pushTextured(tex,dst,{src.x/w,src.y/h,src.w/w,src.h/h},UiColor{});
+    };
     sprite(shared_[0],{0,0,800,600},0,0,0,0);
     // Portrait pivots are (128,256), resolving the apparent 150px panel-anchor mismatch (§2.3).
     for(int i=0;i<4;++i) if(state_.slots[i].character>=0)
@@ -295,8 +314,11 @@ void SelectScreen::draw(SpriteRenderer& b) const {
         bool selected=false;
         for(const auto& slot:state_.slots) selected |= slot.character==i;
         int cell=selected ? (frames_%40)/10+1 : 0;
-        sprite(chibi_[i],{float(cell%3)*80,float(cell/3)*128,80,128},40,80,
-               kSelectRosterX[i]*48.f+400,kSelectRosterY[i]*36.f+(selected?150:160));
+        // FUN_0040b2b0:96-104: the slot's ramp is the (v, 2-v) scale pair on its own chibi quad,
+        // about the (40,80) pivot FUN_00408330:0x408be7 gave it.
+        spriteScaled(chibi_[i],{float(cell%3)*80,float(cell/3)*128,80,128},40,80,
+               kSelectRosterX[i]*48.f+400,kSelectRosterY[i]*36.f+(selected?150:160),
+               reveal_.scaleX(i),reveal_.scaleY(i));
     }
     for(int p=0;p<4;++p) {
         const auto& slot=state_.slots[p];
@@ -316,29 +338,34 @@ void SelectScreen::draw(SpriteRenderer& b) const {
             else sprite(shared_[4],{256.f+slot.controller*64.f,128,64,64},32,32,summary,y+180);
         }
         if(owner<0 || phase==SelectPhase::Ready) continue;
+        // FUN_0040b2b0:0x40c09f-0x40c0c4: the owner's slide offset, signed by the panel's
+        // column, moves the phase header and every draw inside the panel's phase block —
+        // including the row arrow and the big choice sprite — but not the cursor marker below,
+        // whose anchors are the free cursor's own (+0x3cd8/+0x3ce8).
+        const float slide=rowSlideOffset(menu_.rowSlide(owner),p);
         int header=phase==SelectPhase::Character?0:phase==SelectPhase::Weapon?1:phase==SelectPhase::Hypermode?3:4;
-        sprite(shared_[2],{0,float(header)*32,320,32},160,16,x,y+50);
+        sprite(shared_[2],{0,float(header)*32,320,32},160,16,x+slide,y+50);
         if(phase==SelectPhase::Character) {
             // The nameplate exists only for a real selection: the free cursor can sit in empty
             // space with character == -1 (FUN_00409340:294).
             if(slot.character>=0)
-                sprite(shared_[5],{float(slot.character/8)*256,float(slot.character%8)*64,256,64},128,32,x,y+90);
+                sprite(shared_[5],{float(slot.character/8)*256,float(slot.character%8)*64,256,64},128,32,x+slide,y+90);
             // The marker rides the CURSOR's position, not the selected icon's (+400/+150 are
             // the icon draw's own offsets): the two come apart by up to the 30-unit select
             // radius, and the cursor has to stay visible while it is over empty space. PORT
             // RULE — the marker's anchor; the positions themselves are recovered.
             sprite(shared_[2],{owner*128.f,384,128,128},64,64,menu_.cursorX(owner)+400,menu_.cursorY(owner)+150);
         } else if(phase==SelectPhase::Controller) {
-            for(int row=0;row<2;++row) sprite(shared_[4],{0,float(320+row*128),256,64},128,32,x+row*8,y+110+row*20,1,false,{1,1,1,slot.controller==(row==0?owner:4)?1.f:.5f});
+            for(int row=0;row<2;++row) sprite(shared_[4],{0,float(320+row*128),256,64},128,32,x+slide+row*8,y+110+row*20,1,false,{1,1,1,slot.controller==(row==0?owner:4)?1.f:.5f});
         } else {
             int count=phase==SelectPhase::Weapon?(slot.character<14?3:2):3;
             int choice=phase==SelectPhase::Weapon?slot.weapon:slot.hypermode;
             for(int row=count-1;row>=0;--row) sprite(phase==SelectPhase::Weapon?weapons_[slot.character]:shared_[2],
-                {phase==SelectPhase::Weapon?0.f:320.f,float((choice+row)%count)*64,phase==SelectPhase::Weapon?256.f:192.f,64},phase==SelectPhase::Weapon?128.f:96.f,32,x+row*8,y+110+row*20,1,false,{1,1,1,1.f/(1<<row)});
+                {phase==SelectPhase::Weapon?0.f:320.f,float((choice+row)%count)*64,phase==SelectPhase::Weapon?256.f:192.f,64},phase==SelectPhase::Weapon?128.f:96.f,32,x+slide+row*8,y+110+row*20,1,false,{1,1,1,1.f/(1<<row)});
             sprite(phase==SelectPhase::Weapon?weapons_[slot.character]:shared_[4],
-                {phase==SelectPhase::Weapon?256.f:0.f,float(choice+(phase==SelectPhase::Weapon?0:2))*64,256,64},128,32,x,y+200);
+                {phase==SelectPhase::Weapon?256.f:0.f,float(choice+(phase==SelectPhase::Weapon?0:2))*64,256,64},128,32,x+slide,y+200);
         }
-        if(phase!=SelectPhase::Character) sprite(shared_[2],{384,192,64,128},32,64,x,y+110);
+        if(phase!=SelectPhase::Character) sprite(shared_[2],{384,192,64,128},32,64,x+slide,y+110);
     }
     sprite(shared_[3],{256,64,128,64},64,32,336,550);
     sprite(shared_[3],{384,64,128,64},64,32,464,550);
