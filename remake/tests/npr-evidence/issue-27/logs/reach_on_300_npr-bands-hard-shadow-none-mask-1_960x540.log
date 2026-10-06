@@ -1,0 +1,35 @@
+# remake/foundation/build/linux/foundation_demo --headless --install=Higurashi-Daybreak --out=<workdir>/reach_on_300_npr-bands-hard-shadow-none-mask-1_960x540.ppm --size=960x540 --stage=Higurashi-Daybreak/data/stage01 --character=Higurashi-Daybreak/data/rena:0 --enemy=Higurashi-Daybreak/data/mion:0 --versus --camera=arena --frames=300 --size=960x540 --npr=bands:hard,shadow:none,mask:1
+WARNING: radv is not a conformant Vulkan implementation, testing use only.
+[fnd::ui] battle HUD atlases loaded (P00/P01/P02 via assetSource)
+=== Higurashi Daybreak Kai Fan Remake ===
+video driver : headless (no window, no surface)
+adapter      : AMD Radeon RX 9070 XT (RADV GFX1201) [Vulkan]
+assets       : 6/6 .dat bundle(s) from Higurashi-Daybreak
+stage        : schoolyard_day (scene 1, day, 雛見沢分校 校庭) [Higurashi-Daybreak/data/stage01]
+[weapons] P1 Rena 0: item 001 (data/item/01.x)
+[weapons] P2 Mion 0: item 002 (data/item/04.x)
+[scene] Higurashi-Daybreak/data/stage01: 14 model(s), 52 meshes, 55258 vertices, textures 169 resolved / 0 missed
+fx assets    : 22 effect descriptor(s), 7 attachment model(s)
+movement collision : collision.x (swept query loaded)
+ground collision   : collision.x (surface query loaded)
+projectile collision: collision_tama.x
+camera collision   : collision_camera.x (loaded)
+scene Higurashi-Daybreak/data/stage01: 43 model(s), 135 meshes, 56309 vertices, 195 palette matrices
+bounds [-3646 -902 -4711] .. [3313 4451 2525]  radius 5688
+camera arena at [103 500 -2766] looking at [-463 250 -2200] (distance 838)
+far plane reach 99038 units (sky dome included)
+fog from env.dat: 0..60000 rgb(0.30 0.39 0.47)
+draws: 197 (169 textured, 0 untextured, 4 decals, 0 effects, 28 outlines), 148 GPU textures
+npr normals : 10 mesh(es), 3238 vertices with a secondary normal
+coverage: 493587 px of 518400 (95.21%)  luminance 0.017..1.000
+wrote <workdir>/reach_on_300_npr-bands-hard-shadow-none-mask-1_960x540.ppm
+versus: 300 frames, hp1=0 hp2=100, bgm pushed 0 frames, 0 wraps, sfx plays 0, fx events 3
+fx cards     : events=0 spawned=3 dropped=0 expired=3 killed=0 peak=1/128, shotModels=0 shotModelMissing=0 badEffectId=0, effectDrawsAtExit=0
+
+-- render frame timing (wall-clock delta) --
+frames      : 300 in 0.026 s
+delta avg   : 0.040 ms (25184.5 fps)
+delta min   : 0.021 ms
+delta max   : 0.104 ms
+RESULT: ok
+[302 repeated 'attachment frame unusable' lines folded]

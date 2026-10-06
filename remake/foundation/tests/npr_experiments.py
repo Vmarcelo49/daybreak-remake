@@ -21,7 +21,12 @@ that pixels changed:
      pinned neutral (mask:0), which is the control arm;
   G/H the specular and rim add light and nothing else: no pixel gets darker;
   I  the outline width scales the rim: a wider hull adds silhouette pixels, a thinner one
-     removes them, and the recovered 1.0 is the frame --toon already produced.
+     removes them, and the recovered 1.0 is the frame --toon already produced;
+  #27 every arm's OWN parameter is probed at an extreme and must change the frame: an arm
+     that renders byte-identical to its control there is a silent no-op, and the arms that
+     are inert today are named in KNOWN_INERT with the reason and the issue that owes the
+     fix (so a no-op cannot pass as a subtle improvement, and the list must shrink when a
+     fix lands - an arm that starts drawing again fails here).
 
 Every measurement is against a frame captured in the same run of the same binary with the
 same camera, pose and stage, so the only variable is the flag.
@@ -48,6 +53,97 @@ BACKGROUND = (40, 42, 54)
 SIZE = "800x600"
 
 CHARACTER_DIRS = ("rena", "rika", "akane", "mion")
+
+# ---------------------------------------------------------------------------------------
+# The no-op check (issue #27): every arm is probed at an EXTREME of its own parameter, and
+# an arm whose extreme renders byte-identical to its control is a silent no-op - it must
+# not be able to pass as a subtle improvement. An arm that IS inert today is listed in
+# KNOWN_INERT with the reason and the issue that owes the fix; the run prints it every
+# time, and an arm that starts drawing again FAILS here so the list cannot rot - it has to
+# shrink when the fix lands. Probes are (label, on-args, control-args).
+#
+# The close-up probes run on the scene this file has always used (800x600, character only).
+# The fight probes run the same arms inside a real match frame, because an arm can be alive
+# in a stage-less close-up and dead in a scene that draws a stage first - that is issue
+# #27's E finding, and its pair (H, which reaches) is the control that proves the fight
+# path itself is alive.
+# ---------------------------------------------------------------------------------------
+CLOSE_NOOP_PROBES = [
+    ("B bands hard, neutral tint", ["--npr=bands:hard,shadow:none"], []),
+    ("B bands soft 0.06, neutral tint", ["--npr=bands:soft,shadow:none"], []),
+    ("B bands soft width 0.30, neutral tint", ["--npr=bands:soft,soft:0.3,shadow:none"], []),
+    ("B bands soft width 1.00, neutral tint", ["--npr=bands:soft,soft:1.0,shadow:none"], []),
+    ("B bands three, neutral tint", ["--npr=bands:three,shadow:none"], []),
+    ("C shadow tint, default", ["--npr=bands:soft,shadow"], ["--npr=bands:soft,shadow:none"]),
+    ("C shadow tint, saturated", ["--npr=bands:soft,shadow:#ff00ff"],
+     ["--npr=bands:soft,shadow"]),
+    ("D key light, camera-relative", ["--npr=bands:soft,shadow,key:cam"],
+     ["--npr=bands:soft,shadow"]),
+    ("D key light, character-relative", ["--npr=bands:soft,shadow,key:fixed"],
+     ["--npr=bands:soft,shadow"]),
+    ("D key strength 1.5", ["--npr=bands:soft,shadow,key:cam,keystr:1.5"],
+     ["--npr=bands:soft,shadow,key:cam"]),
+    ("E secondary normals (close-up)", ["--npr=normals"], []),
+    ("F mask scale 1, neutral tint", ["--npr=bands:hard,shadow:none,mask:1"],
+     ["--npr=bands:hard,shadow:none,mask:0"]),
+    ("G specular", ["--npr=spec"], []),
+    ("G specular strength 2", ["--npr=spec,specstr:2"], ["--npr=spec"]),
+    ("H rim light", ["--npr=rim"], []),
+    ("H rim strength 2", ["--npr=rim,rimstr:2"], ["--npr=rim"]),
+    ("I outline width 2 over --toon", ["--toon", "--npr=outline:2"], ["--toon"]),
+]
+
+FIGHT_NOOP_PROBES = [
+    ("E secondary normals in a fight scene", ["--npr=normals"], []),
+    ("H rim light in a fight scene", ["--npr=rim"], []),
+]
+
+KNOWN_INERT = {
+    "B bands hard, neutral tint":
+        "#27: the curve only weights the shadow tint, so with a neutral tint "
+        "mix(tint, white, w) is white for every w (model_wgsl.h:385) and the frame is "
+        "byte-identical to no band at all",
+    "B bands soft 0.06, neutral tint": "#27: as above - the 'band' never bands the shading",
+    "B bands soft width 0.30, neutral tint": "#27: the width only shapes the tint weight",
+    "B bands soft width 1.00, neutral tint": "#27: the width only shapes the tint weight",
+    "F mask scale 1, neutral tint":
+        "#27: the mask only moves the band edge, and the band edge is invisible while the "
+        "tint is neutral (model_wgsl.h:383)",
+    "E secondary normals in a fight scene":
+        "#27: the renderer caches ONE pipeline per pass, so a scene that draws its stage "
+        "first never takes the NPR vertex entry (scene_renderer.cpp, boundPipelines) - the "
+        "close-up probe above proves the technique itself draws",
+}
+
+
+def noop_check(run, probes, scene, scene_label, failures, tmp):
+    """Probe every arm at an extreme; an identity is a no-op unless KNOWN_INERT names it."""
+    inert_seen, probed = [], 0
+    for label, on_args, off_args in probes:
+        on_path = os.path.join(tmp, "noop_on.ppm")
+        off_path = os.path.join(tmp, "noop_off.ppm")
+        if (run(on_path, scene + on_args) is None or run(off_path, scene + off_args) is None):
+            failures.append("the no-op probe '%s' (%s) did not render" % (label, scene_label))
+            continue
+        probed += 1
+        with open(on_path, "rb") as handle:
+            on_bytes = handle.read()
+        with open(off_path, "rb") as handle:
+            off_bytes = handle.read()
+        if on_bytes == off_bytes:
+            if label in KNOWN_INERT:
+                inert_seen.append(label)
+            else:
+                failures.append("NO-OP: '%s' (%s) renders byte-identical to its control: the "
+                                "arm's own parameter is not reaching the picture"
+                                % (label, scene_label))
+        elif label in KNOWN_INERT:
+            failures.append("'%s' now differs from its control: the arm draws again, so "
+                            "remove it from KNOWN_INERT" % label)
+    print("  #27 no-op check (%s): %d arms probed at an extreme, %d known inert"
+          % (scene_label, probed, len(inert_seen)))
+    for label in inert_seen:
+        print("    KNOWN INERT %s - %s" % (label, KNOWN_INERT[label]))
 
 
 def run_demo(demo, install, out, args, cwd):
@@ -232,6 +328,14 @@ def main():
         candidate = os.path.join(install, "data", name)
         if os.path.isdir(candidate):
             fighter = candidate
+            break
+    # A fight frame needs two roster fighters, and rule 7 says a combo, never a bare
+    # fighter: the versus path attaches each character's slot-0 weapon itself.
+    enemy = None
+    for name in ("mion",) + CHARACTER_DIRS:
+        candidate = os.path.join(install, "data", name)
+        if os.path.isdir(candidate) and candidate != fighter:
+            enemy = candidate
             break
     stage = os.path.join(install, "data", "stage01")
     if fighter is None or not os.path.isdir(stage):
@@ -500,13 +604,29 @@ def main():
         else:
             print("  stage-only frame: skipped (stage render unavailable)")
 
+        # --- issue #27: no arm may be a silent no-op --------------------------------
+        noop_check(lambda out, args: run_demo(demo, install, out, args, cwd),
+                   CLOSE_NOOP_PROBES, scene, "close-up 800x600", failures, tmp)
+        # The fight frame needs the match assembly, not the close-up scene: same arms,
+        # where the product draws them. 120 frames is enough for the fighters to be on
+        # screen and keeps the suite's cost down.
+        if enemy is None:
+            print("  #27 no-op check (fight scene): skipped, only one character directory")
+        else:
+            fight_scene = ["--stage=" + stage, "--character=" + fighter + ":0",
+                           "--enemy=" + enemy + ":0", "--versus", "--camera=arena",
+                           "--frames=120", "--size=960x540"]
+            noop_check(lambda out, args: run_demo(demo, install, out, args, cwd),
+                       FIGHT_NOOP_PROBES, fight_scene, "fight scene 960x540", failures, tmp)
+
     if failures:
         print("npr_experiments: FAIL")
         for line in failures:
             print("  " + line)
         return 1
     print("npr_experiments: OFF is the default byte for byte, every technique shows its own "
-          "measured property, and a stage-only frame never moves")
+          "measured property, a stage-only frame never moves, and no arm's parameter is "
+          "silently inert (the arms listed KNOWN INERT above are issue #27's open defect)")
     return 0
 
 

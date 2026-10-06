@@ -269,6 +269,11 @@ done
 
 ## 7. Recommendation
 
+> **Superseded by §8 (2026-10-06, issue #27).** Kept as the record of what was recommended
+> on the captures this section names; §8 re-measured them at three resolutions, in a fight
+> scene and with every parameter probed at its extremes, and it changes the answer for B,
+> E and F. Read §8 before acting on this table.
+
 **Keep the harness, keep four techniques, and do not change the default yet.**
 
 | technique | keep? | why |
@@ -293,3 +298,184 @@ it had before.
 **What would change this recommendation:** if the composed stack at gameplay distance
 (§6.9) reads as a filter rather than as the game's own art, drop C and the rim first —
 they are the two that add colour rather than structure — and keep E and D.
+
+## 8. Issue #27 — the evidence review, and what it changes (2026-10-06)
+
+> Written on `fix/issue-27-npr-evidence` after the human rejected §3–§7's evidence: the A/B
+> prints look identical at a glance, only one resolution was tested (800x600 bind pose),
+> and "N pixels changed" cannot tell *subtle* from *not running*. **This section supersedes
+> §7's recommendation.** §1–§6 stay as the record of what was built and measured then;
+> where they disagree with this section, this section is the measurement.
+>
+> Everything here is reproducible with
+> `python3 remake/foundation/tests/npr_evidence.py --demo remake/foundation/build/linux/foundation_demo --install <game dir>`
+> (contact sheets, region metrics and the sweeps) and
+> `python3 remake/foundation/tests/npr_experiments.py <demo> <game dir>` (the no-op gate).
+> Captures: `remake/tests/npr-evidence/issue-27/`. Numbers below are from the machine that
+> ran it; sha256 prefixes identify each frame.
+
+### 8.1 The scene, and why it changed
+
+| | |
+|---|---|
+| combo | **Rena 0** — 竜宮レナ + 愛用の鉈 (`data/rena/00.x` + `data/item/01.x`, id 001). Rule 7: no bare fighter |
+| pose | bind pose (`--no-anim`) |
+| stage | none: the background is the pass's clear colour (40,42,54), so the character mask is exact |
+| camera | `--camera=bounds` |
+| sizes | 640x360, 960x540, 1920x1080 — all 16:9, exact multiples, one world camera (the demo prints `camera bounds at [163 147 -202] looking at [0 65 6] (distance 276)` in all three) |
+| fight scene | `--versus --camera=arena`, stage01 (schoolyard_day), **Rena 0 vs Mion 0** (Mion 0 = コテ拳銃, `data/item/04.x`), 300 frames, 960x540 |
+| 4-view | `--screen=battle --local-players=4`, stage03, 300 frames, 960x540 (front-end roster: Rena 0, Mion 0, Mion 0, Rika 0) |
+
+**`--camera=auto` is not usable for a weaponed fighter at 16:9**: the framing fits the
+bounds radius (distance = 2R, fovY 45°), and an attached weapon grows R and drops the
+bounds centre, so the top of the hair leaves the frame — 333 px of hair sit on row 0 of the
+1080p capture. That is a harness-framing defect, not a technique's, and `bounds` (1.53x the
+distance) frames the whole figure at every resolution. §2's captures are all `auto`, and
+they had no weapon attached, which is the only reason the framing fitted them.
+
+The regions the metrics read are drawn on every sheet: **rim** = figure pixels within
+2/3/6 px of the silhouette (scaled with the frame; the recovered toon hull is ~0.7/1.0/2.0
+px there), **face** = 890,250-1045,370 at 1080p, **hair** = 874,174-1063,250, **torso** =
+880,350-1050,500, plus `whole`, `interior`, `background` and `affected` (the set the arm
+moved, reported with its share of the figure).
+
+### 8.2 The no-op sanity check (item 3): **three arms do not do what they claim**
+
+Every arm's own parameter was swept to an extreme at 960x540, with its control beside it.
+A step that renders **byte-identical** to its control is not a subtle technique: the
+parameter is not reaching the picture. The probe is now permanent —
+`tests/npr_experiments.py` probes 19 arms at an extreme (17 in the close-up, 2 in a fight
+frame) and fails on any identity that is not listed in its `KNOWN_INERT` table, which names
+issue #27 and fails again if an arm starts drawing, so the list cannot rot.
+
+| arm | parameter at its extreme | measured |
+|---|---|---|
+| **B bands, hard** | `bands:hard,shadow:none` | **byte-identical to no flag** |
+| **B bands, soft 0.06** | `bands:soft,shadow:none` | **byte-identical to no flag** |
+| **B softness `soft:<f>`** | 0.02 / 0.06 / 0.30 / 1.00, neutral tint | **all four byte-identical to no flag** |
+| B bands, 3-band | `bands:three,shadow:none` | differs: darkens the shadow core (2.0% of the figure, dE 0.79) |
+| **F mask `mask:<f>`** | 0 / 1 with a neutral tint | **byte-identical**; with the shipped tint it moves the *tint* boundary (mask -1/0/1/3 = 21.9/16.4/11.4/0.6% visible) |
+| C tint | `shadow` vs `shadow:none` | differs (11.1%, dE 2.54) |
+| D key | `key:cam`, `key:fixed`, `keystr:0/0.35/1.5` | differs, monotone in the strength |
+| **E normals** | `normals` in the **fight scene** | **byte-identical** at frames 150 and 300 |
+| G spec | `spec`, `specstr:2` | differs (16.3%, dE 7.26 at the default) |
+| H rim | `rim`, `rimstr:2` | differs (36.9%, dE 13.41 at the default) |
+| I outline | 0.25 / 1.0 / 2 / 3 over `--toon` | 1.0 is byte-identical to `--toon` alone (the identity the recovered width needs); 0.25/2/3 differ |
+
+**B — the band curve never bands the shading.** `model_wgsl.h:385` is
+`diffuse = diffuse * mix(draw.nprBand.rgb, vec3<f32>(1.0), w)`. With the neutral tint of
+its own control that mix is white *for every* `w`, so the curve is an algebraic identity:
+the hard step, the smoothstep and its width cannot change a pixel. What the curve really
+does is select **how much of the C tint** is applied, which is why §3's B rows moved
+20 535 px — that was the tint, not the band. Measured on one flat material (the skirt), the
+tinted shadow keeps its gradient: the shadowed set's 5-95% luminance spread goes
+33.2 -> 28.1 (ratio **0.848**) for hard and 36.0 -> 32.5 (0.900) for soft 0.06, against the
+~0.05 a surface replaced by *one flat value* would show. The doc's "one flat value" is not
+what is implemented. The **three**-band arm is the exception: `nprBandCore` multiplies the
+diffuse below N·L < 0.25, so it really does darken the shadow core — by 45%, and only where
+a surface reaches that far into shadow (0 px on screen in the 300-frame fight, 583-1008 px
+at frames 30-300 with the fighters lit differently).
+
+**F — the mask has nothing to hold.** `model_wgsl.h:383` feeds the mask into the band
+*weight*, so it moves the tint boundary and nothing else. With the tint held neutral,
+`mask:0` and `mask:1` are byte-identical. §5 already wanted authored data over the
+generated mask; the measurement now says the switch as implemented cannot do its job at
+all, so it is a drop, not a "replace the data later".
+
+**E — the normals never reach a fight scene.** `--npr=normals` is byte-identical to
+`--npr=off` in `--versus` (frames 150 and 300) and in the 4-view battle, while in the
+close-up it is the largest change of any arm (44.1% of the figure, dE 20.73). The cause is
+in the renderer, not the shader: `scene_renderer.cpp` caches **one pipeline per pass**
+(`WGPURenderPipeline boundPipelines[kPassCount]`), created with the `npr` flag of the
+*first* draw of that pass. A fight scene draws the stage first (`toon=false`), so the
+non-NPR `vs_main` entry is cached for `Pass::Opaque` and every later character draw reuses
+it; only the stage-less close-up, whose first opaque draw *is* a character, ever gets
+`vs_npr`. The fragment-side arms (tint, key, rim, spec) are unaffected because they live in
+`fs_main`, which is why the defect hid for a whole issue. The reach sheet measures all nine
+arms in the fight and only E comes back identical.
+
+### 8.3 What each technique would make a player notice (item 5)
+
+Numbers are the 1920x1080 close-up unless stated. "Reads" uses a declared bar — READS at
+10% of the figure visibly moving (>=8/255 in a channel) or dE 3.0; the second clause allows
+a technique that only lights part of the figure (the key light) to pass on the set it
+lands on, with that set's share printed beside it.
+
+| technique | what a player sees | measured | evidence passes 1-4? | recommendation |
+|---|---|---|---|---|
+| **B bands** | nothing from the curve; with the shipped tint, a violet shadow whose edge is hard or short. No flat band, no drawn terminator | curve = byte-identical; hard vs soft (both tinted) differ on 0.4% of the figure, dE 0.24 | **no** (item 3) | **drop the band arm as documented** — the claim is false; re-implementing it (make the weight scale the diffuse) is ~3 lines but is a shading decision for a follow-up issue |
+| **C colour shadow** | the shadowed side reads cool violet instead of grey: 30% of the figure, -4.9 levels on those pixels, dE 8.4 | 11.1% visible, dE 2.54; face 14.8%, hair 16.2%, torso 14.4% | yes | **keep**, tint strength/colour is authoring; the default #dbc0c7 is deliberately gentle |
+| **D key light** | the face and the camera-side of the fighter lift; the *fixed* arm is ~3x the camera arm at the same strength | cam: 5.1% visible, dE 1.34, on 13.7% of the figure at dE 9.8 (**below the whole-figure bar at the default**); fixed: 15.0%, dE 4.17; monotone in the strength (0 -> 5.1 -> 12.0% visible at 0 / 0.35 / 1.5) | items 1-3 yes (the parameter is real and monotone, and it is not a no-op); item 4 only via the sheet, where the default's P2 box moves 0.8% | **keep the switch and drop the "preferred" label on `cam`**: `key:fixed` measurably does more at the same strength, and 0.35 is a floor, not a settled value - the recommendation is conditional on a strength that reads at fight distance |
+| **E secondary normals** | in the close-up: hair and skirt shade in broad, calm gradients and the figure darkens ~8.5 levels; in a fight: nothing at all | close-up 44.1% visible, dE 20.73, hair 81.6%; fight: byte-identical | **no** (item 3, fight scene) | **fix the reach defect first** (4 lines, §8.5), then re-measure; do not keep it on the close-up evidence alone |
+| **F generated mask** | with the tint on, it slides the shadow tint's boundary; with a neutral tint, nothing | mask 0 vs 1 neutral = byte-identical; tinted -1/0/1/3 = 21.9/16.4/11.4/0.6% visible | **no** (item 3) | **drop** (and with it the generated mask data §5 wanted replaced) |
+| **G specular** | a hard-edged highlight on the hair and the blade; the pixels it touches are strong | 16.2% visible, dE 7.24; affected 18.1% of the figure at dE 40.0; hair 19.8%, torso 13.0% | yes | **keep**, restrained; it is the arm whose change is a bright shape rather than a gradient |
+| **H rim light** | the whole silhouette lights up, not just its edge: at 0.30 it is not "restrained" | 37.0% visible, +6.8 levels, dE 13.43; 77.3% of the figure is touched; rim band 64.4% | yes | **keep the technique, lower the default**: the #25 `on` preset's 0.22 is closer to the doc's own word than the arm default 0.30 |
+| **I outline width** | 2x reads as a drawn border around the hair strands; 0.25 nearly disappears | 1.0 is byte-identical to `--toon`; 2 -> +7.4% visible, 0.25 -> 5.4% | yes | **keep the recovered 1.0** (already landed, not part of `--npr`); the scale stays a control |
+| **stack `--npr=on`** | everything that reaches: broad shading, a lifted face, a violet shadow edge, a lit silhouette | 66.7% visible, dE 29.59; hair 85.0%, face 70.4% | yes for C, D, G, H — **not** for E (dead in fights) or B/F (inert) | **restate it without B and F, and with E only after the fix** |
+
+### 8.4 "Only one resolution was tested" (items 1-2)
+
+The three resolutions are on every contact sheet at native scale, with 2x crops of the
+face, the hair and the torso and a 4x crop of the same face out of the 640x360 frame.
+**The measured share of changed pixels is resolution-invariant** — C 11.2/11.1/11.1%, D
+5.1/5.1/5.1%, E 44.1/44.2/44.1%, H 37.0/36.9/37.0%, stack 66.8/66.8/66.7% — because every
+arm is a per-pixel multiply. What changes with resolution is *legibility*, not the metric:
+at 640x360 the figure is 256 px tall and the face 40 px, and the sheets show that the tint
+and the rim still read there while the key light and the specular become single pixels.
+That is the question the sheets put in front of a human; no count answers it.
+
+Both `dL` (mean luminance change) and `dE` (mean RGB distance) are reported per region
+with the before/after mean luminance, because a hue change that keeps luminance (the tint)
+would be invisible to `dL` alone: C is -1.48 `dL` but dE 2.54 over the figure and
+dE 8.43 over the 30% of it the tint moves, and inside that set the mean colour goes
+(111,100,106) -> (108,95,101), i.e. (-3.3, -5.4, -4.9) per channel: red falls least, which
+is the violet-grey the tint asks for.
+
+### 8.5 Fight distance and the 4-view frame (item 4)
+
+* `gameplay-<arm>.png` — the fight area at native 960x540 and the P2 box at 4x, one sheet
+  per kept arm plus E as the counter-example. The whole frame is a 70 px-tall fighter in a
+  stage, so **no arm reaches a whole-frame bar there**; the numbers that matter are the P2
+  box (a rectangle, drawn on the sheet) and the human's look at the sheet.
+* `reach-versus.png` — the reach table above, with the P2 box magnified for E (identical)
+  and H (differs).
+* `fourview-2v2.png` — the 2v2 split screen, off/on, each of the four cells magnified 2x.
+  The stack changes 11 622 px of the 960x540 frame (2.24% of it, 4 250 px of those by
+  >=8/255 - 0.82% of the frame) spread over all four cells (3 427 / 4 142 / 2 407 / 1 646),
+  which is what "it reaches every view's draw" looks like at 480x270 per cell.
+* **The 4-view capture is deterministic in this environment** — sha256 `0f30fad5…` on two
+  runs of `--npr=off` — so §1's "not reproducible here" row is stale: it was measured
+  before issue #29 made verification runs ignore physical devices.
+* Continuity with §6.9: the `--versus` 960x540 frame with `--npr=off` is still
+  **md5 `b6c2ded7…`** and `--npr=on` still `b6f7fea9…`, i.e. the fight frame has not moved
+  since the #25 captures.
+
+### 8.6 Recommendation, restated only for what passes
+
+**Keep the harness, keep C, D (with `fixed` re-labelled and a strength re-tuned until it
+reads at fight distance - at 0.35 the camera arm is below the whole-figure bar), G, H (at
+a lower default than 0.30) and the recovered outline width. Drop the B band arm as
+documented and F's generated mask. Do not recommend E on this evidence: it is the largest
+change in the close-up and a no-op in every fight scene.** No default changes: `--npr`
+stays opt-in and the Options screen keeps the rows it has.
+
+Two things to do next, in this order:
+
+1. **Fix the reach defect** (`scene_renderer.cpp`: key the pipeline cache on
+   `(pass, nprDraw)`, ~4 lines) and re-run
+   `npr_evidence.py` — E's fight sheets and the reach table are the acceptance test.
+2. **Decide B's fate**: either re-implement the band as a diffuse quantisation (a flat
+   level, then the tint on top) — which is a shading decision with a new constant and a
+   knock-on re-measure of `three` and F — or delete the band arm and keep C as it is.
+
+### 8.7 Defects this review found, none of them fixed here
+
+Out of scope for an evidence issue; each is small and named with its site.
+
+| # | defect | site | size |
+|---|---|---|---|
+| 1 | the NPR vertex entry never reaches a fight scene (E dead in `--versus`/`--match`/`--screen=battle`) | `src/render/scene_renderer.cpp`, `boundPipelines[kPassCount]` | ~4 lines |
+| 2 | the B curve is only a tint weight, so "bands" never band the shading | `src/shaders/model_wgsl.h:385` | ~3 lines + a shading decision |
+| 3 | the F mask has no band to hold: it moves the tint edge only | `src/shaders/model_wgsl.h:383` | follows #2 |
+| 4 | `--camera=auto` clips the top of a weaponed fighter at 16:9 (333 px of hair on row 0 at 1080p) | `src/main.cpp` auto framing | framing rule, not a bug in a technique |
+| 5 | §3's B and F rows measured the tint, not the technique they name | this file | corrected by this section |

@@ -1,0 +1,71 @@
+# remake/foundation/build/linux/foundation_demo --headless --install=Higurashi-Daybreak --out=<workdir>/four_off_repeat_960x540.ppm --size=960x540 --screen=battle --local-players=4 --frames=300 --npr=off
+WARNING: radv is not a conformant Vulkan implementation, testing use only.
+[fnd::ui] battle HUD atlases loaded (P00/P01/P02 via assetSource)
+=== Higurashi Daybreak Kai Fan Remake ===
+video driver : headless (no window, no surface)
+adapter      : AMD Radeon RX 9070 XT (RADV GFX1201) [Vulkan]
+[install] game folder: Higurashi-Daybreak (from --install=)
+assets       : 6/6 .dat bundle(s) from Higurashi-Daybreak
+stage        : shrine_grounds_day (scene 3, day) [data/stage03]
+[scene] data/stage03: 17 model(s), 73 meshes, 54454 vertices, textures 179 resolved / 0 missed
+fx assets    : 22 effect descriptor(s), 7 attachment model(s)
+movement collision : collision.x (swept query loaded)
+ground collision   : collision.x (surface query loaded)
+projectile collision: collision_tama.x
+camera collision   : collision_camera.x (loaded)
+[moves] fighter 0 (Rena 0): data/rena/00.dat (122 moves)
+[moves] fighter 1 (Mion 0): data/mion/00.dat (134 moves)
+[moves] fighter 2 (Mion 0): data/mion/00.dat (134 moves)
+[moves] fighter 3 (Rika 0): data/rika/00.dat (122 moves)
+match        : 4 fighters, movement/ground=loaded, projectile=loaded
+match bgm    : data/stage03/../bgm/01.ogg
+scene data/stage03: 53 model(s), 172 meshes, 55982 vertices, 308 palette matrices
+bounds [-3888 -1217 -1285] .. [3435 4236 5784]  radius 5774
+camera arena at [-634 700 -566] looking at [-1200 450 0] (distance 838)
+far plane reach 94576 units (sky dome included)
+fog from env.dat: 0..30000 rgb(0.47 0.67 0.78)
+draws: 234 (179 textured, 0 untextured, 0 decals, 0 effects, 55 outlines), 142 GPU textures
+npr normals : 20 mesh(es), 6519 vertices with a secondary normal
+[menu] battle: 4 fighters on data/stage03 (time 180s, health 100%, gauge 100%, balloon 100%/100%)
+[menu]   fighter 0 panel 0 spawn=(-1200,400,0)
+[menu]   fighter 1 panel 1 spawn=(1000,400,0)
+[menu]   fighter 2 panel 2 spawn=(-1200,400,2300)
+[menu]   fighter 3 panel 3 spawn=(1200,400,2300)
+[menu] countdown: 180 ticks over the live battle on data/stage03 (tick 0)
+screen       : countdown (0x0a)
+coverage: 490684 px of 518400 (94.65%)  luminance 0.017..1.000
+wrote <workdir>/four_off_repeat_960x540.ppm
+[split] layout=four views=4 target=960x540 roster=4
+[split] view 0: controller=0 fighter=0 followed=0 cell=(0,0,480,270) hp=100 main=6 charge=2 stamina=1.00 hyper=FRIENDSHIP gauge=0.00
+[split]   p0 panel=0 team=0 1P Rena 0 role=owner fighter=0 visible=1 target=0 acting=0 alert=-1 hp=100 ring=(240,203)
+[split]   p1 panel=1 team=0 2P Mion 0 role=ally fighter=1 visible=1 target=0 acting=0 alert=3 hp=100 ring=(940,101)
+[split]   p2 panel=2 team=1 3P Mion 0 role=enemy fighter=2 visible=1 target=0 acting=0 alert=-1 hp=100 ring=(270,58)
+[split]   p3 panel=3 team=1 4P Rika 0 role=enemy fighter=3 visible=1 target=0 acting=0 alert=-1 hp=100 ring=(459,58)
+[split] view 1: controller=1 fighter=1 followed=1 cell=(0,270,480,270) hp=100 main=30 charge=4 stamina=0.12 hyper=FRIENDSHIP gauge=0.00
+[split]   p0 panel=0 team=0 1P Rena 0 role=ally fighter=0 visible=1 target=0 acting=0 alert=2 hp=100 ring=(-142,116)
+[split]   p1 panel=1 team=0 2P Mion 0 role=owner fighter=1 visible=1 target=0 acting=0 alert=-1 hp=100 ring=(240,183)
+[split]   p2 panel=2 team=1 3P Mion 0 role=enemy fighter=2 visible=1 target=0 acting=0 alert=-1 hp=100 ring=(261,88)
+[split]   p3 panel=3 team=1 4P Rika 0 role=enemy fighter=3 visible=1 target=0 acting=0 alert=-1 hp=100 ring=(446,92)
+[split] view 2: controller=2 fighter=2 followed=2 cell=(480,0,480,270) hp=100 main=30 charge=4 stamina=0.19 hyper=FRIENDSHIP gauge=0.00
+[split]   p0 panel=0 team=0 1P Rena 0 role=enemy fighter=0 visible=1 target=0 acting=0 alert=-1 hp=100 ring=(402,91)
+[split]   p1 panel=1 team=0 2P Mion 0 role=enemy fighter=1 visible=1 target=0 acting=0 alert=-1 hp=100 ring=(135,86)
+[split]   p2 panel=2 team=1 3P Mion 0 role=owner fighter=2 visible=1 target=0 acting=0 alert=-1 hp=100 ring=(240,199)
+[split]   p3 panel=3 team=1 4P Rika 0 role=ally fighter=3 visible=1 target=0 acting=0 alert=2 hp=100 ring=(-194,105)
+[split] view 3: controller=3 fighter=3 followed=3 cell=(480,270,480,270) hp=100 main=8 charge=8 stamina=0.13 hyper=FRIENDSHIP gauge=0.00
+[split]   p0 panel=0 team=0 1P Rena 0 role=enemy fighter=0 visible=1 target=0 acting=0 alert=-1 hp=100 ring=(240,103)
+[split]   p1 panel=1 team=0 2P Mion 0 role=enemy fighter=1 visible=1 target=0 acting=0 alert=-1 hp=100 ring=(4,125)
+[split]   p2 panel=2 team=1 3P Mion 0 role=ally fighter=2 visible=1 target=0 acting=0 alert=3 hp=100 ring=(560,116)
+[split]   p3 panel=3 team=1 4P Rika 0 role=owner fighter=3 visible=1 target=0 acting=0 alert=-1 hp=100 ring=(240,185)
+match: 120 frames, hp1=100 hp2=100, balloon=0%/0% (LIMIT 100%/100%), shots=0 sparks=0 hits=0, fx events=0, bgm pushed 122880 frames, 0 wraps, roundOver=0
+match round : winner=-1 (running), KOs=0/0 overkill=0/0 respawns=0/0, time left=178.0s
+fx cards     : events=0 spawned=0 dropped=0 expired=0 killed=0 peak=0/128, shotModels=0 shotModelMissing=0 badEffectId=0, effectDrawsAtExit=0
+menu-audio: confirm=0 back=0 cursor=0 ready=0 voices=0 bgm=0 frames
+
+-- render frame timing (wall-clock delta) --
+frames      : 300 in 0.094 s
+logic       : 300 ticks, explicit capture cadence
+delta avg   : 0.205 ms (4884.1 fps)
+delta min   : 0.003 ms
+delta max   : 1.715 ms
+RESULT: ok
+[2 repeated 'attachment frame unusable' lines folded]
