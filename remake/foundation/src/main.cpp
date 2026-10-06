@@ -116,8 +116,11 @@ struct Options {
 
     std::string camera = "auto";   // auto|player|front|top|bounds
     bool        headless = false;  // no window/surface: offscreen captures only
-    // --no-devices: a verification run owns every input slot (script + synthetic pads).
+    // Device isolation (issue #29, a port rule — the original predates the concern).
+    // `noDevices` forces it on for any run; `devices` opts a verification run back into
+    // reading the physical keyboard and pads. See readPhysicalDevices below.
     bool        noDevices = false;
+    bool        devices   = false;
     std::string install;           // dir holding daybreakXX.dat; auto-detected when empty
     bool        noCameraClamp = false;   // A/B switch for the arena eye clamp
     bool        noTextures = false;
@@ -252,10 +255,15 @@ void usage() {
         "  --audio-file=<path>  with --audio-test: decode a real file as well\n"
         "  --input-test         run the input backend self-check and exit\n"
         "  --no-devices         ignore the keyboard and every gamepad: the run is driven\n"
-        "                     only by --script= and --local-players' synthetic pads. For\n"
-        "                     verification on a machine where another application holds a\n"
-        "                     pad: SDL reports a controller whether or not this window has\n"
-        "                     focus, so live pad input would move this run's menus\n"
+        "                     only by --script= and --local-players' synthetic pads. A\n"
+        "                     verification run (--headless, --out=, --script=, ...) does this\n"
+        "                     by default; --no-devices also silences a run that would read\n"
+        "                     them (a windowed 4-view recipe, for instance)\n"
+        "  --devices            read the physical keyboard and pads in a verification run.\n"
+        "                     Off by default: SDL reports a connected controller whether or\n"
+        "                     not this window has focus, so on a shared machine another\n"
+        "                     application's pad moves the run's menus and changes its\n"
+        "                     captures. A plain player run reads the devices either way\n"
         "  --enemy=<baseDir>/<name>[:costume]  versus P2 fighter (needs --versus)\n"
         "  --versus           scripted vignette: stage + P1 + P2, arena follow,\n"
         "                     timeline HUD, BGM loop, SFX cues; needs --stage,\n"
@@ -500,6 +508,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--combat-audio-log") o.combatAudioLog = true;
         else if (a == "--input-test") o.inputTest = true;
         else if (a == "--no-devices") o.noDevices = true;
+        else if (a == "--devices") o.devices = true;
         else if (!(v = val("--enemy=")).empty()) o.enemy = v;
         else if (a == "--versus") o.versus = true;
         else if (a == "--match") o.match = true;
@@ -577,6 +586,10 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         error = "--headless needs --out: there is no window to present to";
         return false;
     }
+    if (o.devices && o.noDevices) {
+        error = "--devices and --no-devices are opposites; pass one";
+        return false;
+    }
     if (!o.out.empty()) {
         if (!hasAsset(o) && o.screen.empty()) {
             error = "--out needs an asset argument; the triangle demo draws into the window";
@@ -588,6 +601,40 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         if (o.camera == mode) return true;
     error = "unknown --camera=" + o.camera;
     return false;
+}
+
+// ---------------------------------------------------------------------------------------
+// Device isolation (issue #29) — a port rule, not recovered behaviour: the original has one
+// focused window and reads whatever the OS reports, so neither rule below exists there.
+//
+//   (a) A verification run owns every input slot by default. A capture must not depend on
+//       whoever is holding a pad: SDL reports a connected controller whether or not this
+//       window has focus, so a second game on the same machine moves this run's menus, and
+//       the failure reads as a flaky test rather than as input. --devices opts back in.
+//   (b) An unfocused window accepts no input (input_backend's focus gate, which starts
+//       focused so a compositor that drops FOCUS_GAINED cannot wedge the game).
+//
+// The verification set is every mode that produces evidence rather than being played:
+// --out= writes a frame, --headless has no window to play in, --script=/--script2= take
+// their input from a file, --match/--versus are the standalone harness vignettes (the front
+// end is the product path), --hud-test is the HUD test rig, --bench= measures cost and
+// --list enumerates the assets and exits. A plain front-end run (`--screen=<id>` and nothing
+// else), the asset viewers and --local-players=N without a capture flag are played, so they
+// keep reading the device they are played with. --audio-test and --input-test are outside
+// the gate for a different reason: they exit before the app opens its input backend, and
+// --input-test deliberately reads a device to verify that reading works.
+static bool verificationRunOwnsInput(const Options& o) {
+    return o.headless || !o.out.empty() || !o.script.empty() || !o.script2.empty() ||
+           o.match || o.versus || o.hudTest || o.bench > 0 || o.list;
+}
+
+// The effective gate. An explicit flag always wins; otherwise a verification run owns its
+// slots. --no-devices stays meaningful for a run outside that set (a windowed 4-view
+// recipe, say), where it is the only way to ask for silence.
+static bool readPhysicalDevices(const Options& o) {
+    if (o.noDevices) return false;
+    if (o.devices) return true;
+    return !verificationRunOwnsInput(o);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -2315,7 +2362,7 @@ static bool initMatch(App& app) {
         app.error = "--match needs the input backend";
         return false;
     }
-    app.matchInput.set_devices_enabled(!app.opts.noDevices);
+    app.matchInput.set_devices_enabled(readPhysicalDevices(app.opts));
     app.matchInputReady = true;
 
     // BGM: the reference plays data/bgm/01.ogg on entering the match (scenes.cpp:473,
@@ -4305,7 +4352,7 @@ bool initScreens(App& app) {
         app.error = "--screen needs the input backend";
         return false;
     }
-    app.matchInput.set_devices_enabled(!app.opts.noDevices);
+    app.matchInput.set_devices_enabled(readPhysicalDevices(app.opts));
     app.matchInputReady = true;
     if (!app.opts.script.empty() && !app.matchInput.load_script(app.opts.script.c_str())) {
         app.error = "cannot read input script " + app.opts.script;
@@ -5522,6 +5569,14 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
             if (battlePauseAvailable(*app) && !app->battlePaused &&
                 !app->matchInput.script_active())
                 enterBattlePause(*app, "focus lost");
+            break;
+        case SDL_EVENT_WINDOW_FOCUS_GAINED:
+            // Issue #29: an unfocused window accepts no input — SDL reports pads whatever
+            // the focus is, so a second game on the machine drove this port's menus. Focus is
+            // re-armed here and nowhere else; note_focus_gained also re-derives the
+            // release-before-input snapshot, because releases that happened while unfocused
+            // were never delivered. Resuming a paused battle stays the player's decision.
+            app->matchInput.note_focus_gained();
             break;
         case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
             if (ui::bindingCaptureActive()) {

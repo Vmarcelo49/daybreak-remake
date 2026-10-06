@@ -14,10 +14,11 @@
 >
 > **Synthetic input is not physical-controller evidence.** Every run here is
 > driven by a script file plus `--local-players`, which fills the pad-less
-> controllers with a deterministic synthetic pattern, and every command passes
-> `--no-devices` (§3.0). A physical pad *was* attached to this machine — its
-> owner was using it for another game while the gate ran — and no run here
-> drives it: the flag exists because its live input reached these runs' menus.
+> controllers with a deterministic synthetic pattern. A physical pad *was*
+> attached to this machine — its owner was using it for another game while the
+> gate ran — and no run here drives it: issue #29 made a verification run ignore
+> physical devices by default (§3.0), which is why the commands below no longer
+> carry `--no-devices`.
 
 ## 0. What the gate demonstrates
 
@@ -66,10 +67,11 @@ data. It is also registered in the host suite (`ctest -R launcher_test`).
 ctest --test-dir remake/foundation/build/linux --output-on-failure
 ```
 
-* **With the game install present**: `100% tests passed out of 48`.
+* **With the game install present**: `100% tests passed out of 49`.
 * **Without any game data** (the CI runner's state — no `Higurashi-Daybreak/`):
-  `100% tests passed out of 48`, with `hud_cell_scale`, `toon_ramp`,
-  `npr_experiments`, `npr_normals_test` and `controller_scene_lifetime_test`
+  `100% tests passed out of 49`, with `hud_cell_scale`, `toon_ramp`,
+  `npr_experiments`, `npr_normals_test`, `controller_scene_lifetime_test` and
+  `device_isolation_test`
   reported as `Skipped` (exit 77) and `weapon_definition_test` skipping its
   fully-skipped sweep. CI needs no copyrighted data.
   Both counts re-measured 2026-10-06, install present and install absent; the
@@ -78,9 +80,10 @@ ctest --test-dir remake/foundation/build/linux --output-on-failure
   denominator is the number of *registered* tests and grows whenever a suite is
   added (42 when this document was written, 45 when #28 re-measured it, 48 after
   #42's `bgm_loop_test`, #45's `frontend_lifecycle_test` and #46's
-  `controller_scene_lifetime_test`), so read the command's own summary rather than
-  this line when the two disagree — the invariant to check is *100% passed* with the
-  asset-dependent tests Skipped and none Failed.
+  `controller_scene_lifetime_test`, 49 after #29's `device_isolation_test`), so
+  read the command's own summary rather than this line when the two disagree —
+  the invariant to check is *100% passed* with the asset-dependent tests Skipped
+  and none Failed.
 
 The workflow (`.github/workflows/build-foundation.yml`, Linux job) runs this
 `ctest` step on every push to `main` that touches `remake/foundation/**` (issue
@@ -97,7 +100,7 @@ steps one logic tick per rendered frame (the demo prints
 ticks in the scripts exact and the run reproducible. Run them with a warm
 page cache; each takes seconds to a minute.
 
-### 3.0 Why every command carries `--no-devices`
+### 3.0 Why a verification run ignores the physical devices (and when to ask for them)
 
 SDL reports a connected controller whether or not the window has focus, so on a
 machine where another application is using a pad, that pad's live input reaches
@@ -107,16 +110,47 @@ Ultimate 2C attached): with the owner playing another game, a
 of *versus* because the pad's state moved the cursor first, and `hud_cell_scale`
 failed because the pad changed the match the capture measured.
 
-`--no-devices` makes the run own every input slot: the script drives controller
-0 and `--local-players`' synthetic pads drive the rest. A normal player run does
-not pass it. The host suite's demo-driving tools pass it too (`hud_cell_scale`,
-`showcase`, `pin_viewpoint`), which is what keeps 42/42 green on a machine with
-a pad in use. It is a verification instrument, not a feature.
+**A verification run owns every input slot by default** (issue #29; a port rule,
+not recovered behaviour — the original has one focused window and reads whatever
+the OS reports). A run is a verification run when it produces evidence rather
+than being played: `--headless`, any `--out=` capture, `--script=`/`--script2=`,
+`--match`, `--versus`, `--hud-test`, `--bench=` or `--list`. In such a run the
+keyboard and every gamepad are ignored — the polled device state, the key/pad
+events the app forwards, and the SDL event queue the backend harvests alike — so
+the script drives controller 0 and `--local-players`' synthetic pads drive the
+rest. `--devices` asks for the physical devices back in one of those runs, and is
+then the only way a capture can be driven from real hardware.
+
+`--no-devices` still works and still means the same thing. It is redundant inside
+the set above and meaningful outside it: a **player** run (a plain `--screen=`
+run, the asset viewers, or `--local-players=N` without a capture or a script)
+reads the devices it is played with, and `--no-devices` silences one of those.
+Passing both flags is rejected.
+
+**An unfocused window also accepts no input** (the same issue): while the window
+is unfocused every device reads as released, and input re-arms on
+`SDL_EVENT_WINDOW_FOCUS_GAINED`. Focus starts as *focused*, so a compositor that
+never delivers a focus event — or a `--headless` run with no window at all —
+cannot leave the game unresponsive. The device itself is never relinquished: an
+unfocused pad keeps its slot, because a slot reported empty would be handed to a
+synthetic pad and the game would play itself.
+
+The commands below therefore do not pass `--no-devices`: the capture flags imply
+it (the flag is still accepted, and the transcripts quoted in §3.1–§3.3 are the
+ones those gate runs produced). The regression test is
+`tests/device_isolation_test.cpp`: it drives the demo's own SDL entry points,
+injects device events into a headless capture through `Backend::note_key` /
+`note_gamepad_button`, a pushed `SDL_EVENT_KEY_DOWN` and a real SDL virtual
+gamepad, and asserts the frame hash and the scene ladder did not move — while a
+`--devices` row proves the same injection does move them. The host suite's
+demo-driving tools (`hud_cell_scale`, `showcase`, `pin_viewpoint`) still pass
+`--no-devices` explicitly, which is what keeps them green on a machine with a pad
+in use. It is a verification instrument, not a feature.
 
 ### 3.1 Two humans, 1v1, three rounds
 
 ```bash
-./build/linux/foundation_demo --install=<game-dir> --no-devices --screen=title \
+./build/linux/foundation_demo --install=<game-dir> --screen=title \
   --local-players=2 --script=tests/scripts/frontend-1v1-rematch.txt \
   --headless --out=/tmp/rel-1v1.ppm --size=1280x720 --frames=15500
 ```
@@ -175,7 +209,7 @@ OK cell and the stage-page timing.
 ### 3.2 One human with COM, three rounds
 
 ```bash
-./build/linux/foundation_demo --install=<game-dir> --no-devices --screen=title \
+./build/linux/foundation_demo --install=<game-dir> --screen=title \
   --local-players=1 --script=tests/scripts/frontend-com-rematch.txt \
   --headless --out=/tmp/rel-com.ppm --size=1280x720 --frames=15500
 ```
@@ -203,7 +237,7 @@ the stage, is per round.
 ### 3.3 Four fighters (2v2), three rounds
 
 ```bash
-./build/linux/foundation_demo --install=<game-dir> --no-devices --screen=title \
+./build/linux/foundation_demo --install=<game-dir> --screen=title \
   --local-players=4 --script=tests/scripts/frontend-2v2-rematch.txt \
   --headless --out=/tmp/rel-2v2.ppm --size=1280x720 --frames=15500
 ```
@@ -314,7 +348,7 @@ window ever appeared on the real session.
 | # | Environment | Command shape | Result |
 |---|---|---|---|
 | 1 | Headless, Vulkan RADV | the §3 capture runs | `RESULT: ok`, real GPU, no window |
-| 2 | Wayland, nested KWin, 60 Hz | `XDG_RUNTIME_DIR=<own> WAYLAND_DISPLAY=wayland-issue23 ./build/linux/foundation_demo --no-devices --screen=battle --local-players=2 --script=tests/scripts/split-two-human.txt --frames=1500` | `video driver : wayland`, `surface : 960x540 ... fifo=yes`, `present mode : Fifo(vsync)`, `frames : 1500 in 24.931 s`, `delta avg : 16.608 ms (60.2 fps)`, `logic : 1594 ticks, 64 Hz`, `RESULT: ok` |
+| 2 | Wayland, nested KWin, 60 Hz | `XDG_RUNTIME_DIR=<own> WAYLAND_DISPLAY=wayland-issue23 ./build/linux/foundation_demo --screen=battle --local-players=2 --script=tests/scripts/split-two-human.txt --frames=1500` | `video driver : wayland`, `surface : 960x540 ... fifo=yes`, `present mode : Fifo(vsync)`, `frames : 1500 in 24.931 s`, `delta avg : 16.608 ms (60.2 fps)`, `logic : 1594 ticks, 64 Hz`, `RESULT: ok` |
 | 3 | X11, nested Xwayland `:1` | same with `DISPLAY=:1` | `video driver : x11`, `present mode : Fifo(vsync)`, `frames : 1500 in 24.935 s (60.2 fps)`, `logic : 1593 ticks, 64 Hz`, `RESULT: ok` |
 | 4 | 30 Hz output | `gamescope --backend wayland -W 1280 -H 720 -r 30 -- <demo> --frames=300` | `frames : 300 in 9.885 s`, `delta avg : 32.927 ms (30.4 fps)`, `logic : 632 ticks, 64 Hz` → **2.11 logic ticks per frame** |
 | 5 | High refresh (gamescope `-r 144`) | `... -r 144 -- <demo> --frames=1200` | `frames : 1200 in 6.743 s`, `delta avg : 5.616 ms (178.1 fps)`, `logic : 431 ticks, 64 Hz` → **0.36 ticks per frame** |
@@ -332,8 +366,10 @@ demo's own `--frames` summary (wall-clock deltas), not from a stopwatch.
 * **A second GPU vendor** (NVIDIA/Intel/AMDVLK) — this machine is one
   RADV adapter. What would settle it: the same §3.1 run on each adapter.
 * **Physical controllers** — every run uses `--local-players` synthetic pads
-  or the script. What would settle it: a real pad walking a panel and a
-  battle, with the pad's own bindings.
+  or the script, and no run drives the attached 8BitDo by hand. What would
+  settle it: a real pad walking a panel and a battle, with the pad's own
+  bindings — a run that asks for the devices (`--devices`, §3.0) plus the
+  attached pad.
 * **Hardware audio listening** — the audio backend runs (dummy-device
   verification, combat voice/SE counts in the log), but nobody listened on
   real hardware.
@@ -418,7 +454,7 @@ ctest --test-dir build/linux --output-on-failure          # §2
 python3 tests/showcase.py --check --out-dir /tmp/sweep    # §4.2
 for p in 2 1 4; do                                        # §3
   case $p in 2) s=1v1;; 1) s=com;; 4) s=2v2;; esac
-  ./build/linux/foundation_demo --install=<game-dir> --no-devices --screen=title \
+  ./build/linux/foundation_demo --install=<game-dir> --screen=title \
     --local-players=$p --script=tests/scripts/frontend-$s-rematch.txt \
     --headless --out=/tmp/rel-$s.ppm --size=1280x720 --frames=15500
 done

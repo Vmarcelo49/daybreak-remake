@@ -36,6 +36,40 @@ int main(int argc, char** argv) {
         check(!anyHeld, "device-free run starts with no held action");
     }
     {
+        // Issue #29's focus gate: an unfocused window accepts no device input, and the
+        // DEFAULT is focused — a compositor that never delivers FOCUS_GAINED (or a run with
+        // no window at all, like --headless) must not leave the game unresponsive.
+        using namespace fnd::input;
+        Backend backend;
+        check(backend.init(), "focus-gate backend initialized");
+        check(backend.window_focused(), "unknown focus means focused");
+        TickInput ticks[kMaxPlayers];
+        backend.note_key(SDL_SCANCODE_Z,true);
+        backend.poll(false);
+        check(backend.player(0).just_pressed[Jump],
+              "a run that never saw a focus event reads the key feed");
+        backend.note_key(SDL_SCANCODE_Z,false);
+        backend.poll(false);
+        backend.note_focus_lost();
+        check(!backend.window_focused(), "focus loss is observed");
+        backend.note_key(SDL_SCANCODE_Z,true);
+        backend.poll(false);
+        check(!backend.player(0).down[Jump], "an unfocused window drops the key feed");
+        backend.note_gamepad_button(1,SDL_GAMEPAD_BUTTON_EAST,true);
+        backend.poll(false);
+        backend.sample_tick_inputs(ticks);
+        check(!ticks[1].consume().just_pressed[Jump], "an unfocused window drops the pad feed");
+        backend.note_focus_gained();
+        check(backend.window_focused(), "focus gain is observed");
+        backend.note_key(SDL_SCANCODE_Z,true);
+        backend.poll(false);
+        check(backend.player(0).just_pressed[Jump], "the key feed works again after focus is regained");
+        backend.note_gamepad_button(1,SDL_GAMEPAD_BUTTON_EAST,true);
+        backend.poll(false);
+        backend.sample_tick_inputs(ticks);
+        check(ticks[1].consume().just_pressed[Jump], "the pad feed works again after focus is regained");
+    }
+    {
         fnd::input::Backend backend;
         if (!backend.init()) { SDL_Quit(); return 1; }
         using namespace fnd::input;
@@ -70,6 +104,9 @@ int main(int argc, char** argv) {
         backend.note_focus_lost();
         backend.poll();
         check(!backend.player(0).down[Jump],"focus loss clears held key");
+        // Issue #29: input stays ignored until focus returns (an unfocused window accepts
+        // nothing), so the stale-suppression check has to run after note_focus_gained.
+        backend.note_focus_gained();
         backend.note_key(SDL_SCANCODE_F,true);
         backend.poll();
         check(backend.player(0).just_pressed[Jump],"focus loss also clears stale suppression");
@@ -132,10 +169,17 @@ int main(int argc, char** argv) {
             check(sample().just_released[Guard], "focus loss releases controller Guard");
             check(fighter.state() == gameplay::FighterState::Idle, "focus loss frees guarding fighter");
             check(!sample().down[Guard], "physical hold cannot re-enter after focus loss");
+            // Issue #29: the pad keeps its slot while unfocused, and input resumes only once
+            // focus returns — which is what the next sample does.
+            check(backend.device(player) == DeviceType::Gamepad,
+                  "an unfocused window keeps its pad in the slot (no synthetic takeover)");
+            backend.note_focus_gained();
             SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_SOUTH, false);
             sample();
+            check(!backend.player(player).just_pressed[Guard],
+                  "a hold from before focus loss cannot re-enter on regain");
             SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_SOUTH, true);
-            check(sample().just_pressed[Guard], "fresh controller press works after focus loss");
+            check(sample().just_pressed[Guard], "fresh controller press works after focus is regained");
             SDL_DetachVirtualJoystick(id);
             check(sample().just_released[Guard], "controller disconnect releases held Guard");
             check(fighter.state() == gameplay::FighterState::Idle, "disconnect frees guarding fighter");

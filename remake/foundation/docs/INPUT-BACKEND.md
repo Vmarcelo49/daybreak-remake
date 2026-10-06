@@ -50,6 +50,39 @@ includes `<SDL3/SDL.h>`.
   comments, unknown tokens ignored); the override replaces P0's held set
   wholesale inside `poll()`, so scripted taps get real edges.
 
+## 2.1 Device isolation and focus (issue #29)
+
+A **port rule**, not recovered behaviour: the original has one focused window and
+reads whatever the OS reports. Two rules follow from that, and both are the
+backend's, so the app cannot forget one.
+
+- **Device isolation** (`set_devices_enabled(false)`): the run owns every input
+  slot. `poll()` reads no device, `note_key`/`note_gamepad_button` drop the
+  forwarded events too, the SDL event queue is not harvested, and `device()`
+  reports the keyboard for slot 0 and no pad for 1–3 — so a pad-less controller
+  takes `--local-players`' synthetic pattern instead of being skipped. `main.cpp`
+  turns it off for every verification run (`--headless`, `--out=`,
+  `--script=`/`--script2=`, `--match`, `--versus`, `--hud-test`, `--bench=`,
+  `--list`) unless `--devices` asks for the physical devices back; `--no-devices`
+  forces it off for any run, including a player run outside that set.
+- **Focus** (`note_focus_lost` / `note_focus_gained`): while the window is
+  unfocused the device state is ignored — every action reads as released — and the
+  forwarded events are dropped, but `device()` keeps naming the device. That is
+  deliberate: a slot reported empty would be handed to a synthetic pad and the
+  game would play itself. Focus starts *focused* and only an explicit
+  `SDL_EVENT_WINDOW_FOCUS_LOST` arms the gate, so a compositor that never
+  delivers a focus event (or a `--headless` run with no window) cannot leave the
+  game unresponsive; `SDL_EVENT_WINDOW_FOCUS_GAINED` disarms it. Focus gain
+  re-derives the release-before-input snapshot (`suppress_held_devices`), because
+  releases that happened while the window was unfocused were never delivered — a
+  key or button the player has already let go must not stay suppressed.
+
+`tests/device_isolation_test.cpp` pins both rules against the demo's own `--out`
+captures (frame hash and scene ladder), with a `--devices` row as the control that
+the injected device events are live, and `tests/input_backend_test.cpp` pins the
+backend half (slot retained while unfocused, feeds dropped, feeds accepted again
+after focus returns).
+
 ## 3. Web gamepad caveats (also in code where they bite)
 
 - Pads appear only after a button press and only on secure contexts
@@ -134,11 +167,14 @@ header compiles with no SDL headers present.
 
 ## 6. Explicitly not verified
 
-- Pressed gamepad buttons/trigger paths: pushed `GAMEPAD_BUTTON` events do
-  not move SDL's device state (same synthetic-event wall as keys, §2), and
-  no presses were synthesised on the attached pad — it was read at rest
-  only. Button/axis reads are code review + `static_assert` pins, and the
-  P2–P4 map stays provisional regardless.
+- Pressed gamepad buttons/trigger paths **on the attached hardware**: pushed
+  `GAMEPAD_BUTTON` events do not move SDL's device state (same synthetic-event
+  wall as keys, §2), and no press was synthesised on the attached pad — it was
+  read at rest only. Pressed buttons are exercised through
+  `SDL_AttachVirtualJoystick`, which the backend opens and polls like any other
+  gamepad (`tests/device_isolation_test.cpp`, `tests/input_backend_test.cpp`);
+  trigger/axis deflection stays code review, and the P2–P4 map stays provisional
+  regardless.
 - No browser run: web behaviour is documented from the SDL3/Emscripten
   contract, not executed.
 - `main.cpp`/CMake wiring has landed (§5: `foundation_media` compiles

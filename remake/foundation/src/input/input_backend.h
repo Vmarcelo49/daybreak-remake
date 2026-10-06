@@ -55,11 +55,15 @@ class Backend {
 
     const PlayerState& player(int index) const;
     DeviceType device(int index) const;
-    // --no-devices (a verification instrument, not a player feature): poll() stops reading
-    // the keyboard and the gamepads and device() reports none of them, so a run is driven
-    // only by its script and by --local-players' synthetic pads. WHY it exists: SDL reports
-    // a connected controller whether or not this window has focus, so on a shared machine
-    // another application's pad moves this run's menus and changes its captures.
+    // Device isolation (issue #29; a verification instrument, not a player feature). When
+    // off: poll() stops reading the keyboard and the gamepads, the forwarded device events
+    // (note_key/note_gamepad_button) are dropped, and device() reports none of them, so a
+    // run is driven only by its script and by --local-players' synthetic pads. WHY it
+    // exists: SDL reports a connected controller whether or not this window has focus, so
+    // on a shared machine another application's pad moves this run's menus and changes its
+    // captures. main.cpp turns it off for every verification run (--headless, --out=,
+    // --script=, ...) unless --devices asks for the physical devices back; --no-devices
+    // asks for the same thing in a run that would otherwise read them.
     void set_devices_enabled(bool enabled) { devices_enabled_ = enabled; }
     int gamepad_player(int32_t instanceId) const;
     bool any_just_pressed(Action action) const;
@@ -75,7 +79,15 @@ class Backend {
     void suppress_gamepad_button(int player, int button);
     bool set_keyboard_binding(Action action, int scancode);
     bool set_gamepad_binding(int player, Action action, int button);
-    void note_focus_lost();  // clears held keys (a lost window drops KEY_UP)
+    // Focus (issue #29). Unknown focus means FOCUSED: only an explicit FOCUS_LOST arms the
+    // gate, so a compositor that never delivers the event — or a run with no window at all,
+    // like --headless — cannot leave the game permanently unresponsive. While unfocused the
+    // device state is ignored (everything reads as released) but the device is NOT
+    // relinquished: device() keeps naming it, because a --local-players slot reported empty
+    // would be handed to a synthetic pad and the game would play itself.
+    void note_focus_lost();   // also clears held keys (a lost window drops KEY_UP)
+    void note_focus_gained();
+    bool window_focused() const { return window_focused_; }
 
     // Stable-controller identity (issue #19): the GUID recorded for each player slot.
     // A pad is opened into the slot whose hint matches its GUID when that slot is free,
@@ -109,6 +121,7 @@ class Backend {
     bool key_held_[kKeyHeldSize];
     bool inited_ = false;
     bool devices_enabled_ = true;
+    bool window_focused_ = true;   // unknown focus means focused (note_focus_lost)
     bool suppressedKeys_[kKeyHeldSize] = {};
     bool suppressedButtons_[kMaxPlayers][26] = {};
     int keyboard_[ActionCount];
@@ -128,6 +141,10 @@ class Backend {
     void drain_key_events();
     void update_keyboard();
     void update_gamepad(int index);
+    void suppress_held_devices();
+    // True when physical device input must not be read: the run owns every slot
+    // (set_devices_enabled(false)) or the window is unfocused.
+    bool device_input_ignored() const { return !devices_enabled_ || !window_focused_; }
 };
 
 }  // namespace fnd::input

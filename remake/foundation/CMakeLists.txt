@@ -501,6 +501,23 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(input_backend_test PRIVATE foundation_media foundation_gameplay)
     add_test(NAME input_backend_test COMMAND input_backend_test
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/scripts/frontend-smoke.txt")
+
+    # Issue #29's device isolation: a verification capture must not move when a physical
+    # device event arrives, and an unfocused window must take no input. It compiles
+    # src/main.cpp into its own TU (SDL_MAIN_HANDLED, like controller_scene_lifetime_test)
+    # and drives the real SDL_App* entry points, so the frames it hashes are the demo's own
+    # --out captures; the events go through Backend::note_key / note_gamepad_button,
+    # SDL_PushEvent and a real SDL virtual gamepad, never a mock. It needs the install and
+    # a WebGPU adapter and skips itself (exit 77) without either.
+    add_executable(device_isolation_test tests/device_isolation_test.cpp)
+    target_include_directories(device_isolation_test PRIVATE src)
+    target_link_libraries(device_isolation_test PRIVATE foundation_render
+        foundation_ui foundation_media foundation_game foundation_physics
+        foundation_gameplay)
+    add_test(NAME device_isolation_test COMMAND device_isolation_test
+             "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak")
+    set_tests_properties(device_isolation_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
+
     add_executable(frontend_battle_test tests/frontend_battle_test.cpp)
     target_link_libraries(frontend_battle_test PRIVATE foundation_gameplay)
     add_test(NAME frontend_battle_test COMMAND frontend_battle_test)

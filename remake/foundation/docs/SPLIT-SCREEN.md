@@ -116,8 +116,10 @@ viewer's own combat target — so one camera per view is the right unit.
   untested.
 - Not verified: physical gamepads — a pad *was* attached to the gate machine and its live
   input reached these runs' menus (SDL reports a controller whether or not the window has
-  focus), which is why every verification command now passes `--no-devices`; no run has
-  driven a pad deliberately. Also unverified: any non-Linux target execution.
+  focus). Issue #29 removed that obstruction: a verification run ignores physical devices by
+  default and an unfocused window takes no input, so the commands below no longer need
+  `--no-devices` — but no run drives the *attached* pad by hand (the pad-facing runs use
+  SDL's virtual pad), so this stays open. Also unverified: any non-Linux target execution.
 
 ## Commands used
 
@@ -134,9 +136,10 @@ ctest --test-dir remake/foundation/build/linux --output-on-failure
 ./build/linux/foundation_demo --headless --install=<game-dir> --screen=battle \
   --local-players=4 --frames=3200 --out=/tmp/four.ppm --size=1920x1080
 
-# the same with a window instead of a capture (--no-devices: a pad another
-# application is using would otherwise reach this run's menus)
-./build/linux/foundation_demo --install=<game-dir> --no-devices --screen=battle \
+# the same with a window instead of a capture (a --script= run ignores the
+# physical devices by default, so a pad another application is using cannot
+# reach this run's menus)
+./build/linux/foundation_demo --install=<game-dir> --screen=battle \
   --local-players=2 --script=tests/scripts/split-two-human.txt --frames=1500
 ```
 

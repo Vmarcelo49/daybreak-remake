@@ -133,8 +133,10 @@ void Backend::shutdown() {
         devices_[i] = DeviceType::None;
     }
     SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
-    // A re-init must start clean, never holding a key the window forgot.
+    // A re-init must start clean, never holding a key the window forgot — and never
+    // remembering a focus loss it was not there for.
     for (bool& k : key_held_) k = false;
+    window_focused_ = true;
     for (bool& k : suppressedKeys_) k = false;
     for (auto& player : suppressedButtons_) for (bool& button : player) button = false;
     clear_script();
@@ -145,7 +147,7 @@ void Backend::shutdown() {
 
 void Backend::poll(bool applyScript) {
     if (!inited_) return;
-    if (devices_enabled_) {
+    if (!device_input_ignored()) {
         drain_key_events();
         repoll_gamepads();
         update_keyboard();
@@ -162,10 +164,12 @@ void Backend::poll(bool applyScript) {
             }
         }
     } else {
-        // --no-devices: the verification run owns every slot (script + synthetic pads).
-        // Reading a physical device here is what makes a capture depend on whoever is
-        // holding a pad: SDL reports a connected controller whether or not this window
-        // has focus, so a second game on the same machine moves this run's menus.
+        // Device input ignored: a verification run owns every slot (script + synthetic
+        // pads), or the window is unfocused. Reading a physical device here is what makes
+        // a capture depend on whoever is holding a pad: SDL reports a connected controller
+        // whether or not this window has focus, so a second game on the same machine moves
+        // this run's menus. Every slot reads as released; nothing rejoins the game until
+        // released and pressed afresh (see note_focus_lost).
         for (int i = 0; i < kMaxPlayers; ++i) {
             PlayerState& p = players_[i];
             for (int a = 0; a < ActionCount; ++a) p.down[a] = false;
@@ -201,9 +205,11 @@ const PlayerState& Backend::player(int index) const {
 
 DeviceType Backend::device(int index) const {
     if (index < 0 || index >= kMaxPlayers) return DeviceType::None;
-    // --no-devices: no pad is present as far as the host is concerned, so a pad-less
-    // controller takes the synthetic pattern (driveSyntheticLocalPads) instead of being
-    // skipped for a device the run is ignoring.
+    // A device-free run reports no pad at all, so a pad-less controller takes the synthetic
+    // pattern (driveSyntheticLocalPads) instead of being skipped for a device the run is
+    // ignoring. The focus gate deliberately does NOT do this: an unfocused window still
+    // names the pad it has, because a slot reported empty would be handed to the synthetic
+    // pad and the game would play itself.
     if (!devices_enabled_) return index == 0 ? DeviceType::Keyboard : DeviceType::None;
     return devices_[index];
 }
@@ -229,6 +235,11 @@ bool Backend::any_down(Action action) const {
 
 void Backend::note_key(int scancode, bool pressed) {
     if (scancode < 0 || scancode >= kKeyHeldSize) return;
+    // The forwarded DEVICE events obey the same gate as the polling read: an ignored run
+    // cannot be entered through SDL_AppEvent either. A release is dropped too, which only
+    // ever re-arms a suppression; note_focus_gained re-derives that snapshot from the
+    // physical state, so a key let go while unfocused is not left stuck suppressed.
+    if (device_input_ignored()) return;
     key_held_[scancode] = pressed;
     if (!pressed) suppressedKeys_[scancode] = false;
     record_button(0, scancode, pressed && !suppressedKeys_[scancode]);
@@ -236,6 +247,7 @@ void Backend::note_key(int scancode, bool pressed) {
 
 void Backend::note_gamepad_button(int player, int button, bool pressed) {
     if (player < 1 || player >= kMaxPlayers || button < 0 || button >= SDL_GAMEPAD_BUTTON_COUNT) return;
+    if (device_input_ignored()) return;   // same gate as note_key
     if (!pressed) suppressedButtons_[player][button] = false;
     record_button(player, button, pressed && !suppressedButtons_[player][button]);
 }
@@ -268,25 +280,38 @@ void Backend::suppress_gamepad_button(int player, int button) {
         suppressedButtons_[player][button] = true;
 }
 
-void Backend::note_focus_lost() {
-    // A lost window drops KEY_UP on most drivers; without this the next poll
-    // would read a key nobody holds anymore.
-    for (bool& k : key_held_) k = false;
+// Everything held on a physical device right now must be released before it can act in
+// the game again. Used at focus loss, and again at focus gain: releases that happened while
+// the window was unfocused were never delivered, so a snapshot taken at focus loss can name
+// a key or button the player has already let go.
+void Backend::suppress_held_devices() {
     int count = 0;
     const bool* keys = SDL_GetKeyboardState(&count);
     for (int sc = 0; sc < kKeyHeldSize; ++sc)
         suppressedKeys_[sc] = keys && sc < count && keys[sc];
     // Pads continue reporting physical holds after the window loses focus.
-    // Require release before those buttons can act in the game again.
+    for (int p = 1; p < kMaxPlayers; ++p) {
+        auto* pad = static_cast<SDL_Gamepad*>(pads_[p]);
+        for (int b = 0; b < SDL_GAMEPAD_BUTTON_COUNT; ++b)
+            suppressedButtons_[p][b] = pad && SDL_GetGamepadButton(pad, static_cast<SDL_GamepadButton>(b));
+    }
+}
+
+void Backend::note_focus_lost() {
+    window_focused_ = false;
+    // A lost window drops KEY_UP on most drivers; without this the next poll
+    // would read a key nobody holds anymore.
+    for (bool& k : key_held_) k = false;
+    suppress_held_devices();
     for (int p = 0; p < kMaxPlayers; ++p) {
-        if (p > 0) {
-            auto* pad = static_cast<SDL_Gamepad*>(pads_[p]);
-            for (int b = 0; b < SDL_GAMEPAD_BUTTON_COUNT; ++b)
-                suppressedButtons_[p][b] = pad && SDL_GetGamepadButton(pad, static_cast<SDL_GamepadButton>(b));
-        }
         eventStates_[p] = {};
         tickSamples_.push_back({p, eventStates_[p]});
     }
+}
+
+void Backend::note_focus_gained() {
+    window_focused_ = true;
+    suppress_held_devices();
 }
 
 bool Backend::load_script(const char* path) {
