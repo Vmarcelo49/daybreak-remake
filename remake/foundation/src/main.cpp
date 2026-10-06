@@ -667,6 +667,12 @@ struct App {
     // pads' panel walk is timed from the screen and not from process start.
     bool                         selectSeen = false;
     uint64_t                     selectEnterTick = 0;
+    // Whether each pad-less controller still had a panel to pick when that clock started. The
+    // pattern's roster nudge is a ROSTER move only while the panel walk runs; a rematch
+    // re-enters with the picks already made (the walk is skipped) and the same taps would move
+    // the cursor onto the Back cell. Latched per appearance, not per tick: the first confirm
+    // sets the panel's character, so a per-tick test would also drop the nudge on a fresh run.
+    bool                         padRosterNudge[4] = {false, false, false, false};
     gameplay::CameraTarget       arenaTargets[4];     // refreshed from the live fighters
     fnd::input::Backend          matchInput;          // P1 device + script override
     bool                         matchInputReady = false;
@@ -1190,17 +1196,45 @@ void driveSyntheticLocalPads(App& app) {
             pad = fnd::input::syntheticPadState(controller, app.matchFrame, app.opts.lockTaps);
         } else if (app.screensMode) {
             // The selection screen's own clock: ticks since it appeared, so the panel walk
-            // starts when the screen does and not at process start.
-            if (app.screens.current() == ui::ScreenId::Select && !app.selectSeen) {
-                app.selectSeen = true;
-                app.selectEnterTick = app.logicTicks;
+            // starts when the screen does and not at process start. It restarts on every
+            // Select entry — a rematch re-enters the selection screen, and a clock latched on
+            // the first appearance left the pads stuck mid-pattern there: their cursor moves
+            // (keyed to the pattern's own ticks 56/60/62) never fired again, so no pad could
+            // reach the OK cell and the rematch round's stage page opened at a different tick
+            // with different settings. Per-appearance, a rematch round runs the same walk as
+            // the first one.
+            if (app.screens.current() == ui::ScreenId::Select) {
+                if (!app.selectSeen) {
+                    app.selectSeen = true;
+                    app.selectEnterTick = app.logicTicks;
+                    for (int c = 0; c < 4; ++c) {
+                        const int panel = fnd::input::syntheticMenuStartPanel(c);
+                        app.padRosterNudge[c] =
+                            panel >= 0 && app.frontend.slots[panel].character < 0;
+                    }
+                }
+            } else {
+                app.selectSeen = false;
             }
+            // The roster nudge only applies while the controller's own panel still has to be
+            // picked: on a rematch the panel already has its character, the walk is skipped,
+            // and the nudge would move the CURSOR instead — which walked controller 2 onto the
+            // Back cell and left the run at the title (see synthetic_pad.h).
             pad = fnd::input::syntheticMenuPadState(
-                controller, app.selectSeen ? app.logicTicks - app.selectEnterTick : 0);
-            // The VS presentation and the result beats advance on their own or on the run's
-            // own script taps, so the pads never skip them: an evidence run then sees the
-            // whole four-portrait assembly and the full victory -> quote -> report sequence
-            // instead of a single faded frame (ui/screen_vs.h, ui/screen_result.h).
+                controller, app.selectSeen ? app.logicTicks - app.selectEnterTick : 0,
+                app.padRosterNudge[controller]);
+            // The pattern is the selection PANEL screen's instrument: its directions walk that
+            // screen's panels and its confirms accept the OK cell that opens the stage page.
+            // The stage page is that screen's sub-page (`FrontendState::stagePage`), and there
+            // the same directions move the SETTINGS cursor — so the round's configuration
+            // depended on the tick the page happened to open on, and a rematch (which opens it
+            // at a different tick than the first round) played 240 s/175 % where the script
+            // asks for 60 s/50 %. The run's own taps configure the page; the pads stay neutral
+            // there. The VS presentation and the result beats advance on their own or on the
+            // run's own script taps, so the pads never skip them either: an evidence run sees
+            // the whole four-portrait assembly and the full victory -> quote -> report
+            // sequence instead of a single faded frame (ui/screen_vs.h, ui/screen_result.h).
+            if (app.frontend.stagePage) pad = fnd::input::SyntheticPadState{};
             if (app.screens.current() == ui::ScreenId::VsIntro ||
                 app.screens.current() == ui::ScreenId::Result)
                 pad.confirm = false;

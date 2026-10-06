@@ -61,6 +61,15 @@ inline SyntheticPadState syntheticPadState(int controller, uint64_t tick, bool l
     return s;
 }
 
+// The panel a pad-less controller starts on. SelectMenu's cursor starts at `c + (c > 1)` and
+// its grid maps a cursor position to a panel with `pos % 3 + pos / 3 * 2`, so this is the
+// panel whose slot tells the host whether the controller still has a character to pick.
+inline int syntheticMenuStartPanel(int controller) {
+    if (controller < 0 || controller > 3) return -1;
+    const int pos = controller + (controller > 1 ? 1 : 0);
+    return pos % 3 + pos / 3 * 2;
+}
+
 // The SELECT-screen pattern: `tick` counts ticks since the selection screen appeared.
 // Each pad-less controller walks ITS OWN panel — Team -> Character -> Weapon -> Hypermode ->
 // Controller -> Ready (screen_select.cpp's phases) — nudges the roster cursor a different
@@ -69,7 +78,15 @@ inline SyntheticPadState syntheticPadState(int controller, uint64_t tick, bool l
 // 2 is the action column), and then keeps confirming so the stage page, VS, the countdown and
 // the results all advance. Offsets are per controller (12 ticks apart) so the panels do not
 // race each other.
-inline SyntheticPadState syntheticMenuPadState(int controller, uint64_t tick) {
+//
+// `rosterNudge` is false when the controller's panel already has a character: a rematch
+// re-enters the selection screen with the previous round's picks still in FrontendState, so
+// the panel walk is skipped and the panel stays in its Team phase. The nudges are ROSTER
+// moves only while the walk runs; in the Team phase they move the CURSOR, and they pushed
+// controller 2's cursor onto the Back cell (`pos == 5`), whose confirm leaves to the title —
+// measured on a rematch run, which ended at the title instead of the second round.
+inline SyntheticPadState syntheticMenuPadState(int controller, uint64_t tick,
+                                               bool rosterNudge = true) {
     SyntheticPadState s;
     if (controller < 0 || controller > 3) return s;
     const uint64_t base = 4 + (uint64_t)controller * 12;
@@ -81,7 +98,7 @@ inline SyntheticPadState syntheticMenuPadState(int controller, uint64_t tick) {
     // 1 (left,left), 5 (left,up) and 10 (right,right); the slot-0 item join fails loudly for
     // Satoko (3), Oishi (8), Akasaka (9), Irie (10), Chie (11), Hanyu (14) and Takano (7)
     // today, so the four panels take 0 Rena, 2 Keiichi, 4 Rika and 1 Mion, all verified.
-    if (t == 4 || t == 6) {
+    if (rosterNudge && (t == 4 || t == 6)) {
         switch (controller) {
             case 1: s.left = t == 4; break;
             case 2: s.right = t == 4; break;

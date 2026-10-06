@@ -115,6 +115,41 @@ int main() {
         check(rosterState.slots[i].controller == i, "the panel keeps its own controller");
         check(rosterState.slots[i].ready, "the panel is ready");
     }
+    // A REMATCH re-enters the selection screen with those picks still set: the walk is
+    // skipped (the panel stays in Team) and the host passes rosterNudge=false. The pads must
+    // still reach the stage page — without the flag the nudge moves the cursor instead and
+    // controller 2 lands on the Back cell (`pos == 5`), whose confirm leaves to the title
+    // (measured on the release run before the fix: `scene: select (tick 4984)` followed by
+    // `scene: title (tick 5177)`).
+    ui::FrontendState rematchState;
+    for (int i = 0; i < 4; ++i) {
+        rematchState.slots[i].character = expected[i];
+        rematchState.slots[i].controller = i;
+    }
+    ui::SelectMenu rematchMenu(rematchState);
+    ui::SelectAction rematchAction = ui::SelectAction::None;
+    for (uint64_t t = 0; t <= 200 && rematchAction != ui::SelectAction::Stage &&
+                         rematchAction != ui::SelectAction::Back; ++t) {
+        rematchMenu.tick();
+        ui::ScreenInput frame;
+        frame.separatePlayers = true;
+        for (int c = 0; c < 4; ++c) {
+            const auto pad = fnd::input::syntheticMenuPadState(c, t, false);
+            auto& buttons = frame.players[c];
+            buttons.up = pad.up; buttons.down = pad.down;
+            buttons.left = pad.left; buttons.right = pad.right;
+            buttons.confirm = pad.confirm; buttons.cancel = pad.cancel;
+        }
+        rematchAction = rematchMenu.updateFrame(frame);
+        check(rematchAction != ui::SelectAction::Back, "a rematch pad never confirms the Back cell");
+    }
+    check(rematchAction == ui::SelectAction::Stage, "the rematch pads open the stage page");
+    for (int i = 0; i < 4; ++i)
+        check(rematchState.slots[i].character == expected[i], "the rematch keeps its picks");
+    check(fnd::input::syntheticMenuStartPanel(1) == 1 &&
+          fnd::input::syntheticMenuStartPanel(2) == 2 &&
+          fnd::input::syntheticMenuStartPanel(3) == 3,
+          "each pad knows the panel it starts on");
     // Issue #20's penalty session flag: a player who earned the penalty title last round has
     // their costume forced to the character's own penalty cell when they confirm a character
     // (FUN_00409340:165-172 reads DAT_006b72a0[character]). The table lives in the installed
