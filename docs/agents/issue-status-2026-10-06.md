@@ -649,12 +649,13 @@ and #49's report found `--lock-taps` never reached the front-end battle's human 
 `--screen=battle`, so scripted function keys may not land either — it must actually run whatever
 mechanism it claims.
 
-**#2 is not dispatchable and needs the human's decision.** Its own body says the work is *"each glyph
-needs a hand pass in an SVG-capable image editor"* — the pipeline (`trace_hud.py`, the 4x-upscale +
-Gaussian + re-threshold fix) is done and committed, and what remains is **manual art**, which a
-subagent cannot do honestly. The decision is whether to (a) do that hand pass, (b) accept the traced
-outlines as-is with their known flat terminals and staircased diagonals, or (c) drop the vector-HUD
-goal and keep the bitmap atlas at the shipped resolution. **Not started pending that call.**
+**#2 is CLOSED — resolved by the human on 2026-10-06 ("we are already using the font found"), not
+waiting on a decision.** This note previously recorded it as an open call for the human (hand-pass the
+glyphs / accept the traced outlines / drop the vector-HUD goal) and the coordinator repeated that in
+later reports; both were stale. The pipeline (`trace_hud.py`, the 4x-upscale + Gaussian +
+re-threshold fix) is done and committed, and the font in use is the one the issue was about, so there
+is nothing left to decide or dispatch. **Corrected here so the record stops asking for a call that was
+already made.**
 
 ## Round 16 — #44 merged (the select entry's flash)
 
@@ -1152,3 +1153,45 @@ twice seen a "failed/finished" notification for an agent that was still running.
 uncommitted work — commit as you go; never `reset --hard`/`stash` without a named stash; after any
 rebase **grep for the identifiers the newer merges introduced**, because a refactor-shaped conflict
 can offer an earlier fix as a deletion; and **checklist hashes are sha256 prefixes, not md5**.
+
+## Round 31 — #27 and #4 merged; two stale premises corrected
+
+**#27 closed (`b829973`)** — the NPR evidence re-run. Its headline is that the issue's own sanity check
+found **three arms that do not do what they claim**: **B** never bands the shading (`diffuse * mix(tint,
+white, w)` is an algebraic identity with a neutral tint, so the curve only selects how much of C's tint
+is applied — which is what the old rows were measuring); **F**'s mask feeds the same weight and has
+nothing to hold; and **E** never reaches a fight scene because the renderer caches **one pipeline per
+pass**, created with the *first* draw's flag — a fight draws its stage first, so `vs_main` is cached for
+`Pass::Opaque` and every character reuses it, while the fragment-side arms live in `fs_main` and are
+unaffected. **That last one is why the defect hid for a whole issue.** The probe is now a permanent
+ctest gate that fails if a listed inert arm starts drawing. 15 MB of evidence committed; off stays
+byte-identical by construction and by measurement.
+
+**#4 closed (`ee75075`)** — self-hosted web asset delivery, verified end to end in a browser and in a
+container: 11,261 assets / 4.2 GB prepared in 31.6 s, a live 300-frame match whose draw and texture
+counts are **identical to the native capture**, and cold→warm going from 494 requests / 96.3 MB to
+**1 request / 0.0 MB**. Precedence is checked against the native reader across all 11,261 names (0
+mismatches, 983 duplicates, 445 byte-differing groups). Three defects were found **by running it**,
+including that **a delivered filesystem does not fold ASCII case**, which silently dropped the weapon
+model and the battle HUD atlases. **ctest is now 61** (58 + three suites).
+
+**A merge-time mistake of mine, recorded**: I ran `ctest` after merging #4 *without rebuilding*, so it
+reported 58 while the worker's own docs said 61 — and I briefly suspected the worker. The three new
+suites were registered in `CMakeLists.txt` all along; a rebuild gives 61/61. **Rebuild before believing
+a test count after a merge that touches `CMakeLists.txt`.**
+
+**Two stale premises corrected in the issue tracker, both of which would have cost a worker a day:**
+
+- **#54's body argued from #17's retired port rule** — that "the original's projectile visual is not in
+  the shipped data". **#32 disproved that and is merged**: the projectile is the bullet's own model in
+  the bullet's own directory (`data/bullet/007/50.X`, `data/bullet/001/03.X`). A comment now says so,
+  points at the recovered mechanism, and states what is *still* genuinely open — the per-weapon aim
+  input (`FUN_005f7be0` dispatches to 46 update functions, none recovered), which the port is
+  substituting with the shot's velocity.
+- **#2 was recorded as an open human decision and had already been closed by the human** ("we are
+  already using the font found"). The coordinator repeated the stale version in later reports. Fixed
+  above.
+
+**Lesson**: an issue body is evidence about the tree *at the time it was filed*, and this batch has now
+had **seven** issues arrive with a premise that measurement disproved (#45, #43, #47, #28, #26, #32,
+#54). Re-read the body against `main` before dispatching it, not after.
