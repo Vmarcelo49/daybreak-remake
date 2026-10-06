@@ -70,6 +70,7 @@
 #include "game/aura_attach.h"
 #include "game/fx_cards.h"
 #include "game/muzzle_slot.h"
+#include "game/shot_visual.h"
 #include "input/input_backend.h"
 #include "input/tick_input.h"
 #include "input/input_sdl3.h"
@@ -1170,6 +1171,12 @@ struct App {
     int  fxAttach[game::kAuraSlots] = {-1, -1, -1, -1, -1, -1, -1};
     float fxAttachSeconds[game::kAuraSlots] = {};
     int fxAuraIndex[2] = {-1, -1};   // per-fighter aura card, match mode
+    // Issue #32: the in-flight shot's own model, [fighter][chargeLevel-1]. The path is the
+    // 260-byte model block of that level's data/bullet/<weaponId>/<type>.dat, resolved by
+    // bindShotModels() once the scene is loaded; -1 when the level has no bullet file or
+    // its block names a model the install does not ship. See game/shot_visual.h.
+    int  fxShotModel[4][2] = {{-1, -1}, {-1, -1}, {-1, -1}, {-1, -1}};
+    uint64_t fxShotNoModel = 0;      // live-shot placements with no model to draw
     // The eleven attach points of game/aura_attach.h, resolved once per fighter on its own
     // rig: the aura attachment draws one instance per resolved point (FUN_004205e0).
     game::AuraAttach auraAttach[4];
@@ -2938,6 +2945,42 @@ static void buildFxAssets(App& app) {
     std::printf("fx assets    : %d effect descriptor(s), 7 attachment model(s)\n", loaded);
 }
 
+// Issue #32: resolve the in-flight shot's own model for every bound weapon, once per
+// scene. The model is the 260-byte block of the level's data/bullet/<weaponId>/<type>.dat
+// (gameplay::BulletParameter::modelName), which the original loads into the weapon's
+// per-variant model object and the shot's own render draws — see game/shot_visual.h for
+// the chain. Called after the bullet parameters exist and before setScene(), because a
+// card is a scene model. A level whose model the install does not ship keeps -1, which is
+// the empty model slot that same failed load leaves in the original; placeFxCards counts
+// those placements instead of drawing them.
+static void bindShotModels(App& app) {
+    std::vector<std::pair<std::string, int>> loaded;   // path -> card, so two fighters
+                                                       // with the same weapon load once
+    for (size_t i = 0; i < app.bulletParams.size() && i < 4; ++i) {
+        if (i >= app.weaponDefs.size() || !app.weaponDefs[i]) continue;
+        const int weaponId = app.weaponDefs[i]->id;
+        for (int level = 1; level <= 2; ++level) {
+            const gameplay::BulletParameter* p = app.bulletParams[i][(size_t)level - 1].get();
+            if (!p || p->modelName.empty()) continue;
+            char path[80];
+            std::snprintf(path, sizeof(path), "data/bullet/%03d/%s", weaponId,
+                          p->modelName.c_str());
+            int card = -1;
+            for (const auto& entry : loaded)
+                if (entry.first == path) card = entry.second;
+            if (card < 0) {
+                card = addFxCard(app, path);
+                loaded.emplace_back(path, card);
+                if (card < 0)
+                    std::fprintf(stderr, "[shot] %s: the install ships no such model; "
+                                         "shots of this level draw nothing\n",
+                                 path);
+            }
+            app.fxShotModel[i][(size_t)level - 1] = card;
+        }
+    }
+}
+
 // Drains the gameplay's event queue into the live card set. The spawn /
 // kill-by-id / ttl-expiry rules live in game/fx_cards.h (unit-tested there);
 // this only moves the drained events over and counts them.
@@ -2953,12 +2996,6 @@ static void updateFxCards(App& app, game::EffectEventQueue& q, uint64_t& events,
     app.fxTally.expired += t.expired;
     app.fxTally.killed  += t.killed;
 }
-
-// The instance-id base for live-shot cards: the pool slot index is the low half, so one
-// card follows one shot for its whole flight. Kept far above the per-event instance
-// counter's range so the two id spaces cannot collide (a shot's flight is a few hundred
-// ticks, so the counter would need ~2^30 spawns to reach it).
-inline constexpr uint32_t kFxShotCardId = 0x40000000u;
 
 // Spawn one effect INSTANCE: a fresh id from the run's counter, the recovered lifetime
 // of `effectId` from the catalog, and the asset its descriptor loaded into. Returns
@@ -2993,7 +3030,8 @@ static bool spawnAttachment(App& app, game::EffectEventQueue& queue, int slot,
 // that follows.
 static void placeFxCards(App& app) {
     std::vector<render::SceneRenderer::EffectInstance> instances;
-    instances.reserve(app.liveFx.size() + 2 * game::kAuraAttachPoints);
+    instances.reserve(app.liveFx.size() + 2 * game::kAuraAttachPoints +
+                      gameplay::ProjectilePool::kMaxShots);
     if (!app.opts.debugPrims) {
         for (const game::LiveFxCard& c : app.liveFx) {
             if (c.asset < 0 || (size_t)c.asset >= app.scene.models.size()) continue;
@@ -3018,6 +3056,32 @@ static void placeFxCards(App& app) {
                 instances.push_back({app.fxAuraIndex[i], base * app.worlds[rig][frame]});
             }
         }
+        // The in-flight shot draws the bullet's OWN model (issue #32), at the shot's own
+        // transform — the original's shot render FUN_005f60b0 composes scale, rotation and
+        // translation into the model's matrix and draws it, so the instance keeps its
+        // orientation instead of being yawed at the camera. RECOVERED: which model (the
+        // bullet record's 260-byte block, gameplay::BulletParameter::modelName). PORT RULE:
+        // the aim direction, because the per-weapon update that fills the shot's own
+        // rotation fields is not recovered — game/shot_visual.h has both. A level whose
+        // model the install does not ship draws nothing here, which is what the original
+        // does with the empty model slot that same missing file leaves behind; the tally
+        // below makes that visible instead of silent.
+        for (const gameplay::Projectile& p : app.match.shots().shots()) {
+            if (!p.alive) continue;
+            int owner = -1;
+            for (int i = 0; i < app.match.config().fighterCount && i < 4; ++i)
+                if (p.owner == &app.match.fighter(i)) { owner = i; break; }
+            // FUN_00433eb0's own tier -> bullet-row rule: the tap tier reads the level-1
+            // block, every tier above it the level-2 block (Fighter::bullet_parameter).
+            const int level = (p.tier == gameplay::ShotTier::Tap) ? 0 : 1;
+            const int card = (owner >= 0) ? app.fxShotModel[owner][level] : -1;
+            if (card < 0 || (size_t)card >= app.scene.models.size()) {
+                ++app.fxShotNoModel;
+                continue;
+            }
+            instances.push_back({card, game::shotModelMatrix(p.pos, p.vel), false});
+            ++app.fxShotCards;
+        }
     }
     app.renderer.setEffectInstances(instances);
 }
@@ -3027,8 +3091,8 @@ static void placeFxCards(App& app) {
 // reached the cap; `peak` is the number that has to stay bounded across a long 2v2.
 static void printFxSummary(const App& app) {
     std::printf("fx cards     : events=%llu spawned=%llu dropped=%llu expired=%llu "
-                "killed=%llu peak=%zu/%zu, liveShots=%llu badEffectId=%llu, "
-                "effectDrawsAtExit=%d\n",
+                "killed=%llu peak=%zu/%zu, shotModels=%llu shotModelMissing=%llu "
+                "badEffectId=%llu, effectDrawsAtExit=%d\n",
                 (unsigned long long)app.matchFxEvents,
                 (unsigned long long)app.fxTally.spawned,
                 (unsigned long long)app.fxTally.dropped,
@@ -3036,6 +3100,7 @@ static void printFxSummary(const App& app) {
                 (unsigned long long)app.fxTally.killed,
                 app.fxPeakLive, game::kMaxLiveFxCards,
                 (unsigned long long)app.fxShotCards,
+                (unsigned long long)app.fxShotNoModel,
                 (unsigned long long)app.fxBadEffect,
                 app.renderer.stats().effects);
 }
@@ -3664,25 +3729,8 @@ static bool tickMatch(App& app, double dt) {
                              glm::vec3(0.f, 100.f, 0.f);
         spawnEffect(app, app.matchFx, 0, at);
     }
-    // The in-flight shot. PORT RULE: the original's projectile visual is not recoverable
-    // from the shipped data — the descriptor table has no projectile entries, the 10
-    // trail textures FUN_00633ca0 loads are never read by anything but the destructor
-    // (FUN_00634520), and a bullet record names only an attachment part ('Bip00'), never
-    // a model — so the port draws each live shot with the effect its own record names
-    // (the id it will spawn on impact). The card's id is the pool SLOT, so a shot
-    // refreshes one card in place for its whole flight.
-    {
-        const auto& shots = app.match.shots().shots();
-        for (size_t slot = 0; slot < shots.size(); ++slot) {
-            const gameplay::Projectile& p = shots[slot];
-            if (!p.alive) continue;
-            const game::EffectEntry* entry = app.fxCatalog.find(p.impactEffect);
-            if (!entry || !entry->playable()) continue;
-            app.matchFx.pushSpawn(kFxShotCardId + (uint32_t)slot, p.pos, entry->asset,
-                                  (float)app.fxCatalog.lifetime_ticks(p.impactEffect, 64.f) / 64.f);
-            ++app.fxShotCards;
-        }
-    }
+    // The in-flight shot is NOT a card: it is the bullet's own model, drawn at the shot's
+    // own transform by placeFxCards() (issue #32). See game/shot_visual.h.
     updateFxCards(app, app.matchFx, app.matchFxEvents, (float)dt);
 
     updateMatchViews(app, inputs, dt);
@@ -3981,6 +4029,9 @@ bool initScene(App& app) {
     }
     xm::resolveSceneTextures(app.scene);
     app.modelMatrices.assign(app.scene.models.size(), glm::mat4(1.f));
+    // A card index is only valid against the scene that produced it, so a reloaded scene
+    // invalidates every shot model until bindShotModels() resolves them again (issue #32).
+    for (auto& pair : app.fxShotModel) pair[0] = pair[1] = -1;
     // FUN_00633ca0's effect models extend the scene. Finish that growth before
     // fighters, animation controllers or collision queries borrow model pointers.
     if (app.opts.match || app.opts.versus) buildFxAssets(app);
@@ -4145,6 +4196,11 @@ bool initScene(App& app) {
     // every field at the appearance's default and the renderer takes the same path it
     // took before this issue existed. `--npr=off` is the explicit form of that state.
     if (app.opts.nprSet) app.appearance.copyExperimentsFrom(app.opts.npr);
+
+    // Issue #32: the in-flight shot's own model is a scene model, so it joins the scene
+    // here — after every path that parses a bullet file (initMatch for a standalone match,
+    // enterFrontendBattle for a selected one) and before the renderer takes the draw list.
+    if (app.opts.match || app.frontendMatch) bindShotModels(app);
 
     if (!app.rendererReady && !app.renderer.init(app.ctx, app.error)) return false;
     app.rendererReady = true;

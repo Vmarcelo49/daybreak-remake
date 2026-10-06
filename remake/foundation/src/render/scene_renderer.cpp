@@ -900,7 +900,8 @@ void SceneRenderer::setEffectInstances(const std::vector<EffectInstance>& instan
     if (instances.size() == effectInstances_.size() &&
         std::equal(instances.begin(), instances.end(), effectInstances_.begin(),
                    [](const EffectInstance& a, const EffectInstance& b) {
-                       return a.modelIndex == b.modelIndex && a.model == b.model;
+                       return a.modelIndex == b.modelIndex && a.model == b.model &&
+                              a.billboard == b.billboard;
                    }))
         return;   // unchanged: keep the current draw list (the common frame)
     effectInstances_ = instances;
@@ -913,6 +914,11 @@ void SceneRenderer::setEffectInstances(const std::vector<EffectInstance>& instan
             DrawItem d = t;
             d.model = e.model;
             d.instance = true;
+            // The per-mesh verdict still has the last word: a ground-plane card is never
+            // yawed (classifyBillboard), and an instance that opts out is never yawed
+            // either. `billboard` is only consulted for Effect-pass draws, so an instance
+            // of any other pass is unaffected.
+            d.billboard = t.billboard && e.billboard;
             draws_.push_back(d);
         }
     }

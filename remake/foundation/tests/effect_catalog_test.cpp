@@ -33,6 +33,12 @@
 //  Build: cmake --build remake/foundation/build/linux --target effect_catalog_test
 //  Exit status: 0 when every check passes, 1 otherwise.
 //
+//  Issue #32 adds one device-free section: what an in-flight shot draws. It pins the
+//  RECOVERED half (the bullet's own model, aimed by the original's own +X convention)
+//  beside the PORT RULE half (the aim direction comes from the port's velocity, because
+//  the per-weapon update that fills the shot's rotation fields is not recovered). See
+//  game/shot_visual.h.
+//
 //  Issue #34 adds one device-free section: the muzzle-flash slot. It pins the RECOVERED
 //  selector (the fighter's per-slot fire-mode byte +0x318 picks the attack start, and each
 //  attack start sets one latch that FUN_004205e0 turns into a slot) next to the PORT RULE
@@ -44,6 +50,7 @@
 #include "game/aura_attach.h"
 #include "game/effect_catalog.h"
 #include "game/muzzle_slot.h"
+#include "game/shot_visual.h"
 
 #include <cctype>
 #include <cstdio>
@@ -341,6 +348,46 @@ void testMuzzleSlotRule() {
                 "        above is a labelled port rule, not a recovery.\n");
 }
 
+// ---------------------------------------------------------------------------
+// Issue #32: what an in-flight shot draws, and which half of that is recovered.
+// ---------------------------------------------------------------------------
+void testShotVisualRule() {
+    section("issue #32: the shot's own model, and the one part of its draw still ported");
+
+    // The RECOVERED convention, through the function the placement calls: the model's
+    // authored +X axis is aimed along the flight vector. FUN_005f60b0 aims it with a
+    // RotationZ (pitch) and a RotationY (yaw) composed in that order, which is what makes
+    // +X the forward axis — so a shot flying along +X keeps the model's authored facing,
+    // and one flying along +Z is yawed a quarter turn.
+    const glm::mat4 still = game::shotModelMatrix(glm::vec3(1.f, 2.f, 3.f), glm::vec3(0.f));
+    check(still[3] == glm::vec4(1.f, 2.f, 3.f, 1.f),
+          "a shot with no velocity is only translated (no invented facing)");
+    check(still[0] == glm::vec4(1.f, 0.f, 0.f, 0.f), "and keeps the authored rotation");
+
+    const glm::vec3 axes[3] = {glm::vec3(1.f, 0.f, 0.f), glm::vec3(0.f, 0.f, 1.f),
+                               glm::vec3(0.f, 0.f, -1.f)};
+    for (const glm::vec3& d : axes) {
+        const glm::mat4 m = game::shotModelMatrix(glm::vec3(0.f), d);
+        const glm::vec3 fwd = glm::vec3(m * glm::vec4(1.f, 0.f, 0.f, 0.f));
+        check(glm::length(fwd - d) < 1e-4f,
+              "the model's +X lands on the flight direction (RECOVERED convention)");
+    }
+    // A pitch: the same +X must tilt up with a rising shot rather than spin about Y.
+    const glm::vec3 up(0.f, 1.f, 0.f);
+    const glm::mat4 pitched = game::shotModelMatrix(glm::vec3(0.f), up);
+    check(glm::length(glm::vec3(pitched * glm::vec4(1.f, 0.f, 0.f, 0.f)) - up) < 1e-4f,
+          "a straight-up shot pitches the model up (RotationZ, not a degenerate yaw)");
+
+    // The PORT RULE half: the direction source. The original's per-weapon update writes the
+    // shot's own rotation fields (FUN_005f7be0 dispatches to 46 of them); the port has none
+    // of them, so the velocity is what the recovered convention is fed. Pinning the input
+    // here is what stops that from being an unexplained choice — game/shot_visual.h names
+    // both halves.
+    const glm::mat4 a = game::shotModelMatrix(glm::vec3(0.f), glm::vec3(10.f, 0.f, 0.f));
+    const glm::mat4 b = game::shotModelMatrix(glm::vec3(0.f), glm::vec3(99.f, 0.f, 0.f));
+    check(a == b, "PORT RULE: the aim uses the flight DIRECTION, never the speed");
+}
+
 void testInstallAuraTable(int argc, char** argv) {
     section("asset-backed: the shipped attachments, and the rigs they are drawn on");
     const fs::path install = findInstall(argc, argv);
@@ -423,12 +470,13 @@ void testInstallAuraTable(int argc, char** argv) {
 
 int main(int argc, char** argv) {
     std::puts("effect_catalog_test — issue #17 effect table, issue #33 attach points, "
-              "issue #34 muzzle slot");
+              "issue #34 muzzle slot, issue #32 shot visual");
     testDescriptorHeader();
     testIdMappingAndLifetime();
     testInstallTable(argc, argv);
     testAuraAttachRule();
     testMuzzleSlotRule();
+    testShotVisualRule();
     testInstallAuraTable(argc, argv);
     std::printf("\n%d checks, %d failure(s)%s\n", checks, failures,
                 skipped ? " (with skips)" : "");

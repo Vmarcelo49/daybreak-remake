@@ -363,6 +363,12 @@ public:
     struct EffectInstance {
         int       modelIndex = -1;
         glm::mat4 model{1.f};
+        // Keep the instance's own orientation instead of yawing it to face the camera.
+        // An effect CARD is a flat quad and wants the yaw; a shot's model is a solid the
+        // original draws with its own transform (FUN_005f60b0 composes scale, rotation and
+        // translation into the model's matrix, game/shot_visual.h), so it opts out.
+        // Default true keeps every existing instance byte-identical.
+        bool      billboard = true;
     };
     void setEffectInstances(const std::vector<EffectInstance>& instances);
     // Grows the per-draw uniform buffer (and rebinds it) when the draw list outgrows it.
