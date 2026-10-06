@@ -73,6 +73,15 @@ void tick(Fighter& f, const input::PlayerState& in) {
     f.update(&copy, nullptr, 1.0 / 64.0);
 }
 
+// Held-input tick. `tick()` derives edges from a fresh copy every call, so a held
+// key reads as a new press on every tick — which is what a tap test wants and
+// exactly what breaks a hold (a held direction double-taps into a dash). This
+// keeps the same state across calls, like the live poll path.
+void tick_held(Fighter& f, input::PlayerState& in) {
+    input::compute_edges(in);
+    f.update(&in, nullptr, 1.0 / 64.0);
+}
+
 // A fresh fighter out of the 60-frame BattleStart pose, so it can act immediately.
 Fighter idle_at(const glm::vec3& at, float facing = 0.0f) {
     Fighter f;
@@ -917,9 +926,10 @@ void testDataDrivenDashAndAir(const fs::path& install) {
         tick(dasher, in);
         in.down[input::Action::AttackA] = false;
         checkInt(330, dasher.attack_move_id(), "a dash press resolves the lunge (330)");
-        checkInt(0, dasher.anim_set_index(),
-                 "dash attack selector is unresolved; no lunge clip is guessed");
-        check(dasher.anim_fallback(), "dash attack reports its animation fallback");
+        checkInt(51, dasher.anim_set_index(),
+                 "the lunge plays its own table row: move 330 opens on set 51");
+        check(!dasher.anim_fallback(),
+              "the bound lunge row is played, not hidden behind set 0 (issue #31)");
         // The dash carried the fighter forward; meet it where it is (reach 55).
         const float z = dasher.position().z;
         Fighter victim;
@@ -952,9 +962,10 @@ void testDataDrivenDashAndAir(const fs::path& install) {
         in.down[input::Action::AttackA] = false;
         check(flyer.aerial_attack(), "the airborne press flags the aerial swing");
         checkInt(340, flyer.attack_move_id(), "resolving the weapon aerial (340)");
-        checkInt(0, flyer.anim_set_index(),
-                 "air attack selector is unresolved; no aerial clip is guessed");
-        check(flyer.anim_fallback(), "air attack reports its animation fallback");
+        checkInt(88, flyer.anim_set_index(),
+                 "the aerial plays its own table row: move 340's phase tag is set 88");
+        check(!flyer.anim_fallback(),
+              "an airborne swing no longer loses its resolved set (issue #31)");
         Fighter early;
         bind_synthetic_rig(early, model, ctrl, flyer.position());
         early.set_moves(&moves);
@@ -1480,48 +1491,290 @@ void testRosterVariation(const fs::path& install) {
         tick(dasher, in);
         in.down[input::Action::AttackA] = false;
         checkInt(330, dasher.attack_move_id(), "keiichi dash press resolves 330");
-        checkInt(0, dasher.anim_set_index(), "dash animation remains on explicit fallback");
-        check(dasher.anim_fallback(), "dash animation fallback is reported");
+        checkInt(39, dasher.anim_set_index(),
+                 "keiichi's lunge plays its own table row (set 39)");
+        check(!dasher.anim_fallback(), "the keiichi lunge row is not a fallback");
     }
 }
 
 // ---------------------------------------------------------------------------
-// Jump's original input/state selector is not located. Physics still runs, but
-// animation remains on the reported fallback instead of switching on vy sign.
+// The jump chain: the source's air moves 40 → 41 → 42 with their shipped phase
+// tags [2] / [3,4] / [5,43] (live FUN_0043ffc0 cases 0x28/0x29/0x2a). The launch
+// tick plays the startup row, the rise plays 41, and vy < 6.0/tick switches to
+// the falling row. A short clip period makes a section completion observable.
 // ---------------------------------------------------------------------------
-void testJumpAnimationFallback(const fs::path& install) {
-    section("jump animation remains unresolved without the original selector");
+void testJumpAnimationChain(const fs::path& install) {
+    section("the recovered jump chain plays its own clips");
     gameplay::CharacterMoves moves;
     if (!load_moves(install, "rena", "00.dat", moves)) {
-        skip("jump animation (no install found)");
+        skip("jump chain (no install found)");
         return;
     }
+    gameplay::WeaponDefinition weapon;
+    if (moves.weapon_id() != gameplay::kWeaponIds[0][0] ||
+        !load_weapon(install, moves.weapon_id(), weapon) || weapon.id != moves.weapon_id()) {
+        skip("jump chain (matching item unavailable)");
+        return;
+    }
+    checkInt(2, moves.first_set_index(40), "move 40 opens on the startup set 2");
+    checkInt(3, moves.first_set_index(41), "move 41 opens on the takeoff set 3");
+    const gameplay::CharacterMove* fallRow = moves.find(42);
+    check(fallRow && fallRow->sectionCount == 2 && fallRow->phase_set_index(0) == 5 &&
+              fallRow->phase_set_index(1) == 43,
+          "move 42 is the two-section down-momentum [5] -> falling [43] row");
+
+    // 9,600 keys at 4,800/s is a rounded 2-tick period, so a section completes on
+    // the third elapsed tick and the whole chain fits in ~20 ticks.
+    xm::Model model;
+    xm::Controller ctrl;
+    Fighter f;
+    bind_synthetic_rig(f, model, ctrl, glm::vec3(0, 0, 0), 9600.0f);
+    f.set_moves(&moves);
+    f.set_weapon(&weapon);
+    check(f.weapon() == &weapon && weapon.id == gameplay::kWeaponIds[0][0],
+          "the jump chain runs on the matching Rena 0 weapon combo");
+    input::PlayerState jump;
+    jump.down[input::Action::Jump] = true;
+    tick(f, jump);
+    check(f.airborne(), "the leap leaves the ground on the press tick");
+    checkInt(2, f.anim_set_index(), "the launch tick plays move 40's startup set 2");
+    check(!f.anim_fallback(), "the startup row is a bound row, not a fallback");
+    jump.down[input::Action::Jump] = false;
+    tick(f, jump);
+    checkInt(3, f.anim_set_index(), "the rise rebinds to move 41's set 3");
+    check(!f.anim_fallback(), "the rise row is a bound row");
+    tick(f, jump);
+    checkInt(3, f.anim_set_index(), "period equality does not advance the section");
+    tick(f, jump);
+    checkInt(4, f.anim_set_index(),
+             "move 41 advances to its up-momentum section 4");
+    while (f.airborne() && f.anim_set_index() != 5 && f.state() == FighterState::Jump)
+        tick(f, jump);
+    checkInt(5, f.anim_set_index(),
+             "vy under the apex threshold switches to move 42's down set 5");
+    check(!f.anim_fallback(), "the falling row is a bound row");
+    int ticksToFall = 0;
+    while (f.airborne() && f.anim_set_index() != 43 && ticksToFall < 10) {
+        tick(f, jump);
+        ++ticksToFall;
+    }
+    checkInt(43, f.anim_set_index(), "move 42 completes into its final falling set 43");
+    check(ticksToFall < 10, "the final section completes inside the fall");
+    for (int i = 0; i < 60; ++i) tick(f, jump);
+    checkInt(static_cast<int>(FighterState::Idle), static_cast<int>(f.state()),
+             "landing returns to Idle");
+    checkInt(0, f.anim_set_index(), "and the idle set comes back");
+    check(!f.anim_fallback(), "the landing pose is not a fallback");
+
+    // Interrupting the chain mid-air must not leave the old jump clip blended in:
+    // a reaction row is a rejected class change in this combo, so both tracks
+    // hard-bind it (the same rule the Rena 2 blend test pins).
+    {
+        xm::Model imodel;
+        xm::Controller ictrl;
+        Fighter hit;
+        bind_synthetic_rig(hit, imodel, ictrl, glm::vec3(0, 0, 0), 9600.0f);
+        hit.set_moves(&moves);
+        hit.set_weapon(&weapon);
+        input::PlayerState up;
+        up.down[input::Action::Jump] = true;
+        tick(hit, up);
+        up.down[input::Action::Jump] = false;
+        tick(hit, up);
+        checkInt(3, hit.anim_set_index(), "the interrupted fighter is mid-rise");
+        hit.set_state(FighterState::Hit);
+        const int hitSet = moves.first_set_index(103);
+        check(hitSet >= 0, "Rena 0's hit row exists");
+        checkInt(hitSet, ictrl.trackAnimationSet(0),
+                 "an interruption hard-binds track 0 off the jump clip");
+        checkInt(hitSet, ictrl.trackAnimationSet(1),
+                 "an interruption hard-binds track 1 off the jump clip");
+        check(!hit.anim_fallback(), "the reaction row is a bound row");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Guard has no selector at all: the source's blocked branch writes the hit
+// registry and the block counter and binds no move (live FUN_00637950), so the
+// port holds whatever clip was playing instead of substituting set 0.
+// ---------------------------------------------------------------------------
+void testGuardHoldsPlayingClip(const fs::path& install) {
+    section("guard holds the playing clip (no selector, not a fallback)");
+    CombatCombo combo;
+    if (!requireCombatCombo(install, combo, "guard hold (no install found)")) return;
     xm::Model model;
     xm::Controller ctrl;
     Fighter f;
     bind_synthetic_rig(f, model, ctrl, glm::vec3(0, 0, 0));
-    f.set_moves(&moves);
-    gameplay::WeaponDefinition weapon;
-    if (!load_weapon(install, moves.weapon_id(), weapon)) {
-        skip("jump animation (matching item unavailable)");
+    combo.bind(f);
+    input::PlayerState walk;
+    walk.down[input::Action::Right] = true;
+    tick_held(f, walk);
+    tick_held(f, walk);
+    checkInt(static_cast<int>(FighterState::Walk), static_cast<int>(f.state()),
+             "movement enters Walk");
+    checkInt(1, f.anim_set_index(), "walk plays its own row's set 1");
+    walk.down[input::Action::Guard] = true;
+    tick_held(f, walk);
+    checkInt(static_cast<int>(FighterState::Guard), static_cast<int>(f.state()),
+             "holding the guard key enters Guard");
+    checkInt(1, f.anim_set_index(), "guard keeps the walk clip it was already playing");
+    check(!f.anim_fallback(), "guard is not a set-0 fallback");
+    check(f.anim_no_selector(), "guard reports the no-selector hold");
+    for (int i = 0; i < 5; ++i) tick_held(f, walk);
+    checkInt(1, f.anim_set_index(), "the held clip stays bound while guarding");
+    walk.down[input::Action::Guard] = false;
+    tick_held(f, walk);
+    checkInt(static_cast<int>(FighterState::Walk), static_cast<int>(f.state()),
+             "releasing the guard key while moving returns to Walk");
+    checkInt(1, f.anim_set_index(), "walk's own row binds again");
+    check(!f.anim_no_selector(), "Walk has a selector again");
+    walk.down[input::Action::Right] = false;
+    tick_held(f, walk);
+    tick_held(f, walk);
+    checkInt(static_cast<int>(FighterState::Idle), static_cast<int>(f.state()),
+             "releasing the direction returns to Idle");
+    checkInt(0, f.anim_set_index(), "and the idle row binds again");
+    // A guard from a standing start holds the idle clip, which is set 0 too: the
+    // status, not the number, is what says whether it was a miss.
+    f.set_state(FighterState::Idle);
+    input::PlayerState stand;
+    tick_held(f, stand);
+    stand.down[input::Action::Guard] = true;
+    tick_held(f, stand);
+    checkInt(0, f.anim_set_index(), "a standing guard holds the idle set 0");
+    check(!f.anim_fallback(), "a standing guard is still not a fallback");
+    check(f.anim_no_selector(), "a standing guard is a no-selector hold");
+    // An unmapped state keeps the visible fallback: this is the distinction.
+    f.set_state(FighterState::TagOut);
+    check(f.anim_fallback(), "an unresolved state still reports its fallback");
+    check(!f.anim_no_selector(), "an unresolved state is not a no-selector hold");
+}
+
+// ---------------------------------------------------------------------------
+// Roster sweep (issue #18 step 4): every legal character+weapon combo through the
+// states the port can reach. A recovered row must resolve; whatever is left over
+// is printed with its status, so the unresolved-selector list is evidence instead
+// of a silent set 0. `bind_synthetic_rig` gives every combo the same 124-set rig,
+// so a printed set index means "this combo's own table tag", not a rig artefact.
+// ---------------------------------------------------------------------------
+void testRosterAnimationSweep(const fs::path& install) {
+    section("roster sweep: idle/walk/jump/guard/attack/hit/KO per combo");
+    std::error_code ec;
+    if (install.empty() || !fs::is_directory(install / "data" / "item", ec)) {
+        skip("roster animation sweep (no install found)");
         return;
     }
-    f.set_weapon(&weapon);
-    input::PlayerState jump;
-    jump.down[input::Action::Jump] = true;
-    tick(f, jump);
-    tick(f, jump);
-    checkInt(0, f.anim_set_index(), "unmapped jump uses set 0");
-    check(f.anim_fallback(), "unmapped jump reports fallback");
-    jump.down[input::Action::Jump] = false;
-    for (int i = 0; i < 33; ++i) tick(f, jump);   // vy crosses zero ~tick 26
-    check(f.airborne(), "still airborne on the way down");
-    checkInt(0, f.anim_set_index(), "fall keeps the unresolved fallback");
-    check(f.anim_fallback(), "fall does not imply a recovered move ID");
-    for (int i = 0; i < 30; ++i) tick(f, jump);
-    checkInt(static_cast<int>(FighterState::Idle), static_cast<int>(f.state()),
-             "landing returns to Idle");
-    checkInt(0, f.anim_set_index(), "and the idle set comes back");
+    struct Row { int set; bool fallback; bool hold; };
+    int combos = 0, combosWithFallback = 0;
+    int guardHolds = 0;
+    for (int c = 0; c < gameplay::kCharacterCount; ++c) {
+        for (int nn = 0; nn < gameplay::weaponCountForCharacter(c); ++nn) {
+            char nnname[16];
+            std::snprintf(nnname, sizeof(nnname), "%02d.dat", nn);
+            auto moves = std::make_unique<gameplay::CharacterMoves>();
+            if (!load_moves(install, gameplay::kCharacterDirs[c], nnname, *moves)) continue;
+            gameplay::WeaponDefinition weapon;
+            if (!load_weapon(install, moves->weapon_id(), weapon) ||
+                weapon.id != moves->weapon_id()) {
+                check(false, "every swept combo's table joins its own weapon item");
+                continue;
+            }
+            ++combos;
+            xm::Model model;
+            xm::Controller ctrl;
+            Fighter f;
+            bind_synthetic_rig(f, model, ctrl, glm::vec3(0, 0, 0));
+            f.set_moves(moves.get());
+            f.set_weapon(&weapon);
+            auto sample = [&f]() {
+                return Row{f.anim_set_index(), f.anim_fallback(), f.anim_no_selector()};
+            };
+            const Row idle = sample();
+
+            input::PlayerState walk;
+            walk.down[input::Action::Right] = true;
+            tick_held(f, walk);
+            tick_held(f, walk);
+            const Row walkSet = sample();
+
+            walk.down[input::Action::Guard] = true;
+            tick_held(f, walk);
+            const Row guardSet = sample();
+            if (guardSet.hold && !guardSet.fallback) ++guardHolds;
+
+            input::PlayerState free;
+            for (int i = 0; i < 4; ++i) tick(f, free);
+            input::PlayerState jump;
+            jump.down[input::Action::Jump] = true;
+            tick(f, jump);
+            const Row launch = sample();
+            jump.down[input::Action::Jump] = false;
+            tick(f, jump);
+            const Row rise = sample();
+            Row fall{0, true, false};
+            const int fallSet = moves->first_set_index(42);
+            for (int i = 0; i < 60 && f.state() == FighterState::Jump; ++i) {
+                tick(f, jump);
+                const Row r = sample();
+                if (r.set == fallSet && !r.fallback) fall = r;
+            }
+            for (int i = 0; i < 90 && f.airborne(); ++i) tick(f, free);
+
+            input::PlayerState swing;
+            swing.down[input::Action::AttackA] = true;
+            tick(f, swing);
+            swing.down[input::Action::AttackA] = false;
+            const Row attack = sample();
+
+            Row hit{0, true, false}, down{0, true, false}, ko{0, true, false};
+            for (FighterState st : {FighterState::Hit, FighterState::Knockdown,
+                                    FighterState::KO}) {
+                f.set_state(st);
+                const Row r = sample();
+                if (st == FighterState::Hit) hit = r;
+                if (st == FighterState::Knockdown) down = r;
+                if (st == FighterState::KO) ko = r;
+            }
+            f.set_state(FighterState::ShootA);
+            const Row shoot = sample();
+            f.set_state(FighterState::TagOut);
+            const Row tag = sample();
+
+            const std::string label = gameplay::comboSlotLabel(c, nn);
+            std::printf("  %-20s idle=%d%s walk=%d%s jump=%d/%d/%d%s guard=%d%s "
+                        "attack=%d%s hit=%d%s down=%d%s ko=%d%s shootA=%d%s tagOut=%d%s\n",
+                        label.c_str(),
+                        idle.set, idle.fallback ? "!" : "",
+                        walkSet.set, walkSet.fallback ? "!" : "",
+                        launch.set, rise.set, fall.set,
+                        (launch.fallback || rise.fallback || fall.fallback) ? "!" : "",
+                        guardSet.set,
+                        guardSet.hold ? "(hold)" : (guardSet.fallback ? "!" : ""),
+                        attack.set, attack.fallback ? "!" : "",
+                        hit.set, hit.fallback ? "!" : "",
+                        down.set, down.fallback ? "!" : "",
+                        ko.set, ko.fallback ? "!" : "",
+                        shoot.set, shoot.fallback ? "!" : "",
+                        tag.set, tag.fallback ? "!" : "");
+            // `!` marks a fallback. Every recovered row above must be free of one.
+            const bool recovered =
+                !idle.fallback && !walkSet.fallback && !launch.fallback && !rise.fallback &&
+                !fall.fallback && guardSet.hold && !guardSet.fallback && !attack.fallback &&
+                !hit.fallback && !down.fallback && !ko.fallback;
+            if (shoot.fallback || tag.fallback) ++combosWithFallback;
+            char what[160];
+            std::snprintf(what, sizeof(what),
+                          "%s resolves its idle/walk/jump/guard/attack/hit/down/KO rows",
+                          label.c_str());
+            check(recovered, what);
+        }
+    }
+    std::printf("  combos swept: %d, combos whose shoot/tagOut rows fall back: %d, "
+                "guard holds: %d\n", combos, combosWithFallback, guardHolds);
+    checkInt(46, combos, "the sweep covers all legal character/item-slot combos");
+    checkInt(combos, guardHolds,
+             "every combo's Guard holds a clip instead of falling back");
 }
 
 }  // namespace
@@ -1546,7 +1799,9 @@ int main(int argc, char** argv) {
     testClassSpecificAnimationBlend(install);
     testDirectionalDashes(install);
     testRosterVariation(install);
-    testJumpAnimationFallback(install);
+    testJumpAnimationChain(install);
+    testGuardHoldsPlayingClip(install);
+    testRosterAnimationSweep(install);
     std::printf("\nMELEE_RULES: %s (%d checks, %d failed, %d skipped)\n",
                 failures == 0 ? "ok" : "FAIL", checks, failures, skipped);
     return failures == 0 ? 0 : 1;

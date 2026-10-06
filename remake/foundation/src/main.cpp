@@ -3327,14 +3327,21 @@ static void traceMatch(App& app) {
                 app.eye.x, app.eye.y, app.eye.z, a.position().x, a.position().y, a.position().z,
                 gameplay::state_to_anim_name(a.state()), b.position().x, b.position().y,
                 b.position().z, gameplay::state_to_anim_name(b.state()));
-    // The set that actually plays, next to the state it came from, and whether it was the
-    // fallback. `state_to_anim_name` stays the compared field: the DX9 side of the trace
+    // The set that actually plays, next to the state it came from, and why it is what
+    // it is. `state_to_anim_name` stays the compared field: the DX9 side of the trace
     // binds no animation sets at all, so it has no set to print and changing that field
-    // would destroy the only cross-implementation oracle this project has. The fallback
-    // flag is what keeps an unmapped state (Guard, Jump, TagOut) visible instead of silent.
+    // would destroy the only cross-implementation oracle this project has. The two
+    // annotations keep an unmapped state visible instead of silent: "(no selector)" is
+    // the recovered hold (Guard binds no clip at all), while "(fallback)" is a selector
+    // or table row the port has not recovered.
+    auto annotate = [](const gameplay::Fighter& f) -> const char* {
+        if (f.anim_no_selector()) return " (no selector)";
+        if (f.anim_fallback())    return " (fallback)";
+        return "";
+    };
     std::printf("[daybreak] anim p1=set %d %s%s p2=set %d %s%s\n",
-                a.anim_set_index(), a.anim_set_name(), a.anim_fallback() ? " (fallback)" : "",
-                b.anim_set_index(), b.anim_set_name(), b.anim_fallback() ? " (fallback)" : "");
+                a.anim_set_index(), a.anim_set_name(), annotate(a),
+                b.anim_set_index(), b.anim_set_name(), annotate(b));
 }
 
 // The DX9 side drew every shot, hit spark and hypermode aura as an unlit cube
