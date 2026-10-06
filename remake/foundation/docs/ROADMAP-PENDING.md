@@ -416,12 +416,27 @@ the original's own walk skips the `+0xaecc`/`+0xaed0` pair that commands 0x20/0x
 and clear, and what that pair represents is not recovered. Tap cycles hostiles and hold
 picks an ally — the reading of `input.h`'s "tap = cycle enemy, hold = aim ally"; the
 original's cycle is not gated on team. With no valid lock the fallback takes the first
-hostile in index order rather than the nearest, which keeps it deterministic. The first
-selection a fighter ever takes is acquired silently: nobody pressed anything, and
-pulsing all four rings at round start would be a lie the HUD then animates. The
+hostile in index order rather than the nearest, which keeps it deterministic. The
 hold-gesture threshold is a port constant. `+0xaecc`, `+0xaed0`, `+0xaed8`, `+0x845`,
 `+0x318` and the `+0xaecb` "busy" flag in the validity predicate are all still
 unmapped, so those guards of the original predicate are not modelled.
+
+**Corrected by issue #49 (2026-10-06).** The first selection is *not* acquired silently.
+The port rule this section used to record ("nobody pressed anything … a lie the HUD then
+animates") was wrong: it made every ring green at round start and
+suppressed the owner's counter-rotating ring. `FUN_0041f580`'s maintenance branch (live
+`0x41fdea-0x41ff7a`; `FUN_0041f580.c:213-241` in the corpus) clears `+0x304` at
+`0x421fecb` and then calls `FUN_00421e30`, whose own body clears `+0x304` again
+(`0x421e96`) — so a fighter with no prior selection comes out of the pass still unlocked;
+`FUN_00421f30` (`0x421f65`) is the only store that can make `+0x304` valid, and it is
+reached only from the command dispatcher's LockSwitch command and the state-gated
+`0x421fe07` call (`+0x28c == 0x1e`, a value nothing on the player object is observed to
+write). The pass therefore only ever *drops* a lock, which is what the port keeps for a
+lost target. A lock now comes from a gesture — the human's LockSwitch tap
+(`main.cpp`, `Match::cycle_locked_target`) or the COM brain's own `retarget` decision
+(`bot_input.cpp`) — and `Match::step()` feeds facing from `TargetLocks::fallback_target()`,
+the maintenance walk's pick, which is the original's independent `+0x300` aim selection
+(`FUN_00421c80` requests it) rather than the `+0x304` lock.
 
 **Behaviour.** A valid lock is never re-picked, so a nearer unselected enemy cannot
 silently override it; only a tap or an invalid lock moves it. A lock naming an ally is
@@ -1373,13 +1388,23 @@ says what you SEE on screen, not just which function draws it.
   arc groups sweeping opposite ways (in the print: arcs above, below, left
   and right of her — one P03 four-arc cell drawn twice, counter-rotated).
 * **How the original draws it.** `FUN_00643230` draws the P03 ring cell once
-  rotated `+(frame/2 + 9*hud+0x30c)`, then — gated on local_31, i.e. this
-  fighter is the viewer's locked target — draws the same cell at the same
-  anchor/scale rotated `-(frame/2)` with NO 9-term (`0x643545-0x64354b`).
-* **What the port does.** `composeFighters` now draws both arcs under the
-  existing `f.target` gate (the target-valid half of local_31 is implied).
-  Verified structurally (same cell/anchor/scale, mirrored rotation, correct
-  gate) and visually across frames (arcs at ±50° in frame 100 vs ±75° in
+  rotated `+(frame/2 + 9*hud+0x30c)`, then — gated on local_31 — draws the same cell at the
+  same anchor/scale rotated `-(frame/2)` with NO 9-term (`0x643545-0x64354b`).
+* **What local_31 actually is (corrected by issue #49).** The gate is NOT "this fighter is
+  the viewer's locked target". Live `DaybreakDX.exe` (md5 `a136ddc0…`), `0x6433b0-0x6433f7`:
+  it looks up element 0 of the drawn fighter's own `+0x2f0` container, compares that
+  object's `+0x300` with the fighter's `+0x300` (`0x6433d7-0x6433e3`), and ANDs it with
+  `owner+0x304 < 0` (`0x6433a3-0x6433ad`, `SETGE`/`JNZ`). So the copy appears when the
+  drawn fighter is the one that container's element 0 faces **and that fighter has no lock
+  of its own** — the opposite of the `f.target` reading this entry used to carry, and not
+  "both fighters aiming at each other" either (nothing in the ring path reads another
+  fighter's `+0x304`; the earlier symptom was simply that the port gave everyone a lock at
+  round start, so the copy was always suppressed).
+* **What the port does.** `ui/hud.h`'s `hudRingCounterRotates()` keeps the drawing in
+  `composeFighters` under the port's per-view mapping of the first half of the gate
+  (`HudFighterRole::Owner`) AND `!locked`, and `hud_layout_test` pins both halves. Verified
+  structurally (same cell/anchor/scale, mirrored rotation, correct gate) and visually
+  across frames (arcs at ±50° in frame 100 vs ±75° in
   frame 150 — counter-rotation live). Single-frame RMSE is phase lottery
   (0.3888 → 0.4025: added red pixels at non-print phases), so the band is
   reported, not chased — same confound class as the mirrored fighter pose.

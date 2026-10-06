@@ -307,16 +307,12 @@ void HudComposer::composeFighters(SpriteRenderer& batch, const HudState& st, con
         // the plain red one; column 2 is the blinking hyper ring, drawn while the fighter's
         // hyper mode is up and it has neither a lock nor an action. The shipped P03 rows are
         // black (0,128), red (0,256) and green (0,384) — BATTLE-HUD-SPEC §10's "red =
-        // target" reading was the plain ring; the lock ring is the green one.
-        int col = 0;
-        int row = f.acting ? 0 : (f.locked ? 2 : 1);
-        if (f.hyper && !f.acting && !f.locked) {
-            col = 2;
-            // FUN_00643230:73-77 blinks between rows 0 and 1 every 15 frames when the
-            // fighter's +0x848 flag is clear; the port has no +0x848, so it takes the
-            // blinking branch (a labelled port rule).
-            row = (st.hudFrame % 0x1e) / 0xf;
-        }
+        // target" reading was the plain ring; the lock ring is the green one. The rule
+        // itself lives in hud.h's hudRingCell()/hudRingCounterRotates() so a device-free
+        // test pins what this draws (issue #49).
+        const HudRingCell cell = hudRingCell(f, st.hudFrame);
+        const int col = cell.col;
+        const int row = cell.row;
         const auto ring = hudRingTransform(st.hudFrame, f.ringPulse);
         if (f.visible) {
             // EVERY active fighter gets a ring — the original draws FUN_00643230 once per
@@ -326,7 +322,7 @@ void HudComposer::composeFighters(SpriteRenderer& batch, const HudState& st, con
                               ring.firstDeg, white);
             // The view's OWN fighter gets the second, counter-rotating ring while it has no
             // lock of its own (local_31, FUN_00643230:97-102).
-            if (f.role == HudFighterRole::Owner && !f.locked)
+            if (hudRingCounterRotates(f))
                 battleAtlas_.cell(batch, HudIcon::Ring, col, row, f.ringX, f.ringY, ring.scale,
                                   ring.secondDeg, white);
         }

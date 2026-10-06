@@ -105,8 +105,17 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[4], double dt) {
     // +0x304), which is what lets two players hold independent locks. Panel order still
     // decides the update order, so a two-fighter match keeps the reference's P1-then-P2
     // asymmetry. A lock naming an ally is passed through as-is: that is the hold gesture.
+    //
+    // Facing is NOT the lock, though. In the original the fighter's aim/facing selection
+    // (+0x300, which FUN_00421c80 requests and FUN_0041f580:216-241 re-picks) is
+    // maintained independently of the combat lock (+0x304), so a fighter with no lock
+    // still turns to an opponent. The port's stand-in is the same maintenance walk the
+    // lock's own fallback uses; before issue #49 it wrote that pick INTO the lock table,
+    // which is why every ring was green at round start. Asking for it here instead keeps
+    // the facing and the ring honest at the same time.
     for (int i = 0; i < m_config.fighterCount; ++i) {
-        const int target = m_locks.target(i);
+        int target = m_locks.target(i);
+        if (target == kNoTarget) target = m_locks.fallback_target(i, aliveAtStart);
         m_fighters[i].update(inputs ? inputs[i] : nullptr,
                              (target != kNoTarget && target < m_config.fighterCount)
                                  ? &m_fighters[target] : nullptr,

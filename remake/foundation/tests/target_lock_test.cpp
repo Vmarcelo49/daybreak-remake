@@ -5,6 +5,7 @@
 //  against the acceptance criteria in the issue:
 //
 //    * 2v2 switching — the tap cycles between the two enemies and wraps;
+//    * round start — NOTHING is locked until a gesture selects a target (issue #49);
 //    * independent player locks — two fighters hold different targets at once;
 //    * a closer UNSELECTED enemy never takes a valid lock away;
 //    * KO and respawn move the lock deterministically and never out of range;
@@ -53,7 +54,10 @@ void checkInt(int expected, int actual, const char* name) {
 void section(const char* title) { std::printf("\n-- %s\n", title); }
 
 // 2v2: blue 0/1 against red 2/3, which is what main.cpp:936 builds for a four-fighter
-// launch (panel < 2 ? 0 : 1). The liveness array is the test's to own.
+// launch (panel < 2 ? 0 : 1). The liveness array is the test's to own. The constructor's
+// step() is the round-start maintenance tick, and since issue #49 it leaves every fighter
+// UNLOCKED: acquiring the first selection is not the maintenance pass's job
+// (FUN_0041f580:216-241 only re-picks a selection that went bad).
 struct TwoVTwo {
     gameplay::TargetLocks locks;
     bool alive[4] = {true, true, true, true};
@@ -74,30 +78,94 @@ struct TwoVTwo {
 };
 
 // ---------------------------------------------------------------------------
-// The initial fallback: an index walk, so fighter 0 takes the first hostile.
+// Issue #49: round start holds NO lock, and the first gesture is the recovered walk.
 // ---------------------------------------------------------------------------
-void testInitialFallback() {
-    section("initial fallback is a deterministic index walk");
+void testRoundStartIsUnlocked() {
+    section("round start: no fighter has a lock until a gesture");
     TwoVTwo m;
-    // The fallback is FUN_0041f580's wrap walk from the owner's own index, so a fighter
-    // takes the first hostile at or after it, not the first hostile in the table.
-    checkInt(2, m.locks.target(0), "blue 0 falls back to hostile 2 (first at or after 0)");
-    checkInt(2, m.locks.target(1), "blue 1 falls back to hostile 2 (its wrap lands there)");
-    checkInt(0, m.locks.target(2), "red 2 falls back to the first hostile (0)");
-    checkInt(0, m.locks.target(3), "red 3 falls back to the first hostile (0)");
     checkInt(4, m.locks.fighter_count(), "fighter count clamped into the table");
+    for (int i = 0; i < 4; ++i)
+        checkInt(gameplay::kNoTarget, m.locks.target(i),
+                 "fighter i starts with no lock (red ring)");
+    for (int i = 0; i < 4; ++i) {
+        check(!m.locks.valid_target(i), "valid_target is false for every fighter");
+        checkInt(0, m.locks.pulse(i), "and no switch pulse was raised");
+        checkInt(0, m.locks.hold(i), "and no ally hold was armed");
+    }
 
-    // A fighter whose whole enemy team is dead keeps no lock at all, rather than
-    // latching a corpse: this is what kNoTarget is for.
+    // 600 maintenance ticks with nobody pressing anything: still nothing. This is the
+    // regression the issue is about — the maintenance pass must not acquire a target for
+    // a fighter that never selected one (FUN_0041f580:216-241 clears +0x304 and calls
+    // FUN_00421e30, which clears it again; FUN_00421f30 is the only writer that can make
+    // it valid, and it is reached from a gesture).
+    for (int i = 0; i < 600; ++i) m.tick();
+    for (int i = 0; i < 4; ++i)
+        checkInt(gameplay::kNoTarget, m.locks.target(i),
+                 "600 idle ticks leave fighter i unlocked");
+    for (int i = 0; i < 4; ++i)
+        check(!m.locks.switched(i), "and never report a switch");
+
+    // A KO elsewhere cannot conjure one either.
+    m.alive[3] = false;
+    for (int i = 0; i < 30; ++i) m.tick();
+    checkInt(gameplay::kNoTarget, m.locks.target(0), "a hostile's KO leaves an unlocked fighter unlocked");
+    m.alive[3] = true;
+
+    // The facing fallback is a QUERY: Match::step asks it who an unlocked fighter turns
+    // to, and asking must not select anything — no lock, no pulse, no switch. This is the
+    // exact seam the old round-start acquisition leaked through.
+    for (int i = 0; i < 4; ++i)
+        check(m.locks.fallback_target(i, m.alive) >= 0,
+              "fallback_target names an opponent for every fighter");
+    for (int i = 0; i < 4; ++i) {
+        checkInt(gameplay::kNoTarget, m.locks.target(i),
+                 "asking for the facing fallback writes no lock");
+        checkInt(0, m.locks.pulse(i), "and raises no pulse");
+        check(!m.locks.switched(i), "and reports no switch");
+    }
+    {
+        gameplay::TargetLocks facing;
+        const int side[4] = {0, 0, 1, 1};
+        facing.reset(4, side);
+        bool alive[4] = {true, true, true, true};
+        facing.step(alive);
+        checkInt(2, facing.fallback_target(0, alive), "fighter 0's fallback is hostile 2");
+        checkInt(2, facing.fallback_target(1, alive), "fighter 1's fallback is hostile 2");
+        checkInt(0, facing.fallback_target(2, alive), "red 2's fallback wraps to hostile 0");
+        checkInt(0, facing.fallback_target(3, alive), "red 3's fallback wraps to hostile 0");
+        alive[2] = false;
+        checkInt(3, facing.fallback_target(0, alive), "a dead first hostile moves the fallback on");
+        alive[2] = true;
+        checkInt(gameplay::kNoTarget, facing.fallback_target(9, alive),
+                 "an out-of-range owner has no facing fallback");
+    }
+
+    // The FIRST selection is the gesture's, and it is FUN_0041f580's wrap walk from the
+    // owner's own index: the first HOSTILE at or after it, not the first in the table.
+    m.tick(0, true);
+    checkInt(2, m.locks.target(0), "blue 0's first tap takes hostile 2 (walk from 0)");
+    check(m.locks.switched(0), "a real selection reports the switch");
+    checkInt(gameplay::kLockPulseTicks, m.locks.pulse(0), "and raises the recovered pulse");
+    m.tick(1, true);
+    checkInt(2, m.locks.target(1), "blue 1's first tap walks past itself to 2");
+    m.tick(2, true);
+    checkInt(0, m.locks.target(2), "red 2's first tap takes hostile 0 (walk wraps past ally 3)");
+    m.tick(3, true);
+    checkInt(0, m.locks.target(3), "red 3's first tap takes hostile 0");
+
+    // A fighter whose whole enemy team is dead cannot select one: the walk lands nowhere
+    // and the lock stays empty rather than latching a corpse.
     gameplay::TargetLocks lone;
     const int side[4] = {0, 0, 1, 1};
     lone.reset(4, side);
     bool alive[4] = {true, true, false, false};   // both reds are down
     lone.step(alive);
+    lone.cycle_enemy(0, true, alive);
     checkInt(gameplay::kNoTarget, lone.target(0), "no living enemy leaves blue 0 unlocked");
+    lone.cycle_enemy(1, true, alive);
     checkInt(gameplay::kNoTarget, lone.target(1), "no living enemy leaves blue 1 unlocked");
     bool redsAlive[4] = {false, false, true, true};
-    lone.step(redsAlive);
+    lone.cycle_enemy(2, true, redsAlive);
     checkInt(gameplay::kNoTarget, lone.target(2), "and no living enemy leaves red 2 unlocked");
 }
 
@@ -107,7 +175,8 @@ void testInitialFallback() {
 void testTwoVTwoSwitching() {
     section("2v2 switching");
     TwoVTwo m;
-    checkInt(2, m.locks.target(0), "blue 0 starts on enemy 2");
+    m.tick(0, true);                       // the first tap is the first selection
+    checkInt(2, m.locks.target(0), "blue 0's first tap selects enemy 2");
     m.tick(0, true);
     checkInt(3, m.locks.target(0), "one tap moves blue 0 to enemy 3");
     m.tick(0, true);
@@ -139,23 +208,27 @@ void testTwoVTwoSwitching() {
 void testIndependentLocks() {
     section("independent player locks");
     TwoVTwo m;
-    m.tick(0, true);   // blue 0 -> enemy 3
-    checkInt(3, m.locks.target(0), "blue 0 switched to 3");
-    checkInt(2, m.locks.target(1), "blue 1 still holds its own 2 (a separate entry)");
+    m.tick(0, true);   // blue 0's first tap -> enemy 2
+    checkInt(2, m.locks.target(0), "blue 0's first tap selects 2");
+    checkInt(gameplay::kNoTarget, m.locks.target(1), "blue 1 has not tapped, so it has no lock");
 
     m.tick(1, true);   // blue 1 cycles on its own
-    checkInt(3, m.locks.target(0), "blue 0 is untouched by blue 1's switch");
-    checkInt(3, m.locks.target(1), "blue 1 cycled 2 -> 3 on its own");
+    checkInt(2, m.locks.target(0), "blue 0 is untouched by blue 1's switch");
+    checkInt(2, m.locks.target(1), "blue 1's own first tap also lands on 2 (a separate entry)");
+    m.tick(1, true);
+    checkInt(3, m.locks.target(1), "blue 1 cycles on to 3 in its own entry");
+    checkInt(2, m.locks.target(0), "and blue 0 is still on 2");
 
     // The two sides are mirrored: red can hold a different enemy too.
     m.tick(2, true);
-    checkInt(1, m.locks.target(2), "red 2 cycled 0 -> 1");
-    checkInt(3, m.locks.target(0), "red's switch did not disturb blue 0");
+    checkInt(0, m.locks.target(2), "red 2's first tap takes hostile 0");
+    checkInt(2, m.locks.target(0), "red's switch did not disturb blue 0");
 
     // Drive every fighter off the shared defaults so the four differ at once: the table
     // really is per fighter, not one selection consulted four times.
-    m.tick(1, true);   // blue 1 -> 2
-    m.tick(3, true);   // red 3 -> 1
+    m.tick(0, true);   // blue 0 -> 3
+    m.tick(1, false);  // blue 1 -> 2
+    m.tick(2, true);   // red 2 -> 1
     m.tick(3, true);   // red 3 -> 0
     const int t[4] = {m.locks.target(0), m.locks.target(1),
                       m.locks.target(2), m.locks.target(3)};
@@ -176,8 +249,9 @@ void testIndependentLocks() {
 void testProximityNeverOverrides() {
     section("a closer unselected enemy does not take the lock");
     TwoVTwo m;
-    m.tick(0, true);                       // blue 0 locks enemy 3 (the far one)
-    checkInt(3, m.locks.target(0), "blue 0 locked the far enemy 3");
+    m.tick(0, true);                       // first tap: enemy 2
+    m.tick(0, true);                       // deliberate tap to the other enemy, 3
+    checkInt(3, m.locks.target(0), "blue 0 locked enemy 3");
     for (int i = 0; i < 240; ++i) m.tick(); // a long match, enemy 2 walks right past
     checkInt(3, m.locks.target(0),
              "240 ticks later the lock is still 3, never stolen by proximity");
@@ -197,7 +271,8 @@ void testProximityNeverOverrides() {
 void testKoAndRespawn() {
     section("KO, the deterministic fallback and respawn");
     TwoVTwo m;
-    m.tick(0, true);                       // blue 0 -> enemy 3
+    m.tick(0, true);                       // first tap -> enemy 2
+    m.tick(0, true);                       // second tap -> enemy 3
     checkInt(3, m.locks.target(0), "blue 0 holds enemy 3");
 
     // Enemy 3 is KO'd. The lock must not survive as a dead index.
@@ -212,14 +287,18 @@ void testKoAndRespawn() {
     m.tick();
     checkInt(gameplay::kNoTarget, m.locks.target(0), "with no living enemy the lock releases");
 
-    // Respawn. The index is valid again, so the fallback re-acquires it deterministically
-    // and the lock never carries a stale index across the round.
+    // Respawn does NOT re-acquire on its own (issue #49): the release above is a real
+    // "no selection" state, and only a gesture leaves it. This is the case the old
+    // round-start acquisition used to cover, so it is pinned explicitly.
     m.alive[2] = true;
     m.alive[3] = true;
-    m.tick();
-    checkInt(2, m.locks.target(0), "respawn re-acquires a valid enemy lock");
+    for (int i = 0; i < 120; ++i) m.tick();
+    checkInt(gameplay::kNoTarget, m.locks.target(0),
+             "enemies respawning does not hand out a lock");
+    m.tick(0, true);
+    checkInt(2, m.locks.target(0), "the next tap selects the respawned enemy 2");
     check(m.locks.target(0) >= 0 && m.locks.target(0) < m.locks.fighter_count(),
-          "the respawned lock index is in range");
+          "the re-selected lock index is in range");
 
     // A long dead period must not accumulate anything.
     for (int i = 0; i < 60; ++i) m.tick();
@@ -240,6 +319,7 @@ void testKoAndRespawn() {
 void testInvalidTargets() {
     section("invalid targets");
     TwoVTwo m;
+    m.tick(0, true);
     m.tick(0, true);
     checkInt(3, m.locks.target(0), "blue 0 holds enemy 3 before the bad input");
 
@@ -279,7 +359,9 @@ void testInvalidTargets() {
     shrunk.reset(4, side);
     bool alive[4] = {true, true, true, true};
     shrunk.step(alive);
-    checkInt(0, shrunk.target(2), "red 2 starts on blue 0");
+    checkInt(gameplay::kNoTarget, shrunk.target(2), "red 2 starts with no selection at all");
+    shrunk.cycle_enemy(2, true, alive);
+    checkInt(0, shrunk.target(2), "red 2's first tap takes blue 0 (past the red ally)");
     shrunk.set_target(2, 3, alive);        // red 2 locks a fellow red: aim ally
     checkInt(3, shrunk.target(2), "red 2 aimed at red 3");
     check(shrunk.is_ally(2, 3), "red 3 is an ally of red 2");
@@ -464,17 +546,23 @@ void testMatchFollowsTheLock() {
 
     const fnd::input::PlayerState* inputs[4] = {};
     match.step(inputs, 1.0 / 60.0);
-    checkInt(2, match.locked_target(0), "blue 0 acquires enemy 2");
-    checkInt(2, match.melee_target(0), "melee target agrees with the lock");
+    // Nothing has been selected yet, so nothing is locked (issue #49) — but melee still
+    // resolves by proximity, which is what keeps an unlocked fighter fighting.
+    checkInt(gameplay::kNoTarget, match.locked_target(0),
+             "a step with no gesture leaves blue 0 unlocked");
+    checkInt(2, match.melee_target(0), "melee falls back to the near enemy 2");
     checkInt(0, match.melee_target(2), "red 2's melee target is a blue fighter");
 
-    // Switch blue 0 to the FAR enemy 3 and confirm facing follows the lock, not
-    // proximity. Enemy 2 stays much closer the whole time.
+    // The LockSwitch gesture (Match::cycle_locked_target) is what selects: the first tap
+    // takes the near enemy 2, the next one the far enemy 3.
+    match.cycle_locked_target(0, true);
+    checkInt(2, match.locked_target(0), "the first tap locks the near enemy 2");
+    checkInt(2, match.melee_target(0), "melee target agrees with the lock");
     match.cycle_locked_target(0, true);
     checkInt(3, match.locked_target(0), "blue 0 switched to the far enemy 3");
     checkInt(3, match.melee_target(0), "melee follows the lock to the far enemy");
-    checkInt(2, match.locked_target(1),
-             "blue 1 keeps its own lock through blue 0's switch");
+    checkInt(gameplay::kNoTarget, match.locked_target(1),
+             "blue 1, which never tapped, keeps no lock through blue 0's switch");
 
     // Facing: +Z is yaw 0, -Z is yaw pi. Enemy 3 sits at -Z, so the yaw must run to
     // ~pi no matter that enemy 2 is 300 units away and enemy 3 is 2400.
@@ -505,7 +593,8 @@ void testMatchAllyLockNeverAttacksTheAlly() {
     match.reset(config, models, anims, nullptr, nullptr);
     match.economy().setLogFile(nullptr);
 
-    match.step(nullptr, 1.0 / 60.0);             // seed the locks
+    match.step(nullptr, 1.0 / 60.0);             // one maintenance tick, no selection
+    checkInt(gameplay::kNoTarget, match.locked_target(0), "round start leaves blue 0 unlocked");
     match.lock_ally_target(0);
     checkInt(1, match.locked_target(0), "blue 0 aims at the ally beside her");
     check(match.lock_holds_ally(0), "the recovered hold is live");
@@ -623,7 +712,7 @@ void testCameraRetargetBlend() {
 
 int main() {
     std::printf("TARGET_LOCK_TEST\n");
-    testInitialFallback();
+    testRoundStartIsUnlocked();
     testTwoVTwoSwitching();
     testIndependentLocks();
     testProximityNeverOverrides();
