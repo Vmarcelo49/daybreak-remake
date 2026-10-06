@@ -66,6 +66,7 @@
 #include "audio/combat_audio.h"
 #include "game/effect_events.h"
 #include "game/effect_catalog.h"
+#include "game/aura_attach.h"
 #include "game/fx_cards.h"
 #include "input/input_backend.h"
 #include "input/tick_input.h"
@@ -1123,9 +1124,12 @@ struct App {
     // holds FUN_00633ca0's seven data/aura/%02d.x attachment models, whose textures are
     // the three muzzle flashes (slots 0/1/5), the blue hit (2) and the burning aura (3).
     game::EffectCatalog fxCatalog;
-    int  fxAttach[7] = {-1, -1, -1, -1, -1, -1, -1};
-    float fxAttachSeconds[7] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    int  fxAttach[game::kAuraSlots] = {-1, -1, -1, -1, -1, -1, -1};
+    float fxAttachSeconds[game::kAuraSlots] = {};
     int fxAuraIndex[2] = {-1, -1};   // per-fighter aura card, match mode
+    // The eleven attach points of game/aura_attach.h, resolved once per fighter on its own
+    // rig: the aura attachment draws one instance per resolved point (FUN_004205e0).
+    game::AuraAttach auraAttach[4];
     // One instance id per spawned card, monotonic for the whole run: two hits in the
     // same tick are two instances and neither can retire the other (game/fx_cards.h).
     uint32_t fxNextInstance = 1;
@@ -2455,6 +2459,18 @@ static bool initMatch(App& app) {
             config.moves[i] = app.moveDefs[i].get();
     }
 
+    // The aura's attach points, resolved on each fighter's own rig the way FUN_0041e180
+    // resolves them once per character: eleven named frames whose world matrices are what
+    // FUN_004205e0 draws the attachment on. A rig that does not carry all eleven is not a
+    // shipped rig; the count is reported either way because it IS the aura instance count.
+    for (int i = 0; i < fighterCount; ++i) {
+        app.auraAttach[i] = game::resolveAuraAttach(app.scene.models[app.matchRig[i]].model);
+        if (app.auraAttach[i].found < game::kAuraAttachPoints)
+            std::printf("[aura] fighter %d: %d/%d attach points on %s\n", i,
+                        app.auraAttach[i].found, game::kAuraAttachPoints,
+                        app.scene.models[app.matchRig[i]].source.c_str());
+    }
+
     // Standalone --match captures/scripts are the historical unclamped trace path:
     // their positions and camera samples remain comparable to the banked recipes.
     // Interactive --match and front-end battles use collision.x movement/ground
@@ -2806,7 +2822,7 @@ static void buildFxAssets(App& app) {
     // FUN_00633ca0's attachment table: seven data/aura/%02d.x models, drawn on the
     // fighter's own matrices (FUN_004205e0). Their textures name the roles: 0/1/5 are
     // the three muzzle flashes, 2 the blue hit flash, 3 the burning aura, 4 a bucket.
-    for (int slot = 0; slot < 7; ++slot) {
+    for (int slot = 0; slot < game::kAuraSlots; ++slot) {
         char rel[32];
         std::snprintf(rel, sizeof(rel), "/aura/%02d.x", slot);
         app.fxAttach[slot] = addFxCard(app, dataDir + rel);
@@ -2867,7 +2883,7 @@ static bool spawnEffect(App& app, game::EffectEventQueue& queue, int effectId,
 // data/effect/ and no manager instance.
 static bool spawnAttachment(App& app, game::EffectEventQueue& queue, int slot,
                             const glm::vec3& at) {
-    if (slot < 0 || slot >= 7 || app.fxAttach[slot] < 0) return false;
+    if (slot < 0 || slot >= game::kAuraSlots || app.fxAttach[slot] < 0) return false;
     const float ttl = app.fxAttachSeconds[slot] > 0.f ? app.fxAttachSeconds[slot] : 0.1f;
     queue.pushSpawn(app.fxNextInstance++, at, app.fxAttach[slot], ttl);
     return true;
@@ -2880,23 +2896,30 @@ static bool spawnAttachment(App& app, game::EffectEventQueue& queue, int slot,
 // that follows.
 static void placeFxCards(App& app) {
     std::vector<render::SceneRenderer::EffectInstance> instances;
-    instances.reserve(app.liveFx.size() + 4);
+    instances.reserve(app.liveFx.size() + 2 * game::kAuraAttachPoints);
     if (!app.opts.debugPrims) {
         for (const game::LiveFxCard& c : app.liveFx) {
             if (c.asset < 0 || (size_t)c.asset >= app.scene.models.size()) continue;
             instances.push_back({c.asset, glm::translate(glm::mat4(1.f), c.position)});
         }
-        // The aura is fighter state, not an event: it follows the fighter's own model
-        // matrix in the fighter's local space. FUN_004205e0 draws it once per fighter
-        // matrix (11 of them); the port keeps the single local-space placement the aura
-        // cube used, which is the same transform without the per-bone repetition.
+        // The aura is fighter state, not an event: FUN_004205e0 draws the selected
+        // data/aura model once per attach point, on each of the eleven bone matrices at
+        // player+0x38c that FUN_00421010 refreshed from the rig's own Bip frames. The port
+        // does the same — one instance per resolved point, in the fighter's model space,
+        // which is where a bone-attached weapon already goes. See game/aura_attach.h for
+        // the enumeration that settles the instance count.
         for (int i = 0; i < 2; ++i) {
             if (app.fxAuraIndex[i] < 0) continue;
             const gameplay::Fighter& f = app.match.fighter(i);
             if (!f.aura_active()) continue;
-            instances.push_back({app.fxAuraIndex[i],
-                                 matchRenderMatrix(app, i) *
-                                     glm::translate(glm::mat4(1.f), f.aura_center_local())});
+            const size_t rig = app.matchRig[i];
+            if (rig >= app.worlds.size()) continue;
+            const glm::mat4 base = matchRenderMatrix(app, i);
+            for (int point = 0; point < app.auraAttach[i].found; ++point) {
+                const size_t frame = (size_t)app.auraAttach[i].frame[point];
+                if (frame >= app.worlds[rig].size()) continue;
+                instances.push_back({app.fxAuraIndex[i], base * app.worlds[rig][frame]});
+            }
         }
     }
     app.renderer.setEffectInstances(instances);
