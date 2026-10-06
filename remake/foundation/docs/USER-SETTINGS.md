@@ -20,14 +20,17 @@ forbids for the port.
 
 Delete the file to reset everything to its defaults; there is no separate reset file.
 
-## What is stored (schema version 1)
+## What is stored (schema version 3)
 
 ```ini
-version = 1
+version = 3
 
 [display]
 fullscreen = false
 resolution = desktop          # or WxH, e.g. 1920x1080
+
+[render]
+toon = false                  # the Options screen's toon-rendering row (issue #21)
 
 [audio]
 master = 100                  # 0..100, one per bus
@@ -53,6 +56,14 @@ pad2_guid =
   window's current size: `desktop` means "follow the display". A window drag, a
   startup pixel-size event or a fullscreen transition moves the live selection but
   never rewrites this key (`ui::FrontendSettings::resolutionChoice`).
+* `[render] toon` is the Options row 0 toggle: on means the character and weapon draws use
+  the original's toon technique — an outline hull pass plus the effect's own
+  `albedo * saturate(ramp + emissive − 0.1)` shading off the shipped
+  `data/directX/toon.cnv` ramp. Off is the shipped default and the state every banked
+  capture was made in; the row flips it live (the renderer reads the live value every
+  frame) and this key is what makes it survive a restart. `ROADMAP-PENDING.md`
+  §"Renderer options (issue #21)" carries what the original's global gates and the port
+  rules.
 * The binding rows are one comma-separated value per action, in `fnd::input::Action`
   order: `up, down, left, right, attack_a, attack_b, guard, shoot, jump, special,
   tactics, lock_switch, pause`. `-1` is unbound. Keyboard values are SDL scancodes,
@@ -60,6 +71,19 @@ pad2_guid =
 * **Session state is deliberately absent.** Earned titles, result stats, match
   outcomes and punishment-costume flags live only for the session, in the original as
   well; the issue keeps them out of permanent saves, and no key here may name one.
+
+### Schema history and migrations
+
+| Version | Change | A file of this version |
+|---|---|---|
+| 1 | initial (`up, down, left, right, attack_a, attack_b, guard, …`, 13 entries) | migrated: the removed heavy-melee entry is dropped, every other binding kept, **one warning** |
+| 2 | issue #10 removed the port-invented heavy action, so the rows are 12 entries | migrated: every value read as v2 wrote it, `toon` takes its default (off), nothing dropped, **no warning** (a context line) |
+| 3 | issue #21 added `[render] toon` | current |
+
+Migration is per document, never partial: the version line decides how the binding rows are
+read, and the next save writes the current version. The `[render]` section itself is read
+whatever the version line says, so a hand-edited file is not rejected for naming a key this
+build knows. A version this build cannot migrate (4 and up) is rejected whole.
 
 ## Controller identity policy (port decision)
 
@@ -131,9 +155,12 @@ captures and parity recipes behave identically with and without a user config
 * `user_settings_test` (device-free): defaults, round trip, versioning, malformed and
   hostile files, value ranges, paths (including a path with spaces), the atomic write
   (no temp leftovers, no clobbering on failure, owner-only mode), the resolution
-  fallback and the controller-placement policy.
+  fallback, the controller-placement policy, and both migrations (a v1 row losing the
+  removed heavy binding with one warning, a v2 document keeping every value and gaining
+  `toon` at its default with none).
 * `frontend_config_test`: the document ↔ live-settings seam, including the resolution
-  choice rule.
+  choice rule and the toon toggle's round trip through `applyUserSettings` /
+  `toUserSettings`.
 * End to end, with an isolated `XDG_CONFIG_HOME`: first launch → change a volume →
   saved → restart loads it and does not rewrite the file → one step from the loaded
   value (40 → 45) proves the value was applied. Recovery was exercised with a garbage

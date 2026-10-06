@@ -1101,33 +1101,113 @@ The current implementation and tests are documented in `ANIMATION-SETS.md`.
   different derivative conventions) — no experiment available distinguishes
   it from correct rendering, so it stays a note, not a task.
 
-## Renderer options (issue #21) — recovered mapping, status 2026-10-05
+## Renderer options (issue #21) — status 2026-10-05: row 0 landed, rows 1-2 open
 
 `FRONTEND-PLAN.md` §2.11 gives the three rows the options screen draws above the window toggle
 (`FUN_00403470.c:25-53`: toon `DAT_006cfcec`, shadows `DAT_006cfcea`, texture resolution
-`DAT_006cfceb`). This is what each one actually gates, from its read sites, and what the port can
-do with it.
+`DAT_006cfceb`). This is what each one actually gates, from its read sites, what the port now
+does with it, and what is still open.
 
-### Row 0 — toon rendering (`DAT_006cfcec`) — IMPLEMENTABLE
+### Row 0 — toon shading (`DAT_006cfcec`) — DONE
 
+* **The row's own name is recovered, not inferred.** The baked label sheet
+  (`data/config/0002.cnv`, the sheet `FUN_00403470` draws) reads トゥーンシェーディング on row 0,
+  and the help sheet (`data/config/0003.cnv`, the same screen's footer) reads
+  「トゥーンシェーディングを使用するかどうかを←→で選択します。トゥーンシェーディングを使用しない
+  場合、動作が少し軽くなります。」 — "choose whether to use toon shading with ←→; without it the
+  game runs a little lighter". The cost profile it admits is the second geometry pass below.
 * **Read site.** `FUN_006396f0:126-140`, the per-character draw inside the battle view loop:
   `FUN_00651110(0)` selects the plain technique, and with the toggle on it selects **mode 1**
   for a single view or **mode 7** for a split view (`FUN_00651110:9-30` maps 1 and 7 to
   `FUN_00652220`, with `+0x28` carrying 0 or 7). `FUN_005f60b0:121-126` reads the same global
   for the material path and calls `FUN_00651110(0|1)` there.
-* **What it is.** A technique switch, not a post effect: mode 0 is the fixed-function-lit
-  draw the port already reproduces (`model_wgsl.h:117-140`), modes 1/7 are a ramp-shaded
-  variant. The ramp is the shipped **`data/directX/toon.bmp`** (64x64 24-bit, loaded at
-  `FUN_00650410:19`; the install ships it as `data/directX/toon.cnv` — the bundles convert
-  .bmp to .cnv, `assets/cnv.h:258`). The split-screen variant differs only in a shader
-  constant, so one ramp covers both.
-* **Port plan.** Sample the ramp with the diffuse term in `model_wgsl.h` (replacing the
-  linear `NdotL` the fixed-function path uses) behind a uniform flag, upload the ramp through
-  the existing CNV image path, and re-apply on toggle so no restart is needed. The band
-  structure comes from the bitmap, never from a constant.
-* **Status: not implemented in this pass.** The recovered behaviour and the plan above are
-  the deliverable of the investigation step; the implementation is scheduled as its own
-  commit (shader + ramp upload + settings v3 + captures + frame times).
+* **What the technique actually draws.** OFF (`FUN_006519f0`) is the single-pass device path
+  the port already reproduces. ON (`FUN_00652220`) is a **two-pass D3DX effect**: the ten
+  effects are precompiled blobs embedded in the exe (`FUN_0064ff80` calls `D3DXCreateEffect`
+  on `DAT_006a5f68`/`0x6a6cd8`/`0x6a7b10`/… into the singleton at `0x6d13c0`; modes 1 and 7
+  use blobs `0x6a5f68` and `0x6a9bd0`, the material path uses `0x6a6cd8`). Its pass loop is
+  `SetRenderState(D3DRS_CULLMODE, pass == 0 ? 2 : 3)` (`FUN_00652220:50-55`, state `0x16`:
+  D3DCULL_CW then D3DCULL_CCW) with `SetTexture(0, NULL)` and a per-material `MaterialColor`
+  in pass 0, and the material's own texture as the effect's `Tex0` in pass 1. Disassembling
+  the blobs with the shipped `d3dx9_25.dll` (`D3DXDisassembleShader`) gives both passes:
+  * **pass 0 = the outline hull** (blob `+0x934`): a preshader computes
+    `c5 = MaterialColor * 0.285714286`, and the vertex shader offsets the clip position along
+    the world normal scaled by clip `w` — `mad oPos.x, n.x, 0.00275*w`, `…y, 0.00366666657*w`,
+    `…z, 1e-6*w` — so the rim is a constant ~1.1 px at the original's 800x600 (the constants
+    are `0.011/4` and `0.011/3`, the same pixel width in x and y). It has **no pixel shader**,
+    so the flat darkened colour reaches the blender unchanged; drawing the hull's *back*
+    faces (CULLMODE 2 on CW-front assets) leaves only the rim that sticks out past the
+    silhouette after the model's depth wins. This is the outline the player sees.
+  * **pass 1 = the toon-shaded surface** (blob `+0x628` / `+0x4d0`): the vertex shader
+    computes `oT1 = (min(max(N·(0, 0.287347883, 0.957826257), 0), 1), 0.5)` from the
+    **object-space** normal (the light direction is baked into the shader, `dp3 r0.x, v1, c9`)
+    and `oD0 = MaterialColor`; the pixel shader is
+    `tex t0/t1/t2 ; sub r0, v0, 0.1 ; add_sat r0, t1, r0 ; mul r0, t0, r0`, i.e.
+    `albedo * saturate(ramp + MaterialColor − 0.1)` — no ambient term, no light colour and no
+    vertex colour in this path.
+* **What `MaterialColor` is, and what the ramp is.** The runtime material records are verbatim
+  `D3DXMATERIAL` copies (`FUN_00661f60:90/116`: `operator_new(count * 0x48)` +
+  `memcpy(dst, src, count * 0x48)`), so the float4 handed to the effect at `material + 0x30`
+  is **D3DMATERIAL9.Emissive** (the layout is Diffuse +0x00, Ambient +0x10, Specular +0x20,
+  Emissive +0x30, Power +0x40, texture name +0x44), and the pass loop's
+  `*(float*)(material + 0x40) == 0.0` test is "Power == 0". The ramp is the technique's
+  `Tex1` parameter, bound from the singleton's `+0x30` — the texture `FUN_00650410:19` loads
+  from `data/directx/toon.bmp` (the install ships it as `data/directX/toon.cnv`; the bundles
+  convert .bmp to .cnv, `assets/cnv.h:258`). The plain technique never binds `Tex1`/`Tex2`:
+  the only references to `0x6d13f0`/`0x6d13f4` in the whole `.text` are the effect
+  techniques' `SetTexture` calls. So the ramp is part of the ON path only, loaded once at
+  device setup because the effects are.
+* **What the port does now.** `SceneRenderer::init` uploads the shipped bitmap once
+  (`AssetSource::resolve` over both spellings + `xm::decodeCnvImage` — the same bundle-first
+  read and the one CNV decoder the texture cache uses, no new loader), 64x64 RGBA8Unorm with
+  a single mip level, and binds it beside the camera (group 0, bindings 1 and 2). For the
+  `character`/`weapon` draws the scene queues a second draw of the same submesh as
+  `Pass::Outline`, and the shader implements both recovered passes: the hull offsets the clip
+  position exactly as the blob does and returns `emissive * 0.285714286`, and the surface
+  returns `albedo * saturate(ramp(object-space N·L, 0.5) + emissive − 0.1)`. The per-draw bits
+  are decided per frame in `fillDrawData` from `Appearance::toon`, so the toggle is a
+  draw-time switch with no re-upload; with it off the outline draws are never submitted and
+  the lighting is the fixed-function term bit for bit. Options row 0 draws the original's own
+  state cells (`FUN_00403470:25-26`: the cell row is the toggle value at x=368 and its
+  complement at x=464) and flips live; `[render] toon` persists it as settings v3.
+* **PORT RULES (labelled, issue #21):**
+  1. **Eligibility.** Only the `character` and `weapon` roles get the hull and the ramp. The
+     original selects the technique at the per-character draw and on the object material path
+     that draws a fighter's body and weapon together; the stage keeps its fixed-function
+     lighting. The port's role is the stand-in for that technique switch, which no material
+     term carries. Measured: a stage-only frame is byte-identical with the toggle either way.
+  2. **Ramp coordinate and sampler.** `u = saturate(object-space N·L)`, `v = 0.5` (the bitmap
+     is constant down its columns), read from `.r`: the original's ramp target is a luminance
+     surface (`FUN_00650410` allocates a `D3DFMT_L8` target), so the greyscale value is the
+     term. The sampler is clamp + linear, because `u = 1` has to read the bright end and WRAP
+     would blend it with the dark end; the original's effect-file sampler state is not
+     recoverable from the dump.
+  3. **The hull is the same geometry, not a second mesh.** The original's two passes draw the
+     same submeshes, so the port queues one extra draw per eligible submesh sharing the
+     vertex/index buffers and the palette slice, and draws all hulls before the surfaces
+     (the original interleaves per character; depth testing makes the global order equivalent
+     and it keeps the pipeline switches to one per pass).
+  4. **No synthesized ramp.** Without the game data the bitmap cannot be loaded: the sampler
+     binds the 1x1 white fallback, the bits are never set, and ON degrades to OFF with one
+     stderr line. A constant standing in for the shipped bitmap would be a false claim about
+     what the original samples.
+* **Verification.** `toon_ramp` (CTest; skips 77 without a renderer or the install) renders
+  the same bind-pose character frame with no flag / `--no-toon` / `--toon` at 800x600 and
+  asserts the default is byte-identical to OFF; that ON adds a thin dark rim outside the OFF
+  silhouette (measured 1152 rim px with mean luminance 35.9 against a 72284 px silhouette of
+  mean 108.2 — 1.6% of the silhouette, so a rim and not a filled hull); that no silhouette
+  pixel is lost; that ≥50% of the surface pixels changed (the ramp shading, measured 71787 of
+  72284); that a stage-only frame is byte-identical either way; and that all four views of a
+  4-view 2v2 battle frame change (4907/5123/3000/2487 px). Verified the pin fails when the
+  hull stops being submitted: "rim 0 px … the outline no longer draws". `user_settings_test`
+  and `frontend_config_test` cover the v2→v3 migration and the option round trip. The
+  pre-change binary (`c996291`, built separately) and this build produce **byte-identical**
+  frames with the toggle off for the bind-pose character, stage01 and both 960x540 battle
+  captures (md5 `eb191e0f`, `a7049fe3`, `bcfd50ca`, `b6c99cbf`), so no banked capture moves.
+* **Left for this row.** Nothing functional. One deployment note: a browser pack built from
+  a single asset directory (`scripts/make_pack.py`) does not carry
+  `data/directX/toon.cnv`, so the toggle is inert there until the pack includes it — the
+  same "no game data" path as rule 4, not a silent substitution.
 
 ### Row 1 — shadows (`DAT_006cfcea`) — IMPLEMENTABLE, NOT A BLOB
 
@@ -1141,8 +1221,10 @@ do with it.
 * **Port plan.** Reuse the model pass with a ground-projection matrix and an unlit dark
   variant of the model shader; it needs a shader variant plus a per-fighter shadow draw in
   the scene pass, which is why it is not in this pass.
-* **Status: not implemented.** The unavailable row must say so specifically (projected
-  character shadow, recovered but unimplemented) rather than the generic message.
+* **Status: not implemented.** Until this slice lands, row 1 keeps its own message rather
+  than the generic `UNAVAILABLE`: the honest one is a projected character shadow, recovered
+  but unimplemented (e.g. `SHADOW: NOT IMPLEMENTED (PROJECTED CHARACTER SHADOW)`). The
+  toggle must not be offered as working before the second draw exists.
 
 ### Row 2 — texture resolution (`DAT_006cfceb`) — A LOADER POLICY, NOT A RUNTIME SAMPLER
 
@@ -1156,7 +1238,9 @@ do with it.
   draw time. WebGPU can express it, but only where the port prepares textures: a texture-size
   or mip policy in the texture cache, which must rebuild the scene's textures when it changes.
 * **Status: not implemented.** The honest port equivalent is a texture-cache policy, so the
-  row keeps a specific unavailable message until that cache can rebuild in place.
+  row keeps its own message rather than the generic `UNAVAILABLE` — it is a load-time
+  texture policy the port's cache cannot rebuild in place yet (e.g.
+  `TEXTURE RESOLUTION: NOT IMPLEMENTED (LOAD-TIME POLICY)`).
 
 ## C. Animation states
 
