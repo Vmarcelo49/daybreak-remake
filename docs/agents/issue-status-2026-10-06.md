@@ -935,3 +935,62 @@ every shadow point the wrong way, so the brief forbids inventing one and present
 whose directory had been deleted in an earlier session, still holding the branch
 `feat/issue-21-renderer-options` (the toon row, long since merged). Pruned, and the shadow row got a
 fresh worktree.
+
+## Round 26 — #56 and #32 merged (58 tests), and the reviewer's first two findings
+
+### The reviewer caught a defect I had cleared by reading
+
+**I read #30's prune predicate, concluded it was "conservative on all three axes", and merged it. That
+was wrong.** The reviewer's differential harness found the failure is in *float*: at a ray landing
+exactly on a face's bounds **corner**, the two slab parameters are equal in exact arithmetic but are
+reached through **different reciprocals per axis**, so a 1-ulp disagreement empties the interval and
+rejects a face `intersectTriangle` accepts. Measured: **6 mismatches over 469,090 trials** on the
+merged tree, **0** with the reviewer's slack. Concretely `move({25,100,125},{300,100,100})` stopped at
+`x = 80` where the unpruned walk gives `78.0082169` — one `kWallSkin` short.
+
+Bounded (222 divergences in 399,305 corner-aimed trials, **all** with `hitWall` unchanged and
+|Δpos| ≤ 1.99 — no tunneling) but real, and invisible to every timing number and to every
+byte-identical capture, because the recipes never hit that case. **I checked the zero-direction
+containment branch carefully and missed the equality case entirely.** Fixed forward as `f5f8278`:
+the slack, an outer-index guard for a latent ASAN fault the reviewer also found, and a behavioural
+test that reads `80.0000000`/FAIL without the slack and `78.0082169`/ok with it.
+
+**Lesson for the batch**: "I read it and it looks conservative" is not verification of a float
+predicate. A differential harness against the unpruned path is, and it is cheap — the reviewer wrote
+one in a single pass.
+
+### The release-gate hash mystery: my error, not a stale value
+
+`8cc49e6c` is the first 8 hex of **sha256**; `3e4e892a` is the **md5** of the same file. I spent a
+round treating the recorded value as stale because I compared an md5 against a sha256. The reviewer
+proved it on my own artifacts and then found the underlying **documentation defect**: the checklist
+never said which hash function its 8-hex values are, while this status doc quotes md5 prefixes of the
+same recipes — two conventions mixed, only the md5 ones labelled, which is why four workers quoted one
+family and two the other. Fixed in `d218597` along with three more: the preamble said "three" gates
+while §3.5 said "four"; **the 4p gate's command appeared nowhere in the checklist**; and §3.5's stated
+reason for the 1v1/2v2 sharing was wrong (it would predict com too, but com ends on the
+character-panel page while 1v1/2v2 end on the stage-select page — 74.8 % of pixels differ).
+
+### #56 merged (`d2cb4c2`), plus the guard the reviewer asked for
+
+Each `render()` call now owns a vertex region. Pre-fix evidence was strong: **5 of 9 in-cell reticle
+anchors had zero red pixels** and every cell's centre reticle sat on the **last** view's anchor
+(cell 0's centroid 18.5 px from its own, **0.6 px from view 3's**). Single-view recipes byte-identical;
+the four gates unmoved because they end on single-view frames.
+
+The reviewer confirmed the fix and found the residual gap: **a >16-pass frame would alias again
+silently**, and the renderer cannot detect it (`beginFrame` is per-batch, not per-frame). Landed its
+recommendation as `b476a44` — `kMaxPassesPerFrame` is public and the frame composer asserts against it,
+so a future frame that outgrows the budget aborts naming the issue. It also confirmed the same class in
+`render::DebugPrims` (not yet filed).
+
+### #32 merged (`3889fb3`): the projectile visual was shipped data after all
+
+The model is the `.X` named by the **260-byte block at file offset 4** of
+`data/bullet/<weaponId>/<type>.dat` — the file *header*, which is why #17's search of the effect table
+and the bullet record missed it (the record's 30-byte name really is an attach point, `Bip00`). The
+identity is checkable against shipped names, which is what makes it a recovery rather than a story:
+"rain of syringes" → `50.X` = a syringe, "rocket firework ascent" → `00.X` = a dart. Only the **aim**
+stays a labelled port rule (46 per-weapon update functions, unrecovered). Consequence recorded: the
+shot is no longer an fx card, so the card counters legitimately fall while `shotModels` counts the same
+shots.
