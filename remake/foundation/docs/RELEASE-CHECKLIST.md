@@ -499,7 +499,7 @@ numbers to record per scenario (from the demo's own summary):
 | Scenario | Command | Frames/ticks | Wall time | Peak live FX cards |
 |---|---|---|---|---|
 | 1v1, three rounds | §3.1 | 15500 ticks | 10.690 s | `peak=4/128`, `dropped=0`, `badEffectId=0` |
-| COM, three rounds | §3.2 | 15500 ticks | 55.154 s | `peak=5/128`, `dropped=0` |
+| COM, three rounds | §3.2 | 15500 ticks | 12.110 s | `peak=5/128`, `dropped=0` |
 | 2v2, three rounds | §3.3 | 15500 ticks | 28.210 s | `peak=6/128`, `dropped=0` |
 | 2v2, eight rounds | `--local-players=4 --script=<the §3.3 script extended to eight rematch rounds> --frames=40000` | 40000 ticks | 56.694 s | `peak=6/128`, `spawned=124`, `expired=123`, `dropped=0` |
 
@@ -513,11 +513,25 @@ population (`peak=6/128` live cards, `dropped=0`, `badEffectId=0`) — the
 issue #17 acceptance number. Sampled `/proc/<pid>/status` during that run:
 peak `VmRSS` ≈ 380 MB, peak thread count 14, no upward trend across rounds.
 
-The COM scenario is ~5× slower per tick than the 1v1 on this machine
-(52.8 s vs 10.3 s for the same 15500 ticks). It is well inside real time
-(≈294 ticks/s against a 64 Hz clock) but it is a measured difference, not a
-guess: the COM brain and its projectile load (`liveShots=2299` vs 1741) are
-the places to look if it ever matters.
+**The COM scenario's cost was measured, named and fixed (issue #30).** It used to
+be ~5x slower per tick than the 1v1 (54.030 s vs 10.799 s, three-run means); it is
+now **12.110 s vs 5.273 s, a 2.30x ratio**, and the 1v1 itself got 2.05x faster.
+
+The cost was not the script, not the extra views and not the round count — it was
+`BotBrain::probe_progress` -> `MovementCollision::move` -> `slideSegment` ->
+`firstWallHit`, which walked **every triangle of the movement mesh once per ray**
+with no spatial pruning: 39 rays per probe (13 ring samples x 3 body heights),
+76,010 rays in one 15500-tick run, **987 faces scanned and 646 tested per ray** —
+2.9e9 triangle visits. `setMeshes` now stores each movement triangle's AABB and
+`firstWallHit` rejects on a slab predicate before touching the triangle
+(`sweepReachesBounds`, conservative by construction: a face the horizontal
+one-stride segment cannot reach holds no point within it). Faces per ray fell to
+**1.18** and intersections to **0.87**.
+
+All 12 PPM captures of the two gate recipes and both `DAYBREAK_CAMINFO` traces are
+sha256-identical before and after, so this is a pure cost change. The residual
+2.30x is the **probe count** (0.53 probes/tick, ~6.8 ms each), not the query —
+closing it would mean changing COM decisions, which are pinned by tests.
 
 ## 7. What the gate found (and what it now claims)
 
