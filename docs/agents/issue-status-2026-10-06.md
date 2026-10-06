@@ -36,8 +36,10 @@ Base commit for the whole batch: `main` @ `a35e36d`.
 | #26 | animation | — | **re-scoped on GitHub** (per the human) | issue edited |
 | #37 | platform | — | **CLOSED** — D13 | `4cb3694` |
 | #38 | renderer | — | dropped (human: really low priority) | — |
-| #40 | frontend | — | unblocked: vendor pl_mpeg, keep it simple | — |
-| #43, #44, #47, #49, #50, #2, #21, #32, #33, #34, #27, #51, #48, #30, #35, #36, #4, #39, #24, #3 | — | — | queued | — |
+| #40 | frontend | `feat/issue-40-opening-movie` @ `dbd-worktrees/issue-40` | dispatched (vendor pl_mpeg, simple) | in progress | — |
+| #49 | hud | `fix/issue-49-ring-lock-state` @ `dbd-worktrees/issue-49` | dispatched | in progress | — |
+| #43 | frontend | `feat/issue-43-select-row-slidein` @ `dbd-worktrees/issue-43` | dispatched | in progress | — |
+| #44, #47, #50, #2, #21, #32, #33, #34, #27, #51, #48, #30, #35, #36, #4, #39, #24, #3 | — | — | queued | — |
 
 `main` is at **48/48 ctest** with the install and **48/48 with five tests Skipped** in a checkout
 with no game data at all (measured, not inferred — see below).
