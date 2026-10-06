@@ -73,6 +73,13 @@ pad2_guid =
   window's current size: `desktop` means "follow the display". A window drag, a
   startup pixel-size event or a fullscreen transition moves the live selection but
   never rewrites this key (`ui::FrontendSettings::resolutionChoice`).
+* `[render] shadows` is the Options row 1 toggle (影の表示): on means the character and
+  weapon draws are rendered once more into the recovered light-space shadow map and the
+  stage's receiver term subtracts the recovered 0.3 from its albedo where its own light
+  depth is behind the map. Off is the shipped default and the state every banked capture
+  was made in — a capture hashes exactly as it did before the pass existed — and the row
+  flips it live through the same per-frame path as `toon`. `foundation/docs/SHADOWS.md`
+  carries the recovery.
 * `[render] toon` is the Options row 0 toggle: on means the character and weapon draws use
   the original's toon technique — an outline hull pass plus the effect's own
   `albedo * saturate(ramp + emissive − 0.1)` shading off the shipped
@@ -94,17 +101,22 @@ pad2_guid =
 | Version | Change | A file of this version |
 |---|---|---|
 | 1 | initial (`up, down, left, right, attack_a, attack_b, guard, …`, 13 entries) | migrated: the removed heavy-melee entry is dropped, every other binding kept, **one warning** |
-| 2 | issue #10 removed the port-invented heavy action, so the rows are 12 entries | migrated: every value read as v2 wrote it, `toon` takes its default (off), no folder is remembered, nothing dropped, **no warning** (a context line) |
-| 3 | issue #21 added `[render] toon` | migrated: every value kept, `[game] install_dir` takes its default (empty), **no warning** (a context line) |
-| 4 | issue #36 added `[game] install_dir` | current |
+| 2 | issue #10 removed the port-invented heavy action, so the rows are 12 entries | migrated: every value read as v2 wrote it, `toon` takes its default (off), no folder is remembered, shadows take their default (off), nothing dropped, **no warning** (a context line) |
+| 3 | issue #21 added `[render] toon` | migrated: every value kept, `[game] install_dir` takes its default (empty), `shadows` takes its default (off), **no warning** (a context line) |
+| 4 | issue #36 added `[game] install_dir` | migrated: every value kept, `shadows` takes its default (off), **no warning** (a context line) |
+| 5 | issue #21 row 1 added `[render] shadows` | current |
 
 Migration is per document, never partial: the version line decides how the binding rows are
 read, and the next save writes the current version. The `[render]` and `[game]` sections
 themselves are read whatever the version line says, so a hand-edited file is not rejected
-for naming a key this build knows. A version this build cannot migrate (5 and up) is
+for naming a key this build knows. A version this build cannot migrate (6 and up) is
 rejected whole. A migration never drops a stored value; the only thing an older file cannot
 carry is a key that did not exist yet, and that key's default is what the older file meant.
 
+**Why the shadow toggle is v5 and not v4**: issues #36 and #21 row 1 were developed on
+separate branches from v3 and each first took v4. #36's v4 shipped first, so it keeps the
+slot; the merge moved the shadow toggle to v5 and taught this build to READ a v4 document
+(a file written by a #36 build) with its `install_dir` intact and the toggle defaulted off.
 ## Controller identity policy (port decision)
 
 The original stores bindings per **player** — `config.dat`'s 0xd0-byte block is exactly

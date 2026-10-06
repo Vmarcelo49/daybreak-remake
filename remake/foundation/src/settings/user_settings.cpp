@@ -155,6 +155,7 @@ bool UserSettings::operator==(const UserSettings& other) const {
     return installDir == other.installDir && fullscreen == other.fullscreen &&
            resolution == other.resolution &&
            toonRendering == other.toonRendering &&
+           shadowRendering == other.shadowRendering &&
            volumes.master == other.volumes.master && volumes.music == other.volumes.music &&
            volumes.voice == other.volumes.voice && volumes.sfx == other.volumes.sfx &&
            keyboard == other.keyboard && gamepad == other.gamepad && padGuid == other.padGuid &&
@@ -217,13 +218,15 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
     // default; nothing is dropped, so the report gets a context line rather than a warning
     // (see the header).
     bool v2Document = false;
-    // A v3 document predates [game] install_dir, so it is migrated by defaulting the
-    // remembered folder; the report says which version it came from.
+    // A v3 document predates BOTH later additions, so it is migrated by defaulting the
+    // remembered folder (#36) and the shadow toggle (#21); the report says which version it
+    // came from.
     bool v3Document = false;
+    // A v4 document predates the shadow toggle only: it carries [game] install_dir.
+    bool v4Document = false;
     // The remembered folder must be PRESENT, even empty: "not set" and "no folder chosen"
     // are different statements, and only the first is worth a warning.
-    bool sawInstallDir = false;
-    bool inSection = false;
+    bool sawInstallDir = false;    bool inSection = false;
     std::string section;
     std::istringstream stream(text);
     std::string raw;
@@ -283,7 +286,8 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                     return false;
                 }
                 if (version != kSchemaVersion && version != kSchemaVersionLegacy &&
-                    version != kSchemaVersionV2 && version != kSchemaVersionV3) {
+                    version != kSchemaVersionV2 && version != kSchemaVersionV3 &&
+                    version != kSchemaVersionV4) {
                     error = "unsupported config version " + std::to_string(version) +
                             " (this build writes " + std::to_string(kSchemaVersion) + ")";
                     return false;
@@ -291,6 +295,7 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                 legacyLayout = (version == kSchemaVersionLegacy);
                 v2Document = (version == kSchemaVersionV2);
                 v3Document = (version == kSchemaVersionV3);
+                v4Document = (version == kSchemaVersionV4);
                 sawVersion = true;
                 continue;
             }
@@ -338,6 +343,10 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                 bool on = false;
                 if (!parseBool(value, on)) warn("toon: keeping the default");
                 else candidate.toonRendering = on;
+            } else if (key == "shadows") {
+                bool on = false;
+                if (!parseBool(value, on)) warn("shadows: keeping the default");
+                else candidate.shadowRendering = on;
             } else {
                 warn("ignoring unknown key '" + key + "'");
             }
@@ -423,12 +432,15 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
         report.messages.push_back(
             "config version 2: migrated to " + std::to_string(kSchemaVersion) +
             " (toon rendering defaults to off, no game folder is remembered until a run "
-            "opens one; every stored value kept)");
+            "opens one, and shadows default to off; every stored value kept)");
     } else if (v3Document) {
         report.messages.push_back(
             "config version 3: migrated to " + std::to_string(kSchemaVersion) +
-            " (the game folder is remembered in this file from now on; every stored value "
-            "kept)");
+            " (the game folder is remembered in this file from now on and shadows default "
+            "to off; every stored value kept)");
+    } else if (v4Document) {
+        report.messages.push_back(
+            "config version 4: migrated to " + std::to_string(kSchemaVersion) +            " (character shadows default to off; every stored value kept)");
     } else if (!sawInstallDir) {
         // A CURRENT document always carries the key — serialize() writes it even when no
         // folder is remembered — so its absence is a hand-edit or a lossy writer, and the
@@ -438,6 +450,7 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
         report.messages.push_back(
             "install_dir: a version " + std::to_string(kSchemaVersion) +
             " document should carry the game folder key, so no folder is remembered");
+
     }
     out = candidate;
     report.loaded = true;
@@ -475,7 +488,11 @@ std::string serialize(const UserSettings& settings) {
     out << "[render]\n"
         << "# The Options screen's toon-rendering row (issue #21): the characters' diffuse\n"
         << "# term reads the shipped data/directX/toon ramp instead of the linear N.L.\n"
-        << "toon = " << (settings.toonRendering ? "true" : "false") << "\n\n";
+        << "toon = " << (settings.toonRendering ? "true" : "false") << "\n"
+        << "# The Options screen's shadow row (issue #21 row 1, 影の表示): every fighter's\n"
+        << "# body and weapon are drawn once more into a light-space map that the stage\n"
+        << "# samples, so the fighters cast a shadow on the ground.\n"
+        << "shadows = " << (settings.shadowRendering ? "true" : "false") << "\n\n";
 
     out << "[audio]\n"
         << "master = " << settings.volumes.master << "\n"

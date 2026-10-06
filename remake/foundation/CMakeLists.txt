@@ -308,6 +308,18 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                          "${CMAKE_CURRENT_SOURCE_DIR}")
         set_tests_properties(toon_ramp PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
 
+        # The character-shadow toggle (issue #21 row 1): OFF must be byte-identical to the
+        # default frame, ON must subtract the recovered 0.3 on a localized patch in more
+        # than one view of the 4-view battle, and a caster-free stage frame must not move. The
+        # pass's numbers are pinned device-free by shadow_map_test; this one pins that they
+        # reach the frame.
+        add_test(NAME character_shadow
+                 COMMAND ${Python3_EXECUTABLE}
+                         "${CMAKE_CURRENT_SOURCE_DIR}/tests/character_shadow.py"
+                         "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
+                         "${CMAKE_CURRENT_SOURCE_DIR}")
+        set_tests_properties(character_shadow PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
+
         # The NPR experiment harness (issue #25): for every technique it asserts the
         # specific property the technique claims (a band is a step, a tint moves the
         # shadowed side's hue, an additive term never removes light, lighting-only normals
@@ -411,6 +423,15 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(env_spawn_test PRIVATE src)
     target_link_libraries(env_spawn_test PRIVATE glm)
     add_test(NAME env_spawn_test COMMAND env_spawn_test)
+
+    # The recovered character-shadow numbers (issue #21 row 1): the light's direction,
+    # the light camera's near/far and the receiver's bias/clamp/darkening, plus the
+    # lookup and comparison the shader runs. Device-free on purpose — a wrong constant
+    # moves every shadow in every frame without breaking a draw.
+    add_executable(shadow_map_test tests/shadow_map_test.cpp)
+    target_include_directories(shadow_map_test PRIVATE src)
+    target_link_libraries(shadow_map_test PRIVATE glm)
+    add_test(NAME shadow_map_test COMMAND shadow_map_test)
 
     # The arena camera: game state only (no device). Compiles the ported raycast in
     # directly, like the two tests above; it builds its xm::Model fixtures by hand, so

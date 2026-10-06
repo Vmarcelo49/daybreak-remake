@@ -93,6 +93,8 @@ int main() {
         check(!defaults.fullscreen, "fullscreen default is off");
         check(!defaults.toonRendering, "toon rendering default is off (the shipped state)");
         check(defaults.installDir.empty(), "no game folder is remembered before one is opened");
+        check(!defaults.shadowRendering,
+              "character shadows default is off (what every banked capture was made in)");
         check(defaults.resolution == settings::DisplaySize{0, 0}, "resolution default is desktop");
         check(defaults.padGuid[0].empty() && defaults.padGuid[3].empty(),
               "no controller identity before a pad is seen");
@@ -106,6 +108,7 @@ int main() {
         original.volumes = {80, 70, 60, 50};
         original.toonRendering = true;
         original.installDir = "/home/u/Games/Higurashi-Daybreak";
+        original.shadowRendering = true;
         original.keyboard[fnd::input::Jump] = 42;
         original.keyboard[fnd::input::Guard] = -1;   // an explicitly unbound action
         original.gamepad[2][fnd::input::Guard] = 7;
@@ -142,13 +145,13 @@ int main() {
         std::string error;
         check(!parses("[display]\nfullscreen = true\n", out, error), "missing version is rejected");
         check(error.find("version") != std::string::npos, "the reason names the version line");
-        check(!parses("version = 5\n[display]\nfullscreen = true\n", out, error),
+        check(!parses("version = 6\n[display]\nfullscreen = true\n", out, error),
               "an unsupported version is rejected");
-        check(error.find("unsupported config version 5") != std::string::npos,
+        check(error.find("unsupported config version 6") != std::string::npos,
               "the reason names the version it found");
-        // Every previous schema is MIGRATED, not rejected: issue #10 removed the
+        // v1-v5 are previous schemas and are MIGRATED, not rejected: issue #10 removed the
         // port-invented heavy binding, issue #21 added the toon toggle, issue #36 added the
-        // remembered game folder.
+        // remembered game folder (v4), and issue #21 row 1 added the shadow toggle (v5).
         check(parses("version = 1\n[display]\nfullscreen = true\n", out, error),
               "the oldest schema still loads");
         check(parses("version = 2\n[display]\nfullscreen = true\n", out, error),
@@ -315,7 +318,7 @@ int main() {
             checkInt("and the rest of the file still applied", 70, out2.volumes.master);
             // Saving after a migration writes the current schema.
             const std::string saved = settings::serialize(out2);
-            check(saved.find("version = 4") != std::string::npos,
+            check(saved.find("version = 5") != std::string::npos,
                   "a migrated document saves as the current version");
         }
         // Inline comments are not a feature: the value must parse whole.
@@ -383,30 +386,76 @@ int main() {
         check(!migrated.toonRendering, "the v3 toggle takes its default (off) for a v2 file");
         check(migrated.installDir.empty(),
               "the v4 game-folder key takes its default (nothing remembered) for a v2 file");
-        // The next save writes the current schema, and the toggle round-trips from there.
+        check(!migrated.shadowRendering, "and so does the v5 shadow toggle");
+        // The next save writes the current schema, and every toggle round-trips from there.
         const std::string saved = settings::serialize(migrated);
-        check(saved.find("version = 4") != std::string::npos, "the next save writes v4");
+        check(saved.find("version = 5") != std::string::npos, "the next save writes v5");
         check(saved.find("[render]") != std::string::npos && saved.find("toon = false") != std::string::npos,
-              "with the toggle written at its value");
+              "with the toon toggle written at its value");
+        check(saved.find("shadows = false") != std::string::npos,
+              "and the shadow toggle beside it");
         check(saved.find("install_dir = \n") != std::string::npos,
               "and the game-folder key written empty (unchosen)");
         settings::UserSettings reloaded;
         check(parses(saved, reloaded, error), "the migrated document parses back: " + error);
         check(reloaded == migrated, "and every value survives the migration");
         migrated.toonRendering = true;
+        migrated.shadowRendering = true;
         settings::UserSettings on;
-        check(parses(settings::serialize(migrated), on, error), "a v3 document with toon on parses");
-        check(on.toonRendering && on == migrated, "the toggle round-trips through the file");
-        // A wrong value for the new key is a value error like any other: that key keeps its
+        check(parses(settings::serialize(migrated), on, error), "a v5 document with both on parses");
+        check(on.toonRendering && on.shadowRendering && on == migrated,
+              "both toggles round-trip through the file");
+        // A wrong value for a new key is a value error like any other: that key keeps its
         // default and the rest of the file still applies.
         settings::LoadReport bad;
         settings::UserSettings badOut;
-        check(settings::parse("version = 3\n[render]\ntoon = maybe\n[audio]\nmaster = 55\n",
+        check(settings::parse("version = 5\n[game]\ninstall_dir = /tmp/g\n"
+                              "[render]\ntoon = maybe\nshadows = perhaps\n"
+                              "[audio]\nmaster = 55\n",
                               badOut, error, bad),
-              "a bad toon value does not reject the file");
-        check(!badOut.toonRendering, "toon kept its default");
+              "bad toggle values do not reject the file");
+        check(!badOut.toonRendering && !badOut.shadowRendering, "both kept their defaults");
         checkInt("the rest of the file applied", 55, badOut.volumes.master);
-        checkInt("one warning", 1, bad.warnings);
+        checkInt("one warning per bad value", 2, bad.warnings);
+    }
+
+    // Issue #21 row 1 took the schema to v5 because #36 took v4 for [game] install_dir
+    // while this row was in flight, so the shadow toggle must migrate from *both* older
+    // versions additively — a file written before the toggle existed means "off", and
+    // nothing else in it may move.
+    std::printf("\n-- v3 and v4 documents migrate to v5, additively\n");
+    {
+        settings::UserSettings out;
+        settings::LoadReport report;
+        std::string error;
+        check(settings::parse("version = 3\n[render]\ntoon = true\n[audio]\nmaster = 61\n",
+                              out, error, report),
+              "a v3 document loads: " + error);
+        check(out.toonRendering, "its toon value is kept");
+        check(!out.shadowRendering, "and the v5 toggle takes its default (off)");
+        checkInt("with no warning", 0, report.warnings);
+        check(!report.messages.empty() &&
+                  report.messages[0].find("version 3") != std::string::npos,
+              "and the report says which version it migrated from");
+
+        settings::UserSettings v4;
+        settings::LoadReport report4;
+        check(settings::parse("version = 4\n[render]\ntoon = true\n[audio]\nmaster = 62\n",
+                              v4, error, report4),
+              "a v4 document loads: " + error);
+        check(v4.toonRendering && !v4.shadowRendering, "a v4 file keeps its toon and gains off");
+        checkInt("with no warning", 0, report4.warnings);
+        check(!report4.messages.empty() &&
+                  report4.messages[0].find("version 4") != std::string::npos,
+              "and reports v4");
+
+        // A version this build does not know is still refused, so the migration chain
+        // cannot silently accept a future document.
+        settings::UserSettings future;
+        settings::LoadReport futureReport;
+        check(!settings::parse("version = 6\n[render]\ntoon = true\n", future, error,
+                               futureReport),
+              "a v6 document is refused");
     }
 
     std::printf("\n-- issue #36: a v3 file keeps every value and gains the game folder key\n");
@@ -506,7 +555,7 @@ int main() {
         checkInt("it is one warning too", 1, report.warnings);
         // A CURRENT document without the key at all is a hand-edit or a lossy writer: the
         // one thing it costs (the remembered folder) is worth a warning.
-        check(settings::parse("version = 4\n[display]\nfullscreen = true\n", out, error, report),
+        check(settings::parse("version = 5\n[display]\nfullscreen = true\n", out, error, report),
               "a current document without the key still loads: " + error);
         check(out.installDir.empty(), "nothing is remembered");
         checkInt("and that is reported", 1, report.warnings);

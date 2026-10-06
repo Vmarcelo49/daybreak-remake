@@ -412,11 +412,10 @@ its implementation handoff is in
 [`docs/ROADMAP-PENDING.md`](docs/ROADMAP-PENDING.md#future-remake-only-experiment-3v3-and-4v4).
 Renderer options (the first two options rows are marked unavailable) remain
 pending (issue #21). Battle fidelity includes unresolved animation/VFX details;
-LAN netplay awaits its own implementation. The Linux CTest suite has 61 tests (2026-10-06),
+LAN netplay awaits its own implementation. The Linux CTest suite has 63 tests (2026-10-06),
 including issue #4's three delivery suites (the archive-ordering cross-check against the
 native reader, the service's prepare/catalog/HTTP surface, and the host-testable half of
-the web asset client),
-including frontend selection/configuration, VS/result timelines, HUD geometry, the
+the web asset client) and issue #21 row 1's `shadow_map_test` and `character_shadow`,including frontend selection/configuration, VS/result timelines, HUD geometry, the
 split-screen layout/assignment guards, issue #51's LockSwitch/camera guard, issue
 #47's countdown gate/overlay test, issue #48's in-battle debug-key suite, issue
 #39's live-camera smoothness gate (the capture stack cannot see the live

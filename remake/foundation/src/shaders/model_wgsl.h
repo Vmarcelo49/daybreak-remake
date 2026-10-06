@@ -34,6 +34,11 @@ struct Camera {
   // World-space camera eye (issue #25): the rim and stylized-specular experiments need a
   // view vector, which a viewProj cannot be decomposed into cheaply per fragment.
   eye        : vec4<f32>,
+  // Character shadows (issue #21 row 1): the original's light camera, and the receiver's
+  // bias/clamp/enabled triple. shadowParams.z is 0 on every frame without the shadow
+  // pass, so the receiver block below is skipped entirely there.
+  shadowViewProj : mat4x4<f32>,
+  shadowParams   : vec4<f32>,
 };
 
 struct Draw {
@@ -61,6 +66,11 @@ struct Draw {
 @group(1) @binding(1) var<storage, read> palette : array<mat4x4<f32>>;
 @group(2) @binding(0) var albedoTex : texture_2d<f32>;
 @group(2) @binding(1) var albedoSampler : sampler;
+// The character shadow map (issue #21 row 1): the light-space target the caster pass
+// rendered, alpha = the caster's light NDC depth, 1.0 where nothing cast. One map per
+// view, so this group is bound per view beside the camera.
+@group(3) @binding(0) var shadowTex : texture_2d<f32>;
+@group(3) @binding(1) var shadowSampler : sampler;
 
 const FLAG_TEXTURED   : u32 = 1u;
 const FLAG_UNLIT      : u32 = 2u;
@@ -74,6 +84,9 @@ const FLAG_NPR_NORMALS : u32 = 64u;    // light the secondary normal, bias by it
 const FLAG_NPR_KEY     : u32 = 128u;   // add the character key light term
 const FLAG_NPR_SPEC    : u32 = 256u;   // stylized hard-threshold specular
 const FLAG_NPR_RIM     : u32 = 512u;   // character-only rim light
+// Character shadows (issue #21 row 1), a recovered row rather than an experiment: this
+// draw is a receiver (the stage's ground) and reads the shadow map when the pass ran.
+const FLAG_SHADOW_RECEIVER : u32 = 1024u;
 
 // The band edges are experiment constants, not uniforms: they were fixed across the whole
 // grid below and a value that never changes belongs next to the code that reads it.
@@ -236,6 +249,47 @@ fn vs_npr(
   return out;
 }
 
+// ---------------------------------------------------------------------------------------
+// The shadow caster (issue #21 row 1). This is the original's technique mode 2
+// (FUN_00652880) in its entirety: the same mesh the plain path draws, transformed by the
+// light matrix instead of the camera's, writing the light-space NDC depth into ALPHA and
+// a constant 1 into RGB (effect_2.bin, vs_1_1 blob +0x1b4: `mul oD0.w, r1.w, r0.z` and
+// `mov oD0.xyz, c4.x`; its ps_1_1 is a bare `mov r0, v0`). The target is cleared to
+// (0,0,0,1) — alpha 1.0 is the "nothing cast here" sentinel the receiver tests against —
+// so this entry point needs no texture, no lighting and no fog.
+// ---------------------------------------------------------------------------------------
+struct ShadowOut {
+  @builtin(position) clip  : vec4<f32>,
+  @location(0)       depth : f32,   // interpolated exactly as oD0.w is
+};
+
+@vertex
+fn vs_shadow(
+  @location(0) pos     : vec3<f32>,
+  @location(4) bones   : vec4<u32>,
+  @location(5) weights : vec4<f32>,
+) -> ShadowOut {
+  let o = draw.paletteOffset;
+  let skin = weights.x * palette[o + bones.x]
+           + weights.y * palette[o + bones.y]
+           + weights.z * palette[o + bones.z]
+           + weights.w * palette[o + bones.w];
+  let world = draw.model * skin;
+  let clip = cam.shadowViewProj * world * vec4<f32>(pos, 1.0);
+  var out : ShadowOut;
+  out.clip = clip;
+  // WebGPU's clip z is zero-to-one like D3D9's, so this is the same z/w the original
+  // stores. A w of 0 or less cannot reach the rasterizer (it is clipped), so the
+  // division is safe.
+  out.depth = clip.z / clip.w;
+  return out;
+}
+
+@fragment
+fn fs_shadow(in : ShadowOut) -> @location(0) vec4<f32> {
+  return vec4<f32>(1.0, 1.0, 1.0, in.depth);
+}
+
 // The banding curve the issue #25 experiments select (B: toon threshold / ramp). One
 // shape, three parameter sets, so the captures differ only in the curve:
 //   softness 0    -> a hard step at the edge (the hard 2-band read)
@@ -296,6 +350,43 @@ fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
   // threshold here used to eat soft foliage and ground-card edges the original keeps.
   if ((draw.flags & FLAG_ALPHA_TEST) != 0u && albedo.a * 255.0 < 8.0) {
     discard;
+  }
+
+  // Character shadows (issue #21 row 1). The original's stage technique (mode 3/4,
+  // FUN_00652af0, effect_3.bin) projects the receiver's world position through the same
+  // light matrix the caster pass used, and its pixel shader is
+  //
+  //   sub r0.w, v1, t1_bias     ; (own light depth + bias) - map alpha
+  //   cnd r1, r0.w, c0, c1      ; 0.3 when that holds, else 0
+  //   sub r0, t0, r1            ; albedo - that
+  //
+  // i.e. a flat 0.3 SUBTRACT from the albedo, not a multiply, with the bias added in
+  // light NDC (c9.w = -0.02) and the receiver's own depth clamped at 0.95 (c10.x) so a
+  // receiver past the light's far plane cannot shadow itself against the cleared 1.0.
+  // The `cnd` threshold is the one open question in the recovery — see
+  // foundation/docs/SHADOWS.md — and the port reads it as "own + bias > map", the
+  // reading under which the cleared alpha and the clamp both do their job.
+  //
+  // Both the branch and the map read are uniform: shadowParams.z and draw.flags come
+  // from uniforms, and the sample is outside the per-fragment range test, so WGSL's
+  // uniform-control-flow rule for textureSample holds. With the shadow pass off
+  // (shadowParams.z == 0) the block is never entered and the arithmetic below is the
+  // pre-change arithmetic bit for bit.
+  if (cam.shadowParams.z > 0.5 && (draw.flags & FLAG_SHADOW_RECEIVER) != 0u) {
+    let sc = cam.shadowViewProj * vec4<f32>(in.wpos, 1.0);
+    let inv = 1.0 / sc.w;
+    // The original's projective pair (effect_3's vs): u = x/w*0.5+0.5, v = -y/w*0.5+0.5.
+    let suv = vec2<f32>(sc.x * inv * 0.5 + 0.5, 0.5 - sc.y * inv * 0.5);
+    let mapDepth = textureSample(shadowTex, shadowSampler, suv).a;
+    let own = min(sc.z * inv + cam.shadowParams.x, cam.shadowParams.y);
+    // WebGPU has no border address mode; the original's Tex1 is D3DTADDRESS_BORDER with
+    // a black border (FUN_00651110 case 3/4), so an out-of-range coordinate must read as
+    // "no caster" rather than as the edge texel.
+    let inside = sc.w > 0.0 && suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0;
+    if (inside && own > mapDepth) {
+      albedo = vec4<f32>(max(albedo.rgb - vec3<f32>(cam.shadowParams.w), vec3<f32>(0.0)),
+                         albedo.a);
+    }
   }
 
   // The shipped toon ramp, sampled unconditionally for the same uniform-control-flow

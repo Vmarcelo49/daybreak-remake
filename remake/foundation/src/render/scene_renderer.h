@@ -24,6 +24,7 @@
 // xmodel.h is #pragma once — pulling it in before XMODEL_WEBGPU is defined would hide the
 // WebGPU half from every later include in this translation unit.
 #include "render/npr_normals.h"
+#include "render/shadow_map.h"
 
 namespace render {
 
@@ -179,6 +180,10 @@ inline constexpr float kGlobalAmbient  = 0.35f;                 // D3DRS_AMBIENT
 // D3DCOLOR_XRGB(40, 42, 54), the gameplay target's clear colour (scenes.cpp:736-737).
 inline constexpr uint8_t kClearRed = 40, kClearGreen = 42, kClearBlue = 54;
 
+// The character shadow pass (issue #21 row 1) lives in render/shadow_map.h: the light
+// camera, the projection and the receiver's lookup as pure glm, so a host test can pin
+// them with no device. The renderer below consumes it and nothing else.
+
 // Where a frame goes. One struct so a swapchain frame and an offscreen capture run
 // the same draw path; the format selects (and caches) the pipeline.
 struct Target {
@@ -240,6 +245,10 @@ struct Appearance {
     // original's toon technique covers (characters and their weapons). Off by default,
     // and with it off the lighting arithmetic is the pre-existing one bit for bit.
     bool toon  = false;
+    // Character shadows (issue #21 row 1): render the light-space caster pass and let the
+    // stage's ground sample it. Off by default, and with it off neither the pass nor the
+    // receiver branch runs, so the frame is the pre-change frame bit for bit.
+    bool shadows = false;
     // ---------------------------------------------------------------------------------
     // NPR experiments (issue #25). Every field defaults to the state in which the
     // fragment shader's arithmetic is the pre-#25 arithmetic bit for bit; none of them
@@ -313,6 +322,8 @@ struct Stats {
     int    effects         = 0;
     int    billboarded     = 0;   // effect draws that yaw to the camera (EFFECTS-BILLBOARD.md)
     int    outlines        = 0;   // toon outline hulls queued (issue #21)
+    int    shadowCasters   = 0;   // draws submitted to the shadow map (issue #21 row 1)
+    int    shadowReceivers = 0;   // stage draws marked to sample it
     int    nprMeshes       = 0;   // meshes given a secondary lighting normal (issue #25)
     size_t nprVertices     = 0;   // vertices that received one
 };
@@ -446,6 +457,12 @@ public:
     // WebGPU validates attachment formats rather than coercing them.
     WGPUTextureView depthView() const { return depthView_; }
 
+    // Writes view 0's shadow map (its alpha channel) as a binary PGM (issue #21 row 1).
+    // Verification only: a map that silently stays empty looks exactly like a receiver bug
+    // from the outside, and this is the only way to tell the two apart in a headless run.
+    // main.cpp gates it behind DSH_DUMP_SHADOW.
+    bool dumpShadowMap(const std::string& path, std::string& error);
+
 private:
     struct DrawItem {
         WGPUBuffer vbuf = nullptr, ibuf = nullptr;   // borrowed; owned by buffers_
@@ -476,6 +493,10 @@ private:
         // This draw is one the original's toon technique covers (character or weapon):
         // the appearance switch turns it into kDrawToon at uniform-fill time.
         bool       toon = false;
+        // This draw receives the character shadow (issue #21 row 1): the original's stage
+        // technique is the only one that samples the map. Set for the stage role, and the
+        // appearance switch turns it into kDrawShadowReceiver at uniform-fill time.
+        bool       receiver = false;
         // Whether this mesh carries a secondary lighting normal (issue #25, E). The
         // per-frame tint/strength an experiment uses rides the draw uniform instead,
         // filled in fillDrawData from the appearance — the experiments are all
@@ -526,6 +547,18 @@ private:
     // per (format, pass, entry) so enabling an experiment builds one extra variant.
     WGPURenderPipeline pipelineFor(WGPUTextureFormat, Pass, bool npr, std::string& error);
     bool ensureDepth(uint32_t width, uint32_t height, std::string& error);
+    // The shadow map (issue #21 row 1). One light-space target per view, because the
+    // original builds its light matrix and runs the caster pass inside the per-view loop
+    // (FUN_006396f0:0x639b80/0x639b8c); a view's receiver reads the map its own caster
+    // pass wrote. Created on first use by the appearance switch, so a run with shadows
+    // off allocates nothing beyond the 1x1 placeholder the bind group needs.
+    struct ShadowTarget {
+        WGPUTexture     tex = nullptr, depth = nullptr;
+        WGPUTextureView view = nullptr, depthView = nullptr;
+        WGPUBindGroup   group = nullptr;   // group 3: the map + its sampler
+    };
+    bool ensureShadowTarget(size_t view, std::string& error);
+    void releaseShadowTargets();
     bool buildBindings(std::string& error);
     // The shared scene pass. `views` null (or a single entry) is the single-view path:
     // camera_, cameraBuffer_, drawBuffer_ offset 0, no viewport/scissor calls. More than
@@ -546,8 +579,13 @@ private:
     WGPUDevice   device_   = nullptr;
     WGPUQueue    queue_    = nullptr;
 
-    WGPUBindGroupLayout bindGroupLayouts_[3] = {nullptr, nullptr, nullptr};
+    WGPUBindGroupLayout bindGroupLayouts_[4] = {nullptr, nullptr, nullptr, nullptr};
     WGPUPipelineLayout  pipelineLayout_ = nullptr;
+    // The caster pass's own layout: groups 0 and 1 only. The map is the *target* of that
+    // pass, not a binding, and a pipeline layout that names group 3 would force every
+    // shadow draw to bind it for nothing.
+    WGPUPipelineLayout  shadowPipelineLayout_ = nullptr;
+    WGPURenderPipeline  shadowPipeline_ = nullptr;
     WGPUShaderModule    shader_ = nullptr;
     WGPUSampler         sampler_ = nullptr;
 
@@ -565,6 +603,18 @@ private:
     WGPUBindGroup   cameraGroup_ = nullptr;
     WGPUBindGroup   drawGroup_ = nullptr;                    // group 1, dynamic offset
     std::vector<WGPUBindGroup> textureGroups_;               // [0] = white, then one per texture
+    // The shadow map's sampler (issue #21 row 1): clamp + linear, which is as close as
+    // WebGPU gets to the original's border-clamped Tex1 — the shader's own range test
+    // supplies the border behaviour the address mode cannot.
+    WGPUSampler     shadowSampler_ = nullptr;
+    // The placeholder group 3 for frames without the shadow pass (and for views whose map
+    // was never created): a 1x1 opaque-black texture, i.e. exactly what the original's
+    // cleared map reads as. Every pipeline that samples the map binds this or a real map,
+    // so no draw ever runs against an incomplete group.
+    WGPUTexture     shadowPlaceholderTex_ = nullptr;
+    WGPUTextureView shadowPlaceholderView_ = nullptr;
+    WGPUBindGroup   shadowPlaceholderGroup_ = nullptr;
+    ShadowTarget    shadowTargets_[kMaxViewCameras];
 
     WGPUBuffer cameraBuffer_ = nullptr;
     // Split-screen camera slots (issue #12): one uniform buffer and bind group per view

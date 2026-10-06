@@ -357,6 +357,12 @@ inline constexpr uint32_t kDrawToon      = 1u << 3;
 // offsets the clip position along the world normal and the fragment stage returns the
 // flat darkened material colour. A separate draw of the same mesh, as in the original.
 inline constexpr uint32_t kDrawOutline   = 1u << 4;
+// This draw samples the shadow map (issue #21 row 1): the original's stage technique
+// (mode 3/4, FUN_00652af0) is the only one that reads the map's alpha, and the port's
+// `stage` role is its stand-in. Set per frame by SceneRenderer::fillDrawData from the
+// appearance switch, so the toggle needs no re-upload; with the bit clear (and the
+// shadow pass off) the fragment stage's arithmetic is the pre-change one bit for bit.
+inline constexpr uint32_t kDrawShadowReceiver = 1u << 10;
 
 // ---------------------------------------------------------------------------------------
 // NPR experiment bits (issue #25). These are the switches the experiment harness adds
@@ -405,6 +411,16 @@ struct CameraUniform {
     // knows the eye (setEye, for effect-card billboarding) and now publishes it here too.
     // Nothing recovered reads it, so it changes no existing pixel.
     glm::vec4 eye{0.f, 0.f, 0.f, 1.f};
+    // Character shadows (issue #21 row 1). `shadowViewProj` is the original's light
+    // camera — FUN_006507c0:697-712 and :727-734 build it per view from a hardcoded eye
+    // at (1000, 1e6, 5e5) looking at the frame camera's own eye — and `shadowParams` is
+    // what the receiver's pixel shader needs from it: x = the recovered depth bias
+    // (-0.02 in light NDC, effect_3's vs `c9.w`), y = the recovered depth clamp (0.95,
+    // `c10.x`), z = 1 when the shadow pass ran for this view. z is 0 on every frame the
+    // appearance does not ask for shadows, which is what keeps those frames' arithmetic
+    // untouched. See foundation/docs/SHADOWS.md.
+    glm::mat4 shadowViewProj{1.f};
+    glm::vec4 shadowParams{0.f};
 };
 
 // The secondary lighting-normal stream's layout (issue #25, attribute location 6), or a
