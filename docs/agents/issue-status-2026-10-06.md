@@ -724,3 +724,28 @@ because #49 established that scripted input never reaches a front-end battle's h
 machine**, so a fighter with no input keeps its locomotion state and plays its run animation in place.
 The F2 freeze therefore feeds a zeroed `PlayerState` rather than `nullptr`. Anyone who later means
 "no input" literally will hit this.
+
+## Round 19 — dispatched #39 (the live-path verification blind spot)
+
+**The most consequential issue left in the queue**, because it is about the verification stack the
+rest of this batch relies on. The camera defect that survived twenty-odd issues lived entirely in the
+**live interpolation path**: captures set `app.matchAlpha = 1` (D9's one-update-per-frame recipes) and
+`buildFrameViews` renders `glm::mix(previousEye, camera.eye(), matchAlpha)` — with alpha 1 the mix
+returns the current camera unchanged, so captures were byte-perfect while a played battle swept the
+camera every frame. Anything living in presentation-time interpolation, per-frame smoothing, alpha
+blending or input-driven per-frame state is invisible to the whole stack.
+
+The worker was pointed at option 1 (a fractional-`matchAlpha` headless mode plus a smoothness
+assertion) and at `lock_switch_camera_test.cpp` as the model for asserting on live-path state without
+a GPU. Two things were made non-negotiable:
+
+1. **The detector must be shown to fire on the real defect** — reconstruct it on a scratch copy and
+   paste the failing run. A detector that has never fired is worthless.
+2. **"Off stays byte-identical"** — this changes the machinery that produces every other issue's
+   evidence, so a perturbation would corrupt the whole batch's baselines. Prove it on at least two
+   recipes including a scripted gate.
+
+**Standing note for the rest of the batch**: `--debug-keys=KEY@TICK` (#48) and now a
+fractional-alpha mode are both examples of the same thing — *the port needs headless ways to exercise
+paths that captures bypass*. When a future issue's evidence looks flat, that is the first place to
+look.
