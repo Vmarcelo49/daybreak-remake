@@ -153,11 +153,20 @@ private:
     void release() noexcept;
 };
 
-// One effect instance from data/bullet/<weaponId>/<type>.dat, decoded at the record
-// offsets FUN_00637950 consumes. The reader pulls 0x50 bytes VERBATIM at record offset
-// 0x30, so blob[i] lands at record offset 0x30 + 4*i: the index for a record offset O is
-// (O - 0x30) / 4, and each comment below gives both.
+// One bullet entry from data/bullet/<weaponId>/<type>.dat: the file's own model block
+// plus the effect record decoded at the offsets FUN_00637950 consumes. The reader pulls
+// 0x50 bytes VERBATIM at record offset 0x30, so blob[i] lands at record offset 0x30 + 4*i:
+// the index for a record offset O is (O - 0x30) / 4, and each comment below gives both.
 struct BulletParameter {
+    // The 260-byte block at file offset 4: the model THIS bullet IS. FUN_005f8510:55-57
+    // reads it, joins it to the bullet's own directory and calls FUN_0064d940 (the .X
+    // loader) with the bullet's per-variant model object as `this`; the shot spawn
+    // (FUN_005f8d50 @0x5f8dc7) hands that same object to the shot, and the shot's own
+    // render draws it (FUN_005f60b0: the matrix at 0x5f6185-0x5f61b6, the draw at
+    // 0x5f640f). It is NOT the impact effect — that is `impactEffect` below, a data/effect
+    // descriptor spawned at the contact point. See game/shot_visual.h for the whole chain.
+    // Empty when the block is blank, which is also the case the original loads no model for.
+    std::string modelName;
     std::string effectName;
     int hitRadius        = 0;  // record +0x24, consumed as a float by FUN_00637950:91,107
     int baseDamage       = 0;  // blob[0] (+0x30) — the HP power, 10000-based, :426

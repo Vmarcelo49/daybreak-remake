@@ -1,9 +1,9 @@
 # EFFECTS-TRAILS — finding: no trail geometry ships; documented, not built
 
 > **Status: research for `ROADMAP-PENDING.md` B1, not a gameplay effect path.**
-> Match-mode shots/sparks still render as untextured `debug_prims.h` cubes,
-> but auras and melee-hit bursts draw their real cards by default (B1 commit
-> `c0c2f4e`; `--debug-prims` keeps the all-cube A/B). `--effect` cards
+> Auras and melee-hit bursts draw their real cards by default (B1 commit
+> `c0c2f4e`), shots draw the bullet's own model (issue #32), and `--debug-prims`
+> keeps the all-cube A/B. `--effect` cards
 > exercise only the
 > verification scaffolding (additive Effect pass, cylindrical yaw). Nothing here
 > changes gameplay VFX.
@@ -60,6 +60,11 @@ carries per-vertex trail parameters, and none names `data/trail/*`.
 
 1. Map the `FUN_00633ca0` table owner (`param_1 + 0x4434…` region) to the fighter/
    projectile update that writes ribbon vertices — the trail producer.
+   **Narrowed by issue #32**: the shot path is not it. A shot's render is `FUN_005f60b0`
+   (the shot object's vtable `0x6a4814` slot `+0x20`), and it draws the bullet's own `.X`
+   model plus the bullet's per-variant sprite definition and touches no `scene+0x445c`
+   trail slot — see `ROADMAP-PENDING.md` B1 and `src/game/shot_visual.h`. Whatever wrote
+   trail geometry, it is neither the shot's update nor its draw.
 2. Recover the ribbon format (positions per frame history? widths? UV.x along the
    strip?) and the slot→texture-index rule (which of the 10 slots a trail uses).
 3. Recover the blend/technique for the strip (likely one of the 10 compiled

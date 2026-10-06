@@ -72,6 +72,11 @@ struct DatBuilder {
         for (int i = 0; i < gameplay::kWeaponNameField; ++i)
             bytes.push_back(i < static_cast<int>(s.size()) ? static_cast<uint8_t>(s[i]) : 0);
     }
+    // A fixed-width NUL-padded field, which is what the 260-byte model block is.
+    void block(const std::string& s, size_t width) {
+        for (size_t i = 0; i < width; ++i)
+            bytes.push_back(i < s.size() ? static_cast<uint8_t>(s[i]) : 0);
+    }
 };
 
 // mag: {num, type, reloadTime, intervalTime, chargeMax, chargeLevel}
@@ -220,10 +225,11 @@ void testParser() {
 // ---------------------------------------------------------------------------
 
 // One data/bullet/<weapon>/<type>.dat built to FUN_005f8510's layout.
-std::vector<uint8_t> synthBulletDat(int status, const gameplay::BulletParameter& b) {
+std::vector<uint8_t> synthBulletDat(int status, const gameplay::BulletParameter& b,
+                                    const std::string& model = "03.X") {
     DatBuilder d;
     d.u32(4);                    // leading tag          (:71)
-    for (int i = 0; i < 0x104 / 4; ++i) d.u32(0);   // 260-byte model path block (:72)
+    d.block(model, 0x104);       // 260-byte model block (:72) — the bullet's own model
     d.u32(1);                                // variant count (:79)
     d.u32(status);                           // variant id (:84)
     d.u32(10);                               // a (:88)
@@ -273,6 +279,9 @@ void testBulletParameterParser() {
     std::string err;
     check(gameplay::parseBulletParameter(bytes.data(), bytes.size(), 0, out, err),
           "a well-formed bullet parameter file decodes");
+    // Issue #32: the header's 260-byte block is the model the bullet IS (the shot's own
+    // render draws it), so it must survive the parse like any other field.
+    check(out.modelName == "03.X", "the 260-byte model block round-trips (issue #32)");
     check(out.effectName == "Bip03", "the 30-byte effect name round-trips");
     checkInt(30, out.hitRadius, "record +0x24 is the hit radius");
     checkInt(1750, out.baseDamage, "blob[0x00] is the base damage");
@@ -760,6 +769,110 @@ void testRepresentativeFamilies(const fs::path& install) {
 
 }  // namespace
 
+// ---------------------------------------------------------------------------
+// 1d. Issue #32: the bullet's own model ships, for every pick the port can make.
+// ---------------------------------------------------------------------------
+// The in-flight shot draws the .X named by the 260-byte block of the bullet file it was
+// fired from (game/shot_visual.h). The port picks that file per (weapon, charge level)
+// with main.cpp's loadBulletParameter rule — the smallest `type` among the bullets whose
+// magazine is that level's. This sweep is the check that the shipped roster never has to
+// draw a shot with an empty model slot: every one of the 92 picks must name a model the
+// install ships.
+void testShotModelsShip(const fs::path& install) {
+    section("real data: every shot model the roster can draw ships (issue #32)");
+    std::error_code ec;
+    const fs::path bulletRoot = install / "data" / "bullet";
+    if (install.empty() || !fs::is_directory(bulletRoot, ec)) {
+        skip("the shipped bullet model blocks (no install found)");
+        return;
+    }
+
+    // The whole inventory first: 46 directories, every .dat's block, and whether the model
+    // it names sits beside it. A handful of rows name a model their directory does not
+    // ship; those are rows the roster sweep below must never pick.
+    int files = 0, shipped = 0;
+    std::vector<std::string> missing;
+    for (int id = 1; id <= 46; ++id) {
+        char dir[16];
+        std::snprintf(dir, sizeof(dir), "%03d", id);
+        const fs::path dirPath = bulletRoot / dir;
+        if (!fs::is_directory(dirPath, ec)) continue;
+        for (const fs::directory_entry& e : fs::directory_iterator(dirPath, ec)) {
+            const std::string name = e.path().filename().string();
+            if (name.size() != 7 || name.substr(3) != ".dat") continue;
+            std::ifstream in(e.path(), std::ios::binary);
+            if (!in) continue;
+            const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)),
+                                             std::istreambuf_iterator<char>());
+            // The variant id is the single digit FUN_005f80c0 passes as `status`
+            // (`paramId() % 10`), so 0..9 is the whole domain to try.
+            gameplay::BulletParameter p;
+            std::string err;
+            bool parsed = false;
+            for (int status = 0; status < 10 && !parsed; ++status)
+                parsed = gameplay::parseBulletParameter(bytes.data(), bytes.size(), status,
+                                                        p, err);
+            if (!parsed) continue;
+            ++files;
+            if (p.modelName.empty()) continue;
+            if (fs::exists(dirPath / p.modelName, ec)) ++shipped;
+            else missing.push_back(std::string(dir) + "/" + name + " -> " + p.modelName);
+        }
+    }
+    check(files > 500, "the install ships the whole data/bullet table");
+    std::printf("        %d bullet file(s): %d name a model their directory ships, %zu do not\n",
+                files, shipped, missing.size());
+    for (const std::string& m : missing) std::printf("        no model shipped: %s\n", m.c_str());
+
+    // The load-bearing sweep: the 92 picks the port's own rule can make.
+    int picks = 0, resolved = 0;
+    for (int c = 0; c < gameplay::kCharacterCount; ++c) {
+        for (int w = 0; w < gameplay::kWeaponSlots; ++w) {
+            if (!gameplay::weaponSlotIsLegal(c, w)) continue;
+            const int id = gameplay::kWeaponIds[c][w];
+            char rel[32];
+            std::snprintf(rel, sizeof(rel), "%03d.dat", id);
+            std::ifstream in(install / "data" / "item" / rel, std::ios::binary);
+            if (!in) continue;
+            const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)),
+                                             std::istreambuf_iterator<char>());
+            auto def = parseOrNull(id, bytes);
+            if (!def) continue;
+            char dir[16];
+            std::snprintf(dir, sizeof(dir), "%03d", id);
+            for (int level = 1; level <= 2; ++level) {
+                const int wantMagazine = def->magazineForChargeLevel(level).chargeLevel - 1;
+                const gameplay::BulletDefinition* best = nullptr;
+                for (int i = 0; i < def->bulletCount; ++i) {
+                    const gameplay::BulletDefinition& b = def->bullets[i];
+                    if (b.magazine != wantMagazine) continue;
+                    if (!best || b.type < best->type) best = &b;
+                }
+                if (!best) continue;
+                ++picks;
+                char file[32];
+                std::snprintf(file, sizeof(file), "%03d.dat", best->type);
+                std::ifstream bin(install / "data" / "bullet" / dir / file, std::ios::binary);
+                if (!bin) continue;
+                const std::vector<uint8_t> bbytes((std::istreambuf_iterator<char>(bin)),
+                                                  std::istreambuf_iterator<char>());
+                gameplay::BulletParameter p;
+                std::string err;
+                if (!gameplay::parseBulletParameter(bbytes.data(), bbytes.size(), best->status,
+                                                    p, err))
+                    continue;
+                if (!p.modelName.empty() &&
+                    fs::exists(install / "data" / "bullet" / dir / p.modelName, ec))
+                    ++resolved;
+            }
+        }
+    }
+    checkInt(92, picks, "46 weapons x 2 charge levels are 92 (weapon, level) picks");
+    checkInt(picks, resolved,
+             "EVERY pick's bullet names a model that ships: the in-flight visual never "
+             "falls back");
+}
+
 void testRosterLabels() {
     section("device-free: roster index, weapon slot, combo labels (AGENTS.md rule 7)");
     checkInt(0, gameplay::characterIndexForDir("rena"), "rena is roster index 0");
@@ -797,6 +910,7 @@ int main(int argc, char** argv) {
     testWeaponDrivesFighter();
     testRosterLabels();
     testInventory(install);
+    testShotModelsShip(install);
     testRepresentativeFamilies(install);
     testEverySelectionSmoke(install);
     std::printf("\nWEAPON_DEFINITION: %s (%d checks, %d failed, %d skipped)\n",
