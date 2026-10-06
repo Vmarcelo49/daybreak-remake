@@ -298,12 +298,37 @@ void testInstalledStages(const std::filesystem::path& dataRoot) {
     }
 }
 
+// Issue #30's sweep prune must never drop a hit the unpruned walk would take. The failing
+// case is a ray that lands exactly on a bounds CORNER: the two slab parameters are equal in
+// exact arithmetic but are reached through different reciprocals per axis, so a 1-ulp
+// disagreement empties the interval. Without the slack term in sweepReachesBounds the sweep
+// stops a full kWallSkin short of the wall here (x = 80 against 78.0082). Measured with the
+// differential harness: 6 mismatches over 469,090 trials, all of this class.
+void testCornerGrazeIsNotPruned() {
+    xm::Model model = flatStage();
+    xm::Mesh& mesh = model.meshes[0];
+    addQuad(mesh, {100.f, 0.f, -200.f}, {100.f, 0.f, 300.f},
+            {100.f, 200.f, 300.f}, {100.f, 200.f, -200.f});
+
+    game::physics::MovementCollision collision;
+    collision.setMeshes(&model, &model);
+
+    const game::physics::MovementResult hit =
+        collision.move({25.f, 100.f, 125.f}, {300.f, 100.f, 100.f}, false);
+    check(hit.position.x < 79.f,
+          "a sweep landing on a bounds corner is not pruned (issue #30)");
+    check(hit.hitWall, "and it still reports the wall");
+    std::printf("        corner graze: position.x = %.7f (unpruned walk gives 78.0082169)\n",
+                static_cast<double>(hit.position.x));
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     testFlatAndGround();
     testSweepsAndFighterLanding();
     testSpawnAndRecovery();
+    testCornerGrazeIsNotPruned();
     if (argc > 1) testInstalledStages(argv[1]);
     std::printf("\nSTAGE_MOVEMENT: %s (%d checks, %d failed)\n",
                 failures == 0 ? "ok" : "FAIL", checks, failures);

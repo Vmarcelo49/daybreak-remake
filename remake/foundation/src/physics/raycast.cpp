@@ -292,7 +292,15 @@ bool MovementCollision::sweepReachesBounds(const FaceBounds& bounds, const glm::
         tmin = std::max(tmin, std::min(az, bz));
         tmax = std::min(tmax, std::max(az, bz));
     }
-    return tmin <= tmax;
+    // A hit landing exactly on the bounds' corner has the two slab parameters equal in exact
+    // arithmetic, but they are reached through DIFFERENT reciprocals per axis, so a 1-ulp
+    // disagreement empties the interval and would reject a face intersectTriangle accepts --
+    // measured: 6 mismatches over 469,090 differential trials, and a move() that stopped 2
+    // units (one kWallSkin) closer to a wall at an exact graze. The slack is proportional to
+    // the parameters so it scales with the ray, and it can only keep a face the exact test
+    // rejects by less than 1e-5 of the parameter: one extra triangle test, never a changed hit.
+    const float slack = 1e-5f * (1.f + std::abs(tmin) + std::abs(tmax));
+    return tmin <= tmax + slack;
 }
 
 GroundHit MovementCollision::groundAt(float x, float z, float referenceY,
@@ -367,12 +375,17 @@ RayHit MovementCollision::firstWallHit(const glm::vec3& start,
             float closest = distance;
             for (const int32_t mi : movementIndex_.meshOrder) {
                 const xm::Mesh& mesh = movementMesh_->meshes[static_cast<size_t>(mi)];
-                // setMeshes pushes one box per face, in this same walk order; if that ever
-                // stops holding for a mesh, that mesh is walked unpruned rather than
-                // indexed out of range.
+                // setMeshes pushes one box per face, in this same walk order. BOTH the outer
+                // vector (one entry per mesh) and each inner one (one per face) are checked: a
+                // mismatch walks that mesh unpruned rather than indexing out of range, which
+                // the previous single check did not actually guarantee.
+                const size_t miIndex = static_cast<size_t>(mi);
+                static const std::vector<FaceBounds> kNoBounds;
+                const bool pruned = miIndex < movementFaceBounds_.size() &&
+                                    movementFaceBounds_[miIndex].size() ==
+                                        mesh.indices.size() / 3;
                 const std::vector<FaceBounds>& bounds =
-                    movementFaceBounds_[static_cast<size_t>(mi)];
-                const bool pruned = bounds.size() == mesh.indices.size() / 3;
+                    pruned ? movementFaceBounds_[miIndex] : kNoBounds;
                 for (size_t face = 0; face + 2 < mesh.indices.size(); face += 3) {
                     const uint32_t ia = mesh.indices[face], ib = mesh.indices[face + 1],
                                    ic = mesh.indices[face + 2];
