@@ -263,6 +263,18 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                          "${CMAKE_CURRENT_SOURCE_DIR}")
         set_tests_properties(hud_cell_scale PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
 
+        # Issue #50's pause overlay pixels: a capture test for the same reason — the defect
+        # was the overlay's pass reading the battle HUD's vertices out of the shared UI
+        # buffer, which no layout test can see. It drives --pause-overlay=N (the same
+        # enterBattlePause the player's key uses) and pins the panel, the text's scale, the
+        # 4-view size and the frozen clocks. Same skip rule as the placement check.
+        add_test(NAME pause_overlay_panel
+                 COMMAND ${Python3_EXECUTABLE}
+                         "${CMAKE_CURRENT_SOURCE_DIR}/tests/pause_overlay_panel.py"
+                         "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
+                         "${CMAKE_CURRENT_SOURCE_DIR}")
+        set_tests_properties(pause_overlay_panel PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
+
         # The toon toggle (issue #21): OFF must stay byte-identical to the default frame,
         # ON must ramp the character draws in the shipped bitmap's direction, a stage-only
         # frame must not move, and the 4-view path must ramp too. Same skip-without-a-
@@ -527,6 +539,15 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(hud_layout_test PRIVATE src)
     target_link_libraries(hud_layout_test PRIVATE webgpu)
     add_test(NAME hud_layout_test COMMAND hud_layout_test)
+
+    # Issue #50's pause overlay layout: the port's own rule (the original has no readable
+    # pause menu), so this pins the contract instead of a reference — the size and the panel
+    # come from the canvas, the panel wraps the measured text, and the block survives every
+    # size from a 320x180 capture to 8K. Device-free like the two suites above.
+    add_executable(pause_overlay_layout_test tests/pause_overlay_layout_test.cpp)
+    target_include_directories(pause_overlay_layout_test PRIVATE src)
+    target_link_libraries(pause_overlay_layout_test PRIVATE webgpu)
+    add_test(NAME pause_overlay_layout_test COMMAND pause_overlay_layout_test)
 
     # Issue #12's split-screen plumbing: the recovered one/two/four-cell geometry, the
     # controller-keyed view assignment, per-view projection into each view's own aspect,

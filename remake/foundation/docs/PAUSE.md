@@ -35,6 +35,53 @@ readable, rebindable controls and the original has no return-to-selection row (l
 battle goes through its result scene there). The standalone `--match` harness has no
 selection screen behind it, so its menu is three rows (Resume / Rematch / Quit).
 
+The overlay's **size, spacing and backing panel are port decisions too**, and they live in
+`ui/pause_layout.h` as one device-free rule (`tests/pause_overlay_layout_test.cpp` pins it):
+the body glyph cell is 4.5 % of the target's shorter side, the title is 1.35x that and the
+footer 0.8x, the line pitch is 1.5x the body size, and the panel is the measured text block
+plus 0.7x the body size on every side. Nothing in that rule is recovered — the original has
+no readable menu to measure — but *nothing in it is a constant either*, which is what issue
+#50 defect 3 was: a fixed 16 px face at fixed pixel offsets drew a stamp in the middle of a
+540-row frame and an unreadable one at 1080p. The overlay is one block over the whole target,
+so a 4-view split reads at exactly the single-view size.
+
+## Why the overlay owns a renderer (issue #50 defects 1 and 2)
+
+`drawBattlePauseOverlay` batches into `App::pauseUi`, a second `SpriteRenderer`, and not into
+the battle HUD's `app.uiRenderer`. That is not tidiness — it is the fix, and the mechanism is
+worth writing down because it is a property of the sprite batch, not of this menu:
+
+* `SpriteRenderer::beginFrame` does clear the quad queue, so the overlay never "adopted" the
+  HUD's *quads*. What it shared was the **vertex buffer**: every `render()` call in the frame
+  writes the same buffer at offset 0, and (per WebGPU's queue ordering) all of a frame's
+  writes are performed before its single submission. The effective content of a frame is
+  therefore the LAST write, with the tail of the longest earlier write left behind it.
+* Measured on a paused single-view frame: the overlay's pass pushed 546 quads (its 55 % dim
+  plus the caption's glyphs) and the HUD's pass 32 (its first quad being the first fighter's
+  reticle cell — a 115x115 rotated quad). The HUD's shorter write overwrote the overlay's
+  first 32 quads, so the overlay's pass drew the HUD's geometry with ITS OWN texture binds:
+  the dim quad came out as the reticle's quad textured with the 1x1 white fallback — a solid
+  white rotated block over a fighter, which is the human's "the white rectangle is the
+  targeting image but the white should be transparency" — the rest ghosted the HUD's opening
+  art under the real HUD (defect 2's "ghosted, doubled art and text"), and the overlay's own
+  title (inside those first 32 quads) was not drawn at all.
+* Controls that ruled out the issue's other candidates: with the reticle suppressed the white
+  block disappears (so it IS that quad); `--no-toon` reproduces it byte-for-byte (so it is not
+  #21's outline hull); and the run's own summary reports `fx events=0 … peak=0/128` for the
+  frame (so it is not #17's effect cards).
+* With the overlay in its own renderer, its pass and the HUD's passes cannot see each other's
+  vertices at all, and **unpaused captures are unchanged** — the overlay is not drawn when the
+  battle is not paused, and the split-screen HUD keeps its own (still aliased) path, so a
+  single-view, 2-view or 4-view unpaused capture hashes identically before and after.
+
+One defect this deliberately does NOT fix: the same aliasing still corrupts *within* the
+battle HUD's own passes. In a 4-view frame the separator pass is the last write, so every
+view's first two quads (fighter 0's reticle circle and triangles) are replaced by the
+separator's thin bars, and each cell's remaining quads read whichever view wrote last. It is
+invisible to `hud_cell_scale.py` because every pass pushes its probe markers at identical
+coordinates, and repairing it would change unpaused split-screen pixels — a separate issue,
+reported rather than folded into this one.
+
 ## What freezes
 
 `Match::set_paused` gates the authoritative step: a paused `Match::step` returns an empty
@@ -104,6 +151,23 @@ pauses, so the banked traces keep their frame-for-frame script mapping.
 
 ## Verification
 
+* `pause_overlay_layout_test` (device-free, no assets): the layout rule above — the size and
+  the panel scale with the canvas (1080p is 2x 540p), the panel is the measured text plus its
+  margin and stays inside the frame from 320x180 to 8K, and the shorter side fixes the size,
+  so a 4-view split over the same target reads the same.
+* `pause_overlay_panel` (rendered frame, skips without game data): runs `--pause-overlay=300`
+  and measures the capture against a reference frame of the SAME match state one frame
+  earlier. Pins: no solid-white block (the defect's quad was 158x157 px at 960x540, and the
+  same capture made by the pre-fix draw path fails this check), a backing panel present with
+  the text inside it and 5–6 drawn line bands, the title's ink 20 px at 960x540 and 41 px at
+  1920x1080 (2.05x, panel width 2.04x), the 4-view split's panel identical to the single
+  view's at that size, the panel mask empty on two unpaused frames, and a pause captured 60
+  frames after it began byte-identical (the freeze, seen from the capture path).
+* `--pause-overlay=N` is the instrument those captures use, and the only way a headless run
+  can photograph the menu: it enters the battle pause on the tick `matchFrame` reaches N
+  through the same `enterBattlePause` the player's key uses, so the captured frame is a real
+  paused one, with the frozen clocks and the real menu rows. It is parsed only with `--out`
+  and a live run rejects it, so no played or other capture path can reach it.
 * `battle_pause_test` (device-free, 1276 checks): the frozen economy, KO and respawn clocks;
   a held button producing no shot or attack while paused and none on resume, while a fresh
   press still does; the `TickInput` drain rule; the menu's rows, wrap and choices.
