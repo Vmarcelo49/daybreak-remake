@@ -343,10 +343,26 @@ private:
     // which is safe because a queue write is ordered before the next submission.
     static constexpr uint32_t kUniformSlots = 16;
     static constexpr uint64_t kUniformStride = 256;  // minUniformBufferOffsetAlignment
+    // The same rule for the batch's VERTICES (issue #56): one region per render() call,
+    // addressed by binding the vertex buffer at the region's byte offset. A WebGPU vertex
+    // buffer has no dynamic offset, so the region is the binding's own offset, and the
+    // static index fan stays valid because an indexed draw's vertex index addresses the
+    // BOUND REGION — index i reads the region's vertex i, exactly as it read the buffer's
+    // vertex i when the region was the whole buffer. What a shared buffer did to the
+    // split-screen HUD: every pass wrote offset 0, the separator pass (2 quads, written
+    // last) overwrote the first 8 vertices of all four HUD passes, and each pass's
+    // remaining quads read the last HUD view's geometry — so each cell's own reticles
+    // were replaced by whichever view wrote last. Slots follow the uniform count so both
+    // "one region per pass" paths have the same headroom: 16 x 256 KiB is 4 MiB, and the
+    // heaviest frame this tree records makes 7 passes on one renderer (4 views + the
+    // separator, plus the countdown overlay and the clip-browser caption).
+    static constexpr uint32_t kVertexSlots = kUniformSlots;
+    static constexpr uint64_t kVertexSlotStride = (uint64_t)sizeof(UiVertex) * kMaxQuads * 4;
     WGPUBuffer          vpBuffer_ = nullptr;         // kUniformSlots * kUniformStride
     WGPUBindGroup       vpGroup_ = nullptr;          // binding 0 with a dynamic offset
     uint32_t            uniformSlot_ = 0;
-    WGPUBuffer          vbuf_ = nullptr;
+    WGPUBuffer          vbuf_ = nullptr;             // kVertexSlots * kVertexSlotStride
+    uint32_t            vertexSlot_ = 0;
     WGPUBuffer          ibuf_ = nullptr;
 
     std::vector<Texture>  textures_;    // [0] is always the 1x1 white fallback
