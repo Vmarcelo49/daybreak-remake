@@ -372,3 +372,31 @@ comments — when a decision changes.
   `foundation/docs/NPR-EXPERIMENTS.md`, captures under `remake/tests/npr-evidence/`.
 - Rationale: an experiment issue needs an instrument, and an instrument that changes the
   baseline cannot measure it.
+
+## D13 — Linux requests the Vulkan backend by name, with no fallback (2026-10-06)
+
+- Issue #37 asks whether `src/gpu/gpu.cpp`'s `opts.backendType = WGPUBackendType_Vulkan`
+  (introduced by #22, `2545527`) should stay or become prefer-Vulkan-with-fallback.
+  **It stays.** Windows and web keep the default backend set, as their builds were verified.
+- **Why no fallback: it cannot be made safe with the library this port ships.** The
+  acceptance asked whether wgpu-native exposes an environment override that would let a
+  retry avoid the GLES/EGL path it panics in. It does not: `strings` over the fetched
+  `libwgpu_native.so` finds no `WGPU_*` environment variable at all (the only `WGPU_`
+  matches are Rust symbol names). So a retry with the default backend set would, on a
+  machine with neither Vulkan nor a usable EGL display, walk straight into the abort the
+  Vulkan request was added to avoid — wgpu-hal unwraps a `None` EGL display
+  (`gles/egl.rs:899`), which kills the process before any message can be printed. That
+  trades an actionable error for a crash, which is the worse failure of the two.
+- **What the decision costs, stated plainly:** a machine with a working GL/EGL path but no
+  Vulkan driver reports `no usable GPU adapter: this port needs a Vulkan-capable GPU and
+  its driver` instead of possibly running. That is a real reduction in reach and it is
+  accepted, not overlooked. The error message names the driver to install
+  (`gpu.cpp:138-146`), which is what makes the reduction survivable for a user.
+- **If this is ever revisited**, the three things to re-check are: whether the shipped
+  wgpu-native gained a backend-selection override; whether the EGL path still panics
+  rather than reporting; and whether the port is willing to ship a backend whose WSI is
+  untested here (every Linux verification in this repo ran on RADV/Vulkan — the README's
+  requirements say "a Vulkan driver" and the Linux row of its target table says
+  `wgpu-native → Vulkan (RADV)`).
+- This is a **port-side deployment rule**, not recovered behaviour: the original shipped
+  DX9 and had no adapter selection to recover.
