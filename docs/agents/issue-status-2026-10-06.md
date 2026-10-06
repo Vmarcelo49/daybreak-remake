@@ -29,12 +29,15 @@ Base commit for the whole batch: `main` @ `a35e36d`.
 | #46 | gameplay/crash | `fix/issue-46-match-start-crash` | verified + merged | **MERGED** `b1bde91` (worker `dd8473a`) |
 | #28 | verification | `chore/issue-28-ci-cadence` | verified + merged | **MERGED** `006745b` (worker `ff3a194`) |
 | #37 | platform | decision recorded | **CLOSED** — D13 in `remake/docs/decisions.md` | `4cb3694` |
-| #18 (+#31) | animation | `feat/issue-18-guard-jump-sets` @ `dbd-worktrees/issue-18` | dispatched | in progress | — |
-| #29 | verification | `fix/issue-29-input-devices` @ `dbd-worktrees/issue-29` | dispatched | in progress | — |
+| #18 (+#31) | animation | `feat/issue-18-guard-jump-sets` | verified + merged | **MERGED** `b49b22b` (worker `11215aa`/`cf88879`) |
+| #29 | verification | `fix/issue-29-input-devices` | verified + merged | **MERGED** `6a0a99f` (worker `b1474cc`/`8c910a4`) |
+| #41 | frontend | `fix/issue-41-select-free-cursor` | verified + merged | **MERGED** `c8e5245` (worker `d028c71`/`0c11e4b`) |
+| — | infra | `fix/ci-linux-sdl-deps` | verified + merged | **MERGED** `2b76e2c` — CI green for the first time |
 | #26 | animation | — | **re-scoped on GitHub** (per the human) | issue edited |
-| #38 | renderer | — | deferred to last (per the human) | — |
-| #41, #44, #43, #47, #40 | frontend | — | next wave | — |
-| #49, #50, #2, #21, #32, #33, #34, #27, #51, #48, #30, #35, #36, #4, #39, #24, #3 | — | — | queued | — |
+| #37 | platform | — | **CLOSED** — D13 | `4cb3694` |
+| #38 | renderer | — | dropped (human: really low priority) | — |
+| #40 | frontend | — | unblocked: vendor pl_mpeg, keep it simple | — |
+| #43, #44, #47, #49, #50, #2, #21, #32, #33, #34, #27, #51, #48, #30, #35, #36, #4, #39, #24, #3 | — | — | queued | — |
 
 `main` is at **48/48 ctest** with the install and **48/48 with five tests Skipped** in a checkout
 with no game data at all (measured, not inferred — see below).
@@ -300,3 +303,45 @@ and names from the live bridge may therefore not match `research/decompiled/`,
 2. **#38** — needs your eye on the toon/outline captures.
 3. **#37** — keep the Vulkan-only adapter request, or fall back?
 4. **#40** — the opening-movie decoder decision.
+
+## Round 3 — three more merges, and CI green for the first time in the repo's history
+
+`main` is at **50/50 ctest** with the install and **50/50 with six Skipped** in a checkout with no
+game data at all. Everything below was reproduced by me before merging.
+
+**#29 input devices.** Option (c), both halves. Verified: the release recipe is **byte-identical**
+between *main + `--no-devices`* and *the branch with no flag* (`sha256 34a6d3a9…`), so making
+verification runs device-free by default preserved behaviour exactly. `device_isolation_test` passes
+44/44, and the design does the one thing that mattered — `device()` deliberately still *names* a pad
+while unfocused, so a `--local-players` slot is never handed to a synthetic pad.
+
+**#18 + #31 animation selectors.** Measured before/after with the trace I set up in round 1:
+`guard` went from `set 0 (fallback)` to `set 0 (no selector)` — Guard binds no clip *in the source*
+(`FUN_00637950`'s blocked branch calls no move bind), which is a recovered result, not a gap — and
+the airborne attack now plays its resolved `set 88 Anim-36`. The worker also corrected my brief: a
+capture *with* `--anim` does call `advanceAnimation`, so #39's claim needed narrowing to the match
+tick. Its committed `air-attack.txt` recipe did **not** reproduce on the rebased tree (a lone leap is
+interrupted by the COM), so I recalibrated it and re-measured 4 `set 88` samples in each of three
+consecutive runs rather than shipping a recipe that lies.
+
+**#41 free select cursor.** The recovered rule implemented faithfully, and the worker corrected the
+issue's own premise with a BFS over the pre-change code: all 16 entries *were* reachable, but a press
+jumped a whole cell with counter-icon landings (`rena: L→keiichi R→rika U→satoko`, `DOWN` a no-op on
+`rena`). The real defect was the unslidable jump, not unreachability — worth knowing before anyone
+re-tests by hand. All four gate scripts still select the same characters.
+
+### CI: two pre-existing defects, both found by the new per-push trigger
+
+The first push after #28 landed turned CI red, and it was right to:
+
+1. The **linux job could never build SDL** — the runner has no X11/Wayland development libraries, so
+   `configure` refused. The workflow had run **twice in its life, both failures**, and nobody saw it
+   because it only ran on VERSION bumps. Fixed by installing SDL's own dependency set.
+2. The **windows job's toolchain path was relative**, and CMake resolves `CMAKE_TOOLCHAIN_FILE`
+   against the *build* directory — I reproduced it locally word for word, including the misleading
+   "unable to find a build program corresponding to Ninja" cascade, and fixed it to the absolute form
+   `build.sh` already used.
+
+After both: `gate` ✓ `linux` ✓ `windows` ✓ `web` ✓ on a `workflow_dispatch`, and `gate` ✓ `linux` ✓
+with `windows`/`web` **skipped** on an ordinary push to `main` — exactly the cadence #28 specified,
+now verified against real GitHub Actions rather than modelled.
