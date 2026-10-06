@@ -39,7 +39,6 @@ struct MatchView {
     // first tick, which has no earlier view to interpolate from.
     glm::vec3 previousEye{0.f};
     glm::vec3 previousTarget{0.f};
-    bool      primed = false;
 
     // This view's HUD frame: its own fighter's resources, its own target ring, projected
     // through its own camera at render time (D8).

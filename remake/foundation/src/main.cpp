@@ -3174,14 +3174,18 @@ static void tickMatch(App& app, double dt) {
         // Scripted/offscreen standalone runs retain the banked null-query camera path;
         // live matches clamp the eye against collision_camera.x unless the A/B switch asks
         // for the historical unclamped behavior. The blend remains per call as in the port.
+        // The render blends this tick's camera with the one the PREVIOUS tick ended on
+        // (glm::mix(previousEye, camera.eye(), matchAlpha) in buildFrameViews), so the
+        // snapshot has to advance once per tick, before the update. Advancing it only on
+        // the first tick left every live frame interpolating from the match's opening
+        // pose: the eye then swept between that pose and the current one as the tick
+        // fraction changed, which reads as a camera that never settles. Captures never
+        // showed it because matchAlpha is 1 while capturing, where the mix returns the
+        // current camera unchanged (D9's one-update-per-frame recipes).
+        view.previousEye = view.camera.eye();
+        view.previousTarget = view.camera.target();
         view.camera.update(dt,cameraQuery);
         if (view.camera.active_target_index() >= 0) view.followed = view.camera.active_target_index();
-        // The first camera tick has no valid earlier view to interpolate from.
-        if (app.matchFrame == 1 || !view.primed) {
-            view.previousEye = view.camera.eye();
-            view.previousTarget = view.camera.target();
-            view.primed = true;
-        }
 
         // This view's HUD: the ported value computation (gameplay/hud_fill.h, unchanged),
         // fed from the view's own fighter. Which side goes where is the DX9 layout's:
