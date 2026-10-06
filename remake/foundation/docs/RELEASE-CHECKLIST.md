@@ -66,14 +66,19 @@ data. It is also registered in the host suite (`ctest -R launcher_test`).
 ctest --test-dir remake/foundation/build/linux --output-on-failure
 ```
 
-* **With the game install present**: `100% tests passed out of 42`.
-* **Without any game data** (the CI runner's state — rename or hide
-  `Higurashi-Daybreak/`): still `100% tests passed out of 42`, with
-  `hud_cell_scale` reported as `Skipped` (exit 77) and `weapon_definition_test`
-  skipping its fully-skipped sweep. CI needs no copyrighted data.
+* **With the game install present**: `100% tests passed out of 45`.
+* **Without any game data** (the CI runner's state — no `Higurashi-Daybreak/`):
+  `100% tests passed out of 45`, with `hud_cell_scale`, `toon_ramp`,
+  `npr_experiments` and `npr_normals_test` reported as `Skipped` (exit 77) and
+  `weapon_definition_test` skipping its fully-skipped sweep. CI needs no
+  copyrighted data. (Both counts re-measured 2026-10-06, install present and
+  install absent; the suite has grown from the 42 this document was written with.)
 
 The workflow (`.github/workflows/build-foundation.yml`, Linux job) runs this
-`ctest` step; it triggers on a `remake/foundation/VERSION` change or manually.
+`ctest` step on every push to `main` that touches `remake/foundation/**` (issue
+#28), so a broken test cannot sit on `main`. The same workflow's Windows and Web
+jobs stay on the version-bump path: a `gate` job diffs the push and runs them when
+`remake/foundation/VERSION` changed anywhere in it, or on a manual dispatch.
 
 ## 3. The acceptance runs (deterministic, real assets)
 

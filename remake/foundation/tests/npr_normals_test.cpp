@@ -13,6 +13,7 @@
 // Usage: npr_normals_test <install-dir>   (exit 77 without one, like the capture tests)
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -242,16 +243,28 @@ int main(int argc, char** argv) {
     // one shipped mesh: without it the test says so and exits 77, the same
     // skip-without-the-install contract the capture tests use, so a CI box without the
     // game data does not report a false failure.
-    const bool haveInstall = argc > 1 && std::string(argv[1]).size() > 0;
+    //
+    // "There is an install" has to mean the directory is there, not that CMake passed a
+    // path: CMake always passes one, so an argument-only check ran the asset cases on a
+    // runner with no game data and aborted on the missing mesh (issue #28).
+    syntheticCases();
+    std::error_code ec;
+    const bool haveInstall = argc > 1 && argv[1][0] != '\0' &&
+                             std::filesystem::is_directory(argv[1], ec);
     if (haveInstall) {
         assetCases(argv[1]);
     } else {
-        std::printf("  (no install argument: asset cases skipped)\n");
+        std::printf("  (no game install at %s: asset cases skipped)\n",
+                    argc > 1 && argv[1][0] ? argv[1] : "(no path given)");
     }
     std::printf("\nchecks=%d failures=%d\n", g_checks, g_failures);
     if (g_failures != 0) {
         std::printf("NPR NORMALS: FAIL\n");
         return 1;
+    }
+    if (!haveInstall) {
+        std::printf("NPR NORMALS: skipped (no install)\n");
+        return 77;
     }
     std::printf("NPR NORMALS: ok\n");
     return 0;
