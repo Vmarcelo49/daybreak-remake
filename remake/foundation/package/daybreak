@@ -1,0 +1,326 @@
+#!/bin/sh
+# daybreak — the packaged Linux entry point (issue #22).
+#
+# WHY a launcher instead of "run the binary with --install= and --screen=": a release has
+# to be unpack-and-play. This script finds the user's game folder, remembers it, and hands
+# the binary a plain launch; when it cannot find one it says exactly what to do, and asks
+# on a terminal.
+#
+# WHAT THE BINARY KNOWS: --install=DIR and $DAYBREAK_INSTALL (src/main.cpp, initScreens).
+# Everything else about finding a game folder is this script's business, which keeps the
+# search order in ONE place — here, documented in README-LINUX.md beside this file.
+#
+# SEARCH ORDER (first usable folder wins):
+#   1. --install=DIR on this command line
+#   2. $DAYBREAK_INSTALL
+#   3. the saved choice: $XDG_CONFIG_HOME/daybreak-decomp/install.conf — the same config
+#      directory issue #19's settings.conf lives in (src/settings/user_settings.h)
+#   4. the folder this package was unpacked into (unpack inside your game folder)
+#   5. the current working directory
+#   6. $XDG_DATA_HOME/Higurashi-Daybreak (~/.local/share/Higurashi-Daybreak)
+#   7. ~/Higurashi-Daybreak, ~/Daybreak, ~/Games/Higurashi-Daybreak, ~/Games/Daybreak
+#
+# A folder is usable when it holds the game's daybreakXX.dat files — the same rule the
+# binary applies to an explicit --install=, so the launcher cannot promise a folder the
+# binary would reject.
+#
+# The game's own files are copyrighted and are never shipped — the user always supplies
+# the folder. This script writes exactly one thing, the preference line below, and only
+# inside the XDG config directory.
+
+set -u
+
+say() { printf '%s\n' "$*" >&2; }
+
+# A double-clicked launcher has no terminal, so its own failures would vanish. Best
+# effort, never required: use the desktop's dialog helper when one is installed.
+notify_gui() {
+    [ -t 2 ] && return 0
+    if command -v zenity >/dev/null 2>&1; then
+        zenity --error --title="Higurashi Daybreak" --text="$1" >/dev/null 2>&1
+    elif command -v kdialog >/dev/null 2>&1; then
+        kdialog --error "$1" >/dev/null 2>&1
+    fi
+    return 0
+}
+
+die() {
+    say "[daybreak] $*"
+    notify_gui "Higurashi Daybreak could not start:
+
+$*"
+    exit 1
+}
+
+# --- where am I ---------------------------------------------------------------------
+# A symlink (e.g. ~/.local/bin/daybreak -> the unpacked folder) must resolve to the real
+# folder: the binary, its assets and its libraries live beside this script.
+self=$0
+while [ -L "$self" ]; do
+    link=$(readlink "$self") || break
+    case $link in
+        /*) self=$link ;;
+        *)  self=$(dirname -- "$self")/$link ;;
+    esac
+done
+here=$(CDPATH= cd -- "$(dirname -- "$self")" && pwd -P) || die "cannot resolve my own folder"
+version=$(cat "$here/VERSION" 2>/dev/null || true)
+
+# --- package integrity --------------------------------------------------------------
+# A half-unpacked archive fails later with a loader or font error; name the missing piece
+# here instead, where the fix ("unpack it again") is still obvious.
+missing=
+[ -x "$here/foundation_demo" ] || missing="foundation_demo"
+for f in assets/fonts/gyrotrope-black.otf assets/fonts/NotoSansCJKjp-Regular.otf \
+         lib/libwgpu_native.so lib/libSDL3.so.0; do
+    [ -e "$here/$f" ] || missing="${missing:+$missing, }$f"
+done
+[ -z "$missing" ] || die "the package is incomplete ($missing missing under $here). Unpack the release archive again."
+
+usage() {
+    cat <<EOF
+daybreak ${version:-?} — Higurashi Daybreak (offline versus) for Linux
+
+usage: daybreak [--install=DIR] [--screen=ID] [other flags]
+
+  --install=DIR   folder holding the game's daybreak00.dat (your own copy of the game)
+  --screen=ID     boot one front-end screen directly; title is the default
+  --help          this text
+
+The game folder is looked up in this order:
+  1. --install=DIR                     2. \$DAYBREAK_INSTALL
+  3. the saved choice in \$XDG_CONFIG_HOME/daybreak-decomp/install.conf
+  4. this package's folder             5. the current directory
+  6. \$XDG_DATA_HOME/Higurashi-Daybreak
+  7. ~/Higurashi-Daybreak, ~/Daybreak, ~/Games/Higurashi-Daybreak, ~/Games/Daybreak
+With no usable folder it asks once and remembers the answer.
+
+The game's data files are copyrighted, so the release never contains them — point this
+launcher at the copy you own. Controls and current limits: README-LINUX.md beside this
+script.
+EOF
+}
+
+# --- candidate helpers --------------------------------------------------------------
+# Trim blanks and one layer of quotes a pasted path may carry.
+trim() {
+    s=$1
+    while [ "${s# }" != "$s" ]; do s=${s# }; done
+    while [ "${s% }" != "$s" ]; do s=${s% }; done
+    while [ "${s#	}" != "$s" ]; do s=${s#	}; done
+    while [ "${s%	}" != "$s" ]; do s=${s%	}; done
+    case $s in
+        '"'*'"') s=${s#'"'}; s=${s%'"'} ;;
+        "'"*"'") s=${s#"'"}; s=${s%"'"} ;;
+    esac
+    printf '%s' "$s"
+}
+
+# `~/games` typed at the prompt is not expanded by the shell, so expand it here.
+tilde() {
+    case $1 in
+        "~") [ -n "${HOME:-}" ] && printf '%s' "$HOME" || printf '%s' "$1" ;;
+        "~/"*) [ -n "${HOME:-}" ] && printf '%s/%s' "$HOME" "${1#\~/}" || printf '%s' "$1" ;;
+        *) printf '%s' "$1" ;;
+    esac
+}
+
+# A path to the .dat file itself is a common paste; take its folder.
+as_dir() {
+    d=$1
+    [ -n "$d" ] || { printf ''; return; }
+    [ -f "$d" ] && d=$(dirname -- "$d")
+    while [ -n "$d" ] && [ "${d%/}" != "$d" ]; do d=${d%/}; done
+    [ -n "$d" ] || d=/
+    printf '%s' "$d"
+}
+
+absolute() {
+    case $1 in
+        /*) printf '%s' "$1" ;;
+        *)  printf '%s/%s' "$(pwd -P)" "$1" ;;
+    esac
+}
+
+# A folder is the game when it holds the game's own data files, daybreakXX.dat — the same
+# rule the binary applies to an explicit --install=. (An extracted data/ tree is the
+# source-side fallback, which the binary reaches by being run from inside that tree; the
+# launcher does not pretend a folder it cannot read by name is an install.)
+install_usable() {
+    d=$1
+    [ -n "$d" ] && [ -d "$d" ] || return 1
+    for f in "$d"/daybreak[0-9][0-9].dat; do
+        [ -f "$f" ] && return 0
+    done
+    return 1
+}
+
+# --- the saved choice ---------------------------------------------------------------
+# Same XDG rule as issue #19: only an ABSOLUTE $XDG_CONFIG_HOME counts, else ~/.config.
+config_dir() {
+    case ${XDG_CONFIG_HOME:-} in
+        /*) printf '%s/daybreak-decomp' "$XDG_CONFIG_HOME" ;;
+        *)  [ -n "${HOME:-}" ] && printf '%s/.config/daybreak-decomp' "$HOME" ;;
+    esac
+}
+
+saved_choice() {
+    conf=$(config_dir)
+    [ -n "$conf" ] || return 0
+    [ -f "$conf/install.conf" ] || return 0
+    # version 1 only: an unknown version is ignored rather than guessed at, the same rule
+    # issue #19's settings.conf applies to its own schema.
+    [ "$(sed -n 's/^version=//p' "$conf/install.conf" | head -n 1)" = "1" ] || return 0
+    sed -n 's/^directory=//p' "$conf/install.conf" | head -n 1
+}
+
+# Atomic enough for one preference line: temp file in the same directory, then rename, so
+# an interrupted write cannot leave a half file (issue #19's swap, minus the fsync — losing
+# this line costs the user one prompt, not settings).
+save_choice() {
+    conf=$(config_dir)
+    [ -n "$conf" ] || return 0
+    mkdir -p "$conf" 2>/dev/null || return 0
+    tmp="$conf/install.conf.tmp.$$"
+    if printf 'version=1\ndirectory=%s\n' "$1" >"$tmp" 2>/dev/null; then
+        mv -f "$tmp" "$conf/install.conf" 2>/dev/null || rm -f "$tmp"
+    else
+        rm -f "$tmp"
+    fi
+}
+
+# --- find the folder ----------------------------------------------------------------
+# The launcher's own flags are scanned in a function so the caller keeps "$@" intact: the
+# binary gets every original argument untouched (it understands --install= too, so a
+# repeated flag agrees with itself, and a later --screen= overrides the default).
+cli_install=
+scan_own_args() {
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --install=*) cli_install=${1#--install=} ;;
+            --install)   shift
+                         [ $# -gt 0 ] || die "--install needs a folder: --install=/path/to/Higurashi-Daybreak"
+                         cli_install=$1 ;;
+            -h|--help)   usage; exit 0 ;;
+            --version)   printf 'daybreak %s\n' "${version:-?}"; exit 0 ;;
+        esac
+        shift
+    done
+}
+scan_own_args "$@"
+
+env_install=${DAYBREAK_INSTALL:-}
+tried=
+install=
+install_source=
+# An explicit answer that is wrong is reported instead of being silently replaced by the
+# search below: the user named that folder, so say what is wrong with it.
+explicit_dir=
+explicit_src=
+
+try() {
+    src=$1
+    dir=$(as_dir "$(tilde "$2")")
+    tried="${tried}    $src: $dir
+"
+    install_usable "$dir" || return 1
+    install=$(absolute "$dir")
+    install_source=$src
+    return 0
+}
+
+# 1./2. explicit answers
+if [ -n "$cli_install" ]; then
+    if ! try "--install=" "$cli_install"; then explicit_dir=$cli_install; explicit_src="--install="; fi
+elif [ -n "$env_install" ]; then
+    if ! try "DAYBREAK_INSTALL" "$env_install"; then explicit_dir=$env_install; explicit_src="DAYBREAK_INSTALL"; fi
+fi
+
+# 3. the remembered folder, 4./5. drop-in and current directory, 6./7. conventional homes
+if [ -z "$install" ] && [ -z "$explicit_dir" ]; then
+    saved=$(saved_choice)
+    [ -n "$saved" ] && try "the saved choice" "$saved"
+fi
+[ -z "$install" ] && [ -z "$explicit_dir" ] && try "the package folder" "$here"
+[ -z "$install" ] && [ -z "$explicit_dir" ] && try "the current directory" "$(pwd -P)"
+if [ -z "$install" ] && [ -z "$explicit_dir" ]; then
+    case ${XDG_DATA_HOME:-} in
+        /*) data_home=$XDG_DATA_HOME ;;
+        *)  [ -n "${HOME:-}" ] && data_home=$HOME/.local/share || data_home= ;;
+    esac
+    [ -n "$data_home" ] && try "XDG data" "$data_home/Higurashi-Daybreak"
+fi
+if [ -z "$install" ] && [ -z "$explicit_dir" ] && [ -n "${HOME:-}" ]; then
+    for candidate in "$HOME/Higurashi-Daybreak" "$HOME/Daybreak" \
+                     "$HOME/Games/Higurashi-Daybreak" "$HOME/Games/Daybreak"; do
+        try "a conventional location" "$candidate" && break
+    done
+fi
+
+# --- ask, or say what to do ---------------------------------------------------------
+no_install_message() {
+    if [ -n "$explicit_dir" ]; then
+        say "[daybreak] No game data in \"$explicit_dir\" ($explicit_src): that folder has"
+        say "[daybreak] no daybreakXX.dat files."
+    fi
+    say "[daybreak] No Higurashi Daybreak game data found."
+    say "[daybreak] The release cannot ship the game's files (they are copyrighted), so it"
+    say "[daybreak] uses the copy you own. Looked for daybreak00.dat in:"
+    [ -n "$tried" ] && printf '%s' "$tried" >&2
+    say "[daybreak] Point the launcher at your game folder:"
+    say "[daybreak]     ./daybreak --install=\"/path/to/Higurashi-Daybreak\""
+    say "[daybreak] or set DAYBREAK_INSTALL=/path/to/Higurashi-Daybreak, or unpack this"
+    say "[daybreak] package inside your game folder. The folder is remembered after the"
+    say "[daybreak] first successful launch."
+}
+
+ask_for_install() {
+    # Only a terminal can answer; a scripted run gets the message and a non-zero exit.
+    [ -t 0 ] || return 1
+    say "[daybreak] No game folder found."
+    tries=0
+    while [ "$tries" -lt 3 ]; do
+        tries=$((tries + 1))
+        printf '[daybreak] Folder holding daybreak00.dat: ' >&2
+        IFS= read -r answer || return 1
+        answer=$(trim "$answer")
+        [ -n "$answer" ] || continue
+        answer=$(as_dir "$(tilde "$answer")")
+        if install_usable "$answer"; then
+            install=$(absolute "$answer")
+            install_source="your choice"
+            return 0
+        fi
+        say "[daybreak] no game data in \"$answer\": that folder has no daybreakXX.dat files (the game's own data files)."
+    done
+    return 1
+}
+
+if [ -z "$install" ]; then
+    if ask_for_install; then
+        :
+    else
+        no_install_message
+        notify_gui "Higurashi Daybreak could not start: no game folder was found.
+
+Point the launcher at your copy of the game:
+    ./daybreak --install=\"/path/to/Higurashi-Daybreak\"
+or set DAYBREAK_INSTALL to that folder."
+        exit 1
+    fi
+fi
+
+# Remember a new answer (and never rewrite the file with the same one).
+if [ "$install" != "$(saved_choice)" ]; then
+    save_choice "$install"
+    if [ -z "$(config_dir)" ]; then
+        say "[daybreak] no \$XDG_CONFIG_HOME or \$HOME: the folder will not be remembered"
+    fi
+fi
+
+say "[daybreak] game folder: $install ($install_source)"
+say "[daybreak] starting the title screen — controls are in README-LINUX.md"
+
+# --screen=title is the front end's entry point; a --screen= of the user's own later on
+# the command line overrides it (the binary applies options in order).
+exec "$here/foundation_demo" --install="$install" --screen=title "$@"
