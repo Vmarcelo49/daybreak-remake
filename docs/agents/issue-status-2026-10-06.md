@@ -683,3 +683,21 @@ mechanism** from the `ScreenStack` 25-frame `(n*10+5) << 24` fade the port uses 
 swap — different timing *and* different alpha. Worth its own issue if exactness is wanted there.
 Also: `data/select/i00.cnv` stores identical art in cells 0, 2 and 4, which is why several distinct
 scene ticks render byte-identical frames.
+
+## Round 17 — a worker was lost, and the process rule that prevents it
+
+**#50's first agent was stopped before it finished and left no closing message.** Its worktree's
+reflog showed `reset: moving to HEAD` and the tree was clean with no commit and no stash — so its
+edits were discarded and the work died with the agent. Nothing was recoverable. It was redispatched to
+a fresh agent (`fb513d2c`) with two process rules added to its brief:
+
+1. **Commit incrementally** — the moment one defect is diagnosed and fixed, commit it. Several small
+   commits beat one perfect one that never lands.
+2. **Never `git reset --hard` / `git checkout -- .` / `git stash` without a named stash first.** To
+   prove a test fails pre-change, build the old variant from `git show <base>:<path>` in `/tmp` (what
+   every other worker did) rather than destroying the working tree to get a comparison.
+
+**The generalisable version, worth keeping**: a worktree is the only copy of a worker's uncommitted
+work — the coordinator cannot recover it. Every brief in this batch already said "commit and report";
+this is the first time the absence of an *intermediate* commit actually cost work. Briefs for
+long-running issues should say **commit as you go** explicitly, not just "commit before reporting".
