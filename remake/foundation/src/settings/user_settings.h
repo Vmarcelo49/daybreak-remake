@@ -48,9 +48,20 @@ namespace settings {
 // that migration reports context without a warning. The [render] section itself is read
 // whatever the version line says, so a hand-edited file is not rejected for naming a key
 // this build knows.
-inline constexpr int kSchemaVersion = 3;
+//
+// v4 (issue #36) added [game] install_dir: the game folder a run opened, so one config
+// file owns it (the packaged launcher's own install.conf is gone) and a DIRECT binary run
+// honours a remembered folder. A v3 file is MIGRATED additively — every value it carries
+// is read as v3 wrote it, and the new key takes its default (empty = no folder
+// remembered), which the migration line reports — and #21's v2→v3 migration stays in the
+// chain, so the oldest files keep loading too. The key itself is special in one way: the
+// document always carries it (serialize writes it empty when nothing is remembered), so a
+// MISSING key in a current document is a hand-edit and warns, while a value that is not a
+// usable folder warns and defaults that one key.
+inline constexpr int kSchemaVersion = 4;
 inline constexpr int kSchemaVersionLegacy = 1;
 inline constexpr int kSchemaVersionV2 = 2;
+inline constexpr int kSchemaVersionV3 = 3;
 // The v1 action count and the index the removed heavy action occupied in it.
 inline constexpr int kLegacyActionCount = 13;
 inline constexpr int kLegacyHeavyIndex = 5;
@@ -71,6 +82,13 @@ struct DisplaySize {
 // Everything the port persists. Defaults are the shipped bindings and full volume, so a
 // missing or rejected file yields exactly the behaviour of a first launch.
 struct UserSettings {
+    // The game folder a run last opened (issue #36), absolute; empty = never chosen.
+    // PORT DECISION, labelled as such: the original has no such setting (it reads assets
+    // relative to its own folder), and how a folder is DISCOVERED stays the launcher's
+    // search (#22). This field only remembers which folder was opened, so the launcher and
+    // a direct run agree on it. A relative value is refused by the parser (see
+    // storableInstallDir) because it would name a different folder per working directory.
+    std::string installDir;
     bool        fullscreen = false;
     DisplaySize resolution{0, 0};
     // Toon rendering (issue #21), the Options screen's first row. Off is the shipped
@@ -103,6 +121,13 @@ std::string defaultConfigPath();
 // False on the web, where there is no durable filesystem: load() then reports the file
 // absent and save() refuses, so the browser build keeps its process-local settings.
 bool persistenceSupported();
+
+// --- the remembered game folder (issue #36) ----------------------------------------
+// True when `value` may be a remembered folder at all: non-empty, ABSOLUTE, and short
+// enough to fit one line of the document. main.cpp applies it before writing a folder a
+// run opened, and serialize() writes an unstorable value as empty, so the file can never
+// carry the one thing the parser would refuse to read back.
+bool storableInstallDir(const std::string& value);
 
 // --- parse / serialize ------------------------------------------------------------
 // One line of human-readable context per accepted warning and one message per rejection.

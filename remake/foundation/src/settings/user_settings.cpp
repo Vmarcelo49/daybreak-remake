@@ -25,6 +25,11 @@ constexpr size_t kMaxBytes = 64 * 1024;
 constexpr size_t kMaxLine = 512;
 constexpr size_t kMaxValueLength = 64;   // GUIDs are 32 hex chars; names are shorter
 constexpr int    kMaxDimension = 16384;  // generous ceiling for a stored pixel size
+// The remembered game folder (issue #36) is the one value that is a PATH, so it gets its
+// own budget: a path must fit one line with "install_dir = " in front of it (kMaxLine is
+// the hard structural limit). A longer one is a value error, and serialize() drops it
+// rather than write a document that could not be read back.
+constexpr size_t kMaxPathValue = 480;
 
 std::string trimmed(const std::string& s) {
     size_t begin = 0, end = s.size();
@@ -72,6 +77,20 @@ bool validText(const std::string& value) {
         if (u < 0x20 || u == 0x7f) return false;   // no control bytes in a GUID/name
     }
     return true;
+}
+
+// Absolute means the same folder wherever the port is started from, which is the only kind
+// worth remembering — the same reasoning configDirectory() applies to $XDG_CONFIG_HOME.
+// Windows is a cross-build-only target, but its spelling is accepted there too so one
+// document stays meaningful on both.
+bool absolutePath(const std::string& value) {
+    if (value.empty()) return false;
+#if defined(_WIN32)
+    if (value.size() >= 3 && std::isalpha(static_cast<unsigned char>(value[0])) && value[1] == ':' &&
+        (value[2] == '\\' || value[2] == '/'))
+        return true;
+#endif
+    return value[0] == '/';
 }
 
 // A comma-separated action table: exactly fnd::input::ActionCount entries.
@@ -133,7 +152,8 @@ UserSettings::UserSettings() {
 }
 
 bool UserSettings::operator==(const UserSettings& other) const {
-    return fullscreen == other.fullscreen && resolution == other.resolution &&
+    return installDir == other.installDir && fullscreen == other.fullscreen &&
+           resolution == other.resolution &&
            toonRendering == other.toonRendering &&
            volumes.master == other.volumes.master && volumes.music == other.volumes.music &&
            volumes.voice == other.volumes.voice && volumes.sfx == other.volumes.sfx &&
@@ -169,6 +189,10 @@ bool persistenceSupported() {
 #endif
 }
 
+bool storableInstallDir(const std::string& value) {
+    return absolutePath(value) && value.size() <= kMaxPathValue;
+}
+
 bool parse(const std::string& text, UserSettings& out, std::string& error, LoadReport& report) {
     // Reset only what this function owns: load() records `existed` before it calls here.
     report.warnings = 0;
@@ -189,9 +213,16 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
     // A v1 document's binding rows carry the removed heavy action at index 5; the rows are
     // read with the v1 width and the entry is dropped once the row parses (see the header).
     bool legacyLayout = false;
-    // A v2 document is migrated to v3 by adding the toon toggle at its default; nothing is
-    // dropped, so the report gets a context line rather than a warning (see the header).
+    // A v2 document is migrated to the current schema by adding the toon toggle at its
+    // default; nothing is dropped, so the report gets a context line rather than a warning
+    // (see the header).
     bool v2Document = false;
+    // A v3 document predates [game] install_dir, so it is migrated by defaulting the
+    // remembered folder; the report says which version it came from.
+    bool v3Document = false;
+    // The remembered folder must be PRESENT, even empty: "not set" and "no folder chosen"
+    // are different statements, and only the first is worth a warning.
+    bool sawInstallDir = false;
     bool inSection = false;
     std::string section;
     std::istringstream stream(text);
@@ -215,8 +246,8 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
             }
             section = trimmed(line.substr(1, line.size() - 2));
             inSection = true;
-            if (section != "display" && section != "render" && section != "audio" &&
-                section != "bindings" && section != "controllers") {
+            if (section != "game" && section != "display" && section != "render" &&
+                section != "audio" && section != "bindings" && section != "controllers") {
                 error = "line " + std::to_string(lineNumber) + ": unknown section [" + section + "]";
                 return false;
             }
@@ -252,13 +283,14 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                     return false;
                 }
                 if (version != kSchemaVersion && version != kSchemaVersionLegacy &&
-                    version != kSchemaVersionV2) {
+                    version != kSchemaVersionV2 && version != kSchemaVersionV3) {
                     error = "unsupported config version " + std::to_string(version) +
                             " (this build writes " + std::to_string(kSchemaVersion) + ")";
                     return false;
                 }
                 legacyLayout = (version == kSchemaVersionLegacy);
                 v2Document = (version == kSchemaVersionV2);
+                v3Document = (version == kSchemaVersionV3);
                 sawVersion = true;
                 continue;
             }
@@ -267,7 +299,27 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
             return false;
         }
 
-        if (section == "display") {
+        if (section == "game") {
+            // v4's section (issue #36). An empty value is the documented "no folder is
+            // remembered" spelling — the one serialize() writes for a fresh document — so
+            // it is not a warning; a relative or over-long folder is a value error for
+            // this key (the folder stays unchosen, every other key still applies).
+            if (key == "install_dir") {
+                sawInstallDir = true;
+                if (value.empty()) {
+                    candidate.installDir.clear();
+                } else if (value.size() > kMaxPathValue) {
+                    warn("install_dir: the folder is longer than " + std::to_string(kMaxPathValue) +
+                         " bytes, which does not fit one line of the file, ignoring it");
+                } else if (!absolutePath(value)) {
+                    warn("install_dir: '" + value + "' is not an absolute folder, ignoring it");
+                } else {
+                    candidate.installDir = value;
+                }
+            } else {
+                warn("ignoring unknown key '" + key + "'");
+            }
+        } else if (section == "display") {
             if (key == "fullscreen") {
                 bool on = false;
                 if (!parseBool(value, on)) warn("fullscreen: keeping the default");
@@ -365,11 +417,27 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
         ++report.warnings;
         report.messages.push_back(
             "config version 1: migrated to " + std::to_string(kSchemaVersion) +
-            " (the removed heavy-melee binding was dropped, every other binding kept)");
+            " (the removed heavy-melee binding was dropped, every other binding kept; no "
+            "game folder is remembered until a run opens one)");
     } else if (v2Document) {
         report.messages.push_back(
             "config version 2: migrated to " + std::to_string(kSchemaVersion) +
-            " (toon rendering defaults to off; every stored value kept)");
+            " (toon rendering defaults to off, no game folder is remembered until a run "
+            "opens one; every stored value kept)");
+    } else if (v3Document) {
+        report.messages.push_back(
+            "config version 3: migrated to " + std::to_string(kSchemaVersion) +
+            " (the game folder is remembered in this file from now on; every stored value "
+            "kept)");
+    } else if (!sawInstallDir) {
+        // A CURRENT document always carries the key — serialize() writes it even when no
+        // folder is remembered — so its absence is a hand-edit or a lossy writer, and the
+        // one thing that changes is worth a warning. An older document cannot have the key
+        // and gets the context line above instead, the rule #21's v2 migration follows.
+        ++report.warnings;
+        report.messages.push_back(
+            "install_dir: a version " + std::to_string(kSchemaVersion) +
+            " document should carry the game folder key, so no folder is remembered");
     }
     out = candidate;
     report.loaded = true;
@@ -383,6 +451,19 @@ std::string serialize(const UserSettings& settings) {
         << "# result stats) is deliberately not stored here.\n"
         << "# Format and policies: remake/foundation/docs/USER-SETTINGS.md\n"
         << "version = " << kSchemaVersion << "\n\n";
+
+    // The key is ALWAYS written, empty when no folder is remembered: the load reports a
+    // MISSING key (an older file, a hand-edit) as "nothing is remembered", so the port's
+    // own output must always carry it. A value the parser would refuse to read back — a
+    // relative folder, or one that does not fit the line budget — is written as empty
+    // rather than producing a document that cannot round-trip.
+    out << "[game]\n"
+        << "# The game folder this port last opened (issue #36). Absolute; empty means no\n"
+        << "# folder is remembered yet. --install= and $DAYBREAK_INSTALL still win for a\n"
+        << "# single run, and the packaged launcher reads this key.\n"
+        << "install_dir = "
+        << (storableInstallDir(settings.installDir) ? settings.installDir : std::string())
+        << "\n\n";
 
     out << "[display]\n"
         << "fullscreen = " << (settings.fullscreen ? "true" : "false") << "\n"

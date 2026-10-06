@@ -38,8 +38,9 @@ The launcher looks for `daybreak00.dat` in this order, first hit wins:
 
 1. `--install=DIR` on the command line
 2. `$DAYBREAK_INSTALL`
-3. the remembered folder: `$XDG_CONFIG_HOME/daybreak-decomp/install.conf`
-   (`~/.config/daybreak-decomp/install.conf` by default)
+3. the remembered folder: `[game] install_dir` in
+   `$XDG_CONFIG_HOME/daybreak-decomp/settings.conf`
+   (`~/.config/daybreak-decomp/settings.conf` by default)
 4. the folder this package was unpacked into (unpack it inside your game folder and it
    just works)
 5. the current working directory
@@ -57,8 +58,19 @@ not something this launcher discovers.
 export DAYBREAK_INSTALL="$HOME/Games/Higurashi-Daybreak" # per shell
 ```
 
-The chosen folder is written to the config file above on the first successful launch, next
-to the port's settings (`settings.conf`), and never anywhere else.
+The folder is remembered in the port's **own** settings file, next to the port's other
+settings and nowhere else: the launcher hands it to the binary, which writes it to
+`$XDG_CONFIG_HOME/daybreak-decomp/settings.conf` (`[game] install_dir`) when it opens it.
+The launcher itself writes no config file at all, so a direct
+`./foundation_demo --screen=title` run — no launcher, no flag — starts from the same folder.
+Releases before this one kept the folder in a separate `install.conf` in that directory;
+a leftover one is read once (so your answer is not lost), moved into `settings.conf` by the
+same mechanism, and then removed.
+
+`--install=DIR` and `$DAYBREAK_INSTALL` still win for the run that names them: they are
+instructions for that run, while the remembered folder is only a starting point, and a
+remembered folder that has since been moved or deleted is reported and skipped instead of
+stopping the launch.
 
 ## 3. Controls (defaults)
 

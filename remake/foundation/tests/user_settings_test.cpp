@@ -92,6 +92,7 @@ int main() {
         checkInt("sfx default", 100, defaults.volumes.sfx);
         check(!defaults.fullscreen, "fullscreen default is off");
         check(!defaults.toonRendering, "toon rendering default is off (the shipped state)");
+        check(defaults.installDir.empty(), "no game folder is remembered before one is opened");
         check(defaults.resolution == settings::DisplaySize{0, 0}, "resolution default is desktop");
         check(defaults.padGuid[0].empty() && defaults.padGuid[3].empty(),
               "no controller identity before a pad is seen");
@@ -104,6 +105,7 @@ int main() {
         original.resolution = {1280, 720};
         original.volumes = {80, 70, 60, 50};
         original.toonRendering = true;
+        original.installDir = "/home/u/Games/Higurashi-Daybreak";
         original.keyboard[fnd::input::Jump] = 42;
         original.keyboard[fnd::input::Guard] = -1;   // an explicitly unbound action
         original.gamepad[2][fnd::input::Guard] = 7;
@@ -140,16 +142,19 @@ int main() {
         std::string error;
         check(!parses("[display]\nfullscreen = true\n", out, error), "missing version is rejected");
         check(error.find("version") != std::string::npos, "the reason names the version line");
-        check(!parses("version = 4\n[display]\nfullscreen = true\n", out, error),
+        check(!parses("version = 5\n[display]\nfullscreen = true\n", out, error),
               "an unsupported version is rejected");
-        check(error.find("unsupported config version 4") != std::string::npos,
+        check(error.find("unsupported config version 5") != std::string::npos,
               "the reason names the version it found");
-        // v1 and v2 are previous schemas and are MIGRATED, not rejected (issue #10 removed
-        // the port-invented heavy binding; issue #21 added the toon toggle).
+        // Every previous schema is MIGRATED, not rejected: issue #10 removed the
+        // port-invented heavy binding, issue #21 added the toon toggle, issue #36 added the
+        // remembered game folder.
         check(parses("version = 1\n[display]\nfullscreen = true\n", out, error),
               "the oldest schema still loads");
         check(parses("version = 2\n[display]\nfullscreen = true\n", out, error),
               "the previous schema still loads");
+        check(parses("version = 3\n[display]\nfullscreen = true\n", out, error),
+              "the schema before this one still loads");
         check(!parses("version = 1.0\n", out, error), "a non-integer version is rejected");
         check(parses("version = 1\nversion = 1\n", out, error),
               "a repeated version line is accepted (last wins)");
@@ -310,7 +315,7 @@ int main() {
             checkInt("and the rest of the file still applied", 70, out2.volumes.master);
             // Saving after a migration writes the current schema.
             const std::string saved = settings::serialize(out2);
-            check(saved.find("version = 3") != std::string::npos,
+            check(saved.find("version = 4") != std::string::npos,
                   "a migrated document saves as the current version");
         }
         // Inline comments are not a feature: the value must parse whole.
@@ -330,7 +335,7 @@ int main() {
         checkStr("a valid sibling still applies", "ok", out.padGuid[2]);
     }
 
-    std::printf("\n-- schema migrations: a v2 file keeps every value and gains v3's toggle\n");
+    std::printf("\n-- schema migrations: a v2 file keeps every value and gains the new keys\n");
     {
         // A v2 document as v2 wrote it: display, audio, both binding families and the
         // controller identity, with the 12-entry rows issue #10 settled on.
@@ -376,11 +381,15 @@ int main() {
         checkStr("controller identity kept", "030000005e0400008e02000000007801",
                  migrated.padGuid[1]);
         check(!migrated.toonRendering, "the v3 toggle takes its default (off) for a v2 file");
-        // The next save writes v3, and the toggle round-trips from there.
+        check(migrated.installDir.empty(),
+              "the v4 game-folder key takes its default (nothing remembered) for a v2 file");
+        // The next save writes the current schema, and the toggle round-trips from there.
         const std::string saved = settings::serialize(migrated);
-        check(saved.find("version = 3") != std::string::npos, "the next save writes v3");
+        check(saved.find("version = 4") != std::string::npos, "the next save writes v4");
         check(saved.find("[render]") != std::string::npos && saved.find("toon = false") != std::string::npos,
               "with the toggle written at its value");
+        check(saved.find("install_dir = \n") != std::string::npos,
+              "and the game-folder key written empty (unchosen)");
         settings::UserSettings reloaded;
         check(parses(saved, reloaded, error), "the migrated document parses back: " + error);
         check(reloaded == migrated, "and every value survives the migration");
@@ -398,6 +407,128 @@ int main() {
         check(!badOut.toonRendering, "toon kept its default");
         checkInt("the rest of the file applied", 55, badOut.volumes.master);
         checkInt("one warning", 1, bad.warnings);
+    }
+
+    std::printf("\n-- issue #36: a v3 file keeps every value and gains the game folder key\n");
+    {
+        // A v3 document as v3 wrote it — including the toon toggle ON, which is the value a
+        // careless migration would reset. Its 12-entry rows are the current width.
+        std::string keyboard, pad;
+        for (int a = 0; a < fnd::input::ActionCount; ++a) {
+            keyboard += (a ? "," : "") + std::to_string(40 + a);
+            pad += (a ? "," : "") + std::to_string(a % 20);
+        }
+        const std::string v3 =
+            "version = 3\n"
+            "[display]\n"
+            "fullscreen = true\n"
+            "resolution = 1920x1080\n"
+            "[render]\n"
+            "toon = true\n"
+            "[audio]\n"
+            "master = 11\n"
+            "music = 22\n"
+            "voice = 33\n"
+            "sfx = 44\n"
+            "[bindings]\n"
+            "keyboard = " + keyboard + "\n"
+            "pad3 = " + pad + "\n"
+            "[controllers]\n"
+            "pad3_guid = 030000005e0400008e02000000007801\n";
+        settings::UserSettings migrated;
+        settings::LoadReport report;
+        std::string error;
+        check(settings::parse(v3, migrated, error, report), "a v3 document loads: " + error);
+        // Nothing is dropped by v3 -> v4 (the folder key did not exist), so this migration
+        // is context, not a warning — the same rule #21's v2 migration follows.
+        checkInt("a v3 migration drops nothing, so it reports no warning", 0, report.warnings);
+        check(!report.messages.empty() &&
+                  report.messages[0].find("version 3") != std::string::npos,
+              "and says which version it migrated from");
+        check(migrated.toonRendering, "the v3 toggle is kept, not reset by the migration");
+        check(migrated.fullscreen && migrated.resolution == settings::DisplaySize{1920, 1080},
+              "the display half is kept");
+        checkInt("master volume kept", 11, migrated.volumes.master);
+        checkInt("music volume kept", 22, migrated.volumes.music);
+        checkInt("voice volume kept", 33, migrated.volumes.voice);
+        checkInt("sfx volume kept", 44, migrated.volumes.sfx);
+        checkInt("keyboard row kept, first action", 40, migrated.keyboard[fnd::input::Up]);
+        checkInt("keyboard row kept, last action", 51, migrated.keyboard[fnd::input::Pause]);
+        checkInt("pad row kept on its own player", 5 % 20, migrated.gamepad[2][fnd::input::Guard]);
+        checkStr("controller identity kept", "030000005e0400008e02000000007801",
+                 migrated.padGuid[2]);
+        check(migrated.installDir.empty(),
+              "and the new game-folder key takes its default (nothing remembered)");
+        settings::UserSettings reloaded;
+        check(parses(settings::serialize(migrated), reloaded, error),
+              "the migrated document parses back: " + error);
+        check(reloaded == migrated, "every value survives the migration");
+    }
+
+    std::printf("\n-- issue #36: what a stored game folder may be\n");
+    {
+        settings::LoadReport report;
+        settings::UserSettings out;
+        std::string error;
+        // Empty is the documented "no folder remembered" spelling serialize() writes, so a
+        // document with it is current, not a warning.
+        check(settings::parse("version = 4\n[game]\ninstall_dir = \n[audio]\nmaster = 55\n",
+                              out, error, report),
+              "an empty install_dir is the unchosen state: " + error);
+        check(out.installDir.empty(), "no folder is remembered");
+        checkInt("and it is not a warning", 0, report.warnings);
+        checkInt("the rest of the file applied", 55, out.volumes.master);
+        // An absolute folder is the one thing that is remembered.
+        check(settings::parse("version = 4\n[game]\ninstall_dir = /home/u/Games/Higurashi-Daybreak\n",
+                              out, error, report),
+              "an absolute folder loads: " + error);
+        checkStr("the absolute folder is remembered", "/home/u/Games/Higurashi-Daybreak",
+                 out.installDir);
+        checkInt("with no warning", 0, report.warnings);
+        // A relative one is a value error for THIS key: the folder is not remembered, the
+        // rest of the file still applies, and the message says why (precedence falls back
+        // rather than failing the launch).
+        check(settings::parse("version = 4\n[game]\ninstall_dir = Higurashi-Daybreak\n"
+                              "[audio]\nmaster = 66\n", out, error, report),
+              "a relative folder does not reject the file: " + error);
+        check(out.installDir.empty(), "a relative folder is not remembered");
+        checkInt("it is one warning", 1, report.warnings);
+        check(!report.messages.empty() &&
+                  report.messages[0].find("absolute") != std::string::npos,
+              "and the reason names what was wrong");
+        checkInt("the rest of the file still applied", 66, out.volumes.master);
+        // A folder that does not fit one line is refused for the same reason: the file has
+        // to stay readable (the 480-byte budget leaves room for the key inside kMaxLine).
+        check(settings::parse("version = 4\n[game]\ninstall_dir = /" + std::string(490, 'x') + "\n",
+                              out, error, report),
+              "an over-long folder does not reject the file: " + error);
+        check(out.installDir.empty(), "an over-long folder is not remembered");
+        checkInt("it is one warning too", 1, report.warnings);
+        // A CURRENT document without the key at all is a hand-edit or a lossy writer: the
+        // one thing it costs (the remembered folder) is worth a warning.
+        check(settings::parse("version = 4\n[display]\nfullscreen = true\n", out, error, report),
+              "a current document without the key still loads: " + error);
+        check(out.installDir.empty(), "nothing is remembered");
+        checkInt("and that is reported", 1, report.warnings);
+        // main.cpp's gate and the parser must agree, or a folder a run remembers could
+        // never be read back. The gate itself (storableInstallDir) is private to that
+        // agreement, so it is pinned through what it produces: a value the writer accepts
+        // is a value the reader keeps, and one it refuses is written as the empty
+        // (unchosen) spelling rather than as a line the reader would reject.
+        settings::UserSettings pathological;
+        pathological.installDir = "/" + std::string(600, 'x');
+        settings::UserSettings back;
+        check(parses(settings::serialize(pathological), back, error),
+              "a document holding an over-long folder still parses: " + error);
+        check(back.installDir.empty(), "it is written as no folder, not as a broken line");
+        check(back == settings::UserSettings{}, "and every other value is the default");
+        settings::UserSettings keptFolder;
+        keptFolder.installDir = "/home/u/Games/Higurashi-Daybreak";
+        settings::UserSettings keptBack;
+        check(parses(settings::serialize(keptFolder), keptBack, error),
+              "a storable folder round-trips: " + error);
+        checkStr("the folder comes back exactly", "/home/u/Games/Higurashi-Daybreak",
+                 keptBack.installDir);
     }
 
     std::printf("\n-- tolerant syntax: whitespace, comments, CRLF, desktop\n");

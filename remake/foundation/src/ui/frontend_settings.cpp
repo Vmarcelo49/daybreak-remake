@@ -27,6 +27,7 @@ void applyUserSettings(FrontendSettings& settings, const settings::UserSettings&
     settings.gamepad = document.gamepad;
     settings.fullscreen = document.fullscreen;
     settings.toonRendering = document.toonRendering;
+    settings.installDir = document.installDir;
 }
 
 settings::UserSettings toUserSettings(const FrontendSettings& settings) {
@@ -37,6 +38,7 @@ settings::UserSettings toUserSettings(const FrontendSettings& settings) {
     document.fullscreen = settings.fullscreen;
     document.toonRendering = settings.toonRendering;
     document.resolution = {settings.resolutionChoice.width, settings.resolutionChoice.height};
+    document.installDir = settings.installDir;
     return document;
 }
 bool bindingCaptureActive() { return capturePlayer >= 0; }

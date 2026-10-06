@@ -6,15 +6,22 @@
 # the binary a plain launch; when it cannot find one it says exactly what to do, and asks
 # on a terminal.
 #
-# WHAT THE BINARY KNOWS: --install=DIR and $DAYBREAK_INSTALL (src/main.cpp, initScreens).
-# Everything else about finding a game folder is this script's business, which keeps the
-# search order in ONE place — here, documented in README-LINUX.md beside this file.
+# WHAT THE BINARY KNOWS: --install=DIR and $DAYBREAK_INSTALL (src/main.cpp, initScreens),
+# and the folder a previous run remembered — [game] install_dir in settings.conf, which the
+# binary itself writes (issue #36). Everything else about finding a game folder is this
+# script's business, which keeps the search order in ONE place — here, documented in
+# README-LINUX.md beside this file.
 #
 # SEARCH ORDER (first usable folder wins):
 #   1. --install=DIR on this command line
 #   2. $DAYBREAK_INSTALL
-#   3. the saved choice: $XDG_CONFIG_HOME/daybreak-decomp/install.conf — the same config
-#      directory issue #19's settings.conf lives in (src/settings/user_settings.h)
+#   3. the remembered folder: [game] install_dir in
+#      $XDG_CONFIG_HOME/daybreak-decomp/settings.conf — the one config file the port owns
+#      (src/settings/user_settings.h). Read-only here; the binary writes it.
+#   3b. until issue #36 the launcher kept that folder in its own install.conf; a leftover
+#      one is read once, after 3 and before 4, so an existing answer is not asked for
+#      again. Its folder is handed to the binary, which writes it into settings.conf, and
+#      the retired file is then removed (see the migration block at the end).
 #   4. the folder this package was unpacked into (unpack inside your game folder)
 #   5. the current working directory
 #   6. $XDG_DATA_HOME/Higurashi-Daybreak (~/.local/share/Higurashi-Daybreak)
@@ -25,8 +32,9 @@
 # binary would reject.
 #
 # The game's own files are copyrighted and are never shipped — the user always supplies
-# the folder. This script writes exactly one thing, the preference line below, and only
-# inside the XDG config directory.
+# the folder. This script WRITES NOTHING: the binary remembers the folder (settings.conf,
+# inside the XDG config directory), and the only file this script ever removes is the
+# retired install.conf it has just migrated.
 
 set -u
 
@@ -89,7 +97,7 @@ usage: daybreak [--install=DIR] [--screen=ID] [other flags]
 
 The game folder is looked up in this order:
   1. --install=DIR                     2. \$DAYBREAK_INSTALL
-  3. the saved choice in \$XDG_CONFIG_HOME/daybreak-decomp/install.conf
+  3. the remembered folder (\$XDG_CONFIG_HOME/daybreak-decomp/settings.conf)
   4. this package's folder             5. the current directory
   6. \$XDG_DATA_HOME/Higurashi-Daybreak
   7. ~/Higurashi-Daybreak, ~/Daybreak, ~/Games/Higurashi-Daybreak, ~/Games/Daybreak
@@ -155,7 +163,7 @@ install_usable() {
     return 1
 }
 
-# --- the saved choice ---------------------------------------------------------------
+# --- the remembered folder ----------------------------------------------------------
 # Same XDG rule as issue #19: only an ABSOLUTE $XDG_CONFIG_HOME counts, else ~/.config.
 config_dir() {
     case ${XDG_CONFIG_HOME:-} in
@@ -164,29 +172,39 @@ config_dir() {
     esac
 }
 
+# The binary owns settings.conf (issue #36): it writes [game] install_dir when a run opens a
+# folder, and this launcher only reads the key back. The version line is checked first,
+# because the binary's own parser ignores a document whose version it does not know — so
+# reading a folder out of one would promise the binary something it will not use. A schema
+# bump therefore updates the number here as well.
 saved_choice() {
     conf=$(config_dir)
     [ -n "$conf" ] || return 0
-    [ -f "$conf/install.conf" ] || return 0
-    # version 1 only: an unknown version is ignored rather than guessed at, the same rule
-    # issue #19's settings.conf applies to its own schema.
-    [ "$(sed -n 's/^version=//p' "$conf/install.conf" | head -n 1)" = "1" ] || return 0
-    sed -n 's/^directory=//p' "$conf/install.conf" | head -n 1
+    [ -f "$conf/settings.conf" ] || return 0
+    [ "$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*//p' "$conf/settings.conf" |
+         head -n 1)" = "4" ] || return 0
+    awk -F= '
+        /^[[:space:]]*\[/ {
+            game = ($0 ~ /^[[:space:]]*\[[[:space:]]*game[[:space:]]*\][[:space:]]*$/)
+            next
+        }
+        game && $1 ~ /^[[:space:]]*install_dir[[:space:]]*$/ {
+            sub(/^[^=]*=[[:space:]]*/, "")
+            value = $0                      # the last one wins, as the binary reads it
+        }
+        END { if (value != "") print value }' "$conf/settings.conf"
 }
 
-# Atomic enough for one preference line: temp file in the same directory, then rename, so
-# an interrupted write cannot leave a half file (issue #19's swap, minus the fsync — losing
-# this line costs the user one prompt, not settings).
-save_choice() {
+# The retired install.conf (issue #22). Read ONCE, only when settings.conf remembers no
+# folder, so a user who already answered is not asked again: the value is handed to the
+# binary as --install=, which writes it into settings.conf, and the file is then removed
+# (the migration block at the end). A stale one is ignored like any other candidate.
+legacy_choice() {
     conf=$(config_dir)
     [ -n "$conf" ] || return 0
-    mkdir -p "$conf" 2>/dev/null || return 0
-    tmp="$conf/install.conf.tmp.$$"
-    if printf 'version=1\ndirectory=%s\n' "$1" >"$tmp" 2>/dev/null; then
-        mv -f "$tmp" "$conf/install.conf" 2>/dev/null || rm -f "$tmp"
-    else
-        rm -f "$tmp"
-    fi
+    [ -f "$conf/install.conf" ] || return 0
+    [ "$(sed -n 's/^version=//p' "$conf/install.conf" | head -n 1)" = "1" ] || return 0
+    sed -n 's/^directory=//p' "$conf/install.conf" | head -n 1
 }
 
 # --- find the folder ----------------------------------------------------------------
@@ -213,6 +231,7 @@ env_install=${DAYBREAK_INSTALL:-}
 tried=
 install=
 install_source=
+legacy_used=
 # An explicit answer that is wrong is reported instead of being silently replaced by the
 # search below: the user named that folder, so say what is wrong with it.
 explicit_dir=
@@ -239,7 +258,14 @@ fi
 # 3. the remembered folder, 4./5. drop-in and current directory, 6./7. conventional homes
 if [ -z "$install" ] && [ -z "$explicit_dir" ]; then
     saved=$(saved_choice)
-    [ -n "$saved" ] && try "the saved choice" "$saved"
+    [ -n "$saved" ] && try "the remembered folder" "$saved"
+fi
+# 3b. the retired install.conf, read once so an existing answer survives the move
+if [ -z "$install" ] && [ -z "$explicit_dir" ]; then
+    legacy=$(legacy_choice)
+    if [ -n "$legacy" ] && try "the old install.conf" "$legacy"; then
+        legacy_used=1
+    fi
 fi
 [ -z "$install" ] && [ -z "$explicit_dir" ] && try "the package folder" "$here"
 [ -z "$install" ] && [ -z "$explicit_dir" ] && try "the current directory" "$(pwd -P)"
@@ -310,11 +336,19 @@ or set DAYBREAK_INSTALL to that folder."
     fi
 fi
 
-# Remember a new answer (and never rewrite the file with the same one).
-if [ "$install" != "$(saved_choice)" ]; then
-    save_choice "$install"
-    if [ -z "$(config_dir)" ]; then
-        say "[daybreak] no \$XDG_CONFIG_HOME or \$HOME: the folder will not be remembered"
+# One config file owns the folder now: the binary writes what it opens into settings.conf
+# (issue #36), so once the retired install.conf's answer has been handed over there is
+# nothing left for it to say and it is removed. Nothing else here writes anything; a folder
+# that came from a flag, the environment or the search below reaches settings.conf the same
+# way — through the binary.
+if [ -n "$legacy_used" ]; then
+    conf=$(config_dir)
+    if [ -n "$conf" ] && rm -f "$conf/install.conf" 2>/dev/null; then
+        say "[daybreak] remembered folder moved into $conf/settings.conf"
+        say "[daybreak] the retired install.conf is gone; settings.conf is the only one left"
+    else
+        say "[daybreak] the old install.conf could not be removed; the folder is in"
+        say "[daybreak] $(config_dir)/settings.conf now"
     fi
 fi
 

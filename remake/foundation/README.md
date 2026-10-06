@@ -40,13 +40,16 @@ A user does not build anything: `scripts/package_linux.sh` stages and archives
 `CMakeLists.txt` — the executable, the two libraries it needs (wgpu-native, SDL3), the
 caption fonts, the third-party notices, the `daybreak` launcher and
 [`package/README-LINUX.md`](package/README-LINUX.md). The launcher finds the player's own
-game folder (`--install=`, `$DAYBREAK_INSTALL`, the saved choice in the XDG config
-directory, then conventional locations), remembers it and boots the title screen; the
-guide documents the search order, the controls and what is not supported yet. The script
+game folder (`--install=`, `$DAYBREAK_INSTALL`, the folder the port remembered in its own
+settings file, then conventional locations) and boots the title screen; the *binary* is what
+remembers the folder a run opens, so a direct run without the launcher starts from the same
+place (issue #36, `docs/USER-SETTINGS.md`). The guide documents the search order, the
+controls and what is not supported yet. The script
 also proves the two release claims: nothing under a game-data path is in the artifact, and
 `ldd` resolves every library inside the package or from the base system — never
 `third_party/` or the build tree. `tests/launcher_test.sh` covers the launcher's search
-order, persistence and failure messages without a device.
+order, the choice it reads out of the settings file, its one-time migration of a retired
+`install.conf` and its failure messages without a device.
 
 With no asset argument it draws the spinning triangle. With one it loads the game's
 real assets and draws them (depth buffer, textures, per-draw uniforms, camera, stage
@@ -380,7 +383,7 @@ Options includes native window/fullscreen resolution selection, with Desktop,
 common sizes and the display's available modes. Unsupported fullscreen modes
 are skipped. Browser sizing follows its canvas; fixed captures retain `--size`.
 Aspect is automatic, so there is no separate aspect selector. Volumes,
-fullscreen, resolution and bindings persist in
+fullscreen, resolution, bindings and the remembered game folder persist in
 `$XDG_CONFIG_HOME/daybreak-decomp/settings.conf` (default `~/.config/...`), loaded
 and validated before the front end starts; delete the file to reset. See
 `docs/USER-SETTINGS.md`.

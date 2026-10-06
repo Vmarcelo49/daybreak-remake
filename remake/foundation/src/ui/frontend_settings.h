@@ -16,6 +16,12 @@ struct FrontendSettings {
     std::array<int, fnd::input::ActionCount> keyboard;
     std::array<std::array<int, fnd::input::ActionCount>, 4> gamepad;
     bool fullscreen = false;
+    // The game folder a run opened (issue #36). NOT a UI field and never drawn: it rides
+    // along here because the host rebuilds the persisted document from this live state
+    // every frame (toUserSettings), and a field that does not come back would be erased by
+    // the first save after a launch that remembered it. The host sets it when it opens a
+    // folder; applyUserSettings() carries the loaded value in.
+    std::string installDir;
     // The Options screen's toon-rendering row (issue #21). Live state: main syncs it into
     // the renderer's appearance every frame, so flipping the row needs no restart, and
     // toUserSettings() carries it into the persisted document.
