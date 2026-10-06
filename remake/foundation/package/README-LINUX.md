@@ -101,7 +101,7 @@ saved in `$XDG_CONFIG_HOME/daybreak-decomp/settings.conf`.
 
 - **Story, prologue and netplay screens.** This is the offline versus front end (decision
   D6); those title items stay on the title screen with a console note.
-- **Three of the renderer options** (the original's remaining display/filter switches) and
+- **Two of the renderer options** (the original's remaining display/filter switches; toon shading is live) and
   browser-side settings persistence are still open.
 - **3v3/4v4**: a match is at most four fighters, two teams of one or two.
 - **Windows, the web and macOS builds** exist in the source tree but are not part of this

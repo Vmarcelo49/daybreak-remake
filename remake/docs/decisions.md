@@ -178,9 +178,13 @@ comments — when a decision changes.
   but their builders remain absent. The front end now builds title, selection,
   stage settings, options/key config, VS intro and result screens; its playable
   battle path now supports up to four selected fighters, and the Linux build
-  and host tests pass. An asset-backed four-fighter run remains unverified.
-  The VS/result presentation and extra HUD bars still use
-  two-fighter layouts; result earned titles and three renderer options remain
+  and host tests pass. **Superseded 2026-10-06**: the asset-backed four-fighter
+  run is verified — the four scripted gates in
+  `foundation/docs/RELEASE-CHECKLIST.md` §3 run 2v2 to three rounds with four
+  views and per-participant HUD/VS/results (retired by issue #13 and §3.3), and
+  a four-view 2v2 capture is the integrated end-to-end check. **Two** renderer
+  options remain pending (toon shading is live since issue #21 row 0; the
+  Options screen marks rows 1-2 `UNAVAILABLE`); result earned titles remain
   pending. Story-mode video stays stubbed
   (`foundation/docs/ROADMAP-PENDING.md` §H). No
   branching, saves, or localization is planned. Non-goals listed in

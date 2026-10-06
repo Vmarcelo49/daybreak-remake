@@ -486,7 +486,7 @@ Expected tail:
   46 legal selections (14x3 + 2x2)                               ok
   every legal selection's item file parses                       ok
   all 46 legal selections ran a match                            ok
-WEAPON_DEFINITION: ok (743 checks, 0 failed, 0 skipped)
+WEAPON_DEFINITION: ok (747 checks, 0 failed, 0 skipped)
 ```
 
 Without an install the sweep skips itself and the test still passes
@@ -757,7 +757,7 @@ numbers to record per scenario (from the demo's own summary):
 
 | Scenario | Command | Frames/ticks | Wall time | Peak live FX cards |
 |---|---|---|---|---|
-| 1v1, three rounds | §3.1 | 15500 ticks | 10.690 s | `peak=2/128`, `dropped=0`, `badEffectId=0` |
+| 1v1, three rounds | §3.1 | 15500 ticks | 10.690 s (pre-#30; **5.273 s** after it) | `peak=2/128`, `dropped=0`, `badEffectId=0` |
 | COM, three rounds | §3.2 | 15500 ticks | 12.110 s | `peak=2/128`, `dropped=0` |
 | 2v2, three rounds | §3.3 | 15500 ticks | 28.210 s | `peak=3/128` (`4/128` in rounds 2-3), `dropped=0` |
 | 2v2, eight rounds | `--local-players=4 --script=<the §3.3 script extended to eight rematch rounds> --frames=40000` | 40000 ticks | 56.694 s | `peak=6/128`, `spawned=124`, `expired=123`, `dropped=0` (measured before issue #32 — see below) |

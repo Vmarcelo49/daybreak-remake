@@ -136,12 +136,14 @@ melee 51 pressed / 35 withheld while mid-move, 112 shots started / 101 fired / 3
 refusals, 18 dashes, 1 jump, 1 hyper activation, 209 wall probes refused with a single
 bounded recovery, 170 direction changes.
 
-**Open.** A *front-end* four-fighter run cannot start on this install: the select
-screen's auto-fill (deterministic, `FrontendState::nextRandom`) gives panel 2 chie,
-whose slot-0 item `data/item/014.dat` fails `readItemFirstMesh`, and the rule-7 gear-up
-check then aborts the launch (`fighter 1 data/chie:0 has no weapon`). That is issue #9's
-item-data gap, not the COM layer; the 2v2 evidence is the asset-backed host run above
-(four shipped combos, walled stage, COM-only sides).
+**Closed 2026-10-06.** This used to be open: a *front-end* four-fighter run could not
+start because the select screen's auto-fill (deterministic, `FrontendState::nextRandom`)
+gave panel 2 chie, whose slot-0 item `data/item/014.dat` fails `readItemFirstMesh`, and
+the rule-7 gear-up check then aborted the launch. **Both halves are false today** — the
+issue #24 audit measured `COM Chie 0` running in the §3.2 gate and the four-fighter 2v2
+running three rounds in §3.3 — so the E8 entry that retires the cause has been overtaken
+by the evidence. The 2v2 evidence is the four scripted gates and the asset-backed host
+run above.
 
 ### Future remake-only experiment: 3v3 and 4v4
 
@@ -978,9 +980,15 @@ connects twice.
     `blob[0x13]`'s neighbours but not this field), and the shot's record pointer at
     `shot+0x10` is selected in `FUN_005f5bf0` (`0x5f5c6b-0x5f5c8d`).
   * The identity is checkable against the shipped names: `007`'s `[Bullet5]`
-    (レインオブ注射器, "rain of syringes") names `50.X`, which renders as a syringe; `008`'s
-    `[Bullet2]` (ロケット花火上昇, "rocket firework ascent") names `00.X`, a dart; Rena's
-    `001/000.dat` (通常ナタ投げ横回転, the nata throw) names `03.X`.
+    ("rain of syringes") names `50.X`, which renders as a syringe; `008`'s `[Bullet2]`
+    ("rocket firework ascent") names `00.X`, a dart; Rena's `001/000.dat` (the nata throw)
+    names `03.X`. The row NAMES in quotes are external/UI labels: a review searched
+    `data/**`, `DaybreakDX.exe` and all seven `daybreak*.dat` bundles (4.4 GB) in
+    Shift-JIS, UTF-8 and UTF-16LE and found **no** shipped occurrence of them, so the
+    identity rests on the directories' own sprite filenames (007's `注射器.cnv`, 008's
+    `ドラゴン花火.cnv`, 004's `鉈ビーム.cnv`) and on the models' geometry (007/50.X
+    90.9x16.5x19.1 longest along +X; 008/00.X 64.5x12.6x12.6 likewise; 008/04.X a sphere
+    with x/z = 1.00), not on those strings.
   * **What the port now does**: `gameplay::BulletParameter::modelName` carries the block,
     `main.cpp`'s `bindShotModels` loads it as an effect card for each bound weapon and charge
     level, and `placeFxCards` draws one instance per live shot at the shot's own transform
@@ -991,11 +999,11 @@ connects twice.
     roster pick can select one (`tests/weapon_definition_test.cpp` sweeps both).
   * **The one port rule left, and it is labelled**: the AIM. `FUN_005f60b0` rotates with
     `RotationYawPitchRoll(+0x2c, +0x30, +0x34)` then a `RotationZ` from the shot's direction
-    vector (`+0x3c/+0x40`, `0x5f62b2`) and a `RotationY` from `+0x5c/+0x64` (`0x5f6329`) —
+    vector (`+0x3c/+0x40`, `0x5f62f0`; `0x5f62b2` is the zero-direction fallback that rotates by `+0x6c`) and a `RotationY` from `+0x5c/+0x64` (`0x5f6329`) —
     the model's authored **+X** is the forward axis, which the shipped projectiles confirm
     (dart, syringe and beams are all authored long along +X). *Which* direction a given
     weapon's shot holds is written by that weapon's own update function (`FUN_005f7be0`
-    dispatches on the item id to 46 of them, `0x5f91c0..0x6322d0`) and the per-bullet
+    dispatches on the item id to 46 of them, `0x5f91c0..0x6322d0`) and the
     YawPitchRoll triple, and the port has recovered none of them, so it feeds the recovered
     convention the shot's **velocity**. `src/game/shot_visual.h` names both halves and
     `tests/effect_catalog_test.cpp` pins them.
@@ -1073,7 +1081,8 @@ connects twice.
   per-effect fade (nothing in
   `FUN_00436150`/`FUN_00436630` ramps alpha — the animation itself carries the fade); the
   descriptor's part windows are parsed by the reference but the port draws a card whole;
-  and the shot draw's own remaining unrecovered inputs — the per-bullet YawPitchRoll triple
+  and the shot draw's own remaining unrecovered inputs — the YawPitchRoll triple the
+  weapon's own update handler writes (per-weapon state, not a per-bullet field)
   at `+0x2c/+0x30/+0x34` and the 46 per-weapon update functions that fill them (issue #32
   recovered the model, not the aim), the record's `+0x28` flag word (the port parses `v28`
   but does not store it) and its `+0x7C` blend selector (`blob[0x13]`, which the port does
@@ -1937,7 +1946,7 @@ counts, and the team-select diamond's y anchor discrepancy. Scenes 2 and
 * **Not a baseline item: gear-up.** Every one of the 46 legal
   character/weapon selections launches and runs a match
   (`tests/weapon_definition_test.cpp`: "all 46 legal selections ran a match",
-  743 checks, 0 failed, 0 skipped with the install present). The earlier
+  747 checks, 0 failed, 0 skipped with the install present). The earlier
   "Satoko, item 008 / Takano, item 011 fail the loud gear-up join" note was
   retired by the E8 fix and is not part of this baseline.
 

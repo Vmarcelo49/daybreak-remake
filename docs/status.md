@@ -26,7 +26,7 @@
   is C++17 + SDL3 + WebGPU (`webgpu.h`; wgpu-native native, emdawnwebgpu
   web) and builds Linux/Windows/web with
   `./remake/foundation/build.sh {deps,linux,windows,web}`; the Linux host
-  suite has 50 ctest tests (2026-10-06; the Linux CI job runs them on every push
+  suite has 58 ctest tests (2026-10-06; the Linux CI job runs them on every push
   that touches `remake/foundation/**`, and the asset-dependent ones
   skip without the game data — measured counts in
   `remake/foundation/docs/RELEASE-CHECKLIST.md` §2) and the offline release gate is

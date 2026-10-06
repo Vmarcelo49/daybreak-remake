@@ -78,9 +78,9 @@ and HUD per human controller (split-screen; `--local-players=N` drives pad-less
 controllers for verification). Active fighters use panels/spawn slots 0 (blue)
 and 2 (red); standalone parity recipes retain slots 0/1. COM fighters run the
 recovered decision state, and the battle HUD, VS and results present every
-participant. The three renderer options and original result-title/quote fidelity
-remain open; consult `remake/foundation/docs/ROADMAP-PENDING.md` before choosing
-work.
+participant. **Two** renderer options remain unavailable (the Options screen marks
+rows 1-2 `UNAVAILABLE`; row 0, toon shading, is a live toggle since issue #21);
+consult `remake/foundation/docs/ROADMAP-PENDING.md` before choosing work.
 
 - **Runtime captions (D7):** use the shared `ui::CaptionText` /
   `ui::loadCaptionFont` path with bundled Gyrotrope Black and the Japanese

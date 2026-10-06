@@ -23,20 +23,23 @@
 //
 // So the visual is NOT the impact effect and NOT a trail: it is the bullet's own model,
 // shipped inside the bullet's directory (e.g. data/bullet/007/50.X is the syringe of
-// 007's レインオブ注射器 row, data/bullet/001/05.X the nata of Rena's throw). The port
+// 007's syringe row, data/bullet/001/03.X the nata of Rena's throw; the row NAMES are
+// external/UI labels, not shipped strings -- see ROADMAP-PENDING). The port
 // reads the same block through gameplay::BulletParameter::modelName.
 //
 // WHAT IS STILL A PORT RULE — the AIM. FUN_005f60b0 rotates the model with
 // `D3DXMatrixRotationYawPitchRoll(+0x2c, +0x30, +0x34)` (0x005f6206) and then, unless the
 // record's +0x28 says otherwise, a `RotationZ` from the shot's direction vector
-// (+0x3c/+0x40, 0x005f62b2) and a `RotationY` from +0x5c/+0x64 (0x005f6329) — i.e. the
-// model's authored +X axis is aimed by a pitch about Z and a yaw about Y. That CONVENTION
-// is recovered (and the shipped projectiles agree: the dart, the syringe and the beams are
-// all authored long along +X). WHICH direction a given weapon's shot holds is written by
-// that weapon's own update function (FUN_005f7be0 dispatches on the item id to 46 of them,
-// 0x5f91c0..0x6322d0) and by the per-bullet YawPitchRoll triple above, and the port has
-// recovered none of them. The direction the port feeds the recovered convention — the
-// shot's velocity — is therefore the port's, and so is the absence of a roll.
+// (+0x3c/+0x40, 0x005f62f0; 0x005f62b2 is the zero-direction fallback that rotates by
+// +0x6c) and a `RotationY` from +0x5c/+0x64 (0x005f6329) — i.e. the model's authored +X
+// axis is aimed by a pitch about Z and a yaw about Y. That CONVENTION is recovered (and the
+// shipped projectiles agree: the dart, the syringe and the beams are all authored long
+// along +X). WHICH direction a given weapon's shot holds is written by that weapon's own
+// update function (FUN_005f7be0 dispatches on the item id to 46 of them,
+// 0x5f91c0..0x6322d0), including the YawPitchRoll triple — per-weapon state written by the
+// handler, not a per-bullet field — and the port has recovered none of them. The direction
+// the port feeds the recovered convention — the shot's velocity — is therefore the port's,
+// and so is the absence of a roll.
 //
 // glm only: this header is device-free and unit-tested (tests/effect_catalog_test.cpp).
 #include <cmath>
