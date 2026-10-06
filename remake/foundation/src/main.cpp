@@ -5839,6 +5839,23 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             camera.eye = app->eye;
             frameCameras.push_back(camera);
         }
+        // The UI batch gives each render() call one vertex region and one uniform slot, and
+        // wraps round-robin past the budget. beginFrame() is per-batch, so the renderer
+        // cannot see a frame boundary and cannot detect the wrap; this is the one place that
+        // knows how many passes this frame will compose, so the check lives here (issue #56
+        // review). The HUD draws one pass per view plus the separator, and a countdown frame
+        // adds the overlay and possibly the clip-browser caption.
+        {
+            const size_t uiPasses = frameCameras.size() + 1 /*separator*/ +
+                                    (app->roundCountdown ? 1u : 0u);
+            if (uiPasses > ui::SpriteRenderer::kMaxPassesPerFrame) {
+                std::fprintf(stderr,
+                             "[ui] %zu passes on one renderer exceed the %u-region budget; "
+                             "passes would alias (issue #56)\n",
+                             uiPasses, ui::SpriteRenderer::kMaxPassesPerFrame);
+                std::abort();
+            }
+        }
         app->renderer.setCamera(vp);
         app->renderer.setEye(app->eye);
 

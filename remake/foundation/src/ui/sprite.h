@@ -306,6 +306,14 @@ public:
     // no opaque full-canvas quad over the scene). Nothing in the runtime reads this.
     const std::vector<UiQuad>& quadList() const { return quads_; }
 
+    // One vertex region AND one uniform slot per render() call (issue #56). A frame that
+    // composes more passes than this on ONE renderer wraps round-robin and the first pass
+    // draws the last pass's geometry again -- silently, because beginFrame() is per-batch
+    // (the HUD calls it once per view) and the renderer therefore cannot see a frame
+    // boundary. It cannot detect the wrap itself, so the frame composer, which does know
+    // its pass count, asserts against this budget.
+    static constexpr uint32_t kMaxPassesPerFrame = 16;
+
 private:
     struct Texture {
         WGPUTexture     tex = nullptr;
@@ -341,7 +349,7 @@ private:
     // separator pass wrote the full target size last, and each cell's HUD was then drawn
     // as if its 480x270 canvas were 960x540. Slots are reused round-robin across frames,
     // which is safe because a queue write is ordered before the next submission.
-    static constexpr uint32_t kUniformSlots = 16;
+    static constexpr uint32_t kUniformSlots = kMaxPassesPerFrame;
     static constexpr uint64_t kUniformStride = 256;  // minUniformBufferOffsetAlignment
     // The same rule for the batch's VERTICES (issue #56): one region per render() call,
     // addressed by binding the vertex buffer at the region's byte offset. A WebGPU vertex
@@ -356,7 +364,7 @@ private:
     // "one region per pass" paths have the same headroom: 16 x 256 KiB is 4 MiB, and the
     // heaviest frame this tree records makes 7 passes on one renderer (4 views + the
     // separator, plus the countdown overlay and the clip-browser caption).
-    static constexpr uint32_t kVertexSlots = kUniformSlots;
+    static constexpr uint32_t kVertexSlots = kMaxPassesPerFrame;
     static constexpr uint64_t kVertexSlotStride = (uint64_t)sizeof(UiVertex) * kMaxQuads * 4;
     WGPUBuffer          vpBuffer_ = nullptr;         // kUniformSlots * kUniformStride
     WGPUBindGroup       vpGroup_ = nullptr;          // binding 0 with a dynamic offset
