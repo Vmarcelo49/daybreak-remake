@@ -11,13 +11,15 @@
 # tick 203), START is the JUMP at tick 422, the round's time-up at match frame 3600 puts the
 # result screen at tick 4382, and the selection screen is back at tick 4984.
 #
-# Every later round is a REMATCH round. The selection screen re-appears with the previous
-# round's characters and settings still in FrontendState, so the stage page only has to be
-# walked to START (row 0 -> 7; row 1 is skipped while stage == 0) and the round keeps the
-# settings it had. Replaying the value taps instead would WRAP the carried-over values
-# (measured: a rematch landed on 240 s/175 % where round 1 had 60 s/50 %). The random stage
-# is re-rolled each round (FrontendState::stage stays 0), so the transcripts show a different
-# stage per round.
+# Every later round is a REMATCH round. The selection screen comes back EMPTY — entering the
+# select scene starts a new selection (issue #45: FUN_00408330:143-158 initialises every
+# per-slot field, so a battle -> select return is as clean as a title -> select entry) — so
+# each round re-picks its panels before the stage page is walked to START (row 0 -> 7; row 1
+# is skipped while stage == 0). Only the panel taps are replayed: the stage page's VALUES are
+# the original's process globals (DAT_006cf3c0 / 3b8 / 3bc / 3b0 / 3b4) and persist, so
+# replaying the value taps would WRAP them (measured: a rematch landed on 240 s/175 % where
+# round 1 had 60 s/50 %). The random stage is re-rolled each round (entry resets
+# FrontendState::stage to 0 = random), so the transcripts show a different stage per round.
 #
 # The stage page is configured by these taps alone: the synthetic pads stay neutral while it
 # is open (their directions move that page's settings cursor, which made the round's settings
@@ -212,6 +214,23 @@
 4900 UP
 4906 -
 4960 JUMP
+4978 -
+# Rematch round: the selection screen re-appeared EMPTY at tick 4984 — entering it
+# starts a new selection (issue #45: FUN_00408330:143-158 initialises every per-slot
+# field) — so P0 re-walks its own panel exactly as in round 1.
+# Only the panel taps are replayed: the stage page's VALUES are the original's
+# process globals (DAT_006cf3c0 / 3b8 / 3bc / 3b0 / 3b4) and still hold round 1's
+# 60 s / 50 % / 40 % / 40 %, so replaying the value taps would WRAP them.
+4996 JUMP
+5002 -
+5008 JUMP
+5014 -
+5020 JUMP
+5026 -
+5032 JUMP
+5038 -
+5044 JUMP
+5050 -
 5214 DOWN
 5222 -
 5226 DOWN
@@ -365,6 +384,23 @@
 9764 UP
 9770 -
 9824 JUMP
+9842 -
+# Rematch round: the selection screen re-appeared EMPTY at tick 9848 — entering it
+# starts a new selection (issue #45: FUN_00408330:143-158 initialises every per-slot
+# field) — so P0 re-walks its own panel exactly as in round 1.
+# Only the panel taps are replayed: the stage page's VALUES are the original's
+# process globals (DAT_006cf3c0 / 3b8 / 3bc / 3b0 / 3b4) and still hold round 1's
+# 60 s / 50 % / 40 % / 40 %, so replaying the value taps would WRAP them.
+9860 JUMP
+9866 -
+9872 JUMP
+9878 -
+9884 JUMP
+9890 -
+9896 JUMP
+9902 -
+9908 JUMP
+9914 -
 10078 DOWN
 10086 -
 10090 DOWN

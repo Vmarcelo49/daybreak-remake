@@ -534,6 +534,11 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         target_link_libraries(${frontend_test} PRIVATE foundation_ui foundation_gameplay glm)
         add_test(NAME ${frontend_test} COMMAND ${frontend_test})
     endforeach()
+    # Issue #45's front-end lifecycle: what a screen entry clears and what it must not.
+    add_executable(frontend_lifecycle_test tests/frontend_lifecycle_test.cpp)
+    target_link_libraries(frontend_lifecycle_test PRIVATE foundation_ui foundation_gameplay glm)
+    add_test(NAME frontend_lifecycle_test COMMAND frontend_lifecycle_test)
+
     # The two recovered damage chains, pinned against real combo data (Rena + item 001).
     add_executable(damage_scale_test tests/damage_scale_test.cpp)
     target_link_libraries(damage_scale_test PRIVATE foundation_gameplay)

@@ -66,11 +66,6 @@ bool screenAvailable(ScreenId id) {
     return false;
 }
 
-std::unique_ptr<Screen> makeScreen(ScreenId id, SpriteRenderer& batch, std::string& error) {
-    static FrontendState state;
-    return makeScreen(id, batch, state, error);
-}
-
 std::unique_ptr<Screen> makeScreen(ScreenId id, SpriteRenderer& batch, FrontendState& state,
                                    std::string& error) {
     for (const ScreenEntry& e : kScreens)

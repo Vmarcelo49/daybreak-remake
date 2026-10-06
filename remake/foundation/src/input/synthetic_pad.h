@@ -79,14 +79,15 @@ inline int syntheticMenuStartPanel(int controller) {
 // the results all advance. Offsets are per controller (12 ticks apart) so the panels do not
 // race each other.
 //
-// `rosterNudge` is false when the controller's panel already has a character: a rematch
-// re-enters the selection screen with the previous round's picks still in FrontendState, so
-// the panel walk is skipped and the panel stays in its Team phase. The nudges are ROSTER
-// moves only while the walk runs; in the Team phase they move the CURSOR, and they pushed
-// controller 2's cursor onto the Back cell (`pos == 5`), whose confirm leaves to the title —
-// measured on a rematch run, which ended at the title instead of the second round.
-inline SyntheticPadState syntheticMenuPadState(int controller, uint64_t tick,
-                                               bool rosterNudge = true) {
+// The walk runs on every select entry, because entering the select scene starts an empty
+// selection (ui::FrontendState::beginSelection, FUN_00408330:143-158): a rematch round's screen
+// is as fresh as the first round's. The nudges therefore always move the ROSTER cursor, which
+// only happens in the character phase this walk reaches; the conditional nudge they replaced
+// existed because a re-entered screen kept the previous round's picks, and its nudge then moved
+// the CURSOR instead — it pushed controller 2 onto the Back cell (`pos == 5`), whose confirm
+// leaves to the title (measured on a rematch run, which ended at the title instead of the
+// second round).
+inline SyntheticPadState syntheticMenuPadState(int controller, uint64_t tick) {
     SyntheticPadState s;
     if (controller < 0 || controller > 3) return s;
     const uint64_t base = 4 + (uint64_t)controller * 12;
@@ -98,7 +99,7 @@ inline SyntheticPadState syntheticMenuPadState(int controller, uint64_t tick,
     // 1 (left,left), 5 (left,up) and 10 (right,right); the slot-0 item join fails loudly for
     // Satoko (3), Oishi (8), Akasaka (9), Irie (10), Chie (11), Hanyu (14) and Takano (7)
     // today, so the four panels take 0 Rena, 2 Keiichi, 4 Rika and 1 Mion, all verified.
-    if (rosterNudge && (t == 4 || t == 6)) {
+    if (t == 4 || t == 6) {
         switch (controller) {
             case 1: s.left = t == 4; break;
             case 2: s.right = t == 4; break;

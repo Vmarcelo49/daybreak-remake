@@ -92,9 +92,11 @@ bool screenAvailable(ScreenId id);
 
 // Constructs the screen for an id, or returns null (with `error` naming the id) when
 // there is none — the factory's own `default` behaviour, which the switcher turns into
-// "no scene" (FUN_00657c80.c:58, FUN_00657ef0.c:49-53).
+// "no scene" (FUN_00657c80.c:58, FUN_00657ef0.c:49-53). The caller owns `state` (the App's
+// ui::FrontendState): a screen that owns part of it re-initialises that part here, exactly
+// where the original's factory constructs the scene — the select scene's selection is the
+// entry-time case (FrontendState::beginSelection).
 struct FrontendState;
-std::unique_ptr<Screen> makeScreen(ScreenId id, SpriteRenderer& batch, std::string& error);
 std::unique_ptr<Screen> makeScreen(ScreenId id, SpriteRenderer& batch, FrontendState& state,
                                    std::string& error);
 

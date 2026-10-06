@@ -115,17 +115,18 @@ int main() {
         check(rosterState.slots[i].controller == i, "the panel keeps its own controller");
         check(rosterState.slots[i].ready, "the panel is ready");
     }
-    // A REMATCH re-enters the selection screen with those picks still set: the walk is
-    // skipped (the panel stays in Team) and the host passes rosterNudge=false. The pads must
-    // still reach the stage page — without the flag the nudge moves the cursor instead and
-    // controller 2 lands on the Back cell (`pos == 5`), whose confirm leaves to the title
-    // (measured on the release run before the fix: `scene: select (tick 4984)` followed by
-    // `scene: title (tick 5177)`).
+    // A REMATCH re-enters the selection screen empty, whatever the previous round picked:
+    // entering the select scene starts a new selection (issue #45, FUN_00408330:143-158 via
+    // FrontendState::beginSelection), so the same walk runs again and lands on the same four
+    // characters. That is also what keeps controller 2 off the Back cell (`pos == 5`), whose
+    // confirm leaves to the title (measured before the panel walk existed: `scene: select
+    // (tick 4984)` followed by `scene: title (tick 5177)`).
     ui::FrontendState rematchState;
     for (int i = 0; i < 4; ++i) {
-        rematchState.slots[i].character = expected[i];
-        rematchState.slots[i].controller = i;
+        rematchState.slots[i] = {expected[i], 0, 0, 0, i, true};   // the finished round's picks
     }
+    rematchState.stagePage = true;
+    rematchState.beginSelection();
     ui::SelectMenu rematchMenu(rematchState);
     ui::SelectAction rematchAction = ui::SelectAction::None;
     for (uint64_t t = 0; t <= 200 && rematchAction != ui::SelectAction::Stage &&
@@ -134,7 +135,7 @@ int main() {
         ui::ScreenInput frame;
         frame.separatePlayers = true;
         for (int c = 0; c < 4; ++c) {
-            const auto pad = fnd::input::syntheticMenuPadState(c, t, false);
+            const auto pad = fnd::input::syntheticMenuPadState(c, t);
             auto& buttons = frame.players[c];
             buttons.up = pad.up; buttons.down = pad.down;
             buttons.left = pad.left; buttons.right = pad.right;
@@ -144,8 +145,10 @@ int main() {
         check(rematchAction != ui::SelectAction::Back, "a rematch pad never confirms the Back cell");
     }
     check(rematchAction == ui::SelectAction::Stage, "the rematch pads open the stage page");
+    check(rematchState.stagePage, "a rematch re-opens the stage page");
     for (int i = 0; i < 4; ++i)
-        check(rematchState.slots[i].character == expected[i], "the rematch keeps its picks");
+        check(rematchState.slots[i].character == expected[i],
+              "the rematch re-picks the pattern's four characters");
     check(fnd::input::syntheticMenuStartPanel(1) == 1 &&
           fnd::input::syntheticMenuStartPanel(2) == 2 &&
           fnd::input::syntheticMenuStartPanel(3) == 3,

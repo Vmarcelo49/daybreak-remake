@@ -13,6 +13,26 @@ struct FrontendSlot {
 };
 struct ResultSlotStats { int kos = 0, deaths = 0, damageDealt = 0, damageTaken = 0; };
 struct FrontendState {
+    // Entering (or re-entering) the select scene. The original destroys the current scene and
+    // constructs the next one through the factory on every switch (FUN_00657c80:51-58), and
+    // scene 3's own constructor initialises every per-slot field the scene owns: cursor
+    // +0x3c48, character +0x3c58, panel owner +0x3c80, controller phase +0x3c90, owned panel
+    // +0x3ca0, controller +0x3cf8, weapon +0x3d08, hypermode +0x3d18, costume +0x3d28, ready
+    // +0x3d38 and the per-slot mode flags +0x3cb0/+0x3cd4 to unset, plus the stage page flag
+    // +0x3c40 and the stage pair +0x3d48/+0x3d4c to 0 (FUN_00408330:143-158; the corpus and the
+    // live original on the Ghidra bridge agree). Nothing per-slot is read back from anywhere:
+    // a battle->select return (FUN_00403b70 returns 3) is as clean as a title->select entry.
+    //
+    // Deliberately NOT touched, because the original keeps it outside the scene: the stage
+    // page's settings (time limit DAT_006cf3c0, HP DAT_006cf3b8, gauge DAT_006cf3bc, balloons
+    // DAT_006cf3b0/006cf3b4), the RNG, the round's outcome data, and the penalty flag
+    // DAT_006cfdf1 (issue #20).
+    void beginSelection() {
+        slots = {};
+        stage = 0;
+        variation = 0;
+        stagePage = false;
+    }
     std::array<FrontendSlot, 4> slots{};
     // FRONTEND-PLAN §5.2: values are percentages, seconds, and a 0=random stage index.
     int stage = 0, variation = 0, timeLimit = 180, health = 100, gauge = 100;
