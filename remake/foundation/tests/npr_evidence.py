@@ -1045,8 +1045,9 @@ def summarise(report):
                "below is a measurement of a committed-demo capture; the recipes are in "
                "`metrics.json` (`commands`) and beside each capture under `logs/`.\n"
                % report["generated"])
-    out.append("Scene: **%s** (Rena 0 = 竜宮レナ + 愛用の鉈), bind pose, no stage, "
-               "`--camera=bounds`." % report["combo"])
+    out.append("Scene: **%s** - 竜宮レナ with 愛用の鉈 (`data/rena/00.x` + "
+               "`data/item/01.x`) - bind pose, no stage, `--camera=bounds`."
+               % report["combo"])
     out.append("Thresholds (a port-side evidence rule, not a renderer constant): READS at "
                "%.0f%% visible or dE %.1f; OBVIOUS at %.0f%% / dE %.1f.\n"
                % (100 * report["thresholds"]["reads_visible_share"],
@@ -1061,7 +1062,7 @@ def summarise(report):
     out.append("## Techniques (close-up, 1920x1080 unless stated)\n")
     for key, data in sorted(report["techniques"].items()):
         comparison = data["per_resolution"]["1920x1080"]
-        out.append("### %s - %s\n" % (key, data["label"]))
+        out.append("### %s\n" % data["label"])
         out.append("OFF `%s`  ON `%s`\n" % (" ".join(data["off"]) or "(no flag)",
                                             " ".join(data["on"])))
         out.append("verdict: **%s**\n" % data["verdict"])
@@ -1085,7 +1086,7 @@ def summarise(report):
         out.append("")
     out.append("## Sanity sweeps (960x540, the arm's own parameter at its extremes)\n")
     for key, data in sorted(report["sweeps"].items()):
-        out.append("### %s - %s\n" % (key, data["label"]))
+        out.append("### %s\n" % data["label"])
         out.append("expected: %s\n" % data["expectation"])
         out.append("**%s**\n" % data["verdict"])
         out.append("| step | args | vs the control | visible | dL | dE |")
@@ -1267,7 +1268,11 @@ def main():
             report["reach"] = reach_sheet(rig, out)
             print("sheet %s" % out)
 
-    report["commands"] = rig.commands
+    # Merged, not assigned: an --only run must keep the recipes of the sheets it did not
+    # render, the same way the sections above do.
+    commands = report.get("commands") or {}
+    commands.update(rig.commands)
+    report["commands"] = commands
     report["elapsed_s"] = round(time.time() - started, 1)
     with open(os.path.join(args.outdir, "metrics.json"), "w") as handle:
         json.dump(report, handle, indent=1, sort_keys=True)

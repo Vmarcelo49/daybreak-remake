@@ -158,7 +158,7 @@
   "sha256": "90eda20f5af68e00941e4be39f45e1c86867954320f40fb43e3679d93ee24f52",
   "sha256_repeat": "90eda20f5af68e00941e4be39f45e1c86867954320f40fb43e3679d93ee24f52"
  },
- "elapsed_s": 170.3,
+ "elapsed_s": 39.9,
  "flatness": {
   "hard, default tint": {
    "levels_off": 46,
@@ -1841,7 +1841,7 @@
    "verdict": "below the bar"
   }
  },
- "generated": "2026-10-06 19:29:24",
+ "generated": "2026-10-06 19:37:56",
  "reach": {
   "arms": [
    {

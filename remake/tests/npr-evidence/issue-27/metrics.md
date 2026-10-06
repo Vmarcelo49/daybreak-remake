@@ -1,15 +1,15 @@
 # NPR evidence, issue #27 - measured
 
-Generated 2026-10-06 19:29:24 by `remake/foundation/tests/npr_evidence.py`. Every number below is a measurement of a committed-demo capture; the recipes are in `metrics.json` (`commands`) and beside each capture under `logs/`.
+Generated 2026-10-06 19:37:56 by `remake/foundation/tests/npr_evidence.py`. Every number below is a measurement of a committed-demo capture; the recipes are in `metrics.json` (`commands`) and beside each capture under `logs/`.
 
-Scene: **Rena 0 (favourite cleaver)** (Rena 0 = 竜宮レナ + 愛用の鉈), bind pose, no stage, `--camera=bounds`.
+Scene: **Rena 0 (favourite cleaver)** - 竜宮レナ with 愛用の鉈 (`data/rena/00.x` + `data/item/01.x`) - bind pose, no stage, `--camera=bounds`.
 Thresholds (a port-side evidence rule, not a renderer constant): READS at 10% visible or dE 3.0; OBVIOUS at 15% / dE 4.0.
 
 Renderer determinism (the control frame captured twice at 1920x1080): sha256 90eda20f5af68e00, identical.
 
 ## Techniques (close-up, 1920x1080 unless stated)
 
-### B - B bands - soft 0.06 (the curve alone, neutral tint)
+### B bands - soft 0.06 (the curve alone, neutral tint)
 
 OFF `(no flag)`  ON `--npr=bands:soft,shadow:none`
 
@@ -31,7 +31,7 @@ verdict: **no-op (byte-identical frames)**
 
 960x540: figure 25242 px, visible 0.0%, dL +0.00, dE 0.00 (byte-identical)
 
-### C - C coloured shadow (the default violet-grey tint)
+### C coloured shadow (the default violet-grey tint)
 
 OFF `--npr=bands:soft,shadow:none`  ON `--npr=bands:soft,shadow`
 
@@ -54,7 +54,7 @@ verdict: **reads**
 
 960x540: figure 25242 px, visible 11.1%, dL -1.49, dE 2.54
 
-### D - D character key light (camera-relative)
+### D character key light (camera-relative)
 
 OFF `--npr=bands:soft,shadow`  ON `--npr=bands:soft,shadow,key:cam`
 
@@ -77,7 +77,7 @@ verdict: **below the bar**
 
 960x540: figure 25242 px, visible 5.1%, dL +0.67, dE 1.34
 
-### E - E secondary lighting normals
+### E secondary lighting normals
 
 OFF `(no flag)`  ON `--npr=normals`
 
@@ -100,7 +100,7 @@ verdict: **reads**
 
 960x540: figure 25242 px, visible 44.2%, dL -8.61, dE 20.85
 
-### F - F generated shadow mask (over bands:hard, tinted)
+### F generated shadow mask (over bands:hard, tinted)
 
 OFF `--npr=bands:hard,shadow,mask:0`  ON `--npr=bands:hard,shadow,mask:1`
 
@@ -123,7 +123,7 @@ verdict: **reads where it lands (6.4% of the figure, dE 19.2) but below the whol
 
 960x540: figure 25242 px, visible 5.1%, dL +0.72, dE 1.22
 
-### G - G stylized hard-threshold specular
+### G stylized hard-threshold specular
 
 OFF `(no flag)`  ON `--npr=spec`
 
@@ -146,7 +146,7 @@ verdict: **reads**
 
 960x540: figure 25242 px, visible 16.3%, dL +3.24, dE 7.26
 
-### H - H character rim light
+### H character rim light
 
 OFF `(no flag)`  ON `--npr=rim`
 
@@ -169,7 +169,7 @@ verdict: **reads**
 
 960x540: figure 25242 px, visible 36.9%, dL +6.82, dE 13.41
 
-### I - I outline width x2 (over the recovered toon row)
+### I outline width x2 (over the recovered toon row)
 
 OFF `--toon`  ON `--toon --npr=outline:2`
 
@@ -192,7 +192,7 @@ verdict: **reads**
 
 960x540: figure 27206 px, visible 7.4%, dL -2.23, dE 6.88
 
-### STACK - the recommended stack (--npr=on)
+### the recommended stack (--npr=on)
 
 OFF `(no flag)`  ON `--npr=on`
 
@@ -215,7 +215,7 @@ verdict: **reads**
 
 960x540: figure 25242 px, visible 66.8%, dL -1.14, dE 29.62
 
-### STACK_toon - the stack over the recovered toon row
+### the stack over the recovered toon row
 
 OFF `--toon`  ON `--toon --npr=on`
 
@@ -240,7 +240,7 @@ verdict: **reads**
 
 ## Sanity sweeps (960x540, the arm's own parameter at its extremes)
 
-### B-curve - B - the band curve at the shipped width, tinted and neutral
+### B - the band curve at the shipped width, tinted and neutral
 
 expected: the three curves must draw different pictures, and the curve must be what draws them - not the tint it multiplies
 
@@ -261,7 +261,7 @@ expected: the three curves must draw different pictures, and the curve must be w
 - three tinted against three neutral: differs, visible 10.7%, dL +1.39, dE 2.38
 - hard against soft 0.06, both tinted: differs, visible 0.4%, dL +0.00, dE 0.24
 
-### B-softness - B - the softness parameter soft:<f> (neutral tint)
+### B - the softness parameter soft:<f> (neutral tint)
 
 expected: each width must move the terminator further than the last
 
@@ -280,7 +280,7 @@ expected: each width must move the terminator further than the last
 - soft 0.06 against soft 1.00, both with a neutral tint: byte-identical, visible 0.0%, dL +0.00, dE 0.00
 - soft 1.00 neutral against soft 1.00 tinted: differs, visible 8.7%, dL -2.03, dE 3.69
 
-### C-tint - C - the shadow tint shadow:<#rrggbb>
+### C - the shadow tint shadow:<#rrggbb>
 
 expected: the tinted shadow must move hue, and a saturated tint obviously so
 
@@ -293,7 +293,7 @@ expected: the tinted shadow must move hue, and a saturated tint obviously so
 | saturated #ff00ff | `--npr=bands:soft,shadow:#ff00ff` | obvious | 23.0% | -4.50 | 6.30 |
 
 
-### D-arm - D - the key arm key:fixed|cam
+### D - the key arm key:fixed|cam
 
 expected: the two arms are different lights and both add light
 
@@ -307,7 +307,7 @@ expected: the two arms are different lights and both add light
 
 - the two key arms against each other: differs, visible 17.5%, dL -1.35, dE 4.86
 
-### D-strength - D - the key strength keystr:<f> (key:cam)
+### D - the key strength keystr:<f> (key:cam)
 
 expected: the brightness must follow the strength
 
@@ -320,7 +320,7 @@ expected: the brightness must follow the strength
 | 1.5 | `--npr=bands:soft,shadow,key:cam,keystr:1.5` | obvious | 12.0% | +2.64 | 5.16 |
 
 
-### E-normals - E - the secondary normals normals|nonormals
+### E - the secondary normals normals|nonormals
 
 expected: lighting the secondary stream must visibly re-shade the surface
 
@@ -333,7 +333,7 @@ expected: lighting the secondary stream must visibly re-shade the surface
 | normals | `--npr=normals` | obvious | 44.2% | -8.61 | 20.85 |
 
 
-### F-mask - F - the generated mask scale mask:<f>
+### F - the generated mask scale mask:<f>
 
 expected: the scale must move the boundary, and inversion must move it the other way - with a neutral tint as well as with the shipped one
 
@@ -351,7 +351,7 @@ expected: the scale must move the boundary, and inversion must move it the other
 - mask 0 against mask 1, both tinted: differs, visible 5.1%, dL +0.72, dE 1.22
 - mask 1 against mask 3, both tinted: differs, visible 10.7%, dL +1.18, dE 2.01
 
-### G-spec - G - the specular strength/tint
+### G - the specular strength/tint
 
 expected: the highlight must grow with the strength and take the tint
 
@@ -364,7 +364,7 @@ expected: the highlight must grow with the strength and take the tint
 | tint #ff00ff, str 2 | `--npr=spec,spectint:#ff00ff,specstr:2` | obvious | 17.4% | +2.42 | 14.56 |
 
 
-### H-rim - H - the rim strength/tint
+### H - the rim strength/tint
 
 expected: the rim must grow with the strength and take the tint
 
@@ -377,7 +377,7 @@ expected: the rim must grow with the strength and take the tint
 | tint #00ff00, str 2 | `--npr=rim,rimtint:#00ff00,rimstr:2` | obvious | 56.1% | +24.87 | 34.77 |
 
 
-### I-outline - I - the outline width scale (--toon)
+### I - the outline width scale (--toon)
 
 expected: a wider hull must widen the rim, a thinner one must thin it, and 1.0 must be --toon alone
 
