@@ -1109,3 +1109,46 @@ and `ROADMAP-PENDING`'s E3 (twice) still said three controls unavailable. All in
 **Standing lesson**: the gate's authority is "a second person gets the same numbers", so a row that
 cannot be run, or that exits non-zero on its own baseline, is worse than no row. Two of these were
 *measurement* defects, not typos.
+
+## Round 30 — exact in-flight state (for whoever continues)
+
+**`main` @ `65ecb0f`, 58/58 ctest, CI green, everything pushed.** Thirty-two issues closed or merged:
+#18, #26 (re-scoped), #28, #29, #30, #32, #33, #34, #35, #36, #37, #39, #40, #41, #42, #43, #44, #45,
+#46, #47, #48, #49, #50, #51, #55, #56 — plus **#57, #58, #59, #60, #61 filed** from work that found
+new defects.
+
+**Four workers are alive and uncommitted-or-partly-committed. Check for their processes before
+concluding anything** (`ps -eo pid,ppid,lstart,args | grep dbd-worktrees/<slug>`) — this session has
+twice seen a "failed/finished" notification for an agent that was still running.
+
+| worktree | branch | base | state |
+|---|---|---|---|
+| `../dbd-worktrees/issue-21` | `feat/issue-21-shadows` | `6563b80` | **recovery `07ca01c` + implementation `ab9c127` committed**; 4 files dirty; original agent alive |
+| `../dbd-worktrees/issue-24` | `docs/issue-24-release-roadmap` | `bfd44a9` | `c31bc36` committed (roadmap `RELEASE-LINUX.md`); 1 file dirty; alive |
+| `../dbd-worktrees/issue-27` | `fix/issue-27-npr-evidence` | `bfd44a9` | **no commits**; 4 files dirty incl. untracked `tests/npr_evidence.py`; alive |
+| `../dbd-worktrees/issue-4` | `feat/issue-4-web-delivery` | `bfd44a9` | `8f32b86` committed (async per-asset); 8 dirty; alive |
+
+**Three merge-time items that will otherwise be missed:**
+
+1. **#21 must be schema v5, not v4.** Its branch has `kSchemaVersion = 4`, but `main` took v4 for #36's
+   `[game] install_dir`, and the branch's section whitelist is `display|render|audio|bindings|
+   controllers` — so a main-written v4 config is **rejected whole with an error** and `install_dir`
+   is dropped on the next save. The merge must keep #36's `[game]` handling and bump to v5.
+2. **#21's issue comments argue the wrong design.** They contain a long research note for **planar
+   projected shadows** and `D3DXMatrixShadow`; the recovery (`07ca01c`) proves it is a **shadow map**
+   with a **constant** sun (`normalize(cameraEye − (1000,1e6,5e5))`, within 0.1° of `(0,2,1)/√5`), and
+   `D3DXMatrixShadow` is not imported at all. `ROADMAP-PENDING.md`'s "Row 1 — shadows" section still
+   states the disproved framing and should be corrected at merge.
+3. **#27's evidence has two defects its verifier measured**, which the original could not be told
+   (messages bounced): its **figure mask is the whole frame** on stage frames (100.00 % of pixels), so
+   the printed "0.1 % visible → below the bar" gameplay verdicts are an **artefact** — fighter-local
+   truth is C 26.8 %, D 50.8 %, G 86.6 %, H 49.7 %, STACK 45.9 %, E 0 px; and **E is a no-op in both
+   battle recipes** (byte-identical with and without `--npr=normals`), with a code lead (`nprAny`
+   excludes it; the toon fragment path ignores the secondary normal) and one discriminating run
+   proposed. Also: the I-outline sheet reports "CLAIM FAILS" for the one result that is a **pass**
+   (identity-is-expected probes are treated as failures).
+
+**Standing rules for this batch, learned the hard way**: a worktree is the only copy of a worker's
+uncommitted work — commit as you go; never `reset --hard`/`stash` without a named stash; after any
+rebase **grep for the identifiers the newer merges introduced**, because a refactor-shaped conflict
+can offer an earlier fix as a deletion; and **checklist hashes are sha256 prefixes, not md5**.
