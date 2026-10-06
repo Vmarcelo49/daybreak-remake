@@ -838,3 +838,26 @@ So one fighter shows one muzzle model for a whole match. The port has no `+0x318
 **port rule, now labelled with the reason** rather than an unproven guess. Verified: ctest 57/57, the
 capture byte-identical, and `effect_catalog_test` pins the three muzzle slots against the shipped
 `TextureFilename` blocks.
+
+## Round 23 — a correction to #33's report, and the next dispatch
+
+**#33's claim that "six of the seven shipped attachment models load and are never drawn" is wrong for
+the muzzle flashes, and #34 measured it.** `spawnAttachment` pushes a live card and `placeFxCards`
+turns it into an instance, so the muzzle flash **is** drawn once at the shot point: with a temporary
+trace, a scripted shot fires `spawnAttachment slot=0 asset=36` (`data/aura/00.X`) and the run reports
+`spawned=2 … peak=2/128, effectDrawsAtExit=2`, while suppressing that one spawn gives
+`spawned=1 … effectDrawsAtExit=1`.
+
+The measured truth is: **three drawn via the muzzle card** (00/01/05), **one via the hyper aura** (03),
+**three loaded and never drawn** (02 blue hit, 04 bucket, 06). What is genuinely missing is the
+**placement**: the original draws the attachment on the fighter's eleven rig matrices
+(`0x420711-0x420770`), while the port's muzzle and blue-hit cards are **world-space spawns**. So the
+gap is where it is drawn, not whether — and a slot map nothing consumes is not the same deliverable as
+"the flash appears at the right slot". Both are #17's spawn side.
+
+**Dispatched #56** (the shared-vertex-buffer aliasing: in a 4-view frame the separator pass overwrites
+every HUD pass's first 8 vertices, so each view's first two quads — fighter 0's reticle — are replaced
+by separator bars) and **#32** (the in-flight projectile visual: recover the shot-draw path or label
+the port rule with the reason, following #34's precedent). #32 was given the hypothesis worth testing
+early — that an in-flight projectile may be drawn by the *same* rig-attachment path as the muzzle
+flash, which would make it a rig-attached effect rather than a travelling model.
