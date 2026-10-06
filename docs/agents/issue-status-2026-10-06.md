@@ -458,3 +458,37 @@ same player to `RESULT: ok`.
 **One merge-time detail worth knowing**: `third_party/` is hardlinked per worktree, so the fetched
 `pl_mpeg.h` existed only in the worker's tree. A fresh checkout needs `./remake/foundation/build.sh
 deps` — which the coordinator ran in the primary before building the merge.
+
+## Round 9 — dispatch, and what a successor needs to know
+
+**Dispatched:** #44 (chibi reveal's white flash + the screen flash — the two things #43 deliberately
+left), #47 (countdown over the loaded scene), #51 (the LockSwitch tap must not move the camera).
+
+**#47's worker corrected its own issue, and the correction is the useful part.** The issue says "the
+match is only loaded after the countdown"; it measured that the match is **already built** at the
+VS→Battle hand-over (the baseline log prints `match : 2 fighters, movement/ground=loaded,
+projectile=loaded` before `[menu] battle:` and ~180 ticks before the first countdown frame). The real
+cause is that `screensMode` draws only the UI screen while `matchMode` stays false, so the arena is
+never rendered. That turns the fix from "move the initialisation earlier" into "render the scene that
+already exists" — smaller and safer. I asked for that to be prominent in the report rather than doing
+the issue's item 1 for symmetry.
+
+### How to continue this batch (for whoever picks it up)
+
+- `main` is the coordinator's alone. Workers commit on their branch and never push, rebase or merge.
+  The coordinator rebases onto `main`, re-runs the verification, merges, and pushes.
+- Worktrees live in `../dbd-worktrees/<slug>`; `tools/wt-setup.sh <slug> <branch> [base]` creates one
+  with `third_party` hardlinked, the install symlinked at the worktree root, and a ccache-warmed build
+  (~30 s). **Never rename or hide the shared install** — every worktree symlinks the same directory.
+- **One merge-time detail that has already bitten once**: `third_party/` is hardlinked per worktree,
+  so a dependency a worker *fetches* (pl_mpeg, #40) exists only in that worktree. Run
+  `./remake/foundation/build.sh deps` in whichever tree you are building after such a merge.
+- The Ghidra bridge is at `http://127.0.0.1:8089`: `/mcp/health`, `/mcp/instance_info` and
+  `/mcp/schema` are **discovery only** — the 204 tool endpoints are at the **root** path
+  (`/decompile_function?address=0x0040b2b0&program=DaybreakDX.exe`). The project has the **original**
+  `DaybreakDX.exe` (md5 `a136ddc01bd7ef355b759b88ac89e02c`) open while `research/` came from a
+  **patched** copy, so every address in a report must name which side it came from.
+- Verify, do not trust: every merge in this batch was preceded by the coordinator reproducing the
+  load-bearing claim (a hash, a pixel count, a failing test, a real CI run). Reports have been wrong
+  or stale more than once — #45's stated cause, #43's stated ramp, #47's stated ordering, #28's
+  "CI-clean already" premise and #26's whole body were each corrected by measurement.
