@@ -402,3 +402,34 @@ rewriting its body.
 
 **#44's premise is confirmed correct by that finding**: it said it shares the ramp with #43, and
 the ramp *is* the chibi reveal — so #44 can reuse `ui::SelectReveal` as-is.
+
+## Round 7 — #49 merged, and its issue's question answered
+
+**#49's question ("does a fighter with no prior selection acquire a target automatically?") has a
+definitive answer: no.** The auto-acquire was a port invention. From the live original:
+`FUN_0041f580`'s maintenance branch clears `+0x304` at `0x421fecb` and then calls `FUN_00421e30`,
+which clears it *again* at `0x421e96`; the only store that makes `+0x304` valid is `FUN_00421f30`'s
+`0x421f65`, whose only callers are `FUN_0041f580` and the command dispatcher `FUN_0063c2a0` (command
+`0x2b` = the LockSwitch tap). An exhaustive operand scan of `0x304` (31 instructions program-wide)
+found no other writer, and the one automatic call is gated on `+0x28c == 0x1e`, which nothing in the
+binary ever stores.
+
+**Verified by me, not taken from the report.** Same recipe
+(`--screen=battle --local-players=1 --frames=300 --size=800x600`), counting ring pixels at the art's
+own colours:
+
+| build | red px | green px |
+|---|---|---|
+| `main` before (auto-acquire) | **0** | 640 |
+| after #49 | **427** | 315 |
+
+Every ring green before — the human's exact report — and after, the human red and unlocked while the
+COM is green from a lock its own brain requested.
+
+**A documented rule was backwards.** `ROADMAP-PENDING.md` D2 read `local_31` as "this fighter is the
+viewer's locked target"; the live disassembly (`0x6433b0-0x6433f7`) makes it
+`(owner->0x300 == lookup(owner+0x2f0, 0)->0x300) && (owner->0x304 < 0)` — the drawn fighter is what
+that container's element 0 faces **and has no lock of its own**. Nothing in the ring path reads
+another fighter's `+0x304`. The human's "second reticle when both are aiming at each other" was a
+misreading caused by the port's tick-1 auto-acquire, which meant the second copy never drew at all.
+The doc is corrected; the drawing code already had the right condition.
