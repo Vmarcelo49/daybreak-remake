@@ -409,7 +409,8 @@ int main() {
         // default and the rest of the file still applies.
         settings::LoadReport bad;
         settings::UserSettings badOut;
-        check(settings::parse("version = 5\n[render]\ntoon = maybe\nshadows = perhaps\n"
+        check(settings::parse("version = 5\n[game]\ninstall_dir = /tmp/g\n"
+                              "[render]\ntoon = maybe\nshadows = perhaps\n"
                               "[audio]\nmaster = 55\n",
                               badOut, error, bad),
               "bad toggle values do not reject the file");
@@ -554,7 +555,7 @@ int main() {
         checkInt("it is one warning too", 1, report.warnings);
         // A CURRENT document without the key at all is a hand-edit or a lossy writer: the
         // one thing it costs (the remembered folder) is worth a warning.
-        check(settings::parse("version = 4\n[display]\nfullscreen = true\n", out, error, report),
+        check(settings::parse("version = 5\n[display]\nfullscreen = true\n", out, error, report),
               "a current document without the key still loads: " + error);
         check(out.installDir.empty(), "nothing is remembered");
         checkInt("and that is reported", 1, report.warnings);

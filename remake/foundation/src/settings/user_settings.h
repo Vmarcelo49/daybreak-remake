@@ -64,7 +64,8 @@ namespace settings {
 // #36 the v4 slot it shipped in and puts the shadow toggle at v5, so a v4 document written
 // by a #36 build loads with its install_dir intact and the toggle defaulted off (what v4
 // meant, since the option did not exist there). Both migrations are additive and both are
-// reported.inline constexpr int kSchemaVersion = 5;
+// reported.
+inline constexpr int kSchemaVersion = 5;
 inline constexpr int kSchemaVersionLegacy = 1;
 inline constexpr int kSchemaVersionV2 = 2;
 inline constexpr int kSchemaVersionV3 = 3;
