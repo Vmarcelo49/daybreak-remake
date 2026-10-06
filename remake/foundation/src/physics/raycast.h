@@ -230,6 +230,27 @@ private:
     glm::vec3 boundsMax_{0.f};
     bool haveBounds_ = false;
 
+    // One movement triangle's axis-aligned bounds, in the mesh's own vertex space (the
+    // queries apply no frame transform — see the file comment).
+    struct FaceBounds {
+        glm::vec3 lo{0.f};
+        glm::vec3 hi{0.f};
+    };
+    // Per mesh, then per face: the bounds firstWallHit's sweep prunes with. Filled by
+    // setMeshes. A mesh the movement index does not walk gets an empty entry and is never
+    // asked for one.
+    std::vector<std::vector<FaceBounds>> movementFaceBounds_;
+
+    // True when the horizontal sweep segment [origin, origin + direction*limit] can reach
+    // the face's bounds. `limit <= 0` means "no cutoff", exactly as intersectTriangle reads
+    // maxDist. Conservative by construction: a face it answers false for holds no point
+    // within the segment, so it can never drop a hit. A direction component of exactly zero
+    // is tested as containment rather than through its reciprocal, because a ray that grazes
+    // a slab boundary must still be kept.
+    static bool sweepReachesBounds(const FaceBounds& bounds, const glm::vec3& origin,
+                                   const glm::vec3& direction, float invDx, float invDz,
+                                   float limit);
+
     RayHit firstWallHit(const glm::vec3& start, const glm::vec3& delta) const;
     glm::vec3 slideSegment(const glm::vec3& start, const glm::vec3& delta,
                            bool& hitWall) const;

@@ -236,6 +236,63 @@ void MovementCollision::setMeshes(const xm::Model* movementMesh,
     };
     includeBounds(movementMesh_, movementIndex_);
     if (groundMesh_ != movementMesh_) includeBounds(groundMesh_, groundIndex_);
+
+    // The movement sweep's pruning boxes. Its rays are one stride long and horizontal, so a
+    // face whose bounds the segment cannot reach cannot be hit — and the rest of the stage's
+    // triangles are most of what firstWallHit used to walk per ray (issue #30: a COM's
+    // navigation probes made that walk 92 % of a 15500-tick run). `face / 3` is the bounds
+    // index, so a malformed face still pushes its (never consulted) slot.
+    movementFaceBounds_.clear();
+    if (!movementMesh_) return;
+    movementFaceBounds_.resize(movementMesh_->meshes.size());
+    for (const int32_t mi : movementIndex_.meshOrder) {
+        const xm::Mesh& mesh = movementMesh_->meshes[static_cast<size_t>(mi)];
+        std::vector<FaceBounds>& bounds = movementFaceBounds_[static_cast<size_t>(mi)];
+        bounds.reserve(mesh.indices.size() / 3);
+        for (size_t face = 0; face + 2 < mesh.indices.size(); face += 3) {
+            const uint32_t ia = mesh.indices[face], ib = mesh.indices[face + 1],
+                           ic = mesh.indices[face + 2];
+            if (ia >= mesh.vertices.size() || ib >= mesh.vertices.size() ||
+                ic >= mesh.vertices.size()) {
+                bounds.push_back(FaceBounds{});
+                continue;
+            }
+            const glm::vec3& a = mesh.vertices[ia].pos;
+            const glm::vec3& b = mesh.vertices[ib].pos;
+            const glm::vec3& c = mesh.vertices[ic].pos;
+            bounds.push_back(FaceBounds{glm::min(glm::min(a, b), c),
+                                        glm::max(glm::max(a, b), c)});
+        }
+    }
+}
+
+bool MovementCollision::sweepReachesBounds(const FaceBounds& bounds, const glm::vec3& origin,
+                                           const glm::vec3& direction, float invDx,
+                                           float invDz, float limit) {
+    // The ray is horizontal, so the face's y range is a plain containment test on the ray's
+    // own height.
+    if (origin.y < bounds.lo.y || origin.y > bounds.hi.y) return false;
+    // Slab test in xz, clipped to the segment [0, limit]: the bounds are reachable while
+    // that interval is not empty. `limit <= 0` is intersectTriangle's "no cutoff".
+    float tmin = 0.f;
+    float tmax = limit > 0.f ? limit : std::numeric_limits<float>::infinity();
+    if (direction.x == 0.f) {
+        if (origin.x < bounds.lo.x || origin.x > bounds.hi.x) return false;
+    } else {
+        const float ax = (bounds.lo.x - origin.x) * invDx;
+        const float bx = (bounds.hi.x - origin.x) * invDx;
+        tmin = std::max(tmin, std::min(ax, bx));
+        tmax = std::min(tmax, std::max(ax, bx));
+    }
+    if (direction.z == 0.f) {
+        if (origin.z < bounds.lo.z || origin.z > bounds.hi.z) return false;
+    } else {
+        const float az = (bounds.lo.z - origin.z) * invDz;
+        const float bz = (bounds.hi.z - origin.z) * invDz;
+        tmin = std::max(tmin, std::min(az, bz));
+        tmax = std::min(tmax, std::max(az, bz));
+    }
+    return tmin <= tmax;
 }
 
 GroundHit MovementCollision::groundAt(float x, float z, float referenceY,
@@ -288,6 +345,10 @@ RayHit MovementCollision::firstWallHit(const glm::vec3& start,
     const float distance = glm::length(horizontal);
     if (!(distance > 1e-5f)) return best;
     const glm::vec3 direction(horizontal.x / distance, 0.f, horizontal.y / distance);
+    // Ray-invariant reciprocals for the prune below (an exactly zero component is handled by
+    // the predicate's containment branch, not here).
+    const float invDx = 1.f / direction.x;
+    const float invDz = 1.f / direction.z;
     constexpr float kWallNormalY = 0.70f;
     constexpr float kBodyHeights[] = {10.f, kFighterHeight * 0.5f,
                                       kFighterHeight - 10.f};
@@ -306,11 +367,20 @@ RayHit MovementCollision::firstWallHit(const glm::vec3& start,
             float closest = distance;
             for (const int32_t mi : movementIndex_.meshOrder) {
                 const xm::Mesh& mesh = movementMesh_->meshes[static_cast<size_t>(mi)];
+                // setMeshes pushes one box per face, in this same walk order; if that ever
+                // stops holding for a mesh, that mesh is walked unpruned rather than
+                // indexed out of range.
+                const std::vector<FaceBounds>& bounds =
+                    movementFaceBounds_[static_cast<size_t>(mi)];
+                const bool pruned = bounds.size() == mesh.indices.size() / 3;
                 for (size_t face = 0; face + 2 < mesh.indices.size(); face += 3) {
                     const uint32_t ia = mesh.indices[face], ib = mesh.indices[face + 1],
                                    ic = mesh.indices[face + 2];
                     if (ia >= mesh.vertices.size() || ib >= mesh.vertices.size() ||
                         ic >= mesh.vertices.size()) continue;
+                    if (pruned && !sweepReachesBounds(bounds[face / 3], origin, direction,
+                                                      invDx, invDz, closest))
+                        continue;
                     const xm::Vertex& a = mesh.vertices[ia];
                     const xm::Vertex& b = mesh.vertices[ib];
                     const xm::Vertex& c = mesh.vertices[ic];
