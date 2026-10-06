@@ -226,8 +226,7 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
     bool v4Document = false;
     // The remembered folder must be PRESENT, even empty: "not set" and "no folder chosen"
     // are different statements, and only the first is worth a warning.
-    bool sawInstallDir = false;
-    bool inSection = false;
+    bool sawInstallDir = false;    bool inSection = false;
     std::string section;
     std::istringstream stream(text);
     std::string raw;
@@ -441,8 +440,7 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
             "to off; every stored value kept)");
     } else if (v4Document) {
         report.messages.push_back(
-            "config version 4: migrated to " + std::to_string(kSchemaVersion) +
-            " (character shadows default to off; every stored value kept)");
+            "config version 4: migrated to " + std::to_string(kSchemaVersion) +            " (character shadows default to off; every stored value kept)");
     } else if (!sawInstallDir) {
         // A CURRENT document always carries the key — serialize() writes it even when no
         // folder is remembered — so its absence is a hand-edit or a lossy writer, and the
