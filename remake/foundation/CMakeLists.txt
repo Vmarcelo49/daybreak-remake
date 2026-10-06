@@ -188,6 +188,41 @@ else()
     endif()
 endif()
 
+# The Linux release package (issue #22). `scripts/package_linux.sh` stages it through
+# these rules, so what ships is a build-system fact rather than a copy list that can
+# drift. INSTALL_RPATH is the one thing that must differ from the build tree: the built
+# binary's RUNPATH points at the fetched third_party library directory (a developer path
+# that does not exist on a user's machine), while the package finds the two libraries it
+# ships beside itself. CMake rewrites the RPATH in the installed copy only, so
+# `build.sh linux` and the build-tree binary keep working exactly as before.
+if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
+    install(TARGETS foundation_demo RUNTIME DESTINATION .)
+    set_target_properties(foundation_demo PROPERTIES INSTALL_RPATH "$ORIGIN/lib")
+    # SDL3 comes from the distribution's development package; wgpu-native from the pinned
+    # fetched release. Both are bundled because a user machine may have neither. The C/C++
+    # runtime is deliberately NOT bundled (see package/LICENSES/README.md). SDL3 is taken
+    # by its SONAME file (libSDL3.so.0): the versioned file the linker knows is
+    # libSDL3.so.0.4.18, and the executable's NEEDED entry is the SONAME.
+    install(FILES "$<TARGET_FILE:webgpu>" DESTINATION lib)
+    install(FILES "$<TARGET_FILE:SDL3::SDL3>" DESTINATION lib RENAME "$<TARGET_SONAME_FILE_NAME:SDL3::SDL3>")
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts"
+            DESTINATION assets PATTERN "README.md" EXCLUDE)
+    # The Japanese fallback is fetched (scripts/fetch_deps.sh) rather than committed, so it
+    # is installed by name; package_linux.sh refuses to build a package without it (D7).
+    if(EXISTS "${CAPTION_CJK_FONT}")
+        install(FILES "${CAPTION_CJK_FONT}"
+                DESTINATION assets/fonts RENAME NotoSansCJKjp-Regular.otf)
+    endif()
+    install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/package/daybreak" DESTINATION .)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/package/README-LINUX.md"
+                  "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" DESTINATION .)
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/package/LICENSES" DESTINATION .)
+    # The port's own licence comes straight from the repository root, so it cannot drift
+    # from what the source tree ships.
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../../LICENSE"
+            DESTINATION LICENSES RENAME daybreak-decomp.txt)
+endif()
+
 # Host-side tests. Native-only on purpose: the Windows target is cross-compiled and
 # the web target cannot run a host binary, so neither can execute them, and building
 # them there would only add a target nothing runs. All three are device-free by design:
