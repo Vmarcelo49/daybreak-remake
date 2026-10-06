@@ -77,6 +77,9 @@ enum class HudIcon : uint8_t {
     CommandLabel,        // 0x6ca140  P03 (0,0,128,64)       pivot (64,32)
     // Per-fighter HUD (FUN_00643230 @0x643431, @0x6439db; the target-bar drawer
     // @0x643fa7).
+    // P03 carries the reticle as a PAIR of adjacent 128-px cells per column: the circle,
+    // then the four outward triangles. This entry names the CIRCLE; the counter-rotating
+    // second copy is the next column along (hud.h's hudRingSecondCellColumn, issue #55).
     Ring,                // 0x6c7d58  P03 (0,128,128,128)    pivot (64,64)
     ComBarFrame,         // 0x6ca0a0  P01 (320,192,192,64)   pivot (96,32)
     ComBarFill,          // hud+0x4   P01 (320,320,80,6)     pivot (40,3)
