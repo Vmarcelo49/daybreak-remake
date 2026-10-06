@@ -10,13 +10,17 @@ port rule, not recovered behaviour, and it proves nothing about what GitHub will
 What is modelled:
   * `on.push.paths` globs over the union of files changed by the range (`**` crosses
     `/`, `*` stops at it, `?` is one character).
-  * `github.event_name`, and `github.event.head_commit.modified` as the files of the
-    last commit of the range — that is what the push payload's `head_commit` holds.
-    (The per-commit `modified` lists under `github.event.commits` are NOT modelled:
-    GitHub removes `added`/`removed`/`modified` from the commits section of push
-    payloads for Actions — https://github.blog/changelog/2019-10-16-changes-in-github-actions-push-event-payload/.)
-  * The `||`, `&&`, `==`, `!=`, `!`, parentheses and `contains(...)` subset the
-    workflow uses. Any other expression shape is an error, never a guess.
+  * The gate job: the path its step `grep -qx`es (read out of that step), tested
+    against the push's changed files — which is what the step's own
+    `git diff before..after` computes. Its shell is reimplemented, not executed.
+  * The gate's fallback, in the same direction the step takes it: a push with no
+    usable base commit (all-zero `before`, or a range git cannot resolve) runs the
+    matrix, and so does `workflow_dispatch`.
+  * `github.event_name` and `needs.<gate>.outputs.<output>` for the `||`, `&&`,
+    `==`, `!=`, `!`, parentheses and `contains(...)` subset the workflow uses. Any
+    other expression shape is an error, never a guess.
+  * A job's `needs:` is assumed satisfied — the model has no notion of a job
+    failing, so it cannot decide the `if:` of a job whose gate failed.
 Not modelled, and only a real run can show it: GitHub skips the `paths` filter and
 always runs the workflow when a push carries more than 1000 commits, when the diff
 times out, or when the diff has more than 3000 files the filter does not match
@@ -26,6 +30,7 @@ Usage:
     remake/foundation/scripts/ci_trigger_sim.py b8c527f^..b8c527f   # a real push range
     remake/foundation/scripts/ci_trigger_sim.py a35e36d            # one commit
     remake/foundation/scripts/ci_trigger_sim.py --files remake/foundation/VERSION
+    remake/foundation/scripts/ci_trigger_sim.py --no-base 92b6d70  # no base: gate falls back
     remake/foundation/scripts/ci_trigger_sim.py --dispatch
 
 Needs PyYAML; the workflow is parsed, never regex-scraped.
@@ -38,7 +43,7 @@ import subprocess
 import yaml
 
 DEFAULT_WORKFLOW = ".github/workflows/build-foundation.yml"
-VERSION_PATH = "remake/foundation/VERSION"
+GATE_GREP_RE = re.compile(r"grep\s+-qx\s+(\S+)")
 
 
 class ModelError(SystemExit):
@@ -249,11 +254,31 @@ def one_line(text):
     return " ".join(str(text).split())
 
 
-def report(workflow, wf_path, origin, scenario=False, changed=None, head_files=None, head_line=None):
+def find_gate(workflow):
+    """(job, output, path) for the job that gates the matrix on a `grep -qx <path>`.
+
+    That is the shape this model can replay; any other gate raises rather than
+    guessing which job decides the expensive half.
+    """
+    for name, job in workflow["jobs"].items():
+        for step in (job or {}).get("steps") or []:
+            match = GATE_GREP_RE.search(step.get("run") or "")
+            if not match:
+                continue
+            outputs = list(((job or {}).get("outputs") or {}).keys())
+            if len(outputs) != 1:
+                raise ModelError(f"gate job {name!r} publishes {outputs}; the model expects exactly one output")
+            return name, outputs[0], match.group(1)
+    raise ModelError("no gate job found: expected a job whose step publishes `grep -qx <path>` as an output")
+
+
+def report(workflow, wf_path, origin, scenario=False, changed=None, tip_files=None, head_line=None,
+           base_resolvable=True):
     """`changed` is None for a dispatch, otherwise the push's paths and its tip commit."""
     push = changed is not None
     print(f"workflow    {wf_path}  (read, not executed)")
-    print("model       port rule: `paths` and `if:` replayed from that file; GitHub's own evaluation is not run")
+    print("model       port rule: `paths`, the gate and `if:` replayed from that file;")
+    print("            GitHub's own evaluation and run are not executed")
     print(f"event       {origin}")
     if push:
         print(f"head_commit {head_line}")
@@ -268,11 +293,19 @@ def report(workflow, wf_path, origin, scenario=False, changed=None, head_files=N
             return
     else:
         print("trigger     workflow_dispatch runs the workflow unconditionally")
+    gate_job, gate_output, gate_path = find_gate(workflow)
+    if not push:
+        gate, why = "true", "workflow_dispatch"
+    elif not base_resolvable:
+        gate, why = "true", "no usable base commit: the gate falls back to running the matrix"
+    elif gate_path in changed:
+        gate, why = "true", f"{gate_path} changed in the push"
+    else:
+        gate, why = "false", f"no {gate_path} in the push"
+    print(f"gate        {gate_job}.{gate_output}={gate}  ({why})")
     context = {
         "github.event_name": "push" if push else "workflow_dispatch",
-        # A dispatch has no head_commit: contains(null, x) is false, and the `||`
-        # short-circuit is what runs the job.
-        "github.event.head_commit.modified": head_files if push else None,
+        f"needs.{gate_job}.outputs.{gate_output}": gate,
     }
     print("jobs")
     for name, job in workflow["jobs"].items():
@@ -282,9 +315,9 @@ def report(workflow, wf_path, origin, scenario=False, changed=None, head_files=N
             continue
         value = ExprModel(one_line(expr), context).eval()
         print(f"  {name:<8} {'RUN ' if value else 'SKIP'}  if: {one_line(expr)} -> {str(value).lower()}")
-    if push and VERSION_PATH in changed and VERSION_PATH not in head_files:
-        print(f"note        {VERSION_PATH} changed but is not in the tip commit: the modelled")
-        print("            head_commit test cannot see it, so windows/web skip (dispatch by hand)")
+    if push and gate_path in changed and gate_path not in tip_files:
+        print(f"note        {gate_path} changed outside the tip commit: the gate diffs the whole")
+        print("            push range, so the matrix still runs")
     if scenario:
         print("note        the file list is a --files scenario, not a commit in this repository")
 
@@ -296,29 +329,36 @@ def main():
     parser.add_argument("--files", nargs="+", metavar="PATH",
                         help="scenario: model a push that changed exactly these paths")
     parser.add_argument("--dispatch", action="store_true", help="model a workflow_dispatch instead of a push")
+    parser.add_argument("--no-base", action="store_true",
+                        help="model a push whose github.event.before is all zeros (new or force-pushed ref): "
+                             "the gate must fall back to running the matrix")
     parser.add_argument("--repo", default=".", help="repository to read (default: .)")
     parser.add_argument("--workflow", default=DEFAULT_WORKFLOW,
                         help=f"workflow file, relative to --repo (default: {DEFAULT_WORKFLOW})")
     args = parser.parse_args()
     if sum([bool(args.range), bool(args.files), args.dispatch]) != 1:
         raise ModelError("give exactly one of: a REV-RANGE, --files, or --dispatch")
+    if args.no_base and args.dispatch:
+        raise ModelError("--no-base describes a push; it cannot be combined with --dispatch")
 
     wf_path = args.workflow if os.path.isabs(args.workflow) else os.path.join(args.repo, args.workflow)
     workflow = load_workflow(wf_path)
     if not workflow["dispatch"]:
         raise ModelError(f"{wf_path}: no workflow_dispatch trigger")
 
+    resolvable = not args.no_base
     if args.dispatch:
         report(workflow, wf_path, "workflow_dispatch (manual)")
         return
     on_branches = f"push to {workflow['branches']}"
     if args.files:
         report(workflow, wf_path, f"{on_branches}, --files scenario (not a commit in this repository)", scenario=True,
-               changed=list(args.files), head_files=list(args.files), head_line="(scenario: --files)")
+               changed=list(args.files), tip_files=list(args.files), head_line="(scenario: --files)",
+               base_resolvable=resolvable)
         return
     before, after, changed = resolve_range(args.repo, args.range)
     report(workflow, wf_path, f"{on_branches}, model of {before[:12]}..{after[:12]}", changed=changed,
-           head_files=commit_files(args.repo, after),
+           tip_files=commit_files(args.repo, after), base_resolvable=resolvable,
            head_line=git(args.repo, "log", "-1", "--format=%h %s", after)[0])
 
 

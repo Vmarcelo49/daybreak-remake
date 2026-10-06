@@ -5,19 +5,19 @@ name: Build foundation (Linux / Windows / Web)
 
 # Cadence (issue #28):
 #   push to main touching remake/foundation/**        -> linux
-#   push to main whose last commit bumps
+#   push to main that changes
 #   remake/foundation/VERSION                         -> linux + windows + web
 #   workflow_dispatch                                 -> linux + windows + web
 #
 # linux is the only job that runs `ctest`, so it runs on every push that touches
 # the foundation: one native build, and a broken test cannot sit on main. windows
 # (MinGW cross-build) and web (Emscripten) are the expensive half of the matrix and
-# stay on the version-bump path — the tradeoff issue #28 sanctions — enforced by the
-# `if:` on those two jobs, which skips them instead of queueing them. That `if:`
-# reads `github.event.head_commit.modified`, and that list describes only the last
-# commit of a push: put the bump in the last commit, or dispatch by hand, when it
-# rides along with other work. The workflow file is in `paths` too, so a trigger
-# edit is exercised by a run rather than assumed.
+# stay on the version-bump path — the tradeoff issue #28 sanctions — decided by the
+# `gate` job below, which skips them instead of queueing them. The gate diffs the
+# push's own before..after range, so a bump counts wherever it sits in the push, and
+# it falls back to running the matrix when that range cannot be resolved. The
+# workflow file is in `paths` too, so a trigger edit is exercised by a run rather
+# than assumed.
 on:
   push:
     branches: [ main ]
@@ -27,6 +27,42 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Cheap pre-flight for the two expensive jobs. It runs on the same trigger as
+  # `linux`, in parallel with it, and adds one checkout of this repo.
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.version.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The full history, so `before`..`after` resolves for any push.
+          fetch-depth: 0
+      - name: Did this push change VERSION?
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = workflow_dispatch ]; then
+            matrix=true
+          else
+            before="${{ github.event.before }}"
+            after="${{ github.event.after }}"
+            zeros="0000000000000000000000000000000000000000"
+            # An all-zero (or empty) `before` is a push with no base — a new or
+            # force-pushed ref — and `git diff` fails for the same reason. Both fall
+            # back to running the matrix: two extra runners are cheap, a silently
+            # skipped cross-target build is the defect this gate exists to remove.
+            if [ -z "$before" ] || [ "$before" = "$zeros" ] \
+               || ! git diff --name-only "$before" "$after" > "$RUNNER_TEMP/changed"; then
+              echo "no usable $before..$after range: running the matrix"
+              matrix=true
+            elif grep -qx remake/foundation/VERSION "$RUNNER_TEMP/changed"; then
+              matrix=true
+            else
+              matrix=false
+            fi
+          fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
   linux:
     runs-on: ubuntu-latest
     steps:
@@ -54,10 +90,10 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
   windows:
-    # Version bumps and manual dispatch only; see the cadence note at the top.
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      contains(github.event.head_commit.modified, 'remake/foundation/VERSION')
+    # The gate decides whether the cross-target builds are worth running; see the
+    # cadence note at the top.
+    needs: gate
+    if: needs.gate.outputs.matrix == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -75,10 +111,10 @@ jobs:
         run: test -f build/foundation_demo.exe
 
   web:
-    # Version bumps and manual dispatch only; see the cadence note at the top.
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      contains(github.event.head_commit.modified, 'remake/foundation/VERSION')
+    # The gate decides whether the cross-target builds are worth running; see the
+    # cadence note at the top.
+    needs: gate
+    if: needs.gate.outputs.matrix == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
