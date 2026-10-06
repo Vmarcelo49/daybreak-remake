@@ -31,8 +31,16 @@ add_subdirectory(third_party/webgpu)
 
 if(EMSCRIPTEN)
     # SDL3 is supplied by the Emscripten port; it also owns the <canvas>.
-    add_compile_options(-sUSE_SDL=3)
-    add_link_options(-sUSE_SDL=3 -sASYNCIFY=1 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576 -sFETCH=1 -lidbfs.js)
+    #
+    # -fexceptions has to be named explicitly: emcc disables C++ exception CATCHING by
+    # default, so every `try` in the asset layer (xmodel/cnv parse errors, scene.h's
+    # addModel, main.cpp's addFxCard) was inert and every `throw` was fatal — the asset
+    # miss that Linux and Wine log and walk past aborted the module instead (measured:
+    # the first missing data/aura/00.x after the stage load). With it, the web reaches
+    # the title and a live match, which it could not before (issue #35). Cost measured
+    # on the same tree: foundation_demo.wasm 6,249,962 -> 8,186,870 bytes (+31%).
+    add_compile_options(-sUSE_SDL=3 -fexceptions)
+    add_link_options(-sUSE_SDL=3 -fexceptions -sASYNCIFY=1 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576 -sFETCH=1 -lidbfs.js)
     add_link_options("SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts@/assets/fonts")
     # Local game data can be mounted at /assets for browser verification. Both stay
     # local-only: the data is copyrighted and build/ is ignored, so this never changes
