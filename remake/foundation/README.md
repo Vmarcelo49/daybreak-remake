@@ -393,7 +393,7 @@ its implementation handoff is in
 [`docs/ROADMAP-PENDING.md`](docs/ROADMAP-PENDING.md#future-remake-only-experiment-3v3-and-4v4).
 Renderer options (the first three options rows are marked unavailable) remain
 pending (issue #21). Battle fidelity includes unresolved animation/VFX details;
-LAN netplay awaits its own implementation. The Linux CTest suite has 42 tests,
+LAN netplay awaits its own implementation. The Linux CTest suite has 50 tests (2026-10-06),
 including frontend selection/configuration, VS/result timelines, HUD geometry and
 the split-screen layout/assignment guards. The release gate — the checklist, the
 sweeps, the environment matrix and the stability run — is

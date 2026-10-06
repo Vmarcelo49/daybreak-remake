@@ -67,9 +67,9 @@ data. It is also registered in the host suite (`ctest -R launcher_test`).
 ctest --test-dir remake/foundation/build/linux --output-on-failure
 ```
 
-* **With the game install present**: `100% tests passed out of 49`.
+* **With the game install present**: `100% tests passed out of 50`.
 * **Without any game data** (the CI runner's state — no `Higurashi-Daybreak/`):
-  `100% tests passed out of 49`, with `hud_cell_scale`, `toon_ramp`,
+  `100% tests passed out of 50`, with `hud_cell_scale`, `toon_ramp`,
   `npr_experiments`, `npr_normals_test`, `controller_scene_lifetime_test` and
   `device_isolation_test`
   reported as `Skipped` (exit 77) and `weapon_definition_test` skipping its
@@ -78,7 +78,7 @@ ctest --test-dir remake/foundation/build/linux --output-on-failure
   no-data run was taken in a checkout with no symlink at all, which is exactly the
   runner's state (#28's worker measured the same 100%-passed-with-skips shape). The
   denominator is the number of *registered* tests and grows whenever a suite is
-  added (42 when this document was written, 45 when #28 re-measured it, 48 after
+  added (42 when this document was written, 45 when #28 re-measured it, 50 after
   #42's `bgm_loop_test`, #45's `frontend_lifecycle_test` and #46's
   `controller_scene_lifetime_test`, 49 after #29's `device_isolation_test`), so
   read the command's own summary rather than this line when the two disagree —
