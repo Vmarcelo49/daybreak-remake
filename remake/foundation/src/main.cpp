@@ -159,7 +159,8 @@ struct Options {
     // --movie=<path>: which file the opening scene plays (default data/movie/op.mpg — the
     // original's FUN_00404eb0 @0x404eb0 opens it as "movie/op.mpg" from its data/ working
     // directory). The staff roll is the same player and the same scene kind, so it is driven
-    // through this one screen rather than a second one.
+    // through this one screen rather than a second one. Naming a movie implies that scene,
+    // like naming an asset implies its viewer.
     std::string movie;
     // A plain interactive launch boots scene 0x00 like the original does, unless a
     // verification run owns the input (issue #40's criterion 4). Resolved after parsing,
@@ -253,9 +254,9 @@ void usage() {
         "                     the opening scene (0x00) like the original; a verification\n"
         "                     run (--out/--headless/--script/...) never does, so no\n"
         "                     evidence run pays for the movie decode (issue #40)\n"
-        "  --movie=<path>     with --screen=opening: which movie to play, relative to the\n"
-        "                     install (default data/movie/op.mpg). staffroll.mpg runs\n"
-        "                     through the same player this way\n"
+        "  --movie=<path>     which movie to play, relative to the install (default\n"
+        "                     data/movie/op.mpg); implies --screen=opening. staffroll.mpg\n"
+        "                     runs through the same player this way\n"
         "  --effect=<file.x>  load one card with the effect role (additive pass)\n"
         "  --hud-test         composite a synthetic HUD into --out captures\n"
         "  --hud-probe        with --hud-test: draw per-view corner markers so a capture\n"
@@ -618,7 +619,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         return false;
     }
     if (!o.out.empty()) {
-        if (!hasAsset(o) && o.screen.empty()) {
+        if (!hasAsset(o) && o.screen.empty() && o.movie.empty()) {
             error = "--out needs an asset argument; the triangle demo draws into the window";
             return false;
         }
@@ -670,7 +671,9 @@ static bool readPhysicalDevices(const Options& o) {
 // carry a 22.7 MB decode, issue #40's criterion 4). PORT RULE: the original has no such
 // switch, it simply boots scene 0x00 every time; the set that opts out is the port's.
 static bool resolveBootOpening(const Options& o) {
-    return o.screen.empty() && !hasAsset(o) && !verificationRunOwnsInput(o);
+    if (!o.screen.empty() || hasAsset(o)) return false;
+    if (!o.movie.empty()) return true;   // --movie names the scene it belongs to
+    return !verificationRunOwnsInput(o);
 }
 
 // ---------------------------------------------------------------------------------------
