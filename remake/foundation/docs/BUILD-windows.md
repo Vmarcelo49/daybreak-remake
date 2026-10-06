@@ -29,7 +29,7 @@ with `status c0000135` if any of them is missing.
 
 ## Verified on this machine
 
-wine-11.18, x86_64-w64-mingw32-g++ 16.2.0, no X display. Wine creates the
+wine-11.19, x86_64-w64-mingw32-g++ 16.2.0, no X display. Wine creates the
 window through its own driver and wgpu-native picks Vulkan, so the demo gets the
 real GPU:
 
@@ -48,6 +48,45 @@ delta min   : 0.606 ms
 delta max   : 6.030 ms
 RESULT: ok
 ```
+
+That is the triangle: it proves the surface and the adapter request, not that the
+game runs. **With the game install (issue #35)**, wine-11.19, run inside an
+isolated headless KWin session:
+
+```sh
+wine build/windows/foundation_demo.exe --install=Z:/<abs>/Higurashi-Daybreak --no-devices
+```
+
+reaches the title screen through the opening movie (issue #40's decoder, on this
+target for the first time):
+
+```
+[install] game folder: Z:/.../Higurashi-Daybreak (from --install=)
+[menu] scene: opening (tick 0)
+movie        : data/movie/op.mpg (MPEG-1 system multiplex, 640x480, 29.97 fps, 22.79 s, MP2 44100 Hz stereo)
+movie        : ended after 684 frames decoded/684 presented (22.789 s), audio 22.857 s
+[menu] scene: title (tick 1485)
+```
+
+and with the release gate's own script
+
+```sh
+wine build/windows/foundation_demo.exe --install=Z:/<abs>/Higurashi-Daybreak \
+  --screen=title --local-players=2 --no-devices \
+  --script=Z:/<abs>/remake/foundation/tests/scripts/frontend-1v1-rematch.txt
+```
+
+the whole front end runs: `.dat` bundles (`assets: 6/6`), stage and characters,
+VS, countdown, a live split-screen battle, a round decided on the time-up rule and
+the result screen. `RELEASE-CHECKLIST.md` §5.2 has the full transcript, the canvas
+captures and the honest ladder (compiled/launched/title/battle/played).
+
+What does not work yet: **round 2 of a rematch faults** — `wine: Unhandled page
+fault on read access to ... at address 00000001400B3810`, inside
+`gameplay::CharacterMoves::find(int) const` — while the identical Linux recipe
+completes `RESULT: ok` (issue #57). Before the `cnv.h` fix in issue #35 the run
+did not get that far at all: `std::filesystem::u8path` threw on a raw Shift-JIS
+texture name and terminated the process.
 
 With an X display present the adapter instead comes from Mesa's software path
 (`llvmpipe [OpenGL]`, 5 formats, 2 present modes) and still ends in

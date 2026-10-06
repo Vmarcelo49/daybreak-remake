@@ -85,6 +85,47 @@ model/mesh/vertex counts, resolved texture counts, generated draws and GPU
 textures, followed by the frame report and `RESULT: ok`. Game data and the
 generated `.data` package stay out of the repository.
 
+## Verified with game data (2026-10-06, issue #35)
+
+The 2026-10-03 section below is superseded on one point and confirmed on others.
+Re-run on Chrome for Testing 152 through `agent-browser --webgpu` (headless,
+**software WebGPU: `google swiftshader [WebGPU(browser)]`** — this box's RADV
+device is not what Chromium's WebGPU used), with a `/data` preload rig built as
+in `RELEASE-CHECKLIST.md` §5.2:
+
+* **The title screen runs.** An interactive launch passes the front-end data gate
+  (`[install] no --install= and no DAYBREAK_INSTALL: reading data/ from the
+  current directory`), boots the opening scene and lands on the title with its art
+  and Japanese text drawn. Canvas readback (`canvas.toDataURL`) is a real frame;
+  the compositor screenshot is still black.
+* **A live match runs.** `--stage=/data/stage01 --character=/data/rena:0
+  --enemy=/data/mion:0 --match`: stage textures 168 resolved / 0 missed, both
+  fighters geared as combos (item 001/item 002), 122/134 moves loaded, 195 draws
+  (168 textured, 4 decals, 27 outlines), 143 GPU textures, and the readback shows
+  Rena with her weapon facing Mion on the schoolyard with the HUD up.
+* **Issue #40's web movie stub, exercised for the first time.** It logs
+  `[movie] the web build does not decode movies in wasm: the browser must play
+  them (HTMLVideoElement/WebCodecs)` and the switcher moves to the title
+  (`opening (tick 0)` → `title (tick 25)`). Deliberate, reported, not a crash.
+* **Exceptions must be enabled for any of this to survive a missing asset.**
+  emcc disables C++ exception catching by default, which made the asset layer's
+  own `try`/`catch` inert and every `throw` fatal: the run aborted with
+  `Aborted(Assertion failed: Exception thrown, but exception catching is not
+  enabled ...)` on the first missing candidate asset (a `data/aura/00.x` the tree
+  ships as `00.X`). `CMakeLists.txt` now passes `-fexceptions`; wasm grows
+  6,249,962 → 8,186,870 bytes (+31%).
+* **The `?pack=` runtime path still cannot drive the front end.** The fetch half
+  works (`[pack] 766 files, 84.5 MB -> /packs/`), but the front end and the
+  fighter weapon join read install-relative `data/...` paths that `/packs/` does
+  not satisfy; the run now reports it instead of aborting
+  (`RESULT: load failed: P1 /packs/data/rena:0 has no weapon: slot-0 item 1
+  unreadable — roster fighters must gear up`). Issue #58.
+* **`--preload-file …@/assets` (the recipe above) no longer works** for a match:
+  its subset has no `item/`, so the launch guard fails. Mount the subset at
+  `/data` instead.
+* **A scripted front-end run does not leave the selection screen** in the browser
+  (issue #59), and a missing candidate asset is logged once per frame (issue #60).
+
 ## Game-data run verified (2026-10-03)
 
 A separate `build/web-roadmap` build preloaded the original extracted `stage01`,
