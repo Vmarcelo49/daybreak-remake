@@ -92,7 +92,7 @@ def run_capture(char, enemy, stage, frames, size, out, script=None, co_spawn=Fal
     return ok, textured, untextured, tail
 
 
-def check_matrix(out_dir):
+def check_matrix(out_dir, allow_problems=0):
     chars, stages = discover_characters(), discover_stages()
     print(f"asset check: {len(chars)} character(s) x {len(stages)} stage(s) "
           f"-> {len(chars) * len(stages)} runs")
@@ -113,10 +113,16 @@ def check_matrix(out_dir):
                 failures.append((c, s, why))
             row.append(cell)
         print(f"  {c:<10}" + "  ".join(row))
-    print(f"\n{len(chars) * len(stages) - len(failures)} pass, {len(failures)} problem(s)")
+    print(f"\n{len(chars) * len(stages) - len(failures)} pass, {len(failures)} problem(s)"
+          + (f" (baseline {allow_problems})" if allow_problems else ""))
     for c, s, why in failures:
         print(f"  {c} x {s}: {why}")
-    return not failures
+    if len(failures) > allow_problems:
+        print(f"REGRESSION: {len(failures)} problem cell(s) exceed the {allow_problems} "
+              f"documented baseline -- a new cell in that list is a regression, not a "
+              f"data gap (checklist 4.2)")
+        return False
+    return True
 
 
 def write_fx_script(path):
@@ -165,6 +171,12 @@ def showcase_shots(out_dir):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--check", action="store_true", help="run the full asset matrix")
+    # The install ships genuine data gaps (checklist 4.2: 43 cells with untextured
+    # draws), so a CORRECT sweep is not a clean one. Without this the tool exits 1 on
+    # its own documented baseline and any automation reads a healthy tree as a
+    # regression. The count is the contract: more than the baseline fails.
+    ap.add_argument("--allow-problems", type=int, default=0, metavar="N",
+                    help="tolerate N known problem cells (the checklist 4.2 baseline is 43)")
     ap.add_argument("--shots", action="store_true", help="run the curated showcase captures")
     ap.add_argument("--out-dir", default=tempfile.mkdtemp(prefix="showcase_"))
     args = ap.parse_args()
@@ -178,7 +190,7 @@ def main():
 
     ok = True
     if args.check:
-        ok = check_matrix(out_dir) and ok
+        ok = check_matrix(out_dir, args.allow_problems) and ok
     if args.shots:
         ok = showcase_shots(out_dir) and ok
     print(f"images in: {out_dir}")
