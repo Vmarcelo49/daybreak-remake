@@ -188,6 +188,12 @@ public:
     // Cycles to the next alive fighter, wrapping. Dead fighters are skipped; with
     // none alive the current target is kept. `forward` false cycles backward. As with
     // set_active_target, landing on a different fighter arms the retarget blend.
+    //
+    // NO MATCH CALLER since issue #51: the LockSwitch tap re-picks the COMBAT target
+    // (Match::cycle_locked_target) and leaves the camera on the view's own fighter, which
+    // is all FUN_00421e30/FUN_00421f30 write. It is kept because it is the ported
+    // reference's own API — tests/arena_camera_test.cpp and tests/target_lock_test.cpp pin
+    // its walk, its dead-skip and its retarget arming — not because a match reaches it.
     void cycle_target(bool forward = true);
 
     int           active_target_index() const { return m_activeIdx; }
@@ -277,6 +283,15 @@ private:
     // write the lock. The window is armed by a real target CHANGE, so a match that never
     // switches — every banked 1v1 capture, and any single-fighter pool — is bit-for-bit
     // on the reference's blend.
+    //
+    // WHO ARMS IT TODAY (audited for issue #51, which removed the match's cycle_target
+    // call): only a set_active_target/cycle_target that lands somewhere new. A match
+    // calls set_active_target once per view at construction, and set_target_pool has
+    // already selected pool slot 0, so view 0's call is not a change (reference 0.1 from
+    // its first update) while any OTHER view's call is one — a further view starts on 0.45
+    // for kRetargetTicks calls. MEASURED with a two-fighter pool: first update at ratio
+    // 0.100 for followed=0 and 0.450 for followed=1. Pre-existing (the construction order
+    // is untouched by #51) and left as found: it is camera behaviour, not this issue's.
     static constexpr float kRetargetBlend     = 0.45f;
     static constexpr int   kRetargetTicks     = 10;
 

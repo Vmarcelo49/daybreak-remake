@@ -32,12 +32,12 @@ struct SyntheticPadState {
 // `tick` is the match's 1-based 64 Hz tick. Windows are short enough to read as taps and
 // long enough to survive a render that samples held state once per tick.
 //
-// `lockTaps` is opt-in (`--lock-taps`) and OFF by default. Its LockSwitch tap retargets the
-// camera every ~4 s in every view — a real gesture, but one a viewer of an evidence run
-// cannot tell apart from a camera defect: four views each sweeping between fighters reads as
-// "the camera keeps switching target". Gameplay is unaffected either way (a played battle
-// never retargets itself), and the flag keeps the per-view retarget path exercised when a
-// run is specifically about it.
+// `lockTaps` is opt-in (`--lock-taps`) and OFF by default. Its LockSwitch tap re-picks
+// every view's COMBAT target every ~4 s — a real gesture (issue #51: it never re-points a
+// camera), but one a viewer of an evidence run cannot tell apart from churn: four views
+// each cycling their targets reads as "the fight keeps changing its mind". Gameplay is
+// otherwise unaffected (a played battle only re-targets when a human asks), and the flag
+// keeps the per-view gesture path exercised when a run is specifically about it.
 inline SyntheticPadState syntheticPadState(int controller, uint64_t tick, bool lockTaps = false) {
     SyntheticPadState s;
     const uint64_t phase = (uint64_t)(controller < 0 ? 0 : controller);
