@@ -521,3 +521,16 @@ new checks fail pre-change with `error: 'hudRingSecondCellColumn' is not a membe
 selection is read from the shipped sheet and settled by the human's description of the original — a
 labelled port rule, not a recovered one. The **row** rule (0 black/acting, 1 red/plain, 2 green/locked)
 is recovered and was not touched.
+
+## Round 11 — #51 merged (the LockSwitch tap no longer moves the camera)
+
+Removed `view.camera.cycle_target(true)`; `match.cycle_locked_target` stays. Independently verified:
+the 1v1 release-gate capture is **byte-identical** before and after
+(`md5 3e4e892adaee5fa73f653689bb357319`), all four ladders `RESULT: ok` with zero non-noise
+differing lines, and the new `lock_switch_camera_test` fails pre-change with **55 of 107 checks**
+failing and passes 107/107 now. Suite 51 → 52.
+
+Two audited findings worth keeping: `ArenaCamera::cycle_target` now has **no product caller** (kept
+as the ported reference API that `arena_camera_test`/`target_lock_test` pin, documented as such), and
+**none of the four release-gate scripts contains a LockSwitch gesture**, so the gate never exercised
+the tap path — which is why the camera defect survived it.
