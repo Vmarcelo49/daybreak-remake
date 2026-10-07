@@ -476,12 +476,10 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
 }
 
 void SceneRenderer::shutdown() {
-    for (Pipelines& p : pipelines_) {
-        if (p.outline) wgpuRenderPipelineRelease(p.outline);
-        if (p.opaque) wgpuRenderPipelineRelease(p.opaque);
-        if (p.decal) wgpuRenderPipelineRelease(p.decal);
-        if (p.effect) wgpuRenderPipelineRelease(p.effect);
-    }
+    for (Pipelines& p : pipelines_)
+        for (auto& variants : p.slots)
+            for (WGPURenderPipeline pipe : variants)
+                if (pipe) wgpuRenderPipelineRelease(pipe);
     pipelines_.clear();
 
     releaseShadowTargets();
@@ -1106,15 +1104,7 @@ WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, Pass pas
         entry = &pipelines_.back();
         entry->format = format;
     }
-    WGPURenderPipeline& slot =
-        npr ? (pass == Pass::Outline  ? entry->outlineNpr
-               : pass == Pass::Opaque ? entry->opaqueNpr
-               : pass == Pass::Decal  ? entry->decalNpr
-                                      : entry->effectNpr)
-            : (pass == Pass::Outline  ? entry->outline
-               : pass == Pass::Opaque ? entry->opaque
-               : pass == Pass::Decal  ? entry->decal
-                                      : entry->effect);
+    WGPURenderPipeline& slot = entry->slots[(int)pass][npr ? 1 : 0];
     if (slot) return slot;
 
     WGPUVertexAttribute attrs[xm::kVertexAttributeCount];

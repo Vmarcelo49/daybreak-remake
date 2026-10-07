@@ -541,22 +541,25 @@ private:
         void release();
     };
 
+    // The pipelines for one target format, indexed [pass][npr]: Pass's own order is the
+    // submission order the draw list is partitioned into, and npr selects the experiment
+    // vertex entry point. Slots are created lazily and are null until asked for.
+    //
+    // What each pass carries:
+    //   * outline: the toon hull, front-face culled (issue #21);
+    //   * opaque: lit, depth-writing;
+    //   * decal: multiply blend, no depth write, no cull;
+    //   * effect: additive, unlit, no depth write, no cull.
+    // The npr variant of each is the same state with shader entry `vs_npr`, which reads
+    // the secondary lighting-normal stream and the outline-width uniform. A SEPARATE
+    // entry point, not a branch inside one: a branch (or a `select`) changes how the
+    // driver compiles the unmodified path too, and the OFF frame moved by a pixel when it
+    // was tried — the identity every banked capture rests on. With no --npr flag no npr
+    // slot is ever created, and only the opaque cell's is reachable at all: the render
+    // loop asks for the experiment entry point on Opaque draws alone.
     struct Pipelines {
-        WGPUTextureFormat format = WGPUTextureFormat_Undefined;
-        WGPURenderPipeline outline = nullptr;  // outline hull: front-face culled (issue #21)
-        WGPURenderPipeline opaque = nullptr;   // lit, depth-writing
-        WGPURenderPipeline decal  = nullptr;   // multiply blend, no depth write, no cull
-        WGPURenderPipeline effect = nullptr;   // additive, unlit, no depth write, no cull
-        // The #25 experiment variant of each pass: the same state, but the vertex stage is
-        // shader entry `vs_npr`, which reads the secondary lighting-normal stream and the
-        // outline-width uniform. A SEPARATE entry point, not a branch inside one: a branch
-        // (or a `select`) changes how the driver compiles the unmodified path too, and the
-        // OFF frame moved by a pixel when it was tried — the identity every banked capture
-        // rests on. With no --npr flag this struct is never touched.
-        WGPURenderPipeline outlineNpr = nullptr;
-        WGPURenderPipeline opaqueNpr = nullptr;
-        WGPURenderPipeline decalNpr = nullptr;
-        WGPURenderPipeline effectNpr = nullptr;
+        WGPUTextureFormat  format = WGPUTextureFormat_Undefined;
+        WGPURenderPipeline slots[kPassCount][2] = {};
     };
 
     // `npr` selects the experiment vertex entry point (issue #25); the pipeline is cached
