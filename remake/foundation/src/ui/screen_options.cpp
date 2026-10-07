@@ -69,9 +69,6 @@ public:
             if (in.right) player_ = (player_ + 1) % 4;
             if (in.confirm) armBindingCapture(player_,kBindingRowActions[row_]);
         } else if (in.left || in.right || in.confirm) {
-            // Rows 0-2 are the renderer's toggles and the unimplemented texture row; the
-            // volumes are four consecutive rows, and the last row returns to the title (its
-            // confirm is handled above).
             switch ((OptionRow)row_) {
             case OptionRow::Toon:
                 // Row 0 is the toon-rendering toggle (issue #21, DAT_006cfcec): left/right
@@ -93,16 +90,20 @@ public:
             case OptionRow::Resolution:
                 settings.cycleResolution(in.left ? -1 : 1);
                 break;
-            default: {
-                // The four volume rows, which act on left/right only (a confirm on them does
-                // nothing, unlike the toggle rows above).
-                const int index = row_ - (int)OptionRow::Master;
-                if (index < 0 || index > 3 || (!in.left && !in.right)) break;
+            case OptionRow::Master:
+            case OptionRow::Music:
+            case OptionRow::Voice:
+            case OptionRow::Sfx: {
+                // The volume rows act on left/right only (a confirm on them does nothing,
+                // unlike the toggle rows above).
+                if (!in.left && !in.right) break;
                 int* sliders[] = {&settings.volumes.master,&settings.volumes.music,&settings.volumes.voice,&settings.volumes.sfx};
-                *sliders[index] = std::clamp(*sliders[index] + (in.right ? 5 : -5),0,100);
+                int& volume = *sliders[row_ - (int)OptionRow::Master];
+                volume = std::clamp(volume + (in.right ? 5 : -5),0,100);
                 if (settings.applyVolumes) settings.applyVolumes(settings.volumes);
                 break;
             }
+            default: break;   // Texture and Back have no action of their own
             }
         }
         return stay;
