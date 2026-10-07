@@ -161,12 +161,6 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
             // own. The original then goes to phase 4 (Hypermode), skipping Weapon, and so does
             // this: the weapon is clamped to the new character's count so it cannot be stale.
             if (cursorOffGrid(c)) {
-                // The portrait's roll becomes the panel's pick, and the costume is rolled here,
-                // at the moment of the pick — the original's `rng() % 3` (or `% 2` for 14/15),
-                // kept to the character's own costume count so a roll cannot land on a cell it
-                // does not own. The original then goes to phase 4 (Hypermode), skipping Weapon,
-                // and so does this: the weapon is clamped to the new character's count so it
-                // cannot be stale.
                 slot.character = rolled_[panel(c)];
                 slot.costume = (int)(state_.nextRandom() %
                                      (uint32_t)kSelectCostumes[slot.character]);
