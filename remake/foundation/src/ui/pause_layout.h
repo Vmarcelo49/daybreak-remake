@@ -33,11 +33,10 @@ inline constexpr float kPauseFontFrac = 0.045f;
 // be taller than most frames for no gain.
 inline constexpr float kPauseFontMinPx = 12.f;
 inline constexpr float kPauseFontMaxPx = 96.f;
-// Title and footer relative to the body size, the two steps the old overlay also had
-// (1.0 and 0.6 there; 1.35/0.8 here, because a 0.6 footer at 16 px was part of the
-// legibility complaint).
+// The title relative to the body size. There is no footer step any more: the binding-hint
+// line that used it was the widest line in the block and so set the panel's width, which ran
+// past a 4:3 frame — the rows are the menu and the keys live on the options screen.
 inline constexpr float kPauseTitleScale = 1.35f;
-inline constexpr float kPauseFooterScale = 0.8f;
 // Baseline-to-baseline step and the panel's margin, both multiples of the body size.
 inline constexpr float kPauseLinePitch = 1.5f;
 inline constexpr float kPausePanelPad = 0.7f;

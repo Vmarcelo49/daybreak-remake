@@ -25,14 +25,15 @@ bool near(float a, float b, float tol = .001f) { return std::fabs(a - b) <= tol;
 // one conversion between the caption's own units and target pixels.
 constexpr float kCell = 32.f;
 
-// The menu's line set as the overlay measures it: a short title, four rows and the long
-// binding footer, which is the widest line and therefore the one the panel wraps.
+// The menu's line set as the overlay measures it: a short title and four rows. There is no
+// binding footer — it was the widest line, so it set the panel's width and ran past a 4:3
+// frame — so the widest line is now a row.
 std::vector<ui::PauseLine> menuLines() {
     return {{132.f, ui::kPauseTitleScale}, {210.f, 1.f}, {190.f, 1.f},
-            {430.f, 1.f}, {352.f, 1.f}, {900.f, ui::kPauseFooterScale}};
+            {430.f, 1.f}, {352.f, 1.f}};
 }
 
-// The tallest line's scale: the title (kPauseTitleScale > kPauseFooterScale >= 1).
+// The tallest line's scale: the title.
 float tallest(const std::vector<ui::PauseLine>& lines) {
     float out = 0.f;
     for (const ui::PauseLine& line : lines) out = std::max(out, line.scale);
@@ -104,9 +105,8 @@ int main() {
           "1080p is twice the 540-row menu within rounding");
     check(big.panel.w > small.panel.w * 1.8f && big.panel.h > small.panel.h * 1.8f,
           "the panel scales with the canvas");
-    // The legibility floor the human asked for: the SMALLEST line's cell at 540 rows.
-    check(small.fontPx * ui::kPauseFooterScale >= 12.f,
-          "the footer's cell is at least 12 px at 960x540");
+    // The legibility floor the human asked for: the smallest cell at 540 rows.
+    check(small.fontPx >= 12.f, "the body cell is at least 12 px at 960x540");
     // Monotone in canvas size, and clamped at both ends.
     check(ui::computePauseOverlayLayout(640, 360, kCell, lines).fontPx <= small.fontPx,
           "a smaller canvas is not a bigger menu");

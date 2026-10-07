@@ -1644,22 +1644,18 @@ static bool drawBattlePauseOverlay(App& app, WGPUCommandEncoder encoder, WGPUTex
     for (int row = 0; row < app.pauseMenu.rows; ++row)
         lines.push_back(std::string(row == app.pauseMenu.row ? "> " : "  ") +
                         gameplay::pauseRowLabel(row, app.pauseMenu.rows));
-    lines.push_back(bindingHint(app, fnd::input::Up, padPlayer) + "/" +
-                    bindingHint(app, fnd::input::Down, padPlayer) + ": choose   " +
-                    bindingHint(app, fnd::input::Jump, padPlayer) + ": confirm   " +
-                    bindingHint(app, fnd::input::AttackA, padPlayer) + ": back   " +
-                    bindingHint(app, fnd::input::Pause, padPlayer) + ": resume");
+    // No footer. The binding-hint line used to sit here ("Up/Down: choose  Z: confirm ...")
+    // and it was the WIDEST line in the block, so it — not the menu — set the panel's width,
+    // and on a 4:3 target the panel ran past the frame. The rows are the menu; the keys are
+    // the player's own bindings and the options screen is where they are read.
     std::string textError;
     if (!app.pauseText.load(app.pauseUi, kPauseFontCellPx, textError) ||
         !app.pauseText.prepare(app.pauseUi, lines, textError))
         return true;
-    // Title, rows, footer: the sizes are ratios of the canvas (ui/pause_layout.h — a port
+    // Title and rows: the sizes are ratios of the canvas (ui/pause_layout.h — a port
     // decision, the original has no readable menu), and each line's measured width is what
     // sizes the panel.
-    const auto lineScale = [&](size_t i) {
-        if (i == 0) return ui::kPauseTitleScale;
-        return i + 1 == lines.size() ? ui::kPauseFooterScale : 1.f;
-    };
+    const auto lineScale = [](size_t i) { return i == 0 ? ui::kPauseTitleScale : 1.f; };
     std::vector<ui::PauseLine> measured;
     measured.reserve(lines.size());
     for (size_t i = 0; i < lines.size(); ++i)

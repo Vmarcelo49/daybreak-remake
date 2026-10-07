@@ -270,7 +270,12 @@ def check_case(name, demo, install, tmp, size, extra, failures):
 
     count, rect = panel_mask(px, w, h, rpx)
     fraction = count / float(w * h)
-    if fraction < 0.05 or rect[2] <= rect[0] or rect[3] <= rect[1]:
+    # The panel is "sized to the text" (ui/pause_layout.h), so this floor tracks the text. It
+    # was 5% while the block carried the binding footer — the widest line, and the one that ran
+    # past a 4:3 frame; without it the panel is legitimately smaller (measured 8% single-view
+    # and 2.93% in a four-view frame, where the same panel sits over a busier background). The
+    # check still catches a MISSING panel, which is what it is for.
+    if fraction < 0.02 or rect[2] <= rect[0] or rect[3] <= rect[1]:
         failures.append("%s: no backing panel (only %.2f%% of the frame is darker than the "
                         "dim)" % (name, fraction * 100.0))
         return None
@@ -278,9 +283,13 @@ def check_case(name, demo, install, tmp, size, extra, failures):
     print("  %s: panel %dx%d at (%d,%d), %.0f%% of the frame darkened, %d text band(s)"
           % (name, rect[2] - rect[0] + 1, rect[3] - rect[1] + 1, rect[0], rect[1],
              fraction * 100.0, len(bands)))
-    if len(bands) < 5:
-        failures.append("%s: %d text band(s) inside the panel; the title, the four rows and "
-                        "the footer are 5 to 6" % (name, len(bands)))
+    # The title and the four rows are 5 bands. There is no binding footer any more: it was the
+    # widest line, so it set the panel's width and ran past a 4:3 frame (the human's report).
+    # The band count is a floor rather than an equality because two adjacent rows can merge
+    # into one band at a size where the pitch is small relative to the glyphs.
+    if len(bands) < 4:
+        failures.append("%s: %d text band(s) inside the panel; the title and the four rows "
+                        "are at least 4 once no two merge" % (name, len(bands)))
         return None
     if bbox is None:
         failures.append("%s: no menu ink inside the panel" % name)
