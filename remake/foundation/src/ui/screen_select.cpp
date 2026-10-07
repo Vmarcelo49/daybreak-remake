@@ -114,8 +114,9 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
             // FUN_0040d130: unset panels become COM with random character, weapon, mode and costume.
             for (int i=0;i<4;++i) if (state_.slots[i].character < 0) {
                 auto& slot = state_.slots[i];
-                slot.character = state_.nextRandom() % 16;
-                slot.weapon = state_.nextRandom() % (slot.character < 14 ? 3 : 2);
+                slot.character = state_.nextRandom() % gameplay::kCharacterCount;
+                slot.weapon =
+                    state_.nextRandom() % gameplay::weaponCountForCharacter(slot.character);
                 slot.hypermode = state_.nextRandom() % 3;
                 slot.costume = state_.nextRandom() % kSelectCostumes[slot.character];
                 slot.controller = 4;
@@ -169,7 +170,8 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
                 slot.character = rolled_[panel(c)];
                 slot.costume = (int)(state_.nextRandom() %
                                      (uint32_t)kSelectCostumes[slot.character]);
-                slot.weapon = std::min(slot.weapon, (slot.character < 14 ? 3 : 2) - 1);
+                slot.weapon =
+                    std::min(slot.weapon, gameplay::weaponCountForCharacter(slot.character) - 1);
                 phase = SelectPhase::Hypermode;
                 return SelectAction::Changed;
             }
@@ -234,7 +236,7 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
             // non-None action with no button to sound 2) — one roll per tick would be a machine
             // gun. Empty space stays silent, which is also the original's own rule at :294.
             slot.character = -1;
-            rolled_[panel(c)] = (int)(state_.nextRandom() % 16u);
+            rolled_[panel(c)] = (int)(state_.nextRandom() % (uint32_t)gameplay::kCharacterCount);
             return SelectAction::None;
         }
         if (chosen != slot.character) {
@@ -246,7 +248,9 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
     }
     if (in.left || in.right) slot.costume = cycle(slot.costume,in.left ? -1 : 1,kSelectCostumes[slot.character]);
     if (phase == SelectPhase::Weapon) {
-        if (in.up || in.down) slot.weapon = cycle(slot.weapon,in.up ? -1 : 1,slot.character<14 ? 3 : 2);
+        if (in.up || in.down)
+            slot.weapon = cycle(slot.weapon, in.up ? -1 : 1,
+                               gameplay::weaponCountForCharacter(slot.character));
         if (in.confirm) phase = SelectPhase::Hypermode;
         else if (in.cancel) { phase = SelectPhase::Character; slot.weapon = 0; }
     } else if (phase == SelectPhase::Hypermode) {
@@ -435,7 +439,7 @@ void SelectScreen::draw(SpriteRenderer& b) const {
         } else if(phase==SelectPhase::Controller) {
             for(int row=0;row<2;++row) sprite(shared_[4],{0,float(320+row*128),256,64},128,32,x+slide+row*8,y+110+row*20,1,false,{1,1,1,slot.controller==(row==0?owner:4)?1.f:.5f});
         } else {
-            int count=phase==SelectPhase::Weapon?(slot.character<14?3:2):3;
+            int count=phase==SelectPhase::Weapon?gameplay::weaponCountForCharacter(slot.character):3;
             int choice=phase==SelectPhase::Weapon?slot.weapon:slot.hypermode;
             for(int row=count-1;row>=0;--row) sprite(phase==SelectPhase::Weapon?weapons_[slot.character]:shared_[2],
                 {phase==SelectPhase::Weapon?0.f:320.f,float((choice+row)%count)*64,phase==SelectPhase::Weapon?256.f:192.f,64},phase==SelectPhase::Weapon?128.f:96.f,32,x+slide+row*8,y+110+row*20,1,false,{1,1,1,1.f/(1<<row)});
