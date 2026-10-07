@@ -44,6 +44,18 @@ int SelectMenu::owner(int p) const {
         if (phase_[c] != SelectPhase::Team && panel(c) == p) return c;
     return -1;
 }
+// The outer pass of the original's two selection loops (FUN_00409340:272-286): nothing within
+// 50 units (2500 squared) means the cursor is off the diamond. The 30-unit inner pass is the
+// override and cannot reach further, so this one test decides the question.
+bool SelectMenu::cursorOffGrid(int c) const {
+    if (c < 0 || c >= 4) return false;
+    for (int i = 0; i < 16; ++i) {
+        const float dx = kSelectRosterX[i] * 48.f - cursorX_[c];
+        const float dy = kSelectRosterY[i] * 36.f - cursorY_[c];
+        if (dx * dx + dy * dy < 2500.f) return false;
+    }
+    return true;
+}
 void SelectMenu::tick() {
     for (int c=0;c<4;++c)
         if (phase_[c] == SelectPhase::Ready && --cooldown_[c] <= 0) phase_[c] = SelectPhase::Team;
@@ -110,13 +122,21 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
     if (phase == SelectPhase::Character) {
         if (in.cancel) { slot = FrontendSlot{}; phase = SelectPhase::Team; return SelectAction::Changed; }
         if (in.confirm) {
-            // PORT RULE (issue #41): the cursor may sit in empty space with character == -1,
-            // and a panel with nothing selected must not confirm its way forward. The original
-            // instead rolls a RANDOM character for the empty panel (FUN_00409340:305-317), and
-            // this port's version of that roll is the COM autofill the stage page applies to
-            // panels that are still unset — so refusing here leaves the panel for it. The
-            // press itself still plays the confirm SE, as the original's unconditional
-            // FUN_0064aed0(0) at :304 does.
+            // Off the diamond the panel is the original's RANDOM pick (FUN_00409340:305-317):
+            // the portrait has been rolling characters (see the selection step below) and the
+            // confirm TAKES THE ONE SHOWING rather than rolling again, which is what makes the
+            // roll feel like it "stops on" the last character. The costume is rolled here, at
+            // the moment of the pick — the original's `rng() % 3` (or `% 2` for 14/15), kept to
+            // the character's own costume count so a roll cannot land on a cell it does not
+            // own. The original then goes to phase 4 (Hypermode), skipping Weapon, and so does
+            // this: the weapon is clamped to the new character's count so it cannot be stale.
+            if (cursorOffGrid(c)) {
+                slot.costume = (int)(state_.nextRandom() %
+                                     (uint32_t)kSelectCostumes[slot.character]);
+                slot.weapon = std::min(slot.weapon, (slot.character < 14 ? 3 : 2) - 1);
+                phase = SelectPhase::Hypermode;
+                return SelectAction::Changed;
+            }
             if (slot.character >= 0) {
                 // The penalty game's costume (issue #20): a player who earned the penalty title
                 // last round has their costume forced to the character's own penalty cell
@@ -167,9 +187,25 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
             if (inner < 0 && distance < 900.f) inner = i;
         }
         const int chosen = inner >= 0 ? inner : outer;
+        if (chosen < 0) {
+            // Off the diamond: the panel's PORTRAIT ROLLS THROUGH RANDOM CHARACTERS, one per
+            // tick, and a confirm takes whichever is showing (the branch above). The original
+            // reaches the same place from the other end — its confirm rolls `rng() % 16` for an
+            // empty panel (FUN_00409340:305-317) — so the two agree on what a random pick is;
+            // rolling here as well is what makes the portrait move before the press, which the
+            // recovered code alone does not show but the original's screen does.
+            //
+            // Silent on purpose: the portrait is redrawn from state_.slots[i].character every
+            // frame, so the roll needs no action, and returning Changed would play the cursor
+            // SE (screen_select.cpp's updateFrame maps a non-None action with no button to
+            // sound 2) — at one roll per tick that is a machine gun. Empty space stays silent,
+            // which is also the original's own rule at :294.
+            slot.character = (int)(state_.nextRandom() % 16u);
+            slot.costume %= kSelectCostumes[slot.character];
+            return SelectAction::None;
+        }
         if (chosen != slot.character) {
             slot.character = chosen;
-            if (chosen < 0) return SelectAction::None;   // empty space is silent (:294)
             slot.costume %= kSelectCostumes[chosen];
             return SelectAction::Changed;   // the recovered cursor SE, FUN_0064aed0(2)
         }

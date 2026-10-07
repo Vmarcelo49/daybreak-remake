@@ -140,15 +140,20 @@ int main() {
               "the cursor sits where the 50-unit check was measured");
         check(state.slots[0].character == 13,
               "a character between 30 and 50 units is still selected (the 50-unit pass)");
-        // Empty space: nothing within 50, so the panel has NO selection.
+        // Off the diamond: nothing within 50 units, and the panel ROLLS A RANDOM CHARACTER
+        // rather than being left unset — the original's random pick (FUN_00409340:305-317),
+        // which the portrait shows changing before the press.
         hold(menu, right, 70);   // -> (200,-18), the horizontal clamp, far from every icon
         check(near(menu.cursorX(), 200.f), "the cursor is at the clamp");
-        check(state.slots[0].character == -1, "no character within 50 units selects nothing");
+        check(menu.cursorOffGrid(), "nothing is within 50 units: the cursor is off the diamond");
+        check(state.slots[0].character >= 0 && state.slots[0].character < 16,
+              "off the diamond the panel rolls a random character, never -1");
         hold(menu, down, 100);   // -> (200,282)
-        check(state.slots[0].character == -1, "and stays nothing over far empty space");
+        check(menu.cursorOffGrid(), "and stays off the diamond over far empty space");
+        check(state.slots[0].character >= 0, "still rolling, and still never -1");
     }
 
-    // --- The confirm with no selection refuses; the SE fires on change only --------------
+    // --- The confirm off the diamond takes the shown character; the SE fires on change only -
     {
         ui::FrontendState state;
         ui::SelectMenu menu(state);
@@ -156,8 +161,9 @@ int main() {
         menu.updateFrame(confirm, &sound);
         check(sound == 0, "the team confirm plays the confirm SE (FUN_0064aed0(0))");
         // A 30-tick hold walks the cursor off the roster: character 0 is first within 50 units
-        // until the cursor is more than 50 away, then nothing is (:294 -> -1, silently).
-        std::vector<int> se, character;
+        // until the cursor is more than 50 away, and then the panel rolls instead (:294 -> -1
+        // is NOT what the screen shows; the roll is what the player sees).
+        std::vector<int> se, character, offGrid;
         auto step = [&](ui::ScreenInput in, int ticks) {
             for (int i = 0; i < ticks; ++i) {
                 if (i > 0) in.up = in.down = in.left = in.right = false;
@@ -165,38 +171,59 @@ int main() {
                 menu.updateFrame(in, &tickSound);
                 se.push_back(tickSound);
                 character.push_back(state.slots[0].character);
+                offGrid.push_back(menu.cursorOffGrid() ? 1 : 0);
             }
         };
         step(left, 30);   // -> (-120, 216): empty space
         step(up, 36);     // -> (-120, 108): back onto characters on the way
-        int mismatches = 0, changes = 0, silentEmpty = 0;
+        int mismatches = 0, changes = 0, silentEmpty = 0, rolls = 0;
         for (size_t i = 0; i < se.size(); ++i) {
             const int previous = i == 0 ? 0 : character[i - 1];
-            const bool expectSe = character[i] >= 0 && character[i] != previous;
+            // The roll is silent (returning Changed would play the cursor SE once per tick);
+            // the SE belongs to a real selection change, which only happens ON the diamond.
+            const bool expectSe = !offGrid[i] && character[i] >= 0 && character[i] != previous;
             if ((se[i] == 2) != expectSe) ++mismatches;
             if (expectSe) ++changes;
-            if (character[i] < 0 && se[i] == 2) ++silentEmpty;
+            if (offGrid[i]) ++rolls;
+            if (offGrid[i] && se[i] == 2) ++silentEmpty;
         }
         check(mismatches == 0, "the menu SE fires on exactly the ticks where the selection changes");
-        check(changes >= 3, "the ladder changed the selection several times");
-        check(silentEmpty == 0, "and never when the cursor falls into empty space");
-        // Back into empty space, then the confirm must refuse.
+        // Not "several": the off-diamond roll may ALREADY be showing the character the cursor
+        // lands back on, and then the return is not a change and fires no SE (the original's
+        // own `if (character != hit)` guard). Measured 2 on this ladder, 19 ticks of rolling.
+        check(changes >= 2, "the ladder changed the selection more than once");
+        check(silentEmpty == 0, "and the off-diamond roll is silent, once per tick");
+        check(rolls > 0, "the hold did spend ticks off the diamond");
+        // Off the diamond, the confirm takes the character the portrait stopped on and rolls a
+        // costume the character owns, going straight to Hypermode as the original does (:317).
         ui::FrontendState empty;
         ui::SelectMenu emptyMenu(empty);
         emptyMenu.update(confirm);
         hold(emptyMenu, left, 30);
-        check(empty.slots[0].character == -1, "the cursor can rest in empty space with no selection");
-        int refuseSound = -1;
-        emptyMenu.updateFrame(confirm, &refuseSound);
-        check(refuseSound == 0, "a confirm with no selection is still a keypress");
-        check(emptyMenu.phase() == ui::SelectPhase::Character,
-              "but the character confirm REFUSES while nothing is selected");
-        check(empty.slots[0].character == -1, "and the panel stays unset");
-        hold(emptyMenu, right, 30);   // back onto character 0
-        check(empty.slots[0].character == 0, "moving back onto an icon selects it again");
-        emptyMenu.update(confirm);
-        check(emptyMenu.phase() == ui::SelectPhase::Weapon,
-              "and the same confirm advances once a character is selected");
+        check(emptyMenu.cursorOffGrid(), "the cursor can rest off the diamond");
+        const int shown = empty.slots[0].character;
+        check(shown >= 0 && shown < 16, "and the panel is showing a rolled character");
+        int pickSound = -1;
+        emptyMenu.updateFrame(confirm, &pickSound);
+        check(pickSound == 0, "a confirm off the diamond is still a keypress");
+        check(emptyMenu.phase() == ui::SelectPhase::Hypermode,
+              "and it advances to Hypermode, skipping Weapon as the original does");
+        check(empty.slots[0].character == shown,
+              "the confirm KEEPS the character the portrait stopped on");
+        check(empty.slots[0].costume >= 0 &&
+                  empty.slots[0].costume < ui::kSelectCostumes[shown],
+              "and rolls a costume the character owns");
+        // A fresh panel: moving back onto an icon selects it normally, and its confirm still
+        // goes to Weapon rather than Hypermode.
+        ui::FrontendState back;
+        ui::SelectMenu backMenu(back);
+        backMenu.update(confirm);
+        hold(backMenu, left, 30);
+        hold(backMenu, right, 30);   // back onto character 0
+        check(back.slots[0].character == 0, "moving back onto an icon selects it again");
+        backMenu.update(confirm);
+        check(backMenu.phase() == ui::SelectPhase::Weapon,
+              "and a confirm ON the diamond still goes to Weapon");
     }
 
     // --- Issue #41's actual complaint: the off-grid icons are reachable ------------------
@@ -208,7 +235,9 @@ int main() {
         ui::SelectMenu shionMenu(shion);
         shionMenu.update(confirm);
         hold(shionMenu, left, 30);   // (-120, 216): off the top-left of the diamond
-        check(shion.slots[0].character == -1, "the cursor can slide into empty space mid-move");
+        check(shionMenu.cursorOffGrid(), "the cursor can slide into empty space mid-move");
+        check(shion.slots[0].character >= 0,
+              "and the panel is rolling a character there rather than sitting unset");
         float nearest = 1e9f;
         for (int i = 0; i < 16; ++i) {
             const float dx = ui::kSelectRosterX[i] * 48.f - shionMenu.cursorX();

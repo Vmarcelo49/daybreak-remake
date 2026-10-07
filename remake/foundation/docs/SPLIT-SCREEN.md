@@ -200,7 +200,7 @@ per-call vertex handling.
 
 The single-view path writes and binds region 0 exactly as it wrote and bound the whole buffer,
 so it stays byte-identical; unpaused multi-view pixels move on purpose, and the recipes,
-hashes and the per-cell pixel counts are recorded in `RELEASE-CHECKLIST.md` §3.6.
+hashes and the per-cell pixel counts are recorded in `RELEASE-CHECKLIST.md` §3.7.
 `tests/hud_view_geometry.py` pins it: every participant's reticle must be in the frame at that
 VIEW's own ring anchor (the demo's `[split]` line prints them), which `hud_cell_scale.py`
 structurally cannot express because every pass pushes its probe markers at identical

@@ -438,7 +438,7 @@ same command without it (mean |dRGB| 21.3 — the camera moved), `--match-alpha=
 is byte-identical to no flag at all (`f80d0368`), and a value outside `[0,1]` is
 rejected with `RESULT: --match-alpha takes a fraction in [0,1]`. **With the flag
 absent nothing changes**: the four §3 gates re-run after this landed produced the
-same `RESULT: ok` ladders and byte-identical final captures (4p `2483c3aa`, com
+same `RESULT: ok` ladders and byte-identical final captures (4p `14305bc9`, com
 `b813155d`, and 1v1/2v2 share `8cc49e6c`). The sharing is real but the obvious
 reason for it is not: 1v1 and 2v2 are byte-identical because both end on the
 **stage-select page** of the selection screen, while com's one-player run ends
@@ -454,7 +454,27 @@ and no user input. The step that covers those is still a played battle — run
 behind the fighter instead of sweeping, then take a hit and confirm it stays
 settled. That is the only part of this class a headless run cannot own.
 
-### 3.6 Which baselines the sprite batch's per-pass vertices moved (issue #56)
+### 3.6 Which baselines the random-character pick moved (the four-player gate)
+
+The character select's off-diamond cursor now **rolls a random character** instead of leaving
+the panel unset (`src/ui/screen_select.cpp`, the original's random pick at
+`FUN_00409340:305-317`), so any script whose taps take a cursor off the grid picks a different
+roster and its final frame moves. **The four-player gate is the only one affected**:
+
+| recipe | before | after |
+|---|---|---|
+| 4p `frontend-4p.txt` | `2483c3aa…` | **`14305bc9…`** |
+| 1v1 / 2v2 `frontend-1v1-rematch.txt`, `frontend-2v2-rematch.txt` | `8cc49e6c…` | unchanged |
+| com `frontend-com-rematch.txt` | `b813155d…` | unchanged |
+
+The 4p **ladder and roster are unchanged** (`0/34/446/4382/4984/5584/9520`; `round over, side 0
+wins (time up) at frame 3600`, then `side 1 balloon burst`), and the new digest is
+**deterministic** — reproduced twice. Only the frame differs, because the roster the script
+settles on differs. The three gates that never leave the diamond are byte-identical, which is
+the useful half of this table: it shows the change is confined to panels that actually go
+off-grid.
+
+### 3.7 Which baselines the sprite batch's per-pass vertices moved (issue #56)
 
 `SpriteRenderer` gave every pass in a frame the same vertex buffer, written at offset 0 by
 each `render()` call, and a frame's queue writes all land before its single submission — so
@@ -480,7 +500,7 @@ another view's geometry before.
 
 Hashes are the first eight hex digits of `sha256sum` of the written PPM. The four §3 gates
 end on a single-view frame (the result or the selection screen), so all four keep their
-documented final captures exactly — 4p `2483c3aa`, 1v1 `8cc49e6c`, 2v2 `8cc49e6c`, com
+documented final captures exactly — 4p `14305bc9`, 1v1 `8cc49e6c`, 2v2 `8cc49e6c`, com
 `b813155d` — and their `[menu] scene` / `[split]` ladders are unchanged. §4.2's sweep is
 `--match` without `--local-players`, so it is single-view and its problem counts cannot move
 either.

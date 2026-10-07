@@ -87,7 +87,7 @@ in a 4-view frame the separator pass was the last write, so every view's first t
 cell's remaining quads read whichever view wrote last. `hud_cell_scale.py` cannot see it —
 every pass pushes its probe markers at identical coordinates — so #56 added
 `tests/hud_view_geometry.py`, which asserts on each view's own reticle anchors, and recorded
-the split-screen baselines that legitimately move in `RELEASE-CHECKLIST.md` §3.6.
+the split-screen baselines that legitimately move in `RELEASE-CHECKLIST.md` §3.7.
 
 ## What freezes
 

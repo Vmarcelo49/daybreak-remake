@@ -162,6 +162,10 @@ public:
     float cursorY(int controller = 0) const { return cursorY_[controller]; }
     int panel(int controller = 0) const;
     int owner(int panel) const;
+    // Whether this controller's free cursor is off the diamond: the 50-unit outer pass
+    // (FUN_00409340:272-286) finds no icon. Off the grid the panel's portrait rolls random
+    // characters and a confirm takes the one showing — see updatePanel.
+    bool cursorOffGrid(int controller = 0) const;
     void tick();
     // The phase-row slide of the controller that owns a panel — FUN_0040b2b0 indexes 0x3cc4 by
     // the owner; rowSlideOffset() turns it into the panel's own signed x.
