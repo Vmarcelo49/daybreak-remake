@@ -1,11 +1,14 @@
-# Front-end plan — menus and non-battle screens
+# Front-end RE specification — menus and non-battle screens
 
-Implementation plan for the game's front end (everything that is not the battle
-screen), derived from the original executable and the reference prints. It is
-written to be followed screen by screen: for each print it says what the screen
-is, which `FUN_xxxxxx` draws and updates it, which assets it needs, whether its
-labels are GDI text or atlas art, and how a finished screen is verified against
-its print.
+This document is the original-executable/print RE specification and implementation
+history for the front end, not a current task plan. It records, screen by screen,
+which `FUN_xxxxxx` draws and updates each screen, its assets and text strategy,
+and the evidence/measurement recipe. The SDL3 + WebGPU product is
+`remake/foundation/`; current product and verification status is maintained in
+[`../README.md`](../README.md), [`RELEASE-CHECKLIST.md`](RELEASE-CHECKLIST.md),
+and [`ROADMAP-PENDING.md`](ROADMAP-PENDING.md). The old DX9 `remake/src/` tree
+was removed in Phase 5; historical path mentions below identify retired code,
+not implementation targets.
 
 **Evidence base.** `DaybreakDX.exe` v1.11 (image base 0x400000; `.text`
 0x401000–0x6a0fff, `.rdata` 0x6a1000–0x6b6fff, `.data` 0x6b7000–0x6d9d07 —
@@ -58,9 +61,10 @@ looked at), or a measurement of a print. Anything I could not find is marked
   netplay track (`remake/foundation/docs/FULL-REPLACEMENT-PLAN.md` §7). The one
   piece of them this plan does schedule is the **soft-keyboard widget**, because
   name entry is not netplay-specific.
-* **Opening video is stubbed**: a `VideoPlayer` already exists on both trees
-  (`remake/src/render/video_player.*`, `remake/foundation/src/audio/video.h`);
-  this plan keeps the opening as a stub screen and does not re-do it.
+* **Opening movie:** originally this plan treated the opening as a stub. The
+  current foundation has `foundation_movie` and the opening screen uses it;
+  web playback remains a stub per `MEDIA-INPUT.md` §3. The retired
+  `remake/src/render/video_player.*` path is historical only.
 * **Story mode stays loadable, not a focus** (D6). Its scenes are identified in
   §2.17 only far enough to keep the scene table honest.
 * **No code in this document.** It is a plan; §5 names the files a track adds.
@@ -77,9 +81,10 @@ looked at), or a measurement of a print. Anything I could not find is marked
    loads its own three assets — `data/title/back00.cnv` is the shrine-approach
    photo with the stone lanterns, exactly the print's background
    (`FUN_00410d60.c:28-33`).
-3. **The DX9 remake's `Scene_Title`** draws the select-screen background —
-   that is a remake naming artefact, not the original's title
-   (`remake/docs/placeholders.md` §13). Original scene 1 is the real title.
+3. **The retired DX9 remake's `Scene_Title`** drew the select-screen background —
+   a historical remake naming artefact, not the original's title
+   (`remake/docs/placeholders.md` §13). The current foundation title is scene 1;
+   see `src/ui/screen_title.{h,cpp}`.
 4. **"6 items at y≈280, 45px stride"** (reference README) is a print estimate.
    The items are atlas art with their own cell geometry (§2.1); use the RE
    numbers, and re-measure the print for the anchor check.
@@ -181,8 +186,8 @@ the menu atlas (§2.1):
 
 Two facts worth stating because they are easy to get wrong:
 
-* **The battle is not a "menu scene"**: scene 10 is a 4-byte stub object
-  (`FUN_00403ae0`, vtable 0x6a142c); the battle itself lives in the engine
+* **The original's battle is not a "menu scene"**: original scene 10 is a 4-byte stub object
+  (`FUN_00403ae0`, vtable 0x6a142c); the original battle itself lives in the engine
   module (`FUN_00648f30` battle init, `FUN_00648ad0`/`FUN_006492f0` stage loads
   — the two sites that reference `data/stage%02d`, `.text` 0x648b06 and
   0x649520), and the HUD/result/chat subsystems are the 0x63xxxx block.
@@ -647,7 +652,7 @@ These two prints are one screen: the second page of scene 3.
 Already specified at spec quality in `remake/foundation/docs/BATTLE-HUD-SPEC.md`
 (§1 draw path table: `FUN_006396f0`, `FUN_0063a130`, `FUN_00643230`,
 `FUN_00644150`, `FUN_00642510`; the full 19-float anchor table at
-0x6a4c90–0x6a4cd8; the print offset convention). This plan does not repeat it;
+0x6a4c90–0x6a4cd8; the print offset convention). This RE specification does not repeat it;
 it only records that **these three prints are one screen** (the battle), that
 `ammo-bar` is the MAIN counter's proportional fill (`FUN_00645250` clipping,
 per the same document), and that `battle-stamina` confirms the contextual
@@ -702,7 +707,8 @@ One sequence, owned by the battle module (not by the scene factory).
   `FUN_00647c10`/`FUN_00647d60`).
 * **Text strategy**: **both** — chrome/tags are atlas art, the quote body and
   the title strings are GDI text (`FUN_00656190` with the font created in
-  `FUN_00633ca0`). This is the screen that needs the CJK layer first.
+  `FUN_00633ca0`). The quote is the earliest CJK-text consumer in the planned
+  versus loop; the foundation text/caption layer has since been implemented.
 * **Bundle**: `daybreak00.dat` (win art, system.cnv, scenario text),
   `daybreak05.dat` (win/lose BGM).
 * **Gaps**: the report's own draw function was **not isolated** — the data path
@@ -991,7 +997,7 @@ pre-rendered pages.
 | options | **atlas art** | `config/000N` pages; no font in `FUN_00402890`/`FUN_00402be0`/`FUN_00403470` |
 | key config | **atlas art** | `keyconfig/000N` pages; no font in `FUN_00403eb0`/`FUN_00404220`/`FUN_00404a50` |
 | VS intro | none | all art |
-| battle HUD / stamina / ammo / KO | **art + GDI** | art is the atlas family in BATTLE-HUD-SPEC; the GDI string is `適当` (CJK-TEXT §2) plus the HUD's own font created in `FUN_00633ca0` |
+| battle HUD / stamina / ammo / KO | **atlas art** | battle labels, including `適当`, are atlas cells; no font path is used for the atlas HUD (CJK-TEXT §2, BATTLE-HUD-SPEC) |
 | result-victory | art | `P05`/`P08` |
 | result-quote | **GDI text** | `data/scenario/win/*.txt` → `FUN_00656190` at `FUN_00635d40.c:362`, font at `FUN_00633ca0`+0x75b |
 | result-report | **GDI text + art + cell names** | titles are exe strings (GDI); header/tags are `object/system.cnv`; player names via `FUN_00646bd0` (`FUN_0063a740.c:33-48`) |
@@ -1007,13 +1013,13 @@ pre-rendered pages.
   numeric glyph draws (`FUN_00431b20`/`FUN_00431ce0` → two small helpers over
   the digit strip). A text renderer there buys nothing and invites the HUD
   track's mistake.
-* **The CJK layer (`remake/foundation/src/ui/text.{h,cpp}`, decision B in
-  `CJK-TEXT.md` §5) is needed for exactly three things**: the result quote/report
-  (the first one, because it is in the versus loop), the netplay/chat screens,
-  and story mode. The quote text's `\cRRGGBB` and `\n` control codes are already
-  the semantics `TextLayer::layout`/`parseColorRuns` implement
-  (`remake/foundation/src/ui/text.h:93-123`), and the font-metric mode
-  (`loadFontChain`) matches what `FUN_0065dad0` does with `GetCharWidth32A`.
+* **The text layer is used where the original uses GDI text:** result quote/report,
+  netplay/chat, and story ADV. The front-end screens mostly use art, and player
+  names are cell glyphs. The foundation text layer implements the quote's
+  `\cRRGGBB` and `\n` semantics (`src/ui/text.h:93-123`); runtime captions load
+  Gyrotrope Black with Japanese fallback through `src/ui/caption.h` (D7).
+  Netplay and story screens remain deferred/unbuilt; this is a scope distinction,
+  not a pending text-renderer implementation.
 * **Strings must be Shift-JIS-decoded on the way in** (`xm::sjisToUtf8`,
   `remake/foundation/docs/UI-INTEGRATION.md` last note): the scenario files and
   the title strings are Shift-JIS and the text layer takes UTF-8.
@@ -1037,11 +1043,12 @@ pre-rendered pages.
 Copy these three properties (they are what makes the front end a *system*
 instead of a pile of screens):
 
-1. **One scene, one update function, one return value.** The update returns the
-   next scene id (or its own id to stay); the framework owns the fade and the
-   construction. `remake/src/core/scene.h` already has this shape
-   (`UpdateResult::Transition` + `set_next`), and the foundation's App does not
-   need more than the same enum.
+1. **One scene, one update function, one return value.** In the original, update
+   returns the next scene id (or its own id to stay); the switcher owns the fade
+   and construction. The current foundation implementation is
+   `src/ui/screen.{h,cpp}` (`ScreenStack`, `makeScreen`); the old
+   `remake/src/core/scene.h` was part of the deleted DX9 tree and is cited only
+   as historical context.
 2. **A 25-frame fade on every change**, alpha `(n*10+5) << 24`
    (`FUN_00657c80.c:16-49`), with the old scene still running during the fade.
    This is cheap and it is why the prints' transitions look the way they do.
@@ -1074,12 +1081,18 @@ the contract between the front end and the existing battle path.
 | stage variation | `scene+0x3d4c` | 0…(count−1); names 昼/夕方/夜 | `FUN_0040acb0.c:64-73` |
 | mode flags | `DAT_006cfce9` (story), `DAT_006cfdb0` (netplay), `DAT_006cfbc4` (story chapter byte) | — | title `FUN_00410f60.c:108-119`; VS intro `FUN_00411ae0.c:41-45` |
 
-The existing battle path already consumes the balloon/HP/gauge notions
-(`m_balloon`, `m_limit`, `m_startHP`, `m_startGauge` in
-`remake/src/core/scenes.h`); the port's `MatchConfig` should carry exactly the
-rows above so nothing in the battle track has to change.
+The original battle consumes the balloon/HP/gauge settings represented by this
+RE table. The current foundation passes its selection into `FrontendState` /
+`FrontendLaunch` and the live `gameplay::Match`; the deleted DX9 `scenes.h` is
+not a current source. Consult those foundation types for current field names and
+behavior.
 
-### 5.3 Files a track would add
+### 5.3 Files proposed in the original implementation plan (historical)
+
+This table describes the proposed layout at the time; several names/paths were
+not the final architecture. The current screen implementations live in
+`src/ui/screen_*.{h,cpp}`, with launch/state in `src/ui/frontend_*.{h,cpp}`.
+Do not create these proposed files solely because they appear below.
 
 On the WebGPU foundation (the active renderer, D2), inside the existing seams
 (`src/ui/`, `src/assets/`, `src/gameplay/`):
@@ -1098,10 +1111,12 @@ On the WebGPU foundation (the active renderer, D2), inside the existing seams
 | `src/gameplay/match_config.h` | the §5.2 struct + its clamps/steps, unit-testable |
 | `src/assets/menu_assets.h` | the manifest of §3.2 (paths, expected cells, bundle order) |
 
-### 5.4 CLI flags that must stay (captures depend on them)
+### 5.4 Historical CLI/capture notes
 
-Keep, unchanged, every flag the visual suite already uses; they are how a screen
-gets verified headlessly.
+These were proposed verification controls, not a binding current CLI checklist.
+The DX9 executable and its `-scene` CLI no longer exist; its capture evidence is
+frozen in `tests/parity-baseline/`. The current foundation options are defined
+in `src/main.cpp` and tested by the release checklist.
 
 * Foundation (`remake/foundation/src/main.cpp:184-217`): `--install=`, `--stage=`,
   `--character=`, `--weapon=`, `--model=`, `--effect=`, `--camera=`, `--size=`,
@@ -1109,42 +1124,31 @@ gets verified headlessly.
   `--headless`, `--no-textures`, `--unlit`, `--no-anim`, `--hud-test`,
   `--versus`, `--match`, `--script=`, `--script2=`, `--list`,
   `--no-camera-clamp`.
-* DX9 A/B reference (`remake/src/main.cpp:378-410`): `-scene`, `-p1`, `-p2`,
-  `-hyper`, `-hp`, `-gauge`, `-spawn`, `-spawn2`, `-shot`, `-frames`,
-  `-script`.
+The original plan proposed `--screen=<id|name>` and `--script=` for headless
+screen verification. These controls now exist; screen construction and current
+CLI behavior are documented in `src/ui/screen.h`, `src/main.cpp`, and the
+release checklist. Do not interpret the retired DX9 option list above as a live
+executable interface.
 
-Add (do not replace): `--screen=<id|name>` to boot a front-end screen directly,
-and reuse `--script=` for menu input — the script format already drives menu
-navigation (`UP/DOWN/LEFT/RIGHT/JUMP/MELEE` …,
-`remake/foundation/src/input/input.h:81-100`), which makes "title → select →
-stage → battle" reproducible frame by frame instead of by hand.
+### 5.5 Current integration seam
 
-### 5.5 How it plugs into the existing App without a rewrite
-
-The foundation's `App` already owns the device, the loaded scene, the HUD/UI
-renderer and the capture path; the front end does **not** need a second main
-loop:
-
-1. Add the screen stack next to `App` and let it own *what to draw* instead of
-   the CLI: `--screen` and `--match` merely choose the initial screen
-   (today `--versus`/`--match` choose the initial scene directly — that stays as
-   a shortcut).
-2. Draw order is already the right one: 3D pass, then
-   `ui.beginFrame()` / compose / `ui.render()` in the same encoder
-   (`remake/foundation/docs/UI-INTEGRATION.md`), so a menu screen is just a
-   compose call with atlas quads on top of a full-screen background sprite.
-3. `SceneRenderer::capture` + `--out` + `--frames` already produce a PPM for the
-   compare tools; a menu capture therefore needs no new plumbing — only
-   `--screen` plus a script.
-4. The DX9 tree keeps its own `SceneManager`/`Scene` (it is the A/B reference);
-   the front end lands once, in the foundation, and the DX9 tree only needs the
-   same `MatchConfig` if a comparison capture of a menu is ever wanted.
+The foundation `App` owns the device, scene, UI renderer, screen stack, and
+capture path. Screens are constructed through `ui::makeScreen` and
+`ScreenStack`; `--screen`, scripts, and `--out` select and capture them. The
+window path calls `ui::drawScreenFrame`, while `SceneRenderer::captureUi` routes
+headless menu captures through the same UI draw path. Details are in
+[UI-INTEGRATION.md](UI-INTEGRATION.md). The deleted DX9 tree is not an active
+A/B executable; use the frozen parity bank and original prints instead.
 
 ---
 
-## 6. Implementation order and verification
+## 6. Implementation history and verification recipe
 
-### 6.1 Order and rationale
+The screen-by-screen order below records the original implementation plan; it is
+not a current roadmap. The current connected loop and open fidelity tasks are
+tracked in `README.md` and `ROADMAP-PENDING.md`.
+
+### 6.1 Historical order and rationale
 
 | step | screen(s) | why here |
 |---|---|---|
@@ -1159,20 +1163,19 @@ loop:
 Cheap-and-high-value is steps 1 and 4; expensive-and-high-value is step 2;
 step 3 is medium cost with a hard dependency (the battle) already satisfied.
 
-### 6.2 The first three screens to build
+### 6.2 Historical implementation priority: first three screens (not a task list)
 
-1. **Title menu** — cheapest screen in the whole inventory (three
-   sprites, six items, one cursor machine) and it is the only screen that proves
-   the screen stack, the atlas accessor and the transition fade on content whose
-   spec is fully read (`FUN_00410d60`, `FUN_00410f60`, `FUN_004114f0`).
-2. **Select page 0** — because team/character/weapon/hypermode/controller/ready
-   are **one** screen in the original (§1.2) and it covers the six prints the
-   owner's loop passes through. Building it as six scenes would be the single
-   most expensive mistake available here.
-3. **Select page 1 (stage + battle settings)** — the bridge to the battle screen
-   that is already nearly closed: it produces the five settings and the stage,
-   and its whole contract (§5.2) is extracted, so this is the step that turns
-   "menus exist" into "the game is playable from the title".
+1. **First priority — title menu.** It was the cheapest screen in the inventory
+   (three sprites, six items, one cursor machine) and established the screen
+   stack, atlas access, and transition fade against a fully read spec
+   (`FUN_00410d60`, `FUN_00410f60`, `FUN_004114f0`).
+2. **Next — select page 0.** Team/character/weapon/hypermode/controller/ready
+   are **one** original screen (§1.2), covering six prints in the owner's loop;
+   the implementation followed that single-screen state machine rather than
+   splitting the phases into separate scenes.
+3. **Then — select page 1 (stage + battle settings).** This formed the bridge
+   into battle: it produces the stage and five settings whose contract is
+   extracted in §5.2, completing the title-to-match path.
 
 ### 6.3 Verifying a screen against its print
 

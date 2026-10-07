@@ -20,10 +20,10 @@ forbids for the port.
 
 Delete the file to reset everything to its defaults; there is no separate reset file.
 
-## What is stored (schema version 4)
+## What is stored (schema version 5)
 
 ```ini
-version = 4
+version = 5
 
 [game]
 install_dir = /home/u/Games/Higurashi-Daybreak   # absolute; empty = none remembered
@@ -34,6 +34,7 @@ resolution = desktop          # or WxH, e.g. 1920x1080
 
 [render]
 toon = false                  # the Options screen's toon-rendering row (issue #21)
+shadows = false               # character shadow-map row (issue #21, row 1)
 
 [audio]
 master = 100                  # 0..100, one per bus

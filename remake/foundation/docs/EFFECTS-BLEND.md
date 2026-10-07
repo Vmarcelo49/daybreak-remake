@@ -1,17 +1,19 @@
-# EFFECTS-BLEND — per-effect factors: surveyed, not wired; uniform additive kept
+# EFFECTS-BLEND — ordinary effect cards use uniform additive blending
 
-> **Status: research for `ROADMAP-PENDING.md` B1, not a gameplay effect path.**
-> Match-mode shots/sparks still render as untextured `debug_prims.h` cubes,
-> but auras and melee-hit bursts draw their real cards by default (B1 commit
-> `c0c2f4e`; `--debug-prims` keeps the all-cube A/B). `--effect` cards
-> exercise only the
-> verification scaffolding (additive Effect pass, cylindrical yaw). Nothing here
-> changes gameplay VFX.
+> **Scope: material/technique research for aura and event-card effects.** These
+> gameplay cards now render through the foundation's `Pass::Effect`; their blend
+> remains uniform because no shipped material or recovered binding supplies a
+> per-card factor. In-flight projectiles are a separate path: their own models
+> use the shot record's `+0x7C` selector to choose opaque/additive and lit/unlit
+> modes (`FUN_005f60b0`; `ROADMAP-PENDING.md` B1). That runtime selector is not
+> an `EffectInstance` material binding or an effect-card factor table.
+>
+> `--effect` remains a verification route. `--debug-prims` retains cube
+> stand-ins; the live card/model behavior is tracked in B1 and issue #32.
 
-No owned files changed. Per the track order (per-effect blend factors driven by
-parsed material/technique data *where it exists*; otherwise say so and keep the
-current path), this records what was surveyed and why `SRC_ALPHA, ONE` stays
-uniform.
+This note preserves the material and technique survey behind the current uniform
+`SRC_ALPHA, ONE` blend for ordinary effect cards, and distinguishes it from the
+projectile record modes now consumed by `SceneRenderer`.
 
 ## The parsed material data has no blend signal
 
@@ -27,18 +29,14 @@ foundation parser; texture names below SJIS-decoded where ASCII):
   parsed-but-unused because the DX9 reference never enables specular either.
 - **Emissive is the only term that varies per card**: `aura/03.X (1,1,1)`,
   `aura/04.X (0.40,0.47,0.67)`, `effect/08.X (0.94,0.63,0.47)`, `hit2.X` mat 3
-  `(0.55,0.57,0.76)` — zero everywhere else. It is *not* wired, for the R4 reason:
-  wiring emissive as the fixed-function flat add blew out materials the original
-  shades normally (akane's face, emissive ≈ skin tone → featureless white, 39821
-  px in the rejected `/tmp` experiment). On the unlit Effect pass emissive could
-  plausibly scale the additive term — but no technique data says so, and the DX9
-  reference path (which does feed `MatD3D` emissive to FFP) draws these cards
-  opaque-alpha-tested, not additive, so there is no consistent reference to copy.
-  Mapping emissive → blend factor would be invention with a known-bad precedent.
+  `(0.55,0.57,0.76)` — zero elsewhere in the surveyed corpus. It is not wired as
+  an additive factor. Fixed-function emissive previously blew out normally shaded
+  materials (the rejected akane-face experiment); no recovered technique or
+  card-to-shader binding establishes emissive as an effect-card blend control.
 
-## The technique data does not exist on either path
+## Technique bindings and projectile selector
 
-- The 10 compiled effects (`remake/assets/shaders/effect_0..9.bin`,
+- The ten compiled shader blobs (`remake/assets/shaders/effect_0..9.bin`,
   `FUN_0064ff80` "CreateAllShaders" — sizes match the decompile's `0xd6c, 0xe38,
   0x32c, …` lengths verbatim) each carry **exactly one technique**
   (`SampleTexhnique` — the original's typo, 1 occurrence per blob) with distinct
@@ -51,36 +49,25 @@ foundation parser; texture names below SJIS-decoded where ASCII):
   728-file corpus) define the `EffectInstance` template and zero instantiate it, so
   D3DX hands the reference loader an empty effect list for every asset. Nested
   `EffectInstance` children now parse into `Material::effectFile`
-  (`src/assets/xmodel.h:1400-1407`; zero shipped materials carry one per the 728-file
-  reload in `RENDER-MATERIALS.md`). Technique binding stays unimplemented because the
-  renderer never reads `effectFile` — the gap moved from the parser to the renderer
-  binding, which is `ROADMAP-PENDING.md` work.
-- The retired DX9 remake (tree deleted; see the frozen bank in
-  `remake/tests/parity-baseline/` and `remake/docs/placeholders.md`) received
-  `pEffectInstances` in `create_mesh_container`, logged the filename, and never bound
-  a technique. That path is historical evidence only — verify future technique claims
-  against `FUN_0064ff80` behavior and original frames, not against the deleted tree.
-  Technique binding is unimplemented: the ten blobs in
-  `remake/assets/shaders/effect_0..9.bin` are never loaded by the foundation — there
-  is no `EffectSystem` here — and never bound anywhere. The historical DX9 remake
-  loaded all 10 and bound none (parity-baseline logs); the foundation path does not
-  get that far.
+  (`src/assets/xmodel.h:1400-1407`), but the 728-file reload found zero shipped
+  materials carrying one (`RENDER-MATERIALS.md`). No card-to-technique binding is
+  established, and the foundation does not load or bind the ten blobs. The deleted
+  DX9 remake's loader log is retained as history in `remake/docs/placeholders.md`
+  and the frozen evidence bank, not as current renderer behavior.
+- The projectile path forwards the active shot record's `combat[19]` (wire
+  offset `+0x7c`) as `EffectInstance::renderMode`; `scene_renderer.cpp` maps modes
+  2/4 to `Pass::Effect` and modes 3/4 to unlit shading. This controls projectile
+  model draws, not the ordinary aura/event-card factor or technique binding.
+  Whether this code's field interpretation matches the original selector remains
+  listed as unresolved in `ROADMAP-PENDING.md` B1.
 
-## What stays
+## Ordinary effect-card blend
 
-The Effect pipeline remains blend `SRC_ALPHA, ONE` / alpha `ONE, ONE`, unlit,
-depth-test-on/write-off, cull-off for every effect card (RENDER-PASSES.md R2),
-with the planted-frame monotonicity re-verified this session: a billboarded
-`aura/00.X` over `stage01` darkens **0 of 160000 px** (Δ ∈ [1,247]).
+The card pipeline remains color blend `SRC_ALPHA, ONE` / alpha `ONE, ONE`, unlit,
+depth-test-on/write-off, cull-off (`RENDER-PASSES.md` R2). Surveyed effect textures
+have alpha 255, so the color result coincides with `ONE, ONE`. A historical planted
+`aura/00.X` over `stage01` check reported 0 darkened pixels out of 160000 (Δ in
+[1,247]); it is a recorded result, not a current-run claim.
 
-## What would unblock per-effect factors (all parent-owned or RE)
-
-1. Asset layer parses nested `MeshMaterialList`-level `EffectInstance` children
-   into `Material` — landed as `Material::effectFile`
-   (`src/assets/xmodel.h:1400-1407`), with zero shipped materials carrying one —
-   *and* a shipped asset carrying one is found (none observed to date).
-2. RE maps effect-blob index → mesh category (which of the 10 effects draws
-   which cards) and decodes each blob's pass states at `FUN_0064ff80`'s callers.
-3. A renderer-side factor table keyed on that binding, verified against a DX9 /
-   original frame — not against heuristics. Texture-name routing stays
-   deliberately excluded regardless.
+Per-card factors would require recovered card-to-technique binding or new evidence
+from a shipped material carrying a binding. Texture-name routing remains excluded.

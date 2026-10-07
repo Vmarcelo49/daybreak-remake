@@ -7,7 +7,7 @@ Twilight Frontier / 07th Expansion).
 
 | | `remake/` — the product | `research/` — the evidence |
 |---|---|---|
-| What | Playable versus match verified on Linux (native) and Windows (Wine) — C++17 + SDL3 + WebGPU (`webgpu.h`: wgpu-native natively, emdawnwebgpu on the web) in `remake/foundation/`, built for Linux, Windows and the web. Real-asset versus and live match also run on browser software WebGPU; browser visual parity/hardware rendering and macOS execution remain unverified (`remake/foundation/docs/ROADMAP-PENDING.md` §G) | 3,191 decompiled functions, readable-C pipeline, RE reports |
+| What | C++17 + SDL3 + WebGPU (`webgpu.h`: wgpu-native natively, emdawnwebgpu on the web) in `remake/foundation/`, built for Linux, Windows and the web. Linux has a recorded playable release gate, but four capture recipes need recalibration after issue #63 changed the stage-page default; Windows/Wine reaches title and battle but faults on rematch (issue #57). Browser title and live match run on software WebGPU with a local `/data` preload, but the `?pack=` path fails (issue #58); browser visual parity, hardware rendering and macOS execution remain unverified. See `remake/foundation/docs/RELEASE-CHECKLIST.md` §5.2 and `remake/foundation/docs/ROADMAP-PENDING.md` §G | 3,191 decompiled functions, readable-C pipeline, RE reports |
 | Start | `remake/foundation/README.md`, then `remake/docs/decisions.md` | `docs/overview.md`, then `docs/pipeline.md` |
 | Rules | Game code only; the original `.X`/`.cnv`/`.dat` load exactly as shipped; the renderer is SDL3 + WebGPU since the Phase 5 cutover (DX9 dropped 2026-10-02) | `recomp/` never hand-edited; `symbols/` is truth |
 
@@ -54,12 +54,12 @@ native resolution/fullscreen selection, audio volumes and keyboard/gamepad
 rebinding, all persisted. The four-fighter roster, the recovered victory quote
 and the earned-title report landed with issues #13/#20.
 
-Three renderer controls remain open (issue #21). See
-`remake/foundation/docs/ROADMAP-PENDING.md` for current status,
-`remake/foundation/docs/RELEASE-CHECKLIST.md` for the Linux release gate
-(acceptance runs, sweeps, environments, stability) and `remake/docs/decisions.md`
-D1–D9 for binding decisions. The native suite has 42 tests; Linux, Windows
-cross-build and web builds pass.
+Renderer option row 2 (texture resolution) and original result-title/quote
+fidelity remain open; rows 0–1 (toon shading and character shadows) are live.
+See `remake/foundation/docs/ROADMAP-PENDING.md` for current status,
+`remake/foundation/docs/RELEASE-CHECKLIST.md` for the Linux release gate, and
+`remake/docs/decisions.md` for binding decisions. Read the checklist for
+the current native test count; Linux, Windows cross-build and web builds pass.
 
 ## Original binary summary
 

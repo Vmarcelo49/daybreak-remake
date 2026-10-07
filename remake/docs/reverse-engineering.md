@@ -1,8 +1,11 @@
-# DaybreakDX.exe — reverse-engineering findings
+# DaybreakDX.exe — reverse-engineering findings and port notes
 
-Binary: `DaybreakDX.exe` (2.8 MB)
-Source: original Higurashi Daybreak Kai (2007) executable, uploaded by user
-Analyzed with: `radare2 5.9.8` (`remake/scripts/r2.sh` wrapper)
+This is a historical RE notebook for the original 2007 executable, not a current
+DX9 implementation guide. `DaybreakDX.exe` (2.8 MB) was analyzed with radare2
+5.9.8 (`remake/scripts/r2.sh`). DX9/D3DX claims below describe the original
+binary; the current product is `remake/foundation/` (SDL3 + WebGPU), and the old
+`remake/src/` remake tree was deleted in Phase 5. Current parser and runtime
+claims should be checked against foundation source and `remake/docs/decisions.md`.
 
 ## 1. PE header
 
@@ -82,7 +85,10 @@ for (size_t i = 0; i < numFiles; ++i) {
 }
 ```
 
-**This is bit-exact with our `dat_bundle.cpp` + `dat_crypto.cpp`.** All four constants match (`268`, `100`, `77`, and the `+ 0x4D` increment), and the entry layout (`filename@0`, `length@260`, `offset@264`) is identical.
+The original uses entry size 268, key/counter 100, increment 77 (`+ 0x4D`),
+and fields `filename@0`, `length@260`, `offset@264`. These are the format
+facts to compare with the current parser; this RE note alone is not a present-day
+runtime verification claim.
 
 ### 4.2 Standalone .DAT files (e.g. `data/effect/%03d.dat`)
 
@@ -104,7 +110,8 @@ for (DWORD i = 0; i < filesize; ++i) {
 }
 ```
 
-**Matches our `dat_crypto::file_data_key(offset)` exactly**: `((offset >> 1) & 0xff) | 0x08`.
+The original's standalone-file key formula is `((offset >> 1) & 0xff) | 0x08`.
+Compare with `remake/foundation/src/assets/dat_crypto.cpp` for the port implementation.
 
 ### 4.3 Bootstrap
 
@@ -155,32 +162,35 @@ data/voice/entry/%s.wav      voice entry files
 Microsoft (R) D3DX9 Shader Compiler 9.06.168.0000   (D3DX9 embedded shader compiler)
 ```
 
-## 6. Other findings
+## 6. Other findings (original-binary observations)
 
-- **No "cnv" string** anywhere in the binary. The CNV → BMP/WAV conversion in the Go reference is for offline asset extraction (e.g. for modding), not runtime. The game itself reads `.bmp` / `.wav` / `.ogg` directly. **Conclusion: our C++ `DatBundle` does not need CNV support** — it just delivers raw bytes; if any payload turns out to be CNV-encoded, the asset manager will own that conversion.
-- **`DInput-Error`** string present — DirectInput is initialized explicitly. Will be relevant for stage 4 (input subsystem).
-- **Japanese strings**: many Shift-JIS strings present (visible as non-ASCII bytes in `rabin2 -zz`). The game's UI is in Japanese; the port will need to keep Shift-JIS decoding for any in-game text.
-- **Compiled with VS2003/2005** (based on PDB path style and runtime strings like `invalid vector<T> subscript`).
-- **No anti-debug, no packing** — straightforward analysis.
+- **No “cnv” string** was found in the executable. This describes the original's
+  BMP/WAV/OGG file requests, not the port's asset pipeline: the current
+  foundation decodes shipped CNV images/audio at runtime (`remake/foundation/src/assets/cnv.h`).
+- **`DInput-Error`** is present; the original initializes DirectInput. The port
+  uses SDL3 (`remake/foundation/src/input/`).
+- **Japanese strings** are present as Shift-JIS. The port decodes relevant names
+  and text before its UTF-8 renderer.
+- Compiled with VS2003/2005 (inferred from the PDB path and runtime strings).
+- No anti-debugging or packing was observed.
 
 ## 7. Compatibility verdict for our C++ parser
 
-| Aspect                       | Binary (DaybreakDX.exe)        | Our parser (`dat_bundle.cpp`)   | Match? |
-|------------------------------|--------------------------------|---------------------------------|--------|
-| Header (numFiles)            | `uint16 LE` at offset 0        | `read_u16_le(hdr)` at offset 0  | ✅     |
-| Table size                   | `numFiles * 268` bytes         | `num_files * 268` bytes         | ✅     |
-| Table cipher — initial key   | `100` (hardcoded, index=0)     | `100` (called with index=0)     | ✅     |
-| Table cipher — initial cnt   | `100` (hardcoded, index=0)     | `100` (called with index=0)     | ✅     |
-| Table cipher — increment     | `77` (`add eax, 0x4d`)         | `77` (`counter + 77u`)          | ✅     |
-| Table cipher — byte op       | `XOR`                          | `XOR`                           | ✅     |
-| Entry size                   | `268` (`imul reg, 0x10c`)      | `268` (`kEntrySize`)            | ✅     |
-| Entry filename offset        | `0` (260 bytes)                | `0` (`kFilenameBytes = 260`)    | ✅     |
-| Entry length offset          | `260` (`+0x104`)               | `260` (`kLengthOffset`)         | ✅     |
-| Entry offset offset          | `264` (`+0x108`)               | `264` (`kOffsetOffset`)         | ✅     |
-| Filename encoding            | Shift-JIS (CP932)              | CP932 via the generated `sjis_table.h` table (`foundation/src/assets/dat_bundle.cpp:42`, `decode_sjis_table`; table from `remake/tools/asset-tools/gen_sjis_table.py`) | ✅ |
-| File data cipher             | `key = (off>>1)&0xff \| 0x08`  | `file_data_key(offset)`         | ✅     |
+## Original-reader compatibility matrix (for comparison with current source)
 
-**Verdict**: our `dat_bundle.cpp` is **bit-exact compatible** with the original game's `.DAT` reader. Ready to consume real game assets.
+| Binary format fact | Value |
+|---|---|
+| Header / table | `uint16 LE` file count; `numFiles * 268` bytes |
+| Table cipher | key 100, counter 100, increment 77 (`0x4d`), XOR |
+| Entry fields | 260-byte filename at 0; length at 260; offset at 264 |
+| Filename encoding | Shift-JIS / CP932 |
+| Standalone data cipher | `((offset >> 1) & 0xff) | 0x08`, XOR each byte |
+
+The original's format is the RE result; the old parser-column comparison is
+retired because its `remake/src/` implementation was deleted in Phase 5. The
+current foundation sources are `remake/foundation/src/assets/dat_bundle.cpp`
+and `dat_crypto.cpp`; current runtime/build evidence is in
+`remake/foundation/docs/BUILD-linux.md` and `remake/foundation/docs/RELEASE-CHECKLIST.md`.
 
 ## 8. Files / locations for the next stages
 
@@ -316,15 +326,12 @@ The naming is in Japanese:
   character collision mesh, presumably because projectiles should pass
   through small obstacles that characters would collide with.
 
-**Implication for the port:** we need a `Stage` struct that owns three
-XModel handles for collision, and the asset manager should load all three
-when a stage is selected. Our `game::physics::raycastModel` already
-operates on an `xm::Model` (`foundation/src/physics/raycast.h:135`), so
-it works against any of the three collision meshes unchanged. The
-closest-hit shape (`raycastModel`, `raycast.h:135`) and the early-out
-shape (`raycastModelAny`, `raycast.h:140`) mirror `FUN_0042d3b0` /
-`FUN_0042cd50` and `FUN_0042d2c0` respectively — the snake_case
-`raycast_model*` names belong to the deleted DX9 side.
+The foundation currently loads and identifies the three collision roles in
+`remake/foundation/src/assets/scene.h` and queries them through
+`remake/foundation/src/physics/raycast.h`. The closest-hit (`raycastModel`) and
+early-out (`raycastModelAny`) shapes correspond to `FUN_0042d3b0` /
+`FUN_0042cd50` and `FUN_0042d2c0`; old snake_case `raycast_model*` names refer
+to the deleted DX9 side.
 
 ## 10. Collision — how the game does it
 
@@ -416,20 +423,21 @@ obj + 0x96                = float lastHitDist (cached raycast result)
 This is consistent with a **sphere + AABB hybrid** for culling, with the
 actual hit test still being a triangle raycast.
 
-## 11. Compatibility verdict for our .X / collision code
+## 11. Original loader/collision facts and foundation pointers
 
-| Aspect                              | Binary (DaybreakDX.exe)                  | Our port                              | Status |
-|-------------------------------------|------------------------------------------|---------------------------------------|--------|
-| Loader API                          | `D3DXLoadMeshHierarchyFromXInMemory`     | `xm::loadMemory` via `xm::loadFile` (`xmodel.h:267-269`), no D3DX | matches (in-memory shape, own parser) |
-| Mesh flags                          | `0x220` (MANAGED = VB_MANAGED \| IB_MANAGED) | n/a — the custom loader takes no D3DX flags word | matches (nothing to diverge) |
-| Animation tracks bound at load      | up to 2                                  | `xm::Controller` blends up to `kMaxTracks = 8` with 2-track base/overlay support (`xmodel.h:221`) | matches |
-| Skeleton naming convention          | 3ds Max Biped (`Bip01_*`)                | no special handling                   | ✅ works (D3DXFrameFind accepts any name) |
-| Per-frame transform during raycast  | none (ray in model space)                | none (raycast.h documents this)       | ✅ matches |
-| Raycast entry point                 | `D3DXIntersect` per mesh container       | `D3DXIntersect` per mesh container    | ✅ matches |
-| Recursive frame walk                | `pFrameFirstChild` (+0x48) + `pFrameSibling` (+0x4c) | same                       | ✅ matches |
-| Any-hit early-out variant           | yes (`fcn.0042d2c0`)                     | yes (`raycast_model_any`)             | ✅ matches |
-| Closest-hit variant                 | yes (`fcn.0042d3b0`, `fcn.0042cd50`)     | yes (`raycast_model`)                 | ✅ matches |
-| Stage collision mesh separation     | 3 files (collision / collision_camera / collision_tama) | DONE — the three roles are selected in `foundation/src/assets/scene.h` (role field, `scene.h:63`; `includeCollision`, `scene.h:129`; name table, `scene.h:352-353`) with stage IDs in `stage_catalog.h` | matches | (There is no `src/maps/stage.cpp`; `remake/src/**` was deleted in the Phase 5 cutover.) |
+| Original-binary fact | Current foundation reference |
+|---|---|
+| In-memory `.X` loader; `0x220` D3DX managed-buffer flags | `remake/foundation/src/assets/xmodel.h` implements the parser/controller without D3DX flags |
+| Up to two original animation tracks at load | `xm::Controller` supports multiple tracks; see `xmodel.h` |
+| Biped frame names such as `Bip01_*` | Preserved as asset naming facts; foundation frame lookup is in `xmodel.h` |
+| Collision uses mesh-space ray tests, no per-frame transform | `remake/foundation/src/physics/raycast.h` documents the matching query surface and traversal |
+| Original closest-hit/early-out walkers | Foundation `raycastModel` / `raycastModelAny` are the corresponding APIs |
+| Stage uses collision, camera, and projectile meshes | Roles and stage loading are in `remake/foundation/src/assets/scene.h`; camera queries in `src/physics/raycast.h` |
+
+The former compatibility table compared against the deleted DX9 remake and
+contained obsolete snake_case names and paths. This replacement is a navigation
+aid, not a fresh pixel-parity verdict; consult current source/tests for current
+behavior and verification.
 
 ## 12. radare2 setup (for future sessions)
 
@@ -455,7 +463,7 @@ cleanly and all extracted payloads validated as their expected file types.
 | `daybreak06.dat` | 439 MB | 5 | Story-mode FMVs (`.mpg` — out of scope for the port) |
 | `daybreak07.dat` | 3.35 MB | 178 | Items, bullets, voice snippets, per-character data |
 
-### Characters confirmed playable (paths `data/<char>/`)
+### Characters observed in the supplied asset install (paths `data/<char>/`)
 
 `akane`, `akasaka`, `chie`, `hanyu`, `irie`, `kasai`, `keiichi`, `mion`,
 `ohishi`, `rena`, `rika`, `satoko`, `shion`, `takano` — **14 characters**.
@@ -464,7 +472,7 @@ Each character ships with:
 - `data/<char>/00.X` — main 3D model (binary `.X`, 7-10 MB each)
 - `data/<char>/01.X` — alternate model (costume / form change?)
 - `data/<char>/00.dat`, `01.dat`, `02.dat` — animation/move data (referenced as `"00.X"` etc internally — confirmed by hex dump of `takano/02.dat`)
-- `data/<char>/*.cnv` — textures (encoded as CNV — needs the offline converter, not the runtime)
+- `data/<char>/*.cnv` — CNV textures; the original requests BMP names, while the current foundation decodes CNV at runtime (`remake/foundation/src/assets/cnv.h`).
 
 ### Stages confirmed (paths `data/stageNN/`)
 
@@ -487,8 +495,10 @@ The game ships `.X` files in **three different D3DX-supported encodings**:
 | `xof 0303bin 0032` | binary format | `data/<char>/<NN>.X` (character models, 7-10 MB) |
 | `xof 0303bzip0032` | bzip-compressed | `data/stageNN/NN.X` (stage visible meshes) |
 
-All three are natively supported by `D3DXLoadMeshHierarchyFromXInMemory`.
-No code changes needed — our loader handles all three transparently.
+All three encodings are accepted by the original D3DX in-memory loader. The
+foundation parser also handles text, binary, and bzip-compressed `.X` (see
+`remake/foundation/src/assets/xmodel.h`); current parser verification is
+tracked in the foundation build/release records.
 
 ### Asset integrity validated
 
@@ -526,14 +536,13 @@ This confirms:
   diverging naming from the `Bip01_*` strings we saw in `DaybreakDX.exe`
   for character skeletons; could be a different rig for bullets)
 
-### Conclusion
+### Conclusion (historical validation record)
 
-Our `DatBundle` C++ parser is **confirmed bit-exact compatible** with the
-real game's `.DAT` files (not just the spec we reverse-engineered —
-against actual shipped assets). The `xm::loadMemory` path
-(`foundation/src/assets/xmodel.h:267`) handles all three `.X` encodings
-transparently. We are unblocked to start M1
-(asset manager).
+This install-backed validation confirmed the parser at the time and documented
+representative `.X` payloads. The “start M1 (asset manager)” milestone is
+obsolete: the current foundation asset layer, parser, collision, and runtime
+paths are already in place. See `remake/foundation/docs/BUILD-linux.md` and
+`RELEASE-CHECKLIST.md` for current run/build evidence.
 
 ## 14. Camera system (RE round 2 — focused investigation)
 
@@ -557,9 +566,9 @@ fighter is currently targeted).
 
 ### 14.2 View + projection matrix setup — `fcn.006507c0`
 
-This is the **main camera update function**. It's the only place that
-calls both `D3DXMatrixLookAtLH` and `D3DXMatrixPerspectiveFovLH`. Called
-from exactly one site: `fcn.006396f0` (the main scene render path).
+This is the original game's **main camera update function**. It is the only
+place that calls both `D3DXMatrixLookAtLH` and `D3DXMatrixPerspectiveFovLH`.
+It is called from one site: `fcn.006396f0` (the original main scene render path).
 
 Layout of the camera struct (passed in `ecx`, offset `+0x60` from the
 argument the caller passes — i.e. the camera struct lives inside a
@@ -735,9 +744,13 @@ method (`foundation/src/gameplay/arena_camera.h:180-188`:
 +0x1dc  float  far clip
 ```
 
-### 14.9 Design implications for the port
+### 14.9 Historical design implications (the foundation implementation now exists)
 
-Based on the RE findings, the port's `ArenaCamera` should:
+The following were recommendations at the time of this RE pass, not current
+open work. The `gameplay::ArenaCamera` and camera collision path now exist in
+`remake/foundation/src/gameplay/arena_camera.{h,cpp}` and
+`remake/foundation/src/physics/raycast.h`; the banked DX9 oracle and original
+prints remain the available comparisons. The original-derived ideas were:
 
 1. **Hold a target pointer** (not a fixed position).  The camera always
    looks at one fighter; "switch target" cycles the pointer through
@@ -764,7 +777,7 @@ Based on the RE findings, the port's `ArenaCamera` should:
    fighter the camera centers on), but the framing adjusts to keep
    all visible.
 
-### 14.10 Open questions (need dynamic analysis or further RE)
+### 14.10 Open questions from the original RE pass (historical)
 
 - **Exact target-switch button**: we know it exists but haven't found
   the input dispatch code.  Need to either (a) run the game under a
@@ -779,6 +792,7 @@ Based on the RE findings, the port's `ArenaCamera` should:
 - **Camera shake during specials**: the track-2/3 binding suggests
   yes, but we haven't traced the actual shake animation data.
 
-These will be revisited when we have a running port and can compare
-side-by-side with the original.
+These were open questions when the RE pass was written. Current release and
+verification status is tracked in `remake/foundation/docs/ROADMAP-PENDING.md`
+and `RELEASE-CHECKLIST.md`; this historical list is not the current task list.
 

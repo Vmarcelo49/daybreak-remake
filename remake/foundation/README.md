@@ -193,12 +193,12 @@ cmake --build build/web-assets
 ```
 
 The game data itself is never committed and generated packages stay under the
-ignored `build/` directory. Beyond preload, the web build now also fetches
-per-pack assets at runtime: `scripts/make_pack.py` writes a manifest from an
-extracted tree, and `?pack=<manifest-url>` loads it into `/packs/` in the
-browser (verified: Akane, 18 files, 4,216 frames at 60 fps, `RESULT: ok`).
-Browser-side persistence (IndexedDB/OPFS) is the remaining open half; see
-`docs/WEB-ASSETS-RUNTIME.md`.
+ignored `build/` directory. Beyond the local preload verification rig, the
+production web path uses same-origin per-asset delivery: `?delivery=1` fetches
+catalogued assets into the paths the asset layer reads, validates them by SHA-256,
+and caches them in IndexedDB where available. The older `?pack=` `/packs/` loader
+is retained only as historical verification code; see `webdelivery/README.md`
+and `docs/BUILD-web.md`.
 
 ## Playing a match
 
@@ -298,8 +298,9 @@ New since the port landed, all verified the same way:
 - `--screen=title` boots the front end (`--script=` drives menus and `--out`
   captures them). Title → character/weapon/hypermode/controller selection →
   stage/battle settings → VS intro → live 1v1 battle → victory/quote/report →
-  select is connected. Slots 0 (blue) and 2 (red) fight; VS and results show only
-  those participants. Options apply fullscreen and four audio sliders; key config
+  select is connected. Slots 0 (blue) and 2 (red) are the active panels in the
+  1v1 flow; the 2v2 flow presents all four participants in VS, battle HUD and
+  results. Options apply fullscreen and four audio sliders; key config
   rebinds keyboard/gamepad actions. Both persist (issue #19).
   Runtime text uses the bundled Gyrotrope Black face with a Noto Japanese
   fallback; new captions share `ui/caption.h` (see `assets/fonts/README.md`). The soft keyboard is
@@ -410,12 +411,13 @@ presentation, per-view HUD markers and four-row report
 opt-in 3v3/4v4 mode would be a new remake feature (six/eight fighters total);
 its implementation handoff is in
 [`docs/ROADMAP-PENDING.md`](docs/ROADMAP-PENDING.md#future-remake-only-experiment-3v3-and-4v4).
-Renderer options (the first two options rows are marked unavailable) remain
-pending (issue #21). Battle fidelity includes unresolved animation/VFX details;
+Renderer options row 0 (toon shading) and row 1 (character shadows) are live
+and persisted; row 2 (texture resolution) remains unavailable (issue #21).
+Battle fidelity includes unresolved animation/VFX details;
 LAN netplay awaits its own implementation. The Linux CTest suite has 63 tests (2026-10-06),
 including issue #4's three delivery suites (the archive-ordering cross-check against the
 native reader, the service's prepare/catalog/HTTP surface, and the host-testable half of
-the web asset client) and issue #21 row 1's `shadow_map_test` and `character_shadow`,including frontend selection/configuration, VS/result timelines, HUD geometry, the
+the web asset client) and issue #21 row 1's `shadow_map_test` and `character_shadow`, including frontend selection/configuration, VS/result timelines, HUD geometry, the
 split-screen layout/assignment guards, issue #51's LockSwitch/camera guard, issue
 #47's countdown gate/overlay test, issue #48's in-battle debug-key suite, issue
 #39's live-camera smoothness gate (the capture stack cannot see the live

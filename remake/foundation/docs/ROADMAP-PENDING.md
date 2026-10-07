@@ -30,7 +30,7 @@ that these screens or their audio do not exist.
 | D3 | Countdown and winning-team sting implemented; four-fighter simulation builds and passes host tests | The recovered pre-round phase is THREE frames, not three seconds, and the code that walks the P09 3/2/1 digits is not in the corpus, so the port keeps its three-second countdown (a documented flow rule) and now draws it with the battle state: the round's settings and all four participants. Stings recovered: per-view round-start 60 frames at 6.0→1.0 scale, per-view KO 90 frames (0x5a) and respawn 120 frames (0x78), the team victory sting two layers of 180/120 frames with the second armed 60 frames in (FUN_00635d40:152-205, FUN_0063a130:89-98). Issue #11's KO sting was corrected to 90 frames (1.5 s) by that issue's owner; the 120-frame respawn presentation remains unmodelled there. Issue #47: the phase now runs OVER THE LIVE BATTLE, as the original's does — the match is built when the VS intro ends (the Battle screen's factory builds scene, fighters, cameras and weapons), the scene pass draws the arena under the digit and the round is HELD (no `tickMatch`) until the countdown's own clock ends, which is the round-start input gate. The three-second duration is unchanged and stays a PORT RULE: the code that walks the three P09 digits is still not in the corpus |
 | E1 | Selection, real atlases, roster tables, costumes, weapons, controller slots, seeded COM choices and entry voices implemented; selected panels load into the four-fighter match path | Four-fighter presentation landed with issue #13: the roster (`src/ui/participants.h`) drives the HUD (one marker per participant with owner/ally/enemy/locked art), VS (four portraits, four name cells, combo + controller captions) and the results (four per-participant rows plus the winning TEAM). Exact original navigation parity remains open; the asset-backed launch is verified by issue #13's title→selection→VS→battle→results→selection run |
 | E2 | Stage/variation and all five battle settings implemented and connected; the balloon capacity, KO/Overkill credit and timed-round rules are recovered (2026-10-05, issue #11) | Between-rounds red-capacity creep and the KO move's own respawn clock remain; see the issue #11 update below |
-| E3 | Volumes, fullscreen, native resolution selection, keyboard/gamepad rebinding and their persistence implemented (issue #19) | Two renderer controls are unavailable (toon shading is live since issue #21 row 0); browser-side persistence (IndexedDB/OPFS) is open |
+| E3 | Volumes, fullscreen, native resolution selection, keyboard/gamepad rebinding and their persistence implemented (issue #19) | Texture-resolution row 2 remains unavailable; toon and shadow rows 0–1 are live. Browser-side persistence (IndexedDB/OPFS) is open |
 | E8 | Gear-up resolution fixed (issue #23 blocker): the launch attaches the item's first **non-empty** attachment mesh across its slots, and an item that ships no mesh anywhere is ARMED, not a failed launch (recovered: FUN_00433eb0:90-116 loads every slot and skips the empty names at :111). Before: 20 of the 46 roster items were rejected (12 with their mesh in slot 2 — 009/011/013/014/022/025/026/032/039/041/043/044 — and 8 with no mesh at all — 008/010/017/023/024/031/038/040); after: 46/46 launch, the 8 armed with nothing to draw | The original may load a mesh per non-empty slot; the port draws the first one only. Slot 2 is as deep as the shipped data goes (039 has 12 slots, its mesh in slot 2) |
 | E7 | Offline battle pause implemented (issue #15): the recovered freeze (`Match::set_paused` gates the authoritative step; the fixed clock is not advanced, so paused wall time cannot become catch-up ticks), a four-row readable menu on the D7 caption path, rematch through VS with the stage pinned, return to selection, quit, SFX-bus suspension, focus-loss auto-pause and the stale-edge rule | The four-row menu, its captions and the return/quit rows are PORT FEATURES (the original's pause UI is a banner plus a yes/no rematch prompt); a physical pad replug and real hardware audio are unverified |
 | E4 | 109-update VS transition implemented; four participants land on the original's four portrait/name slots (FUN_00411cb0) with combo + controller captions | Confirm-to-skip is a port extension; a one-member team keeps the port's centred single slot (the original always has four players) |
@@ -41,7 +41,7 @@ that these screens or their audio do not exist.
 | G2 | Unverified | No macOS hardware available |
 | G3 | Re-measured for the issue #23 release gate: **165 pass, 43 known flags, 0 pipeline failures** (16 characters × 13 stages = 208 runs) | Existing install gaps remain and are unchanged: stage05/stage15 miss 4 dust textures on every other character and `kasai` misses its `g` texture on every stage. The old note here — "two roster characters (Satoko, item 008; Takano, item 011) currently fail the loud gear-up join" — is STALE and was retired by E8: all 46 selections launch |
 | #12 | One view per human controller: its own camera, cell and HUD values, match still stepped once; recovered one/two/four-cell layouts, viewport + scissor per view, per-view marker projection | Three-human layout is the original's four-cell grid with an empty cell (port policy for the placeholder); non-Linux execution unverified. Physical pads and interactive resize/fullscreen were the other two gaps: the port's own Options screen now drives a resolution change and a fullscreen toggle on both Wayland and X11 (nested compositor, `[display]` lines in `docs/RELEASE-CHECKLIST.md` §5), but a compositor-side mouse drag on the window edge is still untested and no run has driven the attached physical pad — the pad attached to the gate machine perturbed runs until device isolation was added (issue #29: a verification run ignores physical devices by default, `--devices` asks for them back, an unfocused window takes no input) — `docs/SPLIT-SCREEN.md` |
-| #23 | Release gate: the checklist in `docs/RELEASE-CHECKLIST.md` demonstrates two humans (1v1), one human with COM and four humans (2v2) through three rounds each, the 46-selection sweep, the character × stage texture matrix, Wayland/X11, 30/60/high-refresh pacing, resize/fullscreen and an eight-round stability run | Three release-blocking defects were found and fixed by the gate (the 1v1 result screen never loaded; a rematch submitted released vertex buffers and aborted; rematch rounds diverged from round 1). Still unverified, and named as such in the checklist: a second GPU vendor, physical controllers, hardware audio listening, other distributions and an interactive compositor-side resize |
+| #23 | Release gate: the checklist in `docs/RELEASE-CHECKLIST.md` demonstrates two humans (1v1), one human with COM and four humans (2v2) through three rounds each, the 46-selection sweep, the character × stage texture matrix, Wayland/X11, 30/60/high-refresh pacing, resize/fullscreen and a five-round prolonged stability run | Three release-blocking defects were found and fixed by the gate (the 1v1 result screen never loaded; a rematch submitted released vertex buffers and aborted; rematch rounds diverged from round 1). Still unverified, and named as such in the checklist: a second GPU vendor, physical controllers, hardware audio listening, other distributions and an interactive compositor-side resize |
 | #48 | The original's in-battle debug keys implemented (F1 full HP + both balloons, F2 COMs off, F3 COMs on, F4 gauges, Escape leave) with the recovered map, the per-fighter AI flag on `Match`, sampling on the fixed-step boundary, `--no-debug-keys` and the `--debug-keys=KEY@TICK` injection | Two port rules: the `DAT_006cfce9` gate becomes "always active in a battle" (the port has no story mode) and F4 fills every meter the port models because the original's per-slot `+0x318` selector has no counterpart; the interactive Escape stays issue #15's pause key, so the recovered leave is reached through the pause menu there. Full map, addresses and the evidence trace: `docs/DEBUG-KEYS.md` |
 
 Implementation lives in `src/ui/screen_select.*`, `screen_stage_select.*`,
@@ -1484,12 +1484,9 @@ stage-aware colour) and the recommendation: `foundation/docs/NPR-EXPERIMENTS.md`
   16-byte key table — a team-communication cluster (orders, callouts,
   thanks), consistent with COM-partner coordination, not a swap. Consequences
   landed: the `TagOut` state (never entered by anything) keeps its fallback
-  with corrected comments; LockSwitch tap now cycles the camera target in
-  match mode beside the DX9 combo (camera-only in this 1v1 port — shots fly
-  the facing, which tracks the single enemy; hold-for-ally needs allies).
-  Corrected by issue #51: the tap re-picks the COMBAT target only and never the
-  camera, so this bullet's "cycles the camera target" no longer describes it.
-  "recovery" stays as the state's trace name (the voice key exists; the
+  with corrected comments; LockSwitch tap re-picks the combat target only and does not
+  move the camera (issue #51). "recovery" stays as the state's trace name (the voice key
+  exists; the
   state never occurs, so no trace changes).
 * **What is left.** (a) The projectile and TagOut selectors, and the side/air
   dash pair (moves 23/24; their `[22,23,24]`/`[19,20,21]` tags are air-dash rows,
@@ -1565,31 +1562,22 @@ says what you SEE on screen, not just which function draws it.
 * **Resolved 2026-10-03.** The lock-switch writer/decrement and pulse
   transform are implemented and tested; see the implementation update above.
 
-### D3. Other fighters' com bars, round countdown, team stings — PARTIAL (1v1 transients implemented)
+### D3. Participant HUD, countdown and team stings — implemented with the front end
 
-* **What you see (and don't).** The print shows exactly one com bar with its
-  `com` tag, over the targeted (distant) fighter — which is exactly what the
-  port draws (target's drawer, `0x643e38`: frame + ghost + live fill + tag
-  cell). Nothing is missing in this frame.
-* **Why the rest stays out.** The "other-fighters bar" (a different sprite
-  set in `FUN_00643230`'s per-fighter loop) only matters with 3–4 fighters
-  on screen (allies, extra enemies); this port's match is 1v1, and the
-  followed fighter correctly carries no bar. Round countdown (`3 2 1`) and
-  team stings (`赤組/青組 大勝利`) are transients absent from the print and
-  need new gameplay state first (round timer, winning team in
-  `gameplay::Match`/`MatchEconomy` driving `HudState`); their art and layout
-  are already surveyed (`BATTLE-HUD-SPEC.md` §5 item 7, `P09/P04/P05/P08`
-  via `FUN_00633ca0.c:77-86`). No parity pixels depend on any of it.
-* **Sketch.** (a) Other-fighters bars come with the third fighter, not
-  before. (b) Countdown/stings come with `Match` round state — gameplay
-  breadth, not parity; schedule it with the front-end track (E), not here.
+The earlier 1v1-only sketch is superseded: the participant-driven HUD now draws
+roster markers and target bars in multi-fighter views, and the pre-round countdown
+runs over the live battle with participant/settings captions. The result screen
+implements the two-layer team victory sting. See the issue #13 and #47 updates
+above and `src/ui/{hud,screen_countdown,screen_result}.*`. The original's separate
+120-frame respawn presentation is still not modeled; it is distinct from the
+implemented KO sting and remains listed in the issue #11 economy notes.
 
 ## E. Front end (`FRONTEND-PLAN.md` is the spec)
 
-The plan's own order: **select page 0 → select page 1 → the rest**. Title
-already landed on the screen stack (`src/ui/screen_title.*`, commit
-`c67ead3`), so new screens follow that pattern: device-free update returning
-the next screen id, a factory for construction, tests against fakes.
+The original implementation order was **select page 0 → select page 1 → the rest**.
+The title screen and connected frontend are implemented; the remaining findings below
+are evidence and fidelity work, not the original screen-build queue. Current release
+status is in `RELEASE-CHECKLIST.md`.
 
 ### E1. Select page 0 — IMPLEMENTED (four-fighter presentation landed, issue #13)
 
@@ -1763,31 +1751,14 @@ the next screen id, a factory for construction, tests against fakes.
   (plan line 1093); capture the variation cycle with the original to settle
   the count.
 
-### E3. Options and key config — PARTIAL (two renderer controls unavailable)
+### E3. Options and key config — implemented; one renderer row remains unavailable
 
-* **Evidence.** Plan §1.3: both optional/deferrable. Option scope is tiny
-  and closed — 4 toggles + 4 sliders (`option-screen.webp`); key config's
-  binding reference is already in `src/input/input.h`, so the screen is a
-  luxury (plan §2.10/§2.11, lines 569-613).
-* **Sketch.** Two small screens on the same stack; wire the volume sliders
-  to `fnd::audio` (the backend already has a UI channel,
-  `src/audio/audio.h:26`). Defer toon/shadow toggles until the effect
-  system exists (item B1).
-* **Persistence (issue #19, 2026-10-05).** Implemented. The settings live in
-  `$XDG_CONFIG_HOME/daybreak-decomp/settings.conf` (default `~/.config/...`),
-  schema version 1, written atomically (temp file in the same directory, fsync,
-  rename, directory fsync, mode 0600). They are loaded before the frontend builds
-  and validated first: an unsupported version, an unknown section or a malformed
-  line rejects the whole document (defaults, reason printed), a bad value defaults
-  only that key, and a stored resolution the display does not offer falls back to
-  desktop. Bindings stay per player — the original's own unit — and the pad-to-player
-  mapping is stabilised by the SDL GUID recorded per slot, so a replug cannot move
-  bindings to another pad. Session state (earned titles, result stats) is not
-  persisted. Only an interactive frontend run reads or writes the file: `--match`,
-  `--versus`, `--hud-test`, `--out`/`--headless` captures and any `--frames` run are
-  unchanged by a user config. Provenance and policies: `docs/USER-SETTINGS.md`,
-  decision D10. Remaining: browser-side persistence (IndexedDB/OPFS), and the three
-  renderer toggles (item B1/#21) still have no schema keys.
+The Options/key-config screens, their input binding, and native persistence are
+implemented. The toon (row 0) and character-shadow (row 1) controls are live and
+persisted; texture resolution (row 2) remains unavailable because it is a
+load-time texture-cache policy. Browser-side persistence (IndexedDB/OPFS) remains
+open. Current schema/migration details are maintained in `docs/USER-SETTINGS.md`
+(schema v5); renderer evidence and the row-2 rationale are above under issue #21.
 
 ### E4. VS intro (scene 9) — IMPLEMENTED for 1v1
 
@@ -1907,22 +1878,20 @@ counts, and the team-select diamond's y anchor discrepancy. Scenes 2 and
   `TitleAction` there) and load the SE bank through the existing audio
   backend; count plays under a headless run the way `--audio-test` does.
 
-## G. Verification debts — do not make these claims yet
+## G. Verification debts — remaining claims not yet established
 
-### G1. Web — GAME DATA VERIFIED on software WebGPU; hardware/visual check remains open
+### G1. Web — game data and a live match verified on software WebGPU; hardware/visual check remains open
 
-* **Evidence (measured).** `BUILD-web.md:32-47` records a real run —
-  Chrome for Testing 152 headless, SwiftShader, 845 frames, 60.1 fps,
-  `RESULT: ok`. The same file documents the asset-preload build as
-  *expected* output (`:54-74`) and its own "Not verified" list: canvas
-  screenshots come back black headless, and only SwiftShader has been
-  exercised (`:107-116`). So the corrected statement is: the **plain web
-  demo** has been executed; a browser run **with game data and the versus
-  scene** has not, nor has a hardware adapter.
-* **Sketch.** Run the `FOUNDATION_WEB_ASSETS` build against `data/`, record
-  the console numbers in `BUILD-web.md`, and only then extend the claim to
-  the game; the screenshot path needs an X server that outlives the command
-  (`--headed`).
+* **Evidence (measured).** `BUILD-web.md` and `RELEASE-CHECKLIST.md` §5.2
+  record Chrome for Testing 152 headless on SwiftShader with a `/data`-preloaded
+  local rig: the title and a real-asset live match both ran. This is not hardware
+  adapter or visual-parity evidence: compositor screenshots of the WebGPU canvas
+  remain black. The production `?pack=` route still cannot satisfy install-relative
+  asset paths, and the scripted front-end run still does not leave selection
+  (issues #58–#59); see the web build record for details.
+* **Still open.** Browser hardware adapters, usable screenshots/visual parity,
+  and the remaining web delivery/front-end issues. Do not describe the web target
+  as untested: the software-WebGPU title and live-match runs are established.
 
 ### G2. macOS: never executed
 
@@ -2011,8 +1980,9 @@ to ask for the devices back, and made an unfocused window take no input.
 
 Still open, and stated as such in the checklist: a second GPU vendor, physical
 controllers, hardware audio listening, other distributions, an interactive
-compositor-side resize, and Windows/web/macOS execution (not this issue's
-target; their own docs carry their evidence).
+compositor-side resize, hardware-browser/visual verification, and macOS execution.
+Windows and software-WebGPU runs have been exercised; their remaining issues are
+recorded in `BUILD-windows.md`, `BUILD-web.md` and checklist §5.2.
 
 ## H. Out of scope (stated, not scheduled)
 

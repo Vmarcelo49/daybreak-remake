@@ -1,15 +1,21 @@
-# Self-hosted web asset delivery plan
+# Web asset delivery — implementation record and original plan
 
-Status: **implemented (issue #4, 2026-10-06)** — the service lives in
-[`webdelivery/`](../webdelivery/README.md) and the client in
-`src/platform/{web_assets,asset_client}.{h,cpp}`. §"Where this plan was stale"
-below records what the implementation did differently and why; read it before
-treating any step below as still-current. The manifest-based pack loader
-(`?pack=`) remains in the tree for local verification but is no longer the
-production path — it mounts at `/packs/` while the front end addresses
-install-relative `data/...`, which is issue #58.
+> **Current status: implemented (issue #4, 2026-10-06).** The service lives in
+> [`webdelivery/`](../webdelivery/README.md) and the client in
+> `src/platform/{web_assets,asset_client}.{h,cpp}`. This document preserves the
+> original plan and its measured deviations; its numbered steps are historical,
+> not outstanding work. Current routes and browser execution limits are in
+> [`BUILD-web.md`](BUILD-web.md). The old `?pack=` flow remains only as a local
+> verification rig: production uses `?delivery=` and per-asset requests at the
+> install-relative paths expected by the frontend (`data/...`).
 
-## Goal
+## Original goal (design record)
+
+The steps below are the original proposal, retained as provenance for issue #4;
+they are not a list of unimplemented work. Current delivery behavior and the
+measurements against it are summarized in “Where this plan was stale” and
+“Verified end to end.” The current 1v1/2v2 frontend requests all selected
+participants, weapons, and stage resources at the VS readiness barrier.
 
 A host supplies their own Higurashi Daybreak installation to a Dockerized web
 server. The server prepares the game data once, then serves the web client and
@@ -55,16 +61,17 @@ that exact match:
 - Any resources needed to render the VS screen itself; portraits and shared VS
   art should already be available from startup where practical.
 
-For the current playable 1v1 flow, generate this set for the active fighter
-slots 0 (blue) and 2 (red). Expand the dependency rules when four-fighter
-launch is implemented.
+Original proposal scope: 1v1 active fighter slots 0 (blue) and 2 (red). The
+implemented frontend now builds the match request from every selected fighter
+and weapon; four-fighter 2v2 is covered by the current product and the delivery
+grouping test.
 
 The VS transition is a readiness barrier: keep its animation or show progress
 while assets download, verify, decode, and upload. Do not start the battle
 until every required resource is ready. The existing 109-update transition is
 not a fixed network timeout; it may need to wait longer on a slow connection.
 
-## Implementation steps
+## Original implementation plan (completed; retained as dated design record)
 
 ### Step 1 — Build a faithful prepared-data catalog
 
@@ -78,8 +85,8 @@ Preserve the game's archive lookup precedence and case-insensitive name
 matching when resolving duplicates. Do not flatten archives by blindly
 overwriting same-named files: the remake has measured assets whose bytes differ
 between bundles. Preserve the winning bundle/source in the catalog so the web
-path resolves the same bytes as native `AssetSource` ([asset source](/home/marcelo/Projetos/daybreak-decomp/remake/foundation/src/assets/asset_source.h),
-[bundle ordering](/home/marcelo/Projetos/daybreak-decomp/remake/foundation/src/assets/dat_bundle.cpp)).
+path resolves the same bytes as native `AssetSource` ([asset source](../src/assets/asset_source.h),
+[bundle ordering](../src/assets/dat_bundle.cpp)).
 
 The prepared files should be ordinary decoded archive payloads in their game
 formats. This removes archive lookup and the DAT payload XOR from requests; it
@@ -201,7 +208,7 @@ Written 2026-10-04, implemented 2026-10-06 against a tree that had moved. Each
 item is a place the plan was followed in spirit rather than literally, with the
 measurement or the code that decided it.
 
-1. **The plan's two loading groups are not two lists of names.** The plan lists
+1. **The original plan's two loading groups are not two lists of names.** The plan lists
    assets ("shared title, selection … artwork", "selected stage models"). The
    loaders do not read names, they read **directories**: `xm::loadStage` walks one
    `data/stageNN/` (eight model slots, `collision*`, `env.dat`), `xm::loadCharacter`
@@ -266,7 +273,7 @@ measurement or the code that decided it.
    the case-equivalence class; resolving case-insensitively at lookup time is the
    general fix and is not implemented.
 
-## Verified end to end (2026-10-06)
+## Verified end to end (2026-10-06; dated software-WebGPU evidence)
 
 Chromium (Chrome for Testing, headless) on **software WebGPU**
 (`google swiftshader [WebGPU(browser)]`), against the Docker image serving the

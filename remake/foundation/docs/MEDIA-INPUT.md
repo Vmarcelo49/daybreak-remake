@@ -25,7 +25,7 @@ transcribed findings. Live provenance is the foundation (`src/audio/*`,
 |---|---|
 | BGM format | `data/bgm/*.ogg` Vorbis, 44100 Hz stereo (`win.ogg` validated by ffprobe; `Mix_OpenAudio(44100, S16SYS, stereo, 2048)`) |
 | BGM bundles | `daybreak05.dat`: 41 entries, `.ogg` + `.sfl` pairs; `.sfl` (136 B) holds loop points |
-| BGM now | single hardcoded `data/bgm/01.ogg` per match, streamed via `Mix_Music`; currently fails to decode (`Unrecognized audio format`), so matches run silent |
+| BGM at survey time | single hardcoded `data/bgm/01.ogg` per match via `Mix_Music`; that pre-cutover run failed with `Unrecognized audio format` (historical status, not current SDL3 audio) |
 | Voice/SFX format | `data/voice/entry/%s.wav` WAV PCM; `daybreak07.dat` (178 entries) items/bullets/voice snippets |
 | CNV audio | 16-byte header (channels, reserved==1, rate ∈ {22050,44100,48000}, bits ∈ {8,16}) + raw PCM, from `FUN_00665020`; converter: `remake/tools/asset-tools/cnv_convert.py` |
 | Mixer model | 32 SFX channels + 1 music; ch 0 = UI, 1–15 = voice, 16–31 = gameplay SFX; option screen has 4 sliders (master/music/voice/SFX) |
@@ -33,13 +33,13 @@ transcribed findings. Live provenance is the foundation (`src/audio/*`,
 | Movie audio | MP2 stereo 44100 Hz via pl_mpeg; float[−1,1] → S16 stereo chunks drained by `Mix_HookMusic` callback |
 | Original API | `WINMM.dll` import; DirectSound-era 44.1 kHz stereo throughout |
 
-### Video (`.mpg`: implemented in issue #40 — see §3)
+### Video (`.mpg`: native player implemented in issue #40 — see §3)
 
 | Need | Reference finding |
 |---|---|
 | Files | `movie/op.mpg` (boot), `movie/prologue.mpg`, `movie/staffroll{,2}.mpg`; story FMVs also fill `daybreak06.dat` (439 MB, 5 entries) |
-| Codec | MPEG-PS (MPEG1 video + MP2 audio); decoded by vendored pl_mpeg (~4300-line single header, `remake/src/third_party/pl_mpeg.h`) |
-| Presentation | video → DX9 texture (`plm_frame_to_bgra`, alpha pre-set 255) drawn as a fullscreen quad; audio via the `Mix_HookMusic` chunk queue above |
+| Codec | MPEG-PS (MPEG-1 video + MP2 audio); native foundation player uses pinned pl_mpeg from `third_party/pl_mpeg/pl_mpeg.h` (the reference header was under deleted `remake/src/third_party/`) |
+| Presentation | DX9 reference used a texture quad and `Mix_HookMusic`; the foundation uses RGBA frames through the UI texture upload and pushes PCM through SDL3. Web playback remains a browser-side gap |
 | Behaviour | boot plays `op.mpg`; the skip is **Enter or either Alt**, held (recovered — see §3.1) |
 | Framing | letterbox bars are baked into the video itself (reference capture `opening-frame-01`) |
 
@@ -55,9 +55,11 @@ transcribed findings. Live provenance is the foundation (`src/audio/*`,
 
 ## 2. Interfaces added
 
-All headers are C++17, dependency-free (no SDL include), so they compile and
-test anywhere. SDL3 numeric codes are pinned as constants; the future backend
-`.cpp` `static_assert`s them against `<SDL3/SDL.h>` at build time.
+The device-free audio/input model headers are C++17 and SDL-include-free. SDL3
+input codes are pinned in `input_sdl3.h` and checked against the real SDL3 headers
+by `src/input/pin_tables.cpp`; the backend itself is implemented in
+`src/input/input_backend.cpp`. This inventory and the scratch-test transcripts in
+§4 preserve the integration work's evidence, not a pending backend proposal.
 
 | File | Owns |
 |---|---|
@@ -69,10 +71,9 @@ test anywhere. SDL3 numeric codes are pinned as constants; the future backend
 | `src/input/input.h` | `Action` (13), `DeviceType`, `PlayerState`, `compute_edges`, `apply_deadzone` / `stick_to_digital` (deadzone 8000), `parse_script_line` |
 | `src/input/input_sdl3.h` | P1 scancode table (verified against SDL 3.4.16 headers), provisional pad button table, web gamepad caveats |
 
-Why SDL3 streams and not SDL_mixer: SDL_mixer has no SDL3/web build in this
-tree, and its file-path API is what forces the remake through temp files.
-`SDL_AudioStream` takes pushed PCM and resamples, so BGM/voice/movie audio
-converge on one push path and the temp-file dance disappears.
+Design rationale: the project uses SDL3 streams rather than SDL_mixer (which has
+no SDL3/web build in-tree); the foundation's push path accepts PCM and resamples
+through `SDL_AudioStream`, avoiding the old path's temp-file requirement.
 
 ## 3. Video: implemented (issue #40)
 
@@ -119,10 +120,13 @@ The file the exe opens is `movie/op.mpg` only because it has already made `data/
 its working directory; on disk it is `data/movie/op.mpg`, which is the path the
 port resolves (and the one `--movie=` takes).
 
-## 4. Deterministic tests (scratch, under `/tmp`)
+## 4. Historical scratch-test snapshot
 
-Nothing here needs a device, window, or game data. Each test compiles the
-headers only:
+These `/tmp/trackm/` harness results record the initial device-free interface
+work, not the current project test inventory. Current regression coverage lives
+in the committed foundation tests (including `screen_stack_test`,
+`input_backend_test`, `device_isolation_test` and `bgm_loop_test`). The historical
+format/model harnesses below used no game data or physical device:
 
 ```bash
 g++ -std=c++17 -Werror -Wall -Wextra -I remake/foundation/src \
@@ -160,7 +164,7 @@ Observed (Linux, GCC 16.2.1, SDL3 3.4.16 present but not linked):
 [input] sdl3: p1_up=82 p1_melee=27 p1_pause=26 pad_pause=6
 [input] RESULT: ok (17 checks)
 [video] probe: ps=1 wav_not_ps=1 empty=0
-[video] stub: recognised=1 status=unimplemented skippable=1 non_ps_rejected=1
+[video] pre-issue-40 probe: recognised=1 status=unimplemented skippable=1 non_ps_rejected=1
 [video] ycrcb: black=0,0,0 white=255,255,255 red=254,0,0
 [video] RESULT: ok (10 checks)
 ```
@@ -170,7 +174,7 @@ parse incl. truncated-tail rejection, float→S16 clamping (no wraparound),
 queue-drain accounting, volume/bus math, channel reservation, web-gate
 transitions, MP2 interleave sizing, edge/timer/deadzone/stick/script
 behaviour incl. `-`/comment/unknown-token lines, SDL3 code pinning
-(P1 scancodes, pad Start=6), MPEG-PS probe, stub status, BT.601 primaries.
+(P1 scancodes, pad Start=6), MPEG-PS probe, the then-stub status, BT.601 primaries.
 
 Pinned codes additionally verified against the real SDL 3.4.16 headers
 (`check_sdl_pin.cpp`: 25 `static_assert`s vs `SDL_SCANCODE_*` /
@@ -202,8 +206,8 @@ endif()
 //   #endif
 //   // in SDL_AppEvent: on finger/key/pad-down -> gate.unlock()
 //   // in SDL_AppIterate: if (gate.ready()) engine.push_music_s16(...)
-// Backend .cpps must also: static_assert(kScUp == SDL_SCANCODE_UP, …)
-// against the real SDL3 headers so the pinned tables cannot drift.
+// Current pin assertions live in src/input/pin_tables.cpp and compare the
+// pinned tables against the real SDL3 headers.
 ```
 
 Landed on top of this: OGG Vorbis decode (`Sdl3Engine::load_ogg` via
@@ -218,7 +222,7 @@ vendored stb_vorbis), `.sfl` loop parsing (`parse_sfl_loop` in
 | Target | Audio | Input |
 |---|---|---|
 | Linux | SDL3 stream push; device resamples if ≠44100; no mixer needed | SDL3 keyboard + `SDL_OpenGamepad`; hotplug via re-poll |
-| Windows (MinGW/Wine) | same stream path; verify no temp files remain (old mixer limitation, gone) | same; XInput pads appear as SDL gamepads |
+| Windows (MinGW/Wine) | same SDL3 stream path; the old mixer temp-file constraint does not apply | same; XInput pads appear as SDL gamepads |
 | Web (Emscripten) | AudioContext starts **suspended**: gate stays `Gated` until first pointer/key/pad gesture; pushes while gated are dropped, never queued (no late BGM burst) | pads visible only after a button press, secure context (https/localhost) only; first-frame focus needed; no rumble (async/permission-gated — future option, not promised) |
 | macOS | not attempted (standing PORT-PLAN rule); code is dependency-free so nothing here blocks it | same as above |
 

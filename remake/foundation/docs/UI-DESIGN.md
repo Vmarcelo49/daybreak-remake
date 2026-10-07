@@ -1,26 +1,29 @@
 # UI layer (sprite batch, atlas HUD, front-end screens, text)
 
-The 2D/UI/HUD pass: textured quads, the battle HUD's `.cnv` atlas composition,
-the front-end screen stack, the CJK-capable text layer and fallback diagnostics.
-It is built as `foundation_ui` by `CMakeLists.txt:89-105` and linked into
-`foundation_demo`; the seams it hooks are `--hud-test` and `--match`/`--versus`
-captures, and `--screen=<id>` for menus (UI-INTEGRATION.md).
+The current 2D/UI/HUD layer: textured quads, the battle HUD's `.cnv` atlas
+composition, implemented front-end screens, shared CJK-capable caption/text
+paths, and fallback diagnostics. It is built as `foundation_ui` by
+`CMakeLists.txt:99-132` and linked into `foundation_demo`. HUD/versus/match,
+menu, result, countdown, and pause paths are wired from `src/main.cpp`; see
+[UI-INTEGRATION.md](UI-INTEGRATION.md) for the core seams and
+[RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md) for current verification limits.
 
 Files (the track's whole surface):
 
 | File | Contents |
 |---|---|
 | `src/ui/sprite.h` / `sprite.cpp` | `SpriteRenderer` batch + pixel math (`barFillWidth`, `clampClip`, `clipToScissor`, `pixelsToNdc`) |
-| `src/ui/font.h` / `font.cpp` | Embedded 5x7 bitmap font: measure, layout, atlas build (no WebGPU, no OS fonts) |
+| `src/ui/font.h` / `font.cpp` | Embedded 5x7 bitmap font: measure, layout, atlas build; no-device fallback |
+| `src/ui/caption.h` / `caption.cpp` | Shared runtime caption font chain (Gyrotrope Black + Japanese fallback) and dynamic glyph-atlas management |
 | `src/ui/hud.h` / `hud.cpp` | `HudState`, `computeHudLayout`, `HudComposer`: the original's atlas HUD when its sheets resolve, the DX9 text/bars body (the mapping table below) only as the no-atlas fallback |
 | `src/ui/hud_atlas.h` / `hud_atlas.cpp` | `HudAtlas` + the one .cnv sheet path (`uploadCnvSheet`): `kHudSprites`/`kHudFonts` transcribed from FUN_00642510/FUN_00431a50, and the FUN_00655d60 / FUN_00645250 / FUN_00655830 / FUN_00431b20 primitives |
 | `src/ui/text.h` / `text.cpp` | `TextLayer`: TrueType/CJK rasterization, GDI-metric chain, `\cRRGGBB` runs |
 | `src/ui/screen.h` / `screen.cpp` | `ScreenId`, `Screen`, `ScreenStack`, the 25-frame fade, `makeScreen`, `parseScreenId` |
 | `src/ui/screen_title.h` / `screen_title.cpp` | scene 1: back00/logo/title sheets and the cursor machine, FUN_00410d60/FUN_00410f60/FUN_004114f0 |
-| `src/ui/fallback.h` / `fallback.cpp` | `FallbackOverlay` + `buildDiagLines`/`computeDiagPanel`: asset-less diagnostics panel with host-side sizing; no target wires it into a frame yet |
+| `src/ui/fallback.h` / `fallback.cpp` | `FallbackOverlay` + `buildDiagLines`/`computeDiagPanel`: asset-less diagnostics panel with host-side sizing (library support; not wired into the main frame path) |
 | `src/shaders/ui_wgsl.h` | Pixel-space textured-quad WGSL (`shaders::kUiWGSL`) |
 
-## Source of the layout (read-only; the DX9 tree is gone)
+## Source of the layout (original evidence; DX9 tree removed)
 
 The constants come from the original, not from a buildable DX9 tree:
 `BATTLE-HUD-SPEC.md` carries the FUN_ addresses, the .rdata anchor table
@@ -51,12 +54,13 @@ HUD mapping (DX9 call site → this layer):
 | `centered(220,100,…,"KO!")` while `elapsed < stingUntil` | `koVisible`, `koCenterX/koY` |
 | `text(4,4,…,"0")` | `markerText` — the unlabelled yellow "0" is reproduced in the text fallback (hud.cpp:421; all three banked frames carry it), deliberately not in the atlas composition |
 
-The in-battle HUD is 100% sprite art — every bar, number and label, including the
-boxed `適当` command label (BATTLE-HUD-SPEC.md §4). The CJK/text layer below is
-for menus, the result quote, chat and story mode; `compose()` draws no font glyph
-in battle while the atlases are up.
+The in-battle HUD is 100% sprite art when the game sheets resolve — every bar,
+number and label, including the boxed `適当` command label (BATTLE-HUD-SPEC.md
+§4). The CJK/text layer serves free text such as result quotes and diagnostics;
+`compose()` uses no font glyph for the atlas battle HUD. If HUD sheets are absent,
+the text/bars fallback remains available.
 
-## Conventions
+## Current rendering conventions
 
 - **Pixels everywhere.** Top-left origin, y down — the DX9 `XYZRHW`
   convention — so surveyed constants transfer verbatim. `ui_wgsl` maps to NDC
@@ -85,8 +89,9 @@ in battle while the atlases are up.
 exactly as `render/` does — the third WebGPU consumer next to `gpu/` itself,
 following the `render/` precedent in `README.md`'s layering rules.
 `foundation_ui` links `foundation_assets` (the CNV decoder and `assetSource()`),
-`foundation` (the gpu helpers) and, privately, `third_party/stb` for the TrueType
-rasterizer; `glm` arrives through `foundation_assets`.
+`foundation` and `foundation_movie`; its private include path supplies
+`third_party/stb` for TrueType rasterization. `glm` arrives through
+`foundation_assets`.
 
 No backend `#if` appears in `ui/`: the code never presents (the one real
 `wgpu-native` vs Dawn difference lives in `gpu.cpp`'s `endFrame`), uses only
@@ -94,16 +99,14 @@ core buffer/texture/pass calls, and takes the viewport from the caller each
 frame. `font.*` is WebGPU-free by construction and unit-testable without a
 device.
 
-## Deliberate cuts
+## Scope and fallback behavior
 
-- **CJK text.** Landed, not cut: `ui/text.{h,cpp}` rasterizes one fetched OFL face
-  in-process (stb_truetype; `remake/scripts/fetch_deps.sh` pins Noto Sans CJK JP
-  and Liberation Sans Bold) and ports FUN_0065d870/FUN_0065d9a0/FUN_0065dad0's
-  walker (Shift-JIS in the original, UTF-8 here) and `\c` colour codes — the
-  layer the menus, the result quote, chat and story mode use (docs/CJK-TEXT.md
-  §5, option B, 2026-10-02; tests/text_test.cpp). The 5x7 bitmap in `font.*`
-  stays as the no-font fallback, where an unsupported codepoint still advances
-  as `?`.
+- **Text path.** `ui/text.{h,cpp}` implements the original GDI metric/control-code
+  behavior over UTF-8 using `stb_truetype`; runtime captions load Gyrotrope Black
+  with a Noto Sans CJK JP fallback through `ui/caption.{h,cpp}` (D7). Font assets
+  are packaged or fetched per the build target; see [CJK-TEXT.md](CJK-TEXT.md)
+  for the RE and decision history. The embedded 5x7 bitmap remains the no-font
+  fallback, where unsupported codepoints advance as `?`.
 - **No animation/tween state.** KO sting visibility, hold-meter tiers and gauge
   smoothing are caller clocks; the composer is a pure function of its args.
 - **RGBA8 only, one decoder.** `SpriteRenderer::addTexture` takes decoded RGBA8

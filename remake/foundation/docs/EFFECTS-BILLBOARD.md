@@ -1,17 +1,17 @@
 # EFFECTS-BILLBOARD — cylindrical camera-facing for effect cards
 
-> **Status: research for `ROADMAP-PENDING.md` B1, not a gameplay effect path.**
-> Match-mode shots/sparks still render as untextured `debug_prims.h` cubes,
-> but auras and melee-hit bursts draw their real cards by default (B1 commit
-> `c0c2f4e`; `--debug-prims` keeps the all-cube A/B). `--effect` cards
-> exercise only the
-> verification scaffolding (additive Effect pass, cylindrical yaw). Nothing here
-> changes gameplay VFX.
+> **Status: geometry research for the live Effect renderer.**
+> Gameplay now renders aura and event cards through the Effect pass; in-flight
+> shots use their own recovered bullet models. `--debug-prims` retains cube
+> stand-ins, and `--effect` remains a verification route, not the gameplay event
+> system. Projectile models differ from flat cards: shot-record flags control
+> whether they request billboarding (`FUN_005f60b0`; see `ROADMAP-PENDING.md` B1).
 
-Owned files changed: `src/render/scene_renderer.{h,cpp}` (classifyBillboard verdict,
-`setEye` eye, render-time yaw) plus the `src/main.cpp` wiring (`renderer.setEye` next
-to `setCamera`) that activates it. `src/shaders/model_wgsl.h` untouched (no shader
-change needed); no texture-name routing added (deliberately excluded).
+Implementation in the current tree: `src/render/scene_renderer.{h,cpp}` classifies
+billboard candidates, stores the camera eye, and applies render-time yaw; `src/main.cpp`
+wires `renderer.setEye(app.eye)` next to `setCamera`. `src/shaders/model_wgsl.h` is
+untouched (no shader change needed), and texture-name routing remains deliberately
+excluded.
 
 ## Choice: cylindrical, not spherical — and why
 
@@ -75,40 +75,17 @@ every frame, so `haveEye_` is true and marked Effect draws yaw in current captur
 the dormant switch (`haveEye_` false, byte-identical) applies only to callers that
 never call `setEye()`, not to the repo demo.
 
-## Verification — historical shim results (deleted `/tmp/eshim` copy; not re-runnable)
+## Historical verification (shim results, not current-tree measurements)
 
-The rows below come from a deleted `/tmp/eshim` copy whose `main.cpp` wired `setEye`
-behind `ESHIM_NO_EYE` (with `ESHIM_PLANT` for the mixed frame only); that copy exists
-nowhere in the tree, so no entry can be re-run. Because in-repo `main.cpp` now wires
-`setEye` unconditionally, current captures include billboarding and these old-vs-new
-deltas do not describe the present tree. Re-verify by capturing `--effect` cards with
-and without the `setEye` call before citing deltas.
-
-- Shim (history): `cp -a remake/foundation /tmp/eshim` (build/ excluded), `cmake -B
-  /tmp/eshim/build/linux` + build; the *copy's* `main.cpp` called
-  `renderer.setEye(app.eye)` (gated on `ESHIM_NO_EYE` unset) and, for the mixed
-  frame only, `ESHIM_PLANT` moved ride-along effects to the eye/aim midpoint at
-  30x. Old binary = repo `remake/foundation/build/linux/foundation_demo`
-  (pre-change). New binary = shim build. Sizes 256 (cards) / 400 (stages).
-
-| Capture | Old | New | Δ |
-|---|---|---|---|
-| `--model=effect/05.X --camera=front` (opaque path) | 0 px (edge-on) | 0 px | **0 px** — change does not fire where it should not |
-| `--stage=stage01` (141 draws, 4 decals) | 157886 px cov | same | **0 px / 160000** |
-| `--character=akane` | 15022 px cov | same | **0 px / 65536** |
-| `--effect=effect/05.X --camera=front` | 0 px (edge-on) | 20684 px (31.56%), lum peak 0.996, 1 billboarded | **22499 px, maxΔ240** — card faces camera |
-| same, `ESHIM_NO_EYE=1` (dormant switch in new code) | — | 0 px | **0 px vs old** — the eye is the only switch |
-| `--effect=aura/00.X --camera=front` (3-plane cross) | 23.79% | 23.94% | 23363 px, maxΔ227 — cross re-yawed, one card exactly face-on |
-| `--effect=aura/00.X --camera=bounds` | 10.25% | 10.26% | 9545 px — near-invariant, as a cross should be |
-| `--effect=aura/03.X --camera=top` (2 of 3 billboarded; floor skipped) | 358 px | 357 px | **50 px, maxΔ103** — cylindricality proof (spherical would tilt cards at the top camera: thousands of px) |
-| `--effect=effect/02.X --camera=front` (cross + `hikari` beam fan) | 426 px | 423 px | 424 px, maxΔ242 — fan rotates rigidly, stays plausible |
-| `--stage=stage01 --effect=aura/00.X --camera=player` planted 30x | — | glow starburst over lit stage, lum peak 1.0 | additive monotonicity: **0/160000 px darker**, Δ ∈ [1,247] — the Effect pass only adds light |
-
-- Linux-new vs Windows/Wine-new (MinGW cross-build in `/tmp/eshim/build/windows`,
-  run under Wine, same RADV adapter via winevulkan): **byte-identical (0 px)** on
-  `effect/05.X`, `aura/00.X`, `stage01`, and bare `--model` — the yaw math
-  (`atan2`, dominant-axis vote) is deterministic across targets.
-- Web target compiles (`./build.sh web` ok in the shim); web runtime not executed.
+A deleted `/tmp/eshim` copy compared a pre-change binary against this billboard
+implementation with `setEye` wired. The shim and its captures cannot be rerun;
+these are historical observations, not measurements of today's gameplay path.
+The test found that a formerly edge-on single `effect/05.X` quad became visible
+from the front, the vertical cards of `aura/03.X` changed only 50 pixels in a
+top-camera comparison while its XZ floor quad stayed authored, and a planted
+`aura/00.X` Effect pass over `stage01` darkened 0/160000 pixels. The old pass
+also recorded byte-identical Linux/Wine captures for selected assets. Do not use
+the detailed deltas from the discarded harness as current parity evidence.
 
 ## Not verified
 
@@ -119,7 +96,11 @@ and without the `setEye` call before citing deltas.
   majority) that rotation is invisible, on directional art it is a real
   difference with no reference to check against.
 - `hikari`-style beam fans rotate rigidly with the yaw; their authored burst
-  direction is relative to the attack, which verification captures do not model.
-- In-repo `main.cpp` wires `setEye()` unconditionally (next to `setCamera`), so the
-  billboard block is live in current captures; the dormant-switch rows above describe
-  the historical shim copy gated behind `ESHIM_NO_EYE`, not the present tree.
+  direction is relative to the attack, which the historical verification captures
+  do not model.
+- The exact original runtime behavior remains unknown: its `.dat` effect player is
+  unmapped. Crossed-plane cards change orientation at camera yaws other than 90°
+  increments; that is invisible on most surveyed radial glow textures but can matter
+  for directional artwork. Current gameplay captures are billboard-enabled when the
+  card geometry qualifies and the view supplies an eye; the overhead singularity and
+  ground-dominant exclusions preserve authored orientation.

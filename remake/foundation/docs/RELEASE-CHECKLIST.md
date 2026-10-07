@@ -27,7 +27,7 @@
 | Two humans, title→selection→stage→VS/countdown→battle→results→selection | §3.1 |
 | One human with COM | §3.2 |
 | Four-fighter match, repeated rounds | §3.3 |
-| Repeated rounds (rematch) for stability | §3.1–§3.3 (three rounds each), §6 (eight rounds) |
+| Repeated rounds (rematch) for stability | §3.1–§3.3 (three rounds each), §6 (five rounds) |
 | CI passes host tests | §2 |
 | All legal character/weapon choices swept | §4 |
 | Stages swept, texture baseline retained | §4 |

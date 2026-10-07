@@ -1,9 +1,11 @@
-# CJK text: what the original does, and the three ways to replace it
+# CJK text: original behavior, decision, and implementation record
 
-Phase 1 decision item (`FULL-REPLACEMENT-PLAN.md` §4: "CJK decision. ASCII
-bitmap cannot do HUD Japanese … decide early even if implementation lands
-later"). This document is the evidence and the options. The decision itself
-is recorded at the bottom once made.
+This document retains the RE evidence and historical alternatives for the Phase 1
+CJK decision (`FULL-REPLACEMENT-PLAN.md` §4). Option B was chosen on 2026-10-02
+and implemented; runtime font policy was subsequently updated by decision D7.
+Treat §1–4 as provenance/options, §5 as the decision record, and the current
+runtime caption path as `ui/caption.h` + `ui/text.h` (Gyrotrope Black with a
+Japanese fallback), not as a still-pending implementation plan.
 
 ## 1. What the original game actually does (RE evidence)
 
@@ -77,11 +79,10 @@ Read against `remake/docs/reference/*.webp` (the ground-truth captures):
   reference capture (`battle-stamina.webp`), which is the same path showing
   through: Shift-JIS bytes rendered by a non-Japanese text stack.
 
-Consequence for the plan: the `--versus` D2 gate frame needs no CJK font
-coverage — its `適当` command cell is the P03 atlas cell above, and Phase 2
-builds the HUD with the Latin labels and the correct label geometry. The
-font requirement is reserved for result quote/report, netplay chat and
-story ADV text, and this decision's implementation lands in Phase 3.
+Historical consequence at decision time: the `--versus` D2 gate frame needed no
+CJK rasterization because `適当` is atlas art. That distinction still holds, but
+the text/font implementation has since landed; current runtime captions also use
+the shared font path described in D7 and the foundation README.
 
 ## 3. The three options
 
@@ -154,22 +155,17 @@ already follows.
 ## 5. Decision
 
 **Decided 2026-10-02 (user): option B — in-process TrueType rasterization
-from one fetched OFL CJK font, ASCII bitmap as fallback.** Rationale as in §4:
-one rasterizer across Linux/Windows/web keeps the byte-identical capture
-discipline that every phase's evidence rests on; the font is fetched like the
-other third-party dependencies and never committed; `stb_truetype` is
-public-domain and single-header, the same class as the existing vendored deps.
-Concretely: vendor `stb_truetype.h` under `third_party/` (done via
-`remake/foundation/scripts/fetch_deps.sh` at the pinned `STB_COMMIT`), fetch Noto Sans CJK
-JP (OFL) and Liberation Sans Bold in `remake/scripts/fetch_deps.sh` (the host
-toolchain + fonts script, which writes both into `foundation/third_party/fonts/`) — rasterize into the existing UI atlas
-(`src/ui/`), port the `FUN_0065dad0` `\c` colour codes over UTF-8 with
-Shift-JIS decoded caller-side (`xm::sjisToUtf8`, `src/assets/cnv.h:193`),
-and keep `ui/fallback.h`'s degraded path when the font is absent.
+with an ASCII bitmap fallback.** At decision time the rationale was one
+rasterizer across Linux/Windows/web, fetched rather than committed font data,
+and `stb_truetype` as the single-header rasterizer. The text layer subsequently
+landed in `src/ui/text.{h,cpp}`; runtime caption selection later changed under
+D7: the primary face is the bundled Gyrotrope Black, with the fetched Noto Sans
+CJK JP fallback. `ui/caption.{h,cpp}` owns that shared load path, while game
+strings are converted from Shift-JIS before reaching the UTF-8 text layer. See
+`remake/docs/decisions.md` D7, `remake/foundation/src/ui/caption.h`, and
+`remake/foundation/assets/fonts/README.md` for current asset/runtime policy.
 
-Implementation lands in Phase 3, in the plan's order — Phase 2 builds the HUD
-with the Latin labels, reserving the `適当` label position from the reference
-frames. Option C may later be layered on for the HUD's fixed strings if atlas
-cost matters (it needs no interface change); option A is rejected — three
-backends cannot produce the cross-target determinism this project verifies
-with.
+The old “implementation lands in Phase 3” statement and proposed Noto-first
+runtime chain describe the 2026-10-02 plan, not current status. Option C remains
+a possible optimization for fixed labels; option A remains rejected for its
+cross-platform rasterizer divergence.

@@ -1,60 +1,31 @@
-# Web runtime assets: production path + browser evidence (Track W)
+# Web runtime assets: delivery history and browser evidence (Track W)
 
 Scope: PORT-PLAN.md Track W (W1/W2/W3). Verification-only; no game data in git.
 Local paths below are machine-local and gitignored, never committed.
 
-## 1. Recommendation (W1)
+## Current production path (issue #4)
 
-> **Superseded in part (issue #4, 2026-10-06).** The recommended shape below —
-> HTTP fetch of per-load-unit assets with browser-managed persistence — is what
-> `webdelivery/` + `src/platform/asset_client.cpp` implement, but two details of
-> this section are now historical: the unit is **one asset**, not one pack (the
-> catalog's per-asset sha256 gives independent caching, and 435 catalogued names
-> in a real install share bytes with another name and are served from the cache
-> without a second request), and the mount is the **MEMFS root**, not `/packs/`,
-> because the front end addresses install-relative `data/...` (issue #58). The
-> `?pack=` loader described here still works as a local rig and is no longer the
-> production path.
+The active browser delivery path is the same-origin, per-asset client: open the
+web build with `?delivery=1` (or a delivery origin), fetch startup/match assets
+as requested, validate each response against the catalog SHA-256, and cache by
+content hash in IndexedDB when available. Assets are materialized at the
+install-relative MEMFS paths the native asset layer expects. The service,
+container quick-start and current routes are documented in
+[`webdelivery/README.md`](../webdelivery/README.md); the runnable browser recipe
+and execution limits are in [`BUILD-web.md`](BUILD-web.md).
 
+The older `?pack=<manifest-url>` + `/packs/` + IDBFS experiment below is retained
+as historical verification evidence, not the production design. It fetched a
+whole manifest into a separate mount, which did not satisfy the front end's
+`data/...` paths. Emscripten `--preload-file` remains a local verification rig;
+no game data is distributed by the web release.
 
-**Production path: plain web build + HTTP fetch/streaming of per-pack assets,
-cached in the browser (IndexedDB/OPFS), with Emscripten preload kept only for
-local renderer verification.** Both halves of this are now implemented:
-the fetch half (`src/platform/web_pack.{h,cpp}` + `scripts/make_pack.py`)
-and the IDBFS persistence half (`fetchWebPack` mount + sync with
-hash-pinned cache skip) — see the Runtime-fetch and Persistence sections,
-both green.
+## Historical design notes (before issue #4)
 
-- The engine (`foundation_demo.wasm` 3.67 MB + `.js` 0.48 MB + `.html` 22 KB)
-  ships with **no assets**. At startup it fetches named asset packs
-  (character ~12 MB, stage ~20 MB, see §3) over HTTP into the Emscripten
-  virtual filesystem, then runs the unchanged asset layer (`xm::loadStage` /
-  `loadCharacter` / `loadWeapon`).
-- Packs are manifest-addressed, not content-addressed:
-  `scripts/make_pack.py` lists plain relative paths (the game's
-  Shift-JIS-derived UTF-8 names, percent-encoded), and
-  `src/platform/web_pack.cpp:170-186` validates the cache by
-  manifest-text hash (FNV-1a) plus file presence, refetching everything on
-  mismatch. Per-file content hashes in URLs would be a future manifest
-  revision. BGM (49 MB) and movie audio are **streamed, never preloaded**.
-- The user supplies the data: a local folder picker, a self-hosted pack URL,
-  or a first-run importer that reads their own install. The web release
-  **never redistributes game files** (commercial data, §4).
-- Emscripten `--preload-file` (`FOUNDATION_WEB_ASSETS`, `/assets` mount)
-  stays exactly what it is: the local renderer-verification rig. It is the
-  wrong production shape because it bundles the whole subset into one
-  `foundation_demo.data` (12.4 MB for a single character) that must fully
-  download before `main()` runs, with no caching across builds and no
-  per-stage/character granularity.
-
-Why not the alternatives:
-
-| Path | Verdict |
-|---|---|
-| Embedded subset (compiled into wasm, e.g. `xxd`/`incbin` of `.X`/`.cnv`) | Rejected. Bloats the wasm (one character ≈ 12 MB → 3.7 MB wasm becomes ~16 MB), forces a rebuild per asset change, keeps everything resident, and still redistributes data. WGSL stays embedded (it is ours); game data must not be. |
-| Emscripten preload (`--preload-file …@/assets`) | Verification-only (current rig). Single monolithic `.data`, all-or-nothing download before startup, no cross-version cache, every subset change rebuilds the package. Fine for a 12 MB local check, unusable at 2.6 GB. |
-| HTTP fetch/streaming + IndexedDB/OPFS cache | **Recommended.** Lazy per-pack download, browser-managed persistence, range requests for large packs, streaming decode for audio. Only new code is a small fetch→MEMFS/IDBFS bridge; the asset layer is untouched. |
-| IndexedDB/cache alone (without HTTP packs) | A cache is not a source. IDBFS/OPFS is the persistence half of the recommended path, not a delivery path by itself. |
+The original Track W proposal compared embedded assets, Emscripten preload,
+and runtime fetch/persistence. Its scale and data-handling constraints remain
+useful, but the proposed per-pack mount, `/packs/` cache protocol and future-work
+recommendations below were superseded by the per-asset `?delivery=` client.
 
 ## 2. Constraints (W3)
 
@@ -82,12 +53,13 @@ Why not the alternatives:
   any pack, or any cache checked into the project. The release must load
   user-provided data at runtime; verification data lives only in gitignored
   dirs (`Higurashi-Daybreak/`, `/tmp/foundation-web-assets/`, `build/`).
-- **What still cannot run in-browser.** Anything not yet ported anywhere
-  (effects techniques, 2D/HUD, audio, game camera — see PORT-PLAN checkpoint)
-  is equally absent on web. No web-only stubs: the web runs the same
-  `main.cpp` code path as native (§5).
+- **Current browser gaps.** Native audio, HUD, camera and gameplay paths exist;
+  the web movie player remains a deliberate stub, front-end scripted navigation
+  has an open issue (#59), and hardware-adapter/visual parity remain unverified.
+  The web build shares the native `main.cpp` path apart from platform-specific
+  services such as browser movie playback.
 
-## Runtime fetch, verified end-to-end (W2 follow-through)
+## Historical pack-loader run, verified end-to-end (W2 follow-through; superseded)
 
 `?pack=<manifest-url>` fetches the manifest and every listed file into `/packs/`
 (percent-encoding Shift-JIS-derived UTF-8 names), then `?asset=` — or the
@@ -110,7 +82,7 @@ URL encoder mangled `:` in `http://`; and `emscripten_fetch_wait()` never
 resolved in this setup (HTTP 0 every attempt), so completion goes through
 `onsuccess`/`onerror` callbacks pumped by the same yield the adapter waits use.
 
-## Persistence, verified (IndexedDB via IDBFS)
+## Historical `/packs/` persistence run (IndexedDB via IDBFS; superseded)
 
 `/packs/` is an IDBFS mount: after a fetch, the manifest hash plus every file
 syncs back, and the next boot populates from storage, compares the hash, and
@@ -198,7 +170,7 @@ re-reading until non-blank. For committed verification the deterministic route
 is §5 (in-engine offscreen capture printed to the console), which removes the
 browser compositor from the loop entirely.
 
-## 4. Proposed integration patch (parent-owned files — NOT applied)
+## 4. Historical proposed integration patch (never applied)
 
 Track W may not touch `CMakeLists.txt` / `src/main.cpp`; the following is the
 proposal for the parent. Goal: make the web build self-reporting — one
@@ -245,19 +217,18 @@ browser harness can read it. No new asset mechanism, no layering change.
       const double now = plat::now();
 ```
 
-Follow-up (landed): the fetch→`/packs/` loader behind the same
-`FOUNDATION_WEB_ASSET` injection point is implemented
-(`src/platform/web_pack.cpp`, manifests via `scripts/make_pack.py` with
-`asset=`/`base=`/paths, `?pack=` handling at `src/main.cpp:1734-1741`)
-with IDBFS caching — the 'future decision' framing above is closed.
+Historical follow-up: the `?pack=` loader and IDBFS cache were implemented
+for the experiment described above. Issue #4 replaced them as the production
+path with `?delivery=` and per-asset cache; see the current-path section at the
+top and `BUILD-web.md`.
 
 ## 5. Not verified
 
-- `FOUNDATION_WEB_CAPTURE` patch above: proposed only, never compiled or run.
 - `toDataURL()` on a hardware adapter / real vsync (SwiftShader only here).
 - `toDataURL()` blank-frame race under load; headed-Chromium screenshot path
   (no Xvfb here, per BUILD-web.md).
-- OPFS alternative, range requests, BGM/movie streaming, hardware-adapter
-  runs: still open (fetch + IDBFS persistence are implemented, per §§1–2).
+- OPFS alternative, range requests, hardware-adapter runs: not measured in this
+  dated evidence pass. Current browser movie limitation and delivery verification
+  are recorded in `BUILD-web.md`.
 - macOS anything (out of scope per PORT-PLAN).
 - Full-tree or multi-pack web load (only `akane:0`, 12 MB, exercised).

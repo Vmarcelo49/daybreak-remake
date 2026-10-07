@@ -4,7 +4,7 @@ Owned files changed: `src/render/scene_renderer.{h,cpp}` (`Pass`, pipelines,
 ordering, stencil depth). Shader untouched except R1/R4 items (see
 `RENDER-MATERIALS.md`).
 
-## R2 — additive effect pass for the observed cards
+## Additive Effect pass (R2; original implementation record)
 
 Observed failure (pre-change binary, `effect/hit.X` 0.00% coverage is a framing
 miss; the telling ones): `aura/00.X` and `effect/01.X` render as **opaque black
@@ -44,9 +44,10 @@ Verification — `/tmp`-only caller shim (a copied `main.cpp` in `/tmp`, repo
   edges remain visible against sky (texture floor ≈ 0.06 adds uniformly); the
   original presumably shows the same with these textures, or its technique keys
   the skirt — unverified, observed and stated.
-- Without role assignment (all in-repo demo paths: `--model` keeps role
-  `"model"`), effect captures are **byte-identical** to pre-change
-  (`effect/01.X`: 0 px) — the new pass cannot alter any existing capture.
+- With no effect-role model, existing captures follow their previous path. The
+  `--effect=<file>` loader now assigns role `effect` (and can append an effect to
+  another loaded asset), so those cases intentionally use the added Effect pass;
+  a bare `--model` remains role `model` and opaque.
 
 Out of scope (labeled, not claimed): trails, hit sparks beyond `hit.X`/`hit2`,
 per-effect blend factors from the 10 compiled effect shaders (technique
@@ -59,16 +60,13 @@ cylindrically around world Y — the verdict is geometry-only in
 (`:457-460`, `:567-570`, `:761-773`; header documents it at
 `src/render/scene_renderer.h:214-220,268-280`). Ground-plane cards stay put.
 
-Parent-owned follow-up, now landed: `--effect=<file>` loads one card with the
-effect role (standalone, or riding along with any other asset the way a weapon
-rides a character), and the `main.cpp` draws line prints the effects count.
-Nested `EffectInstance` parsing landed as `Material::effectFile` in
-`readMaterialBody`, covering named and inline materials
-(`src/assets/xmodel.h:1400-1407`). Routing in `classifyPass` is deliberately
-unchanged until an asset actually carries an effect file
-(`src/render/scene_renderer.cpp:41-45`).
+The follow-up integration is current: `--effect=<file>` loads a model with the
+effect role, standalone or alongside another asset; the render log prints the
+effect-draw count. Nested `EffectInstance` parsing is represented as
+`Material::effectFile` in `src/assets/xmodel.h`; routing still uses role/material
+signals as implemented in `src/render/scene_renderer.cpp`.
 
-## R3 — decal overlap: DX9 stencil guard, verified on captures
+## Decal overlap: original DX9 stencil behavior (R3 implementation record)
 
 The DX9 reference (`x_model_loader.cpp render_frame`) draws shadow decals with
 `EQUAL 0 / INCRSAT` stencil so overlapping cards darken each pixel at most once.
@@ -92,7 +90,7 @@ reverted, so every pixel below is the guard alone):
   159877 unchanged** — exactly the double-darken signature: previously
   twice-multiplied overlap texels now multiply once, nothing else touched.
 
-## Not verified
+## Remaining verification gaps (per this implementation record)
 
 - Shadow cards against a DX9 frame (PORT-PLAN's bar): no DX9 run this session.
   The guard matches the in-tree DX9 states verbatim and the pixel signature is

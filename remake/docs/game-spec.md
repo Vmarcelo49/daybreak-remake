@@ -28,9 +28,10 @@ Two teams of two fight in 3D stages modeled on series locations
   stage the DX9 remake hardcoded); there is no `stage22`–`stage26`. Each
   ships visible meshes plus separate `collision.x` / `collision_camera.x` /
   `collision_tama.x`.
-- **Boot flow** (target): `movie/op.mpg` plays (skippable with any button) →
-  title menu; in the foundation the movie path is stubbed
-  (`foundation/src/audio/video.h`), so it boots straight to the title screen.
+- **Boot flow**: the native foundation plays `movie/op.mpg` before the title
+  and recovers the original held Enter/Alt skip. The Emscripten movie path is
+  still a deliberate browser-side stub; see `foundation/docs/MEDIA-INPUT.md` §3
+  and `foundation/docs/BUILD-web.md`.
   Menu text is Japanese; a community mod translates it:
   **Story · Versus · Netplay · Option · Controller · Exit**.
 - **Modes**: Story (preset teams, bracketed fights + movies), Versus
@@ -246,15 +247,15 @@ VS, unset slots autofill COM-random) → Battle → Result sequence (sting
 Team select. Punishment costumes and report titles are **session-scoped
 flags, never saves**. Full shot log: `docs/reference/README.md`.
 
-## 4. Build plan (ordered)
+## 4. Historical build-plan snapshot (pre-Phase 5)
 
-Status key: ✅ in the foundation (`remake/foundation/`) · 🔶 partial · ❌ missing.
-Code truth: `foundation/README.md` + `foundation/docs/ROADMAP-PENDING.md`; the
-DX9 remake this table was written against is deleted (cutover commit `5a63db3`,
-`pre-webgpu-cutover` tag `37ed31d`) and its rows survive only as provenance.
-RE truth: `reverse-engineering.md` (camera numbers corrected by
-`foundation/src/gameplay/arena_camera.h`); the "Now" column below still leans on
-the deleted tree in places and is marked where it does.
+The table below records the ordered plan/status snapshot from the DX9-remake
+era; it is provenance, not the current project roadmap. The DX9 tree was deleted
+in the Phase 5 cutover (2026-10-02), and several statuses have since changed.
+For current code truth and remaining work, use `foundation/README.md` and
+`foundation/docs/ROADMAP-PENDING.md`. RE truth is in
+`reverse-engineering.md` (camera numbers corrected by
+`foundation/src/gameplay/arena_camera.h`).
 
 | # | System | Now | Work |
 |---|---|---|---|
@@ -267,10 +268,10 @@ the deleted tree in places and is marked where it does.
 | 7 | Overkill | ✅ downed-hit **+1/hit** on the port's 3 s KO clock (`match_economy.*`, issue #11) | The original ends the window when the KO move's descent/recovery ends (the port's clock is a documented port rule) and the gray-lock cutoff presentation is unmodelled |
 | 8 | Bots | ✅ recovered decision state (`gameplay/bot_brain.*`, issue #14): tactic cells, timers, approach/retreat, melee/shoot/guard/special choices; the old frame-modulo sparring policy is gone | Difficulty tiers for empty versus slots and any original decision branch the corpus does not carry remain open (`ROADMAP-PENDING.md`, "COM decision state and tactics") |
 | 9 | Split-screen | ✅ one view per human controller (issue #12): the recovered 1/2/4-cell layouts (`FUN_006396f0.c:63-66`, :82-96; the old 256×448 reading came from the options-screen ctor `FUN_00402890`, not the split path), viewport + scissor per view, per-player ArenaCamera, per-view HUD | A human-less cell keeps the clear colour (port policy for the unidentified placeholder); `--local-players=N` is the device-free verification instrument |
-| 10 | Versus frontend | ✅ title, select, stage/settings, VS, battle, result and the loop back to select (`foundation/src/ui/screen_*`; issues #12/#13/#19/#20). Team → char → weapon/costume → hypermode → controller → ready → stage/settings → VS sting → result sequence → select, verified end to end on real assets by `foundation/docs/RELEASE-CHECKLIST.md` | Exact original navigation parity (cursor paths/one-frame quirks) and two renderer options (issue #21 rows 1-2; toon shading is live) remain open; punishment/titles are session flags, as the original |
+| 10 | Versus frontend | ✅ title, select, stage/settings, VS, battle, result and the loop back to select (`foundation/src/ui/screen_*`; issues #12/#13/#19/#20). Team → char → weapon/costume → hypermode → controller → ready → stage/settings → VS sting → result sequence → select, verified end to end on real assets by `foundation/docs/RELEASE-CHECKLIST.md` | Exact original navigation parity (cursor paths/one-frame quirks) remains open; this snapshot predates row 1 (character shadows) becoming live and should not be used as current renderer-options status. Punishment/titles are session flags, as the original |
 | 11 | LAN netplay | ❌ (DirectPlay 8 documented, not portable) | Replace, don't port: delay-based (original uses input delay ~3) lockstep over UDP, default port **37564**, `addresslist.txt` server list, lobby (8 max, team/member lock, chat flag, host-start), char/stage sync, desync hash |
-| 12 | Options / controller setup | ✅ implemented (issue #19): fullscreen, native resolution, four volume sliders, keyboard/gamepad rebinding, all persisted in `$XDG_CONFIG_HOME/daybreak-decomp/settings.conf` | Two renderer toggles stay unavailable (issue #21 rows 1-2; toon shading is live); browser-side persistence (IndexedDB/OPFS) is open. The original's 11 functions / 7 polling slots are deliberately not mirrored |
-| 13 | Story mode | ❌ (video player is a stub reporting `Unimplemented` — `foundation/src/audio/video.h`; no movie plays) | Deferred: prologue/staffroll playback + preset-team ladder, no branching/saves |
+| 12 | Options / controller setup | ✅ implemented (issue #19): fullscreen, native resolution, four volume sliders, keyboard/gamepad rebinding, all persisted in `$XDG_CONFIG_HOME/daybreak-decomp/settings.conf` | The port has live toon and character-shadow toggles; texture-resolution selection (row 2) and browser-side persistence (IndexedDB/OPFS) remain open. The original's 11 functions / 7 polling slots are deliberately not mirrored |
+| 13 | Story mode | ❌ (story scenes and ladder are not implemented; native opening-movie playback is separate and implemented, while the Emscripten movie path remains a browser-side stub) | Deferred: prologue/staffroll story flow + preset-team ladder, no branching/saves |
 
 ### Milestone cut
 

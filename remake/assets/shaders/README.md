@@ -3,9 +3,8 @@
 Relocated verbatim from the retired `mvp/shaders/` tree (see
 [`../../docs/decisions.md`](../../docs/decisions.md) D1). `mvp/` was deleted.
 
-10 compiled D3DX effect blobs loaded by `CreateAllShaders`
-(`FUN_0064ff80`; original `.rdata` addresses in the old
-`mvp/shaders/README.md`). All start with the effect signature
+10 compiled D3DX effect blobs loaded by the original executable's
+`CreateAllShaders` (`FUN_0064ff80`). All start with the effect signature
 `01 09 FE FE`.
 
 | File | Size |

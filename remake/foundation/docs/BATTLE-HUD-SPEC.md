@@ -98,7 +98,7 @@ texture art or GDI text (see §4).
 | 4 | `LIMIT 100%`, right | enemy balloon limit | (659,110)-(781,129) | (661,104)-(783,123) | art | mirrored; anchor (768,110) scale 0.5 — FUN_00644150.c:169-170 |
 | 5 | Blue balloon (left) | own balloon, grows with damage | visible tip (70,118)-(95,150) | (72,112)-(97,144) | art | P00 (0,320,192,192) pivot (96,160); anchor (85,140), y = 30 + value/2 — FUN_00644150.c:155-157; sprite 0x6ca460 |
 | 6 | Pink balloon (right) | enemy balloon | visible tip (699,116)-(734,150) | (701,110)-(736,144) | art | P00 (192,320,192,192) pivot (96,160); anchor (715,140) — FUN_00644150.c:172-174; sprite 0x6ca500 |
-| 7 | Counter `181`, top-right | frame/`DAT_006cf3c4` counter (README calls it FPS) | (759,6)-(795,18) | (761,0)-(797,12) | art | P00 **yellow** small digits; **draw site unresolved** — see §6 Q1 |
+| 7 | Counter `181`, top-right | render-FPS counter | (759,6)-(795,18) | (761,0)-(797,12) | art | P00 yellow small digits; drawn at (800,0), scale 0.5 (`FUN_006396f0`); see resolved §6 Q1 |
 | 8 | Alert balloon `!` | "this fighter is targeting you" | (377,46)-(421,91) | (379,40)-(423,85) | art | P06 (0,128,128,128) = pale pentagon; sprite 0x6c78f8 (pivot 64,64) — FUN_00642510.c:60; drawn in `FUN_00643230` |
 | 9 | `com` bar | target's HP strip, centre-top | (356,96)-(439,110) | (358,90)-(441,104) | art | P03/P01 sheets; drawn in `FUN_00643230`; pale inner fill measured (358,102)-(421,107) |
 | 10 | Targeting brackets | one ring per fighter, four art variants | (366,136)-(431,201) | (368,130)-(433,195) | art | P03 ring sheet: sprite 0x6c7d58 (base (0,128), 128x128 cells) / 0x6c7e98 (base (128,128)); drawn in `FUN_00643230`. The cell is (column, row) = (local_30, local_28) (FUN_00643230:67-96): **row 1 (0,256) red = the plain ring**, **row 2 (0,384) green = the fighter ITSELF has a target locked** (`fighter+0x304 > -1`), **row 0 (0,128) black = an action counter is running** (`hud+0x7ac > 0`), **column 2 = the hyper ring** (`fighter+0x318 == 1 && +0x845 != 0`, blinking `(frame % 0x1e)/0xf` unless `+0x848 == 0`). A second, counter-rotating copy is drawn when the fighter is the view's own player AND has no lock of its own (`local_31`). `+0x304` is written only by a LockSwitch gesture (`FUN_00421f30` via `FUN_0063c2a0` case 0x2b); the maintenance pass can only clear it, so a fighter that never selected anything stays red (issue #49). Re-decoded from the shipped p03.cnv: rows are black/red/green. The print's "red brackets around the target" is the plain ring, not a lock indicator — issue #13 |
@@ -124,12 +124,14 @@ texture art or GDI text (see §4).
 | 30 | Soft oval glow + crosshair | screen overlay (P13) | not visible | full-screen quad | art | P13 (0,0,512,512); sprite 0x6ca280 (pivot 0,0) — FUN_00642510.c:56 |
 | 31 | Violet/grey horizontal band at y≈65-90 | **NOT a HUD element** | — | — | — | It is the schoolyard wall in the 3D scene: the same colours appear at x=600 in the same rows and no layout constant in `0x6a4c90..0x6a4cd8` sits there |
 
-### Numbers in the print that the RE does not cover
+### Print-level attribution questions (distinct from implemented HUD drawing)
 
-* **Counter `181` (print (759,6)-(795,18), yellow).** `FUN_00644150.c:177-198` draws a
-  `DAT_006cf3c4`-derived counter at three x anchors 416 / 428 / 442 with y = 10, gated by
-  `DAT_006cf3c0 != 0`, and `(DAT_006cf3c4 + 0x3b) / 0x3c` as the value. That is a *top-centre*
-  position, not the top-right corner of the print. Not resolved; see §6 Q1.
+* **Counter `181` attribution in the print.** The original renderer draws its FPS counter at
+  `(800,0)` (`FUN_006396f0`; resolved in §6 Q1). The print's measured box is at the top-right;
+  that attribution does not match the separate top-centre `DAT_006cf3c4`-derived counter drawn
+  by `FUN_00644150.c:177-198` at x anchors 416 / 428 / 442, y=10, gated by
+  `DAT_006cf3c0 != 0`, with value `(DAT_006cf3c4 + 0x3b) / 0x3c`. Keep these two observed
+  counters distinct; this table records the unresolved print-level attribution only.
 * **`com` bar and brackets** are drawn from the *projected* target position
   (`FUN_00643230`), not from fixed constants — a spec must reproduce the projection
   (`x = (clip.x/clip.w)*400 + 400`) and the 70.0 world-unit lift, not a fixed rect.
@@ -229,24 +231,26 @@ outline.
 
 ## 5. Priority list
 
-Ordered by visible difference from the foundation's current HUD (plain Arial-bold text + flat
-bars), largest first. "Size" = what a track must produce.
+Historical implementation priority list, written before the atlas HUD landed. It records
+why the original elements were prioritized, not a current work queue: the foundation now
+draws the atlas-backed corner and per-fighter HUD through `src/ui/hud_atlas.*` and
+`src/ui/hud.cpp`. "Size" was the original implementation estimate.
 
 | # | Element | Why first | Size |
 |---|---|---|---|
-| 1 | **Sprite/atlas pipeline for `.cnv`** (P00/P01/P02/P03/P06) | Nothing else can land without it; the container and the 32bpp BGRA path are already documented | **assets found** (5 entries, ~3.6 MB), **layout known** (`FUN_00642510` table), ~1 sprite struct + sub-rect UVs |
-| 2 | **Bottom-right cluster**: MAIN bar + count, CHARGE bar + count, HP frame + yellow fill | The single largest area of flat-colour error in the gate frame; all four are pure art with exact anchors | **assets found**, **layout known** — anchors (623,471) (597,517) (505,565), counts (702,443) (676,489); small |
-| 3 | **OYASHIRO fan gauge** (frame + gradient fill) | The most distinctive silhouette in the print; the foundation draws nothing like it | **assets found** (P01 (0,256,300,128) + P02 fills), **layout known** — anchor (55,488); medium (needs the clipped-fill draw, `FUN_00645250`) |
-| 4 | **Balloon `0%` / `LIMIT 100%` readouts + balloon sprites, both corners** | Four labels + two growing sprites, mirrored; the corner composition is very visible | **assets found**, **layout known** — anchors (110,80) (138,110) (740,80) (768,110) (85,140) (715,140); medium (number rendering + the `y = 30 + value/2` balloon growth) |
-| 5 | **Boxed `適当` tactics label** | The CJK element the owner flagged; currently absent | **assets found** (P03 cell), **layout partially unresolved** (§6 Q2); small once resolved |
+| 1 | **Sprite/atlas pipeline for `.cnv`** (P00/P01/P02/P03/P06) | Historical prerequisite; now implemented by `HudAtlas` | Assets and layout evidence are retained in §3 and `src/ui/hud_atlas.h` |
+| 2 | **Bottom-right cluster**: MAIN bar + count, CHARGE bar + count, HP frame + yellow fill | High-visibility atlas art; now composed by `HudComposer` | Anchors and source art remain documented in §2–§3 |
+| 3 | **OYASHIRO fan gauge** (frame + gradient fill) | Distinctive atlas element; frame, fill and mode caption are now composed in `HudComposer` | Anchor (55,488); original fill behavior is documented in §1 and implemented through the atlas fill helper |
+| 4 | **Balloon `0%` / `LIMIT 100%` readouts + balloon sprites, both corners** | Both corners are now composed from the original atlas art | Anchors and growth rule remain recorded in §2–§3 and `src/ui/hud.cpp` |
+| 5 | **Boxed command label** | The P03 cell and its anchor are resolved in §6 Q2; the current composer draws the selected cell | Ported with the P03 atlas; the full command-state mapping remains a gameplay question |
 | 6 | **Targeting brackets + `com` bar + alert balloon** (per-fighter) | Needs the world→screen projection and per-fighter state, not just corner constants | **assets found** (P03 rings, P06 balloons), **layout known for the projection** (`FUN_00643230.c:56-58`); medium |
 | 7 | **Round stings**: `3 2 1`, `開始!`, `撃破!`, `赤組/青組 大勝利` | Large full-screen art, but they are transients — the gate frame does not contain them | **assets found** (P09/P04/P05/P08), **layout known** (`FUN_00633ca0.c:77-86`); medium |
-| 8 | **STAMINA bar** + the (216,520) command indicator | Contextual, absent from the gate frame | **assets found**, **layout known** — anchors (400,517) and (216,520); small |
+| 8 | **STAMINA bar** + the (216,520) command indicator | Contextual elements, absent from the gate frame; current HUD composition supports both when state calls for them | Anchors (400,517) and (216,520) |
 | 9 | **`OVER KILL!!`/`DOWN!`/`PAUSE` overlays** | Pause/message path, separate from battle | **assets found** (`system.cnv`), **layout known** (`FUN_00633ca0.c:89-95`); small |
 
 ---
 
-## 6. Open questions
+## 6. Resolved questions and remaining uncertainties
 
 1. **[RESOLVED 2026-10-03] Where is the top-right counter (`181`) drawn?**
    It is the render-FPS counter, not a game value: `FUN_006396f0` draws
@@ -313,7 +317,7 @@ bars), largest first. "Size" = what a track must produce.
    y118-155/y175-215; two small: green y245-276 and yellow y280-308). The print uses small glyphs
    for `0%`/`100%` (measured 28x21) but they render white, and no *white small* set was found in
    P00. Either a fifth set exists outside the bands scanned, or `FUN_00431b50` recolours.
-   **Next step:** scan P00 bands y 210-250 and y 308-330 at glyph level.
+   This print-level glyph identification remains an evidence question; the runtime HUD uses its own P00 glyph table (`src/ui/hud_atlas.h`).
 6. **`FUN_00643230`'s sprite handles and cell indices.** The per-fighter draws use
    `FUN_00655830(x, y, local_30, local_28)` with `local_30 ∈ {0,2}` and `local_28 ∈ {0,1,2}`;
    the sprite is loaded into ECX earlier in the function and was not captured. The bracket/arrow

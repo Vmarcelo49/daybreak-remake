@@ -1,57 +1,42 @@
 # UI integration (applied)
 
-The seams below are the ones `CMakeLists.txt` and `src/main.cpp` actually use
-(merged in `48119f6`; PORT-PLAN's parent-owned phase is over). `ui/` needs a
-live `WGPUDevice`/`WGPUQueue`, the swapchain format and one encoder per frame —
-and, for the atlas HUD and the screens, `fnd::assets::assetSource()`
-(bundle-first CNV resolution, hud_atlas.h:30-35) plus the fetched faces under
-`third_party/fonts/` for the text paths.
+The seams below cover the core HUD, screen-stack, and capture paths currently
+used by `CMakeLists.txt` and `src/main.cpp`; they were merged in `48119f6`.
+`ui/` needs a live `WGPUDevice`/`WGPUQueue`, the swapchain format and one
+encoder per frame. Atlas screens/HUD use `fnd::assets::assetSource()`
+(bundle-first CNV resolution, `hud_atlas.h:30-35`). Runtime captions load the
+packaged Gyrotrope face and Japanese fallback through `ui/caption.h`; build and
+font packaging details are in `CMakeLists.txt:200-215,236-243` and the target
+build docs.
 
 ## CMake
 
-```cmake
-add_library(foundation_ui STATIC
-    src/ui/sprite.cpp
-    src/ui/font.cpp
-    src/ui/hud.cpp
-    src/ui/hud_atlas.cpp
-    src/ui/text.cpp
-    src/ui/fallback.cpp
-    src/ui/screen.cpp
-    src/ui/screen_title.cpp)
-target_include_directories(foundation_ui PUBLIC src)
-target_include_directories(foundation_ui PRIVATE third_party/stb)  # stb_truetype.h
-# hud_atlas.cpp decodes HUD sheets through xm::decodeCnvImage, which assets/ owns.
-target_link_libraries(foundation_ui PUBLIC foundation_assets)
-target_link_libraries(foundation_ui PUBLIC foundation)
+`foundation_ui` is a static target with UI, screen, caption, result, settings,
+and soft-keyboard translation units. It links `foundation_assets`, `foundation`,
+and `foundation_movie` and includes `third_party/stb` privately for
+`stb_truetype` (see `CMakeLists.txt:99-132`). The initial 2026-10-02 target
+contained only sprite/font/HUD/text/fallback plus the screen stack and title
+screen; the table here is intentionally omitted because `CMakeLists.txt` is the
+current, authoritative source list.
 
-target_link_libraries(foundation_demo PRIVATE foundation_ui)
-```
+`ui_wgsl` is include-embedded; no shader build rule is needed. Shared UI code
+has no backend `#if`; presentation differences stay inside `gpu.cpp`.
 
-`src/shaders/ui_wgsl.h` is `#include`-embedded like `model_wgsl.h`; no build
-rule needed. No compile definitions are required on any target: `ui/` has no
-backend `#if` (the present-call difference stays inside `gpu.cpp`'s
-`endFrame`, which the UI pass never touches).
+## Historical main.cpp wiring sketch
 
-## main.cpp wiring sketch
+This sketch records the early integration shape; current line references are
+listed under [Front-end screens](#front-end-screens-the-second-seam) and the
+release checklist.
 
-Init once (main.cpp:491-495): `ui::SpriteRenderer uiRenderer;
-ui::ScreenStack screens; ui::HudComposer hudComposer;` — with
-`HudComposer::uploadFont` non-fatal on the game path but deliberately fatal on
-the `--hud-test` capture rig, because a capture without labels would silently
-prove less (main.cpp:1406-1411).
+Historically, initialization was described as `SpriteRenderer`, `ScreenStack`,
+and `HudComposer`; the app currently initializes these in separate boot paths.
+HUD state is filled for match views and the scripted versus timeline, then
+composed over the 3D frame. Menus draw through `ui::drawScreenFrame` on the
+window path (`main.cpp:6207-6212`) and through `screenCaptureHook` for captures
+(`main.cpp:5662-5667,6176-6178`). `ui::FallbackOverlay` remains library support,
+not wired into a frame path.
 
-Per frame: `uiRenderer.beginFrame(w, h)` then
-`hudComposer.compose(uiRenderer, state, layout)` in the same encoder the 3D pass
-used (the `HudTestHook`, main.cpp:1839-1846), state filled by
-`gameplay/hud_fill.h`'s `hudStateFor` for a match and `game/hud_bridge.h`'s
-`makeHudState` for the versus timeline. Menus are the other path:
-`ui::drawScreenFrame(screens, ui, w, h, enc, view, format, error)` on the window
-path (main.cpp:2016), `screenCaptureHook` under `--screen --out`
-(main.cpp:1856-1860, 1987). `ui::FallbackOverlay` is compiled but not wired into
-any frame.
-
-Notes for the integrator:
+Runtime composition notes:
 
 - **Same encoder, one submit.** HUD quads join the frame the 3D pass started;
   `render()` opens a `Load`-preserving pass, so ordering is 3D-then-UI with no
@@ -71,16 +56,14 @@ Notes for the integrator:
   main.cpp:1839-1846, called from `captureHook` at main.cpp:1901-1906).
   `capture()` fails on a menu frame because there is no 3D pass, so menus use
   `captureUi()` against a cleared opaque-black target (main.cpp:1987-1989).
-- **Two atlases, two failure modes.** The battle sheets are all-or-nothing: one
-  missing sheet puts the whole text HUD back with a single stderr line naming it
-  (hud.cpp:259-273). The label atlas independently prefers the fetched font
-  chain (`loadHudChain`) over the bitmap atlas; only when both are absent are
-  labels skipped and bars still drawn (hud.cpp:158-210, 213-246).
-- **Text input encoding.** Strings are UTF-8: the bitmap path decodes through
-  `ui::utf8Next`, and `ui::TextLayer` (`ui/text.h`) is the CJK-capable path with
-  `\cRRGGBB`/`\n` control codes. Shift-JIS game names must pass through
-  `xm::sjisToUtf8` (assets/cnv.h) first, as texture resolution does. The battle
-  HUD's own labels (`LIMIT`, `MAIN`, `適当`, …) are atlas cells, not strings.
+- **HUD asset fallbacks.** Battle art sheets are all-or-nothing: one missing
+  sheet selects the text HUD and logs the missing asset (`hud.cpp:259-273`).
+  Text labels prefer the runtime caption font chain; if it cannot load, the
+  embedded bitmap atlas is used (`hud.cpp:110-134`).
+- **Text input encoding.** `ui::TextLayer` accepts UTF-8 and implements the
+  `\cRRGGBB`/`\n` control codes; its bitmap fallback decodes via `utf8Next`.
+  Shift-JIS game strings are converted with `xm::sjisToUtf8` before rendering.
+  The battle HUD's art labels (`LIMIT`, `MAIN`, `適当`, …) remain atlas cells.
 
 ## Front-end screens (the second seam)
 

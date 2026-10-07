@@ -10,10 +10,11 @@ before drawing text that may add Unicode glyphs to the atlas. HUD captions,
 result text, settings/key configuration and diagnostics use this shared
 choice. Existing image labels and image-based numerals keep their original art.
 
-Gyrotrope has no Japanese glyphs. `NotoSansCJKjp-Regular.otf`, fetched by the
-existing dependency script, supplies those glyphs through the font chain.
-Native builds copy the caption face and available Japanese fallback beside
-the executable under `assets/fonts`; web builds preload the same files.
+Gyrotrope lacks Japanese glyphs; `NotoSansCJKjp-Regular.otf` supplies them
+through the font chain. The repository-level `fetch_deps.sh` fetches it into
+ignored `foundation/third_party/fonts/`, separate from `foundation/build.sh deps`.
+Native packages include both faces under `assets/fonts`; web preloads available
+faces there.
 The embedded bitmap font remains an emergency fallback for missing fonts or
 unsupported glyphs. Historical DX9 metric tests explicitly use their original
 Liberation Sans reference and do not define the product's caption face.

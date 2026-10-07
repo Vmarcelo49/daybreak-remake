@@ -29,9 +29,10 @@ fetched by `remake/scripts/fetch_deps.sh`, the host-toolchain-and-fonts script โ
 not by `build.sh deps`, which only fetches third-party sources): `NotoSansCJKjp-Regular.otf`, the CJK face
 `text_test` looks for (`tests/text_test.cpp:406`), and
 `LiberationSans-Bold.ttf`, the Latin face `hud_text_test` needs. Without them
-those two tests SKIP (they print where they looked); everything else in the
-13-test suite runs. `FOUNDATION_CJK_FONT` (resp. `FOUNDATION_LATIN_FONT`) or
-argv[1] overrides the search.
+those two tests SKIP (they print where they looked); the remaining tests continue to run.
+The suite now registers 63 tests (see `RELEASE-CHECKLIST.md` ยง2); use `ctest`'s own summary
+for the current count. `FOUNDATION_CJK_FONT` (resp. `FOUNDATION_LATIN_FONT`) or argv[1]
+overrides the search.
 
 Observed (Arch, Mesa 26.2.3, RADV, Wayland session):
 

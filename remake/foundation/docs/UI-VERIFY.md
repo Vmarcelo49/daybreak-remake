@@ -1,9 +1,10 @@
-# UI verification (Track U)
+# UI verification — historical Track U scratch run
 
-All checks run from a disposable scratch dir; no shared build file was changed
-and nothing under `/tmp` is committed. The library itself is unintegrated, so
-verification compiles `src/ui/*` directly against the real `webgpu.h` with the
-same flags the Linux build uses.
+This records the pre-integration scratch verification, not the current UI status.
+The checks ran from a disposable `/tmp/ui_verify` directory and did not change a
+shared build file. At that point they compiled selected `src/ui/*` files directly
+against `webgpu.h`; the UI was subsequently integrated into `foundation_demo`
+(`CMakeLists.txt:99-132`, `src/main.cpp:5091-5176,6207-6212`).
 
 ## Commands (exact)
 
@@ -78,19 +79,18 @@ GPU (headless wgpu-native → Vulkan/RADV, no surface, 400x300 offscreen):
   coverage, luminance 0.067..1.000; `/tmp/ui_verify/out.ppm` shows corner
   labels, bottom bars, centred stamina and the corner sprite in place.
 
-## Not verified
+## Historical gaps (status at the scratch run)
 
-- **No in-engine frame.** The layer is unintegrated by design: no `main.cpp`
-  wiring, no HUD-over-3D capture, no byte-identical Linux/Windows pair. The
-  offscreen pattern it needs is proven headless, but the parent's integration
-  must re-run captures before any commit.
-- **No Dawn-family execution.** Shared code has no backend `#if`, but only
-  wgpu-native/Vulkan ran here. Web (emdawnwebgpu) and Windows/Wine exercise is
-  open — expected to work, not shown.
-- **No visual sign-off beyond the scratch PPM.** Glyph aesthetics and colour
-  fidelity were asserted numerically (ink counts, probe pixels, coverage), not
-  judged against the DX9 reference screenshots.
-- **No CJK.** Unsupported codepoints render as `?` by design; JP HUD text
-  needs a separate font track.
-- **No performance numbers.** A 78-quad HUD rewrites one small vertex buffer
-  per frame; no frame-time claim is made until it runs in the demo loop.
+These are not statements of current verification status: the run predated
+in-engine HUD/menu integration and the later CJK/runtime-caption work. Current
+cross-target, live-run, font, and visual-verification limits are tracked in
+[`RELEASE-CHECKLIST.md`](RELEASE-CHECKLIST.md) and the per-target build records.
+
+- No in-engine frame, HUD-over-3D capture, or byte-identical target pair was
+  checked by this scratch run.
+- Only wgpu-native/Vulkan executed; web/Dawn and Windows/Wine were not exercised
+  by this scratch test.
+- Glyph aesthetics and colour fidelity were judged numerically, not against the
+  reference images.
+- This run used the bitmap layer only; CJK support was not exercised.
+- No frame-time or performance claim was measured.

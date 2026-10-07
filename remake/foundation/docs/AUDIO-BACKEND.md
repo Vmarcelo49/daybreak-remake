@@ -1,8 +1,10 @@
 # AUDIO-BACKEND — SDL3 streaming engine (Track M)
 
 Real `fnd::audio::Engine` implementation on SDL3 audio streams. No SDL_mixer:
-it has no SDL3/web build in-tree, and its file-path API is what forces the
-remake through temp files. Video stays stubbed (decided in MEDIA-INPUT.md §3).
+it has no SDL3/web build in-tree, and its file-path API would force the remake
+through temp files. Native opening-video decoding and its MP2 audio sink
+are implemented; the web build still reports its movie-player stub (see
+`MEDIA-INPUT.md` §3).
 
 ## Files
 
@@ -152,7 +154,7 @@ rejection; music push/drain accounting; gated push/play dropped with queues
 unchanged; post-unlock push accepted; re-gate drops again; null-gate native
 push; closed-engine silence.
 
-## Landed wiring (was: proposed, parent-owned)
+## Landed wiring
 
 ```cmake
 # CMakeLists.txt — backend TU in the media lib (landed):
@@ -183,8 +185,8 @@ push; closed-engine silence.
 // (no SDL codes are pinned by this module — that stays in pin_tables.cpp).
 ```
 
-Still genuinely future callers (not the seam above): movie-audio MP2 frames
-and gameplay BGM wiring.
+Current callers include the opening scene's movie-audio MP2 sink, menu BGM,
+and gameplay BGM. The caller wiring is summarized in `MEDIA-INPUT.md` §5.
 
 ## Explicitly not verified
 

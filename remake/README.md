@@ -5,17 +5,19 @@ The product is [`foundation/`](foundation/README.md): C++17, **SDL3 + WebGPU**
 built for **Linux, Windows and the web**. It reads the original `.X` models,
 `.cnv` textures and `.dat` bundles directly; no asset conversion is required.
 
-The playable front end connects title → character/weapon/hypermode/controller
-selection → stage/battle settings → VS intro → live **1v1** battle →
-victory/quote/report → selection. The original game is a 2v2 arena fighter;
-four-fighter battles and LAN play remain pending. See the
-[remaining roadmap](foundation/docs/ROADMAP-PENDING.md) for current gaps.
+The playable front end connects title → team/character/weapon/hypermode/controller
+selection → stage/battle settings → VS/countdown → live **1v1 or 2v2** battle →
+victory/quote/report → selection. COM fighters and local split-screen are
+supported; LAN netplay and story mode remain unimplemented.
+See the [remaining roadmap](foundation/docs/ROADMAP-PENDING.md) for current gaps.
 
 Battle rendering and HUD placement adapt automatically to the viewport,
 including ultrawide displays. Menus retain a centered 4:3 canvas with black
 bars. Options provide native resolution selection, fullscreen and volume
-controls; bindings and settings last for the current session. Runtime captions
-use [Gyrotrope Black with a Japanese fallback](foundation/assets/fonts/README.md);
+controls; settings and bindings persist in the native user's config file (when
+available), while browser settings remain process-local. See
+[the settings policy](foundation/docs/USER-SETTINGS.md). Runtime captions use
+[Gyrotrope Black with a Japanese fallback](foundation/assets/fonts/README.md);
 existing image captions retain their original art.
 
 ## Build and run

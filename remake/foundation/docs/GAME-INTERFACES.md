@@ -1,13 +1,14 @@
 # Game-facing interfaces: fighter pose, effect events, HUD bridge
 
-Owned files: new `src/game/fighter_pose.h`, `src/game/effect_events.h`,
-`src/game/hud_values.h`, `src/game/hud_bridge.h`,
-`src/game/camera_collision.h` (query side documented in
-`docs/GAME-CAMERA.md`). `game/` ships as `foundation_game` (check TU
-`src/game/game_check.cpp`) plus `foundation_gameplay` (`src/gameplay/*`),
-both linked into `foundation_demo` — no longer header-only or
-host-test-only. The landed seam is `src/main.cpp:1833-1838`, which
-forwards `syntheticHudState()` to `game::syntheticHudState()`.
+These interfaces are implemented and integrated, rather than pending proposals.
+`src/game/` defines the pose, effect-event, HUD-value, and camera-collision
+contracts; `foundation_game` and `foundation_gameplay` are linked into
+`foundation_demo` (`CMakeLists.txt:160-198`). `gameplay::Fighter` implements
+`game::IFighterPose` (`src/gameplay/fighter.h:321,361-363`); `src/main.cpp`
+drives the camera, effect-event, and HUD paths (`main.cpp:2767-2786,3152-3163,
+3526-3547`), and `syntheticHudState()` forwards to the tested game-side
+implementation (`main.cpp:5517-5521`). This document describes current
+interfaces and provenance, not unimplemented work.
 
 ## Layering contract
 
@@ -25,30 +26,22 @@ exceptions, both documented at their use site:
 
 ## IFighterPose (`src/game/fighter_pose.h`)
 
-What the game must supply so the camera (later: character rendering) follows
-live fighters instead of env.dat spawn points: `FighterPose`
-(position Y-up game units, facing yaw about Y per `FUN_00420b30`, animation
-time in seconds, alive flag) behind `IFighterPose::pose()`. Mirrors the DX9
-side's `Fighter::position()/facing_yaw()` + animation state
-(`src/gameplay/fighter.h:199` `state_to_anim_name`, `:412-413`
-`position()`/`facing_yaw()`, `FUN_00420b30` yaw convention) and the
-lock-on skip-dead rule (`cycle_target`). `arenaTargetFrom(pose)` maps a pose
-onto `render::ArenaTarget` (position + yaw; the +50y aim raise stays inside
-`arenaViewProj`).
+`FighterPose` carries position (Y-up game units), facing yaw about Y per
+`FUN_00420b30`, animation time, and alive state behind `IFighterPose::pose()`.
+`gameplay::Fighter` implements the interface. `arenaTargetFrom(pose)` maps the
+live pose onto `render::ArenaTarget` (position + yaw); aim height is owned by
+the selected arena-camera preset. The contract preserves the original lock-on
+skip-dead behavior (`cycle_target`).
 
 ## IEffectEvents (`src/game/effect_events.h`)
 
-Spawn/kill event queue the renderer drains. Combat decides (RE provenance:
-`PendingShot` armed in `Fighter`, spawned via `m_shots.spawn/spawn_spark`
-— the ported truth is `src/game/effect_events.h`: asset-as-index, FIFO
-drain, no cap); this header only carries
-the decision: `EffectEvent{Spawn{id, position, asset, ttl}}` /
-`{Kill{id}}`, where `asset` indexes the renderer's effect-asset table, never
-a path. `EffectEventQueue` is a dumb FIFO — `pushSpawn/pushKill`, one
-`drain()` per frame that moves events out and clears (a second drain in the
-same frame is empty by construction; same-frame kill-after-spawn order is
-preserved). No cap: the per-frame drain bounds it, and a cap would drop hits
-silently.
+The event queue carries spawn/kill events from gameplay into the live effect-card
+set. `EffectEvent{Spawn{id, position, asset, ttl}}` / `{Kill{id}}` uses an asset
+index, not a path; `EffectEventQueue` preserves FIFO order and transfers pending
+events on `drain()`. The app drains it and applies its bounded live-card policy
+in `src/main.cpp:3152-3163`; combat and the scripted versus path enqueue effects
+there (`main.cpp:3866-3906,4095-4099`). This is integrated gameplay/rendering,
+not merely a proposed renderer seam.
 
 ## HudState bridge (`src/game/hud_values.h` + `hud_bridge.h`)
 
@@ -61,10 +54,9 @@ a plain `GameRgb` (RE provenance: DX9 passes the mode aura `D3DCOLOR`
 straight in). `makeHudState(v)` maps the two, resolving the tier
 colours to the surveyed `kHudTier*` values; it reads nothing but its argument,
 keeping HUD output a pure function of game state like `HudComposer` assumes.
-`syntheticHudValues()` / `syntheticHudState()` restate the `--hud-test`
-numbers from `src/main.cpp:1833-1838` as the bridge's trivial implementation —
-the parent can replace the hand-built state with that one-liner with zero
-capture-pixel change (proven by the host test below).
+`syntheticHudValues()` / `syntheticHudState()` define the `--hud-test` values
+at the game-side seam. `src/main.cpp:5517-5521` forwards to that implementation;
+the host test records the equality contract.
 
 ## Verification
 
@@ -75,29 +67,13 @@ drain, `arenaTargetFrom` field mapping, `holdColorFor` tier mapping,
 field-by-field, plus a custom-values mapping spot check —
 `GAME-INTERFACES-TEST: ok`.
 
-## Parent-owned integration (landed)
+## Integrated call shape (abridged)
 
-```cpp
-// Per frame, after the simulation steps:
-// 1. camera target from the live locked-on fighter:
-game::FighterPose pose = fighters[lockedOn].pose();
-render::ArenaTarget tgt = game::arenaTargetFrom(pose);
-// 2. effect cards: gameplay pushed spawns/kills during update...
-for (const game::EffectEvent& e : effects.drain()) renderer.applyEffect(e);
-// 3. HUD: gameplay fills plain values, the bridge maps them...
-game::GameHudValues hv;
-hv.hp = fighters[0].hp(); /* ... balloon, MAIN/CHARGE, hyper, stamina, KO ... */
-ui::HudState st = game::makeHudState(hv);
-hud.compose(batch, st, ui::computeHudLayout(w, h));
-// --hud-test becomes: ui::HudState st = game::syntheticHudState();
-```
-
-Landed as: `src/main.cpp:1833-1838` forwards `syntheticHudState()` to
-`game::syntheticHudState()`, and the versus/match path follows the
-per-frame camera/effect/HUD sketch above.
-
-Needs: a gameplay `IFighterPose` over the real `Fighter`, a renderer-side
-effect-card set fed by `drain()`, and a `foundation_game` CMake target
-— the first seam pieces are in (`foundation_game` from
-`src/game/game_check.cpp`, `foundation_gameplay` from `src/gameplay/*`,
-both linked into `foundation_demo`).
+The active app composes these concerns per frame. Match cameras are built from
+live fighters and updated with their camera-collision query
+(`src/main.cpp:2767-2786,3526-3532`); effect events are drained into the renderer
+(`main.cpp:3152-3180`); per-view HUD state is filled from gameplay and projected
+through each view (`main.cpp:3541-3547` and the match HUD pass). The --hud-test
+path uses `game::syntheticHudState()` (`main.cpp:5517-5521`). These existing
+call sites are the integration reference; the sketch below is conceptual, not a
+remaining-work list.

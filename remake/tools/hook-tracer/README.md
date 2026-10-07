@@ -8,12 +8,12 @@ maintain this tracing tool here.
 |---|---|
 | `daybreak_launcher.c` | **Working.** Injects a DLL into the original `DaybreakDX.exe` via `CreateProcess(SUSPENDED)` + `VirtualAllocEx` / `WriteProcessMemory` / `CreateRemoteThread(LoadLibraryA)`. Defaults overridable via argv. |
 | `daybreak_hook.c` (v11) | **Tracer only — patches nothing.** IAT-hooks `CreateFileA` and logs opens of asset extensions (`.cnv/.bmp/.dat/.ogg/.wav/.x`, `data/`, `movie/`) with a reentrancy guard. Earlier versions (v1–v10) attempted inline `JMP rel32` patching for direct/archive/hybrid asset modes and crashed; v11 deliberately retreated to logging. |
-| `CMakeLists.txt` | Legacy build recipe for the DLL and launcher; source paths need repair (see below). |
+| `CMakeLists.txt` | Stale CMake recipe: refers to removed `src/` paths; use the direct commands below. |
 
-> Warning: `mvp/hook/README.md` describes Modes 0/1/2 hybrid patching —
-> that design is **not in the code**. See [`../../docs/decisions.md`](../../docs/decisions.md) D4. Do not
-> plan runtime loose-file loading around this tool; it is for RE tracing
-> (which files the original opens, in which order).
+> **Scope:** earlier inline-patching / hybrid-mode designs are **not in this
+> code**. The current DLL only traces file opens. See
+> [`../../docs/decisions.md`](../../docs/decisions.md) D4; do not plan runtime
+> loose-file loading around this RE tool.
 
 Build from this directory with an installed i686 MinGW cross-compiler. The
 original executable and injected DLL are 32-bit; the product's Windows toolchain

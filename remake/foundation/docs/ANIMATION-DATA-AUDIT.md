@@ -309,14 +309,17 @@ Still port rules or unrecovered, by file:
   at `chargeMax/tickRate` = 0.9375 s, longer than the leap, so a normal air release fires
   the tap tier. Its rule is verified against the table, not exercised in play.
 - Full billboard flag `0x1000`, projectile reflection `0x100`, the remaining combat-column
-  consumers, animation metadata for the extra `.X` sets, and the `has_combat()` radius/HP
-  gate remain open as the handoff records.
+  consumers, and animation metadata for the extra `.X` sets remain open. The `has_combat()`
+  radius-versus-HP gate is resolved below (§11.1); the current runtime uses radius nonzero.
 
 ### 11.1 Highest-priority open question: the combat-record gate
 
-`MoveEntry::has_combat()` is `hitRadius > 0 && baseDamage > 0`, and it is what decides
-whether a phase has an active hit volume at all (`Fighter::melee_in_active`, the melee
-loop in `match.cpp`, and the projectile contact loop).
+At the pre-implementation baseline (`db6a083`), `MoveEntry::has_combat()` required
+`hitRadius > 0 && baseDamage > 0`, and decided whether a phase had an active hit volume
+(`Fighter::melee_in_active`, the melee loop in `match.cpp`, and the projectile contact
+loop). That predicate incorrectly excluded positive-radius, zero-power records; §11.1.2
+records the correction and the coverage that verifies it. Current code gates on radius
+nonzero, matching the original resolver's `radius != 0` test.
 
 **Recount on the winning bundle bytes** (the copies the runtime actually reads, not the
 extracted tree — a temporary scan inside `animation_data_test`, since the numbers differ):
