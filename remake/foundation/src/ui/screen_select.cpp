@@ -1,6 +1,7 @@
 #include "ui/screen_select.h"
 #include "assets/asset_source.h"
 #include "assets/exe_strings.h"
+#include "gameplay/weapon_definition.h"
 #include "ui/frontend_launch.h"
 #include "ui/hud_atlas.h"
 #include "ui/screen_stage_select.h"
@@ -9,6 +10,11 @@
 
 namespace ui {
 namespace {
+// The roster tables in screen_select.h are transcriptions of the binary's 16-character roster;
+// gameplay::kCharacterCount is what the launch validates against, so the two must agree.
+static_assert(sizeof(kSelectRosterX) / sizeof(kSelectRosterX[0]) ==
+                  (size_t)gameplay::kCharacterCount,
+              "the roster tables must cover every character gameplay knows");
 int cycle(int value, int delta, int count) { return (value + count + delta) % count; }
 // The per-character penalty costume cell (VA 0x6b72a0 in DaybreakDX.exe, 16 bytes; 0 = the
 // character has none). Read from the installed exe, like the earned-title names, so the table
@@ -37,6 +43,32 @@ int penaltyCostume(int character) {
     const int value = table[(size_t)character];
     return value > 0 ? value : -1;
 }
+
+// The roster icon's own position in the free cursor's units (FUN_00409340's +0x3cd8/+0x3ce8
+// space): its kSelectRosterX/Y cell times the icon's 48x36 pitch. The draw, the magnet and
+// both selection passes all measure against this one pair.
+struct RosterPos { float x = 0.f, y = 0.f; };
+RosterPos rosterPos(int i) {
+    return RosterPos{kSelectRosterX[i] * 48.f, kSelectRosterY[i] * 36.f};
+}
+
+// The original's two selection passes (FUN_00409340:272-286 and the 30-unit pass beside it) in
+// one walk: the 50-unit pass (2500 squared) is the fallback and the 30-unit pass (900) overrides
+// it. Both take the FIRST icon in roster order, so one walk recording each pass's first hit is
+// the original's two loops — and the confirm path's off-grid test reads the same outer pass.
+struct RosterHits { int outer = -1, inner = -1; };
+RosterHits nearestRosterIcon(float x, float y) {
+    RosterHits hits;
+    for (int i = 0; i < gameplay::kCharacterCount; ++i) {
+        const RosterPos p = rosterPos(i);
+        const float dx = p.x - x;
+        const float dy = p.y - y;
+        const float distance = dx * dx + dy * dy;
+        if (hits.outer < 0 && distance < 2500.f) hits.outer = i;
+        if (hits.inner < 0 && distance < 900.f) hits.inner = i;
+    }
+    return hits;
+}
 }
 int SelectMenu::panel(int c) const { return cursor_[c] % 3 + cursor_[c] / 3 * 2; }
 int SelectMenu::owner(int p) const {
@@ -49,12 +81,7 @@ int SelectMenu::owner(int p) const {
 // override and cannot reach further, so this one test decides the question.
 bool SelectMenu::cursorOffGrid(int c) const {
     if (c < 0 || c >= 4) return false;
-    for (int i = 0; i < 16; ++i) {
-        const float dx = kSelectRosterX[i] * 48.f - cursorX_[c];
-        const float dy = kSelectRosterY[i] * 36.f - cursorY_[c];
-        if (dx * dx + dy * dy < 2500.f) return false;
-    }
-    return true;
+    return nearestRosterIcon(cursorX_[c], cursorY_[c]).outer < 0;
 }
 void SelectMenu::tick() {
     for (int c=0;c<4;++c)
@@ -110,8 +137,9 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
                 // no special seed case: every fresh panel takes this path.
                 phase = SelectPhase::Character;
                 slot.character = 0;
-                cursorX_[c] = kSelectRosterX[0] * 48.f;
-                cursorY_[c] = kSelectRosterY[0] * 36.f;
+                const RosterPos seed = rosterPos(0);
+                cursorX_[c] = seed.x;
+                cursorY_[c] = seed.y;
                 return SelectAction::Changed;
             }
         }
@@ -175,25 +203,17 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
         // release settles on the icon it picked. A panel with no selection has nothing to
         // snap to, which is also how the original guards it (`-1 < character`).
         if (!left && !right && !up && !down && slot.character >= 0) {
-            const float dx = kSelectRosterX[slot.character] * 48.f - cursorX_[c];
-            const float dy = kSelectRosterY[slot.character] * 36.f - cursorY_[c];
+            const RosterPos target = rosterPos(slot.character);
+            const float dx = target.x - cursorX_[c];
+            const float dy = target.y - cursorY_[c];
             if (dx * dx + dy * dy < 400.f) {
-                cursorX_[c] = kSelectRosterX[slot.character] * 48.f;
-                cursorY_[c] = kSelectRosterY[slot.character] * 36.f;
+                cursorX_[c] = target.x;
+                cursorY_[c] = target.y;
             }
         }
-        // Selection, every call (:272-300): the 50-unit pass (2500 squared) is the fallback and
-        // the 30-unit pass (900) overrides it. Both take the FIRST icon in roster order, so one
-        // pass recording each pass's first hit is the original's two loops.
-        int outer = -1, inner = -1;
-        for (int i = 0; i < 16; ++i) {
-            const float dx = kSelectRosterX[i] * 48.f - cursorX_[c];
-            const float dy = kSelectRosterY[i] * 36.f - cursorY_[c];
-            const float distance = dx * dx + dy * dy;
-            if (outer < 0 && distance < 2500.f) outer = i;
-            if (inner < 0 && distance < 900.f) inner = i;
-        }
-        const int chosen = inner >= 0 ? inner : outer;
+        // Selection, every call (:272-300): see nearestRosterIcon for the two passes.
+        const RosterHits hits = nearestRosterIcon(cursorX_[c], cursorY_[c]);
+        const int chosen = hits.inner >= 0 ? hits.inner : hits.outer;
         if (chosen < 0) {
             // Off the diamond: the panel's PORTRAIT ROLLS THROUGH RANDOM CHARACTERS, one per
             // tick, and a confirm takes whichever is showing (the branch above). The original
@@ -368,8 +388,9 @@ void SelectScreen::draw(SpriteRenderer& b) const {
         const SelectChibiCell cell=selectChibiCell(selected,(int)frames_,reveal_.revealing(i));
         // FUN_0040b2b0:96-104: the slot's ramp is the (v, 2-v) scale pair on its own chibi quad,
         // about the (40,80) pivot FUN_00408330:0x408be7 gave it.
+        const RosterPos icon = rosterPos(i);
         spriteScaled(chibi_[i],{float(cell.col)*80,float(cell.row)*128,80,128},40,80,
-               kSelectRosterX[i]*48.f+400,kSelectRosterY[i]*36.f+(selected?150:160),
+               icon.x+400,icon.y+(selected?150:160),
                reveal_.scaleX(i),reveal_.scaleY(i));
     }
     for(int p=0;p<4;++p) {
