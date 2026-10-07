@@ -5,7 +5,6 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <unordered_map>
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -219,7 +218,11 @@ void SceneRenderer::releaseSceneResources() {
     for (WGPUBuffer b : buffers_)
         if (b) wgpuBufferRelease(b);
     buffers_.clear();
+    // The index is keyed by image pointer, so it describes exactly the list it
+    // indexes: clearing one without the other would hand the next scene an index
+    // into a released vector.
     textures_.clear();   // each Texture releases its own view and texture
+    texIndex_.clear();
     for (WGPUBindGroup g : textureGroups_)
         if (g) wgpuBindGroupRelease(g);
     textureGroups_.clear();
@@ -572,6 +575,103 @@ void SceneRenderer::shutdown() {
     instance_ = nullptr;
 }
 
+// Finds or uploads the texture a material names. `sm.textures` is the model's own
+// cache, so the image is shared between every material that names it and the upload
+// happens once per scene: texIndex_ memoises image -> index in textures_.
+//
+// Returns false when the upload itself failed, with `error` saying why; `index` is
+// then meaningless and the caller must abandon the scene. True with `index == -1` is
+// the ordinary "this draw has no texture" outcome — the directory ships nothing under
+// that name (a weapon naming a texture that lives in the character directory is the
+// observed case), and the caller counts it as untextured. The two cannot be folded
+// into one -1: -1 is a normal result here, and a caller that read a failure as
+// "untextured" would silently drop geometry's texture instead of failing loudly.
+//
+// `mipmapped` is the caller's policy, not something read here: only stage textures get
+// a chain, and scene_renderer.h's mip note carries the evidence for why.
+bool SceneRenderer::uploadTexture(const xm::SceneModel& sm, const std::string& name,
+                                 bool mipmapped, int& index, std::string& error) {
+    index = -1;
+    const xm::CnvImage* img = sm.textures.get(name);
+    if (!img || img->empty()) return true;
+
+    auto it = texIndex_.find(img);
+    if (it != texIndex_.end()) {
+        index = it->second;
+        return true;
+    }
+
+    // Only stage textures get a chain: the reference's other textures are created with
+    // MipLevels = 1 because their directories ship no levels. The header's mip note
+    // carries that evidence, the original's MIPFILTER state, and the box filter's
+    // byte-space rationale; levels 1-2 prefer the shipped _N siblings (B3), the box
+    // staying as the fallback past them and for missing art.
+    std::vector<std::vector<uint8_t>> levels;
+    if (mipmapped) {
+        buildMipChain(img->rgba.data(), img->width, img->height, levels);
+        // B3: levels 1-2 come from the shipped `base_1`/`base_2` files when present
+        // (FUN_00656c80 fills one D3DX level per `%s_%d.bmp`), the box level staying
+        // as the fallback otherwise. The lookup rides the same bundle-first cache as
+        // the base texture. The chain truncates to the shipped depth, which is
+        // D3DXCreateTexture's MipLevels=1+#files: sampling past the smallest shipped
+        // level clamps there on the original too. (The one observed misfit, a _2 sized
+        // like a _1, truncates to a clean 2-level chain here; the original would leave
+        // that level unfilled.)
+        uint32_t shipped = 0;
+        for (uint32_t l = 1; l <= 2 && l < levels.size(); ++l) {
+            const xm::CnvImage* sib = sm.textures.get(mipSiblingName(name, l));
+            if (sib && !sib->empty() &&
+                mipShippedDimsOk(img->width, img->height, sib->width, sib->height, l)) {
+                levels[l] = sib->rgba;
+                shipped = l;
+            }
+        }
+        if (shipped > 0) levels.resize(shipped + 1);
+    }
+    const uint32_t levelCount = mipmapped ? (uint32_t)levels.size() : 1u;
+
+    Texture tex;
+    WGPUTextureDescriptor td = {};
+    td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+    td.dimension = WGPUTextureDimension_2D;
+    td.size = WGPUExtent3D{img->width, img->height, 1};
+    td.format = WGPUTextureFormat_RGBA8Unorm;
+    td.mipLevelCount = levelCount;
+    td.sampleCount = 1;
+    tex.tex = wgpuDeviceCreateTexture(device_, &td);
+    if (tex.tex) {
+        WGPUTexelCopyTextureInfo dst = {};
+        dst.texture = tex.tex;
+        dst.aspect = WGPUTextureAspect_All;
+        for (uint32_t level = 0; level < levelCount; ++level) {
+            const uint32_t lw = std::max(1u, img->width >> level);
+            const uint32_t lh = std::max(1u, img->height >> level);
+            WGPUTexelCopyBufferLayout layout = {};
+            layout.bytesPerRow = lw * 4;
+            layout.rowsPerImage = lh;
+            dst.mipLevel = level;
+            const WGPUExtent3D extent{lw, lh, 1};
+            // A single-level texture uploads its base image exactly as it did before
+            // mips existed. writeTexture is a packed copy, so unlike copyBufferToTexture
+            // it needs no 256-byte row pitch and odd-sized CNV levels upload as-is.
+            const std::vector<uint8_t>& pixels = mipmapped ? levels[level] : img->rgba;
+            wgpuQueueWriteTexture(queue_, &dst, pixels.data(), pixels.size(), &layout, &extent);
+        }
+        tex.view = wgpuTextureCreateView(tex.tex, nullptr);
+    }
+    if (!tex.tex || !tex.view) {
+        // The local Texture owns both halves, so the one that was created is released
+        // on the way out of this return rather than outliving the process. textures_
+        // only takes ownership at the push_back below.
+        error = "texture upload failed (device out of memory?)";
+        return false;
+    }
+    index = (int)textures_.size();
+    texIndex_.emplace(img, index);
+    textures_.push_back(std::move(tex));
+    return true;
+}
+
 bool SceneRenderer::setScene(const xm::Scene& scene,
                              const std::vector<std::vector<glm::mat4>>& worlds,
                              const std::vector<glm::mat4>& modelMatrices, const Options& options,
@@ -599,9 +699,6 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
     baseDrawList_.clear();
     effectInstances_.clear();
 
-    // Images are shared between materials, so upload each one once and index draws
-    // into the result.
-    std::unordered_map<const xm::CnvImage*, int> texIndex;
     std::vector<glm::mat4> meshPalette;
     const std::vector<glm::mat4> noWorld;
 
@@ -680,105 +777,25 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                         : (mesh.materials.empty() ? xm::Material{} : mesh.materials[0]);
                 const Pass pass = classifyPass(sm.role, mat.texture);
                 if (options.textures && !mat.texture.empty()) {
-                    // const_cast: the cache hands out a shared image and keying white
-                    // out is idempotent, which is what makes mutating it here safe.
-                    xm::CnvImage* img = const_cast<xm::CnvImage*>(sm.textures.get(mat.texture));
-                    if (img && !img->empty()) {
-                        // White keys out so the card disappears where it is neutral and
-                        // only the blob multiplies.
-                        if (pass == Pass::Decal) xm::keyOutWhite(*img);
-                        auto it = texIndex.find(img);
-                        if (it == texIndex.end()) {
-                            // Only stage textures get a chain: the reference's other
-                            // textures are created with MipLevels = 1 because their
-                            // directories ship no levels. The header's mip note carries
-                            // that evidence, the original's MIPFILTER state, and the
-                            // box filter's byte-space rationale; levels 1-2 prefer
-                            // the shipped _N siblings (B3), the box staying as the
-                            // fallback past them and for missing art.
-                            const bool mipmapped = sm.role == "stage";
-                            std::vector<std::vector<uint8_t>> levels;
-                            if (mipmapped) {
-                                buildMipChain(img->rgba.data(), img->width, img->height, levels);
-                                // B3: levels 1-2 come from the shipped `base_1`/`base_2`
-                                // files when present (FUN_00656c80 fills one D3DX
-                                // level per `%s_%d.bmp`), the box level staying as
-                                // the fallback otherwise. The lookup rides the
-                                // same bundle-first cache as the base texture.
-                                // The chain truncates to the shipped depth, which
-                                // is D3DXCreateTexture's MipLevels=1+#files:
-                                // sampling past the smallest shipped level clamps
-                                // there on the original too. (The one observed
-                                // misfit, a _2 sized like a _1, truncates to a
-                                // clean 2-level chain here; the original would
-                                // leave that level unfilled.)
-                                uint32_t shipped = 0;
-                                for (uint32_t l = 1; l <= 2 && l < levels.size(); ++l) {
-                                    const xm::CnvImage* sib = sm.textures.get(
-                                        mipSiblingName(mat.texture, l));
-                                    if (sib && !sib->empty() &&
-                                        mipShippedDimsOk(img->width, img->height, sib->width,
-                                                         sib->height, l)) {
-                                        levels[l] = sib->rgba;
-                                        shipped = l;
-                                    }
-                                }
-                                if (shipped > 0) levels.resize(shipped + 1);
-                            }
-                            const uint32_t levelCount =
-                                mipmapped ? (uint32_t)levels.size() : 1u;
-                            Texture tex;
-                            WGPUTextureDescriptor td = {};
-                            td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
-                            td.dimension = WGPUTextureDimension_2D;
-                            td.size = WGPUExtent3D{img->width, img->height, 1};
-                            td.format = WGPUTextureFormat_RGBA8Unorm;
-                            td.mipLevelCount = levelCount;
-                            td.sampleCount = 1;
-                            tex.tex = wgpuDeviceCreateTexture(device_, &td);
-                            if (tex.tex) {
-                                WGPUTexelCopyTextureInfo dst = {};
-                                dst.texture = tex.tex;
-                                dst.aspect = WGPUTextureAspect_All;
-                                for (uint32_t level = 0; level < levelCount; ++level) {
-                                    const uint32_t lw = std::max(1u, img->width >> level);
-                                    const uint32_t lh = std::max(1u, img->height >> level);
-                                    WGPUTexelCopyBufferLayout layout = {};
-                                    layout.bytesPerRow = lw * 4;
-                                    layout.rowsPerImage = lh;
-                                    dst.mipLevel = level;
-                                    const WGPUExtent3D extent{lw, lh, 1};
-                                    // A single-level texture uploads its base image exactly
-                                    // as it did before mips existed. writeTexture is a packed
-                                    // copy, so unlike copyBufferToTexture it needs no
-                                    // 256-byte row pitch and odd-sized CNV levels upload
-                                    // as-is.
-                                    const std::vector<uint8_t>& pixels =
-                                        mipmapped ? levels[level] : img->rgba;
-                                    wgpuQueueWriteTexture(queue_, &dst, pixels.data(),
-                                                          pixels.size(), &layout, &extent);
-                                }
-                                tex.view = wgpuTextureCreateView(tex.tex, nullptr);
-                            }
-                            if (!tex.tex || !tex.view) {
-                                // The local Texture owns both halves, so the one that was
-                                // created is released on the way out of this return rather
-                                // than outliving the process. textures_ only takes
-                                // ownership at the push_back below.
-                                error = "texture upload failed (device out of memory?)";
-                                return false;
-                            }
-                            it = texIndex.emplace(img, (int)textures_.size()).first;
-                            textures_.push_back(std::move(tex));
-                        }
-                        d.texture = it->second;
-                        ++stats_.textured;
-                    } else {
-                        ++stats_.untextured;
+                    // The decal white-out is a pass decision, so it stays here rather
+                    // than moving into uploadTexture(): white keys out so the card
+                    // disappears where it is neutral and only the blob multiplies, and
+                    // it has to happen before the image is uploaded. const_cast: the
+                    // cache hands out a shared image, keyOutWhite is idempotent (so a
+                    // later decal re-keying it is harmless), and the upload below is
+                    // the only reader.
+                    if (pass == Pass::Decal) {
+                        xm::CnvImage* img =
+                            const_cast<xm::CnvImage*>(sm.textures.get(mat.texture));
+                        if (img && !img->empty()) xm::keyOutWhite(*img);
                     }
+                    if (!uploadTexture(sm, mat.texture, sm.role == "stage", d.texture, error))
+                        return false;
+                    if (d.texture >= 0) ++stats_.textured; else ++stats_.untextured;
                 } else {
                     ++stats_.untextured;
                 }
+
                 d.pass = pass;
                 // The original's toon technique covers the per-character draw
                 // (FUN_006396f0:126-140) and the object material path FUN_005f60b0:121-126,

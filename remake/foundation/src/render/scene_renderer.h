@@ -563,6 +563,12 @@ private:
     // per (format, pass, entry) so enabling an experiment builds one extra variant.
     WGPURenderPipeline pipelineFor(WGPUTextureFormat, Pass, bool npr, std::string& error);
     bool ensureDepth(uint32_t width, uint32_t height, std::string& error);
+    // Uploads the texture a material names and hands back its index in textures_
+    // through `index`. False is a failed upload, and the caller must give up the
+    // scene; true with an index of -1 is the ordinary "this draw has no texture".
+    // The definition says why those two are not both -1.
+    bool uploadTexture(const xm::SceneModel&, const std::string& name, bool mipmapped, int& index,
+                       std::string& error);
     // The shadow map (issue #21 row 1). One light-space target per view, because the
     // original builds its light matrix and runs the caster pass inside the per-view loop
     // (FUN_006396f0:0x639b80/0x639b8c); a view's receiver reads the map its own caster
@@ -650,6 +656,10 @@ private:
     std::vector<MeshRecord> meshes_;
     std::vector<WGPUBuffer> buffers_;      // owned vertex/index buffers
     std::vector<Texture>    textures_;     // owned, deduplicated by image
+    // Images are shared between materials, so each is uploaded once and draws index
+    // into textures_ through this map. Keyed by image pointer and cleared with the
+    // list it indexes (releaseSceneResources), never separately.
+    std::unordered_map<const xm::CnvImage*, int> texIndex_;
     std::vector<glm::mat4>  palette_;      // CPU copy, uploaded by updatePose()
 
     WGPUTexture     depthTex_ = nullptr;
