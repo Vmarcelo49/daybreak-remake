@@ -230,6 +230,10 @@ void testConstants() {
               gameplay::downedReactionBonus(198, 198, true, false));
     checkBool("victim airborne (199): no bonus", false,
               gameplay::downedReactionBonus(198, 199, true, false));
+    // The melee/shot asymmetry at 196: the melee path never names the grounded reaction,
+    // the shot path does. Modelled-but-unreachable live — no production path enters
+    // Knockdown, so victimMove is never 196 in a match (fighter.h reaction_move()) — but
+    // these two cases are what pin the recovered sets, so they stay.
     checkBool("melee does not exclude the grounded reaction", true,
               gameplay::downedReactionBonus(198, 196, true, false));
     checkBool("shots do exclude the grounded reaction", false,

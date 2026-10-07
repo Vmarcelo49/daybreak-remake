@@ -736,6 +736,15 @@ private:
     // [28, 29] — the lying pose), and nothing else the port can enter is in the
     // exclusion set {198,199,196}. The Hit state is the launched reaction (195/0xc3),
     // which is not excluded.
+    //
+    // UNREACHABLE IN A LIVE MATCH: this is the ONLY reader that can yield
+    // kReactionGrounded, and no production path enters Knockdown — take_damage() routes
+    // every non-lethal stun to Hit and the lethal blow straight to KO, and the grounded
+    // reaction is not among the selectors the port reproduces. The state and the 196 it
+    // maps to stay because they pin recovered rows (state_to_move_id, the damagedown
+    // label), and match_economy.h records the exclusion as modelled-but-unreachable
+    // rather than silently dropping it. Do NOT "fix" this by routing a hit reaction here
+    // without the recovered selector evidence.
     int reaction_move() const {
         return m_state == FighterState::Knockdown ? kReactionGrounded : 0;
     }
