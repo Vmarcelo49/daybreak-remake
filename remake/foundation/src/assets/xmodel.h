@@ -404,9 +404,11 @@ inline constexpr uint32_t kDrawNprNormals = 1u << 6;
 // + weak character key" mode). The key is always a second term beside the world light,
 // never a replacement, so the stage's own lighting keeps anchoring the silhouette.
 inline constexpr uint32_t kDrawNprKey = 1u << 7;
-// Stylized specular: a hard-threshold half-vector lobe tinted by draw.nprBand.rgb.
+// Stylized specular: a hard-threshold half-vector lobe tinted by draw.nprSpec.rgb and
+// scaled by draw.nprSpec.w.
 inline constexpr uint32_t kDrawNprSpec = 1u << 8;
-// Character-only rim light: edge term tinted by draw.nprBand.rgb, scaled by draw.nprBand.w.
+// Character-only rim light: the edge term tinted by draw.nprRim.rgb and scaled by
+// draw.nprRim.w.
 inline constexpr uint32_t kDrawNprRim = 1u << 9;
 // (There is deliberately no bit for the outline-width experiment: the outline entry point
 // reads draw.nprBand.w directly, so a bit that only ever meant "multiply by 1.0" would be
@@ -756,12 +758,12 @@ private:
     int                 bitBuf_ = 0, bitCnt_ = 0;
 };
 
-// MSZIP: "xof 0303bzip0032", u32 total uncompressed size (including the 16-byte
-// header), then blocks of [u16 outSize][u16 compSize]["CK"][deflate]. Blocks share a
-// 32 KB window, so they decode into one continuous buffer.
-bool decompressMSZip(const uint8_t* header16, const uint8_t* payload, size_t n,
-                     std::vector<uint8_t>& out, std::string& err) {
-    (void)header16;
+// MSZIP payload (the 16-byte "xof 0303bzip0032" header is the caller's): a u32 total
+// uncompressed size, which includes that header, then blocks of
+// [u16 outSize][u16 compSize]["CK"][deflate]. Blocks share a 32 KB window, so they decode
+// into one continuous buffer.
+bool decompressMSZip(const uint8_t* payload, size_t n, std::vector<uint8_t>& out,
+                     std::string& err) {
     if (n < 4) { err = "bzip payload truncated"; return false; }
     size_t total = rd32(payload);
     if (total < 16) { err = "bzip size field too small"; return false; }
@@ -2269,7 +2271,7 @@ Model loadMemory(const void* data, size_t size, const LoadOptions& opt) {
     if (fmtStr == "bzip" || fmtStr == "tzip") {
         std::vector<uint8_t> out;
         std::string err;
-        if (!decompressMSZip(p, p + 16, size - 16, out, err))
+        if (!decompressMSZip(p + 16, size - 16, out, err))
             throw std::runtime_error("MSZIP: " + err);
         // A decompressed payload carries no header of its own, so the token stream
         // starts at offset 0. "tzip" would decompress to text: sniff and fall through.

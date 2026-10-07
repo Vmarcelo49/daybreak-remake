@@ -122,15 +122,14 @@ inline void buildCube(const glm::vec3& c, float h, DebugColor color, DebugVertex
     for (size_t i = 0; i < kCubeVertices; ++i) out[i] = v[i];
 }
 
-// A frame's worth of cubes, in submission order: no sorting, no dedup, so two runs of
-// the same frame upload byte-identical buffers. `limit` is a constructor argument so
-// the drop path stays testable on the host.
 // Filled UV sphere: slices x stacks quads, two triangles each, so
 // slices * stacks * 6 vertices. Vertex order is stack-major then slice-major and the
 // surface point is
 //   x = cx + r * sin(phi) * cos(theta),  y = cy + r * cos(phi),  z = cz + r * sin(phi) * sin(theta)
 // with phi the stack angle (0 at the top pole) and theta the slice angle. Appending in
-// that fixed order is what keeps the buffer byte-identical between runs.
+// that fixed order is what keeps the buffer byte-identical between runs. A pole row
+// emits a degenerate triangle (two of its three vertices coincide): one wasted triangle
+// per pole, in exchange for no branch in the inner loop.
 inline void buildSphere(const glm::vec3& c, float r, DebugColor color, int slices,
                         int stacks, std::vector<DebugVertex>& out) {
     if (!(r > 0.f) || slices < 3 || stacks < 2) return;
@@ -160,15 +159,10 @@ inline void buildSphere(const glm::vec3& c, float r, DebugColor color, int slice
     }
 }
 
-// Builds a filled UV sphere as triangle-list vertices in CubeBatch's layout. Device-free
-// and deterministic: vertex order is stack-major then slice-major, with no dedup, so two
-// runs of the same arguments upload byte-identical buffers — the property the Linux/Wine
-// capture A/B relies on. Poles are emitted as degenerate triangles (two of the three
-// vertices coincide), which costs one wasted triangle per pole and avoids a branch in the
-// inner loop that would make the order tessellation-dependent.
-void buildSphere(const glm::vec3& center, float radius, DebugColor color, int slices,
-                 int stacks, std::vector<DebugVertex>& out);
-
+// A frame's worth of cubes, in submission order: no sorting, no dedup, so two runs of
+// the same frame upload byte-identical buffers. `limit` is a constructor argument so
+// the drop path stays testable on the host. A batch also takes spheres (addSphere), in
+// the same layout and from the same fixed vertex order.
 class CubeBatch {
 public:
     explicit CubeBatch(size_t limit = 1024) : limit_(limit) {}

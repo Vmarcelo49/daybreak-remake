@@ -86,7 +86,7 @@ inline ArenaFrame arenaViewProj(const ArenaTarget& t, const ArenaCameraParams& p
 // input is clamped so a bad caller cannot invert or overshoot the eye.
 inline glm::vec3 arenaSmoothEye(const glm::vec3& prevEye, const glm::vec3& desiredEye,
                                float alpha) {
-    const float a = alpha < 0.f ? 0.f : (alpha > 1.f ? 1.f : alpha);
+    const float a = glm::clamp(alpha, 0.f, 1.f);
     return prevEye + (desiredEye - prevEye) * a;
 }
 
@@ -97,7 +97,7 @@ inline glm::vec3 arenaSmoothEye(const glm::vec3& prevEye, const glm::vec3& desir
 // alphaAt60fps exactly; shorter/longer frames blend proportionally less/more
 // so the eye converges in the same wall-clock time at any frame rate.
 inline float arenaFrameAlpha(float alphaAt60fps, float dtSeconds, float refDt = 1.f / 60.f) {
-    const float a = alphaAt60fps < 0.f ? 0.f : (alphaAt60fps > 1.f ? 1.f : alphaAt60fps);
+    const float a = glm::clamp(alphaAt60fps, 0.f, 1.f);
     if (!(dtSeconds > 0.f) || !(refDt > 0.f)) return a;
     if (dtSeconds == refDt) return a;   // fixed-step fast path: exact, no pow rounding
     return 1.f - std::pow(1.f - a, dtSeconds / refDt);
@@ -126,7 +126,7 @@ inline glm::vec3 arenaClampEye(const glm::vec3& aim, const glm::vec3& desiredEye
     const glm::vec3 leg = desiredEye - aim;
     const float full = glm::length(leg);
     if (!(full > 0.f)) return aim;
-    const float m = margin < 0.f ? 0.f : margin;
+    const float m = glm::max(margin, 0.f);
     if (!(hitDist < full)) return desiredEye;   // unblocked (or a miss): nothing to do
     const float clamped = hitDist - m;
     if (clamped <= 0.f) return aim;

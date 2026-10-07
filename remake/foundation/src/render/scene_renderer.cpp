@@ -289,6 +289,10 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
         error = "renderer needs a live device, queue and instance";
         return false;
     }
+    // Same contract as DebugPrims::init: init() owns everything it creates, so a second
+    // call on a live renderer replaces the first rather than orphaning it. On a fresh or
+    // already-shut-down renderer this is a no-op.
+    shutdown();
     instance_ = ctx.instance;
     device_ = ctx.device;
     queue_ = ctx.queue;
@@ -1745,9 +1749,9 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
             drawBase = (uint32_t)(view * draws_.size() * xm::kDrawStride);
         }
         WGPURenderPipeline boundPipelines[kPassCount] = {};
-        Pass current = Pass::Opaque;
+        // No pipeline bound in this view yet; the first draw always binds one.
+        std::optional<Pass> current;
         bool currentNpr = false;
-        bool haveCurrent = false;
         for (size_t i = 0; i < draws_.size(); ++i) {
             const DrawItem& d = draws_[i];
             // The outline hulls are queued with the scene but submitted only when the
@@ -1763,7 +1767,7 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
             // experiment entry point. `nprActive` is the appearance's own predicate, so a
             // run with no --npr flag never binds the second pipeline at all.
             const bool nprDraw = appearance_.nprActive() && d.toon && d.pass == Pass::Opaque;
-            if (!haveCurrent || d.pass != current || nprDraw != currentNpr) {
+            if (!current || d.pass != *current || nprDraw != currentNpr) {
                 WGPURenderPipeline& slot = boundPipelines[(int)d.pass];
                 if (!slot && !(slot = pipelineFor(target.format, d.pass, nprDraw, error))) {
                     wgpuRenderPassEncoderEnd(pass);
@@ -1774,7 +1778,6 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
                 if (d.pass == Pass::Decal) wgpuRenderPassEncoderSetStencilReference(pass, 0);
                 current = d.pass;
                 currentNpr = nprDraw;
-                haveCurrent = true;
             }
             const uint32_t offset = drawBase + (uint32_t)(i * xm::kDrawStride);
             wgpuRenderPassEncoderSetBindGroup(pass, 1, drawGroup_, 1, &offset);

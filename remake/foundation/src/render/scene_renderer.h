@@ -603,7 +603,6 @@ private:
     // draw uniform buffers. setScene() calls it to replace a scene, shutdown() to tear
     // one down; keeping it in one place is what stops the two release lists drifting.
     void releaseSceneResources();
-    bool buildBindings(std::string& error);
     // The shared scene pass. `views` null (or a single entry) is the single-view path:
     // camera_, cameraBuffer_, drawBuffer_ offset 0, no viewport/scissor calls. More than
     // one entry is the split-screen path, and needs ensureViewCameras().
