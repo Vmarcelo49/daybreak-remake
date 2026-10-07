@@ -175,7 +175,8 @@ ShotTier BotBrain::pick_shot_tier(const Fighter& self, float dist) const {
 int BotBrain::hold_ticks(const Fighter& self, ShotTier tier) const {
     if (tier == ShotTier::Tap) return 1;
     const float seconds = (tier == ShotTier::Red) ? self.red_hold_sec() : self.yellow_hold_sec();
-    const int ticks = static_cast<int>(std::ceil(seconds * (float)kTicksPerSecond)) + 3;
+    const int ticks =
+        static_cast<int>(std::ceil(seconds * static_cast<float>(kTicksPerSecond))) + 3;
     return std::max(2, ticks);
 }
 
@@ -369,7 +370,7 @@ void BotBrain::stabilise_movement(uint64_t tick) {
             continue;
         }
         if (want == m_axisValue[a]) continue;
-        if (tick - m_lastAxisChange[a] < (uint64_t)kKeyFlipTicks) {
+        if (tick - m_lastAxisChange[a] < static_cast<uint64_t>(kKeyFlipTicks)) {
             want = m_axisValue[a];   // too soon to move that key again: keep the old one
             continue;
         }
@@ -389,7 +390,7 @@ bool BotBrain::try_melee(const BotView& v, float dist) {
     const BotTacticWeights w = bot_tactic_weights(m_tactic);
     const BotTuning tune = bot_tuning(m_difficulty);
     const int engage = std::min(100, w.engageWeight * tune.engageScale / 100);
-    if ((int)m_rng.below(100) >= engage) return false;
+    if (static_cast<int>(m_rng.below(100)) >= engage) return false;
 
     // The FULL reach (bodyRadius + the move's hitRadius) is what try_melee_hit() tests, so
     // the press uses it as-is; the movement stop keeps the 0.9 margin so the COM settles
@@ -504,7 +505,7 @@ bool BotBrain::plan_defence(const BotView& v, bool hasTarget) {
     if (hasTarget && v.threats != kBotThreatNone && v.threatDistance > 0.f &&
         v.threatDistance < kThreatHorizon && self.actionable()) {
         if (!self.guard_exhausted() && self.stamina() > 0 &&
-            (int)m_rng.below(100) < tune.guardWeight) {
+            static_cast<int>(m_rng.below(100)) < tune.guardWeight) {
             m_guardTicks = 14;
             ++m_stats.guards;
             m_intentForward = 0.f;   // a held block is not a moving action
@@ -513,8 +514,8 @@ bool BotBrain::plan_defence(const BotView& v, bool hasTarget) {
             m_planAction = BotAction::Guard;
             return true;
         }
-        if ((int)m_rng.below(100) < tune.evadeWeight && m_dashPhase == 0 &&
-            self.stamina() >= (int)FighterConstants::kDashStamina) {
+        if (static_cast<int>(m_rng.below(100)) < tune.evadeWeight && m_dashPhase == 0 &&
+            self.stamina() >= static_cast<int>(FighterConstants::kDashStamina)) {
             // A committed dash leaves the swing; the navigation probe rotates the
             // direction if the stage is in the way.
             m_dashKey = (m_rng.below(2) == 0) ? input::Action::Left : input::Action::Right;
@@ -539,15 +540,16 @@ bool BotBrain::plan_offence(const BotView& v, float dist, bool hasTarget) {
     // `rng % 100 < powerWeight` gate, and the engage gate below is :235's.
     const int engage = std::min(100, w.engageWeight * tune.engageScale / 100);
     const int power = std::min(100, w.powerWeight * tune.engageScale / 100);
-    if (hasTarget && (int)m_rng.below(100) < engage) {
+    if (hasTarget && static_cast<int>(m_rng.below(100)) < engage) {
         // The dash is a LUNGE, so it only starts from outside the swing (a committed dash
         // runs its locked direction for kDashFrames at 900 u/s — roughly 280 units — and
         // from inside the reach it would carry the COM straight past its target) and never
         // while one is already committed.
         if (m_powerTicks > 0 && dist < kPowerRange && dist > reach * 2.f &&
             self.actionable() && self.state() != FighterState::Run &&
-            self.stamina() >= (int)FighterConstants::kDashStamina && m_dashPhase == 0 &&
-            (int)m_rng.below(100) < power) {
+            self.stamina() >= static_cast<int>(FighterConstants::kDashStamina) &&
+            m_dashPhase == 0 &&
+            static_cast<int>(m_rng.below(100)) < power) {
             m_dashKey = input::Action::Up;   // Up = forward
             m_dashAction = BotAction::Approach;
             m_dashPhase = 1;
@@ -704,7 +706,7 @@ void BotBrain::choose_nav(const BotView& v) {
     // without the trace showing it.
     if (m_blockedTicks >= kStuckRecoveryTicks) {
         if (v.self && !v.self->airborne() && v.self->actionable() &&
-            v.self->stamina() >= (int)FighterConstants::kJumpStamina) {
+            v.self->stamina() >= static_cast<int>(FighterConstants::kJumpStamina)) {
             m_decision.jump = true;
             m_navAction = BotAction::Jump;
             ++m_stats.jumps;
