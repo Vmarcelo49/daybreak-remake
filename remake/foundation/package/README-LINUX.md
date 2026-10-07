@@ -12,10 +12,17 @@ Nothing in this archive is game data. The port is at an early-release stage: see
 ## 1. What you need
 
 - 64-bit Linux (x86_64) with a **Vulkan** GPU driver (Mesa RADV/AMDVLK, NVIDIA, Intel) and
-  a Wayland or X11 desktop session.
+  a Wayland or X11 desktop session. The port asks for Vulkan specifically and needs **no
+  optional WebGPU feature**, so any Vulkan-capable GPU works: NVIDIA Kepler or newer (GTX
+  600/700), AMD GCN 1st gen or newer (HD 7000), Intel HD 4000 or newer (3rd-gen Core).
 - Your own *Higurashi Daybreak* installation (the folder that contains `daybreak00.dat`).
   Any language release works; the port reads the original files directly.
-- About 30 MB of disk for this package (the game itself is ~4 GB and stays where it is).
+- About 30 MB of disk for this package (the game install is ~7 GB — 4.4 GB of
+  `daybreakNN.dat` bundles plus ~2.6 GB of loose files — and stays where it is).
+- **Memory**: measured peaks are ~280 MB of RAM and ~290 MB of GPU memory (VRAM + shared) for
+  a four-view 2v2 battle, so 1 GB of RAM and 256 MB of GPU memory are the practical floor and
+  2 GB / 512 MB is comfortable. The full measurement, the method and what it does not
+  establish are in `docs/PERFORMANCE.md`.
 
 ## 2. Unpack and run
 

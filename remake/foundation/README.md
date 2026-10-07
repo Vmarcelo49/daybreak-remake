@@ -430,4 +430,5 @@ Where to read next: plan and handoff in `docs/FULL-REPLACEMENT-PLAN.md` (§5 qui
 and what the gate does not cover in `docs/RELEASE-LINUX.md`; assets in
 `remake/docs/ASSET-CATALOG.md`; HUD tables in `docs/BATTLE-HUD-SPEC.md`; screens
 in `docs/FRONTEND-PLAN.md`; per-target build logs in `docs/BUILD-linux.md`,
-`docs/BUILD-windows.md` and `docs/BUILD-web.md`.
+`docs/BUILD-windows.md` and `docs/BUILD-web.md`; measured RAM/GPU footprint and
+the minimum-requirements estimate in `docs/PERFORMANCE.md`.
