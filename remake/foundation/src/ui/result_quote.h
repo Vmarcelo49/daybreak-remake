@@ -58,14 +58,16 @@ inline int resultOutcomeGrade(int margin, bool winnersBelowHalfHp) {
     return margin < 50 ? 2 : 1;
 }
 
-// FUN_00635d40:323-346: the single script to use when the pair script is missing.
+// FUN_00635d40:323-346: the single script to use when the pair script is missing. The pair may
+// arrive in either order (planWinnerQuote passes it sorted; the test pins both), so it is sorted
+// here as the original's own comparison does.
 inline int resultFallbackSingleId(int pairA, int pairB) {
     const int lo = pairA < pairB ? pairA : pairB;
     const int hi = pairA < pairB ? pairB : pairA;
-    if (lo < 0x10) return hi == 0x10 ? 0x10 : 0x11;
-    if (lo == 0x11) return 0x11;
-    if (hi == 0x10) return 0x10;
-    return 0x11;
+    if (lo < 16) return hi == 16 ? 16 : 17;
+    if (lo == 17) return 17;
+    if (hi == 16) return 16;
+    return 17;
 }
 
 // One winning slot as the quote rule sees it.

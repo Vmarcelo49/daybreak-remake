@@ -31,46 +31,51 @@ public:
         // follow the team and never a single primary panel.
         const int side = state.resultWinner == 1 ? 1 : 0;
         participantCount_ = buildParticipants(state_.slots.data(), participants_);
-        // The winning side's two selections in panel order (issue #20). A one-member side
-        // repeats its member: the port's 1v1, and every character ships a self-pair script.
-        int winnerCharacters[2] = {-1, -1};
-        int winnerWeapons[2] = {0, 0};
-        int winners = 0;
-        for (int i = 0; i < participantCount_ && winners < 2; ++i) {
+        // The winning side's selections in panel order (issue #20). A one-member side repeats
+        // its member: the port's 1v1, and every character ships a self-pair script.
+        std::array<WinnerSlot, 2> winners{};
+        int winnerCount = 0;
+        for (int i = 0; i < participantCount_ && winnerCount < 2; ++i) {
             if (participants_[i].team != side) continue;
-            winnerCharacters[winners] = participants_[i].character;
-            winnerWeapons[winners] = participants_[i].weapon;
-            ++winners;
+            winners[(size_t)winnerCount].character = participants_[i].character;
+            winners[(size_t)winnerCount].weapon = participants_[i].weapon;
+            ++winnerCount;
         }
         // The winner art: one 512x512 sheet per winning slot, data/win/%02da, or %02db for the
         // persona variant (character 0/4 with weapon 2) — FUN_00635d40:255-273 loads one per
         // winning slot, so a 2v2 shows BOTH winners and a one-member side shows its one.
-        winnerSlots_ = winnerPortraitCount(winners);
-        for (int i = 0; i < winners; ++i) {
-            winnerPersona_[i] = resultPersonaId(winnerCharacters[i], winnerWeapons[i]) !=
-                                winnerCharacters[i];
-            if (winnerCharacters[i] < 0) continue;
+        winnerSlots_ = winnerPortraitCount(winnerCount);
+        for (int i = 0; i < winnerCount; ++i) {
+            WinnerSlot& winner = winners[(size_t)i];
+            winner.persona = resultPersonaId(winner.character, winner.weapon) != winner.character;
+            if (winner.character < 0) continue;
             char stem[64];
-            std::snprintf(stem, sizeof(stem), "data/win/%02d%c", winnerCharacters[i],
-                          winnerPersona_[i] ? 'b' : 'a');
+            std::snprintf(stem, sizeof(stem), "data/win/%02d%c", winner.character,
+                          winner.persona ? 'b' : 'a');
             std::string failure;
             if (!uploadCnvSheet(batch, stem, winnerSheets_[i], failure) && error.empty())
                 error = failure;
         }
         // The quote pair repeats a one-member side's fighter (planWinnerQuote), so the evidence
         // line reports that member's persona for both pair slots.
-        if (winners == 1) winnerPersona_[1] = winnerPersona_[0];
+        if (winnerCount == 1) winners[1].persona = winners[0].persona;
         const char* stems[] = {side ? "data/object/P08" : "data/object/P05", "data/object/system"};
         for (int i = 0; i < 2; ++i) {
             std::string failure;
             if (!uploadCnvSheet(batch, stems[i], sheets_[i], failure) && error.empty())
                 error = failure;
         }
-        if (state.resultWinner >= 0 && winners > 0) {
+        if (state.resultWinner >= 0 && winnerCount > 0) {
             // The grade needs the round's margin and the winners' HP, which the host measured
             // when the round resolved (FUN_00635d40:288-318); the plan then names the pair
             // script and the recovered single-script fallback (FUN_00635d40:323-346).
-            plan_ = planWinnerQuote(winnerCharacters, winnerWeapons, winners, state.resultMargin,
+            // planWinnerQuote takes the pair as plain arrays; the slots above are the state.
+            int characters[2] = {-1, -1}, weapons[2] = {0, 0};
+            for (int i = 0; i < 2; ++i) {
+                characters[i] = winners[(size_t)i].character;
+                weapons[i] = winners[(size_t)i].weapon;
+            }
+            plan_ = planWinnerQuote(characters, weapons, winnerCount, state.resultMargin,
                                     state.resultWinnersHurt);
             auto& assets = fnd::assets::assetSource();
             std::vector<uint8_t> bytes;
@@ -98,7 +103,7 @@ public:
                         "persona %d/%d voice %s\n",
                         side, plan_.pairA, plan_.pairB, plan_.grade, state.resultMargin,
                         quotePath_.empty() ? plan_.pairScript.c_str() : quotePath_.c_str(),
-                        winnerPersona_[0] ? 1 : 0, winnerPersona_[1] ? 1 : 0,
+                        winners[0].persona ? 1 : 0, winners[1].persona ? 1 : 0,
                         quote_.voice.empty() ? "(none)" : quote_.voice.c_str());
         }
         if (!loadCaptionFont(text_,30.f,error)) return;
@@ -243,7 +248,6 @@ private:
     int sheets_[2] = {-1,-1};
     int winnerSheets_[2] = {-1,-1};
     int winnerSlots_ = 0;    // portraits the winning side draws (1 for the port's 1v1)
-    bool winnerPersona_[2] = {false,false};
     int textSlot_=-1, sound_=-1;
 };
 }
