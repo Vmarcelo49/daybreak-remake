@@ -87,13 +87,14 @@ void SelectMenu::tick() {
     for (int c=0;c<4;++c)
         if (phase_[c] == SelectPhase::Ready && --cooldown_[c] <= 0) phase_[c] = SelectPhase::Team;
 }
-SelectAction SelectMenu::update(const ScreenInput& in, int c) {
+SelectAction SelectMenu::update(const ScreenInput& in, int c, SelectTransition* transition) {
     if (c < 0 || c >= 4) return SelectAction::None;
     const SelectPhase before = phase_[c];
     const SelectAction action = updatePanel(in, c);
     // FUN_00409340:589-595, the update's own tail: a phase change during this call restarts
     // this controller's row slide at 300.0 and the same call already steps it once.
     slide_.step(c, phase_[c] != before);
+    if (transition) *transition = SelectTransition{before, phase_[c]};
     return action;
 }
 SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
@@ -265,9 +266,13 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
     return in.confirm || in.cancel || in.up || in.down || in.left || in.right ? SelectAction::Changed : SelectAction::None;
 }
 
-SelectAction SelectMenu::updateFrame(const ScreenInput& in, int* sound) {
+SelectAction SelectMenu::updateFrame(const ScreenInput& in, int* sound,
+                                     std::array<SelectTransition, 4>* transitions) {
+    if (transitions) transitions->fill(SelectTransition{});
     auto apply = [&](const ScreenInput& playerInput, int player) {
-        const auto action = update(playerInput,player);
+        SelectTransition transition;
+        const auto action = update(playerInput, player, &transition);
+        if (transitions) (*transitions)[(size_t)player] = transition;
         if (sound && action != SelectAction::None)
             *sound = playerInput.cancel ? 1 : playerInput.confirm ? 0 : 2;
         return action;
@@ -329,14 +334,13 @@ ScreenId SelectScreen::update(const ScreenInput& in) {
         if(!state_.stagePage) stage_.reset();
         return next;
     }
-    std::array<SelectPhase,4> previous;
-    for (int player=0;player<4;++player) previous[player]=menu_.phase(player);
-    SelectAction action=menu_.updateFrame(in,&sound_);
+    std::array<SelectTransition,4> transitions;
+    SelectAction action=menu_.updateFrame(in,&sound_,&transitions);
     for (int player=0;player<4;++player) {
         if (!in.separatePlayers && player != in.player) continue;
-        const SelectPhase current=menu_.phase(player);
-        if (current == SelectPhase::Ready && previous[player] != SelectPhase::Ready) sound_=3;
-        if (previous[player] == SelectPhase::Character && current == SelectPhase::Weapon) {
+        const SelectTransition& transition=transitions[(size_t)player];
+        if (transition.entered(SelectPhase::Ready)) sound_=3;
+        if (transition.from == SelectPhase::Character && transition.to == SelectPhase::Weapon) {
             const char* character = frontendCharacterDirectory(state_.slots[menu_.panel(player)].character);
             if (character) voice_=std::string("data/voice/entry/")+character;
         }
