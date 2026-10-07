@@ -888,6 +888,18 @@ private:
         throw std::runtime_error(err_);
     }
 
+    // -- peeking
+    // Reads the next token and puts it back unless it is `expected`. Every optional
+    // token in this converter is read this way (a member's name, an object's instance
+    // name, a GUID), and the save/restore pair written out at each site is exactly the
+    // kind of thing a later edit gets wrong in one of them.
+    bool tryToken(uint16_t expected) {
+        const size_t save = p_;
+        if (u16() == expected) return true;
+        p_ = save;
+        return false;
+    }
+
     // -- templates
     struct Member {
         enum Kind { Prim, Array, Ref } kind = Prim;
@@ -927,15 +939,13 @@ private:
         }
         if (isPrimToken(t)) {
             m.kind = Member::Prim; m.typeToken = t; m.typeName = primTokenName(t);
-            size_t save = p_;
-            if (u16() == kName) m.name = nameBody(); else p_ = save;
+            if (tryToken(kName)) m.name = nameBody();
             if (u16() != kSemi) fail("expected SEMICOLON after primitive member");
             return m;
         }
         if (t == kName) {
             m.kind = Member::Ref; m.typeName = nameBody();
-            size_t save = p_;
-            if (u16() == kName) m.name = nameBody(); else p_ = save;
+            if (tryToken(kName)) m.name = nameBody();
             if (u16() != kSemi) fail("expected SEMICOLON after template member");
             return m;
         }
@@ -1070,20 +1080,16 @@ private:
         else fail("bad object identifier token " + std::to_string(t));
 
         std::string inst;
-        bool haveInst = false;
-        size_t save = p_;
-        if (u16() == kName) { inst = nameBody(); haveInst = true; }
-        else p_ = save;
+        if (tryToken(kName)) inst = nameBody();
 
         if (u16() != kOBrace) fail("expected OBRACE for object " + tpl);
-        save = p_;
-        if (u16() == kGuid) bytes(16); else p_ = save;
+        if (tryToken(kGuid)) bytes(16);
 
         out_ += tpl;
         // Instance names only matter for objects the parser looks up by name; keeping
         // them everywhere would turn "MeshNormals Foo" into a header the parser cannot
         // match against its known child names.
-        if (haveInst && !inst.empty() &&
+        if (!inst.empty() &&
             (tpl == "Frame" || tpl == "Mesh" || tpl == "Material" ||
              tpl == "AnimationSet" || tpl == "Animation")) {
             out_ += ' ';
@@ -1116,14 +1122,11 @@ private:
 
     void readChildren() {
         for (;;) {
-            size_t save = p_;
-            uint16_t t = u16();
-            if (t == kCBrace) return;
-            if (t == kOBrace) {                        // { Name }
+            if (tryToken(kCBrace)) return;
+            if (tryToken(kOBrace)) {                   // { Name }
                 if (u16() != kName) fail("bad data reference");
                 std::string ref = nameBody();
-                size_t s2 = p_;
-                if (u16() == kGuid) bytes(16); else p_ = s2;
+                if (tryToken(kGuid)) bytes(16);
                 if (u16() != kCBrace) fail("bad data reference end");
                 nl();
                 out_ += "{ ";
@@ -1131,7 +1134,6 @@ private:
                 out_ += " }";
                 continue;
             }
-            p_ = save;
             nl();
             object();
         }
@@ -1483,6 +1485,22 @@ private:
     }
     void skipRest() { children({}, {}); }
 
+    // The cap on every element count this parser reads. A count is a claim about how many
+    // elements follow it, and each element costs a 12-to-16-byte vector slot, so a
+    // corrupt (or hostile) count of two billion is a one-line way to ask for tens of
+    // gigabytes. 2^26 elements is two orders of magnitude past anything the shipped
+    // assets use and still an allocation the host can refuse rather than die on.
+    static constexpr int kMaxElements = 1 << 26;
+
+    // The one guard for those counts. `max` is per-site because some counts are arities,
+    // not element lists, and are bounded far tighter; the message is the caller's so a
+    // failure still names the object it came from.
+    int readCount(const char* what, int max = kMaxElements) {
+        const int n = lx_.I();
+        if (n < 0 || n > max) lx_.fail(std::string(what) + " out of range");
+        return n;
+    }
+
     void parseFrame(int parent) {
         Frame f;
         f.name = header();
@@ -1535,62 +1553,22 @@ private:
         r.name = header();
         r.frame = frame;
 
-        int nv = lx_.I();
-        if (nv < 0 || nv > (1 << 26)) lx_.fail("mesh vertex count out of range");
+        const int nv = readCount("mesh vertex count");
         r.pos.resize((size_t)nv);
         for (auto& p : r.pos) p = lx_.V3();
 
-        int nf = lx_.I();
-        if (nf < 0 || nf > (1 << 26)) lx_.fail("mesh face count out of range");
+        const int nf = readCount("mesh face count");
         r.faces.resize((size_t)nf);
         for (auto& f : r.faces) {
-            int n = lx_.I();
-            if (n < 0 || n > 4096) lx_.fail("face vertex count out of range");
+            const int n = readCount("face vertex count", 4096);
             f.resize((size_t)n);
             for (auto& i : f) i = (uint32_t)lx_.I();
         }
 
         children([&](const std::string& t) {
-            if (t == "MeshNormals") {
-                header();
-                int n = lx_.I();
-                if (n < 0 || n > (1 << 26)) lx_.fail("normal count out of range");
-                r.normals.resize((size_t)n);
-                for (auto& v : r.normals) v = lx_.V3();
-                int nfn = lx_.I();
-                if (nfn < 0 || nfn > (1 << 26)) lx_.fail("face-normal count out of range");
-                r.nfaces.resize((size_t)nfn);
-                for (auto& f : r.nfaces) {
-                    int c = lx_.I();
-                    if (c < 0 || c > 4096) lx_.fail("face-normal arity out of range");
-                    f.resize((size_t)c);
-                    for (auto& i : f) i = (uint32_t)lx_.I();
-                }
-                skipRest();
-                return true;
-            }
-            if (t == "MeshTextureCoords") {
-                header();
-                int n = lx_.I();
-                if (n < 0 || n > (1 << 26)) lx_.fail("uv count out of range");
-                r.uvs.resize((size_t)n);
-                for (auto& v : r.uvs) v = lx_.V2();
-                skipRest();
-                return true;
-            }
-            if (t == "MeshVertexColors") {
-                header();
-                int n = lx_.I();
-                if (n < 0 || n > (1 << 26)) lx_.fail("vertex colour count out of range");
-                r.colors.assign(r.pos.size(), glm::vec4(1.f));
-                for (int i = 0; i < n; ++i) {
-                    int idx = lx_.I();
-                    glm::vec4 c{lx_.F(), lx_.F(), lx_.F(), lx_.F()};
-                    if (idx >= 0 && (size_t)idx < r.colors.size()) r.colors[(size_t)idx] = c;
-                }
-                skipRest();
-                return true;
-            }
+            if (t == "MeshNormals")        { parseMeshNormals(r);       return true; }
+            if (t == "MeshTextureCoords")  { parseMeshTextureCoords(r); return true; }
+            if (t == "MeshVertexColors")   { parseMeshVertexColors(r);  return true; }
             if (t == "XSkinMeshHeader") {
                 header();
                 r.skinHeader.present = true;
@@ -1612,47 +1590,84 @@ private:
                 skipBody();
                 return true;
             }
-            if (t == "MeshMaterialList") {
-                header();
-                lx_.I();                 // nMaterials (the actual list follows)
-                int nfi = lx_.I();
-                if (nfi < 0 || nfi > (1 << 26)) lx_.fail("face-material count out of range");
-                r.faceMat.resize((size_t)nfi);
-                for (auto& i : r.faceMat) i = (uint32_t)lx_.I();
-                children([&](const std::string& c) {
-                    if (c == "Material") {
-                        Material mt;
-                        std::string n = header();
-                        readMaterialBody(mt);
-                        if (!n.empty()) named_[n] = mt;
-                        r.mats.push_back(mt);
-                        return true;
-                    }
-                    return false;
-                }, [&](const std::string& ref) {
-                    auto it = named_.find(ref);
-                    r.mats.push_back(it != named_.end() ? it->second : Material{});
-                });
-                return true;
-            }
-            if (t == "SkinWeights") {
-                header();
-                RawSkin s;
-                s.bone = lx_.next();
-                int n = lx_.I();
-                if (n < 0 || n > (1 << 26)) lx_.fail("skin weight count out of range");
-                s.idx.resize((size_t)n);
-                s.w.resize((size_t)n);
-                for (auto& i : s.idx) i = (uint32_t)lx_.I();
-                for (auto& w : s.w) w = lx_.F();
-                s.offset = lx_.M4();
-                skipRest();
-                r.skins.push_back(std::move(s));
-                return true;
-            }
+            if (t == "MeshMaterialList")   { parseMeshMaterialList(r);  return true; }
+            if (t == "SkinWeights")        { parseSkinWeights(r);      return true; }
             return false;
         });
         raws_.push_back(std::move(r));
+    }
+
+    void parseMeshNormals(RawMesh& r) {
+        header();
+        const int n = readCount("normal count");
+        r.normals.resize((size_t)n);
+        for (auto& v : r.normals) v = lx_.V3();
+        const int nfn = readCount("face-normal count");
+        r.nfaces.resize((size_t)nfn);
+        for (auto& f : r.nfaces) {
+            const int c = readCount("face-normal arity", 4096);
+            f.resize((size_t)c);
+            for (auto& i : f) i = (uint32_t)lx_.I();
+        }
+        skipRest();
+    }
+
+    void parseMeshTextureCoords(RawMesh& r) {
+        header();
+        const int n = readCount("uv count");
+        r.uvs.resize((size_t)n);
+        for (auto& v : r.uvs) v = lx_.V2();
+        skipRest();
+    }
+
+    void parseMeshVertexColors(RawMesh& r) {
+        header();
+        const int n = readCount("vertex colour count");
+        r.colors.assign(r.pos.size(), glm::vec4(1.f));
+        for (int i = 0; i < n; ++i) {
+            const int idx = lx_.I();
+            glm::vec4 c{lx_.F(), lx_.F(), lx_.F(), lx_.F()};
+            if (idx >= 0 && (size_t)idx < r.colors.size()) r.colors[(size_t)idx] = c;
+        }
+        skipRest();
+    }
+
+    // Materials named here are also entered in named_, and the list's own {ref} children
+    // resolve through it: a MeshMaterialList may reference a Material parsed earlier.
+    void parseMeshMaterialList(RawMesh& r) {
+        header();
+        lx_.I();                 // nMaterials (the actual list follows)
+        const int nfi = readCount("face-material count");
+        r.faceMat.resize((size_t)nfi);
+        for (auto& i : r.faceMat) i = (uint32_t)lx_.I();
+        children([&](const std::string& c) {
+            if (c == "Material") {
+                Material mt;
+                std::string n = header();
+                readMaterialBody(mt);
+                if (!n.empty()) named_[n] = mt;
+                r.mats.push_back(mt);
+                return true;
+            }
+            return false;
+        }, [&](const std::string& ref) {
+            auto it = named_.find(ref);
+            r.mats.push_back(it != named_.end() ? it->second : Material{});
+        });
+    }
+
+    void parseSkinWeights(RawMesh& r) {
+        header();
+        RawSkin s;
+        s.bone = lx_.next();
+        const int n = readCount("skin weight count");
+        s.idx.resize((size_t)n);
+        s.w.resize((size_t)n);
+        for (auto& i : s.idx) i = (uint32_t)lx_.I();
+        for (auto& w : s.w) w = lx_.F();
+        s.offset = lx_.M4();
+        skipRest();
+        r.skins.push_back(std::move(s));
     }
 
     void parseAnimSet() {
@@ -1666,12 +1681,12 @@ private:
                 if (c != "AnimationKey") return false;
                 header();
                 int type = lx_.I();
-                int nkeys = lx_.I();
-                if (nkeys < 0 || nkeys > (1 << 24)) lx_.fail("animation key count out of range");
+                // Tighter than kMaxElements: a key is followed by its own arity, so
+                // this count multiplies what the loop below allocates.
+                const int nkeys = readCount("animation key count", 1 << 24);
                 for (int k = 0; k < nkeys; ++k) {
                     float time = (float)lx_.I();
-                    int nvals = lx_.I();
-                    if (nvals < 0 || nvals > 64) lx_.fail("animation key arity out of range");
+                    const int nvals = readCount("animation key arity", 64);
                     if (type == 0 && nvals == 4) {
                         float w = lx_.F(), x = lx_.F(), y = lx_.F(), z = lx_.F();
                         glm::quat q(w, x, y, z);            // .x stores (s, v) == (w, x, y, z)
