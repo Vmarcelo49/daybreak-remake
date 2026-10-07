@@ -255,6 +255,21 @@ const BotDecision& BotBrain::update(const BotView& view, uint64_t tick) {
     return m_decision;
 }
 
+// Does this fighter want a different lock than the one it holds? A COM acquires its own
+// lock the way the player acquires theirs — by asking for the cycle — and `hasTarget`
+// cannot stand in for that: the view's target falls back to the nearest hostile, so it is
+// set even when nothing has been selected, and since issue #49 nothing else hands a COM a
+// lock at round start. The 各個/集中 cells then want the lock off/onto the leader's
+// (FUN_0043f4d0:46-57). The request's cooldown is the caller's; this only says "want".
+bool BotBrain::needs_retarget(const BotView& view, bool hasTarget) const {
+    if (view.hostileCount <= 0) return false;
+    if (!hasTarget || !view.lockHeld) return true;
+    if (view.leaderTarget < 0 || view.hostileCount <= 1) return false;
+    if (m_tactic == BotTactic::Separate && view.targetIndex == view.leaderTarget) return true;
+    if (m_tactic == BotTactic::Focus && view.targetIndex != view.leaderTarget) return true;
+    return false;
+}
+
 // The decision half of a tick. Every path fills m_decision and returns; the key
 // stabiliser runs afterwards, once, in update().
 void BotBrain::compute(const BotView& view, uint64_t tick) {
@@ -298,25 +313,10 @@ void BotBrain::compute(const BotView& view, uint64_t tick) {
 
     // ---- target maintenance (FUN_00421c80 and cells 3/4) ----
     // The brain only REQUESTS: the host owns the lock table and applies the recovered
-    // cycle, bounded by its 15-tick pulse (target_lock.h).
-    bool wantSwitch = false;
-    if (view.hostileCount > 0) {
-        // A COM acquires its own lock the way the player acquires theirs: by asking for
-        // the cycle. `hasTarget` cannot stand in for that — the view's target falls back
-        // to the nearest hostile, so it is set even when nothing has been selected — and
-        // since issue #49 nothing else hands a COM a lock at round start.
-        if (!hasTarget || !view.lockHeld) {
-            wantSwitch = true;
-        } else if (view.leaderTarget >= 0 && view.hostileCount > 1) {
-            // 各個 separates from the leader, 集中 concentrates on its target
-            // (FUN_0043f4d0:46-57).
-            if (m_tactic == BotTactic::Separate && view.targetIndex == view.leaderTarget)
-                wantSwitch = true;
-            if (m_tactic == BotTactic::Focus && view.targetIndex != view.leaderTarget)
-                wantSwitch = true;
-        }
-    }
-    if (wantSwitch && m_retargetCooldown == 0) {
+    // cycle, bounded by its 15-tick pulse (target_lock.h). The cooldown is checked here
+    // rather than in the predicate: it is a rate limit on the request, not a reason to
+    // want a different target.
+    if (needs_retarget(view, hasTarget) && m_retargetCooldown == 0) {
         m_decision.retarget = true;
         m_retargetCooldown = kRetargetCooldownTicks;
         ++m_stats.retargets;

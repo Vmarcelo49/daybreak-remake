@@ -311,6 +311,9 @@ private:
     // The single-tick melee press, evaluated every tick (the original's think runs every
     // tick, so a target that steps into reach between two plans must still be hit).
     bool try_melee(const BotView& v, float dist);
+    // Does this fighter want a different lock than the one it holds? The cooldown that
+    // rate-limits the request stays at the call site in compute().
+    bool needs_retarget(const BotView& view, bool hasTarget) const;
     // The decision half of a tick; update() wraps it with the key stabiliser.
     void compute(const BotView& view, uint64_t tick);
     // Keeps an axis' key from being released and pressed again inside the port's
