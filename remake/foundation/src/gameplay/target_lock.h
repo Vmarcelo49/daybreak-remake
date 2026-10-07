@@ -81,7 +81,10 @@
 // Determinism: no RNG, no clock, no allocation after construction, fixed-size arrays
 // walked in index order.
 
+#include <algorithm>
 #include <cstdint>
+
+#include "gameplay/match_economy.h"  // kMinFighters/kMaxFighters
 
 namespace gameplay {
 
@@ -114,10 +117,11 @@ class TargetLocks {
 public:
     // `side` is the per-fighter team (MatchConfig::side), copied because team
     // membership decides ally-versus-hostile for the whole table and the caller owns
-    // the config. `fighterCount` is clamped to [2, 4] like Match::reset does.
-    void reset(int fighterCount, const int side[4]) {
-        m_count = fighterCount < 2 ? 2 : (fighterCount > 4 ? 4 : fighterCount);
-        for (int i = 0; i < 4; ++i) {
+    // the config. `fighterCount` is clamped to the battle's legal count exactly as
+    // Match::reset does; both read the same bounds (match_economy.h).
+    void reset(int fighterCount, const int side[kMatchFighterCount]) {
+        m_count = std::clamp(fighterCount, kMinFighters, kMaxFighters);
+        for (int i = 0; i < kMatchFighterCount; ++i) {
             m_side[i] = side[i];
             m_locks[i] = TargetLock{};
         }
@@ -140,7 +144,7 @@ public:
     // it is what the old round-start acquisition wrote into the lock. It reports a
     // TARGET, never a lock: nothing is stored, so no ring turns green and no pulse is
     // raised (issue #49). Match::step feeds it to Fighter::update for facing only.
-    int fallback_target(int owner, const bool alive[4]) const {
+    int fallback_target(int owner, const bool alive[kMatchFighterCount]) const {
         if (owner < 0 || owner >= m_count) return kNoTarget;
         return walk(owner, owner, /*forward=*/true, /*hostileOnly=*/true, alive);
     }
@@ -152,7 +156,7 @@ public:
 
     // A target is usable when it is in range, is not the owner, and is alive. Allies
     // pass: aiming at one is a mechanic, attacking one is not (see Match::melee_target).
-    bool targetable(int owner, int index, const bool alive[4]) const {
+    bool targetable(int owner, int index, const bool alive[kMatchFighterCount]) const {
         if (owner < 0 || owner >= m_count) return false;
         if (index < 0 || index >= m_count || index == owner) return false;
         return alive[index];
@@ -161,7 +165,7 @@ public:
     // FUN_00421f30 (0x421f30): the direct-set writer. A valid index adopts the target
     // with a fresh pulse and a cleared hold; an out-of-range index clears the lock and
     // changes nothing else — never an out-of-range index is ever stored.
-    void set_target(int owner, int index, const bool alive[4]) {
+    void set_target(int owner, int index, const bool alive[kMatchFighterCount]) {
         if (owner < 0 || owner >= m_count) return;
         if (!targetable(owner, index, alive)) {
             adopt(owner, kNoTarget, false);
@@ -174,7 +178,7 @@ public:
     // starts at (current + 1) % count and wraps, which is FUN_0041f580:230-237's rule;
     // landing back on the current selection is a no-op, as it is at 0x421f580:238.
     // Port rule: allies are skipped, because aiming at one is the hold gesture.
-    void cycle_enemy(int owner, bool forward, const bool alive[4]) {
+    void cycle_enemy(int owner, bool forward, const bool alive[kMatchFighterCount]) {
         if (owner < 0 || owner >= m_count) return;
         const int current = lock_at(owner).target;
         const int anchor = current == kNoTarget ? owner : current;
@@ -186,7 +190,7 @@ public:
     // Hold: aim at an ally (input.h — "hold = aim ally"). Picks the first living ally
     // in index order, so the gesture is deterministic and repeatable, and arms the ally
     // hold FUN_00421e30 writes at 0x421e30:22.
-    void select_ally(int owner, const bool alive[4]) {
+    void select_ally(int owner, const bool alive[kMatchFighterCount]) {
         if (owner < 0 || owner >= m_count) return;
         for (int i = 0; i < m_count; ++i)
             if (targetable(owner, i, alive) && is_ally(owner, i)) { adopt(owner, i, true); return; }
@@ -195,7 +199,7 @@ public:
     // One maintenance tick, run before the fighters update. Order matches
     // FUN_0041f580: the validity fallback first (0x421f580:216-241), then the ally-hold
     // pin and countdown (242-248), then the pulse decrement (FUN_004201a0).
-    void step(const bool alive[4]) {
+    void step(const bool alive[kMatchFighterCount]) {
         for (int i = 0; i < m_count; ++i) m_locks[i].switched = false;
 
         for (int i = 0; i < m_count; ++i) {
@@ -254,7 +258,7 @@ private:
     // The deterministic candidate walk: start next to `anchor` and wrap, skipping
     // unusable candidates, for at most one full lap (FUN_0041f580:231-237).
     int walk(int owner, int anchor, bool forward, bool hostileOnly,
-             const bool alive[4]) const {
+             const bool alive[kMatchFighterCount]) const {
         const int n = m_count;
         int i = anchor;
         for (int steps = 0; steps < n; ++steps) {
@@ -267,8 +271,8 @@ private:
     }
 
     int         m_count = 0;
-    int         m_side[4] = {0, 0, 0, 0};
-    TargetLock  m_locks[4];
+    int         m_side[kMatchFighterCount] = {0, 0, 0, 0};
+    TargetLock  m_locks[kMatchFighterCount];
 };
 
 }  // namespace gameplay

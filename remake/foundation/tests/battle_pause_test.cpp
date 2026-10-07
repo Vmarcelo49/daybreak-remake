@@ -76,7 +76,8 @@ int main() {
     {
         gameplay::PauseMenu menu;
         checkInt("the default row is Resume", 0, menu.row);
-        checkInt("four rows in a front-end battle", 4, gameplay::kPauseRowCount);
+        checkInt("four rows in a front-end battle", 4,
+                 gameplay::kPauseRowsWithSelection);
         checkInt("Resume on a stray confirm",
                  (int)gameplay::PauseChoice::Resume,
                  (int)menu.update(false, false, true, false));

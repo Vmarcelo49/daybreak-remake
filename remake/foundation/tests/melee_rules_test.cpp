@@ -322,14 +322,19 @@ void testFacing(const fs::path& install) {
     check(front.try_melee_hit(ahead), "a target 40 ahead is in the weapon move's sphere");
     check(front.try_melee_hit(rear), "a target directly behind is EQUALLY in the sphere");
 
-    // The attack sphere is 30 (recovered body radius) + MeleeRules::radius, in 3D, so
+    // The attack sphere is 30 (recovered body radius) + the legacy radius, in 3D, so
     // the same horizontal distance that connects on the ground is decided by the
-    // vertical difference too.
+    // vertical difference too. The predicate is the LIVE one (try_melee_hit calls it),
+    // and kLegacyRadius is the number a legacy swing actually carries.
     const gameplay::MeleeRules rules;
-    const float combined = rules.bodyRadius + rules.radius;
-    check(rules.sphere_hits(0.0f), "an overlapping anchor connects");
-    check(!rules.sphere_hits((combined + 1.0f) * (combined + 1.0f)),
+    const float combined = rules.bodyRadius + gameplay::kLegacyRadius;
+    check(rules.sphere_hits(0.0f, gameplay::kLegacyRadius),
+          "an overlapping anchor connects");
+    check(!rules.sphere_hits((combined + 1.0f) * (combined + 1.0f),
+                             gameplay::kLegacyRadius),
           "an anchor just past 30+radius does not");
+    checkInt(130, static_cast<int>(gameplay::kLegacyRadius),
+             "the legacy radius is the documented 130");
 
     // Reach is 3D, so the same horizontal gap that connects on the floor is decided by
     // the vertical difference: at 60 apart the opponent connects, at 400 it cannot.
@@ -453,17 +458,18 @@ void testWindowsAndRecovery(const fs::path& install) {
     section("startup, active, recovery and interruption");
     CombatCombo combo;
     if (!requireCombatCombo(install, combo, "windows and recovery (no install found)")) return;
-    const gameplay::MeleeRules rules;
-    check(rules.total_ticks() == 30, "the window split still totals the historical 30 ticks");
-    check(rules.is_startup(0) && rules.is_startup(rules.startupTicks - 1),
+    // MeleeSwing's window type, and the legacy values it defaults to.
+    const gameplay::MeleeWindow win = gameplay::kLegacyWindow;
+    check(win.total_ticks() == 30, "the window split still totals the historical 30 ticks");
+    check(win.is_startup(0) && win.is_startup(win.startupTicks - 1),
           "the first ticks are startup");
-    check(!rules.is_startup(rules.startupTicks), "startup ends at its bound");
-    check(rules.is_active(rules.startupTicks), "the active window opens");
-    check(rules.is_active(rules.startupTicks + rules.activeTicks - 1),
+    check(!win.is_startup(win.startupTicks), "startup ends at its bound");
+    check(win.is_active(win.startupTicks), "the active window opens");
+    check(win.is_active(win.startupTicks + win.activeTicks - 1),
           "the active window stays open through its last tick");
-    check(!rules.is_active(rules.startupTicks + rules.activeTicks),
+    check(!win.is_active(win.startupTicks + win.activeTicks),
           "the active window closes at its bound");
-    check(rules.is_recovery(rules.startupTicks + rules.activeTicks),
+    check(win.is_recovery(win.startupTicks + win.activeTicks),
           "recovery follows the active window");
 
     // A swing that never reaches the active window cannot hit.
@@ -484,7 +490,7 @@ void testWindowsAndRecovery(const fs::path& install) {
     swing_to_active(recovering);
     check(recovering.try_melee_hit(victim), "it lands during the active window");
     input::PlayerState released;
-    for (int i = 0; i < rules.activeTicks; ++i) tick(recovering, released);
+    for (int i = 0; i < win.activeTicks; ++i) tick(recovering, released);
     check(recovering.melee_in_recovery(), "the swing is in recovery");
     check(!recovering.try_melee_hit(victim), "and cannot land again during recovery");
 
@@ -509,7 +515,7 @@ void testWindowsAndRecovery(const fs::path& install) {
     swing_to_active(expiring);
     input::PlayerState expiryReleased;   // NOT `in`: that one still held the melee key,
                                          // which would re-press and re-arm the timer.
-    for (int i = 0; i < rules.total_ticks(); ++i) tick(expiring, expiryReleased);
+    for (int i = 0; i < win.total_ticks(); ++i) tick(expiring, expiryReleased);
     checkInt(static_cast<int>(FighterState::Idle), static_cast<int>(expiring.state()),
              "the swing expires back to Idle");
 }

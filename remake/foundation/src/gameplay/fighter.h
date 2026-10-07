@@ -40,6 +40,7 @@
 // =============================================================================
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 
@@ -232,6 +233,13 @@ struct FighterConstants {
         // fallback when no move table is bound, and the Oyashiro activation burst
         // radius. Data-driven swings use their own hitRadius (30 + hr, FUN_0063b470).
     static constexpr int   kLightDamage   = 5;
+    // The launch-time injection seams' bounds. Named because std::clamp cannot take a
+    // literal as a bound, and because an unnamed 50/200 below reads as tuning: PORT RULE,
+    // these are the selection screen's own battle-setting range in percent.
+    static constexpr float kGaugeMin      = 0.0f;   // set_hyper_gauge: 0..1
+    static constexpr float kGaugeMax      = 1.0f;
+    static constexpr int   kBattleRatePercentMin = 50;   // set_battle_rates
+    static constexpr int   kBattleRatePercentMax = 200;
     // Shot economy (spec §3.1; counts pinned by battle-hud.webp, rest tuning).
     static constexpr float kMainMax       = 6.0f;   // MAIN stock
     static constexpr float kChargeMax     = 2.0f;   // CHARGE stock
@@ -276,22 +284,23 @@ struct FighterConstants {
 
 // One swing's resolved numbers (issue #26 steps 3–4). Data-driven when a move
 // table is bound: windows, reach, damage and stun come from the situation's
-// move hit entry. Otherwise the legacy shared tuning below, so a fighter with
-// no moves bound behaves exactly like the pre-#26 machine.
+// move hit entry. Otherwise the legacy shared tuning, so a fighter with no moves
+// bound behaves exactly like the pre-#26 machine.
+//
+// The legacy defaults ARE melee_rules.h's numbers (kLegacy*), not a second copy of them:
+// this struct once carried its own literals while MeleeRules carried another set that
+// only tests read, so editing "the attack sphere's radius" in one place changed nothing
+// live. `window` is the one window struct build_melee_swing() overrides.
 struct MeleeSwing {
-    bool  dataDriven = false;
-    int   moveId = -1;      // character-.dat move this swing plays (-1 = legacy)
-    int   startupTicks  = 5;
-    int   activeTicks   = 8;
-    int   recoveryTicks = 17;
-    float radius = 130.0f;                            // stands in for weapon+0x24
-    int   damage = FighterConstants::kLightDamage;
-    int   hitstun = 8;                                // legacy active-window stun
-    int total_ticks() const { return startupTicks + activeTicks + recoveryTicks; }
-    bool is_active(int elapsed) const {
-        return elapsed >= startupTicks && elapsed < startupTicks + activeTicks;
-    }
-    bool is_recovery(int elapsed) const { return elapsed >= startupTicks + activeTicks; }
+    bool        dataDriven = false;
+    int         moveId = -1;   // character-.dat move this swing plays (-1 = legacy)
+    MeleeWindow window = kLegacyWindow;
+    float       radius = kLegacyRadius;   // stands in for weapon+0x24
+    int         damage = FighterConstants::kLightDamage;
+    int         hitstun = 8;              // legacy active-window stun
+    int total_ticks() const { return window.total_ticks(); }
+    bool is_active(int elapsed) const { return window.is_active(elapsed); }
+    bool is_recovery(int elapsed) const { return window.is_recovery(elapsed); }
 };
 
 // Handoff from Fighter (input/charge side) to the scene (spawn/collide side):
@@ -379,10 +388,10 @@ public:
 
     // `source` applies the attacker's Hypermode damage bonus and earns its
     // gauge (Friendship). Pass nullptr for environmental damage.
-    // `hitstunFrames` overrides the hit-stun length when >= 0: FUN_00637950:308 writes
+    // `hitstunFrames` overrides the hit-stun length when > 0: FUN_00637950:308 writes
     // the attacker's weapon block defenderHitstun (blob index 10, record +0x58) into
-    // the victim's +0xa0 action counter, so the stun length is per weapon. Negative
-    // keeps the shared kHitStunFrames.
+    // the victim's +0xa0 action counter, so the stun length is per weapon. 0 and
+    // negative (the default) keep the shared kHitStunFrames.
     // `hitCategory` is the RAW record +0x64 dword the original feeds FUN_0063ba80
     // (@0x638c26) to pick the victim's reaction move; 0 is "unspecified", which takes
     // that function's default branch (198, the downed reaction) exactly as any
@@ -519,16 +528,18 @@ public:
     // Basics §training: "F4 maxes Hypermode") until issue #48 implemented the key itself
     // (fill_gauges below), and stays as the launch-time seam the visual suite drives.
     void set_hyper_gauge(float f) {
-        m_gauge = f < 0.0f ? 0.0f : (f > 1.0f ? 1.0f : f);
+        m_gauge = std::clamp(f, FighterConstants::kGaugeMin, FighterConstants::kGaugeMax);
     }
     // Startup HP (-hp): lets a test reach a lethal-hit path without a
     // wind-up (Kakera's death save, Overkill's downed window).
     void set_hp(int hp) {
-        m_hp = hp < 1 ? 1 : (hp > m_maxHP ? m_maxHP : hp);
+        m_hp = std::clamp(hp, 1, m_maxHP);
     }
     void set_battle_rates(int healthPercent, int gaugePercent) {
-        m_maxHP = healthPercent < 50 ? 50 : (healthPercent > 200 ? 200 : healthPercent);
-        m_gaugeRate = (gaugePercent < 50 ? 50 : (gaugePercent > 200 ? 200 : gaugePercent)) / 100.f;
+        m_maxHP = std::clamp(healthPercent, FighterConstants::kBattleRatePercentMin,
+                             FighterConstants::kBattleRatePercentMax);
+        m_gaugeRate = std::clamp(gaugePercent, FighterConstants::kBattleRatePercentMin,
+                                 FighterConstants::kBattleRatePercentMax) / 100.f;
     }
     // F1 (issue #48): the original writes HP AND max HP to 10000 at fighter+0x7a4/+0x7a8
     // (FUN_00634f60:175-182, after the two balloon stores at :173-174), i.e. the fighter's
@@ -578,7 +589,8 @@ public:
     // m_didHitThisSwing flag could not express that, so hits are tracked per victim
     // index for the duration of the swing and cleared when the state changes.
     bool already_hit_this_swing(int victimIndex) const {
-        return victimIndex >= 0 && victimIndex < 4 && (m_swingHits & (1u << victimIndex));
+        return victimIndex >= 0 && victimIndex < kMatchFighterCount &&
+               (m_swingHits & (1u << victimIndex));
     }
     int  swing_hit_count() const { return m_swingHitCount; }
 
@@ -615,11 +627,8 @@ public:
 
     // Swing bookkeeping driven by Match: begin clears the per-victim hit set, note
     // records that this swing already connected with one victim.
-    void begin_melee_swing(int victimIndexBase = 0);
+    void begin_melee_swing();
     void note_melee_hit(int victimIndex);
-    // Ticks of hit-stun a melee inflicts: the swing's own (the weapon entry's
-    // defenderHitstun when moves are bound, the legacy active-window stun else).
-    int  m_meleeHitstun() const { return m_swing.hitstun; }
 
     // Debug view of the recovered melee hitbox (issue #10). Data only, so drawing stays
     // in the render layer: `anchors` are the victim's TWO spheres -- head and chest, the
@@ -735,6 +744,15 @@ private:
     // [28, 29] — the lying pose), and nothing else the port can enter is in the
     // exclusion set {198,199,196}. The Hit state is the launched reaction (195/0xc3),
     // which is not excluded.
+    //
+    // UNREACHABLE IN A LIVE MATCH: this is the ONLY reader that can yield
+    // kReactionGrounded, and no production path enters Knockdown — take_damage() routes
+    // every non-lethal stun to Hit and the lethal blow straight to KO, and the grounded
+    // reaction is not among the selectors the port reproduces. The state and the 196 it
+    // maps to stay because they pin recovered rows (state_to_move_id, the damagedown
+    // label), and match_economy.h records the exclusion as modelled-but-unreachable
+    // rather than silently dropping it. Do NOT "fix" this by routing a hit reaction here
+    // without the recovered selector evidence.
     int reaction_move() const {
         return m_state == FighterState::Knockdown ? kReactionGrounded : 0;
     }
@@ -806,7 +824,7 @@ private:
     // dash and air control all share this basis, so a tap and a hold never
     // disagree about where "up" goes.
     glm::vec3 facing_relative(float screenRight, float screenUp) const;
-    void update_movement(const input::PlayerState* input, const Fighter* opp, double dt);
+    void update_movement(const input::PlayerState* input, double dt);
     void update_state_machine(const input::PlayerState* input, Fighter* opponent,
                               double dt);
     void update_facing(const Fighter* opp, double dt);
@@ -841,7 +859,7 @@ private:
     void gain_gauge(float fraction);
     bool try_activate_hypermode(Fighter* opponent);
     void try_ex_move();
-    void update_hypermode(double dt, Fighter* opponent);
+    void update_hypermode(double dt);
 
     // Z leap (grounded only) and double-tap dash setup. try_dash maps the
     // tapped key to a facing-relative dash (Up = forward ...) and returns

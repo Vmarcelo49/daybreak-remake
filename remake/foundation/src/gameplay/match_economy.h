@@ -67,6 +67,7 @@
 //    port cannot express without the KO move's per-phase durations.
 //
 // std only: no SDL, no WebGPU, no glm.
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -80,6 +81,11 @@ namespace gameplay {
 // is not a constant: it is the reaction bonus below.
 inline constexpr int    kSideCount    = 2;
 inline constexpr int    kMatchFighterCount = 4;
+// The battle's legal participant count. ONE pair of bounds: Match::reset and
+// TargetLocks::reset clamp the configured count to it, and the fighter-indexed flat
+// arrays are sized by kMatchFighterCount.
+inline constexpr int    kMinFighters  = 2;
+inline constexpr int    kMaxFighters  = kMatchFighterCount;
 inline constexpr float  kBalloonPerKo = 20.0f;
 inline constexpr float  kBalloonLimit = 100.0f;
 inline constexpr int    kBalloonSizeMin  = 40;   // FUN_0040acb0 @0x40af60-0x40afe2
@@ -141,6 +147,15 @@ inline constexpr int reactionMoveForHitCategory(int category, bool victimAirborn
 // the grounded reaction (FUN_00637950 @0x638c42-0x638c8a). `latchFree` is the
 // per-life latch at victim+0x84c (set on the first such kill, cleared by the respawn
 // at FUN_004219a0 @0x421a08-0x421a0b), which is what keeps the credit one-shot.
+//
+// MODELLED BUT UNREACHABLE IN A LIVE MATCH, deliberately kept: the third exclusion term
+// encodes the original's set and the melee/shot asymmetry, and the test below pins both,
+// but this port models the victim's reaction move as one integer (`reaction_move()`,
+// which yields kReactionGrounded only in the Knockdown state). NO production path enters
+// Knockdown — the grounded reaction is not one of the selectors the port reproduces — so
+// the term is always false live. It is NOT a port bug to fix by deleting it: dropping it
+// would lose the recovered set, and no unverified change is worth that (see fighter.h's
+// reaction_move()).
 inline constexpr bool downedReactionBonus(int reactionMove, int victimMove, bool latchFree,
                                           bool shot) {
     const bool victimDown = victimMove == kReactionDowned || victimMove == kReactionAirborne ||
@@ -167,8 +182,7 @@ inline int koIncrementPercent(int overkillHp, bool reactionBonus, bool shot) {
     const int over = overkillHp > 0 ? overkillHp : 0;
     int bonus;
     if (shot) {
-        bonus = over / 5;
-        if (bonus > kShotOverkillCap) bonus = kShotOverkillCap;
+        bonus = std::min(over / 5, kShotOverkillCap);
         if (over > kShotOverkillDeepHp) ++bonus;
         if (over > kShotOverkillDeeperHp) ++bonus;
     } else {

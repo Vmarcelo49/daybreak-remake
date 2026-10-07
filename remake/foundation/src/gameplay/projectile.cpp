@@ -145,9 +145,9 @@ void ProjectilePool::update(double dt, Fighter* fighters, int fighterCount,
 }
 
 int ProjectilePool::live_shots() const {
-    int n = 0;
-    for (const auto& s : m_shots) n += s.alive ? 1 : 0;
-    return n;
+    return static_cast<int>(
+        std::count_if(m_shots.begin(), m_shots.end(),
+                      [](const Projectile& s) { return s.alive; }));
 }
 
 }  // namespace gameplay

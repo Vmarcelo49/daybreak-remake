@@ -14,6 +14,13 @@ float xz_distance(const glm::vec3& a, const glm::vec3& b) {
     return std::sqrt(dx * dx + dz * dz);
 }
 
+// The distance at which the COM stops pushing forward: inside the swing's reach, minus
+// BotBrain::kOverrunMargin so it settles just inside the window instead of on its edge.
+float melee_reach_with_margin(const Fighter& self) {
+    return self.melee_reach(self.state() == FighterState::Run, self.airborne()) *
+           BotBrain::kOverrunMargin;
+}
+
 // The eight intents the recovered +0x278/+0x27c pair can express (FUN_00421780 maps them
 // onto the eight 45° yaw steps). Ordered as the port's (forward, right) pairs.
 struct Intent { float forward; float right; };
@@ -90,7 +97,8 @@ void BotBrain::reset(uint64_t seed, BotDifficulty difficulty) {
     m_stats = BotStats{};
     m_strafeTicks = m_advanceTicks = m_airTicks = m_powerTicks = 0;
     m_meleeCooldown = m_shotCooldown = m_retargetCooldown = m_planTicks = 0;
-    m_guardTicks = m_dashPhase = m_dashDir = 0;
+    m_guardTicks = m_dashPhase = 0;
+    m_dashKey = input::Action::Up;
     m_dashAction = BotAction::Evade;
     m_shotHoldTicks = 0;
     m_releasePending = false;
@@ -167,7 +175,8 @@ ShotTier BotBrain::pick_shot_tier(const Fighter& self, float dist) const {
 int BotBrain::hold_ticks(const Fighter& self, ShotTier tier) const {
     if (tier == ShotTier::Tap) return 1;
     const float seconds = (tier == ShotTier::Red) ? self.red_hold_sec() : self.yellow_hold_sec();
-    const int ticks = static_cast<int>(std::ceil(seconds * (float)kTicksPerSecond)) + 3;
+    const int ticks =
+        static_cast<int>(std::ceil(seconds * static_cast<float>(kTicksPerSecond))) + 3;
     return std::max(2, ticks);
 }
 
@@ -177,8 +186,16 @@ bool BotBrain::run_dash_commitment() {
     if (m_dashPhase == 0) return false;
     const bool press = (m_dashPhase == 1 || m_dashPhase == 3);
     if (press) {
-        m_decision.moveRight   = (m_dashDir == 2) ? -1.f : (m_dashDir == 3 ? 1.f : 0.f);
-        m_decision.moveForward = (m_dashDir == 0) ?  1.f : (m_dashDir == 1 ? -1.f : 0.f);
+        // The stored key IS the action the fighter polls, so it maps straight onto the
+        // movement axes BotBrain::apply() writes; no private 0..3 encoding sits between.
+        m_decision.moveRight = m_decision.moveForward = 0.f;
+        switch (m_dashKey) {
+            case input::Action::Up:    m_decision.moveForward =  1.f; break;
+            case input::Action::Down:  m_decision.moveForward = -1.f; break;
+            case input::Action::Left:  m_decision.moveRight   = -1.f; break;
+            case input::Action::Right: m_decision.moveRight   =  1.f; break;
+            default: break;   // only the four directions are ever committed
+        }
         m_decision.action = m_dashAction;
     }
     ++m_dashPhase;
@@ -234,15 +251,30 @@ bool BotBrain::run_guard_commitment(const BotView& v) {
 }
 
 const BotDecision& BotBrain::update(const BotView& view, uint64_t tick) {
-    compute(view, tick);
+    compute(view);
     stabilise_movement(tick);
     return m_decision;
 }
 
+// Does this fighter want a different lock than the one it holds? A COM acquires its own
+// lock the way the player acquires theirs — by asking for the cycle — and `hasTarget`
+// cannot stand in for that: the view's target falls back to the nearest hostile, so it is
+// set even when nothing has been selected, and since issue #49 nothing else hands a COM a
+// lock at round start. The 各個/集中 cells then want the lock off/onto the leader's
+// (FUN_0043f4d0:46-57). The request's cooldown is the caller's; this only says "want".
+bool BotBrain::needs_retarget(const BotView& view, bool hasTarget) const {
+    if (view.hostileCount <= 0) return false;
+    if (!hasTarget || !view.lockHeld) return true;
+    if (view.leaderTarget < 0 || view.hostileCount <= 1) return false;
+    if (m_tactic == BotTactic::Separate && view.targetIndex == view.leaderTarget) return true;
+    if (m_tactic == BotTactic::Focus && view.targetIndex != view.leaderTarget) return true;
+    return false;
+}
+
 // The decision half of a tick. Every path fills m_decision and returns; the key
-// stabiliser runs afterwards, once, in update().
-void BotBrain::compute(const BotView& view, uint64_t tick) {
-    (void)tick;   // the recovered timers count ticks, so no absolute clock is needed
+// stabiliser runs afterwards, once, in update(). The recovered timers count ticks, so
+// no absolute clock is needed here: the tick is the stabiliser's alone.
+void BotBrain::compute(const BotView& view) {
     m_decision = BotDecision{};
     m_decision.tactic = m_tactic;
     ++m_stats.ticks;
@@ -282,25 +314,10 @@ void BotBrain::compute(const BotView& view, uint64_t tick) {
 
     // ---- target maintenance (FUN_00421c80 and cells 3/4) ----
     // The brain only REQUESTS: the host owns the lock table and applies the recovered
-    // cycle, bounded by its 15-tick pulse (target_lock.h).
-    bool wantSwitch = false;
-    if (view.hostileCount > 0) {
-        // A COM acquires its own lock the way the player acquires theirs: by asking for
-        // the cycle. `hasTarget` cannot stand in for that — the view's target falls back
-        // to the nearest hostile, so it is set even when nothing has been selected — and
-        // since issue #49 nothing else hands a COM a lock at round start.
-        if (!hasTarget || !view.lockHeld) {
-            wantSwitch = true;
-        } else if (view.leaderTarget >= 0 && view.hostileCount > 1) {
-            // 各個 separates from the leader, 集中 concentrates on its target
-            // (FUN_0043f4d0:46-57).
-            if (m_tactic == BotTactic::Separate && view.targetIndex == view.leaderTarget)
-                wantSwitch = true;
-            if (m_tactic == BotTactic::Focus && view.targetIndex != view.leaderTarget)
-                wantSwitch = true;
-        }
-    }
-    if (wantSwitch && m_retargetCooldown == 0) {
+    // cycle, bounded by its 15-tick pulse (target_lock.h). The cooldown is checked here
+    // rather than in the predicate: it is a rate limit on the request, not a reason to
+    // want a different target.
+    if (needs_retarget(view, hasTarget) && m_retargetCooldown == 0) {
         m_decision.retarget = true;
         m_retargetCooldown = kRetargetCooldownTicks;
         ++m_stats.retargets;
@@ -353,7 +370,7 @@ void BotBrain::stabilise_movement(uint64_t tick) {
             continue;
         }
         if (want == m_axisValue[a]) continue;
-        if (tick - m_lastAxisChange[a] < (uint64_t)kKeyFlipTicks) {
+        if (tick - m_lastAxisChange[a] < static_cast<uint64_t>(kKeyFlipTicks)) {
             want = m_axisValue[a];   // too soon to move that key again: keep the old one
             continue;
         }
@@ -373,7 +390,7 @@ bool BotBrain::try_melee(const BotView& v, float dist) {
     const BotTacticWeights w = bot_tactic_weights(m_tactic);
     const BotTuning tune = bot_tuning(m_difficulty);
     const int engage = std::min(100, w.engageWeight * tune.engageScale / 100);
-    if ((int)m_rng.below(100) >= engage) return false;
+    if (static_cast<int>(m_rng.below(100)) >= engage) return false;
 
     // The FULL reach (bodyRadius + the move's hitRadius) is what try_melee_hit() tests, so
     // the press uses it as-is; the movement stop keeps the 0.9 margin so the COM settles
@@ -396,12 +413,25 @@ bool BotBrain::try_melee(const BotView& v, float dist) {
 
 void BotBrain::plan(const BotView& v, float dist) {
     ++m_stats.plans;
+    m_decision.action = BotAction::Idle;
+    // THE ORDER IS THE POLICY: defence before offence before shooting, then hypermode, and
+    // each cluster below owns the tick when it fires. The movement intent is computed
+    // first because charging is mobile in this port, so it is kept even when a later
+    // cluster acts.
+    const bool hasTarget = v.target != nullptr && v.targetAlive;
+    const float band = plan_movement_intent(v, dist, hasTarget);
+    if (plan_defence(v, hasTarget)) return;
+    if (plan_offence(v, dist, hasTarget)) return;
+    if (plan_shooting(v, dist, hasTarget, band)) return;
+    if (plan_hypermode(v, dist, hasTarget)) return;
+}
+
+// The movement intent and the jitter windows it is derived from. Returns the cell's
+// engagement band, which the shooting cluster also gates on.
+float BotBrain::plan_movement_intent(const BotView& v, float dist, bool hasTarget) {
     const Fighter& self = *v.self;
     const BotTacticWeights w = bot_tactic_weights(m_tactic);
     const BotTuning tune = bot_tuning(m_difficulty);
-    m_decision.action = BotAction::Idle;
-
-    const bool hasTarget = v.target != nullptr && v.targetAlive;
 
     // The recovered advance/retreat re-roll (FUN_0043f4d0:142-181): the threshold scales
     // with rangeScale and a far target biases the timer positive (advance).
@@ -431,11 +461,8 @@ void BotBrain::plan(const BotView& v, float dist) {
     // The movement intent, from the recovered timer signs (+0x868 < 0 → +0x27c = +1,
     // :130; +0x868 > 0 → +0x27c = -1, :166; FUN_00421780 maps the -1 onto the forward
     // step of the same basis the port's Up key uses, so a positive timer advances).
-    // Computed BEFORE the actions because charging is mobile in this port (fighter.cpp:
-    // the charge accumulates without leaving the state) and a COM that stands still to
-    // charge never closes. 後退 (rangeScale 7) keeps the line open; 格闘 (0.25) closes it.
-    const bool dashAttack = self.state() == FighterState::Run;
-    const float reach = self.melee_reach(dashAttack, self.airborne()) * 0.9f;
+    // 後退 (rangeScale 7) keeps the line open; 格闘 (0.25) closes it.
+    const float reach = melee_reach_with_margin(self);
     float forward = (m_advanceTicks > 0) ? 1.f : (m_advanceTicks < 0 ? -1.f : 0.f);
     float right = (m_strafeTicks < 0) ? -1.f : (m_strafeTicks > 0 ? 1.f : 0.f);
     if (!hasTarget) forward = 0.f;
@@ -468,58 +495,77 @@ void BotBrain::plan(const BotView& v, float dist) {
                  : (forward < 0.f) ? BotAction::Retreat
                  : (right != 0.f)  ? BotAction::Strafe : BotAction::Idle;
 
-    // ---- defence first ----
+    return band;
+}
+
+// The guard/evade branch. Defence is checked before offence, which is the policy.
+bool BotBrain::plan_defence(const BotView& v, bool hasTarget) {
+    const Fighter& self = *v.self;
+    const BotTuning tune = bot_tuning(m_difficulty);
     if (hasTarget && v.threats != kBotThreatNone && v.threatDistance > 0.f &&
         v.threatDistance < kThreatHorizon && self.actionable()) {
         if (!self.guard_exhausted() && self.stamina() > 0 &&
-            (int)m_rng.below(100) < tune.guardWeight) {
+            static_cast<int>(m_rng.below(100)) < tune.guardWeight) {
             m_guardTicks = 14;
             ++m_stats.guards;
             m_intentForward = 0.f;   // a held block is not a moving action
             m_intentRight = 0.f;
             run_guard_commitment(v);   // take this tick rather than waiting for the next
             m_planAction = BotAction::Guard;
-            return;
+            return true;
         }
-        if ((int)m_rng.below(100) < tune.evadeWeight && m_dashPhase == 0 &&
-            self.stamina() >= (int)FighterConstants::kDashStamina) {
+        if (static_cast<int>(m_rng.below(100)) < tune.evadeWeight && m_dashPhase == 0 &&
+            self.stamina() >= static_cast<int>(FighterConstants::kDashStamina)) {
             // A committed dash leaves the swing; the navigation probe rotates the
             // direction if the stage is in the way.
-            m_dashDir = (m_rng.below(2) == 0) ? 2 : 3;   // Left / Right
+            m_dashKey = (m_rng.below(2) == 0) ? input::Action::Left : input::Action::Right;
             m_dashAction = BotAction::Evade;
             m_dashPhase = 1;
             ++m_stats.evades;
             run_dash_commitment();
             m_planAction = BotAction::Evade;
-            return;
+            return true;
         }
     }
+    return false;
+}
 
-    // ---- offence ----
-    // The press itself is try_melee()'s (every tick); what is planned here is the
-    // committed approach. The in-range power branch is FUN_0043f4d0:194's
+// The committed approach. The press itself is try_melee()'s (every tick).
+bool BotBrain::plan_offence(const BotView& v, float dist, bool hasTarget) {
+    const Fighter& self = *v.self;
+    const BotTacticWeights w = bot_tactic_weights(m_tactic);
+    const BotTuning tune = bot_tuning(m_difficulty);
+    const float reach = melee_reach_with_margin(self);
+    // The in-range power branch is FUN_0043f4d0:194's
     // `rng % 100 < powerWeight` gate, and the engage gate below is :235's.
     const int engage = std::min(100, w.engageWeight * tune.engageScale / 100);
     const int power = std::min(100, w.powerWeight * tune.engageScale / 100);
-    if (hasTarget && (int)m_rng.below(100) < engage) {
+    if (hasTarget && static_cast<int>(m_rng.below(100)) < engage) {
         // The dash is a LUNGE, so it only starts from outside the swing (a committed dash
         // runs its locked direction for kDashFrames at 900 u/s — roughly 280 units — and
         // from inside the reach it would carry the COM straight past its target) and never
         // while one is already committed.
         if (m_powerTicks > 0 && dist < kPowerRange && dist > reach * 2.f &&
             self.actionable() && self.state() != FighterState::Run &&
-            self.stamina() >= (int)FighterConstants::kDashStamina && m_dashPhase == 0 &&
-            (int)m_rng.below(100) < power) {
-            m_dashDir = 0;   // Up = forward
+            self.stamina() >= static_cast<int>(FighterConstants::kDashStamina) &&
+            m_dashPhase == 0 &&
+            static_cast<int>(m_rng.below(100)) < power) {
+            m_dashKey = input::Action::Up;   // Up = forward
             m_dashAction = BotAction::Approach;
             m_dashPhase = 1;
             run_dash_commitment();
             m_planAction = BotAction::Approach;
-            return;
+            return true;
         }
     }
+    return false;
+}
 
-    // ---- shooting ----
+// The charge-and-release request.
+bool BotBrain::plan_shooting(const BotView& v, float dist, bool hasTarget, float band) {
+    const Fighter& self = *v.self;
+    const BotTacticWeights w = bot_tactic_weights(m_tactic);
+    const float reach = melee_reach_with_margin(self);
     // Outside the swing's reach, inside the cell's engagement band (a target beyond it is
     // closed on first: firing locks the fighter in its 20-tick firing pose, so a COM that
     // shoots at any range never arrives), with the line to the target actually open, and
@@ -547,14 +593,17 @@ void BotBrain::plan(const BotView& v, float dist) {
             ++m_stats.shotsStarted;
             run_shot_commitment(v);
             m_planAction = BotAction::Shoot;
-            return;
+            return true;
         }
         // The gate said no: wait out the reload/recharge instead of asking every tick.
         ++m_stats.shotBlocked;
         m_shotCooldown = kShotRejectTicks;
     }
+    return false;
+}
 
-    // ---- hypermode ----
+bool BotBrain::plan_hypermode(const BotView& v, float dist, bool hasTarget) {
+    const Fighter& self = *v.self;
     // The port's own gauge rule (hyper_ready) with the recovered shape: the original's
     // think gates its committed moves on the 0..1000 resource (+0x834) and only commits
     // when the target is close. Which cell fires it is not recovered.
@@ -564,12 +613,13 @@ void BotBrain::plan(const BotView& v, float dist) {
         m_intentForward = 0.f;
         m_intentRight = 0.f;
         m_planAction = BotAction::Hyper;
-        return;
+        return true;
     }
+    return false;
 }
 
 void BotBrain::navigate(const BotView& v) {
-    // A dash carries its own locked direction (the fighter commits to m_dashDir), so the
+    // A dash carries its own locked direction (the key the brain tapped), so the
     // navigation must not fight it.
     if (m_dashPhase != 0) return;
 
@@ -597,7 +647,8 @@ void BotBrain::apply_nav(const BotView& v) {
     m_decision.moveRight   = m_navRight;
     // The per-tick half of the overrun stop: the moment the target is inside the swing,
     // the forward push ends, so the plan window cannot carry the COM past it.
-    if (m_lastDist > 0.f && m_lastReach > 0.f && m_lastDist <= m_lastReach * 0.9f)
+    if (m_lastDist > 0.f && m_lastReach > 0.f &&
+        m_lastDist <= m_lastReach * kOverrunMargin)
         m_decision.moveForward = 0.f;
 }
 
@@ -655,7 +706,7 @@ void BotBrain::choose_nav(const BotView& v) {
     // without the trace showing it.
     if (m_blockedTicks >= kStuckRecoveryTicks) {
         if (v.self && !v.self->airborne() && v.self->actionable() &&
-            v.self->stamina() >= (int)FighterConstants::kJumpStamina) {
+            v.self->stamina() >= static_cast<int>(FighterConstants::kJumpStamina)) {
             m_decision.jump = true;
             m_navAction = BotAction::Jump;
             ++m_stats.jumps;

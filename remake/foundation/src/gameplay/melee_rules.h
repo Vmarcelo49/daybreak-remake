@@ -60,9 +60,10 @@
 //
 // PORT RULES below are chosen to be defensible rather than arbitrary:
 //   * The attack sphere's radius stands in for `weapon+0x24` when no move table
-//     is bound. A bound table supplies the hit entry's own hitRadius instead, so
-//     this number only governs the legacy swing (and the --hitbox-debug volume
-//     for it). It keeps the recovered `30 + radius` form either way.
+//     is bound — kLegacyRadius below. A bound table supplies the hit entry's own
+//     hitRadius instead, so that number only governs the legacy swing (and the
+//     --hitbox-debug volume for it). It keeps the recovered `30 + radius` form
+//     either way.
 //   * The body radius is the recovered literal 30.0, not a new constant.
 //   * The two victim anchors are placed as fractions of the collision body height (145,
 //     physics/raycast.h, measured in #7) rather than as fresh magic numbers.
@@ -83,34 +84,41 @@ struct MeleeRules {
     float headHeightFrac  = 1.0f;
     float chestHeightFrac = 0.42f;
 
-    // ---- PORT RULE ----
-    // Stands in for weapon+0x24, which a melee move has no record for. There is only
-    // ONE of these: the recovered test has no separate aerial or ground radius. What
-    // differs between a grounded and an aerial swing in the original is the MOVE (its
-    // id, animation and script), not the hitbox shape - the arena moves 300/310/350/360
-    // and similar families are selected by guards in FUN_0043ded0, and each still
-    // resolves through this same sphere.
-    float radius = 130.0f;
+    // The recovered sphere predicate: hit when the attack sphere (victim body radius +
+    // `radius`) overlaps EITHER victim anchor sphere. A miss is "both anchors out", so
+    // the argument is the NEARER anchor's squared distance. Live: Fighter::try_melee_hit
+    // calls this, so the shape below and the shape the simulation applies are one code
+    // path rather than two descriptions of it.
+    bool sphere_hits(float nearestAnchorDistSq, float radius) const {
+        const float combined = bodyRadius + radius;
+        return nearestAnchorDistSq < combined * combined;
+    }
+};
 
-    // ---- PORT RULE: windows, in ticks of the fixed simulation ----
+// A swing's startup/active/recovery split, in ticks of the fixed simulation. The
+// historical 30-frame attack is 5 + 8 + 17, so no timing drifts; a bound move table
+// overwrites the three fields per swing.
+struct MeleeWindow {
     int startupTicks  = 5;
     int activeTicks   = 8;
-    int recoveryTicks = 17;              // 5 + 8 + 17 == the historical 30
+    int recoveryTicks = 17;
 
     int total_ticks() const { return startupTicks + activeTicks + recoveryTicks; }
-
     bool is_startup(int elapsed) const { return elapsed < startupTicks; }
     bool is_active(int elapsed) const {
         return elapsed >= startupTicks && elapsed < startupTicks + activeTicks;
     }
     bool is_recovery(int elapsed) const { return elapsed >= startupTicks + activeTicks; }
-
-    // The recovered sphere predicate: hit when the attack sphere (victim body radius +
-    // weapon radius) overlaps EITHER victim anchor sphere.
-    bool sphere_hits(float distSqToAnchor) const {
-        const float combined = bodyRadius + radius;
-        return distSqToAnchor < combined * combined;
-    }
 };
+
+// The legacy swing's radius: stands in for weapon+0x24, which a legacy melee move has
+// no record for. There is only ONE of it because the recovered test has no separate
+// aerial or ground radius - what differs between a grounded and an aerial swing in the
+// original is the MOVE (its id, animation and script, the 300/310/350/360 families
+// FUN_0043ded0 selects), and each still resolves through this same sphere.
+inline constexpr float kLegacyRadius = 130.0f;
+
+// The legacy swing's window, derived from the defaults above.
+inline constexpr MeleeWindow kLegacyWindow{};
 
 }  // namespace gameplay

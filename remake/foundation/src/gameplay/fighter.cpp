@@ -243,7 +243,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
 
     // Hypermode first: it can activate this frame (S), expire, or drain
     // Kakera HP, all before the state machine reads the mode's modifiers.
-    update_hypermode(dt, opponent);
+    update_hypermode(dt);
 
     // 1. Decrement state timer (mirrors +0xa0 in fcn.0041f580).
     if (m_stateTimer > 0) {
@@ -282,7 +282,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // 3. Update movement (if the state allows it).
     const glm::vec3 movementStart = m_position;
     if (can_move() && input) {
-        update_movement(input, opponent, dt);
+        update_movement(input, dt);
     } else {
         m_velocity *= 0.8f;
         m_position += m_velocity * static_cast<float>(dt);
@@ -452,7 +452,7 @@ void Fighter::update_state_machine(const input::PlayerState* input,
         const bool dashAttack = (m_state == FighterState::Run);
         const bool aerial = !m_grounded;
         set_aerial_attack(aerial);
-        m_attackMoveId = resolve_attack_move(dashAttack, !m_grounded);
+        m_attackMoveId = resolve_attack_move(dashAttack, aerial);
         build_melee_swing(m_attackMoveId);
         set_state(FighterState::AttackA);
         m_stateTimer = m_swing.total_ticks();
@@ -547,8 +547,7 @@ glm::vec3 Fighter::facing_relative(float screenRight, float screenUp) const {
     return glm::vec3(fz, 0.0f, -fx) * screenRight + glm::vec3(fx, 0.0f, fz) * screenUp;
 }
 
-void Fighter::update_movement(const input::PlayerState* input, const Fighter* opp, double dt) {
-    (void)opp;
+void Fighter::update_movement(const input::PlayerState* input, double dt) {
     if (!input) return;
 
     // Committed dash: steering is locked to the tapped direction for the
@@ -605,8 +604,10 @@ void Fighter::update_facing(const Fighter* opp, double dt) {
 
     float diff = target_yaw - m_facing;
     // Wrap to [-π, π].
-    while (diff >  3.14159265f) diff -= 2.0f * 3.14159265f;
-    while (diff < -3.14159265f) diff += 2.0f * 3.14159265f;
+    // glm::pi<float>() is bit-identical to the 3.14159265f literal that used to sit
+    // here (both round to 0x40490fdb), and fighter.cpp:1496 already spells it that way.
+    while (diff >  glm::pi<float>()) diff -= 2.0f * glm::pi<float>();
+    while (diff < -glm::pi<float>()) diff += 2.0f * glm::pi<float>();
 
     m_facing += diff * FighterConstants::kTurnSpeed * static_cast<float>(dt);
 }
@@ -908,8 +909,7 @@ void Fighter::try_ex_move() {
     fire_shot(ShotTier::Ex);
 }
 
-void Fighter::update_hypermode(double dt, Fighter* opponent) {
-    (void)opponent;
+void Fighter::update_hypermode(double dt) {
     if (!m_hyperActive) return;
     const HypermodeParams& p = hypermode_params(m_hypermode);
 
@@ -946,7 +946,7 @@ bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollis
     // limit, and why a swing cannot reach legs.
     //
     // The radius is the swing's own weapon hitRadius when a move table is bound
-    // (issue #26: e.g. rena move 300's 20); otherwise MeleeRules::radius stands in
+    // (issue #26: e.g. rena move 300's 20); otherwise the shared legacy number stands in
     // for the unrecovered weapon+0x24. The SHAPE is recovered in both cases.
     const float bodyHeight = game::physics::MovementCollision::kFighterHeight;
     const float attackerY  = m_position.y + bodyHeight * m_meleeRules.chestHeightFrac;
@@ -958,8 +958,9 @@ bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollis
 
     const float toHead = (horizontalSq) + (headY - attackerY) * (headY - attackerY);
     const float toChest = (horizontalSq) + (chestY - attackerY) * (chestY - attackerY);
-    const float combined = m_meleeRules.bodyRadius + m_swing.radius;
-    if (toHead >= combined * combined && toChest >= combined * combined) return false;
+    // Either anchor connecting is a hit, so the NEARER one decides; the predicate itself
+    // is melee_rules.h's (FUN_0063b470), the same one melee_reach() is written in terms of.
+    if (!m_meleeRules.sphere_hits(std::min(toHead, toChest), m_swing.radius)) return false;
 
     // Solid barriers: the swing must not reach through the stage. #7's collision already
     // answers segment queries for the camera; the fighter's own mesh is the same
@@ -979,15 +980,14 @@ bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollis
     return true;
 }
 
-void Fighter::begin_melee_swing(int victimIndexBase) {
-    (void)victimIndexBase;
+void Fighter::begin_melee_swing() {
     m_swingHits = 0;
     m_swingHitCount = 0;
     m_meleeElapsed = 0;
 }
 
 void Fighter::note_melee_hit(int victimIndex) {
-    if (victimIndex < 0 || victimIndex >= 4) return;
+    if (victimIndex < 0 || victimIndex >= kMatchFighterCount) return;
     m_swingHits |= (1u << victimIndex);
     ++m_swingHitCount;
 }
@@ -1153,10 +1153,10 @@ MeleeSwing Fighter::resolve_swing(int moveId) const {
     swing.dataDriven = true;
     swing.moveId = moveId;
     // The hit goes live on its own in-phase frame (rena 300 → 4, 301 → 7).
-    swing.startupTicks = hit->activeFrame;
+    swing.window.startupTicks = hit->activeFrame;
     // ... and lives until the phase's next effect fires (300 → 6, 301 → 9,
     // 311 → 11, 330 → 5). A last-entry hit keeps the legacy 8-tick window.
-    if (nextFrame > hit->activeFrame) swing.activeTicks = nextFrame - hit->activeFrame;
+    if (nextFrame > hit->activeFrame) swing.window.activeTicks = nextFrame - hit->activeFrame;
     if (hit->hitRadius > 0) swing.radius = static_cast<float>(hit->hitRadius);
     // The melee HP damage is the move's combat[0x00] power through FUN_00639160's chain
     // (see the top of this file). A hit with no power at all keeps the legacy value, which
@@ -1273,7 +1273,7 @@ Fighter::HitboxDebug Fighter::hitbox_debug() const {
         d.attackCenter = m_position +
                          glm::vec3(0.0f, bodyHeight * m_meleeRules.chestHeightFrac, 0.0f);
         // The ATTACKER's own volume, which is the swing's radius — the weapon's own
-        // hitRadius when moves are bound, the MeleeRules stand-in for weapon+0x24
+        // hitRadius when moves are bound, melee_rules.h's legacy stand-in for weapon+0x24
         // otherwise. It is deliberately NOT bodyRadius + radius: in
         // FUN_0063b470 that sum is the combined test distance (the VICTIM's 30-unit body
         // radius plus this), so drawing it would show the reach, not the attack volume.
@@ -1337,10 +1337,8 @@ void Fighter::apply_weapon_ammo() {
 
 float Fighter::charge_hold_frac() const {
     const float limit = red_hold_sec();
-    float f = (limit > 0.0f) ? m_chargeHeld / limit : 0.0f;
-    if (f < 0.0f) f = 0.0f;
-    if (f > 1.0f) f = 1.0f;
-    return f;
+    const float f = (limit > 0.0f) ? m_chargeHeld / limit : 0.0f;
+    return std::clamp(f, 0.0f, 1.0f);
 }
 
 ShotTier Fighter::charge_tier() const {

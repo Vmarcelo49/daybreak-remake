@@ -227,14 +227,13 @@ MatchStepResult MatchEconomy::updateImpl(const bool alive[kMatchFighterCount],
         // side (FUN_00637950 @0x638e0d-0x638e37: `local_90 + 1`, and local_90 is 0 for
         // an already-dead victim because its reaction set is excluded).
         if (dead && m_overkillHits[i] > 0) {
-            const int hits = m_overkillHits[i];
-            const int amount = hits;  // exactly +1 per hit
-            m_balloon[team] += static_cast<float>(amount);
+            const int hits = m_overkillHits[i];   // exactly +1 balloon per hit
+            m_balloon[team] += static_cast<float>(hits);
             m_overkills[team] += hits;
-            r.overkillCredits[i] = amount;
-            m_balloonDelta[team] = amount;
+            r.overkillCredits[i] = hits;
+            m_balloonDelta[team] = hits;
             m_balloonDeltaTicks[team] = kBalloonDeltaTicks;
-            log(overkillLogLine(team, m_balloon[team], m_capacity[team], amount));
+            log(overkillLogLine(team, m_balloon[team], m_capacity[team], hits));
         }
 
         if (dead && balloonBursts(m_balloon[team], m_capacity[team])) {

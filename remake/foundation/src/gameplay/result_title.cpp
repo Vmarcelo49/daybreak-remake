@@ -9,7 +9,22 @@ namespace {
 // title. Same LCG the front end uses, so a run with a fixed seed reproduces.
 int rollPercent(uint32_t& rng) {
     rng = rng * 1664525u + 1013904223u;
-    return (int)((rng >> 8) % 100u);
+    return static_cast<int>((rng >> 8) % 100u);
+}
+
+// The three ladder branches whose threshold the dump spells in HEX, so the rungs read
+// `0x14 / 100` next to a neighbour's `30000 / 100` and neither said what it measured. The
+// dump scales every threshold by 100, so these three are a share of the capacity: 20%
+// (0x14), 125% (0x30d4 = 12500) and 175% (0x445c = 17500).
+constexpr int kThresholdHitsDealt20 = 20;    // 0x14
+constexpr int kThresholdTaken125    = 125;   // 0x30d4
+constexpr int kThresholdTaken175    = 175;   // 0x445c
+
+// `percent` of `capacity`, in the original's own integer arithmetic: the dump's
+// `capacity * N / 100` with `N = percent * 100`. `percent * 100` is a compile-time
+// constant, so the product, its width and the result are the literal expression's.
+constexpr int percentOf(int capacity, int percent) {
+    return capacity * (percent * 100) / 100;
 }
 
 }  // namespace
@@ -43,9 +58,9 @@ int resultTitleIndex(const ResultRecord& r, uint32_t& rng, bool* resolved) {
     auto pick = [&](int percent, int title) {
         return rollPercent(rng) < percent ? kResultTitlePenalty : title;
     };
-    const float hitsDealt = (float)r.hitsDealt();
-    const float hitsTaken = (float)r.hitsTaken();
-    const float eventsDealt = (float)r.eventsDealt();
+    const float hitsDealt = static_cast<float>(r.hitsDealt());
+    const float hitsTaken = static_cast<float>(r.hitsTaken());
+    const float eventsDealt = static_cast<float>(r.eventsDealt());
     const int damageDealt = r.damageDealt();
     const int damageTaken = r.damageTaken();
 
@@ -53,8 +68,8 @@ int resultTitleIndex(const ResultRecord& r, uint32_t& rng, bool* resolved) {
         // Branch A: capacity - balloon < 1 — this fighter ended the round out of budget.
         if (r.enemyCapacity * 30000 / 100 <= damageDealt && hitsDealt * .5f < eventsDealt)
             return finish(pick(1, 22));
-        if ((float)r.eventsTaken() <= hitsTaken * .1f &&
-            (float)r.eventsFromOthers <= (float)r.hitsFromOthers * .1f &&
+        if (static_cast<float>(r.eventsTaken()) <= hitsTaken * .1f &&
+            static_cast<float>(r.eventsFromOthers) <= static_cast<float>(r.hitsFromOthers) * .1f &&
             hitsDealt * .5f < eventsDealt)
             return finish(pick(1, 24));
         // UNRESOLVED: +0x64 (a float accumulator, 4e6 threshold) gates this branch.
@@ -62,7 +77,8 @@ int resultTitleIndex(const ResultRecord& r, uint32_t& rng, bool* resolved) {
         // UNRESOLVED: +0x20 > 14999.
         skip();
         if (r.enemyCapacity * 25000 / 100 <= damageDealt &&
-            (float)(r.teamCapacity * 35000 / 100) <= (float)damageTaken && r.shotHits <= r.meleeHits)
+            static_cast<float>(r.teamCapacity * 35000 / 100) <=
+            static_cast<float>(damageTaken) && r.shotHits <= r.meleeHits)
             return finish(pick(6, 31));
         // UNRESOLVED: +0x54 > 19.
         skip();
@@ -70,13 +86,13 @@ int resultTitleIndex(const ResultRecord& r, uint32_t& rng, bool* resolved) {
         skip();
         // UNRESOLVED: +0x60 == 0.
         skip();
-        if (r.hitsDealt() <= r.teamCapacity * 0x14 / 100) return finish(pick(16, 27));
-        if (r.enemyCapacity * 25000 / 100 <= damageDealt && (double)hitsTaken <= (double)hitsDealt * .05)
+        if (r.hitsDealt() <= percentOf(r.teamCapacity, kThresholdHitsDealt20)) return finish(pick(16, 27));
+        if (r.enemyCapacity * 25000 / 100 <= damageDealt && static_cast<double>(hitsTaken) <= static_cast<double>(hitsDealt) * .05)
             return finish(pick(6, 29));
         // UNRESOLVED: +0x6c > 249.
         skip();
-        if ((float)r.hitsFromTarget * .5f < (float)r.eventsFromTarget &&
-            (float)r.eventsFromOthers <= (float)r.hitsFromOthers * .05f)
+        if (static_cast<float>(r.hitsFromTarget) * .5f < static_cast<float>(r.eventsFromTarget) &&
+            static_cast<float>(r.eventsFromOthers) <= static_cast<float>(r.hitsFromOthers) * .05f)
             return finish(pick(6, 36));
         // UNRESOLVED: +0x48 (>= 10% of capacity) and +0x20 == 0.
         skip();
@@ -84,39 +100,39 @@ int resultTitleIndex(const ResultRecord& r, uint32_t& rng, bool* resolved) {
         skip();
         if (r.enemyCapacity * 15000 / 100 <= damageDealt &&
             damageTaken <= r.teamCapacity * 20000 / 100 && hitsTaken <= hitsDealt * .35f &&
-            (float)r.hitsFromTarget > (float)r.hitsToTarget * .25f)
+            static_cast<float>(r.hitsFromTarget) > static_cast<float>(r.hitsToTarget) * .25f)
             return finish(pick(3, 19));
         if (r.enemyCapacity * 12000 / 100 <= damageDealt &&
             damageTaken <= r.teamCapacity * 25000 / 100 && hitsTaken <= hitsDealt * .5f &&
-            (float)r.hitsFromTarget > (float)r.hitsToTarget * .15f)
+            static_cast<float>(r.hitsFromTarget) > static_cast<float>(r.hitsToTarget) * .15f)
             return finish(pick(6, 37));
         // UNRESOLVED: +0x34 (hits on the local player) > hitsDealt * 0.75.
         skip();
         if (r.enemyCapacity * 9000 / 100 <= damageDealt &&
             damageTaken <= r.teamCapacity * 30000 / 100 && hitsTaken <= hitsDealt * .65f &&
-            (float)r.hitsFromTarget > (float)r.hitsToTarget * .1f)
+            static_cast<float>(r.hitsFromTarget) > static_cast<float>(r.hitsToTarget) * .1f)
             return finish(pick(11, 39));
         return finish(kResultTitleFallback);
     }
 
     // Branch B: still standing (capacity - balloon >= 1).
     if (r.enemyCapacity * 35000 / 100 <= damageDealt &&
-        damageTaken <= r.teamCapacity * 0x30d4 / 100 && hitsTaken <= hitsDealt * .15f &&
-        (float)r.hitsFromTarget > (float)r.hitsToTarget * .5f)
+        damageTaken <= percentOf(r.teamCapacity, kThresholdTaken125) && hitsTaken <= hitsDealt * .15f &&
+        static_cast<float>(r.hitsFromTarget) > static_cast<float>(r.hitsToTarget) * .5f)
         return finish(6);
     if (r.enemyCapacity * 25000 / 100 <= damageDealt &&
         damageTaken <= r.teamCapacity * 25000 / 100 && r.hitsOnLocalPlayer == 0)
         return finish(3);
     if (hitsTaken <= hitsDealt * .1f &&
-        (float)r.hitsFromOthers <= (float)r.hitsToOthers * .1f &&
-        (float)r.hitsFromTarget > (float)r.hitsToTarget * .5f)
+        static_cast<float>(r.hitsFromOthers) <= static_cast<float>(r.hitsToOthers) * .1f &&
+        static_cast<float>(r.hitsFromTarget) > static_cast<float>(r.hitsToTarget) * .5f)
         return finish(4);
     if (r.enemyCapacity * 30000 / 100 <= damageDealt &&
-        (float)r.hitsFromTarget > (float)r.hitsToTarget * .75f && r.meleeHits <= r.shotHits)
+        static_cast<float>(r.hitsFromTarget) > static_cast<float>(r.hitsToTarget) * .75f && r.meleeHits <= r.shotHits)
         return finish(0xd);
     if (r.enemyCapacity * 25000 / 100 <= damageDealt &&
-        damageTaken <= r.teamCapacity * 0x445c / 100 && hitsTaken <= hitsDealt * .2f &&
-        (float)r.hitsFromTarget > (float)r.hitsToTarget * .4f)
+        damageTaken <= percentOf(r.teamCapacity, kThresholdTaken175) && hitsTaken <= hitsDealt * .2f &&
+        static_cast<float>(r.hitsFromTarget) > static_cast<float>(r.hitsToTarget) * .4f)
         return finish(0xc);
     // UNRESOLVED: +0x20 >= 15% of capacity.
     skip();
@@ -133,7 +149,7 @@ int resultTitleIndex(const ResultRecord& r, uint32_t& rng, bool* resolved) {
     // UNRESOLVED: +0x78 + 0x74 < 21 (melee <= shot).
     skip();
     if (r.enemyCapacity * 30000 / 100 <= damageDealt &&
-        (float)r.hitsFromTarget > (float)r.hitsToTarget * .25f && r.shotHits <= r.meleeHits)
+        static_cast<float>(r.hitsFromTarget) > static_cast<float>(r.hitsToTarget) * .25f && r.shotHits <= r.meleeHits)
         return finish(2);
     if (damageDealt <= r.enemyCapacity * 15000 / 100 &&
         r.teamCapacity * 35000 / 100 <= damageTaken && r.shotHits <= r.meleeHits)
@@ -151,17 +167,17 @@ int resultTitleIndex(const ResultRecord& r, uint32_t& rng, bool* resolved) {
     skip();
     if (r.enemyCapacity * 15000 / 100 <= damageDealt &&
         damageTaken <= r.teamCapacity * 20000 / 100 && hitsTaken <= hitsDealt * .35f &&
-        (float)r.hitsFromTarget > (float)r.hitsToTarget * .25f)
+        static_cast<float>(r.hitsFromTarget) > static_cast<float>(r.hitsToTarget) * .25f)
         return finish(0x13);
     if (r.enemyCapacity * 12000 / 100 <= damageDealt &&
         damageTaken <= r.teamCapacity * 25000 / 100 && hitsTaken <= hitsDealt * .5f &&
-        (float)r.hitsFromTarget > (float)r.hitsToTarget * .15f)
+        static_cast<float>(r.hitsFromTarget) > static_cast<float>(r.hitsToTarget) * .15f)
         return finish(0x25);
     // UNRESOLVED: +0x34 (hits on the local player) > hitsDealt * 0.75.
     skip();
     if (r.enemyCapacity * 9000 / 100 <= damageDealt &&
         damageTaken <= r.teamCapacity * 30000 / 100 && hitsTaken <= hitsDealt * .65f &&
-        (float)r.hitsFromTarget > (float)r.hitsToTarget * .1f)
+        static_cast<float>(r.hitsFromTarget) > static_cast<float>(r.hitsToTarget) * .1f)
         return finish(0x27);
     return finish(kResultTitleFallback);
 }
