@@ -14,6 +14,13 @@ float xz_distance(const glm::vec3& a, const glm::vec3& b) {
     return std::sqrt(dx * dx + dz * dz);
 }
 
+// The distance at which the COM stops pushing forward: inside the swing's reach, minus
+// BotBrain::kOverrunMargin so it settles just inside the window instead of on its edge.
+float melee_reach_with_margin(const Fighter& self) {
+    return self.melee_reach(self.state() == FighterState::Run, self.airborne()) *
+           BotBrain::kOverrunMargin;
+}
+
 // The eight intents the recovered +0x278/+0x27c pair can express (FUN_00421780 maps them
 // onto the eight 45° yaw steps). Ordered as the port's (forward, right) pairs.
 struct Intent { float forward; float right; };
@@ -405,12 +412,25 @@ bool BotBrain::try_melee(const BotView& v, float dist) {
 
 void BotBrain::plan(const BotView& v, float dist) {
     ++m_stats.plans;
+    m_decision.action = BotAction::Idle;
+    // THE ORDER IS THE POLICY: defence before offence before shooting, then hypermode, and
+    // each cluster below owns the tick when it fires. The movement intent is computed
+    // first because charging is mobile in this port, so it is kept even when a later
+    // cluster acts.
+    const bool hasTarget = v.target != nullptr && v.targetAlive;
+    const float band = plan_movement_intent(v, dist, hasTarget);
+    if (plan_defence(v, hasTarget)) return;
+    if (plan_offence(v, dist, hasTarget)) return;
+    if (plan_shooting(v, dist, hasTarget, band)) return;
+    if (plan_hypermode(v, dist, hasTarget)) return;
+}
+
+// The movement intent and the jitter windows it is derived from. Returns the cell's
+// engagement band, which the shooting cluster also gates on.
+float BotBrain::plan_movement_intent(const BotView& v, float dist, bool hasTarget) {
     const Fighter& self = *v.self;
     const BotTacticWeights w = bot_tactic_weights(m_tactic);
     const BotTuning tune = bot_tuning(m_difficulty);
-    m_decision.action = BotAction::Idle;
-
-    const bool hasTarget = v.target != nullptr && v.targetAlive;
 
     // The recovered advance/retreat re-roll (FUN_0043f4d0:142-181): the threshold scales
     // with rangeScale and a far target biases the timer positive (advance).
@@ -440,11 +460,8 @@ void BotBrain::plan(const BotView& v, float dist) {
     // The movement intent, from the recovered timer signs (+0x868 < 0 → +0x27c = +1,
     // :130; +0x868 > 0 → +0x27c = -1, :166; FUN_00421780 maps the -1 onto the forward
     // step of the same basis the port's Up key uses, so a positive timer advances).
-    // Computed BEFORE the actions because charging is mobile in this port (fighter.cpp:
-    // the charge accumulates without leaving the state) and a COM that stands still to
-    // charge never closes. 後退 (rangeScale 7) keeps the line open; 格闘 (0.25) closes it.
-    const bool dashAttack = self.state() == FighterState::Run;
-    const float reach = self.melee_reach(dashAttack, self.airborne()) * 0.9f;
+    // 後退 (rangeScale 7) keeps the line open; 格闘 (0.25) closes it.
+    const float reach = melee_reach_with_margin(self);
     float forward = (m_advanceTicks > 0) ? 1.f : (m_advanceTicks < 0 ? -1.f : 0.f);
     float right = (m_strafeTicks < 0) ? -1.f : (m_strafeTicks > 0 ? 1.f : 0.f);
     if (!hasTarget) forward = 0.f;
@@ -477,7 +494,13 @@ void BotBrain::plan(const BotView& v, float dist) {
                  : (forward < 0.f) ? BotAction::Retreat
                  : (right != 0.f)  ? BotAction::Strafe : BotAction::Idle;
 
-    // ---- defence first ----
+    return band;
+}
+
+// The guard/evade branch. Defence is checked before offence, which is the policy.
+bool BotBrain::plan_defence(const BotView& v, bool hasTarget) {
+    const Fighter& self = *v.self;
+    const BotTuning tune = bot_tuning(m_difficulty);
     if (hasTarget && v.threats != kBotThreatNone && v.threatDistance > 0.f &&
         v.threatDistance < kThreatHorizon && self.actionable()) {
         if (!self.guard_exhausted() && self.stamina() > 0 &&
@@ -488,7 +511,7 @@ void BotBrain::plan(const BotView& v, float dist) {
             m_intentRight = 0.f;
             run_guard_commitment(v);   // take this tick rather than waiting for the next
             m_planAction = BotAction::Guard;
-            return;
+            return true;
         }
         if ((int)m_rng.below(100) < tune.evadeWeight && m_dashPhase == 0 &&
             self.stamina() >= (int)FighterConstants::kDashStamina) {
@@ -500,13 +523,19 @@ void BotBrain::plan(const BotView& v, float dist) {
             ++m_stats.evades;
             run_dash_commitment();
             m_planAction = BotAction::Evade;
-            return;
+            return true;
         }
     }
+    return false;
+}
 
-    // ---- offence ----
-    // The press itself is try_melee()'s (every tick); what is planned here is the
-    // committed approach. The in-range power branch is FUN_0043f4d0:194's
+// The committed approach. The press itself is try_melee()'s (every tick).
+bool BotBrain::plan_offence(const BotView& v, float dist, bool hasTarget) {
+    const Fighter& self = *v.self;
+    const BotTacticWeights w = bot_tactic_weights(m_tactic);
+    const BotTuning tune = bot_tuning(m_difficulty);
+    const float reach = melee_reach_with_margin(self);
+    // The in-range power branch is FUN_0043f4d0:194's
     // `rng % 100 < powerWeight` gate, and the engage gate below is :235's.
     const int engage = std::min(100, w.engageWeight * tune.engageScale / 100);
     const int power = std::min(100, w.powerWeight * tune.engageScale / 100);
@@ -524,11 +553,17 @@ void BotBrain::plan(const BotView& v, float dist) {
             m_dashPhase = 1;
             run_dash_commitment();
             m_planAction = BotAction::Approach;
-            return;
+            return true;
         }
     }
+    return false;
+}
 
-    // ---- shooting ----
+// The charge-and-release request.
+bool BotBrain::plan_shooting(const BotView& v, float dist, bool hasTarget, float band) {
+    const Fighter& self = *v.self;
+    const BotTacticWeights w = bot_tactic_weights(m_tactic);
+    const float reach = melee_reach_with_margin(self);
     // Outside the swing's reach, inside the cell's engagement band (a target beyond it is
     // closed on first: firing locks the fighter in its 20-tick firing pose, so a COM that
     // shoots at any range never arrives), with the line to the target actually open, and
@@ -556,14 +591,17 @@ void BotBrain::plan(const BotView& v, float dist) {
             ++m_stats.shotsStarted;
             run_shot_commitment(v);
             m_planAction = BotAction::Shoot;
-            return;
+            return true;
         }
         // The gate said no: wait out the reload/recharge instead of asking every tick.
         ++m_stats.shotBlocked;
         m_shotCooldown = kShotRejectTicks;
     }
+    return false;
+}
 
-    // ---- hypermode ----
+bool BotBrain::plan_hypermode(const BotView& v, float dist, bool hasTarget) {
+    const Fighter& self = *v.self;
     // The port's own gauge rule (hyper_ready) with the recovered shape: the original's
     // think gates its committed moves on the 0..1000 resource (+0x834) and only commits
     // when the target is close. Which cell fires it is not recovered.
@@ -573,8 +611,9 @@ void BotBrain::plan(const BotView& v, float dist) {
         m_intentForward = 0.f;
         m_intentRight = 0.f;
         m_planAction = BotAction::Hyper;
-        return;
+        return true;
     }
+    return false;
 }
 
 void BotBrain::navigate(const BotView& v) {
@@ -606,7 +645,8 @@ void BotBrain::apply_nav(const BotView& v) {
     m_decision.moveRight   = m_navRight;
     // The per-tick half of the overrun stop: the moment the target is inside the swing,
     // the forward push ends, so the plan window cannot carry the COM past it.
-    if (m_lastDist > 0.f && m_lastReach > 0.f && m_lastDist <= m_lastReach * 0.9f)
+    if (m_lastDist > 0.f && m_lastReach > 0.f &&
+        m_lastDist <= m_lastReach * kOverrunMargin)
         m_decision.moveForward = 0.f;
 }
 

@@ -285,6 +285,11 @@ public:
     static constexpr float kHyperRange         = 220.f;  // port: burst reach (Oyashiro)
     static constexpr float kProbeDistance      = 90.f;   // port: one navigation step
     static constexpr float kProbeOpenFraction  = 0.35f;  // port: < this of a step = a wall
+    // PORT RULE, one rule in two places: the forward push stops once the target is this
+    // far inside the swing's reach. plan_movement_intent() applies it when the plan is
+    // made and apply_nav() per tick, so a plan window cannot carry the COM past its
+    // target; both read this, so they cannot drift apart.
+    static constexpr float kOverrunMargin      = 0.9f;
     static constexpr int   kStuckRecoveryTicks = 24;     // port: bounded recovery
     static constexpr int   kShotRejectTicks    = 24;     // port: after a refused request
     static constexpr int   kShotSpacingTicks   = 8;      // port: between volleys
@@ -293,6 +298,16 @@ private:
     // One planning step: pick the action and the movement intent for the next
     // reactionTicks ticks. Every probability gate lives here.
     void plan(const BotView& v, float dist);
+    // The five decision clusters plan() runs, IN THIS ORDER — the order IS the policy
+    // (movement intent first because charging is mobile, then defence before offence
+    // before shooting, hypermode last). Each returns true when it owns the tick.
+    // plan_movement_intent() returns the cell's engagement band, which plan_shooting()
+    // gates on as well.
+    float plan_movement_intent(const BotView& v, float dist, bool hasTarget);
+    bool  plan_defence(const BotView& v, bool hasTarget);
+    bool  plan_offence(const BotView& v, float dist, bool hasTarget);
+    bool  plan_shooting(const BotView& v, float dist, bool hasTarget, float band);
+    bool  plan_hypermode(const BotView& v, float dist, bool hasTarget);
     // The single-tick melee press, evaluated every tick (the original's think runs every
     // tick, so a target that steps into reach between two plans must still be hit).
     bool try_melee(const BotView& v, float dist);
