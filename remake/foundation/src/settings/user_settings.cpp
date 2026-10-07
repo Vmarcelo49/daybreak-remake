@@ -236,61 +236,50 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
     std::istringstream stream(text);
     std::string raw;
     int lineNumber = 0;
+    // The parser's two report forms, both stamped with the line they came from: `fail` rejects
+    // the whole document (a structure error), `warn` defaults the one key and keeps going (a
+    // value error). `fail`'s argument is the rest of the message, separator included — ": ..."
+    // for a parse error, " is ..." for the raw-length guard below.
+    auto fail = [&](const std::string& rest) {
+        error = "line " + std::to_string(lineNumber) + rest;
+        return false;
+    };
+    auto warn = [&](const std::string& what) {
+        ++report.warnings;
+        report.messages.push_back("line " + std::to_string(lineNumber) + ": " + what);
+    };
     while (std::getline(stream, raw)) {
         ++lineNumber;
         if (raw.size() > kMaxLine) {
-            error = "line " + std::to_string(lineNumber) + " is longer than " +
-                    std::to_string(kMaxLine) + " bytes";
-            return false;
+            return fail(" is longer than " + std::to_string(kMaxLine) + " bytes");
         }
         if (!raw.empty() && raw.back() == '\r') raw.pop_back();
         const std::string line = trimmed(raw);
         if (line.empty() || line[0] == '#' || line[0] == ';') continue;
 
         if (line.front() == '[') {
-            if (line.back() != ']') {
-                error = "line " + std::to_string(lineNumber) + ": unterminated section header";
-                return false;
-            }
+            if (line.back() != ']') return fail(": unterminated section header");
             section = trimmed(line.substr(1, line.size() - 2));
             if (section != "game" && section != "display" && section != "render" &&
                 section != "audio" && section != "bindings" && section != "controllers") {
-                error = "line " + std::to_string(lineNumber) + ": unknown section [" + section + "]";
-                return false;
+                return fail(": unknown section [" + section + "]");
             }
             continue;
         }
 
         const size_t equals = line.find('=');
-        if (equals == std::string::npos) {
-            error = "line " + std::to_string(lineNumber) + ": expected key = value";
-            return false;
-        }
+        if (equals == std::string::npos) return fail(": expected key = value");
         const std::string key = trimmed(line.substr(0, equals));
         const std::string value = trimmed(line.substr(equals + 1));
-        if (key.empty()) {
-            error = "line " + std::to_string(lineNumber) + ": empty key";
-            return false;
-        }
-        if (value.size() > kMaxLine) {
-            error = "line " + std::to_string(lineNumber) + ": value too long";
-            return false;
-        }
-
-        auto warn = [&](const std::string& what) {
-            ++report.warnings;
-            report.messages.push_back("line " + std::to_string(lineNumber) + ": " + what);
-        };
+        if (key.empty()) return fail(": empty key");
+        if (value.size() > kMaxLine) return fail(": value too long");
 
         // Nothing but the version line may stand outside a section, and a section header is
         // what fills `section` (an empty or unknown one was rejected above).
         if (section.empty()) {
             if (key == "version") {
                 int version = 0;
-                if (!parseInt(value, version)) {
-                    error = "line " + std::to_string(lineNumber) + ": version is not a number";
-                    return false;
-                }
+                if (!parseInt(value, version)) return fail(": version is not a number");
                 if (version != kSchemaVersion && version != kSchemaVersionLegacy &&
                     version != kSchemaVersionV2 && version != kSchemaVersionV3 &&
                     version != kSchemaVersionV4) {
@@ -301,9 +290,8 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                 documentVersion = version;
                 continue;
             }
-            error = "line " + std::to_string(lineNumber) + ": key '" + key +
-                    "' before any section (only version = belongs here)";
-            return false;
+            return fail(": key '" + key +
+                        "' before any section (only version = belongs here)");
         }
 
         if (section == "game") {
