@@ -316,29 +316,109 @@ Still port rules or unrecovered, by file:
 
 `MoveEntry::has_combat()` is `hitRadius > 0 && baseDamage > 0`, and it is what decides
 whether a phase has an active hit volume at all (`Fighter::melee_in_active`, the melee
-loop in `match.cpp`, and the projectile contact loop). A read-only scan of the extracted
-install finds **121 NN.dat records across 50 files, and 86 bullet `.dat` files, with
-`radius > 0` and `combat[0] == 0`** — records that carry a radius, a gauge feed and a
-reaction/effect column but no HP power; 115 (file, move) pairs contain no `base > 0`
-record at all, so those moves cannot hit under the current predicate. Character-relevant
-examples: `natumi/00` 350/360, `ohishi/01` 350/360/400/402/450/460, `rika/00` 370,
-`mion/00` 310.
+loop in `match.cpp`, and the projectile contact loop).
 
-Two readings are live and the assembly has not settled them:
+**Recount on the winning bundle bytes** (the copies the runtime actually reads, not the
+extracted tree — a temporary scan inside `animation_data_test`, since the numbers differ):
+of **12,161 stored records across all 46 combos, 113 have `radius > 0 && combat[0] == 0`**.
+The extracted-tree figure quoted earlier (121/50 files) is superseded. The 113 are not a
+long tail — they are concentrated:
 
-1. **A zero-power record is a real non-HP hit** (gauge feed / hitstop / reaction, no
-   damage). Then the predicate should be `hitRadius > 0` — the radius is the collision
-   volume and the power is just one of its outputs.
-2. **A zero-power record is not a hit at all**, and the original gates its collision on
-   something else. Then the current predicate is right and those records are markers for
-   some other event.
+- **moves 500 and 501 of every combo** (2 records each, 96 in total): radius 150, power 0,
+  gauge 0, `combat[13] == combat[14] == 113`, `combat[15] == combat[16] == 10`, shape 0.
+  Every character carries the identical values, which is the signature of shared reaction
+  or template data rather than an attack volume.
+- **Mion 310** (all three weapons): radius 10, shape 1 (capsule), effect 30 — a real
+  character-specific attack row with no HP power.
+- **Mion 370 phase 1** and **Rika 370 phase 0**: radius 60/36, shape 0, everything else
+  zero, carrying state flags `0x2400` / attack flags `0x20008` / `0x24008`.
 
-What is needed: the original's own hit-entry predicate. The collision itself is
-`FUN_00420880` (anchor transform) plus the head/chest spheres in `FUN_0063b470`/`4d0`, and
-the damage chain is `FUN_00639160`/`FUN_00637950`; the gate that decides whether a phase
-has a live volume should be found among their callers, not inferred from the data shape.
-Until then the port keeps the narrower predicate and the 115 pairs stay silent — which is
-a **known functional gap**, not a verified equivalence.
+So the "115 moves can never hit" figure is misleading in the other direction too: the bulk
+is the 500/501 pair, and the radius>0 rows that remain are mostly (a) genuine non-HP hit
+volumes such as Mion 310 phase 0 (`radius 10, power 0, reaction 113, effect 30`, with the
+move's damaging record in a later phase) and (b) Mion 370 phase 1 / Rika 370 phase 0.
+
+**The characters' ordinary attacks are not zero-power.** An earlier draft of this section
+implied they were, from a scan that read each phase's FIRST record. `radius` is 0 on those
+lead-in records, so they are not hit volumes at all, and the damaging row sits later in the
+phase: Rena 300 phase 2 entry 1 is `radius 20, power 1500, gauge 50, reaction 100`, and
+Akane 300 is the same at `frame 3`. Reading a phase's first record instead of its hit rows is
+what produced the false "most attacks are zero-power" impression; do not repeat it.
+
+**RESOLVED.** The original's predicate was recovered from the ORIGINAL executable and
+byte-verified: `FUN_00637950` (the record-driven contact resolver, sole caller
+`FUN_00637680`, one call per frame from the battle update `FUN_00634f60`) tests **radius**:
+
+```
+006379DA  8B 4D 08         MOV  ECX,[EBP+0x8]      ; the volume object
+006379DD  8B 51 10         MOV  EDX,[ECX+0x10]     ; volume->currentRecord
+006379E0  83 7A 24 00      CMP  dword [EDX+0x24],0 ; ★ record+0x24 = radius
+006379E4  75 05            JNZ  006379EB
+006379E6  E9 AD 15 00 00   JMP  00638F98           ; radius==0 -> epilogue, no test
+```
+
+`combat[0]` is read exactly twice in the whole 1501-instruction resolver, both inside the
+HP math (`0x638a32`, `0x638a6e`) and never as a branch. Every downstream consumer is
+reached when power is 0: impact effect (`combat[16]` → `0x63811a`), attacker/victim hitstop
+(`combat[9]`/`[10]` → `0x638503`/`0x638515`), knockback (`combat[17]`/`[18]` → `0x638633`),
+reaction (`combat[13]`/`[14]` → `0x6386ff` → `FUN_00421080`), mode gauges
+(`combat[5]`/`[6]`/`[7]` → `0x638321`/`0x6383e6`/`0x638493`) and the stagger gauge
+(`0x6385ec`). Reading 1 above is correct; reading 2 is refuted. Only HP damage is 0.
+
+The port now matches: `MoveEntry::has_combat()` is `hitRadius != 0` (the original compares
+the dword against zero, not signed-greater; no shipped record has a negative radius, so the
+two agree on this data). The runtime conditions the original applies *in addition* to the
+record — the per-target allowance `this+0x90[slot] > 0` / `this+0x88[slot] == 0`, armed per
+attack by `FUN_0042c840(this,1)`, plus the `record+0x2c` bits `0x10000`/`0x20000`/`0x8000`
+— are not yet ported and are the next layer of this work.
+
+### 11.1.1 The zero-power contact path (implemented)
+
+Recovering the predicate was not sufficient on its own: two later stages still assumed a
+contact implies HP damage, and both had to be fixed before a zero-power record could behave.
+
+- **`Fighter::take_damage()` clamped every hit to 1 HP** (`amount = std::max(1, amount)`,
+  and the guard branch used `std::max(1, amount / 5)`). A record with power 0 therefore took
+  1 HP, and both melee (`try_melee_hit`) and projectiles reach that line. The clamp is gone;
+  the amount now floors at 0, and the guard branch no longer resurrects a zero hit. This is
+  the change that makes "power 0" mean no HP.
+- **What a zero-power contact still does**, all verified through the real contact path:
+  enters the victim's hitstun with the record's own `defenderHitstun`, applies the record's
+  reaction (`combat[13]`, fed to `FUN_0063ba80`), spawns the record's impact effect
+  (`combat[16]`), and records no HP and no damage statistics.
+- **Gauge: deliberately NOT wired from the record.** `combat[5]`/`[6]` are the original's
+  internal **mode gauges** (`FUN_00637950` writes `+0x838`/`+0x840`/`+0x83C`, 0..100
+  accumulators with their own thresholds), whereas this port's `gain_gauge()` feeds
+  `m_gauge`, the player-selected **hypermode** bar. Those are different mechanics with
+  different consumers, and `gain_gauge` also multiplies by `m_gaugeRate`. Routing the
+  recovered columns into it would report the right number through the wrong system, so the
+  damage-derived hyper credit stands until the port has mode-gauge accumulators. An earlier
+  revision of this pass did route them and was reverted for exactly this reason.
+- **Knockback (`combat[17]`/`[18]`) is still not applied.** The original writes them into a
+  launch-velocity field (`+0x87c`/`+0x878`), not into the port's `m_velocity`, and nothing in
+  the corpus fixes the conversion. Applying a guessed scale would be invented motion.
+- **The per-swing allowance stays where it is.** `FUN_00637950` consumes `this+0x90[slot] on
+  contact; the port splits that into `note_melee_hit()` writing the flag and the scene's
+  `already_hit_this_swing(j)` gate (`match.cpp:143`). `try_melee_hit()` itself does NOT
+  consult it, and a test that assumes it does is asserting the wrong seam.
+- The regression test is `animation_data_test.cpp`'s `zero_power_contact()`, which drives a
+  real equipped combo to a landed swing plus the zero-power conversion, and
+  `fighter_script_test.cpp` case 10 pins "a zero-power hit takes no HP and records no
+  damage, but still stuns".
+
+Still open from the same investigation, and **not** silently absorbed:
+
+- **The combat column labels in `combat_record.h` may be shifted by one.** The resolver was
+  traced column by column and the assignment it supports is `[5]`/`[6]`/`[7]` = gauge
+  accumulators, `[8]` = a further gauge, `[9]`/`[10]` = hitstop, `[13]`/`[14]` = reaction,
+  `[16]` = impact effect, `[17]`/`[18]` = knockback — which agrees with the port for
+  `[9]`/`[10]`/`[13]`/`[16]`/`[17]`/`[18]` but disputes the port's `hpDamage`/`reflectDamage`/
+  `gaugeGainA`/`gaugeGainB` names on `[5]`/`[6]`/`[7]`/`[8]`. Reconcile against the original
+  consumers before renaming anything; the names are load-bearing in the HUD and damage code.
+- The per-attack allowance arming in the other 45 move programs is unrecovered (only Rena's
+  `FUN_0043ffc0` sites were verified), and the flag bits above are known by test site only.
+- The volume-vs-volume clash test `FUN_00638fd0` (engaged by `record+0x28` bit `0x10000`)
+  is a separate mechanism with no radius test; the port does not have it.
 
 ### 11.2 Other verified open items from the independent review
 
@@ -361,24 +441,97 @@ a **known functional gap**, not a verified equivalence.
   are still not encoded. They are yaw, not bank (see the correction in §11); what remains
   open is the combo's accumulated-angle semantics, in §11.3.
 
-### 11.3 The facing relaxations: what is still unresolved
+### 11.3 Facing: recovered, and the port's gate is not the regression
 
-The two helpers are now read correctly (11, above). The open part is what the per-move
-calls mean:
+Recovered from the ORIGINAL with authoritative xrefs (`/get_function_xrefs` is the endpoint
+that matters here; the offline corpus cannot establish callers). All three fields are
+**degrees** of yaw about +Y, and they are different things:
 
-- `FUN_0042dd90` keeps `this+0x5c` at the opponent bearing and adds its delta into
-  `this+0x64`, so `this+0x64` accumulates rather than being an absolute world yaw.
-- The move bodies call `FUN_0042db10(this, 0.0f, rate)` and `FUN_0042dc20(this, 0.0f, rate)`
-  with a **literal 0.0f target** — they relax `this+0x64` toward zero in wrapped 360-degree
-  space. Whether that 0 means "aligned with the opponent bearing" (because the caller
-  already carries the bearing in a sibling field) or something else depends on how
-  `0x5c`/`0x60`/`0x64` are re-based for the owning character, which is exactly the
-  "combo's accumulated angle" question.
-- The port has none of this: `Fighter::update_facing` is gated on `!locomotion(m_moves)`,
-  which is now false for every shipped combo, so only combos with an explicit facing rule
-  turn at all. That is the regression the review found for the other 45 combos, and it must
-  be reconciled as *visual facing vs movement direction* before any rule is encoded.
+- **`this+0x5c` = the bearing to the target `this+0x38`**, refreshed every frame by
+  `FUN_0042dd90` as `atan2(target.z - z, target.x - x) * 180/pi` (`FUN_00423580` is the CRT
+  `atan2`, radians, zero = +X, positive toward +Z). No per-character move program writes it.
+- **`this+0x64` = the unrealised turn lag.** `dd90` does `0x64 += (0x5c_old - bearing)` and
+  then `0x5c = bearing`, which leaves **`0x5c + 0x64` bit-invariant**. Only a move program's
+  `FUN_0042db10`/`FUN_0042dc20` (or the one-shot re-target `FUN_00421670`, or a spawn/restore)
+  changes it.
+- **`this+0x60` = the movement-direction offset** relative to the facing. The programs store
+  the eight compass values `{0, ±45, ±90, ±135, 180}` into it. `dc20` mirrors the negated
+  `0x64` delta into `0x60`, so `0x60 + 0x64` — and therefore the movement direction — is
+  preserved while the facing rotates; `db10` leaves `0x60` alone, so movement follows.
+- **`this+0x30` = a visual-only yaw offset**, never written by fighter code (the state setter
+  `FUN_00421080` zeroes it on every state change); treat it as 0.
 
-Required evidence before encoding: the writer/re-baser of `0x60` and `0x64` outside the move
-bodies, and whether `FUN_00423580`'s bearing is expressed in the same frame as
-`FUN_004202b0`'s `cos(sum)`. Do not encode a facing rule from the literal arguments alone.
+The two sums are therefore **not the same angle**, which is the reconciliation the earlier
+draft was missing:
+
+```
+movement direction : (cos S, 0, sin S) * this+0x54,  S   = 0x5c + 0x60 + 0x64   (0x42030a/0x42034c)
+visual root Y      : D3DXMatrixRotationY(-(S_v + 90 deg) * pi/180), S_v = 0x5c + 0x64 + 0x30
+                     (0x420dd0-0x420de8; the divisor is 180.0, the multiplier is -pi)
+```
+
+In the port's convention (`(sin m, cos m)` movement and `RotY(m + pi)` root) that is
+`m_translation = 90 deg - S` and `m_rendered = 90 deg - S_v`; they coincide only when
+`0x60 == 0x30`. The port's `m_inputFacing = atan2(opp.x - x, opp.z - z)` equals `90 deg - 0x5c`,
+i.e. it is the raw turn target, matching `dd90`'s output.
+
+**The consequence corrects the earlier claim that the missing handler rules are a facing
+regression.** Because `dd90`'s rewrite leaves both sums invariant, a fighter whose handler
+never calls `db10`/`dc20` **does not turn at all** in the original — it holds its displayed
+yaw and its walk direction while `0x5c` tracks the opponent underneath. So the port's gated-off
+`update_facing` is closer to the original than the old legacy turn was: a shared per-frame
+turn toward the opponent is *not* what the original does. What the port actually lacks is the
+**turn rate per unrecovered state** (`db10(target = 0, rate)` with rates 2..20/180 deg per
+call, and the 8-way stick turn `FUN_00421780` drawing its rate from `this+0x874`, which the
+programs also write), plus the "no turn" state being a legitimate outcome rather than a gap.
+
+Remaining unknowns: who writes `0x30` (none found in fighter code), what the `0x63xxxx`
+consumer of `(0x5c + 0x64)` at handle `this+0x684` is (per-fighter 3D audio and a camera
+object both take these angles), and the meaning of a negative `+0xa0` (movement and facing
+freeze indefinitely). Encoding must not resume until `0x60`'s strafe/backpedal states exist in
+the port, or the movement/visual split cannot be represented.
+
+### 11.4 The release capture: what is and is not established
+
+Measured on 2026-10-07 with the recipe from `RELEASE-CHECKLIST.md` §3.1
+(`--screen=title --local-players=2 --script=tests/scripts/frontend-1v1-rematch.txt
+--headless --out=… --size=1280x720 --frames=15500`):
+
+| tree | digest (sha256, first 8 bytes) |
+|---|---|
+| `RELEASE-CHECKLIST.md` §3.1 as banked | `8cc49e6c…` |
+| worktree at the session's start commit `db6a083`, clean checkout | `75294efd…` |
+| the post-checkpoint tree, two consecutive runs | `6ba7b2ca…`, `6ba7b2ca…` |
+| that tree with **every rule this pass changed reverted** | `6ba7b2ca…` |
+
+Established:
+
+- **The capture is reproducible** on a fixed tree and environment — two consecutive runs
+  hash identically — so a digest is a usable gate once those are pinned.
+- **This pass's rule changes do not move it.** Reverting the corrected tick/phase table,
+  the launch timings, the attachment rules and the ribbon semantics leaves `6ba7b2ca…`
+  unchanged, so they are not what differs.
+- **The changed pixels are global.** `75294efd…` vs `6ba7b2ca…`: 48.1 % of pixels differ,
+  spread evenly across every row band (43.6–50.0 % per eighth of the frame), maximum
+  channel-sum delta 765/765. A single mesh, attachment or effect would be local; this is
+  consistent with a view/projection change, but consistency is not attribution.
+
+NOT established, and previously overstated here:
+
+- **A different digest between two trees does NOT show that either was dirty.** The
+  `db6a083` worktree is a clean checkout, but its *build* was not identical to the
+  environment the banked digest came from: it was configured in a separate directory,
+  and the CJK caption font had to be staged by hand before the run would produce a frame
+  at all. Settings (resolution, toggles, saved user settings), assets, compiler/flags and
+  the rendering environment must all match before two digests are comparable. The banked
+  `8cc49e6c…` therefore has **no established relationship** to any tree here yet.
+- **A commit timestamp is correlation, not causation.** Committing files does not change
+  the files, and it cannot change an executable that is already running or already
+  built. The observed time agreement between the checkpoint commit and the first capture
+  run is noted and adds nothing; the earlier sentence inferring a dirty baseline from it
+  is withdrawn.
+
+Next step before any re-banking: reproduce the banked digest by matching the environment
+(recorded settings and build configuration), then attribute the difference with a proper
+bisect of the prior work — one variable at a time. Until then §3.1's digest must not be
+updated.

@@ -884,8 +884,10 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
     if (m_state == FighterState::Guard) {
         // Blocking reduces damage to 20% (PROVISIONAL: genre-standard, but the
         // original's guard damage gate is unmapped — see the unresolved guard
-        // selector in state_to_move_id() in fighter.h).
-        amount = std::max(1, amount / 5);
+        // selector in state_to_move_id() in fighter.h). The floor applies only to a
+        // positive amount: a record with no HP power must stay a no-damage contact even
+        // against a guard, while 1..4 blocked damage keeps its historical 1.
+        amount = amount > 0 ? std::max(1, amount / 5) : 0;
     }
 
     // Hypermode damage trades: the attacker's mode boosts what it deals
@@ -897,15 +899,33 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
     if (m_hyperActive) {
         amount = static_cast<int>(std::lround(amount * mine.damageTakenMul));
     }
-    amount = std::max(1, amount);
+    // NO floor here. FUN_00637950's entry test is radius != 0 (0x6379e0, byte-verified)
+    // and combat[0] is read only inside the HP math, so a record with power 0 contacts,
+    // applies everything below and takes 0 HP. Clamping to 1 turned every zero-power
+    // record into a 1-HP hit, which is neither what the record says nor what the
+    // original does. Negative amounts cannot reach here (the chain floors at 0), but the
+    // clamp also covered that, so keep a zero floor explicitly.
+    amount = std::max(0, amount);
 
-    // Gauge credit happens on the damage that actually lands: the attacker's
-    // mode may feed on dealing it, ours on taking it (never while active, so
-    // an active mode cannot refill itself).
-    if (source) source->gain_gauge(amount *
-                                   hypermode_params(source->m_hypermode)
-                                       .fillPerDamageDealt);
+    // Gauge credit. NOTE: the record's combat[5]/[6] columns are NOT wired here, and that
+    // is deliberate. In the original they accumulate the victim's/attacker's internal mode
+    // gauges (FUN_00637950 @0x638321/@0x6383e6/@0x638493 write +0x838/+0x840/+0x83C), which
+    // are 0..100 counters with their own thresholds. This port's gain_gauge() feeds
+    // m_gauge, the HYPERMODE bar, which is the player-selected battle gauge (gaugePercent,
+    // fighter.h) — a different mechanic with a different consumer. Routing the recovered
+    // columns into it would report the right number through the wrong system, and would
+    // also pick up m_gaugeRate. Until the port has the mode-gauge accumulators, the
+    // damage-derived hyper credit below stands and the record's columns stay unread.
+    if (source) source->gain_gauge(amount * hypermode_params(source->m_hypermode)
+                                              .fillPerDamageDealt);
     gain_gauge(amount * mine.fillPerDamageTaken);
+
+    // KNOCKBACK IS NOT APPLIED YET. combat[17]/[18] are the original's release offsets
+    // (+0x87c/+0x878, FUN_00637950 @0x638633/@0x638645), but the port has no recovered unit
+    // for them: the original writes them into a launch-velocity field, not into the port's
+    // m_velocity, and nothing in the corpus fixes the conversion. Applying them at a
+    // guessed scale would be invented motion, so a zero-power record currently contacts
+    // (HP, hitstop, reaction) without recoiling. Recover the writer's units first.
 
     const int landed = std::min(m_hp, amount);
     m_stats.damageTaken += landed;

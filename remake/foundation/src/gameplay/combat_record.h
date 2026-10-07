@@ -31,7 +31,14 @@ struct MoveEntry {
     int combatField0E = 0;
     int combatField0F = 0;
 
-    bool has_combat() const { return hitRadius > 0 && baseDamage > 0; }
+    // FUN_00637950's entry test, byte-verified at 0x6379da: `83 7A 24 00` CMP dword
+    // [EDX+0x24],0 / `75 05` JNZ over a jump to the epilogue. The contact resolver bails
+    // on radius == 0 and does full resolution otherwise — the HP power is NOT part of the
+    // gate. combat[0] is read only inside the HP math (0x638a32, 0x638a6e), so a record
+    // with radius != 0 and power 0 still contacts and still applies its gauge feed,
+    // hitstop, reaction and impact effect; it just deals no HP damage. Comparing `!= 0`
+    // (not `> 0`) matches the original, which tests the dword against zero.
+    bool has_combat() const { return hitRadius != 0; }
 };
 
 inline bool readCombatRecord(const uint8_t* bytes, size_t size, size_t& offset,

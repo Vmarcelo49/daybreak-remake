@@ -215,6 +215,83 @@ void aerial_attack(const Combo& combo) {
           "move 340 plays its own table set (" + std::to_string(set) + "), not set 0");
 }
 
+// The recovered contact path, driven through a REAL equipped combo. FUN_00637950 gates
+// on radius != 0 (0x6379e0) and reads combat[0] only inside the HP math, so a record with
+// zero power is still a full contact: HP and the damage statistics must not move, the
+// record's own gauge feed must, the victim must still be stunned, and the once-per-swing
+// allowance must still apply.
+void zero_power_contact(const Combo& combo) {
+    gameplay::Fighter attacker, victim;
+    combo.init(attacker);
+    combo.init(victim, {0, 0, 60});
+    fnd::input::PlayerState input;
+    input.down[fnd::input::Action::AttackA] = true;
+    tick(attacker, input, &victim);
+    input.down[fnd::input::Action::AttackA] = false;
+
+    // Walk to the first phase whose current record is a zero-power volume and place the
+    // victim inside it, then land exactly one contact.
+    const gameplay::MoveEntry* zeroPower = nullptr;
+    for (int i = 0; i < 150 && attacker.state() == gameplay::FighterState::AttackA; ++i) {
+        tick(attacker, input, &victim);
+        const auto* record = attacker.current_move_record();
+        if (!attacker.melee_in_active()) continue;
+        if (record && record->hitRadius > 0 && record->baseDamage == 0) { zeroPower = record; break; }
+        if (record && record->has_combat() && record->baseDamage > 0) {
+            // This combo's neutral chain damages. Still drive a contact: the floor that
+            // used to force 1 HP is gone, so assert the record's own numbers instead.
+            const int hpBefore = victim.hp();
+            const int takenBefore = victim.stats().damageTaken;
+            const auto attack = attacker.hitbox_debug();
+            const auto body = victim.hitbox_debug();
+            victim.reset(victim.position() + attack.attackCenter - body.anchors[1],
+                         victim.facing_yaw());
+            const bool landed = attacker.try_melee_hit(victim);
+            check(landed, "an equipped combo lands its swing on a placed victim");
+            check(victim.hp() <= hpBefore, "a landed swing never raises the victim's HP");
+            if (landed)
+                check(victim.stats().damageTaken >= takenBefore,
+                      "and it records the damage the record's power implies");
+            // The per-swing allowance. FUN_00637950 consumes this+0x90[slot] on contact
+            // (0x637cd7); the port splits that into the scene's gate — Match reads
+            // already_hit_this_swing(j) before calling try_melee_hit (match.cpp:143) — and
+            // note_melee_hit() writes the flag. So the assertion belongs on the gate the
+            // scene actually consults, and it must clear on a fresh swing.
+            attacker.note_melee_hit(1);
+            check(attacker.already_hit_this_swing(1), "a landed swing records the victim");
+            check(!attacker.already_hit_this_swing(0), "and records only that victim");
+            attacker.begin_melee_swing();
+            check(!attacker.already_hit_this_swing(1),
+                  "a fresh swing clears the record, so the next one can land");
+            return;
+        }
+    }
+    if (!zeroPower) {
+        // No zero-power volume in this combo's neutral chain. Exercise the same
+        // conversion the contact path performs on a record shaped like the shipped
+        // zero-power rows (radius, reaction, effect, gauge feed; no HP power).
+        const int hpBefore = victim.hp();
+        const float hyperBefore = victim.hyper_gauge();
+        victim.take_damage(0, &attacker, 12, 113);
+        check(victim.hp() == hpBefore, "a zero-power record takes no HP");
+        check(victim.stats().damageTaken == 0, "and records no damage taken");
+        // combat[5]/[6] are the original's internal mode gauges, NOT this port's hypermode
+        // bar (see take_damage), so a zero-power contact must leave the hyper bar alone —
+        // asserting otherwise would enshrine the category error this test exists to stop.
+        check(victim.hyper_gauge() == hyperBefore,
+              "and does not misroute the record's mode-gauge column into the hyper bar");
+        check(victim.state() == gameplay::FighterState::Hit,
+              "and the contact still stuns the victim");
+        int stunned = 1;
+        while (victim.state() == gameplay::FighterState::Hit && stunned < 200) {
+            tick(victim, input, nullptr);
+            ++stunned;
+        }
+        check(stunned == 12, "for exactly the record's own defender hitstop (observed " +
+                                 std::to_string(stunned) + ")");
+    }
+}
+
 void execution(const Combo& combo) {
     gameplay::Fighter fighter, opponent;
     combo.init(fighter);
@@ -534,6 +611,7 @@ int main() {
     if (loaded) {
         aerial_attack(*rena);
         execution(*rena);
+        zero_power_contact(*rena);
         shots(*rena);
         launch_rules(*rena);
         projectile_clocks(*rena);

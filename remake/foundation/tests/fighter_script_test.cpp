@@ -1300,8 +1300,16 @@ void test_ko() {
     check_int("set_hp floors negative at 1", 1, f.hp());
     f.set_hp(1000);
     check_int("set_hp caps at kMaxHP", 100, f.hp());
+    // FUN_00637950's entry test is radius != 0 and combat[0] is read only inside the HP
+    // math (0x6379e0 / 0x638a32), so a contact with no HP power takes no HP. The port
+    // used to clamp every hit to 1, which turned those records into 1-HP hits.
     f.take_damage(0, nullptr);
-    check_int("damage floor is 1", 99, f.hp());
+    check_int("a zero-power hit takes no HP", 100, f.hp());
+    check_int("and it records no damage taken", 0, f.stats().damageTaken);
+    // The record's own columns still apply: a radius != 0 record with power 0 is a real
+    // contact, so it still stuns. The HP number is not the gate.
+    check_int("a zero-power contact still stuns its victim",
+              static_cast<int>(FighterState::Hit), static_cast<int>(f.state()));
 
     f.set_hp(1);
     f.take_damage(1, nullptr);
