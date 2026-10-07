@@ -120,6 +120,20 @@ bool parseBindingRow(const std::string& text, int* out, int count, int minimum, 
     return true;
 }
 
+// Applies one parsed binding row to a target of fnd::input::ActionCount entries. `maximum` is
+// the row's own code bound: scancodes for the keyboard, pad buttons for a gamepad. A v1 row is
+// one entry wider than the current layout — it carries the removed heavy action at
+// kLegacyHeavyIndex — so every action from that index on is read one entry further along.
+bool applyBindingRow(const std::string& value, bool legacyLayout, int maximum, int* target,
+                     std::string& why) {
+    int row[kLegacyActionCount] = {};
+    const int width = legacyLayout ? kLegacyActionCount : fnd::input::ActionCount;
+    if (!parseBindingRow(value, row, width, -1, maximum, why)) return false;
+    for (int a = 0; a < fnd::input::ActionCount; ++a)
+        target[a] = row[a < kLegacyHeavyIndex ? a : a + (legacyLayout ? 1 : 0)];
+    return true;
+}
+
 // The action names the file uses, in fnd::input::Action order. A name is self-describing
 // and survives an enum insertion, which a positional table would not.
 struct ActionName { fnd::input::Action action; const char* name; };
@@ -354,34 +368,25 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                     *slot = volume;
             }
         } else if (section == "bindings") {
-            // A v1 row is read with the v1 width: it carries the removed heavy action at
-            // index 5, which the copy below skips (see the header).
+            // A v1 row is read with the v1 width; the shift past the dropped heavy action
+            // lives in applyBindingRow (see the header).
             const bool legacyLayout = documentVersion == kSchemaVersionLegacy;
             if (key == "keyboard") {
-                int row[kLegacyActionCount] = {};
                 std::string why;
-                const int width = legacyLayout ? kLegacyActionCount : fnd::input::ActionCount;
-                if (!parseBindingRow(value, row, width, -1, kMaxScancode, why))
+                if (!applyBindingRow(value, legacyLayout, kMaxScancode, candidate.keyboard.data(),
+                                     why))
                     warn("keyboard: " + why + ", keeping the defaults");
-                else
-                    for (int a = 0; a < fnd::input::ActionCount; ++a)
-                        candidate.keyboard[static_cast<size_t>(a)] =
-                            row[a < kLegacyHeavyIndex ? a : a + (legacyLayout ? 1 : 0)];
             } else if (key.size() > 3 && key.compare(0, 3, "pad") == 0 &&
                        key[3] >= '1' && key[3] <= '4') {
                 const int player = key[3] - '1';
                 if (key.size() != 4) {
                     warn("ignoring unknown key '" + key + "'");
                 } else {
-                    int row[kLegacyActionCount] = {};
                     std::string why;
-                    const int width = legacyLayout ? kLegacyActionCount : fnd::input::ActionCount;
-                    if (!parseBindingRow(value, row, width, -1, kMaxPadButton, why))
+                    if (!applyBindingRow(value, legacyLayout, kMaxPadButton,
+                                         candidate.gamepad[static_cast<size_t>(player)].data(),
+                                         why))
                         warn(key + ": " + why + ", keeping the defaults");
-                    else
-                        for (int a = 0; a < fnd::input::ActionCount; ++a)
-                            candidate.gamepad[static_cast<size_t>(player)][static_cast<size_t>(a)] =
-                                row[a < kLegacyHeavyIndex ? a : a + (legacyLayout ? 1 : 0)];
                 }
             } else {
                 warn("ignoring unknown key '" + key + "'");
