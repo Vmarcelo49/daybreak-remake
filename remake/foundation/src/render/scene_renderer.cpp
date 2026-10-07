@@ -1248,13 +1248,13 @@ bool SceneRenderer::renderViews(const Target& target, const std::vector<ViewCame
     return renderImpl(target, &views, error);
 }
 
-// Per-draw uniforms for one camera eye. `haveEye` false keeps the historical
-// no-billboard behaviour of callers written before setEye existed.
-void SceneRenderer::fillDrawData(const glm::vec3& eye, bool haveEye, size_t first, size_t count,
-                                 uint8_t* dst) {
-    for (size_t i = first; i < first + count; ++i) {
+// Per-draw uniforms for every draw in draws_, one record per draw under one camera
+// eye. `haveEye` false keeps the historical no-billboard behaviour of callers written
+// before setEye existed.
+void SceneRenderer::fillDrawData(const glm::vec3& eye, bool haveEye, uint8_t* dst) {
+    for (const DrawItem& d : draws_) {
         xm::DrawUniform du;
-        du.model = draws_[i].model;
+        du.model = d.model;
         // Cylindrical billboard: yaw the card around its own (posed) center so its
         // plane faces the camera, preserving world up. Unskinned effect meshes pose
         // as world = model * palette[0] * pos, so folding T(C)*Ry*T(-C) into the
@@ -1262,37 +1262,37 @@ void SceneRenderer::fillDrawData(const glm::vec3& eye, bool haveEye, size_t firs
         // card's authored facing (bbYaw0): a YZ-plane card's normal starts at +X,
         // so facing the camera needs yaw - 90°, not yaw. Overhead camera (|d| ~ 0)
         // keeps the authored orientation instead of spinning on a singularity.
-        if (draws_[i].billboard && haveEye && draws_[i].paletteOffset < palette_.size()) {
-            const glm::mat4 fw = draws_[i].model * palette_[draws_[i].paletteOffset];
-            const glm::vec3 c = glm::vec3(fw * glm::vec4(draws_[i].bbCenter, 1.f));
-            const glm::vec2 d = glm::vec2(eye.x - c.x, eye.z - c.z);
-            if (glm::dot(d, d) > 1e-6f) {
-                const float yaw = std::atan2(d.x, d.y) - draws_[i].bbYaw0;
+        if (d.billboard && haveEye && d.paletteOffset < palette_.size()) {
+            const glm::mat4 fw = d.model * palette_[d.paletteOffset];
+            const glm::vec3 c = glm::vec3(fw * glm::vec4(d.bbCenter, 1.f));
+            const glm::vec2 dxy = glm::vec2(eye.x - c.x, eye.z - c.z);
+            if (glm::dot(dxy, dxy) > 1e-6f) {
+                const float yaw = std::atan2(dxy.x, dxy.y) - d.bbYaw0;
                 const glm::mat4 t1 = glm::translate(glm::mat4(1.f), c);
                 const glm::mat4 t0 = glm::translate(glm::mat4(1.f), -c);
                 du.model = t1 * glm::rotate(glm::mat4(1.f), yaw, glm::vec3(0.f, 1.f, 0.f)) *
-                           t0 * draws_[i].model;
+                           t0 * d.model;
             }
         }
-        du.paletteOffset = draws_[i].paletteOffset;
+        du.paletteOffset = d.paletteOffset;
         // The toon bits are decided here, per frame, from the appearance switch: the
         // toggle is a draw-time state change with no re-upload behind it. A scene with no
         // ramp (no game data) never sets them, so ON degrades to OFF rather than to an
         // invented curve.
-        du.flags = draws_[i].flags | (appearance_.unlit ? xm::kDrawUnlit : 0u) |
-                   (appearance_.toon && toonRampReady_ && draws_[i].toon ? xm::kDrawToon : 0u) |
-                   (appearance_.shadows && draws_[i].receiver && draws_[i].pass == Pass::Opaque
+        du.flags = d.flags | (appearance_.unlit ? xm::kDrawUnlit : 0u) |
+                   (appearance_.toon && toonRampReady_ && d.toon ? xm::kDrawToon : 0u) |
+                   (appearance_.shadows && d.receiver && d.pass == Pass::Opaque
                         ? xm::kDrawShadowReceiver
                         : 0u);
-        du.baseColor = draws_[i].baseColor;
-        du.emissive = draws_[i].emissive;
+        du.baseColor = d.baseColor;
+        du.emissive = d.emissive;
         du.nprBand = glm::vec4(1.f, 1.f, 1.f, 0.f);
-        if (draws_[i].toon && draws_[i].pass == Pass::Opaque) {
+        if (d.toon && d.pass == Pass::Opaque) {
             // Issue #25 experiments, decided per frame like the toon bits: the whole
             // harness is one draw-time state change, so an A/B needs no re-upload and the
             // OFF path never enters this block. Each experiment writes its OWN uniform
             // slot, so a composed arm keeps every one's values.
-            if (appearance_.smoothedNormals && draws_[i].nprNormals) {
+            if (appearance_.smoothedNormals && d.nprNormals) {
                 du.flags |= xm::kDrawNprNormals;
             }
             if (appearance_.bands != NprBands::Off) {
@@ -1309,7 +1309,7 @@ void SceneRenderer::fillDrawData(const glm::vec3& eye, bool haveEye, size_t firs
             }
             if (appearance_.key != NprKey::Off) {
                 du.flags |= xm::kDrawNprKey;
-                du.nprKey = glm::vec4(nprKeyDirection(draws_[i].model, eye, haveEye, appearance_),
+                du.nprKey = glm::vec4(nprKeyDirection(d.model, eye, haveEye, appearance_),
                                       appearance_.keyStrength);
             }
             if (appearance_.specular) {
@@ -1320,12 +1320,13 @@ void SceneRenderer::fillDrawData(const glm::vec3& eye, bool haveEye, size_t firs
                 du.flags |= xm::kDrawNprRim;
                 du.nprRim = glm::vec4(appearance_.rimTint, appearance_.rimStrength);
             }
-        } else if (draws_[i].pass == Pass::Outline) {
+        } else if (d.pass == Pass::Outline) {
             // The outline experiment's only control: the recovered width times a factor.
             // Its own uniform so it cannot be confused with a surface tint.
             du.nprBand = glm::vec4(1.f, 1.f, 1.f, appearance_.outlineScale);
         }
-        std::memcpy(dst + (i - first) * xm::kDrawStride, &du, sizeof du);
+        std::memcpy(dst, &du, sizeof du);
+        dst += xm::kDrawStride;
     }
 }
 
@@ -1654,10 +1655,10 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
     std::vector<uint8_t> drawData((size_t)xm::kDrawStride * draws_.size() *
                                   (multiView ? viewCount : 1), 0);
     if (!multiView) {
-        fillDrawData(eye_, haveEye_, 0, draws_.size(), drawData.data());
+        fillDrawData(eye_, haveEye_, drawData.data());
     } else {
         for (size_t v = 0; v < viewCount; ++v)
-            fillDrawData((*views)[v].eye, true, 0, draws_.size(),
+            fillDrawData((*views)[v].eye, true,
                          drawData.data() + v * draws_.size() * xm::kDrawStride);
     }
     wgpuQueueWriteBuffer(queue_, drawBuffer_, 0, drawData.data(), drawData.size());

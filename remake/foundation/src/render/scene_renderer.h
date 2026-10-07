@@ -611,11 +611,10 @@ private:
     // the adapter's minUniformBufferOffsetAlignment, and separate buffers cannot get it
     // wrong (the uniform itself is tens of bytes).
     bool ensureViewCameras(std::string& error);
-    // Per-draw uniforms for draws [first, first+count) under one camera eye, written at
-    // `dst` with xm::kDrawStride spacing. Split out because billboard yaw is per camera:
-    // each view needs its own copy of the draw block.
-    void fillDrawData(const glm::vec3& eye, bool haveEye, size_t first, size_t count,
-                      uint8_t* dst);
+    // Per-draw uniforms for every draw in draws_, written from `dst` with
+    // xm::kDrawStride spacing. Split out because billboard yaw is per camera: each view
+    // needs its own copy of the draw block.
+    void fillDrawData(const glm::vec3& eye, bool haveEye, uint8_t* dst);
 
     WGPUInstance instance_ = nullptr;   // borrowed from the context
     WGPUDevice   device_   = nullptr;
