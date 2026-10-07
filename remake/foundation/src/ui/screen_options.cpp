@@ -109,87 +109,90 @@ public:
     }
     void draw(SpriteRenderer& batch) const override {
         batch.pushSprite(sheets_[0],{0,0,800,600},0,0,0,0);
-        const auto& settings = frontendSettings();
-        if (!keys_) {
-            // FUN_00403470: label, state columns, cursor and volume knobs.
-            for (int i=0;i<kOptionRowCount;++i) {
-                const OptionRowLayout& row = kOptionRows[i];
-                if (i == (int)OptionRow::Resolution) {
-                    captions_.draw(batch,"RESOLUTION",176,row.y+8,1.f,
-                        row_ == i ? UiColor{1.f,0.8f,0.3f,1.f} : UiColor{},1.f);
-                } else batch.pushSprite(sheets_[1],{i==(int)OptionRow::Voice||i==(int)OptionRow::Sfx ? 192.f : 0.f,(float)(row.labelRow+(i==row_))*32,192,32},0,0,176,row.y);
-            }
-            char resolution[64];
-            if (!settings.resolutionAvailable) {
-#if defined(__EMSCRIPTEN__)
-                std::snprintf(resolution,sizeof(resolution),"BROWSER SIZE");
-#else
-                std::snprintf(resolution,sizeof(resolution),"FIXED CAPTURE");
-#endif
-            } else if (settings.resolutionIndex == 0)
-                std::snprintf(resolution,sizeof(resolution),"DESKTOP %d x %d",settings.displayResolution.width,settings.displayResolution.height);
-            else {
-                const auto size = settings.resolutions[settings.resolutionIndex];
-                std::snprintf(resolution,sizeof(resolution),"%d x %d",size.width,size.height);
-            }
-            text(batch,resolution,368,optionRow(OptionRow::Resolution).y+8,2);
-            batch.pushSprite(sheets_[1],{256,448,32,32},0,0,144,optionRow((OptionRow)row_).y);
-            // Row 0 draws its real state in the original's own cells (FUN_00403470:25-26):
-            // the cell row is the toggle value at x=368 and its complement at x=464, so the
-            // pair always shows one bold and one plain option and inverts when it flips.
-            // The sheet's even cell row is the bold art (有効 at 368 with the toggle off),
-            // which is the original's own choice of which of the two reads bold.
-            batch.pushSprite(sheets_[1],{192,settings.toonRendering ? 32.f : 0.f,96,32},0,0,368,optionRow(OptionRow::Toon).y);
-            batch.pushSprite(sheets_[1],{288,settings.toonRendering ? 0.f : 32.f,128,32},0,0,464,optionRow(OptionRow::Toon).y);
-            // Row 1 (影の表示) is the same pair one strip pair further down the sheet:
-            // FUN_00403470:27-28 gives the row the cells at index 2 and 3, and the sheet's
-            // 32px strips are the toon row's pair at v=0/32, the shadow row's at v=64/96
-            // and the texture row's (普通/低) at v=128/160 — which is where the last two
-            // strips sit in data/config/0002.cnv. Same u columns as row 0: the sheet keeps
-            // the bold value in the x=192 column and its complement at x=288.
-            batch.pushSprite(sheets_[1],{192,settings.shadowRendering ? 96.f : 64.f,96,32},0,0,368,optionRow(OptionRow::Shadow).y);
-            batch.pushSprite(sheets_[1],{288,settings.shadowRendering ? 64.f : 96.f,128,32},0,0,464,optionRow(OptionRow::Shadow).y);
-            // Row 2 keeps the generic message: texture resolution is still an
-            // unimplemented slice of issue #21.
-            text(batch,"UNAVAILABLE",550,optionRow(OptionRow::Texture).y,1.5f);
-            batch.pushSprite(sheets_[1],{192,settings.fullscreen ? 256.f : 288.f,96,32},0,0,368,optionRow(OptionRow::Fullscreen).y);
-            batch.pushSprite(sheets_[1],{288,settings.fullscreen ? 288.f : 256.f,128,32},0,0,464,optionRow(OptionRow::Fullscreen).y);
-            const int values[] = {settings.volumes.master,settings.volumes.music,settings.volumes.voice,settings.volumes.sfx};
-            for(int i=0;i<4;++i) {
-                const OptionRowLayout& row = kOptionRows[(size_t)((int)OptionRow::Master+i)];
-                batch.pushSprite(sheets_[1],{192,448,96,32},0,0,368+values[i]*1.6f,row.y);
-            }
-            if (row_ == (int)OptionRow::Toon) text(batch,"LEFT/RIGHT: TOON SHADING ON/OFF",176,550,2);
-            else if (row_ == (int)OptionRow::Shadow) text(batch,"LEFT/RIGHT: CHARACTER SHADOWS ON/OFF",160,550,2);
-            else if (row_ < (int)OptionRow::Fullscreen) text(batch,"SETTING NOT AVAILABLE",208,550,2);
-            else if (row_ == (int)OptionRow::Resolution) text(batch,settings.resolutionAvailable ? "LEFT/RIGHT: CHANGE RESOLUTION" : "SIZE FOLLOWS THE VIEWPORT",144,550,2);
-            else batch.pushSprite(sheets_[2],{0,(row_ == (int)OptionRow::Back ? 9 : row_ + 1)*48.f,512,48},0,0,144,528);
-        } else {
-            // FUN_00404a50: retain the baked labels and their 32px row pitch.
-            for (int a = 0; a < fnd::input::ActionCount; ++a) {
-                const float y = 128 + a * 32.f;
-                if (a == row_) batch.pushSolid({332 + player_ * 64.f,y,60,32},{0.15f,0.3f,0.6f,0.7f});
-                for (int p = 0; p < 4; ++p) {
-                    const int code = p == 0 ? settings.keyboard[kBindingRowActions[a]] : settings.gamepad[p][kBindingRowActions[a]];
-                    const float x = 336 + p * 64.f;
-                    if (p == 0 && code >= 0) {
-                        const int cell = keyboardCell(code);
-                        if (cell >= 0) batch.pushSprite(sheets_[1],{(cell % 16)*32.f,(cell / 16)*32.f,32,32},0,0,x,y);
-                        else text(batch,SDL_GetScancodeName(static_cast<SDL_Scancode>(code)),x,y+8,1);
-                    } else {
-                        const std::string label = gamepadLabel(code);
-                        text(batch,label.c_str(),x,y+8,2);
-                    }
-                }
-            }
-            for (int p = 0; p < 4; ++p)
-                batch.pushSprite(sheets_[2],{160 + p*64.f,player_ == p && row_ != kKeyConfigBackRow ? 448.f : 416.f,64,32},0,0,320+p*64.f,96);
-            batch.pushSprite(sheets_[2],{0,row_ == kKeyConfigBackRow ? 448.f : 416.f,96,32},0,0,160,96);
-            text(batch,bindingCaptureActive()?"PRESS A KEY / PAD BUTTON; ESC CANCELS":"CONFIRM: REBIND   LEFT/RIGHT: PLAYER   CANCEL: BACK",112,550,2);
-
-        }
+        if (keys_) drawKeyConfig(batch);
+        else drawOptions(batch);
     }
 private:
+    // FUN_00403470: label, state columns, cursor and volume knobs.
+    void drawOptions(SpriteRenderer& batch) const {
+        const auto& settings = frontendSettings();
+        for (int i=0;i<kOptionRowCount;++i) {
+            const OptionRowLayout& row = kOptionRows[i];
+            if (i == (int)OptionRow::Resolution) {
+                captions_.draw(batch,"RESOLUTION",176,row.y+8,1.f,
+                    row_ == i ? UiColor{1.f,0.8f,0.3f,1.f} : UiColor{},1.f);
+            } else batch.pushSprite(sheets_[1],{i==(int)OptionRow::Voice||i==(int)OptionRow::Sfx ? 192.f : 0.f,(float)(row.labelRow+(i==row_))*32,192,32},0,0,176,row.y);
+        }
+        char resolution[64];
+        if (!settings.resolutionAvailable) {
+#if defined(__EMSCRIPTEN__)
+            std::snprintf(resolution,sizeof(resolution),"BROWSER SIZE");
+#else
+            std::snprintf(resolution,sizeof(resolution),"FIXED CAPTURE");
+#endif
+        } else if (settings.resolutionIndex == 0)
+            std::snprintf(resolution,sizeof(resolution),"DESKTOP %d x %d",settings.displayResolution.width,settings.displayResolution.height);
+        else {
+            const auto size = settings.resolutions[settings.resolutionIndex];
+            std::snprintf(resolution,sizeof(resolution),"%d x %d",size.width,size.height);
+        }
+        text(batch,resolution,368,optionRow(OptionRow::Resolution).y+8,2);
+        batch.pushSprite(sheets_[1],{256,448,32,32},0,0,144,optionRow((OptionRow)row_).y);
+        // Row 0 draws its real state in the original's own cells (FUN_00403470:25-26):
+        // the cell row is the toggle value at x=368 and its complement at x=464, so the
+        // pair always shows one bold and one plain option and inverts when it flips.
+        // The sheet's even cell row is the bold art (有効 at 368 with the toggle off),
+        // which is the original's own choice of which of the two reads bold.
+        batch.pushSprite(sheets_[1],{192,settings.toonRendering ? 32.f : 0.f,96,32},0,0,368,optionRow(OptionRow::Toon).y);
+        batch.pushSprite(sheets_[1],{288,settings.toonRendering ? 0.f : 32.f,128,32},0,0,464,optionRow(OptionRow::Toon).y);
+        // Row 1 (影の表示) is the same pair one strip pair further down the sheet:
+        // FUN_00403470:27-28 gives the row the cells at index 2 and 3, and the sheet's
+        // 32px strips are the toon row's pair at v=0/32, the shadow row's at v=64/96
+        // and the texture row's (普通/低) at v=128/160 — which is where the last two
+        // strips sit in data/config/0002.cnv. Same u columns as row 0: the sheet keeps
+        // the bold value in the x=192 column and its complement at x=288.
+        batch.pushSprite(sheets_[1],{192,settings.shadowRendering ? 96.f : 64.f,96,32},0,0,368,optionRow(OptionRow::Shadow).y);
+        batch.pushSprite(sheets_[1],{288,settings.shadowRendering ? 64.f : 96.f,128,32},0,0,464,optionRow(OptionRow::Shadow).y);
+        // Row 2 keeps the generic message: texture resolution is still an
+        // unimplemented slice of issue #21.
+        text(batch,"UNAVAILABLE",550,optionRow(OptionRow::Texture).y,1.5f);
+        batch.pushSprite(sheets_[1],{192,settings.fullscreen ? 256.f : 288.f,96,32},0,0,368,optionRow(OptionRow::Fullscreen).y);
+        batch.pushSprite(sheets_[1],{288,settings.fullscreen ? 288.f : 256.f,128,32},0,0,464,optionRow(OptionRow::Fullscreen).y);
+        const int values[] = {settings.volumes.master,settings.volumes.music,settings.volumes.voice,settings.volumes.sfx};
+        for(int i=0;i<4;++i) {
+            const OptionRowLayout& row = kOptionRows[(size_t)((int)OptionRow::Master+i)];
+            batch.pushSprite(sheets_[1],{192,448,96,32},0,0,368+values[i]*1.6f,row.y);
+        }
+        if (row_ == (int)OptionRow::Toon) text(batch,"LEFT/RIGHT: TOON SHADING ON/OFF",176,550,2);
+        else if (row_ == (int)OptionRow::Shadow) text(batch,"LEFT/RIGHT: CHARACTER SHADOWS ON/OFF",160,550,2);
+        else if (row_ < (int)OptionRow::Fullscreen) text(batch,"SETTING NOT AVAILABLE",208,550,2);
+        else if (row_ == (int)OptionRow::Resolution) text(batch,settings.resolutionAvailable ? "LEFT/RIGHT: CHANGE RESOLUTION" : "SIZE FOLLOWS THE VIEWPORT",144,550,2);
+        else batch.pushSprite(sheets_[2],{0,(row_ == (int)OptionRow::Back ? 9 : row_ + 1)*48.f,512,48},0,0,144,528);
+    }
+    // FUN_00404a50: retain the baked labels and their 32px row pitch.
+    void drawKeyConfig(SpriteRenderer& batch) const {
+        const auto& settings = frontendSettings();
+        for (int a = 0; a < fnd::input::ActionCount; ++a) {
+            const float y = 128 + a * 32.f;
+            if (a == row_) batch.pushSolid({332 + player_ * 64.f,y,60,32},{0.15f,0.3f,0.6f,0.7f});
+            for (int p = 0; p < 4; ++p) {
+                const int code = p == 0 ? settings.keyboard[kBindingRowActions[a]] : settings.gamepad[p][kBindingRowActions[a]];
+                const float x = 336 + p * 64.f;
+                if (p == 0 && code >= 0) {
+                    const int cell = keyboardCell(code);
+                    if (cell >= 0) batch.pushSprite(sheets_[1],{(cell % 16)*32.f,(cell / 16)*32.f,32,32},0,0,x,y);
+                    else text(batch,SDL_GetScancodeName(static_cast<SDL_Scancode>(code)),x,y+8,1);
+                } else {
+                    const std::string label = gamepadLabel(code);
+                    text(batch,label.c_str(),x,y+8,2);
+                }
+            }
+        }
+        for (int p = 0; p < 4; ++p)
+            batch.pushSprite(sheets_[2],{160 + p*64.f,player_ == p && row_ != kKeyConfigBackRow ? 448.f : 416.f,64,32},0,0,320+p*64.f,96);
+        batch.pushSprite(sheets_[2],{0,row_ == kKeyConfigBackRow ? 448.f : 416.f,96,32},0,0,160,96);
+        text(batch,bindingCaptureActive()?"PRESS A KEY / PAD BUTTON; ESC CANCELS":"CONFIRM: REBIND   LEFT/RIGHT: PLAYER   CANCEL: BACK",112,550,2);
+    }
     static std::string gamepadLabel(int code) {
         switch (code) {
         case SDL_GAMEPAD_BUTTON_SOUTH: return "A";
