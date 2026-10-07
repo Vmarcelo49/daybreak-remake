@@ -1052,6 +1052,10 @@ struct App {
     uint64_t                     menuBgmPushed = 0;  // frames the menu stream accepted
     fnd::audio::DecodedOgg        menuBgm;
     fnd::audio::LoopPlayer        menuLoop;
+    // Which track menuBgm currently holds. A scene's music is started when its fade BEGINS
+    // (see playFrontendMusic), so the factory's construction-time call must not restart the
+    // same track 25 frames later; this is what lets it tell "already playing" from "new".
+    std::string                   menuBgmPath;
     fnd::input::PlayerState       botInput[4];
     // The input a COM takes while F2 has its brain switched off (issue #48): the original
     // memsets the fighter's whole input block in that case (FUN_00634f60:60-73), so the
@@ -4595,12 +4599,21 @@ static void playFrontendMusic(App& app, ui::ScreenId id) {
         id == ui::ScreenId::VsIntro ? "data/bgm/vs.ogg" :
         id == ui::ScreenId::Result && app.frontend.resultWinner >= 0 ?
             (app.frontend.resultWinner == localSide ? "data/bgm/win.ogg" : "data/bgm/lose.ogg") : nullptr;
+    // Already playing exactly this track: leave it running. The host starts a scene's music
+    // when its fade BEGINS (SDL_AppIterate), so by the time the factory constructs the scene
+    // 25 frames later the track is up and restarting it here would cut the first bars —
+    // which is the hole this whole path exists to close.
+    if (path && app.menuBgmPath == path) return;
     app.menuAudio.clear_music();
     app.menuLoop = fnd::audio::LoopPlayer{};
+    app.menuBgmPath.clear();
     if (!path) return;
     std::string failure;
-    if (!loadBgmTrack(path, app.menuAudio, app.menuBgm, app.menuLoop, failure))
+    if (!loadBgmTrack(path, app.menuAudio, app.menuBgm, app.menuLoop, failure)) {
         std::fprintf(stderr, "[menu] %s\n", failure.c_str());
+        return;
+    }
+    app.menuBgmPath = path;
 }
 
 // Issue #4 (web delivery): ask the same-origin service for the assets this match needs.
@@ -5691,6 +5704,25 @@ static SDL_AppResult tickFrontend(App& state) {
                 playFrontendMusic(*app, ui::ScreenId::Opening);
         }
         if (app->screens.current() == ui::ScreenId::Battle) app->lastTime = plat::now();
+    } else if (app->screens.current() == ui::ScreenId::Opening &&
+               app->screens.transitionInFlight()) {
+        // Leaving the opening movie: start the incoming scene's music when the fade BEGINS,
+        // not when the swap happens 25 frames later. The movie's own audio ends with its last
+        // frame, so a title track that waited for the swap left an audible hole — the menu
+        // theme cut in a third of a second after the film's music stopped.
+        //
+        // SCOPED to the movie on purpose. Its audio ending with its last frame is what makes
+        // the hole, and no other front-end scene has that property, so every other transition
+        // keeps the recovered order (the scene is built at the end of the fade). Widening it
+        // would move every track's start by the fade length for no reported reason.
+        // playFrontendMusic is idempotent per track, so this fires once and the factory's
+        // later call for the same scene is a no-op.
+        //
+        // Scene 0x00 is excluded as a DESTINATION because it starts its own track from inside
+        // the scene, on the tick the movie starts (FUN_00404ff0:0x405096) — see the factory.
+        const ui::ScreenId pending = app->screens.pending();
+        if (pending != ui::ScreenId::Quit && pending != ui::ScreenId::Opening)
+            playFrontendMusic(*app, pending);
     }
     if (!app->error.empty()) return SDL_APP_FAILURE;
     if (app->menuAudio.music_queued_frames() < 4096)

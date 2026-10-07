@@ -165,6 +165,14 @@ public:
     bool     finished() const { return finished_; }
     ScreenId current() const { return currentId_; }
     int      fadeFrame() const { return fade_; }          // 0 = no overlay
+    // The scene being faded TO, while the fade is in flight; equal to current() when nothing
+    // is. The host needs this because the swap happens at the END of the 25-frame fade
+    // (FUN_00657c80.c:32-64) and part of a scene's start-up is AUDIBLE before then: the
+    // opening movie's own audio ends with its last frame, so a music track that waited for
+    // the swap leaves an audible hole where the menu theme should already be. Starting it
+    // here keeps the recovered fade untouched and the sound continuous.
+    bool     transitionInFlight() const { return target_ != currentId_; }
+    ScreenId pending() const { return target_; }
     const Screen* screen() const { return current_.get(); }
     // The same screen, non-const: one screen owns a one-shot the host has to drain (the
     // opening scene's recovered BGM start, ui/screen_opening.h), and the stack is the host's
