@@ -6,6 +6,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <sstream>
 
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
@@ -49,13 +50,15 @@ bool parseInt(const std::string& text, int& out) {
     return true;
 }
 
-bool parseBool(const std::string& text, bool& out) {
+// "1"/"true"/"yes"/"on" and their negatives; anything else is not a boolean (nullopt), which
+// the caller reports as "keeping the default".
+std::optional<bool> parseBool(const std::string& text) {
     std::string lowered;
     lowered.reserve(text.size());
     for (const char c : text) lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-    if (lowered == "1" || lowered == "true" || lowered == "yes" || lowered == "on") { out = true; return true; }
-    if (lowered == "0" || lowered == "false" || lowered == "no" || lowered == "off") { out = false; return true; }
-    return false;
+    if (lowered == "1" || lowered == "true" || lowered == "yes" || lowered == "on") return true;
+    if (lowered == "0" || lowered == "false" || lowered == "no" || lowered == "off") return false;
+    return std::nullopt;
 }
 
 // "1920x1080", "desktop" or "0x0". Anything else is a value error.
@@ -310,9 +313,9 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
             }
         } else if (section == "display") {
             if (key == "fullscreen") {
-                bool on = false;
-                if (!parseBool(value, on)) warn("fullscreen: keeping the default");
-                else candidate.fullscreen = on;
+                const std::optional<bool> on = parseBool(value);
+                if (!on) warn("fullscreen: keeping the default");
+                else candidate.fullscreen = *on;
             } else if (key == "resolution") {
                 DisplaySize size;
                 if (!parseDisplaySize(value, size)) warn("resolution: keeping the default");
@@ -324,13 +327,13 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
             // v3's section. Read whatever the version line says: a key this build knows is
             // never a reason to reject or warn (see the header).
             if (key == "toon") {
-                bool on = false;
-                if (!parseBool(value, on)) warn("toon: keeping the default");
-                else candidate.toonRendering = on;
+                const std::optional<bool> on = parseBool(value);
+                if (!on) warn("toon: keeping the default");
+                else candidate.toonRendering = *on;
             } else if (key == "shadows") {
-                bool on = false;
-                if (!parseBool(value, on)) warn("shadows: keeping the default");
-                else candidate.shadowRendering = on;
+                const std::optional<bool> on = parseBool(value);
+                if (!on) warn("shadows: keeping the default");
+                else candidate.shadowRendering = *on;
             } else {
                 warn("ignoring unknown key '" + key + "'");
             }
