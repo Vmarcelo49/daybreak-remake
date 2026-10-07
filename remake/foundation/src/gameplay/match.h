@@ -51,31 +51,34 @@ struct MatchConfig {
     int timeLimit = 0;
     int balloonSize[2] = {100, 100};
     int       fighterCount = 2;
-    int       side[4] = {0, 1, 0, 1};
-    glm::vec3 spawn[4]  = {glm::vec3(0.f), glm::vec3(0.f), glm::vec3(0.f), glm::vec3(0.f)};
-    float     facing[4] = {0.0f, 3.14159f, 0.0f, 3.14159f};
-    Hypermode hyper[4]  = {Hypermode::Friendship, Hypermode::Oyashiro,
-                           Hypermode::Friendship, Hypermode::Oyashiro};
-    float     startGauge[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-    int       startHP[4]    = {FighterConstants::kMaxHP, FighterConstants::kMaxHP,
-                               FighterConstants::kMaxHP, FighterConstants::kMaxHP};
+    int       side[kMatchFighterCount] = {0, 1, 0, 1};
+    glm::vec3 spawn[kMatchFighterCount] = {glm::vec3(0.f), glm::vec3(0.f),
+                                           glm::vec3(0.f), glm::vec3(0.f)};
+    float     facing[kMatchFighterCount] = {0.0f, 3.14159f, 0.0f, 3.14159f};
+    Hypermode hyper[kMatchFighterCount] = {Hypermode::Friendship, Hypermode::Oyashiro,
+                                           Hypermode::Friendship, Hypermode::Oyashiro};
+    float     startGauge[kMatchFighterCount] = {0.0f, 0.0f, 0.0f, 0.0f};
+    int       startHP[kMatchFighterCount] = {FighterConstants::kMaxHP,
+                                             FighterConstants::kMaxHP,
+                                             FighterConstants::kMaxHP,
+                                             FighterConstants::kMaxHP};
     // The selected weapon's parsed data/item/NNN.dat, one pointer per fighter. Borrowed
     // and optional: a null entry keeps the historical shared tuning, which is what the
     // standalone --match trace path relies on. A non-null entry gives that fighter its
     // own magazine sizes, charge thresholds, per-shot costs and volley counts, so two
     // fighters with different weapons genuinely fight differently (issue #9).
-    const WeaponDefinition* weapon[4] = {nullptr, nullptr, nullptr, nullptr};
+    const WeaponDefinition* weapon[kMatchFighterCount] = {nullptr, nullptr, nullptr, nullptr};
     // The fighter's parsed data/<char>/NN.dat move table, one pointer per fighter.
     // Borrowed and optional like the weapon: a null entry keeps the legacy shared
     // melee swing, while a bound table resolves each swing to the equipped move's
     // own animation set, reach, damage and stun (issue #26).
-    const CharacterMoves* moves[4] = {nullptr, nullptr, nullptr, nullptr};
+    const CharacterMoves* moves[kMatchFighterCount] = {nullptr, nullptr, nullptr, nullptr};
 };
 
 // What one frame did, for the trace, the flow and the effect queue.
 struct MatchFrame {
     bool koSting       = false;  // economy: KO sting window is running
-    bool respawned[4]  = {false, false, false, false};
+    bool respawned[kMatchFighterCount] = {false, false, false, false};
     bool roundOver     = false;
     // The WINNING side once roundOver (MatchEconomy::roundOverSide; issue #11). -1
     // only before the round ends — a timed round always resolves to a side.
@@ -84,27 +87,31 @@ struct MatchFrame {
     // many hits landed on an already-down body. Both are already applied to the
     // economy; they are reported so effects/audio/results can key off the event
     // without re-deriving it (the KO credit is one-shot by construction).
-    int  koCredits[4]     = {0, 0, 0, 0};
-    int  overkillHits[4]  = {0, 0, 0, 0};
+    int  koCredits[kMatchFighterCount]     = {0, 0, 0, 0};
+    int  overkillHits[kMatchFighterCount]  = {0, 0, 0, 0};
     int  shotsSpawned  = 0;      // accepted by the pool this frame
     int  muzzleSparks  = 0;
-    bool meleeHit[4]   = {false, false, false, false};  // i hit an opposing fighter this frame
-    int meleeVictim[4] = {-1, -1, -1, -1};
+    // i hit an opposing fighter this frame
+    bool meleeHit[kMatchFighterCount] = {false, false, false, false};
+    int meleeVictim[kMatchFighterCount] = {-1, -1, -1, -1};
     // --- live combat events (issue #16) -------------------------------------------------
     // The simulation reports what happened; audio and effects consume it. Every flag here
     // is an EDGE armed by the transition itself (Fighter::take_swing_start /
     // take_hyper_start, the pool's spawn, the economy's respawn) and drained exactly once,
     // so re-reading a frame cannot replay an event and a fixed 64 Hz tick cannot miss one.
-    bool swingStarted[4] = {false, false, false, false};  // i armed a melee swing
-    bool shotFired[4]    = {false, false, false, false};  // i's shot was accepted by the pool
+    // i armed a melee swing / i's shot was accepted by the pool
+    bool swingStarted[kMatchFighterCount] = {false, false, false, false};
+    bool shotFired[kMatchFighterCount]    = {false, false, false, false};
     // Where that shot left the muzzle (issue #17): the effect layer spawns the muzzle
     // flash from the event's own position instead of re-deriving it from the pose.
-    glm::vec3 shotPoints[4] = {glm::vec3(0.f), glm::vec3(0.f), glm::vec3(0.f), glm::vec3(0.f)};
-    bool hyperStarted[4] = {false, false, false, false};  // i activated hypermode
-    bool guardStarted[4] = {false, false, false, false};  // i raised its guard
+    glm::vec3 shotPoints[kMatchFighterCount] = {glm::vec3(0.f), glm::vec3(0.f),
+                                                glm::vec3(0.f), glm::vec3(0.f)};
+    // i activated hypermode / i raised its guard
+    bool hyperStarted[kMatchFighterCount] = {false, false, false, false};
+    bool guardStarted[kMatchFighterCount] = {false, false, false, false};
     // A landed hit's victim was guarding. The port's guard gate is provisional
     // (Fighter::take_damage's 20% block), so this is a port rule, not the original's.
-    bool blocked[4]      = {false, false, false, false};
+    bool blocked[kMatchFighterCount]      = {false, false, false, false};
     // Shot -> fighter contacts the pool resolved this frame, in pool order. The melee path
     // reports one victim per attacker above; a shot volley can connect with several
     // fighters in one tick, so this is its own list.
@@ -130,7 +137,8 @@ public:
     // collision_tama.x (shots then fly to expiry — the reference's open-field case).
     // `movementCollision` is borrowed too; collision.x supplies separate movement and
     // ground queries when present. A null pointer preserves historical trace captures.
-    void reset(const MatchConfig& config, const xm::Model* model[4], xm::Controller* anim[4],
+    void reset(const MatchConfig& config, const xm::Model* model[kMatchFighterCount],
+               xm::Controller* anim[kMatchFighterCount],
                const xm::Model* tamaMesh, const game::physics::ModelIndex* tamaIndex,
                const game::physics::MovementCollision* movementCollision = nullptr);
 
@@ -149,7 +157,7 @@ public:
     // one optional input per configured fighter, in launch order.
     MatchFrame step(const fnd::input::PlayerState* p1Input,
                     const fnd::input::PlayerState* p2Input, double dt);
-    MatchFrame step(const fnd::input::PlayerState* inputs[4], double dt);
+    MatchFrame step(const fnd::input::PlayerState* inputs[kMatchFighterCount], double dt);
 
     // ---- per-fighter combat target (gameplay/target_lock.h) ---------------------
     // Each fighter owns a lock on another fighter's INDEX, kept independently of
@@ -193,10 +201,10 @@ public:
     // only consult it for a slot no controller owns; F3 keeps that invariant (debug_keys.h).
     // Out of range reads the default, so a caller cannot read a flag for a slot that has none.
     bool ai_enabled(int fighter) const {
-        return fighter < 0 || fighter >= 4 ? true : m_aiEnabled[fighter];
+        return fighter < 0 || fighter >= kMatchFighterCount ? true : m_aiEnabled[fighter];
     }
     void set_ai_enabled(int fighter, bool on) {
-        if (fighter >= 0 && fighter < 4) m_aiEnabled[fighter] = on;
+        if (fighter >= 0 && fighter < kMatchFighterCount) m_aiEnabled[fighter] = on;
     }
 
     Fighter&       fighter(int i)       { return m_fighters[i]; }
@@ -219,12 +227,12 @@ public:
 private:
     // The fighters' current liveness as one 4-wide array. The lock table, the melee
     // victim and the economy all need it, so it is read in one place.
-    void liveness(bool out[4]) const;
+    void liveness(bool out[kMatchFighterCount]) const;
 
     bool               m_paused = false;   // issue #15; set_paused above
     // Issue #48's F2/F3 flag. True is the original's initialized value (FUN_0041efa0:10).
-    bool               m_aiEnabled[4] = {true, true, true, true};
-    Fighter            m_fighters[4];
+    bool               m_aiEnabled[kMatchFighterCount] = {true, true, true, true};
+    Fighter            m_fighters[kMatchFighterCount];
     ProjectilePool     m_shots;
     MatchEconomy       m_economy;
     TargetLocks        m_locks;

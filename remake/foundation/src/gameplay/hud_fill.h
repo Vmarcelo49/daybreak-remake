@@ -81,7 +81,7 @@ inline game::GameHudValues fillHudValues(const MatchEconomy& eco, const HudFillI
     // The "+N%" popup: hud+0x78e0 is the 60-frame window FUN_006431d0 arms and
     // hud+0x78e8 the signed amount it shows (scenes.cpp carried both as balloonPulse).
     // Both sides are live now that the economy credits them per side.
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < kSideCount; ++i) {
         v.balloonPulse[i] = eco.balloonDeltaTicks(i);
         v.balloonPulseValue[i] = eco.balloonDelta(i);
     }

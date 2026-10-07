@@ -36,20 +36,39 @@ namespace gameplay {
 // What the menu asked the host to do this tick. `None` keeps the battle paused.
 enum class PauseChoice { None, Resume, Rematch, ReturnToSelection, Quit };
 
-inline constexpr int kPauseRowCount = 4;
-
 // The rows a battle can offer. A front-end battle can return to the selection screen; the
 // standalone --match harness has no menu stack behind it, so its last row is quit and the
 // return row is absent. Row 0 is always Resume and the last row is always Quit.
-inline constexpr int kPauseRowsWithSelection = 4;
-inline constexpr int kPauseRowsStandalone = 3;
+constexpr int kPauseRowsWithSelection = 4;
+constexpr int kPauseRowsStandalone = 3;
+
+// ONE table, and both the label and the action come out of it. The menu is the port's, not
+// a recovered one (docs/PAUSE.md: the original has a banner and a もう一度挑戦しますか？ yes/no
+// prompt), so this row map IS the policy: row 0 Resume, row 1 Rematch, the LAST row Quit
+// whatever the length, and row 2 the return row only in the menu that has one. `rows` is 4
+// with a selection screen behind the battle and 3 without, so only that row comes and goes.
+enum class PauseRowKind { Resume, Rematch, ReturnToSelection, Quit };
+constexpr int kPauseRowKindCount = 4;
+constexpr const char* kPauseRowLabels[kPauseRowKindCount] = {
+    "Resume", "Rematch", "Return to selection", "Quit to desktop",
+};
+
+// The row's kind in a `rows`-row menu, or -1 for "no row" (the caller's default). These are
+// the original branches one for one, plus the guard the old inline comment ("only reachable
+// with four rows") already described: the shorter menu's row 2 is its LAST row and takes
+// the quit branch like any other menu's.
+constexpr int pauseRowKind(int row, int rows) {
+    if (row == rows - 1) return static_cast<int>(PauseRowKind::Quit);
+    if (row == 1) return static_cast<int>(PauseRowKind::Rematch);
+    if (row == 2 && rows >= kPauseRowsWithSelection)
+        return static_cast<int>(PauseRowKind::ReturnToSelection);
+    return -1;
+}
 
 // The row labels, in menu order, for a menu of `rows` rows.
 inline const char* pauseRowLabel(int row, int rows) {
-    if (row == rows - 1) return "Quit to desktop";
-    if (row == 1) return "Rematch";
-    if (row == 2) return "Return to selection";   // only reachable with four rows
-    return "Resume";
+    const int kind = pauseRowKind(row, rows);
+    return kPauseRowLabels[kind < 0 ? static_cast<int>(PauseRowKind::Resume) : kind];
 }
 
 // The menu cursor. Edges only: the host feeds one tick's up/down/confirm/cancel, and the
@@ -69,10 +88,13 @@ struct PauseMenu {
         if (up) row = (row + rows - 1) % rows;
         else if (down) row = (row + 1) % rows;
         if (!confirm) return PauseChoice::None;
-        if (row == rows - 1) return PauseChoice::Quit;
-        if (row == 1) return PauseChoice::Rematch;
-        if (row == 2) return PauseChoice::ReturnToSelection;
-        return PauseChoice::Resume;
+        switch (pauseRowKind(row, rows)) {
+            case static_cast<int>(PauseRowKind::Quit):   return PauseChoice::Quit;
+            case static_cast<int>(PauseRowKind::Rematch): return PauseChoice::Rematch;
+            case static_cast<int>(PauseRowKind::ReturnToSelection):
+                return PauseChoice::ReturnToSelection;
+            default: return PauseChoice::Resume;
+        }
     }
 };
 

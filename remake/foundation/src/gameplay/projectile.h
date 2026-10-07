@@ -22,6 +22,7 @@
 // =============================================================================
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -119,19 +120,14 @@ struct AmmoStock {
     float unitsPerShot = 1.0f;  // pool units per displayed shot (magazine reloadTime)
 
     void recharge(double dt, float rateMul = 1.0f) {
-        value += perSec * rateMul * static_cast<float>(dt);
-        if (value > max) value = max;
+        value = std::min(value + perSec * rateMul * static_cast<float>(dt), max);
     }
     bool can_spend(float n) const { return value >= n; }
-    void spend(float n) {
-        value -= n;
-        if (value < 0.0f) value = 0.0f;
-    }
+    void spend(float n) { value = std::max(value - n, 0.0f); }
     float frac() const { return (max > 0.0f) ? value / max : 0.0f; }
     int whole() const {  // HUD digit: whole SHOTS left, never pool units
         if (unitsPerShot <= 0.0f) return static_cast<int>(value);
-        const int shots = static_cast<int>(value / unitsPerShot);
-        return shots < 0 ? 0 : shots;
+        return std::max(static_cast<int>(value / unitsPerShot), 0);
     }
 };
 

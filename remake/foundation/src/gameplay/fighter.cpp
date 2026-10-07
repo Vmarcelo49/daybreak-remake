@@ -452,7 +452,7 @@ void Fighter::update_state_machine(const input::PlayerState* input,
         const bool dashAttack = (m_state == FighterState::Run);
         const bool aerial = !m_grounded;
         set_aerial_attack(aerial);
-        m_attackMoveId = resolve_attack_move(dashAttack, !m_grounded);
+        m_attackMoveId = resolve_attack_move(dashAttack, aerial);
         build_melee_swing(m_attackMoveId);
         set_state(FighterState::AttackA);
         m_stateTimer = m_swing.total_ticks();
@@ -604,8 +604,10 @@ void Fighter::update_facing(const Fighter* opp, double dt) {
 
     float diff = target_yaw - m_facing;
     // Wrap to [-π, π].
-    while (diff >  3.14159265f) diff -= 2.0f * 3.14159265f;
-    while (diff < -3.14159265f) diff += 2.0f * 3.14159265f;
+    // glm::pi<float>() is bit-identical to the 3.14159265f literal that used to sit
+    // here (both round to 0x40490fdb), and fighter.cpp:1496 already spells it that way.
+    while (diff >  glm::pi<float>()) diff -= 2.0f * glm::pi<float>();
+    while (diff < -glm::pi<float>()) diff += 2.0f * glm::pi<float>();
 
     m_facing += diff * FighterConstants::kTurnSpeed * static_cast<float>(dt);
 }
@@ -985,7 +987,7 @@ void Fighter::begin_melee_swing() {
 }
 
 void Fighter::note_melee_hit(int victimIndex) {
-    if (victimIndex < 0 || victimIndex >= 4) return;
+    if (victimIndex < 0 || victimIndex >= kMatchFighterCount) return;
     m_swingHits |= (1u << victimIndex);
     ++m_swingHitCount;
 }
@@ -1335,10 +1337,8 @@ void Fighter::apply_weapon_ammo() {
 
 float Fighter::charge_hold_frac() const {
     const float limit = red_hold_sec();
-    float f = (limit > 0.0f) ? m_chargeHeld / limit : 0.0f;
-    if (f < 0.0f) f = 0.0f;
-    if (f > 1.0f) f = 1.0f;
-    return f;
+    const float f = (limit > 0.0f) ? m_chargeHeld / limit : 0.0f;
+    return std::clamp(f, 0.0f, 1.0f);
 }
 
 ShotTier Fighter::charge_tier() const {

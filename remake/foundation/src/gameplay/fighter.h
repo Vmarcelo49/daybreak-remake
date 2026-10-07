@@ -40,6 +40,7 @@
 // =============================================================================
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 
@@ -232,6 +233,13 @@ struct FighterConstants {
         // fallback when no move table is bound, and the Oyashiro activation burst
         // radius. Data-driven swings use their own hitRadius (30 + hr, FUN_0063b470).
     static constexpr int   kLightDamage   = 5;
+    // The launch-time injection seams' bounds. Named because std::clamp cannot take a
+    // literal as a bound, and because an unnamed 50/200 below reads as tuning: PORT RULE,
+    // these are the selection screen's own battle-setting range in percent.
+    static constexpr float kGaugeMin      = 0.0f;   // set_hyper_gauge: 0..1
+    static constexpr float kGaugeMax      = 1.0f;
+    static constexpr int   kBattleRatePercentMin = 50;   // set_battle_rates
+    static constexpr int   kBattleRatePercentMax = 200;
     // Shot economy (spec §3.1; counts pinned by battle-hud.webp, rest tuning).
     static constexpr float kMainMax       = 6.0f;   // MAIN stock
     static constexpr float kChargeMax     = 2.0f;   // CHARGE stock
@@ -380,10 +388,10 @@ public:
 
     // `source` applies the attacker's Hypermode damage bonus and earns its
     // gauge (Friendship). Pass nullptr for environmental damage.
-    // `hitstunFrames` overrides the hit-stun length when >= 0: FUN_00637950:308 writes
+    // `hitstunFrames` overrides the hit-stun length when > 0: FUN_00637950:308 writes
     // the attacker's weapon block defenderHitstun (blob index 10, record +0x58) into
-    // the victim's +0xa0 action counter, so the stun length is per weapon. Negative
-    // keeps the shared kHitStunFrames.
+    // the victim's +0xa0 action counter, so the stun length is per weapon. 0 and
+    // negative (the default) keep the shared kHitStunFrames.
     // `hitCategory` is the RAW record +0x64 dword the original feeds FUN_0063ba80
     // (@0x638c26) to pick the victim's reaction move; 0 is "unspecified", which takes
     // that function's default branch (198, the downed reaction) exactly as any
@@ -520,16 +528,18 @@ public:
     // Basics §training: "F4 maxes Hypermode") until issue #48 implemented the key itself
     // (fill_gauges below), and stays as the launch-time seam the visual suite drives.
     void set_hyper_gauge(float f) {
-        m_gauge = f < 0.0f ? 0.0f : (f > 1.0f ? 1.0f : f);
+        m_gauge = std::clamp(f, FighterConstants::kGaugeMin, FighterConstants::kGaugeMax);
     }
     // Startup HP (-hp): lets a test reach a lethal-hit path without a
     // wind-up (Kakera's death save, Overkill's downed window).
     void set_hp(int hp) {
-        m_hp = hp < 1 ? 1 : (hp > m_maxHP ? m_maxHP : hp);
+        m_hp = std::clamp(hp, 1, m_maxHP);
     }
     void set_battle_rates(int healthPercent, int gaugePercent) {
-        m_maxHP = healthPercent < 50 ? 50 : (healthPercent > 200 ? 200 : healthPercent);
-        m_gaugeRate = (gaugePercent < 50 ? 50 : (gaugePercent > 200 ? 200 : gaugePercent)) / 100.f;
+        m_maxHP = std::clamp(healthPercent, FighterConstants::kBattleRatePercentMin,
+                             FighterConstants::kBattleRatePercentMax);
+        m_gaugeRate = std::clamp(gaugePercent, FighterConstants::kBattleRatePercentMin,
+                                 FighterConstants::kBattleRatePercentMax) / 100.f;
     }
     // F1 (issue #48): the original writes HP AND max HP to 10000 at fighter+0x7a4/+0x7a8
     // (FUN_00634f60:175-182, after the two balloon stores at :173-174), i.e. the fighter's
@@ -579,7 +589,8 @@ public:
     // m_didHitThisSwing flag could not express that, so hits are tracked per victim
     // index for the duration of the swing and cleared when the state changes.
     bool already_hit_this_swing(int victimIndex) const {
-        return victimIndex >= 0 && victimIndex < 4 && (m_swingHits & (1u << victimIndex));
+        return victimIndex >= 0 && victimIndex < kMatchFighterCount &&
+               (m_swingHits & (1u << victimIndex));
     }
     int  swing_hit_count() const { return m_swingHitCount; }
 
@@ -618,9 +629,6 @@ public:
     // records that this swing already connected with one victim.
     void begin_melee_swing();
     void note_melee_hit(int victimIndex);
-    // Ticks of hit-stun a melee inflicts: the swing's own (the weapon entry's
-    // defenderHitstun when moves are bound, the legacy active-window stun else).
-    int  m_meleeHitstun() const { return m_swing.hitstun; }
 
     // Debug view of the recovered melee hitbox (issue #10). Data only, so drawing stays
     // in the render layer: `anchors` are the victim's TWO spheres -- head and chest, the

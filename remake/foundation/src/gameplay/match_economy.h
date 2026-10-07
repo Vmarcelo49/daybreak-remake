@@ -67,6 +67,7 @@
 //    port cannot express without the KO move's per-phase durations.
 //
 // std only: no SDL, no WebGPU, no glm.
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -80,6 +81,11 @@ namespace gameplay {
 // is not a constant: it is the reaction bonus below.
 inline constexpr int    kSideCount    = 2;
 inline constexpr int    kMatchFighterCount = 4;
+// The battle's legal participant count. ONE pair of bounds: Match::reset and
+// TargetLocks::reset clamp the configured count to it, and the fighter-indexed flat
+// arrays are sized by kMatchFighterCount.
+inline constexpr int    kMinFighters  = 2;
+inline constexpr int    kMaxFighters  = kMatchFighterCount;
 inline constexpr float  kBalloonPerKo = 20.0f;
 inline constexpr float  kBalloonLimit = 100.0f;
 inline constexpr int    kBalloonSizeMin  = 40;   // FUN_0040acb0 @0x40af60-0x40afe2
@@ -176,8 +182,7 @@ inline int koIncrementPercent(int overkillHp, bool reactionBonus, bool shot) {
     const int over = overkillHp > 0 ? overkillHp : 0;
     int bonus;
     if (shot) {
-        bonus = over / 5;
-        if (bonus > kShotOverkillCap) bonus = kShotOverkillCap;
+        bonus = std::min(over / 5, kShotOverkillCap);
         if (over > kShotOverkillDeepHp) ++bonus;
         if (over > kShotOverkillDeeperHp) ++bonus;
     } else {

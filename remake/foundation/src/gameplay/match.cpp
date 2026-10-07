@@ -1,9 +1,12 @@
 // gameplay/match.cpp — see match.h for the order this reproduces and why.
 #include "gameplay/match.h"
 
+#include <algorithm>
+
 namespace gameplay {
 
-void Match::reset(const MatchConfig& config, const xm::Model* model[4], xm::Controller* anim[4],
+void Match::reset(const MatchConfig& config, const xm::Model* model[kMatchFighterCount],
+                  xm::Controller* anim[kMatchFighterCount],
                   const xm::Model* tamaMesh, const game::physics::ModelIndex* tamaIndex,
                   const game::physics::MovementCollision* movementCollision) {
     m_config = config;
@@ -11,7 +14,8 @@ void Match::reset(const MatchConfig& config, const xm::Model* model[4], xm::Cont
     m_tamaIndex = tamaIndex;
     m_movementCollision = movementCollision;
 
-    m_config.fighterCount = config.fighterCount < 2 ? 2 : (config.fighterCount > 4 ? 4 : config.fighterCount);
+    m_config.fighterCount =
+        std::clamp(config.fighterCount, kMinFighters, kMaxFighters);
     for (int i = 0; i < m_config.fighterCount; ++i) {
         if (m_movementCollision) {
             m_config.spawn[i] = m_movementCollision->resolveSpawn(
@@ -37,30 +41,30 @@ void Match::reset(const MatchConfig& config, const xm::Model* model[4], xm::Cont
     // Issue #48's F2/F3 flag: battle state like the lock table, so a rematch starts with every
     // COM brain live again — the original sets it to 1 wherever a slot is bound to a battle
     // (FUN_0041efa0:10, and FUN_00417200:47 when the roster assigns a COM slot).
-    for (int i = 0; i < 4; ++i) m_aiEnabled[i] = true;
+    for (int i = 0; i < kMatchFighterCount; ++i) m_aiEnabled[i] = true;
 }
 
-void Match::liveness(bool out[4]) const {
-    for (int i = 0; i < 4; ++i) out[i] = m_fighters[i].is_alive();
+void Match::liveness(bool out[kMatchFighterCount]) const {
+    for (int i = 0; i < kMatchFighterCount; ++i) out[i] = m_fighters[i].is_alive();
 }
 
 void Match::cycle_locked_target(int fighter, bool forward) {
     if (fighter < 0 || fighter >= m_config.fighterCount) return;
-    bool alive[4];
+    bool alive[kMatchFighterCount];
     liveness(alive);
     m_locks.cycle_enemy(fighter, forward, alive);
 }
 
 void Match::lock_ally_target(int fighter) {
     if (fighter < 0 || fighter >= m_config.fighterCount) return;
-    bool alive[4];
+    bool alive[kMatchFighterCount];
     liveness(alive);
     m_locks.select_ally(fighter, alive);
 }
 
 int Match::melee_target(int fighter) const {
     if (fighter < 0 || fighter >= m_config.fighterCount) return kNoTarget;
-    bool alive[4];
+    bool alive[kMatchFighterCount];
     liveness(alive);
     // The locked target when it is a living hostile (FUN_00421f30's +0x304). Allies are
     // excluded here unconditionally: an ally may be aimed at, never attacked.
@@ -84,11 +88,12 @@ int Match::melee_target(int fighter) const {
 
 MatchFrame Match::step(const fnd::input::PlayerState* p1Input,
                        const fnd::input::PlayerState* p2Input, double dt) {
-    const fnd::input::PlayerState* inputs[4] = {p1Input, p2Input, nullptr, nullptr};
+    const fnd::input::PlayerState* inputs[kMatchFighterCount] =
+        {p1Input, p2Input, nullptr, nullptr};
     return step(inputs, dt);
 }
 
-MatchFrame Match::step(const fnd::input::PlayerState* inputs[4], double dt) {
+MatchFrame Match::step(const fnd::input::PlayerState* inputs[kMatchFighterCount], double dt) {
     MatchFrame out;
     // Paused: the authoritative step does not run at all (issue #15). Nothing below this
     // point executes — not the economy tick, not the fighters, not the projectile pool —
@@ -101,7 +106,7 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[4], double dt) {
     // ally-hold pin before anything reads the selection, and the fighters below read it
     // on this same tick. This snapshot is the liveness as of the tick's START; `alive`
     // further down is re-read after the fighters move, which is what the economy needs.
-    bool aliveAtStart[4];
+    bool aliveAtStart[kMatchFighterCount];
     liveness(aliveAtStart);
     m_locks.step(aliveAtStart);
 
@@ -153,7 +158,7 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[4], double dt) {
             if (m_shots.spawn(shot.pos, shot.dir, shot.tier, &m_fighters[i])) {
                 ++out.shotsSpawned;
                 out.shotFired[i] = true;
-                if (i < 4) out.shotPoints[i] = shot.pos;
+                if (i < kMatchFighterCount) out.shotPoints[i] = shot.pos;
                 m_shots.spawn_spark(shot.pos, 0.2f);   // muzzle flash
                 ++out.muzzleSparks;
             }
@@ -197,8 +202,8 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[4], double dt) {
             m_economy.note_overkill_hit(i);
     }
 
-    bool alive[4] = {true, true, true, true};
-    int hp[4] = {0, 0, 0, 0};
+    bool alive[kMatchFighterCount] = {true, true, true, true};
+    int hp[kMatchFighterCount] = {0, 0, 0, 0};
     for (int i = 0; i < m_config.fighterCount; ++i) {
         alive[i] = m_fighters[i].is_alive();
         // The timed round's second key sums each side's remaining HP
