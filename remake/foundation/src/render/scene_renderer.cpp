@@ -887,17 +887,6 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
     baseDrawList_ = draws_;
     drawTemplates_.insert(drawTemplates_.end(), draws_.begin(), draws_.end());
     effectInstances_.clear();
-    // (The original draws each character's hull immediately before that character's
-    // surface; depth testing makes the global order equivalent, and it keeps the
-    // pipeline switches to one per pass.)
-    std::stable_partition(draws_.begin(), draws_.end(),
-                          [](const DrawItem& d) { return d.pass != Pass::Effect; });
-    std::stable_partition(draws_.begin(), draws_.end(),
-                          [](const DrawItem& d) {
-                              return d.pass == Pass::Outline || d.pass == Pass::Opaque;
-                          });
-    std::stable_partition(draws_.begin(), draws_.end(),
-                          [](const DrawItem& d) { return d.pass == Pass::Outline; });
 
     paletteBuffer_ = gpu::createBuffer(device_, palette_.size() * sizeof(glm::mat4),
                                        WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst,
