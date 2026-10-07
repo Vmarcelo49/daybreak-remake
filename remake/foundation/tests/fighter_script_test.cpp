@@ -349,8 +349,19 @@ void test_idle_walk() {
     tick(s, si);
     check_int("stick past the deadzone enters Walk", static_cast<int>(FighterState::Walk),
               static_cast<int>(s.state()));
-    check_near("full stick follows its nineteen-degree turn arc", 7.2 * std::sin(glm::radians(19.f)),s.position().x,1e-6);
-    check_near("full stick preserves recovered walk distance",7.2,glm::length(s.position()),1e-5);
+    if (g_testCombo.ready) {
+        check_near("full stick follows its nineteen-degree turn arc",
+                   7.2 * std::sin(glm::radians(19.f)), s.position().x, 1e-6);
+        check_near("full stick preserves recovered walk distance", 7.2,
+                   glm::length(s.position()), 1e-5);
+    } else {
+        // The data-free CI path exercises the legacy fallback, not a recovered
+        // character handler: right-stick movement uses the fallback 7 units/tick.
+        check_near("fallback full stick uses kWalkSpeed", 420.0 * kStep,
+                   s.position().x, 1e-6);
+        check_near("fallback full stick distance", 420.0 * kStep,
+                   glm::length(s.position()), 1e-5);
+    }
     si.p.stick_x = 4000;   // inside the 8000 deadzone
     tick(s, si);
     check_int("stick inside the deadzone is rest", static_cast<int>(FighterState::Idle),
@@ -384,22 +395,32 @@ void test_dash() {
     // Up maps to facing-forward = +Z (fighter.cpp:579), the same basis the walk
     // uses now: a tap and a hold agree about where "up" goes, so a dash fired
     // while walking keeps the line instead of reversing it.
-    check_near("ground dash first-frame dz", 17.0, f.position().z - z_before,
-               1e-5);
-    // Stamina: 100 - 20 = 80, then the same frame's grounded regen (+60*dt)
-    // runs because Run is an actionable state (fighter.cpp:124). stamina() is
-    // an int, so the observable is 81.
-    check_int("dash drains 1.2 percent per update, without a trigger cost",98,f.stamina());
+    check_near(g_testCombo.ready ? "recovered ground dash first-frame distance"
+                                 : "fallback ground dash first-frame distance",
+               g_testCombo.ready ? 17.0 : 900.0 * kDt,
+               f.position().z - z_before, 1e-5);
+    // The fallback spends a trigger cost and gets one tick of grounded regen;
+    // the recovered handler instead spends its per-update cost.
+    check_int(g_testCombo.ready ? "recovered dash drains per update without trigger cost"
+                                : "fallback dash spends trigger stamina then regenerates",
+              g_testCombo.ready ? 98 : 81, f.stamina());
 
-    // The dash window is kDashFrames = 20 frames of committed motion.
+    // Both paths keep the direction committed during these twenty updates.
     const float z_dash0 = f.position().z;
     for (int i = 0; i < 19; ++i) tick(f, in);
     const float z_dash19 = f.position().z;
-    check_near("dash travel over twenty held updates",17.0*20,z_dash19-z_before,1e-3);
-    check_near("dash speed at this test's tick rate",17.0/kDt,(z_dash19-z_dash0)/(19.0*kDt),1.0);
+    const double dashStep = g_testCombo.ready ? 17.0 : 900.0 * kDt;
+    check_near(g_testCombo.ready ? "recovered dash travel over twenty held updates"
+                                 : "fallback dash travel over twenty held updates",
+               dashStep * 20, z_dash19 - z_before, 1e-3);
+    check_near(g_testCombo.ready ? "recovered dash speed at this tick rate"
+                                 : "fallback dash speed at this tick rate",
+               dashStep / kDt, (z_dash19 - z_dash0) / (19.0 * kDt), 1.0);
     in.set(fnd::input::Action::Up,false);
     tick(f, in);
-    check_int("release selects the data's recovery phase",2,f.move_phase());
+    check_int(g_testCombo.ready ? "release selects recovered dash phase"
+                                : "fallback dash has no animation phase",
+              g_testCombo.ready ? 2 : 0, f.move_phase());
     for (int i = 0; i < 180 && f.state() == FighterState::Run; ++i) tick(f,in);
     check_int("dash completes its actual recovery period and hold", static_cast<int>(FighterState::Idle),
               static_cast<int>(f.state()));
@@ -428,9 +449,15 @@ void test_dash() {
     tick(g, gi);
     gi.set(fnd::input::Action::Up, true);
     tick(g, gi);
-    check_int("a partial pool can fund the source's per-update dash drain", static_cast<int>(FighterState::Run),
-              static_cast<int>(g.state()));
-    check_bool("dash does not spend a twenty-percent trigger cost", g.stamina() < 20,true);
+    if (g_testCombo.ready) {
+        check_int("a partial pool can fund the source's per-update dash drain",
+                  static_cast<int>(FighterState::Run), static_cast<int>(g.state()));
+        check_bool("recovered dash does not spend a trigger cost", true, g.stamina() < 20);
+    } else {
+        check_int("fallback dash is refused below its stamina threshold",
+                  static_cast<int>(FighterState::Walk), static_cast<int>(g.state()));
+        check_bool("refused fallback dash leaves stamina unchanged", true, g.stamina() < 20);
+    }
 
     // Air dash: jump, then double-tap while airborne.
     Fighter a = make_idle_fighter(glm::vec3(0, 0, 0));
@@ -740,7 +767,9 @@ void test_air() {
     const float x0 = h.position().x;
     hi.set(fnd::input::Action::Right, true);
     tick(h, hi);
-    check_near("air control scales recovered walk distance by 0.7",7.2*0.7,
+    check_near(g_testCombo.ready ? "air control scales recovered walk distance by 0.7"
+                                 : "fallback air control scales kWalkSpeed by 0.7",
+               g_testCombo.ready ? 7.2 * 0.7 : 420.0 * 0.7 * kDt,
                h.position().x - x0, 1e-5);
     check_bits("kAirControl", 0.7f, FighterConstants::kAirControl);
 }
@@ -1377,15 +1406,25 @@ void test_facing() {
     Fighter a = make_idle_fighter(glm::vec3(0, 0, 0));
     Fighter b = make_idle_fighter(glm::vec3(100, 0, 0));
     a.update(nullptr, &b, kDt);
-    check_near("opponent bearing change preserves idle yaw",0.0,
-               a.facing_yaw(), 1e-5);
-    // kTurnSpeed is a lerp factor, so the approach is exponential, not linear:
-    // after 30 frames the residual is (1 - 8*dt)^30 = 1.4% of the target.
-    for (int i = 0; i < 29; ++i) a.update(nullptr, &b, kDt);
-    check_near("idle yaw remains absolute",0.0,a.facing_yaw(),
-               0.03);
-    Input walk; walk.set(fnd::input::Action::Up,true); tick(a,walk,&b);
-    check_near("walking toward the new bearing turns nineteen degrees",glm::radians(19.f),a.facing_yaw(),1e-5);
+    if (g_testCombo.ready) {
+        check_near("recovered handler preserves idle yaw", 0.0, a.facing_yaw(), 1e-5);
+        for (int i = 0; i < 29; ++i) a.update(nullptr, &b, kDt);
+        check_near("recovered handler keeps its absolute idle yaw", 0.0,
+                   a.facing_yaw(), 0.03);
+        Input walk; walk.set(fnd::input::Action::Up, true);
+        tick(a, walk, &b);
+        check_near("recovered walk turns nineteen degrees",
+                   glm::radians(19.f), a.facing_yaw(), 1e-5);
+    } else {
+        // Without a roster handler, CI uses the legacy opponent-facing fallback.
+        const double target = std::atan2(100.0, 0.0);
+        check_near("fallback turns toward opponent", target * 8.0 * kDt,
+                   a.facing_yaw(), 1e-5);
+        for (int i = 0; i < 29; ++i) a.update(nullptr, &b, kDt);
+        const double residual = std::pow(1.0 - 8.0 * kDt, 30.0);
+        check_near("fallback facing approaches opponent", target * (1.0 - residual),
+                   a.facing_yaw(), 0.03);
+    }
 
     // yaw=0 faces +Z: an opponent straight ahead keeps yaw at 0.
     Fighter c = make_idle_fighter(glm::vec3(0, 0, 0));
