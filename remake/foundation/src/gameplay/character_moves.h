@@ -108,6 +108,21 @@ public:
     static constexpr int kMaxMoves = 512;
     static constexpr int kMaxAnimationSets = 512;
 
+    // Replace one row's phase-0 record list with a single caller-supplied record, so a test
+    // can drive the real contact path with a record shape the shipped file may not put in
+    // that row. Deliberately narrow: only phase 0, only one entry, and it is a no-op for a
+    // move the table does not carry. Production code never calls this — the melee and
+    // projectile paths read the parsed rows.
+    bool install_move_phase0_record(int moveId, const MoveEntry& record) {
+        // Same lookup the readers use, so the two can never disagree about which row an id
+        // names; the const_cast is the one place this table hands out a mutable row.
+        CharacterMove* move = const_cast<CharacterMove*>(find(moveId));
+        if (!move || move->sectionCount < 1) return false;
+        move->phases[0].entries[0] = record;
+        move->phases[0].entryCount = 1;
+        return true;
+    }
+
 private:
     void release() noexcept;
     std::vector<CharacterMove> m_moves;

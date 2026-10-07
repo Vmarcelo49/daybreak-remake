@@ -401,10 +401,32 @@ contact implies HP damage, and both had to be fixed before a zero-power record c
   contact; the port splits that into `note_melee_hit()` writing the flag and the scene's
   `already_hit_this_swing(j)` gate (`match.cpp:143`). `try_melee_hit()` itself does NOT
   consult it, and a test that assumes it does is asserting the wrong seam.
-- The regression test is `animation_data_test.cpp`'s `zero_power_contact()`, which drives a
-  real equipped combo to a landed swing plus the zero-power conversion, and
-  `fighter_script_test.cpp` case 10 pins "a zero-power hit takes no HP and records no
-  damage, but still stuns".
+- **Coverage, verified to be real coverage.** Both defects were re-introduced one at a time
+  and the tests re-run, so the assertions are known to bite rather than merely passing:
+  - restoring the old predicate (`hitRadius > 0 && baseDamage > 0`) fails 6 checks across
+    the melee and projectile tests — the record stops being checkable at all;
+  - restoring the old clamp (`std::max(1, amount)`) fails 5 checks — the victim loses the
+    1 HP it should not, on both paths.
+  - `animation_data_test.cpp`'s `zero_power_contact()` installs a reshaped zero-power record
+    into an equipped combo's row (`CharacterMoves::install_move_phase0_record`, test-only)
+    and drives the **real** collision and resolution: HP, `damageTaken` and `damageDealt`
+    must not move, the hyper bar must not move, the victim must enter `Hit`, and the stun
+    must last exactly the record's `defenderHitstun`.
+  - `zero_power_projectile()` does the same through the pool, with the row's own bullet
+    model bound — without a model a shot takes the legacy XZ fallback
+    (`projectile.cpp:185`) and never reads the record, which would make the test vacuous.
+  - `melee_rules_test.cpp`'s `testRepeatContactSuppression()` proves the per-swing allowance
+    **through `Match`**, re-placing the victim inside the live volume on every one of the
+    swing's 6 active frames. Removing the scene's `already_hit_this_swing` gate makes it
+    report 5 contacts and 60 HP instead of 1 contact and 92 HP, so the assertion is on the
+    seam that actually suppresses the repeat, not on the flag helpers.
+  - `fighter_script_test.cpp` case 10 pins the zero-power contact and the guard interaction:
+    guarding 3 damage still takes its historical 1, guarding 20 still takes a fifth, and a
+    zero-power contact takes nothing even guarded. Each case re-enters `Guard`, because a
+    landed hit leaves it for `Hit`.
+- Record-column plumbing was **removed rather than left unused**: with the gauge and
+  knockback consumers still unported, a struct carrying those columns would have been dead
+  weight, so they are documented here instead of threaded through `take_damage`.
 
 Still open from the same investigation, and **not** silently absorbed:
 

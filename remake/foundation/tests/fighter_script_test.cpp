@@ -1311,6 +1311,26 @@ void test_ko() {
     check_int("a zero-power contact still stuns its victim",
               static_cast<int>(FighterState::Hit), static_cast<int>(f.state()));
 
+    // The guard branch keeps its floor for POSITIVE amounts: blocking 1..4 still lands 1,
+    // which is the pre-existing behaviour the zero-power fix must not disturb. Only a
+    // zero-power contact stays at 0 behind a guard.
+    {
+        Fighter guarded = make_idle_fighter(glm::vec3(0, 0, 0));
+        // A landed hit leaves Guard for Hit, so each case re-enters the guard.
+        guarded.set_state(FighterState::Guard);
+        guarded.set_hp(100);
+        guarded.take_damage(3, nullptr);
+        check_int("guarding 3 damage still takes its historical 1", 99, guarded.hp());
+        guarded.set_hp(100);
+        guarded.set_state(FighterState::Guard);
+        guarded.take_damage(20, nullptr);
+        check_int("guarding 20 damage still takes a fifth", 96, guarded.hp());
+        guarded.set_hp(100);
+        guarded.set_state(FighterState::Guard);
+        guarded.take_damage(0, nullptr);
+        check_int("but a zero-power contact takes nothing even guarded", 100, guarded.hp());
+    }
+
     f.set_hp(1);
     f.take_damage(1, nullptr);
     check_int("lethal damage floors HP at 0", 0, f.hp());

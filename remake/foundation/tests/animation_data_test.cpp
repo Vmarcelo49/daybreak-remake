@@ -215,81 +215,79 @@ void aerial_attack(const Combo& combo) {
           "move 340 plays its own table set (" + std::to_string(set) + "), not set 0");
 }
 
-// The recovered contact path, driven through a REAL equipped combo. FUN_00637950 gates
-// on radius != 0 (0x6379e0) and reads combat[0] only inside the HP math, so a record with
-// zero power is still a full contact: HP and the damage statistics must not move, the
-// record's own gauge feed must, the victim must still be stunned, and the once-per-swing
-// allowance must still apply.
-void zero_power_contact(const Combo& combo) {
+// FUN_00637950's entry test is radius != 0 (0x6379e0, byte-verified) and combat[0] is read
+// only inside the HP math, so a zero-power record is a real contact. This drives one
+// through the REAL collision and resolution path: a synthetic zero-power record is
+// installed into an equipped combo's row and the actual hit volume is used, so the test
+// fails if the OLD PREDICATE comes back (the record stops being checkable at all) or if
+// the OLD HP CLAMP comes back (the victim loses 1 HP it should not).
+void zero_power_contact() {
+    // Its OWN fixture: the reshaped row must not leak into the combos the other tests
+    // share (install_move_phase0_record rewrites the row in place).
+    Combo combo;
+    std::string loadError;
+    if (!combo.load(0, 0, loadError)) {
+        check(false, "Rena+0 fixture for the zero-power contact loads");
+        return;
+    }
     gameplay::Fighter attacker, victim;
     combo.init(attacker);
     combo.init(victim, {0, 0, 60});
+
+    // Take the neutral row's own hit record and keep its bone and both anchor triples, so
+    // the volume sits exactly where the shipped swing puts it, then strip its HP power.
+    const gameplay::CharacterMove* row = combo.moves.find(300);
+    const gameplay::MoveEntry* shipped = nullptr;
+    for (int p = 0; row && p < row->sectionCount && !shipped; ++p)
+        for (int e = 0; e < row->phases[p].entryCount; ++e)
+            if (row->phases[p].entries[e].has_combat()) { shipped = &row->phases[p].entries[e]; break; }
+    check(shipped != nullptr, "Rena+0 row 300 ships a hit volume to reshape");
+    if (!shipped) return;
+    gameplay::MoveEntry zero = *shipped;
+    zero.combat[0] = 0;              // power 0: the case under test
+    zero.baseDamage = 0;
+    zero.defenderHitstun = 9;        // an assertion target the shipped row need not match
+    zero.reactionMove = 113;         // the reaction the zero-power rows carry
+    check(combo.moves.install_move_phase0_record(300, zero),
+          "the reshaped row installs into the equipped table");
+
     fnd::input::PlayerState input;
     input.down[fnd::input::Action::AttackA] = true;
     tick(attacker, input, &victim);
     input.down[fnd::input::Action::AttackA] = false;
+    check(attacker.attack_move_id() == 300, "the press binds the neutral row under test");
+    check(attacker.move_phase() == 0 && attacker.phase_elapsed() < 2,
+          "and row 300's phase-0 hit volume is live at the start it was installed for");
 
-    // Walk to the first phase whose current record is a zero-power volume and place the
-    // victim inside it, then land exactly one contact.
-    const gameplay::MoveEntry* zeroPower = nullptr;
-    for (int i = 0; i < 150 && attacker.state() == gameplay::FighterState::AttackA; ++i) {
-        tick(attacker, input, &victim);
-        const auto* record = attacker.current_move_record();
-        if (!attacker.melee_in_active()) continue;
-        if (record && record->hitRadius > 0 && record->baseDamage == 0) { zeroPower = record; break; }
-        if (record && record->has_combat() && record->baseDamage > 0) {
-            // This combo's neutral chain damages. Still drive a contact: the floor that
-            // used to force 1 HP is gone, so assert the record's own numbers instead.
-            const int hpBefore = victim.hp();
-            const int takenBefore = victim.stats().damageTaken;
-            const auto attack = attacker.hitbox_debug();
-            const auto body = victim.hitbox_debug();
-            victim.reset(victim.position() + attack.attackCenter - body.anchors[1],
-                         victim.facing_yaw());
-            const bool landed = attacker.try_melee_hit(victim);
-            check(landed, "an equipped combo lands its swing on a placed victim");
-            check(victim.hp() <= hpBefore, "a landed swing never raises the victim's HP");
-            if (landed)
-                check(victim.stats().damageTaken >= takenBefore,
-                      "and it records the damage the record's power implies");
-            // The per-swing allowance. FUN_00637950 consumes this+0x90[slot] on contact
-            // (0x637cd7); the port splits that into the scene's gate — Match reads
-            // already_hit_this_swing(j) before calling try_melee_hit (match.cpp:143) — and
-            // note_melee_hit() writes the flag. So the assertion belongs on the gate the
-            // scene actually consults, and it must clear on a fresh swing.
-            attacker.note_melee_hit(1);
-            check(attacker.already_hit_this_swing(1), "a landed swing records the victim");
-            check(!attacker.already_hit_this_swing(0), "and records only that victim");
-            attacker.begin_melee_swing();
-            check(!attacker.already_hit_this_swing(1),
-                  "a fresh swing clears the record, so the next one can land");
-            return;
-        }
+    const int hpBefore = victim.hp();
+    const int takenBefore = victim.stats().damageTaken;
+    const float hyperBefore = victim.hyper_gauge();
+    // Put the victim inside the posed volume, not at a guessed distance (issue #31).
+    const auto attack = attacker.hitbox_debug();
+    const auto body = victim.hitbox_debug();
+    victim.reset(victim.position() + attack.attackCenter - body.anchors[1],
+                 victim.facing_yaw());
+    const bool landed = attacker.try_melee_hit(victim);
+    check(landed, "a zero-power record still lands through the collision test");
+    check(victim.hp() == hpBefore , "a zero-power contact takes no HP");
+    check(victim.stats().damageTaken == 0, "and records no damage taken");
+    check(attacker.stats().damageDealt == 0, "nor any for the attacker");
+    check(victim.hyper_gauge() == hyperBefore,
+          "and does not misroute the record's mode-gauge column into the hyper bar");
+    check(victim.state() == gameplay::FighterState::Hit,
+          "the zero-power contact still stuns the victim");
+    int stunned = 1;
+    while (victim.state() == gameplay::FighterState::Hit && stunned < 200) {
+        tick(victim, input, nullptr);
+        ++stunned;
     }
-    if (!zeroPower) {
-        // No zero-power volume in this combo's neutral chain. Exercise the same
-        // conversion the contact path performs on a record shaped like the shipped
-        // zero-power rows (radius, reaction, effect, gauge feed; no HP power).
-        const int hpBefore = victim.hp();
-        const float hyperBefore = victim.hyper_gauge();
-        victim.take_damage(0, &attacker, 12, 113);
-        check(victim.hp() == hpBefore, "a zero-power record takes no HP");
-        check(victim.stats().damageTaken == 0, "and records no damage taken");
-        // combat[5]/[6] are the original's internal mode gauges, NOT this port's hypermode
-        // bar (see take_damage), so a zero-power contact must leave the hyper bar alone —
-        // asserting otherwise would enshrine the category error this test exists to stop.
-        check(victim.hyper_gauge() == hyperBefore,
-              "and does not misroute the record's mode-gauge column into the hyper bar");
-        check(victim.state() == gameplay::FighterState::Hit,
-              "and the contact still stuns the victim");
-        int stunned = 1;
-        while (victim.state() == gameplay::FighterState::Hit && stunned < 200) {
-            tick(victim, input, nullptr);
-            ++stunned;
-        }
-        check(stunned == 12, "for exactly the record's own defender hitstop (observed " +
-                                 std::to_string(stunned) + ")");
-    }
+    // The landing frame is the first of the state; the counter then runs down once per
+    // update, so the state lasts defenderHitstun + 1 observed frames.
+    check(stunned == zero.defenderHitstun + 1,
+          "for exactly the record's own defender hitstop: " + std::to_string(stunned) +
+              " frames for the record's " + std::to_string(zero.defenderHitstun) +
+              " (a shared default would be " +
+              std::to_string(gameplay::FighterConstants::kHitStunFrames + 1) + ")");
 }
 
 void execution(const Combo& combo) {
@@ -518,6 +516,71 @@ void launch_rules(const Combo& combo) {
     check(airCharge,"air charge 460 launches row 2 on tick twelve in the recovered table");
 }
 
+// The projectile half of the same gate: the shot's own record must pass through the
+// volume test and resolve with zero HP. A shipped row is reshaped to zero power and the
+// real collision runs, so restoring the old predicate (the record stops being checked) or
+// the old clamp (1 HP lands) both fail here.
+void zero_power_projectile(const Combo& combo) {
+    gameplay::Fighter owner, victim;
+    combo.init(owner);
+    combo.init(victim, {0, 0, 40});
+    gameplay::BulletParameter shot = combo.bullets[0];
+    check(!shot.phases.empty() && shot.phases[0].entryCount > 0,
+          "Rena+0 tap row carries a phase-0 record to reshape");
+    if (shot.phases.empty() || shot.phases[0].entryCount == 0) return;
+    gameplay::MoveEntry& rec = shot.phases[0].entries[0];
+    rec.combat[0] = 0;                 // power 0
+    rec.baseDamage = 0;
+    rec.defenderHitstun = 7;           // distinct from the shared default
+    rec.combat[10] = 7;
+    rec.reactionMove = 113;
+    rec.combat[13] = 113;
+    rec.combat[16] = 30;               // impact effect the contact must report
+    rec.hitRadius = 60;                // a volume wide enough to guarantee the contact
+    // The parser also publishes the first record's columns as scalar aliases, and the shot
+    // spawn reads those (shot_params_for_row -> params.damage/hitRadius), so the reshape
+    // has to update them too or the shot keeps the shipped row's numbers.
+    shot.baseDamage = 0;
+    shot.defenderHitstun = 7;
+    shot.impactEffect = 30;
+    shot.hitRadius = 60;
+
+    // The pool resolves a shot's parameter through its owner's bound row, so bind the
+    // reshaped copy there rather than reaching into the live shot. The model matters too:
+    // a shot without one takes the legacy XZ fallback (projectile.cpp:185) and never reads
+    // the record at all, which would make this test prove nothing.
+    owner.set_bullet_row(0, &shot);
+    std::vector<uint8_t> modelBytes;
+    const std::string modelPath = "data/bullet/001/" + shot.modelName;
+    check(read(modelPath, modelBytes), "the tap row's own bullet model loads");
+    if (modelBytes.empty()) return;
+    xm::Model shotModel = xm::loadMemory(modelBytes.data(), modelBytes.size());
+    owner.set_bullet_model(0, &shotModel);
+    gameplay::ProjectilePool pool;
+    check(pool.spawn(victim.position() - glm::vec3(0, 0, 30), {0, 0, 1},
+                     gameplay::ShotTier::Tap, &owner, 0),
+          "the reshaped shot allocates");
+    const int hpBefore = victim.hp();
+    const int takenBefore = victim.stats().damageTaken;
+    pool.update(1.0 / 64.0, &victim, 1, nullptr, nullptr);
+    check(victim.hp() == hpBefore, "a zero-power projectile takes no HP");
+    check(victim.stats().damageTaken == 0, "and records no damage taken");
+    check(pool.contact_count() > 0, "while still reporting a contact");
+    if (pool.contact_count() > 0)
+        check(pool.contact(0).effect == 30,
+              "carrying the record's own impact effect");
+    check(victim.state() == gameplay::FighterState::Hit,
+          "and the zero-power projectile still stuns its victim");
+    int stunned = 1;
+    fnd::input::PlayerState idle;
+    while (victim.state() == gameplay::FighterState::Hit && stunned < 200) {
+        tick(victim, idle, nullptr);
+        ++stunned;
+    }
+    check(stunned == rec.defenderHitstun + 1,
+          "for the record's own defender hitstop (" + std::to_string(stunned) + " frames)");
+}
+
 void projectile_clocks(const Combo& combo) {
     gameplay::Fighter owner;
     combo.init(owner);
@@ -611,7 +674,8 @@ int main() {
     if (loaded) {
         aerial_attack(*rena);
         execution(*rena);
-        zero_power_contact(*rena);
+        zero_power_contact();
+        zero_power_projectile(*rena);
         shots(*rena);
         launch_rules(*rena);
         projectile_clocks(*rena);

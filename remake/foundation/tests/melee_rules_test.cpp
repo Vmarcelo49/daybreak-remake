@@ -205,6 +205,52 @@ void testPosedMatch() {
     checkInt(92,match.fighter(3).hp(),"second enemy is hit exactly once by the same swing");
     checkInt(2,enemyContacts,"Match reports both contacts and suppresses repeated overlap");
 }
+// The per-swing allowance proved THROUGH the scene, not by calling the flag helpers: the
+// victim is re-placed inside the live volume on every active frame, so without the
+// allowance the swing would land repeatedly. This is FUN_00637950's this+0x90 consumption
+// (0x637cd7) as Match implements it (already_hit_this_swing before try_melee_hit).
+void testRepeatContactSuppression() {
+    section("Match: one swing damages a re-placed victim exactly once");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 match fixture unavailable"); return; }
+    gameplay::MatchConfig config; config.fighterCount = 2;
+    const xm::Model* models[2]{}; xm::Controller* controllers[2]{};
+    for (int i = 0; i < 2; ++i) {
+        config.side[i] = i;                      // opposed sides: hostile
+        config.moves[i] = &combo.moves; config.weapon[i] = &combo.weapon;
+        models[i] = &combo.model; controllers[i] = combo.controller();
+        config.spawn[i] = glm::vec3(200.f * i,0,0);
+    }
+    gameplay::Match match; match.reset(config,models,controllers,nullptr,nullptr);
+    match.economy().setLogFile(nullptr);
+    const input::PlayerState* idle[2]{};
+    for (int i = 0; i < 70; ++i) match.step(idle,1.0/64.0);
+    match.fighter(0).set_state(FighterState::Idle);
+
+    input::PlayerState input; input.down[input::Action::AttackA] = true;
+    const input::PlayerState* inputs[2] = {&input,nullptr};
+    int hpAfterFirst = -1, activeFrames = 0;
+    for (int i = 0; i < 240; ++i) {
+        input::compute_edges(input);
+        if (match.fighter(0).melee_in_active()) {
+            ++activeFrames;
+            // Force the overlap the allowance exists for: every active frame starts with
+            // the victim back inside the posed volume.
+            test::Combo::placeAtAttack(match.fighter(0),match.fighter(1));
+        }
+        match.step(inputs,1.0/64.0);
+        if (hpAfterFirst < 0 && match.fighter(1).hp() < match.fighter(1).max_hp())
+            hpAfterFirst = match.fighter(1).hp();
+        input.down[input::Action::AttackA] = false;
+    }
+    check(activeFrames > 1,"the neutral swing really spans more than one active frame");
+    check(hpAfterFirst >= 0,"the swing connects with the re-placed victim");
+    checkInt(hpAfterFirst,match.fighter(1).hp(),
+             "and the victim keeps the HP from that single contact");
+    checkInt(1,match.fighter(0).swing_hit_count(),
+             "Match counted exactly one contact for the whole swing");
+}
+
 void testPhaseClock() {
     section("D3DX period / 0.016, strict boundary, counter gate");
     test::Combo combo; std::string error;
@@ -871,7 +917,7 @@ int main(int argc, char** argv) {
     const fs::path install = findInstall(argc,argv);
     if (install.empty()) { std::puts("MELEE_RULES: SKIP (no game install)"); return 0; }
     fnd::assets::assetSource().openInstall(install.string());
-    testPosedCombat(); testPosedMatch(); testPhaseClock();
+    testPosedCombat(); testPosedMatch(); testRepeatContactSuppression(); testPhaseClock();
     testCharacterMoveTable(install);
     testClassSpecificAnimationBlend(install);
     testDirectionalDashes(install);
