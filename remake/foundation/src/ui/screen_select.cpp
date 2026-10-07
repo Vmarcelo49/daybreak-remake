@@ -16,6 +16,14 @@ static_assert(sizeof(kSelectRosterX) / sizeof(kSelectRosterX[0]) ==
                   (size_t)gameplay::kCharacterCount,
               "the roster tables must cover every character gameplay knows");
 int cycle(int value, int delta, int count) { return (value + count + delta) % count; }
+// The team cursor's grid, the original's own cell numbering (+0x3c48): two columns of three
+// rows, packed column-major (cursor = column * kSelectPanelRows + row). The bottom row is the
+// decide row — its left cell goes to the stage page and its right cell is back — and the other
+// four cells are panels 0..3, which is why a panel's own cell is not simply its number.
+constexpr int kSelectPanelCols = 2;
+constexpr int kSelectPanelRows = 3;
+constexpr int kSelectDecideCell = kSelectPanelRows - 1;   // column 0, bottom row
+constexpr int kSelectBackCell = (kSelectPanelCols - 1) * kSelectPanelRows + kSelectDecideCell;
 // The per-character penalty costume cell (VA 0x6b72a0 in DaybreakDX.exe, 16 bytes; 0 = the
 // character has none). Read from the installed exe, like the earned-title names, so the table
 // stays out of this repository. -1 when the exe is not reachable.
@@ -70,7 +78,9 @@ RosterHits nearestRosterIcon(float x, float y) {
     return hits;
 }
 }
-int SelectMenu::panel(int c) const { return cursor_[c] % 3 + cursor_[c] / 3 * 2; }
+int SelectMenu::panel(int c) const {
+    return cursor_[c] % kSelectPanelRows + cursor_[c] / kSelectPanelRows * kSelectPanelCols;
+}
 int SelectMenu::owner(int p) const {
     for (int c = 0; c < 4; ++c)
         if (phase_[c] != SelectPhase::Team && panel(c) == p) return c;
@@ -101,15 +111,20 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
     int& pos = cursor_[c];
     if(pos<0) {
         if(!(in.confirm || in.cancel || in.up || in.down || in.left || in.right)) return SelectAction::None;
+        // Each panel opens on its own grid cell (see kSelectPanelRows).
         pos=c+(c>1);
     }
     SelectPhase& phase = phase_[c];
     if (phase == SelectPhase::Ready) return SelectAction::None;
     if (phase == SelectPhase::Team) {
-        if (in.left || in.right) pos = cycle(pos / 3, in.left ? -1 : 1, 2) * 3 + pos % 3;
-        else if (in.up || in.down) pos = cycle(pos % 3, in.up ? -1 : 1, 3) + pos / 3 * 3;
-        if (in.confirm && pos % 3 == 2) {
-            if (pos == 5) return SelectAction::Back;
+        if (in.left || in.right)
+            pos = cycle(pos / kSelectPanelRows, in.left ? -1 : 1, kSelectPanelCols) * kSelectPanelRows +
+                  pos % kSelectPanelRows;
+        else if (in.up || in.down)
+            pos = cycle(pos % kSelectPanelRows, in.up ? -1 : 1, kSelectPanelRows) +
+                  pos / kSelectPanelRows * kSelectPanelRows;
+        if (in.confirm && pos % kSelectPanelRows == kSelectDecideCell) {
+            if (pos == kSelectBackCell) return SelectAction::Back;
             for (auto p : phase_) if (p != SelectPhase::Team) return SelectAction::None;
             // FUN_0040d130: unset panels become COM with random character, weapon, mode and costume.
             for (int i=0;i<4;++i) if (state_.slots[i].character < 0) {
@@ -124,7 +139,7 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
             state_.stagePage = true;
             return SelectAction::Stage;
         }
-        if (pos % 3 < 2) {
+        if (pos % kSelectPanelRows < kSelectDecideCell) {
             auto& slot = state_.slots[panel(c)];
             if (in.cancel && owner(panel(c)) < 0 && (slot.controller == c || slot.controller == 4)) {
                 slot = FrontendSlot{};
@@ -378,8 +393,8 @@ void SelectScreen::draw(SpriteRenderer& b) const {
     for(int c=0;c<4;++c) if(menu_.phase(c)==SelectPhase::Team) {
         int pos=menu_.cursor(c);
         if(pos<0) continue;
-        int col=pos/3,row=pos%3;
-        if(row<2) sprite(shared_[6+c],{0,float((row+col)%2)*300,400,300},200,0,col*400.f+200,row*300.f);
+        int col=pos/kSelectPanelRows,row=pos%kSelectPanelRows;
+        if(row<kSelectDecideCell) sprite(shared_[6+c],{0,float((row+col)%2)*300,400,300},200,0,col*400.f+200,row*300.f);
         else sprite(shared_[2],{float(c)*128,384,128,128},64,64,col==0?336:464,550);
     }
     for(int i:kSelectRosterOrder) {
@@ -418,8 +433,16 @@ void SelectScreen::draw(SpriteRenderer& b) const {
         // including the row arrow and the big choice sprite — but not the cursor marker below,
         // whose anchors are the free cursor's own (+0x3cd8/+0x3ce8).
         const float slide=rowSlideOffset(menu_.rowSlide(owner),p);
-        int header=phase==SelectPhase::Character?0:phase==SelectPhase::Weapon?1:phase==SelectPhase::Hypermode?3:4;
-        sprite(shared_[2],{0,float(header)*32,320,32},160,16,x+slide,y+50);
+        // The phase header's cell row in shared_[2]. A switch, not an array indexed by the
+        // phase: SelectPhase::Ready is 8, past every header the sheet has.
+        float headerRow=4.f;
+        switch (phase) {
+        case SelectPhase::Character: headerRow=0.f; break;
+        case SelectPhase::Weapon:    headerRow=1.f; break;
+        case SelectPhase::Hypermode: headerRow=3.f; break;
+        default: break;   // Controller (and Team, which has no owner) keep the last header
+        }
+        sprite(shared_[2],{0,headerRow*32,320,32},160,16,x+slide,y+50);
         if(phase==SelectPhase::Character) {
             // The nameplate exists only for a real selection: the free cursor can sit in empty
             // space with character == -1 (FUN_00409340:294).
