@@ -1,0 +1,13 @@
+# Standalone Rena+0, dummy opponent. One input edge per action.
+62 MELEE
+63 -
+120 SHOOT
+121 -
+180 SHOOT
+260 -
+340 SHOOT
+540 -
+660 UP
+661 -
+662 UP
+682 -

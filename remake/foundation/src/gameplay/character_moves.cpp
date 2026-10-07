@@ -4,20 +4,19 @@
 #include "gameplay/character_moves.h"
 
 #include <cstring>
-#include <new>
 
 namespace gameplay {
 namespace {
 
 constexpr int kMaxEntriesPerMove  = 32;   // guards the read against a corrupt count
 constexpr int kMaxAnimationEventsPerSet = 4096;
-constexpr size_t kAnimationEventBytes = 0x84;
 
 }  // namespace
 
 CharacterMoves::~CharacterMoves() { release(); }
 
 void CharacterMoves::release() noexcept {
+    m_moves.clear();
     m_count    = 0;
     m_weaponId = 0;
     m_characterIndex = -1;
@@ -25,7 +24,11 @@ void CharacterMoves::release() noexcept {
     for (int i = 0; i < kMaxAnimationSets; ++i) {
         m_animationSetTransitionDuration[i] = 0;
         m_animationSetPhaseGate[i] = 0;
+        m_textureEvents[i].clear();
     }
+    m_modelName.clear();
+    m_formatTag = 0;
+    for (int& value : m_header) value = 0;
     m_loaded   = false;
 }
 
@@ -42,23 +45,20 @@ bool CharacterMoves::parse(const uint8_t* bytes, size_t size, std::string& error
         offset += 4;
         return true;
     };
-    auto name30 = [&](std::string& out) {
-        if (offset + 30 > size) return false;
+    auto name = [&](std::string& out, size_t width) {
+        if (offset + width > size) return false;
         const char* p = reinterpret_cast<const char*>(bytes + offset);
         size_t len = 0;
-        while (len < 30 && p[len] != '\0') ++len;
+        while (len < width && p[len] != '\0') ++len;
         out.assign(p, len);
-        offset += 30;
+        offset += width;
         return true;
     };
-    auto f32 = [&]() { float v = 0.f; u32(reinterpret_cast<int&>(v)); return v; };
 
-    int tag = 0;
-    if (!u32(tag) || offset + 0x104 > size) {
+    if (!u32(m_formatTag) || !name(m_modelName, 0x104)) {
         error = "character moves: truncated header";
         return false;
     }
-    offset += 0x104;
     // Six header dwords; index 3 (file offset 0x114) is the table's own weapon
     // id, read on to the item loader (FUN_0041e180.c:99-106 → FUN_00433eb0).
     // NN is the weapon slot, and all 46 shipped files agree with kWeaponIds.
@@ -70,15 +70,17 @@ bool CharacterMoves::parse(const uint8_t* bytes, size_t size, std::string& error
         }
     }
     m_weaponId = headerVals[3];
+    for (int i = 0; i < 6; ++i) m_header[i] = headerVals[i];
     int moveCount = 0;
     if (!u32(moveCount) || moveCount < 0 || moveCount > kMaxMoves) {
         error = "character moves: implausible move count";
         return false;
     }
+    m_moves.reserve(static_cast<size_t>(moveCount));
 
     for (int mi = 0; mi < moveCount; ++mi) {
-        int id = 0, flags = 0, frames = 0, sections = 0;
-        if (!u32(id) || !u32(flags) || !u32(frames) || !u32(sections) ||
+        int id = 0, priority = 0, cancel = 0, sections = 0;
+        if (!u32(id) || !u32(priority) || !u32(cancel) || !u32(sections) ||
             id < 0 || id >= kMaxMoves || sections < 0 ||
             sections > CharacterMove::kMaxSections) {
             error = "character moves: truncated move " + std::to_string(mi);
@@ -91,11 +93,12 @@ bool CharacterMoves::parse(const uint8_t* bytes, size_t size, std::string& error
         for (int i = 0; i < m_count; ++i)
             if (m_moves[i].id == id) storedIndex = i;
         const bool newMove = storedIndex < 0;
+        if (newMove) m_moves.emplace_back();
         CharacterMove& move = m_moves[newMove ? m_count : storedIndex];
         move = CharacterMove{};
         move.id = id;
-        move.recordFlags = flags;
-        move.cancelWindow = frames;
+        move.priority = priority;
+        move.cancelThreshold = cancel;
         move.sectionCount = sections;
         for (int s = 0; s < sections; ++s) {
             int sectionTag = 0, entryCount = 0;
@@ -109,47 +112,16 @@ bool CharacterMoves::parse(const uint8_t* bytes, size_t size, std::string& error
             MovePhase& phase = move.phases[s];
             phase = MovePhase{};
             phase.setIndex = sectionTag;
+            if (entryCount > MovePhase::kMaxPhaseEntries) {
+                error = "character moves: phase entry storage exceeded";
+                return false;
+            }
             for (int e = 0; e < entryCount; ++e) {
-                MoveEntry entry;
-                int v04 = 0, radius = 0;
-                int combat[20] = {0};
-                int v28 = 0, v2c = 0, v08 = 0;
-                if (!name30(entry.effectName) || !u32(v04)) {
-                    error = "character moves: truncated effect record";
+                if (!readCombatRecord(bytes, size, offset, phase.entries[e])) {
+                    error = "character moves: truncated state record";
                     return false;
                 }
-                f32(); f32(); f32();          // v0c, v10, v14 — instance placement
-                if (!u32(radius)) {
-                    error = "character moves: truncated effect radius";
-                    return false;
-                }
-                for (int c = 0; c < 20; ++c) {
-                    if (!u32(combat[c])) {
-                        error = "character moves: truncated combat block";
-                        return false;
-                    }
-                }
-                if (!u32(v28) || !u32(v2c) || !u32(v08)) {
-                    error = "character moves: truncated effect tail";
-                    return false;
-                }
-                f32(); f32(); f32();          // v18, v1c, v20
-                entry.activeFrame = v04;
-                entry.hitRadius = radius;
-                entry.baseDamage      = combat[0x00];
-                entry.hpDamage        = combat[0x05];
-                entry.reflectDamage   = combat[0x06];
-                entry.gaugeGainA      = combat[0x07];
-                entry.gaugeGainB      = combat[0x08];
-                entry.attackerHitstun = combat[0x09];
-                entry.defenderHitstun = combat[0x0a];
-                entry.reactionMove    = combat[0x0d];
-                entry.combatField0E = combat[0x0e];
-                entry.combatField0F = combat[0x0f];
-                // The stream is always consumed whole; storage keeps the first entries
-                // (the cap covers everything shipped: at most 19 per phase, move 350).
-                if (phase.entryCount < MovePhase::kMaxPhaseEntries)
-                    phase.entries[phase.entryCount++] = entry;
+                ++phase.entryCount;
             }
         }
         if (newMove) ++m_count;
@@ -173,15 +145,17 @@ bool CharacterMoves::parse(const uint8_t* bytes, size_t size, std::string& error
             error = "character moves: truncated animation-set row " + std::to_string(set);
             return false;
         }
-        const size_t eventBytes = static_cast<size_t>(eventCount) * kAnimationEventBytes;
-        if (eventBytes > size - offset) {
-            error = "character moves: truncated animation events for set " +
-                    std::to_string(set);
-            return false;
-        }
         m_animationSetTransitionDuration[set] = transitionDuration;
         m_animationSetPhaseGate[set] = phaseGate;
-        offset += eventBytes;
+        for (int i = 0; i < eventCount; ++i) {
+            TextureEvent event;
+            if (!u32(event.start) || !u32(event.end) || !u32(event.repeat) ||
+                !name(event.source, 60) || !name(event.replacement, 60)) {
+                error = "character moves: truncated texture event";
+                return false;
+            }
+            m_textureEvents[set].push_back(std::move(event));
+        }
     }
     if (offset != size) {
         error = "character moves: unexpected trailing data";
@@ -199,9 +173,9 @@ const CharacterMove* CharacterMoves::find(int moveId) const {
     return nullptr;
 }
 
-int CharacterMoves::cancel_window(int moveId) const {
+int CharacterMoves::cancel_threshold(int moveId) const {
     const CharacterMove* m = find(moveId);
-    return m ? m->cancelWindow : 0;
+    return m ? m->cancelThreshold : 0;
 }
 
 int CharacterMoves::first_set_index(int moveId) const {
@@ -217,6 +191,12 @@ int CharacterMoves::animation_set_phase_gate(int setIndex) const {
 int CharacterMoves::animation_set_transition_duration(int setIndex) const {
     if (!m_loaded || setIndex < 0 || setIndex >= m_animationSetCount) return -1;
     return m_animationSetTransitionDuration[setIndex];
+}
+
+const std::vector<TextureEvent>& CharacterMoves::texture_events(int setIndex) const {
+    static const std::vector<TextureEvent> empty;
+    return m_loaded && setIndex >= 0 && setIndex < m_animationSetCount
+        ? m_textureEvents[setIndex] : empty;
 }
 
 }  // namespace gameplay

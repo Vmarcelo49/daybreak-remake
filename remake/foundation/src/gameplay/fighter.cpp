@@ -1,13 +1,10 @@
-// =============================================================================
-//  fighter.cpp — state machine + movement + animation switching.
-//
-//  Faithful translation of remake/src/gameplay/fighter.cpp (see the PORT NOTES
-//  in fighter.h for the deviation list): same update() ordering, same timer
-//  arithmetic, same constants. Mirrors the original game's fcn.0041f580
-//  (per-player update) and fcn.00420b30 (world matrix update).
-// =============================================================================
+// FUN_0041f580 / FUN_00420b30: fighter update, move records and world pose.
+// Recovered executable rules live separately in move_behavior.h; NN.dat owns
+// phase/set selection, record geometry and material intervals.
 #include "gameplay/fighter.h"
 #include "gameplay/fixed_step.h"
+#include "gameplay/move_behavior.h"
+#include "gameplay/combat_volume.h"
 
 #include <algorithm>
 #include <cmath>
@@ -131,6 +128,15 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_chargeHeld = 0.0f;
     m_reloadTimer = 0;
     m_pending = PendingShot{};
+    m_pendingShotCount = 0;
+    m_shotMoveId = -1;
+    m_moveSpeed = 0.f;
+    m_holdTicks = 0;
+    m_actionCamera = 0;
+    m_chainContact = false;
+    m_previousWalkInput = {};
+    m_propActive = {false, false};
+    for (auto& trail : m_trails) trail.reset();
     m_vy = 0.0f;
     m_grounded = true;
     m_guardExhausted = false;
@@ -171,6 +177,15 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_chargeHeld = 0.0f;
     m_reloadTimer = 0;
     m_pending = PendingShot{};
+    m_pendingShotCount = 0;
+    m_shotMoveId = -1;
+    m_moveSpeed = 0.f;
+    m_holdTicks = 0;
+    m_actionCamera = 0;
+    m_chainContact = false;
+    m_previousWalkInput = {};
+    m_propActive = {false, false};
+    for (auto& trail : m_trails) trail.reset();
     m_gauge = 0.0f;
     m_hyperActive = false;
     m_hyperTimer = 0.0f;
@@ -209,6 +224,16 @@ void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     m_chargeHeld = 0.0f;
     m_reloadTimer = 0;
     m_pending = PendingShot{};
+    m_pendingShotCount = 0;
+    m_shotMoveId = -1;
+    m_moveSpeed = 0.f;
+    m_moveElapsedTicks = 0;
+    m_holdTicks = 0;
+    m_actionCamera = 0;
+    m_chainContact = false;
+    m_previousWalkInput = {};
+    m_propActive = {false, false};
+    for (auto& trail : m_trails) trail.reset();
     // FUN_004219a0 clears the KO-bonus latch (+0x84c = 0, @0x421a08-0x421a0b) and the
     // recovery fields; the magazines are restored from their own capacity by the same
     // per-player rule reset() uses (FUN_0041f580), and the pending credits belong to
@@ -270,9 +295,32 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // 2. Update state machine (check input, transition states).
     // A lost action window (hit, KO) breaks any charge hold in progress.
     if (!can_act()) m_chargeHeld = 0.0f;
-    if (can_act() && input) {
+    if (m_state == FighterState::AttackA && input &&
+        input->just_pressed[input::Action::AttackA] && move_program(m_moves)) {
+        const CharacterMove* from = m_moves->find(m_attackMoveId);
+        const CharacterMove* to = m_moves->find(m_attackMoveId + 1);
+        const MoveEntry* record = current_move_record();
+        // FUN_00445ee0: row 300->301->302 compares row priority and state bit 0x100.
+        if (from && to && m_attackMoveId >= 300 && m_attackMoveId < 302 && record &&
+            (record->stateFlags & 0x100) && from->cancelThreshold <= to->priority) {
+            ++m_attackMoveId;
+            build_melee_swing(m_attackMoveId);
+            begin_melee_swing();
+            m_phaseIndex = 0;
+            m_moveElapsedTicks = 0;
+            m_animSetIdx = -1;
+            try_switch_animation();
+        }
+    } else if (can_act() && input) {
         update_state_machine(input, opponent, dt);
     }
+    m_inputFacing = opponent ? std::atan2(opponent->position().x - m_position.x,
+                                         opponent->position().z - m_position.z) : m_facing;
+    execute_move_program(opponent, input);
+    // The ribbon samples the prop's own active latch, which the executor re-derives
+    // every frame; keep the value this frame's move program produced before anything
+    // below can bind a different row or phase.
+    const std::array<bool, 2> propActive = m_propActive;
     // The swing clock drives startup/active/recovery (melee_rules.h). It advances on
     // every tick the attack state is held, including recovery, so the recovery window is
     // a real lockout rather than a label.
@@ -281,7 +329,11 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
 
     // 3. Update movement (if the state allows it).
     const glm::vec3 movementStart = m_position;
-    if (can_move() && input) {
+    if (((m_state == FighterState::AttackA || m_shotMoveId >= 0) && move_program(m_moves)) ||
+        (m_state == FighterState::Run && m_dashMoveId == 20 && locomotion(m_moves) && m_model)) {
+        m_velocity = facing_relative(0.f, m_moveSpeed / static_cast<float>(dt));
+        m_position += facing_relative(0.f, m_moveSpeed);
+    } else if (can_move() && input) {
         update_movement(input, dt);
     } else {
         m_velocity *= 0.8f;
@@ -305,15 +357,16 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         }
     }
 
-    // 4. Update facing (always face the opponent).
-    if (opponent && opponent->is_alive()) {
+    // Custom characters without a recovered handler retain the legacy turn rule.
+    if (opponent && opponent->is_alive() && !locomotion(m_moves)) {
         update_facing(opponent, dt);
     }
 
     // 5. Stamina: grounded refill (fast after use — battle-stamina.webp)
     // plus block-hold drain. Dash/leap/flight spends happen at trigger
     // sites below; airtime never refills, so flight is a real budget.
-    if (m_grounded && can_act()) {
+    if (m_grounded && can_act() && !(m_state == FighterState::Run && m_dashMoveId == 20 &&
+                                   locomotion(m_moves) && m_model)) {
         m_stamina = std::min(m_stamina + FighterConstants::kStaminaRegenSec *
                              static_cast<float>(dt),
                              static_cast<float>(FighterConstants::kMaxStamina));
@@ -415,11 +468,8 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     m_charge.recharge(dt, chargeMul);
     if (m_reloadTimer > 0) --m_reloadTimer;
 
-    // 6. Update the animation playhead. The DX9 XModel::update() clamped dt to
-    // 0.1 s against post-stall jumps (file_parser/x_model_loader.cpp:588-590);
-    // xm::Controller::advanceTime does not, so the clamp lives here.
-    if (m_anim && m_animate) {
-        const float animDt = (dt > 0.1) ? 0.1f : static_cast<float>(dt);
+    // FUN_0041f580 samples elapsed * 0.016, independently of host time.
+    if (m_anim) {
         // Original state/phase dispatch runs before its common animation update
         // (FUN_00634f60 → FUN_0041f580), so bind a section before advancing its
         // playhead and applying any eligible class blend for this same tick. A
@@ -427,10 +477,28 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         // that newly selected set at position zero on this tick.
         refresh_state_move();
         advance_animation_phase();
-        if (!m_animationBoundThisUpdate) m_anim->advanceTime(animDt);
+        if (m_moves && m_animate) {
+            m_anim->setTrackPosition(m_blendTicks >= 0 ? 1 : 0,
+                                    m_moveElapsedTicks * kOriginalAnimationTick);
+            if (m_blendTicks < 0)
+                m_anim->setTrackPosition(1, m_moveElapsedTicks * kOriginalAnimationTick);
+        } else if (m_animate && !m_animationBoundThisUpdate) {
+            m_anim->advanceTime(std::min(dt, 0.1));
+        }
         // The recovered class-specific blend counter advances once per update,
         // matching FUN_0041f580's per-tick weight calculation.
         tick_blend();
+    }
+    if (m_weapon) {
+        for (int hand = 0; hand < 2; ++hand) {
+            if (hand >= m_weapon->slotCount) continue;
+            const auto& slot = m_weapon->slots[hand];
+            const std::string bone = hand ? "Bip01_Prop2" : "Bip01_Prop1";
+            // Anchors 3..5 and 6..8 are the two endpoints FUN_00430120 samples.
+            m_trails[static_cast<size_t>(hand)].step(propActive[static_cast<size_t>(hand)],
+                bone_point(bone, glm::vec3(slot.ribbonRoot[0],slot.ribbonRoot[1],slot.ribbonRoot[2])),
+                bone_point(bone, glm::vec3(slot.ribbonTip[0],slot.ribbonTip[1],slot.ribbonTip[2])));
+        }
     }
 }
 
@@ -455,7 +523,7 @@ void Fighter::update_state_machine(const input::PlayerState* input,
         m_attackMoveId = resolve_attack_move(dashAttack, aerial);
         build_melee_swing(m_attackMoveId);
         set_state(FighterState::AttackA);
-        m_stateTimer = m_swing.total_ticks();
+        m_stateTimer = m_model && m_moves && move_program(m_moves) ? 0 : m_swing.total_ticks();
         return;
     }
 
@@ -553,6 +621,9 @@ void Fighter::update_movement(const input::PlayerState* input, double dt) {
     // Committed dash: steering is locked to the tapped direction for the
     // dash window (ground or air — m_dashDir was resolved at trigger time).
     if (m_state == FighterState::Run) {
+        if (const auto* motion = locomotion(m_moves)) {
+            if (m_dashMoveId == 20) m_dashSpeed = motion->forwardDash / static_cast<float>(dt);
+        }
         m_velocity.x = m_dashDir.x * m_dashSpeed;
         m_velocity.z = m_dashDir.z * m_dashSpeed;
         m_position += m_velocity * static_cast<float>(dt);
@@ -572,16 +643,31 @@ void Fighter::update_movement(const input::PlayerState* input, double dt) {
     }
 
     // Facing-relative, like the dash below: screen-up is the facing direction.
-    glm::vec3 dir = facing_relative(screenRight, screenUp);
+    const float basis = locomotion(m_moves) ? m_inputFacing : m_facing;
+    glm::vec3 dir = glm::vec3(std::cos(basis),0.f,-std::sin(basis))*screenRight +
+                    glm::vec3(std::sin(basis),0.f,std::cos(basis))*screenUp;
 
     // Normalize the direction vector (mirrors D3DXVec3Normalize in the original).
     float len = glm::length(dir);
     if (len > 0.001f) {
         dir /= len;
 
-        float speed = FighterConstants::kWalkSpeed;
+        const auto* motion = locomotion(m_moves);
+        float speed = motion ? motion->walk / static_cast<float>(dt) : FighterConstants::kWalkSpeed;
         if (!m_grounded) speed *= FighterConstants::kAirControl;
 
+        if (motion && m_state == FighterState::Walk) {
+            // FUN_00421780 / FUN_0042db10: input-relative yaw, shortest bounded step.
+            const glm::vec2 inputDirection(screenRight, screenUp);
+            if (inputDirection != m_previousWalkInput) m_walkTurnRate = 20.f;
+            m_previousWalkInput = inputDirection;
+            m_walkTurnRate = std::max(1.f, m_walkTurnRate - 1.f);
+            const float desired = std::atan2(dir.x, dir.z);
+            const float difference = std::remainder(desired - m_facing, glm::two_pi<float>());
+            m_facing += std::clamp(difference, -glm::radians(m_walkTurnRate), glm::radians(m_walkTurnRate));
+            // FUN_004202b0 translates along the current turn, so reversal travels an arc.
+            dir = facing_relative(0.f, 1.f);
+        }
         m_velocity.x = dir.x * speed;
         m_velocity.z = dir.z * speed;
     } else {
@@ -615,6 +701,11 @@ void Fighter::update_facing(const Fighter* opp, double dt) {
 void Fighter::set_state(FighterState new_state) {
     if (m_state == new_state) return;
     m_state = new_state;
+    m_holdTicks = 0;
+    m_propActive = {false, false};
+    m_actionCamera = 0;
+    if (new_state != FighterState::ShootA && new_state != FighterState::ShootB &&
+        new_state != FighterState::ShootC) m_shotMoveId = -1;
     // A state with no selector (Guard) leaves the running move alone: the source's
     // block branch never re-binds, so the move, its phase cursor and its clip keep
     // going. Every other state starts a fresh row and a fresh phase.
@@ -625,8 +716,10 @@ void Fighter::set_state(FighterState new_state) {
     }
     // Leaving the attack state ends this swing: the per-victim hit set clears so a
     // fresh swing may connect again (issue #10's per-swing accounting).
-    if (new_state == FighterState::AttackA)
+    if (new_state == FighterState::AttackA) {
+        m_chainContact = false;
         begin_melee_swing();
+    }
     try_switch_animation();
 }
 
@@ -936,8 +1029,25 @@ void Fighter::apply_knockback(const glm::vec3& dir, float speed) {
 bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollision* collision) {
     // Only the light/chain melee plays this path; the EX and shots go elsewhere.
     if (m_state != FighterState::AttackA) return false;
-    if (!m_swing.is_active(m_meleeElapsed)) return false;
+    if (!melee_in_active()) return false;
     if (!target.is_alive()) return false;
+
+    if (const MoveEntry* record = current_move_record()) {
+        const auto point = [&](const std::array<float, 3>& p) {
+            return bone_point(record->boneName, glm::vec3(p[0], p[1], p[2]));
+        };
+        const glm::vec3 start = point(record->anchor);
+        const glm::vec3 end = point(record->endAnchor);
+        const glm::vec3 head = target.m_position + target.hurtbox_anchor_offset(0);
+        const glm::vec3 chest = target.m_position + target.hurtbox_anchor_offset(1);
+        if (!combatVolumeHits(start,end,record->collisionShape != 0,
+                              static_cast<float>(record->hitRadius),head,chest)) return false;
+        if (collision && !collision->empty() &&
+            game::physics::segmentBlocked(start, chest, collision->movementMesh())) return false;
+        const int damage = portDamage(meleePoolDamage(record->baseDamage), m_maxHP);
+        target.take_damage(damage, this, record->defenderHitstun, record->reactionMove);
+        return true;
+    }
 
     // The recovered hitbox: FUN_00637950 picks a 3D sphere test (FUN_0063b470) whose
     // predicate is dist < 30.0 + weaponRadius, run against the victim's TWO anchors.
@@ -990,6 +1100,7 @@ void Fighter::note_melee_hit(int victimIndex) {
     if (victimIndex < 0 || victimIndex >= kMatchFighterCount) return;
     m_swingHits |= (1u << victimIndex);
     ++m_swingHitCount;
+    m_chainContact = true;
 }
 
 void Fighter::set_moves(const CharacterMoves* moves) {
@@ -1045,6 +1156,9 @@ int Fighter::state_move_id() const {
         // a live aerial swing show set 0 while its own table row is set 88 (issue #31).
         case FighterState::AttackA:
             return present_move(m_attackMoveId);
+        case FighterState::ShootA:
+        case FighterState::ShootB:
+        case FighterState::ShootC: return present_move(m_shotMoveId);
         case FighterState::Run:     return m_dashMoveId;
         case FighterState::Jump:    return jump_chain_move();
         // Guard binds nothing; see state_has_animation_selector for the recovered
@@ -1093,11 +1207,11 @@ void Fighter::advance_animation_phase() {
     if (!m_model || !m_anim || !m_moves || m_model->anims.empty()) return;
     const int moveId = state_move_id();
     const CharacterMove* move = m_moves->find(moveId);
-    if (!move || m_phaseIndex < 0 || m_phaseIndex + 1 >= move->sectionCount) return;
+    if (!move || m_phaseIndex < 0 || m_phaseIndex >= move->sectionCount) return;
 
     const int set = move->phase_set_index(m_phaseIndex);
     if (set < 0 || static_cast<std::size_t>(set) >= m_model->anims.size()) return;
-    ++m_moveElapsedTicks;
+    if (!m_holdAnimation) ++m_moveElapsedTicks;
     if (m_moves->animation_set_phase_gate(set) != 0) return;
 
     const float ticksPerSecond = m_model->ticksPerSecond;
@@ -1108,19 +1222,203 @@ void Fighter::advance_animation_phase() {
     // the game's default FP mode); the native DLL matches duration/ticksPerSecond
     // for every set in Rena 00, Rika 01, and Akane 00.
     const int periodThreshold = static_cast<int>(std::nearbyint(
-        setDuration / ticksPerSecond));
-    // The source rounds D3DX's period, then compares that value directly with
-    // update count; the strict boundary is period < elapsed.
+        (setDuration / ticksPerSecond) / kOriginalAnimationTick));
+    // Original loader 0x41e839 divides GetPeriod by 0.016 before x87 rounding.
     if (periodThreshold >= m_moveElapsedTicks) return;
+
+    if (m_phaseIndex + 1 == move->sectionCount) {
+        if (m_state == FighterState::AttackA || m_state == FighterState::Run || m_state == FighterState::ShootA ||
+            m_state == FighterState::ShootB || m_state == FighterState::ShootC)
+            set_state(m_grounded ? FighterState::Idle : FighterState::Jump);
+        return;
+    }
 
     const int nextSet = move->phase_set_index(m_phaseIndex + 1);
     if (nextSet < 0 || static_cast<std::size_t>(nextSet) >= m_model->anims.size()) return;
-    ++m_phaseIndex;
+    enter_phase(m_phaseIndex + 1);
+}
+
+void Fighter::enter_phase(int phase) {
+    const CharacterMove* move = m_moves ? m_moves->find(state_move_id()) : nullptr;
+    if (!move || phase < 0 || phase >= move->sectionCount) return;
+    m_phaseIndex = phase;
     m_moveElapsedTicks = 0;
-    // FUN_00421100 resets phase-local counters and binds through the same
-    // class-compatibility path as any other set change.
-    bind_animation_set(nextSet);
+    m_holdTicks = 0;
+    m_holdAnimation = true; // FUN_00421100's explicit transition returns before clock advance.
+    if (m_anim) bind_animation_set(move->phase_set_index(phase));
     m_animFallback = false;
+}
+
+void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* input) {
+    m_holdAnimation = false;
+    // FUN_0043ffc0's prologue: slot0<-prop0, slot1<-prop1, then both props deactivated.
+    // Hide and Active windows below re-state what this frame actually wants.
+    m_propBound = {true, true};
+    m_propActive = {false, false};
+    const MoveProgram* program = move_program(m_moves);
+    const auto* motion = locomotion(m_moves);
+    const CharacterMove* move = m_moves ? m_moves->find(state_move_id()) : nullptr;
+    if (move && m_model && m_phaseIndex + 1 == move->sectionCount &&
+        (m_state == FighterState::AttackA ||
+         (motion && m_state == FighterState::Run && m_dashMoveId == 20) || m_shotMoveId >= 0)) {
+        const int set = move->phase_set_index(m_phaseIndex);
+        if (set >= 0 && static_cast<size_t>(set) < m_model->anims.size() && m_model->ticksPerSecond > 0.f) {
+            const int period = static_cast<int>(std::nearbyint(
+                m_model->anims[static_cast<size_t>(set)].duration / m_model->ticksPerSecond / kOriginalAnimationTick));
+            if (period <= m_moveElapsedTicks + 1) {
+                set_state(m_grounded ? FighterState::Idle : FighterState::Jump);
+                m_moveSpeed = 0.f;
+                return;
+            }
+        }
+    }
+    if (motion && m_model && m_state == FighterState::Run && m_dashMoveId == 20) {
+        // Constructor-bound handlers use the same phase contract with different
+        // profile values. NN.dat supplies each phase's pose/gate/period.
+        if (m_phaseIndex < 2) m_stamina = std::max(0.f,m_stamina-motion->dashDrain);
+        if (m_phaseIndex == 0 && m_moveElapsedTicks == 0) {
+            m_moveSpeed = motion->forwardDash;
+            m_facing = m_inputFacing;
+        }
+        if (m_phaseIndex == 1) {
+            float x = input ? float(input->down[input::Action::Right])-float(input->down[input::Action::Left]) : 0.f;
+            float z = input ? float(input->down[input::Action::Up])-float(input->down[input::Action::Down]) : 0.f;
+            if (input && (std::abs(input->stick_x)>8000 || std::abs(input->stick_y)>8000)) {
+                x = static_cast<float>(input->stick_x); z = -static_cast<float>(input->stick_y);
+            }
+            if ((!x && !z) || m_stamina <= 0.f) { enter_phase(2); return; }
+            const float target = m_inputFacing + std::atan2(x,z);
+            const float diff = std::remainder(target-m_facing,glm::two_pi<float>());
+            const float turn = glm::radians(motion->dashSteer);
+            m_facing += std::clamp(diff,-turn,turn);
+        }
+        if (m_phaseIndex == 2) {
+            m_moveSpeed = std::max(0.f,m_moveSpeed-motion->dashDecay);
+            if (m_moveElapsedTicks == motion->dashHoldTick)
+                m_holdAnimation = m_holdTicks++ < motion->dashHoldLength;
+        }
+    }
+    if (!program) return;
+    const glm::vec3 offset = opponent ? opponent->position() - m_position : glm::vec3(0.f);
+    const float distanceSquared = glm::dot(offset, offset);
+    for (size_t i = 0; i < program->count; ++i) {
+        const auto& rule = program->rules[i];
+        if (rule.move != state_move_id() || (rule.phase >= 0 && rule.phase != m_phaseIndex) ||
+            m_moveElapsedTicks < rule.first || m_moveElapsedTicks > rule.last) continue;
+        switch (rule.operation) {
+        case MoveOp::Speed:
+            m_moveSpeed = opponent && rule.third > 0.f && distanceSquared < rule.third
+                              ? rule.second : rule.value;
+            break;
+        case MoveOp::Decelerate: m_moveSpeed = std::max(0.f, m_moveSpeed - rule.value); break;
+        case MoveOp::Turn:
+            if (rule.second > 0.f && !m_chainContact) break;
+            if (opponent) {
+                const float target = std::atan2(offset.x, offset.z);
+                const float difference = std::remainder(target - m_facing, glm::two_pi<float>());
+                const float rate = glm::radians(rule.value);
+                m_facing += std::clamp(difference, -rate, rate);
+            }
+            break;
+        case MoveOp::Approach:
+            if ((opponent && distanceSquared < rule.value) || m_moveElapsedTicks > rule.second) {
+                enter_phase(static_cast<int>(rule.third));
+                return;
+            }
+            break;
+        case MoveOp::Launch: launch_bullet(static_cast<int>(rule.value), rule.second, rule.third, opponent); break;
+        case MoveOp::Hide: {
+            const int slot = static_cast<int>(rule.value);
+            if (slot >= 0 && slot < 2) m_propBound[static_cast<size_t>(slot)] = false;
+            break;
+        }
+        case MoveOp::Active: {
+            const int slot = static_cast<int>(rule.value);
+            if (slot >= 0 && slot < 2) m_propActive[static_cast<size_t>(slot)] = true;
+            break;
+        }
+        case MoveOp::Hold:
+            m_holdAnimation = m_holdTicks++ < static_cast<int>(rule.value);
+            break;
+        case MoveOp::ActionCamera:
+            if (m_chainContact) m_actionCamera = static_cast<int>(rule.value);
+            break;
+        }
+    }
+}
+
+void Fighter::launch_bullet(int row, float lateral, float pitchLimit, Fighter* opponent) {
+    if (!m_weapon || row < 0 || row >= m_weapon->bulletCount || m_pendingShotCount >= 8) return;
+    PendingShot& shot = m_pendingShots[static_cast<size_t>(m_pendingShotCount++)];
+    shot = PendingShot{};
+    shot.armed = true;
+    shot.tier = m_pending.tier;
+    shot.bulletRow = row;
+    shot.target = opponent;
+    const float yaw = m_facing + (lateral ? glm::radians(lateral > 0.f ? 1.f : -1.f) : 0.f);
+    float pitch = 0.f;
+    if (opponent) {
+        const glm::vec3 difference = opponent->position() - m_position;
+        pitch = std::atan2(difference.y, std::hypot(difference.x, difference.z));
+        pitch = std::clamp(pitch, -glm::radians(pitchLimit), glm::radians(pitchLimit));
+    }
+    shot.dir = glm::vec3(std::sin(yaw) * std::cos(pitch), std::sin(pitch), std::cos(yaw) * std::cos(pitch));
+    // FUN_00434fd0 always launches slot 0. FUN_00435000 transforms that slot's item
+    // muzzle anchor (0x4350cc D3DXVec3Transform) and uses the bone origin only when the
+    // slot's prop id is -1 (0x4350a2 JL -> 0x4350f1). FUN_00435450 is the explicit
+    // position spawner the two red-charge rows use and never reads an anchor.
+    if (lateral) {
+        shot.pos = m_position + facing_relative(lateral, 70.f) + glm::vec3(0.f,70.f,0.f);
+    } else {
+        glm::vec3 muzzle(0.f);
+        if (weapon_slot_bound(0) && m_weapon && m_weapon->slotCount > 0)
+            muzzle = glm::vec3(m_weapon->slots[0].muzzle[0], m_weapon->slots[0].muzzle[1],
+                               m_weapon->slots[0].muzzle[2]);
+        shot.pos = bone_point("Bip01_Prop1", muzzle);
+    }
+}
+
+bool Fighter::weapon_slot_bound(int slot) const {
+    return slot >= 0 && slot < 2 && m_propBound[static_cast<size_t>(slot)];
+}
+
+const MoveEntry* Fighter::current_move_record() const {
+    if (!m_moves) return nullptr;
+    const CharacterMove* move = m_moves->find(state_move_id());
+    if (!move || m_phaseIndex < 0 || m_phaseIndex >= move->sectionCount) return nullptr;
+    return move->phases[m_phaseIndex].record_at(m_moveElapsedTicks);
+}
+
+bool Fighter::melee_in_recovery() const {
+    if (m_state != FighterState::AttackA) return false;
+    if (!m_moves) return m_swing.is_recovery(m_meleeElapsed);
+    const auto* move = m_moves->find(m_attackMoveId);
+    if (!move) return false;
+    bool pastCombat = false;
+    const auto* current = current_move_record();
+    for (int phase = 0; phase < move->sectionCount; ++phase) {
+        const auto& records = move->phases[phase];
+        for (int entry = 0; entry < records.entryCount; ++entry) {
+            const auto* record = &records.entries[entry];
+            if (!record->has_combat()) continue;
+            if (phase > m_phaseIndex ||
+                (phase == m_phaseIndex && current && record >= current)) return false;
+            pastCombat = true;
+        }
+    }
+    return pastCombat;
+}
+
+glm::vec3 Fighter::bone_point(const std::string& name, const glm::vec3& local) const {
+    if (m_model && m_anim) {
+        const int frame = m_model->findFrame(name);
+        if (frame >= 0) {
+            std::vector<glm::mat4> posed;
+            m_anim->evalWorld(posed);
+            return glm::vec3(modelMatrix() * posed[static_cast<size_t>(frame)] * glm::vec4(local, 1.f));
+        }
+    }
+    return m_position + local;
 }
 
 void Fighter::build_melee_swing(int moveId) {
@@ -1167,6 +1465,16 @@ MeleeSwing Fighter::resolve_swing(int moveId) const {
     return swing;
 }
 
+ShotParams Fighter::shot_params_for_row(ShotTier tier, int row) const {
+    if (row < 0) return shot_params_for(tier);
+    ShotParams params = shot_params(tier);
+    const BulletParameter* b = bullet_row(row);
+    if (!b) return params;
+    params.damage = portDamage(shotPoolDamage(b->baseDamage), m_maxHP);
+    params.hitRadius = static_cast<float>(b->hitRadius);
+    return params;
+}
+
 float Fighter::yellow_hold_sec() const {
     if (!m_weapon) return FighterConstants::kYellowHoldSec;
     // PORT RULE, and deliberately conservative. The shipped per-magazine chargeMax values
@@ -1185,25 +1493,6 @@ float Fighter::red_hold_sec() const {
     const int ticks = m_weapon->magazineForChargeLevel(2).chargeMax;
     return (ticks > 0) ? static_cast<float>(ticks) / FixedStep::tickRate
                        : FighterConstants::kRedHoldSec;
-}
-
-int Fighter::shot_count(ShotTier tier) const {
-    if (!m_weapon || !m_weapon->bullets) return 1;
-    // PORT RULE: which bullet a given charge level fires is not recovered — the reader
-    // hands each bullet's own paramId to FUN_005f80c0 and the tier -> bullet binding
-    // happens in code that is not in the corpus. This picks the lowest-type bullet
-    // drawing from the magazine that tier spends, which is deterministic; the volley
-    // COUNT it returns is the file's own shotNum, so a weapon that fires four does.
-    const int level = (tier == ShotTier::Tap) ? 1 : 2;
-    const int wantMagazine = m_weapon->magazineForChargeLevel(level).chargeLevel - 1;
-    const BulletDefinition* best = nullptr;
-    for (int i = 0; i < m_weapon->bulletCount; ++i) {
-        const BulletDefinition& b = m_weapon->bullets[i];
-        if (b.magazine != wantMagazine) continue;
-        if (!best || b.type < best->type) best = &b;
-    }
-    if (!best || best->shotNum <= 0) return 1;
-    return best->shotNum;
 }
 
 void Fighter::set_weapon(const WeaponDefinition* weapon) {
@@ -1246,10 +1535,12 @@ glm::vec3 Fighter::hurtbox_anchor_offset(int index) const {
         if (index == 0) {
             // FUN_0063dad0:241 transforms (0,0,0) by the Head frame.
             const int f = m_model->findFrame("Bip01_Head");
+            if (f >= 0 && m_anim) return bone_point("Bip01_Head", glm::vec3(0.f)) - m_position;
             if (f >= 0) return glm::vec3(bindWorld(m_model, f)[3]);
         } else {
             // FUN_0063dad0:244 transforms (-50.0,0,0) by the Spine frame.
             const int f = m_model->findFrame("Bip01_Spine");
+            if (f >= 0 && m_anim) return bone_point("Bip01_Spine", glm::vec3(-50.f,0.f,0.f)) - m_position;
             if (f >= 0) return glm::vec3(bindWorld(m_model, f) * glm::vec4(-50.f, 0.f, 0.f, 1.f));
         }
     }
@@ -1268,6 +1559,13 @@ Fighter::HitboxDebug Fighter::hitbox_debug() const {
     d.attacking = m_state == FighterState::AttackA &&
                   melee_in_active();
     if (d.attacking) {
+        if (const MoveEntry* record = current_move_record()) {
+            d.attackCenter = bone_point(record->boneName, glm::vec3(record->anchor[0], record->anchor[1], record->anchor[2]));
+            d.attackEnd = bone_point(record->boneName, glm::vec3(record->endAnchor[0], record->endAnchor[1], record->endAnchor[2]));
+            d.capsule = record->collisionShape != 0;
+            d.attackRadius = static_cast<float>(record->hitRadius);
+            return d;
+        }
         // The attack sphere is centred where try_melee_hit() measures from, so the two
         // can never disagree.
         d.attackCenter = m_position +
@@ -1359,9 +1657,11 @@ void Fighter::try_jump() {
 }
 
 bool Fighter::try_dash(input::Action dir) {
-    // Stamina gate (spec §3.4: empty = no dash) and the once-per-airtime
-    // rule for air dashes.
-    if (m_stamina < FighterConstants::kDashStamina) return false;
+    const int dashMove = dash_move_for(dir);
+    const bool programmed = m_grounded && m_model && dashMove == 20 && locomotion(m_moves);
+    // FUN_0043ffc0 drains twelve pool units per update, not a twenty-percent
+    // trigger cost. Unsupported handlers still use the explicitly legacy path.
+    if (programmed ? m_stamina <= 0.f : m_stamina < FighterConstants::kDashStamina) return false;
     if (!m_grounded && m_airDashed) return false;
 
     // Facing-relative dash (see facing_relative): the tapped key is a screen
@@ -1373,9 +1673,8 @@ bool Fighter::try_dash(input::Action dir) {
     else if (dir == input::Action::Right)  d = facing_relative(1.0f, 0.0f);
     else                                  d = facing_relative(-1.0f, 0.0f);
 
-    m_stamina -= FighterConstants::kDashStamina;
+    if (!programmed) m_stamina -= FighterConstants::kDashStamina;
     m_dashDir = d;
-    const int dashMove = dash_move_for(dir);
     if (m_state == FighterState::Run && m_dashMoveId != dashMove) {
         m_phaseIndex = 0;
         m_moveElapsedTicks = 0;
@@ -1396,7 +1695,8 @@ bool Fighter::try_dash(input::Action dir) {
     // set_state() intentionally early-outs for identical labels, so rebind after
     // the candidate reset above instead of leaving the previous clip active.
     if (wasRunning && m_animSetIdx < 0) try_switch_animation();
-    m_stateTimer = FighterConstants::kDashFrames;
+    m_stateTimer = programmed
+                        ? 0 : FighterConstants::kDashFrames;
     return true;
 }
 
@@ -1416,11 +1716,6 @@ float Fighter::shot_cost(ShotTier tier) const {
     return cost;
 }
 
-int Fighter::impact_effect(ShotTier tier) const {
-    const BulletParameter* bullet = m_bulletParams[(tier == ShotTier::Tap) ? 0 : 1];
-    return bullet ? bullet->impactEffect : -1;
-}
-
 bool Fighter::can_fire(ShotTier tier) const {
     const AmmoStock& stock = (tier == ShotTier::Tap) ? m_main : m_charge;
     return m_reloadTimer <= 0 && stock.can_spend(shot_cost(tier));
@@ -1437,11 +1732,27 @@ void Fighter::fire_shot(ShotTier tier) {
     // Muzzle ahead of the fighter at chest height, aimed along facing
     // (yaw=0 faces +Z — same convention as update_facing).
     const glm::vec3 dir(std::sin(m_facing), 0.0f, std::cos(m_facing));
+    m_pending = PendingShot{};
     m_pending.armed = true;
     m_pending.tier  = tier;
     m_pending.dir   = dir;
     m_pending.pos   = m_position + dir * FighterConstants::kMuzzleForward;
     m_pending.pos.y += FighterConstants::kMuzzleHeight;
+
+    const MoveProgram* program = move_program(m_moves);
+    if (program && tier != ShotTier::Ex) {
+        m_shotMoveId = program->shot[static_cast<size_t>(tier)][m_grounded ? 0 : 1];
+        m_pending.armed = false;
+    } else if (m_weapon) {
+        // Preserve the old provisional selector only for unrecovered handlers.
+        // It is not format evidence: exact-row programs bypass this branch.
+        const int magazine = tier == ShotTier::Tap ? 0 : 1;
+        for (int row = 0; row < m_weapon->bulletCount; ++row)
+            if (m_weapon->bullets[row].magazine == magazine &&
+                (m_pending.bulletRow < 0 || m_weapon->bullets[row].type <
+                                           m_weapon->bullets[m_pending.bulletRow].type))
+                m_pending.bulletRow = row;
+    }
 
     switch (tier) {
         case ShotTier::Tap:    set_state(FighterState::ShootA);    break;
@@ -1449,10 +1760,17 @@ void Fighter::fire_shot(ShotTier tier) {
         case ShotTier::Red:    set_state(FighterState::ShootC);    break;
         case ShotTier::Ex:     set_state(FighterState::ShotFinal); break;
     }
-    m_stateTimer = FighterConstants::kShotStateFrames;
+    m_stateTimer = program && tier != ShotTier::Ex ? 0 : FighterConstants::kShotStateFrames;
 }
 
 PendingShot Fighter::take_pending_shot() {
+    if (m_pendingShotCount) {
+        PendingShot out = m_pendingShots[0];
+        --m_pendingShotCount;
+        for (int i = 0; i < m_pendingShotCount; ++i)
+            m_pendingShots[static_cast<size_t>(i)] = m_pendingShots[static_cast<size_t>(i + 1)];
+        return out;
+    }
     PendingShot out = m_pending;
     m_pending.armed = false;
     return out;

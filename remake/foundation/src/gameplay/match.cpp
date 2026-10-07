@@ -153,9 +153,10 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[kMatchFighterCount]
     }
 
     for (int i = 0; i < m_config.fighterCount; ++i) {   // scenes.cpp:689-696
-        PendingShot shot = m_fighters[i].take_pending_shot();
-        if (shot.armed && m_fighters[i].is_alive()) {
-            if (m_shots.spawn(shot.pos, shot.dir, shot.tier, &m_fighters[i])) {
+        for (PendingShot shot = m_fighters[i].take_pending_shot(); shot.armed;
+             shot = m_fighters[i].take_pending_shot()) {
+            if (m_fighters[i].is_alive() &&
+                m_shots.spawn(shot.pos, shot.dir, shot.tier, &m_fighters[i], shot.bulletRow,shot.target)) {
                 ++out.shotsSpawned;
                 out.shotFired[i] = true;
                 if (i < kMatchFighterCount) out.shotPoints[i] = shot.pos;

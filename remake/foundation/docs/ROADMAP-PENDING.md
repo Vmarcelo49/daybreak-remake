@@ -809,7 +809,10 @@ auto-advance (`FUN_004c57f0` / `FUN_00438310`). The parser now consumes both tra
 values and the event payload. An earlier draft called `+0x04` a frame count and argued
 it from a numerical sequence; that animation/shot-chain inference is **withdrawn**
 because the relevant move roles are not established by the corpus.
-`CharacterMove::cancelWindow` is named for what is recovered.
+`CharacterMove::cancelThreshold` is named for what is recovered. (The field was called
+`cancelWindow` while the elapsed-timer reading was current; the rename and the exact
+comparison against a destination row's priority are recorded in
+`docs/ANIMATION-DATA-AUDIT.md` and `docs/agents/animation-system-handoff.md`.)
 
 ### CORRECTION 3 — what the melee move records actually contain
 

@@ -91,15 +91,20 @@ struct SceneModel {
     // only the bounded live population adds draws (a hidden card's degenerate triangles
     // are no longer paid for on every frame).
     bool         instancesOnly = false;
+    std::vector<std::string> textureVariants;
 
     bool hasCollisionChannel(StageCollisionChannel channel) const {
         return (collisionChannels & collisionMask(channel)) != 0;
     }
 
-    // Set for weapons: the frame on the owning character this model rides. The item
-    // table's per-weapon local offset (position + two rotations, FUN_00433eb0) is not
-    // parsed, so a weapon sits at the attachment bone itself.
+    // Set for weapons: the frame on the owning character this model rides, the
+    // attachment prop record it came from, and the character model it belongs to.
+    // The prop id is the slot identity FUN_00434a70 stores (manager+0x18/+0x1c):
+    // "drawn" = that id is bound and not cleared, which is what the executor's
+    // per-frame re-bind and Hide rules decide.
     int          attachFrame = -1;
+    int          propId = -1;
+    size_t       ownerRig = static_cast<size_t>(-1);
 };
 
 struct Scene {
@@ -160,6 +165,8 @@ struct SceneOptions {
     bool includeCollision = false;  // load movement/ground, projectile, and camera meshes
     bool variantB = false;          // the `%02db.x` detail set (config byte stage+0x2c)
     int  animIndex = -1;            // bind an animation set by index on characters
+    int  characterWeaponSlot = 0;   // NN.dat is the equipped weapon slot, not the costume
+    bool requireCharacterData = false;
 };
 
 // Reads the model name out of a .dat header: dword 4, then a NUL-padded name field.
@@ -177,7 +184,7 @@ Scene loadStage(const std::string& stageDir, const SceneOptions& opt);
 // character's Bip01_Prop1. When no character is given the weapon is placed at the
 // origin, which is still useful for inspecting the asset on its own.
 Scene loadWeapon(const std::string& bulletDir, int slot, const Model* attachTo,
-                 const SceneOptions& opt);
+                 const SceneOptions& opt, int propId = 0);
 
 // Warms every material's texture through its SceneModel's cache and logs how many
 // resolved. Decoding is lazy (TextureCache::get), so this is diagnostics plus the
@@ -328,20 +335,19 @@ Scene loadCharacter(const std::string& baseDir, const std::string& character, in
     const std::string dir = base + kSuffix[costume];
     scene.source = dir;
 
-    // The .dat always lives in the unsuffixed directory and names the .X inside the
-    // costume directory. Fall back to 00.X only when the .dat is missing, so a broken
-    // .dat is visible in the log rather than silently substituted.
+    // FUN_0064ab30 / FUN_0041e180 join the equipped NN.dat to its costume's .X.
+    // Selecting the first available file can bind another weapon's rig.
     std::string modelName;
-    for (int id = 0; id < 10 && modelName.empty(); ++id) {
-        char buf[32];
-        std::snprintf(buf, sizeof buf, "%02d.dat", id);
-        std::vector<uint8_t> bytes;
-        if (detail::readWholeFile(detail::joinPath(base, buf), bytes))
-            modelName = readDatModelName(bytes.data(), bytes.size());
-    }
+    char datName[32];
+    std::snprintf(datName, sizeof datName, "%02d.dat", opt.characterWeaponSlot);
+    std::vector<uint8_t> bytes;
+    if (detail::readWholeFile(detail::joinPath(base, datName), bytes))
+        modelName = readDatModelName(bytes.data(), bytes.size());
     if (modelName.empty()) {
-        std::fprintf(stderr, "[scene] %s: no usable .dat model name, falling back to 00.X\n",
-                     base.c_str());
+        if (opt.requireCharacterData)
+            throw std::runtime_error(base + "/" + datName + ": missing character model header");
+        std::fprintf(stderr, "[scene] %s/%s: no model name; custom fallback 00.X\n",
+                     base.c_str(), datName);
         modelName = "00.X";
     }
 
@@ -401,7 +407,7 @@ Scene loadStage(const std::string& stageDir, const SceneOptions& opt) {
 }
 
 Scene loadWeapon(const std::string& bulletDir, int slot, const Model* attachTo,
-                 const SceneOptions& opt) {
+                 const SceneOptions& opt, int propId) {
     Scene scene;
     scene.source = bulletDir;
 
@@ -414,6 +420,7 @@ Scene loadWeapon(const std::string& bulletDir, int slot, const Model* attachTo,
             int frame = attachTo->findFrame("Bip01_Prop1");
             if (frame < 0) frame = attachTo->findFrame("Bip01_Prop2");
             sm.attachFrame = frame;
+            sm.propId = propId;
             if (frame < 0)
                 std::fprintf(stderr, "[scene] %s: no Bip01_Prop1/Prop2 in the character rig\n",
                              bulletDir.c_str());
@@ -463,6 +470,7 @@ Scene loadWeapon(const std::string& bulletDir, int slot, const Model* attachTo,
         int frame = attachTo->findFrame("Bip01_Prop1");
         if (frame < 0) frame = attachTo->findFrame("Bip01_Prop2");
         sm.attachFrame = frame;
+        sm.propId = propId;
         if (frame < 0)
             std::fprintf(stderr, "[scene] %s: no Bip01_Prop1/Prop2 in the character rig\n",
                          modelName.c_str());

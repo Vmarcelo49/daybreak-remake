@@ -814,8 +814,10 @@ static bool resolveBootOpening(const Options& o) {
 // Loads one character spec (base/name[:costume]) into the scene, returning the
 // first appended model index. Shared by --character, --enemy and versus P2 so
 // the three spellings cannot drift apart.
+static bool resolveFighterWeapon(const std::string& charDir, const std::string& explicitSpec,
+                                 std::string& meshSpec, int& itemId);
 static size_t appendCharacter(xm::Scene& scene, const std::string& spec,
-                             const xm::SceneOptions& sopt) {
+                             const xm::SceneOptions& sopt, const std::string& weaponSpec = {}) {
     std::string s;
     int costume = 0;
     splitSuffix(spec, s, costume);
@@ -823,7 +825,17 @@ static size_t appendCharacter(xm::Scene& scene, const std::string& spec,
     const std::string base = (slash == std::string::npos) ? "." : s.substr(0, slash);
     const std::string name = (slash == std::string::npos) ? s : s.substr(slash + 1);
     const size_t begin = scene.models.size();
-    xm::Scene c = xm::loadCharacter(base, name, costume, sopt);
+    xm::SceneOptions characterOptions = sopt;
+    const int character = gameplay::characterIndexForDir(name);
+    if (character >= 0) {
+        std::string mesh;
+        int item = 0;
+        if (!resolveFighterWeapon(name,weaponSpec,mesh,item))
+            throw std::runtime_error(spec + ": equipped weapon cannot be resolved");
+        characterOptions.characterWeaponSlot = gameplay::weaponSlotForItem(character,item);
+        characterOptions.requireCharacterData = true;
+    }
+    xm::Scene c = xm::loadCharacter(base, name, costume, characterOptions);
     if (scene.source.empty()) scene.source = c.source;
     for (auto& sm : c.models) scene.models.push_back(std::move(sm));
     return begin;
@@ -841,7 +853,7 @@ static size_t firstCharacter(const xm::Scene& scene, size_t from) {
 // scene assembly here so a fighter without an explicit weapon still gears up.
 static void attachFighterWeapon(xm::Scene& scene, const std::string& label,
                                 const std::string& charSpec,
-                                const std::string& weaponSpec, const xm::Model* rig,
+                                const std::string& weaponSpec, size_t ownerRig,
                                 const xm::SceneOptions& sopt);
 
 xm::Scene loadScene(const Options& o, std::string& error, size_t* enemyBegin = nullptr) {
@@ -862,46 +874,47 @@ xm::Scene loadScene(const Options& o, std::string& error, size_t* enemyBegin = n
         std::printf("stage        : %s\n", assets::describeStage(o.stage).c_str());
         if (o.match && o.battleFighterCount > 0) {
             for (int i = 0; i < o.battleFighterCount && i < 4; ++i) {
-                const size_t rig = appendCharacter(scene, o.battleCharacters[i], sopt);
+                const size_t rig = appendCharacter(scene, o.battleCharacters[i], sopt, o.battleWeapons[i]);
                 if (i == 1 && enemyBegin) *enemyBegin = rig;
                 const size_t character = firstCharacter(scene, rig);
                 if (character >= scene.models.size()) throw std::runtime_error("battle fighter rig is missing");
                 attachFighterWeapon(scene, "fighter " + std::to_string(i),
                                     o.battleCharacters[i], o.battleWeapons[i],
-                                    &scene.models[character].model, sopt);
+                                    character, sopt);
             }
             scene.source = o.stage;
             return scene;
         }
-        appendCharacter(scene, o.character, sopt);
+        appendCharacter(scene, o.character, sopt, o.weapon);
         {
-            size_t p1 = firstCharacter(scene, 0);
-            attachFighterWeapon(scene, "P1", o.character, o.weapon,
-                                p1 < scene.models.size() ? &scene.models[p1].model
-                                                         : nullptr,
-                                sopt);
+            const size_t p1 = firstCharacter(scene, 0);
+            attachFighterWeapon(scene, "P1", o.character, o.weapon, p1, sopt);
         }
         if (enemyBegin) *enemyBegin = scene.models.size();
-        appendCharacter(scene, o.enemy, sopt);
+        appendCharacter(scene, o.enemy, sopt, o.enemyWeapon);
         {
             const size_t p2 = firstCharacter(scene, enemyBegin ? *enemyBegin : 0);
-            attachFighterWeapon(scene, "P2", o.enemy, o.enemyWeapon,
-                                &scene.models[p2].model, sopt);
+            attachFighterWeapon(scene, "P2", o.enemy, o.enemyWeapon, p2, sopt);
         }
         scene.source = o.stage;
     } else if (!o.stage.empty()) {
         scene = xm::loadStage(o.stage, sopt);
     } else if (!o.character.empty()) {
-        appendCharacter(scene, o.character, sopt);
+        appendCharacter(scene, o.character, sopt, o.weapon);
         // A weapon rides a bone of the character, so it can only be attached once the
         // character's rig exists.
         if (!o.weapon.empty()) {
             std::string wspec;
             int slot = 0;
             splitSuffix(o.weapon, wspec, slot);
-            const xm::Model* rig = scene.models.empty() ? nullptr : &scene.models[0].model;
+            const size_t ownerRig = firstCharacter(scene, 0);
+            const xm::Model* rig = ownerRig < scene.models.size() ? &scene.models[ownerRig].model
+                                                                  : nullptr;
             xm::Scene w = xm::loadWeapon(wspec, slot, rig, sopt);
-            for (xm::SceneModel& sm : w.models) scene.models.push_back(std::move(sm));
+            for (xm::SceneModel& sm : w.models) {
+                sm.ownerRig = ownerRig;
+                scene.models.push_back(std::move(sm));
+            }
         }
     } else if (!o.weapon.empty()) {
         std::string spec;
@@ -1165,7 +1178,7 @@ struct App {
     std::vector<std::unique_ptr<gameplay::WeaponDefinition>> weaponDefs;
     // Decoded data/bullet/<weaponId>/<type>.dat parameters, parallel to weaponDefs:
     // [fighter][chargeLevel-1]. Borrowed by the fighters, so it must outlive them.
-    std::vector<std::array<std::unique_ptr<gameplay::BulletParameter>, 2>> bulletParams;
+    std::vector<std::array<std::unique_ptr<gameplay::BulletParameter>, 64>> bulletParams;
     // Parsed data/<char>/NN.dat move tables, indexed by fighter (issue #26). Owned
     // here so the pointers MatchConfig::moves hands out outlive the match. Empty
     // when the rig's .dat cannot be found, which keeps the legacy shared swing.
@@ -1191,7 +1204,9 @@ struct App {
     // 260-byte model block of that level's data/bullet/<weaponId>/<type>.dat, resolved by
     // bindShotModels() once the scene is loaded; -1 when the level has no bullet file or
     // its block names a model the install does not ship. See game/shot_visual.h.
-    int  fxShotModel[4][2] = {{-1, -1}, {-1, -1}, {-1, -1}, {-1, -1}};
+    std::array<std::array<int,64>,4> fxShotModel{};
+    std::array<std::array<int,2>,4> trailModels{{{{-1,-1}},{{-1,-1}},{{-1,-1}},{{-1,-1}}}};
+    xm::Model actionCameraModel;
     uint64_t fxShotNoModel = 0;      // live-shot placements with no model to draw
     // The eleven attach points of game/aura_attach.h, resolved once per fighter on its own
     // rig: the aura attachment draws one instance per resolved point (FUN_004205e0).
@@ -1261,6 +1276,42 @@ struct App {
 static bool historicalMatchCapture(const App& app) {
     return !app.frontendMatch &&
            (!app.opts.out.empty() || !app.opts.script.empty() || !app.opts.script2.empty());
+}
+
+// Draw gate for the attachment system. A weapon model is drawn only while the prop id it
+// was loaded from is bound in its owner's executor state: FUN_00434a70 clears that id at
+// the throw thresholds (FUN_0043ffc0's Hide pairs), which is what lets the nata leave
+// Rena's hand. `ownerModel` resolves the character model of a weapon that assembly could
+// not label; every other role stays visible. Gated state is per-frame in battle, so this
+// only needs calling where placement is per-frame (versus and match).
+static void applyWeaponVisibility(App& app) {
+    std::vector<bool> visible(app.scene.models.size(), true);
+    // Only a configured Match has per-fighter attachment state. The versus vignette runs
+    // its own scripted fighters, so gating its weapons on app.match (which is default
+    // constructed there, with matchRig all zeroes) would read the wrong fighter entirely.
+    if (!app.matchMode && !app.frontendMatch) {
+        app.renderer.setModelVisibility(visible);
+        return;
+    }
+    const size_t fighters = app.match.config().fighterCount;
+    for (size_t i = 0; i < app.scene.models.size(); ++i) {
+        const xm::SceneModel& sm = app.scene.models[i];
+        if (sm.propId < 0 || sm.attachFrame < 0) continue;   // not a weapon attachment
+        size_t owner = sm.ownerRig;
+        if (owner >= app.scene.models.size() || app.scene.models[owner].role != "character") {
+            // Weapons are appended directly after their rig, so the nearest preceding
+            // character model is the owner in an unlabelled scene.
+            for (size_t j = i; j-- > 0;)
+                if (app.scene.models[j].role == "character") { owner = j; break; }
+        }
+        for (size_t fighter = 0; fighter < fighters && fighter < 4; ++fighter)
+            if (app.matchRig[fighter] == owner) {
+                visible[i] = app.match.fighter(static_cast<int>(fighter))
+                                 .weapon_slot_bound(sm.propId);
+                break;
+            }
+    }
+    app.renderer.setModelVisibility(visible);
 }
 
 // The presentation blend a frame renders with. D9: a historical `--out` recipe steps one
@@ -1948,6 +1999,7 @@ static void placeVersusFighters(App& app, const glm::vec3& p1, const glm::vec3& 
         app.modelMatrices[i] =
             app.modelMatrices[app.p1Rig] * app.worlds[app.p1Rig][(size_t)sm.attachFrame];    }
     app.renderer.setModelMatrices(app.modelMatrices);
+    applyWeaponVisibility(app);
 }
 
 static fnd::audio::SfxHandle loadSoundAsset(fnd::audio::Sdl3Engine& engine, const std::string& path) {
@@ -2117,6 +2169,18 @@ static bool initVersus(App& app) {
 // data carries; the parse itself is gameplay::WeaponDefinition::parse, transcribed from
 // that reader. Returns false only when the file is missing or short, which is a hard
 // error: a selected weapon with no definition would silently fight with shared tuning.
+// Parses one data/item/NNN.dat. Null when the file is missing or short.
+static std::unique_ptr<gameplay::WeaponDefinition> loadItemDefinition(int itemId) {
+    char path[64];
+    std::snprintf(path, sizeof(path), "data/item/%03d.dat", itemId);
+    std::vector<uint8_t> bytes;
+    if (!fnd::assets::assetSource().read(path, bytes)) return nullptr;
+    auto definition = std::make_unique<gameplay::WeaponDefinition>();
+    std::string parseError;
+    if (!definition->parse(itemId, bytes.data(), bytes.size(), parseError)) return nullptr;
+    return definition;
+}
+
 static bool loadWeaponDefinition(App& app, int fighter, int itemId, std::string& error) {
     char path[64];
     std::snprintf(path, sizeof(path), "data/item/%03d.dat", itemId);
@@ -2156,17 +2220,12 @@ static std::string charDirForSpec(const std::string& spec) {
 // the item's mesh and an item whose every slot is empty simply has none to draw.
 // False means the item file itself is missing or unparseable — a real error.
 static bool readItemMesh(int itemId, std::string& mesh) {
-    char path[64];
-    std::snprintf(path, sizeof(path), "data/item/%03d.dat", itemId);
-    std::vector<uint8_t> bytes;
-    if (!fnd::assets::assetSource().read(path, bytes)) return false;
-    gameplay::WeaponDefinition item;
-    std::string parseError;
-    if (!item.parse(itemId, bytes.data(), bytes.size(), parseError)) return false;
     mesh.clear();
-    for (int slot = 0; slot < item.slotCount; ++slot) {
-        if (!item.slots[slot].meshName.empty()) {
-            mesh = item.slots[slot].meshName;
+    const auto item = loadItemDefinition(itemId);
+    if (!item) return false;
+    for (int slot = 0; slot < item->slotCount; ++slot) {
+        if (!item->slots[slot].meshName.empty()) {
+            mesh = item->slots[slot].meshName;
             break;
         }
     }
@@ -2227,55 +2286,85 @@ static bool resolveFighterWeapon(const std::string& charDir,
     return false;
 }
 
-// Attaches one fighter's weapon mesh: the explicit spec, or the character's
+// Attaches every non-empty attachment record of a parsed item, each as its own prop.
+// FUN_00433eb0 loads one prop per slot whose 30-byte mesh name is non-empty and skips
+// the empty ones, so an item's several non-empty slots are several props, each with its
+// OWN anchors (the file's nine integers are per slot) and its own id. The executor binds
+// an id per slot and clears it at throw thresholds, which is what the draw gate reads.
+// Returns the number of props loaded; an item whose every slot is empty loads none and
+// is still armed (its move table, bullets and damage come from the id).
+static int attachItemProps(xm::Scene& scene, const gameplay::WeaponDefinition& item,
+                           size_t ownerRig, const xm::SceneOptions& sopt) {
+    int loaded = 0;
+    const xm::Model* rig = ownerRig < scene.models.size() ? &scene.models[ownerRig].model : nullptr;
+    for (int prop = 0; prop < item.slotCount; ++prop) {
+        const gameplay::WeaponSlot& slot = item.slots[prop];
+        if (slot.meshName.empty()) continue;
+        const std::string path = std::string("data/item/") + slot.meshName;
+        xm::Scene w = xm::loadWeapon(path, 0, rig, sopt, prop);
+        if (w.models.empty()) {
+            // A named attachment that will not load leaves the fighter armed but visually
+            // unarmed for that prop; say so rather than dropping it silently.
+            std::fprintf(stderr, "[weapons] item %03d prop %d: %s did not load\n",
+                         item.id, prop, path.c_str());
+            continue;
+        }
+        for (xm::SceneModel& sm : w.models) {
+            sm.ownerRig = ownerRig;
+            scene.models.push_back(std::move(sm));
+            ++loaded;
+        }
+    }
+    return loaded;
+}
+
+// Attaches one fighter's weapon props: the explicit spec, or the character's
 // slot-0 legal weapon when empty — never bare by omission (every attack is a
 // weapon attack, issue #26). An unjoinable spec keeps the legacy bare fallback,
-// loudly. Used by every versus/match assembly path below.
+// loudly. Used by every versus/match assembly path below. `ownerRig` is the
+// character model the props hang off, recorded so per-frame placement never has to
+// guess which fighter a weapon belongs to.
 static void attachFighterWeapon(xm::Scene& scene, const std::string& label,
                                 const std::string& charSpec,
-                                const std::string& weaponSpec, const xm::Model* rig,
+                                const std::string& weaponSpec, size_t ownerRig,
                                 const xm::SceneOptions& sopt) {
     const int character =
         gameplay::characterIndexForDir(charDirForSpec(charSpec));
-    std::string spec = weaponSpec;
-    if (spec.empty()) {
-        // A roster fighter without an explicit weapon gears up with slot 0, and
-        // a roster fighter that cannot gear up fails the launch LOUDLY (rule 7:
-        // a silent bare fighter is a false claim). Only unknown (custom)
-        // characters keep the bare fallback, with a warning.
-        if (character < 0) {
-            std::printf("[weapons] %s (%s): unknown character, bare\n", label.c_str(),
-                        charSpec.c_str());
-            return;
-        }
-        std::string mesh;
-        int id = 0;
-        if (!resolveFighterWeapon(charDirForSpec(charSpec), spec, mesh, id))
+    // resolveFighterWeapon handles an empty spec (the character's slot-0 legal weapon) and
+    // an explicit one (an item mesh basename or a data/bullet/NNN directory) the same way,
+    // and it is where the item id comes from — an explicit spec does NOT carry one.
+    std::string mesh;
+    int itemId = 0;
+    if (!resolveFighterWeapon(charDirForSpec(charSpec), weaponSpec, mesh, itemId)) {
+        // A roster fighter that cannot gear up fails the launch LOUDLY (rule 7: a silent
+        // bare fighter is a false claim). Only unknown (custom) characters keep the bare
+        // fallback, with a warning.
+        if (character >= 0)
             throw std::runtime_error(
-                label + " " + charSpec +
-                " has no weapon: slot-0 item " +
-                std::to_string(gameplay::kWeaponIds[character][0]) +
-                " unreadable — roster fighters must gear up");
-        const std::string combo =
-            gameplay::comboSlotLabel(character, gameplay::weaponSlotForItem(character, id));
-        if (mesh.empty()) {
-            // Parsed, and no slot ships a mesh: NOT a failure. The fighter is armed with
-            // the item — its move table, bullets and damage are bound by the id — and the
-            // original skips the attachment load for exactly this case (FUN_00433eb0:111).
-            std::printf("[weapons] %s %s: item %03d, armed; the item ships no attachment mesh"
-                        " to draw\n",
-                        label.c_str(), combo.c_str(), id);
-            return;
-        }
-        spec = mesh;
-        std::printf("[weapons] %s %s: item %03d (%s)\n", label.c_str(), combo.c_str(), id,
-                    mesh.c_str());
+                label + " " + charSpec + " has no weapon: item '" + weaponSpec +
+                "' joins none of the character's own items — roster fighters must gear up");
+        std::printf("[weapons] %s (%s): unknown character, bare\n", label.c_str(),
+                    charSpec.c_str());
+        return;
     }
-    std::string path;
-    int slot = 0;
-    splitSuffix(spec, path, slot);
-    xm::Scene weapon = xm::loadWeapon(path, slot, rig, sopt);
-    for (auto& model : weapon.models) scene.models.push_back(std::move(model));
+    const std::string combo =
+        gameplay::comboSlotLabel(character, gameplay::weaponSlotForItem(character, itemId));
+    // Every non-empty attachment record of the resolved item, each as its own prop. The
+    // executor binds a prop id per slot and clears it at the throw thresholds, which is
+    // what the draw gate reads.
+    const auto item = loadItemDefinition(itemId);
+    const int props = item ? attachItemProps(scene, *item, ownerRig, sopt) : 0;
+    if (props == 0) {
+        // Parsed, and no slot ships a mesh: NOT a failure. The fighter is armed with the
+        // item — its move table, bullets and damage are bound by the id — and the original
+        // skips the attachment load for exactly this case (FUN_00433eb0:111).
+        std::printf("[weapons] %s %s: item %03d, armed; the item ships no attachment mesh"
+                    " to draw\n",
+                    label.c_str(), combo.c_str(), itemId);
+        return;
+    }
+    std::printf("[weapons] %s %s: item %03d, %d attachment prop(s)\n", label.c_str(),
+                combo.c_str(), itemId, props);
 }
 
 // The move table lives next to the rig's own model file: "<dir>/<char>[<costume>]/NN.X"
@@ -2395,19 +2484,10 @@ static bool loadCharacterMoves(App& app, int fighter, const std::string& rigSour
 // passes `status` to FUN_005f8510 as the variant. A missing file is not fatal: the
 // fighter keeps the shared provisional shot table and the coverage table records that
 // combination's projectile parameters as unrecovered.
-static bool loadBulletParameter(const App& app, int fighter, int level,
-                                const gameplay::WeaponDefinition& weapon,
+static bool loadBulletParameter(int row, const gameplay::WeaponDefinition& weapon,
                                 std::unique_ptr<gameplay::BulletParameter>& out) {
-    const gameplay::MagazineDefinition& mag = weapon.magazineForChargeLevel(level);
-    // Deterministic tier -> bullet choice, matching Fighter::shot_count's rule.
-    const int wantMagazine = mag.chargeLevel - 1;
-    const gameplay::BulletDefinition* best = nullptr;
-    for (int i = 0; i < weapon.bulletCount; ++i) {
-        const gameplay::BulletDefinition& b = weapon.bullets[i];
-        if (b.magazine != wantMagazine) continue;
-        if (!best || b.type < best->type) best = &b;
-    }
-    if (!best) return false;
+    if (row < 0 || row >= weapon.bulletCount) return false;
+    const gameplay::BulletDefinition* best = &weapon.bullets[row];
     char path[64];
     std::snprintf(path, sizeof(path), "data/bullet/%03d/%03d.dat", weapon.id, best->type);
     std::vector<uint8_t> bytes;
@@ -2418,7 +2498,6 @@ static bool loadBulletParameter(const App& app, int fighter, int level,
                                         *parameter, err))
         return false;
     out = std::move(parameter);
-    (void)fighter;
     return true;
 }
 
@@ -2534,10 +2613,10 @@ static bool initMatch(App& app) {
         for (int i = 0; i < fighterCount; ++i) {
             if (i >= static_cast<int>(app.weaponDefs.size()) || !app.weaponDefs[i])
                 continue;
-            for (int level = 1; level <= 2; ++level)
-                loadBulletParameter(app, i, level, *app.weaponDefs[i],
+            for (int row = 0; row < app.weaponDefs[i]->bulletCount; ++row)
+                loadBulletParameter(row, *app.weaponDefs[i],
                                     app.bulletParams[static_cast<size_t>(i)]
-                                                  [static_cast<size_t>(level - 1)]);
+                                                  [static_cast<size_t>(row)]);
         }
     }
 
@@ -2605,11 +2684,11 @@ static bool initMatch(App& app) {
     // Hand each fighter its recovered projectile parameters. Match::reset has already
     // bound the weapon (MatchConfig::weapon), which sized the magazines.
     for (int i = 0; i < fighterCount; ++i)
-        for (int level = 1; level <= 2; ++level)
+        for (int row = 0; row < 64; ++row)
             if (i < static_cast<int>(app.bulletParams.size()))
-                app.match.fighter(i).set_bullet_parameter(
-                    level, app.bulletParams[static_cast<size_t>(i)]
-                               [static_cast<size_t>(level - 1)].get());
+                app.match.fighter(i).set_bullet_row(
+                    row, app.bulletParams[static_cast<size_t>(i)]
+                               [static_cast<size_t>(row)].get());
     // Bind pose on request: the DX9 reference renders no animation (its d3dx9 under
     // Wine hands back no controller), so this is what makes a gate frame comparable.
     if (app.opts.noAnim) {
@@ -2701,6 +2780,7 @@ static bool initMatch(App& app) {
         // step from the origin, not the converged position.
         view.camera = gameplay::ArenaCamera{};
         view.camera.set_target_pool(cameraPool);
+        view.camera.set_action_rig(&app.actionCameraModel);
         view.camera.set_active_target(view.followed);
         view.previousEye = view.camera.eye();
         view.previousTarget = view.camera.target();
@@ -2841,6 +2921,7 @@ static void buildFrameViews(App& app, uint32_t width, uint32_t height,
 // needs, which it got wrong (it used the bone matrix alone, so a weapon would have
 // been placed at the origin instead of in the fighter's hand).
 static void placeMatchFighters(App& app) {
+    std::vector<render::SceneRenderer::TextureOverride> textures;
     for (size_t i = 0; i < app.scene.models.size(); ++i) {
         for (int fighter = 0; fighter < app.match.config().fighterCount; ++fighter)
             if (i == app.matchRig[fighter]) {
@@ -2862,6 +2943,24 @@ static void placeMatchFighters(App& app) {
         app.modelMatrices[i] = app.modelMatrices[rig] * app.worlds[rig][(size_t)sm.attachFrame];
     }
     app.renderer.setModelMatrices(app.modelMatrices);
+    applyWeaponVisibility(app);
+    for (int i = 0; i < app.match.config().fighterCount; ++i) {
+        const auto& fighter = app.match.fighter(i);
+        if (const auto* moves = fighter.moves()) {
+            for (const auto& event : moves->texture_events(fighter.anim_set_index()))
+                if (event.active(fighter.phase_elapsed()))
+                    textures.push_back({app.matchRig[i],event.source,event.replacement});
+        }
+        for (int hand = 0; hand < 2; ++hand) {
+            const int model = app.trailModels[static_cast<size_t>(i)][static_cast<size_t>(hand)];
+            if (model < 0) continue;
+            const auto& trail = fighter.trail(hand);
+            const auto vertices = trail.vertices();
+            app.renderer.updateDynamicMesh(static_cast<size_t>(model), vertices.data(), vertices.size(),
+                                           static_cast<uint32_t>(trail.triangles()*3));
+        }
+    }
+    app.renderer.setTextureOverrides(textures);
 }
 
 // The effect asset table the gameplay events index into (game/effect_events.h:
@@ -2973,8 +3072,8 @@ static void bindShotModels(App& app) {
     for (size_t i = 0; i < app.bulletParams.size() && i < 4; ++i) {
         if (i >= app.weaponDefs.size() || !app.weaponDefs[i]) continue;
         const int weaponId = app.weaponDefs[i]->id;
-        for (int level = 1; level <= 2; ++level) {
-            const gameplay::BulletParameter* p = app.bulletParams[i][(size_t)level - 1].get();
+        for (size_t row = 0; row < app.bulletParams[i].size(); ++row) {
+            const gameplay::BulletParameter* p = app.bulletParams[i][row].get();
             if (!p || p->modelName.empty()) continue;
             char path[80];
             std::snprintf(path, sizeof(path), "data/bullet/%03d/%s", weaponId,
@@ -2990,7 +3089,59 @@ static void bindShotModels(App& app) {
                                          "shots of this level draw nothing\n",
                                  path);
             }
-            app.fxShotModel[i][(size_t)level - 1] = card;
+            app.fxShotModel[i][row] = card;
+            if (card >= 0) {
+                auto& variants = app.scene.models[static_cast<size_t>(card)].textureVariants;
+                for (const auto& set : p->animationSets)
+                    for (const auto& event : set.textures)
+                        if (std::find(variants.begin(),variants.end(),event.replacement) == variants.end())
+                            variants.push_back(event.replacement);
+                app.match.fighter(static_cast<int>(i)).set_bullet_model(static_cast<int>(row),
+                    &app.scene.models[static_cast<size_t>(card)].model);
+            }
+        }
+    }
+}
+
+static void bindAnimationMaterials(App& app) {
+    std::vector<uint8_t> cameraBytes;
+    if (fnd::assets::assetSource().read("data/camera/01.x",cameraBytes))
+        app.actionCameraModel = xm::loadMemory(cameraBytes.data(),cameraBytes.size());
+    for (auto& pair : app.trailModels) pair.fill(-1);
+    for (int fighter = 0; fighter < app.match.config().fighterCount; ++fighter) {
+        const size_t rig = app.matchRig[fighter];
+        const auto* moves = app.match.fighter(fighter).moves();
+        const auto* weapon = app.match.fighter(fighter).weapon();
+        if (!moves || !weapon || rig >= app.scene.models.size()) continue;
+        auto& variants = app.scene.models[rig].textureVariants;
+        for (int set = 0; set < moves->animation_set_count(); ++set)
+            for (const auto& event : moves->texture_events(set))
+                if (std::find(variants.begin(),variants.end(),event.replacement) == variants.end())
+                    variants.push_back(event.replacement);
+        for (int hand = 0; hand < 2 && hand < weapon->slotCount; ++hand) {
+            const auto& slot = weapon->slots[hand];
+            if (slot.textureName.empty()) continue;
+            xm::SceneModel trail;
+            trail.role = "effect";
+            trail.source = "procedural weapon trail";
+            trail.textures = xm::TextureCache("data/item/");
+            xm::Mesh mesh;
+            const gameplay::WeaponTrail empty;
+            const auto vertices = empty.vertices();
+            mesh.vertices.assign(vertices.begin(),vertices.end());
+            for (uint32_t i = 0; i < gameplay::WeaponTrail::kTriangles; ++i)
+                mesh.indices.insert(mesh.indices.end(), {0,i+1,i+2});
+            xm::Material material;
+            material.texture = slot.textureName;
+            mesh.materials.push_back(material);
+            mesh.submeshes.push_back({0,static_cast<uint32_t>(mesh.indices.size()),0});
+            trail.model.meshes.push_back(std::move(mesh));
+            app.trailModels[static_cast<size_t>(fighter)][static_cast<size_t>(hand)] =
+                static_cast<int>(app.scene.models.size());
+            app.scene.models.push_back(std::move(trail));
+            app.worlds.emplace_back();
+            app.modelMatrices.emplace_back(1.f);
+            app.controllers.emplace_back();
         }
     }
 }
@@ -3085,15 +3236,18 @@ static void placeFxCards(App& app) {
             int owner = -1;
             for (int i = 0; i < app.match.config().fighterCount && i < 4; ++i)
                 if (p.owner == &app.match.fighter(i)) { owner = i; break; }
-            // FUN_00433eb0's own tier -> bullet-row rule: the tap tier reads the level-1
-            // block, every tier above it the level-2 block (Fighter::bullet_parameter).
-            const int level = (p.tier == gameplay::ShotTier::Tap) ? 0 : 1;
-            const int card = (owner >= 0) ? app.fxShotModel[owner][level] : -1;
+            // The shot carries the exact item row it was launched from, so the card is
+            // that row's own model; the tier only chose the row back at the release.
+            const int card = (owner >= 0 && p.bulletRow >= 0 && p.bulletRow < 64)
+                                 ? app.fxShotModel[owner][static_cast<size_t>(p.bulletRow)] : -1;
             if (card < 0 || (size_t)card >= app.scene.models.size()) {
                 ++app.fxShotNoModel;
                 continue;
             }
-            instances.push_back({card, game::shotModelMatrix(p.pos, p.vel), false});
+            const auto* record = p.record();
+            instances.push_back({card,p.model_matrix(),record && (record->stateFlags & 0x1000),
+                                  p.model ? &p.controller : nullptr,p.texture_overrides(),
+                                  record ? record->combat[19] : 0});
             ++app.fxShotCards;
         }
     }
@@ -3371,6 +3525,10 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
         // current camera unchanged (D9's one-update-per-frame recipes).
         view.previousEye = view.camera.eye();
         view.previousTarget = view.camera.target();
+        const auto& cameraFighter = app.match.fighter(view.followed);
+        const int actionOpponent = app.match.locked_target(view.followed);
+        view.camera.set_action(cameraFighter.action_camera(), cameraFighter.position(), cameraFighter.facing_yaw(),
+            actionOpponent >= 0 ? app.match.fighter(actionOpponent).position() : cameraFighter.position());
         view.camera.update(dt,cameraQuery);
         // Mirror the camera's own selection back into the view. Since issue #51 the tap no
         // longer cycles the camera and nothing else in a match calls cycle_target, so this
@@ -4036,6 +4194,11 @@ bool initScene(App& app) {
         return false;
     }
     if (app.scene.models.empty()) return false;
+    // Bullet rows and generated trails join after Match binds borrowed rig pointers.
+    // Bound growth avoids invalidating those models/controllers during asset finalization.
+    constexpr size_t kCombatModelHeadroom = 4 * (64 + 2) + game::kEffectSlots + game::kAuraSlots;
+    app.scene.models.reserve(app.scene.models.size() + kCombatModelHeadroom);
+    app.controllers.reserve(app.scene.models.capacity());
 
     if (app.opts.list) {
         listScene(app.scene);
@@ -4045,7 +4208,7 @@ bool initScene(App& app) {
     app.modelMatrices.assign(app.scene.models.size(), glm::mat4(1.f));
     // A card index is only valid against the scene that produced it, so a reloaded scene
     // invalidates every shot model until bindShotModels() resolves them again (issue #32).
-    for (auto& pair : app.fxShotModel) pair[0] = pair[1] = -1;
+    for (auto& rows : app.fxShotModel) rows.fill(-1);
     // FUN_00633ca0's effect models extend the scene. Finish that growth before
     // fighters, animation controllers or collision queries borrow model pointers.
     if (app.opts.match || app.opts.versus) buildFxAssets(app);
@@ -4218,6 +4381,9 @@ bool initScene(App& app) {
     // here — after every path that parses a bullet file (initMatch for a standalone match,
     // enterFrontendBattle for a selected one) and before the renderer takes the draw list.
     if (app.opts.match || app.frontendMatch) bindShotModels(app);
+    if (app.opts.match || app.frontendMatch) bindAnimationMaterials(app);
+    app.controllers.resize(app.scene.models.size());
+    app.worlds.resize(app.scene.models.size());
 
     if (!app.rendererReady && !app.renderer.init(app.ctx, app.error)) return false;
     app.rendererReady = true;
@@ -4793,10 +4959,10 @@ static bool enterFrontendBattle(App& app) {
     // hit-resolution use does not establish a charge-tier shot selector. A level with no
     // matching bullet file stays empty, the shared provisional table for that port tier.
     for (int i = 0; i < launch.fighterCount; ++i)
-        for (int level = 1; level <= 2; ++level)
-            loadBulletParameter(app, i, level, *app.weaponDefs[static_cast<size_t>(i)],
+        for (int row = 0; row < app.weaponDefs[static_cast<size_t>(i)]->bulletCount; ++row)
+            loadBulletParameter(row, *app.weaponDefs[static_cast<size_t>(i)],
                                 app.bulletParams[static_cast<size_t>(i)]
-                                          [static_cast<size_t>(level - 1)]);
+                                          [static_cast<size_t>(row)]);
     app.frontendMatch = true;
     app.frontendBattleReady = false;
     app.battlePaused = false;   // a fresh battle never starts paused (issue #15)

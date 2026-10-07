@@ -1,91 +1,35 @@
 #pragma once
-// gameplay/weapon_definition.h — one weapon's combat definition, parsed from the
-// original `data/item/NNN.dat`. Device-free: it takes a byte buffer, so the same code
-// serves the battle simulation (foundation_gameplay) and the selection front end
-// (which is the only layer that touches the asset source). Nothing here renders.
-//
-// WHY a parsed definition and not a lookup table: the original does not ship weapon
-// tuning in code. FUN_00433eb0 (0x433eb0) opens `data/item/%03d.dat` and reads it
-// sequentially through FUN_00653760 (0x653760, a thin ReadFile wrapper), so the file
-// IS the tuning, and the 46 shipped files differ from each other in exactly the fields
-// the battle needs. Hard-coding those numbers here would be inventing a table the game
-// already ships; parsing the file is the port.
-//
-// FILE LAYOUT — the reader's own order, with the record sizes it passes to FUN_00653760:
-//
-//   u32  slotCount        (= *param_1; the [weaponN] loop bound, 2..12 in the shipped set)
-//   u32  bulletCount      (= param_1[0x3e]; [global] bulletType)
-//   char gaugeTexture[30] (= local_350, 0x1e bytes, not NUL-terminated on read)
-//   i32  gaugeHeight0     (FUN_00433eb0:70)
-//   i32  gaugeHeight1     (FUN_00433eb0:71)
-//   slotCount x {
-//     char meshName[30]     (local_140; skipped when empty)
-//     char textureName[30]  (local_460)
-//     f32  transform[9]     (mx,my,mz, x,y,z, x1,y1,z1 — read as dwords, stored as float)
-//   }
-//   2 x {                   (the magazine loop, FUN_00433eb0:121-143, fixed at 2)
-//     i32  num, type, reloadTime, intervalTime, chargeMax, chargeLevel
-//   }
-//   bulletCount x {         (FUN_00433eb0:148-156)
-//     i32  magazine, shotNum, type, status
-//   }
-//
-// The nine transform floats are read by FUN_00653760 as 4 raw bytes each and stored
-// through a float cast; every shipped file stores them as integers, so they are read
-// here as i32 and exposed as float. Cross-checked against all 28 shipped .ini mirrors
-// (see the coverage table in docs/ROADMAP-PENDING.md): 909/909 transform fields and
-// every structural field agree.
-//
-// MAGAZINE BLOCK — READ BUT NOT CONSUMED. FUN_00433eb0:135-143 computes
-//     if (type == 0)                capacity = num
-//     else if (0 < type && type < 3)  capacity = num * reloadTime
-// and copies capacity into the "current" field, so the block is fully populated. But a
-// corpus-wide scan finds NO function that reads those fields afterwards: `+ 0x64)` and
-// the sibling magazine offsets return zero hits across all 3191 decompiled functions.
-// The original therefore SHIPS ammo data that this corpus never consumes, and the
-// consumption lives wherever the rest of the ammo system is missing.
-//   => MagazineDefinition is parsed and exposed for completeness, and the remake uses it
-//      to size its magazines, but that usage is a PORT RULE, not recovered behaviour.
-//      kMainMax/kChargeMax and the refill rate stay provisional per the coverage table.
-//      Do not cite this block as evidence for the ammo model.
-//
-// DAT vs PORT RULE, field by field (audited across all 46 roster items):
-//   num, type, reloadTime, intervalTime, chargeMax, chargeLevel — DAT (this layout).
-//   capacity formula above — recovered (FUN_00433eb0:135-143).
-//   num IS the shot count: all 46 roster magazines are type 2, and capacity /
-//     cost divides out to exactly num (1..60) in all 92 pools, so the HUD count
-//     shows num, never pool units. intervalTime is 0 on every roster item, so
-//     volley pacing is unmodelled (nothing to pace against).
-//   cost-per-shot = reloadTime, refill = one shot's worth per second, the
-//     chargeMax tick→second conversion, and all legacy 6/2 counts — PORT RULES.
-//      — the corpus consumes none of this block, so any consumption is design.
-//
-// WHERE THE REAL COMBAT NUMBERS ARE — data/bullet/<weaponId>/<type>.dat.
-// FUN_00433eb0:152 hands each bullet entry's `type * 10 + status` to FUN_005f80c0
-// (0x5f80c0), which builds the path `data/bullet/%03d/%03d.dat` with `type` as the file
-// and passes `status` on to FUN_005f8510 (0x5f8510) as the variant to select. That
-// reader lays out a 0x80-byte entry record per effect instance, of which 80 bytes at
-// record offset 0x30..0x7F are read VERBATIM from the file in one call. Those are the
-// per-weapon combat scalars, and BulletParameter below names them from the consuming
-// code in FUN_00637950 (0x637950). This IS recovered; see the coverage table.
+// FUN_00433eb0: item slot/bullet counts, gauge name[30], two gauge integers,
+// slots {model[30], texture[30], nine signed integer anchors}, two six-word
+// magazines, then bullet rows {magazine, pool capacity, type, status}.
+// Anchors are numeric integer-to-float conversions, not IEEE bit patterns.
+// FUN_005f8510 reads the model block, all variant phases/records, and the
+// animation-set/texture-event trailer. Original executable handlers provide
+// projectile motion and launch rules; the files do not contain their speeds.
+// Magazine refill/hold conversion remains a documented port rule.
 
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
+#include "gameplay/character_moves.h"
 
 namespace gameplay {
 
 // The original's fixed-length name fields (FUN_00433eb0 passes 0x1e).
 inline constexpr int kWeaponNameField = 30;
 
-// One weapon attachment point: the mesh bound to a bone, its texture, and the two
-// offset/rotation triples FUN_00433eb0:100-118 reads. `x/y/z` and `x1/y1/z1` are the
-// shipped pairs; the reader keeps both and the remake exposes both so a renderer can
-// pick without re-deriving.
+// The nine signed integers FUN_00433eb0 reads per attachment (file 60..96) are three
+// bone-local points, not position plus rotations. 0..2 go to the manager's per-prop
+// muzzle table, which FUN_00435000 transforms by the slot's posed bone to launch a
+// shot; 3..5 and 6..8 become the ribbon prop's two anchors (+0x18/+0x28), which
+// FUN_00430120 transforms with D3DXVec4Transform into the endpoint samples.
 struct WeaponSlot {
     std::string meshName;      // "" when the file leaves this attachment empty
     std::string textureName;
-    float transform[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+    float muzzle[3] = {0, 0, 0};
+    float ribbonRoot[3] = {0, 0, 0};
+    float ribbonTip[3] = {0, 0, 0};
 };
 
 // One ammunition pool. Two per weapon, fixed by FUN_00433eb0:122.
@@ -93,7 +37,7 @@ struct MagazineDefinition {
     int num          = 0;   // shots (or shots x units) the pool holds
     int type         = 0;   // 0 = count-valued, 1/2 = time-valued, else no rule
     int reloadTime   = 0;   // units consumed per shot
-    int intervalTime = 0;   // ticks between the shots of one burst (ShotNum)
+    int intervalTime = 0;   // magazine interval counter's reset value
     int chargeMax    = 0;   // recovered charge ceiling for this level
     int chargeLevel  = 0;   // 1 = tap/MAIN magazine, 2 = charged/CHARGE magazine
 
@@ -107,12 +51,12 @@ struct MagazineDefinition {
 };
 
 // One entry of the weapon's bullet table (FUN_00433eb0:148-156). `magazine` is the
-// index of the pool this bullet draws from, `shotNum` how many projectiles one trigger
-// releases, and `type`/`status` together address the behaviour record under
+// index of the magazine, `poolCapacity` the number of live instances allocated,
+// NOT a volley count (FUN_005f80c0), and `type`/`status` address the record under
 // data/bullet/<weaponId>/ (FUN_005f80c0:99-102).
 struct BulletDefinition {
     int magazine = 0;
-    int shotNum  = 0;
+    int poolCapacity  = 0;
     int type     = 0;
     int status   = 0;
     int paramId() const { return type * 10 + status; }   // FUN_00433eb0:155
@@ -158,6 +102,7 @@ private:
 // 0x50 bytes VERBATIM at record offset 0x30, so blob[i] lands at record offset 0x30 + 4*i:
 // the index for a record offset O is (O - 0x30) / 4, and each comment below gives both.
 struct BulletParameter {
+    int formatTag = 0;
     // The 260-byte block at file offset 4: the model THIS bullet IS. FUN_005f8510:55-57
     // reads it, joins it to the bullet's own directory and calls FUN_0064d940 (the .X
     // loader) with the bullet's per-variant model object as `this`; the shot spawn
@@ -167,7 +112,20 @@ struct BulletParameter {
     // descriptor spawned at the contact point. See game/shot_visual.h for the whole chain.
     // Empty when the block is blank, which is also the case the original loads no model for.
     std::string modelName;
-    std::string effectName;
+    std::vector<MovePhase> phases;
+    // The selected variant's own row pair, read exactly like NN.dat's (row+0 selection
+    // value, row+4 cancel threshold compared against a destination row's priority). No
+    // runtime consumer yet — bullets do not chain — but a repeated variant id overwrites
+    // them the same way NN rows do, so they must come from the WINNING variant.
+    int priority = 0;
+    int cancelThreshold = 0;
+    struct AnimationSet {
+        int transition = 0;
+        int phaseGate = 0;
+        std::vector<TextureEvent> textures;
+    };
+    std::vector<AnimationSet> animationSets;
+    std::string boneName;
     int hitRadius        = 0;  // record +0x24, consumed as a float by FUN_00637950:91,107
     int baseDamage       = 0;  // blob[0] (+0x30) — the HP power, 10000-based, :426
     int hpDamage         = 0;  // blob[5] (+0x44) — the victim's GAUGE feed, :280 (not HP)
@@ -195,8 +153,10 @@ struct BulletParameter {
     int releaseOffsetB   = 0;  // blob[18] (+0x78) — written to player+0x878 on tier-up
 };
 
-// Decodes the variant `status` out of one data/bullet/<weaponId>/<type>.dat, taking the
-// first effect entry of its first sub-section (FUN_005f8510:95-129). Device-free.
+// Retains the selected variant's complete phase vector and animation trailer. Scalar
+// aliases describe the winning variant's first section's first record, for legacy
+// preview callers; a variant whose winning first section has no entry leaves them
+// unset rather than reusing another variant's values.
 bool parseBulletParameter(const uint8_t* bytes, size_t size, int status,
                           BulletParameter& out, std::string& error);
 

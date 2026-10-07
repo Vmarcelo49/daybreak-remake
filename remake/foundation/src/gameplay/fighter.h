@@ -50,6 +50,7 @@
 #include "gameplay/match_economy.h"    // the KO/Overkill credit rules (issue #11)
 #include "gameplay/projectile.h"
 #include "gameplay/melee_rules.h"
+#include "gameplay/weapon_trail.h"
 #include "gameplay/weapon_definition.h"
 #include "input/input.h"
 #include "render/arena_camera.h"    // for render::ArenaTarget
@@ -211,14 +212,14 @@ inline HypermodeParams hypermode_params(Hypermode m) {
             false, false, false, 1.0f, 1.0f, packRgb(255, 255, 255)};
 }
 
-// Movement speed constants: recovered per-tick locomotion × 60 Hz, not tuning.
-// The handlers move in units/tick with no ×dt (FUN_004202b0 builds displacement
-// as cos/sin(yaw)×speed; FUN_0042cb50/FUN_0042c970 add it raw), so u/s = 60 ×
-// the tick literal. Values vary per character and the handler↔fighter map is
-// unrecovered, so each constant is the modal handler value with the observed
-// range on record: walk 2.5–7.5/tick (150–450/s), dash 10–30/tick (600–1800/s),
-// air-dash 12.5–40/tick (750–2400/s). The old walk 80 / dash 200 / leap 380
-// were placeholders with no RE behind them.
+// Movement speed constants for a fighter with NO recovered handler: `move_behavior.h`'s
+// kLocomotion now carries every shipped combo, so this table is the custom-character and
+// legacy fallback, never the roster paths. The handlers move in units/tick with no ×dt
+// (FUN_004202b0 builds displacement as cos/sin(yaw)×speed; FUN_0042cb50/FUN_0042c970 add
+// it raw), so u/s = 60 × the tick literal; the observed per-character range is walk
+// 2.5–7.5/tick (150–450/s), dash 10–30/tick (600–1800/s), air-dash 12.5–40/tick
+// (750–2400/s). The old walk 80 / dash 200 / leap 380 were placeholders with no RE behind
+// them.
 struct FighterConstants {
     static constexpr float kWalkSpeed     = 420.0f;  // 7.0/tick, the modal walk
     static constexpr float kRunSpeed      = 900.0f;  // 15.0/tick, the modal dash;
@@ -259,7 +260,7 @@ struct FighterConstants {
     static constexpr float kJumpSpeed     = 720.0f;  // leap initial vy (u/s)
     // The source switches the air chain from "going up" to "coming down" when
     // vy drops under the literal 0x40c00000 = 6.0 per tick (live FUN_0043ffc0
-    // case 0x29 → FUN_00421080(0x2a)); the fixed step is 60 Hz, so 360 u/s.
+    // case 0x29 → FUN_00421080(0x2a)); 6.0/tick at the original's 60 Hz is 360 u/s.
     static constexpr float kJumpApexSpeed = 360.0f;
     static constexpr float kFlyRise       = 720.0f;  // vy while holding Z aloft
     static constexpr float kFlyTimeSec    = 1.2f;   // flight budget per airtime
@@ -311,6 +312,8 @@ struct PendingShot {
     ShotTier      tier  = ShotTier::Tap;
     glm::vec3     pos   {};
     glm::vec3     dir   {0, 0, 1};
+    int           bulletRow = -1;
+    Fighter*      target = nullptr;
 };
 
 struct CombatStats { int kos = 0, deaths = 0, damageDealt = 0, damageTaken = 0; };
@@ -470,6 +473,9 @@ public:
     // Port candidate for a grounded Up/Down dash (an input-to-move inference);
     // -1 means no candidate is used, including side and air dashes.
     int dash_move_id() const { return m_dashMoveId; }
+    // Firing move the current shot plays, keyed off the charge tier and whether the
+    // fighter was airborne at the release (move_behavior.h's MoveProgram::shot).
+    int shot_move_id() const { return m_shotMoveId; }
 
     // ---- selected weapon (gameplay/weapon_definition.h, issue #9) ----
     // Binds the parsed data/item/NNN.dat for the selected weapon. Borrowed, like the
@@ -487,6 +493,19 @@ public:
     const BulletParameter* bullet_parameter(int level) const {
         return m_bulletParams[(level == 2) ? 1 : 0];
     }
+    void set_bullet_row(int row, const BulletParameter* parameter) {
+        if (row >= 0 && row < 64) m_bulletRows[static_cast<size_t>(row)] = parameter;
+    }
+    const BulletParameter* bullet_row(int row) const {
+        return row >= 0 && row < 64 ? m_bulletRows[static_cast<size_t>(row)] : nullptr;
+    }
+    void set_bullet_model(int row, const xm::Model* model) {
+        if (row >= 0 && row < 64) m_bulletModels[static_cast<size_t>(row)] = model;
+    }
+    const xm::Model* bullet_model(int row) const {
+        return row >= 0 && row < 64 ? m_bulletModels[static_cast<size_t>(row)] : nullptr;
+    }
+    ShotParams shot_params_for_row(ShotTier tier, int row) const;
 
     // ShotParams for this fighter's tier. Damage and hit radius come from the bound
     // BulletParameter when there is one; speed and lifetime stay the shared provisional
@@ -500,10 +519,6 @@ public:
     float shot_cost(ShotTier tier) const;
     bool  can_fire(ShotTier tier) const;
 
-    // The impact effect id this fighter's bound bullet record names for a tier
-    // (record +0x70, FUN_00637950:221-228), or -1 when no block is bound. The shot
-    // carries it to its contact so the effect layer never guesses (issue #17).
-    int impact_effect(ShotTier tier) const;
     // The tier of the last shot this fighter armed. The armed flag is drained by
     // take_pending_shot(); the tier stays, which is what the muzzle-flash selector needs
     // on the tick the frame reports shotFired (issue #17).
@@ -516,11 +531,6 @@ public:
     // hold timer, so this conversion is a design choice, not recovered behaviour.
     float yellow_hold_sec() const;
     float red_hold_sec() const;
-
-    // How many projectiles one trigger of this tier releases. PORT RULE: the tier ->
-    // bullet binding is not recovered, so this picks the lowest-type bullet drawing
-    // from the magazine that tier spends; the COUNT is the file's own shotNum.
-    int shot_count(ShotTier tier) const;
 
     // --- hypermode (spec §3.4) ---
     void set_hypermode(Hypermode m) { m_hypermode = m; }
@@ -605,11 +615,19 @@ public:
     // Exposed so a COM asks before holding instead of pressing into the lockout.
     bool guard_exhausted() const { return m_guardExhausted; }
 
-    // True while the current attack is in its startup, active or recovery window. A
-    // recovery swing must not chain into another action (issue #10). The windows
-    // are this swing's own (data-driven when moves are bound, legacy otherwise).
-    bool melee_in_recovery() const { return m_swing.is_recovery(m_meleeElapsed); }
-    bool melee_in_active() const { return m_swing.is_active(m_meleeElapsed); }
+    bool melee_in_recovery() const;
+    bool melee_in_active() const {
+        const MoveEntry* record = current_move_record();
+        return record ? record->has_combat() : !m_moves && m_swing.is_active(m_meleeElapsed);
+    }
+    const MoveEntry* current_move_record() const;
+    int move_phase() const { return m_phaseIndex; }
+    int phase_elapsed() const { return m_moveElapsedTicks; }
+    // FUN_00435000 launches from the bound slot's item muzzle anchor and falls back to
+    // the bone origin only when the slot's prop id is -1 (FUN_00434a70's clear).
+    bool weapon_slot_bound(int slot) const;
+    int action_camera() const { return m_actionCamera; }
+    const WeaponTrail& trail(int hand) const { return m_trails[static_cast<size_t>(hand)]; }
 
     // The swing this fighter WOULD start right now for the given situation — the same
     // resolution set_state(AttackA) performs at the press, without touching state. A COM
@@ -641,6 +659,8 @@ public:
         float     anchorRadius = 0.f;
         bool      attacking    = false;
         glm::vec3 attackCenter{};
+        glm::vec3 attackEnd{};
+        bool      capsule = false;
         float     attackRadius = 0.f;
     };
     HitboxDebug hitbox_debug() const;
@@ -774,11 +794,28 @@ private:
     // cleared when the state changes so one swing can hit several opponents once each.
     unsigned     m_swingHits = 0;
     int          m_swingHitCount = 0;
+    bool         m_chainContact = false;
     int          m_meleeElapsed = 0;      // ticks since the swing started
     MeleeRules   m_meleeRules{};           // legacy tuning + recovered shape;
                                            // data-driven swings override it via m_swing
     const CharacterMoves* m_moves = nullptr;  // borrowed move table (issue #26)
     int          m_attackMoveId = -1;       // move the current swing plays (-1 legacy)
+    int          m_shotMoveId = -1;
+    int          m_holdTicks = 0;
+    bool         m_holdAnimation = false;
+    // Attachment slots 0/1. The executor re-binds slot0<-prop0, slot1<-prop1 and
+    // deactivates both at the top of every frame, so a slot is unbound only while a
+    // Hide rule's ticks match (FUN_00434a70(slot,-1)) and a prop is active only inside
+    // an Active window. Both slots can be bound/active at once, and the prop's active
+    // latch is what grows its ribbon.
+    std::array<bool, 2> m_propBound{true, true};
+    std::array<bool, 2> m_propActive{false, false};
+    int          m_actionCamera = 0;
+    float        m_moveSpeed = 0.f;
+    float        m_walkTurnRate = 20.f;
+    float        m_inputFacing = 0.f;
+    std::array<WeaponTrail, 2> m_trails;
+    glm::vec2    m_previousWalkInput{0.f};
     int          m_dashMoveId = -1;         // inferred grounded dash candidate, or unresolved
     MeleeSwing   m_swing{};                 // this swing's resolved numbers
     bool         m_aerialAttack = false;   // this swing is the aerial variant
@@ -804,6 +841,10 @@ private:
     float        m_chargeHeld = 0.0f;  // seconds C held (resets on release)
     int          m_reloadTimer = 0;    // reloadNG window (frames, 0 = reloadOK)
     PendingShot  m_pending;      // armed shot awaiting scene spawn
+    std::array<PendingShot, 8> m_pendingShots{};
+    int m_pendingShotCount = 0;
+    std::array<const BulletParameter*, 64> m_bulletRows{};
+    std::array<const xm::Model*, 64> m_bulletModels{};
 
     // --- air + dash (spec §3.2) ---
     float        m_vy = 0.0f;          // vertical velocity (u/s)
@@ -915,6 +956,10 @@ private:
     // Mirrors the source handler tail: elapsed move ticks advance once per update,
     // and the NN.dat set gate controls whether the current phase advances.
     void advance_animation_phase();
+    glm::vec3 bone_point(const std::string& name, const glm::vec3& local) const;
+    void execute_move_program(Fighter* opponent, const input::PlayerState* input);
+    void enter_phase(int phase);
+    void launch_bullet(int row, float lateral, float pitchLimit, Fighter* opponent);
 
     // Shared pulse for the aura's alpha + radius (DX9 render did both from one
     // expression; kept single-sourced so they cannot drift).

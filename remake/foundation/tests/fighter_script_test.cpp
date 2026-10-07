@@ -36,9 +36,8 @@
 //  for live play.
 // =============================================================================
 
-#define XMODEL_IMPLEMENTATION   // this TU compiles the asset layer (as raycast_analytic does)
-
 #include "assets/xmodel.h"
+#include "combo_fixture.h"
 
 #include "gameplay/fighter.h"
 #include "gameplay/fixed_step.h"
@@ -83,40 +82,19 @@ int g_checks = 0;
 int g_fails  = 0;
 int g_skipped = 0;
 
-struct TestCombo {
-    gameplay::CharacterMoves moves;
-    gameplay::WeaponDefinition weapon;
+struct TestCombo : test::Combo {
     bool ready = false;
 
     bool load(const std::filesystem::path& install) {
-        const int itemId = gameplay::kWeaponIds[0][0];
-        const auto movesPath = install / "data" / "rena" / "00.dat";
-        const std::string itemName =
-            (itemId < 10 ? "00" : itemId < 100 ? "0" : "") +
-            std::to_string(itemId) + ".dat";
-        const auto itemPath = install / "data" / "item" / itemName;
-        std::ifstream moveFile(movesPath, std::ios::binary);
-        std::ifstream itemFile(itemPath, std::ios::binary);
-        if (!moveFile || !itemFile) return false;
-        const std::vector<std::uint8_t> moveBytes(
-            (std::istreambuf_iterator<char>(moveFile)), std::istreambuf_iterator<char>());
-        const std::vector<std::uint8_t> itemBytes(
-            (std::istreambuf_iterator<char>(itemFile)), std::istreambuf_iterator<char>());
         std::string error;
-        if (!moves.parse(moveBytes.data(), moveBytes.size(), error) ||
-            moves.weapon_id() != itemId ||
-            !weapon.parse(itemId, itemBytes.data(), itemBytes.size(), error) ||
-            weapon.id != itemId)
-            return false;
-        moves.set_character_index(0);
-        ready = true;
-        return true;
+        fnd::assets::assetSource().openInstall(install.string());
+        ready = test::Combo::load(0,0,error);
+        return ready;
     }
 
     void bind(Fighter& fighter) const {
         if (!ready) return;
-        fighter.set_moves(&moves);
-        fighter.set_weapon(&weapon);
+        test::Combo::bind(fighter);
     }
 };
 
@@ -272,8 +250,8 @@ void settle(Fighter& f, int frames = FighterConstants::kBattleStartFrames) {
 // A fresh fighter at `pos` facing +Z, already out of the BattleStart pose.
 Fighter make_idle_fighter(const glm::vec3& pos) {
     Fighter f;
-    bind_test_combo(f);
     f.init(nullptr, nullptr, pos, 0.0f);
+    bind_test_combo(f);
     settle(f);
     return f;
 }
@@ -371,7 +349,8 @@ void test_idle_walk() {
     tick(s, si);
     check_int("stick past the deadzone enters Walk", static_cast<int>(FighterState::Walk),
               static_cast<int>(s.state()));
-    check_near("full stick walks at kWalkSpeed", 420.0 * kDt, s.position().x, 1e-6);
+    check_near("full stick follows its nineteen-degree turn arc", 7.2 * std::sin(glm::radians(19.f)),s.position().x,1e-6);
+    check_near("full stick preserves recovered walk distance",7.2,glm::length(s.position()),1e-5);
     si.p.stick_x = 4000;   // inside the 8000 deadzone
     tick(s, si);
     check_int("stick inside the deadzone is rest", static_cast<int>(FighterState::Idle),
@@ -405,25 +384,27 @@ void test_dash() {
     // Up maps to facing-forward = +Z (fighter.cpp:579), the same basis the walk
     // uses now: a tap and a hold agree about where "up" goes, so a dash fired
     // while walking keeps the line instead of reversing it.
-    check_near("ground dash first-frame dz", 900.0 * kDt, f.position().z - z_before,
+    check_near("ground dash first-frame dz", 17.0, f.position().z - z_before,
                1e-5);
     // Stamina: 100 - 20 = 80, then the same frame's grounded regen (+60*dt)
     // runs because Run is an actionable state (fighter.cpp:124). stamina() is
     // an int, so the observable is 81.
-    check_int("stamina after dash frame (100-20+regen)", 81, f.stamina());
-    in.set(fnd::input::Action::Up, false);
+    check_int("dash drains 1.2 percent per update, without a trigger cost",98,f.stamina());
 
     // The dash window is kDashFrames = 20 frames of committed motion.
     const float z_dash0 = f.position().z;
     for (int i = 0; i < 19; ++i) tick(f, in);
     const float z_dash19 = f.position().z;
-    check_near("dash travel over 20 frames", 900.0 * 20 * kDt, z_dash19 - z_before, 1e-3);
-    check_near("dash speed (u/s)", 900.0, (z_dash19 - z_dash0) / (19.0 * kDt), 1.0);
+    check_near("dash travel over twenty held updates",17.0*20,z_dash19-z_before,1e-3);
+    check_near("dash speed at this test's tick rate",17.0/kDt,(z_dash19-z_dash0)/(19.0*kDt),1.0);
+    in.set(fnd::input::Action::Up,false);
     tick(f, in);
-    check_int("dash expires after kDashFrames", static_cast<int>(FighterState::Idle),
+    check_int("release selects the data's recovery phase",2,f.move_phase());
+    for (int i = 0; i < 180 && f.state() == FighterState::Run; ++i) tick(f,in);
+    check_int("dash completes its actual recovery period and hold", static_cast<int>(FighterState::Idle),
               static_cast<int>(f.state()));
     // Stamina regenerates back to the cap while grounded and actionable.
-    for (int i = 0; i < 40; ++i) tick(f, in);
+    for (int i = 0; i < 100; ++i) tick(f, in);
     check_int("stamina back at cap after dash", 100, f.stamina());
 
     // An exhausted hold breaks Guard before stamina can fund another dash.
@@ -447,9 +428,9 @@ void test_dash() {
     tick(g, gi);
     gi.set(fnd::input::Action::Up, true);
     tick(g, gi);
-    check_int("no dash below kDashStamina", static_cast<int>(FighterState::Walk),
+    check_int("a partial pool can fund the source's per-update dash drain", static_cast<int>(FighterState::Run),
               static_cast<int>(g.state()));
-    check_bool("refused dash spends nothing", g.stamina() < 20, true);
+    check_bool("dash does not spend a twenty-percent trigger cost", g.stamina() < 20,true);
 
     // Air dash: jump, then double-tap while airborne.
     Fighter a = make_idle_fighter(glm::vec3(0, 0, 0));
@@ -519,8 +500,9 @@ void test_attacks() {
     check_int("grounded neutral attack uses the port's move-300 candidate", 300,
               attacker.attack_move_id());
     bool hit = attacker.try_melee_hit(target);
-    for (int i = 0; !hit && i < 20; ++i) {
+    for (int i = 0; !hit && i < 240 && attacker.state() == FighterState::AttackA; ++i) {
         tick(attacker, in);
+        if (attacker.melee_in_active()) test::Combo::placeAtAttack(attacker,target);
         hit = attacker.try_melee_hit(target);
     }
     check_bool("Rena 0's weapon move connects inside its recovered sphere", true, hit);
@@ -758,7 +740,7 @@ void test_air() {
     const float x0 = h.position().x;
     hi.set(fnd::input::Action::Right, true);
     tick(h, hi);
-    check_near("air control scales walk speed by 0.7", 420.0 * 0.7 * kDt,
+    check_near("air control scales recovered walk distance by 0.7",7.2*0.7,
                h.position().x - x0, 1e-5);
     check_bits("kAirControl", 0.7f, FighterConstants::kAirControl);
 }
@@ -796,15 +778,10 @@ void test_shots() {
                   static_cast<int>(f.charge_tier()));
         in.set(fnd::input::Action::Shoot, false);
         tick(f, in);
-        const gameplay::PendingShot shot = f.take_pending_shot();
-        check_bool("tap arms a pending shot", true, shot.armed);
+        gameplay::PendingShot shot = f.take_pending_shot();
+        check_bool("release starts the firing move, not an immediate shot",false,shot.armed);
         check_int("tap tier", static_cast<int>(ShotTier::Tap),
                   static_cast<int>(shot.tier));
-        check_bits("muzzle y = kMuzzleHeight", 100.0f, shot.pos.y);
-        check_bits("muzzle z = kMuzzleForward (yaw 0 faces +Z)", 60.0f, shot.pos.z);
-        check_bits("muzzle x", 0.0f, shot.pos.x);
-        check_bits("shot dir x", 0.0f, shot.dir.x);
-        check_bits("shot dir z", 1.0f, shot.dir.z);
         // The firing frame also recharges. The loaded item sizes the pool and
         // provides the shot cost; the port's provisional refill rule is one
         // shot/sec (see apply_weapon_ammo).
@@ -820,15 +797,22 @@ void test_shots() {
         check_bool("pending disarmed by take_pending_shot", false,
                    f.take_pending_shot().armed);
         check_bool("reloadNG open on the firing frame", false, f.reload_ok());
+        for (int i = 0; i < 12; ++i) tick(f,in);
+        shot = f.take_pending_shot();
+        check_bool("phase tick twelve launches one projectile",true,shot.armed);
+        check_int("tap selects item row zero",0,shot.bulletRow);
         int frames = 0;
         while (!f.reload_ok() && frames < 100) { tick(f, in); ++frames; }
-        check_int("tap reloadNG window (frames incl. firing frame)", 15, frames + 1);
-        int shot_state_ticks = frames;
+        check_int("tap reloadNG window including the release frame",15,frames+13);
+        int shot_state_ticks = frames+12;
         while (f.state() == FighterState::ShootA && shot_state_ticks < 100) {
             tick(f, in);
             ++shot_state_ticks;
         }
-        check_int("shooting action uses kShotStateFrames port ticks", 20, shot_state_ticks);
+        const int set = g_testCombo.moves.first_set_index(400);
+        const int period = static_cast<int>(std::nearbyint(g_testCombo.model.anims[set].duration /
+                             g_testCombo.model.ticksPerSecond / gameplay::kOriginalAnimationTick));
+        check_int("shooting action finishes on its actual clip period",period-1,shot_state_ticks);
         check_int("shooting state expires to Idle", static_cast<int>(FighterState::Idle),
                   static_cast<int>(f.state()));
     }
@@ -1361,19 +1345,19 @@ void test_ko() {
 //  Case 11 — facing/turn toward the opponent (kTurnSpeed 8 rad/s lerp)
 // ===========================================================================
 void test_facing() {
-    section("11. facing (turn toward the opponent, kTurnSpeed 8 rad/s)");
+    section("11. facing (absolute idle yaw and input-relative shortest turn)");
     Fighter a = make_idle_fighter(glm::vec3(0, 0, 0));
     Fighter b = make_idle_fighter(glm::vec3(100, 0, 0));
     a.update(nullptr, &b, kDt);
-    check_near("first-frame turn toward +X", (3.14159265 / 2.0) * 8.0 * kDt,
+    check_near("opponent bearing change preserves idle yaw",0.0,
                a.facing_yaw(), 1e-5);
     // kTurnSpeed is a lerp factor, so the approach is exponential, not linear:
     // after 30 frames the residual is (1 - 8*dt)^30 = 1.4% of the target.
     for (int i = 0; i < 29; ++i) a.update(nullptr, &b, kDt);
-    check_near("facing approaches +X exponentially", 3.14159265 / 2.0, a.facing_yaw(),
+    check_near("idle yaw remains absolute",0.0,a.facing_yaw(),
                0.03);
-    check_bool("turning is monotonic toward the target",
-               a.facing_yaw() < 3.14159265 / 2.0, true);
+    Input walk; walk.set(fnd::input::Action::Up,true); tick(a,walk,&b);
+    check_near("walking toward the new bearing turns nineteen degrees",glm::radians(19.f),a.facing_yaw(),1e-5);
 
     // yaw=0 faces +Z: an opponent straight ahead keeps yaw at 0.
     Fighter c = make_idle_fighter(glm::vec3(0, 0, 0));
@@ -1558,7 +1542,7 @@ void test_anim_binding() {
     k.set_moves(moves.get());
     k.init(&model, &ctrl, glm::vec3(0, 0, 0), 0.0f);
     k.update(nullptr, nullptr, kDt);
-    check_near("pose().animTime advances with dt", kDt, k.pose().animTime, 1e-6);
+    check_near("pose().animTime follows elapsed times the original tick",gameplay::kOriginalAnimationTick,k.pose().animTime,1e-6);
     check_bits("pose().position.x", 0.0f, k.pose().position.x);
     check_bool("pose().alive", true, k.pose().alive);
     check_near("pose().facingYaw", 0.0, k.pose().facingYaw, 0.0);

@@ -19,6 +19,7 @@
 #include "input/input.h"
 #include "gameplay/match.h"
 #include "gameplay/weapon_definition.h"
+#include "combo_fixture.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -159,25 +160,29 @@ int main() {
     {
         gameplay::MatchConfig config;
         config.fighterCount = 2;
-        config.spawn[1] = glm::vec3(0, 0, 40);   // inside 30 (body) + 20 (move 300)
-        const xm::Model* models[4] = {};
-        xm::Controller* animations[4] = {};
+        test::Combo combo;
+        check(combo.load(0,0,error), "Rena+0 bundle-winning rig/item/moves load together");
+        for (int i = 0; i < 2; ++i) {
+            config.moves[i] = &combo.moves;
+            config.weapon[i] = &combo.weapon;
+        }
+        const xm::Model* models[4] = {&combo.model,&combo.model};
+        xm::Controller* animations[4] = {combo.controller(),combo.controller()};
         gameplay::Match match;
         match.reset(config, models, animations, nullptr, nullptr);
         match.economy().setLogFile(nullptr);
-        match.fighter(0).set_moves(&moves);
-        match.fighter(0).set_weapon(&weapon);
-        match.fighter(0).set_bullet_parameter(1, &bullet);
-        match.fighter(1).set_moves(&moves);
         match.fighter(1).set_hp(gameplay::FighterConstants::kMaxHP);
 
-        // P1 melees on a 20-tick period; the swing's own windows pace the rest.
+        // A neutral press after recovery avoids chaining into a different-power
+        // move. Put the dummy's chest at the posed weapon volume on active ticks.
         fnd::input::PlayerState input;
         int hits = 0;
         int firstHitDamage = -1;
-        for (int tick = 0; tick < 1200 && match.fighter(1).is_alive(); ++tick) {
+        for (int tick = 0; tick < 4000 && match.fighter(1).is_alive(); ++tick) {
             for (bool& down : input.down) down = false;
-            input.down[fnd::input::AttackA] = (tick % 20) < 3;
+            input.down[fnd::input::AttackA] = match.fighter(0).actionable();
+            if (match.fighter(0).melee_in_active())
+                test::Combo::placeAtAttack(match.fighter(0),match.fighter(1));
             fnd::input::compute_edges(input);
             const fnd::input::PlayerState* inputs[4] = {&input, nullptr, nullptr, nullptr};
             const int before = match.fighter(1).hp();

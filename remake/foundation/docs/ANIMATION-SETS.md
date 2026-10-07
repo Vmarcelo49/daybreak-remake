@@ -157,11 +157,14 @@ to the next phase only when the rounded period is strictly less than elapsed and
 set's `+0x20` gate is zero. The remake reads that gate from the NN.dat trailer and gets the
 period from the matching `.X` rig's animation set.
 
-`FUN_0041e180` constructs each runtime period with D3DX `GetPeriod()` and the rig's source
-tick rate; comparisons against the original's `d3dx9_25.dll` matched every set in Rena 00,
-Rika 01, and Akane 00. The game rounds the period to an integer and compares it directly to
-its update counter, so the port preserves that strict boundary even though the units are
-unusual. It does not guess from the move record's `+0x04` or a separate clip-end callback.
+`FUN_0041e180` constructs each runtime period with D3DX `GetPeriod()`, divides by the float
+at `0x6a2434` (**0.016**; the loader instructions at 0x41e834-0x41e84a do `FDIV` and then
+round), and compares the result to its update counter — `round(GetPeriod()/0.016)`, not
+rounded seconds. Comparisons against the original's `d3dx9_25.dll` matched every set in
+Rena 00, Rika 01, and Akane 00. The port applies the same division in
+`advance_animation_phase` and in the weapon reader, and preserves the strict boundary even
+though the units are unusual. It does not guess from the move record's `+0x04` or a
+separate clip-end callback.
 
 `FUN_004212f0` advances a cursor through timed runtime records using elapsed move ticks and
 record `+4` thresholds. The loader reads the effect record's `v04` into

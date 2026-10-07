@@ -697,8 +697,17 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
     std::vector<glm::mat4> meshPalette;
     const std::vector<glm::mat4> noWorld;
 
+    textureVariants_.clear();
+    textureVariants_.resize(scene.models.size());
     for (size_t mi = 0; mi < scene.models.size(); ++mi) {
         const xm::SceneModel& sm = scene.models[mi];
+        if (options.textures) {
+            for (const auto& name : sm.textureVariants) {
+                int index = -1;
+                if (!uploadTexture(sm, name, false, index, error)) return false;
+                textureVariants_[mi][name] = index;
+            }
+        }
         if (!sm.drawable) continue;   // collision volumes are for queries/framing only
         const glm::mat4 model = mi < modelMatrices.size() ? modelMatrices[mi] : glm::mat4(1.f);
         const std::vector<glm::mat4>& world = mi < worlds.size() ? worlds[mi] : noWorld;
@@ -791,6 +800,8 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                     ++stats_.untextured;
                 }
 
+                d.originalTexture = d.texture;
+                d.textureName = mat.texture;
                 d.pass = pass;
                 // The original's toon technique covers the per-character draw
                 // (FUN_006396f0:126-140) and the object material path FUN_005f60b0:121-126,
@@ -920,8 +931,11 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
     baseDrawList_ = draws_;
     drawTemplates_.insert(drawTemplates_.end(), draws_.begin(), draws_.end());
     effectInstances_.clear();
+    modelVisible_.clear();
 
-    paletteBuffer_ = gpu::createBuffer(device_, palette_.size() * sizeof(glm::mat4),
+    basePaletteSize_ = palette_.size();
+    paletteCapacity_ = palette_.size();
+    paletteBuffer_ = gpu::createBuffer(device_, paletteCapacity_ * sizeof(glm::mat4),
                                        WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst,
                                        palette_.data());
     if (!paletteBuffer_) {
@@ -986,6 +1000,53 @@ void SceneRenderer::setModelMatrices(const std::vector<glm::mat4>& modelMatrices
             d.model = modelMatrices[d.modelIndex];
 }
 
+void SceneRenderer::setModelVisibility(const std::vector<bool>& visible) {
+    // FUN_00434a70(slot,-1) clears a prop id, which is what stops the original drawing
+    // that attachment. Draws are built once, so the bind state is a per-frame flag rather
+    // than a rebuilt list; it is kept here as well because setEffectInstances() rebuilds
+    // draws_ from the base list and would otherwise reset every attachment to drawn.
+    modelVisible_.assign(visible.begin(), visible.end());
+    applyModelVisibility();
+}
+
+void SceneRenderer::applyModelVisibility() {
+    for (DrawItem& d : draws_)
+        if (!d.instance && d.modelIndex < modelVisible_.size())
+            d.visible = modelVisible_[d.modelIndex];
+}
+
+void SceneRenderer::setTextureOverrides(const std::vector<TextureOverride>& overrides) {
+    // FUN_0041f580 restores sources before applying this set's active intervals.
+    // The key includes model instance, so two copies of one combo remain independent.
+    const auto apply = [&](std::vector<DrawItem>& draws) {
+        for (auto& draw : draws)
+            if (!draw.instance) draw.texture = draw.originalTexture;
+        for (const auto& change : overrides) {
+            if (change.modelIndex >= textureVariants_.size()) continue;
+            const auto& variants = textureVariants_[change.modelIndex];
+            const auto replacement = variants.find(change.replacement);
+            if (replacement == variants.end()) continue;
+            for (auto& draw : draws)
+                if (draw.modelIndex == change.modelIndex && draw.textureName == change.source)
+                    draw.texture = replacement->second;
+        }
+    };
+    apply(draws_);
+    apply(baseDrawList_);
+}
+
+void SceneRenderer::updateDynamicMesh(size_t modelIndex, const xm::Vertex* vertices,
+                                       size_t count, uint32_t indexCount) {
+    for (auto& draw : draws_) {
+        if (draw.modelIndex != modelIndex || draw.pass == Pass::Outline) continue;
+        wgpuQueueWriteBuffer(queue_, draw.vbuf, 0, vertices, count * sizeof(xm::Vertex));
+        draw.indexCount = indexCount;
+    }
+    for (auto& draw : baseDrawList_)
+        if (draw.modelIndex == modelIndex && draw.pass != Pass::Outline)
+            draw.indexCount = indexCount;
+}
+
 bool SceneRenderer::ensureDrawCapacity(size_t draws, std::string& error) {
     if (draws <= drawCapacity_ && drawGroup_) return true;
     if (drawGroup_) wgpuBindGroupRelease(drawGroup_);
@@ -1007,7 +1068,7 @@ bool SceneRenderer::ensureDrawCapacity(size_t draws, std::string& error) {
     drawEntries[0].size = sizeof(xm::DrawUniform);
     drawEntries[1].binding = 1;
     drawEntries[1].buffer = paletteBuffer_;
-    drawEntries[1].size = palette_.size() * sizeof(glm::mat4);
+    drawEntries[1].size = paletteCapacity_ * sizeof(glm::mat4);
     WGPUBindGroupDescriptor bgDesc = {};
     bgDesc.layout = bindGroupLayouts_[1];
     bgDesc.entryCount = 2;
@@ -1021,24 +1082,66 @@ bool SceneRenderer::ensureDrawCapacity(size_t draws, std::string& error) {
     return true;
 }
 
+bool SceneRenderer::ensurePaletteCapacity(size_t count, std::string& error) {
+    if (count <= paletteCapacity_) return true;
+    const size_t capacity = count + count/4 + 64;
+    auto buffer = gpu::createBuffer(device_,capacity*sizeof(glm::mat4),
+                                    WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst,nullptr);
+    if (!buffer) { error = "instance palette allocation failed"; return false; }
+    wgpuBufferRelease(paletteBuffer_);
+    paletteBuffer_ = buffer;
+    paletteCapacity_ = capacity;
+    drawCapacity_ = 0; // group 1 must bind the new storage buffer.
+    return true;
+}
+
 void SceneRenderer::setEffectInstances(const std::vector<EffectInstance>& instances) {
     if (instances.size() == effectInstances_.size() &&
         std::equal(instances.begin(), instances.end(), effectInstances_.begin(),
                    [](const EffectInstance& a, const EffectInstance& b) {
                        return a.modelIndex == b.modelIndex && a.model == b.model &&
-                              a.billboard == b.billboard;
+                              a.billboard == b.billboard && !a.pose && !b.pose &&
+                              a.textures == b.textures && a.renderMode == b.renderMode;
                    }))
         return;   // unchanged: keep the current draw list (the common frame)
     effectInstances_ = instances;
-    draws_.clear();
+    draws_ = baseDrawList_;
+    applyModelVisibility();
     draws_.reserve(drawTemplates_.size() + instances.size());
-    for (const DrawItem& t : drawTemplates_) draws_.push_back(t);
+    palette_.resize(basePaletteSize_);
     for (const EffectInstance& e : instances) {
+        std::vector<std::pair<uint32_t,uint32_t>> offsets;
+        if (e.pose) {
+            std::vector<glm::mat4> world, meshPalette;
+            e.pose->evalWorld(world);
+            for (const auto& mesh : meshes_) {
+                if (static_cast<int>(mesh.modelIndex) != e.modelIndex) continue;
+                mesh.model->buildPalette(*mesh.mesh,world,meshPalette);
+                offsets.emplace_back(mesh.paletteOffset,static_cast<uint32_t>(palette_.size()));
+                palette_.insert(palette_.end(),meshPalette.begin(),meshPalette.end());
+            }
+        }
         for (const DrawItem& t : drawTemplates_) {
             if ((int)t.modelIndex != e.modelIndex) continue;
             DrawItem d = t;
             d.model = e.model;
             d.instance = true;
+            if (e.renderMode >= 0) {
+                // FUN_005f60b0: modes 2/4 select additive, no depth write;
+                // 3/4 select the unlit MulColor technique. Solid shot meshes
+                // otherwise keep ordinary depth/alpha instead of effect routing.
+                d.pass = e.renderMode == 2 || e.renderMode == 4 ? Pass::Effect : Pass::Opaque;
+                d.flags &= ~xm::kDrawUnlit;
+                if (e.renderMode == 3 || e.renderMode == 4) d.flags |= xm::kDrawUnlit;
+            }
+            for (const auto& offset : offsets)
+                if (offset.first == t.paletteOffset) d.paletteOffset = offset.second;
+            if (t.modelIndex < textureVariants_.size())
+                for (const auto& change : e.textures) {
+                    const auto replacement = textureVariants_[t.modelIndex].find(change.second);
+                    if (change.first == t.textureName && replacement != textureVariants_[t.modelIndex].end())
+                        d.texture = replacement->second;
+                }
             // The per-mesh verdict still has the last word: a ground-plane card is never
             // yawed (classifyBillboard), and an instance that opts out is never yawed
             // either. `billboard` is only consulted for Effect-pass draws, so an instance
@@ -1057,13 +1160,16 @@ void SceneRenderer::setEffectInstances(const std::vector<EffectInstance>& instan
     stats_.decals  = baseDecals_ + instDecals;
     stats_.draws   = draws_.size();
     std::string error;
-    if (!ensureDrawCapacity(draws_.size(), error)) {
+    if (!ensurePaletteCapacity(palette_.size(),error) || !ensureDrawCapacity(draws_.size(), error)) {
         // No error channel here: drop the instances and keep the frame valid rather than
         // submit a draw list the uniform buffer cannot describe.
         std::fprintf(stderr, "[render] effect instances dropped: %s\n", error.c_str());
         effectInstances_.clear();
         draws_ = baseDrawList_;   // the scene's own draws, with no instance copies
+        applyModelVisibility();
+        palette_.resize(basePaletteSize_);
     }
+    wgpuQueueWriteBuffer(queue_,paletteBuffer_,0,palette_.data(),palette_.size()*sizeof(glm::mat4));
 }
 
 void SceneRenderer::setCamera(const glm::mat4& viewProj) { camera_.viewProj = viewProj; }
@@ -1589,6 +1695,7 @@ bool SceneRenderer::renderShadowCasters(const Target& target, const std::vector<
             // and weapon, and not the outline hull (which the toon row marks with its own
             // flag rather than `toon`).
             if (!d.toon || d.pass != Pass::Opaque) continue;
+            if (!d.visible) continue;   // an unbound attachment casts no shadow either
             const uint32_t offset = casterBase + (uint32_t)(i * xm::kDrawStride);
             wgpuRenderPassEncoderSetBindGroup(caster, 1, drawGroup_, 1, &offset);
             wgpuRenderPassEncoderSetVertexBuffer(caster, 0, d.vbuf, 0, WGPU_WHOLE_SIZE);
@@ -1759,6 +1866,7 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
             // commands it issued before the hulls existed, which is what keeps every
             // banked capture byte-identical.
             if (d.pass == Pass::Outline && !(appearance_.toon && toonRampReady_)) continue;
+            if (!d.visible) continue;   // unbound attachment (FUN_00434a70 clear)
             // The receiver count is a per-frame fact, not a per-view one: view 0 alone
             // reports it, so a 4-view frame does not multiply it by four.
             if (view == 0 && appearance_.shadows && d.receiver && d.pass == Pass::Opaque)

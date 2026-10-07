@@ -1,31 +1,17 @@
-// =============================================================================
-//  projectile.h — shot tiers, fractional ammo stocks, projectile pool, sparks.
-//
-//  Ported to the SDL3 + WebGPU foundation (docs/FULL-REPLACEMENT-PLAN.md §5
-//  item 2b) from remake/src/gameplay/projectile.h: logic only, D3D-free, names
-//  kept identical so the two can be diffed. Deviations are listed in "PORT
-//  NOTES" at the bottom of this header.
-//
-//  The string table @0x2b7530-0x2b75a0 contains shotA/shotB/shotC/shotFinal
-//  alongside attackA/B/C, but the decompiled corpus does not establish that these
-//  are per-tier firing animations or map them to the port's tap/yellow/red tiers.
-//  The port keeps those names as provisional labels. Stage channel
-//  provenance: fcn.004011f0 loads collision_tama.x ("tama" = ball) as the
-//  projectile-only mesh, queried here through game::physics::raycastModel.
-//  Capture provenance: battle-hud.webp pins MAIN 6 / CHARGE 2 counters;
-//  ammo-bar.webp pins fill fraction = recharge readout (so stocks are
-//  fractional floats, not int bullets + timer); Menus/charge pins the two
-//  hold thresholds (yellow, then red).
-//
-//  Only the stock counts (6/2) are capture-pinned. Speeds, damages, costs,
-//  recharge rates, and hold times below are provisional tuning until RE'd.
-// =============================================================================
 #pragma once
+// Projectile instances retain their exact item row, variant records, rig and
+// independent clock (FUN_005f8510 / FUN_005f75a0). Geometry uses the same
+// sphere/capsule contract as fighters. projectile_behavior.h records recovered
+// executable rules; unsupported handlers retain explicitly provisional tuning.
 
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <random>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include <glm/glm.hpp>
 
@@ -35,6 +21,9 @@
 namespace gameplay {
 
 class Fighter;  // update() damages fighters; defined in gameplay/fighter.h.
+struct BulletParameter;
+struct MoveEntry;
+struct ProjectileBehavior;
 
 // D3DCOLOR replacement, same 0xAARRGGBB wire format as render::DebugColor /
 // render::packColor (render/debug_prims.h:51-63). Declared here instead of
@@ -140,11 +129,34 @@ struct Projectile {
     float         life  = 0.0f;
     Fighter*      owner = nullptr;  // firing fighter; never self-hits, and
                                     // its Hypermode scales the damage dealt
-    // The impact effect id the shot was FIRED with (bullet record +0x70, via
-    // Fighter::impact_effect). Carried on the projectile so the contact can report the
-    // effect the shot would have spawned in the original (FUN_00637950:221-228) without
-    // re-deriving the weapon binding at hit time (issue #17).
+    // The impact effect id the shot was FIRED with (the bullet row's own record +0x70,
+    // looked up through the firing fighter's bound row). Carried on the projectile so the
+    // contact can report the effect the shot would have spawned in the original
+    // (FUN_00637950:221-228) without re-deriving the weapon binding at hit time
+    // (issue #17).
     int           impactEffect = -1;
+    int           bulletRow = -1;
+    const BulletParameter* parameter = nullptr;
+    ShotParams parameters = shot_params(ShotTier::Tap);
+    const ProjectileBehavior* behavior = nullptr;
+    Fighter* target = nullptr;
+    const xm::Model* model = nullptr;
+    xm::Controller controller;
+    int elapsed = 0;
+    int ticks = 0;
+    float yaw = 0.f;
+    float pitch = 0.f;
+    bool homing = true;
+    float speed = 0.f;
+    std::array<int,4> hitsRemaining{};
+    unsigned contactedVictims = 0;
+    bool contactPending = false;
+    int pauseRemaining = 0;
+    glm::vec3 ownRotation{};
+    glm::vec3 aimDirection{0.f,0.f,1.f};
+    const MoveEntry* record() const;
+    glm::mat4 model_matrix() const;
+    std::vector<std::pair<std::string,std::string>> texture_overrides() const;
 
     // DX9 render() split: the shot's unlit cube half-size was a literal at the
     // draw call (projectile.cpp:117) and its colour is the tier tint.
@@ -185,7 +197,7 @@ public:
     // the pool is full (caller drops the shot — same as the original, which
     // has a fixed tama table and silently refuses overflow).
     bool spawn(const glm::vec3& pos, const glm::vec3& dir,
-               ShotTier tier, Fighter* owner);
+               ShotTier tier, Fighter* owner, int bulletRow = -1, Fighter* target = nullptr);
 
     // Screen-space-free VFX trigger (binary `fire`/`spark` states).
     void spawn_spark(const glm::vec3& pos, float life = 0.3f);
@@ -230,6 +242,9 @@ private:
     std::array<Spark, kMaxSparks>      m_sparks{};
     std::array<ShotContact, kMaxShots> m_contacts{};
     int                                m_contactCount = 0;
+    // FUN_0065d150 is MT19937; keep visual randomness reproducible and local to
+    // this pool rather than coupling ribbon orientation to the COM's stream.
+    std::mt19937 m_visualRandom;
 };
 
 }  // namespace gameplay
@@ -249,7 +264,10 @@ private:
 //     as shots()/sparks() plus Projectile::color()/kCubeSize and
 //     Spark::size()/color(), which reproduce the DX9 per-cube arguments
 //     exactly (16 units opaque for shots; 14 + 46*t growing, fading sparks).
-//  4. No other logic change: spawn caps, tier table, expiry order (age before
-//     move, wall before fighters), self-hit exclusion and the spark lifetimes
-//     are the source's.
+//  4. Spawn caps, expiry order (age before move, wall before fighters), self-hit
+//     exclusion and the spark lifetimes come from the source. This file has since
+//     been reworked again: per-instance controller records, velocity-only collision
+//     anchors, the exact launch row, contact policy (tap persists, red pauses) and
+//     per-victim masks/budgets all live here now — read the comments at each site
+//     rather than treating this header's list as the current inventory.
 // =============================================================================

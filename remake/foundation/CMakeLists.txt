@@ -388,17 +388,15 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(match_economy_test PRIVATE src)
     add_test(NAME match_economy_test COMMAND match_economy_test)
 
-    # The ported simulation: compiles the gameplay sources directly, like
-    # raycast_analytic above, because the test defines XMODEL_IMPLEMENTATION itself
-    # (it builds synthetic xm::Models), so linking foundation_assets as well would be
-    # a duplicate-definition error.
-    add_executable(fighter_script_test tests/fighter_script_test.cpp
-                   src/gameplay/fighter.cpp src/gameplay/projectile.cpp
-                   src/gameplay/character_moves.cpp src/gameplay/weapon_definition.cpp
-                   src/physics/raycast.cpp)
+    add_executable(fighter_script_test tests/fighter_script_test.cpp)
     target_include_directories(fighter_script_test PRIVATE src)
-    target_link_libraries(fighter_script_test PRIVATE glm)
+    target_link_libraries(fighter_script_test PRIVATE foundation_gameplay)
     add_test(NAME fighter_script_test COMMAND fighter_script_test)
+
+    add_executable(animation_data_test tests/animation_data_test.cpp)
+    target_include_directories(animation_data_test PRIVATE src)
+    target_link_libraries(animation_data_test PRIVATE foundation_gameplay)
+    add_test(NAME animation_data_test COMMAND animation_data_test)
 
     # The effect-card live set: header-only game logic (glm + std), no device.
     add_executable(fx_cards_test tests/fx_cards_test.cpp)
@@ -433,13 +431,11 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(shadow_map_test PRIVATE glm)
     add_test(NAME shadow_map_test COMMAND shadow_map_test)
 
-    # The arena camera: game state only (no device). Compiles the ported raycast in
-    # directly, like the two tests above; it builds its xm::Model fixtures by hand, so
-    # it must not link foundation_assets (which defines XMODEL_IMPLEMENTATION).
+    # Device-free camera test; foundation_assets supplies the action-rig controller.
     add_executable(arena_camera_test tests/arena_camera_test.cpp
                    src/gameplay/arena_camera.cpp src/physics/raycast.cpp)
     target_include_directories(arena_camera_test PRIVATE src)
-    target_link_libraries(arena_camera_test PRIVATE glm)
+    target_link_libraries(arena_camera_test PRIVATE foundation_assets glm)
     add_test(NAME arena_camera_test COMMAND arena_camera_test)
 
     # Swept stage movement, ground support, landing and match spawn recovery. Synthetic

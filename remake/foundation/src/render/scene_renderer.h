@@ -363,6 +363,19 @@ public:
     // bones following animated rigs). DrawUniforms rebuild from draws_ on every
     // render(), so this takes effect on the next frame; a no-op before setScene.
     void setModelMatrices(const std::vector<glm::mat4>& modelMatrices);
+    // Per-model draw gate for the attachment system: FUN_00434a70 clears a prop id at
+    // throw and idle thresholds and re-binds it otherwise, so a weapon mesh is drawn
+    // only while its prop id is bound. Size is the scene's model count; models past
+    // the end keep their previous state. A no-op before setScene.
+    void setModelVisibility(const std::vector<bool>& visible);
+    struct TextureOverride {
+        size_t modelIndex;
+        std::string source;
+        std::string replacement;
+    };
+    void setTextureOverrides(const std::vector<TextureOverride>& overrides);
+    void updateDynamicMesh(size_t modelIndex, const xm::Vertex* vertices, size_t count,
+                           uint32_t indexCount);
 
     // Effect-card INSTANCES (issue #17). A scene model has exactly one placement in
     // modelMatrices, so N live cards that share one .X could only ever draw once — the
@@ -374,11 +387,16 @@ public:
         int       modelIndex = -1;
         glm::mat4 model{1.f};
         // Keep the instance's own orientation instead of yawing it to face the camera.
-        // An effect CARD is a flat quad and wants the yaw; a shot's model is a solid the
-        // original draws with its own transform (FUN_005f60b0 composes scale, rotation and
-        // translation into the model's matrix, game/shot_visual.h), so it opts out.
-        // Default true keeps every existing instance byte-identical.
+        // An effect CARD is a flat quad and wants the yaw; a shot's model is a solid whose
+        // orientation comes from its own transform. The caller decides per instance: a
+        // projectile asks for the camera billboard only when its current record's state
+        // flags carry 0x1000 (FUN_005f60b0's request), and an effect card passes true.
         bool      billboard = true;
+        // Projectile instances only: the shot's own pose controller (so the .X animates)
+        // and the material intervals its current trailer row selects.
+        const xm::Controller* pose = nullptr;
+        std::vector<std::pair<std::string,std::string>> textures;
+        int renderMode = -1; // current projectile record +0x7c (FUN_005f60b0)
     };
     void setEffectInstances(const std::vector<EffectInstance>& instances);
     // Grows the per-draw uniform buffer (and rebinds it) when the draw list outgrows it.
@@ -473,8 +491,12 @@ private:
         uint32_t   paletteOffset = 0;
         uint32_t   flags = 0;                        // from the material, per draw
         int        texture = -1;                     // -1 -> the 1x1 white fallback
+        int        originalTexture = -1;
+        std::string textureName;
         Pass       pass = Pass::Opaque;
         size_t     modelIndex = 0;   // owning model, for per-frame re-placement
+        bool       visible = true;   // per-frame attachment bind state
+                                     // (setModelVisibility); false skips submission
         glm::mat4  model{1.f};
         glm::vec4  baseColor{1.f};                   // material diffuse (D3DX faceColor)
         glm::vec4  emissive{0.f, 0.f, 0.f, 1.f};     // material Emissive (the toon effect's
@@ -671,11 +693,18 @@ private:
     std::vector<MeshRecord> meshes_;
     std::vector<WGPUBuffer> buffers_;      // owned vertex/index buffers
     std::vector<Texture>    textures_;     // owned, deduplicated by image
+    std::vector<std::unordered_map<std::string,int>> textureVariants_;
     // Images are shared between materials, so each is uploaded once and draws index
     // into textures_ through this map. Keyed by image pointer and cleared with the
     // list it indexes (releaseSceneResources), never separately.
     std::unordered_map<const xm::CnvImage*, int> texIndex_;
     std::vector<glm::mat4>  palette_;      // CPU copy, uploaded by updatePose()
+    size_t basePaletteSize_ = 0;
+    size_t paletteCapacity_ = 0;
+    bool ensurePaletteCapacity(size_t count, std::string& error);
+    // setModelVisibility() state, re-applied wherever draws_ is rebuilt.
+    std::vector<bool> modelVisible_;
+    void applyModelVisibility();
 
     WGPUTexture     depthTex_ = nullptr;
     WGPUTextureView depthView_ = nullptr;

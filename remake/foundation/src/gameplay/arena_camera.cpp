@@ -94,7 +94,36 @@ void ArenaCamera::update(double /*dt*/, const CollisionQuery& collision) {
     // position itself (the remake raised it 50; the original aims at her neck).
     m_target = glm::vec3(t->position.x, t->position.y + m_preset.aimHeight, t->position.z);
 
-    const glm::vec3 desiredEye = compute_desired_eye(t);
+    glm::vec3 desiredEye = compute_desired_eye(t);
+    if (m_actionRig && m_actionClip > 0 && static_cast<size_t>(m_actionClip) < m_actionRig->anims.size()) {
+        // FUN_00633140 / FUN_006333b0: camera/01.x Box01/Box02 offsets.
+        // The source transforms (1,0,0), not the origin, at elapsed * 0.016.
+        m_actionController.setTrackPosition(0, m_actionTime);
+        m_actionController.setTrackPosition(1, m_actionTime);
+        std::vector<glm::mat4> pose;
+        m_actionController.evalWorld(pose);
+        const int eye = m_actionRig->findFrame("Box01");
+        const int aim = m_actionRig->findFrame("Box02");
+        const glm::mat4 rotation = glm::rotate(glm::mat4(1.f), m_actionYaw + glm::pi<float>(), glm::vec3(0.f,1.f,0.f));
+        if (eye >= 0 && aim >= 0) {
+            desiredEye = m_actionPosition + glm::vec3(rotation * pose[static_cast<size_t>(eye)] * glm::vec4(1.f,0.f,0.f,1.f));
+            const glm::vec3 desiredAim = m_actionOpponent + glm::vec3(rotation * pose[static_cast<size_t>(aim)] * glm::vec4(1.f,0.f,0.f,1.f));
+            // FUN_00633220 smooths action eye/aim at 0.2/0.3, independently of
+            // the normal orbit follow blend and collision clamp.
+            const auto smooth = [](const glm::vec3& previous, const glm::vec3& desired, float blend) {
+                const float distance = glm::length(desired - previous);
+                return distance <= 2.f || distance > 10000.f ? desired : glm::mix(previous, desired, blend);
+            };
+            m_eye = smooth(m_eye, desiredEye, .2f);
+            m_target = smooth(m_previousActionAim, desiredAim, .3f);
+            m_previousActionAim = m_target;
+            const float period = m_actionRig->anims[static_cast<size_t>(m_actionClip)].duration / m_actionRig->ticksPerSecond;
+            if (m_actionTime < period) m_actionTime += .016f;
+            m_up = glm::vec3(0.f,1.f,0.f);
+            m_view = glm::lookAtLH(m_eye, m_target, m_up);
+            return;
+        }
+    }
 
     if (collision.collision) {
         const glm::vec3 leg = desiredEye - m_target;

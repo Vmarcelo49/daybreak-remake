@@ -81,8 +81,8 @@ struct DatBuilder {
 
 // mag: {num, type, reloadTime, intervalTime, chargeMax, chargeLevel}
 struct SynthMag { int num, type, reload, interval, chargeMax, chargeLevel; };
-// bullets: {magazine, shotNum, type, status}
-struct SynthBullet { int magazine, shotNum, type, status; };
+// bullets: {magazine, poolCapacity, type, status}
+struct SynthBullet { int magazine, poolCapacity, type, status; };
 
 std::vector<uint8_t> synthDat(int slots, int bulletCount,
                               const SynthMag mag0, const SynthMag mag1,
@@ -104,7 +104,7 @@ std::vector<uint8_t> synthDat(int slots, int bulletCount,
         b.u32(m.interval); b.u32(m.chargeMax); b.u32(m.chargeLevel);
     }
     for (const SynthBullet& s : bullets) {
-        b.u32(s.magazine); b.u32(s.shotNum); b.u32(s.type); b.u32(s.status);
+        b.u32(s.magazine); b.u32(s.poolCapacity); b.u32(s.type); b.u32(s.status);
     }
     return b.bytes;
 }
@@ -135,15 +135,15 @@ void testParser() {
     checkInt(96, w->gaugeHeight1, "gageHeight1 follows gageHeight0");
     check(w->slots[0].meshName == "01.x", "attachment 0 mesh name");
     check(w->slots[1].meshName.empty(), "an unused attachment reads as an empty name");
-    check(w->slots[0].transform[0] == 0.f && w->slots[0].transform[1] == 1.f &&
-          w->slots[0].transform[8] == 8.f,
-          "the nine attachment transforms land in order mx,my,mz,x,y,z,x1,y1,z1");
+    check(w->slots[0].muzzle[0] == 0.f && w->slots[0].muzzle[1] == 1.f &&
+          w->slots[0].ribbonTip[2] == 8.f,
+          "the nine attachment integers land in order muzzle, ribbon root, ribbon tip");
     checkInt(6, w->magazines[0].num, "magazine 0 num");
     checkInt(300, w->magazines[0].reloadTime, "magazine 0 reloadTime");
     checkInt(60, w->magazines[0].chargeMax, "magazine 0 chargeMax");
     checkInt(1, w->magazines[0].chargeLevel, "magazine 0 is charge level 1");
     checkInt(2, w->magazines[1].chargeLevel, "magazine 1 is charge level 2");
-    checkInt(3, w->bullets[0].shotNum, "bullet 0 shotNum");
+    checkInt(3, w->bullets[0].poolCapacity, "bullet 0 poolCapacity");
     checkInt(0, w->bullets[0].magazine, "bullet 0 magazine index");
     checkInt(w->bullets[0].type * 10 + w->bullets[0].status,
              w->bullets[0].paramId(), "the bullet paramId is type*10 + status");
@@ -237,7 +237,7 @@ std::vector<uint8_t> synthBulletDat(int status, const gameplay::BulletParameter&
     d.u32(1);                                // sub-section count (:90)
     d.u32(0);                                // section tag (:94)
     d.u32(1);                                // entry count (:96)
-    d.name30(b.effectName.empty() ? "Bip00" : b.effectName);   // (:102)
+    d.name30(b.boneName.empty() ? "Bip00" : b.boneName);
     d.u32(0);                                // v04 (:104)
     d.u32(0); d.u32(0); d.u32(0);            // v0c, v10, v14 (:105-107)
     d.u32(b.hitRadius);                      // v24 (:108)
@@ -260,13 +260,14 @@ std::vector<uint8_t> synthBulletDat(int status, const gameplay::BulletParameter&
     for (int i = 0; i < 20; ++i) d.u32(blob[i]);
     d.u32(0); d.u32(0); d.u32(0);             // v28, v2c, v08 (:111-113)
     d.u32(0); d.u32(0); d.u32(0);             // v18, v1c, v20 (:114-116)
+    d.u32(0); // Empty animation trailer in this synthetic fixture.
     return d.bytes;
 }
 
 void testBulletParameterParser() {
     section("device-free: the FUN_005f8510 combat block");
     gameplay::BulletParameter src;
-    src.effectName = "Bip03";
+    src.boneName = "Bip03";
     src.hitRadius = 30; src.baseDamage = 1750; src.hpDamage = 75; src.reflectDamage = 75;
     src.gaugeGainA = 100; src.gaugeGainB = 40;
     src.attackerHitstun = 0; src.defenderHitstun = 0;
@@ -282,7 +283,7 @@ void testBulletParameterParser() {
     // Issue #32: the header's 260-byte block is the model the bullet IS (the shot's own
     // render draws it), so it must survive the parse like any other field.
     check(out.modelName == "03.X", "the 260-byte model block round-trips (issue #32)");
-    check(out.effectName == "Bip03", "the 30-byte effect name round-trips");
+    check(out.boneName == "Bip03", "the 30-byte bone name round-trips");
     checkInt(30, out.hitRadius, "record +0x24 is the hit radius");
     checkInt(1750, out.baseDamage, "blob[0x00] is the base damage");
     checkInt(75, out.hpDamage, "blob[5] is the HP damage");
@@ -537,12 +538,11 @@ void testInventory(const fs::path& install) {
                 // "draws from no magazine" sentinel. Anything outside that is a parse
                 // fault, not data.
                 if (m < -1 || m > 2) bulletMagazineOk = false;
-                // shotNum is 3 for most shipped weapons, 4 for some, and -1 for three
-                // bullets, which Fighter::shot_count must treat as "no volley".
-                if (bullet.shotNum < -1) shotNumOk = false;
+                // -1 is an allocation sentinel, not a negative volley count.
+                if (bullet.poolCapacity < -1) shotNumOk = false;
             }
             check(bulletMagazineOk, "every bullet names a magazine in {-1,0,1,2}");
-            check(shotNumOk, "every bullet's shotNum is 3, 4 or the -1 sentinel");
+            check(shotNumOk, "every bullet's poolCapacity is 3, 4 or the -1 sentinel");
             capacitySignatures[{def->magazines[0].capacity(),
                                 def->magazines[1].capacity()}]++;
             chargeNotes.emplace_back(id, def->magazines[1].chargeMax ==
@@ -612,12 +612,10 @@ void testWeaponDrivesFighter() {
           "the yellow threshold is the level-1 chargeMax in ticks");
     check(std::fabs(fast.red_hold_sec() - 180.0f / 64.0f) < 1e-5f,
           "the red threshold is the level-2 chargeMax in ticks");
-    checkInt(4, fast.shot_count(gameplay::ShotTier::Tap),
-             "the tap volley is the level-1 bullet's shotNum");
-    // Level-2 candidates are {magazine 1, type 1, shotNum 3} and {magazine 1, type 2,
-    // shotNum 1}; the lowest type wins, so this is 3.
-    checkInt(3, fast.shot_count(gameplay::ShotTier::Red),
-             "the charged volley picks the lowest-type level-2 bullet");
+    checkInt(4, fastW->bullets[0].poolCapacity,
+             "row zero retains its live-instance capacity, not a volley count");
+    checkInt(3, fastW->bullets[1].poolCapacity,
+             "row one has an independent live-instance capacity");
 
     gameplay::Fighter heavy;
     heavy.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
@@ -639,7 +637,6 @@ void testWeaponDrivesFighter() {
     check(std::fabs(legacy.red_hold_sec() -
                     gameplay::FighterConstants::kRedHoldSec) < 1e-6f,
           "and the historical red threshold");
-    checkInt(1, legacy.shot_count(gameplay::ShotTier::Tap), "and a single projectile");
 
     section("behavior: the per-shot cost comes from the magazine");
     // A fighter with 2 shots' worth of tap ammo must be able to fire twice, not once.

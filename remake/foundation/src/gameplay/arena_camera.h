@@ -57,6 +57,7 @@
 // m_hitLastFrame plus their only consumer kMaxRaycastDist (write-only bookkeeping).
 
 #include <vector>
+#include "assets/xmodel.h"
 
 #include <glm/glm.hpp>
 
@@ -161,6 +162,23 @@ struct CollisionQuery {
 
 class ArenaCamera {
 public:
+    void set_action_rig(const xm::Model* model) {
+        m_actionRig = model;
+        m_actionController.bind(model);
+        m_actionClip = 0;
+        m_actionTime = 0.f;
+    }
+    void set_action(int clip, const glm::vec3& position, float yaw, const glm::vec3& opponent) {
+        if (clip != m_actionClip) {
+            m_actionClip = clip;
+            m_actionTime = 0.f;
+            m_actionYaw = yaw;
+            m_previousActionAim = m_target;
+            if (clip > 0) m_actionController.setAnimationBothTracks(clip, false);
+        }
+        m_actionPosition = position;
+        m_actionOpponent = opponent;
+    }
     // The reference's constructor body (identity view, zero eye/target, +Y up) is the
     // member initializers below; nothing is left to construct. The default preset is
     // the original game's framing — a match wants the game's camera, and the remake's
@@ -232,6 +250,14 @@ public:
     glm::vec3 compute_desired_eye(const CameraTarget* t) const;
 
 private:
+    const xm::Model* m_actionRig = nullptr;
+    xm::Controller m_actionController;
+    int m_actionClip = 0;
+    float m_actionTime = 0.f;
+    float m_actionYaw = 0.f;
+    glm::vec3 m_actionPosition{0.f};
+    glm::vec3 m_actionOpponent{0.f};
+    glm::vec3 m_previousActionAim{0.f};
     float effective_height() const {
         return m_heightOverride >= 0.0f ? m_heightOverride : m_preset.height;
     }

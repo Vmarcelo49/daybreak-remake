@@ -11,7 +11,7 @@
 //    * a target that dies or re-enters its airborne respawn is retargeted;
 //    * allies are never treated as hostiles (target or threat);
 //    * a bot blocked by a wall/corner recovers and keeps making progress;
-//    * characters fight with a real combo: the synthetic data below is "Rena 1"
+//    * characters fight with a real combo: the synthetic data below is "Rena 0"
 //      (weapon slot 1 / item 001, magazine 6x300 + 2x300, charge 60/180, and the
 //      weapon move chain 300/301/302 whose entries carry the hit windows) —
 //      never a bare fighter (AGENTS rule 7).
@@ -25,6 +25,7 @@
 #include "gameplay/character_moves.h"
 #include "gameplay/match.h"
 #include "gameplay/weapon_definition.h"
+#include "combo_fixture.h"
 
 #include <algorithm>
 #include <cmath>
@@ -78,7 +79,7 @@ void skip(const char* name) {
 }
 
 // ---------------------------------------------------------------------------
-// Synthetic combo data. The numbers are the shipped ones for Rena 1 (character
+// Synthetic combo data. The numbers are the shipped ones for Rena 0 (character
 // index 0, weapon slot 0, item id 1): docs/ROADMAP-PENDING.md's coverage table
 // row `rena | 0 | 1 | 2 | 18 | 6 | 300 | 2 | 300 | 60 | 180 | 75/30/1750 | —`
 // — magazine 0 is 6 shots at 300 pool units each, magazine 1 is 2 shots at 300,
@@ -105,7 +106,7 @@ struct SynthEntry {
     const char* name = "";
     int activeFrame = 0;
     int hitRadius = 0;
-    int hpDamage = 0;       // combat[5], 10000-based
+    int hpDamage = 0;       // synthetic neutral pool damage (base power is twice this)
     int defenderHitstun = 0;  // combat[10]
 };
 
@@ -120,7 +121,7 @@ void addPhase(std::vector<uint8_t>& b, int setIndex, const std::vector<SynthEntr
         putF32(b, 0.f);
         putU32(b, e.hitRadius);
         int combat[20] = {0};
-        combat[5] = e.hpDamage;
+        combat[0] = e.hpDamage * 2;
         combat[10] = e.defenderHitstun;
         for (int c : combat) putU32(b, c);
         putU32(b, 0);
@@ -144,11 +145,11 @@ SynthEntry prop(const char* name, int frame, int radius, int hpDamage, int hitst
     return e;
 }
 
-void addMove(std::vector<uint8_t>& b, int id, int cancelWindow,
+void addMove(std::vector<uint8_t>& b, int id, int cancelThreshold,
              const std::vector<SynthPhase>& phases) {
     putU32(b, id);
     putU32(b, 0);
-    putU32(b, cancelWindow);
+    putU32(b, cancelThreshold);
     putU32(b, static_cast<int>(phases.size()));
     for (const auto& p : phases) addPhase(b, p.first, p.second);
 }
@@ -172,15 +173,14 @@ std::vector<uint8_t> renaMoveTable() {
                        SynthPhase{15, {pose}}});
     // rena move 300: the hit goes live on frame 4 at radius 20 and the next effect
     // bounds the window at 7 (the shipped values, melee_rules_test's anchor).
-    addMove(b, 300, 12, {SynthPhase{31, {prop("Prop1", 4, 20, 750, 10),
+    addMove(b, 300, 12, {SynthPhase{31, {pose, prop("Prop1", 4, 20, 750, 10),
                                        prop("Whiff", 7, 0, 0, 0)}}});
-    addMove(b, 301, 12, {SynthPhase{33, {prop("Prop1", 7, 20, 1500, 12),
+    addMove(b, 301, 12, {SynthPhase{33, {pose, prop("Prop1", 7, 20, 1500, 12),
                                        prop("Whiff", 9, 0, 0, 0)}}});
-    // FUN_0041e180 continues past the move records with the animation-set rows: a
-    // count, then one [transitionDuration, phaseGate, eventCount, eventCount*0x84]
-    // row per set. This synthetic table exercises the move records only, so it
-    // declares zero sets — the parser rejects anything else as trailing data.
-    putU32(b, 0);
+    putU32(b, 124);
+    for (int i = 0; i < 124; ++i) {
+        putU32(b,0); putU32(b,0); putU32(b,0);
+    }
     return b;
 }
 
@@ -194,7 +194,7 @@ std::unique_ptr<gameplay::WeaponDefinition> rena1Weapon() {
     return w;
 }
 
-// One "Rena 1" fighter, settled out of the 60-frame BattleStart pose.
+// One "Rena 0" fighter, settled out of the 60-frame BattleStart pose.
 Fighter makeFighter(const gameplay::WeaponDefinition* weapon,
                     const gameplay::CharacterMoves* moves, const glm::vec3& at,
                     float facing = 0.f) {
@@ -407,7 +407,7 @@ void testAvailability() {
     auto moves = std::make_unique<gameplay::CharacterMoves>();
     std::string err;
     check(moves->parse(table.data(), table.size(), err),
-          "the synthetic Rena 1 move table parses");
+          "the synthetic Rena 0 move table parses");
     checkInt(1, moves->weapon_id(), "and carries its weapon id at file offset 0x114");
 
     Fighter self = makeFighter(weapon.get(), moves.get(), glm::vec3(0, 0, 0));
@@ -656,6 +656,17 @@ struct MatchRig {
         }
         const xm::Model* models[4] = {};
         xm::Controller* anims[4] = {};
+        m_model.ticksPerSecond = 1000.f;
+        m_model.anims.resize(124);
+        for (auto& animation : m_model.anims) animation.duration = 400.f;
+        m_model.frames.emplace_back();
+        m_model.frames.back().name = "Prop1";
+        m_model.frames.back().bindLocal = glm::translate(glm::mat4(1.f),glm::vec3(0,61,0));
+        m_model.frames.back().bindT = glm::vec3(0,61,0);
+        for (int i = 0; i < fighters; ++i) {
+            models[i] = &m_model;
+            anims[i] = &m_controllers[static_cast<size_t>(i)];
+        }
         match.reset(config, models, anims, nullptr, nullptr, nullptr);
     }
 
@@ -664,6 +675,8 @@ struct MatchRig {
     std::unique_ptr<gameplay::CharacterMoves> m_moves =
         std::make_unique<gameplay::CharacterMoves>();
     std::vector<uint8_t> m_table;
+    xm::Model m_model;
+    std::array<xm::Controller,4> m_controllers;
 };
 
 void testRetarget() {
@@ -917,10 +930,7 @@ fs::path findInstall(int argc, char** argv) {
 }
 
 bool readFile(const fs::path& p, std::vector<uint8_t>& out) {
-    std::ifstream in(p, std::ios::binary);
-    if (!in) return false;
-    out.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
-    return !out.empty();
+    return fnd::assets::assetSource().read(p.string(),out);
 }
 
 void testAssetBackedFourFighter(int argc, char** argv) {
@@ -935,8 +945,9 @@ void testAssetBackedFourFighter(int argc, char** argv) {
     // One legal combo per character, slot 0: item 001 rena, 002 mion, 005 keiichi,
     // 007 rika (kWeaponIds), each with its own data/<char>/00.dat move table.
     static const int kRoster[4] = {0, 1, 2, 4};
-    auto weapon = std::make_unique<gameplay::WeaponDefinition>();
-    auto moves = std::make_unique<gameplay::CharacterMoves>();
+    fnd::assets::assetSource().openInstall(install.string());
+    std::array<xm::Model,4> rigs;
+    std::array<xm::Controller,4> controllers;
     std::vector<std::unique_ptr<gameplay::WeaponDefinition>> weapons;
     std::vector<std::unique_ptr<gameplay::CharacterMoves>> tables;
     std::vector<std::unique_ptr<gameplay::BulletParameter>> bullets[4];
@@ -971,22 +982,21 @@ void testAssetBackedFourFighter(int argc, char** argv) {
             skip("COM 2v2 runs on a walled stage");
             return;
         }
-        // The recovered per-weapon projectile parameters, exactly as the live path binds
-        // them (lowest-type bullet per magazine).
-        for (int level = 1; level <= 2; ++level) {
-            const int want = w->magazineForChargeLevel(level).chargeLevel - 1;
-            const gameplay::BulletDefinition* best = nullptr;
-            for (int b = 0; b < w->bulletCount; ++b)
-                if (w->bullets[b].magazine == want && (!best || w->bullets[b].type < best->type))
-                    best = &w->bullets[b];
-            if (!best) continue;
+        m->set_character_index(character);
+        if (!readFile(install / "data" / gameplay::kCharacterDirs[character] / m->model_name(),bytes)) {
+            check(false,"the equipped combo's rig exists");
+            return;
+        }
+        rigs[static_cast<size_t>(i)] = xm::loadMemory(bytes.data(),bytes.size());
+        for (int row = 0; row < w->bulletCount; ++row) {
+            const auto& definition = w->bullets[row];
             char rel[64];
-            std::snprintf(rel, sizeof(rel), "bullet/%03d/%03d.dat", itemId, best->type);
+            std::snprintf(rel, sizeof(rel), "bullet/%03d/%03d.dat", itemId, definition.type);
             std::vector<uint8_t> pb;
-            if (!readFile(install / "data" / rel, pb)) continue;
             auto param = std::make_unique<gameplay::BulletParameter>();
-            if (gameplay::parseBulletParameter(pb.data(), pb.size(), best->status, *param, err))
-                bullets[i].push_back(std::move(param));
+            const bool parsed = readFile(install / "data" / rel, pb) &&
+                gameplay::parseBulletParameter(pb.data(), pb.size(), definition.status, *param, err);
+            bullets[i].push_back(parsed ? std::move(param) : nullptr);
         }
         weapons.push_back(std::move(w));
         tables.push_back(std::move(m));
@@ -1018,12 +1028,12 @@ void testAssetBackedFourFighter(int argc, char** argv) {
     config.balloonSize[0] = config.balloonSize[1] = 40;
 
     gameplay::Match match;
-    const xm::Model* models[4] = {};
-    xm::Controller* anims[4] = {};
+    const xm::Model* models[4] = {&rigs[0],&rigs[1],&rigs[2],&rigs[3]};
+    xm::Controller* anims[4] = {&controllers[0],&controllers[1],&controllers[2],&controllers[3]};
     match.reset(config, models, anims, nullptr, nullptr, &collision);
     for (int i = 0; i < 4; ++i)
-        for (size_t level = 0; level < bullets[i].size(); ++level)
-            match.fighter(i).set_bullet_parameter((int)level + 1, bullets[i][level].get());
+        for (size_t row = 0; row < bullets[i].size(); ++row)
+            match.fighter(i).set_bullet_row(static_cast<int>(row), bullets[i][row].get());
 
     BotBrain brains[4];
     BotContext ctx[4];
