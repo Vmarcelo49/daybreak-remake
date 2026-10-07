@@ -210,23 +210,14 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
     }
 
     UserSettings candidate;   // defaults; only a clean parse reaches `out`
-    bool sawVersion = false;
-    // A v1 document's binding rows carry the removed heavy action at index 5; the rows are
-    // read with the v1 width and the entry is dropped once the row parses (see the header).
-    bool legacyLayout = false;
-    // A v2 document is migrated to the current schema by adding the toon toggle at its
-    // default; nothing is dropped, so the report gets a context line rather than a warning
-    // (see the header).
-    bool v2Document = false;
-    // A v3 document predates BOTH later additions, so it is migrated by defaulting the
-    // remembered folder (#36) and the shadow toggle (#21); the report says which version it
-    // came from.
-    bool v3Document = false;
-    // A v4 document predates the shadow toggle only: it carries [game] install_dir.
-    bool v4Document = false;
+    // The document's own version, 0 until its version line is read. The migration switch at
+    // the end of this function keys off it: v1 is the one migration that DROPS a value (the
+    // removed heavy-melee binding) and therefore warns, while v2..v5 are additive and report
+    // context instead (see the header).
+    int documentVersion = 0;
     // The remembered folder must be PRESENT, even empty: "not set" and "no folder chosen"
     // are different statements, and only the first is worth a warning.
-    bool sawInstallDir = false;    bool inSection = false;
+    bool sawInstallDir = false;
     std::string section;
     std::istringstream stream(text);
     std::string raw;
@@ -248,7 +239,6 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                 return false;
             }
             section = trimmed(line.substr(1, line.size() - 2));
-            inSection = true;
             if (section != "game" && section != "display" && section != "render" &&
                 section != "audio" && section != "bindings" && section != "controllers") {
                 error = "line " + std::to_string(lineNumber) + ": unknown section [" + section + "]";
@@ -278,7 +268,9 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
             report.messages.push_back("line " + std::to_string(lineNumber) + ": " + what);
         };
 
-        if (!inSection) {
+        // Nothing but the version line may stand outside a section, and a section header is
+        // what fills `section` (an empty or unknown one was rejected above).
+        if (section.empty()) {
             if (key == "version") {
                 int version = 0;
                 if (!parseInt(value, version)) {
@@ -292,11 +284,7 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                             " (this build writes " + std::to_string(kSchemaVersion) + ")";
                     return false;
                 }
-                legacyLayout = (version == kSchemaVersionLegacy);
-                v2Document = (version == kSchemaVersionV2);
-                v3Document = (version == kSchemaVersionV3);
-                v4Document = (version == kSchemaVersionV4);
-                sawVersion = true;
+                documentVersion = version;
                 continue;
             }
             error = "line " + std::to_string(lineNumber) + ": key '" + key +
@@ -366,6 +354,9 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                     *slot = volume;
             }
         } else if (section == "bindings") {
+            // A v1 row is read with the v1 width: it carries the removed heavy action at
+            // index 5, which the copy below skips (see the header).
+            const bool legacyLayout = documentVersion == kSchemaVersionLegacy;
             if (key == "keyboard") {
                 int row[kLegacyActionCount] = {};
                 std::string why;
@@ -418,39 +409,48 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
         }
     }
 
-    if (!sawVersion) {
+    if (documentVersion == 0) {
         error = "missing version line";
         return false;
     }
-    if (legacyLayout) {
+    switch (documentVersion) {
+    case kSchemaVersionLegacy:
+        // The only migration that drops a value, so the only one that warns.
         ++report.warnings;
         report.messages.push_back(
             "config version 1: migrated to " + std::to_string(kSchemaVersion) +
             " (the removed heavy-melee binding was dropped, every other binding kept; no "
             "game folder is remembered until a run opens one)");
-    } else if (v2Document) {
+        break;
+    case kSchemaVersionV2:
         report.messages.push_back(
             "config version 2: migrated to " + std::to_string(kSchemaVersion) +
             " (toon rendering defaults to off, no game folder is remembered until a run "
             "opens one, and shadows default to off; every stored value kept)");
-    } else if (v3Document) {
+        break;
+    case kSchemaVersionV3:
         report.messages.push_back(
             "config version 3: migrated to " + std::to_string(kSchemaVersion) +
             " (the game folder is remembered in this file from now on and shadows default "
             "to off; every stored value kept)");
-    } else if (v4Document) {
+        break;
+    case kSchemaVersionV4:
         report.messages.push_back(
-            "config version 4: migrated to " + std::to_string(kSchemaVersion) +            " (character shadows default to off; every stored value kept)");
-    } else if (!sawInstallDir) {
-        // A CURRENT document always carries the key — serialize() writes it even when no
-        // folder is remembered — so its absence is a hand-edit or a lossy writer, and the
-        // one thing that changes is worth a warning. An older document cannot have the key
-        // and gets the context line above instead, the rule #21's v2 migration follows.
-        ++report.warnings;
-        report.messages.push_back(
-            "install_dir: a version " + std::to_string(kSchemaVersion) +
-            " document should carry the game folder key, so no folder is remembered");
-
+            "config version 4: migrated to " + std::to_string(kSchemaVersion) +
+            " (character shadows default to off; every stored value kept)");
+        break;
+    case kSchemaVersion:
+        // A CURRENT document always carries the folder key — serialize() writes it even when
+        // no folder is remembered — so its absence is a hand-edit or a lossy writer, and the
+        // one thing that changes is worth a warning. The older documents above cannot have
+        // the key and get their context line instead, the rule #21's v2 migration follows.
+        if (!sawInstallDir) {
+            ++report.warnings;
+            report.messages.push_back(
+                "install_dir: a version " + std::to_string(kSchemaVersion) +
+                " document should carry the game folder key, so no folder is remembered");
+        }
+        break;
     }
     out = candidate;
     report.loaded = true;
