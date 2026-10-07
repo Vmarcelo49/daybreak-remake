@@ -35,7 +35,12 @@ struct FrontendState {
     }
     std::array<FrontendSlot, 4> slots{};
     // FRONTEND-PLAN §5.2: values are percentages, seconds, and a 0=random stage index.
-    int stage = 0, variation = 0, timeLimit = 180, health = 100, gauge = 100;
+    // timeLimit 0 is INFINITE, and it is the original's default: DAT_006cf3c0 sits in .data's
+    // bss tail (past the raw data, so the loader zeroes it) and the only write to it anywhere
+    // is the menu's own cycle (FUN_0040acb0:53), so the game opens on "no limit". The port
+    // shipped 180 — the third stop of five, a port choice, not a recovered value.
+    // FUN_0040cd00:44 branches on `== 0` to draw the infinity glyph, which the row already does.
+    int stage = 0, variation = 0, timeLimit = 0, health = 100, gauge = 100;
     int blueBalloon = 100, redBalloon = 100;
     bool stagePage = false;
     // Seeded locally so captures and scripted menu runs reproduce FUN_0040d130's random choices.

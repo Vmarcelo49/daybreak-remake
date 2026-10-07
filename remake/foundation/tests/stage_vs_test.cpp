@@ -18,9 +18,17 @@ int main() {
     CHECK(state.stage == 2 && state.variation == 1);
     menu.update(down); menu.update(right); CHECK(state.variation == 0);
     menu.update(down);
+    // The default is INFINITE, and 0 is how the row spells it. DAT_006cf3c0 lives in .data's
+    // bss tail — past the raw data, so the loader zeroes it — and the only write to it anywhere
+    // is this menu's own cycle (FUN_0040acb0:53), so the original opens on "no limit". The port
+    // shipped 180 (the third of five stops) until that was measured against the binary.
+    CHECK(state.timeLimit == 0);
+    menu.update(right); CHECK(state.timeLimit == 60);
+    menu.update(right); CHECK(state.timeLimit == 120);
+    menu.update(right); CHECK(state.timeLimit == 180);
     menu.update(right); CHECK(state.timeLimit == 240);
-    menu.update(right); CHECK(state.timeLimit == 0);
-    menu.update(left); CHECK(state.timeLimit == 240);
+    menu.update(right); CHECK(state.timeLimit == 0);      // the five stops wrap
+    menu.update(left);  CHECK(state.timeLimit == 240);
     menu.update(down); state.health = 50;
     menu.update(left); CHECK(state.health == 200);
     menu.update(right); CHECK(state.health == 50);

@@ -125,7 +125,14 @@ ScreenId OpeningScreen::update(const ScreenInput& in) {
         }
         return ScreenId::Title;
     }
-    if (movieSkipHeld([this](int sc) { return input_.key_down(sc); })) {
+    // The recovered skip input (Return/LAlt/RAlt) OR the front-end's own buttons.
+    //
+    // The original reads raw VK codes and its Return IS the front-end's confirm key, so there
+    // the two are one press. This port binds confirm to Z (Jump) and cancel to X (AttackA),
+    // which left the skip reachable only by Return — a key that does nothing in these menus —
+    // while the buttons a player is actually holding did nothing at all. Taking both keeps the
+    // recovered keys working and makes the buttons work too.
+    if (movieSkipHeld([this](int sc) { return input_.key_down(sc); }) || in.confirm || in.cancel) {
         std::printf("movie        : skipped at frame %llu (%.3f s)\n",
                     (unsigned long long)player_.framesPresented(), player_.frameTime());
         return ScreenId::Title;
