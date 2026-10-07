@@ -563,6 +563,14 @@ private:
     // per (format, pass, entry) so enabling an experiment builds one extra variant.
     WGPURenderPipeline pipelineFor(WGPUTextureFormat, Pass, bool npr, std::string& error);
     bool ensureDepth(uint32_t width, uint32_t height, std::string& error);
+    // A 1x1 RGBA8 texture of one colour and its view: the two placeholders the bind
+    // groups need (white where a material resolves no texture, opaque black where no
+    // shadow map was rendered). Leaves both handles null if creation fails, for the
+    // caller's own completeness check.
+    void createSolidTexture(uint32_t rgba, WGPUTexture& tex, WGPUTextureView& view);
+    // The sampler state every binding here shares, differing only in address mode; see
+    // the definition. Null if creation fails, which init()'s check catches.
+    WGPUSampler createSampler(WGPUAddressMode addressMode);
     // Uploads the texture a material names and hands back its index in textures_
     // through `index`. False is a failed upload, and the caller must give up the
     // scene; true with an index of -1 is the ordinary "this draw has no texture".
@@ -579,7 +587,14 @@ private:
         WGPUTextureView view = nullptr, depthView = nullptr;
         WGPUBindGroup   group = nullptr;   // group 3: the map + its sampler
     };
+    // Lazy creation of the caster pass's pipeline, which needs only the shadow layout
+    // and the model shader; cached for the process like the main pipelines.
+    bool ensureShadowPipeline(std::string& error);
     bool ensureShadowTarget(size_t view, std::string& error);
+    // The caster pass itself (issue #21 row 1): one render pass per view into that
+    // view's map, drawing the toon technique's own surface set. `views` as in renderImpl.
+    bool renderShadowCasters(const Target&, const std::vector<ViewCamera>* views,
+                             std::string& error);
     void releaseShadowTargets();
     // Every GPU object that belongs to the loaded scene: the vertex/index buffers, the
     // uploaded textures and their bind groups, the draw bind group and the palette and

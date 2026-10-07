@@ -233,6 +233,45 @@ void SceneRenderer::releaseSceneResources() {
     paletteBuffer_ = drawBuffer_ = nullptr;
 }
 
+// The sampler state every binding in this renderer shares: LINEAR mag, min and mip,
+// the 0..32 LOD range and anisotropy 1. The header's mip note carries the call-site
+// survey behind that — sampler 0 receives only the three filter writes, so
+// MAXANISOTROPY (10), MIPMAPLODBIAS (8) and MAXMIPLEVEL (9) stay at D3D9's own
+// defaults. Only the address mode differs between the three users, which is all this
+// takes. A null return is caught by init()'s completeness check, which is why there is
+// no error channel here.
+WGPUSampler SceneRenderer::createSampler(WGPUAddressMode addressMode) {
+    WGPUSamplerDescriptor sd = {};
+    sd.addressModeU = sd.addressModeV = sd.addressModeW = addressMode;
+    sd.magFilter = WGPUFilterMode_Linear;
+    sd.minFilter = WGPUFilterMode_Linear;
+    sd.mipmapFilter = WGPUMipmapFilterMode_Linear;
+    sd.lodMinClamp = 0.f;
+    sd.lodMaxClamp = 32.f;
+    sd.maxAnisotropy = 1;
+    return wgpuDeviceCreateSampler(device_, &sd);
+}
+
+void SceneRenderer::createSolidTexture(uint32_t rgba, WGPUTexture& tex, WGPUTextureView& view) {
+    WGPUTextureDescriptor td = {};
+    td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+    td.dimension = WGPUTextureDimension_2D;
+    td.size = WGPUExtent3D{1, 1, 1};
+    td.format = WGPUTextureFormat_RGBA8Unorm;
+    td.mipLevelCount = 1;
+    td.sampleCount = 1;
+    tex = wgpuDeviceCreateTexture(device_, &td);
+    if (!tex) return;
+    WGPUTexelCopyTextureInfo dst = {};
+    dst.texture = tex;
+    dst.aspect = WGPUTextureAspect_All;
+    WGPUTexelCopyBufferLayout layout = {};
+    layout.bytesPerRow = 4;
+    layout.rowsPerImage = 1;
+    wgpuQueueWriteTexture(queue_, &dst, &rgba, 4, &layout, &td.size);
+    view = wgpuTextureCreateView(tex, nullptr);
+}
+
 bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
     if (!ctx.device || !ctx.queue || !ctx.instance) {
         error = "renderer needs a live device, queue and instance";
@@ -322,32 +361,16 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
     plDesc.bindGroupLayouts = casterLayouts;
     shadowPipelineLayout_ = wgpuDeviceCreatePipelineLayout(device_, &plDesc);
 
-    WGPUSamplerDescriptor sd = {};
-    // The original's sampler 0 in WebGPU terms: MIP is LINEAR too, and address modes and
-    // anisotropy are left at the D3D9 defaults the original never overrides — the header's
-    // mip note carries the call-site survey that says so.
-    sd.addressModeU = sd.addressModeV = sd.addressModeW = WGPUAddressMode_Repeat;
-    sd.magFilter = WGPUFilterMode_Linear;
-    sd.minFilter = WGPUFilterMode_Linear;
-    sd.mipmapFilter = WGPUMipmapFilterMode_Linear;
-    sd.lodMinClamp = 0.f;
-    sd.lodMaxClamp = 32.f;
-    sd.maxAnisotropy = 1;
-    sampler_ = wgpuDeviceCreateSampler(device_, &sd);
+    // The original's sampler 0 in WebGPU terms: address modes stay at D3D9's WRAP, the
+    // default the original never overrides — the header's mip note carries the call-site
+    // survey that says so.
+    sampler_ = createSampler(WGPUAddressMode_Repeat);
 
     // The toon ramp's own sampler (issue #21): clamp, because u = N.L = 1 has to read the
     // bright end of the bitmap and WRAP would blend it with the dark end there. Filtering
     // stays LINEAR, the D3D9 default the original's sampler 0 carries, which suits the
     // shipped 64-wide gradient; the ramp has one level, so the mip filter never runs.
-    WGPUSamplerDescriptor rsd = {};
-    rsd.addressModeU = rsd.addressModeV = rsd.addressModeW = WGPUAddressMode_ClampToEdge;
-    rsd.magFilter = WGPUFilterMode_Linear;
-    rsd.minFilter = WGPUFilterMode_Linear;
-    rsd.mipmapFilter = WGPUMipmapFilterMode_Linear;
-    rsd.lodMinClamp = 0.f;
-    rsd.lodMaxClamp = 32.f;
-    rsd.maxAnisotropy = 1;
-    toonRampSampler_ = wgpuDeviceCreateSampler(device_, &rsd);
+    toonRampSampler_ = createSampler(WGPUAddressMode_ClampToEdge);
 
     // The shadow map's sampler (issue #21 row 1). The original's Tex1 is
     // D3DTADDRESS_BORDER with a black border colour (FUN_00651110 case 3/4), which WebGPU
@@ -355,38 +378,14 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
     // [0,1] range test supplies the border behaviour. Linear, because the map is a
     // 1024x1024 depth image the original filters with sampler state 1's LINEAR default —
     // and because a fighter's shadow is a few hundred texels wide, so the filter's
-    // softness is what the original's own shadows show.
-    WGPUSamplerDescriptor ssd = {};
-    ssd.addressModeU = ssd.addressModeV = ssd.addressModeW = WGPUAddressMode_ClampToEdge;
-    ssd.magFilter = WGPUFilterMode_Linear;
-    ssd.minFilter = WGPUFilterMode_Linear;
-    ssd.mipmapFilter = WGPUMipmapFilterMode_Linear;
-    ssd.lodMinClamp = 0.f;
-    ssd.lodMaxClamp = 32.f;
-    ssd.maxAnisotropy = 1;
-    shadowSampler_ = wgpuDeviceCreateSampler(device_, &ssd);
+    // softness is what the original's own shadows show. It keeps its own handle rather
+    // than sharing the ramp's identical state: each member releases what it owns, and a
+    // second alias pair in shutdown() is a second load-bearing release order.
+    shadowSampler_ = createSampler(WGPUAddressMode_ClampToEdge);
 
     // The untextured fallback: binds where a material has no resolvable texture, so
     // the shader's unconditional sample stays valid.
-    const uint32_t white = 0xffffffffu;
-    WGPUTextureDescriptor td = {};
-    td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
-    td.dimension = WGPUTextureDimension_2D;
-    td.size = WGPUExtent3D{1, 1, 1};
-    td.format = WGPUTextureFormat_RGBA8Unorm;
-    td.mipLevelCount = 1;
-    td.sampleCount = 1;
-    whiteTex_ = wgpuDeviceCreateTexture(device_, &td);
-    if (whiteTex_) {
-        WGPUTexelCopyTextureInfo dst = {};
-        dst.texture = whiteTex_;
-        dst.aspect = WGPUTextureAspect_All;
-        WGPUTexelCopyBufferLayout layout = {};
-        layout.bytesPerRow = 4;
-        layout.rowsPerImage = 1;
-        wgpuQueueWriteTexture(queue_, &dst, &white, 4, &layout, &td.size);
-        whiteView_ = wgpuTextureCreateView(whiteTex_, nullptr);
-    }
+    createSolidTexture(0xffffffffu, whiteTex_, whiteView_);
 
     // The toon ramp (issue #21), decoded through the foundation's one CNV path and
     // uploaded once: it is a 64x64 RGBA8 bitmap with no mip chain, because the original
@@ -432,25 +431,7 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
     // original's cleared 1024x1024 map reads as (alpha 1.0 = "nothing cast here"). It
     // stands in for group 3 on every frame the shadow pass does not run, so the group is
     // always complete and a run with shadows off allocates no 1024x1024 target at all.
-    const uint32_t black = 0xff000000u;
-    WGPUTextureDescriptor shd = {};
-    shd.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
-    shd.dimension = WGPUTextureDimension_2D;
-    shd.size = WGPUExtent3D{1, 1, 1};
-    shd.format = WGPUTextureFormat_RGBA8Unorm;
-    shd.mipLevelCount = 1;
-    shd.sampleCount = 1;
-    shadowPlaceholderTex_ = wgpuDeviceCreateTexture(device_, &shd);
-    if (shadowPlaceholderTex_) {
-        WGPUTexelCopyTextureInfo dst = {};
-        dst.texture = shadowPlaceholderTex_;
-        dst.aspect = WGPUTextureAspect_All;
-        WGPUTexelCopyBufferLayout layout = {};
-        layout.bytesPerRow = 4;
-        layout.rowsPerImage = 1;
-        wgpuQueueWriteTexture(queue_, &dst, &black, 4, &layout, &shd.size);
-        shadowPlaceholderView_ = wgpuTextureCreateView(shadowPlaceholderTex_, nullptr);
-    }
+    createSolidTexture(0xff000000u, shadowPlaceholderTex_, shadowPlaceholderView_);
 
     if (!bindGroupLayouts_[0] || !bindGroupLayouts_[1] || !bindGroupLayouts_[2] ||
         !bindGroupLayouts_[3] || !pipelineLayout_ || !shadowPipelineLayout_ || !sampler_ ||
@@ -1498,6 +1479,121 @@ bool SceneRenderer::ensureViewCameras(std::string& error) {
     return true;
 }
 
+// The caster pass's pipeline, built on first use: its own layout (groups 0 and 1 only)
+// and its own entry points, and nothing else about it is shared with the main passes.
+bool SceneRenderer::ensureShadowPipeline(std::string& error) {
+    if (shadowPipeline_) return true;
+
+    WGPUVertexAttribute attrs[xm::kVertexAttributeCount];
+    WGPUVertexBufferLayout vbl = xm::wgpuVertexLayout(attrs);
+    WGPUVertexAttribute nprAttr[1];
+    WGPUVertexBufferLayout nprVbl = xm::wgpuNprVertexLayout(nprAttr);
+    WGPUVertexBufferLayout vbls[2] = {vbl, nprVbl};
+    WGPUColorTargetState shadowTarget = {};
+    shadowTarget.format = WGPUTextureFormat_RGBA8Unorm;
+    shadowTarget.writeMask = WGPUColorWriteMask_All;
+    // No blending: the original's mode-2 entry sets SRCBLEND = ONE, DESTBLEND = ZERO,
+    // i.e. a plain overwrite of the target it just cleared.
+    WGPUDepthStencilState shadowDepth = {};
+    shadowDepth.format = kSceneDepthFormat;
+    shadowDepth.depthWriteEnabled = WGPUOptionalBool_True;
+    shadowDepth.depthCompare = WGPUCompareFunction_LessEqual;
+    setStencilOps(shadowDepth.stencilFront);
+    setStencilOps(shadowDepth.stencilBack);
+    shadowDepth.stencilReadMask = 0xFF;
+    shadowDepth.stencilWriteMask = 0xFF;
+    WGPUFragmentState fs = {};
+    fs.module = shader_;
+    fs.entryPoint = sv("fs_shadow");
+    fs.targetCount = 1;
+    fs.targets = &shadowTarget;
+    WGPURenderPipelineDescriptor rpd = {};
+    rpd.layout = shadowPipelineLayout_;
+    rpd.vertex.module = shader_;
+    rpd.vertex.entryPoint = sv("vs_shadow");
+    rpd.vertex.bufferCount = 2;
+    rpd.vertex.buffers = vbls;
+    rpd.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+    rpd.primitive.frontFace = WGPUFrontFace_CW;
+    // CULL_CCW, the mode-2 entry's own state (FUN_00652880:0x6528a4): the same winding
+    // rule the plain 3D path uses.
+    rpd.primitive.cullMode = WGPUCullMode_Back;
+    rpd.depthStencil = &shadowDepth;
+    rpd.multisample.count = 1;
+    rpd.multisample.mask = 0xFFFFFFFFu;
+    rpd.fragment = &fs;
+    shadowPipeline_ = wgpuDeviceCreateRenderPipeline(device_, &rpd);
+    if (!shadowPipeline_) {
+        error = "shadow pipeline creation failed";
+        return false;
+    }
+    return true;
+}
+
+// One caster pass per view: the view's own map is both the target and, later, what its
+// stage draws sample. `views` has the same meaning as in renderImpl — null is the
+// single-view path, which uses cameraGroup_ and draw-buffer offset 0.
+bool SceneRenderer::renderShadowCasters(const Target& target, const std::vector<ViewCamera>* views,
+                                        std::string& error) {
+    const bool multiView = views != nullptr;
+    const size_t viewCount = multiView ? views->size() : 1;
+    for (size_t view = 0; view < viewCount; ++view) {
+        if (multiView && (*views)[view].rect.empty()) continue;
+        if (!ensureShadowTarget(view, error)) return false;
+        const ShadowTarget& map = shadowTargets_[view];
+        WGPURenderPassColorAttachment shadowColor = {};
+        shadowColor.view = map.view;
+        shadowColor.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+        shadowColor.loadOp = WGPULoadOp_Clear;
+        shadowColor.storeOp = WGPUStoreOp_Store;
+        // 0xff000000 in the original's Clear: black with alpha 1.0.
+        shadowColor.clearValue = WGPUColor{0.0, 0.0, 0.0, 1.0};
+        WGPURenderPassDepthStencilAttachment shadowDepthAttachment = {};
+        shadowDepthAttachment.view = map.depthView;
+        shadowDepthAttachment.depthLoadOp = WGPULoadOp_Clear;
+        shadowDepthAttachment.depthStoreOp = WGPUStoreOp_Store;
+        shadowDepthAttachment.depthClearValue = 1.0f;
+        shadowDepthAttachment.depthReadOnly = false;
+        shadowDepthAttachment.stencilLoadOp = WGPULoadOp_Clear;
+        shadowDepthAttachment.stencilStoreOp = WGPUStoreOp_Discard;
+        shadowDepthAttachment.stencilClearValue = 0;
+        shadowDepthAttachment.stencilReadOnly = false;
+        WGPURenderPassDescriptor shadowDesc = {};
+        shadowDesc.colorAttachmentCount = 1;
+        shadowDesc.colorAttachments = &shadowColor;
+        shadowDesc.depthStencilAttachment = &shadowDepthAttachment;
+        WGPURenderPassEncoder caster =
+            wgpuCommandEncoderBeginRenderPass(target.encoder, &shadowDesc);
+        if (!caster) {
+            error = "shadow pass could not be started";
+            return false;
+        }
+        wgpuRenderPassEncoderSetPipeline(caster, shadowPipeline_);
+        wgpuRenderPassEncoderSetBindGroup(
+            caster, 0, multiView ? viewCameraGroups_[view] : cameraGroup_, 0, nullptr);
+        const uint32_t casterBase =
+            multiView ? (uint32_t)(view * draws_.size() * xm::kDrawStride) : 0u;
+        for (size_t i = 0; i < draws_.size(); ++i) {
+            const DrawItem& d = draws_[i];
+            // The caster set is the toon technique's own surface set: the fighter's body
+            // and weapon, and not the outline hull (which the toon row marks with its own
+            // flag rather than `toon`).
+            if (!d.toon || d.pass != Pass::Opaque) continue;
+            const uint32_t offset = casterBase + (uint32_t)(i * xm::kDrawStride);
+            wgpuRenderPassEncoderSetBindGroup(caster, 1, drawGroup_, 1, &offset);
+            wgpuRenderPassEncoderSetVertexBuffer(caster, 0, d.vbuf, 0, WGPU_WHOLE_SIZE);
+            wgpuRenderPassEncoderSetVertexBuffer(caster, 1, d.nprbuf, 0, WGPU_WHOLE_SIZE);
+            wgpuRenderPassEncoderSetIndexBuffer(caster, d.ibuf, WGPUIndexFormat_Uint32, 0,
+                                                WGPU_WHOLE_SIZE);
+            wgpuRenderPassEncoderDrawIndexed(caster, d.indexCount, 1, d.firstIndex, 0, 0);
+            ++stats_.shadowCasters;
+        }
+        wgpuRenderPassEncoderEnd(caster);
+        wgpuRenderPassEncoderRelease(caster);
+    }
+    return true;
+}
+
 bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamera>* views,
                                std::string& error) {
     if (!device_ || !drawGroup_) {
@@ -1575,105 +1671,8 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
     stats_.shadowCasters = 0;
     stats_.shadowReceivers = 0;
     if (shadowsOn) {
-        if (!shadowPipeline_) {
-            WGPUVertexAttribute attrs[xm::kVertexAttributeCount];
-            WGPUVertexBufferLayout vbl = xm::wgpuVertexLayout(attrs);
-            WGPUVertexAttribute nprAttr[1];
-            WGPUVertexBufferLayout nprVbl = xm::wgpuNprVertexLayout(nprAttr);
-            WGPUVertexBufferLayout vbls[2] = {vbl, nprVbl};
-            WGPUColorTargetState shadowTarget = {};
-            shadowTarget.format = WGPUTextureFormat_RGBA8Unorm;
-            shadowTarget.writeMask = WGPUColorWriteMask_All;
-            // No blending: the original's mode-2 entry sets SRCBLEND = ONE, DESTBLEND =
-            // ZERO, i.e. a plain overwrite of the target it just cleared.
-            WGPUDepthStencilState shadowDepth = {};
-            shadowDepth.format = kSceneDepthFormat;
-            shadowDepth.depthWriteEnabled = WGPUOptionalBool_True;
-            shadowDepth.depthCompare = WGPUCompareFunction_LessEqual;
-            setStencilOps(shadowDepth.stencilFront);
-            setStencilOps(shadowDepth.stencilBack);
-            shadowDepth.stencilReadMask = 0xFF;
-            shadowDepth.stencilWriteMask = 0xFF;
-            WGPUFragmentState fs = {};
-            fs.module = shader_;
-            fs.entryPoint = sv("fs_shadow");
-            fs.targetCount = 1;
-            fs.targets = &shadowTarget;
-            WGPURenderPipelineDescriptor rpd = {};
-            rpd.layout = shadowPipelineLayout_;
-            rpd.vertex.module = shader_;
-            rpd.vertex.entryPoint = sv("vs_shadow");
-            rpd.vertex.bufferCount = 2;
-            rpd.vertex.buffers = vbls;
-            rpd.primitive.topology = WGPUPrimitiveTopology_TriangleList;
-            rpd.primitive.frontFace = WGPUFrontFace_CW;
-            // CULL_CCW, the mode-2 entry's own state (FUN_00652880:0x6528a4): the same
-            // winding rule the plain 3D path uses.
-            rpd.primitive.cullMode = WGPUCullMode_Back;
-            rpd.depthStencil = &shadowDepth;
-            rpd.multisample.count = 1;
-            rpd.multisample.mask = 0xFFFFFFFFu;
-            rpd.fragment = &fs;
-            shadowPipeline_ = wgpuDeviceCreateRenderPipeline(device_, &rpd);
-            if (!shadowPipeline_) {
-                error = "shadow pipeline creation failed";
-                return false;
-            }
-        }
-        for (size_t view = 0; view < viewCount; ++view) {
-            if (multiView && (*views)[view].rect.empty()) continue;
-            if (!ensureShadowTarget(view, error)) return false;
-            const ShadowTarget& map = shadowTargets_[view];
-            WGPURenderPassColorAttachment shadowColor = {};
-            shadowColor.view = map.view;
-            shadowColor.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-            shadowColor.loadOp = WGPULoadOp_Clear;
-            shadowColor.storeOp = WGPUStoreOp_Store;
-            // 0xff000000 in the original's Clear: black with alpha 1.0.
-            shadowColor.clearValue = WGPUColor{0.0, 0.0, 0.0, 1.0};
-            WGPURenderPassDepthStencilAttachment shadowDepthAttachment = {};
-            shadowDepthAttachment.view = map.depthView;
-            shadowDepthAttachment.depthLoadOp = WGPULoadOp_Clear;
-            shadowDepthAttachment.depthStoreOp = WGPUStoreOp_Store;
-            shadowDepthAttachment.depthClearValue = 1.0f;
-            shadowDepthAttachment.depthReadOnly = false;
-            shadowDepthAttachment.stencilLoadOp = WGPULoadOp_Clear;
-            shadowDepthAttachment.stencilStoreOp = WGPUStoreOp_Discard;
-            shadowDepthAttachment.stencilClearValue = 0;
-            shadowDepthAttachment.stencilReadOnly = false;
-            WGPURenderPassDescriptor shadowDesc = {};
-            shadowDesc.colorAttachmentCount = 1;
-            shadowDesc.colorAttachments = &shadowColor;
-            shadowDesc.depthStencilAttachment = &shadowDepthAttachment;
-            WGPURenderPassEncoder caster =
-                wgpuCommandEncoderBeginRenderPass(target.encoder, &shadowDesc);
-            if (!caster) {
-                error = "shadow pass could not be started";
-                return false;
-            }
-            wgpuRenderPassEncoderSetPipeline(caster, shadowPipeline_);
-            wgpuRenderPassEncoderSetBindGroup(
-                caster, 0, multiView ? viewCameraGroups_[view] : cameraGroup_, 0, nullptr);
-            const uint32_t casterBase =
-                multiView ? (uint32_t)(view * draws_.size() * xm::kDrawStride) : 0u;
-            for (size_t i = 0; i < draws_.size(); ++i) {
-                const DrawItem& d = draws_[i];
-                // The caster set is the toon technique's own surface set: the fighter's
-                // body and weapon, and not the outline hull (which the toon row marks with
-                // its own flag rather than `toon`).
-                if (!d.toon || d.pass != Pass::Opaque) continue;
-                const uint32_t offset = casterBase + (uint32_t)(i * xm::kDrawStride);
-                wgpuRenderPassEncoderSetBindGroup(caster, 1, drawGroup_, 1, &offset);
-                wgpuRenderPassEncoderSetVertexBuffer(caster, 0, d.vbuf, 0, WGPU_WHOLE_SIZE);
-                wgpuRenderPassEncoderSetVertexBuffer(caster, 1, d.nprbuf, 0, WGPU_WHOLE_SIZE);
-                wgpuRenderPassEncoderSetIndexBuffer(caster, d.ibuf, WGPUIndexFormat_Uint32, 0,
-                                                    WGPU_WHOLE_SIZE);
-                wgpuRenderPassEncoderDrawIndexed(caster, d.indexCount, 1, d.firstIndex, 0, 0);
-                ++stats_.shadowCasters;
-            }
-            wgpuRenderPassEncoderEnd(caster);
-            wgpuRenderPassEncoderRelease(caster);
-        }
+        if (!ensureShadowPipeline(error)) return false;
+        if (!renderShadowCasters(target, views, error)) return false;
     }
 
     WGPURenderPassColorAttachment color = {};
