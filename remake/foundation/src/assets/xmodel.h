@@ -95,6 +95,11 @@ struct NprVertex {
 
 struct Material {
     glm::vec4   diffuse{1.f};
+    // Parsed and kept, read by nothing: the renderer shades with diffuse (baseColor) and
+    // emissive (the toon effect's MaterialColor), and the recovered fixed-function term
+    // carries no specular at all — D3DRS_SPECULARENABLE is never set, see renderImpl's
+    // camera comment. Kept because a material record that silently drops part of itself
+    // cannot be told from one that was never in the file.
     float       power = 0.f;
     glm::vec3   specular{0.f};
     glm::vec3   emissive{0.f};
@@ -134,9 +139,13 @@ struct Mesh {
     std::vector<Submesh>  submeshes;
     std::vector<Material> materials;
     std::vector<Bone>     bones;           // palette order; empty when !skinned
+    // The file's own XSkinMeshHeader, kept as parsed and read by nothing: the loader
+    // derives what it needs from the SkinWeights themselves (the top-four clamp and its
+    // drop counter below), and the header's counts are an authored claim the shipped
+    // rigs are not required to keep.
     SkinHeader            skinHeader;
     int                   droppedInfluences = 0;  // weights beyond the top 4
-    bool                  hasVertexColors   = false;
+    bool                  hasVertexColors   = false;  // LoadStats counts the meshes that have them
 };
 
 struct Frame {
