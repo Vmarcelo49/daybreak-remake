@@ -1,4 +1,6 @@
-# Standalone Rena+0, dummy opponent. One input edge per action.
+# Standalone Rena+0 vs Mion+0; capture script for native remake animation/combat sampling.
+# MELEE at 62 starts the ground swing; SHOOT at 120/180/340 samples the projectile path.
+# Later directional movement, repeated jumps, melee presses, and guard exercise more states.
 62 MELEE
 63 -
 120 SHOOT
@@ -11,3 +13,19 @@
 661 -
 662 UP
 682 -
+900 LEFT MELEE
+901 -
+1030 RIGHT SHOOT
+1031 -
+1230 JUMP
+1240 UP
+1250 MELEE
+1320 -
+1410 JUMP
+1420 UP
+1430 MELEE
+1500 -
+1580 GUARD
+1650 -
+1700 JUMP
+1780 -

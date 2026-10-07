@@ -21,22 +21,24 @@ struct MoveEntry {
     int attackFlags = 0;
     int collisionShape = 0;
     int baseDamage = 0;
-    int hpDamage = 0;
-    int reflectDamage = 0;
-    int gaugeGainA = 0;
-    int gaugeGainB = 0;
-    int attackerHitstun = 0;
-    int defenderHitstun = 0;
-    int reactionMove = 0;
+    int hpDamage = 0; // provisional alias: combat[5], not established HP damage
+    int reflectDamage = 0; // provisional alias: combat[6], reflection role unverified
+    int gaugeGainA = 0; // provisional alias: combat[7] feeds victim +0x7b8
+    int gaugeGainB = 0; // provisional alias: combat[8] feeds victim +0x7c0
+    int attackerHitstun = 0; // provisional alias; exact recipient/units unresolved
+    int defenderHitstun = 0; // provisional alias; verify across all caller paths
+    int reactionMove = 0; // provisional alias: combat[13]
     int combatField0E = 0;
     int combatField0F = 0;
 
     // FUN_00637950's entry test, byte-verified at 0x6379da: `83 7A 24 00` CMP dword
     // [EDX+0x24],0 / `75 05` JNZ over a jump to the epilogue. The contact resolver bails
     // on radius == 0 and does full resolution otherwise — the HP power is NOT part of the
-    // gate. combat[0] is read only inside the HP math (0x638a32, 0x638a6e), so a record
-    // with radius != 0 and power 0 still contacts and still applies its gauge feed,
-    // hitstop, reaction and impact effect; it just deals no HP damage. Comparing `!= 0`
+    // gate. In this resolver combat[0] is read only inside its HP math (0x638a32, 0x638a6e);
+    // FUN_00639160 separately reads it in the damage chain. A record with radius != 0 and
+    // power 0 still contacts and continues through independent response branches; only its
+    // HP-power contribution is zero here. Exact meter/timing
+    // meanings for several columns remain unresolved. Comparing `!= 0`
     // (not `> 0`) matches the original, which tests the dword against zero.
     bool has_combat() const { return hitRadius != 0; }
 };

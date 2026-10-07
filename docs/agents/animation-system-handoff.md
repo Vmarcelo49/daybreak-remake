@@ -171,10 +171,11 @@ Detailed field tables are in the audit. Short version:
   signed integer anchors, radius i32, combat[20] i32, state flags i32,
   attack flags i32, shape i32, second three signed integer anchors.
 - Name is a skeleton bone, not effect name. Shape 0 sphere, nonzero capsule.
-  All combat fields retained. Column 0 HP power, 5 gauge feed (NOT HP damage),
-  9/10 attacker/defender stun, 13 reaction, 15 sound, 16 impact effect,
-  17/18 release offsets; 19 projectile render mode. Several other columns
-  still have unresolved consumer semantics; don't invent names/uses.
+  All combat fields retained. Treat the combat block as raw indexed fields; see
+  `remake/foundation/docs/ANIMATION-DATA-AUDIT.md` §11.1 for the corrected resolver
+  evidence. Older labels for columns 5–10, 13, and 17/18 in earlier handoff revisions
+  are superseded: in particular, do not infer stun/reaction/release-offset semantics from
+  current remake aliases or tests. The exact meaning of several columns remains unresolved.
 - Trailer: set count; per-set blend metadata, counter gate, texture-event
   count; each interval is **132 bytes**: start/end/repeat and two names[60].
   Active interval `[start,end)`, modulo repeat when positive. These animate

@@ -110,25 +110,25 @@ also change state words; they are not generic sound or pose effect events.
 | Combat index / runtime offset | Evidence-backed interpretation / remaining ambiguity |
 |---|---|
 | 0 / +0x30 | Base HP power, `FUN_00639160` damage chain |
-| 1 / +0x34 | Retain raw; meaning not established in this audit (zero across surveyed NN.dat entries) |
-| 2 / +0x38 | Retain raw; occasional 300, consumer interpretation unresolved |
-| 3 / +0x3c | Retain raw; small values, consumer interpretation unresolved |
-| 4 / +0x40 | Retain raw; zero in surveyed NN.dat entries |
-| 5 / +0x44 | Victim gauge feed; **not HP damage** |
-| 6 / +0x48 | Reflection/damage-path scalar; exact nonshot role needs consumer verification |
-| 7 / +0x4c | Gauge-path scalar A |
-| 8 / +0x50 | Gauge-path scalar B |
-| 9 / +0x54 | Attacker hitstop/stun scalar |
-| 10 / +0x58 | Defender hitstop/stun scalar |
-| 11 / +0x5c | Retain raw; distinct scalar, not an animation selector |
-| 12 / +0x60 | Retain raw; distinct scalar, not an animation selector |
-| 13 / +0x64 | Hit reaction category, passed through `FUN_0063ba80` |
-| 14 / +0x68 | Alternate hit-resolution field; exact branch remains unresolved |
-| 15 / +0x6c | Hit sound ID; **not projectile ID** |
-| 16 / +0x70 | Impact effect ID, resolved through effect descriptor table |
-| 17 / +0x74 | Signed release/reaction offset A; bullet charge consumer writes player+0x87c |
-| 18 / +0x78 | Signed release/reaction offset B; bullet charge consumer writes player+0x878 |
-| 19 / +0x7c | Retain raw; zero across surveyed NN.dat entries |
+| 1 / +0x34 | Read in slot-indexed logic at 0x638892 onward; its exact gameplay meaning is unresolved. Earlier statement that it was zero across surveyed data is not an RE meaning. |
+| 2 / +0x38 | Used in the same slot-indexed bookkeeping (0x6388cc–0x638a0c); exact role unresolved. |
+| 3 / +0x3c | Eligibility test at 0x637a03 and damage/stat path at 0x6382d3; semantics unresolved. |
+| 4 / +0x40 | No read identified in the resolver; not proven unused elsewhere or absent from shipped data. |
+| 5 / +0x44 | One mode-gauge accumulator feed: adds into victim +0x838 under mode/state gates; threshold/cap use victim +0x324 (resolver 0x6382fd–0x63839c). The `hpDamage` name is wrong. |
+| 6 / +0x48 | Second mode-gauge accumulator feed: adds into victim +0x840 under a different mode/state gate; threshold/cap use victim +0x324 (0x6383b4–0x63844e). The `reflectDamage` name is wrong; no reflection consumer was found in this path. |
+| 7 / +0x4c | Adds to victim +0x7b8 with +0x7bc decay initialized to 120; at threshold 100 it triggers a state/action response. A stagger/stun meter, not a gauge gain (0x6385d9 onward). |
+| 8 / +0x50 | Adds to victim +0x7c0, initializes +0x7c4 decay to 120; threshold 100 drives a timer/reaction branch. Distinct from [7]; exact meter/action name unresolved (0x63869b onward). |
+| 9 / +0x54 | Read in resolver hit-response path, but semantic label / units need checking against other callers; do not conflate with player +0xa0 or +0x878. |
+| 10 / +0x58 | Read in resolver hit-response path, but semantic label / units need checking against other callers. |
+| 11 / +0x5c | Used in float arithmetic with victim +0x64 (0x637e87–90) and late update at 0x638f28; meaning unresolved. |
+| 12 / +0x60 | No direct read identified in this resolver; not proven unused elsewhere. |
+| 13 / +0x64 | Participates in reaction selection at 0x6386ff; exact meaning of selected identifier remains unresolved. |
+| 14 / +0x68 | Alternate reaction/state selection value at 0x63870d, ultimately passed to `FUN_00421080`; exact identifier semantics unresolved. |
+| 15 / +0x6c | Bounded switch/jump-table value at 0x63815b–1a0; likely sound/event related, but exact role not certain. |
+| 16 / +0x70 | Impact-related consumer at 0x6380ce–11a; table/descriptor semantics as previously described. |
+| 17 / +0x74 | Mapping to writer arguments/player fields not proven; retain raw. |
+| 18 / +0x78 | Mapping to writer arguments/player fields not proven; retain raw. |
+| 19 / +0x7c | No read identified in `FUN_00637950`; not proven unused elsewhere or zero across shipped data. |
 
 Raw unresolved fields must be retained with offset names and evidence, rather than
 assigned invented animation/effect meanings. `parseBulletParameter` uses the same
@@ -331,7 +331,9 @@ long tail — they are concentrated:
 - **Mion 310** (all three weapons): radius 10, shape 1 (capsule), effect 30 — a real
   character-specific attack row with no HP power.
 - **Mion 370 phase 1** and **Rika 370 phase 0**: radius 60/36, shape 0, everything else
-  zero, carrying state flags `0x2400` / attack flags `0x20008` / `0x24008`.
+  zero, carrying state flags `0x2400` / attack flags `0x20008` / `0x24008`. These are data
+  fields, not victim-state flags tested by the resolver; the raw names do not establish any
+  relationship to its victim `+0x10` object's `+0x28` word.
 
 So the "115 moves can never hit" figure is misleading in the other direction too: the bulk
 is the 500/501 pair, and the radius>0 rows that remain are mostly (a) genuine non-HP hit
@@ -357,22 +359,192 @@ byte-verified: `FUN_00637950` (the record-driven contact resolver, sole caller
 006379E6  E9 AD 15 00 00   JMP  00638F98           ; radius==0 -> epilogue, no test
 ```
 
-`combat[0]` is read exactly twice in the whole 1501-instruction resolver, both inside the
-HP math (`0x638a32`, `0x638a6e`) and never as a branch. Every downstream consumer is
-reached when power is 0: impact effect (`combat[16]` → `0x63811a`), attacker/victim hitstop
-(`combat[9]`/`[10]` → `0x638503`/`0x638515`), knockback (`combat[17]`/`[18]` → `0x638633`),
-reaction (`combat[13]`/`[14]` → `0x6386ff` → `FUN_00421080`), mode gauges
-(`combat[5]`/`[6]`/`[7]` → `0x638321`/`0x6383e6`/`0x638493`) and the stagger gauge
-(`0x6385ec`). Reading 1 above is correct; reading 2 is refuted. Only HP damage is 0.
+`combat[0]` is read inside the HP math (`0x638a32`, `0x638a6e`) and is not the entry gate.
+The resolver also reads multiple other columns independently: mode accumulators #5/#6 feed
+victim `+0x838`/`+0x840`; #7 feeds a separate meter at `+0x7b8`; #8 feeds another at `+0x7c0`;
+#13/#14 participate in reaction selection; #15 is dispatched through a bounded switch;
+#16 is used on the impact path. The meanings of #17/#18 are not established by this resolver
+trace, and must not be assigned to the player `+0x87c/+0x878` writer without proving the
+caller argument mapping. Radius-nonzero contact can still occur with zero HP power.
 
 The port now matches: `MoveEntry::has_combat()` is `hitRadius != 0` (the original compares
 the dword against zero, not signed-greater; no shipped record has a negative radius, so the
-two agree on this data). The runtime conditions the original applies *in addition* to the
-record — the per-target allowance `this+0x90[slot] > 0` / `this+0x88[slot] == 0`, armed per
-attack by `FUN_0042c840(this,1)`, plus the `record+0x2c` bits `0x10000`/`0x20000`/`0x8000`
-— are not yet ported and are the next layer of this work.
+two agree on this data). The runtime conditions the original applies *in addition* to the record include per-target
+allowance state and `record+0x2c` flags. The resolver's ten accesses to `record+0x2c` are
+summarized below; exact use of every bit outside this function remains unknown.
 
-### 11.1.1 The zero-power contact path (implemented)
+### 11.1.1 Resolver flags and unresolved player timing fields
+
+Original `FUN_00637950` reads the record's `+0x2c` word at ten sites. Evidence is local to
+this resolver; flag names below are descriptive summaries, not recovered symbolic names:
+
+| Mask | Observed behavior in `FUN_00637950` |
+|---:|---|
+| `0x10000` | At `0x637974`, allows continuation through an early-return check in the same-actor case; exact purpose unclear. |
+| `0x20000` | At `0x637a3c`, when set, exits on the preceding target/owner mismatch condition. |
+| `0x8000` | At `0x637a52`, gates extra owner/target and victim-angle checks. |
+| `0x4180` | At `0x637ca5`, combined mask enters a status/allowance branch; nested checks use `0x4000`, `0x80`, and `0x100` below. |
+| `0x4000` | Adds record `+0x3c` to victim `+0x7a4` if positive, caps at `0x2710`, and updates another accumulator (0x637cf0–0x7d54). |
+| `0x80` | Chooses a minimum of victim `+0x7e4` and record `+0x38`, storing to victim `+0x7e0` (0x637d64–0x7dac). |
+| `0x100` | Chooses the same minimum and stores to victim `+0x7e4` (0x637db8–0x7e00). |
+| `0x10` | Changes the vector used in angle/distance calculation by negating attack-volume vector components (0x637e11–0x7e4a). |
+| `0x8` | At 0x637f34–0x637f40, in the late contact/reaction gate: the x87 comparison at 0x637f05 routes one outcome directly to the victim `stateFlags & 0x400` test at 0x637f28; the other first tests victim `& 0x2000` at 0x637f13, going to common contact at 0x637fd8 if clear and then to the `0x400` test if set. A clear `0x400` or set record bit `0x8` goes to common contact. Only when the angle/state route continues, victim `& 0x400` is set, and record bit `0x8` is clear does it write `2` to attacker per-victim status at `+0x88+victim.slot*2`, optionally OR `0x100` when victim flags `& 0x8000`, decrement attacker allowance `+0x90+victim.slot*4`, call `FUN_0042c800(2)` on victim (all four of its status entries), then increment victim `+0xaf30` and jump to the resolver epilogue. Therefore, at this decision, a bit-`0x8` record always diverts to the common contact path; it cannot reach this status-2 arm. |
+| `0x40 << i`, `i=0..7` | Gates per-slot bookkeeping loop (0x638822); slots 1 and 2 are explicitly skipped when enabled. |
+
+A bundle-first inventory using the port's `AssetSource`, `CharacterMoves` parser, and the
+roster's character+weapon table (`remake/foundation/tools/audit_attack_flags.cpp`) found
+12,161 combat records across the shipped combo tables; 26 carry bit `0x8` in 19 `(combo, move)`
+rows (also 19 `(combo, move, phase)` rows) spanning 10 character+weapon combos. This includes Rena+0 (item 001), move 350, phase 0
+records 3, 5, 7, 9, 11, 13, 15, and 17; Mion+0 (item 002), move 370, phase 1 record 0; and
+additional rows for Rena+2, Mion+1/+2, Rika+0/+1, Tomitake+2, Ohishi+1, and Natumi+0. The
+scanner verifies each table's embedded item ID against the roster mapping and reports the
+section set index, record bone, active frame, radius, and both raw flag words; all 26 bit-`0x8`
+rows have nonzero radii. This proves the rows pass the resolver's
+radius-nonzero entry gate if their phases are active, but not that a particular row is selected
+or its geometry and outer predicates succeed in play, nor that it reaches the late branch. In
+particular, the inventory's raw `stateFlags` word is the attack-record field; it must not be
+conflated with the victim actor's nested state word tested at `param_3+0x10+0x28`. An exploratory count found 284 records with `stateFlags & 0x400` and bit `0x8` clear;
+these are merely data-shape candidates, not branch witnesses, because `stateFlags` belongs
+to the victim entity at that point in the resolver, not the attack record. Geometric, status,
+allowance, angle, and owner predicates still determine whether an attack record can reach it.
+The live original disassembly refines the control flow. At `0x637f05`, the x87 absolute-value
+helper (`FUN_0042df90` → `FUN_0042dfb0` → `_fabs`) compares against 45.0° (`0x006a2c7c`, bytes
+`00 00 34 42`) and branches to the victim `stateFlags & 0x400` test at `0x637f28` when the angle
+is ≤45°. For angles >45°, victim `stateFlags & 0x2000` is tested at `0x637f13`: clear goes to
+common contact at `0x637fd8`, set continues to the `0x400` test. If `0x400` is clear, control also
+goes to common contact. Only when victim `0x400` is set does the resolver test the attack-record
+bit `0x8` at `0x637f3d`: set branches to common contact; clear falls through to the status-2
+writes at `0x637f4f` and following. Thus, at this decision, a bit-`0x8` record cannot take the
+status-2 arm for any angle or victim-state combination; it may still proceed through the ordinary
+common contact path. These are static control-flow facts, not evidence that any shipped record
+reaches contact in play. The frozen parity baseline is from the DX9
+remake executable (not the original `DaybreakDX.exe`), and its guard action trace cannot serve as
+a positive original witness. A search of the baseline logs/artifacts found no resolver address,
+record identity, or original-process trace tying any bit-`0x8` shipped row to contact. Existing
+printed screenshots and the animation/record inventory likewise establish neither a matching
+runtime attacker/victim configuration nor branch reachability. The current read-only Ghidra bridge
+is a disassembly/decompiler/xref service; the local hook-tracer only logs file opens, and its
+launcher injects only when run. Obtaining the required witness therefore needs an authorized
+original-game session plus suitable debugger/runtime instrumentation; none has been performed.
+
+The local hook-tracer is explicitly limited to file-access logging (`remake/tools/hook-tracer/README.md`);
+it does not instrument combat functions. No existing runtime probe in the product audit tool
+observes resolver calls or victim memory. Therefore the current local tooling adds no positive
+original contact witness; runtime instrumentation or direct original execution evidence is still
+required before assigning status-2 semantics.
+No positive original contact witness is established by this table inventory. The archived
+`remake/tests/parity-baseline/logs/action-guard.log` is explicitly from the pre-cutover DX9 remake
+and reports the remake's fighter state only; it contains no original-process trace, bit-`0x8`
+record identity, or resolver event, so it cannot be promoted to an original witness. The Ghidra bridge
+health and instance endpoints identify open program `DaybreakDX.exe` (project `daybreak`). Its
+live `FUN_00637950` decompilation agrees with the offline late-branch writes (per-attacker status,
+optional `0x100`, allowance decrement, victim status-2 broadcast, and `+0xaf30` increment). Live
+`disassemble_bytes` confirms the conditional branch targets around `0x637f05–0x637fd8` and the
+status writes/counter increment at `0x637f4f–0x637fd3`; `search_instructions` across 714,517
+instructions finds exactly the two `+0xaf30` instructions (increment load/store) and no other
+raw-operand access in the original analyzed program. This corroborates the offline corpus result
+for direct offsets, but remains bounded by Ghidra's instruction analysis and does not establish
+hidden aliases or runtime initialization. `get_xrefs_to` confirms only two original direct calls to that resolver, at `0x63776d` and
+`0x63793c` in `FUN_00637680`; these corroborate static callgraph structure, not runtime reachability.
+Live xrefs also list the `FUN_0042c800` callers, including `FUN_00637950` and state/action handlers,
+and `FUN_00639160` callers `FUN_00422ab0` and `FUN_00422bd0`. The byte-offset `+0xaf30` access
+has no function-symbol xref target, so xref searches cannot by themselves prove absence of other
+object-relative writes/readers. The user subsequently authorized a game launch for visual evidence;
+this round used only remake captures on Linux, not the original executable. No original game
+process was launched or instrumented.
+Offline `FUN_00637680` calls the resolver in its nested four-slot active-object loops
+(0x63776d and 0x63793c), but static loop presence does not establish a particular candidate's
+runtime reachability. The `+0xaf30` increment is the only field access found in the resolver and
+offline repository decompilation corpus; no writer/reset or reader has been identified there.
+Symbol-level bridge xrefs are not an exhaustive field-access search because the offset is an
+object-relative operand. `FUN_0042c800` writes its value to the four ushort entries on the receiver at
+`+0x88..+0x8e`; resolver calls it with victim `param_3` as the implicit receiver, not the
+attacker. A corpus-wide search of direct calls finds only `FUN_00637950` passing literal 2;
+the many other direct callers pass 0. It is a broadcast write to the victim's four-slot array,
+in addition to the resolver's per-attacker write at `param_2+0x88+victim.slot*2`.
+`FUN_0042c7b0` OR-reduces a receiver's four entries. In the available corpus, `FUN_0042c800` is the only direct writer found for these four shorts (aside from the resolver's direct per-slot writes at attacker `+0x88+slot*2`); helper-call sites write whole-array values, usually 0 and the resolver's literal 2. `FUN_004a9c40` consumes aggregate bit 2 to select action `0x188` or `0x187` (the latter emits effect `0x46`) and clears the array on those paths. `FUN_0060a980` checks aggregate bit `0x100`, with selected states clearing the array, and also has nonzero aggregate checks in its update logic. Consequently observed consumers establish bit-trigger/control effects for the aggregate, but not a complete lifecycle: no constructor or whole-actor initializer assigning a known initial value to these four slots was identified by the direct-offset search, and reset timing depends on those state-machine call paths. `FUN_005f72c0` scans the array for bit `0x100` and
+changes the object's active slot when it finds that bit. Two exact bit-2 consumers exist in `FUN_004a9c40`: when `FUN_0042c7b0() & 2`, one state path
+selects state/action `0x188` then clears the four entries (decomp lines 732–736); another path,
+additionally gated by state index <2, selects `0x187`, emits effect `0x46` at a position derived
+from the object, clears all four entries, and returns (lines 1590–1597). Thus value 2 is a
+state/action trigger rather than merely a generic nonzero boolean, but the exact gameplay label
+for the status remains unestablished. `FUN_0060a980` also consumes any nonzero value in
+the inspected cases. `FUN_00418c30`/`FUN_00418dd0` serialize/restore four per-slot allowance values at
+`+0x90+slot*4`. `FUN_0041dcb0` resets actor state but no explicit write to `+0xaf30` or the four status
+slots at `+0x88..+0x8e` is present in its decompilation (the searched memsets stop before
+`+0x88`; direct subcalls inspected do not cover these offsets). Actor setup `FUN_0064ab30` replaces the slot object through `FUN_00649790`; that factory
+allocates `0xaf60` bytes and dispatches to per-character constructors such as `FUN_0064c840`.
+Those constructors call shared `FUN_0041d870`, which initializes subobjects/vectors and selected
+fields but contains no explicit whole-object memset or write to the disputed offsets. This narrows
+the visible constructor chain. The shared base initializer `FUN_0041d870` calls `FUN_0040db80`,
+which constructs allocator/vector members and sets a vtable, then initializes selected members;
+neither listing has an explicit whole-object clear or target-offset write. This still does not
+establish the runtime initial value: allocator behavior, constructor code outside the visible
+listings, and other initialization paths remain unverified. A focused inventory of `+0xaf2c..+0xaf3c` clarifies nearby combat
+counters but still finds no reset/read of `+0xaf30`: `FUN_00637950` increments `+0xaf2c`,
+`+0xaf34`, `+0xaf38`, and `+0xaf3c` on neighboring resolver outcomes, while
+`FUN_00639160` increments `+0xaf2c`, `+0xaf34`, and `+0xaf3c` in damage/death handling.
+The actor constructor `FUN_0041d870` also explicitly zeros `param_1[0x2bad]` at byte offset
+`+0xaf34`, not `+0xaf30`; this nearby initialization must not be mistaken for the target counter.
+The available source corpus has no counter-family initialization at `+0xaf30`; the four-slot
+allowance save/restore helpers are unrelated. Thus `+0xaf30` remains a resolver-only counter
+access, and its reset/read outside the available corpus remains unestablished.
+Preserve these as raw writes, not named gameplay concepts, until status-2's precise role and
+the counter's reset/read path are traced.
+A tracing lead was checked for the victim `+0x10` object whose `+0x28` word the resolver
+reads. `FUN_0042fe90` does load the final four-vector passed by its caller into that object at
+`+0x28..+0x34`, but the only decompiled caller found (`FUN_00433eb0`) parses item data from
+`data/item/%s`; it is not the fighter's runtime state-flag builder. `FUN_00419090` is a
+separate 16-bit record loader and has no callers in the available decompiled corpus. Thus this
+path did not establish shipped victim-state values or a positive hit/contact case. A further apparent `+0x28` copy lead was also checked: `FUN_00640470` and
+`FUN_006408b0` copy that offset from fixed-size records, but constructors `FUN_006403d0`
+and `FUN_00640430` allocate 0x9c/0xdc-byte input records and initialize those adapters;
+they are not the resolver's fighter-state object. No raw `+0x10` fighter-state builder or
+input-to-state mapping is established by these corpus matches. Input-attachment/serialization
+logic still needs tracing. A corpus-wide literal search for `& 0x400`/`& 0x2000` at
+nested actor `+0x10` / state-object `+0x28` found only these resolver predicates; the many
+other numerical matches are unrelated fields or constants. A broader state-byte tracing pass found a consumer in `FUN_005f60b0`: it reads the nested
+`+0x10` object's word at `+0x28` and branches on bits `0x1000` and `0x4000` for transform
+construction. This confirms the word has other runtime consumers, but not the resolver's `0x400`
+or `0x2000` meanings. Two copy routines (`FUN_005f8fd0`, `FUN_005f7990`) move a word from
+payload offsets `+0x1d` and `+0x19` to `+0x28`; their call sites in `FUN_0063c2a0` occur in
+cases 0x38 and 0x3b and copy multiword payloads. The only caller found for this switch,
+`FUN_0041b4d0`, dispatches into it after event-type checks (`FUN_004165e0`), so these copies
+are on an event-dispatch path, not demonstrated combat-record parsing. They remain possible
+state installation paths, but the payload field's meaning and the event's effect on fighter
+state are not established. No writer of bits `0x400`/`0x2000` or shipped runtime victim-state
+mapping follows from these static copy paths. A follow-up exact-mask writer hunt also found no
+setter for this nested fighter word in the available decompiled corpus: `FUN_00637950` is the
+only identified `0x400`/`0x2000` reader at this offset, while `FUN_005f60b0` reads separate
+bit `0x4000`. A superficially matching `0x400` write in `FUN_0069cf90` targets a byte-derived
+buffer (`param_1[4]`) with no demonstrated alias to fighter state. These corpus-bounded searches
+do not establish whether any bit-`0x8` attack row gets a victim with either tested flag. Live
+`FUN_00637680` decompilation confirms the resolver's two invocation patterns: nested active-object
+iteration (`puVar3`, `uVar5`, `uVar6`) and per-outer-slot calls excluding the same slot. Those calls
+provide candidate attacker/victim object pairs, but no record-to-frame selection, geometry result,
+or victim-state bit values; they cannot certify a positive late-branch witness. The other attack
+record flag masks in this table have not yet been corpus-counted.
+
+`FUN_00638fd0` is the volume-vs-volume clash routine; the inspected original function has no
+`record+0x2c` access. It is called from `FUN_00637680`, as is `FUN_00637950` (calls at
+`0x637818`, `0x63776d`, `0x63793c`, respectively per bridge xrefs). Xref coverage remains
+limited to what the bridge returned; only bit `0x8` has been corpus-counted so far.
+
+The time-like fields are easy to conflate but remain distinct/unresolved: `FUN_0041f580`
+tests player `+0xa0` at `0x41f5cf`; if positive it decrements by one and jumps past a
+maintenance block (`0x41f5db–0x41f5ed`), so this is an update-tick countdown/gate. Separately,
+`FUN_00422bd0` writes trailing arguments to player `+0x878` and `+0x87c` (`0x422d6f`,
+`0x422d81`). `+0x878` is decremented in `FUN_0040eb30` and gates progression until zero;
+a script path also sets it to 30 for deferred BGM changes. `+0x87c` readers/integration and
+the mapping from combat record `+0x74/+0x78` to those arguments are unproven. Do not label
+combat columns #17/#18 as knockback from this evidence alone.
+
+`FUN_00421410`, called by constructors `FUN_00421100` and `FUN_00421240`, either carries
+metadata forward when a virtual transition check succeeds or clears two 256-entry arrays and
+initializes selected fields to `1.0` when it fails. The mechanism is observed, but its specific
+intended fallback meaning is not established.
+
+### 11.1.2 The zero-power contact path (implemented)
 
 Recovering the predicate was not sufficient on its own: two later stages still assumed a
 contact implies HP damage, and both had to be fixed before a zero-power record could behave.
@@ -382,21 +554,20 @@ contact implies HP damage, and both had to be fixed before a zero-power record c
   1 HP, and both melee (`try_melee_hit`) and projectiles reach that line. The clamp is gone;
   the amount now floors at 0, and the guard branch no longer resurrects a zero hit. This is
   the change that makes "power 0" mean no HP.
-- **What a zero-power contact still does**, all verified through the real contact path:
-  enters the victim's hitstun with the record's own `defenderHitstun`, applies the record's
-  reaction (`combat[13]`, fed to `FUN_0063ba80`), spawns the record's impact effect
-  (`combat[16]`), and records no HP and no damage statistics.
-- **Gauge: deliberately NOT wired from the record.** `combat[5]`/`[6]` are the original's
-  internal **mode gauges** (`FUN_00637950` writes `+0x838`/`+0x840`/`+0x83C`, 0..100
-  accumulators with their own thresholds), whereas this port's `gain_gauge()` feeds
-  `m_gauge`, the player-selected **hypermode** bar. Those are different mechanics with
-  different consumers, and `gain_gauge` also multiplies by `m_gaugeRate`. Routing the
-  recovered columns into it would report the right number through the wrong system, so the
-  damage-derived hyper credit stands until the port has mode-gauge accumulators. An earlier
-  revision of this pass did route them and was reverted for exactly this reason.
-- **Knockback (`combat[17]`/`[18]`) is still not applied.** The original writes them into a
-  launch-velocity field (`+0x87c`/`+0x878`), not into the port's `m_velocity`, and nothing in
-  the corpus fixes the conversion. Applying a guessed scale would be invented motion.
+- **Observed in the remake's zero-power contact tests** (not a claim that original semantics
+  are fully recovered): the port enters the victim's `Hit` state for its parsed
+  `defenderHitstun`, dispatches the parsed reaction alias (`combat[13]`) through
+  `FUN_0063ba80`-derived port logic, spawns the parsed impact effect (`combat[16]`), and
+  records no HP or damage statistics. The test verifies the current port behavior; it does not
+  validate the original recipient/units for #9/#10 or the gameplay identifier represented by #13.
+- **Gauge/meter fields are deliberately not wired from the record.** The original's #5/#6
+  feed mode accumulators at `+0x838/+0x840`; #7/#8 feed distinct meters at `+0x7b8/+0x7c0`.
+  These are not proven equivalent to this port's player-selected hypermode `m_gauge`, and no
+  conversion/state model has been established. Keep them raw until those mechanics are modeled.
+- **Combat #17/#18 effects remain unresolved and unapplied.** `FUN_00422bd0` writes two trailing
+  arguments to player `+0x878/+0x87c`, but the mapping from record `+0x74/+0x78` to those
+  arguments and the meaning/units of `+0x87c` are not proven. `+0x878` acts as an update-tick
+  countdown/lock in another path; do not call either field knockback without more evidence.
 - **The per-swing allowance stays where it is.** `FUN_00637950` consumes `this+0x90[slot] on
   contact; the port splits that into `note_melee_hit()` writing the flag and the scene's
   `already_hit_this_swing(j)` gate (`match.cpp:143`). `try_melee_hit()` itself does NOT
@@ -424,23 +595,21 @@ contact implies HP damage, and both had to be fixed before a zero-power record c
     guarding 3 damage still takes its historical 1, guarding 20 still takes a fifth, and a
     zero-power contact takes nothing even guarded. Each case re-enters `Guard`, because a
     landed hit leaves it for `Hit`.
-- Record-column plumbing was **removed rather than left unused**: with the gauge and
-  knockback consumers still unported, a struct carrying those columns would have been dead
-  weight, so they are documented here instead of threaded through `take_damage`.
+- Record-column plumbing is still not implemented in the runtime path; retained parser fields
+  and aliases remain provisional. The corrected resolver mapping does not justify threading
+  these values into `take_damage` or hyper gauge without matching the original state machines.
 
 Still open from the same investigation, and **not** silently absorbed:
 
-- **The combat column labels in `combat_record.h` may be shifted by one.** The resolver was
-  traced column by column and the assignment it supports is `[5]`/`[6]`/`[7]` = gauge
-  accumulators, `[8]` = a further gauge, `[9]`/`[10]` = hitstop, `[13]`/`[14]` = reaction,
-  `[16]` = impact effect, `[17]`/`[18]` = knockback — which agrees with the port for
-  `[9]`/`[10]`/`[13]`/`[16]`/`[17]`/`[18]` but disputes the port's `hpDamage`/`reflectDamage`/
-  `gaugeGainA`/`gaugeGainB` names on `[5]`/`[6]`/`[7]`/`[8]`. Reconcile against the original
-  consumers before renaming anything; the names are load-bearing in the HUD and damage code.
+- `combat_record.h` still exposes several semantic aliases whose names are stronger than the
+  resolver evidence (including `hpDamage`, `reflectDamage`, `gaugeGainA/B`, hitstun and
+  reaction aliases). The audit table above records what the original resolver actually reads;
+  keep aliases provisional until callers and other consumers are reconciled.
 - The per-attack allowance arming in the other 45 move programs is unrecovered (only Rena's
-  `FUN_0043ffc0` sites were verified), and the flag bits above are known by test site only.
-- The volume-vs-volume clash test `FUN_00638fd0` (engaged by `record+0x28` bit `0x10000`)
-  is a separate mechanism with no radius test; the port does not have it.
+  `FUN_0043ffc0` sites were verified). Resolver flag behavior is now partly mapped, but shipped
+  occurrence frequency and global consumers remain unknown.
+- The volume-vs-volume clash test `FUN_00638fd0` (gate from the record/state `+0x28` word) is a
+  separate mechanism with no radius test; the port does not have it.
 
 ### 11.2 Other verified open items from the independent review
 
@@ -557,3 +726,58 @@ Next step before any re-banking: reproduce the banked digest by matching the env
 (recorded settings and build configuration), then attribute the difference with a proper
 bisect of the prior work — one variable at a time. Until then §3.1's digest must not be
 updated.
+
+### 11.5 Native Linux remake captures (not original-game evidence)
+
+After the user explicitly authorized a launch and captures, a controlled native Linux session
+was attempted for the original `DaybreakDX.exe`; its isolated Wine prefix stalled at first-run
+`wineboot --init` before the game appeared, and those Wine processes and isolated GUI sessions
+were stopped. To honor the request for visual animation/combat references without attributing
+remake behavior to the original, I used the already-built Linux `foundation_demo` instead.
+
+- The standalone `--match` preview bound **Rena+0 (item 001)** vs **Mion+0 (item 002)** on
+  stage21 and rendered one captured frame at 800×600; both weapon meshes and both move tables
+  loaded. It is a static preview (`match: 150 frames`, no input or hits), not attack evidence.
+- The native two-human live battle bound the same two combos on stage03 at 1280×720 with
+  two split views. `tests/scripts/animation-data.txt` drove melee, SHOOT, directional movement,
+  jump, airborne-melee attempts and guard. A subsequent `DAYBREAK_CAMINFO=1` capture sampled
+  28 frames and observed the remake states `attackA`, `shotA`, `shotC`, `jump`, `guard`, `run`,
+  `walk`, and `idle`; representative sampled animation binding includes set 31 for Mion's
+  `attackA` and set 88 for the airborne-melee state. Sampling is every 60 ticks, so this trace
+  demonstrates state/clip bindings but can miss brief intermediate poses. A `DAYBREAK_DEBUG_KEYS=1`
+  run separately logged 35 swing/shot event ticks, including 9 accepted shots and multiple
+  melee-start events. The match summary reported `hits=1`, `shots=9`, `sparks=9`, `fx events=9`,
+  nine effect cards spawned, and `RESULT: ok`; P2 Mion+0 lost 9 HP. This is
+  **remake runtime evidence** that the Linux port displays and resolves scripted actions with
+  real character+weapon move tables; it is neither original execution nor a trace identifying
+  a specific bit-`0x8` record or resolver branch.
+- Captures: `docs/captures/native-match-preview.png` (static setup),
+  `docs/captures/native-rena-melee.png` (frame 63, Rena+0 attackA, swing-start logged on
+  tick 62), `docs/captures/native-rena-melee-contact.png` (melee contact/effect),
+  `docs/captures/native-rena-ranged.png` (frame 134, one projectile fired at tick 133),
+  `docs/captures/native-combat-final.png` (end of the scripted run), and
+  `docs/captures/native-four-character.png` (Rena+0, Mion+0, Mion+0, Rika+0 in four views).
+  The melee/ranged frame logs confirm the respective input/action edge; all are **native remake**
+  captures, not original-game evidence. Comparing the static setup and two-view final capture
+  changes 99.98% of pixels (mean absolute RGB 65.62), but that is not a controlled
+  animation-delta metric: framing and view count differ. The final frame cannot show transient
+  action poses.
+
+- **Projectile black-background report (still open).** The user noted the pure-black backing on
+  Rena+0's tap slash in `native-rena-ranged.png` and asked that black not render. The bundle row
+  is `data/bullet/001/000.dat` → model `03.X`, record mode (`+0x7c`) 0. Its model has one solid
+  blade mesh (`鉈02.bmp`) and two slash-card quads using `鉈回転エフェクト.bmp`; the latter's
+  CNV decodes to 128×128 RGBA with all 16,384 alpha bytes 255 and 8,793 exact RGB-black texels.
+  Static original `FUN_00651110` dispatches mode 0 to `FUN_006519f0`, while modes 5/6 select
+  `FUN_00652e40` and set the `Alpha` shader parameter. This identifies an opaque black-backed
+  texture on the native remake, but does **not** yet prove the original's mode-0 render state or
+  intended color-key rule for this specific mesh. A broad black-key heuristic would affect other
+  24-bit projectile images and is not justified by the one asset. I did not keep the exploratory
+  black-key edit in the product; a narrowly evidenced visual fix remains the next product task.
+
+One detail to correct in the prior inventory prose: recounting unique keys from the tool output
+shows 19 flagged `(combo, move)` rows and 19 `(combo, move, phase)` rows, spanning ten combo
+slots; this corrects the earlier erroneous figure of 12 rows in line with the actual key count.
+All flagged rows have nonzero radius. Current totals remain
+12,161 records, 26 with bit `0x8`, 12,135 clear. Original positive contact evidence and the
+`+0xaf30`/status lifecycle remain open; no gameplay code was changed.

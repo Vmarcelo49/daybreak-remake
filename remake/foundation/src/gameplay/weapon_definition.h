@@ -128,12 +128,12 @@ struct BulletParameter {
     std::string boneName;
     int hitRadius        = 0;  // record +0x24, consumed as a float by FUN_00637950:91,107
     int baseDamage       = 0;  // blob[0] (+0x30) — the HP power, 10000-based, :426
-    int hpDamage         = 0;  // blob[5] (+0x44) — the victim's GAUGE feed, :280 (not HP)
-    int reflectDamage    = 0;  // blob[6] (+0x48) — dealt back to the attacker, :300
-    int gaugeGainA       = 0;  // blob[7] (+0x4C) — 100 fills a charge gauge, :334
-    int gaugeGainB       = 0;  // blob[8] (+0x50) — the second gauge, :345
-    int attackerHitstun  = 0;  // blob[9] (+0x54) — frames written to the attacker's +0xa0
-    int defenderHitstun  = 0;  // blob[10] (+0x58) — frames written to the victim's, :308
+    int hpDamage         = 0;  // provisional alias for combat[5]; resolver feeds victim +0x838
+    int reflectDamage    = 0;  // provisional alias for combat[6]; resolver feeds victim +0x840
+    int gaugeGainA       = 0;  // provisional alias for combat[7]; resolver feeds victim +0x7b8
+    int gaugeGainB       = 0;  // provisional alias for combat[8]; resolver feeds victim +0x7c0
+    int attackerHitstun  = 0;  // provisional alias for combat[9], exact recipient/units unresolved
+    int defenderHitstun  = 0;  // provisional alias for combat[10], verify across all paths
     // Recovered fields read in FUN_00637950's hit-resolution path and followed by a
     // state change on param_3 at :536-537; shooter/launch-animation role is unproven.
     int hitResolutionField64 = 0;  // blob[13] (+0x64); shooter-selector role unproven
@@ -149,8 +149,8 @@ struct BulletParameter {
     // (FUN_0042f5e0). The id is type*10+variant into data/effect/%03d.dat, so the
     // shipped roster's 0/10/20/30 are descriptors 000/001/002/003 (issue #17).
     int impactEffect     = 0;
-    int releaseOffsetA   = 0;  // blob[17] (+0x74) — written to player+0x87c on tier-up
-    int releaseOffsetB   = 0;  // blob[18] (+0x78) — written to player+0x878 on tier-up
+    int releaseOffsetA   = 0;  // provisional alias for combat[17]; destination/meaning unresolved
+    int releaseOffsetB   = 0;  // provisional alias for combat[18]; destination/meaning unresolved
 };
 
 // Retains the selected variant's complete phase vector and animation trailer. Scalar
