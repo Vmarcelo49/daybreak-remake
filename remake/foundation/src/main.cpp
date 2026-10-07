@@ -1672,8 +1672,10 @@ static bool drawBattlePauseOverlay(App& app, WGPUCommandEncoder encoder, WGPUTex
     app.pauseUi.pushSolid(layout.panel, layout.panelColor);
     for (size_t i = 0; i < lines.size(); ++i) {
         const bool title = i == 0;
-        const bool footer = i + 1 == lines.size();
-        const bool selected = !title && !footer && static_cast<int>(i) - 1 == app.pauseMenu.row;
+        // No `footer` term: there is no footer line any more, and `lines.size() - 1` is the LAST
+        // ROW — so testing for one suppressed that row's highlight. The cursor does reach it
+        // (PauseMenu::update wraps), so "Quit to desktop" drew in the unselected grey.
+        const bool selected = !title && static_cast<int>(i) - 1 == app.pauseMenu.row;
         const ui::UiColor color = title      ? ui::UiColor{1.f, 1.f, 1.f, 1.f}
                                   : selected ? ui::UiColor{1.f, 0.8f, 0.3f, 1.f}
                                              : ui::UiColor{0.85f, 0.85f, 0.9f, 1.f};

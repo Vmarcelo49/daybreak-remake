@@ -7,6 +7,10 @@
 #include <SDL3/SDL.h>
 namespace ui {
 namespace {
+// The key-config list's rows: one per rebindable action, then the back row. The back row's index
+// is `ActionCount`, NOT a literal — the draw used 13 while `row_` is bounded by `rows - 1`
+// (= ActionCount), so its "is the back row selected" test could never be true.
+constexpr int kKeyConfigBackRow = fnd::input::ActionCount;
 class ConfigScreen : public Screen {
 public:
     ConfigScreen(SpriteRenderer& batch, bool keys, std::string& error) : keys_(keys) {
@@ -28,7 +32,7 @@ public:
         else if(in.up||in.down||in.left||in.right) sound_=2;
         if (keys_ && bindingCaptureActive()) { if (in.cancel) cancelBindingCapture(); return stay; }
         if (in.cancel) return ScreenId::Title;
-        const int rows = keys_ ? fnd::input::ActionCount + 1 : 10;
+        const int rows = keys_ ? kKeyConfigBackRow + 1 : 10;
         if (in.up) row_ = (row_ + rows - 1) % rows;
         else if (in.down) row_ = (row_ + 1) % rows;
         if (in.confirm && row_ == rows - 1) return ScreenId::Title;
@@ -134,8 +138,8 @@ public:
                 }
             }
             for (int p = 0; p < 4; ++p)
-                batch.pushSprite(sheets_[2],{160 + p*64.f,player_ == p && row_ != 13 ? 448.f : 416.f,64,32},0,0,320+p*64.f,96);
-            batch.pushSprite(sheets_[2],{0,row_ == 13 ? 448.f : 416.f,96,32},0,0,160,96);
+                batch.pushSprite(sheets_[2],{160 + p*64.f,player_ == p && row_ != kKeyConfigBackRow ? 448.f : 416.f,64,32},0,0,320+p*64.f,96);
+            batch.pushSprite(sheets_[2],{0,row_ == kKeyConfigBackRow ? 448.f : 416.f,96,32},0,0,160,96);
             text(batch,bindingCaptureActive()?"PRESS A KEY / PAD BUTTON; ESC CANCELS":"CONFIRM: REBIND   LEFT/RIGHT: PLAYER   CANCEL: BACK",112,550,2);
 
         }

@@ -97,8 +97,8 @@ enum class FillMode : uint8_t { Right = 0, Up = 1, Left = 2 };
 // FUN_00655d60 @0x65584b computes `x - pivotX*scaleX` (and the y twin) into the
 // quad's top-left, with the size from FUN_00655b20's srcW/srcH; DX9 then
 // subtracts another 0.5 px to land on texel centres. A 1:1 blit here already
-// puts pixel centres on texel centres (pixelsToNdc maps pixel edges to NDC and
-// the sampler reads at the centre), so the half-pixel is not repeated.
+// puts pixel centres on texel centres (the vertex stage maps pixel EDGES to NDC
+// and the sampler reads at the centre), so the half-pixel is not repeated.
 inline UiRect spriteDst(float x, float y, float srcW, float srcH, float pivotX, float pivotY,
                         float scale = 1.f) {
     return UiRect{x - pivotX * scale, y - pivotY * scale, srcW * scale, srcH * scale};
@@ -168,13 +168,6 @@ inline bool clipToScissor(const UiClip& c, const UiViewport& vp, uint32_t& x, ui
     if (x + w > vp.w) w = vp.w - x;
     if (y + h > vp.h) h = vp.h - y;
     return w > 0 && h > 0;
-}
-
-// Viewport pixels (y down) to NDC (y up, WebGPU convention on every backend).
-// Mirrors the ui_wgsl mapping so CPU culling math agrees with the shader.
-inline void pixelsToNdc(float px, float py, const UiViewport& vp, float& nx, float& ny) {
-    nx = px / (float)vp.w * 2.f - 1.f;
-    ny = 1.f - py / (float)vp.h * 2.f;
 }
 
 // Fill width of a fractional bar in whole pixels. Clamps first, truncates like
