@@ -250,7 +250,7 @@ bool BotBrain::run_guard_commitment(const BotView& v) {
 }
 
 const BotDecision& BotBrain::update(const BotView& view, uint64_t tick) {
-    compute(view, tick);
+    compute(view);
     stabilise_movement(tick);
     return m_decision;
 }
@@ -271,9 +271,9 @@ bool BotBrain::needs_retarget(const BotView& view, bool hasTarget) const {
 }
 
 // The decision half of a tick. Every path fills m_decision and returns; the key
-// stabiliser runs afterwards, once, in update().
-void BotBrain::compute(const BotView& view, uint64_t tick) {
-    (void)tick;   // the recovered timers count ticks, so no absolute clock is needed
+// stabiliser runs afterwards, once, in update(). The recovered timers count ticks, so
+// no absolute clock is needed here: the tick is the stabiliser's alone.
+void BotBrain::compute(const BotView& view) {
     m_decision = BotDecision{};
     m_decision.tactic = m_tactic;
     ++m_stats.ticks;

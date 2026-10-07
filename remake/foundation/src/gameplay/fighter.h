@@ -616,7 +616,7 @@ public:
 
     // Swing bookkeeping driven by Match: begin clears the per-victim hit set, note
     // records that this swing already connected with one victim.
-    void begin_melee_swing(int victimIndexBase = 0);
+    void begin_melee_swing();
     void note_melee_hit(int victimIndex);
     // Ticks of hit-stun a melee inflicts: the swing's own (the weapon entry's
     // defenderHitstun when moves are bound, the legacy active-window stun else).
@@ -816,7 +816,7 @@ private:
     // dash and air control all share this basis, so a tap and a hold never
     // disagree about where "up" goes.
     glm::vec3 facing_relative(float screenRight, float screenUp) const;
-    void update_movement(const input::PlayerState* input, const Fighter* opp, double dt);
+    void update_movement(const input::PlayerState* input, double dt);
     void update_state_machine(const input::PlayerState* input, Fighter* opponent,
                               double dt);
     void update_facing(const Fighter* opp, double dt);
@@ -851,7 +851,7 @@ private:
     void gain_gauge(float fraction);
     bool try_activate_hypermode(Fighter* opponent);
     void try_ex_move();
-    void update_hypermode(double dt, Fighter* opponent);
+    void update_hypermode(double dt);
 
     // Z leap (grounded only) and double-tap dash setup. try_dash maps the
     // tapped key to a facing-relative dash (Up = forward ...) and returns

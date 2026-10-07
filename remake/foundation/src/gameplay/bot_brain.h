@@ -314,8 +314,9 @@ private:
     // Does this fighter want a different lock than the one it holds? The cooldown that
     // rate-limits the request stays at the call site in compute().
     bool needs_retarget(const BotView& view, bool hasTarget) const;
-    // The decision half of a tick; update() wraps it with the key stabiliser.
-    void compute(const BotView& view, uint64_t tick);
+    // The decision half of a tick; update() wraps it with the key stabiliser, which is
+    // the only consumer of the absolute tick.
+    void compute(const BotView& view);
     // Keeps an axis' key from being released and pressed again inside the port's
     // double-tap window, which would fire a dash the brain never asked for.
     void stabilise_movement(uint64_t tick);

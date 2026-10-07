@@ -243,7 +243,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
 
     // Hypermode first: it can activate this frame (S), expire, or drain
     // Kakera HP, all before the state machine reads the mode's modifiers.
-    update_hypermode(dt, opponent);
+    update_hypermode(dt);
 
     // 1. Decrement state timer (mirrors +0xa0 in fcn.0041f580).
     if (m_stateTimer > 0) {
@@ -282,7 +282,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // 3. Update movement (if the state allows it).
     const glm::vec3 movementStart = m_position;
     if (can_move() && input) {
-        update_movement(input, opponent, dt);
+        update_movement(input, dt);
     } else {
         m_velocity *= 0.8f;
         m_position += m_velocity * static_cast<float>(dt);
@@ -547,8 +547,7 @@ glm::vec3 Fighter::facing_relative(float screenRight, float screenUp) const {
     return glm::vec3(fz, 0.0f, -fx) * screenRight + glm::vec3(fx, 0.0f, fz) * screenUp;
 }
 
-void Fighter::update_movement(const input::PlayerState* input, const Fighter* opp, double dt) {
-    (void)opp;
+void Fighter::update_movement(const input::PlayerState* input, double dt) {
     if (!input) return;
 
     // Committed dash: steering is locked to the tapped direction for the
@@ -908,8 +907,7 @@ void Fighter::try_ex_move() {
     fire_shot(ShotTier::Ex);
 }
 
-void Fighter::update_hypermode(double dt, Fighter* opponent) {
-    (void)opponent;
+void Fighter::update_hypermode(double dt) {
     if (!m_hyperActive) return;
     const HypermodeParams& p = hypermode_params(m_hypermode);
 
@@ -980,8 +978,7 @@ bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollis
     return true;
 }
 
-void Fighter::begin_melee_swing(int victimIndexBase) {
-    (void)victimIndexBase;
+void Fighter::begin_melee_swing() {
     m_swingHits = 0;
     m_swingHitCount = 0;
     m_meleeElapsed = 0;
