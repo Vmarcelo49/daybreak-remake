@@ -520,9 +520,25 @@ private:
     std::vector<DrawItem> drawTemplates_;
     std::vector<EffectInstance> effectInstances_;
 
+    // One uploaded image and the view onto it. A scoped owner rather than a pair of
+    // raw handles because two kinds of site release them: the vector that holds every
+    // texture the current scene uploaded (setScene and shutdown share one releaser),
+    // and a local that never reaches that vector at all — a failed upload, a capture
+    // or benchmark target. The second kind is why the destructor exists: `benchmark`
+    // alone has five exits, and an early return added to any of them would leak the
+    // target silently. Movable (construction and assignment) so the type behaves in a
+    // container; the moved-from handles are null, so exactly one Texture owns them.
     struct Texture {
         WGPUTexture     tex  = nullptr;
         WGPUTextureView view = nullptr;
+
+        Texture() = default;
+        ~Texture();
+        Texture(const Texture&) = delete;
+        Texture& operator=(const Texture&) = delete;
+        Texture(Texture&&) noexcept;
+        Texture& operator=(Texture&&) noexcept;
+        void release();
     };
 
     struct Pipelines {
@@ -559,6 +575,11 @@ private:
     };
     bool ensureShadowTarget(size_t view, std::string& error);
     void releaseShadowTargets();
+    // Every GPU object that belongs to the loaded scene: the vertex/index buffers, the
+    // uploaded textures and their bind groups, the draw bind group and the palette and
+    // draw uniform buffers. setScene() calls it to replace a scene, shutdown() to tear
+    // one down; keeping it in one place is what stops the two release lists drifting.
+    void releaseSceneResources();
     bool buildBindings(std::string& error);
     // The shared scene pass. `views` null (or a single entry) is the single-view path:
     // camera_, cameraBuffer_, drawBuffer_ offset 0, no viewport/scissor calls. More than

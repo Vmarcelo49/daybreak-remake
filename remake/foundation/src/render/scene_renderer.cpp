@@ -188,6 +188,48 @@ void setStencilOps(WGPUStencilFaceState& s) {
 
 SceneRenderer::~SceneRenderer() { shutdown(); }
 
+SceneRenderer::Texture::~Texture() { release(); }
+
+SceneRenderer::Texture::Texture(Texture&& o) noexcept : tex(o.tex), view(o.view) {
+    o.tex = nullptr;
+    o.view = nullptr;
+}
+
+SceneRenderer::Texture& SceneRenderer::Texture::operator=(Texture&& o) noexcept {
+    if (this != &o) {
+        release();
+        tex = o.tex;
+        view = o.view;
+        o.tex = nullptr;
+        o.view = nullptr;
+    }
+    return *this;
+}
+
+// The view first, then the texture it views: the order every release site in this file
+// used before they were unified here.
+void SceneRenderer::Texture::release() {
+    if (view) wgpuTextureViewRelease(view);
+    if (tex) wgpuTextureRelease(tex);
+    view = nullptr;
+    tex = nullptr;
+}
+
+void SceneRenderer::releaseSceneResources() {
+    for (WGPUBuffer b : buffers_)
+        if (b) wgpuBufferRelease(b);
+    buffers_.clear();
+    textures_.clear();   // each Texture releases its own view and texture
+    for (WGPUBindGroup g : textureGroups_)
+        if (g) wgpuBindGroupRelease(g);
+    textureGroups_.clear();
+    if (drawGroup_) wgpuBindGroupRelease(drawGroup_);
+    drawGroup_ = nullptr;
+    if (paletteBuffer_) wgpuBufferRelease(paletteBuffer_);
+    if (drawBuffer_) wgpuBufferRelease(drawBuffer_);
+    paletteBuffer_ = drawBuffer_ = nullptr;
+}
+
 bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
     if (!ctx.device || !ctx.queue || !ctx.instance) {
         error = "renderer needs a live device, queue and instance";
@@ -458,16 +500,6 @@ void SceneRenderer::shutdown() {
     }
     pipelines_.clear();
 
-    for (WGPUBindGroup g : textureGroups_)
-        if (g) wgpuBindGroupRelease(g);
-    textureGroups_.clear();
-    if (drawGroup_) wgpuBindGroupRelease(drawGroup_);
-    if (cameraGroup_) wgpuBindGroupRelease(cameraGroup_);
-    drawGroup_ = cameraGroup_ = nullptr;
-    for (size_t i = 0; i < kMaxViewCameras; ++i) {
-        if (viewCameraGroups_[i]) wgpuBindGroupRelease(viewCameraGroups_[i]);
-        viewCameraGroups_[i] = nullptr;
-    }
     releaseShadowTargets();
     if (shadowPlaceholderGroup_) wgpuBindGroupRelease(shadowPlaceholderGroup_);
     if (shadowPlaceholderView_) wgpuTextureViewRelease(shadowPlaceholderView_);
@@ -482,19 +514,19 @@ void SceneRenderer::shutdown() {
     shadowPipeline_ = nullptr;
     shadowPipelineLayout_ = nullptr;
 
-    for (WGPUBuffer b : buffers_)
-        if (b) wgpuBufferRelease(b);
-    buffers_.clear();
-    for (Texture& t : textures_) {
-        if (t.view) wgpuTextureViewRelease(t.view);
-        if (t.tex) wgpuTextureRelease(t.tex);
-    }
-    textures_.clear();
+    releaseSceneResources();
 
-    if (paletteBuffer_) wgpuBufferRelease(paletteBuffer_);
-    if (drawBuffer_) wgpuBufferRelease(drawBuffer_);
+    // The camera group is NOT part of the scene: it binds the ramp and the scene-wide
+    // light, so setScene leaves it standing for the next scene. The same goes for its
+    // buffer and the per-view camera slots.
+    if (cameraGroup_) wgpuBindGroupRelease(cameraGroup_);
+    cameraGroup_ = nullptr;
+    for (size_t i = 0; i < kMaxViewCameras; ++i) {
+        if (viewCameraGroups_[i]) wgpuBindGroupRelease(viewCameraGroups_[i]);
+        viewCameraGroups_[i] = nullptr;
+    }
     if (cameraBuffer_) wgpuBufferRelease(cameraBuffer_);
-    paletteBuffer_ = drawBuffer_ = cameraBuffer_ = nullptr;
+    cameraBuffer_ = nullptr;
     for (WGPUBuffer& b : viewCameraBuffers_) {
         if (b) wgpuBufferRelease(b);
         b = nullptr;
@@ -550,20 +582,8 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
     }
     // Drop the previous scene's GPU objects: setScene may legitimately be called more
     // than once (a different asset in the same window), and nothing here is shared.
-    for (WGPUBuffer b : buffers_) wgpuBufferRelease(b);
-    buffers_.clear();
-    for (Texture& t : textures_) {
-        wgpuTextureViewRelease(t.view);
-        wgpuTextureRelease(t.tex);
-    }
-    textures_.clear();
-    for (WGPUBindGroup g : textureGroups_) wgpuBindGroupRelease(g);
-    textureGroups_.clear();
-    if (drawGroup_) wgpuBindGroupRelease(drawGroup_);
-    drawGroup_ = nullptr;
-    if (paletteBuffer_) wgpuBufferRelease(paletteBuffer_);
-    if (drawBuffer_) wgpuBufferRelease(drawBuffer_);
-    paletteBuffer_ = drawBuffer_ = nullptr;
+    // shutdown() frees exactly the same set, through the same call.
+    releaseSceneResources();
 
     draws_.clear();
     meshes_.clear();
@@ -741,17 +761,15 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                                 tex.view = wgpuTextureCreateView(tex.tex, nullptr);
                             }
                             if (!tex.tex || !tex.view) {
-                                // Nothing owns `tex` yet (textures_ only takes it below),
-                                // so the half that was created has to go back here or it
-                                // outlives the process: a failed createView is exactly the
-                                // out-of-memory case this branch exists for.
-                                if (tex.view) wgpuTextureViewRelease(tex.view);
-                                if (tex.tex) wgpuTextureRelease(tex.tex);
+                                // The local Texture owns both halves, so the one that was
+                                // created is released on the way out of this return rather
+                                // than outliving the process. textures_ only takes
+                                // ownership at the push_back below.
                                 error = "texture upload failed (device out of memory?)";
                                 return false;
                             }
                             it = texIndex.emplace(img, (int)textures_.size()).first;
-                            textures_.push_back(tex);
+                            textures_.push_back(std::move(tex));
                         }
                         d.texture = it->second;
                         ++stats_.textured;
@@ -1772,21 +1790,19 @@ bool SceneRenderer::benchmark(uint32_t width, uint32_t height, int frames, doubl
     td.format = WGPUTextureFormat_RGBA8Unorm;
     td.mipLevelCount = 1;
     td.sampleCount = 1;
-    WGPUTexture colorTex = wgpuDeviceCreateTexture(device_, &td);
-    WGPUTextureView colorView = colorTex ? wgpuTextureCreateView(colorTex, nullptr) : nullptr;
-    if (!colorTex || !colorView) {
+    // Owned by a Texture, not a bare pair: this function has five exits (two creation
+    // failures, a failed encoder, a failed frame, and the normal one), and the owner
+    // releases the target on all of them.
+    Texture colorTex;
+    colorTex.tex = wgpuDeviceCreateTexture(device_, &td);
+    colorTex.view = colorTex.tex ? wgpuTextureCreateView(colorTex.tex, nullptr) : nullptr;
+    if (!colorTex.tex || !colorTex.view) {
         error = "benchmark target creation failed";
-        if (colorView) wgpuTextureViewRelease(colorView);
-        if (colorTex) wgpuTextureRelease(colorTex);
         return false;
     }
     // Depth is the renderer's own attachment, sized by ensureDepth; it is created here on
     // the benchmark's behalf and left for the next frame to reuse.
-    if (!ensureDepth(width, height, error)) {
-        wgpuTextureViewRelease(colorView);
-        wgpuTextureRelease(colorTex);
-        return false;
-    }
+    if (!ensureDepth(width, height, error)) return false;
 
     // Wait for the queue after every submit, so the measured span is the GPU's work and
     // not the depth of the command queue. The wait is the same process-events loop the
@@ -1803,13 +1819,11 @@ bool SceneRenderer::benchmark(uint32_t width, uint32_t height, int frames, doubl
         WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
         if (!encoder) {
             error = "benchmark encoder creation failed";
-            wgpuTextureViewRelease(colorView);
-            wgpuTextureRelease(colorTex);
             return false;
         }
         Target target;
         target.encoder = encoder;
-        target.colorView = colorView;
+        target.colorView = colorTex.view;
         target.format = WGPUTextureFormat_RGBA8Unorm;
         target.width = width;
         target.height = height;
@@ -1819,11 +1833,7 @@ bool SceneRenderer::benchmark(uint32_t width, uint32_t height, int frames, doubl
         if (cmd) wgpuQueueSubmit(queue_, 1, &cmd);
         if (cmd) wgpuCommandBufferRelease(cmd);
         wgpuCommandEncoderRelease(encoder);
-        if (!ok) {
-            wgpuTextureViewRelease(colorView);
-            wgpuTextureRelease(colorTex);
-            return false;
-        }
+        if (!ok) return false;
         wait.done = false;
         WGPUQueueWorkDoneCallbackInfo cb = {};
         cb.mode = WGPUCallbackMode_AllowProcessEvents;
@@ -1834,8 +1844,6 @@ bool SceneRenderer::benchmark(uint32_t width, uint32_t height, int frames, doubl
         while (!wait.done) wgpuInstanceProcessEvents(instance_);
         total += plat::now() - t0;
     }
-    wgpuTextureViewRelease(colorView);
-    wgpuTextureRelease(colorTex);
     msPerFrame = 1000.0 * total / (double)frames;
     return true;
 }
@@ -1868,18 +1876,21 @@ bool SceneRenderer::captureImpl(uint32_t width, uint32_t height, std::vector<uin
     td.format = WGPUTextureFormat_RGBA8Unorm;
     td.mipLevelCount = 1;
     td.sampleCount = 1;
-    WGPUTexture colorTex = wgpuDeviceCreateTexture(device_, &td);
-    WGPUTextureView colorView = colorTex ? wgpuTextureCreateView(colorTex, nullptr) : nullptr;
+    // Owned, like the benchmark target, so the target's lifetime is the function's:
+    // there is no release pair at the end for a later early return to get wrong.
+    Texture colorTex;
+    colorTex.tex = wgpuDeviceCreateTexture(device_, &td);
+    colorTex.view = colorTex.tex ? wgpuTextureCreateView(colorTex.tex, nullptr) : nullptr;
     const uint32_t rowPitch = alignedRowPitch(width);
     const uint64_t readbackBytes = (uint64_t)rowPitch * height;
     WGPUBuffer readback = gpu::createBuffer(
         device_, readbackBytes, WGPUBufferUsage_MapRead | WGPUBufferUsage_CopyDst, nullptr);
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
 
-    bool ok = colorTex && colorView && readback && encoder;
+    bool ok = colorTex.tex && colorTex.view && readback && encoder;
     Target target;
     target.encoder = encoder;
-    target.colorView = colorView;
+    target.colorView = colorTex.view;
     target.format = WGPUTextureFormat_RGBA8Unorm;
     target.width = width;
     target.height = height;
@@ -1889,7 +1900,7 @@ bool SceneRenderer::captureImpl(uint32_t width, uint32_t height, std::vector<uin
         // No scene: clear the target to opaque black so the UI is composited over a defined
         // background rather than uninitialised memory.
         WGPURenderPassColorAttachment att = {};
-        att.view = colorView;
+        att.view = colorTex.view;
         att.loadOp = WGPULoadOp_Clear;
         att.storeOp = WGPUStoreOp_Store;
         att.clearValue = WGPUColor{0.0, 0.0, 0.0, 1.0};
@@ -1900,7 +1911,7 @@ bool SceneRenderer::captureImpl(uint32_t width, uint32_t height, std::vector<uin
         wgpuRenderPassEncoderEnd(pass);
         wgpuRenderPassEncoderRelease(pass);
     }
-    if (ok && uiHook) ok = uiHook(encoder, colorView, td.format, width, height, uiUserdata);
+    if (ok && uiHook) ok = uiHook(encoder, colorTex.view, td.format, width, height, uiUserdata);
 
     std::vector<uint8_t> padded;
     if (ok) {
@@ -1909,7 +1920,7 @@ bool SceneRenderer::captureImpl(uint32_t width, uint32_t height, std::vector<uin
         dst.layout.bytesPerRow = rowPitch;
         dst.layout.rowsPerImage = height;
         WGPUTexelCopyTextureInfo src = {};
-        src.texture = colorTex;
+        src.texture = colorTex.tex;
         src.aspect = WGPUTextureAspect_All;
         const WGPUExtent3D extent{width, height, 1};
         wgpuCommandEncoderCopyTextureToBuffer(encoder, &src, &dst, &extent);
@@ -1929,8 +1940,6 @@ bool SceneRenderer::captureImpl(uint32_t width, uint32_t height, std::vector<uin
 
     if (encoder) wgpuCommandEncoderRelease(encoder);
     if (readback) wgpuBufferRelease(readback);
-    if (colorView) wgpuTextureViewRelease(colorView);
-    if (colorTex) wgpuTextureRelease(colorTex);
     return ok;
 }
 
