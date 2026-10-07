@@ -51,7 +51,13 @@ void armBindingCapture(int player, int action) {
 }
 void cancelBindingCapture() { capturePlayer = captureAction = -1; }
 void submitBindingInput(bool keyboard, int player, int code) {
-    if (!bindingCaptureActive() || player < 0 || player >= 4 || code < 0 || code >= (keyboard ? 512 : 26) || (keyboard ? capturePlayer != 0 : player != capturePlayer)) return;
+    if (!bindingCaptureActive() || player < 0 || player >= 4 || code < 0) return;
+    if (code > (keyboard ? settings::kMaxScancode : settings::kMaxPadButton)) return;
+    // The device rule: the keyboard is ONE device, so only player 1 (slot 0) may bind it —
+    // the capture armed for any other slot must not steal a keypress. A pad's capture belongs
+    // to the player slot it was armed for, and a press from any other pad is ignored.
+    const bool rightDevice = keyboard ? capturePlayer == 0 : player == capturePlayer;
+    if (!rightDevice) return;
     auto& target = keyboard ? frontendSettings().keyboard : frontendSettings().gamepad[player];
     // One physical button has one action; displace its previous assignment.
     for (int& binding : target) if (binding == code) binding = -1;

@@ -1,6 +1,7 @@
 #include "ui/screen_select.h"
 #include "assets/asset_source.h"
 #include "assets/exe_strings.h"
+#include "gameplay/weapon_definition.h"
 #include "ui/frontend_launch.h"
 #include "ui/hud_atlas.h"
 #include "ui/screen_stage_select.h"
@@ -9,7 +10,25 @@
 
 namespace ui {
 namespace {
+// The roster tables in screen_select.h are transcriptions of the binary's 16-character roster;
+// gameplay::kCharacterCount is what the launch validates against, so the two must agree.
+static_assert(sizeof(kSelectRosterX) / sizeof(kSelectRosterX[0]) ==
+                  (size_t)gameplay::kCharacterCount,
+              "the roster tables must cover every character gameplay knows");
 int cycle(int value, int delta, int count) { return (value + count + delta) % count; }
+// The team cursor's grid, the original's own cell numbering (+0x3c48): two columns of three
+// rows, packed column-major (cursor = column * kSelectPanelRows + row). The bottom row is the
+// decide row — its left cell goes to the stage page and its right cell is back — and the other
+// four cells are panels 0..3, which is why a panel's own cell is not simply its number.
+constexpr int kSelectPanelCols = 2;
+constexpr int kSelectPanelRows = 3;
+constexpr int kSelectDecideCell = kSelectPanelRows - 1;   // column 0, bottom row
+constexpr int kSelectBackCell = (kSelectPanelCols - 1) * kSelectPanelRows + kSelectDecideCell;
+// The cell a panel owns: panel()'s inverse, so the four panels sit on cells 0, 1, 3 and 4 and
+// the decide row's cells (2 and 5) belong to no panel.
+int cellForPanel(int panel) {
+    return panel / kSelectPanelCols * kSelectPanelRows + panel % kSelectPanelCols;
+}
 // The per-character penalty costume cell (VA 0x6b72a0 in DaybreakDX.exe, 16 bytes; 0 = the
 // character has none). Read from the installed exe, like the earned-title names, so the table
 // stays out of this repository. -1 when the exe is not reachable.
@@ -37,8 +56,36 @@ int penaltyCostume(int character) {
     const int value = table[(size_t)character];
     return value > 0 ? value : -1;
 }
+
+// The roster icon's own position in the free cursor's units (FUN_00409340's +0x3cd8/+0x3ce8
+// space): its kSelectRosterX/Y cell times the icon's 48x36 pitch. The draw, the magnet and
+// both selection passes all measure against this one pair.
+struct RosterPos { float x = 0.f, y = 0.f; };
+RosterPos rosterPos(int i) {
+    return RosterPos{kSelectRosterX[i] * 48.f, kSelectRosterY[i] * 36.f};
 }
-int SelectMenu::panel(int c) const { return cursor_[c] % 3 + cursor_[c] / 3 * 2; }
+
+// The original's two selection passes (FUN_00409340:272-286 and the 30-unit pass beside it) in
+// one walk: the 50-unit pass (2500 squared) is the fallback and the 30-unit pass (900) overrides
+// it. Both take the FIRST icon in roster order, so one walk recording each pass's first hit is
+// the original's two loops — and the confirm path's off-grid test reads the same outer pass.
+struct RosterHits { int outer = -1, inner = -1; };
+RosterHits nearestRosterIcon(float x, float y) {
+    RosterHits hits;
+    for (int i = 0; i < gameplay::kCharacterCount; ++i) {
+        const RosterPos p = rosterPos(i);
+        const float dx = p.x - x;
+        const float dy = p.y - y;
+        const float distance = dx * dx + dy * dy;
+        if (hits.outer < 0 && distance < 2500.f) hits.outer = i;
+        if (hits.inner < 0 && distance < 900.f) hits.inner = i;
+    }
+    return hits;
+}
+}
+int SelectMenu::panel(int c) const {
+    return cursor_[c] % kSelectPanelRows + cursor_[c] / kSelectPanelRows * kSelectPanelCols;
+}
 int SelectMenu::owner(int p) const {
     for (int c = 0; c < 4; ++c)
         if (phase_[c] != SelectPhase::Team && panel(c) == p) return c;
@@ -49,45 +96,46 @@ int SelectMenu::owner(int p) const {
 // override and cannot reach further, so this one test decides the question.
 bool SelectMenu::cursorOffGrid(int c) const {
     if (c < 0 || c >= 4) return false;
-    for (int i = 0; i < 16; ++i) {
-        const float dx = kSelectRosterX[i] * 48.f - cursorX_[c];
-        const float dy = kSelectRosterY[i] * 36.f - cursorY_[c];
-        if (dx * dx + dy * dy < 2500.f) return false;
-    }
-    return true;
+    return nearestRosterIcon(cursorX_[c], cursorY_[c]).outer < 0;
 }
 void SelectMenu::tick() {
     for (int c=0;c<4;++c)
         if (phase_[c] == SelectPhase::Ready && --cooldown_[c] <= 0) phase_[c] = SelectPhase::Team;
 }
-SelectAction SelectMenu::update(const ScreenInput& in, int c) {
+SelectAction SelectMenu::update(const ScreenInput& in, int c, SelectTransition* transition) {
     if (c < 0 || c >= 4) return SelectAction::None;
     const SelectPhase before = phase_[c];
     const SelectAction action = updatePanel(in, c);
     // FUN_00409340:589-595, the update's own tail: a phase change during this call restarts
     // this controller's row slide at 300.0 and the same call already steps it once.
     slide_.step(c, phase_[c] != before);
+    if (transition) *transition = SelectTransition{before, phase_[c]};
     return action;
 }
 SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
     int& pos = cursor_[c];
     if(pos<0) {
         if(!(in.confirm || in.cancel || in.up || in.down || in.left || in.right)) return SelectAction::None;
-        pos=c+(c>1);
+        pos=cellForPanel(c);
     }
     SelectPhase& phase = phase_[c];
     if (phase == SelectPhase::Ready) return SelectAction::None;
     if (phase == SelectPhase::Team) {
-        if (in.left || in.right) pos = cycle(pos / 3, in.left ? -1 : 1, 2) * 3 + pos % 3;
-        else if (in.up || in.down) pos = cycle(pos % 3, in.up ? -1 : 1, 3) + pos / 3 * 3;
-        if (in.confirm && pos % 3 == 2) {
-            if (pos == 5) return SelectAction::Back;
+        if (in.left || in.right)
+            pos = cycle(pos / kSelectPanelRows, in.left ? -1 : 1, kSelectPanelCols) * kSelectPanelRows +
+                  pos % kSelectPanelRows;
+        else if (in.up || in.down)
+            pos = cycle(pos % kSelectPanelRows, in.up ? -1 : 1, kSelectPanelRows) +
+                  pos / kSelectPanelRows * kSelectPanelRows;
+        if (in.confirm && pos % kSelectPanelRows == kSelectDecideCell) {
+            if (pos == kSelectBackCell) return SelectAction::Back;
             for (auto p : phase_) if (p != SelectPhase::Team) return SelectAction::None;
             // FUN_0040d130: unset panels become COM with random character, weapon, mode and costume.
             for (int i=0;i<4;++i) if (state_.slots[i].character < 0) {
                 auto& slot = state_.slots[i];
-                slot.character = state_.nextRandom() % 16;
-                slot.weapon = state_.nextRandom() % (slot.character < 14 ? 3 : 2);
+                slot.character = state_.nextRandom() % gameplay::kCharacterCount;
+                slot.weapon =
+                    state_.nextRandom() % gameplay::weaponCountForCharacter(slot.character);
                 slot.hypermode = state_.nextRandom() % 3;
                 slot.costume = state_.nextRandom() % kSelectCostumes[slot.character];
                 slot.controller = 4;
@@ -95,7 +143,7 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
             state_.stagePage = true;
             return SelectAction::Stage;
         }
-        if (pos % 3 < 2) {
+        if (pos % kSelectPanelRows < kSelectDecideCell) {
             auto& slot = state_.slots[panel(c)];
             if (in.cancel && owner(panel(c)) < 0 && (slot.controller == c || slot.controller == 4)) {
                 slot = FrontendSlot{};
@@ -110,8 +158,9 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
                 // no special seed case: every fresh panel takes this path.
                 phase = SelectPhase::Character;
                 slot.character = 0;
-                cursorX_[c] = kSelectRosterX[0] * 48.f;
-                cursorY_[c] = kSelectRosterY[0] * 36.f;
+                const RosterPos seed = rosterPos(0);
+                cursorX_[c] = seed.x;
+                cursorY_[c] = seed.y;
                 return SelectAction::Changed;
             }
         }
@@ -131,16 +180,11 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
             // own. The original then goes to phase 4 (Hypermode), skipping Weapon, and so does
             // this: the weapon is clamped to the new character's count so it cannot be stale.
             if (cursorOffGrid(c)) {
-                // The portrait's roll becomes the panel's pick, and the costume is rolled here,
-                // at the moment of the pick — the original's `rng() % 3` (or `% 2` for 14/15),
-                // kept to the character's own costume count so a roll cannot land on a cell it
-                // does not own. The original then goes to phase 4 (Hypermode), skipping Weapon,
-                // and so does this: the weapon is clamped to the new character's count so it
-                // cannot be stale.
                 slot.character = rolled_[panel(c)];
                 slot.costume = (int)(state_.nextRandom() %
                                      (uint32_t)kSelectCostumes[slot.character]);
-                slot.weapon = std::min(slot.weapon, (slot.character < 14 ? 3 : 2) - 1);
+                slot.weapon =
+                    std::min(slot.weapon, gameplay::weaponCountForCharacter(slot.character) - 1);
                 phase = SelectPhase::Hypermode;
                 return SelectAction::Changed;
             }
@@ -175,25 +219,17 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
         // release settles on the icon it picked. A panel with no selection has nothing to
         // snap to, which is also how the original guards it (`-1 < character`).
         if (!left && !right && !up && !down && slot.character >= 0) {
-            const float dx = kSelectRosterX[slot.character] * 48.f - cursorX_[c];
-            const float dy = kSelectRosterY[slot.character] * 36.f - cursorY_[c];
+            const RosterPos target = rosterPos(slot.character);
+            const float dx = target.x - cursorX_[c];
+            const float dy = target.y - cursorY_[c];
             if (dx * dx + dy * dy < 400.f) {
-                cursorX_[c] = kSelectRosterX[slot.character] * 48.f;
-                cursorY_[c] = kSelectRosterY[slot.character] * 36.f;
+                cursorX_[c] = target.x;
+                cursorY_[c] = target.y;
             }
         }
-        // Selection, every call (:272-300): the 50-unit pass (2500 squared) is the fallback and
-        // the 30-unit pass (900) overrides it. Both take the FIRST icon in roster order, so one
-        // pass recording each pass's first hit is the original's two loops.
-        int outer = -1, inner = -1;
-        for (int i = 0; i < 16; ++i) {
-            const float dx = kSelectRosterX[i] * 48.f - cursorX_[c];
-            const float dy = kSelectRosterY[i] * 36.f - cursorY_[c];
-            const float distance = dx * dx + dy * dy;
-            if (outer < 0 && distance < 2500.f) outer = i;
-            if (inner < 0 && distance < 900.f) inner = i;
-        }
-        const int chosen = inner >= 0 ? inner : outer;
+        // Selection, every call (:272-300): see nearestRosterIcon for the two passes.
+        const RosterHits hits = nearestRosterIcon(cursorX_[c], cursorY_[c]);
+        const int chosen = hits.inner >= 0 ? hits.inner : hits.outer;
         if (chosen < 0) {
             // Off the diamond: the panel's PORTRAIT ROLLS THROUGH RANDOM CHARACTERS, one per
             // tick, and a confirm takes whichever is showing (the branch above). The original
@@ -213,7 +249,7 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
             // non-None action with no button to sound 2) — one roll per tick would be a machine
             // gun. Empty space stays silent, which is also the original's own rule at :294.
             slot.character = -1;
-            rolled_[panel(c)] = (int)(state_.nextRandom() % 16u);
+            rolled_[panel(c)] = (int)(state_.nextRandom() % (uint32_t)gameplay::kCharacterCount);
             return SelectAction::None;
         }
         if (chosen != slot.character) {
@@ -225,7 +261,9 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
     }
     if (in.left || in.right) slot.costume = cycle(slot.costume,in.left ? -1 : 1,kSelectCostumes[slot.character]);
     if (phase == SelectPhase::Weapon) {
-        if (in.up || in.down) slot.weapon = cycle(slot.weapon,in.up ? -1 : 1,slot.character<14 ? 3 : 2);
+        if (in.up || in.down)
+            slot.weapon = cycle(slot.weapon, in.up ? -1 : 1,
+                               gameplay::weaponCountForCharacter(slot.character));
         if (in.confirm) phase = SelectPhase::Hypermode;
         else if (in.cancel) { phase = SelectPhase::Character; slot.weapon = 0; }
     } else if (phase == SelectPhase::Hypermode) {
@@ -245,9 +283,13 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
     return in.confirm || in.cancel || in.up || in.down || in.left || in.right ? SelectAction::Changed : SelectAction::None;
 }
 
-SelectAction SelectMenu::updateFrame(const ScreenInput& in, int* sound) {
+SelectAction SelectMenu::updateFrame(const ScreenInput& in, int* sound,
+                                     std::array<SelectTransition, 4>* transitions) {
+    if (transitions) transitions->fill(SelectTransition{});
     auto apply = [&](const ScreenInput& playerInput, int player) {
-        const auto action = update(playerInput,player);
+        SelectTransition transition;
+        const auto action = update(playerInput, player, &transition);
+        if (transitions) (*transitions)[(size_t)player] = transition;
         if (sound && action != SelectAction::None)
             *sound = playerInput.cancel ? 1 : playerInput.confirm ? 0 : 2;
         return action;
@@ -309,14 +351,13 @@ ScreenId SelectScreen::update(const ScreenInput& in) {
         if(!state_.stagePage) stage_.reset();
         return next;
     }
-    std::array<SelectPhase,4> previous;
-    for (int player=0;player<4;++player) previous[player]=menu_.phase(player);
-    SelectAction action=menu_.updateFrame(in,&sound_);
+    std::array<SelectTransition,4> transitions;
+    SelectAction action=menu_.updateFrame(in,&sound_,&transitions);
     for (int player=0;player<4;++player) {
         if (!in.separatePlayers && player != in.player) continue;
-        const SelectPhase current=menu_.phase(player);
-        if (current == SelectPhase::Ready && previous[player] != SelectPhase::Ready) sound_=3;
-        if (previous[player] == SelectPhase::Character && current == SelectPhase::Weapon) {
+        const SelectTransition& transition=transitions[(size_t)player];
+        if (transition.entered(SelectPhase::Ready)) sound_=3;
+        if (transition.from == SelectPhase::Character && transition.to == SelectPhase::Weapon) {
             const char* character = frontendCharacterDirectory(state_.slots[menu_.panel(player)].character);
             if (character) voice_=std::string("data/voice/entry/")+character;
         }
@@ -356,8 +397,8 @@ void SelectScreen::draw(SpriteRenderer& b) const {
     for(int c=0;c<4;++c) if(menu_.phase(c)==SelectPhase::Team) {
         int pos=menu_.cursor(c);
         if(pos<0) continue;
-        int col=pos/3,row=pos%3;
-        if(row<2) sprite(shared_[6+c],{0,float((row+col)%2)*300,400,300},200,0,col*400.f+200,row*300.f);
+        int col=pos/kSelectPanelRows,row=pos%kSelectPanelRows;
+        if(row<kSelectDecideCell) sprite(shared_[6+c],{0,float((row+col)%2)*300,400,300},200,0,col*400.f+200,row*300.f);
         else sprite(shared_[2],{float(c)*128,384,128,128},64,64,col==0?336:464,550);
     }
     for(int i:kSelectRosterOrder) {
@@ -368,8 +409,9 @@ void SelectScreen::draw(SpriteRenderer& b) const {
         const SelectChibiCell cell=selectChibiCell(selected,(int)frames_,reveal_.revealing(i));
         // FUN_0040b2b0:96-104: the slot's ramp is the (v, 2-v) scale pair on its own chibi quad,
         // about the (40,80) pivot FUN_00408330:0x408be7 gave it.
+        const RosterPos icon = rosterPos(i);
         spriteScaled(chibi_[i],{float(cell.col)*80,float(cell.row)*128,80,128},40,80,
-               kSelectRosterX[i]*48.f+400,kSelectRosterY[i]*36.f+(selected?150:160),
+               icon.x+400,icon.y+(selected?150:160),
                reveal_.scaleX(i),reveal_.scaleY(i));
     }
     for(int p=0;p<4;++p) {
@@ -395,8 +437,16 @@ void SelectScreen::draw(SpriteRenderer& b) const {
         // including the row arrow and the big choice sprite — but not the cursor marker below,
         // whose anchors are the free cursor's own (+0x3cd8/+0x3ce8).
         const float slide=rowSlideOffset(menu_.rowSlide(owner),p);
-        int header=phase==SelectPhase::Character?0:phase==SelectPhase::Weapon?1:phase==SelectPhase::Hypermode?3:4;
-        sprite(shared_[2],{0,float(header)*32,320,32},160,16,x+slide,y+50);
+        // The phase header's cell row in shared_[2]. A switch, not an array indexed by the
+        // phase: SelectPhase::Ready is 8, past every header the sheet has.
+        float headerRow=4.f;
+        switch (phase) {
+        case SelectPhase::Character: headerRow=0.f; break;
+        case SelectPhase::Weapon:    headerRow=1.f; break;
+        case SelectPhase::Hypermode: headerRow=3.f; break;
+        default: break;   // Controller (and Team, which has no owner) keep the last header
+        }
+        sprite(shared_[2],{0,headerRow*32,320,32},160,16,x+slide,y+50);
         if(phase==SelectPhase::Character) {
             // The nameplate exists only for a real selection: the free cursor can sit in empty
             // space with character == -1 (FUN_00409340:294).
@@ -410,7 +460,7 @@ void SelectScreen::draw(SpriteRenderer& b) const {
         } else if(phase==SelectPhase::Controller) {
             for(int row=0;row<2;++row) sprite(shared_[4],{0,float(320+row*128),256,64},128,32,x+slide+row*8,y+110+row*20,1,false,{1,1,1,slot.controller==(row==0?owner:4)?1.f:.5f});
         } else {
-            int count=phase==SelectPhase::Weapon?(slot.character<14?3:2):3;
+            int count=phase==SelectPhase::Weapon?gameplay::weaponCountForCharacter(slot.character):3;
             int choice=phase==SelectPhase::Weapon?slot.weapon:slot.hypermode;
             for(int row=count-1;row>=0;--row) sprite(phase==SelectPhase::Weapon?weapons_[slot.character]:shared_[2],
                 {phase==SelectPhase::Weapon?0.f:320.f,float((choice+row)%count)*64,phase==SelectPhase::Weapon?256.f:192.f,64},phase==SelectPhase::Weapon?128.f:96.f,32,x+slide+row*8,y+110+row*20,1,false,{1,1,1,1.f/(1<<row)});

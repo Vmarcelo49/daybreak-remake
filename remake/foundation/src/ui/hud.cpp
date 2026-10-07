@@ -1,5 +1,6 @@
 #include "ui/hud.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <vector>
 
@@ -22,7 +23,7 @@ void composeBalloonCorner(const HudAtlas& atlas, SpriteRenderer& batch, const Hu
     const float labelX = side == 0 ? 70.f : layout.width-100.f;
     const float readoutX = side == 0 ? 110.f : layout.width-60.f;
     const float limitX = side == 0 ? 138.f : layout.width-32.f;
-    const float pct = st.balloon[side] < 0.f ? 0.f : st.balloon[side];
+    const float pct = std::max(0.f, st.balloon[side]);
     const int pulse = st.balloonPulse[side];
     atlas.draw(batch, side == 0 ? HudIcon::BalloonLeft : HudIcon::BalloonRight, balloonX, 140.f,
                hudBalloonScale(pct, pulse));
@@ -233,7 +234,7 @@ void HudComposer::composeBattle(SpriteRenderer& batch, const HudState& st, const
     // here, FUN_00642c50 @0x00642cf8-0x642e5b) and, while charged, alternates the
     // pair on (frame % 0x1e) / 0xf (0x6446b0) — the same counter as the HP flash.
     battleAtlas_.draw(batch, HudIcon::FanFrame, layout.fan.x, layout.fan.y, 1.f, 0.f, white);
-    const float gauge = st.hyperGauge < 0.f ? 0.f : (st.hyperGauge > 1.f ? 1.f : st.hyperGauge);
+    const float gauge = std::clamp(st.hyperGauge, 0.f, 1.f);
     if (st.hyperActive || st.hyperReady) {
         battleAtlas_.fill(batch, ((frame % 0x1e) / 0xf) != 0 ? HudIcon::FanFillReadyAlt
                                                              : HudIcon::FanFillReady,

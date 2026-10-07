@@ -37,14 +37,6 @@ int32_t unitsToFixed64(int v, int32_t num, int32_t den) {
     return roundDiv((int64_t)v * num, den);
 }
 
-// Same 16 x 6 grid of 8x8 cells as ui/font.cpp's file-local cellOrigin, over the
-// constants font.h exports — kept in step by construction.
-void bitmapCell(uint32_t cp, float& cx, float& cy) {
-    const uint32_t idx = cp - 32;
-    cx = (float)((idx % kAtlasCols) * kAtlasCell);
-    cy = (float)((idx / kAtlasCols) * kAtlasCell);
-}
-
 // The FUN_0065dad0 walker. One step is either a rendered code point (with the colour in
 // effect) or a line break; escapes and control bytes are consumed inside next(), so
 // callers never see them. Shared by layout() and parseColorRuns() on purpose: the
@@ -586,7 +578,7 @@ void TextLayer::buildQuads(const TextLayout& l, float originX, float originY, fl
             // Bitmap atlas (ui::kAtlasW x ui::kAtlasH), not this layer's: the names are
             // qualified because TextLayer has atlas constants of its own.
             float cx = 0.f, cy = 0.f;
-            bitmapCell(it.substituted ? (uint32_t)'?' : it.cp, cx, cy);
+            atlasCellOrigin(it.substituted ? (uint32_t)'?' : it.cp, cx, cy);
             w = kGlyphW;
             h = kGlyphH;
             u0 = cx / (float)ui::kAtlasW;

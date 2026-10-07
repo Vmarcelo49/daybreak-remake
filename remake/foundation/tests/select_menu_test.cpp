@@ -43,7 +43,12 @@ int main() {
     check(menu.phase()==ui::SelectPhase::Character,"team claims panel");
     hold(menu,up,15);
     check(state.slots[0].character==3,"a held direction slides the cursor onto the next character");
-    menu.update(confirm);
+    // The phase transition is what the screen's entry voice line and sound cues read: the
+    // confirm that leaves Character for Weapon reports exactly that pair.
+    ui::SelectTransition transition;
+    menu.update(confirm,0,&transition);
+    check(transition.from==ui::SelectPhase::Character && transition.to==ui::SelectPhase::Weapon,
+          "the character confirm reports the Character -> Weapon transition");
     menu.update(up);
     check(state.slots[0].weapon==2,"weapon wraps");
     menu.update(confirm);
@@ -51,7 +56,10 @@ int main() {
     check(state.slots[0].hypermode==2,"hypermode wraps");
     menu.update(cancel);
     check(menu.phase()==ui::SelectPhase::Weapon,"mode cancel returns weapon");
-    menu.update(confirm); menu.update(confirm); menu.update(confirm);
+    menu.update(confirm); menu.update(confirm);
+    menu.update(confirm,0,&transition);
+    check(transition.entered(ui::SelectPhase::Ready),
+          "the controller confirm reports entering Ready (the screen's sound 3)");
     check(state.slots[0].ready && state.slots[0].controller==0,"human locks choices");
     for(int i=0;i<16;++i) menu.tick();
     check(menu.phase()==ui::SelectPhase::Team,"ready releases controller after 16 frames");

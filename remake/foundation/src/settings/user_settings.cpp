@@ -6,6 +6,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <sstream>
 
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
@@ -49,13 +50,15 @@ bool parseInt(const std::string& text, int& out) {
     return true;
 }
 
-bool parseBool(const std::string& text, bool& out) {
+// "1"/"true"/"yes"/"on" and their negatives; anything else is not a boolean (nullopt), which
+// the caller reports as "keeping the default".
+std::optional<bool> parseBool(const std::string& text) {
     std::string lowered;
     lowered.reserve(text.size());
     for (const char c : text) lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-    if (lowered == "1" || lowered == "true" || lowered == "yes" || lowered == "on") { out = true; return true; }
-    if (lowered == "0" || lowered == "false" || lowered == "no" || lowered == "off") { out = false; return true; }
-    return false;
+    if (lowered == "1" || lowered == "true" || lowered == "yes" || lowered == "on") return true;
+    if (lowered == "0" || lowered == "false" || lowered == "no" || lowered == "off") return false;
+    return std::nullopt;
 }
 
 // "1920x1080", "desktop" or "0x0". Anything else is a value error.
@@ -120,6 +123,20 @@ bool parseBindingRow(const std::string& text, int* out, int count, int minimum, 
     return true;
 }
 
+// Applies one parsed binding row to a target of fnd::input::ActionCount entries. `maximum` is
+// the row's own code bound: scancodes for the keyboard, pad buttons for a gamepad. A v1 row is
+// one entry wider than the current layout — it carries the removed heavy action at
+// kLegacyHeavyIndex — so every action from that index on is read one entry further along.
+bool applyBindingRow(const std::string& value, bool legacyLayout, int maximum, int* target,
+                     std::string& why) {
+    int row[kLegacyActionCount] = {};
+    const int width = legacyLayout ? kLegacyActionCount : fnd::input::ActionCount;
+    if (!parseBindingRow(value, row, width, -1, maximum, why)) return false;
+    for (int a = 0; a < fnd::input::ActionCount; ++a)
+        target[a] = row[a < kLegacyHeavyIndex ? a : a + (legacyLayout ? 1 : 0)];
+    return true;
+}
+
 // The action names the file uses, in fnd::input::Action order. A name is self-describing
 // and survives an enum insertion, which a positional table would not.
 struct ActionName { fnd::input::Action action; const char* name; };
@@ -134,12 +151,6 @@ constexpr ActionName kActionNames[] = {
 };
 static_assert(sizeof(kActionNames) / sizeof(kActionNames[0]) == fnd::input::ActionCount,
               "the persisted action names must cover every action");
-
-// The SDL button range the config accepts: -1 is "unbound", and the upper bound is the
-// same 26 the backend's suppression table pins.
-constexpr int kMaxPadButton = 25;
-// SDL_SCANCODE_COUNT, which the backend also pins.
-constexpr int kMaxScancode = 511;
 
 }  // namespace
 
@@ -210,81 +221,62 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
     }
 
     UserSettings candidate;   // defaults; only a clean parse reaches `out`
-    bool sawVersion = false;
-    // A v1 document's binding rows carry the removed heavy action at index 5; the rows are
-    // read with the v1 width and the entry is dropped once the row parses (see the header).
-    bool legacyLayout = false;
-    // A v2 document is migrated to the current schema by adding the toon toggle at its
-    // default; nothing is dropped, so the report gets a context line rather than a warning
-    // (see the header).
-    bool v2Document = false;
-    // A v3 document predates BOTH later additions, so it is migrated by defaulting the
-    // remembered folder (#36) and the shadow toggle (#21); the report says which version it
-    // came from.
-    bool v3Document = false;
-    // A v4 document predates the shadow toggle only: it carries [game] install_dir.
-    bool v4Document = false;
+    // The document's own version, 0 until its version line is read. The migration switch at
+    // the end of this function keys off it: v1 is the one migration that DROPS a value (the
+    // removed heavy-melee binding) and therefore warns, while v2..v5 are additive and report
+    // context instead (see the header).
+    int documentVersion = 0;
     // The remembered folder must be PRESENT, even empty: "not set" and "no folder chosen"
     // are different statements, and only the first is worth a warning.
-    bool sawInstallDir = false;    bool inSection = false;
+    bool sawInstallDir = false;
     std::string section;
     std::istringstream stream(text);
     std::string raw;
     int lineNumber = 0;
+    // The parser's two report forms, both stamped with the line they came from: `fail` rejects
+    // the whole document (a structure error), `warn` defaults the one key and keeps going (a
+    // value error). `fail`'s argument is the rest of the message, separator included — ": ..."
+    // for a parse error, " is ..." for the raw-length guard below.
+    auto fail = [&](const std::string& rest) {
+        error = "line " + std::to_string(lineNumber) + rest;
+        return false;
+    };
+    auto warn = [&](const std::string& what) {
+        ++report.warnings;
+        report.messages.push_back("line " + std::to_string(lineNumber) + ": " + what);
+    };
     while (std::getline(stream, raw)) {
         ++lineNumber;
         if (raw.size() > kMaxLine) {
-            error = "line " + std::to_string(lineNumber) + " is longer than " +
-                    std::to_string(kMaxLine) + " bytes";
-            return false;
+            return fail(" is longer than " + std::to_string(kMaxLine) + " bytes");
         }
         if (!raw.empty() && raw.back() == '\r') raw.pop_back();
         const std::string line = trimmed(raw);
         if (line.empty() || line[0] == '#' || line[0] == ';') continue;
 
         if (line.front() == '[') {
-            if (line.back() != ']') {
-                error = "line " + std::to_string(lineNumber) + ": unterminated section header";
-                return false;
-            }
+            if (line.back() != ']') return fail(": unterminated section header");
             section = trimmed(line.substr(1, line.size() - 2));
-            inSection = true;
             if (section != "game" && section != "display" && section != "render" &&
                 section != "audio" && section != "bindings" && section != "controllers") {
-                error = "line " + std::to_string(lineNumber) + ": unknown section [" + section + "]";
-                return false;
+                return fail(": unknown section [" + section + "]");
             }
             continue;
         }
 
         const size_t equals = line.find('=');
-        if (equals == std::string::npos) {
-            error = "line " + std::to_string(lineNumber) + ": expected key = value";
-            return false;
-        }
+        if (equals == std::string::npos) return fail(": expected key = value");
         const std::string key = trimmed(line.substr(0, equals));
         const std::string value = trimmed(line.substr(equals + 1));
-        if (key.empty()) {
-            error = "line " + std::to_string(lineNumber) + ": empty key";
-            return false;
-        }
-        if (value.size() > kMaxLine) {
-            error = "line " + std::to_string(lineNumber) + ": value too long";
-            return false;
-        }
+        if (key.empty()) return fail(": empty key");
+        if (value.size() > kMaxLine) return fail(": value too long");
 
-        auto warn = [&](const std::string& what) {
-            ++report.warnings;
-            report.messages.push_back("line " + std::to_string(lineNumber) + ": " + what);
-        };
-
-        if (!inSection) {
+        // Nothing but the version line may stand outside a section, and a section header is
+        // what fills `section` (an empty or unknown one was rejected above).
+        if (section.empty()) {
             if (key == "version") {
                 int version = 0;
-                if (!parseInt(value, version)) {
-                    error = "line " + std::to_string(lineNumber) + ": version is not a number";
-                    return false;
-                }
+                if (!parseInt(value, version)) return fail(": version is not a number");
                 if (version != kSchemaVersion && version != kSchemaVersionLegacy &&
                     version != kSchemaVersionV2 && version != kSchemaVersionV3 &&
                     version != kSchemaVersionV4) {
@@ -292,16 +284,11 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                             " (this build writes " + std::to_string(kSchemaVersion) + ")";
                     return false;
                 }
-                legacyLayout = (version == kSchemaVersionLegacy);
-                v2Document = (version == kSchemaVersionV2);
-                v3Document = (version == kSchemaVersionV3);
-                v4Document = (version == kSchemaVersionV4);
-                sawVersion = true;
+                documentVersion = version;
                 continue;
             }
-            error = "line " + std::to_string(lineNumber) + ": key '" + key +
-                    "' before any section (only version = belongs here)";
-            return false;
+            return fail(": key '" + key +
+                        "' before any section (only version = belongs here)");
         }
 
         if (section == "game") {
@@ -326,9 +313,9 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
             }
         } else if (section == "display") {
             if (key == "fullscreen") {
-                bool on = false;
-                if (!parseBool(value, on)) warn("fullscreen: keeping the default");
-                else candidate.fullscreen = on;
+                const std::optional<bool> on = parseBool(value);
+                if (!on) warn("fullscreen: keeping the default");
+                else candidate.fullscreen = *on;
             } else if (key == "resolution") {
                 DisplaySize size;
                 if (!parseDisplaySize(value, size)) warn("resolution: keeping the default");
@@ -340,13 +327,13 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
             // v3's section. Read whatever the version line says: a key this build knows is
             // never a reason to reject or warn (see the header).
             if (key == "toon") {
-                bool on = false;
-                if (!parseBool(value, on)) warn("toon: keeping the default");
-                else candidate.toonRendering = on;
+                const std::optional<bool> on = parseBool(value);
+                if (!on) warn("toon: keeping the default");
+                else candidate.toonRendering = *on;
             } else if (key == "shadows") {
-                bool on = false;
-                if (!parseBool(value, on)) warn("shadows: keeping the default");
-                else candidate.shadowRendering = on;
+                const std::optional<bool> on = parseBool(value);
+                if (!on) warn("shadows: keeping the default");
+                else candidate.shadowRendering = *on;
             } else {
                 warn("ignoring unknown key '" + key + "'");
             }
@@ -366,31 +353,25 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                     *slot = volume;
             }
         } else if (section == "bindings") {
+            // A v1 row is read with the v1 width; the shift past the dropped heavy action
+            // lives in applyBindingRow (see the header).
+            const bool legacyLayout = documentVersion == kSchemaVersionLegacy;
             if (key == "keyboard") {
-                int row[kLegacyActionCount] = {};
                 std::string why;
-                const int width = legacyLayout ? kLegacyActionCount : fnd::input::ActionCount;
-                if (!parseBindingRow(value, row, width, -1, kMaxScancode, why))
+                if (!applyBindingRow(value, legacyLayout, kMaxScancode, candidate.keyboard.data(),
+                                     why))
                     warn("keyboard: " + why + ", keeping the defaults");
-                else
-                    for (int a = 0; a < fnd::input::ActionCount; ++a)
-                        candidate.keyboard[static_cast<size_t>(a)] =
-                            row[a < kLegacyHeavyIndex ? a : a + (legacyLayout ? 1 : 0)];
             } else if (key.size() > 3 && key.compare(0, 3, "pad") == 0 &&
                        key[3] >= '1' && key[3] <= '4') {
                 const int player = key[3] - '1';
                 if (key.size() != 4) {
                     warn("ignoring unknown key '" + key + "'");
                 } else {
-                    int row[kLegacyActionCount] = {};
                     std::string why;
-                    const int width = legacyLayout ? kLegacyActionCount : fnd::input::ActionCount;
-                    if (!parseBindingRow(value, row, width, -1, kMaxPadButton, why))
+                    if (!applyBindingRow(value, legacyLayout, kMaxPadButton,
+                                         candidate.gamepad[static_cast<size_t>(player)].data(),
+                                         why))
                         warn(key + ": " + why + ", keeping the defaults");
-                    else
-                        for (int a = 0; a < fnd::input::ActionCount; ++a)
-                            candidate.gamepad[static_cast<size_t>(player)][static_cast<size_t>(a)] =
-                                row[a < kLegacyHeavyIndex ? a : a + (legacyLayout ? 1 : 0)];
                 }
             } else {
                 warn("ignoring unknown key '" + key + "'");
@@ -418,39 +399,48 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
         }
     }
 
-    if (!sawVersion) {
+    if (documentVersion == 0) {
         error = "missing version line";
         return false;
     }
-    if (legacyLayout) {
+    switch (documentVersion) {
+    case kSchemaVersionLegacy:
+        // The only migration that drops a value, so the only one that warns.
         ++report.warnings;
         report.messages.push_back(
             "config version 1: migrated to " + std::to_string(kSchemaVersion) +
             " (the removed heavy-melee binding was dropped, every other binding kept; no "
             "game folder is remembered until a run opens one)");
-    } else if (v2Document) {
+        break;
+    case kSchemaVersionV2:
         report.messages.push_back(
             "config version 2: migrated to " + std::to_string(kSchemaVersion) +
             " (toon rendering defaults to off, no game folder is remembered until a run "
             "opens one, and shadows default to off; every stored value kept)");
-    } else if (v3Document) {
+        break;
+    case kSchemaVersionV3:
         report.messages.push_back(
             "config version 3: migrated to " + std::to_string(kSchemaVersion) +
             " (the game folder is remembered in this file from now on and shadows default "
             "to off; every stored value kept)");
-    } else if (v4Document) {
+        break;
+    case kSchemaVersionV4:
         report.messages.push_back(
-            "config version 4: migrated to " + std::to_string(kSchemaVersion) +            " (character shadows default to off; every stored value kept)");
-    } else if (!sawInstallDir) {
-        // A CURRENT document always carries the key — serialize() writes it even when no
-        // folder is remembered — so its absence is a hand-edit or a lossy writer, and the
-        // one thing that changes is worth a warning. An older document cannot have the key
-        // and gets the context line above instead, the rule #21's v2 migration follows.
-        ++report.warnings;
-        report.messages.push_back(
-            "install_dir: a version " + std::to_string(kSchemaVersion) +
-            " document should carry the game folder key, so no folder is remembered");
-
+            "config version 4: migrated to " + std::to_string(kSchemaVersion) +
+            " (character shadows default to off; every stored value kept)");
+        break;
+    case kSchemaVersion:
+        // A CURRENT document always carries the folder key — serialize() writes it even when
+        // no folder is remembered — so its absence is a hand-edit or a lossy writer, and the
+        // one thing that changes is worth a warning. The older documents above cannot have
+        // the key and get their context line instead, the rule #21's v2 migration follows.
+        if (!sawInstallDir) {
+            ++report.warnings;
+            report.messages.push_back(
+                "install_dir: a version " + std::to_string(kSchemaVersion) +
+                " document should carry the game folder key, so no folder is remembered");
+        }
+        break;
     }
     out = candidate;
     report.loaded = true;

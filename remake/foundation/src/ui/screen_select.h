@@ -7,6 +7,15 @@ namespace ui {
 // FUN_00409340: controller state differs from the selected panel's stored choices.
 enum class SelectPhase { Team = 0, Controller = 1, Character = 2, Weapon = 3, Hypermode = 4, Ready = 8 };
 enum class SelectAction { None, Changed, Back, Stage };
+// What one update() call did to a controller's phase — the whole of what the select SCREEN
+// needs to cue its own sound and its entry voice line. FUN_004090a0 reads the panel's phase
+// before and after the tick for exactly this; updatePanel's return value only carries an action.
+// `from == to` is no change, which is also what a value-initialised entry means.
+struct SelectTransition {
+    SelectPhase from = SelectPhase::Team;
+    SelectPhase to = SelectPhase::Team;
+    bool entered(SelectPhase phase) const { return to == phase && from != phase; }
+};
 inline constexpr int kSelectRosterX[16] = {0,-2,-1,0,1,-1,-1,-2,0,1,2,2,1,0,3,-3};
 inline constexpr int kSelectRosterY[16] = {6,4,5,4,5,3,1,2,2,3,4,2,1,0,3,3};
 inline constexpr int kSelectRosterOrder[16] = {14,15,13,12,6,11,8,7,9,5,10,3,1,4,2,0};
@@ -151,8 +160,13 @@ inline float rowSlideOffset(float offset, int panel) { return (panel < 2 ? -1.f 
 class SelectMenu {
 public:
     explicit SelectMenu(FrontendState& state) : state_(state) {}
-    SelectAction update(const ScreenInput& in, int controller = 0);
-    SelectAction updateFrame(const ScreenInput& in, int* sound = nullptr);
+    SelectAction update(const ScreenInput& in, int controller = 0,
+                        SelectTransition* transition = nullptr);
+    // Updates every player the frame drives and reports the last sound cue in `sound`. Each
+    // entry of `transitions` (when given) is set for the controllers this call updated and left
+    // at "no change" for the others.
+    SelectAction updateFrame(const ScreenInput& in, int* sound = nullptr,
+                             std::array<SelectTransition, 4>* transitions = nullptr);
     SelectPhase phase(int controller = 0) const { return phase_[controller]; }
     int cursor(int controller = 0) const { return cursor_[controller]; }
     // The character phase's free cursor (FUN_00409340 case 2, +0x3cd8/+0x3ce8), in the

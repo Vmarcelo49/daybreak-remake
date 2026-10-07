@@ -107,8 +107,10 @@ uint32_t utf8Next(const char*& p) {
         return b;
     }
     // 2-, 3- and 4-byte sequences with the minimal validity checks that keep a
-    // truncated tail from running past the NUL: continuation bytes required,
-    // overlongs and surrogates rejected. Anything rejected becomes U+FFFD.
+    // truncated tail from running past the NUL: continuation bytes required, and the
+    // two forms that would otherwise decode a value the encoder cannot produce —
+    // overlongs (a shorter encoding exists) and UTF-16 surrogates — rejected.
+    // Anything rejected becomes U+FFFD.
     uint32_t cp = 0xFFFDu;
     size_t want = 0;
     if ((b & 0xE0) == 0xC0) {
@@ -131,6 +133,16 @@ uint32_t utf8Next(const char*& p) {
             return 0xFFFDu;
         }
         cp = (cp << 6) | (c & 0x3F);
+    }
+    // The lead byte's own payload cannot be zero for a valid sequence of this length:
+    // a zero there is exactly the overlong form.
+    if (cp < (want == 1 ? 0x80u : want == 2 ? 0x800u : 0x10000u)) {
+        p += 1 + want;
+        return 0xFFFDu;
+    }
+    if (cp >= 0xD800u && cp <= 0xDFFFu) {
+        p += 1 + want;
+        return 0xFFFDu;
     }
     p += 1 + want;
     return cp;
@@ -162,17 +174,6 @@ TextExtent measureText(const char* text, float scale) {
     return e;
 }
 
-namespace {
-
-// Cell top-left in atlas pixels for a supported codepoint.
-void cellOrigin(uint32_t cp, float& cx, float& cy) {
-    const uint32_t idx = cp - 32;
-    cx = (float)((idx % kAtlasCols) * kAtlasCell);
-    cy = (float)((idx / kAtlasCols) * kAtlasCell);
-}
-
-}  // namespace
-
 void layoutText(const char* text, float x, float y, float scale, std::vector<TextQuad>& out) {
     if (!text || !*text || scale <= 0.f) return;
     float cx = x, cy = y;
@@ -190,7 +191,7 @@ void layoutText(const char* text, float x, float y, float scale, std::vector<Tex
         uint32_t cp = utf8Next(p);
         if (!glyphSupported(cp)) cp = '?';
         float ax = 0.f, ay = 0.f;
-        cellOrigin(cp, ax, ay);
+        atlasCellOrigin(cp, ax, ay);
         TextQuad q;
         q.x = cx;
         q.y = cy;

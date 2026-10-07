@@ -73,6 +73,12 @@ inline constexpr int kSchemaVersionV4 = 4;
 // The v1 action count and the index the removed heavy action occupied in it.
 inline constexpr int kLegacyActionCount = 13;
 inline constexpr int kLegacyHeavyIndex = 5;
+// The value range a binding row may carry, in the SDL numbering the document stores: -1 is
+// "unbound", the upper bound is the last SDL_GAMEPAD_BUTTON_* code, and the scancode ceiling is
+// SDL_SCANCODE_COUNT - 1. The Options screen's capture validates against the same pair, so what
+// it accepts and what the file reads back cannot disagree.
+inline constexpr int kMaxPadButton = 25;
+inline constexpr int kMaxScancode = 511;
 
 // The user config directory name under $XDG_CONFIG_HOME and the file inside it.
 inline constexpr const char* kAppDirectory = "daybreak-decomp";

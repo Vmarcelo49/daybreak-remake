@@ -29,6 +29,7 @@
 //
 // Device-free (std only plus the header-only gameplay tables): every screen and every host
 // test reads the same arithmetic.
+#include <algorithm>
 #include <cstdint>
 
 #include "gameplay/weapon_definition.h"   // kWeaponIds / comboSlotLabel (header-only)
@@ -118,8 +119,7 @@ inline constexpr VsSlot kVsSlots[2][2] = {
 // cell the 1v1 flow already shipped (blue 600/200, red 200/600 for the portrait; (150,200)
 // and (650,400) for the name) rather than leaving a hole where the original always had a
 // second COM slot. PORT RULE — the original never has a one-member team.
-inline VsSlot vsSlotForSingle(int team, int member) {
-    (void)member;
+inline VsSlot vsSlotForSingle(int team) {
     return team == 0 ? VsSlot{150.f, 200.f, 600.f, 295.f, 0}
                      : VsSlot{650.f, 400.f, 200.f, 600.f, 3};
 }
@@ -132,7 +132,7 @@ inline void vsSlotsFor(const Participant roster[kParticipantCount], int count,
         int members[kParticipantCount];
         const int n = teamMembers(roster, count, team, members);
         for (int m = 0; m < n; ++m)
-            out[members[m]] = n == 2 ? kVsSlots[team][m] : vsSlotForSingle(team, m);
+            out[members[m]] = n == 2 ? kVsSlots[team][m] : vsSlotForSingle(team);
     }
 }
 
@@ -159,8 +159,7 @@ inline ResultRow resultRow(int row) {
 // `i < (progress - 30) / 30`, i.e. one new row every 30 frames after a 30-frame lead-in.
 inline int resultRowsRevealed(int progress) {
     if (progress < 30) return 0;
-    const int rows = (progress - 30) / 30;
-    return rows > kParticipantCount ? kParticipantCount : rows;
+    return std::min((progress - 30) / 30, kParticipantCount);
 }
 
 }  // namespace ui
