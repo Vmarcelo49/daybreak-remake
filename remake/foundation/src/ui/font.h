@@ -39,6 +39,14 @@ inline constexpr uint32_t kAtlasH = 48;
 // True for codepoints with a real cell in the atlas.
 inline bool glyphSupported(uint32_t cp) { return cp >= 32 && cp < 127; }
 
+// Top-left of a supported codepoint's cell in the atlas, in pixels — the atlas geometry above
+// applied once, so the bitmap layout and the text layer cannot place a glyph differently.
+inline void atlasCellOrigin(uint32_t cp, float& x, float& y) {
+    const uint32_t idx = cp - 32;
+    x = (float)((idx % kAtlasCols) * kAtlasCell);
+    y = (float)((idx / kAtlasCols) * kAtlasCell);
+}
+
 // Decodes one UTF-8 codepoint, advancing `p`. Malformed bytes yield U+FFFD
 // (unsupported, so drawn as '?') rather than stopping the line.
 uint32_t utf8Next(const char*& p);

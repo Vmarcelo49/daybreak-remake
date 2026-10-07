@@ -619,6 +619,51 @@ int main(int argc, char** argv) {
                     reverse.atlasHeight());
     }
 
+    // ------------------------------------------------------- 2b. malformed UTF-8
+    // font.h's contract: a malformed byte yields U+FFFD (drawn as '?'), and the walk never
+    // runs past the sequence it claimed. The two forms a permissive decoder would accept —
+    // an overlong encoding and a UTF-16 surrogate — are the ones the decoder has to reject
+    // for that contract to be true.
+    {
+        struct Utf8Case { const char* label; std::string bytes; size_t consumed; uint32_t cp; };
+        const Utf8Case kCases[] = {
+            {"C0 80 overlong NUL", std::string("\xC0\x80", 2), 2, 0xFFFDu},
+            {"C1 BF overlong", std::string("\xC1\xBF", 2), 2, 0xFFFDu},
+            {"E0 80 80 overlong", std::string("\xE0\x80\x80", 3), 3, 0xFFFDu},
+            {"F0 80 80 80 overlong", std::string("\xF0\x80\x80\x80", 4), 4, 0xFFFDu},
+            {"ED A0 80 surrogate", std::string("\xED\xA0\x80", 3), 3, 0xFFFDu},
+            {"ED BF BF surrogate", std::string("\xED\xBF\xBF", 3), 3, 0xFFFDu},
+            {"C2 80 U+0080 (shortest form)", std::string("\xC2\x80", 2), 2, 0x80u},
+            {"E0 A0 80 U+0800 (shortest form)", std::string("\xE0\xA0\x80", 3), 3, 0x800u},
+            {"ED 9F BF U+D7FF (before surrogates)", std::string("\xED\x9F\xBF", 3), 3, 0xD7FFu},
+            {"EE 80 80 U+E000 (after surrogates)", std::string("\xEE\x80\x80", 3), 3, 0xE000u},
+            {"F0 90 80 80 U+10000", std::string("\xF0\x90\x80\x80", 4), 4, 0x10000u},
+            {"F4 8F BF BF U+10FFFF", std::string("\xF4\x8F\xBF\xBF", 4), 4, 0x10FFFFu},
+            {"E6 97 A5 U+65E5", std::string("\xE6\x97\xA5", 3), 3, 0x65E5u},
+            {"truncated E6 97", std::string("\xE6\x97", 2), 2, 0xFFFDu},
+            {"lone continuation 80", std::string("\x80", 1), 1, 0xFFFDu},
+            {"C2 41 bad continuation", std::string("\xC2\x41", 2), 1, 0xFFFDu},
+        };
+        for (const Utf8Case& c : kCases) {
+            const char* p = c.bytes.data();
+            const uint32_t cp = ui::utf8Next(p);
+            const size_t used = (size_t)(p - c.bytes.data());
+            check(cp == c.cp && used == c.consumed,
+                  std::string("utf8 ") + c.label + ": expected " + cpName(c.cp) + "/" +
+                      std::to_string(c.consumed) + " bytes, got " + cpName(cp) + "/" +
+                      std::to_string(used));
+        }
+        // A rejected sequence still advances exactly one cell, so the rest of the line is
+        // not shifted: the same rule the unsupported-code-point case below pins. (The
+        // literal is split so the compiler cannot read `\x80AB` as one escape.)
+        const char* rejected = "\xC0\x80" "AB";
+        ui::TextExtent e = ui::measureText(rejected, 3.f);
+        check(feq(e.width, ui::measureText("?AB", 3.f).width),
+              "an overlong byte measures exactly like the '?' it becomes");
+        std::printf("utf8: %zu malformed/edge sequences decode to the documented code points\n",
+                    sizeof(kCases) / sizeof(kCases[0]));
+    }
+
     // -------------------------------------------------------------- 3. colour codes
     std::printf("\n== 3. \\c / \\e / \\n walker (FUN_0065dad0)\n");
     const ui::TextColor kWhite{255, 255, 255, 255};
