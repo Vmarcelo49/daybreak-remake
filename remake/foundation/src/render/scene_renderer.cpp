@@ -741,6 +741,12 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                                 tex.view = wgpuTextureCreateView(tex.tex, nullptr);
                             }
                             if (!tex.tex || !tex.view) {
+                                // Nothing owns `tex` yet (textures_ only takes it below),
+                                // so the half that was created has to go back here or it
+                                // outlives the process: a failed createView is exactly the
+                                // out-of-memory case this branch exists for.
+                                if (tex.view) wgpuTextureViewRelease(tex.view);
+                                if (tex.tex) wgpuTextureRelease(tex.tex);
                                 error = "texture upload failed (device out of memory?)";
                                 return false;
                             }
