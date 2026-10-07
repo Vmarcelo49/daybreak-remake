@@ -432,19 +432,33 @@ public:
     const Stats& stats() const { return stats_; }
 
 private:
-    // Depth modes are pipeline state, so each is its own pipeline (see debug_prims.cpp).
+    // All three are pipeline state, so each combination is its own pipeline (see
+    // debug_prims.cpp). Named rather than a bare uint8_t because they are what selects
+    // that pipeline: a 0/1 literal at the call site says nothing about which.
     enum DepthMode : uint8_t { kNoDepth = 0, kDepthTested = 1, kDepthAlways = 2 };
+    // Straight alpha is the scene's opaque-pass pair; additive is the DX9
+    // UnlitCubePass(alphaBlend = true) pair.
+    enum BlendMode : uint8_t { kStraightAlpha = 0, kAdditive = 1 };
+    enum Topology : uint8_t { kLineList = 0, kTriangleList = 1 };
 
     struct PipelineEntry {
         WGPUTextureFormat  format = WGPUTextureFormat_Undefined;
-        uint8_t            depthMode = kNoDepth;
-        uint8_t            blend = 0;   // 0 = straight alpha, 1 = additive
-        uint8_t            topology = 0;   // 0 = line list, 1 = triangle list
+        DepthMode          depthMode = kNoDepth;
+        BlendMode          blend = kStraightAlpha;
+        Topology           topology = kLineList;
         WGPURenderPipeline pipeline = nullptr;
     };
 
-    WGPURenderPipeline pipelineFor(WGPUTextureFormat, uint8_t depthMode, uint8_t blend,
-                                   uint8_t topology, std::string& error);
+    // The one pass both entry points below write: attachments, pipeline selection, the
+    // vertex upload and the draw. `count` is already trimmed by the caller, and 0 means
+    // "nothing to queue" — the frame is left untouched, but the device and target are
+    // still validated, which is what the entry points' early returns used to do.
+    bool drawBatch(const Target&, const glm::mat4& viewProj,
+                   const std::vector<DebugVertex>& verts, size_t count,
+                   WGPUTextureView depthView, const Options&, Topology, std::string& error);
+
+    WGPURenderPipeline pipelineFor(WGPUTextureFormat, DepthMode depthMode, BlendMode blend,
+                                   Topology topology, std::string& error);
     bool               ensureVertexBuffer(uint64_t bytes, std::string& error);
 
     WGPUDevice device_ = nullptr;   // borrowed

@@ -137,8 +137,8 @@ void DebugPrims::shutdown() {
     queue_ = nullptr;
 }
 
-WGPURenderPipeline DebugPrims::pipelineFor(WGPUTextureFormat format, uint8_t depthMode,
-                                           uint8_t blend, uint8_t topology,
+WGPURenderPipeline DebugPrims::pipelineFor(WGPUTextureFormat format, DepthMode depthMode,
+                                           BlendMode blend, Topology topology,
                                            std::string& error) {
     for (const PipelineEntry& p : pipelines_)
         if (p.format == format && p.depthMode == depthMode && p.blend == blend &&
@@ -163,7 +163,7 @@ WGPURenderPipeline DebugPrims::pipelineFor(WGPUTextureFormat format, uint8_t dep
     target.format = format;
     target.writeMask = WGPUColorWriteMask_All;
     WGPUBlendState blendState = {};
-    if (blend == 1) {
+    if (blend == kAdditive) {
         // The DX9 UnlitCubePass(alphaBlend = true) pair: fire-and-forget additive,
         // which is how a bright debug line stays legible over a dark stage.
         blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
@@ -214,8 +214,8 @@ WGPURenderPipeline DebugPrims::pipelineFor(WGPUTextureFormat format, uint8_t dep
     rpd.vertex.entryPoint = sv("vs_main");
     rpd.vertex.bufferCount = 1;
     rpd.vertex.buffers = &vbl;
-    rpd.primitive.topology = topology == 1 ? WGPUPrimitiveTopology_TriangleList
-                                           : WGPUPrimitiveTopology_LineList;
+    rpd.primitive.topology = topology == kTriangleList ? WGPUPrimitiveTopology_TriangleList
+                                                       : WGPUPrimitiveTopology_LineList;
     // Neither face nor cull state affects a line, but neither may be left Undefined.
     rpd.primitive.frontFace = WGPUFrontFace_CCW;
     rpd.primitive.cullMode = WGPUCullMode_None;
@@ -256,6 +256,46 @@ bool DebugPrims::drawVertices(const Target& target, const glm::mat4& viewProj,
                               const std::vector<DebugVertex>& verts, WGPUTextureView depthView,
                               const Options& options, std::string& error) {
     stats_ = Stats{};
+    // Trim to whole lines, exactly as the batch does: a half line is not a thing. A
+    // one-vertex call trims to nothing, and drawBatch answers that by leaving the frame
+    // untouched.
+    const size_t accepted = std::min(verts.size(), kMaxVertices) & ~(size_t)1;
+    if (!drawBatch(target, viewProj, verts, accepted, depthView, options, kLineList, error))
+        return false;
+    // Counted after the call: a rejected device or target reports its error with the
+    // stats still zero, which is what the preamble here used to do.
+    stats_.droppedVertices = verts.size() - accepted;
+    stats_.lines = accepted / 2;
+    return true;
+}
+
+// Solid cubes, the same pass the DX9 file is: same shader, same states, only the
+// primitive topology differs from the line list above.
+bool DebugPrims::drawCubes(const Target& target, const glm::mat4& viewProj,
+                           const CubeBatch& batch, WGPUTextureView depthView,
+                           const Options& options, std::string& error) {
+    stats_ = Stats{};
+    const std::vector<DebugVertex>& verts = batch.vertices();
+    if (!drawBatch(target, viewProj, verts, verts.size(), depthView, options, kTriangleList,
+                   error))
+        return false;
+    stats_.cubes = batch.cubes();
+    stats_.vertices = verts.size();
+    // The batch's own drop count, not a trimmed-vector one: a whole cube refused for
+    // want of 36 vertices is a drop nothing else here can show. An empty batch reports
+    // none, dropped or not, which is what this path always did.
+    if (!verts.empty()) stats_.droppedVertices = batch.droppedVertices();
+    return true;
+}
+
+// The pass both entry points write: validation, pipeline selection, the vertex upload,
+// the attachments, and the draw. Splitting it out is what keeps the depth/stencil rules
+// below — the ones that have to leave the scene's decal stencil exactly as found — in
+// one place instead of two that can drift.
+bool DebugPrims::drawBatch(const Target& target, const glm::mat4& viewProj,
+                          const std::vector<DebugVertex>& verts, size_t count,
+                          WGPUTextureView depthView, const Options& options, Topology topology,
+                          std::string& error) {
     if (!device_ || !layout_) {
         error = "debug prims not initialized";
         return false;
@@ -264,22 +304,17 @@ bool DebugPrims::drawVertices(const Target& target, const glm::mat4& viewProj,
         error = "debug prims render target is incomplete";
         return false;
     }
-    if (verts.empty()) return true;   // nothing queued: leave the frame untouched
-
-    // Trim to whole lines, exactly as the batch does: a half line is not a thing.
-    const size_t accepted = std::min(verts.size(), kMaxVertices) & ~(size_t)1;
-    stats_.droppedVertices = verts.size() - accepted;
-    if (accepted == 0) return true;
+    if (count == 0) return true;   // nothing queued: leave the frame untouched
 
     // The depth view decides the pipeline variant, not a runtime switch.
-    const uint8_t depthMode = depthView ? (options.depthTest ? kDepthTested : kDepthAlways)
-                                        : kNoDepth;
-    const uint8_t blend = options.additive ? 1 : 0;
-    WGPURenderPipeline pipeline = pipelineFor(target.format, depthMode, blend, 0, error);
+    const DepthMode depthMode = depthView ? (options.depthTest ? kDepthTested : kDepthAlways)
+                                          : kNoDepth;
+    const BlendMode blend = options.additive ? kAdditive : kStraightAlpha;
+    WGPURenderPipeline pipeline = pipelineFor(target.format, depthMode, blend, topology, error);
     if (!pipeline) return false;
 
-    if (!ensureVertexBuffer((uint64_t)accepted * sizeof(DebugVertex), error)) return false;
-    wgpuQueueWriteBuffer(queue_, vbuf_, 0, verts.data(), accepted * sizeof(DebugVertex));
+    if (!ensureVertexBuffer((uint64_t)count * sizeof(DebugVertex), error)) return false;
+    wgpuQueueWriteBuffer(queue_, vbuf_, 0, verts.data(), count * sizeof(DebugVertex));
     // No transpose: glm and WGSL are both column-major, and the scene pass writes its
     // CameraUniform the same way.
     wgpuQueueWriteBuffer(queue_, ubuf_, 0, &viewProj, sizeof viewProj);
@@ -313,88 +348,19 @@ bool DebugPrims::drawVertices(const Target& target, const glm::mat4& viewProj,
 
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(target.encoder, &passDesc);
     if (!pass) {
-        error = "debug line render pass could not be started";
+        // One message for both topologies: the failure is the pass, not the primitive.
+        error = "debug prims render pass could not be started";
         return false;
     }
     wgpuRenderPassEncoderSetPipeline(pass, pipeline);
     wgpuRenderPassEncoderSetBindGroup(pass, 0, group_, 0, nullptr);
     applyViewport(pass, options);
     wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vbuf_, 0, WGPU_WHOLE_SIZE);
-    wgpuRenderPassEncoderDraw(pass, (uint32_t)accepted, 1, 0, 0);
+    wgpuRenderPassEncoderDraw(pass, (uint32_t)count, 1, 0, 0);
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
 
-    stats_.vertices = accepted;
-    stats_.lines = accepted / 2;
-    stats_.passes = 1;
-    return true;
-}
-
-// Solid cubes, the same pass the DX9 file is: same shader, same states, only the
-// primitive topology differs from the line list above.
-bool DebugPrims::drawCubes(const Target& target, const glm::mat4& viewProj,
-                           const CubeBatch& batch, WGPUTextureView depthView,
-                           const Options& options, std::string& error) {
-    stats_ = Stats{};
-    if (!device_ || !layout_) {
-        error = "debug prims not initialized";
-        return false;
-    }
-    if (!target.encoder || !target.colorView || target.width == 0 || target.height == 0) {
-        error = "debug prims render target is incomplete";
-        return false;
-    }
-    const std::vector<DebugVertex>& verts = batch.vertices();
-    if (verts.empty()) return true;
-
-    const uint8_t depthMode = depthView ? (options.depthTest ? kDepthTested : kDepthAlways)
-                                        : kNoDepth;
-    const uint8_t blend = options.additive ? 1 : 0;
-    WGPURenderPipeline pipeline = pipelineFor(target.format, depthMode, blend, 1, error);
-    if (!pipeline) return false;
-    if (!ensureVertexBuffer((uint64_t)verts.size() * sizeof(DebugVertex), error)) return false;
-    wgpuQueueWriteBuffer(queue_, vbuf_, 0, verts.data(), verts.size() * sizeof(DebugVertex));
-    wgpuQueueWriteBuffer(queue_, ubuf_, 0, &viewProj, sizeof viewProj);
-
-    WGPURenderPassColorAttachment color = {};
-    color.view = target.colorView;
-    color.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-    color.loadOp = WGPULoadOp_Load;
-    color.storeOp = WGPUStoreOp_Store;
-
-    WGPURenderPassDepthStencilAttachment depth = {};
-    depth.depthClearValue = 1.f;
-    if (depthView) {
-        depth.view = depthView;
-        depth.depthLoadOp = WGPULoadOp_Load;
-        depth.depthStoreOp = WGPUStoreOp_Store;
-        depth.depthReadOnly = false;
-        depth.stencilLoadOp = WGPULoadOp_Load;
-        depth.stencilStoreOp = WGPUStoreOp_Store;
-        depth.stencilReadOnly = false;
-    }
-
-    WGPURenderPassDescriptor passDesc = {};
-    passDesc.colorAttachmentCount = 1;
-    passDesc.colorAttachments = &color;
-    passDesc.depthStencilAttachment = depthView ? &depth : nullptr;
-
-    WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(target.encoder, &passDesc);
-    if (!pass) {
-        error = "debug cube render pass could not be started";
-        return false;
-    }
-    wgpuRenderPassEncoderSetPipeline(pass, pipeline);
-    wgpuRenderPassEncoderSetBindGroup(pass, 0, group_, 0, nullptr);
-    applyViewport(pass, options);
-    wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vbuf_, 0, WGPU_WHOLE_SIZE);
-    wgpuRenderPassEncoderDraw(pass, (uint32_t)verts.size(), 1, 0, 0);
-    wgpuRenderPassEncoderEnd(pass);
-    wgpuRenderPassEncoderRelease(pass);
-
-    stats_.cubes = batch.cubes();
-    stats_.vertices = verts.size();
-    stats_.droppedVertices = batch.droppedVertices();
+    stats_.vertices = count;
     stats_.passes = 1;
     return true;
 }
