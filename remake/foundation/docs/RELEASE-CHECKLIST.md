@@ -145,6 +145,16 @@ steps one logic tick per rendered frame (the demo prints
 ticks in the scripts exact and the run reproducible. Run them with a warm
 page cache; each takes seconds to a minute.
 
+> **These four recipes DO NOT REPRODUCE as written (issue #63).** `75e69c3` corrected the stage
+> page's time-limit default from a port-chosen 180 to the original's **0 = infinite**, and the
+> scripts' stage-page taps are relative to that default: the 1v1 script's two LEFT presses used
+> to reach 60 s and now reach 180 s. Every gate's round is therefore longer, ends by balloon
+> burst instead of time up, and the 4p gate's `--frames=9600` no longer lands on a capturable
+> frame (it prints `RESULT: ok` and writes no PPM). **The ladders and digests below are the
+> PRE-fix values, kept because they are what the gate is meant to return once issue #63
+> re-calibrates the scripts** — do not re-record them to match the current behaviour, which is
+> the fix's side effect and not the gate's contract.
+
 The four are §3.1 (§3.1's 1v1), §3.2 (com), §3.3 (2v2) and the four-player
 loop, whose command is:
 ```bash
