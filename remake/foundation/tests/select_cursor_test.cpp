@@ -146,11 +146,17 @@ int main() {
         hold(menu, right, 70);   // -> (200,-18), the horizontal clamp, far from every icon
         check(near(menu.cursorX(), 200.f), "the cursor is at the clamp");
         check(menu.cursorOffGrid(), "nothing is within 50 units: the cursor is off the diamond");
-        check(state.slots[0].character >= 0 && state.slots[0].character < 16,
-              "off the diamond the panel rolls a random character, never -1");
+        // The SLOT stays empty — that is what keeps every chibi still, since the chibi draw
+        // animates any character a slot matches (FUN_0040b2b0:106-131) — while the PORTRAIT
+        // rolls, which is what the player sees.
+        check(state.slots[0].character == -1,
+              "off the diamond the SLOT is empty, so no chibi animates");
+        check(menu.shown(0) >= 0 && menu.shown(0) < 16,
+              "but the portrait is showing a rolled character");
         hold(menu, down, 100);   // -> (200,282)
         check(menu.cursorOffGrid(), "and stays off the diamond over far empty space");
-        check(state.slots[0].character >= 0, "still rolling, and still never -1");
+        check(state.slots[0].character == -1, "the slot stays empty while rolling");
+        check(menu.shown(0) >= 0, "and the portrait keeps rolling");
     }
 
     // --- The confirm off the diamond takes the shown character; the SE fires on change only -
@@ -201,8 +207,9 @@ int main() {
         emptyMenu.update(confirm);
         hold(emptyMenu, left, 30);
         check(emptyMenu.cursorOffGrid(), "the cursor can rest off the diamond");
-        const int shown = empty.slots[0].character;
+        const int shown = emptyMenu.shown(0);
         check(shown >= 0 && shown < 16, "and the panel is showing a rolled character");
+        check(empty.slots[0].character == -1, "with the slot still empty before the press");
         int pickSound = -1;
         emptyMenu.updateFrame(confirm, &pickSound);
         check(pickSound == 0, "a confirm off the diamond is still a keypress");
@@ -236,8 +243,8 @@ int main() {
         shionMenu.update(confirm);
         hold(shionMenu, left, 30);   // (-120, 216): off the top-left of the diamond
         check(shionMenu.cursorOffGrid(), "the cursor can slide into empty space mid-move");
-        check(shion.slots[0].character >= 0,
-              "and the panel is rolling a character there rather than sitting unset");
+        check(shion.slots[0].character == -1, "and the slot is empty there, so no chibi animates");
+        check(shionMenu.shown(0) >= 0, "while the portrait rolls a character");
         float nearest = 1e9f;
         for (int i = 0; i < 16; ++i) {
             const float dx = ui::kSelectRosterX[i] * 48.f - shionMenu.cursorX();

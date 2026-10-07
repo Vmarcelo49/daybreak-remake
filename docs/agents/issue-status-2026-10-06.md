@@ -1195,3 +1195,25 @@ a test count after a merge that touches `CMakeLists.txt`.**
 **Lesson**: an issue body is evidence about the tree *at the time it was filed*, and this batch has now
 had **seven** issues arrive with a premise that measurement disproved (#45, #43, #47, #28, #26, #32,
 #54). Re-read the body against `main` before dispatching it, not after.
+
+## Round 32 — the off-diamond random pick (and the chibi detail)
+
+The character select's off-diamond cursor now rolls random characters and a confirm takes the one
+showing — the behaviour `FUN_00409340:305-317` recovered but the port had deferred with a PORT RULE
+since issue #41. Two details only the human could supply, and both changed the implementation:
+
+1. **The roll is a PORTRAIT roll, not a slot write.** The first version wrote the rolling character
+   into `state_.slots[i].character`, and the chibi draw animates every character any slot matches
+   (`FUN_0040b2b0:106-131` tests the confirmed field) — so all sixteen chibis twitched as the roll
+   cycled. The original's screen keeps them still: the roll gets its own field (`SelectMenu::rolled_`,
+   read through `shown()`), the slot stays empty, and only the cursor's target and confirmed
+   characters animate. **A behaviour the decompiled code alone did not show.**
+2. **The costume roll respects the character's real costume count.** The original is `rng() % 3`
+   (or `% 2` for 14/15) regardless of what the character owns, which can land on a cell they do not
+   have; the port keeps it to `kSelectCostumes`.
+
+**Two gate baselines moved, both recorded in `RELEASE-CHECKLIST` §3.6**: 4p `2483c3aa` → `14305bc9`
+and com `b813155d` → `57044cfb` — the two scripts that take a cursor off the diamond. They move for
+two reasons at once (the roll consumes RNG, so the settled roster differs, and an off-diamond panel
+draws no summary row), and both are deterministic. 1v1 and 2v2 never leave the diamond and are
+byte-identical, which is the evidence that the change is confined to panels that go off-grid.

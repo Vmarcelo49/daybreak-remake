@@ -131,6 +131,13 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
             // own. The original then goes to phase 4 (Hypermode), skipping Weapon, and so does
             // this: the weapon is clamped to the new character's count so it cannot be stale.
             if (cursorOffGrid(c)) {
+                // The portrait's roll becomes the panel's pick, and the costume is rolled here,
+                // at the moment of the pick — the original's `rng() % 3` (or `% 2` for 14/15),
+                // kept to the character's own costume count so a roll cannot land on a cell it
+                // does not own. The original then goes to phase 4 (Hypermode), skipping Weapon,
+                // and so does this: the weapon is clamped to the new character's count so it
+                // cannot be stale.
+                slot.character = rolled_[panel(c)];
                 slot.costume = (int)(state_.nextRandom() %
                                      (uint32_t)kSelectCostumes[slot.character]);
                 slot.weapon = std::min(slot.weapon, (slot.character < 14 ? 3 : 2) - 1);
@@ -195,13 +202,18 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
             // rolling here as well is what makes the portrait move before the press, which the
             // recovered code alone does not show but the original's screen does.
             //
-            // Silent on purpose: the portrait is redrawn from state_.slots[i].character every
-            // frame, so the roll needs no action, and returning Changed would play the cursor
-            // SE (screen_select.cpp's updateFrame maps a non-None action with no button to
-            // sound 2) — at one roll per tick that is a machine gun. Empty space stays silent,
-            // which is also the original's own rule at :294.
-            slot.character = (int)(state_.nextRandom() % 16u);
-            slot.costume %= kSelectCostumes[slot.character];
+            // It writes rolled_, NOT the slot. The chibi draw animates every character any
+            // slot matches (FUN_0040b2b0:106-131 tests the confirmed field), so a roll written
+            // into the slot made all sixteen chibis twitch as it cycled; the slot keeps meaning
+            // "the cursor is on this one, or it is confirmed", which is what the original's
+            // screen shows — the chibis are still while the portrait rolls.
+            //
+            // Silent on purpose: the portrait is redrawn every frame, so the roll needs no
+            // action, and returning Changed would play the cursor SE (updateFrame maps a
+            // non-None action with no button to sound 2) — one roll per tick would be a machine
+            // gun. Empty space stays silent, which is also the original's own rule at :294.
+            slot.character = -1;
+            rolled_[panel(c)] = (int)(state_.nextRandom() % 16u);
             return SelectAction::None;
         }
         if (chosen != slot.character) {
@@ -336,8 +348,10 @@ void SelectScreen::draw(SpriteRenderer& b) const {
     };
     sprite(shared_[0],{0,0,800,600},0,0,0,0);
     // Portrait pivots are (128,256), resolving the apparent 150px panel-anchor mismatch (§2.3).
-    for(int i=0;i<4;++i) if(state_.slots[i].character>=0)
-        sprite(portraits_[state_.slots[i].character],{0,0,256,256},128,256,(i/2)*400.f+200,(i%2)*300.f+300,1,i>=2);
+    // menu_.shown(i), not the slot: off the diamond the slot is empty on purpose (so no chibi
+    // animates) while the portrait keeps rolling. See SelectMenu::shown.
+    for(int i=0;i<4;++i) if(menu_.shown(i)>=0)
+        sprite(portraits_[menu_.shown(i)],{0,0,256,256},128,256,(i/2)*400.f+200,(i%2)*300.f+300,1,i>=2);
     sprite(shared_[1],{0,0,800,600},0,0,0,0);
     for(int c=0;c<4;++c) if(menu_.phase(c)==SelectPhase::Team) {
         int pos=menu_.cursor(c);

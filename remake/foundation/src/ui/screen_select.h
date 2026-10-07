@@ -166,6 +166,14 @@ public:
     // (FUN_00409340:272-286) finds no icon. Off the grid the panel's portrait rolls random
     // characters and a confirm takes the one showing — see updatePanel.
     bool cursorOffGrid(int controller = 0) const;
+    // What a panel's PORTRAIT shows. Off the diamond this is the rolling character, which is
+    // deliberately NOT the slot's own: the chibi draw animates every character any slot
+    // matches (FUN_0040b2b0:106-131 tests the confirmed field), so writing the roll into the
+    // slot made all sixteen chibis twitch as it cycled. The roll gets its own field and the
+    // slot keeps meaning "the cursor is on this one, or it is confirmed".
+    int shown(int panel) const {
+        return state_.slots[panel].character >= 0 ? state_.slots[panel].character : rolled_[panel];
+    }
     void tick();
     // The phase-row slide of the controller that owns a panel — FUN_0040b2b0 indexes 0x3cc4 by
     // the owner; rowSlideOffset() turns it into the panel's own signed x.
@@ -176,6 +184,9 @@ private:
     std::array<SelectPhase,4> phase_{};
     std::array<int,4> cursor_{{0,-1,-1,-1}}, cooldown_{};
     std::array<float,4> cursorX_{}, cursorY_{};
+    // The off-diamond roll's own display character per panel, in panel order (not controller
+    // order): `shown()` falls back to it while the slot has no live pick. See shown().
+    std::array<int,4> rolled_{};
     SelectRowSlide slide_;
 };
 class SelectScreen final : public Screen {

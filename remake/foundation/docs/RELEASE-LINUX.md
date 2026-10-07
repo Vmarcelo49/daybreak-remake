@@ -81,7 +81,7 @@ digests and the logic tick rate.
 |---|---|
 | `ctest --test-dir build/linux --output-on-failure` | `100% tests passed out of 58`, 143.68 s, install present, none skipped (this branch; `main`'s §2 says 61 — issue #4's three delivery suites) |
 | §3.1 `--local-players=2 --script=tests/scripts/frontend-1v1-rematch.txt --frames=15500` | `RESULT: ok`, 15500 ticks in 7.020 s; ladder `0/34/446/4382/4984/5310/9246/9848/10174/14110/14712`; roster `1P Rena 0` vs `2P Keiichi 1`; digest `8cc49e6c…` |
-| §3.2 `--local-players=1 --script=tests/scripts/frontend-com-rematch.txt --frames=15500` | `RESULT: ok`, 15500 ticks in 15.219 s; the same ladder tick-for-tick; one view, `1P Rena 0` vs `COM Chie 0`; digest `b813155d…` |
+| §3.2 `--local-players=1 --script=tests/scripts/frontend-com-rematch.txt --frames=15500` | `RESULT: ok`, 15500 ticks in 15.219 s; the same ladder tick-for-tick; one view, `1P Rena 0` vs `COM Chie 0`; digest `57044cfb…` |
 | §3.3 `--local-players=4 --script=tests/scripts/frontend-2v2-rematch.txt --frames=15500` | `RESULT: ok`, 15500 ticks in 19.515 s; the same ladder; four views, `Rena 0`/`Keiichi 0`/`Rika 0`/`Mion 0` as owner/ally/enemy/enemy; digest `8cc49e6c…` |
 | four-player gate `--local-players=4 --script=tests/scripts/frontend-4p.txt --frames=9600` | `RESULT: ok`, 9600 ticks in 7.355 s; ladder `0/34/446/4382/4984/5584/9520`; digest `14305bc9…` |
 | `./build/linux/weapon_definition_test` | `WEAPON_DEFINITION: ok (747 checks, 0 failed, 0 skipped)` and `all 46 legal selections ran a match ok` |
@@ -97,7 +97,7 @@ digests and the logic tick rate.
 
 Two further passes on the same tree reproduced every load-bearing number here:
 `ctest` 58/58 again (115.68 s), and the four gates again with the **same digests**
-(`8cc49e6c`, `b813155d`, `8cc49e6c`, `14305bc9`) and the same ladders. Only the
+(`8cc49e6c`, `57044cfb`, `8cc49e6c`, `14305bc9`) and the same ladders. Only the
 wall times move with machine load — across the three passes: 1v1 5.5–7.0 s, COM
 12.8–15.7 s, 2v2 10.8–19.5 s, 4p 7.1–8.6 s — which is exactly why the table's
 "reproducible numbers" are the ladders, digests and tick rate, not the seconds.
@@ -317,7 +317,7 @@ disagree, that document wins.
 |---|---|---|---|---|
 | 1 | Host suite | `ctest --test-dir build/linux --output-on-failure` | §2 | `100% tests passed` out of the registered count — **61** on `main` as of 2026-10-06 (58 on this branch's base); none `Failed`. The asset-dependent tests may be `Skipped` **only** in the documented data-free shape. |
 | 2 | 1v1, two humans, three rounds | `./build/linux/foundation_demo --install=<game-dir> --screen=title --local-players=2 --script=tests/scripts/frontend-1v1-rematch.txt --headless --out=/tmp/rel-1v1.ppm --size=1280x720 --frames=15500` | §3.1 | `RESULT: ok`; the documented ladder; `[split]` roster `Rena 0` vs `Keiichi 1`; sha256 prefix `8cc49e6c` |
-| 3 | One human + COM, three rounds | same with `--local-players=1 --script=tests/scripts/frontend-com-rematch.txt --out=/tmp/rel-com.ppm` | §3.2 | `RESULT: ok`; the same ladder tick-for-tick; a single view with a `COM` opponent; sha256 prefix `b813155d` |
+| 3 | One human + COM, three rounds | same with `--local-players=1 --script=tests/scripts/frontend-com-rematch.txt --out=/tmp/rel-com.ppm` | §3.2 | `RESULT: ok`; the same ladder tick-for-tick; a single view with a `COM` opponent; sha256 prefix `57044cfb` |
 | 4 | 2v2, four humans, three rounds | same with `--local-players=4 --script=tests/scripts/frontend-2v2-rematch.txt --out=/tmp/rel-2v2.ppm` | §3.3 | `RESULT: ok`; the same ladder; four views and the four documented combos (`Rena 0`/`Keiichi 0`/`Rika 0`/`Mion 0`); sha256 prefix `8cc49e6c`. **Read the ladder and the digest, not the outcome line** — the grade/margin/script follow combat state. |
 | 5 | Four-player front-end loop | `… --local-players=4 --script=tests/scripts/frontend-4p.txt --out=/tmp/rel-4p.ppm --frames=9600` | §3 preamble | `RESULT: ok`; ladder `0/34/446/4382/4984/5584/9520`; sha256 prefix `14305bc9` |
 | 6 | **Live-path manual step** | `--screen=battle --local-players=2` in a real session, ~30 s, then take a hit | §3.5 | A person confirms the camera settles behind the fighter and stays settled through a hit. Nothing headless substitutes. |
