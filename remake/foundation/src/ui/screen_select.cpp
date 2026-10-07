@@ -24,6 +24,11 @@ constexpr int kSelectPanelCols = 2;
 constexpr int kSelectPanelRows = 3;
 constexpr int kSelectDecideCell = kSelectPanelRows - 1;   // column 0, bottom row
 constexpr int kSelectBackCell = (kSelectPanelCols - 1) * kSelectPanelRows + kSelectDecideCell;
+// The cell a panel owns: panel()'s inverse, so the four panels sit on cells 0, 1, 3 and 4 and
+// the decide row's cells (2 and 5) belong to no panel.
+int cellForPanel(int panel) {
+    return panel / kSelectPanelCols * kSelectPanelRows + panel % kSelectPanelCols;
+}
 // The per-character penalty costume cell (VA 0x6b72a0 in DaybreakDX.exe, 16 bytes; 0 = the
 // character has none). Read from the installed exe, like the earned-title names, so the table
 // stays out of this repository. -1 when the exe is not reachable.
@@ -111,8 +116,7 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
     int& pos = cursor_[c];
     if(pos<0) {
         if(!(in.confirm || in.cancel || in.up || in.down || in.left || in.right)) return SelectAction::None;
-        // Each panel opens on its own grid cell (see kSelectPanelRows).
-        pos=c+(c>1);
+        pos=cellForPanel(c);
     }
     SelectPhase& phase = phase_[c];
     if (phase == SelectPhase::Ready) return SelectAction::None;
