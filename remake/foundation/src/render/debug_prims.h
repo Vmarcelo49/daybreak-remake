@@ -122,15 +122,14 @@ inline void buildCube(const glm::vec3& c, float h, DebugColor color, DebugVertex
     for (size_t i = 0; i < kCubeVertices; ++i) out[i] = v[i];
 }
 
-// A frame's worth of cubes, in submission order: no sorting, no dedup, so two runs of
-// the same frame upload byte-identical buffers. `limit` is a constructor argument so
-// the drop path stays testable on the host.
 // Filled UV sphere: slices x stacks quads, two triangles each, so
 // slices * stacks * 6 vertices. Vertex order is stack-major then slice-major and the
 // surface point is
 //   x = cx + r * sin(phi) * cos(theta),  y = cy + r * cos(phi),  z = cz + r * sin(phi) * sin(theta)
 // with phi the stack angle (0 at the top pole) and theta the slice angle. Appending in
-// that fixed order is what keeps the buffer byte-identical between runs.
+// that fixed order is what keeps the buffer byte-identical between runs. A pole row
+// emits a degenerate triangle (two of its three vertices coincide): one wasted triangle
+// per pole, in exchange for no branch in the inner loop.
 inline void buildSphere(const glm::vec3& c, float r, DebugColor color, int slices,
                         int stacks, std::vector<DebugVertex>& out) {
     if (!(r > 0.f) || slices < 3 || stacks < 2) return;
@@ -160,15 +159,10 @@ inline void buildSphere(const glm::vec3& c, float r, DebugColor color, int slice
     }
 }
 
-// Builds a filled UV sphere as triangle-list vertices in CubeBatch's layout. Device-free
-// and deterministic: vertex order is stack-major then slice-major, with no dedup, so two
-// runs of the same arguments upload byte-identical buffers — the property the Linux/Wine
-// capture A/B relies on. Poles are emitted as degenerate triangles (two of the three
-// vertices coincide), which costs one wasted triangle per pole and avoids a branch in the
-// inner loop that would make the order tessellation-dependent.
-void buildSphere(const glm::vec3& center, float radius, DebugColor color, int slices,
-                 int stacks, std::vector<DebugVertex>& out);
-
+// A frame's worth of cubes, in submission order: no sorting, no dedup, so two runs of
+// the same frame upload byte-identical buffers. `limit` is a constructor argument so
+// the drop path stays testable on the host. A batch also takes spheres (addSphere), in
+// the same layout and from the same fixed vertex order.
 class CubeBatch {
 public:
     explicit CubeBatch(size_t limit = 1024) : limit_(limit) {}
@@ -432,19 +426,33 @@ public:
     const Stats& stats() const { return stats_; }
 
 private:
-    // Depth modes are pipeline state, so each is its own pipeline (see debug_prims.cpp).
+    // All three are pipeline state, so each combination is its own pipeline (see
+    // debug_prims.cpp). Named rather than a bare uint8_t because they are what selects
+    // that pipeline: a 0/1 literal at the call site says nothing about which.
     enum DepthMode : uint8_t { kNoDepth = 0, kDepthTested = 1, kDepthAlways = 2 };
+    // Straight alpha is the scene's opaque-pass pair; additive is the DX9
+    // UnlitCubePass(alphaBlend = true) pair.
+    enum BlendMode : uint8_t { kStraightAlpha = 0, kAdditive = 1 };
+    enum Topology : uint8_t { kLineList = 0, kTriangleList = 1 };
 
     struct PipelineEntry {
         WGPUTextureFormat  format = WGPUTextureFormat_Undefined;
-        uint8_t            depthMode = kNoDepth;
-        uint8_t            blend = 0;   // 0 = straight alpha, 1 = additive
-        uint8_t            topology = 0;   // 0 = line list, 1 = triangle list
+        DepthMode          depthMode = kNoDepth;
+        BlendMode          blend = kStraightAlpha;
+        Topology           topology = kLineList;
         WGPURenderPipeline pipeline = nullptr;
     };
 
-    WGPURenderPipeline pipelineFor(WGPUTextureFormat, uint8_t depthMode, uint8_t blend,
-                                   uint8_t topology, std::string& error);
+    // The one pass both entry points below write: attachments, pipeline selection, the
+    // vertex upload and the draw. `count` is already trimmed by the caller, and 0 means
+    // "nothing to queue" — the frame is left untouched, but the device and target are
+    // still validated, which is what the entry points' early returns used to do.
+    bool drawBatch(const Target&, const glm::mat4& viewProj,
+                   const std::vector<DebugVertex>& verts, size_t count,
+                   WGPUTextureView depthView, const Options&, Topology, std::string& error);
+
+    WGPURenderPipeline pipelineFor(WGPUTextureFormat, DepthMode depthMode, BlendMode blend,
+                                   Topology topology, std::string& error);
     bool               ensureVertexBuffer(uint64_t bytes, std::string& error);
 
     WGPUDevice device_ = nullptr;   // borrowed

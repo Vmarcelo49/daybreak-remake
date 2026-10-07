@@ -320,7 +320,6 @@ struct Stats {
     int    untextured      = 0;
     int    decals          = 0;
     int    effects         = 0;
-    int    billboarded     = 0;   // effect draws that yaw to the camera (EFFECTS-BILLBOARD.md)
     int    outlines        = 0;   // toon outline hulls queued (issue #21)
     int    shadowCasters   = 0;   // draws submitted to the shadow map (issue #21 row 1)
     int    shadowReceivers = 0;   // stage draws marked to sample it
@@ -520,33 +519,66 @@ private:
     std::vector<DrawItem> drawTemplates_;
     std::vector<EffectInstance> effectInstances_;
 
+    // One uploaded image and the view onto it. A scoped owner rather than a pair of
+    // raw handles because two kinds of site release them: the vector that holds every
+    // texture the current scene uploaded (setScene and shutdown share one releaser),
+    // and a local that never reaches that vector at all — a failed upload, a capture
+    // or benchmark target. The second kind is why the destructor exists: `benchmark`
+    // alone has five exits, and an early return added to any of them would leak the
+    // target silently. Movable (construction and assignment) so the type behaves in a
+    // container; the moved-from handles are null, so exactly one Texture owns them.
     struct Texture {
         WGPUTexture     tex  = nullptr;
         WGPUTextureView view = nullptr;
+
+        Texture() = default;
+        ~Texture();
+        Texture(const Texture&) = delete;
+        Texture& operator=(const Texture&) = delete;
+        Texture(Texture&&) noexcept;
+        Texture& operator=(Texture&&) noexcept;
+        void release();
     };
 
+    // The pipelines for one target format, indexed [pass][npr]: Pass's own order is the
+    // submission order the draw list is partitioned into, and npr selects the experiment
+    // vertex entry point. Slots are created lazily and are null until asked for.
+    //
+    // What each pass carries:
+    //   * outline: the toon hull, front-face culled (issue #21);
+    //   * opaque: lit, depth-writing;
+    //   * decal: multiply blend, no depth write, no cull;
+    //   * effect: additive, unlit, no depth write, no cull.
+    // The npr variant of each is the same state with shader entry `vs_npr`, which reads
+    // the secondary lighting-normal stream and the outline-width uniform. A SEPARATE
+    // entry point, not a branch inside one: a branch (or a `select`) changes how the
+    // driver compiles the unmodified path too, and the OFF frame moved by a pixel when it
+    // was tried — the identity every banked capture rests on. With no --npr flag no npr
+    // slot is ever created, and only the opaque cell's is reachable at all: the render
+    // loop asks for the experiment entry point on Opaque draws alone.
     struct Pipelines {
-        WGPUTextureFormat format = WGPUTextureFormat_Undefined;
-        WGPURenderPipeline outline = nullptr;  // outline hull: front-face culled (issue #21)
-        WGPURenderPipeline opaque = nullptr;   // lit, depth-writing
-        WGPURenderPipeline decal  = nullptr;   // multiply blend, no depth write, no cull
-        WGPURenderPipeline effect = nullptr;   // additive, unlit, no depth write, no cull
-        // The #25 experiment variant of each pass: the same state, but the vertex stage is
-        // shader entry `vs_npr`, which reads the secondary lighting-normal stream and the
-        // outline-width uniform. A SEPARATE entry point, not a branch inside one: a branch
-        // (or a `select`) changes how the driver compiles the unmodified path too, and the
-        // OFF frame moved by a pixel when it was tried — the identity every banked capture
-        // rests on. With no --npr flag this struct is never touched.
-        WGPURenderPipeline outlineNpr = nullptr;
-        WGPURenderPipeline opaqueNpr = nullptr;
-        WGPURenderPipeline decalNpr = nullptr;
-        WGPURenderPipeline effectNpr = nullptr;
+        WGPUTextureFormat  format = WGPUTextureFormat_Undefined;
+        WGPURenderPipeline slots[kPassCount][2] = {};
     };
 
     // `npr` selects the experiment vertex entry point (issue #25); the pipeline is cached
     // per (format, pass, entry) so enabling an experiment builds one extra variant.
     WGPURenderPipeline pipelineFor(WGPUTextureFormat, Pass, bool npr, std::string& error);
     bool ensureDepth(uint32_t width, uint32_t height, std::string& error);
+    // A 1x1 RGBA8 texture of one colour and its view: the two placeholders the bind
+    // groups need (white where a material resolves no texture, opaque black where no
+    // shadow map was rendered). Leaves both handles null if creation fails, for the
+    // caller's own completeness check.
+    void createSolidTexture(uint32_t rgba, WGPUTexture& tex, WGPUTextureView& view);
+    // The sampler state every binding here shares, differing only in address mode; see
+    // the definition. Null if creation fails, which init()'s check catches.
+    WGPUSampler createSampler(WGPUAddressMode addressMode);
+    // Uploads the texture a material names and hands back its index in textures_
+    // through `index`. False is a failed upload, and the caller must give up the
+    // scene; true with an index of -1 is the ordinary "this draw has no texture".
+    // The definition says why those two are not both -1.
+    bool uploadTexture(const xm::SceneModel&, const std::string& name, bool mipmapped, int& index,
+                       std::string& error);
     // The shadow map (issue #21 row 1). One light-space target per view, because the
     // original builds its light matrix and runs the caster pass inside the per-view loop
     // (FUN_006396f0:0x639b80/0x639b8c); a view's receiver reads the map its own caster
@@ -557,9 +589,20 @@ private:
         WGPUTextureView view = nullptr, depthView = nullptr;
         WGPUBindGroup   group = nullptr;   // group 3: the map + its sampler
     };
+    // Lazy creation of the caster pass's pipeline, which needs only the shadow layout
+    // and the model shader; cached for the process like the main pipelines.
+    bool ensureShadowPipeline(std::string& error);
     bool ensureShadowTarget(size_t view, std::string& error);
+    // The caster pass itself (issue #21 row 1): one render pass per view into that
+    // view's map, drawing the toon technique's own surface set. `views` as in renderImpl.
+    bool renderShadowCasters(const Target&, const std::vector<ViewCamera>* views,
+                             std::string& error);
     void releaseShadowTargets();
-    bool buildBindings(std::string& error);
+    // Every GPU object that belongs to the loaded scene: the vertex/index buffers, the
+    // uploaded textures and their bind groups, the draw bind group and the palette and
+    // draw uniform buffers. setScene() calls it to replace a scene, shutdown() to tear
+    // one down; keeping it in one place is what stops the two release lists drifting.
+    void releaseSceneResources();
     // The shared scene pass. `views` null (or a single entry) is the single-view path:
     // camera_, cameraBuffer_, drawBuffer_ offset 0, no viewport/scissor calls. More than
     // one entry is the split-screen path, and needs ensureViewCameras().
@@ -569,11 +612,10 @@ private:
     // the adapter's minUniformBufferOffsetAlignment, and separate buffers cannot get it
     // wrong (the uniform itself is tens of bytes).
     bool ensureViewCameras(std::string& error);
-    // Per-draw uniforms for draws [first, first+count) under one camera eye, written at
-    // `dst` with xm::kDrawStride spacing. Split out because billboard yaw is per camera:
-    // each view needs its own copy of the draw block.
-    void fillDrawData(const glm::vec3& eye, bool haveEye, size_t first, size_t count,
-                      uint8_t* dst);
+    // Per-draw uniforms for every draw in draws_, written from `dst` with
+    // xm::kDrawStride spacing. Split out because billboard yaw is per camera: each view
+    // needs its own copy of the draw block.
+    void fillDrawData(const glm::vec3& eye, bool haveEye, uint8_t* dst);
 
     WGPUInstance instance_ = nullptr;   // borrowed from the context
     WGPUDevice   device_   = nullptr;
@@ -629,6 +671,10 @@ private:
     std::vector<MeshRecord> meshes_;
     std::vector<WGPUBuffer> buffers_;      // owned vertex/index buffers
     std::vector<Texture>    textures_;     // owned, deduplicated by image
+    // Images are shared between materials, so each is uploaded once and draws index
+    // into textures_ through this map. Keyed by image pointer and cleared with the
+    // list it indexes (releaseSceneResources), never separately.
+    std::unordered_map<const xm::CnvImage*, int> texIndex_;
     std::vector<glm::mat4>  palette_;      // CPU copy, uploaded by updatePose()
 
     WGPUTexture     depthTex_ = nullptr;

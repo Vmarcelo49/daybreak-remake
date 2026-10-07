@@ -23,6 +23,30 @@
 
 namespace render {
 
+// The cluster key: the quantised coordinate triple itself, packed into one int64 with a
+// bias so every coordinate is positive. A hash would be smaller but cannot be stepped,
+// and stepping is exactly what the neighbour passes need. pack() and unpack() are the two
+// halves of one round trip and live together because a wrong bias or span does not fail:
+// it merges distant clusters, which shows up as a lighting change rather than as a bug.
+// The quantisation that produces the triple stays in buildNprNormals below, because it
+// needs the mesh's own scale.
+struct Cell {
+    int x = 0, y = 0, z = 0;
+    static constexpr int64_t kBias = 1 << 19;
+    static constexpr int64_t kSpan = 1 << 20;
+
+    int64_t pack() const {
+        return ((int64_t)(x + kBias) * kSpan + (y + kBias)) * kSpan + (z + kBias);
+    }
+    static Cell unpack(int64_t k) {
+        const int cz = (int)(k % kSpan) - (int)kBias;
+        k /= kSpan;
+        const int cy = (int)(k % kSpan) - (int)kBias;
+        k /= kSpan;
+        return Cell{(int)k - (int)kBias, cy, cz};
+    }
+};
+
 // ---------------------------------------------------------------------------------------
 // What it does, and why this shape:
 //   * vertices are accumulated into clusters by their bind-pose position quantised to
@@ -71,17 +95,9 @@ inline size_t buildNprNormals(const xm::Mesh& mesh, std::vector<xm::NprVertex>& 
     // reads, not at the scale the exporter's seams are at.)
     const float inv = 16.f / glm::max(glm::length(hi - lo), 1e-6f);
 
-    // The cluster key is the integer coordinate triple itself, packed into one int64 with
-    // a bias. A hash would be smaller but cannot be stepped, and stepping is exactly what
-    // the neighbour passes below need.
-    constexpr int64_t kBias = 1 << 19;
-    constexpr int64_t kSpan = 1 << 20;
     auto coordOf = [&](const glm::vec3& p) {
-        return glm::ivec3((int)std::lround(p.x * inv), (int)std::lround(p.y * inv),
-                          (int)std::lround(p.z * inv));
-    };
-    auto packOf = [&](const glm::ivec3& c) {
-        return ((int64_t)(c.x + kBias) * kSpan + (c.y + kBias)) * kSpan + (c.z + kBias);
+        return Cell{(int)std::lround(p.x * inv), (int)std::lround(p.y * inv),
+                    (int)std::lround(p.z * inv)};
     };
 
     // Which way a triangle's right-handed cross product points is a property of the
@@ -92,6 +108,16 @@ inline size_t buildNprNormals(const xm::Mesh& mesh, std::vector<xm::NprVertex>& 
     // oriented by the sign of its agreement with its vertices' geometric normals. A mesh
     // whose normals are themselves inconsistent gets the raw cross product, which the flip
     // guard below then rejects rather than using backwards.
+    // One pass decodes each triangle once: the vote needs the raw cross product and the
+    // cluster sum needs it signed, so the raw product is accumulated below and the map is
+    // negated once after the vote. Summing raw faces and negating the sum is exactly
+    // summing negated faces (negation is exact in IEEE-754), so this is the same
+    // accumulation, not an approximation of it.
+    //
+    // The cross product is unnormalised: its magnitude is twice the triangle's area, so
+    // summing these weights the average by area without a second division.
+    std::unordered_map<int64_t, glm::vec3> acc;
+    acc.reserve(n);
     float orient = 0.f;
     for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
         const uint32_t a = mesh.indices[i], b = mesh.indices[i + 1], c = mesh.indices[i + 2];
@@ -103,23 +129,13 @@ inline size_t buildNprNormals(const xm::Mesh& mesh, std::vector<xm::NprVertex>& 
         const glm::vec3 hinted = mesh.vertices[a].normal + mesh.vertices[b].normal +
                                  mesh.vertices[c].normal;
         orient += glm::dot(face, hinted);
+        for (uint32_t idx : {a, b, c}) acc[coordOf(mesh.vertices[idx].pos).pack()] += face;
     }
+    // Pass 1's result: each cluster holds the area-weighted sum of its own faces, signed
+    // the way the vote decided.
     const float sign = orient < 0.f ? -1.f : 1.f;
-
-    // Pass 1: each cluster gets the area-weighted sum of its own faces.
-    std::unordered_map<int64_t, glm::vec3> acc;
-    acc.reserve(n);
-    for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
-        const uint32_t a = mesh.indices[i], b = mesh.indices[i + 1], c = mesh.indices[i + 2];
-        if (a >= n || b >= n || c >= n) continue;
-        const glm::vec3& pa = mesh.vertices[a].pos;
-        const glm::vec3& pb = mesh.vertices[b].pos;
-        const glm::vec3& pc = mesh.vertices[c].pos;
-        // Unnormalised cross product: its magnitude is twice the triangle's area, so
-        // summing these weights the average by area without a second division.
-        const glm::vec3 face = glm::cross(pb - pa, pc - pa) * sign;
-        for (uint32_t idx : {a, b, c}) acc[packOf(coordOf(mesh.vertices[idx].pos))] += face;
-    }
+    if (sign < 0.f)
+        for (auto& kv : acc) kv.second *= sign;
 
     // Passes 2..N: a cluster's normal is blended with its 26 neighbours (the 3x3x3 shell
     // around its own cell, itself weighted twice). One pass would already average the
@@ -134,19 +150,13 @@ inline size_t buildNprNormals(const xm::Mesh& mesh, std::vector<xm::NprVertex>& 
         for (const auto& kv : cur) {
             if (glm::dot(kv.second, kv.second) < 1e-12f) continue;
             const glm::vec3 self = glm::normalize(kv.second);
-            // Unpack the coordinate triple back out of the key.
-            int64_t rest = kv.first;
-            const int cz = (int)(rest % kSpan) - (int)kBias;
-            rest /= kSpan;
-            const int cy = (int)(rest % kSpan) - (int)kBias;
-            rest /= kSpan;
-            const int cx = (int)rest - (int)kBias;
+            const Cell c = Cell::unpack(kv.first);
             glm::vec3 sum = self;
             for (int dz = -1; dz <= 1; ++dz)
                 for (int dy = -1; dy <= 1; ++dy)
                     for (int dx = -1; dx <= 1; ++dx) {
                         if (!dx && !dy && !dz) continue;
-                        const auto it = cur.find(packOf(glm::ivec3(cx + dx, cy + dy, cz + dz)));
+                        const auto it = cur.find(Cell{c.x + dx, c.y + dy, c.z + dz}.pack());
                         if (it == cur.end() || glm::dot(it->second, it->second) < 1e-12f) continue;
                         sum += glm::normalize(it->second);
                     }
@@ -159,7 +169,7 @@ inline size_t buildNprNormals(const xm::Mesh& mesh, std::vector<xm::NprVertex>& 
     for (size_t i = 0; i < n; ++i) {
         const xm::Vertex& src = mesh.vertices[i];
         glm::vec4& dst = out[i].npr;
-        const auto it = cur.find(packOf(coordOf(src.pos)));
+        const auto it = cur.find(coordOf(src.pos).pack());
         dst = glm::vec4(0.f);
         // No cluster (an isolated vertex) or a degenerate accumulation: leave the record
         // zero, which the shader reads as "no secondary normal".

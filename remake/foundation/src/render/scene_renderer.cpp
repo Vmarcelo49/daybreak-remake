@@ -5,7 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <unordered_map>
+#include <optional>
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -115,6 +115,12 @@ Pass classifyPass(const std::string& role, const std::string& texture) {
     return Pass::Opaque;
 }
 
+// What a billboarded draw needs from its mesh: the pivot and the authored facing yaw.
+struct Billboard {
+    glm::vec3 center{0.f};
+    float     yaw0 = 0.f;
+};
+
 // Cylindrical-billboard verdict for one effect draw, from the submesh geometry
 // alone (no texture names — those are deliberately excluded as routing signals).
 // Upright cards (single quads, crossed-plane sets, beam fans, Y-symmetric rings)
@@ -123,9 +129,13 @@ Pass classifyPass(const std::string& role, const std::string& texture) {
 // could only disturb. All surveyed effect/aura meshes are unskinned, so the pivot
 // is the submesh bounds center in mesh space; a skinned mesh can never reach here
 // (the caller guards on it) because its vertices leave mesh space per-bone.
-bool classifyBillboard(const xm::Mesh& mesh, const xm::Submesh& sub, glm::vec3& centerOut,
-                         float& yaw0Out) {
-    if (mesh.skinned || mesh.vertices.empty() || mesh.indices.empty()) return false;
+//
+// Returns the pivot and facing only when the card qualifies. It used to write the
+// pivot into the caller's DrawItem before deciding, so a rejected card left a center
+// behind for a caller that had to know not to read it — std::optional is the same
+// information without that coupling.
+std::optional<Billboard> classifyBillboard(const xm::Mesh& mesh, const xm::Submesh& sub) {
+    if (mesh.skinned || mesh.vertices.empty() || mesh.indices.empty()) return std::nullopt;
     glm::vec3 lo(1e30f), hi(-1e30f);
     double    nySum = 0.0;
     int       posX = 0, negX = 0, posZ = 0, negZ = 0;
@@ -148,11 +158,12 @@ bool classifyBillboard(const xm::Mesh& mesh, const xm::Submesh& sub, glm::vec3& 
         }
         ++n;
     }
-    if (n == 0) return false;
-    centerOut = (lo + hi) * 0.5f;
+    if (n == 0) return std::nullopt;
+    Billboard bb;
+    bb.center = (lo + hi) * 0.5f;
     // Ground-dominant cards stay put: their plane already contains every camera
     // yaw, so facing is meaningless and spinning only churns directional art.
-    if (nySum / (double)n > 0.5) return false;
+    if (nySum / (double)n > 0.5) return std::nullopt;
     // Authored facing: the yaw the card's dominant normal already has, so the
     // render-time yaw is relative to it (a YZ-plane card needs yaw-90°, not yaw).
     // Plain constants, not M_PI_2/M_PI: those need feature-test macros that differ
@@ -160,14 +171,14 @@ bool classifyBillboard(const xm::Mesh& mesh, const xm::Submesh& sub, glm::vec3& 
     constexpr float kHalfPi = 1.57079632679f;
     constexpr float kPi = 3.14159265359f;
     if (posX >= negX && posX >= posZ && posX >= negZ)
-        yaw0Out = kHalfPi;
+        bb.yaw0 = kHalfPi;
     else if (negX >= posZ && negX >= negZ)
-        yaw0Out = -kHalfPi;
+        bb.yaw0 = -kHalfPi;
     else if (negZ >= posZ)
-        yaw0Out = kPi;
+        bb.yaw0 = kPi;
     else
-        yaw0Out = 0.f;
-    return true;
+        bb.yaw0 = 0.f;
+    return bb;
 }
 
 // COPY_BYTES_PER_ROW_ALIGNMENT is 256: a tightly packed RGBA row is only legal for
@@ -188,11 +199,100 @@ void setStencilOps(WGPUStencilFaceState& s) {
 
 SceneRenderer::~SceneRenderer() { shutdown(); }
 
+SceneRenderer::Texture::~Texture() { release(); }
+
+SceneRenderer::Texture::Texture(Texture&& o) noexcept : tex(o.tex), view(o.view) {
+    o.tex = nullptr;
+    o.view = nullptr;
+}
+
+SceneRenderer::Texture& SceneRenderer::Texture::operator=(Texture&& o) noexcept {
+    if (this != &o) {
+        release();
+        tex = o.tex;
+        view = o.view;
+        o.tex = nullptr;
+        o.view = nullptr;
+    }
+    return *this;
+}
+
+// The view first, then the texture it views: the order every release site in this file
+// used before they were unified here.
+void SceneRenderer::Texture::release() {
+    if (view) wgpuTextureViewRelease(view);
+    if (tex) wgpuTextureRelease(tex);
+    view = nullptr;
+    tex = nullptr;
+}
+
+void SceneRenderer::releaseSceneResources() {
+    for (WGPUBuffer b : buffers_)
+        if (b) wgpuBufferRelease(b);
+    buffers_.clear();
+    // The index is keyed by image pointer, so it describes exactly the list it
+    // indexes: clearing one without the other would hand the next scene an index
+    // into a released vector.
+    textures_.clear();   // each Texture releases its own view and texture
+    texIndex_.clear();
+    for (WGPUBindGroup g : textureGroups_)
+        if (g) wgpuBindGroupRelease(g);
+    textureGroups_.clear();
+    if (drawGroup_) wgpuBindGroupRelease(drawGroup_);
+    drawGroup_ = nullptr;
+    if (paletteBuffer_) wgpuBufferRelease(paletteBuffer_);
+    if (drawBuffer_) wgpuBufferRelease(drawBuffer_);
+    paletteBuffer_ = drawBuffer_ = nullptr;
+}
+
+// The sampler state every binding in this renderer shares: LINEAR mag, min and mip,
+// the 0..32 LOD range and anisotropy 1. The header's mip note carries the call-site
+// survey behind that — sampler 0 receives only the three filter writes, so
+// MAXANISOTROPY (10), MIPMAPLODBIAS (8) and MAXMIPLEVEL (9) stay at D3D9's own
+// defaults. Only the address mode differs between the three users, which is all this
+// takes. A null return is caught by init()'s completeness check, which is why there is
+// no error channel here.
+WGPUSampler SceneRenderer::createSampler(WGPUAddressMode addressMode) {
+    WGPUSamplerDescriptor sd = {};
+    sd.addressModeU = sd.addressModeV = sd.addressModeW = addressMode;
+    sd.magFilter = WGPUFilterMode_Linear;
+    sd.minFilter = WGPUFilterMode_Linear;
+    sd.mipmapFilter = WGPUMipmapFilterMode_Linear;
+    sd.lodMinClamp = 0.f;
+    sd.lodMaxClamp = 32.f;
+    sd.maxAnisotropy = 1;
+    return wgpuDeviceCreateSampler(device_, &sd);
+}
+
+void SceneRenderer::createSolidTexture(uint32_t rgba, WGPUTexture& tex, WGPUTextureView& view) {
+    WGPUTextureDescriptor td = {};
+    td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+    td.dimension = WGPUTextureDimension_2D;
+    td.size = WGPUExtent3D{1, 1, 1};
+    td.format = WGPUTextureFormat_RGBA8Unorm;
+    td.mipLevelCount = 1;
+    td.sampleCount = 1;
+    tex = wgpuDeviceCreateTexture(device_, &td);
+    if (!tex) return;
+    WGPUTexelCopyTextureInfo dst = {};
+    dst.texture = tex;
+    dst.aspect = WGPUTextureAspect_All;
+    WGPUTexelCopyBufferLayout layout = {};
+    layout.bytesPerRow = 4;
+    layout.rowsPerImage = 1;
+    wgpuQueueWriteTexture(queue_, &dst, &rgba, 4, &layout, &td.size);
+    view = wgpuTextureCreateView(tex, nullptr);
+}
+
 bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
     if (!ctx.device || !ctx.queue || !ctx.instance) {
         error = "renderer needs a live device, queue and instance";
         return false;
     }
+    // Same contract as DebugPrims::init: init() owns everything it creates, so a second
+    // call on a live renderer replaces the first rather than orphaning it. On a fresh or
+    // already-shut-down renderer this is a no-op.
+    shutdown();
     instance_ = ctx.instance;
     device_ = ctx.device;
     queue_ = ctx.queue;
@@ -277,32 +377,16 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
     plDesc.bindGroupLayouts = casterLayouts;
     shadowPipelineLayout_ = wgpuDeviceCreatePipelineLayout(device_, &plDesc);
 
-    WGPUSamplerDescriptor sd = {};
-    // The original's sampler 0 in WebGPU terms: MIP is LINEAR too, and address modes and
-    // anisotropy are left at the D3D9 defaults the original never overrides — the header's
-    // mip note carries the call-site survey that says so.
-    sd.addressModeU = sd.addressModeV = sd.addressModeW = WGPUAddressMode_Repeat;
-    sd.magFilter = WGPUFilterMode_Linear;
-    sd.minFilter = WGPUFilterMode_Linear;
-    sd.mipmapFilter = WGPUMipmapFilterMode_Linear;
-    sd.lodMinClamp = 0.f;
-    sd.lodMaxClamp = 32.f;
-    sd.maxAnisotropy = 1;
-    sampler_ = wgpuDeviceCreateSampler(device_, &sd);
+    // The original's sampler 0 in WebGPU terms: address modes stay at D3D9's WRAP, the
+    // default the original never overrides — the header's mip note carries the call-site
+    // survey that says so.
+    sampler_ = createSampler(WGPUAddressMode_Repeat);
 
     // The toon ramp's own sampler (issue #21): clamp, because u = N.L = 1 has to read the
     // bright end of the bitmap and WRAP would blend it with the dark end there. Filtering
     // stays LINEAR, the D3D9 default the original's sampler 0 carries, which suits the
     // shipped 64-wide gradient; the ramp has one level, so the mip filter never runs.
-    WGPUSamplerDescriptor rsd = {};
-    rsd.addressModeU = rsd.addressModeV = rsd.addressModeW = WGPUAddressMode_ClampToEdge;
-    rsd.magFilter = WGPUFilterMode_Linear;
-    rsd.minFilter = WGPUFilterMode_Linear;
-    rsd.mipmapFilter = WGPUMipmapFilterMode_Linear;
-    rsd.lodMinClamp = 0.f;
-    rsd.lodMaxClamp = 32.f;
-    rsd.maxAnisotropy = 1;
-    toonRampSampler_ = wgpuDeviceCreateSampler(device_, &rsd);
+    toonRampSampler_ = createSampler(WGPUAddressMode_ClampToEdge);
 
     // The shadow map's sampler (issue #21 row 1). The original's Tex1 is
     // D3DTADDRESS_BORDER with a black border colour (FUN_00651110 case 3/4), which WebGPU
@@ -310,38 +394,14 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
     // [0,1] range test supplies the border behaviour. Linear, because the map is a
     // 1024x1024 depth image the original filters with sampler state 1's LINEAR default —
     // and because a fighter's shadow is a few hundred texels wide, so the filter's
-    // softness is what the original's own shadows show.
-    WGPUSamplerDescriptor ssd = {};
-    ssd.addressModeU = ssd.addressModeV = ssd.addressModeW = WGPUAddressMode_ClampToEdge;
-    ssd.magFilter = WGPUFilterMode_Linear;
-    ssd.minFilter = WGPUFilterMode_Linear;
-    ssd.mipmapFilter = WGPUMipmapFilterMode_Linear;
-    ssd.lodMinClamp = 0.f;
-    ssd.lodMaxClamp = 32.f;
-    ssd.maxAnisotropy = 1;
-    shadowSampler_ = wgpuDeviceCreateSampler(device_, &ssd);
+    // softness is what the original's own shadows show. It keeps its own handle rather
+    // than sharing the ramp's identical state: each member releases what it owns, and a
+    // second alias pair in shutdown() is a second load-bearing release order.
+    shadowSampler_ = createSampler(WGPUAddressMode_ClampToEdge);
 
     // The untextured fallback: binds where a material has no resolvable texture, so
     // the shader's unconditional sample stays valid.
-    const uint32_t white = 0xffffffffu;
-    WGPUTextureDescriptor td = {};
-    td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
-    td.dimension = WGPUTextureDimension_2D;
-    td.size = WGPUExtent3D{1, 1, 1};
-    td.format = WGPUTextureFormat_RGBA8Unorm;
-    td.mipLevelCount = 1;
-    td.sampleCount = 1;
-    whiteTex_ = wgpuDeviceCreateTexture(device_, &td);
-    if (whiteTex_) {
-        WGPUTexelCopyTextureInfo dst = {};
-        dst.texture = whiteTex_;
-        dst.aspect = WGPUTextureAspect_All;
-        WGPUTexelCopyBufferLayout layout = {};
-        layout.bytesPerRow = 4;
-        layout.rowsPerImage = 1;
-        wgpuQueueWriteTexture(queue_, &dst, &white, 4, &layout, &td.size);
-        whiteView_ = wgpuTextureCreateView(whiteTex_, nullptr);
-    }
+    createSolidTexture(0xffffffffu, whiteTex_, whiteView_);
 
     // The toon ramp (issue #21), decoded through the foundation's one CNV path and
     // uploaded once: it is a 64x64 RGBA8 bitmap with no mip chain, because the original
@@ -387,25 +447,7 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
     // original's cleared 1024x1024 map reads as (alpha 1.0 = "nothing cast here"). It
     // stands in for group 3 on every frame the shadow pass does not run, so the group is
     // always complete and a run with shadows off allocates no 1024x1024 target at all.
-    const uint32_t black = 0xff000000u;
-    WGPUTextureDescriptor shd = {};
-    shd.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
-    shd.dimension = WGPUTextureDimension_2D;
-    shd.size = WGPUExtent3D{1, 1, 1};
-    shd.format = WGPUTextureFormat_RGBA8Unorm;
-    shd.mipLevelCount = 1;
-    shd.sampleCount = 1;
-    shadowPlaceholderTex_ = wgpuDeviceCreateTexture(device_, &shd);
-    if (shadowPlaceholderTex_) {
-        WGPUTexelCopyTextureInfo dst = {};
-        dst.texture = shadowPlaceholderTex_;
-        dst.aspect = WGPUTextureAspect_All;
-        WGPUTexelCopyBufferLayout layout = {};
-        layout.bytesPerRow = 4;
-        layout.rowsPerImage = 1;
-        wgpuQueueWriteTexture(queue_, &dst, &black, 4, &layout, &shd.size);
-        shadowPlaceholderView_ = wgpuTextureCreateView(shadowPlaceholderTex_, nullptr);
-    }
+    createSolidTexture(0xff000000u, shadowPlaceholderTex_, shadowPlaceholderView_);
 
     if (!bindGroupLayouts_[0] || !bindGroupLayouts_[1] || !bindGroupLayouts_[2] ||
         !bindGroupLayouts_[3] || !pipelineLayout_ || !shadowPipelineLayout_ || !sampler_ ||
@@ -450,24 +492,12 @@ bool SceneRenderer::init(const gpu::Context& ctx, std::string& error) {
 }
 
 void SceneRenderer::shutdown() {
-    for (Pipelines& p : pipelines_) {
-        if (p.outline) wgpuRenderPipelineRelease(p.outline);
-        if (p.opaque) wgpuRenderPipelineRelease(p.opaque);
-        if (p.decal) wgpuRenderPipelineRelease(p.decal);
-        if (p.effect) wgpuRenderPipelineRelease(p.effect);
-    }
+    for (Pipelines& p : pipelines_)
+        for (auto& variants : p.slots)
+            for (WGPURenderPipeline pipe : variants)
+                if (pipe) wgpuRenderPipelineRelease(pipe);
     pipelines_.clear();
 
-    for (WGPUBindGroup g : textureGroups_)
-        if (g) wgpuBindGroupRelease(g);
-    textureGroups_.clear();
-    if (drawGroup_) wgpuBindGroupRelease(drawGroup_);
-    if (cameraGroup_) wgpuBindGroupRelease(cameraGroup_);
-    drawGroup_ = cameraGroup_ = nullptr;
-    for (size_t i = 0; i < kMaxViewCameras; ++i) {
-        if (viewCameraGroups_[i]) wgpuBindGroupRelease(viewCameraGroups_[i]);
-        viewCameraGroups_[i] = nullptr;
-    }
     releaseShadowTargets();
     if (shadowPlaceholderGroup_) wgpuBindGroupRelease(shadowPlaceholderGroup_);
     if (shadowPlaceholderView_) wgpuTextureViewRelease(shadowPlaceholderView_);
@@ -482,19 +512,19 @@ void SceneRenderer::shutdown() {
     shadowPipeline_ = nullptr;
     shadowPipelineLayout_ = nullptr;
 
-    for (WGPUBuffer b : buffers_)
-        if (b) wgpuBufferRelease(b);
-    buffers_.clear();
-    for (Texture& t : textures_) {
-        if (t.view) wgpuTextureViewRelease(t.view);
-        if (t.tex) wgpuTextureRelease(t.tex);
-    }
-    textures_.clear();
+    releaseSceneResources();
 
-    if (paletteBuffer_) wgpuBufferRelease(paletteBuffer_);
-    if (drawBuffer_) wgpuBufferRelease(drawBuffer_);
+    // The camera group is NOT part of the scene: it binds the ramp and the scene-wide
+    // light, so setScene leaves it standing for the next scene. The same goes for its
+    // buffer and the per-view camera slots.
+    if (cameraGroup_) wgpuBindGroupRelease(cameraGroup_);
+    cameraGroup_ = nullptr;
+    for (size_t i = 0; i < kMaxViewCameras; ++i) {
+        if (viewCameraGroups_[i]) wgpuBindGroupRelease(viewCameraGroups_[i]);
+        viewCameraGroups_[i] = nullptr;
+    }
     if (cameraBuffer_) wgpuBufferRelease(cameraBuffer_);
-    paletteBuffer_ = drawBuffer_ = cameraBuffer_ = nullptr;
+    cameraBuffer_ = nullptr;
     for (WGPUBuffer& b : viewCameraBuffers_) {
         if (b) wgpuBufferRelease(b);
         b = nullptr;
@@ -540,6 +570,103 @@ void SceneRenderer::shutdown() {
     instance_ = nullptr;
 }
 
+// Finds or uploads the texture a material names. `sm.textures` is the model's own
+// cache, so the image is shared between every material that names it and the upload
+// happens once per scene: texIndex_ memoises image -> index in textures_.
+//
+// Returns false when the upload itself failed, with `error` saying why; `index` is
+// then meaningless and the caller must abandon the scene. True with `index == -1` is
+// the ordinary "this draw has no texture" outcome — the directory ships nothing under
+// that name (a weapon naming a texture that lives in the character directory is the
+// observed case), and the caller counts it as untextured. The two cannot be folded
+// into one -1: -1 is a normal result here, and a caller that read a failure as
+// "untextured" would silently drop geometry's texture instead of failing loudly.
+//
+// `mipmapped` is the caller's policy, not something read here: only stage textures get
+// a chain, and scene_renderer.h's mip note carries the evidence for why.
+bool SceneRenderer::uploadTexture(const xm::SceneModel& sm, const std::string& name,
+                                 bool mipmapped, int& index, std::string& error) {
+    index = -1;
+    const xm::CnvImage* img = sm.textures.get(name);
+    if (!img || img->empty()) return true;
+
+    auto it = texIndex_.find(img);
+    if (it != texIndex_.end()) {
+        index = it->second;
+        return true;
+    }
+
+    // Only stage textures get a chain: the reference's other textures are created with
+    // MipLevels = 1 because their directories ship no levels. The header's mip note
+    // carries that evidence, the original's MIPFILTER state, and the box filter's
+    // byte-space rationale; levels 1-2 prefer the shipped _N siblings (B3), the box
+    // staying as the fallback past them and for missing art.
+    std::vector<std::vector<uint8_t>> levels;
+    if (mipmapped) {
+        buildMipChain(img->rgba.data(), img->width, img->height, levels);
+        // B3: levels 1-2 come from the shipped `base_1`/`base_2` files when present
+        // (FUN_00656c80 fills one D3DX level per `%s_%d.bmp`), the box level staying
+        // as the fallback otherwise. The lookup rides the same bundle-first cache as
+        // the base texture. The chain truncates to the shipped depth, which is
+        // D3DXCreateTexture's MipLevels=1+#files: sampling past the smallest shipped
+        // level clamps there on the original too. (The one observed misfit, a _2 sized
+        // like a _1, truncates to a clean 2-level chain here; the original would leave
+        // that level unfilled.)
+        uint32_t shipped = 0;
+        for (uint32_t l = 1; l <= 2 && l < levels.size(); ++l) {
+            const xm::CnvImage* sib = sm.textures.get(mipSiblingName(name, l));
+            if (sib && !sib->empty() &&
+                mipShippedDimsOk(img->width, img->height, sib->width, sib->height, l)) {
+                levels[l] = sib->rgba;
+                shipped = l;
+            }
+        }
+        if (shipped > 0) levels.resize(shipped + 1);
+    }
+    const uint32_t levelCount = mipmapped ? (uint32_t)levels.size() : 1u;
+
+    Texture tex;
+    WGPUTextureDescriptor td = {};
+    td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+    td.dimension = WGPUTextureDimension_2D;
+    td.size = WGPUExtent3D{img->width, img->height, 1};
+    td.format = WGPUTextureFormat_RGBA8Unorm;
+    td.mipLevelCount = levelCount;
+    td.sampleCount = 1;
+    tex.tex = wgpuDeviceCreateTexture(device_, &td);
+    if (tex.tex) {
+        WGPUTexelCopyTextureInfo dst = {};
+        dst.texture = tex.tex;
+        dst.aspect = WGPUTextureAspect_All;
+        for (uint32_t level = 0; level < levelCount; ++level) {
+            const uint32_t lw = std::max(1u, img->width >> level);
+            const uint32_t lh = std::max(1u, img->height >> level);
+            WGPUTexelCopyBufferLayout layout = {};
+            layout.bytesPerRow = lw * 4;
+            layout.rowsPerImage = lh;
+            dst.mipLevel = level;
+            const WGPUExtent3D extent{lw, lh, 1};
+            // A single-level texture uploads its base image exactly as it did before
+            // mips existed. writeTexture is a packed copy, so unlike copyBufferToTexture
+            // it needs no 256-byte row pitch and odd-sized CNV levels upload as-is.
+            const std::vector<uint8_t>& pixels = mipmapped ? levels[level] : img->rgba;
+            wgpuQueueWriteTexture(queue_, &dst, pixels.data(), pixels.size(), &layout, &extent);
+        }
+        tex.view = wgpuTextureCreateView(tex.tex, nullptr);
+    }
+    if (!tex.tex || !tex.view) {
+        // The local Texture owns both halves, so the one that was created is released
+        // on the way out of this return rather than outliving the process. textures_
+        // only takes ownership at the push_back below.
+        error = "texture upload failed (device out of memory?)";
+        return false;
+    }
+    index = (int)textures_.size();
+    texIndex_.emplace(img, index);
+    textures_.push_back(std::move(tex));
+    return true;
+}
+
 bool SceneRenderer::setScene(const xm::Scene& scene,
                              const std::vector<std::vector<glm::mat4>>& worlds,
                              const std::vector<glm::mat4>& modelMatrices, const Options& options,
@@ -550,20 +677,8 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
     }
     // Drop the previous scene's GPU objects: setScene may legitimately be called more
     // than once (a different asset in the same window), and nothing here is shared.
-    for (WGPUBuffer b : buffers_) wgpuBufferRelease(b);
-    buffers_.clear();
-    for (Texture& t : textures_) {
-        wgpuTextureViewRelease(t.view);
-        wgpuTextureRelease(t.tex);
-    }
-    textures_.clear();
-    for (WGPUBindGroup g : textureGroups_) wgpuBindGroupRelease(g);
-    textureGroups_.clear();
-    if (drawGroup_) wgpuBindGroupRelease(drawGroup_);
-    drawGroup_ = nullptr;
-    if (paletteBuffer_) wgpuBufferRelease(paletteBuffer_);
-    if (drawBuffer_) wgpuBufferRelease(drawBuffer_);
-    paletteBuffer_ = drawBuffer_ = nullptr;
+    // shutdown() frees exactly the same set, through the same call.
+    releaseSceneResources();
 
     draws_.clear();
     meshes_.clear();
@@ -579,9 +694,6 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
     baseDrawList_.clear();
     effectInstances_.clear();
 
-    // Images are shared between materials, so upload each one once and index draws
-    // into the result.
-    std::unordered_map<const xm::CnvImage*, int> texIndex;
     std::vector<glm::mat4> meshPalette;
     const std::vector<glm::mat4> noWorld;
 
@@ -660,101 +772,25 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                         : (mesh.materials.empty() ? xm::Material{} : mesh.materials[0]);
                 const Pass pass = classifyPass(sm.role, mat.texture);
                 if (options.textures && !mat.texture.empty()) {
-                    // const_cast: the cache hands out a shared image and keying white
-                    // out is idempotent, which is what makes mutating it here safe.
-                    xm::CnvImage* img = const_cast<xm::CnvImage*>(sm.textures.get(mat.texture));
-                    if (img && !img->empty()) {
-                        // White keys out so the card disappears where it is neutral and
-                        // only the blob multiplies.
-                        if (pass == Pass::Decal) xm::keyOutWhite(*img);
-                        auto it = texIndex.find(img);
-                        if (it == texIndex.end()) {
-                            // Only stage textures get a chain: the reference's other
-                            // textures are created with MipLevels = 1 because their
-                            // directories ship no levels. The header's mip note carries
-                            // that evidence, the original's MIPFILTER state, and the
-                            // box filter's byte-space rationale; levels 1-2 prefer
-                            // the shipped _N siblings (B3), the box staying as the
-                            // fallback past them and for missing art.
-                            const bool mipmapped = sm.role == "stage";
-                            std::vector<std::vector<uint8_t>> levels;
-                            if (mipmapped) {
-                                buildMipChain(img->rgba.data(), img->width, img->height, levels);
-                                // B3: levels 1-2 come from the shipped `base_1`/`base_2`
-                                // files when present (FUN_00656c80 fills one D3DX
-                                // level per `%s_%d.bmp`), the box level staying as
-                                // the fallback otherwise. The lookup rides the
-                                // same bundle-first cache as the base texture.
-                                // The chain truncates to the shipped depth, which
-                                // is D3DXCreateTexture's MipLevels=1+#files:
-                                // sampling past the smallest shipped level clamps
-                                // there on the original too. (The one observed
-                                // misfit, a _2 sized like a _1, truncates to a
-                                // clean 2-level chain here; the original would
-                                // leave that level unfilled.)
-                                uint32_t shipped = 0;
-                                for (uint32_t l = 1; l <= 2 && l < levels.size(); ++l) {
-                                    const xm::CnvImage* sib = sm.textures.get(
-                                        mipSiblingName(mat.texture, l));
-                                    if (sib && !sib->empty() &&
-                                        mipShippedDimsOk(img->width, img->height, sib->width,
-                                                         sib->height, l)) {
-                                        levels[l] = sib->rgba;
-                                        shipped = l;
-                                    }
-                                }
-                                if (shipped > 0) levels.resize(shipped + 1);
-                            }
-                            const uint32_t levelCount =
-                                mipmapped ? (uint32_t)levels.size() : 1u;
-                            Texture tex;
-                            WGPUTextureDescriptor td = {};
-                            td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
-                            td.dimension = WGPUTextureDimension_2D;
-                            td.size = WGPUExtent3D{img->width, img->height, 1};
-                            td.format = WGPUTextureFormat_RGBA8Unorm;
-                            td.mipLevelCount = levelCount;
-                            td.sampleCount = 1;
-                            tex.tex = wgpuDeviceCreateTexture(device_, &td);
-                            if (tex.tex) {
-                                WGPUTexelCopyTextureInfo dst = {};
-                                dst.texture = tex.tex;
-                                dst.aspect = WGPUTextureAspect_All;
-                                for (uint32_t level = 0; level < levelCount; ++level) {
-                                    const uint32_t lw = std::max(1u, img->width >> level);
-                                    const uint32_t lh = std::max(1u, img->height >> level);
-                                    WGPUTexelCopyBufferLayout layout = {};
-                                    layout.bytesPerRow = lw * 4;
-                                    layout.rowsPerImage = lh;
-                                    dst.mipLevel = level;
-                                    const WGPUExtent3D extent{lw, lh, 1};
-                                    // A single-level texture uploads its base image exactly
-                                    // as it did before mips existed. writeTexture is a packed
-                                    // copy, so unlike copyBufferToTexture it needs no
-                                    // 256-byte row pitch and odd-sized CNV levels upload
-                                    // as-is.
-                                    const std::vector<uint8_t>& pixels =
-                                        mipmapped ? levels[level] : img->rgba;
-                                    wgpuQueueWriteTexture(queue_, &dst, pixels.data(),
-                                                          pixels.size(), &layout, &extent);
-                                }
-                                tex.view = wgpuTextureCreateView(tex.tex, nullptr);
-                            }
-                            if (!tex.tex || !tex.view) {
-                                error = "texture upload failed (device out of memory?)";
-                                return false;
-                            }
-                            it = texIndex.emplace(img, (int)textures_.size()).first;
-                            textures_.push_back(tex);
-                        }
-                        d.texture = it->second;
-                        ++stats_.textured;
-                    } else {
-                        ++stats_.untextured;
+                    // The decal white-out is a pass decision, so it stays here rather
+                    // than moving into uploadTexture(): white keys out so the card
+                    // disappears where it is neutral and only the blob multiplies, and
+                    // it has to happen before the image is uploaded. const_cast: the
+                    // cache hands out a shared image, keyOutWhite is idempotent (so a
+                    // later decal re-keying it is harmless), and the upload below is
+                    // the only reader.
+                    if (pass == Pass::Decal) {
+                        xm::CnvImage* img =
+                            const_cast<xm::CnvImage*>(sm.textures.get(mat.texture));
+                        if (img && !img->empty()) xm::keyOutWhite(*img);
                     }
+                    if (!uploadTexture(sm, mat.texture, sm.role == "stage", d.texture, error))
+                        return false;
+                    if (d.texture >= 0) ++stats_.textured; else ++stats_.untextured;
                 } else {
                     ++stats_.untextured;
                 }
+
                 d.pass = pass;
                 // The original's toon technique covers the per-character draw
                 // (FUN_006396f0:126-140) and the object material path FUN_005f60b0:121-126,
@@ -790,9 +826,12 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                 // spherical: the world's up axis is load-bearing — ground cards lie in
                 // XZ, shockwaves read as verticals — and the arena camera stays near
                 // level). The verdict is geometry-only; dormant until setEye().
-                if (pass == Pass::Effect && classifyBillboard(mesh, sub, d.bbCenter, d.bbYaw0)) {
-                    d.billboard = true;
-                    ++stats_.billboarded;
+                if (pass == Pass::Effect) {
+                    if (const std::optional<Billboard> bb = classifyBillboard(mesh, sub)) {
+                        d.bbCenter = bb->center;
+                        d.bbYaw0 = bb->yaw0;
+                        d.billboard = true;
+                    }
                 }
                 // Decals and effect cards are lighting, not paint: white has to stay
                 // exactly white (decals) and black exactly black (effects) or the blend
@@ -881,17 +920,6 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
     baseDrawList_ = draws_;
     drawTemplates_.insert(drawTemplates_.end(), draws_.begin(), draws_.end());
     effectInstances_.clear();
-    // (The original draws each character's hull immediately before that character's
-    // surface; depth testing makes the global order equivalent, and it keeps the
-    // pipeline switches to one per pass.)
-    std::stable_partition(draws_.begin(), draws_.end(),
-                          [](const DrawItem& d) { return d.pass != Pass::Effect; });
-    std::stable_partition(draws_.begin(), draws_.end(),
-                          [](const DrawItem& d) {
-                              return d.pass == Pass::Outline || d.pass == Pass::Opaque;
-                          });
-    std::stable_partition(draws_.begin(), draws_.end(),
-                          [](const DrawItem& d) { return d.pass == Pass::Outline; });
 
     paletteBuffer_ = gpu::createBuffer(device_, palette_.size() * sizeof(glm::mat4),
                                        WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst,
@@ -1095,15 +1123,7 @@ WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, Pass pas
         entry = &pipelines_.back();
         entry->format = format;
     }
-    WGPURenderPipeline& slot =
-        npr ? (pass == Pass::Outline  ? entry->outlineNpr
-               : pass == Pass::Opaque ? entry->opaqueNpr
-               : pass == Pass::Decal  ? entry->decalNpr
-                                      : entry->effectNpr)
-            : (pass == Pass::Outline  ? entry->outline
-               : pass == Pass::Opaque ? entry->opaque
-               : pass == Pass::Decal  ? entry->decal
-                                      : entry->effect);
+    WGPURenderPipeline& slot = entry->slots[(int)pass][npr ? 1 : 0];
     if (slot) return slot;
 
     WGPUVertexAttribute attrs[xm::kVertexAttributeCount];
@@ -1237,13 +1257,13 @@ bool SceneRenderer::renderViews(const Target& target, const std::vector<ViewCame
     return renderImpl(target, &views, error);
 }
 
-// Per-draw uniforms for one camera eye. `haveEye` false keeps the historical
-// no-billboard behaviour of callers written before setEye existed.
-void SceneRenderer::fillDrawData(const glm::vec3& eye, bool haveEye, size_t first, size_t count,
-                                 uint8_t* dst) {
-    for (size_t i = first; i < first + count; ++i) {
+// Per-draw uniforms for every draw in draws_, one record per draw under one camera
+// eye. `haveEye` false keeps the historical no-billboard behaviour of callers written
+// before setEye existed.
+void SceneRenderer::fillDrawData(const glm::vec3& eye, bool haveEye, uint8_t* dst) {
+    for (const DrawItem& d : draws_) {
         xm::DrawUniform du;
-        du.model = draws_[i].model;
+        du.model = d.model;
         // Cylindrical billboard: yaw the card around its own (posed) center so its
         // plane faces the camera, preserving world up. Unskinned effect meshes pose
         // as world = model * palette[0] * pos, so folding T(C)*Ry*T(-C) into the
@@ -1251,37 +1271,37 @@ void SceneRenderer::fillDrawData(const glm::vec3& eye, bool haveEye, size_t firs
         // card's authored facing (bbYaw0): a YZ-plane card's normal starts at +X,
         // so facing the camera needs yaw - 90°, not yaw. Overhead camera (|d| ~ 0)
         // keeps the authored orientation instead of spinning on a singularity.
-        if (draws_[i].billboard && haveEye && draws_[i].paletteOffset < palette_.size()) {
-            const glm::mat4 fw = draws_[i].model * palette_[draws_[i].paletteOffset];
-            const glm::vec3 c = glm::vec3(fw * glm::vec4(draws_[i].bbCenter, 1.f));
-            const glm::vec2 d = glm::vec2(eye.x - c.x, eye.z - c.z);
-            if (glm::dot(d, d) > 1e-6f) {
-                const float yaw = std::atan2(d.x, d.y) - draws_[i].bbYaw0;
+        if (d.billboard && haveEye && d.paletteOffset < palette_.size()) {
+            const glm::mat4 fw = d.model * palette_[d.paletteOffset];
+            const glm::vec3 c = glm::vec3(fw * glm::vec4(d.bbCenter, 1.f));
+            const glm::vec2 dxy = glm::vec2(eye.x - c.x, eye.z - c.z);
+            if (glm::dot(dxy, dxy) > 1e-6f) {
+                const float yaw = std::atan2(dxy.x, dxy.y) - d.bbYaw0;
                 const glm::mat4 t1 = glm::translate(glm::mat4(1.f), c);
                 const glm::mat4 t0 = glm::translate(glm::mat4(1.f), -c);
                 du.model = t1 * glm::rotate(glm::mat4(1.f), yaw, glm::vec3(0.f, 1.f, 0.f)) *
-                           t0 * draws_[i].model;
+                           t0 * d.model;
             }
         }
-        du.paletteOffset = draws_[i].paletteOffset;
+        du.paletteOffset = d.paletteOffset;
         // The toon bits are decided here, per frame, from the appearance switch: the
         // toggle is a draw-time state change with no re-upload behind it. A scene with no
         // ramp (no game data) never sets them, so ON degrades to OFF rather than to an
         // invented curve.
-        du.flags = draws_[i].flags | (appearance_.unlit ? xm::kDrawUnlit : 0u) |
-                   (appearance_.toon && toonRampReady_ && draws_[i].toon ? xm::kDrawToon : 0u) |
-                   (appearance_.shadows && draws_[i].receiver && draws_[i].pass == Pass::Opaque
+        du.flags = d.flags | (appearance_.unlit ? xm::kDrawUnlit : 0u) |
+                   (appearance_.toon && toonRampReady_ && d.toon ? xm::kDrawToon : 0u) |
+                   (appearance_.shadows && d.receiver && d.pass == Pass::Opaque
                         ? xm::kDrawShadowReceiver
                         : 0u);
-        du.baseColor = draws_[i].baseColor;
-        du.emissive = draws_[i].emissive;
+        du.baseColor = d.baseColor;
+        du.emissive = d.emissive;
         du.nprBand = glm::vec4(1.f, 1.f, 1.f, 0.f);
-        if (draws_[i].toon && draws_[i].pass == Pass::Opaque) {
+        if (d.toon && d.pass == Pass::Opaque) {
             // Issue #25 experiments, decided per frame like the toon bits: the whole
             // harness is one draw-time state change, so an A/B needs no re-upload and the
             // OFF path never enters this block. Each experiment writes its OWN uniform
             // slot, so a composed arm keeps every one's values.
-            if (appearance_.smoothedNormals && draws_[i].nprNormals) {
+            if (appearance_.smoothedNormals && d.nprNormals) {
                 du.flags |= xm::kDrawNprNormals;
             }
             if (appearance_.bands != NprBands::Off) {
@@ -1298,7 +1318,7 @@ void SceneRenderer::fillDrawData(const glm::vec3& eye, bool haveEye, size_t firs
             }
             if (appearance_.key != NprKey::Off) {
                 du.flags |= xm::kDrawNprKey;
-                du.nprKey = glm::vec4(nprKeyDirection(draws_[i].model, eye, haveEye, appearance_),
+                du.nprKey = glm::vec4(nprKeyDirection(d.model, eye, haveEye, appearance_),
                                       appearance_.keyStrength);
             }
             if (appearance_.specular) {
@@ -1309,12 +1329,13 @@ void SceneRenderer::fillDrawData(const glm::vec3& eye, bool haveEye, size_t firs
                 du.flags |= xm::kDrawNprRim;
                 du.nprRim = glm::vec4(appearance_.rimTint, appearance_.rimStrength);
             }
-        } else if (draws_[i].pass == Pass::Outline) {
+        } else if (d.pass == Pass::Outline) {
             // The outline experiment's only control: the recovered width times a factor.
             // Its own uniform so it cannot be confused with a surface tint.
             du.nprBand = glm::vec4(1.f, 1.f, 1.f, appearance_.outlineScale);
         }
-        std::memcpy(dst + (i - first) * xm::kDrawStride, &du, sizeof du);
+        std::memcpy(dst, &du, sizeof du);
+        dst += xm::kDrawStride;
     }
 }
 
@@ -1468,6 +1489,121 @@ bool SceneRenderer::ensureViewCameras(std::string& error) {
     return true;
 }
 
+// The caster pass's pipeline, built on first use: its own layout (groups 0 and 1 only)
+// and its own entry points, and nothing else about it is shared with the main passes.
+bool SceneRenderer::ensureShadowPipeline(std::string& error) {
+    if (shadowPipeline_) return true;
+
+    WGPUVertexAttribute attrs[xm::kVertexAttributeCount];
+    WGPUVertexBufferLayout vbl = xm::wgpuVertexLayout(attrs);
+    WGPUVertexAttribute nprAttr[1];
+    WGPUVertexBufferLayout nprVbl = xm::wgpuNprVertexLayout(nprAttr);
+    WGPUVertexBufferLayout vbls[2] = {vbl, nprVbl};
+    WGPUColorTargetState shadowTarget = {};
+    shadowTarget.format = WGPUTextureFormat_RGBA8Unorm;
+    shadowTarget.writeMask = WGPUColorWriteMask_All;
+    // No blending: the original's mode-2 entry sets SRCBLEND = ONE, DESTBLEND = ZERO,
+    // i.e. a plain overwrite of the target it just cleared.
+    WGPUDepthStencilState shadowDepth = {};
+    shadowDepth.format = kSceneDepthFormat;
+    shadowDepth.depthWriteEnabled = WGPUOptionalBool_True;
+    shadowDepth.depthCompare = WGPUCompareFunction_LessEqual;
+    setStencilOps(shadowDepth.stencilFront);
+    setStencilOps(shadowDepth.stencilBack);
+    shadowDepth.stencilReadMask = 0xFF;
+    shadowDepth.stencilWriteMask = 0xFF;
+    WGPUFragmentState fs = {};
+    fs.module = shader_;
+    fs.entryPoint = sv("fs_shadow");
+    fs.targetCount = 1;
+    fs.targets = &shadowTarget;
+    WGPURenderPipelineDescriptor rpd = {};
+    rpd.layout = shadowPipelineLayout_;
+    rpd.vertex.module = shader_;
+    rpd.vertex.entryPoint = sv("vs_shadow");
+    rpd.vertex.bufferCount = 2;
+    rpd.vertex.buffers = vbls;
+    rpd.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+    rpd.primitive.frontFace = WGPUFrontFace_CW;
+    // CULL_CCW, the mode-2 entry's own state (FUN_00652880:0x6528a4): the same winding
+    // rule the plain 3D path uses.
+    rpd.primitive.cullMode = WGPUCullMode_Back;
+    rpd.depthStencil = &shadowDepth;
+    rpd.multisample.count = 1;
+    rpd.multisample.mask = 0xFFFFFFFFu;
+    rpd.fragment = &fs;
+    shadowPipeline_ = wgpuDeviceCreateRenderPipeline(device_, &rpd);
+    if (!shadowPipeline_) {
+        error = "shadow pipeline creation failed";
+        return false;
+    }
+    return true;
+}
+
+// One caster pass per view: the view's own map is both the target and, later, what its
+// stage draws sample. `views` has the same meaning as in renderImpl — null is the
+// single-view path, which uses cameraGroup_ and draw-buffer offset 0.
+bool SceneRenderer::renderShadowCasters(const Target& target, const std::vector<ViewCamera>* views,
+                                        std::string& error) {
+    const bool multiView = views != nullptr;
+    const size_t viewCount = multiView ? views->size() : 1;
+    for (size_t view = 0; view < viewCount; ++view) {
+        if (multiView && (*views)[view].rect.empty()) continue;
+        if (!ensureShadowTarget(view, error)) return false;
+        const ShadowTarget& map = shadowTargets_[view];
+        WGPURenderPassColorAttachment shadowColor = {};
+        shadowColor.view = map.view;
+        shadowColor.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+        shadowColor.loadOp = WGPULoadOp_Clear;
+        shadowColor.storeOp = WGPUStoreOp_Store;
+        // 0xff000000 in the original's Clear: black with alpha 1.0.
+        shadowColor.clearValue = WGPUColor{0.0, 0.0, 0.0, 1.0};
+        WGPURenderPassDepthStencilAttachment shadowDepthAttachment = {};
+        shadowDepthAttachment.view = map.depthView;
+        shadowDepthAttachment.depthLoadOp = WGPULoadOp_Clear;
+        shadowDepthAttachment.depthStoreOp = WGPUStoreOp_Store;
+        shadowDepthAttachment.depthClearValue = 1.0f;
+        shadowDepthAttachment.depthReadOnly = false;
+        shadowDepthAttachment.stencilLoadOp = WGPULoadOp_Clear;
+        shadowDepthAttachment.stencilStoreOp = WGPUStoreOp_Discard;
+        shadowDepthAttachment.stencilClearValue = 0;
+        shadowDepthAttachment.stencilReadOnly = false;
+        WGPURenderPassDescriptor shadowDesc = {};
+        shadowDesc.colorAttachmentCount = 1;
+        shadowDesc.colorAttachments = &shadowColor;
+        shadowDesc.depthStencilAttachment = &shadowDepthAttachment;
+        WGPURenderPassEncoder caster =
+            wgpuCommandEncoderBeginRenderPass(target.encoder, &shadowDesc);
+        if (!caster) {
+            error = "shadow pass could not be started";
+            return false;
+        }
+        wgpuRenderPassEncoderSetPipeline(caster, shadowPipeline_);
+        wgpuRenderPassEncoderSetBindGroup(
+            caster, 0, multiView ? viewCameraGroups_[view] : cameraGroup_, 0, nullptr);
+        const uint32_t casterBase =
+            multiView ? (uint32_t)(view * draws_.size() * xm::kDrawStride) : 0u;
+        for (size_t i = 0; i < draws_.size(); ++i) {
+            const DrawItem& d = draws_[i];
+            // The caster set is the toon technique's own surface set: the fighter's body
+            // and weapon, and not the outline hull (which the toon row marks with its own
+            // flag rather than `toon`).
+            if (!d.toon || d.pass != Pass::Opaque) continue;
+            const uint32_t offset = casterBase + (uint32_t)(i * xm::kDrawStride);
+            wgpuRenderPassEncoderSetBindGroup(caster, 1, drawGroup_, 1, &offset);
+            wgpuRenderPassEncoderSetVertexBuffer(caster, 0, d.vbuf, 0, WGPU_WHOLE_SIZE);
+            wgpuRenderPassEncoderSetVertexBuffer(caster, 1, d.nprbuf, 0, WGPU_WHOLE_SIZE);
+            wgpuRenderPassEncoderSetIndexBuffer(caster, d.ibuf, WGPUIndexFormat_Uint32, 0,
+                                                WGPU_WHOLE_SIZE);
+            wgpuRenderPassEncoderDrawIndexed(caster, d.indexCount, 1, d.firstIndex, 0, 0);
+            ++stats_.shadowCasters;
+        }
+        wgpuRenderPassEncoderEnd(caster);
+        wgpuRenderPassEncoderRelease(caster);
+    }
+    return true;
+}
+
 bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamera>* views,
                                std::string& error) {
     if (!device_ || !drawGroup_) {
@@ -1528,10 +1664,10 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
     std::vector<uint8_t> drawData((size_t)xm::kDrawStride * draws_.size() *
                                   (multiView ? viewCount : 1), 0);
     if (!multiView) {
-        fillDrawData(eye_, haveEye_, 0, draws_.size(), drawData.data());
+        fillDrawData(eye_, haveEye_, drawData.data());
     } else {
         for (size_t v = 0; v < viewCount; ++v)
-            fillDrawData((*views)[v].eye, true, 0, draws_.size(),
+            fillDrawData((*views)[v].eye, true,
                          drawData.data() + v * draws_.size() * xm::kDrawStride);
     }
     wgpuQueueWriteBuffer(queue_, drawBuffer_, 0, drawData.data(), drawData.size());
@@ -1545,105 +1681,8 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
     stats_.shadowCasters = 0;
     stats_.shadowReceivers = 0;
     if (shadowsOn) {
-        if (!shadowPipeline_) {
-            WGPUVertexAttribute attrs[xm::kVertexAttributeCount];
-            WGPUVertexBufferLayout vbl = xm::wgpuVertexLayout(attrs);
-            WGPUVertexAttribute nprAttr[1];
-            WGPUVertexBufferLayout nprVbl = xm::wgpuNprVertexLayout(nprAttr);
-            WGPUVertexBufferLayout vbls[2] = {vbl, nprVbl};
-            WGPUColorTargetState shadowTarget = {};
-            shadowTarget.format = WGPUTextureFormat_RGBA8Unorm;
-            shadowTarget.writeMask = WGPUColorWriteMask_All;
-            // No blending: the original's mode-2 entry sets SRCBLEND = ONE, DESTBLEND =
-            // ZERO, i.e. a plain overwrite of the target it just cleared.
-            WGPUDepthStencilState shadowDepth = {};
-            shadowDepth.format = kSceneDepthFormat;
-            shadowDepth.depthWriteEnabled = WGPUOptionalBool_True;
-            shadowDepth.depthCompare = WGPUCompareFunction_LessEqual;
-            setStencilOps(shadowDepth.stencilFront);
-            setStencilOps(shadowDepth.stencilBack);
-            shadowDepth.stencilReadMask = 0xFF;
-            shadowDepth.stencilWriteMask = 0xFF;
-            WGPUFragmentState fs = {};
-            fs.module = shader_;
-            fs.entryPoint = sv("fs_shadow");
-            fs.targetCount = 1;
-            fs.targets = &shadowTarget;
-            WGPURenderPipelineDescriptor rpd = {};
-            rpd.layout = shadowPipelineLayout_;
-            rpd.vertex.module = shader_;
-            rpd.vertex.entryPoint = sv("vs_shadow");
-            rpd.vertex.bufferCount = 2;
-            rpd.vertex.buffers = vbls;
-            rpd.primitive.topology = WGPUPrimitiveTopology_TriangleList;
-            rpd.primitive.frontFace = WGPUFrontFace_CW;
-            // CULL_CCW, the mode-2 entry's own state (FUN_00652880:0x6528a4): the same
-            // winding rule the plain 3D path uses.
-            rpd.primitive.cullMode = WGPUCullMode_Back;
-            rpd.depthStencil = &shadowDepth;
-            rpd.multisample.count = 1;
-            rpd.multisample.mask = 0xFFFFFFFFu;
-            rpd.fragment = &fs;
-            shadowPipeline_ = wgpuDeviceCreateRenderPipeline(device_, &rpd);
-            if (!shadowPipeline_) {
-                error = "shadow pipeline creation failed";
-                return false;
-            }
-        }
-        for (size_t view = 0; view < viewCount; ++view) {
-            if (multiView && (*views)[view].rect.empty()) continue;
-            if (!ensureShadowTarget(view, error)) return false;
-            const ShadowTarget& map = shadowTargets_[view];
-            WGPURenderPassColorAttachment shadowColor = {};
-            shadowColor.view = map.view;
-            shadowColor.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-            shadowColor.loadOp = WGPULoadOp_Clear;
-            shadowColor.storeOp = WGPUStoreOp_Store;
-            // 0xff000000 in the original's Clear: black with alpha 1.0.
-            shadowColor.clearValue = WGPUColor{0.0, 0.0, 0.0, 1.0};
-            WGPURenderPassDepthStencilAttachment shadowDepthAttachment = {};
-            shadowDepthAttachment.view = map.depthView;
-            shadowDepthAttachment.depthLoadOp = WGPULoadOp_Clear;
-            shadowDepthAttachment.depthStoreOp = WGPUStoreOp_Store;
-            shadowDepthAttachment.depthClearValue = 1.0f;
-            shadowDepthAttachment.depthReadOnly = false;
-            shadowDepthAttachment.stencilLoadOp = WGPULoadOp_Clear;
-            shadowDepthAttachment.stencilStoreOp = WGPUStoreOp_Discard;
-            shadowDepthAttachment.stencilClearValue = 0;
-            shadowDepthAttachment.stencilReadOnly = false;
-            WGPURenderPassDescriptor shadowDesc = {};
-            shadowDesc.colorAttachmentCount = 1;
-            shadowDesc.colorAttachments = &shadowColor;
-            shadowDesc.depthStencilAttachment = &shadowDepthAttachment;
-            WGPURenderPassEncoder caster =
-                wgpuCommandEncoderBeginRenderPass(target.encoder, &shadowDesc);
-            if (!caster) {
-                error = "shadow pass could not be started";
-                return false;
-            }
-            wgpuRenderPassEncoderSetPipeline(caster, shadowPipeline_);
-            wgpuRenderPassEncoderSetBindGroup(
-                caster, 0, multiView ? viewCameraGroups_[view] : cameraGroup_, 0, nullptr);
-            const uint32_t casterBase =
-                multiView ? (uint32_t)(view * draws_.size() * xm::kDrawStride) : 0u;
-            for (size_t i = 0; i < draws_.size(); ++i) {
-                const DrawItem& d = draws_[i];
-                // The caster set is the toon technique's own surface set: the fighter's
-                // body and weapon, and not the outline hull (which the toon row marks with
-                // its own flag rather than `toon`).
-                if (!d.toon || d.pass != Pass::Opaque) continue;
-                const uint32_t offset = casterBase + (uint32_t)(i * xm::kDrawStride);
-                wgpuRenderPassEncoderSetBindGroup(caster, 1, drawGroup_, 1, &offset);
-                wgpuRenderPassEncoderSetVertexBuffer(caster, 0, d.vbuf, 0, WGPU_WHOLE_SIZE);
-                wgpuRenderPassEncoderSetVertexBuffer(caster, 1, d.nprbuf, 0, WGPU_WHOLE_SIZE);
-                wgpuRenderPassEncoderSetIndexBuffer(caster, d.ibuf, WGPUIndexFormat_Uint32, 0,
-                                                    WGPU_WHOLE_SIZE);
-                wgpuRenderPassEncoderDrawIndexed(caster, d.indexCount, 1, d.firstIndex, 0, 0);
-                ++stats_.shadowCasters;
-            }
-            wgpuRenderPassEncoderEnd(caster);
-            wgpuRenderPassEncoderRelease(caster);
-        }
+        if (!ensureShadowPipeline(error)) return false;
+        if (!renderShadowCasters(target, views, error)) return false;
     }
 
     WGPURenderPassColorAttachment color = {};
@@ -1710,9 +1749,9 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
             drawBase = (uint32_t)(view * draws_.size() * xm::kDrawStride);
         }
         WGPURenderPipeline boundPipelines[kPassCount] = {};
-        Pass current = Pass::Opaque;
+        // No pipeline bound in this view yet; the first draw always binds one.
+        std::optional<Pass> current;
         bool currentNpr = false;
-        bool haveCurrent = false;
         for (size_t i = 0; i < draws_.size(); ++i) {
             const DrawItem& d = draws_[i];
             // The outline hulls are queued with the scene but submitted only when the
@@ -1728,7 +1767,7 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
             // experiment entry point. `nprActive` is the appearance's own predicate, so a
             // run with no --npr flag never binds the second pipeline at all.
             const bool nprDraw = appearance_.nprActive() && d.toon && d.pass == Pass::Opaque;
-            if (!haveCurrent || d.pass != current || nprDraw != currentNpr) {
+            if (!current || d.pass != *current || nprDraw != currentNpr) {
                 WGPURenderPipeline& slot = boundPipelines[(int)d.pass];
                 if (!slot && !(slot = pipelineFor(target.format, d.pass, nprDraw, error))) {
                     wgpuRenderPassEncoderEnd(pass);
@@ -1739,7 +1778,6 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
                 if (d.pass == Pass::Decal) wgpuRenderPassEncoderSetStencilReference(pass, 0);
                 current = d.pass;
                 currentNpr = nprDraw;
-                haveCurrent = true;
             }
             const uint32_t offset = drawBase + (uint32_t)(i * xm::kDrawStride);
             wgpuRenderPassEncoderSetBindGroup(pass, 1, drawGroup_, 1, &offset);
@@ -1777,21 +1815,19 @@ bool SceneRenderer::benchmark(uint32_t width, uint32_t height, int frames, doubl
     td.format = WGPUTextureFormat_RGBA8Unorm;
     td.mipLevelCount = 1;
     td.sampleCount = 1;
-    WGPUTexture colorTex = wgpuDeviceCreateTexture(device_, &td);
-    WGPUTextureView colorView = colorTex ? wgpuTextureCreateView(colorTex, nullptr) : nullptr;
-    if (!colorTex || !colorView) {
+    // Owned by a Texture, not a bare pair: this function has five exits (two creation
+    // failures, a failed encoder, a failed frame, and the normal one), and the owner
+    // releases the target on all of them.
+    Texture colorTex;
+    colorTex.tex = wgpuDeviceCreateTexture(device_, &td);
+    colorTex.view = colorTex.tex ? wgpuTextureCreateView(colorTex.tex, nullptr) : nullptr;
+    if (!colorTex.tex || !colorTex.view) {
         error = "benchmark target creation failed";
-        if (colorView) wgpuTextureViewRelease(colorView);
-        if (colorTex) wgpuTextureRelease(colorTex);
         return false;
     }
     // Depth is the renderer's own attachment, sized by ensureDepth; it is created here on
     // the benchmark's behalf and left for the next frame to reuse.
-    if (!ensureDepth(width, height, error)) {
-        wgpuTextureViewRelease(colorView);
-        wgpuTextureRelease(colorTex);
-        return false;
-    }
+    if (!ensureDepth(width, height, error)) return false;
 
     // Wait for the queue after every submit, so the measured span is the GPU's work and
     // not the depth of the command queue. The wait is the same process-events loop the
@@ -1808,13 +1844,11 @@ bool SceneRenderer::benchmark(uint32_t width, uint32_t height, int frames, doubl
         WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
         if (!encoder) {
             error = "benchmark encoder creation failed";
-            wgpuTextureViewRelease(colorView);
-            wgpuTextureRelease(colorTex);
             return false;
         }
         Target target;
         target.encoder = encoder;
-        target.colorView = colorView;
+        target.colorView = colorTex.view;
         target.format = WGPUTextureFormat_RGBA8Unorm;
         target.width = width;
         target.height = height;
@@ -1824,11 +1858,7 @@ bool SceneRenderer::benchmark(uint32_t width, uint32_t height, int frames, doubl
         if (cmd) wgpuQueueSubmit(queue_, 1, &cmd);
         if (cmd) wgpuCommandBufferRelease(cmd);
         wgpuCommandEncoderRelease(encoder);
-        if (!ok) {
-            wgpuTextureViewRelease(colorView);
-            wgpuTextureRelease(colorTex);
-            return false;
-        }
+        if (!ok) return false;
         wait.done = false;
         WGPUQueueWorkDoneCallbackInfo cb = {};
         cb.mode = WGPUCallbackMode_AllowProcessEvents;
@@ -1839,8 +1869,6 @@ bool SceneRenderer::benchmark(uint32_t width, uint32_t height, int frames, doubl
         while (!wait.done) wgpuInstanceProcessEvents(instance_);
         total += plat::now() - t0;
     }
-    wgpuTextureViewRelease(colorView);
-    wgpuTextureRelease(colorTex);
     msPerFrame = 1000.0 * total / (double)frames;
     return true;
 }
@@ -1873,18 +1901,21 @@ bool SceneRenderer::captureImpl(uint32_t width, uint32_t height, std::vector<uin
     td.format = WGPUTextureFormat_RGBA8Unorm;
     td.mipLevelCount = 1;
     td.sampleCount = 1;
-    WGPUTexture colorTex = wgpuDeviceCreateTexture(device_, &td);
-    WGPUTextureView colorView = colorTex ? wgpuTextureCreateView(colorTex, nullptr) : nullptr;
+    // Owned, like the benchmark target, so the target's lifetime is the function's:
+    // there is no release pair at the end for a later early return to get wrong.
+    Texture colorTex;
+    colorTex.tex = wgpuDeviceCreateTexture(device_, &td);
+    colorTex.view = colorTex.tex ? wgpuTextureCreateView(colorTex.tex, nullptr) : nullptr;
     const uint32_t rowPitch = alignedRowPitch(width);
     const uint64_t readbackBytes = (uint64_t)rowPitch * height;
     WGPUBuffer readback = gpu::createBuffer(
         device_, readbackBytes, WGPUBufferUsage_MapRead | WGPUBufferUsage_CopyDst, nullptr);
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
 
-    bool ok = colorTex && colorView && readback && encoder;
+    bool ok = colorTex.tex && colorTex.view && readback && encoder;
     Target target;
     target.encoder = encoder;
-    target.colorView = colorView;
+    target.colorView = colorTex.view;
     target.format = WGPUTextureFormat_RGBA8Unorm;
     target.width = width;
     target.height = height;
@@ -1894,7 +1925,7 @@ bool SceneRenderer::captureImpl(uint32_t width, uint32_t height, std::vector<uin
         // No scene: clear the target to opaque black so the UI is composited over a defined
         // background rather than uninitialised memory.
         WGPURenderPassColorAttachment att = {};
-        att.view = colorView;
+        att.view = colorTex.view;
         att.loadOp = WGPULoadOp_Clear;
         att.storeOp = WGPUStoreOp_Store;
         att.clearValue = WGPUColor{0.0, 0.0, 0.0, 1.0};
@@ -1905,7 +1936,7 @@ bool SceneRenderer::captureImpl(uint32_t width, uint32_t height, std::vector<uin
         wgpuRenderPassEncoderEnd(pass);
         wgpuRenderPassEncoderRelease(pass);
     }
-    if (ok && uiHook) ok = uiHook(encoder, colorView, td.format, width, height, uiUserdata);
+    if (ok && uiHook) ok = uiHook(encoder, colorTex.view, td.format, width, height, uiUserdata);
 
     std::vector<uint8_t> padded;
     if (ok) {
@@ -1914,7 +1945,7 @@ bool SceneRenderer::captureImpl(uint32_t width, uint32_t height, std::vector<uin
         dst.layout.bytesPerRow = rowPitch;
         dst.layout.rowsPerImage = height;
         WGPUTexelCopyTextureInfo src = {};
-        src.texture = colorTex;
+        src.texture = colorTex.tex;
         src.aspect = WGPUTextureAspect_All;
         const WGPUExtent3D extent{width, height, 1};
         wgpuCommandEncoderCopyTextureToBuffer(encoder, &src, &dst, &extent);
@@ -1934,8 +1965,6 @@ bool SceneRenderer::captureImpl(uint32_t width, uint32_t height, std::vector<uin
 
     if (encoder) wgpuCommandEncoderRelease(encoder);
     if (readback) wgpuBufferRelease(readback);
-    if (colorView) wgpuTextureViewRelease(colorView);
-    if (colorTex) wgpuTextureRelease(colorTex);
     return ok;
 }
 
