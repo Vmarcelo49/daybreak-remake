@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <optional>
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -114,6 +115,12 @@ Pass classifyPass(const std::string& role, const std::string& texture) {
     return Pass::Opaque;
 }
 
+// What a billboarded draw needs from its mesh: the pivot and the authored facing yaw.
+struct Billboard {
+    glm::vec3 center{0.f};
+    float     yaw0 = 0.f;
+};
+
 // Cylindrical-billboard verdict for one effect draw, from the submesh geometry
 // alone (no texture names — those are deliberately excluded as routing signals).
 // Upright cards (single quads, crossed-plane sets, beam fans, Y-symmetric rings)
@@ -122,9 +129,13 @@ Pass classifyPass(const std::string& role, const std::string& texture) {
 // could only disturb. All surveyed effect/aura meshes are unskinned, so the pivot
 // is the submesh bounds center in mesh space; a skinned mesh can never reach here
 // (the caller guards on it) because its vertices leave mesh space per-bone.
-bool classifyBillboard(const xm::Mesh& mesh, const xm::Submesh& sub, glm::vec3& centerOut,
-                         float& yaw0Out) {
-    if (mesh.skinned || mesh.vertices.empty() || mesh.indices.empty()) return false;
+//
+// Returns the pivot and facing only when the card qualifies. It used to write the
+// pivot into the caller's DrawItem before deciding, so a rejected card left a center
+// behind for a caller that had to know not to read it — std::optional is the same
+// information without that coupling.
+std::optional<Billboard> classifyBillboard(const xm::Mesh& mesh, const xm::Submesh& sub) {
+    if (mesh.skinned || mesh.vertices.empty() || mesh.indices.empty()) return std::nullopt;
     glm::vec3 lo(1e30f), hi(-1e30f);
     double    nySum = 0.0;
     int       posX = 0, negX = 0, posZ = 0, negZ = 0;
@@ -147,11 +158,12 @@ bool classifyBillboard(const xm::Mesh& mesh, const xm::Submesh& sub, glm::vec3& 
         }
         ++n;
     }
-    if (n == 0) return false;
-    centerOut = (lo + hi) * 0.5f;
+    if (n == 0) return std::nullopt;
+    Billboard bb;
+    bb.center = (lo + hi) * 0.5f;
     // Ground-dominant cards stay put: their plane already contains every camera
     // yaw, so facing is meaningless and spinning only churns directional art.
-    if (nySum / (double)n > 0.5) return false;
+    if (nySum / (double)n > 0.5) return std::nullopt;
     // Authored facing: the yaw the card's dominant normal already has, so the
     // render-time yaw is relative to it (a YZ-plane card needs yaw-90°, not yaw).
     // Plain constants, not M_PI_2/M_PI: those need feature-test macros that differ
@@ -159,14 +171,14 @@ bool classifyBillboard(const xm::Mesh& mesh, const xm::Submesh& sub, glm::vec3& 
     constexpr float kHalfPi = 1.57079632679f;
     constexpr float kPi = 3.14159265359f;
     if (posX >= negX && posX >= posZ && posX >= negZ)
-        yaw0Out = kHalfPi;
+        bb.yaw0 = kHalfPi;
     else if (negX >= posZ && negX >= negZ)
-        yaw0Out = -kHalfPi;
+        bb.yaw0 = -kHalfPi;
     else if (negZ >= posZ)
-        yaw0Out = kPi;
+        bb.yaw0 = kPi;
     else
-        yaw0Out = 0.f;
-    return true;
+        bb.yaw0 = 0.f;
+    return bb;
 }
 
 // COPY_BYTES_PER_ROW_ALIGNMENT is 256: a tightly packed RGBA row is only legal for
@@ -810,9 +822,12 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                 // spherical: the world's up axis is load-bearing — ground cards lie in
                 // XZ, shockwaves read as verticals — and the arena camera stays near
                 // level). The verdict is geometry-only; dormant until setEye().
-                if (pass == Pass::Effect && classifyBillboard(mesh, sub, d.bbCenter, d.bbYaw0)) {
-                    d.billboard = true;
-                    ++stats_.billboarded;
+                if (pass == Pass::Effect) {
+                    if (const std::optional<Billboard> bb = classifyBillboard(mesh, sub)) {
+                        d.bbCenter = bb->center;
+                        d.bbYaw0 = bb->yaw0;
+                        d.billboard = true;
+                    }
                 }
                 // Decals and effect cards are lighting, not paint: white has to stay
                 // exactly white (decals) and black exactly black (effects) or the blend

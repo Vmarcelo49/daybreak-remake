@@ -320,7 +320,6 @@ struct Stats {
     int    untextured      = 0;
     int    decals          = 0;
     int    effects         = 0;
-    int    billboarded     = 0;   // effect draws that yaw to the camera (EFFECTS-BILLBOARD.md)
     int    outlines        = 0;   // toon outline hulls queued (issue #21)
     int    shadowCasters   = 0;   // draws submitted to the shadow map (issue #21 row 1)
     int    shadowReceivers = 0;   // stage draws marked to sample it
