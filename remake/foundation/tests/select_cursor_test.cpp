@@ -204,6 +204,11 @@ int main() {
         // costume the character owns, going straight to Hypermode as the original does (:317).
         ui::FrontendState empty;
         ui::SelectMenu emptyMenu(empty);
+        // On ENTRY nothing is picked and nothing has rolled, so every panel's portrait is
+        // blank. The roll's field is -1 for "not rolled yet", not 0 — 0 is Rena, and
+        // value-initialising it showed Rena on all four panels the moment the screen opened.
+        for (int p = 0; p < 4; ++p)
+            check(emptyMenu.shown(p) == -1, "a fresh panel's portrait is blank, not Rena");
         emptyMenu.update(confirm);
         hold(emptyMenu, left, 30);
         check(emptyMenu.cursorOffGrid(), "the cursor can rest off the diamond");

@@ -439,8 +439,7 @@ is byte-identical to no flag at all (`f80d0368`), and a value outside `[0,1]` is
 rejected with `RESULT: --match-alpha takes a fraction in [0,1]`. **With the flag
 absent nothing changes**: the four §3 gates re-run after this landed produced the
 same `RESULT: ok` ladders and byte-identical final captures (4p `14305bc9`, com
-`57044cfb`,
-`57044cfb`, and 1v1/2v2 share `8cc49e6c`). The sharing is real but the obvious
+`b813155d`, and 1v1/2v2 share `8cc49e6c`). The sharing is real but the obvious
 reason for it is not: 1v1 and 2v2 are byte-identical because both end on the
 **stage-select page** of the selection screen, while com's one-player run ends
 on the **character-panel page** (74.8 % of pixels differ between the two) and
@@ -465,13 +464,19 @@ roster and its final frame moves. **The four-player gate is the only one affecte
 | recipe | before | after |
 |---|---|---|
 | 4p `frontend-4p.txt` | `2483c3aa…` | **`14305bc9…`** |
-| com `frontend-com-rematch.txt` | `b813155d…` (the OLD digest, kept here as the before) | **`57044cfb…`** |
 | 1v1 / 2v2 `frontend-1v1-rematch.txt`, `frontend-2v2-rematch.txt` | `8cc49e6c…` | unchanged |
+| com `frontend-com-rematch.txt` | `b813155d…` | unchanged |
 
-The two that moved are the two whose scripts take a cursor off the diamond. They move for two
-reasons at once: the roll consumes RNG, so the roster the script settles on differs, **and** a
-panel whose cursor is off the diamond now draws no summary row (its slot is empty) while its
-portrait rolls. Both are the intended behaviour, not a regression.
+**One gate moves, because its script takes a cursor off the diamond**: the roll consumes RNG, so
+the roster the script settles on differs and so does the frame. Its ladder and roster are
+unchanged and the new digest is deterministic (reproduced twice).
+
+**The com gate moved and came back, which is worth recording as a lesson.** While the roll's
+display field was value-initialised to 0 — a real character, Rena — every panel with no pick
+drew Rena's portrait from the moment the screen opened, and com's frame moved to `57044cfb`.
+Fixing that initialisation to `-1` restored `b813155d` exactly. **A digest that moves is
+evidence about the change, not noise to be re-recorded**: re-measuring the baseline is the last
+step, not the first, and here it would have written a bug into the gate.
 
 The 4p **ladder and roster are unchanged** (`0/34/446/4382/4984/5584/9520`; `round over, side 0
 wins (time up) at frame 3600`, then `side 1 balloon burst`), and the new digest is
@@ -507,7 +512,7 @@ another view's geometry before.
 Hashes are the first eight hex digits of `sha256sum` of the written PPM. The four §3 gates
 end on a single-view frame (the result or the selection screen), so all four keep their
 documented final captures exactly — 4p `14305bc9`, 1v1 `8cc49e6c`, 2v2 `8cc49e6c`, com
-`57044cfb` — and their `[menu] scene` / `[split]` ladders are unchanged. §4.2's sweep is
+`b813155d` — and their `[menu] scene` / `[split]` ladders are unchanged. §4.2's sweep is
 `--match` without `--local-players`, so it is single-view and its problem counts cannot move
 either.
 

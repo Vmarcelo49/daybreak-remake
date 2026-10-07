@@ -186,7 +186,11 @@ private:
     std::array<float,4> cursorX_{}, cursorY_{};
     // The off-diamond roll's own display character per panel, in panel order (not controller
     // order): `shown()` falls back to it while the slot has no live pick. See shown().
-    std::array<int,4> rolled_{};
+    //
+    // -1, NOT 0: it is "nothing has been rolled here yet", and 0 is a real character (Rena).
+    // Value-initialising this to 0 made every empty panel's portrait show Rena from the moment
+    // the screen opened, before any cursor moved.
+    std::array<int,4> rolled_{{ -1, -1, -1, -1 }};
     SelectRowSlide slide_;
 };
 class SelectScreen final : public Screen {
