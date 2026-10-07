@@ -341,7 +341,10 @@ private:
     int m_guardTicks    = 0;
     // The port's double tap: 1 tap, 2 gap, 3 tap, then back to 0.
     int m_dashPhase = 0;
-    int m_dashDir   = 0;   // 0 Up (forward), 1 Down, 2 Left, 3 Right
+    // The direction key the committed double tap presses. It IS one of the four
+    // directional input actions: run_dash_commitment() emits it as the movement axis,
+    // so an Action (not an index into a private 0..3 encoding) is the value itself.
+    input::Action m_dashKey = input::Action::Up;
     BotAction m_dashAction = BotAction::Evade;
     // The charge-and-release cycle.
     int      m_shotHoldTicks = 0;

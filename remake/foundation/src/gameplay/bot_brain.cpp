@@ -90,7 +90,8 @@ void BotBrain::reset(uint64_t seed, BotDifficulty difficulty) {
     m_stats = BotStats{};
     m_strafeTicks = m_advanceTicks = m_airTicks = m_powerTicks = 0;
     m_meleeCooldown = m_shotCooldown = m_retargetCooldown = m_planTicks = 0;
-    m_guardTicks = m_dashPhase = m_dashDir = 0;
+    m_guardTicks = m_dashPhase = 0;
+    m_dashKey = input::Action::Up;
     m_dashAction = BotAction::Evade;
     m_shotHoldTicks = 0;
     m_releasePending = false;
@@ -177,8 +178,16 @@ bool BotBrain::run_dash_commitment() {
     if (m_dashPhase == 0) return false;
     const bool press = (m_dashPhase == 1 || m_dashPhase == 3);
     if (press) {
-        m_decision.moveRight   = (m_dashDir == 2) ? -1.f : (m_dashDir == 3 ? 1.f : 0.f);
-        m_decision.moveForward = (m_dashDir == 0) ?  1.f : (m_dashDir == 1 ? -1.f : 0.f);
+        // The stored key IS the action the fighter polls, so it maps straight onto the
+        // movement axes BotBrain::apply() writes; no private 0..3 encoding sits between.
+        m_decision.moveRight = m_decision.moveForward = 0.f;
+        switch (m_dashKey) {
+            case input::Action::Up:    m_decision.moveForward =  1.f; break;
+            case input::Action::Down:  m_decision.moveForward = -1.f; break;
+            case input::Action::Left:  m_decision.moveRight   = -1.f; break;
+            case input::Action::Right: m_decision.moveRight   =  1.f; break;
+            default: break;   // only the four directions are ever committed
+        }
         m_decision.action = m_dashAction;
     }
     ++m_dashPhase;
@@ -485,7 +494,7 @@ void BotBrain::plan(const BotView& v, float dist) {
             self.stamina() >= (int)FighterConstants::kDashStamina) {
             // A committed dash leaves the swing; the navigation probe rotates the
             // direction if the stage is in the way.
-            m_dashDir = (m_rng.below(2) == 0) ? 2 : 3;   // Left / Right
+            m_dashKey = (m_rng.below(2) == 0) ? input::Action::Left : input::Action::Right;
             m_dashAction = BotAction::Evade;
             m_dashPhase = 1;
             ++m_stats.evades;
@@ -510,7 +519,7 @@ void BotBrain::plan(const BotView& v, float dist) {
             self.actionable() && self.state() != FighterState::Run &&
             self.stamina() >= (int)FighterConstants::kDashStamina && m_dashPhase == 0 &&
             (int)m_rng.below(100) < power) {
-            m_dashDir = 0;   // Up = forward
+            m_dashKey = input::Action::Up;   // Up = forward
             m_dashAction = BotAction::Approach;
             m_dashPhase = 1;
             run_dash_commitment();
@@ -569,7 +578,7 @@ void BotBrain::plan(const BotView& v, float dist) {
 }
 
 void BotBrain::navigate(const BotView& v) {
-    // A dash carries its own locked direction (the fighter commits to m_dashDir), so the
+    // A dash carries its own locked direction (the key the brain tapped), so the
     // navigation must not fight it.
     if (m_dashPhase != 0) return;
 
