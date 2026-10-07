@@ -149,12 +149,6 @@ constexpr ActionName kActionNames[] = {
 static_assert(sizeof(kActionNames) / sizeof(kActionNames[0]) == fnd::input::ActionCount,
               "the persisted action names must cover every action");
 
-// The SDL button range the config accepts: -1 is "unbound", and the upper bound is the
-// same 26 the backend's suppression table pins.
-constexpr int kMaxPadButton = 25;
-// SDL_SCANCODE_COUNT, which the backend also pins.
-constexpr int kMaxScancode = 511;
-
 }  // namespace
 
 UserSettings::UserSettings() {
