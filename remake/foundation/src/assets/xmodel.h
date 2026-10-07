@@ -276,6 +276,26 @@ private:
         float  speed  = 1.f;
         double time   = 0.0;
     };
+    // Every track off, unweighted and rewound. anim/loop/speed deliberately survive:
+    // setTrackEnable() can re-enable a track whose set was assigned earlier, and
+    // setAnimation() must not silently retarget it.
+    void resetTracks() {
+        for (Track& t : tracks_) {
+            t.enable = false;
+            t.weight = 0.f;
+            t.time = 0.0;
+        }
+    }
+    // Installs `anim` as one track's whole state. Track{} replaces the previous
+    // anim/loop/speed along with the play state, which is what makes the entry points a
+    // "start this set" rather than a layer over whatever the track held.
+    void initTrack(int i, int animIndex, bool loop) {
+        tracks_[i] = Track{};
+        tracks_[i].anim = animIndex;
+        tracks_[i].enable = true;
+        tracks_[i].weight = 1.f;
+        tracks_[i].loop = loop;
+    }
     bool valid(int t) const { return t >= 0 && t < kMaxTracks; }
     Track*       track(int t) { return valid(t) ? &tracks_[t] : nullptr; }
     const Track* track(int t) const { return valid(t) ? &tracks_[t] : nullptr; }
@@ -1770,6 +1790,59 @@ private:
         }
     }
 
+    // A position's bone influences, strongest first. The shipped rigs stay within
+    // XSkinMeshHeader's limit, but files in the wild can exceed 4, so the eight slots are
+    // a candidate pool and the emit step keeps the top four.
+    struct Influences { std::array<std::pair<uint32_t, float>, 8> v{}; int n = 0; };
+
+    // Fills that pool from the mesh's SkinWeights: each skin contributes its
+    // (position, weight) pairs to the position they name, an overflowing position drops
+    // its weakest candidate for a stronger one, and what is left is sorted
+    // strongest-first. out.droppedInfluences and the max-influences stat live here
+    // because this is the only pass that sees both a candidate and the set it competed
+    // with; the caller renormalises what survives.
+    std::vector<Influences> buildInfluences(const RawMesh& r, Mesh& out) {
+        std::vector<Influences> infl(r.pos.size());
+        for (uint32_t bi = 0; bi < r.skins.size(); ++bi) {
+            const RawSkin& s = r.skins[bi];
+            for (size_t k = 0; k < s.idx.size() && k < s.w.size(); ++k) {
+                if (s.idx[k] >= infl.size() || !(s.w[k] > 0.f)) continue;
+                Influences& in = infl[s.idx[k]];
+                if (in.n < (int)in.v.size()) {
+                    in.v[in.n++] = {bi, s.w[k]};
+                } else {
+                    auto mn = std::min_element(in.v.begin(), in.v.end(),
+                                [](const auto& a, const auto& b) { return a.second < b.second; });
+                    if (s.w[k] > mn->second) { *mn = {bi, s.w[k]}; out.droppedInfluences++; }
+                }
+            }
+        }
+        for (auto& in : infl) {
+            std::sort(in.v.begin(), in.v.begin() + in.n,
+                      [](const auto& a, const auto& b) { return a.second > b.second; });
+            m_.stats.maxInfluencesSeen = std::max(m_.stats.maxInfluencesSeen, in.n);
+        }
+        return infl;
+    }
+
+    // Generated vertex normals for a mesh whose .X carries none (or carries a face-normal
+    // list that does not match its faces): the unnormalised geometric normal of each face
+    // summed into its three vertices, so the sum weights by area, then normalised where
+    // it is non-degenerate.
+    std::vector<glm::vec3> buildAutoNormals(const RawMesh& r) {
+        std::vector<glm::vec3> autoN(r.pos.size(), glm::vec3(0));
+        for (const auto& f : r.faces)
+            for (size_t i = 1; i + 1 < f.size(); ++i) {
+                if (f[0] >= r.pos.size() || f[i] >= r.pos.size() || f[i + 1] >= r.pos.size())
+                    continue;
+                // LH + clockwise front faces: cross(a - b, c - b) points outward.
+                glm::vec3 n = glm::cross(r.pos[f[i + 1]] - r.pos[f[0]], r.pos[f[i]] - r.pos[f[0]]);
+                autoN[f[0]] += n; autoN[f[i]] += n; autoN[f[i + 1]] += n;
+            }
+        for (auto& n : autoN) if (glm::dot(n, n) > 0.f) n = glm::normalize(n);
+        return autoN;
+    }
+
     Mesh buildMesh(const RawMesh& r) {
         Mesh out;
         out.name = r.name;
@@ -1790,48 +1863,15 @@ private:
         }
         m_.stats.skinBones += (int)out.bones.size();
 
-        // Per-position influences, strongest first. The shipped rigs stay within
-        // XSkinMeshHeader's limit, but files in the wild can exceed 4, so extras are
-        // dropped and the remainder renormalised rather than silently mis-weighted.
-        struct Influences { std::array<std::pair<uint32_t, float>, 8> v{}; int n = 0; };
         std::vector<Influences> infl;
-        if (out.skinned) {
-            infl.assign(r.pos.size(), {});
-            for (uint32_t bi = 0; bi < r.skins.size(); ++bi) {
-                const RawSkin& s = r.skins[bi];
-                for (size_t k = 0; k < s.idx.size() && k < s.w.size(); ++k) {
-                    if (s.idx[k] >= infl.size() || !(s.w[k] > 0.f)) continue;
-                    Influences& in = infl[s.idx[k]];
-                    if (in.n < (int)in.v.size()) {
-                        in.v[in.n++] = {bi, s.w[k]};
-                    } else {
-                        auto mn = std::min_element(in.v.begin(), in.v.end(),
-                                    [](const auto& a, const auto& b) { return a.second < b.second; });
-                        if (s.w[k] > mn->second) { *mn = {bi, s.w[k]}; out.droppedInfluences++; }
-                    }
-                }
-            }
-            for (auto& in : infl) {
-                std::sort(in.v.begin(), in.v.begin() + in.n,
-                          [](const auto& a, const auto& b) { return a.second > b.second; });
-                m_.stats.maxInfluencesSeen = std::max(m_.stats.maxInfluencesSeen, in.n);
-            }
-        }
+        if (out.skinned) infl = buildInfluences(r, out);
 
+        // The file's own normals are used only when its face-normal list lines up with
+        // its face list; otherwise the geometric normals below are generated. autoN is
+        // left empty when they are, and the emit step never reads it.
+        const bool haveN = !r.normals.empty() && r.nfaces.size() == r.faces.size();
         std::vector<glm::vec3> autoN;
-        bool haveN = !r.normals.empty() && r.nfaces.size() == r.faces.size();
-        if (!haveN) {
-            autoN.assign(r.pos.size(), glm::vec3(0));
-            for (const auto& f : r.faces)
-                for (size_t i = 1; i + 1 < f.size(); ++i) {
-                    if (f[0] >= r.pos.size() || f[i] >= r.pos.size() || f[i + 1] >= r.pos.size())
-                        continue;
-                    // LH + clockwise front faces: cross(a - b, c - b) points outward.
-                    glm::vec3 n = glm::cross(r.pos[f[i + 1]] - r.pos[f[0]], r.pos[f[i]] - r.pos[f[0]]);
-                    autoN[f[0]] += n; autoN[f[i]] += n; autoN[f[i + 1]] += n;
-                }
-            for (auto& n : autoN) if (glm::dot(n, n) > 0.f) n = glm::normalize(n);
-        }
+        if (!haveN) autoN = buildAutoNormals(r);
 
         // One GPU vertex per unique (position, normal) pair; uv and colour follow the
         // position index, which is how the .x format stores them.
@@ -1864,9 +1904,9 @@ private:
         for (size_t fi = 0; fi < r.faces.size(); ++fi) {
             const auto& f = r.faces[fi];
             if (f.size() < 3) continue;
-            bool bad = false;
-            for (uint32_t idx : f) if (idx >= r.pos.size()) { bad = true; break; }
-            if (bad) continue;
+            if (std::any_of(f.begin(), f.end(),
+                            [&](uint32_t idx) { return idx >= r.pos.size(); }))
+                continue;
             uint32_t mat = fi < r.faceMat.size() ? r.faceMat[fi]
                          : (r.faceMat.size() == 1 ? r.faceMat[0] : 0u);
             if (mat >= buckets.size()) mat = 0;
@@ -1913,34 +1953,60 @@ private:
     std::unordered_map<std::string, Material> named_;
 };
 
+// The name -> index lookup every Model::find* uses. Frames, anim sets and meshes all
+// carry a unique name and the first match wins, which is what the original's own lookup
+// does; a template so the three cannot drift apart.
+template <class T>
+int findByName(const std::vector<T>& v, const std::string& n) {
+    for (size_t i = 0; i < v.size(); ++i) if (v[i].name == n) return (int)i;
+    return -1;
+}
+
+// The bind pose as animation channels: what a frame keeps when no enabled track touches
+// it, and what a channel that carries no key for a component contributes. Both sample
+// paths start from these three vectors, which is why they are filled here and not at
+// either site.
+void bindChannels(const std::vector<Frame>& frames, std::vector<glm::vec3>& pos,
+                  std::vector<glm::quat>& rot, std::vector<glm::vec3>& scale) {
+    pos.resize(frames.size());
+    rot.resize(frames.size());
+    scale.resize(frames.size());
+    for (size_t i = 0; i < frames.size(); ++i) {
+        pos[i]   = frames[i].bindT;
+        rot[i]   = frames[i].bindR;
+        scale[i] = frames[i].bindS;
+    }
+}
+
+// One world matrix per frame, from that frame's local T/R/S and its parent's world
+// matrix. Frames are stored parents-first (the Model contract), so one forward pass
+// suffices and no separate local-matrix array is needed.
+void composeWorld(const std::vector<Frame>& frames, const std::vector<glm::vec3>& pos,
+                  const std::vector<glm::quat>& rot, const std::vector<glm::vec3>& scale,
+                  std::vector<glm::mat4>& world) {
+    world.resize(frames.size());
+    for (size_t i = 0; i < frames.size(); ++i) {
+        const glm::mat4 local = glm::translate(glm::mat4(1.f), pos[i]) *
+                                glm::mat4_cast(rot[i]) * glm::scale(glm::mat4(1.f), scale[i]);
+        world[i] = frames[i].parent < 0 ? local : world[(size_t)frames[i].parent] * local;
+    }
+}
+
 }  // namespace detail
 
 // ---------------------------------------------------------------------------------------
 // Model
 // ---------------------------------------------------------------------------------------
-int Model::findFrame(const std::string& n) const {
-    for (size_t i = 0; i < frames.size(); ++i) if (frames[i].name == n) return (int)i;
-    return -1;
-}
-int Model::findAnim(const std::string& n) const {
-    for (size_t i = 0; i < anims.size(); ++i) if (anims[i].name == n) return (int)i;
-    return -1;
-}
-int Model::findMesh(const std::string& n) const {
-    for (size_t i = 0; i < meshes.size(); ++i) if (meshes[i].name == n) return (int)i;
-    return -1;
-}
+int Model::findFrame(const std::string& n) const { return detail::findByName(frames, n); }
+int Model::findAnim(const std::string& n) const { return detail::findByName(anims, n); }
+int Model::findMesh(const std::string& n) const { return detail::findByName(meshes, n); }
 
 void Model::evalPose(const AnimSet* a, float seconds, bool loop,
                      std::vector<glm::mat4>& world) const {
     using namespace detail;
-    std::vector<glm::vec3> S(frames.size()), T(frames.size());
-    std::vector<glm::quat> R(frames.size());
-    for (size_t i = 0; i < frames.size(); ++i) {
-        S[i] = frames[i].bindS;
-        R[i] = frames[i].bindR;
-        T[i] = frames[i].bindT;
-    }
+    std::vector<glm::vec3> S, T;
+    std::vector<glm::quat> R;
+    bindChannels(frames, T, R, S);
     if (a && a->duration > 0.f) {
         float tick = seconds * ticksPerSecond;
         tick = loop ? std::fmod(tick, a->duration) : std::min(tick, a->duration);
@@ -1956,14 +2022,7 @@ void Model::evalPose(const AnimSet* a, float seconds, bool loop,
         for (size_t i = 0; i < frames.size(); ++i) if (glm::dot(R[i], R[i]) > 0.f) R[i] = glm::normalize(R[i]);
     }
 
-    std::vector<glm::mat4> local(frames.size());
-    for (size_t i = 0; i < frames.size(); ++i)
-        local[i] = glm::translate(glm::mat4(1.f), T[i]) * glm::mat4_cast(R[i]) *
-                   glm::scale(glm::mat4(1.f), S[i]);
-
-    world.resize(frames.size());
-    for (size_t i = 0; i < frames.size(); ++i)
-        world[i] = frames[i].parent < 0 ? local[i] : world[frames[i].parent] * local[i];
+    composeWorld(frames, T, R, S, world);
 }
 
 void Model::buildPalette(const Mesh& m, const std::vector<glm::mat4>& world,
@@ -2035,33 +2094,16 @@ bool Controller::trackLoop(int t) const {
 
 bool Controller::setAnimation(int animIndex, bool loop) {
     if (!model_ || animIndex < 0 || (size_t)animIndex >= model_->anims.size()) return false;
-    for (int i = 0; i < kMaxTracks; ++i) {
-        tracks_[i].enable = false;
-        tracks_[i].weight = 0.f;
-        tracks_[i].time = 0.0;
-    }
-    tracks_[0] = Track{};
-    tracks_[0].anim = animIndex;
-    tracks_[0].enable = true;
-    tracks_[0].weight = 1.f;
-    tracks_[0].loop = loop;
+    resetTracks();
+    initTrack(0, animIndex, loop);
     return true;
 }
 
 bool Controller::setAnimationBothTracks(int animIndex, bool loop) {
     if (!model_ || animIndex < 0 || (size_t)animIndex >= model_->anims.size()) return false;
-    for (int i = 0; i < kMaxTracks; ++i) {
-        tracks_[i].enable = false;
-        tracks_[i].weight = 0.f;
-        tracks_[i].time = 0.0;
-    }
-    for (int t = 0; t < 2; ++t) {
-        tracks_[t] = Track{};
-        tracks_[t].anim = animIndex;
-        tracks_[t].enable = true;
-        tracks_[t].weight = 1.f;
-        tracks_[t].loop = loop;
-    }
+    resetTracks();
+    initTrack(0, animIndex, loop);
+    initTrack(1, animIndex, loop);
     return true;
 }
 
@@ -2084,16 +2126,14 @@ double Controller::time() const {
 void Controller::evalLocal(std::vector<glm::vec3>& pos, std::vector<glm::quat>& rot,
                            std::vector<glm::vec3>& scale) const {
     using namespace detail;
-    const size_t nf = model_ ? model_->frames.size() : 0;
-    pos.assign(nf, glm::vec3(0.f));
-    scale.assign(nf, glm::vec3(1.f));
-    rot.assign(nf, glm::quat(1.f, 0.f, 0.f, 0.f));
-    if (!model_) return;
-    for (size_t i = 0; i < nf; ++i) {
-        pos[i]   = model_->frames[i].bindT;
-        rot[i]   = model_->frames[i].bindR;
-        scale[i] = model_->frames[i].bindS;
+    if (!model_) {                 // no bind pose to start from: empty channels, as ever
+        pos.clear();
+        rot.clear();
+        scale.clear();
+        return;
     }
+    bindChannels(model_->frames, pos, rot, scale);
+    const size_t nf = model_->frames.size();
 
     std::vector<float> accW(nf, 0.f);
     for (const Track& t : tracks_) {
@@ -2135,15 +2175,13 @@ void Controller::evalWorld(std::vector<glm::mat4>& world) const {
     std::vector<glm::vec3> S, T;
     std::vector<glm::quat> R;
     evalLocal(T, R, S);
-    const size_t nf = model_ ? model_->frames.size() : 0;
-    std::vector<glm::mat4> local(nf);
-    for (size_t i = 0; i < nf; ++i)
-        local[i] = glm::translate(glm::mat4(1.f), T[i]) * glm::mat4_cast(R[i]) *
-                   glm::scale(glm::mat4(1.f), S[i]);
-    world.resize(nf);
-    for (size_t i = 0; i < nf; ++i)
-        world[i] = model_->frames[i].parent < 0 ? local[i]
-                                                : world[model_->frames[i].parent] * local[i];
+    // No model: the channel vectors come back empty (evalLocal clears them), so the
+    // world matrix array is cleared too — the bounds the old loop computed on its own.
+    if (!model_) {
+        world.clear();
+        return;
+    }
+    detail::composeWorld(model_->frames, T, R, S, world);
 }
 
 std::string LoadStats::toString() const {
@@ -2176,6 +2214,21 @@ void parseTextInto(Model& m, const std::string& text, size_t start,
     Parser(lx, m, opt).run();
 }
 
+// One Model from one text form: the encoding it came in as, the ticks-per-second default
+// the file itself may override (AnimTicksPerSecond), and the parse timing every
+// text-bearing path reports. `t0` is the caller's own clock start, so a file's parseMs
+// and a compressed one's convertMs are measured from the same instant.
+Model parseTextModel(const std::string& text, size_t start, const char* encoding,
+                     const LoadOptions& opt, std::chrono::steady_clock::time_point t0) {
+    Model m;
+    m.stats.encoding = encoding;
+    m.ticksPerSecond = opt.ticksPerSecond;
+    parseTextInto(m, text, start, opt);
+    auto t1 = std::chrono::steady_clock::now();
+    m.stats.parseMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    return m;
+}
+
 Model parseBinaryStream(const uint8_t* data, size_t size, size_t start, bool float64,
                         const char* encoding, const LoadOptions& opt,
                         std::chrono::steady_clock::time_point t0) {
@@ -2186,13 +2239,8 @@ Model parseBinaryStream(const uint8_t* data, size_t size, size_t start, bool flo
     if (opt.convertedTextOut) *opt.convertedTextOut = text;
     auto t2 = std::chrono::steady_clock::now();
 
-    Model m;
-    m.stats.encoding = encoding;
-    m.ticksPerSecond = opt.ticksPerSecond;
-    parseTextInto(m, text, 0, opt);
-    auto t3 = std::chrono::steady_clock::now();
+    Model m = parseTextModel(text, 0, encoding, opt, t2);
     m.stats.convertMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
-    m.stats.parseMs   = std::chrono::duration<double, std::milli>(t3 - t2).count();
     return m;
 }
 
@@ -2212,13 +2260,8 @@ Model loadMemory(const void* data, size_t size, const LoadOptions& opt) {
     auto t0 = std::chrono::steady_clock::now();
 
     if (fmtStr == "txt") {
-        Model m;
-        m.stats.encoding = "txt";
-        m.ticksPerSecond = opt.ticksPerSecond;   // AnimTicksPerSecond overrides if present
-        parseTextInto(m, std::string((const char*)p, size), 16, opt);
-        auto t1 = std::chrono::steady_clock::now();
-        m.stats.parseMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
-        return m;
+        // AnimTicksPerSecond in the file overrides the default parseTextModel installs.
+        return parseTextModel(std::string((const char*)p, size), 16, "txt", opt, t0);
     }
     if (fmtStr == "bin") {
         return parseBinaryStream(p, size, 16, float64, "bin", opt, t0);
@@ -2231,13 +2274,8 @@ Model loadMemory(const void* data, size_t size, const LoadOptions& opt) {
         // A decompressed payload carries no header of its own, so the token stream
         // starts at offset 0. "tzip" would decompress to text: sniff and fall through.
         if (out.size() >= 4 && std::memcmp(out.data(), "xof ", 4) == 0) {
-            Model m;
-            m.stats.encoding = "tzip";
-            m.ticksPerSecond = opt.ticksPerSecond;
-            parseTextInto(m, std::string((const char*)out.data(), out.size()), 0, opt);
-            auto t1 = std::chrono::steady_clock::now();
-            m.stats.parseMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
-            return m;
+            return parseTextModel(std::string((const char*)out.data(), out.size()), 0, "tzip",
+                                  opt, t0);
         }
         return parseBinaryStream(out.data(), out.size(), 0, float64, "bzip", opt, t0);
     }
