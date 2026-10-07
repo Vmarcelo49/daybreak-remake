@@ -276,22 +276,23 @@ struct FighterConstants {
 
 // One swing's resolved numbers (issue #26 steps 3–4). Data-driven when a move
 // table is bound: windows, reach, damage and stun come from the situation's
-// move hit entry. Otherwise the legacy shared tuning below, so a fighter with
-// no moves bound behaves exactly like the pre-#26 machine.
+// move hit entry. Otherwise the legacy shared tuning, so a fighter with no moves
+// bound behaves exactly like the pre-#26 machine.
+//
+// The legacy defaults ARE melee_rules.h's numbers (kLegacy*), not a second copy of them:
+// this struct once carried its own literals while MeleeRules carried another set that
+// only tests read, so editing "the attack sphere's radius" in one place changed nothing
+// live. `window` is the one window struct build_melee_swing() overrides.
 struct MeleeSwing {
-    bool  dataDriven = false;
-    int   moveId = -1;      // character-.dat move this swing plays (-1 = legacy)
-    int   startupTicks  = 5;
-    int   activeTicks   = 8;
-    int   recoveryTicks = 17;
-    float radius = 130.0f;                            // stands in for weapon+0x24
-    int   damage = FighterConstants::kLightDamage;
-    int   hitstun = 8;                                // legacy active-window stun
-    int total_ticks() const { return startupTicks + activeTicks + recoveryTicks; }
-    bool is_active(int elapsed) const {
-        return elapsed >= startupTicks && elapsed < startupTicks + activeTicks;
-    }
-    bool is_recovery(int elapsed) const { return elapsed >= startupTicks + activeTicks; }
+    bool        dataDriven = false;
+    int         moveId = -1;   // character-.dat move this swing plays (-1 = legacy)
+    MeleeWindow window = kLegacyWindow;
+    float       radius = kLegacyRadius;   // stands in for weapon+0x24
+    int         damage = FighterConstants::kLightDamage;
+    int         hitstun = 8;              // legacy active-window stun
+    int total_ticks() const { return window.total_ticks(); }
+    bool is_active(int elapsed) const { return window.is_active(elapsed); }
+    bool is_recovery(int elapsed) const { return window.is_recovery(elapsed); }
 };
 
 // Handoff from Fighter (input/charge side) to the scene (spawn/collide side):

@@ -946,7 +946,7 @@ bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollis
     // limit, and why a swing cannot reach legs.
     //
     // The radius is the swing's own weapon hitRadius when a move table is bound
-    // (issue #26: e.g. rena move 300's 20); otherwise MeleeRules::radius stands in
+    // (issue #26: e.g. rena move 300's 20); otherwise the shared legacy number stands in
     // for the unrecovered weapon+0x24. The SHAPE is recovered in both cases.
     const float bodyHeight = game::physics::MovementCollision::kFighterHeight;
     const float attackerY  = m_position.y + bodyHeight * m_meleeRules.chestHeightFrac;
@@ -958,8 +958,9 @@ bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollis
 
     const float toHead = (horizontalSq) + (headY - attackerY) * (headY - attackerY);
     const float toChest = (horizontalSq) + (chestY - attackerY) * (chestY - attackerY);
-    const float combined = m_meleeRules.bodyRadius + m_swing.radius;
-    if (toHead >= combined * combined && toChest >= combined * combined) return false;
+    // Either anchor connecting is a hit, so the NEARER one decides; the predicate itself
+    // is melee_rules.h's (FUN_0063b470), the same one melee_reach() is written in terms of.
+    if (!m_meleeRules.sphere_hits(std::min(toHead, toChest), m_swing.radius)) return false;
 
     // Solid barriers: the swing must not reach through the stage. #7's collision already
     // answers segment queries for the camera; the fighter's own mesh is the same
@@ -1153,10 +1154,10 @@ MeleeSwing Fighter::resolve_swing(int moveId) const {
     swing.dataDriven = true;
     swing.moveId = moveId;
     // The hit goes live on its own in-phase frame (rena 300 → 4, 301 → 7).
-    swing.startupTicks = hit->activeFrame;
+    swing.window.startupTicks = hit->activeFrame;
     // ... and lives until the phase's next effect fires (300 → 6, 301 → 9,
     // 311 → 11, 330 → 5). A last-entry hit keeps the legacy 8-tick window.
-    if (nextFrame > hit->activeFrame) swing.activeTicks = nextFrame - hit->activeFrame;
+    if (nextFrame > hit->activeFrame) swing.window.activeTicks = nextFrame - hit->activeFrame;
     if (hit->hitRadius > 0) swing.radius = static_cast<float>(hit->hitRadius);
     // The melee HP damage is the move's combat[0x00] power through FUN_00639160's chain
     // (see the top of this file). A hit with no power at all keeps the legacy value, which
@@ -1273,7 +1274,7 @@ Fighter::HitboxDebug Fighter::hitbox_debug() const {
         d.attackCenter = m_position +
                          glm::vec3(0.0f, bodyHeight * m_meleeRules.chestHeightFrac, 0.0f);
         // The ATTACKER's own volume, which is the swing's radius — the weapon's own
-        // hitRadius when moves are bound, the MeleeRules stand-in for weapon+0x24
+        // hitRadius when moves are bound, melee_rules.h's legacy stand-in for weapon+0x24
         // otherwise. It is deliberately NOT bodyRadius + radius: in
         // FUN_0063b470 that sum is the combined test distance (the VICTIM's 30-unit body
         // radius plus this), so drawing it would show the reach, not the attack volume.
