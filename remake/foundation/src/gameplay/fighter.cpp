@@ -326,6 +326,14 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
             m_animSetIdx = -1;
             try_switch_animation();
         }
+    } else if (input && shot_jump_cancel_pressed(input)) {
+        // Pilot cancel (Rena 0, handler 0x43ffc0): the bundle's slot7 TSV sampled
+        // jump out of shot move 400 at (phase 0, frame 20, flags 0x100) into state
+        // 40 with runtime == expected, and no request at frame 0. Shot states are
+        // not actionable, so the admission is evaluated here, outside the gate
+        // below — mirroring the original, where slot7 runs its own input
+        // evaluation instead of the normal action dispatch.
+        try_jump();
     } else if (can_act() && input) {
         update_state_machine(input, opponent, dt);
     }
@@ -1680,6 +1688,18 @@ ShotTier Fighter::charge_tier() const {
     if (m_chargeHeld >= red_hold_sec())    return ShotTier::Red;
     if (m_chargeHeld >= yellow_hold_sec()) return ShotTier::Yellow;
     return ShotTier::Tap;
+}
+
+bool Fighter::shot_jump_cancel_pressed(const input::PlayerState* input) const {
+    if (!input || !input->just_pressed[input::Action::Jump] || !m_grounded) return false;
+    if (m_state != FighterState::ShootA && m_state != FighterState::ShootB &&
+        m_state != FighterState::ShootC)
+        return false;
+    const auto* binding = locomotion(m_moves);
+    if (!binding || binding->handler != 0x43ffc0) return false;
+    for (const auto& row : kPilotShotJumpCancel)
+        if (row.move == state_move_id()) return m_moveElapsedTicks >= row.frame;
+    return false;
 }
 
 void Fighter::try_jump() {

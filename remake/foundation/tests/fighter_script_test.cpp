@@ -2039,6 +2039,57 @@ std::uint32_t fnv1a(const std::vector<unsigned char>& bytes) {
     return h;
 }
 
+void test_pilot_shot_jump_cancel() {
+    section("15. pilot Rena 0 shot jump-cancel (bundle TSV, frame 20)");
+    if (!g_testCombo.ready) return skip_case("Rena 0 shot jump-cancel");
+    // Bundle evidence (porting-support evidence TSVs, runtime == expected): Rena 0
+    // admits jump out of shot move 400 at (phase 0, frame 20, flags 0x100) into state
+    // 40, and frame 0 has no request. The table is kPilotShotJumpCancel (move_behavior.h),
+    // admitted only for the pilot handler 0x43ffc0 — every other combo keeps today's
+    // never-admitted mid-shot behavior, so this case also guards that non-regression.
+    Fighter f = make_idle_fighter(glm::vec3(0, 0, 0));
+    Input in;
+    // Fire a tap: hold one frame, release the next — binds move 400 (ShootA).
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    check_int("tap binds move 400", 400, f.shot_move_id());
+    // A jump press on the firing move (elapsed 0/1) is ignored: no request there.
+    in.set(fnd::input::Action::Jump, true);
+    tick(f, in);
+    check_int("jump at elapsed <2 stays ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    in.set(fnd::input::Action::Jump, false);
+    tick(f, in);
+    // Drive to elapsed 19: still denied (the sampled request is frame 20).
+    int guard = 0;
+    while (f.state() == FighterState::ShootA && f.phase_elapsed() < 19 && guard++ < 80)
+        tick(f, in);
+    check_int("shot move still held at elapsed 19", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    check_int("elapsed reached 19", 19, f.phase_elapsed());
+    in.set(fnd::input::Action::Jump, true);
+    tick(f, in);
+    check_int("jump at elapsed 19 stays ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    in.set(fnd::input::Action::Jump, false);
+    tick(f, in);
+    // Drive to elapsed 20: admitted — the fighter leaves for the jump chain.
+    guard = 0;
+    while (f.state() == FighterState::ShootA && f.phase_elapsed() < 20 && guard++ < 80)
+        tick(f, in);
+    check_int("shot move still held at elapsed 20", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    in.set(fnd::input::Action::Jump, true);
+    tick(f, in);
+    check_int("jump at elapsed 20 leaves for Jump", static_cast<int>(FighterState::Jump),
+              static_cast<int>(f.state()));
+    in.set(fnd::input::Action::Jump, false);
+}
+
 void test_determinism() {
     section("14. determinism: same 600-frame script twice");
     if (!g_testCombo.ready) return skip_case("Rena 0 deterministic combat trace");
@@ -2073,6 +2124,7 @@ int main(int argc, char** argv) {
     test_guard_drain();
     test_air();
     test_shots();
+    test_pilot_shot_jump_cancel();
     test_ammo();
     test_hypermode();
     test_ko();

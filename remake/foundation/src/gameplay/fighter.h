@@ -908,6 +908,11 @@ private:
     // false when the stamina gate or the once-per-airtime rule blocks it.
     void try_jump();
     bool try_dash(input::Action dir);
+    // Slot7 jump-cancel for shot states, evaluated outside the actionable gate (the
+    // normal state machine never runs mid-shot): true only for a recovered admission
+    // — pilot combo Rena 0 out of shot move 400 at elapsed frame 20
+    // (kPilotShotJumpCancel). Everything else keeps today's behavior.
+    bool shot_jump_cancel_pressed(const input::PlayerState* input) const;
 
     // Knocks the target away without damage (Oyashiro activation). Reuses
     // the Hit state's friction branch to carry the push; the real knockback

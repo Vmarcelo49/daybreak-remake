@@ -140,6 +140,15 @@ struct MoveProgram {
     size_t count = 0;
     int shot[3][2]{}; // tap/first/second charge; ground/air
 };
+// Slot7 jump-cancel facts recovered for the pilot combo only (bundle evidence TSVs,
+// runtime == expected): Rena 0 (handler 0x43ffc0) admits jump out of shot move 400 at
+// elapsed frame 20 (destination: state 40); elapsed frame 0 has no request. Shot state
+// 401 has no binding in this port yet (charge tiers map to 450/460/360/370), and
+// 403/409→400 needs recovery states (plan Fase 3), so the table carries exactly the
+// verified row. The sampled frame is a lower bound, not a proven window — bundle
+// RESPONSE §3: sampled contexts are not exhaustive interval tables.
+struct ShotJumpCancel { int move; int frame; };
+inline constexpr ShotJumpCancel kPilotShotJumpCancel[] = {{400, 20}};
 inline const MoveProgram* move_program(const CharacterMoves* moves) {
     const auto* binding = locomotion(moves);
     if (!binding) return nullptr;
