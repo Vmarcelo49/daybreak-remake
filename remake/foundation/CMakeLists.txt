@@ -398,6 +398,14 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(animation_data_test PRIVATE foundation_gameplay)
     add_test(NAME animation_data_test COMMAND animation_data_test)
 
+    # The generated Ginkiha table (docs/reports/ginkiha-port-plan.md Fase 0): header-only,
+    # device-free and game-data-free — it pins the importer's output against the bundle's
+    # own two extractions and our kLocomotion handlers, so drift fails a test, not a port.
+    add_executable(ginkiha_tables_test tests/ginkiha_tables_test.cpp)
+    target_include_directories(ginkiha_tables_test PRIVATE src)
+    target_link_libraries(ginkiha_tables_test PRIVATE foundation_gameplay)
+    add_test(NAME ginkiha_tables_test COMMAND ginkiha_tables_test)
+
     # The effect-card live set: header-only game logic (glm + std), no device.
     add_executable(fx_cards_test tests/fx_cards_test.cpp)
     target_include_directories(fx_cards_test PRIVATE src)
