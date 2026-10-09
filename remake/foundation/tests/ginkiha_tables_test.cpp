@@ -134,6 +134,19 @@ int main() {
     }
     check(renaModel, "rena/00.x controller set present");
 
+    // 6. Independent-recovery agreement for the pilot's ground tap: move_behavior.h's
+    //    nata program launches item row 0 at tick 12 with citations into FUN_0044xxxx;
+    //    the bundle's shot400 usage says the same slot fires at frame 12 in every phase.
+    //    Two extractions of the same fact — if either drifts, the pilot's launch tick is
+    //    no longer trustworthy. (Rena's tag row is slot 6, also at 12; that binding is a
+    //    documented Fase 1 gap, so only the verified tap is checked here.)
+    int nataLaunchTick = -1;
+    for (const gameplay::MoveRule& rule : gameplay::kNataRules) {
+        if (rule.move == 400 && rule.operation == gameplay::MoveOp::Launch) nataLaunchTick = rule.first;
+    }
+    check(nataLaunchTick == 12, "nata 400 tap launches at tick 12");
+    check(nataLaunchTick == usageFrame, "nata launch tick equals the bundle's fire frame");
+
     std::printf("ginkiha_tables_test: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }
