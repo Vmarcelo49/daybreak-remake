@@ -193,6 +193,21 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     try_switch_animation();
 }
 
+void Fighter::begin_round_entry() {
+    // Use FUN_00421bd0's Y=1000 / move 0xc2 descent for round entry. The
+    // port keeps at least 800 units of drop above higher support floors.
+    m_position.y = std::max(FighterConstants::kRespawnAirY, m_groundY + 800.f);
+    m_velocity = glm::vec3(0.f);
+    m_vy = 0.f;
+    m_grounded = false;
+    m_respawnLock = true;
+    m_state = FighterState::BattleStart;
+    m_stateTimer = 0;
+    m_animSetIdx = -1;
+    clear_tracks();
+    try_switch_animation();
+}
+
 void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     // FUN_004219a0's state restore, then FUN_00421bd0's airborne reposition. The
     // fighter keeps its team and its spawn slot (the port's deliberate deviation from
@@ -401,7 +416,9 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         const float previousY = m_position.y;
         m_position.y += m_vy * step;
         const float ceiling = m_groundY + FighterConstants::kFlyMaxAlt;
-        if (m_position.y > ceiling) {
+        // FUN_00421bd0 starts descent above the flight cap; clamping it here
+        // teleports the entrant downward instead of letting gravity land it.
+        if (m_position.y > ceiling && !m_respawnLock) {
             m_position.y = ceiling;
             if (m_vy > 0.0f) m_vy = 0.0f;
         }

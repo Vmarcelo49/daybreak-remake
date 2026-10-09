@@ -329,6 +329,7 @@ public:
     void init(const xm::Model* model, xm::Controller* anim,
               const glm::vec3& pos, float facing);
     void reset(const glm::vec3& pos, float facing);
+    void begin_round_entry();
 
     // Bind (or rebind) the model + controller without touching state. The DX9
     // build's XModel owned both halves; the foundation splits them, so this is

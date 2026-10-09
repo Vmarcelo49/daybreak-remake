@@ -9,6 +9,16 @@ below; the old DX9 `remake/src/` implementation was removed in Phase 5.
 
 ## Current status and ownership
 
+Round entry runs during the three-second countdown: every fighter starts airborne
+in move 0xc2 and descends under gravity onto stage support. Only the entrance
+physics and animation advance; device actions, COM decisions, combat contacts and
+the round clock remain gated. Touchdown ends the entrance pose, so countdown
+completion does not start a second 60-tick control lock. The airborne height is
+the recovered Y=1000 (`FUN_00421bd0`); the port ensures at least 800 units of drop
+above higher support floors. Entrance/respawn descent bypasses the flight ceiling.
+The asset-backed scene test covers descent, landing, held-input rejection and
+readiness on three stages; standalone historical matches retain their launch path.
+
 Live match views follow their own fighter's position, but their normal orbit
 orientation follows the bearing to that fighter's combat target (including an
 ally hold). Without a selected living target, the hostile fallback supplies the

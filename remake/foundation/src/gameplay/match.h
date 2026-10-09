@@ -190,6 +190,8 @@ public:
     // The same selected-or-fallback aim that supplies locomotion's input bearing
     // (FUN_0041f580:216-241); body yaw may turn independently of this target.
     int aim_target(int fighter) const;
+    void begin_round_entry();
+    void step_round_entry(double dt);
 
     // ---- per-fighter COM enable (issue #48) -------------------------------------------
     // The port's counterpart of the original's [fighter+0x860], which its battle debug keys

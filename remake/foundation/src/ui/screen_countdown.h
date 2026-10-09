@@ -7,8 +7,9 @@
 // view's centre sting for 0x3c = 60 frames at scale 6.0 shrinking to 1.0 — the arena is
 // the live scene while the digit animates over it. The app therefore builds the match when
 // the VS intro ends (the Battle screen's factory runs enterFrontendBattle -> initScene ->
-// initMatch), renders the battle scene under this screen and holds the simulation until
-// `ready` turns true. This screen draws NO background quad of its own: it is an overlay,
+// initMatch), renders the battle scene under this screen and holds combat/input until
+// `ready` turns true. Fighters fall and animate during this phase. This screen draws
+// NO background quad of its own: it is an overlay,
 // composited by ui::drawScreenOverlay over the scene pass.
 //
 // TIMING (issue #13, kept by issue #47): the code that walks the three P09 digits is not
@@ -29,8 +30,8 @@
 
 namespace ui {
 
-// The countdown's own clock. `done()` is the round-start gate: the match may not step
-// until it is true, and it turns true on exactly the frame the duration is reached.
+// The countdown's own clock. `done()` gates combat and player actions; the entrance
+// descent runs before it, without advancing the round clock.
 class CountdownClock {
 public:
     explicit CountdownClock(int tickRate) : tickRate_(tickRate > 0 ? tickRate : 1) {}

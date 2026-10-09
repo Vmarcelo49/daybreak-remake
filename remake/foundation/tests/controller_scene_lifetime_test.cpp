@@ -228,6 +228,37 @@ int main(int argc, char** argv) {
         check(bound == app.match.config().fighterCount,
               "initMatch bound exactly its fighters' controllers");
 
+        app.roundCountdown = true;
+        app.match.begin_round_entry();
+        const float entryY = app.match.fighter(0).position().y;
+        const double timeLeft = app.match.economy().timeLeft();
+        const uint64_t entryFrame = app.matchFrame;
+        check(app.match.fighter(0).airborne() && !app.match.fighter(0).actionable(),
+              "round entry starts above the floor with actions locked");
+        app.tickInput[0].down[fnd::input::Right] = true;
+        app.tickInput[0].down[fnd::input::AttackA] = true;
+        app.tickInput[0].just_pressed[fnd::input::AttackA] = true;
+        tickRoundEntry(app, gameplay::FixedStep::seconds);
+        check(app.match.fighter(0).position().y < entryY &&
+                  entryY - app.match.fighter(0).position().y < 1.f,
+              "the first countdown tick falls under gravity without a ceiling teleport");
+        for (int tick = 1; tick < 3 * gameplay::FixedStep::tickRate; ++tick)
+            tickRoundEntry(app, gameplay::FixedStep::seconds);
+        for (int i = 0; i < app.match.config().fighterCount; ++i) {
+            check(!app.match.fighter(i).airborne() && app.match.fighter(i).actionable(),
+                  "every character+weapon combo is ready by the end of the countdown");
+            const glm::vec3 position = app.match.fighter(i).position();
+            const glm::vec3 spawn = app.match.config().spawn[i];
+            check(glm::distance(glm::vec2(position.x, position.z), glm::vec2(spawn.x, spawn.z)) < .01f,
+                  "entrance preserves spawn XZ without accepting held movement");
+            check(app.match.fighter(i).stats().damageDealt == 0,
+                  "held attack cannot deal damage during the countdown");
+        }
+        check(app.match.economy().timeLeft() == timeLeft && app.matchFrame == entryFrame,
+              "countdown does not advance the battle clock or match tick counter");
+        app.tickInput[0] = {};
+        app.roundCountdown = false;
+
         if (round == 0) {
             app.frontendMatch = true;
             app.battleLaunch.fighterCount = 2;

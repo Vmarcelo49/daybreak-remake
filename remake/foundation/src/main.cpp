@@ -1050,7 +1050,7 @@ struct App {
     // tickFrontend hands the frame to the match) — so it is true for exactly the 3 x tickRate
     // ticks of the countdown. While it is true the screen stack still owns the frame and the
     // render path draws the battle scene underneath it (ui::drawScreenOverlay), and the
-    // match is NOT stepped at all: that absence is the round-start input gate.
+    // only the fighters' entrance descent runs; combat and input remain gated.
     bool                         roundCountdown = false;
     bool                         rendererReady = false;
     ui::FrontendState            frontend;
@@ -4555,7 +4555,7 @@ void advanceAnimation(App& app, double delta) {
         xm::Controller& c = app.controllers[i];
         if (!c.model()) continue;
         bool matchRig = false;
-        if (app.matchMode)
+        if (app.matchMode || app.roundCountdown)
             for (int fighter = 0; fighter < app.match.config().fighterCount; ++fighter)
                 matchRig = matchRig || i == app.matchRig[fighter];
         if (matchRig) continue;
@@ -4563,11 +4563,20 @@ void advanceAnimation(App& app, double delta) {
         moved = true;
     }
     // A match still needs the pose refreshed: the fighters moved their own tracks.
-    if (app.matchMode) moved = true;
+    if (app.matchMode || app.roundCountdown) moved = true;
     if (!moved) return;
     for (size_t i = 0; i < app.controllers.size(); ++i)
         if (app.controllers[i].model()) app.controllers[i].evalWorld(app.worlds[i]);
     app.renderer.updatePose(app.worlds);
+}
+
+static void tickRoundEntry(App& app, double dt) {
+    for (int i = 0; i < app.match.config().fighterCount; ++i)
+        app.previousFighter[i] = app.match.fighter(i).pose();
+    app.match.step_round_entry(dt);
+    advanceAnimation(app, dt);
+    const fnd::input::PlayerState* none[4] = {};
+    updateMatchViews(app, none, dt);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -5162,6 +5171,9 @@ bool initScreens(App& app) {
                                                      app.frontendBattleReady, app.error);
             if (!countdown) return nullptr;
             app.roundCountdown = true;
+            app.match.begin_round_entry();
+            for (int i = 0; i < app.match.config().fighterCount; ++i)
+                app.previousFighter[i] = app.match.fighter(i).pose();
             // The tick ladder's own record (the release gate quotes it): the countdown
             // starts here, three cells of tickRate ticks, over the live battle.
             std::printf("[menu] countdown: %d ticks over the live battle on %s (tick %llu)\n",
@@ -6147,15 +6159,11 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 app->lastTime = plat::now();
                 return SDL_APP_CONTINUE;
             }
-            // The pre-round countdown's presentation (issue #47): the round is built but
-            // HELD — each view's arena camera converges on its own fighter and the HUD is
-            // filled from the spawn state, so the "3" already sits over a live arena. The
-            // simulation is not stepped and takes no input: keeping tickMatch out of the
-            // frame entirely IS the round-start gate, not a flag inside the step.
+            // Entrance descent belongs to the countdown. tickMatch stays out of
+            // this phase so input, COM decisions and the round clock cannot advance.
             if (app->roundCountdown) {
-                const fnd::input::PlayerState* none[4] = {nullptr, nullptr, nullptr, nullptr};
-                updateMatchViews(*app, none,
-                                 capturing ? app->opts.dt : gameplay::FixedStep::seconds);
+                const double entryDt = capturing ? app->opts.dt : gameplay::FixedStep::seconds;
+                tickRoundEntry(*app, entryDt);
             }
         }
     }

@@ -62,6 +62,16 @@ void Match::lock_ally_target(int fighter) {
     m_locks.select_ally(fighter, alive);
 }
 
+void Match::begin_round_entry() {
+    for (int i = 0; i < m_config.fighterCount; ++i) m_fighters[i].begin_round_entry();
+}
+
+void Match::step_round_entry(double dt) {
+    // Only the entrance falls/animates: no inputs, COM, combat contacts or round clock.
+    for (int i = 0; i < m_config.fighterCount; ++i)
+        m_fighters[i].update(nullptr, nullptr, dt, m_movementCollision);
+}
+
 int Match::aim_target(int fighter) const {
     bool alive[kMatchFighterCount];
     liveness(alive);
