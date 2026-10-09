@@ -249,6 +249,29 @@ int main(int argc, char** argv) {
             check(app.botBrains[1].stats().ticks > 0 &&
                       glm::length(glm::vec2(comDelta.x, comDelta.z)) > 1.f,
                   "COM actions move the asset-backed Keiichi 0 through tickMatch");
+            app.match.set_ai_enabled(1, false);
+            app.matchInput.note_key(fnd::input::sdl3::kScRight, false);
+            app.matchInput.note_key(fnd::input::sdl3::kScDown, true);
+            for (int tick = 0; tick < 256; ++tick) {
+                sampleInput();
+                tickMatch(app, gameplay::FixedStep::seconds);
+            }
+            const auto& player = app.match.fighter(0);
+            const glm::vec3 bearing = app.match.fighter(1).position() - player.position();
+            const float targetYaw = std::atan2(bearing.x, bearing.z);
+            check(std::abs(std::remainder(app.arenaTargets[0].facingYaw - targetYaw,
+                                         glm::two_pi<float>())) < .001f,
+                  "holding Back keeps the camera oriented toward the combat target");
+            check(std::abs(std::remainder(player.facing_yaw() - targetYaw,
+                                         glm::two_pi<float>())) > 2.f,
+                  "Rena 0 turns her body away while the camera retains the target bearing");
+            const glm::vec3 cameraForward = app.matchViews[0].camera.target() -
+                                            app.matchViews[0].camera.eye();
+            check(glm::dot(glm::normalize(glm::vec2(cameraForward.x, cameraForward.z)),
+                           glm::normalize(glm::vec2(bearing.x, bearing.z))) > .9f,
+                  "the live camera keeps looking toward the target after the body reverses");
+            app.matchInput.note_key(fnd::input::sdl3::kScDown, false);
+            sampleInput();
             enterBattlePause(app, "input regression");
             app.matchInput.note_key(fnd::input::sdl3::kScRight, false);
             app.matchInput.note_key(fnd::input::sdl3::kScDown, true);

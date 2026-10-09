@@ -62,6 +62,14 @@ void Match::lock_ally_target(int fighter) {
     m_locks.select_ally(fighter, alive);
 }
 
+int Match::aim_target(int fighter) const {
+    bool alive[kMatchFighterCount];
+    liveness(alive);
+    const int target = m_locks.target(fighter);
+    return m_locks.targetable(fighter, target, alive)
+        ? target : m_locks.fallback_target(fighter, alive);
+}
+
 int Match::melee_target(int fighter) const {
     if (fighter < 0 || fighter >= m_config.fighterCount) return kNoTarget;
     bool alive[kMatchFighterCount];

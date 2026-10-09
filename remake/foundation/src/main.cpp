@@ -3474,6 +3474,16 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
         const gameplay::Fighter& fighter = app.match.fighter(i);
         app.arenaTargets[i].position = fighter.position();
         app.arenaTargets[i].facingYaw = fighter.facing_yaw();
+        if (!historicalMatchCapture(app)) {
+            // The movement turn (FUN_00421780 / FUN_0042db10) rotates the body,
+            // not the lock-on view. Keep the camera's orbit on the combat bearing.
+            const int target = app.match.aim_target(i);
+            if (target >= 0) {
+                const glm::vec3 direction = app.match.fighter(target).position() - fighter.position();
+                if (direction.x * direction.x + direction.z * direction.z > 0.0001f)
+                    app.arenaTargets[i].facingYaw = std::atan2(direction.x, direction.z);
+            }
+        }
         app.arenaTargets[i].alive = fighter.is_alive();
     }
 

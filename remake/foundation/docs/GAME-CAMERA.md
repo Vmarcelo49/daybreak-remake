@@ -9,6 +9,18 @@ below; the old DX9 `remake/src/` implementation was removed in Phase 5.
 
 ## Current status and ownership
 
+Live match views follow their own fighter's position, but their normal orbit
+orientation follows the bearing to that fighter's combat target (including an
+ally hold). Without a selected living target, the hostile fallback supplies the
+bearing. The body's movement turn (`FUN_00421780` / `FUN_0042db10`) does not rotate
+the camera: holding Back turns the character away while the view remains oriented
+toward the opponent. The asset-backed `controller_scene_lifetime_test` checks
+this separation with Rena 0, including the resulting live camera direction.
+Historical standalone match captures retain their banked actor-yaw orbit.
+This corrects [issue #52](https://github.com/Vmarcelo49/daybreak-decomp/issues/52)
+acceptance criterion 5: a movement turn must not swing the live camera with the
+body. The target bearing remains the view and control reference.
+
 This note records the original helper split; it is implemented in the current
 match path, not a future seam. `gameplay::ArenaCamera` owns the retained eye,
 follow/retarget state, projection, and camera action animation
