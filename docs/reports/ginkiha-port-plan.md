@@ -13,6 +13,17 @@ Regras duras vigentes (`AGENTS.md`): nunca editar `research/recomp/`; manter `.X
 D2); todo ataque é personagem+arma (`comboSlotLabel`); **full diff review antes de CADA commit**;
 comentários `why` + proveniência.
 
+## Status das fases
+
+| Fase | Estado | Data | Hora de conclusão |
+|---|---|---|---|
+| 0 — data layer (script + tabela + teste) | concluída | 2026-10-09 | 19:46 |
+| 1 — piloto Rena 0 (timing→animação→valores→teste) | concluída | 2026-10-09 | 20:25 |
+| 2 — generalizar 46 combos | pendente | 2026-10-09 | — |
+| 3 — combate overall | pendente | 2026-10-09 | — |
+| 4 — CPU/câmera | pendente | 2026-10-09 | — |
+| 5 — paridade stage04 | pendente | 2026-10-09 | — |
+
 ## 0. Princípios
 
 1. **Fonte primária quando existir**: se o campo está num arquivo original jogável (DAT de personagem/arma/
