@@ -91,8 +91,9 @@ shadows) are live toggles since issue #21; consult
   Menus retain a centered, clipped 4:3 canvas with black bars. Native Options
   selects resolution; browser canvas and headless `--size` control theirs.
 - **Verification:** the native host suite (`ctest --test-dir
-  remake/foundation/build/linux`) — 63 tests as of 2026-10-06 (61 on main before issue #21
-  row 1 added `shadow_map_test` and `character_shadow`), with the measured
+  remake/foundation/build/linux`) — 65 tests as of 2026-10-09 (63 on main at 2026-10-06;
+  issue #21 row 1 added `shadow_map_test` and `character_shadow`; the Ginkiha port
+  added `ginkiha_tables_test`), with the measured
   counts and the list that skips without game data in
   `remake/foundation/docs/RELEASE-CHECKLIST.md` §2; read `ctest`'s own summary
   rather than this line, since every added suite moves the denominator.

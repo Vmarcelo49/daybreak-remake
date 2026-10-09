@@ -69,13 +69,16 @@ extended this suite and `user_settings_test` — no suite was added, which is wh
 ctest --test-dir remake/foundation/build/linux --output-on-failure
 ```
 
-* **With the game install present**: `100% tests passed out of 63`
-  (re-measured 2026-10-06; 61 came from issue #4's three delivery suites, 58 from issue
-  #56's `hud_view_geometry`, 57 from issue #50's `pause_overlay_layout_test` and
-  `pause_overlay_panel`, 55 from issue #39's `live_camera_smoothness_test`, 54 from issue
-  #48's `debug_keys_test`, 53 from issue #47's `countdown_overlay_test`, and 52 from issue
-  #51's `lock_switch_camera_test`; issue #21 row 1 adds `shadow_map_test` and
-  `character_shadow`).
+* **With the game install present**: `100% tests passed out of 65`
+  (re-measured 2026-10-09; 63 was the 2026-10-06 measurement: 61 came from issue #4's three
+  delivery suites, 58 from issue #56's `hud_view_geometry`, 57 from issue #50's
+  `pause_overlay_layout_test` and `pause_overlay_panel`, 55 from issue #39's
+  `live_camera_smoothness_test`, 54 from issue #48's `debug_keys_test`, 53 from issue
+  #47's `countdown_overlay_test`, and 52 from issue #51's `lock_switch_camera_test`;
+  issue #21 row 1 adds `shadow_map_test` and `character_shadow`). The Ginkiha port's
+  `ginkiha_tables_test` (docs/reports/ginkiha-port-plan.md §1, Fase 0) is the 65th:
+  device-free AND data-free, so it neither skips without an install nor changes which
+  tests skip, and it pins the generated `ginkiha_tables.h` against the bundle.
 * **Without any game data** (the CI runner's state — no `Higurashi-Daybreak/`):
   the same six tests go `Skipped` (exit 77) — `hud_cell_scale`, `toon_ramp`,
   `npr_experiments`, `npr_normals_test`, `controller_scene_lifetime_test` and
