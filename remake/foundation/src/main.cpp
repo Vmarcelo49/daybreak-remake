@@ -3319,9 +3319,9 @@ static void printComSummary(const App& app) {
 // How long LockSwitch must be HELD, with no fresh tap, before the selection moves to an
 // ally (input.h: "hold = aim ally"). PORT RULE: the hold itself is recovered
 // (FUN_00421e30's 0xb4, re-pinned by FUN_0041f580:244), but the gesture length that
-// raises it is not in the corpus, so this threshold only has to be long enough that a tap
-// still physically held does not undo itself — a couple of fixed ticks.
-static constexpr int kLockHoldTicks = 2;
+// raises it is not in the corpus. Allow a normal physical tap to finish before
+// treating it as a hold: 250 ms at the port's fixed 64 Hz, including the press tick.
+static constexpr int kLockHoldTicks = 16;
 
 // One fighter's HUD-side values (gameplay/hud_fill.h's HudFighterValues), sampled from the
 // live fighter and the input that drives it. Split out of tickMatch because each view
@@ -3514,7 +3514,7 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
         // while each camera follows its own player.
         if (viewInput && viewInput->just_pressed[fnd::input::LockSwitch]) {
             app.match.cycle_locked_target(view.fighter, true);
-            view.lockHeldTicks = 0;
+            view.lockHeldTicks = 1;
         } else if (viewInput && viewInput->down[fnd::input::LockSwitch]) {
             // Held past the threshold, so the tap above is not undone by the finger still
             // being on the button. PORT RULE: the original's hold is recovered as the
@@ -3579,12 +3579,8 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
         // fades it), so what the HUD draws and what the COM obeys cannot drift apart.
         view.hud.commandCell = app.tacticReadout.hud_cell();
 
-        // Per-fighter appearance state; projection happens per view with that view's
-        // matrix (D8), below. The viewer's own lock names the fighter its ring and com bar
-        // belong to: FUN_00643230:61 reads the target-valid flag as (+0x304 > -1) on the
-        // fighter being drawn, and 0x421e30/0x421f30's +0x30c pulse as its scale and arc
-        // twist (hud.h:83-86), so both come from the view's own lock and not from which
-        // player its camera happens to follow.
+        // Outgoing and incoming locks are distinct: having a target does not tell
+        // us the fighter's team or whether its lock is mutual with this viewer.
         const int lockedTarget = app.match.locked_target(view.fighter);
         const int viewPulse = app.match.lock_pulse(view.fighter);
         // One HUD entry per ROSTER entry (issue #13): the participant's own fighter, its
@@ -3595,30 +3591,16 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
             if (fighterIndex < 0) continue;
             const ui::Participant& p = app.participants[i];
             const gameplay::Fighter& f = app.match.fighter(fighterIndex);
-            // Owner / ally / enemy from THIS view's point of view: the original's owner is
-            // the fighter whose +0x300 equals the view player's (FUN_00643230:63-69), and
-            // the team is the match's side table.
             const int viewSide = app.match.config().side[view.fighter];
             view.hud.fighters[i].role = fighterIndex == view.fighter
                 ? ui::HudFighterRole::Owner
                 : (app.match.config().side[fighterIndex] == viewSide ? ui::HudFighterRole::Ally
                                                                     : ui::HudFighterRole::Enemy);
             view.hud.fighters[i].target = (fighterIndex == lockedTarget);
-            // Ring art row 0 while the fighter is in an action (the original's action
-            // counter, hud+0x7ac > 0). PORT RULE: Fighter carries no action counter, so the
-            // action states that counter corresponds to stand in for it.
-            view.hud.fighters[i].acting = f.state() == gameplay::FighterState::AttackA ||
-                                          f.state() == gameplay::FighterState::AttackC ||
-                                          f.state() == gameplay::FighterState::Hit ||
-                                          f.state() == gameplay::FighterState::Knockdown ||
-                                          f.state() == gameplay::FighterState::KO;
-            // The fighter's OWN lock (green ring) is not the viewer's target: FUN_00643230
-            // reads fighter+0x304 for the ring and the view player's +0x304 for the com bar.
-            view.hud.fighters[i].locked = app.match.locked_target(fighterIndex) >= 0;
-            view.hud.fighters[i].hyper = f.hyper_active();
-            // The pulse belongs to the fighter that switched, so only that fighter's HUD
-            // entry scales and twists; partners' rings stay at rest.
-            view.hud.fighters[i].ringPulse = (fighterIndex == view.fighter) ? viewPulse : 0;
+            view.hud.fighters[i].targetsViewer =
+                app.match.locked_target(fighterIndex) == view.fighter;
+            view.hud.fighters[i].ringPulse =
+                (fighterIndex == lockedTarget) ? viewPulse : 0;
             // Slot 0 is 1P and slot 4 is com in the tag atlas (P01 (320,256,64,32) rows);
             // the red copies sit four rows down, which is the tagSheet index.
             view.hud.fighters[i].slot = p.controller;
@@ -5604,12 +5586,12 @@ void reportMatchViews(const App& app, uint32_t width, uint32_t height) {
             const ui::HudFighterHud& f = projected.fighters[i];
             const ui::Participant& p = app.participants[i];
             std::printf("[split]   p%d panel=%d team=%d %s %s role=%s fighter=%d visible=%d "
-                        "target=%d acting=%d alert=%d hp=%.0f ring=(%.0f,%.0f)\n",
+                        "target=%d incoming=%d alert=%d hp=%.0f ring=(%.0f,%.0f)\n",
                         i, p.panel, p.team, ui::controllerLabel(p.controller), p.combo().c_str(),
                         f.role == ui::HudFighterRole::Owner
                             ? "owner"
                             : (f.role == ui::HudFighterRole::Ally ? "ally" : "enemy"),
-                        p.fighter, f.visible ? 1 : 0, f.target ? 1 : 0, f.acting ? 1 : 0,
+                        p.fighter, f.visible ? 1 : 0, f.target ? 1 : 0, f.targetsViewer ? 1 : 0,
                         f.alertDir, f.hp * 100.f, f.ringX, f.ringY);
         }
     }

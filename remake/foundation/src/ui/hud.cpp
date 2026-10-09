@@ -303,27 +303,14 @@ void HudComposer::composeFighters(SpriteRenderer& batch, const HudState& st, con
     const UiColor white = kHudWhite;
     for (int i = 0; i < kHudFighterCount; ++i) {
         const HudFighterHud& f = st.fighters[i];
-        // FUN_00643230:67-96: the ring's column (local_30) and row (local_28). Row 0 is the
-        // black "action running" ring, row 2 the green "this fighter has a lock" ring, row 1
-        // the plain red one; column 2 is the blinking hyper ring, drawn while the fighter's
-        // hyper mode is up and it has neither a lock nor an action. The shipped P03 rows are
-        // black (0,128), red (0,256) and green (0,384) — BATTLE-HUD-SPEC §10's "red =
-        // target" reading was the plain ring; the lock ring is the green one. The rule
-        // itself lives in hud.h's hudRingCell()/hudRingCounterRotates() so a device-free
-        // test pins what this draws (issue #49).
-        const HudRingCell cell = hudRingCell(f, st.hudFrame);
+        if (f.role == HudFighterRole::Owner) continue;
+        const HudRingCell cell = hudRingCell(f);
         const int col = cell.col;
         const int row = cell.row;
         const auto ring = hudRingTransform(st.hudFrame, f.ringPulse);
-        if (f.visible) {
-            // EVERY active fighter gets a ring — the original draws FUN_00643230 once per
-            // fighter slot (FUN_006396f0:126-147) — which is what keeps an ally or an
-            // opponent readable in a 2v2.
+        if (hudFighterHasRing(f)) {
             battleAtlas_.cell(batch, HudIcon::Ring, col, row, f.ringX, f.ringY, ring.scale,
                               ring.firstDeg, white);
-            // The view's OWN fighter gets the second, counter-rotating reticle while it has no
-            // lock of its own (local_31, FUN_00643230:97-102). hudRingSecondCellColumn picks its
-            // cell: the triangles beside the circle, not the circle again (issue #55).
             if (hudRingCounterRotates(f))
                 battleAtlas_.cell(batch, HudIcon::Ring, hudRingSecondCellColumn(col), row,
                                   f.ringX, f.ringY, ring.scale, ring.secondDeg, white);

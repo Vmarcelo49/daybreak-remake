@@ -57,11 +57,7 @@ inline const UiColor kHudTierRed = fromRgb8(255, 70, 50);
 inline const UiColor kHudTierYellow = fromRgb8(255, 230, 80);
 inline const UiColor kHudTierIdle = fromRgb8(120, 120, 120);
 
-// Who a fighter is from ONE view's point of view (issue #13). The original tells them
-// apart inside FUN_00643230: the ring's art row comes from the fighter's own action
-// counter and the viewer's lock, and the view's OWN fighter gets a second,
-// counter-rotating ring (`local_31`, FUN_00643230:44-77) — the owner marker. Ally and
-// enemy come from the match's side table.
+// Relationships are relative to the active player in each viewport.
 enum class HudFighterRole : uint8_t { Owner = 0, Ally = 1, Enemy = 2 };
 
 // One fighter's per-fighter HUD (FUN_00643230 @0x00643230, plus the target-bar
@@ -81,20 +77,9 @@ struct HudFighterHud {
     float barX = 0.f, barY = 0.f;     // projected point of position + 150 units, -32 px
     int   ringPulse = 0;              // fighter+0x30c: 15-frame target-switch countdown
     bool  visible = false;            // in front of the camera (the original's clip.w > 0)
-    bool  target = false;             // the fighter the VIEWER has locked on: red ring
-                                     // + its com bar. FUN_00643230:61 gates this on the
-                                     // selection being valid (fighter+0x304 > -1), so it is
-                                     // a per-viewer flag, not a camera one.
-                                     // main.cpp fills it from Match::locked_target.
+    bool  target = false;             // the active player's selected target (com bar)
     HudFighterRole role = HudFighterRole::Enemy;   // owner / ally / enemy, per view
-    // FUN_00643230:67-96 chooses the ring's art: row 0 (black) while the fighter has an
-    // action counter running (hud+0x7ac > 0), row 2 (green) while the fighter ITSELF has a
-    // target locked (fighter+0x304 > -1), row 1 (red) otherwise, and column 2 (the blinking
-    // hyper ring) while its hyper mode is up. The second, counter-rotating ring (local_31)
-    // marks the view's OWN fighter while that fighter has no lock of its own.
-    bool  acting = false;             // ring row 0: the fighter has an action running
-    bool  locked = false;             // ring row 2: the fighter has a target of its own
-    bool  hyper = false;              // ring column 2: the fighter's hyper mode is up
+    bool  targetsViewer = false;      // this fighter has locked the active player
     int   slot = 0;                   // 0..4 -> 1P/2P/3P/4P/com tag cell (0x643a93)
     int   tagSheet = 0;               // 0 blue rows, 1 red rows (0x64408c)
     float hp = 1.f;                   // 0..1, hud+0x7a4 / 10000: the live com-bar fill
@@ -103,7 +88,7 @@ struct HudFighterHud {
 };
 
 // One entry per selection panel: the HUD carries the whole active roster, so a 2v2 shows
-// four markers instead of two (issue #13).
+// roster metadata for every viewport (issue #13).
 inline constexpr int kHudFighterCount = 4;
 
 // FUN_00421e30/FUN_00421f30 reset fighter+0x30c to 15; FUN_004201a0
@@ -113,34 +98,20 @@ inline HudRingTransform hudRingTransform(int frame, int pulse) {
     return {1.f + pulse * .1f, frame * .5f + pulse * 9.f, -frame * .5f};
 }
 
-// FUN_00643230:67-96 chooses the ring's atlas cell: column 0 normally, column 2 for the
-// blinking hyper ring; row 0 (black) while an action counter runs, row 2 (green) while
-// the fighter ITSELF holds a lock (fighter+0x304 > -1), row 1 (the plain red ring)
-// otherwise. Split out of the composer so the rule is pinnable without a renderer — the
-// drawing (the two arcs, their pulses and the counter-rotating owner copy) stays in
-// HudComposer::composeFighters.
+// P03 rows 1/2 are red/green. The original gameplay prints and owner report
+// establish enemy/ally colors; an actor's own lock does not determine its team.
 struct HudRingCell { int col = 0; int row = 1; };
-inline HudRingCell hudRingCell(const HudFighterHud& f, int frame) {
-    HudRingCell cell;
-    cell.row = f.acting ? 0 : (f.locked ? 2 : 1);
-    if (f.hyper && !f.acting && !f.locked) {
-        cell.col = 2;
-        // FUN_00643230:73-77 blinks between rows 0 and 1 every 15 frames when the
-        // fighter's +0x848 flag is clear; the port has no +0x848, so it takes the
-        // blinking branch (a labelled port rule).
-        cell.row = (frame % 0x1e) / 0xf;
-    }
-    return cell;
+inline HudRingCell hudRingCell(const HudFighterHud& f) {
+    return {0, f.role == HudFighterRole::Ally ? 2 : 1};
 }
 
-// FUN_00643230:97-102 (local_31): the view's OWN fighter draws a SECOND, counter-rotating
-// arc pair at the same cell, and only while that fighter has no lock of its own
-// (owner+0x304 < 0). The original's owner test compares the drawn fighter's +0x300 with
-// the view player's; main.cpp:3267 maps that onto HudFighterRole::Owner, one per view
-// (issue #12). Issue #49's second symptom was this copy never appearing: `locked` was true
-// for everyone from the first tick.
+inline bool hudFighterHasRing(const HudFighterHud& f) {
+    return f.visible && f.role != HudFighterRole::Owner;
+}
+
+// The outward triangles mark mutual targeting on the opponent, never the viewer.
 inline bool hudRingCounterRotates(const HudFighterHud& f) {
-    return f.role == HudFighterRole::Owner && !f.locked;
+    return f.role == HudFighterRole::Enemy && f.target && f.targetsViewer;
 }
 
 // The second copy is a DIFFERENT reticle, not the first one again (issue #55). P03 carries

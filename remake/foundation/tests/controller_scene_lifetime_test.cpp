@@ -249,6 +249,18 @@ int main(int argc, char** argv) {
             check(app.botBrains[1].stats().ticks > 0 &&
                       glm::length(glm::vec2(comDelta.x, comDelta.z)) > 1.f,
                   "COM actions move the asset-backed Keiichi 0 through tickMatch");
+            app.match.cycle_locked_target(0, true);
+            app.match.cycle_locked_target(1, true);
+            const fnd::input::PlayerState* neutral[4] = {};
+            updateMatchViews(app, neutral, gameplay::FixedStep::seconds);
+            bool mutualOpponent = false;
+            for (const auto& marker : app.matchViews[0].hud.fighters) {
+                if (marker.role == ui::HudFighterRole::Enemy && marker.target)
+                    mutualOpponent = marker.targetsViewer && ui::hudRingCounterRotates(marker);
+                if (marker.role == ui::HudFighterRole::Owner)
+                    check(!ui::hudRingCounterRotates(marker), "the active player never gets a second reticle");
+            }
+            check(mutualOpponent, "mutual locks attach the second reticle to the opponent");
             app.match.set_ai_enabled(1, false);
             app.matchInput.note_key(fnd::input::sdl3::kScRight, false);
             app.matchInput.note_key(fnd::input::sdl3::kScDown, true);

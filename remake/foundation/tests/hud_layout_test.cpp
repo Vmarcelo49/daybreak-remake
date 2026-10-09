@@ -1,6 +1,5 @@
 #include "ui/hud.h"
 #include "game/hud_bridge.h"
-#include "gameplay/target_lock.h"
 #include <cmath>
 #include <cstdio>
 
@@ -97,73 +96,27 @@ int main() {
         // An absent view has no markers at all.
         CHECK(ui::hudAlertDirection(fighter,0.f,0.f) == -1);
     }
-    // Issue #49: the ring cell follows the LOCK STATE (FUN_00643230:67-96), and at round
-    // start that state is empty for everyone. Row 1 (red) is the plain ring, row 2 (green)
-    // the "this fighter has a target of its own", row 0 (black) an action counter, and
-    // column 2 the blinking hyper ring.
     {
-        ui::HudFighterHud f;
-        ui::HudRingCell cell = ui::hudRingCell(f, 0);
-        CHECK(cell.col == 0 && cell.row == 1);        // no lock -> RED
-        f.locked = true;
-        cell = ui::hudRingCell(f, 0);
-        CHECK(cell.col == 0 && cell.row == 2);        // lock -> GREEN
-        f.acting = true;
-        CHECK(ui::hudRingCell(f, 0).row == 0);        // acting -> BLACK, lock or not
-        f.acting = false;
-        f.locked = false;
-        f.hyper = true;
-        cell = ui::hudRingCell(f, 0);
-        CHECK(cell.col == 2 && cell.row == 0);        // hyper column, first blink row
-        cell = ui::hudRingCell(f, 15);
-        CHECK(cell.col == 2 && cell.row == 1);        // ...and its second
-        f.locked = true;
-        cell = ui::hudRingCell(f, 0);
-        CHECK(cell.col == 0 && cell.row == 2);        // a lock suppresses the hyper ring
-        f.locked = false;
-        f.acting = true;
-        CHECK(ui::hudRingCell(f, 0).col == 0);        // an action suppresses it too
-
-        // The second, counter-rotating copy is the view's own fighter while it has no lock
-        // (local_31, FUN_00643230:97-102) — the symptom that never drew before the fix.
-        ui::HudFighterHud owner;
-        owner.role = ui::HudFighterRole::Owner;
-        CHECK(ui::hudRingCounterRotates(owner));
-        owner.locked = true;
-        CHECK(!ui::hudRingCounterRotates(owner));
-        ui::HudFighterHud mate;
-        mate.role = ui::HudFighterRole::Ally;
-        CHECK(!ui::hudRingCounterRotates(mate));
-        mate.role = ui::HudFighterRole::Enemy;
-        CHECK(!ui::hudRingCounterRotates(mate));
-
-        // Issue #55: the counter-rotating copy is the TRIANGLES cell beside the circle, not the
-        // circle again. P03 carries the pair as two adjacent 128-px cells, so the second copy is
-        // one column along; drawing the same cell twice was the reported "two circular ones
-        // stacked". Pinned here so the same art cannot be drawn twice again without failing.
-        CHECK(ui::hudRingSecondCellColumn(0) == 1);   // plain pair:  circle 0, triangles 1
-        CHECK(ui::hudRingSecondCellColumn(2) == 3);   // hyper pair:  circle 2, triangles 3
-        CHECK(ui::hudRingSecondCellColumn(0) != 0);   // never the circle's own cell
-
-        // ...and the same rule driven from the live lock table: an untouched 2v2 is four
-        // red rings (this is the round-start regression the issue is about), and after ONE
-        // fighter selects a target only that fighter is green.
-        gameplay::TargetLocks locks;
-        const int side[4] = {0, 0, 1, 1};
-        bool alive[4] = {true, true, true, true};
-        locks.reset(4, side);
-        locks.step(alive);
-        ui::HudFighterHud hud[4];
-        for (int i = 0; i < 4; ++i) {
-            hud[i].locked = locks.target(i) >= 0;
-            CHECK(ui::hudRingCell(hud[i], 0).row == 1);
+        for (auto role : {ui::HudFighterRole::Owner, ui::HudFighterRole::Ally,
+                          ui::HudFighterRole::Enemy}) {
+            ui::HudFighterHud f;
+            f.visible = true;
+            f.role = role;
+            CHECK(ui::hudFighterHasRing(f) == (role != ui::HudFighterRole::Owner));
+            CHECK(ui::hudRingCell(f).row == (role == ui::HudFighterRole::Ally ? 2 : 1));
+            for (bool selected : {false, true}) for (bool incoming : {false, true}) {
+                f.target = selected;
+                f.targetsViewer = incoming;
+                CHECK(ui::hudRingCounterRotates(f) ==
+                      (role == ui::HudFighterRole::Enemy && selected && incoming));
+                CHECK(ui::hudRingCell(f).row == (role == ui::HudFighterRole::Ally ? 2 : 1));
+            }
+            CHECK(ui::hudRingCell(f).col == 0);
+            f.visible = false;
+            CHECK(!ui::hudFighterHasRing(f));
         }
-        locks.cycle_enemy(0, true, alive);
-        for (int i = 0; i < 4; ++i) hud[i].locked = locks.target(i) >= 0;
-        CHECK(ui::hudRingCell(hud[0], 0).row == 2);
-        CHECK(ui::hudRingCell(hud[1], 0).row == 1);
-        CHECK(ui::hudRingCell(hud[2], 0).row == 1);
-        CHECK(ui::hudRingCell(hud[3], 0).row == 1);
+        CHECK(ui::hudRingSecondCellColumn(0) == 1);
+        CHECK(ui::hudRingSecondCellColumn(2) == 3);
     }
 
     std::puts("hud_layout_test: adaptive anchors, projection and ring cells ok");

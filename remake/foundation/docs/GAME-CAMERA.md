@@ -21,6 +21,13 @@ This corrects [issue #52](https://github.com/Vmarcelo49/daybreak-decomp/issues/5
 acceptance criterion 5: a movement turn must not swing the live camera with the
 body. The target bearing remains the view and control reference.
 
+LockSwitch selects the next enemy on the press edge. Selecting an ally requires
+16 continuously held logic ticks, including the press tick: 250 ms at 64 Hz.
+This duration is a port rule; the recovered 180-tick ally dwell is separate from
+the input gesture. Releasing resets the gesture clock, so tapping again after
+an ally selection stays on an enemy until a new full hold. The product-path
+`lock_switch_camera_test` checks the threshold and taps lasting 1, 3, 6 and 15 ticks.
+
 This note records the original helper split; it is implemented in the current
 match path, not a future seam. `gameplay::ArenaCamera` owns the retained eye,
 follow/retarget state, projection, and camera action animation

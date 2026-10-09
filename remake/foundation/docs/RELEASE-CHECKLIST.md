@@ -538,6 +538,15 @@ pixels at each, against 67-74 after) and on the centre reticle of the first view
 centroid sits 18.5 px from its own anchor and 0.6 px from the last view's. `hud_cell_scale`
 cannot express this: it probes markers every pass pushes at identical coordinates.
 
+Reticle correction (2026-10-09): the original gameplay prints and the owner's
+report establish no reticle on the active player, green allies and red enemies.
+The counter-rotating triangles belong only to a mutually targeted enemy. The
+current geometry gate therefore measures eligible ally/enemy anchors in their
+team color; the owner-centroid assertion above records the earlier issue #56
+test and is retired. A host rule matrix checks owner suppression, both colors
+and one-way versus mutual locks; the asset-backed scene test checks that mutual
+targeting reaches the opponent's HUD entry through the product's view builder.
+
 ## 4. Asset sweep — every legal selection and every stage
 
 ### 4.1 All 46 character/weapon selections

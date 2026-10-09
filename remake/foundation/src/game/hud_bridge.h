@@ -135,9 +135,7 @@ inline ui::HudState makeHudState(const GameHudValues& v) {
         st.fighters[i].visible = v.fighters[i].visible;
         st.fighters[i].target = v.fighters[i].target;
         st.fighters[i].role = hudRoleFor(v.fighters[i].role);
-        st.fighters[i].acting = v.fighters[i].acting;
-        st.fighters[i].locked = v.fighters[i].locked;
-        st.fighters[i].hyper = v.fighters[i].hyper;
+        st.fighters[i].targetsViewer = v.fighters[i].targetsViewer;
         st.fighters[i].slot = v.fighters[i].slot;
         st.fighters[i].tagSheet = v.fighters[i].tagSheet;
         st.fighters[i].hp = v.fighters[i].hp;

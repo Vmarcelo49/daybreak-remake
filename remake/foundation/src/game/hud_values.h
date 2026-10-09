@@ -43,9 +43,7 @@ struct GameFighterHud {
     bool  visible = false;            // in front of the camera
     bool  target = false;             // the fighter the viewer has locked on (ring + com bar)
     GameHudRole role = GameHudRole::Enemy;   // owner / ally / enemy, per view
-    bool  acting = false;             // ring row 0: an action is running (hud+0x7ac > 0)
-    bool  locked = false;             // ring row 2: this fighter has a target of its own
-    bool  hyper = false;              // ring column 2: this fighter's hyper mode is up
+    bool  targetsViewer = false;      // this fighter has locked the active player
     int   slot = 0;                   // 0..4 -> 1P/2P/3P/4P/com
     int   tagSheet = 0;               // 0 blue tag rows, 1 red
     float hp = 1.f;                   // hud+0x7a4 / 10000

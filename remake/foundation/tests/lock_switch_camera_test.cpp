@@ -272,9 +272,15 @@ void testFourViewsKeepTheirOwnCameras() {
     f.reportCameras("after twelve taps");
 
     // The hold gesture: aim the ally, arm the recovered 180-tick hold, never the camera.
-    // The press tick is the tap, and the ally aim fires on the kLockHoldTicks-th tick AFTER
-    // it, so the hold is 1 + kLockHoldTicks pressed ticks.
-    for (int i = 0; i <= kLockHoldTicks; ++i) tick(f.app, 2, true);
+    // Physical taps last several ticks. Only a fresh continuous 250 ms press
+    // selects the ally; the recovered ally dwell must not override a later tap.
+    checkInt(16, kLockHoldTicks, "ally hold requires 250 ms at 64 Hz");
+    for (int i = 0; i < kLockHoldTicks - 1; ++i) {
+        tick(f.app, 2, true);
+        check(f.app.match.locked_target(2) == 0 || f.app.match.locked_target(2) == 1,
+              "before the threshold the target remains hostile");
+    }
+    tick(f.app, 2, true);
     checkInt(3, f.app.match.locked_target(2), "holding picks the ally (red 3)");
     check(f.app.match.lock_holds_ally(2), "and arms the recovered ally hold");
     check(f.cameraOnItsOwnFighter(2), "the camera stays on red 2 through the hold");
@@ -283,6 +289,22 @@ void testFourViewsKeepTheirOwnCameras() {
     tick(f.app, 2, false);
     check(!f.app.match.lock_holds_ally(2) || f.app.match.locked_target(2) == 3,
           "the ally aim survives the release (FUN_0041f580:243-244 re-pins it)");
+    for (int duration : {1, 3, 6, kLockHoldTicks - 1}) {
+        for (int tickIndex = 0; tickIndex < duration; ++tickIndex) {
+            tick(f.app, 2, true);
+            check(f.app.match.locked_target(2) == 0 || f.app.match.locked_target(2) == 1,
+                  "a short press leaves the ally and stays on an enemy");
+        }
+        tick(f.app, 2, false);
+        for (int tickIndex = 0; tickIndex < 32; ++tickIndex) {
+            tick(f.app, 2, false);
+            check(f.app.match.locked_target(2) == 0 || f.app.match.locked_target(2) == 1,
+                  "after release no stale hold returns the target to the ally");
+        }
+    }
+    for (int i = 0; i < kLockHoldTicks; ++i) tick(f.app, 2, true);
+    checkInt(3, f.app.match.locked_target(2), "a new full hold can select the ally again");
+    tick(f.app, 2, false);
     f.reportCameras("after the hold");
 }
 
