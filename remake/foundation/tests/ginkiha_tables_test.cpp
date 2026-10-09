@@ -183,6 +183,52 @@ int main() {
     if (mion0) check(mionUpdate == mion0->handler, "bundle dispatch matches kLocomotion (Mion 0)");
     check(walkVa(1, 0) == 0x00458736u, "Mion 0 walk site is 0x458736 (Fase 2 oracle)");
 
+    // 8. Third combo (Rika 1 = character 4, weapon 1, swap code 14): pins the bundle
+    //    rows Fase 2's Rika program will consume. Her pattern differs from both pilots:
+    //    slot 0 fires phases 0..5 on EVERY EVEN frame 12..40 (90 pairs — a repeating
+    //    schedule, not a single anchor), birth speed is 45.0 with no turn data, and the
+    //    traces record NO fire event under fixed inputs — so, unlike Rena/Mion, there is
+    //    no trace-vs-usage cross-check to pin here, only the documented divergence.
+    const ginkiha::BirthProfile* rika = findBirth(4, 1, 0);
+    check(rika != nullptr, "Rika 1/0 birth profile exists");
+    if (rika) {
+        check(rika->swap_code == 14, "Rika 1 maps to swap code 14");
+        check(rika->speed == 45.0f, "Rika 1/0 birth speed 45.0");
+        check(rika->turn_birth == 0.0f && rika->turn_next == 0.0f,
+              "Rika 1/0 birth has no turn data");
+    }
+    int rikaPairs = 0;
+    bool rikaShape = true;
+    for (int i = 0; i < ginkiha::kShotFireRecordCount; ++i) {
+        const ginkiha::ShotFireRecord& entry = ginkiha::kShotFireRecord[i];
+        if (entry.character == 4 && entry.weapon == 1 && entry.slot == 0 && !entry.tag) {
+            ++rikaPairs;
+            if (entry.phase < 0 || entry.phase > 5 || entry.frame < 12 || entry.frame > 40 ||
+                (entry.frame % 2) != 0)
+                rikaShape = false;
+        }
+    }
+    check(rikaPairs == 90, "Rika 1/0 usage holds 90 fire records");
+    check(rikaShape, "Rika 1/0 usage shape is phases 0..5, even frames 12..40");
+    bool rikaTraceSilent = true;
+    for (int v = 0; v < 6; ++v) {
+        if (traceFireFrame(4, 1, v, false) != -1) rikaTraceSilent = false;
+    }
+    check(rikaTraceSilent, "Rika 1/0 traces record no fire under fixed inputs");
+    unsigned int rikaUpdate = 0;
+    for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
+        if (ginkiha::kDispatchIdentity[i].character == 4 &&
+            ginkiha::kDispatchIdentity[i].weapon == 1)
+            rikaUpdate = ginkiha::kDispatchIdentity[i].update;
+    }
+    check(rikaUpdate == 0x00492F70u, "Rika 1 dispatch update is 0x492f70");
+    const gameplay::LocomotionDefinition* rika1 = nullptr;
+    for (const gameplay::LocomotionDefinition& entry : gameplay::kLocomotion) {
+        if (entry.character == 4 && entry.slot == 1) rika1 = &entry;
+    }
+    if (rika1) check(rikaUpdate == rika1->handler, "bundle dispatch matches kLocomotion (Rika 1)");
+    check(walkVa(4, 1) == 0x004933BDu, "Rika 1 walk site is 0x4933bd (Fase 2 oracle)");
+
     // 6. Independent-recovery agreement for the pilot's ground tap: move_behavior.h's
     //    nata program launches item row 0 at tick 12 with citations into FUN_0044xxxx;
     //    the bundle's shot400 usage says the same slot fires at frame 12 in every phase.
