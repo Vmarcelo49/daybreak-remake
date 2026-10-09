@@ -56,6 +56,18 @@ def is_red(r, g, b):
     return r > 180 and g < 70 and b < 70
 
 
+# Ally green is green-DOMINANT, not pure: the P03 row 2 ring cell renders pale
+# (sampled arc texels sit around (125-197, 129-207, 130-193)), so the strict
+# pure-green predicate only ever catches 17-20 pixels of a fully drawn ally ring
+# while the background contributes 0. Measured on the four-view recipe: drawn ally
+# reticles put 78-88 green-dominant pixels inside the box, ring-free stage boxes
+# (sky, ground, trees, mid-stage) put 0. The 30-pixel bar is unchanged, and the red
+# path above is untouched: background separation here (78+ vs 0) is at least as
+# strong as red's (80+ vs 0-8).
+def is_green(r, g, b):
+    return g > 140 and r < 130 and b < 130 and g > r + 30 and g > b + 30
+
+
 def run_demo(demo, install, out, args, cwd, timeout=900):
     cmd = [demo, "--headless", "--no-devices", "--install=" + install, "--out=" + out] + args
     proc = subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -121,7 +133,7 @@ def ring_pixels(px, w, h, x0, y0, x1, y1, role):
         for x in range(max(0, x0), min(w, x1)):
             off = row + x * 3
             if (is_red(px[off], px[off + 1], px[off + 2]) if role == "enemy"
-                    else px[off + 1] > 180 and px[off] < 70 and px[off + 2] < 70):
+                    else is_green(px[off], px[off + 1], px[off + 2])):
                 out.append((x, y))
     return out
 
