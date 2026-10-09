@@ -85,10 +85,10 @@ int g_skipped = 0;
 struct TestCombo : test::Combo {
     bool ready = false;
 
-    bool load(const std::filesystem::path& install) {
+    bool load(const std::filesystem::path& install, int character = 0, int slot = 0) {
         std::string error;
         fnd::assets::assetSource().openInstall(install.string());
-        ready = test::Combo::load(0,0,error);
+        ready = test::Combo::load(character, slot, error);
         return ready;
     }
 
@@ -99,6 +99,7 @@ struct TestCombo : test::Combo {
 };
 
 TestCombo g_testCombo;
+TestCombo g_mionCombo;
 
 std::filesystem::path findInstall(const char* executable) {
     const int itemId = gameplay::kWeaponIds[0][0];
@@ -2039,6 +2040,63 @@ std::uint32_t fnv1a(const std::vector<unsigned char>& bytes) {
     return h;
 }
 
+void test_mion_shot_tap() {
+    section("16. Mion 0 tap + first charge (bundle bodies shoot_body_1_0_*)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_mionCombo.load(install, 1, 0))
+        return skip_case("Mion 0 combo");
+    // Bundle evidence: Mion 0 (handler 0x4582a0) fires item row 0 at tick 2 in the
+    // ground tap (shoot_body_1_0_400 L93-100) and at tick 17 in the first ground
+    // charge (shoot_body_1_0_450 L1695-1725). Her program is kMionRules; the second
+    // charge stays on the provisional path (no 360/370 body exists for her).
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_mionCombo.bind(f);
+    settle(f);
+    Input in;
+    // Tap: hold one frame, release the next — binds move 400 (ShootA).
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Mion tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    check_int("Mion tap binds move 400", 400, f.shot_move_id());
+    for (int i = 0; i < 2; ++i) tick(f, in);
+    gameplay::PendingShot shot = f.take_pending_shot();
+    check_bool("Mion tap launches at tick 2", true, shot.armed);
+    check_int("Mion tap selects item row zero", 0, shot.bulletRow);
+    // First charge: hold past the yellow threshold, release — binds move 450.
+    // Yellow reads the level-1 (tap/MAIN) magazine's chargeMax, red the level-2 —
+    // holding the level-2 value would overshoot straight into Red.
+    const float yellowThreshold = static_cast<float>(
+        g_mionCombo.weapon.magazineForChargeLevel(1).chargeMax) /
+        gameplay::FixedStep::tickRate;
+    float held = 0.0f;
+    int yellowFrames = 0;
+    while (held < yellowThreshold && yellowFrames < 10000) {
+        held += kStep;
+        ++yellowFrames;
+    }
+    Fighter g;
+    g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_mionCombo.bind(g);
+    settle(g);
+    in.set(fnd::input::Action::Shoot, true);
+    for (int i = 0; i < yellowFrames; ++i) tick(g, in);
+    check_int("Mion hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
+              static_cast<int>(g.charge_tier()));
+    in.set(fnd::input::Action::Shoot, false);
+    tick(g, in);
+    check_int("Mion charge enters ShootB", static_cast<int>(FighterState::ShootB),
+              static_cast<int>(g.state()));
+    check_int("Mion charge binds move 450", 450, g.shot_move_id());
+    for (int i = 0; i < 17; ++i) tick(g, in);
+    shot = g.take_pending_shot();
+    check_bool("Mion charge launches at tick 17", true, shot.armed);
+    check_int("Mion charge selects item row zero", 0, shot.bulletRow);
+}
+
 void test_pilot_shot_jump_cancel() {
     section("15. pilot Rena 0 shot jump-cancel (bundle TSV, frame 20)");
     if (!g_testCombo.ready) return skip_case("Rena 0 shot jump-cancel");
@@ -2125,6 +2183,7 @@ int main(int argc, char** argv) {
     test_air();
     test_shots();
     test_pilot_shot_jump_cancel();
+    test_mion_shot_tap();
     test_ammo();
     test_hypermode();
     test_ko();

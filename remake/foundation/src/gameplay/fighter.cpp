@@ -1797,8 +1797,15 @@ void Fighter::fire_shot(ShotTier tier) {
     m_pending.pos.y += FighterConstants::kMuzzleHeight;
 
     const MoveProgram* program = move_program(m_moves);
-    if (program && tier != ShotTier::Ex) {
-        m_shotMoveId = program->shot[static_cast<size_t>(tier)][m_grounded ? 0 : 1];
+    // A -1 row means that tier has no recovered program (Mion 0's second charge:
+    // no 360/370 body exists for her) — it keeps the provisional path below, which is
+    // today's behavior for every combo without an exact program.
+    const int programmed =
+        (program && tier != ShotTier::Ex)
+            ? program->shot[static_cast<size_t>(tier)][m_grounded ? 0 : 1]
+            : -1;
+    if (programmed >= 0) {
+        m_shotMoveId = programmed;
         m_pending.armed = false;
     } else if (m_weapon) {
         // Preserve the old provisional selector only for unrecovered handlers.
@@ -1817,7 +1824,7 @@ void Fighter::fire_shot(ShotTier tier) {
         case ShotTier::Red:    set_state(FighterState::ShootC);    break;
         case ShotTier::Ex:     set_state(FighterState::ShotFinal); break;
     }
-    m_stateTimer = program && tier != ShotTier::Ex ? 0 : FighterConstants::kShotStateFrames;
+    m_stateTimer = programmed >= 0 ? 0 : FighterConstants::kShotStateFrames;
 }
 
 PendingShot Fighter::take_pending_shot() {

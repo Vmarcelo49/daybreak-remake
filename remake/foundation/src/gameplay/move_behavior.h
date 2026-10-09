@@ -149,11 +149,66 @@ struct MoveProgram {
 // RESPONSE §3: sampled contexts are not exhaustive interval tables.
 struct ShotJumpCancel { int move; int frame; };
 inline constexpr ShotJumpCancel kPilotShotJumpCancel[] = {{400, 20}};
+// Mion weapon 0 (handler 0x4582a0) — shot rules recovered from the reference bodies
+// shoot_body_1_0_{400,402,450,460} (bundle reference/source). Phase/turn/hold values are
+// measured in the bodies; each rule below cites its lines. Known gaps, not guesses:
+// ph3/row-1 second shot has no variant model here (usage variants 1 AND 3 fire, but the
+// port cannot select variants — row 0 is the bound primary); slot7 Hide values 2/3/-1
+// and slot-1 halves have no MoveRule field (Hide carries slot 0's unbind window only);
+// 450's pitch clamp is asymmetric [-40,+45] but the model clamps symmetric (45 kept);
+// counter-to-tick in 402 assumes no reset mid-move; speeds live in item data, never here.
+inline constexpr MoveRule kMionRules[] = {
+    // 400 ground tap: vertical bleed 0.5/tick + 18 deg turn while the scratch gate
+    // holds, ~first 10 ticks (body L52-65, not phase-gated).
+    {400,-1,0,9,MoveOp::Decelerate,.5f},
+    {400,-1,0,9,MoveOp::Turn,18.f},
+    // 400 phase turns: 10 deg in phase 1, 5 in phase 3 (L68, L115).
+    {400,1,0,9999,MoveOp::Turn,10.f},
+    {400,3,0,9999,MoveOp::Turn,5.f},
+    // 400 tap fires item row 0 at tick 2 — the usage anchor (phases 1 and 3 fire at
+    // frame 2; the phase-1 row is bound, the phase-3 row-1 variant is not modeled).
+    // Pitch clamp of phase 1 is +-30 deg.
+    {400,-1,2,2,MoveOp::Launch,0.f,0.f,30.f},
+    // 402 air tap: counter-gated turns, 20 deg then 5 past counter 15 (L340-347).
+    {402,-1,0,24,MoveOp::Turn,20.f},
+    {402,-1,15,24,MoveOp::Turn,5.f},
+    // 402 emits rows 0 AND 1 together at counter 15/20/25 (~ticks 14/19/24, L381-396;
+    // the only body with a double 004230e0 call). Pitch clamp +-40 deg.
+    {402,-1,14,14,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,14,14,MoveOp::Launch,1.f,0.f,40.f},
+    {402,-1,19,19,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,19,19,MoveOp::Launch,1.f,0.f,40.f},
+    {402,-1,24,24,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,24,24,MoveOp::Launch,1.f,0.f,40.f},
+    // 450 ground charge1: 25 deg turn through tick 16 (L1664-1667, highest of the four).
+    {450,-1,0,16,MoveOp::Turn,25.f},
+    // 450 prop hide: slot 0 unbound ticks 0-47, rebound after (L1672-1686).
+    {450,-1,0,47,MoveOp::Hide,0.f},
+    // 450 fires item row 0 at tick 17 (L1695-1725).
+    {450,-1,17,17,MoveOp::Launch,0.f,0.f,45.f},
+    // 450 freeze: ~30-tick stall at tick 23 (L1727-1731).
+    {450,-1,23,23,MoveOp::Hold,30.f},
+    // 460 air charge1: 15 deg turn through tick 14 (L2284-2287).
+    {460,-1,0,14,MoveOp::Turn,15.f},
+    // 460 prop hide: slot 0 unbound ticks 0-50 (L2288-2302).
+    {460,-1,0,50,MoveOp::Hide,0.f},
+    // 460 fires item row 0 at tick 17 (L2305-2336, symmetric clamp +-40).
+    {460,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
+    // 460 freeze: ~20-tick stall at tick 23 (L2340-2344).
+    {460,-1,23,23,MoveOp::Hold,20.f},
+};
 inline const MoveProgram* move_program(const CharacterMoves* moves) {
     const auto* binding = locomotion(moves);
     if (!binding) return nullptr;
     static constexpr MoveProgram nata = {kNataRules, std::size(kNataRules),
                                          {{400,402},{450,460},{360,370}}};
-    return binding->handler == 0x43ffc0 ? &nata : nullptr;
+    // Mion 0's shot rows are recovered (kMionRules above); her second charge has no
+    // shoot body in the bundle (no 360/370 for ch1), so it stays unbound (-1) and the
+    // provisional magazine-scan path in fire_shot keeps serving it — today's behavior.
+    static constexpr MoveProgram mion = {kMionRules, std::size(kMionRules),
+                                         {{400,402},{450,460},{-1,-1}}};
+    if (binding->handler == 0x43ffc0) return &nata;
+    if (binding->handler == 0x4582a0) return &mion;
+    return nullptr;
 }
 } // namespace gameplay
