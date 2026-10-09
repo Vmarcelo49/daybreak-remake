@@ -70,6 +70,11 @@ comentários `why` + proveniência.
 
 ## 3. Fase 2 — generalizar para os 46 combos
 
+Primeiro combo concluído 2026-10-09 20:52 (Mion 0: programa `mion` com regras medidas dos
+bodies + `fire_shot` aceitando linha -1 + caso de teste; ver commits `f0ab4f4`/`5c0fdbc` —
+o segundo também calibrou o predicado verde do `hud_view_geometry`, que nunca havia
+medido um anel aliado).
+
 1. **Prioridade**: matriz `shot400_usage` (52 normal + 60 tag em state400) ordena quais combos saem do piloto
    primeiro; cada combo entra com teste, nunca com fallback set 0 silencioso.
 2. **Walks** 16×3 por combo (VAs do `exe-catalog.walks` como oráculo de tuning; valor do DAT quando existir).
