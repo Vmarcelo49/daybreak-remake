@@ -167,5 +167,5 @@ oficial v1.11**. Verificação no nosso repo:
 - **Gap conhecido (a observação que motivou esta seção):** DX é extensão do `daybreak.exe` base
   (`.text` 2,75MB vs 2,28MB) e o roster DX tem 16 personagens (`kWeaponIds[16][3]`) — compartilham
   muita lógica, mas nosso corpus **nunca** analisou o base, então não há como afirmar daqui o que
-  difere entre os dois. Correto para o remake (alvo = DX), porém regiões sem dump no nosso research
-  serão encontradas ao portar; é o que a Fase 0 do plano endereça.
+  difere entre os dois. Correto para o remake (alvo = DX); regiões sem dump no nosso research só
+  bloqueiam se um valor específico ficar obscuro — gatilho pontual no plano (§6).
