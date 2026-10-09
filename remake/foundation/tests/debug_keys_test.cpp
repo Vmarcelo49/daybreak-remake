@@ -611,12 +611,79 @@ void testCriteriaThroughTickMatch() {
     }
 }
 
+void testSpectatorPause() {
+    App app;
+    app.frontendMatch = true;
+    app.matchMode = true;
+    app.battleLaunch.fighterCount = 4;
+    // No GPU/audio is needed to exercise the shipped input and pause transitions.
+    app.pauseUiReady = true;
+    app.pauseSoundTried = true;
+    for (int i = 0; i < 4; ++i) {
+        app.battleLaunch.fighters[i].panel = i;
+        app.frontend.slots[i].controller = 4;
+    }
+    auto edge = [&](int controller, fnd::input::Action action) {
+        for (auto& input : app.tickInput) input = {};
+        app.tickInput[controller].just_pressed[action] = true;
+    };
+    section("issue #64: COM-only pause through the product's input and menu");
+    for (int controller = 0; controller < 4; ++controller) {
+        edge(controller, fnd::input::Pause);
+        check(battlePausePressed(app), "a spectator can open a COM-only pause");
+        enterBattlePause(app, "COM-only test");
+        check(app.battlePaused && app.match.paused(), "the authoritative match is paused");
+        edge(controller, fnd::input::Down);
+        tickBattlePause(app);
+        checkInt(1, app.pauseMenu.row, "Down navigates to Rematch");
+        edge(controller, fnd::input::Up);
+        tickBattlePause(app);
+        checkInt(0, app.pauseMenu.row, "Up navigates to Resume");
+        edge(controller, fnd::input::Jump);
+        tickBattlePause(app);
+        check(!app.battlePaused && !app.match.paused(), "confirm resumes the match");
+        enterBattlePause(app, "COM-only toggle test");
+        edge(controller, fnd::input::Pause);
+        tickBattlePause(app);
+        check(!app.battlePaused, "the pause action also resumes");
+    }
+    app.frontend.slots[2].controller = 1;
+    for (int controller = 0; controller < 4; ++controller) {
+        edge(controller, fnd::input::Pause);
+        check(battlePausePressed(app) == (controller == 1),
+              "a human match accepts only its fighter's controller");
+    }
+    enterBattlePause(app, "human ownership test");
+    edge(3, fnd::input::Down);
+    tickBattlePause(app);
+    checkInt(0, app.pauseMenu.row, "a spectator cannot navigate a human match's pause");
+    edge(3, fnd::input::Jump);
+    tickBattlePause(app);
+    check(app.battlePaused, "a spectator cannot confirm a human match's pause");
+    edge(1, fnd::input::Pause);
+    tickBattlePause(app);
+    check(!app.battlePaused, "the human owner can resume");
+    app.frontendMatch = false;
+    app.matchInputReady = true;
+    edge(0, fnd::input::Pause);
+    check(battlePausePressed(app), "standalone retains controller 0");
+    edge(1, fnd::input::Pause);
+    check(!battlePausePressed(app), "standalone excludes other controllers");
+    app.matchInputReady = false;
+    edge(0, fnd::input::Pause);
+    check(!battlePausePressed(app), "standalone requires input initialization");
+    app.frontendMatch = true;
+    app.battleLaunch.fighterCount = 0;
+    check(!battlePausePressed(app), "an empty launch is not a COM-only battle");
+}
+
 }  // namespace
 
 int main() {
     std::printf("debug_keys_test — issue #48's in-battle debug keys (FUN_00634f60)\n");
     testKeyEffects();
     testCriteriaThroughTickMatch();
+    testSpectatorPause();
     std::printf("\nchecks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures == 0) std::printf("DEBUG_KEYS: ok\n");
     return g_failures == 0 ? 0 : 1;

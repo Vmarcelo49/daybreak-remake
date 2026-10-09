@@ -1464,17 +1464,14 @@ static bool battlePauseAvailable(const App& app) {
     return app.matchMode && app.opts.out.empty() && !app.opts.headless && app.opts.frames == 0;
 }
 
-// The controller slot that drives a frontend panel, or -1 for COM. The pause edge and the
-// menu read the controllers that actually own a fighter, not every open pad.
+// The controller slot that drives a frontend panel, or -1 for COM.
 static int panelController(const App& app, int panel) {
     const int controller = app.frontend.slots[panel].controller;
     return (controller >= 0 && controller < 4) ? controller : -1;
 }
 
-// The controller slots whose pause edge counts: a front-end battle's fighters' controllers,
-// or P1's device on the standalone --match path (the other live offline battle — its P2 is
-// the dummy the DX9 scene passes, so there is no COM to fight). Fills `out` and returns how
-// many slots there are.
+// Standalone battles use P1; frontend battles use their human owners, or the
+// local spectators when every fighter is COM. The menu uses this same set.
 static int battlePauseControllers(const App& app, int out[4]) {
     if (!app.frontendMatch) {
         out[0] = 0;
@@ -1485,10 +1482,15 @@ static int battlePauseControllers(const App& app, int out[4]) {
         const int controller = panelController(app, app.battleLaunch.fighters[i].panel);
         if (controller >= 0) out[count++] = controller;
     }
+    // Port rule (#64): with only COM fighters, any local controller may operate the
+    // pause menu. Human matches retain fighter ownership so spectators cannot interrupt.
+    if (count == 0 && app.battleLaunch.fighterCount > 0) {
+        for (int controller = 0; controller < 4; ++controller) out[count++] = controller;
+    }
     return count;
 }
 
-// The pause action edge, from the same controller slots the tactics gesture reads.
+// Opening and operating the pause share the same ownership rule.
 static bool battlePausePressed(const App& app) {
     int controllers[4] = {-1, -1, -1, -1};
     const int count = battlePauseControllers(app, controllers);
@@ -2296,11 +2298,13 @@ static bool resolveFighterWeapon(const std::string& charDir,
 static int attachItemProps(xm::Scene& scene, const gameplay::WeaponDefinition& item,
                            size_t ownerRig, const xm::SceneOptions& sopt) {
     int loaded = 0;
-    const xm::Model* rig = ownerRig < scene.models.size() ? &scene.models[ownerRig].model : nullptr;
     for (int prop = 0; prop < item.slotCount; ++prop) {
         const gameplay::WeaponSlot& slot = item.slots[prop];
         if (slot.meshName.empty()) continue;
         const std::string path = std::string("data/item/") + slot.meshName;
+        // Appending a prop may reallocate scene.models; reacquire the owner's rig
+        // for each FUN_00433eb0 attachment slot rather than retaining a stale pointer.
+        const xm::Model* rig = ownerRig < scene.models.size() ? &scene.models[ownerRig].model : nullptr;
         xm::Scene w = xm::loadWeapon(path, 0, rig, sopt, prop);
         if (w.models.empty()) {
             // A named attachment that will not load leaves the fighter armed but visually
@@ -2704,12 +2708,16 @@ static bool initMatch(App& app) {
                 fighterCount, movement && !movement->empty() ? "loaded" : "disabled",
                 tamaMesh ? "loaded" : "missing");
 
-    if (!app.matchInput.init()) {
-        app.error = "--match needs the input backend";
-        return false;
+    // The frontend already chose its device policy before it set opts.match for
+    // scene assembly. Reclassifying that live session here silences every device.
+    if (!app.matchInputReady) {
+        if (!app.matchInput.init()) {
+            app.error = "--match needs the input backend";
+            return false;
+        }
+        app.matchInput.set_devices_enabled(readPhysicalDevices(app.opts));
+        app.matchInputReady = true;
     }
-    app.matchInput.set_devices_enabled(readPhysicalDevices(app.opts));
-    app.matchInputReady = true;
 
     // BGM: the reference plays data/bgm/01.ogg on entering the match (scenes.cpp:473,
     // 570-591), looped through the .sfl sheet. --bgm overrides the track; a build

@@ -114,6 +114,34 @@ target=(0.00,338.00,0.00)` identically on every sampled frame.
 * Escape opens the pause in a live battle instead of quitting the process; inside the menu
   it resumes. Menu screens and every capture/replay path keep Escape's old behaviour.
 
+## COM-only ownership (issue #64)
+
+When every active frontend fighter is COM, all four local controller slots can
+open, navigate, confirm or resume the pause menu. This is a port rule: no human
+owns a fighter, so any local spectator may control the shared pause. With human
+fighters present, only their assigned controllers operate it. Standalone
+`--match` retains controller 0 once its input is initialized.
+
+`debug_keys_test` executes the product's pause input and menu transitions without
+devices: each spectator opens a COM-only pause, moves down and up, confirms Resume
+and toggles pause again. It also checks spectator rejection in a human match and
+the standalone input gate. This verifies the host transitions; it does not claim
+a physical-controller or windowed run. No new CTest suite is added.
+
+### Device policy across battle entry
+
+The frontend sets `opts.match` internally to assemble the battle scene. That
+runtime flag must not reclassify an interactive launch as device-free verification.
+`initMatch` now preserves an already initialized input backend's device policy;
+standalone launches still choose it when initializing their backend. Previously,
+battle entry disabled keyboard and pads, including pause-menu actions, while
+Escape continued to toggle pause through its separate SDL event handler.
+
+`controller_scene_lifetime_test` checks that the interactive policy survives scene
+entry and rematches, then feeds keyboard events through the backend and tick queue
+to move Rena 0 and navigate pause. It also verifies that Keiichi 0 moves through the
+COM input path. These are asset-backed host checks without a window or physical pad.
+
 ## Focus loss and disconnected controllers
 
 * Focus loss drops held keys (#6's Guard-safety fix) and **pauses a live offline battle**,

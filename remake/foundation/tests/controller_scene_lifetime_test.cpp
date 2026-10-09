@@ -148,11 +148,42 @@ int main(int argc, char** argv) {
     }
     std::printf("install: %s\n", install.c_str());
 
+    // Force growth between attachment slots: FUN_00433eb0 permits several props,
+    // and the next slot must resolve its anchor against the relocated owner model.
+    fnd::assets::assetSource().openInstall(install);
+    {
+        xm::Scene scene;
+        scene.models.resize(1);
+        scene.models[0].model.frames.resize(1);
+        scene.models[0].model.frames[0].name = "Bip01_Prop1";
+        gameplay::WeaponDefinition item;
+        item.slotCount = 3;
+        for (int i = 0; i < item.slotCount; ++i) item.slots[i].meshName = "43.x";
+        const size_t capacity = scene.models.capacity();
+        check(attachItemProps(scene, item, 0, xm::SceneOptions{}) == 3,
+              "all attachment slots load across scene-vector growth");
+        check(scene.models.capacity() > capacity, "attachment fixture relocated the rig");
+        for (size_t i = 1; i < scene.models.size(); ++i)
+            check(scene.models[i].ownerRig == 0 && scene.models[i].attachFrame == 0 &&
+                      scene.models[i].propId == static_cast<int>(i - 1),
+                  "each prop resolves the current owner's anchor and its own slot");
+    }
+
     // Three shipped stages whose rigs differ for the same fighter pair, so every swap
     // leaves controllers the new match does not adopt.
     const char* stages[3] = {"data/stage04", "data/stage15", "data/stage02"};
 
     App app;
+    // Match assembly mutates opts.match, but a played frontend's backend policy
+    // was chosen at startup and must survive both first entry and rematches.
+    check(app.matchInput.init(), "interactive input backend initializes");
+    app.matchInput.set_devices_enabled(readPhysicalDevices(app.opts));
+    app.matchInputReady = true;
+    auto sampleInput = [&]() {
+        app.matchInput.poll(false);
+        app.matchInput.sample_tick_inputs(app.pendingInput);
+        for (int p = 0; p < 4; ++p) app.tickInput[p] = app.pendingInput[p].consume();
+    };
     std::vector<const xm::Model*> before;
     std::string previousRigs;
     for (int round = 0; round < 3; ++round) {
@@ -161,6 +192,14 @@ int main(int argc, char** argv) {
         before = boundModels(app);
 
         const bool started = initScene(app);
+        check(app.matchInput.device(0) == fnd::input::DeviceType::Keyboard,
+              "scene assembly preserves interactive device input");
+        app.matchInput.note_key(fnd::input::sdl3::kScRight, true);
+        sampleInput();
+        check(app.tickInput[0].just_pressed[fnd::input::Right],
+              "a keyboard action reaches the battle tick after scene entry");
+        app.matchInput.note_key(fnd::input::sdl3::kScRight, false);
+        sampleInput();
         std::printf("\n-- swap %d: %s\n", round + 1, stages[round]);
         if (app.scene.models.empty()) {
             // No install, or a stage this copy of the game does not ship: not a failure
@@ -188,6 +227,44 @@ int main(int argc, char** argv) {
         }
         check(bound == app.match.config().fighterCount,
               "initMatch bound exactly its fighters' controllers");
+
+        if (round == 0) {
+            app.frontendMatch = true;
+            app.battleLaunch.fighterCount = 2;
+            app.battleLaunch.fighters[0].panel = 0;
+            app.battleLaunch.fighters[1].panel = 2;
+            app.frontend.slots[0].controller = 0;
+            app.frontend.slots[2].controller = 4;
+            const glm::vec3 human = app.match.fighter(0).position();
+            const glm::vec3 com = app.match.fighter(1).position();
+            app.matchInput.note_key(fnd::input::sdl3::kScRight, true);
+            for (int tick = 0; tick < 256; ++tick) {
+                sampleInput();
+                tickMatch(app, gameplay::FixedStep::seconds);
+            }
+            const glm::vec3 humanDelta = app.match.fighter(0).position() - human;
+            const glm::vec3 comDelta = app.match.fighter(1).position() - com;
+            check(glm::length(glm::vec2(humanDelta.x, humanDelta.z)) > 1.f,
+                  "keyboard actions move the asset-backed Rena 0 through tickMatch");
+            check(app.botBrains[1].stats().ticks > 0 &&
+                      glm::length(glm::vec2(comDelta.x, comDelta.z)) > 1.f,
+                  "COM actions move the asset-backed Keiichi 0 through tickMatch");
+            enterBattlePause(app, "input regression");
+            app.matchInput.note_key(fnd::input::sdl3::kScRight, false);
+            app.matchInput.note_key(fnd::input::sdl3::kScDown, true);
+            app.matchInput.poll(false);
+            app.matchInput.sample_tick_inputs(app.pendingInput);
+            // Release Right and press Down are separate queued transitions.
+            for (int tick = 0; tick < 2; ++tick) {
+                app.tickInput[0] = app.pendingInput[0].consume();
+                tickBattlePause(app);
+            }
+            check(app.pauseMenu.row == 1, "keyboard actions navigate the real pause menu");
+            app.matchInput.note_key(fnd::input::sdl3::kScDown, false);
+            sampleInput();
+            resumeBattle(app);
+            app.frontendMatch = false;
+        }
 
         // 1. The invariant advanceAnimation relies on.
         check(staleControllers(app, stages[round]) == 0,
