@@ -1831,12 +1831,13 @@ inline constexpr ShotFireRecord kShotFireRecord[] = {
 inline constexpr int kShotFireRecordCount = 1069;
 
 // attack-preview.json shot400[] traces → observed fire frame and trace length per
-// "ch:we:(normal|tag):slot"; the fire frame must equal the usage frame above;
+// "ch:we:(normal|tag):variant"; a variant's fire frame must equal the usage
+// frame for the same variant; variants with no fire event record -1;
 // 552 traces.
 struct ShotTraceSummary {
     int character;
     int weapon;
-    int slot;
+    int variant;
     bool tag;
     int fire_frame;
     int trace_frames;

@@ -47,15 +47,15 @@ unsigned int walkVa(int character, int weapon) {
     return 0;
 }
 
-// First fire frame recorded for a combo/slot in the shot400 traces (-1 if absent).
-int traceFireFrame(int character, int weapon, int slot, bool tag) {
+// First fire frame recorded for a combo/variant in the shot400 traces (-1 if absent).
+int traceFireFrame(int character, int weapon, int variant, bool tag) {
     for (int i = 0; i < ginkiha::kShotTraceSummaryCount; ++i) {
         const ginkiha::ShotTraceSummary& entry = ginkiha::kShotTraceSummary[i];
-        if (entry.character == character && entry.weapon == weapon && entry.slot == slot &&
+        if (entry.character == character && entry.weapon == weapon && entry.variant == variant &&
             entry.tag == tag)
             return entry.fire_frame;
     }
-    return -1;
+    return -2;
 }
 
 }  // namespace
@@ -93,9 +93,13 @@ int main() {
     }
     check(usagePairs == 6, "Rena 0/0 usage covers phases 0..5");
     check(usageFrame == 12, "Rena 0/0 usage anchor frame 12");
-    check(traceFireFrame(0, 0, 0, false) == usageFrame,
-          "trace fire frame matches usage matrix (12F)");
-    check(traceFireFrame(0, 0, 0, false) >= 0, "Rena 0/0 trace recorded");
+    // Every traced normal variant fires at the usage frame — the two extractions agree
+    // per variant, not just on average.
+    for (int variant = 0; variant < 6; ++variant) {
+        char what[80];
+        std::snprintf(what, sizeof what, "Rena 0/0 trace variant %d fires at 12F", variant);
+        check(traceFireFrame(0, 0, variant, false) == usageFrame, what);
+    }
 
     // 4. The bundle's dispatch entry for Rena 0 (combat-hooks.json dispatch[]) must agree
     //    with our own recovered handler — move_behavior.h gated the whole nata program on
@@ -133,6 +137,51 @@ int main() {
         }
     }
     check(renaModel, "rena/00.x controller set present");
+
+    // 7. Second combo (Mion 0 = character 1, weapon 0, swap code 4): pins the bundle
+    //    rows Fase 2's Mion program will consume. Unlike Rena's six uniform phases, Mion
+    //    fires slot 0 only in variants 1 and 3 at frame 2 (usage '1:0:0'), and her birth
+    //    is faster (42.5) with a child spawn — both must survive regeneration drift.
+    const ginkiha::BirthProfile* mion = findBirth(1, 0, 0);
+    check(mion != nullptr, "Mion 0/0 birth profile exists");
+    if (mion) {
+        check(mion->swap_code == 4, "Mion 0 maps to swap code 4");
+        check(mion->speed == 42.5f, "Mion 0/0 birth speed 42.5");
+        check(mion->turn_birth > 0.099f && mion->turn_birth < 0.101f, "Mion 0/0 birth turn 0.1");
+    }
+    int mionPairs = 0;
+    int mionFrame = -1;
+    for (int i = 0; i < ginkiha::kShotFireRecordCount; ++i) {
+        const ginkiha::ShotFireRecord& entry = ginkiha::kShotFireRecord[i];
+        if (entry.character == 1 && entry.weapon == 0 && entry.slot == 0 && !entry.tag) {
+            ++mionPairs;
+            if (mionFrame < 0) mionFrame = entry.frame;
+            check(entry.frame == mionFrame, "Mion 0/0 usage frame consistent");
+        }
+    }
+    check(mionPairs == 2, "Mion 0/0 usage covers variants 1 and 3 only");
+    check(mionFrame == 2, "Mion 0/0 usage anchor frame 2");
+    // The traces agree per variant, including the negative: variants 0/2/4/5 record
+    // no fire event (-1), exactly the variants missing from the usage matrix.
+    for (int variant = 0; variant < 6; ++variant) {
+        const int expected = (variant == 1 || variant == 3) ? mionFrame : -1;
+        char what[80];
+        std::snprintf(what, sizeof what, "Mion 0/0 trace variant %d fire frame", variant);
+        check(traceFireFrame(1, 0, variant, false) == expected, what);
+    }
+    unsigned int mionUpdate = 0;
+    for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
+        if (ginkiha::kDispatchIdentity[i].character == 1 &&
+            ginkiha::kDispatchIdentity[i].weapon == 0)
+            mionUpdate = ginkiha::kDispatchIdentity[i].update;
+    }
+    check(mionUpdate == 0x004582A0u, "Mion 0 dispatch update is 0x4582a0");
+    const gameplay::LocomotionDefinition* mion0 = nullptr;
+    for (const gameplay::LocomotionDefinition& entry : gameplay::kLocomotion) {
+        if (entry.character == 1 && entry.slot == 0) mion0 = &entry;
+    }
+    if (mion0) check(mionUpdate == mion0->handler, "bundle dispatch matches kLocomotion (Mion 0)");
+    check(walkVa(1, 0) == 0x00458736u, "Mion 0 walk site is 0x458736 (Fase 2 oracle)");
 
     // 6. Independent-recovery agreement for the pilot's ground tap: move_behavior.h's
     //    nata program launches item row 0 at tick 12 with citations into FUN_0044xxxx;
