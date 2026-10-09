@@ -145,3 +145,27 @@ Launch/Hold/Camera/Hide/Active + `shot{{…}}`); decisões CPU por arma; 6 selet
 Não portar: D3D9/DirectSound/DirectInput/winmm, PS1/Zig/Win32, rede UDP própria, patches de EXE, `frame_count`
 como duração, `registration` histórico como slot, fallbacks silenciosos onde handler desconhecido.
 Detalhe executivo no plano companheiro: `docs/reports/ginkiha-port-plan.md`.
+
+## 7. Binário canônico (resposta do Ginkiha, 2026-10-09)
+
+Ginkiha confirmou uso livre ("full use of everything") e que o alvo é o **DaybreakDX.exe vanilla + patch
+oficial v1.11**. Verificação no nosso repo:
+
+| Binário (local, git-ignored) | Data PE | Bytes | SHA256 | Papel |
+|---|---|---|---|---|
+| `daybreak.exe` | 2006-08 | 2.469.888 | `6d1a5e11…` | jogo base; **nunca analisado** |
+| `DaybreakDX.exe` | 2007-07 | 2.920.448 | `27e61475…a6a07f02` | **alvo canônico do port** |
+| `daybreakdx_111s.exe` | 2014 | 3.052.112 | `49ead25d…` | instalador WinSFX32/LHA do patch (`.text` 15KB — não é código de jogo) |
+
+- Nosso corpus é exatamente o binário do Ginkiha: `research/binary_data/metadata.txt` (4267 funções,
+  base `0x400000`) e `pe_info.json` (2.920.448 bytes, 4 seções) = `DaybreakDX.exe` vanilla, cujo SHA
+  (`27e61475…`) é o mesmo registrado no `balance-reference` (`original_exe_sha256`). **Todas as VAs dele
+  valem para nosso binário** — follow-up de versão resolvido, zero divergência.
+- O próprio `DaybreakDX.exe` imprime `ver1.11`: "vanilla v1.11" = este binário. O `111s.exe` é o
+  auto-extrator do patch final (LHA, WinSFX32 2.16.8.12), não um segundo codebase — não há dual-version
+  a conciliar.
+- **Gap conhecido (a observação que motivou esta seção):** DX é extensão do `daybreak.exe` base
+  (`.text` 2,75MB vs 2,28MB) e o roster DX tem 16 personagens (`kWeaponIds[16][3]`) — compartilham
+  muita lógica, mas nosso corpus **nunca** analisou o base, então não há como afirmar daqui o que
+  difere entre os dois. Correto para o remake (alvo = DX), porém regiões sem dump no nosso research
+  serão encontradas ao portar; é o que a Fase 0 do plano endereça.

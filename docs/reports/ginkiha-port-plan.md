@@ -124,14 +124,19 @@ Atual: 6 seletores + inferências 300/330/340 + jump + nata só Rena0; resto fal
 
 ## 9. O que pedir ao Ginkiha (follow-up)
 
-1. Os 2 `.jsonl` sources do attack-preview (sem eles, births/shot400 não são re-verificáveis).
-2. Mapa ID→nome de `hit_effect` + semântica de `fields[4,11,12]/flags28/parameters[2]`.
-3. Cancels/recovery por state (hoje: "post-anchor ≠ recovery").
-4. Confirmação de SHA: nosso `Higurashi-Daybreak/` bate com `27e61475…`?
-5. Licença/uso: permissão explícita para reimplementar (citar, não colar) a lógica RE no `remake/`.
+1. Os 2 `.jsonl` sources do attack-preview (sem eles, births/shot400 não são re-verificáveis). **aberto**
+2. Mapa ID→nome de `hit_effect` + semântica de `fields[4,11,12]/flags28/parameters[2]`. **aberto**
+3. Cancels/recovery por state (hoje: "post-anchor ≠ recovery"). **aberto**
+4. Confirmação de SHA do binário. **resolvido 2026-10-09**: nosso `DaybreakDX.exe` = `27e61475…a6a07f02`,
+   igual ao `original_exe_sha256` do bundle — todas as VAs aplicáveis (ver seção 7 do comparativo).
+5. Licença/uso. **resolvido 2026-10-09**: Ginkiha liberou uso integral ("full use of everything");
+   o alvo é DX vanilla + patch v1.11 oficial. Reimplementar com citação, sem colar runtime.
 
 ## 10. Riscos assumidos
 
+- Binário canônico único = `DaybreakDX.exe` vanilla 2007 (`27e61475…`, "ver1.11"); `daybreakdx_111s.exe`
+  é instalador SFX, não codebase. Nunca citar VA de outro binário (o base `daybreak.exe` 2006 tem SHA
+  próprio e regiões que nosso corpus não tem).
 - Janela hit/damage fora do corpus: ou re-extraímos, ou modelamos como decisão citada (nunca como símbolo falso).
 - Corpos 6MB inauditáveis: não importar; reimplementar por família (dash→jump→melee→shoot).
 - `shot_interval` original sempre 0: cadência é clock de animação — não criar "fire-rate de magazine" fictícia.
