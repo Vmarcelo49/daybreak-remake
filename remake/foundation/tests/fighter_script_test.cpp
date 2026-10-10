@@ -109,6 +109,7 @@ TestCombo g_takanoCombo;
 TestCombo g_irieCombo;
 TestCombo g_mion2Combo;
 TestCombo g_rika2Combo;
+TestCombo g_satokoCombo;
 
 std::filesystem::path findInstall(const char* executable) {
     const int itemId = gameplay::kWeaponIds[0][0];
@@ -2316,6 +2317,84 @@ void test_rika2_single_tick() {
                g.take_pending_shot().armed);
 }
 
+void test_satoko_five_shot() {
+    section("25. Satoko 0 five-shot tap + frozen twin salvos (bodies shoot_body_3_0_*)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_satokoCombo.load(install, 3, 0))
+        return skip_case("Satoko 0 combo");
+    // Bundle evidence: Satoko 0 (handler 0x4a9c40) fires FIVE row-0 shots at tick 17
+    // in the ground tap (tag fires 8 — no flag field, skipped), and twin row-11 salvos
+    // spread by a 26-update frozen clock at tick 25 in the first ground charge (four
+    // salvos at 25/31/37/43; the air charge freezes 21 for four salvos at 25/31/37/43 —
+    // same rule shape, untested here like the other air paths).
+    // Her program is kSatokoRules; the second charge stays provisional.
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_satokoCombo.bind(f);
+    settle(f);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Satoko tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    check_int("Satoko tap binds move 400", 400, f.shot_move_id());
+    for (int i = 0; i < 17; ++i) tick(f, in);
+    int tapArmed = 0;
+    bool tapRows = true;
+    for (int i = 0; i < 5; ++i) {
+        gameplay::PendingShot shot = f.take_pending_shot();
+        if (shot.armed) ++tapArmed;
+        if (shot.bulletRow != 0) tapRows = false;
+    }
+    check_int("Satoko tap T17 salvo fires five", 5, tapArmed);
+    check_bool("Satoko salvo rows are all 0", true, tapRows);
+    check_bool("Satoko salvo fires exactly five", false,
+               f.take_pending_shot().armed);
+    // First charge: hold past the yellow threshold (level-1 chargeMax 60).
+    Fighter g;
+    g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_satokoCombo.bind(g);
+    settle(g);
+    const float satokoYellow = static_cast<float>(
+        g_satokoCombo.weapon.magazineForChargeLevel(1).chargeMax) /
+        gameplay::FixedStep::tickRate;
+    float satokoHeld = 0.0f;
+    int satokoYellowFrames = 0;
+    while (satokoHeld < satokoYellow && satokoYellowFrames < 10000) {
+        satokoHeld += kStep;
+        ++satokoYellowFrames;
+    }
+    in.set(fnd::input::Action::Shoot, true);
+    for (int i = 0; i < satokoYellowFrames; ++i) tick(g, in);
+    check_int("Satoko hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
+              static_cast<int>(g.charge_tier()));
+    in.set(fnd::input::Action::Shoot, false);
+    tick(g, in);
+    check_int("Satoko charge enters ShootB", static_cast<int>(FighterState::ShootB),
+              static_cast<int>(g.state()));
+    check_int("Satoko charge binds move 450", 450, g.shot_move_id());
+    // First salvo at tick 25, then the 26-update freeze, then tick 31: drive by
+    // elapsed like the Keiichi/Mion-2 cases.
+    int satokoGuard = 0;
+    while (g.phase_elapsed() < 25 && satokoGuard++ < 150) tick(g, in);
+    check_int("Satoko charge reaches tick 25", 25, g.phase_elapsed());
+    tick(g, in);
+    gameplay::PendingShot first = g.take_pending_shot();
+    gameplay::PendingShot second = g.take_pending_shot();
+    check_bool("Satoko charge T25 salvo fires twice", true, first.armed && second.armed);
+    check_int("Satoko T25 first row is 11", 11, first.bulletRow);
+    check_int("Satoko T25 second row is 11", 11, second.bulletRow);
+    satokoGuard = 0;
+    while (g.phase_elapsed() < 31 && satokoGuard++ < 150) tick(g, in);
+    tick(g, in);
+    first = g.take_pending_shot();
+    second = g.take_pending_shot();
+    check_bool("Satoko charge T31 salvo fires twice", true, first.armed && second.armed);
+    check_int("Satoko T31 rows are 11", 11, first.bulletRow);
+}
+
 void test_mion2_single_shot() {
     section("23. Mion 2 single tap + burst charge (bodies shoot_body_1_2_*)");
     const auto install = findInstall(nullptr);
@@ -2844,6 +2923,7 @@ int main(int argc, char** argv) {
     test_irie_twin_tap();
     test_mion2_single_shot();
     test_rika2_single_tick();
+    test_satoko_five_shot();
     test_ammo();
     test_hypermode();
     test_ko();

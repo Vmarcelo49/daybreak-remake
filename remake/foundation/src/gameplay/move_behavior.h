@@ -513,6 +513,65 @@ inline constexpr MoveRule kRika2Rules[] = {
     {460,-1,10,10,MoveOp::Launch,4.f,0.f,40.f},
     {460,-1,10,10,MoveOp::Hold,30.f},
 };
+// Satoko weapon 0 (handler 0x4a9c40) — shot rules recovered from the reference bodies
+// shoot_body_3_0_{400,402,450,460} (bundle reference/source). Tap salvos of FIVE row-0
+// shots at tick 17 (tag fires 8 — no flag field, skipped); charge salvos of TWO row-11
+// shots spread by frozen-clock Holds (26 updates @25 for five salvos, 21 for four) —
+// the unrolled ticks reproduce the salvo cadence while the Hold reproduces the clock
+// freeze, and the per-(rule,phase,tick) launch latch keeps each salvo to one firing.
+// Tag row 12, aim ramps, gravity tails and one-shot velocity sets have no MoveRule op.
+// Tap thirds use the family aim-clamp standard (40): the measured downward pellet bias
+// ([-12,-0.05] normal) is ballistics, not aim — it needs projectile gravity (Fase 3+).
+inline constexpr MoveRule kSatokoRules[] = {
+    // 400 ground tap: turns 10 deg (0-9, phaseless) + 15 deg (phase 0, open),
+    // bleed 0.5/tick phase 0, five row-0 shots at tick 17.
+    {400,-1,0,9,MoveOp::Turn,10.f},
+    {400,0,0,9999,MoveOp::Turn,15.f},
+    {400,0,0,9999,MoveOp::Decelerate,.5f},
+    {400,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
+    // 402 air tap: 20 deg turn ticks 0-9, Hide slot 0 from tick 16, same five at 17.
+    // No bleed (gravity tail skipped).
+    {402,-1,0,9,MoveOp::Turn,20.f},
+    {402,-1,16,9999,MoveOp::Hide,0.f},
+    {402,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
+    // 450 ground charge1: turns 10 deg (0-24) + 2 deg (0-25), bleed 0.5/tick,
+    // 26-tick freeze at 25 with twin row-11 salvos at 25,31,37,43,49.
+    {450,-1,0,24,MoveOp::Turn,10.f},
+    {450,-1,0,25,MoveOp::Turn,2.f},
+    {450,-1,0,9999,MoveOp::Decelerate,.5f},
+    {450,-1,25,25,MoveOp::Hold,26.f},
+    {450,-1,25,25,MoveOp::Launch,11.f,0.f,40.f},
+    {450,-1,25,25,MoveOp::Launch,11.f,0.f,40.f},
+    {450,-1,31,31,MoveOp::Launch,11.f,0.f,40.f},
+    {450,-1,31,31,MoveOp::Launch,11.f,0.f,40.f},
+    {450,-1,37,37,MoveOp::Launch,11.f,0.f,40.f},
+    {450,-1,37,37,MoveOp::Launch,11.f,0.f,40.f},
+    {450,-1,43,43,MoveOp::Launch,11.f,0.f,40.f},
+    {450,-1,43,43,MoveOp::Launch,11.f,0.f,40.f},
+    {450,-1,49,49,MoveOp::Launch,11.f,0.f,40.f},
+    {450,-1,49,49,MoveOp::Launch,11.f,0.f,40.f},
+    // 460 air charge1: turns 13 deg (0-9) + 5 deg (0-15), 21-tick freeze at 25 with
+    // twin salvos at 25,31,37,43. No bleed.
+    {460,-1,0,9,MoveOp::Turn,13.f},
+    {460,-1,0,15,MoveOp::Turn,5.f},
+    {460,-1,25,25,MoveOp::Hold,21.f},
+    {460,-1,25,25,MoveOp::Launch,11.f,0.f,40.f},
+    {460,-1,25,25,MoveOp::Launch,11.f,0.f,40.f},
+    {460,-1,31,31,MoveOp::Launch,11.f,0.f,40.f},
+    {460,-1,31,31,MoveOp::Launch,11.f,0.f,40.f},
+    {460,-1,37,37,MoveOp::Launch,11.f,0.f,40.f},
+    {460,-1,37,37,MoveOp::Launch,11.f,0.f,40.f},
+    {460,-1,43,43,MoveOp::Launch,11.f,0.f,40.f},
+    {460,-1,43,43,MoveOp::Launch,11.f,0.f,40.f},
+};
 inline constexpr MoveRule kMion2Rules[] = {
     // Mion weapon 2 (handler 0x44fa10): the ground tap fires ONE row-0 shot at
     // entry-tick 10 through a clock jump to 18 (ticks 11-17 never execute) — the
@@ -607,12 +666,17 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     // Rika 2: same unbound second charge (bodies 451-453/461 exist but unscoped).
     static constexpr MoveProgram rika2 = {kRika2Rules, std::size(kRika2Rules),
                                           {{400,402},{450,460},{-1,-1}}};
+    // Satoko 0: same unbound second charge (state 401 and bodies 403-409 exist but
+    // unscoped).
+    static constexpr MoveProgram satoko = {kSatokoRules, std::size(kSatokoRules),
+                                           {{400,402},{450,460},{-1,-1}}};
     if (binding->handler == 0x566a40) return &chie;
     if (binding->handler == 0x5b9680) return &kasai;
     if (binding->handler == 0x531ce0) return &takano;
     if (binding->handler == 0x57f600) return &irie;
     if (binding->handler == 0x44fa10) return &mion2;
     if (binding->handler == 0x49d890) return &rika2;
+    if (binding->handler == 0x4a9c40) return &satoko;
     return nullptr;
 }
 } // namespace gameplay
