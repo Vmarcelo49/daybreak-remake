@@ -13,6 +13,14 @@ Regras duras vigentes (`AGENTS.md`): nunca editar `research/recomp/`; manter `.X
 D2); todo ataque é personagem+arma (`comboSlotLabel`); **full diff review antes de CADA commit**;
 comentários `why` + proveniência.
 
+## Mudança de ordem — 2026-10-10
+
+Por instrução do dono: interromper a sequência de combos que apenas documenta novos
+bloqueios. Executar [ginkiha-blockers-plan.md](ginkiha-blockers-plan.md): contratos/admissão,
+origens/aim, branches/RNG/capacidade, estado/movimento, fechamento de todos os 46 combos.
+Revisitar também programas já ligados; “full program” não prova cobertura completa.
+Plano criado; implementação dos mecanismos ainda pendente. Fases 2–5 continuam abertas.
+
 ## Status das fases
 
 | Fase | Estado | Data | Hora de conclusão |

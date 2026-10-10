@@ -3,6 +3,12 @@
 To the next agent: continue porting character+weapon combo shot programs exactly as below.
 Everything here is verified against the workspace — trust files over memory.
 
+**Owner-directed change of order (2026-10-10):** stop usage-order combo porting and
+implement shared blockers first. Follow [ginkiha-blockers-plan.md](ginkiha-blockers-plan.md),
+then close every blocked/partial combo and audit all 46. “Next: Tomitake 0” below is the
+historical usage-order pointer, not the active task. Earlier “full program” counts do
+not establish complete shooting-path coverage.
+
 ## 1. What this is
 
 Port of Higurashi Daybreak's combat/animations (DaybreakDX.exe, SHA256
@@ -221,9 +227,9 @@ Scoreboard: 13 full programs + 2 schedule subsets (Rena 1, Natsumi 0) + 6 pinned
   `m_stateTimer = programmed >= 0 ? 0 : kShotStateFrames`.
 - **Hold latch** (`m_holdRule`, fighter.h/cpp): per-rule hold progress — a shared counter would
   starve a second Hold in one move (Keiichi 450: 10f@5 + 15f@32). Dash path untouched.
-- **Launch latch** (`m_lastLaunchRule/Phase/Tick`, reset in `set_state`): one firing per
-  (rule,phase,tick) — without it, same-tick Launch+Hold combos (Rika 450) queue up to 8
-  pendings instead of 2. Twin rules (different objects, same tick) still both fire.
+- **Launch/freeze audit required:** earlier handoff text claimed `m_lastLaunchRule/Phase/Tick`,
+  but those members are absent from the current source. Establish repeated-fire semantics
+  with tests during the blocker plan; do not assume a launch latch exists.
 - **Update order**: input/fire → `execute_move_program` (rules see PRE-increment elapsed) →
   `advance_animation_phase` (increments). Consequence for tests: a `while elapsed<N` loop
   exits right after the tick that SET N, whose rule pass still saw N−1 — add ONE more tick
@@ -233,8 +239,7 @@ Scoreboard: 13 full programs + 2 schedule subsets (Rena 1, Natsumi 0) + 6 pinned
 - **Yellow hold frames must be loop-computed** from `magazineForChargeLevel(1).chargeMax /
   tickRate` — hardcoded counts overshoot into Red on float error (Tomitake precedent).
 - Pending queue caps at 8 (`launch_bullet` drops beyond) — relevant for volleys (Kasai 0 §7).
-- `m_moveElapsedTicks` resets in `set_state`/`enter_phase`/init paths; the launch latch resets
-  in `set_state`.
+- `m_moveElapsedTicks` resets in `set_state`/`enter_phase`/init paths.
 
 ## 7. Known gaps — do NOT guess these (document, defer, or extend the engine deliberately)
 
