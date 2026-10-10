@@ -594,3 +594,36 @@ Match-level tests.
 **Next:** Keiichi 0/1's hand origin (`FUN_00435220`), then Kasai 0 with the pool audit.
 The movement-offset yaw and the remaining gaps in §6 of the architecture record are
 the next fidelity items after the roster unblocks.
+
+### 2026-10-10 — 3.4 Keiichi 0/1 bound: hand origins, snap pitch, range pitch
+
+**Done — both combos bound** (`kKeiichi0Rules`, `kKeiichi1Rules`, handlers 0x46a190 /
+0x473610): taps as single hand requests at tick 13 (Bip01_R_Hand, rows 0 + 3/1, stored
+pitch), charges at tick 4 (Keiichi 0 only: left hand row 1, fixed angles) and tick 20
+(Keiichi 0: attachment slot 0 rows 2/4; Keiichi 1: world rows 9 + 2/3 at lateral -50 /
+forward 0 / height +40/+20). All branches gate on the recovered powered predicate; the
+`FUN_00435000` row mapping the handoff called unestablished resolves to slot 0 with rows
+2 normal / 4 powered straight from the body tuple.
+
+**Done — three pitch mechanisms, all measured:** the air-tap discontinuity (compare
+±30, assign ±45, in 9 bodies) rides on `CapturePitch`'s new assign bound; Keiichi 1's
+charge pitch (base plus live `dist*40/5000`, ×0.95 when negative, horizontal distance
+only) is the new `ElevationPlusRange` kind (2 bodies use it, named honestly); literal
+yaw/pitch requests use the new `FixedAngles` kind. `NamedBone` gets its first real
+users plus the `origin_named_bone` factory; a rig missing the bone fails explicitly.
+
+**Verified:** full rebuilt Linux CTest **65/65 (203.48 s)**, fighter suite 878 checks 0
+failures (56 new Keiichi checks: hand KIND + bone names, row splits on both branches,
+tick-4/tick-20 charges, forward-60/lateral-50 geometry, range pitch exact at sin(4°)),
+recon six tests passed, Windows and web cross-builds passed, live 2-player battle smoke
+RESULT ok. Table pins for both combos already existed in the shared origin-pin loop;
+no new pins needed.
+
+**Still pending for both:** movement-offset yaw, air velocity/gravity ops (entry halve,
+movement clear, gravity tails), second charges (no 360/370 bodies in scope). The ledger
+carries the per-path cells; the handoff scoreboard is now 13 + 2 subsets + 5 partial
+typed programs (Satoko 2 tap, Keiichi 0, Keiichi 1) + 3 deferred + 25 TODO.
+
+**Next:** Kasai 0 as the first C++ handler with the pool audit (21/31 requests, spread,
+global-32 capacity), then the roster families. The latched-pitch, snap-pitch and
+range-pitch mechanisms are expected to recur — keep using them.

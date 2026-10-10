@@ -91,7 +91,7 @@ Phases 2–5 are done; do not mark complete early.
 | Rena 1 | 0x448220 | rena1 (normal schedule subset) | 400 row 6 @18; 450 row 1 @12–26 | tap + charge schedule |
 | Akane 2 | 0x5a7ea0 | deferred: typed world origin exists; body calculations/branch are unbound | 400 row 0 @10; powered adds row 1 @15 | callback pins only; no program |
 | Satoko 2 | 0x4bc040 | **satoko2: typed-world twin tap, normal/powered gate** | 400/402 twin world rows 0/1 @20; 450/460 phase1 @6 still pending | table + item38 fixture pins; twin-world + gate test |
-| Keiichi 1 | 0x473610 | deferred: typed hand/world origins exist; row and dynamic geometry remain open | 400/402 hand @13; 450/460 world @20 | callback pins only; no program |
+| Keiichi 1 | 0x473610 | **keiichi1: hand tap + world charges, gate-bound** | 400/402 hand R @13 rows 0/1; 450/460 world @20 rows 9+2/3 | tap + charge, both branches |
 | Natsumi 0 | 0x5e2af0 | natsumi0 (normal ground 400 subset) | row 0 @14; Hide slots 0/1 | tap request schedule |
 | Mion 0 | 0x4582a0 | mion | row 0 @2; row 0 @17 | tap + charge |
 | Rika 1 | 0x492f70 | rika | even ticks 12–40; twin salvos; **counter-gated 30-update freeze at T30 (3 salvos), ground + air, both branches** | tap repeat + T10/T30 + frozen interval + latch + air 460 normal/powered |
@@ -107,8 +107,7 @@ Phases 2–5 are done; do not mark complete early.
 | Rika 0 | 0x484be0 | rika0 | twins @15; twin salvos @15/@25 | tap + charge |
 
 Pinned-only (table test, no program yet): Kasai 0 (deferred — scatter needs engine work,
-§7), Shion 0 (pins committed; bodies delimited, extraction not yet delegated),
-Keiichi 0 (pinned; typed named-bone origin exists, posed-rig witness outstanding).
+§7), Shion 0 (pins committed; bodies delimited, extraction not yet delegated).
 
 The usage-order worklist below is historical. The active sequence is the blocker plan's
 (entry 3.0: audit the other Hold schedules → Keiichi 0/1 hand geometry → Kasai 0
@@ -122,8 +121,8 @@ below for context). Resume at Tomitake 0. Verify body and origin mapping before 
 | Rena 1 (ch=0 we=1) | 18 | landed as normal schedule subset; runtime-source path (not a reference body); geometry gaps noted below |
 | Akane 2 (ch=13 we=2) | 18 | pinned; typed origin/aim fields now exist; body-computed XYZ/yaw/pitch and branch are not connected to a program |
 | Natsumi 0 (ch=15 we=0) | 18 | landed as normal ground 400 row-0 schedule subset; 402/boost and world-charge paths remain unbound |
-| Keiichi 0 (ch=2 we=0) | 12 | pinned; typed named-bone origin exists; posed-rig witness and callback row mapping remain open |
-| Keiichi 1 (ch=2 we=1) | 12 | pinned; typed hand/world origins exist; callback row mapping and dynamic pitch remain open |
+| Keiichi 0 (ch=2 we=0) | 12 | **bound**: hand tap + left-hand/attachment charges, both branches, snap pitch on air |
+| Keiichi 1 (ch=2 we=1) | 12 | **bound**: hand tap + world charges with range pitch, both branches |
 | Satoko 2 (ch=3 we=2) | 12 | pinned; typed world origin exists; source aim-selection branch and movement offset remain unbound |
 | Tomitake 0 (ch=6 we=0) | 12 | next to recon; origin/body audit required |
 | Tomitake 1 (ch=6 we=1) | 12 | |
@@ -159,6 +158,14 @@ Natsumi 0 scope note (2026-10-10): added `natsumi0` for the **normal ground stat
 
 Keiichi 0 scope note (2026-10-10): pinned update/vtable, walk, birth, usage (normal slot 0 and powered slot 3 at 13F across six forced phases), and callback families. `shoot_body_2_0_400/402` call `FUN_00435220` on `Bip01_R_Hand` at frame 13; trace callback rows are normal slot 0/powered slot 3. The typed `NamedBone` origin can now describe a hand transform, but no posed-rig witness or body-bound rule has been added; callback row/admission semantics still need reconciliation. The four body files contain measured movement/turn windows (400 ground, 402 air, first charges 450/460). Do not claim the callback request as an admitted projectile/spawn. Keiichi 1 has now been independently audited and is also deferred (below). Raw 450/460 `FUN_00435000` row mapping is also not established from its body tuple, so charge shot rows remain unbound.
 
+**Update (2026-10-10, Keiichi slice):** fully bound as `kKeiichi0Rules` — the tap (hand R
+row 0/3 at tick 13 with stored ±30 pitch, snapped ±45 on air), the tick-4 left-hand
+row 1 at fixed angles, and the tick-20 attachment pair (slot 0, rows 2/4, stored ±40
+pitch). The `FUN_00435000` row mapping above is resolved by the body tuple after all
+(slot 0, rows 2 normal / 4 powered). First `NamedBone` user; rig bone-existence plus
+origin KIND is the witness pattern. Remaining gaps: air movement clear/halve and
+gravity have no ops, and the movement-offset yaw is unimplemented.
+
 Keiichi 1 audit / defer note (2026-10-10 10:40, São Paulo): actor `data/keiichi/01.dat`,
 item `018.dat`, swap 8, handler/vtable `0x473610`/`0x6a4f28`, walk `0x473a5a`. Row-0 birth
 speed 30, turn 0.1 at birth/next tick; magazines `{6,2,360,0,60,1}` and
@@ -192,6 +199,13 @@ Satoko 2 has now been independently audited and is also deferred (below).
 Verification: rebuilt Linux tree; `ginkiha_tables_test` 387 checks / 0 failures,
 `fighter_script_test` 637 checks / 0 failures / 0 skipped, full CTest 65/65 passed
 (162.26 s). No runtime program changed. The unrelated Windows edits remain uncommitted.
+
+**Update (2026-10-10, Keiichi slice):** fully bound as `kKeiichi1Rules` — the tap (hand R
+row 0/1 at tick 13, same snap pitch as Keiichi 0) and the tick-20 world pair (row 9 plus
+row 2/3, all at lateral -50 / forward 0 / height +40 ground / +20 air, with the
+range-dependent pitch now modelled as `ElevationPlusRange`). The "unbound formulas" cell
+above is closed; remaining gaps are the movement-offset yaw and the air
+velocity/gravity ops, as with Keiichi 0.
 
 Satoko 2 audit / defer note (2026-10-10 10:48, São Paulo): actor `data/satoko/02.dat`,
 item `038.dat`, swap 12, handler/vtable `0x4bc040`/`0x6a4fc8`, walk `0x4bc47f`.
@@ -235,10 +249,10 @@ Verification: rebuilt Linux tree; `ginkiha_tables_test` 398 checks / 0 failures,
 (162.92 s). The shared origin-pin loop now covers Keiichi 0/1 and Satoko 2 without
 duplicating the catalog/usage/trace scans. Unrelated Windows work remains uncommitted.
 
-Scoreboard: 13 full programs + 2 schedule subsets (Rena 1, Natsumi 0) + 1 partial typed
-program (Satoko 2 tap) + 5 pinned/deferred (Kasai 0, Shion 0, Akane 2, Keiichi 0, Keiichi 1)
-+ 25 remaining TODO = 46 roster combos. A program is a schedule, not coverage: see the
-ledger for per-path state.
+Scoreboard: 13 full programs + 2 schedule subsets (Rena 1, Natsumi 0) + 3 partial typed
+programs (Satoko 2 tap, Keiichi 0, Keiichi 1) + 3 pinned/deferred (Kasai 0, Shion 0,
+Akane 2) + 25 remaining TODO = 46 roster combos. A program is a schedule, not coverage:
+see the ledger for per-path state.
 
 ## 6. Engine mechanisms you must know (all in `src/gameplay/`)
 

@@ -3,9 +3,9 @@
 Initial snapshot: 2026-10-10. Companion: [blocker plan](ginkiha-blockers-plan.md),
 [architecture decisions](ginkiha-shooting-architecture.md).
 
-**Completion: 0/46 audited complete; 1/46 has a first typed-world program (Satoko 2 tap).** The 16 bound
-schedules below still require full path verification. No absence of a generated body proves that a path
-is absent.
+**Completion: 0/46 audited complete; 3/46 have first programs (Satoko 2 tap, Keiichi 0,
+Keiichi 1).** The 18 bound schedules below still require full path verification. No
+absence of a generated body proves that a path is absent.
 
 Each ground/air cell is `normal binding / powered audit`. `400?` means state400 is
 bound but source, origin/aim, branch/RNG, ammo/admission, motion/clocks, projectile behavior
@@ -21,8 +21,8 @@ follow-on/EX states remain pending for every combo, not implicitly N/A.
 | Mion 0 | 4 / 2 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 30 |
 | Mion 1 | 5 / 4 | — / P | — / P | — / P | — / P | — / P | — / P | 30 |
 | Mion 2 | 6 / 35 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 24 |
-| Keiichi 0 | 7 / 5 | — / P | — / P | — / P | — / P | — / P | — / P | 20 |
-| Keiichi 1 | 8 / 18 | — / P | — / P | — / P | — / P | — / P | — / P | 19 |
+| Keiichi 0 | 7 / 5 | 400 hand R, gate-bound / rows 3 powered | 402 hand R, gate-bound / rows 3 powered | 450 hand L + attach, gate-bound / rows 4 powered | 460 hand L + attach, gate-bound / rows 4 powered | — / P | — / P | 20 |
+| Keiichi 1 | 8 / 18 | 400 hand R, gate-bound / rows 1 powered | 402 hand R, gate-bound / rows 1 powered | 450 world pair, gate-bound / rows 3 powered | 460 world pair, gate-bound / rows 3 powered | — / P | — / P | 19 |
 | Keiichi 2 | 9 / 34 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 18 |
 | Satoko 0 | 10 / 8 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 18 |
 | Satoko 1 | 11 / 17 | — / P | — / P | — / P | — / P | — / P | — / P | 18 |
@@ -70,8 +70,16 @@ bypass and no refund on pool failure. HUD/bot reads share that stock. The reques
 can grow; global32 projectile capacity, geometry, branches/RNG and shot counters remain
 pending. The cells above are still pending per-path audit; no combo has been promoted.
 
-Two more shared capabilities landed with this snapshot:
+Four more shared capabilities landed with this snapshot:
 
+- **Named-bone origins with posed-rig witnesses.** `FUN_00435220` hand requests resolve
+  the named bone matrix or fail explicitly (never substitute). Keiichi 0/1 are the first
+  users (right hand taps, left-hand charge request). The rig bone-existence check plus
+  the origin KIND on the armed request is the witness pattern.
+- **Snap pitch, range pitch, fixed angles.** The air-tap discontinuity (compare ±30,
+  assign ±45, in 9 bodies) rides on `CapturePitch`'s assign bound; Keiichi 1's charge
+  pitch (stored base plus live `dist*40/5000`, ×0.95 when negative) is
+  `ElevationPlusRange`; literal yaw/pitch requests use `FixedAngles`.
 - **The powered gate.** `byte(+0x845) && word(+0x848)` is now one port predicate
   (`Fighter::shoot_gate_powered()`): the Oyashiro special armed byte plus the aim hold
   the scene publishes from `Match::aim_holds()`. Both branches of a body can now be
