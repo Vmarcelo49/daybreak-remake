@@ -13,7 +13,6 @@
 // under .local-analysis/ (never committed). Full rationale: docs/reports/ginkiha-port-plan.md §1.
 #include "gameplay/ginkiha_tables.h"
 #include "gameplay/move_behavior.h"
-#include "gameplay/character_moves.h"
 
 #include <cstdio>
 #include <cstring>
@@ -1057,6 +1056,62 @@ int main() {
               gameplay::kNatsumi0Rules[2].first == 14 &&
               gameplay::kNatsumi0Rules[2].value == 0.f,
           "Natsumi 0 rule hides both props then schedules normal row 0 at 14F");
+
+    // 24. Keiichi 0 (character 2, weapon 0, swap 7): the state400 callback is
+    //     hand-origin FUN_00435220, not Launch's Prop1 origin. Preserve the callback and
+    //     DAT pins, but do not turn the raw call tuple into a runtime bullet-row claim.
+    const ginkiha::BirthProfile* keiichi0Birth = findBirth(2, 0, 0);
+    check(keiichi0Birth != nullptr, "Keiichi 0/0 birth profile exists");
+    if (keiichi0Birth) {
+        check(keiichi0Birth->swap_code == 7, "Keiichi 0 maps to swap code 7");
+        check(keiichi0Birth->speed == 42.5f, "Keiichi 0/0 birth speed 42.5");
+        check(keiichi0Birth->turn_birth > 0.0009f && keiichi0Birth->turn_birth < 0.0011f,
+              "Keiichi 0/0 birth turn 0.001");
+        check(keiichi0Birth->turn_next > 0.0019f && keiichi0Birth->turn_next < 0.0021f,
+              "Keiichi 0/0 next tick turn 0.002");
+    }
+    int keiichi0NormalUsage = 0;
+    int keiichi0TagUsage = 0;
+    bool keiichi0UsageShape = true;
+    for (int i = 0; i < ginkiha::kShotFireRecordCount; ++i) {
+        const auto& entry = ginkiha::kShotFireRecord[i];
+        if (entry.character != 2 || entry.weapon != 0) continue;
+        if (!entry.tag && entry.slot == 0) ++keiichi0NormalUsage;
+        else if (entry.tag && entry.slot == 3) ++keiichi0TagUsage;
+        else keiichi0UsageShape = false;
+        if (entry.phase < 0 || entry.phase > 5 || entry.frame != 13) keiichi0UsageShape = false;
+    }
+    check(keiichi0NormalUsage == 6 && keiichi0TagUsage == 6,
+          "Keiichi 0 row-0 normal and row-3 tag usage each cover six phases");
+    check(keiichi0UsageShape, "Keiichi 0 state400 usage anchors at frame 13");
+    bool keiichi0TraceShape = true;
+    for (int variant = 0; variant < 6; ++variant) {
+        keiichi0TraceShape &= traceFireFrame(2, 0, variant, false) == 13 &&
+                              traceFireEvents(2, 0, variant, false) == 1 &&
+                              traceOriginEvents(2, 0, variant, false, 'H') == 1 &&
+                              traceOriginEvents(2, 0, variant, false, 'A') == 0 &&
+                              traceOriginEvents(2, 0, variant, false, 'W') == 0 &&
+                              traceFireFrame(2, 0, variant, true) == 13 &&
+                              traceFireEvents(2, 0, variant, true) == 1 &&
+                              traceOriginEvents(2, 0, variant, true, 'H') == 1;
+    }
+    check(keiichi0TraceShape,
+          "Keiichi 0 state400 probes request one hand callback at 13F in each mode");
+    const gameplay::LocomotionDefinition* keiichi0Locomotion = nullptr;
+    for (const auto& entry : gameplay::kLocomotion)
+        if (entry.character == 2 && entry.slot == 0) keiichi0Locomotion = &entry;
+    unsigned int keiichi0Update = 0, keiichi0Vtable = 0;
+    for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i)
+        if (ginkiha::kDispatchIdentity[i].character == 2 &&
+            ginkiha::kDispatchIdentity[i].weapon == 0) {
+            keiichi0Update = ginkiha::kDispatchIdentity[i].update;
+            keiichi0Vtable = ginkiha::kDispatchIdentity[i].vtable;
+        }
+    check(keiichi0Update == 0x0046A190u && keiichi0Vtable == 0x006A4F00u,
+          "Keiichi 0 dispatch update/vtable are 0x46a190/0x6a4f00");
+    check(keiichi0Locomotion && keiichi0Locomotion->handler == keiichi0Update,
+          "Keiichi 0 dispatch matches kLocomotion");
+    check(walkVa(2, 0) == 0x0046A5DAu, "Keiichi 0 walk site is 0x46a5da");
 
     std::printf("ginkiha_tables_test: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

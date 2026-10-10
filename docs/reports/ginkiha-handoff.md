@@ -41,6 +41,7 @@ Phases 2–5 are done; do not mark complete early.
    combo. Done so far (usage order): Rena 0 (pilot), Mion 0, Rika 1, Tomitake 2, Keiichi 2,
    Chie 2, Kasai 1, Takano 0, Irie 1, Mion 2, Rika 2, Satoko 0, Rika 0. Since then,
    Rena 1 and Natsumi 0 landed as limited normal subsets; Akane 2 is pinned/deferred.
+   Keiichi 0 is pinned/deferred on hand-origin launch support; Keiichi 1 is next to recon.
 2. **Recon** (one bash + python): swap/item/actor/params/mags from `reference-data.json`;
    dispatch+usage from `combat-hooks.json`; births from `attack-preview.json` (`swap:slot`);
    walks from `exe-catalog.json`; traces fire events per variant. Delimit bodies:
@@ -90,17 +91,17 @@ Phases 2–5 are done; do not mark complete early.
 Pinned-only (table test, no program yet): Kasai 0 (deferred — scatter needs engine work,
 §7), Shion 0 (pins committed; bodies delimited, extraction not yet delegated).
 
-Remaining usage-order worklist (28 TODO combos, plus the two limited subsets and Akane 2
-pinned/deferred above). Resume at Keiichi 0. Verify body and origin mapping before promising
-programs):
+Remaining usage-order worklist (27 TODO combos, plus two limited subsets and three pinned/
+deferred entries). Keiichi 0 is pinned below; resume at Keiichi 1. Verify body and origin
+mapping before promising programs):
 
 | Combo | Usage pairs | Note |
 |---|---|---|
 | Rena 1 (ch=0 we=1) | 18 | landed as normal schedule subset; runtime-source path (not a reference body); geometry gaps noted below |
 | Akane 2 (ch=13 we=2) | 18 | pinned; deferred: 400/402/450/460 callbacks include explicit-world origin; current MoveRule cannot carry computed XYZ/yaw/pitch |
 | Natsumi 0 (ch=15 we=0) | 18 | landed as normal ground 400 row-0 schedule subset; 402/boost and world-charge paths remain unbound |
-| Keiichi 0 (ch=2 we=0) | 12 | |
-| Keiichi 1 (ch=2 we=1) | 12 | |
+| Keiichi 0 (ch=2 we=0) | 12 | pinned; deferred: state400/402 use hand-origin FUN_00435220, unsupported by Prop1 Launch |
+| Keiichi 1 (ch=2 we=1) | 12 | next feasible after Keiichi 0 hand-origin deferral |
 | Satoko 2 (ch=3 we=2) | 12 | |
 | Tomitake 0 (ch=6 we=0) | 12 | |
 | Tomitake 1 (ch=6 we=1) | 12 | |
@@ -134,7 +135,9 @@ Akane 2 defer note (2026-10-10): pinned handler identity/update, usage and origi
 
 Natsumi 0 scope note (2026-10-10): added `natsumi0` for the **normal ground state400 callback schedule only**: Hide prop bindings 0/1 from tick 14 onward, then Launch item row 0 at tick 14. This matches the controlled normal `fire_attachment(0,0,...)` request and the DAT registration map. The executor rebuilds prop bindings at the start of every tick, but the tick-14 Hide is applied before Launch during that same update, selecting the fallback bone-origin family. The test drives the actual Natsumi+item29 fixture. Phase labels are forced probes; raw callback flag/aim, exact geometry, actual projectile admission and natural phase reachability remain outside the claim. State 402 stays unbound despite an analogous raw helper call because no state402 normalized callback trace is included. The tag/boost five-row randomized requests and world-origin 450/460 charges also remain unbound.
 
-Scoreboard: 13 full programs + 2 schedule subsets (Rena 1, Natsumi 0) + 3 pinned/deferred (Kasai 0, Shion 0, Akane 2) + 28 remaining TODO = 46 roster combos.
+Keiichi 0 scope note (2026-10-10): pinned update/vtable, walk, birth, usage (normal slot 0 and tag slot 3 at 13F across six forced phases), and callback families. `shoot_body_2_0_400/402` call `FUN_00435220` on `Bip01_R_Hand` at frame 13; trace callback rows are normal slot 0/tag slot 3. The MoveRule executor's only Launch uses `bone_point("Bip01_Prop1", item-slot muzzle)`, whereas FUN_00435220 delegates to FUN_00435250 with the looked-up hand transform, so binding Launch as a substitute would claim incorrect origin/geometry. The four body files contain measured movement/turn windows (400 ground, 402 air, first charges 450/460), but no hand-origin operation in the port. Do not claim the callback request as an admitted projectile/spawn. Concrete blocker: no distinct hand-bone spawn op exists; defer tap and continue with Keiichi 1, whose state400 trace is also hand-origin and must be independently body-audited before any partial schedule. Raw 450/460 `FUN_00435000` row mapping is also not established from its body tuple, so charge shot rows remain unbound.
+
+Scoreboard: 13 full programs + 2 schedule subsets (Rena 1, Natsumi 0) + 4 pinned/deferred (Kasai 0, Shion 0, Akane 2, Keiichi 0) + 27 remaining TODO = 46 roster combos.
 
 ## 6. Engine mechanisms you must know (all in `src/gameplay/`)
 

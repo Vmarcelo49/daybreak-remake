@@ -106,6 +106,10 @@ Décimo quarto combo concluído 2026-10-10 01:56 (Natsumi 0: somente state400 no
 Hide das duas props a partir do tick 14 e row 0 em 14F; callback/registration pinados. Sem claims
 sobre alcance natural das fases, flag bruto, admissão/spawn ou geometria. State402 e cargas permanecem
 abertos).
+Keiichi 0 analisado 2026-10-10: identidade/uso/birth/walk e callback hand-origin pinados; adiado,
+pois FUN_00435220 recebe a matriz de Bip01_R_Hand e o port só oferece Launch via Prop1. Não simular
+o callback com origem/row incertos. Keiichi 1 recon confirma mesma limitação no state400; prossiga
+com body analysis e investigue se outras regras do combo justificam um schedule parcial.
 
 1. **Prioridade**: matriz `shot400_usage` (52 normal + 60 tag em state400) ordena quais combos saem do piloto
    primeiro; cada combo entra com teste, nunca com fallback set 0 silencioso.
