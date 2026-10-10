@@ -548,3 +548,49 @@ failures**, recon 6/6, Windows and web cross-builds, live battle smoke RESULT ok
 then Keiichi 0/1's hand origin, then Kasai 0 with the pool audit. The latched-pitch
 mechanism is expected to be needed by dozens of bodies, so keep using it rather than
 re-deriving elevation per launch.
+
+### 2026-10-10 — 3.3 Recovered aim-selection producer replaces the analogue
+
+**Done — the `+0x848` producer is source-backed.** The full trace closed all four
+fields: `+0x300` (aim selection, init 0, written only by the 0x2a cycle),
+`+0x304` (combat lock, closed writer set), `+0x308` (aim-target actor pointer,
+proven by the `+0xaecc` dereference at `FUN_0041f580.c:221`), `+0x30c` (15-tick
+pulse), `+0x848` (180 on cycle iff aim targets match; cleared by direct-set and the
+state-0x1e gate; re-pinned iff match, else decayed). Commands 0x2a/0x2b reach the
+writers from `FUN_0063c2a0`; player 0 is index 0 of the player list.
+
+**Done — the boundary.** `TargetLocks` carries the `+0x300` aim layer (`m_aim[]`,
+`m_aimHold[]`) beside the behaviorally untouched combat-lock layer; gestures move the
+aim with the lock, direct-set clears the shooting hold without touching the aim,
+maintenance re-picks carry the aim, and the per-tick re-pin/decay has no liveness
+test exactly like the original. `Match::aim_holds()` feeds `ShootingContext::aimHold`
+(renamed from `allyHold`); the combat lock, ring, pulse, bot retarget gate and camera
+are identical — their suites pass unmodified, and no production HUD/bot/camera code
+ever read the hold value. Deliberate divergences kept and labelled: no state-0x1e
+gate, no aim re-pick on selection-invalid, enemies-only tap cycle.
+
+**Done — Oyashiro settled.** Threshold `limit1` = 850 (700 Hanyu+1) from DAT
+`parameters[4]` is auto-satisfied (the corpus never increments `+0x83c`, so no
+accumulation gameplay gates the arming; the runtime bridge's seed is an invention).
+Countdown `duration1` = 900 ticks (1800 Hanyu+1 only) from `parameters[5]` — the
+port's 15 s matches 45/46 combos, halves Hanyu+1's 30 s (recorded, needs DAT plumbing
+to fix). Activation stays player-driven (Special press at full gauge) vs the
+original's automatic first-frame arming, and 15 s at 64 Hz runs ~7% long — both stated.
+
+**Done — witnesses.** Aim-layer units (init, player-0 trivial hold, shared/diverged
+2v2 aims, gesture updates, direct-set clear, 300-tick expiry, death persistence,
+rematch reset, 1v1 permanence: 266 lock checks); live 1v1 powered twin with no gesture
+plus Friendship control with admission separated per magazine; live 2v2 shared-aim
+powered vs diverged-aim normal through one scene drain; live death (locks+aims re-pick
+together onto the survivor, holds re-pin) and rematch (reset restores init). No roster
+expansion: still 13 programs + Satoko 2 tap + 5 deferred + 25 TODO.
+
+**Verified:** full rebuilt Linux CTest **65/65 (184.24 s)**, fighter suite 822 checks,
+lock suite 266 checks, recon six tests passed. Windows and web reviewed cross-builds
+passed; neither platform was executed for this slice. Linux native 2-player battle
+smoke (1200 frames) RESULT ok; rematch logic (reset path) covered by unit and
+Match-level tests.
+
+**Next:** Keiichi 0/1's hand origin (`FUN_00435220`), then Kasai 0 with the pool audit.
+The movement-offset yaw and the remaining gaps in §6 of the architecture record are
+the next fidelity items after the roster unblocks.

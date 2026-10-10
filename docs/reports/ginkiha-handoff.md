@@ -263,15 +263,16 @@ ledger for per-path state.
   the tick that computes it and use `aim_stored_pitch()` for every later request. A body
   that re-derives the elevation per launch re-aims salvos whose target moved.
 - **The powered gate** (`shoot_gate_powered()`): `m_hyperActive && m_hypermode == Oyashiro &&
-  ShootingContext::allyHold`, published each tick from `TargetLocks::holding_ally`. That is the
+  ShootingContext::aimHold`, published each tick from `Match::aim_holds()`. That is the
   original's `byte(+0x845) && word(+0x848)`; it is the roster-wide "tag"/"special"/"powered"
   branch. Bind BOTH halves of a branch with `kGatePowered`/`kGateNormal` rather than skipping
   the powered one — the old "no tag flag, bind normal, document the skip" guidance is superseded.
-  **The hold half is an analogue, not parity:** the port derives it from the combat lock and an
-  own-team test, the original from the aim-selection target compared against player 0's
-  (architecture record §2.2). Do not present a powered-branch result as source-faithful until
-  that producer is settled, and note the port arms Oyashiro on a Special press where the
-  original arms it automatically at `limit1 <= charge1`.
+  **The hold half is now source-backed:** `TargetLocks` carries the `+0x300` aim layer beside
+  the untouched combat-lock layer, and the per-tick re-pin/decay implements the recovered
+  same-target-as-player-0 comparison (architecture record §2.2). Aim selection, combat lock
+  and camera selection are three distinct states — never substitute one for another. The port
+  still arms Oyashiro on a Special press where the original arms it automatically, keeps no
+  state-0x1e gate, and halves Hanyu+1's 30 s window to 15 s; those deltas are recorded, not hidden.
 - **Update order**: input/fire → `execute_move_program` (rules see PRE-increment elapsed) →
   `advance_animation_phase` (increments). Consequence for tests: a `while elapsed<N` loop
   exits right after the tick that SET N, whose rule pass still saw N−1 — add ONE more tick

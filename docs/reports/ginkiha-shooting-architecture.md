@@ -70,44 +70,49 @@ decompiled EXE agrees in the other direction: `param_1[0x212]` with `int* param_
 is also byte `0x848` (`FUN_0043ffc0.c:1909`). The plan was right; the handoff
 transcribed an array index as a byte offset.
 
-### 2.2 The ally hold: same word, NOT the same producer (corrected 2026-10-10)
+### 2.2 The aim hold now uses the recovered producer (implemented 2026-10-10)
 
-**Correction:** this section previously claimed the mapping was exact. It is not, and
-the retraction matters more than the original claim.
+The previous correction (analogue, not parity) is superseded by the implementation
+below — but the history matters, so it stays summarized: `target_lock.h` modelled
+`+0x848` from the combat lock (`+0x304`) and an own-team test, while the original
+re-pins it from the aim-selection target (`+0x308`, a player **pointer** proven by
+`FUN_0041f580.c:221`) compared against player 0's. Naming both values `+0x848` did not
+make the producers equivalent.
 
-The word is right — `target_lock.h` models `+0x848` as the 180-tick (0xb4) hold with
-the correct *maintenance shape* (re-pin per tick vs countdown, `FUN_0041f580:242-248`).
-The **producer is different**:
+What the full trace established (all in `research/decompiled/`):
 
-*Original* (`FUN_0041f580:244` and `FUN_00421e30:26-31`): `+0x308` holds the
-aim-selection target (`+0x300`)'s actor **pointer** — decisive evidence is
-`FUN_0041f580.c:221`, which reads `*(int *)(*(int *)(param_1 + 0x308) + 0xaecc)`, i.e.
-it dereferences `+0x308` and indexes a player struct. The hold is re-pinned while
-**this fighter's aim target is the same actor as player 0's aim target**. For fighter 0
-that comparison is self-referential, so under the original's predicate player 0's
-fighter holds it continuously.
+* `+0x300` (aim selection): init 0 for everyone (`FUN_00421670`); written ONLY by the
+  cycle command (0x2a → `FUN_00421e30`). Read as same-target checks in several handlers.
+* `+0x304` (combat lock): cleared by maintenance/cycle; set ONLY by the direct-set
+  command with a valid index (0x2b → `FUN_00421f30`, which also clears the hold) and by
+  the state-0x1e gate (onto player 0, hold cleared). Closed writer set.
+* `+0x308` (aim target actor): mirrors `+0x38`, written by cycle/direct-set/init.
+* `+0x30c` (pulse): 15 on both writers, decremented by `FUN_004201a0`.
+* `+0x848` (hold): 180 on cycle iff aim targets match; cleared by direct-set and the
+  state gate; re-pinned by maintenance iff match, else decayed.
+* Commands 0x2a/0x2b reach the writers from `FUN_0063c2a0`; player 0 is index 0 of the
+  `FUN_00658a10` player list (`FUN_0064f010` is its vector size).
+* At init every aim is player 0, so every hold pins on the first tick. In 1v1 there is
+  nowhere else to aim, so both holds stay pinned — the powered branch is available by
+  default, and the old "team-play only" claim is retracted with prejudice.
 
-*Port* (`target_lock.h:step`): the hold is pinned when the **combat lock** (`+0x304`)
-names an ally of the lock's owner.
+What the port now carries (`target_lock.h`, `match.h/cpp`, `fighter.h`):
 
-Two independent differences — a different field and a different comparison. Naming both
-values `+0x848` does not make the producers equivalent, so:
-
-- `shoot_gate_powered()` is an **analogue**, not a recovered predicate. Its tests prove
-  the plumbing (the context reaches the rule and selects the row) and that the port's
-  own producer arms it in a live match; they do not prove parity.
-- The earlier claim that powered branches are impossible in 1v1 follows only from the
-  port's predicate. Under the original's, player 0's fighter holds it in any match
-  including 1v1. **That claim is retracted** and the 1v1 availability is an open item.
-- `target_lock.h`'s header describes the comparison as "shares player 0's **team**".
-  That reading is inconsistent with the pointer dereference above and should be
-  revisited; its blast radius is `Match::lock_holds_ally` (HUD/ring reads,
-  `lock_switch_camera_test`, `target_lock_test`) plus this shooting gate, so it needs
-  its own slice rather than a silent change.
-
-The work is still worth keeping: it is one predicate with both halves wired and
-witnessed, versus a documented skip on 514 bodies. It is a hypothesis to verify, not a
-recovered rule.
+* The combat-lock layer (`target`, gestures, ring, pulse) is byte-for-byte untouched in
+  behavior: the tap/hold UX, both lock suites (204 + 277 checks), the bot retarget gate
+  and the camera are exactly as they were. The "shares player 0's team" comment is
+  corrected to say PORT RULE, since that predicate now belongs to the UX layer only.
+* A parallel aim layer (`m_aim[]` + `m_aimHold[]`, init 0/0 on reset/rematch): gestures
+  move the aim with the lock, direct-set clears the shooting hold without touching the
+  aim, maintenance re-picks carry the aim, and the per-tick re-pin/decay uses the
+  recovered same-target comparison with no liveness test (matching the original's
+  maintenance, which has none either).
+* `Match::aim_holds()` feeds `ShootingContext::aimHold`; the old `holding_ally` feed is
+  gone. No production HUD, bot or camera code ever read the hold value — verified by
+  grep — so the only behavioral change is the one the witnesses assert.
+* Deliberate divergences, kept and labelled: the port has no state-0x1e gate (no such
+  state exists here), no aim re-pick on selection-invalid (the port's validity predicate
+  differs), and the tap cycles enemies-only where the original's cycle takes any index.
 
 ### 2.3 `byte +0x845` is "the Oyashiro special is armed", not a generic hypermode bit
 
@@ -127,20 +132,34 @@ Oyashiro 1 / Kakera 2 — the value order matches the runtime mapping in
 `slot7_native_world.inc.hpp:95-98`). The port's predicate combines that with the
 §2.2 hold:
 
-> **powered ⇔ `m_hyperActive && m_hypermode == Oyashiro && ShootingContext::allyHold`**
+> **powered ⇔ `m_hyperActive && m_hypermode == Oyashiro && ShootingContext::aimHold`**
 
-Two further divergences in this half, recorded so they are not mistaken for parity:
+Settled from evidence (2026-10-10) — threshold, countdown, and the two deltas:
 
-* The original *arms* `+0x845` automatically once `limit1 <= charge1`; the port
-  activates hypermode on a Special press at a full gauge. The port therefore cannot
-  reach the powered branch until the player presses Special, and the arming threshold
-  is not modelled.
-* The original's `+0x83c` countdown is in ticks (`duration1` from the DAT); the port
-  runs `m_hyperTimer` in seconds (15 s nominal). The gate's *lifetime* differs.
+* **Threshold: automatically satisfied, so the port models none.** `limit1` is
+  `parameters[4]` = 850 roster-wide (700 for Hanyu+1 only), and `+0x83c` is never
+  incremented anywhere in the corpus — its only writers are the arming store
+  (`= duration1`) and the per-tick decrement. The handler-path arming condition
+  therefore cannot fire from a cold start; the enabling write is not in the available
+  corpus (the runtime bridge seeds `charge1 := limit1` on mode entry to make it fire,
+  which is an invention, not evidence). What IS established is that no accumulation
+  gameplay gates the arming — once enabled, the first qualifying frame arms it.
+* **Countdown: DAT-backed, with one outlier.** `duration1` is `parameters[5]` = 900
+  ticks for 45/46 combos (Hanyu+1: 1800). 900 ticks at 60 Hz is 15 s, which is exactly
+  the port's nominal Oyashiro duration — so the gate's lifetime matches the evidence
+  for the whole roster except Hanyu+1, whose 30 s window the port halves. That outlier
+  is recorded, not implemented: per-character durations need DAT `parameters[]`
+  plumbing the port deliberately skips (handoff §7), and it changes no mechanism.
+* **Activation deltas (deliberate, kept):** the original arms on the first qualifying
+  frame with no player action; the port activates hypermode on a Special press at a
+  full gauge. The port therefore cannot reach the powered branch until the player
+  presses Special. Likewise the port counts its 15 s in wall time at 64 Hz (960 ticks),
+  ~7% longer than the original's 900 ticks — immaterial for a non-bit-matching port,
+  but stated so nobody "fixes" it by accident.
 
 So: a fighter running Friendship or Kakera never takes a powered branch (that much is
-firm, it is the mode byte). Whether any given match can reach one at all depends on
-§2.2's unresolved predicate, not on the 1v1 fighter count.
+firm, it is the mode byte). Reachability otherwise is the conjunction of the player's
+activation and the §2.2 aim predicate — both now witnessed live in 1v1 and 2v2.
 
 ### 2.4 The usage catalog's "tag" variant is this branch, not a separate mechanic
 
@@ -254,8 +273,12 @@ combo; nothing is deferred to a "combat phase" that no one owns.
    carrying `kGatePowered`, `kGateNormal`, `kGateCounter`, `kGateCounterMod` and
    `kGateCounterBelow`. A gated `Hold` is a bounded freeze whose counter rule is written
    before it, which is how the original's `return`-before-clock-advance is reproduced.
-2. `Fighter` shooting context + `shoot_gate_powered()`, published by `Match` from
-   `TargetLocks::holding_ally` — an analogue per §2.2, labelled as one in code and tests.
+2. The recovered aim-selection boundary: `TargetLocks` carries the `+0x300` aim layer
+   (`m_aim[]`, init 0, moved by gestures and maintenance re-picks) beside the untouched
+   combat-lock layer, and the per-tick re-pin/decay implements the recovered
+   same-target-as-player-0 comparison with no liveness test. `Match::aim_holds()` feeds
+   `ShootingContext::aimHold`; the combat lock, ring, pulse, bot retarget gate and
+   camera are behaviorally identical to before (their suites pass unmodified).
 3. `kRikaRules` 450/460 repaired to the measured counter/freeze semantics (§2.5): the
    frozen-interval salvo count, the ±50/60/70 geometry, both branch pairs, and the latched
    pitch (`MoveOp::CapturePitch` + `ShotAimKind::StoredPitch`, which 106 bodies need).
@@ -265,13 +288,18 @@ combo; nothing is deferred to a "combat phase" that no one owns.
 5. Witness tests: whole-frozen-interval request counts for Rika 1 — ground normal and
    powered (rows 3/6 vs 4/7, three pairs each), ground pitch latch, and air 460 normal
    and powered (same three-pair split on the air copy) — with the geometry pinned; the
-   Satoko 2 twin worlds and both gate halves from the real item-38 fixture; and a
-   **live 4-fighter match** where an ally lock produced by `Match`'s own maintenance
-   switches the fired row from 0 to 1. The live witness counts the SPAWN update only, so
-   a single surviving projectile cannot satisfy a two-entry assertion. None of this is a
-   full-fidelity claim: the fired yaw still omits the battle movement offset, the air
-   copy still omits the source's phase0/tick0 velocity and gravity clears, and the gate
-   producer is the §2.2 analogue.
+   Satoko 2 twin worlds and both gate halves from the real item-38 fixture; aim-layer
+   unit witnesses (init, player-0 trivial hold, shared/diverged aims, gesture updates,
+   direct-set clear, 300-tick expiry, death persistence, rematch reset, 1v1 permanence);
+   a **live 1v1** where the powered twin fires with no gesture at all (plus a Friendship
+   control firing the normal twin, with admission separated per magazine); a **live 2v2**
+   where the shared-aim fighter fires powered and the diverged fighter fires normal;
+   and a **live death/rematch** where killing the shared target re-picks locks and aims
+   together and a reset restores init. The live witnesses count the SPAWN update only,
+   so a single surviving projectile cannot satisfy a two-entry assertion. None of this
+   is a full-fidelity claim: the fired yaw still omits the battle movement offset, the
+   air copy still omits the source's phase0/tick0 velocity and gravity clears, Oyashiro
+   activation stays player-driven, and Hanyu+1's 30 s window is halved to 15 s.
 6. The unused typed vocabulary (WorldPosition, LegacyDegrees, Facing, Direction and
    their fields) removed in the pre-commit diff review.
 
@@ -282,12 +310,11 @@ included in that validation.
 
 ## 6. Still open (recorded, not hidden)
 
-* The `+0x848` producer: the port derives the hold from the combat lock and an own-team
-  test; the original derives it from the aim-selection target and a same-target-as-
-  player-0 test. Decide whether to model `+0x300` in the port or keep the analogue.
-  Until then no powered-branch result is a parity claim.
-* The Oyashiro arming condition (`limit1 <= charge1`, automatic) vs the port's
-  Special-press activation, and the tick-based vs second-based `+0x83c` countdown.
+* The port has no state-0x1e gate (no such state exists here) and no aim re-pick on
+  selection-invalid — both are original behaviors with no port counterpart, kept as
+  explicit gaps rather than invented logic.
+* Hanyu+1's 30 s Oyashiro window (DAT `parameters[5]` = 1800) vs the port's uniform
+  15 s — needs DAT `parameters[]` plumbing the port deliberately skips.
 * The battle movement offset (`source_float(0x19)`) feeding the world yaw: every
   world request currently aims on heading alone, while the bodies add the movement
   offset to the yaw.

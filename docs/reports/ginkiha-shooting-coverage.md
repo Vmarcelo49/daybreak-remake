@@ -73,14 +73,14 @@ pending. The cells above are still pending per-path audit; no combo has been pro
 Two more shared capabilities landed with this snapshot:
 
 - **The powered gate.** `byte(+0x845) && word(+0x848)` is now one port predicate
-  (`Fighter::shoot_gate_powered()`): the Oyashiro special armed byte plus an ally hold
-  the scene publishes from `TargetLocks`. Both branches of a body can now be bound, and
-  the port no longer has to skip every tag/powered secondary. 514 of the 841 shoot
-  bodies read this gate. **The hold's producer is an analogue, not parity** — the port
-  pins it from the combat lock and an own-team test, while the original pins it from the
-  aim-selection target compared against player 0's (`FUN_0041f580.c:221` shows +0x308 is
-  a player pointer). A Friendship/Kakera fighter never takes it; whether any other
-  fighter can reach it is unresolved — see the architecture record §2.2.
+  (`Fighter::shoot_gate_powered()`): the Oyashiro special armed byte plus the aim hold
+  the scene publishes from `Match::aim_holds()`. Both branches of a body can now be
+  bound, and the port no longer has to skip every tag/powered secondary. 514 of the 841
+  shoot bodies read this gate. **The hold's producer is source-backed:** the port carries
+  the `+0x300` aim layer and re-pins on the recovered same-target-as-player-0 comparison
+  (see the architecture record §2.2). A Friendship/Kakera fighter never takes it; 1v1
+  fighters hold by default and 2v2 holders are the ones sharing player 0's aim — both
+  demonstrated live.
 - **Per-move counters and gated freezes.** `MoveOp::Counter`/`CounterSet` plus
   `kGateCounter*` reproduce counter-gated salvos and clock freezes. Rika 1's 450/460 was
   the first repair: its tick-30 salvo fires three times over a 30-update frozen interval
