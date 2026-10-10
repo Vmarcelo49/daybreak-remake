@@ -627,6 +627,60 @@ int main() {
     if (rika22) check(rika2Update == rika22->handler, "bundle dispatch matches kLocomotion (Rika 2)");
     check(walkVa(4, 2) == 0x0049DD26u, "Rika 2 walk site is 0x49dd26 (Fase 2 oracle)");
 
+    // 17. Twelfth combo (Kasai 0 = character 12, weapon 0, swap code 37): pins the bundle
+    //    rows Fase 2's Kasai-0 program will consume. Single anchor (frame 20, all phases)
+    //    across slots 0 (normal), 1 (tag) and 2 (both) — 6 pairs each. The traces fire a
+    //    mixed salvo at frame 20: one row-2 plus three row-0 events (4 events total).
+    //    Two births share speed 28.0 (slots 0 and 10, both turnless).
+    const ginkiha::BirthProfile* kasai0 = findBirth(12, 0, 0);
+    check(kasai0 != nullptr, "Kasai 0/0 birth profile exists");
+    if (kasai0) {
+        check(kasai0->swap_code == 37, "Kasai 0 maps to swap code 37");
+        check(kasai0->speed == 28.0f, "Kasai 0/0 birth speed 28.0");
+        check(kasai0->turn_birth == 0.0f && kasai0->turn_next == 0.0f,
+              "Kasai 0/0 birth has no turn data");
+    }
+    const ginkiha::BirthProfile* kasai010 = findBirth(12, 0, 10);
+    check(kasai010 != nullptr, "Kasai 0/10 birth profile exists");
+    if (kasai010) check(kasai010->speed == 28.0f, "Kasai 0/10 birth speed 28.0");
+    int kasai0Pairs = 0;
+    bool kasai0Shape = true;
+    for (int i = 0; i < ginkiha::kShotFireRecordCount; ++i) {
+        const ginkiha::ShotFireRecord& entry = ginkiha::kShotFireRecord[i];
+        if (entry.character == 12 && entry.weapon == 0 && entry.slot == 0 && !entry.tag) {
+            ++kasai0Pairs;
+            if (entry.phase < 0 || entry.phase > 5 || entry.frame != 20) kasai0Shape = false;
+        }
+    }
+    check(kasai0Pairs == 6, "Kasai 0/0 usage holds 6 fire records");
+    check(kasai0Shape, "Kasai 0/0 usage shape is phases 0..5 at frame 20");
+    check(traceFireFrame(12, 0, 0, false) == 20, "Kasai 0/0 trace opens at 20F");
+    // Scatter volley: 21 fire events at frame 20 per normal variant (1x row 2 + 20x
+    // row 0 with shared aim), 31 per tag variant (1x row 2 + 30x row 1). The count,
+    // not just the frame, is the pinned fact — an earlier pin read only the first
+    // four events of a truncated dump and rightly failed.
+    bool kasaiVolley = true;
+    for (int v = 0; v < 6; ++v) {
+        if (traceFireFrame(12, 0, v, false) != 20) kasaiVolley = false;
+        if (traceFireEvents(12, 0, v, false) != 21) kasaiVolley = false;
+        if (traceFireFrame(12, 0, v, true) != 20) kasaiVolley = false;
+        if (traceFireEvents(12, 0, v, true) != 31) kasaiVolley = false;
+    }
+    check(kasaiVolley, "Kasai 0/0 volley is 21 normal / 31 tag events at 20F");
+    unsigned int kasai0Update = 0;
+    for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
+        if (ginkiha::kDispatchIdentity[i].character == 12 &&
+            ginkiha::kDispatchIdentity[i].weapon == 0)
+            kasai0Update = ginkiha::kDispatchIdentity[i].update;
+    }
+    check(kasai0Update == 0x005B0990u, "Kasai 0 dispatch update is 0x5b0990");
+    const gameplay::LocomotionDefinition* kasai00 = nullptr;
+    for (const gameplay::LocomotionDefinition& entry : gameplay::kLocomotion) {
+        if (entry.character == 12 && entry.slot == 0) kasai00 = &entry;
+    }
+    if (kasai00) check(kasai0Update == kasai00->handler, "bundle dispatch matches kLocomotion (Kasai 0)");
+    check(walkVa(12, 0) == 0x005B0E29u, "Kasai 0 walk site is 0x5b0e29 (Fase 2 oracle)");
+
     // 6. Independent-recovery agreement for the pilot's ground tap: move_behavior.h's
     //    nata program launches item row 0 at tick 12 with citations into FUN_0044xxxx;
     //    the bundle's shot400 usage says the same slot fires at frame 12 in every phase.

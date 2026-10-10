@@ -107,6 +107,8 @@ TestCombo g_chieCombo;
 TestCombo g_kasaiCombo;
 TestCombo g_takanoCombo;
 TestCombo g_irieCombo;
+TestCombo g_mion2Combo;
+TestCombo g_rika2Combo;
 
 std::filesystem::path findInstall(const char* executable) {
     const int itemId = gameplay::kWeaponIds[0][0];
@@ -2107,6 +2109,10 @@ void test_rika_repeating_tap() {
     check_bool("Rika charge T30 salvo fires twice", true, first.armed && second.armed);
     check_int("Rika T30 first row is 3", 3, first.bulletRow);
     check_int("Rika T30 second row is 6", 6, second.bulletRow);
+    // No over-fire: the tick-30 Hold freezes the clock with the Launch still
+    // matching, but the salvo fired once — the queue holds nothing more.
+    check_bool("Rika T30 salvo fires exactly twice", false,
+               g.take_pending_shot().armed);
 }
 
 void test_tomitake_twin_tap() {
@@ -2239,6 +2245,147 @@ void test_chie_scratch_burst() {
     shot = g.take_pending_shot();
     check_bool("Chie charge launches at tick 22", true, shot.armed);
     check_int("Chie charge selects item row two", 2, shot.bulletRow);
+}
+
+void test_rika2_single_tick() {
+    section("24. Rika 2 single tick + triple fan (bodies shoot_body_4_2_*)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_rika2Combo.load(install, 4, 2))
+        return skip_case("Rika 2 combo");
+    // Bundle evidence: Rika 2 (handler 0x49d890) fires item row 0 once at tick 15 in
+    // the ground tap (same-tick Hold 30 freezes the clock after), and a fan of three
+    // row-4 shots at tick 10 in the first ground charge (tag branches need an aim/tag
+    // flag this model has no field for — skipped). Her program is kRika2Rules; the
+    // second charge stays provisional.
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rika2Combo.bind(f);
+    settle(f);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Rika2 tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    check_int("Rika2 tap binds move 400", 400, f.shot_move_id());
+    for (int i = 0; i < 15; ++i) tick(f, in);
+    gameplay::PendingShot shot = f.take_pending_shot();
+    check_bool("Rika2 tap launches at tick 15", true, shot.armed);
+    check_int("Rika2 tap selects item row zero", 0, shot.bulletRow);
+    // First charge: hold past the yellow threshold (level-1 chargeMax 30).
+    Fighter g;
+    g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rika2Combo.bind(g);
+    settle(g);
+    const float rika2Yellow = static_cast<float>(
+        g_rika2Combo.weapon.magazineForChargeLevel(1).chargeMax) /
+        gameplay::FixedStep::tickRate;
+    float rika2Held = 0.0f;
+    int rika2YellowFrames = 0;
+    while (rika2Held < rika2Yellow && rika2YellowFrames < 10000) {
+        rika2Held += kStep;
+        ++rika2YellowFrames;
+    }
+    in.set(fnd::input::Action::Shoot, true);
+    for (int i = 0; i < rika2YellowFrames; ++i) tick(g, in);
+    check_int("Rika2 hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
+              static_cast<int>(g.charge_tier()));
+    in.set(fnd::input::Action::Shoot, false);
+    tick(g, in);
+    check_int("Rika2 charge enters ShootB", static_cast<int>(FighterState::ShootB),
+              static_cast<int>(g.state()));
+    check_int("Rika2 charge binds move 450", 450, g.shot_move_id());
+    // Drive by elapsed: phase changes reset the counter mid-move, so a fixed tick
+    // count would miss the window (Mion-2 precedent). One extra tick after the loop:
+    // the loop exits right after the tick that SET elapsed, whose rule pass saw less.
+    int rika2Guard = 0;
+    while (g.phase_elapsed() < 10 && rika2Guard++ < 120) tick(g, in);
+    check_int("Rika2 charge reaches tick 10", 10, g.phase_elapsed());
+    tick(g, in);
+    int fanArmed = 0;
+    bool fanRows = true;
+    for (int i = 0; i < 3; ++i) {
+        shot = g.take_pending_shot();
+        if (shot.armed) ++fanArmed;
+        if (shot.bulletRow != 4) fanRows = false;
+    }
+    check_int("Rika2 charge T10 fan fires three", 3, fanArmed);
+    check_bool("Rika2 fan rows are all 4", true, fanRows);
+    check_bool("Rika2 fan fires exactly three", false,
+               g.take_pending_shot().armed);
+}
+
+void test_mion2_single_shot() {
+    section("23. Mion 2 single tap + burst charge (bodies shoot_body_1_2_*)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_mion2Combo.load(install, 1, 2))
+        return skip_case("Mion 2 combo");
+    // Bundle evidence: Mion 2 (handler 0x44fa10) fires ONE row-0 shot at entry-tick 10
+    // in the ground tap (the clock jumps to 18 in the same pass — ticks 11-17 never
+    // execute, so the frame-18 anchor is the jump destination of that same single
+    // shot, not a second one). The first ground charge is a 10-shot burst rows 2 at
+    // ticks 15..60 step 5 (per-shot ammo gates unmappable — static schedule here).
+    // Her program is kMion2Rules; the second charge stays provisional.
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_mion2Combo.bind(f);
+    settle(f);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Mion2 tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    check_int("Mion2 tap binds move 400", 400, f.shot_move_id());
+    for (int i = 0; i < 10; ++i) tick(f, in);
+    gameplay::PendingShot shot = f.take_pending_shot();
+    check_bool("Mion2 tap launches at tick 10", true, shot.armed);
+    check_int("Mion2 tap selects item row zero", 0, shot.bulletRow);
+    // Discriminating: no second shot at tick 18 in the same activation — the anchor
+    // there is the jump destination, and a two-shot reading would fire again here.
+    for (int i = 0; i < 8; ++i) tick(f, in);
+    check_bool("Mion2 tap fires once (silent at tick 18)", false,
+               f.take_pending_shot().armed);
+    // First charge: hold past the yellow threshold (level-1 chargeMax 30).
+    Fighter g;
+    g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_mion2Combo.bind(g);
+    settle(g);
+    const float mion2Yellow = static_cast<float>(
+        g_mion2Combo.weapon.magazineForChargeLevel(1).chargeMax) /
+        gameplay::FixedStep::tickRate;
+    float mion2Held = 0.0f;
+    int mion2YellowFrames = 0;
+    while (mion2Held < mion2Yellow && mion2YellowFrames < 10000) {
+        mion2Held += kStep;
+        ++mion2YellowFrames;
+    }
+    in.set(fnd::input::Action::Shoot, true);
+    for (int i = 0; i < mion2YellowFrames; ++i) tick(g, in);
+    check_int("Mion2 hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
+              static_cast<int>(g.charge_tier()));
+    in.set(fnd::input::Action::Shoot, false);
+    tick(g, in);
+    check_int("Mion2 charge enters ShootB", static_cast<int>(FighterState::ShootB),
+              static_cast<int>(g.state()));
+    check_int("Mion2 charge binds move 450", 450, g.shot_move_id());
+    for (int i = 0; i < 15; ++i) tick(g, in);
+    shot = g.take_pending_shot();
+    check_bool("Mion2 charge launches at tick 15", true, shot.armed);
+    check_int("Mion2 charge selects item row two", 2, shot.bulletRow);
+    // Second burst shot: drive by elapsed (phase changes reset the counter, so a
+    // fixed tick count would miss the window). One extra tick after the loop: the
+    // loop exits right after the tick that SET elapsed to 20, whose rule pass still
+    // saw 19 — the tick-20 rules only run on the next update (Keiichi precedent).
+    int guard = 0;
+    while (g.phase_elapsed() < 20 && guard++ < 120) tick(g, in);
+    check_int("Mion2 charge reaches tick 20", 20, g.phase_elapsed());
+    tick(g, in);
+    shot = g.take_pending_shot();
+    check_bool("Mion2 charge launches again at tick 20", true, shot.armed);
+    check_int("Mion2 repeat selects item row two", 2, shot.bulletRow);
 }
 
 void test_irie_twin_tap() {
@@ -2695,6 +2842,8 @@ int main(int argc, char** argv) {
     test_kasai_twin_burst();
     test_takano_triple_tap();
     test_irie_twin_tap();
+    test_mion2_single_shot();
+    test_rika2_single_tick();
     test_ammo();
     test_hypermode();
     test_ko();

@@ -482,6 +482,82 @@ inline constexpr MoveRule kIrieRules[] = {
     {460,-1,0,16,MoveOp::Hide,0.f},
     {460,-1,17,17,MoveOp::Launch,4.f,0.f,40.f},
 };
+// Rika weapon 2 (handler 0x49d890) — shot rules recovered from the reference bodies
+// shoot_body_4_2_{400,402,450,460} (bundle reference/source). Single-tick tap (row 0
+// at tick 15, both ground and air) with a same-tick Hold 30; triple row-4 fans at
+// tick 10 in both charges, also with same-tick Hold 30. Tag branches (extra shots,
+// row 6, asymmetric counts) have no flag field — skipped with the usual precedent.
+// The launch-latch in the executor keeps each salvo to one firing per tick.
+inline constexpr MoveRule kRika2Rules[] = {
+    // 400 ground tap: 15 deg turn ticks 0-14, bleed 0.5/tick phase 0, row 0 at 15.
+    {400,-1,0,14,MoveOp::Turn,15.f},
+    {400,0,0,9999,MoveOp::Decelerate,.5f},
+    {400,-1,15,15,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,15,15,MoveOp::Hold,30.f},
+    // 402 air tap: 20 deg turn ticks 0-14, row 0 at 15. No bleed (gravity tail).
+    {402,-1,0,14,MoveOp::Turn,20.f},
+    {402,-1,15,15,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,15,15,MoveOp::Hold,30.f},
+    // 450 ground charge1: 18 deg turn through tick 9, bleed 1.5/tick, fan row 4 x3
+    // at tick 10.
+    {450,-1,0,9,MoveOp::Turn,18.f},
+    {450,-1,0,9999,MoveOp::Decelerate,1.5f},
+    {450,-1,10,10,MoveOp::Launch,4.f,0.f,40.f},
+    {450,-1,10,10,MoveOp::Launch,4.f,0.f,40.f},
+    {450,-1,10,10,MoveOp::Launch,4.f,0.f,40.f},
+    {450,-1,10,10,MoveOp::Hold,30.f},
+    // 460 air charge1: same fan (no bleed — one-shot halve + gravity skipped).
+    {460,-1,0,9,MoveOp::Turn,18.f},
+    {460,-1,10,10,MoveOp::Launch,4.f,0.f,40.f},
+    {460,-1,10,10,MoveOp::Launch,4.f,0.f,40.f},
+    {460,-1,10,10,MoveOp::Launch,4.f,0.f,40.f},
+    {460,-1,10,10,MoveOp::Hold,30.f},
+};
+inline constexpr MoveRule kMion2Rules[] = {
+    // Mion weapon 2 (handler 0x44fa10): the ground tap fires ONE row-0 shot at
+    // entry-tick 10 through a clock jump to 18 (ticks 11-17 never execute) — the
+    // frame-18 usage anchor is that same single shot, so no second rule. Charges are
+    // 10-shot bursts rows 2 at ticks 15..60 step 5; phase-1 turn, gravity tails and
+    // one-shot halves have no MoveRule op and are skipped.
+    // 400 ground tap: overlapping turns 15 deg (0-9) + 10 deg (0-18), bleed 1.5/tick
+    // through tick 17, single launch row 0 at entry-tick 10, stall 10 at tick 23.
+    {400,-1,0,9,MoveOp::Turn,15.f},
+    {400,-1,0,18,MoveOp::Turn,10.f},
+    {400,-1,0,17,MoveOp::Decelerate,1.5f},
+    {400,-1,10,10,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,23,23,MoveOp::Hold,10.f},
+    // 402 air tap: turns 15 deg (0-13) + 10 deg (0-18), single launch row 0 at 18,
+    // stall 10 at 23. No bleed (one-shot halve + gravity tail skipped).
+    {402,-1,0,13,MoveOp::Turn,15.f},
+    {402,-1,0,18,MoveOp::Turn,10.f},
+    {402,-1,18,18,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,23,23,MoveOp::Hold,10.f},
+    // 450 ground charge1: 20 deg turn phase 0, bleed 1.5/tick, burst rows 2 at 15..60.
+    {450,0,0,9999,MoveOp::Turn,20.f},
+    {450,-1,0,9999,MoveOp::Decelerate,1.5f},
+    {450,-1,15,15,MoveOp::Launch,2.f,0.f,45.f},
+    {450,-1,20,20,MoveOp::Launch,2.f,0.f,45.f},
+    {450,-1,25,25,MoveOp::Launch,2.f,0.f,45.f},
+    {450,-1,30,30,MoveOp::Launch,2.f,0.f,45.f},
+    {450,-1,35,35,MoveOp::Launch,2.f,0.f,45.f},
+    {450,-1,40,40,MoveOp::Launch,2.f,0.f,45.f},
+    {450,-1,45,45,MoveOp::Launch,2.f,0.f,45.f},
+    {450,-1,50,50,MoveOp::Launch,2.f,0.f,45.f},
+    {450,-1,55,55,MoveOp::Launch,2.f,0.f,45.f},
+    {450,-1,60,60,MoveOp::Launch,2.f,0.f,45.f},
+    // 460 air charge1: 20 deg turn phase 0, burst rows 2 at 15..60 (no bleed).
+    {460,0,0,9999,MoveOp::Turn,20.f},
+    {460,-1,15,15,MoveOp::Launch,2.f,0.f,45.f},
+    {460,-1,20,20,MoveOp::Launch,2.f,0.f,45.f},
+    {460,-1,25,25,MoveOp::Launch,2.f,0.f,45.f},
+    {460,-1,30,30,MoveOp::Launch,2.f,0.f,45.f},
+    {460,-1,35,35,MoveOp::Launch,2.f,0.f,45.f},
+    {460,-1,40,40,MoveOp::Launch,2.f,0.f,45.f},
+    {460,-1,45,45,MoveOp::Launch,2.f,0.f,45.f},
+    {460,-1,50,50,MoveOp::Launch,2.f,0.f,45.f},
+    {460,-1,55,55,MoveOp::Launch,2.f,0.f,45.f},
+    {460,-1,60,60,MoveOp::Launch,2.f,0.f,45.f},
+};
 inline const MoveProgram* move_program(const CharacterMoves* moves) {
     const auto* binding = locomotion(moves);
     if (!binding) return nullptr;
@@ -525,10 +601,18 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     // Irie 1: same unbound second charge (no 360/370 body for ch10 in scope).
     static constexpr MoveProgram irie = {kIrieRules, std::size(kIrieRules),
                                         {{400,402},{450,460},{-1,-1}}};
+    // Mion 2: same unbound second charge (bodies 401-417 exist but unscoped).
+    static constexpr MoveProgram mion2 = {kMion2Rules, std::size(kMion2Rules),
+                                          {{400,402},{450,460},{-1,-1}}};
+    // Rika 2: same unbound second charge (bodies 451-453/461 exist but unscoped).
+    static constexpr MoveProgram rika2 = {kRika2Rules, std::size(kRika2Rules),
+                                          {{400,402},{450,460},{-1,-1}}};
     if (binding->handler == 0x566a40) return &chie;
     if (binding->handler == 0x5b9680) return &kasai;
-    if (binding->handler == 0x57f600) return &irie;
     if (binding->handler == 0x531ce0) return &takano;
+    if (binding->handler == 0x57f600) return &irie;
+    if (binding->handler == 0x44fa10) return &mion2;
+    if (binding->handler == 0x49d890) return &rika2;
     return nullptr;
 }
 } // namespace gameplay
