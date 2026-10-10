@@ -108,8 +108,14 @@ sobre alcance natural das fases, flag bruto, admissão/spawn ou geometria. State
 abertos).
 Keiichi 0 analisado 2026-10-10: identidade/uso/birth/walk e callback hand-origin pinados; adiado,
 pois FUN_00435220 recebe a matriz de Bip01_R_Hand e o port só oferece Launch via Prop1. Não simular
-o callback com origem/row incertos. Keiichi 1 recon confirma mesma limitação no state400; prossiga
-com body analysis e investigue se outras regras do combo justificam um schedule parcial.
+o callback com origem/row incertos. Keiichi 1 audit concluído 2026-10-10 10:40 (São Paulo): actor01 + item018, swap8,
+handler/vtable 0x473610/0x6a4f28, walk0x473a5a, birth30/turn0.1 pinados. State400:
+normal slot0/tag slot1, uma requisição hand-origin em 13F por fase forçada. Corpos400/402
+usam Bip01_R_Hand; 450/460 fazem duas requisições world-origin em 20F (operandos brutos
+9 + 2/3), com XYZ/yaw/pitch calculados e alturas +40/+20. Nenhum subconjunto de firing
+cabe no Launch atual; regras de movimento isoladas não justificam binding que omita os
+tiros. Mantido sem MoveProgram. Gate: rebuild Linux + CTest 65/65; tables387/fighter637,
+zero falhas. Próximo: Satoko 2, com recon e body audit antes de portar.
 
 1. **Prioridade**: matriz `shot400_usage` (52 normal + 60 tag em state400) ordena quais combos saem do piloto
    primeiro; cada combo entra com teste, nunca com fallback set 0 silencioso.

@@ -41,7 +41,7 @@ Phases 2–5 are done; do not mark complete early.
    combo. Done so far (usage order): Rena 0 (pilot), Mion 0, Rika 1, Tomitake 2, Keiichi 2,
    Chie 2, Kasai 1, Takano 0, Irie 1, Mion 2, Rika 2, Satoko 0, Rika 0. Since then,
    Rena 1 and Natsumi 0 landed as limited normal subsets; Akane 2 is pinned/deferred.
-   Keiichi 0 is pinned/deferred on hand-origin launch support; Keiichi 1 is next to recon.
+   Keiichi 0/1 are pinned/deferred on origin support; Satoko 2 is next to recon.
 2. **Recon** (one bash + python): swap/item/actor/params/mags from `reference-data.json`;
    dispatch+usage from `combat-hooks.json`; births from `attack-preview.json` (`swap:slot`);
    walks from `exe-catalog.json`; traces fire events per variant. Delimit bodies:
@@ -74,6 +74,7 @@ Phases 2–5 are done; do not mark complete early.
 | Rena 0 | 0x43ffc0 | rena (pre-existing) | anchor 12F; jump-cancel 400@20 | pilot cancel + cross-checks |
 | Rena 1 | 0x448220 | rena1 (normal schedule subset) | 400 row 6 @18; 450 row 1 @12–26 | tap + charge schedule |
 | Akane 2 | 0x5a7ea0 | deferred: world-origin callbacks | 400 row 0 @10; tag adds row 1 @15 | callback pins only; no program |
+| Keiichi 1 | 0x473610 | deferred: hand/world origins | 400/402 hand @13; 450/460 world @20 | callback pins only; no program |
 | Natsumi 0 | 0x5e2af0 | natsumi0 (normal ground 400 subset) | row 0 @14; Hide slots 0/1 | tap request schedule |
 | Mion 0 | 0x4582a0 | mion | row 0 @2; row 0 @17 | tap + charge |
 | Rika 1 | 0x492f70 | rika | even ticks 12–40; twin salvos | tap repeat + T10/T30 |
@@ -91,9 +92,8 @@ Phases 2–5 are done; do not mark complete early.
 Pinned-only (table test, no program yet): Kasai 0 (deferred — scatter needs engine work,
 §7), Shion 0 (pins committed; bodies delimited, extraction not yet delegated).
 
-Remaining usage-order worklist (27 TODO combos, plus two limited subsets and three pinned/
-deferred entries). Keiichi 0 is pinned below; resume at Keiichi 1. Verify body and origin
-mapping before promising programs):
+Remaining usage-order worklist (26 TODO combos; audited subsets/deferred entries are retained
+below for context). Resume at Satoko 2. Verify body and origin mapping before promising programs:
 
 | Combo | Usage pairs | Note |
 |---|---|---|
@@ -101,8 +101,8 @@ mapping before promising programs):
 | Akane 2 (ch=13 we=2) | 18 | pinned; deferred: 400/402/450/460 callbacks include explicit-world origin; current MoveRule cannot carry computed XYZ/yaw/pitch |
 | Natsumi 0 (ch=15 we=0) | 18 | landed as normal ground 400 row-0 schedule subset; 402/boost and world-charge paths remain unbound |
 | Keiichi 0 (ch=2 we=0) | 12 | pinned; deferred: state400/402 use hand-origin FUN_00435220, unsupported by Prop1 Launch |
-| Keiichi 1 (ch=2 we=1) | 12 | next feasible after Keiichi 0 hand-origin deferral |
-| Satoko 2 (ch=3 we=2) | 12 | |
+| Keiichi 1 (ch=2 we=1) | 12 | pinned; deferred: 400/402 hand-origin, 450/460 explicit-world origin and dynamic pitch |
+| Satoko 2 (ch=3 we=2) | 12 | next to recon; origin/body audit required |
 | Tomitake 0 (ch=6 we=0) | 12 | |
 | Tomitake 1 (ch=6 we=1) | 12 | |
 | Takano 1 (ch=7 we=1) | 12 | |
@@ -135,14 +135,49 @@ Akane 2 defer note (2026-10-10): pinned handler identity/update, usage and origi
 
 Natsumi 0 scope note (2026-10-10): added `natsumi0` for the **normal ground state400 callback schedule only**: Hide prop bindings 0/1 from tick 14 onward, then Launch item row 0 at tick 14. This matches the controlled normal `fire_attachment(0,0,...)` request and the DAT registration map. The executor rebuilds prop bindings at the start of every tick, but the tick-14 Hide is applied before Launch during that same update, selecting the fallback bone-origin family. The test drives the actual Natsumi+item29 fixture. Phase labels are forced probes; raw callback flag/aim, exact geometry, actual projectile admission and natural phase reachability remain outside the claim. State 402 stays unbound despite an analogous raw helper call because no state402 normalized callback trace is included. The tag/boost five-row randomized requests and world-origin 450/460 charges also remain unbound.
 
-Keiichi 0 scope note (2026-10-10): pinned update/vtable, walk, birth, usage (normal slot 0 and tag slot 3 at 13F across six forced phases), and callback families. `shoot_body_2_0_400/402` call `FUN_00435220` on `Bip01_R_Hand` at frame 13; trace callback rows are normal slot 0/tag slot 3. The MoveRule executor's only Launch uses `bone_point("Bip01_Prop1", item-slot muzzle)`, whereas FUN_00435220 delegates to FUN_00435250 with the looked-up hand transform, so binding Launch as a substitute would claim incorrect origin/geometry. The four body files contain measured movement/turn windows (400 ground, 402 air, first charges 450/460), but no hand-origin operation in the port. Do not claim the callback request as an admitted projectile/spawn. Concrete blocker: no distinct hand-bone spawn op exists; defer tap and continue with Keiichi 1, whose state400 trace is also hand-origin and must be independently body-audited before any partial schedule. Raw 450/460 `FUN_00435000` row mapping is also not established from its body tuple, so charge shot rows remain unbound.
+Keiichi 0 scope note (2026-10-10): pinned update/vtable, walk, birth, usage (normal slot 0 and tag slot 3 at 13F across six forced phases), and callback families. `shoot_body_2_0_400/402` call `FUN_00435220` on `Bip01_R_Hand` at frame 13; trace callback rows are normal slot 0/tag slot 3. The MoveRule executor's only Launch uses `bone_point("Bip01_Prop1", item-slot muzzle)`, whereas FUN_00435220 delegates to FUN_00435250 with the looked-up hand transform, so binding Launch as a substitute would claim incorrect origin/geometry. The four body files contain measured movement/turn windows (400 ground, 402 air, first charges 450/460), but no hand-origin operation in the port. Do not claim the callback request as an admitted projectile/spawn. Concrete blocker: no distinct hand-bone spawn op exists; defer tap. Keiichi 1 has now been independently audited and is also deferred (below). Raw 450/460 `FUN_00435000` row mapping is also not established from its body tuple, so charge shot rows remain unbound.
 
-Scoreboard: 13 full programs + 2 schedule subsets (Rena 1, Natsumi 0) + 4 pinned/deferred (Kasai 0, Shion 0, Akane 2, Keiichi 0) + 27 remaining TODO = 46 roster combos.
+Keiichi 1 audit / defer note (2026-10-10 10:40, São Paulo): actor `data/keiichi/01.dat`,
+item `018.dat`, swap 8, handler/vtable `0x473610`/`0x6a4f28`, walk `0x473a5a`. Row-0 birth
+speed 30, turn 0.1 at birth/next tick; magazines `{6,2,360,0,60,1}` and
+`{3,2,540,0,180,2}`. State400 usage and both extended traces agree on one hand callback
+at 13F in each of six forced phases: normal slot 0, tag slot 1, no attachment/world
+requests. These are request probes, not natural phase reachability or admitted projectiles.
+
+The independent body audit used `reference/source/shoot_native_bodies_20260929.hpp`:
+
+| Bodies / lines | Measured request | Concrete blocker |
+|---|---|---|
+| 400 L8719–8834; 402 L8954–9069 | tick 13, no phase gate; `FUN_00435220` on `Bip01_R_Hand`, operand 0 normally / 1 when byte `0x845 != 0` and word `0x212 != 0` | Launch uses Prop1, with no hand-transform op |
+| 450 L9944–10100; 460 L10102–10258 | tick 20, no phase gate; `FUN_00435450` operand 9 then 2 normally / 3 under the same powered condition | explicit computed XYZ/yaw/pitch cannot be carried by Launch |
+
+Charge geometry is explicit-world: lateral displacement 50, height +40 ground / +20 air,
+yaw `source_float(0x17)+source_float(0x19)`, and scratch pitch plus a distance term clamped
+0–40 (`sqrt(distance_squared)*40/5000`, scaled by 0.95 when the scratch word is negative).
+Raw charge operands 9/2/3 are body observations; their runtime row/admission mapping is
+not established by the state400 traces. Ground tap scratch compares/clamps to ±30; air
+tap compares against ±30 but assigns ±45 outside that range. A single symmetric clamp
+would lose that discontinuity even after adding a hand-origin op.
+
+Measured locomotion: 400 phase 0 turns 20 through tick 13 and decelerates 0.5 to zero;
+450 turns 18 through tick 19 and decelerates 0.5 to zero. Air bodies use the distinct
+movement-preserving turn helper, zero movement (402) or halve speed (460) at tick 0,
+and subtract gravity from vertical velocity. Ground movement rules alone do not justify
+binding a firing program: that would replace provisional shot selection/timing while
+omitting every measured firing origin. No MoveProgram was added; current fallback remains.
+Next: recon Satoko 2, then delegate its four bounded bodies before deciding on a subset.
+
+Verification: rebuilt Linux tree; `ginkiha_tables_test` 387 checks / 0 failures,
+`fighter_script_test` 637 checks / 0 failures / 0 skipped, full CTest 65/65 passed
+(162.26 s). No runtime program changed. The unrelated Windows edits remain uncommitted.
+
+Scoreboard: 13 full programs + 2 schedule subsets (Rena 1, Natsumi 0) + 5 pinned/deferred
+(Kasai 0, Shion 0, Akane 2, Keiichi 0, Keiichi 1) + 26 remaining TODO = 46 roster combos.
 
 ## 6. Engine mechanisms you must know (all in `src/gameplay/`)
 
 - `MoveRule{move,phase,first,last,op,value,second,third}`; ops incl. `Launch(row,lateral,pitchClamp)`,
-  `Hold` (freezes elapsed), `Hide` (slot 0 only — slot-1 halves have no field).
+  `Hold` (freezes elapsed), `Hide(slot)` (both slots 0/1; executor restores bindings before each rule pass).
 - `fire_shot`: exact-row programs bypass the provisional magazine scan; `-1` rows keep it.
   `m_stateTimer = programmed >= 0 ? 0 : kShotStateFrames`.
 - **Hold latch** (`m_holdRule`, fighter.h/cpp): per-rule hold progress — a shared counter would
