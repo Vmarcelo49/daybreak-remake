@@ -777,6 +777,48 @@ int main() {
     if (rika00) check(rika0Update == rika00->handler, "bundle dispatch matches kLocomotion (Rika 0)");
     check(walkVa(4, 0) == 0x0048502Du, "Rika 0 walk site is 0x48502d (Fase 2 oracle)");
 
+    // 20. Fifteenth combo (Shion 0 = character 5, weapon 0, swap code 16): pins the
+    //    bundle rows Fase 2's Shion program will consume. Single anchor (frame 16, all
+    //    phases) on slot 0 normal and slot 2 tag — note the missing slot 1 (unlike the
+    //    usual 0/1 pairing). The traces record NO fire under fixed inputs. A single
+    //    birth is sampled (slot 0 speed 35.0 with next-tick turn 0.25 but no birth
+    //    turn); slots 1-9 record speed 0.
+    const ginkiha::BirthProfile* shion = findBirth(5, 0, 0);
+    check(shion != nullptr, "Shion 0/0 birth profile exists");
+    if (shion) {
+        check(shion->swap_code == 16, "Shion 0 maps to swap code 16");
+        check(shion->speed == 35.0f, "Shion 0/0 birth speed 35.0");
+    }
+    int shionPairs = 0;
+    bool shionShape = true;
+    for (int i = 0; i < ginkiha::kShotFireRecordCount; ++i) {
+        const ginkiha::ShotFireRecord& entry = ginkiha::kShotFireRecord[i];
+        if (entry.character == 5 && entry.weapon == 0 && entry.slot == 0 && !entry.tag) {
+            ++shionPairs;
+            if (entry.phase < 0 || entry.phase > 5 || entry.frame != 16) shionShape = false;
+        }
+    }
+    check(shionPairs == 6, "Shion 0/0 usage holds 6 fire records");
+    check(shionShape, "Shion 0/0 usage shape is phases 0..5 at frame 16");
+    bool shionSilent = true;
+    for (int v = 0; v < 6; ++v) {
+        if (traceFireFrame(5, 0, v, false) != -1) shionSilent = false;
+    }
+    check(shionSilent, "Shion 0/0 traces record no fire under fixed inputs");
+    unsigned int shionUpdate = 0;
+    for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
+        if (ginkiha::kDispatchIdentity[i].character == 5 &&
+            ginkiha::kDispatchIdentity[i].weapon == 0)
+            shionUpdate = ginkiha::kDispatchIdentity[i].update;
+    }
+    check(shionUpdate == 0x004F92A0u, "Shion 0 dispatch update is 0x4f92a0");
+    const gameplay::LocomotionDefinition* shion0 = nullptr;
+    for (const gameplay::LocomotionDefinition& entry : gameplay::kLocomotion) {
+        if (entry.character == 5 && entry.slot == 0) shion0 = &entry;
+    }
+    if (shion0) check(shionUpdate == shion0->handler, "bundle dispatch matches kLocomotion (Shion 0)");
+    check(walkVa(5, 0) == 0x004F973Cu, "Shion 0 walk site is 0x4f973c (Fase 2 oracle)");
+
     // 6. Independent-recovery agreement for the pilot's ground tap: move_behavior.h's
     //    nata program launches item row 0 at tick 12 with citations into FUN_0044xxxx;
     //    the bundle's shot400 usage says the same slot fires at frame 12 in every phase.
