@@ -134,6 +134,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_moveCounter = 0;
+    m_movePitch = 0.f;
     m_holdTicks = 0;
     m_actionCamera = 0;
     m_chainContact = false;
@@ -182,6 +183,7 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_moveCounter = 0;
+    m_movePitch = 0.f;
     m_holdTicks = 0;
     m_actionCamera = 0;
     m_chainContact = false;
@@ -246,6 +248,7 @@ void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     m_moveSpeed = 0.f;
     m_moveElapsedTicks = 0;
     m_moveCounter = 0;
+    m_movePitch = 0.f;
     m_holdTicks = 0;
     m_actionCamera = 0;
     m_chainContact = false;
@@ -738,6 +741,7 @@ void Fighter::set_state(FighterState new_state) {
     if (m_state == new_state) return;
     m_state = new_state;
     m_moveCounter = 0;
+    m_movePitch = 0.f;
     m_holdTicks = 0;
     m_propActive = {false, false};
     m_actionCamera = 0;
@@ -1413,11 +1417,30 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
         // counting while its clock is pinned.
         case MoveOp::CounterSet: m_moveCounter = static_cast<int>(rule.value); break;
         case MoveOp::Counter:    m_moveCounter += static_cast<int>(rule.value); break;
+        // FUN_0042da80 -> FUN_0066b668 -> write_scratch(0x3c): the clamped target
+        // elevation, truncated to int the way the original's int scratch is, stored for
+        // the later requests that read source_float(0x3c) back.
+        case MoveOp::CapturePitch: m_movePitch = capture_target_pitch(rule.third, opponent); break;
         case MoveOp::ActionCamera:
             if (m_chainContact) m_actionCamera = static_cast<int>(rule.value);
             break;
         }
     }
+}
+
+// FUN_0042da80 -> FUN_0066b668 -> write_scratch(0x3c): the target elevation in whole
+// degrees, clamped symmetrically, as the original's integer scratch stores it. No
+// opponent reads as elevation 0, matching atan2(0, 0).
+float Fighter::capture_target_pitch(float clampDegrees, const Fighter* opponent) {
+    float elevation = 0.f;
+    if (opponent) {
+        const glm::vec3 difference = opponent->position() - m_position;
+        elevation = glm::degrees(std::atan2(difference.y,
+                                            std::hypot(difference.x, difference.z)));
+    }
+    const float limit = glm::radians(clampDegrees);
+    const float clamped = std::clamp(glm::radians(elevation), -limit, limit);
+    return static_cast<float>(static_cast<int>(glm::degrees(clamped)));
 }
 
 bool Fighter::rule_gate_holds(const MoveRule& rule) const {
@@ -1545,6 +1568,18 @@ void Fighter::launch_bullet(int row, const ShotOriginSpec& origin, const ShotAim
         const float legacyYawDegrees = 90.f - glm::degrees(m_facing) +
                                        resolvedAim.yawDegrees;
         pitch = clamp_aim_pitch(target_pitch() + glm::radians(resolvedAim.pitchDegrees));
+        const float legacyYaw = glm::radians(legacyYawDegrees);
+        shot.dir = glm::vec3(std::cos(legacyYaw) * std::cos(pitch), std::sin(pitch),
+                             std::sin(legacyYaw) * std::cos(pitch));
+        break;
+    }
+    // The pitch a CapturePitch rule latched earlier in this move: the body reads
+    // source_float(0x3c) back instead of re-deriving the elevation, so a target that
+    // moved vertically mid-attack does not re-aim salvos that already have their pitch.
+    case ShotAimKind::StoredPitch: {
+        const float legacyYawDegrees = 90.f - glm::degrees(m_facing) +
+                                       resolvedAim.yawDegrees;
+        pitch = glm::radians(m_movePitch + resolvedAim.pitchDegrees);
         const float legacyYaw = glm::radians(legacyYawDegrees);
         shot.dir = glm::vec3(std::cos(legacyYaw) * std::cos(pitch), std::sin(pitch),
                              std::sin(legacyYaw) * std::cos(pitch));

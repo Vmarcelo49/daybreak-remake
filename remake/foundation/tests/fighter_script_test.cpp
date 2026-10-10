@@ -2082,6 +2082,154 @@ void test_rika_repeating_tap() {
                    std::find(poweredRows.begin(), poweredRows.end(), 6) == poweredRows.end());
 }
 
+
+void test_rika_pitch_latch() {
+    section("33. Rika 1 latches its pitch instead of re-deriving it per salvo");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_rikaCombo.load(install, 4, 1))
+        return skip_case("Rika 1 pitch latch");
+    // shoot_body_4_1_450 computes the elevation ONCE at tick 10 (FUN_0042da80 ->
+    // FUN_0066b668 -> write_scratch(0x3c)) and reads that value back for the frozen
+    // tick-30 salvos. Recomputing the elevation per launch would re-aim a salvo whose
+    // target changed height mid-attack, so this drives a dummy that moves vertically
+    // between the two.
+    Fighter attacker;
+    attacker.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rikaCombo.bind(attacker);
+    settle(attacker);
+    Fighter victim;
+    victim.init(nullptr, nullptr, glm::vec3(0, 300, 500), 0.0f);
+    g_rikaCombo.bind(victim);
+    settle(victim);
+    attacker.set_hypermode(Hypermode::Oyashiro);
+    attacker.set_hyper_gauge(1.f);
+    Input sp;
+    sp.set(fnd::input::Action::Special, true);
+    tick(attacker, sp, &victim);
+    sp.set(fnd::input::Action::Special, false);
+    tick(attacker, sp, &victim);
+    gameplay::ShootingContext context;
+    context.allyHold = true;
+    attacker.set_shooting_context(context);
+    hold_yellow(attacker, sp);
+    sp.set(fnd::input::Action::Shoot, false);
+    tick(attacker, sp, &victim);
+    check_int("Rika pitch-latch charge binds move 450", 450, attacker.shot_move_id());
+    for (int i = 0; i < 10; ++i) tick(attacker, sp, &victim);
+    const gameplay::PendingShot first = attacker.take_pending_shot();
+    const gameplay::PendingShot second = attacker.take_pending_shot();
+    check_bool("tick-10 twin arms with the dummy in place", true,
+               first.armed && second.armed);
+    // atan2(300, 500) = 30.96 deg, clamped to +-40 and truncated by the int scratch:
+    // the latched pitch is exactly 30 degrees, so dir.y is sin(30).
+    const float latched = std::sin(glm::radians(30.f));
+    check_near("tick-10 pitch is the latched 30 degrees", latched, first.dir.y, 1e-4f);
+    check_near("tick-10 second twin shares the latched pitch", latched, second.dir.y, 1e-4f);
+
+    // Raise the dummy far enough that a re-derived elevation would clamp to 40 degrees
+    // (atan2(900, 500) = 60.9). The frozen salvo must still carry the latched 30.
+    victim.reset(glm::vec3(0, 900, 500), victim.facing_yaw());
+    std::vector<float> frozen;
+    for (int i = 0; i < 40 && frozen.size() < 6; ++i) {
+        tick(attacker, sp, &victim);
+        for (gameplay::PendingShot s = attacker.take_pending_shot(); s.armed;
+             s = attacker.take_pending_shot())
+            frozen.push_back(s.dir.y);
+    }
+    check_int("frozen interval fires three pairs", 6, (int)frozen.size());
+    for (float pitch : frozen)
+        check_near("frozen salvo keeps the latched 30 degrees, not the new 40", latched,
+                   pitch, 1e-4f);
+}
+
+void test_rika_air_powered_charge() {
+    section("34. Rika 1 air charge 460: powered branch over the full frozen interval");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_rikaCombo.load(install, 4, 1))
+        return skip_case("Rika 1 air charge");
+    const auto* program = gameplay::move_program(&g_rikaCombo.moves);
+    check_int("Rika air charge maps the air column to state 460", 460,
+              program ? program->shot[1][1] : -1);
+    // Reaching the air charge takes two things the port's air model does not hand you
+    // for free: the charge must survive the leap (a jump press returns before the
+    // charge block, so one tick is lost and it then re-accrues), and the air window
+    // must outlast the program (a plain leap is 47 updates, so Z is held and the fly
+    // budget carries it to ~112).
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rikaCombo.bind(f);
+    settle(f);
+    f.set_hypermode(Hypermode::Oyashiro);
+    f.set_hyper_gauge(1.f);
+    Input sp;
+    sp.set(fnd::input::Action::Special, true);
+    tick(f, sp);
+    sp.set(fnd::input::Action::Special, false);
+    tick(f, sp);
+    check_bool("Oyashiro witness is active", true, f.hyper_active());
+    gameplay::ShootingContext context;
+    context.allyHold = true;
+    f.set_shooting_context(context);
+    sp.set(fnd::input::Action::Shoot, true);
+    sp.set(fnd::input::Action::Jump, true);
+    tick(f, sp);
+    sp.set(fnd::input::Action::Jump, false);
+    int chargeTicks = 0;
+    while (f.charge_tier() != ShotTier::Yellow && f.airborne() && chargeTicks++ < 200)
+        tick(f, sp);
+    check_int("charge completes during the fly", static_cast<int>(ShotTier::Yellow),
+              static_cast<int>(f.charge_tier()));
+    check_bool("fighter is airborne with the charge held", true, f.airborne());
+    sp.set(fnd::input::Action::Shoot, false);
+    tick(f, sp);
+    check_int("air release binds the air charge move 460", 460, f.shot_move_id());
+
+    for (int i = 0; i < 10; ++i) tick(f, sp);
+    const gameplay::PendingShot first = f.take_pending_shot();
+    const gameplay::PendingShot second = f.take_pending_shot();
+    check_bool("air charge T10 twin arms", true, first.armed && second.armed);
+    check_int("air T10 first row is 2", 2, first.bulletRow);
+    check_int("air T10 second row is 5", 5, second.bulletRow);
+    check_near("air T10 twin sits 60 ahead of the actor", 60.f, first.pos.z, 1e-3f);
+    check_near("air T10 first twin sits 50 right of the heading", 50.f, first.pos.x, 1e-3f);
+    check_near("air T10 second twin sits 50 left of the heading", -50.f, second.pos.x,
+               1e-3f);
+    // The height offset is pinned exactly on the ground path (section 17), where the
+    // actor is stationary. Here the actor is in free fall and moves after the rule pass,
+    // so this asserts what the air path can show exactly: both twins share one height
+    // above the moving actor.
+    check_bool("air T10 twins share a height above the falling actor", true,
+               std::abs(first.pos.y - second.pos.y) < 1e-3f &&
+                   first.pos.y > f.position().y);
+
+    // The whole frozen interval on the air copy: three counter-gated pairs, all
+    // powered. The air rules are a separate array entry, so their gates are exactly
+    // where a copy/paste slip would hide. The tick-10 pair is already taken above, so
+    // this collects the six frozen requests.
+    std::vector<int> rows;
+    for (int i = 0; i < 60 && rows.size() < 8; ++i) {
+        tick(f, sp);
+        for (gameplay::PendingShot s = f.take_pending_shot(); s.armed;
+             s = f.take_pending_shot())
+            rows.push_back(s.bulletRow);
+    }
+    check_int("air frozen interval fires three pairs", 6, (int)rows.size());
+    if (rows.size() == 6) {
+        check_int("air frozen pair 1 is rows 4 then 7", 4, rows[0]);
+        check_int("air frozen pair 1 second row is 7", 7, rows[1]);
+        check_int("air frozen pair 2 is rows 4 then 7", 4, rows[2]);
+        check_int("air frozen pair 2 second row is 7", 7, rows[3]);
+        check_int("air frozen pair 3 is rows 4 then 7", 4, rows[4]);
+        check_int("air frozen pair 3 second row is 7", 7, rows[5]);
+    }
+    check_bool("air normal rows 3/6 stay gated out over the whole interval", true,
+               std::find(rows.begin(), rows.end(), 3) == rows.end() &&
+                   std::find(rows.begin(), rows.end(), 6) == rows.end());
+    check_bool("air charge never emits the normal pair", true,
+               std::find(rows.begin(), rows.end(), 0) == rows.end() ||
+                   rows[0] == 2);
+}
+
 void test_tomitake_twin_tap() {
     section("18. Tomitake 2 twin tap + charge (bodies shoot_body_6_2_*)");
     const auto install = findInstall(nullptr);
@@ -2578,11 +2726,20 @@ void test_satoko2_powered_branch_live() {
         m.step(inputs, gameplay::FixedStep::seconds);
         for (bool& down : fire.down) down = false;
         fnd::input::compute_edges(fire);
+        // Count the SPAWN update, not every update a projectile survives: appending
+        // each living projectile per update would let one twin satisfy a two-entry
+        // assertion by living into the next tick. Both requests of a volley queue in
+        // the same update and the scene drains them in the same step, so the spawn
+        // update itself must carry both.
         std::vector<int> rows;
-        for (int i = 0; i < 40 && rows.size() < 2; ++i) {
+        bool spawned = false;
+        for (int i = 0; i < 40 && !spawned; ++i) {
             m.step(inputs, gameplay::FixedStep::seconds);
             for (const auto& shot : m.shots().shots())
-                if (shot.alive && shot.owner == &m.fighter(0)) rows.push_back(shot.bulletRow);
+                if (shot.alive && shot.owner == &m.fighter(0)) {
+                    spawned = true;
+                    rows.push_back(shot.bulletRow);
+                }
         }
         return rows;
     };
@@ -3212,6 +3369,8 @@ int main(int argc, char** argv) {
     test_pilot_shot_jump_cancel();
     test_mion_shot_tap();
     test_rika_repeating_tap();
+    test_rika_pitch_latch();
+    test_rika_air_powered_charge();
     test_tomitake_twin_tap();
     test_keiichi_dense_tap();
     test_rika_shot_jump_cancel();

@@ -847,6 +847,9 @@ private:
     // including the frozen ones a gated Hold pins, which is what makes Rika 1's
     // counter-gated salvo repeat.
     int          m_moveCounter = 0;
+    // FUN_0042da80's latched pitch (whole degrees) for the bodies that read it back
+    // from scratch 0x3c instead of re-deriving the elevation.
+    float         m_movePitch = 0.f;
     // The scene's per-tick publication of the firing-relevant world state.
     ShootingContext m_shooting;
     // Attachment slots 0/1. The executor re-binds slot0<-prop0, slot1<-prop1 and
@@ -1012,6 +1015,7 @@ private:
     // the counter tests). Kept beside the executor so the gate vocabulary and the
     // state it reads cannot drift apart.
     bool rule_gate_holds(const MoveRule& rule) const;
+    float capture_target_pitch(float clampDegrees, const Fighter* opponent);
     void enter_phase(int phase);
     void launch_bullet(int row, const ShotOriginSpec& origin, const ShotAimSpec& aim,
                        float legacyLateral, float legacyPitchLimit, Fighter* opponent);

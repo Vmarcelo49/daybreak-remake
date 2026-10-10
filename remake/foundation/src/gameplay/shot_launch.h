@@ -37,6 +37,11 @@ enum class ShotAimKind {
     // FUN_00435450's world yaw follows the legacy basis (90 deg - heading) the
     // original's cosine table indexes, with target-derived elevation.
     ActorHeadingTargetElevation,
+    // The pitch a CapturePitch rule stored at an earlier tick. 106 recovered bodies
+    // compute the target elevation ONCE (FUN_0042da80 -> FUN_0066b668 ->
+    // write_scratch(0x3c)) and read it back for later salvos, so a target that changes
+    // height mid-attack must not re-aim salvos that already have their pitch.
+    StoredPitch,
 };
 
 struct ShotAimSpec {
@@ -65,6 +70,12 @@ inline constexpr ShotOriginSpec origin_actor_relative(float right, float forward
 inline constexpr ShotAimSpec aim_target_elevation(float clampDegrees) {
     return ShotAimSpec{ShotAimKind::ActorHeadingTargetElevation, 0.f, 0.f, -clampDegrees,
                        clampDegrees};
+}
+
+// The pitch a preceding CapturePitch rule stored, aimed on the legacy yaw basis. Use it
+// for every request a body makes after it has latched its pitch.
+inline constexpr ShotAimSpec aim_stored_pitch() {
+    return ShotAimSpec{ShotAimKind::StoredPitch, 0.f, 0.f, -40.f, 40.f};
 }
 
 } // namespace gameplay
