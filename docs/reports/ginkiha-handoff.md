@@ -85,9 +85,45 @@ Phases 2–5 are done; do not mark complete early.
 
 Pinned-only (table test, no program yet): Kasai 0 (deferred — scatter needs engine work,
 §7), Shion 0 (pins committed; bodies delimited, extraction not yet delegated).
-Queue by usage after those: Tomitake 0/1, Takano 1/2, Ohishi 0/2, Irie 0/2, Chie 0/1,
-Keiichi 0/1, Satoko 2, Akane 2, Natsumi 0, Hanyuu (2 weapons), then the no-usage tail
-(verify each has bodies before promising — Rena 1 has usage but zero body functions).
+
+Remaining 31 combos by usage (all TODO — work them in this order; verify bodies exist
+before promising a program, and check the note flags):
+
+| Combo | Usage pairs | Note |
+|---|---|---|
+| Rena 1 (ch=0 we=1) | 18 | ⚠ has usage but ZERO body functions — needs runtime-source path instead |
+| Akane 2 (ch=13 we=2) | 18 | |
+| Natsumi 0 (ch=15 we=0) | 18 | |
+| Keiichi 0 (ch=2 we=0) | 12 | |
+| Keiichi 1 (ch=2 we=1) | 12 | |
+| Satoko 2 (ch=3 we=2) | 12 | |
+| Tomitake 0 (ch=6 we=0) | 12 | |
+| Tomitake 1 (ch=6 we=1) | 12 | |
+| Takano 1 (ch=7 we=1) | 12 | |
+| Takano 2 (ch=7 we=2) | 12 | |
+| Ohishi 0 (ch=8 we=0) | 12 | |
+| Ohishi 2 (ch=8 we=2) | 12 | |
+| Irie 0 (ch=10 we=0) | 12 | |
+| Irie 2 (ch=10 we=2) | 12 | |
+| Chie 0 (ch=11 we=0) | 12 | |
+| Chie 1 (ch=11 we=1) | 12 | |
+| Kasai 2 (ch=12 we=2) | 12 | |
+| Akane 0 (ch=13 we=0) | 12 | |
+| Hanyu 0 (ch=14 we=0) | 12 | only 2 weapons for ch14/15 (not 3) |
+| Hanyu 1 (ch=14 we=1) | 12 | only 2 weapons for ch14/15 (not 3) |
+| Natsumi 1 (ch=15 we=1) | 12 | only 2 weapons for ch14/15 (not 3) |
+| Akasaka 0 (ch=9 we=0) | 8 | |
+| Rena 2 (ch=0 we=2) | 4 | |
+| Mion 1 (ch=1 we=1) | 4 | |
+| Shion 1 (ch=5 we=1) | 4 | |
+| Ohishi 1 (ch=8 we=1) | 3 | thinnest usage of the roster — expect sparse rules |
+| Shion 2 (ch=5 we=2) | 2 | thinnest usage of the roster — expect sparse rules |
+| Akasaka 1 (ch=9 we=1) | 2 | thinnest usage of the roster — expect sparse rules |
+| Akasaka 2 (ch=9 we=2) | 2 | thinnest usage of the roster — expect sparse rules |
+| Akane 1 (ch=13 we=1) | 2 | thinnest usage of the roster — expect sparse rules |
+| Satoko 1 (ch=3 we=1) | 0 | no usage rows at all — bodies-only port, extra care |
+
+Scoreboard: 13 landed + 2 pinned + 31 TODO = 46 roster combos.
 
 ## 6. Engine mechanisms you must know (all in `src/gameplay/`)
 
