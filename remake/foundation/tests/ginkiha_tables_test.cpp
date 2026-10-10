@@ -344,6 +344,53 @@ int main() {
     if (keiichi2) check(keiichiUpdate == keiichi2->handler, "bundle dispatch matches kLocomotion (Keiichi 2)");
     check(walkVa(2, 2) == 0x0047BD8Au, "Keiichi 2 walk site is 0x47bd8a (Fase 2 oracle)");
 
+    // 11. Sixth combo (Chie 2 = character 11, weapon 2, swap code 36): pins the bundle
+    //    rows Fase 2's Chie program will consume. Her pattern is step-3 like Tomitake's
+    //    (phases 0..5 at frames 15,18,21,24 — 24 pairs per slot) but single shots, and
+    //    the traces record NO fire under fixed inputs (like Rika) — so no trace
+    //    cross-check, only the documented divergence. Two births are sampled (slot 0
+    //    speed 80.0, slot 10 speed 120.0).
+    const ginkiha::BirthProfile* chie = findBirth(11, 2, 0);
+    check(chie != nullptr, "Chie 2/0 birth profile exists");
+    if (chie) {
+        check(chie->swap_code == 36, "Chie 2 maps to swap code 36");
+        check(chie->speed == 80.0f, "Chie 2/0 birth speed 80.0");
+    }
+    const ginkiha::BirthProfile* chie10 = findBirth(11, 2, 10);
+    check(chie10 != nullptr, "Chie 2/10 birth profile exists");
+    if (chie10) check(chie10->speed == 120.0f, "Chie 2/10 birth speed 120.0");
+    int chiePairs = 0;
+    bool chieShape = true;
+    for (int i = 0; i < ginkiha::kShotFireRecordCount; ++i) {
+        const ginkiha::ShotFireRecord& entry = ginkiha::kShotFireRecord[i];
+        if (entry.character == 11 && entry.weapon == 2 && entry.slot == 0 && !entry.tag) {
+            ++chiePairs;
+            if (entry.phase < 0 || entry.phase > 5 || entry.frame < 15 || entry.frame > 24 ||
+                ((entry.frame - 15) % 3) != 0)
+                chieShape = false;
+        }
+    }
+    check(chiePairs == 24, "Chie 2/0 usage holds 24 fire records");
+    check(chieShape, "Chie 2/0 usage shape is phases 0..5, frames 15..24 step 3");
+    bool chieTraceSilent = true;
+    for (int v = 0; v < 6; ++v) {
+        if (traceFireFrame(11, 2, v, false) != -1) chieTraceSilent = false;
+    }
+    check(chieTraceSilent, "Chie 2/0 traces record no fire under fixed inputs");
+    unsigned int chieUpdate = 0;
+    for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
+        if (ginkiha::kDispatchIdentity[i].character == 11 &&
+            ginkiha::kDispatchIdentity[i].weapon == 2)
+            chieUpdate = ginkiha::kDispatchIdentity[i].update;
+    }
+    check(chieUpdate == 0x00566A40u, "Chie 2 dispatch update is 0x566a40");
+    const gameplay::LocomotionDefinition* chie2 = nullptr;
+    for (const gameplay::LocomotionDefinition& entry : gameplay::kLocomotion) {
+        if (entry.character == 11 && entry.slot == 2) chie2 = &entry;
+    }
+    if (chie2) check(chieUpdate == chie2->handler, "bundle dispatch matches kLocomotion (Chie 2)");
+    check(walkVa(11, 2) == 0x00566EF7u, "Chie 2 walk site is 0x566ef7 (Fase 2 oracle)");
+
     // 6. Independent-recovery agreement for the pilot's ground tap: move_behavior.h's
     //    nata program launches item row 0 at tick 12 with citations into FUN_0044xxxx;
     //    the bundle's shot400 usage says the same slot fires at frame 12 in every phase.
