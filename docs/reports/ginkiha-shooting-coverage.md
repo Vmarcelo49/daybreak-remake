@@ -18,9 +18,9 @@ follow-on/EX states remain pending for every combo, not implicitly N/A.
 | Rena 0 | 1 / 1 | 400 attach, gate-bound / rows 6 powered | 402 attach, gate-bound / rows 7 powered | 450 attach, gate-bound / rows 8 powered, fixed 45° | 460 attach, gate-bound / rows 8 powered, fixed 45° | 360 world 11/12 / no branch split | 370 world 11/12 / no branch split | 1 |
 | Rena 1 | 2 / 3 | 400 attach fan 12–26, gate-bound / rows 3 powered | — / P | 450 attach, gate-bound / rows 8 powered, fixed 45° | — / P | — / P | — / P | 0 |
 | Rena 2 | 3 / 33 | 400 attach + 10 world @35, RNG-blocked | — / P | — / P | — / P | — / P | — / P | 0 |
-| Mion 0 | 4 / 2 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 30 |
-| Mion 1 | 5 / 4 | — / P | — / P | — / P | — / P | — / P | — / P | 30 |
-| Mion 2 | 6 / 35 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 24 |
+| Mion 0 | 4 / 2 | 400 slot 0 @p1t2, rows 0/4 gate-bound; phase-3 slot 1 contact-gated | 402 dual-slot volleys c=15/20/25, rows 0/4 gate-bound | 450 slot 0 @17 rows 2/3, clamp −40/+45, freeze 30 | 460 slot 0 @17 rows 2/3, freeze 20 | — / P | — / P | 30 |
+| Mion 1 | 5 / 4 | 400 slot 0 @p1t2 rows 0/4, slot 1 @p2t1 contact-gated rows 0/4 | 402 dual-slot volley c=13, rows 0/4 | 450/460 RNG 15-shot bursts — unbound, rows 1/5 measured | — / P | — / P | 30 |
+| Mion 2 | 6 / 35 | 400 slot 0 @teleport-tick 10, rows 0/1 | 402 slot 0 @18, rows 0/1, freeze 10 | 450 phase-1 emissions @15..60 rows 2/3 — RNG + `+0x1c8` unmodelled | 460 same as 450 | — / P | — / P | 24 |
 | Keiichi 0 | 7 / 5 | 400 hand R, gate-bound / rows 3 powered | 402 hand R, gate-bound / rows 3 powered | 450 hand L + attach, gate-bound / rows 4 powered | 460 hand L + attach, gate-bound / rows 4 powered | — / P | — / P | 20 |
 | Keiichi 1 | 8 / 18 | 400 hand R, gate-bound / rows 1 powered | 402 hand R, gate-bound / rows 1 powered | 450 world pair, gate-bound / rows 3 powered | 460 world pair, gate-bound / rows 3 powered | — / P | — / P | 19 |
 | Keiichi 2 | 9 / 34 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 18 |
@@ -76,6 +76,18 @@ Four more shared capabilities landed with this snapshot:
   the named bone matrix or fail explicitly (never substitute). Keiichi 0/1 are the first
   users (right hand taps, left-hand charge request). The rig bone-existence check plus
   the origin KIND on the armed request is the witness pattern.
+- **Attachment slots, contact gating and counter cadences.** `FUN_00435000`'s slot is
+  now first-class (`origin_attachment_slot`), because several bodies pick slot 1 for a
+  follow-up (Mion 0's 400 phase-3 and 402, Mion 1's 400 phase-2 and 402) and some fire
+  BOTH slots on one trigger. `kGateContact` is the port's analogue of the `0 < w[0x1b7]`
+  "this move has connected" flag that 186 recovered bodies guard on; `+0x1b7` has no
+  writer in the corpus, so the mapping is by role. The scratch counters gain
+  `kGateCounterEquals`/`kGateCounterAbove` alongside the existing below/mod gates,
+  because the bodies' counters survive a phase change while the phase tick does not.
+- **Asymmetric pitch clamps.** `CapturePitch` now states both ends (low in `second`,
+  high in `third`, optional snap in `value`). Twelve bodies clamp asymmetrically —
+  Mion 0's 450 is [-40, +45], Shion 0's [-70, +40], Akane's [-15, +55] — and Mion 1's 460
+  is the compare/assign mismatch (±30 tested, ±45 written) that the snap half covers.
 - **Snap pitch, range pitch, fixed angles.** The air-tap discontinuity (compare ±30,
   assign ±45, in 9 bodies) rides on `CapturePitch`'s assign bound; Keiichi 1's charge
   pitch (stored base plus live `dist*40/5000`, ×0.95 when negative) is

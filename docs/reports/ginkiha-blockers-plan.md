@@ -657,3 +657,47 @@ Kasai 0's deterministic shooting RNG lands — same blocker, same queue.
 failures (Rena 0/1 rewrote the 27-section test; 37 new powered/freeze checks), recon six
 tests passed, Windows and web cross-builds passed, live 2-player battle smoke RESULT ok.
 No roster expansion; ledger rows and the handoff scoreboard updated.
+
+### 2026-10-10 — 3.6 Ledger order: Mion 0 fully bound, 1/2 taps, RNG isolated as the gate
+
+**Done — Mion 0 audited and repaired** (handler 0x4582a0). Three real defects fell out:
+(1) every powered row was missing (0/4 on the taps, 2/3 on the charges — the gate switches
+the row, never the slot); (2) the ground tap fired at elapsed tick 2 in ANY phase, which is
+phase 0 in practice, while the body's condition is phase 1 tick 2; (3) the charge bound row
+0 where the body fires rows 2/3. The 402 air tap was misread as "two rows" when it is two
+SLOTS with the same row, so the old program fired a powered row on the normal branch and
+never touched slot 1. Now bound: phase-1 slot-0 tap (±30) plus the phase-3 slot-1 follow-up
+(±40, contact-gated), the three dual-slot counter volleys at 15/20/25, the asymmetric
+[-40, +45] charge clamp, and counter-gated freezes of 30 and 20 updates replacing plain
+`Hold` values that only coincided.
+
+**Done — Mion 1 and 2 audited.** Mion 1's 400 has the same slot-0/slot-1 split with a
+contact-gated phase-2 follow-up and a repeated one-frame hold; its 402 fires both slots at
+counter 13. Mion 2's 400 force-writes its tick counter from 10 to 18, so ticks 11..17 never
+run — the port places the launch on the teleport update and shifts every later window by
+seven, which moved the tick-23 freeze to elapsed 15 (the pre-existing rule had it at 23).
+
+**Done — the shared mechanisms the family needed:** `origin_attachment_slot` (slot 1 was
+unreachable before), `kGateContact` (the `0 < w[0x1b7]` "has connected" flag that 186 bodies
+guard on, with no writer in the corpus so the mapping is by role), `kGateCounterEquals` and
+`kGateCounterAbove` (the bodies' scratch counters survive a phase change while the phase
+tick does not — FUN_00421100 zeroes `+0xadfc`), and `CapturePitch` now taking separate low
+and high bounds, because 12 bodies clamp asymmetrically (Mion 0 [-40,+45], Shion 0
+[-70,+40], Akane [-15,+55]).
+
+**Blocked, and now precisely so — the draw service.** Mion 1's 450/460 (15-iteration bursts,
+rows 1/5, yaw `(rand%200-100)*0.1`, pitch `(rand%100-50)*0.1`) and Mion 2's 450/460 (rows
+2/3, yaw `(rand%100-50)*0.1`, pitch `(rand%80-40)*0.1`, plus the `0 < w[0x1c8]` gate with no
+writer) cannot be bound faithfully without it, and neither can Rena 2's ten-shot ring. The
+original RNG is recoverable: `FUN_0065d150` is standard MT19937 and `FUN_0065d0c0` seeds it
+with the canonical 5489, so a deterministic port RNG can match the algorithm, the modulo
+ranges and the draw counts even though stream position will not match (no bit-matching is
+attempted). That is the next mechanism, ahead of Kasai 0, which needs it too.
+
+**Verified:** full rebuilt Linux CTest **65/65 (176.91 s)**, fighter suite 933 checks 0
+failures (new sections 38/39: dual-slot volley counting, the exact +45 high bound against a
++40 symmetric clamp, and the contact gate discriminating both ways), recon six tests passed,
+Windows and web cross-builds passed, live 2-player battle smoke RESULT ok.
+
+**Next:** the deterministic shooting RNG (MT19937 + per-body draw ranges) to close Mion
+1/2's charges and Rena 2, then Kasai 0's scatter, then the remaining families.

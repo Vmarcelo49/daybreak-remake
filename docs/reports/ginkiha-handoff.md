@@ -93,7 +93,7 @@ Phases 2–5 are done; do not mark complete early.
 | Satoko 2 | 0x4bc040 | **satoko2: typed-world twin tap, normal/powered gate** | 400/402 twin world rows 0/1 @20; 450/460 phase1 @6 still pending | table + item38 fixture pins; twin-world + gate test |
 | Keiichi 1 | 0x473610 | **keiichi1: hand tap + world charges, gate-bound** | 400/402 hand R @13 rows 0/1; 450/460 world @20 rows 9+2/3 | tap + charge, both branches |
 | Natsumi 0 | 0x5e2af0 | natsumi0 (normal ground 400 subset) | row 0 @14; Hide slots 0/1 | tap request schedule |
-| Mion 0 | 0x4582a0 | mion | row 0 @2; row 0 @17 | tap + charge |
+| Mion 0 | 0x4582a0 | mion (audited: slots, powered rows, counter freezes) | 400 p1t2 rows 0/4 slot 0 + p3t2 slot 1 (contact); 402 dual-slot c=15/20/25; 450 rows 2/3 @17; 460 rows 2/3 @17 | tap + air volleys + both charges |
 | Rika 1 | 0x492f70 | rika | even ticks 12–40; twin salvos; **counter-gated 30-update freeze at T30 (3 salvos), ground + air, both branches** | tap repeat + T10/T30 + frozen interval + latch + air 460 normal/powered |
 | Tomitake 2 | 0x527880 | tomitake | twin 7+5 every 3 ticks; freeze-then-fire | tap + charge |
 | Keiichi 2 | 0x47b940 | keiichi | dense every-tick 10–20; rewind stalls | tap + charge + Hold latch |
@@ -101,7 +101,7 @@ Phases 2–5 are done; do not mark complete early.
 | Kasai 1 | 0x5b9680 | kasai | twins 2+0; fan of four | tap + charge |
 | Takano 0 | 0x531ce0 | takano | triple row 0 (12/15/18); single row 1 | tap + charge |
 | Irie 1 | 0x57f600 | irie | twins 0+1 @12; single row 4 | tap + charge |
-| Mion 2 | 0x44fa10 | mion2 | single @ entry-10 (jump!); 10× burst | single-shot pin + burst |
+| Mion 2 | 0x44fa10 | mion2 (audited: teleport shift, powered rows) | 400 single @entry-10; 402 single @18; 450/460 phase-1 emissions @15..60 rows 2/3 | tap + burst |
 | Rika 2 | 0x49d890 | rika2 | single @15 + Hold; fan ×3 @10 | tap + charge |
 | Satoko 0 | 0x4a9c40 | satoko | 5× @17; frozen twin salvos | tap ×5 + T25/T31 |
 | Rika 0 | 0x484be0 | rika0 | twins @15; twin salvos @15/@25 | tap + charge |
@@ -141,7 +141,7 @@ below for context). Resume at Tomitake 0. Verify body and origin mapping before 
 | Natsumi 1 (ch=15 we=1) | 12 | only 2 weapons for ch14/15 (not 3) |
 | Akasaka 0 (ch=9 we=0) | 8 | |
 | Rena 2 (ch=0 we=2) | 4 | RNG-blocked: state400's 11-request volley needs per-shot spread; see defer note below |
-| Mion 1 (ch=1 we=1) | 4 | |
+| Mion 1 (ch=1 we=1) | 4 | taps bound (slot-1 contact follow-up); charges are RNG 15-shot bursts, unbound |
 | Shion 1 (ch=5 we=1) | 4 | |
 | Ohishi 1 (ch=8 we=1) | 3 | thinnest usage of the roster — expect sparse rules |
 | Shion 2 (ch=5 we=2) | 2 | thinnest usage of the roster — expect sparse rules |
@@ -159,6 +159,45 @@ Rena 2 defer note (2026-10-10, ledger slice): no `shoot_body_0_2_*` exists in ei
 Akane 2 defer note (2026-10-10): pinned handler identity/update, usage and origin-counted state400 callbacks; no MoveProgram was bound. Bodies 400/402/450/460 use `FUN_00435450` with explicit world coordinates. Typed origin/aim specs now allow world XYZ and legacy angles, but the body calculations, powered branch and dynamic runtime inputs are not connected to a schedule; callback probes also do not prove admission/spawn. Normal/powered probes record one world request at frame 10; powered adds one at 15 across six forced phases.
 
 Natsumi 0 scope note (2026-10-10): added `natsumi0` for the **normal ground state400 callback schedule only**: Hide prop bindings 0/1 from tick 14 onward, then Launch item row 0 at tick 14. This matches the controlled normal `fire_attachment(0,0,...)` request and the DAT registration map. The executor rebuilds prop bindings at the start of every tick, but the tick-14 Hide is applied before Launch during that same update, selecting the fallback bone-origin family. The test drives the actual Natsumi+item29 fixture. Phase labels are forced probes; raw callback flag/aim, exact geometry, actual projectile admission and natural phase reachability remain outside the claim. State 402 stays unbound despite an analogous raw helper call because no state402 normalized callback trace is included. The tag/boost five-row randomized requests and world-origin 450/460 charges also remain unbound.
+
+Mion audit (2026-10-10, ledger slice): **Mion 0 fully bound; Mion 1 and Mion 2 have
+their taps bound and their charges documented as blocked.** The three combos share one
+shape — every launch is `FUN_00435000(slot, row, yawSpread, pitch, 0)`, so the attachment
+slot and the item row are both explicit, and the powered gate (`byte 0x845` &&
+`word 0x212`) switches the ROW only, never the slot.
+
+- **Mion 0** (0x4582a0): 400 fires slot 0, rows 0/4 at phase-1 tick 2 (clamp ±30) and slot
+  1, rows 0/4 at phase-3 tick 2 (clamp ±40) — the second only on connect, because phase 1
+  jumps to phase 3 while `6 < tick && 0 < w[0xae] < 10 && fires < 6 && 0 < w[0x1b7]`. The
+  hit counter `+0xae` has no port counterpart, so only the contact half is modelled and the
+  port reaches phase 3 through the DAT phase advance instead of the jump. 402 is a
+  three-volley air tap: scratch 0x3b counts the state and the volleys fire at counters
+  15/20/25, each on BOTH slots with the SAME row (two muzzles, not two rows) — the earlier
+  port bound row 1 as an unconditional second request, which fired a powered row on the
+  normal branch. 450/460 fire rows 2/3 at tick 17 and then hold: 450 clamps the pitch
+  asymmetrically ([-40, +45]) and freezes 30 updates, 460 clamps ±40 and freezes 20.
+- **Mion 1** (0x461810): 400 fires slot 0 rows 0/4 at phase-1 tick 2 (clamp ±40) and slot 1
+  rows 0/4 at phase-2 tick 1 (clamp ±30) **only on connect** (`(tick == 1) && (0 < w[0x1b7])`),
+  then holds one frame at a time past tick 7 while counter 0x3b is under 1. 402 fires both
+  slots at counter 13 (clamp ±40). Its 450/460 are 15-iteration bursts whose every request
+  carries `(rand%200-100)*0.1` yaw and `(rand%100-50)*0.1` pitch jitter, so they stay on the
+  provisional path; the measured rows are 1 normal / 5 powered at tick 17 with a ±45 clamp
+  (460 compares ±30 and writes ±45).
+- **Mion 2** (0x44fa10): 400 fires one slot-0 request, rows 0/1, at entry-tick 10 — the body
+  FORCE-WRITES its tick counter from 10 to 18 there (`write_clock(0x2b81, 0x12)`), so ticks
+  11..17 never execute and the frame-18 anchor is that same single shot. A phase clock cannot
+  be written, so the port places the launch on the teleport update and shifts every later
+  window by seven, which moves the tick-23 freeze to elapsed 15. 402 is the same request on
+  the real tick-18 window, with a 10-update freeze at tick 23. Its 450/460 are repeated
+  emissions inside phase 1 while `tick > 14 && tick % 5 == 0 && 0x3e < 10 && 0 < w[0x1c8]`:
+  the count, rows 2/3, slot, clamp ±45 and cadence are bound, but the per-emission
+  `(rand%100-50)*0.1` yaw / `(rand%80-40)*0.1` pitch jitter needs the RNG service and
+  `+0x1c8` has no writer in the corpus, so both gaps are stated rather than implied.
+
+The shared mechanisms this needed are now in place: `origin_attachment_slot`, `kGateContact`,
+`kGateCounterEquals`/`kGateCounterAbove` (the bodies' scratch counters survive a phase change
+while the phase tick does not), and `CapturePitch` taking a separate low and high bound
+(12 bodies clamp asymmetrically).
 
 Keiichi 0 scope note (2026-10-10): pinned update/vtable, walk, birth, usage (normal slot 0 and powered slot 3 at 13F across six forced phases), and callback families. `shoot_body_2_0_400/402` call `FUN_00435220` on `Bip01_R_Hand` at frame 13; trace callback rows are normal slot 0/powered slot 3. The typed `NamedBone` origin can now describe a hand transform, but no posed-rig witness or body-bound rule has been added; callback row/admission semantics still need reconciliation. The four body files contain measured movement/turn windows (400 ground, 402 air, first charges 450/460). Do not claim the callback request as an admitted projectile/spawn. Keiichi 1 has now been independently audited and is also deferred (below). Raw 450/460 `FUN_00435000` row mapping is also not established from its body tuple, so charge shot rows remain unbound.
 
@@ -253,9 +292,9 @@ Verification: rebuilt Linux tree; `ginkiha_tables_test` 398 checks / 0 failures,
 (162.92 s). The shared origin-pin loop now covers Keiichi 0/1 and Satoko 2 without
 duplicating the catalog/usage/trace scans. Unrelated Windows work remains uncommitted.
 
-Scoreboard: 13 full programs + 4 partial typed/schedule programs (Rena 0 powered
-branches, Rena 1, Natsumi 0, Satoko 2 tap, Keiichi 0, Keiichi 1) + 3 pinned/deferred
-(Kasai 0, Shion 0, Akane 2) + 25 remaining TODO = 46 roster combos. A program is a
+Scoreboard: 13 full programs + 7 partial typed/schedule programs (Rena 0 powered
+branches, Rena 1, Natsumi 0, Satoko 2 tap, Keiichi 0, Keiichi 1, Mion 0/1/2 taps) + 3
+pinned/deferred (Kasai 0, Shion 0, Akane 2) + 25 remaining TODO = 46 roster combos. A program is a
 schedule, not coverage: see the ledger for per-path state.
 
 ## 6. Engine mechanisms you must know (all in `src/gameplay/`)
