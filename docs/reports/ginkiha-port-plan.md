@@ -86,6 +86,8 @@ scratch-counter 15–24 + salvas únicas row 2 no 450@22 e 460@15).
 Sexto e sétimo combos concluídos 2026-10-09 22:07 (Kasai 1: programa `kasai` com
 gêmeos 2+0 e salva quádrupla row 4; Takano 0: programa `takano` com tripla row 0 e
 salvas únicas row 1).
+Oitavo combo concluído 2026-10-09 22:14 (Irie 1: programa `irie` com gêmeos 0+1 no
+tap e salvas únicas row 4 nos charges).
 
 1. **Prioridade**: matriz `shot400_usage` (52 normal + 60 tag em state400) ordena quais combos saem do piloto
    primeiro; cada combo entra com teste, nunca com fallback set 0 silencioso.
