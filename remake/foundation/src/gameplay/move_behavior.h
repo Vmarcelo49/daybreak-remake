@@ -147,6 +147,18 @@ inline constexpr MoveRule kRena1Rules[] = {
     {450,-1,12,26,MoveOp::Launch,1.f,0.f,0.f},
 };
 
+// Natsumi weapon 0 (handler 0x5e2af0): the normal ground state400 probe is an
+// attachment callback for row 0 at tick 14. Both props are cleared before that callback;
+// reassert Hide at the firing tick to select the native bone-origin fallback. This pins only
+// the request schedule, not the raw flag, admission/geometry or natural phase reachability.
+// State 402 makes an analogous raw call but lacks a normalized callback trace, so stays
+// unbound rather than promoting a body-pattern inference to a confirmed air row.
+inline constexpr MoveRule kNatsumi0Rules[] = {
+    {400,-1,14,9999,MoveOp::Hide,0.f},
+    {400,-1,14,9999,MoveOp::Hide,1.f},
+    {400,-1,14,14,MoveOp::Launch,0.f,0.f,30.f},
+};
+
 struct MoveProgram {
     const MoveRule* rules = nullptr;
     size_t count = 0;
@@ -728,7 +740,10 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     if (binding->handler == 0x4a9c40) return &satoko;
     static constexpr MoveProgram rena1 = {kRena1Rules, std::size(kRena1Rules),
                                           {{400,-1},{450,-1},{-1,-1}}};
+    static constexpr MoveProgram natsumi0 = {kNatsumi0Rules, std::size(kNatsumi0Rules),
+                                              {{400,-1},{-1,-1},{-1,-1}}};
     if (binding->handler == 0x448220) return &rena1;
+    if (binding->handler == 0x5e2af0) return &natsumi0;
     if (binding->handler == 0x484be0) return &rika0;
     return nullptr;
 }

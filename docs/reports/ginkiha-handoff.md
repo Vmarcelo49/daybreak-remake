@@ -39,7 +39,8 @@ Phases 2–5 are done; do not mark complete early.
 
 1. **Rank**: usage pairs per combo (`shot400_usage` keys `ch:we:r`): pick the richest unported
    combo. Done so far (usage order): Rena 0 (pilot), Mion 0, Rika 1, Tomitake 2, Keiichi 2,
-   Chie 2, Kasai 1, Takano 0, Irie 1, Mion 2, Rika 2, Satoko 0, Rika 0.
+   Chie 2, Kasai 1, Takano 0, Irie 1, Mion 2, Rika 2, Satoko 0, Rika 0. Since then,
+   Rena 1 and Natsumi 0 landed as limited normal subsets; Akane 2 is pinned/deferred.
 2. **Recon** (one bash + python): swap/item/actor/params/mags from `reference-data.json`;
    dispatch+usage from `combat-hooks.json`; births from `attack-preview.json` (`swap:slot`);
    walks from `exe-catalog.json`; traces fire events per variant. Delimit bodies:
@@ -71,6 +72,8 @@ Phases 2–5 are done; do not mark complete early.
 |---|---|---|---|---|
 | Rena 0 | 0x43ffc0 | rena (pre-existing) | anchor 12F; jump-cancel 400@20 | pilot cancel + cross-checks |
 | Rena 1 | 0x448220 | rena1 (normal schedule subset) | 400 row 6 @18; 450 row 1 @12–26 | tap + charge schedule |
+| Akane 2 | 0x5a7ea0 | deferred: world-origin callbacks | 400 row 0 @10; tag adds row 1 @15 | callback pins only; no program |
+| Natsumi 0 | 0x5e2af0 | natsumi0 (normal ground 400 subset) | row 0 @14; Hide slots 0/1 | tap request schedule |
 | Mion 0 | 0x4582a0 | mion | row 0 @2; row 0 @17 | tap + charge |
 | Rika 1 | 0x492f70 | rika | even ticks 12–40; twin salvos | tap repeat + T10/T30 |
 | Tomitake 2 | 0x527880 | tomitake | twin 7+5 every 3 ticks; freeze-then-fire | tap + charge |
@@ -87,15 +90,15 @@ Phases 2–5 are done; do not mark complete early.
 Pinned-only (table test, no program yet): Kasai 0 (deferred — scatter needs engine work,
 §7), Shion 0 (pins committed; bodies delimited, extraction not yet delegated).
 
-Remaining 30 combos by usage (Rena 1 is now landed as a normal-schedule subset; resume
-at Akane 2. Work the remaining entries in this order, verify bodies exist before promising
-a program, and check the note flags):
+Remaining usage-order worklist (28 TODO combos, plus the two limited subsets and Akane 2
+pinned/deferred above). Resume at Keiichi 0. Verify body and origin mapping before promising
+programs):
 
 | Combo | Usage pairs | Note |
 |---|---|---|
 | Rena 1 (ch=0 we=1) | 18 | landed as normal schedule subset; runtime-source path (not a reference body); geometry gaps noted below |
-| Akane 2 (ch=13 we=2) | 18 | |
-| Natsumi 0 (ch=15 we=0) | 18 | |
+| Akane 2 (ch=13 we=2) | 18 | pinned; deferred: 400/402/450/460 callbacks include explicit-world origin; current MoveRule cannot carry computed XYZ/yaw/pitch |
+| Natsumi 0 (ch=15 we=0) | 18 | landed as normal ground 400 row-0 schedule subset; 402/boost and world-charge paths remain unbound |
 | Keiichi 0 (ch=2 we=0) | 12 | |
 | Keiichi 1 (ch=2 we=1) | 12 | |
 | Satoko 2 (ch=3 we=2) | 12 | |
@@ -127,7 +130,11 @@ a program, and check the note flags):
 
 Rena 1 blocker / scope note (runtime-source path, not full body parity): `reference/source/shoot_native_bodies_20260929.hpp` contains no `shoot_body_0_1_*`; the separately verified `runtime/DaybreakRebuild-20261010.zip` source has `battle_rena_ground_shot.hpp:45-54` (400 normal row 6 @18) and `battle_rena_mobile_shooting.hpp:178-189` (450 normal row 1 @12-26). The port schedules only those normal fixed-row events. State402's conditional phase-2 jump, 450/460 RNG spread, all 460 air behavior, and 360/370 fixed-pitch second charge need state/trajectory operations absent from MoveRule and remain deliberately unbound; this is a documented scope limit, not a guessed implementation. Runtime archive identity: `reference/source-provenance.json` SHA256 `0c98eba7…`.
 
-Scoreboard: 14 landed (Rena 1 schedule subset included) + 2 pinned (including Kasai 0) + 30 TODO = 46 roster combos.
+Akane 2 defer note (2026-10-10): pinned handler identity/update, usage and origin-counted state400 callbacks; no MoveProgram was bound. Bodies 400/402/450/460 use `FUN_00435450` with explicit world coordinates, while `MoveRule::Launch` computes an attachment/bone muzzle. The current MoveRule cannot carry the computed XYZ/yaw/pitch, and callback probes do not prove admission/spawn. Normal/tag probes record one world request at frame 10; tag adds one at 15 across six forced phases. Add a world-origin op before implementing this combo.
+
+Natsumi 0 scope note (2026-10-10): added `natsumi0` for the **normal ground state400 callback schedule only**: Hide prop bindings 0/1 from tick 14 onward, then Launch item row 0 at tick 14. This matches the controlled normal `fire_attachment(0,0,...)` request and the DAT registration map. The executor rebuilds prop bindings at the start of every tick, but the tick-14 Hide is applied before Launch during that same update, selecting the fallback bone-origin family. The test drives the actual Natsumi+item29 fixture. Phase labels are forced probes; raw callback flag/aim, exact geometry, actual projectile admission and natural phase reachability remain outside the claim. State 402 stays unbound despite an analogous raw helper call because no state402 normalized callback trace is included. The tag/boost five-row randomized requests and world-origin 450/460 charges also remain unbound.
+
+Scoreboard: 13 full programs + 2 schedule subsets (Rena 1, Natsumi 0) + 3 pinned/deferred (Kasai 0, Shion 0, Akane 2) + 28 remaining TODO = 46 roster combos.
 
 ## 6. Engine mechanisms you must know (all in `src/gameplay/`)
 

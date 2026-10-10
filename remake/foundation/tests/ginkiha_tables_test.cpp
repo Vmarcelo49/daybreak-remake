@@ -13,6 +13,7 @@
 // under .local-analysis/ (never committed). Full rationale: docs/reports/ginkiha-port-plan.md §1.
 #include "gameplay/ginkiha_tables.h"
 #include "gameplay/move_behavior.h"
+#include "gameplay/character_moves.h"
 
 #include <cstdio>
 #include <cstring>
@@ -47,8 +48,8 @@ unsigned int walkVa(int character, int weapon) {
     return 0;
 }
 
-// First fire frame recorded for a combo/variant in the shot400 traces (-1 if absent),
-// plus the fire event count for that variant (twins count twice).
+// First projectile callback frame/count in shot400 traces, including all origins.
+// Origin-specific counters distinguish attachment, hand and world callback requests.
 int traceFireFrame(int character, int weapon, int variant, bool tag) {
     for (int i = 0; i < ginkiha::kShotTraceSummaryCount; ++i) {
         const ginkiha::ShotTraceSummary& entry = ginkiha::kShotTraceSummary[i];
@@ -65,6 +66,19 @@ int traceFireEvents(int character, int weapon, int variant, bool tag) {
         if (entry.character == character && entry.weapon == weapon && entry.variant == variant &&
             entry.tag == tag)
             return entry.fire_events;
+    }
+    return -1;
+}
+
+int traceOriginEvents(int character, int weapon, int variant, bool tag, char origin) {
+    for (int i = 0; i < ginkiha::kShotTraceSummaryCount; ++i) {
+        const ginkiha::ShotTraceSummary& entry = ginkiha::kShotTraceSummary[i];
+        if (entry.character != character || entry.weapon != weapon || entry.variant != variant ||
+            entry.tag != tag) continue;
+        if (origin == 'A') return entry.attachment_events;
+        if (origin == 'H') return entry.hand_events;
+        if (origin == 'W') return entry.world_events;
+        return -2;
     }
     return -1;
 }
@@ -197,9 +211,8 @@ int main() {
     // 8. Third combo (Rika 1 = character 4, weapon 1, swap code 14): pins the bundle
     //    rows Fase 2's Rika program will consume. Her pattern differs from both pilots:
     //    slot 0 fires phases 0..5 on EVERY EVEN frame 12..40 (90 pairs — a repeating
-    //    schedule, not a single anchor), birth speed is 45.0 with no turn data, and the
-    //    traces record NO fire event under fixed inputs — so, unlike Rena/Mion, there is
-    //    no trace-vs-usage cross-check to pin here, only the documented divergence.
+    //    schedule, not a single anchor), birth speed is 45.0 with no turn data. Normal
+    //    traces independently record 15 hand callbacks across the same even ticks.
     const ginkiha::BirthProfile* rika = findBirth(4, 1, 0);
     check(rika != nullptr, "Rika 1/0 birth profile exists");
     if (rika) {
@@ -221,11 +234,13 @@ int main() {
     }
     check(rikaPairs == 90, "Rika 1/0 usage holds 90 fire records");
     check(rikaShape, "Rika 1/0 usage shape is phases 0..5, even frames 12..40");
-    bool rikaTraceSilent = true;
+    bool rikaTraceShape = true;
     for (int v = 0; v < 6; ++v) {
-        if (traceFireFrame(4, 1, v, false) != -1) rikaTraceSilent = false;
+        if (traceFireFrame(4, 1, v, false) != 12 || traceFireEvents(4, 1, v, false) != 15 ||
+            traceOriginEvents(4, 1, v, false, 'H') != 15)
+            rikaTraceShape = false;
     }
-    check(rikaTraceSilent, "Rika 1/0 traces record no fire under fixed inputs");
+    check(rikaTraceShape, "Rika 1/0 traces show 15 hand callbacks at even ticks 12..40");
     unsigned int rikaUpdate = 0;
     for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
         if (ginkiha::kDispatchIdentity[i].character == 4 &&
@@ -346,10 +361,9 @@ int main() {
 
     // 11. Sixth combo (Chie 2 = character 11, weapon 2, swap code 36): pins the bundle
     //    rows Fase 2's Chie program will consume. Her pattern is step-3 like Tomitake's
-    //    (phases 0..5 at frames 15,18,21,24 — 24 pairs per slot) but single shots, and
-    //    the traces record NO fire under fixed inputs (like Rika) — so no trace
-    //    cross-check, only the documented divergence. Two births are sampled (slot 0
-    //    speed 80.0, slot 10 speed 120.0).
+    //    (phases 0..5 at frames 15,18,21,24 — 24 pairs per slot) but single shots.
+    //    Normal traces independently record four hand callbacks at those frames. Two births
+    //    are sampled (slot 0 speed 80.0, slot 10 speed 120.0).
     const ginkiha::BirthProfile* chie = findBirth(11, 2, 0);
     check(chie != nullptr, "Chie 2/0 birth profile exists");
     if (chie) {
@@ -372,11 +386,13 @@ int main() {
     }
     check(chiePairs == 24, "Chie 2/0 usage holds 24 fire records");
     check(chieShape, "Chie 2/0 usage shape is phases 0..5, frames 15..24 step 3");
-    bool chieTraceSilent = true;
+    bool chieTraceShape = true;
     for (int v = 0; v < 6; ++v) {
-        if (traceFireFrame(11, 2, v, false) != -1) chieTraceSilent = false;
+        if (traceFireFrame(11, 2, v, false) != 15 || traceFireEvents(11, 2, v, false) != 4 ||
+            traceOriginEvents(11, 2, v, false, 'H') != 4)
+            chieTraceShape = false;
     }
-    check(chieTraceSilent, "Chie 2/0 traces record no fire under fixed inputs");
+    check(chieTraceShape, "Chie 2/0 traces record four hand callbacks at frames 15/18/21/24");
     unsigned int chieUpdate = 0;
     for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
         if (ginkiha::kDispatchIdentity[i].character == 11 &&
@@ -428,9 +444,10 @@ int main() {
     check(traceFireEvents(12, 1, 0, false) == 22, "Kasai 1/0 trace holds 22 twin events");
     bool kasaiSilent = true;
     for (int v = 1; v < 6; ++v) {
-        if (traceFireFrame(12, 1, v, false) != -1) kasaiSilent = false;
+        if (traceFireFrame(12, 1, v, false) != -1 || traceFireEvents(12, 1, v, false) != 0)
+            kasaiSilent = false;
     }
-    check(kasaiSilent, "Kasai 1/0 other variants record no fire");
+    check(kasaiSilent, "Kasai 1/0 variants 1..5 have no fire callbacks");
     unsigned int kasaiUpdate = 0;
     for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
         if (ginkiha::kDispatchIdentity[i].character == 12 &&
@@ -447,8 +464,8 @@ int main() {
 
     // 13. Eighth combo (Takano 0 = character 7, weapon 0, swap code 22): pins the bundle
     //    rows Fase 2's Takano program will consume. Slots 0 (normal) and 6 (tag) fire
-    //    phases 0..5 at frames 12, 15 and 18 (18 pairs each); the traces record NO fire
-    //    under fixed inputs (like Rika/Chie). Two births are sampled (slot 0 speed 35.0
+    //    phases 0..5 at frames 12, 15 and 18 (18 pairs each). Normal traces confirm
+    //    three hand callbacks on those ticks. Two births are sampled (slot 0 speed 35.0
     //    with no turn data, slot 10 speed 55.0).
     const ginkiha::BirthProfile* takano = findBirth(7, 0, 0);
     check(takano != nullptr, "Takano 0/0 birth profile exists");
@@ -474,11 +491,13 @@ int main() {
     }
     check(takanoPairs == 18, "Takano 0/0 usage holds 18 fire records");
     check(takanoShape, "Takano 0/0 usage shape is phases 0..5, frames 12/15/18");
-    bool takanoSilent = true;
+    bool takanoTraceShape = true;
     for (int v = 0; v < 6; ++v) {
-        if (traceFireFrame(7, 0, v, false) != -1) takanoSilent = false;
+        if (traceFireFrame(7, 0, v, false) != 12 || traceFireEvents(7, 0, v, false) != 3 ||
+            traceOriginEvents(7, 0, v, false, 'H') != 3)
+            takanoTraceShape = false;
     }
-    check(takanoSilent, "Takano 0/0 traces record no fire under fixed inputs");
+    check(takanoTraceShape, "Takano 0/0 traces show three hand callbacks at 12/15/18");
     unsigned int takanoUpdate = 0;
     for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
         if (ginkiha::kDispatchIdentity[i].character == 7 &&
@@ -496,8 +515,8 @@ int main() {
     // 14. Ninth combo (Irie 1 = character 10, weapon 1, swap code 32): pins the bundle
     //    rows Fase 2's Irie program will consume. Rena-like single anchor (phases 0..5
     //    at frame 12) across four slots — 0 and 1 in both modes, 2 and 3 tag-only (6
-    //    pairs each, 36 total). The traces record NO fire under fixed inputs. Two
-    //    births are sampled (slot 0 speed 35.0 with near-zero turn, slot 10 speed 47.5).
+    //    pairs each, 36 total). Normal traces record two world callbacks at frame 12.
+    //    Two births are sampled (slot 0 speed 35.0 with near-zero turn, slot 10 speed 47.5).
     const ginkiha::BirthProfile* irie = findBirth(10, 1, 0);
     check(irie != nullptr, "Irie 1/0 birth profile exists");
     if (irie) {
@@ -518,11 +537,13 @@ int main() {
     }
     check(iriePairs == 6, "Irie 1/0 usage holds 6 fire records");
     check(irieShape, "Irie 1/0 usage shape is phases 0..5 at frame 12");
-    bool irieSilent = true;
+    bool irieTraceShape = true;
     for (int v = 0; v < 6; ++v) {
-        if (traceFireFrame(10, 1, v, false) != -1) irieSilent = false;
+        if (traceFireFrame(10, 1, v, false) != 12 || traceFireEvents(10, 1, v, false) != 2 ||
+            traceOriginEvents(10, 1, v, false, 'W') != 2)
+            irieTraceShape = false;
     }
-    check(irieSilent, "Irie 1/0 traces record no fire under fixed inputs");
+    check(irieTraceShape, "Irie 1/0 traces record two world callbacks at frame 12");
     unsigned int irieUpdate = 0;
     for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
         if (ginkiha::kDispatchIdentity[i].character == 10 &&
@@ -583,9 +604,9 @@ int main() {
 
     // 16. Eleventh combo (Rika 2 = character 4, weapon 2, swap code 15): pins the bundle
     //    rows Fase 2's Rika-2 program will consume. Single anchor (frame 15, all phases)
-    //    across slots 0 (both modes), 1 and 2 (tag) — 6 pairs each. The traces record NO
-    //    fire under fixed inputs. Two births are sampled (slot 0 speed 39.75, slot 10
-    //    speed 39.5, both turnless).
+    //    across slots 0 (both modes), 1 and 2 (tag) — 6 pairs each. Normal traces report
+    //    one hand callback at frame 15. Two births are sampled (slot 0 speed 39.75,
+    //    slot 10 speed 39.5, both turnless).
     const ginkiha::BirthProfile* rika2 = findBirth(4, 2, 0);
     check(rika2 != nullptr, "Rika 2/0 birth profile exists");
     if (rika2) {
@@ -608,11 +629,13 @@ int main() {
     }
     check(rika2Pairs == 6, "Rika 2/0 usage holds 6 fire records");
     check(rika2Shape, "Rika 2/0 usage shape is phases 0..5 at frame 15");
-    bool rika2Silent = true;
+    bool rika2TraceShape = true;
     for (int v = 0; v < 6; ++v) {
-        if (traceFireFrame(4, 2, v, false) != -1) rika2Silent = false;
+        if (traceFireFrame(4, 2, v, false) != 15 || traceFireEvents(4, 2, v, false) != 1 ||
+            traceOriginEvents(4, 2, v, false, 'H') != 1)
+            rika2TraceShape = false;
     }
-    check(rika2Silent, "Rika 2/0 traces record no fire under fixed inputs");
+    check(rika2TraceShape, "Rika 2/0 traces record one hand callback at frame 15");
     unsigned int rika2Update = 0;
     for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
         if (ginkiha::kDispatchIdentity[i].character == 4 &&
@@ -683,9 +706,9 @@ int main() {
 
     // 18. Thirteenth combo (Satoko 0 = character 3, weapon 0, swap code 10): pins the
     //    bundle rows Fase 2's Satoko program will consume. Single anchor (frame 17, all
-    //    phases) on slot 0 in both modes — 6 pairs each. The traces record NO fire under
-    //    fixed inputs. Two births are sampled (slot 0 speed 27.5 turn 0.5, slot 10
-    //    speed 40.0 turn 0.75).
+    //    phases) on slot 0 in both modes — 6 pairs each. Normal traces report five hand
+    //    callbacks at frame 17. Two births are sampled (slot 0 speed 27.5 turn 0.5,
+    //    slot 10 speed 40.0 turn 0.75).
     const ginkiha::BirthProfile* satoko = findBirth(3, 0, 0);
     check(satoko != nullptr, "Satoko 0/0 birth profile exists");
     if (satoko) {
@@ -712,11 +735,13 @@ int main() {
     }
     check(satokoPairs == 6, "Satoko 0/0 usage holds 6 fire records");
     check(satokoShape, "Satoko 0/0 usage shape is phases 0..5 at frame 17");
-    bool satokoSilent = true;
+    bool satokoTraceShape = true;
     for (int v = 0; v < 6; ++v) {
-        if (traceFireFrame(3, 0, v, false) != -1) satokoSilent = false;
+        if (traceFireFrame(3, 0, v, false) != 17 || traceFireEvents(3, 0, v, false) != 5 ||
+            traceOriginEvents(3, 0, v, false, 'H') != 5)
+            satokoTraceShape = false;
     }
-    check(satokoSilent, "Satoko 0/0 traces record no fire under fixed inputs");
+    check(satokoTraceShape, "Satoko 0/0 traces report five hand callbacks at frame 17");
     unsigned int satokoUpdate = 0;
     for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
         if (ginkiha::kDispatchIdentity[i].character == 3 &&
@@ -733,8 +758,8 @@ int main() {
 
     // 19. Fourteenth combo (Rika 0 = character 4, weapon 0, swap code 13): pins the
     //    bundle rows Fase 2's Rika-0 program will consume. Single anchor (frame 15, all
-    //    phases) on slot 0 normal and slot 1 tag — 6 pairs each. The traces record NO
-    //    fire under fixed inputs. Two births are sampled (slot 0 speed 35.0, slot 10
+    //    phases) on slot 0 normal and slot 1 tag — 6 pairs each. Normal traces report two
+    //    world callbacks at frame 15. Two births are sampled (slot 0 speed 35.0, slot 10
     //    speed 55.0, both turnless).
     const ginkiha::BirthProfile* rika0 = findBirth(4, 0, 0);
     check(rika0 != nullptr, "Rika 0/0 birth profile exists");
@@ -758,11 +783,13 @@ int main() {
     }
     check(rika0Pairs == 6, "Rika 0/0 usage holds 6 fire records");
     check(rika0Shape, "Rika 0/0 usage shape is phases 0..5 at frame 15");
-    bool rika0Silent = true;
+    bool rika0TraceShape = true;
     for (int v = 0; v < 6; ++v) {
-        if (traceFireFrame(4, 0, v, false) != -1) rika0Silent = false;
+        if (traceFireFrame(4, 0, v, false) != 15 || traceFireEvents(4, 0, v, false) != 2 ||
+            traceOriginEvents(4, 0, v, false, 'W') != 2)
+            rika0TraceShape = false;
     }
-    check(rika0Silent, "Rika 0/0 traces record no fire under fixed inputs");
+    check(rika0TraceShape, "Rika 0/0 traces report twin world callbacks at frame 15");
     unsigned int rika0Update = 0;
     for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
         if (ginkiha::kDispatchIdentity[i].character == 4 &&
@@ -777,12 +804,12 @@ int main() {
     if (rika00) check(rika0Update == rika00->handler, "bundle dispatch matches kLocomotion (Rika 0)");
     check(walkVa(4, 0) == 0x0048502Du, "Rika 0 walk site is 0x48502d (Fase 2 oracle)");
 
-    // 20. Fifteenth combo (Shion 0 = character 5, weapon 0, swap code 16): pins the
+    // 20. Sixteenth combo (Shion 0 = character 5, weapon 0, swap code 16): pins the
     //    bundle rows Fase 2's Shion program will consume. Single anchor (frame 16, all
     //    phases) on slot 0 normal and slot 2 tag — note the missing slot 1 (unlike the
-    //    usual 0/1 pairing). The traces record NO fire under fixed inputs. A single
-    //    birth is sampled (slot 0 speed 35.0 with next-tick turn 0.25 but no birth
-    //    turn); slots 1-9 record speed 0.
+    //    usual 0/1 pairing). Normal traces report one world callback at frame 16.
+    //    A single birth is sampled (slot 0 speed 35.0 with next-tick turn 0.25 but no
+    //    birth turn); slots 1-9 record speed 0.
     const ginkiha::BirthProfile* shion = findBirth(5, 0, 0);
     check(shion != nullptr, "Shion 0/0 birth profile exists");
     if (shion) {
@@ -800,11 +827,13 @@ int main() {
     }
     check(shionPairs == 6, "Shion 0/0 usage holds 6 fire records");
     check(shionShape, "Shion 0/0 usage shape is phases 0..5 at frame 16");
-    bool shionSilent = true;
+    bool shionTraceShape = true;
     for (int v = 0; v < 6; ++v) {
-        if (traceFireFrame(5, 0, v, false) != -1) shionSilent = false;
+        if (traceFireFrame(5, 0, v, false) != 16 || traceFireEvents(5, 0, v, false) != 1 ||
+            traceOriginEvents(5, 0, v, false, 'W') != 1)
+            shionTraceShape = false;
     }
-    check(shionSilent, "Shion 0/0 traces record no fire under fixed inputs");
+    check(shionTraceShape, "Shion 0/0 traces report one world callback at frame 16");
     unsigned int shionUpdate = 0;
     for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
         if (ginkiha::kDispatchIdentity[i].character == 5 &&
@@ -876,6 +905,11 @@ int main() {
             rena1TraceShape = false;
     }
     check(rena1TraceShape, "Rena 1 state400 traces: normal 1x/tag 2x at 18F");
+    bool rena1AttachmentOrigin = true;
+    for (int variant = 0; variant < 6; ++variant)
+        rena1AttachmentOrigin &= traceOriginEvents(0, 1, variant, false, 'A') == 1 &&
+                                 traceOriginEvents(0, 1, variant, true, 'A') == 2;
+    check(rena1AttachmentOrigin, "Rena 1 callback traces use attachment origin");
     unsigned int rena1Update = 0;
     unsigned int rena1Vtable = 0;
     for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
@@ -895,6 +929,135 @@ int main() {
           "Rena 1 bundle dispatch matches kLocomotion");
     check(walkVa(0, 1) == 0x00448664u,
           "Rena 1 walk state-10 site is 0x448664 (exe-catalog.walks)");
+
+    // 22. Akane 2 (character 13, weapon 2, swap code 42): raw bodies use explicit-world
+    //     callbacks. These controlled traces pin request origin/count; they do not prove
+    //     admission or spawned projectiles. No MoveRule world-position op exists yet.
+    const ginkiha::BirthProfile* akane = findBirth(13, 2, 0);
+    check(akane != nullptr, "Akane 2/0 birth profile exists");
+    if (akane) {
+        check(akane->swap_code == 42, "Akane 2 maps to swap code 42");
+        check(akane->speed == 1.0f, "Akane 2/0 birth speed 1.0");
+        check(akane->turn_birth == 0.0f && akane->turn_next == 0.0f,
+              "Akane 2/0 birth has no turn values");
+    }
+    int akaneNormal = 0, akaneTag0 = 0, akaneTag1 = 0;
+    bool akaneUsageShape = true;
+    for (int i = 0; i < ginkiha::kShotFireRecordCount; ++i) {
+        const auto& entry = ginkiha::kShotFireRecord[i];
+        if (entry.character != 13 || entry.weapon != 2) continue;
+        if (entry.slot == 0 && !entry.tag) {
+            ++akaneNormal;
+            if (entry.phase < 0 || entry.phase > 5 || entry.frame != 10) akaneUsageShape = false;
+        } else if (entry.slot == 0 && entry.tag) {
+            ++akaneTag0;
+            if (entry.phase < 0 || entry.phase > 5 || entry.frame != 10) akaneUsageShape = false;
+        } else if (entry.slot == 1 && entry.tag) {
+            ++akaneTag1;
+            if (entry.phase < 0 || entry.phase > 5 || entry.frame != 15) akaneUsageShape = false;
+        }
+    }
+    check(akaneNormal == 6, "Akane 2 normal row 0 usage covers six phases at frame 10");
+    check(akaneTag0 == 6 && akaneTag1 == 6, "Akane 2 tag rows 0/1 have six entries each");
+    check(akaneUsageShape, "Akane 2 state400 usage is 10F/15F by phase and tag");
+    bool akaneTraceShape = true;
+    for (int variant = 0; variant < 6; ++variant) {
+        akaneTraceShape &= traceFireFrame(13, 2, variant, false) == 10 &&
+                           traceFireEvents(13, 2, variant, false) == 1 &&
+                           traceOriginEvents(13, 2, variant, false, 'W') == 1 &&
+                           traceFireFrame(13, 2, variant, true) == 10 &&
+                           traceFireEvents(13, 2, variant, true) == 2 &&
+                           traceOriginEvents(13, 2, variant, true, 'W') == 2;
+    }
+    check(akaneTraceShape, "Akane 2 trace requests: normal 1/tag 2, all world-origin");
+    bool akaneNoOtherOrigins = true;
+    for (int variant = 0; variant < 6; ++variant) {
+        akaneNoOtherOrigins &= traceOriginEvents(13, 2, variant, false, 'A') == 0 &&
+                               traceOriginEvents(13, 2, variant, false, 'H') == 0 &&
+                               traceOriginEvents(13, 2, variant, true, 'A') == 0 &&
+                               traceOriginEvents(13, 2, variant, true, 'H') == 0;
+    }
+    check(akaneNoOtherOrigins, "Akane 2 state400 traces have no attachment/hand requests");
+    unsigned int akaneUpdate = 0, akaneVtable = 0;
+    for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
+        if (ginkiha::kDispatchIdentity[i].character == 13 &&
+            ginkiha::kDispatchIdentity[i].weapon == 2) {
+            akaneUpdate = ginkiha::kDispatchIdentity[i].update;
+            akaneVtable = ginkiha::kDispatchIdentity[i].vtable;
+        }
+    }
+    check(akaneUpdate == 0x005A7EA0u, "Akane 2 dispatch update is 0x5a7ea0");
+    check(akaneVtable == 0x006A5478u, "Akane 2 factory vtable is 0x6a5478");
+    const gameplay::LocomotionDefinition* akaneLocomotion = nullptr;
+    for (const auto& entry : gameplay::kLocomotion)
+        if (entry.character == 13 && entry.slot == 2) akaneLocomotion = &entry;
+    check(akaneLocomotion && akaneLocomotion->handler == akaneUpdate,
+          "Akane 2 dispatch matches kLocomotion");
+    check(walkVa(13, 2) == 0x005A82E7u, "Akane 2 walk site is 0x5a82e7");
+    gameplay::CharacterMoves akaneMoves;
+    akaneMoves.set_character_index(13);
+    check(gameplay::move_program(&akaneMoves) == nullptr,
+          "Akane 2 program stays unbound until world-origin op exists");
+
+    // 23. Natsumi 0 (character 15, weapon 0, swap code 45). Only the normal state400
+    //     row-0 attachment callback is represented. Forced-phase callback probes pin the
+    //     request schedule; they do not prove phase reachability or projectile admission.
+    const ginkiha::BirthProfile* natsumi = findBirth(15, 0, 0);
+    check(natsumi != nullptr, "Natsumi 0/0 birth profile exists");
+    if (natsumi) {
+        check(natsumi->swap_code == 45, "Natsumi 0 maps to swap code 45");
+        check(natsumi->speed == 80.0f, "Natsumi 0/0 birth speed 80.0");
+        check(natsumi->turn_birth == 5.0f && natsumi->turn_next == 0.0f,
+              "Natsumi 0/0 birth turn 5.0 then zero");
+    }
+    int natsumiNormal = 0;
+    bool natsumiUsageShape = true;
+    for (int i = 0; i < ginkiha::kShotFireRecordCount; ++i) {
+        const auto& entry = ginkiha::kShotFireRecord[i];
+        if (entry.character == 15 && entry.weapon == 0 && entry.slot == 0 && !entry.tag) {
+            ++natsumiNormal;
+            if (entry.phase < 0 || entry.phase > 5 || entry.frame != 14) natsumiUsageShape = false;
+        }
+    }
+    check(natsumiNormal == 6, "Natsumi 0 row-0 normal usage covers six forced phases");
+    check(natsumiUsageShape, "Natsumi 0 normal usage anchor is frame 14");
+    bool natsumiTraceShape = true;
+    for (int variant = 0; variant < 6; ++variant) {
+        natsumiTraceShape &= traceFireFrame(15, 0, variant, false) == 14 &&
+                             traceFireEvents(15, 0, variant, false) == 1 &&
+                             traceOriginEvents(15, 0, variant, false, 'A') == 1 &&
+                             traceOriginEvents(15, 0, variant, false, 'H') == 0 &&
+                             traceOriginEvents(15, 0, variant, false, 'W') == 0;
+    }
+    check(natsumiTraceShape, "Natsumi 0 normal traces: one attachment request at 14F");
+    bool natsumiTagShape = true;
+    for (int variant = 0; variant < 6; ++variant) {
+        natsumiTagShape &= traceFireFrame(15, 0, variant, true) == 14 &&
+                           traceFireEvents(15, 0, variant, true) == 6 &&
+                           traceOriginEvents(15, 0, variant, true, 'A') == 6;
+    }
+    check(natsumiTagShape, "Natsumi 0 tag traces add five attachment callback requests at 14F");
+    unsigned int natsumiUpdate = 0;
+    for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i)
+        if (ginkiha::kDispatchIdentity[i].character == 15 &&
+            ginkiha::kDispatchIdentity[i].weapon == 0)
+            natsumiUpdate = ginkiha::kDispatchIdentity[i].update;
+    check(natsumiUpdate == 0x005E2AF0u, "Natsumi 0 dispatch update is 0x5e2af0");
+    const gameplay::LocomotionDefinition* natsumiLocomotion = nullptr;
+    for (const auto& entry : gameplay::kLocomotion)
+        if (entry.character == 15 && entry.slot == 0) natsumiLocomotion = &entry;
+    check(natsumiLocomotion && natsumiLocomotion->handler == natsumiUpdate,
+          "Natsumi 0 dispatch matches kLocomotion");
+    check(walkVa(15, 0) == 0x005E2F96u, "Natsumi 0 walk site is 0x5e2f96");
+    check(gameplay::kNatsumi0Rules[0].operation == gameplay::MoveOp::Hide &&
+              gameplay::kNatsumi0Rules[0].first == 14 && gameplay::kNatsumi0Rules[0].value == 0.f &&
+              gameplay::kNatsumi0Rules[1].operation == gameplay::MoveOp::Hide &&
+              gameplay::kNatsumi0Rules[1].first == 14 && gameplay::kNatsumi0Rules[1].value == 1.f &&
+              gameplay::kNatsumi0Rules[2].move == 400 &&
+              gameplay::kNatsumi0Rules[2].first == 14 &&
+              gameplay::kNatsumi0Rules[2].value == 0.f,
+          "Natsumi 0 rule hides both props then schedules normal row 0 at 14F");
+
     std::printf("ginkiha_tables_test: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

@@ -99,6 +99,13 @@ Décimo terceiro combo concluído 2026-10-09 23:52 (Rena 1: programa `rena1` com
 normal das agendas fixed-row 400/450, medido no runtime helper e corroborado pelo oracle de
 state400; 402 condicional, spread RNG, state460 e second-charge pitch/origin ficam documentados
 e sem binding).
+Akane 2 analisado 2026-10-10: dispatch, usage, birth, walks e origem dos callbacks pinados; adiado
+como programa porque os corpos usam `FUN_00435450` (origem mundial com XYZ calculado), que não cabe
+em `MoveRule::Launch` (origem attachment/bone). O próximo combo escolhido foi Natsumi 0.
+Décimo quarto combo concluído 2026-10-10 01:56 (Natsumi 0: somente state400 normal grounded,
+Hide das duas props a partir do tick 14 e row 0 em 14F; callback/registration pinados. Sem claims
+sobre alcance natural das fases, flag bruto, admissão/spawn ou geometria. State402 e cargas permanecem
+abertos).
 
 1. **Prioridade**: matriz `shot400_usage` (52 normal + 60 tag em state400) ordena quais combos saem do piloto
    primeiro; cada combo entra com teste, nunca com fallback set 0 silencioso.

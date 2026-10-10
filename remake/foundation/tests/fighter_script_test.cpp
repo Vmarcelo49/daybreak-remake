@@ -113,6 +113,8 @@ TestCombo g_rika2Combo;
 TestCombo g_satokoCombo;
 TestCombo g_rika0Combo;
 TestCombo g_rena1Combo;
+TestCombo g_akane2Combo;
+TestCombo g_natsumi0Combo;
 
 std::filesystem::path findInstall(const char* executable) {
     const int itemId = gameplay::kWeaponIds[0][0];
@@ -2400,6 +2402,59 @@ void test_rena1_normal_schedule() {
                charged.take_pending_shot().armed);
 }
 
+void test_akane2_world_origin_gap() {
+    section("28. Akane 2 item-46 fixture deferred: world-origin shots");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_akane2Combo.load(install, 13, 2))
+        return skip_case("Akane 2 combo");
+    check_int("Akane 2 fixture binds item 46", 46, g_akane2Combo.weapon.id);
+    check_int("Akane 2 item has eight bullet table entries", 8, g_akane2Combo.weapon.bulletCount);
+    check_int("Akane 2 callback row 0 is item file type zero", 0,
+              g_akane2Combo.weapon.bullets[0].type);
+    check_int("Akane 2 row 0 is bound to primary magazine", 0,
+              g_akane2Combo.weapon.bullets[0].magazine);
+    check_bool("Akane 2 has no attachment-origin MoveProgram", true,
+               gameplay::move_program(&g_akane2Combo.moves) == nullptr);
+}
+
+void test_natsumi0_ground_tap() {
+    section("29. Natsumi 0 state400 normal row 0 at 14F (bounded ground request schedule)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_natsumi0Combo.load(install, 15, 0))
+        return skip_case("Natsumi 0 combo");
+    const auto* program = gameplay::move_program(&g_natsumi0Combo.moves);
+    check_bool("Natsumi 0 bounded program is bound to item 29", true,
+               program && program->rules == gameplay::kNatsumi0Rules);
+    check_int("Natsumi 0 uses item 29", 29, g_natsumi0Combo.weapon.id);
+    check_int("Natsumi 0 program maps normal grounded tap to state 400", 400,
+              program ? program->shot[0][0] : -1);
+    check_int("Natsumi 0 does not yet claim air tap state 402", -1,
+              program ? program->shot[0][1] : -2);
+
+    Fighter fighter;
+    fighter.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.f);
+    g_natsumi0Combo.bind(fighter);
+    settle(fighter);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(fighter, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(fighter, in);
+    check_int("Natsumi tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(fighter.state()));
+    check_int("Natsumi tap binds state 400", 400, fighter.shot_move_id());
+    check_bool("Natsumi tap begins with both attachment slots bound", true,
+               fighter.weapon_slot_bound(0) && fighter.weapon_slot_bound(1));
+    for (int i = 0; i < 14; ++i) tick(fighter, in);
+    const gameplay::PendingShot shot = fighter.take_pending_shot();
+    check_bool("Natsumi state400 schedules the tick-14 row-0 request", true, shot.armed);
+    check_int("Natsumi normal tap selects item row 0", 0, shot.bulletRow);
+    check_bool("Natsumi bounded request schedules no duplicate", false,
+               fighter.take_pending_shot().armed);
+    check_bool("Natsumi normal request clears both prop bindings", true,
+               !fighter.weapon_slot_bound(0) && !fighter.weapon_slot_bound(1));
+}
+
 void test_rika0_twin_tick() {
     section("26. Rika 0 twin tick + twin salvos (bodies shoot_body_4_0_*)");
     const auto install = findInstall(nullptr);
@@ -3074,6 +3129,8 @@ int main(int argc, char** argv) {
     test_satoko_five_shot();
     test_rika0_twin_tick();
     test_rena1_normal_schedule();
+    test_akane2_world_origin_gap();
+    test_natsumi0_ground_tap();
     test_ammo();
     test_hypermode();
     test_ko();
