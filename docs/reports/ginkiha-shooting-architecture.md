@@ -180,6 +180,22 @@ Two traps found while repairing it, both worth remembering:
   yaw ±1.0 deg — `FUN_0043ffc0.c:1526-1543`, where the ±1.0 is a literal angle offset,
   not a bug). Rika's charge was briefly routed through it and got forward 70 with a
   spurious ±1° yaw. Any body measuring anything else needs typed specs.
+* **The pitch is latched, not re-derived.** `shoot_body_4_1_450` computes the elevation
+  once at tick 10 (`FUN_0042da80` → `FUN_0066b668` → `write_scratch(0x3c)`) and reads it
+  back for the frozen salvos. Recomputing the elevation per launch re-aims a salvo whose
+  target changed height mid-attack — which is what the port did until
+  `MoveOp::CapturePitch` / `ShotAimKind::StoredPitch` latched it. **106 bodies** in the
+  corpus read `0x3c` more than once, so this is a roster-wide mechanism rather than a
+  Rika special case, and the witness drives a dummy that rises 600 units between the
+  two salvos to prove the latch holds.
+
+### Reaching the air charge is its own port problem
+
+The air copy needs two things the port does not provide for free: the charge must survive
+the leap (a Jump press returns before the charge block, costing one tick before the charge
+re-accrues), and the air window must outlast the program (a plain leap is 47 updates;
+holding Z against the fly budget extends it to ~112). Both are documented in the witness
+so the next agent does not mistake an unreachable path for a broken rule.
 
 ### 2.6 Satoko 2's tap geometry is fully measured and needs no new engine type
 
@@ -241,18 +257,21 @@ combo; nothing is deferred to a "combat phase" that no one owns.
 2. `Fighter` shooting context + `shoot_gate_powered()`, published by `Match` from
    `TargetLocks::holding_ally` — an analogue per §2.2, labelled as one in code and tests.
 3. `kRikaRules` 450/460 repaired to the measured counter/freeze semantics (§2.5): the
-   frozen-interval salvo count, the ±50/60/70 geometry, and both branch pairs.
+   frozen-interval salvo count, the ±50/60/70 geometry, both branch pairs, and the latched
+   pitch (`MoveOp::CapturePitch` + `ShotAimKind::StoredPitch`, which 106 bodies need).
 4. `kSatoko2Rules` 400/402 bound: twin world requests, lateral ±50, dynamic pitch
    clamp, powered row selection, turns and bleed. 450/460 stay pending with their
    measured parameters recorded in the ledger.
-5. Witness tests: whole-frozen-interval request counts for Rika 1 (normal AND powered
-   branches, with the geometry pinned), the Satoko 2 twin worlds and both gate halves
-   from the real item-38 fixture, and a **live 4-fighter match** where an ally lock
-   produced by `Match`'s own maintenance switches the fired row from 0 to 1.
+5. Witness tests: whole-frozen-interval request counts for Rika 1 on **ground and air**
+   and on both branches, with the geometry and the latched pitch pinned; the Satoko 2 twin
+   worlds and both gate halves from the real item-38 fixture; and a **live 4-fighter
+   match** where an ally lock produced by `Match`'s own maintenance switches the fired row
+   from 0 to 1. The live witness counts the SPAWN update only, so a single surviving
+   projectile cannot satisfy a two-entry assertion.
 6. The unused typed vocabulary (WorldPosition, LegacyDegrees, Facing, Direction and
    their fields) removed in the pre-commit diff review.
 
-Validated: build green, full Linux suite 65/65 with the fighter suite at 755 checks,
+Validated: build green, full Linux suite 65/65 with the fighter suite at 788 checks,
 recon 6/6, Windows and web cross-builds, and a live 2-player battle of 2400 frames /
 852 logic ticks. The typed-origin descriptors that resumed the session unvalidated are
 included in that validation.

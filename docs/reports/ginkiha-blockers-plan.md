@@ -515,3 +515,33 @@ edits.
 **Next:** settle the `+0x848` producer (model `+0x300`, or keep the analogue and say so
 everywhere), then Keiichi 0/1's hand origin, then Kasai 0 as the first C++ handler with
 the pool audit. The 1v1 powered availability question rides on the producer work.
+
+### 2026-10-10 — 3.2 Pitch latch, air-copy witness, and a counting fix
+
+**Done — the pitch is latched, not re-derived.** `shoot_body_4_1_450` computes the target
+elevation once at tick 10 (`FUN_0042da80` → `FUN_0066b668` → `write_scratch(0x3c)`) and reads
+it back for the frozen tick-30 salvos. The port was recomputing it per launch, so a target
+that changed height between the two would silently re-aim the later salvos.
+`MoveOp::CapturePitch` + `ShotAimKind::StoredPitch` now latch it (keeping the original's
+integer truncation), and **106 bodies** read `0x3c` more than once, so this is a roster
+mechanism rather than a Rika fix.
+
+**Done — the air copy is witnessed end to end.** `460` was untested in both branches.
+Reaching it exposed two port behaviors worth writing down: a Jump press returns before the
+charge block (one tick lost, then the charge re-accrues), and a plain leap's 47-update air
+window is too short for the 60-update program, so the witness holds Z against the fly
+budget to reach ~112. The air frozen interval then fires all three powered pairs with the
+normal gate correctly off.
+
+**Done — the live witness no longer double-counts.** It appended every living projectile
+on each update until it had two entries, so one surviving twin could satisfy the
+assertion. It now reads the SPAWN update only, which is where both requests of a volley
+appear together.
+
+**Verified:** full Linux suite **65/65 (166.6 s)**, fighter suite **788 checks / 0
+failures**, recon 6/6, Windows and web cross-builds, live battle smoke RESULT ok.
+
+**Next:** the `+0x848` producer (model `+0x300`, or commit to the analogue everywhere),
+then Keiichi 0/1's hand origin, then Kasai 0 with the pool audit. The latched-pitch
+mechanism is expected to be needed by dozens of bodies, so keep using it rather than
+re-deriving elevation per launch.
