@@ -104,6 +104,8 @@ TestCombo g_rikaCombo;
 TestCombo g_tomitakeCombo;
 TestCombo g_keiichiCombo;
 TestCombo g_chieCombo;
+TestCombo g_kasaiCombo;
+TestCombo g_takanoCombo;
 
 std::filesystem::path findInstall(const char* executable) {
     const int itemId = gameplay::kWeaponIds[0][0];
@@ -2238,6 +2240,136 @@ void test_chie_scratch_burst() {
     check_int("Chie charge selects item row two", 2, shot.bulletRow);
 }
 
+void test_kasai_twin_burst() {
+    section("22. Kasai 1 twin burst + fan charge (bodies shoot_body_12_1_*)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_kasaiCombo.load(install, 12, 1))
+        return skip_case("Kasai 1 combo");
+    // Bundle evidence: Kasai 1 (handler 0x5b9680) fires twin rows 2+0 at ticks 10
+    // and 15 in the ground tap (base burst count 2; extended bursts need runtime
+    // burst state — documented gap), and a fan of four row-4 shots at tick 18 in
+    // the first ground charge (fan offsets share one trajectory here).
+    // Her program is kKasaiRules; the second charge stays provisional.
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_kasaiCombo.bind(f);
+    settle(f);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Kasai tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    check_int("Kasai tap binds move 400", 400, f.shot_move_id());
+    for (int i = 0; i < 10; ++i) tick(f, in);
+    gameplay::PendingShot first = f.take_pending_shot();
+    gameplay::PendingShot second = f.take_pending_shot();
+    check_bool("Kasai tap T10 salvo fires twice", true, first.armed && second.armed);
+    check_int("Kasai T10 first row is 2", 2, first.bulletRow);
+    check_int("Kasai T10 second row is 0", 0, second.bulletRow);
+    for (int i = 0; i < 5; ++i) tick(f, in);
+    first = f.take_pending_shot();
+    second = f.take_pending_shot();
+    check_bool("Kasai tap T15 salvo fires twice", true, first.armed && second.armed);
+    check_int("Kasai T15 first row is 2", 2, first.bulletRow);
+    check_int("Kasai T15 second row is 0", 0, second.bulletRow);
+    // First charge: hold past the yellow threshold (level-1 chargeMax 60).
+    Fighter g;
+    g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_kasaiCombo.bind(g);
+    settle(g);
+    const float kasaiYellow = static_cast<float>(
+        g_kasaiCombo.weapon.magazineForChargeLevel(1).chargeMax) /
+        gameplay::FixedStep::tickRate;
+    float kasaiHeld = 0.0f;
+    int kasaiYellowFrames = 0;
+    while (kasaiHeld < kasaiYellow && kasaiYellowFrames < 10000) {
+        kasaiHeld += kStep;
+        ++kasaiYellowFrames;
+    }
+    in.set(fnd::input::Action::Shoot, true);
+    for (int i = 0; i < kasaiYellowFrames; ++i) tick(g, in);
+    check_int("Kasai hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
+              static_cast<int>(g.charge_tier()));
+    in.set(fnd::input::Action::Shoot, false);
+    tick(g, in);
+    check_int("Kasai charge enters ShootB", static_cast<int>(FighterState::ShootB),
+              static_cast<int>(g.state()));
+    check_int("Kasai charge binds move 450", 450, g.shot_move_id());
+    for (int i = 0; i < 18; ++i) tick(g, in);
+    int fanArmed = 0;
+    bool fanRows = true;
+    for (int i = 0; i < 4; ++i) {
+        gameplay::PendingShot shot = g.take_pending_shot();
+        if (shot.armed) ++fanArmed;
+        if (shot.bulletRow != 4) fanRows = false;
+    }
+    check_int("Kasai charge T18 fan fires four", 4, fanArmed);
+    check_bool("Kasai fan rows are all 4", true, fanRows);
+}
+
+void test_takano_triple_tap() {
+    section("23. Takano 0 triple tap + single charge (bodies shoot_body_7_0_*)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_takanoCombo.load(install, 7, 0))
+        return skip_case("Takano 0 combo");
+    // Bundle evidence: Takano 0 (handler 0x531ce0) fires item row 0 at ticks 12, 15
+    // and 18 in the ground tap (three single shots, not a repeating window), and item
+    // row 1 once at tick 18 in the first ground charge (tick 17 in the air charge —
+    // same rule shape, untested here like the other air paths).
+    // Her program is kTakanoRules; the second charge stays provisional.
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_takanoCombo.bind(f);
+    settle(f);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Takano tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    check_int("Takano tap binds move 400", 400, f.shot_move_id());
+    for (int i = 0; i < 12; ++i) tick(f, in);
+    gameplay::PendingShot shot = f.take_pending_shot();
+    check_bool("Takano tap launches at tick 12", true, shot.armed);
+    check_int("Takano tap selects item row zero", 0, shot.bulletRow);
+    tick(f, in);
+    tick(f, in);
+    tick(f, in);
+    shot = f.take_pending_shot();
+    check_bool("Takano tap launches again at tick 15", true, shot.armed);
+    check_int("Takano repeat selects item row zero", 0, shot.bulletRow);
+    // First charge: hold past the yellow threshold (level-1 chargeMax 60).
+    Fighter g;
+    g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_takanoCombo.bind(g);
+    settle(g);
+    const float takanoYellow = static_cast<float>(
+        g_takanoCombo.weapon.magazineForChargeLevel(1).chargeMax) /
+        gameplay::FixedStep::tickRate;
+    float takanoHeld = 0.0f;
+    int takanoYellowFrames = 0;
+    while (takanoHeld < takanoYellow && takanoYellowFrames < 10000) {
+        takanoHeld += kStep;
+        ++takanoYellowFrames;
+    }
+    in.set(fnd::input::Action::Shoot, true);
+    for (int i = 0; i < takanoYellowFrames; ++i) tick(g, in);
+    check_int("Takano hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
+              static_cast<int>(g.charge_tier()));
+    in.set(fnd::input::Action::Shoot, false);
+    tick(g, in);
+    check_int("Takano charge enters ShootB", static_cast<int>(FighterState::ShootB),
+              static_cast<int>(g.state()));
+    check_int("Takano charge binds move 450", 450, g.shot_move_id());
+    for (int i = 0; i < 18; ++i) tick(g, in);
+    shot = g.take_pending_shot();
+    check_bool("Takano charge launches at tick 18", true, shot.armed);
+    check_int("Takano charge selects item row one", 1, shot.bulletRow);
+}
+
 void test_keiichi_dense_tap() {
     section("19. Keiichi 2 dense tap + single charge (bodies shoot_body_2_2_*)");
     const auto install = findInstall(nullptr);
@@ -2502,6 +2634,8 @@ int main(int argc, char** argv) {
     test_keiichi_dense_tap();
     test_rika_shot_jump_cancel();
     test_chie_scratch_burst();
+    test_kasai_twin_burst();
+    test_takano_triple_tap();
     test_ammo();
     test_hypermode();
     test_ko();

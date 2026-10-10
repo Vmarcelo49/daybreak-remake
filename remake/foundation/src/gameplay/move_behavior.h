@@ -388,6 +388,73 @@ inline constexpr MoveRule kChieRules[] = {
     {460,-1,0,24,MoveOp::Turn,18.f},
     {460,-1,22,22,MoveOp::Launch,2.f,0.f,30.f},
 };
+// Takano weapon 0 (handler 0x531ce0) — shot rules recovered from the reference bodies
+// shoot_body_7_0_{400,402,450,460} (bundle reference/source). Double turn in the tap
+// (10 deg ticks 0-17 phaseless + 15 deg phase-0 open) with a phase-0 bleed; three
+// single shots row 0 at ticks 12,15,18 (tag row 6 skipped — no flag field). Single
+// salvos row 1 at tick 18 (450) and tick 17 (460) with slot-0 Hide windows (10-17 and
+// 0-16); the slot1→2 half has no field. No Hold anywhere; gravity tails skipped.
+inline constexpr MoveRule kTakanoRules[] = {
+    // 400 ground tap: turns 10 deg (0-17) + 15 deg (phase 0), bleed 0.5 phase 0.
+    {400,-1,0,17,MoveOp::Turn,10.f},
+    {400,0,0,9999,MoveOp::Turn,15.f},
+    {400,0,0,9999,MoveOp::Decelerate,.5f},
+    {400,-1,12,12,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,15,15,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,18,18,MoveOp::Launch,0.f,0.f,40.f},
+    // 402 air tap: turn 20 deg ticks 0-17, same triple row 0 (no bleed — gravity tail).
+    {402,-1,0,17,MoveOp::Turn,20.f},
+    {402,-1,12,12,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,15,15,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,18,18,MoveOp::Launch,0.f,0.f,40.f},
+    // 450 ground charge1: turn 20 deg through tick 16, Hide slot 0 ticks 10-17,
+    // single salvo row 1 at tick 18.
+    {450,-1,0,16,MoveOp::Turn,20.f},
+    {450,-1,10,17,MoveOp::Hide,0.f},
+    {450,-1,18,18,MoveOp::Launch,1.f,0.f,40.f},
+    // 460 air charge1: turn 15 deg through tick 14, Hide slot 0 ticks 0-16,
+    // single salvo row 1 at tick 17.
+    {460,-1,0,14,MoveOp::Turn,15.f},
+    {460,-1,0,16,MoveOp::Hide,0.f},
+    {460,-1,17,17,MoveOp::Launch,1.f,0.f,40.f},
+};
+// Kasai weapon 1 (handler 0x5b9680) — shot rules recovered from the reference bodies
+// shoot_body_12_1_{400,402,450,460} (bundle reference/source). Twin shots rows 2+0
+// per burst tick (row 2 always, row 0 normal / row 1 tag — only normal bound); the
+// base burst fires at ticks 10 and 15 (cooldown 5, burst count 2), extended bursts
+// (usage counts 4/6) need runtime burst state this model has no field for — gap.
+// Single salvos of FOUR row-4 fan shots at tick 18 (450) and tick 17 (460); the fan
+// offsets have no fields, so the four share one trajectory (count-faithful).
+// No phase gates anywhere; no Hold; prop Hide semantics illegible (no rules).
+inline constexpr MoveRule kKasaiRules[] = {
+    // 400 ground tap: 18 deg turn ticks 0-9, 10 deg exactly at tick 10, bleed 2.0/tick.
+    {400,-1,0,9,MoveOp::Turn,18.f},
+    {400,-1,10,10,MoveOp::Turn,10.f},
+    {400,-1,1,9999,MoveOp::Decelerate,2.f},
+    {400,-1,10,10,MoveOp::Launch,2.f,0.f,45.f},
+    {400,-1,10,10,MoveOp::Launch,0.f,0.f,45.f},
+    {400,-1,15,15,MoveOp::Launch,2.f,0.f,45.f},
+    {400,-1,15,15,MoveOp::Launch,0.f,0.f,45.f},
+    // 402 air tap: 15 deg turn ticks 0-9, 5 deg ticks 10-24, same twin salvos.
+    {402,-1,0,9,MoveOp::Turn,15.f},
+    {402,-1,10,24,MoveOp::Turn,5.f},
+    {402,-1,10,10,MoveOp::Launch,2.f,0.f,45.f},
+    {402,-1,10,10,MoveOp::Launch,0.f,0.f,45.f},
+    {402,-1,15,15,MoveOp::Launch,2.f,0.f,45.f},
+    {402,-1,15,15,MoveOp::Launch,0.f,0.f,45.f},
+    // 450 ground charge1: 20 deg turn through tick 9, fan of four row-4 at tick 18.
+    {450,-1,0,9,MoveOp::Turn,20.f},
+    {450,-1,18,18,MoveOp::Launch,4.f,0.f,40.f},
+    {450,-1,18,18,MoveOp::Launch,4.f,0.f,40.f},
+    {450,-1,18,18,MoveOp::Launch,4.f,0.f,40.f},
+    {450,-1,18,18,MoveOp::Launch,4.f,0.f,40.f},
+    // 460 air charge1: 15 deg turn through tick 11, fan of four row-4 at tick 17.
+    {460,-1,0,11,MoveOp::Turn,15.f},
+    {460,-1,17,17,MoveOp::Launch,4.f,0.f,40.f},
+    {460,-1,17,17,MoveOp::Launch,4.f,0.f,40.f},
+    {460,-1,17,17,MoveOp::Launch,4.f,0.f,40.f},
+    {460,-1,17,17,MoveOp::Launch,4.f,0.f,40.f},
+};
 inline const MoveProgram* move_program(const CharacterMoves* moves) {
     const auto* binding = locomotion(moves);
     if (!binding) return nullptr;
@@ -411,6 +478,9 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     // bleeds below which map to Decelerate with their floor-0 clamp.
     static constexpr MoveProgram tomitake = {kTomitakeRules, std::size(kTomitakeRules),
                                             {{400,402},{450,460},{-1,-1}}};
+    // Takano 0: same unbound second charge (no 360/370 body for ch7 in scope).
+    static constexpr MoveProgram takano = {kTakanoRules, std::size(kTakanoRules),
+                                           {{400,402},{450,460},{-1,-1}}};
     // Keiichi 2: same unbound second charge (bodies 403-412/469 exist but unscoped).
     static constexpr MoveProgram keiichi = {kKeiichiRules, std::size(kKeiichiRules),
                                             {{400,402},{450,460},{-1,-1}}};
@@ -422,7 +492,12 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     // Chie 2: same unbound second charge (no 360/370 body for ch11 in scope).
     static constexpr MoveProgram chie = {kChieRules, std::size(kChieRules),
                                         {{400,402},{450,460},{-1,-1}}};
+    // Kasai 1: same unbound second charge (bodies 451-454/469 exist but unscoped).
+    static constexpr MoveProgram kasai = {kKasaiRules, std::size(kKasaiRules),
+                                          {{400,402},{450,460},{-1,-1}}};
     if (binding->handler == 0x566a40) return &chie;
+    if (binding->handler == 0x5b9680) return &kasai;
+    if (binding->handler == 0x531ce0) return &takano;
     return nullptr;
 }
 } // namespace gameplay
