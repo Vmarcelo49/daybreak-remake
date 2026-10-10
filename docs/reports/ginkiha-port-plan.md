@@ -91,6 +91,8 @@ tap e salvas únicas row 4 nos charges).
 Nono e décimo combos concluídos 2026-10-09 22:44 (Mion 2: programa `mion2` com tiro
 único no entry-tick 10 e rajada 10× no charge; Rika 2: programa `rika2` com tick
 único e fan triplo; pin do volley Kasai 0 corrigido para 21/31 eventos).
+Décimo primeiro combo concluído 2026-10-09 22:56 (Satoko 0: programa `satoko` com
+salva quíntupla no tap e salvas gêmeas congeladas no charge).
 
 1. **Prioridade**: matriz `shot400_usage` (52 normal + 60 tag em state400) ordena quais combos saem do piloto
    primeiro; cada combo entra com teste, nunca com fallback set 0 silencioso.
