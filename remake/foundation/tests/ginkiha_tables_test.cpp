@@ -290,6 +290,60 @@ int main() {
     if (tomitake2) check(tomitakeUpdate == tomitake2->handler, "bundle dispatch matches kLocomotion (Tomitake 2)");
     check(walkVa(6, 2) == 0x00527D4Fu, "Tomitake 2 walk site is 0x527d4f (Fase 2 oracle)");
 
+    // 10. Fifth combo (Keiichi 2 = character 2, weapon 2, swap code 9): pins the bundle
+    //    rows Fase 2's Keiichi program will consume. His pattern is a fourth shape: a
+    //    DENSE burst — slot 0 fires phases 0..5 on every consecutive frame 10..20
+    //    (66 pairs; tag mirrors it on slot 1). Two births are sampled (slot 0 speed
+    //    42.5 with a two-sample turn trace [5.0, 0.15], slot 10 speed 39.5) — the only
+    //    combo so far with a second sampled birth.
+    const ginkiha::BirthProfile* keiichi = findBirth(2, 2, 0);
+    check(keiichi != nullptr, "Keiichi 2/0 birth profile exists");
+    if (keiichi) {
+        check(keiichi->swap_code == 9, "Keiichi 2 maps to swap code 9");
+        check(keiichi->speed == 42.5f, "Keiichi 2/0 birth speed 42.5");
+        check(keiichi->turn_birth == 5.0f, "Keiichi 2/0 birth turn opens at 5.0");
+        check(keiichi->turn_next > 0.149f && keiichi->turn_next < 0.151f,
+              "Keiichi 2/0 next tick turn 0.15");
+    }
+    const ginkiha::BirthProfile* keiichi10 = findBirth(2, 2, 10);
+    check(keiichi10 != nullptr, "Keiichi 2/10 birth profile exists");
+    if (keiichi10) {
+        check(keiichi10->speed == 39.5f, "Keiichi 2/10 birth speed 39.5");
+        check(keiichi10->turn_birth == 0.0f && keiichi10->turn_next == 0.0f,
+              "Keiichi 2/10 birth has no turn data");
+    }
+    int keiichiPairs = 0;
+    bool keiichiShape = true;
+    for (int i = 0; i < ginkiha::kShotFireRecordCount; ++i) {
+        const ginkiha::ShotFireRecord& entry = ginkiha::kShotFireRecord[i];
+        if (entry.character == 2 && entry.weapon == 2 && entry.slot == 0 && !entry.tag) {
+            ++keiichiPairs;
+            if (entry.phase < 0 || entry.phase > 5 || entry.frame < 10 || entry.frame > 20)
+                keiichiShape = false;
+        }
+    }
+    check(keiichiPairs == 66, "Keiichi 2/0 usage holds 66 fire records");
+    check(keiichiShape, "Keiichi 2/0 usage shape is phases 0..5, frames 10..20");
+    bool keiichiDense = true;
+    for (int variant = 0; variant < 6; ++variant) {
+        if (traceFireFrame(2, 2, variant, false) != 10) keiichiDense = false;
+        if (traceFireEvents(2, 2, variant, false) != 11) keiichiDense = false;
+    }
+    check(keiichiDense, "Keiichi 2 traces open at 10F with 11 events each");
+    unsigned int keiichiUpdate = 0;
+    for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
+        if (ginkiha::kDispatchIdentity[i].character == 2 &&
+            ginkiha::kDispatchIdentity[i].weapon == 2)
+            keiichiUpdate = ginkiha::kDispatchIdentity[i].update;
+    }
+    check(keiichiUpdate == 0x0047B940u, "Keiichi 2 dispatch update is 0x47b940");
+    const gameplay::LocomotionDefinition* keiichi2 = nullptr;
+    for (const gameplay::LocomotionDefinition& entry : gameplay::kLocomotion) {
+        if (entry.character == 2 && entry.slot == 2) keiichi2 = &entry;
+    }
+    if (keiichi2) check(keiichiUpdate == keiichi2->handler, "bundle dispatch matches kLocomotion (Keiichi 2)");
+    check(walkVa(2, 2) == 0x0047BD8Au, "Keiichi 2 walk site is 0x47bd8a (Fase 2 oracle)");
+
     // 6. Independent-recovery agreement for the pilot's ground tap: move_behavior.h's
     //    nata program launches item row 0 at tick 12 with citations into FUN_0044xxxx;
     //    the bundle's shot400 usage says the same slot fires at frame 12 in every phase.
