@@ -45,6 +45,7 @@
 #include "gameplay/character_moves.h"
 #include "gameplay/weapon_definition.h"
 #include "gameplay/move_behavior.h"
+#include "gameplay/shooting_magazine.h"
 #include "physics/raycast.h"
 
 // Colour-layout cross-check only: DEBUG_PRIMS_GEOMETRY_ONLY keeps webgpu.h and
@@ -2418,6 +2419,78 @@ void test_akane2_world_origin_gap() {
                gameplay::move_program(&g_akane2Combo.moves) == nullptr);
 }
 
+void test_shooting_magazine_contract() {
+    section("31. Original magazine admission/refill (Rena 0 + item 1)");
+    if (!g_testCombo.ready) return skip_case("Rena 0 magazine fixture");
+    using gameplay::ShootingMagazine;
+    const auto& definition = g_testCombo.weapon.magazines[0];
+    ShootingMagazine stock = ShootingMagazine::from_definition(definition);
+    check_int("Original stock starts at six rounds, not 1800 pool units", 6, stock.rounds);
+    stock.reloadProgress = 7;
+    check_bool("Full magazine admits its first callback", true, stock.consume());
+    check_int("One callback consumes one round", 5, stock.rounds);
+    check_int("First callback clears refill progress", 0, stock.reloadProgress);
+    stock.reloadProgress = 17;
+    check_bool("Zero-interval second callback in same tick is admitted", true, stock.consume());
+    check_int("Non-full consumption retains refill progress", 17, stock.reloadProgress);
+    for (std::uint32_t remaining = stock.rounds; remaining > 0; --remaining) stock.consume();
+    check_int("Last callback clears refill progress", 0, stock.reloadProgress);
+    stock.reloadProgress = 9;
+    stock.cooldown = 2;
+    check_bool("Empty stock rejects admission", false, stock.consume());
+    check_int("Rejected admission retains refill progress", 9, stock.reloadProgress);
+    check_int("Rejected admission retains cooldown", 2, stock.cooldown);
+
+    stock = ShootingMagazine::from_definition(definition);
+    stock.consume();
+    for (int tick = 0; tick < definition.reloadTime - 1; ++tick) stock.tick();
+    check_int("Mode 2 partial stock refills at threshold, not before", 5, stock.rounds);
+    stock.tick();
+    check_int("Mode 2 partial stock restores one round", 6, stock.rounds);
+    for (std::uint32_t remaining = stock.rounds; remaining > 0; --remaining) stock.consume();
+    for (int tick = 0; tick < definition.reloadTime * 3 - 1; ++tick) stock.tick();
+    check_int("Mode 2 empty stock uses three-tick refill pulses", 0, stock.rounds);
+    stock.tick();
+    check_int("Mode 2 empty refill restores full capacity", 6, stock.rounds);
+    check_bool("Empty refill sets recovered flag byte 0x100", true, (stock.flags & 0x100u) != 0);
+    check_int("Empty refill retains progress in original display", 2100, stock.display);
+
+    stock = ShootingMagazine::from_definition(definition);
+    stock.shotInterval = 2;
+    stock.cooldown = 1;
+    check_bool("Interval rejects before its signed threshold", false, stock.consume());
+    stock.tick();
+    check_bool("Interval admits at its threshold", true, stock.consume());
+    check_bool("Same-tick repeat cannot bypass a nonzero interval", false, stock.consume());
+    stock.cooldown = 0xffffffffu;
+    check_bool("Signed negative cooldown is rejected", false, stock.consume());
+
+    for (unsigned mode : {0u, 1u}) {
+        stock = ShootingMagazine::from_definition(definition);
+        stock.mode = mode;
+        for (std::uint32_t remaining = stock.rounds; remaining > 0; --remaining) stock.consume();
+        for (int tick = 0; tick < definition.reloadTime; ++tick) stock.tick();
+        check_int("Mode 0 refills full; mode 1 refills one round", mode == 0 ? 6 : 1, stock.rounds);
+    }
+    stock.flags = 0xabcd0101u;
+    stock.initialHold = stock.laterHold = stock.chargeStage = 4;
+    stock.tick();
+    check_int("Charge flag preserves hold state for this tick", 4, stock.initialHold);
+    check_bool("Tick consumes low flag byte", true, (stock.flags & 0xffu) == 0);
+    stock.tick();
+    check_int("Unheld tick clears initial hold", 0, stock.initialHold);
+    check_int("Unheld tick clears later hold", 0, stock.laterHold);
+    check_int("Unheld tick clears charge stage", 0, stock.chargeStage);
+    stock.reloadProgress = 17;
+    stock.cooldown = 2;
+    stock.flags = 0xabcd0101u;
+    stock.reset();
+    check_int("Reset restores round capacity", 6, stock.rounds);
+    check_int("Reset retains reload progress", 17, stock.reloadProgress);
+    check_int("Reset retains cooldown", 2, stock.cooldown);
+    check_bool("Reset clears only low flags word", true, stock.flags == 0xabcd0000u);
+}
+
 void test_satoko2_world_origin_fixture() {
     section("30. Satoko 2 item 38 fixture (world-origin program deferred)");
     const auto install = findInstall(nullptr);
@@ -3157,6 +3230,7 @@ int main(int argc, char** argv) {
     test_akane2_world_origin_gap();
     test_natsumi0_ground_tap();
     test_satoko2_world_origin_fixture();
+    test_shooting_magazine_contract();
     test_ammo();
     test_hypermode();
     test_ko();
