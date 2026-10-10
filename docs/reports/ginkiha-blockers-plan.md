@@ -701,3 +701,50 @@ Windows and web cross-builds passed, live 2-player battle smoke RESULT ok.
 
 **Next:** the deterministic shooting RNG (MT19937 + per-body draw ranges) to close Mion
 1/2's charges and Rena 2, then Kasai 0's scatter, then the remaining families.
+
+### 2026-10-10 — 3.7 The deterministic draw service; Mion 1/2 charges and Rena 2 bound
+
+**Done — the RNG is recovered, not invented.** `FUN_0065d150` is stock MT19937: the twist
+reads `mt[i+397]` below 227 and `mt[i-227]` above (the two base pointers `DAT_006d3804` and
+`DAT_006d2e44` are mt+397*4 and mt-227*4), selects the 0x9908b0df matrix word through a
+two-entry table by the low bit, and tempers with the canonical `>>11`,
+`(<<7)&0x9d2c5680`, `(<<15)&0xefc60000`, `>>18`. `FUN_0065d0c0` is `init_genrand`, and the
+re-seed path calls it with 0x1571 — **5489, MT19937's own default seed**. `simulation_rng.h`
+reproduces it and is pinned against the canonical seed-5489 vector
+(3499211612, 581869302, 3890346734, 3586334585, 545404204), so a wrong twist, matrix word,
+temper mask or seed fails the test rather than quietly shifting every spread.
+
+**Done — the spread boundary.** `ShotSpreadSpec` states each axis as
+`(modulo(n) + offset) * scale`, because that is literally the bodies' expression. The draw
+order is pitch-then-yaw: every measured family loads the pitch draw first and the yaw draw
+second, and the witness pins both against the canonical stream (the first burst request
+pitches at `(3499211612 % 100 - 50) * 0.1 = -3.8` degrees and yaws at
+`(581869302 % 200 - 100) * 0.1 = +0.2`), so swapping the order fails. A zero modulus
+consumes **no** draw, so a deterministic rule cannot shift the stream for later spreads.
+`MoveRule::repeats` carries the bodies' `for` loops — Mion 1 runs 15 iterations inside tick
+17 and Rena 2 runs 10 — and each iteration re-draws, which is what makes the volley a fan.
+
+**Done — three families closed:** Mion 1's 450/460 (15-shot fans, rows 1/5, the 460 clamp
+being the ±30-compare/±45-write mismatch), Mion 2's 450/460 (phase-1 emissions, rows 2/3),
+and Rena 2's state 400 outright (one slot-0 attachment at fixed angles, rows 0/2, plus the
+ten-world ring at 200 forward / +30 high, rows 1/3). Rena 2 had no recovered bodies at all,
+so the handler was the only source and nothing is claimed for its 402/450/460.
+
+**Fixed in passing:** the +5-degree air-tap turn on Mion 0's 402 was gated on the wrong
+bound — `kGateCounterAbove` reads `gateValue2` and the rule passed only one bound, so the
+extra turn would have applied from counter 1 instead of 16.
+
+**Recorded gaps, not hidden:** the port applies the spread to the DIRECTION only, while the
+original also rotates the attachment (so the muzzle's positional offset is not reproduced);
+and Mion 2's emissions still ignore the `0 < w[0x1c8]` gate, a field at byte +0x720 with no
+writer anywhere in the corpus — its usage (`0 < +0x2b8 && +0x730 == N && 0 < +0x720`,
+`< 5` picking a voice line) reads as an input hold counter, but that is inference, so the
+port treats the gate as satisfied rather than inventing a source.
+
+**Verified:** full rebuilt Linux CTest **65/65 (171.06 s)**, fighter suite 962 checks 0
+failures (sections 40-42 pin the RNG vector, the draw order against it, and the ring's
+count/rows/range), recon six tests passed, Windows and web cross-builds passed, live
+2-player battle smoke RESULT ok.
+
+**Next:** Keiichi 2's audit (the last unaudited member of the Keiichi trio), then Satoko
+0/1/2, then Kasai 0 — whose scatter is now unblocked.

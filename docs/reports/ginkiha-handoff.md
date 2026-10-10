@@ -141,7 +141,7 @@ below for context). Resume at Tomitake 0. Verify body and origin mapping before 
 | Natsumi 1 (ch=15 we=1) | 12 | only 2 weapons for ch14/15 (not 3) |
 | Akasaka 0 (ch=9 we=0) | 8 | |
 | Rena 2 (ch=0 we=2) | 4 | RNG-blocked: state400's 11-request volley needs per-shot spread; see defer note below |
-| Mion 1 (ch=1 we=1) | 4 | taps bound (slot-1 contact follow-up); charges are RNG 15-shot bursts, unbound |
+| Mion 1 (ch=1 we=1) | 4 | **bound**: taps (slot-1 contact follow-up) + 15-shot spread fans, rows 1/5 |
 | Shion 1 (ch=5 we=1) | 4 | |
 | Ohishi 1 (ch=8 we=1) | 3 | thinnest usage of the roster — expect sparse rules |
 | Shion 2 (ch=5 we=2) | 2 | thinnest usage of the roster — expect sparse rules |
@@ -198,6 +198,18 @@ The shared mechanisms this needed are now in place: `origin_attachment_slot`, `k
 `kGateCounterEquals`/`kGateCounterAbove` (the bodies' scratch counters survive a phase change
 while the phase tick does not), and `CapturePitch` taking a separate low and high bound
 (12 bodies clamp asymmetrically).
+
+**Draw service (2026-10-10, same day):** the spread is now real, so Mion 1's 450/460 and
+Mion 2's 450/460 are bound with their jitter, and Rena 2's state 400 is bound outright.
+`simulation_rng.h` reproduces MT19937 as `FUN_0065d150`/`FUN_0065d0c0` implement it (seed
+0x1571 = 5489) and is pinned against the canonical seed-5489 vector; `ShotSpreadSpec` states
+each axis's modulus/offset/scale with pitch drawn before yaw, and a zero modulus consumes no
+draw so a deterministic rule cannot shift the stream. `MoveRule::repeats` carries the bodies'
+`for` loops (Mion 1's 15 iterations at tick 17, Rena 2's 10), and each iteration re-draws,
+which is what fans the volley. Two gaps remain recorded rather than hidden: the port applies
+the spread to the DIRECTION only — the original also rotates the attachment, so the muzzle's
+positional offset is not reproduced — and Mion 2's emissions still ignore the `0 < w[0x1c8]`
+gate, a field at byte +0x720 with no writer in the corpus.
 
 Keiichi 0 scope note (2026-10-10): pinned update/vtable, walk, birth, usage (normal slot 0 and powered slot 3 at 13F across six forced phases), and callback families. `shoot_body_2_0_400/402` call `FUN_00435220` on `Bip01_R_Hand` at frame 13; trace callback rows are normal slot 0/powered slot 3. The typed `NamedBone` origin can now describe a hand transform, but no posed-rig witness or body-bound rule has been added; callback row/admission semantics still need reconciliation. The four body files contain measured movement/turn windows (400 ground, 402 air, first charges 450/460). Do not claim the callback request as an admitted projectile/spawn. Keiichi 1 has now been independently audited and is also deferred (below). Raw 450/460 `FUN_00435000` row mapping is also not established from its body tuple, so charge shot rows remain unbound.
 
@@ -292,9 +304,10 @@ Verification: rebuilt Linux tree; `ginkiha_tables_test` 398 checks / 0 failures,
 (162.92 s). The shared origin-pin loop now covers Keiichi 0/1 and Satoko 2 without
 duplicating the catalog/usage/trace scans. Unrelated Windows work remains uncommitted.
 
-Scoreboard: 13 full programs + 7 partial typed/schedule programs (Rena 0 powered
-branches, Rena 1, Natsumi 0, Satoko 2 tap, Keiichi 0, Keiichi 1, Mion 0/1/2 taps) + 3
-pinned/deferred (Kasai 0, Shion 0, Akane 2) + 25 remaining TODO = 46 roster combos. A program is a
+Scoreboard: 13 full programs + 10 partial/audited programs (Rena 0 powered branches,
+Rena 1, Rena 2 ring, Natsumi 0, Satoko 2 tap, Keiichi 0, Keiichi 1, Mion 0, Mion 1,
+Mion 2) + 3 pinned/deferred (Kasai 0, Shion 0, Akane 2) + 25 remaining TODO = 46 roster
+combos. A program is a
 schedule, not coverage: see the ledger for per-path state.
 
 ## 6. Engine mechanisms you must know (all in `src/gameplay/`)
