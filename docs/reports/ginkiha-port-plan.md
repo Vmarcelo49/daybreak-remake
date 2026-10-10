@@ -78,6 +78,9 @@ Segundo combo concluído 2026-10-09 21:03 (Rika 1: programa `rika` com rajada de
 pares + salvas gêmeas T10/T30 + caso de teste; rows do tap resolvidas via tabela do item).
 Terceiro combo concluído 2026-10-09 21:20 (Tomitake 2: programa `tomitake` com tiros
 gêmeos 7+5 a cada 3 ticks + freeze-then-fire no charge; rows via trace fire_attachment).
+Quarto combo concluído 2026-10-09 21:45 (Keiichi 2: programa `keiichi` com rajada densa
+todo-tick 10–20 + stalls por rewind modelados como Hold com latch por regra; cancel de
+pulo generalizado por combo na mesma leva).
 
 1. **Prioridade**: matriz `shot400_usage` (52 normal + 60 tag em state400) ordena quais combos saem do piloto
    primeiro; cada combo entra com teste, nunca com fallback set 0 silencioso.
