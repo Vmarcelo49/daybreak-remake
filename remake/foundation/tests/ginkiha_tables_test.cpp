@@ -493,6 +493,94 @@ int main() {
     if (takano0) check(takanoUpdate == takano0->handler, "bundle dispatch matches kLocomotion (Takano 0)");
     check(walkVa(7, 0) == 0x00532176u, "Takano 0 walk site is 0x532176 (Fase 2 oracle)");
 
+    // 14. Ninth combo (Irie 1 = character 10, weapon 1, swap code 32): pins the bundle
+    //    rows Fase 2's Irie program will consume. Rena-like single anchor (phases 0..5
+    //    at frame 12) across four slots — 0 and 1 in both modes, 2 and 3 tag-only (6
+    //    pairs each, 36 total). The traces record NO fire under fixed inputs. Two
+    //    births are sampled (slot 0 speed 35.0 with near-zero turn, slot 10 speed 47.5).
+    const ginkiha::BirthProfile* irie = findBirth(10, 1, 0);
+    check(irie != nullptr, "Irie 1/0 birth profile exists");
+    if (irie) {
+        check(irie->swap_code == 32, "Irie 1 maps to swap code 32");
+        check(irie->speed == 35.0f, "Irie 1/0 birth speed 35.0");
+    }
+    const ginkiha::BirthProfile* irie10 = findBirth(10, 1, 10);
+    check(irie10 != nullptr, "Irie 1/10 birth profile exists");
+    if (irie10) check(irie10->speed == 47.5f, "Irie 1/10 birth speed 47.5");
+    int iriePairs = 0;
+    bool irieShape = true;
+    for (int i = 0; i < ginkiha::kShotFireRecordCount; ++i) {
+        const ginkiha::ShotFireRecord& entry = ginkiha::kShotFireRecord[i];
+        if (entry.character == 10 && entry.weapon == 1 && entry.slot == 0 && !entry.tag) {
+            ++iriePairs;
+            if (entry.phase < 0 || entry.phase > 5 || entry.frame != 12) irieShape = false;
+        }
+    }
+    check(iriePairs == 6, "Irie 1/0 usage holds 6 fire records");
+    check(irieShape, "Irie 1/0 usage shape is phases 0..5 at frame 12");
+    bool irieSilent = true;
+    for (int v = 0; v < 6; ++v) {
+        if (traceFireFrame(10, 1, v, false) != -1) irieSilent = false;
+    }
+    check(irieSilent, "Irie 1/0 traces record no fire under fixed inputs");
+    unsigned int irieUpdate = 0;
+    for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
+        if (ginkiha::kDispatchIdentity[i].character == 10 &&
+            ginkiha::kDispatchIdentity[i].weapon == 1)
+            irieUpdate = ginkiha::kDispatchIdentity[i].update;
+    }
+    check(irieUpdate == 0x0057F600u, "Irie 1 dispatch update is 0x57f600");
+    const gameplay::LocomotionDefinition* irie1 = nullptr;
+    for (const gameplay::LocomotionDefinition& entry : gameplay::kLocomotion) {
+        if (entry.character == 10 && entry.slot == 1) irie1 = &entry;
+    }
+    if (irie1) check(irieUpdate == irie1->handler, "bundle dispatch matches kLocomotion (Irie 1)");
+    check(walkVa(10, 1) == 0x0057FA4Au, "Irie 1 walk site is 0x57fa4a (Fase 2 oracle)");
+
+    // 15. Tenth combo (Mion 2 = character 1, weapon 2, swap code 6): pins the bundle
+    //    rows Fase 2's Mion-2 program will consume. Twin anchors (frames 10 AND 18, row 0
+    //    both) in every variant — the second two-anchor pattern after Kasai's twin rows.
+    //    Usage agrees per variant; the traces fire row 0 at both frames.
+    const ginkiha::BirthProfile* mion2 = findBirth(1, 2, 0);
+    check(mion2 != nullptr, "Mion 2/0 birth profile exists");
+    if (mion2) {
+        check(mion2->swap_code == 6, "Mion 2 maps to swap code 6");
+        check(mion2->speed == 35.0f, "Mion 2/0 birth speed 35.0");
+        check(mion2->turn_birth > 0.099f && mion2->turn_birth < 0.101f,
+              "Mion 2/0 birth turn 0.1");
+    }
+    int mion2Pairs = 0;
+    bool mion2Shape = true;
+    for (int i = 0; i < ginkiha::kShotFireRecordCount; ++i) {
+        const ginkiha::ShotFireRecord& entry = ginkiha::kShotFireRecord[i];
+        if (entry.character == 1 && entry.weapon == 2 && entry.slot == 0 && !entry.tag) {
+            ++mion2Pairs;
+            if (entry.phase < 0 || entry.phase > 5 || (entry.frame != 10 && entry.frame != 18))
+                mion2Shape = false;
+        }
+    }
+    check(mion2Pairs == 12, "Mion 2/0 usage holds 12 fire records");
+    check(mion2Shape, "Mion 2/0 usage shape is phases 0..5, frames 10 and 18");
+    bool mion2Twin = true;
+    for (int variant = 0; variant < 6; ++variant) {
+        if (traceFireFrame(1, 2, variant, false) != 10) mion2Twin = false;
+        if (traceFireEvents(1, 2, variant, false) != 2) mion2Twin = false;
+    }
+    check(mion2Twin, "Mion 2 traces open at 10F with 2 events each");
+    unsigned int mion2Update = 0;
+    for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
+        if (ginkiha::kDispatchIdentity[i].character == 1 &&
+            ginkiha::kDispatchIdentity[i].weapon == 2)
+            mion2Update = ginkiha::kDispatchIdentity[i].update;
+    }
+    check(mion2Update == 0x0044FA10u, "Mion 2 dispatch update is 0x44fa10");
+    const gameplay::LocomotionDefinition* mion22 = nullptr;
+    for (const gameplay::LocomotionDefinition& entry : gameplay::kLocomotion) {
+        if (entry.character == 1 && entry.slot == 2) mion22 = &entry;
+    }
+    if (mion22) check(mion2Update == mion22->handler, "bundle dispatch matches kLocomotion (Mion 2)");
+    check(walkVa(1, 2) == 0x0044FEA6u, "Mion 2 walk site is 0x44fea6 (Fase 2 oracle)");
+
     // 6. Independent-recovery agreement for the pilot's ground tap: move_behavior.h's
     //    nata program launches item row 0 at tick 12 with citations into FUN_0044xxxx;
     //    the bundle's shot400 usage says the same slot fires at frame 12 in every phase.
