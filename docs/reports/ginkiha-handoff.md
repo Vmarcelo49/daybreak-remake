@@ -9,6 +9,11 @@ then close every blocked/partial combo and audit all 46. “Next: Tomitake 0” 
 historical usage-order pointer, not the active task. Earlier “full program” counts do
 not establish complete shooting-path coverage.
 
+Checkpoint: recon tooling, the [46-combo ledger](ginkiha-shooting-coverage.md),
+[launch/admission contracts](ginkiha-launch-contracts.md), and the isolated magazine
+primitive are now present. Resume from the blocker plan's append-only execution log;
+live Fighter ammo migration and shared origin support are still pending.
+
 ## 1. What this is
 
 Port of Higurashi Daybreak's combat/animations (DaybreakDX.exe, SHA256

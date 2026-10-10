@@ -1,6 +1,6 @@
 # Plan — shared shooting blockers, then all 46 combos
 
-2026-10-10 · `ginkiha-help` · status: planned, implementation not started.
+2026-10-10 · `ginkiha-help` · status: step 0 audits and step 1 primitive in progress; live admission migration pending.
 
 This changes Phase 2's order at the owner's request: stop advancing the usage-order
 worklist just to defer another combo. Implement the shared mechanisms, return to every
@@ -194,3 +194,95 @@ Never edit `research/recomp/`; research promotion is targeted and requires the c
 report. Keep local bundles/game assets ignored. Rebuild before runtime gates, read both
 full diffs before every commit, stage only the current slice, and keep the unrelated
 Windows work uncommitted. Separate engine/test commits from documentation updates.
+
+## Append-only execution log
+
+### 2026-10-10 — 0.1 Recon helper and initial roster ledger
+
+**Done:** added `remake/foundation/tools/ginkiha_recon.py`, sharing catalog identity
+checks with the existing importer. It resolves exact character+weapon identities, validates
+support input hashes, reads actual runtime dispatch bindings, counts all callback requests
+by origin/row, and reports exact shooting/full-charge body ranges. Unknown runtime syntax
+and hash drift fail instead of silently returning incomplete evidence. Sources stay local.
+
+Created [the 46-combo ledger](ginkiha-shooting-coverage.md): 15 bound schedules, zero
+combos declared audited complete, all normal/powered ground/air tap/charge paths pending.
+Satoko 1's zero-usage case and Rena 1's missing generated bodies remain visible.
+
+**Verified:** five stdlib Python tests passed, including exact selection, 21/31 Kasai
+requests, both Satoko 2 traces, zero usage, missing bodies, chronological first request,
+body boundaries, malformed binding syntax and hash drift. All-roster recon produced
+46 unique entries. No game runtime or research files changed.
+
+**Next:** normalize helper operands/admission from original corpus and verified archive.
+The supplied state400 evidence cites a corrected world-origin oracle and numeric scratch
+adapter in `runtime/DaybreakRebuild-20261010.zip`; inspect those before repeating probes.
+Step 0 remains open: prove helper contracts and freeze/launch/ammo ordering, then start
+step 1's typed request/admission boundary with witness tests.
+
+### 2026-10-10 — 0.2 Original launch/admission and archive contracts
+
+**Done:** added [normalized launch contracts](ginkiha-launch-contracts.md). Original
+bytes confirm row-selected magazine admission, negative-index bypass, six world-spawn
+operands, degree/table-based trig, and consume-before-creation ordering. Verified the
+canonical EXE hash and runtime archive SHA; found the numeric scratch adapter and corrected
+Satoko 2 state400 world geometry. Recorded remaining original FILD/indexing/oracle gates.
+
+**Important correction:** a generic launch latch is not the fix for all frozen frames.
+Rika 1's state450 body gates tick30 requests on scratch counter%10==0 and freezes until
+counter60. The current static salvo+Hold30 misses those semantics. Source ranges and
+limits are in the contract report; previously bound schedules remain unaudited.
+
+**Verified:** targeted disassembly of `00435450`, `00435920`, `0065d010/0065d050`;
+archive hashes and three entry hashes recorded. The corrected 690-record world golden
+TSV was not found in the supplied inventory, so its geometry verification remains open.
+No runtime behavior changed yet.
+
+**Next:** implement a typed magazine admission/refill model, verified against the original
+helpers, then wire it into requests without eager tier spending or double charging.
+Audit charge/HUD/bot consumers together; do not change only consumption. In parallel
+within the same workstream, add full-freeze request-count witnesses before replacing
+Rika's schedule. Step 0 remains in progress; use the recon helper/ledger to cover all46.
+
+### 2026-10-10 — 1.1 Round-counted magazine primitive
+
+**Done:** implemented `src/gameplay/shooting_magazine.h`: typed round-counted state,
+DAT-definition initialization, reset, signed interval admission, and mode0/1/2 tick/refill
+behavior. Original 32-bit wrap and flag/counter effects are preserved. This is an isolated
+primitive; live Fighter still uses provisional AmmoStock, so no live ammo migration is
+claimed. Keeping this tested boundary separate avoids changing charge/HUD/bot behavior
+before all of their consumers are accounted for.
+
+**Verified:** added 31 fixture-backed checks using Rena 0 + item1; focused fighter suite
+passed 681 checks, zero failures/skips. Tests cover same-tick callbacks, zero stock and
+nonzero interval rejection, signed cooldown, partial versus empty refill, all three modes,
+reset/flag/counter behavior, and retained empty-refill display progress. The rebuilt full
+Linux suite is running; append its result before committing this slice.
+
+**Next:** implement row-selected request admission (negative magazine bypass, bounds,
+consume-before-spawn), then connect the new stocks to Fighter with one authoritative tick,
+correct request-time consumption and consistent HUD/bot/charge reads. Audit original
+refillStep initialization/modifiers and charge helper before enabling live stocks. In the
+same migration, add mixed-row/failed-pool tests and whole-freeze counter-gated witnesses.
+Steps 0 and 1 remain open; all46 ledger entries remain pending complete-path audit.
+
+### 2026-10-10 — Validation and resumption checkpoint
+
+**Done/verified:** full rebuilt Linux CTest passed 65/65 (163.74 s), including the
+updated fighter suite (681 checks). Recon tests now pass six cases: the added case
+proves a wrong combo locomotion handler is rejected instead of misreporting a runtime
+binding. All46 recon and exact Satoko 2 recon both succeed; output is barred from writing
+over the read-only support/reference bundles. Full diff review completed before commits.
+
+**Current boundary:** code supplies the tested magazine primitive and recon tooling;
+Fighter, charge/HUD/bots and projectile request/spawn behavior have not yet migrated.
+Neither step0 nor step1 is declared complete. No combo was promoted to full coverage.
+
+**Exact next task for the next agent:** read `ginkiha-launch-contracts.md` and the new
+`shooting_magazine.h`. Audit `FUN_0043f3e0` and refillStep setup/modifiers, inventory
+Fighter's `m_main/m_charge` consumers, then implement row-selected admission and integrate
+one authoritative stock per magazine across charge/HUD/bot reads. Preserve negative-index
+bypass and consumption before failed pool creation; add tests for mixed rows and no eager
+spend. Then replace counter-gated freeze schedules with source-driven event state, starting
+Rika1 state450, before declaring origins/spawn paths complete. Update the ledger and append
+done/verification/next notes after each unit. Preserve the unrelated Windows edits.
