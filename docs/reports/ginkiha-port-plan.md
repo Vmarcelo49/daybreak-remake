@@ -95,6 +95,10 @@ Décimo primeiro combo concluído 2026-10-09 22:56 (Satoko 0: programa `satoko` 
 salva quíntupla no tap e salvas gêmeas congeladas no charge).
 Décimo segundo combo concluído 2026-10-09 23:06 (Rika 0: programa `rika0` com gêmeos
 no tap e salvas duplas nos charges).
+Décimo terceiro combo concluído 2026-10-09 23:52 (Rena 1: programa `rena1` como subconjunto
+normal das agendas fixed-row 400/450, medido no runtime helper e corroborado pelo oracle de
+state400; 402 condicional, spread RNG, state460 e second-charge pitch/origin ficam documentados
+e sem binding).
 
 1. **Prioridade**: matriz `shot400_usage` (52 normal + 60 tag em state400) ordena quais combos saem do piloto
    primeiro; cada combo entra com teste, nunca com fallback set 0 silencioso.

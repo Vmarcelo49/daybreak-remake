@@ -70,6 +70,7 @@ Phases 2–5 are done; do not mark complete early.
 | Combo | Handler | Program | Shape (tap / charge) | Test |
 |---|---|---|---|---|
 | Rena 0 | 0x43ffc0 | rena (pre-existing) | anchor 12F; jump-cancel 400@20 | pilot cancel + cross-checks |
+| Rena 1 | 0x448220 | rena1 (normal schedule subset) | 400 row 6 @18; 450 row 1 @12–26 | tap + charge schedule |
 | Mion 0 | 0x4582a0 | mion | row 0 @2; row 0 @17 | tap + charge |
 | Rika 1 | 0x492f70 | rika | even ticks 12–40; twin salvos | tap repeat + T10/T30 |
 | Tomitake 2 | 0x527880 | tomitake | twin 7+5 every 3 ticks; freeze-then-fire | tap + charge |
@@ -86,12 +87,13 @@ Phases 2–5 are done; do not mark complete early.
 Pinned-only (table test, no program yet): Kasai 0 (deferred — scatter needs engine work,
 §7), Shion 0 (pins committed; bodies delimited, extraction not yet delegated).
 
-Remaining 31 combos by usage (all TODO — work them in this order; verify bodies exist
-before promising a program, and check the note flags):
+Remaining 30 combos by usage (Rena 1 is now landed as a normal-schedule subset; resume
+at Akane 2. Work the remaining entries in this order, verify bodies exist before promising
+a program, and check the note flags):
 
 | Combo | Usage pairs | Note |
 |---|---|---|
-| Rena 1 (ch=0 we=1) | 18 | ⚠ has usage but ZERO body functions — needs runtime-source path instead |
+| Rena 1 (ch=0 we=1) | 18 | landed as normal schedule subset; runtime-source path (not a reference body); geometry gaps noted below |
 | Akane 2 (ch=13 we=2) | 18 | |
 | Natsumi 0 (ch=15 we=0) | 18 | |
 | Keiichi 0 (ch=2 we=0) | 12 | |
@@ -123,7 +125,9 @@ before promising a program, and check the note flags):
 | Akane 1 (ch=13 we=1) | 2 | thinnest usage of the roster — expect sparse rules |
 | Satoko 1 (ch=3 we=1) | 0 | no usage rows at all — bodies-only port, extra care |
 
-Scoreboard: 13 landed + 2 pinned + 31 TODO = 46 roster combos.
+Rena 1 blocker / scope note (runtime-source path, not full body parity): `reference/source/shoot_native_bodies_20260929.hpp` contains no `shoot_body_0_1_*`; the separately verified `runtime/DaybreakRebuild-20261010.zip` source has `battle_rena_ground_shot.hpp:45-54` (400 normal row 6 @18) and `battle_rena_mobile_shooting.hpp:178-189` (450 normal row 1 @12-26). The port schedules only those normal fixed-row events. State402's conditional phase-2 jump, 450/460 RNG spread, all 460 air behavior, and 360/370 fixed-pitch second charge need state/trajectory operations absent from MoveRule and remain deliberately unbound; this is a documented scope limit, not a guessed implementation. Runtime archive identity: `reference/source-provenance.json` SHA256 `0c98eba7…`.
+
+Scoreboard: 14 landed (Rena 1 schedule subset included) + 2 pinned (including Kasai 0) + 30 TODO = 46 roster combos.
 
 ## 6. Engine mechanisms you must know (all in `src/gameplay/`)
 

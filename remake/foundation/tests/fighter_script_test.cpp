@@ -44,6 +44,7 @@
 #include "gameplay/projectile.h"
 #include "gameplay/character_moves.h"
 #include "gameplay/weapon_definition.h"
+#include "gameplay/move_behavior.h"
 #include "physics/raycast.h"
 
 // Colour-layout cross-check only: DEBUG_PRIMS_GEOMETRY_ONLY keeps webgpu.h and
@@ -111,6 +112,7 @@ TestCombo g_mion2Combo;
 TestCombo g_rika2Combo;
 TestCombo g_satokoCombo;
 TestCombo g_rika0Combo;
+TestCombo g_rena1Combo;
 
 std::filesystem::path findInstall(const char* executable) {
     const int itemId = gameplay::kWeaponIds[0][0];
@@ -2318,6 +2320,86 @@ void test_rika2_single_tick() {
                g.take_pending_shot().armed);
 }
 
+void test_rena1_normal_schedule() {
+    section("27. Rena 1 normal tap + charge schedule (runtime-source helper; geometry gaps documented)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_rena1Combo.load(install, 0, 1))
+        return skip_case("Rena 1 combo");
+    // The retained runtime helper (not a shoot_body_0_1_* body) requests row 6 at
+    // state400/frame18 and row 1 on state450/frames12..26. MoveRule covers only those
+    // normal schedules: state402's conditional phase jump and 450's scratch/RNG yaw
+    // spread are deliberately not claimed here.
+    const auto& normalTap = gameplay::kRena1Rules[0];
+    const auto* program = gameplay::move_program(&g_rena1Combo.moves);
+    check_bool("Rena 1 move program is bound to its actual combo", true,
+               program && program->rules == gameplay::kRena1Rules);
+    check_int("Rena 1 tap maps to move 400", 400, program ? program->shot[0][0] : -1);
+    check_int("Rena 1 air tap stays unbound", -1, program ? program->shot[0][1] : -2);
+    check_int("Rena 1 first charge maps to move 450", 450, program ? program->shot[1][0] : -1);
+    check_int("Rena 1 air charge stays unbound", -1, program ? program->shot[1][1] : -2);
+    check_int("Rena 1 uses item 3", 3, g_rena1Combo.weapon.id);
+
+    Fighter tap;
+    tap.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rena1Combo.bind(tap);
+    settle(tap);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(tap, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(tap, in);
+    check_int("Rena 1 tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(tap.state()));
+    check_int("Rena 1 tap binds move 400", 400, tap.shot_move_id());
+    for (int i = 0; i < normalTap.first; ++i) tick(tap, in);
+    gameplay::PendingShot shot = tap.take_pending_shot();
+    check_bool("Rena 1 normal tap schedules one row at frame 18", true, shot.armed);
+    check_int("Rena 1 normal tap selects item row 6", 6, shot.bulletRow);
+    check_bool("Rena 1 normal tap schedules no extra shot", false,
+               tap.take_pending_shot().armed);
+
+    // Compute Yellow frames from this weapon's MAIN magazine at the selected 64 Hz
+    // simulation cadence; float accumulation is intentionally not replaced by a count.
+    const float yellowThreshold = static_cast<float>(
+        g_rena1Combo.weapon.magazineForChargeLevel(1).chargeMax) /
+        gameplay::FixedStep::tickRate;
+    float held = 0.0f;
+    int yellowFrames = 0;
+    while (held < yellowThreshold && yellowFrames < 10000) {
+        held += kStep;
+        ++yellowFrames;
+    }
+    Fighter charged;
+    charged.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rena1Combo.bind(charged);
+    settle(charged);
+    in.set(fnd::input::Action::Shoot, true);
+    for (int i = 0; i < yellowFrames; ++i) tick(charged, in);
+    check_int("Rena 1 hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
+              static_cast<int>(charged.charge_tier()));
+    in.set(fnd::input::Action::Shoot, false);
+    tick(charged, in);
+    check_int("Rena 1 charge enters ShootB", static_cast<int>(FighterState::ShootB),
+              static_cast<int>(charged.state()));
+    check_int("Rena 1 first charge binds move 450", 450, charged.shot_move_id());
+    int guard = 0;
+    int armed = 0;
+    bool rowsCorrect = true;
+    while (charged.state() == FighterState::ShootB && charged.phase_elapsed() <= 26 &&
+           guard++ < 100) {
+        tick(charged, in);
+        for (gameplay::PendingShot pending = charged.take_pending_shot(); pending.armed;
+             pending = charged.take_pending_shot()) {
+            ++armed;
+            rowsCorrect &= pending.bulletRow == 1;
+        }
+    }
+    check_int("Rena 1 charge finishes its scheduled row-1 window", 15, armed);
+    check_bool("Rena 1 first charge schedule uses item row 1 throughout", true, rowsCorrect);
+    check_bool("Rena 1 charge has no extra schedule event", false,
+               charged.take_pending_shot().armed);
+}
+
 void test_rika0_twin_tick() {
     section("26. Rika 0 twin tick + twin salvos (bodies shoot_body_4_0_*)");
     const auto install = findInstall(nullptr);
@@ -2991,6 +3073,7 @@ int main(int argc, char** argv) {
     test_rika2_single_tick();
     test_satoko_five_shot();
     test_rika0_twin_tick();
+    test_rena1_normal_schedule();
     test_ammo();
     test_hypermode();
     test_ko();

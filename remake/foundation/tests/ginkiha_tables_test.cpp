@@ -832,6 +832,69 @@ int main() {
     check(renaLaunchTick == 12, "Rena 0 400 tap launches at tick 12");
     check(renaLaunchTick == usageFrame, "Rena 0 launch tick equals the bundle's fire frame");
 
+    // 21. Rena 1 (character 0, weapon 1, swap code 2) uses the separate runtime-source
+    //    shooting helper: its normal state400 request is item row 6 at frame 18. The table
+    //    pins the observed state400 variants, while state450/460 runtime geometry remains
+    //    outside the fixed MoveRule schedule (documented at kRena1Rules).
+    const ginkiha::BirthProfile* rena1Birth = findBirth(0, 1, 0);
+    check(rena1Birth != nullptr, "Rena 1/0 birth profile exists");
+    if (rena1Birth) {
+        check(rena1Birth->swap_code == 2, "Rena 1 maps to swap code 2");
+        check(rena1Birth->speed == 50.0f, "Rena 1/0 birth speed 50.0");
+        check(rena1Birth->turn_birth > 0.009f && rena1Birth->turn_birth < 0.011f,
+              "Rena 1/0 birth turn 0.01");
+    }
+    const ginkiha::BirthProfile* rena110 = findBirth(0, 1, 10);
+    check(rena110 != nullptr, "Rena 1/10 birth profile exists");
+    if (rena110) check(rena110->speed == 75.0f, "Rena 1/10 birth speed 75.0");
+    int rena1NormalRecords = 0;
+    int rena1TagRecords = 0;
+    int rena1AllRecords = 0;
+    bool rena1UsageShape = true;
+    for (int i = 0; i < ginkiha::kShotFireRecordCount; ++i) {
+        const ginkiha::ShotFireRecord& entry = ginkiha::kShotFireRecord[i];
+        if (entry.character != 0 || entry.weapon != 1) continue;
+        ++rena1AllRecords;
+        if (entry.slot == 6 && !entry.tag) {
+            ++rena1NormalRecords;
+            if (entry.phase < 0 || entry.phase > 5 || entry.frame != 18) rena1UsageShape = false;
+        } else if ((entry.slot == 0 || entry.slot == 9) && entry.tag) {
+            ++rena1TagRecords;
+            if (entry.phase < 0 || entry.phase > 5 || entry.frame != 18) rena1UsageShape = false;
+        }
+    }
+    check(rena1NormalRecords == 6, "Rena 1/6 normal usage covers six phases");
+    check(rena1TagRecords == 12, "Rena 1/0 and 1/9 tag usage cover six phases each");
+    check(rena1AllRecords == 18, "Rena 1 state400 has 18 usage records total");
+    check(rena1UsageShape, "Rena 1 state400 usage anchors at frame 18");
+    bool rena1TraceShape = true;
+    for (int variant = 0; variant < 6; ++variant) {
+        if (traceFireFrame(0, 1, variant, false) != 18 ||
+            traceFireEvents(0, 1, variant, false) != 1 ||
+            traceFireFrame(0, 1, variant, true) != 18 ||
+            traceFireEvents(0, 1, variant, true) != 2)
+            rena1TraceShape = false;
+    }
+    check(rena1TraceShape, "Rena 1 state400 traces: normal 1x/tag 2x at 18F");
+    unsigned int rena1Update = 0;
+    unsigned int rena1Vtable = 0;
+    for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
+        if (ginkiha::kDispatchIdentity[i].character == 0 &&
+            ginkiha::kDispatchIdentity[i].weapon == 1) {
+            rena1Update = ginkiha::kDispatchIdentity[i].update;
+            rena1Vtable = ginkiha::kDispatchIdentity[i].vtable;
+        }
+    }
+    check(rena1Update == 0x00448220u, "Rena 1 dispatch update is 0x448220");
+    check(rena1Vtable == 0x006A4E38u, "Rena 1 factory vtable is 0x6a4e38");
+    const gameplay::LocomotionDefinition* rena1Locomotion = nullptr;
+    for (const gameplay::LocomotionDefinition& entry : gameplay::kLocomotion) {
+        if (entry.character == 0 && entry.slot == 1) rena1Locomotion = &entry;
+    }
+    check(rena1Locomotion && rena1Locomotion->handler == rena1Update,
+          "Rena 1 bundle dispatch matches kLocomotion");
+    check(walkVa(0, 1) == 0x00448664u,
+          "Rena 1 walk state-10 site is 0x448664 (exe-catalog.walks)");
     std::printf("ginkiha_tables_test: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

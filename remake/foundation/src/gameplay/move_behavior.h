@@ -135,6 +135,18 @@ inline constexpr MoveRule kRenaRules[] = {
     {370,2,2,2,MoveOp::Launch,12.f,-70.f,40.f},
 };
 
+// Rena weapon 1 (handler 0x448220): the full body is absent from the non-Rena
+// body header, so use the separately verified runtime-source helper. Only fixed
+// normal projectile schedules are represented: state400 row 6 at frame 18 and
+// state450 row 1 at frames 12..26 (battle_rena_ground_shot.hpp:45-54;
+// battle_rena_mobile_shooting.hpp:178-189). State402's grounded phase jump,
+// state450/460 spread RNG, air-tap behavior, and 360/370 fixed-pitch second charge
+// need state/trajectory fields MoveRule does not have; those paths stay unbound.
+inline constexpr MoveRule kRena1Rules[] = {
+    {400,-1,18,18,MoveOp::Launch,6.f,0.f,0.f},
+    {450,-1,12,26,MoveOp::Launch,1.f,0.f,0.f},
+};
+
 struct MoveProgram {
     const MoveRule* rules = nullptr;
     size_t count = 0;
@@ -714,6 +726,9 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     if (binding->handler == 0x44fa10) return &mion2;
     if (binding->handler == 0x49d890) return &rika2;
     if (binding->handler == 0x4a9c40) return &satoko;
+    static constexpr MoveProgram rena1 = {kRena1Rules, std::size(kRena1Rules),
+                                          {{400,-1},{450,-1},{-1,-1}}};
+    if (binding->handler == 0x448220) return &rena1;
     if (binding->handler == 0x484be0) return &rika0;
     return nullptr;
 }
