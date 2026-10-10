@@ -445,6 +445,54 @@ int main() {
     if (kasai1) check(kasaiUpdate == kasai1->handler, "bundle dispatch matches kLocomotion (Kasai 1)");
     check(walkVa(12, 1) == 0x005B9B16u, "Kasai 1 walk site is 0x5b9b16 (Fase 2 oracle)");
 
+    // 13. Eighth combo (Takano 0 = character 7, weapon 0, swap code 22): pins the bundle
+    //    rows Fase 2's Takano program will consume. Slots 0 (normal) and 6 (tag) fire
+    //    phases 0..5 at frames 12, 15 and 18 (18 pairs each); the traces record NO fire
+    //    under fixed inputs (like Rika/Chie). Two births are sampled (slot 0 speed 35.0
+    //    with no turn data, slot 10 speed 55.0).
+    const ginkiha::BirthProfile* takano = findBirth(7, 0, 0);
+    check(takano != nullptr, "Takano 0/0 birth profile exists");
+    if (takano) {
+        check(takano->swap_code == 22, "Takano 0 maps to swap code 22");
+        check(takano->speed == 35.0f, "Takano 0/0 birth speed 35.0");
+        check(takano->turn_birth == 0.0f && takano->turn_next == 0.0f,
+              "Takano 0/0 birth has no turn data");
+    }
+    const ginkiha::BirthProfile* takano10 = findBirth(7, 0, 10);
+    check(takano10 != nullptr, "Takano 0/10 birth profile exists");
+    if (takano10) check(takano10->speed == 55.0f, "Takano 0/10 birth speed 55.0");
+    int takanoPairs = 0;
+    bool takanoShape = true;
+    for (int i = 0; i < ginkiha::kShotFireRecordCount; ++i) {
+        const ginkiha::ShotFireRecord& entry = ginkiha::kShotFireRecord[i];
+        if (entry.character == 7 && entry.weapon == 0 && entry.slot == 0 && !entry.tag) {
+            ++takanoPairs;
+            if (entry.phase < 0 || entry.phase > 5 || (entry.frame != 12 && entry.frame != 15 &&
+                                                       entry.frame != 18))
+                takanoShape = false;
+        }
+    }
+    check(takanoPairs == 18, "Takano 0/0 usage holds 18 fire records");
+    check(takanoShape, "Takano 0/0 usage shape is phases 0..5, frames 12/15/18");
+    bool takanoSilent = true;
+    for (int v = 0; v < 6; ++v) {
+        if (traceFireFrame(7, 0, v, false) != -1) takanoSilent = false;
+    }
+    check(takanoSilent, "Takano 0/0 traces record no fire under fixed inputs");
+    unsigned int takanoUpdate = 0;
+    for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
+        if (ginkiha::kDispatchIdentity[i].character == 7 &&
+            ginkiha::kDispatchIdentity[i].weapon == 0)
+            takanoUpdate = ginkiha::kDispatchIdentity[i].update;
+    }
+    check(takanoUpdate == 0x00531CE0u, "Takano 0 dispatch update is 0x531ce0");
+    const gameplay::LocomotionDefinition* takano0 = nullptr;
+    for (const gameplay::LocomotionDefinition& entry : gameplay::kLocomotion) {
+        if (entry.character == 7 && entry.slot == 0) takano0 = &entry;
+    }
+    if (takano0) check(takanoUpdate == takano0->handler, "bundle dispatch matches kLocomotion (Takano 0)");
+    check(walkVa(7, 0) == 0x00532176u, "Takano 0 walk site is 0x532176 (Fase 2 oracle)");
+
     // 6. Independent-recovery agreement for the pilot's ground tap: move_behavior.h's
     //    nata program launches item row 0 at tick 12 with citations into FUN_0044xxxx;
     //    the bundle's shot400 usage says the same slot fires at frame 12 in every phase.
