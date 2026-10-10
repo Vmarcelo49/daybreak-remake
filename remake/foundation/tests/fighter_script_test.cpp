@@ -100,6 +100,7 @@ struct TestCombo : test::Combo {
 
 TestCombo g_testCombo;
 TestCombo g_mionCombo;
+TestCombo g_rikaCombo;
 
 std::filesystem::path findInstall(const char* executable) {
     const int itemId = gameplay::kWeaponIds[0][0];
@@ -2040,6 +2041,68 @@ std::uint32_t fnv1a(const std::vector<unsigned char>& bytes) {
     return h;
 }
 
+void test_rika_repeating_tap() {
+    section("17. Rika 1 repeating tap + twin-salvo charge (bodies shoot_body_4_1_*)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_rikaCombo.load(install, 4, 1))
+        return skip_case("Rika 1 combo");
+    // Bundle evidence: Rika 1 (handler 0x492f70) fires item row 0 on every even tick
+    // 12..40 in the ground tap (shoot_body_4_1_400 L21772-21829; the usage matrix
+    // agrees per phase), and rows 2+5 at tick 10 plus rows 3+6 at tick 30 in the
+    // first ground charge (shoot_body_4_1_450 L23495-548, L23549-577, no-aim branch).
+    // Her program is kRikaRules; the second charge stays provisional (no 360/370).
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rikaCombo.bind(f);
+    settle(f);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Rika tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    check_int("Rika tap binds move 400", 400, f.shot_move_id());
+    // First burst tick: row 0 armed at tick 12 (same post-release counting as Rena's
+    // tick-12 tap: 12 updates after the release update).
+    for (int i = 0; i < 12; ++i) tick(f, in);
+    gameplay::PendingShot shot = f.take_pending_shot();
+    check_bool("Rika tap launches at tick 12", true, shot.armed);
+    check_int("Rika tap selects item row zero", 0, shot.bulletRow);
+    // Repetition: the next even tick fires again (the schedule, not a single anchor).
+    tick(f, in);
+    tick(f, in);
+    shot = f.take_pending_shot();
+    check_bool("Rika tap launches again at tick 14", true, shot.armed);
+    check_int("Rika repeat selects item row zero", 0, shot.bulletRow);
+    // First charge: hold past the yellow threshold (level-1 chargeMax 60).
+    Fighter g;
+    g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rikaCombo.bind(g);
+    settle(g);
+    in.set(fnd::input::Action::Shoot, true);
+    for (int i = 0; i < 60; ++i) tick(g, in);
+    check_int("Rika hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
+              static_cast<int>(g.charge_tier()));
+    in.set(fnd::input::Action::Shoot, false);
+    tick(g, in);
+    check_int("Rika charge enters ShootB", static_cast<int>(FighterState::ShootB),
+              static_cast<int>(g.state()));
+    check_int("Rika charge binds move 450", 450, g.shot_move_id());
+    for (int i = 0; i < 10; ++i) tick(g, in);
+    gameplay::PendingShot first = g.take_pending_shot();
+    gameplay::PendingShot second = g.take_pending_shot();
+    check_bool("Rika charge T10 salvo fires twice", true, first.armed && second.armed);
+    check_int("Rika T10 first row is 2", 2, first.bulletRow);
+    check_int("Rika T10 second row is 5", 5, second.bulletRow);
+    for (int i = 0; i < 20; ++i) tick(g, in);
+    first = g.take_pending_shot();
+    second = g.take_pending_shot();
+    check_bool("Rika charge T30 salvo fires twice", true, first.armed && second.armed);
+    check_int("Rika T30 first row is 3", 3, first.bulletRow);
+    check_int("Rika T30 second row is 6", 6, second.bulletRow);
+}
+
 void test_mion_shot_tap() {
     section("16. Mion 0 tap + first charge (bundle bodies shoot_body_1_0_*)");
     const auto install = findInstall(nullptr);
@@ -2184,6 +2247,7 @@ int main(int argc, char** argv) {
     test_shots();
     test_pilot_shot_jump_cancel();
     test_mion_shot_tap();
+    test_rika_repeating_tap();
     test_ammo();
     test_hypermode();
     test_ko();

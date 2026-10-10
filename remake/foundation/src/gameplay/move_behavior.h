@@ -197,6 +197,69 @@ inline constexpr MoveRule kMionRules[] = {
     // 460 freeze: ~20-tick stall at tick 23 (L2340-2344).
     {460,-1,23,23,MoveOp::Hold,20.f},
 };
+// Rika weapon 1 (handler 0x492f70) — shot rules recovered from the reference bodies
+// shoot_body_4_1_{400,402,450,460} (bundle reference/source). Her tap is a repeating
+// schedule, not a single anchor: the bodies fire while (tick>11 && scratch<30) on even
+// scratch ticks, i.e. ticks 12,14,...,40 (15 shots; usage matrix agrees per phase).
+// Our rule model has no modulo, so the window is written as 15 explicit tick rules —
+// verbose but exact; each matches one measured fire tick. Row 0 for the tap window is
+// established through the item table (usage slot 0 = registration file 0), not the body
+// (whose 004230e0 call carries no row). Charge rows 2/5 (tick 10) and 3/6 (tick 30)
+// are explicit in the bodies; aim-only rows 4/7 have no flag field here and are skipped.
+// No Hide rules: the prop calls' 2/3/-1 semantics are illegible (bundle RESPONSE §2).
+inline constexpr MoveRule kRikaRules[] = {
+    // 400 ground tap: 15 deg turn ticks 0-14 (L21764-67), phase-0 bleed (L21768-71).
+    {400,-1,0,14,MoveOp::Turn,15.f},
+    {400,0,0,9999,MoveOp::Decelerate,.5f},
+    {400,-1,12,12,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,14,14,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,16,16,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,18,18,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,20,20,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,22,22,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,24,24,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,26,26,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,28,28,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,30,30,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,32,32,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,34,34,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,36,36,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,38,38,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,40,40,MoveOp::Launch,0.f,0.f,40.f},
+    // 402 air tap: 20 deg turn ticks 0-14 (L22077-80), same even-tick window (L22086).
+    {402,-1,0,14,MoveOp::Turn,20.f},
+    {402,-1,12,12,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,14,14,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,16,16,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,18,18,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,20,20,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,22,22,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,24,24,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,26,26,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,28,28,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,30,30,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,32,32,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,34,34,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,36,36,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,38,38,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,40,40,MoveOp::Launch,0.f,0.f,40.f},
+    // 450 ground charge1: 18 deg turn through tick 9 (L23485-88).
+    {450,-1,0,9,MoveOp::Turn,18.f},
+    // 450 twin salvos, no-aim primary branch: rows 2+5 at tick 10 (L23495-548),
+    // rows 3+6 at tick 30 (L23549-577); ~30-tick freeze at tick 30 (L23666-70).
+    {450,-1,10,10,MoveOp::Launch,2.f,0.f,40.f},
+    {450,-1,10,10,MoveOp::Launch,5.f,0.f,40.f},
+    {450,-1,30,30,MoveOp::Launch,3.f,0.f,40.f},
+    {450,-1,30,30,MoveOp::Launch,6.f,0.f,40.f},
+    {450,-1,30,30,MoveOp::Hold,30.f},
+    // 460 air charge1: same twin-salvo shape (L23750-803, L23804-832, L23921-24).
+    {460,-1,0,9,MoveOp::Turn,18.f},
+    {460,-1,10,10,MoveOp::Launch,2.f,0.f,40.f},
+    {460,-1,10,10,MoveOp::Launch,5.f,0.f,40.f},
+    {460,-1,30,30,MoveOp::Launch,3.f,0.f,40.f},
+    {460,-1,30,30,MoveOp::Launch,6.f,0.f,40.f},
+    {460,-1,30,30,MoveOp::Hold,30.f},
+};
 inline const MoveProgram* move_program(const CharacterMoves* moves) {
     const auto* binding = locomotion(moves);
     if (!binding) return nullptr;
@@ -207,8 +270,12 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     // provisional magazine-scan path in fire_shot keeps serving it — today's behavior.
     static constexpr MoveProgram mion = {kMionRules, std::size(kMionRules),
                                          {{400,402},{450,460},{-1,-1}}};
+    // Rika 1: same unbound second charge (no 360/370 body for ch4 in scope).
+    static constexpr MoveProgram rika = {kRikaRules, std::size(kRikaRules),
+                                         {{400,402},{450,460},{-1,-1}}};
     if (binding->handler == 0x43ffc0) return &nata;
     if (binding->handler == 0x4582a0) return &mion;
+    if (binding->handler == 0x492f70) return &rika;
     return nullptr;
 }
 } // namespace gameplay
