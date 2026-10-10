@@ -106,6 +106,8 @@ TestCombo g_mionCombo;
 TestCombo g_rikaCombo;
 TestCombo g_tomitakeCombo;
 TestCombo g_keiichiCombo;
+TestCombo g_keiichi0Combo;
+TestCombo g_keiichi1Combo;
 TestCombo g_chieCombo;
 TestCombo g_kasaiCombo;
 TestCombo g_takanoCombo;
@@ -2941,6 +2943,221 @@ void test_satoko2_aim_shared_2v2() {
     }
 }
 
+void test_keiichi0_hand_tap() {
+    section("35. Keiichi 0 item 5 hand tap + charges (bodies shoot_body_2_0_*)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_keiichi0Combo.load(install, 2, 0))
+        return skip_case("Keiichi 0 combo");
+    // FUN_00435220 takes the Bip01_R_Hand matrix directly — not a prop muzzle, not the
+    // root. Item 5's slots are bound (the body binds both), so a Prop1 request would
+    // also succeed; the origin KIND below is what proves the hand path was taken.
+    check_int("Keiichi 0 NN.dat binds item 5", 5, g_keiichi0Combo.moves.weapon_id());
+    check_int("Keiichi 0 fixture loads item 5", 5, g_keiichi0Combo.weapon.id);
+    const auto* program = gameplay::move_program(&g_keiichi0Combo.moves);
+    check_bool("Keiichi 0 hand program is bound", true,
+               program && program->rules == gameplay::kKeiichi0Rules);
+    check_int("Keiichi 0 maps the tap to state 400", 400,
+              program ? program->shot[0][0] : -1);
+    check_int("Keiichi 0 maps the air tap to state 402", 402,
+              program ? program->shot[0][1] : -1);
+    check_int("Keiichi 0 maps the ground charge to state 450", 450,
+              program ? program->shot[1][0] : -1);
+    check_int("Keiichi 0 maps the air charge to state 460", 460,
+              program ? program->shot[1][1] : -1);
+
+    // Normal tap: one hand request at tick 13, row 0, from the posed right hand.
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_keiichi0Combo.bind(f);
+    settle(f);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Keiichi tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    check_int("Keiichi tap binds state 400", 400, f.shot_move_id());
+    for (int i = 0; i < 13; ++i) tick(f, in);
+    const gameplay::PendingShot shot = f.take_pending_shot();
+    check_bool("Keiichi tap arms exactly one request", true, shot.armed);
+    check_int("normal tap uses item row 0", 0, shot.bulletRow);
+    check_bool("tap request is a named-bone origin", true,
+               shot.origin.kind == gameplay::ShotOriginKind::NamedBone);
+    check_bool("tap request names the right hand", true,
+               shot.origin.boneName != nullptr &&
+                   std::string(shot.origin.boneName) == "Bip01_R_Hand");
+    const float handOffset = std::hypot(shot.pos.x, shot.pos.y, shot.pos.z);
+    check_bool("hand request leaves the actor root", true, handOffset > 20.f);
+    check_bool("tap schedules no duplicate", false, f.take_pending_shot().armed);
+
+    // The NamedBone path throws on a missing bone instead of substituting the root,
+    // so the witness must show the lookup has something real to find — and that it
+    // discriminates. (Driving the throw itself would need a rig-less fighter, but a
+    // rig-less fighter never advances its animation tick, so that probe is vacuous;
+    // the throw is a three-line explicit branch on this same lookup.)
+    check_bool("rig contains the right-hand bone", true,
+               g_keiichi0Combo.model.findFrame("Bip01_R_Hand") >= 0);
+    check_bool("rig contains the left-hand bone", true,
+               g_keiichi0Combo.model.findFrame("Bip01_L_Hand") >= 0);
+    check_bool("bone lookup rejects a missing name", true,
+               g_keiichi0Combo.model.findFrame("Bip01_NoSuchBone") < 0);
+
+    // Powered tap: Oyashiro + aim hold switches the row to 3, same hand.
+    Fighter p;
+    p.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_keiichi0Combo.bind(p);
+    settle(p);
+    p.set_hypermode(Hypermode::Oyashiro);
+    p.set_hyper_gauge(1.f);
+    Input sp;
+    sp.set(fnd::input::Action::Special, true);
+    tick(p, sp);
+    sp.set(fnd::input::Action::Special, false);
+    tick(p, sp);
+    check_bool("Oyashiro witness is active", true, p.hyper_active());
+    gameplay::ShootingContext context;
+    context.aimHold = true;
+    p.set_shooting_context(context);
+    check_bool("powered gate holds", true, p.shoot_gate_powered());
+    sp.set(fnd::input::Action::Shoot, true);
+    tick(p, sp);
+    sp.set(fnd::input::Action::Shoot, false);
+    tick(p, sp);
+    for (int i = 0; i < 13; ++i) tick(p, sp);
+    const gameplay::PendingShot powered = p.take_pending_shot();
+    check_bool("powered tap arms the request", true, powered.armed);
+    check_int("powered tap switches to item row 3", 3, powered.bulletRow);
+    check_bool("powered tap keeps the right hand", true,
+               powered.origin.kind == gameplay::ShotOriginKind::NamedBone &&
+                   powered.origin.boneName != nullptr &&
+                   std::string(powered.origin.boneName) == "Bip01_R_Hand");
+
+    // Ground charge: left-hand row 1 at tick 4 (fixed angles), then the attachment
+    // pair at tick 20 (rows 2 normal / 4 powered, stored pitch).
+    Fighter g;
+    g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_keiichi0Combo.bind(g);
+    settle(g);
+    hold_yellow(g, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(g, in);
+    check_int("Keiichi charge binds move 450", 450, g.shot_move_id());
+    for (int i = 0; i < 4; ++i) tick(g, in);
+    const gameplay::PendingShot left = g.take_pending_shot();
+    check_bool("charge tick-4 left-hand request arms", true, left.armed);
+    check_int("tick-4 uses item row 1", 1, left.bulletRow);
+    check_bool("tick-4 names the left hand", true,
+               left.origin.kind == gameplay::ShotOriginKind::NamedBone &&
+                   left.origin.boneName != nullptr &&
+                   std::string(left.origin.boneName) == "Bip01_L_Hand");
+    for (int i = 0; i < 16; ++i) tick(g, in);
+    const gameplay::PendingShot first = g.take_pending_shot();
+    check_bool("charge tick-20 attachment request arms", true, first.armed);
+    check_int("tick-20 normal row is 2", 2, first.bulletRow);
+    check_bool("tick-20 uses the attachment origin", true,
+               first.origin.kind == gameplay::ShotOriginKind::WeaponAttachment ||
+                   first.origin.kind == gameplay::ShotOriginKind::BoundBoneFallback);
+}
+
+void test_keiichi1_hand_tap() {
+    section("36. Keiichi 1 item 18 hand tap + world charges (bodies shoot_body_2_1_*)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_keiichi1Combo.load(install, 2, 1))
+        return skip_case("Keiichi 1 combo");
+    // Same tap shape as Keiichi 0 (hand R at tick 13) with powered row 1. The charges
+    // differ: two world requests at tick 20 (row 9 plus row 2/3), both 50 left and
+    // +40/+20 high, with the range-dependent pitch.
+    check_int("Keiichi 1 NN.dat binds item 18", 18, g_keiichi1Combo.moves.weapon_id());
+    check_int("Keiichi 1 fixture loads item 18", 18, g_keiichi1Combo.weapon.id);
+    const auto* program = gameplay::move_program(&g_keiichi1Combo.moves);
+    check_bool("Keiichi 1 hand program is bound", true,
+               program && program->rules == gameplay::kKeiichi1Rules);
+    check_int("Keiichi 1 maps the tap to state 400", 400,
+              program ? program->shot[0][0] : -1);
+    check_int("Keiichi 1 maps the air tap to state 402", 402,
+              program ? program->shot[0][1] : -1);
+    check_int("Keiichi 1 maps the ground charge to state 450", 450,
+              program ? program->shot[1][0] : -1);
+    check_int("Keiichi 1 maps the air charge to state 460", 460,
+              program ? program->shot[1][1] : -1);
+
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_keiichi1Combo.bind(f);
+    settle(f);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Keiichi tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    check_int("Keiichi tap binds state 400", 400, f.shot_move_id());
+    for (int i = 0; i < 13; ++i) tick(f, in);
+    const gameplay::PendingShot shot = f.take_pending_shot();
+    check_bool("Keiichi tap arms exactly one request", true, shot.armed);
+    check_int("normal tap uses item row 0", 0, shot.bulletRow);
+    check_bool("tap request is a named-bone origin", true,
+               shot.origin.kind == gameplay::ShotOriginKind::NamedBone);
+    check_bool("tap request names the right hand", true,
+               shot.origin.boneName != nullptr &&
+                   std::string(shot.origin.boneName) == "Bip01_R_Hand");
+    check_bool("tap schedules no duplicate", false, f.take_pending_shot().armed);
+
+    // Powered tap switches to row 1; the air tap snaps rather than clamps, which the
+    // row assertions below do not cover — the pitch section pins that separately.
+    Fighter p;
+    p.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_keiichi1Combo.bind(p);
+    settle(p);
+    p.set_hypermode(Hypermode::Oyashiro);
+    p.set_hyper_gauge(1.f);
+    Input sp;
+    sp.set(fnd::input::Action::Special, true);
+    tick(p, sp);
+    sp.set(fnd::input::Action::Special, false);
+    tick(p, sp);
+    gameplay::ShootingContext context;
+    context.aimHold = true;
+    p.set_shooting_context(context);
+    sp.set(fnd::input::Action::Shoot, true);
+    tick(p, sp);
+    sp.set(fnd::input::Action::Shoot, false);
+    tick(p, sp);
+    for (int i = 0; i < 13; ++i) tick(p, sp);
+    const gameplay::PendingShot powered = p.take_pending_shot();
+    check_bool("powered tap arms the request", true, powered.armed);
+    check_int("powered tap switches to item row 1", 1, powered.bulletRow);
+
+    // Ground charge: row 9 plus row 2 at tick 20, both 50 left and +40 high, with the
+    // range pitch from the live target distance.
+    Fighter g;
+    g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_keiichi1Combo.bind(g);
+    settle(g);
+    Fighter victim;
+    victim.init(nullptr, nullptr, glm::vec3(0, 0, 500), 0.0f);
+    g_keiichi1Combo.bind(victim);
+    settle(victim);
+    hold_yellow(g, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(g, in, &victim);
+    check_int("Keiichi charge binds move 450", 450, g.shot_move_id());
+    for (int i = 0; i < 20; ++i) tick(g, in, &victim);
+    const gameplay::PendingShot first = g.take_pending_shot();
+    const gameplay::PendingShot second = g.take_pending_shot();
+    check_bool("charge tick-20 pair arms", true, first.armed && second.armed);
+    check_int("unconditional request uses item row 9", 9, first.bulletRow);
+    check_int("normal second request uses item row 2", 2, second.bulletRow);
+    check_near("both sit 50 left of the heading", -50.f, first.pos.x, 1e-3f);
+    check_near("both sit 40 above the actor", 40.f, first.pos.y, 1e-3f);
+    check_near("both sit with no forward displacement", 0.f, first.pos.z, 1e-3f);
+    // Base pitch atan2(0,500)=0 plus dist*40/5000 = 500*40/5000 = 4 degrees.
+    check_near("range pitch adds the distance term", std::sin(glm::radians(4.f)),
+               first.dir.y, 1e-3f);
+}
+
 void test_natsumi0_ground_tap() {
     section("29. Natsumi 0 state400 normal row 0 at 14F (bounded ground request schedule)");
     const auto install = findInstall(nullptr);
@@ -3571,6 +3788,8 @@ int main(int argc, char** argv) {
     test_satoko2_world_origin_fixture();
     test_satoko2_powered_branch_live();
     test_satoko2_aim_shared_2v2();
+    test_keiichi0_hand_tap();
+    test_keiichi1_hand_tap();
     test_shooting_magazine_contract();
     test_ammo();
     test_hypermode();

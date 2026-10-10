@@ -42,6 +42,14 @@ enum class ShotAimKind {
     // write_scratch(0x3c)) and read it back for later salvos, so a target that changes
     // height mid-attack must not re-aim salvos that already have their pitch.
     StoredPitch,
+    // Literal yaw/pitch in degrees (yaw on the fighter's own basis, pitch absolute).
+    // For bodies that pass constant angles rather than deriving them — e.g. a hand
+    // request with yaw 0 and pitch 0 that must not track the target.
+    FixedAngles,
+    // Stored base pitch plus a live range term, on the legacy yaw basis. Measured in
+    // shoot_body_2_1_450/460 only: pitch = clamp(int(elevation), +-40) plus
+    // clamp(dist*40/5000, 0, 40), scaled by 0.95 when the base is negative.
+    ElevationPlusRange,
 };
 
 struct ShotAimSpec {
@@ -76,6 +84,24 @@ inline constexpr ShotAimSpec aim_target_elevation(float clampDegrees) {
 // for every request a body makes after it has latched its pitch.
 inline constexpr ShotAimSpec aim_stored_pitch() {
     return ShotAimSpec{ShotAimKind::StoredPitch, 0.f, 0.f, -40.f, 40.f};
+}
+
+// Literal yaw/pitch in degrees, no target tracking. Use it for requests whose body
+// passes constant angles.
+inline constexpr ShotAimSpec aim_fixed_angles(float yawDegrees, float pitchDegrees) {
+    return ShotAimSpec{ShotAimKind::FixedAngles, yawDegrees, pitchDegrees, -45.f, 45.f};
+}
+
+// Stored base pitch plus a live range term, on the legacy yaw basis. The resolver
+// derives both from the live target geometry; see the kind comment for the formula.
+inline constexpr ShotAimSpec aim_elevation_plus_range() {
+    return ShotAimSpec{ShotAimKind::ElevationPlusRange, 0.f, 0.f, -40.f, 40.f};
+}
+
+// A named hand/bone transform with its local point (FUN_00435220). The rule states
+// the bone; a rig missing it fails explicitly at request time, never substitutes.
+inline constexpr ShotOriginSpec origin_named_bone(const char* boneName) {
+    return ShotOriginSpec{ShotOriginKind::NamedBone, 0, boneName, {}, {}};
 }
 
 } // namespace gameplay

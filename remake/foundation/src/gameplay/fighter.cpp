@@ -1420,7 +1420,7 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
         // FUN_0042da80 -> FUN_0066b668 -> write_scratch(0x3c): the clamped target
         // elevation, truncated to int the way the original's int scratch is, stored for
         // the later requests that read source_float(0x3c) back.
-        case MoveOp::CapturePitch: m_movePitch = capture_target_pitch(rule.third, opponent); break;
+        case MoveOp::CapturePitch: m_movePitch = capture_target_pitch(rule.third, rule.second, opponent); break;
         case MoveOp::ActionCamera:
             if (m_chainContact) m_actionCamera = static_cast<int>(rule.value);
             break;
@@ -1429,18 +1429,29 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
 }
 
 // FUN_0042da80 -> FUN_0066b668 -> write_scratch(0x3c): the target elevation in whole
-// degrees, clamped symmetrically, as the original's integer scratch stores it. No
-// opponent reads as elevation 0, matching atan2(0, 0).
-float Fighter::capture_target_pitch(float clampDegrees, const Fighter* opponent) {
+// FUN_0042da80 -> FUN_0066b668 -> write_scratch: the target elevation in whole
+// degrees, as the original's integer scratch stores it. No opponent reads as
+// elevation 0, matching atan2(0, 0). When snapDegrees is nonzero, values beyond
+// +-clampDegrees snap to +-snapDegrees instead of clamping (the air-tap
+// discontinuity: compare +-30, assign +-45); otherwise it clamps symmetrically.
+float Fighter::capture_target_pitch(float clampDegrees, float snapDegrees,
+                                     const Fighter* opponent) {
     float elevation = 0.f;
     if (opponent) {
         const glm::vec3 difference = opponent->position() - m_position;
         elevation = glm::degrees(std::atan2(difference.y,
                                             std::hypot(difference.x, difference.z)));
     }
-    const float limit = glm::radians(clampDegrees);
-    const float clamped = std::clamp(glm::radians(elevation), -limit, limit);
-    return static_cast<float>(static_cast<int>(glm::degrees(clamped)));
+    int pitch = static_cast<int>(elevation);
+    const int compare = static_cast<int>(clampDegrees);
+    if (snapDegrees != 0.f) {
+        const int assign = static_cast<int>(snapDegrees);
+        if (pitch < -compare) pitch = -assign;
+        else if (pitch > compare) pitch = assign;
+    } else {
+        pitch = std::clamp(pitch, -compare, compare);
+    }
+    return static_cast<float>(pitch);
 }
 
 bool Fighter::rule_gate_holds(const MoveRule& rule) const {
@@ -1580,6 +1591,38 @@ void Fighter::launch_bullet(int row, const ShotOriginSpec& origin, const ShotAim
         const float legacyYawDegrees = 90.f - glm::degrees(m_facing) +
                                        resolvedAim.yawDegrees;
         pitch = glm::radians(m_movePitch + resolvedAim.pitchDegrees);
+        const float legacyYaw = glm::radians(legacyYawDegrees);
+        shot.dir = glm::vec3(std::cos(legacyYaw) * std::cos(pitch), std::sin(pitch),
+                             std::sin(legacyYaw) * std::cos(pitch));
+        break;
+    }
+    case ShotAimKind::FixedAngles: {
+        const float yaw = m_facing + glm::radians(resolvedAim.yawDegrees);
+        pitch = glm::radians(resolvedAim.pitchDegrees);
+        shot.dir = glm::vec3(std::sin(yaw) * std::cos(pitch), std::sin(pitch),
+                             std::cos(yaw) * std::cos(pitch));
+        break;
+    }
+    case ShotAimKind::ElevationPlusRange: {
+        // shoot_body_2_1_450/460, same tick throughout: base pitch plus a live term
+        // from the current target distance. Constants are the body's own (40/5000,
+        // clamp 0-40, x0.95 when the base is negative), not tuning. The distance is
+        // horizontal (FUN_0042d980 feeds both this term and the elevation's
+        // atan2(height, sqrt(dist))), never 3D.
+        float base = 0.f;
+        float rangeTerm = 0.f;
+        if (opponent) {
+            const glm::vec3 difference = opponent->position() - m_position;
+            const float horizontal = std::hypot(difference.x, difference.z);
+            base = static_cast<float>(static_cast<int>(
+                glm::degrees(std::atan2(difference.y, horizontal))));
+            base = std::clamp(base, -40.f, 40.f);
+            rangeTerm = std::clamp(horizontal * 40.f / 5000.f, 0.f, 40.f);
+            if (base < 0.f) rangeTerm *= 0.95f;
+        }
+        const float legacyYawDegrees = 90.f - glm::degrees(m_facing) +
+                                       resolvedAim.yawDegrees;
+        pitch = glm::radians(base + rangeTerm + resolvedAim.pitchDegrees);
         const float legacyYaw = glm::radians(legacyYawDegrees);
         shot.dir = glm::vec3(std::cos(legacyYaw) * std::cos(pitch), std::sin(pitch),
                              std::sin(legacyYaw) * std::cos(pitch));

@@ -69,6 +69,10 @@ enum MoveGate : unsigned {
 
 enum class MoveOp { Speed, Decelerate, Turn, Approach, Launch, Hold, ActionCamera, Hide,
                     Active, Counter, CounterSet, CapturePitch };
+// CapturePitch latches the target elevation into the move's pitch scratch (the bodies'
+// write_scratch of the FUN_0042da80/FUN_0066b668 value): third is the compare/clamp
+// bound in degrees, second is the snap-assign bound (0 = plain symmetric clamp).
+// The air-tap discontinuity (compare +-30, assign +-45) is a nonzero second.
 // Aggregate order is part of the contract: the tables are positional literals, so the
 // fields every rule might set (move/phase/first/last/op/value/second/third/gate/
 // gateValue) come before the two spec objects only world-style Launch rules carry.
@@ -409,6 +413,101 @@ inline constexpr MoveRule kSatoko2Rules[] = {
      origin_actor_relative(-50.f,100.f,70.f),aim_target_elevation(40.f)},
     {402,-1,20,20,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
      origin_actor_relative(50.f,100.f,70.f),aim_target_elevation(40.f)},
+};
+
+// Keiichi weapon 0 (handler 0x46a190) — shot rules recovered from the reference bodies
+// shoot_body_2_0_{400,402,450,460} (bundle reference/source). The taps fire ONE hand
+// request at tick 13 through FUN_00435220 on Bip01_R_Hand (row 0 normally, row 3
+// powered), with the pitch computed, stored and read back in the same tick. The air
+// tap snaps the pitch (compare +-30, assign +-45) instead of clamping. The charges
+// add a LEFT-hand request at tick 4 (row 1, fixed yaw/pitch 0, unconditional) and an
+// attachment request at tick 20 (slot 0, row 2 normally / row 4 powered, stored
+// pitch). Both slots stay bound throughout; no Hide rules.
+inline constexpr MoveRule kKeiichi0Rules[] = {
+    // 400 ground tap: 20 deg turn through tick 13 (FUN_0042db10), bleed 0.5 (L6346-56).
+    {400,-1,0,13,MoveOp::Turn,20.f},
+    {400,-1,0,9999,MoveOp::Decelerate,.5f},
+    // Tick-13 hand request, normal then powered (L6356-79).
+    {400,0,13,13,MoveOp::CapturePitch,0.f,0.f,30.f},
+    {400,0,13,13,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
+    {400,0,13,13,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
+    // 402 air tap: 20 deg movement-preserving turn through tick 13, movement cleared
+    // at tick 0 and gravity applied (no MoveRule ops — explicit gaps). Same tick-13
+    // hand request with the snapped pitch.
+    {402,-1,0,13,MoveOp::Turn,20.f},
+    {402,0,13,13,MoveOp::CapturePitch,0.f,45.f,30.f},
+    {402,0,13,13,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
+    {402,0,13,13,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
+    // 450 ground charge: 18 deg turn through tick 19, bleed 0.5. Tick-4 left hand,
+    // tick-20 attachment pair (L8368-8406).
+    {450,-1,0,19,MoveOp::Turn,18.f},
+    {450,-1,0,9999,MoveOp::Decelerate,.5f},
+    {450,0,4,4,MoveOp::Launch,1.f,0.f,0.f,kGateNone,0,
+     origin_named_bone("Bip01_L_Hand"),aim_fixed_angles(0.f,0.f)},
+    {450,0,20,20,MoveOp::CapturePitch,0.f,0.f,40.f},
+    {450,0,20,20,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     ShotOriginSpec{},aim_stored_pitch()},
+    {450,0,20,20,MoveOp::Launch,4.f,0.f,0.f,kGatePowered,0,
+     ShotOriginSpec{},aim_stored_pitch()},
+    // 460 air charge: 18 deg movement-preserving turn through tick 19; entry halve
+    // and gravity have no ops (explicit gaps). Same tick-4/tick-20 requests.
+    {460,-1,0,19,MoveOp::Turn,18.f},
+    {460,0,4,4,MoveOp::Launch,1.f,0.f,0.f,kGateNone,0,
+     origin_named_bone("Bip01_L_Hand"),aim_fixed_angles(0.f,0.f)},
+    {460,0,20,20,MoveOp::CapturePitch,0.f,0.f,40.f},
+    {460,0,20,20,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     ShotOriginSpec{},aim_stored_pitch()},
+    {460,0,20,20,MoveOp::Launch,4.f,0.f,0.f,kGatePowered,0,
+     ShotOriginSpec{},aim_stored_pitch()},
+};
+
+// Keiichi weapon 1 (handler 0x473610) — shot rules recovered from the reference bodies
+// shoot_body_2_1_{400,402,450,460} (bundle reference/source). The taps are the same
+// shape as Keiichi 0's (hand R at tick 13, stored pitch) with powered row 1 instead
+// of 3. The charges fire TWO world requests at tick 20 — row 9 unconditionally, then
+// row 2 normally / row 3 powered — both at forward 0, lateral -50, height +40 ground
+// (+20 air), with the range-dependent pitch (base plus dist*40/5000, x0.95 when the
+// base is negative).
+inline constexpr MoveRule kKeiichi1Rules[] = {
+    // 400 ground tap: 20 deg turn through tick 13, bleed 0.5 (L8776-89).
+    {400,-1,0,13,MoveOp::Turn,20.f},
+    {400,-1,0,9999,MoveOp::Decelerate,.5f},
+    {400,0,13,13,MoveOp::CapturePitch,0.f,0.f,30.f},
+    {400,0,13,13,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
+    {400,0,13,13,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
+    // 402 air tap: 20 deg movement-preserving turn through tick 13 (movement clear
+    // and gravity are explicit gaps). Same hand request with the snapped pitch.
+    {402,-1,0,13,MoveOp::Turn,20.f},
+    {402,0,13,13,MoveOp::CapturePitch,0.f,45.f,30.f},
+    {402,0,13,13,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
+    {402,0,13,13,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
+    // 450 ground charge: 18 deg turn through tick 19, bleed 0.5. Tick-20 world pair
+    // (L10004-10093).
+    {450,-1,0,19,MoveOp::Turn,18.f},
+    {450,-1,0,9999,MoveOp::Decelerate,.5f},
+    {450,0,20,20,MoveOp::Launch,9.f,0.f,0.f,kGateNone,0,
+     origin_actor_relative(-50.f,0.f,40.f),aim_elevation_plus_range()},
+    {450,0,20,20,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(-50.f,0.f,40.f),aim_elevation_plus_range()},
+    {450,0,20,20,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(-50.f,0.f,40.f),aim_elevation_plus_range()},
+    // 460 air charge: 18 deg movement-preserving turn through tick 19 (entry halve
+    // and gravity are explicit gaps). Same pair at height +20.
+    {460,-1,0,19,MoveOp::Turn,18.f},
+    {460,0,20,20,MoveOp::Launch,9.f,0.f,0.f,kGateNone,0,
+     origin_actor_relative(-50.f,0.f,20.f),aim_elevation_plus_range()},
+    {460,0,20,20,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(-50.f,0.f,20.f),aim_elevation_plus_range()},
+    {460,0,20,20,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(-50.f,0.f,20.f),aim_elevation_plus_range()},
 };
 
 // Tomitake weapon 2 (handler 0x527880) — shot rules recovered from the reference bodies
@@ -831,6 +930,13 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     if (binding->handler == 0x43ffc0) return &rena;
     if (binding->handler == 0x4582a0) return &mion;
     if (binding->handler == 0x492f70) return &rika;
+    // Keiichi 0/1: taps and first charges bound; second charge stays provisional.
+    static constexpr MoveProgram keiichi0 = {kKeiichi0Rules, std::size(kKeiichi0Rules),
+                                             {{400,402},{450,460},{-1,-1}}};
+    static constexpr MoveProgram keiichi1 = {kKeiichi1Rules, std::size(kKeiichi1Rules),
+                                             {{400,402},{450,460},{-1,-1}}};
+    if (binding->handler == 0x46a190) return &keiichi0;
+    if (binding->handler == 0x473610) return &keiichi1;
     // Satoko 2 (handler 0x4bc040): the tap pair only. 450/460 stay -1 so the
     // provisional magazine-scan path keeps serving the charges exactly as before,
     // which is the documented pending cell for this combo.
