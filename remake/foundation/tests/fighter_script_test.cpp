@@ -156,33 +156,6 @@ void skip_case(const char* what) {
 
 void bind_test_combo(Fighter& fighter) { g_testCombo.bind(fighter); }
 
-float magazine_shots(int chargeLevel) {
-    const auto& mag = g_testCombo.weapon.magazineForChargeLevel(chargeLevel);
-    return (mag.reloadTime > 0)
-        ? static_cast<float>(mag.capacity()) / static_cast<float>(mag.reloadTime)
-        : 0.0f;
-}
-
-float magazine_refill_shots_per_sec(int chargeLevel) {
-    const auto& mag = g_testCombo.weapon.magazineForChargeLevel(chargeLevel);
-    // The current port refill rule uses reloadTime pool units per second and
-    // reloadTime units per shot, so a loaded magazine recovers one shot/sec.
-    return (mag.reloadTime > 0) ? 1.0f : 0.0f;
-}
-
-int charge_threshold_frames(int chargeLevel) {
-    const float threshold = static_cast<float>(
-        g_testCombo.weapon.magazineForChargeLevel(chargeLevel).chargeMax) /
-        gameplay::FixedStep::tickRate;
-    float held = 0.0f;
-    int frames = 0;
-    while (held < threshold && frames < 10000) {
-        held += kStep;
-        ++frames;
-    }
-    return frames;
-}
-
 // ---------------------------------------------------------------------------
 // Check helpers — every one prints expected vs got.
 // ---------------------------------------------------------------------------
@@ -260,7 +233,14 @@ void tick(Fighter& f, Input& in, Fighter* opp = nullptr) {
     f.update(&in.p, opp, kDt);
 }
 
-// BattleStart is a 60-frame pose; with no input the fighter lands in Idle.
+// Charge is a source counter, not dt accumulation or the MAIN magazine threshold.
+void hold_yellow(Fighter& fighter, Input& input) {
+    input.set(fnd::input::Action::Shoot, true);
+    int limit = 1000;
+    while (fighter.charge_tier() == ShotTier::Tap && limit-- > 0) tick(fighter, input);
+    check_bool("Charge driver reaches Yellow", true, fighter.charge_tier() == ShotTier::Yellow);
+}
+
 void settle(Fighter& f, int frames = FighterConstants::kBattleStartFrames) {
     for (int i = 0; i < frames; ++i) f.update(nullptr, nullptr, kDt);
 }
@@ -793,286 +773,196 @@ void test_air() {
 }
 
 // ===========================================================================
-//  Case 7 — shot tiers, hold thresholds, muzzle, reloadNG, EX
+//  Case 7 — callback-time ammo, charge counters and provisional EX entry
 // ===========================================================================
 void test_shots() {
-    section("7. projectile input paths with the Rena 0 weapon combo");
-    if (!g_testCombo.ready) return skip_case("Rena 0 projectile input paths");
-    const float mainShots = magazine_shots(1);
-    const float chargeShots = magazine_shots(2);
-    const float mainRefill = magazine_refill_shots_per_sec(1);
-    const float chargeRefill = magazine_refill_shots_per_sec(2);
-    const int yellowHoldFrames = charge_threshold_frames(1);
-    const int redHoldFrames = charge_threshold_frames(2);
-    const float redHoldSeconds = static_cast<float>(
-        g_testCombo.weapon.magazineForChargeLevel(2).chargeMax) /
-                                 gameplay::FixedStep::tickRate;
-    check_bool("Rena 0 DAT provides both magazine capacities", true,
-               mainShots > 0.0f && chargeShots > 0.0f);
-    check_bool("Rena 0 DAT provides both charge thresholds", true,
-               yellowHoldFrames > 0 && redHoldFrames > yellowHoldFrames);
-    check_int("kShotStateFrames port duration", 20, FighterConstants::kShotStateFrames);
-    check_bits("kMuzzleForward", 60.0f, FighterConstants::kMuzzleForward);
-    check_bits("kMuzzleHeight", 100.0f, FighterConstants::kMuzzleHeight);
+    section("7. Callback-time shooting and charge counters (Rena 0 + item 1)");
+    if (!g_testCombo.ready) return skip_case("Rena 0 shooting paths");
+    Fighter f = make_idle_fighter({});
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Tap selection enters move400", 400, f.shot_move_id());
+    check_int("Selecting a programmed shot spends no MAIN", 6, f.main_whole());
+    check_bool("Selection has no admitted projectile", false, f.take_pending_shot().armed);
+    for (int i = 0; i < 12; ++i) tick(f, in);
+    const auto tap = f.take_pending_shot();
+    check_bool("Tick12 callback admits the normal tap", true, tap.armed);
+    check_int("Tap callback uses row0", 0, tap.bulletRow);
+    check_int("Tap callback consumes one MAIN round", 5, f.main_whole());
+    check_near("Tap callback precedes one original refill tick", 5.0 + 1.0 / 300.0,
+               f.main_frac() * 6, 1e-5);
+    check_bool("Zero row interval has no artificial reloadNG", true, f.reload_ok());
 
-    // --- tap: press one frame, release the next ---
-    {
-        Fighter f = make_idle_fighter(glm::vec3(0, 0, 0));
-        Input in;
-        in.set(fnd::input::Action::Shoot, true);
+    int shotStateTicks = 12;
+    while (f.state() == FighterState::ShootA && shotStateTicks < 100) {
         tick(f, in);
-        check_int("tier while held 1 frame", static_cast<int>(ShotTier::Tap),
-                  static_cast<int>(f.charge_tier()));
-        in.set(fnd::input::Action::Shoot, false);
-        tick(f, in);
-        gameplay::PendingShot shot = f.take_pending_shot();
-        check_bool("release starts the firing move, not an immediate shot",false,shot.armed);
-        check_int("tap tier", static_cast<int>(ShotTier::Tap),
-                  static_cast<int>(shot.tier));
-        // The firing frame also recharges. The loaded item sizes the pool and
-        // provides the shot cost; the port's provisional refill rule is one
-        // shot/sec (see apply_weapon_ammo).
-        check_near("tap spends one MAIN shot plus the firing-frame refill",
-                   mainShots - 1.0 + mainRefill * kDt,
-                   f.main_frac() * mainShots, 1e-5);
-        check_int("MAIN whole after tap", static_cast<int>(mainShots) - 1,
-                  f.main_whole());
-        check_int("CHARGE untouched by a tap", static_cast<int>(chargeShots),
-                  f.charge_whole());
-        check_int("tap state", static_cast<int>(FighterState::ShootA),
-                  static_cast<int>(f.state()));
-        check_bool("pending disarmed by take_pending_shot", false,
-                   f.take_pending_shot().armed);
-        check_bool("reloadNG open on the firing frame", false, f.reload_ok());
-        for (int i = 0; i < 12; ++i) tick(f,in);
-        shot = f.take_pending_shot();
-        check_bool("phase tick twelve launches one projectile",true,shot.armed);
-        check_int("tap selects item row zero",0,shot.bulletRow);
-        int frames = 0;
-        while (!f.reload_ok() && frames < 100) { tick(f, in); ++frames; }
-        check_int("tap reloadNG window including the release frame",15,frames+13);
-        int shot_state_ticks = frames+12;
-        while (f.state() == FighterState::ShootA && shot_state_ticks < 100) {
-            tick(f, in);
-            ++shot_state_ticks;
+        ++shotStateTicks;
+    }
+    const int set = g_testCombo.moves.first_set_index(400);
+    const int period = static_cast<int>(std::nearbyint(g_testCombo.model.anims[set].duration /
+        g_testCombo.model.ticksPerSecond / gameplay::kOriginalAnimationTick));
+    check_int("Tap still finishes on its actual clip period", period - 1, shotStateTicks);
+    check_int("Tap still returns to Idle", static_cast<int>(FighterState::Idle), static_cast<int>(f.state()));
+
+    Fighter charged = make_idle_fighter({});
+    Input ci;
+    ci.set(fnd::input::Action::Shoot, true);
+    for (int i = 0; i < 29; ++i) tick(charged, ci);
+    check_int("Initial29 updates remain Tap", static_cast<int>(ShotTier::Tap), static_cast<int>(charged.charge_tier()));
+    tick(charged, ci);
+    check_int("Initial30 updates reach Yellow", static_cast<int>(ShotTier::Yellow), static_cast<int>(charged.charge_tier()));
+    check_near("Yellow charge fraction uses initial30 plus secondary180", 30.0 / 210.0,
+               charged.charge_hold_frac(), 1e-6);
+    ci.set(fnd::input::Action::Shoot, false);
+    tick(charged, ci);
+    check_int("Yellow selection binds move450", 450, charged.shot_move_id());
+    check_int("Yellow selection spends no CHARGE", 2, charged.charge_whole());
+    for (int i = 0; i < 13; ++i) tick(charged, ci);
+    const auto yellow = charged.take_pending_shot();
+    check_bool("Tick13 admits Yellow row2", true, yellow.armed && yellow.bulletRow == 2);
+    check_int("Yellow row2 consumes secondary magazine", 1, charged.charge_whole());
+    check_int("Yellow row2 leaves primary magazine untouched", 6, charged.main_whole());
+
+    Fighter red = make_idle_fighter({});
+    Input ri;
+    ri.set(fnd::input::Action::Shoot, true);
+    for (int i = 0; i < 209; ++i) tick(red, ri);
+    check_int("Before secondary180 threshold remains Yellow", static_cast<int>(ShotTier::Yellow), static_cast<int>(red.charge_tier()));
+    tick(red, ri);
+    check_int("Initial30 plus secondary180 reaches Red", static_cast<int>(ShotTier::Red), static_cast<int>(red.charge_tier()));
+    check_bits("Red charge meter reaches full", 1.f, red.charge_hold_frac());
+    ri.set(fnd::input::Action::Shoot, false);
+    tick(red, ri);
+    check_int("Red selects move360 without eager spending", 360, red.shot_move_id());
+    check_int("Unmetered red rows preserve CHARGE stock", 2, red.charge_whole());
+    int redRequests = 0;
+    for (int i = 0; i < 150; ++i) {
+        tick(red, ri);
+        for (auto shot = red.take_pending_shot(); shot.armed; shot = red.take_pending_shot()) {
+            ++redRequests;
+            check_bool("Red request is one of original unmetered rows11/12", true,
+                       shot.bulletRow == 11 || shot.bulletRow == 12);
         }
-        const int set = g_testCombo.moves.first_set_index(400);
-        const int period = static_cast<int>(std::nearbyint(g_testCombo.model.anims[set].duration /
-                             g_testCombo.model.ticksPerSecond / gameplay::kOriginalAnimationTick));
-        check_int("shooting action finishes on its actual clip period",period-1,shot_state_ticks);
-        check_int("shooting state expires to Idle", static_cast<int>(FighterState::Idle),
-                  static_cast<int>(f.state()));
     }
+    check_int("Red path admits twin unmetered requests", 2, redRequests);
+    check_int("Red request admission preserves primary stock", 6, red.main_whole());
+    check_int("Red request admission preserves secondary stock", 2, red.charge_whole());
 
-    // --- hold thresholds, per tier ---
-    {
-        Fighter f = make_idle_fighter(glm::vec3(0, 0, 0));
-        Input in;
-        in.set(fnd::input::Action::Shoot, true);
-        for (int i = 0; i < yellowHoldFrames - 1; ++i) tick(f, in);
-        check_int("one frame before the DAT yellow threshold is Tap",
-                  static_cast<int>(ShotTier::Tap), static_cast<int>(f.charge_tier()));
-        tick(f, in);
-        check_int("DAT yellow threshold reaches Yellow",
-                  static_cast<int>(ShotTier::Yellow), static_cast<int>(f.charge_tier()));
-        check_near("charge_hold_frac at the yellow threshold",
-                   static_cast<double>(yellowHoldFrames) * kStep / redHoldSeconds,
-                   f.charge_hold_frac(), 1e-5);
-        in.set(fnd::input::Action::Shoot, false);
-        tick(f, in);
-        const gameplay::PendingShot y = f.take_pending_shot();
-        check_int("yellow tier fired", static_cast<int>(ShotTier::Yellow),
-                  static_cast<int>(y.tier));
-        check_near("yellow spends one CHARGE shot plus the firing-frame refill",
-                   chargeShots - 1.0 + chargeRefill * kDt,
-                   f.charge_frac() * chargeShots, 1e-5);
-        check_int("yellow state", static_cast<int>(FighterState::ShootB),
-                  static_cast<int>(f.state()));
-        check_bool("yellow reloadNG open", false, f.reload_ok());
-        int frames = 0;
-        while (!f.reload_ok() && frames < 100) { tick(f, in); ++frames; }
-        check_int("yellow reloadNG window", 30, frames + 1);
-    }
-    {
-        Fighter f = make_idle_fighter(glm::vec3(0, 0, 0));
-        Input in;
-        in.set(fnd::input::Action::Shoot, true);
-        for (int i = 0; i < redHoldFrames - 1; ++i) tick(f, in);
-        check_int("one frame before the DAT red threshold is Yellow",
-                  static_cast<int>(ShotTier::Yellow), static_cast<int>(f.charge_tier()));
-        tick(f, in);
-        check_int("DAT red threshold reaches Red", static_cast<int>(ShotTier::Red),
-                  static_cast<int>(f.charge_tier()));
-        check_bits("charge_hold_frac clamps to 1", 1.0f, f.charge_hold_frac());
-        in.set(fnd::input::Action::Shoot, false);
-        tick(f, in);
-        const gameplay::PendingShot r = f.take_pending_shot();
-        check_int("red tier fired", static_cast<int>(ShotTier::Red),
-                  static_cast<int>(r.tier));
-        check_near("red spends one CHARGE shot plus the firing-frame refill",
-                   chargeShots - 1.0 + chargeRefill * kDt,
-                   f.charge_frac() * chargeShots, 1e-5);
-        check_int("red state", static_cast<int>(FighterState::ShootC),
-                  static_cast<int>(f.state()));
-        int frames = 0;
-        while (!f.reload_ok() && frames < 100) { tick(f, in); ++frames; }
-        check_int("red reloadNG window", 45, frames + 1);
-    }
+    // EX selection is still a provisional port path; preserve its input/event coverage.
+    Fighter exOwner = make_idle_fighter({});
+    exOwner.set_hyper_gauge(1.f);
+    Input xi;
+    xi.set(fnd::input::Action::Special, true);
+    tick(exOwner, xi);
+    check_bool("Full gauge Special still activates hypermode", true, exOwner.hyper_active());
+    xi.set(fnd::input::Action::Special, false);
+    tick(exOwner, xi);
+    xi.set(fnd::input::Action::Special, true);
+    tick(exOwner, xi);
+    const auto ex = exOwner.take_pending_shot();
+    check_bool("Active-mode Special still arms provisional EX", true, ex.armed);
+    check_int("Provisional EX still carries its tier", static_cast<int>(ShotTier::Ex), static_cast<int>(ex.tier));
+    check_int("Provisional EX still enters ShotFinal", static_cast<int>(FighterState::ShotFinal), static_cast<int>(exOwner.state()));
+    check_int("Provisional EX admits its selected secondary row", 1, exOwner.charge_whole());
 
-    // --- muzzle follows facing (yaw 0 faces +Z) ---
-    {
-        Fighter f;
-        bind_test_combo(f);
-        f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 1.5707964f);   // +90°
-        settle(f);
-        Input in;
-        in.set(fnd::input::Action::Shoot, true);
-        tick(f, in);
-        in.set(fnd::input::Action::Shoot, false);
-        tick(f, in);
-        const gameplay::PendingShot shot = f.take_pending_shot();
-        check_near("muzzle x at yaw 90°", 60.0, shot.pos.x, 1e-3);
-        check_near("muzzle z at yaw 90°", 0.0, shot.pos.z, 1e-3);
-        check_near("dir x at yaw 90°", 1.0, shot.dir.x, 1e-6);
-    }
-
-    // --- reloadNG gates a second shot (silently dropped) ---
-    {
-        Fighter f = make_idle_fighter(glm::vec3(0, 0, 0));
-        Input in;
-        in.set(fnd::input::Action::Shoot, true);
-        tick(f, in);
-        in.set(fnd::input::Action::Shoot, false);
-        tick(f, in);
-        (void)f.take_pending_shot();
-        const int whole_before = f.main_whole();
-        in.set(fnd::input::Action::Shoot, true);
-        tick(f, in);
-        in.set(fnd::input::Action::Shoot, false);
-        tick(f, in);
-        check_bool("shot under reloadNG is dropped", false, f.take_pending_shot().armed);
-        check_int("dropped shot spends no MAIN", whole_before, f.main_whole());
-    }
-
-    // --- EX move: Special while hypermode is active fires the Ex tier ---
-    {
-        Fighter f = make_idle_fighter(glm::vec3(0, 0, 0));
-        f.set_hyper_gauge(1.0f);
-        Input in;
-        in.set(fnd::input::Action::Special, true);
-        tick(f, in);
-        check_bool("Special at a full bar activates hypermode", true, f.hyper_active());
-        in.set(fnd::input::Action::Special, false);
-        tick(f, in);
-        in.set(fnd::input::Action::Special, true);
-        tick(f, in);
-        const gameplay::PendingShot ex = f.take_pending_shot();
-        check_bool("EX move arms a shot", true, ex.armed);
-        check_int("EX tier", static_cast<int>(ShotTier::Ex), static_cast<int>(ex.tier));
-        check_int("EX state", static_cast<int>(FighterState::ShotFinal),
-                  static_cast<int>(f.state()));
-        check_near("EX spends one CHARGE shot plus the Friendship refill",
-                   chargeShots - 1.0 + chargeRefill * 1.6 * kDt,
-                   f.charge_frac() * chargeShots, 1e-5);
-        int frames = 0;
-        while (!f.reload_ok() && frames < 200) { tick(f, in); ++frames; }
-        check_int("EX reloadNG window", 60, frames + 1);
-    }
 }
 
-// ===========================================================================
-//  Case 8 — ammo spend/recharge from the selected weapon's magazine records
-// ===========================================================================
 void test_ammo() {
-    section("8. ammo spend/recharge with the Rena 0 weapon combo");
-    if (!g_testCombo.ready) return skip_case("Rena 0 ammo input paths");
-    const float mainShots = magazine_shots(1);
-    const float chargeShots = magazine_shots(2);
-    const float mainRefill = magazine_refill_shots_per_sec(1);
-    const float chargeRefill = magazine_refill_shots_per_sec(2);
-    const int yellowHoldFrames = charge_threshold_frames(1);
+    section("8. Original refill and row admission (Rena 0 + item 1)");
+    if (!g_testCombo.ready) return skip_case("Rena 0 ammo fixture");
+    const auto fireTap = [](Fighter& fighter, Input& input) {
+        input.set(fnd::input::Action::Shoot, true);
+        tick(fighter, input);
+        input.set(fnd::input::Action::Shoot, false);
+        tick(fighter, input);
+        for (int i = 0; i < 12; ++i) tick(fighter, input);
+        return fighter.take_pending_shot();
+    };
+    Fighter plain = make_idle_fighter({});
+    Input in;
+    check_bool("Ammo refill witness actually admits a shot", true, fireTap(plain, in).armed);
+    const float before = plain.main_frac() * 6.f;
+    for (int i = 0; i < 30; ++i) tick(plain, in);
+    check_near("Normal refill adds30/300 of a MAIN round", 0.1, plain.main_frac() * 6 - before, 1e-5);
+    for (int i = 0; i < 268; ++i) tick(plain, in);
+    check_int("MAIN remains five rounds before threshold300", 5, plain.main_whole());
+    tick(plain, in);
+    check_int("MAIN returns to six at threshold300", 6, plain.main_whole());
 
-    {
-        Fighter f = make_idle_fighter(glm::vec3(0, 0, 0));
-        Input in;
-        in.set(fnd::input::Action::Shoot, true);
-        tick(f, in);
-        in.set(fnd::input::Action::Shoot, false);
-        tick(f, in);
-        // The firing frame already includes one recharge tick.
-        const float v0 = f.main_frac() * mainShots;
-        check_near("MAIN right after a tap", mainShots - 1.0 + mainRefill * kDt,
-                   v0, 1e-5);
-        tick(f, in);
-        check_near("MAIN refill per frame follows the loaded magazine",
-                   mainRefill * kDt, f.main_frac() * mainShots - v0, 1e-5);
-        for (int i = 0; i < 59; ++i) tick(f, in);
-        check_near("MAIN after 60 more frames of refill",
-                   std::min<double>(mainShots,
-                       mainShots - 1.0 + 61.0 * mainRefill * kDt),
-                   f.main_frac() * mainShots, 1e-4);
-        for (int i = 0; i < 200; ++i) tick(f, in);
-        check_near("MAIN refill clamps at the loaded capacity", mainShots,
-                   f.main_frac() * mainShots, 1e-5);
-        check_int("MAIN whole returns to the loaded count", static_cast<int>(mainShots),
-                  f.main_whole());
-    }
-    {
-        Fighter f = make_idle_fighter(glm::vec3(0, 0, 0));
-        Input in;
-        in.set(fnd::input::Action::Shoot, true);
-        for (int i = 0; i < yellowHoldFrames; ++i) tick(f, in);
-        in.set(fnd::input::Action::Shoot, false);
-        tick(f, in);
-        check_near("CHARGE right after a yellow shot",
-                   chargeShots - 1.0 + chargeRefill * kDt,
-                   f.charge_frac() * chargeShots, 1e-5);
-        for (int i = 0; i < 60; ++i) tick(f, in);
-        check_near("CHARGE after 60 more frames of refill",
-                   std::min<double>(chargeShots,
-                       chargeShots - 1.0 + 61.0 * chargeRefill * kDt),
-                   f.charge_frac() * chargeShots, 1e-4);
-        for (int i = 0; i < 300; ++i) tick(f, in);
-        check_near("CHARGE refill clamps at the loaded capacity", chargeShots,
-                   f.charge_frac() * chargeShots, 1e-5);
-        check_int("CHARGE whole returns to the loaded count", static_cast<int>(chargeShots),
-                  f.charge_whole());
-    }
+    Fighter friendship = make_idle_fighter({});
+    friendship.set_hypermode(Hypermode::Friendship);
+    friendship.set_hyper_gauge(1.f);
+    Input hi;
+    hi.set(fnd::input::Action::Special, true);
+    tick(friendship, hi);
+    hi.set(fnd::input::Action::Special, false);
+    tick(friendship, hi);
+    check_bool("Friendship witness is active", true, friendship.hyper_active());
+    check_bool("Friendship witness actually admits a shot", true, fireTap(friendship, hi).armed);
+    const float boostedBefore = friendship.main_frac() * 6.f;
+    for (int i = 0; i < 30; ++i) tick(friendship, hi);
+    check_near("Friendship refillStep3 adds90/300 of a round", 0.3,
+               friendship.main_frac() * 6 - boostedBefore, 1e-5);
 
-    // Friendship's recharge boost (mainRechargeMul / chargeRechargeMul = 1.6).
-    {
-        Fighter plain = make_idle_fighter(glm::vec3(0, 0, 0));
-        Input in;
-        in.set(fnd::input::Action::Shoot, true);
-        tick(plain, in);
-        in.set(fnd::input::Action::Shoot, false);
-        tick(plain, in);
-        const double plain_v0 = plain.main_frac() * mainShots;
-        for (int i = 0; i < 30; ++i) tick(plain, in);
-        const double plain_gain = plain.main_frac() * mainShots - plain_v0;
+    std::array<gameplay::ShootingMagazine, 2> magazines = {
+        gameplay::ShootingMagazine::from_definition(g_testCombo.weapon.magazines[0]),
+        gameplay::ShootingMagazine::from_definition(g_testCombo.weapon.magazines[1])};
+    check_bool("Row0 admits against primary magazine", true,
+               gameplay::admit_shooting_row(g_testCombo.weapon, 0, magazines));
+    check_bool("Row2 admits against secondary magazine", true,
+               gameplay::admit_shooting_row(g_testCombo.weapon, 2, magazines));
+    check_int("Mixed rows consume primary once", 5, magazines[0].rounds);
+    check_int("Mixed rows consume secondary once", 1, magazines[1].rounds);
+    magazines[0].rounds = magazines[1].rounds = 0;
+    check_bool("Metered row rejects empty primary", false,
+               gameplay::admit_shooting_row(g_testCombo.weapon, 0, magazines));
+    check_bool("Negative magazine row11 bypasses both empty stocks", true,
+               gameplay::admit_shooting_row(g_testCombo.weapon, 11, magazines));
+    check_int("Unmetered row does not mutate primary", 0, magazines[0].rounds);
+    check_int("Unmetered row does not mutate secondary", 0, magazines[1].rounds);
+    bool invalidRowRejected = false;
+    try { gameplay::admit_shooting_row(g_testCombo.weapon, g_testCombo.weapon.bulletCount, magazines); }
+    catch (const std::out_of_range&) { invalidRowRejected = true; }
+    check_bool("Invalid callback row fails explicitly", true, invalidRowRejected);
 
-        Fighter hyper = make_idle_fighter(glm::vec3(0, 0, 0));
-        hyper.set_hypermode(Hypermode::Friendship);
-        hyper.set_hyper_gauge(1.0f);
-        Input hin;
-        hin.set(fnd::input::Action::Special, true);
-        tick(hyper, hin);
-        hin.set(fnd::input::Action::Special, false);
-        tick(hyper, hin);
-        check_bool("Friendship active for the recharge test", true, hyper.hyper_active());
-        hin.set(fnd::input::Action::Shoot, true);
-        tick(hyper, hin);
-        hin.set(fnd::input::Action::Shoot, false);
-        tick(hyper, hin);
-        const double hyper_v0 = hyper.main_frac() * mainShots;
-        for (int i = 0; i < 30; ++i) tick(hyper, hin);
-        const double hyper_gain = hyper.main_frac() * mainShots - hyper_v0;
-        check_near("plain MAIN gain over 30 frames", mainRefill * 30.0 * kDt,
-                   plain_gain, 1e-4);
-        check_near("Friendship MAIN gain over 30 frames (x1.6)",
-                   mainRefill * 1.6 * 30.0 * kDt, hyper_gain, 1e-4);
-        check_near("Friendship recharge ratio", 1.6, hyper_gain / plain_gain, 1e-3);
+    // Failed pool creation follows consumption (FUN_00435450), with no refund.
+    Fighter owner = make_idle_fighter({});
+    ProjectilePool pool;
+    for (int i = 0; i < g_testCombo.weapon.bullets[0].poolCapacity; ++i)
+        check_bool("Pool saturation witness spawns real row0", true,
+                   pool.spawn({}, {0, 0, 1}, ShotTier::Tap, &owner, 0));
+    Input oi;
+    const auto rejected = fireTap(owner, oi);
+    check_bool("Live callback admits before rejected pool creation", true, rejected.armed);
+    check_bool("Per-row full pool rejects creation", false,
+               pool.spawn(rejected.pos, rejected.dir, rejected.tier, &owner, rejected.bulletRow, rejected.target));
+    check_int("Pool failure does not refund the live consumed round", 5, owner.main_whole());
+
+    Fighter exhausted = make_idle_fighter({});
+    Input ei;
+    for (int charge = 0; charge < 2; ++charge) {
+        hold_yellow(exhausted, ei);
+        ei.set(fnd::input::Action::Shoot, false);
+        tick(exhausted, ei);
+        for (int tickIndex = 0; tickIndex < 13; ++tickIndex) tick(exhausted, ei);
+        check_bool("Secondary depletion witness admits row2", true, exhausted.take_pending_shot().armed);
+        int limit = 100;
+        while (exhausted.state() != FighterState::Idle && limit-- > 0) tick(exhausted, ei);
     }
+    check_int("Secondary depletion witness is empty", 0, exhausted.charge_whole());
+    check_bool("Empty secondary does not prevent primary tap selection", true, exhausted.can_fire(ShotTier::Tap));
+    check_bool("Empty secondary rejects charged selection", false, exhausted.can_fire(ShotTier::Yellow));
+    check_bool("C release with empty secondary still admits a primary tap", true, fireTap(exhausted, ei).armed);
+    check_int("Empty secondary tap consumes only primary", 5, exhausted.main_whole());
+
+    friendship.fill_gauges();
+    check_int("F4 fills migrated MAIN stock", 6, friendship.main_whole());
+    check_int("F4 fills migrated CHARGE stock", 2, friendship.charge_whole());
+    friendship.reset({}, 0.f);
+    check_int("Reset fills migrated MAIN stock", 6, friendship.main_whole());
 }
 
 // ===========================================================================
@@ -2091,13 +1981,11 @@ void test_rika_repeating_tap() {
     shot = f.take_pending_shot();
     check_bool("Rika tap launches again at tick 14", true, shot.armed);
     check_int("Rika repeat selects item row zero", 0, shot.bulletRow);
-    // First charge: hold past the yellow threshold (level-1 chargeMax 60).
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_rikaCombo.bind(g);
     settle(g);
-    in.set(fnd::input::Action::Shoot, true);
-    for (int i = 0; i < 60; ++i) tick(g, in);
+    hold_yellow(g, in);
     check_int("Rika hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
               static_cast<int>(g.charge_tier()));
     in.set(fnd::input::Action::Shoot, false);
@@ -2117,9 +2005,9 @@ void test_rika_repeating_tap() {
     check_bool("Rika charge T30 salvo fires twice", true, first.armed && second.armed);
     check_int("Rika T30 first row is 3", 3, first.bulletRow);
     check_int("Rika T30 second row is 6", 6, second.bulletRow);
-    // No over-fire: the tick-30 Hold freezes the clock with the Launch still
-    // matching, but the salvo fired once — the queue holds nothing more.
-    check_bool("Rika T30 salvo fires exactly twice", false,
+    // This samples only the first tick30 visit. The full counter-gated freeze
+    // requires the state-program migration recorded in ginkiha-launch-contracts.md.
+    check_bool("Rika first T30 visit has no third pending request", false,
                g.take_pending_shot().armed);
 }
 
@@ -2160,24 +2048,11 @@ void test_tomitake_twin_tap() {
     check_bool("Tomitake tap T18 salvo fires twice", true, first.armed && second.armed);
     check_int("Tomitake T18 first row is 7", 7, first.bulletRow);
     check_int("Tomitake T18 second row is 5", 5, second.bulletRow);
-    // First charge: hold past the yellow threshold (level-1 chargeMax 30 ticks;
-    // the frame count is computed, not hardcoded — float accumulation needs the
-    // same loop the charge uses, as the Mion case showed).
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_tomitakeCombo.bind(g);
     settle(g);
-    const float tomitakeYellow = static_cast<float>(
-        g_tomitakeCombo.weapon.magazineForChargeLevel(1).chargeMax) /
-        gameplay::FixedStep::tickRate;
-    float tomitakeHeld = 0.0f;
-    int tomitakeYellowFrames = 0;
-    while (tomitakeHeld < tomitakeYellow && tomitakeYellowFrames < 10000) {
-        tomitakeHeld += kStep;
-        ++tomitakeYellowFrames;
-    }
-    in.set(fnd::input::Action::Shoot, true);
-    for (int i = 0; i < tomitakeYellowFrames; ++i) tick(g, in);
+    hold_yellow(g, in);
     check_int("Tomitake hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
               static_cast<int>(g.charge_tier()));
     in.set(fnd::input::Action::Shoot, false);
@@ -2226,22 +2101,11 @@ void test_chie_scratch_burst() {
     shot = f.take_pending_shot();
     check_bool("Chie tap launches again at tick 18", true, shot.armed);
     check_int("Chie repeat selects item row zero", 0, shot.bulletRow);
-    // First charge: hold past the yellow threshold (level-1 chargeMax 30).
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_chieCombo.bind(g);
     settle(g);
-    const float chieYellow = static_cast<float>(
-        g_chieCombo.weapon.magazineForChargeLevel(1).chargeMax) /
-        gameplay::FixedStep::tickRate;
-    float chieHeld = 0.0f;
-    int chieYellowFrames = 0;
-    while (chieHeld < chieYellow && chieYellowFrames < 10000) {
-        chieHeld += kStep;
-        ++chieYellowFrames;
-    }
-    in.set(fnd::input::Action::Shoot, true);
-    for (int i = 0; i < chieYellowFrames; ++i) tick(g, in);
+    hold_yellow(g, in);
     check_int("Chie hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
               static_cast<int>(g.charge_tier()));
     in.set(fnd::input::Action::Shoot, false);
@@ -2281,22 +2145,11 @@ void test_rika2_single_tick() {
     gameplay::PendingShot shot = f.take_pending_shot();
     check_bool("Rika2 tap launches at tick 15", true, shot.armed);
     check_int("Rika2 tap selects item row zero", 0, shot.bulletRow);
-    // First charge: hold past the yellow threshold (level-1 chargeMax 30).
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_rika2Combo.bind(g);
     settle(g);
-    const float rika2Yellow = static_cast<float>(
-        g_rika2Combo.weapon.magazineForChargeLevel(1).chargeMax) /
-        gameplay::FixedStep::tickRate;
-    float rika2Held = 0.0f;
-    int rika2YellowFrames = 0;
-    while (rika2Held < rika2Yellow && rika2YellowFrames < 10000) {
-        rika2Held += kStep;
-        ++rika2YellowFrames;
-    }
-    in.set(fnd::input::Action::Shoot, true);
-    for (int i = 0; i < rika2YellowFrames; ++i) tick(g, in);
+    hold_yellow(g, in);
     check_int("Rika2 hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
               static_cast<int>(g.charge_tier()));
     in.set(fnd::input::Action::Shoot, false);
@@ -2362,23 +2215,11 @@ void test_rena1_normal_schedule() {
     check_bool("Rena 1 normal tap schedules no extra shot", false,
                tap.take_pending_shot().armed);
 
-    // Compute Yellow frames from this weapon's MAIN magazine at the selected 64 Hz
-    // simulation cadence; float accumulation is intentionally not replaced by a count.
-    const float yellowThreshold = static_cast<float>(
-        g_rena1Combo.weapon.magazineForChargeLevel(1).chargeMax) /
-        gameplay::FixedStep::tickRate;
-    float held = 0.0f;
-    int yellowFrames = 0;
-    while (held < yellowThreshold && yellowFrames < 10000) {
-        held += kStep;
-        ++yellowFrames;
-    }
     Fighter charged;
     charged.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_rena1Combo.bind(charged);
     settle(charged);
-    in.set(fnd::input::Action::Shoot, true);
-    for (int i = 0; i < yellowFrames; ++i) tick(charged, in);
+    hold_yellow(charged, in);
     check_int("Rena 1 hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
               static_cast<int>(charged.charge_tier()));
     in.set(fnd::input::Action::Shoot, false);
@@ -2581,22 +2422,11 @@ void test_rika0_twin_tick() {
     check_bool("Rika0 tap T15 salvo fires twice", true, first.armed && second.armed);
     check_int("Rika0 T15 first row is 0", 0, first.bulletRow);
     check_int("Rika0 T15 second row is 0", 0, second.bulletRow);
-    // First charge: hold past the yellow threshold (level-1 chargeMax 60).
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_rika0Combo.bind(g);
     settle(g);
-    const float rika0Yellow = static_cast<float>(
-        g_rika0Combo.weapon.magazineForChargeLevel(1).chargeMax) /
-        gameplay::FixedStep::tickRate;
-    float rika0Held = 0.0f;
-    int rika0YellowFrames = 0;
-    while (rika0Held < rika0Yellow && rika0YellowFrames < 10000) {
-        rika0Held += kStep;
-        ++rika0YellowFrames;
-    }
-    in.set(fnd::input::Action::Shoot, true);
-    for (int i = 0; i < rika0YellowFrames; ++i) tick(g, in);
+    hold_yellow(g, in);
     check_int("Rika0 hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
               static_cast<int>(g.charge_tier()));
     in.set(fnd::input::Action::Shoot, false);
@@ -2653,22 +2483,11 @@ void test_satoko_five_shot() {
     check_bool("Satoko salvo rows are all 0", true, tapRows);
     check_bool("Satoko salvo fires exactly five", false,
                f.take_pending_shot().armed);
-    // First charge: hold past the yellow threshold (level-1 chargeMax 60).
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_satokoCombo.bind(g);
     settle(g);
-    const float satokoYellow = static_cast<float>(
-        g_satokoCombo.weapon.magazineForChargeLevel(1).chargeMax) /
-        gameplay::FixedStep::tickRate;
-    float satokoHeld = 0.0f;
-    int satokoYellowFrames = 0;
-    while (satokoHeld < satokoYellow && satokoYellowFrames < 10000) {
-        satokoHeld += kStep;
-        ++satokoYellowFrames;
-    }
-    in.set(fnd::input::Action::Shoot, true);
-    for (int i = 0; i < satokoYellowFrames; ++i) tick(g, in);
+    hold_yellow(g, in);
     check_int("Satoko hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
               static_cast<int>(g.charge_tier()));
     in.set(fnd::input::Action::Shoot, false);
@@ -2728,22 +2547,11 @@ void test_mion2_single_shot() {
     for (int i = 0; i < 8; ++i) tick(f, in);
     check_bool("Mion2 tap fires once (silent at tick 18)", false,
                f.take_pending_shot().armed);
-    // First charge: hold past the yellow threshold (level-1 chargeMax 30).
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_mion2Combo.bind(g);
     settle(g);
-    const float mion2Yellow = static_cast<float>(
-        g_mion2Combo.weapon.magazineForChargeLevel(1).chargeMax) /
-        gameplay::FixedStep::tickRate;
-    float mion2Held = 0.0f;
-    int mion2YellowFrames = 0;
-    while (mion2Held < mion2Yellow && mion2YellowFrames < 10000) {
-        mion2Held += kStep;
-        ++mion2YellowFrames;
-    }
-    in.set(fnd::input::Action::Shoot, true);
-    for (int i = 0; i < mion2YellowFrames; ++i) tick(g, in);
+    hold_yellow(g, in);
     check_int("Mion2 hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
               static_cast<int>(g.charge_tier()));
     in.set(fnd::input::Action::Shoot, false);
@@ -2796,22 +2604,11 @@ void test_irie_twin_tap() {
     check_bool("Irie tap T12 salvo fires twice", true, first.armed && second.armed);
     check_int("Irie T12 first row is 0", 0, first.bulletRow);
     check_int("Irie T12 second row is 1", 1, second.bulletRow);
-    // First charge: hold past the yellow threshold (level-1 chargeMax 60).
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_irieCombo.bind(g);
     settle(g);
-    const float irieYellow = static_cast<float>(
-        g_irieCombo.weapon.magazineForChargeLevel(1).chargeMax) /
-        gameplay::FixedStep::tickRate;
-    float irieHeld = 0.0f;
-    int irieYellowFrames = 0;
-    while (irieHeld < irieYellow && irieYellowFrames < 10000) {
-        irieHeld += kStep;
-        ++irieYellowFrames;
-    }
-    in.set(fnd::input::Action::Shoot, true);
-    for (int i = 0; i < irieYellowFrames; ++i) tick(g, in);
+    hold_yellow(g, in);
     check_int("Irie hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
               static_cast<int>(g.charge_tier()));
     in.set(fnd::input::Action::Shoot, false);
@@ -2859,22 +2656,11 @@ void test_kasai_twin_burst() {
     check_bool("Kasai tap T15 salvo fires twice", true, first.armed && second.armed);
     check_int("Kasai T15 first row is 2", 2, first.bulletRow);
     check_int("Kasai T15 second row is 0", 0, second.bulletRow);
-    // First charge: hold past the yellow threshold (level-1 chargeMax 60).
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_kasaiCombo.bind(g);
     settle(g);
-    const float kasaiYellow = static_cast<float>(
-        g_kasaiCombo.weapon.magazineForChargeLevel(1).chargeMax) /
-        gameplay::FixedStep::tickRate;
-    float kasaiHeld = 0.0f;
-    int kasaiYellowFrames = 0;
-    while (kasaiHeld < kasaiYellow && kasaiYellowFrames < 10000) {
-        kasaiHeld += kStep;
-        ++kasaiYellowFrames;
-    }
-    in.set(fnd::input::Action::Shoot, true);
-    for (int i = 0; i < kasaiYellowFrames; ++i) tick(g, in);
+    hold_yellow(g, in);
     check_int("Kasai hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
               static_cast<int>(g.charge_tier()));
     in.set(fnd::input::Action::Shoot, false);
@@ -2926,22 +2712,11 @@ void test_takano_triple_tap() {
     shot = f.take_pending_shot();
     check_bool("Takano tap launches again at tick 15", true, shot.armed);
     check_int("Takano repeat selects item row zero", 0, shot.bulletRow);
-    // First charge: hold past the yellow threshold (level-1 chargeMax 60).
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_takanoCombo.bind(g);
     settle(g);
-    const float takanoYellow = static_cast<float>(
-        g_takanoCombo.weapon.magazineForChargeLevel(1).chargeMax) /
-        gameplay::FixedStep::tickRate;
-    float takanoHeld = 0.0f;
-    int takanoYellowFrames = 0;
-    while (takanoHeld < takanoYellow && takanoYellowFrames < 10000) {
-        takanoHeld += kStep;
-        ++takanoYellowFrames;
-    }
-    in.set(fnd::input::Action::Shoot, true);
-    for (int i = 0; i < takanoYellowFrames; ++i) tick(g, in);
+    hold_yellow(g, in);
     check_int("Takano hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
               static_cast<int>(g.charge_tier()));
     in.set(fnd::input::Action::Shoot, false);
@@ -2986,22 +2761,11 @@ void test_keiichi_dense_tap() {
     shot = f.take_pending_shot();
     check_bool("Keiichi tap launches again at tick 11", true, shot.armed);
     check_int("Keiichi repeat selects item row zero", 0, shot.bulletRow);
-    // First charge: hold past the yellow threshold (level-1 chargeMax 30).
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_keiichiCombo.bind(g);
     settle(g);
-    const float keiichiYellow = static_cast<float>(
-        g_keiichiCombo.weapon.magazineForChargeLevel(1).chargeMax) /
-        gameplay::FixedStep::tickRate;
-    float keiichiHeld = 0.0f;
-    int keiichiYellowFrames = 0;
-    while (keiichiHeld < keiichiYellow && keiichiYellowFrames < 10000) {
-        keiichiHeld += kStep;
-        ++keiichiYellowFrames;
-    }
-    in.set(fnd::input::Action::Shoot, true);
-    for (int i = 0; i < keiichiYellowFrames; ++i) tick(g, in);
+    hold_yellow(g, in);
     check_int("Keiichi hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
               static_cast<int>(g.charge_tier()));
     in.set(fnd::input::Action::Shoot, false);
@@ -3097,23 +2861,11 @@ void test_mion_shot_tap() {
     check_bool("Mion tap launches at tick 2", true, shot.armed);
     check_int("Mion tap selects item row zero", 0, shot.bulletRow);
     // First charge: hold past the yellow threshold, release — binds move 450.
-    // Yellow reads the level-1 (tap/MAIN) magazine's chargeMax, red the level-2 —
-    // holding the level-2 value would overshoot straight into Red.
-    const float yellowThreshold = static_cast<float>(
-        g_mionCombo.weapon.magazineForChargeLevel(1).chargeMax) /
-        gameplay::FixedStep::tickRate;
-    float held = 0.0f;
-    int yellowFrames = 0;
-    while (held < yellowThreshold && yellowFrames < 10000) {
-        held += kStep;
-        ++yellowFrames;
-    }
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_mionCombo.bind(g);
     settle(g);
-    in.set(fnd::input::Action::Shoot, true);
-    for (int i = 0; i < yellowFrames; ++i) tick(g, in);
+    hold_yellow(g, in);
     check_int("Mion hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
               static_cast<int>(g.charge_tier()));
     in.set(fnd::input::Action::Shoot, false);

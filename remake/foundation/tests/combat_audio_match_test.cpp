@@ -236,10 +236,19 @@ int main() {
 
         fnd::input::PlayerState inputs[4];
         bool match_start = true;
+        bool hyper_input_driven = false;
         bool round_over = false;
         uint32_t tick = 0;
         for (; tick < 4000 && !round_over; ++tick) {
             for (int i = 0; i < 4; ++i) gameplay::updateBotInput(brains[i], ctx[i], inputs[i], tick);
+            // This gate verifies audio dispatch. Drive its hyper input explicitly so
+            // a slower source magazine does not make coverage depend on an AI seed.
+            if (!hyper_input_driven && match.fighter(0).actionable()) {
+                match.fighter(0).set_hyper_gauge(1.f);
+                inputs[0].down[fnd::input::Action::Special] = true;
+                inputs[0].just_pressed[fnd::input::Action::Special] = true;
+                hyper_input_driven = true;
+            }
             const fnd::input::PlayerState* in[4] = {&inputs[0], &inputs[1], &inputs[2], &inputs[3]};
             const gameplay::MatchFrame frame = match.step(in, 1.0 / 64.0);
             MatchSource source(match);

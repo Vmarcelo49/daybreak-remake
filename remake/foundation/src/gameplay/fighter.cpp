@@ -128,7 +128,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_chargeHeld = 0.0f;
     m_reloadTimer = 0;
     m_pending = PendingShot{};
-    m_pendingShotCount = 0;
+    m_pendingShots.clear();
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_holdTicks = 0;
@@ -170,14 +170,12 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_flyLeft = FighterConstants::kFlyTimeSec;
     m_dashAir = false;
     m_airDashed = false;
-    // FUN_0041f580 restores a round's magazines from their own capacity, which is what
-    // apply_weapon_ammo() put in max; refill from that rather than the 6/2 constants.
-    m_main.value = m_main.max;
-    m_charge.value = m_charge.max;
+    // FUN_00435660 restores round capacity while retaining refill/interval progress.
+    restore_ammo();
     m_chargeHeld = 0.0f;
     m_reloadTimer = 0;
     m_pending = PendingShot{};
-    m_pendingShotCount = 0;
+    m_pendingShots.clear();
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_holdTicks = 0;
@@ -239,7 +237,7 @@ void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     m_chargeHeld = 0.0f;
     m_reloadTimer = 0;
     m_pending = PendingShot{};
-    m_pendingShotCount = 0;
+    m_pendingShots.clear();
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_moveElapsedTicks = 0;
@@ -253,8 +251,7 @@ void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     // recovery fields; the magazines are restored from their own capacity by the same
     // per-player rule reset() uses (FUN_0041f580), and the pending credits belong to
     // the death that just ended.
-    m_main.value = m_main.max;
-    m_charge.value = m_charge.max;
+    restore_ammo();
     m_koBonusLatch = false;
     m_koPending = false;
     m_koCredit = KoCredit{};
@@ -483,14 +480,19 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         if (m_state == FighterState::BattleStart) set_state(FighterState::Idle);
     }
 
-    // 5b. Recharge ammo continuously (the HUD sweep IS this refill —
-    // ammo-bar.webp) and tick the reloadNG window down. Friendship mode
-    // brings the stocks back faster (spec §3.4).
-    const HypermodeParams& hyp = hypermode_params(m_hypermode);
-    const float mainMul   = m_hyperActive ? hyp.mainRechargeMul   : 1.0f;
-    const float chargeMul = m_hyperActive ? hyp.chargeRechargeMul : 1.0f;
-    m_main.recharge(dt, mainMul);
-    m_charge.recharge(dt, chargeMul);
+    // FUN_0043ded0 sets both refill steps; FUN_0041f580 then ticks magazines once.
+    if (m_weapon) {
+        const unsigned refill = !m_hyperActive ? 1u : m_hypermode == Hypermode::Friendship ? 3u
+                                                    : m_hypermode == Hypermode::Kakera ? 2u : 1u;
+        for (auto& magazine : m_shootingMagazines) {
+            magazine.refillStep = refill;
+            magazine.tick();
+        }
+    } else {
+        const HypermodeParams& hyp = hypermode_params(m_hypermode);
+        m_main.recharge(dt, m_hyperActive ? hyp.mainRechargeMul : 1.f);
+        m_charge.recharge(dt, m_hyperActive ? hyp.chargeRechargeMul : 1.f);
+    }
     if (m_reloadTimer > 0) --m_reloadTimer;
 
     // FUN_0041f580 samples elapsed * 0.016, independently of host time.
@@ -595,7 +597,11 @@ void Fighter::update_state_machine(const input::PlayerState* input,
     const bool chargeDown = input->down[input::Action::Shoot] ||
                             (input->down[input::Action::Special] && !m_hyperActive);
     if (chargeDown) {
-        if (m_chargeHeld < red_hold_sec()) {
+        if (m_weapon) {
+            m_shootingMagazines[1].charge();
+            // A held C still releases a primary tap when the secondary stock is empty.
+            m_chargeHeld = static_cast<float>(FixedStep::seconds);
+        } else if (m_chargeHeld < red_hold_sec()) {
             m_chargeHeld += static_cast<float>(dt);
         }
     } else if (m_chargeHeld > 0.0f) {
@@ -1398,9 +1404,9 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
 }
 
 void Fighter::launch_bullet(int row, float lateral, float pitchLimit, Fighter* opponent) {
-    if (!m_weapon || row < 0 || row >= m_weapon->bulletCount || m_pendingShotCount >= 8) return;
-    PendingShot& shot = m_pendingShots[static_cast<size_t>(m_pendingShotCount++)];
-    shot = PendingShot{};
+    if (!m_weapon || !admit_shooting_row(*m_weapon, row, m_shootingMagazines)) return;
+    m_pendingShots.emplace_back();
+    PendingShot& shot = m_pendingShots.back();
     shot.armed = true;
     shot.tier = m_pending.tier;
     shot.bulletRow = row;
@@ -1526,36 +1532,24 @@ ShotParams Fighter::shot_params_for_row(ShotTier tier, int row) const {
 }
 
 float Fighter::yellow_hold_sec() const {
-    if (!m_weapon) return FighterConstants::kYellowHoldSec;
-    // PORT RULE, and deliberately conservative. The shipped per-magazine chargeMax values
-    // run 60..1200 and 180 is the same 0xb4 the ally hold is written with, which reads
-    // like a tick count, so this divides by the fixed tick. Nothing in the corpus proves
-    // the unit: the original's charge is a 100-point gauge with a 120-frame decay window
-    // (FUN_00637950:333-347), not a hold timer, and the magazine block that carries
-    // chargeMax is never read. Level 1 is the tap/MAIN magazine, level 2 the charged one.
-    const int ticks = m_weapon->magazineForChargeLevel(1).chargeMax;
-    return (ticks > 0) ? static_cast<float>(ticks) / FixedStep::tickRate
-                       : FighterConstants::kYellowHoldSec;
+    // FUN_0043f3e0: secondary magazine reaches first stage after initial 30 updates.
+    return m_weapon ? 30.f / FixedStep::tickRate : FighterConstants::kYellowHoldSec;
 }
 
 float Fighter::red_hold_sec() const {
-    if (!m_weapon) return FighterConstants::kRedHoldSec;
-    const int ticks = m_weapon->magazineForChargeLevel(2).chargeMax;
-    return (ticks > 0) ? static_cast<float>(ticks) / FixedStep::tickRate
-                       : FighterConstants::kRedHoldSec;
+    return m_weapon ? (30.f + m_shootingMagazines[1].chargeThreshold) / FixedStep::tickRate
+                    : FighterConstants::kRedHoldSec;
 }
 
 void Fighter::set_weapon(const WeaponDefinition* weapon) {
     if (m_weapon == weapon) return;
+    const float mainFrac = main_frac();
+    const float chgFrac = charge_frac();
     m_weapon = weapon;
-    // The pools are rebuilt from the new file, preserving the fraction already in them
-    // so swapping a weapon mid-match cannot refill a fighter for free.
-    const float mainFrac = m_main.frac();
-    const float chgFrac = m_charge.frac();
     apply_weapon_ammo();
     if (m_weapon) {
-        m_main.value = m_main.max * mainFrac;
-        m_charge.value = m_charge.max * chgFrac;
+        m_shootingMagazines[0].preserve_fraction(mainFrac);
+        m_shootingMagazines[1].preserve_fraction(chgFrac);
     }
 }
 
@@ -1649,6 +1643,15 @@ ShotParams Fighter::shot_params_for(ShotTier tier) const {
     return params;
 }
 
+void Fighter::restore_ammo() {
+    if (m_weapon) {
+        for (auto& magazine : m_shootingMagazines) magazine.reset();
+    } else {
+        m_main.value = m_main.max;
+        m_charge.value = m_charge.max;
+    }
+}
+
 void Fighter::apply_weapon_ammo() {
     if (!m_weapon) {
         // No weapon bound: the historical shared tuning, unchanged, so the banked 1v1
@@ -1659,37 +1662,22 @@ void Fighter::apply_weapon_ammo() {
                              FighterConstants::kChargePerSec};
         return;
     }
-    const MagazineDefinition& tapMag = m_weapon->magazineForChargeLevel(1);
-    const MagazineDefinition& chgMag = m_weapon->magazineForChargeLevel(2);
-    // FUN_00433eb0:135-143 initialises current from max, so both pools start full.
-    const float tapMax = static_cast<float>(tapMag.capacity());
-    const float chgMax = static_cast<float>(chgMag.capacity());
-    // PORT RULE, and the one number here with no evidence behind it: the refill RATE.
-    // The file gives pool capacity and per-shot cost but nothing that refills it, so the
-    // pool recovers one shot's worth per second. The coverage table records this as
-    // provisional per weapon; everything else above is read straight from the file.
-    const float tapRate = static_cast<float>(tapMag.reloadTime);
-    const float chgRate = static_cast<float>(chgMag.reloadTime);
-    m_main   = AmmoStock{tapMag.capacity() > 0 ? tapMax : FighterConstants::kMainMax,
-                         tapMag.capacity() > 0 ? tapMax : FighterConstants::kMainMax,
-                         tapRate > 0.0f ? tapRate : FighterConstants::kMainPerSec};
-    m_charge = AmmoStock{chgMag.capacity() > 0 ? chgMax : FighterConstants::kChargeMax,
-                         chgMag.capacity() > 0 ? chgMax : FighterConstants::kChargeMax,
-                         chgRate > 0.0f ? chgRate : FighterConstants::kChargePerSec};
-    // The HUD count shows shots (magazine num), not pool units: one shot costs
-    // reloadTime units, so dividing reads num back out (1800/300 = 6 for rena).
-    if (tapMag.reloadTime > 0) m_main.unitsPerShot = static_cast<float>(tapMag.reloadTime);
-    if (chgMag.reloadTime > 0)
-        m_charge.unitsPerShot = static_cast<float>(chgMag.reloadTime);
+    for (size_t i = 0; i < m_shootingMagazines.size(); ++i)
+        m_shootingMagazines[i] = ShootingMagazine::from_definition(m_weapon->magazines[i]);
 }
 
 float Fighter::charge_hold_frac() const {
     const float limit = red_hold_sec();
-    const float f = (limit > 0.0f) ? m_chargeHeld / limit : 0.0f;
+    const float held = m_weapon ? static_cast<float>(m_shootingMagazines[1].initialHold +
+                                                    m_shootingMagazines[1].laterHold) / FixedStep::tickRate
+                                : m_chargeHeld;
+    const float f = (limit > 0.0f) ? held / limit : 0.0f;
     return std::clamp(f, 0.0f, 1.0f);
 }
 
 ShotTier Fighter::charge_tier() const {
+    if (m_weapon) return m_shootingMagazines[1].chargeStage >= 2 ? ShotTier::Red
+                         : m_shootingMagazines[1].chargeStage == 1 ? ShotTier::Yellow : ShotTier::Tap;
     if (m_chargeHeld >= red_hold_sec())    return ShotTier::Red;
     if (m_chargeHeld >= yellow_hold_sec()) return ShotTier::Yellow;
     return ShotTier::Tap;
@@ -1767,30 +1755,24 @@ void Fighter::try_fire() { fire_shot(charge_tier()); }
 
 float Fighter::shot_cost(ShotTier tier) const {
     const ShotParams p = shot_params_for(tier);
-    // With a weapon bound the cost is that magazine's reloadTime in pool units (the
-    // same field the pool was sized from, FUN_00433eb0:130); without one it stays the
-    // provisional fractional 1/2 of the shared table.
-    float cost = (tier == ShotTier::Tap) ? p.mainCost : p.chargeCost;
-    if (m_weapon) {
-        const MagazineDefinition& mag =
-            m_weapon->magazineForChargeLevel((tier == ShotTier::Tap) ? 1 : 2);
-        if (mag.reloadTime > 0) cost = static_cast<float>(mag.reloadTime);
-    }
+    const float cost = (tier == ShotTier::Tap) ? p.mainCost : p.chargeCost;
     return cost;
 }
 
 bool Fighter::can_fire(ShotTier tier) const {
+    if (m_weapon) return m_shootingMagazines[tier == ShotTier::Tap ? 0 : 1].rounds != 0;
     const AmmoStock& stock = (tier == ShotTier::Tap) ? m_main : m_charge;
     return m_reloadTimer <= 0 && stock.can_spend(shot_cost(tier));
 }
 
 void Fighter::fire_shot(ShotTier tier) {
-    const ShotParams p = shot_params_for(tier);
-    // Tap draws MAIN, charged tiers and the EX move draw CHARGE.
-    AmmoStock& stock = (tier == ShotTier::Tap) ? m_main : m_charge;
-    if (!can_fire(tier)) return;  // reloadNG / no stock: drop
-    stock.spend(shot_cost(tier));
-    m_reloadTimer = p.reloadFrames;
+    if (!can_fire(tier)) return;
+    if (!m_weapon) {
+        const ShotParams p = shot_params_for(tier);
+        AmmoStock& stock = (tier == ShotTier::Tap) ? m_main : m_charge;
+        stock.spend(shot_cost(tier));
+        m_reloadTimer = p.reloadFrames;
+    }
 
     // Muzzle ahead of the fighter at chest height, aimed along facing
     // (yaw=0 faces +Z — same convention as update_facing).
@@ -1824,6 +1806,14 @@ void Fighter::fire_shot(ShotTier tier) {
                 m_pending.bulletRow = row;
     }
 
+    if (m_weapon && programmed < 0) {
+        // Unbound move selection remains provisional; known rows still use their own
+        // admission. A row-less custom request retains the tier's magazine choice.
+        m_pending.armed = m_pending.bulletRow >= 0
+            ? admit_shooting_row(*m_weapon, m_pending.bulletRow, m_shootingMagazines)
+            : m_shootingMagazines[tier == ShotTier::Tap ? 0 : 1].consume();
+    }
+
     switch (tier) {
         case ShotTier::Tap:    set_state(FighterState::ShootA);    break;
         case ShotTier::Yellow: set_state(FighterState::ShootB);    break;
@@ -1834,11 +1824,9 @@ void Fighter::fire_shot(ShotTier tier) {
 }
 
 PendingShot Fighter::take_pending_shot() {
-    if (m_pendingShotCount) {
-        PendingShot out = m_pendingShots[0];
-        --m_pendingShotCount;
-        for (int i = 0; i < m_pendingShotCount; ++i)
-            m_pendingShots[static_cast<size_t>(i)] = m_pendingShots[static_cast<size_t>(i + 1)];
+    if (!m_pendingShots.empty()) {
+        PendingShot out = m_pendingShots.front();
+        m_pendingShots.erase(m_pendingShots.begin());
         return out;
     }
     PendingShot out = m_pending;

@@ -52,6 +52,8 @@
 #include "gameplay/melee_rules.h"
 #include "gameplay/weapon_trail.h"
 #include "gameplay/weapon_definition.h"
+#include "gameplay/shooting_magazine.h"
+#include <vector>
 #include "input/input.h"
 #include "render/arena_camera.h"    // for render::ArenaTarget
 
@@ -565,8 +567,7 @@ public:
     // (FUN_00634f60:184-204). The port carries no selector, so every meter it models is
     // filled; debug_keys.h names the recovered arm behind each (MAIN, CHARGE, hypermode).
     void fill_gauges() {
-        m_main.value = m_main.max;
-        m_charge.value = m_charge.max;
+        restore_ammo();
         set_hyper_gauge(1.0f);
     }
     int max_hp() const { return m_maxHP; }
@@ -705,18 +706,18 @@ public:
     // anim_fallback(): holding a clip is the source behaviour, while a fallback is
     // a selector or table row this port has not recovered.
     bool               anim_no_selector() const { return m_animNoSelector; }
-    // Fractional stocks feed the HUD bars directly (ammo-bar.webp).
-    // Divide by the stock's OWN max, not the kMainMax/kChargeMax constants: a bound
-    // weapon resizes both pools from data/item/NNN.dat, and the HUD bar is a fraction of
-    // whatever the pool currently is. With no weapon max still equals the constant.
-    float main_frac() const { return m_main.frac(); }
-    float charge_frac() const { return m_charge.frac(); }
-    int main_whole() const { return m_main.whole(); }
-    int charge_whole() const { return m_charge.whole(); }
+    // Bound weapon digits count rounds; bars include the original refill progress.
+    float main_frac() const { return m_weapon ? m_shootingMagazines[0].fraction() : m_main.frac(); }
+    float charge_frac() const { return m_weapon ? m_shootingMagazines[1].fraction() : m_charge.frac(); }
+    int main_whole() const { return m_weapon ? static_cast<int>(m_shootingMagazines[0].rounds) : m_main.whole(); }
+    int charge_whole() const { return m_weapon ? static_cast<int>(m_shootingMagazines[1].rounds) : m_charge.whole(); }
     // 0..1 across the full hold (red threshold = 1); colors the HUD meter.
     float charge_hold_frac() const;
     ShotTier charge_tier() const;
-    bool reload_ok() const { return m_reloadTimer <= 0; }
+    bool reload_ok() const {
+        return m_weapon ? m_shootingMagazines[m_pending.tier == ShotTier::Tap ? 0 : 1].can_consume()
+                        : m_reloadTimer <= 0;
+    }
 
     // For ArenaTarget compatibility.
     // (ArenaCamera reads position + facingYaw from ArenaTarget; the DX9
@@ -842,13 +843,13 @@ private:
     // also decoded there, but their hit-resolution use does not establish shot-tier moves.
     const WeaponDefinition* m_weapon = nullptr;   // borrowed
     const BulletParameter*  m_bulletParams[2] = {nullptr, nullptr};  // per charge level
-    AmmoStock    m_main;         // MAIN pool (charge level 1)
-    AmmoStock    m_charge;       // CHARGE pool (charge level 2)
-    float        m_chargeHeld = 0.0f;  // seconds C held (resets on release)
-    int          m_reloadTimer = 0;    // reloadNG window (frames, 0 = reloadOK)
+    std::array<ShootingMagazine, 2> m_shootingMagazines{};
+    AmmoStock    m_main;         // legacy stock without a bound weapon
+    AmmoStock    m_charge;
+    float        m_chargeHeld = 0.0f;  // legacy hold seconds / bound C-held marker
+    int          m_reloadTimer = 0;    // legacy reloadNG window
     PendingShot  m_pending;      // armed shot awaiting scene spawn
-    std::array<PendingShot, 8> m_pendingShots{};
-    int m_pendingShotCount = 0;
+    std::vector<PendingShot> m_pendingShots;
     std::array<const BulletParameter*, 64> m_bulletRows{};
     std::array<const xm::Model*, 64> m_bulletModels{};
 
@@ -889,16 +890,15 @@ private:
     bool can_act() const;
     bool can_move() const;
 
-    // C-release firing: picks the tier from hold time, then fire_shot().
+    // C release selects the secondary magazine stage (legacy hold time without a weapon).
     void try_fire();
 
-    // (Re)builds m_main/m_charge from m_weapon, or restores the historical fractional
-    // stocks when no weapon is bound. Called on bind and on reset.
+    // DAT-backed magazines own bound weapons; legacy stocks serve custom unarmed data.
     void apply_weapon_ammo();
+    void restore_ammo();
 
-    // Spends the tier's stock, opens the reloadNG window, and arms
-    // m_pending for the scene. Silently drops when reloading or broke (the
-    // HUD already shows the gate).
+    // Selects an admitted move without spending programmed shots' ammo. Their
+    // firing callbacks consume the row-selected magazine before pool creation.
     void fire_shot(ShotTier tier);
 
     // Hypermode plumbing: gauge credit, S activation (with Oyashiro's

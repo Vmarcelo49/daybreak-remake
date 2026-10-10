@@ -437,23 +437,21 @@ void testAvailability() {
 void testEmptyAmmoIsNotSpammed() {
     section("an empty magazine is waited out, not hammered");
     auto weapon = rena1Weapon();
-    Fighter self = makeFighter(weapon.get(), nullptr, glm::vec3(0, 0, 0));
-    Fighter enemy = makeFighter(weapon.get(), nullptr, glm::vec3(0, 0, 400));
-    // Drain both pools by firing as fast as the gates allow. The tap pool refills one
-    // shot per second, so this leaves the fighter reloading and nearly dry.
-    input::PlayerState in;
-    for (int i = 0; i < 40; ++i) {
-        in.down[input::Action::Shoot] = true;
-        input::compute_edges(in);
-        self.update(&in, &enemy, 1.0 / 64.0);
-        input::PlayerState up;
-        input::compute_edges(up);
-        self.update(&up, &enemy, 1.0 / 64.0);
-    }
+    // Controlled empty stocks isolate refusal policy from refill/battle pacing.
+    weapon->magazines[0].num = weapon->magazines[1].num = 0;
+    const auto table = renaMoveTable();
+    auto moves = std::make_unique<gameplay::CharacterMoves>();
+    std::string error;
+    check(moves->parse(table.data(), table.size(), error), "empty-stock Rena 0 move fixture parses");
+    moves->set_character_index(0);
+    Fighter self = makeFighter(weapon.get(), moves.get(), glm::vec3(0, 0, 0));
+    Fighter enemy = makeFighter(weapon.get(), moves.get(), glm::vec3(0, 0, 400));
+
     check(!self.can_fire(gameplay::ShotTier::Tap) ||
               !self.can_fire(gameplay::ShotTier::Yellow),
           "the fighter really is out of firable tiers");
 
+    input::PlayerState in;
     BotBrain brain;
     brain.reset(77);
     int heldWhileBlocked = 0;

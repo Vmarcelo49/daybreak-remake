@@ -366,7 +366,8 @@ void shots(const Combo& combo) {
         combo.init(fighter);
         fnd::input::PlayerState input;
         input.down[fnd::input::Action::Shoot] = true;
-        const int hold = tier == 0 ? 1 : tier == 1 ? 80 : 200;
+        const int hold = tier == 0 ? 1 : tier == 1 ? 30
+            : 30 + combo.weapon.magazines[1].chargeMax;
         for (int i = 0; i < hold; ++i) tick(fighter,input);
         input.down[fnd::input::Action::Shoot] = false;
         tick(fighter,input);
@@ -398,13 +399,8 @@ void launch_rules(const Combo& combo) {
         {gameplay::ShotTier::Tap,     1, false, 12, 0, true,  "Rena+0 ground tap"},
         {gameplay::ShotTier::Tap,     1, true,  13, 1, true,  "Rena+0 air tap"},
         {gameplay::ShotTier::Yellow, 80, false, 13, 2, false, "Rena+0 first charge"},
-        // The airborne charged move 460 is NOT reachable with this combo: Rena 0's own
-        // magazine charges yellow at 0.9375 s, longer than the leap, so the whole charge
-        // window fits inside an airtime only as a partial one and the release fires the
-        // tap tier. This case asserts the airborne launch against whichever move actually
-        // bound, which is what catches a transcription error like the air tap firing a
-        // tick early. 460's own rule is checked against the table below.
-        {gameplay::ShotTier::Yellow, 40, true,  13, 1, true,  "Rena+0 airborne release"},
+        // FUN_0043f3e0 reaches Yellow in30 updates, now within the leap.
+        {gameplay::ShotTier::Yellow, 30, true,  12, 2, false, "Rena+0 air first charge"},
     };
     for (const Case& test : cases) {
         gameplay::Fighter fighter;
@@ -436,11 +432,7 @@ void launch_rules(const Combo& combo) {
         const gameplay::ShotTier released = fighter.charge_tier();
         input.down[fnd::input::Action::Shoot] = false;
         tick(fighter,input,foe);
-        if (test.airborne && test.tier != gameplay::ShotTier::Tap)
-            check(released == gameplay::ShotTier::Tap,
-                  std::string(test.label) + " cannot build a charge inside the leap");
-        else
-            check(released == test.tier,std::string(test.label) + " holds long enough for its tier");
+        check(released == test.tier,std::string(test.label) + " holds long enough for its tier");
         if (test.airborne && !fighter.airborne()) {
             check(false,std::string(test.label) + " fixture released while still airborne");
             continue;
@@ -488,7 +480,7 @@ void launch_rules(const Combo& combo) {
     combo.init(charged);
     fnd::input::PlayerState held;
     held.down[fnd::input::Action::Shoot] = true;
-    for (int i = 0; i < 200; ++i) tick(charged,held);
+    for (int i = 0; i < 30 + combo.weapon.magazines[1].chargeMax; ++i) tick(charged,held);
     held.down[fnd::input::Action::Shoot] = false;
     tick(charged,held);
     for (int frame = 0; frame < 40 && charged.state() != gameplay::FighterState::ShootC; ++frame)
@@ -507,8 +499,7 @@ void launch_rules(const Combo& combo) {
     }
     check(launches == false || charged.phase_elapsed() <= 3,
           "Rena+0 second charge reaches its red launches by phase two tick two");
-    // Move 460 is a real row in the table even though this combo cannot charge inside a
-    // leap: assert the recovered tick directly instead of inventing a fixture.
+    // The air fixture above exercises460; also pin its transcribed launch anchor.
     bool airCharge = false;
     for (const auto& rule : gameplay::kRenaRules)
         airCharge |= rule.move == 460 && rule.operation == gameplay::MoveOp::Launch &&

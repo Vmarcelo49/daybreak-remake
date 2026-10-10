@@ -608,10 +608,10 @@ void testWeaponDrivesFighter() {
              "and the charge count shows shots too (600/300 = 2)");
     check(std::fabs(fast.main_frac() - 1.0f) < 1e-4f,
           "while the bar still fills from the pool (FUN_00433eb0 initialises current from capacity)");
-    check(std::fabs(fast.yellow_hold_sec() - 60.0f / 64.0f) < 1e-5f,
-          "the yellow threshold is the level-1 chargeMax in ticks");
-    check(std::fabs(fast.red_hold_sec() - 180.0f / 64.0f) < 1e-5f,
-          "the red threshold is the level-2 chargeMax in ticks");
+    check(std::fabs(fast.yellow_hold_sec() - 30.0f / 64.0f) < 1e-5f,
+          "the yellow threshold is the original initial30 updates");
+    check(std::fabs(fast.red_hold_sec() - 210.0f / 64.0f) < 1e-5f,
+          "red adds secondary180 updates after the initial30");
     checkInt(4, fastW->bullets[0].poolCapacity,
              "row zero retains its live-instance capacity, not a volley count");
     checkInt(3, fastW->bullets[1].poolCapacity,
