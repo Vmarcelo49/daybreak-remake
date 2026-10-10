@@ -36,6 +36,7 @@
 
 #include "gameplay/fighter.h"
 #include "gameplay/match_economy.h"
+#include "gameplay/simulation_rng.h"
 #include "gameplay/projectile.h"
 #include "gameplay/target_lock.h"
 #include "input/input.h"
@@ -251,6 +252,8 @@ private:
     Fighter            m_fighters[kMatchFighterCount];
     ProjectilePool     m_shots;
     MatchEconomy       m_economy;
+    // One stream per match, reset per round: the original's global MT19937.
+    SimulationRng      m_rng;
     TargetLocks        m_locks;
     MatchConfig        m_config;
     const xm::Model*   m_tamaMesh = nullptr;

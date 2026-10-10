@@ -103,6 +103,7 @@ struct TestCombo : test::Combo {
 
 TestCombo g_testCombo;
 TestCombo g_mionCombo;
+TestCombo g_mion1Combo;
 TestCombo g_rikaCombo;
 TestCombo g_tomitakeCombo;
 TestCombo g_keiichiCombo;
@@ -117,6 +118,7 @@ TestCombo g_rika2Combo;
 TestCombo g_satokoCombo;
 TestCombo g_rika0Combo;
 TestCombo g_rena1Combo;
+TestCombo g_rena2Combo;
 TestCombo g_akane2Combo;
 TestCombo g_natsumi0Combo;
 TestCombo g_satoko2Combo;
@@ -2577,6 +2579,130 @@ void test_rena0_powered_branches() {
                second.phase_elapsed() >= 13);
 }
 
+void test_simulation_rng_stream() {
+    section("40. simulation RNG: MT19937 recovered from FUN_0065d150/FUN_0065d0c0");
+    // The port reproduces the original's ALGORITHM, not its stream position. The pins
+    // below are MT19937's own canonical seed-5489 vector, which is what the re-seed path
+    // passes (0x1571), so a wrong twist, matrix word, temper mask or seed would all fail.
+    gameplay::SimulationRng rng;
+    const std::uint32_t expected[] = {3499211612u, 581869302u, 3890346734u,
+                                      3586334585u, 545404204u};
+    for (std::uint32_t want : expected)
+        check_int("canonical MT19937 seed-5489 output", (long long)want,
+                  (long long)rng.next());
+    // Same seed, same sequence; a fresh instance restarts it.
+    gameplay::SimulationRng again;
+    for (std::uint32_t want : expected)
+        check_int("a fresh stream repeats the sequence", (long long)want,
+                  (long long)again.next());
+    // An unset axis must consume no draw, or a deterministic rule would shift the stream
+    // for every later spread in the match.
+    gameplay::SimulationRng untouched;
+    untouched.modulo(0);
+    check_int("a zero modulus consumes no draw", (long long)expected[0],
+              (long long)untouched.next());
+}
+
+void test_spread_draw_order() {
+    section("41. spread draw order and ranges (pitch first, then yaw)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_mion1Combo.load(install, 1, 1))
+        return skip_case("Mion 1 combo");
+    // Mion 1's 450 draws pitch `(draw%100-50)*0.1` FIRST and yaw `(draw%200-100)*0.1`
+    // second. On a fresh stream those are the canonical 3499211612 and 581869302, whose
+    // residues are 12 and 102 — so the first request of the burst must pitch at
+    // (12-50)*0.1 = -3.8 degrees and yaw at +0.2. Swapping the order would give
+    // (12-100)*0.1 = -8.8 and (102-50)*0.1 = +5.2 and fail both.
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_mion1Combo.bind(f);
+    settle(f);
+    Input in;
+    hold_yellow(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Mion 1 charge binds move 450", 450, f.shot_move_id());
+    for (int i = 0; i < 17; ++i) tick(f, in);
+    const gameplay::PendingShot first = f.take_pending_shot();
+    check_bool("burst fires its first request", true, first.armed);
+    check_near("first burst request pitches at the canonical first draw",
+               std::sin(glm::radians(-3.8f)), first.dir.y, 1e-3f);
+    // The legacy basis builds the direction as (cos(yaw), .., sin(yaw)), so the yaw is
+    // the complement of atan2(x, z). With no facing the base is 90 degrees and the +0.2
+    // spread draw puts it at 90.2.
+    const float legacyYaw = 90.f - glm::degrees(std::atan2(first.dir.x, first.dir.z));
+    check_near("first burst request yaws at the canonical second draw", 90.2f,
+               legacyYaw, 0.1f);
+    // The remaining 14 iterations each re-draw, so the volley must fan out rather than
+    // repeat one direction.
+    std::vector<float> pitches;
+    for (gameplay::PendingShot s = f.take_pending_shot(); s.armed;
+         s = f.take_pending_shot())
+        pitches.push_back(s.dir.y);
+    check_int("the burst is fifteen requests", 14, (int)pitches.size());
+    bool anyDifferent = false;
+    for (float p : pitches) anyDifferent |= std::abs(p - first.dir.y) > 1e-4f;
+    check_bool("later iterations draw their own spread", true, anyDifferent);
+}
+
+void test_rena2_ring() {
+    section("42. Rena 2 world ring: one attachment plus ten spread worlds");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_rena2Combo.load(install, 0, 2))
+        return skip_case("Rena 2 combo");
+    // FUN_00438310.c:1757-1800: at phase 1 tick 35 state 400 fires one slot-0 attachment
+    // request at fixed angles (rows 0/2) and then a ten-iteration world ring (rows 1/3)
+    // at 200 forward / +30 high, each iteration drawing its own pitch and yaw.
+    check_int("Rena 2 uses item 33", 33, g_rena2Combo.weapon.id);
+    const auto* program = gameplay::move_program(&g_rena2Combo.moves);
+    check_bool("Rena 2 program is bound", true,
+               program && program->rules == gameplay::kRena2Rules);
+    check_int("Rena 2 binds state 400", 400, program ? program->shot[0][0] : -1);
+    check_int("Rena 2 claims nothing for 402", -1, program ? program->shot[0][1] : -2);
+
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rena2Combo.bind(f);
+    settle(f);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Rena 2 tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    std::vector<gameplay::PendingShot> shots;
+    int guard = 0;
+    while (shots.size() < 11 && guard++ < 80) {
+        tick(f, in);
+        for (gameplay::PendingShot s = f.take_pending_shot(); s.armed;
+             s = f.take_pending_shot())
+            shots.push_back(s);
+    }
+    check_int("the ring fires one attachment plus ten worlds", 11, (int)shots.size());
+    if (shots.size() == 11) {
+        check_int("the attachment request is row 0", 0, shots[0].bulletRow);
+        check_bool("the attachment request has no spread", true,
+                   std::abs(shots[0].dir.y) < 1e-4f);
+        bool worldsRowOne = true;
+        bool worldsSpread = false;
+        for (std::size_t i = 1; i < shots.size(); ++i) {
+            worldsRowOne &= shots[i].bulletRow == 1;
+            if (std::abs(shots[i].dir.y - shots[1].dir.y) > 1e-4f) worldsSpread = true;
+        }
+        check_bool("every ring request uses item row 1", true, worldsRowOne);
+        check_bool("the ten worlds draw their own spread", true, worldsSpread);
+        // `rand%30 + 20` is absolute, so the ring pitches inside [20, 50) degrees.
+        bool inRange = true;
+        for (std::size_t i = 1; i < shots.size(); ++i) {
+            const float degrees = glm::degrees(std::asin(
+                std::clamp(shots[i].dir.y, -1.f, 1.f)));
+            inRange &= degrees >= 19.9f && degrees <= 49.9f;
+        }
+        check_bool("ring pitch stays inside the body's 20..50 range", true, inRange);
+    }
+}
+
 void test_rena1_normal_schedule() {
     section("27. Rena 1 tap fan + fixed-pitch charge (runtime-source helper)");
     const auto install = findInstall(nullptr);
@@ -4155,6 +4281,9 @@ int main(int argc, char** argv) {
     test_satoko_five_shot();
     test_rika0_twin_tick();
     test_rena1_normal_schedule();
+    test_simulation_rng_stream();
+    test_spread_draw_order();
+    test_rena2_ring();
     test_rena0_powered_branches();
     test_akane2_world_origin_gap();
     test_natsumi0_ground_tap();

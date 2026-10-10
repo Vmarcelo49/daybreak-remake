@@ -1390,8 +1390,11 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             }
             break;
         case MoveOp::Launch:
-            launch_bullet(static_cast<int>(rule.value), rule.origin, rule.aim,
-                          rule.second, rule.third, opponent);
+            // The bodies' `for` loop around a request: the whole volley lands in this
+            // tick, and each iteration re-draws its spread, which is what fans it out.
+            for (int repeat = 0; repeat < std::max(1, rule.repeats); ++repeat)
+                launch_bullet(static_cast<int>(rule.value), rule.origin, rule.aim,
+                              rule.second, rule.third, rule.spread, opponent);
             break;
         case MoveOp::Hide: {
             const int slot = static_cast<int>(rule.value);
@@ -1486,7 +1489,8 @@ bool Fighter::rule_gate_holds(const MoveRule& rule) const {
 }
 
 void Fighter::launch_bullet(int row, const ShotOriginSpec& origin, const ShotAimSpec& aim,
-                            float legacyLateral, float legacyPitchLimit, Fighter* opponent) {
+                            float legacyLateral, float legacyPitchLimit,
+                            const ShotSpreadSpec& spread, Fighter* opponent) {
     if (!m_weapon) return;
     PendingShot shot;
     shot.armed = true;
@@ -1504,6 +1508,21 @@ void Fighter::launch_bullet(int row, const ShotOriginSpec& origin, const ShotAim
     // example that was mis-routed through here.
     ShotOriginSpec resolvedOrigin = origin;
     ShotAimSpec resolvedAim = aim;
+    // The bodies' spread, in the order they draw it: the PITCH jitter first (it is added
+    // to the already-clamped scratch), then the yaw offset. Zero moduli consume no draw,
+    // so a deterministic rule leaves the shared stream untouched.
+    if (spread.pitchModulus > 0) {
+        const int draw = static_cast<int>(rng_source().modulo(
+            static_cast<std::uint32_t>(spread.pitchModulus)));
+        resolvedAim.pitchDegrees += (static_cast<float>(draw) + spread.pitchOffset) *
+                                    spread.pitchScale;
+    }
+    if (spread.yawModulus > 0) {
+        const int draw = static_cast<int>(rng_source().modulo(
+            static_cast<std::uint32_t>(spread.yawModulus)));
+        resolvedAim.yawDegrees += (static_cast<float>(draw) + spread.yawOffset) *
+                                  spread.yawScale;
+    }
     if (resolvedOrigin.kind == ShotOriginKind::MoveRuleAdapter) {
         if (legacyLateral != 0.f) {
             resolvedOrigin.kind = ShotOriginKind::ActorRelativeOffset;

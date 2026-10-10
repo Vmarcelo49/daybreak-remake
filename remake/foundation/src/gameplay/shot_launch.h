@@ -112,4 +112,46 @@ inline constexpr ShotOriginSpec origin_attachment_slot(int slot) {
     return ShotOriginSpec{ShotOriginKind::WeaponAttachment, slot, nullptr, {}, {}};
 }
 
+// A body's random spread on one request. Every measured family draws the PITCH jitter
+// first and the YAW offset second (Mion 1's 450/460, Mion 2's 450/460 and Rena 2's 400
+// all load the pitch draw into the scratch read and the yaw draw into the argument), so
+// the draw order is part of the contract — not an implementation detail:
+//
+//   pitch += (modulo(pitchModulus) + pitchOffset) * pitchScale
+//   yaw   += (modulo(yawModulus)   + yawOffset)   * yawScale
+//
+// A zero modulus means the axis is deterministic and MUST consume no draw, so an unset
+// spread cannot shift the stream. The two axes are independently shaped because the
+// bodies clamp the pitch before jittering it while the yaw offset is unclamped.
+struct ShotSpreadSpec {
+    int pitchModulus = 0;
+    float pitchOffset = 0.f;
+    float pitchScale = 0.f;
+    int yawModulus = 0;
+    float yawOffset = 0.f;
+    float yawScale = 0.f;
+};
+
+inline constexpr ShotSpreadSpec spread_pitch_then_yaw(int pitchModulus, float pitchOffset,
+                                                      float pitchScale, int yawModulus,
+                                                      float yawOffset, float yawScale) {
+    return ShotSpreadSpec{pitchModulus, pitchOffset, pitchScale,
+                          yawModulus, yawOffset, yawScale};
+}
+
+// Mion 1's 450/460 burst: `(rand%100-50)*0.1` on the pitch and `(rand%200-100)*0.1` on
+// the yaw, two draws per request over a 15-request loop.
+inline constexpr ShotSpreadSpec kSpreadBurstJitter =
+    spread_pitch_then_yaw(100, -50.f, .1f, 200, -100.f, .1f);
+
+// Mion 2's 450/460 repeated emission: the same shape with tighter draws
+// (`rand%80-40` pitch, `rand%100-50` yaw).
+inline constexpr ShotSpreadSpec kSpreadEmissionJitter =
+    spread_pitch_then_yaw(80, -40.f, .1f, 100, -50.f, .1f);
+
+// Rena 2's 400 ring: the pitch is `rand%30 + 20` absolute (no clamp base) and the yaw is
+// `heading + offset + 90 - rand%180`, so the yaw draw is subtracted through its scale.
+inline constexpr ShotSpreadSpec kSpreadRing =
+    spread_pitch_then_yaw(30, 20.f, 1.f, 180, 0.f, -1.f);
+
 } // namespace gameplay

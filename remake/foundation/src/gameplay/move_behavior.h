@@ -107,6 +107,14 @@ struct MoveRule {
     // Second counter bound. Declared last so every existing positional literal — which
     // stops at origin/aim — keeps its meaning.
     int gateValue2 = 0;
+    // The body's random spread for a Launch rule (see ShotSpreadSpec). Defaulted, so a
+    // rule that does not spread consumes no draw.
+    ShotSpreadSpec spread{};
+    // The bodies wrap some requests in a `for` loop, firing the whole volley inside ONE
+    // tick (Mion 1's 450/460 run 15 iterations at tick 17; Rena 2's 400 runs 10). The
+    // loop is a property of the request, not of the spread, so it is stated separately —
+    // and each iteration draws its own spread, which is what makes the volley a fan.
+    int repeats = 1;
 };
 
 // Original FUN_0043ffc0. Inclusive tick intervals; phase -1 means all phases.
@@ -233,6 +241,29 @@ inline constexpr MoveRule kRena1Rules[] = {
      ShotOriginSpec{},aim_fixed_angles(0.f,45.f)},
 };
 
+// Rena weapon 2 (handler 0x438310) — no shoot_body_0_2_* exists in either body header,
+// so the handler is the only source (FUN_00438310.c:1729-1800). State 400's phase 1
+// fires at tick 35 (0x23) as ONE slot-0 attachment request at fixed angles (rows 0/2)
+// followed by a TEN-iteration world ring: rows 1/3, 200 forward and +30 high, each
+// iteration drawing its own pitch (`rand%30 + 20`) and yaw (`heading + offset + 90 -
+// rand%180`). The ring's pitch is absolute and its yaw is the helper's legacy basis, so
+// the rules latch a ZERO pitch base and let the spread supply the whole pitch.
+inline constexpr MoveRule kRena2Rules[] = {
+    // Phase 0: 10 deg turn while tick under 20 (L1739-1741) and a 2.5 vertical bleed
+    // (L1742-1745). The bleed has no MoveOp and stays a recorded gap.
+    {400,0,0,19,MoveOp::Turn,10.f},
+    // The attachment request carries no pitch and no yaw offset at all.
+    {400,1,35,35,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {400,1,35,35,MoveOp::Launch,2.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {400,1,35,35,MoveOp::CapturePitch,0.f,0.f,0.f},
+    {400,1,35,35,MoveOp::Launch,1.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(0.f,200.f,30.f),aim_stored_pitch(),{},kSpreadRing,10},
+    {400,1,35,35,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(0.f,200.f,30.f),aim_stored_pitch(),{},kSpreadRing,10},
+};
+
 // Natsumi weapon 0 (handler 0x5e2af0): the normal ground state400 probe is an
 // attachment callback for row 0 at tick 14. Both props are cleared before that callback;
 // reassert Hide at the firing tick to select the native bone-origin fallback. This pins only
@@ -315,7 +346,7 @@ inline constexpr MoveRule kMionRules[] = {
     {402,0,0,0,MoveOp::CounterSet,0.f},
     {402,-1,0,9999,MoveOp::Turn,20.f,0.f,0.f,kGateCounterBelow,25},
     {402,-1,0,9999,MoveOp::Turn,5.f,0.f,0.f,
-     kGateCounterBelow | kGateCounterAbove,25},
+     kGateCounterBelow | kGateCounterAbove,25, ShotOriginSpec{}, ShotAimSpec{}, 15},
     {402,-1,0,9999,MoveOp::Counter,1.f},
     {402,-1,0,9999,MoveOp::CapturePitch,0.f,40.f,40.f,kGateCounterEquals,15},
     {402,-1,0,9999,MoveOp::Launch,0.f,0.f,0.f,kGateNormal | kGateCounterEquals,15,
@@ -370,11 +401,11 @@ inline constexpr MoveRule kMionRules[] = {
     {460,0,23,23,MoveOp::Counter,1.f},
     {460,0,23,23,MoveOp::Hold,9999.f,0.f,0.f,kGateCounterBelow,20},
 };
-// Mion weapon 1 (handler 0x461810) — shoot_body_1_1_{400,402} (bundle L2421-2587,
-// L2705-2814). Taps only: the two charges (450/460) are 15-iteration bursts whose every
-// request carries a `(rand%200-100)*0.1` yaw and a `(rand%100-50)*0.1` pitch jitter, so
-// they stay on the provisional path until the deterministic draw service exists. Their
-// measured rows and timing are recorded in the handoff.
+// Mion weapon 1 (handler 0x461810) — shoot_body_1_1_{400,402,450,460} (bundle L2421-2587,
+// L2705-2814, L4014-4121, L4271-4376). The taps fire slot 0 then slot 1 (the second only
+// on connect). The charges are the bodies' 15-iteration `for` loops at tick 17: every
+// iteration fires one slot-0 request and draws its own spread, so the volley is a fan of
+// 15 rather than one shot repeated.
 inline constexpr MoveRule kMion1Rules[] = {
     // 400: scratch 0x3a ramps 0..9 turning 18 deg, then 5 deg while the phase is below 3.
     {400,0,0,0,MoveOp::CounterSet,0.f},
@@ -416,6 +447,26 @@ inline constexpr MoveRule kMion1Rules[] = {
      origin_attachment_slot(0),aim_stored_pitch()},
     {402,-1,0,9999,MoveOp::Launch,4.f,0.f,0.f,kGatePowered | kGateCounterEquals,13,
      origin_attachment_slot(1),aim_stored_pitch()},
+
+    // 450 ground charge: 25 deg turn to tick 16, then the 15-iteration burst at tick 17
+    // (L4054-4106). The scratch 0x3d is clamped +-45 and each iteration adds
+    // `(rand%100-50)*0.1` to it while the yaw takes `(rand%200-100)*0.1`; the pitch draw
+    // comes first. Rows 1 normal / 5 powered.
+    {450,-1,0,16,MoveOp::Turn,25.f},
+    {450,-1,17,17,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {450,-1,17,17,MoveOp::Launch,1.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadBurstJitter,15},
+    {450,-1,17,17,MoveOp::Launch,5.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadBurstJitter,15},
+    // 460 air charge: 20 deg turn to tick 16, same burst. The clamp is the compare/assign
+    // mismatch — the body tests +-30 and writes +-45 (L4330-4337) — so the snap bound
+    // carries it.
+    {460,-1,0,16,MoveOp::Turn,20.f},
+    {460,-1,17,17,MoveOp::CapturePitch,45.f,30.f,30.f},
+    {460,-1,17,17,MoveOp::Launch,1.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadBurstJitter,15},
+    {460,-1,17,17,MoveOp::Launch,5.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadBurstJitter,15},
 };
 
 // Mion weapon 2 (handler 0x44fa10) — shoot_body_1_2_{400,402} (bundle L4442-4573,
@@ -487,63 +538,63 @@ inline constexpr MoveRule kMion2Rules[] = {
     {450,1,15,15,MoveOp::Counter,1.f},
     {450,1,15,15,MoveOp::CapturePitch,0.f,45.f,45.f},
     {450,1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {450,1,15,15,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {450,1,20,20,MoveOp::Counter,1.f},
     {450,1,20,20,MoveOp::CapturePitch,0.f,45.f,45.f},
     {450,1,20,20,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {450,1,20,20,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {450,1,25,25,MoveOp::Counter,1.f},
     {450,1,25,25,MoveOp::CapturePitch,0.f,45.f,45.f},
     {450,1,25,25,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {450,1,25,25,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {450,1,30,30,MoveOp::Counter,1.f},
     {450,1,30,30,MoveOp::CapturePitch,0.f,45.f,45.f},
     {450,1,30,30,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {450,1,30,30,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {450,1,35,35,MoveOp::Counter,1.f},
     {450,1,35,35,MoveOp::CapturePitch,0.f,45.f,45.f},
     {450,1,35,35,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {450,1,35,35,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {450,1,40,40,MoveOp::Counter,1.f},
     {450,1,40,40,MoveOp::CapturePitch,0.f,45.f,45.f},
     {450,1,40,40,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {450,1,40,40,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {450,1,45,45,MoveOp::Counter,1.f},
     {450,1,45,45,MoveOp::CapturePitch,0.f,45.f,45.f},
     {450,1,45,45,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {450,1,45,45,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {450,1,50,50,MoveOp::Counter,1.f},
     {450,1,50,50,MoveOp::CapturePitch,0.f,45.f,45.f},
     {450,1,50,50,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {450,1,50,50,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {450,1,55,55,MoveOp::Counter,1.f},
     {450,1,55,55,MoveOp::CapturePitch,0.f,45.f,45.f},
     {450,1,55,55,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {450,1,55,55,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {450,1,60,60,MoveOp::Counter,1.f},
     {450,1,60,60,MoveOp::CapturePitch,0.f,45.f,45.f},
     {450,1,60,60,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {450,1,60,60,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
 
     // 460 air charge: same cadence and rows; the turn is phase 0 at 20 deg with the same
     // per-emission 0.5 deg while 0x3e is under 10 (L6150-6158).
@@ -562,63 +613,63 @@ inline constexpr MoveRule kMion2Rules[] = {
     {460,1,15,15,MoveOp::Counter,1.f},
     {460,1,15,15,MoveOp::CapturePitch,0.f,45.f,45.f},
     {460,1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {460,1,15,15,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {460,1,20,20,MoveOp::Counter,1.f},
     {460,1,20,20,MoveOp::CapturePitch,0.f,45.f,45.f},
     {460,1,20,20,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {460,1,20,20,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {460,1,25,25,MoveOp::Counter,1.f},
     {460,1,25,25,MoveOp::CapturePitch,0.f,45.f,45.f},
     {460,1,25,25,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {460,1,25,25,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {460,1,30,30,MoveOp::Counter,1.f},
     {460,1,30,30,MoveOp::CapturePitch,0.f,45.f,45.f},
     {460,1,30,30,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {460,1,30,30,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {460,1,35,35,MoveOp::Counter,1.f},
     {460,1,35,35,MoveOp::CapturePitch,0.f,45.f,45.f},
     {460,1,35,35,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {460,1,35,35,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {460,1,40,40,MoveOp::Counter,1.f},
     {460,1,40,40,MoveOp::CapturePitch,0.f,45.f,45.f},
     {460,1,40,40,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {460,1,40,40,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {460,1,45,45,MoveOp::Counter,1.f},
     {460,1,45,45,MoveOp::CapturePitch,0.f,45.f,45.f},
     {460,1,45,45,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {460,1,45,45,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {460,1,50,50,MoveOp::Counter,1.f},
     {460,1,50,50,MoveOp::CapturePitch,0.f,45.f,45.f},
     {460,1,50,50,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {460,1,50,50,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {460,1,55,55,MoveOp::Counter,1.f},
     {460,1,55,55,MoveOp::CapturePitch,0.f,45.f,45.f},
     {460,1,55,55,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {460,1,55,55,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {460,1,60,60,MoveOp::Counter,1.f},
     {460,1,60,60,MoveOp::CapturePitch,0.f,45.f,45.f},
     {460,1,60,60,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
     {460,1,60,60,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_attachment_slot(0),aim_stored_pitch()},
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadEmissionJitter},
 };
 
 // Rika weapon 1 (handler 0x492f70) — shot rules recovered from the reference bodies
@@ -1246,6 +1297,11 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     // Keiichi 2: same unbound second charge (bodies 403-412/469 exist but unscoped).
     static constexpr MoveProgram keiichi = {kKeiichiRules, std::size(kKeiichiRules),
                                             {{400,402},{450,460},{-1,-1}}};
+    // Rena 2: state 400 only. The combo has no recovered bodies at all, so nothing is
+    // claimed for 402/450/460.
+    static constexpr MoveProgram rena2 = {kRena2Rules, std::size(kRena2Rules),
+                                          {{400,-1},{-1,-1},{-1,-1}}};
+    if (binding->handler == 0x438310) return &rena2;
     if (binding->handler == 0x43ffc0) return &rena;
     if (binding->handler == 0x4582a0) return &mion;
     if (binding->handler == 0x492f70) return &rika;
@@ -1257,7 +1313,7 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     // Mion 1: taps bound; the repeated-emission charges stay -1 so the provisional path
     // serves them until the draw service lands (see the rule comments).
     static constexpr MoveProgram mion1 = {kMion1Rules, std::size(kMion1Rules),
-                                          {{400,402},{-1,-1},{-1,-1}}};
+                                          {{400,402},{450,460},{-1,-1}}};
     if (binding->handler == 0x461810) return &mion1;
     if (binding->handler == 0x46a190) return &keiichi0;
     if (binding->handler == 0x473610) return &keiichi1;

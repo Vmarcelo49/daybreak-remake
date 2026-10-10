@@ -49,6 +49,7 @@
 #include "gameplay/character_moves.h"  // CharacterMoves (borrowed move table)
 #include "gameplay/match_economy.h"    // the KO/Overkill credit rules (issue #11)
 #include "gameplay/projectile.h"
+#include "gameplay/simulation_rng.h"
 #include "gameplay/shot_launch.h"
 #include "gameplay/melee_rules.h"
 #include "gameplay/weapon_trail.h"
@@ -331,6 +332,10 @@ struct ShootingContext {
     // Together with the Oyashiro special byte +0x845 it forms the roster-wide powered
     // gate. This is the aim-selection predicate, not the combat lock's ally hold.
     bool aimHold = false;
+    // The match's shared random stream. The original draws spread from ONE global
+    // MT19937, so the scene owns the stream and publishes it here; a fighter without a
+    // scene (unit tests) falls back to its own, which keeps both paths deterministic.
+    SimulationRng* rng = nullptr;
 };
 
 // move_behavior.h's executable rule, forward-declared so the gate evaluation beside
@@ -656,7 +661,10 @@ public:
         return m_hyperActive && m_hypermode == Hypermode::Oyashiro && m_shooting.aimHold;
     }
     // The scene publishes the per-tick firing context before update().
-    void set_shooting_context(const ShootingContext& context) { m_shooting = context; }
+    void set_shooting_context(const ShootingContext& context) {
+        m_shooting = context;
+        m_rng = context.rng;
+    }
     // FUN_00435000 launches from the bound slot's item muzzle anchor and falls back to
     // the bone origin only when the slot's prop id is -1 (FUN_00434a70's clear).
     bool weapon_slot_bound(int slot) const;
@@ -829,6 +837,8 @@ private:
     unsigned     m_swingHits = 0;
     int          m_swingHitCount = 0;
     bool         m_chainContact = false;
+    SimulationRng* m_rng = nullptr;   // the scene's stream, null for a bare fighter
+    SimulationRng  m_ownRng;          // fallback: deterministic per fighter
     int          m_meleeElapsed = 0;      // ticks since the swing started
     MeleeRules   m_meleeRules{};           // legacy tuning + recovered shape;
                                            // data-driven swings override it via m_swing
@@ -1020,7 +1030,11 @@ private:
                                float snapDegrees, const Fighter* opponent);
     void enter_phase(int phase);
     void launch_bullet(int row, const ShotOriginSpec& origin, const ShotAimSpec& aim,
-                       float legacyLateral, float legacyPitchLimit, Fighter* opponent);
+                       float legacyLateral, float legacyPitchLimit,
+                       const ShotSpreadSpec& spread, Fighter* opponent);
+    // The stream a spread draws from: the scene's when one was published, else this
+    // fighter's own.
+    SimulationRng& rng_source() { return m_rng ? *m_rng : m_ownRng; }
 
     // Shared pulse for the aura's alpha + radius (DX9 render did both from one
     // expression; kept single-sourced so they cannot drift).

@@ -37,6 +37,9 @@ void Match::reset(const MatchConfig& config, const xm::Model* model[kMatchFighte
     m_shots.clear();
     m_locks.reset(m_config.fighterCount, m_config.side);
     m_economy.reset();
+    // A fresh round restarts the stream, so a rematch replays the same spread sequence
+    // rather than continuing the previous round's draws.
+    m_rng.reset();
     m_economy.set_round_rules(config.timeLimit, config.balloonSize);
     // Issue #48's F2/F3 flag: battle state like the lock table, so a rematch starts with every
     // COM brain live again — the original sets it to 1 wherever a slot is bound to a battle
@@ -150,6 +153,10 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[kMatchFighterCount]
         // the aim-selection predicate, not the combat lock's ally hold.
         ShootingContext context;
         context.aimHold = m_locks.aim_holds(i);
+        // The scene's single stream: the original draws spread from one global MT19937,
+        // so every participant shares this and the sequence depends on the match's own
+        // draw order (which is deterministic but not the original's).
+        context.rng = &m_rng;
         m_fighters[i].set_shooting_context(context);
         m_fighters[i].update(inputs ? inputs[i] : nullptr,
                              (target != kNoTarget && target < m_config.fighterCount)
