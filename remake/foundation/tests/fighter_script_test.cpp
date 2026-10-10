@@ -2143,7 +2143,7 @@ void test_rika_pitch_latch() {
 }
 
 void test_rika_air_powered_charge() {
-    section("34. Rika 1 air charge 460: powered branch over the full frozen interval");
+    section("34. Rika 1 air charge 460: both branches over the frozen interval");
     const auto install = findInstall(nullptr);
     if (install.empty() || !g_rikaCombo.load(install, 4, 1))
         return skip_case("Rika 1 air charge");
@@ -2228,6 +2228,57 @@ void test_rika_air_powered_charge() {
     check_bool("air charge never emits the normal pair", true,
                std::find(rows.begin(), rows.end(), 0) == rows.end() ||
                    rows[0] == 2);
+    // Normal air branch: same flight, no Oyashiro and no ally hold, so the tick-30
+    // salvo must be rows 3/6 rather than 4/7. The powered half above cannot show this;
+    // without it the air copy is only half-witnessed.
+    Fighter normal;
+    normal.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rikaCombo.bind(normal);
+    settle(normal);
+    check_bool("normal air driver starts with the gate closed", false,
+               normal.shoot_gate_powered());
+    Input normalIn;
+    normalIn.set(fnd::input::Action::Shoot, true);
+    normalIn.set(fnd::input::Action::Jump, true);
+    tick(normal, normalIn);
+    normalIn.set(fnd::input::Action::Jump, false);
+    int normalChargeTicks = 0;
+    while (normal.charge_tier() != ShotTier::Yellow && normal.airborne() &&
+           normalChargeTicks++ < 200)
+        tick(normal, normalIn);
+    check_int("normal air charge completes during the fly",
+              static_cast<int>(ShotTier::Yellow),
+              static_cast<int>(normal.charge_tier()));
+    check_bool("normal air driver still airborne", true, normal.airborne());
+    normalIn.set(fnd::input::Action::Shoot, false);
+    tick(normal, normalIn);
+    check_int("normal air release binds 460", 460, normal.shot_move_id());
+    for (int i = 0; i < 10; ++i) tick(normal, normalIn);
+    const gameplay::PendingShot normalFirst = normal.take_pending_shot();
+    const gameplay::PendingShot normalSecond = normal.take_pending_shot();
+    check_bool("normal air T10 twin arms", true,
+               normalFirst.armed && normalSecond.armed);
+    check_int("normal air T10 first row is 2", 2, normalFirst.bulletRow);
+    check_int("normal air T10 second row is 5", 5, normalSecond.bulletRow);
+    std::vector<int> normalRows;
+    for (int i = 0; i < 60 && normalRows.size() < 6; ++i) {
+        tick(normal, normalIn);
+        for (gameplay::PendingShot s = normal.take_pending_shot(); s.armed;
+             s = normal.take_pending_shot())
+            normalRows.push_back(s.bulletRow);
+    }
+    check_int("normal air frozen interval fires three pairs", 6, (int)normalRows.size());
+    if (normalRows.size() == 6) {
+        check_int("normal air frozen pair 1 is rows 3 then 6", 3, normalRows[0]);
+        check_int("normal air frozen pair 1 second row is 6", 6, normalRows[1]);
+        check_int("normal air frozen pair 2 is rows 3 then 6", 3, normalRows[2]);
+        check_int("normal air frozen pair 2 second row is 6", 6, normalRows[3]);
+        check_int("normal air frozen pair 3 is rows 3 then 6", 3, normalRows[4]);
+        check_int("normal air frozen pair 3 second row is 6", 6, normalRows[5]);
+    }
+    check_bool("normal air never emits the powered rows 4/7", true,
+               std::find(normalRows.begin(), normalRows.end(), 4) == normalRows.end() &&
+                   std::find(normalRows.begin(), normalRows.end(), 7) == normalRows.end());
 }
 
 void test_tomitake_twin_tap() {
