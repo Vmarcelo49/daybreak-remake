@@ -472,3 +472,46 @@ their bodies before trusting their tests (Tomitake 2, Keiichi 2, Satoko 0). Then
 origin (`FUN_00435220`, `Bip01_R_Hand`/`Bip01_L_Hand`) with a posed-rig witness, then Kasai 0 as the
 first C++ handler with the pool/allocation audit. Wire the battle movement offset (`source_float(0x19)`)
 into the world yaw, and re-pin Satoko 2 450/460 (phase 1, tick 6, row 4/5, tick-26 ten-update freeze).
+
+### 2026-10-10 — 3.1 Corrections found in review, plus a live powered witness
+
+**Done — three review findings fixed:**
+
+1. **Rows 3/6 were missing `kGateNormal`** in both 450 and 460, so a powered fighter fired
+   both the normal and the powered tick-30 pair — 10 requests over the charge instead of
+   the body's 8, and extra ammunition spent. The body selects one pair per branch.
+2. **The Rika charge geometry was still the legacy adapter's**: lateral ±50 requested
+   forward 70 / height 70 and a ±1° yaw nudge. That adapter encodes Rena 0's measured
+   red-charge shape (`FUN_0043ffc0.c:1526-1543`: forward 70, lateral 70, height +70, yaw
+   ±1.0 — a real angle offset, not a bug), so it must not be reused for other bodies.
+   Rika's charge now uses typed specs with its measured forward 60 / lateral ±50 /
+   height +70 and no yaw offset, and the test pins those numbers so the next body cannot
+   quietly inherit the wrong ones.
+3. **The ally-hold mapping is downgraded from "exact" to "analogue".** The maintenance
+   shape is right but the producer is not: the original re-pins `+0x848` while this
+   fighter's aim-selection target (`+0x308`, a player **pointer** — `FUN_0041f580.c:221`
+   dereferences it and reads `+0xaecc` off the result) equals player 0's; the port pins
+   it from the combat lock (`+0x304`) when that names an ally. `target_lock.h`'s own
+   header reads the comparison as "shares player 0's team", which the pointer evidence
+   contradicts; that is now a recorded work item with its blast radius
+   (`Match::lock_holds_ally`, the HUD ring, two test suites) instead of a silent claim.
+
+**Retracted:** the claim that powered branches are impossible outside team play. It
+follows only from the port's predicate; under the original's, fighter 0 holds it in any
+match, 1v1 included. Also recorded: the port arms Oyashiro on a Special press where the
+original arms it automatically at `limit1 <= charge1`, and its countdown is seconds
+against the original's tick-based `+0x83c`.
+
+**Done — witnesses:** the Rika test now counts both branches over the whole frozen
+interval (normal 3/6 ×3, powered 4/7 ×3, 8 requests each, no leakage) and pins the
+geometry; and a new live 4-fighter match drives the powered branch through `Match`'s
+own lock maintenance — an ally lock on fighter 0 makes the scene spawn item row 1, a
+hostile lock keeps row 0. That witness proves the port's producer, not the original's.
+
+**Verified:** full Linux suite **65/65**, fighter suite **755 checks / 0 failures**,
+recon 6/6. Windows and web cross-builds and the live battle smoke re-run after these
+edits.
+
+**Next:** settle the `+0x848` producer (model `+0x300`, or keep the analogue and say so
+everywhere), then Keiichi 0/1's hand origin, then Kasai 0 as the first C++ handler with
+the pool audit. The 1v1 powered availability question rides on the producer work.

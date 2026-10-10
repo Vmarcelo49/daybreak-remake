@@ -263,6 +263,11 @@ ledger for per-path state.
   original's `byte(+0x845) && word(+0x848)`; it is the roster-wide "tag"/"special"/"powered"
   branch. Bind BOTH halves of a branch with `kGatePowered`/`kGateNormal` rather than skipping
   the powered one — the old "no tag flag, bind normal, document the skip" guidance is superseded.
+  **The hold half is an analogue, not parity:** the port derives it from the combat lock and an
+  own-team test, the original from the aim-selection target compared against player 0's
+  (architecture record §2.2). Do not present a powered-branch result as source-faithful until
+  that producer is settled, and note the port arms Oyashiro on a Special press where the
+  original arms it automatically at `limit1 <= charge1`.
 - **Update order**: input/fire → `execute_move_program` (rules see PRE-increment elapsed) →
   `advance_animation_phase` (increments). Consequence for tests: a `while elapsed<N` loop
   exits right after the tick that SET N, whose rule pass still saw N−1 — add ONE more tick
