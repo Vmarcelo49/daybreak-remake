@@ -81,6 +81,8 @@ gêmeos 7+5 a cada 3 ticks + freeze-then-fire no charge; rows via trace fire_att
 Quarto combo concluído 2026-10-09 21:45 (Keiichi 2: programa `keiichi` com rajada densa
 todo-tick 10–20 + stalls por rewind modelados como Hold com latch por regra; cancel de
 pulo generalizado por combo na mesma leva).
+Quinto combo concluído 2026-10-09 21:55 (Chie 2: programa `chie` com rajada por
+scratch-counter 15–24 + salvas únicas row 2 no 450@22 e 460@15).
 
 1. **Prioridade**: matriz `shot400_usage` (52 normal + 60 tag em state400) ordena quais combos saem do piloto
    primeiro; cada combo entra com teste, nunca com fallback set 0 silencioso.
