@@ -132,11 +132,14 @@ def main() -> int:
         # slot: Rena 0/0 slot 0 spans variants 0..5, Mion 0/0 slot 0 only 1 and 3.
         ch, we, mode, variant = int(parts[0]), int(parts[1]), parts[2] == "tag", int(parts[3])
         fire_frame = -1
+        fire_events = 0
         for frame in frames:
             for event in frame["events"]:
                 if event[0] == "fire_attachment":
-                    fire_frame = frame["frame"]
-        fire_rows.append((ch, we, variant, mode, fire_frame, len(frames)))
+                    fire_events += 1
+                    if fire_frame < 0:
+                        fire_frame = frame["frame"]
+        fire_rows.append((ch, we, variant, mode, fire_frame, fire_events, len(frames)))
 
     # controllers is { "<model .x path>": [ {index, period, name}, ... ] } — the measured
     # D3DX controller set per animation model, keyed by the model the DAT points at.
@@ -239,9 +242,11 @@ def main() -> int:
     lines.append("")
     lines.append(f"inline constexpr int kShotFireRecordCount = {len(usage_pair_rows)};")
     lines.append("")
-    lines.append(f"// attack-preview.json shot400[] traces → observed fire frame and trace length per")
-    lines.append(f"// \"ch:we:(normal|tag):variant\"; a variant's fire frame must equal the usage")
-    lines.append(f"// frame for the same variant; variants with no fire event record -1;")
+    lines.append(f"// attack-preview.json shot400[] traces → FIRST observed fire frame, fire event")
+    lines.append(f"// count and trace length per \"ch:we:(normal|tag):variant\"; a variant's first fire")
+    lines.append(f"// frame must equal the usage frame for the same variant; variants with no fire")
+    lines.append(f"// event record -1 with 0 events; twin-shot variants (Tomitake 2: two events per")
+    lines.append(f"// scheduled frame) record the full count so tests can pin the multiplicity;")
     lines.append(f"// {len(fire_rows)} traces.")
     lines.append("struct ShotTraceSummary {")
     lines.append("    int character;")
@@ -249,13 +254,14 @@ def main() -> int:
     lines.append("    int variant;")
     lines.append("    bool tag;")
     lines.append("    int fire_frame;")
+    lines.append("    int fire_events;")
     lines.append("    int trace_frames;")
     lines.append("};")
     lines.append("")
     lines.append("inline constexpr ShotTraceSummary kShotTraceSummary[] = {")
-    for ch, we, variant, is_tag, fire_frame, trace_frames in fire_rows:
+    for ch, we, variant, is_tag, fire_frame, fire_events, trace_frames in fire_rows:
         flag = "true" if is_tag else "false"
-        lines.append(f"    {{{ch}, {we}, {variant}, {flag}, {fire_frame}, {trace_frames}}},")
+        lines.append(f"    {{{ch}, {we}, {variant}, {flag}, {fire_frame}, {fire_events}, {trace_frames}}},")
     lines.append("};")
     lines.append("")
     lines.append(f"inline constexpr int kShotTraceSummaryCount = {len(fire_rows)};")

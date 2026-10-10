@@ -804,6 +804,11 @@ private:
     int          m_shotMoveId = -1;
     int          m_holdTicks = 0;
     bool         m_holdAnimation = false;
+    // Which MoveRule Hold owns m_holdTicks (type-erased: move_behavior.h stays out of
+    // this header). A move holding twice (Keiichi's 450/460 stall at two ticks via
+    // clock rewinds) needs per-rule progress — the shared counter alone would starve
+    // the second hold. The dash hold path never consults this latch.
+    const void*  m_holdRule = nullptr;
     // Attachment slots 0/1. The executor re-binds slot0<-prop0, slot1<-prop1 and
     // deactivates both at the top of every frame, so a slot is unbound only while a
     // Hide rule's ticks match (FUN_00434a70(slot,-1)) and a prop is active only inside

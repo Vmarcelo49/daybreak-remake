@@ -140,15 +140,18 @@ struct MoveProgram {
     size_t count = 0;
     int shot[3][2]{}; // tap/first/second charge; ground/air
 };
-// Slot7 jump-cancel facts recovered for the pilot combo only (bundle evidence TSVs,
-// runtime == expected): Rena 0 (handler 0x43ffc0) admits jump out of shot move 400 at
-// elapsed frame 20 (destination: state 40); elapsed frame 0 has no request. Shot state
-// 401 has no binding in this port yet (charge tiers map to 450/460/360/370), and
-// 403/409→400 needs recovery states (plan Fase 3), so the table carries exactly the
-// verified row. The sampled frame is a lower bound, not a proven window — bundle
-// RESPONSE §3: sampled contexts are not exhaustive interval tables.
-struct ShotJumpCancel { int move; int frame; };
-inline constexpr ShotJumpCancel kPilotShotJumpCancel[] = {{400, 20}};
+// Slot7 jump-cancel facts recovered per combo (bundle evidence TSVs, runtime ==
+// expected): jump out of shot move 400 into state 40 admits at (phase 0, frame 20,
+// flags 0x100) for Rena 0 and (phase 0, frame 25, flags 0x100) for Rika 1; frame 0 has
+// no request anywhere sampled. Shot state 401 has no binding in this port yet (charge
+// tiers map to 450/460/360/370), and 403/409→400 needs recovery states (plan Fase 3),
+// so the table carries exactly the verified rows. Sampled frames are lower bounds, not
+// proven windows — bundle RESPONSE §3: sampled contexts are not exhaustive tables.
+struct ShotJumpCancel { unsigned handler; int move; int frame; };
+inline constexpr ShotJumpCancel kShotJumpCancel[] = {
+    {0x43ffc0, 400, 20},  // Rena 0
+    {0x492f70, 400, 25},  // Rika 1
+};
 // Mion weapon 0 (handler 0x4582a0) — shot rules recovered from the reference bodies
 // shoot_body_1_0_{400,402,450,460} (bundle reference/source). Phase/turn/hold values are
 // measured in the bodies; each rule below cites its lines. Known gaps, not guesses:
@@ -323,6 +326,37 @@ inline constexpr MoveRule kTomitakeRules[] = {
     {460,-1,30,30,MoveOp::Launch,4.f,0.f,40.f},
     {460,-1,30,30,MoveOp::Launch,0.f,0.f,40.f},
 };
+// Keiichi weapon 2 (handler 0x47b940) — shot rules recovered from the reference bodies
+// shoot_body_2_2_{400,402,450,460} (bundle reference/source). Dense burst, a fourth
+// shape: the tap fires EVERY tick 10..20 (11 consecutive frames, rows 0 normal / 1 tag),
+// expressed as one window rule per row — the executor runs matching rules each update,
+// so first/last IS the burst (unlike Rika's even-only schedule, which needs tick rules).
+// Tag row 1 has no flag field: only the normal row 0 is bound (Mion/Rika/Tomitake
+// precedent). Charge rows 2 normal / 3 tag likewise bind row 2 only. Turn verbs db10
+// vs dc20 both map to Turn by value (distinction illegible); the w0x10 gravity tails
+// and the one-shot w0x15 halve are vertical physics with no MoveRule op — skipped.
+inline constexpr MoveRule kKeiichiRules[] = {
+    // 400 ground tap: 20 deg turn phase 0 ticks 0-11, bleed 0.5/tick phase 0 open-ended.
+    {400,0,0,11,MoveOp::Turn,20.f},
+    {400,0,0,9999,MoveOp::Decelerate,.5f},
+    {400,-1,10,20,MoveOp::Launch,0.f,0.f,30.f},
+    // 402 air tap: same window, turn without phase gate, no bleed.
+    {402,-1,0,11,MoveOp::Turn,20.f},
+    {402,-1,10,20,MoveOp::Launch,0.f,0.f,30.f},
+    // 450 ground charge1: 18 deg turn through tick 12, bleed 0.75/tick, single salvo
+    // row 2 at tick 13, clock-rewind stalls +10f at tick 5 and +15f at tick 32 (Hold
+    // rules; the per-rule latch in the executor gives each stall its full length).
+    {450,-1,0,12,MoveOp::Turn,18.f},
+    {450,-1,0,9999,MoveOp::Decelerate,.75f},
+    {450,-1,5,5,MoveOp::Hold,10.f},
+    {450,-1,13,13,MoveOp::Launch,2.f,0.f,50.f},
+    {450,-1,32,32,MoveOp::Hold,15.f},
+    // 460 air charge1: same shape (turn 18, salvo row 2 at 13, stalls at 5/32).
+    {460,-1,0,12,MoveOp::Turn,18.f},
+    {460,-1,13,13,MoveOp::Launch,2.f,0.f,50.f},
+    {460,-1,5,5,MoveOp::Hold,10.f},
+    {460,-1,32,32,MoveOp::Hold,15.f},
+};
 inline const MoveProgram* move_program(const CharacterMoves* moves) {
     const auto* binding = locomotion(moves);
     if (!binding) return nullptr;
@@ -346,10 +380,14 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     // bleeds below which map to Decelerate with their floor-0 clamp.
     static constexpr MoveProgram tomitake = {kTomitakeRules, std::size(kTomitakeRules),
                                             {{400,402},{450,460},{-1,-1}}};
+    // Keiichi 2: same unbound second charge (bodies 403-412/469 exist but unscoped).
+    static constexpr MoveProgram keiichi = {kKeiichiRules, std::size(kKeiichiRules),
+                                            {{400,402},{450,460},{-1,-1}}};
     if (binding->handler == 0x43ffc0) return &nata;
     if (binding->handler == 0x4582a0) return &mion;
     if (binding->handler == 0x492f70) return &rika;
     if (binding->handler == 0x527880) return &tomitake;
+    if (binding->handler == 0x47b940) return &keiichi;
     return nullptr;
 }
 } // namespace gameplay

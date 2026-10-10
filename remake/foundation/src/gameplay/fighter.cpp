@@ -1349,7 +1349,8 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
     for (size_t i = 0; i < program->count; ++i) {
         const auto& rule = program->rules[i];
         if (rule.move != state_move_id() || (rule.phase >= 0 && rule.phase != m_phaseIndex) ||
-            m_moveElapsedTicks < rule.first || m_moveElapsedTicks > rule.last) continue;
+            m_moveElapsedTicks < rule.first || m_moveElapsedTicks > rule.last)
+            continue;
         switch (rule.operation) {
         case MoveOp::Speed:
             m_moveSpeed = opponent && rule.third > 0.f && distanceSquared < rule.third
@@ -1383,6 +1384,10 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             break;
         }
         case MoveOp::Hold:
+            // Per-rule hold progress (see m_holdRule): a newly matching rule restarts
+            // the count, a continuing one keeps it. Single-hold moves behave exactly
+            // as before — the latch only matters from the second Hold in one move.
+            if (m_holdRule != &rule) { m_holdRule = &rule; m_holdTicks = 0; }
             m_holdAnimation = m_holdTicks++ < static_cast<int>(rule.value);
             break;
         case MoveOp::ActionCamera:
@@ -1696,9 +1701,10 @@ bool Fighter::shot_jump_cancel_pressed(const input::PlayerState* input) const {
         m_state != FighterState::ShootC)
         return false;
     const auto* binding = locomotion(m_moves);
-    if (!binding || binding->handler != 0x43ffc0) return false;
-    for (const auto& row : kPilotShotJumpCancel)
-        if (row.move == state_move_id()) return m_moveElapsedTicks >= row.frame;
+    if (!binding) return false;
+    for (const auto& row : kShotJumpCancel)
+        if (row.handler == binding->handler && row.move == state_move_id())
+            return m_moveElapsedTicks >= row.frame;
     return false;
 }
 

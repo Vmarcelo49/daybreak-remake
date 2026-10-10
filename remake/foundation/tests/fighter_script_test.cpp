@@ -102,6 +102,7 @@ TestCombo g_testCombo;
 TestCombo g_mionCombo;
 TestCombo g_rikaCombo;
 TestCombo g_tomitakeCombo;
+TestCombo g_keiichiCombo;
 
 std::filesystem::path findInstall(const char* executable) {
     const int itemId = gameplay::kWeaponIds[0][0];
@@ -2175,6 +2176,121 @@ void test_tomitake_twin_tap() {
     check_int("Tomitake T30 second row is 0", 0, second.bulletRow);
 }
 
+void test_keiichi_dense_tap() {
+    section("19. Keiichi 2 dense tap + single charge (bodies shoot_body_2_2_*)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_keiichiCombo.load(install, 2, 2))
+        return skip_case("Keiichi 2 combo");
+    // Bundle evidence: Keiichi 2 (handler 0x47b940) fires item row 0 on EVERY tick
+    // 10..20 in the ground tap (shoot_body_2_2_400, 11 consecutive frames — the dense
+    // burst shape), and item row 2 once at tick 13 in the first ground charge after
+    // clock-rewind stalls at ticks 5 (+10f) and 32 (+15f) (shoot_body_2_2_450).
+    // Her program is kKeiichiRules; the second charge stays provisional.
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_keiichiCombo.bind(f);
+    settle(f);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Keiichi tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    check_int("Keiichi tap binds move 400", 400, f.shot_move_id());
+    for (int i = 0; i < 10; ++i) tick(f, in);
+    gameplay::PendingShot shot = f.take_pending_shot();
+    check_bool("Keiichi tap launches at tick 10", true, shot.armed);
+    check_int("Keiichi tap selects item row zero", 0, shot.bulletRow);
+    // Dense, not anchored: the very next tick fires again.
+    tick(f, in);
+    shot = f.take_pending_shot();
+    check_bool("Keiichi tap launches again at tick 11", true, shot.armed);
+    check_int("Keiichi repeat selects item row zero", 0, shot.bulletRow);
+    // First charge: hold past the yellow threshold (level-1 chargeMax 30).
+    Fighter g;
+    g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_keiichiCombo.bind(g);
+    settle(g);
+    const float keiichiYellow = static_cast<float>(
+        g_keiichiCombo.weapon.magazineForChargeLevel(1).chargeMax) /
+        gameplay::FixedStep::tickRate;
+    float keiichiHeld = 0.0f;
+    int keiichiYellowFrames = 0;
+    while (keiichiHeld < keiichiYellow && keiichiYellowFrames < 10000) {
+        keiichiHeld += kStep;
+        ++keiichiYellowFrames;
+    }
+    in.set(fnd::input::Action::Shoot, true);
+    for (int i = 0; i < keiichiYellowFrames; ++i) tick(g, in);
+    check_int("Keiichi hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
+              static_cast<int>(g.charge_tier()));
+    in.set(fnd::input::Action::Shoot, false);
+    tick(g, in);
+    check_int("Keiichi charge enters ShootB", static_cast<int>(FighterState::ShootB),
+              static_cast<int>(g.state()));
+    check_int("Keiichi charge binds move 450", 450, g.shot_move_id());
+    check_bool("Keiichi 450 row present in table", true,
+               g_keiichiCombo.moves.first_set_index(450) >= 0);
+    // The tick-5 rewind stalls the move clock ~10 ticks: after 13 updates the move
+    // has NOT reached tick 13 yet (elapsed < 13) and nothing launched.
+    for (int i = 0; i < 13; ++i) tick(g, in);
+    check_bool("Keiichi charge stalled before tick 13", true, g.phase_elapsed() < 13);
+    check_bool("nothing launched during the stall", false,
+               g.take_pending_shot().armed);
+    int guard = 0;
+    while (g.phase_elapsed() < 13 && guard++ < 80) tick(g, in);
+    check_int("Keiichi charge reaches tick 13", 13, g.phase_elapsed());
+    check_int("Keiichi still in ShootB at tick 13", static_cast<int>(FighterState::ShootB),
+              static_cast<int>(g.state()));
+    check_int("Keiichi shot row still 450 at tick 13", 450, g.shot_move_id());
+    // One more update: the loop exits right after the tick that SET elapsed to 13,
+    // whose rule pass still saw 12 — the tick-13 rules only run on the next update.
+    tick(g, in);
+    shot = g.take_pending_shot();
+    check_bool("Keiichi charge launches at tick 13", true, shot.armed);
+    check_int("Keiichi charge selects item row two", 2, shot.bulletRow);
+}
+
+void test_rika_shot_jump_cancel() {
+    section("20. Rika 1 shot jump-cancel (bundle TSV, frame 25)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_rikaCombo.load(install, 4, 1))
+        return skip_case("Rika 1 combo");
+    // Second row of kShotJumpCancel: Rika 1 admits jump out of shot move 400 at
+    // elapsed frame 25 into state 40 (TSV (0,25,256) → 40, runtime == expected).
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rikaCombo.bind(f);
+    settle(f);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Rika tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    int guard = 0;
+    while (f.state() == FighterState::ShootA && f.phase_elapsed() < 24 && guard++ < 100)
+        tick(f, in);
+    check_int("Rika shot move still held at elapsed 24", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    in.set(fnd::input::Action::Jump, true);
+    tick(f, in);
+    check_int("Rika jump at elapsed 24 stays ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    in.set(fnd::input::Action::Jump, false);
+    tick(f, in);
+    guard = 0;
+    while (f.state() == FighterState::ShootA && f.phase_elapsed() < 25 && guard++ < 100)
+        tick(f, in);
+    in.set(fnd::input::Action::Jump, true);
+    tick(f, in);
+    check_int("Rika jump at elapsed 25 leaves for Jump", static_cast<int>(FighterState::Jump),
+              static_cast<int>(f.state()));
+    in.set(fnd::input::Action::Jump, false);
+}
+
 void test_mion_shot_tap() {
     section("16. Mion 0 tap + first charge (bundle bodies shoot_body_1_0_*)");
     const auto install = findInstall(nullptr);
@@ -2321,6 +2437,8 @@ int main(int argc, char** argv) {
     test_mion_shot_tap();
     test_rika_repeating_tap();
     test_tomitake_twin_tap();
+    test_keiichi_dense_tap();
+    test_rika_shot_jump_cancel();
     test_ammo();
     test_hypermode();
     test_ko();
