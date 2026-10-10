@@ -2449,16 +2449,144 @@ void test_rika2_single_tick() {
                g.take_pending_shot().armed);
 }
 
+void test_rena0_powered_branches() {
+    section("37. Rena 0 powered branch on every launch site (handler 0x43ffc0)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_testCombo.load(install, 0, 0))
+        return skip_case("Rena 0 combo");
+    // FUN_0043ffc0 gates every launch on byte 0x845/word 0x848:
+    //   tap 400 rows 0/6, air tap 402 rows 1/7, charge 450 rows 2/8 (fixed 45 deg),
+    //   air charge 460 rows 2/8 (fixed 45 deg), second charge 360/370 rows 11/12
+    //   (world origins, no branch split in the source).
+    const auto* program = gameplay::move_program(&g_testCombo.moves);
+    check_bool("Rena 0 program is bound", true,
+               program && program->rules == gameplay::kRenaRules);
+    // Tap: normal at tick 12, powered at the same tick with row 6.
+    Fighter tap;
+    tap.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_testCombo.bind(tap);
+    settle(tap);
+    tap.set_hypermode(Hypermode::Oyashiro);
+    tap.set_hyper_gauge(1.f);
+    Input in;
+    in.set(fnd::input::Action::Special, true);
+    tick(tap, in);
+    in.set(fnd::input::Action::Special, false);
+    tick(tap, in);
+    check_bool("Oyashiro witness is active", true, tap.hyper_active());
+    gameplay::ShootingContext context;
+    context.aimHold = true;
+    tap.set_shooting_context(context);
+    check_bool("powered gate holds", true, tap.shoot_gate_powered());
+    in.set(fnd::input::Action::Shoot, true);
+    tick(tap, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(tap, in);
+    check_int("Rena powered tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(tap.state()));
+    for (int i = 0; i < 12; ++i) tick(tap, in);
+    const gameplay::PendingShot poweredTap = tap.take_pending_shot();
+    check_bool("powered tap fires its request", true, poweredTap.armed);
+    check_int("powered tap switches to item row 6", 6, poweredTap.bulletRow);
+    check_bool("powered tap schedules no extra shot", false,
+               tap.take_pending_shot().armed);
+
+    // Air charge: powered row 8 at the fixed 45 pitch.
+    Fighter airCharge;
+    airCharge.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_testCombo.bind(airCharge);
+    settle(airCharge);
+    airCharge.set_hypermode(Hypermode::Oyashiro);
+    airCharge.set_hyper_gauge(1.f);
+    Input air;
+    air.set(fnd::input::Action::Special, true);
+    tick(airCharge, air);
+    air.set(fnd::input::Action::Special, false);
+    tick(airCharge, air);
+    airCharge.set_shooting_context(context);
+    air.set(fnd::input::Action::Shoot, true);
+    int guard = 0;
+    while (airCharge.charge_tier() != ShotTier::Yellow && guard++ < 2000)
+        tick(airCharge, air);
+    check_int("charge reaches Yellow before the leap",
+              static_cast<int>(ShotTier::Yellow),
+              static_cast<int>(airCharge.charge_tier()));
+    // Leap and HOLD Z: the plain-leap window (47 updates) is shorter than the
+    // remaining program, so hold Z against the fly budget like the Rika air witness
+    // does. The charge is re-lost for one tick (the jump returns before the charge
+    // block) and then re-accrues, so keep C held through the air as well.
+    air.set(fnd::input::Action::Jump, true);
+    tick(airCharge, air);
+    // Wait only until the charge re-accrues mid-flight, then release immediately: the
+    // fly budget holds ~112 updates, which is more than the 60-update program needs,
+    // but draining the whole flight first would land the fighter before the release.
+    int airTicks = 0;
+    while (airCharge.charge_tier() != ShotTier::Yellow && airCharge.airborne() &&
+           airTicks++ < 200)
+        tick(airCharge, air);
+    check_bool("charge re-accrues during the flight", true,
+               airTicks > 1 && airTicks < 200);
+    check_bool("driver still airborne at the release", true, airCharge.airborne());
+    air.set(fnd::input::Action::Shoot, false);
+    tick(airCharge, air);
+    check_int("air release binds move 460", 460, airCharge.shot_move_id());
+    for (int i = 0; i < 12; ++i) tick(airCharge, air);
+    const gameplay::PendingShot poweredAir = airCharge.take_pending_shot();
+    check_bool("powered air charge fires its request", true, poweredAir.armed);
+    check_int("powered air charge switches to item row 8", 8, poweredAir.bulletRow);
+    check_near("air charge pitch is the body's fixed 45 degrees",
+               std::sin(glm::radians(45.f)), poweredAir.dir.y, 1e-3f);
+
+    // Second charge: counter-gated freeze rather than a plain hold. Draining the
+    // whole frozen interval is the only way to count the requests faithfully.
+    Fighter second;
+    second.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_testCombo.bind(second);
+    settle(second);
+    // A Red-tier hold reaches the second charge; the fixture helper only drives to
+    // Yellow, so keep holding until the tier rolls over.
+    Input red;
+    red.set(fnd::input::Action::Shoot, true);
+    int redGuard = 0;
+    while (second.charge_tier() != ShotTier::Red && redGuard++ < 4000)
+        tick(second, red);
+    check_int("Rena 0 reaches Red for the second charge",
+              static_cast<int>(ShotTier::Red),
+              static_cast<int>(second.charge_tier()));
+    red.set(fnd::input::Action::Shoot, false);
+    tick(second, red);
+    check_int("second charge binds move 360", 360, second.shot_move_id());
+    // The counter-gated freeze pins the clock while the counter climbs to 10; the
+    // red twin at tick 2 fires once, and the freeze is released on the 11th update.
+    int tick13Updates = 0;
+    for (int i = 0; i < 40 && second.phase_elapsed() <= 13; ++i) {
+        tick(second, red);
+        ++tick13Updates;
+        for (gameplay::PendingShot s = second.take_pending_shot(); s.armed;
+             s = second.take_pending_shot()) {
+            check_bool("red twin requests the world rows", true,
+                       s.bulletRow == 11 || s.bulletRow == 12);
+        }
+    }
+    // The counter starts at 0 on entry, so reaching the bound-10 gate at tick 13 takes
+    // 13 updates (counter 1..13) plus nine more while the gate holds (counter 14..22,
+    // released when it reaches 23): 22 updates to leave tick 13 behind.
+    check_int("freeze releases after the counter reaches the gate bound", 22,
+              tick13Updates);
+    check_bool("the frozen tick stays pinned, not skipped", true,
+               second.phase_elapsed() >= 13);
+}
+
 void test_rena1_normal_schedule() {
-    section("27. Rena 1 normal tap + charge schedule (runtime-source helper; geometry gaps documented)");
+    section("27. Rena 1 tap fan + fixed-pitch charge (runtime-source helper)");
     const auto install = findInstall(nullptr);
     if (install.empty() || !g_rena1Combo.load(install, 0, 1))
         return skip_case("Rena 1 combo");
-    // The retained runtime helper (not a shoot_body_0_1_* body) requests row 6 at
-    // state400/frame18 and row 1 on state450/frames12..26. MoveRule covers only those
-    // normal schedules: state402's conditional phase jump and 450's scratch/RNG yaw
-    // spread are deliberately not claimed here.
-    const auto& normalTap = gameplay::kRena1Rules[0];
+    // battle_rena_mobile_shooting.hpp:181-184 requests one shot per frame 12..26
+    // (15 rolls), row 1 normal / 3 powered, with yaw/pitch from a per-frame draw()%10.
+    // The port has no per-tick draw service, so each frame fires its row with the pitch
+    // the fixed path resolves; the spread is an explicit gap, not a claim.
+    // The charge (line 187) is a single fixed-45 attachment shot, row 2/8.
     const auto* program = gameplay::move_program(&g_rena1Combo.moves);
     check_bool("Rena 1 move program is bound to its actual combo", true,
                program && program->rules == gameplay::kRena1Rules);
@@ -2466,8 +2594,10 @@ void test_rena1_normal_schedule() {
     check_int("Rena 1 air tap stays unbound", -1, program ? program->shot[0][1] : -2);
     check_int("Rena 1 first charge maps to move 450", 450, program ? program->shot[1][0] : -1);
     check_int("Rena 1 air charge stays unbound", -1, program ? program->shot[1][1] : -2);
+    check_int("Rena 1 second charge stays unbound", -1, program ? program->shot[2][0] : -2);
     check_int("Rena 1 uses item 3", 3, g_rena1Combo.weapon.id);
 
+    // Normal tap: 15 armed requests across frames 12..26, all row 1.
     Fighter tap;
     tap.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_rena1Combo.bind(tap);
@@ -2480,13 +2610,55 @@ void test_rena1_normal_schedule() {
     check_int("Rena 1 tap enters ShootA", static_cast<int>(FighterState::ShootA),
               static_cast<int>(tap.state()));
     check_int("Rena 1 tap binds move 400", 400, tap.shot_move_id());
-    for (int i = 0; i < normalTap.first; ++i) tick(tap, in);
-    gameplay::PendingShot shot = tap.take_pending_shot();
-    check_bool("Rena 1 normal tap schedules one row at frame 18", true, shot.armed);
-    check_int("Rena 1 normal tap selects item row 6", 6, shot.bulletRow);
-    check_bool("Rena 1 normal tap schedules no extra shot", false,
+    int normalFired = 0;
+    bool normalRows = true;
+    for (int i = 0; i < 30; ++i) {
+        tick(tap, in);
+        for (gameplay::PendingShot s = tap.take_pending_shot(); s.armed;
+             s = tap.take_pending_shot()) {
+            ++normalFired;
+            normalRows &= s.bulletRow == 1;
+        }
+    }
+    check_int("normal tap fires the 15-frame fan", 15, normalFired);
+    check_bool("normal fan uses item row 1 throughout", true, normalRows);
+    check_bool("normal fan schedules nothing outside the window", false,
                tap.take_pending_shot().armed);
 
+    // Powered tap: same window, row 3, with the gate selecting the other branch.
+    Fighter poweredTap;
+    poweredTap.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rena1Combo.bind(poweredTap);
+    settle(poweredTap);
+    poweredTap.set_hypermode(Hypermode::Oyashiro);
+    poweredTap.set_hyper_gauge(1.f);
+    Input pw;
+    pw.set(fnd::input::Action::Special, true);
+    tick(poweredTap, pw);
+    pw.set(fnd::input::Action::Special, false);
+    tick(poweredTap, pw);
+    check_bool("Oyashiro witness is active", true, poweredTap.hyper_active());
+    gameplay::ShootingContext context;
+    context.aimHold = true;
+    poweredTap.set_shooting_context(context);
+    pw.set(fnd::input::Action::Shoot, true);
+    tick(poweredTap, pw);
+    pw.set(fnd::input::Action::Shoot, false);
+    tick(poweredTap, pw);
+    int poweredFired = 0;
+    bool poweredRows = true;
+    for (int i = 0; i < 30; ++i) {
+        tick(poweredTap, pw);
+        for (gameplay::PendingShot s = poweredTap.take_pending_shot(); s.armed;
+             s = poweredTap.take_pending_shot()) {
+            ++poweredFired;
+            poweredRows &= s.bulletRow == 3;
+        }
+    }
+    check_int("powered tap fires the 15-frame fan", 15, poweredFired);
+    check_bool("powered fan uses item row 3 throughout", true, poweredRows);
+
+    // Charge: single fixed-45 shot at frame 13, row 2 normal / 8 powered.
     Fighter charged;
     charged.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_rena1Combo.bind(charged);
@@ -2499,22 +2671,35 @@ void test_rena1_normal_schedule() {
     check_int("Rena 1 charge enters ShootB", static_cast<int>(FighterState::ShootB),
               static_cast<int>(charged.state()));
     check_int("Rena 1 first charge binds move 450", 450, charged.shot_move_id());
-    int guard = 0;
-    int armed = 0;
-    bool rowsCorrect = true;
-    while (charged.state() == FighterState::ShootB && charged.phase_elapsed() <= 26 &&
-           guard++ < 100) {
-        tick(charged, in);
-        for (gameplay::PendingShot pending = charged.take_pending_shot(); pending.armed;
-             pending = charged.take_pending_shot()) {
-            ++armed;
-            rowsCorrect &= pending.bulletRow == 1;
-        }
-    }
-    check_int("Rena 1 charge finishes its scheduled row-1 window", 15, armed);
-    check_bool("Rena 1 first charge schedule uses item row 1 throughout", true, rowsCorrect);
-    check_bool("Rena 1 charge has no extra schedule event", false,
-               charged.take_pending_shot().armed);
+    for (int i = 0; i < 13; ++i) tick(charged, in);
+    const gameplay::PendingShot charge = charged.take_pending_shot();
+    check_bool("charge fires exactly one request at frame 13", true, charge.armed);
+    check_int("charge uses item row 2", 2, charge.bulletRow);
+    check_near("charge pitch is the body's fixed 45 degrees",
+               std::sin(glm::radians(45.f)), charge.dir.y, 1e-3f);
+    check_bool("charge schedules nothing else", false, charged.take_pending_shot().armed);
+
+    Fighter poweredCharge;
+    poweredCharge.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rena1Combo.bind(poweredCharge);
+    settle(poweredCharge);
+    poweredCharge.set_hypermode(Hypermode::Oyashiro);
+    poweredCharge.set_hyper_gauge(1.f);
+    Input cpw;
+    cpw.set(fnd::input::Action::Special, true);
+    tick(poweredCharge, cpw);
+    cpw.set(fnd::input::Action::Special, false);
+    tick(poweredCharge, cpw);
+    poweredCharge.set_shooting_context(context);
+    hold_yellow(poweredCharge, cpw);
+    cpw.set(fnd::input::Action::Shoot, false);
+    tick(poweredCharge, cpw);
+    for (int i = 0; i < 13; ++i) tick(poweredCharge, cpw);
+    const gameplay::PendingShot poweredShot = poweredCharge.take_pending_shot();
+    check_bool("powered charge fires its request", true, poweredShot.armed);
+    check_int("powered charge uses item row 8", 8, poweredShot.bulletRow);
+    check_near("powered charge keeps the fixed 45 degrees",
+               std::sin(glm::radians(45.f)), poweredShot.dir.y, 1e-3f);
 }
 
 void test_akane2_world_origin_gap() {
@@ -3783,6 +3968,7 @@ int main(int argc, char** argv) {
     test_satoko_five_shot();
     test_rika0_twin_tick();
     test_rena1_normal_schedule();
+    test_rena0_powered_branches();
     test_akane2_world_origin_gap();
     test_natsumi0_ground_tap();
     test_satoko2_world_origin_fixture();

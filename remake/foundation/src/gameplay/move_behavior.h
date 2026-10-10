@@ -135,49 +135,81 @@ inline constexpr MoveRule kRenaRules[] = {
     {340,-1,16,24,MoveOp::Active,0.f},
     {340,-1,16,24,MoveOp::Active,1.f},
     // 400 ground tap: hide from tick 12 (0x444850 JLE on tick<=11), turn 20 deg
-    // through tick 11 (FUN_0042db10), launch item row 0 at tick 12 (0x4448d6).
+    // through tick 11 (FUN_0042db10), launch item row 0 at tick 12 (0x4448d6) normally
+    // and row 6 powered (FUN_00434fd0 branch on byte 0x845/word 0x848). Slot-0
+    // attachment in both halves; the pitch scratch (±30) is read back same-tick.
     {400,0,0,9999,MoveOp::Decelerate,.5f},
     {400,0,0,11,MoveOp::Turn,20.f},
     {400,-1,12,9999,MoveOp::Hide,0.f},
     {400,-1,12,9999,MoveOp::Hide,1.f},
-    {400,0,12,12,MoveOp::Launch,0.f,0.f,30.f},
+    {400,0,12,12,MoveOp::Launch,0.f,0.f,30.f,kGateNormal},
+    {400,0,12,12,MoveOp::Launch,6.f,0.f,30.f,kGatePowered},
     // 402 air tap: hide from tick 13 (tick>12), launch item row 1 at tick 13
-    // (0x444c7a CMP [this+0xae04],0xd). 400 fires at 12 and 402 at 13.
+    // (0x444c7a CMP [this+0xae04],0xd) normally and row 7 powered (case 0x192).
     {402,-1,13,9999,MoveOp::Hide,0.f},
     {402,-1,13,9999,MoveOp::Hide,1.f},
-    {402,0,13,13,MoveOp::Launch,1.f,0.f,30.f},
-    // 450 first charge: turn 18 deg through tick 9, launch row 2 at tick 13.
+    {402,0,13,13,MoveOp::Launch,1.f,0.f,30.f,kGateNormal},
+    {402,0,13,13,MoveOp::Launch,7.f,0.f,30.f,kGatePowered},
+    // 450 first charge: turn 18 deg through tick 9, launch row 2 at tick 13 (case
+    // 0x1c2) normally and row 8 powered, both at FIXED pitch 45 (0x42340000 constant,
+    // not the scratch). Typed aim carries the constant; the origin stays slot-0.
     {450,0,0,9999,MoveOp::Decelerate,.5f},
     {450,0,0,9,MoveOp::Turn,18.f},
-    {450,0,13,13,MoveOp::Launch,2.f,0.f,45.f},
-    // 460 air charge: turn 18 deg through tick 9, launch row 2 at tick 12.
+    {450,0,13,13,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     ShotOriginSpec{},aim_fixed_angles(0.f,45.f)},
+    {450,0,13,13,MoveOp::Launch,8.f,0.f,0.f,kGatePowered,0,
+     ShotOriginSpec{},aim_fixed_angles(0.f,45.f)},
+    // 460 air charge: turn 18 deg through tick 9, launch row 2 at tick 12 (case 0x1cc)
+    // normally and row 8 powered, same fixed 45 pitch.
     {460,0,0,9,MoveOp::Turn,18.f},
-    {460,0,12,12,MoveOp::Launch,2.f,0.f,45.f},
+    {460,0,12,12,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     ShotOriginSpec{},aim_fixed_angles(0.f,45.f)},
+    {460,0,12,12,MoveOp::Launch,8.f,0.f,0.f,kGatePowered,0,
+     ShotOriginSpec{},aim_fixed_angles(0.f,45.f)},
     // 360/370 second charge: the ten-update freeze is PHASE 2 tick 13, inside the same
     // phase-2 branch as the tick-2 red launches (360: 0x443aef and 370: 0x443e8b both
-    // sit after the 0xadf4==2 gate). Placing it in phase 0 froze the wrong phase.
+    // sit after the 0xadf4==2 gate). Placing it in phase 0 froze the wrong phase. The
+    // freeze is counter-gated (0x3e init at phase0/tick0, +1 per frozen update, return
+    // while <10), not a plain hold — same model as Rika's, shorter interval.
     {360,-1,0,9999,MoveOp::Decelerate,.75f},
-    {360,2,13,13,MoveOp::Hold,10.f},
+    {360,0,0,0,MoveOp::CounterSet,0.f},
     {360,2,2,2,MoveOp::Launch,11.f,70.f,40.f},
     {360,2,2,2,MoveOp::Launch,12.f,-70.f,40.f},
+    {360,2,13,13,MoveOp::Counter,1.f},
+    {360,2,13,13,MoveOp::Hold,9999.f,0.f,0.f,kGateCounterBelow,10},
     {370,-1,0,9999,MoveOp::Decelerate,.75f},
-    {370,2,13,13,MoveOp::Hold,10.f},
-    {370,-1,14,9999,MoveOp::Hide,0.f},
-    {370,-1,14,9999,MoveOp::Hide,1.f},
+    {370,0,0,0,MoveOp::CounterSet,0.f},
     {370,2,2,2,MoveOp::Launch,11.f,70.f,40.f},
     {370,2,2,2,MoveOp::Launch,12.f,-70.f,40.f},
+    {370,2,13,13,MoveOp::Counter,1.f},
+    {370,2,13,13,MoveOp::Hold,9999.f,0.f,0.f,kGateCounterBelow,10},
+    {370,-1,14,9999,MoveOp::Hide,0.f},
+    {370,-1,14,9999,MoveOp::Hide,1.f},
 };
 
 // Rena weapon 1 (handler 0x448220): the full body is absent from the non-Rena
-// body header, so use the separately verified runtime-source helper. Only fixed
-// normal projectile schedules are represented: state400 row 6 at frame 18 and
-// state450 row 1 at frames 12..26 (battle_rena_ground_shot.hpp:45-54;
-// battle_rena_mobile_shooting.hpp:178-189). State402's grounded phase jump,
-// state450/460 spread RNG, air-tap behavior, and 360/370 fixed-pitch second charge
-// need state/trajectory fields MoveRule does not have; those paths stay unbound.
+// body header, so use the separately verified runtime-source helper
+// (battle_rena_ground_shot.hpp / battle_rena_mobile_shooting.hpp).
+//   state400: `if(f>11&&f<27){scratch_e8+=4;scratch_ec=e8-5+draw()%10; bullet(special?3:1,yaw=ec-30,0)}`
+//   — one request per frame 12..26, a 15-shot fan. The COUNT and ROW SPLIT are
+//   representable; the per-shot yaw `scratch_ec-30` and the `draw()%10` pitch are not,
+//   because there is no per-tick draw service. The rules therefore fire the right
+//   number of the right rows on the right frames with the default aim — a documented
+//   approximation, not a claim of spread parity.
+//   state450: `bullet(special?8:2,0,45)` at frame 13 — a single fixed-pitch attachment
+//   shot, both branches representable.
+//   state402: grounded phase jump plus a phase-2 frame-5 bullet, plus 460 air.
+//   360/370 and 460: no evidence in the runtime source — stay unbound.
 inline constexpr MoveRule kRena1Rules[] = {
-    {400,-1,18,18,MoveOp::Launch,6.f,0.f,0.f},
-    {450,-1,12,26,MoveOp::Launch,1.f,0.f,0.f},
+    // 400 ground tap: one request per frame 12..26, row 1 normal / 3 powered. The
+    // fan's spread needs the draw service above, so each shares the default aim.
+    {400,0,12,26,MoveOp::Launch,1.f,0.f,0.f,kGateNormal},
+    {400,0,12,26,MoveOp::Launch,3.f,0.f,0.f,kGatePowered},
+    // 450 charge: single fixed-45 attachment shot at frame 13.
+    {450,0,13,13,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     ShotOriginSpec{},aim_fixed_angles(0.f,45.f)},
+    {450,0,13,13,MoveOp::Launch,8.f,0.f,0.f,kGatePowered,0,
+     ShotOriginSpec{},aim_fixed_angles(0.f,45.f)},
 };
 
 // Natsumi weapon 0 (handler 0x5e2af0): the normal ground state400 probe is an
