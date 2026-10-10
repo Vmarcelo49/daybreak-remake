@@ -93,6 +93,8 @@ Nono e décimo combos concluídos 2026-10-09 22:44 (Mion 2: programa `mion2` com
 único e fan triplo; pin do volley Kasai 0 corrigido para 21/31 eventos).
 Décimo primeiro combo concluído 2026-10-09 22:56 (Satoko 0: programa `satoko` com
 salva quíntupla no tap e salvas gêmeas congeladas no charge).
+Décimo segundo combo concluído 2026-10-09 23:06 (Rika 0: programa `rika0` com gêmeos
+no tap e salvas duplas nos charges).
 
 1. **Prioridade**: matriz `shot400_usage` (52 normal + 60 tag em state400) ordena quais combos saem do piloto
    primeiro; cada combo entra com teste, nunca com fallback set 0 silencioso.
