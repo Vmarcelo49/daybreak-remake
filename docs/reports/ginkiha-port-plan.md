@@ -21,6 +21,16 @@ origens/aim, branches/RNG/capacidade, estado/movimento, fechamento de todos os 4
 Revisitar também programas já ligados; “full program” não prova cobertura completa.
 Plano criado; implementação dos mecanismos ainda pendente. Fases 2–5 continuam abertas.
 
+**Atualização 2026-10-10 (entrada 3.0):** os mecanismos compartilhados de tiro avançaram —
+magazines ligados, admissão por linha, contadores de carga, **gate powered recuperado**
+(`byte(+0x845) && word(+0x848)`, hoje um único predicado) e **contadores por movimento com
+congelamento portado** (`MoveOp::Counter` + gates). Consequências: Rika 1 450/460 estava
+**incorreto** e foi corrigido (a salva em T30 dispara 3 vezes dentro de 30 updates
+congelados; lateral ±50; ramo powered 4/7) e Satoko 2 ganhou programa de tap typed-world
+com as duas ramas. Decisões e correções:
+[ginkiha-shooting-architecture.md](ginkiha-shooting-architecture.md). Fases 2–5 seguem
+abertas; nenhum combo declarado completo.
+
 ## Status das fases
 
 | Fase | Estado | Data | Hora de conclusão |
@@ -114,24 +124,27 @@ Décimo quarto combo concluído 2026-10-10 01:56 (Natsumi 0: somente state400 no
 Hide das duas props a partir do tick 14 e row 0 em 14F; callback/registration pinados. Sem claims
 sobre alcance natural das fases, flag bruto, admissão/spawn ou geometria. State402 e cargas permanecem
 abertos).
-Keiichi 0 analisado 2026-10-10: identidade/uso/birth/walk e callback hand-origin pinados; adiado,
-pois FUN_00435220 recebe a matriz de Bip01_R_Hand e o port só oferece Launch via Prop1. Não simular
-o callback com origem/row incertos. Keiichi 1 audit concluído 2026-10-10 10:40 (São Paulo): actor01 + item018, swap8,
+Keiichi 0 analisado 2026-10-10: identidade/uso/birth/walk e callback hand-origin pinados; adiado.
+O novo tipo `NamedBone` descreve a origem de mão, mas falta witness do rig posado e o mapeamento
+callback/row ainda precisa ser reconciliado. Não simular o callback com origem/row incertos.
+Keiichi 1 audit concluído 2026-10-10 10:40 (São Paulo): actor01 + item018, swap8,
 handler/vtable 0x473610/0x6a4f28, walk0x473a5a, birth30/turn0.1 pinados. State400:
 normal slot0/tag slot1, uma requisição hand-origin em 13F por fase forçada. Corpos400/402
 usam Bip01_R_Hand; 450/460 fazem duas requisições world-origin em 20F (operandos brutos
-9 + 2/3), com XYZ/yaw/pitch calculados e alturas +40/+20. Nenhum subconjunto de firing
-cabe no Launch atual; regras de movimento isoladas não justificam binding que omita os
-tiros. Mantido sem MoveProgram. Gate: rebuild Linux + CTest 65/65; tables387/fighter637,
+9 + 2/3), com XYZ/yaw/pitch calculados e alturas +40/+20. Typed origins já podem carregar
+essas famílias, mas as fórmulas do corpo, o mapeamento dos rows e o pitch dinâmico ainda não
+estão ligados ao MoveProgram. Mantido sem MoveProgram. Gate anterior: rebuild Linux + CTest 65/65; tables387/fighter637,
 zero falhas. Satoko 2 foi auditada em seguida (abaixo).
 Satoko 2 audit concluído 2026-10-10 10:48 (São Paulo): actor02 + item038, swap12,
 handler/vtable 0x4bc040/0x6a4fc8, walk0x4bc47f. State400 normal slot0/tag slot1:
 duas requisições world-origin em 20F por fase forçada. Corpos400/402 usam forward100,
 lateral ±50, altura70 e pitch derivado do scratch; 450/460 usam phase1/tick6, forward100,
 lateral0/altura70, operandos brutos4/5. As cargas congelam o clock dez updates em tick26.
-Sem MoveProgram: Launch não preserva XYZ/pitch calculados. Fixture real confirma item38,
+O novo contrato typed carrega XYZ e aim, mas ainda faltam estado de seleção +0x300/hold +0x848,
+offset de movimento, conversão scratch e eventos de contador para ligar o corpo. Fixture real confirma item38,
 quinze registros e dois meshes vazios. Gate: rebuild Linux + CTest 65/65; tables398/fighter650,
-zero falhas. Próximo: Tomitake 0, com recon e body audit.
+zero falhas. Próximo: implementar a seleção/hold de mira separada do combat lock conforme
+`ginkiha-blockers-plan.md`, então ligar as branches medidas de Satoko 2.
 
 1. **Prioridade**: matriz `shot400_usage` (52 normal + 60 tag em state400) ordena quais combos saem do piloto
    primeiro; cada combo entra com teste, nunca com fallback set 0 silencioso.

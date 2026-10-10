@@ -1,9 +1,11 @@
 # Shooting coverage ledger — all 46 combos
 
-Initial snapshot: 2026-10-10. Companion: [blocker plan](ginkiha-blockers-plan.md).
+Initial snapshot: 2026-10-10. Companion: [blocker plan](ginkiha-blockers-plan.md),
+[architecture decisions](ginkiha-shooting-architecture.md).
 
-**Completion: 0/46 audited complete.** The 15 bound schedules below still require full
-path verification. No absence of a generated body proves that a path is absent.
+**Completion: 0/46 audited complete; 1/46 has a first typed-world program (Satoko 2 tap).** The 16 bound
+schedules below still require full path verification. No absence of a generated body proves that a path
+is absent.
 
 Each ground/air cell is `normal binding / powered audit`. `400?` means state400 is
 bound but source, origin/aim, branch/RNG, ammo/admission, motion/clocks, projectile behavior
@@ -24,7 +26,7 @@ follow-on/EX states remain pending for every combo, not implicitly N/A.
 | Keiichi 2 | 9 / 34 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 18 |
 | Satoko 0 | 10 / 8 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 18 |
 | Satoko 1 | 11 / 17 | — / P | — / P | — / P | — / P | — / P | — / P | 18 |
-| Satoko 2 | 12 / 38 | — / P | — / P | — / P | — / P | — / P | — / P | 18 |
+| Satoko 2 | 12 / 38 | 400 twin world, gate-bound / rows 1 powered | 402 twin world, gate-bound / rows 1 powered | — / P | — / P | — / P | — / P | 18 |
 | Rika 0 | 13 / 7 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 20 |
 | Rika 1 | 14 / 19 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 19 |
 | Rika 2 | 15 / 37 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 19 |
@@ -60,13 +62,30 @@ follow-on/EX states remain pending for every combo, not implicitly N/A.
 | Natsumi 0 | 45 / 29 | 400? / P | — / P | — / P | — / P | — / P | — / P | 24 |
 | Natsumi 1 | 46 / 30 | — / P | — / P | — / P | — / P | — / P | — / P | 16 |
 
-## Shared capability update — 2026-10-10
+## Shared capability update — 2026-10-10 (gates and counters)
 
 Bound magazines, row-selected admission and charge counters are live. A programmed
 selection no longer spends ammo; callbacks consume their own row, with negative-index
 bypass and no refund on pool failure. HUD/bot reads share that stock. The request FIFO
 can grow; global32 projectile capacity, geometry, branches/RNG and shot counters remain
 pending. The cells above are still pending per-path audit; no combo has been promoted.
+
+Two more shared capabilities landed with this snapshot:
+
+- **The powered gate.** `byte(+0x845) && word(+0x848)` is now one port predicate
+  (`Fighter::shoot_gate_powered()`): the Oyashiro special armed byte plus the ally hold the
+  scene publishes from `TargetLocks`. Both branches of a body can now be bound, and the
+  port no longer has to skip every tag/powered secondary. 514 of the 841 shoot bodies read
+  this gate. A Friendship/Kakera fighter, and any 1v1 fighter, never takes it — source
+  behavior, not a gap.
+- **Per-move counters and gated freezes.** `MoveOp::Counter`/`CounterSet` plus
+  `kGateCounter*` reproduce counter-gated salvos and clock freezes. Rika 1's 450/460 was
+  the first repair: its tick-30 salvo fires three times over a 30-update frozen interval
+  (it previously fired once). The same model covers the counter-seeded bodies
+  (`write_scratch(0x3e, 0)` at phase0/tick0) without a universal launch latch.
+
+Still pending for every combo: natural reachability, admission/spawn verification,
+projectile behavior, and the follow-on states.
 
 ## Provenance and resumption
 
@@ -89,7 +108,16 @@ Snapshot inputs (SHA256):
 - `balance-reference/reference-data.json`: `ce2c828b48719e70756c171b09eb22c19df28cea0b8c7dc6cb8afbd9c26e1e2a`.
 - `reference/source/shoot_native_bodies_20260929.hpp`: `2357445053b28b6266ccb86406783e2dc14f0c9e3a32c4b47c34068af44dec9d`.
 - `reference/source/full_charge_native_bodies_20260929.hpp`: `1cc1794b3cd44718051703237198224151b379f292c742ba85226b0a5a41fd4f`.
-- `remake/foundation/src/gameplay/move_behavior.h`: `86428d379f02ba2831cad2aab39d41df1c15245c9952cc81ce57d6af916e2bcc`.
+
+`move_behavior.h` is no longer hash-pinned here: it changes with every slice and the
+recon tool reports its current hash per run, which is the provenance that matters.
+
+Satoko 2's charge bodies (450/460) are measured and pending: phase 1, tick 6, one
+`FUN_00435450` each with forward 100, lateral 0, height +70, rows 4/5 for normal/powered;
+the bodies turn 15 while phase<1, the ground charge decelerates 1.5 to zero, the air
+charge scales horizontal and vertical velocity by 0.25 at phase0/tick0 and applies
+gravity in phase2 after 30F, and both seed a scratch counter at phase0/tick0 and freeze
+clock advancement for ten updates at tick26.
 
 Next: follow the append-only execution log in the blocker plan. When a path changes,
 update its audit dimensions and evidence here; do not promote a whole combo on a binding
