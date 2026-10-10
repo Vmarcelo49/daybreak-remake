@@ -391,6 +391,60 @@ int main() {
     if (chie2) check(chieUpdate == chie2->handler, "bundle dispatch matches kLocomotion (Chie 2)");
     check(walkVa(11, 2) == 0x00566EF7u, "Chie 2 walk site is 0x566ef7 (Fase 2 oracle)");
 
+    // 12. Seventh combo (Kasai 1 = character 12, weapon 1, swap code 38): pins the
+    //    bundle rows Fase 2's Kasai program will consume. His pattern is phase-0-only
+    //    (all other combos span phases 0..5): slots 0 (normal), 1 (tag) and 2 (both)
+    //    fire at frames 10 and 15..24 — 11 pairs each, 44 total. The traces fire twin
+    //    rows 2+0 only in variant 0. Two births are sampled (slot 0 speed 34.75 turn
+    //    0.76, slot 10 speed 39.75 turn 1.26).
+    const ginkiha::BirthProfile* kasai = findBirth(12, 1, 0);
+    check(kasai != nullptr, "Kasai 1/0 birth profile exists");
+    if (kasai) {
+        check(kasai->swap_code == 38, "Kasai 1 maps to swap code 38");
+        check(kasai->speed == 34.75f, "Kasai 1/0 birth speed 34.75");
+        check(kasai->turn_birth > 0.759f && kasai->turn_birth < 0.761f,
+              "Kasai 1/0 birth turn 0.76");
+    }
+    const ginkiha::BirthProfile* kasai10 = findBirth(12, 1, 10);
+    check(kasai10 != nullptr, "Kasai 1/10 birth profile exists");
+    if (kasai10) {
+        check(kasai10->speed == 39.75f, "Kasai 1/10 birth speed 39.75");
+        check(kasai10->turn_birth > 1.259f && kasai10->turn_birth < 1.261f,
+              "Kasai 1/10 birth turn 1.26");
+    }
+    int kasaiPairs = 0;
+    bool kasaiShape = true;
+    for (int i = 0; i < ginkiha::kShotFireRecordCount; ++i) {
+        const ginkiha::ShotFireRecord& entry = ginkiha::kShotFireRecord[i];
+        if (entry.character == 12 && entry.weapon == 1 && entry.slot == 0 && !entry.tag) {
+            ++kasaiPairs;
+            if (entry.phase != 0) kasaiShape = false;
+            if (entry.frame != 10 && (entry.frame < 15 || entry.frame > 24)) kasaiShape = false;
+        }
+    }
+    check(kasaiPairs == 11, "Kasai 1/0 usage holds 11 fire records");
+    check(kasaiShape, "Kasai 1/0 usage shape is phase 0 only, frames 10 and 15..24");
+    check(traceFireFrame(12, 1, 0, false) == 10, "Kasai 1/0 trace opens at 10F");
+    check(traceFireEvents(12, 1, 0, false) == 22, "Kasai 1/0 trace holds 22 twin events");
+    bool kasaiSilent = true;
+    for (int v = 1; v < 6; ++v) {
+        if (traceFireFrame(12, 1, v, false) != -1) kasaiSilent = false;
+    }
+    check(kasaiSilent, "Kasai 1/0 other variants record no fire");
+    unsigned int kasaiUpdate = 0;
+    for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
+        if (ginkiha::kDispatchIdentity[i].character == 12 &&
+            ginkiha::kDispatchIdentity[i].weapon == 1)
+            kasaiUpdate = ginkiha::kDispatchIdentity[i].update;
+    }
+    check(kasaiUpdate == 0x005B9680u, "Kasai 1 dispatch update is 0x5b9680");
+    const gameplay::LocomotionDefinition* kasai1 = nullptr;
+    for (const gameplay::LocomotionDefinition& entry : gameplay::kLocomotion) {
+        if (entry.character == 12 && entry.slot == 1) kasai1 = &entry;
+    }
+    if (kasai1) check(kasaiUpdate == kasai1->handler, "bundle dispatch matches kLocomotion (Kasai 1)");
+    check(walkVa(12, 1) == 0x005B9B16u, "Kasai 1 walk site is 0x5b9b16 (Fase 2 oracle)");
+
     // 6. Independent-recovery agreement for the pilot's ground tap: move_behavior.h's
     //    nata program launches item row 0 at tick 12 with citations into FUN_0044xxxx;
     //    the bundle's shot400 usage says the same slot fires at frame 12 in every phase.
