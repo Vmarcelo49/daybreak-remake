@@ -76,6 +76,8 @@ o segundo também calibrou o predicado verde do `hud_view_geometry`, que nunca h
 medido um anel aliado).
 Segundo combo concluído 2026-10-09 21:03 (Rika 1: programa `rika` com rajada de 15 ticks
 pares + salvas gêmeas T10/T30 + caso de teste; rows do tap resolvidas via tabela do item).
+Terceiro combo concluído 2026-10-09 21:20 (Tomitake 2: programa `tomitake` com tiros
+gêmeos 7+5 a cada 3 ticks + freeze-then-fire no charge; rows via trace fire_attachment).
 
 1. **Prioridade**: matriz `shot400_usage` (52 normal + 60 tag em state400) ordena quais combos saem do piloto
    primeiro; cada combo entra com teste, nunca com fallback set 0 silencioso.
