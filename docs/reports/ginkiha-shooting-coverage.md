@@ -15,9 +15,9 @@ follow-on/EX states remain pending for every combo, not implicitly N/A.
 
 | Combo | Swap / item | Tap ground | Tap air | Charge 1 ground | Charge 1 air | Charge 2 ground | Charge 2 air | Available body count |
 |---|---|---|---|---|---|---|---|---|
-| Rena 0 | 1 / 1 | 400? / P | 402? / P | 450? / P | 460? / P | 360? / P | 370? / P | 1 |
-| Rena 1 | 2 / 3 | 400? / P | — / P | 450? / P | — / P | — / P | — / P | 0 |
-| Rena 2 | 3 / 33 | — / P | — / P | — / P | — / P | — / P | — / P | 0 |
+| Rena 0 | 1 / 1 | 400 attach, gate-bound / rows 6 powered | 402 attach, gate-bound / rows 7 powered | 450 attach, gate-bound / rows 8 powered, fixed 45° | 460 attach, gate-bound / rows 8 powered, fixed 45° | 360 world 11/12 / no branch split | 370 world 11/12 / no branch split | 1 |
+| Rena 1 | 2 / 3 | 400 attach fan 12–26, gate-bound / rows 3 powered | — / P | 450 attach, gate-bound / rows 8 powered, fixed 45° | — / P | — / P | — / P | 0 |
+| Rena 2 | 3 / 33 | 400 attach + 10 world @35, RNG-blocked | — / P | — / P | — / P | — / P | — / P | 0 |
 | Mion 0 | 4 / 2 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 30 |
 | Mion 1 | 5 / 4 | — / P | — / P | — / P | — / P | — / P | — / P | 30 |
 | Mion 2 | 6 / 35 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 24 |

@@ -627,3 +627,33 @@ typed programs (Satoko 2 tap, Keiichi 0, Keiichi 1) + 3 deferred + 25 TODO.
 **Next:** Kasai 0 as the first C++ handler with the pool audit (21/31 requests, spread,
 global-32 capacity), then the roster families. The latched-pitch, snap-pitch and
 range-pitch mechanisms are expected to recur — keep using them.
+
+### 2026-10-10 — 3.5 Ledger order: Rena 0 powered branches, Rena 1 fan, Rena 2 RNG-blocked
+
+**Done — Rena 0 audited and extended** (handler 0x43ffc0): every launch site was gated on
+the recovered predicate and every powered row was missing. Tap 400 rows 0/6, air tap 402
+rows 1/7, charge 450/460 rows 2/8 (all `FUN_00434fd0` = slot-0 attachment) are now
+gate-bound. The charge pitch is a **fixed 45° constant** (`0x42340000`), not the scratch —
+`FixedAngles` carries it and the old `pitch 45` adapter value is replaced. The 360/370
+freeze is counter-gated (init 0, +1, release at 10) like Rika's, replacing the plain
+`Hold 10` — 22 updates to clear tick 13, witnessed by draining the interval.
+
+**Done — Rena 1 audited and extended** (runtime source, not a body): the tap is a
+**15-roll fan at frames 12..26** (row 1 normal / 3 powered), not a single frame-18
+anchor — the earlier note read the ground-phase helper only. The fan is bound per-frame
+with the row split; its per-shot `draw()%10` spread stays an explicit gap. The 450 charge
+is the single fixed-45 attachment shot (rows 2/8). 402/460/360/370 stay unbound.
+
+**Done — Rena 2 audited and documented as blocked**: no body exists at all; the handler
+`FUN_00438310.c` gives a fully measured state400 volley at phase 1 tick 35 — one
+attachment row 0/2 plus ten world rows 1/3, each with pitch `rng()%30+20`, yaw
+`heading+offset+90 − rng()%180` and a 200-forward/+30-high position. The EXE trace
+confirms 11 requests but the harness fixes the RNG, so all ten rows read identical
+coordinates. **Deliberately not bound**: without a per-shot draw the program would fire
+ten stacked projectiles, which the completion contract forbids. It is a one-step port once
+Kasai 0's deterministic shooting RNG lands — same blocker, same queue.
+
+**Verified:** full rebuilt Linux CTest **65/65 (168.55 s)**, fighter suite 905 checks 0
+failures (Rena 0/1 rewrote the 27-section test; 37 new powered/freeze checks), recon six
+tests passed, Windows and web cross-builds passed, live 2-player battle smoke RESULT ok.
+No roster expansion; ledger rows and the handoff scoreboard updated.

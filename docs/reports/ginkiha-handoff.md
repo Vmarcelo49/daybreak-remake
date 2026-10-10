@@ -87,8 +87,8 @@ Phases 2–5 are done; do not mark complete early.
 
 | Combo | Handler | Program | Shape (tap / charge) | Test |
 |---|---|---|---|---|
-| Rena 0 | 0x43ffc0 | rena (pre-existing) | anchor 12F; jump-cancel 400@20 | pilot cancel + cross-checks |
-| Rena 1 | 0x448220 | rena1 (normal schedule subset) | 400 row 6 @18; 450 row 1 @12–26 | tap + charge schedule |
+| Rena 0 | 0x43ffc0 | rena (pre-existing, now gate-bound + counter freezes) | 400 rows 0/6 @12; 402 rows 1/7 @13; 450/460 rows 2/8 fixed 45°; 360/370 rows 11/12 | powered branches on every site + freeze |
+| Rena 1 | 0x448220 | rena1 (runtime-source path, now gate-bound) | 400 fan frames 12–26 rows 1/3; 450 row 2/8 fixed 45° @13 | tap fan both branches + fixed-pitch charge |
 | Akane 2 | 0x5a7ea0 | deferred: typed world origin exists; body calculations/branch are unbound | 400 row 0 @10; powered adds row 1 @15 | callback pins only; no program |
 | Satoko 2 | 0x4bc040 | **satoko2: typed-world twin tap, normal/powered gate** | 400/402 twin world rows 0/1 @20; 450/460 phase1 @6 still pending | table + item38 fixture pins; twin-world + gate test |
 | Keiichi 1 | 0x473610 | **keiichi1: hand tap + world charges, gate-bound** | 400/402 hand R @13 rows 0/1; 450/460 world @20 rows 9+2/3 | tap + charge, both branches |
@@ -118,7 +118,7 @@ below for context). Resume at Tomitake 0. Verify body and origin mapping before 
 
 | Combo | Usage pairs | Note |
 |---|---|---|
-| Rena 1 (ch=0 we=1) | 18 | landed as normal schedule subset; runtime-source path (not a reference body); geometry gaps noted below |
+| Rena 1 (ch=0 we=1) | 18 | **bound**: tap fan frames 12–26 rows 1/3 + fixed-45 charge rows 2/8; spread yaw/pitch and 402/460 unbound |
 | Akane 2 (ch=13 we=2) | 18 | pinned; typed origin/aim fields now exist; body-computed XYZ/yaw/pitch and branch are not connected to a program |
 | Natsumi 0 (ch=15 we=0) | 18 | landed as normal ground 400 row-0 schedule subset; 402/boost and world-charge paths remain unbound |
 | Keiichi 0 (ch=2 we=0) | 12 | **bound**: hand tap + left-hand/attachment charges, both branches, snap pitch on air |
@@ -140,7 +140,7 @@ below for context). Resume at Tomitake 0. Verify body and origin mapping before 
 | Hanyu 1 (ch=14 we=1) | 12 | only 2 weapons for ch14/15 (not 3) |
 | Natsumi 1 (ch=15 we=1) | 12 | only 2 weapons for ch14/15 (not 3) |
 | Akasaka 0 (ch=9 we=0) | 8 | |
-| Rena 2 (ch=0 we=2) | 4 | |
+| Rena 2 (ch=0 we=2) | 4 | RNG-blocked: state400's 11-request volley needs per-shot spread; see defer note below |
 | Mion 1 (ch=1 we=1) | 4 | |
 | Shion 1 (ch=5 we=1) | 4 | |
 | Ohishi 1 (ch=8 we=1) | 3 | thinnest usage of the roster — expect sparse rules |
@@ -151,6 +151,10 @@ below for context). Resume at Tomitake 0. Verify body and origin mapping before 
 | Satoko 1 (ch=3 we=1) | 0 | no usage rows at all — bodies-only port, extra care |
 
 Rena 1 blocker / scope note (runtime-source path, not full body parity): `reference/source/shoot_native_bodies_20260929.hpp` contains no `shoot_body_0_1_*`; the separately verified `runtime/DaybreakRebuild-20261010.zip` source has `battle_rena_ground_shot.hpp:45-54` (400 normal row 6 @18) and `battle_rena_mobile_shooting.hpp:178-189` (450 normal row 1 @12-26). The port schedules only those normal fixed-row events. State402's conditional phase-2 jump, 450/460 RNG spread, all 460 air behavior, and 360/370 fixed-pitch second charge need state/trajectory operations absent from MoveRule and remain deliberately unbound; this is a documented scope limit, not a guessed implementation. Runtime archive identity: `reference/source-provenance.json` SHA256 `0c98eba7…`.
+
+Rena 1 update (2026-10-10, ledger slice): the runtime source is richer than that first note and is now fully bound. `battle_rena_mobile_shooting.hpp:181-184` requests **one shot per frame 12..26 (15 rolls)** on state400 — row 1 normal / row 3 powered — with yaw `scratch_ec-30` and pitch from a `draw()%10`; the fan is bound per-frame with the row split, while the spread stays an explicit gap because there is no per-tick draw service. Line 187 (`bullet(special?8:2,0,45)`) makes the 450 charge a single **fixed-45** attachment shot, now bound with its powered row. State402's grounded phase jump and 460 air behavior still need phase/trajectory ops; 360/370 have no evidence in the runtime source.
+
+Rena 2 defer note (2026-10-10, ledger slice): no `shoot_body_0_2_*` exists in either body header, so the handler `FUN_00438310.c` is the only source. Its state400 body is fully measured and **deliberately left unbound on one blocker**: at phase 1 tick 35 it emits `FUN_00434fd0(0,0,0,0)` (attachment slot 0, row 0 normal / row 2 powered, zero yaw/pitch) and then loops **ten times** requesting `FUN_00435450(row 1 normal / row 3 powered, ...)` where each shot's pitch is `rng()%30 + 20`, its yaw is `heading + movement offset + 90 − rng()%180`, and its position is 200 forward / +30 height on that yaw. The EXE trace (`roster-ground-shot400-continuity-extended.jsonl`, phase 1 frame 35) confirms 11 requests — 1 attachment + 10 world, rows 0/1 normal and 2/3 powered — but the harness fixes the RNG and stubs the actor, so all ten world rows read the same `(0,30,0,85,25)`; the real spread is per-shot. Binding this now would fire ten **stacked identical** projectiles, which is an approximation the completion contract forbids. Unbind it until the deterministic shooting RNG of Kasai 0's slice exists, then this is a one-step port. No 402/450/460/360/370 evidence exists for this combo either.
 
 Akane 2 defer note (2026-10-10): pinned handler identity/update, usage and origin-counted state400 callbacks; no MoveProgram was bound. Bodies 400/402/450/460 use `FUN_00435450` with explicit world coordinates. Typed origin/aim specs now allow world XYZ and legacy angles, but the body calculations, powered branch and dynamic runtime inputs are not connected to a schedule; callback probes also do not prove admission/spawn. Normal/powered probes record one world request at frame 10; powered adds one at 15 across six forced phases.
 
@@ -249,10 +253,10 @@ Verification: rebuilt Linux tree; `ginkiha_tables_test` 398 checks / 0 failures,
 (162.92 s). The shared origin-pin loop now covers Keiichi 0/1 and Satoko 2 without
 duplicating the catalog/usage/trace scans. Unrelated Windows work remains uncommitted.
 
-Scoreboard: 13 full programs + 2 schedule subsets (Rena 1, Natsumi 0) + 3 partial typed
-programs (Satoko 2 tap, Keiichi 0, Keiichi 1) + 3 pinned/deferred (Kasai 0, Shion 0,
-Akane 2) + 25 remaining TODO = 46 roster combos. A program is a schedule, not coverage:
-see the ledger for per-path state.
+Scoreboard: 13 full programs + 4 partial typed/schedule programs (Rena 0 powered
+branches, Rena 1, Natsumi 0, Satoko 2 tap, Keiichi 0, Keiichi 1) + 3 pinned/deferred
+(Kasai 0, Shion 0, Akane 2) + 25 remaining TODO = 46 roster combos. A program is a
+schedule, not coverage: see the ledger for per-path state.
 
 ## 6. Engine mechanisms you must know (all in `src/gameplay/`)
 
