@@ -106,6 +106,7 @@ TestCombo g_keiichiCombo;
 TestCombo g_chieCombo;
 TestCombo g_kasaiCombo;
 TestCombo g_takanoCombo;
+TestCombo g_irieCombo;
 
 std::filesystem::path findInstall(const char* executable) {
     const int itemId = gameplay::kWeaponIds[0][0];
@@ -2240,6 +2241,63 @@ void test_chie_scratch_burst() {
     check_int("Chie charge selects item row two", 2, shot.bulletRow);
 }
 
+void test_irie_twin_tap() {
+    section("22. Irie 1 twin tap + single charge (bodies shoot_body_10_1_*)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_irieCombo.load(install, 10, 1))
+        return skip_case("Irie 1 combo");
+    // Bundle evidence: Irie 1 (handler 0x57f600) fires twin rows 0+1 at tick 12 in
+    // the ground tap (tag adds rows 2+3 — no flag field, skipped), and a single row-4
+    // salvo at tick 22 in the first ground charge (tick 17 air charge — same rule
+    // shape, untested here like the other air paths).
+    // Her program is kIrieRules; the second charge stays provisional.
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_irieCombo.bind(f);
+    settle(f);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Irie tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    check_int("Irie tap binds move 400", 400, f.shot_move_id());
+    for (int i = 0; i < 12; ++i) tick(f, in);
+    gameplay::PendingShot first = f.take_pending_shot();
+    gameplay::PendingShot second = f.take_pending_shot();
+    check_bool("Irie tap T12 salvo fires twice", true, first.armed && second.armed);
+    check_int("Irie T12 first row is 0", 0, first.bulletRow);
+    check_int("Irie T12 second row is 1", 1, second.bulletRow);
+    // First charge: hold past the yellow threshold (level-1 chargeMax 60).
+    Fighter g;
+    g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_irieCombo.bind(g);
+    settle(g);
+    const float irieYellow = static_cast<float>(
+        g_irieCombo.weapon.magazineForChargeLevel(1).chargeMax) /
+        gameplay::FixedStep::tickRate;
+    float irieHeld = 0.0f;
+    int irieYellowFrames = 0;
+    while (irieHeld < irieYellow && irieYellowFrames < 10000) {
+        irieHeld += kStep;
+        ++irieYellowFrames;
+    }
+    in.set(fnd::input::Action::Shoot, true);
+    for (int i = 0; i < irieYellowFrames; ++i) tick(g, in);
+    check_int("Irie hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
+              static_cast<int>(g.charge_tier()));
+    in.set(fnd::input::Action::Shoot, false);
+    tick(g, in);
+    check_int("Irie charge enters ShootB", static_cast<int>(FighterState::ShootB),
+              static_cast<int>(g.state()));
+    check_int("Irie charge binds move 450", 450, g.shot_move_id());
+    for (int i = 0; i < 22; ++i) tick(g, in);
+    gameplay::PendingShot shot = g.take_pending_shot();
+    check_bool("Irie charge launches at tick 22", true, shot.armed);
+    check_int("Irie charge selects item row four", 4, shot.bulletRow);
+}
+
 void test_kasai_twin_burst() {
     section("22. Kasai 1 twin burst + fan charge (bodies shoot_body_12_1_*)");
     const auto install = findInstall(nullptr);
@@ -2636,6 +2694,7 @@ int main(int argc, char** argv) {
     test_chie_scratch_burst();
     test_kasai_twin_burst();
     test_takano_triple_tap();
+    test_irie_twin_tap();
     test_ammo();
     test_hypermode();
     test_ko();

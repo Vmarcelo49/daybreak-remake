@@ -455,6 +455,33 @@ inline constexpr MoveRule kKasaiRules[] = {
     {460,-1,17,17,MoveOp::Launch,4.f,0.f,40.f},
     {460,-1,17,17,MoveOp::Launch,4.f,0.f,40.f},
 };
+// Irie weapon 1 (handler 0x57f600) — shot rules recovered from the reference bodies
+// shoot_body_10_1_{400,402,450,460} (bundle reference/source). Twin rows 0+1 at tick 12
+// in both taps (tag adds rows 2+3 — no flag field, skipped); single salvos row 4 at
+// tick 22 (450) and tick 17 (460). Hide windows carry slot 0 only (slot-1 halves have
+// no field). Gravity tails and one-shot velocity sets have no MoveRule op — skipped.
+inline constexpr MoveRule kIrieRules[] = {
+    // 400 ground tap: 20 deg turn ticks 0-11, bleed 0.5/tick, twin rows 0+1 at 12.
+    {400,-1,0,11,MoveOp::Turn,20.f},
+    {400,-1,0,9999,MoveOp::Decelerate,.5f},
+    {400,-1,12,12,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,12,12,MoveOp::Launch,1.f,0.f,40.f},
+    // 402 air tap: same shape (turn via dc20), no bleed.
+    {402,-1,0,11,MoveOp::Turn,20.f},
+    {402,-1,12,12,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,12,12,MoveOp::Launch,1.f,0.f,40.f},
+    // 450 ground charge1: 10 deg turn through tick 19, bleed 0.25/tick, Hide slot 0
+    // ticks 0-21, single salvo row 4 at tick 22.
+    {450,-1,0,19,MoveOp::Turn,10.f},
+    {450,-1,0,9999,MoveOp::Decelerate,.25f},
+    {450,-1,0,21,MoveOp::Hide,0.f},
+    {450,-1,22,22,MoveOp::Launch,4.f,0.f,30.f},
+    // 460 air charge1: 15 deg turn through tick 14, Hide slot 0 ticks 0-16,
+    // single salvo row 4 at tick 17.
+    {460,-1,0,14,MoveOp::Turn,15.f},
+    {460,-1,0,16,MoveOp::Hide,0.f},
+    {460,-1,17,17,MoveOp::Launch,4.f,0.f,40.f},
+};
 inline const MoveProgram* move_program(const CharacterMoves* moves) {
     const auto* binding = locomotion(moves);
     if (!binding) return nullptr;
@@ -495,8 +522,12 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     // Kasai 1: same unbound second charge (bodies 451-454/469 exist but unscoped).
     static constexpr MoveProgram kasai = {kKasaiRules, std::size(kKasaiRules),
                                           {{400,402},{450,460},{-1,-1}}};
+    // Irie 1: same unbound second charge (no 360/370 body for ch10 in scope).
+    static constexpr MoveProgram irie = {kIrieRules, std::size(kIrieRules),
+                                        {{400,402},{450,460},{-1,-1}}};
     if (binding->handler == 0x566a40) return &chie;
     if (binding->handler == 0x5b9680) return &kasai;
+    if (binding->handler == 0x57f600) return &irie;
     if (binding->handler == 0x531ce0) return &takano;
     return nullptr;
 }
