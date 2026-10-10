@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gameplay/weapon_definition.h"
+#include "gameplay/shot_launch.h"
 #include <iterator>
 
 namespace gameplay {
@@ -46,13 +47,41 @@ inline const LocomotionDefinition* locomotion(const CharacterMoves* moves) {
     return nullptr;
 }
 
-enum class MoveOp { Speed, Decelerate, Turn, Approach, Launch, Hold, ActionCamera, Hide, Active };
+// Rule gates — source-verified predicates, evaluated when the owning rule runs. A rule
+// whose gate fails is skipped exactly like a rule outside its tick window, so a gate
+// never has to be duplicated into the first/last fields.
+//   kGatePowered / kGateNormal — the two halves of the `byte(+0x845) && word(+0x848)`
+//     idiom. A body that fires a different row per half pairs its rules so exactly one
+//     side runs; 514 of the 841 shoot bodies read the gate and the usage catalog's
+//     "tag"/"special" variant is the powered half.
+//   kGateCounter / kGateCounterMod / kGateCounterBelow — the move's own counter
+//     (MoveOp::Counter), for the counter-gated salvos such as Rika 1's tick-30 pair
+//     (`0x3e % 10 == 0`) and the freeze that ends when the counter reaches 60.
+//     gateValue carries the modulus or the bound; 0 disables the test.
+enum MoveGate : unsigned {
+    kGateNone         = 0,
+    kGatePowered      = 1u << 0,
+    kGateNormal       = 1u << 1,
+    kGateCounter      = 1u << 2,
+    kGateCounterMod   = 1u << 3,
+    kGateCounterBelow = 1u << 4,
+};
+
+enum class MoveOp { Speed, Decelerate, Turn, Approach, Launch, Hold, ActionCamera, Hide,
+                    Active, Counter, CounterSet };
+// Aggregate order is part of the contract: the tables are positional literals, so the
+// fields every rule might set (move/phase/first/last/op/value/second/third/gate/
+// gateValue) come before the two spec objects only world-style Launch rules carry.
 struct MoveRule {
     int move, phase, first, last;
     MoveOp operation;
     float value;
     float second = 0.f;
     float third = 0.f;
+    unsigned gate = kGateNone;
+    int gateValue = 0;  // kGateCounterMod modulus / kGateCounterBelow bound
+    ShotOriginSpec origin{};
+    ShotAimSpec aim{};
 };
 
 // Original FUN_0043ffc0. Inclusive tick intervals; phase -1 means all phases.
@@ -228,12 +257,14 @@ inline constexpr MoveRule kMionRules[] = {
 // shoot_body_4_1_{400,402,450,460} (bundle reference/source). Her tap is a repeating
 // schedule, not a single anchor: the bodies fire while (tick>11 && scratch<30) on even
 // scratch ticks, i.e. ticks 12,14,...,40 (15 shots; usage matrix agrees per phase).
-// Our rule model has no modulo, so the window is written as 15 explicit tick rules —
-// verbose but exact; each matches one measured fire tick. Row 0 for the tap window is
-// established through the item table (usage slot 0 = registration file 0), not the body
-// (whose 004230e0 call carries no row). Charge rows 2/5 (tick 10) and 3/6 (tick 30)
-// are explicit in the bodies; aim-only rows 4/7 have no flag field here and are skipped.
-// No Hide rules: the prop calls' 2/3/-1 semantics are illegible (bundle RESPONSE §2).
+// A counter gate would express that window directly; the 15 explicit tick rules are
+// kept because they are already verified and the window's counter starts at tick 12,
+// not at move entry. Row 0 for the tap window is established through the item table
+// (usage slot 0 = registration file 0), not the body (whose 004230e0 call carries no
+// row). The charges' tick-10 pair (rows 2/5) fires in BOTH branches; the tick-30 pair
+// is rows 3/6 normally and 4/7 powered, counter-gated and repeated by the freeze — see
+// the 450 block below for the line citations. No Hide rules: the prop calls' 2/3/-1
+// semantics are illegible (bundle RESPONSE §2).
 inline constexpr MoveRule kRikaRules[] = {
     // 400 ground tap: 15 deg turn ticks 0-14 (L21764-67), phase-0 bleed (L21768-71).
     {400,-1,0,14,MoveOp::Turn,15.f},
@@ -270,23 +301,91 @@ inline constexpr MoveRule kRikaRules[] = {
     {402,-1,36,36,MoveOp::Launch,0.f,0.f,40.f},
     {402,-1,38,38,MoveOp::Launch,0.f,0.f,40.f},
     {402,-1,40,40,MoveOp::Launch,0.f,0.f,40.f},
-    // 450 ground charge1: 18 deg turn through tick 9 (L23485-88).
+    // 450 ground charge1: 18 deg movement-preserving turn through tick 9
+    // (L23458-60), horizontal bleed 0.5/tick clamped at 0 (L23451-55), plus the
+    // powered-only 0.1 deg turn while tick < 51 (L23462-65).
     {450,-1,0,9,MoveOp::Turn,18.f},
-    // 450 twin salvos, no-aim primary branch: rows 2+5 at tick 10 (L23495-548),
-    // rows 3+6 at tick 30 (L23549-577); ~30-tick freeze at tick 30 (L23666-70).
-    {450,-1,10,10,MoveOp::Launch,2.f,0.f,40.f},
-    {450,-1,10,10,MoveOp::Launch,5.f,0.f,40.f},
-    {450,-1,30,30,MoveOp::Launch,3.f,0.f,40.f},
-    {450,-1,30,30,MoveOp::Launch,6.f,0.f,40.f},
-    {450,-1,30,30,MoveOp::Hold,30.f},
-    // 460 air charge1: same twin-salvo shape (L23750-803, L23804-832, L23921-24).
+    {450,-1,0,9999,MoveOp::Decelerate,.5f},
+    {450,-1,0,50,MoveOp::Turn,.1f,0.f,0.f,kGatePowered},
+    // The body seeds a scratch counter at phase0/tick0 (L23446-50) and increments it
+    // once per update AFTER the fire checks (L23639), so the counter equals the phase
+    // tick until the freeze pins the clock.
+    {450,0,0,0,MoveOp::CounterSet,0.f},
+    // tick 10 twin pair — rows 2 (+50) and 5 (-50) in BOTH branches (L23507-123).
+    {450,-1,10,10,MoveOp::Launch,2.f,50.f,40.f},
+    {450,-1,10,10,MoveOp::Launch,5.f,-50.f,40.f},
+    // tick 30 salvo: rows 3/6 normal (L23536-149), rows 4/7 powered (L23623-236),
+    // each gated on `counter > 0 && counter % 10 == 0` (L23534/L23620).
+    {450,-1,30,30,MoveOp::Launch,3.f,50.f,40.f,kGateCounter|kGateCounterMod,10},
+    {450,-1,30,30,MoveOp::Launch,6.f,-50.f,40.f,kGateCounter|kGateCounterMod,10},
+    {450,-1,30,30,MoveOp::Launch,4.f,50.f,40.f,kGatePowered|kGateCounter|kGateCounterMod,10},
+    {450,-1,30,30,MoveOp::Launch,7.f,-50.f,40.f,kGatePowered|kGateCounter|kGateCounterMod,10},
+    // The freeze: the body returns before write_clock while the post-increment
+    // counter is below 60 (L23639-243), which pins the tick at 30 for exactly 30
+    // updates. The counter rule must precede this one so the gate reads the
+    // post-increment value; the tick-30 salvo then fires at counter 30, 40 and 50 —
+    // three pairs, not the single pair the previous rules claimed.
+    {450,0,0,9999,MoveOp::Counter,1.f},
+    {450,0,30,30,MoveOp::Hold,9999.f,0.f,0.f,kGateCounterBelow,60},
+    // 460 air charge1: identical row schedule in the same two branches (L23744-232);
+    // it clears the horizontal/vertical/gravity channels at phase0/tick0 instead of
+    // bleeding, which has no MoveRule op and stays an explicit gap.
     {460,-1,0,9,MoveOp::Turn,18.f},
-    {460,-1,10,10,MoveOp::Launch,2.f,0.f,40.f},
-    {460,-1,10,10,MoveOp::Launch,5.f,0.f,40.f},
-    {460,-1,30,30,MoveOp::Launch,3.f,0.f,40.f},
-    {460,-1,30,30,MoveOp::Launch,6.f,0.f,40.f},
-    {460,-1,30,30,MoveOp::Hold,30.f},
+    {460,-1,0,50,MoveOp::Turn,.1f,0.f,0.f,kGatePowered},
+    {460,0,0,0,MoveOp::CounterSet,0.f},
+    {460,-1,10,10,MoveOp::Launch,2.f,50.f,40.f},
+    {460,-1,10,10,MoveOp::Launch,5.f,-50.f,40.f},
+    {460,-1,30,30,MoveOp::Launch,3.f,50.f,40.f,kGateCounter|kGateCounterMod,10},
+    {460,-1,30,30,MoveOp::Launch,6.f,-50.f,40.f,kGateCounter|kGateCounterMod,10},
+    {460,-1,30,30,MoveOp::Launch,4.f,50.f,40.f,kGatePowered|kGateCounter|kGateCounterMod,10},
+    {460,-1,30,30,MoveOp::Launch,7.f,-50.f,40.f,kGatePowered|kGateCounter|kGateCounterMod,10},
+    {460,0,0,9999,MoveOp::Counter,1.f},
+    {460,0,30,30,MoveOp::Hold,9999.f,0.f,0.f,kGateCounterBelow,60},
 };
+// Satoko weapon 2 (handler 0x4bc040) — shot rules recovered from the reference bodies
+// shoot_body_3_2_{400,402,450,460} (bundle reference/source). All four bodies request
+// through FUN_00435450 with explicit world coordinates, so a Prop1/attachment program
+// would lose them: item 38 ships two EMPTY attachment meshes and fifteen bullet
+// registrations. The tap pair is the twin at tick 20 — forward 100, lateral -50/+50,
+// height +70, yaw on the legacy heading basis, pitch = target elevation clamped
+// +-40 — firing row 0 normally and row 1 when the powered gate holds. The gate is
+// the roster-wide idiom `byte(+0x845) && word(+0x848)`; see kGatePowered.
+//
+// Still pending for this combo, deliberately NOT inferred: 450/460's phase-1 tick-6
+// single request (row 4 normal / 5 powered) and their charge-side movement — the
+// bodies turn 15 while phase<1, the ground charge decelerates 1.5 to zero, the air
+// charge scales horizontal/vertical velocity by 0.25 at phase0/tick0 and applies
+// gravity in phase2 after 30F, and both initialize a scratch counter at phase0/tick0
+// and freeze clock advancement ten updates at tick26. The state400 world aim also
+// uses heading + the battle movement offset (source_float(0x19)), which this port does
+// not carry, so the fired yaw tracks the heading alone.
+inline constexpr MoveRule kSatoko2Rules[] = {
+    // 400 ground tap: 15 deg movement-preserving turn through tick 19 (L16494-96),
+    // horizontal bleed 0.5/tick clamped at 0 (L16497-16501).
+    {400,-1,0,19,MoveOp::Turn,15.f},
+    {400,-1,0,9999,MoveOp::Decelerate,.5f},
+    // tick 20 twin pair, normal rows then powered rows (L16528-16583).
+    {400,0,20,20,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(-50.f,100.f,70.f),aim_target_elevation(40.f)},
+    {400,0,20,20,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(50.f,100.f,70.f),aim_target_elevation(40.f)},
+    {400,0,20,20,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(-50.f,100.f,70.f),aim_target_elevation(40.f)},
+    {400,0,20,20,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(50.f,100.f,70.f),aim_target_elevation(40.f)},
+    // 402 air tap: 20 deg turn through tick 19 (L16800-802), movement cleared at
+    // tick 0 (L16803-805), same twin pair at tick 20.
+    {402,-1,0,19,MoveOp::Turn,20.f},
+    {402,-1,20,20,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(-50.f,100.f,70.f),aim_target_elevation(40.f)},
+    {402,-1,20,20,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(50.f,100.f,70.f),aim_target_elevation(40.f)},
+    {402,-1,20,20,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(-50.f,100.f,70.f),aim_target_elevation(40.f)},
+    {402,-1,20,20,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(50.f,100.f,70.f),aim_target_elevation(40.f)},
+};
+
 // Tomitake weapon 2 (handler 0x527880) — shot rules recovered from the reference bodies
 // shoot_body_6_2_{400,402,450,460} (bundle reference/source). Twin shots per scheduled
 // tick: rows 7+5 in the tap (row 7 is what the traces record: fire_attachment(0,7,...);
@@ -707,6 +806,12 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     if (binding->handler == 0x43ffc0) return &rena;
     if (binding->handler == 0x4582a0) return &mion;
     if (binding->handler == 0x492f70) return &rika;
+    // Satoko 2 (handler 0x4bc040): the tap pair only. 450/460 stay -1 so the
+    // provisional magazine-scan path keeps serving the charges exactly as before,
+    // which is the documented pending cell for this combo.
+    static constexpr MoveProgram satoko2 = {kSatoko2Rules, std::size(kSatoko2Rules),
+                                             {{400,402},{-1,-1},{-1,-1}}};
+    if (binding->handler == 0x4bc040) return &satoko2;
     if (binding->handler == 0x527880) return &tomitake;
     if (binding->handler == 0x47b940) return &keiichi;
     // Chie 2: same unbound second charge (no 360/370 body for ch11 in scope).

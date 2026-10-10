@@ -2005,10 +2005,21 @@ void test_rika_repeating_tap() {
     check_bool("Rika charge T30 salvo fires twice", true, first.armed && second.armed);
     check_int("Rika T30 first row is 3", 3, first.bulletRow);
     check_int("Rika T30 second row is 6", 6, second.bulletRow);
-    // This samples only the first tick30 visit. The full counter-gated freeze
-    // requires the state-program migration recorded in ginkiha-launch-contracts.md.
-    check_bool("Rika first T30 visit has no third pending request", false,
-               g.take_pending_shot().armed);
+    // The tick-30 salvo is NOT a single visit. shoot_body_4_1_450 gates it on
+    // `counter > 0 && counter % 10 == 0` and returns before write_clock while the
+    // post-increment counter is below 60, so the clock stays pinned at tick 30 for 30
+    // updates and the salvo fires at counter 30, 40 and 50 — three pairs. The pair at
+    // 40 and 50 is what this loop counts; the 29 updates take the counter 31..60.
+    int frozenRequests = 0;
+    for (int i = 0; i < 29; ++i) {
+        tick(g, in);
+        for (gameplay::PendingShot s = g.take_pending_shot(); s.armed;
+             s = g.take_pending_shot())
+            ++frozenRequests;
+    }
+    check_int("frozen interval keeps firing the counter-gated pair", 4, frozenRequests);
+    check_int("freeze releases the clock at counter 60", 31, g.phase_elapsed());
+    check_int("counter ran to 60 over the freeze", 60, g.move_counter());
 }
 
 void test_tomitake_twin_tap() {
@@ -2333,7 +2344,7 @@ void test_shooting_magazine_contract() {
 }
 
 void test_satoko2_world_origin_fixture() {
-    section("30. Satoko 2 item 38 fixture (world-origin program deferred)");
+    section("30. Satoko 2 item 38 twin world tap (bodies shoot_body_3_2_400/402)");
     const auto install = findInstall(nullptr);
     if (install.empty() || !g_satoko2Combo.load(install, 3, 2))
         return skip_case("Satoko 2 combo");
@@ -2352,8 +2363,86 @@ void test_satoko2_world_origin_fixture() {
         check_bool("Satoko 2 request operand has a decoded bullet fixture", true,
                    g_satoko2Combo.hasBullet[static_cast<size_t>(row)]);
     }
-    check_bool("Satoko 2 remains unbound until world-origin support exists", true,
-               gameplay::move_program(&g_satoko2Combo.moves) == nullptr);
+    const auto* program = gameplay::move_program(&g_satoko2Combo.moves);
+    check_bool("Satoko 2 tap program binds the typed world rules", true,
+               program && program->rules == gameplay::kSatoko2Rules);
+    check_int("Satoko 2 maps the normal grounded tap to state 400", 400,
+              program ? program->shot[0][0] : -1);
+    check_int("Satoko 2 maps the normal air tap to state 402", 402,
+              program ? program->shot[0][1] : -1);
+    check_int("Satoko 2 first charge stays pending (450/460 unmeasured here)", -1,
+              program ? program->shot[1][0] : -2);
+    check_int("Satoko 2 second charge stays pending", -1,
+              program ? program->shot[2][0] : -2);
+
+    // Normal tap: the twin at tick 20 is measured as forward 100, lateral -50/+50,
+    // height +70 over the actor, aimed on the legacy heading basis. A fresh fighter
+    // at the origin facing +Z with no opponent does not move or turn, so the two
+    // worlds are exactly those offsets — and the attachment slots stay bound, which
+    // is what distinguishes this from a Prop1 request.
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_satoko2Combo.bind(f);
+    settle(f);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Satoko tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    check_int("Satoko tap binds state 400", 400, f.shot_move_id());
+    for (int i = 0; i < 20; ++i) tick(f, in);
+    const gameplay::PendingShot left = f.take_pending_shot();
+    const gameplay::PendingShot right = f.take_pending_shot();
+    check_bool("Satoko tap arms the twin request", true, left.armed && right.armed);
+    check_int("normal twin uses item row 0", 0, left.bulletRow);
+    check_int("normal twin second request also uses item row 0", 0, right.bulletRow);
+    check_near("first twin sits 50 left of the heading", -50.f, left.pos.x, 1e-3f);
+    check_near("second twin sits 50 right of the heading", 50.f, right.pos.x, 1e-3f);
+    check_near("both twins sit 70 above the actor", 70.f, left.pos.y, 1e-3f);
+    check_near("both twins sit 100 ahead of the actor", 100.f, left.pos.z, 1e-3f);
+    check_bool("twin request is a world origin, not an attachment", true,
+               left.origin.kind == gameplay::ShotOriginKind::ActorRelativeOffset);
+    check_bool("twin request aims on the legacy heading basis", true,
+               left.aim.kind == gameplay::ShotAimKind::ActorHeadingTargetElevation);
+    check_bool("attachment slots stay bound through the tap", true,
+               f.weapon_slot_bound(0) && f.weapon_slot_bound(1));
+    check_bool("normal tap schedules exactly two requests", false,
+               f.take_pending_shot().armed);
+
+    // Powered branch: the gate is `byte(+0x845) && word(+0x848)` — the Oyashiro
+    // special armed AND the aim-selection ally hold. A 1v1 fixture can never hold an
+    // ally, so both halves are driven explicitly rather than through a live match.
+    Fighter p;
+    p.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_satoko2Combo.bind(p);
+    settle(p);
+    p.set_hypermode(Hypermode::Oyashiro);
+    p.set_hyper_gauge(1.f);
+    Input sp;
+    sp.set(fnd::input::Action::Special, true);
+    tick(p, sp);
+    sp.set(fnd::input::Action::Special, false);
+    tick(p, sp);
+    check_bool("Oyashiro witness is active", true, p.hyper_active());
+    check_bool("gate is closed without the ally hold", false, p.shoot_gate_powered());
+    gameplay::ShootingContext context;
+    context.allyHold = true;
+    p.set_shooting_context(context);
+    check_bool("gate opens with the ally hold", true, p.shoot_gate_powered());
+    sp.set(fnd::input::Action::Shoot, true);
+    tick(p, sp);
+    sp.set(fnd::input::Action::Shoot, false);
+    tick(p, sp);
+    for (int i = 0; i < 20; ++i) tick(p, sp);
+    const gameplay::PendingShot pl = p.take_pending_shot();
+    const gameplay::PendingShot pr = p.take_pending_shot();
+    check_bool("powered twin arms the request", true, pl.armed && pr.armed);
+    check_int("powered twin switches to item row 1", 1, pl.bulletRow);
+    check_int("powered twin second request also uses item row 1", 1, pr.bulletRow);
+    check_bool("powered request keeps the measured lateral split", true,
+               glm::dot(pl.pos - pr.pos, glm::vec3(1.f, 0.f, 0.f)) < 0.f);
 }
 
 void test_natsumi0_ground_tap() {

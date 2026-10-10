@@ -143,6 +143,12 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[kMatchFighterCount]
     for (int i = 0; i < m_config.fighterCount; ++i) {
         int target = m_locks.target(i);
         if (target == kNoTarget) target = m_locks.fallback_target(i, aliveAtStart);
+        // Publish the firing-relevant lock state the original reads straight off the
+        // player struct: word +0x848, the ally hold, is one half of the powered gate
+        // every shoot body tests (the other is the fighter's own Oyashiro special).
+        ShootingContext context;
+        context.allyHold = m_locks.holding_ally(i);
+        m_fighters[i].set_shooting_context(context);
         m_fighters[i].update(inputs ? inputs[i] : nullptr,
                              (target != kNoTarget && target < m_config.fighterCount)
                                  ? &m_fighters[target] : nullptr,

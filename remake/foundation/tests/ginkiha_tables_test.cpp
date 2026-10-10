@@ -1057,10 +1057,13 @@ int main() {
               gameplay::kNatsumi0Rules[2].value == 0.f,
           "Natsumi 0 rule hides both props then schedules normal row 0 at 14F");
 
-    // 24–26. Origin-blocked combos share the catalog checks, not firing programs.
-    // Keiichi 0/1 use hand transforms (FUN_00435220); Satoko 2 computes world XYZ
-    // (FUN_00435450, shoot_body_3_2_400 L16531–16546). Forced-phase requests do
-    // not prove natural reachability, geometry or admitted projectiles.
+    // 24–26. Origin families share the catalog checks below; the firing programs are
+    // a separate concern. Keiichi 0/1 use hand transforms (FUN_00435220) and have no
+    // program; Satoko 2 computes world XYZ (FUN_00435450, shoot_body_3_2_400
+    // L16531–16546) and now carries a typed-world tap program (kSatoko2Rules), so the
+    // pins below stay as catalog evidence while its runtime claims live in
+    // fighter_script_test. Forced-phase requests do not prove natural reachability,
+    // geometry or admitted projectiles.
     struct Shot400OriginPins {
         const char* name;
         int character, weapon, swap, tagSlot, frame, events;

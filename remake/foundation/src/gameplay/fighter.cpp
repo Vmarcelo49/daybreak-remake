@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <stdexcept>
+#include <utility>
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -131,6 +133,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_pendingShots.clear();
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
+    m_moveCounter = 0;
     m_holdTicks = 0;
     m_actionCamera = 0;
     m_chainContact = false;
@@ -178,6 +181,7 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_pendingShots.clear();
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
+    m_moveCounter = 0;
     m_holdTicks = 0;
     m_actionCamera = 0;
     m_chainContact = false;
@@ -241,6 +245,7 @@ void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_moveElapsedTicks = 0;
+    m_moveCounter = 0;
     m_holdTicks = 0;
     m_actionCamera = 0;
     m_chainContact = false;
@@ -732,6 +737,7 @@ void Fighter::update_facing(const Fighter* opp, double dt) {
 void Fighter::set_state(FighterState new_state) {
     if (m_state == new_state) return;
     m_state = new_state;
+    m_moveCounter = 0;
     m_holdTicks = 0;
     m_propActive = {false, false};
     m_actionCamera = 0;
@@ -1357,6 +1363,7 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
         if (rule.move != state_move_id() || (rule.phase >= 0 && rule.phase != m_phaseIndex) ||
             m_moveElapsedTicks < rule.first || m_moveElapsedTicks > rule.last)
             continue;
+        if (!rule_gate_holds(rule)) continue;
         switch (rule.operation) {
         case MoveOp::Speed:
             m_moveSpeed = opponent && rule.third > 0.f && distanceSquared < rule.third
@@ -1378,7 +1385,10 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
                 return;
             }
             break;
-        case MoveOp::Launch: launch_bullet(static_cast<int>(rule.value), rule.second, rule.third, opponent); break;
+        case MoveOp::Launch:
+            launch_bullet(static_cast<int>(rule.value), rule.origin, rule.aim,
+                          rule.second, rule.third, opponent);
+            break;
         case MoveOp::Hide: {
             const int slot = static_cast<int>(rule.value);
             if (slot >= 0 && slot < 2) m_propBound[static_cast<size_t>(slot)] = false;
@@ -1396,6 +1406,13 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             if (m_holdRule != &rule) { m_holdRule = &rule; m_holdTicks = 0; }
             m_holdAnimation = m_holdTicks++ < static_cast<int>(rule.value);
             break;
+        // The bodies' scratch counters: `write_scratch(0x3e, 0)` at phase0/tick0 and
+        // `actor_word_add(0x3e, 1)` after the fire checks, so a gate on the counter
+        // reads the pre-increment value and a gated Hold that follows reads the
+        // post-increment one. That ordering is what makes a frozen interval keep
+        // counting while its clock is pinned.
+        case MoveOp::CounterSet: m_moveCounter = static_cast<int>(rule.value); break;
+        case MoveOp::Counter:    m_moveCounter += static_cast<int>(rule.value); break;
         case MoveOp::ActionCamera:
             if (m_chainContact) m_actionCamera = static_cast<int>(rule.value);
             break;
@@ -1403,35 +1420,143 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
     }
 }
 
-void Fighter::launch_bullet(int row, float lateral, float pitchLimit, Fighter* opponent) {
-    if (!m_weapon || !admit_shooting_row(*m_weapon, row, m_shootingMagazines)) return;
-    m_pendingShots.emplace_back();
-    PendingShot& shot = m_pendingShots.back();
+bool Fighter::rule_gate_holds(const MoveRule& rule) const {
+    if (rule.gate == kGateNone) return true;
+    if ((rule.gate & kGatePowered) != 0 && !shoot_gate_powered()) return false;
+    if ((rule.gate & kGateNormal) != 0 && shoot_gate_powered()) return false;
+    if ((rule.gate & kGateCounter) != 0 && !(m_moveCounter > 0)) return false;
+    if ((rule.gate & kGateCounterMod) != 0 && rule.gateValue > 0 &&
+        (m_moveCounter % rule.gateValue) != 0)
+        return false;
+    if ((rule.gate & kGateCounterBelow) != 0 && !(m_moveCounter < rule.gateValue))
+        return false;
+    return true;
+}
+
+void Fighter::launch_bullet(int row, const ShotOriginSpec& origin, const ShotAimSpec& aim,
+                            float legacyLateral, float legacyPitchLimit, Fighter* opponent) {
+    if (!m_weapon) return;
+    PendingShot shot;
     shot.armed = true;
     shot.tier = m_pending.tier;
     shot.bulletRow = row;
     shot.target = opponent;
-    const float yaw = m_facing + (lateral ? glm::radians(lateral > 0.f ? 1.f : -1.f) : 0.f);
+    shot.origin = origin;
+    shot.aim = aim;
+
+    ShotOriginSpec resolvedOrigin = origin;
+    ShotAimSpec resolvedAim = aim;
+    if (resolvedOrigin.kind == ShotOriginKind::MoveRuleAdapter) {
+        if (legacyLateral != 0.f) {
+            resolvedOrigin.kind = ShotOriginKind::ActorRelativeOffset;
+            resolvedOrigin.actorRightForwardHeight = {legacyLateral, 70.f, 70.f};
+        } else {
+            const bool bound = weapon_slot_bound(0) && m_weapon->slotCount > 0;
+            resolvedOrigin.kind = bound ? ShotOriginKind::WeaponAttachment
+                                        : ShotOriginKind::BoundBoneFallback;
+            resolvedOrigin.attachmentSlot = 0;
+            resolvedOrigin.boneName = "Bip01_Prop1";
+        }
+    }
+    if (resolvedAim.kind == ShotAimKind::MoveRuleAdapter) {
+        resolvedAim.kind = ShotAimKind::TargetElevation;
+        resolvedAim.yawDegrees = legacyLateral
+            ? (legacyLateral > 0.f ? 1.f : -1.f) : 0.f;
+        resolvedAim.minimumPitchDegrees = -legacyPitchLimit;
+        resolvedAim.maximumPitchDegrees = legacyPitchLimit;
+    }
+    shot.origin = resolvedOrigin;
+    shot.aim = resolvedAim;
+
+    switch (resolvedOrigin.kind) {
+    case ShotOriginKind::MoveRuleAdapter:
+        throw std::logic_error("unresolved projectile origin");
+    case ShotOriginKind::WeaponAttachment: {
+        const int slot = resolvedOrigin.attachmentSlot;
+        if (slot < 0 || slot >= 2)
+            throw std::out_of_range("projectile attachment slot");
+        const std::string bone = slot == 0 ? "Bip01_Prop1" : "Bip01_Prop2";
+        const bool hasAttachment = weapon_slot_bound(slot) && slot < m_weapon->slotCount;
+        const glm::vec3 offset = (hasAttachment
+            ? glm::vec3(m_weapon->slots[slot].muzzle[0], m_weapon->slots[slot].muzzle[1],
+                        m_weapon->slots[slot].muzzle[2])
+            : glm::vec3(0.f)) +
+            glm::vec3(resolvedOrigin.localOffset[0], resolvedOrigin.localOffset[1],
+                      resolvedOrigin.localOffset[2]);
+        if (!hasAttachment) resolvedOrigin.kind = ShotOriginKind::BoundBoneFallback;
+        shot.origin = resolvedOrigin;
+        shot.pos = bone_point(bone, offset);
+        break;
+    }
+    case ShotOriginKind::BoundBoneFallback:
+        shot.pos = bone_point(origin.boneName ? origin.boneName : "Bip01_Prop1",
+                              glm::vec3(origin.localOffset[0], origin.localOffset[1],
+                                        origin.localOffset[2]));
+        break;
+    case ShotOriginKind::NamedBone: {
+        if (!origin.boneName || !*origin.boneName)
+            throw std::invalid_argument("projectile bone origin requires a bone name");
+        if (!m_model || !m_anim || m_model->findFrame(origin.boneName) < 0)
+            throw std::runtime_error(std::string("projectile origin bone missing: ") +
+                                     origin.boneName);
+        shot.pos = bone_point(origin.boneName,
+                              glm::vec3(origin.localOffset[0], origin.localOffset[1],
+                                        origin.localOffset[2]));
+        break;
+    }
+    case ShotOriginKind::ActorRelativeOffset:
+        shot.pos = m_position + facing_relative(origin.actorRightForwardHeight[0],
+                                                 origin.actorRightForwardHeight[1]) +
+                   glm::vec3(0.f, origin.actorRightForwardHeight[2], 0.f);
+        break;
+    }
+
     float pitch = 0.f;
-    if (opponent) {
+    const auto target_pitch = [&] {
+        if (!opponent) return 0.f;
         const glm::vec3 difference = opponent->position() - m_position;
-        pitch = std::atan2(difference.y, std::hypot(difference.x, difference.z));
-        pitch = std::clamp(pitch, -glm::radians(pitchLimit), glm::radians(pitchLimit));
+        return std::atan2(difference.y, std::hypot(difference.x, difference.z));
+    };
+    const auto clamp_aim_pitch = [&](float value) {
+        const float minimum = glm::radians(resolvedAim.minimumPitchDegrees);
+        const float maximum = glm::radians(resolvedAim.maximumPitchDegrees);
+        if (!std::isfinite(minimum) || !std::isfinite(maximum) || minimum > maximum)
+            throw std::invalid_argument("invalid projectile pitch bounds");
+        return std::clamp(value, minimum, maximum);
+    };
+    switch (resolvedAim.kind) {
+    case ShotAimKind::MoveRuleAdapter:
+        throw std::logic_error("unresolved projectile aim");
+    case ShotAimKind::TargetElevation: {
+        // The remake's own basis: forward = (sin yaw, cos yaw), no legacy conversion.
+        const float yaw = m_facing + glm::radians(resolvedAim.yawDegrees);
+        pitch = clamp_aim_pitch(target_pitch());
+        shot.dir = glm::vec3(std::sin(yaw) * std::cos(pitch), std::sin(pitch),
+                             std::cos(yaw) * std::cos(pitch));
+        break;
     }
-    shot.dir = glm::vec3(std::sin(yaw) * std::cos(pitch), std::sin(pitch), std::cos(yaw) * std::cos(pitch));
-    // FUN_00434fd0 always launches slot 0. FUN_00435000 transforms that slot's item
-    // muzzle anchor (0x4350cc D3DXVec3Transform) and uses the bone origin only when the
-    // slot's prop id is -1 (0x4350a2 JL -> 0x4350f1). FUN_00435450 is the explicit
-    // position spawner the two red-charge rows use and never reads an anchor.
-    if (lateral) {
-        shot.pos = m_position + facing_relative(lateral, 70.f) + glm::vec3(0.f,70.f,0.f);
-    } else {
-        glm::vec3 muzzle(0.f);
-        if (weapon_slot_bound(0) && m_weapon && m_weapon->slotCount > 0)
-            muzzle = glm::vec3(m_weapon->slots[0].muzzle[0], m_weapon->slots[0].muzzle[1],
-                               m_weapon->slots[0].muzzle[2]);
-        shot.pos = bone_point("Bip01_Prop1", muzzle);
+    case ShotAimKind::ActorHeadingTargetElevation: {
+        const float legacyYawDegrees = 90.f - glm::degrees(m_facing) +
+                                       resolvedAim.yawDegrees;
+        pitch = clamp_aim_pitch(target_pitch() + glm::radians(resolvedAim.pitchDegrees));
+        const float legacyYaw = glm::radians(legacyYawDegrees);
+        shot.dir = glm::vec3(std::cos(legacyYaw) * std::cos(pitch), std::sin(pitch),
+                             std::sin(legacyYaw) * std::cos(pitch));
+        break;
     }
+    }
+    const float directionLengthSquared = glm::dot(shot.dir, shot.dir);
+    if (!(directionLengthSquared > 0.f) || !std::isfinite(directionLengthSquared))
+        throw std::invalid_argument("invalid projectile direction");
+    shot.dir *= 1.f / std::sqrt(directionLengthSquared);
+
+    // Resolve transforms before admission, as FUN_00435000/00435220 do before
+    // FUN_00435920. If the later pool rejects the request, consumption remains spent.
+    if (!std::isfinite(shot.pos.x) || !std::isfinite(shot.pos.y) ||
+        !std::isfinite(shot.pos.z))
+        throw std::invalid_argument("invalid projectile origin");
+    if (!admit_shooting_row(*m_weapon, row, m_shootingMagazines)) return;
+    m_pendingShots.push_back(std::move(shot));
 }
 
 bool Fighter::weapon_slot_bound(int slot) const {

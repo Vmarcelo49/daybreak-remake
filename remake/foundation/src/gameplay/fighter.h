@@ -49,6 +49,7 @@
 #include "gameplay/character_moves.h"  // CharacterMoves (borrowed move table)
 #include "gameplay/match_economy.h"    // the KO/Overkill credit rules (issue #11)
 #include "gameplay/projectile.h"
+#include "gameplay/shot_launch.h"
 #include "gameplay/melee_rules.h"
 #include "gameplay/weapon_trail.h"
 #include "gameplay/weapon_definition.h"
@@ -306,9 +307,8 @@ struct MeleeSwing {
     bool is_recovery(int elapsed) const { return window.is_recovery(elapsed); }
 };
 
-// Handoff from Fighter (input/charge side) to the scene (spawn/collide side):
-// update_state_machine() arms this on C release; Scene_Gameplay drains it
-// into the ProjectilePool the same frame, so at most one shot queues.
+// Handoff from the move callback to the scene's spawn/collide step. Twin callback
+// requests remain separate entries and the scene drains them in request order.
 struct PendingShot {
     bool          armed = false;
     ShotTier      tier  = ShotTier::Tap;
@@ -316,7 +316,26 @@ struct PendingShot {
     glm::vec3     dir   {0, 0, 1};
     int           bulletRow = -1;
     Fighter*      target = nullptr;
+    ShotOriginSpec origin{};
+    ShotAimSpec   aim{};
 };
+
+// The per-tick world state a shooting body reads from outside the fighter. The
+// original reads these straight off the player struct, so the scene publishes them
+// instead of the fighter duplicating (or guessing) them. Currently carries the one
+// recovered firing predicate; target geometry and the simulation RNG join it as their
+// users land.
+struct ShootingContext {
+    // word +0x848 != 0: the 180-tick hold target_lock.h maintains while the aim
+    // selection shares player 0's team (FUN_0041f580:242-248). Together with the
+    // Oyashiro special byte +0x845 it forms the roster-wide powered gate.
+    bool allyHold = false;
+};
+
+// move_behavior.h's executable rule, forward-declared so the gate evaluation beside
+// execute_move_program can name it without pulling the tables into this header (the
+// same reason m_holdRule is type-erased).
+struct MoveRule;
 
 struct CombatStats { int kos = 0, deaths = 0, damageDealt = 0, damageTaken = 0; };
 
@@ -625,6 +644,18 @@ public:
     const MoveEntry* current_move_record() const;
     int move_phase() const { return m_phaseIndex; }
     int phase_elapsed() const { return m_moveElapsedTicks; }
+    int move_counter() const { return m_moveCounter; }
+    // The original's `byte(+0x845) != 0 && word(+0x848) != 0`, read by 514 of the 841
+    // recovered shoot bodies and by every other action family. +0x845 is the Oyashiro
+    // special armed byte (FUN_004220e0 sets it, FUN_0041f580:88-92 clears it when its
+    // countdown ends) and +0x848 is the ally hold the scene publishes. A fighter
+    // running Friendship or Kakera never takes a powered branch, which is source
+    // behavior and not a gap.
+    bool shoot_gate_powered() const {
+        return m_hyperActive && m_hypermode == Hypermode::Oyashiro && m_shooting.allyHold;
+    }
+    // The scene publishes the per-tick firing context before update().
+    void set_shooting_context(const ShootingContext& context) { m_shooting = context; }
     // FUN_00435000 launches from the bound slot's item muzzle anchor and falls back to
     // the bone origin only when the slot's prop id is -1 (FUN_00434a70's clear).
     bool weapon_slot_bound(int slot) const;
@@ -810,6 +841,14 @@ private:
     // clock rewinds) needs per-rule progress — the shared counter alone would starve
     // the second hold. The dash hold path never consults this latch.
     const void*  m_holdRule = nullptr;
+    // Per-move scratch counter (MoveOp::Counter/CounterSet), the port stand-in for the
+    // bodies' `write_scratch(0x3e, ...)` counters. Reset with the move, not with each
+    // section, because a body seeds it once at phase0/tick0 and then counts updates —
+    // including the frozen ones a gated Hold pins, which is what makes Rika 1's
+    // counter-gated salvo repeat.
+    int          m_moveCounter = 0;
+    // The scene's per-tick publication of the firing-relevant world state.
+    ShootingContext m_shooting;
     // Attachment slots 0/1. The executor re-binds slot0<-prop0, slot1<-prop1 and
     // deactivates both at the top of every frame, so a slot is unbound only while a
     // Hide rule's ticks match (FUN_00434a70(slot,-1)) and a prop is active only inside
@@ -969,8 +1008,13 @@ private:
     void advance_animation_phase();
     glm::vec3 bone_point(const std::string& name, const glm::vec3& local) const;
     void execute_move_program(Fighter* opponent, const input::PlayerState* input);
+    // A rule's gate bits evaluated against current fighter state (kGatePowered,
+    // the counter tests). Kept beside the executor so the gate vocabulary and the
+    // state it reads cannot drift apart.
+    bool rule_gate_holds(const MoveRule& rule) const;
     void enter_phase(int phase);
-    void launch_bullet(int row, float lateral, float pitchLimit, Fighter* opponent);
+    void launch_bullet(int row, const ShotOriginSpec& origin, const ShotAimSpec& aim,
+                       float legacyLateral, float legacyPitchLimit, Fighter* opponent);
 
     // Shared pulse for the aura's alpha + radius (DX9 render did both from one
     // expression; kept single-sourced so they cannot drift).
