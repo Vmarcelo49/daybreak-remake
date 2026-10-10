@@ -94,7 +94,7 @@ Phases 2–5 are done; do not mark complete early.
 | Keiichi 1 | 0x473610 | deferred: typed hand/world origins exist; row and dynamic geometry remain open | 400/402 hand @13; 450/460 world @20 | callback pins only; no program |
 | Natsumi 0 | 0x5e2af0 | natsumi0 (normal ground 400 subset) | row 0 @14; Hide slots 0/1 | tap request schedule |
 | Mion 0 | 0x4582a0 | mion | row 0 @2; row 0 @17 | tap + charge |
-| Rika 1 | 0x492f70 | rika | even ticks 12–40; twin salvos; **counter-gated 30-update freeze at T30 (3 salvos), ground + air** | tap repeat + T10/T30 + frozen interval + latch + air 460 |
+| Rika 1 | 0x492f70 | rika | even ticks 12–40; twin salvos; **counter-gated 30-update freeze at T30 (3 salvos), ground + air, both branches** | tap repeat + T10/T30 + frozen interval + latch + air 460 normal/powered |
 | Tomitake 2 | 0x527880 | tomitake | twin 7+5 every 3 ticks; freeze-then-fire | tap + charge |
 | Keiichi 2 | 0x47b940 | keiichi | dense every-tick 10–20; rewind stalls | tap + charge + Hold latch |
 | Chie 2 | 0x566a40 | chie | scratch-counter burst; single salvos | tap + charge |

@@ -262,12 +262,16 @@ combo; nothing is deferred to a "combat phase" that no one owns.
 4. `kSatoko2Rules` 400/402 bound: twin world requests, lateral ±50, dynamic pitch
    clamp, powered row selection, turns and bleed. 450/460 stay pending with their
    measured parameters recorded in the ledger.
-5. Witness tests: whole-frozen-interval request counts for Rika 1 on **ground and air**
-   and on both branches, with the geometry and the latched pitch pinned; the Satoko 2 twin
-   worlds and both gate halves from the real item-38 fixture; and a **live 4-fighter
-   match** where an ally lock produced by `Match`'s own maintenance switches the fired row
-   from 0 to 1. The live witness counts the SPAWN update only, so a single surviving
-   projectile cannot satisfy a two-entry assertion.
+5. Witness tests: whole-frozen-interval request counts for Rika 1 — ground normal and
+   powered (rows 3/6 vs 4/7, three pairs each), ground pitch latch, and air 460 normal
+   and powered (same three-pair split on the air copy) — with the geometry pinned; the
+   Satoko 2 twin worlds and both gate halves from the real item-38 fixture; and a
+   **live 4-fighter match** where an ally lock produced by `Match`'s own maintenance
+   switches the fired row from 0 to 1. The live witness counts the SPAWN update only, so
+   a single surviving projectile cannot satisfy a two-entry assertion. None of this is a
+   full-fidelity claim: the fired yaw still omits the battle movement offset, the air
+   copy still omits the source's phase0/tick0 velocity and gravity clears, and the gate
+   producer is the §2.2 analogue.
 6. The unused typed vocabulary (WorldPosition, LegacyDegrees, Facing, Direction and
    their fields) removed in the pre-commit diff review.
 
@@ -284,7 +288,13 @@ included in that validation.
   Until then no powered-branch result is a parity claim.
 * The Oyashiro arming condition (`limit1 <= charge1`, automatic) vs the port's
   Special-press activation, and the tick-based vs second-based `+0x83c` countdown.
-* The battle movement offset (`source_float(0x19)`) feeding the world yaw.
+* The battle movement offset (`source_float(0x19)`) feeding the world yaw: every
+  world request currently aims on heading alone, while the bodies add the movement
+  offset to the yaw.
+* The air-charge entry clears (`w[0x15]` horizontal, `w[0x16]` vertical, `w[0x10]`
+  gravity accumulator at phase0/tick0 — Rika 1 460 is the measured witness) and the
+  air gravity tails, which have no `MoveOp` and stay explicit gaps rather than
+  invented physics.
 * Global 32-projectile pool vs original allocation; deterministic spread and RNG draw
   order; per-move state reset on death/respawn/rematch; the legacy no-weapon
   provisional path; exact 3,600-entry cosine-table parity (a measured-tolerance

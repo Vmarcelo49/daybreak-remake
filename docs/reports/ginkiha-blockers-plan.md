@@ -526,12 +526,15 @@ that changed height between the two would silently re-aim the later salvos.
 integer truncation), and **106 bodies** read `0x3c` more than once, so this is a roster
 mechanism rather than a Rika fix.
 
-**Done — the air copy is witnessed end to end.** `460` was untested in both branches.
-Reaching it exposed two port behaviors worth writing down: a Jump press returns before the
-charge block (one tick lost, then the charge re-accrues), and a plain leap's 47-update air
-window is too short for the 60-update program, so the witness holds Z against the fly
-budget to reach ~112. The air frozen interval then fires all three powered pairs with the
-normal gate correctly off.
+**Done — the air copy is witnessed end to end, both branches.** `460` was untested in
+both branches. Reaching it exposed two port behaviors worth writing down: a Jump press
+returns before the charge block (one tick lost, then the charge re-accrues), and a plain
+leap's 47-update air window is too short for the 60-update program, so the witness holds
+Z against the fly budget to reach ~112. The air frozen interval then fires all three
+pairs per branch (powered 4/7, normal 3/6) with the opposite gate correctly off. What the
+air copy still does not show: the fired yaw omits the battle movement offset, and the
+source's phase0/tick0 velocity/gravity clears have no `MoveOp` — both documented, both
+blocking any full-fidelity claim for this area.
 
 **Done — the live witness no longer double-counts.** It appended every living projectile
 on each update until it had two entries, so one surviving twin could satisfy the
