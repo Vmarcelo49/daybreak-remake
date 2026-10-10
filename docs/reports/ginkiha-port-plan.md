@@ -115,7 +115,15 @@ usam Bip01_R_Hand; 450/460 fazem duas requisições world-origin em 20F (operand
 9 + 2/3), com XYZ/yaw/pitch calculados e alturas +40/+20. Nenhum subconjunto de firing
 cabe no Launch atual; regras de movimento isoladas não justificam binding que omita os
 tiros. Mantido sem MoveProgram. Gate: rebuild Linux + CTest 65/65; tables387/fighter637,
-zero falhas. Próximo: Satoko 2, com recon e body audit antes de portar.
+zero falhas. Satoko 2 foi auditada em seguida (abaixo).
+Satoko 2 audit concluído 2026-10-10 10:48 (São Paulo): actor02 + item038, swap12,
+handler/vtable 0x4bc040/0x6a4fc8, walk0x4bc47f. State400 normal slot0/tag slot1:
+duas requisições world-origin em 20F por fase forçada. Corpos400/402 usam forward100,
+lateral ±50, altura70 e pitch derivado do scratch; 450/460 usam phase1/tick6, forward100,
+lateral0/altura70, operandos brutos4/5. As cargas congelam o clock dez updates em tick26.
+Sem MoveProgram: Launch não preserva XYZ/pitch calculados. Fixture real confirma item38,
+quinze registros e dois meshes vazios. Gate: rebuild Linux + CTest 65/65; tables398/fighter650,
+zero falhas. Próximo: Tomitake 0, com recon e body audit.
 
 1. **Prioridade**: matriz `shot400_usage` (52 normal + 60 tag em state400) ordena quais combos saem do piloto
    primeiro; cada combo entra com teste, nunca com fallback set 0 silencioso.
