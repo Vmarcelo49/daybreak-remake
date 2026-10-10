@@ -260,6 +260,69 @@ inline constexpr MoveRule kRikaRules[] = {
     {460,-1,30,30,MoveOp::Launch,6.f,0.f,40.f},
     {460,-1,30,30,MoveOp::Hold,30.f},
 };
+// Tomitake weapon 2 (handler 0x527880) — shot rules recovered from the reference bodies
+// shoot_body_6_2_{400,402,450,460} (bundle reference/source). Twin shots per scheduled
+// tick: rows 7+5 in the tap (row 7 is what the traces record: fire_attachment(0,7,...);
+// usage slots 5 normal / 6 tag / 7 both map to the same rows), rows 4+0 in the first
+// charge (tag rows 6/2 need an aim/tag flag this model has no field for — skipped with
+// the same precedent as Mion's row-1 variant). The tap schedule (ticks 15..33 step 3)
+// is written tick-explicit like Rika's: our rule model has no modulo.
+// Turn verbs 0042dc20 vs 0042db10 both map to Turn by value (the distinction's meaning
+// is illegible); the w0x10 gravity tails (unclamped, can go negative) are vertical
+// physics with no MoveRule op and are skipped — only the floor-0 w0x15 bleeds map to
+// Decelerate. Charge-2 stays unbound (-1): bodies 403-414 exist but are out of scope.
+inline constexpr MoveRule kTomitakeRules[] = {
+    // 400 ground tap: overlapping turns 18 deg (ticks 0-9) + 2 deg (ticks 0-34),
+    // horizontal bleed 2.0/tick from tick 1 (L36849-36857).
+    {400,-1,0,9,MoveOp::Turn,18.f},
+    {400,-1,0,34,MoveOp::Turn,2.f},
+    {400,-1,1,9999,MoveOp::Decelerate,2.f},
+    {400,-1,15,15,MoveOp::Launch,7.f,0.f,45.f},
+    {400,-1,15,15,MoveOp::Launch,5.f,0.f,45.f},
+    {400,-1,18,18,MoveOp::Launch,7.f,0.f,45.f},
+    {400,-1,18,18,MoveOp::Launch,5.f,0.f,45.f},
+    {400,-1,21,21,MoveOp::Launch,7.f,0.f,45.f},
+    {400,-1,21,21,MoveOp::Launch,5.f,0.f,45.f},
+    {400,-1,24,24,MoveOp::Launch,7.f,0.f,45.f},
+    {400,-1,24,24,MoveOp::Launch,5.f,0.f,45.f},
+    {400,-1,27,27,MoveOp::Launch,7.f,0.f,45.f},
+    {400,-1,27,27,MoveOp::Launch,5.f,0.f,45.f},
+    {400,-1,30,30,MoveOp::Launch,7.f,0.f,45.f},
+    {400,-1,30,30,MoveOp::Launch,5.f,0.f,45.f},
+    {400,-1,33,33,MoveOp::Launch,7.f,0.f,45.f},
+    {400,-1,33,33,MoveOp::Launch,5.f,0.f,45.f},
+    // 402 air tap: disjoint turns 15 deg (0-9) + 5 deg (10-24), same twin schedule.
+    {402,-1,0,9,MoveOp::Turn,15.f},
+    {402,-1,10,24,MoveOp::Turn,5.f},
+    {402,-1,15,15,MoveOp::Launch,7.f,0.f,45.f},
+    {402,-1,15,15,MoveOp::Launch,5.f,0.f,45.f},
+    {402,-1,18,18,MoveOp::Launch,7.f,0.f,45.f},
+    {402,-1,18,18,MoveOp::Launch,5.f,0.f,45.f},
+    {402,-1,21,21,MoveOp::Launch,7.f,0.f,45.f},
+    {402,-1,21,21,MoveOp::Launch,5.f,0.f,45.f},
+    {402,-1,24,24,MoveOp::Launch,7.f,0.f,45.f},
+    {402,-1,24,24,MoveOp::Launch,5.f,0.f,45.f},
+    {402,-1,27,27,MoveOp::Launch,7.f,0.f,45.f},
+    {402,-1,27,27,MoveOp::Launch,5.f,0.f,45.f},
+    {402,-1,30,30,MoveOp::Launch,7.f,0.f,45.f},
+    {402,-1,30,30,MoveOp::Launch,5.f,0.f,45.f},
+    {402,-1,33,33,MoveOp::Launch,7.f,0.f,45.f},
+    {402,-1,33,33,MoveOp::Launch,5.f,0.f,45.f},
+    // 450 ground charge1: turns 35 deg (0-4) + 0.3 deg (0-29), bleed 1.5/tick,
+    // single salvo rows 4+0 at tick 30 after a 15-tick freeze at tick 28.
+    {450,-1,0,4,MoveOp::Turn,35.f},
+    {450,-1,0,29,MoveOp::Turn,0.3f},
+    {450,-1,0,9999,MoveOp::Decelerate,1.5f},
+    {450,-1,28,28,MoveOp::Hold,15.f},
+    {450,-1,30,30,MoveOp::Launch,4.f,0.f,40.f},
+    {450,-1,30,30,MoveOp::Launch,0.f,0.f,40.f},
+    // 460 air charge1: same shape (no w0x15 bleed of its own — skipped, see above).
+    {460,-1,0,4,MoveOp::Turn,35.f},
+    {460,-1,0,29,MoveOp::Turn,0.3f},
+    {460,-1,28,28,MoveOp::Hold,15.f},
+    {460,-1,30,30,MoveOp::Launch,4.f,0.f,40.f},
+    {460,-1,30,30,MoveOp::Launch,0.f,0.f,40.f},
+};
 inline const MoveProgram* move_program(const CharacterMoves* moves) {
     const auto* binding = locomotion(moves);
     if (!binding) return nullptr;
@@ -273,9 +336,20 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     // Rika 1: same unbound second charge (no 360/370 body for ch4 in scope).
     static constexpr MoveProgram rika = {kRikaRules, std::size(kRikaRules),
                                          {{400,402},{450,460},{-1,-1}}};
+    // Tomitake 2 (handler 0x527880) — shot rules recovered from the reference bodies
+    // shoot_body_6_2_{400,402,450,460} (bundle reference/source). Twin shots per tick:
+    // rows 7+5 in the tap (row 7 is what the traces record: fire_attachment(0,7,...)),
+    // rows 4+0 in the first charge. Registration slots 5/6/7 map to the same rows.
+    // No Hide rules (prop semantics illegible); tag rows 6/2 have no flag field.
+    // 402/460 gravity tails (w0x10 channel, unclamped, can go negative) are vertical
+    // physics with no MoveRule op — skipped explicitly, unlike the w0x15 horizontal
+    // bleeds below which map to Decelerate with their floor-0 clamp.
+    static constexpr MoveProgram tomitake = {kTomitakeRules, std::size(kTomitakeRules),
+                                            {{400,402},{450,460},{-1,-1}}};
     if (binding->handler == 0x43ffc0) return &nata;
     if (binding->handler == 0x4582a0) return &mion;
     if (binding->handler == 0x492f70) return &rika;
+    if (binding->handler == 0x527880) return &tomitake;
     return nullptr;
 }
 } // namespace gameplay

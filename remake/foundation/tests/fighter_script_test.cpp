@@ -101,6 +101,7 @@ struct TestCombo : test::Combo {
 TestCombo g_testCombo;
 TestCombo g_mionCombo;
 TestCombo g_rikaCombo;
+TestCombo g_tomitakeCombo;
 
 std::filesystem::path findInstall(const char* executable) {
     const int itemId = gameplay::kWeaponIds[0][0];
@@ -2103,6 +2104,77 @@ void test_rika_repeating_tap() {
     check_int("Rika T30 second row is 6", 6, second.bulletRow);
 }
 
+void test_tomitake_twin_tap() {
+    section("18. Tomitake 2 twin tap + charge (bodies shoot_body_6_2_*)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_tomitakeCombo.load(install, 6, 2))
+        return skip_case("Tomitake 2 combo");
+    // Bundle evidence: Tomitake 2 (handler 0x527880) fires twin shots — rows 7+5 —
+    // on every third tick 15..33 in the ground tap (shoot_body_6_2_400; the traces
+    // record fire_attachment(0,7,...) twice per scheduled frame), and rows 4+0 at
+    // tick 30 in the first ground charge after a 15-tick freeze at tick 28
+    // (shoot_body_6_2_450). Her program is kTomitakeRules; charge 2 stays provisional.
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_tomitakeCombo.bind(f);
+    settle(f);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Tomitake tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    check_int("Tomitake tap binds move 400", 400, f.shot_move_id());
+    for (int i = 0; i < 15; ++i) tick(f, in);
+    gameplay::PendingShot first = f.take_pending_shot();
+    gameplay::PendingShot second = f.take_pending_shot();
+    check_bool("Tomitake tap T15 salvo fires twice", true, first.armed && second.armed);
+    check_int("Tomitake T15 first row is 7", 7, first.bulletRow);
+    check_int("Tomitake T15 second row is 5", 5, second.bulletRow);
+    // Repeat on the next scheduled tick: the schedule, not a single anchor.
+    tick(f, in);
+    tick(f, in);
+    tick(f, in);
+    first = f.take_pending_shot();
+    second = f.take_pending_shot();
+    check_bool("Tomitake tap T18 salvo fires twice", true, first.armed && second.armed);
+    check_int("Tomitake T18 first row is 7", 7, first.bulletRow);
+    check_int("Tomitake T18 second row is 5", 5, second.bulletRow);
+    // First charge: hold past the yellow threshold (level-1 chargeMax 30 ticks;
+    // the frame count is computed, not hardcoded — float accumulation needs the
+    // same loop the charge uses, as the Mion case showed).
+    Fighter g;
+    g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_tomitakeCombo.bind(g);
+    settle(g);
+    const float tomitakeYellow = static_cast<float>(
+        g_tomitakeCombo.weapon.magazineForChargeLevel(1).chargeMax) /
+        gameplay::FixedStep::tickRate;
+    float tomitakeHeld = 0.0f;
+    int tomitakeYellowFrames = 0;
+    while (tomitakeHeld < tomitakeYellow && tomitakeYellowFrames < 10000) {
+        tomitakeHeld += kStep;
+        ++tomitakeYellowFrames;
+    }
+    in.set(fnd::input::Action::Shoot, true);
+    for (int i = 0; i < tomitakeYellowFrames; ++i) tick(g, in);
+    check_int("Tomitake hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
+              static_cast<int>(g.charge_tier()));
+    in.set(fnd::input::Action::Shoot, false);
+    tick(g, in);
+    check_int("Tomitake charge enters ShootB", static_cast<int>(FighterState::ShootB),
+              static_cast<int>(g.state()));
+    check_int("Tomitake charge binds move 450", 450, g.shot_move_id());
+    // Tick 28 freezes the clock for 15 updates, then tick 30 fires rows 4+0.
+    for (int i = 0; i < 46; ++i) tick(g, in);
+    first = g.take_pending_shot();
+    second = g.take_pending_shot();
+    check_bool("Tomitake charge T30 salvo fires twice", true, first.armed && second.armed);
+    check_int("Tomitake T30 first row is 4", 4, first.bulletRow);
+    check_int("Tomitake T30 second row is 0", 0, second.bulletRow);
+}
+
 void test_mion_shot_tap() {
     section("16. Mion 0 tap + first charge (bundle bodies shoot_body_1_0_*)");
     const auto install = findInstall(nullptr);
@@ -2248,6 +2320,7 @@ int main(int argc, char** argv) {
     test_pilot_shot_jump_cancel();
     test_mion_shot_tap();
     test_rika_repeating_tap();
+    test_tomitake_twin_tap();
     test_ammo();
     test_hypermode();
     test_ko();

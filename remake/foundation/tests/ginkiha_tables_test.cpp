@@ -47,7 +47,8 @@ unsigned int walkVa(int character, int weapon) {
     return 0;
 }
 
-// First fire frame recorded for a combo/variant in the shot400 traces (-1 if absent).
+// First fire frame recorded for a combo/variant in the shot400 traces (-1 if absent),
+// plus the fire event count for that variant (twins count twice).
 int traceFireFrame(int character, int weapon, int variant, bool tag) {
     for (int i = 0; i < ginkiha::kShotTraceSummaryCount; ++i) {
         const ginkiha::ShotTraceSummary& entry = ginkiha::kShotTraceSummary[i];
@@ -56,6 +57,16 @@ int traceFireFrame(int character, int weapon, int variant, bool tag) {
             return entry.fire_frame;
     }
     return -2;
+}
+
+int traceFireEvents(int character, int weapon, int variant, bool tag) {
+    for (int i = 0; i < ginkiha::kShotTraceSummaryCount; ++i) {
+        const ginkiha::ShotTraceSummary& entry = ginkiha::kShotTraceSummary[i];
+        if (entry.character == character && entry.weapon == weapon && entry.variant == variant &&
+            entry.tag == tag)
+            return entry.fire_events;
+    }
+    return -1;
 }
 
 }  // namespace
@@ -228,6 +239,56 @@ int main() {
     }
     if (rika1) check(rikaUpdate == rika1->handler, "bundle dispatch matches kLocomotion (Rika 1)");
     check(walkVa(4, 1) == 0x004933BDu, "Rika 1 walk site is 0x4933bd (Fase 2 oracle)");
+
+    // 9. Fourth combo (Tomitake 2 = character 6, weapon 2, swap code 21): pins the
+    //    bundle rows Fase 2's Tomitake program will consume. His pattern is a third
+    //    shape: twin shots (TWO fire events per frame) on every third tick 15..33,
+    //    slots 5 (normal) and 6 (tag) plus slot 7 in both modes — 168 pairs total.
+    //    Note the slot split: the sampled birth lives on slot 0 (speed 35.0 — the row
+    //    the charges fire), while the tap fires slots 5+7, which have no sampled birth.
+    const ginkiha::BirthProfile* tomitake = findBirth(6, 2, 0);
+    check(tomitake != nullptr, "Tomitake 2/0 birth profile exists");
+    if (tomitake) {
+        check(tomitake->swap_code == 21, "Tomitake 2 maps to swap code 21");
+        check(tomitake->speed == 35.0f, "Tomitake 2/0 birth speed 35.0");
+        check(tomitake->turn_birth == 0.0f && tomitake->turn_next == 0.0f,
+              "Tomitake 2/0 birth has no turn data");
+    }
+    int tomitakePairs = 0;
+    bool tomitakeShape = true;
+    for (int i = 0; i < ginkiha::kShotFireRecordCount; ++i) {
+        const ginkiha::ShotFireRecord& entry = ginkiha::kShotFireRecord[i];
+        if (entry.character == 6 && entry.weapon == 2 &&
+            (entry.slot == 5 || entry.slot == 6 || entry.slot == 7)) {
+            ++tomitakePairs;
+            if (entry.phase < 0 || entry.phase > 5 || entry.frame < 15 || entry.frame > 33 ||
+                ((entry.frame - 15) % 3) != 0)
+                tomitakeShape = false;
+        }
+    }
+    check(tomitakePairs == 168, "Tomitake 2 usage holds 168 fire records");
+    check(tomitakeShape, "Tomitake 2 usage shape is phases 0..5, frames 15..33 step 3");
+    // Every traced variant opens fire at frame 15 with two events per scheduled frame
+    // (twin shots); the usage matrix independently schedules the same frames.
+    bool tomitakeTwin = true;
+    for (int variant = 0; variant < 6; ++variant) {
+        if (traceFireFrame(6, 2, variant, false) != 15) tomitakeTwin = false;
+        if (traceFireEvents(6, 2, variant, false) != 14) tomitakeTwin = false;
+    }
+    check(tomitakeTwin, "Tomitake 2 traces open at 15F with 14 events each");
+    unsigned int tomitakeUpdate = 0;
+    for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
+        if (ginkiha::kDispatchIdentity[i].character == 6 &&
+            ginkiha::kDispatchIdentity[i].weapon == 2)
+            tomitakeUpdate = ginkiha::kDispatchIdentity[i].update;
+    }
+    check(tomitakeUpdate == 0x00527880u, "Tomitake 2 dispatch update is 0x527880");
+    const gameplay::LocomotionDefinition* tomitake2 = nullptr;
+    for (const gameplay::LocomotionDefinition& entry : gameplay::kLocomotion) {
+        if (entry.character == 6 && entry.slot == 2) tomitake2 = &entry;
+    }
+    if (tomitake2) check(tomitakeUpdate == tomitake2->handler, "bundle dispatch matches kLocomotion (Tomitake 2)");
+    check(walkVa(6, 2) == 0x00527D4Fu, "Tomitake 2 walk site is 0x527d4f (Fase 2 oracle)");
 
     // 6. Independent-recovery agreement for the pilot's ground tap: move_behavior.h's
     //    nata program launches item row 0 at tick 12 with citations into FUN_0044xxxx;
