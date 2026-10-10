@@ -115,6 +115,7 @@ TestCombo g_rika0Combo;
 TestCombo g_rena1Combo;
 TestCombo g_akane2Combo;
 TestCombo g_natsumi0Combo;
+TestCombo g_satoko2Combo;
 
 std::filesystem::path findInstall(const char* executable) {
     const int itemId = gameplay::kWeaponIds[0][0];
@@ -2417,6 +2418,30 @@ void test_akane2_world_origin_gap() {
                gameplay::move_program(&g_akane2Combo.moves) == nullptr);
 }
 
+void test_satoko2_world_origin_fixture() {
+    section("30. Satoko 2 item 38 fixture (world-origin program deferred)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_satoko2Combo.load(install, 3, 2))
+        return skip_case("Satoko 2 combo");
+    // FUN_00435450 supplies computed XYZ in all four audited bodies. A Prop1
+    // program would lose the twin tap origins even though item 38 has no prop mesh.
+    const auto& weapon = g_satoko2Combo.weapon;
+    check_int("Satoko 2 NN.dat binds item 38", 38, g_satoko2Combo.moves.weapon_id());
+    check_int("Satoko 2 fixture loads item 38", 38, weapon.id);
+    check_int("Satoko 2 has fifteen registered bullet rows", 15, weapon.bulletCount);
+    check_bool("Satoko 2 ships two empty attachment meshes", true,
+               weapon.slotCount == 2 && weapon.slots[0].meshName.empty() &&
+               weapon.slots[1].meshName.empty());
+    const int rows[] = {0, 1, 4, 5};
+    for (int row : rows) {
+        check_int("Satoko 2 request operand has identity registration", row, weapon.bullets[row].type);
+        check_bool("Satoko 2 request operand has a decoded bullet fixture", true,
+                   g_satoko2Combo.hasBullet[static_cast<size_t>(row)]);
+    }
+    check_bool("Satoko 2 remains unbound until world-origin support exists", true,
+               gameplay::move_program(&g_satoko2Combo.moves) == nullptr);
+}
+
 void test_natsumi0_ground_tap() {
     section("29. Natsumi 0 state400 normal row 0 at 14F (bounded ground request schedule)");
     const auto install = findInstall(nullptr);
@@ -3131,6 +3156,7 @@ int main(int argc, char** argv) {
     test_rena1_normal_schedule();
     test_akane2_world_origin_gap();
     test_natsumi0_ground_tap();
+    test_satoko2_world_origin_fixture();
     test_ammo();
     test_hypermode();
     test_ko();

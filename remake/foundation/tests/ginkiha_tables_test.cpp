@@ -1057,25 +1057,30 @@ int main() {
               gameplay::kNatsumi0Rules[2].value == 0.f,
           "Natsumi 0 rule hides both props then schedules normal row 0 at 14F");
 
-    // 24–25. Keiichi 0/1: shot400 traces request FUN_00435220 on Bip01_R_Hand.
-    // Prop1 Launch cannot preserve that origin (shoot_body_2_1_400 L8805–8823).
-    // The usage pins describe forced-phase requests, not admitted projectiles.
-    struct KeiichiHandPins {
-        int weapon, swap, tagSlot;
+    // 24–26. Origin-blocked combos share the catalog checks, not firing programs.
+    // Keiichi 0/1 use hand transforms (FUN_00435220); Satoko 2 computes world XYZ
+    // (FUN_00435450, shoot_body_3_2_400 L16531–16546). Forced-phase requests do
+    // not prove natural reachability, geometry or admitted projectiles.
+    struct Shot400OriginPins {
+        const char* name;
+        int character, weapon, swap, tagSlot, frame, events;
+        char origin;
         float speed, turnBirth, turnNext;
         unsigned int update, vtable, walk;
     };
-    const KeiichiHandPins keiichiHandPins[] = {
-        {0, 7, 3, 42.5f, 0.001f, 0.002f, 0x0046A190u, 0x006A4F00u, 0x0046A5DAu},
-        {1, 8, 1, 30.0f, 0.1f, 0.1f, 0x00473610u, 0x006A4F28u, 0x00473A5Au},
+    const Shot400OriginPins shot400OriginPins[] = {
+        {"Keiichi", 2, 0, 7, 3, 13, 1, 'H', 42.5f, 0.001f, 0.002f, 0x0046A190u, 0x006A4F00u, 0x0046A5DAu},
+        {"Keiichi", 2, 1, 8, 1, 13, 1, 'H', 30.0f, 0.1f, 0.1f, 0x00473610u, 0x006A4F28u, 0x00473A5Au},
+        {"Satoko", 3, 2, 12, 1, 20, 2, 'W', 1.0f, 0.f, 0.f,
+         0x004BC040u, 0x006A4FC8u, 0x004BC47Fu},
     };
-    for (const auto& pin : keiichiHandPins) {
+    for (const auto& pin : shot400OriginPins) {
         const auto comboCheck = [&pin](bool ok, const char* what) {
             char label[192];
-            std::snprintf(label, sizeof(label), "Keiichi %d: %s", pin.weapon, what);
+            std::snprintf(label, sizeof(label), "%s %d: %s", pin.name, pin.weapon, what);
             check(ok, label);
         };
-        const ginkiha::BirthProfile* birth = findBirth(2, pin.weapon, 0);
+        const ginkiha::BirthProfile* birth = findBirth(pin.character, pin.weapon, 0);
         comboCheck(birth != nullptr, "row-0 birth profile exists");
         if (birth) {
             comboCheck(birth->swap_code == pin.swap, "birth swap matches roster");
@@ -1090,10 +1095,10 @@ int main() {
         bool usageShape = true;
         for (int i = 0; i < ginkiha::kShotFireRecordCount; ++i) {
             const auto& entry = ginkiha::kShotFireRecord[i];
-            if (entry.character != 2 || entry.weapon != pin.weapon) continue;
+            if (entry.character != pin.character || entry.weapon != pin.weapon) continue;
             const int mode = entry.tag ? 1 : 0;
             ++usageCounts[mode];
-            if (entry.slot != (entry.tag ? pin.tagSlot : 0) || entry.frame != 13 ||
+            if (entry.slot != (entry.tag ? pin.tagSlot : 0) || entry.frame != pin.frame ||
                 entry.phase < 0 || entry.phase > 5) {
                 usageShape = false;
                 continue;
@@ -1103,32 +1108,32 @@ int main() {
         comboCheck(usageCounts[0] == 6 && usageCounts[1] == 6 &&
                    usagePhases[0] == 0x3fu && usagePhases[1] == 0x3fu,
                    "normal/tag usage each cover all six forced phases exactly once");
-        comboCheck(usageShape, "normal/tag rows match roster and anchor at 13F");
+        comboCheck(usageShape, "normal/tag rows and firing anchor match evidence");
         bool traceShape = true;
         for (int variant = 0; variant < 6; ++variant) {
             for (bool tag : {false, true}) {
-                traceShape &= traceFireFrame(2, pin.weapon, variant, tag) == 13 &&
-                              traceFireEvents(2, pin.weapon, variant, tag) == 1 &&
-                              traceOriginEvents(2, pin.weapon, variant, tag, 'H') == 1 &&
-                              traceOriginEvents(2, pin.weapon, variant, tag, 'A') == 0 &&
-                              traceOriginEvents(2, pin.weapon, variant, tag, 'W') == 0;
+                traceShape &= traceFireFrame(pin.character, pin.weapon, variant, tag) == pin.frame &&
+                              traceFireEvents(pin.character, pin.weapon, variant, tag) == pin.events;
+                for (char origin : {'A', 'H', 'W'})
+                    traceShape &= traceOriginEvents(pin.character, pin.weapon, variant, tag, origin) ==
+                                  (origin == pin.origin ? pin.events : 0);
             }
         }
-        comboCheck(traceShape, "state400 requests one hand callback at 13F in each mode/phase");
+        comboCheck(traceShape, "state400 callback frame/count/origin match each mode/phase");
         const gameplay::LocomotionDefinition* locomotion = nullptr;
         for (const auto& entry : gameplay::kLocomotion)
-            if (entry.character == 2 && entry.slot == pin.weapon) locomotion = &entry;
+            if (entry.character == pin.character && entry.slot == pin.weapon) locomotion = &entry;
         unsigned int update = 0, vtable = 0;
         for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
             const auto& entry = ginkiha::kDispatchIdentity[i];
-            if (entry.character == 2 && entry.weapon == pin.weapon) {
+            if (entry.character == pin.character && entry.weapon == pin.weapon) {
                 update = entry.update;
                 vtable = entry.vtable;
             }
         }
         comboCheck(update == pin.update && vtable == pin.vtable, "dispatch update/vtable match roster");
         comboCheck(locomotion && locomotion->handler == update, "dispatch matches kLocomotion");
-        comboCheck(walkVa(2, pin.weapon) == pin.walk, "walk state-10 site matches exe-catalog");
+        comboCheck(walkVa(pin.character, pin.weapon) == pin.walk, "walk state-10 site matches exe-catalog");
     }
 
     std::printf("ginkiha_tables_test: %d checks, %d failures\n", g_checks, g_failures);
