@@ -311,15 +311,26 @@ inline constexpr MoveRule kRikaRules[] = {
     // once per update AFTER the fire checks (L23639), so the counter equals the phase
     // tick until the freeze pins the clock.
     {450,0,0,0,MoveOp::CounterSet,0.f},
-    // tick 10 twin pair — rows 2 (+50) and 5 (-50) in BOTH branches (L23507-123).
-    {450,-1,10,10,MoveOp::Launch,2.f,50.f,40.f},
-    {450,-1,10,10,MoveOp::Launch,5.f,-50.f,40.f},
+    // tick 10 twin pair — rows 2 (+50) and 5 (-50), forward 60, height +70, in BOTH
+    // branches (L23507-123). The geometry is stated as typed specs because the legacy
+    // adapter carries Rena 0's red-charge shape (forward/height 70, yaw offset +-1 deg),
+    // which is not this body's.
+    {450,-1,10,10,MoveOp::Launch,2.f,0.f,0.f,kGateNone,0,
+     origin_actor_relative(50.f,60.f,70.f),aim_target_elevation(40.f)},
+    {450,-1,10,10,MoveOp::Launch,5.f,0.f,0.f,kGateNone,0,
+     origin_actor_relative(-50.f,60.f,70.f),aim_target_elevation(40.f)},
     // tick 30 salvo: rows 3/6 normal (L23536-149), rows 4/7 powered (L23623-236),
-    // each gated on `counter > 0 && counter % 10 == 0` (L23534/L23620).
-    {450,-1,30,30,MoveOp::Launch,3.f,50.f,40.f,kGateCounter|kGateCounterMod,10},
-    {450,-1,30,30,MoveOp::Launch,6.f,-50.f,40.f,kGateCounter|kGateCounterMod,10},
-    {450,-1,30,30,MoveOp::Launch,4.f,50.f,40.f,kGatePowered|kGateCounter|kGateCounterMod,10},
-    {450,-1,30,30,MoveOp::Launch,7.f,-50.f,40.f,kGatePowered|kGateCounter|kGateCounterMod,10},
+    // each gated on `counter > 0 && counter % 10 == 0` (L23534/L23620). The body picks
+    // ONE pair per branch, so the normal pair carries kGateNormal as well — without it
+    // a powered fighter fires both pairs.
+    {450,-1,30,30,MoveOp::Launch,3.f,0.f,0.f,kGateNormal|kGateCounter|kGateCounterMod,10,
+     origin_actor_relative(50.f,60.f,70.f),aim_target_elevation(40.f)},
+    {450,-1,30,30,MoveOp::Launch,6.f,0.f,0.f,kGateNormal|kGateCounter|kGateCounterMod,10,
+     origin_actor_relative(-50.f,60.f,70.f),aim_target_elevation(40.f)},
+    {450,-1,30,30,MoveOp::Launch,4.f,0.f,0.f,kGatePowered|kGateCounter|kGateCounterMod,10,
+     origin_actor_relative(50.f,60.f,70.f),aim_target_elevation(40.f)},
+    {450,-1,30,30,MoveOp::Launch,7.f,0.f,0.f,kGatePowered|kGateCounter|kGateCounterMod,10,
+     origin_actor_relative(-50.f,60.f,70.f),aim_target_elevation(40.f)},
     // The freeze: the body returns before write_clock while the post-increment
     // counter is below 60 (L23639-243), which pins the tick at 30 for exactly 30
     // updates. The counter rule must precede this one so the gate reads the
@@ -333,12 +344,18 @@ inline constexpr MoveRule kRikaRules[] = {
     {460,-1,0,9,MoveOp::Turn,18.f},
     {460,-1,0,50,MoveOp::Turn,.1f,0.f,0.f,kGatePowered},
     {460,0,0,0,MoveOp::CounterSet,0.f},
-    {460,-1,10,10,MoveOp::Launch,2.f,50.f,40.f},
-    {460,-1,10,10,MoveOp::Launch,5.f,-50.f,40.f},
-    {460,-1,30,30,MoveOp::Launch,3.f,50.f,40.f,kGateCounter|kGateCounterMod,10},
-    {460,-1,30,30,MoveOp::Launch,6.f,-50.f,40.f,kGateCounter|kGateCounterMod,10},
-    {460,-1,30,30,MoveOp::Launch,4.f,50.f,40.f,kGatePowered|kGateCounter|kGateCounterMod,10},
-    {460,-1,30,30,MoveOp::Launch,7.f,-50.f,40.f,kGatePowered|kGateCounter|kGateCounterMod,10},
+    {460,-1,10,10,MoveOp::Launch,2.f,0.f,0.f,kGateNone,0,
+     origin_actor_relative(50.f,60.f,70.f),aim_target_elevation(40.f)},
+    {460,-1,10,10,MoveOp::Launch,5.f,0.f,0.f,kGateNone,0,
+     origin_actor_relative(-50.f,60.f,70.f),aim_target_elevation(40.f)},
+    {460,-1,30,30,MoveOp::Launch,3.f,0.f,0.f,kGateNormal|kGateCounter|kGateCounterMod,10,
+     origin_actor_relative(50.f,60.f,70.f),aim_target_elevation(40.f)},
+    {460,-1,30,30,MoveOp::Launch,6.f,0.f,0.f,kGateNormal|kGateCounter|kGateCounterMod,10,
+     origin_actor_relative(-50.f,60.f,70.f),aim_target_elevation(40.f)},
+    {460,-1,30,30,MoveOp::Launch,4.f,0.f,0.f,kGatePowered|kGateCounter|kGateCounterMod,10,
+     origin_actor_relative(50.f,60.f,70.f),aim_target_elevation(40.f)},
+    {460,-1,30,30,MoveOp::Launch,7.f,0.f,0.f,kGatePowered|kGateCounter|kGateCounterMod,10,
+     origin_actor_relative(-50.f,60.f,70.f),aim_target_elevation(40.f)},
     {460,0,0,9999,MoveOp::Counter,1.f},
     {460,0,30,30,MoveOp::Hold,9999.f,0.f,0.f,kGateCounterBelow,60},
 };

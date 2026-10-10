@@ -1444,6 +1444,12 @@ void Fighter::launch_bullet(int row, const ShotOriginSpec& origin, const ShotAim
     shot.origin = origin;
     shot.aim = aim;
 
+    // Compatibility path for the legacy `Launch(row, lateral, pitch)` tables. These
+    // constants are Rena 0's MEASURED red-charge shape (FUN_0043ffc0.c:1526-1543:
+    // forward 70, lateral 70, height +70, yaw = heading + movement offset +-1.0 deg),
+    // not a general world-request model. A body that measures anything else must use
+    // typed origin/aim specs — Rika 1's charge (forward 60, no yaw offset) is the
+    // example that was mis-routed through here.
     ShotOriginSpec resolvedOrigin = origin;
     ShotAimSpec resolvedAim = aim;
     if (resolvedOrigin.kind == ShotOriginKind::MoveRuleAdapter) {

@@ -41,6 +41,7 @@
 
 #include "gameplay/fighter.h"
 #include "gameplay/fixed_step.h"
+#include "gameplay/match.h"
 #include "gameplay/projectile.h"
 #include "gameplay/character_moves.h"
 #include "gameplay/weapon_definition.h"
@@ -1999,6 +2000,17 @@ void test_rika_repeating_tap() {
     check_bool("Rika charge T10 salvo fires twice", true, first.armed && second.armed);
     check_int("Rika T10 first row is 2", 2, first.bulletRow);
     check_int("Rika T10 second row is 5", 5, second.bulletRow);
+    // The charge twins are measured at forward 60 (0x42700000), lateral +-50
+    // (0x42480000) and height +70 (0x428c0000) over the actor, aimed on the legacy
+    // heading basis with NO yaw offset. The legacy adapter encodes Rena 0's red-charge
+    // shape instead (forward 70, height 70, +-1 deg), which is why these need typed
+    // specs — and why these numbers are the witness that they got them.
+    check_near("T10 twin sits 60 ahead of the actor, not the adapter's 70", 60.f,
+               first.pos.z, 1e-3f);
+    check_near("T10 first twin sits 50 right of the heading", 50.f, first.pos.x, 1e-3f);
+    check_near("T10 second twin sits 50 left of the heading", -50.f, second.pos.x, 1e-3f);
+    check_near("both T10 twins sit 70 above the actor", 70.f, first.pos.y, 1e-3f);
+    check_near("twin yaw tracks the heading with no +-1 deg nudge", 0.f, first.dir.x, 1e-4f);
     for (int i = 0; i < 20; ++i) tick(g, in);
     first = g.take_pending_shot();
     second = g.take_pending_shot();
@@ -2020,6 +2032,54 @@ void test_rika_repeating_tap() {
     check_int("frozen interval keeps firing the counter-gated pair", 4, frozenRequests);
     check_int("freeze releases the clock at counter 60", 31, g.phase_elapsed());
     check_int("counter ran to 60 over the freeze", 60, g.move_counter());
+
+    // Powered branch: shoot_body_4_1_450 picks ONE pair per branch, so the tick-30
+    // salvo becomes rows 4/7 while the tick-10 pair stays 2/5. Rows 3/6 therefore
+    // carry kGateNormal: without it a powered fighter fires BOTH pairs, which is 10
+    // requests over the charge instead of the body's 8.
+    Fighter h;
+    h.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rikaCombo.bind(h);
+    settle(h);
+    h.set_hypermode(Hypermode::Oyashiro);
+    h.set_hyper_gauge(1.f);
+    Input hp;
+    hp.set(fnd::input::Action::Special, true);
+    tick(h, hp);
+    hp.set(fnd::input::Action::Special, false);
+    tick(h, hp);
+    check_bool("Rika Oyashiro witness is active", true, h.hyper_active());
+    gameplay::ShootingContext context;
+    context.allyHold = true;
+    h.set_shooting_context(context);
+    check_bool("Rika powered gate holds", true, h.shoot_gate_powered());
+    hold_yellow(h, hp);
+    hp.set(fnd::input::Action::Shoot, false);
+    tick(h, hp);
+    check_int("Rika powered charge binds move 450", 450, h.shot_move_id());
+    // 60 updates carry the move from entry to the end of the freeze (tick 10, tick 30,
+    // then 30 frozen updates); a few extra ticks only confirm the salvo has stopped.
+    std::vector<int> poweredRows;
+    for (int i = 0; i < 65; ++i) {
+        tick(h, hp);
+        for (gameplay::PendingShot s = h.take_pending_shot(); s.armed;
+             s = h.take_pending_shot())
+            poweredRows.push_back(s.bulletRow);
+    }
+    check_int("powered charge requests the body's 8 shots", 8, (int)poweredRows.size());
+    if (poweredRows.size() == 8) {
+        check_int("powered tick-10 first row stays 2", 2, poweredRows[0]);
+        check_int("powered tick-10 second row stays 5", 5, poweredRows[1]);
+        check_int("powered frozen salvo first row is 4", 4, poweredRows[2]);
+        check_int("powered frozen salvo second row is 7", 7, poweredRows[3]);
+        check_int("powered frozen salvo repeats row 4", 4, poweredRows[4]);
+        check_int("powered frozen salvo repeats row 7", 7, poweredRows[5]);
+        check_int("powered frozen salvo third row 4", 4, poweredRows[6]);
+        check_int("powered frozen salvo third row 7", 7, poweredRows[7]);
+    }
+    check_bool("no normal-branch rows 3/6 leak into the powered salvo", true,
+               std::find(poweredRows.begin(), poweredRows.end(), 3) == poweredRows.end() &&
+                   std::find(poweredRows.begin(), poweredRows.end(), 6) == poweredRows.end());
 }
 
 void test_tomitake_twin_tap() {
@@ -2443,6 +2503,102 @@ void test_satoko2_world_origin_fixture() {
     check_int("powered twin second request also uses item row 1", 1, pr.bulletRow);
     check_bool("powered request keeps the measured lateral split", true,
                glm::dot(pl.pos - pr.pos, glm::vec3(1.f, 0.f, 0.f)) < 0.f);
+}
+
+void test_satoko2_powered_branch_live() {
+    section("32. Satoko 2 powered branch through a live 4-fighter match");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_satoko2Combo.load(install, 3, 2))
+        return skip_case("Satoko 2 live match");
+    // The fighter-level witness above injects ShootingContext directly, which proves
+    // the gate plumbing but not the producer. Here the hold is produced by Match's own
+    // lock maintenance: fighter 0 aims at its own teammate, the port's +0x848 analogue
+    // arms, the scene publishes it, and the fired request switches rows.
+    //
+    // WHAT THIS DOES NOT PROVE: that the port's hold predicate is the original's.
+    // The original re-pins +0x848 while this fighter's aim-selection target (+0x308,
+    // a PLAYER POINTER — see research/decompiled/FUN_0041f580.c:221) equals player
+    // 0's; the port's target_lock.h compares the combat lock against the owner's own
+    // team instead. That divergence is recorded in the architecture decision record.
+    const xm::Model* models[4] = {&g_satoko2Combo.model, &g_satoko2Combo.model,
+                                  &g_satoko2Combo.model, &g_satoko2Combo.model};
+    xm::Controller* animations[4] = {g_satoko2Combo.controller(),
+                                     g_satoko2Combo.controller(),
+                                     g_satoko2Combo.controller(),
+                                     g_satoko2Combo.controller()};
+
+    // A shot program cannot re-enter while it is still playing (set_state returns
+    // early for the same state), so each case gets its own match: settle, arm the
+    // Oyashiro special, optionally aim at the ally, then fire once and read the rows
+    // the scene actually spawned.
+    const auto firedRows = [&](bool aimAtAlly) {
+        gameplay::MatchConfig cfg;
+        cfg.fighterCount = 4;
+        for (int i = 0; i < 4; ++i) {
+            cfg.moves[i] = &g_satoko2Combo.moves;
+            cfg.weapon[i] = &g_satoko2Combo.weapon;
+            cfg.hyper[i] = Hypermode::Oyashiro;
+            cfg.startGauge[i] = 1.0f;
+        }
+        gameplay::Match m;
+        m.reset(cfg, models, animations, nullptr, nullptr);
+        m.economy().setLogFile(nullptr);
+        fnd::input::PlayerState idle{};
+        for (int i = 0; i < 70; ++i) {
+            fnd::input::compute_edges(idle);
+            const fnd::input::PlayerState* none[4] = {nullptr, nullptr, nullptr, nullptr};
+            m.step(none, gameplay::FixedStep::seconds);
+        }
+        fnd::input::PlayerState special{};
+        special.down[fnd::input::Action::Special] = true;
+        fnd::input::compute_edges(special);
+        const fnd::input::PlayerState* specialInputs[4] = {&special, nullptr, nullptr,
+                                                           nullptr};
+        m.step(specialInputs, gameplay::FixedStep::seconds);
+        for (bool& down : special.down) down = false;
+        fnd::input::compute_edges(special);
+        m.step(specialInputs, gameplay::FixedStep::seconds);
+        if (!m.fighter(0).hyper_active()) return std::vector<int>{-1};
+        if (aimAtAlly) {
+            m.lock_ally_target(0);
+            if (!m.lock_holds_ally(0)) return std::vector<int>{-2};
+            // The hold is re-pinned by the per-tick pass, not latched by the gesture.
+            for (int i = 0; i < 2; ++i) {
+                fnd::input::compute_edges(idle);
+                const fnd::input::PlayerState* none[4] = {nullptr, nullptr, nullptr,
+                                                          nullptr};
+                m.step(none, gameplay::FixedStep::seconds);
+            }
+            if (!m.lock_holds_ally(0)) return std::vector<int>{-3};
+        }
+        fnd::input::PlayerState fire{};
+        fire.down[fnd::input::Action::Shoot] = true;
+        fnd::input::compute_edges(fire);
+        const fnd::input::PlayerState* inputs[4] = {&fire, nullptr, nullptr, nullptr};
+        m.step(inputs, gameplay::FixedStep::seconds);
+        for (bool& down : fire.down) down = false;
+        fnd::input::compute_edges(fire);
+        std::vector<int> rows;
+        for (int i = 0; i < 40 && rows.size() < 2; ++i) {
+            m.step(inputs, gameplay::FixedStep::seconds);
+            for (const auto& shot : m.shots().shots())
+                if (shot.alive && shot.owner == &m.fighter(0)) rows.push_back(shot.bulletRow);
+        }
+        return rows;
+    };
+
+    const std::vector<int> hostile = firedRows(false);
+    check_int("a hostile lock keeps the normal pair", 2, (int)hostile.size());
+    if (hostile.size() == 2) {
+        check_int("normal twin first row is 0", 0, hostile[0]);
+        check_int("normal twin second row is 0", 0, hostile[1]);
+    }
+    const std::vector<int> ally = firedRows(true);
+    check_int("an ally lock fires the powered twin", 2, (int)ally.size());
+    if (ally.size() == 2) {
+        check_int("powered twin first row is 1", 1, ally[0]);
+        check_int("powered twin second row is 1", 1, ally[1]);
+    }
 }
 
 void test_natsumi0_ground_tap() {
@@ -3071,6 +3227,7 @@ int main(int argc, char** argv) {
     test_akane2_world_origin_gap();
     test_natsumi0_ground_tap();
     test_satoko2_world_origin_fixture();
+    test_satoko2_powered_branch_live();
     test_shooting_magazine_contract();
     test_ammo();
     test_hypermode();
