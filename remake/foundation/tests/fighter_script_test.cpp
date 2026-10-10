@@ -2050,7 +2050,7 @@ void test_rika_repeating_tap() {
     tick(h, hp);
     check_bool("Rika Oyashiro witness is active", true, h.hyper_active());
     gameplay::ShootingContext context;
-    context.allyHold = true;
+    context.aimHold = true;
     h.set_shooting_context(context);
     check_bool("Rika powered gate holds", true, h.shoot_gate_powered());
     hold_yellow(h, hp);
@@ -2109,7 +2109,7 @@ void test_rika_pitch_latch() {
     sp.set(fnd::input::Action::Special, false);
     tick(attacker, sp, &victim);
     gameplay::ShootingContext context;
-    context.allyHold = true;
+    context.aimHold = true;
     attacker.set_shooting_context(context);
     hold_yellow(attacker, sp);
     sp.set(fnd::input::Action::Shoot, false);
@@ -2168,7 +2168,7 @@ void test_rika_air_powered_charge() {
     tick(f, sp);
     check_bool("Oyashiro witness is active", true, f.hyper_active());
     gameplay::ShootingContext context;
-    context.allyHold = true;
+    context.aimHold = true;
     f.set_shooting_context(context);
     sp.set(fnd::input::Action::Shoot, true);
     sp.set(fnd::input::Action::Jump, true);
@@ -2687,7 +2687,7 @@ void test_satoko2_world_origin_fixture() {
     check_bool("Oyashiro witness is active", true, p.hyper_active());
     check_bool("gate is closed without the ally hold", false, p.shoot_gate_powered());
     gameplay::ShootingContext context;
-    context.allyHold = true;
+    context.aimHold = true;
     p.set_shooting_context(context);
     check_bool("gate opens with the ally hold", true, p.shoot_gate_powered());
     sp.set(fnd::input::Action::Shoot, true);
@@ -2705,20 +2705,17 @@ void test_satoko2_world_origin_fixture() {
 }
 
 void test_satoko2_powered_branch_live() {
-    section("32. Satoko 2 powered branch through a live 4-fighter match");
+    section("32. Satoko 2 powered branch in 1v1: the aim hold pins by default");
     const auto install = findInstall(nullptr);
     if (install.empty() || !g_satoko2Combo.load(install, 3, 2))
         return skip_case("Satoko 2 live match");
-    // The fighter-level witness above injects ShootingContext directly, which proves
-    // the gate plumbing but not the producer. Here the hold is produced by Match's own
-    // lock maintenance: fighter 0 aims at its own teammate, the port's +0x848 analogue
-    // arms, the scene publishes it, and the fired request switches rows.
-    //
-    // WHAT THIS DOES NOT PROVE: that the port's hold predicate is the original's.
-    // The original re-pins +0x848 while this fighter's aim-selection target (+0x308,
-    // a PLAYER POINTER — see research/decompiled/FUN_0041f580.c:221) equals player
-    // 0's; the port's target_lock.h compares the combat lock against the owner's own
-    // team instead. That divergence is recorded in the architecture decision record.
+    // The fighter-level witness injects ShootingContext directly, which proves the gate
+    // plumbing but not the producer. Here the hold is produced by Match's own aim-layer
+    // maintenance from the recovered predicate: this fighter's aim target is the same
+    // fighter player 0 is aiming at. At round start every aim is player 0
+    // (FUN_00421670), so in 1v1 both holds pin on the first tick with NO gesture — the
+    // powered branch is available by default, not team-play only. The control below
+    // isolates the other half of the gate (the Oyashiro special).
     const xm::Model* models[4] = {&g_satoko2Combo.model, &g_satoko2Combo.model,
                                   &g_satoko2Combo.model, &g_satoko2Combo.model};
     xm::Controller* animations[4] = {g_satoko2Combo.controller(),
@@ -2728,15 +2725,24 @@ void test_satoko2_powered_branch_live() {
 
     // A shot program cannot re-enter while it is still playing (set_state returns
     // early for the same state), so each case gets its own match: settle, arm the
-    // Oyashiro special, optionally aim at the ally, then fire once and read the rows
-    // the scene actually spawned.
-    const auto firedRows = [&](bool aimAtAlly) {
+    // special, fire once, and read the request, the admission and the spawn separately.
+    // Admission is observable because Satoko 2's rows 0 and 1 live in different
+    // magazines (read from the item table, never hardcoded).
+    struct VolleyOutcome {
+        std::vector<int> rows;
+        int mainSpent = -1;
+        int chargeSpent = -1;
+    };
+    const int rowMagazine[2] = {g_satoko2Combo.weapon.bullets[0].magazine,
+                                g_satoko2Combo.weapon.bullets[1].magazine};
+    const auto firedVolley = [&](gameplay::Hypermode mode) {
+        VolleyOutcome out;
         gameplay::MatchConfig cfg;
-        cfg.fighterCount = 4;
-        for (int i = 0; i < 4; ++i) {
+        cfg.fighterCount = 2;
+        for (int i = 0; i < 2; ++i) {
             cfg.moves[i] = &g_satoko2Combo.moves;
             cfg.weapon[i] = &g_satoko2Combo.weapon;
-            cfg.hyper[i] = Hypermode::Oyashiro;
+            cfg.hyper[i] = mode;
             cfg.startGauge[i] = 1.0f;
         }
         gameplay::Match m;
@@ -2748,6 +2754,9 @@ void test_satoko2_powered_branch_live() {
             const fnd::input::PlayerState* none[4] = {nullptr, nullptr, nullptr, nullptr};
             m.step(none, gameplay::FixedStep::seconds);
         }
+        // No lock gesture at all: the aims are still both player 0 from init.
+        if (m.aim_selection(0) != 0 || m.aim_selection(1) != 0) return out;
+        if (!m.aim_holds(0) || !m.aim_holds(1)) return out;
         fnd::input::PlayerState special{};
         special.down[fnd::input::Action::Special] = true;
         fnd::input::compute_edges(special);
@@ -2757,19 +2766,9 @@ void test_satoko2_powered_branch_live() {
         for (bool& down : special.down) down = false;
         fnd::input::compute_edges(special);
         m.step(specialInputs, gameplay::FixedStep::seconds);
-        if (!m.fighter(0).hyper_active()) return std::vector<int>{-1};
-        if (aimAtAlly) {
-            m.lock_ally_target(0);
-            if (!m.lock_holds_ally(0)) return std::vector<int>{-2};
-            // The hold is re-pinned by the per-tick pass, not latched by the gesture.
-            for (int i = 0; i < 2; ++i) {
-                fnd::input::compute_edges(idle);
-                const fnd::input::PlayerState* none[4] = {nullptr, nullptr, nullptr,
-                                                          nullptr};
-                m.step(none, gameplay::FixedStep::seconds);
-            }
-            if (!m.lock_holds_ally(0)) return std::vector<int>{-3};
-        }
+        const bool armed = m.fighter(0).hyper_active();
+        const int mainBefore = m.fighter(0).main_whole();
+        const int chargeBefore = m.fighter(0).charge_whole();
         fnd::input::PlayerState fire{};
         fire.down[fnd::input::Action::Shoot] = true;
         fnd::input::compute_edges(fire);
@@ -2782,30 +2781,163 @@ void test_satoko2_powered_branch_live() {
         // assertion by living into the next tick. Both requests of a volley queue in
         // the same update and the scene drains them in the same step, so the spawn
         // update itself must carry both.
-        std::vector<int> rows;
         bool spawned = false;
         for (int i = 0; i < 40 && !spawned; ++i) {
             m.step(inputs, gameplay::FixedStep::seconds);
             for (const auto& shot : m.shots().shots())
                 if (shot.alive && shot.owner == &m.fighter(0)) {
                     spawned = true;
+                    out.rows.push_back(shot.bulletRow);
+                }
+        }
+        // Encode the arming outcome in the sentinel so a silent Special failure
+        // cannot masquerade as a row assertion.
+        if (!armed) {
+            out.rows = std::vector<int>{-1};
+            return out;
+        }
+        out.mainSpent = mainBefore - m.fighter(0).main_whole();
+        out.chargeSpent = chargeBefore - m.fighter(0).charge_whole();
+        return out;
+    };
+
+    const VolleyOutcome oyashiro = firedVolley(Hypermode::Oyashiro);
+    check_int("1v1 Oyashiro tap fires the powered twin", 2, (int)oyashiro.rows.size());
+    if (oyashiro.rows.size() == 2) {
+        check_int("1v1 powered twin first row is 1", 1, oyashiro.rows[0]);
+        check_int("1v1 powered twin second row is 1", 1, oyashiro.rows[1]);
+    }
+    if (rowMagazine[1] == 1) {
+        check_int("powered twin spends two secondary rounds", 2, oyashiro.chargeSpent);
+        check_int("powered twin leaves the primary stock alone", 0, oyashiro.mainSpent);
+    } else if (rowMagazine[1] == 0) {
+        // Item 38 bills both rows to the primary stock, so admission is identical and
+        // only the spawned rows tell the branches apart. The spend is still asserted:
+        // it proves the requests were admitted, not bypassed or dropped.
+        check_int("powered twin spends two primary rounds", 2, oyashiro.mainSpent);
+        check_int("powered twin leaves the secondary stock alone", 0, oyashiro.chargeSpent);
+    }
+    const VolleyOutcome friendship = firedVolley(Hypermode::Friendship);
+    check_int("1v1 Friendship tap fires the normal twin", 2, (int)friendship.rows.size());
+    if (friendship.rows.size() == 2) {
+        check_int("1v1 normal twin first row is 0", 0, friendship.rows[0]);
+        check_int("1v1 normal twin second row is 0", 0, friendship.rows[1]);
+    }
+    if (rowMagazine[0] == 0) {
+        check_int("normal twin spends two primary rounds", 2, friendship.mainSpent);
+        check_int("normal twin leaves the secondary stock alone", 0, friendship.chargeSpent);
+    }
+}
+
+void test_satoko2_aim_shared_2v2() {
+    section("34. Satoko 2 aim hold in 2v2: shared aims hold, different aims decay");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_satoko2Combo.load(install, 3, 2))
+        return skip_case("Satoko 2 2v2 aim");
+    // Sides {0,0,1,1}: blues 0/1 vs reds 2/3. Blues 0 and 1 both aim at red 2, so
+    // fighter 1's aim matches player 0's and holds; red 3 aims at blue 0 while player
+    // 0 aims at 2, so it decays. The combat locks follow the same gestures, but the
+    // hold predicate never consults them — only the aim comparison feeds the gate.
+    const xm::Model* models[4] = {&g_satoko2Combo.model, &g_satoko2Combo.model,
+                                  &g_satoko2Combo.model, &g_satoko2Combo.model};
+    xm::Controller* animations[4] = {g_satoko2Combo.controller(),
+                                     g_satoko2Combo.controller(),
+                                     g_satoko2Combo.controller(),
+                                     g_satoko2Combo.controller()};
+    gameplay::MatchConfig cfg;
+    cfg.fighterCount = 4;
+    cfg.side[0] = 0; cfg.side[1] = 0; cfg.side[2] = 1; cfg.side[3] = 1;
+    for (int i = 0; i < 4; ++i) {
+        cfg.moves[i] = &g_satoko2Combo.moves;
+        cfg.weapon[i] = &g_satoko2Combo.weapon;
+        cfg.hyper[i] = Hypermode::Oyashiro;
+        cfg.startGauge[i] = 1.0f;
+        cfg.spawn[i] = glm::vec3(i < 2 ? -1000.f : 1000.f, 0.f, (i % 2) * 500.f);
+    }
+    gameplay::Match m;
+    m.reset(cfg, models, animations, nullptr, nullptr);
+    m.economy().setLogFile(nullptr);
+    fnd::input::PlayerState idle{};
+    for (int i = 0; i < 70; ++i) {
+        fnd::input::compute_edges(idle);
+        const fnd::input::PlayerState* none[4] = {nullptr, nullptr, nullptr, nullptr};
+        m.step(none, gameplay::FixedStep::seconds);
+    }
+    m.cycle_locked_target(0, true);
+    m.cycle_locked_target(1, true);
+    m.cycle_locked_target(3, true);
+    check_int("player 0 aims at red 2", 2, m.aim_selection(0));
+    check_int("blue 1 aims at the same red 2", 2, m.aim_selection(1));
+    check_int("red 3 aims at blue 0 instead", 0, m.aim_selection(3));
+    // The combat locks moved with the same gestures, which is the port's UX layer
+    // doing its job; the projectile rows below are what prove the gate reads the aim.
+    check_int("fighter 1 also locked red 2", 2, m.locked_target(1));
+    for (int i = 0; i < 3; ++i) {
+        fnd::input::compute_edges(idle);
+        const fnd::input::PlayerState* none[4] = {nullptr, nullptr, nullptr, nullptr};
+        m.step(none, gameplay::FixedStep::seconds);
+    }
+    check_bool("player 0 holds through its own selection", true, m.aim_holds(0));
+    check_bool("the matching aim holds", true, m.aim_holds(1));
+    check_bool("the mismatched aim is already decaying", true,
+               m.aim_hold_ticks(3) < gameplay::kAllyHoldTicks &&
+                   m.aim_hold_ticks(3) > 0);
+    // Drain fighter 3's hold fully, then fire both: the holder takes the powered rows
+    // while the diverter takes the normal ones, through the same scene drain.
+    int guard = 0;
+    while (m.aim_hold_ticks(3) > 0 && guard++ < 400) {
+        fnd::input::compute_edges(idle);
+        const fnd::input::PlayerState* none[4] = {nullptr, nullptr, nullptr, nullptr};
+        m.step(none, gameplay::FixedStep::seconds);
+    }
+    check_int("the diverged hold drains to zero", 0, m.aim_hold_ticks(3));
+    check_bool("the matching aim survives the whole drain", true, m.aim_holds(1));
+
+    // Fire both through the same scene drain: the holder's twin is powered (row 1)
+    // while the diverter's is normal (row 0). Separate matches are unnecessary here
+    // because different fighters can each fire once.
+    const auto fireOnce = [&](int fighter) {
+        fnd::input::PlayerState special{};
+        special.down[fnd::input::Action::Special] = true;
+        fnd::input::compute_edges(special);
+        const fnd::input::PlayerState* activate[4] = {nullptr, nullptr, nullptr, nullptr};
+        activate[fighter] = &special;
+        m.step(activate, gameplay::FixedStep::seconds);
+        for (bool& down : special.down) down = false;
+        fnd::input::compute_edges(special);
+        m.step(activate, gameplay::FixedStep::seconds);
+        if (!m.fighter(fighter).hyper_active()) return std::vector<int>{-1};
+        fnd::input::PlayerState fire{};
+        fire.down[fnd::input::Action::Shoot] = true;
+        fnd::input::compute_edges(fire);
+        const fnd::input::PlayerState* inputs[4] = {nullptr, nullptr, nullptr, nullptr};
+        inputs[fighter] = &fire;
+        m.step(inputs, gameplay::FixedStep::seconds);
+        for (bool& down : fire.down) down = false;
+        fnd::input::compute_edges(fire);
+        std::vector<int> rows;
+        bool spawned = false;
+        for (int i = 0; i < 40 && !spawned; ++i) {
+            m.step(inputs, gameplay::FixedStep::seconds);
+            for (const auto& shot : m.shots().shots())
+                if (shot.alive && shot.owner == &m.fighter(fighter)) {
+                    spawned = true;
                     rows.push_back(shot.bulletRow);
                 }
         }
         return rows;
     };
-
-    const std::vector<int> hostile = firedRows(false);
-    check_int("a hostile lock keeps the normal pair", 2, (int)hostile.size());
-    if (hostile.size() == 2) {
-        check_int("normal twin first row is 0", 0, hostile[0]);
-        check_int("normal twin second row is 0", 0, hostile[1]);
+    const std::vector<int> holder = fireOnce(1);
+    check_int("the matching fighter fires the powered twin", 2, (int)holder.size());
+    if (holder.size() == 2) {
+        check_int("shared-aim twin first row is 1", 1, holder[0]);
+        check_int("shared-aim twin second row is 1", 1, holder[1]);
     }
-    const std::vector<int> ally = firedRows(true);
-    check_int("an ally lock fires the powered twin", 2, (int)ally.size());
-    if (ally.size() == 2) {
-        check_int("powered twin first row is 1", 1, ally[0]);
-        check_int("powered twin second row is 1", 1, ally[1]);
+    const std::vector<int> diverter = fireOnce(3);
+    check_int("the diverged fighter fires the normal twin", 2, (int)diverter.size());
+    if (diverter.size() == 2) {
+        check_int("diverged twin first row is 0", 0, diverter[0]);
+        check_int("diverged twin second row is 0", 0, diverter[1]);
     }
 }
 
@@ -3438,6 +3570,7 @@ int main(int argc, char** argv) {
     test_natsumi0_ground_tap();
     test_satoko2_world_origin_fixture();
     test_satoko2_powered_branch_live();
+    test_satoko2_aim_shared_2v2();
     test_shooting_magazine_contract();
     test_ammo();
     test_hypermode();

@@ -170,9 +170,20 @@ public:
     // and the one MatchConfig::side/spawn use — not a panel slot, not a controller slot
     // and not a team. Calls are inert for an out-of-range fighter index.
     int  locked_target(int fighter) const { return m_locks.target(fighter); }
-    // True when this fighter's selection is an ally and the recovered hold is live
-    // (FUN_00421e30's 0xb4, re-pinned by FUN_0041f580:244).
+    // True when this fighter's selection is an ally and the UX hold is live. This is
+    // the lock layer's port-rule predicate for the tap/hold gestures and the ring —
+    // NOT the firing predicate below.
     bool lock_holds_ally(int fighter) const { return m_locks.holding_ally(fighter); }
+    // This fighter's aim selection (+0x300): the player index it is aiming at,
+    // independent of the combat lock above and of the camera's followed player.
+    int  aim_selection(int fighter) const { return m_locks.aim_selection(fighter); }
+    // Ticks left in the recovered +0x848 hold for the firing predicate.
+    int  aim_hold_ticks(int fighter) const { return m_locks.aim_hold_ticks(fighter); }
+    // True when this fighter's aim target is the same fighter player 0 is aiming at
+    // (the recovered +0x848 predicate, FUN_0041f580:242-248). For fighter 0 this is
+    // self-referential and holds continuously. This — not lock_holds_ally — is what
+    // the shooting gate reads.
+    bool aim_holds(int fighter) const { return m_locks.aim_holds(fighter); }
     // Ticks left in the recovered 15-tick switch pulse (FUN_00421e30's +0x30c), which
     // the ring reads as a scale and arc advance (FUN_00643230:71-72).
     int  lock_pulse(int fighter) const { return m_locks.pulse(fighter); }

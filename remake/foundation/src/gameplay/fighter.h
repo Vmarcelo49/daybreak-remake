@@ -326,10 +326,11 @@ struct PendingShot {
 // recovered firing predicate; target geometry and the simulation RNG join it as their
 // users land.
 struct ShootingContext {
-    // word +0x848 != 0: the 180-tick hold target_lock.h maintains while the aim
-    // selection shares player 0's team (FUN_0041f580:242-248). Together with the
-    // Oyashiro special byte +0x845 it forms the roster-wide powered gate.
-    bool allyHold = false;
+    // word +0x848 != 0: the 180-tick hold target_lock.h re-pins while this fighter's
+    // aim target is the same fighter player 0 is aiming at (FUN_0041f580:242-248).
+    // Together with the Oyashiro special byte +0x845 it forms the roster-wide powered
+    // gate. This is the aim-selection predicate, not the combat lock's ally hold.
+    bool aimHold = false;
 };
 
 // move_behavior.h's executable rule, forward-declared so the gate evaluation beside
@@ -648,11 +649,11 @@ public:
     // The original's `byte(+0x845) != 0 && word(+0x848) != 0`, read by 514 of the 841
     // recovered shoot bodies and by every other action family. +0x845 is the Oyashiro
     // special armed byte (FUN_004220e0 sets it, FUN_0041f580:88-92 clears it when its
-    // countdown ends) and +0x848 is the ally hold the scene publishes. A fighter
-    // running Friendship or Kakera never takes a powered branch, which is source
-    // behavior and not a gap.
+    // countdown ends) and +0x848 is the aim hold the scene publishes (same aim target
+    // as player 0). A fighter running Friendship or Kakera never takes a powered
+    // branch, which is source behavior and not a gap.
     bool shoot_gate_powered() const {
-        return m_hyperActive && m_hypermode == Hypermode::Oyashiro && m_shooting.allyHold;
+        return m_hyperActive && m_hypermode == Hypermode::Oyashiro && m_shooting.aimHold;
     }
     // The scene publishes the per-tick firing context before update().
     void set_shooting_context(const ShootingContext& context) { m_shooting = context; }
