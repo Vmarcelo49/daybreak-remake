@@ -3507,12 +3507,14 @@ void test_mion2_single_shot() {
     const auto install = findInstall(nullptr);
     if (install.empty() || !g_mion2Combo.load(install, 1, 2))
         return skip_case("Mion 2 combo");
-    // Bundle evidence: Mion 2 (handler 0x44fa10) fires ONE row-0 shot at entry-tick 10
-    // in the ground tap (the clock jumps to 18 in the same pass — ticks 11-17 never
-    // execute, so the frame-18 anchor is the jump destination of that same single
-    // shot, not a second one). The first ground charge is a 10-shot burst rows 2 at
-    // ticks 15..60 step 5 (per-shot ammo gates unmappable — static schedule here).
-    // Her program is kMion2Rules; the second charge stays provisional.
+    // shoot_body_1_2_400 fires ONE slot-0 request at per-phase tick 10, rows 0/1, +-40
+    // (the body force-writes its tick counter 10 -> 18, so ticks 11..17 never run and the
+    // frame-18 anchor is that same single shot). The charge emits inside `if (phase == 1)`
+    // on `tick > 14 && tick % 5 == 0 && counter < 10`, rows 2/3, +-45 — so the burst only
+    // starts once phase 1 is reached, which is what this test now drives to.
+    const auto* program = gameplay::move_program(&g_mion2Combo.moves);
+    check_bool("Mion 2 program is bound", true,
+               program && program->rules == gameplay::kMion2Rules);
     Fighter f;
     f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_mion2Combo.bind(f);
@@ -3529,11 +3531,13 @@ void test_mion2_single_shot() {
     gameplay::PendingShot shot = f.take_pending_shot();
     check_bool("Mion2 tap launches at tick 10", true, shot.armed);
     check_int("Mion2 tap selects item row zero", 0, shot.bulletRow);
-    // Discriminating: no second shot at tick 18 in the same activation — the anchor
-    // there is the jump destination, and a two-shot reading would fire again here.
+    check_int("Mion2 tap fires from attachment slot 0", 0, shot.origin.attachmentSlot);
+    // Discriminating: the launch is a single request, so the jump destination at tick 18
+    // must stay silent in the same activation.
     for (int i = 0; i < 8; ++i) tick(f, in);
     check_bool("Mion2 tap fires once (silent at tick 18)", false,
                f.take_pending_shot().armed);
+
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_mion2Combo.bind(g);
@@ -3546,21 +3550,31 @@ void test_mion2_single_shot() {
     check_int("Mion2 charge enters ShootB", static_cast<int>(FighterState::ShootB),
               static_cast<int>(g.state()));
     check_int("Mion2 charge binds move 450", 450, g.shot_move_id());
-    for (int i = 0; i < 15; ++i) tick(g, in);
-    shot = g.take_pending_shot();
-    check_bool("Mion2 charge launches at tick 15", true, shot.armed);
-    check_int("Mion2 charge selects item row two", 2, shot.bulletRow);
-    // Second burst shot: drive by elapsed (phase changes reset the counter, so a
-    // fixed tick count would miss the window). One extra tick after the loop: the
-    // loop exits right after the tick that SET elapsed to 20, whose rule pass still
-    // saw 19 — the tick-20 rules only run on the next update (Keiichi precedent).
+    // The burst lives in phase 1, so nothing fires during the phase-0 wind-up.
+    check_bool("Mion2 charge is silent in phase 0", false, g.take_pending_shot().armed);
     int guard = 0;
-    while (g.phase_elapsed() < 20 && guard++ < 120) tick(g, in);
-    check_int("Mion2 charge reaches tick 20", 20, g.phase_elapsed());
-    tick(g, in);
-    shot = g.take_pending_shot();
-    check_bool("Mion2 charge launches again at tick 20", true, shot.armed);
-    check_int("Mion2 repeat selects item row two", 2, shot.bulletRow);
+    gameplay::PendingShot burst{};
+    while (!burst.armed && guard++ < 400) {
+        tick(g, in);
+        burst = g.take_pending_shot();
+    }
+    check_bool("Mion2 charge emits once phase 1 is reached", true, burst.armed);
+    check_int("Mion2 burst runs in phase 1", 1, g.move_phase());
+    check_int("Mion2 charge selects item row two", 2, burst.bulletRow);
+    check_int("Mion2 burst emits from attachment slot 0", 0,
+              burst.origin.attachmentSlot);
+    // Cadence: the next emission is five ticks later in the same phase.
+    const int firstEmit = g.phase_elapsed();
+    guard = 0;
+    gameplay::PendingShot repeat{};
+    while (!repeat.armed && guard++ < 40) {
+        tick(g, in);
+        repeat = g.take_pending_shot();
+    }
+    check_bool("Mion2 burst repeats", true, repeat.armed);
+    check_int("Mion2 repeat selects item row two", 2, repeat.bulletRow);
+    check_int("Mion2 repeat sits five ticks after the first", 5,
+              g.phase_elapsed() - firstEmit);
 }
 
 void test_irie_twin_tap() {
@@ -3821,21 +3835,183 @@ void test_rika_shot_jump_cancel() {
     in.set(fnd::input::Action::Jump, false);
 }
 
+void test_mion_slots_and_gates() {
+    section("38. Mion 0 slots, powered rows and counter volleys (handler 0x4582a0)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_mionCombo.load(install, 1, 0))
+        return skip_case("Mion 0 combo");
+    // The powered gate switches the ROW only, never the slot: rows 0/4 on the taps and
+    // 2/3 on the charges, all from FUN_00435000. Phase 3 (Mion 0's 400) and phase 2
+    // (Mion 1's 400) fire slot 1, and only while the move has connected.
+
+    // Powered ground tap: same phase-1 tick-2 window, row 4 instead of 0.
+    Fighter p;
+    p.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_mionCombo.bind(p);
+    settle(p);
+    p.set_hypermode(Hypermode::Oyashiro);
+    p.set_hyper_gauge(1.f);
+    Input sp;
+    sp.set(fnd::input::Action::Special, true);
+    tick(p, sp);
+    sp.set(fnd::input::Action::Special, false);
+    tick(p, sp);
+    gameplay::ShootingContext context;
+    context.aimHold = true;
+    p.set_shooting_context(context);
+    sp.set(fnd::input::Action::Shoot, true);
+    tick(p, sp);
+    sp.set(fnd::input::Action::Shoot, false);
+    tick(p, sp);
+    int guard = 0;
+    gameplay::PendingShot powered{};
+    while (!powered.armed && guard++ < 40) {
+        tick(p, sp);
+        powered = p.take_pending_shot();
+    }
+    check_bool("powered tap fires", true, powered.armed);
+    check_int("powered tap switches to item row 4", 4, powered.bulletRow);
+    check_int("powered tap keeps attachment slot 0", 0, powered.origin.attachmentSlot);
+
+    // Air tap: three counter volleys, each firing BOTH slots with the same row.
+    Fighter a;
+    a.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_mionCombo.bind(a);
+    settle(a);
+    Input in;
+    in.set(fnd::input::Action::Jump, true);
+    tick(a, in);
+    in.set(fnd::input::Action::Shoot, true);
+    tick(a, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(a, in);
+    check_int("air tap binds move 402", 402, a.shot_move_id());
+    std::vector<int> rows;
+    std::vector<int> slots;
+    for (int i = 0; i < 40; ++i) {
+        tick(a, in);
+        for (gameplay::PendingShot s = a.take_pending_shot(); s.armed;
+             s = a.take_pending_shot()) {
+            rows.push_back(s.bulletRow);
+            slots.push_back(s.origin.attachmentSlot);
+        }
+    }
+    check_int("air tap fires the three dual-slot volleys", 6, (int)rows.size());
+    bool allRowZero = !rows.empty();
+    for (int r : rows) allRowZero &= (r == 0);
+    check_bool("every air-tap volley uses row 0", true, allRowZero);
+    int slot0 = 0, slot1 = 0;
+    for (int sl : slots) (sl == 0 ? slot0 : slot1)++;
+    check_int("air tap fires attachment slot 0 three times", 3, slot0);
+    check_int("air tap fires attachment slot 1 three times", 3, slot1);
+
+    // Ground charge: rows 2/3 and an ASYMMETRIC clamp (-40 low, +45 high). A target
+    // parked far above drives the raw elevation past both ends.
+    Fighter c;
+    c.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_mionCombo.bind(c);
+    settle(c);
+    Fighter high;
+    high.init(nullptr, nullptr, glm::vec3(0, 4000, 0), 0.0f);
+    g_mionCombo.bind(high);
+    settle(high);
+    hold_yellow(c, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(c, in, &high);
+    check_int("charge binds move 450", 450, c.shot_move_id());
+    for (int i = 0; i < 17; ++i) tick(c, in, &high);
+    const gameplay::PendingShot up = c.take_pending_shot();
+    check_bool("charge fires against a high target", true, up.armed);
+    check_int("charge uses item row 2", 2, up.bulletRow);
+    // +45 degrees is the body's high bound; a symmetric +-40 clamp would stop at 40.
+    check_near("high bound is the body's +45, not +40",
+               std::sin(glm::radians(45.f)), up.dir.y, 2e-3f);
+
+    // Powered charge row 3.
+    Fighter pc;
+    pc.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_mionCombo.bind(pc);
+    settle(pc);
+    pc.set_hypermode(Hypermode::Oyashiro);
+    pc.set_hyper_gauge(1.f);
+    sp.set(fnd::input::Action::Special, true);
+    tick(pc, sp);
+    sp.set(fnd::input::Action::Special, false);
+    tick(pc, sp);
+    pc.set_shooting_context(context);
+    hold_yellow(pc, sp);
+    sp.set(fnd::input::Action::Shoot, false);
+    tick(pc, sp);
+    for (int i = 0; i < 17; ++i) tick(pc, sp);
+    const gameplay::PendingShot pcShot = pc.take_pending_shot();
+    check_bool("powered charge fires", true, pcShot.armed);
+    check_int("powered charge switches to item row 3", 3, pcShot.bulletRow);
+}
+
+void test_mion_slot1_contact_follow_up() {
+    section("39. Mion slot-1 follow-up needs contact (bodies 1_0_400 phase 3, 1_1_400 phase 2)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_mionCombo.load(install, 1, 0))
+        return skip_case("Mion 0 combo");
+    // Both combos gate the slot-1 follow-up on `0 < w[0x1b7]` — the port's contact flag.
+    // Without a connect the second fire must not happen; with one it must change slots.
+    Input in;
+    Fighter quiet;
+    quiet.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_mionCombo.bind(quiet);
+    settle(quiet);
+    in.set(fnd::input::Action::Shoot, true);
+    tick(quiet, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(quiet, in);
+    int quietSlot1 = 0;
+    for (int i = 0; i < 60; ++i) {
+        tick(quiet, in);
+        for (gameplay::PendingShot s = quiet.take_pending_shot(); s.armed;
+             s = quiet.take_pending_shot())
+            if (s.origin.attachmentSlot == 1) ++quietSlot1;
+    }
+    check_int("no slot-1 request without contact", 0, quietSlot1);
+
+    Fighter struck;
+    struck.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_mionCombo.bind(struck);
+    settle(struck);
+    struck.note_melee_hit(1);
+    in.set(fnd::input::Action::Shoot, true);
+    tick(struck, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(struck, in);
+    int struckSlot1 = 0;
+    int struckRows = 0;
+    for (int i = 0; i < 60; ++i) {
+        tick(struck, in);
+        for (gameplay::PendingShot s = struck.take_pending_shot(); s.armed;
+             s = struck.take_pending_shot()) {
+            if (s.origin.attachmentSlot == 1) { ++struckSlot1; struckRows = s.bulletRow; }
+        }
+    }
+    check_bool("a connected move fires the slot-1 follow-up", true, struckSlot1 > 0);
+    check_int("slot-1 follow-up uses row 0 normally", 0, struckRows);
+}
+
 void test_mion_shot_tap() {
     section("16. Mion 0 tap + first charge (bundle bodies shoot_body_1_0_*)");
     const auto install = findInstall(nullptr);
     if (install.empty() || !g_mionCombo.load(install, 1, 0))
         return skip_case("Mion 0 combo");
-    // Bundle evidence: Mion 0 (handler 0x4582a0) fires item row 0 at tick 2 in the
-    // ground tap (shoot_body_1_0_400 L93-100) and at tick 17 in the first ground
-    // charge (shoot_body_1_0_450 L1695-1725). Her program is kMionRules; the second
-    // charge stays on the provisional path (no 360/370 body exists for her).
+    // shoot_body_1_0_400 fires in PHASE 1 at per-phase tick 2, slot 0, rows 0/4, with
+    // the pitch scratch clamped +-40. The pre-slice program fired at elapsed tick 2 in
+    // ANY phase, which is phase 0 in practice — a different frame. The charge
+    // (shoot_body_1_0_450) fires rows 2/3 at tick 17, not row 0.
+    const auto* program = gameplay::move_program(&g_mionCombo.moves);
+    check_bool("Mion 0 program is bound", true,
+               program && program->rules == gameplay::kMionRules);
     Fighter f;
     f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_mionCombo.bind(f);
     settle(f);
     Input in;
-    // Tap: hold one frame, release the next — binds move 400 (ShootA).
     in.set(fnd::input::Action::Shoot, true);
     tick(f, in);
     in.set(fnd::input::Action::Shoot, false);
@@ -3843,11 +4019,19 @@ void test_mion_shot_tap() {
     check_int("Mion tap enters ShootA", static_cast<int>(FighterState::ShootA),
               static_cast<int>(f.state()));
     check_int("Mion tap binds move 400", 400, f.shot_move_id());
-    for (int i = 0; i < 2; ++i) tick(f, in);
-    gameplay::PendingShot shot = f.take_pending_shot();
-    check_bool("Mion tap launches at tick 2", true, shot.armed);
-    check_int("Mion tap selects item row zero", 0, shot.bulletRow);
-    // First charge: hold past the yellow threshold, release — binds move 450.
+    // The tap must NOT fire during phase 0 — that was the old rule's bug.
+    check_bool("Mion tap fires nothing in phase 0", false, f.take_pending_shot().armed);
+    int guard = 0;
+    gameplay::PendingShot shot;
+    while (!shot.armed && f.state() == FighterState::ShootA && guard++ < 40) {
+        tick(f, in);
+        shot = f.take_pending_shot();
+    }
+    check_bool("Mion tap fires in phase 1", true, shot.armed);
+    check_int("Mion tap fires at phase-1 tick 2", 1, f.move_phase());
+    check_int("Mion tap selects item row 0", 0, shot.bulletRow);
+
+    // First charge: hold past yellow, release, binds 450. Fires at tick 17, row 2.
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_mionCombo.bind(g);
@@ -3863,7 +4047,8 @@ void test_mion_shot_tap() {
     for (int i = 0; i < 17; ++i) tick(g, in);
     shot = g.take_pending_shot();
     check_bool("Mion charge launches at tick 17", true, shot.armed);
-    check_int("Mion charge selects item row zero", 0, shot.bulletRow);
+    check_int("Mion charge selects item row 2", 2, shot.bulletRow);
+    check_bool("Mion charge fires a single request", false, g.take_pending_shot().armed);
 }
 
 void test_pilot_shot_jump_cancel() {
@@ -3953,6 +4138,8 @@ int main(int argc, char** argv) {
     test_shots();
     test_pilot_shot_jump_cancel();
     test_mion_shot_tap();
+    test_mion_slots_and_gates();
+    test_mion_slot1_contact_follow_up();
     test_rika_repeating_tap();
     test_rika_pitch_latch();
     test_rika_air_powered_charge();

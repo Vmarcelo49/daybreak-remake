@@ -104,4 +104,12 @@ inline constexpr ShotOriginSpec origin_named_bone(const char* boneName) {
     return ShotOriginSpec{ShotOriginKind::NamedBone, 0, boneName, {}, {}};
 }
 
+// FUN_00435000's attachment slot, stated explicitly. Slot 0 is Bip01_Prop1 and is what
+// the legacy adapter picks; slot 1 is Bip01_Prop2, which several bodies select by ROW
+// position (Mion 0's 400 phase-3 and 402, Mion 1's 400 phase-2 and 402). The two slots
+// are independent muzzles, so a body firing both must state both rules.
+inline constexpr ShotOriginSpec origin_attachment_slot(int slot) {
+    return ShotOriginSpec{ShotOriginKind::WeaponAttachment, slot, nullptr, {}, {}};
+}
+
 } // namespace gameplay

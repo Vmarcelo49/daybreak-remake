@@ -1016,8 +1016,8 @@ private:
     // the counter tests). Kept beside the executor so the gate vocabulary and the
     // state it reads cannot drift apart.
     bool rule_gate_holds(const MoveRule& rule) const;
-    float capture_target_pitch(float clampDegrees, float snapDegrees,
-                               const Fighter* opponent);
+    float capture_target_pitch(float lowDegrees, float highDegrees,
+                               float snapDegrees, const Fighter* opponent);
     void enter_phase(int phase);
     void launch_bullet(int row, const ShotOriginSpec& origin, const ShotAimSpec& aim,
                        float legacyLateral, float legacyPitchLimit, Fighter* opponent);

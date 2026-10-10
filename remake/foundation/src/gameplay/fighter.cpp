@@ -1420,7 +1420,9 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
         // FUN_0042da80 -> FUN_0066b668 -> write_scratch(0x3c): the clamped target
         // elevation, truncated to int the way the original's int scratch is, stored for
         // the later requests that read source_float(0x3c) back.
-        case MoveOp::CapturePitch: m_movePitch = capture_target_pitch(rule.third, rule.second, opponent); break;
+        case MoveOp::CapturePitch:
+            m_movePitch = capture_target_pitch(rule.second, rule.third, rule.value, opponent);
+            break;
         case MoveOp::ActionCamera:
             if (m_chainContact) m_actionCamera = static_cast<int>(rule.value);
             break;
@@ -1428,14 +1430,15 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
     }
 }
 
-// FUN_0042da80 -> FUN_0066b668 -> write_scratch(0x3c): the target elevation in whole
 // FUN_0042da80 -> FUN_0066b668 -> write_scratch: the target elevation in whole
 // degrees, as the original's integer scratch stores it. No opponent reads as
-// elevation 0, matching atan2(0, 0). When snapDegrees is nonzero, values beyond
-// +-clampDegrees snap to +-snapDegrees instead of clamping (the air-tap
-// discontinuity: compare +-30, assign +-45); otherwise it clamps symmetrically.
-float Fighter::capture_target_pitch(float clampDegrees, float snapDegrees,
-                                     const Fighter* opponent) {
+// elevation 0, matching atan2(0, 0). The bodies bound the scratch with two
+// independent compares, so low/high are separate: most clamp symmetrically, but
+// Mion 0's 450 clamps [-40, +45], and a nonzero snapDegrees reproduces the
+// compare/assign mismatch (Keiichi's air tap and Mion 1's 460 compare +-30 and
+// assign +-45) instead of clamping.
+float Fighter::capture_target_pitch(float lowDegrees, float highDegrees,
+                                     float snapDegrees, const Fighter* opponent) {
     float elevation = 0.f;
     if (opponent) {
         const glm::vec3 difference = opponent->position() - m_position;
@@ -1443,13 +1446,14 @@ float Fighter::capture_target_pitch(float clampDegrees, float snapDegrees,
                                             std::hypot(difference.x, difference.z)));
     }
     int pitch = static_cast<int>(elevation);
-    const int compare = static_cast<int>(clampDegrees);
+    const int low = -static_cast<int>(lowDegrees);
+    const int high = static_cast<int>(highDegrees);
     if (snapDegrees != 0.f) {
         const int assign = static_cast<int>(snapDegrees);
-        if (pitch < -compare) pitch = -assign;
-        else if (pitch > compare) pitch = assign;
+        if (pitch < low) pitch = -assign;
+        else if (pitch > high) pitch = assign;
     } else {
-        pitch = std::clamp(pitch, -compare, compare);
+        pitch = std::clamp(pitch, low, high);
     }
     return static_cast<float>(pitch);
 }
@@ -1463,6 +1467,20 @@ bool Fighter::rule_gate_holds(const MoveRule& rule) const {
         (m_moveCounter % rule.gateValue) != 0)
         return false;
     if ((rule.gate & kGateCounterBelow) != 0 && !(m_moveCounter < rule.gateValue))
+        return false;
+    // NOT `m_chainContact == true`: the bodies test the sign (`0 < w[0x1b7]`), so a
+    // flag that never latched reads as "has not connected" rather than "connected".
+    if ((rule.gate & kGateContact) != 0 && !m_chainContact) return false;
+    // The rules see the pre-increment elapsed tick (execute_move_program runs before
+    // advance_animation_phase), which is exactly the bodies' `n.w[0x2b81]` at entry.
+    if ((rule.gate & kGateTickMod) != 0 && rule.gateValue > 0 &&
+        (m_moveElapsedTicks % rule.gateValue) != 0)
+        return false;
+    // The scratch counters are read in the order the bodies read them: the fires gate on
+    // the post-increment value, so a Counter rule must precede the rules it enables.
+    if ((rule.gate & kGateCounterEquals) != 0 && m_moveCounter != rule.gateValue)
+        return false;
+    if ((rule.gate & kGateCounterAbove) != 0 && !(m_moveCounter > rule.gateValue2))
         return false;
     return true;
 }

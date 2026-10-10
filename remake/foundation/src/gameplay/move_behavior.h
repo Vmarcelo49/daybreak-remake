@@ -65,14 +65,32 @@ enum MoveGate : unsigned {
     kGateCounter      = 1u << 2,
     kGateCounterMod   = 1u << 3,
     kGateCounterBelow = 1u << 4,
+    // `0 < w[0x1b7]`: this move has connected. 186 recovered bodies guard a launch or
+    // a phase jump on it (the "follow-up on hit" family). The player struct's +0x1b7
+    // has no writer in the available corpus, so the port reads its own contact flag and
+    // the mapping is by role, not recovered byte-for-byte — labelled, not claimed.
+    kGateContact      = 1u << 5,
+    // `tick % gateValue == 0`: the repeated-emission cadence Mion 2's charges use
+    // (`0xe < tick && tick % 5 == 0`). Combine with first/last for the lower bound.
+    kGateTickMod      = 1u << 6,
+    // The move's own scratch counter, which the bodies write with write_scratch and
+    // which — unlike the phase tick — survives a phase change. Bodies gate repeated
+    // emissions on exact values, so this is an equality test on gateValue.
+    kGateCounterEquals = 1u << 7,
+    // `gateValue2 < counter`: the lower half of a counter window (the bodies write both
+    // compares, e.g. Mion 0's 402 turning while `0xe < c < 0x19`).
+    kGateCounterAbove  = 1u << 8,
 };
 
 enum class MoveOp { Speed, Decelerate, Turn, Approach, Launch, Hold, ActionCamera, Hide,
                     Active, Counter, CounterSet, CapturePitch };
 // CapturePitch latches the target elevation into the move's pitch scratch (the bodies'
-// write_scratch of the FUN_0042da80/FUN_0066b668 value): third is the compare/clamp
-// bound in degrees, second is the snap-assign bound (0 = plain symmetric clamp).
-// The air-tap discontinuity (compare +-30, assign +-45) is a nonzero second.
+// write_scratch of the FUN_0042da80/FUN_0066b668 value). The bodies bound the scratch
+// with two independent compares, so the rule states both ends: second is the low
+// magnitude (low = -second), third is the high bound. Most clamp symmetrically; Mion
+// 0's 450 is asymmetric ([-40, +45]). A nonzero value reproduces the compare/assign
+// mismatch instead of clamping (Keiichi's air tap and Mion 1's 460 compare +-30 and
+// assign +-45).
 // Aggregate order is part of the contract: the tables are positional literals, so the
 // fields every rule might set (move/phase/first/last/op/value/second/third/gate/
 // gateValue) come before the two spec objects only world-style Launch rules carry.
@@ -83,9 +101,12 @@ struct MoveRule {
     float second = 0.f;
     float third = 0.f;
     unsigned gate = kGateNone;
-    int gateValue = 0;  // kGateCounterMod modulus / kGateCounterBelow bound
+    int gateValue = 0;  // kGateCounterMod/kGateTickMod modulus, kGateCounterBelow bound
     ShotOriginSpec origin{};
     ShotAimSpec aim{};
+    // Second counter bound. Declared last so every existing positional literal — which
+    // stops at origin/aim — keeps its meaning.
+    int gateValue2 = 0;
 };
 
 // Original FUN_0043ffc0. Inclusive tick intervals; phase -1 means all phases.
@@ -250,45 +271,356 @@ inline constexpr ShotJumpCancel kShotJumpCancel[] = {
 // 450's pitch clamp is asymmetric [-40,+45] but the model clamps symmetric (45 kept);
 // counter-to-tick in 402 assumes no reset mid-move; speeds live in item data, never here.
 inline constexpr MoveRule kMionRules[] = {
-    // 400 ground tap: vertical bleed 0.5/tick + 18 deg turn while the scratch gate
-    // holds, ~first 10 ticks (body L52-65, not phase-gated).
-    {400,-1,0,9,MoveOp::Decelerate,.5f},
-    {400,-1,0,9,MoveOp::Turn,18.f},
-    // 400 phase turns: 10 deg in phase 1, 5 in phase 3 (L68, L115).
+    // Mion weapon 0 (handler 0x4582a0) — shoot_body_1_0_{400,402,450,460}. Every launch
+    // is FUN_00435000, so slot and row are both explicit; the powered gate switches the
+    // ROW only, never the slot.
+    //
+    // The bodies carry two different clocks and they must not be confused: the phase
+    // tick (`w[0x2b81]`, zeroed by FUN_00421100 on every phase change) is what the
+    // per-phase first/last windows below mean, while the scratch counters (`0x3a`,
+    // `0x3b`, `0x3e`) are written by the bodies and survive a phase change. Rules whose
+    // body reads a scratch counter therefore gate on MoveOp::Counter, not on elapsed.
+    //
+    // --- 400 ground tap: two firing phases (L3-143) ---
+    // Scratch 0x3a ramps 0..9 and turns 18 deg while below 10 (L52-65).
+    {400,0,0,0,MoveOp::CounterSet,0.f},
+    {400,-1,0,9999,MoveOp::Turn,18.f,0.f,0.f,kGateCounterBelow,10},
+    {400,-1,0,9999,MoveOp::Counter,1.f},
+    // Phase 1: 10 deg turn (L66), and at per-phase tick 2 one slot-0 request, rows 0/4,
+    // with the pitch scratch clamped +-30 (L69-98).
     {400,1,0,9999,MoveOp::Turn,10.f},
+    {400,1,2,2,MoveOp::CapturePitch,0.f,30.f,30.f},
+    {400,1,2,2,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {400,1,2,2,MoveOp::Launch,4.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    // Phase 3 is the follow-up on connect: phase 1 jumps straight to it while
+    // `6 < tick && 0 < w[0xae] < 10 && fires < 6 && 0 < w[0x1b7]` (L100-104). The hit
+    // counter w[0xae] has no port counterpart, so only the contact half is modelled; the
+    // port reaches this phase through the DAT's phase advance rather than the jump, so
+    // the follow-up lands on the phase boundary instead of the connecting frame.
     {400,3,0,9999,MoveOp::Turn,5.f},
-    // 400 tap fires item row 0 at tick 2 — the usage anchor (phases 1 and 3 fire at
-    // frame 2; the phase-1 row is bound, the phase-3 row-1 variant is not modeled).
-    // Pitch clamp of phase 1 is +-30 deg.
-    {400,-1,2,2,MoveOp::Launch,0.f,0.f,30.f},
-    // 402 air tap: counter-gated turns, 20 deg then 5 past counter 15 (L340-347).
-    {402,-1,0,24,MoveOp::Turn,20.f},
-    {402,-1,15,24,MoveOp::Turn,5.f},
-    // 402 emits rows 0 AND 1 together at counter 15/20/25 (~ticks 14/19/24, L381-396;
-    // the only body with a double 004230e0 call). Pitch clamp +-40 deg.
-    {402,-1,14,14,MoveOp::Launch,0.f,0.f,40.f},
-    {402,-1,14,14,MoveOp::Launch,1.f,0.f,40.f},
-    {402,-1,19,19,MoveOp::Launch,0.f,0.f,40.f},
-    {402,-1,19,19,MoveOp::Launch,1.f,0.f,40.f},
-    {402,-1,24,24,MoveOp::Launch,0.f,0.f,40.f},
-    {402,-1,24,24,MoveOp::Launch,1.f,0.f,40.f},
-    // 450 ground charge1: 25 deg turn through tick 16 (L1664-1667, highest of the four).
+    {400,3,2,2,MoveOp::CapturePitch,0.f,40.f,40.f},
+    {400,3,2,2,MoveOp::Launch,0.f,0.f,0.f,kGateNormal | kGateContact,0,
+     origin_attachment_slot(1),aim_stored_pitch()},
+    {400,3,2,2,MoveOp::Launch,4.f,0.f,0.f,kGatePowered | kGateContact,0,
+     origin_attachment_slot(1),aim_stored_pitch()},
+    //
+    // --- 402 air tap: three counter-gated volleys (L298-397) ---
+    // Scratch 0x3b is zeroed at phase0/tick0 and incremented every frame, so it counts
+    // the whole state. Turns read the pre-increment value (20 deg below 25, plus 5 deg
+    // inside 15..24, L340-347); the volleys read the post-increment value and fire at
+    // 15, 20 and 25 — each on BOTH slots with the SAME row, which is two muzzles rather
+    // than two rows, and +-40 pitch.
+    {402,0,0,0,MoveOp::CounterSet,0.f},
+    {402,-1,0,9999,MoveOp::Turn,20.f,0.f,0.f,kGateCounterBelow,25},
+    {402,-1,0,9999,MoveOp::Turn,5.f,0.f,0.f,
+     kGateCounterBelow | kGateCounterAbove,25},
+    {402,-1,0,9999,MoveOp::Counter,1.f},
+    {402,-1,0,9999,MoveOp::CapturePitch,0.f,40.f,40.f,kGateCounterEquals,15},
+    {402,-1,0,9999,MoveOp::Launch,0.f,0.f,0.f,kGateNormal | kGateCounterEquals,15,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {402,-1,0,9999,MoveOp::Launch,0.f,0.f,0.f,kGateNormal | kGateCounterEquals,15,
+     origin_attachment_slot(1),aim_stored_pitch()},
+    {402,-1,0,9999,MoveOp::Launch,4.f,0.f,0.f,kGatePowered | kGateCounterEquals,15,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {402,-1,0,9999,MoveOp::Launch,4.f,0.f,0.f,kGatePowered | kGateCounterEquals,15,
+     origin_attachment_slot(1),aim_stored_pitch()},
+    {402,-1,0,9999,MoveOp::CapturePitch,0.f,40.f,40.f,kGateCounterEquals,20},
+    {402,-1,0,9999,MoveOp::Launch,0.f,0.f,0.f,kGateNormal | kGateCounterEquals,20,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {402,-1,0,9999,MoveOp::Launch,0.f,0.f,0.f,kGateNormal | kGateCounterEquals,20,
+     origin_attachment_slot(1),aim_stored_pitch()},
+    {402,-1,0,9999,MoveOp::Launch,4.f,0.f,0.f,kGatePowered | kGateCounterEquals,20,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {402,-1,0,9999,MoveOp::Launch,4.f,0.f,0.f,kGatePowered | kGateCounterEquals,20,
+     origin_attachment_slot(1),aim_stored_pitch()},
+    {402,-1,0,9999,MoveOp::CapturePitch,0.f,40.f,40.f,kGateCounterEquals,25},
+    {402,-1,0,9999,MoveOp::Launch,0.f,0.f,0.f,kGateNormal | kGateCounterEquals,25,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {402,-1,0,9999,MoveOp::Launch,0.f,0.f,0.f,kGateNormal | kGateCounterEquals,25,
+     origin_attachment_slot(1),aim_stored_pitch()},
+    {402,-1,0,9999,MoveOp::Launch,4.f,0.f,0.f,kGatePowered | kGateCounterEquals,25,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {402,-1,0,9999,MoveOp::Launch,4.f,0.f,0.f,kGatePowered | kGateCounterEquals,25,
+     origin_attachment_slot(1),aim_stored_pitch()},
+    //
+    // --- 450 ground charge: 25 deg turn to tick 16, fire at 17, 30-update freeze ---
     {450,-1,0,16,MoveOp::Turn,25.f},
-    // 450 prop hide: slot 0 unbound ticks 0-47, rebound after (L1672-1686).
-    {450,-1,0,47,MoveOp::Hide,0.f},
-    // 450 fires item row 0 at tick 17 (L1695-1725).
-    {450,-1,17,17,MoveOp::Launch,0.f,0.f,45.f},
-    // 450 freeze: ~30-tick stall at tick 23 (L1727-1731).
-    {450,-1,23,23,MoveOp::Hold,30.f},
-    // 460 air charge1: 15 deg turn through tick 14 (L2284-2287).
+    // The two clamps differ: -40 low, +45 high (L1708-1715).
+    {450,-1,17,17,MoveOp::CapturePitch,0.f,40.f,45.f},
+    {450,-1,17,17,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,-1,17,17,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    // Freeze at tick 23 while the 0x3e counter is under 30 (L1727-1731).
+    {450,0,0,0,MoveOp::CounterSet,0.f},
+    {450,0,23,23,MoveOp::Counter,1.f},
+    {450,0,23,23,MoveOp::Hold,9999.f,0.f,0.f,kGateCounterBelow,30},
+    //
+    // --- 460 air charge: 15 deg turn to tick 14, fire at 17, 20-update freeze ---
     {460,-1,0,14,MoveOp::Turn,15.f},
-    // 460 prop hide: slot 0 unbound ticks 0-50 (L2288-2302).
-    {460,-1,0,50,MoveOp::Hide,0.f},
-    // 460 fires item row 0 at tick 17 (L2305-2336, symmetric clamp +-40).
-    {460,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
-    // 460 freeze: ~20-tick stall at tick 23 (L2340-2344).
-    {460,-1,23,23,MoveOp::Hold,20.f},
+    {460,-1,17,17,MoveOp::CapturePitch,0.f,40.f,40.f},
+    {460,-1,17,17,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,-1,17,17,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    // Freeze at tick 23 while 0x3e is under 20 (L2340-2344).
+    {460,0,0,0,MoveOp::CounterSet,0.f},
+    {460,0,23,23,MoveOp::Counter,1.f},
+    {460,0,23,23,MoveOp::Hold,9999.f,0.f,0.f,kGateCounterBelow,20},
 };
+// Mion weapon 1 (handler 0x461810) — shoot_body_1_1_{400,402} (bundle L2421-2587,
+// L2705-2814). Taps only: the two charges (450/460) are 15-iteration bursts whose every
+// request carries a `(rand%200-100)*0.1` yaw and a `(rand%100-50)*0.1` pitch jitter, so
+// they stay on the provisional path until the deterministic draw service exists. Their
+// measured rows and timing are recorded in the handoff.
+inline constexpr MoveRule kMion1Rules[] = {
+    // 400: scratch 0x3a ramps 0..9 turning 18 deg, then 5 deg while the phase is below 3.
+    {400,0,0,0,MoveOp::CounterSet,0.f},
+    {400,-1,0,9999,MoveOp::Turn,18.f,0.f,0.f,kGateCounterBelow,10},
+    {400,-1,0,9999,MoveOp::Decelerate,.5f,0.f,0.f,kGateCounterBelow,10},
+    {400,-1,0,9999,MoveOp::Counter,1.f},
+    {400,0,0,9999,MoveOp::Turn,5.f},
+    {400,1,0,9999,MoveOp::Turn,5.f},
+    {400,2,0,9999,MoveOp::Turn,5.f},
+    // Phase 1 tick 2 fires slot 0, rows 0/4, clamp +-40 (L2504-2520).
+    {400,1,2,2,MoveOp::CapturePitch,0.f,40.f,40.f},
+    {400,1,2,2,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {400,1,2,2,MoveOp::Launch,4.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    // Phase 2 tick 1 fires slot 1, rows 0/4, clamp +-30 — but only on connect
+    // (`(tick == 1) && (0 < w[0x1b7])`, L2531).
+    {400,2,1,1,MoveOp::CapturePitch,0.f,30.f,30.f},
+    {400,2,1,1,MoveOp::Launch,0.f,0.f,0.f,kGateNormal | kGateContact,0,
+     origin_attachment_slot(1),aim_stored_pitch()},
+    {400,2,1,1,MoveOp::Launch,4.f,0.f,0.f,kGatePowered | kGateContact,0,
+     origin_attachment_slot(1),aim_stored_pitch()},
+    // Phases 2 and 3 hold the clock one frame at a time past tick 7 while 0x3b is under 1
+    // (L2556-2573) — the counter re-arms, so this is a repeated one-frame hold.
+    {400,2,8,9999,MoveOp::Hold,1.f},
+    {400,3,0,9999,MoveOp::Hold,1.f},
+
+    // 402: scratch 0x3b counts the state; 18 deg turn while phase 0 and tick under 14.
+    {402,0,0,0,MoveOp::CounterSet,0.f},
+    {402,0,0,13,MoveOp::Turn,18.f},
+    {402,-1,0,9999,MoveOp::Counter,1.f},
+    // The single volley is at counter 13 and fires BOTH slots with the same row, +-40.
+    {402,-1,0,9999,MoveOp::CapturePitch,0.f,40.f,40.f,kGateCounterEquals,13},
+    {402,-1,0,9999,MoveOp::Launch,0.f,0.f,0.f,kGateNormal | kGateCounterEquals,13,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {402,-1,0,9999,MoveOp::Launch,0.f,0.f,0.f,kGateNormal | kGateCounterEquals,13,
+     origin_attachment_slot(1),aim_stored_pitch()},
+    {402,-1,0,9999,MoveOp::Launch,4.f,0.f,0.f,kGatePowered | kGateCounterEquals,13,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {402,-1,0,9999,MoveOp::Launch,4.f,0.f,0.f,kGatePowered | kGateCounterEquals,13,
+     origin_attachment_slot(1),aim_stored_pitch()},
+};
+
+// Mion weapon 2 (handler 0x44fa10) — shoot_body_1_2_{400,402} (bundle L4442-4573,
+// L4689-4802). The two charges are repeated emissions gated on
+// `tick > 14 && tick % 5 == 0 && counter < 10 && 0 < w[0x1c8]`, each with the same jitter
+// as Mion 1's, so they stay provisional: they need the draw service AND a source for
+// +0x1c8, which has no writer in the corpus.
+inline constexpr MoveRule kMion2Rules[] = {
+    // Mion weapon 2 (handler 0x44fa10) — shoot_body_1_2_{400,402,450,460}. The taps fire
+    // slot 0 with the powered gate switching only the ROW (0 -> 1).
+    //
+    // 400 ground tap: 10 deg while tick under 19 and an extra 15 deg while tick under 10
+    // (L4490-4498). The body then FORCE-WRITES its tick counter from 10 to 18
+    // (L4500-4503, `write_clock(0x2b81, 0x12)`), so ticks 11..17 never execute and the
+    // tick-18 launch block runs on that same frame. The port's elapsed tick is the phase
+    // clock, which cannot be written, so the skip is represented by placing the launch on
+    // the update the teleport lands on (10) and shifting every later tick window by the
+    // same seven updates: the tick-23 freeze below becomes elapsed 15.
+    {400,0,0,18,MoveOp::Turn,10.f},
+    {400,0,0,9,MoveOp::Turn,15.f},
+    {400,0,0,17,MoveOp::Decelerate,1.5f},
+    {400,0,10,10,MoveOp::CapturePitch,0.f,40.f,40.f},
+    {400,0,10,10,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {400,0,10,10,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    // Freeze at body tick 23 while the 0x3e counter is under 10 (L4556-4559) — reached at
+    // elapsed 15 because of the skip above.
+    {400,0,0,0,MoveOp::CounterSet,0.f},
+    {400,0,15,15,MoveOp::Counter,1.f},
+    {400,0,15,15,MoveOp::Hold,9999.f,0.f,0.f,kGateCounterBelow,10},
+
+    // 402 air tap: 15 deg while tick under 14, then 10 deg while tick under 19
+    // (L4731-4737). No teleport here, so the launch is on the tick-18 window itself.
+    {402,0,0,13,MoveOp::Turn,15.f},
+    {402,0,14,18,MoveOp::Turn,10.f},
+    {402,0,18,18,MoveOp::CapturePitch,0.f,40.f,40.f},
+    {402,0,18,18,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {402,0,18,18,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    // Freeze at tick 23 while 0x3e is under 10 (L4785-4788).
+    {402,0,0,0,MoveOp::CounterSet,0.f},
+    {402,0,23,23,MoveOp::Counter,1.f},
+    {402,0,23,23,MoveOp::Hold,9999.f,0.f,0.f,kGateCounterBelow,10},
+
+    // 450/460 charges: repeated emissions while
+    // `tick > 14 && tick % 5 == 0 && 0x3e < 10 && 0 < w[0x1c8]` (L6050, L6165), rows 2/3,
+    // slot 0, clamp +-45, plus a 0.5 deg per-emission turn while 0x3e is under 10
+    // (L6041/L6156). The ten tick windows below are that cadence exactly, and the counter
+    // bound is implied by their count. TWO MEASURED GATES ARE NOT MODELLED: the emission
+    // carries a `(rand%100-50)*0.1` yaw and a `(rand%80-40)*0.1` pitch jitter whose draw
+    // needs the deterministic RNG service, and `w[0x1c8]` has no writer in the corpus so
+    // the port cannot evaluate it. The requests are therefore right in count, row, slot,
+    // clamp and timing, and identical in direction where the original spreads them.
+    {450,0,0,9999,MoveOp::Turn,20.f},
+    {450,0,0,9999,MoveOp::Decelerate,1.5f},
+    {450,1,15,15,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {450,1,20,20,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {450,1,25,25,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {450,1,30,30,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {450,1,35,35,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {450,1,40,40,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {450,1,45,45,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {450,1,50,50,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {450,1,55,55,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {450,1,60,60,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {450,0,0,0,MoveOp::CounterSet,0.f},
+    {450,1,15,15,MoveOp::Counter,1.f},
+    {450,1,15,15,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {450,1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,1,15,15,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,1,20,20,MoveOp::Counter,1.f},
+    {450,1,20,20,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {450,1,20,20,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,1,20,20,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,1,25,25,MoveOp::Counter,1.f},
+    {450,1,25,25,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {450,1,25,25,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,1,25,25,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,1,30,30,MoveOp::Counter,1.f},
+    {450,1,30,30,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {450,1,30,30,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,1,30,30,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,1,35,35,MoveOp::Counter,1.f},
+    {450,1,35,35,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {450,1,35,35,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,1,35,35,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,1,40,40,MoveOp::Counter,1.f},
+    {450,1,40,40,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {450,1,40,40,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,1,40,40,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,1,45,45,MoveOp::Counter,1.f},
+    {450,1,45,45,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {450,1,45,45,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,1,45,45,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,1,50,50,MoveOp::Counter,1.f},
+    {450,1,50,50,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {450,1,50,50,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,1,50,50,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,1,55,55,MoveOp::Counter,1.f},
+    {450,1,55,55,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {450,1,55,55,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,1,55,55,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,1,60,60,MoveOp::Counter,1.f},
+    {450,1,60,60,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {450,1,60,60,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {450,1,60,60,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+
+    // 460 air charge: same cadence and rows; the turn is phase 0 at 20 deg with the same
+    // per-emission 0.5 deg while 0x3e is under 10 (L6150-6158).
+    {460,0,0,9999,MoveOp::Turn,20.f},
+    {460,1,15,15,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {460,1,20,20,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {460,1,25,25,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {460,1,30,30,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {460,1,35,35,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {460,1,40,40,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {460,1,45,45,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {460,1,50,50,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {460,1,55,55,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {460,1,60,60,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
+    {460,0,0,0,MoveOp::CounterSet,0.f},
+    {460,1,15,15,MoveOp::Counter,1.f},
+    {460,1,15,15,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {460,1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,1,15,15,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,1,20,20,MoveOp::Counter,1.f},
+    {460,1,20,20,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {460,1,20,20,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,1,20,20,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,1,25,25,MoveOp::Counter,1.f},
+    {460,1,25,25,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {460,1,25,25,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,1,25,25,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,1,30,30,MoveOp::Counter,1.f},
+    {460,1,30,30,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {460,1,30,30,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,1,30,30,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,1,35,35,MoveOp::Counter,1.f},
+    {460,1,35,35,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {460,1,35,35,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,1,35,35,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,1,40,40,MoveOp::Counter,1.f},
+    {460,1,40,40,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {460,1,40,40,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,1,40,40,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,1,45,45,MoveOp::Counter,1.f},
+    {460,1,45,45,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {460,1,45,45,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,1,45,45,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,1,50,50,MoveOp::Counter,1.f},
+    {460,1,50,50,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {460,1,50,50,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,1,50,50,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,1,55,55,MoveOp::Counter,1.f},
+    {460,1,55,55,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {460,1,55,55,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,1,55,55,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,1,60,60,MoveOp::Counter,1.f},
+    {460,1,60,60,MoveOp::CapturePitch,0.f,45.f,45.f},
+    {460,1,60,60,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+    {460,1,60,60,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch()},
+};
+
 // Rika weapon 1 (handler 0x492f70) — shot rules recovered from the reference bodies
 // shoot_body_4_1_{400,402,450,460} (bundle reference/source). Her tap is a repeating
 // schedule, not a single anchor: the bodies fire while (tick>11 && scratch<30) on even
@@ -354,7 +686,7 @@ inline constexpr MoveRule kRikaRules[] = {
     // The body computes the pitch ONCE at tick 10 (FUN_0042da80 -> FUN_0066b668 ->
     // write_scratch(0x3c)) and reads it back for every later salvo, so the capture
     // rule precedes the requests and they all resolve against the latched value.
-    {450,0,10,10,MoveOp::CapturePitch,0.f,0.f,40.f},
+    {450,0,10,10,MoveOp::CapturePitch,0.f,40.f,40.f},
     {450,-1,10,10,MoveOp::Launch,2.f,0.f,0.f,kGateNone,0,
      origin_actor_relative(50.f,60.f,70.f),aim_stored_pitch()},
     {450,-1,10,10,MoveOp::Launch,5.f,0.f,0.f,kGateNone,0,
@@ -387,7 +719,7 @@ inline constexpr MoveRule kRikaRules[] = {
     // The body computes the pitch ONCE at tick 10 (FUN_0042da80 -> FUN_0066b668 ->
     // write_scratch(0x3c)) and reads it back for every later salvo, so the capture
     // rule precedes the requests and they all resolve against the latched value.
-    {460,0,10,10,MoveOp::CapturePitch,0.f,0.f,40.f},
+    {460,0,10,10,MoveOp::CapturePitch,0.f,40.f,40.f},
     {460,-1,10,10,MoveOp::Launch,2.f,0.f,0.f,kGateNone,0,
      origin_actor_relative(50.f,60.f,70.f),aim_stored_pitch()},
     {460,-1,10,10,MoveOp::Launch,5.f,0.f,0.f,kGateNone,0,
@@ -460,7 +792,7 @@ inline constexpr MoveRule kKeiichi0Rules[] = {
     {400,-1,0,13,MoveOp::Turn,20.f},
     {400,-1,0,9999,MoveOp::Decelerate,.5f},
     // Tick-13 hand request, normal then powered (L6356-79).
-    {400,0,13,13,MoveOp::CapturePitch,0.f,0.f,30.f},
+    {400,0,13,13,MoveOp::CapturePitch,0.f,30.f,30.f},
     {400,0,13,13,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
     {400,0,13,13,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
@@ -469,7 +801,7 @@ inline constexpr MoveRule kKeiichi0Rules[] = {
     // at tick 0 and gravity applied (no MoveRule ops — explicit gaps). Same tick-13
     // hand request with the snapped pitch.
     {402,-1,0,13,MoveOp::Turn,20.f},
-    {402,0,13,13,MoveOp::CapturePitch,0.f,45.f,30.f},
+    {402,0,13,13,MoveOp::CapturePitch,45.f,30.f,30.f},
     {402,0,13,13,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
     {402,0,13,13,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
@@ -480,7 +812,7 @@ inline constexpr MoveRule kKeiichi0Rules[] = {
     {450,-1,0,9999,MoveOp::Decelerate,.5f},
     {450,0,4,4,MoveOp::Launch,1.f,0.f,0.f,kGateNone,0,
      origin_named_bone("Bip01_L_Hand"),aim_fixed_angles(0.f,0.f)},
-    {450,0,20,20,MoveOp::CapturePitch,0.f,0.f,40.f},
+    {450,0,20,20,MoveOp::CapturePitch,0.f,40.f,40.f},
     {450,0,20,20,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
      ShotOriginSpec{},aim_stored_pitch()},
     {450,0,20,20,MoveOp::Launch,4.f,0.f,0.f,kGatePowered,0,
@@ -490,7 +822,7 @@ inline constexpr MoveRule kKeiichi0Rules[] = {
     {460,-1,0,19,MoveOp::Turn,18.f},
     {460,0,4,4,MoveOp::Launch,1.f,0.f,0.f,kGateNone,0,
      origin_named_bone("Bip01_L_Hand"),aim_fixed_angles(0.f,0.f)},
-    {460,0,20,20,MoveOp::CapturePitch,0.f,0.f,40.f},
+    {460,0,20,20,MoveOp::CapturePitch,0.f,40.f,40.f},
     {460,0,20,20,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
      ShotOriginSpec{},aim_stored_pitch()},
     {460,0,20,20,MoveOp::Launch,4.f,0.f,0.f,kGatePowered,0,
@@ -508,7 +840,7 @@ inline constexpr MoveRule kKeiichi1Rules[] = {
     // 400 ground tap: 20 deg turn through tick 13, bleed 0.5 (L8776-89).
     {400,-1,0,13,MoveOp::Turn,20.f},
     {400,-1,0,9999,MoveOp::Decelerate,.5f},
-    {400,0,13,13,MoveOp::CapturePitch,0.f,0.f,30.f},
+    {400,0,13,13,MoveOp::CapturePitch,0.f,30.f,30.f},
     {400,0,13,13,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
     {400,0,13,13,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
@@ -516,7 +848,7 @@ inline constexpr MoveRule kKeiichi1Rules[] = {
     // 402 air tap: 20 deg movement-preserving turn through tick 13 (movement clear
     // and gravity are explicit gaps). Same hand request with the snapped pitch.
     {402,-1,0,13,MoveOp::Turn,20.f},
-    {402,0,13,13,MoveOp::CapturePitch,0.f,45.f,30.f},
+    {402,0,13,13,MoveOp::CapturePitch,45.f,30.f,30.f},
     {402,0,13,13,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
     {402,0,13,13,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
@@ -885,51 +1217,6 @@ inline constexpr MoveRule kSatokoRules[] = {
     {460,-1,43,43,MoveOp::Launch,11.f,0.f,40.f},
     {460,-1,43,43,MoveOp::Launch,11.f,0.f,40.f},
 };
-inline constexpr MoveRule kMion2Rules[] = {
-    // Mion weapon 2 (handler 0x44fa10): the ground tap fires ONE row-0 shot at
-    // entry-tick 10 through a clock jump to 18 (ticks 11-17 never execute) — the
-    // frame-18 usage anchor is that same single shot, so no second rule. Charges are
-    // 10-shot bursts rows 2 at ticks 15..60 step 5; phase-1 turn, gravity tails and
-    // one-shot halves have no MoveRule op and are skipped.
-    // 400 ground tap: overlapping turns 15 deg (0-9) + 10 deg (0-18), bleed 1.5/tick
-    // through tick 17, single launch row 0 at entry-tick 10, stall 10 at tick 23.
-    {400,-1,0,9,MoveOp::Turn,15.f},
-    {400,-1,0,18,MoveOp::Turn,10.f},
-    {400,-1,0,17,MoveOp::Decelerate,1.5f},
-    {400,-1,10,10,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,23,23,MoveOp::Hold,10.f},
-    // 402 air tap: turns 15 deg (0-13) + 10 deg (0-18), single launch row 0 at 18,
-    // stall 10 at 23. No bleed (one-shot halve + gravity tail skipped).
-    {402,-1,0,13,MoveOp::Turn,15.f},
-    {402,-1,0,18,MoveOp::Turn,10.f},
-    {402,-1,18,18,MoveOp::Launch,0.f,0.f,40.f},
-    {402,-1,23,23,MoveOp::Hold,10.f},
-    // 450 ground charge1: 20 deg turn phase 0, bleed 1.5/tick, burst rows 2 at 15..60.
-    {450,0,0,9999,MoveOp::Turn,20.f},
-    {450,-1,0,9999,MoveOp::Decelerate,1.5f},
-    {450,-1,15,15,MoveOp::Launch,2.f,0.f,45.f},
-    {450,-1,20,20,MoveOp::Launch,2.f,0.f,45.f},
-    {450,-1,25,25,MoveOp::Launch,2.f,0.f,45.f},
-    {450,-1,30,30,MoveOp::Launch,2.f,0.f,45.f},
-    {450,-1,35,35,MoveOp::Launch,2.f,0.f,45.f},
-    {450,-1,40,40,MoveOp::Launch,2.f,0.f,45.f},
-    {450,-1,45,45,MoveOp::Launch,2.f,0.f,45.f},
-    {450,-1,50,50,MoveOp::Launch,2.f,0.f,45.f},
-    {450,-1,55,55,MoveOp::Launch,2.f,0.f,45.f},
-    {450,-1,60,60,MoveOp::Launch,2.f,0.f,45.f},
-    // 460 air charge1: 20 deg turn phase 0, burst rows 2 at 15..60 (no bleed).
-    {460,0,0,9999,MoveOp::Turn,20.f},
-    {460,-1,15,15,MoveOp::Launch,2.f,0.f,45.f},
-    {460,-1,20,20,MoveOp::Launch,2.f,0.f,45.f},
-    {460,-1,25,25,MoveOp::Launch,2.f,0.f,45.f},
-    {460,-1,30,30,MoveOp::Launch,2.f,0.f,45.f},
-    {460,-1,35,35,MoveOp::Launch,2.f,0.f,45.f},
-    {460,-1,40,40,MoveOp::Launch,2.f,0.f,45.f},
-    {460,-1,45,45,MoveOp::Launch,2.f,0.f,45.f},
-    {460,-1,50,50,MoveOp::Launch,2.f,0.f,45.f},
-    {460,-1,55,55,MoveOp::Launch,2.f,0.f,45.f},
-    {460,-1,60,60,MoveOp::Launch,2.f,0.f,45.f},
-};
 inline const MoveProgram* move_program(const CharacterMoves* moves) {
     const auto* binding = locomotion(moves);
     if (!binding) return nullptr;
@@ -967,6 +1254,11 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
                                              {{400,402},{450,460},{-1,-1}}};
     static constexpr MoveProgram keiichi1 = {kKeiichi1Rules, std::size(kKeiichi1Rules),
                                              {{400,402},{450,460},{-1,-1}}};
+    // Mion 1: taps bound; the repeated-emission charges stay -1 so the provisional path
+    // serves them until the draw service lands (see the rule comments).
+    static constexpr MoveProgram mion1 = {kMion1Rules, std::size(kMion1Rules),
+                                          {{400,402},{-1,-1},{-1,-1}}};
+    if (binding->handler == 0x461810) return &mion1;
     if (binding->handler == 0x46a190) return &keiichi0;
     if (binding->handler == 0x473610) return &keiichi1;
     // Satoko 2 (handler 0x4bc040): the tap pair only. 450/460 stay -1 so the
