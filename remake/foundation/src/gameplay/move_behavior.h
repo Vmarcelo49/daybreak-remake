@@ -63,7 +63,7 @@ struct MoveRule {
 // Active must be re-asserted on every tick of its window. Active is also what grows the
 // weapon ribbon: FUN_0042fff0 reads the prop's own active latch (prop+0x38), so a tick
 // outside the window decays it instead.
-inline constexpr MoveRule kNataRules[] = {
+inline constexpr MoveRule kRenaRules[] = {
     {300,0,0,0,MoveOp::Speed,15.f,25.f,640000.f},
     {300,0,0,0,MoveOp::Turn,180.f},
     {300,0,1,9999,MoveOp::Turn,20.f},
@@ -654,7 +654,7 @@ inline constexpr MoveRule kMion2Rules[] = {
 inline const MoveProgram* move_program(const CharacterMoves* moves) {
     const auto* binding = locomotion(moves);
     if (!binding) return nullptr;
-    static constexpr MoveProgram nata = {kNataRules, std::size(kNataRules),
+    static constexpr MoveProgram rena = {kRenaRules, std::size(kRenaRules),
                                          {{400,402},{450,460},{360,370}}};
     // Mion 0's shot rows are recovered (kMionRules above); her second charge has no
     // shoot body in the bundle (no 360/370 for ch1), so it stays unbound (-1) and the
@@ -680,7 +680,7 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     // Keiichi 2: same unbound second charge (bodies 403-412/469 exist but unscoped).
     static constexpr MoveProgram keiichi = {kKeiichiRules, std::size(kKeiichiRules),
                                             {{400,402},{450,460},{-1,-1}}};
-    if (binding->handler == 0x43ffc0) return &nata;
+    if (binding->handler == 0x43ffc0) return &rena;
     if (binding->handler == 0x4582a0) return &mion;
     if (binding->handler == 0x492f70) return &rika;
     if (binding->handler == 0x527880) return &tomitake;

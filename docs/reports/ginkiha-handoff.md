@@ -69,7 +69,7 @@ Phases 2–5 are done; do not mark complete early.
 
 | Combo | Handler | Program | Shape (tap / charge) | Test |
 |---|---|---|---|---|
-| Rena 0 | 0x43ffc0 | nata (pre-existing) | anchor 12F; jump-cancel 400@20 | pilot cancel + cross-checks |
+| Rena 0 | 0x43ffc0 | rena (pre-existing) | anchor 12F; jump-cancel 400@20 | pilot cancel + cross-checks |
 | Mion 0 | 0x4582a0 | mion | row 0 @2; row 0 @17 | tap + charge |
 | Rika 1 | 0x492f70 | rika | even ticks 12–40; twin salvos | tap repeat + T10/T30 |
 | Tomitake 2 | 0x527880 | tomitake | twin 7+5 every 3 ticks; freeze-then-fire | tap + charge |

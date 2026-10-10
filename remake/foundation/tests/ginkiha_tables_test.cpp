@@ -113,7 +113,7 @@ int main() {
     }
 
     // 4. The bundle's dispatch entry for Rena 0 (combat-hooks.json dispatch[]) must agree
-    //    with our own recovered handler — move_behavior.h gated the whole nata program on
+    //    with our own recovered handler — move_behavior.h gated the whole Rena 0 program on
     //    0x43ffc0, so a table regenerated against a different binary cannot silently
     //    redefine the pilot's dispatch. The walks[] VA is a different kind of address (the
     //    state-10 site inside the update, not its head), pinned below as Fase 2's oracle.
@@ -820,17 +820,17 @@ int main() {
     check(walkVa(5, 0) == 0x004F973Cu, "Shion 0 walk site is 0x4f973c (Fase 2 oracle)");
 
     // 6. Independent-recovery agreement for the pilot's ground tap: move_behavior.h's
-    //    nata program launches item row 0 at tick 12 with citations into FUN_0044xxxx;
+    //    Rena 0 program launches item row 0 at tick 12 with citations into FUN_0044xxxx;
     //    the bundle's shot400 usage says the same slot fires at frame 12 in every phase.
     //    Two extractions of the same fact — if either drifts, the pilot's launch tick is
     //    no longer trustworthy. (Rena's tag row is slot 6, also at 12; that binding is a
     //    documented Fase 1 gap, so only the verified tap is checked here.)
-    int nataLaunchTick = -1;
-    for (const gameplay::MoveRule& rule : gameplay::kNataRules) {
-        if (rule.move == 400 && rule.operation == gameplay::MoveOp::Launch) nataLaunchTick = rule.first;
+    int renaLaunchTick = -1;
+    for (const gameplay::MoveRule& rule : gameplay::kRenaRules) {
+        if (rule.move == 400 && rule.operation == gameplay::MoveOp::Launch) renaLaunchTick = rule.first;
     }
-    check(nataLaunchTick == 12, "nata 400 tap launches at tick 12");
-    check(nataLaunchTick == usageFrame, "nata launch tick equals the bundle's fire frame");
+    check(renaLaunchTick == 12, "Rena 0 400 tap launches at tick 12");
+    check(renaLaunchTick == usageFrame, "Rena 0 launch tick equals the bundle's fire frame");
 
     std::printf("ginkiha_tables_test: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

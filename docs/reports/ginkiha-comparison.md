@@ -35,7 +35,7 @@ Fontes nossas: `remake/foundation/src/gameplay/`, `remake/docs/decisions.md`,
 - `gameplay/character_moves.h/cpp`: parser `data/<char>/NN.dat` (`FUN_0041e180`), `MovePhase`,
   `CharacterMove` (priority row+0, cancelThreshold row+4), `weapon_id()` offset arquivo 0x114 (46/46 ok).
 - `gameplay/move_behavior.h`: `kLocomotion[]` com números por combo (ex. Rena0
-  `{0,0,0x43ffc0,7.2,17,0.75,1.20,4.0,1,15}`); `kNataRules[]` ~70 regras; `move_program()` retorna nata
+  `{0,0,0x43ffc0,7.2,17,0.75,1.20,4.0,1,15}`); `kRenaRules[]` ~70 regras; `move_program()` retorna o programa de Rena 0
   **só se `handler==0x43ffc0`**, senão nullptr — 1 combo com programa, 45 sem.
 - `gameplay/weapon_definition.h/cpp` (329L): `parse(itemId)` (`FUN_00433eb0`), `MagazineDefinition`,
   `BulletDefinition`, `BulletParameter` (bloco 0x50 verbatim: `hitRadius`, `baseDamage`, `gaugeGainA/B`,
@@ -66,7 +66,7 @@ câmera retarget 0.45/10. Sem combo-scaling, sem facing-mask, sem swap, sem hand
 `bundle→decrypt→xm::loadMemory` → `Model{frames,meshes,anims Anim-1…124}` + `Controller` →
 `state_move_id()` → `try_switch_animation()` → `tick_blend()/commit_blend()` →
 `advance_animation_phase()` (gate `+0x20`) / `enter_phase()` → âncoras hurtbox/hitbox, aura (11 ossos),
-arma em `Bip01_Prop1` sem offset (gap). Limites: 6/17 seletores + 3 inferências + jump + nata; resto set 0;
+arma em `Bip01_Prop1` sem offset (gap). Limites: 6/17 seletores + 3 inferências + jump + Rena 0; resto set 0;
 sem FA/HA/LA/StepA; sem cadeia 300→301→302 genérica (só micro-caso priority vs cancelThreshold);
 sem overlay base/arms; sem offsets arma; sem `FUN_004218c0` budget.
 

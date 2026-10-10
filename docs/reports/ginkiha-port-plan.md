@@ -54,7 +54,7 @@ comentários `why` + proveniência.
 ## 2. Fase 1 — piloto Rena 0 (prova o pipeline ponta a ponta)
 
 - **Programa de move** completo para o combo: `Speed/Turn/Approach/Launch/Hold/ActionCamera/Hide/Active` +
-  `shot{{…}}` (hoje `move_program()` só devolve nata; `kLocomotion` já tem os números); cadeia genérica
+  `shot{{…}}` (hoje `move_program()` só devolve o programa de Rena 0; `kLocomotion` já tem os números); cadeia genérica
   `priority (row+0)` vs `cancelThreshold (row+4)` em vez do micro-caso 300→301/302.
 - **Timing**: `startup/active/recovery/cancel` tabelados — canônico 12F→18F, fim 50F→66F; `W(t)` bilinear +
   `floor(W+0.5)` como caso de teste. Substitui `startup=activeFrame/active=delta senão 8/recovery 17`.

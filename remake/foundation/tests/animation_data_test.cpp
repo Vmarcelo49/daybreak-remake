@@ -465,7 +465,7 @@ void launch_rules(const Combo& combo) {
               std::string(test.label) + " launches on the recovered tick " +
               std::to_string(test.expectedTick) + " (observed " + std::to_string(fired) + ")");
         bool matched = false;
-        for (const auto& rule : gameplay::kNataRules)
+        for (const auto& rule : gameplay::kRenaRules)
             matched |= rule.move == move && rule.operation == gameplay::MoveOp::Launch &&
                        rule.first <= fired && fired <= rule.last &&
                        static_cast<int>(rule.value) == test.expectedRow &&
@@ -510,7 +510,7 @@ void launch_rules(const Combo& combo) {
     // Move 460 is a real row in the table even though this combo cannot charge inside a
     // leap: assert the recovered tick directly instead of inventing a fixture.
     bool airCharge = false;
-    for (const auto& rule : gameplay::kNataRules)
+    for (const auto& rule : gameplay::kRenaRules)
         airCharge |= rule.move == 460 && rule.operation == gameplay::MoveOp::Launch &&
                      rule.first == 12 && rule.last == 12;
     check(airCharge,"air charge 460 launches row 2 on tick twelve in the recovered table");
