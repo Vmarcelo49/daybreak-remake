@@ -74,6 +74,8 @@ Primeiro combo concluído 2026-10-09 20:52 (Mion 0: programa `mion` com regras m
 bodies + `fire_shot` aceitando linha -1 + caso de teste; ver commits `f0ab4f4`/`5c0fdbc` —
 o segundo também calibrou o predicado verde do `hud_view_geometry`, que nunca havia
 medido um anel aliado).
+Segundo combo concluído 2026-10-09 21:03 (Rika 1: programa `rika` com rajada de 15 ticks
+pares + salvas gêmeas T10/T30 + caso de teste; rows do tap resolvidas via tabela do item).
 
 1. **Prioridade**: matriz `shot400_usage` (52 normal + 60 tag em state400) ordena quais combos saem do piloto
    primeiro; cada combo entra com teste, nunca com fallback set 0 silencioso.
