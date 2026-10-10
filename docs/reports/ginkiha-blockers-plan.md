@@ -1,6 +1,6 @@
 # Plan — shared shooting blockers, then all 46 combos
 
-2026-10-10 · `ginkiha-help` · status: step 0 audits and step 1 primitive in progress; live admission migration pending.
+2026-10-10 · `ginkiha-help` · status: live magazine/row admission implemented; typed origins/aim and move counters next.
 
 This changes Phase 2's order at the owner's request: stop advancing the usage-order
 worklist just to defer another combo. Implement the shared mechanisms, return to every
@@ -286,3 +286,84 @@ bypass and consumption before failed pool creation; add tests for mixed rows and
 spend. Then replace counter-gated freeze schedules with source-driven event state, starting
 Rika1 state450, before declaring origins/spawn paths complete. Update the ledger and append
 done/verification/next notes after each unit. Preserve the unrelated Windows edits.
+
+### 2026-10-10 — 1.2 Consumer/charge/refill audit before live migration
+
+**Done:** inventoried Fighter init/reset/respawn/weapon swap/F4, HUD fraction/count,
+BotBrain can_fire/hold_ticks, eager fire_shot, and callback launch consumption. Original
+`0043ded0` charges the SECOND magazine (bytes add actor+0x708 at 0x43dee9), with
+`0043f3e0`'s initial30 ticks followed by the DAT secondary charge threshold. Primary
+chargeMax is not the yellow threshold. `00435560` sets both magazines' refillStep;
+`0043ded0` resets it to1, uses3 for active byte845 and2 for byte846. Common `0041f580`
+calls `00434800` after the action/animation pass, which ticks each magazine once.
+
+**Next:** add charge counters and row-admission primitives, then switch bound weapon
+stocks and their public readers together. Preserve the explicitly provisional mobile
+charge/action gate and unbound move selection as pending paths, not source parity claims.
+Remove eager tier spending for programmed shots; consume each callback's own row, retain
+negative-index bypass, and test rejected pool creation without refunds. Validate against
+the complete suite and append all changed expectations with their source reason.
+
+### 2026-10-10 — 1.3 Live row admission, stocks and charge migration
+
+**Done:** bound weapons now own two round-counted ShootingMagazines. Programmed move
+selection spends nothing; each Launch consumes its item row's magazine, negative indices
+bypass stock, invalid metadata fails explicitly, and failed pool creation cannot refund
+consumption. HUD fractions/digits, can_fire/bot hold planning, charge counters, weapon-swap
+fill preservation, init/reset/respawn and F4 use the same authoritative bound stocks.
+Charge stage1 uses30 initial updates and stage2 uses the secondary DAT threshold; refill
+steps are1 normally,3 for the current Friendship adapter and2 for Kakera. The C-held marker
+is independent of secondary charge: an empty CHARGE stock still permits a primary tap.
+
+Admitted requests use a growable FIFO rather than the eight-entry truncation. This removes
+that queue limit only; the global32 projectile pool and actual scatter/RNG remain open.
+Unbound move selection, row-less provisional requests, mobile/actionable charge restrictions,
+legacy no-weapon tuning, exact hypermode/status parity and origin geometry remain explicitly
+pending. No combo is declared complete by this shared migration.
+
+**Verified so far:** focused fighter suite697 checks, zero failures/skips. Rena0 witnesses
+cover no eager spend, primary/secondary row selection, unmetered red rows11/12,30/210-tick
+charge, source refill, empty-secondary tap, F4/reset, negative-index bypass and saturated
+pool consumption without refund. A shared semantic hold_yellow driver replaced13 repeated
+charge calculations/drivers. Initial full-suite failures exposed obsolete threshold/air
+reachability, approximate empty-stock setup and AI-seed-dependent audio coverage; corrected
+these without weakening their functional assertions. The air-charge animation case now
+executes460 instead of incorrectly claiming it cannot be reached. The bot empty-stock case
+now binds character AND weapon; the audio gate drives a real activation input explicitly.
+Those four focused suites passed, then the rebuilt full suite passed65/65 (163.76s).
+
+Linux native non-capture 1v1 smoke completed3000 frames/1065 logic ticks at64Hz, RESULT ok;
+this is not a played parity or four-view rematch gate. Windows and web cross-builds passed.
+Review removed redundant request initialization and an unused bound-tier parameter lookup;
+final rebuild/full-suite/platform confirmations are running and must be appended next.
+
+**Next:** introduce explicit typed origin/aim requests and pose transforms, starting hand
+and world witnesses (Keiichi0/1 and Satoko2). Do not bind rawworld/hand bodies to Prop1.
+Preserve request/admission/spawn distinctions; finish per-move counter semantics (Rika1
+450 is the known witness) before accepting its frozen salvo totals. Audit global projectile
+capacity and deterministic spread for Kasai0, and remaining source-specific branch/status
+inputs. Update the ledger by path; step1 still needs those integration/coverage gates.
+
+### 2026-10-10 — Final migration gate and next-agent checkpoint
+
+**Done/verified:** final reviewed tree rebuilt; Linux CTest65/65 passed (167.18s),
+fighter suite704 checks/zero failures/skips, recon six tests passed. Windows and web
+reviewed cross-builds passed; neither platform was executed for this slice. Linux native
+1v1 non-capture smoke previously completed3000 frames/1065 logic ticks, RESULT ok.
+Review retained clip completion and provisional EX input/event checks while replacing
+obsolete eager-spend/refill expectations. Thirteen duplicated charge drivers were unified.
+The code and tests form one coherent stock/admission migration; documentation is separate.
+
+**Still open:** typed launch-origin/aim descriptions, explicit request/admission/spawn
+verification records, exact hypermode/status bridge, counter-gated move bodies, global
+projectile allocation/spread, and all46 complete-path audits. Legacy no-weapon and
+unbound/row-less request paths remain provisional. This is not46/46 shooting completion.
+
+**Exact next task:** implement typed Launch origin/aim resolution using the normalized
+contracts and existing row-admission boundary. Add real posed-rig witnesses for hand versus
+Prop1 (Keiichi0/1), and nonzero-position/heading/elevation twin world requests for Satoko2;
+preserve fixed actor-heading origin versus offset projectile yaw. Verify scratch numeric
+conversion and legacy trig at their original sites. Then integrate source per-move counters
+with Rika1 450's whole frozen interval, and audit the global32 pool with Kasai0 21/31
+requests and simultaneous2v2 volleys. Keep the growable request FIFO, avoid reintroducing
+eager tier costs, and append done/verification/next notes after each unit.

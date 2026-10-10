@@ -60,6 +60,14 @@ follow-on/EX states remain pending for every combo, not implicitly N/A.
 | Natsumi 0 | 45 / 29 | 400? / P | — / P | — / P | — / P | — / P | — / P | 24 |
 | Natsumi 1 | 46 / 30 | — / P | — / P | — / P | — / P | — / P | — / P | 16 |
 
+## Shared capability update — 2026-10-10
+
+Bound magazines, row-selected admission and charge counters are live. A programmed
+selection no longer spends ammo; callbacks consume their own row, with negative-index
+bypass and no refund on pool failure. HUD/bot reads share that stock. The request FIFO
+can grow; global32 projectile capacity, geometry, branches/RNG and shot counters remain
+pending. The cells above are still pending per-path audit; no combo has been promoted.
+
 ## Provenance and resumption
 
 Bound state selectors come from the current `move_program` dispatch, not inferred from

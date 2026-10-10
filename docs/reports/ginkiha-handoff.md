@@ -11,8 +11,9 @@ not establish complete shooting-path coverage.
 
 Checkpoint: recon tooling, the [46-combo ledger](ginkiha-shooting-coverage.md),
 [launch/admission contracts](ginkiha-launch-contracts.md), and the isolated magazine
-primitive are now present. Resume from the blocker plan's append-only execution log;
-live Fighter ammo migration and shared origin support are still pending.
+primitive are now present. Bound Fighter stocks, row admission and charge counters have
+now migrated; shared origins/aim, counter-gated shot programs and global pool/spread remain
+open. Resume from the blocker plan's latest append-only checkpoint.
 
 ## 1. What this is
 
@@ -241,16 +242,18 @@ Scoreboard: 13 full programs + 2 schedule subsets (Rena 1, Natsumi 0) + 6 pinned
   before taking pendings. Fixed-count drives (Rena: exactly 12 post-release ticks) also work.
 - **Phase resets elapsed** (`enter_phase`): long bursts spanning phases need elapsed-driven
   loops with caps, never fixed counts (Mion 2 precedent).
-- **Yellow hold frames must be loop-computed** from `magazineForChargeLevel(1).chargeMax /
-  tickRate` — hardcoded counts overshoot into Red on float error (Tomitake precedent).
-- Pending queue caps at 8 (`launch_bullet` drops beyond) — relevant for volleys (Kasai 0 §7).
+- **Charge driver:** use the shared hold_yellow fixture helper, which waits for the actual
+  tier. Original charge is initial30 updates plus SECOND magazine threshold; earlier MAIN
+  chargeMax/float-accumulation instructions were provisional and are superseded.
+- Admitted requests now use a growable FIFO; the independent global32 projectile pool
+  remains a capacity audit for Kasai0 and simultaneous volleys.
 - `m_moveElapsedTicks` resets in `set_state`/`enter_phase`/init paths.
 
 ## 7. Known gaps — do NOT guess these (document, defer, or extend the engine deliberately)
 
-- **Kasai 0 DEFERRED** (program not landed): 21-pellet scatter (1× row 2 + 20× row 0, shared aim)
-  exceeds the 8-pending queue and per-pellet aim has no fields. Needs: pending capacity +
-  spread fields. Pins stay as bundle reference.
+- **Kasai 0 pending:** 21 normal /31 tag requests need spread/RNG and an audit of global
+  projectile capacity. The eight-pending queue was removed in the shared ammo migration;
+  that alone does not establish admitted/spawned scatter counts. Pins stay as evidence.
 - Tag/aim branches (rows 1/3/5/6/7 secondaries, asymmetric counts): no aim/tag flag in the
   model — always bind the normal branch, document the skip (precedent everywhere).
 - Projectile speeds: live in item data / update VAs, never in MoveRule. Births table is the

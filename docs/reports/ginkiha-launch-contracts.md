@@ -108,3 +108,15 @@ Counter-gated repeated events, one-shot events and clock freezes must be represe
 separately. Existing fighter tests checking one pair of pendings do not prove the total
 requests over the complete frozen interval. Next: add that whole-interval witness alongside
 state-counter implementation, rather than asserting a universal duplicate-suppression rule.
+
+## Live implementation checkpoint — 2026-10-10
+
+`ShootingMagazine` and `admit_shooting_row` now drive bound Fighter stocks. Source
+`0043f3e0` charges the secondary magazine at actor+0x708: initial30 updates, then the
+secondary DAT threshold. HUD/bot reads, reset/respawn/F4, and callback consumption share
+the same stocks. Programmed move entry no longer spends a tier cost. A saturated real
+row0 pool test confirms callback consumption is retained when creation fails.
+
+This closes the old eager-spend representation boundary, not launch-origin/counter parity.
+Hypermode refill uses the current enum adapter (Friendship3/Kakera2/normal1); complete
+raw status/branch parity remains a separate gate. See the blocker plan's latest checkpoint.
