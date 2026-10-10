@@ -103,6 +103,7 @@ TestCombo g_mionCombo;
 TestCombo g_rikaCombo;
 TestCombo g_tomitakeCombo;
 TestCombo g_keiichiCombo;
+TestCombo g_chieCombo;
 
 std::filesystem::path findInstall(const char* executable) {
     const int itemId = gameplay::kWeaponIds[0][0];
@@ -2176,6 +2177,67 @@ void test_tomitake_twin_tap() {
     check_int("Tomitake T30 second row is 0", 0, second.bulletRow);
 }
 
+void test_chie_scratch_burst() {
+    section("21. Chie 2 scratch burst + single salvos (bodies shoot_body_11_2_*)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_chieCombo.load(install, 11, 2))
+        return skip_case("Chie 2 combo");
+    // Bundle evidence: Chie 2 (handler 0x566a40) fires item row 0 at ticks 15,18,21,24
+    // in the ground tap (shoot_body_11_2_400: scratch counter fires while scratch%3==1)
+    // and item row 2 once at tick 22 in the first ground charge (tick 15 in the air
+    // charge — same rule shape, untested here like the other air paths).
+    // Her program is kChieRules; the second charge stays provisional.
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_chieCombo.bind(f);
+    settle(f);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Chie tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    check_int("Chie tap binds move 400", 400, f.shot_move_id());
+    for (int i = 0; i < 15; ++i) tick(f, in);
+    gameplay::PendingShot shot = f.take_pending_shot();
+    check_bool("Chie tap launches at tick 15", true, shot.armed);
+    check_int("Chie tap selects item row zero", 0, shot.bulletRow);
+    tick(f, in);
+    tick(f, in);
+    tick(f, in);
+    shot = f.take_pending_shot();
+    check_bool("Chie tap launches again at tick 18", true, shot.armed);
+    check_int("Chie repeat selects item row zero", 0, shot.bulletRow);
+    // First charge: hold past the yellow threshold (level-1 chargeMax 30).
+    Fighter g;
+    g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_chieCombo.bind(g);
+    settle(g);
+    const float chieYellow = static_cast<float>(
+        g_chieCombo.weapon.magazineForChargeLevel(1).chargeMax) /
+        gameplay::FixedStep::tickRate;
+    float chieHeld = 0.0f;
+    int chieYellowFrames = 0;
+    while (chieHeld < chieYellow && chieYellowFrames < 10000) {
+        chieHeld += kStep;
+        ++chieYellowFrames;
+    }
+    in.set(fnd::input::Action::Shoot, true);
+    for (int i = 0; i < chieYellowFrames; ++i) tick(g, in);
+    check_int("Chie hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
+              static_cast<int>(g.charge_tier()));
+    in.set(fnd::input::Action::Shoot, false);
+    tick(g, in);
+    check_int("Chie charge enters ShootB", static_cast<int>(FighterState::ShootB),
+              static_cast<int>(g.state()));
+    check_int("Chie charge binds move 450", 450, g.shot_move_id());
+    for (int i = 0; i < 22; ++i) tick(g, in);
+    shot = g.take_pending_shot();
+    check_bool("Chie charge launches at tick 22", true, shot.armed);
+    check_int("Chie charge selects item row two", 2, shot.bulletRow);
+}
+
 void test_keiichi_dense_tap() {
     section("19. Keiichi 2 dense tap + single charge (bodies shoot_body_2_2_*)");
     const auto install = findInstall(nullptr);
@@ -2439,6 +2501,7 @@ int main(int argc, char** argv) {
     test_tomitake_twin_tap();
     test_keiichi_dense_tap();
     test_rika_shot_jump_cancel();
+    test_chie_scratch_burst();
     test_ammo();
     test_hypermode();
     test_ko();

@@ -357,6 +357,37 @@ inline constexpr MoveRule kKeiichiRules[] = {
     {460,-1,5,5,MoveOp::Hold,10.f},
     {460,-1,32,32,MoveOp::Hold,15.f},
 };
+// Chie weapon 2 (handler 0x566a40) — shot rules recovered from the reference bodies
+// shoot_body_11_2_{400,402,450,460} (bundle reference/source). Tap bursts run on a
+// scratch counter (1 at burst start, fire while scratch%3==1): 400 fires ticks
+// 15,18,21,24, 402 fires 17,20,23,26,29 — row 0 normal / 1 tag, only the normal row
+// bound (no flag field). Single salvos row 2 at tick 22 (450, pitch fixed 0) and
+// tick 15 (460). Turn windows and the phase-0/unconditional bleeds are measured per
+// body; gravity tails and the aim pitch ramp have no MoveRule op and are skipped.
+inline constexpr MoveRule kChieRules[] = {
+    // 400 ground tap: 15 deg turn phase 0 ticks 0-14, bleed 0.5/tick phase 0.
+    {400,0,0,14,MoveOp::Turn,15.f},
+    {400,0,0,9999,MoveOp::Decelerate,.5f},
+    {400,-1,15,15,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,18,18,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,21,21,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,24,24,MoveOp::Launch,0.f,0.f,40.f},
+    // 402 air tap: 20 deg turn ticks 0-16 (no phase gate), same burst shape at 17+.
+    {402,-1,0,16,MoveOp::Turn,20.f},
+    {402,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,20,20,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,23,23,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,26,26,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,29,29,MoveOp::Launch,0.f,0.f,40.f},
+    // 450 ground charge1: 18 deg turn through tick 19, bleed 0.5/tick unconditional,
+    // single salvo row 2 at tick 22.
+    {450,-1,0,19,MoveOp::Turn,18.f},
+    {450,-1,0,9999,MoveOp::Decelerate,.5f},
+    {450,-1,22,22,MoveOp::Launch,2.f,0.f,30.f},
+    // 460 air charge1: 18 deg turn through tick 24, single salvo row 2 at tick 15.
+    {460,-1,0,24,MoveOp::Turn,18.f},
+    {460,-1,22,22,MoveOp::Launch,2.f,0.f,30.f},
+};
 inline const MoveProgram* move_program(const CharacterMoves* moves) {
     const auto* binding = locomotion(moves);
     if (!binding) return nullptr;
@@ -388,6 +419,10 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     if (binding->handler == 0x492f70) return &rika;
     if (binding->handler == 0x527880) return &tomitake;
     if (binding->handler == 0x47b940) return &keiichi;
+    // Chie 2: same unbound second charge (no 360/370 body for ch11 in scope).
+    static constexpr MoveProgram chie = {kChieRules, std::size(kChieRules),
+                                        {{400,402},{450,460},{-1,-1}}};
+    if (binding->handler == 0x566a40) return &chie;
     return nullptr;
 }
 } // namespace gameplay
