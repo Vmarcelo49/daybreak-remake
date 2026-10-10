@@ -110,6 +110,7 @@ TestCombo g_irieCombo;
 TestCombo g_mion2Combo;
 TestCombo g_rika2Combo;
 TestCombo g_satokoCombo;
+TestCombo g_rika0Combo;
 
 std::filesystem::path findInstall(const char* executable) {
     const int itemId = gameplay::kWeaponIds[0][0];
@@ -2317,6 +2318,71 @@ void test_rika2_single_tick() {
                g.take_pending_shot().armed);
 }
 
+void test_rika0_twin_tick() {
+    section("26. Rika 0 twin tick + twin salvos (bodies shoot_body_4_0_*)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_rika0Combo.load(install, 4, 0))
+        return skip_case("Rika 0 combo");
+    // Bundle evidence: Rika 0 (handler 0x484be0) fires twin rows 0 at tick 15 in the
+    // ground tap (tag fires four — no flag field, skipped), and twin row-2 salvos at
+    // ticks 15 AND 25 in both charges (pitch thirds 45/30 ground, 45/40 air), with
+    // short freezes at tick 30 after the salvos (5 updates ground, 15 air).
+    // Her program is kRika0Rules; the second charge stays provisional.
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rika0Combo.bind(f);
+    settle(f);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Rika0 tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    check_int("Rika0 tap binds move 400", 400, f.shot_move_id());
+    for (int i = 0; i < 15; ++i) tick(f, in);
+    gameplay::PendingShot first = f.take_pending_shot();
+    gameplay::PendingShot second = f.take_pending_shot();
+    check_bool("Rika0 tap T15 salvo fires twice", true, first.armed && second.armed);
+    check_int("Rika0 T15 first row is 0", 0, first.bulletRow);
+    check_int("Rika0 T15 second row is 0", 0, second.bulletRow);
+    // First charge: hold past the yellow threshold (level-1 chargeMax 60).
+    Fighter g;
+    g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rika0Combo.bind(g);
+    settle(g);
+    const float rika0Yellow = static_cast<float>(
+        g_rika0Combo.weapon.magazineForChargeLevel(1).chargeMax) /
+        gameplay::FixedStep::tickRate;
+    float rika0Held = 0.0f;
+    int rika0YellowFrames = 0;
+    while (rika0Held < rika0Yellow && rika0YellowFrames < 10000) {
+        rika0Held += kStep;
+        ++rika0YellowFrames;
+    }
+    in.set(fnd::input::Action::Shoot, true);
+    for (int i = 0; i < rika0YellowFrames; ++i) tick(g, in);
+    check_int("Rika0 hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
+              static_cast<int>(g.charge_tier()));
+    in.set(fnd::input::Action::Shoot, false);
+    tick(g, in);
+    check_int("Rika0 charge enters ShootB", static_cast<int>(FighterState::ShootB),
+              static_cast<int>(g.state()));
+    check_int("Rika0 charge binds move 450", 450, g.shot_move_id());
+    for (int i = 0; i < 15; ++i) tick(g, in);
+    first = g.take_pending_shot();
+    second = g.take_pending_shot();
+    check_bool("Rika0 charge T15 salvo fires twice", true, first.armed && second.armed);
+    check_int("Rika0 T15 rows are 2", 2, first.bulletRow);
+    int guard = 0;
+    while (g.phase_elapsed() < 25 && guard++ < 120) tick(g, in);
+    tick(g, in);
+    first = g.take_pending_shot();
+    second = g.take_pending_shot();
+    check_bool("Rika0 charge T25 salvo fires twice", true, first.armed && second.armed);
+    check_int("Rika0 T25 rows are 2", 2, first.bulletRow);
+}
+
 void test_satoko_five_shot() {
     section("25. Satoko 0 five-shot tap + frozen twin salvos (bodies shoot_body_3_0_*)");
     const auto install = findInstall(nullptr);
@@ -2924,6 +2990,7 @@ int main(int argc, char** argv) {
     test_mion2_single_shot();
     test_rika2_single_tick();
     test_satoko_five_shot();
+    test_rika0_twin_tick();
     test_ammo();
     test_hypermode();
     test_ko();

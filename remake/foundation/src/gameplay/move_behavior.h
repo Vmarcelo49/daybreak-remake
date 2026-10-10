@@ -482,6 +482,40 @@ inline constexpr MoveRule kIrieRules[] = {
     {460,-1,0,16,MoveOp::Hide,0.f},
     {460,-1,17,17,MoveOp::Launch,4.f,0.f,40.f},
 };
+// Rika weapon 0 (handler 0x484be0) — shot rules recovered from the reference bodies
+// shoot_body_4_0_{400,402,450,460} (bundle reference/source). Twin row-0 shots at tick
+// 15 in both taps (tag fires four — no flag field, skipped); twin row-2 salvos at
+// ticks 15 AND 25 in both charges (pitch thirds 45/30 ground, 45/40 air — the only
+// numeric emission difference between the charges); short freezes at tick 30 after
+// the salvos (5 updates ground, 15 air). No Hide anywhere.
+inline constexpr MoveRule kRika0Rules[] = {
+    // 400 ground tap: 15 deg turn ticks 0-14, bleed 0.5/tick phase 0, twin row 0 @15.
+    {400,-1,0,14,MoveOp::Turn,15.f},
+    {400,0,0,9999,MoveOp::Decelerate,.5f},
+    {400,-1,15,15,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,15,15,MoveOp::Launch,0.f,0.f,40.f},
+    // 402 air tap: 20 deg turn ticks 0-14, same twin @15. No bleed (gravity tail).
+    {402,-1,0,14,MoveOp::Turn,20.f},
+    {402,-1,15,15,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,15,15,MoveOp::Launch,0.f,0.f,40.f},
+    // 450 ground charge1: 18 deg turn through tick 9, bleed 0.5/tick, twin row-2
+    // salvos at 15 (±5°) and 25 (±10°), freeze 5 at tick 30.
+    {450,-1,0,9,MoveOp::Turn,18.f},
+    {450,-1,0,9999,MoveOp::Decelerate,.5f},
+    {450,-1,15,15,MoveOp::Launch,2.f,0.f,45.f},
+    {450,-1,15,15,MoveOp::Launch,2.f,0.f,45.f},
+    {450,-1,25,25,MoveOp::Launch,2.f,0.f,30.f},
+    {450,-1,25,25,MoveOp::Launch,2.f,0.f,30.f},
+    {450,-1,30,30,MoveOp::Hold,5.f},
+    // 460 air charge1: same salvos (third 45 @15, 40 @25), freeze 15 at tick 30.
+    // No bleed (one-shot halve + gravity tail skipped).
+    {460,-1,0,9,MoveOp::Turn,18.f},
+    {460,-1,15,15,MoveOp::Launch,2.f,0.f,45.f},
+    {460,-1,15,15,MoveOp::Launch,2.f,0.f,45.f},
+    {460,-1,25,25,MoveOp::Launch,2.f,0.f,40.f},
+    {460,-1,25,25,MoveOp::Launch,2.f,0.f,40.f},
+    {460,-1,30,30,MoveOp::Hold,15.f},
+};
 // Rika weapon 2 (handler 0x49d890) — shot rules recovered from the reference bodies
 // shoot_body_4_2_{400,402,450,460} (bundle reference/source). Single-tick tap (row 0
 // at tick 15, both ground and air) with a same-tick Hold 30; triple row-4 fans at
@@ -666,6 +700,9 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     // Rika 2: same unbound second charge (bodies 451-453/461 exist but unscoped).
     static constexpr MoveProgram rika2 = {kRika2Rules, std::size(kRika2Rules),
                                           {{400,402},{450,460},{-1,-1}}};
+    // Rika 0: same unbound second charge (bodies 403-414 exist but unscoped).
+    static constexpr MoveProgram rika0 = {kRika0Rules, std::size(kRika0Rules),
+                                          {{400,402},{450,460},{-1,-1}}};
     // Satoko 0: same unbound second charge (state 401 and bodies 403-409 exist but
     // unscoped).
     static constexpr MoveProgram satoko = {kSatokoRules, std::size(kSatokoRules),
@@ -677,6 +714,7 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     if (binding->handler == 0x44fa10) return &mion2;
     if (binding->handler == 0x49d890) return &rika2;
     if (binding->handler == 0x4a9c40) return &satoko;
+    if (binding->handler == 0x484be0) return &rika0;
     return nullptr;
 }
 } // namespace gameplay
