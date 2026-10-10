@@ -681,6 +681,56 @@ int main() {
     if (kasai00) check(kasai0Update == kasai00->handler, "bundle dispatch matches kLocomotion (Kasai 0)");
     check(walkVa(12, 0) == 0x005B0E29u, "Kasai 0 walk site is 0x5b0e29 (Fase 2 oracle)");
 
+    // 18. Thirteenth combo (Satoko 0 = character 3, weapon 0, swap code 10): pins the
+    //    bundle rows Fase 2's Satoko program will consume. Single anchor (frame 17, all
+    //    phases) on slot 0 in both modes — 6 pairs each. The traces record NO fire under
+    //    fixed inputs. Two births are sampled (slot 0 speed 27.5 turn 0.5, slot 10
+    //    speed 40.0 turn 0.75).
+    const ginkiha::BirthProfile* satoko = findBirth(3, 0, 0);
+    check(satoko != nullptr, "Satoko 0/0 birth profile exists");
+    if (satoko) {
+        check(satoko->swap_code == 10, "Satoko 0 maps to swap code 10");
+        check(satoko->speed == 27.5f, "Satoko 0/0 birth speed 27.5");
+        check(satoko->turn_birth > 0.499f && satoko->turn_birth < 0.501f,
+              "Satoko 0/0 birth turn 0.5");
+    }
+    const ginkiha::BirthProfile* satoko10 = findBirth(3, 0, 10);
+    check(satoko10 != nullptr, "Satoko 0/10 birth profile exists");
+    if (satoko10) {
+        check(satoko10->speed == 40.0f, "Satoko 0/10 birth speed 40.0");
+        check(satoko10->turn_birth > 0.749f && satoko10->turn_birth < 0.751f,
+              "Satoko 0/10 birth turn 0.75");
+    }
+    int satokoPairs = 0;
+    bool satokoShape = true;
+    for (int i = 0; i < ginkiha::kShotFireRecordCount; ++i) {
+        const ginkiha::ShotFireRecord& entry = ginkiha::kShotFireRecord[i];
+        if (entry.character == 3 && entry.weapon == 0 && entry.slot == 0 && !entry.tag) {
+            ++satokoPairs;
+            if (entry.phase < 0 || entry.phase > 5 || entry.frame != 17) satokoShape = false;
+        }
+    }
+    check(satokoPairs == 6, "Satoko 0/0 usage holds 6 fire records");
+    check(satokoShape, "Satoko 0/0 usage shape is phases 0..5 at frame 17");
+    bool satokoSilent = true;
+    for (int v = 0; v < 6; ++v) {
+        if (traceFireFrame(3, 0, v, false) != -1) satokoSilent = false;
+    }
+    check(satokoSilent, "Satoko 0/0 traces record no fire under fixed inputs");
+    unsigned int satokoUpdate = 0;
+    for (int i = 0; i < ginkiha::kDispatchIdentityCount; ++i) {
+        if (ginkiha::kDispatchIdentity[i].character == 3 &&
+            ginkiha::kDispatchIdentity[i].weapon == 0)
+            satokoUpdate = ginkiha::kDispatchIdentity[i].update;
+    }
+    check(satokoUpdate == 0x004A9C40u, "Satoko 0 dispatch update is 0x4a9c40");
+    const gameplay::LocomotionDefinition* satoko0 = nullptr;
+    for (const gameplay::LocomotionDefinition& entry : gameplay::kLocomotion) {
+        if (entry.character == 3 && entry.slot == 0) satoko0 = &entry;
+    }
+    if (satoko0) check(satokoUpdate == satoko0->handler, "bundle dispatch matches kLocomotion (Satoko 0)");
+    check(walkVa(3, 0) == 0x004AA093u, "Satoko 0 walk site is 0x4aa093 (Fase 2 oracle)");
+
     // 6. Independent-recovery agreement for the pilot's ground tap: move_behavior.h's
     //    nata program launches item row 0 at tick 12 with citations into FUN_0044xxxx;
     //    the bundle's shot400 usage says the same slot fires at frame 12 in every phase.
