@@ -1118,6 +1118,11 @@ inline constexpr MoveRule kTomitakeRules[] = {
 // on the PERPENDICULAR axis (`0x42480000` against the `yaw + 90` table) at height +40
 // (`0x42200000`), with the elevation latched at tick 13 and clamped +-40 — so they are
 // `origin_actor_relative(-50, 0, 40)`, not the attachment adapter they were bound through.
+// Their PITCH is not the bare latched elevation: the body then adds a range term,
+// `clamp(dist * 40 / 4000, 10, 50)` shrunk by 0.95 when the base is negative (L12172-12184), so
+// they aim with aim_elevation_plus_range_keiichi2() — the same shape as Keiichi 1's charges but
+// with a different divisor AND different bounds. A stored pitch alone adds 0 where the source
+// adds that term.
 // Turn verbs db10 vs dc20 both map to
 // Turn by value (distinction illegible); the w0x10 gravity tails and the one-shot w0x15
 // halve are vertical physics with no MoveRule op — skipped.
@@ -1156,17 +1161,17 @@ inline constexpr MoveRule kKeiichiRules[] = {
     {450,-1,5,5,MoveOp::Hold,10.f},
     {450,-1,13,13,MoveOp::CapturePitch,0.f,40.f,40.f},
     {450,-1,13,13,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_actor_relative(-50.f,0.f,40.f),aim_stored_pitch()},
+     origin_actor_relative(-50.f,0.f,40.f),aim_elevation_plus_range_keiichi2()},
     {450,-1,13,13,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_actor_relative(-50.f,0.f,40.f),aim_stored_pitch()},
+     origin_actor_relative(-50.f,0.f,40.f),aim_elevation_plus_range_keiichi2()},
     {450,-1,32,32,MoveOp::Hold,15.f},
     // 460 air charge1: same shape (turn 18, salvo row 2 at 13, stalls at 5/32).
     {460,-1,0,12,MoveOp::Turn,18.f},
     {460,-1,13,13,MoveOp::CapturePitch,0.f,40.f,40.f},
     {460,-1,13,13,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     origin_actor_relative(-50.f,0.f,40.f),aim_stored_pitch()},
+     origin_actor_relative(-50.f,0.f,40.f),aim_elevation_plus_range_keiichi2()},
     {460,-1,13,13,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
-     origin_actor_relative(-50.f,0.f,40.f),aim_stored_pitch()},
+     origin_actor_relative(-50.f,0.f,40.f),aim_elevation_plus_range_keiichi2()},
     {460,-1,5,5,MoveOp::Hold,10.f},
     {460,-1,32,32,MoveOp::Hold,15.f},
 };

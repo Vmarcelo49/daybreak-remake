@@ -3123,6 +3123,34 @@ void test_keiichi2_tap_sweep() {
                charge.pos.z - ch.position().z, 0.5f);
     check_near("Keiichi 2 charge sits 40 above the actor", 40.f,
                charge.pos.y - ch.position().y, 0.5f);
+
+    // The pitch is not the bare latched elevation: the body adds `clamp(dist*40/4000, 10, 50)`
+    // (L12172-12184). At the equal-height target below, the elevation term is 0 and the range
+    // term alone sets the angle, so this isolates it — the check the position/row witness missed.
+    Fighter rng;
+    rng.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_keiichiCombo.bind(rng);
+    settle(rng);
+    Fighter mark;
+    mark.init(nullptr, nullptr, glm::vec3(0, 0, 1000.f), 0.0f);
+    g_keiichiCombo.bind(mark);
+    hold_yellow(rng, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(rng, in);
+    while (rng.take_pending_shot().armed) {}
+    gameplay::PendingShot ranged;
+    for (int i = 0; i < 24 && !ranged.armed; ++i) {
+        // The rule needs an opponent: at 1000 units the source adds 1000*40/4000 = 10 degrees.
+        rng.update(nullptr, &mark, 1.0 / 64.0);
+        ranged = rng.take_pending_shot();
+    }
+    if (ranged.armed) {
+        const float pitch = glm::degrees(std::asin(std::clamp(ranged.dir.y, -1.f, 1.f)));
+        check_near("Keiichi 2 charge adds the body's range term at 1000 units", 10.f, pitch,
+                   1.0f);
+    } else {
+        check_bool("Keiichi 2 charge fires against a ranged opponent", true, false);
+    }
 }
 
 void test_satoko1_periodic_world_shot() {

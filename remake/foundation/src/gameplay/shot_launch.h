@@ -60,6 +60,14 @@ struct ShotAimSpec {
     float pitchDegrees = 0.f;
     float minimumPitchDegrees = -40.f;
     float maximumPitchDegrees = 40.f;
+    // ElevationPlusRange only: the bodies scale the horizontal distance by 40 and divide by a
+    // per-family constant, then clamp the result and shrink it when the base pitch is negative.
+    // Keiichi 1 divides by 5000 and clamps to [0, 40]; Keiichi 2 divides by 4000 and clamps to
+    // [10, 50]. Stated per rule because the two differ in BOTH the divisor and the bounds.
+    float rangeDivisor = 5000.f;
+    float rangeMinimum = 0.f;
+    float rangeMaximum = 40.f;
+    float rangeNegativeScale = 0.95f;
 };
 
 // Rule-table factories. Bodies state their geometry in original units — lateral,
@@ -96,6 +104,17 @@ inline constexpr ShotAimSpec aim_fixed_angles(float yawDegrees, float pitchDegre
 // derives both from the live target geometry; see the kind comment for the formula.
 inline constexpr ShotAimSpec aim_elevation_plus_range() {
     return ShotAimSpec{ShotAimKind::ElevationPlusRange, 0.f, 0.f, -40.f, 40.f};
+}
+
+// Keiichi 2's charges: the same shape with the divisor and both bounds moved
+// (shoot_body_2_2_450, L12172-12184: `dist * 40 / 4000`, clamped to [10, 50], x0.95 when the
+// base pitch is negative).
+inline constexpr ShotAimSpec aim_elevation_plus_range_keiichi2() {
+    ShotAimSpec spec = aim_elevation_plus_range();
+    spec.rangeDivisor = 4000.f;
+    spec.rangeMinimum = 10.f;
+    spec.rangeMaximum = 50.f;
+    return spec;
 }
 
 // A named hand/bone transform with its local point (FUN_00435220). The rule states

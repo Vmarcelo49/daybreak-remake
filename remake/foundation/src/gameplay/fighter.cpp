@@ -1694,8 +1694,9 @@ void Fighter::launch_bullet(int row, const ShotOriginSpec& origin, const ShotAim
             base = static_cast<float>(static_cast<int>(
                 glm::degrees(std::atan2(difference.y, horizontal))));
             base = std::clamp(base, -40.f, 40.f);
-            rangeTerm = std::clamp(horizontal * 40.f / 5000.f, 0.f, 40.f);
-            if (base < 0.f) rangeTerm *= 0.95f;
+            rangeTerm = std::clamp(horizontal * 40.f / resolvedAim.rangeDivisor,
+                                   resolvedAim.rangeMinimum, resolvedAim.rangeMaximum);
+            if (base < 0.f) rangeTerm *= resolvedAim.rangeNegativeScale;
         }
         const float legacyYawDegrees = 90.f - glm::degrees(m_facing) +
                                        resolvedAim.yawDegrees;
