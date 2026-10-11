@@ -1047,3 +1047,28 @@ rather than a tail-end edit.
 
 **Next:** that direction gate (which also finishes Irie 1's 401 follow-up states), Tomitake 2's
 charge tag rows, then the world-origin decode for Keiichi 1/2, Rika 0, Irie 1 and Rika 2.
+
+### 2026-10-10 — 3.19 The AI direction gate, and Rika 2's three normal rows
+
+**Done — the decode from 3.18 landed as a mechanism.** `ShootingContext::moveLateral` carries the
+sign of `+0x278`; `Match::step` publishes it for **AI slots only**, derived from the applied
+direction keys (this port expresses the brain's intent through those keys); and three exclusive
+gates `kGateDirLeft/Neutral/Right` state the branches. Rika 2's normal tap rules now carry
+`kGateNormal | kGateDir*` — the direction selects the NORMAL row while the powered branch still
+fires all three.
+
+**Caught by the suite, worth remembering:** the first cut used the direction gates ALONE, so a
+powered fighter with neutral lateral fired the row-0 normal rule *and* the three powered rules —
+four shots instead of three. The rule shape has to say "normal AND this direction", and the
+existing powered test is what exposed it.
+
+**Verified end to end:** the witness publishes each sign through the context and gets rows 2, 0
+and 1, rather than asserting the rules' own constants. A human slot publishes 0 and is unchanged.
+
+**Open and ready:** `+0x27c` (`w[0x9f]`, the second axis) is decoded but not published, because
+nothing in the port's table reads it yet. Irie 1's state 401 needs both signs for its four
+follow-up states, and 401 sits outside that family's `{400, 402}` mapping — so the plumbing is in
+place and only the rules remain, once 401 is in scope.
+
+**Next:** Irie 1's 401 follow-ups, Tomitake 2's charge tag rows, then the world-origin decode for
+Keiichi 1/2, Rika 0, Irie 1 and Rika 2.

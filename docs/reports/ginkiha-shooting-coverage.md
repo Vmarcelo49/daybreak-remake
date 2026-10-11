@@ -51,10 +51,14 @@ and `w[0x9f]`. That pair is `(+0x278, +0x27c)`, and the corpus settles it:
 
 So it is an **AI decision**, not a player input: a human-controlled fighter never has it
 written, leaves it at 0, and therefore takes Rika 2's **row 0** branch and Irie 1's no-direction
-branch. The port's row-0 binding is therefore correct for players and incomplete only for a COM
-attacker — which is a scoped gap, not the flat blocker the entry previously implied. Binding the
-COM half needs a new direction gate on the shooting context; the port's bot brain already
-carries the value, so the route is a publish plus a gate rather than new AI.
+branch.
+
+**Bound (2026-10-10).** `ShootingContext::moveLateral` now carries the sign, `Match::step`
+publishes it for **AI slots only** (derived from the applied direction keys, which is how the
+port expresses the brain's intent), and three exclusive gates `kGateDirLeft/Neutral/Right`
+state the branches. Rika 2's normal tap carries `kGateNormal | kGateDir*`, so the direction
+picks the NORMAL row while the powered branch still fires all three. The witness drives all
+three signs and gets rows 2, 0 and 1. A human slot keeps 0, so its behaviour is unchanged.
 
 ### Correction: which field the tag branch actually reads
 
@@ -106,7 +110,7 @@ that substring), and assert the occurrence count *within that scope*.
 | Satoko 2 | 12 / 38 | 400 twin world, gate-bound / rows 1 powered | 402 twin world, gate-bound / rows 1 powered | — / P | — / P | — / P | — / P | 18 |
 | Rika 0 | 13 / 7 | 400 attach, powered 4x row 1 / bound | 402 attach, powered 4x row 1 / bound | 450 attach, powered row 3 / bound | 460 attach, powered row 3 / bound | — / P | — / P | 20 |
 | Rika 1 | 14 / 19 | 400 hand L, 15-shot window counter-gated, spread-bound / no branch split | 402 attach @13 rows 1/7 gate-bound | 450 attach @13 rows 2/8 fixed 45° | 460 attach @12 rows 2/8 fixed 45° | — / P | — / P | 19 |
-| Rika 2 | 15 / 37 | 400 hand R, tag 3x rows 0/2/1 bound; player row 0 (COM picks 1/2 via `w[0x9e]`) | 402 same, tag-bound | 450 attach @10 rows 4/6 tag-bound | 460 attach @10 rows 4/6 tag-bound | — / P | — / P | 19 |
+| Rika 2 | 15 / 37 | 400 hand R, normal rows 2/0/1 by COM direction, tag 3x rows 0/2/1 | 402 same, direction- and tag-bound | 450 attach @10 rows 4/6 tag-bound | 460 attach @10 rows 4/6 tag-bound | — / P | — / P | 19 |
 | Shion 0 | 16 / 6 | — / P | — / P | — / P | — / P | — / P | — / P | 25 |
 | Shion 1 | 17 / 20 | — / P | — / P | — / P | — / P | — / P | — / P | 18 |
 | Shion 2 | 18 / 36 | — / P | — / P | — / P | — / P | — / P | — / P | 25 |

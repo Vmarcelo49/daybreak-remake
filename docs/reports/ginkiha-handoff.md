@@ -160,6 +160,23 @@ Akane 2 defer note (2026-10-10): pinned handler identity/update, usage and origi
 
 Natsumi 0 scope note (2026-10-10): added `natsumi0` for the **normal ground state400 callback schedule only**: Hide prop bindings 0/1 from tick 14 onward, then Launch item row 0 at tick 14. This matches the controlled normal `fire_attachment(0,0,...)` request and the DAT registration map. The executor rebuilds prop bindings at the start of every tick, but the tick-14 Hide is applied before Launch during that same update, selecting the fallback bone-origin family. The test drives the actual Natsumi+item29 fixture. Phase labels are forced probes; raw callback flag/aim, exact geometry, actual projectile admission and natural phase reachability remain outside the claim. State 402 stays unbound despite an analogous raw helper call because no state402 normalized callback trace is included. The tag/boost five-row randomized requests and world-origin 450/460 charges also remain unbound.
 
+AI movement direction bound (2026-10-10, ledger slice): **Rika 2's three normal rows are
+live.** The decode landed as a mechanism: `ShootingContext::moveLateral` carries the sign of
+`+0x278`, `Match::step` publishes it for AI slots only (from the applied direction keys, which
+is how this port expresses the brain's intent), and `kGateDirLeft/Neutral/Right` state the three
+branches. Rika 2's normal tap rules carry `kGateNormal | kGateDir*`, so the direction selects the
+normal row while the powered branch keeps firing all three — the first cut omitted `kGateNormal`
+and a powered fighter fired four shots, which the suite caught.
+
+The human path is untouched by construction: a human slot publishes 0 and takes row 0. The
+witness drives all three signs through the context and gets rows 2, 0 and 1, so the gate is
+tested end to end rather than through the rules' own constants.
+
+`+0x27c` (the second axis, `w[0x9f]`) is decoded but not yet published: nothing in the port's
+table reads it. Irie 1's state 401 uses both signs to pick one of four follow-up states, and 401
+is outside the port's `{400, 402}` mapping for that family — so the plumbing is ready and the
+rules are what remain.
+
 `w[0x9e]`/`w[0x9f]` decoded (2026-10-10, ledger slice): **they are the COM's movement
 direction, not a player input.** Rika 2's normal tap picks its row from `w[0x9e]` and Irie 1's
 state 401 picks one of four follow-up states from the signs of both components, so the pair had
