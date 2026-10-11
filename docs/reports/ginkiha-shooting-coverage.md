@@ -235,7 +235,7 @@ that substring), and assert the occurrence count *within that scope*.
 | Shion 2 | 18 / 36 | — / P | — / P | — / P | — / P | — / P | — / P | 25 |
 | Tomitake 0 | 19 / 12 | — / P | — / P | — / P | — / P | — / P | — / P | 19 |
 | Tomitake 1 | 20 / 21 | — / P | — / P | — / P | — / P | — / P | — / P | 15 |
-| Tomitake 2 | 21 / 42 | 400 slot0 row 7 + row 5/6 gate-bound, spread-bound | 402 rows 7 + 5/6 gate-bound | 450 world @30 row 4 + 0/2 gate-bound | 460 world @30 row 4 + 0/2 gate-bound | — / P | — / P | 20 |
+| Tomitake 2 | 21 / 42 | 400 slot0 row 7 + row 5/6 gate-bound, spread-bound | 402 rows 7 + 5/6 gate-bound | 450 world fwd 50 @h75, row 4 pitch 0 / rows 0/+2 | 460 same, rows 0/2 | — / P | — / P | 20 |
 | Takano 0 | 22 / 11 | 400 R-hand 3x @12/15/18, rows 0/6 gate-bound | 402 same, rows 0/6 gate-bound | 450 slot0 @18 rows 1/7 gate-bound | 460 slot0 @17 rows 1/7 gate-bound | — / P | — / P | 30 |
 | Takano 1 | 23 / 22 | — / P | — / P | — / P | — / P | — / P | — / P | 28 |
 | Takano 2 | 24 / 41 | — / P | — / P | — / P | — / P | — / P | — / P | 30 |

@@ -1274,3 +1274,26 @@ and row only, which is why the missing term went unseen.
 
 **Next:** Tomitake 2's world origins and fixed row-4 pitch, then draw-order pinning, then the
 independent posed-hand launch-position check.
+
+### 2026-10-10 — 3.28 Tomitake 2's world charge origins (review item 2)
+
+The second of the two acknowledged runtime defects, and the last of the three findings from the
+spread review. The charges were still on the attachment adapter with a target-derived pitch.
+Reading `shoot_body_6_2_{450,460}` (L39403-39440) they are WORLD requests:
+
+* the actor's own position displaced **50 forward** (`0x42480000` against the `yaw` table) and
+  **75 up** (`0x42960000`) — no lateral term at all;
+* **row 4** fires unconditionally at that origin with **literal pitch 0** and lateral 0;
+* then **row 0 normally / row 2 powered** on `byte(+0x845) && word(+0x212)`, at the SAME origin
+  but with the target elevation clamped +-40 as the pitch (`aim_target_elevation(40)`, the legacy
+  kind — correct here, because `FUN_00435450`'s world requests aim on the legacy basis).
+
+So `origin_actor_relative(0, 50, 75)`, not the default attachment slot. The witness checks 50 in
+front, 0 lateral, 75 above, row 4 first, and pitch 0. **The clock-freeze detail matters for the
+witness**: the body returns before `write_clock` while a counter is below its bound, so the phase
+pins at 28 for 15 updates and the tick-30 pass only *runs* when the rule's elapsed reaches 30 —
+the shot lands ~16 updates later than a naive "tick 30" count, so collecting for a bounded window
+rather than a fixed count is what makes the check honest.
+
+**Both acknowledged defects are now closed**, so the remaining-work list is items 3 and 4:
+exact RNG draw-order witnesses, then independent posed-hand launch-position verification.
