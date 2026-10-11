@@ -822,3 +822,26 @@ It needs a purpose-built harness before its salvo count and geometry can be trus
 
 **Next:** build Satoko 1's harness and audit it, then Rika 0/1/2, then the Keiichi 1/Keiichi 2
 charge geometry decode.
+
+### 2026-10-10 — 3.10 Ledger order: Satoko 1's periodic world shot
+
+**Done — Satoko 1 audited and bound from nothing** (handler 0x4b4090). It had NO move program
+at all before this, so its combo had no shooting behaviour. Its family
+(`shoot_body_3_1_{400,402,450,460}`) is uniform and unusual: every state runs the same
+PERIODIC fire — a countdown from 120 dropping one a tick, firing ONE world request when it is
+`1 mod 30`, from the actor's own position 600 units up, heading yaw and pitch 0, row 6
+normally and row 7 powered. The charges add one request at tick 35 at the actor's own
+position, row 0 normal / row 1 powered.
+
+`kGateCounterMod` already tests `counter % n == 0`, so starting the counter at 118 reproduces
+the body's `% 30 == 1` ticks with no new op. The witness pins the tick-28 landing, rows 6/7,
+the 600-unit height and one request per fire.
+
+**Open — the port's state/duration model is too short for periodic weapons.** Only the first
+fire lands in a run: the port's tap move lasts about 40 ticks, while the body's family walks
+ten states (400..409) and would fire five times. The shot table maps two states per form, so
+periodic weapons cannot express their full cadence until the state/duration model is widened.
+Recorded rather than hidden by shortening the period.
+
+**Next:** widen the state/duration model for periodic weapons (or confirm it is out of scope),
+then Rika 0/1/2, then the Keiichi 1/Keiichi 2 charge geometry decode.

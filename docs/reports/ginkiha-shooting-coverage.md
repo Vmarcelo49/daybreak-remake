@@ -25,7 +25,7 @@ follow-on/EX states remain pending for every combo, not implicitly N/A.
 | Keiichi 1 | 8 / 18 | 400 hand R, gate-bound / rows 1 powered | 402 hand R, gate-bound / rows 1 powered | 450 world pair, gate-bound / rows 3 powered | 460 world pair, gate-bound / rows 3 powered | — / P | — / P | 19 |
 | Keiichi 2 | 9 / 34 | 400 sweep, gate-bound / rows 1 powered | 402 sweep, gate-bound / rows 1 powered | 450 world @13 rows 2/3 measured, unbound | 460 world @13 rows 2/3 measured, unbound | — / P | — / P | 18 |
 | Satoko 0 | 10 / 8 | 400 hand fan, gate-bound / rows 1 powered | 402 hand fan, gate-bound / rows 1 powered | 450? / P | 460? / P | — / P | — / P | 18 |
-| Satoko 1 | 11 / 17 | — / P | — / P | — / P | — / P | — / P | — / P | 18 |
+| Satoko 1 | 11 / 17 | 400 periodic +600, gate-bound / rows 1 powered | 402 periodic +600, gate-bound / rows 1 powered | 450 tick-35 pair + periodic, bound | 460 tick-35 pair + periodic, bound | — / P | — / P | 18 |
 | Satoko 2 | 12 / 38 | 400 twin world, gate-bound / rows 1 powered | 402 twin world, gate-bound / rows 1 powered | — / P | — / P | — / P | — / P | 18 |
 | Rika 0 | 13 / 7 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 20 |
 | Rika 1 | 14 / 19 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 19 |
@@ -76,6 +76,12 @@ Four more shared capabilities landed with this snapshot:
   the named bone matrix or fail explicitly (never substitute). Keiichi 0/1 are the first
   users (right hand taps, left-hand charge request). The rig bone-existence check plus
   the origin KIND on the armed request is the witness pattern.
+- **The periodically-repeating world shot.** Satoko 1's weapon is not a salvo at all: a
+  countdown starts at 120, drops one a tick, and the request fires whenever it is
+  `1 mod 30`, in *every* state of the family — ticks 28, 58, 88. `kGateCounterMod` already
+  tests `counter % n == 0`, so the binding starts the counter at 118 and lands on the same
+  ticks; no new op was needed. Only the first fire lands, because the port's tap move lasts
+  about 40 ticks while the body's family runs ten states — a state/duration gap, recorded.
 - **A per-request lateral offset for the hand fans.** `ShotSpreadSpec::lateralModulus`
   moves the bone origin's own local offset, which is what `FUN_00435220`'s third argument
   is: Satoko 0 draws `(draw%240-120)*0.1` per request, so her five- and eight-shot salvos

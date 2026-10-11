@@ -160,6 +160,27 @@ Akane 2 defer note (2026-10-10): pinned handler identity/update, usage and origi
 
 Natsumi 0 scope note (2026-10-10): added `natsumi0` for the **normal ground state400 callback schedule only**: Hide prop bindings 0/1 from tick 14 onward, then Launch item row 0 at tick 14. This matches the controlled normal `fire_attachment(0,0,...)` request and the DAT registration map. The executor rebuilds prop bindings at the start of every tick, but the tick-14 Hide is applied before Launch during that same update, selecting the fallback bone-origin family. The test drives the actual Natsumi+item29 fixture. Phase labels are forced probes; raw callback flag/aim, exact geometry, actual projectile admission and natural phase reachability remain outside the claim. State 402 stays unbound despite an analogous raw helper call because no state402 normalized callback trace is included. The tag/boost five-row randomized requests and world-origin 450/460 charges also remain unbound.
 
+Satoko 1 audit (2026-10-10, ledger slice): **bound; it was entirely unbound before.** The
+port had no move program for handler 0x4b4090 at all, so the combo had no shooting behaviour.
+The family is unusual and uniform: `shoot_body_3_1_{400,402,450,460}` each run the SAME
+periodic fire — a countdown starts at 120, drops one a tick, and ONE world request fires
+whenever it is `1 mod 30`, from the actor's own position 600 units UP, aimed along the heading
+with pitch 0, row 6 normally and row 7 powered. The charges (`450`/`460`) add one request at
+tick 35 at the actor's own position with no height, row 0 normal / row 1 powered; `460`'s
+tick-0 block only zeroes velocities. Not modelled: the gravity tail (`w[0x15] -= 1.5`) and the
+movement-offset yaw term `w[0x19]`.
+
+`kGateCounterMod` tests `counter % gateValue == 0`, so starting the counter at 118 lands the
+fire on the body's tick 28 (118 - 28 = 90, and 90 % 30 == 0 where the body has 91 % 30 == 1).
+No new op was needed. The witness pins the tick-28 landing, row 6/7, the 600-unit height and
+the single request per firing.
+
+**Measured limitation, not a binding bug:** only the FIRST fire lands, because the port's tap
+move lasts about 40 ticks while the body's family runs ten states (400..409, each with its own
+duration) and would fire five times. The port's shot table maps two states per form, so the
+later fires need the **state/duration model widened** — recorded as an open item rather than
+papered over by shortening the period.
+
 Satoko 0 audit (2026-10-10, ledger slice): **the tap is bound; the charges keep their
 existing binding.** `shoot_body_3_0_400/402` fire the salvo through `FUN_00435220` on the
 posed `Bip01_R_Hand`: a loop of FIVE iterations at tick 17, EIGHT powered, all on item row 0.
