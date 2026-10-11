@@ -160,6 +160,29 @@ Akane 2 defer note (2026-10-10): pinned handler identity/update, usage and origi
 
 Natsumi 0 scope note (2026-10-10): added `natsumi0` for the **normal ground state400 callback schedule only**: Hide prop bindings 0/1 from tick 14 onward, then Launch item row 0 at tick 14. This matches the controlled normal `fire_attachment(0,0,...)` request and the DAT registration map. The executor rebuilds prop bindings at the start of every tick, but the tick-14 Hide is applied before Launch during that same update, selecting the fallback bone-origin family. The test drives the actual Natsumi+item29 fixture. Phase labels are forced probes; raw callback flag/aim, exact geometry, actual projectile admission and natural phase reachability remain outside the claim. State 402 stays unbound despite an analogous raw helper call because no state402 normalized callback trace is included. The tag/boost five-row randomized requests and world-origin 450/460 charges also remain unbound.
 
+Rika 0 audit (2026-10-10, ledger slice): **the powered branches are bound; the twin
+separation is not.** `shoot_body_4_0_{400,402,450,460}` fires TWIN world requests at tick 15
+in the taps and at ticks 15 AND 25 in the charges. The taps are TWO requests on row 0
+normally and FOUR on row 1 powered (L18360-18438); the charges are two on row 2 normally and
+two on row 3 powered, with the pitch thirds 45/30 ground and 45/40 air (L20797-20941). The
+previous binding fired row 0 / row 2 always and recorded the tag branch as "no flag field,
+skipped" — the flag is `w[0x1b7] < 3`, i.e. kGatePowered. One rule per branch now carries it,
+and the witness checks four row-1 requests on the powered tap and two row-3 requests on the
+powered charge. Both branches use the SAME pitch thirds, so the row is the only difference.
+
+Still unbound and named in the table comment: the pair is separated by `+-600` on the taps and
+`+-50` on the charges (L18392), so the port's adapter origin puts both of a pair at the same
+point. The separation depends on the aim basis, and needs the same world-origin decode the
+Keiichi charges are waiting on.
+
+**Systemic correction.** The "no flag field" note is FALSE wherever it appears: the flag is
+`w[0x1b7]`, which the port models as `kGatePowered`, verified in Keiichi 2, Satoko 0, Rika 0
+and Rika 2. Keiichi 2's and Satoko 0's rules were already rebound with it; **Chie 2 (L1098),
+Takano 0 (L1128), Irie 1 (L1194) and Tomitake 2 (L1399) still carry the note and their bodies
+have not been re-read.** Rika 2's note was wrong too, and re-reading it showed a deeper gap: the
+normal tap's row is selected by `w[0x9e]`, the powered tap fires all three rows, and every
+request passes pitch 0 although the clamped scratch is computed and then unused.
+
 Satoko 1 audit (2026-10-10, ledger slice): **bound; it was entirely unbound before.** The
 port had no move program for handler 0x4b4090 at all, so the combo had no shooting behaviour.
 The family is unusual and uniform: `shoot_body_3_1_{400,402,450,460}` each run the SAME

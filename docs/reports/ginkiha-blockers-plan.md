@@ -845,3 +845,32 @@ Recorded rather than hidden by shortening the period.
 
 **Next:** widen the state/duration model for periodic weapons (or confirm it is out of scope),
 then Rika 0/1/2, then the Keiichi 1/Keiichi 2 charge geometry decode.
+
+### 2026-10-10 — 3.11 Ledger order: Rika 0's powered branches, and the "no flag field" myth
+
+**Done — Rika 0's powered branches bound** (handler 0x484be0). The taps fire TWO world
+requests on row 0 normally and FOUR on row 1 powered; the charges fire two on row 2 normally
+and two on row 3 powered, with identical pitch thirds across the branches. The old binding
+fired row 0 / row 2 always, citing "no flag field"; the flag is `w[0x1b7] < 3` — kGatePowered.
+One gated rule per branch now carries it, and the witness checks four row-1 requests on the
+powered tap and two row-3 requests on the powered charge.
+
+**Found — the "no flag field" note is false everywhere it appears.** The flag is `w[0x1b7]`,
+which the port already models as `kGatePowered`; verified directly in Keiichi 2, Satoko 0,
+Rika 0 and Rika 2 bodies. Keiichi 2's and Satoko 0's rules were rebound earlier; Rika 0's now.
+**Still to re-read: Chie 2 (L1098), Takano 0 (L1128), Irie 1 (L1194), Tomitake 2 (L1399).**
+Each is a pending audit, not a missing flag — the notes are corrected in the ledger so the
+next pass does not inherit the excuse.
+
+**Found — Rika 2 hides more than a flag.** Its note was wrong, and the body shows: the NORMAL
+tap's row is selected by `w[0x9e]` (row 2 below 0, row 0 in [0,1), row 1 otherwise), the TAG
+tap fires three requests on rows 0/2/1, and every request passes pitch 0 although scratch
+`0x3c` is filled with the clamped ±40 target elevation and then never used. Its rules are
+unchanged pending a `w[0x9e]` decode.
+
+**Open — Rika 0's twin separation.** The pairs are `+-600` apart on the taps and `+-50` on the
+charges; the port's adapter origin places both at the same point. Needs the world-origin decode.
+
+**Next:** re-read the four remaining "no flag field" sites and bind their powered branches,
+then Rika 1's audit, then the Rika 2 `w[0x9e]` decode, then the Keiichi/‌Rika world-origin
+decode.

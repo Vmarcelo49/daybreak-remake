@@ -13,6 +13,30 @@ and verification remain pending. `—` means no runtime binding; `P` means pendi
 All 12 paths per combo have pending reachability and completeness audits. Additional
 follow-on/EX states remain pending for every combo, not implicitly N/A.
 
+## Correction: the "no flag field" notes are wrong
+
+Several recovered tables say a powered/tag branch was skipped because the body has "no flag
+field". **That is false.** The flag is `w[0x1b7]` — the same value the port already models as
+`kGatePowered` — and it was verified directly in four bodies: Keiichi 2 (`4_0`/`2_2`), Satoko 0
+(`3_0`), Rika 0 (`4_0`) and Rika 2 (`4_2`). Keiichi 2's and Satoko 0's rules have since been
+rebound with it, and Rika 0's in this change.
+
+Sites whose notes still carry the claim and whose bodies have **not** been re-read yet —
+each is a pending audit, not a missing flag:
+
+| Site | Line | Note |
+|---|---|---|
+| Chie 2 | 1098 | "bound (no flag field)" |
+| Takano 0 | 1128 | "tag row 6 skipped — no flag field" |
+| Irie 1 | 1194 | "tag adds rows 2+3 — no flag field, skipped" |
+| Tomitake 2 | 1399 | "tag rows 6/2 have no flag field" |
+
+Rika 2's note was also wrong, and re-reading its body showed the branch hides two further
+gaps that a flag alone would not fix: the NORMAL tap's row is selected by `w[0x9e]` (row 2
+below 0, row 0 in [0,1), row 1 otherwise), the TAG tap fires three requests on rows 0, 2 and
+1, and every request passes pitch 0 even though scratch `0x3c` is filled with the clamped
+±40 target elevation and then unused. Its rules are unchanged pending a `w[0x9e]` decode.
+
 | Combo | Swap / item | Tap ground | Tap air | Charge 1 ground | Charge 1 air | Charge 2 ground | Charge 2 air | Available body count |
 |---|---|---|---|---|---|---|---|---|
 | Rena 0 | 1 / 1 | 400 attach, gate-bound / rows 6 powered | 402 attach, gate-bound / rows 7 powered | 450 attach, gate-bound / rows 8 powered, fixed 45° | 460 attach, gate-bound / rows 8 powered, fixed 45° | 360 world 11/12 / no branch split | 370 world 11/12 / no branch split | 1 |
@@ -27,7 +51,7 @@ follow-on/EX states remain pending for every combo, not implicitly N/A.
 | Satoko 0 | 10 / 8 | 400 hand fan, gate-bound / rows 1 powered | 402 hand fan, gate-bound / rows 1 powered | 450? / P | 460? / P | — / P | — / P | 18 |
 | Satoko 1 | 11 / 17 | 400 periodic +600, gate-bound / rows 1 powered | 402 periodic +600, gate-bound / rows 1 powered | 450 tick-35 pair + periodic, bound | 460 tick-35 pair + periodic, bound | — / P | — / P | 18 |
 | Satoko 2 | 12 / 38 | 400 twin world, gate-bound / rows 1 powered | 402 twin world, gate-bound / rows 1 powered | — / P | — / P | — / P | — / P | 18 |
-| Rika 0 | 13 / 7 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 20 |
+| Rika 0 | 13 / 7 | 400 attach, powered 4x row 1 / bound | 402 attach, powered 4x row 1 / bound | 450 attach, powered row 3 / bound | 460 attach, powered row 3 / bound | — / P | — / P | 20 |
 | Rika 1 | 14 / 19 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 19 |
 | Rika 2 | 15 / 37 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 19 |
 | Shion 0 | 16 / 6 | — / P | — / P | — / P | — / P | — / P | — / P | 25 |
