@@ -1139,3 +1139,54 @@ facts, which is the shape a geometry witness needs.
 
 **Next:** Rika 0's charges (`25` lateral at height `+50`, rows 2/3 — the same decode), then the
 state-transition op for Irie 1's 401, then the remaining `w[0x19]` movement-offset term.
+
+### 2026-10-10 — 3.23 Rika 0's charges, completing the combo's geometry
+
+**Done — Rika 0's charges bound** (handler 0x484be0). They fire twin WORLD requests at ticks 15
+and 25: lateral `±25` (`0x41c80000` against the `yaw + 90` table), forward 50 (`0x42480000`
+against the `yaw` table), height +50, with an explicit world YAW and PITCH rather than the target
+elevation — yaw `±5`/pitch 45 at tick 15, yaw `±10`/pitch 30 (450) and 40 (460) at tick 25. The
+witness checks 50 apart laterally, 50 in front, 50 up, 10 degrees of yaw separation and the fixed
+45 pitch.
+
+**Worth carrying forward:** the aim SPEC differs per family and must come from the body. Rika 0
+names its angles (FixedAngles); Keiichi 2 latched the target elevation and clamped it
+(StoredPitch); Satoko 1 passes pitch 0. Three families, three aim kinds — a family-wide
+assumption would have been wrong for at least two of them.
+
+**Next:** the state-transition op for Irie 1's 401 (a product change), then the `w[0x19]`
+movement-offset yaw term that several families still omit, then the remaining `w[0xae]`-gated
+bursts seen in Irie 1's 402.
+
+### 2026-10-10 — 3.24 Review findings: the spread axis was a yaw, not a muzzle offset
+
+A review of the committed spread work returned three findings. All three were checked against the
+corpus before acting; **the first was confirmed and is fixed**, the other two are confirmed and
+carried here as work.
+
+**FIXED — [P1] the hand helpers' third argument is a YAW.** `FUN_00435220` wraps
+`FUN_00435250`, which at `0x4352a0` adds its `param_7` to the bone's own angles and passes the sum
+through the sin/cos table. So the value Rika 1, Satoko 0, Chie 2 and Tomitake 2 draw into is a yaw
+offset in degrees, not a muzzle position. `SpreadAxis::Lateral` now adds to the aim's yaw; only
+`FUN_00435450`'s world form takes a position, and those families state it explicitly. The four
+witnesses had been reading the value out of the field the binding wrote it to, which is why they
+agreed with the error; they now assert a swing instead. **Follow-up:** pin the per-shot stream
+position so those witnesses can assert absolutes again.
+
+**CONFIRMED, not yet done — [P2] Keiichi 2's charges drop the range-based pitch.** The body carries
+`0x457a0000` (4000) and `0x42200000` (40), the shape Keiichi 1 uses (`base + clamp(dist*40/N, low,
+high)`, `*0.95` when the base is negative). Keiichi 2's rules call `aim_stored_pitch()`, so they
+add 0 where the source adds a distance term. The existing witness checks position and row, so it
+cannot see this. The port already has `aim_elevation_plus_range()` for this shape; it needs 4000
+as the divisor rather than the 5000 Keiichi 1 uses, so the kind likely wants a parameter.
+
+**CONFIRMED, not yet done — [P2b] Tomitake 2's charges still use the adapter.** The bodies carry
+`0x42480000` (50, six occurrences) and `0x42960000` (75, three), so those charges are WORLD
+requests 50 forward and 75 above with row 4 at literal pitch 0. The committed rules fixed the ROW
+selection but kept the attachment origin and a target-derived pitch, so the launch geometry is
+still wrong. This is the same decode that fixed Rika 0's and Keiichi 2's charges.
+
+**Process note.** Three of this session's errors — a mis-read hex float, an inverted axis, and this
+yaw-versus-position confusion — share one shape: a witness that reads back what the binding wrote
+cannot falsify the binding. The world-geometry and direction witnesses added since take their
+numbers from the body; the spread witnesses are the remaining place that needs the same treatment.

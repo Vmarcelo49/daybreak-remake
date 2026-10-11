@@ -34,6 +34,33 @@ but **never written anywhere in it**, so it has no recovered source. That rule k
 reading the traces show, and every request's pitch stays 0 even though scratch `0x3c` is
 filled with the clamped ±40 target elevation and then unused.
 
+### Correction: the hand helpers' third argument is a YAW, not a position
+
+A review of the committed spread work found a real error that had propagated across four
+combos. `FUN_00435220`'s third argument — the one Rika 1's tap, Satoko 0's fan, Chie 2's burst and
+Tomitake 2's tap all draw into — is **not** a muzzle offset. `FUN_00435220` is a thin wrapper over
+`FUN_00435250`, which does this at `0x4352a0`:
+
+```
+fVar3 = FUN_0065d010(param_7 + bone[0x5c] + bone[100]);
+```
+
+i.e. it ADDS the value to the bone's own angles and runs the sum through the sin/cos table. It is
+a **yaw offset in degrees**, so it swings the shot; it never moves the muzzle. Only
+`FUN_00435450`'s world form takes a perpendicular POSITION, and those families state that per rule
+through `origin_actor_relative`.
+
+`SpreadAxis::Lateral` therefore adds to the aim's yaw now, not to the bone's local offset. The
+build and the four witnesses agreed with the wrong version because they read the value back out of
+the field the binding had written it to — the same self-confirming shape as the constant and axis
+errors above. The witnesses now assert a swing: Satoko's five requests fan by direction, Chie's
+burst widens shot by shot, and Tomitake's row-5 shot swings off its deterministic row-7 partner.
+
+**Not pinned yet, and stated as such:** which draw each shot consumes, so the per-shot values are
+asserted as ordered steps and ranges rather than absolutes. The body's own bounds are known
+(`draw%14-7` for Rika 1, `draw%240-120` for Satoko 0), and a witness that pins the stream position
+is a follow-up.
+
 ### Correction: which axis the displacement uses
 
 A body's world position is built from **two** table lookups: the table at `yaw` gives the forward
@@ -46,6 +73,11 @@ one a constant multiplies is what decides `origin_actor_relative(right, forward,
   checks the pair's X separation, the shared forward line and the 10-unit forward offset.
 * Keiichi 2's charges multiply the **`yaw + 90`** table by −50 and pass height +40, so they are
   `(-50, 0, 40)` — a pure lateral offset, not the attachment the adapter implied.
+* Rika 0's charges multiply the `yaw + 90` table by ±25 and the `yaw` table by 50, giving
+  `(±25, 50, 50)`, and they pass an explicit world yaw and pitch instead of the target
+  elevation: `±5`/45 at tick 15 and `±10`/30 (450) or `±10`/40 (460) at tick 25. The witness
+  checks all of it — 50 apart laterally, 50 in front, 50 up, 10 degrees of yaw separation, and
+  the fixed 45 pitch.
 
 ### Correction: float constants must be decoded, not eyeballed
 
@@ -154,7 +186,7 @@ that substring), and assert the occurrence count *within that scope*.
 | Satoko 0 | 10 / 8 | 400 hand fan, gate-bound / rows 1 powered | 402 hand fan, gate-bound / rows 1 powered | 450? / P | 460? / P | — / P | — / P | 18 |
 | Satoko 1 | 11 / 17 | 400 periodic +50 @h50, gate-bound / rows 1 powered | 402 periodic +50 @h50, gate-bound / rows 1 powered | 450 tick-35 pair + periodic, bound | 460 tick-35 pair + periodic, bound | — / P | — / P | 18 |
 | Satoko 2 | 12 / 38 | 400 twin world, gate-bound / rows 1 powered | 402 twin world, gate-bound / rows 1 powered | — / P | — / P | — / P | — / P | 18 |
-| Rika 0 | 13 / 7 | 400 world +-50 along the facing @h70, rows 0/1 gate-bound | 402 world +-50 @h70, rows 0/1 | 450 attach, powered row 3 | 460 attach, powered row 3 | — / P | — / P | 20 |
+| Rika 0 | 13 / 7 | 400 world lateral +-50, fwd 10 @h70, rows 0/1 gate-bound | 402 same, rows 0/1 gate-bound | 450 world lateral +-25, fwd 50 @h50, yaw +-5/+-10, pitch 45/30, rows 2/3 | 460 same, pitch 45/40 | — / P | — / P | 20 |
 | Rika 1 | 14 / 19 | 400 hand L, 15-shot window counter-gated, spread-bound / no branch split | 402 attach @13 rows 1/7 gate-bound | 450 attach @13 rows 2/8 fixed 45° | 460 attach @12 rows 2/8 fixed 45° | — / P | — / P | 19 |
 | Rika 2 | 15 / 37 | 400 hand R, normal rows 2/0/1 by COM direction, tag 3x rows 0/2/1 | 402 same, direction- and tag-bound | 450 attach @10 rows 4/6 tag-bound | 460 attach @10 rows 4/6 tag-bound | — / P | — / P | 19 |
 | Shion 0 | 16 / 6 | — / P | — / P | — / P | — / P | — / P | — / P | 25 |

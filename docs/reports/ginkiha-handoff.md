@@ -332,6 +332,40 @@ position distance would mix the fan with the animation.
 `PitchThenYaw`, `YawThenPitch`, `PitchThenLateral` (Satoko 0) and `LateralThenPitch` (Rika 1).
 Rika 1 is the only measured family that draws the LATERAL first.
 
+Review findings on the spread work (2026-10-10): **one fixed, two confirmed and carried.**
+
+**Fixed — the spread's "lateral" axis is a YAW, not a muzzle offset.** `FUN_00435220` wraps
+`FUN_00435250`, which at `0x4352a0` adds its `param_7` to the bone's own angles and runs the sum
+through the sin/cos table. So the value Rika 1's tap, Satoko 0's fan, Chie 2's burst and Tomitake
+2's tap draw into swings the shot; it never moves the muzzle. Only `FUN_00435450`'s world form
+takes a perpendicular position. `SpreadAxis::Lateral` now adds to the aim's yaw, and the four
+witnesses assert a swing instead of reading back the field the binding wrote. Their per-shot
+absolutes are now ordered steps and ranges, because the stream position is not pinned — that is the
+follow-up.
+
+**Confirmed, carried — Keiichi 2's charges drop the range-based pitch.** The body has `0x457a0000`
+(4000) and `0x42200000` (40): the same `base + clamp(dist*40/N, ...)` shape Keiichi 1 uses, with
+N = 4000 rather than 5000 and the `*0.95` on a negative base. The rules call `aim_stored_pitch()`,
+so the port adds 0 where the source adds a distance term. `aim_elevation_plus_range()` exists but
+hard-codes the 5000.
+
+**Confirmed, carried — Tomitake 2's charges are still on the adapter.** The bodies carry
+`0x42480000` (50) and `0x42960000` (75): world requests 50 forward, 75 above, row 4 at literal
+pitch 0. The row fix landed; the origin and pitch did not.
+
+Rika 0's charges bound (2026-10-10, later slice): **the combo's geometry is now complete.**
+The charges (L20788-20845) fire twin WORLD requests at ticks 15 and 25 with lateral `+-25`
+(`0x41c80000` against the `yaw + 90` table), forward 50 (`0x42480000` against the `yaw` table)
+and height +50, and they pass an explicit world YAW and PITCH rather than the target elevation:
+yaw `+-5` with pitch 45 at tick 15, yaw `+-10` with pitch 30 (450) / 40 (460) at tick 25 — the
+`uVar14` assignments. So `origin_actor_relative(+-25, 50, 50)` with `aim_fixed_angles(+-5, 45)`
+and `(+-10, 30/40)`. The witness checks 50 apart laterally, 50 in front, 50 up, the 10-degree yaw
+separation and the fixed 45 pitch.
+
+**Note the two families differ in kind:** Rika 0's charges are a FIXED aim (the body names the
+angles), while Keiichi 2's latched the target elevation and clamped it. Both are now correct;
+the difference is why the aim spec has to come from the body rather than from the family.
+
 Keiichi 2's charges bound (2026-10-10, later slice): **the combo is complete on all four
 states.** The charges (L12186-12217) are WORLD requests, not attachments: the actor's position
 displaced `-50` on the PERPENDICULAR axis — `0x42480000` against the table at `yaw + 90`
