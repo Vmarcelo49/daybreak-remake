@@ -1113,9 +1113,12 @@ inline constexpr MoveRule kTomitakeRules[] = {
 // expressed as one window rule per row — the executor runs matching rules each update,
 // so first/last IS the burst (unlike Rika's even-only schedule, which needs tick rules).
 // The powered row IS gated: the body's row branch tests `byte(+0x845) && word(+0x212)`,
-// which is kGatePowered, so the tap binds row 0 normal / row 1 powered (below). Charge rows 2 normal / 3
-// powered are still bound row 2 only: that is a PENDING AUDIT, not a missing flag, and
-// the earlier "no flag field" note here was wrong. Turn verbs db10 vs dc20 both map to
+// which is kGatePowered, so the tap binds row 0 normal / row 1 powered and the charges rows 2/3
+// (below). The charges are WORLD requests (L12186-12217): the actor's position displaced `-50`
+// on the PERPENDICULAR axis (`0x42480000` against the `yaw + 90` table) at height +40
+// (`0x42200000`), with the elevation latched at tick 13 and clamped +-40 — so they are
+// `origin_actor_relative(-50, 0, 40)`, not the attachment adapter they were bound through.
+// Turn verbs db10 vs dc20 both map to
 // Turn by value (distinction illegible); the w0x10 gravity tails and the one-shot w0x15
 // halve are vertical physics with no MoveRule op — skipped.
 inline constexpr MoveRule kKeiichiRules[] = {
@@ -1151,11 +1154,19 @@ inline constexpr MoveRule kKeiichiRules[] = {
     {450,-1,0,12,MoveOp::Turn,18.f},
     {450,-1,0,9999,MoveOp::Decelerate,.75f},
     {450,-1,5,5,MoveOp::Hold,10.f},
-    {450,-1,13,13,MoveOp::Launch,2.f,0.f,50.f},
+    {450,-1,13,13,MoveOp::CapturePitch,0.f,40.f,40.f},
+    {450,-1,13,13,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(-50.f,0.f,40.f),aim_stored_pitch()},
+    {450,-1,13,13,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(-50.f,0.f,40.f),aim_stored_pitch()},
     {450,-1,32,32,MoveOp::Hold,15.f},
     // 460 air charge1: same shape (turn 18, salvo row 2 at 13, stalls at 5/32).
     {460,-1,0,12,MoveOp::Turn,18.f},
-    {460,-1,13,13,MoveOp::Launch,2.f,0.f,50.f},
+    {460,-1,13,13,MoveOp::CapturePitch,0.f,40.f,40.f},
+    {460,-1,13,13,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(-50.f,0.f,40.f),aim_stored_pitch()},
+    {460,-1,13,13,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(-50.f,0.f,40.f),aim_stored_pitch()},
     {460,-1,5,5,MoveOp::Hold,10.f},
     {460,-1,32,32,MoveOp::Hold,15.f},
 };
@@ -1378,9 +1389,13 @@ inline constexpr MoveRule kIrieRules[] = {
 // The requests are WORLD pairs and the geometry is decoded: each is the actor's own position
 // displaced `+-50` ALONG THE FACING (`0x42480000`, L18383-18422) at height +70 (`0x428c0000`),
 // which is exactly ActorRelativeOffset(0, forward, height) — the port's `facing_relative(0, R)`
-// is the same `(sin(facing), cos(facing)) * R`. The tap fires +50 then -50 normally, and
-// +50/-50/+50/-50 powered; the charges use the same shape with R = 25 (`0x41c80000`) at height
-// +50. Earlier notes gave these as 600 and 50, which was a mis-read of the hex.
+// is the same `(sin(facing), cos(facing)) * R`. The `+-50` term multiplies the table evaluated
+// at `yaw + 90` (L18365 `0x42b40000`), which is the PERPENDICULAR axis, while the 10 term
+// multiplies the `yaw` table: so the pair is `origin_actor_relative(+-50, 10, 70)`, lateral and
+// not forward. (The first binding had the axis inverted; a distance check could not tell the
+// two apart because either way the pair is 100 apart.) The tap fires +50 then -50 normally and
+// +50/-50/+50/-50 powered; the charges use the same shape with 25 (`0x41c80000`) lateral at
+// height +50. Earlier notes gave these as 600 and 50, which was a mis-read of the hex.
 //
 // The powered branches test `byte(+0x845) && word(+0x212)` — kGatePowered, the idiom the
 // rest of the port uses — which the previous binding recorded as "no flag field, skipped".
@@ -1390,31 +1405,31 @@ inline constexpr MoveRule kRika0Rules[] = {
     {400,-1,0,14,MoveOp::Turn,15.f},
     {400,0,0,9999,MoveOp::Decelerate,.5f},
     {400,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
-     origin_actor_relative(0.f,50.f,70.f),aim_target_elevation(40.f)},
+     origin_actor_relative(50.f,10.f,70.f),aim_target_elevation(40.f)},
     {400,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
-     origin_actor_relative(0.f,-50.f,70.f),aim_target_elevation(40.f)},
+     origin_actor_relative(-50.f,10.f,70.f),aim_target_elevation(40.f)},
     {400,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
-     origin_actor_relative(0.f,50.f,70.f),aim_target_elevation(40.f)},
+     origin_actor_relative(50.f,10.f,70.f),aim_target_elevation(40.f)},
     {400,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
-     origin_actor_relative(0.f,-50.f,70.f),aim_target_elevation(40.f)},
+     origin_actor_relative(-50.f,10.f,70.f),aim_target_elevation(40.f)},
     {400,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
-     origin_actor_relative(0.f,50.f,70.f),aim_target_elevation(40.f)},
+     origin_actor_relative(50.f,10.f,70.f),aim_target_elevation(40.f)},
     {400,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
-     origin_actor_relative(0.f,-50.f,70.f),aim_target_elevation(40.f)},
+     origin_actor_relative(-50.f,10.f,70.f),aim_target_elevation(40.f)},
     // 402 air tap: 20 deg turn ticks 0-14, same twin @15. No bleed (gravity tail).
     {402,-1,0,14,MoveOp::Turn,20.f},
     {402,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
-     origin_actor_relative(0.f,50.f,70.f),aim_target_elevation(40.f)},
+     origin_actor_relative(50.f,10.f,70.f),aim_target_elevation(40.f)},
     {402,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
-     origin_actor_relative(0.f,-50.f,70.f),aim_target_elevation(40.f)},
+     origin_actor_relative(-50.f,10.f,70.f),aim_target_elevation(40.f)},
     {402,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
-     origin_actor_relative(0.f,50.f,70.f),aim_target_elevation(40.f)},
+     origin_actor_relative(50.f,10.f,70.f),aim_target_elevation(40.f)},
     {402,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
-     origin_actor_relative(0.f,-50.f,70.f),aim_target_elevation(40.f)},
+     origin_actor_relative(-50.f,10.f,70.f),aim_target_elevation(40.f)},
     {402,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
-     origin_actor_relative(0.f,50.f,70.f),aim_target_elevation(40.f)},
+     origin_actor_relative(50.f,10.f,70.f),aim_target_elevation(40.f)},
     {402,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
-     origin_actor_relative(0.f,-50.f,70.f),aim_target_elevation(40.f)},
+     origin_actor_relative(-50.f,10.f,70.f),aim_target_elevation(40.f)},
     // 450 ground charge1: 18 deg turn through tick 9, bleed 0.5/tick, twin row-2
     // salvos at 15 (±5°) and 25 (±10°), freeze 5 at tick 30.
     {450,-1,0,9,MoveOp::Turn,18.f},

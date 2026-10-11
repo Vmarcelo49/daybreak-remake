@@ -3021,6 +3021,35 @@ void test_keiichi2_tap_sweep() {
     for (int r : rows) allRowOne &= r == 1;
     check_int("powered tap fires eleven requests", 11, (int)rows.size());
     check_bool("powered tap uses item row 1 throughout", true, allRowOne);
+
+    // The charge is a WORLD request, not the attachment the adapter assumed: the actor's
+    // position displaced -50 on the PERPENDICULAR axis at height +40 (L12186-12217). At
+    // facing 0 that is -50 on X, 0 on Z and +40 on Y.
+    Fighter ch;
+    ch.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_keiichiCombo.bind(ch);
+    settle(ch);
+    hold_yellow(ch, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(ch, in);
+    check_int("Keiichi 2 charge enters ShootB", static_cast<int>(FighterState::ShootB),
+              static_cast<int>(ch.state()));
+    // The tap's burst is still draining: drop whatever it left, then take the charge's own
+    // shot (the latch lands at tick 13; the loop is bounded so a miss still reads as a miss).
+    while (ch.take_pending_shot().armed) {}
+    gameplay::PendingShot charge;
+    for (int i = 0; i < 24 && !charge.armed; ++i) {
+        tick(ch, in);
+        charge = ch.take_pending_shot();
+    }
+    check_bool("Keiichi 2 charge fires", true, charge.armed);
+    check_int("Keiichi 2 charge uses item row 2", 2, charge.bulletRow);
+    check_near("Keiichi 2 charge sits 50 left of the actor", -50.f,
+               charge.pos.x - ch.position().x, 0.5f);
+    check_near("Keiichi 2 charge keeps the actor's forward line", 0.f,
+               charge.pos.z - ch.position().z, 0.5f);
+    check_near("Keiichi 2 charge sits 40 above the actor", 40.f,
+               charge.pos.y - ch.position().y, 0.5f);
 }
 
 void test_satoko1_periodic_world_shot() {
@@ -4142,8 +4171,15 @@ void test_rika0_twin_tick() {
     gameplay::PendingShot secondWorld = rw.take_pending_shot();
     check_bool("Rika0 tap T15 fires the world pair", true,
                firstWorld.armed && secondWorld.armed);
-    check_near("Rika0 world pair is 100 apart along the facing", 100.f,
-               glm::distance(firstWorld.pos, secondWorld.pos), 0.5f);
+    // The pair is separated on the PERPENDICULAR axis (`yaw + 90`), with a 10-unit forward
+    // term — not the other way round. At facing 0 the port's basis is forward +Z, right +X, so
+    // the checks below can tell the two apart; a plain distance cannot.
+    check_near("Rika0 world pair is 100 apart on the actor's right axis", 100.f,
+               std::abs(firstWorld.pos.x - secondWorld.pos.x), 0.5f);
+    check_near("Rika0 world pair shares one forward line", 0.f,
+               std::abs(firstWorld.pos.z - secondWorld.pos.z), 0.5f);
+    check_near("Rika0 world pair sits 10 in front of the actor", 10.f,
+               firstWorld.pos.z - rw.position().z, 0.5f);
     check_near("Rika0 world pair sits 70 above the actor", 70.f,
                firstWorld.pos.y - rw.position().y, 0.5f);
 
