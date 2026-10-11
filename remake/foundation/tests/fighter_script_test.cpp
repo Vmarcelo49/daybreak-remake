@@ -116,6 +116,7 @@ TestCombo g_irieCombo;
 TestCombo g_mion2Combo;
 TestCombo g_rika2Combo;
 TestCombo g_satokoCombo;
+TestCombo g_satoko1Combo;
 TestCombo g_rika0Combo;
 TestCombo g_rena1Combo;
 TestCombo g_rena2Combo;
@@ -2690,6 +2691,91 @@ void test_keiichi2_tap_sweep() {
     check_bool("powered tap uses item row 1 throughout", true, allRowOne);
 }
 
+void test_satoko1_periodic_world_shot() {
+    section("44. Satoko 1 periodic +600 world shot (bodies shoot_body_3_1_*)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_satoko1Combo.load(install, 3, 1))
+        return skip_case("Satoko 1 combo");
+    // Bundle evidence: the countdown starts at 120, drops one a tick, and the request fires
+    // whenever it is 1 mod 30 — so ticks 28, 58, 88 in the port's pre-increment numbering.
+    // Every firing is ONE world request at the actor's own position 600 units UP, aimed
+    // along the heading with pitch 0, row 6 normally and row 7 powered, in every state.
+    //
+    // Only the FIRST fire lands here: the port's tap move lasts about 40 ticks, while the
+    // body's family runs ten states (400..409) and would fire five times. The port's shot
+    // table maps two states per form, so the later fires need the state/duration model
+    // widened — a separate gap, not a binding one. The tick-28 landing is what pins the
+    // counter start and the 30-tick modulus: any other start or modulus moves it.
+    const auto* program = gameplay::move_program(&g_satoko1Combo.moves);
+    check_bool("Satoko 1 program is bound", true,
+               program && program->rules == gameplay::kSatoko1Rules);
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_satoko1Combo.bind(f);
+    settle(f);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Satoko 1 tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    std::vector<int> fireTicks;
+    std::vector<int> rows;
+    std::vector<float> heights;
+    for (int i = 1; i <= 100; ++i) {
+        tick(f, in);
+        for (gameplay::PendingShot s = f.take_pending_shot(); s.armed;
+             s = f.take_pending_shot()) {
+            fireTicks.push_back(i);
+            rows.push_back(s.bulletRow);
+            heights.push_back(s.pos.y - f.position().y);
+        }
+    }
+    check_int("Satoko 1 fires once in the tap's 40-tick state", 1, (int)fireTicks.size());
+    if (!fireTicks.empty())
+        check_int("Satoko 1 first fire lands on the body's tick 28", 28, fireTicks[0]);
+    bool allRow6 = !rows.empty(), allHeight = !heights.empty();
+    for (int r : rows) allRow6 &= r == 6;
+    for (float h : heights) allHeight &= std::abs(h - 600.f) < 0.5f;
+    check_bool("Satoko 1 normal fire uses item row 6", true, allRow6);
+    check_bool("Satoko 1 fire sits 600 units above the actor", true, allHeight);
+    // One slot-0 world request per firing, not a salvo.
+    check_bool("Satoko 1 fires exactly one request per period", false,
+               f.take_pending_shot().armed);
+
+    // Powered: the same period on row 7.
+    Fighter p;
+    p.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_satoko1Combo.bind(p);
+    settle(p);
+    p.set_hypermode(Hypermode::Oyashiro);
+    p.set_hyper_gauge(1.f);
+    Input hp;
+    hp.set(fnd::input::Action::Special, true);
+    tick(p, hp);
+    hp.set(fnd::input::Action::Special, false);
+    tick(p, hp);
+    gameplay::ShootingContext context;
+    context.aimHold = true;
+    p.set_shooting_context(context);
+    hp.set(fnd::input::Action::Shoot, true);
+    tick(p, hp);
+    hp.set(fnd::input::Action::Shoot, false);
+    tick(p, hp);
+    std::vector<int> poweredRows;
+    for (int i = 1; i <= 100; ++i) {
+        tick(p, hp);
+        for (gameplay::PendingShot s = p.take_pending_shot(); s.armed;
+             s = p.take_pending_shot())
+            poweredRows.push_back(s.bulletRow);
+    }
+    bool allRow7 = !poweredRows.empty();
+    for (int r : poweredRows) allRow7 &= r == 7;
+    check_int("powered Satoko 1 still fires once", 1, (int)poweredRows.size());
+    check_bool("powered Satoko 1 uses item row 7", true, allRow7);
+}
+
 void test_simulation_rng_stream() {
     section("40. simulation RNG: MT19937 recovered from FUN_0065d150/FUN_0065d0c0");
     // The port reproduces the original's ALGORITHM, not its stream position. The pins
@@ -4469,6 +4555,7 @@ int main(int argc, char** argv) {
     test_rika0_twin_tick();
     test_rena1_normal_schedule();
     test_keiichi2_tap_sweep();
+    test_satoko1_periodic_world_shot();
     test_simulation_rng_stream();
     test_spread_draw_order();
     test_rena2_ring();

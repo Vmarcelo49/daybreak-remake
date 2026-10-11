@@ -786,6 +786,57 @@ inline constexpr MoveRule kRikaRules[] = {
     {460,0,0,9999,MoveOp::Counter,1.f},
     {460,0,30,30,MoveOp::Hold,9999.f,0.f,0.f,kGateCounterBelow,60},
 };
+// Satoko weapon 1 (handler 0x4b4090) — shoot_body_3_1_{400,402,450,460}. This weapon is a
+// PERIODIC world projectile rather than a salvo: a countdown starts at 120, drops one a
+// tick, and the request fires whenever it is 1 mod 30 — so in the port's pre-increment
+// numbering the shots land on ticks 28, 58, 88, ... Each firing puts ONE world request at
+// the actor's own position 600 units UP, aimed along the heading with pitch 0, on row 6
+// normally and row 7 powered, and it runs in EVERY state. The charges add one request at
+// tick 35 (0x23) at the actor's own position with no height, row 0 normal / row 1 powered.
+// No MoveRule op: the gravity tail (`w[0x15] -= 1.5`, clamped at 0 in every state) and the
+// movement-offset yaw term `w[0x19]`.
+//
+// kGateCounterMod tests `counter % gateValue == 0`, so the counter starts at 118 rather
+// than the body's 120: 118 - 28 = 90 and 90 % 30 == 0 lands on the tick the body's
+// 91 % 30 == 1 does.
+inline constexpr MoveRule kSatoko1Rules[] = {
+    {400,0,0,0,MoveOp::CounterSet,118.f},
+    {400,-1,1,9999,MoveOp::Counter,-1.f},
+    {400,-1,0,9999,MoveOp::Launch,6.f,0.f,0.f,kGateNormal | kGateCounterMod,30,
+     origin_actor_relative(0.f,0.f,600.f),aim_fixed_angles(0.f,0.f)},
+    {400,-1,0,9999,MoveOp::Launch,7.f,0.f,0.f,kGatePowered | kGateCounterMod,30,
+     origin_actor_relative(0.f,0.f,600.f),aim_fixed_angles(0.f,0.f)},
+    // 402 air tap: the same periodic shot with no state-specific change.
+    {402,0,0,0,MoveOp::CounterSet,118.f},
+    {402,-1,1,9999,MoveOp::Counter,-1.f},
+    {402,-1,0,9999,MoveOp::Launch,6.f,0.f,0.f,kGateNormal | kGateCounterMod,30,
+     origin_actor_relative(0.f,0.f,600.f),aim_fixed_angles(0.f,0.f)},
+    {402,-1,0,9999,MoveOp::Launch,7.f,0.f,0.f,kGatePowered | kGateCounterMod,30,
+     origin_actor_relative(0.f,0.f,600.f),aim_fixed_angles(0.f,0.f)},
+    // 450 ground charge: the tick-35 request, then the periodic one it keeps firing.
+    {450,0,0,0,MoveOp::CounterSet,118.f},
+    {450,-1,1,9999,MoveOp::Counter,-1.f},
+    {450,-1,35,35,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(0.f,0.f,0.f),aim_fixed_angles(0.f,0.f)},
+    {450,-1,35,35,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(0.f,0.f,0.f),aim_fixed_angles(0.f,0.f)},
+    {450,-1,0,9999,MoveOp::Launch,6.f,0.f,0.f,kGateNormal | kGateCounterMod,30,
+     origin_actor_relative(0.f,0.f,600.f),aim_fixed_angles(0.f,0.f)},
+    {450,-1,0,9999,MoveOp::Launch,7.f,0.f,0.f,kGatePowered | kGateCounterMod,30,
+     origin_actor_relative(0.f,0.f,600.f),aim_fixed_angles(0.f,0.f)},
+    // 460 air charge: the same, and its tick-0 block only zeroes velocities.
+    {460,0,0,0,MoveOp::CounterSet,118.f},
+    {460,-1,1,9999,MoveOp::Counter,-1.f},
+    {460,-1,35,35,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(0.f,0.f,0.f),aim_fixed_angles(0.f,0.f)},
+    {460,-1,35,35,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(0.f,0.f,0.f),aim_fixed_angles(0.f,0.f)},
+    {460,-1,0,9999,MoveOp::Launch,6.f,0.f,0.f,kGateNormal | kGateCounterMod,30,
+     origin_actor_relative(0.f,0.f,600.f),aim_fixed_angles(0.f,0.f)},
+    {460,-1,0,9999,MoveOp::Launch,7.f,0.f,0.f,kGatePowered | kGateCounterMod,30,
+     origin_actor_relative(0.f,0.f,600.f),aim_fixed_angles(0.f,0.f)},
+};
+
 // Satoko weapon 2 (handler 0x4bc040) — shot rules recovered from the reference bodies
 // shoot_body_3_2_{400,402,450,460} (bundle reference/source). All four bodies request
 // through FUN_00435450 with explicit world coordinates, so a Prop1/attachment program
@@ -1375,6 +1426,9 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     if (binding->handler == 0x57f600) return &irie;
     if (binding->handler == 0x44fa10) return &mion2;
     if (binding->handler == 0x49d890) return &rika2;
+    static constexpr MoveProgram satoko1 = {kSatoko1Rules, std::size(kSatoko1Rules),
+                                            {{400,402},{450,460},{-1,-1}}};
+    if (binding->handler == 0x4b4090) return &satoko1;
     if (binding->handler == 0x4a9c40) return &satoko;
     static constexpr MoveProgram rena1 = {kRena1Rules, std::size(kRena1Rules),
                                           {{400,-1},{450,-1},{-1,-1}}};
