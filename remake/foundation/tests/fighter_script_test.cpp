@@ -3709,11 +3709,13 @@ void test_rika0_twin_tick() {
     const auto install = findInstall(nullptr);
     if (install.empty() || !g_rika0Combo.load(install, 4, 0))
         return skip_case("Rika 0 combo");
-    // Bundle evidence: Rika 0 (handler 0x484be0) fires twin rows 0 at tick 15 in the
-    // ground tap (tag fires four — no flag field, skipped), and twin row-2 salvos at
-    // ticks 15 AND 25 in both charges (pitch thirds 45/30 ground, 45/40 air), with
-    // short freezes at tick 30 after the salvos (5 updates ground, 15 air).
-    // Her program is kRika0Rules; the second charge stays provisional.
+    // Bundle evidence: Rika 0 (handler 0x484be0) fires TWIN world requests at tick 15 in
+    // the ground tap — two on row 0 normally, FOUR on row 1 powered — and twin row-2/row-3
+    // salvos at ticks 15 AND 25 in both charges (pitch thirds 45/30 ground, 45/40 air),
+    // with short freezes at tick 30 after the salvos (5 updates ground, 15 air). The
+    // powered branch reads `w[0x1b7] < 3`, which the previous binding recorded as
+    // "no flag field, skipped". Her program is kRika0Rules; the second charge stays
+    // provisional. The twin separation stays unbound (see the table comment).
     Fighter f;
     f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_rika0Combo.bind(f);
@@ -3756,6 +3758,65 @@ void test_rika0_twin_tick() {
     second = g.take_pending_shot();
     check_bool("Rika0 charge T25 salvo fires twice", true, first.armed && second.armed);
     check_int("Rika0 T25 rows are 2", 2, first.bulletRow);
+
+    // Powered: the tap's twin becomes FOUR requests on row 1, and the charge's twin moves
+    // to row 3 while keeping its count and pitch.
+    Fighter p;
+    p.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rika0Combo.bind(p);
+    settle(p);
+    p.set_hypermode(Hypermode::Oyashiro);
+    p.set_hyper_gauge(1.f);
+    Input hp;
+    hp.set(fnd::input::Action::Special, true);
+    tick(p, hp);
+    hp.set(fnd::input::Action::Special, false);
+    tick(p, hp);
+    gameplay::ShootingContext context;
+    context.aimHold = true;
+    p.set_shooting_context(context);
+    hp.set(fnd::input::Action::Shoot, true);
+    tick(p, hp);
+    hp.set(fnd::input::Action::Shoot, false);
+    tick(p, hp);
+    for (int i = 0; i < 15; ++i) tick(p, hp);
+    int poweredTap = 0;
+    bool poweredTapRows = true;
+    for (int i = 0; i < 6; ++i) {
+        gameplay::PendingShot shot = p.take_pending_shot();
+        if (!shot.armed) continue;
+        ++poweredTap;
+        if (shot.bulletRow != 1) poweredTapRows = false;
+    }
+    check_int("powered Rika0 tap fires four", 4, poweredTap);
+    check_bool("powered Rika0 tap rows are all 1", true, poweredTapRows);
+
+    Fighter q;
+    q.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rika0Combo.bind(q);
+    settle(q);
+    q.set_hypermode(Hypermode::Oyashiro);
+    q.set_hyper_gauge(1.f);
+    Input hq;
+    hq.set(fnd::input::Action::Special, true);
+    tick(q, hq);
+    hq.set(fnd::input::Action::Special, false);
+    tick(q, hq);
+    q.set_shooting_context(context);
+    hold_yellow(q, hq);
+    hq.set(fnd::input::Action::Shoot, false);
+    tick(q, hq);
+    for (int i = 0; i < 15; ++i) tick(q, hq);
+    int poweredCharge = 0;
+    bool poweredChargeRows = true;
+    for (int i = 0; i < 4; ++i) {
+        gameplay::PendingShot shot = q.take_pending_shot();
+        if (!shot.armed) continue;
+        ++poweredCharge;
+        if (shot.bulletRow != 3) poweredChargeRows = false;
+    }
+    check_int("powered Rika0 charge T15 salvo fires twice", 2, poweredCharge);
+    check_bool("powered Rika0 charge rows are all 3", true, poweredChargeRows);
 }
 
 void test_satoko_five_shot() {

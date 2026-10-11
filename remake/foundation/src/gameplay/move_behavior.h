@@ -1044,10 +1044,12 @@ inline constexpr MoveRule kTomitakeRules[] = {
 // shape: the tap fires EVERY tick 10..20 (11 consecutive frames, rows 0 normal / 1 tag),
 // expressed as one window rule per row — the executor runs matching rules each update,
 // so first/last IS the burst (unlike Rika's even-only schedule, which needs tick rules).
-// Tag row 1 has no flag field: only the normal row 0 is bound (Mion/Rika/Tomitake
-// precedent). Charge rows 2 normal / 3 tag likewise bind row 2 only. Turn verbs db10
-// vs dc20 both map to Turn by value (distinction illegible); the w0x10 gravity tails
-// and the one-shot w0x15 halve are vertical physics with no MoveRule op — skipped.
+// The powered row IS gated — `w[0x1b7] < 3`, which is kGatePowered — so the tap binds
+// row 0 normal / row 1 powered (the 400/402 rules below). Charge rows 2 normal / 3
+// powered are still bound row 2 only: that is a PENDING AUDIT, not a missing flag, and
+// the earlier "no flag field" note here was wrong. Turn verbs db10 vs dc20 both map to
+// Turn by value (distinction illegible); the w0x10 gravity tails and the one-shot w0x15
+// halve are vertical physics with no MoveRule op — skipped.
 inline constexpr MoveRule kKeiichiRules[] = {
     // 400 ground tap (L10331-10456): 20 deg turn while phase 0 and tick under 12, and an
     // eleven-tick SWEEP from tick 10 to 20 (9 < tick < 0x15). Each tick grows scratch 0x3a
@@ -1215,45 +1217,81 @@ inline constexpr MoveRule kIrieRules[] = {
     {460,-1,17,17,MoveOp::Launch,4.f,0.f,40.f},
 };
 // Rika weapon 0 (handler 0x484be0) — shot rules recovered from the reference bodies
-// shoot_body_4_0_{400,402,450,460} (bundle reference/source). Twin row-0 shots at tick
-// 15 in both taps (tag fires four — no flag field, skipped); twin row-2 salvos at
-// ticks 15 AND 25 in both charges (pitch thirds 45/30 ground, 45/40 air — the only
-// numeric emission difference between the charges); short freezes at tick 30 after
-// the salvos (5 updates ground, 15 air). No Hide anywhere.
+// shoot_body_4_0_{400,402,450,460} (bundle reference/source). The taps fire TWIN world
+// requests at tick 15, TWO on item row 0 normally and FOUR on row 1 powered (L18360-18438);
+// the charges fire twin world requests at ticks 15 AND 25, row 2 normally and row 3 powered,
+// with the pitch thirds 45/30 ground and 45/40 air (L20797-20941). Short freezes at tick 30
+// after the salvos (5 updates ground, 15 air). No Hide anywhere.
+//
+// Still unbound, and named rather than approximated: the requests are WORLD pairs separated
+// by `+-600` on the taps and `+-50` on the charges (L18392, `0x42480000`/`0x41c80000`), so
+// the port's adapter origin places both of a pair at the same point. The separation depends
+// on the aim basis, so it needs the same world-origin decode the Keiichi charges are waiting
+// on.
+//
+// The powered branches read `w[0x1b7] < 3` — the powered gate the rest of the port uses,
+// which the previous binding recorded as "no flag field, skipped".
 inline constexpr MoveRule kRika0Rules[] = {
     // 400 ground tap: 15 deg turn ticks 0-14, bleed 0.5/tick phase 0, twin row 0 @15.
     {400,-1,0,14,MoveOp::Turn,15.f},
     {400,0,0,9999,MoveOp::Decelerate,.5f},
-    {400,-1,15,15,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,15,15,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,15,15,MoveOp::Launch,0.f,0.f,40.f,kGateNormal},
+    {400,-1,15,15,MoveOp::Launch,0.f,0.f,40.f,kGateNormal},
+    {400,-1,15,15,MoveOp::Launch,1.f,0.f,40.f,kGatePowered},
+    {400,-1,15,15,MoveOp::Launch,1.f,0.f,40.f,kGatePowered},
+    {400,-1,15,15,MoveOp::Launch,1.f,0.f,40.f,kGatePowered},
+    {400,-1,15,15,MoveOp::Launch,1.f,0.f,40.f,kGatePowered},
     // 402 air tap: 20 deg turn ticks 0-14, same twin @15. No bleed (gravity tail).
     {402,-1,0,14,MoveOp::Turn,20.f},
-    {402,-1,15,15,MoveOp::Launch,0.f,0.f,40.f},
-    {402,-1,15,15,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,15,15,MoveOp::Launch,0.f,0.f,40.f,kGateNormal},
+    {402,-1,15,15,MoveOp::Launch,0.f,0.f,40.f,kGateNormal},
+    {402,-1,15,15,MoveOp::Launch,1.f,0.f,40.f,kGatePowered},
+    {402,-1,15,15,MoveOp::Launch,1.f,0.f,40.f,kGatePowered},
+    {402,-1,15,15,MoveOp::Launch,1.f,0.f,40.f,kGatePowered},
+    {402,-1,15,15,MoveOp::Launch,1.f,0.f,40.f,kGatePowered},
     // 450 ground charge1: 18 deg turn through tick 9, bleed 0.5/tick, twin row-2
     // salvos at 15 (±5°) and 25 (±10°), freeze 5 at tick 30.
     {450,-1,0,9,MoveOp::Turn,18.f},
     {450,-1,0,9999,MoveOp::Decelerate,.5f},
-    {450,-1,15,15,MoveOp::Launch,2.f,0.f,45.f},
-    {450,-1,15,15,MoveOp::Launch,2.f,0.f,45.f},
-    {450,-1,25,25,MoveOp::Launch,2.f,0.f,30.f},
-    {450,-1,25,25,MoveOp::Launch,2.f,0.f,30.f},
+    {450,-1,15,15,MoveOp::Launch,2.f,0.f,45.f,kGateNormal},
+    {450,-1,15,15,MoveOp::Launch,2.f,0.f,45.f,kGateNormal},
+    {450,-1,15,15,MoveOp::Launch,3.f,0.f,45.f,kGatePowered},
+    {450,-1,15,15,MoveOp::Launch,3.f,0.f,45.f,kGatePowered},
+    {450,-1,25,25,MoveOp::Launch,2.f,0.f,30.f,kGateNormal},
+    {450,-1,25,25,MoveOp::Launch,2.f,0.f,30.f,kGateNormal},
+    {450,-1,25,25,MoveOp::Launch,3.f,0.f,30.f,kGatePowered},
+    {450,-1,25,25,MoveOp::Launch,3.f,0.f,30.f,kGatePowered},
     {450,-1,30,30,MoveOp::Hold,5.f},
     // 460 air charge1: same salvos (third 45 @15, 40 @25), freeze 15 at tick 30.
     // No bleed (one-shot halve + gravity tail skipped).
     {460,-1,0,9,MoveOp::Turn,18.f},
-    {460,-1,15,15,MoveOp::Launch,2.f,0.f,45.f},
-    {460,-1,15,15,MoveOp::Launch,2.f,0.f,45.f},
-    {460,-1,25,25,MoveOp::Launch,2.f,0.f,40.f},
-    {460,-1,25,25,MoveOp::Launch,2.f,0.f,40.f},
+    {460,-1,15,15,MoveOp::Launch,2.f,0.f,45.f,kGateNormal},
+    {460,-1,15,15,MoveOp::Launch,2.f,0.f,45.f,kGateNormal},
+    {460,-1,15,15,MoveOp::Launch,3.f,0.f,45.f,kGatePowered},
+    {460,-1,15,15,MoveOp::Launch,3.f,0.f,45.f,kGatePowered},
+    {460,-1,25,25,MoveOp::Launch,2.f,0.f,40.f,kGateNormal},
+    {460,-1,25,25,MoveOp::Launch,2.f,0.f,40.f,kGateNormal},
+    {460,-1,25,25,MoveOp::Launch,3.f,0.f,40.f,kGatePowered},
+    {460,-1,25,25,MoveOp::Launch,3.f,0.f,40.f,kGatePowered},
     {460,-1,30,30,MoveOp::Hold,15.f},
 };
 // Rika weapon 2 (handler 0x49d890) — shot rules recovered from the reference bodies
-// shoot_body_4_2_{400,402,450,460} (bundle reference/source). Single-tick tap (row 0
-// at tick 15, both ground and air) with a same-tick Hold 30; triple row-4 fans at
-// tick 10 in both charges, also with same-tick Hold 30. Tag branches (extra shots,
-// row 6, asymmetric counts) have no flag field — skipped with the usual precedent.
-// The launch-latch in the executor keeps each salvo to one firing per tick.
+// shoot_body_4_2_{400,402,450,460} (bundle reference/source). Single-tick tap at tick
+// 15 (both ground and air) with a same-tick Hold 30; triple row-4 fans at tick 10 in
+// both charges, also with same-tick Hold 30. The launch-latch in the executor keeps each
+// salvo to one firing per tick.
+//
+// The tag branch note here was WRONG: the flag is `w[0x1b7] < 3`, the same kGatePowered
+// every other family uses, and reading the body shows the branch is not the only gap
+// (L24384-24453):
+//   * the NORMAL branch fires ONE hand request whose ROW is selected by `w[0x9e]` —
+//     row 2 when `w[0x9e] < 0`, row 0 when `0 <= w[0x9e] < 1`, row 1 otherwise — so a
+//     fixed row 0 cannot be right for every state;
+//   * the TAG branch fires THREE hand requests, rows 0, 2 and 1 in that order;
+//   * every request passes pitch 0 and lateral 0, although scratch 0x3c is filled with
+//     the clamped (+-40) target elevation just above and then never used.
+// The rules below keep the row-0 reading (what the `w[0x9e]`-in-[0,1) case and the
+// traces show) pending a decoder for `w[0x9e]`, and the pitch-0 correction.
 inline constexpr MoveRule kRika2Rules[] = {
     // 400 ground tap: 15 deg turn ticks 0-14, bleed 0.5/tick phase 0, row 0 at 15.
     {400,-1,0,14,MoveOp::Turn,15.f},
