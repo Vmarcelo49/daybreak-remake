@@ -160,6 +160,20 @@ Akane 2 defer note (2026-10-10): pinned handler identity/update, usage and origi
 
 Natsumi 0 scope note (2026-10-10): added `natsumi0` for the **normal ground state400 callback schedule only**: Hide prop bindings 0/1 from tick 14 onward, then Launch item row 0 at tick 14. This matches the controlled normal `fire_attachment(0,0,...)` request and the DAT registration map. The executor rebuilds prop bindings at the start of every tick, but the tick-14 Hide is applied before Launch during that same update, selecting the fallback bone-origin family. The test drives the actual Natsumi+item29 fixture. Phase labels are forced probes; raw callback flag/aim, exact geometry, actual projectile admission and natural phase reachability remain outside the claim. State 402 stays unbound despite an analogous raw helper call because no state402 normalized callback trace is included. The tag/boost five-row randomized requests and world-origin 450/460 charges also remain unbound.
 
+Tomitake 2's charges closed (2026-10-10, ledger slice): **all four states now bound.** The
+charges (L39390-39440, L39550-39600) fire row 4 unconditionally — lateral 0, pitch 0, height +75
+— and then row 0 normally or row 2 powered on `byte(+0x845) && word(+0x212)`. The old note called
+the tag rows "6/2"; the body says row 4 always plus row 2 powered, so the ROW-4 shot is shared
+and only the second moves. Witnessed as rows 4 then 2.
+
+**Irie 1's 401 is blocked by the move table, not by a flag.** It fires a two-slot attachment
+request at tick 15 and then jumps after tick 29 to one of four follow-up states
+(0x19b/0x19c/0x19a/0x191) chosen by the signs of `w[0x9e]`/`w[0x9f]`. `MoveOp` has no
+state-transition operation, and 401 is outside Irie 1's `{400, 402}` mapping — so binding it
+means a new op PLUS a progression change that would move the phase sequence the traces validate.
+The direction plumbing from the previous slice already carries the sign test it needs; the
+missing piece is the op.
+
 AI movement direction bound (2026-10-10, ledger slice): **Rika 2's three normal rows are
 live.** The decode landed as a mechanism: `ShootingContext::moveLateral` carries the sign of
 `+0x278`, `Match::step` publishes it for AI slots only (from the applied direction keys, which

@@ -34,6 +34,20 @@ but **never written anywhere in it**, so it has no recovered source. That rule k
 reading the traces show, and every request's pitch stays 0 even though scratch `0x3c` is
 filled with the clamped ±40 target elevation and then unused.
 
+### Open: the move table has no state transition
+
+Irie 1's state 401 fires a two-slot attachment request at tick 15 and then, after tick 29, JUMPS
+to one of four follow-up states (0x19b/0x19c/0x19a/0x191) chosen by the signs of `w[0x9e]`/
+`w[0x9f]`. Two things stand in the way, and neither is a rule:
+
+* `MoveOp` has no state-transition operation, so a rule cannot request the jump; and
+* 401 is not in Irie 1's `{400, 402}` mapping, so changing which state the tap enters would move
+  the phase progression the traces validate.
+
+That is a product change (a new op plus a progression decision), not a binding, and it is the
+concrete blocker behind the follow-ups. The direction plumbing added for Rika 2 already carries
+the sign test 401 needs.
+
 ### Decode: `w[0x9e]`/`w[0x9f]` are the COM's movement direction
 
 Rika 2's normal tap picks its item row from `w[0x9e]` (row 2 below 0, row 0 at 0, row 1 above),
@@ -116,7 +130,7 @@ that substring), and assert the occurrence count *within that scope*.
 | Shion 2 | 18 / 36 | — / P | — / P | — / P | — / P | — / P | — / P | 25 |
 | Tomitake 0 | 19 / 12 | — / P | — / P | — / P | — / P | — / P | — / P | 19 |
 | Tomitake 1 | 20 / 21 | — / P | — / P | — / P | — / P | — / P | — / P | 15 |
-| Tomitake 2 | 21 / 42 | 400 slot0 row 7 + row 5/6 gate-bound, spread-bound | 402 rows 7 + 5/6 gate-bound | 450 slot0 @30 rows 4/0 | 460 slot0 @30 rows 4/0 | — / P | — / P | 20 |
+| Tomitake 2 | 21 / 42 | 400 slot0 row 7 + row 5/6 gate-bound, spread-bound | 402 rows 7 + 5/6 gate-bound | 450 world @30 row 4 + 0/2 gate-bound | 460 world @30 row 4 + 0/2 gate-bound | — / P | — / P | 20 |
 | Takano 0 | 22 / 11 | 400 R-hand 3x @12/15/18, rows 0/6 gate-bound | 402 same, rows 0/6 gate-bound | 450 slot0 @18 rows 1/7 gate-bound | 460 slot0 @17 rows 1/7 gate-bound | — / P | — / P | 30 |
 | Takano 1 | 23 / 22 | — / P | — / P | — / P | — / P | — / P | — / P | 28 |
 | Takano 2 | 24 / 41 | — / P | — / P | — / P | — / P | — / P | — / P | 30 |

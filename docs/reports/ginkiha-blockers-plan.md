@@ -1072,3 +1072,26 @@ place and only the rules remain, once 401 is in scope.
 
 **Next:** Irie 1's 401 follow-ups, Tomitake 2's charge tag rows, then the world-origin decode for
 Keiichi 1/2, Rika 0, Irie 1 and Rika 2.
+
+### 2026-10-10 — 3.20 Tomitake 2's charges close; Irie 1's 401 needs a new op
+
+**Done — Tomitake 2's charge tag rows bound.** Both charges (L39390-39440, L39550-39600) fire row
+4 unconditionally — lateral 0, pitch 0, height +75 — then row 0 normally or row 2 powered on
+`byte(+0x845) && word(+0x212)`. The old note called the tag rows "6/2"; the body says row 4 always
+plus row 2 powered, so only the second shot moves. Witnessed as rows 4 then 2. **Tomitake 2 is now
+bound on all four states.**
+
+**Blocked, with the reason pinned — Irie 1's 401.** It fires a two-slot attachment request at tick
+15 (slots 0 and 1, row 0, elevation ±40) and then JUMPS after tick 29 to one of four follow-up
+states (0x19b/0x19c/0x19a/0x191) chosen by the signs of `w[0x9e]`/`w[0x9f]`. Two obstacles, and
+neither is a flag:
+
+* `MoveOp` has **no state-transition operation**, so no rule can request the jump; and
+* 401 is **not in Irie 1's `{400, 402}` mapping**, so making the tap enter it changes the phase
+  progression the traces validate.
+
+That is a product change — a new op plus a progression decision — and it wants its own slice. The
+direction plumbing added for Rika 2 already carries the sign test 401 needs.
+
+**Next:** the state-transition op plus Irie 1's 401 (which would also unblock the four follow-up
+states), then the world-origin decode for Keiichi 1/2, Rika 0, Irie 1 and Rika 2.
