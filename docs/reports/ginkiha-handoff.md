@@ -160,6 +160,22 @@ Akane 2 defer note (2026-10-10): pinned handler identity/update, usage and origi
 
 Natsumi 0 scope note (2026-10-10): added `natsumi0` for the **normal ground state400 callback schedule only**: Hide prop bindings 0/1 from tick 14 onward, then Launch item row 0 at tick 14. This matches the controlled normal `fire_attachment(0,0,...)` request and the DAT registration map. The executor rebuilds prop bindings at the start of every tick, but the tick-14 Hide is applied before Launch during that same update, selecting the fallback bone-origin family. The test drives the actual Natsumi+item29 fixture. Phase labels are forced probes; raw callback flag/aim, exact geometry, actual projectile admission and natural phase reachability remain outside the claim. State 402 stays unbound despite an analogous raw helper call because no state402 normalized callback trace is included. The tag/boost five-row randomized requests and world-origin 450/460 charges also remain unbound.
 
+Takano 0 audit (2026-10-10, ledger slice): **all four states bound; the "no flag field" note
+retired.** `shoot_body_7_0_{400,402}` fire three `FUN_00435220` requests on `Bip01_R_Hand` at
+ticks 12, 15 and 18 — three single shots, not a repeating window — each taking the target
+elevation clamped ±40. Row 0 normal / row 6 powered, and the tag branch reads `w[0x1b7] < 4`,
+which is kGatePowered. The charges fire one slot-0 attachment request at tick 18 (450) and
+tick 17 (460), row 1 normal / row 7 powered on the same gate, also clamped ±40. Note the two
+families use DIFFERENT tag rows: the taps 0/6, the charges 1/7.
+
+The witness checks the tap fires three times on row 0 and, powered, three times on row 6.
+
+**Process note:** the ledger has two tables, and both carry a Takano 0 row (the correction
+table and the main ledger). The first attempt at this update matched the correction table's row
+— exactly the mistake made with Chie 2 last round. A guard that asserts the full expected row
+text (including its swap/item and body count) caught it here; keep using that pattern for every
+ledger edit.
+
 Chie 2 audit (2026-10-10, ledger slice): **all four states bound; the "no flag field" note
 retired.** `shoot_body_11_2_{400,402,450,460}` fires a scratch-driven burst: the counter starts
 at 1, steps one a tick, and the request fires while `counter % 3 == 1` — ticks 15/18/21/24 on

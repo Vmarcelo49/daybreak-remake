@@ -951,3 +951,22 @@ configures all three axes, so the trailing slot is unobservable and the failure 
 
 **Next:** Takano 0, Irie 1 and Tomitake 2 — the three remaining "no flag field" re-reads — then
 Rika 2's `w[0x9e]`, then the world-origin decode for Keiichi 1/2, Rika 0 and Rika 2.
+
+### 2026-10-10 — 3.15 Ledger order: Takano 0's tag rows, both families
+
+**Done — Takano 0's four states bound** (handler 0x531ce0). The taps fire three
+`FUN_00435220` requests on `Bip01_R_Hand` at ticks 12, 15 and 18 — three single shots, not a
+repeating window — with the target elevation clamped ±40, row 0 normal / row 6 powered. The
+charges fire one slot-0 attachment request at tick 18 (450) and tick 17 (460), row 1 normal /
+row 7 powered, also clamped ±40. The tag branches read `w[0x1b7] < 4`, i.e. kGatePowered; the
+"no flag field" note is retired. Note the two families use different tag rows (taps 0/6,
+charges 1/7), so neither can be inferred from the other.
+
+**Process note — the two-table trap, second occurrence.** The ledger carries two tables and
+both have a Takano 0 row. The first edit matched the correction table's row, exactly as
+happened with Chie 2 last round. This time a guard asserting the full expected row (swap/item
+and body count included) aborted before the write. Use that pattern for every ledger edit: never
+anchor on the combo name alone.
+
+**Next:** Irie 1 and Tomitake 2 — the last two "no flag field" sites — then Rika 2's `w[0x9e]`,
+then the world-origin decode for Keiichi 1/2, Rika 0 and Rika 2.
