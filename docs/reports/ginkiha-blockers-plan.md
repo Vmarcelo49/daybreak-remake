@@ -1247,3 +1247,30 @@ with the derivation beside it.
 Tomitake 2's charge origins, then draw-order pinning for Rika 1 and Satoko 0, then an independent
 launch-position check against the posed hand (Rika 1's `localOffset == 0` is a regression check for
 the muzzle bug, not that verification).
+
+### 2026-10-10 — 3.27 Keiichi 2's range-based pitch restored (review item 1)
+
+The first of the two acknowledged runtime defects. The body does not fire the bare latched
+elevation: after clamping it into `w[0x3a]` it computes a RANGE term (L12172-12184)
+
+```
+w[0x40] = dist * 40 / 4000;
+if (50 < w[0x40]) w[0x40] = 50;      // high bound
+if (w[0x40] < 10) w[0x40] = 10;      // low bound
+if (w[0x3a] < 0)  w[0x40] *= 0.95;   // shrink when the base is negative
+pitch = w[0x3a] + w[0x40];
+```
+
+so the port was adding 0 where the source adds that term. `aim_elevation_plus_range()` already
+modelled the shape for Keiichi 1, but it hard-coded BOTH the divisor (5000) and the bounds
+([0, 40]); Keiichi 2 divides by 4000 and clamps to [10, 50]. `ShotAimSpec` now carries
+`rangeDivisor`, `rangeMinimum`, `rangeMaximum` and `rangeNegativeScale`, stated per rule, and
+`aim_elevation_plus_range_keiichi2()` supplies this family's values. Keiichi 1's factory is
+unchanged.
+
+**Witnessed at the reviewer's own example:** an equal-height target at 1000 units must add
+`1000 * 40 / 4000 = 10` degrees, and it now measures 10.000. The existing witness checked position
+and row only, which is why the missing term went unseen.
+
+**Next:** Tomitake 2's world origins and fixed row-4 pitch, then draw-order pinning, then the
+independent posed-hand launch-position check.

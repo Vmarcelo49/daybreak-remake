@@ -223,7 +223,7 @@ that substring), and assert the occurrence count *within that scope*.
 | Mion 2 | 6 / 35 | 400 slot 0 @teleport-tick 10, rows 0/1 | 402 slot 0 @18, rows 0/1, freeze 10 | 450 phase-1 emissions @15..60 rows 2/3, spread-bound (+0x1c8 unmodelled) | 460 same as 450 | — / P | — / P | 24 |
 | Keiichi 0 | 7 / 5 | 400 hand R, gate-bound / rows 3 powered | 402 hand R, gate-bound / rows 3 powered | 450 hand L + attach, gate-bound / rows 4 powered | 460 hand L + attach, gate-bound / rows 4 powered | — / P | — / P | 20 |
 | Keiichi 1 | 8 / 18 | 400 hand R, gate-bound / rows 1 powered | 402 hand R, gate-bound / rows 1 powered | 450 world pair, gate-bound / rows 3 powered | 460 world pair, gate-bound / rows 3 powered | — / P | — / P | 19 |
-| Keiichi 2 | 9 / 34 | 400 sweep, gate-bound / rows 1 powered | 402 sweep, gate-bound / rows 1 powered | 450 world -50 lateral @h40 @13 rows 2/3 gate-bound | 460 world -50 lateral @h40 @13 rows 2/3 | — / P | — / P | 18 |
+| Keiichi 2 | 9 / 34 | 400 sweep, gate-bound / rows 1 powered | 402 sweep, gate-bound / rows 1 powered | 450 world -50 lateral @h40 @13, range pitch, rows 2/3 | 460 same, rows 2/3 | — / P | — / P | 18 |
 | Satoko 0 | 10 / 8 | 400 hand fan, gate-bound / rows 1 powered | 402 hand fan, gate-bound / rows 1 powered | 450? / P | 460? / P | — / P | — / P | 18 |
 | Satoko 1 | 11 / 17 | 400 periodic +50 @h50, gate-bound / rows 1 powered | 402 periodic +50 @h50, gate-bound / rows 1 powered | 450 tick-35 pair + periodic, bound | 460 tick-35 pair + periodic, bound | — / P | — / P | 18 |
 | Satoko 2 | 12 / 38 | 400 twin world, gate-bound / rows 1 powered | 402 twin world, gate-bound / rows 1 powered | — / P | — / P | — / P | — / P | 18 |
