@@ -59,6 +59,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstdint>
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -2012,11 +2013,13 @@ void test_rika_repeating_tap() {
     std::vector<glm::vec3> tapPositions;
     std::vector<float> tapPitches;
     std::vector<float> tapOffsets;
+    std::vector<std::array<float, 3>> tapMuzzleOffsets;
     for (int i = 1; i <= 40; ++i) {
         tick(w, win);
         for (gameplay::PendingShot s2 = w.take_pending_shot(); s2.armed;
              s2 = w.take_pending_shot()) {
             tapPositions.push_back(s2.pos);
+            tapMuzzleOffsets.push_back(s2.origin.localOffset);
             tapOffsets.push_back(shot_yaw(s2) - glm::degrees(w.facing_yaw()));
             tapPitches.push_back(
                 glm::degrees(std::asin(std::clamp(s2.dir.y, -1.f, 1.f))));
@@ -2049,9 +2052,14 @@ void test_rika_repeating_tap() {
         for (std::size_t i = 1; i < tapOffsets.size(); ++i)
             offsetsShift |= std::abs(tapOffsets[i] - tapOffsets[0]) > 0.5f;
         check_bool("Rika 1 tap swings between scheduled shots", true, offsetsShift);
-        bool originUntouched = true;
-        for (const auto& p : tapPositions) originUntouched &= std::abs(p.x) < 1000.f;
-        check_bool("Rika 1 tap keeps a sane origin", true, originUntouched);
+        // The spread must not write the muzzle at all. Asserting the field stays ZERO is
+        // stronger than a magnitude bound: the rule's own spec sets it to zero, so a nonzero
+        // value can only come from the spread.
+        bool muzzleUntouched = true;
+        for (const auto& p : tapMuzzleOffsets)
+            muzzleUntouched &= p[0] == 0.f && p[1] == 0.f && p[2] == 0.f;
+        check_bool("Rika 1 tap leaves the muzzle offset untouched by the spread", true,
+                   muzzleUntouched);
     }
 
     Fighter g;
@@ -2563,15 +2571,26 @@ void test_chie_scratch_burst() {
     }
     check_int("Chie tap burst fires four", 4, (int)burstOffsets.size());
     if (burstOffsets.size() == 4) {
-        // `counter * 0.5 - 2` is a YAW offset on the same axis, so the burst fans by swing
-        // rather than by muzzle offset. The counter steps by 3 between the shots the gate
-        // lets through, so the swing grows shot by shot; the sign is not asserted here
-        // because this witness does not pin the draw or the aim-basis conversion.
-        float widest = 0.f;
-        for (float y : burstOffsets) widest = std::max(widest, std::abs(y - burstOffsets[0]));
-        check_bool("Chie burst fans by at least 4 degrees across four shots", true,
-                   widest > 4.f);
-        check_bool("Chie burst fan stays inside the body's span", true, widest < 8.f);
+        // The sweep is DETERMINISTIC — no draw — because the counter steps by 3 between the
+        // shots the gate lets through: `counter * 0.5 - 2` is -1.5, 0, 1.5, 3. So spacing,
+        // order and span are all exact here and are asserted as such. Only the global SIGN is
+        // left open: the body adds the value to the bone's angles, and this witness measures
+        // the yaw against the fighter's facing, which is the same rotation only if the two
+        // bases agree. That convention is a named follow-up, not something to paper over with
+        // a range.
+        bool evenSpacing = burstOffsets.size() == 4;
+        for (std::size_t i = 1; i < burstOffsets.size() && evenSpacing; ++i)
+            evenSpacing = std::abs(std::abs(burstOffsets[i] - burstOffsets[i - 1]) - 1.5f) < 0.05f;
+        check_bool("Chie burst steps exactly 1.5 degrees between shots", true, evenSpacing);
+        bool monotonic = burstOffsets.size() == 4;
+        for (std::size_t i = 2; i < burstOffsets.size() && monotonic; ++i) {
+            const float a = burstOffsets[i - 1] - burstOffsets[i - 2];
+            const float b = burstOffsets[i] - burstOffsets[i - 1];
+            monotonic = (a > 0.f) == (b > 0.f);
+        }
+        check_bool("Chie burst sweeps one way, never reversing", true, monotonic);
+        check_near("Chie burst spans exactly 4.5 degrees", 4.5f,
+                   std::abs(burstOffsets[3] - burstOffsets[0]), 0.05f);
     }
     bool burstRowsZero = !burstRows.empty();
     for (int r : burstRows) burstRowsZero &= r == 0;
@@ -4322,15 +4341,25 @@ void test_satoko_five_shot() {
     // so the five requests leave the hand at ONE point and fan by direction. The first
     // version of this witness read the muzzle offset and only passed because the binding
     // wrote the value there.
+    // Each offset is `(draw % 240 - 120) * 0.1`, so an INDIVIDUAL offset lies in
+    // [-12.0, +11.9] — two shots may differ by up to 23.9, which is why the earlier
+    // "half-span <= 12.5" bound was wrong: it can reject a valid fan. Check the individual
+    // offsets against the body's own bounds, and pin the draw order separately (follow-up).
     bool fanSpread = false;
     for (std::size_t i = 1; i < tapFanYaws.size(); ++i)
         fanSpread |= std::abs(tapFanYaws[i] - tapFanYaws[0]) > 0.05f;
     check_bool("Satoko tap requests fan by direction", true, fanSpread);
-    float yawSpan = 0.f;
-    for (float y : tapFanYaws)
-        yawSpan = std::max(yawSpan, std::abs(y - tapFanYaws[0]));
-    check_bool("Satoko tap fan stays inside the body's 12-degree half-span", true,
-               yawSpan <= 12.5f);
+    bool offsetsInRange = tapFanYaws.size() == 5;
+    for (float y : tapFanYaws) offsetsInRange &= y >= -12.05f && y <= 11.95f;
+    check_bool("every Satoko offset stays inside -12.0..+11.9", true, offsetsInRange);
+    // The muzzle must NOT move: all five fire in one tick from the same posed hand, so their
+    // resolved origins have to coincide.
+    float widestOrigin = 0.f;
+    for (std::size_t i = 0; i < tapPositions.size(); ++i)
+        for (std::size_t j = i + 1; j < tapPositions.size(); ++j)
+            widestOrigin = std::max(widestOrigin,
+                                    glm::distance(tapPositions[i], tapPositions[j]));
+    check_near("Satoko's whole fan leaves the muzzle in one place", 0.f, widestOrigin, 0.01f);
     // Exact arithmetic on the canonical stream, which pins the draw ORDER as well as the
     // values: residues 2, 2, 4, 5 give pitch1 = 2%15 = 2, lateral1 = (102-120)*0.1 = -1.8,
     // pitch2 = 3890346734%15 = 14 and lateral2 = (185-120)*0.1 = 6.5. Drawing the lateral
