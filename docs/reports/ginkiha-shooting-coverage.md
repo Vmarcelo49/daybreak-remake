@@ -34,6 +34,25 @@ but **never written anywhere in it**, so it has no recovered source. That rule k
 reading the traces show, and every request's pitch stays 0 even though scratch `0x3c` is
 filled with the clamped ±40 target elevation and then unused.
 
+### Correction: float constants must be decoded, not eyeballed
+
+Two bindings this pass quoted a displacement or height that the hex does not say, and one of
+them shipped:
+
+* Rika 0's world pair was noted as `+-600` on the taps and `+-50` on the charges. The taps are
+  `0x42480000` = **50**, and the charges `0x41c80000` = **25**. The tap is now bound at ±50 and
+  witnessed at 100 apart / 70 above; the charge note is corrected.
+* Satoko 1's periodic shot was bound at `origin_actor_relative(0, 0, 600)` and its note said
+  "600 units UP". The body says `0x42480000` = **50**. The binding and the witness are both
+  corrected, and Satoko 1's ledger cell now reads `+50 @h50`.
+
+The second one is the instructive failure: **the witness asserted 600, the binding's own
+constant**, so it could only ever confirm the binding against itself — it passed for a whole
+slice while being wrong. A witness has to take its numbers from the body, which is why the
+world-geometry witness added here checks a 100-unit separation and a 70-unit height that come
+from the constants rather than from the rules. Decimal literals in the decompilation (the
+`draw%12-6)*0.25` spreads, the integer clamps like `0x28`/`0x1e`) are safe; hex floats are not.
+
 ### Open: the move table has no state transition
 
 Irie 1's state 401 fires a two-slot attachment request at tick 15 and then, after tick 29, JUMPS
@@ -120,9 +139,9 @@ that substring), and assert the occurrence count *within that scope*.
 | Keiichi 1 | 8 / 18 | 400 hand R, gate-bound / rows 1 powered | 402 hand R, gate-bound / rows 1 powered | 450 world pair, gate-bound / rows 3 powered | 460 world pair, gate-bound / rows 3 powered | — / P | — / P | 19 |
 | Keiichi 2 | 9 / 34 | 400 sweep, gate-bound / rows 1 powered | 402 sweep, gate-bound / rows 1 powered | 450 world @13 rows 2/3 measured, unbound | 460 world @13 rows 2/3 measured, unbound | — / P | — / P | 18 |
 | Satoko 0 | 10 / 8 | 400 hand fan, gate-bound / rows 1 powered | 402 hand fan, gate-bound / rows 1 powered | 450? / P | 460? / P | — / P | — / P | 18 |
-| Satoko 1 | 11 / 17 | 400 periodic +600, gate-bound / rows 1 powered | 402 periodic +600, gate-bound / rows 1 powered | 450 tick-35 pair + periodic, bound | 460 tick-35 pair + periodic, bound | — / P | — / P | 18 |
+| Satoko 1 | 11 / 17 | 400 periodic +50 @h50, gate-bound / rows 1 powered | 402 periodic +50 @h50, gate-bound / rows 1 powered | 450 tick-35 pair + periodic, bound | 460 tick-35 pair + periodic, bound | — / P | — / P | 18 |
 | Satoko 2 | 12 / 38 | 400 twin world, gate-bound / rows 1 powered | 402 twin world, gate-bound / rows 1 powered | — / P | — / P | — / P | — / P | 18 |
-| Rika 0 | 13 / 7 | 400 attach, powered 4x row 1 / bound | 402 attach, powered 4x row 1 / bound | 450 attach, powered row 3 / bound | 460 attach, powered row 3 / bound | — / P | — / P | 20 |
+| Rika 0 | 13 / 7 | 400 world +-50 along the facing @h70, rows 0/1 gate-bound | 402 world +-50 @h70, rows 0/1 | 450 attach, powered row 3 | 460 attach, powered row 3 | — / P | — / P | 20 |
 | Rika 1 | 14 / 19 | 400 hand L, 15-shot window counter-gated, spread-bound / no branch split | 402 attach @13 rows 1/7 gate-bound | 450 attach @13 rows 2/8 fixed 45° | 460 attach @12 rows 2/8 fixed 45° | — / P | — / P | 19 |
 | Rika 2 | 15 / 37 | 400 hand R, normal rows 2/0/1 by COM direction, tag 3x rows 0/2/1 | 402 same, direction- and tag-bound | 450 attach @10 rows 4/6 tag-bound | 460 attach @10 rows 4/6 tag-bound | — / P | — / P | 19 |
 | Shion 0 | 16 / 6 | — / P | — / P | — / P | — / P | — / P | — / P | 25 |

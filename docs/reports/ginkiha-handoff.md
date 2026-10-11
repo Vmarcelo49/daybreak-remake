@@ -342,10 +342,12 @@ skipped" — the flag is `w[0x1b7] < 3`, i.e. kGatePowered. One rule per branch 
 and the witness checks four row-1 requests on the powered tap and two row-3 requests on the
 powered charge. Both branches use the SAME pitch thirds, so the row is the only difference.
 
-Still unbound and named in the table comment: the pair is separated by `+-600` on the taps and
-`+-50` on the charges (L18392), so the port's adapter origin puts both of a pair at the same
-point. The separation depends on the aim basis, and needs the same world-origin decode the
-Keiichi charges are waiting on.
+**Bound (later slice): the pair is `origin_actor_relative(0, +-50, 70)`** — the actor's own
+position displaced ±50 ALONG THE FACING at height +70 (`0x42480000`/`0x428c0000`), which is
+exactly what `facing_relative(0, R)` computes. The tap fires +50 then -50 normally and
++50/-50/+50/-50 powered, witnessed 100 apart and 70 above. The charges are the same shape with
+**R = 25** (`0x41c80000`) at height **+50**, still on the adapter. Earlier notes gave the tap as
+±600 and the charges as ±50: both were mis-reads of the hex.
 
 **Systemic correction.** The "no flag field" note is FALSE wherever it appears: the flag is
 `w[0x1b7]`, which the port models as `kGatePowered`, verified in Keiichi 2, Satoko 0, Rika 0
@@ -359,7 +361,8 @@ Satoko 1 audit (2026-10-10, ledger slice): **bound; it was entirely unbound befo
 port had no move program for handler 0x4b4090 at all, so the combo had no shooting behaviour.
 The family is unusual and uniform: `shoot_body_3_1_{400,402,450,460}` each run the SAME
 periodic fire — a countdown starts at 120, drops one a tick, and ONE world request fires
-whenever it is `1 mod 30`, from the actor's own position 600 units UP, aimed along the heading
+whenever it is `1 mod 30`, from the actor's own position 50 units UP (`0x42480000`), aimed
+along the heading
 with pitch 0, row 6 normally and row 7 powered. The charges (`450`/`460`) add one request at
 tick 35 at the actor's own position with no height, row 0 normal / row 1 powered; `460`'s
 tick-0 block only zeroes velocities. Not modelled: the gravity tail (`w[0x15] -= 1.5`) and the
@@ -367,8 +370,13 @@ movement-offset yaw term `w[0x19]`.
 
 `kGateCounterMod` tests `counter % gateValue == 0`, so starting the counter at 118 lands the
 fire on the body's tick 28 (118 - 28 = 90, and 90 % 30 == 0 where the body has 91 % 30 == 1).
-No new op was needed. The witness pins the tick-28 landing, row 6/7, the 600-unit height and
+No new op was needed. The witness pins the tick-28 landing, row 6/7, the 50-unit height and
 the single request per firing.
+
+**Corrected:** this binding first used a 600-unit height — a mis-read of `0x42480000` — and its
+witness asserted 600 too, so it confirmed the binding against itself and passed while wrong. Both
+are now 50. A witness that quotes the binding's own constant proves nothing; take the number from
+the body.
 
 **Measured limitation, not a binding bug:** only the FIRST fire lands, because the port's tap
 move lasts about 40 ticks while the body's family runs ten states (400..409, each with its own
@@ -391,7 +399,7 @@ both. The fan is bounded at 23.9 units normal and 29.9 powered.
 
 Note for the next slice: **Satoko 1 (handler 0x4b4090) has NO usage evidence at all** — the
 recon's shot400 harness reaches no request on any variant, so it is a bodies-only combo. Its
-`shoot_body_3_1_400` fires two WORLD requests at tick 0 on rows 6/7 at `y + 600`, then a
+`shoot_body_3_1_400` fires two WORLD requests at tick 0 on rows 6/7 at `y + 50`, then a
 10 deg / 15 deg turn pair, then a hand request at tick 13 with a powered count split
 (`w[0x1b7] < 6`), and more world rows 6/7 after. Auditing it needs the bodies read directly
 plus a purpose-built harness — the preview cannot be trusted for it.
@@ -417,8 +425,8 @@ Two things are recorded rather than modelled:
   keeps the symmetric ±30 clamp, which matches both comparisons, and this quirk stays open.
 * **The charges are world requests the port does not yet place.** `shoot_body_2_2_450/460`
   turn 18 deg while tick under 13 (on the movement-preserving helper), clamp the scratch to
-  ±40 at tick 13, then fire rows 2/3 through `FUN_00435450` — the WORLD helper, with a 600-unit
-  term in the position expression — and freeze 10 updates at tick 5 and 15 at tick 32. The port
+  ±40 at tick 13, then fire rows 2/3 through `FUN_00435450` — the WORLD helper, displaced ±50
+  along the facing (`0x42480000`) — and freeze 10 updates at tick 5 and 15 at tick 32. The port
   binds them through the attachment adapter with a ±50 pitch, which is a different ORIGIN
   FAMILY and a different clamp. The 600-unit term is not decoded here, and Keiichi 1's charge
   binding used the same family's shape (`origin_actor_relative(-50, 0, 40)`), so that binding

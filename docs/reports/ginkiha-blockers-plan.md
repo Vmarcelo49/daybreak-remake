@@ -1095,3 +1095,28 @@ direction plumbing added for Rika 2 already carries the sign test 401 needs.
 
 **Next:** the state-transition op plus Irie 1's 401 (which would also unblock the four follow-up
 states), then the world-origin decode for Keiichi 1/2, Rika 0, Irie 1 and Rika 2.
+
+### 2026-10-10 — 3.21 The world origins decode, and two mis-read float constants
+
+**Done — Rika 0's tap world geometry bound** (handler 0x484be0). `FUN_00435450`'s world requests
+are the actor's own position displaced ALONG THE FACING, which is exactly what the port's
+`facing_relative(0, R)` computes — so `origin_actor_relative(0, R, H)` is the right model and the
+adapter was the whole error. The tap fires `±50` (`0x42480000`) at height +70 (`0x428c0000`):
++50 then -50 normally, +50/-50/+50/-50 powered. Witnessed at 100 apart, 70 above. This is the
+decode the Keiichi charges were waiting on.
+
+**Correction — two float constants were eyeballed instead of decoded.**
+
+* Rika 0's pair was noted as ±600 (taps) and ±50 (charges). The taps are `0x42480000` = **50**;
+  the charges are `0x41c80000` = **25**.
+* **Satoko 1's periodic shot was bound at height 600 and its note said so.** The body says
+  `0x42480000` = **50**. Binding and witness are both fixed.
+
+**The process failure worth remembering:** Satoko 1's witness asserted 600 — the BINDING's own
+constant — so it could only confirm the binding against itself, and it passed for a whole slice
+while being wrong. A witness must take its numbers from the body. Decimal literals in the
+decompilation (the `(draw%12-6)*0.25` spreads, the integer clamps `0x28`/`0x1e`) are safe to
+quote; hex floats must be decoded.
+
+**Next:** the Keiichi 2 charge origins (same decode, `0x42480000` = 50 at height +40), Rika 0's
+charge origins (R = 25, height +50), then the state-transition op for Irie 1's 401.
