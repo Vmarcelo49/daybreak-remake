@@ -674,35 +674,31 @@ inline constexpr MoveRule kMion2Rules[] = {
 
 // Rika weapon 1 (handler 0x492f70) — shot rules recovered from the reference bodies
 // shoot_body_4_1_{400,402,450,460} (bundle reference/source). Her tap is a repeating
-// schedule, not a single anchor: the bodies fire while (tick>11 && scratch<30) on even
-// scratch ticks, i.e. ticks 12,14,...,40 (15 shots; usage matrix agrees per phase).
-// A counter gate would express that window directly; the 15 explicit tick rules are
-// kept because they are already verified and the window's counter starts at tick 12,
-// not at move entry. Row 0 for the tap window is established through the item table
-// (usage slot 0 = registration file 0), not the body (whose 004230e0 call carries no
-// row). The charges' tick-10 pair (rows 2/5) fires in BOTH branches; the tick-30 pair
-// is rows 3/6 normally and 4/7 powered, counter-gated and repeated by the freeze — see
-// the 450 block below for the line citations. No Hide rules: the prop calls' 2/3/-1
-// semantics are illegible (bundle RESPONSE §2).
+// schedule, not a single anchor: the body fires while `tick > 11 && scratch < 30` on even
+// scratch values, i.e. ticks 12, 14, ..., 40 — fifteen shots, and the usage matrix agrees
+// per phase. The scratch only increments INSIDE that window, so it equals `tick - 12` and
+// the even test is the tick's own parity: one `kGateCounterMod` rule over the tick window
+// replaces the fifteen unrolled anchors, and it is stated before the Counter so it reads
+// the pre-increment value the body does. Each shot draws `draw%14 - 7` of LATERAL offset
+// first and then `draw%10 - 5` of pitch over the live clamped (+-40) target elevation
+// (L21797-21805) — the lateral-first order is what SpreadOrder::LateralThenPitch states,
+// and the draw order is pinned by the witness. The row (0) and the hand (`Bip01_L_Hand`)
+// both come from the body's own FUN_00435220 call; the older note claiming the row came
+// only from the item table was wrong. The charges' tick-10 pair (rows 2/5) fires in BOTH
+// branches; the tick-30 pair is rows 3/6 normally and 4/7 powered, counter-gated and
+// repeated by the freeze — see the 450 block below for the line citations. No Hide rules:
+// the prop calls' 2/3/-1 semantics are illegible (bundle RESPONSE §2).
 inline constexpr MoveRule kRikaRules[] = {
     // 400 ground tap: 15 deg turn ticks 0-14 (L21764-67), phase-0 bleed (L21768-71).
     {400,-1,0,14,MoveOp::Turn,15.f},
     {400,0,0,9999,MoveOp::Decelerate,.5f},
-    {400,-1,12,12,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,14,14,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,16,16,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,18,18,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,20,20,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,22,22,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,24,24,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,26,26,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,28,28,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,30,30,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,32,32,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,34,34,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,36,36,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,38,38,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,40,40,MoveOp::Launch,0.f,0.f,40.f},
+    // The window is `tick > 11 && scratch < 30` with a fire on EVEN scratch values,
+    // and the scratch only increments inside the window — so scratch == tick - 12 and
+    // the parity is the tick's own. The Launch is stated BEFORE the Counter so it reads
+    // the pre-increment value, which is what the body's fire-then-increment does.
+    {400,-1,12,41,MoveOp::Launch,0.f,0.f,0.f,kGateCounterMod,2,
+     origin_named_bone("Bip01_L_Hand"),aim_target_elevation(40.f),{},kSpreadRika1Tap},
+    {400,-1,12,41,MoveOp::Counter,1.f},
     // 402 air tap: 20 deg turn ticks 0-14 (L22077-80), same even-tick window (L22086).
     {402,-1,0,14,MoveOp::Turn,20.f},
     {402,-1,12,12,MoveOp::Launch,0.f,0.f,40.f},

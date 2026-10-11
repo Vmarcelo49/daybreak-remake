@@ -123,11 +123,33 @@ inline constexpr ShotOriginSpec origin_attachment_slot(int slot) {
 // A zero modulus means the axis is deterministic and MUST consume no draw, so an unset
 // spread cannot shift the stream. The two axes are independently shaped because the
 // bodies clamp the pitch before jittering it while the yaw offset is unclamped.
-// Which draw the bodies take first. Most families load the pitch jitter first (Mion 1/2,
-// Rena 2), but Keiichi 2's tap reads the YAW draw first (shoot_body_2_2_400: `0x3b` is
-// written from the first draw and `0x3c` from the second), and the order decides which
-// value each axis receives — so it is stated per rule rather than assumed.
-enum class SpreadOrder { PitchThenYaw, YawThenPitch };
+// Which draw the bodies take first. The order decides which value each axis receives, so
+// it is stated per rule rather than assumed, and every measured family is named:
+//   * PitchThenYaw — Mion 1/2, Rena 2 and most others load the pitch jitter first;
+//   * YawThenPitch — Keiichi 2's tap writes `0x3b` from the first draw and `0x3c` from
+//     the second;
+//   * PitchThenLateral — Satoko 0's hand fan draws pitch then a lateral offset;
+//   * LateralThenPitch — Rika 1's tap writes `0x3a` (lateral) from the first draw and
+//     `0x3b` (pitch) from the second.
+// Exactly two axes draw in every measured family, so each order names its pair and leaves
+// the third slot as the None sentinel rather than carrying a full permutation.
+enum class SpreadOrder { PitchThenYaw, YawThenPitch, PitchThenLateral, LateralThenPitch };
+
+enum class SpreadAxis { Pitch, Yaw, Lateral, None };
+
+inline constexpr std::array<SpreadAxis, 3> spread_axis_order(SpreadOrder order) {
+    switch (order) {
+    case SpreadOrder::PitchThenYaw:
+        return {SpreadAxis::Pitch, SpreadAxis::Yaw, SpreadAxis::None};
+    case SpreadOrder::YawThenPitch:
+        return {SpreadAxis::Yaw, SpreadAxis::Pitch, SpreadAxis::None};
+    case SpreadOrder::PitchThenLateral:
+        return {SpreadAxis::Pitch, SpreadAxis::Lateral, SpreadAxis::None};
+    case SpreadOrder::LateralThenPitch:
+        return {SpreadAxis::Lateral, SpreadAxis::Pitch, SpreadAxis::None};
+    }
+    return {SpreadAxis::None, SpreadAxis::None, SpreadAxis::None};
+}
 
 struct ShotSpreadSpec {
     int pitchModulus = 0;
@@ -177,13 +199,18 @@ inline constexpr ShotSpreadSpec kSpreadRing =
 // A hand fan: `draw%pitchModulus` of extra pitch (drawn first, over the latched base) and
 // `(draw%lateralModulus + lateralOffset) * lateralScale` of lateral offset (drawn second).
 inline constexpr ShotSpreadSpec spread_hand_fan(int pitchModulus, int lateralModulus,
-                                                float lateralOffset, float lateralScale) {
+                                                float lateralOffset, float lateralScale,
+                                                SpreadOrder order =
+                                                    SpreadOrder::PitchThenLateral,
+                                                float pitchOffset = 0.f) {
     ShotSpreadSpec spec;
     spec.pitchModulus = pitchModulus;
+    spec.pitchOffset = pitchOffset;
     spec.pitchScale = 1.f;
     spec.lateralModulus = lateralModulus;
     spec.lateralOffset = lateralOffset;
     spec.lateralScale = lateralScale;
+    spec.order = order;
     return spec;
 }
 
@@ -192,6 +219,12 @@ inline constexpr ShotSpreadSpec spread_hand_fan(int pitchModulus, int lateralMod
 // eight powered ones (shoot_body_3_0_400/402).
 inline constexpr ShotSpreadSpec kSpreadSatokoFan5 = spread_hand_fan(15, 240, -120.f, .1f);
 inline constexpr ShotSpreadSpec kSpreadSatokoFan8 = spread_hand_fan(15, 300, -150.f, .1f);
+
+// Rika 1's tap (shoot_body_4_1_400/402): each of the fifteen scheduled shots draws
+// `draw%14 - 7` of lateral offset FIRST and then `draw%10 - 5` of pitch over the live
+// clamped (+-40) target elevation (L21797-21805).
+inline constexpr ShotSpreadSpec kSpreadRika1Tap =
+    spread_hand_fan(10, 14, -7.f, 1.f, SpreadOrder::LateralThenPitch, -5.f);
 
 // Keiichi 2's tap (shoot_body_2_2_400/402): the shot SWEEPS. A scratch grows by 2 a tick
 // and the request aims `scratch - 15 + draw%10` on the yaw, with `draw%10 + 5` of pitch

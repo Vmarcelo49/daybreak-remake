@@ -1963,6 +1963,8 @@ void test_rika_repeating_tap() {
     // agrees per phase), and rows 2+5 at tick 10 plus rows 3+6 at tick 30 in the
     // first ground charge (shoot_body_4_1_450 L23495-548, L23549-577, no-aim branch).
     // Her program is kRikaRules; the second charge stays provisional (no 360/370).
+    // Each tap shot draws `draw%14 - 7` of lateral offset FIRST and then `draw%10 - 5`
+    // of pitch over the live +-40 target elevation (L21797-21805).
     Fighter f;
     f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_rikaCombo.bind(f);
@@ -1987,6 +1989,52 @@ void test_rika_repeating_tap() {
     shot = f.take_pending_shot();
     check_bool("Rika tap launches again at tick 14", true, shot.armed);
     check_int("Rika repeat selects item row zero", 0, shot.bulletRow);
+    // The full window: fifteen shots, one per even scratch value, and nothing on the odd
+    // ticks. The counter model reproduces the old fifteen unrolled tick rules.
+    Fighter w;
+    w.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rikaCombo.bind(w);
+    settle(w);
+    Input win;
+    win.set(fnd::input::Action::Shoot, true);
+    tick(w, win);
+    win.set(fnd::input::Action::Shoot, false);
+    tick(w, win);
+    std::vector<glm::vec3> tapPositions;
+    std::vector<float> tapPitches;
+    std::vector<float> tapOffsets;
+    for (int i = 1; i <= 40; ++i) {
+        tick(w, win);
+        for (gameplay::PendingShot s2 = w.take_pending_shot(); s2.armed;
+             s2 = w.take_pending_shot()) {
+            tapPositions.push_back(s2.pos);
+            tapOffsets.push_back(s2.origin.localOffset[0]);
+            tapPitches.push_back(
+                glm::degrees(std::asin(std::clamp(s2.dir.y, -1.f, 1.f))));
+        }
+    }
+    check_int("Rika 1 tap fires the full fifteen-shot window", 15,
+              (int)tapPositions.size());
+    if (tapPositions.size() == 15 && tapPitches.size() == 15) {
+        // Exact canonical values. Shot 3 and the 2-3 separation discriminate the DRAW
+        // ORDER: the body draws the lateral first, so shot 3 pitches at
+        // 3890346734%10-5 = -4 and shots 2 and 3 sit |(-5)-1| = 6 apart. Swapping the two
+        // draws would give -1 and 12.
+        check_near("Rika 1 tap shot 1 pitches at draw 2 minus 5", -3.f, tapPitches[0], 0.05f);
+        check_near("Rika 1 tap shot 2 pitches at draw 2 minus 5", 0.f, tapPitches[1], 0.05f);
+        check_near("Rika 1 tap shot 3 pitches at draw 4 minus 5", -4.f, tapPitches[2], 0.05f);
+        // The lateral draw, read off the resolved origin rather than the world position:
+        // the hand bone moves between ticks, so a position distance would mix the fan with
+        // the animation. Shots 1/2/3 draw 1, 1 and -5; swapping the draws would give
+        // -7, -6 and 6.
+        check_near("Rika 1 tap shot 1 offsets the hand by draw 1 minus 7", 1.f,
+                   tapOffsets[0], 0.01f);
+        check_near("Rika 1 tap shot 2 offsets the hand by draw 1 minus 7", 1.f,
+                   tapOffsets[1], 0.01f);
+        check_near("Rika 1 tap shot 3 offsets the hand by draw 5 minus 7", -5.f,
+                   tapOffsets[2], 0.01f);
+    }
+
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_rikaCombo.bind(g);

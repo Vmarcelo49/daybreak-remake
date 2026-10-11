@@ -1514,29 +1514,36 @@ void Fighter::launch_bullet(int row, const ShotOriginSpec& origin, const ShotAim
     // The sweep first: a body that grows a scratch each tick aims `counter * yawPerTick`
     // off its base, and the jitter below is added on top.
     resolvedAim.yawDegrees += static_cast<float>(m_moveCounter) * spread.yawPerTick;
-    const bool pitchFirst = spread.order == SpreadOrder::PitchThenYaw;
-    for (int pass = 0; pass < 2; ++pass) {
-        const bool doPitch = (pass == 0) == pitchFirst;
-        if (doPitch) {
-            if (spread.pitchModulus <= 0) continue;
+    // Draw the axes in the order the body states (see spread_axis_order). The lateral one
+    // moves the bone origin's own local offset; the other two move the aim.
+    for (const SpreadAxis axis : spread_axis_order(spread.order)) {
+        switch (axis) {
+        case SpreadAxis::Pitch: {
+            if (spread.pitchModulus <= 0) break;
             const int draw = static_cast<int>(rng_source().modulo(
                 static_cast<std::uint32_t>(spread.pitchModulus)));
             resolvedAim.pitchDegrees += (static_cast<float>(draw) + spread.pitchOffset) *
                                         spread.pitchScale;
-        } else {
-            if (spread.yawModulus <= 0) continue;
+            break;
+        }
+        case SpreadAxis::Yaw: {
+            if (spread.yawModulus <= 0) break;
             const int draw = static_cast<int>(rng_source().modulo(
                 static_cast<std::uint32_t>(spread.yawModulus)));
             resolvedAim.yawDegrees += (static_cast<float>(draw) + spread.yawOffset) *
                                       spread.yawScale;
+            break;
         }
-    }
-    // The lateral draw comes last, on the bone origin's own offset (see the spec).
-    if (spread.lateralModulus > 0) {
-        const int draw = static_cast<int>(rng_source().modulo(
-            static_cast<std::uint32_t>(spread.lateralModulus)));
-        resolvedOrigin.localOffset[0] += (static_cast<float>(draw) + spread.lateralOffset) *
-                                         spread.lateralScale;
+        case SpreadAxis::Lateral: {
+            if (spread.lateralModulus <= 0) break;
+            const int draw = static_cast<int>(rng_source().modulo(
+                static_cast<std::uint32_t>(spread.lateralModulus)));
+            resolvedOrigin.localOffset[0] +=
+                (static_cast<float>(draw) + spread.lateralOffset) * spread.lateralScale;
+            break;
+        }
+        case SpreadAxis::None: break;
+        }
     }
     if (resolvedOrigin.kind == ShotOriginKind::MoveRuleAdapter) {
         if (legacyLateral != 0.f) {
