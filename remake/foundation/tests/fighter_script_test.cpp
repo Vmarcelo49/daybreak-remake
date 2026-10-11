@@ -2448,6 +2448,37 @@ void test_tomitake_twin_tap() {
     check_bool("Tomitake charge T30 salvo fires twice", true, first.armed && second.armed);
     check_int("Tomitake T30 first row is 4", 4, first.bulletRow);
     check_int("Tomitake T30 second row is 0", 0, second.bulletRow);
+
+    // Powered: row 4 still fires, and the second shot moves from row 0 to row 2.
+    Fighter tc;
+    tc.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_tomitakeCombo.bind(tc);
+    settle(tc);
+    tc.set_hypermode(Hypermode::Oyashiro);
+    tc.set_hyper_gauge(1.f);
+    Input hc;
+    hc.set(fnd::input::Action::Special, true);
+    tick(tc, hc);
+    hc.set(fnd::input::Action::Special, false);
+    tick(tc, hc);
+    gameplay::ShootingContext ccontext;
+    ccontext.aimHold = true;
+    tc.set_shooting_context(ccontext);
+    hold_yellow(tc, hc);
+    hc.set(fnd::input::Action::Shoot, false);
+    tick(tc, hc);
+    for (int i = 0; i < 46; ++i) {
+        tc.set_shooting_context(ccontext);
+        tick(tc, hc);
+    }
+    std::vector<int> chargeRows;
+    for (int i = 0; i < 4; ++i) {
+        gameplay::PendingShot s2 = tc.take_pending_shot();
+        if (s2.armed) chargeRows.push_back(s2.bulletRow);
+    }
+    check_int("powered Tomitake charge fires twice", 2, (int)chargeRows.size());
+    bool chargeOrder = chargeRows.size() == 2 && chargeRows[0] == 4 && chargeRows[1] == 2;
+    check_bool("powered Tomitake charge rows are 4 then 2", true, chargeOrder);
 }
 
 void test_chie_scratch_burst() {
