@@ -1273,9 +1273,9 @@ inline constexpr MoveRule kRika0Rules[] = {
 };
 // Rika weapon 2 (handler 0x49d890) — shot rules recovered from the reference bodies
 // shoot_body_4_2_{400,402,450,460} (bundle reference/source). Single-tick tap at tick
-// 15 (both ground and air) with a same-tick Hold 30; triple row-4 fans at tick 10 in
-// both charges, also with same-tick Hold 30. The launch-latch in the executor keeps each
-// salvo to one firing per tick.
+// 15 (both ground and air) with a same-tick Hold 30; triple fans at tick 10 in both
+// charges — row 4 normally and row 6 powered (L25648-25700), also with same-tick Hold 30.
+// The launch-latch in the executor keeps each salvo to one firing per tick.
 //
 // The tag branch note here was WRONG: the flag is `w[0x1b7] < 3`, the same kGatePowered
 // every other family uses, and reading the body shows the branch is not the only gap
@@ -1283,34 +1283,56 @@ inline constexpr MoveRule kRika0Rules[] = {
 //   * the NORMAL branch fires ONE hand request whose ROW is selected by `w[0x9e]` —
 //     row 2 when `w[0x9e] < 0`, row 0 when `0 <= w[0x9e] < 1`, row 1 otherwise — so a
 //     fixed row 0 cannot be right for every state;
-//   * the TAG branch fires THREE hand requests, rows 0, 2 and 1 in that order;
+//   * the TAG branch fires THREE hand requests, rows 0, 2 and 1 in that order, and needs
+//     no selector at all — so it is bound here;
 //   * every request passes pitch 0 and lateral 0, although scratch 0x3c is filled with
 //     the clamped (+-40) target elevation just above and then never used.
-// The rules below keep the row-0 reading (what the `w[0x9e]`-in-[0,1) case and the
-// traces show) pending a decoder for `w[0x9e]`, and the pitch-0 correction.
+// The normal rule keeps the row-0 reading (what the `w[0x9e]`-in-[0,1) case and the traces
+// show) pending a decoder for `w[0x9e]`, which is READ in the corpus but never written in
+// it. The tap is a `Bip01_R_Hand` request, not an attachment request.
 inline constexpr MoveRule kRika2Rules[] = {
     // 400 ground tap: 15 deg turn ticks 0-14, bleed 0.5/tick phase 0, row 0 at 15.
     {400,-1,0,14,MoveOp::Turn,15.f},
     {400,0,0,9999,MoveOp::Decelerate,.5f},
-    {400,-1,15,15,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_fixed_angles(0.f,0.f)},
+    {400,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_fixed_angles(0.f,0.f)},
+    {400,-1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_fixed_angles(0.f,0.f)},
+    {400,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_fixed_angles(0.f,0.f)},
     {400,-1,15,15,MoveOp::Hold,30.f},
     // 402 air tap: 20 deg turn ticks 0-14, row 0 at 15. No bleed (gravity tail).
     {402,-1,0,14,MoveOp::Turn,20.f},
-    {402,-1,15,15,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_fixed_angles(0.f,0.f)},
+    {402,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_fixed_angles(0.f,0.f)},
+    {402,-1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_fixed_angles(0.f,0.f)},
+    {402,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_fixed_angles(0.f,0.f)},
     {402,-1,15,15,MoveOp::Hold,30.f},
     // 450 ground charge1: 18 deg turn through tick 9, bleed 1.5/tick, fan row 4 x3
     // at tick 10.
     {450,-1,0,9,MoveOp::Turn,18.f},
     {450,-1,0,9999,MoveOp::Decelerate,1.5f},
-    {450,-1,10,10,MoveOp::Launch,4.f,0.f,40.f},
-    {450,-1,10,10,MoveOp::Launch,4.f,0.f,40.f},
-    {450,-1,10,10,MoveOp::Launch,4.f,0.f,40.f},
+    {450,-1,10,10,MoveOp::Launch,4.f,0.f,40.f,kGateNormal},
+    {450,-1,10,10,MoveOp::Launch,4.f,0.f,40.f,kGateNormal},
+    {450,-1,10,10,MoveOp::Launch,4.f,0.f,40.f,kGateNormal},
+    {450,-1,10,10,MoveOp::Launch,6.f,0.f,40.f,kGatePowered},
+    {450,-1,10,10,MoveOp::Launch,6.f,0.f,40.f,kGatePowered},
+    {450,-1,10,10,MoveOp::Launch,6.f,0.f,40.f,kGatePowered},
     {450,-1,10,10,MoveOp::Hold,30.f},
     // 460 air charge1: same fan (no bleed — one-shot halve + gravity skipped).
     {460,-1,0,9,MoveOp::Turn,18.f},
-    {460,-1,10,10,MoveOp::Launch,4.f,0.f,40.f},
-    {460,-1,10,10,MoveOp::Launch,4.f,0.f,40.f},
-    {460,-1,10,10,MoveOp::Launch,4.f,0.f,40.f},
+    {460,-1,10,10,MoveOp::Launch,4.f,0.f,40.f,kGateNormal},
+    {460,-1,10,10,MoveOp::Launch,4.f,0.f,40.f,kGateNormal},
+    {460,-1,10,10,MoveOp::Launch,4.f,0.f,40.f,kGateNormal},
+    {460,-1,10,10,MoveOp::Launch,6.f,0.f,40.f,kGatePowered},
+    {460,-1,10,10,MoveOp::Launch,6.f,0.f,40.f,kGatePowered},
+    {460,-1,10,10,MoveOp::Launch,6.f,0.f,40.f,kGatePowered},
     {460,-1,10,10,MoveOp::Hold,30.f},
 };
 // Satoko weapon 0 (handler 0x4a9c40) — shot rules recovered from the reference bodies

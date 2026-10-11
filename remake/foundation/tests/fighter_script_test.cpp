@@ -2447,11 +2447,14 @@ void test_rika2_single_tick() {
     const auto install = findInstall(nullptr);
     if (install.empty() || !g_rika2Combo.load(install, 4, 2))
         return skip_case("Rika 2 combo");
-    // Bundle evidence: Rika 2 (handler 0x49d890) fires item row 0 once at tick 15 in
-    // the ground tap (same-tick Hold 30 freezes the clock after), and a fan of three
-    // row-4 shots at tick 10 in the first ground charge (tag branches need an aim/tag
-    // flag this model has no field for — skipped). Her program is kRika2Rules; the
-    // second charge stays provisional.
+    // Bundle evidence: Rika 2 (handler 0x49d890) fires one `Bip01_R_Hand` request at
+    // tick 15 in the ground tap (same-tick Hold 30 freezes the clock after), and a fan of
+    // three row-4 world shots at tick 10 in the first ground charge. The tag branches are
+    // bound: the tap fires THREE requests on rows 0, 2 and 1, and the charge fires three
+    // on row 6 (the earlier note claiming they needed "an aim/tag flag this model has no
+    // field for" was wrong — the flag is `w[0x1b7] < 3`). Her program is kRika2Rules; the
+    // normal tap's row selector `w[0x9e]` is never written in the corpus, so that branch
+    // keeps its row-0 reading; the second charge stays provisional.
     Fighter f;
     f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_rika2Combo.bind(f);
@@ -2468,6 +2471,37 @@ void test_rika2_single_tick() {
     gameplay::PendingShot shot = f.take_pending_shot();
     check_bool("Rika2 tap launches at tick 15", true, shot.armed);
     check_int("Rika2 tap selects item row zero", 0, shot.bulletRow);
+
+    // Powered: three requests, rows 0, 2 and 1 in the body's order.
+    Fighter rp;
+    rp.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rika2Combo.bind(rp);
+    settle(rp);
+    rp.set_hypermode(Hypermode::Oyashiro);
+    rp.set_hyper_gauge(1.f);
+    Input hp;
+    hp.set(fnd::input::Action::Special, true);
+    tick(rp, hp);
+    hp.set(fnd::input::Action::Special, false);
+    tick(rp, hp);
+    gameplay::ShootingContext context;
+    context.aimHold = true;
+    rp.set_shooting_context(context);
+    hp.set(fnd::input::Action::Shoot, true);
+    tick(rp, hp);
+    hp.set(fnd::input::Action::Shoot, false);
+    tick(rp, hp);
+    std::vector<int> poweredRows;
+    for (int i = 0; i < 15; ++i) {
+        tick(rp, hp);
+        for (gameplay::PendingShot s2 = rp.take_pending_shot(); s2.armed;
+             s2 = rp.take_pending_shot())
+            poweredRows.push_back(s2.bulletRow);
+    }
+    check_int("powered Rika2 tap fires three", 3, (int)poweredRows.size());
+    bool poweredOrder = poweredRows.size() == 3 && poweredRows[0] == 0 &&
+                        poweredRows[1] == 2 && poweredRows[2] == 1;
+    check_bool("powered Rika2 tap rows are 0, 2, 1 in that order", true, poweredOrder);
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_rika2Combo.bind(g);
@@ -2498,6 +2532,42 @@ void test_rika2_single_tick() {
     check_bool("Rika2 fan rows are all 4", true, fanRows);
     check_bool("Rika2 fan fires exactly three", false,
                g.take_pending_shot().armed);
+
+    // Powered: the same three-request fan on item row 6.
+    Fighter gq;
+    gq.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rika2Combo.bind(gq);
+    settle(gq);
+    gq.set_hypermode(Hypermode::Oyashiro);
+    gq.set_hyper_gauge(1.f);
+    Input hq;
+    hq.set(fnd::input::Action::Special, true);
+    tick(gq, hq);
+    hq.set(fnd::input::Action::Special, false);
+    tick(gq, hq);
+    hq.set(fnd::input::Action::Special, true);
+    tick(gq, hq);
+    hq.set(fnd::input::Action::Special, false);
+    tick(gq, hq);
+    gameplay::ShootingContext qcontext;
+    qcontext.aimHold = true;
+    gq.set_shooting_context(qcontext);
+    hold_yellow(gq, hq);
+    hq.set(fnd::input::Action::Shoot, false);
+    tick(gq, hq);
+    int qguard = 0;
+    while (gq.phase_elapsed() < 10 && qguard++ < 120) tick(gq, hq);
+    tick(gq, hq);
+    int poweredFan = 0;
+    bool poweredFanRows = true;
+    for (int i = 0; i < 4; ++i) {
+        gameplay::PendingShot s2 = gq.take_pending_shot();
+        if (!s2.armed) continue;
+        ++poweredFan;
+        if (s2.bulletRow != 6) poweredFanRows = false;
+    }
+    check_int("powered Rika2 charge T10 fan fires three", 3, poweredFan);
+    check_bool("powered Rika2 fan rows are all 6", true, poweredFanRows);
 }
 
 void test_rena0_powered_branches() {
