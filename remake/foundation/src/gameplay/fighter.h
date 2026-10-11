@@ -332,6 +332,14 @@ struct ShootingContext {
     // Together with the Oyashiro special byte +0x845 it forms the roster-wide powered
     // gate. This is the aim-selection predicate, not the combat lock's ally hold.
     bool aimHold = false;
+    // The RECOVERED direction decision of an AI-controlled fighter: word +0x278, which
+    // Rika 2's tap reads to pick its item row and Irie 1's state 401 reads (with +0x27c)
+    // to pick its follow-up state. Only the COM decision routines write it
+    // (FUN_0043f4d0/FUN_00447730 — a wander timer driving +-1/0), so it is 0 for every
+    // human-controlled fighter, and the port publishes it only for AI slots. The port
+    // expresses the brain's intent through the four direction keys, so this is the sign of
+    // that applied lateral input.
+    int moveLateral = 0;   // -1 left, 0 neutral, +1 right
     // The match's shared random stream. The original draws spread from ONE global
     // MT19937, so the scene owns the stream and publishes it here; a fighter without a
     // scene (unit tests) falls back to its own, which keeps both paths deterministic.

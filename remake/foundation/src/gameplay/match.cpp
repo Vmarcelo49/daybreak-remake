@@ -157,6 +157,16 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[kMatchFighterCount]
         // so every participant shares this and the sequence depends on the match's own
         // draw order (which is deterministic but not the original's).
         context.rng = &m_rng;
+        // Word +0x278, the AI's own movement decision. Only the COM decision routines write
+        // it, so a human slot leaves it at 0 — publishing an input-derived value for a human
+        // would invent a branch the original never takes. The port's brain expresses the same
+        // intent through the direction keys, so the sign of the applied lateral input is what
+        // the shot bodies would have read.
+        if (ai_enabled(i) && inputs && inputs[i]) {
+            const auto& in = *inputs[i];
+            context.moveLateral = in.down[fnd::input::Right] ? 1
+                                  : in.down[fnd::input::Left] ? -1 : 0;
+        }
         m_fighters[i].set_shooting_context(context);
         m_fighters[i].update(inputs ? inputs[i] : nullptr,
                              (target != kNoTarget && target < m_config.fighterCount)

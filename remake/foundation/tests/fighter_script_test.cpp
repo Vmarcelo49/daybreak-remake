@@ -2656,6 +2656,35 @@ void test_rika2_single_tick() {
     bool poweredOrder = poweredRows.size() == 3 && poweredRows[0] == 0 &&
                         poweredRows[1] == 2 && poweredRows[2] == 1;
     check_bool("powered Rika2 tap rows are 0, 2, 1 in that order", true, poweredOrder);
+
+    // The NORMAL branch's row comes from the AI movement direction (+0x278). A human slot
+    // never has that word written, so it stays 0 and takes row 0 — which the assertions
+    // above already pin. The COM half is witnessed by publishing the direction the way
+    // Match does and checking the row follows its sign.
+    for (int dir = -1; dir <= 1; ++dir) {
+        Fighter cd;
+        cd.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+        g_rika2Combo.bind(cd);
+        settle(cd);
+        gameplay::ShootingContext c;
+        c.moveLateral = dir;
+        cd.set_shooting_context(c);
+        Input ci;
+        ci.set(fnd::input::Action::Shoot, true);
+        tick(cd, ci);
+        ci.set(fnd::input::Action::Shoot, false);
+        tick(cd, ci);
+        for (int i = 0; i < 15; ++i) {
+            cd.set_shooting_context(c);   // the match re-publishes it every tick
+            tick(cd, ci);
+        }
+        gameplay::PendingShot s2 = cd.take_pending_shot();
+        const int want = dir < 0 ? 2 : dir > 0 ? 1 : 0;
+        check_int(dir < 0 ? "Rika2 COM strafing left takes row 2"
+                          : dir > 0 ? "Rika2 COM strafing right takes row 1"
+                                    : "Rika2 COM neutral takes row 0",
+                  want, s2.armed ? s2.bulletRow : -1);
+    }
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_rika2Combo.bind(g);

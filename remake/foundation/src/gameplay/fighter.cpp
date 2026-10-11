@@ -1463,6 +1463,11 @@ float Fighter::capture_target_pitch(float lowDegrees, float highDegrees,
 
 bool Fighter::rule_gate_holds(const MoveRule& rule) const {
     if (rule.gate == kGateNone) return true;
+    // The AI direction (+0x278): three exclusive sign tests, so a rule states the branch
+    // the body took rather than encoding it in a value.
+    if ((rule.gate & kGateDirLeft) != 0 && !(m_shooting.moveLateral < 0)) return false;
+    if ((rule.gate & kGateDirNeutral) != 0 && !(m_shooting.moveLateral == 0)) return false;
+    if ((rule.gate & kGateDirRight) != 0 && !(m_shooting.moveLateral > 0)) return false;
     if ((rule.gate & kGatePowered) != 0 && !shoot_gate_powered()) return false;
     if ((rule.gate & kGateNormal) != 0 && shoot_gate_powered()) return false;
     if ((rule.gate & kGateCounter) != 0 && !(m_moveCounter > 0)) return false;

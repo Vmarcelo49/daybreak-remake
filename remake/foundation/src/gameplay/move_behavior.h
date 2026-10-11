@@ -80,6 +80,12 @@ enum MoveGate : unsigned {
     // `gateValue2 < counter`: the lower half of a counter window (the bodies write both
     // compares, e.g. Mion 0's 402 turning while `0xe < c < 0x19`).
     kGateCounterAbove  = 1u << 8,
+    // The AI's movement direction, word +0x278. Rika 2's tap is the measured user: row 2
+    // below 0, row 0 at 0, row 1 above. Human-controlled fighters never have +0x278
+    // written, so their slot publishes 0 and they take the row-0 branch.
+    kGateDirLeft       = 1u << 9,
+    kGateDirNeutral    = 1u << 10,
+    kGateDirRight      = 1u << 11,
 };
 
 enum class MoveOp { Speed, Decelerate, Turn, Approach, Launch, Hold, ActionCamera, Hide,
@@ -1427,21 +1433,27 @@ inline constexpr MoveRule kRika0Rules[] = {
 // the same kGatePowered every other family uses — the `w[0x1b7] < 3` beside it picks the
 // sound. Reading the body shows the branch is not the only gap
 // (L24384-24453):
-//   * the NORMAL branch fires ONE hand request whose ROW is selected by `w[0x9e]` —
-//     row 2 when `w[0x9e] < 0`, row 0 when `0 <= w[0x9e] < 1`, row 1 otherwise — so a
-//     fixed row 0 cannot be right for every state;
+//   * the NORMAL branch fires ONE hand request whose ROW is selected by `w[0x9e]` (+0x278):
+//     row 2 when it is negative, row 0 at zero, row 1 when positive. That word is the AI's
+//     own movement decision — only FUN_0043f4d0/FUN_00447730 write it, both COM routines —
+//     so a human slot leaves it at 0 and takes row 0, while a COM strafing left or right
+//     takes row 2 or row 1. The kGateDir* bits state exactly those three branches, and
+//     each carries kGateNormal too — the direction picks the NORMAL branch's row, while the
+//     powered branch fires all three regardless;
 //   * the TAG branch fires THREE hand requests, rows 0, 2 and 1 in that order, and needs
 //     no selector at all — so it is bound here;
 //   * every request passes pitch 0 and lateral 0, although scratch 0x3c is filled with
 //     the clamped (+-40) target elevation just above and then never used.
-// The normal rule keeps the row-0 reading (what the `w[0x9e]`-in-[0,1) case and the traces
-// show) pending a decoder for `w[0x9e]`, which is READ in the corpus but never written in
-// it. The tap is a `Bip01_R_Hand` request, not an attachment request.
+// The tap is a `Bip01_R_Hand` request, not an attachment request.
 inline constexpr MoveRule kRika2Rules[] = {
     // 400 ground tap: 15 deg turn ticks 0-14, bleed 0.5/tick phase 0, row 0 at 15.
     {400,-1,0,14,MoveOp::Turn,15.f},
     {400,0,0,9999,MoveOp::Decelerate,.5f},
-    {400,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+    {400,-1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal | kGateDirLeft,0,
+     origin_named_bone("Bip01_R_Hand"),aim_fixed_angles(0.f,0.f)},
+    {400,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal | kGateDirNeutral,0,
+     origin_named_bone("Bip01_R_Hand"),aim_fixed_angles(0.f,0.f)},
+    {400,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGateNormal | kGateDirRight,0,
      origin_named_bone("Bip01_R_Hand"),aim_fixed_angles(0.f,0.f)},
     {400,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGatePowered,0,
      origin_named_bone("Bip01_R_Hand"),aim_fixed_angles(0.f,0.f)},
@@ -1452,7 +1464,11 @@ inline constexpr MoveRule kRika2Rules[] = {
     {400,-1,15,15,MoveOp::Hold,30.f},
     // 402 air tap: 20 deg turn ticks 0-14, row 0 at 15. No bleed (gravity tail).
     {402,-1,0,14,MoveOp::Turn,20.f},
-    {402,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+    {402,-1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal | kGateDirLeft,0,
+     origin_named_bone("Bip01_R_Hand"),aim_fixed_angles(0.f,0.f)},
+    {402,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal | kGateDirNeutral,0,
+     origin_named_bone("Bip01_R_Hand"),aim_fixed_angles(0.f,0.f)},
+    {402,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGateNormal | kGateDirRight,0,
      origin_named_bone("Bip01_R_Hand"),aim_fixed_angles(0.f,0.f)},
     {402,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGatePowered,0,
      origin_named_bone("Bip01_R_Hand"),aim_fixed_angles(0.f,0.f)},
