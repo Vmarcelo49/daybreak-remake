@@ -1022,3 +1022,28 @@ Irie 1, Tomitake 2 — are re-read, bound where the body allowed it, and their n
 **Next:** Rika 2's `w[0x9e]` row selector (now with sightings in Irie 1's state 401 as well),
 Tomitake 2's charge tag rows, then the world-origin decode for Keiichi 1/2, Rika 0, Irie 1 and
 Rika 2.
+
+### 2026-10-10 — 3.18 Decode: `w[0x9e]`/`w[0x9f]` are the COM's movement direction
+
+**Decoded — the selector that had been blocking Rika 2 and Irie 1's state 401.** `w[0x9e]` and
+`w[0x9f]` are `(+0x278, +0x27c)`, a 3×3 COM movement-direction decision:
+
+* only two functions write it, `FUN_0043f4d0` and `FUN_00447730`, both COM decision routines: a
+  wander timer `+0x864 ∈ [-200,199]` drives `+0x278` to -1/0/+1, and squared-distance tests
+  (`< 250000`, `< 122500`, `< 90000`) set the two components together;
+* all 471 other references are reads, across movement, action and shoot code;
+* the port's `bot_brain.h` already documents it as "a 3x3 movement direction in
+  +0x278/+0x27c" and models the timer, corroborating the decode from the port side.
+
+**Why it matters:** it is an AI decision, not player input. A human-controlled fighter never has
+it written, so it stays 0 and the fighter takes Rika 2's row-0 branch and Irie 1's no-direction
+branch. The port's bindings are therefore correct for players, and the gap is COM-only — a
+material re-scoping of two entries that had been carried as flat blockers.
+
+**Follow-up, now well-defined:** publish the direction on the shooting context and add a gate for
+its sign. The bot brain already computes it, so this is a publish plus a gate, not new AI — but
+it touches the fighter context, the gate table and the match plumbing, so it wants its own slice
+rather than a tail-end edit.
+
+**Next:** that direction gate (which also finishes Irie 1's 401 follow-up states), Tomitake 2's
+charge tag rows, then the world-origin decode for Keiichi 1/2, Rika 0, Irie 1 and Rika 2.

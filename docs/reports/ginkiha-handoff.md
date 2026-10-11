@@ -160,6 +160,25 @@ Akane 2 defer note (2026-10-10): pinned handler identity/update, usage and origi
 
 Natsumi 0 scope note (2026-10-10): added `natsumi0` for the **normal ground state400 callback schedule only**: Hide prop bindings 0/1 from tick 14 onward, then Launch item row 0 at tick 14. This matches the controlled normal `fire_attachment(0,0,...)` request and the DAT registration map. The executor rebuilds prop bindings at the start of every tick, but the tick-14 Hide is applied before Launch during that same update, selecting the fallback bone-origin family. The test drives the actual Natsumi+item29 fixture. Phase labels are forced probes; raw callback flag/aim, exact geometry, actual projectile admission and natural phase reachability remain outside the claim. State 402 stays unbound despite an analogous raw helper call because no state402 normalized callback trace is included. The tag/boost five-row randomized requests and world-origin 450/460 charges also remain unbound.
 
+`w[0x9e]`/`w[0x9f]` decoded (2026-10-10, ledger slice): **they are the COM's movement
+direction, not a player input.** Rika 2's normal tap picks its row from `w[0x9e]` and Irie 1's
+state 401 picks one of four follow-up states from the signs of both components, so the pair had
+been blocking both. It is `(+0x278, +0x27c)` and the corpus is unambiguous:
+
+* only `FUN_0043f4d0` and `FUN_00447730` write it, and both are COM decision routines — a
+  wander timer `+0x864 ∈ [-200,199]` drives `+0x278` to -1/0/+1, and squared-distance tests
+  (`< 250000`, `< 122500`, `< 90000`) set `+0x278` and `+0x27c` together;
+* every one of the 471 other references is a read, in movement, action and shoot code;
+* the port's own `bot_brain.h` independently documents the field as "a 3x3 movement direction
+  in +0x278/+0x27c" and models the timer — the two readings corroborate.
+
+**Consequence for the ledger:** a human-controlled fighter never has it written, so it stays 0
+and the fighter takes Rika 2's row-0 branch and Irie 1's no-direction branch. The port's row-0
+binding is therefore RIGHT for players and incomplete only for a COM attacker. That re-scopes
+both entries from flat blockers to a COM-only gap. Closing it needs a direction gate on the
+shooting context; the bot brain already carries the value, so the work is a publish plus a gate,
+not new AI.
+
 Tomitake 2 audit (2026-10-10, ledger slice): **the tap is bound with its gate; the charge's
 tag rows stay open.** `shoot_body_6_2_400/402` fire TWO shots per scheduled tick (15..33 step
 3), and the whole burst is gated on `scratch % 3 == 0 && 0 < w[0x1b7]`. The first shot is

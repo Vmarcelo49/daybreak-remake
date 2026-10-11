@@ -34,6 +34,28 @@ but **never written anywhere in it**, so it has no recovered source. That rule k
 reading the traces show, and every request's pitch stays 0 even though scratch `0x3c` is
 filled with the clamped ±40 target elevation and then unused.
 
+### Decode: `w[0x9e]`/`w[0x9f]` are the COM's movement direction
+
+Rika 2's normal tap picks its item row from `w[0x9e]` (row 2 below 0, row 0 at 0, row 1 above),
+and Irie 1's state 401 picks one of four follow-up states from the signs of **both** `w[0x9e]`
+and `w[0x9f]`. That pair is `(+0x278, +0x27c)`, and the corpus settles it:
+
+* **Only two functions write it**, `FUN_0043f4d0` and `FUN_00447730`, and both are the COM
+  decision routines — they drive `+0x278` to −1/0/+1 from a wander timer `+0x864 ∈ [−200,199]`
+  and from squared-distance tests (`< 250000`, `< 122500`, `< 90000`), setting `+0x278` and
+  `+0x27c` together.
+* **All 471 other references are reads** — the movement, action and shoot code branching on the
+  direction. The port's own `bot_brain.h` already documents this field as "a 3×3 movement
+  direction in +0x278/+0x27c" and models the timer, which corroborates the decode from the
+  other side.
+
+So it is an **AI decision**, not a player input: a human-controlled fighter never has it
+written, leaves it at 0, and therefore takes Rika 2's **row 0** branch and Irie 1's no-direction
+branch. The port's row-0 binding is therefore correct for players and incomplete only for a COM
+attacker — which is a scoped gap, not the flat blocker the entry previously implied. Binding the
+COM half needs a new direction gate on the shooting context; the port's bot brain already
+carries the value, so the route is a publish plus a gate rather than new AI.
+
 ### Correction: which field the tag branch actually reads
 
 Writing this up exposed a second, subtler error in my own notes. Several said "the tag branch
@@ -84,7 +106,7 @@ that substring), and assert the occurrence count *within that scope*.
 | Satoko 2 | 12 / 38 | 400 twin world, gate-bound / rows 1 powered | 402 twin world, gate-bound / rows 1 powered | — / P | — / P | — / P | — / P | 18 |
 | Rika 0 | 13 / 7 | 400 attach, powered 4x row 1 / bound | 402 attach, powered 4x row 1 / bound | 450 attach, powered row 3 / bound | 460 attach, powered row 3 / bound | — / P | — / P | 20 |
 | Rika 1 | 14 / 19 | 400 hand L, 15-shot window counter-gated, spread-bound / no branch split | 402 attach @13 rows 1/7 gate-bound | 450 attach @13 rows 2/8 fixed 45° | 460 attach @12 rows 2/8 fixed 45° | — / P | — / P | 19 |
-| Rika 2 | 15 / 37 | 400 hand R, tag 3x rows 0/2/1 bound; normal row pending `w[0x9e]` | 402 same, tag-bound | 450 attach @10 rows 4/6 tag-bound | 460 attach @10 rows 4/6 tag-bound | — / P | — / P | 19 |
+| Rika 2 | 15 / 37 | 400 hand R, tag 3x rows 0/2/1 bound; player row 0 (COM picks 1/2 via `w[0x9e]`) | 402 same, tag-bound | 450 attach @10 rows 4/6 tag-bound | 460 attach @10 rows 4/6 tag-bound | — / P | — / P | 19 |
 | Shion 0 | 16 / 6 | — / P | — / P | — / P | — / P | — / P | — / P | 25 |
 | Shion 1 | 17 / 20 | — / P | — / P | — / P | — / P | — / P | — / P | 18 |
 | Shion 2 | 18 / 36 | — / P | — / P | — / P | — / P | — / P | — / P | 25 |
