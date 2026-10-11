@@ -142,6 +142,14 @@ struct ShotSpreadSpec {
     // own (MoveOp::Counter), which is what the body's scratch is.
     float yawPerTick = 0.f;
     SpreadOrder order = SpreadOrder::PitchThenYaw;
+    // A per-request LATERAL offset (FUN_00435220's third argument), which the hand fans
+    // spread their shots with: Satoko 0 draws `(draw%240-120)*0.1` per request. It moves
+    // the bone origin's local offset rather than the aim, because that is what the helper
+    // is handed. Drawn AFTER the pitch and yaw draws — the order the measured family uses —
+    // and a zero modulus consumes no draw like the other axes.
+    int lateralModulus = 0;
+    float lateralOffset = 0.f;
+    float lateralScale = 0.f;
 };
 
 inline constexpr ShotSpreadSpec spread_pitch_then_yaw(int pitchModulus, float pitchOffset,
@@ -165,6 +173,25 @@ inline constexpr ShotSpreadSpec kSpreadEmissionJitter =
 // `heading + offset + 90 - rand%180`, so the yaw draw is subtracted through its scale.
 inline constexpr ShotSpreadSpec kSpreadRing =
     spread_pitch_then_yaw(30, 20.f, 1.f, 180, 0.f, -1.f);
+
+// A hand fan: `draw%pitchModulus` of extra pitch (drawn first, over the latched base) and
+// `(draw%lateralModulus + lateralOffset) * lateralScale` of lateral offset (drawn second).
+inline constexpr ShotSpreadSpec spread_hand_fan(int pitchModulus, int lateralModulus,
+                                                float lateralOffset, float lateralScale) {
+    ShotSpreadSpec spec;
+    spec.pitchModulus = pitchModulus;
+    spec.pitchScale = 1.f;
+    spec.lateralModulus = lateralModulus;
+    spec.lateralOffset = lateralOffset;
+    spec.lateralScale = lateralScale;
+    return spec;
+}
+
+// Satoko 0's tap draws `draw%15` of pitch and `(draw%240-120)*0.1` of lateral offset on
+// the five normal requests, and widens the lateral draw to `(draw%300-150)*0.1` on the
+// eight powered ones (shoot_body_3_0_400/402).
+inline constexpr ShotSpreadSpec kSpreadSatokoFan5 = spread_hand_fan(15, 240, -120.f, .1f);
+inline constexpr ShotSpreadSpec kSpreadSatokoFan8 = spread_hand_fan(15, 300, -150.f, .1f);
 
 // Keiichi 2's tap (shoot_body_2_2_400/402): the shot SWEEPS. A scratch grows by 2 a tick
 // and the request aims `scratch - 15 + draw%10` on the yaw, with `draw%10 + 5` of pitch

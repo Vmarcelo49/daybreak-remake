@@ -3677,12 +3677,13 @@ void test_satoko_five_shot() {
     const auto install = findInstall(nullptr);
     if (install.empty() || !g_satokoCombo.load(install, 3, 0))
         return skip_case("Satoko 0 combo");
-    // Bundle evidence: Satoko 0 (handler 0x4a9c40) fires FIVE row-0 shots at tick 17
-    // in the ground tap (tag fires 8 — no flag field, skipped), and twin row-11 salvos
-    // spread by a 26-update frozen clock at tick 25 in the first ground charge (four
-    // salvos at 25/31/37/43; the air charge freezes 21 for four salvos at 25/31/37/43 —
-    // same rule shape, untested here like the other air paths).
-    // Her program is kSatokoRules; the second charge stays provisional.
+    // Bundle evidence: Satoko 0 (handler 0x4a9c40) fires FIVE row-0 shots at tick 17 in the
+    // ground tap, EIGHT powered, each request drawing `draw%15` of pitch and
+    // `(draw%240-120)*0.1` (`draw%300-150` powered) of lateral offset off the posed hand
+    // (L12566-12636). Twin row-11 salvos spread by a 26-update frozen clock at tick 25 in
+    // the first ground charge (four salvos at 25/31/37/43; the air charge freezes 21 for
+    // four salvos at 25/31/37/43 — same rule shape, untested here like the other air
+    // paths). Her program is kSatokoRules; the second charge stays provisional.
     Fighter f;
     f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_satokoCombo.bind(f);
@@ -3697,16 +3698,91 @@ void test_satoko_five_shot() {
     check_int("Satoko tap binds move 400", 400, f.shot_move_id());
     for (int i = 0; i < 17; ++i) tick(f, in);
     int tapArmed = 0;
-    bool tapRows = true;
+    bool tapRows = true, tapSlots = true, tapPitch = true;
+    std::vector<glm::vec3> tapPositions;
+    std::vector<float> tapPitches;
     for (int i = 0; i < 5; ++i) {
         gameplay::PendingShot shot = f.take_pending_shot();
         if (shot.armed) ++tapArmed;
         if (shot.bulletRow != 0) tapRows = false;
+        if (shot.origin.attachmentSlot != 0) tapSlots = false;
+        // pitch = clamped elevation (0 with no opponent) + draw%15, so [0, 15).
+        const float deg = glm::degrees(std::asin(std::clamp(shot.dir.y, -1.f, 1.f)));
+        if (deg < -0.1f || deg >= 15.f) tapPitch = false;
+        tapPositions.push_back(shot.pos);
+        tapPitches.push_back(deg);
     }
     check_int("Satoko tap T17 salvo fires five", 5, tapArmed);
     check_bool("Satoko salvo rows are all 0", true, tapRows);
+    check_bool("Satoko salvo slot is the hand", true, tapSlots);
+    check_bool("Satoko tap pitch stays inside the body's 0..15 band", true, tapPitch);
+    // The fan: each request moves the hand origin by (draw%240-120)*0.1, so the five
+    // positions differ from each other but stay inside 23.9 units of spread.
+    bool fanSpread = false;
+    float widest = 0.f;
+    for (std::size_t i = 0; i < tapPositions.size(); ++i)
+        for (std::size_t j = i + 1; j < tapPositions.size(); ++j) {
+            const float d = glm::distance(tapPositions[i], tapPositions[j]);
+            widest = std::max(widest, d);
+            if (d > 0.01f) fanSpread = true;
+        }
+    check_bool("Satoko tap requests leave the hand at different offsets", true, fanSpread);
+    check_bool("the lateral fan stays inside the body's 23.9-unit spread", true,
+               widest <= 23.9f);
+    // Exact arithmetic on the canonical stream, which pins the draw ORDER as well as the
+    // values: residues 2, 2, 4, 5 give pitch1 = 2%15 = 2, lateral1 = (102-120)*0.1 = -1.8,
+    // pitch2 = 3890346734%15 = 14 and lateral2 = (185-120)*0.1 = 6.5. Drawing the lateral
+    // first would put r1 on the lateral and r2 on the pitch instead.
+    if (tapPositions.size() == 5 && tapPitches.size() == 5) {
+        check_near("Satoko tap first request pitches at draw 2 mod 15", 2.f, tapPitches[0],
+                   0.05f);
+        check_near("Satoko tap second request pitches at draw 3890346734 mod 15", 14.f,
+                   tapPitches[1], 0.05f);
+        check_near("Satoko tap offsets requests 1 and 2 by the 8.3 lateral delta", 8.3f,
+                   glm::distance(tapPositions[0], tapPositions[1]), 0.15f);
+    }
     check_bool("Satoko salvo fires exactly five", false,
                f.take_pending_shot().armed);
+
+    // The powered branch widens the loop to eight and the lateral draw to 300 (29.9 units).
+    Fighter h;
+    h.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_satokoCombo.bind(h);
+    settle(h);
+    h.set_hypermode(Hypermode::Oyashiro);
+    h.set_hyper_gauge(1.f);
+    Input hp;
+    hp.set(fnd::input::Action::Special, true);
+    tick(h, hp);
+    hp.set(fnd::input::Action::Special, false);
+    tick(h, hp);
+    gameplay::ShootingContext hyper;
+    hyper.aimHold = true;
+    h.set_shooting_context(hyper);
+    hp.set(fnd::input::Action::Shoot, true);
+    tick(h, hp);
+    hp.set(fnd::input::Action::Shoot, false);
+    tick(h, hp);
+    for (int i = 0; i < 17; ++i) tick(h, hp);
+    int poweredArmed = 0;
+    bool poweredRows = true;
+    float poweredWidest = 0.f;
+    std::vector<glm::vec3> poweredPositions;
+    for (int i = 0; i < 8; ++i) {
+        gameplay::PendingShot shot = h.take_pending_shot();
+        if (!shot.armed) continue;
+        ++poweredArmed;
+        if (shot.bulletRow != 0) poweredRows = false;
+        poweredPositions.push_back(shot.pos);
+    }
+    for (std::size_t i = 0; i < poweredPositions.size(); ++i)
+        for (std::size_t j = i + 1; j < poweredPositions.size(); ++j)
+            poweredWidest = std::max(poweredWidest,
+                                     glm::distance(poweredPositions[i], poweredPositions[j]));
+    check_int("powered Satoko tap fires eight", 8, poweredArmed);
+    check_bool("powered Satoko salvo keeps row 0", true, poweredRows);
+    check_bool("the powered lateral fan stays inside 29.9 units", true,
+               poweredWidest <= 29.9f);
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_satokoCombo.bind(g);

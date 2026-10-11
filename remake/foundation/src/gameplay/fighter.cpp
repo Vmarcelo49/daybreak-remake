@@ -1531,6 +1531,13 @@ void Fighter::launch_bullet(int row, const ShotOriginSpec& origin, const ShotAim
                                       spread.yawScale;
         }
     }
+    // The lateral draw comes last, on the bone origin's own offset (see the spec).
+    if (spread.lateralModulus > 0) {
+        const int draw = static_cast<int>(rng_source().modulo(
+            static_cast<std::uint32_t>(spread.lateralModulus)));
+        resolvedOrigin.localOffset[0] += (static_cast<float>(draw) + spread.lateralOffset) *
+                                         spread.lateralScale;
+    }
     if (resolvedOrigin.kind == ShotOriginKind::MoveRuleAdapter) {
         if (legacyLateral != 0.f) {
             resolvedOrigin.kind = ShotOriginKind::ActorRelativeOffset;
@@ -1584,9 +1591,12 @@ void Fighter::launch_bullet(int row, const ShotOriginSpec& origin, const ShotAim
         if (!m_model || !m_anim || m_model->findFrame(origin.boneName) < 0)
             throw std::runtime_error(std::string("projectile origin bone missing: ") +
                                      origin.boneName);
+        // The RESOLVED copy, not the spec: the spread adjusts localOffset (a lateral fan
+        // moves the hand origin), so reading the spec would silently drop it.
         shot.pos = bone_point(origin.boneName,
-                              glm::vec3(origin.localOffset[0], origin.localOffset[1],
-                                        origin.localOffset[2]));
+                              glm::vec3(resolvedOrigin.localOffset[0],
+                                        resolvedOrigin.localOffset[1],
+                                        resolvedOrigin.localOffset[2]));
         break;
     }
     case ShotOriginKind::ActorRelativeOffset:

@@ -1230,12 +1230,15 @@ inline constexpr MoveRule kRika2Rules[] = {
 };
 // Satoko weapon 0 (handler 0x4a9c40) — shot rules recovered from the reference bodies
 // shoot_body_3_0_{400,402,450,460} (bundle reference/source). Tap salvos of FIVE row-0
-// shots at tick 17 (tag fires 8 — no flag field, skipped); charge salvos of TWO row-11
+// shots at tick 17, EIGHT powered, each drawing its own pitch and lateral offset off the
+// posed hand; charge salvos of TWO row-11
 // shots spread by frozen-clock Holds (26 updates @25 for five salvos, 21 for four) —
 // the unrolled ticks reproduce the salvo cadence while the Hold reproduces the clock
 // freeze, and the per-(rule,phase,tick) launch latch keeps each salvo to one firing.
 // Tag row 12, aim ramps, gravity tails and one-shot velocity sets have no MoveRule op.
-// Tap thirds use the family aim-clamp standard (40): the measured downward pellet bias
+// Tap thirds share one CapturePitch (+-40) then one repeated Launch per branch, so the
+// draws land in the body's order (pitch, then lateral) rather than per unrolled rule.
+// The family aim-clamp standard (40): the measured downward pellet bias
 // ([-12,-0.05] normal) is ballistics, not aim — it needs projectile gravity (Fase 3+).
 inline constexpr MoveRule kSatokoRules[] = {
     // 400 ground tap: turns 10 deg (0-9, phaseless) + 15 deg (phase 0, open),
@@ -1243,20 +1246,20 @@ inline constexpr MoveRule kSatokoRules[] = {
     {400,-1,0,9,MoveOp::Turn,10.f},
     {400,0,0,9999,MoveOp::Turn,15.f},
     {400,0,0,9999,MoveOp::Decelerate,.5f},
-    {400,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,17,17,MoveOp::CapturePitch,0.f,40.f,40.f},
+    {400,-1,17,17,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_stored_pitch(),{},kSpreadSatokoFan5,5},
+    {400,-1,17,17,MoveOp::Launch,0.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_stored_pitch(),{},kSpreadSatokoFan8,8},
     // 402 air tap: 20 deg turn ticks 0-9, Hide slot 0 from tick 16, same five at 17.
     // No bleed (gravity tail skipped).
     {402,-1,0,9,MoveOp::Turn,20.f},
     {402,-1,16,9999,MoveOp::Hide,0.f},
-    {402,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
-    {402,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
-    {402,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
-    {402,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
-    {402,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,17,17,MoveOp::CapturePitch,0.f,40.f,40.f},
+    {402,-1,17,17,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_stored_pitch(),{},kSpreadSatokoFan5,5},
+    {402,-1,17,17,MoveOp::Launch,0.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_stored_pitch(),{},kSpreadSatokoFan8,8},
     // 450 ground charge1: turns 10 deg (0-24) + 2 deg (0-25), bleed 0.5/tick,
     // 26-tick freeze at 25 with twin row-11 salvos at 25,31,37,43,49.
     {450,-1,0,24,MoveOp::Turn,10.f},
