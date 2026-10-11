@@ -160,6 +160,28 @@ Akane 2 defer note (2026-10-10): pinned handler identity/update, usage and origi
 
 Natsumi 0 scope note (2026-10-10): added `natsumi0` for the **normal ground state400 callback schedule only**: Hide prop bindings 0/1 from tick 14 onward, then Launch item row 0 at tick 14. This matches the controlled normal `fire_attachment(0,0,...)` request and the DAT registration map. The executor rebuilds prop bindings at the start of every tick, but the tick-14 Hide is applied before Launch during that same update, selecting the fallback bone-origin family. The test drives the actual Natsumi+item29 fixture. Phase labels are forced probes; raw callback flag/aim, exact geometry, actual projectile admission and natural phase reachability remain outside the claim. State 402 stays unbound despite an analogous raw helper call because no state402 normalized callback trace is included. The tag/boost five-row randomized requests and world-origin 450/460 charges also remain unbound.
 
+Chie 2 audit (2026-10-10, ledger slice): **all four states bound; the "no flag field" note
+retired.** `shoot_body_11_2_{400,402,450,460}` fires a scratch-driven burst: the counter starts
+at 1, steps one a tick, and the request fires while `counter % 3 == 1` — ticks 15/18/21/24 on
+the ground tap (gate `counter < 11`) and 17/20/23/26/29 on the air tap (`< 14`). Each shot is a
+`FUN_00435220` request on the posed hand — `Bip01_R_Hand` on the ground tap, `Bip01_L_Hand` on
+the air tap — aiming `counter * 0.5 - 2` of lateral offset with the pitch from the target
+elevation clamped ±40, so the burst walks -1.5, 0, 1.5, 3.0 (4.5 on the air tap's fifth shot).
+Row 0 normal / row 1 powered; the tag branch reads `w[0x1b7] < 5` / `< 6`, the kGatePowered
+idiom.
+
+The charges fire one request — row 2 normal / row 3 powered, lateral 0, `Bip01_R_Hand`, target
+elevation clamped ±30 — at tick 22 (450) and tick 15 (460). **The 460 rule sat at tick 22 while
+its own comment said 15**; the body's `== 0xf` settles it, so the tick is corrected here. The
+lateral walk needed one new term, `ShotSpreadSpec::lateralPerTick`, the mirror of `yawPerTick`
+(Chie's burst draws nothing: the counter IS the spread), and it is witnessed exactly at -1.5,
+0, 1.5 and 3.0.
+
+**Mechanism correction.** `spread_axis_order` now returns all three axes for every order. The
+earlier cut named only the pair a family draws, which silently dropped an unmentioned axis —
+twice: Satoko 0's lateral under `PitchThenYaw`, and Chie 2's before the fix. The trailing axis
+is unobservable because no measured family configures all three.
+
 Rika 2 audit (2026-10-10, ledger slice): **the tag branches are bound; the normal tap's row
 selector is not.** `shoot_body_4_2_{400,402,450,460}` fires one `Bip01_R_Hand` request at tick
 15 in the taps and three fan requests at tick 10 in the charges. The old note said the tag

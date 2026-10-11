@@ -17,16 +17,15 @@ follow-on/EX states remain pending for every combo, not implicitly N/A.
 
 Several recovered tables say a powered/tag branch was skipped because the body has "no flag
 field". **That is false.** The flag is `w[0x1b7]` — the same value the port already models as
-`kGatePowered` — and it was verified directly in four bodies: Keiichi 2 (`4_0`/`2_2`), Satoko 0
-(`3_0`), Rika 0 (`4_0`) and Rika 2 (`4_2`). Keiichi 2's and Satoko 0's rules have since been
-rebound with it, and Rika 0's in this change.
+`kGatePowered` — and it was verified directly in five bodies: Keiichi 2 (`4_0`/`2_2`), Satoko 0
+(`3_0`), Rika 0 (`4_0`), Rika 2 (`4_2`) and Chie 2 (`11_2`). All five have since been rebound
+with it.
 
 Sites whose notes still carry the claim and whose bodies have **not** been re-read yet —
 each is a pending audit, not a missing flag:
 
 | Site | Line | Note |
 |---|---|---|
-| Chie 2 | 1098 | "bound (no flag field)" |
 | Takano 0 | 1128 | "tag row 6 skipped — no flag field" |
 | Irie 1 | 1194 | "tag adds rows 2+3 — no flag field, skipped" |
 | Tomitake 2 | 1399 | "tag rows 6/2 have no flag field" |
@@ -39,6 +38,15 @@ row 2 below 0, row 0 in [0,1) and row 1 otherwise, and `w[0x9e]` is READ through
 but **never written anywhere in it**, so it has no recovered source. That rule keeps the row-0
 reading the traces show, and every request's pitch stays 0 even though scratch `0x3c` is
 filled with the clamped ±40 target elevation and then unused.
+
+### Correction: the spread axis order is now total
+
+The first cut of the draw-order table named only the two axes a family draws, so an order
+that did not mention an axis **silently dropped that axis's draw** — it happened twice, first
+to Satoko 0's lateral (`PitchThenYaw` has no lateral) and then to Chie 2's. `spread_axis_order`
+now returns all three axes for every order: the named pair in the stated order and the
+remaining axis last. No measured family configures all three, so the trailing position is
+unobservable, and no spec can lose an axis to an order it did not consider.
 
 ### Editing hazard: identical rule lines across tables
 
@@ -86,7 +94,7 @@ that substring), and assert the occurrence count *within that scope*.
 | Irie 2 | 33 / 43 | — / P | — / P | — / P | — / P | — / P | — / P | 19 |
 | Chie 0 | 34 / 14 | — / P | — / P | — / P | — / P | — / P | — / P | 23 |
 | Chie 1 | 35 / 25 | — / P | — / P | — / P | — / P | — / P | — / P | 21 |
-| Chie 2 | 36 / 44 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 23 |
+| Chie 2 | 36 / 44 | 400 burst 4x R-hand, rows 0/1 gate-bound, lateral sweep | 402 burst 5x L-hand, rows 0/1 gate-bound | 450 R-hand @22 rows 2/3 gate-bound | 460 R-hand @15 rows 2/3 gate-bound | — / P | — / P | 23 |
 | Kasai 0 | 37 / 15 | — / P | — / P | — / P | — / P | — / P | — / P | 30 |
 | Kasai 1 | 38 / 27 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 28 |
 | Kasai 2 | 39 / 45 | — / P | — / P | — / P | — / P | — / P | — / P | 30 |

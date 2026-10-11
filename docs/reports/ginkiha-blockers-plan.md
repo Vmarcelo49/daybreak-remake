@@ -925,3 +925,29 @@ occurrence count asserted inside that scope. Same discipline for every future ta
 **Next:** the four "no flag field" re-reads (Chie 2, Takano 0, Irie 1, Tomitake 2 — note Chie 2
 and Takano 0 were briefly corrupted here and are back at their committed state), Rika 2's
 `w[0x9e]`, then the world-origin decode for Keiichi 1/2, Rika 0 and Rika 2.
+
+### 2026-10-10 — 3.14 Ledger order: Chie 2's burst, and a total axis order
+
+**Done — Chie 2's four states bound** (handler 0x566a40). The burst is scratch-driven: the
+counter starts at 1, steps one a tick, and fires while `counter % 3 == 1` — four shots on the
+ground tap (`counter < 11`) and five on the air tap (`< 14`), on `Bip01_R_Hand` and
+`Bip01_L_Hand` respectively, aiming `counter * 0.5 - 2` of lateral offset with the target
+elevation clamped ±40. Rows 0 normal / 1 powered. The charges fire one `Bip01_R_Hand` request,
+row 2 normal / row 3 powered, elevation clamped ±30, at tick 22 (450) and tick 15 (460). The
+"no flag field" note on this family is retired.
+
+**Fixed — the 460 charge's tick.** The rule sat at tick 22 while its comment said 15; the body's
+`== 0xf` settles it at 15. Nothing tested 460, so it had been wrong unnoticed.
+
+**New term — `lateralPerTick`.** The mirror of `yawPerTick`: Chie's burst draws nothing and the
+counter IS the spread, so the lateral needed `counter * perTick + offset`. Witnessed exactly at
+-1.5, 0, 1.5 and 3.0.
+
+**Mechanism correction — the axis order is now total.** `spread_axis_order` returns all three
+axes for every order (the named pair in order, the remaining axis last), instead of listing only
+the pair a family draws. The earlier cut silently dropped any axis an order did not mention —
+it cost Satoko 0's lateral under `PitchThenYaw` and Chie 2's before the fix. No measured family
+configures all three axes, so the trailing slot is unobservable and the failure mode is gone.
+
+**Next:** Takano 0, Irie 1 and Tomitake 2 — the three remaining "no flag field" re-reads — then
+Rika 2's `w[0x9e]`, then the world-origin decode for Keiichi 1/2, Rika 0 and Rika 2.
