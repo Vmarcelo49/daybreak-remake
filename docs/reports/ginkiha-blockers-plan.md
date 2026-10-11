@@ -1190,3 +1190,27 @@ still wrong. This is the same decode that fixed Rika 0's and Keiichi 2's charges
 yaw-versus-position confusion — share one shape: a witness that reads back what the binding wrote
 cannot falsify the binding. The world-geometry and direction witnesses added since take their
 numbers from the body; the spread witnesses are the remaining place that needs the same treatment.
+
+### 2026-10-10 — 3.25 Witness quality: restore the exact checks the review called out
+
+A second review of the spread fix found the replacement witnesses too weak, and one bound wrong.
+All three points were correct.
+
+**Fixed — Chie 2's exact checks restored.** Its sweep is deterministic (no draw; the counter steps
+by 3 between the shots the gate passes), so the offsets are exactly -1.5, 0, 1.5, 3. The witness
+pins 1.5° spacing, a monotonic direction and the 4.5° span. The global SIGN is still open and is
+named as a follow-up: the body adds the value to the BONE's angles while the witness measures yaw
+against the fighter's facing, and I have not established that those two bases rotate the same way.
+That is a convention to resolve, not to hide behind a range.
+
+**Fixed — Satoko 0's bound was mathematically wrong.** `(draw%240-120)*0.1` bounds an INDIVIDUAL
+offset to [-12.0, +11.9], so two shots may differ by 23.9; my "half-span <= 12.5" could reject a
+valid fan. Each offset is now checked against the body's own bounds, and the five shots must leave
+the muzzle at one point.
+
+**Fixed — Rika 1's muzzle check was too weak.** `|position.x| < 1000` establishes nothing. It now
+asserts the resolved `localOffset` is exactly zero on every shot — the rule's spec sets zero, so
+any nonzero value could only come from the spread.
+
+**Still open and next in line, in the reviewer's order:** the draw-order pinning for Rika 1 and
+Satoko 0, then Keiichi 2's range-based pitch term, then Tomitake 2's charge origins.

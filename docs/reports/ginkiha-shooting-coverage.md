@@ -56,10 +56,25 @@ the field the binding had written it to — the same self-confirming shape as th
 errors above. The witnesses now assert a swing: Satoko's five requests fan by direction, Chie's
 burst widens shot by shot, and Tomitake's row-5 shot swings off its deterministic row-7 partner.
 
-**Not pinned yet, and stated as such:** which draw each shot consumes, so the per-shot values are
-asserted as ordered steps and ranges rather than absolutes. The body's own bounds are known
-(`draw%14-7` for Rika 1, `draw%240-120` for Satoko 0), and a witness that pins the stream position
-is a follow-up.
+**Witness quality, corrected after a second review.** The first replacement witnesses were too
+loose, and one bound was mathematically wrong:
+
+* **Chie 2's sweep is deterministic** — no draw, the counter steps by 3 between the shots the gate
+  lets through — so its offsets are exactly −1.5, 0, 1.5, 3. The witness now pins the 1.5° spacing,
+  the monotonic direction and the 4.5° span. Only the global SIGN stays open, because the body adds
+  the value to the bone's angles while the witness measures yaw against the fighter's facing; that
+  convention is a named follow-up rather than a range. A "span between 4 and 8" would have accepted
+  wrong spacing, order or direction.
+* **Satoko 0's bound was wrong.** Each offset is `(draw%240-120)*0.1`, so an INDIVIDUAL offset lies
+  in [−12.0, +11.9] and two shots may differ by 23.9 — a "half-span ≤ 12.5" check can reject a
+  valid fan. The witness now checks each offset against the body's own bounds, and separately
+  asserts that all five shots leave the muzzle in one place.
+* **Rika 1's muzzle check was too weak.** `|position.x| < 1000` proves nothing. It now asserts the
+  resolved `localOffset` is exactly zero for every shot, which the rule's own spec sets and only the
+  spread could change.
+
+Still open: which draw each shot consumes (Rika 1's `draw%14-7`, Satoko 0's `draw%240-120`), so
+those two witnesses assert ordered structure and the body's bounds rather than absolutes.
 
 ### Correction: which axis the displacement uses
 
