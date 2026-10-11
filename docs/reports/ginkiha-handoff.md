@@ -160,6 +160,26 @@ Akane 2 defer note (2026-10-10): pinned handler identity/update, usage and origi
 
 Natsumi 0 scope note (2026-10-10): added `natsumi0` for the **normal ground state400 callback schedule only**: Hide prop bindings 0/1 from tick 14 onward, then Launch item row 0 at tick 14. This matches the controlled normal `fire_attachment(0,0,...)` request and the DAT registration map. The executor rebuilds prop bindings at the start of every tick, but the tick-14 Hide is applied before Launch during that same update, selecting the fallback bone-origin family. The test drives the actual Natsumi+item29 fixture. Phase labels are forced probes; raw callback flag/aim, exact geometry, actual projectile admission and natural phase reachability remain outside the claim. State 402 stays unbound despite an analogous raw helper call because no state402 normalized callback trace is included. The tag/boost five-row randomized requests and world-origin 450/460 charges also remain unbound.
 
+Rika 2 audit (2026-10-10, ledger slice): **the tag branches are bound; the normal tap's row
+selector is not.** `shoot_body_4_2_{400,402,450,460}` fires one `Bip01_R_Hand` request at tick
+15 in the taps and three fan requests at tick 10 in the charges. The old note said the tag
+branch needed "an aim/tag flag this model has no field for" — the flag is `w[0x1b7] < 3`, i.e.
+kGatePowered, and the tag branches are now bound: the tap fires THREE requests on rows 0, 2
+and 1 **in that order**, and the charges fire three on row 6 against row 4 normally. The
+witness checks both, including the row order.
+
+What is still open is the NORMAL tap's row selector: `w[0x9e]` picks row 2 below 0, row 0 in
+[0,1) and row 1 otherwise. It is READ in the corpus (including in FUN_0043ffc0's prologue) and
+**never written anywhere in it**, so it has no recovered source; that rule keeps the row-0
+reading the traces show. Every request in both branches also passes pitch 0 even though scratch
+`0x3c` is filled with the clamped ±40 target elevation immediately above and then unused.
+
+**Process note added to the ledger:** several families share byte-identical rule lines — Chie
+2's and Rika 2's 400 taps, and Takano 0's 402 against Rika 2's — so a file-wide string replace
+lands in the wrong table. It did while binding Rika 2, silently rewriting Chie 2's 400 and
+Takano 0's 402. The fix was to revert and scope every edit to the array's own text, asserting
+the occurrence count inside that scope. Future edits to this file should do the same.
+
 Rika 1 audit (2026-10-10, ledger slice): **the tap window is now counter-gated and its
 per-shot spread is bound; the charges keep their existing rules.** `shoot_body_4_1_400` fires
 while `tick > 11 && scratch < 30` on EVEN scratch values — ticks 12..40, fifteen shots. The

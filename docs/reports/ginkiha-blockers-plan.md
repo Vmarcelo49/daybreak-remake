@@ -900,3 +900,28 @@ inferred.
 **Next:** Rika 2's `w[0x9e]` row selector and three-request tag branch, then the four
 "no flag field" re-reads (Chie 2, Takano 0, Irie 1, Tomitake 2), then the world-origin decode
 that Keiichi 1/2 and Rika 0 are all waiting on.
+
+### 2026-10-10 — 3.13 Ledger order: Rika 2's tag branches, and an editing hazard
+
+**Done — Rika 2's tag branches bound** (handler 0x49d890). The note claimed they needed "an
+aim/tag flag this model has no field for"; the flag is `w[0x1b7] < 3` (kGatePowered). The tap's
+tag branch fires THREE `Bip01_R_Hand` requests on rows 0, 2 and 1 in that order; the charges'
+tag branch fires three fan requests on row 6 against row 4 normally. Both are witnessed,
+including the row order, and the tap's normal rule moved from the legacy adapter to the typed
+hand origin the body actually calls.
+
+**Open — Rika 2's normal tap row selector.** `w[0x9e]` picks row 2 below 0, row 0 in [0,1) and
+row 1 otherwise; it is READ throughout the corpus (FUN_0043ffc0's prologue included) and
+**never written anywhere in it**, so it needs original-binary work rather than more body
+reading. The rule keeps the row-0 reading the traces show.
+
+**Hazard found and recorded — identical rule lines across tables.** Chie 2's and Rika 2's 400
+taps are byte-identical, as are Takano 0's 402 and Rika 2's, so a file-wide string replace
+lands in the wrong table. It did: the first attempt at this slice silently rewrote **Chie 2's
+400 and Takano 0's 402**, and only the Rika 2 test failed — the corruption would have shipped
+silently otherwise. The edit was reverted and redone scoped to the `kRika2Rules` array with the
+occurrence count asserted inside that scope. Same discipline for every future table edit.
+
+**Next:** the four "no flag field" re-reads (Chie 2, Takano 0, Irie 1, Tomitake 2 — note Chie 2
+and Takano 0 were briefly corrupted here and are back at their committed state), Rika 2's
+`w[0x9e]`, then the world-origin decode for Keiichi 1/2, Rika 0 and Rika 2.

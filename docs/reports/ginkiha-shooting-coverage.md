@@ -32,10 +32,22 @@ each is a pending audit, not a missing flag:
 | Tomitake 2 | 1399 | "tag rows 6/2 have no flag field" |
 
 Rika 2's note was also wrong, and re-reading its body showed the branch hides two further
-gaps that a flag alone would not fix: the NORMAL tap's row is selected by `w[0x9e]` (row 2
-below 0, row 0 in [0,1), row 1 otherwise), the TAG tap fires three requests on rows 0, 2 and
-1, and every request passes pitch 0 even though scratch `0x3c` is filled with the clamped
-±40 target elevation and then unused. Its rules are unchanged pending a `w[0x9e]` decode.
+gaps that a flag alone would not fix. Its TAG branches are now bound — the tap fires three
+`Bip01_R_Hand` requests on rows 0, 2 and 1, and the charges fire three fan requests on row 6
+against row 4 normally. What remains is the **NORMAL** tap's row selector: `w[0x9e]` picks
+row 2 below 0, row 0 in [0,1) and row 1 otherwise, and `w[0x9e]` is READ throughout the corpus
+but **never written anywhere in it**, so it has no recovered source. That rule keeps the row-0
+reading the traces show, and every request's pitch stays 0 even though scratch `0x3c` is
+filled with the clamped ±40 target elevation and then unused.
+
+### Editing hazard: identical rule lines across tables
+
+Several families fire on the same tick with identical text — Chie 2's and Rika 2's 400 taps are
+both `{400,-1,15,15,MoveOp::Launch,0.f,0.f,40.f}`, and Takano 0's 402 matches Rika 2's. A
+file-wide string replace therefore lands in the wrong table, which is exactly what happened
+while binding Rika 2: the edit silently rewrote **Chie 2's 400 and Takano 0's 402** instead.
+Scope an edit to the array (locate `kXxxRules[] = {` through its closing `};` and operate on
+that substring), and assert the occurrence count *within that scope*.
 
 | Combo | Swap / item | Tap ground | Tap air | Charge 1 ground | Charge 1 air | Charge 2 ground | Charge 2 air | Available body count |
 |---|---|---|---|---|---|---|---|---|
@@ -53,7 +65,7 @@ below 0, row 0 in [0,1), row 1 otherwise), the TAG tap fires three requests on r
 | Satoko 2 | 12 / 38 | 400 twin world, gate-bound / rows 1 powered | 402 twin world, gate-bound / rows 1 powered | — / P | — / P | — / P | — / P | 18 |
 | Rika 0 | 13 / 7 | 400 attach, powered 4x row 1 / bound | 402 attach, powered 4x row 1 / bound | 450 attach, powered row 3 / bound | 460 attach, powered row 3 / bound | — / P | — / P | 20 |
 | Rika 1 | 14 / 19 | 400 hand L, 15-shot window counter-gated, spread-bound / no branch split | 402 attach @13 rows 1/7 gate-bound | 450 attach @13 rows 2/8 fixed 45° | 460 attach @12 rows 2/8 fixed 45° | — / P | — / P | 19 |
-| Rika 2 | 15 / 37 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 19 |
+| Rika 2 | 15 / 37 | 400 hand R, tag 3x rows 0/2/1 bound; normal row pending `w[0x9e]` | 402 same, tag-bound | 450 attach @10 rows 4/6 tag-bound | 460 attach @10 rows 4/6 tag-bound | — / P | — / P | 19 |
 | Shion 0 | 16 / 6 | — / P | — / P | — / P | — / P | — / P | — / P | 25 |
 | Shion 1 | 17 / 20 | — / P | — / P | — / P | — / P | — / P | — / P | 18 |
 | Shion 2 | 18 / 36 | — / P | — / P | — / P | — / P | — / P | — / P | 25 |
