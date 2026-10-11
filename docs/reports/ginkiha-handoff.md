@@ -332,6 +332,21 @@ position distance would mix the fan with the animation.
 `PitchThenYaw`, `YawThenPitch`, `PitchThenLateral` (Satoko 0) and `LateralThenPitch` (Rika 1).
 Rika 1 is the only measured family that draws the LATERAL first.
 
+Keiichi 2's charges bound (2026-10-10, later slice): **the combo is complete on all four
+states.** The charges (L12186-12217) are WORLD requests, not attachments: the actor's position
+displaced `-50` on the PERPENDICULAR axis — `0x42480000` against the table at `yaw + 90`
+(`0x42b40000`) — at height +40 (`0x42200000`), with the elevation latched at tick 13 and clamped
+±40. So they are `origin_actor_relative(-50, 0, 40)`, rows 2 normal / 3 powered on kGatePowered.
+Witnessed exactly: -50 on X, 0 on the forward line, +40 above, at facing 0.
+
+**Axis correction that also fixed Rika 0.** A world position is built from TWO table lookups — at
+`yaw` for forward and at `yaw + 90` for perpendicular — and which one a constant multiplies is
+what decides the `origin_actor_relative(right, forward, height)` arguments. Rika 0's tap
+multiplies the `yaw + 90` table by ±50 and the `yaw` table by 10, so it is `(±50, 10, 70)`, LATERAL
+and not forward. The earlier binding had the axis inverted, and its witness could not catch it: the
+pair is 100 apart whichever axis it lies on. The witness now checks the X separation, the shared
+forward line and the forward offset separately.
+
 Rika 0 audit (2026-10-10, ledger slice): **the powered branches are bound; the twin
 separation is not.** `shoot_body_4_0_{400,402,450,460}` fires TWIN world requests at tick 15
 in the taps and at ticks 15 AND 25 in the charges. The taps are TWO requests on row 0

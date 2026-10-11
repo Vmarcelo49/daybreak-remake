@@ -1120,3 +1120,22 @@ quote; hex floats must be decoded.
 
 **Next:** the Keiichi 2 charge origins (same decode, `0x42480000` = 50 at height +40), Rika 0's
 charge origins (R = 25, height +50), then the state-transition op for Irie 1's 401.
+
+### 2026-10-10 — 3.22 Keiichi 2's charges, and the axis the displacement uses
+
+**Done — Keiichi 2's charges bound** (handler 0x47b940), completing the combo on all four states.
+The charges (L12186-12217) are WORLD requests: the actor's position displaced `-50` on the
+PERPENDICULAR axis (`0x42480000` against the table at `yaw + 90`) at height +40 (`0x42200000`),
+elevation latched at tick 13 and clamped ±40 → `origin_actor_relative(-50, 0, 40)`, rows 2 normal /
+3 powered. Witnessed exactly (-50 X, 0 forward, +40 up at facing 0).
+
+**Correction — the axis, which also fixed Rika 0.** A world position comes from TWO table lookups:
+at `yaw` for forward, at `yaw + 90` for perpendicular. Which one a constant multiplies decides the
+`origin_actor_relative` arguments. Rika 0's tap multiplies the `yaw + 90` table by ±50 and the `yaw`
+table by 10, so it is `(±50, 10, 70)` — LATERAL, not forward. The round-15 binding had it inverted
+and its witness could not tell: the pair is 100 apart either way, so the check passed. The witness
+now asserts the X separation, the shared forward line and the forward offset as three separate
+facts, which is the shape a geometry witness needs.
+
+**Next:** Rika 0's charges (`25` lateral at height `+50`, rows 2/3 — the same decode), then the
+state-transition op for Irie 1's 401, then the remaining `w[0x19]` movement-offset term.

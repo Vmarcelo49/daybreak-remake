@@ -34,6 +34,19 @@ but **never written anywhere in it**, so it has no recovered source. That rule k
 reading the traces show, and every request's pitch stays 0 even though scratch `0x3c` is
 filled with the clamped ±40 target elevation and then unused.
 
+### Correction: which axis the displacement uses
+
+A body's world position is built from **two** table lookups: the table at `yaw` gives the forward
+components and the table at `yaw + 90` (`0x42b40000`) gives the perpendicular ones. Reading which
+one a constant multiplies is what decides `origin_actor_relative(right, forward, height)`.
+
+* Rika 0's tap multiplies the **`yaw + 90`** table by ±50 and the `yaw` table by 10, so the pair
+  is `(±50, 10, 70)` — **lateral**, not forward. The first binding had it as forward ±50, and its
+  witness could not tell the difference because the pair is 100 apart either way; the witness now
+  checks the pair's X separation, the shared forward line and the 10-unit forward offset.
+* Keiichi 2's charges multiply the **`yaw + 90`** table by −50 and pass height +40, so they are
+  `(-50, 0, 40)` — a pure lateral offset, not the attachment the adapter implied.
+
 ### Correction: float constants must be decoded, not eyeballed
 
 Two bindings this pass quoted a displacement or height that the hex does not say, and one of
@@ -137,7 +150,7 @@ that substring), and assert the occurrence count *within that scope*.
 | Mion 2 | 6 / 35 | 400 slot 0 @teleport-tick 10, rows 0/1 | 402 slot 0 @18, rows 0/1, freeze 10 | 450 phase-1 emissions @15..60 rows 2/3, spread-bound (+0x1c8 unmodelled) | 460 same as 450 | — / P | — / P | 24 |
 | Keiichi 0 | 7 / 5 | 400 hand R, gate-bound / rows 3 powered | 402 hand R, gate-bound / rows 3 powered | 450 hand L + attach, gate-bound / rows 4 powered | 460 hand L + attach, gate-bound / rows 4 powered | — / P | — / P | 20 |
 | Keiichi 1 | 8 / 18 | 400 hand R, gate-bound / rows 1 powered | 402 hand R, gate-bound / rows 1 powered | 450 world pair, gate-bound / rows 3 powered | 460 world pair, gate-bound / rows 3 powered | — / P | — / P | 19 |
-| Keiichi 2 | 9 / 34 | 400 sweep, gate-bound / rows 1 powered | 402 sweep, gate-bound / rows 1 powered | 450 world @13 rows 2/3 measured, unbound | 460 world @13 rows 2/3 measured, unbound | — / P | — / P | 18 |
+| Keiichi 2 | 9 / 34 | 400 sweep, gate-bound / rows 1 powered | 402 sweep, gate-bound / rows 1 powered | 450 world -50 lateral @h40 @13 rows 2/3 gate-bound | 460 world -50 lateral @h40 @13 rows 2/3 | — / P | — / P | 18 |
 | Satoko 0 | 10 / 8 | 400 hand fan, gate-bound / rows 1 powered | 402 hand fan, gate-bound / rows 1 powered | 450? / P | 460? / P | — / P | — / P | 18 |
 | Satoko 1 | 11 / 17 | 400 periodic +50 @h50, gate-bound / rows 1 powered | 402 periodic +50 @h50, gate-bound / rows 1 powered | 450 tick-35 pair + periodic, bound | 460 tick-35 pair + periodic, bound | — / P | — / P | 18 |
 | Satoko 2 | 12 / 38 | 400 twin world, gate-bound / rows 1 powered | 402 twin world, gate-bound / rows 1 powered | — / P | — / P | — / P | — / P | 18 |
