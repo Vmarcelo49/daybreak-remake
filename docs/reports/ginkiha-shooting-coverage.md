@@ -52,7 +52,7 @@ below 0, row 0 in [0,1), row 1 otherwise), the TAG tap fires three requests on r
 | Satoko 1 | 11 / 17 | 400 periodic +600, gate-bound / rows 1 powered | 402 periodic +600, gate-bound / rows 1 powered | 450 tick-35 pair + periodic, bound | 460 tick-35 pair + periodic, bound | — / P | — / P | 18 |
 | Satoko 2 | 12 / 38 | 400 twin world, gate-bound / rows 1 powered | 402 twin world, gate-bound / rows 1 powered | — / P | — / P | — / P | — / P | 18 |
 | Rika 0 | 13 / 7 | 400 attach, powered 4x row 1 / bound | 402 attach, powered 4x row 1 / bound | 450 attach, powered row 3 / bound | 460 attach, powered row 3 / bound | — / P | — / P | 20 |
-| Rika 1 | 14 / 19 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 19 |
+| Rika 1 | 14 / 19 | 400 hand L, 15-shot window counter-gated, spread-bound / no branch split | 402 attach @13 rows 1/7 gate-bound | 450 attach @13 rows 2/8 fixed 45° | 460 attach @12 rows 2/8 fixed 45° | — / P | — / P | 19 |
 | Rika 2 | 15 / 37 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 19 |
 | Shion 0 | 16 / 6 | — / P | — / P | — / P | — / P | — / P | — / P | 25 |
 | Shion 1 | 17 / 20 | — / P | — / P | — / P | — / P | — / P | — / P | 18 |
@@ -100,6 +100,11 @@ Four more shared capabilities landed with this snapshot:
   the named bone matrix or fail explicitly (never substitute). Keiichi 0/1 are the first
   users (right hand taps, left-hand charge request). The rig bone-existence check plus
   the origin KIND on the armed request is the witness pattern.
+- **A stated draw order across three axes.** The spread's axes are drawn in the order the
+  body states, named per rule: `PitchThenYaw` (most families), `YawThenPitch` (Keiichi 2),
+  `PitchThenLateral` (Satoko 0) and `LateralThenPitch` (Rika 1). Rika 1 is the family that
+  draws the LATERAL first, and its witness pins that: shots 1-3 must offset the hand by
+  1, 1 and -5 and pitch at -3, 0 and -4. Swapping the draws moves all six values.
 - **The periodically-repeating world shot.** Satoko 1's weapon is not a salvo at all: a
   countdown starts at 120, drops one a tick, and the request fires whenever it is
   `1 mod 30`, in *every* state of the family — ticks 28, 58, 88. `kGateCounterMod` already

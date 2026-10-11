@@ -874,3 +874,29 @@ charges; the port's adapter origin places both at the same point. Needs the worl
 **Next:** re-read the four remaining "no flag field" sites and bind their powered branches,
 then Rika 1's audit, then the Rika 2 `w[0x9e]` decode, then the Keiichi/‌Rika world-origin
 decode.
+
+### 2026-10-10 — 3.12 Ledger order: Rika 1's tap window and its lateral-first spread
+
+**Done — Rika 1's tap audited and simplified** (handler 0x492f70). The body fires while
+`tick > 11 && scratch < 30` on EVEN scratch values (ticks 12..40, fifteen shots). Because the
+scratch only increments inside the window it equals `tick - 12`, so the even test is the
+tick's own parity — one `kGateCounterMod` rule over the tick window replaces the fifteen
+unrolled anchors, and it sits before the Counter so it reads the pre-increment value the body
+does. The binding's own comment had invited this ("a counter gate would express that window
+directly") while keeping the anchors; that tension is now resolved.
+
+Each shot's spread is bound too: `draw%14 - 7` of LATERAL offset drawn FIRST, then
+`draw%10 - 5` of pitch over the live clamped ±40 target elevation. The witness pins the window,
+the pitches -3/0/-4 and the lateral offsets 1/1/-5 against the canonical stream; swapping the
+draws moves all six. Two stale claims in the old comment were corrected: the row and the hand
+both come from the body's own `FUN_00435220` call, and the item table was not the source.
+
+**New mechanism — three-axis draw order.** `SpreadOrder` now names the measured pairs:
+`PitchThenYaw`, `YawThenPitch`, `PitchThenLateral` (Satoko 0) and `LateralThenPitch` (Rika 1).
+The first attempt only named three orders and silently stopped drawing Satoko 0's lateral;
+the suite caught it (three failures), which is why the fourth is enumerated rather than
+inferred.
+
+**Next:** Rika 2's `w[0x9e]` row selector and three-request tag branch, then the four
+"no flag field" re-reads (Chie 2, Takano 0, Irie 1, Tomitake 2), then the world-origin decode
+that Keiichi 1/2 and Rika 0 are all waiting on.

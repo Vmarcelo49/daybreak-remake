@@ -160,6 +160,27 @@ Akane 2 defer note (2026-10-10): pinned handler identity/update, usage and origi
 
 Natsumi 0 scope note (2026-10-10): added `natsumi0` for the **normal ground state400 callback schedule only**: Hide prop bindings 0/1 from tick 14 onward, then Launch item row 0 at tick 14. This matches the controlled normal `fire_attachment(0,0,...)` request and the DAT registration map. The executor rebuilds prop bindings at the start of every tick, but the tick-14 Hide is applied before Launch during that same update, selecting the fallback bone-origin family. The test drives the actual Natsumi+item29 fixture. Phase labels are forced probes; raw callback flag/aim, exact geometry, actual projectile admission and natural phase reachability remain outside the claim. State 402 stays unbound despite an analogous raw helper call because no state402 normalized callback trace is included. The tag/boost five-row randomized requests and world-origin 450/460 charges also remain unbound.
 
+Rika 1 audit (2026-10-10, ledger slice): **the tap window is now counter-gated and its
+per-shot spread is bound; the charges keep their existing rules.** `shoot_body_4_1_400` fires
+while `tick > 11 && scratch < 30` on EVEN scratch values — ticks 12..40, fifteen shots. The
+scratch only increments inside that window, so it equals `tick - 12` and the parity is the
+tick's own: one `kGateCounterMod` rule over the tick window replaces the fifteen unrolled
+anchors, stated before the Counter so it reads the pre-increment value the body does. Each
+shot draws `draw%14 - 7` of LATERAL offset first and then `draw%10 - 5` of pitch over the live
+clamped (+-40) target elevation (L21797-21805). The hand is `Bip01_L_Hand` and the row is 0,
+both from the body's own `FUN_00435220` call — the older note claiming the row came only from
+the item table was wrong, and the note claiming a counter gate would be "kept explicit because
+already verified" is retired.
+
+The witness pins the window (fifteen shots), the pitch values -3/0/-4 and the lateral offsets
+1/1/-5 against the canonical stream. The lateral is read off the RESOLVED origin
+(`origin.localOffset[0]`), not the world position: the hand bone moves between ticks, so a
+position distance would mix the fan with the animation.
+
+**New mechanism:** the spread axes are now drawn in a stated order across three axes —
+`PitchThenYaw`, `YawThenPitch`, `PitchThenLateral` (Satoko 0) and `LateralThenPitch` (Rika 1).
+Rika 1 is the only measured family that draws the LATERAL first.
+
 Rika 0 audit (2026-10-10, ledger slice): **the powered branches are bound; the twin
 separation is not.** `shoot_body_4_0_{400,402,450,460}` fires TWIN world requests at tick 15
 in the taps and at ticks 15 AND 25 in the charges. The taps are TWO requests on row 0
