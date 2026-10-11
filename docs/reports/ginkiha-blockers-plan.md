@@ -1214,3 +1214,36 @@ any nonzero value could only come from the spread.
 
 **Still open and next in line, in the reviewer's order:** the draw-order pinning for Rika 1 and
 Satoko 0, then Keiichi 2's range-based pitch term, then Tomitake 2's charge origins.
+
+### 2026-10-10 — 3.26 The legacy-yaw convention, pinned
+
+A third review supplied the explanation for the yaw inversion I had left open, and it checks out
+against both the source and the resolver:
+
+* `FUN_00435250` (L29) aims at `legacyYaw = 90 - actorHeading + offset`;
+* the resolver's legacy kinds (`ActorHeadingTargetElevation`, `StoredPitch`,
+  `ElevationPlusRange`) build the direction as `(cos legacyYaw, _, sin legacyYaw)`;
+* converting back to the remake's yaw gives **`shotYaw - fighterFacing = -offset`**, while the
+  remake-basis kinds (`TargetElevation`, `FixedAngles`) give `+offset`.
+
+Every hand family here binds `aim_target_elevation`, which returns `ActorHeadingTargetElevation` —
+the legacy kind — so their body offsets arrive at a witness **negated**. `-1.5` measuring as `+1.5`
+is therefore the expected conversion, not a mystery, and the tests now say so in a named helper
+with the derivation beside it.
+
+**Acted on:**
+
+* **Chie 2's signed values are pinned exactly.** Its sweep is deterministic, so
+  `remake_yaw_for_legacy_offset(-1.5, 0, 1.5, 3)` is asserted per shot. Spacing plus monotonicity
+  alone would have allowed the whole sweep to shift.
+* **Satoko 0's bounds converted.** The body's `(draw%240-120)*0.1` is [-12.0, +11.9], so the shot
+  sees [-11.9, +12.0]; the raw bounds could reject a valid +12. Rika 1's [-7, +6] converts to
+  [-6, +7] and is checked the same way.
+* **The comment corrected.** The helper adds the offset to the actor's HEADING and movement
+  offset; the bone matrix supplies the origin only. My earlier wording ("the bone's angles") was
+  misleading, and it is what made the inversion look unexplained.
+
+**Order for what remains, per the reviews:** finish Keiichi 2's range-based pitch term, then
+Tomitake 2's charge origins, then draw-order pinning for Rika 1 and Satoko 0, then an independent
+launch-position check against the posed hand (Rika 1's `localOffset == 0` is a regression check for
+the muzzle bug, not that verification).

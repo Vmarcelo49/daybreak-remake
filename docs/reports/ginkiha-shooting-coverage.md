@@ -73,8 +73,34 @@ loose, and one bound was mathematically wrong:
   resolved `localOffset` is exactly zero for every shot, which the rule's own spec sets and only the
   spread could change.
 
-Still open: which draw each shot consumes (Rika 1's `draw%14-7`, Satoko 0's `draw%240-120`), so
-those two witnesses assert ordered structure and the body's bounds rather than absolutes.
+**The yaw inversion is explained, and now stated as a convention rather than left open.** A
+third review traced it to the resolver: `FUN_00435250` aims at `legacyYaw = 90 − actorHeading +
+offset`, and the resolver's legacy kinds build the direction as `(cos legacyYaw, _, sin
+legacyYaw)`. Converting back to the remake's yaw gives
+
+```
+shotYaw − fighterFacing = −offset
+```
+
+The remake-basis kinds use `yaw = facing + offset` directly. Every hand family here binds
+`aim_target_elevation`, which returns `ActorHeadingTargetElevation` — the LEGACY kind — so their
+body offsets reach a witness **negated**. That is why `−1.5°` measured as `+1.5°`, and it is a
+conversion, not an unexplained bone rotation.
+
+With the convention established:
+
+* **Chie 2's signed values are pinned exactly** — `remake_yaw_for_legacy_offset(−1.5, 0, 1.5, 3)`.
+  Spacing and monotonicity alone would have permitted the whole sweep to shift.
+* **Satoko 0's bounds are converted with the offsets**: `(draw%240−120)*0.1` is [−12.0, +11.9] in
+  the body, i.e. **[−11.9, +12.0]** at the shot, so the raw bounds would have rejected a valid +12.
+  Rika 1's `draw%14−7`, i.e. [−7, +6], converts to [−6, +7] and is checked the same way.
+* The comment claiming the helper adds the offset to "the bone's angles" was wrong: it adds it to
+  the **actor's heading and movement offset**; the bone matrix supplies the ORIGIN only.
+
+Still open: which draw each shot consumes, so Rika 1 and Satoko 0 bound their values against the
+body's converted ranges rather than pinning each one. Also open, and deliberately not claimed:
+Rika 1's zero-`localOffset` check is a regression check for the muzzle bug, but it does not yet
+verify the launch position against the posed hand.
 
 ### Correction: which axis the displacement uses
 
