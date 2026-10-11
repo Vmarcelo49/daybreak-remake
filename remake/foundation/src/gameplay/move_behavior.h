@@ -998,13 +998,32 @@ inline constexpr MoveRule kTomitakeRules[] = {
 // vs dc20 both map to Turn by value (distinction illegible); the w0x10 gravity tails
 // and the one-shot w0x15 halve are vertical physics with no MoveRule op — skipped.
 inline constexpr MoveRule kKeiichiRules[] = {
-    // 400 ground tap: 20 deg turn phase 0 ticks 0-11, bleed 0.5/tick phase 0 open-ended.
+    // 400 ground tap (L10331-10456): 20 deg turn while phase 0 and tick under 12, and an
+    // eleven-tick SWEEP from tick 10 to 20 (9 < tick < 0x15). Each tick grows scratch 0x3a
+    // by 2 and fires one slot-0 request aimed `0x3a - 15 + draw%10` on the yaw with
+    // `draw%10 + 5` of pitch over the clamped target elevation (+-30), row 0 normally and
+    // row 1 powered. The yaw draw comes FIRST (0x3b <- draw 1, 0x3c <- draw 2).
     {400,0,0,11,MoveOp::Turn,20.f},
     {400,0,0,9999,MoveOp::Decelerate,.5f},
-    {400,-1,10,20,MoveOp::Launch,0.f,0.f,30.f},
-    // 402 air tap: same window, turn without phase gate, no bleed.
+    {400,0,0,0,MoveOp::CounterSet,0.f},
+    {400,-1,10,20,MoveOp::Counter,2.f},
+    {400,-1,10,20,MoveOp::CapturePitch,0.f,30.f,30.f},
+    {400,-1,10,20,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadTapSweep},
+    {400,-1,10,20,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadTapSweep},
+    // 402 air tap (L10584-10706): the same window and sweep on the movement-preserving
+    // turn helper, 20 deg while tick under 12. State 401 (L10457) is the same request
+    // with an extra 15 deg phase-0 turn and no state-403 abort; the port binds 402, which
+    // is the air-tap slot the other combos use, and leaves 401 unbound.
     {402,-1,0,11,MoveOp::Turn,20.f},
-    {402,-1,10,20,MoveOp::Launch,0.f,0.f,30.f},
+    {402,0,0,0,MoveOp::CounterSet,0.f},
+    {402,-1,10,20,MoveOp::Counter,2.f},
+    {402,-1,10,20,MoveOp::CapturePitch,0.f,30.f,30.f},
+    {402,-1,10,20,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadTapSweep},
+    {402,-1,10,20,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadTapSweep},
     // 450 ground charge1: 18 deg turn through tick 12, bleed 0.75/tick, single salvo
     // row 2 at tick 13, clock-rewind stalls +10f at tick 5 and +15f at tick 32 (Hold
     // rules; the per-rule latch in the executor gives each stall its full length).

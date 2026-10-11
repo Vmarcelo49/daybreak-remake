@@ -2579,6 +2579,117 @@ void test_rena0_powered_branches() {
                second.phase_elapsed() >= 13);
 }
 
+void test_keiichi2_tap_sweep() {
+    section("43. Keiichi 2 sweeping tap (bodies shoot_body_2_2_400/402)");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_keiichiCombo.load(install, 2, 2))
+        return skip_case("Keiichi 2 combo");
+    // The tap fires ONE slot-0 request a tick for eleven ticks (10..20), rows 0/1, and
+    // each request aims `0x3a - 15 + draw%10` on the yaw with `draw%10 + 5` of pitch over
+    // the clamped target elevation. 0x3a grows by 2 a tick, so the volley sweeps. The
+    // yaw draw is taken FIRST, which is unique to this family.
+    const auto* program = gameplay::move_program(&g_keiichiCombo.moves);
+    check_bool("Keiichi 2 program is bound", true,
+               program && program->rules == gameplay::kKeiichiRules);
+    Fighter f;
+    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_keiichiCombo.bind(f);
+    settle(f);
+    Input in;
+    in.set(fnd::input::Action::Shoot, true);
+    tick(f, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(f, in);
+    check_int("Keiichi 2 tap enters ShootA", static_cast<int>(FighterState::ShootA),
+              static_cast<int>(f.state()));
+    std::vector<gameplay::PendingShot> shots;
+    int guard = 0;
+    while (shots.size() < 11 && guard++ < 60) {
+        tick(f, in);
+        for (gameplay::PendingShot s = f.take_pending_shot(); s.armed;
+             s = f.take_pending_shot())
+            shots.push_back(s);
+    }
+    check_int("the tap fires eleven requests", 11, (int)shots.size());
+    if (shots.size() == 11) {
+        bool allRowZero = true, allSlotZero = true;
+        for (const auto& s : shots) {
+            allRowZero &= s.bulletRow == 0;
+            allSlotZero &= s.origin.attachmentSlot == 0;
+        }
+        check_bool("every normal tap request uses item row 0", true, allRowZero);
+        check_bool("every normal tap request uses slot 0", true, allSlotZero);
+        // The sweep: the yaw must move monotonically except for the +/-10 jitter, so the
+        // first and last requests are far apart while consecutive ones stay close.
+        auto yawOf = [](const gameplay::PendingShot& s) {
+            return 90.f - glm::degrees(std::atan2(s.dir.x, s.dir.z));
+        };
+        const float first = yawOf(shots.front());
+        const float last = yawOf(shots.back());
+        check_bool("the tap sweeps across the arc", true, std::abs(last - first) > 8.f);
+        bool stepSane = true;
+        for (std::size_t i = 1; i < shots.size(); ++i) {
+            const float step = yawOf(shots[i]) - yawOf(shots[i - 1]);
+            stepSane &= std::abs(step) < 20.f;   // 2 deg of sweep plus <=9 of jitter
+        }
+        check_bool("consecutive sweep steps stay within the body's range", true, stepSane);
+        // The pitch is `draw%10 + 5 + clamped elevation`; with no opponent the elevation
+        // is 0, so every request pitches inside [5, 15) degrees.
+        bool pitchInRange = true;
+        for (const auto& s : shots) {
+            const float deg = glm::degrees(std::asin(std::clamp(s.dir.y, -1.f, 1.f)));
+            pitchInRange &= deg >= 4.9f && deg < 15.f;
+        }
+        check_bool("tap pitch stays inside the body's 5..15 range", true, pitchInRange);
+        // Exact arithmetic, which pins the counter, the jitter and the DRAW ORDER at once.
+        // The canonical stream's first four residues are 2, 2, 4, 5. The body writes 0x3b
+        // (yaw) from the FIRST draw and 0x3c (pitch) from the second, so:
+        //   tick 10, counter 2: yaw = 2 - 15 + 2 = -11, pitch = 0 + 2 + 5 = 7
+        //   tick 11, counter 4: yaw = 4 - 15 + 4 =  -7, pitch = 0 + 5 + 5 = 10
+        // Drawing pitch first would give -6 / 9 on the second request instead.
+        check_near("first request yaws at counter 2 minus 15 plus draw 2", 90.f - 11.f,
+                   yawOf(shots[0]), 0.2f);
+        check_near("first request pitches at draw 2 plus 5",
+                   std::sin(glm::radians(7.f)), shots[0].dir.y, 1e-3f);
+        check_near("second request yaws at counter 4 minus 15 plus draw 4", 90.f - 7.f,
+                   yawOf(shots[1]), 0.2f);
+        check_near("second request pitches at draw 5 plus 5 (yaw is drawn first)",
+                   std::sin(glm::radians(10.f)), shots[1].dir.y, 1e-3f);
+    }
+
+    // Powered: the same sweep on row 1.
+    Fighter p;
+    p.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_keiichiCombo.bind(p);
+    settle(p);
+    p.set_hypermode(Hypermode::Oyashiro);
+    p.set_hyper_gauge(1.f);
+    Input sp;
+    sp.set(fnd::input::Action::Special, true);
+    tick(p, sp);
+    sp.set(fnd::input::Action::Special, false);
+    tick(p, sp);
+    gameplay::ShootingContext context;
+    context.aimHold = true;
+    p.set_shooting_context(context);
+    sp.set(fnd::input::Action::Shoot, true);
+    tick(p, sp);
+    sp.set(fnd::input::Action::Shoot, false);
+    tick(p, sp);
+    std::vector<int> rows;
+    guard = 0;
+    while (rows.size() < 11 && guard++ < 60) {
+        tick(p, sp);
+        for (gameplay::PendingShot s = p.take_pending_shot(); s.armed;
+             s = p.take_pending_shot())
+            rows.push_back(s.bulletRow);
+    }
+    bool allRowOne = !rows.empty();
+    for (int r : rows) allRowOne &= r == 1;
+    check_int("powered tap fires eleven requests", 11, (int)rows.size());
+    check_bool("powered tap uses item row 1 throughout", true, allRowOne);
+}
+
 void test_simulation_rng_stream() {
     section("40. simulation RNG: MT19937 recovered from FUN_0065d150/FUN_0065d0c0");
     // The port reproduces the original's ALGORITHM, not its stream position. The pins
@@ -4281,6 +4392,7 @@ int main(int argc, char** argv) {
     test_satoko_five_shot();
     test_rika0_twin_tick();
     test_rena1_normal_schedule();
+    test_keiichi2_tap_sweep();
     test_simulation_rng_stream();
     test_spread_draw_order();
     test_rena2_ring();

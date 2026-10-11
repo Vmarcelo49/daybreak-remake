@@ -1511,17 +1511,25 @@ void Fighter::launch_bullet(int row, const ShotOriginSpec& origin, const ShotAim
     // The bodies' spread, in the order they draw it: the PITCH jitter first (it is added
     // to the already-clamped scratch), then the yaw offset. Zero moduli consume no draw,
     // so a deterministic rule leaves the shared stream untouched.
-    if (spread.pitchModulus > 0) {
-        const int draw = static_cast<int>(rng_source().modulo(
-            static_cast<std::uint32_t>(spread.pitchModulus)));
-        resolvedAim.pitchDegrees += (static_cast<float>(draw) + spread.pitchOffset) *
-                                    spread.pitchScale;
-    }
-    if (spread.yawModulus > 0) {
-        const int draw = static_cast<int>(rng_source().modulo(
-            static_cast<std::uint32_t>(spread.yawModulus)));
-        resolvedAim.yawDegrees += (static_cast<float>(draw) + spread.yawOffset) *
-                                  spread.yawScale;
+    // The sweep first: a body that grows a scratch each tick aims `counter * yawPerTick`
+    // off its base, and the jitter below is added on top.
+    resolvedAim.yawDegrees += static_cast<float>(m_moveCounter) * spread.yawPerTick;
+    const bool pitchFirst = spread.order == SpreadOrder::PitchThenYaw;
+    for (int pass = 0; pass < 2; ++pass) {
+        const bool doPitch = (pass == 0) == pitchFirst;
+        if (doPitch) {
+            if (spread.pitchModulus <= 0) continue;
+            const int draw = static_cast<int>(rng_source().modulo(
+                static_cast<std::uint32_t>(spread.pitchModulus)));
+            resolvedAim.pitchDegrees += (static_cast<float>(draw) + spread.pitchOffset) *
+                                        spread.pitchScale;
+        } else {
+            if (spread.yawModulus <= 0) continue;
+            const int draw = static_cast<int>(rng_source().modulo(
+                static_cast<std::uint32_t>(spread.yawModulus)));
+            resolvedAim.yawDegrees += (static_cast<float>(draw) + spread.yawOffset) *
+                                      spread.yawScale;
+        }
     }
     if (resolvedOrigin.kind == ShotOriginKind::MoveRuleAdapter) {
         if (legacyLateral != 0.f) {

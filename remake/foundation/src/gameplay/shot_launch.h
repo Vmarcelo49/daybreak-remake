@@ -123,6 +123,12 @@ inline constexpr ShotOriginSpec origin_attachment_slot(int slot) {
 // A zero modulus means the axis is deterministic and MUST consume no draw, so an unset
 // spread cannot shift the stream. The two axes are independently shaped because the
 // bodies clamp the pitch before jittering it while the yaw offset is unclamped.
+// Which draw the bodies take first. Most families load the pitch jitter first (Mion 1/2,
+// Rena 2), but Keiichi 2's tap reads the YAW draw first (shoot_body_2_2_400: `0x3b` is
+// written from the first draw and `0x3c` from the second), and the order decides which
+// value each axis receives — so it is stated per rule rather than assumed.
+enum class SpreadOrder { PitchThenYaw, YawThenPitch };
+
 struct ShotSpreadSpec {
     int pitchModulus = 0;
     float pitchOffset = 0.f;
@@ -130,6 +136,12 @@ struct ShotSpreadSpec {
     int yawModulus = 0;
     float yawOffset = 0.f;
     float yawScale = 0.f;
+    // Added to the yaw BEFORE the jitter, as `counter * yawPerTick`. Some bodies sweep:
+    // Keiichi 2's tap grows a scratch by 2 a tick and aims `scratch - 15 + draw%10`, so
+    // the shot walks across the arc instead of firing straight. The counter is the move's
+    // own (MoveOp::Counter), which is what the body's scratch is.
+    float yawPerTick = 0.f;
+    SpreadOrder order = SpreadOrder::PitchThenYaw;
 };
 
 inline constexpr ShotSpreadSpec spread_pitch_then_yaw(int pitchModulus, float pitchOffset,
@@ -153,5 +165,12 @@ inline constexpr ShotSpreadSpec kSpreadEmissionJitter =
 // `heading + offset + 90 - rand%180`, so the yaw draw is subtracted through its scale.
 inline constexpr ShotSpreadSpec kSpreadRing =
     spread_pitch_then_yaw(30, 20.f, 1.f, 180, 0.f, -1.f);
+
+// Keiichi 2's tap (shoot_body_2_2_400/402): the shot SWEEPS. A scratch grows by 2 a tick
+// and the request aims `scratch - 15 + draw%10` on the yaw, with `draw%10 + 5` of pitch
+// over the clamped target elevation. It is the one family that draws the YAW first
+// (`0x3b` comes from the first draw and `0x3c` from the second), so the order is stated.
+inline constexpr ShotSpreadSpec kSpreadTapSweep =
+    ShotSpreadSpec{10, 5.f, 1.f, 10, -15.f, 1.f, 1.f, SpreadOrder::YawThenPitch};
 
 } // namespace gameplay
