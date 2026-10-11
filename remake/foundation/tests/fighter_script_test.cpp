@@ -284,10 +284,29 @@ int count_live_sparks(const ProjectilePool& pool) {
 // ===========================================================================
 namespace {
 // The heading a pending shot flies at. A hand/attachment request's "lateral" argument is a YAW
-// offset (FUN_00435250 adds it to the bone's own angles), so a spread shows up here and not in
-// the origin's position — which is what the first version of these witnesses wrongly read.
+// offset (FUN_00435250 / L29 adds it to the actor's heading and movement offset), so a spread
+// shows up here and not in the origin's position — which is what the first version of these
+// witnesses wrongly read.
 float shot_yaw(const gameplay::PendingShot& shot) {
     return glm::degrees(std::atan2(shot.dir.x, shot.dir.z));
+}
+
+// THE CONVENTION, from FUN_00435250 and the resolver — the reason an expected direction has to
+// be CONVERTED rather than copied:
+//
+//   FUN_00435250 aims at `legacyYaw = 90 - actorHeading + offset`, and the resolver's legacy
+//   kinds (ActorHeadingTargetElevation, StoredPitch, ElevationPlusRange) build the direction as
+//   (cos legacyYaw, _, sin legacyYaw). Converting back to the remake's yaw gives
+//
+//       shotYaw - fighterFacing = -offset
+//
+//   The remake-basis kinds (TargetElevation, FixedAngles) use `yaw = facing + offset`, so for
+//   those `shotYaw - fighterFacing = +offset`.
+//
+// Every hand family here — Rika 1, Satoko 0, Chie 2, Tomitake 2 — binds aim_target_elevation,
+// which is the LEGACY kind, so their body offsets reach the witness NEGATED.
+float remake_yaw_for_legacy_offset(float bodyOffsetDegrees) {
+    return -bodyOffsetDegrees;
 }
 }  // namespace
 
@@ -2060,6 +2079,13 @@ void test_rika_repeating_tap() {
             muzzleUntouched &= p[0] == 0.f && p[1] == 0.f && p[2] == 0.f;
         check_bool("Rika 1 tap leaves the muzzle offset untouched by the spread", true,
                    muzzleUntouched);
+        // `draw%14 - 7` is [-7, +6] in the body, i.e. [-6, +7] once the legacy aim converts it.
+        bool yawsInRange = true;
+        for (float y : tapOffsets)
+            yawsInRange &= y >= remake_yaw_for_legacy_offset(6.f) - 0.05f &&
+                           y <= remake_yaw_for_legacy_offset(-7.f) + 0.05f;
+        check_bool("Rika 1 tap yaws stay inside the body's converted -6..+7", true,
+                   yawsInRange);
     }
 
     Fighter g;
@@ -2581,16 +2607,16 @@ void test_chie_scratch_burst() {
         bool evenSpacing = burstOffsets.size() == 4;
         for (std::size_t i = 1; i < burstOffsets.size() && evenSpacing; ++i)
             evenSpacing = std::abs(std::abs(burstOffsets[i] - burstOffsets[i - 1]) - 1.5f) < 0.05f;
-        check_bool("Chie burst steps exactly 1.5 degrees between shots", true, evenSpacing);
-        bool monotonic = burstOffsets.size() == 4;
-        for (std::size_t i = 2; i < burstOffsets.size() && monotonic; ++i) {
-            const float a = burstOffsets[i - 1] - burstOffsets[i - 2];
-            const float b = burstOffsets[i] - burstOffsets[i - 1];
-            monotonic = (a > 0.f) == (b > 0.f);
-        }
-        check_bool("Chie burst sweeps one way, never reversing", true, monotonic);
-        check_near("Chie burst spans exactly 4.5 degrees", 4.5f,
-                   std::abs(burstOffsets[3] - burstOffsets[0]), 0.05f);
+        // The sweep is deterministic, so the SIGNED values are exact: the body's offsets are
+        // `counter * 0.5 - 2` = -1.5, 0, 1.5, 3 for the counters 1, 4, 7 and 10 the gate lets
+        // through, and they arrive negated because this family's aim is the legacy kind.
+        const float chieExpected[4] = {remake_yaw_for_legacy_offset(-1.5f),
+                                       remake_yaw_for_legacy_offset(0.f),
+                                       remake_yaw_for_legacy_offset(1.5f),
+                                       remake_yaw_for_legacy_offset(3.f)};
+        for (int i = 0; i < 4; ++i)
+            check_near("Chie burst shot swings to the body's converted offset",
+                       chieExpected[i], burstOffsets[static_cast<std::size_t>(i)], 0.05f);
     }
     bool burstRowsZero = !burstRows.empty();
     for (int r : burstRows) burstRowsZero &= r == 0;
@@ -4349,9 +4375,15 @@ void test_satoko_five_shot() {
     for (std::size_t i = 1; i < tapFanYaws.size(); ++i)
         fanSpread |= std::abs(tapFanYaws[i] - tapFanYaws[0]) > 0.05f;
     check_bool("Satoko tap requests fan by direction", true, fanSpread);
+    // The body's offsets are `(draw%240-120)*0.1`, i.e. [-12.0, +11.9]; converting them through
+    // the legacy aim gives [-11.9, +12.0], so the bounds must be converted too — checking the raw
+    // [-12.0, +11.9] can reject a valid +12.
     bool offsetsInRange = tapFanYaws.size() == 5;
-    for (float y : tapFanYaws) offsetsInRange &= y >= -12.05f && y <= 11.95f;
-    check_bool("every Satoko offset stays inside -12.0..+11.9", true, offsetsInRange);
+    for (float y : tapFanYaws)
+        offsetsInRange &= y >= remake_yaw_for_legacy_offset(11.9f) - 0.05f &&
+                          y <= remake_yaw_for_legacy_offset(-12.0f) + 0.05f;
+    check_bool("every Satoko offset stays inside the body's converted -11.9..+12.0", true,
+               offsetsInRange);
     // The muzzle must NOT move: all five fire in one tick from the same posed hand, so their
     // resolved origins have to coincide.
     float widestOrigin = 0.f;
