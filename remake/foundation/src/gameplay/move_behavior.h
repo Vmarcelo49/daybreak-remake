@@ -973,12 +973,17 @@ inline constexpr MoveRule kKeiichi1Rules[] = {
 };
 
 // Tomitake weapon 2 (handler 0x527880) — shot rules recovered from the reference bodies
-// shoot_body_6_2_{400,402,450,460} (bundle reference/source). Twin shots per scheduled
-// tick: rows 7+5 in the tap (row 7 is what the traces record: fire_attachment(0,7,...);
-// usage slots 5 normal / 6 tag / 7 both map to the same rows), rows 4+0 in the first
-// charge (tag rows 6/2 need an aim/tag flag this model has no field for — skipped with
-// the same precedent as Mion's row-1 variant). The tap schedule (ticks 15..33 step 3)
-// is written tick-explicit like Rika's: our rule model has no modulo.
+// shoot_body_6_2_{400,402,450,460} (bundle reference/source). Two shots per scheduled
+// tick. The tap (L36890-36930) is gated on `scratch % 3 == 0 && 0 < w[0x1b7]` and fires
+// row 7 first — lateral 0, pitch 0 — then EITHER row 5 or row 6, chosen by the same
+// `byte(+0x845) && word(+0x212)` idiom kGatePowered models (usage slots 5 normal / 6 tag /
+// 7 both map to the same rows; row 7 is what the traces record: fire_attachment(0,7,...)).
+// The ground tap swaps the two rows' draw moduli — `(draw%12-6)*0.25` of pitch and
+// `(draw%6-3)*0.5` of lateral on row 5, `(draw%6-3)*0.25` and `(draw%12-6)*0.25` on row 6 —
+// while the air tap uses 6/-3 for both. Elevation clamped +-45. The tap schedule (ticks
+// 15..33 step 3) is written tick-explicit like Rika's: our rule model has no modulo.
+// The charge's rows 6/2 stay UNBOUND — not for want of a flag, but because its body was not
+// re-read in this pass. The row-5/6 branch above IS the flag the old note said did not exist.
 // Turn verbs 0042dc20 vs 0042db10 both map to Turn by value (the distinction's meaning
 // is illegible); the w0x10 gravity tails (unclamped, can go negative) are vertical
 // physics with no MoveRule op and are skipped — only the floor-0 w0x15 bleeds map to
@@ -989,37 +994,93 @@ inline constexpr MoveRule kTomitakeRules[] = {
     {400,-1,0,9,MoveOp::Turn,18.f},
     {400,-1,0,34,MoveOp::Turn,2.f},
     {400,-1,1,9999,MoveOp::Decelerate,2.f},
-    {400,-1,15,15,MoveOp::Launch,7.f,0.f,45.f},
-    {400,-1,15,15,MoveOp::Launch,5.f,0.f,45.f},
-    {400,-1,18,18,MoveOp::Launch,7.f,0.f,45.f},
-    {400,-1,18,18,MoveOp::Launch,5.f,0.f,45.f},
-    {400,-1,21,21,MoveOp::Launch,7.f,0.f,45.f},
-    {400,-1,21,21,MoveOp::Launch,5.f,0.f,45.f},
-    {400,-1,24,24,MoveOp::Launch,7.f,0.f,45.f},
-    {400,-1,24,24,MoveOp::Launch,5.f,0.f,45.f},
-    {400,-1,27,27,MoveOp::Launch,7.f,0.f,45.f},
-    {400,-1,27,27,MoveOp::Launch,5.f,0.f,45.f},
-    {400,-1,30,30,MoveOp::Launch,7.f,0.f,45.f},
-    {400,-1,30,30,MoveOp::Launch,5.f,0.f,45.f},
-    {400,-1,33,33,MoveOp::Launch,7.f,0.f,45.f},
-    {400,-1,33,33,MoveOp::Launch,5.f,0.f,45.f},
+    {400,-1,15,15,MoveOp::Launch,7.f,0.f,0.f,kGateNone,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {400,-1,15,15,MoveOp::Launch,5.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeGround5},
+    {400,-1,15,15,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeGround6},
+    {400,-1,18,18,MoveOp::Launch,7.f,0.f,0.f,kGateNone,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {400,-1,18,18,MoveOp::Launch,5.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeGround5},
+    {400,-1,18,18,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeGround6},
+    {400,-1,21,21,MoveOp::Launch,7.f,0.f,0.f,kGateNone,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {400,-1,21,21,MoveOp::Launch,5.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeGround5},
+    {400,-1,21,21,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeGround6},
+    {400,-1,24,24,MoveOp::Launch,7.f,0.f,0.f,kGateNone,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {400,-1,24,24,MoveOp::Launch,5.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeGround5},
+    {400,-1,24,24,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeGround6},
+    {400,-1,27,27,MoveOp::Launch,7.f,0.f,0.f,kGateNone,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {400,-1,27,27,MoveOp::Launch,5.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeGround5},
+    {400,-1,27,27,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeGround6},
+    {400,-1,30,30,MoveOp::Launch,7.f,0.f,0.f,kGateNone,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {400,-1,30,30,MoveOp::Launch,5.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeGround5},
+    {400,-1,30,30,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeGround6},
+    {400,-1,33,33,MoveOp::Launch,7.f,0.f,0.f,kGateNone,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {400,-1,33,33,MoveOp::Launch,5.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeGround5},
+    {400,-1,33,33,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeGround6},
     // 402 air tap: disjoint turns 15 deg (0-9) + 5 deg (10-24), same twin schedule.
     {402,-1,0,9,MoveOp::Turn,15.f},
     {402,-1,10,24,MoveOp::Turn,5.f},
-    {402,-1,15,15,MoveOp::Launch,7.f,0.f,45.f},
-    {402,-1,15,15,MoveOp::Launch,5.f,0.f,45.f},
-    {402,-1,18,18,MoveOp::Launch,7.f,0.f,45.f},
-    {402,-1,18,18,MoveOp::Launch,5.f,0.f,45.f},
-    {402,-1,21,21,MoveOp::Launch,7.f,0.f,45.f},
-    {402,-1,21,21,MoveOp::Launch,5.f,0.f,45.f},
-    {402,-1,24,24,MoveOp::Launch,7.f,0.f,45.f},
-    {402,-1,24,24,MoveOp::Launch,5.f,0.f,45.f},
-    {402,-1,27,27,MoveOp::Launch,7.f,0.f,45.f},
-    {402,-1,27,27,MoveOp::Launch,5.f,0.f,45.f},
-    {402,-1,30,30,MoveOp::Launch,7.f,0.f,45.f},
-    {402,-1,30,30,MoveOp::Launch,5.f,0.f,45.f},
-    {402,-1,33,33,MoveOp::Launch,7.f,0.f,45.f},
-    {402,-1,33,33,MoveOp::Launch,5.f,0.f,45.f},
+    {402,-1,15,15,MoveOp::Launch,7.f,0.f,0.f,kGateNone,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {402,-1,15,15,MoveOp::Launch,5.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeAir},
+    {402,-1,15,15,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeAir},
+    {402,-1,18,18,MoveOp::Launch,7.f,0.f,0.f,kGateNone,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {402,-1,18,18,MoveOp::Launch,5.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeAir},
+    {402,-1,18,18,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeAir},
+    {402,-1,21,21,MoveOp::Launch,7.f,0.f,0.f,kGateNone,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {402,-1,21,21,MoveOp::Launch,5.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeAir},
+    {402,-1,21,21,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeAir},
+    {402,-1,24,24,MoveOp::Launch,7.f,0.f,0.f,kGateNone,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {402,-1,24,24,MoveOp::Launch,5.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeAir},
+    {402,-1,24,24,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeAir},
+    {402,-1,27,27,MoveOp::Launch,7.f,0.f,0.f,kGateNone,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {402,-1,27,27,MoveOp::Launch,5.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeAir},
+    {402,-1,27,27,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeAir},
+    {402,-1,30,30,MoveOp::Launch,7.f,0.f,0.f,kGateNone,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {402,-1,30,30,MoveOp::Launch,5.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeAir},
+    {402,-1,30,30,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeAir},
+    {402,-1,33,33,MoveOp::Launch,7.f,0.f,0.f,kGateNone,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {402,-1,33,33,MoveOp::Launch,5.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeAir},
+    {402,-1,33,33,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_target_elevation(45.f),{},kSpreadTomitakeAir},
     // 450 ground charge1: turns 35 deg (0-4) + 0.3 deg (0-29), bleed 1.5/tick,
     // single salvo rows 4+0 at tick 30 after a 15-tick freeze at tick 28.
     {450,-1,0,4,MoveOp::Turn,35.f},
@@ -1040,8 +1101,8 @@ inline constexpr MoveRule kTomitakeRules[] = {
 // shape: the tap fires EVERY tick 10..20 (11 consecutive frames, rows 0 normal / 1 tag),
 // expressed as one window rule per row — the executor runs matching rules each update,
 // so first/last IS the burst (unlike Rika's even-only schedule, which needs tick rules).
-// The powered row IS gated — `w[0x1b7] < 3`, which is kGatePowered — so the tap binds
-// row 0 normal / row 1 powered (the 400/402 rules below). Charge rows 2 normal / 3
+// The powered row IS gated: the body's row branch tests `byte(+0x845) && word(+0x212)`,
+// which is kGatePowered, so the tap binds row 0 normal / row 1 powered (below). Charge rows 2 normal / 3
 // powered are still bound row 2 only: that is a PENDING AUDIT, not a missing flag, and
 // the earlier "no flag field" note here was wrong. Turn verbs db10 vs dc20 both map to
 // Turn by value (distinction illegible); the w0x10 gravity tails and the one-shot w0x15
@@ -1094,9 +1155,9 @@ inline constexpr MoveRule kKeiichiRules[] = {
 // Every shot is a `FUN_00435220` request on the posed hand — `Bip01_R_Hand` on the ground
 // tap and `Bip01_L_Hand` on the air tap — with the pitch taken from the target elevation
 // clamped +-40 and the lateral aiming `counter * 0.5 - 2`, so the burst walks -1.5, 0,
-// 1.5, 3.0 (4.5 on the air tap's fifth shot). Row 0 normal / row 1 powered; the tag
-// branch reads `w[0x1b7] < 5` / `< 6`, which is the kGatePowered idiom, and the earlier
-// "no flag field" note here was wrong. The charges fire one request — row 2 normal / row 3
+// 1.5, 3.0 (4.5 on the air tap's fifth shot). Row 0 normal / row 1 powered: the row
+// branch tests `byte(+0x845) && word(+0x212)` (kGatePowered), while the `w[0x1b7] < 5` /
+// `< 6` test beside it only picks the SOUND. The earlier "no flag field" note was wrong. The charges fire one request — row 2 normal / row 3
 // powered, lateral 0, on `Bip01_R_Hand`, target elevation clamped +-30 (0x1e, not the tap's
 // 40) — at tick 22 on the ground charge and tick 15 on the air one. The 460 rule used to
 // sit at tick 22 while this comment said 15; the body's `== 0xf` settles it at 15. Turn
@@ -1167,9 +1228,9 @@ inline constexpr MoveRule kChieRules[] = {
 // shoot_body_7_0_{400,402,450,460} (bundle reference/source). Double turn in the tap
 // (10 deg ticks 0-17 phaseless + 15 deg phase-0 open) with a phase-0 bleed; three single
 // `FUN_00435220` requests on `Bip01_R_Hand` at ticks 12, 15 and 18, each taking the target
-// elevation clamped +-40 (L39785-39820). Row 0 normal / row 6 powered — the tag branch
-// reads `w[0x1b7] < 4`, which is kGatePowered, and the earlier "no flag field" note here was
-// wrong. The charges fire one slot-0 attachment request at tick 18 (450) and tick 17 (460)
+// elevation clamped +-40 (L39785-39820). Row 0 normal / row 6 powered: the row branch
+// tests `byte(+0x845) && word(+0x212)` (kGatePowered), while the `w[0x1b7] < 4` beside it
+// only picks the SOUND. The earlier "no flag field" note here was wrong. The charges fire one slot-0 attachment request at tick 18 (450) and tick 17 (460)
 // with the elevation clamped +-40 — row 1 normal / row 7 powered on the same gate — plus
 // slot-0 Hide windows (10-17 and 0-16); the slot1→2 half has no field. No Hold anywhere; gravity tails skipped.
 inline constexpr MoveRule kTakanoRules[] = {
@@ -1257,8 +1318,8 @@ inline constexpr MoveRule kKasaiRules[] = {
 // shoot_body_10_1_{400,402,450,460} (bundle reference/source). Both taps fire at tick 12:
 // TWO world requests normally, on rows 1 then 0, and FOUR powered, on rows 3, 2, 1 then 0
 // (L63286-63302, L63551-63610) — the tag branch ADDS the row-2/3 pair rather than replacing
-// the row-0/1 one. The tag gate is `w[0x1b7] < 4`, i.e. kGatePowered; the "no flag field"
-// note here was wrong. Each request sits 100 units out at +-4 degrees of heading with the
+// the row-0/1 one. The row branch tests `byte(+0x845) && word(+0x212)` (kGatePowered); the
+// `w[0x1b7] < 4` beside it only picks the sound, and the "no flag field" note was wrong. Each request sits 100 units out at +-4 degrees of heading with the
 // target elevation clamped +-40 (a world pair this port still places through the adapter).
 // The charges fire one `FUN_00434fd0` request — row 4 normal / row 5 powered, elevation
 // clamped +-30 — at tick 22 (450) and tick 17 (460). Hide windows carry slot 0 only
@@ -1309,8 +1370,9 @@ inline constexpr MoveRule kIrieRules[] = {
 // on the aim basis, so it needs the same world-origin decode the Keiichi charges are waiting
 // on.
 //
-// The powered branches read `w[0x1b7] < 3` — the powered gate the rest of the port uses,
-// which the previous binding recorded as "no flag field, skipped".
+// The powered branches test `byte(+0x845) && word(+0x212)` — kGatePowered, the idiom the
+// rest of the port uses — which the previous binding recorded as "no flag field, skipped".
+// The `w[0x1b7] < 3` beside it only picks the sound.
 inline constexpr MoveRule kRika0Rules[] = {
     // 400 ground tap: 15 deg turn ticks 0-14, bleed 0.5/tick phase 0, twin row 0 @15.
     {400,-1,0,14,MoveOp::Turn,15.f},
@@ -1361,8 +1423,9 @@ inline constexpr MoveRule kRika0Rules[] = {
 // charges — row 4 normally and row 6 powered (L25648-25700), also with same-tick Hold 30.
 // The launch-latch in the executor keeps each salvo to one firing per tick.
 //
-// The tag branch note here was WRONG: the flag is `w[0x1b7] < 3`, the same kGatePowered
-// every other family uses, and reading the body shows the branch is not the only gap
+// The tag branch note here was WRONG: the row branch tests `byte(+0x845) && word(+0x212)`,
+// the same kGatePowered every other family uses — the `w[0x1b7] < 3` beside it picks the
+// sound. Reading the body shows the branch is not the only gap
 // (L24384-24453):
 //   * the NORMAL branch fires ONE hand request whose ROW is selected by `w[0x9e]` —
 //     row 2 when `w[0x9e] < 0`, row 0 when `0 <= w[0x9e] < 1`, row 1 otherwise — so a

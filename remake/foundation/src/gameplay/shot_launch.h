@@ -216,6 +216,33 @@ inline constexpr ShotSpreadSpec spread_lateral_sweep(float perTick, float offset
     return spec;
 }
 
+// A spec stated as its two draws, for bodies whose moduli, offsets or scales differ per
+// axis — Tomitake 2's tap swaps the pitch and lateral moduli between its two rows, which
+// no single-shape factory can express.
+inline constexpr ShotSpreadSpec spread_two_draws(int pitchModulus, float pitchOffset,
+                                                 float pitchScale, int lateralModulus,
+                                                 float lateralOffset, float lateralScale) {
+    ShotSpreadSpec spec;
+    spec.pitchModulus = pitchModulus;
+    spec.pitchOffset = pitchOffset;
+    spec.pitchScale = pitchScale;
+    spec.lateralModulus = lateralModulus;
+    spec.lateralOffset = lateralOffset;
+    spec.lateralScale = lateralScale;
+    spec.order = SpreadOrder::PitchThenLateral;
+    return spec;
+}
+
+// Tomitake 2's tap (shoot_body_6_2_400/402, L36900-36930, L37229-37245): the row-5/6 half
+// of each burst draws pitch first and lateral second. The ground tap swaps the moduli
+// between its rows; the air tap uses 6/-3 for both.
+inline constexpr ShotSpreadSpec kSpreadTomitakeGround5 =
+    spread_two_draws(12, -6.f, .25f, 6, -3.f, .5f);
+inline constexpr ShotSpreadSpec kSpreadTomitakeGround6 =
+    spread_two_draws(6, -3.f, .25f, 12, -6.f, .25f);
+inline constexpr ShotSpreadSpec kSpreadTomitakeAir =
+    spread_two_draws(6, -3.f, .25f, 6, -3.f, .5f);
+
 // Chie 2's tap burst: the counter starts at 1 and steps by 1 a tick, firing while
 // `counter % 3 == 1`, so the lateral walks -1.5, 0, 1.5, 3.0 (and 4.5 on the air tap's
 // fifth shot). No draw is taken — the counter IS the spread.

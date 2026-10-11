@@ -2339,11 +2339,14 @@ void test_tomitake_twin_tap() {
     const auto install = findInstall(nullptr);
     if (install.empty() || !g_tomitakeCombo.load(install, 6, 2))
         return skip_case("Tomitake 2 combo");
-    // Bundle evidence: Tomitake 2 (handler 0x527880) fires twin shots — rows 7+5 —
-    // on every third tick 15..33 in the ground tap (shoot_body_6_2_400; the traces
-    // record fire_attachment(0,7,...) twice per scheduled frame), and rows 4+0 at
-    // tick 30 in the first ground charge after a 15-tick freeze at tick 28
-    // (shoot_body_6_2_450). Her program is kTomitakeRules; charge 2 stays provisional.
+    // Bundle evidence: Tomitake 2 (handler 0x527880) fires two shots on every third tick
+    // 15..33 in the ground tap (shoot_body_6_2_400): row 7 always — lateral 0, pitch 0 —
+    // and then row 5 normally or row 6 powered, each drawing `(draw%12-6)*0.25` of pitch
+    // and `(draw%6-3)*0.5` of lateral offset (the powered row swaps the two moduli). The
+    // gate on the whole burst is `scratch % 3 == 0 && 0 < w[0x1b7]`. The first ground charge
+    // fires rows 4+0 at tick 30 after a 15-tick freeze at tick 28 (shoot_body_6_2_450; its
+    // tag rows 6/2 are NOT yet bound — the body was not re-read in this pass). The port
+    // binds the tap; charge 2 stays provisional.
     Fighter f;
     f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_tomitakeCombo.bind(f);
@@ -2371,6 +2374,61 @@ void test_tomitake_twin_tap() {
     check_bool("Tomitake tap T18 salvo fires twice", true, first.armed && second.armed);
     check_int("Tomitake T18 first row is 7", 7, first.bulletRow);
     check_int("Tomitake T18 second row is 5", 5, second.bulletRow);
+
+    // The row-5 half's two draws, exact against the canonical stream: pitch
+    // (3499211612%12-6)*0.25 = +0.5 and lateral (581869302%6-3)*0.5 = -1.5. The row-7 shot
+    // ahead of it is deterministic — lateral 0, pitch 0 — which is the body's `(0,7,0,0,0)`.
+    Fighter tv;
+    tv.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_tomitakeCombo.bind(tv);
+    settle(tv);
+    Input win;
+    win.set(fnd::input::Action::Shoot, true);
+    tick(tv, win);
+    win.set(fnd::input::Action::Shoot, false);
+    tick(tv, win);
+    for (int i = 0; i < 15; ++i) tick(tv, win);
+    gameplay::PendingShot row7 = tv.take_pending_shot();
+    gameplay::PendingShot row5 = tv.take_pending_shot();
+    check_int("Tomitake T15 row-7 shot is first", 7, row7.bulletRow);
+    check_near("Tomitake row-7 lateral is 0", 0.f, row7.origin.localOffset[0], 0.01f);
+    check_near("Tomitake row-7 pitch is 0",
+               std::sin(glm::radians(0.f)), row7.dir.y, 1e-4f);
+    check_int("Tomitake T15 row-5 shot is second", 5, row5.bulletRow);
+    check_near("Tomitake row-5 lateral is (r2%6-3)*0.5", -1.5f,
+               row5.origin.localOffset[0], 0.01f);
+    check_near("Tomitake row-5 pitch is (r1%12-6)*0.25",
+               std::sin(glm::radians(0.5f)), row5.dir.y, 1e-3f);
+
+    // Powered: the second shot moves to row 6 and swaps the moduli, so the pitch becomes
+    // (3499211612%6-3)*0.25 = -0.25 and the lateral (581869302%12-6)*0.25 = 0.
+    Fighter tp;
+    tp.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_tomitakeCombo.bind(tp);
+    settle(tp);
+    tp.set_hypermode(Hypermode::Oyashiro);
+    tp.set_hyper_gauge(1.f);
+    Input hp;
+    hp.set(fnd::input::Action::Special, true);
+    tick(tp, hp);
+    hp.set(fnd::input::Action::Special, false);
+    tick(tp, hp);
+    gameplay::ShootingContext context;
+    context.aimHold = true;
+    tp.set_shooting_context(context);
+    hp.set(fnd::input::Action::Shoot, true);
+    tick(tp, hp);
+    hp.set(fnd::input::Action::Shoot, false);
+    tick(tp, hp);
+    for (int i = 0; i < 15; ++i) tick(tp, hp);
+    gameplay::PendingShot prow7 = tp.take_pending_shot();
+    gameplay::PendingShot prow6 = tp.take_pending_shot();
+    check_int("powered Tomitake first row is still 7", 7, prow7.bulletRow);
+    check_int("powered Tomitake second row is 6", 6, prow6.bulletRow);
+    check_near("powered Tomitake row-6 lateral is (r2%12-6)*0.25", 0.f,
+               prow6.origin.localOffset[0], 0.01f);
+    check_near("powered Tomitake row-6 pitch is (r1%6-3)*0.25",
+               std::sin(glm::radians(-0.25f)), prow6.dir.y, 1e-3f);
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_tomitakeCombo.bind(g);
