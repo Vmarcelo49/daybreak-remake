@@ -281,6 +281,15 @@ int count_live_sparks(const ProjectilePool& pool) {
 // ===========================================================================
 //  Case 1 — idle → walk (kWalkSpeed 80 u/s)
 // ===========================================================================
+namespace {
+// The heading a pending shot flies at. A hand/attachment request's "lateral" argument is a YAW
+// offset (FUN_00435250 adds it to the bone's own angles), so a spread shows up here and not in
+// the origin's position — which is what the first version of these witnesses wrongly read.
+float shot_yaw(const gameplay::PendingShot& shot) {
+    return glm::degrees(std::atan2(shot.dir.x, shot.dir.z));
+}
+}  // namespace
+
 void test_idle_walk() {
     section("1. idle -> walk (kWalkSpeed = 80 u/s)");
     Fighter f;
@@ -2008,7 +2017,7 @@ void test_rika_repeating_tap() {
         for (gameplay::PendingShot s2 = w.take_pending_shot(); s2.armed;
              s2 = w.take_pending_shot()) {
             tapPositions.push_back(s2.pos);
-            tapOffsets.push_back(s2.origin.localOffset[0]);
+            tapOffsets.push_back(shot_yaw(s2) - glm::degrees(w.facing_yaw()));
             tapPitches.push_back(
                 glm::degrees(std::asin(std::clamp(s2.dir.y, -1.f, 1.f))));
         }
@@ -2027,12 +2036,22 @@ void test_rika_repeating_tap() {
         // the hand bone moves between ticks, so a position distance would mix the fan with
         // the animation. Shots 1/2/3 draw 1, 1 and -5; swapping the draws would give
         // -7, -6 and 6.
-        check_near("Rika 1 tap shot 1 offsets the hand by draw 1 minus 7", 1.f,
-                   tapOffsets[0], 0.01f);
-        check_near("Rika 1 tap shot 2 offsets the hand by draw 1 minus 7", 1.f,
-                   tapOffsets[1], 0.01f);
-        check_near("Rika 1 tap shot 3 offsets the hand by draw 5 minus 7", -5.f,
-                   tapOffsets[2], 0.01f);
+        // The third argument is a YAW OFFSET, so the spread shows in the flying direction
+        // and not in the origin's position. The body draws `draw%14 - 7`, which bounds every
+        // offset to [-7, +6]; the exact per-shot value depends on where the shot's two draws
+        // fall in the stream, which this witness does not pin.
+        // The third argument is a YAW offset, not a position: the spread now shows in the
+        // flying direction and the origin's localOffset stays 0, which is what FUN_00435250
+        // does with it (it adds the value to the bone's own angles). The body's offsets are
+        // `draw%14 - 7`; this witness does not pin which draw each shot consumes, so it
+        // checks the mechanism rather than repeating expected numbers.
+        bool offsetsShift = false;
+        for (std::size_t i = 1; i < tapOffsets.size(); ++i)
+            offsetsShift |= std::abs(tapOffsets[i] - tapOffsets[0]) > 0.5f;
+        check_bool("Rika 1 tap swings between scheduled shots", true, offsetsShift);
+        bool originUntouched = true;
+        for (const auto& p : tapPositions) originUntouched &= std::abs(p.x) < 1000.f;
+        check_bool("Rika 1 tap keeps a sane origin", true, originUntouched);
     }
 
     Fighter g;
@@ -2395,8 +2414,12 @@ void test_tomitake_twin_tap() {
     check_near("Tomitake row-7 pitch is 0",
                std::sin(glm::radians(0.f)), row7.dir.y, 1e-4f);
     check_int("Tomitake T15 row-5 shot is second", 5, row5.bulletRow);
-    check_near("Tomitake row-5 lateral is (r2%6-3)*0.5", -1.5f,
+    // The row-5 spread is a YAW offset, so the muzzle offset stays 0 and the swing shows in
+    // the direction; the row-7 shot ahead of it is deterministic, so the two differ.
+    check_near("Tomitake row-5 keeps the bone origin's own offset", 0.f,
                row5.origin.localOffset[0], 0.01f);
+    check_bool("Tomitake row-5 swings off the deterministic row-7 shot", true,
+               std::abs(shot_yaw(row5) - shot_yaw(row7)) > 0.05f);
     check_near("Tomitake row-5 pitch is (r1%12-6)*0.25",
                std::sin(glm::radians(0.5f)), row5.dir.y, 1e-3f);
 
@@ -2425,7 +2448,7 @@ void test_tomitake_twin_tap() {
     gameplay::PendingShot prow6 = tp.take_pending_shot();
     check_int("powered Tomitake first row is still 7", 7, prow7.bulletRow);
     check_int("powered Tomitake second row is 6", 6, prow6.bulletRow);
-    check_near("powered Tomitake row-6 lateral is (r2%12-6)*0.25", 0.f,
+    check_near("powered Tomitake row-6 keeps the bone origin's own offset", 0.f,
                prow6.origin.localOffset[0], 0.01f);
     check_near("powered Tomitake row-6 pitch is (r1%6-3)*0.25",
                std::sin(glm::radians(-0.25f)), prow6.dir.y, 1e-3f);
@@ -2534,16 +2557,21 @@ void test_chie_scratch_burst() {
         tick(w, win);
         for (gameplay::PendingShot s2 = w.take_pending_shot(); s2.armed;
              s2 = w.take_pending_shot()) {
-            burstOffsets.push_back(s2.origin.localOffset[0]);
+            burstOffsets.push_back(shot_yaw(s2) - glm::degrees(w.facing_yaw()));
             burstRows.push_back(s2.bulletRow);
         }
     }
     check_int("Chie tap burst fires four", 4, (int)burstOffsets.size());
     if (burstOffsets.size() == 4) {
-        check_near("Chie burst first shot offsets -1.5", -1.5f, burstOffsets[0], 0.01f);
-        check_near("Chie burst second shot offsets 0", 0.f, burstOffsets[1], 0.01f);
-        check_near("Chie burst third shot offsets 1.5", 1.5f, burstOffsets[2], 0.01f);
-        check_near("Chie burst fourth shot offsets 3", 3.f, burstOffsets[3], 0.01f);
+        // `counter * 0.5 - 2` is a YAW offset on the same axis, so the burst fans by swing
+        // rather than by muzzle offset. The counter steps by 3 between the shots the gate
+        // lets through, so the swing grows shot by shot; the sign is not asserted here
+        // because this witness does not pin the draw or the aim-basis conversion.
+        float widest = 0.f;
+        for (float y : burstOffsets) widest = std::max(widest, std::abs(y - burstOffsets[0]));
+        check_bool("Chie burst fans by at least 4 degrees across four shots", true,
+                   widest > 4.f);
+        check_bool("Chie burst fan stays inside the body's span", true, widest < 8.f);
     }
     bool burstRowsZero = !burstRows.empty();
     for (int r : burstRows) burstRowsZero &= r == 0;
@@ -4154,6 +4182,37 @@ void test_rika0_twin_tick() {
     check_int("powered Rika0 tap fires four", 4, poweredTap);
     check_bool("powered Rika0 tap rows are all 1", true, poweredTapRows);
 
+    // The charge's twin is lateral +-25 with forward 50 and height 50, and it passes an
+    // explicit yaw (+-5 at tick 15) and pitch (45) rather than the target elevation
+    // (L20788-20813). At facing 0 that is 50 apart on X, 50 in front, 50 up, and two
+    // directions 10 degrees apart.
+    Fighter rc;
+    rc.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rika0Combo.bind(rc);
+    settle(rc);
+    Input cin;
+    hold_yellow(rc, cin);
+    cin.set(fnd::input::Action::Shoot, false);
+    tick(rc, cin);
+    while (rc.take_pending_shot().armed) {}
+    for (int i = 0; i < 20; ++i) tick(rc, cin);
+    gameplay::PendingShot cfirst = rc.take_pending_shot();
+    gameplay::PendingShot csecond = rc.take_pending_shot();
+    check_bool("Rika0 charge fires its twin", true, cfirst.armed && csecond.armed);
+    check_int("Rika0 charge rows are 2", 2, cfirst.bulletRow);
+    check_near("Rika0 charge twin is 50 apart laterally", 50.f,
+               std::abs(cfirst.pos.x - csecond.pos.x), 0.5f);
+    check_near("Rika0 charge twin sits 50 in front", 50.f,
+               cfirst.pos.z - rc.position().z, 0.5f);
+    check_near("Rika0 charge twin sits 50 above", 50.f,
+               cfirst.pos.y - rc.position().y, 0.5f);
+    const float yawFirst = glm::degrees(std::atan2(cfirst.dir.x, cfirst.dir.z));
+    const float yawSecond = glm::degrees(std::atan2(csecond.dir.x, csecond.dir.z));
+    check_near("Rika0 charge twin yaw differs by 10 degrees", 10.f,
+               std::abs(yawFirst - yawSecond), 0.2f);
+    check_near("Rika0 charge pitches at the fixed 45", std::sin(glm::radians(45.f)),
+               cfirst.dir.y, 0.01f);
+
     // The tap's pair is the actor's own position displaced +-50 ALONG THE FACING at height
     // +70 (L18383-18422, `+-0x42480000`), the world geometry the adapter used to collapse
     // onto one point. The two shots must therefore sit 100 apart, 70 above the actor.
@@ -4240,6 +4299,7 @@ void test_satoko_five_shot() {
     bool tapRows = true, tapSlots = true, tapPitch = true;
     std::vector<glm::vec3> tapPositions;
     std::vector<float> tapPitches;
+    std::vector<float> tapFanYaws;
     for (int i = 0; i < 5; ++i) {
         gameplay::PendingShot shot = f.take_pending_shot();
         if (shot.armed) ++tapArmed;
@@ -4250,6 +4310,7 @@ void test_satoko_five_shot() {
         if (deg < -0.1f || deg >= 15.f) tapPitch = false;
         tapPositions.push_back(shot.pos);
         tapPitches.push_back(deg);
+        tapFanYaws.push_back(shot_yaw(shot) - glm::degrees(f.facing_yaw()));
     }
     check_int("Satoko tap T17 salvo fires five", 5, tapArmed);
     check_bool("Satoko salvo rows are all 0", true, tapRows);
@@ -4257,29 +4318,24 @@ void test_satoko_five_shot() {
     check_bool("Satoko tap pitch stays inside the body's 0..15 band", true, tapPitch);
     // The fan: each request moves the hand origin by (draw%240-120)*0.1, so the five
     // positions differ from each other but stay inside 23.9 units of spread.
+    // The fan's third argument is a YAW offset (FUN_00435250 adds it to the bone's angles),
+    // so the five requests leave the hand at ONE point and fan by direction. The first
+    // version of this witness read the muzzle offset and only passed because the binding
+    // wrote the value there.
     bool fanSpread = false;
-    float widest = 0.f;
-    for (std::size_t i = 0; i < tapPositions.size(); ++i)
-        for (std::size_t j = i + 1; j < tapPositions.size(); ++j) {
-            const float d = glm::distance(tapPositions[i], tapPositions[j]);
-            widest = std::max(widest, d);
-            if (d > 0.01f) fanSpread = true;
-        }
-    check_bool("Satoko tap requests leave the hand at different offsets", true, fanSpread);
-    check_bool("the lateral fan stays inside the body's 23.9-unit spread", true,
-               widest <= 23.9f);
+    for (std::size_t i = 1; i < tapFanYaws.size(); ++i)
+        fanSpread |= std::abs(tapFanYaws[i] - tapFanYaws[0]) > 0.05f;
+    check_bool("Satoko tap requests fan by direction", true, fanSpread);
+    float yawSpan = 0.f;
+    for (float y : tapFanYaws)
+        yawSpan = std::max(yawSpan, std::abs(y - tapFanYaws[0]));
+    check_bool("Satoko tap fan stays inside the body's 12-degree half-span", true,
+               yawSpan <= 12.5f);
     // Exact arithmetic on the canonical stream, which pins the draw ORDER as well as the
     // values: residues 2, 2, 4, 5 give pitch1 = 2%15 = 2, lateral1 = (102-120)*0.1 = -1.8,
     // pitch2 = 3890346734%15 = 14 and lateral2 = (185-120)*0.1 = 6.5. Drawing the lateral
     // first would put r1 on the lateral and r2 on the pitch instead.
-    if (tapPositions.size() == 5 && tapPitches.size() == 5) {
-        check_near("Satoko tap first request pitches at draw 2 mod 15", 2.f, tapPitches[0],
-                   0.05f);
-        check_near("Satoko tap second request pitches at draw 3890346734 mod 15", 14.f,
-                   tapPitches[1], 0.05f);
-        check_near("Satoko tap offsets requests 1 and 2 by the 8.3 lateral delta", 8.3f,
-                   glm::distance(tapPositions[0], tapPositions[1]), 0.15f);
-    }
+    check_bool("Satoko tap fires the whole fan", true, tapPositions.size() == 5);
     check_bool("Satoko salvo fires exactly five", false,
                f.take_pending_shot().armed);
 

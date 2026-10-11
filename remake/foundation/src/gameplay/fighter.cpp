@@ -1546,7 +1546,13 @@ void Fighter::launch_bullet(int row, const ShotOriginSpec& origin, const ShotAim
             if (spread.lateralModulus > 0)
                 draw = static_cast<int>(rng_source().modulo(
                     static_cast<std::uint32_t>(spread.lateralModulus)));
-            resolvedOrigin.localOffset[0] +=
+            // This is a YAW OFFSET, not a position. FUN_00435220's third argument (and
+            // FUN_00435000's) is added to the bone's own angles and run through the sin/cos
+            // table — FUN_00435250 does exactly that at 0x4352a0 — so a "lateral" value in a
+            // hand or attachment request swings the shot, it does not slide the muzzle. Only
+            // FUN_00435450's world form takes a perpendicular POSITION, and those families
+            // state it per rule through origin_actor_relative instead.
+            resolvedAim.yawDegrees +=
                 static_cast<float>(m_moveCounter) * spread.lateralPerTick +
                 (static_cast<float>(draw) + spread.lateralOffset) * spread.lateralScale;
             break;

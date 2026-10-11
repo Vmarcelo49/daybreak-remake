@@ -1394,8 +1394,11 @@ inline constexpr MoveRule kIrieRules[] = {
 // multiplies the `yaw` table: so the pair is `origin_actor_relative(+-50, 10, 70)`, lateral and
 // not forward. (The first binding had the axis inverted; a distance check could not tell the
 // two apart because either way the pair is 100 apart.) The tap fires +50 then -50 normally and
-// +50/-50/+50/-50 powered; the charges use the same shape with 25 (`0x41c80000`) lateral at
-// height +50. Earlier notes gave these as 600 and 50, which was a mis-read of the hex.
+// +50/-50/+50/-50 powered. The charges fire twin WORLD requests at ticks 15 and 25 with
+// lateral `+-25` (`0x41c80000`), forward 50 (`0x42480000` on the `yaw` table) and height +50,
+// and they pass an explicit world yaw and pitch instead of the target elevation: yaw `+-5` with
+// pitch 45 at tick 15, and yaw `+-10` with pitch 30 (450) / 40 (460) at tick 25 — the `uVar14`
+// assignments. Earlier notes gave the radius as 600 and 50, which was a mis-read of the hex.
 //
 // The powered branches test `byte(+0x845) && word(+0x212)` — kGatePowered, the idiom the
 // rest of the port uses — which the previous binding recorded as "no flag field, skipped".
@@ -1434,26 +1437,42 @@ inline constexpr MoveRule kRika0Rules[] = {
     // salvos at 15 (±5°) and 25 (±10°), freeze 5 at tick 30.
     {450,-1,0,9,MoveOp::Turn,18.f},
     {450,-1,0,9999,MoveOp::Decelerate,.5f},
-    {450,-1,15,15,MoveOp::Launch,2.f,0.f,45.f,kGateNormal},
-    {450,-1,15,15,MoveOp::Launch,2.f,0.f,45.f,kGateNormal},
-    {450,-1,15,15,MoveOp::Launch,3.f,0.f,45.f,kGatePowered},
-    {450,-1,15,15,MoveOp::Launch,3.f,0.f,45.f,kGatePowered},
-    {450,-1,25,25,MoveOp::Launch,2.f,0.f,30.f,kGateNormal},
-    {450,-1,25,25,MoveOp::Launch,2.f,0.f,30.f,kGateNormal},
-    {450,-1,25,25,MoveOp::Launch,3.f,0.f,30.f,kGatePowered},
-    {450,-1,25,25,MoveOp::Launch,3.f,0.f,30.f,kGatePowered},
+    {450,-1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(-25.f,50.f,50.f),aim_fixed_angles(-5.f,45.f)},
+    {450,-1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(25.f,50.f,50.f),aim_fixed_angles(5.f,45.f)},
+    {450,-1,15,15,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(-25.f,50.f,50.f),aim_fixed_angles(-5.f,45.f)},
+    {450,-1,15,15,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(25.f,50.f,50.f),aim_fixed_angles(5.f,45.f)},
+    {450,-1,25,25,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(-25.f,50.f,50.f),aim_fixed_angles(-10.f,30.f)},
+    {450,-1,25,25,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(25.f,50.f,50.f),aim_fixed_angles(10.f,30.f)},
+    {450,-1,25,25,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(-25.f,50.f,50.f),aim_fixed_angles(-10.f,30.f)},
+    {450,-1,25,25,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(25.f,50.f,50.f),aim_fixed_angles(10.f,30.f)},
     {450,-1,30,30,MoveOp::Hold,5.f},
     // 460 air charge1: same salvos (third 45 @15, 40 @25), freeze 15 at tick 30.
     // No bleed (one-shot halve + gravity tail skipped).
     {460,-1,0,9,MoveOp::Turn,18.f},
-    {460,-1,15,15,MoveOp::Launch,2.f,0.f,45.f,kGateNormal},
-    {460,-1,15,15,MoveOp::Launch,2.f,0.f,45.f,kGateNormal},
-    {460,-1,15,15,MoveOp::Launch,3.f,0.f,45.f,kGatePowered},
-    {460,-1,15,15,MoveOp::Launch,3.f,0.f,45.f,kGatePowered},
-    {460,-1,25,25,MoveOp::Launch,2.f,0.f,40.f,kGateNormal},
-    {460,-1,25,25,MoveOp::Launch,2.f,0.f,40.f,kGateNormal},
-    {460,-1,25,25,MoveOp::Launch,3.f,0.f,40.f,kGatePowered},
-    {460,-1,25,25,MoveOp::Launch,3.f,0.f,40.f,kGatePowered},
+    {460,-1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(-25.f,50.f,50.f),aim_fixed_angles(-5.f,45.f)},
+    {460,-1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(25.f,50.f,50.f),aim_fixed_angles(5.f,45.f)},
+    {460,-1,15,15,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(-25.f,50.f,50.f),aim_fixed_angles(-5.f,45.f)},
+    {460,-1,15,15,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(25.f,50.f,50.f),aim_fixed_angles(5.f,45.f)},
+    {460,-1,25,25,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(-25.f,50.f,50.f),aim_fixed_angles(-10.f,40.f)},
+    {460,-1,25,25,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(25.f,50.f,50.f),aim_fixed_angles(10.f,40.f)},
+    {460,-1,25,25,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(-25.f,50.f,50.f),aim_fixed_angles(-10.f,40.f)},
+    {460,-1,25,25,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(25.f,50.f,50.f),aim_fixed_angles(10.f,40.f)},
     {460,-1,30,30,MoveOp::Hold,15.f},
 };
 // Rika weapon 2 (handler 0x49d890) — shot rules recovered from the reference bodies

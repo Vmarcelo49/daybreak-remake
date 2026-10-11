@@ -169,17 +169,19 @@ struct ShotSpreadSpec {
     // own (MoveOp::Counter), which is what the body's scratch is.
     float yawPerTick = 0.f;
     SpreadOrder order = SpreadOrder::PitchThenYaw;
-    // A per-request LATERAL offset (FUN_00435220's third argument), which the hand fans
-    // spread their shots with: Satoko 0 draws `(draw%240-120)*0.1` per request. It moves
-    // the bone origin's local offset rather than the aim, because that is what the helper
-    // is handed. Drawn AFTER the pitch and yaw draws — the order the measured family uses —
-    // and a zero modulus consumes no draw like the other axes.
+    // The hand helpers' third argument (FUN_00435220 / FUN_00435000), which their fans spread
+    // their shots with: Satoko 0 draws `(draw%240-120)*0.1` per request. Despite the name it is
+    // a YAW OFFSET in degrees — FUN_00435250 adds it to the bone's own angles and runs the sum
+    // through the sin/cos table (0x4352a0) — so it swings the shot rather than sliding the
+    // muzzle. Only FUN_00435450's world form takes a perpendicular POSITION, and those families
+    // state that per rule through origin_actor_relative. Drawn after the pitch and yaw draws,
+    // the order the measured families use; a zero modulus consumes no draw.
     int lateralModulus = 0;
     float lateralOffset = 0.f;
     float lateralScale = 0.f;
-    // A counter-driven lateral, the mirror of yawPerTick: Chie 2's burst aims
-    // `counter * 0.5 - 2` and draws NOTHING, so the whole offset is the counter. Adding
-    // it to the draw term keeps one code path for both shapes.
+    // A counter-driven sweep on the same yaw-offset axis, the mirror of yawPerTick: Chie 2's
+    // burst aims `counter * 0.5 - 2` and draws NOTHING, so the whole offset is the counter.
+    // Adding it to the draw term keeps one code path for both shapes.
     float lateralPerTick = 0.f;
 };
 
