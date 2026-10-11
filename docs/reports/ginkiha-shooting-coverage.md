@@ -21,12 +21,9 @@ field". **That is false.** The flag is `w[0x1b7]` — the same value the port al
 (`3_0`), Rika 0 (`4_0`), Rika 2 (`4_2`), Chie 2 (`11_2`), Takano 0 (`7_0`) and Irie 1 (`10_1`).
 All seven have since been rebound with it.
 
-Sites whose notes still carry the claim and whose bodies have **not** been re-read yet —
-each is a pending audit, not a missing flag:
+**Every site that carried the claim has now been re-read**, and each row/count branch turned
+out to test the same idiom — so the list is empty:
 
-| Site | Line | Note |
-|---|---|---|
-| Tomitake 2 | 1399 | "tag rows 6/2 have no flag field" |
 
 Rika 2's note was also wrong, and re-reading its body showed the branch hides two further
 gaps that a flag alone would not fix. Its TAG branches are now bound — the tap fires three
@@ -36,6 +33,22 @@ row 2 below 0, row 0 in [0,1) and row 1 otherwise, and `w[0x9e]` is READ through
 but **never written anywhere in it**, so it has no recovered source. That rule keeps the row-0
 reading the traces show, and every request's pitch stays 0 even though scratch `0x3c` is
 filled with the clamped ±40 target elevation and then unused.
+
+### Correction: which field the tag branch actually reads
+
+Writing this up exposed a second, subtler error in my own notes. Several said "the tag branch
+reads `w[0x1b7] < N`". That is **not** the row/count gate. Every body that chooses a powered row
+or count tests
+
+```
+byte(+0x845) != 0 && word(+0x212) != 0
+```
+
+which is exactly the pair `kGatePowered` models (`0x212 * 4 == 0x848`, the aim hold the scene
+publishes; `+0x845` is the Oyashiro armed byte). `w[0x1b7]` is a *different* field: in Chie 2,
+Rika 0, Takano 0 and Irie 1 it only picks the **sound** played on the first burst tick, and in
+Tomitake 2 it is an outer gate on the whole burst. The bindings were right — the justification
+quoted in those comments was not, and all six are corrected.
 
 ### Correction: the spread axis order is now total
 
@@ -77,7 +90,7 @@ that substring), and assert the occurrence count *within that scope*.
 | Shion 2 | 18 / 36 | — / P | — / P | — / P | — / P | — / P | — / P | 25 |
 | Tomitake 0 | 19 / 12 | — / P | — / P | — / P | — / P | — / P | — / P | 19 |
 | Tomitake 1 | 20 / 21 | — / P | — / P | — / P | — / P | — / P | — / P | 15 |
-| Tomitake 2 | 21 / 42 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 20 |
+| Tomitake 2 | 21 / 42 | 400 slot0 row 7 + row 5/6 gate-bound, spread-bound | 402 rows 7 + 5/6 gate-bound | 450 slot0 @30 rows 4/0 | 460 slot0 @30 rows 4/0 | — / P | — / P | 20 |
 | Takano 0 | 22 / 11 | 400 R-hand 3x @12/15/18, rows 0/6 gate-bound | 402 same, rows 0/6 gate-bound | 450 slot0 @18 rows 1/7 gate-bound | 460 slot0 @17 rows 1/7 gate-bound | — / P | — / P | 30 |
 | Takano 1 | 23 / 22 | — / P | — / P | — / P | — / P | — / P | — / P | 28 |
 | Takano 2 | 24 / 41 | — / P | — / P | — / P | — / P | — / P | — / P | 30 |

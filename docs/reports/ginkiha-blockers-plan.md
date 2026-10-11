@@ -995,3 +995,30 @@ still waits on.
 
 **Next:** Tomitake 2 — the last "no flag field" site — then Rika 2's `w[0x9e]`, then the
 world-origin decode for Keiichi 1/2, Rika 0, Irie 1 and Rika 2.
+
+### 2026-10-10 — 3.17 Ledger order: Tomitake 2, and the last "no flag field" site closes
+
+**Done — Tomitake 2's tap bound** (handler 0x527880), writing the last of the four flagged
+sites. `shoot_body_6_2_400/402` fire two shots per scheduled tick (15..33 step 3) under
+`scratch % 3 == 0 && 0 < w[0x1b7]`: row 7 always with lateral 0 and pitch 0, then row 5
+normally or row 6 powered by the `byte(+0x845) && word(+0x212)` idiom. The ground tap draws
+`(draw%12-6)*0.25` of pitch and `(draw%6-3)*0.5` of lateral on row 5, swapping both moduli on
+row 6; the air tap uses 6/-3 for both. Elevation clamped ±45. Witnessed exactly (row 5 at +0.5
+pitch, -1.5 lateral; row 6 at -0.25, 0).
+
+**Open — the charge's tag rows 6/2.** Deliberately not bound: its body was not re-read in this
+pass. The flag exists (the tap proves it), so this is a scheduling gap, not the old excuse.
+
+**Correction — which field the tag branch reads.** Six comments from earlier slices cited
+`w[0x1b7] < N` as the powered gate. It is not: the row/count gate is
+`byte(+0x845) && word(+0x212)`, the pair `kGatePowered` models, while `w[0x1b7]` picks the
+sound (and here an outer burst gate). The bindings were right, the justifications were wrong,
+and all six comments are fixed. Worth remembering: `word(+0x212)` is `byte(+0x848)`, which is
+why the port's gate name does not appear anywhere in the bodies.
+
+**The "no flag field" work list is now empty.** All four flagged sites — Chie 2, Takano 0,
+Irie 1, Tomitake 2 — are re-read, bound where the body allowed it, and their notes retired.
+
+**Next:** Rika 2's `w[0x9e]` row selector (now with sightings in Irie 1's state 401 as well),
+Tomitake 2's charge tag rows, then the world-origin decode for Keiichi 1/2, Rika 0, Irie 1 and
+Rika 2.

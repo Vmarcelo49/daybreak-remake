@@ -160,6 +160,27 @@ Akane 2 defer note (2026-10-10): pinned handler identity/update, usage and origi
 
 Natsumi 0 scope note (2026-10-10): added `natsumi0` for the **normal ground state400 callback schedule only**: Hide prop bindings 0/1 from tick 14 onward, then Launch item row 0 at tick 14. This matches the controlled normal `fire_attachment(0,0,...)` request and the DAT registration map. The executor rebuilds prop bindings at the start of every tick, but the tick-14 Hide is applied before Launch during that same update, selecting the fallback bone-origin family. The test drives the actual Natsumi+item29 fixture. Phase labels are forced probes; raw callback flag/aim, exact geometry, actual projectile admission and natural phase reachability remain outside the claim. State 402 stays unbound despite an analogous raw helper call because no state402 normalized callback trace is included. The tag/boost five-row randomized requests and world-origin 450/460 charges also remain unbound.
 
+Tomitake 2 audit (2026-10-10, ledger slice): **the tap is bound with its gate; the charge's
+tag rows stay open.** `shoot_body_6_2_400/402` fire TWO shots per scheduled tick (15..33 step
+3), and the whole burst is gated on `scratch % 3 == 0 && 0 < w[0x1b7]`. The first shot is
+always row 7 with lateral 0 and pitch 0; the second is row 5 normally or row 6 powered, chosen
+by `byte(+0x845) && word(+0x212)` — the kGatePowered idiom the old note claimed did not exist.
+Both draw `(draw%12-6)*0.25` of pitch and then `(draw%6-3)*0.5` of lateral **on the ground
+tap**, with the powered row swapping the two moduli; the air tap uses 6/-3 for both. Elevation
+clamped ±45. The witness pins all of it against the canonical stream: row 5 at +0.5 pitch and
+-1.5 lateral, row 6 at -0.25 and 0.
+
+The charge's rows 6/2 are NOT bound — not for want of a flag (there is one, as the tap proves)
+but because its body was not re-read in this pass. That is the honest reason and the note says
+so rather than repeating the excuse.
+
+**Correction to my own earlier notes.** Six comments written in previous slices justified a
+powered binding by citing `w[0x1b7] < N`. That is not the row/count gate: it is a separate field
+that picks the *sound* (and in this family an outer gate on the whole burst). The row/count gate
+in every one of these bodies is `byte(+0x845) && word(+0x212)`, which is what `kGatePowered`
+models. The bindings were right; the stated justification was not, and all six comments are
+corrected.
+
 Irie 1 audit (2026-10-10, ledger slice): **all four states bound; the "no flag field" note
 retired.** `shoot_body_10_1_{400,402}` fire at tick 12: TWO world requests normally, on rows
 **1 then 0**, and FOUR powered, on rows **3, 2, 1 then 0** — the tag branch ADDS the row-2/3
