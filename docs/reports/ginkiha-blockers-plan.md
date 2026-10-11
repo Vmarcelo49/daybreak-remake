@@ -970,3 +970,28 @@ anchor on the combo name alone.
 
 **Next:** Irie 1 and Tomitake 2 — the last two "no flag field" sites — then Rika 2's `w[0x9e]`,
 then the world-origin decode for Keiichi 1/2, Rika 0 and Rika 2.
+
+### 2026-10-10 — 3.16 Ledger order: Irie 1's four-request tag branch
+
+**Done — Irie 1's four states bound** (handler 0x57f600). Both taps fire at tick 12: TWO world
+requests normally, on rows 1 then 0, and FOUR powered, on rows 3, 2, 1 then 0 — the tag branch
+ADDS the row-2/3 pair rather than replacing the row-0/1 one. The gate is `w[0x1b7] < 4`
+(kGatePowered) and the "no flag field" note is retired. The charges fire one `FUN_00434fd0`
+request, row 4 normal / row 5 powered, elevation clamped ±30, at tick 22 (450) and 17 (460).
+
+**A test was encoding a bug.** The old assertion checked rows 0 then 1, because the un-ordered
+binding emitted them in table order; the body fires row 1 first. The rules now follow the body
+and the assertion was corrected — not the other way round.
+
+**Method note — grep the whole helper family.** Searching for this family's fire helper under
+the names already known (`FUN_00435220`, `FUN_00435000`, `FUN_00435450`) returned nothing, which
+looked like a fabricated rule. The real helper is `FUN_00434fd0`. Search `FUN_0043xxxx` broadly
+before concluding a body makes no request.
+
+**Seen, not bound:** state 401's tick-15 pair (slots 0/1, row 0, elevation ±40) and its
+after-tick-29 transition to 0x19b/0x19c/0x19a/0x191 selected by `w[0x9e]`/`w[0x9f]`. The port
+maps {400, 402} here, so 401 is outside its table — and `w[0x9e]` is the same selector Rika 2
+still waits on.
+
+**Next:** Tomitake 2 — the last "no flag field" site — then Rika 2's `w[0x9e]`, then the
+world-origin decode for Keiichi 1/2, Rika 0, Irie 1 and Rika 2.

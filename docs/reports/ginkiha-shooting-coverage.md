@@ -17,16 +17,15 @@ follow-on/EX states remain pending for every combo, not implicitly N/A.
 
 Several recovered tables say a powered/tag branch was skipped because the body has "no flag
 field". **That is false.** The flag is `w[0x1b7]` — the same value the port already models as
-`kGatePowered` — and it was verified directly in six bodies: Keiichi 2 (`4_0`/`2_2`), Satoko 0
-(`3_0`), Rika 0 (`4_0`), Rika 2 (`4_2`), Chie 2 (`11_2`) and Takano 0 (`7_0`). All six have
-since been rebound with it.
+`kGatePowered` — and it was verified directly in seven bodies: Keiichi 2 (`4_0`/`2_2`), Satoko 0
+(`3_0`), Rika 0 (`4_0`), Rika 2 (`4_2`), Chie 2 (`11_2`), Takano 0 (`7_0`) and Irie 1 (`10_1`).
+All seven have since been rebound with it.
 
 Sites whose notes still carry the claim and whose bodies have **not** been re-read yet —
 each is a pending audit, not a missing flag:
 
 | Site | Line | Note |
 |---|---|---|
-| Irie 1 | 1194 | "tag adds rows 2+3 — no flag field, skipped" |
 | Tomitake 2 | 1399 | "tag rows 6/2 have no flag field" |
 
 Rika 2's note was also wrong, and re-reading its body showed the branch hides two further
@@ -89,7 +88,7 @@ that substring), and assert the occurrence count *within that scope*.
 | Akasaka 1 | 29 / 24 | — / P | — / P | — / P | — / P | — / P | — / P | 17 |
 | Akasaka 2 | 30 / 40 | — / P | — / P | — / P | — / P | — / P | — / P | 16 |
 | Irie 0 | 31 / 13 | — / P | — / P | — / P | — / P | — / P | — / P | 19 |
-| Irie 1 | 32 / 26 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 19 |
+| Irie 1 | 32 / 26 | 400 world 2x rows 1/0, tag 4x rows 3/2/1/0 gate-bound | 402 same, gate-bound | 450 attach @22 rows 4/5 gate-bound | 460 attach @17 rows 4/5 gate-bound | — / P | — / P | 19 |
 | Irie 2 | 33 / 43 | — / P | — / P | — / P | — / P | — / P | — / P | 19 |
 | Chie 0 | 34 / 14 | — / P | — / P | — / P | — / P | — / P | — / P | 23 |
 | Chie 1 | 35 / 25 | — / P | — / P | — / P | — / P | — / P | — / P | 21 |

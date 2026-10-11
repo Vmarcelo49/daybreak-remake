@@ -160,6 +160,28 @@ Akane 2 defer note (2026-10-10): pinned handler identity/update, usage and origi
 
 Natsumi 0 scope note (2026-10-10): added `natsumi0` for the **normal ground state400 callback schedule only**: Hide prop bindings 0/1 from tick 14 onward, then Launch item row 0 at tick 14. This matches the controlled normal `fire_attachment(0,0,...)` request and the DAT registration map. The executor rebuilds prop bindings at the start of every tick, but the tick-14 Hide is applied before Launch during that same update, selecting the fallback bone-origin family. The test drives the actual Natsumi+item29 fixture. Phase labels are forced probes; raw callback flag/aim, exact geometry, actual projectile admission and natural phase reachability remain outside the claim. State 402 stays unbound despite an analogous raw helper call because no state402 normalized callback trace is included. The tag/boost five-row randomized requests and world-origin 450/460 charges also remain unbound.
 
+Irie 1 audit (2026-10-10, ledger slice): **all four states bound; the "no flag field" note
+retired.** `shoot_body_10_1_{400,402}` fire at tick 12: TWO world requests normally, on rows
+**1 then 0**, and FOUR powered, on rows **3, 2, 1 then 0** — the tag branch ADDS the row-2/3
+pair rather than replacing the row-0/1 one (L63286-63302, L63551-63610). The gate is
+`w[0x1b7] < 4`, i.e. kGatePowered. Each request sits 100 units out at ±4 degrees of heading
+with the target elevation clamped ±40; that world pair is still placed through the adapter.
+
+**The old test encoded the wrong order**: it asserted rows 0 then 1 because the un-ordered
+binding produced them in table order. The body is authoritative (row 1 first), the rules now
+follow it, and the assertion was corrected rather than the rules.
+
+The charges fire one `FUN_00434fd0` request — row 4 normal / row 5 powered, elevation clamped
+±30 — at tick 22 (450) and tick 17 (460). Worth recording: the first grep for this family's
+fire helper looked for `FUN_00435220`/`FUN_00435000`/`FUN_00435450` and found nothing, which
+looked like a fabricated rule; the actual helper is `FUN_00434fd0`, a name this audit had not
+seen. Grep the whole `FUN_0043xxxx` family, not the helper names already known.
+
+Also seen and NOT bound here: state 401's tick-15 pair (slots 0 and 1, row 0, elevation ±40)
+and its after-tick-29 transition to 0x19b/0x19c/0x19a/0x191 selected by `w[0x9e]`/`w[0x9f]`.
+The port maps {400, 402} for this family's tap, so 401 is out of its table — note that
+`w[0x9e]` appears here too, the same selector Rika 2 is waiting on.
+
 Takano 0 audit (2026-10-10, ledger slice): **all four states bound; the "no flag field" note
 retired.** `shoot_body_7_0_{400,402}` fire three `FUN_00435220` requests on `Bip01_R_Hand` at
 ticks 12, 15 and 18 — three single shots, not a repeating window — each taking the target
