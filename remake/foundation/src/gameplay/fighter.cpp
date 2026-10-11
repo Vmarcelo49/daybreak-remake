@@ -1535,10 +1535,14 @@ void Fighter::launch_bullet(int row, const ShotOriginSpec& origin, const ShotAim
             break;
         }
         case SpreadAxis::Lateral: {
-            if (spread.lateralModulus <= 0) break;
-            const int draw = static_cast<int>(rng_source().modulo(
-                static_cast<std::uint32_t>(spread.lateralModulus)));
+            if (spread.lateralModulus <= 0 && spread.lateralPerTick == 0.f) break;
+            // A zero modulus draws nothing, which is what a counter-only sweep needs.
+            int draw = 0;
+            if (spread.lateralModulus > 0)
+                draw = static_cast<int>(rng_source().modulo(
+                    static_cast<std::uint32_t>(spread.lateralModulus)));
             resolvedOrigin.localOffset[0] +=
+                static_cast<float>(m_moveCounter) * spread.lateralPerTick +
                 (static_cast<float>(draw) + spread.lateralOffset) * spread.lateralScale;
             break;
         }

@@ -2397,11 +2397,14 @@ void test_chie_scratch_burst() {
     const auto install = findInstall(nullptr);
     if (install.empty() || !g_chieCombo.load(install, 11, 2))
         return skip_case("Chie 2 combo");
-    // Bundle evidence: Chie 2 (handler 0x566a40) fires item row 0 at ticks 15,18,21,24
-    // in the ground tap (shoot_body_11_2_400: scratch counter fires while scratch%3==1)
-    // and item row 2 once at tick 22 in the first ground charge (tick 15 in the air
-    // charge — same rule shape, untested here like the other air paths).
-    // Her program is kChieRules; the second charge stays provisional.
+    // Bundle evidence: Chie 2 (handler 0x566a40) fires four `Bip01_R_Hand` requests at
+    // ticks 15,18,21,24 in the ground tap (shoot_body_11_2_400: scratch starts at 1, steps
+    // one a tick, fires while `scratch % 3 == 1` and `scratch < 11`), each aiming
+    // `scratch * 0.5 - 2` of lateral offset — so the burst walks -1.5, 0, 1.5, 3.0 — with
+    // row 0 normal / row 1 powered. The air tap is the same burst on `Bip01_L_Hand` with
+    // five shots (gate `< 14`). She fires item row 2 once at tick 22 in the first ground
+    // charge (tick 15 in the air charge). Her program is kChieRules; the second charge
+    // stays provisional.
     Fighter f;
     f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_chieCombo.bind(f);
@@ -2424,6 +2427,69 @@ void test_chie_scratch_burst() {
     shot = f.take_pending_shot();
     check_bool("Chie tap launches again at tick 18", true, shot.armed);
     check_int("Chie repeat selects item row zero", 0, shot.bulletRow);
+
+    // The whole burst: four shots, and the lateral walks with the counter. The offsets are
+    // exact — `counter * 0.5 - 2` for the counters 1, 4, 7 and 10 the gate lets through.
+    Fighter w;
+    w.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_chieCombo.bind(w);
+    settle(w);
+    Input win;
+    win.set(fnd::input::Action::Shoot, true);
+    tick(w, win);
+    win.set(fnd::input::Action::Shoot, false);
+    tick(w, win);
+    std::vector<float> burstOffsets;
+    std::vector<int> burstRows;
+    for (int i = 1; i <= 30; ++i) {
+        tick(w, win);
+        for (gameplay::PendingShot s2 = w.take_pending_shot(); s2.armed;
+             s2 = w.take_pending_shot()) {
+            burstOffsets.push_back(s2.origin.localOffset[0]);
+            burstRows.push_back(s2.bulletRow);
+        }
+    }
+    check_int("Chie tap burst fires four", 4, (int)burstOffsets.size());
+    if (burstOffsets.size() == 4) {
+        check_near("Chie burst first shot offsets -1.5", -1.5f, burstOffsets[0], 0.01f);
+        check_near("Chie burst second shot offsets 0", 0.f, burstOffsets[1], 0.01f);
+        check_near("Chie burst third shot offsets 1.5", 1.5f, burstOffsets[2], 0.01f);
+        check_near("Chie burst fourth shot offsets 3", 3.f, burstOffsets[3], 0.01f);
+    }
+    bool burstRowsZero = !burstRows.empty();
+    for (int r : burstRows) burstRowsZero &= r == 0;
+    check_bool("Chie burst rows are all 0 normally", true, burstRowsZero);
+
+    // Powered: the same burst on item row 1.
+    Fighter cp;
+    cp.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_chieCombo.bind(cp);
+    settle(cp);
+    cp.set_hypermode(Hypermode::Oyashiro);
+    cp.set_hyper_gauge(1.f);
+    Input hp;
+    hp.set(fnd::input::Action::Special, true);
+    tick(cp, hp);
+    hp.set(fnd::input::Action::Special, false);
+    tick(cp, hp);
+    gameplay::ShootingContext context;
+    context.aimHold = true;
+    cp.set_shooting_context(context);
+    hp.set(fnd::input::Action::Shoot, true);
+    tick(cp, hp);
+    hp.set(fnd::input::Action::Shoot, false);
+    tick(cp, hp);
+    std::vector<int> poweredRows;
+    for (int i = 1; i <= 30; ++i) {
+        tick(cp, hp);
+        for (gameplay::PendingShot s2 = cp.take_pending_shot(); s2.armed;
+             s2 = cp.take_pending_shot())
+            poweredRows.push_back(s2.bulletRow);
+    }
+    check_int("powered Chie burst fires four", 4, (int)poweredRows.size());
+    bool poweredRowsOne = !poweredRows.empty();
+    for (int r : poweredRows) poweredRowsOne &= r == 1;
+    check_bool("powered Chie burst rows are all 1", true, poweredRowsOne);
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_chieCombo.bind(g);
@@ -2440,6 +2506,36 @@ void test_chie_scratch_burst() {
     shot = g.take_pending_shot();
     check_bool("Chie charge launches at tick 22", true, shot.armed);
     check_int("Chie charge selects item row two", 2, shot.bulletRow);
+
+    // Powered: the same single request on item row 3.
+    Fighter cq;
+    cq.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_chieCombo.bind(cq);
+    settle(cq);
+    cq.set_hypermode(Hypermode::Oyashiro);
+    cq.set_hyper_gauge(1.f);
+    Input hq;
+    hq.set(fnd::input::Action::Special, true);
+    tick(cq, hq);
+    hq.set(fnd::input::Action::Special, false);
+    tick(cq, hq);
+    gameplay::ShootingContext qcontext;
+    qcontext.aimHold = true;
+    cq.set_shooting_context(qcontext);
+    hold_yellow(cq, hq);
+    hq.set(fnd::input::Action::Shoot, false);
+    tick(cq, hq);
+    for (int i = 0; i < 22; ++i) tick(cq, hq);
+    int chargeArmed = 0;
+    bool chargeRow3 = true;
+    for (int i = 0; i < 4; ++i) {
+        gameplay::PendingShot s2 = cq.take_pending_shot();
+        if (!s2.armed) continue;
+        ++chargeArmed;
+        if (s2.bulletRow != 3) chargeRow3 = false;
+    }
+    check_int("powered Chie charge fires once", 1, chargeArmed);
+    check_bool("powered Chie charge uses item row 3", true, chargeRow3);
 }
 
 void test_rika2_single_tick() {

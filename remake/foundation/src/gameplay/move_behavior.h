@@ -1089,34 +1089,79 @@ inline constexpr MoveRule kKeiichiRules[] = {
 };
 // Chie weapon 2 (handler 0x566a40) — shot rules recovered from the reference bodies
 // shoot_body_11_2_{400,402,450,460} (bundle reference/source). Tap bursts run on a
-// scratch counter (1 at burst start, fire while scratch%3==1): 400 fires ticks
-// 15,18,21,24, 402 fires 17,20,23,26,29 — row 0 normal / 1 tag, only the normal row
-// bound (no flag field). Single salvos row 2 at tick 22 (450, pitch fixed 0) and
-// tick 15 (460). Turn windows and the phase-0/unconditional bleeds are measured per
-// body; gravity tails and the aim pitch ramp have no MoveRule op and are skipped.
+// scratch counter (1 at burst start, +1 a tick, fire while `counter % 3 == 1`): 400 fires
+// ticks 15,18,21,24 while `counter < 11` and 402 fires 17,20,23,26,29 while `counter < 14`.
+// Every shot is a `FUN_00435220` request on the posed hand — `Bip01_R_Hand` on the ground
+// tap and `Bip01_L_Hand` on the air tap — with the pitch taken from the target elevation
+// clamped +-40 and the lateral aiming `counter * 0.5 - 2`, so the burst walks -1.5, 0,
+// 1.5, 3.0 (4.5 on the air tap's fifth shot). Row 0 normal / row 1 powered; the tag
+// branch reads `w[0x1b7] < 5` / `< 6`, which is the kGatePowered idiom, and the earlier
+// "no flag field" note here was wrong. The charges fire one request — row 2 normal / row 3
+// powered, lateral 0, on `Bip01_R_Hand`, target elevation clamped +-30 (0x1e, not the tap's
+// 40) — at tick 22 on the ground charge and tick 15 on the air one. The 460 rule used to
+// sit at tick 22 while this comment said 15; the body's `== 0xf` settles it at 15. Turn
+// windows and the phase-0/unconditional bleeds are measured per body; gravity
+// tails and the aim pitch ramp have no MoveRule op and are skipped.
 inline constexpr MoveRule kChieRules[] = {
     // 400 ground tap: 15 deg turn phase 0 ticks 0-14, bleed 0.5/tick phase 0.
     {400,0,0,14,MoveOp::Turn,15.f},
     {400,0,0,9999,MoveOp::Decelerate,.5f},
-    {400,-1,15,15,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,18,18,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,21,21,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,24,24,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,15,15,MoveOp::CounterSet,1.f},
+    {400,-1,16,9999,MoveOp::Counter,1.f},
+    {400,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
+    {400,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
+    {400,-1,18,18,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
+    {400,-1,18,18,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
+    {400,-1,21,21,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
+    {400,-1,21,21,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
+    {400,-1,24,24,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
+    {400,-1,24,24,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
     // 402 air tap: 20 deg turn ticks 0-16 (no phase gate), same burst shape at 17+.
     {402,-1,0,16,MoveOp::Turn,20.f},
-    {402,-1,17,17,MoveOp::Launch,0.f,0.f,40.f},
-    {402,-1,20,20,MoveOp::Launch,0.f,0.f,40.f},
-    {402,-1,23,23,MoveOp::Launch,0.f,0.f,40.f},
-    {402,-1,26,26,MoveOp::Launch,0.f,0.f,40.f},
-    {402,-1,29,29,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,17,17,MoveOp::CounterSet,1.f},
+    {402,-1,18,9999,MoveOp::Counter,1.f},
+    {402,-1,17,17,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_L_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
+    {402,-1,17,17,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_L_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
+    {402,-1,20,20,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_L_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
+    {402,-1,20,20,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_L_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
+    {402,-1,23,23,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_L_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
+    {402,-1,23,23,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_L_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
+    {402,-1,26,26,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_L_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
+    {402,-1,26,26,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_L_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
+    {402,-1,29,29,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_L_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
+    {402,-1,29,29,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_L_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
     // 450 ground charge1: 18 deg turn through tick 19, bleed 0.5/tick unconditional,
     // single salvo row 2 at tick 22.
     {450,-1,0,19,MoveOp::Turn,18.f},
     {450,-1,0,9999,MoveOp::Decelerate,.5f},
-    {450,-1,22,22,MoveOp::Launch,2.f,0.f,30.f},
+    {450,-1,22,22,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(30.f)},
+    {450,-1,22,22,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(30.f)},
     // 460 air charge1: 18 deg turn through tick 24, single salvo row 2 at tick 15.
     {460,-1,0,24,MoveOp::Turn,18.f},
-    {460,-1,22,22,MoveOp::Launch,2.f,0.f,30.f},
+    {460,-1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(30.f)},
+    {460,-1,15,15,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(30.f)},
 };
 // Takano weapon 0 (handler 0x531ce0) — shot rules recovered from the reference bodies
 // shoot_body_7_0_{400,402,450,460} (bundle reference/source). Double turn in the tap

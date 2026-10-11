@@ -137,16 +137,21 @@ enum class SpreadOrder { PitchThenYaw, YawThenPitch, PitchThenLateral, LateralTh
 
 enum class SpreadAxis { Pitch, Yaw, Lateral, None };
 
+// Every order lists ALL THREE axes: the named pair in the stated order, and whichever axis
+// is left LAST. No measured family configures all three, so the trailing axis never draws
+// and its position is unobservable — whereas omitting an axis entirely (an earlier cut did)
+// silently dropped its draw. `spread_axis_order` is therefore total, and a spec can never
+// lose an axis to an order it did not think about.
 inline constexpr std::array<SpreadAxis, 3> spread_axis_order(SpreadOrder order) {
     switch (order) {
     case SpreadOrder::PitchThenYaw:
-        return {SpreadAxis::Pitch, SpreadAxis::Yaw, SpreadAxis::None};
+        return {SpreadAxis::Pitch, SpreadAxis::Yaw, SpreadAxis::Lateral};
     case SpreadOrder::YawThenPitch:
-        return {SpreadAxis::Yaw, SpreadAxis::Pitch, SpreadAxis::None};
+        return {SpreadAxis::Yaw, SpreadAxis::Pitch, SpreadAxis::Lateral};
     case SpreadOrder::PitchThenLateral:
-        return {SpreadAxis::Pitch, SpreadAxis::Lateral, SpreadAxis::None};
+        return {SpreadAxis::Pitch, SpreadAxis::Lateral, SpreadAxis::Yaw};
     case SpreadOrder::LateralThenPitch:
-        return {SpreadAxis::Lateral, SpreadAxis::Pitch, SpreadAxis::None};
+        return {SpreadAxis::Lateral, SpreadAxis::Pitch, SpreadAxis::Yaw};
     }
     return {SpreadAxis::None, SpreadAxis::None, SpreadAxis::None};
 }
@@ -172,6 +177,10 @@ struct ShotSpreadSpec {
     int lateralModulus = 0;
     float lateralOffset = 0.f;
     float lateralScale = 0.f;
+    // A counter-driven lateral, the mirror of yawPerTick: Chie 2's burst aims
+    // `counter * 0.5 - 2` and draws NOTHING, so the whole offset is the counter. Adding
+    // it to the draw term keeps one code path for both shapes.
+    float lateralPerTick = 0.f;
 };
 
 inline constexpr ShotSpreadSpec spread_pitch_then_yaw(int pitchModulus, float pitchOffset,
@@ -195,6 +204,22 @@ inline constexpr ShotSpreadSpec kSpreadEmissionJitter =
 // `heading + offset + 90 - rand%180`, so the yaw draw is subtracted through its scale.
 inline constexpr ShotSpreadSpec kSpreadRing =
     spread_pitch_then_yaw(30, 20.f, 1.f, 180, 0.f, -1.f);
+
+// A counter-only lateral sweep: no draw at all, the offset is `counter * perTick + offset`
+// (shoot_body_11_2_400's `0x3e * 0.5 - 2`).
+inline constexpr ShotSpreadSpec spread_lateral_sweep(float perTick, float offset) {
+    ShotSpreadSpec spec;
+    spec.order = SpreadOrder::PitchThenLateral;
+    spec.lateralPerTick = perTick;
+    spec.lateralOffset = offset;
+    spec.lateralScale = 1.f;
+    return spec;
+}
+
+// Chie 2's tap burst: the counter starts at 1 and steps by 1 a tick, firing while
+// `counter % 3 == 1`, so the lateral walks -1.5, 0, 1.5, 3.0 (and 4.5 on the air tap's
+// fifth shot). No draw is taken — the counter IS the spread.
+inline constexpr ShotSpreadSpec kSpreadChieBurst = spread_lateral_sweep(.5f, -2.f);
 
 // A hand fan: `draw%pitchModulus` of extra pitch (drawn first, over the latched base) and
 // `(draw%lateralModulus + lateralOffset) * lateralScale` of lateral offset (drawn second).
