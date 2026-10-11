@@ -160,6 +160,26 @@ Akane 2 defer note (2026-10-10): pinned handler identity/update, usage and origi
 
 Natsumi 0 scope note (2026-10-10): added `natsumi0` for the **normal ground state400 callback schedule only**: Hide prop bindings 0/1 from tick 14 onward, then Launch item row 0 at tick 14. This matches the controlled normal `fire_attachment(0,0,...)` request and the DAT registration map. The executor rebuilds prop bindings at the start of every tick, but the tick-14 Hide is applied before Launch during that same update, selecting the fallback bone-origin family. The test drives the actual Natsumi+item29 fixture. Phase labels are forced probes; raw callback flag/aim, exact geometry, actual projectile admission and natural phase reachability remain outside the claim. State 402 stays unbound despite an analogous raw helper call because no state402 normalized callback trace is included. The tag/boost five-row randomized requests and world-origin 450/460 charges also remain unbound.
 
+Satoko 0 audit (2026-10-10, ledger slice): **the tap is bound; the charges keep their
+existing binding.** `shoot_body_3_0_400/402` fire the salvo through `FUN_00435220` on the
+posed `Bip01_R_Hand`: a loop of FIVE iterations at tick 17, EIGHT powered, all on item row 0.
+Each request draws `draw%15` of extra pitch over the target elevation (latched, ±40) and then
+`(draw%240-120)*0.1` of lateral offset — `(draw%300-150)*0.1` powered — so the powered branch
+widens the loop and the fan, not the row. The previous binding unrolled five identical
+adapter launches and its own comment recorded the powered eight as "no flag field, skipped";
+the flag is `w[0x1b7]`, which is the powered gate the rest of the port already uses. It is now
+one `CapturePitch` plus one repeated Launch per branch, so the two draws land in the body's
+order. The witness pins the canonical stream exactly: request 1 pitches at 2 and request 2 at
+14, and requests 1 and 2 sit 8.3 lateral units apart — drawing the lateral first would move
+both. The fan is bounded at 23.9 units normal and 29.9 powered.
+
+Note for the next slice: **Satoko 1 (handler 0x4b4090) has NO usage evidence at all** — the
+recon's shot400 harness reaches no request on any variant, so it is a bodies-only combo. Its
+`shoot_body_3_1_400` fires two WORLD requests at tick 0 on rows 6/7 at `y + 600`, then a
+10 deg / 15 deg turn pair, then a hand request at tick 13 with a powered count split
+(`w[0x1b7] < 6`), and more world rows 6/7 after. Auditing it needs the bodies read directly
+plus a purpose-built harness — the preview cannot be trusted for it.
+
 Keiichi 2 audit (2026-10-10, ledger slice): **the tap is bound; the charges are measured and
 left unbound.** `shoot_body_2_2_400/402` fire ONE slot-0 attachment request a tick for eleven
 ticks (10..20, guard `9 < tick < 0x15`), row 0 normally and row 1 powered. Each tick grows

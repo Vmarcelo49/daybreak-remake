@@ -24,7 +24,7 @@ follow-on/EX states remain pending for every combo, not implicitly N/A.
 | Keiichi 0 | 7 / 5 | 400 hand R, gate-bound / rows 3 powered | 402 hand R, gate-bound / rows 3 powered | 450 hand L + attach, gate-bound / rows 4 powered | 460 hand L + attach, gate-bound / rows 4 powered | — / P | — / P | 20 |
 | Keiichi 1 | 8 / 18 | 400 hand R, gate-bound / rows 1 powered | 402 hand R, gate-bound / rows 1 powered | 450 world pair, gate-bound / rows 3 powered | 460 world pair, gate-bound / rows 3 powered | — / P | — / P | 19 |
 | Keiichi 2 | 9 / 34 | 400 sweep, gate-bound / rows 1 powered | 402 sweep, gate-bound / rows 1 powered | 450 world @13 rows 2/3 measured, unbound | 460 world @13 rows 2/3 measured, unbound | — / P | — / P | 18 |
-| Satoko 0 | 10 / 8 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 18 |
+| Satoko 0 | 10 / 8 | 400 hand fan, gate-bound / rows 1 powered | 402 hand fan, gate-bound / rows 1 powered | 450? / P | 460? / P | — / P | — / P | 18 |
 | Satoko 1 | 11 / 17 | — / P | — / P | — / P | — / P | — / P | — / P | 18 |
 | Satoko 2 | 12 / 38 | 400 twin world, gate-bound / rows 1 powered | 402 twin world, gate-bound / rows 1 powered | — / P | — / P | — / P | — / P | 18 |
 | Rika 0 | 13 / 7 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 20 |
@@ -76,6 +76,12 @@ Four more shared capabilities landed with this snapshot:
   the named bone matrix or fail explicitly (never substitute). Keiichi 0/1 are the first
   users (right hand taps, left-hand charge request). The rig bone-existence check plus
   the origin KIND on the armed request is the witness pattern.
+- **A per-request lateral offset for the hand fans.** `ShotSpreadSpec::lateralModulus`
+  moves the bone origin's own local offset, which is what `FUN_00435220`'s third argument
+  is: Satoko 0 draws `(draw%240-120)*0.1` per request, so her five- and eight-shot salvos
+  come off the posed hand as a fan rather than five identical pellets. This also fixed a
+  latent bug: the `NamedBone` resolver read the *spec's* offset, so any spread that moved
+  the resolved offset would have been silently dropped.
 - **A counter-driven yaw sweep and a per-rule draw order.** Some bodies do not fire
   straight: Keiichi 2's tap grows a scratch by 2 a tick and aims `scratch - 15 + draw%10`,
   so the volley walks across the arc. `ShotSpreadSpec::yawPerTick` adds

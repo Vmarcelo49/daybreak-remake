@@ -787,3 +787,38 @@ bounds, the pitch window, and the two exact canonical-stream values).
 
 **Next:** Satoko 0 and 1 (Satoko 2's tap is bound), then the Keiichi 1 / Keiichi 2 charge
 geometry decode, then Rika 0/1/2.
+
+### 2026-10-10 — 3.9 Ledger order: Satoko 0's hand fan; Satoko 1 needs its own harness
+
+**Done — Satoko 0's tap audited and rebound** (handler 0x4a9c40, bodies
+shoot_body_3_0_400/402). The existing binding unrolled five identical adapter launches and
+recorded the powered eight as "no flag field, skipped" — the flag is `w[0x1b7]`, the powered
+gate the port already uses everywhere else. The body is a HAND FAN on the posed
+`Bip01_R_Hand`: five requests normally, eight powered, all row 0, each drawing `draw%15` of
+pitch over the latched ±40 target elevation and then `(draw%240-120)*0.1` of lateral offset
+(`(draw%300-150)*0.1` powered). The program is now one `CapturePitch` plus one repeated
+Launch per branch, so the two draws land in the body's order with no unrolled duplication.
+
+Two mechanisms came out of it:
+
+* `ShotSpreadSpec::lateralModulus/Offset/Scale` — a per-request offset on the bone origin's
+  own local offset, which is what `FUN_00435220`'s third argument is. It also exposed a
+  **latent bug**: the `NamedBone` resolver read the *spec's* `localOffset`, so any spread
+  that adjusted the resolved offset was silently dropped. Fixed.
+* The witness pins the canonical stream exactly — request 1 pitches at 2, request 2 at 14,
+  and they sit 8.3 lateral units apart — which fails if the draw order is reversed. The fan
+  is bounded at 23.9 units normal / 29.9 powered, and the powered branch is witnessed at
+  eight requests on row 0.
+
+**Measured, not yet bound — Satoko 1 (handler 0x4b4090) is a bodies-only combo.** The recon's
+shot400 harness reaches NO request on any variant and the usage table is empty, so nothing
+about it can be checked against a preview yet. Read directly, `shoot_body_3_1_400` fires two
+WORLD requests at tick 0 on rows 6/7 at `y + 600`, then a 10 deg / 15 deg turn pair, then a
+hand request at tick 13 with a powered count split (`w[0x1b7] < 6`), then more world rows 6/7.
+It needs a purpose-built harness before its salvo count and geometry can be trusted.
+
+**Verified:** full rebuilt Linux CTest 67/67, 0 skipped; fighter suite 985 checks / 0 failures
+(section 25 now witnesses the fan, its bounds and the powered eight).
+
+**Next:** build Satoko 1's harness and audit it, then Rika 0/1/2, then the Keiichi 1/Keiichi 2
+charge geometry decode.
