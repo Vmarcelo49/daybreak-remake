@@ -96,7 +96,7 @@ Phases 2–5 are done; do not mark complete early.
 | Mion 0 | 0x4582a0 | mion (audited: slots, powered rows, counter freezes) | 400 p1t2 rows 0/4 slot 0 + p3t2 slot 1 (contact); 402 dual-slot c=15/20/25; 450 rows 2/3 @17; 460 rows 2/3 @17 | tap + air volleys + both charges |
 | Rika 1 | 0x492f70 | rika | even ticks 12–40; twin salvos; **counter-gated 30-update freeze at T30 (3 salvos), ground + air, both branches** | tap repeat + T10/T30 + frozen interval + latch + air 460 normal/powered |
 | Tomitake 2 | 0x527880 | tomitake | twin 7+5 every 3 ticks; freeze-then-fire | tap + charge |
-| Keiichi 2 | 0x47b940 | keiichi | dense every-tick 10–20; rewind stalls | tap + charge + Hold latch |
+| Keiichi 2 | 0x47b940 | keiichi (audited: sweeping tap, gate-bound) | 400/402 sweep ticks 10-20 rows 0/1; 450/460 world @13 rows 2/3 measured but unbound | tap sweep + charge rows measured |
 | Chie 2 | 0x566a40 | chie | scratch-counter burst; single salvos | tap + charge |
 | Kasai 1 | 0x5b9680 | kasai | twins 2+0; fan of four | tap + charge |
 | Takano 0 | 0x531ce0 | takano | triple row 0 (12/15/18); single row 1 | tap + charge |
@@ -159,6 +159,36 @@ Rena 2 defer note (2026-10-10, ledger slice): no `shoot_body_0_2_*` exists in ei
 Akane 2 defer note (2026-10-10): pinned handler identity/update, usage and origin-counted state400 callbacks; no MoveProgram was bound. Bodies 400/402/450/460 use `FUN_00435450` with explicit world coordinates. Typed origin/aim specs now allow world XYZ and legacy angles, but the body calculations, powered branch and dynamic runtime inputs are not connected to a schedule; callback probes also do not prove admission/spawn. Normal/powered probes record one world request at frame 10; powered adds one at 15 across six forced phases.
 
 Natsumi 0 scope note (2026-10-10): added `natsumi0` for the **normal ground state400 callback schedule only**: Hide prop bindings 0/1 from tick 14 onward, then Launch item row 0 at tick 14. This matches the controlled normal `fire_attachment(0,0,...)` request and the DAT registration map. The executor rebuilds prop bindings at the start of every tick, but the tick-14 Hide is applied before Launch during that same update, selecting the fallback bone-origin family. The test drives the actual Natsumi+item29 fixture. Phase labels are forced probes; raw callback flag/aim, exact geometry, actual projectile admission and natural phase reachability remain outside the claim. State 402 stays unbound despite an analogous raw helper call because no state402 normalized callback trace is included. The tag/boost five-row randomized requests and world-origin 450/460 charges also remain unbound.
+
+Keiichi 2 audit (2026-10-10, ledger slice): **the tap is bound; the charges are measured and
+left unbound.** `shoot_body_2_2_400/402` fire ONE slot-0 attachment request a tick for eleven
+ticks (10..20, guard `9 < tick < 0x15`), row 0 normally and row 1 powered. Each tick grows
+scratch `0x3a` by 2 and aims `0x3a - 15 + draw%10` on the yaw with `draw%10 + 5` of pitch over
+the clamped target elevation (compare/assign ±30 — see below), so the tap SWEEPS across roughly
+±11 degrees instead of firing straight. It is the one family that takes the YAW draw first
+(`0x3b` from draw 1, `0x3c` from draw 2), which `SpreadOrder::YawThenPitch` states. The
+previous binding fired one straight row-0 shot a tick with no gate, no sweep and no jitter.
+State 401 is the same request with an extra 15 deg phase-0 turn and no state-403 abort; the
+port binds 402, the air-tap slot the rest of the roster uses, and leaves 401 unbound.
+
+Two things are recorded rather than modelled:
+
+* **The low pitch clamp assigns a different value than it compares.** The body tests
+  `0x40 < -30.0` and then writes `-0x3e100000` (-0.140625), while the high end writes the
+  +30.0 it compared. Both the body header and the handler decompilation (`FUN_0047b940.c:1825`
+  and `:1884`) agree on this, so it is not a one-off transcription, but a clamp to
+  [-0.140625, +30] is NOT equivalent (it would also flatten values in [-30, -0.14)). The port
+  keeps the symmetric ±30 clamp, which matches both comparisons, and this quirk stays open.
+* **The charges are world requests the port does not yet place.** `shoot_body_2_2_450/460`
+  turn 18 deg while tick under 13 (on the movement-preserving helper), clamp the scratch to
+  ±40 at tick 13, then fire rows 2/3 through `FUN_00435450` — the WORLD helper, with a 600-unit
+  term in the position expression — and freeze 10 updates at tick 5 and 15 at tick 32. The port
+  binds them through the attachment adapter with a ±50 pitch, which is a different ORIGIN
+  FAMILY and a different clamp. The 600-unit term is not decoded here, and Keiichi 1's charge
+  binding used the same family's shape (`origin_actor_relative(-50, 0, 40)`), so that binding
+  should be re-verified against this formula before either is trusted. The rewind stalls are
+  plain `Hold 10`/`Hold 15`: the body's 0x3e counter only rewinds the clock, so the observable
+  timing matches and the counter adds nothing else.
 
 Mion audit (2026-10-10, ledger slice): **Mion 0 fully bound; Mion 1 and Mion 2 have
 their taps bound and their charges documented as blocked.** The three combos share one

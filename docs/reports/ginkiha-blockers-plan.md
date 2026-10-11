@@ -748,3 +748,42 @@ count/rows/range), recon six tests passed, Windows and web cross-builds passed, 
 
 **Next:** Keiichi 2's audit (the last unaudited member of the Keiichi trio), then Satoko
 0/1/2, then Kasai 0 — whose scatter is now unblocked.
+
+### 2026-10-10 — 3.8 Ledger order: Keiichi 2's sweeping tap; two charge gaps named
+
+**Done — Keiichi 2's tap audited and bound** (handler 0x47b940, bodies
+shoot_body_2_2_400/402). The previous binding fired one straight row-0 shot a tick through
+the legacy adapter. The body is a SWEEP: eleven requests (ticks 10..20, guard `9 < tick <
+0x15`), each tick growing scratch `0x3a` by 2 and aiming `0x3a - 15 + draw%10` on the yaw
+with `draw%10 + 5` of pitch over the clamped target elevation, row 0 normally and row 1
+powered. It is also the only family that draws the YAW first. Two small, general mechanisms
+carried it: `ShotSpreadSpec::yawPerTick` (a counter-driven sweep, `counter * yawPerTick`
+added before the jitter) and `SpreadOrder` (which axis draws first). The witness pins the
+arithmetic exactly against the canonical stream — request 1 yaws at 79 and pitches at 7,
+request 2 at 83 and 10 — which fails if the counter, the jitter or the draw order is wrong.
+The powered branch is witnessed at 11 requests on row 1.
+
+**Measured, deliberately unbound — two charge gaps:**
+
+* **The low pitch clamp assigns a different value than it compares.** The body tests
+  `0x40 < -30.0` and writes `-0x3e100000` (-0.140625) while the high end writes the +30.0 it
+  compared. Both the body header and `FUN_0047b940.c:1825`/`:1884` agree, so it is not a
+  one-off, but clamping to [-0.140625, +30] is not equivalent: it would also flatten values
+  in [-30, -0.14). The port keeps the symmetric ±30 clamp (which matches both comparisons)
+  and the quirk stays open rather than being guessed at.
+* **The charges are world requests the port places wrongly.** 450/460 turn 18 deg while tick
+  under 13, clamp the scratch to ±40 at tick 13, fire rows 2/3 through `FUN_00435450` (the
+  WORLD helper, with a 600-unit term in the position expression), and freeze 10 updates at
+  tick 5 and 15 at tick 32. The port binds them through the attachment adapter with a ±50
+  pitch — a different origin family and a different clamp. The 600-unit term is not decoded,
+  and **Keiichi 1's charge binding used the same family's shape** (`origin_actor_relative(-50,
+  0, 40)`), so that earlier binding must be re-verified against this formula before either is
+  trusted. Recorded as an open item rather than carried as a defect. The rewind stalls are
+  correctly plain `Hold 10`/`Hold 15`: the body's counter only rewinds the clock.
+
+**Verified:** full rebuilt Linux CTest (see the round's report), fighter suite 976 checks 0
+failures (section 43 is the new witness: 11 requests, rows 0/1, the sweep's span and step
+bounds, the pitch window, and the two exact canonical-stream values).
+
+**Next:** Satoko 0 and 1 (Satoko 2's tap is bound), then the Keiichi 1 / Keiichi 2 charge
+geometry decode, then Rika 0/1/2.

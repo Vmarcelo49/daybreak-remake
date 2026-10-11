@@ -23,7 +23,7 @@ follow-on/EX states remain pending for every combo, not implicitly N/A.
 | Mion 2 | 6 / 35 | 400 slot 0 @teleport-tick 10, rows 0/1 | 402 slot 0 @18, rows 0/1, freeze 10 | 450 phase-1 emissions @15..60 rows 2/3, spread-bound (+0x1c8 unmodelled) | 460 same as 450 | — / P | — / P | 24 |
 | Keiichi 0 | 7 / 5 | 400 hand R, gate-bound / rows 3 powered | 402 hand R, gate-bound / rows 3 powered | 450 hand L + attach, gate-bound / rows 4 powered | 460 hand L + attach, gate-bound / rows 4 powered | — / P | — / P | 20 |
 | Keiichi 1 | 8 / 18 | 400 hand R, gate-bound / rows 1 powered | 402 hand R, gate-bound / rows 1 powered | 450 world pair, gate-bound / rows 3 powered | 460 world pair, gate-bound / rows 3 powered | — / P | — / P | 19 |
-| Keiichi 2 | 9 / 34 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 18 |
+| Keiichi 2 | 9 / 34 | 400 sweep, gate-bound / rows 1 powered | 402 sweep, gate-bound / rows 1 powered | 450 world @13 rows 2/3 measured, unbound | 460 world @13 rows 2/3 measured, unbound | — / P | — / P | 18 |
 | Satoko 0 | 10 / 8 | 400? / P | 402? / P | 450? / P | 460? / P | — / P | — / P | 18 |
 | Satoko 1 | 11 / 17 | — / P | — / P | — / P | — / P | — / P | — / P | 18 |
 | Satoko 2 | 12 / 38 | 400 twin world, gate-bound / rows 1 powered | 402 twin world, gate-bound / rows 1 powered | — / P | — / P | — / P | — / P | 18 |
@@ -76,6 +76,12 @@ Four more shared capabilities landed with this snapshot:
   the named bone matrix or fail explicitly (never substitute). Keiichi 0/1 are the first
   users (right hand taps, left-hand charge request). The rig bone-existence check plus
   the origin KIND on the armed request is the witness pattern.
+- **A counter-driven yaw sweep and a per-rule draw order.** Some bodies do not fire
+  straight: Keiichi 2's tap grows a scratch by 2 a tick and aims `scratch - 15 + draw%10`,
+  so the volley walks across the arc. `ShotSpreadSpec::yawPerTick` adds
+  `counter * yawPerTick` before the jitter (the counter is the move's own `MoveOp::Counter`,
+  which is what the scratch is), and `SpreadOrder` states which axis draws first because
+  Keiichi 2 is the one family that reads the YAW draw before the pitch.
 - **The deterministic draw service.** `simulation_rng.h` reproduces the original's
   stream algorithm — `FUN_0065d150` is MT19937 and `FUN_0065d0c0` seeds it with 0x1571
   (5489, the canonical default) — pinned against MT19937's own seed-5489 vector, so the
