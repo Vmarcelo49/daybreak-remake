@@ -4360,10 +4360,11 @@ void test_takano_triple_tap() {
     const auto install = findInstall(nullptr);
     if (install.empty() || !g_takanoCombo.load(install, 7, 0))
         return skip_case("Takano 0 combo");
-    // Bundle evidence: Takano 0 (handler 0x531ce0) fires item row 0 at ticks 12, 15
-    // and 18 in the ground tap (three single shots, not a repeating window), and item
-    // row 1 once at tick 18 in the first ground charge (tick 17 in the air charge —
-    // same rule shape, untested here like the other air paths).
+    // Bundle evidence: Takano 0 (handler 0x531ce0) fires three `Bip01_R_Hand` requests at
+    // ticks 12, 15 and 18 in the ground tap (three single shots, not a repeating window),
+    // row 0 normally and row 6 powered (`w[0x1b7] < 4` — the earlier "no flag field" note
+    // was wrong), each with the target elevation clamped +-40. The charges fire one slot-0
+    // request at tick 18 (ground) / 17 (air), row 1 normally and row 7 powered.
     // Her program is kTakanoRules; the second charge stays provisional.
     Fighter f;
     f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
@@ -4403,6 +4404,60 @@ void test_takano_triple_tap() {
     shot = g.take_pending_shot();
     check_bool("Takano charge launches at tick 18", true, shot.armed);
     check_int("Takano charge selects item row one", 1, shot.bulletRow);
+
+    // The whole tap fires three times, and the powered branch moves to row 6.
+    Fighter w;
+    w.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_takanoCombo.bind(w);
+    settle(w);
+    Input win;
+    win.set(fnd::input::Action::Shoot, true);
+    tick(w, win);
+    win.set(fnd::input::Action::Shoot, false);
+    tick(w, win);
+    int tapShots = 0;
+    bool tapRowsZero = true;
+    for (int i = 1; i <= 24; ++i) {
+        tick(w, win);
+        for (gameplay::PendingShot s2 = w.take_pending_shot(); s2.armed;
+             s2 = w.take_pending_shot()) {
+            ++tapShots;
+            if (s2.bulletRow != 0) tapRowsZero = false;
+        }
+    }
+    check_int("Takano tap fires three", 3, tapShots);
+    check_bool("Takano tap rows are all 0 normally", true, tapRowsZero);
+
+    Fighter tp;
+    tp.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_takanoCombo.bind(tp);
+    settle(tp);
+    tp.set_hypermode(Hypermode::Oyashiro);
+    tp.set_hyper_gauge(1.f);
+    Input hp;
+    hp.set(fnd::input::Action::Special, true);
+    tick(tp, hp);
+    hp.set(fnd::input::Action::Special, false);
+    tick(tp, hp);
+    gameplay::ShootingContext context;
+    context.aimHold = true;
+    tp.set_shooting_context(context);
+    hp.set(fnd::input::Action::Shoot, true);
+    tick(tp, hp);
+    hp.set(fnd::input::Action::Shoot, false);
+    tick(tp, hp);
+    int poweredShots = 0;
+    bool poweredRowsSix = true;
+    for (int i = 1; i <= 24; ++i) {
+        tick(tp, hp);
+        for (gameplay::PendingShot s2 = tp.take_pending_shot(); s2.armed;
+             s2 = tp.take_pending_shot()) {
+            ++poweredShots;
+            if (s2.bulletRow != 6) poweredRowsSix = false;
+        }
+    }
+    check_int("powered Takano tap fires three", 3, poweredShots);
+    check_bool("powered Takano tap rows are all 6", true, poweredRowsSix);
 }
 
 void test_keiichi_dense_tap() {

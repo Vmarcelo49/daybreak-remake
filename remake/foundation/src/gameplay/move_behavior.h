@@ -1165,33 +1165,56 @@ inline constexpr MoveRule kChieRules[] = {
 };
 // Takano weapon 0 (handler 0x531ce0) — shot rules recovered from the reference bodies
 // shoot_body_7_0_{400,402,450,460} (bundle reference/source). Double turn in the tap
-// (10 deg ticks 0-17 phaseless + 15 deg phase-0 open) with a phase-0 bleed; three
-// single shots row 0 at ticks 12,15,18 (tag row 6 skipped — no flag field). Single
-// salvos row 1 at tick 18 (450) and tick 17 (460) with slot-0 Hide windows (10-17 and
-// 0-16); the slot1→2 half has no field. No Hold anywhere; gravity tails skipped.
+// (10 deg ticks 0-17 phaseless + 15 deg phase-0 open) with a phase-0 bleed; three single
+// `FUN_00435220` requests on `Bip01_R_Hand` at ticks 12, 15 and 18, each taking the target
+// elevation clamped +-40 (L39785-39820). Row 0 normal / row 6 powered — the tag branch
+// reads `w[0x1b7] < 4`, which is kGatePowered, and the earlier "no flag field" note here was
+// wrong. The charges fire one slot-0 attachment request at tick 18 (450) and tick 17 (460)
+// with the elevation clamped +-40 — row 1 normal / row 7 powered on the same gate — plus
+// slot-0 Hide windows (10-17 and 0-16); the slot1→2 half has no field. No Hold anywhere; gravity tails skipped.
 inline constexpr MoveRule kTakanoRules[] = {
     // 400 ground tap: turns 10 deg (0-17) + 15 deg (phase 0), bleed 0.5 phase 0.
     {400,-1,0,17,MoveOp::Turn,10.f},
     {400,0,0,9999,MoveOp::Turn,15.f},
     {400,0,0,9999,MoveOp::Decelerate,.5f},
-    {400,-1,12,12,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,15,15,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,18,18,MoveOp::Launch,0.f,0.f,40.f},
+    {400,-1,12,12,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f)},
+    {400,-1,12,12,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f)},
+    {400,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f)},
+    {400,-1,15,15,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f)},
+    {400,-1,18,18,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f)},
+    {400,-1,18,18,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f)},
     // 402 air tap: turn 20 deg ticks 0-17, same triple row 0 (no bleed — gravity tail).
     {402,-1,0,17,MoveOp::Turn,20.f},
-    {402,-1,12,12,MoveOp::Launch,0.f,0.f,40.f},
-    {402,-1,15,15,MoveOp::Launch,0.f,0.f,40.f},
-    {402,-1,18,18,MoveOp::Launch,0.f,0.f,40.f},
+    {402,-1,12,12,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f)},
+    {402,-1,12,12,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f)},
+    {402,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f)},
+    {402,-1,15,15,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f)},
+    {402,-1,18,18,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f)},
+    {402,-1,18,18,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f)},
     // 450 ground charge1: turn 20 deg through tick 16, Hide slot 0 ticks 10-17,
     // single salvo row 1 at tick 18.
     {450,-1,0,16,MoveOp::Turn,20.f},
     {450,-1,10,17,MoveOp::Hide,0.f},
-    {450,-1,18,18,MoveOp::Launch,1.f,0.f,40.f},
+    {450,-1,18,18,MoveOp::Launch,1.f,0.f,40.f,kGateNormal},
+    {450,-1,18,18,MoveOp::Launch,7.f,0.f,40.f,kGatePowered},
     // 460 air charge1: turn 15 deg through tick 14, Hide slot 0 ticks 0-16,
     // single salvo row 1 at tick 17.
     {460,-1,0,14,MoveOp::Turn,15.f},
     {460,-1,0,16,MoveOp::Hide,0.f},
-    {460,-1,17,17,MoveOp::Launch,1.f,0.f,40.f},
+    {460,-1,17,17,MoveOp::Launch,1.f,0.f,40.f,kGateNormal},
+    {460,-1,17,17,MoveOp::Launch,7.f,0.f,40.f,kGatePowered},
 };
 // Kasai weapon 1 (handler 0x5b9680) — shot rules recovered from the reference bodies
 // shoot_body_12_1_{400,402,450,460} (bundle reference/source). Twin shots rows 2+0
