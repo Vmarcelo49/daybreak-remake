@@ -792,7 +792,8 @@ inline constexpr MoveRule kRikaRules[] = {
 // PERIODIC world projectile rather than a salvo: a countdown starts at 120, drops one a
 // tick, and the request fires whenever it is 1 mod 30 — so in the port's pre-increment
 // numbering the shots land on ticks 28, 58, 88, ... Each firing puts ONE world request at
-// the actor's own position 600 units UP, aimed along the heading with pitch 0, on row 6
+// the actor's own position 50 units UP (`0x42480000`; an earlier note said 600, a mis-read of
+// the hex), aimed along the heading with pitch 0, on row 6
 // normally and row 7 powered, and it runs in EVERY state. The charges add one request at
 // tick 35 (0x23) at the actor's own position with no height, row 0 normal / row 1 powered.
 // No MoveRule op: the gravity tail (`w[0x15] -= 1.5`, clamped at 0 in every state) and the
@@ -805,16 +806,16 @@ inline constexpr MoveRule kSatoko1Rules[] = {
     {400,0,0,0,MoveOp::CounterSet,118.f},
     {400,-1,1,9999,MoveOp::Counter,-1.f},
     {400,-1,0,9999,MoveOp::Launch,6.f,0.f,0.f,kGateNormal | kGateCounterMod,30,
-     origin_actor_relative(0.f,0.f,600.f),aim_fixed_angles(0.f,0.f)},
+     origin_actor_relative(0.f,0.f,50.f),aim_fixed_angles(0.f,0.f)},
     {400,-1,0,9999,MoveOp::Launch,7.f,0.f,0.f,kGatePowered | kGateCounterMod,30,
-     origin_actor_relative(0.f,0.f,600.f),aim_fixed_angles(0.f,0.f)},
+     origin_actor_relative(0.f,0.f,50.f),aim_fixed_angles(0.f,0.f)},
     // 402 air tap: the same periodic shot with no state-specific change.
     {402,0,0,0,MoveOp::CounterSet,118.f},
     {402,-1,1,9999,MoveOp::Counter,-1.f},
     {402,-1,0,9999,MoveOp::Launch,6.f,0.f,0.f,kGateNormal | kGateCounterMod,30,
-     origin_actor_relative(0.f,0.f,600.f),aim_fixed_angles(0.f,0.f)},
+     origin_actor_relative(0.f,0.f,50.f),aim_fixed_angles(0.f,0.f)},
     {402,-1,0,9999,MoveOp::Launch,7.f,0.f,0.f,kGatePowered | kGateCounterMod,30,
-     origin_actor_relative(0.f,0.f,600.f),aim_fixed_angles(0.f,0.f)},
+     origin_actor_relative(0.f,0.f,50.f),aim_fixed_angles(0.f,0.f)},
     // 450 ground charge: the tick-35 request, then the periodic one it keeps firing.
     {450,0,0,0,MoveOp::CounterSet,118.f},
     {450,-1,1,9999,MoveOp::Counter,-1.f},
@@ -823,9 +824,9 @@ inline constexpr MoveRule kSatoko1Rules[] = {
     {450,-1,35,35,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
      origin_actor_relative(0.f,0.f,0.f),aim_fixed_angles(0.f,0.f)},
     {450,-1,0,9999,MoveOp::Launch,6.f,0.f,0.f,kGateNormal | kGateCounterMod,30,
-     origin_actor_relative(0.f,0.f,600.f),aim_fixed_angles(0.f,0.f)},
+     origin_actor_relative(0.f,0.f,50.f),aim_fixed_angles(0.f,0.f)},
     {450,-1,0,9999,MoveOp::Launch,7.f,0.f,0.f,kGatePowered | kGateCounterMod,30,
-     origin_actor_relative(0.f,0.f,600.f),aim_fixed_angles(0.f,0.f)},
+     origin_actor_relative(0.f,0.f,50.f),aim_fixed_angles(0.f,0.f)},
     // 460 air charge: the same, and its tick-0 block only zeroes velocities.
     {460,0,0,0,MoveOp::CounterSet,118.f},
     {460,-1,1,9999,MoveOp::Counter,-1.f},
@@ -834,9 +835,9 @@ inline constexpr MoveRule kSatoko1Rules[] = {
     {460,-1,35,35,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
      origin_actor_relative(0.f,0.f,0.f),aim_fixed_angles(0.f,0.f)},
     {460,-1,0,9999,MoveOp::Launch,6.f,0.f,0.f,kGateNormal | kGateCounterMod,30,
-     origin_actor_relative(0.f,0.f,600.f),aim_fixed_angles(0.f,0.f)},
+     origin_actor_relative(0.f,0.f,50.f),aim_fixed_angles(0.f,0.f)},
     {460,-1,0,9999,MoveOp::Launch,7.f,0.f,0.f,kGatePowered | kGateCounterMod,30,
-     origin_actor_relative(0.f,0.f,600.f),aim_fixed_angles(0.f,0.f)},
+     origin_actor_relative(0.f,0.f,50.f),aim_fixed_angles(0.f,0.f)},
 };
 
 // Satoko weapon 2 (handler 0x4bc040) — shot rules recovered from the reference bodies
@@ -1374,11 +1375,12 @@ inline constexpr MoveRule kIrieRules[] = {
 // with the pitch thirds 45/30 ground and 45/40 air (L20797-20941). Short freezes at tick 30
 // after the salvos (5 updates ground, 15 air). No Hide anywhere.
 //
-// Still unbound, and named rather than approximated: the requests are WORLD pairs separated
-// by `+-600` on the taps and `+-50` on the charges (L18392, `0x42480000`/`0x41c80000`), so
-// the port's adapter origin places both of a pair at the same point. The separation depends
-// on the aim basis, so it needs the same world-origin decode the Keiichi charges are waiting
-// on.
+// The requests are WORLD pairs and the geometry is decoded: each is the actor's own position
+// displaced `+-50` ALONG THE FACING (`0x42480000`, L18383-18422) at height +70 (`0x428c0000`),
+// which is exactly ActorRelativeOffset(0, forward, height) — the port's `facing_relative(0, R)`
+// is the same `(sin(facing), cos(facing)) * R`. The tap fires +50 then -50 normally, and
+// +50/-50/+50/-50 powered; the charges use the same shape with R = 25 (`0x41c80000`) at height
+// +50. Earlier notes gave these as 600 and 50, which was a mis-read of the hex.
 //
 // The powered branches test `byte(+0x845) && word(+0x212)` — kGatePowered, the idiom the
 // rest of the port uses — which the previous binding recorded as "no flag field, skipped".
@@ -1387,20 +1389,32 @@ inline constexpr MoveRule kRika0Rules[] = {
     // 400 ground tap: 15 deg turn ticks 0-14, bleed 0.5/tick phase 0, twin row 0 @15.
     {400,-1,0,14,MoveOp::Turn,15.f},
     {400,0,0,9999,MoveOp::Decelerate,.5f},
-    {400,-1,15,15,MoveOp::Launch,0.f,0.f,40.f,kGateNormal},
-    {400,-1,15,15,MoveOp::Launch,0.f,0.f,40.f,kGateNormal},
-    {400,-1,15,15,MoveOp::Launch,1.f,0.f,40.f,kGatePowered},
-    {400,-1,15,15,MoveOp::Launch,1.f,0.f,40.f,kGatePowered},
-    {400,-1,15,15,MoveOp::Launch,1.f,0.f,40.f,kGatePowered},
-    {400,-1,15,15,MoveOp::Launch,1.f,0.f,40.f,kGatePowered},
+    {400,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(0.f,50.f,70.f),aim_target_elevation(40.f)},
+    {400,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(0.f,-50.f,70.f),aim_target_elevation(40.f)},
+    {400,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(0.f,50.f,70.f),aim_target_elevation(40.f)},
+    {400,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(0.f,-50.f,70.f),aim_target_elevation(40.f)},
+    {400,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(0.f,50.f,70.f),aim_target_elevation(40.f)},
+    {400,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(0.f,-50.f,70.f),aim_target_elevation(40.f)},
     // 402 air tap: 20 deg turn ticks 0-14, same twin @15. No bleed (gravity tail).
     {402,-1,0,14,MoveOp::Turn,20.f},
-    {402,-1,15,15,MoveOp::Launch,0.f,0.f,40.f,kGateNormal},
-    {402,-1,15,15,MoveOp::Launch,0.f,0.f,40.f,kGateNormal},
-    {402,-1,15,15,MoveOp::Launch,1.f,0.f,40.f,kGatePowered},
-    {402,-1,15,15,MoveOp::Launch,1.f,0.f,40.f,kGatePowered},
-    {402,-1,15,15,MoveOp::Launch,1.f,0.f,40.f,kGatePowered},
-    {402,-1,15,15,MoveOp::Launch,1.f,0.f,40.f,kGatePowered},
+    {402,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(0.f,50.f,70.f),aim_target_elevation(40.f)},
+    {402,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(0.f,-50.f,70.f),aim_target_elevation(40.f)},
+    {402,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(0.f,50.f,70.f),aim_target_elevation(40.f)},
+    {402,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(0.f,-50.f,70.f),aim_target_elevation(40.f)},
+    {402,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(0.f,50.f,70.f),aim_target_elevation(40.f)},
+    {402,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(0.f,-50.f,70.f),aim_target_elevation(40.f)},
     // 450 ground charge1: 18 deg turn through tick 9, bleed 0.5/tick, twin row-2
     // salvos at 15 (±5°) and 25 (±10°), freeze 5 at tick 30.
     {450,-1,0,9,MoveOp::Turn,18.f},

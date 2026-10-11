@@ -3069,9 +3069,11 @@ void test_satoko1_periodic_world_shot() {
         check_int("Satoko 1 first fire lands on the body's tick 28", 28, fireTicks[0]);
     bool allRow6 = !rows.empty(), allHeight = !heights.empty();
     for (int r : rows) allRow6 &= r == 6;
-    for (float h : heights) allHeight &= std::abs(h - 600.f) < 0.5f;
+    for (float h : heights) allHeight &= std::abs(h - 50.f) < 0.5f;
     check_bool("Satoko 1 normal fire uses item row 6", true, allRow6);
-    check_bool("Satoko 1 fire sits 600 units above the actor", true, allHeight);
+    // 50, from the body's `0x42480000`. The first version of this witness asserted 600 — the
+    // BINDING's own constant — so it could only ever confirm the binding against itself.
+    check_bool("Satoko 1 fire sits 50 units above the actor", true, allHeight);
     // One slot-0 world request per firing, not a salvo.
     check_bool("Satoko 1 fires exactly one request per period", false,
                f.take_pending_shot().armed);
@@ -4122,6 +4124,28 @@ void test_rika0_twin_tick() {
     }
     check_int("powered Rika0 tap fires four", 4, poweredTap);
     check_bool("powered Rika0 tap rows are all 1", true, poweredTapRows);
+
+    // The tap's pair is the actor's own position displaced +-50 ALONG THE FACING at height
+    // +70 (L18383-18422, `+-0x42480000`), the world geometry the adapter used to collapse
+    // onto one point. The two shots must therefore sit 100 apart, 70 above the actor.
+    Fighter rw;
+    rw.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_rika0Combo.bind(rw);
+    settle(rw);
+    Input win;
+    win.set(fnd::input::Action::Shoot, true);
+    tick(rw, win);
+    win.set(fnd::input::Action::Shoot, false);
+    tick(rw, win);
+    for (int i = 0; i < 15; ++i) tick(rw, win);
+    gameplay::PendingShot firstWorld = rw.take_pending_shot();
+    gameplay::PendingShot secondWorld = rw.take_pending_shot();
+    check_bool("Rika0 tap T15 fires the world pair", true,
+               firstWorld.armed && secondWorld.armed);
+    check_near("Rika0 world pair is 100 apart along the facing", 100.f,
+               glm::distance(firstWorld.pos, secondWorld.pos), 0.5f);
+    check_near("Rika0 world pair sits 70 above the actor", 70.f,
+               firstWorld.pos.y - rw.position().y, 0.5f);
 
     Fighter q;
     q.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
