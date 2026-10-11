@@ -2536,6 +2536,33 @@ void test_tomitake_twin_tap() {
     check_int("powered Tomitake charge fires twice", 2, (int)chargeRows.size());
     bool chargeOrder = chargeRows.size() == 2 && chargeRows[0] == 4 && chargeRows[1] == 2;
     check_bool("powered Tomitake charge rows are 4 then 2", true, chargeOrder);
+
+    // The charges are WORLD requests, not attachment ones: the actor's own position displaced
+    // 50 forward (against the yaw table) and 75 up (L39414-39425, 0x42480000 / 0x42960000).
+    // Row 4 fires with LITERAL pitch 0, so with no opponent its direction is flat.
+    Fighter cg;
+    cg.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_tomitakeCombo.bind(cg);
+    settle(cg);
+    hold_yellow(cg, in);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(cg, in);
+    while (cg.take_pending_shot().armed) {}
+    gameplay::PendingShot cshot;
+    for (int i = 0; i < 48 && !cshot.armed; ++i) {
+        tick(cg, in);
+        cshot = cg.take_pending_shot();
+    }
+    check_bool("Tomitake charge fires its row-4 request", true, cshot.armed);
+    check_int("Tomitake charge row 4 fires first", 4, cshot.bulletRow);
+    check_near("Tomitake charge sits 50 in front of the actor", 50.f,
+               cshot.pos.z - cg.position().z, 0.5f);
+    check_near("Tomitake charge keeps the actor's lateral line", 0.f,
+               cshot.pos.x - cg.position().x, 0.5f);
+    check_near("Tomitake charge sits 75 above the actor", 75.f,
+               cshot.pos.y - cg.position().y, 0.5f);
+    check_near("Tomitake charge row 4 pitches at the body's literal 0", cshot.dir.y,
+               0.f, 1e-4f);
 }
 
 void test_chie_scratch_burst() {

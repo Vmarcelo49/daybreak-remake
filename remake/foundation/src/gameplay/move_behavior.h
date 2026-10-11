@@ -989,10 +989,13 @@ inline constexpr MoveRule kKeiichi1Rules[] = {
 // `(draw%6-3)*0.5` of lateral on row 5, `(draw%6-3)*0.25` and `(draw%12-6)*0.25` on row 6 —
 // while the air tap uses 6/-3 for both. Elevation clamped +-45. The tap schedule (ticks
 // 15..33 step 3) is written tick-explicit like Rika's: our rule model has no modulo.
-// The charges (L39390-39440, L39550-39600) fire row 4 unconditionally — lateral 0, pitch 0,
-// height +75 — and then row 0 normally or row 2 powered on `byte(+0x845) && word(+0x212)`.
-// The old note called the tag rows "6/2"; the body says 4 always plus 2 powered, and the flag
-// is the same idiom the tap uses.
+// The charges (L39390-39440, L39550-39600) are WORLD requests, not attachment ones: the actor's
+// position displaced 50 FORWARD (`0x42480000` against the `yaw` table) and 75 UP (`0x42960000`).
+// Row 4 fires unconditionally there with LITERAL pitch 0 and lateral 0; then row 0 normally or
+// row 2 powered on `byte(+0x845) && word(+0x212)`, at the same origin but with the target
+// elevation clamped +-40 as the pitch. So they are `origin_actor_relative(0, 50, 75)`, not the
+// default attachment slot with a target-derived pitch. The old note called the tag rows "6/2";
+// the body says 4 always plus 2 powered, and the flag is the same idiom the tap uses.
 // Turn verbs 0042dc20 vs 0042db10 both map to Turn by value (the distinction's meaning
 // is illegible); the w0x10 gravity tails (unclamped, can go negative) are vertical
 // physics with no MoveRule op and are skipped — only the floor-0 w0x15 bleeds map to
@@ -1096,16 +1099,22 @@ inline constexpr MoveRule kTomitakeRules[] = {
     {450,-1,0,29,MoveOp::Turn,0.3f},
     {450,-1,0,9999,MoveOp::Decelerate,1.5f},
     {450,-1,28,28,MoveOp::Hold,15.f},
-    {450,-1,30,30,MoveOp::Launch,4.f,0.f,40.f},
-    {450,-1,30,30,MoveOp::Launch,0.f,0.f,40.f,kGateNormal},
-    {450,-1,30,30,MoveOp::Launch,2.f,0.f,40.f,kGatePowered},
+    {450,-1,30,30,MoveOp::Launch,4.f,0.f,0.f,kGateNone,0,
+     origin_actor_relative(0.f,50.f,75.f),aim_fixed_angles(0.f,0.f)},
+    {450,-1,30,30,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(0.f,50.f,75.f),aim_target_elevation(40.f)},
+    {450,-1,30,30,MoveOp::Launch,2.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(0.f,50.f,75.f),aim_target_elevation(40.f)},
     // 460 air charge1: same shape (no w0x15 bleed of its own — skipped, see above).
     {460,-1,0,4,MoveOp::Turn,35.f},
     {460,-1,0,29,MoveOp::Turn,0.3f},
     {460,-1,28,28,MoveOp::Hold,15.f},
-    {460,-1,30,30,MoveOp::Launch,4.f,0.f,40.f},
-    {460,-1,30,30,MoveOp::Launch,0.f,0.f,40.f,kGateNormal},
-    {460,-1,30,30,MoveOp::Launch,2.f,0.f,40.f,kGatePowered},
+    {460,-1,30,30,MoveOp::Launch,4.f,0.f,0.f,kGateNone,0,
+     origin_actor_relative(0.f,50.f,75.f),aim_fixed_angles(0.f,0.f)},
+    {460,-1,30,30,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_actor_relative(0.f,50.f,75.f),aim_target_elevation(40.f)},
+    {460,-1,30,30,MoveOp::Launch,2.f,0.f,0.f,kGatePowered,0,
+     origin_actor_relative(0.f,50.f,75.f),aim_target_elevation(40.f)},
 };
 // Keiichi weapon 2 (handler 0x47b940) — shot rules recovered from the reference bodies
 // shoot_body_2_2_{400,402,450,460} (bundle reference/source). Dense burst, a fourth
