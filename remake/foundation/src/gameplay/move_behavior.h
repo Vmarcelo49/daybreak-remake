@@ -1254,31 +1254,47 @@ inline constexpr MoveRule kKasaiRules[] = {
     {460,-1,17,17,MoveOp::Launch,4.f,0.f,40.f},
 };
 // Irie weapon 1 (handler 0x57f600) — shot rules recovered from the reference bodies
-// shoot_body_10_1_{400,402,450,460} (bundle reference/source). Twin rows 0+1 at tick 12
-// in both taps (tag adds rows 2+3 — no flag field, skipped); single salvos row 4 at
-// tick 22 (450) and tick 17 (460). Hide windows carry slot 0 only (slot-1 halves have
-// no field). Gravity tails and one-shot velocity sets have no MoveRule op — skipped.
+// shoot_body_10_1_{400,402,450,460} (bundle reference/source). Both taps fire at tick 12:
+// TWO world requests normally, on rows 1 then 0, and FOUR powered, on rows 3, 2, 1 then 0
+// (L63286-63302, L63551-63610) — the tag branch ADDS the row-2/3 pair rather than replacing
+// the row-0/1 one. The tag gate is `w[0x1b7] < 4`, i.e. kGatePowered; the "no flag field"
+// note here was wrong. Each request sits 100 units out at +-4 degrees of heading with the
+// target elevation clamped +-40 (a world pair this port still places through the adapter).
+// The charges fire one `FUN_00434fd0` request — row 4 normal / row 5 powered, elevation
+// clamped +-30 — at tick 22 (450) and tick 17 (460). Hide windows carry slot 0 only
+// (slot-1 halves have no field). Gravity tails and one-shot velocity sets have no MoveRule
+// op — skipped.
 inline constexpr MoveRule kIrieRules[] = {
     // 400 ground tap: 20 deg turn ticks 0-11, bleed 0.5/tick, twin rows 0+1 at 12.
     {400,-1,0,11,MoveOp::Turn,20.f},
     {400,-1,0,9999,MoveOp::Decelerate,.5f},
-    {400,-1,12,12,MoveOp::Launch,0.f,0.f,40.f},
-    {400,-1,12,12,MoveOp::Launch,1.f,0.f,40.f},
+    {400,-1,12,12,MoveOp::Launch,1.f,0.f,40.f,kGateNormal},
+    {400,-1,12,12,MoveOp::Launch,0.f,0.f,40.f,kGateNormal},
+    {400,-1,12,12,MoveOp::Launch,3.f,0.f,40.f,kGatePowered},
+    {400,-1,12,12,MoveOp::Launch,2.f,0.f,40.f,kGatePowered},
+    {400,-1,12,12,MoveOp::Launch,1.f,0.f,40.f,kGatePowered},
+    {400,-1,12,12,MoveOp::Launch,0.f,0.f,40.f,kGatePowered},
     // 402 air tap: same shape (turn via dc20), no bleed.
     {402,-1,0,11,MoveOp::Turn,20.f},
-    {402,-1,12,12,MoveOp::Launch,0.f,0.f,40.f},
-    {402,-1,12,12,MoveOp::Launch,1.f,0.f,40.f},
+    {402,-1,12,12,MoveOp::Launch,1.f,0.f,40.f,kGateNormal},
+    {402,-1,12,12,MoveOp::Launch,0.f,0.f,40.f,kGateNormal},
+    {402,-1,12,12,MoveOp::Launch,3.f,0.f,40.f,kGatePowered},
+    {402,-1,12,12,MoveOp::Launch,2.f,0.f,40.f,kGatePowered},
+    {402,-1,12,12,MoveOp::Launch,1.f,0.f,40.f,kGatePowered},
+    {402,-1,12,12,MoveOp::Launch,0.f,0.f,40.f,kGatePowered},
     // 450 ground charge1: 10 deg turn through tick 19, bleed 0.25/tick, Hide slot 0
     // ticks 0-21, single salvo row 4 at tick 22.
     {450,-1,0,19,MoveOp::Turn,10.f},
     {450,-1,0,9999,MoveOp::Decelerate,.25f},
     {450,-1,0,21,MoveOp::Hide,0.f},
-    {450,-1,22,22,MoveOp::Launch,4.f,0.f,30.f},
+    {450,-1,22,22,MoveOp::Launch,4.f,0.f,30.f,kGateNormal},
+    {450,-1,22,22,MoveOp::Launch,5.f,0.f,30.f,kGatePowered},
     // 460 air charge1: 15 deg turn through tick 14, Hide slot 0 ticks 0-16,
     // single salvo row 4 at tick 17.
     {460,-1,0,14,MoveOp::Turn,15.f},
     {460,-1,0,16,MoveOp::Hide,0.f},
-    {460,-1,17,17,MoveOp::Launch,4.f,0.f,40.f},
+    {460,-1,17,17,MoveOp::Launch,4.f,0.f,40.f,kGateNormal},
+    {460,-1,17,17,MoveOp::Launch,5.f,0.f,40.f,kGatePowered},
 };
 // Rika weapon 0 (handler 0x484be0) — shot rules recovered from the reference bodies
 // shoot_body_4_0_{400,402,450,460} (bundle reference/source). The taps fire TWIN world

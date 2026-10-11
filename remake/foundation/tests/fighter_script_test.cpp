@@ -4277,8 +4277,40 @@ void test_irie_twin_tap() {
     gameplay::PendingShot first = f.take_pending_shot();
     gameplay::PendingShot second = f.take_pending_shot();
     check_bool("Irie tap T12 salvo fires twice", true, first.armed && second.armed);
-    check_int("Irie T12 first row is 0", 0, first.bulletRow);
-    check_int("Irie T12 second row is 1", 1, second.bulletRow);
+    // The body fires row 1 BEFORE row 0 (L63286-63302). The old assertion had the pair the
+    // other way round, which is what the port's un-ordered binding produced.
+    check_int("Irie T12 first row is 1", 1, first.bulletRow);
+    check_int("Irie T12 second row is 0", 0, second.bulletRow);
+
+    // Powered: the tag branch ADDS the row-2/3 pair, so FOUR requests land, rows 3, 2, 1, 0.
+    Fighter ip;
+    ip.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
+    g_irieCombo.bind(ip);
+    settle(ip);
+    ip.set_hypermode(Hypermode::Oyashiro);
+    ip.set_hyper_gauge(1.f);
+    Input hp;
+    hp.set(fnd::input::Action::Special, true);
+    tick(ip, hp);
+    hp.set(fnd::input::Action::Special, false);
+    tick(ip, hp);
+    gameplay::ShootingContext context;
+    context.aimHold = true;
+    ip.set_shooting_context(context);
+    hp.set(fnd::input::Action::Shoot, true);
+    tick(ip, hp);
+    hp.set(fnd::input::Action::Shoot, false);
+    tick(ip, hp);
+    for (int i = 0; i < 12; ++i) tick(ip, hp);
+    std::vector<int> poweredRows;
+    for (int i = 0; i < 5; ++i) {
+        gameplay::PendingShot s2 = ip.take_pending_shot();
+        if (s2.armed) poweredRows.push_back(s2.bulletRow);
+    }
+    check_int("powered Irie tap fires four", 4, (int)poweredRows.size());
+    bool poweredOrder = poweredRows.size() == 4 && poweredRows[0] == 3 &&
+                        poweredRows[1] == 2 && poweredRows[2] == 1 && poweredRows[3] == 0;
+    check_bool("powered Irie tap rows are 3, 2, 1, 0 in that order", true, poweredOrder);
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_irieCombo.bind(g);
