@@ -4,6 +4,8 @@
 #include "gameplay/fixed_step.h"
 #include <SDL3/SDL.h>
 #include <cstdio>
+#include <filesystem>
+#include <system_error>
 
 int main(int argc, char** argv) {
     int failures = 0;
@@ -189,6 +191,56 @@ int main(int argc, char** argv) {
         }
         if (joystick) SDL_CloseJoystick(joystick);
     }
+    {
+        // `WAIT <scene>` holds the script until the named scene is current. This is what
+        // lets a menu whose navigation is state-dependent (the selection screen after a
+        // rematch) be driven without guessing frame offsets.
+        const auto path = std::filesystem::temp_directory_path() / "fnd_wait_script.txt";
+        {
+            std::FILE* f = std::fopen(path.string().c_str(), "w");
+            check(f != nullptr, "wait script can be written");
+            if (f) {
+                std::fputs("1 JUMP\n\n5 -\n\n9 WAIT battle\n\n13 MELEE\n", f);
+                std::fclose(f);
+            }
+        }
+        fnd::input::Backend backend;
+        using namespace fnd::input;
+        check(backend.init() && backend.load_script(path.string().c_str()),
+              "wait script loaded");
+        PlayerState state;
+        // No scene yet: the WAIT cannot match, so the script parks on the released event
+        // at frame 5 and never reaches the MELEE at 13.
+        backend.sample_script(state, 5);
+        check(!state.down[Jump] && !state.down[AttackA],
+              "a wait with no current scene holds the script");
+        backend.sample_script(state, 20);
+        check(!state.down[AttackA], "a held wait does not advance past its frame");
+        // The wrong scene still holds it.
+        backend.set_scene_name("select");
+        backend.sample_script(state, 30);
+        check(!state.down[AttackA], "a wait for another scene holds the script");
+        // The named scene releases it, and the following event lands.
+        backend.set_scene_name("battle");
+        backend.sample_script(state, 30);
+        check(state.down[AttackA], "the wait releases on its scene");
+        // A WAIT with no scene name is malformed: it must not silently become a release.
+        {
+            uint64_t frame = 0;
+            uint32_t mask = 0xffffffffu;
+            std::string wait;
+            check(!fnd::input::parse_script_line("9 WAIT", frame, mask, wait),
+                  "a WAIT with no scene is rejected");
+            check(fnd::input::parse_script_line("9 WAIT battle", frame, mask, wait) &&
+                      wait == "battle",
+                  "a WAIT with a scene reports it");
+            check(fnd::input::parse_script_line("9 JUMP", frame, mask, wait) && wait.empty(),
+                  "a normal line reports no wait");
+        }
+        std::error_code ec;
+        std::filesystem::remove(path, ec);
+    }
+
     if (argc > 1) {
         fnd::input::Backend backend;
         using namespace fnd::input;

@@ -33,6 +33,7 @@
 #include "gameplay/match.h"
 #include "input/synthetic_pad.h"
 #include "ui/hud.h"
+#include "synthetic_combo.h"
 
 namespace {
 
@@ -363,6 +364,10 @@ SimRun runFrames(int viewCount, int frames) {
     config.spawn[1] = glm::vec3(-800.f, 0.f, 0.f);
     config.spawn[2] = glm::vec3(900.f, 0.f, 0.f);
     config.spawn[3] = glm::vec3(1400.f, 0.f, 200.f);
+    // AGENTS rule 7: the run steps a live battle for its views, so it is equipped.
+    // Static so the combo outlives the match, which copies the config's pointers.
+    static const test::synthetic::Combo combo;
+    combo.bind(config, config.fighterCount);
     const xm::Model* models[4] = {};
     xm::Controller* animations[4] = {};
     match.reset(config, models, animations, nullptr, nullptr);

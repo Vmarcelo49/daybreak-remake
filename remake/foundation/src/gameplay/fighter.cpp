@@ -70,6 +70,38 @@ int portDamage(int poolDamage, int maxHP) {
                             0.5f);
 }
 
+// A parsed NN row plus the matching equipped item and rig is enough to time a
+// move only when every phase has a valid .X period and the source's +0x20 gate
+// allows generic phase completion. Nonzero gates require handler callbacks; keep
+// the contact-derived fallback timer until those callbacks are represented.
+bool hasAutomaticMeleeTimeline(const CharacterMoves* moves,
+                               const WeaponDefinition* weapon,
+                               const xm::Model* model, int moveId) {
+    if (!moves || !weapon || !model || !moves->valid() || !model->ticksPerSecond ||
+        weapon->id != moves->weapon_id() ||
+        weaponSlotForItem(moves->character_index(), weapon->id) < 0)
+        return false;
+    const CharacterMove* move = moves->find(moveId);
+    if (!move || move->sectionCount <= 0) return false;
+    for (int phase = 0; phase < move->sectionCount; ++phase) {
+        const int set = move->phase_set_index(phase);
+        if (set < 0 || static_cast<size_t>(set) >= model->anims.size() ||
+            moves->animation_set_phase_gate(set) != 0)
+            return false;
+        const float duration = model->anims[static_cast<size_t>(set)].duration;
+        if (!std::isfinite(duration) || duration < 0.f) return false;
+        const float ticks = duration / model->ticksPerSecond / kOriginalAnimationTick;
+        if (!std::isfinite(ticks) || ticks < 0.f) return false;
+    }
+    return true;
+}
+
+bool backInputHeld(const input::PlayerState* input) {
+    // The SDL stick uses positive Y for Down; analog Back must match the D-pad.
+    return input && (input->down[input::Action::Down] ||
+                     input->stick_y > input::kStickDeadzone);
+}
+
 struct AnimationBlendRule {
     int characterIndex;
     int weaponId;
@@ -120,7 +152,10 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_state = FighterState::BattleStart;
     m_stateTimer = FighterConstants::kBattleStartFrames;
     m_attackMoveId = -1;   // no swing in flight across a round reset
+    m_aerialAttack = false;
+    m_attackUsesActorFacing = false;
     m_dashMoveId = -1;
+    m_dashInputDirection = input::Action::Up;
     m_phaseIndex = 0;
     m_moveElapsedTicks = 0;
     m_swing = MeleeSwing{};
@@ -131,6 +166,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_reloadTimer = 0;
     m_pending = PendingShot{};
     m_pendingShots.clear();
+    m_shootingVoice = {};
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_moveCounter = 0;
@@ -161,7 +197,10 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_state = FighterState::BattleStart;
     m_stateTimer = FighterConstants::kBattleStartFrames;
     m_attackMoveId = -1;
+    m_aerialAttack = false;
+    m_attackUsesActorFacing = false;
     m_dashMoveId = -1;
+    m_dashInputDirection = input::Action::Up;
     m_phaseIndex = 0;
     m_moveElapsedTicks = 0;
     m_swing = MeleeSwing{};
@@ -180,6 +219,7 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_reloadTimer = 0;
     m_pending = PendingShot{};
     m_pendingShots.clear();
+    m_shootingVoice = {};
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_moveCounter = 0;
@@ -237,13 +277,17 @@ void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     m_animSetIdx = -1;
     clear_tracks();
     m_attackMoveId = -1;
+    m_aerialAttack = false;
+    m_attackUsesActorFacing = false;
     m_dashMoveId = -1;
+    m_dashInputDirection = input::Action::Up;
     m_phaseIndex = 0;
     m_swing = MeleeSwing{};
     m_chargeHeld = 0.0f;
     m_reloadTimer = 0;
     m_pending = PendingShot{};
     m_pendingShots.clear();
+    m_shootingVoice = {};
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_moveElapsedTicks = 0;
@@ -283,6 +327,8 @@ bool Fighter::can_move() const {
 
 void Fighter::update(const input::PlayerState* input, Fighter* opponent, double dt,
                      const game::physics::MovementCollision* collision) {
+    m_shootingVoice = {};
+    m_sourceShotVoiceAudited = false;
     m_time += dt;
     m_animationBoundThisUpdate = false;
 
@@ -312,6 +358,14 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         set_state(m_grounded ? FighterState::Idle : FighterState::Jump);
     }
 
+    // FUN_004202b0 forms movement from the target-facing basis plus the input
+    // offset, then FUN_0042dd90 refreshes that basis from the selected fighter
+    // while preserving the body's relative heading. Sample it before input
+    // dispatch so a dash edge cannot use the previous walk heading or old tick.
+    m_inputFacing = opponent ? std::atan2(opponent->position().x - m_position.x,
+                                         opponent->position().z - m_position.z) : m_facing;
+    const FighterState stateBeforeInput = m_state;
+
     // 2. Update state machine (check input, transition states).
     // A lost action window (hit, KO) breaks any charge hold in progress.
     if (!can_act()) m_chargeHeld = 0.0f;
@@ -323,6 +377,10 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         // FUN_00445ee0: row 300->301->302 compares row priority and state bit 0x100.
         if (from && to && m_attackMoveId >= 300 && m_attackMoveId < 302 && record &&
             (record->stateFlags & 0x100) && from->cancelThreshold <= to->priority) {
+            if (m_aerialAttack && m_moves->character_index() == 0 && m_moves->weapon_id() == 1) {
+                m_attackUsesActorFacing = backInputHeld(input);
+                if (!m_attackUsesActorFacing) m_facing = m_inputFacing;
+            }
             ++m_attackMoveId;
             build_melee_swing(m_attackMoveId);
             begin_melee_swing();
@@ -342,8 +400,35 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     } else if (can_act() && input) {
         update_state_machine(input, opponent, dt);
     }
-    m_inputFacing = opponent ? std::atan2(opponent->position().x - m_position.x,
-                                         opponent->position().z - m_position.z) : m_facing;
+    const bool enteringActionPose =
+        m_state == FighterState::Guard || m_state == FighterState::ShootA ||
+        m_state == FighterState::ShootB || m_state == FighterState::ShootC ||
+        m_state == FighterState::Jump;
+    if (input && opponent && opponent->is_alive() && stateBeforeInput != m_state &&
+        (stateBeforeInput == FighterState::Idle || stateBeforeInput == FighterState::Walk ||
+         stateBeforeInput == FighterState::Run) && enteringActionPose) {
+        const bool backJump = m_state == FighterState::Jump && backInputHeld(input);
+        const int moveId = state_move_id();
+        const MoveProgram* program = move_program(m_moves);
+        bool hasTurnRuleAtEntry = false;
+        if (program && moveId >= 0) {
+            for (size_t i = 0; i < program->count; ++i) {
+                const MoveRule& rule = program->rules[i];
+                if (rule.operation == MoveOp::Turn && rule.move == moveId &&
+                    (rule.phase < 0 || rule.phase == m_phaseIndex) &&
+                    rule.first <= m_moveElapsedTicks && m_moveElapsedTicks <= rule.last &&
+                    rule_gate_holds(rule)) {
+                    hasTurnRuleAtEntry = true;
+                    break;
+                }
+            }
+        }
+        // Melee entry stays under directional dispatch, including the backward
+        // air-dash actor-facing rule. Shot rows with a recovered Turn keep that
+        // first tick; jump, guard and unruled shots face the lock on entry. An
+        // already-armed fallback shot has committed its aim before this point.
+        if (!hasTurnRuleAtEntry && !m_pending.armed && !backJump) m_facing = m_inputFacing;
+    }
     execute_move_program(opponent, input);
     // The ribbon samples the prop's own active latch, which the executor re-derives
     // every frame; keep the value this frame's move program produced before anything
@@ -386,7 +471,8 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     }
 
     // Custom characters without a recovered handler retain the legacy turn rule.
-    if (opponent && opponent->is_alive() && !locomotion(m_moves)) {
+    if (opponent && opponent->is_alive() && !locomotion(m_moves) &&
+        !(m_state == FighterState::AttackA && m_aerialAttack && m_attackUsesActorFacing)) {
         update_facing(opponent, dt);
     }
 
@@ -526,8 +612,13 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     }
     if (m_weapon) {
         for (int hand = 0; hand < 2; ++hand) {
-            if (hand >= m_weapon->slotCount) continue;
-            const auto& slot = m_weapon->slots[hand];
+            const int itemModel = m_trailItemModel[static_cast<size_t>(hand)];
+            if (itemModel < 0 || itemModel >= m_weapon->slotCount ||
+                !m_weapon->slots[itemModel].has_prop()) {
+                m_trails[static_cast<size_t>(hand)].reset();
+                continue;
+            }
+            const auto& slot = m_weapon->slots[itemModel];
             const std::string bone = hand ? "Bip01_Prop2" : "Bip01_Prop1";
             // Anchors 3..5 and 6..8 are the two endpoints FUN_00430120 samples.
             m_trails[static_cast<size_t>(hand)].step(propActive[static_cast<size_t>(hand)],
@@ -547,18 +638,28 @@ void Fighter::update_state_machine(const input::PlayerState* input,
     // fighter's situation at the press — grounded, mid-dash or airborne — and by the bound
     // move table's chain rows, never by a second key (issue #10).
     if (input->just_pressed[input::Action::AttackA]) {
-        // Combat tuning uses a situation-based candidate. The grounded neutral
-        // animation uses a documented port inference to move 300; the source's
-        // conditional transition does not prove this initial selector. Dash/air
-        // animation candidates remain unresolved and use the visible fallback.
-        // With no table bound the legacy shared swing plays (issue #26).
+        // Rena+0 live inspection distinguishes row320's slash from regular300,
+        // and row332's air-dash kick from ground-side311. NN.dat supplies the tags;
+        // the broader selector tree stays in #66. Back samples this attack edge.
         const bool dashAttack = (m_state == FighterState::Run);
         const bool aerial = !m_grounded;
         set_aerial_attack(aerial);
+        const bool rena0 = m_moves && m_moves->character_index() == 0 && m_moves->weapon_id() == 1;
+        m_attackUsesActorFacing = rena0 && aerial && backInputHeld(input);
+        if (rena0 && aerial && !m_attackUsesActorFacing) m_facing = m_inputFacing;
         m_attackMoveId = resolve_attack_move(dashAttack, aerial);
         build_melee_swing(m_attackMoveId);
         set_state(FighterState::AttackA);
-        m_stateTimer = m_model && m_moves && move_program(m_moves) ? 0 : m_swing.total_ticks();
+        // For a combo whose complete NN/.X phase timeline can auto-complete,
+        // let FUN_00421100/FUN_004c57f0's period path end the move; contact-window
+        // duration must not preempt later callbacks such as Akane's 300 phase-2
+        // ribbon in FUN_00595460. Sets with a nonzero +0x20 gate still use the
+        // contact timer until their handler-specific phase transition is mapped.
+        const bool renaAirTimeline = rena0 && aerial &&
+            (m_attackMoveId == 320 || m_attackMoveId == 332);
+        m_stateTimer = renaAirTimeline || hasAutomaticMeleeTimeline(m_moves, m_weapon, m_model,
+                                                 m_attackMoveId)
+                           ? 0 : m_swing.total_ticks();
         return;
     }
 
@@ -641,17 +742,21 @@ void Fighter::update_state_machine(const input::PlayerState* input,
     }
 }
 
-// Screen direction → world direction under the lock-on camera: the eye sits
-// behind the facing looking at the locked opponent, so screen-up IS the facing.
-// The original classifies the same stick-vs-facing relative angle into its
-// directional variants (FUN_004235d0's 45°/135° sector bands feeding FUN_0043ded0's
-// 0x14/0x17/0x18/0x1b selection) — the evidence that input is facing-relative
-// rather than world-fixed. Up walks toward the locked opponent, not toward -Z.
-glm::vec3 Fighter::facing_relative(float screenRight, float screenUp) const {
-    const float fx = std::sin(m_facing);
-    const float fz = std::cos(m_facing);
+glm::vec3 Fighter::relative_direction(float yaw, float screenRight, float screenUp) const {
+    const float fx = std::sin(yaw);
+    const float fz = std::cos(yaw);
     // Right = up × facing in the left-handed yaw=0-faces-+Z world.
     return glm::vec3(fz, 0.0f, -fx) * screenRight + glm::vec3(fx, 0.0f, fz) * screenUp;
+}
+
+// The body's rendered yaw can turn with walking input; the combat lock remains
+// the movement reference for directional actions (FUN_004202b0, FUN_0042dd90).
+glm::vec3 Fighter::facing_relative(float screenRight, float screenUp) const {
+    return relative_direction(m_facing, screenRight, screenUp);
+}
+
+glm::vec3 Fighter::target_relative(float screenRight, float screenUp) const {
+    return relative_direction(m_inputFacing, screenRight, screenUp);
 }
 
 void Fighter::update_movement(const input::PlayerState* input, double dt) {
@@ -681,10 +786,10 @@ void Fighter::update_movement(const input::PlayerState* input, double dt) {
         if (input->down[input::Action::Down])  screenUp -= 1.0f;
     }
 
-    // Facing-relative, like the dash below: screen-up is the facing direction.
+    // Recovered handlers classify walk input from the target bearing before
+    // applying the body turn; unknown handlers keep a body-relative fallback.
     const float basis = locomotion(m_moves) ? m_inputFacing : m_facing;
-    glm::vec3 dir = glm::vec3(std::cos(basis),0.f,-std::sin(basis))*screenRight +
-                    glm::vec3(std::sin(basis),0.f,std::cos(basis))*screenUp;
+    glm::vec3 dir = relative_direction(basis, screenRight, screenUp);
 
     // Normalize the direction vector (mirrors D3DXVec3Normalize in the original).
     float len = glm::length(dir);
@@ -740,6 +845,10 @@ void Fighter::update_facing(const Fighter* opp, double dt) {
 void Fighter::set_state(FighterState new_state) {
     if (m_state == new_state) return;
     m_state = new_state;
+    if (new_state != FighterState::AttackA) {
+        m_aerialAttack = false;
+        m_attackUsesActorFacing = false;
+    }
     m_moveCounter = 0;
     m_movePitch = 0.f;
     m_holdTicks = 0;
@@ -1177,12 +1286,17 @@ void Fighter::set_moves(const CharacterMoves* moves) {
 
 int Fighter::resolve_attack_move(bool dashAttack, bool aerial) const {
     if (!m_moves) return -1;
+    const bool rena0 = m_moves->character_index() == 0 && m_moves->weapon_id() == 1;
+    if (aerial && !rena0) return present_move(340);
+    // FUN_00445ee0:319-323 selects 332 from airborne dash row30 (phase<2).
+    // Live inspection rejected both 311 and 340; validate this route visually.
+    if (dashAttack && aerial && rena0) return present_move(332);
     if (dashAttack) {
         const int lunge = present_move(330);
         if (lunge >= 0) return lunge;
     } else if (aerial) {
-        const int air = present_move(340);
-        if (air >= 0) return air;
+        const int jump = present_move(320);
+        if (jump >= 0) return jump;
     } else {
         const int neutral = present_move(300);
         if (neutral >= 0) return neutral;
@@ -1202,19 +1316,28 @@ int Fighter::dash_move_for(input::Action dir) const {
     // The original selects dash move IDs through opaque state/cancel fields.
     // Up/Down → 20/27 is a ground-only port inference from the directional move
     // families; the dumps do not establish either raw-input or air-dash mapping.
-    if (!m_moves || !m_grounded) return -1;
+    if (!m_moves) return -1;
+    // FUN_00445ee0:69-110 sends Rena's airborne directional dash requests to
+    // row 30, not the grounded 20/23/24/27 families. Other combos stay unresolved.
+    if (!m_grounded) {
+        if (m_moves->character_index() == 0 && m_moves->weapon_id() == 1)
+            return present_move(30);
+        return -1;
+    }
     if (dir == input::Action::Up) return present_move(20);
     if (dir == input::Action::Down) return present_move(27);
+    // FUN_0043ded0 selects side-step families 23/24; NN.dat supplies their clips.
+    // Retain the facing-relative movement policy while playing the equipped clips.
+    if (dir == input::Action::Left) return present_move(23);
+    if (dir == input::Action::Right) return present_move(24);
     return -1;
 }
 
 int Fighter::state_move_id() const {
     switch (m_state) {
-        // The swing's move was chosen at the press by resolve_attack_move: 300
-        // grounded neutral, 330 mid-dash, 340 airborne. Which of the three a fresh
-        // press selects is still a port inference, but the presentation must play
-        // the row that inference already bound — dropping 330/340 here is what made
-        // a live aerial swing show set 0 while its own table row is set 88 (issue #31).
+        // The swing keeps the combo row chosen on its input edge: 300 for neutral
+        // ground/jump, 330 for a grounded dash and 311 after an air dash. The
+        // special 340 selector contexts are not broadened by the #31 repair.
         case FighterState::AttackA:
             return present_move(m_attackMoveId);
         case FighterState::ShootA:
@@ -1316,7 +1439,9 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
     // Hide and Active windows below re-state what this frame actually wants.
     m_propBound = {true, true};
     m_propActive = {false, false};
+    m_trailItemModel = {0, 1};
     const MoveProgram* program = move_program(m_moves);
+    m_sourceShotVoiceAudited = shot_voice_policy_audited(program, state_move_id());
     const auto* motion = locomotion(m_moves);
     const CharacterMove* move = m_moves ? m_moves->find(state_move_id()) : nullptr;
     if (move && m_model && m_phaseIndex + 1 == move->sectionCount &&
@@ -1331,6 +1456,17 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
                 m_moveSpeed = 0.f;
                 return;
             }
+        }
+    }
+    // FUN_0043ffc0:946-954 explicitly exits row320's gated approach phase;
+    // without that callback the contact fallback timer cuts off the actual slash.
+    if (m_moves && m_moves->character_index() == 0 && m_moves->weapon_id() == 1 &&
+        m_state == FighterState::AttackA && m_attackMoveId == 320 &&
+        m_phaseIndex == 1 && m_moveElapsedTicks > 10) {
+        const float distance2 = opponent ? glm::dot(opponent->position() - m_position, opponent->position() - m_position) : 0.f;
+        if (distance2 < 40000.f || m_moveElapsedTicks > 25) {
+            enter_phase(2);
+            return;
         }
     }
     if (motion && m_model && m_state == FighterState::Run && m_dashMoveId == 20) {
@@ -1359,6 +1495,22 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
                 m_holdAnimation = m_holdTicks++ < motion->dashHoldLength;
         }
     }
+    // Akane+0's recovered handler binds Prop0 to item model 2 for these
+    // exact move windows (FUN_00595460 -> FUN_00434a70). Keep this
+    // trail-only descriptor outside MoveProgram so it does not claim her
+    // unrelated shot or voice callbacks are implemented.
+    if (m_weapon) {
+        for (int hand = 0; hand < 2; ++hand) {
+            const TrailBinding* binding = trail_binding(m_moves,state_move_id(),hand);
+            const int itemModel = binding ? binding->itemModel : hand;
+            m_trailItemModel[static_cast<size_t>(hand)] = itemModel;
+            if (!trail_window(m_moves,state_move_id(),m_phaseIndex,m_moveElapsedTicks,hand))
+                continue;
+            if (itemModel >= 0 && itemModel < m_weapon->slotCount &&
+                m_weapon->slots[itemModel].has_prop())
+                m_propActive[static_cast<size_t>(hand)] = true;
+        }
+    }
     if (!program) return;
     const glm::vec3 offset = opponent ? opponent->position() - m_position : glm::vec3(0.f);
     const float distanceSquared = glm::dot(offset, offset);
@@ -1375,6 +1527,8 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             break;
         case MoveOp::Decelerate: m_moveSpeed = std::max(0.f, m_moveSpeed - rule.value); break;
         case MoveOp::Turn:
+            if (m_state == FighterState::AttackA && m_aerialAttack &&
+                m_attackUsesActorFacing) break;
             if (rule.second > 0.f && !m_chainContact) break;
             if (opponent) {
                 const float target = std::atan2(offset.x, offset.z);
@@ -1403,7 +1557,9 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
         }
         case MoveOp::Active: {
             const int slot = static_cast<int>(rule.value);
-            if (slot >= 0 && slot < 2) m_propActive[static_cast<size_t>(slot)] = true;
+            if (slot >= 0 && slot < 2 && m_weapon && slot < m_weapon->slotCount &&
+                m_weapon->slots[slot].has_prop())
+                m_propActive[static_cast<size_t>(slot)] = true;
             break;
         }
         case MoveOp::Hold:
@@ -1425,6 +1581,17 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
         // the later requests that read source_float(0x3c) back.
         case MoveOp::CapturePitch:
             m_movePitch = capture_target_pitch(rule.second, rule.third, rule.value, opponent);
+            break;
+        case MoveOp::Voice:
+            m_shootingVoice.event = resolve_shot_voice_event(
+                rule.voice, main_whole(), charge_whole());
+            if (m_shootingVoice.event >= 0 && rule.voice.alternativeFirst >= 0 &&
+                rule.voice.alternativeSecond >= 0) {
+                m_shootingVoice.alternative =
+                    rng_source().modulo(100) < static_cast<std::uint32_t>(
+                        rule.voice.alternativeSecondPercent)
+                        ? rule.voice.alternativeSecond : rule.voice.alternativeFirst;
+            }
             break;
         case MoveOp::ActionCamera:
             if (m_chainContact) m_actionCamera = static_cast<int>(rule.value);
@@ -1590,10 +1757,13 @@ void Fighter::launch_bullet(int row, const ShotOriginSpec& origin, const ShotAim
         if (slot < 0 || slot >= 2)
             throw std::out_of_range("projectile attachment slot");
         const std::string bone = slot == 0 ? "Bip01_Prop1" : "Bip01_Prop2";
-        const bool hasAttachment = weapon_slot_bound(slot) && slot < m_weapon->slotCount;
+        const int model = resolvedOrigin.itemModel >= 0 ? resolvedOrigin.itemModel : slot;
+        if (resolvedOrigin.itemModel >= m_weapon->slotCount)
+            throw std::out_of_range("projectile item model");
+        const bool hasAttachment = weapon_slot_bound(slot) && model < m_weapon->slotCount;
         const glm::vec3 offset = (hasAttachment
-            ? glm::vec3(m_weapon->slots[slot].muzzle[0], m_weapon->slots[slot].muzzle[1],
-                        m_weapon->slots[slot].muzzle[2])
+            ? glm::vec3(m_weapon->slots[model].muzzle[0], m_weapon->slots[model].muzzle[1],
+                        m_weapon->slots[model].muzzle[2])
             : glm::vec3(0.f)) +
             glm::vec3(resolvedOrigin.localOffset[0], resolvedOrigin.localOffset[1],
                       resolvedOrigin.localOffset[2]);
@@ -2001,15 +2171,24 @@ bool Fighter::try_dash(input::Action dir) {
     // trigger cost. Unsupported handlers still use the explicitly legacy path.
     if (programmed ? m_stamina <= 0.f : m_stamina < FighterConstants::kDashStamina) return false;
     if (!m_grounded && m_airDashed) return false;
+    m_dashInputDirection = dir;
+    const bool backwardAirDash = !m_grounded && dir == input::Action::Down;
 
-    // Facing-relative dash (see facing_relative): the tapped key is a screen
-    // direction — Up toward the opponent, Down away, Left/Right sidesteps —
-    // committed for the dash window.
+    // Directional dash controls use the live lock bearing, not the body's last
+    // walk heading. The original keeps this basis separate from the body yaw
+    // (FUN_004202b0 / FUN_0042dd90); forward move 20 still owns its recovered
+    // phase turn/steer window below.
     glm::vec3 d(0, 0, 0);
-    if (dir == input::Action::Up)         d = facing_relative(0.0f, 1.0f);
-    else if (dir == input::Action::Down)  d = facing_relative(0.0f, -1.0f);
-    else if (dir == input::Action::Right)  d = facing_relative(1.0f, 0.0f);
-    else                                  d = facing_relative(-1.0f, 0.0f);
+    if (dir == input::Action::Up)         d = target_relative(0.0f, 1.0f);
+    else if (dir == input::Action::Down)  d = target_relative(0.0f, -1.0f);
+    else if (dir == input::Action::Right) d = target_relative(1.0f, 0.0f);
+    else                                  d = target_relative(-1.0f, 0.0f);
+
+    // The user-requested backward air-dash attack follows the actor's visible
+    // facing. Preserve that pose while its committed movement stays lock-relative;
+    // ground side/back clips have no turn callback and snap to the lock here.
+    // Forward move 20 keeps its recovered phase-0 snap and phase-1 steering.
+    if (!programmed && !backwardAirDash) m_facing = m_inputFacing;
 
     if (!programmed) m_stamina -= FighterConstants::kDashStamina;
     m_dashDir = d;

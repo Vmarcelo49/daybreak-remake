@@ -21,6 +21,10 @@
 
 namespace fnd::audio {
 
+// Process-only output policy, configured before opening engines. Verification still
+// decodes and queues audio, but every stream stays silent even if sliders change.
+void set_output_muted(bool muted);
+
 // Which option-screen slider a channel follows. The remake's option screen
 // has master/music/voice/SFX sliders and no UI slider, so UI cues follow SFX.
 enum class SfxBus { Ui, Voice, Sfx };

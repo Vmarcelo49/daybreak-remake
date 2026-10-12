@@ -8,7 +8,7 @@ console trace the DX9 build already prints under DAYBREAK_CAMINFO (one line per
 script turns two logs into a per-sample verdict instead of an eyeball diff.
 
 Usage:
-    compare_match_traces.py <dx9.log> <foundation.log> [--tol 0.5]
+    compare_match_traces.py <dx9.log> <foundation.log> [--tol 0.5] [--prefix]
 
 Both logs must contain lines of the form
 
@@ -21,7 +21,13 @@ not asserted: the DX9 camera (ArenaCamera, unclamped) and the foundation's
 (render::arenaViewProj + clamp) are different implementations on purpose, so
 only fighter state is comparable.
 
-Exit status: 0 when every sampled fighter field agrees, 1 otherwise.
+Both sides must supply the same number of samples by default: two runs of the same
+recipe that produced different sample counts are not the same run, and comparing only
+the common prefix would call them a match. `--prefix` opts into that comparison as an
+explicit diagnostic; it never reports success as "the runs match".
+
+Exit status: 0 when every sampled fighter field agrees over the full, equal-length
+trace, 1 otherwise.
 """
 
 import argparse
@@ -60,6 +66,9 @@ def main():
     ap.add_argument("foundation")
     ap.add_argument("--tol", type=float, default=0.5,
                     help="max per-axis position delta in game units (default 0.5)")
+    ap.add_argument("--prefix", action="store_true",
+                    help="diagnostic: compare only the common prefix of two traces whose "
+                         "sample counts differ (never reports the runs as matching)")
     args = ap.parse_args()
 
     a = parse(args.dx9)
@@ -71,9 +80,19 @@ def main():
         print("FAIL: one side has no trace lines "
               "(is DAYBREAK_CAMINFO=1 set on the DX9 run?)")
         return 1
+    if len(a) != len(b) and not args.prefix:
+        # Different sample counts mean the two runs are not the same run, so there is no
+        # whole-trace claim to make. Comparing the shared prefix would call a truncated
+        # run a match, which is the false pass this guard exists to prevent.
+        print(f"FAIL: trace lengths differ (dx9={len(a)}, foundation={len(b)}): the runs "
+              f"are not comparable. Re-run so both produce the same sample count, or pass "
+              f"--prefix to inspect the common prefix as a diagnostic.")
+        return 1
     n = min(len(a), len(b))
-    if len(a) != len(b):
-        print(f"NOTE: comparing the first {n} samples; counts differ")
+    prefix_only = len(a) != len(b)
+    if prefix_only:
+        print(f"DIAGNOSTIC: --prefix compares the first {n} samples of traces whose counts "
+              f"differ ({len(a)} vs {len(b)}); this is NOT a match verdict")
 
     worst = 0.0
     failures = []
@@ -93,6 +112,14 @@ def main():
               f"({a[i]['p2anim']}/{b[i]['p2anim']})  eye delta={eye_d:.0f} (informational)")
 
     print(f"\nworst fighter position delta: {worst:.0f} unit(s), tolerance {args.tol}")
+    if prefix_only:
+        if failures:
+            print(f"MATCH_TRACES: prefix mismatch ({len(failures)} field(s) in the first "
+                  f"{n} sample(s))")
+            return 1
+        print(f"MATCH_TRACES: prefix agrees over {n} sample(s) — diagnostic only; the "
+              f"traces do not have the same length, so this is not a match")
+        return 1
     if failures:
         print(f"MATCH_TRACES: FAIL ({len(failures)} field(s))")
         for frame, side, pa, pb, d, aa, ab in failures:

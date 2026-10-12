@@ -1048,14 +1048,25 @@ int main() {
     check(natsumiLocomotion && natsumiLocomotion->handler == natsumiUpdate,
           "Natsumi 0 dispatch matches kLocomotion");
     check(walkVa(15, 0) == 0x005E2F96u, "Natsumi 0 walk site is 0x5e2f96");
-    check(gameplay::kNatsumi0Rules[0].operation == gameplay::MoveOp::Hide &&
-              gameplay::kNatsumi0Rules[0].first == 14 && gameplay::kNatsumi0Rules[0].value == 0.f &&
-              gameplay::kNatsumi0Rules[1].operation == gameplay::MoveOp::Hide &&
-              gameplay::kNatsumi0Rules[1].first == 14 && gameplay::kNatsumi0Rules[1].value == 1.f &&
-              gameplay::kNatsumi0Rules[2].move == 400 &&
-              gameplay::kNatsumi0Rules[2].first == 14 &&
-              gameplay::kNatsumi0Rules[2].value == 0.f,
-          "Natsumi 0 rule hides both props then schedules normal row 0 at 14F");
+    int natsumiVoice = -1, natsumiHide0 = -1, natsumiHide1 = -1, natsumiLaunch0 = -1;
+    for (size_t ruleIndex = 0; ruleIndex < std::size(gameplay::kNatsumi0Rules); ++ruleIndex) {
+        const auto& rule = gameplay::kNatsumi0Rules[ruleIndex];
+        if (rule.move != 400) continue;
+        if (rule.operation == gameplay::MoveOp::Voice && rule.first == 14 && rule.last == 14)
+            natsumiVoice = static_cast<int>(ruleIndex);
+        if (rule.operation == gameplay::MoveOp::Hide && rule.first == 14 &&
+            rule.last == 9999 && rule.value == 0.f)
+            natsumiHide0 = static_cast<int>(ruleIndex);
+        if (rule.operation == gameplay::MoveOp::Hide && rule.first == 14 &&
+            rule.last == 9999 && rule.value == 1.f)
+            natsumiHide1 = static_cast<int>(ruleIndex);
+        if (rule.operation == gameplay::MoveOp::Launch && rule.first == 14 &&
+            rule.last == 14 && rule.value == 0.f)
+            natsumiLaunch0 = static_cast<int>(ruleIndex);
+    }
+    check(natsumiVoice >= 0 && natsumiHide0 >= 0 && natsumiHide1 > natsumiHide0 &&
+              natsumiVoice < natsumiLaunch0 && natsumiLaunch0 > natsumiHide1,
+          "Natsumi 0 keeps the 14F voice before normal row 0 and hides both props before launch");
 
     // 24–26. Origin families share the catalog checks below; the firing programs are
     // a separate concern. Keiichi 0/1 use hand transforms (FUN_00435220) and have no

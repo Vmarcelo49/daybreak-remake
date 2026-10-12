@@ -79,6 +79,20 @@ CombatEvent ev(CombatEventKind kind, int fighter, int source, uint32_t tick, uin
 }  // namespace
 
 int main() {
+    auto renaVoice = ev(CombatEventKind::ShotFired, 0, -1, 77);
+    renaVoice.voice_override = int(VoiceEvent::ShotA);
+    CHECK(resolve_combat_event(renaVoice).voice == VoiceEvent::ShotA);
+    renaVoice.voice_override = int(VoiceEvent::ShotFinal);
+    CHECK(resolve_combat_event(renaVoice).voice == VoiceEvent::ShotFinal);
+    renaVoice.voice_override = int(VoiceEvent::SpecialA);
+    renaVoice.voice_alternative = 2;
+    Recorder renaSink;
+    CombatAudio renaAudio(renaSink);
+    renaAudio.set_fighter_voice(0, "data/voice/rena", false);
+    renaAudio.set_voice_alternatives(0, VoiceEvent::SpecialA, 3);
+    renaAudio.dispatch(renaVoice);
+    CHECK(renaSink.played.size() == 1);
+    CHECK(renaSink.played[0].stem == voice_asset_stem("data/voice/rena", VoiceEvent::SpecialA, false, 2));
     // --- the recovered vocabulary ------------------------------------------
     CHECK(kVoiceEventCount == 40);
     CHECK(std::string(voice_event_name(VoiceEvent::AddAttack)) == "addattack");
@@ -111,6 +125,12 @@ int main() {
           VoiceEvent::AttackC);
     CHECK(resolve_combat_event(ev(CombatEventKind::ShotFired, 1, -1, 10)).voice ==
           VoiceEvent::Fire);
+    CombatEvent auditedSilentShot = ev(CombatEventKind::ShotFired, 1, -1, 11);
+    auditedSilentShot.source_voice_audited = true;
+    CHECK(!resolve_combat_event(auditedSilentShot).has_voice);
+    auditedSilentShot.voice_override = int(VoiceEvent::ShotC);
+    CHECK(resolve_combat_event(auditedSilentShot).has_voice);
+    CHECK(resolve_combat_event(auditedSilentShot).voice == VoiceEvent::ShotC);
     CHECK(resolve_combat_event(ev(CombatEventKind::Hit, 2, 0, 10)).voice == VoiceEvent::Damage);
     CHECK(resolve_combat_event(ev(CombatEventKind::Blocked, 2, 0, 10)).voice ==
           VoiceEvent::Guarded);
@@ -342,6 +362,19 @@ int main() {
             engine.set_volumes(v);
             CHECK(engine.bus_gain_applied(SfxBus::Voice) == 0.0f);
             CHECK(engine.volumes().voice == 25);
+            // A verification mute survives volume changes without overwriting settings
+            // or disabling the queues that the audio policy tests exercise.
+            set_output_muted(true);
+            v.master = 100;
+            engine.set_volumes(v);
+            CHECK(engine.bus_gain_applied(SfxBus::Voice) == 0.0f);
+            CHECK(engine.bus_gain_applied(SfxBus::Ui) == 0.0f);
+            CHECK(engine.bus_gain_applied(SfxBus::Sfx) == 0.0f);
+            CHECK(engine.volumes().master == 100);
+            CHECK(engine.channel_busy(ch));
+            set_output_muted(false);
+            engine.set_volumes(v);
+            CHECK(engine.bus_gain_applied(SfxBus::Voice) > 0.24f);
             engine.stop_bus(SfxBus::Voice);
             CHECK(!engine.channel_busy(ch));
             engine.close();

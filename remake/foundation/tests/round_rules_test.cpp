@@ -32,6 +32,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include "synthetic_combo.h"
 
 namespace {
 
@@ -68,6 +69,13 @@ constexpr double kDt = 1.0 / 64.0;  // the port's fixed step
 
 // A 1v1 with no models: Fighter::reset() drives the whole state machine, which is
 // what Match::reset does for a null model (match.cpp:22-23).
+// One synthetic combo for every match here. Static because the config holds POINTERS into
+// it and Match copies the config, so it has to outlive each match (AGENTS rule 7).
+const test::synthetic::Combo& matchCombo() {
+    static const test::synthetic::Combo combo;
+    return combo;
+}
+
 void setup1v1(gameplay::Match& match, gameplay::MatchConfig& config, int timeLimit = 0,
               const int balloonSize[2] = nullptr) {
     config.fighterCount = 2;
@@ -82,6 +90,7 @@ void setup1v1(gameplay::Match& match, gameplay::MatchConfig& config, int timeLim
         config.balloonSize[0] = balloonSize[0];
         config.balloonSize[1] = balloonSize[1];
     }
+    matchCombo().bind(config, config.fighterCount);
     const xm::Model* models[4] = {};
     xm::Controller* anims[4] = {};
     match.reset(config, models, anims, nullptr, nullptr);
@@ -97,6 +106,7 @@ void setup2v2(gameplay::Match& match, gameplay::MatchConfig& config) {
     config.spawn[1] = glm::vec3(-400, 0, 0);
     config.spawn[2] = glm::vec3(900, 0, 0);
     config.spawn[3] = glm::vec3(1400, 0, 0);
+    matchCombo().bind(config, config.fighterCount);
     const xm::Model* models[4] = {};
     xm::Controller* anims[4] = {};
     match.reset(config, models, anims, nullptr, nullptr);

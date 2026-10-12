@@ -196,6 +196,10 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[kMatchFighterCount]
     }
 
     for (int i = 0; i < m_config.fighterCount; ++i) {   // scenes.cpp:689-696
+        out.sourceShotVoiceAudited[i] = m_fighters[i].source_shot_voice_audited();
+        const auto voice = m_fighters[i].take_shooting_voice();
+        out.shotVoice[i] = voice.event;
+        out.shotVoiceAlternative[i] = voice.alternative;
         for (PendingShot shot = m_fighters[i].take_pending_shot(); shot.armed;
              shot = m_fighters[i].take_pending_shot()) {
             if (m_fighters[i].is_alive() &&

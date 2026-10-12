@@ -583,6 +583,19 @@ fs::path findRepoRoot(fs::path start) {
 }
 
 int main(int argc, char** argv) {
+    xm::CnvImage effect;
+    effect.width = effect.height = 3;
+    effect.rgba.assign(3 * 3 * 4, 0);
+    for (size_t i = 3; i < effect.rgba.size(); i += 4) effect.rgba[i] = 255;
+    effect.rgba[16] = 240;
+    if (!xm::hasBlackBorder(effect)) return 1;
+    xm::keyOutBlack(effect);
+    if (effect.rgba[3] != 0 || effect.rgba[19] != 255) return 1;
+    effect.rgba[0] = 100;
+    effect.rgba[4] = 100;
+    effect.rgba[8] = 100;
+    if (xm::hasBlackBorder(effect)) return 1;
+
     const char* envRepo = std::getenv("REPO_DIR");
     const char* envGame = std::getenv("GAME_DIR");
     fs::path repo = argc > 2 ? fs::path(argv[2])
@@ -600,12 +613,16 @@ int main(int argc, char** argv) {
     if (!fs::exists(game / "daybreak00.dat", skipEc)) {
         std::printf("SKIP: no install at %s (set GAME_DIR or pass <game_dir> <repo_dir>)\n",
                     game.string().c_str());
-        return 0;
+        // 77, not 0: CTest's SKIP_RETURN_CODE records this as a skip so a suite-level
+        // "passed" never stands for work that did not run (audit finding B).
+        return 77;
     }
     if (findRepoRoot(fs::absolute(argv[0]).parent_path()).empty() &&
         !fs::exists(repo / "remake" / "tools" / "asset-tools" / "extract_dat.py", skipEc)) {
         std::printf("SKIP: extract_dat.py oracle not found from repo=%s\n", repo.string().c_str());
-        return 0;
+        // The Python oracle is a repository file, so its absence is a broken checkout
+        // rather than a missing optional input: that is a failure, not a skip.
+        return 1;
     }
     sha256_selftest();
 

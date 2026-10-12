@@ -102,6 +102,8 @@ constexpr VoiceEvent kEvents[] = {
     VoiceEvent::BattleStart, VoiceEvent::AttackA,   VoiceEvent::Fire,     VoiceEvent::Damage,
     VoiceEvent::DamageDown,  VoiceEvent::Guard,     VoiceEvent::Guarded,  VoiceEvent::AttackKO,
     VoiceEvent::DamageKO,    VoiceEvent::Revival,   VoiceEvent::Oyashiro,
+    VoiceEvent::ShotA, VoiceEvent::ShotB, VoiceEvent::ShotC, VoiceEvent::ShotFinal,
+    VoiceEvent::SpecialA,
 };
 
 // The adapter the host also uses, over a live Match.
@@ -121,6 +123,9 @@ CombatFrameView viewOf(const gameplay::MatchFrame& f) {
     for (int i = 0; i < 4; ++i) {
         v.swing_started[i] = f.swingStarted[i];
         v.shot_fired[i]    = f.shotFired[i];
+        v.shot_voice[i] = f.shotVoice[i];
+        v.shot_voice_alternative[i] = f.shotVoiceAlternative[i];
+        v.shot_voice_audited[i] = f.sourceShotVoiceAudited[i];
         v.hyper_started[i] = f.hyperStarted[i];
         v.guard_started[i] = f.guardStarted[i];
         v.respawned[i]     = f.respawned[i];
@@ -144,9 +149,12 @@ int main() {
     const fs::path install = findInstall();
     std::error_code ec;
     if (install.empty() || !fs::is_directory(install / "data", ec)) {
+        // Exit 77: the install is this suite's only prerequisite, and CTest's
+        // SKIP_RETURN_CODE records it as a skip rather than a pass (audit finding B).
+        // The device-free policy coverage lives in combat_audio_test either way.
         std::puts("combat_audio_match_test: no install, skipped (device-free coverage is in "
                   "combat_audio_test)");
-        return 0;
+        return 77;
     }
     // Four shipped combos, slot 0, exactly as the live path binds them (AGENTS rule 7).
     static const int kRoster[4] = {0, 1, 2, 4};
@@ -160,22 +168,31 @@ int main() {
         std::snprintf(item, sizeof(item), "item/%03d.dat", itemId);
         std::vector<uint8_t> bytes;
         if (!readFile(install / "data" / item, bytes)) {
-            std::printf("combat_audio_match_test: %s missing, skipped\n", item);
-            return 0;
+            // The install is present, so this file is expected to be there: a missing
+            // item is a broken install, and calling it a skip hid exactly that.
+            std::printf("combat_audio_match_test: FAIL: %s is missing from an install that "
+                        "exists\n", item);
+            return 1;
         }
         auto w = std::make_unique<gameplay::WeaponDefinition>();
         if (!w->parse(itemId, bytes.data(), bytes.size(), err)) {
-            std::printf("combat_audio_match_test: %s: %s, skipped\n", item, err.c_str());
-            return 0;
+            std::printf("combat_audio_match_test: FAIL: %s did not parse: %s\n",
+                        item, err.c_str());
+            return 1;
         }
         char table[64];
         std::snprintf(table, sizeof(table), "%s/00.dat", gameplay::kCharacterDirs[character]);
         std::vector<uint8_t> moveBytes;
         auto m = std::make_unique<gameplay::CharacterMoves>();
-        if (!readFile(install / "data" / table, moveBytes) ||
-            !m->parse(moveBytes.data(), moveBytes.size(), err)) {
-            std::printf("combat_audio_match_test: %s: %s, skipped\n", table, err.c_str());
-            return 0;
+        if (!readFile(install / "data" / table, moveBytes)) {
+            std::printf("combat_audio_match_test: FAIL: %s is missing from an install that "
+                        "exists\n", table);
+            return 1;
+        }
+        if (!m->parse(moveBytes.data(), moveBytes.size(), err)) {
+            std::printf("combat_audio_match_test: FAIL: %s did not parse: %s\n",
+                        table, err.c_str());
+            return 1;
         }
         weapons.push_back(std::move(w));
         tables.push_back(std::move(m));

@@ -19,14 +19,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      # No pip step: generate_index.py imports only the standard library (json, os, re,
+      # sys, pathlib, collections). The jinja2 install was unused (audit finding J).
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Install deps
-        run: |
-          pip install --no-cache-dir jinja2
 
       - name: Generate index files
         run: |

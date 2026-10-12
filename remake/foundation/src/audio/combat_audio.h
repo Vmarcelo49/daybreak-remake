@@ -80,7 +80,7 @@ bool voice_event_b_dir(VoiceEvent e);
 enum class CombatEventKind : int {
     MatchStart = 0,  // a fighter's battle-start line
     MeleeSwing,      // a melee swing was armed
-    ShotFired,       // a shot was accepted by the pool
+    ShotFired,       // a shot was accepted, or its source move emitted a voice cue
     Hit,             // a landed hit that left the victim standing
     Overkill,        // a landed hit on an already-down body
     Blocked,         // a landed hit the victim was guarding
@@ -107,6 +107,9 @@ struct CombatEvent {
     // (see resolve_combat_event); it is not part of the identity, which needs uniqueness
     // per occurrence, not every attribute.
     bool     shot    = false;
+    int voice_override = -1;
+    int voice_alternative = -1;
+    bool source_voice_audited = false;  // suppress Fire fallback when a bound body is silent
     // Stable identity: tick + kind + the two fighters + the per-tick sequence. Two
     // simulations of the same ticks derive identical ids, and no id repeats within a match,
     // which is what makes replay/rollback reconciliation possible and double-fire impossible.
@@ -130,6 +133,9 @@ public:
 struct CombatFrameView {
     bool swing_started[4] = {};
     bool shot_fired[4] = {};
+    int shot_voice[4] = {-1, -1, -1, -1};
+    int shot_voice_alternative[4] = {-1, -1, -1, -1};
+    bool shot_voice_audited[4] = {};
     bool hyper_started[4] = {};
     bool guard_started[4] = {};
     bool respawned[4] = {};

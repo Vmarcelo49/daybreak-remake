@@ -88,7 +88,13 @@ CombatEventList combat_events_for_frame(const CombatEventSource& source,
         for (int i = 0; i < count; ++i) emit(CombatEventKind::MatchStart, i, -1, 0, false);
     for (int i = 0; i < count; ++i) {
         if (frame.swing_started[i]) emit(CombatEventKind::MeleeSwing, i, -1, 0, false);
-        if (frame.shot_fired[i])    emit(CombatEventKind::ShotFired, i, -1, 0, false);
+        if (frame.shot_fired[i] || frame.shot_voice[i] >= 0) {
+            emit(CombatEventKind::ShotFired, i, -1, 0, false);
+            list.events[list.count - 1].voice_override = frame.shot_voice[i];
+            list.events[list.count - 1].voice_alternative = frame.shot_voice_alternative[i];
+            list.events[list.count - 1].source_voice_audited =
+                frame.shot_voice_audited[i] && frame.shot_voice[i] < 0;
+        }
         if (frame.hyper_started[i]) emit(CombatEventKind::HyperActivate, i, -1, 0, false);
         if (frame.guard_started[i]) emit(CombatEventKind::GuardStart, i, -1, 0, false);
         if (frame.respawned[i])     emit(CombatEventKind::Respawn, i, -1, 0, false);
@@ -147,8 +153,10 @@ CombatCue resolve_combat_event(const CombatEvent& e) {
                                    : (e.seq == 1 ? VoiceEvent::AttackB : VoiceEvent::AttackC);
             break;
         case CombatEventKind::ShotFired:
+            if (e.source_voice_audited && e.voice_override < 0) break;
             cue.has_voice = true;
-            cue.voice = VoiceEvent::Fire;
+            cue.voice = e.voice_override >= 0 && e.voice_override < kVoiceEventCount
+                            ? static_cast<VoiceEvent>(e.voice_override) : VoiceEvent::Fire;
             break;
         case CombatEventKind::Hit:
             cue.has_voice = true;
@@ -251,10 +259,11 @@ void CombatAudio::play_voice(const CombatEvent& e, const CombatCue& cue) {
         return;
     }
     // PORT RULE: the original picks the alternative with `rand % count`; the port picks
-    // deterministically from the event's own identity so a capture reproduces exactly.
-    const int alternative = static_cast<int>(
+    // deterministically from the event's identity unless its move supplied an exact alternative.
+    const int alternative = e.voice_alternative >= 0 ? e.voice_alternative : static_cast<int>(
         (static_cast<uint64_t>(e.tick) * 7u + static_cast<uint64_t>(e.fighter) * 3u + e.seq) %
         static_cast<uint64_t>(count));
+    if (alternative >= count) { ++stats_.voice_missing; return; }
     const std::string stem = voice_asset_stem(v.dir, cue.voice, v.b_persona, alternative);
     if (stem.empty()) return;
     // One voice channel per fighter (the original's per-player audio object): the fighter's

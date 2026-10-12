@@ -47,6 +47,7 @@
 
 #include <cmath>
 #include <string>
+#include "synthetic_combo.h"
 
 namespace {
 
@@ -97,6 +98,14 @@ int fighterAttackingOrFiring(const App& app, int fighter) {
 // object the product fixture below also builds. The round cannot end inside a test: no time
 // limit and the widest balloon the settings allow, so the measurements below never run past
 // the round-over transition the host would take.
+// One synthetic combo for every match this file builds. Static because MatchConfig holds
+// POINTERS into it and Match copies the config, so the fixture must outlive the matches
+// (AGENTS rule 7: a stepped battle is never an unequipped one).
+const test::synthetic::Combo& matchCombo() {
+    static const test::synthetic::Combo combo;
+    return combo;
+}
+
 void resetMatch(gameplay::Match& match, float gauge0 = 0.0f) {
     gameplay::MatchConfig config;
     config.fighterCount = 4;
@@ -109,6 +118,7 @@ void resetMatch(gameplay::Match& match, float gauge0 = 0.0f) {
     config.timeLimit = 0;
     config.balloonSize[0] = config.balloonSize[1] = gameplay::kBalloonSizeMax;
     config.startGauge[0] = gauge0;
+    matchCombo().bind(config, 4);
     const xm::Model* models[4] = {};
     xm::Controller* animations[4] = {};
     match.reset(config, models, animations, nullptr, nullptr);

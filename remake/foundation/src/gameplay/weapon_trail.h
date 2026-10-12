@@ -71,7 +71,10 @@ public:
             vertex.pos = glm::vec3(0.f);
             for (int k = 0; k < 4; ++k)
                 vertex.pos += m_history[static_cast<size_t>(span + k)] * weights[k];
-            vertex.uv = glm::vec2(static_cast<float>(i) / m_length, 1.f);
+            // FUN_0042fce0 initializes each non-root vertex with U=1; FUN_004303b0
+            // advances V from 0 to 1 along the history. Swapping these axes samples
+            // only the transparent edge of Rena+0's kiseki02 ribbon texture.
+            vertex.uv = glm::vec2(1.f, static_cast<float>(i) / m_length);
         }
         return out;
     }

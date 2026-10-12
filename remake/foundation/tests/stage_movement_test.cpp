@@ -10,6 +10,7 @@
 #include <fstream>
 #include <limits>
 #include <string>
+#include "synthetic_combo.h"
 
 namespace {
 
@@ -216,6 +217,10 @@ void testSpawnAndRecovery() {
     gameplay::MatchConfig config;
     config.spawn[0] = {-100.f, 200.f, -100.f}; // original env slot 0 (blue)
     config.spawn[1] = {100.f, 200.f, 100.f};   // original env slot 2 (red in 1v1)
+    // AGENTS rule 7: this match is damaged and stepped, so it is equipped. Static so the
+    // combo outlives the match, which copies the config's pointers.
+    static const test::synthetic::Combo combo;
+    combo.bind(config, 2);
     gameplay::Match match;
     match.reset(config, models, anims, nullptr, nullptr, &collision);
     near(-100.f, match.fighter(0).position().x, 0.1f, "blue fighter retains original slot 0 X");

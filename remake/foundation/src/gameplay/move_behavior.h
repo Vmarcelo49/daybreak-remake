@@ -89,7 +89,50 @@ enum MoveGate : unsigned {
 };
 
 enum class MoveOp { Speed, Decelerate, Turn, Approach, Launch, Hold, ActionCamera, Hide,
-                    Active, Counter, CounterSet, CapturePitch };
+                    Active, Counter, CounterSet, CapturePitch, Voice };
+enum class ShotVoiceMagazine { Primary, Secondary };
+enum class ShotVoiceCompare { Equal, Less };
+
+// FUN_004223d0/FUN_00422490 choose a voice group from the rounds remaining at the cue
+// point (`+0x1b7` primary, `+0x1c8` secondary). Event ids follow the recovered 40-name
+// table at VA 0x6b73b0; audio owns the names and playback policy.
+struct ShotVoiceSpec {
+    int event = -1;
+    int finalEvent = -1;
+    ShotVoiceMagazine magazine = ShotVoiceMagazine::Primary;
+    ShotVoiceCompare comparison = ShotVoiceCompare::Equal;
+    int rounds = 1;
+    int alternativeFirst = -1;
+    int alternativeSecond = -1;
+    int alternativeSecondPercent = 0;
+};
+
+constexpr ShotVoiceSpec shot_voice(int event, int finalEvent = -1,
+                                   ShotVoiceMagazine magazine = ShotVoiceMagazine::Primary,
+                                   ShotVoiceCompare comparison = ShotVoiceCompare::Equal,
+                                   int rounds = 1) {
+    return ShotVoiceSpec{event, finalEvent, magazine, comparison, rounds};
+}
+
+constexpr ShotVoiceSpec shot_voice_pair(int event, int first, int second,
+                                        int secondPercent) {
+    ShotVoiceSpec spec;
+    spec.event = event;
+    spec.alternativeFirst = first;
+    spec.alternativeSecond = second;
+    spec.alternativeSecondPercent = secondPercent;
+    return spec;
+}
+
+constexpr int resolve_shot_voice_event(const ShotVoiceSpec& voice,
+                                       int primaryRounds, int secondaryRounds) {
+    if (voice.finalEvent < 0) return voice.event;
+    const int remaining = voice.magazine == ShotVoiceMagazine::Primary
+                              ? primaryRounds : secondaryRounds;
+    const bool final = voice.comparison == ShotVoiceCompare::Equal
+                           ? remaining == voice.rounds : remaining < voice.rounds;
+    return final ? voice.finalEvent : voice.event;
+}
 // CapturePitch latches the target elevation into the move's pitch scratch (the bodies'
 // write_scratch of the FUN_0042da80/FUN_0066b668 value). The bodies bound the scratch
 // with two independent compares, so the rule states both ends: second is the low
@@ -121,7 +164,19 @@ struct MoveRule {
     // loop is a property of the request, not of the spread, so it is stated separately —
     // and each iteration draws its own spread, which is what makes the volley a fan.
     int repeats = 1;
+    ShotVoiceSpec voice{};
 };
+
+// Voice-call timing and gates live in the same rule stream as the move body. The original
+// can speak before its request (Rena 1 state400 calls ShotC at tick15; the request is tick18).
+constexpr MoveRule voice_rule(int move, int phase, int first, int last,
+                              ShotVoiceSpec voice, unsigned gate = kGateNone,
+                              int gateValue = 0) {
+    MoveRule rule{move, phase, first, last, MoveOp::Voice, 0.f, 0.f, 0.f,
+                  gate, gateValue};
+    rule.voice = voice;
+    return rule;
+}
 
 // Original FUN_0043ffc0. Inclusive tick intervals; phase -1 means all phases.
 // Launch.value is an ITEM ROW, never a model number, animation set or magazine.
@@ -177,12 +232,19 @@ inline constexpr MoveRule kRenaRules[] = {
     {400,0,0,11,MoveOp::Turn,20.f},
     {400,-1,12,9999,MoveOp::Hide,0.f},
     {400,-1,12,9999,MoveOp::Hide,1.f},
-    {400,0,12,12,MoveOp::Launch,0.f,0.f,30.f,kGateNormal},
-    {400,0,12,12,MoveOp::Launch,6.f,0.f,30.f,kGatePowered},
+    voice_rule(400,0,12,12,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                     ShotVoiceCompare::Equal,1)),
+    {400,0,12,12,MoveOp::CapturePitch,0.f,30.f,30.f},
+    {400,0,12,12,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     ShotOriginSpec{},aim_stored_pitch()},
+    {400,0,12,12,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
+     ShotOriginSpec{},aim_stored_pitch()},
     // 402 air tap: hide from tick 13 (tick>12), launch item row 1 at tick 13
     // (0x444c7a CMP [this+0xae04],0xd) normally and row 7 powered (case 0x192).
     {402,-1,13,9999,MoveOp::Hide,0.f},
     {402,-1,13,9999,MoveOp::Hide,1.f},
+    voice_rule(402,0,13,13,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                     ShotVoiceCompare::Equal,1)),
     {402,0,13,13,MoveOp::Launch,1.f,0.f,30.f,kGateNormal},
     {402,0,13,13,MoveOp::Launch,7.f,0.f,30.f,kGatePowered},
     // 450 first charge: turn 18 deg through tick 9, launch row 2 at tick 13 (case
@@ -190,6 +252,8 @@ inline constexpr MoveRule kRenaRules[] = {
     // not the scratch). Typed aim carries the constant; the origin stays slot-0.
     {450,0,0,9999,MoveOp::Decelerate,.5f},
     {450,0,0,9,MoveOp::Turn,18.f},
+    voice_rule(450,0,13,13,shot_voice(28,30,ShotVoiceMagazine::Secondary,
+                                     ShotVoiceCompare::Equal,1)),
     {450,0,13,13,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
      ShotOriginSpec{},aim_fixed_angles(0.f,45.f)},
     {450,0,13,13,MoveOp::Launch,8.f,0.f,0.f,kGatePowered,0,
@@ -197,6 +261,8 @@ inline constexpr MoveRule kRenaRules[] = {
     // 460 air charge: turn 18 deg through tick 9, launch row 2 at tick 12 (case 0x1cc)
     // normally and row 8 powered, same fixed 45 pitch.
     {460,0,0,9,MoveOp::Turn,18.f},
+    voice_rule(460,0,12,12,shot_voice(28,30,ShotVoiceMagazine::Secondary,
+                                     ShotVoiceCompare::Equal,1)),
     {460,0,12,12,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
      ShotOriginSpec{},aim_fixed_angles(0.f,45.f)},
     {460,0,12,12,MoveOp::Launch,8.f,0.f,0.f,kGatePowered,0,
@@ -208,43 +274,61 @@ inline constexpr MoveRule kRenaRules[] = {
     // while <10), not a plain hold — same model as Rika's, shorter interval.
     {360,-1,0,9999,MoveOp::Decelerate,.75f},
     {360,0,0,0,MoveOp::CounterSet,0.f},
-    {360,2,2,2,MoveOp::Launch,11.f,70.f,40.f},
-    {360,2,2,2,MoveOp::Launch,12.f,-70.f,40.f},
+    // FUN_0043ffc0:1493-1495 settles aim during the first two windup phases.
+    {360,0,0,9999,MoveOp::Turn,15.f},
+    {360,1,0,9999,MoveOp::Turn,15.f},
+    voice_rule(360,2,2,2,shot_voice_pair(32,1,2,51)),
+    {360,2,2,2,MoveOp::CapturePitch,0.f,40.f,40.f},
+    {360,2,2,2,MoveOp::Launch,11.f,0.f,0.f,kGateNone,0,
+     origin_actor_relative(-70.f,70.f,70.f),aim_stored_pitch(1.f)},
+    {360,2,2,2,MoveOp::Launch,12.f,0.f,0.f,kGateNone,0,
+     origin_actor_relative(70.f,70.f,70.f),aim_stored_pitch(-1.f)},
+    // The original tests counter<10 BEFORE incrementing and returning. The
+    // post-increment Hold therefore accepts 1..10; the following visit resets it.
     {360,2,13,13,MoveOp::Counter,1.f},
-    {360,2,13,13,MoveOp::Hold,9999.f,0.f,0.f,kGateCounterBelow,10},
+    {360,2,13,13,MoveOp::Hold,9999.f,0.f,0.f,kGateCounterBelow,11},
+    {360,2,13,13,MoveOp::CounterSet,0.f,0.f,0.f,kGateCounterEquals,11},
     {370,-1,0,9999,MoveOp::Decelerate,.75f},
     {370,0,0,0,MoveOp::CounterSet,0.f},
-    {370,2,2,2,MoveOp::Launch,11.f,70.f,40.f},
-    {370,2,2,2,MoveOp::Launch,12.f,-70.f,40.f},
+    {370,0,0,9999,MoveOp::Turn,15.f},
+    {370,1,0,9999,MoveOp::Turn,15.f},
+    voice_rule(370,2,2,2,shot_voice_pair(32,1,2,51)),
+    {370,2,2,2,MoveOp::CapturePitch,0.f,40.f,40.f},
+    {370,2,2,2,MoveOp::Launch,11.f,0.f,0.f,kGateNone,0,
+     origin_actor_relative(-70.f,70.f,70.f),aim_stored_pitch(1.f)},
+    {370,2,2,2,MoveOp::Launch,12.f,0.f,0.f,kGateNone,0,
+     origin_actor_relative(70.f,70.f,70.f),aim_stored_pitch(-1.f)},
     {370,2,13,13,MoveOp::Counter,1.f},
-    {370,2,13,13,MoveOp::Hold,9999.f,0.f,0.f,kGateCounterBelow,10},
+    {370,2,13,13,MoveOp::Hold,9999.f,0.f,0.f,kGateCounterBelow,11},
+    {370,2,13,13,MoveOp::CounterSet,0.f,0.f,0.f,kGateCounterEquals,11},
     {370,-1,14,9999,MoveOp::Hide,0.f},
     {370,-1,14,9999,MoveOp::Hide,1.f},
 };
 
-// Rena weapon 1 (handler 0x448220): the full body is absent from the non-Rena
-// body header, so use the separately verified runtime-source helper
-// (battle_rena_ground_shot.hpp / battle_rena_mobile_shooting.hpp).
-//   state400: `if(f>11&&f<27){scratch_e8+=4;scratch_ec=e8-5+draw()%10; bullet(special?3:1,yaw=ec-30,0)}`
-//   — one request per frame 12..26, a 15-shot fan. The COUNT and ROW SPLIT are
-//   representable; the per-shot yaw `scratch_ec-30` and the `draw()%10` pitch are not,
-//   because there is no per-tick draw service. The rules therefore fire the right
-//   number of the right rows on the right frames with the default aim — a documented
-//   approximation, not a claim of spread parity.
-//   state450: `bullet(special?8:2,0,45)` at frame 13 — a single fixed-pitch attachment
-//   shot, both branches representable.
-//   state402: grounded phase jump plus a phase-2 frame-5 bullet, plus 460 air.
-//   360/370 and 460: no evidence in the runtime source — stay unbound.
+// FUN_00448220.c:1666-1721 is the ground TAP: row 6 normally, rows 0 then 9
+// powered at tick18. The runtime bridge incorrectly placed the charge fan here.
+// The first charge (2148-2185) advances its scratch by four BEFORE each request,
+// then adds rand%10-35 to it as a legacy yaw offset; pitch is literal zero.
 inline constexpr MoveRule kRena1Rules[] = {
-    // 400 ground tap: one request per frame 12..26, row 1 normal / 3 powered. The
-    // fan's spread needs the draw service above, so each shares the default aim.
-    {400,0,12,26,MoveOp::Launch,1.f,0.f,0.f,kGateNormal},
-    {400,0,12,26,MoveOp::Launch,3.f,0.f,0.f,kGatePowered},
-    // 450 charge: single fixed-45 attachment shot at frame 13.
-    {450,0,13,13,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
-     ShotOriginSpec{},aim_fixed_angles(0.f,45.f)},
-    {450,0,13,13,MoveOp::Launch,8.f,0.f,0.f,kGatePowered,0,
-     ShotOriginSpec{},aim_fixed_angles(0.f,45.f)},
+    {400,-1,0,14,MoveOp::Turn,20.f},
+    {400,0,0,9999,MoveOp::Decelerate,.5f},
+    {400,-1,7,7,MoveOp::Speed,45.f},
+    voice_rule(400,-1,15,15,shot_voice(29)),
+    {400,-1,15,15,MoveOp::Speed,0.f},
+    {400,-1,18,18,MoveOp::Launch,6.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {400,-1,18,18,MoveOp::Launch,0.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {400,-1,18,18,MoveOp::Launch,9.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {450,0,0,0,MoveOp::CounterSet,0.f},
+    {450,-1,0,9,MoveOp::Turn,18.f},
+    {450,-1,0,9999,MoveOp::Decelerate,.5f},
+    {450,-1,12,26,MoveOp::Counter,4.f},
+    {450,-1,12,26,MoveOp::Launch,1.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_model(0,2),aim_stored_pitch(),{},kSpreadRena1Charge},
+    {450,-1,12,26,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_model(0,2),aim_stored_pitch(),{},kSpreadRena1Charge},
 };
 
 // Rena weapon 2 (handler 0x438310) — no shoot_body_0_2_* exists in either body header,
@@ -255,9 +339,15 @@ inline constexpr MoveRule kRena1Rules[] = {
 // rand%180`). The ring's pitch is absolute and its yaw is the helper's legacy basis, so
 // the rules latch a ZERO pitch base and let the spread supply the whole pitch.
 inline constexpr MoveRule kRena2Rules[] = {
-    // Phase 0: 10 deg turn while tick under 20 (L1739-1741) and a 2.5 vertical bleed
-    // (L1742-1745). The bleed has no MoveOp and stays a recorded gap.
-    {400,0,0,19,MoveOp::Turn,10.f},
+    // FUN_00438310:1740-1760: horizontal bleed, then a phase-1 rush at tick25.
+    {400,-1,0,19,MoveOp::Turn,10.f},
+    {400,0,0,9999,MoveOp::Decelerate,2.5f},
+    {400,1,0,0,MoveOp::Speed,0.f},
+    {400,1,25,25,MoveOp::Speed,30.f},
+    {400,1,35,35,MoveOp::Speed,0.f},
+    // FUN_00438310.c:1763-1768: ShotFinal on primary remaining==1, else ShotC.
+    voice_rule(400,1,35,35,shot_voice(29,30,ShotVoiceMagazine::Primary,
+                                     ShotVoiceCompare::Equal,1)),
     // The attachment request carries no pitch and no yaw offset at all.
     {400,1,35,35,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
@@ -268,6 +358,17 @@ inline constexpr MoveRule kRena2Rules[] = {
      origin_actor_relative(0.f,200.f,30.f),aim_stored_pitch(),{},kSpreadRing,10},
     {400,1,35,35,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
      origin_actor_relative(0.f,200.f,30.f),aim_stored_pitch(),{},kSpreadRing,10},
+    // FUN_00438310.c:2254-2307: ground charge at tick40, hand R, pitch +/-40.
+    {450,-1,0,24,MoveOp::Turn,18.f},
+    {450,-1,0,9999,MoveOp::Decelerate,1.5f},
+    // FUN_00438310.c:2272-2281: ShotFinal on secondary remaining==1, else ShotB.
+    voice_rule(450,-1,40,40,shot_voice(28,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Equal,1)),
+    {450,-1,40,40,MoveOp::CapturePitch,0.f,40.f,40.f},
+    {450,-1,40,40,MoveOp::Launch,4.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
+    {450,-1,40,40,MoveOp::Launch,5.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
 };
 
 // Natsumi weapon 0 (handler 0x5e2af0): the normal ground state400 probe is an
@@ -277,6 +378,8 @@ inline constexpr MoveRule kRena2Rules[] = {
 // State 402 makes an analogous raw call but lacks a normalized callback trace, so stays
 // unbound rather than promoting a body-pattern inference to a confirmed air row.
 inline constexpr MoveRule kNatsumi0Rules[] = {
+    voice_rule(400,-1,14,14,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Equal,1)),
     {400,-1,14,9999,MoveOp::Hide,0.f},
     {400,-1,14,9999,MoveOp::Hide,1.f},
     {400,-1,14,14,MoveOp::Launch,0.f,0.f,30.f},
@@ -287,6 +390,84 @@ struct MoveProgram {
     size_t count = 0;
     int shot[3][2]{}; // tap/first/second charge; ground/air
 };
+
+// Ribbon binding/activation are prop-manager callbacks, not part of the
+// shot/voice MoveProgram. Akane's handler (FUN_00595460) binds prop0 to item2
+// for each supported melee move, while only some move phases/ticks activate
+// its ribbon. Keeping these descriptors separate avoids implying that her
+// shooting or voice paths are bound. The manager prop slot selects the
+// hand/bone; the item model selects anchors and texture.
+struct TrailWindow {
+    unsigned handler;
+    int character, weaponSlot;
+    int move, phase, first, last;
+    int propSlot;
+};
+struct TrailBinding {
+    unsigned handler;
+    int character, weaponSlot;
+    int move, propSlot, itemModel;
+};
+inline constexpr TrailBinding kAkane0TrailBindings[] = {
+    {0x595460,13,0,300,0,2}, {0x595460,13,0,301,0,2},
+    {0x595460,13,0,302,0,2}, {0x595460,13,0,330,0,2},
+    {0x595460,13,0,331,0,2}, {0x595460,13,0,340,0,2},
+    {0x595460,13,0,341,0,2},
+};
+inline constexpr TrailWindow kAkane0TrailWindows[] = {
+    // FUN_00595460:300, Prop0<-item2; phase2, ticks 3..10.
+    {0x595460,13,0,300,2,3,10,0},
+    // The source handles the follow-up rows, but current port input does not reach them.
+    {0x595460,13,0,301,-1,10,16,0}, // case 0x12d, ticks 10..16
+    {0x595460,13,0,302,-1,10,13,0}, // case 0x12e, ticks 10..13
+    // Dash chain windows from cases 0x14a/0x14b.
+    {0x595460,13,0,330,2,10,15,0},
+    {0x595460,13,0,331,2,7,16,0},
+    // Aerial windows from case 0x154 and the nearby 0x155 branch.
+    {0x595460,13,0,340,-1,16,24,0},
+    {0x595460,13,0,341,-1,17,19,0},
+};
+
+inline const TrailBinding* trail_binding(const CharacterMoves* moves, int move,
+                                         int propSlot) {
+    if (!moves) return nullptr;
+    const auto* motion = locomotion(moves);
+    const int character = moves->character_index();
+    const int weaponSlot = weaponSlotForItem(character, moves->weapon_id());
+    for (const auto& row : kAkane0TrailBindings)
+        if (row.handler == (motion ? motion->handler : 0u) &&
+            row.character == character && row.weaponSlot == weaponSlot &&
+            row.move == move && row.propSlot == propSlot)
+            return &row;
+    return nullptr;
+}
+
+inline const TrailWindow* trail_window(const CharacterMoves* moves, int move, int phase,
+                                       int tick, int propSlot) {
+    if (!moves) return nullptr;
+    const auto* motion = locomotion(moves);
+    const int character = moves->character_index();
+    const int weaponSlot = weaponSlotForItem(character, moves->weapon_id());
+    if (!trail_binding(moves,move,propSlot)) return nullptr;
+    for (const auto& row : kAkane0TrailWindows)
+        if (row.handler == (motion ? motion->handler : 0u) &&
+            row.character == character && row.weaponSlot == weaponSlot &&
+            row.move == move && (row.phase < 0 || row.phase == phase) &&
+            row.first <= tick && tick <= row.last && row.propSlot == propSlot)
+            return &row;
+    return nullptr;
+}
+
+// A mapped shot state has an audited voice policy in this file, including an explicit
+// silent policy when its handler has no voice call. Unmapped states retain the generic
+// audio fallback because their source voice path has not been bound.
+inline bool shot_voice_policy_audited(const MoveProgram* program, int move) {
+    if (!program || move < 0) return false;
+    for (const auto& tier : program->shot)
+        for (int shot : tier)
+            if (shot == move) return true;
+    return false;
+}
 // Slot7 jump-cancel facts recovered per combo (bundle evidence TSVs, runtime ==
 // expected): jump out of shot move 400 into state 40 admits at (phase 0, frame 20,
 // flags 0x100) for Rena 0 and (phase 0, frame 25, flags 0x100) for Rika 1; frame 0 has
@@ -326,6 +507,8 @@ inline constexpr MoveRule kMionRules[] = {
     // Phase 1: 10 deg turn (L66), and at per-phase tick 2 one slot-0 request, rows 0/4,
     // with the pitch scratch clamped +-30 (L69-98).
     {400,1,0,9999,MoveOp::Turn,10.f},
+    voice_rule(400,1,2,2,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                    ShotVoiceCompare::Equal,1)),
     {400,1,2,2,MoveOp::CapturePitch,0.f,30.f,30.f},
     {400,1,2,2,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_attachment_slot(0),aim_stored_pitch()},
@@ -337,6 +520,8 @@ inline constexpr MoveRule kMionRules[] = {
     // port reaches this phase through the DAT's phase advance rather than the jump, so
     // the follow-up lands on the phase boundary instead of the connecting frame.
     {400,3,0,9999,MoveOp::Turn,5.f},
+    voice_rule(400,3,2,2,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                    ShotVoiceCompare::Equal,1)),
     {400,3,2,2,MoveOp::CapturePitch,0.f,40.f,40.f},
     {400,3,2,2,MoveOp::Launch,0.f,0.f,0.f,kGateNormal | kGateContact,0,
      origin_attachment_slot(1),aim_stored_pitch()},
@@ -354,6 +539,9 @@ inline constexpr MoveRule kMionRules[] = {
     {402,-1,0,9999,MoveOp::Turn,5.f,0.f,0.f,
      kGateCounterBelow | kGateCounterAbove,25, ShotOriginSpec{}, ShotAimSpec{}, 15},
     {402,-1,0,9999,MoveOp::Counter,1.f},
+    voice_rule(402,-1,0,9999,
+               shot_voice(28,30,ShotVoiceMagazine::Primary,ShotVoiceCompare::Less,7),
+               kGateCounterEquals,15),
     {402,-1,0,9999,MoveOp::CapturePitch,0.f,40.f,40.f,kGateCounterEquals,15},
     {402,-1,0,9999,MoveOp::Launch,0.f,0.f,0.f,kGateNormal | kGateCounterEquals,15,
      origin_attachment_slot(0),aim_stored_pitch()},
@@ -384,6 +572,8 @@ inline constexpr MoveRule kMionRules[] = {
     //
     // --- 450 ground charge: 25 deg turn to tick 16, fire at 17, 30-update freeze ---
     {450,-1,0,16,MoveOp::Turn,25.f},
+    voice_rule(450,-1,17,17,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Equal,1)),
     // The two clamps differ: -40 low, +45 high (L1708-1715).
     {450,-1,17,17,MoveOp::CapturePitch,0.f,40.f,45.f},
     {450,-1,17,17,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
@@ -397,6 +587,8 @@ inline constexpr MoveRule kMionRules[] = {
     //
     // --- 460 air charge: 15 deg turn to tick 14, fire at 17, 20-update freeze ---
     {460,-1,0,14,MoveOp::Turn,15.f},
+    voice_rule(460,-1,17,17,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Equal,1)),
     {460,-1,17,17,MoveOp::CapturePitch,0.f,40.f,40.f},
     {460,-1,17,17,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
      origin_attachment_slot(0),aim_stored_pitch()},
@@ -422,6 +614,8 @@ inline constexpr MoveRule kMion1Rules[] = {
     {400,1,0,9999,MoveOp::Turn,5.f},
     {400,2,0,9999,MoveOp::Turn,5.f},
     // Phase 1 tick 2 fires slot 0, rows 0/4, clamp +-40 (L2504-2520).
+    voice_rule(400,1,2,2,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                    ShotVoiceCompare::Less,3)),
     {400,1,2,2,MoveOp::CapturePitch,0.f,40.f,40.f},
     {400,1,2,2,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_attachment_slot(0),aim_stored_pitch()},
@@ -444,6 +638,8 @@ inline constexpr MoveRule kMion1Rules[] = {
     {402,0,0,13,MoveOp::Turn,18.f},
     {402,-1,0,9999,MoveOp::Counter,1.f},
     // The single volley is at counter 13 and fires BOTH slots with the same row, +-40.
+    voice_rule(402,-1,0,9999,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                        ShotVoiceCompare::Less,3),kGateCounterEquals,13),
     {402,-1,0,9999,MoveOp::CapturePitch,0.f,40.f,40.f,kGateCounterEquals,13},
     {402,-1,0,9999,MoveOp::Launch,0.f,0.f,0.f,kGateNormal | kGateCounterEquals,13,
      origin_attachment_slot(0),aim_stored_pitch()},
@@ -459,6 +655,7 @@ inline constexpr MoveRule kMion1Rules[] = {
     // `(rand%100-50)*0.1` to it while the yaw takes `(rand%200-100)*0.1`; the pitch draw
     // comes first. Rows 1 normal / 5 powered.
     {450,-1,0,16,MoveOp::Turn,25.f},
+    voice_rule(450,-1,17,17,shot_voice(29)),
     {450,-1,17,17,MoveOp::CapturePitch,0.f,45.f,45.f},
     {450,-1,17,17,MoveOp::Launch,1.f,0.f,0.f,kGateNormal,0,
      origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadBurstJitter,15},
@@ -468,6 +665,7 @@ inline constexpr MoveRule kMion1Rules[] = {
     // mismatch — the body tests +-30 and writes +-45 (L4330-4337) — so the snap bound
     // carries it.
     {460,-1,0,16,MoveOp::Turn,20.f},
+    voice_rule(460,-1,17,17,shot_voice(29)),
     {460,-1,17,17,MoveOp::CapturePitch,45.f,30.f,30.f},
     {460,-1,17,17,MoveOp::Launch,1.f,0.f,0.f,kGateNormal,0,
      origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadBurstJitter,15},
@@ -494,6 +692,8 @@ inline constexpr MoveRule kMion2Rules[] = {
     {400,0,0,18,MoveOp::Turn,10.f},
     {400,0,0,9,MoveOp::Turn,15.f},
     {400,0,0,17,MoveOp::Decelerate,1.5f},
+    voice_rule(400,0,10,10,shot_voice(28,30,ShotVoiceMagazine::Primary,
+                                     ShotVoiceCompare::Less,2)),
     {400,0,10,10,MoveOp::CapturePitch,0.f,40.f,40.f},
     {400,0,10,10,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_attachment_slot(0),aim_stored_pitch()},
@@ -509,6 +709,8 @@ inline constexpr MoveRule kMion2Rules[] = {
     // (L4731-4737). No teleport here, so the launch is on the tick-18 window itself.
     {402,0,0,13,MoveOp::Turn,15.f},
     {402,0,14,18,MoveOp::Turn,10.f},
+    voice_rule(402,0,18,18,shot_voice(28,30,ShotVoiceMagazine::Primary,
+                                      ShotVoiceCompare::Less,2)),
     {402,0,18,18,MoveOp::CapturePitch,0.f,40.f,40.f},
     {402,0,18,18,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_attachment_slot(0),aim_stored_pitch()},
@@ -541,6 +743,7 @@ inline constexpr MoveRule kMion2Rules[] = {
     {450,1,55,55,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
     {450,1,60,60,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
     {450,0,0,0,MoveOp::CounterSet,0.f},
+    voice_rule(450,1,0,0,shot_voice(29)),
     {450,1,15,15,MoveOp::Counter,1.f},
     {450,1,15,15,MoveOp::CapturePitch,0.f,45.f,45.f},
     {450,1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
@@ -616,6 +819,7 @@ inline constexpr MoveRule kMion2Rules[] = {
     {460,1,55,55,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
     {460,1,60,60,MoveOp::Turn,.5f,0.f,0.f,kGateCounterBelow,10},
     {460,0,0,0,MoveOp::CounterSet,0.f},
+    voice_rule(460,1,0,0,shot_voice(29)),
     {460,1,15,15,MoveOp::Counter,1.f},
     {460,1,15,15,MoveOp::CapturePitch,0.f,45.f,45.f},
     {460,1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
@@ -702,11 +906,15 @@ inline constexpr MoveRule kRikaRules[] = {
     // and the scratch only increments inside the window — so scratch == tick - 12 and
     // the parity is the tick's own. The Launch is stated BEFORE the Counter so it reads
     // the pre-increment value, which is what the body's fire-then-increment does.
+    voice_rule(400,-1,12,12,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Less,11)),
     {400,-1,12,41,MoveOp::Launch,0.f,0.f,0.f,kGateCounterMod,2,
      origin_named_bone("Bip01_L_Hand"),aim_target_elevation(40.f),{},kSpreadRika1Tap},
     {400,-1,12,41,MoveOp::Counter,1.f},
     // 402 air tap: 20 deg turn ticks 0-14 (L22077-80), same even-tick window (L22086).
     {402,-1,0,14,MoveOp::Turn,20.f},
+    voice_rule(402,-1,12,12,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Less,11)),
     {402,-1,12,12,MoveOp::Launch,0.f,0.f,40.f},
     {402,-1,14,14,MoveOp::Launch,0.f,0.f,40.f},
     {402,-1,16,16,MoveOp::Launch,0.f,0.f,40.f},
@@ -727,6 +935,8 @@ inline constexpr MoveRule kRikaRules[] = {
     // powered-only 0.1 deg turn while tick < 51 (L23462-65).
     {450,-1,0,9,MoveOp::Turn,18.f},
     {450,-1,0,9999,MoveOp::Decelerate,.5f},
+    voice_rule(450,0,10,10,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                      ShotVoiceCompare::Less,3)),
     {450,-1,0,50,MoveOp::Turn,.1f,0.f,0.f,kGatePowered},
     // The body seeds a scratch counter at phase0/tick0 (L23446-50) and increments it
     // once per update AFTER the fire checks (L23639), so the counter equals the phase
@@ -767,6 +977,8 @@ inline constexpr MoveRule kRikaRules[] = {
     // it clears the horizontal/vertical/gravity channels at phase0/tick0 instead of
     // bleeding, which has no MoveRule op and stays an explicit gap.
     {460,-1,0,9,MoveOp::Turn,18.f},
+    voice_rule(460,-1,10,10,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Less,3)),
     {460,-1,0,50,MoveOp::Turn,.1f,0.f,0.f,kGatePowered},
     {460,0,0,0,MoveOp::CounterSet,0.f},
     // The body computes the pitch ONCE at tick 10 (FUN_0042da80 -> FUN_0066b668 ->
@@ -804,6 +1016,8 @@ inline constexpr MoveRule kRikaRules[] = {
 // 91 % 30 == 1 does.
 inline constexpr MoveRule kSatoko1Rules[] = {
     {400,0,0,0,MoveOp::CounterSet,118.f},
+    // FUN_004b4090:1731: this tap body calls ShotB on entry, before its first periodic request.
+    voice_rule(400,0,0,0,shot_voice(28)),
     {400,-1,1,9999,MoveOp::Counter,-1.f},
     {400,-1,0,9999,MoveOp::Launch,6.f,0.f,0.f,kGateNormal | kGateCounterMod,30,
      origin_actor_relative(0.f,0.f,50.f),aim_fixed_angles(0.f,0.f)},
@@ -811,6 +1025,7 @@ inline constexpr MoveRule kSatoko1Rules[] = {
      origin_actor_relative(0.f,0.f,50.f),aim_fixed_angles(0.f,0.f)},
     // 402 air tap: the same periodic shot with no state-specific change.
     {402,0,0,0,MoveOp::CounterSet,118.f},
+    voice_rule(402,0,0,0,shot_voice(28)),
     {402,-1,1,9999,MoveOp::Counter,-1.f},
     {402,-1,0,9999,MoveOp::Launch,6.f,0.f,0.f,kGateNormal | kGateCounterMod,30,
      origin_actor_relative(0.f,0.f,50.f),aim_fixed_angles(0.f,0.f)},
@@ -863,6 +1078,8 @@ inline constexpr MoveRule kSatoko2Rules[] = {
     {400,-1,0,19,MoveOp::Turn,15.f},
     {400,-1,0,9999,MoveOp::Decelerate,.5f},
     // tick 20 twin pair, normal rows then powered rows (L16528-16583).
+    voice_rule(400,0,20,20,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                      ShotVoiceCompare::Less,6)),
     {400,0,20,20,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_actor_relative(-50.f,100.f,70.f),aim_target_elevation(40.f)},
     {400,0,20,20,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
@@ -874,6 +1091,8 @@ inline constexpr MoveRule kSatoko2Rules[] = {
     // 402 air tap: 20 deg turn through tick 19 (L16800-802), movement cleared at
     // tick 0 (L16803-805), same twin pair at tick 20.
     {402,-1,0,19,MoveOp::Turn,20.f},
+    voice_rule(402,-1,20,20,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Less,6)),
     {402,-1,20,20,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_actor_relative(-50.f,100.f,70.f),aim_target_elevation(40.f)},
     {402,-1,20,20,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
@@ -897,6 +1116,8 @@ inline constexpr MoveRule kKeiichi0Rules[] = {
     {400,-1,0,13,MoveOp::Turn,20.f},
     {400,-1,0,9999,MoveOp::Decelerate,.5f},
     // Tick-13 hand request, normal then powered (L6356-79).
+    voice_rule(400,0,13,13,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                     ShotVoiceCompare::Equal,1)),
     {400,0,13,13,MoveOp::CapturePitch,0.f,30.f,30.f},
     {400,0,13,13,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
@@ -906,6 +1127,8 @@ inline constexpr MoveRule kKeiichi0Rules[] = {
     // at tick 0 and gravity applied (no MoveRule ops — explicit gaps). Same tick-13
     // hand request with the snapped pitch.
     {402,-1,0,13,MoveOp::Turn,20.f},
+    voice_rule(402,0,13,13,shot_voice(28,30,ShotVoiceMagazine::Primary,
+                                      ShotVoiceCompare::Equal,1)),
     {402,0,13,13,MoveOp::CapturePitch,45.f,30.f,30.f},
     {402,0,13,13,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
@@ -917,6 +1140,8 @@ inline constexpr MoveRule kKeiichi0Rules[] = {
     {450,-1,0,9999,MoveOp::Decelerate,.5f},
     {450,0,4,4,MoveOp::Launch,1.f,0.f,0.f,kGateNone,0,
      origin_named_bone("Bip01_L_Hand"),aim_fixed_angles(0.f,0.f)},
+    voice_rule(450,0,20,20,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                      ShotVoiceCompare::Equal,1)),
     {450,0,20,20,MoveOp::CapturePitch,0.f,40.f,40.f},
     {450,0,20,20,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
      ShotOriginSpec{},aim_stored_pitch()},
@@ -927,6 +1152,8 @@ inline constexpr MoveRule kKeiichi0Rules[] = {
     {460,-1,0,19,MoveOp::Turn,18.f},
     {460,0,4,4,MoveOp::Launch,1.f,0.f,0.f,kGateNone,0,
      origin_named_bone("Bip01_L_Hand"),aim_fixed_angles(0.f,0.f)},
+    voice_rule(460,0,20,20,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                      ShotVoiceCompare::Equal,1)),
     {460,0,20,20,MoveOp::CapturePitch,0.f,40.f,40.f},
     {460,0,20,20,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
      ShotOriginSpec{},aim_stored_pitch()},
@@ -945,6 +1172,8 @@ inline constexpr MoveRule kKeiichi1Rules[] = {
     // 400 ground tap: 20 deg turn through tick 13, bleed 0.5 (L8776-89).
     {400,-1,0,13,MoveOp::Turn,20.f},
     {400,-1,0,9999,MoveOp::Decelerate,.5f},
+    voice_rule(400,0,13,13,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                     ShotVoiceCompare::Equal,1)),
     {400,0,13,13,MoveOp::CapturePitch,0.f,30.f,30.f},
     {400,0,13,13,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
@@ -953,6 +1182,8 @@ inline constexpr MoveRule kKeiichi1Rules[] = {
     // 402 air tap: 20 deg movement-preserving turn through tick 13 (movement clear
     // and gravity are explicit gaps). Same hand request with the snapped pitch.
     {402,-1,0,13,MoveOp::Turn,20.f},
+    voice_rule(402,0,13,13,shot_voice(28,30,ShotVoiceMagazine::Primary,
+                                      ShotVoiceCompare::Equal,1)),
     {402,0,13,13,MoveOp::CapturePitch,45.f,30.f,30.f},
     {402,0,13,13,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
@@ -962,6 +1193,8 @@ inline constexpr MoveRule kKeiichi1Rules[] = {
     // (L10004-10093).
     {450,-1,0,19,MoveOp::Turn,18.f},
     {450,-1,0,9999,MoveOp::Decelerate,.5f},
+    voice_rule(450,0,20,20,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                      ShotVoiceCompare::Equal,1)),
     {450,0,20,20,MoveOp::Launch,9.f,0.f,0.f,kGateNone,0,
      origin_actor_relative(-50.f,0.f,40.f),aim_elevation_plus_range()},
     {450,0,20,20,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
@@ -971,6 +1204,8 @@ inline constexpr MoveRule kKeiichi1Rules[] = {
     // 460 air charge: 18 deg movement-preserving turn through tick 19 (entry halve
     // and gravity are explicit gaps). Same pair at height +20.
     {460,-1,0,19,MoveOp::Turn,18.f},
+    voice_rule(460,0,20,20,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                      ShotVoiceCompare::Equal,1)),
     {460,0,20,20,MoveOp::Launch,9.f,0.f,0.f,kGateNone,0,
      origin_actor_relative(-50.f,0.f,20.f),aim_elevation_plus_range()},
     {460,0,20,20,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
@@ -1006,6 +1241,9 @@ inline constexpr MoveRule kTomitakeRules[] = {
     {400,-1,0,9,MoveOp::Turn,18.f},
     {400,-1,0,34,MoveOp::Turn,2.f},
     {400,-1,1,9999,MoveOp::Decelerate,2.f},
+    // FUN_00527880 calls its tap line only on the first scheduled burst tick.
+    voice_rule(400,-1,15,15,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Less,3)),
     {400,-1,15,15,MoveOp::Launch,7.f,0.f,0.f,kGateNone,0,
      origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
     {400,-1,15,15,MoveOp::Launch,5.f,0.f,0.f,kGateNormal,0,
@@ -1051,6 +1289,8 @@ inline constexpr MoveRule kTomitakeRules[] = {
     // 402 air tap: disjoint turns 15 deg (0-9) + 5 deg (10-24), same twin schedule.
     {402,-1,0,9,MoveOp::Turn,15.f},
     {402,-1,10,24,MoveOp::Turn,5.f},
+    voice_rule(402,-1,15,15,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Less,3)),
     {402,-1,15,15,MoveOp::Launch,7.f,0.f,0.f,kGateNone,0,
      origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
     {402,-1,15,15,MoveOp::Launch,5.f,0.f,0.f,kGateNormal,0,
@@ -1144,6 +1384,8 @@ inline constexpr MoveRule kKeiichiRules[] = {
     {400,0,0,11,MoveOp::Turn,20.f},
     {400,0,0,9999,MoveOp::Decelerate,.5f},
     {400,0,0,0,MoveOp::CounterSet,0.f},
+    voice_rule(400,0,10,10,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                     ShotVoiceCompare::Equal,1)),
     {400,-1,10,20,MoveOp::Counter,2.f},
     {400,-1,10,20,MoveOp::CapturePitch,0.f,30.f,30.f},
     {400,-1,10,20,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
@@ -1156,6 +1398,8 @@ inline constexpr MoveRule kKeiichiRules[] = {
     // is the air-tap slot the other combos use, and leaves 401 unbound.
     {402,-1,0,11,MoveOp::Turn,20.f},
     {402,0,0,0,MoveOp::CounterSet,0.f},
+    voice_rule(402,-1,10,10,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Equal,1)),
     {402,-1,10,20,MoveOp::Counter,2.f},
     {402,-1,10,20,MoveOp::CapturePitch,0.f,30.f,30.f},
     {402,-1,10,20,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
@@ -1168,6 +1412,8 @@ inline constexpr MoveRule kKeiichiRules[] = {
     {450,-1,0,12,MoveOp::Turn,18.f},
     {450,-1,0,9999,MoveOp::Decelerate,.75f},
     {450,-1,5,5,MoveOp::Hold,10.f},
+    voice_rule(450,-1,13,13,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Equal,1)),
     {450,-1,13,13,MoveOp::CapturePitch,0.f,40.f,40.f},
     {450,-1,13,13,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
      origin_actor_relative(-50.f,0.f,40.f),aim_elevation_plus_range_keiichi2()},
@@ -1176,6 +1422,8 @@ inline constexpr MoveRule kKeiichiRules[] = {
     {450,-1,32,32,MoveOp::Hold,15.f},
     // 460 air charge1: same shape (turn 18, salvo row 2 at 13, stalls at 5/32).
     {460,-1,0,12,MoveOp::Turn,18.f},
+    voice_rule(460,-1,13,13,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Equal,1)),
     {460,-1,13,13,MoveOp::CapturePitch,0.f,40.f,40.f},
     {460,-1,13,13,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
      origin_actor_relative(-50.f,0.f,40.f),aim_elevation_plus_range_keiichi2()},
@@ -1205,6 +1453,8 @@ inline constexpr MoveRule kChieRules[] = {
     {400,0,0,9999,MoveOp::Decelerate,.5f},
     {400,-1,15,15,MoveOp::CounterSet,1.f},
     {400,-1,16,9999,MoveOp::Counter,1.f},
+    voice_rule(400,-1,15,15,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Less,5)),
     {400,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
     {400,-1,15,15,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
@@ -1225,6 +1475,8 @@ inline constexpr MoveRule kChieRules[] = {
     {402,-1,0,16,MoveOp::Turn,20.f},
     {402,-1,17,17,MoveOp::CounterSet,1.f},
     {402,-1,18,9999,MoveOp::Counter,1.f},
+    voice_rule(402,-1,17,17,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Less,6)),
     {402,-1,17,17,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_named_bone("Bip01_L_Hand"),aim_target_elevation(40.f),{},kSpreadChieBurst},
     {402,-1,17,17,MoveOp::Launch,1.f,0.f,0.f,kGatePowered,0,
@@ -1249,12 +1501,16 @@ inline constexpr MoveRule kChieRules[] = {
     // single salvo row 2 at tick 22.
     {450,-1,0,19,MoveOp::Turn,18.f},
     {450,-1,0,9999,MoveOp::Decelerate,.5f},
+    voice_rule(450,-1,22,22,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Less,3)),
     {450,-1,22,22,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
      origin_named_bone("Bip01_R_Hand"),aim_target_elevation(30.f)},
     {450,-1,22,22,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
      origin_named_bone("Bip01_R_Hand"),aim_target_elevation(30.f)},
     // 460 air charge1: 18 deg turn through tick 24, single salvo row 2 at tick 15.
     {460,-1,0,24,MoveOp::Turn,18.f},
+    voice_rule(460,-1,15,15,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Less,3)),
     {460,-1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
      origin_named_bone("Bip01_R_Hand"),aim_target_elevation(30.f)},
     {460,-1,15,15,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
@@ -1274,6 +1530,8 @@ inline constexpr MoveRule kTakanoRules[] = {
     {400,-1,0,17,MoveOp::Turn,10.f},
     {400,0,0,9999,MoveOp::Turn,15.f},
     {400,0,0,9999,MoveOp::Decelerate,.5f},
+    voice_rule(400,-1,12,12,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Less,4)),
     {400,-1,12,12,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f)},
     {400,-1,12,12,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
@@ -1288,6 +1546,8 @@ inline constexpr MoveRule kTakanoRules[] = {
      origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f)},
     // 402 air tap: turn 20 deg ticks 0-17, same triple row 0 (no bleed — gravity tail).
     {402,-1,0,17,MoveOp::Turn,20.f},
+    voice_rule(402,-1,12,12,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Less,4)),
     {402,-1,12,12,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_named_bone("Bip01_R_Hand"),aim_target_elevation(40.f)},
     {402,-1,12,12,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
@@ -1304,12 +1564,15 @@ inline constexpr MoveRule kTakanoRules[] = {
     // single salvo row 1 at tick 18.
     {450,-1,0,16,MoveOp::Turn,20.f},
     {450,-1,10,17,MoveOp::Hide,0.f},
+    voice_rule(450,-1,18,18,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Equal,1)),
     {450,-1,18,18,MoveOp::Launch,1.f,0.f,40.f,kGateNormal},
     {450,-1,18,18,MoveOp::Launch,7.f,0.f,40.f,kGatePowered},
     // 460 air charge1: turn 15 deg through tick 14, Hide slot 0 ticks 0-16,
     // single salvo row 1 at tick 17.
     {460,-1,0,14,MoveOp::Turn,15.f},
     {460,-1,0,16,MoveOp::Hide,0.f},
+    voice_rule(460,-1,17,17,shot_voice(29)),
     {460,-1,17,17,MoveOp::Launch,1.f,0.f,40.f,kGateNormal},
     {460,-1,17,17,MoveOp::Launch,7.f,0.f,40.f,kGatePowered},
 };
@@ -1326,6 +1589,8 @@ inline constexpr MoveRule kKasaiRules[] = {
     {400,-1,0,9,MoveOp::Turn,18.f},
     {400,-1,10,10,MoveOp::Turn,10.f},
     {400,-1,1,9999,MoveOp::Decelerate,2.f},
+    voice_rule(400,-1,10,10,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Less,3)),
     {400,-1,10,10,MoveOp::Launch,2.f,0.f,45.f},
     {400,-1,10,10,MoveOp::Launch,0.f,0.f,45.f},
     {400,-1,15,15,MoveOp::Launch,2.f,0.f,45.f},
@@ -1333,18 +1598,24 @@ inline constexpr MoveRule kKasaiRules[] = {
     // 402 air tap: 15 deg turn ticks 0-9, 5 deg ticks 10-24, same twin salvos.
     {402,-1,0,9,MoveOp::Turn,15.f},
     {402,-1,10,24,MoveOp::Turn,5.f},
+    voice_rule(402,-1,10,10,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Less,3)),
     {402,-1,10,10,MoveOp::Launch,2.f,0.f,45.f},
     {402,-1,10,10,MoveOp::Launch,0.f,0.f,45.f},
     {402,-1,15,15,MoveOp::Launch,2.f,0.f,45.f},
     {402,-1,15,15,MoveOp::Launch,0.f,0.f,45.f},
     // 450 ground charge1: 20 deg turn through tick 9, fan of four row-4 at tick 18.
     {450,-1,0,9,MoveOp::Turn,20.f},
+    voice_rule(450,-1,18,18,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Less,5)),
     {450,-1,18,18,MoveOp::Launch,4.f,0.f,40.f},
     {450,-1,18,18,MoveOp::Launch,4.f,0.f,40.f},
     {450,-1,18,18,MoveOp::Launch,4.f,0.f,40.f},
     {450,-1,18,18,MoveOp::Launch,4.f,0.f,40.f},
     // 460 air charge1: 15 deg turn through tick 11, fan of four row-4 at tick 17.
     {460,-1,0,11,MoveOp::Turn,15.f},
+    voice_rule(460,-1,17,17,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Less,7)),
     {460,-1,17,17,MoveOp::Launch,4.f,0.f,40.f},
     {460,-1,17,17,MoveOp::Launch,4.f,0.f,40.f},
     {460,-1,17,17,MoveOp::Launch,4.f,0.f,40.f},
@@ -1365,6 +1636,8 @@ inline constexpr MoveRule kIrieRules[] = {
     // 400 ground tap: 20 deg turn ticks 0-11, bleed 0.5/tick, twin rows 0+1 at 12.
     {400,-1,0,11,MoveOp::Turn,20.f},
     {400,-1,0,9999,MoveOp::Decelerate,.5f},
+    voice_rule(400,-1,12,12,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Less,4)),
     {400,-1,12,12,MoveOp::Launch,1.f,0.f,40.f,kGateNormal},
     {400,-1,12,12,MoveOp::Launch,0.f,0.f,40.f,kGateNormal},
     {400,-1,12,12,MoveOp::Launch,3.f,0.f,40.f,kGatePowered},
@@ -1373,6 +1646,8 @@ inline constexpr MoveRule kIrieRules[] = {
     {400,-1,12,12,MoveOp::Launch,0.f,0.f,40.f,kGatePowered},
     // 402 air tap: same shape (turn via dc20), no bleed.
     {402,-1,0,11,MoveOp::Turn,20.f},
+    voice_rule(402,-1,12,12,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Less,4)),
     {402,-1,12,12,MoveOp::Launch,1.f,0.f,40.f,kGateNormal},
     {402,-1,12,12,MoveOp::Launch,0.f,0.f,40.f,kGateNormal},
     {402,-1,12,12,MoveOp::Launch,3.f,0.f,40.f,kGatePowered},
@@ -1384,12 +1659,16 @@ inline constexpr MoveRule kIrieRules[] = {
     {450,-1,0,19,MoveOp::Turn,10.f},
     {450,-1,0,9999,MoveOp::Decelerate,.25f},
     {450,-1,0,21,MoveOp::Hide,0.f},
+    voice_rule(450,-1,22,22,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Equal,1)),
     {450,-1,22,22,MoveOp::Launch,4.f,0.f,30.f,kGateNormal},
     {450,-1,22,22,MoveOp::Launch,5.f,0.f,30.f,kGatePowered},
     // 460 air charge1: 15 deg turn through tick 14, Hide slot 0 ticks 0-16,
     // single salvo row 4 at tick 17.
     {460,-1,0,14,MoveOp::Turn,15.f},
     {460,-1,0,16,MoveOp::Hide,0.f},
+    voice_rule(460,-1,17,17,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Equal,1)),
     {460,-1,17,17,MoveOp::Launch,4.f,0.f,40.f,kGateNormal},
     {460,-1,17,17,MoveOp::Launch,5.f,0.f,40.f,kGatePowered},
 };
@@ -1421,6 +1700,8 @@ inline constexpr MoveRule kRika0Rules[] = {
     // 400 ground tap: 15 deg turn ticks 0-14, bleed 0.5/tick phase 0, twin row 0 @15.
     {400,-1,0,14,MoveOp::Turn,15.f},
     {400,0,0,9999,MoveOp::Decelerate,.5f},
+    voice_rule(400,-1,15,15,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Less,3)),
     {400,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_actor_relative(50.f,10.f,70.f),aim_target_elevation(40.f)},
     {400,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
@@ -1435,6 +1716,8 @@ inline constexpr MoveRule kRika0Rules[] = {
      origin_actor_relative(-50.f,10.f,70.f),aim_target_elevation(40.f)},
     // 402 air tap: 20 deg turn ticks 0-14, same twin @15. No bleed (gravity tail).
     {402,-1,0,14,MoveOp::Turn,20.f},
+    voice_rule(402,-1,15,15,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Less,3)),
     {402,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_actor_relative(50.f,10.f,70.f),aim_target_elevation(40.f)},
     {402,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
@@ -1451,6 +1734,8 @@ inline constexpr MoveRule kRika0Rules[] = {
     // salvos at 15 (±5°) and 25 (±10°), freeze 5 at tick 30.
     {450,-1,0,9,MoveOp::Turn,18.f},
     {450,-1,0,9999,MoveOp::Decelerate,.5f},
+    voice_rule(450,-1,15,15,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Less,5)),
     {450,-1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
      origin_actor_relative(-25.f,50.f,50.f),aim_fixed_angles(-5.f,45.f)},
     {450,-1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
@@ -1471,6 +1756,8 @@ inline constexpr MoveRule kRika0Rules[] = {
     // 460 air charge1: same salvos (third 45 @15, 40 @25), freeze 15 at tick 30.
     // No bleed (one-shot halve + gravity tail skipped).
     {460,-1,0,9,MoveOp::Turn,18.f},
+    voice_rule(460,-1,15,15,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Less,5)),
     {460,-1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
      origin_actor_relative(-25.f,50.f,50.f),aim_fixed_angles(-5.f,45.f)},
     {460,-1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal,0,
@@ -1515,6 +1802,8 @@ inline constexpr MoveRule kRika2Rules[] = {
     // 400 ground tap: 15 deg turn ticks 0-14, bleed 0.5/tick phase 0, row 0 at 15.
     {400,-1,0,14,MoveOp::Turn,15.f},
     {400,0,0,9999,MoveOp::Decelerate,.5f},
+    voice_rule(400,-1,15,15,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Less,3)),
     {400,-1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal | kGateDirLeft,0,
      origin_named_bone("Bip01_R_Hand"),aim_fixed_angles(0.f,0.f)},
     {400,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal | kGateDirNeutral,0,
@@ -1530,6 +1819,8 @@ inline constexpr MoveRule kRika2Rules[] = {
     {400,-1,15,15,MoveOp::Hold,30.f},
     // 402 air tap: 20 deg turn ticks 0-14, row 0 at 15. No bleed (gravity tail).
     {402,-1,0,14,MoveOp::Turn,20.f},
+    voice_rule(402,-1,15,15,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Less,3)),
     {402,-1,15,15,MoveOp::Launch,2.f,0.f,0.f,kGateNormal | kGateDirLeft,0,
      origin_named_bone("Bip01_R_Hand"),aim_fixed_angles(0.f,0.f)},
     {402,-1,15,15,MoveOp::Launch,0.f,0.f,0.f,kGateNormal | kGateDirNeutral,0,
@@ -1547,6 +1838,8 @@ inline constexpr MoveRule kRika2Rules[] = {
     // at tick 10.
     {450,-1,0,9,MoveOp::Turn,18.f},
     {450,-1,0,9999,MoveOp::Decelerate,1.5f},
+    voice_rule(450,-1,10,10,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Less,4)),
     {450,-1,10,10,MoveOp::Launch,4.f,0.f,40.f,kGateNormal},
     {450,-1,10,10,MoveOp::Launch,4.f,0.f,40.f,kGateNormal},
     {450,-1,10,10,MoveOp::Launch,4.f,0.f,40.f,kGateNormal},
@@ -1556,6 +1849,8 @@ inline constexpr MoveRule kRika2Rules[] = {
     {450,-1,10,10,MoveOp::Hold,30.f},
     // 460 air charge1: same fan (no bleed — one-shot halve + gravity skipped).
     {460,-1,0,9,MoveOp::Turn,18.f},
+    voice_rule(460,-1,10,10,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Less,4)),
     {460,-1,10,10,MoveOp::Launch,4.f,0.f,40.f,kGateNormal},
     {460,-1,10,10,MoveOp::Launch,4.f,0.f,40.f,kGateNormal},
     {460,-1,10,10,MoveOp::Launch,4.f,0.f,40.f,kGateNormal},
@@ -1583,6 +1878,8 @@ inline constexpr MoveRule kSatokoRules[] = {
     {400,0,0,9999,MoveOp::Turn,15.f},
     {400,0,0,9999,MoveOp::Decelerate,.5f},
     {400,-1,17,17,MoveOp::CapturePitch,0.f,40.f,40.f},
+    voice_rule(400,-1,17,17,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Less,6)),
     {400,-1,17,17,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_named_bone("Bip01_R_Hand"),aim_stored_pitch(),{},kSpreadSatokoFan5,5},
     {400,-1,17,17,MoveOp::Launch,0.f,0.f,0.f,kGatePowered,0,
@@ -1592,6 +1889,8 @@ inline constexpr MoveRule kSatokoRules[] = {
     {402,-1,0,9,MoveOp::Turn,20.f},
     {402,-1,16,9999,MoveOp::Hide,0.f},
     {402,-1,17,17,MoveOp::CapturePitch,0.f,40.f,40.f},
+    voice_rule(402,-1,17,17,shot_voice(27,30,ShotVoiceMagazine::Primary,
+                                       ShotVoiceCompare::Less,6)),
     {402,-1,17,17,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
      origin_named_bone("Bip01_R_Hand"),aim_stored_pitch(),{},kSpreadSatokoFan5,5},
     {402,-1,17,17,MoveOp::Launch,0.f,0.f,0.f,kGatePowered,0,
@@ -1602,6 +1901,8 @@ inline constexpr MoveRule kSatokoRules[] = {
     {450,-1,0,25,MoveOp::Turn,2.f},
     {450,-1,0,9999,MoveOp::Decelerate,.5f},
     {450,-1,25,25,MoveOp::Hold,26.f},
+    voice_rule(450,-1,25,25,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Less,5)),
     {450,-1,25,25,MoveOp::Launch,11.f,0.f,40.f},
     {450,-1,25,25,MoveOp::Launch,11.f,0.f,40.f},
     {450,-1,31,31,MoveOp::Launch,11.f,0.f,40.f},
@@ -1617,6 +1918,8 @@ inline constexpr MoveRule kSatokoRules[] = {
     {460,-1,0,9,MoveOp::Turn,13.f},
     {460,-1,0,15,MoveOp::Turn,5.f},
     {460,-1,25,25,MoveOp::Hold,21.f},
+    voice_rule(460,-1,25,25,shot_voice(29,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Less,5)),
     {460,-1,25,25,MoveOp::Launch,11.f,0.f,40.f},
     {460,-1,25,25,MoveOp::Launch,11.f,0.f,40.f},
     {460,-1,31,31,MoveOp::Launch,11.f,0.f,40.f},
@@ -1655,10 +1958,10 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     // Keiichi 2: same unbound second charge (bodies 403-412/469 exist but unscoped).
     static constexpr MoveProgram keiichi = {kKeiichiRules, std::size(kKeiichiRules),
                                             {{400,402},{450,460},{-1,-1}}};
-    // Rena 2: state 400 only. The combo has no recovered bodies at all, so nothing is
-    // claimed for 402/450/460.
+    // Rena+2 ground tap/charge are recovered from FUN_00438310. Air landing
+    // transitions and second-charge dispatch still need their own state bindings.
     static constexpr MoveProgram rena2 = {kRena2Rules, std::size(kRena2Rules),
-                                          {{400,-1},{-1,-1},{-1,-1}}};
+                                          {{400,-1},{450,-1},{-1,-1}}};
     if (binding->handler == 0x438310) return &rena2;
     if (binding->handler == 0x43ffc0) return &rena;
     if (binding->handler == 0x4582a0) return &mion;

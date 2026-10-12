@@ -110,7 +110,7 @@ bool isShadowDecalName(const std::string& raw) {
 // category, and a future `--effect` loader assigns these roles the way loadWeapon
 // assigns "weapon" today. Bare `--model` loads keep role "model" and stay opaque.
 Pass classifyPass(const std::string& role, const std::string& texture) {
-    if (role == "effect" || role == "aura") return Pass::Effect;
+    if (role == "effect" || role == "aura" || role == "projectile") return Pass::Effect;
     if (!texture.empty() && isShadowDecalName(texture)) return Pass::Decal;
     return Pass::Opaque;
 }
@@ -589,6 +589,13 @@ bool SceneRenderer::uploadTexture(const xm::SceneModel& sm, const std::string& n
     index = -1;
     const xm::CnvImage* img = sm.textures.get(name);
     if (!img || img->empty()) return true;
+    // Rena's nata/Zippo models mix solid surfaces with black-backed effect art.
+    // Per-record opaque modes must still respect the card's transparent padding.
+    xm::CnvImage keyed;
+    if (sm.role == "projectile" && xm::hasBlackBorder(*img)) {
+        keyed = *img;
+        xm::keyOutBlack(keyed);
+    }
 
     auto it = texIndex_.find(img);
     if (it != texIndex_.end()) {
@@ -649,7 +656,8 @@ bool SceneRenderer::uploadTexture(const xm::SceneModel& sm, const std::string& n
             // A single-level texture uploads its base image exactly as it did before
             // mips existed. writeTexture is a packed copy, so unlike copyBufferToTexture
             // it needs no 256-byte row pitch and odd-sized CNV levels upload as-is.
-            const std::vector<uint8_t>& pixels = mipmapped ? levels[level] : img->rgba;
+            const std::vector<uint8_t>& pixels = mipmapped ? levels[level]
+                : keyed.empty() ? img->rgba : keyed.rgba;
             wgpuQueueWriteTexture(queue_, &dst, pixels.data(), pixels.size(), &layout, &extent);
         }
         tex.view = wgpuTextureCreateView(tex.tex, nullptr);

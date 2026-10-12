@@ -1,6 +1,7 @@
 #include <cstdio>
 #include "gameplay/match.h"
 #include "gameplay/bot_input.h"
+#include "synthetic_combo.h"
 
 #define CHECK(condition) do { if (!(condition)) { std::fprintf(stderr,"line %d: %s\n",__LINE__,#condition); return 1; } } while (0)
 int main() {
@@ -13,6 +14,12 @@ int main() {
     config.balloonSize[0] = 40;
     config.balloonSize[1] = 200;
     config.spawn[1] = glm::vec3(500,0,0);
+    // AGENTS rule 7: a Match that is damaged, stepped and driven by a COM brain is a
+    // battle, so it binds a character AND a weapon. The synthetic pair keeps this suite
+    // data-free, which is what lets it run on CI (audit finding H).
+    test::synthetic::Combo combo;
+    if (!combo.ok) { std::fprintf(stderr, "synthetic combo: %s\n", combo.error.c_str()); return 1; }
+    combo.bind(config, 2);
     const xm::Model* models[2] = {};
     xm::Controller* animations[2] = {};
     match.reset(config,models,animations,nullptr,nullptr);
@@ -81,6 +88,7 @@ int main() {
     teamConfig.spawn[1] = glm::vec3(-900,0,0);
     teamConfig.spawn[2] = glm::vec3(900,0,0);
     teamConfig.spawn[3] = glm::vec3(1200,0,0);
+    combo.bind(teamConfig, 4);
     const xm::Model* teamModels[4] = {};
     xm::Controller* teamAnimations[4] = {};
     teamMatch.reset(teamConfig,teamModels,teamAnimations,nullptr,nullptr);

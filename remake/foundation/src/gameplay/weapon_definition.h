@@ -30,6 +30,9 @@ struct WeaponSlot {
     float muzzle[3] = {0, 0, 0};
     float ribbonRoot[3] = {0, 0, 0};
     float ribbonTip[3] = {0, 0, 0};
+
+    // FUN_00433eb0 creates/marks a prop available only when meshName[0] is nonzero.
+    bool has_prop() const { return !meshName.empty(); }
 };
 
 // One ammunition pool. Two per weapon, fixed by FUN_00433eb0:122.

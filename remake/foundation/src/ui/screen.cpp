@@ -74,7 +74,9 @@ const ScreenEntry kScreens[] = {
     {ScreenId::Options, [](SpriteRenderer& batch, FrontendState&, std::string& error) { return makeOptionsScreen(batch,error); }},
     {ScreenId::KeyConfig, [](SpriteRenderer& batch, FrontendState&, std::string& error) { return makeKeyConfigScreen(batch,error); }},
     {ScreenId::Select, &makeSelectScreen},
-    {ScreenId::VsIntro, &makeVsScreen},
+    {ScreenId::VsIntro, [](SpriteRenderer& batch, FrontendState& state, std::string& error) {
+         return makeVsScreen(batch, state, error);
+     }},
     {ScreenId::Result, &makeResultScreen},
 };
 

@@ -164,6 +164,9 @@ public:
 
     bool     finished() const { return finished_; }
     ScreenId current() const { return currentId_; }
+    // The current scene's own name, which is what `[menu] scene:` prints and what an
+    // input script's `WAIT <scene>` matches. Empty before the first screen exists.
+    std::string currentName() const { return current_ ? current_->name() : std::string{}; }
     int      fadeFrame() const { return fade_; }          // 0 = no overlay
     // The scene being faded TO, while the fade is in flight; equal to current() when nothing
     // is. The host needs this because the swap happens at the END of the 25-frame fade

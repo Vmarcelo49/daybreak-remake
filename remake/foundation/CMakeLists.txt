@@ -185,6 +185,7 @@ add_library(foundation_gameplay STATIC
     src/gameplay/bot_brain.cpp
     src/gameplay/bot_input.cpp
     src/gameplay/debug_keys.cpp
+    src/gameplay/live_debug.cpp
     src/gameplay/hud_fill.cpp
     src/gameplay/result_title.cpp)
 target_include_directories(foundation_gameplay PUBLIC src)
@@ -192,7 +193,11 @@ target_link_libraries(foundation_gameplay
     PUBLIC foundation_physics
     PRIVATE foundation_ui)
 
+option(FOUNDATION_LIVE_DEBUG "Enable local Linux development match control" OFF)
 add_executable(foundation_demo src/main.cpp)
+if(FOUNDATION_LIVE_DEBUG)
+    target_compile_definitions(foundation_demo PRIVATE FOUNDATION_LIVE_DEBUG=1)
+endif()
 # foundation_movie comes after foundation_ui on purpose: the opening scene lives in the UI
 # layer and calls into the player, and static libraries resolve in this order.
 target_link_libraries(foundation_demo PRIVATE foundation_render foundation_ui foundation_media foundation_game foundation_physics foundation_gameplay foundation_movie)
@@ -266,12 +271,29 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # skips itself (exit 77) without a renderer or the game data.
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
+        # The checking tools' own regression suite: no game data, no GPU, no build output,
+        # so it always executes (audit findings A-D, G).
+        add_test(NAME check_tools_test
+                 COMMAND ${Python3_EXECUTABLE}
+                         "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_tools_test.py")
+        set_tests_properties(check_tools_test PROPERTIES TIMEOUT 300)
+
+        # The recon tool's own suites: the synthetic half needs nothing (trace summaries,
+        # body boundaries, runtime syntax, binding mismatches) and always runs, while the
+        # install-backed half skips ITSELF when the local reference bundle is absent. The
+        # script exits 77 only when every case was unavailable, so CTest records a skip
+        # rather than a pass (audit finding G).
+        add_test(NAME ginkiha_recon_test
+                 COMMAND ${Python3_EXECUTABLE}
+                         "${CMAKE_CURRENT_SOURCE_DIR}/tests/ginkiha_recon_test.py")
+        set_tests_properties(ginkiha_recon_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
+
         add_test(NAME hud_cell_scale
                  COMMAND ${Python3_EXECUTABLE}
                          "${CMAKE_CURRENT_SOURCE_DIR}/tests/hud_cell_scale.py"
                          "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
                          "${CMAKE_CURRENT_SOURCE_DIR}")
-        set_tests_properties(hud_cell_scale PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
+        set_tests_properties(hud_cell_scale PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
 
         # Issue #56's split-screen HUD geometry: the same rendered-frame class as the
         # placement check, asserting on the RETICLE instead of the probe markers. Those
@@ -283,7 +305,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                          "${CMAKE_CURRENT_SOURCE_DIR}/tests/hud_view_geometry.py"
                          "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
                          "${CMAKE_CURRENT_SOURCE_DIR}")
-        set_tests_properties(hud_view_geometry PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
+        set_tests_properties(hud_view_geometry PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
 
         # Issue #50's pause overlay pixels: a capture test for the same reason — the defect
         # was the overlay's pass reading the battle HUD's vertices out of the shared UI
@@ -295,7 +317,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                          "${CMAKE_CURRENT_SOURCE_DIR}/tests/pause_overlay_panel.py"
                          "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
                          "${CMAKE_CURRENT_SOURCE_DIR}")
-        set_tests_properties(pause_overlay_panel PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
+        set_tests_properties(pause_overlay_panel PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
 
         # The toon toggle (issue #21): OFF must stay byte-identical to the default frame,
         # ON must ramp the character draws in the shipped bitmap's direction, a stage-only
@@ -306,7 +328,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                          "${CMAKE_CURRENT_SOURCE_DIR}/tests/toon_ramp.py"
                          "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
                          "${CMAKE_CURRENT_SOURCE_DIR}")
-        set_tests_properties(toon_ramp PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
+        set_tests_properties(toon_ramp PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
 
         # The character-shadow toggle (issue #21 row 1): OFF must be byte-identical to the
         # default frame, ON must subtract the recovered 0.3 on a localized patch in more
@@ -318,7 +340,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                          "${CMAKE_CURRENT_SOURCE_DIR}/tests/character_shadow.py"
                          "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
                          "${CMAKE_CURRENT_SOURCE_DIR}")
-        set_tests_properties(character_shadow PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
+        set_tests_properties(character_shadow PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
 
         # The NPR experiment harness (issue #25): for every technique it asserts the
         # specific property the technique claims (a band is a step, a tint moves the
@@ -330,7 +352,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                          "${CMAKE_CURRENT_SOURCE_DIR}/tests/npr_experiments.py"
                          "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
                          "${CMAKE_CURRENT_SOURCE_DIR}")
-        set_tests_properties(npr_experiments PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
+        set_tests_properties(npr_experiments PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
 
         # Issue #4's self-hosted delivery service: prepare/catalog/verify plus the
         # same-origin HTTP surface, all against synthetic .DAT bundles the test writes
@@ -361,6 +383,9 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                    src/assets/asset_source.cpp)
     target_include_directories(dat_bundle_bytes PRIVATE src)
     add_test(NAME dat_bundle_bytes COMMAND dat_bundle_bytes)
+    # A plain checkout has no install, which is the suite's only prerequisite: it reports
+    # exit 77 there so CTest records a skip rather than a pass (audit finding B).
+    set_tests_properties(dat_bundle_bytes PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
     # Issue #4: the web catalog has to resolve duplicates exactly like the native asset
     # layer, or a browser gets different bytes than the game reads. The hermetic half
@@ -388,6 +413,10 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(match_economy_test PRIVATE src)
     add_test(NAME match_economy_test COMMAND match_economy_test)
 
+    add_executable(live_debug_test tests/live_debug_test.cpp)
+    target_link_libraries(live_debug_test PRIVATE foundation_gameplay)
+    add_test(NAME live_debug_test COMMAND live_debug_test)
+
     add_executable(fighter_script_test tests/fighter_script_test.cpp)
     target_include_directories(fighter_script_test PRIVATE src)
     target_link_libraries(fighter_script_test PRIVATE foundation_gameplay)
@@ -397,6 +426,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(animation_data_test PRIVATE src)
     target_link_libraries(animation_data_test PRIVATE foundation_gameplay)
     add_test(NAME animation_data_test COMMAND animation_data_test)
+    set_tests_properties(animation_data_test PROPERTIES LABELS asset)
 
     # The generated Ginkiha table (docs/reports/ginkiha-port-plan.md Fase 0): header-only,
     # device-free and game-data-free — it pins the importer's output against the bundle's
@@ -405,6 +435,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(ginkiha_tables_test PRIVATE src)
     target_link_libraries(ginkiha_tables_test PRIVATE foundation_gameplay)
     add_test(NAME ginkiha_tables_test COMMAND ginkiha_tables_test)
+    set_tests_properties(ginkiha_tables_test PROPERTIES LABELS asset)
 
     # The effect-card live set: header-only game logic (glm + std), no device.
     add_executable(fx_cards_test tests/fx_cards_test.cpp)
@@ -419,6 +450,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(effect_catalog_test PRIVATE src)
     target_link_libraries(effect_catalog_test PRIVATE glm)
     add_test(NAME effect_catalog_test COMMAND effect_catalog_test)
+    set_tests_properties(effect_catalog_test PROPERTIES LABELS asset)
 
     # The env.dat spawn contract: owns the scene/cnv/xmodel implementations
     # itself (see the test header), so like the XMODEL_IMPLEMENTATION tests
@@ -429,6 +461,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(env_spawn_test PRIVATE src)
     target_link_libraries(env_spawn_test PRIVATE glm)
     add_test(NAME env_spawn_test COMMAND env_spawn_test)
+    set_tests_properties(env_spawn_test PROPERTIES LABELS asset)
 
     # The recovered character-shadow numbers (issue #21 row 1): the light's direction,
     # the light camera's near/far and the receiver's bias/clamp/darkening, plus the
@@ -459,6 +492,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_executable(weapon_definition_test tests/weapon_definition_test.cpp)
     target_link_libraries(weapon_definition_test PRIVATE foundation_gameplay)
     add_test(NAME weapon_definition_test COMMAND weapon_definition_test)
+    set_tests_properties(weapon_definition_test PROPERTIES LABELS asset)
 
     # Issue #10: directional/aerial/multi-target melee. Needs the gameplay lib for
     # Match/Fighter and the physics lib for the #7 collision mesh; the character move
@@ -538,6 +572,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(animation_pose_test PRIVATE src)
     target_link_libraries(animation_pose_test PRIVATE glm)
     add_test(NAME animation_pose_test COMMAND animation_pose_test)
+    set_tests_properties(animation_pose_test PROPERTIES LABELS asset)
 
     # The DX9 pass's fixed-function light and clear constants: device-free, and pinned
     # because the numbers are load-bearing to the third decimal (a wrong triple lands
@@ -554,7 +589,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(npr_normals_test PRIVATE foundation_assets glm)
     add_test(NAME npr_normals_test COMMAND npr_normals_test
              "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak")
-    set_tests_properties(npr_normals_test PROPERTIES SKIP_RETURN_CODE 77)
+    set_tests_properties(npr_normals_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
     add_executable(lighting_test tests/lighting_test.cpp)
     target_include_directories(lighting_test PRIVATE src)
@@ -575,7 +610,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         foundation_gameplay)
     add_test(NAME controller_scene_lifetime_test COMMAND controller_scene_lifetime_test
              "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak")
-    set_tests_properties(controller_scene_lifetime_test PROPERTIES SKIP_RETURN_CODE 77)
+    set_tests_properties(controller_scene_lifetime_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
     # The CJK text layer: device-free (it rasterizes into host memory), and it links
     # the bitmap font in because half its contract is "bit-for-bit identical to
@@ -585,6 +620,8 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(text_test PRIVATE src third_party/stb)
     target_link_libraries(text_test PRIVATE glm)
     add_test(NAME text_test COMMAND text_test)
+    # The pinned CJK font is an optional fetch; without it the suite exits 77.
+    set_tests_properties(text_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
     add_executable(caption_font_test tests/caption_font_test.cpp)
     target_link_libraries(caption_font_test PRIVATE foundation_ui)
@@ -640,6 +677,8 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_executable(hud_text_test tests/hud_text_test.cpp src/ui/text.cpp src/ui/font.cpp)
     target_include_directories(hud_text_test PRIVATE src third_party/stb)
     add_test(NAME hud_text_test COMMAND hud_text_test)
+    # Same optional Latin face as text_test: exit 77 when it is not fetched.
+    set_tests_properties(hud_text_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
     # The cube pass's geometry: device-free, like debug_prims_geometry. It defines both
     # geometry-only guards, so it compiles the two headers without any WebGPU header.
@@ -671,7 +710,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         foundation_gameplay)
     add_test(NAME device_isolation_test COMMAND device_isolation_test
              "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak")
-    set_tests_properties(device_isolation_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
+    set_tests_properties(device_isolation_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
 
     add_executable(frontend_battle_test tests/frontend_battle_test.cpp)
     target_link_libraries(frontend_battle_test PRIVATE foundation_gameplay)
@@ -698,6 +737,9 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_executable(combat_audio_match_test tests/combat_audio_match_test.cpp)
     target_link_libraries(combat_audio_match_test PRIVATE foundation_gameplay foundation_media glm)
     add_test(NAME combat_audio_match_test COMMAND combat_audio_match_test)
+    # The install is its only prerequisite; once present, a missing or unparseable item
+    # or move table is a FAILURE (the data is expected and available), not a skip.
+    set_tests_properties(combat_audio_match_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
     # Issue #42: a BGM track's .sfl loop sheet is optional — absent and unusable
     # sheets both mean "no loop region, play once to EOF" (FUN_00668820), while a
@@ -706,10 +748,12 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_executable(bgm_loop_test tests/bgm_loop_test.cpp)
     target_include_directories(bgm_loop_test PRIVATE src)
     add_test(NAME bgm_loop_test COMMAND bgm_loop_test)
+    set_tests_properties(bgm_loop_test PROPERTIES LABELS asset)
 
     add_executable(result_title_test tests/result_title_test.cpp)
     target_link_libraries(result_title_test PRIVATE foundation_gameplay foundation_ui foundation_assets glm)
     add_test(NAME result_title_test COMMAND result_title_test)
+    set_tests_properties(result_title_test PROPERTIES LABELS asset)
 
     add_executable(participant_layout_test tests/participant_layout_test.cpp)
     target_link_libraries(participant_layout_test PRIVATE foundation_ui glm)
@@ -758,6 +802,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # gameplay::WeaponDefinition (issue #23's gear-up fix), so the UI layer needs it here.
     target_link_libraries(screen_stack_test PRIVATE foundation_ui foundation_gameplay glm)
     add_test(NAME screen_stack_test COMMAND screen_stack_test)
+endif()
+
+# Host backend tests may open audio without passing through foundation_demo's
+# output policy. Keep those tests, and their child processes, off real speakers.
+get_property(foundation_host_tests DIRECTORY PROPERTY TESTS)
+if(foundation_host_tests)
+    set_property(TEST ${foundation_host_tests} APPEND PROPERTY ENVIRONMENT "SDL_AUDIO_DRIVER=dummy")
 endif()
 
 if(EMSCRIPTEN)

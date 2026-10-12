@@ -30,11 +30,11 @@ does not report a false failure.
 """
 import os
 import re
-import subprocess
 import sys
 import tempfile
 
-SKIP = 77
+from capture_probe import (CaptureFailed, main_guard, read_ppm, require_install,
+                           run_demo)
 
 # The capture frame and size of the four-view recipe: the countdown holds the round for 180
 # ticks, so this is match frame 120 — four fighters spread over the stage, each view's HUD
@@ -66,38 +66,6 @@ def is_red(r, g, b):
 # strong as red's (80+ vs 0-8).
 def is_green(r, g, b):
     return g > 140 and r < 130 and b < 130 and g > r + 30 and g > b + 30
-
-
-def run_demo(demo, install, out, args, cwd, timeout=900):
-    cmd = [demo, "--headless", "--no-devices", "--install=" + install, "--out=" + out] + args
-    proc = subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                          text=True, timeout=timeout)
-    if proc.returncode != 0 or "RESULT: ok" not in proc.stdout:
-        return None
-    return proc.stdout
-
-
-def read_ppm(path):
-    with open(path, "rb") as handle:
-        data = handle.read()
-    if not data.startswith(b"P6"):
-        return None
-    fields = []
-    i = 2
-    while len(fields) < 3:
-        while i < len(data) and data[i:i + 1].isspace():
-            i += 1
-        if data[i:i + 1] == b"#":
-            while data[i:i + 1] not in (b"\n", b""):
-                i += 1
-            continue
-        start = i
-        while i < len(data) and not data[i:i + 1].isspace():
-            i += 1
-        fields.append(int(data[start:i]))
-    i += 1
-    w, h, _ = fields
-    return w, h, data[i:i + w * h * 3]
 
 
 VIEW_RE = re.compile(r"\[split\] view (\d+): .* "
@@ -151,27 +119,18 @@ def main():
     demo = os.path.abspath(sys.argv[1])
     install = sys.argv[2]
     cwd = os.path.abspath(sys.argv[3]) if len(sys.argv) > 3 else os.getcwd()
-    if not os.path.exists(os.path.join(install, "data")):
-        print("hud_view_geometry: no game data at %s, skipped" % install)
-        return SKIP
+    require_install(install, "hud_view_geometry")
     with tempfile.TemporaryDirectory() as tmp:
         out = os.path.join(tmp, "four.ppm")
         log = run_demo(demo, install, out,
                        ["--screen=battle", "--local-players=4", "--frames=%d" % FRAMES,
                         "--size=%dx%d" % (WIDTH, HEIGHT)], cwd)
-        if log is None:
-            print("hud_view_geometry: headless renderer unavailable, skipped")
-            return SKIP
-        got = read_ppm(out)
-        if got is None:
-            print("hud_view_geometry: capture is not a PPM, skipped")
-            return SKIP
-        w, h, px = got
+        w, h, px = read_ppm(out)
         views = parse_report(log)
+        # The view report is this suite's index: a run that renders four views must report
+        # four, so a short list is a failure rather than "nothing to measure".
         if len(views) < 4:
-            print("hud_view_geometry: the run did not report four views (%d), skipped"
-                  % len(views))
-            return SKIP
+            raise CaptureFailed("the run reported %d views, expected 4" % len(views))
         cells = {}
         for v, entry in views.items():
             cx, cy, cw, ch = entry["cell"]
@@ -222,4 +181,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main_guard(main))

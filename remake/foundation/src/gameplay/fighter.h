@@ -31,8 +31,8 @@
 //  State machine (port inputs are simplified from the original's move graph):
 //    Idle ↔ Walk                   (stick or d-pad movement)
 //    Idle ↔ Run                    (double-tap dash; forward/back move selectors)
-//    AttackA                       (one melee input; neutral ground uses move 300,
-//                                   while dash/air animation selectors are unresolved)
+//    AttackA                       (one melee input; bounded 300/311/330 selector
+//                                   candidates resolve through the equipped NN.dat)
 //    ShootA/B/C                    (port charge tiers; firing animation selector unresolved)
 //    Jump / Guard                  (port states with unresolved animation selectors)
 //    Any → Hit / Knockdown / KO    (reaction selectors recovered from move dispatch)
@@ -506,9 +506,12 @@ public:
     // The character-.dat move currently used for melee tuning. Exposed for
     // combo-bound evidence checks.
     int attack_move_id() const { return m_attackMoveId; }
-    // Port candidate for a grounded Up/Down dash (an input-to-move inference);
-    // -1 means no candidate is used, including side and air dashes.
+    int bound_move_id() const { return m_boundMoveId; }
+    bool air_dash_context() const { return m_dashAir; }
+    // NN.dat move selected for a grounded directional dash, or -1 when the
+    // combo has no row or the dash is airborne.
     int dash_move_id() const { return m_dashMoveId; }
+    input::Action dash_input_direction() const { return m_dashInputDirection; }
     // Firing move the current shot plays, keyed off the charge tier and whether the
     // fighter was airborne at the release (move_behavior.h's MoveProgram::shot).
     int shot_move_id() const { return m_shotMoveId; }
@@ -615,6 +618,9 @@ public:
     // Scene drains the shot armed by C-release into the ProjectilePool.
     // Disarms on read (at most one pending shot ever queues).
     PendingShot take_pending_shot();
+    struct ShootingVoice { int event = -1; int alternative = -1; };
+    ShootingVoice take_shooting_voice() { auto cue = m_shootingVoice; m_shootingVoice = {}; return cue; }
+    bool source_shot_voice_audited() const { return m_sourceShotVoiceAudited; }
 
     // Melee hit test for ONE candidate, called once per attacker→candidate pair while
     // the swing is active. Rejects a candidate that is out of reach vertically, outside
@@ -678,6 +684,10 @@ public:
     bool weapon_slot_bound(int slot) const;
     int action_camera() const { return m_actionCamera; }
     const WeaponTrail& trail(int hand) const { return m_trails[static_cast<size_t>(hand)]; }
+    int trail_item_model(int hand) const {
+        return hand >= 0 && hand < static_cast<int>(m_trailItemModel.size())
+                   ? m_trailItemModel[static_cast<size_t>(hand)] : -1;
+    }
 
     // The swing this fighter WOULD start right now for the given situation — the same
     // resolution set_state(AttackA) performs at the press, without touching state. A COM
@@ -845,6 +855,8 @@ private:
     unsigned     m_swingHits = 0;
     int          m_swingHitCount = 0;
     bool         m_chainContact = false;
+    ShootingVoice m_shootingVoice;
+    bool m_sourceShotVoiceAudited = false;
     SimulationRng* m_rng = nullptr;   // the scene's stream, null for a bare fighter
     SimulationRng  m_ownRng;          // fallback: deterministic per fighter
     int          m_meleeElapsed = 0;      // ticks since the swing started
@@ -878,6 +890,7 @@ private:
     // latch is what grows its ribbon.
     std::array<bool, 2> m_propBound{true, true};
     std::array<bool, 2> m_propActive{false, false};
+    std::array<int, 2> m_trailItemModel{0, 1};
     int          m_actionCamera = 0;
     float        m_moveSpeed = 0.f;
     float        m_walkTurnRate = 20.f;
@@ -887,6 +900,7 @@ private:
     int          m_dashMoveId = -1;         // inferred grounded dash candidate, or unresolved
     MeleeSwing   m_swing{};                 // this swing's resolved numbers
     bool         m_aerialAttack = false;   // this swing is the aerial variant
+    bool         m_attackUsesActorFacing = false; // D-pad/stick Back at this aerial attack edge
 
     // --- hypermode (spec §3.4; numbers in hypermode_params) ---
     Hypermode    m_hypermode    = Hypermode::Friendship;
@@ -920,6 +934,9 @@ private:
     float        m_groundY = 0.0f;      // takeoff height (flat-arena landing)
     float        m_flyLeft = FighterConstants::kFlyTimeSec;  // flight budget
     glm::vec3    m_dashDir{0, 0, 1};   // committed dash direction (world XZ)
+    // The tapped action owns this dash's committed travel. A later aerial attack
+    // reads the direction held at its own press instead of reusing this value.
+    input::Action m_dashInputDirection = input::Action::Up;
     float        m_dashSpeed = FighterConstants::kRunSpeed;
     bool         m_dashAir = false;     // current dash started airborne
     bool         m_airDashed = false;   // air dash spent (resets on landing)
@@ -927,12 +944,12 @@ private:
     double       m_lastTap[4] = {-1.0, -1.0, -1.0, -1.0};  // Up/Down/Left/Right
 
     // --- movement helpers ---
-    // Screen (lock-on camera) direction → world direction. The eye sits behind
-    // the facing looking at the locked opponent, so screen-up is the facing
-    // (toward the opponent) and screen-right is 90° clockwise of it. Walk,
-    // dash and air control all share this basis, so a tap and a hold never
-    // disagree about where "up" goes.
+    // Convert a screen-relative input using either the rendered body yaw or the
+    // current target bearing. The original keeps those separate while moving
+    // (FUN_004202b0 / FUN_0042dd90), so a walked heading cannot redefine dash-up.
+    glm::vec3 relative_direction(float yaw, float screenRight, float screenUp) const;
     glm::vec3 facing_relative(float screenRight, float screenUp) const;
+    glm::vec3 target_relative(float screenRight, float screenUp) const;
     void update_movement(const input::PlayerState* input, double dt);
     void update_state_machine(const input::PlayerState* input, Fighter* opponent,
                               double dt);
@@ -985,20 +1002,10 @@ private:
     // animation state is un-RE'd.
     void apply_knockback(const glm::vec3& dir, float speed);
 
-    // Current move choice for combat tuning. Its port-context heuristic does not
-    // establish an animation selector; animation resolution uses the separate
-    // confirmed ID below.
-    // Situation → character-.dat move id for a melee press (issue #26 step 3),
-    // or -1 when no table is bound or the situation's move is absent. The map
-    // is provisional: FUN_0043ded0 gates several attack moves per situation on
-    // unrecovered flags, so each row is the best-evidenced candidate —
-    //   dash (press while Run) → 330, the lunge ("dash forward + attack", nata)
-    //   air                     → 340, the single-phase weapon aerial ([88])
-    //   ground                  → 300, the ground neutral (first phase 31)
-    // — with 320 (ground branch at FUN_0043ded0:311, frame-1 startup) on record
-    // as the alternative for ground/air, and the kicks (310/311) unused for lack
-    // of a recovered selection rule. A costume that drops the row's move falls
-    // through to any weapon-family move present rather than the jump clip.
+    // Live input and COM previews share table resolution. Rena+0 ordinary-air320
+    // and air-dash332 have user-confirmed pose identities, not timing parity.
+    // Other combos retain their prior aerial340 candidate; #66 owns selector recovery.
+    // Every selected move resolves through the equipped combo's NN.dat.
     int resolve_attack_move(bool dashAttack, bool aerial) const;
     // The resolved numbers for one move id: the move's first combat entry, or the
     // legacy tuning when there is no table, no move, or no combat entry. Shared by
@@ -1014,8 +1021,8 @@ private:
     // move order has no recovered link to the port's left/right inputs.
     int dash_move_for(input::Action dir) const;
     // The move whose phases the current state plays, or -1 if its selector is
-    // not recovered. Grounded neutral 300, the dash lunge 330 and the aerial 340
-    // are all bound rows now (issue #31); Jump resolves the recovered air chain.
+    // not recovered. AttackA preserves the selected combo move; Jump resolves the
+    // recovered 40→41→42 air chain.
     int state_move_id() const;
     // The jump chain the source advances by physics (live FUN_0043ffc0 cases
     // 0x28/0x29/0x2a): 40 on the ground, 41 while rising, 42 once vy falls under

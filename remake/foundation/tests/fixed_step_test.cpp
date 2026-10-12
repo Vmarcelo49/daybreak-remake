@@ -4,6 +4,7 @@
 #include "input/tick_input.h"
 #include <cstdio>
 #include <limits>
+#include "synthetic_combo.h"
 
 #define CHECK(condition)                                                                           \
     do                                                                                             \
@@ -20,6 +21,9 @@ static_assert(gameplay::FixedStep::tickRate == 64, "Live simulation tests must u
 struct Run
 {
     gameplay::Match match;
+    // MatchConfig holds POINTERS to the combo, and Match copies the config, so the
+    // fixture has to outlive every step the run makes (AGENTS rule 7).
+    test::synthetic::Combo combo;
     gameplay::ArenaCamera camera;
     gameplay::CameraTarget targets[4];
     int ticks = 0, shots = 0, respawns = 0;
@@ -37,6 +41,8 @@ static void replay(Run &run, int renderHz, int fighterCount)
         config.side[0] = config.side[1] = 0;
         config.side[2] = config.side[3] = 1;
     }
+    // AGENTS rule 7: the replay drives a battle, so every fighter carries a combo.
+    run.combo.bind(config, fighterCount);
     const xm::Model *models[4]    = {};
     xm::Controller *animations[4] = {};
     run.match.reset(config, models, animations, nullptr, nullptr);

@@ -13,51 +13,16 @@ single-view reference of the same cell size.
 Usage:
     hud_cell_scale.py <foundation_demo> <install-dir> [workdir]
 
-Exit 0 when every cell's HUD sits where a cell-sized single view puts it, 1 otherwise, and
-77 (skip) when the renderer or the install is unavailable, so a CI box without a GPU or the
-game data does not report a false failure.
+Exit 0 when every cell's HUD sits where a cell-sized single view puts it, 1 on a real
+failure, and 77 only when a prerequisite is missing (no game data, no GPU adapter). Once
+those hold, a crash, a missing `RESULT: ok`, an invalid capture or missing probe markers
+all fail; capture_probe.py carries the reasoning.
 """
 import os
-import subprocess
 import sys
 import tempfile
 
-SKIP = 77
-
-
-def run_demo(demo, install, out, args, cwd):
-    cmd = [demo, "--headless", "--no-devices", "--install=" + install, "--out=" + out] + args
-    proc = subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                          text=True, timeout=600)
-    if proc.returncode != 0 or "RESULT: ok" not in proc.stdout:
-        return None
-    if "no adapter" in proc.stdout or "renderer" in proc.stdout and "failed" in proc.stdout:
-        return None
-    return proc.stdout
-
-
-def read_ppm(path):
-    with open(path, "rb") as handle:
-        data = handle.read()
-    if not data.startswith(b"P6"):
-        return None
-    fields = []
-    i = 2
-    while len(fields) < 3:
-        while i < len(data) and data[i:i + 1].isspace():
-            i += 1
-        if data[i:i + 1] == b"#":
-            while data[i:i + 1] not in (b"\n", b""):
-                i += 1
-            continue
-        start = i
-        while i < len(data) and not data[i:i + 1].isspace():
-            i += 1
-        fields.append(int(data[start:i]))
-    i += 1
-    w, h, _ = fields
-    return w, h, data[i:i + w * h * 3]
-
+from capture_probe import main_guard, read_ppm, require_install, require_markers, run_demo
 
 def clusters(pixels, w, h, pred):
     """Connected components of a marker colour, 8-connected."""
@@ -103,9 +68,7 @@ def main():
     demo = os.path.abspath(sys.argv[1])
     install = sys.argv[2]
     cwd = os.path.abspath(sys.argv[3]) if len(sys.argv) > 3 else os.getcwd()
-    if not os.path.exists(os.path.join(install, "data")):
-        print("hud_cell_scale: no game data at %s, skipped" % install)
-        return SKIP
+    require_install(install, "hud_cell_scale")
     with tempfile.TemporaryDirectory() as tmp:
         # 300 frames: enough for the front-end battle to hand over to the match (the HUD
         # hook only runs once matchMode is on), short enough to keep the suite quick. The
@@ -118,21 +81,15 @@ def main():
         # cell's bottom-right corner; the shared-uniform defect moved it to the cell's
         # centre (half scale), which is what this asserts against.
         four = os.path.join(tmp, "four.ppm")
-        if run_demo(demo, install, four,
-                    ["--screen=battle", "--hud-probe", "--local-players=4", "--frames=300",
-                     "--size=960x540"], cwd) is None:
-            print("hud_cell_scale: headless renderer unavailable, skipped")
-            return SKIP
-        got = read_ppm(four)
-        if got is None:
-            print("hud_cell_scale: capture is not a PPM, skipped")
-            return SKIP
-        w, h, px = got
+        run_demo(demo, install, four,
+                 ["--screen=battle", "--hud-probe", "--local-players=4", "--frames=300",
+                  "--size=960x540"], cwd, timeout=600)
+        w, h, px = read_ppm(four)
         cw, ch = w // 2, h // 2
-        cyan = clusters(px, w, h, is_cyan)
-        if not cyan:
-            print("hud_cell_scale: no cyan probe markers in the frame, skipped")
-            return SKIP
+        # Disappearing probe markers are a defect this suite exists to catch, not a
+        # reason to skip: the renderer reported success, so it was asked to draw them.
+        cyan = require_markers("cyan probe markers", clusters(px, w, h, is_cyan),
+                               "hud_cell_scale")
         failures = []
         cells = [(0, 0), (cw, 0), (0, ch), (cw, ch)]
         for index, (ox, oy) in enumerate(cells):
@@ -169,4 +126,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main_guard(main))

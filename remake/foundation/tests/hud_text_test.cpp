@@ -253,13 +253,19 @@ int main(int argc, char** argv) {
     }
 
     std::vector<uint8_t> fontBytes;
-    if (fontPath.empty() || !readFile(fontPath, fontBytes)) {
+    if (fontPath.empty() || !fs::exists(fontPath)) {
         std::printf("SKIP: no Latin face at '%s'\n",
                     fontPath.empty() ? "(unset)" : fontPath.string().c_str());
         std::printf("      pass one as argv[1], set FOUNDATION_LATIN_FONT, or fetch the "
                     "pinned font into third_party/fonts/ (see fetch_deps.sh)\n");
+        // The Latin face is an optional fetch: exit 77 so CTest records the skip.
         std::printf("HUDTEXT: skip\n");
-        return 0;
+        return 77;
+    }
+    if (!readFile(fontPath, fontBytes)) {
+        // Present but unreadable is corrupt expected data, not a skip.
+        std::printf("HUDTEXT: FAIL: cannot read the font at '%s'\n", fontPath.string().c_str());
+        return 1;
     }
     std::printf("font: %s\n      %zu bytes\n", fontPath.string().c_str(), fontBytes.size());
 

@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <string>
 
 namespace fnd::input {
 
@@ -86,9 +87,18 @@ inline void stick_to_digital(int16_t lx, int16_t ly, bool& left, bool& right,
 // Script line format shared with the remake's visual-validation driver:
 // "<frame> <TOKEN>..."; "-" releases all; "#" starts a comment; blanks skip.
 // Tokens: UP DOWN LEFT RIGHT MELEE GUARD SHOOT JUMP SPECIAL TACTICS
-// LOCK PAUSE. Returns false for blank/comment lines (caller skips).
+// LOCK PAUSE, plus `WAIT <scene>` which holds the script until that scene is current.
+// Returns false for blank/comment lines (caller skips) and for a WAIT with no scene.
 inline bool parse_script_line(const char* line, uint64_t& frame_out,
-                              uint32_t& mask_out) {
+                              uint32_t& mask_out);
+inline bool parse_script_line(const char* line, uint64_t& frame_out, uint32_t& mask_out,
+                              std::string& wait_out);
+
+// The shared body: `WAIT <scene>` produces an event whose mask is empty and whose wait
+// target is the scene name; every other token behaves as before.
+inline bool parse_script_line(const char* line, uint64_t& frame_out, uint32_t& mask_out,
+                              std::string& wait_out) {
+    wait_out.clear();
     if (!line) return false;
     while (*line == ' ' || *line == '\t') ++line;
     if (*line == '\0' || *line == '#') return false;
@@ -106,6 +116,19 @@ inline bool parse_script_line(const char* line, uint64_t& frame_out,
         while (*p && *p != ' ' && *p != '\t' && n + 1 < sizeof(tok)) tok[n++] = *p++;
         tok[n] = '\0';
         while (*p && *p != ' ' && *p != '\t') ++p;  // overlong token: consume rest
+        if (!std::strcmp(tok, "WAIT")) {
+            // The next token is the scene name. Frame-ascending order is preserved by the
+            // caller, so a WAIT holds from its frame until the scene matches. A WAIT with
+            // no name is a malformed line, not a release: dropping it leaves the previous
+            // mask in place, whereas treating it as an event would release every button.
+            while (*p == ' ' || *p == '\t') ++p;
+            size_t n = 0;
+            while (*p && *p != ' ' && *p != '\t' && n + 1 < sizeof(tok)) tok[n++] = *p++;
+            tok[n] = '\0';
+            if (n == 0) return false;
+            wait_out = tok;
+            continue;
+        }
         int action = -1;
         if (!std::strcmp(tok, "UP")) action = Up;
         else if (!std::strcmp(tok, "DOWN")) action = Down;
@@ -127,6 +150,11 @@ inline bool parse_script_line(const char* line, uint64_t& frame_out,
     frame_out = frame;
     mask_out = mask;
     return true;
+}
+
+inline bool parse_script_line(const char* line, uint64_t& frame_out, uint32_t& mask_out) {
+    std::string ignored;
+    return parse_script_line(line, frame_out, mask_out, ignored);
 }
 
 }  // namespace fnd::input

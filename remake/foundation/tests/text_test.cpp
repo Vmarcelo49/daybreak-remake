@@ -416,13 +416,20 @@ int main(int argc, char** argv) {
     }
 
     std::vector<uint8_t> fontBytes;
-    if (fontPath.empty() || !readFile(fontPath, fontBytes)) {
+    if (fontPath.empty() || !fs::exists(fontPath)) {
+        // The pinned font is an optional fetch, so its absence is the suite's only
+        // prerequisite: exit 77 and let CTest record a skip (audit finding B).
         std::printf("SKIP: no CJK font at '%s'\n",
                     fontPath.empty() ? "(unset)" : fontPath.string().c_str());
         std::printf("      pass one as argv[1], set FOUNDATION_CJK_FONT, or fetch the pinned\n"
                     "      font into third_party/fonts/ (see fetch_deps.sh)\n");
         std::printf("TEXT: skip\n");
-        return 0;
+        return 77;
+    }
+    if (!readFile(fontPath, fontBytes)) {
+        // The file is there but unreadable: that is corrupt expected data, not a skip.
+        std::printf("TEXT: FAIL: cannot read the font at '%s'\n", fontPath.string().c_str());
+        return 1;
     }
 
     sha256SelfTest();

@@ -3,7 +3,7 @@
 //  gameplay (remake/foundation/src/gameplay/{fighter,projectile}.{h,cpp}).
 //
 //  Device-free and deterministic: no window, no WebGPU, no SDL, no clock, no
-//  RNG. Every case drives the simulation at a fixed dt = 1/60 s with scripted
+//  nondeterministic RNG. Every case drives the simulation at a fixed dt = 1/60 s with scripted
 //  input edges (fnd::input::compute_edges, the same call the live poll path
 //  makes) and prints expected vs got for every assertion.
 //
@@ -66,6 +66,7 @@
 #include <fstream>
 #include <iterator>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -535,6 +536,196 @@ void test_dash() {
     const float y_hang = a.position().y;
     tick(a, ai);
     check_bool("gravity resumes after the air dash", a.position().y < y_hang, true);
+}
+
+void test_target_relative_dashes() {
+    section("2b. locked target sets dash direction and entry yaw");
+    if (!g_testCombo.ready) return skip_case("Rena 0 target-relative dash");
+
+    const auto runCase = [](TestCombo& combo, const char* label, fnd::input::Action action,
+                            float targetBearing, int moveId, bool reenterRight) {
+        const glm::vec3 origin(0.f, 0.f, 0.f);
+        const glm::vec3 targetPosition(std::sin(targetBearing) * 100000.f, 0.f,
+                                       std::cos(targetBearing) * 100000.f);
+        Fighter actor;
+        actor.init(nullptr, nullptr, origin, targetBearing);
+        combo.bind(actor);
+        settle(actor);
+        Fighter target;
+        target.init(nullptr, nullptr, targetPosition, targetBearing + glm::pi<float>());
+        combo.bind(target);
+        settle(target);
+
+        Input in;
+        in.set(fnd::input::Action::Right, true);
+        for (int i = 0; i < 90; ++i) tick(actor, in, &target);
+        in.set(fnd::input::Action::Right, false);
+        tick(actor, in, &target);
+        const float walkedYaw = actor.pose().facingYaw;
+        const float bearingAfterWalk = std::atan2(target.position().x - actor.position().x,
+                                                  target.position().z - actor.position().z);
+        const std::string prefix(label);
+        check_bool((prefix + ": setup walks the body away from lock yaw").c_str(), true,
+                   std::abs(std::remainder(walkedYaw - bearingAfterWalk,
+                                            glm::two_pi<float>())) > 0.8f);
+
+        // The first tap starts a walk; the second commits the requested dash.
+        in.set(action, true);
+        tick(actor, in, &target);
+        in.set(action, false);
+        tick(actor, in, &target);
+        const glm::vec3 beforeDash = actor.position();
+        const float dashBearing = std::atan2(target.position().x - beforeDash.x,
+                                             target.position().z - beforeDash.z);
+        in.set(action, true);
+        tick(actor, in, &target);
+        check_int((prefix + ": enters Run").c_str(), static_cast<int>(FighterState::Run),
+                  static_cast<int>(actor.state()));
+        check_int((prefix + ": selects the matching weapon-table dash row").c_str(), moveId,
+                  actor.dash_move_id());
+        check_near((prefix + ": rendered animation yaw snaps to current lock").c_str(),
+                   dashBearing, actor.pose().facingYaw, 1e-5);
+
+        const glm::vec3 delta = actor.position() - beforeDash;
+        const glm::vec3 travelled = glm::normalize(glm::vec3(delta.x, 0.f, delta.z));
+        const glm::vec3 forward(std::sin(dashBearing), 0.f, std::cos(dashBearing));
+        const glm::vec3 right(std::cos(dashBearing), 0.f, -std::sin(dashBearing));
+        glm::vec3 expected;
+        switch (action) {
+            case fnd::input::Action::Up:    expected = forward; break;
+            case fnd::input::Action::Down:  expected = -forward; break;
+            case fnd::input::Action::Left:  expected = -right; break;
+            default:                        expected = right; break;
+        }
+        check_near((prefix + ": first dash displacement follows lock-relative input").c_str(),
+                   1.0, glm::dot(travelled, expected), 1e-5);
+
+        if (!reenterRight) return;
+        // A second directional double-tap while already running must replace
+        // both the old committed vector and the clip's stale walk-facing yaw.
+        in.set(action, false);
+        tick(actor, in, &target);
+        in.set(fnd::input::Action::Right, true);
+        tick(actor, in, &target);
+        in.set(fnd::input::Action::Right, false);
+        tick(actor, in, &target);
+        const glm::vec3 beforeReentry = actor.position();
+        const float reentryBearing = std::atan2(target.position().x - beforeReentry.x,
+                                                target.position().z - beforeReentry.z);
+        in.set(fnd::input::Action::Right, true);
+        tick(actor, in, &target);
+        check_int((prefix + ": changed dash re-enters on right row").c_str(), 24,
+                  actor.dash_move_id());
+        check_near((prefix + ": changed dash yaw uses current lock").c_str(), reentryBearing,
+                   actor.pose().facingYaw, 1e-5);
+        const glm::vec3 reentryDelta = actor.position() - beforeReentry;
+        const glm::vec3 reentryTravel = glm::normalize(
+            glm::vec3(reentryDelta.x, 0.f, reentryDelta.z));
+        const glm::vec3 reentryRight(std::cos(reentryBearing), 0.f,
+                                     -std::sin(reentryBearing));
+        check_near((prefix + ": changed dash vector uses the new locked basis").c_str(),
+                   1.0, glm::dot(reentryTravel, reentryRight), 1e-5);
+    };
+
+    // Walk right changes the rendered yaw; each dash still uses the target at a
+    // different bearing. Rena 0's NN.dat rows bind back/left/right clips 27/23/24.
+    runCase(g_testCombo, "Rena+0 back at +Z", fnd::input::Action::Down, 0.f, 27, true);
+    runCase(g_testCombo, "Rena+0 left at +X/2", fnd::input::Action::Left,
+            glm::pi<float>() / 3.f, 23, false);
+    runCase(g_testCombo, "Rena+0 right at -X", fnd::input::Action::Right,
+            -glm::pi<float>() / 2.f, 24, false);
+
+    const auto install = findInstall(nullptr);
+    TestCombo mion0;
+    if (!install.empty() && mion0.load(install, 1, 0)) {
+        const int mionBack = mion0.moves.find(27) ? 27 : -1;
+        runCase(mion0, "Mion+0 back at +X/2", fnd::input::Action::Down,
+                glm::pi<float>() / 4.f, mionBack, false);
+    } else {
+        ++g_skipped;
+        std::printf("  %-52s SKIP (Mion 0 + equipped item unavailable)\n",
+                    "Mion+0 target-relative dash");
+    }
+
+    // The backwards air-dash attack exception uses the actor's displayed facing.
+    // Its input still commits movement away from the locked target, but must not
+    // silently turn the pose toward that target before attack dispatch reads it.
+    Fighter airBack;
+    airBack.init(nullptr, nullptr, glm::vec3(0.f), glm::pi<float>() / 2.f);
+    g_testCombo.bind(airBack);
+    settle(airBack);
+    Fighter airTarget = make_idle_fighter(glm::vec3(0.f, 0.f, 100000.f));
+    Input airInput;
+    airInput.set(fnd::input::Action::Jump, true);
+    tick(airBack, airInput);
+    airInput.set(fnd::input::Action::Jump, false);
+    tick(airBack, airInput);
+    const float actorFacing = airBack.pose().facingYaw;
+    airInput.set(fnd::input::Action::Down, true);
+    tick(airBack, airInput, &airTarget);
+    airInput.set(fnd::input::Action::Down, false);
+    tick(airBack, airInput, &airTarget);
+    const glm::vec3 beforeAirBack = airBack.position();
+    const float airBackBearing = std::atan2(airTarget.position().x - beforeAirBack.x,
+                                            airTarget.position().z - beforeAirBack.z);
+    airInput.set(fnd::input::Action::Down, true);
+    tick(airBack, airInput, &airTarget);
+    check_bool("Rena+0 air-back setup keeps actor facing distinct from target", true,
+               std::abs(std::remainder(actorFacing - airBackBearing,
+                                       glm::two_pi<float>())) > 0.8f);
+    check_int("Rena+0 air-back dash retains initiating Down action",
+              static_cast<int>(fnd::input::Action::Down),
+              static_cast<int>(airBack.dash_input_direction()));
+    check_near("Rena+0 air-back dash keeps the visible actor-facing yaw", actorFacing,
+               airBack.pose().facingYaw, 1e-5);
+    const glm::vec3 airBackDelta = airBack.position() - beforeAirBack;
+    const glm::vec3 airBackTravel =
+        glm::normalize(glm::vec3(airBackDelta.x, 0.f, airBackDelta.z));
+    const glm::vec3 airBackExpected(-std::sin(airBackBearing), 0.f,
+                                    -std::cos(airBackBearing));
+    check_near("Rena+0 air-back movement still follows target-relative Down", 1.0,
+               glm::dot(airBackTravel, airBackExpected), 1e-5);
+
+    // Shot rows with recovered Turn operations keep their authored rate on entry;
+    // jump rows without one adopt the locked target immediately.
+    Fighter shooter;
+    shooter.init(nullptr, nullptr, glm::vec3(0.f), 0.f);
+    g_testCombo.bind(shooter);
+    settle(shooter);
+    Fighter target = make_idle_fighter(glm::vec3(0.f, 0.f, 100000.f));
+    Input in;
+    in.set(fnd::input::Action::Right, true);
+    for (int i = 0; i < 90; ++i) tick(shooter, in, &target);
+    in.set(fnd::input::Action::Right, false);
+    tick(shooter, in, &target);
+    const float beforeShotTurn = shooter.pose().facingYaw;
+    const float targetYaw = std::atan2(target.position().x - shooter.position().x,
+                                       target.position().z - shooter.position().z);
+    in.set(fnd::input::Action::Shoot, true);
+    tick(shooter, in, &target);
+    in.set(fnd::input::Action::Shoot, false);
+    tick(shooter, in, &target);
+    const float shotStep = std::clamp(
+        std::remainder(targetYaw - beforeShotTurn, glm::two_pi<float>()),
+        -glm::radians(20.f), glm::radians(20.f));
+    check_near("Rena+0 shot keeps its recovered 20-degree entry turn",
+               beforeShotTurn + shotStep, shooter.pose().facingYaw, 1e-5);
+
+    Fighter jumper;
+    jumper.init(nullptr, nullptr, glm::vec3(0.f), 0.f);
+    g_testCombo.bind(jumper);
+    settle(jumper);
+    Input walk;
+    walk.set(fnd::input::Action::Right, true);
+    for (int i = 0; i < 90; ++i) tick(jumper, walk, &target);
+    walk.set(fnd::input::Action::Right, false);
+    tick(jumper, walk, &target);
+    walk.set(fnd::input::Action::Jump, true);
+    const float jumpBearing = std::atan2(target.position().x - jumper.position().x,
+                                         target.position().z - jumper.position().z);
+    tick(jumper, walk, &target);
+    check_near("Rena+0 jump entry faces the current lock", jumpBearing,
+               jumper.pose().facingYaw, 1e-5);
 }
 
 // ===========================================================================
@@ -2018,76 +2209,6 @@ void test_rika_repeating_tap() {
     shot = f.take_pending_shot();
     check_bool("Rika tap launches again at tick 14", true, shot.armed);
     check_int("Rika repeat selects item row zero", 0, shot.bulletRow);
-    // The full window: fifteen shots, one per even scratch value, and nothing on the odd
-    // ticks. The counter model reproduces the old fifteen unrolled tick rules.
-    Fighter w;
-    w.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
-    g_rikaCombo.bind(w);
-    settle(w);
-    Input win;
-    win.set(fnd::input::Action::Shoot, true);
-    tick(w, win);
-    win.set(fnd::input::Action::Shoot, false);
-    tick(w, win);
-    std::vector<glm::vec3> tapPositions;
-    std::vector<float> tapPitches;
-    std::vector<float> tapOffsets;
-    std::vector<std::array<float, 3>> tapMuzzleOffsets;
-    for (int i = 1; i <= 40; ++i) {
-        tick(w, win);
-        for (gameplay::PendingShot s2 = w.take_pending_shot(); s2.armed;
-             s2 = w.take_pending_shot()) {
-            tapPositions.push_back(s2.pos);
-            tapMuzzleOffsets.push_back(s2.origin.localOffset);
-            tapOffsets.push_back(shot_yaw(s2) - glm::degrees(w.facing_yaw()));
-            tapPitches.push_back(
-                glm::degrees(std::asin(std::clamp(s2.dir.y, -1.f, 1.f))));
-        }
-    }
-    check_int("Rika 1 tap fires the full fifteen-shot window", 15,
-              (int)tapPositions.size());
-    if (tapPositions.size() == 15 && tapPitches.size() == 15) {
-        // Exact canonical values. Shot 3 and the 2-3 separation discriminate the DRAW
-        // ORDER: the body draws the lateral first, so shot 3 pitches at
-        // 3890346734%10-5 = -4 and shots 2 and 3 sit |(-5)-1| = 6 apart. Swapping the two
-        // draws would give -1 and 12.
-        check_near("Rika 1 tap shot 1 pitches at draw 2 minus 5", -3.f, tapPitches[0], 0.05f);
-        check_near("Rika 1 tap shot 2 pitches at draw 2 minus 5", 0.f, tapPitches[1], 0.05f);
-        check_near("Rika 1 tap shot 3 pitches at draw 4 minus 5", -4.f, tapPitches[2], 0.05f);
-        // The lateral draw, read off the resolved origin rather than the world position:
-        // the hand bone moves between ticks, so a position distance would mix the fan with
-        // the animation. Shots 1/2/3 draw 1, 1 and -5; swapping the draws would give
-        // -7, -6 and 6.
-        // The third argument is a YAW OFFSET, so the spread shows in the flying direction
-        // and not in the origin's position. The body draws `draw%14 - 7`, which bounds every
-        // offset to [-7, +6]; the exact per-shot value depends on where the shot's two draws
-        // fall in the stream, which this witness does not pin.
-        // The third argument is a YAW offset, not a position: the spread now shows in the
-        // flying direction and the origin's localOffset stays 0, which is what FUN_00435250
-        // does with it (it adds the value to the bone's own angles). The body's offsets are
-        // `draw%14 - 7`; this witness does not pin which draw each shot consumes, so it
-        // checks the mechanism rather than repeating expected numbers.
-        bool offsetsShift = false;
-        for (std::size_t i = 1; i < tapOffsets.size(); ++i)
-            offsetsShift |= std::abs(tapOffsets[i] - tapOffsets[0]) > 0.5f;
-        check_bool("Rika 1 tap swings between scheduled shots", true, offsetsShift);
-        // The spread must not write the muzzle at all. Asserting the field stays ZERO is
-        // stronger than a magnitude bound: the rule's own spec sets it to zero, so a nonzero
-        // value can only come from the spread.
-        bool muzzleUntouched = true;
-        for (const auto& p : tapMuzzleOffsets)
-            muzzleUntouched &= p[0] == 0.f && p[1] == 0.f && p[2] == 0.f;
-        check_bool("Rika 1 tap leaves the muzzle offset untouched by the spread", true,
-                   muzzleUntouched);
-        // `draw%14 - 7` is [-7, +6] in the body, i.e. [-6, +7] once the legacy aim converts it.
-        bool yawsInRange = true;
-        for (float y : tapOffsets)
-            yawsInRange &= y >= remake_yaw_for_legacy_offset(6.f) - 0.05f &&
-                           y <= remake_yaw_for_legacy_offset(-7.f) + 0.05f;
-        check_bool("Rika 1 tap yaws stay inside the body's converted -6..+7", true,
-                   yawsInRange);
-    }
-
     Fighter g;
     g.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_rikaCombo.bind(g);
@@ -3267,6 +3388,112 @@ void test_satoko1_periodic_world_shot() {
     check_bool("powered Satoko 1 uses item row 7", true, allRow7);
 }
 
+void test_hand_shot_rng_and_pose() {
+    section("45. Rika 1 / Satoko 0 source-ordered draws and posed hand origins");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_rikaCombo.load(install, 4, 1) ||
+        !g_satokoCombo.load(install, 3, 0))
+        return skip_case("Rika 1 / Satoko 0 hand shots");
+
+    // FUN_00435220 -> 00435250 transforms the named hand's zero local point.
+    // Use the asset controller's pre-update pose and scalar world rotation from
+    // FUN_00420b30, independently of Fighter::bone_point/modelMatrix and shot specs.
+    const auto worldPoint = [](const glm::mat4& bone, glm::vec3 position, float facing) {
+        const glm::vec3 local(bone[3]);
+        const float angle = facing + glm::pi<float>();
+        return position + glm::vec3(std::cos(angle) * local.x + std::sin(angle) * local.z,
+                                   local.y,
+                                   -std::sin(angle) * local.x + std::cos(angle) * local.z);
+    };
+    for (int scenario = 0; scenario < 4; ++scenario) {
+        const bool rika = scenario < 2;
+        const bool powered = scenario == 3;
+        TestCombo& combo = rika ? g_rikaCombo : g_satokoCombo;
+        const char* handName = rika ? "Bip01_L_Hand" : "Bip01_R_Hand";
+        const int hand = combo.model.findFrame(handName);
+        const int prop = combo.model.findFrame("Bip01_Prop1");
+        const int otherHand = combo.model.findFrame(rika ? "Bip01_R_Hand" : "Bip01_L_Hand");
+        check_bool("hand fixture has the required bones", true,
+                   hand >= 0 && prop >= 0 && otherHand >= 0);
+        if (hand < 0 || prop < 0 || otherHand < 0) continue;
+
+        xm::Controller* controller = combo.controller();
+        Fighter fighter;
+        fighter.init(&combo.model, controller, glm::vec3(315.f, 40.f, -270.f),
+                     scenario % 2 == 0 ? .63f : -1.1f);
+        combo.bind(fighter);
+        settle(fighter);
+        Input input;
+        if (powered) {
+            fighter.set_hypermode(Hypermode::Oyashiro);
+            fighter.set_hyper_gauge(1.f);
+            input.set(fnd::input::Action::Special, true);
+            tick(fighter, input);
+            input.set(fnd::input::Action::Special, false);
+            tick(fighter, input);
+            check_bool("Satoko powered witness activates Oyashiro", true, fighter.hyper_active());
+        }
+        // std::mt19937 is the independent oracle: do not derive expected draws from
+        // SimulationRng or spread specs. Body 4_1_400 L21797-21824 draws yaw then
+        // pitch; body 3_0_400 L12596-12629 draws pitch then yaw, five/eight times.
+        const std::uint32_t seed = scenario % 2 == 0 ? 5489u : 37u;
+        gameplay::SimulationRng stream;
+        stream.seed(seed);
+        std::mt19937 oracle(seed);
+        gameplay::ShootingContext context;
+        context.rng = &stream;
+        context.aimHold = powered;
+        fighter.set_shooting_context(context);
+        input.set(fnd::input::Action::Shoot, true);
+        tick(fighter, input);
+        input.set(fnd::input::Action::Shoot, false);
+        tick(fighter, input);
+
+        int count = 0;
+        bool distinguishesProp = false, distinguishesOtherHand = false, distinguishesRoot = false;
+        bool handAnimated = false;
+        glm::vec3 firstHand{};
+        for (int update = 0; update < 45; ++update) {
+            const int launchTick = fighter.phase_elapsed();
+            const glm::vec3 position = fighter.position();
+            const float facing = fighter.facing_yaw();
+            std::vector<glm::mat4> pose;
+            controller->evalWorld(pose);
+            tick(fighter, input);
+            for (gameplay::PendingShot shot = fighter.take_pending_shot(); shot.armed;
+                 shot = fighter.take_pending_shot()) {
+                const std::uint32_t first = oracle(), second = oracle();
+                const float bodyYaw = rika ? float(int(first % 14u) - 7)
+                    : float(int(second % (powered ? 300u : 240u)) - (powered ? 150 : 120)) * .1f;
+                const float bodyPitch = rika ? float(int(second % 10u) - 5)
+                                             : float(first % 15u);
+                const float relativeYaw = std::remainder(shot_yaw(shot) - glm::degrees(facing), 360.f);
+                check_near("shot yaw uses the body's assigned draw", -bodyYaw, relativeYaw, 1e-3);
+                check_near("shot pitch uses the body's assigned draw", bodyPitch,
+                           glm::degrees(std::asin(std::clamp(shot.dir.y, -1.f, 1.f))), 1e-3);
+                check_int("source row remains attached to each request", 0, shot.bulletRow);
+                check_int("source firing tick", rika ? 12 + count * 2 : 17, launchTick);
+                const glm::vec3 expected = worldPoint(pose[static_cast<std::size_t>(hand)], position, facing);
+                check_near("launch X matches the independent posed hand", expected.x, shot.pos.x, 1e-3);
+                check_near("launch Y matches the independent posed hand", expected.y, shot.pos.y, 1e-3);
+                check_near("launch Z matches the independent posed hand", expected.z, shot.pos.z, 1e-3);
+                distinguishesProp |= glm::distance(expected, worldPoint(pose[prop], position, facing)) > 1.f;
+                distinguishesOtherHand |= glm::distance(expected, worldPoint(pose[otherHand], position, facing)) > 1.f;
+                distinguishesRoot |= glm::distance(expected, position) > 1.f;
+                if (count == 0) firstHand = expected;
+                else handAnimated |= glm::distance(expected, firstHand) > 1.f;
+                ++count;
+            }
+        }
+        check_int("whole source request sequence retained", rika ? 15 : powered ? 8 : 5, count);
+        check_u32("next unused draw pins total stream consumption", oracle(), stream.next());
+        check_bool("pose oracle distinguishes Prop1 substitution", true, distinguishesProp);
+        check_bool("pose oracle distinguishes the opposite hand", true, distinguishesOtherHand);
+        check_bool("pose oracle distinguishes root substitution", true, distinguishesRoot);
+        if (rika) check_bool("Rika witness samples different animated hand positions", true, handAnimated);
+    }
+}
+
 void test_simulation_rng_stream() {
     section("40. simulation RNG: MT19937 recovered from FUN_0065d150/FUN_0065d0c0");
     // The port reproduces the original's ALGORITHM, not its stream position. The pins
@@ -3391,129 +3618,275 @@ void test_rena2_ring() {
     }
 }
 
-void test_rena1_normal_schedule() {
-    section("27. Rena 1 tap fan + fixed-pitch charge (runtime-source helper)");
+void test_rena_character_iteration() {
+    section("46. Rena+0/+1/+2 ground tap and first charge: original handlers");
     const auto install = findInstall(nullptr);
-    if (install.empty() || !g_rena1Combo.load(install, 0, 1))
-        return skip_case("Rena 1 combo");
-    // battle_rena_mobile_shooting.hpp:181-184 requests one shot per frame 12..26
-    // (15 rolls), row 1 normal / 3 powered, with yaw/pitch from a per-frame draw()%10.
-    // The port has no per-tick draw service, so each frame fires its row with the pitch
-    // the fixed path resolves; the spread is an explicit gap, not a claim.
-    // The charge (line 187) is a single fixed-45 attachment shot, row 2/8.
-    const auto* program = gameplay::move_program(&g_rena1Combo.moves);
-    check_bool("Rena 1 move program is bound to its actual combo", true,
-               program && program->rules == gameplay::kRena1Rules);
-    check_int("Rena 1 tap maps to move 400", 400, program ? program->shot[0][0] : -1);
-    check_int("Rena 1 air tap stays unbound", -1, program ? program->shot[0][1] : -2);
-    check_int("Rena 1 first charge maps to move 450", 450, program ? program->shot[1][0] : -1);
-    check_int("Rena 1 air charge stays unbound", -1, program ? program->shot[1][1] : -2);
-    check_int("Rena 1 second charge stays unbound", -1, program ? program->shot[2][0] : -2);
-    check_int("Rena 1 uses item 3", 3, g_rena1Combo.weapon.id);
-
-    // Normal tap: 15 armed requests across frames 12..26, all row 1.
-    Fighter tap;
-    tap.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
-    g_rena1Combo.bind(tap);
-    settle(tap);
-    Input in;
-    in.set(fnd::input::Action::Shoot, true);
-    tick(tap, in);
-    in.set(fnd::input::Action::Shoot, false);
-    tick(tap, in);
-    check_int("Rena 1 tap enters ShootA", static_cast<int>(FighterState::ShootA),
-              static_cast<int>(tap.state()));
-    check_int("Rena 1 tap binds move 400", 400, tap.shot_move_id());
-    int normalFired = 0;
-    bool normalRows = true;
-    for (int i = 0; i < 30; ++i) {
-        tick(tap, in);
-        for (gameplay::PendingShot s = tap.take_pending_shot(); s.armed;
-             s = tap.take_pending_shot()) {
-            ++normalFired;
-            normalRows &= s.bulletRow == 1;
+    if (install.empty() || !g_rena1Combo.load(install, 0, 1) ||
+        !g_rena2Combo.load(install, 0, 2) || !g_testCombo.ready)
+        return skip_case("all three Rena combos");
+    for (int slot = 0; slot < 3; ++slot) {
+        TestCombo& combo = slot == 0 ? g_testCombo : slot == 1 ? g_rena1Combo : g_rena2Combo;
+        for (bool powered : {false, true}) for (bool charged : {false, true}) {
+            std::printf("  Rena+%d %s %s\n", slot, powered ? "powered" : "normal",
+                        charged ? "charge" : "tap");
+            xm::Controller* controller = combo.controller();
+            Fighter fighter;
+            fighter.init(&combo.model, controller, glm::vec3(320.f, 40.f, -230.f), .4f);
+            combo.bind(fighter);
+            settle(fighter);
+            Fighter target;
+            Fighter* aimTarget = nullptr;
+            if (slot == 0 && !charged) {
+                const auto forward = glm::vec3(std::sin(.4f), 0.f, std::cos(.4f));
+                target.init(nullptr, nullptr, fighter.position() + forward * 500.f +
+                            glm::vec3(0.f, 60.f, 0.f), 0.f);
+                combo.bind(target);
+                settle(target);
+                aimTarget = &target;
+            }
+            Input input;
+            if (powered) {
+                fighter.set_hypermode(Hypermode::Oyashiro);
+                fighter.set_hyper_gauge(1.f);
+                input.set(fnd::input::Action::Special, true);
+                tick(fighter, input, aimTarget);
+                input.set(fnd::input::Action::Special, false);
+                tick(fighter, input, aimTarget);
+            }
+            gameplay::SimulationRng stream;
+            std::mt19937 oracle(5489u);
+            gameplay::ShootingContext context;
+            context.rng = &stream;
+            context.aimHold = powered;
+            fighter.set_shooting_context(context);
+            if (charged) hold_yellow(fighter, input);
+            else {
+                input.set(fnd::input::Action::Shoot, true);
+                tick(fighter, input, aimTarget);
+            }
+            input.set(fnd::input::Action::Shoot, false);
+            tick(fighter, input, aimTarget);
+            check_int("source move selected", charged ? 450 : 400, fighter.shot_move_id());
+            std::vector<gameplay::PendingShot> shots;
+            std::vector<int> ticks;
+            for (int update = 0; update < 150; ++update) {
+                const int elapsed = fighter.phase_elapsed();
+                std::vector<glm::mat4> pose;
+                controller->evalWorld(pose);
+                const auto position = fighter.position();
+                const float facing = fighter.facing_yaw();
+                const auto worldPoint = [&](glm::vec3 local) {
+                    const float angle = facing + glm::pi<float>();
+                    return position + glm::vec3(
+                        std::cos(angle) * local.x + std::sin(angle) * local.z, local.y,
+                        -std::sin(angle) * local.x + std::cos(angle) * local.z);
+                };
+                const int model = slot == 1 && charged ? 2 : 0;
+                const auto& point = combo.weapon.slots[model].muzzle;
+                const auto local = slot == 0 && !charged ? glm::vec4(0.f,0.f,0.f,1.f)
+                    : glm::vec4(point[0], point[1], point[2], 1.f);
+                const auto modelMuzzle = worldPoint(glm::vec3(
+                    pose[combo.model.findFrame("Bip01_Prop1")] * local));
+                const auto handMuzzle = worldPoint(glm::vec3(
+                    pose[combo.model.findFrame("Bip01_R_Hand")][3]));
+                const auto ringOrigin = position + glm::vec3(
+                    200.f * std::sin(facing), 30.f, 200.f * std::cos(facing));
+                tick(fighter, input, aimTarget);
+                const auto voice = fighter.take_shooting_voice();
+                if (slot == 0 && voice.event >= 0)
+                    check_int("Rena source shooting voice", charged ? 28 : 27, voice.event);
+                for (gameplay::PendingShot shot = fighter.take_pending_shot(); shot.armed;
+                     shot = fighter.take_pending_shot()) {
+                    const auto expectedOrigin = slot == 2 && charged ? handMuzzle
+                        : slot == 2 && !charged && !shots.empty() ? ringOrigin : modelMuzzle;
+                    check_near("source posed/world origin independently resolved", 0.f,
+                               glm::distance(expectedOrigin, shot.pos), 1e-3);
+                    if (slot == 1 && charged)
+                        check_int("source attachment model selection", 2, shot.origin.itemModel);
+                    shots.push_back(shot);
+                    ticks.push_back(elapsed);
+                }
+            }
+            const int expectedCount = slot == 0 ? 1 : slot == 1
+                ? (charged ? 15 : powered ? 2 : 1) : (charged ? 1 : 11);
+            check_int("whole ground attack request count", expectedCount, shots.size());
+            if (shots.size() != static_cast<std::size_t>(expectedCount)) continue;
+            for (std::size_t index = 0; index < shots.size(); ++index) {
+                const auto& shot = shots[index];
+                int row, time;
+                float yaw = 0.f, pitch = 0.f;
+                if (slot == 0) {
+                    row = charged ? (powered ? 8 : 2) : (powered ? 6 : 0);
+                    time = charged ? 13 : 12;
+                    pitch = charged ? 45.f : 6.f;
+                } else if (slot == 1) {
+                    row = charged ? (powered ? 3 : 1) : (powered ? (index == 0 ? 0 : 9) : 6);
+                    time = charged ? 12 + static_cast<int>(index) : 18;
+                    // FUN_00448220:2173 counter += 4 BEFORE rand%10 - 35.
+                    if (charged) yaw = -(4.f * float(index + 1) - 35.f + float(oracle() % 10u));
+                } else {
+                    row = charged ? (powered ? 5 : 4) : index == 0 ? (powered ? 2 : 0)
+                                                                         : (powered ? 3 : 1);
+                    time = charged ? 40 : 35;
+                    // FUN_00438310:1768-1798: legacy heading + 90 - second draw.
+                    if (!charged && index > 0) {
+                        pitch = float(oracle() % 30u) + 20.f;
+                        yaw = float(oracle() % 180u) - 90.f;
+                    }
+                }
+                check_int("source item row", row, shot.bulletRow);
+                check_int("source firing tick", time, ticks[index]);
+                check_near("source yaw including draw and convention", yaw,
+                           std::remainder(shot_yaw(shot) - glm::degrees(fighter.facing_yaw()), 360.f), 1e-3);
+                check_near("source pitch", pitch,
+                           glm::degrees(std::asin(std::clamp(shot.dir.y, -1.f, 1.f))), 1e-3);
+            }
+            check_u32("source draw count", oracle(), stream.next());
         }
     }
-    check_int("normal tap fires the 15-frame fan", 15, normalFired);
-    check_bool("normal fan uses item row 1 throughout", true, normalRows);
-    check_bool("normal fan schedules nothing outside the window", false,
-               tap.take_pending_shot().armed);
 
-    // Powered tap: same window, row 3, with the gate selecting the other branch.
-    Fighter poweredTap;
-    poweredTap.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
-    g_rena1Combo.bind(poweredTap);
-    settle(poweredTap);
-    poweredTap.set_hypermode(Hypermode::Oyashiro);
-    poweredTap.set_hyper_gauge(1.f);
-    Input pw;
-    pw.set(fnd::input::Action::Special, true);
-    tick(poweredTap, pw);
-    pw.set(fnd::input::Action::Special, false);
-    tick(poweredTap, pw);
-    check_bool("Oyashiro witness is active", true, poweredTap.hyper_active());
-    gameplay::ShootingContext context;
-    context.aimHold = true;
-    poweredTap.set_shooting_context(context);
-    pw.set(fnd::input::Action::Shoot, true);
-    tick(poweredTap, pw);
-    pw.set(fnd::input::Action::Shoot, false);
-    tick(poweredTap, pw);
-    int poweredFired = 0;
-    bool poweredRows = true;
-    for (int i = 0; i < 30; ++i) {
-        tick(poweredTap, pw);
-        for (gameplay::PendingShot s = poweredTap.take_pending_shot(); s.armed;
-             s = poweredTap.take_pending_shot()) {
-            ++poweredFired;
-            poweredRows &= s.bulletRow == 3;
+    // Item3 ships equal model0/model2 muzzle coordinates. Perturb only the in-memory
+    // fixture to make the shared selector falsifiable; this is not a source-geometry claim.
+    gameplay::WeaponDefinition distinctMuzzles;
+    std::vector<std::uint8_t> itemBytes;
+    std::string itemError;
+    const bool itemLoaded = fnd::assets::assetSource().read("data/item/003.dat", itemBytes) &&
+        distinctMuzzles.parse(3, itemBytes.data(), itemBytes.size(), itemError);
+    check_bool("real item3 selector fixture parses", true, itemLoaded);
+    if (!itemLoaded) return;
+    distinctMuzzles.slots[0].muzzle[0] = -23.f;
+    distinctMuzzles.slots[2].muzzle[0] = 17.f;
+    xm::Controller* selectorPose = g_rena1Combo.controller();
+    Fighter selector;
+    selector.init(&g_rena1Combo.model, selectorPose, glm::vec3(320.f,40.f,-230.f), .4f);
+    g_rena1Combo.bind(selector);
+    selector.set_weapon(&distinctMuzzles);
+    settle(selector);
+    Input selectorInput;
+    hold_yellow(selector, selectorInput);
+    selectorInput.set(fnd::input::Action::Shoot, false);
+    tick(selector, selectorInput);
+    bool selectorFired = false;
+    for (int update = 0; update < 30 && !selectorFired; ++update) {
+        std::vector<glm::mat4> pose;
+        selectorPose->evalWorld(pose);
+        const auto& point = distinctMuzzles.slots[2].muzzle;
+        const auto local = glm::vec3(pose[g_rena1Combo.model.findFrame("Bip01_Prop1")] *
+                                    glm::vec4(point[0],point[1],point[2],1.f));
+        const float angle = selector.facing_yaw() + glm::pi<float>();
+        const auto expected = selector.position() + glm::vec3(
+            std::cos(angle)*local.x + std::sin(angle)*local.z, local.y,
+            -std::sin(angle)*local.x + std::cos(angle)*local.z);
+        tick(selector, selectorInput);
+        const auto shot = selector.take_pending_shot();
+        if (shot.armed) {
+            selectorFired = true;
+            check_near("attachment0 selects model2, not model0's muzzle", 0.f,
+                       glm::distance(expected, shot.pos), 1e-3);
         }
     }
-    check_int("powered tap fires the 15-frame fan", 15, poweredFired);
-    check_bool("powered fan uses item row 3 throughout", true, poweredRows);
+    check_bool("distinct-muzzle selector witness fires", true, selectorFired);
 
-    // Charge: single fixed-45 shot at frame 13, row 2 normal / 8 powered.
-    Fighter charged;
-    charged.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
-    g_rena1Combo.bind(charged);
-    settle(charged);
-    hold_yellow(charged, in);
-    check_int("Rena 1 hold reaches Yellow", static_cast<int>(ShotTier::Yellow),
-              static_cast<int>(charged.charge_tier()));
-    in.set(fnd::input::Action::Shoot, false);
-    tick(charged, in);
-    check_int("Rena 1 charge enters ShootB", static_cast<int>(FighterState::ShootB),
-              static_cast<int>(charged.state()));
-    check_int("Rena 1 first charge binds move 450", 450, charged.shot_move_id());
-    for (int i = 0; i < 13; ++i) tick(charged, in);
-    const gameplay::PendingShot charge = charged.take_pending_shot();
-    check_bool("charge fires exactly one request at frame 13", true, charge.armed);
-    check_int("charge uses item row 2", 2, charge.bulletRow);
-    check_near("charge pitch is the body's fixed 45 degrees",
-               std::sin(glm::radians(45.f)), charge.dir.y, 1e-3f);
-    check_bool("charge schedules nothing else", false, charged.take_pending_shot().armed);
-
-    Fighter poweredCharge;
-    poweredCharge.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
-    g_rena1Combo.bind(poweredCharge);
-    settle(poweredCharge);
-    poweredCharge.set_hypermode(Hypermode::Oyashiro);
-    poweredCharge.set_hyper_gauge(1.f);
-    Input cpw;
-    cpw.set(fnd::input::Action::Special, true);
-    tick(poweredCharge, cpw);
-    cpw.set(fnd::input::Action::Special, false);
-    tick(poweredCharge, cpw);
-    poweredCharge.set_shooting_context(context);
-    hold_yellow(poweredCharge, cpw);
-    cpw.set(fnd::input::Action::Shoot, false);
-    tick(poweredCharge, cpw);
-    for (int i = 0; i < 13; ++i) tick(poweredCharge, cpw);
-    const gameplay::PendingShot poweredShot = poweredCharge.take_pending_shot();
-    check_bool("powered charge fires its request", true, poweredShot.armed);
-    check_int("powered charge uses item row 8", 8, poweredShot.bulletRow);
-    check_near("powered charge keeps the fixed 45 degrees",
-               std::sin(glm::radians(45.f)), poweredShot.dir.y, 1e-3f);
+    // FUN_0043ffc0:1526-1553: original yaw+90 coefficients reverse the remake's
+    // right axis. Preserve row11/12 order and the paired legacy yaw offsets too.
+    Fighter red;
+    red.init(nullptr, nullptr, glm::vec3(320.f,40.f,-230.f), .4f);
+    g_testCombo.bind(red);
+    settle(red);
+    Fighter redTarget;
+    redTarget.init(nullptr, nullptr, red.position() + glm::vec3(900.f,0.f,0.f), 0.f);
+    g_testCombo.bind(redTarget);
+    settle(redTarget);
+    Input hold;
+    hold.set(fnd::input::Action::Shoot, true);
+    for (int update = 0; update < 1000 && red.charge_tier() != ShotTier::Red; ++update)
+        tick(red, hold, &redTarget);
+    check_int("Rena+0 second charge reaches Red", static_cast<int>(ShotTier::Red),
+              static_cast<int>(red.charge_tier()));
+    hold.set(fnd::input::Action::Shoot, false);
+    tick(red, hold, &redTarget);
+    int redVoices = 0;
+    int pairs = 0;
+    int freezeVisits = 0;
+    for (int update = 0; update < 400; ++update) {
+        const auto position = red.position();
+        const float facing = red.facing_yaw();
+        const int phase = red.move_phase();
+        const int elapsed = red.phase_elapsed();
+        if (phase == 2 && elapsed == 13) ++freezeVisits;
+        tick(red, hold, &redTarget);
+        const auto voice = red.take_shooting_voice();
+        if (voice.event >= 0) {
+            ++redVoices;
+            check_int("red charge uses SpecialA once per pair", 32, voice.event);
+            check_bool("red alternative is source 1 or 2", true,
+                       voice.alternative == 1 || voice.alternative == 2);
+        }
+        for (auto shot = red.take_pending_shot(); shot.armed; shot = red.take_pending_shot()) {
+            check_near("red windup turns toward sideways enemy", 90.f,
+                       glm::degrees(facing), .1f);
+            const float right = pairs == 0 ? -70.f : 70.f;
+            const auto expected = position + glm::vec3(
+                right * std::cos(facing) + 70.f * std::sin(facing), 70.f,
+                -right * std::sin(facing) + 70.f * std::cos(facing));
+            check_int("red requests are ordered rows11/12", 11 + pairs, shot.bulletRow);
+            check_int("red source phase", 2, phase);
+            check_int("red source tick", 2, elapsed);
+            check_near("red world geometry matches source", 0.f,
+                       glm::distance(expected, shot.pos), 1e-3);
+            check_near("red yaw respects legacy coefficient sign", pairs == 0 ? -1.f : 1.f,
+                       std::remainder(shot_yaw(shot) - glm::degrees(facing), 360.f), 1e-3);
+            ++pairs;
+        }
+    }
+    for (const auto direction : {fnd::input::Action::Left, fnd::input::Action::Right}) {
+        xm::Controller* controller = g_testCombo.controller();
+        Fighter side;
+        side.init(&g_testCombo.model, controller, glm::vec3(0.f), 0.f);
+        g_testCombo.bind(side);
+        settle(side);
+        Input input;
+        input.set(direction, true); tick(side, input);
+        input.set(direction, false); tick(side, input);
+        input.set(direction, true); tick(side, input);
+        check_int("side double tap enters dash", int(FighterState::Run), int(side.state()));
+        check_bool("side dash uses recovered animation", false, side.anim_fallback());
+        check_int("side dash selects the NN directional clip",
+                  direction == fnd::input::Action::Left ? 22 : 19, side.anim_set_index());
+    }
+    check_int("one red pair over the whole move", 2, pairs);
+    check_int("one red voice over the whole move", 1, redVoices);
+    for (bool charged : {false, true}) {
+        gameplay::WeaponDefinition lastRoundWeapon;
+        std::vector<std::uint8_t> lastBytes;
+        std::string lastError;
+        const bool loaded = fnd::assets::assetSource().read("data/item/001.dat", lastBytes) &&
+            lastRoundWeapon.parse(1, lastBytes.data(), lastBytes.size(), lastError);
+        check_bool("last-round fixture retains item1", true, loaded);
+        if (!loaded) continue;
+        lastRoundWeapon.magazines[charged ? 1 : 0].num = 1;
+        Fighter last;
+        last.init(nullptr, nullptr, glm::vec3(0.f), 0.f);
+        g_testCombo.bind(last);
+        last.set_weapon(&lastRoundWeapon);
+        settle(last);
+        Input input;
+        if (charged) hold_yellow(last, input);
+        else { input.set(fnd::input::Action::Shoot, true); tick(last, input); }
+        input.set(fnd::input::Action::Shoot, false); tick(last, input);
+        int finalLines = 0;
+        for (int update = 0; update < 80; ++update) {
+            tick(last, input);
+            const auto cue = last.take_shooting_voice();
+            if (cue.event >= 0) {
+                ++finalLines;
+                check_int("last magazine round selects ShotFinal before admission", 30, cue.event);
+            }
+            while (last.take_pending_shot().armed) {}
+        }
+        check_int("one last-round line per attack", 1, finalLines);
+    }
+    check_int("red freeze holds ten updates then advances", 11, freezeVisits);
 }
 
 void test_akane2_world_origin_gap() {
@@ -4398,7 +4771,6 @@ void test_satoko_five_shot() {
     int tapArmed = 0;
     bool tapRows = true, tapSlots = true, tapPitch = true;
     std::vector<glm::vec3> tapPositions;
-    std::vector<float> tapPitches;
     std::vector<float> tapFanYaws;
     for (int i = 0; i < 5; ++i) {
         gameplay::PendingShot shot = f.take_pending_shot();
@@ -4409,23 +4781,14 @@ void test_satoko_five_shot() {
         const float deg = glm::degrees(std::asin(std::clamp(shot.dir.y, -1.f, 1.f)));
         if (deg < -0.1f || deg >= 15.f) tapPitch = false;
         tapPositions.push_back(shot.pos);
-        tapPitches.push_back(deg);
         tapFanYaws.push_back(shot_yaw(shot) - glm::degrees(f.facing_yaw()));
     }
     check_int("Satoko tap T17 salvo fires five", 5, tapArmed);
     check_bool("Satoko salvo rows are all 0", true, tapRows);
     check_bool("Satoko salvo slot is the hand", true, tapSlots);
     check_bool("Satoko tap pitch stays inside the body's 0..15 band", true, tapPitch);
-    // The fan: each request moves the hand origin by (draw%240-120)*0.1, so the five
-    // positions differ from each other but stay inside 23.9 units of spread.
-    // The fan's third argument is a YAW offset (FUN_00435250 adds it to the bone's angles),
-    // so the five requests leave the hand at ONE point and fan by direction. The first
-    // version of this witness read the muzzle offset and only passed because the binding
-    // wrote the value there.
-    // Each offset is `(draw % 240 - 120) * 0.1`, so an INDIVIDUAL offset lies in
-    // [-12.0, +11.9] — two shots may differ by up to 23.9, which is why the earlier
-    // "half-span <= 12.5" bound was wrong: it can reject a valid fan. Check the individual
-    // offsets against the body's own bounds, and pin the draw order separately (follow-up).
+    // FUN_00435220 keeps the posed hand origin; spread changes yaw only. Exact
+    // per-shot values and stream consumption are checked in section 45.
     bool fanSpread = false;
     for (std::size_t i = 1; i < tapFanYaws.size(); ++i)
         fanSpread |= std::abs(tapFanYaws[i] - tapFanYaws[0]) > 0.05f;
@@ -4447,15 +4810,10 @@ void test_satoko_five_shot() {
             widestOrigin = std::max(widestOrigin,
                                     glm::distance(tapPositions[i], tapPositions[j]));
     check_near("Satoko's whole fan leaves the muzzle in one place", 0.f, widestOrigin, 0.01f);
-    // Exact arithmetic on the canonical stream, which pins the draw ORDER as well as the
-    // values: residues 2, 2, 4, 5 give pitch1 = 2%15 = 2, lateral1 = (102-120)*0.1 = -1.8,
-    // pitch2 = 3890346734%15 = 14 and lateral2 = (185-120)*0.1 = 6.5. Drawing the lateral
-    // first would put r1 on the lateral and r2 on the pitch instead.
-    check_bool("Satoko tap fires the whole fan", true, tapPositions.size() == 5);
     check_bool("Satoko salvo fires exactly five", false,
                f.take_pending_shot().armed);
 
-    // The powered branch widens the loop to eight and the lateral draw to 300 (29.9 units).
+    // The powered branch widens the loop to eight and the yaw draw to 300.
     Fighter h;
     h.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
     g_satokoCombo.bind(h);
@@ -5242,6 +5600,7 @@ int main(int argc, char** argv) {
 
     test_idle_walk();
     test_dash();
+    test_target_relative_dashes();
     test_attacks();
     test_hit_stun();
     test_guard_drain();
@@ -5265,10 +5624,11 @@ int main(int argc, char** argv) {
     test_rika2_single_tick();
     test_satoko_five_shot();
     test_rika0_twin_tick();
-    test_rena1_normal_schedule();
+    test_rena_character_iteration();
     test_keiichi2_tap_sweep();
     test_satoko1_periodic_world_shot();
     test_simulation_rng_stream();
+    test_hand_shot_rng_and_pose();
     test_spread_draw_order();
     test_rena2_ring();
     test_rena0_powered_branches();

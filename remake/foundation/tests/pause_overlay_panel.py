@@ -39,11 +39,10 @@ Exit 0 when every check holds, 1 otherwise, and 77 (skip) when the renderer or t
 unavailable, so a CI box without a GPU or the game data does not report a false failure.
 """
 import os
-import subprocess
 import sys
 import tempfile
 
-SKIP = 77
+from capture_probe import (main_guard, read_ppm, require_install, run_demo)
 # The match frame the recipes pause at, and the frontend's countdown in capture frames. The
 # harness steps one logic tick per frame and holds the round for 180 ticks, so the pause
 # lands on capture frame N + 181 and its same-state reference is N + 180; both runs' own
@@ -59,38 +58,6 @@ DIM = 0.45
 SLACK = 6
 # A white block must span this fraction of the frame in BOTH dimensions to count as one.
 WHITE_SHAPE_FRACTION = 1.0 / 9.0
-
-
-def run_demo(demo, install, out, args, cwd, timeout=900):
-    cmd = [demo, "--headless", "--no-devices", "--install=" + install, "--out=" + out] + args
-    proc = subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                          text=True, timeout=timeout)
-    if proc.returncode != 0 or "RESULT: ok" not in proc.stdout:
-        return None
-    return proc.stdout
-
-
-def read_ppm(path):
-    with open(path, "rb") as handle:
-        data = handle.read()
-    if not data.startswith(b"P6"):
-        return None
-    fields = []
-    i = 2
-    while len(fields) < 3:
-        while i < len(data) and data[i:i + 1].isspace():
-            i += 1
-        if data[i:i + 1] == b"#":
-            while data[i:i + 1] not in (b"\n", b""):
-                i += 1
-            continue
-        start = i
-        while i < len(data) and not data[i:i + 1].isspace():
-            i += 1
-        fields.append(int(data[start:i]))
-    i += 1
-    w, h, _ = fields
-    return w, h, data[i:i + w * h * 3]
 
 
 def white_block(px, w, h):
@@ -226,12 +193,7 @@ def ink_in(px, w, h, rect):
 def capture(demo, install, workdir, tag, args):
     out = os.path.join(workdir, tag + ".ppm")
     log = run_demo(demo, install, out, args, workdir)
-    if log is None:
-        return None
-    ppm = read_ppm(out)
-    if ppm is None:
-        return None
-    return {"tag": tag, "log": log, "ppm": ppm}
+    return {"tag": tag, "log": log, "ppm": read_ppm(out)}
 
 
 def pause_args(size, extra=()):
@@ -248,14 +210,14 @@ def check_case(name, demo, install, tmp, size, extra, failures):
     """One paused frame against its same-state reference: panel, text and white control."""
     paused = capture(demo, install, tmp, name + "-paused", pause_args(size, extra))
     ref = capture(demo, install, tmp, name + "-ref", ref_args(size, extra))
-    if paused is None or ref is None:
-        return None
     if "[pause] paused (--pause-overlay)" not in paused["log"]:
         failures.append("%s: the run never entered the pause" % name)
         return None
     if ("match: %d frames" % PAUSE_FRAME) not in paused["log"] or \
        ("match: %d frames" % PAUSE_FRAME) not in ref["log"]:
-        print("  %s: the pause and its reference are not the same match frame, skipped" % name)
+        # The two runs must pause on the same match frame or the comparison is between
+        # different states; that is a real failure, not a reason to skip the case.
+        failures.append("%s: the pause and its reference are not the same match frame" % name)
         return None
     w, h, px = paused["ppm"]
     rw, rh, rpx = ref["ppm"]
@@ -327,23 +289,17 @@ def main():
     # resolve against that instead of against where the caller found it.
     install = os.path.abspath(sys.argv[2])
     cwd = os.path.abspath(sys.argv[3]) if len(sys.argv) > 3 else os.getcwd()
-    if not os.path.exists(os.path.join(install, "data")):
-        print("pause_overlay_panel: no game data at %s, skipped" % install)
-        return SKIP
+    require_install(install, "pause_overlay_panel")
     failures = []
     with tempfile.TemporaryDirectory() as tmp:
         small = check_case("960x540", demo, install, tmp, "960x540", (), failures)
         if small is None:
-            # A measured failure and a missing renderer both leave nothing to compare; the
-            # failures list is what tells them apart, so a capture that ran and failed to
-            # show a panel reports FAIL instead of hiding behind the skip code.
-            if failures:
-                print("pause_overlay_panel: FAIL")
-                for line in failures:
-                    print("  " + line)
-                return 1
-            print("pause_overlay_panel: headless renderer or game data unavailable, skipped")
-            return SKIP
+            # capture() raises on a renderer or capture problem, so reaching here means the
+            # case itself failed to produce a measurable panel: report it, do not skip.
+            print("pause_overlay_panel: FAIL")
+            for line in failures:
+                print("  " + line)
+            return 1
 
         # The overlay's own pixels, negatively: the panel mask must find nothing on two
         # unpaused frames, so a "panel" cannot be scene noise the paused frame happens to
@@ -354,16 +310,15 @@ def main():
         noise2 = capture(demo, install, tmp, "noise-b",
                          ["--screen=battle", "--frames=%d" % (PAUSE_FRAME + COUNTDOWN + 1),
                           "--size=960x540"])
-        if noise is not None and noise2 is not None:
-            nw, nh, npx = noise["ppm"]
-            noise_count, _ = panel_mask(npx, nw, nh, noise2["ppm"][2])
-            noise_fraction = noise_count / float(nw * nh)
-            print("  960x540: two unpaused frames differ by %.3f%% of the panel mask"
-                  % (noise_fraction * 100.0))
-            if noise_fraction > 0.02:
-                failures.append("960x540: the panel mask fires on two unpaused frames "
-                                "(%.1f%%), so it is not measuring the overlay"
-                                % (noise_fraction * 100.0))
+        nw, nh, npx = noise["ppm"]
+        noise_count, _ = panel_mask(npx, nw, nh, noise2["ppm"][2])
+        noise_fraction = noise_count / float(nw * nh)
+        print("  960x540: two unpaused frames differ by %.3f%% of the panel mask"
+              % (noise_fraction * 100.0))
+        if noise_fraction > 0.02:
+            failures.append("960x540: the panel mask fires on two unpaused frames "
+                            "(%.1f%%), so it is not measuring the overlay"
+                            % (noise_fraction * 100.0))
 
         big = check_case("1920x1080", demo, install, tmp, "1920x1080", (), failures)
         split = check_case("4view-960x540", demo, install, tmp, "960x540",
@@ -411,4 +366,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main_guard(main))

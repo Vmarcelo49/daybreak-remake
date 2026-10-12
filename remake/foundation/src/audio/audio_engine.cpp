@@ -22,6 +22,7 @@
 namespace fnd::audio {
 
 namespace {
+bool outputMuted = false;
 constexpr int kMixFrameBytes = 2 * 2;  // S16 stereo: 2 channels x 2 bytes
 
 float gain_for(SfxBus bus, const Volumes& v) {
@@ -134,17 +135,21 @@ size_t Sdl3Engine::push_music_s16(const int16_t* frames, size_t frame_count) {
     return frame_count;
 }
 
+void set_output_muted(bool muted) { outputMuted = muted; }
+
 void Sdl3Engine::set_volumes(const Volumes& v) {
     volumes_ = v;
+    Volumes effective = v;
+    if (outputMuted) effective.master = 0;
     Impl& im = *impl_;
-    im.music_gain = bus_gain(v.music, v.master);
-    im.ui_gain = gain_for(SfxBus::Ui, v);
-    im.voice_gain = gain_for(SfxBus::Voice, v);
-    im.sfx_gain = gain_for(SfxBus::Sfx, v);
+    im.music_gain = bus_gain(effective.music, effective.master);
+    im.ui_gain = gain_for(SfxBus::Ui, effective);
+    im.voice_gain = gain_for(SfxBus::Voice, effective);
+    im.sfx_gain = gain_for(SfxBus::Sfx, effective);
     if (!is_open()) return;  // cached above; applied on open()
     SDL_SetAudioStreamGain(im.music, im.music_gain);
     for (int i = 0; i < kMaxSfxChannels; ++i) {
-        if (im.slot[i]) SDL_SetAudioStreamGain(im.slot[i], gain_for(bus_of_channel(i), v));
+        if (im.slot[i]) SDL_SetAudioStreamGain(im.slot[i], gain_for(bus_of_channel(i), effective));
     }
 }
 

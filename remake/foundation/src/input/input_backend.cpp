@@ -326,8 +326,13 @@ bool Backend::load_script(const char* path) {
     while (std::getline(f, line)) {
         uint64_t frame = 0;
         uint32_t mask = 0;
-        if (!parse_script_line(line.c_str(), frame, mask)) continue;
-        events.push_back({frame, mask});
+        std::string waitScene;
+        if (!parse_script_line(line.c_str(), frame, mask, waitScene)) continue;
+        ScriptEvent event;
+        event.frame = frame;
+        event.mask = mask;
+        event.waitScene = std::move(waitScene);
+        events.push_back(std::move(event));
     }
     script_ = std::move(events);
     script_pos_ = 0;
@@ -339,10 +344,21 @@ bool Backend::load_script(const char* path) {
 
 void Backend::tick_script(uint64_t frame) {
     if (!script_active_) return;
-    // File order is frame-ascending by contract (same as the remake); the
-    // last event at or before `frame` wins, so holds need no per-frame lines.
-    while (script_pos_ < script_.size() && script_[script_pos_].frame <= frame) {
-        script_mask_ = script_[script_pos_].mask;
+    // File order is frame-ascending by contract (same as the remake); the last event at
+    // or before `frame` wins, so holds need no per-frame lines. A WAIT event is
+    // different: it is reached at its frame and then HOLDS the script until its scene is
+    // current, leaving the previous mask in place (a release, not a press). It is
+    // consumed only once the scene matches, so a wait cannot be stepped over.
+    while (script_pos_ < script_.size()) {
+        const ScriptEvent& event = script_[script_pos_];
+        if (!event.waitScene.empty()) {
+            if (event.frame > frame) break;
+            if (scene_name_ != event.waitScene) return;
+            ++script_pos_;
+            continue;
+        }
+        if (event.frame > frame) break;
+        script_mask_ = event.mask;
         ++script_pos_;
     }
 }

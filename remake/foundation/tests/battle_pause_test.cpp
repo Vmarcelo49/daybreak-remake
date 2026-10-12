@@ -8,6 +8,7 @@
 
 #include <cstdio>
 #include <string>
+#include "synthetic_combo.h"
 
 namespace {
 
@@ -43,12 +44,16 @@ void checkFloat(const std::string& what, double expected, double actual) {
 // enough for timers, states and the pause gate (nothing here needs a mesh).
 struct Fixture {
     gameplay::Match match;
+    test::synthetic::Combo m_combo;
     fnd::input::PlayerState input;
 
     Fixture() {
         gameplay::MatchConfig config;
         config.fighterCount = 2;
         config.spawn[1] = glm::vec3(500, 0, 0);
+        // AGENTS rule 7: this fixture steps a live battle, so it binds a character AND a
+        // weapon. Synthetic, so the suite still runs without game data (audit finding H).
+        m_combo.bind(config, 2);
         const xm::Model* models[4] = {};
         xm::Controller* animations[4] = {};
         match.reset(config, models, animations, nullptr, nullptr);

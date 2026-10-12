@@ -45,6 +45,7 @@
 #include "ui/sprite.h"
 #include "ui/screen.h"
 #include "ui/screen_countdown.h"
+#include "ui/screen_vs.h"
 #include "ui/screen_opening.h"
 #include "ui/frontend_state.h"
 #include "ui/frontend_launch.h"
@@ -59,6 +60,7 @@
 #include "gameplay/battle_pause.h"
 #include "gameplay/debug_keys.h"
 #include "gameplay/match.h"
+#include "gameplay/live_debug.h"
 #include "gameplay/fixed_step.h"
 #include "gameplay/bot_input.h"
 #include "gameplay/hud_fill.h"
@@ -143,6 +145,9 @@ struct Options {
     int         pauseOverlay = 0;
     bool        debugPrims = false; // draw the deterministic debug line overlay
     bool        audioTest = false; // run the audio backend self-check and exit
+    bool        liveDebug = false;
+    bool        noAudio = false;
+    bool        withAudio = false;
     bool        combatAudioLog = false;  // --combat-audio-log: name every resolved SE/voice
     std::string audioFile;       // with --audio-test: decode a real file too
     bool        inputTest = false; // run the input backend self-check and exit
@@ -356,6 +361,9 @@ void usage() {
         "                     offscreen captures (needs --out). Lets verification run\n"
         "                     where no presentable display exists, on the real GPU\n"
         "  --audio-test         run the audio backend self-check and exit\n"
+        "  --no-audio           silence music, voices, effects and movie audio\n"
+        "  --with-audio         enable sound for intentional listening checks;\n"
+        "                      verification and --frames runs are silent by default\n"
         "  --combat-audio-log   log every dispatched combat SE/voice with its resolved file\n"
         "  --audio-file=<path>  with --audio-test: decode a real file as well\n"
         "  --input-test         run the input backend self-check and exit\n"
@@ -638,6 +646,16 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--hitbox-debug") o.hitboxDebug = true;
         else if (a == "--headless") o.headless = true;
         else if (a == "--audio-test") o.audioTest = true;
+        else if (a == "--live-debug") {
+#if defined(FOUNDATION_LIVE_DEBUG)
+            o.liveDebug = true;
+#else
+            error = "live debug is disabled in this build (development CMake opt-in required)";
+            return false;
+#endif
+        }
+        else if (a == "--no-audio" || a == "-no-audio") o.noAudio = true;
+        else if (a == "--with-audio") o.withAudio = true;
         else if (a == "--combat-audio-log") o.combatAudioLog = true;
         else if (a == "--input-test") o.inputTest = true;
         else if (a == "--no-devices") o.noDevices = true;
@@ -1011,6 +1029,7 @@ Mat4 rotationZ(float radians, float scale) {
 // The app
 // ---------------------------------------------------------------------------------------
 struct App {
+    gameplay::LiveDebug liveDebug;
     Options      opts;
     SDL_Window*  window = nullptr;
     gpu::Context ctx;
@@ -1331,7 +1350,7 @@ static float matchAlphaFor(const App& app, bool capturing) {
 // same traces whether or not the user has a config file, so they neither read it nor
 // write it. --screen=<menu> without a capture is interactive and does use it.
 static bool usesUserConfig(const Options& o) {
-    return o.frames == 0 && o.out.empty() && !o.headless && !o.match && !o.versus &&
+    return !o.liveDebug && o.frames == 0 && o.out.empty() && !o.headless && !o.match && !o.versus &&
            !o.hudTest && !o.list && !o.audioTest && !o.inputTest && o.anim < 0 &&
            o.model.empty() && o.stage.empty() && o.character.empty() && o.effect.empty();
 }
@@ -1461,7 +1480,7 @@ static bool initMatch(App& app);
 // the pause state — so their frames and traces are identical whether or not a pause key is
 // bound. Same shape as #19's usesUserConfig, for the same reason.
 static bool battlePauseAvailable(const App& app) {
-    return app.matchMode && app.opts.out.empty() && !app.opts.headless && app.opts.frames == 0;
+    return !app.opts.liveDebug && app.matchMode && app.opts.out.empty() && !app.opts.headless && app.opts.frames == 0;
 }
 
 // The controller slot that drives a frontend panel, or -1 for COM.
@@ -2070,7 +2089,10 @@ static constexpr fnd::audio::VoiceEvent kCombatVoiceEvents[] = {
     fnd::audio::VoiceEvent::DamageDown,  fnd::audio::VoiceEvent::Guard,
     fnd::audio::VoiceEvent::Guarded,     fnd::audio::VoiceEvent::AttackKO,
     fnd::audio::VoiceEvent::DamageKO,    fnd::audio::VoiceEvent::Revival,
-    fnd::audio::VoiceEvent::Oyashiro,
+    fnd::audio::VoiceEvent::Oyashiro, fnd::audio::VoiceEvent::ShotA,
+    fnd::audio::VoiceEvent::ShotB, fnd::audio::VoiceEvent::ShotC,
+    fnd::audio::VoiceEvent::ShotFinal,
+    fnd::audio::VoiceEvent::SpecialA,
 };
 
 // Per-fighter voice setup for a battle: the character's own voice directory (FUN_0041e180's
@@ -2966,6 +2988,19 @@ static void placeMatchFighters(App& app) {
             const auto vertices = trail.vertices();
             app.renderer.updateDynamicMesh(static_cast<size_t>(model), vertices.data(), vertices.size(),
                                            static_cast<uint32_t>(trail.triangles()*3));
+            const int itemModel = fighter.trail_item_model(hand);
+            const auto* weapon = fighter.weapon();
+            if (weapon && itemModel >= 0 && itemModel < weapon->slotCount &&
+                weapon->slots[itemModel].has_prop()) {
+                const auto& carrier = app.scene.models[static_cast<size_t>(model)];
+                if (!carrier.model.meshes.empty() &&
+                    !carrier.model.meshes[0].materials.empty()) {
+                    const std::string& source = carrier.model.meshes[0].materials[0].texture;
+                    const std::string& replacement = weapon->slots[itemModel].textureName;
+                    if (!source.empty() && !replacement.empty() && source != replacement)
+                        textures.push_back({static_cast<size_t>(model), source, replacement});
+                }
+            }
         }
     }
     app.renderer.setTextureOverrides(textures);
@@ -3099,6 +3134,7 @@ static void bindShotModels(App& app) {
             }
             app.fxShotModel[i][row] = card;
             if (card >= 0) {
+                app.scene.models[static_cast<size_t>(card)].role = "projectile";
                 auto& variants = app.scene.models[static_cast<size_t>(card)].textureVariants;
                 for (const auto& set : p->animationSets)
                     for (const auto& event : set.textures)
@@ -3126,9 +3162,19 @@ static void bindAnimationMaterials(App& app) {
             for (const auto& event : moves->texture_events(set))
                 if (std::find(variants.begin(),variants.end(),event.replacement) == variants.end())
                     variants.push_back(event.replacement);
-        for (int hand = 0; hand < 2 && hand < weapon->slotCount; ++hand) {
-            const auto& slot = weapon->slots[hand];
-            if (slot.textureName.empty()) continue;
+        for (int hand = 0; hand < 2; ++hand) {
+            int baseItemModel = hand;
+            if (baseItemModel >= weapon->slotCount || !weapon->slots[baseItemModel].has_prop()) {
+                baseItemModel = -1;
+                for (int model = 0; model < weapon->slotCount; ++model)
+                    if (weapon->slots[model].has_prop()) { baseItemModel = model; break; }
+            }
+            if (baseItemModel < 0) continue;
+            const auto& slot = weapon->slots[baseItemModel];
+            // FUN_00433eb0's meshName gate is the prop availability rule; a
+            // texture-only Rena+0 item001 slot cannot own a ribbon. The handler's
+            // manager slot selects the bone, while its binding may select another
+            // item model's anchors and texture (Akane+0 Prop0<-item2).
             xm::SceneModel trail;
             trail.role = "effect";
             trail.source = "procedural weapon trail";
@@ -3144,10 +3190,21 @@ static void bindAnimationMaterials(App& app) {
             mesh.materials.push_back(material);
             mesh.submeshes.push_back({0,static_cast<uint32_t>(mesh.indices.size()),0});
             trail.model.meshes.push_back(std::move(mesh));
+            for (int model = 0; model < weapon->slotCount; ++model) {
+                const auto& candidate = weapon->slots[model];
+                if (!candidate.has_prop() || candidate.textureName.empty() ||
+                    candidate.textureName == slot.textureName ||
+                    std::find(trail.textureVariants.begin(), trail.textureVariants.end(),
+                              candidate.textureName) != trail.textureVariants.end())
+                    continue;
+                trail.textureVariants.push_back(candidate.textureName);
+            }
             app.trailModels[static_cast<size_t>(fighter)][static_cast<size_t>(hand)] =
                 static_cast<int>(app.scene.models.size());
             app.scene.models.push_back(std::move(trail));
             app.worlds.emplace_back();
+            // The samples already include the posed Prop bone and actor transform
+            // (FUN_00430120), so the trail carrier stays at identity.
             app.modelMatrices.emplace_back(1.f);
             app.controllers.emplace_back();
         }
@@ -3388,6 +3445,9 @@ static fnd::audio::CombatFrameView combatFrameView(const gameplay::MatchFrame& f
     for (int i = 0; i < 4; ++i) {
         view.swing_started[i] = f.swingStarted[i];
         view.shot_fired[i]    = f.shotFired[i];
+        view.shot_voice[i] = f.shotVoice[i];
+        view.shot_voice_alternative[i] = f.shotVoiceAlternative[i];
+        view.shot_voice_audited[i] = f.sourceShotVoiceAudited[i];
         view.hyper_started[i] = f.hyperStarted[i];
         view.guard_started[i] = f.guardStarted[i];
         view.respawned[i]     = f.respawned[i];
@@ -3817,7 +3877,9 @@ static bool tickMatch(App& app, double dt) {
             else inputs[i] = &app.neutralInput;
         }
     }
+    if (app.liveDebug.enabled()) app.liveDebug.inputs(app.matchFrame, inputs);
     const gameplay::MatchFrame f = app.match.step(inputs, dt);
+    if (app.liveDebug.enabled()) app.liveDebug.after_tick(app.matchFrame, app.match, f);
     for (int i = 0; i < app.match.config().fighterCount; ++i)
         if (f.respawned[i]) app.previousFighter[i] = app.match.fighter(i).pose();
     if (app.versusAudioOn)
@@ -4762,7 +4824,8 @@ bool runInputTest(App& app) {
 // duration and the reason the phase is not a black screen are all documented there.
 
 static void playFrontendMusic(App& app, ui::ScreenId id) {
-    if (!app.menuAudio.is_open()) return;
+    // Decode independently of the device so muted/device-less runs retain VS
+    // pacing, and a direct VS start has its duration before the factory runs.
     const int localSide = app.frontend.slots[0].controller < 4 ? 0 : 1;
     // Scene 0x00's own track (FUN_00404ff0:0x405096, "data/bgm/titlesemi.ogg" at 0x6a14c0)
     // — the movie's audio is a separate stream and plays over it.
@@ -5181,7 +5244,16 @@ bool initScreens(App& app) {
                         (unsigned long long)app.logicTicks);
             return countdown;
         }
-        auto screen = ui::makeScreen(sid, app.uiRenderer, app.frontend, app.error);
+        // FUN_00411ae0 supplies the slide/scale timing, but not a sting-completion
+        // gate. PORT PACING: retain the finished VS logo until its decoded track
+        // ends instead of cutting vs.ogg when the battle factory clears the bus.
+        const int vsTicks = app.menuBgmPath == "data/bgm/vs.ogg"
+            ? static_cast<int>(std::ceil((app.menuBgm.stereo44100.size() / 2) *
+                (app.opts.out.empty() ? gameplay::FixedStep::tickRate : 60.0) / 44100.0))
+            : 0;
+        auto screen = sid == ui::ScreenId::VsIntro
+            ? ui::makeVsScreen(app.uiRenderer, app.frontend, app.error, vsTicks)
+            : ui::makeScreen(sid, app.uiRenderer, app.frontend, app.error);
         if (screen) std::printf("[menu] scene: %s (tick %llu)\n", screen->name(), (unsigned long long)app.logicTicks);
         return screen;
     };
@@ -5417,6 +5489,10 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
         return SDL_APP_FAILURE;
     }
     app->opts.bootOpening = resolveBootOpening(app->opts);
+    const bool muteOutput = app->opts.noAudio || (!app->opts.withAudio &&
+        (verificationRunOwnsInput(app->opts) || app->opts.frames > 0 || app->opts.audioTest));
+    fnd::audio::set_output_muted(muteOutput);
+    if (muteOutput) std::printf("audio output : muted (verification/no-audio)\n");
 #if defined(__EMSCRIPTEN__)
     // Delivery mode with a standalone recipe: request the match's assets from the
     // arguments and wait for them before the scene is built. A front-end run needs none
@@ -6009,17 +6085,35 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     // While paused the clock is not advanced at all, so paused wall time cannot become
     // catch-up ticks when the pause ends; the paused ticks still run so the device queues
     // are drained and the menu can be driven (issue #15).
-    const int ticks = capturing ? 1
+    if (app->opts.liveDebug && !app->liveDebug.enabled()) {
+        if (!app->matchMode || capturing || app->opts.headless || app->frontendMatch) {
+            app->error = "--live-debug requires a visible standalone --match development launch";
+            return SDL_APP_FAILURE;
+        }
+        if (!app->liveDebug.start(app->error)) return SDL_APP_FAILURE;
+        std::printf("live debug session: %s\n", app->liveDebug.directory().c_str());
+        std::fflush(stdout);
+    }
+    app->liveDebug.poll(app->matchFrame, app->frames, app->match);
+    if (app->liveDebug.stop_requested()) return SDL_APP_SUCCESS;
+    const int ticks = app->liveDebug.enabled()
+                    ? (app->liveDebug.stepping() ? 1 : app->liveDebug.paused() ? 0
+                       : app->logicClock.advance(app->frames > 1 ? delta : 0.0))
+                    : capturing ? 1
                     : (app->battlePaused ? 1
                                          : app->logicClock.advance(app->frames > 1 ? delta : 0.0));
-    app->matchAlpha = matchAlphaFor(*app, capturing);
+    app->matchAlpha = app->liveDebug.enabled() ? 1.f : matchAlphaFor(*app, capturing);
     for (int tick = 0; tick < ticks; ++tick) {
+        if (app->liveDebug.enabled() && !app->liveDebug.wants_tick()) break;
         ++app->logicTicks;
         for (int p = 0; p < 4; ++p) app->tickInput[p] = app->pendingInput[p].consume();
         driveSyntheticLocalPads(*app);
         if (app->matchInput.script_active()) {
             const uint64_t scriptTick = app->frontendMatch || app->screensMode
                 ? app->logicTicks : app->matchFrame + 1 + app->pauseScriptAdvance;
+            // Publish the scene before sampling so a `WAIT <scene>` directive sees the
+            // scene this tick is actually running rather than the previous one.
+            app->matchInput.set_scene_name(app->screens.currentName());
             app->matchInput.sample_script(app->scriptInput, scriptTick);
             app->tickInput[0] = app->scriptInput;
         }
@@ -6164,6 +6258,15 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             if (app->roundCountdown) {
                 const double entryDt = capturing ? app->opts.dt : gameplay::FixedStep::seconds;
                 tickRoundEntry(*app, entryDt);
+                // FUN_00635d40:62-73 starts battle BGM during round entry. Combat
+                // remains held here; waiting for tickMatch delayed it past 3-2-1.
+                if (app->versusAudioOn && app->versusAudio.music_queued_frames() < 4096) {
+                    const uint64_t before = app->versusBgmPushed;
+                    app->versusBgmPushed += app->versusLoop.push_next(app->versusAudio, 1024);
+                    if (before == 0 && app->versusBgmPushed > 0)
+                        std::printf("[menu] countdown music: started before combat (tick %llu)\n",
+                                    (unsigned long long)app->logicTicks);
+                }
             }
         }
     }
@@ -6534,6 +6637,27 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             return SDL_APP_FAILURE;
         }
         if (!gpu::endFrame(app->ctx, app->sc, frame)) return SDL_APP_FAILURE;
+        if (app->liveDebug.evidence_pending()) {
+            std::vector<uint8_t> rgba;
+            HudTestHook hud = battleHudHook(*app);
+            appendMatchHudPasses(*app, frameViews, w, h, hud);
+            CaptureHook cap;
+            cap.renderer = &app->renderer;
+            cap.error = &app->error;
+            cap.views = frameCameras;
+            if (app->uiReady) cap.hud = &hud;
+            cap.prims = &app->debugPrims;
+            cap.lines = &app->debugLines;
+            cap.solid = &app->matchCubes;
+            cap.additive = &app->auraCubes;
+            if (app->opts.hitboxDebug) cap.hitbox = &app->hitboxCubes;
+            const auto* views = frameCameras.size() > 1 ? &frameCameras : nullptr;
+            if (!app->renderer.capture(w, h, rgba, app->error, captureHook, &cap, views))
+                return SDL_APP_FAILURE;
+            writePpm(app->liveDebug.evidence_path(app->matchFrame), rgba, w, h);
+        }
+        if (app->liveDebug.enabled())
+            app->liveDebug.presented(app->matchFrame, app->frames, app->match);
     } else {
         app->spin += (float)delta * 1.2f;
         const Mat4 transform = rotationZ(app->spin, 1.0f);
@@ -6666,7 +6790,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     return SDL_APP_CONTINUE;
 }
 
-void SDL_AppQuit(void* appstate, SDL_AppResult) {
+void SDL_AppQuit(void* appstate, SDL_AppResult result) {
     auto* app = static_cast<App*>(appstate);
     if (!app) return;
     if (!app->opts.screen.empty())

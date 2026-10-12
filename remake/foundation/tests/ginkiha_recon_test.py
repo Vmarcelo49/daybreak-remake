@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Guard request counting, exact selection and refusal of stale recon inputs."""
+"""Guard request counting, exact selection and refusal of stale recon inputs.
+
+Two halves: the synthetic cases (trace summaries, body boundaries, runtime syntax) need
+nothing and always run, while the bundle cases need the local recon reference bundle. A
+run in which EVERY case was skipped exits 77 so CTest records a skip rather than a pass;
+a run with any real verdict exits 0/1 normally and prints the skip counts (audit
+findings B and G).
+"""
 from pathlib import Path
 import sys
 import tempfile
@@ -84,4 +91,18 @@ class BundleReconTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    # A plain unittest exit code cannot express "nothing ran": every case skipped would
+    # still be 0, which reads as a pass. Count the outcomes and pick the code.
+    loader = unittest.TestLoader()
+    suite = loader.loadTestsFromModule(sys.modules[__name__])
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+    ran = result.testsRun - len(result.skipped)
+    print("ginkiha_recon_test: %d ran, %d skipped, %d failed"
+          % (ran, len(result.skipped), len(result.failures) + len(result.errors)))
+    if result.failures or result.errors:
+        sys.exit(1)
+    if ran == 0:
+        print("SKIP: every recon case needed the local bundle, which is absent")
+        sys.exit(77)
+    sys.exit(0)

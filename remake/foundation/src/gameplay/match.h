@@ -102,6 +102,9 @@ struct MatchFrame {
     // so re-reading a frame cannot replay an event and a fixed 64 Hz tick cannot miss one.
     // i armed a melee swing / i's shot was accepted by the pool
     bool swingStarted[kMatchFighterCount] = {false, false, false, false};
+    bool sourceShotVoiceAudited[kMatchFighterCount] = {false, false, false, false};
+    int shotVoice[kMatchFighterCount] = {-1, -1, -1, -1};
+    int shotVoiceAlternative[kMatchFighterCount] = {-1, -1, -1, -1};
     bool shotFired[kMatchFighterCount]    = {false, false, false, false};
     // Where that shot left the muzzle (issue #17): the effect layer spawns the muzzle
     // flash from the event's own position instead of re-deriving it from the pose.

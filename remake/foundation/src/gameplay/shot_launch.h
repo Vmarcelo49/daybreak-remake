@@ -28,6 +28,9 @@ struct ShotOriginSpec {
     std::array<float, 3> localOffset{};
     // right, forward, height in the actor's heading basis (ActorRelativeOffset).
     std::array<float, 3> actorRightForwardHeight{};
+    // FUN_00434a70 selects an item model independently of attachment slot 0/1.
+    // FUN_00435000 indexes that model's DAT muzzle; -1 retains the slot default.
+    int itemModel = -1;
 };
 
 enum class ShotAimKind {
@@ -90,8 +93,8 @@ inline constexpr ShotAimSpec aim_target_elevation(float clampDegrees) {
 
 // The pitch a preceding CapturePitch rule stored, aimed on the legacy yaw basis. Use it
 // for every request a body makes after it has latched its pitch.
-inline constexpr ShotAimSpec aim_stored_pitch() {
-    return ShotAimSpec{ShotAimKind::StoredPitch, 0.f, 0.f, -40.f, 40.f};
+inline constexpr ShotAimSpec aim_stored_pitch(float yawDegrees = 0.f) {
+    return ShotAimSpec{ShotAimKind::StoredPitch, yawDegrees, 0.f, -40.f, 40.f};
 }
 
 // Literal yaw/pitch in degrees, no target tracking. Use it for requests whose body
@@ -129,6 +132,12 @@ inline constexpr ShotOriginSpec origin_named_bone(const char* boneName) {
 // are independent muzzles, so a body firing both must state both rules.
 inline constexpr ShotOriginSpec origin_attachment_slot(int slot) {
     return ShotOriginSpec{ShotOriginKind::WeaponAttachment, slot, nullptr, {}, {}};
+}
+
+inline constexpr ShotOriginSpec origin_attachment_model(int slot, int model) {
+    auto origin = origin_attachment_slot(slot);
+    origin.itemModel = model;
+    return origin;
 }
 
 // A body's random spread on one request. Every measured family draws the PITCH jitter
@@ -211,6 +220,11 @@ inline constexpr ShotSpreadSpec spread_pitch_then_yaw(int pitchModulus, float pi
                           yawModulus, yawOffset, yawScale};
 }
 
+// FUN_00448220.c:2170-2184: one YAW draw per Rena+1 charge request,
+// after counter += 4. No pitch draw: the helper receives literal pitch zero.
+inline constexpr ShotSpreadSpec kSpreadRena1Charge =
+    ShotSpreadSpec{0, 0.f, 0.f, 10, -35.f, 1.f, 1.f, SpreadOrder::YawThenPitch};
+
 // Mion 1's 450/460 burst: `(rand%100-50)*0.1` on the pitch and `(rand%200-100)*0.1` on
 // the yaw, two draws per request over a 15-request loop.
 inline constexpr ShotSpreadSpec kSpreadBurstJitter =
@@ -224,7 +238,7 @@ inline constexpr ShotSpreadSpec kSpreadEmissionJitter =
 // Rena 2's 400 ring: the pitch is `rand%30 + 20` absolute (no clamp base) and the yaw is
 // `heading + offset + 90 - rand%180`, so the yaw draw is subtracted through its scale.
 inline constexpr ShotSpreadSpec kSpreadRing =
-    spread_pitch_then_yaw(30, 20.f, 1.f, 180, 0.f, -1.f);
+    spread_pitch_then_yaw(30, 20.f, 1.f, 180, -90.f, -1.f);
 
 // A counter-only lateral sweep: no draw at all, the offset is `counter * perTick + offset`
 // (shoot_body_11_2_400's `0x3e * 0.5 - 2`).
