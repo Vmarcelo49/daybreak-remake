@@ -1,20 +1,27 @@
-// The recovered Rena-group attack admission (melee_admission.h):
+// The recovered Rena-group melee integration (melee_admission.h + the movement
+// bodies in fighter.cpp/move_behavior.h):
 //   1. the dispatcher table pinned case-by-case against the recovered source
 //      (battle_rena_melee_admission.hpp = FUN_00445ee0/44d850/43ded0 branches);
 //   2. the Fighter wiring driven by real input edges through synthetic tables;
-//   3. install-backed input sequences through the shipped Rena tables.
-// The expected values below are transcribed from the recovered selector, not
-// read back from the implementation under test.
+//   3. install-backed input sequences through the shipped Rena tables;
+//   4. the recovered attack-state movement bodies (speed profiles, vertical
+//      channel, landings, the chase/dive arcs) through synthetic timelines whose
+//      phase periods land inside the test horizon.
+// The expected values below are transcribed from the recovered selector and the
+// recovered execution bodies (the Ginkiha reference cross-checked with the
+// original handlers), not read back from the implementation under test.
 
 #include "combo_fixture.h"
 #include "gameplay/fighter.h"
 #include "gameplay/melee_admission.h"
 #include "gameplay/move_behavior.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -32,6 +39,15 @@ void check(bool condition, const char* name) {
     if (!condition) ++failures;
     std::printf("  %-58s %s\n", name, condition ? "ok" : "FAIL");
 }
+void checkFloat(float expected, float actual, float tolerance, const char* name) {
+    ++checks;
+    const bool same = std::abs(expected - actual) <= tolerance;
+    if (!same) ++failures;
+    std::printf("  %-60s %s", name, same ? "ok" : "FAIL");
+    if (!same) std::printf("  (expected %.3f, got %.3f)", expected, actual);
+    std::printf("\n");
+}
+
 void checkInt(int expected, int actual, const char* name) {
     ++checks;
     const bool same = expected == actual;
@@ -103,10 +119,31 @@ void addAdmitMove(std::vector<std::uint8_t>& b, int id, int priority,
     for (const auto& p : phases) addAdmitPhase(b, p);
 }
 
+// Table shape knobs for the rejection fixtures: a failing gate, a missing
+// destination row, or a blocked air row — each one declines admission through
+// the real dispatcher while keeping the fixture a valid character+weapon pair.
+struct TableShape {
+    int idleThreshold = 0;   // row 0's cancel threshold — above 10 it fails the neutral gate
+    int dropRow = -1;        // a row omitted entirely (missing destination row)
+    int blockedAirRow = -1;  // an airborne row given a threshold that fails the 320 gate
+};
+
+// Section counts that let rule-driven phase walks resolve: a 300 with two
+// sections cannot enter the phase its Approach exit names. Locomotion and air
+// rows keep two (row 30 keeps its three for the dash phase gate).
+int admitSections(int id) {
+    switch (id) {
+        case 300: case 301: case 302: case 310: case 311: case 331:
+        case 320: case 332: case 340: return 3;
+        case 330: case 341: return 4;
+        case 329: case 333: case 334: return 2;
+        default: return 2;
+    }
+}
+
 // The Rena melee row inventory with passing gates (priority 10, threshold 0).
 // The chain rows' first record opens the 0x100 window, as the shipped tables do.
-std::vector<std::uint8_t> admissionTable(int weaponId, int idleThreshold = 0,
-                                         bool drop310 = false) {
+std::vector<std::uint8_t> admissionTable(int weaponId, TableShape shape = {}) {
     std::vector<std::uint8_t> b;
     putU32(b, 0x00010000);
     putName(b, "data/rena/00.X", 0x104);
@@ -116,23 +153,21 @@ std::vector<std::uint8_t> admissionTable(int weaponId, int idleThreshold = 0,
     const int rows[] = {0, 10, 20, 23, 24, 27, 30, 40, 41, 42, 44,
                         300, 301, 302, 310, 311, 320, 329, 330, 331,
                         332, 333, 334, 340, 341};
-    putU32(b, static_cast<int>(sizeof rows / sizeof rows[0]) - (drop310 ? 1 : 0));
+    int rowCount = 0;
+    for (int id : rows)
+        if (shape.dropRow != id) ++rowCount;
+    putU32(b, rowCount);
     int set = 1;
     for (int id : rows) {
-        if (drop310 && id == 310) continue;
+        if (shape.dropRow == id) continue;
         const bool chainRow = id == 300 || id == 301 || id == 302;
-        const int threshold = id == 0 ? idleThreshold : 0;
-        // Row 30 carries three phases so the air-dash phase gate is exercisable.
-        if (id == 30) {
-            addAdmitMove(b, id, 10, threshold,
-                         {AdmitPhase{set++, {{0, 0}}},
-                          AdmitPhase{set++, {{0, 0}}},
-                          AdmitPhase{set++, {{0, 0}}}});
-        } else {
-            addAdmitMove(b, id, 10, threshold,
-                         {AdmitPhase{set++, {{0, chainRow ? 0x100 : 0}}},
-                          AdmitPhase{set++, {{8, 0}}}});
-        }
+        const int threshold = (id == 0 ? shape.idleThreshold : 0) +
+                              (id == shape.blockedAirRow ? 100 : 0);
+        const int sections = id == 30 ? 3 : admitSections(id);
+        std::vector<AdmitPhase> phases;
+        for (int p = 0; p < sections; ++p)
+            phases.push_back(AdmitPhase{set++, {{0, chainRow && p == 0 ? 0x100 : 0}}});
+        addAdmitMove(b, id, 10, threshold, phases);
     }
     putU32(b, 124);
     for (int i = 0; i < 124; ++i) { putU32(b, 0); putU32(b, 0); putU32(b, 0); }
@@ -150,16 +185,19 @@ WeaponDefinition slotWeapon(int itemId) {
 }
 
 // A table+weapon pair; every fighter binds a fresh rig so cases never inherit
-// each other's animation/stamina/phase state.
+// each other's animation/stamina/phase state. `setTicks` overrides specific
+// sets' periods (in ticks) so the NN-period-driven phase advances land inside a
+// test's horizon — the movement bodies' phase walks need them.
 struct Fixture {
     CharacterMoves moves;
     WeaponDefinition weapon;
     std::vector<std::unique_ptr<xm::Model>> models;
     std::vector<std::unique_ptr<xm::Controller>> controllers;
+    std::vector<std::pair<int, int>> setTicks;
     bool ok = false;
     std::string error;
-    explicit Fixture(int itemId, int idleThreshold = 0, bool drop310 = false) {
-        const auto bytes = admissionTable(itemId, idleThreshold, drop310);
+    explicit Fixture(int itemId, TableShape shape = {}) {
+        const auto bytes = admissionTable(itemId, shape);
         ok = moves.parse(bytes.data(), bytes.size(), error);
         moves.set_character_index(0);
         weapon = slotWeapon(itemId);
@@ -176,6 +214,9 @@ struct Fixture {
             a.duration = 480000.0f;
             model->anims.push_back(a);
         }
+        for (const auto& [set, ticks] : setTicks)
+            if (set >= 0 && static_cast<size_t>(set) < model->anims.size())
+                model->anims[static_cast<size_t>(set)].duration = ticks * 76.8f;
         controller->bind(model.get());
         auto* f = new Fighter();
         f->init(model.get(), controller.get(), glm::vec3(0.f), 0.0f);
@@ -285,16 +326,18 @@ int run() {
     }
     {
         section("admission table — gates and missing rows");
-        Fixture blocked(1, /*idleThreshold=*/100);
+        TableShape blocked; blocked.idleThreshold = 100;
+        Fixture gateFailed(1, blocked);
         const TableCase declined[] = {
             {0, 0, 0, true, true, 0, 0, -1, "failed neutral gate declines"},
         };
-        runTableCases(blocked.moves, declined, 1);
-        Fixture noKick(1, 0, /*drop310=*/true);
+        runTableCases(gateFailed.moves, declined, 1);
+        TableShape noKick; noKick.dropRow = 310;
+        Fixture kickless(1, noKick);
         const TableCase fallback[] = {
             {0, 0, 0, true, true, 0, -1, 300, "missing 310 row falls to 300"},
         };
-        runTableCases(noKick.moves, fallback, 1);
+        runTableCases(kickless.moves, fallback, 1);
     }
 
     section("Fighter wiring — synthetic input edges (Rena+0)");
@@ -385,6 +428,443 @@ int run() {
             tick(c, press);
             checkInt(300, c.attack_move_id(), "w2 stays in 300 (no chain)");
             press.down[input::Action::AttackA] = false;
+        }
+    }
+
+    // A declined press is a no-op through the real Fighter input path, not a
+    // legacy-swing fallback: FUN_00445ee0's rejected branches take no action.
+    // Each case presses through Fighter::update's input dispatch and asserts the
+    // previous action, its animation binding and its timeline all survive.
+    section("Fighter wiring — rejected admission preserves the action");
+    {
+        // Failed priority/cancel gate: row 0's cancel threshold (100) exceeds
+        // every candidate row's priority (10), so the idle press declines.
+        {
+            TableShape shape; shape.idleThreshold = 100;
+            Fixture gateFailed(1, shape);
+            Fighter& f = gateFailed.make();
+            const int idleSet = f.anim_set_index();
+            const int elapsedIdle = f.phase_elapsed();
+            input::PlayerState in = pressWith(input::Action::AttackA);
+            tick(f, in);
+            check(f.state() == FighterState::Idle, "declined press keeps Idle");
+            check(f.attack_move_id() < 0, "declined press selects no move");
+            check(!f.pending_swing_start(), "declined press arms no swing edge");
+            check(!f.anim_fallback() && f.anim_set_index() == idleSet,
+                  "declined press leaves the bound idle clip alone");
+            check(!f.aerial_attack(), "declined press leaves aerial metadata clear");
+            check(f.phase_elapsed() == elapsedIdle + 1,
+                  "declined press advances the idle timeline by exactly one tick");
+            in.down[input::Action::AttackA] = false;
+            tick(f, in);
+            check(f.state() == FighterState::Idle && f.phase_elapsed() == elapsedIdle + 2 &&
+                  !f.pending_swing_start(),
+                  "the tick after a decline advances normally");
+        }
+        // Missing destination row: the table ships no row 300 at all.
+        {
+            TableShape shape; shape.dropRow = 300;
+            Fixture rowless(1, shape);
+            Fighter& f = rowless.make();
+            const int idleSet = f.anim_set_index();
+            input::PlayerState in = pressWith(input::Action::AttackA);
+            tick(f, in);
+            check(f.state() == FighterState::Idle, "missing destination row declines");
+            check(f.attack_move_id() < 0 && !f.pending_swing_start(),
+                  "missing row arms neither move nor swing");
+            check(!f.anim_fallback() && f.anim_set_index() == idleSet,
+                  "missing row never binds a fallback clip");
+            in.down[input::Action::AttackA] = false;
+            tick(f, in);
+            check(f.state() == FighterState::Idle, "still Idle after the declined tick");
+        }
+        // Positive control on the same wiring: with the gate passing, the press
+        // still enters the expected attack, binds its own clip and arms the swing.
+        {
+            Fixture fine(1);
+            Fighter& f = fine.make();
+            input::PlayerState in = pressWith(input::Action::AttackA);
+            tick(f, in);
+            check(f.state() == FighterState::AttackA && f.attack_move_id() == 300,
+                  "admitted press still enters AttackA on row 300");
+            check(f.pending_swing_start(), "admitted press arms the swing edge");
+            check(!f.anim_fallback() && f.anim_set_index() >= 0,
+                  "admitted press binds the move's own clip");
+        }
+        // Declined AIR press (falling row 42's gate blocks 320) must not touch
+        // the Rena+0 air-attack facing rule or the aerial-attack metadata, and
+        // must leave the jump's clip and timeline running.
+        {
+            TableShape shape; shape.blockedAirRow = 42;
+            Fixture airBlocked(1, shape);
+            Fighter& f = airBlocked.make();
+            Fighter& foe = airBlocked.make();
+            foe.reset(glm::vec3(1000.f, 0.f, 0.f), 0.f);  // bearing +pi/2 from the fighter
+            input::PlayerState in = pressWith(input::Action::Jump);
+            tick(f, in);
+            in.down[input::Action::Jump] = false;
+            // 16 ticks: vy = 720 - 1800*16/64 = 270 < 360, so the air chain sits on
+            // the falling row 42 (its phase-0 clip is set 20 in this table) — the
+            // row whose threshold blocks the 320 gate.
+            for (int i = 0; i < 16; ++i) tick(f, in);
+            check(f.state() == FighterState::Jump && f.anim_set_index() == 20,
+                  "air fixture is airborne on the falling row");
+            const float facingBefore = f.facing_yaw();
+            const int airSet = f.anim_set_index();
+            const int elapsedBefore = f.phase_elapsed();
+            in = pressWith(input::Action::AttackA);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);  // opponent present: inputFacing is +pi/2
+            check(f.state() == FighterState::Jump, "declined air press keeps the jump");
+            check(f.attack_move_id() < 0 && !f.pending_swing_start(),
+                  "declined air press arms nothing");
+            check(!f.aerial_attack(), "declined air press leaves aerial metadata clear");
+            check(std::abs(std::remainder(f.facing_yaw() - facingBefore,
+                                          glm::two_pi<float>())) < 1e-5f,
+                  "declined air press keeps the body yaw (no facing snap to the target)");
+            check(!f.anim_fallback() && f.anim_set_index() == airSet,
+                  "declined air press leaves the air clip bound");
+            check(f.phase_elapsed() == elapsedBefore + 1,
+                  "declined air press advances the jump timeline by exactly one tick");
+        }
+        // Chain requests get the same contract: a w2 chain press inside row 300
+        // (no 301 family for the weapon) declines without disturbing the running
+        // attack's move, phase, clip or timeline.
+        {
+            Fixture w2(33);
+            Fighter& f = w2.make();
+            input::PlayerState press{};
+            press.down[input::Action::AttackA] = true;
+            tick(f, press);
+            press.down[input::Action::AttackA] = false;
+            checkInt(300, f.attack_move_id(), "w2 enters row 300 before the chain press");
+            check(f.take_swing_start(), "the entry edge armed once (drained here as Match would)");
+            const int setBefore = f.anim_set_index();
+            const int phaseBefore = f.move_phase();
+            for (int i = 0; i < 3; ++i) tick(f, press);  // let the row's clock run
+            const int elapsedBefore = f.phase_elapsed();
+            press.down[input::Action::AttackA] = true;
+            tick(f, press);
+            check(f.state() == FighterState::AttackA && f.attack_move_id() == 300,
+                  "declined chain press keeps the running attack");
+            check(f.move_phase() == phaseBefore && f.anim_set_index() == setBefore &&
+                  !f.anim_fallback(), "declined chain press preserves phase and clip");
+            check(!f.pending_swing_start(),
+                  "declined chain press arms no second swing edge");
+            check(f.phase_elapsed() == elapsedBefore + 1,
+                  "declined chain press advances the timeline by exactly one tick");
+            press.down[input::Action::AttackA] = false;
+            tick(f, press);
+            check(f.state() == FighterState::AttackA,
+                  "the tick after a declined chain stays in the attack");
+        }
+    }
+
+    // The recovered attack-state movement bodies, driven through real input on
+    // synthetic timelines whose phase periods land inside the horizon. Expected
+    // values are transcribed from the Ginkiha execution headers cross-checked
+    // with FUN_0043ffc0/448220/438310, never read back from the implementation.
+    section("attack-state movement — profiles, vertical channel, landings");
+    {
+        // 300 (weapon 0): the distance-switched lunge and the phase walk.
+        {
+            Fixture fx(1);
+            fx.setTicks = {{24, 6}};  // 300's phase-0 set: the windup ends fast
+            Fighter& f = fx.make();
+            Fighter& foe = fx.make();
+            foe.reset(glm::vec3(900.f, 0.f, 0.f), 0.f);  // 810000 >= 640000: far
+            input::PlayerState in = pressWith(input::Action::AttackA);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            checkInt(300, f.attack_move_id(), "movement fixture enters 300");
+            check(std::abs(f.move_speed() - 15.f) < 0.01f,
+                  "300 lunge reads 15 against a far target (>= 640000)");
+            Fighter& near = fx.make();
+            Fighter& nearFoe = fx.make();
+            nearFoe.reset(glm::vec3(500.f, 0.f, 0.f), 0.f);  // 250000 < 640000
+            input::PlayerState nin = pressWith(input::Action::AttackA);
+            input::compute_edges(nin);
+            near.update(&nin, &nearFoe, 1.0 / 64.0);
+            check(std::abs(near.move_speed() - 25.f) < 0.01f,
+                  "300 lunge reads 25 against a near target (< 640000)");
+            // The phase walk: period-driven 0 -> 1, then the approach exit into 2.
+            in.down[input::Action::AttackA] = false;
+            for (int i = 0; i < 30 && f.move_phase() != 2; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+            }
+            check(f.move_phase() == 2, "300 reaches phase 2 (windup period then approach exit)");
+            const float bleed = f.move_speed();
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            check(std::abs(f.move_speed() - (bleed - 1.5f)) < 0.01f,
+                  "300 phase 2 bleeds 1.5 a tick");
+        }
+        // 310 (weapon 0): the phase walk and the contact jump-cancel.
+        {
+            Fixture fx(1);
+            fx.setTicks = {{33, 6}};  // 310's phase-0 set
+            Fighter& f = fx.make();
+            Fighter& foe = fx.make();
+            foe.reset(glm::vec3(300.f, 0.f, 0.f), 0.f);
+            input::PlayerState in = pressWith(input::Action::AttackA, input::Action::Down);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            checkInt(310, f.attack_move_id(), "back-held press enters 310");
+            check(std::abs(f.move_speed() - 30.f) < 0.01f, "310 enters with speed 30");
+            in.down[input::Action::AttackA] = false;
+            in.down[input::Action::Down] = false;
+            for (int i = 0; i < 20 && f.move_phase() != 2; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+            }
+            check(f.move_phase() == 2, "310 walks phases 0-1-2 (phase 1 exits on its tick)");
+            for (int i = 0; i < 15; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+            }
+            // A connected hit with jump held past frame 12 leaves the kick.
+            f.note_melee_hit(0);
+            in.down[input::Action::Jump] = true;
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            check(f.state() == FighterState::Jump && f.airborne(),
+                  "310 jump-cancels into the air chain on contact + held jump");
+        }
+        // 311 (weapon 0): the entry rush and its decay.
+        {
+            Fixture fx(1);
+            Fighter& f = fx.make();
+            Fighter& foe = fx.make();
+            foe.reset(glm::vec3(300.f, 0.f, 0.f), 0.f);
+            input::PlayerState in = pressWith(input::Action::AttackA, input::Action::Right);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            checkInt(311, f.attack_move_id(), "lateral press enters 311");
+            checkFloat(20.f, f.move_speed(), 0.01f, "311 enters with speed 20");
+            in.down[input::Action::AttackA] = false;
+            in.down[input::Action::Right] = false;
+            for (int i = 0; i < 5; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+            }
+            checkFloat(19.f, f.move_speed(), 0.05f, "311 bleeds 0.2 a tick after entry");
+            for (int i = 0; i < 22; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+            }
+            check(f.move_speed() == 0.f, "311 stops fully at frame 25");
+        }
+        // 320 chase (weapon 0): strength latch, hang, arc, fall, 329 landing.
+        {
+            Fixture fx(1);
+            fx.setTicks = {{39, 6}, {40, 30}};  // 320's windup/approach sets
+            Fighter& f = fx.make();
+            Fighter& foe = fx.make();
+            foe.reset(glm::vec3(600.f, 0.f, 0.f), 0.f);
+            input::PlayerState in = pressWith(input::Action::Jump);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            in.down[input::Action::Jump] = false;
+            for (int i = 0; i < 12; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+            }
+            in = pressWith(input::Action::AttackA);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            checkInt(320, f.attack_move_id(), "airborne press enters the 320 chase");
+            check(f.chase_strength() == 226, "chase latches 230 and decays 4 on the first tick");
+            check(f.attack_gravity() == 0.f, "chase hangs (gravity 0) before phase 2");
+            check(f.body_pivot() == 70.f, "chase leans with pivot 70");
+            // The first arc tick steers to the target angle: the bearing from the
+            // (elevated) fighter to the target plus the body's +10 bias, split at
+            // strength 23 — computed here from the live geometry, not read back.
+            const glm::vec3 toFoe = foe.position() - f.position();
+            const float targetAngle = glm::degrees(std::atan2(
+                static_cast<double>(toFoe.y),
+                static_cast<double>(std::hypot(toFoe.x, toFoe.z)))) + 10.f;
+            checkFloat(std::cos(glm::radians(targetAngle)) * 23.f, f.move_speed(), 0.3f,
+                       "chase's first arc tick steers at the target angle");
+            checkFloat(targetAngle + 20.f, f.body_yaw(), 1.5f,
+                       "chase lean = flight angle + 20");
+            const float startDistance = glm::distance(f.position(), foe.position());
+            in.down[input::Action::AttackA] = false;
+            for (int i = 0; i < 10; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+            }
+            check(glm::distance(f.position(), foe.position()) < startDistance - 100.f,
+                  "the chase closes on the target");
+            int phase2Tick = -1;
+            for (int i = 0; i < 90 && phase2Tick < 0; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+                if (f.move_phase() == 2) phase2Tick = i;
+            }
+            check(phase2Tick >= 0, "chase reaches phase 2 (approach exit or timeout)");
+            for (int i = 0; i < 8; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+            }
+            check(f.attack_gravity() == 0.5f, "phase 2 falls at the body's 0.5 gravity");
+            int landingTick = -1;
+            for (int i = 0; i < 90 && landingTick < 0; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+                if (!f.airborne() && f.attack_move_id() == 329) landingTick = i;
+            }
+            check(landingTick >= 0, "the chase lands into the 329 recovery");
+            for (int i = 0; i < 6; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+            }
+            checkFloat(0.f, f.move_speed(), 0.f, "329 zeroes the motion");
+            check(f.hyper_gauge() > 0.2f,
+                  "329 refills the gauge (40/1000 a tick)");
+        }
+        // 330 (weapon 1): the hop — vertical 15, gravity .75, landing ends phase 3.
+        {
+            Fixture fx(3);
+            fx.setTicks = {{44, 6}};  // 330's phase-0 set
+            Fighter& f = fx.make();
+            Fighter& foe = fx.make();
+            foe.reset(glm::vec3(400.f, 0.f, 0.f), 0.f);
+            doubleTap(f, input::Action::Up);
+            input::PlayerState in = pressWith(input::Action::AttackA);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            checkInt(330, f.attack_move_id(), "dash attack enters the 330 hop");
+            in.down[input::Action::AttackA] = false;
+            int hopTick = -1;
+            for (int i = 0; i < 15 && hopTick < 0; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+                if (f.move_phase() == 1) hopTick = i;
+            }
+            check(hopTick >= 0, "the hop's phase 1 arrives with the windup period");
+            // The phase change lands at the END of that update; the hop's own rules
+            // fire on phase 1's first full tick.
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            check(f.airborne(), "the hop lifts off (vertical 15)");
+            check(f.attack_gravity() == 0.75f, "the hop falls at the body's 0.75 gravity");
+            const float rise = f.position().y;
+            for (int i = 0; i < 3; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+            }
+            check(f.position().y > rise, "the hop still rises on the following ticks");
+            int landingTick = -1;
+            for (int i = 0; i < 90 && landingTick < 0; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+                if (!f.airborne() && f.move_phase() == 3) landingTick = i;
+            }
+            check(landingTick >= 0 && f.move_speed() == 0.f,
+                  "the hop's landing ends phase 3 with the motion zeroed");
+        }
+        // 332 dive (weapon 0): launch arc, contact rebound into 334, 333 landing.
+        {
+            Fixture fx(1);
+            fx.setTicks = {{51, 6}};  // 332's phase-0 set
+            Fighter& f = fx.make();
+            Fighter& foe = fx.make();
+            foe.reset(glm::vec3(500.f, 0.f, 0.f), 0.f);
+            input::PlayerState in = pressWith(input::Action::Jump);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            in.down[input::Action::Jump] = false;
+            for (int i = 0; i < 12; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+            }
+            doubleTap(f, input::Action::Up);
+            check(f.state() == FighterState::Run && f.air_dash_context(),
+                  "dive fixture enters the air dash");
+            in = pressWith(input::Action::AttackA);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            checkInt(332, f.attack_move_id(), "air-dash press enters the 332 dive");
+            check(f.move_speed() == 0.f, "the dive starts from rest");
+            in.down[input::Action::AttackA] = false;
+            int diveTick = -1;
+            for (int i = 0; i < 15 && diveTick < 0; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+                if (f.move_phase() == 1) diveTick = i;
+            }
+            check(diveTick >= 0, "the dive's phase 1 arrives with the windup period");
+            // The phase change lands at the END of that update; the launch fires on
+            // phase 1's first full tick. The angle is the live elevation clamped
+            // into [-20,-5] (the fixture dives from jump height), split at 25.
+            const glm::vec3 launchGap = foe.position() - f.position();
+            const float launchAngle = std::clamp(
+                static_cast<float>(glm::degrees(std::atan2(
+                    static_cast<double>(launchGap.y),
+                    static_cast<double>(std::hypot(launchGap.x, launchGap.z))))),
+                -20.f, -5.f);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            checkFloat(std::cos(glm::radians(launchAngle)) * 25.f, f.move_speed(), 0.1f,
+                       "dive launch splits cos(angle)*25 along the clamped angle");
+            check(f.body_pivot() == 70.f && f.body_yaw() <= 0.f,
+                  "dive leans with pivot 70 and a nonpositive pitch");
+            // Contact inside the window rebounds into 334.
+            f.note_melee_hit(0);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            checkInt(334, f.attack_move_id(), "dive contact rebounds into 334");
+            check(f.attack_gravity() == 0.35f && f.airborne(),
+                  "the rebound rises at gravity 0.35");
+            int fallTick = -1;
+            for (int i = 0; i < 20 && fallTick < 0; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+                if (f.move_phase() == 1) fallTick = i;
+            }
+            check(fallTick >= 0, "the rebound hands to its fall phase under 6 u/tick");
+            int landingTick = -1;
+            for (int i = 0; i < 90 && landingTick < 0; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+                if (!f.airborne() && f.attack_move_id() == 333) landingTick = i;
+            }
+            check(landingTick >= 0, "the rebound's landing exits into the 333 recovery");
+        }
+        // 300 (weapon 2): the standing spin — no approach speed, the phase-1 rush
+        // at 45, and the double-speed clock through frames 16..28.
+        {
+            Fixture fx(33);
+            fx.setTicks = {{24, 6}};  // 300's phase-0 set
+            Fighter& f = fx.make();
+            Fighter& foe = fx.make();
+            foe.reset(glm::vec3(600.f, 0.f, 0.f), 0.f);
+            input::PlayerState in = pressWith(input::Action::AttackA);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            checkInt(300, f.attack_move_id(), "w2 neutral press enters the spin");
+            check(f.move_speed() == 0.f, "the spin does not lunge at entry");
+            in.down[input::Action::AttackA] = false;
+            float rushSpeed = -1.f;
+            for (int i = 0; i < 15 && rushSpeed < 0.f; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+                if (f.move_phase() == 1 && f.move_speed() > 40.f) rushSpeed = f.move_speed();
+            }
+            check(rushSpeed > 42.9f && rushSpeed <= 43.01f,
+                  "the spin's phase-1 rush reads 45, decaying 2 inside the same tick");
+            bool sawDoubleClock = false;
+            int previousElapsed = f.phase_elapsed();
+            for (int i = 0; i < 40; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+                const int elapsed = f.phase_elapsed();
+                if (previousElapsed >= 15 && previousElapsed <= 28 && elapsed == previousElapsed + 2)
+                    sawDoubleClock = true;
+                previousElapsed = elapsed;
+            }
+            check(sawDoubleClock, "the spin's clock runs double through frames 16..28");
         }
     }
 
@@ -571,6 +1051,72 @@ int run() {
                 checkInt(slot == 0 ? 406 : slot == 1 ? 401 : 400, f.shot_move_id(), label);
                 d.settle(700);
                 delete &f;
+            }
+
+            // The back-dash tap (407) end-to-end: the dash situation selects the
+            // state, and its body fires the row-4/row-9 pair at tick 13.
+            {
+                test::Combo combo;
+                std::string error;
+                if (combo.load(0, 0, error)) {
+                    Fighter& f = *new Fighter();
+                    combo.bind(f);
+                    Driver d{f};
+                    d.press(input::Action::Down); d.release(input::Action::Down);
+                    d.press(input::Action::Down);           // back dash -> row 27
+                    check(f.state() == FighterState::Run, "back dash entered row 27");
+                    d.press(input::Action::Shoot);
+                    d.release(input::Action::Shoot);        // tap during the dash
+                    checkInt(407, f.shot_move_id(), "back-dash tap selects 407");
+                    int launches = 0, firstRow = -1, secondRow = -1;
+                    for (int i = 0; i < 25; ++i) {
+                        d.step();
+                        for (auto shot = f.take_pending_shot(); shot.armed;
+                             shot = f.take_pending_shot()) {
+                            if (launches == 0) firstRow = shot.bulletRow;
+                            else if (launches == 1) secondRow = shot.bulletRow;
+                            ++launches;
+                        }
+                    }
+                    checkInt(2, launches, "407 fires its two-request pair");
+                    checkInt(4, firstRow, "407's first request is row 4");
+                    checkInt(9, secondRow, "407's second request is row 9");
+                    delete &f;
+                }
+            }
+            // The air-dash fast shot (408) end-to-end: only Rena+0, only while the
+            // dash row still has phases left and a direction is held at the release;
+            // the body fires the ground row-0 request one tick early, at tick 12.
+            {
+                test::Combo combo;
+                std::string error;
+                if (combo.load(0, 0, error)) {
+                    Fighter& f = *new Fighter();
+                    combo.bind(f);
+                    Driver d{f};
+                    d.press(input::Action::Jump); d.release(input::Action::Jump);
+                    for (int i = 0; i < 12; ++i) d.step();
+                    check(f.state() == FighterState::Jump, "408 fixture is airborne");
+                    d.press(input::Action::Up); d.release(input::Action::Up);
+                    d.press(input::Action::Up);           // air dash -> row 30
+                    check(f.state() == FighterState::Run && f.air_dash_context(),
+                          "air dash entered row 30");
+                    d.st.down[input::Action::Shoot] = true; d.step();
+                    d.st.down[input::Action::Shoot] = false; d.step();  // held-direction release
+                    checkInt(408, f.shot_move_id(), "air-dash release with direction selects 408");
+                    int launches = 0, firstRow = -1;
+                    for (int i = 0; i < 25; ++i) {
+                        d.step();
+                        for (auto shot = f.take_pending_shot(); shot.armed;
+                             shot = f.take_pending_shot()) {
+                            if (launches == 0) firstRow = shot.bulletRow;
+                            ++launches;
+                        }
+                    }
+                    checkInt(1, launches, "408 fires the single row-0 request");
+                    checkInt(0, firstRow, "408's request is the ground row 0");
+                    delete &f;
+                }
             }
 
             // The walking shot fires exactly its program body (w0: one row-0/6

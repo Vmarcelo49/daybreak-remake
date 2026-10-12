@@ -419,13 +419,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
                 m_attackUsesActorFacing = backInputHeld(input);
                 if (!m_attackUsesActorFacing) m_facing = m_inputFacing;
             }
-            m_attackMoveId = next;
-            build_melee_swing(m_attackMoveId);
-            begin_melee_swing();
-            m_phaseIndex = 0;
-            m_moveElapsedTicks = 0;
-            m_animSetIdx = -1;
-            try_switch_animation();
+            switch_attack_row(next);
         }
     } else if (input && shot_jump_cancel_pressed(input)) {
         // Pilot cancel (Rena 0, handler 0x43ffc0): the bundle's slot7 TSV sampled
@@ -455,7 +449,8 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
                 if (rule.operation == MoveOp::Turn && rule.move == moveId &&
                     (rule.phase < 0 || rule.phase == m_phaseIndex) &&
                     rule.first <= m_moveElapsedTicks && m_moveElapsedTicks <= rule.last &&
-                    rule_gate_holds(rule)) {
+                    rule_gate_holds(rule, opponent ? glm::dot(opponent->position() - m_position,
+                                                   opponent->position() - m_position) : -1.f)) {
                     hasTurnRuleAtEntry = true;
                     break;
                 }
@@ -543,12 +538,23 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
                              is_alive();
         // An air dash hangs for its window (no fall until it expires).
         const bool dashHang = m_state == FighterState::Run && m_dashAir;
+        // A recovered attack body owns its fall while the value it published is
+        // live: the bodies' per-tick^2 gravity (FUN_0043ffc0's air field +58)
+        // replaces the locomotion rate, and 0 is a real hang (the chase's
+        // pre-phase-2 flight), not "unset". -1 keeps the locomotion fall for
+        // air rows with no recovered body — today's behavior.
+        const bool attackFall =
+            (m_state == FighterState::AttackA || m_shotMoveId >= 0) &&
+            move_program(m_moves) && m_attackGravity >= 0.f;
         if (wantFly) {
             m_vy = FighterConstants::kFlyRise;
             m_flyLeft -= step;
             m_stamina = std::max(0.0f, m_stamina - FighterConstants::kFlyDrainSec * step);
         } else if (!dashHang) {
-            m_vy -= FighterConstants::kGravity * step;
+            if (attackFall)
+                m_vy -= m_attackGravity * 4096.f * step;  // u/tick^2 -> u/s^2
+            else
+                m_vy -= FighterConstants::kGravity * step;
         }
         const float previousY = m_position.y;
         m_position.y += m_vy * step;
@@ -582,6 +588,34 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
             if (m_state == FighterState::Jump ||
                 (m_state == FighterState::Run && m_dashAir)) {
                 set_state(FighterState::Idle);
+            } else if (m_state == FighterState::AttackA) {
+                // The recovered attack bodies' landing branches: a LandExit rule
+                // matching the current row/phase/tick switches into the landing
+                // move (320 -> 329, 334 -> 333), a LandPhase rule ends the move in
+                // one of its own phases with speed and vertical zeroed (the hop's
+                // and 341's landing). The tick windows are the bodies' own frame
+                // compares (elapsed > landingAfter and the like).
+                const MoveProgram* program = move_program(m_moves);
+                if (program) {
+                    const int moveId = state_move_id();
+                    for (size_t i = 0; i < program->count; ++i) {
+                        const MoveRule& rule = program->rules[i];
+                        if (rule.move != moveId ||
+                            (rule.phase >= 0 && rule.phase != m_phaseIndex) ||
+                            m_moveElapsedTicks < rule.first || m_moveElapsedTicks > rule.last)
+                            continue;
+                        if (rule.operation == MoveOp::LandExit) {
+                            switch_attack_row(static_cast<int>(rule.value));
+                            break;
+                        }
+                        if (rule.operation == MoveOp::LandPhase) {
+                            m_moveSpeed = 0.f;
+                            m_vy = 0.f;
+                            enter_phase(static_cast<int>(rule.value));
+                            break;
+                        }
+                    }
+                }
             }
             m_dashAir = false;
         }
@@ -683,25 +717,36 @@ void Fighter::update_state_machine(const input::PlayerState* input,
         // weapon-specific families — 310/311 directional kicks, the dash-attack
         // rows, 320/332 air, the chains and 340/341 landing); other combos keep
         // the bounded #31/#66 candidates. NN.dat still supplies every row/clip.
+        // Admission resolves BEFORE any attack-entry mutation: FUN_00445ee0's
+        // declined branches take no action and execution continues to the later
+        // input checks, so a rejected press must not enter AttackA, bind a
+        // fallback clip, arm a swing or touch facing/aerial metadata.
         const bool aerial = !m_grounded;
-        set_aerial_attack(aerial);
-        const bool rena0 = m_moves && m_moves->character_index() == 0 && m_moves->weapon_id() == 1;
-        m_attackUsesActorFacing = rena0 && aerial && backInputHeld(input);
-        if (rena0 && aerial && !m_attackUsesActorFacing) m_facing = m_inputFacing;
-        m_attackMoveId = admit_attack_move(aerial, input);
-        build_melee_swing(m_attackMoveId);
-        set_state(FighterState::AttackA);
-        // For a combo whose complete NN/.X phase timeline can auto-complete,
-        // let FUN_00421100/FUN_004c57f0's period path end the move; contact-window
-        // duration must not preempt later callbacks such as Akane's 300 phase-2
-        // ribbon in FUN_00595460. Sets with a nonzero +0x20 gate still use the
-        // contact timer until their handler-specific phase transition is mapped.
-        const bool renaAirTimeline = rena0 && aerial &&
-            (m_attackMoveId == 320 || m_attackMoveId == 332);
-        m_stateTimer = renaAirTimeline || hasAutomaticMeleeTimeline(m_moves, m_weapon, m_model,
-                                                 m_attackMoveId)
-                           ? 0 : m_swing.total_ticks();
-        return;
+        const int admitted = admit_attack_move(aerial, input);
+        if (admitted >= 0) {
+            set_aerial_attack(aerial);
+            const bool rena0 =
+                m_moves && m_moves->character_index() == 0 && m_moves->weapon_id() == 1;
+            m_attackUsesActorFacing = rena0 && aerial && backInputHeld(input);
+            if (rena0 && aerial && !m_attackUsesActorFacing) m_facing = m_inputFacing;
+            m_attackMoveId = admitted;
+            build_melee_swing(m_attackMoveId);
+            set_state(FighterState::AttackA);
+            // For a combo whose complete NN/.X phase timeline can auto-complete,
+            // let FUN_00421100/FUN_004c57f0's period path end the move; contact-window
+            // duration must not preempt later callbacks such as Akane's 300 phase-2
+            // ribbon in FUN_00595460. Sets with a nonzero +0x20 gate still use the
+            // contact timer until their handler-specific phase transition is mapped.
+            const bool renaAirTimeline = rena0 && aerial &&
+                (admitted == 320 || admitted == 332);
+            m_stateTimer = renaAirTimeline ||
+                               hasAutomaticMeleeTimeline(m_moves, m_weapon, m_model, admitted)
+                               ? 0 : m_swing.total_ticks();
+            return;
+        }
+        // Declined: fall through so simultaneous inputs keep their dispatch
+        // order, exactly as FUN_00445ee0 evaluates jump/dash/etc. after the
+        // declined attack branches.
     }
 
     // Jump (Z): grounded leap; holding Z aloft flies against the fly budget
@@ -895,6 +940,14 @@ void Fighter::set_state(FighterState new_state) {
     m_holdTicks = 0;
     m_propActive = {false, false};
     m_actionCamera = 0;
+    // Fresh action: the attack-body fall/lean state starts clean (the original's
+    // +40/+58 persist only across row switches within one air action).
+    m_attackGravity = -1.f;
+    m_chaseStrength = 0;
+    m_clockSkip = 0;
+    m_bodyYaw = 0.f;
+    m_bodyPivot = 0.f;
+    m_contactDisabled = false;
     if (new_state != FighterState::ShootA && new_state != FighterState::ShootB &&
         new_state != FighterState::ShootC) m_shotMoveId = -1;
     // A state with no selector (Guard) leaves the running move alone: the source's
@@ -1240,6 +1293,9 @@ void Fighter::apply_knockback(const glm::vec3& dir, float speed) {
 bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollision* collision) {
     // Only the light/chain melee plays this path; the EX and shots go elsewhere.
     if (m_state != FighterState::AttackA) return false;
+    // The dive body cuts its volume past phase-1 frame 22 (keiichi_dive's
+    // disable_contact) — the posed record stays, the hit does not.
+    if (m_contactDisabled) return false;
     if (!melee_in_active()) return false;
     if (!target.is_alive()) return false;
 
@@ -1482,7 +1538,11 @@ void Fighter::advance_animation_phase() {
 
     const int set = move->phase_set_index(m_phaseIndex);
     if (set < 0 || static_cast<std::size_t>(set) >= m_model->anims.size()) return;
-    if (!m_holdAnimation) ++m_moveElapsedTicks;
+    // The weapon-2 spin's double-speed frames (advance_battle_attack300's extra
+    // ++frame through 16..28): the whole phase clock — the record cursor the
+    // rules read and the animation's own phase advancement — runs the extra ticks
+    // the ClockSkip rule published this update.
+    if (!m_holdAnimation) m_moveElapsedTicks += 1 + m_clockSkip;
     if (m_moves->animation_set_phase_gate(set) != 0) return;
 
     const float ticksPerSecond = m_model->ticksPerSecond;
@@ -1522,6 +1582,7 @@ void Fighter::enter_phase(int phase) {
 
 void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* input) {
     m_holdAnimation = false;
+    m_clockSkip = 0;
     // FUN_0043ffc0's prologue: slot0<-prop0, slot1<-prop1, then both props deactivated.
     // Hide and Active windows below re-state what this frame actually wants.
     m_propBound = {true, true};
@@ -1545,15 +1606,15 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             }
         }
     }
-    // FUN_0043ffc0:946-954 explicitly exits row320's gated approach phase;
-    // without that callback the contact fallback timer cuts off the actual slash.
-    if (m_moves && m_moves->character_index() == 0 && m_moves->weapon_id() == 1 &&
-        m_state == FighterState::AttackA && m_attackMoveId == 320 &&
-        m_phaseIndex == 1 && m_moveElapsedTicks > 10) {
-        const float distance2 = opponent ? glm::dot(opponent->position() - m_position, opponent->position() - m_position) : 0.f;
-        if (distance2 < 40000.f || m_moveElapsedTicks > 25) {
-            enter_phase(2);
-            return;
+    // FUN_0043ffc0:946-954 exits row 320's gated approach phase; that callback is
+    // now the chase body below (which carries the height term and the strength
+    // exit for the whole group, superseding the Rena+0-only special case).
+    if (m_state == FighterState::AttackA && program) {
+        const int moveId = state_move_id();
+        if (program->chase && moveId == 320) {
+            advance_rena_chase(*program->chase, opponent);
+        } else if (program->dive && (moveId == 332 || moveId == 334)) {
+            advance_rena_dive(*program->dive, opponent);
         }
     }
     if (motion && m_model && m_state == FighterState::Run && m_dashMoveId == 20) {
@@ -1606,7 +1667,7 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
         if (rule.move != state_move_id() || (rule.phase >= 0 && rule.phase != m_phaseIndex) ||
             m_moveElapsedTicks < rule.first || m_moveElapsedTicks > rule.last)
             continue;
-        if (!rule_gate_holds(rule)) continue;
+        if (!rule_gate_holds(rule, distanceSquared)) continue;
         switch (rule.operation) {
         case MoveOp::Speed:
             m_moveSpeed = opponent && rule.third > 0.f && distanceSquared < rule.third
@@ -1614,15 +1675,10 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             break;
         case MoveOp::Decelerate: m_moveSpeed = std::max(0.f, m_moveSpeed - rule.value); break;
         case MoveOp::Turn:
-            if (m_state == FighterState::AttackA && m_aerialAttack &&
-                m_attackUsesActorFacing) break;
+            // Contact-gated turn (second > 0); the Back-held actor-facing rule and
+            // the null-opponent case live in turn_toward.
             if (rule.second > 0.f && !m_chainContact) break;
-            if (opponent) {
-                const float target = std::atan2(offset.x, offset.z);
-                const float difference = std::remainder(target - m_facing, glm::two_pi<float>());
-                const float rate = glm::radians(rule.value);
-                m_facing += std::clamp(difference, -rate, rate);
-            }
+            turn_toward(opponent, rule.value);
             break;
         case MoveOp::Approach:
             if ((opponent && distanceSquared < rule.value) || m_moveElapsedTicks > rule.second) {
@@ -1683,6 +1739,47 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
         case MoveOp::ActionCamera:
             if (m_chainContact) m_actionCamera = static_cast<int>(rule.value);
             break;
+        // The attack bodies' vertical channel: value is the bodies' per-tick unit,
+        // converted once here (u/tick -> u/s), matching the horizontal channel's
+        // per-tick m_moveSpeed convention.
+        case MoveOp::Vertical:
+            // A nonzero impulse leaves the ground the way try_jump does: the
+            // vertical block only integrates while airborne, so arming the
+            // velocity without clearing the grounded flag would never lift.
+            m_vy = rule.value * 64.f;
+            if (rule.value != 0.f) m_grounded = false;
+            break;
+        case MoveOp::Gravity: m_attackGravity = rule.value; break;
+        case MoveOp::PhaseExit:
+            enter_phase(static_cast<int>(rule.value));
+            return;
+        case MoveOp::ContactExit:
+            // The dive family's rebound: only a connected hit inside the window
+            // switches the row (the original's in.contact branch).
+            if (m_chainContact) {
+                switch_attack_row(static_cast<int>(rule.value));
+                return;
+            }
+            break;
+        case MoveOp::JumpCancel:
+            // FUN_0043ffc0's 310 tail: a connected hit past the window with jump
+            // held leaves the kick into the air chain (next_state 40).
+            if (m_chainContact && input && input->down[input::Action::Jump]) {
+                try_jump();
+                return;
+            }
+            break;
+        case MoveOp::ClockSkip: m_clockSkip = static_cast<int>(rule.value); break;
+        case MoveOp::Gauge:
+            // The dash-recovery refill: gauge thousandths per tick, clamped by
+            // set_hyper_gauge's 0..1 range (the original's min(1000, +40)).
+            set_hyper_gauge(m_gauge + rule.value / 1000.f);
+            break;
+        // LandExit/LandPhase never act inside the loop: the landing branch in
+        // update() consults them when the ground is actually reached.
+        case MoveOp::LandExit:
+        case MoveOp::LandPhase:
+            break;
         }
     }
 }
@@ -1715,7 +1812,7 @@ float Fighter::capture_target_pitch(float lowDegrees, float highDegrees,
     return static_cast<float>(pitch);
 }
 
-bool Fighter::rule_gate_holds(const MoveRule& rule) const {
+bool Fighter::rule_gate_holds(const MoveRule& rule, float distanceSquared) const {
     if (rule.gate == kGateNone) return true;
     // The AI direction (+0x278): three exclusive sign tests, so a rule states the branch
     // the body took rather than encoding it in a value.
@@ -1743,6 +1840,14 @@ bool Fighter::rule_gate_holds(const MoveRule& rule) const {
     if ((rule.gate & kGateCounterEquals) != 0 && m_moveCounter != rule.gateValue)
         return false;
     if ((rule.gate & kGateCounterAbove) != 0 && !(m_moveCounter > rule.gateValue2))
+        return false;
+    // Squared-distance gates: -1 (no opponent context) fails both, so a gated
+    // rule simply never fires without a target rather than guessing.
+    if ((rule.gate & kGateNear) != 0 &&
+        !(distanceSquared >= 0.f && distanceSquared < static_cast<float>(rule.gateValue)))
+        return false;
+    if ((rule.gate & kGateFar) != 0 &&
+        !(distanceSquared >= 0.f && distanceSquared >= static_cast<float>(rule.gateValue)))
         return false;
     return true;
 }
@@ -2026,6 +2131,181 @@ void Fighter::build_melee_swing(int moveId) {
     // The swing is armed here and nowhere else, so this is the attack event's own edge
     // (FUN_0043ffc0's swing entry); the frame report drains it (issue #16).
     m_swingStartedPending = true;
+}
+
+void Fighter::switch_attack_row(int moveId) {
+    // FUN_00421080's row switch: a fresh phase cursor and clip, a fresh swing with
+    // per-victim accounting, and the contact volume re-armed. The air fields
+    // (m_attackGravity — the original's +58) carry across the switch, matching the
+    // persistent scratch the original reads in the landing bodies; the lean pair
+    // clears because every recovered transition that switches rows zeroes the pitch.
+    m_attackMoveId = moveId;
+    build_melee_swing(m_attackMoveId);
+    begin_melee_swing();
+    m_phaseIndex = 0;
+    m_moveElapsedTicks = 0;
+    m_animSetIdx = -1;
+    m_contactDisabled = false;
+    m_bodyYaw = 0.f;
+    m_bodyPivot = 0.f;
+    try_switch_animation();
+}
+
+void Fighter::turn_toward(const Fighter* opponent, float degrees) {
+    if (!opponent) return;
+    // The Back-held aerial attack keeps the actor's visible yaw (the same contract
+    // the Turn op enforces): the movement basis is not re-aimed at the target while
+    // that rule owns the fighter.
+    if (m_state == FighterState::AttackA && m_aerialAttack && m_attackUsesActorFacing)
+        return;
+    const glm::vec3 offset = opponent->position() - m_position;
+    const float target = std::atan2(offset.x, offset.z);
+    const float difference = std::remainder(target - m_facing, glm::two_pi<float>());
+    const float rate = glm::radians(degrees);
+    m_facing += std::clamp(difference, -rate, rate);
+}
+
+void Fighter::advance_rena_chase(const ChasePolicy& policy, Fighter* opponent) {
+    // FUN_0043ffc0/448220/438310 case 0x140 (chasing air melee, character 0) read
+    // through the Ginkiha reference: while strength holds the body steers its own
+    // flight angle toward the target bearing each tick (speed/vertical re-derived
+    // from the angle and the decaying strength), phase 1 hands to phase 2 near the
+    // target or past the timeout, then gravity runs and the landing exits into the
+    // 329 recovery (the LandExit rule carries that window). The original's trig
+    // table (FUN_0065d010, 0.1-degree steps) is replaced with exact trig — a
+    // labeled delta under the tick budget. The 180-degree entry snap is the port's
+    // attack-entry facing rule, not repeated here.
+    const glm::vec3 offset = opponent ? opponent->position() - m_position : glm::vec3(0.f);
+    const double distance2 = static_cast<double>(glm::dot(offset, offset));
+    const float height = offset.y;
+    const auto flightAngle = [&]() {
+        return glm::degrees(std::atan2(m_vy / 64.f, m_moveSpeed));
+    };
+    const bool first = m_phaseIndex == 0 && m_moveElapsedTicks == 0;
+    if (first) {
+        // air.vertical clamp and the strength latch at entry; zero gravity until
+        // the phase-2 window (the Gravity rules carry those).
+        m_vy = std::clamp(m_vy, policy.minimumVertical * 64.f, policy.maximumVertical * 64.f);
+        m_moveSpeed = policy.initialSpeed;
+        m_chaseStrength = distance2 < policy.initialDistance2 ? policy.initialStrength : 0;
+        m_bodyYaw = flightAngle() + policy.pitchBias;
+        m_bodyPivot = 70.f;
+    }
+    if (m_phaseIndex < 2 && m_chaseStrength > 0) {
+        const float targetAngle = glm::degrees(std::atan2(
+            static_cast<double>(height), std::sqrt(std::max(0.0, distance2)))) + 10.f;
+        float current = first ? targetAngle : flightAngle();
+        if (current > targetAngle) current = std::max(targetAngle, current - 5.f);
+        if (current < targetAngle) current = std::min(targetAngle, current + 5.f);
+        current = std::clamp(current, policy.minimumAngle, policy.maximumAngle);
+        const float magnitude = static_cast<float>(m_chaseStrength) * .1f;
+        m_moveSpeed = std::cos(glm::radians(current)) * magnitude;
+        m_vy = std::sin(glm::radians(current)) * magnitude * 64.f;
+        m_bodyYaw = flightAngle() + policy.pitchBias;
+        m_bodyPivot = 70.f;
+        turn_toward(opponent, policy.turnStep);
+        m_chaseStrength = std::max(policy.minimumStrength, m_chaseStrength - policy.strengthDecay);
+    }
+    if (m_phaseIndex == 1) {
+        // The phase-1 approach runs on top of the steering turn (chasing_air_melee
+        // applies both), then the exit: close enough, timed out, or out of strength.
+        turn_toward(opponent, 2.f);
+        if (m_moveElapsedTicks > policy.approachAfter &&
+            (distance2 + static_cast<double>(height) * height < policy.attackDistance2 ||
+             m_moveElapsedTicks > policy.approachTimeout || m_chaseStrength == 0)) {
+            enter_phase(2);
+            return;
+        }
+    }
+    if (m_phaseIndex == 2) {
+        // Weapon 2 skips frames 13..21 of the strike windup (frame_override applied
+        // to the action clock; the animation service's second channel is a recorded
+        // gap the port's single clock approximates). Pitch recovers 5 a tick past 25.
+        if (policy.skipAttackFrames && m_moveElapsedTicks == 13) m_moveElapsedTicks = 22;
+        if (m_moveElapsedTicks > 25) {
+            m_bodyYaw = m_bodyYaw > 0.f ? std::max(0.f, m_bodyYaw - 5.f)
+                                        : std::min(0.f, m_bodyYaw + 5.f);
+        }
+    }
+}
+
+void Fighter::advance_rena_dive(const DivePolicy& policy, Fighter* opponent) {
+    // FUN_0043ffc0 case 0x14c (keiichi_dive, character 0 — the same body serves
+    // weapons 0/1) and the 334 followup tail read through the Ginkiha reference.
+    // The dash transition's grounded exit to 333 and the completion exit ride the
+    // port's landing (LandExit rules) and period paths; this body owns the launch
+    // arc, the contact rebound and the pre-landing fall.
+    const glm::vec3 offset = opponent ? opponent->position() - m_position : glm::vec3(0.f);
+    if (state_move_id() == 334) {
+        // 334: rise until vertical < 6 u/tick hands to phase 1; the fall itself is
+        // the carried gravity (the contact exit set .35) through the vertical block;
+        // the landing exits into 333 through the LandExit rule.
+        if (m_phaseIndex == 0 && m_vy < 6.f * 64.f) {
+            enter_phase(1);
+            return;
+        }
+        return;
+    }
+    // 332 dive.
+    if (m_phaseIndex == 0) {
+        turn_toward(opponent, 5.f);
+        if (m_moveElapsedTicks == 0) {
+            m_moveSpeed = 0.f;
+            m_vy = 0.f;
+        }
+    }
+    if (m_phaseIndex == 1) {
+        // The signed-offset approach: one degree toward the battle basis while the
+        // movement offset sits under 90 (the original tests the signed offset, not
+        // its magnitude).
+        if (opponent) {
+            const float basis = std::atan2(offset.x, offset.z);
+            const float movementOffset =
+                glm::degrees(std::remainder(m_facing - basis, glm::two_pi<float>()));
+            if (movementOffset < 90.f) turn_toward(opponent, 1.f);
+        }
+        if (m_moveElapsedTicks == 0) {
+            // Launch: the dive angle is the target elevation clamped into [-20,-5]
+            // degrees; speed/vertical split along it; the lean is the flight angle
+            // plus ten, floored at zero.
+            const float elevation = glm::degrees(std::atan2(
+                static_cast<double>(offset.y),
+                static_cast<double>(std::hypot(offset.x, offset.z))));
+            const float angle = std::clamp(elevation, policy.minimumAngle, policy.maximumAngle);
+            m_moveSpeed = std::cos(glm::radians(angle)) * policy.launchSpeed;
+            m_vy = std::sin(glm::radians(angle)) * policy.launchSpeed * 64.f;
+            m_bodyYaw = std::min(
+                0.f, glm::degrees(std::atan2(m_vy / 64.f, m_moveSpeed)) + 10.f);
+            m_bodyPivot = 70.f;
+        }
+        if (m_chainContact) {
+            // Contact rebound into 334: pitch cleared, vertical 10 up, speed -7
+            // back, gravity .35 carried, contact cleared for the follow-up.
+            m_bodyYaw = 0.f;
+            m_vy = policy.contactVertical * 64.f;
+            m_moveSpeed = policy.contactSpeed;
+            m_attackGravity = policy.contactGravity;
+            m_chainContact = false;
+            switch_attack_row(policy.contactExitState);
+            return;
+        }
+        m_contactDisabled = m_moveElapsedTicks > policy.disableContactAfter;
+        if (m_moveElapsedTicks > policy.phaseExitFrame) {
+            m_moveSpeed = 10.f;
+            enter_phase(2);
+            return;
+        }
+    }
+    if (m_phaseIndex == 2 || (m_phaseIndex == 1 && m_moveElapsedTicks > policy.disableContactAfter)) {
+        // The fall: gravity .5 from the first fall tick (the Gravity rules carry
+        // the window), the pitch recovers 5 a tick in phase 2 only.
+        if (m_phaseIndex == 2) {
+            m_bodyYaw = m_bodyYaw > 0.f ? std::max(0.f, m_bodyYaw - 5.f)
+                                        : std::min(0.f, m_bodyYaw + 5.f);
+        }
+        if (m_attackGravity < 0.f) m_attackGravity = .5f;
+        m_moveSpeed = std::max(0.f, m_moveSpeed);
+    }
 }
 
 MeleeSwing Fighter::resolve_swing(int moveId) const {
@@ -2445,8 +2725,13 @@ glm::mat4 Fighter::modelMatrix() const {
     //     (tests/parity-baseline/captures/fighter-p1-rena.png);
     //   * the print the arena camera was fitted to (docs/reference/battle-hud.webp)
     //     shows the player's back with the eye behind her.
+    // The chase/dive lean sums into the same rotation the original's world update
+    // builds from its field sum (FUN_00420b30 rotates by heading+90+pivot+pitch,
+    // all one angle). The additive sense follows that sum; the sign against the
+    // original's render is part of the pending live visual gate, not a claim.
     return glm::translate(glm::mat4(1.0f), m_position) *
-           glm::rotate(glm::mat4(1.0f), m_facing + glm::pi<float>(),
+           glm::rotate(glm::mat4(1.0f),
+                       m_facing + glm::pi<float>() + glm::radians(m_bodyYaw + m_bodyPivot),
                        glm::vec3(0.0f, 1.0f, 0.0f));
 }
 

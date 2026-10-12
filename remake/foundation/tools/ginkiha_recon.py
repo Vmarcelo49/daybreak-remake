@@ -71,7 +71,10 @@ def body_index(path: Path) -> dict:
 def runtime_bindings(path: Path) -> tuple[dict, dict]:
     text = path.read_text()
     programs = {}
-    pattern = r"static constexpr MoveProgram (\w+) = \{(k\w+Rules), std::size\(\2\),\s*\{\{(-?\d+),(-?\d+)\},\{(-?\d+),(-?\d+)\},\{(-?\d+),(-?\d+)\}\}\};"
+    # The shot array ends the required part; the optional trailing members (the
+    # chase/dive policy pointers a recovered body attaches to a program) match
+    # without being pinned, so adding a body does not read as a syntax change.
+    pattern = r"static constexpr MoveProgram (\w+) = \{(k\w+Rules), std::size\(\2\),\s*\{\{(-?\d+),(-?\d+)\},\{(-?\d+),(-?\d+)\},\{(-?\d+),(-?\d+)\}\}(?:,[^;]*)?\};"
     for match in re.finditer(pattern, text):
         programs[match[1]] = {"rules": match[2], "shot": [int(v) for v in match.groups()[2:]]}
     declarations = re.findall(r"static constexpr MoveProgram (\w+) =", text)

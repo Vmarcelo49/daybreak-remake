@@ -666,6 +666,15 @@ public:
     int move_phase() const { return m_phaseIndex; }
     int phase_elapsed() const { return m_moveElapsedTicks; }
     int move_counter() const { return m_moveCounter; }
+    // The horizontal per-tick channel the movement rules/bodies drive (u/tick).
+    float move_speed() const { return m_moveSpeed; }
+    // The recovered attack-body state, for execution witnesses: the bodies' fall
+    // rate (u/tick^2, -1 = unowned), the chase lean pair and the dive's contact cut.
+    float attack_gravity() const { return m_attackGravity; }
+    float body_yaw() const { return m_bodyYaw; }
+    float body_pivot() const { return m_bodyPivot; }
+    int chase_strength() const { return m_chaseStrength; }
+    bool contact_disabled() const { return m_contactDisabled; }
     // The original's `byte(+0x845) != 0 && word(+0x848) != 0`, read by 514 of the 841
     // recovered shoot bodies and by every other action family. +0x845 is the Oyashiro
     // special armed byte (FUN_004220e0 sets it, FUN_0041f580:88-92 clears it when its
@@ -882,6 +891,22 @@ private:
     // FUN_0042da80's latched pitch (whole degrees) for the bodies that read it back
     // from scratch 0x3c instead of re-deriving the elevation.
     float         m_movePitch = 0.f;
+    // The attack bodies' own fall (original actor +40/+58): a per-move gravity in
+    // the bodies' u/tick^2, sticky within the move and carried across row switches
+    // the way the original's fields persist. -1 means no body owns the fall yet and
+    // the locomotion rate applies (today's behavior for unbound air rows).
+    float         m_attackGravity = -1.f;
+    // The chase/dive bodies' lean (original +0x64/+0x30): summed into the model's yaw
+    // rotation like the original's field sum (FUN_00420b30). Zero outside those rows.
+    float         m_bodyYaw = 0.f;
+    float         m_bodyPivot = 0.f;
+    // The state-320 chase strength (chasing_air_melee's air.strength): latched at
+    // entry from the target distance, decays through the arc.
+    int          m_chaseStrength = 0;
+    // Extra phase-clock ticks this update (weapon 2's double-speed spin frames).
+    int          m_clockSkip = 0;
+    // The dive body turns its contact volume off past phase-1 frame 22.
+    bool         m_contactDisabled = false;
     // The scene's per-tick publication of the firing-relevant world state.
     ShootingContext m_shooting;
     // Attachment slots 0/1. The executor re-binds slot0<-prop0, slot1<-prop1 and
@@ -1027,6 +1052,16 @@ private:
     // Fills m_swing from the move's first combat entry (or the legacy tuning
     // when there is no table, no move, or no combat entry).
     void build_melee_swing(int moveId);
+    // FUN_00421080's row switch shared by chains, landings and contact exits: fresh
+    // phase cursor/clip and per-row swing, with the air fields (gravity, lean)
+    // carried the way the original's +40/+58 persist across the switch.
+    void switch_attack_row(int moveId);
+    // The state-320 chase and 332/334 dive bodies (ChasePolicy/DivePolicy in
+    // move_behavior.h): feedback loops that re-derive speed/vertical from the live
+    // flight angle each tick, so they run as bodies rather than static rules.
+    void advance_rena_chase(const struct ChasePolicy& policy, Fighter* opponent);
+    void advance_rena_dive(const struct DivePolicy& policy, Fighter* opponent);
+    void turn_toward(const Fighter* opponent, float degrees);
     // A move counts when the table ships it with at least one phase (a costume
     // that drops the move must not resolve to a phaseless id).
     int present_move(int id) const;
@@ -1053,7 +1088,7 @@ private:
     // A rule's gate bits evaluated against current fighter state (kGatePowered,
     // the counter tests). Kept beside the executor so the gate vocabulary and the
     // state it reads cannot drift apart.
-    bool rule_gate_holds(const MoveRule& rule) const;
+    bool rule_gate_holds(const MoveRule& rule, float distanceSquared) const;
     float capture_target_pitch(float lowDegrees, float highDegrees,
                                float snapDegrees, const Fighter* opponent);
     void enter_phase(int phase);

@@ -86,10 +86,28 @@ enum MoveGate : unsigned {
     kGateDirLeft       = 1u << 9,
     kGateDirNeutral    = 1u << 10,
     kGateDirRight      = 1u << 11,
+    // Squared-distance gates for the dash-attack bodies that latch their behavior on
+    // how far the target was (Rena 331's strength latch at entry: distance2 < 810000).
+    // The caller supplies the live squared distance; -1 means "unknown" and fails both.
+    kGateNear          = 1u << 12,
+    kGateFar           = 1u << 13,
 };
 
 enum class MoveOp { Speed, Decelerate, Turn, Approach, Launch, Hold, ActionCamera, Hide,
-                    Active, Counter, CounterSet, CapturePitch, Voice };
+                    Active, Counter, CounterSet, CapturePitch, Voice,
+                    // The attack-state vertical/body mechanics the original melee bodies
+                    // own (FUN_0043ffc0/448220/438310 air fields +40/+58 and the exit
+                    // branches). Vertical/Gravity carry the bodies' per-tick units:
+                    // vertical is u/tick and gravity u/tick^2, converted at the op site.
+                    Vertical,    // set vertical velocity (value u/tick)
+                    Gravity,     // set the per-tick^2 fall rate for this move (sticky)
+                    LandExit,    // on landing: switch to the row in value
+                    LandPhase,   // on landing: enter_phase(value), zero speed/vertical
+                    ContactExit, // on melee contact within the window: switch to value
+                    JumpCancel,  // contact + held jump: leave into the jump state
+                    PhaseExit,   // unconditional enter_phase(value) inside the window
+                    ClockSkip,   // advance the phase clock value extra ticks this update
+                    Gauge };     // add value thousandths to the special gauge (recovery)
 enum class ShotVoiceMagazine { Primary, Secondary };
 enum class ShotVoiceCompare { Equal, Less };
 
@@ -224,6 +242,73 @@ inline constexpr MoveRule kRenaRules[] = {
     // 340: ticks 16..24 (0x44311b >0xf, 0x443127 <0x19), no phase guard.
     {340,-1,16,24,MoveOp::Active,0.f},
     {340,-1,16,24,MoveOp::Active,1.f},
+    // 310 back kick (directional melee, weapon 0/1 body): phase-0 approach 20,
+    // phase 1 approaches 15 and hands straight to phase 2 on its only tick,
+    // phase 2 decelerates 1 with the approach closed after frame 5. The
+    // jump-cancel window (frame > 12 on contact, FUN_0043ffc0 case 0x136) leaves
+    // into the jump. Effect 62 / voice 2 at frame 4 need the effect renderer and
+    // the melee voice latch — recorded pending, not guessed.
+    {310,0,0,0,MoveOp::Speed,30.f},
+    {310,0,0,9999,MoveOp::Turn,20.f},
+    {310,1,0,0,MoveOp::Turn,15.f},
+    {310,1,0,0,MoveOp::PhaseExit,2.f},
+    {310,2,0,9999,MoveOp::Decelerate,1.f},
+    {310,2,0,4,MoveOp::Turn,5.f},
+    {310,2,13,9999,MoveOp::JumpCancel,0.f,kGateContact},
+    // 311 side kick (weapon 0): entry speed 20 decaying .2 through phase 0,
+    // approach 10 until frame 20, full stop at frame 25.
+    {311,0,0,9999,MoveOp::Decelerate,.2f},
+    {311,0,0,0,MoveOp::Speed,20.f},
+    {311,0,0,19,MoveOp::Turn,10.f},
+    {311,-1,25,25,MoveOp::Speed,0.f},
+    // 320 chase: the body in fighter.cpp owns the arc (ChasePolicy); these rules
+    // carry its fall and landing windows — gravity only in phase 2 past tick 5,
+    // the landing hands to the 329 recovery past tick 10 (case 0x140's frame>5
+    // gravity and frame>10 && grounded exit).
+    {320,0,0,0,MoveOp::Gravity,0.f},
+    {320,2,6,9999,MoveOp::Gravity,.5f},
+    {320,2,11,9999,MoveOp::LandExit,329.f},
+    // 329/333 dash recovery (battle_dash_recovery, character 0): speed, vertical
+    // and gravity zero, and the special gauge refills 40/1000 per tick — the
+    // slowed rate (5) belongs to the hit-slow state the port does not carry yet.
+    // The entry rules carry a one-tick grace: the landing switch lands between a
+    // rule pass and the phase clock's increment, so the row's first full rule
+    // pass observes elapsed 1, not 0.
+    {329,-1,0,1,MoveOp::Speed,0.f},
+    {329,-1,0,1,MoveOp::Vertical,0.f},
+    {329,-1,0,1,MoveOp::Gravity,0.f},
+    {329,-1,0,9999,MoveOp::Gauge,40.f},
+    {333,-1,0,1,MoveOp::Speed,0.f},
+    {333,-1,0,1,MoveOp::Vertical,0.f},
+    {333,-1,0,1,MoveOp::Gravity,0.f},
+    {333,-1,0,9999,MoveOp::Gauge,40.f},
+    // 331 side dash attack (weapon 0): entry speed 17.5 — 20 when the dash began
+    // inside 810000 (the strength latch, held in the move counter), approach 20
+    // while latched through phase 1 and 10 through phase 2's first ten ticks.
+    // Phase 1 hands to phase 2 past frame 2 either inside 90000 or unlatched,
+    // then the approach bleeds .5 a tick.
+    {331,0,0,0,MoveOp::Speed,17.5f,20.f,810000.f},
+    {331,0,0,0,MoveOp::CounterSet,1.f,0.f,0.f,kGateNear,810000},
+    {331,0,0,0,MoveOp::CounterSet,0.f,0.f,0.f,kGateFar,810000},
+    {331,0,0,9999,MoveOp::Turn,20.f,kGateCounterEquals,1},
+    {331,2,0,9,MoveOp::Turn,10.f,kGateCounterEquals,1},
+    {331,1,3,9999,MoveOp::Approach,90000.f,2.f,2.f},
+    {331,1,3,9999,MoveOp::Approach,0.f,2.f,2.f,kGateCounterEquals,0},
+    {331,2,0,9999,MoveOp::Decelerate,.5f},
+    // 334 dash followup: the dive body in fighter.cpp owns the rebound; the
+    // landing exits into the 333 recovery (clear_vertical, gravity carried).
+    {334,0,0,9999,MoveOp::LandExit,333.f},
+    {334,1,0,9999,MoveOp::LandExit,333.f},
+    // 341 landing followup (weapon 0): approach 20 on contact through frame 5,
+    // the leap at phase 1's first tick (speed 10, vertical 18, gravity .75), and
+    // the landing ends in phase 3 with speed and vertical zeroed.
+    {341,0,0,4,MoveOp::Speed,15.f},
+    {341,0,0,4,MoveOp::Turn,20.f,kGateContact},
+    {341,1,0,0,MoveOp::Speed,10.f},
+    {341,1,0,0,MoveOp::Vertical,18.f},
+    {341,1,0,0,MoveOp::Gravity,.75f},
+    {341,1,0,9999,MoveOp::LandPhase,3.f},
+    {341,2,0,9999,MoveOp::LandPhase,3.f},
     // 400 ground tap: hide from tick 12 (0x444850 JLE on tick<=11), turn 20 deg
     // through tick 11 (FUN_0042db10), launch item row 0 at tick 12 (0x4448d6) normally
     // and row 6 powered (FUN_00434fd0 branch on byte 0x845/word 0x848). Slot-0
@@ -377,6 +462,82 @@ inline constexpr MoveRule kRenaRules[] = {
 // The first charge (2148-2185) advances its scratch by four BEFORE each request,
 // then adds rand%10-35 to it as a legacy yaw offset; pitch is literal zero.
 inline constexpr MoveRule kRena1Rules[] = {
+    // ---- melee execution (FUN_00448220, weapon 1) ----
+    // 300 ordinary: the weapon-1 body — speed 15/25 switches at 810000 (not the
+    // cleaver's 640000), approach 180 at entry then 20 a tick through phase 1,
+    // the phase-1 exit, and the phase-2 approach 5 while frame < 4 (the +f0
+    // ground-entry latch reads 1 for a grounded entry, development_animated_
+    // combat.hpp:917) with the 1.5 bleed.
+    {300,0,0,0,MoveOp::Speed,15.f,25.f,810000.f},
+    {300,0,0,0,MoveOp::Turn,180.f},
+    {300,0,1,9999,MoveOp::Turn,20.f},
+    {300,1,0,9999,MoveOp::Turn,20.f},
+    {300,1,0,9999,MoveOp::Approach,90000.f,10.f,2.f},
+    {300,2,0,3,MoveOp::Turn,5.f},
+    {300,2,0,9999,MoveOp::Decelerate,1.5f},
+    // 301 followup (weapon 1): speed 10 at entry, full stop and turn released at
+    // frame 8; approach 20 on contact through frame 8.
+    {301,0,0,0,MoveOp::Speed,10.f},
+    {301,-1,8,8,MoveOp::Speed,0.f},
+    {301,-1,0,7,MoveOp::Turn,20.f,kGateContact},
+    // 310 back kick: the weapon-0/1 body is shared (see kRenaRules 310).
+    {310,0,0,0,MoveOp::Speed,30.f},
+    {310,0,0,9999,MoveOp::Turn,20.f},
+    {310,1,0,0,MoveOp::Turn,15.f},
+    {310,1,0,0,MoveOp::PhaseExit,2.f},
+    {310,2,0,9999,MoveOp::Decelerate,1.f},
+    {310,2,0,4,MoveOp::Turn,5.f},
+    {310,2,13,9999,MoveOp::JumpCancel,0.f,kGateContact},
+    // 311 side kick (weapon 1): entry speed 20, approach 9 through frame 10,
+    // the 2-a-tick bleed after frame 17.
+    {311,-1,18,9999,MoveOp::Decelerate,2.f},
+    {311,0,0,0,MoveOp::Speed,20.f},
+    {311,-1,0,9,MoveOp::Turn,9.f},
+    // 320 chase: the fighter.cpp body with the weapon-0/1 policy; gravity past
+    // tick 5 of phase 2, landing into 329 past tick 10.
+    {320,0,0,0,MoveOp::Gravity,0.f},
+    {320,2,6,9999,MoveOp::Gravity,.5f},
+    {320,2,11,9999,MoveOp::LandExit,329.f},
+    // 329/333 dash recovery: zeroed motion, gauge refill 40/1000 a tick.
+    {329,-1,0,1,MoveOp::Speed,0.f},
+    {329,-1,0,1,MoveOp::Vertical,0.f},
+    {329,-1,0,1,MoveOp::Gravity,0.f},
+    {329,-1,0,9999,MoveOp::Gauge,40.f},
+    {333,-1,0,1,MoveOp::Speed,0.f},
+    {333,-1,0,1,MoveOp::Vertical,0.f},
+    {333,-1,0,1,MoveOp::Gravity,0.f},
+    {333,-1,0,9999,MoveOp::Gauge,40.f},
+    // 330 forward dash attack is the HOP (weapon 1): phase-0 bleed .5 with
+    // approach 5, the hop at phase 1's first tick — speed 15, vertical 15,
+    // gravity .75 — the phase-1 bleed, and the landing inside phases 1/2 ends
+    // in phase 3 (FUN_00448220 case 0x14a's hop branch).
+    {330,0,0,9999,MoveOp::Decelerate,.5f},
+    {330,0,0,9999,MoveOp::Turn,5.f},
+    {330,1,0,0,MoveOp::Speed,15.f},
+    {330,1,0,0,MoveOp::Vertical,15.f},
+    {330,1,0,0,MoveOp::Gravity,.75f},
+    {330,1,0,9999,MoveOp::Decelerate,.5f},
+    {330,1,0,9999,MoveOp::LandPhase,3.f},
+    {330,2,0,9999,MoveOp::LandPhase,3.f},
+    // 331 side dash attack (weapon 1): the strength latch reads 640000 (not the
+    // weapon-0 810000); the rest of the body is shared.
+    {331,0,0,0,MoveOp::Speed,17.5f,20.f,640000.f},
+    {331,0,0,0,MoveOp::CounterSet,1.f,0.f,0.f,kGateNear,640000},
+    {331,0,0,0,MoveOp::CounterSet,0.f,0.f,0.f,kGateFar,640000},
+    {331,0,0,9999,MoveOp::Turn,20.f,kGateCounterEquals,1},
+    {331,2,0,9,MoveOp::Turn,10.f,kGateCounterEquals,1},
+    {331,1,3,9999,MoveOp::Approach,90000.f,2.f,2.f},
+    {331,1,3,9999,MoveOp::Approach,0.f,2.f,2.f,kGateCounterEquals,0},
+    {331,2,0,9999,MoveOp::Decelerate,.5f},
+    // 334 dash followup: the dive body owns the rebound; landing exits to 333.
+    {334,0,0,9999,MoveOp::LandExit,333.f},
+    {334,1,0,9999,MoveOp::LandExit,333.f},
+    // 340 landing melee (weapon 1): speed 10 at entry, approach 6 through
+    // frame 8, stop at 15.
+    {340,0,0,0,MoveOp::Speed,10.f},
+    {340,0,0,7,MoveOp::Turn,6.f},
+    {340,0,15,15,MoveOp::Speed,0.f},
+    // ---- shooting (weapon 1) ----
     {400,-1,0,14,MoveOp::Turn,20.f},
     {400,0,0,9999,MoveOp::Decelerate,.5f},
     {400,-1,7,7,MoveOp::Speed,45.f},
@@ -419,6 +580,83 @@ inline constexpr MoveRule kRena1Rules[] = {
 // rand%180`). The ring's pitch is absolute and its yaw is the helper's legacy basis, so
 // the rules latch a ZERO pitch base and let the spread supply the whole pitch.
 inline constexpr MoveRule kRena2Rules[] = {
+    // ---- melee execution (FUN_00438310, weapon 2) ----
+    // 300 ordinary is the standing spin: no approach at speed — offset approach 3
+    // a tick through phase 0 (with the 180 snap at entry) — and the weapon-2
+    // motion body in phase 1: rush 45 at frame 0 bleeding 2 a tick, the clock
+    // running DOUBLE through frames 16..28 (advance_battle_attack300's extra
+    // ++frame, mapped to ClockSkip), approach 3 while frame < 19, stop at 35.
+    {300,0,0,0,MoveOp::Speed,0.f},
+    {300,0,0,0,MoveOp::Turn,180.f},
+    {300,0,0,9999,MoveOp::Turn,3.f},
+    {300,1,0,0,MoveOp::Speed,45.f},
+    {300,1,0,18,MoveOp::Turn,3.f},
+    {300,1,0,9999,MoveOp::Decelerate,2.f},
+    {300,1,16,28,MoveOp::ClockSkip,1.f},
+    {300,1,35,35,MoveOp::Speed,0.f},
+    // 310 back kick (weapon 2): the frame-driven body — speed 30 at entry
+    // bleeding 2 through frames 6..24, the −5 backward slide at frame 25, full
+    // stop at 47, approach 10 through frame 30.
+    {310,-1,0,0,MoveOp::Speed,30.f},
+    {310,-1,0,0,MoveOp::Turn,180.f},
+    {310,-1,6,24,MoveOp::Decelerate,2.f},
+    {310,-1,25,25,MoveOp::Speed,-5.f},
+    {310,-1,47,47,MoveOp::Speed,0.f},
+    {310,-1,0,29,MoveOp::Turn,10.f},
+    // 311 side kick (weapon 2): the guard test runs before the frame-0 clear in
+    // the original; the motion is speed 0 at entry, 20 at frame 27, 0 at 47.
+    {311,-1,0,0,MoveOp::Speed,0.f},
+    {311,-1,0,0,MoveOp::Turn,180.f},
+    {311,-1,27,27,MoveOp::Speed,20.f},
+    {311,-1,47,47,MoveOp::Speed,0.f},
+    // 320 chase (weapon 2): the fighter.cpp body with the fixed-strength policy
+    // (140, attack window 490000); gravity only past tick 50 of phase 2, the
+    // landing into 329 past tick 55.
+    {320,0,0,0,MoveOp::Gravity,0.f},
+    {320,2,51,9999,MoveOp::Gravity,.5f},
+    {320,2,56,9999,MoveOp::LandExit,329.f},
+    // 329/333 dash recovery: zeroed motion, gauge refill 40/1000 a tick.
+    {329,-1,0,1,MoveOp::Speed,0.f},
+    {329,-1,0,1,MoveOp::Vertical,0.f},
+    {329,-1,0,1,MoveOp::Gravity,0.f},
+    {329,-1,0,9999,MoveOp::Gauge,40.f},
+    {333,-1,0,1,MoveOp::Speed,0.f},
+    {333,-1,0,1,MoveOp::Vertical,0.f},
+    {333,-1,0,1,MoveOp::Gravity,0.f},
+    {333,-1,0,9999,MoveOp::Gauge,40.f},
+    // 330 forward dash attack (weapon 2): approach 3 through frame 28 with the
+    // 1.5 bleed, then the 40 rush at frame 28 bleeding 2.
+    {330,-1,0,27,MoveOp::Turn,3.f},
+    {330,-1,0,27,MoveOp::Decelerate,1.5f},
+    {330,-1,28,9999,MoveOp::Decelerate,2.f},
+    {330,-1,28,28,MoveOp::Speed,40.f},
+    // 331 side dash attack (weapon 2): no speed of its own (the dash's motion
+    // carries), the strength latch reads 810000, approach-preserving 10 through
+    // frame 20 while latched, the .75 bleeds outside frames 36..103, speed 10 at
+    // frame 35, approach 2 through the 26..109 strike window.
+    {331,0,0,0,MoveOp::CounterSet,1.f,0.f,0.f,kGateNear,810000},
+    {331,0,0,0,MoveOp::CounterSet,0.f,0.f,0.f,kGateFar,810000},
+    {331,-1,0,20,MoveOp::Turn,10.f,kGateCounterEquals,1},
+    {331,-1,0,35,MoveOp::Decelerate,.75f},
+    {331,-1,104,9999,MoveOp::Decelerate,.75f},
+    {331,-1,35,35,MoveOp::Speed,10.f},
+    {331,-1,26,109,MoveOp::Turn,2.f},
+    // 340 landing melee (weapon 2): the weapon-0 shape — speed 15, approach 18
+    // through frame 10, stop at 15.
+    {340,0,0,0,MoveOp::Speed,15.f},
+    {340,0,0,9,MoveOp::Turn,18.f},
+    {340,0,15,15,MoveOp::Speed,0.f},
+    // 341 landing followup (weapon 2): speed 10 through frame 5 (approach 20 on
+    // contact), the leap (10 up, gravity .75) at phase 1, landing ends phase 3
+    // and clears the gravity.
+    {341,0,0,4,MoveOp::Speed,10.f},
+    {341,0,0,4,MoveOp::Turn,20.f,kGateContact},
+    {341,1,0,0,MoveOp::Speed,10.f},
+    {341,1,0,0,MoveOp::Vertical,18.f},
+    {341,1,0,0,MoveOp::Gravity,.75f},
+    {341,1,0,9999,MoveOp::LandPhase,3.f},
+    {341,2,0,9999,MoveOp::LandPhase,3.f},
+    // ---- shooting (FUN_00438310, weapon 2) ----
     // FUN_00438310:1740-1760: horizontal bleed, then a phase-1 rush at tick25.
     {400,-1,0,19,MoveOp::Turn,10.f},
     {400,0,0,9999,MoveOp::Decelerate,2.5f},
@@ -469,7 +707,64 @@ struct MoveProgram {
     const MoveRule* rules = nullptr;
     size_t count = 0;
     int shot[3][2]{}; // tap/first/second charge; ground/air
+    // The state-320 chase and state-332 dive bodies are feedback loops (velocity
+    // re-derived from the live angle each tick), not static rules: the program
+    // points at the recovered per-weapon policy the body runs with. Null = the
+    // move has no recovered chase/dive for this combo.
+    const struct ChasePolicy* chase = nullptr;
+    const struct DivePolicy* dive = nullptr;
 };
+
+// State 320's recovered policy (chasing_air_melee for character 0). Speeds and
+// strengths are the original's per-tick units; distances are squared like the
+// bodies' compares. Sources: FUN_0043ffc0/448220/438310 case 0x140 read through
+// the Ginkiha reference; the handlers stay authoritative.
+struct ChasePolicy {
+    float initialSpeed = 12.5f, minimumVertical = -3.f, maximumVertical = 3.f;
+    float minimumAngle = -30.f, maximumAngle = 50.f, turnStep = 3.f, pitchBias = 20.f;
+    int initialStrength = 230, minimumStrength = 125, strengthDecay = 4;
+    double initialDistance2 = 1000000., attackDistance2 = 40000.;
+    int approachAfter = 10, approachTimeout = 25;
+    int gravityAfter = 5, landingAfter = 10;
+    int voiceFrame = 0;
+    bool skipAttackFrames = false;  // weapon 2 jumps frame 13 -> 22 in phase 2
+};
+
+constexpr ChasePolicy kRenaChaseW0W1{};
+constexpr ChasePolicy kRenaChaseW2{12.5f, -3.f, 3.f, -30.f, 50.f, 3.f, 20.f,
+                                   140, 140, 4, 1000000., 490000., 10, 25,
+                                   50, 55, 32, true};
+
+constexpr const ChasePolicy* rena_chase_policy(int weaponSlot) {
+    // chasing_air_melee_policy(0, weapon): only weapon 2 changes the profile
+    // (fixed strength 140, late gravity/landing, the frame skip, effect 63 for w1).
+    // Tables at namespace scope so the constexpr MoveProgram aggregates can hold
+    // pointers to them.
+    switch (weaponSlot) {
+        case 0:
+        case 1:  return &kRenaChaseW0W1;
+        case 2:  return &kRenaChaseW2;
+        default: return nullptr;
+    }
+}
+
+// State 332/334's recovered policy (keiichi_dive + dash followup for character 0;
+// the dive body is weapon-independent for this group). FUN_0043ffc0 case 0x14c and
+// the 334 tail, read through the Ginkiha reference.
+struct DivePolicy {
+    float launchSpeed = 25.f;      // character 5 uses 32.5; Rena is 25
+    float minimumAngle = -20.f, maximumAngle = -5.f;
+    float contactVertical = 10.f, contactSpeed = -7.f, contactGravity = .35f;
+    int contactExitState = 334;
+    int disableContactAfter = 22;  // phase 1: the hit volume turns off
+    int phaseExitFrame = 40;      // phase 1 -> 2 with speed 10
+};
+
+constexpr DivePolicy kRenaDive{};
+
+constexpr const DivePolicy* rena_dive_policy(int weaponSlot) {
+    return weaponSlot == 0 || weaponSlot == 1 ? &kRenaDive : nullptr;
+}
 
 // Ribbon binding/activation are prop-manager callbacks, not part of the
 // shot/voice MoveProgram. Akane's handler (FUN_00595460) binds prop0 to item2
@@ -2013,12 +2308,14 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     const auto* binding = locomotion(moves);
     if (!binding) return nullptr;
     static constexpr MoveProgram rena = {kRenaRules, std::size(kRenaRules),
-                                         {{400,402},{450,460},{360,370}}};
+                                         {{400,402},{450,460},{360,370}},
+                                         rena_chase_policy(0), rena_dive_policy(0)};
     // Mion 0's shot rows are recovered (kMionRules above); her second charge has no
     // shoot body in the bundle (no 360/370 for ch1), so it stays unbound (-1) and the
     // provisional magazine-scan path in fire_shot keeps serving it — today's behavior.
     static constexpr MoveProgram mion = {kMionRules, std::size(kMionRules),
                                          {{400,402},{450,460},{-1,-1}}};
+    if (binding->handler == 0x4582a0) return &mion;
     // Rika 1: same unbound second charge (no 360/370 body for ch4 in scope).
     static constexpr MoveProgram rika = {kRikaRules, std::size(kRikaRules),
                                          {{400,402},{450,460},{-1,-1}}};
@@ -2041,10 +2338,10 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     // Rena+2 ground tap/charge are recovered from FUN_00438310. Air landing
     // transitions and second-charge dispatch still need their own state bindings.
     static constexpr MoveProgram rena2 = {kRena2Rules, std::size(kRena2Rules),
-                                          {{400,-1},{450,-1},{-1,-1}}};
+                                          {{400,-1},{450,-1},{-1,-1}},
+                                          rena_chase_policy(2), nullptr};
     if (binding->handler == 0x438310) return &rena2;
     if (binding->handler == 0x43ffc0) return &rena;
-    if (binding->handler == 0x4582a0) return &mion;
     if (binding->handler == 0x492f70) return &rika;
     // Keiichi 0/1: taps and first charges bound; second charge stays provisional.
     static constexpr MoveProgram keiichi0 = {kKeiichi0Rules, std::size(kKeiichi0Rules),
@@ -2099,7 +2396,8 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     if (binding->handler == 0x4b4090) return &satoko1;
     if (binding->handler == 0x4a9c40) return &satoko;
     static constexpr MoveProgram rena1 = {kRena1Rules, std::size(kRena1Rules),
-                                          {{400,-1},{450,-1},{-1,-1}}};
+                                          {{400,-1},{450,-1},{-1,-1}},
+                                          rena_chase_policy(1), rena_dive_policy(1)};
     static constexpr MoveProgram natsumi0 = {kNatsumi0Rules, std::size(kNatsumi0Rules),
                                               {{400,-1},{-1,-1},{-1,-1}}};
     if (binding->handler == 0x448220) return &rena1;
