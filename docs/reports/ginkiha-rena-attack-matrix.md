@@ -132,17 +132,26 @@ phases/clips and the posed hit volumes (the port's `resolve_swing` already reads
 The shared movement slice has landed: attack-state movement (speed profiles,
 approach/turn, the vertical channel with per-move gravity, landing transitions,
 body-driven exits, the chase/dive feedback bodies) is implemented and
-input-driven-verified per weapon above. The audio layer landed with it: each row's
-melee voice cue (the ids ARE the voice vocabulary's indices — FUN_004223d0(1,10,0)
-= attackA, (0xd,10,0) = guarded, FUN_00422490(0x20,...) = specialA) and the SE cue
-(FUN_0042c8b0 positional / FUN_0042c880 non-positional) are produced on the body's
-own frame and dispatched on the voice/SE buses with the swing-voice fallback
-standing down for rows whose cue policy is recovered. Two recorded limits: the
-close-target voice cascade (0/15/5) still needs the pairing tracker, and the
-`(*actor+0xc)(id,x,y,z,yaw,pitch)` vtable cue (350's scatter beats, ids
-320/340/350) is NOT the SE path — its ids are absent from data/se and its consumer
-is unresolved, so only its RNG consumption is bound. The guard-hit exit 392 is
-implemented, and the live pose gate remains.
+input-driven-verified per weapon above. The audio/visual layer landed with it. Two
+distinct call paths were separated, and conflating them had been the earlier mistake:
+
+* **melee voice** — FUN_004223d0/FUN_00422490; the ids ARE the voice vocabulary's
+  indices (the original's 40-name table at 0x6b73b0), so FUN_004223d0(1,10,0) =
+  attackA, (0xd,10,0) = guarded, FUN_00422490(0x20,...) = specialA. Dispatched as a
+  `MeleeVoice` event, and a row whose cue policy is recovered stands the fallback
+  swing voice down. The close-target cascade (0/15/5) still needs the pairing tracker.
+* **SE** — FUN_0042c8b0 (positional) / FUN_0042c880: the argument is a
+  `data/se/%03d.wav` id played at the actor's own position (FUN_0064b060 →
+  FUN_0064ae70 → FUN_0065a260's 3D mixer). Dispatched on the SFX bus; the port's sink
+  is not spatial, so the 3D placement is a recorded gap.
+* **effect** — `(*actor+0xc)(id,x,y,z,heading,pitch)` is the actor-side effect request
+  (FUN_00421aa0 → FUN_00435990 → the effect manager's create with that pose). The id
+  indexes data/effect by `id / 10` (FUN_0042eba0's 100 slots), so the 350 beats'
+  320/340/350 resolve to 032/034/035.dat. The effect spawns at the actor's position;
+  the pose is carried on the frame but the port's card queue is position-only, so the
+  orientation is not applied yet.
+
+The guard-hit exit 392 is implemented, and the live pose gate remains.
 
 ## 3. Shooting admission and states (all three weapons)
 
@@ -257,9 +266,10 @@ Execution contracts (mobile/full-charge references, cross-checked with the handl
 5. **Visible weapon:** ~~Rena+1's model-2 prop~~ — landed 2026-10-12
    (`draws_item_model`, §4). Remaining: the actual model-2 mesh in a live frame is still
    a capture/live-parity question, and other combos' slot→model bindings are not audited.
-6. **Voices and SEs:** the melee voice cues and the FUN_0042c8b0/0042c880 SE cues are
-   produced and dispatched (swing fallback suppressed for recovered rows), pinned by
+6. **Voices, SEs and effects:** the melee voice cues, the FUN_0042c8b0/0042c880 SEs
+   and the actor effect requests are produced and consumed (the last at the actor's
+   position, ids resolving through data/effect's `id / 10`), pinned by
    `combat_audio_test` and `melee_admission_test`. Still open: the close-target voice
-   cascade (0/15/5, needs the pairing tracker), the SE's 3D placement (the port's sink
-   is not spatial), and the consumer of the `(*actor+0xc)` vtable cue.
+   cascade (0/15/5, needs the pairing tracker), the SE's 3D placement, and the effect
+   card's orientation from the request's heading/pitch.
 7. Then Mion+0/+1/+2 with the same matrix discipline.

@@ -76,6 +76,19 @@ is what fixes the split. The op/field/factory were renamed to `SoundEffect`, the
 dispatched on the SFX bus (positional placement recorded as unmatched), and the vtable
 cue's consumer stays open with only its RNG consumption bound.
 
+**2026-10-12 — the "vtable cue" identified, and the effect path wired:** the
+`(*actor+0xc)(id,x,y,z,heading,pitch)` call is the actor-side EFFECT request, not an
+unidentified hunk: FUN_00421aa0 converts the heading/pitch to a direction and forwards
+to FUN_00435990, which calls the effect manager's own create with (id, position,
+heading, pitch). Its id indexes data/effect by `id / 10` (FUN_0042eba0's 100 slots), so
+the 350 beats' 320/340/350 resolve to 032/034/035.dat — the earlier confusion came from
+checking those ids under data/se, where they legitimately do not exist. The model now
+keeps the two paths apart (`MoveOp::SoundEffect` for data/se ids, `MoveOp::Effect` for
+the effect request with its yaw/pitch), `melee_admission_test` drives a real boosted 350
+and sees effect 320 with its two rand%40-20 draws at frame 7 and SE 061 at frame 11, and
+the match spawns the effect card at the actor's position. One gap left on this path: the
+card queue is position-only, so the request's heading/pitch do not orient the card yet.
+
 **2026-10-12 — secondary clocks resolved, Rena+1's visible weapon fixed:** the two actor
 clocks (`+0xae04`/`+0xae08`) never diverge on a recovered attack path. Every confirmed
 seek writes BOTH together (w2 320's windup skip at FUN_00438310:952-954, w0 350's stall
