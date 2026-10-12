@@ -22,6 +22,15 @@ powered gate and per-move counters have migrated. Satoko 2's tap is the first ty
 program and Rika 1's charge was repaired with the counter model. Resume from the blocker
 plan's latest append-only checkpoint (entry 3.0).
 
+**2026-10-12 — correction: weapon 1's entry steps, and a selectable-but-unbound 332.**
+FUN_00448220 gives weapon 1 the same entry shape weapon 0 needed: 310's phase-0 180-degree
+snap (736-742), 311's tick-0 180 (795-802), and 400/401's second tick-0 step (15/5) on top
+of the shared 20 for ticks 0..14 (1681-1690, 1738-1746). All four are bound and pinned. An
+open finding, recorded: weapon 1's 332 is SELECTABLE (`rena_melee_admission` allows it for
+every weapon but 2 and her NN.dat ships the row) but kRena1Rules has no 332 rules, so it
+binds a clip with no body — its body is a multi-phase one with its own values, so it needs
+its own slice rather than a copy of weapon 0's.
+
 **2026-10-12 — correction: weapons 1 and 2's prop-latch spans.** The weapon-0 audit was
 only one handler; FUN_00448220 and FUN_00438310 carry the same
 `(tick < N) || (M < tick)` windows around FUN_00434b30/bd0, and NEITHER table had a
