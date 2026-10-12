@@ -154,17 +154,33 @@ distinct call paths were separated, and conflating them had been the earlier mis
   indices (the original's 40-name table at 0x6b73b0), so FUN_004223d0(1,10,0) =
   attackA, (0xd,10,0) = guarded, FUN_00422490(0x20,...) = specialA. Dispatched as a
   `MeleeVoice` event, and a row whose cue policy is recovered stands the fallback
-  swing voice down. **The close-target cascade (0/15/5) is fully specified but not yet
-  bindable:** the selection is `battle_melee_voice`'s — inside `dist^2 < 90000` (40000 in
-  the 320 body) and `|+0x19| < 30`, the FIRST set flag of `[+0xaec3, +0xaebe, +0xaeb9]`
-  wins, giving voice 0 / 15 / 5 at priority 12, otherwise the ordinary voice at priority
-  10 (`FUN_0043ffc0:601-627` has the same order; the Ginkiha donor takes the three flags
-  as INPUTS). What is missing is their producer: FUN_0042e110 computes them from the
-  attention/assist state (`+0x300`/`+0x304` slots and the actor cached at `+0x308`, plus
-  the per-slot device codes at `+0x7d8` and `FUN_004236c0`/`FUN_0042e950`), and the
-  current dump's nesting of that branch contains a contradictory inner condition
-  (`(A || B) && (!A && !B)`), so binding the flags from it would be a guess. It needs a
-  cleaner producer dump or a live trace of the three bytes.
+  swing voice down. **The close-target cascade (0/15/5) is bound.** The selection is
+  `battle_melee_voice`'s — inside `dist^2 < 90000` (40000 in the 320 body, 160000 in
+  weapon 2's 330) and `|+0x19| < 30`, the FIRST set flag of `[+0xaec3, +0xaebe,
+  +0xaeb9]` wins, giving voice 0 / 15 / 5 at priority 12, otherwise the ordinary voice
+  at priority 10 (`FUN_0043ffc0:601-627` and its twins; the Ginkiha donor takes the
+  three flags as INPUTS). The producer turned out to be decidable from state the port
+  already owns, so the earlier "needs a pairing tracker / cleaner dump" note was
+  withdrawn:
+    - attention actor = a valid combat lock (`+0x304`) else the aim selection
+      (`+0x300`, init 0 for everybody) — the two writers of `+0x308`;
+    - the target counts as engaged when it attends back or I hold a lock;
+    - the yaw test is its effort heading (`+0x5c` + `+0x64`) against mine, wrapped to
+      +-180 and compared at 90;
+    - `+0xaec3` needs a REACTION state (100..299, FUN_004236c0), and `can_act` refuses
+      attacks out of one — ADDATTACK is unreachable through an attack row;
+    - `+0xaeb9`/`+0xaebe` need the same test, the second adding an attack-or-shot
+      state (FUN_0042e950).
+  One consequence worth recording: the cascade always runs inside the attack row, so by
+  then the previous tick's state IS that row — BACKATTACK never outranks intercept at
+  any row this port binds, which makes intercept-vs-ordinary the reachable pair. The
+  dump's contradictory inner nesting is genuinely dead in both branches, so it is
+  reproduced as dead (the arms stay in the source's order for a row bound at its entry
+  tick).
+  Two terms stay unmodelled and are recorded at the producer: the per-slot device code
+  `+0x7d8` only ever disjuncts the unreachable arm, and the battle-offset yaw `+0x19`
+  the cascade's gate also reads is not carried by this port, so the gate is distance
+  alone. `melee_admission_test` drives a real 1v1 Match for both directions.
 * **SE** — FUN_0042c8b0 (positional) / FUN_0042c880: the argument is a
   `data/se/%03d.wav` id played at the actor's own position (FUN_0064b060 →
   FUN_0064ae70 → FUN_0065a260's 3D mixer). Dispatched on the SFX bus; the port's sink
@@ -403,19 +419,23 @@ witness is falsifiable — removing it makes the new assertion fail.
    and the actor effect requests are produced and consumed (the last at the actor's
    position, ids resolving through data/effect's `id / 10`), pinned by
    `combat_audio_test` and `melee_admission_test`. Still open: the close-target voice
-   cascade (0/15/5: selection pinned, producer needs a cleaner dump — see §2), the SE's
-   3D placement, and the effect
-   card's orientation from the request's heading/pitch.
+   cascade (0/15/5: BOUND — its two unreachable arms and two unmodelled producer terms
+   are recorded in §2), the SE's 3D placement, and the effect card's orientation from the
+   request's heading/pitch.
 7. Then Mion+0/+1/+2 with the same matrix discipline.
 
 ## 7. Group acceptance decision — reopened
 
 **Correction:** the acceptance statement below was premature and is superseded.
-The required cascade producers, boosted-admission gates and effect presentation are
-still incomplete. Recording those gaps does not satisfy the owner's requirement to
-finish Rena before Mion. Retain the existing Mion commits, but defer further expansion.
-Selection, execution and automated verification must be reported per tested path;
-there is no group-wide completion or live-parity claim.
+Recording gaps does not satisfy the owner's requirement to finish Rena before Mion, so
+the group stays open with Mion deferred. Since this section reopened, the two items it
+named as blocking are now BOUND with their limits recorded rather than treated as
+caveats: the boosted 350 admission's two-latch chord (FUN_00445ee0:117-118) and the
+close-target voice cascade's producer (§2), each with an input- or Match-driven
+witness. Effect PRESENTATION — the card's orientation from the request's pose — stays
+open, together with the two visual gates. Selection, execution and automated
+verification are still reported per tested path; there is no group-wide completion or
+live-parity claim.
 
 The Rena+2 320 seek was already implemented in `Fighter::advance_rena_chase` through
 `ChasePolicy::skipAttackFrames` before the later duplicate `ClockSeek` rule was added.
