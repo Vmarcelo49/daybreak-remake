@@ -25,10 +25,16 @@ no discrepancy is currently known for the rows below.
   NN record's `stateFlags & 0x100` during attacks and true for locomotion/air rows.
 * `gate(next)` = current row's cancel threshold ≤ candidate row's priority — the same
   comparison the port's 300→301→302 chain already uses (verified pinned behavior).
-* `boosted` = special-gauge active+ready chaining (contact-gated). **Admission still
-  deferred** for all weapons: the port's special-gauge `ready` semantics are not fully
-  modeled, so chains honor the 0x100 window only. The 350 BODY is now implemented for
-  weapons 0/1 (§2), so only the gate that selects it is missing. Recorded gap, not silent.
+* `boosted` = special-gauge active+ready chaining (contact-gated). **Landed
+  2026-10-12 for the reachable case:** `Fighter::admit_attack_move` ports
+  FUN_00445ee0:162-168 / FUN_0044d850:160-167 — grounded + the current row's
+  0x2ec8 threshold + the 0x100 window + an armed special state selects 350 for
+  weapons 0/1 ahead of the ordinary admission, and `melee_admission_test` drives it
+  through the real input path (armed press → 350, unarmed → 300). Two recorded
+  deltas: the branch's surrounding `+0x284`/`+0x288` input conditions are
+  unidentified and not modeled, and the port's `m_hyperActive` carries the armed
+  hyper states while the aim-lock-only arming (`+0x844` without a hyper state) is
+  not published to admission. Chains still honor the 0x100 window in general.
 * Weapon-specific families are facts, not assumptions: the admission table below is
   the recovered selector itself, so "absent for weapon 2" means the dispatcher never
   selects it — not a missing row.
@@ -89,8 +95,9 @@ air→320 for every weapon; chains w0 300→301→302, w1 stops at 301 (restarts
 never leaves 300 (127 checks, 0 failures). The shipped priorities/thresholds were
 probed: every gate from the locomotion rows passes, and the 0x100 windows open
 mid-move. Non-Rena combos keep their previous bounded candidates; nothing here
-generalizes Rena selectors to the roster. The `boosted` (special-gauge contact chain)
-branch remains a recorded gap. The rejection side is pinned through the real
+generalizes Rena selectors to the roster. The `boosted` (special-gauge) admission is
+implemented for weapons 0/1 and driven through the real input path (§1 conventions
+list its two recorded deltas). The rejection side is pinned through the real
 Fighter input path: a declined press (failed priority gate, missing destination
 row, declined air press, declined chain) preserves the previous action, its
 bound clip, its phase/tick timeline, the body yaw and the aerial metadata, and
@@ -125,9 +132,17 @@ phases/clips and the posed hit volumes (the port's `resolve_swing` already reads
 The shared movement slice has landed: attack-state movement (speed profiles,
 approach/turn, the vertical channel with per-move gravity, landing transitions,
 body-driven exits, the chase/dive feedback bodies) is implemented and
-input-driven-verified per weapon above. What remains per row is the audio/visual
-layer (melee voices 0-15 with the close-target variant cycling, effects 60-68),
-the guard-hit exit 392 through the attacker side, and the live pose gate.
+input-driven-verified per weapon above. The audio layer landed with it: each row's
+melee voice cue (the ids ARE the voice vocabulary's indices — FUN_004223d0(1,10,0)
+= attackA, (0xd,10,0) = guarded, FUN_00422490(0x20,...) = specialA) and the SE cue
+(FUN_0042c8b0 positional / FUN_0042c880 non-positional) are produced on the body's
+own frame and dispatched on the voice/SE buses with the swing-voice fallback
+standing down for rows whose cue policy is recovered. Two recorded limits: the
+close-target voice cascade (0/15/5) still needs the pairing tracker, and the
+`(*actor+0xc)(id,x,y,z,yaw,pitch)` vtable cue (350's scatter beats, ids
+320/340/350) is NOT the SE path — its ids are absent from data/se and its consumer
+is unresolved, so only its RNG consumption is bound. The guard-hit exit 392 is
+implemented, and the live pose gate remains.
 
 ## 3. Shooting admission and states (all three weapons)
 
@@ -242,7 +257,9 @@ Execution contracts (mobile/full-charge references, cross-checked with the handl
 5. **Visible weapon:** ~~Rena+1's model-2 prop~~ — landed 2026-10-12
    (`draws_item_model`, §4). Remaining: the actual model-2 mesh in a live frame is still
    a capture/live-parity question, and other combos' slot→model bindings are not audited.
-6. `boosted` (special-gauge) chain admission remains the gate for reaching W0/W1
-   350; its body is implemented. Melee voice/effect cues are produced and pinned
-   but the audio/effect CONSUMER mapping is not wired yet.
+6. **Voices and SEs:** the melee voice cues and the FUN_0042c8b0/0042c880 SE cues are
+   produced and dispatched (swing fallback suppressed for recovered rows), pinned by
+   `combat_audio_test` and `melee_admission_test`. Still open: the close-target voice
+   cascade (0/15/5, needs the pairing tracker), the SE's 3D placement (the port's sink
+   is not spatial), and the consumer of the `(*actor+0xc)` vtable cue.
 7. Then Mion+0/+1/+2 with the same matrix discipline.

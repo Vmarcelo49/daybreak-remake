@@ -56,8 +56,25 @@ three-phase 402 dive, weapon 2's clamp/seek 402 with its ten-request ring, the
 403/409/469 recoveries, the model-2 prop rebind for weapon 1's 450/460, the 350
 awakened-melee bodies for weapons 0/1 (including the frames-1..9 clock-replay window
 fix), 392's exit body, and the melee voice/effect producer latches. `melee_admission_test`
-is now 250 checks. Remaining, in order: the boosted admission gate for 350, the
-voice/effect CONSUMER mapping, and the live visual parity window.
+is now 253 checks. Remaining, in order: the live visual parity window (lean sign and
+the model-2 frame), the close-target voice cascade, and the consumer of the
+`(*actor+0xc)` vtable cue.
+
+**2026-10-12 — boosted admission and the voice/SE dispatch:** the special-gauge
+admission is implemented and input-driven-verified (armed press → 350, unarmed → 300);
+its two recorded deltas are the unidentified `+0x284`/`+0x288` input terms and the
+aim-lock-only arming. The audio layer now consumes the body cues: the melee voice ids
+ARE the voice vocabulary's indices (the original's 40-name table at 0x6b73b0), so a
+`MeleeVoice` event maps the id straight to a `VoiceEvent` with the FUN_00422490
+alternative, and a row whose cue policy is recovered suppresses the fallback swing
+voice. **Provenance correction:** `FUN_0042c8b0`/`FUN_0042c880` are not visual effects —
+they call `FUN_0064b060` → `FUN_0064ae70`, which indexes the manager's data/se table and
+plays the id through the 3D audio mixer at the actor's position. Every non-scatter id in
+the rules (60..77, 170..172) exists under `data/se/`, while the scatter ids (320/340/350,
+from the still-unidentified `(*actor+0xc)(id,x,y,z,yaw,pitch)` vtable call) do not — which
+is what fixes the split. The op/field/factory were renamed to `SoundEffect`, the SE is
+dispatched on the SFX bus (positional placement recorded as unmatched), and the vtable
+cue's consumer stays open with only its RNG consumption bound.
 
 **2026-10-12 — secondary clocks resolved, Rena+1's visible weapon fixed:** the two actor
 clocks (`+0xae04`/`+0xae08`) never diverge on a recovered attack path. Every confirmed
