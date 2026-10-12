@@ -417,6 +417,15 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(live_debug_test PRIVATE foundation_gameplay)
     add_test(NAME live_debug_test COMMAND live_debug_test)
 
+    # The recovered attack admission (Rena group): data-free synthetic tables
+    # pin the dispatcher's weapon-specific branches, plus install-backed real
+    # input sequences through the actual Fighter.
+    add_executable(melee_admission_test tests/melee_admission_test.cpp)
+    target_include_directories(melee_admission_test PRIVATE src)
+    target_link_libraries(melee_admission_test PRIVATE foundation_gameplay
+                          foundation_assets)
+    add_test(NAME melee_admission_test COMMAND melee_admission_test)
+
     add_executable(fighter_script_test tests/fighter_script_test.cpp)
     target_include_directories(fighter_script_test PRIVATE src)
     target_link_libraries(fighter_script_test PRIVATE foundation_gameplay)

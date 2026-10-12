@@ -47,6 +47,7 @@
 #include "assets/xmodel.h"          // xm::Model / xm::Controller (non-owning)
 #include "game/fighter_pose.h"      // game::IFighterPose / game::FighterPose
 #include "gameplay/character_moves.h"  // CharacterMoves (borrowed move table)
+#include "gameplay/melee_admission.h"   // recovered attack admission tables
 #include "gameplay/match_economy.h"    // the KO/Overkill credit rules (issue #11)
 #include "gameplay/projectile.h"
 #include "gameplay/simulation_rng.h"
@@ -937,6 +938,10 @@ private:
     // The tapped action owns this dash's committed travel. A later aerial attack
     // reads the direction held at its own press instead of reusing this value.
     input::Action m_dashInputDirection = input::Action::Up;
+    // Held directional axes sampled at input dispatch; the tap-shot admission's
+    // air-dash fast-shot branch reads them at the release edge.
+    int m_inputAxisX = 0;
+    int m_inputAxisZ = 0;
     float        m_dashSpeed = FighterConstants::kRunSpeed;
     bool         m_dashAir = false;     // current dash started airborne
     bool         m_airDashed = false;   // air dash spent (resets on landing)
@@ -1007,6 +1012,14 @@ private:
     // Other combos retain their prior aerial340 candidate; #66 owns selector recovery.
     // Every selected move resolves through the equipped combo's NN.dat.
     int resolve_attack_move(bool dashAttack, bool aerial) const;
+    // Recovered dispatcher admission (melee_admission.h): the Rena group's
+    // weapon-specific selector, fed by the numeric state and held axes. Other
+    // combos keep resolve_attack_move's bounded candidates (issue #66).
+    AttackAdmissionInput attack_input(bool aerial,
+                                       const input::PlayerState* input) const;
+    int admit_attack_move(bool aerial, const input::PlayerState* input) const;
+    int numeric_state() const;
+    int weapon_slot_index() const;
     // The resolved numbers for one move id: the move's first combat entry, or the
     // legacy tuning when there is no table, no move, or no combat entry. Shared by
     // build_melee_swing() (which binds it) and preview_melee_swing() (which does not).

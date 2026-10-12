@@ -4,6 +4,7 @@
 #include "gameplay/fighter.h"
 #include "gameplay/fixed_step.h"
 #include "gameplay/move_behavior.h"
+#include "gameplay/melee_admission.h"
 #include "gameplay/combat_volume.h"
 
 #include <algorithm>
@@ -100,6 +101,28 @@ bool backInputHeld(const input::PlayerState* input) {
     // The SDL stick uses positive Y for Down; analog Back must match the D-pad.
     return input && (input->down[input::Action::Down] ||
                      input->stick_y > input::kStickDeadzone);
+}
+
+// Held directional axes as the original's dispatcher reads them: the D-pad wins
+// over the stick, and SDL's positive-Y-down convention flips for the forward axis.
+int held_axis_x(const input::PlayerState* input) {
+    if (!input) return 0;
+    const int digital = (input->down[input::Action::Right] ? 1 : 0) -
+                        (input->down[input::Action::Left] ? 1 : 0);
+    if (digital) return digital;
+    if (input->stick_x > input::kStickDeadzone) return 1;
+    if (input->stick_x < -input::kStickDeadzone) return -1;
+    return 0;
+}
+
+int held_axis_z(const input::PlayerState* input) {
+    if (!input) return 0;
+    const int digital = (input->down[input::Action::Up] ? 1 : 0) -
+                        (input->down[input::Action::Down] ? 1 : 0);
+    if (digital) return digital;
+    if (input->stick_y < -input::kStickDeadzone) return 1;
+    if (input->stick_y > input::kStickDeadzone) return -1;
+    return 0;
 }
 
 struct AnimationBlendRule {
@@ -370,18 +393,33 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // A lost action window (hit, KO) breaks any charge hold in progress.
     if (!can_act()) m_chargeHeld = 0.0f;
     if (m_state == FighterState::AttackA && input &&
-        input->just_pressed[input::Action::AttackA] && move_program(m_moves)) {
-        const CharacterMove* from = m_moves->find(m_attackMoveId);
-        const CharacterMove* to = m_moves->find(m_attackMoveId + 1);
-        const MoveEntry* record = current_move_record();
-        // FUN_00445ee0: row 300->301->302 compares row priority and state bit 0x100.
-        if (from && to && m_attackMoveId >= 300 && m_attackMoveId < 302 && record &&
-            (record->stateFlags & 0x100) && from->cancelThreshold <= to->priority) {
+        input->just_pressed[input::Action::AttackA] &&
+        (attack_admission_recovered(m_moves ? m_moves->character_index() : -1) ||
+         move_program(m_moves))) {
+        // Chains admit through the same dispatcher as the first press: the
+        // original reads the CURRENT attack row, its phase and its 0x100 window
+        // (FUN_00445ee0), so every family in melee_admission.h — not just the
+        // 300->301->302 pair — can follow a contact-window press. Unrecovered
+        // combos keep the bounded pair below.
+        int next = -1;
+        if (m_moves && attack_admission_recovered(m_moves->character_index())) {
+            next = rena_melee_admission(attack_input(!m_grounded, input),
+                                         AttackAdmissionTable{m_moves});
+        } else {
+            const CharacterMove* from = m_moves->find(m_attackMoveId);
+            const CharacterMove* to = m_moves->find(m_attackMoveId + 1);
+            const MoveEntry* record = current_move_record();
+            // FUN_00445ee0: row 300->301->302 compares row priority and state bit 0x100.
+            if (from && to && m_attackMoveId >= 300 && m_attackMoveId < 302 && record &&
+                (record->stateFlags & 0x100) && from->cancelThreshold <= to->priority)
+                next = m_attackMoveId + 1;
+        }
+        if (next >= 0) {
             if (m_aerialAttack && m_moves->character_index() == 0 && m_moves->weapon_id() == 1) {
                 m_attackUsesActorFacing = backInputHeld(input);
                 if (!m_attackUsesActorFacing) m_facing = m_inputFacing;
             }
-            ++m_attackMoveId;
+            m_attackMoveId = next;
             build_melee_swing(m_attackMoveId);
             begin_melee_swing();
             m_phaseIndex = 0;
@@ -637,17 +675,20 @@ void Fighter::update_state_machine(const input::PlayerState* input,
     // and no heavy/strong bit anywhere (input.h). The swing that plays is chosen by the
     // fighter's situation at the press — grounded, mid-dash or airborne — and by the bound
     // move table's chain rows, never by a second key (issue #10).
+    m_inputAxisX = held_axis_x(input);
+    m_inputAxisZ = held_axis_z(input);
     if (input->just_pressed[input::Action::AttackA]) {
-        // Rena+0 live inspection distinguishes row320's slash from regular300,
-        // and row332's air-dash kick from ground-side311. NN.dat supplies the tags;
-        // the broader selector tree stays in #66. Back samples this attack edge.
-        const bool dashAttack = (m_state == FighterState::Run);
+        // Attack selection runs through the recovered dispatcher for the Rena
+        // group (melee_admission.h: FUN_00445ee0/44d850/43ded0 with their
+        // weapon-specific families — 310/311 directional kicks, the dash-attack
+        // rows, 320/332 air, the chains and 340/341 landing); other combos keep
+        // the bounded #31/#66 candidates. NN.dat still supplies every row/clip.
         const bool aerial = !m_grounded;
         set_aerial_attack(aerial);
         const bool rena0 = m_moves && m_moves->character_index() == 0 && m_moves->weapon_id() == 1;
         m_attackUsesActorFacing = rena0 && aerial && backInputHeld(input);
         if (rena0 && aerial && !m_attackUsesActorFacing) m_facing = m_inputFacing;
-        m_attackMoveId = resolve_attack_move(dashAttack, aerial);
+        m_attackMoveId = admit_attack_move(aerial, input);
         build_melee_swing(m_attackMoveId);
         set_state(FighterState::AttackA);
         // For a combo whose complete NN/.X phase timeline can auto-complete,
@@ -1282,6 +1323,52 @@ void Fighter::set_moves(const CharacterMoves* moves) {
     m_moveElapsedTicks = 0;
     m_animSetIdx = -1;
     try_switch_animation();
+}
+
+int Fighter::numeric_state() const {
+    // The numeric action row the original's dispatcher reads: attack rows during
+    // AttackA, the dash row during Run, the air-dash row 30 (scoped to Rena+0's
+    // binding) or the jump chain 40..42 airborne, and 10/0 for locomotion.
+    switch (m_state) {
+        case FighterState::AttackA: return m_attackMoveId;
+        case FighterState::Run:
+            if (!m_dashAir) return m_dashMoveId;
+            [[fallthrough]];
+        case FighterState::Jump:
+            return m_dashAir && m_dashMoveId > 0 ? m_dashMoveId : jump_chain_move();
+        case FighterState::Walk:    return 10;
+        default:                    return 0;
+    }
+}
+
+int Fighter::weapon_slot_index() const {
+    if (!m_moves || !m_weapon) return -1;
+    return weaponSlotForItem(m_moves->character_index(), m_weapon->id);
+}
+
+AttackAdmissionInput Fighter::attack_input(bool aerial,
+                                           const input::PlayerState* input) const {
+    AttackAdmissionInput in;
+    in.weaponSlot = weapon_slot_index();
+    in.state = numeric_state();
+    in.phase = m_phaseIndex;
+    in.grounded = !aerial;
+    in.x = held_axis_x(input);
+    in.z = held_axis_z(input);
+    // Locomotion and air rows are actionable; an attack row carries its own
+    // 0x100 window from the current NN record (the pinned chain evidence).
+    in.normalFlag = m_state == FighterState::AttackA
+        ? (current_move_record() && (current_move_record()->stateFlags & 0x100))
+        : true;
+    in.contact = m_chainContact ? 1u : 0u;
+    return in;
+}
+
+int Fighter::admit_attack_move(bool aerial, const input::PlayerState* input) const {
+    if (!m_moves || !attack_admission_recovered(m_moves->character_index()))
+        return resolve_attack_move(m_state == FighterState::Run, aerial);
+    return rena_melee_admission(attack_input(aerial, input),
+                                AttackAdmissionTable{m_moves});
 }
 
 int Fighter::resolve_attack_move(bool dashAttack, bool aerial) const {
@@ -2254,10 +2341,36 @@ void Fighter::fire_shot(ShotTier tier) {
     // A -1 row means that tier has no recovered program (Mion 0's second charge:
     // no 360/370 body exists for her) — it keeps the provisional path below, which is
     // today's behavior for every combo without an exact program.
-    const int programmed =
+    int programmed =
         (program && tier != ShotTier::Ex)
             ? program->shot[static_cast<size_t>(tier)][m_grounded ? 0 : 1]
             : -1;
+    // Recovered tap routing (Rena group, FUN_00445ee0's slot-7 branches): the
+    // situation at release selects the shot state — the walking/dash shots
+    // 401/405/406/407 for the weapons whose handlers request them, and the
+    // air-dash fast shot 408 — in place of the program's own 400/402 entry.
+    // Only a state the program can actually fire (its own entry or its rules)
+    // is selected, so no clip is ever bound without its launch body.
+    if (tier == ShotTier::Tap && program && m_moves && m_weapon &&
+        attack_admission_recovered(m_moves->character_index())) {
+        const int slot = weaponSlotForItem(m_moves->character_index(), m_weapon->id);
+        int admitted = -1;
+        if (m_grounded) {
+            admitted = rena_tap_shot_state(slot, numeric_state(), true);
+            if (admitted != 400 && !present_move(admitted)) admitted = 400;
+        } else if (rena_air_dash_fast_shot(
+                       slot, numeric_state(), m_phaseIndex,
+                       m_inputAxisX != 0 || m_inputAxisZ != 0) &&
+                   present_move(408)) {
+            admitted = 408;
+        }
+        if (admitted >= 0 && admitted != programmed) {
+            bool covered = false;
+            for (size_t i = 0; i < program->count; ++i)
+                if (program->rules[i].move == admitted) { covered = true; break; }
+            if (covered) programmed = admitted;
+        }
+    }
     if (programmed >= 0) {
         m_shotMoveId = programmed;
         m_pending.armed = false;
