@@ -1119,6 +1119,25 @@ int run() {
             f.update(&in, &foe, 1.0 / 64.0);
             checkInt(350, f.attack_move_id(), "an armed attack press admits the 350 melee");
 
+            // The 350 body's own presentation cues: an effect request at frame 7
+            // (id 320 -> data/effect/032.dat) carrying the two rand%40-20 angles, and the
+            // SE at frame 11 (FUN_0042c8b0(0x3d) -> data/se/061). The frame-7 beat runs
+            // twice because the body's stall replays body ticks 1..9.
+            in.down[input::Action::AttackA] = false;
+            bool sawEffect = false, sawSe = false;
+            for (int i = 0; i < 40 && !(sawEffect && sawSe); ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+                const auto effect = f.take_effect();
+                const auto sound = f.take_sound_effect();
+                if (effect.id == 320)
+                    sawEffect = effect.yaw >= -20.f && effect.yaw < 20.f &&
+                                effect.pitch >= -20.f && effect.pitch < 20.f;
+                if (sound.id == 61) sawSe = true;
+            }
+            check(sawEffect, "350's frame-7 beat requests effect 320 with its two draws");
+            check(sawSe, "350's frame-11 beat requests SE 61");
+
             Fixture plain(1, {}, {350});
             Fighter& p = plain.make();
             Fighter& pfoe = plain.make();

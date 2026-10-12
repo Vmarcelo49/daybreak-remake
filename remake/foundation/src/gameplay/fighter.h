@@ -628,19 +628,23 @@ public:
     // "attackA", FUN_004223d0(0xd,10,0) = "guarded", FUN_00422490(0x20,...) = "specialA").
     bool source_melee_voice_audited() const { return m_sourceMeleeVoiceAudited; }
 
-    // The melee voice cue (FUN_004223d0/FUN_00422490) and the gameplay SE cue
-    // (FUN_0042c8b0 positional / FUN_0042c880 non-positional), drained once per tick by
-    // the scene the same way the shot voice is. The melee alternative carries the
-    // FUN_00422490 choice (fixed, or the rand%100 pair the 32-family draws); the
-    // close-target cascade (voices 0/15/5) is documented at the op site as requiring the
-    // pairing tracker the port does not model. The SE `id` is a data/se/%03d.wav index;
-    // the yaw/pitch on a scatter cue belong to the still-unidentified actor vtable call
-    // whose two rand%40-20 draws the op consumes (the RNG consumption is part of the
-    // contract) — that call is NOT the SE path.
+    // The melee voice cue (FUN_004223d0/FUN_00422490), the gameplay SE cue
+    // (FUN_0042c8b0 positional / FUN_0042c880 non-positional) and the actor effect cue
+    // (`(*actor+0xc)` = FUN_00421aa0 -> FUN_00435990's manager create with a pose),
+    // drained once per tick by the scene the same way the shot voice is. The melee
+    // alternative carries the FUN_00422490 choice (fixed, or the rand%100 pair the
+    // 32-family draws); the close-target cascade (voices 0/15/5) is documented at the op
+    // site as requiring the pairing tracker the port does not model. The SE `id` is a
+    // data/se/%03d.wav index and the effect `id` a data/effect id (`id / 10` names the
+    // descriptor) — two different call paths, kept apart so neither consumer can read
+    // the other's ids.
     struct MeleeVoiceCue { int event = -1; int alternative = -1; };
     MeleeVoiceCue take_melee_voice() { auto cue = m_meleeVoice; m_meleeVoice = {}; return cue; }
-    struct SoundEffectCue { int id = -1; float yaw = 0.f; float pitch = 0.f; bool scatter = false; };
+    struct SoundEffectCue { int id = -1; };
     SoundEffectCue take_sound_effect() { auto cue = m_pendingSoundEffect; m_pendingSoundEffect = {}; return cue; }
+    // The pose the body passed: heading is added to the actor's own, pitch is absolute.
+    struct EffectCue { int id = -1; float yaw = 0.f; float pitch = 0.f; };
+    EffectCue take_effect() { auto cue = m_pendingEffect; m_pendingEffect = {}; return cue; }
 
     // The original's fighter-level special/charge gauge (int +0x834, 0..1000). The
     // bodies spell it `param_1[0x20d]` because the actor pointer is `int*`; the two
@@ -917,6 +921,7 @@ private:
     ShootingVoice m_shootingVoice;
     MeleeVoiceCue m_meleeVoice;
     SoundEffectCue     m_pendingSoundEffect;
+    EffectCue     m_pendingEffect;
     int           m_chargeGauge = 1000;
     bool m_sourceShotVoiceAudited = false;
     bool m_sourceMeleeVoiceAudited = false;

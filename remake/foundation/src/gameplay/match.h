@@ -108,15 +108,18 @@ struct MatchFrame {
     bool sourceMeleeVoiceAudited[kMatchFighterCount] = {false, false, false, false};
     int shotVoice[kMatchFighterCount] = {-1, -1, -1, -1};
     int shotVoiceAlternative[kMatchFighterCount] = {-1, -1, -1, -1};
-    // The melee voice cue (small event ids, FUN_004223d0/422490) and the effect cue
-    // (FUN_0042c8b0/2c880) — one per fighter per tick, -1 when silent. The scatter
-    // fields carry the 350 particle's two rand%40-20 draws (yaw/pitch jitter).
+    // The melee voice cue (FUN_004223d0/422490), the gameplay SE cue (FUN_0042c8b0/
+    // 2c880) and the actor effect request (`(*actor+0xc)` -> FUN_00421aa0 -> FUN_00435990)
+    // — one per fighter per tick, -1 when silent. The two id spaces are different calls
+    // and stay apart: soundEffectId is a data/se index while effectId is a data/effect
+    // id (`id / 10` names the descriptor), whose yaw/pitch carry the request's pose
+    // (including the 350 beats' two rand%40-20 draws).
     int meleeVoice[kMatchFighterCount] = {-1, -1, -1, -1};
     int meleeVoiceAlternative[kMatchFighterCount] = {-1, -1, -1, -1};
     int soundEffectId[kMatchFighterCount] = {-1, -1, -1, -1};
-    bool soundEffectScatter[kMatchFighterCount] = {};
-    float soundEffectYaw[kMatchFighterCount] = {};
-    float soundEffectPitch[kMatchFighterCount] = {};
+    int effectId[kMatchFighterCount] = {-1, -1, -1, -1};
+    float effectYaw[kMatchFighterCount] = {};
+    float effectPitch[kMatchFighterCount] = {};
     bool shotFired[kMatchFighterCount]    = {false, false, false, false};
     // Where that shot left the muzzle (issue #17): the effect layer spawns the muzzle
     // flash from the event's own position instead of re-deriving it from the pose.

@@ -123,12 +123,17 @@ enum class MoveOp { Speed, Decelerate, Turn, Approach, Launch, Hold, ActionCamer
                     // The action bodies' SE request (FUN_0042c8b0 positional /
                     // FUN_0042c880 non-positional): value is the `data/se/%03d.wav` id
                     // (FUN_0064b060 -> FUN_0064ae70 indexes the manager's data/se table
-                    // and FUN_0065a260 plays it at the actor position). `third > 0` marks
-                    // the cues taken from the unidentified
-                    // `(*actor + 0xc)(id, x, y, z, yaw, pitch)` vtable call (350's
-                    // scatter beats) whose two rand%40-20 draws are consumed here; that
-                    // call's own consumer is still unresolved and is NOT the SE path.
+                    // and FUN_0065a260 plays it at the actor position).
                     SoundEffect,
+                    // The actor's effect request, a DIFFERENT call from the SE above:
+                    // `(*actor + 0xc)(id, x, y, z, heading, pitch)` is the actor-side
+                    // FUN_00421aa0, which converts the angles to a direction and forwards
+                    // to FUN_00435990 -> the effect manager's create with that pose. The
+                    // id indexes data/effect by `id / 10` (FUN_0042eba0's 100 slots), so
+                    // 320/340/350 resolve to 032/034/035.dat; `third > 0` is the 350
+                    // beats' two rand%40-20 draws, which the op consumes in the body's
+                    // order.
+                    Effect,
                     // On landing: enter_phase(value) and seek the phase clock to `second`
                     // ticks (Rena+2's 402 late landing: phase 1, clock 25).
                     LandSeek,
@@ -258,12 +263,18 @@ constexpr MoveRule melee_voice_rule(int move, int phase, int first, int last, in
 // A gameplay SE request. `id` is the `data/se/%03d.wav` index the body passes to
 // FUN_0042c8b0/0042c880 — a SOUND id, not an entry in data/effect (the effect catalog
 // stops at id 40 while these bodies use 60..77 and 170..172, all present under data/se).
-// `scatter` marks the cues that came from the unidentified actor vtable call instead,
-// which does carry yaw/pitch.
-constexpr MoveRule sound_effect_rule(int move, int phase, int first, int last, int id,
-                                     bool scatter = false) {
-    MoveRule rule{move, phase, first, last, MoveOp::SoundEffect,
-                  static_cast<float>(id), 0.f, scatter ? 1.f : 0.f};
+constexpr MoveRule sound_effect_rule(int move, int phase, int first, int last, int id) {
+    MoveRule rule{move, phase, first, last, MoveOp::SoundEffect, static_cast<float>(id)};
+    return rule;
+}
+
+// The actor's effect request (a different call — see MoveOp::Effect). `jitter` states
+// whether the body draws the two rand%40-20 angles before the request, which is part of
+// the RNG contract and must stay off for a beat that passes fixed angles.
+constexpr MoveRule effect_rule(int move, int phase, int first, int last, int id,
+                               bool jitter = true) {
+    MoveRule rule{move, phase, first, last, MoveOp::Effect, static_cast<float>(id),
+                  0.f, jitter ? 1.f : 0.f};
     return rule;
 }
 
@@ -670,14 +681,14 @@ inline constexpr MoveRule kRenaRules[] = {
     sound_effect_rule(350,0,31,31,61),
     sound_effect_rule(350,0,35,35,61),
     sound_effect_rule(350,0,56,56,61),
-    sound_effect_rule(350,0,7,7,320,true),
-    sound_effect_rule(350,0,15,15,320,true),
-    sound_effect_rule(350,0,23,23,320,true),
-    sound_effect_rule(350,0,31,31,320,true),
-    sound_effect_rule(350,0,7,7,350,true),
-    sound_effect_rule(350,0,22,22,350,true),
-    sound_effect_rule(350,0,37,37,350,true),
-    sound_effect_rule(350,0,56,56,340,true),
+    effect_rule(350,0,7,7,320),
+    effect_rule(350,0,15,15,320),
+    effect_rule(350,0,23,23,320),
+    effect_rule(350,0,31,31,320),
+    effect_rule(350,0,7,7,350),
+    effect_rule(350,0,22,22,350),
+    effect_rule(350,0,37,37,350),
+    effect_rule(350,0,56,56,340,false),
     {350,0,1,1,MoveOp::Speed,10.f},
     {350,0,10,10,MoveOp::Speed,0.f},
     // The original's stall (FUN_0043ffc0:1455-1464): while 0 < tick < 10 the +0x3d

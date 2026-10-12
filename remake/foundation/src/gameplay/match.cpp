@@ -211,11 +211,12 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[kMatchFighterCount]
         out.meleeVoice[i] = meleeVoice.event;
         out.meleeVoiceAlternative[i] = meleeVoice.alternative;
         out.sourceMeleeVoiceAudited[i] = m_fighters[i].source_melee_voice_audited();
-        const auto effect = m_fighters[i].take_sound_effect();
-        out.soundEffectId[i] = effect.id;
-        out.soundEffectScatter[i] = effect.scatter;
-        out.soundEffectYaw[i] = effect.yaw;
-        out.soundEffectPitch[i] = effect.pitch;
+        const auto sound = m_fighters[i].take_sound_effect();
+        out.soundEffectId[i] = sound.id;
+        const auto effect = m_fighters[i].take_effect();
+        out.effectId[i] = effect.id;
+        out.effectYaw[i] = effect.yaw;
+        out.effectPitch[i] = effect.pitch;
         for (PendingShot shot = m_fighters[i].take_pending_shot(); shot.armed;
              shot = m_fighters[i].take_pending_shot()) {
             if (m_fighters[i].is_alive() &&

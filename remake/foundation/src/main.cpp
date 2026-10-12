@@ -3466,9 +3466,7 @@ static fnd::audio::CombatFrameView combatFrameView(const gameplay::MatchFrame& f
         view.melee_voice[i] = f.meleeVoice[i];
         view.melee_voice_alternative[i] = f.meleeVoiceAlternative[i];
         view.melee_voice_audited[i] = f.sourceMeleeVoiceAudited[i];
-        // Only the FUN_0042c8b0/0042c880 cues are SEs; the actor-vtable cues (the 350
-        // scatter beats) carry ids that are absent from data/se and stay unpublished.
-        view.sound_effect_id[i] = f.soundEffectScatter[i] ? -1 : f.soundEffectId[i];
+        view.sound_effect_id[i] = f.soundEffectId[i];
         view.shot_fired[i]    = f.shotFired[i];
         view.shot_voice[i] = f.shotVoice[i];
         view.shot_voice_alternative[i] = f.shotVoiceAlternative[i];
@@ -3944,6 +3942,15 @@ static bool tickMatch(App& app, double dt) {
     // models' own animation durations, recovered through FUN_0042eec0; nothing here is a
     // fixed 12 s.
     for (int i = 0; i < app.match.config().fighterCount && i < 4; ++i) {
+        // The action body's own effect request (`(*actor+0xc)` -> FUN_00421aa0 ->
+        // FUN_00435990's manager create): the id indexes data/effect by `id / 10` (the 350
+        // beats' 320/340/350 resolve to 032/034/035.dat) and the position is the actor's
+        // own (+0x14). The request's heading/pitch orient the card in the original; the
+        // port's card queue carries a position only, so the pose is recorded on the frame
+        // but not yet applied — a stated gap, not a silent drop.
+        if (f.effectId[i] >= 0 && !spawnEffect(app, app.matchFx, f.effectId[i],
+                                               app.match.fighter(i).position()))
+            ++app.fxBadEffect;
         // Muzzle flash: FUN_00633ca0 slots 0/1/5 are the three マズルフラッシュ models. The
         // original selects one by the fighter's per-slot fire-mode byte (+0x318) through
         // the attack-start methods 0x421fe0/0x4220e0/0x422160, not by the shot's tier —

@@ -192,6 +192,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_shootingVoice = {};
     m_meleeVoice = {};
     m_pendingSoundEffect = {};
+    m_pendingEffect = {};
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_moveCounter = 0;
@@ -248,6 +249,7 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_shootingVoice = {};
     m_meleeVoice = {};
     m_pendingSoundEffect = {};
+    m_pendingEffect = {};
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_moveCounter = 0;
@@ -319,6 +321,7 @@ void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     m_shootingVoice = {};
     m_meleeVoice = {};
     m_pendingSoundEffect = {};
+    m_pendingEffect = {};
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_moveElapsedTicks = 0;
@@ -1874,15 +1877,21 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             break;
         }
         case MoveOp::SoundEffect:
-            // The bodies' SE request (FUN_0042c8b0 at the actor's own position) or the
-            // still-unresolved actor-vtable cue. The scatter form draws its yaw and pitch
-            // jitter first — two rand%40-20 per emission (FUN_0043ffc0 case 0x15e
-            // @0x15e-0x16a) — so the draw consumption matches the body.
-            m_pendingSoundEffect = {static_cast<int>(rule.value), 0.f, 0.f, rule.third > 0.f};
+            // FUN_0042c8b0/0042c880's argument: a data/se/%03d.wav id played at the
+            // actor's own position.
+            m_pendingSoundEffect = {static_cast<int>(rule.value)};
+            break;
+        case MoveOp::Effect:
+            // The actor's effect request (`(*actor+0xc)` -> FUN_00421aa0 ->
+            // FUN_00435990): the id indexes data/effect by `id / 10`, and the heading and
+            // pitch are the request's own pose. The jittered beats draw yaw then pitch
+            // first — two rand%40-20 per emission (FUN_0043ffc0 case 0x15e @0x15e-0x16a)
+            // — so the draw consumption matches the body.
+            m_pendingEffect = {static_cast<int>(rule.value), 0.f, 0.f};
             if (rule.third > 0.f) {
-                m_pendingSoundEffect.yaw = static_cast<float>(
+                m_pendingEffect.yaw = static_cast<float>(
                     static_cast<int>(rng_source().modulo(40)) - 20);
-                m_pendingSoundEffect.pitch = static_cast<float>(
+                m_pendingEffect.pitch = static_cast<float>(
                     static_cast<int>(rng_source().modulo(40)) - 20);
             }
             break;
