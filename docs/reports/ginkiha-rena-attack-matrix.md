@@ -275,6 +275,21 @@ The same pass confirmed every span the port already carried (weapon 0's six, wea
 closed for the group. Unreachable rows stay unbound on purpose: weapon 2's 301/302 (its
 admission has no such branch) and weapon 1's 341 (weapon 0 only, per §1).
 
+The chase was the last armed span: `FUN_00434b30` arms `+0xfc` **and** the prop's ribbon
+latch together, and 320's contact half was already modeled through `ContactOff`
+(phases 0/1 all, phase 2 from frame 8), so its ribbon half was missing. The body's window
+is `tick < 8` inside phase 2 (`FUN_0043ffc0:985-990` and its `FUN_00448220` twin), now
+bound for weapons 0 and 1. Weapon 2's chase keeps its different 32..39 window parked: its
+phase placement has not been read, and guessing it could put the ribbon in the wrong phase.
+
+**Reading note that retracts an earlier "remaining" item:** the decompiler renders a call
+made inside a condition as a comma expression — `if (PH == 0 && (FUN_0042db10(0,3),
+tick == 0))` means the 3° turn runs on **every** phase-0 tick (it is evaluated before the
+`tick == 0` test) and only the *body* is tick-0-gated. So weapon 2's phase-0 `Turn 3` is
+correct as bound, and the same form explains weapon 1's phase-1 `Turn 15` (every phase-1
+tick, which lasts one tick because the exit follows it). The earlier note listing weapon
+2's `300` phase-0 width as a delta was wrong and is withdrawn.
+
 The turn pass then covered weapon 1's entry steps, which had the same shape as weapon
 0's before its own correction: 310 was missing its phase-0 180° snap (`FUN_00448220`
 736-742), 311 its tick-0 180° (795-802), and 400/401 their second tick-0 step (15° and
