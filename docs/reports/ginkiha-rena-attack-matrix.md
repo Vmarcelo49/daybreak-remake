@@ -192,7 +192,7 @@ Execution contracts (mobile/full-charge references, cross-checked with the handl
 |---|---|---|---|---|---|
 | 400 | row 0/6 @12, ±30 | rows 6 / 0+9 @18; **melee strike f8–18**; speed 45 @f7 | attachment @35 + 10-pellet ring (pitch rand%30+20, yaw 90−rand%180) | voices 27/30 (last round), 29 (w2) | bound (ledger §5) |
 | 401 | like 400 @12 | row 6 / 0 @18 (powered = single 0), strike f8–18, turn 20→f15, speed 30@f7→0@f15 | → 400 | w1 powered differs from 400 (one request, not two) | **landed**: admission + program rules for w0/w1; w1's powered single request bound; w0 verified to fire exactly one request; the melee-strike window f8–18 (w1) remains pending |
-| 402 | row 1/7 @13, ±30 | 3-phase dive ({12,1,35}, phase 1 HELD), phase2 f5 rows 6 / 0+9, dive arc (vertical −40, speed ≤10) | 2-phase, ph0 clock clamps at 17, landing <15 → 403 else ph1@25, f35 attachment + ring (pitch rand%50+30) | landing → 403/409 | **execution implemented + automated verification** for all three weapons (w0 grounded tick>0 → 403; w1 three-phase dive with the geometric closing speed; w2 early/late landing branch, clock clamp/seek and the ten-request ring) |
+| 402 | row 1/7 @13, ±30 | 3-phase dive ({12,1,35}, phase 1 HELD), phase2 f5 rows 6 / 0+9, dive arc (vertical −40, speed ≤10) | 2-phase, ph0 clock clamps at 17, landing <15 → 403 else ph1@25, f35 attachment + ring (pitch rand%50+30) | landing → 403/409 | **execution implemented + automated verification** for all three weapons, driven by REAL input (jump → airborne Shoot tap): w0 fires its one row-1 request at frame 13 with the ±30-clamped pitch; w1's phase 1 keeps the closing speed in [0,10] and fires row 6 at phase-2 frame 5; w2 fires one attachment row-0 at phase-1 frame 35 plus the ten-request ring on rows 1/3, each pitch in [30,80) and each draw its own. The landing exits to 403/409 are covered separately |
 | 403/409/469 | recovery: recharge +40 (+5 when status<1), cap 1000 | idem | idem | air-shot landings | **execution implemented + automated verification**: motion zeroed every tick (no guard), charge gauge +40 capped 1000; the 402/460/408 landings now actually reach 403/409/469 through the shot-state landing branch |
 | 405/406 | like 400 @12/13, movement −90/+90 | — | — | lateral dash shots | **landed**: admission + program rules mirroring 400; verified selecting 405/406 from the left/right dash states |
 | 407 | @13: rows 4 (yaw+75,pitch30) + 9 (yaw−75) normal; + 13/14 (±85, pitch20) powered | — | — | back dash shot, movement 180 | **execution implemented + automated verification**: the back-dash situation is now driven end-to-end (row-27 dash → tap → 407 → the row-4/row-9 pair at tick 13) |
@@ -246,7 +246,10 @@ Execution contracts (mobile/full-charge references, cross-checked with the handl
    press sequences (idle tap, walk attack, dash attacks per direction, air attack,
    air-dash attack, chains) asserting `attack_move_id()`, phase entry and clip binding.
 3. **Shot admission test:** walk/dash/idle/air-dash release situations assert the
-   selected shot state id and its fire rules.
+   selected shot state id and its fire rules. The AIR TAPS are additionally driven
+   through real input for all three weapons (fighter_script_test §47): the expected
+   item rows, firing frames and phases are asserted per weapon, including the w1
+   dive's closing-speed clamp and the w2 ring's pitch range and fan-out.
 4. Full `ctest` (read its own summary), Windows/web cross-builds, silent captures of
    the changed attack routes.
 5. Live visual parity stays a separate gate (D9): the matrix's status column never
