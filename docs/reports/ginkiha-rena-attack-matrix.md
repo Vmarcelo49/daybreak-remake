@@ -304,3 +304,25 @@ Execution contracts (mobile/full-charge references, cross-checked with the handl
    3D placement, and the effect
    card's orientation from the request's heading/pitch.
 7. Then Mion+0/+1/+2 with the same matrix discipline.
+
+## 7. Group acceptance decision (2026-10-12)
+
+The three required categories the review named are resolved for Rena+0/+1/+2: **clocks**
+(the two actor clocks never diverge on a recovered path, §4), **props** (the slot→item-model
+binding drives both the muzzle and the drawn mesh, §4) and **required effects** (the
+FUN_0042c8b0/0042c880 SEs and the `(*actor+0xc)` effect requests keep their own id spaces,
+are produced on the body's frames and consumed; the ids resolve through data/effect's
+`id / 10`). Every reachable exit (403/409/469 recoveries, 392 guard knockback, 329/333/334,
+the landing branches) is implemented and exercised. Selection, execution and automated
+verification therefore hold for the paths this matrix lists, with real-input witnesses for
+the admission, the air taps, the dive/ring, the ribbon windows, the boosted 350 and the
+guard exit.
+
+**Live parity is still held by no path**, and the four remaining items are recorded rather
+than waived: the two visual gates (lean sign render, model-2 frame) have no comparable
+reference in this environment (§ status vocabulary's exact limitation); the close-target
+voice cascade's selection is pinned but its producer needs a cleaner dump or a live trace;
+the SE's 3D placement has no port counterpart (the sink is not spatial); and the effect
+card's orientation from the request pose has no evidenced render convention. None of these
+is a selection/execution/automated-verification claim, and none is folded into the labels
+above. Progression to Mion proceeds on this basis, with the caveat recorded here.
