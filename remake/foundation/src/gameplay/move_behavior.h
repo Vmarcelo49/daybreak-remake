@@ -734,6 +734,10 @@ inline constexpr MoveRule kRena1Rules[] = {
     {300,0,1,9999,MoveOp::Turn,20.f},
     {300,1,0,9999,MoveOp::Turn,20.f},
     {300,1,0,9999,MoveOp::Approach,90000.f,10.f,2.f},
+    // FUN_00448220:670-673 — the spin's contact/ribbon span is phase-2 frames 3..10,
+    // the same shape weapon 0 carries.
+    {300,2,3,10,MoveOp::Active,0.f},
+    {300,2,3,10,MoveOp::Active,1.f},
     {300,2,0,3,MoveOp::Turn,5.f},
     {300,2,0,9999,MoveOp::Decelerate,1.5f},
     // 301 followup (weapon 1): speed 10 at entry, full stop and turn released at
@@ -806,6 +810,12 @@ inline constexpr MoveRule kRena1Rules[] = {
     {330,0,0,9999,MoveOp::Turn,5.f},
     {330,1,0,0,MoveOp::Speed,15.f},
     {330,1,0,0,MoveOp::Vertical,15.f},
+    // FUN_00448220:1077-1080 — the dash attack's span is phase 0 from frame 11 and
+    // all of phase 1.
+    {330,0,11,9999,MoveOp::Active,0.f},
+    {330,0,11,9999,MoveOp::Active,1.f},
+    {330,1,0,19,MoveOp::Active,0.f},
+    {330,1,0,19,MoveOp::Active,1.f},
     {330,1,0,0,MoveOp::Gravity,.75f},
     {330,1,0,9999,MoveOp::Decelerate,.5f},
     {330,1,0,9999,MoveOp::LandPhase,3.f},
@@ -1031,6 +1041,9 @@ inline constexpr MoveRule kRena2Rules[] = {
     {300,1,0,9999,MoveOp::Decelerate,2.f},
     {300,1,16,28,MoveOp::ClockSkip,1.f},
     {300,1,35,35,MoveOp::Speed,0.f},
+    // FUN_00438310:633-636 — the spin's span is phase-1 frames 25..34.
+    {300,1,25,34,MoveOp::Active,0.f},
+    {300,1,25,34,MoveOp::Active,1.f},
     // 310 back kick (weapon 2): the frame-driven body — speed 30 at entry
     // bleeding 2 through frames 6..24, the −5 backward slide at frame 25, full
     // stop at 47, approach 10 through frame 30.
@@ -1104,6 +1117,9 @@ inline constexpr MoveRule kRena2Rules[] = {
     {341,0,0,4,MoveOp::Turn,20.f,kGateContact},
     {341,1,0,0,MoveOp::Speed,10.f},
     {341,1,0,0,MoveOp::Vertical,18.f},
+    // FUN_00438310:1371-1374 — the follow-up's span is all of phase 1.
+    {341,1,0,19,MoveOp::Active,0.f},
+    {341,1,0,19,MoveOp::Active,1.f},
     {341,1,0,0,MoveOp::Gravity,.75f},
     {341,1,0,9999,MoveOp::LandPhase,3.f},
     {341,2,0,9999,MoveOp::LandPhase,3.f},

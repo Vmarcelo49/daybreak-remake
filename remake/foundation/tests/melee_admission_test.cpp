@@ -1221,6 +1221,24 @@ int run() {
               w2span331 && w2span331->last == 109 &&
               w2span340 && w2span340->last == 24,
               "w2 310/311/330/331/340 arm their props for their own frame spans");
+        // A second, brace-aware pass over every FUN_00434b30 site (the first pass
+        // missed the sites whose condition wraps across lines): weapon 1's 300 span is
+        // phase-2 3..10 and its 330 is phase 0 from 11 plus all of phase 1; weapon 2's
+        // 300 is phase-1 25..34 and its 341 is all of phase 1.
+        const gameplay::MoveRule* w1span300 = spanAt(p1, 300, 3);
+        const gameplay::MoveRule* w1span330a = spanAt(p1, 330, 11);
+        const gameplay::MoveRule* w1span330b = spanAt(p1, 330, 0);
+        const gameplay::MoveRule* w2span300 = spanAt(p2, 300, 25);
+        const gameplay::MoveRule* w2span341 = spanAt(p2, 341, 0);
+        check(w1span300 && w1span300->phase == 2 && w1span300->last == 10,
+              "w1 300 arms its props for phase-2 frames 3..10");
+        check(w1span330a && w1span330a->phase == 0 && w1span330a->last == 9999 &&
+              w1span330b && w1span330b->phase == 1 && w1span330b->last == 19,
+              "w1 330 arms phase 0 from frame 11 and all of phase 1");
+        check(w2span300 && w2span300->phase == 1 && w2span300->last == 34,
+              "w2 300 arms its props for phase-1 frames 25..34");
+        check(w2span341 && w2span341->phase == 1 && w2span341->last == 19,
+              "w2 341 arms its props for all of phase 1");
 
         // (3) Behavioural: 320's contact volume is cut from the entry tick, before
         // phase 2 arms it (the body calls FUN_00434bd0 in every non-armed tick).
