@@ -275,6 +275,15 @@ The same pass confirmed every span the port already carried (weapon 0's six, wea
 closed for the group. Unreachable rows stay unbound on purpose: weapon 2's 301/302 (its
 admission has no such branch) and weapon 1's 341 (weapon 0 only, per §1).
 
+**Weapon 2's chase was not a copy of weapons 0/1, and reading it in full corrected
+three things** (`FUN_00438310:952-992`): its phase-2 clock **jumps 13 → 22** on both
+counters, which the port did not model at all (so gravity .5 from 51 and the 329 landing
+from 56 — both already correct — arrived about nine ticks late); its approach turns
+**2°/tick while the clock is under 32**, a rule the table did not carry; and its
+contact/ribbon window is **frames 32..39**, not the 0..7 copied from w0/w1's `tick < 8` —
+that copy would have kept the chase's hit volume live through its windup instead of its
+strike. The strike cue (SE 62 + voice 1 at clock 32) was already right.
+
 The chase was the last armed span: `FUN_00434b30` arms `+0xfc` **and** the prop's ribbon
 latch together, and 320's contact half was already modeled through `ContactOff`
 (phases 0/1 all, phase 2 from frame 8), so its ribbon half was missing. The body's window
