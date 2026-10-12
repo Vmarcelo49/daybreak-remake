@@ -1025,6 +1025,14 @@ int run() {
             const glm::vec4 yAxis = got * glm::vec4(0.f, pivot + 1.f, 0.f, 1.f) - pivotWorld;
             check(std::abs(yAxis.y - std::cos(glm::radians(f.body_pitch()))) < 1e-3f,
                   "body pitch tilts the local Y axis (it is not a yaw term)");
+            // The rig faces -Z, so the face direction is M*(0,0,-1). With the pitch as a
+            // glm::rotate around +X its Y component is exactly sin(pitch) — the derivation
+            // for the SIGN (donor tilt point map == glm Rx), and zero under the old
+            // pitch-in-yaw fold, which is what makes this a regression guard rather than
+            // a preference.
+            const glm::vec3 face = glm::mat3(got) * glm::vec3(0.f, 0.f, -1.f);
+            checkFloat(std::sin(glm::radians(f.body_pitch())), face.y, 1e-3f,
+                       "the lean is a RotationX: the face rises by sin(pitch)");
         }
 
         // (5) The landing branch now covers shot rows too: an air tap that reaches
