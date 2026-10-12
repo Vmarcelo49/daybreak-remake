@@ -260,6 +260,20 @@ so the rows are unreachable; and both weapons' 320/350 families already model th
 contact span through `ContactOff` (weapon 1's 350 is exactly the corpus's 21..64), so
 reconciling their `Active` half needs the phase structure read first.
 
+The turn pass then covered weapon 1's entry steps, which had the same shape as weapon
+0's before its own correction: 310 was missing its phase-0 180° snap (`FUN_00448220`
+736-742), 311 its tick-0 180° (795-802), and 400/401 their second tick-0 step (15° and
+5°) on top of the shared 20° for ticks 0..14 (1681-1690, 1738-1746).
+
+**Open, recorded rather than bound:** weapon 1's **332** (the air-dash dive kick) is
+*selectable* — `rena_melee_admission` allows it for every weapon but 2, and weapon 1's
+NN.dat ships the row — yet `kRena1Rules` contains no 332 rules at all, so the state
+binds a clip with no movement, launch or transition. Its body is not small: phase 0
+turns 5°/tick and clears the motion, phase 1 turns 1°/tick and hands to 0x14d at tick
+0 with the 25× geometry, a 0x14e sub-state carries vertical 10 / speed −0.625 /
+gravity 0.35, and the fall-back path re-arms gravity 0.5 (`FUN_00448220` 1137-1229).
+It needs its own slice, not a copy of weapon 0's 332 — whose values differ.
+
 ## 4. Animation service facts (scoped for this group)
 
 * Two clocks exist, one per channel: `+0xae04` / `+0xae08` (`param_1[0x2b81]` /
