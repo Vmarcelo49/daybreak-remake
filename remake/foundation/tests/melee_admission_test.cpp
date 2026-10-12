@@ -1106,6 +1106,23 @@ int run() {
         const gameplay::MoveRule* w0hide408 = findRule(p0, 408, gameplay::MoveOp::Hide, -1, 14);
         check(w0hide408 != nullptr, "w0 408 unbinds its props from tick 14");
 
+        // The melee bodies' own entry snaps and contact/ribbon spans: 300/310/311 all
+        // snap 180 degrees at their entry (FUN_0043ffc0:590/762/829), 310's window is
+        // phase-2 ticks 5..7 (line 791) and 341's is phase-1 ticks 0..19 (line 1365).
+        const gameplay::MoveRule* w0snap310 = findRule(p0, 310, gameplay::MoveOp::Turn, 0, 0);
+        check(w0snap310 && w0snap310->value == 180.f,
+              "w0 310 snaps 180 degrees on entry before its 20-degree approach");
+        const gameplay::MoveRule* w0active310 = findRule(p0, 310, gameplay::MoveOp::Active, -1, 5);
+        check(w0active310 && w0active310->last == 7,
+              "w0 310's contact/ribbon span is phase-2 ticks 5..7");
+        const gameplay::MoveRule* w0snap311 = findRule(p0, 311, gameplay::MoveOp::Turn, -1, 0);
+        check(w0snap311 && w0snap311->value == 180.f &&
+              w0snap311->last == 0,
+              "w0 311 snaps 180 degrees at tick 0");
+        const gameplay::MoveRule* w0active341 = findRule(p0, 341, gameplay::MoveOp::Active, 1, 0);
+        check(w0active341 && w0active341->last == 19,
+              "w0 341's contact/ribbon span is phase-1 ticks 0..19");
+
         // (3) Behavioural: 320's contact volume is cut from the entry tick, before
         // phase 2 arms it (the body calls FUN_00434bd0 in every non-armed tick).
         {

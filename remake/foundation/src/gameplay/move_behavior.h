@@ -340,23 +340,27 @@ inline constexpr MoveRule kRenaRules[] = {
     // 340: ticks 16..24 (0x44311b >0xf, 0x443127 <0x19), no phase guard.
     {340,-1,16,24,MoveOp::Active,0.f},
     {340,-1,16,24,MoveOp::Active,1.f},
-    // 310 back kick (directional melee, weapon 0/1 body): phase-0 approach 20,
-    // phase 1 approaches 15 and hands straight to phase 2 on its only tick,
-    // phase 2 decelerates 1 with the approach closed after frame 5. The
+    // 310 back kick (directional melee, weapon 0/1 body): the entry snaps 180 and
+    // the phase-0 approach is 20, phase 1 approaches 15 and hands straight to
+    // phase 2 on its only tick, phase 2 decelerates 1 with the approach closed
+    // after frame 5. The body's contact/ribbon span is phase-2 frames 5..7 and the
     // jump-cancel window (frame > 12 on contact, FUN_0043ffc0 case 0x136) leaves
-    // into the jump. Effect 62 / voice 2 at frame 4 need the effect renderer and
-    // the melee voice latch — recorded pending, not guessed.
+    // into the jump; its effect 62 / voice 2 cues sit at frame 4 (cue block below).
     {310,0,0,0,MoveOp::Speed,30.f},
+    {310,0,0,0,MoveOp::Turn,180.f},
     {310,0,0,9999,MoveOp::Turn,20.f},
     {310,1,0,0,MoveOp::Turn,15.f},
     {310,1,0,0,MoveOp::PhaseExit,2.f},
     {310,2,0,9999,MoveOp::Decelerate,1.f},
     {310,2,0,4,MoveOp::Turn,5.f},
+    {310,-1,5,7,MoveOp::Active,0.f},
+    {310,-1,5,7,MoveOp::Active,1.f},
     {310,2,13,9999,MoveOp::JumpCancel,0.f,kGateContact},
     // 311 side kick (weapon 0): entry speed 20 decaying .2 through phase 0,
     // approach 10 until frame 20, full stop at frame 25.
     {311,0,0,9999,MoveOp::Decelerate,.2f},
     {311,0,0,0,MoveOp::Speed,20.f},
+    {311,-1,0,0,MoveOp::Turn,180.f},
     {311,0,0,19,MoveOp::Turn,10.f},
     {311,-1,25,25,MoveOp::Speed,0.f},
     // 320 chase: the body in fighter.cpp owns the arc (ChasePolicy); these rules
@@ -411,6 +415,8 @@ inline constexpr MoveRule kRenaRules[] = {
     {341,1,0,0,MoveOp::Speed,10.f},
     {341,1,0,0,MoveOp::Vertical,18.f},
     {341,1,0,0,MoveOp::Gravity,.75f},
+    {341,1,0,19,MoveOp::Active,0.f},
+    {341,1,0,19,MoveOp::Active,1.f},
     {341,1,0,9999,MoveOp::LandPhase,3.f},
     {341,2,0,9999,MoveOp::LandPhase,3.f},
     // 400 ground tap: hide from tick 12 (0x444850 JLE on tick<=11), turn 20 deg
