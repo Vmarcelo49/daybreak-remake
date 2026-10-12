@@ -4013,6 +4013,49 @@ void test_rena_air_taps() {
     }
 }
 
+// The weapon ribbon follows the prop's own Active windows: FUN_0042fff0 adds 5 per
+// accepted sample while the prop's +0x38 latch is set and decays 2 on every call where it
+// is not. FUN_0043ffc0's 300 arms it through phase-2 frames 3..10 (the executor re-derives
+// the latch each frame), so a real item's ribbon must grow there and nowhere else.
+void test_rena_ribbon_windows() {
+    section("48. Rena+0 weapon ribbon: the 300 Active window");
+    if (!g_testCombo.ready) return skip_case("Rena 0 combo");
+    Fighter fighter;
+    fighter.init(&g_testCombo.model, g_testCombo.controller(), glm::vec3(320.f, 40.f, -230.f), .4f);
+    g_testCombo.bind(fighter);
+    settle(fighter);
+    Fighter target;
+    target.init(nullptr, nullptr, fighter.position() + glm::vec3(900.f, 0.f, 0.f), 0.f);
+    g_testCombo.bind(target);
+    settle(target);
+    Input in;
+    in.set(fnd::input::Action::AttackA, true);
+    tick(fighter, in, &target);
+    check_int("ribbon fixture enters 300", 300, fighter.attack_move_id());
+    in.set(fnd::input::Action::AttackA, false);
+    check_int("the ribbon starts with no history", 0, fighter.trail(0).triangles());
+    int peak = 0;
+    bool grewInWindow = false, grewOutside = false;
+    for (int i = 0; i < 140; ++i) {
+        const int phase = fighter.move_phase();
+        const int elapsed = fighter.phase_elapsed();
+        const int before = fighter.trail(0).triangles();
+        tick(fighter, in, &target);
+        const int after = fighter.trail(0).triangles();
+        const bool inWindow = phase == 2 && elapsed >= 3 && elapsed <= 10;
+        if (after > before) {
+            if (inWindow) grewInWindow = true;
+            else grewOutside = true;
+        }
+        if (after > peak) peak = after;
+    }
+    check_bool("300's Active window (phase 2, frames 3..10) grows the ribbon", true,
+               grewInWindow);
+    check_bool("the ribbon never grows outside the armed window", true, !grewOutside);
+    check_bool("the ribbon reaches a nonzero length", true, peak >= 5);
+    check_int("the ribbon decays back to empty", 0, fighter.trail(0).triangles());
+}
+
 void test_akane2_world_origin_gap() {
     section("28. Akane 2 item-46 fixture deferred: world-origin shots");
     const auto install = findInstall(nullptr);
@@ -5750,6 +5793,7 @@ int main(int argc, char** argv) {
     test_rika0_twin_tick();
     test_rena_character_iteration();
     test_rena_air_taps();
+    test_rena_ribbon_windows();
     test_keiichi2_tap_sweep();
     test_satoko1_periodic_world_shot();
     test_simulation_rng_stream();
