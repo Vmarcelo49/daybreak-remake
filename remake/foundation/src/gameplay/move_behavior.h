@@ -757,6 +757,7 @@ inline constexpr MoveRule kRena1Rules[] = {
     melee_voice_rule(340,0,12,12,3),
     // 310 back kick: the weapon-0/1 body is shared (see kRenaRules 310).
     {310,0,0,0,MoveOp::Speed,30.f},
+    {310,0,0,0,MoveOp::Turn,180.f},
     {310,0,0,9999,MoveOp::Turn,20.f},
     {310,1,0,0,MoveOp::Turn,15.f},
     {310,1,0,0,MoveOp::PhaseExit,2.f},
@@ -769,6 +770,7 @@ inline constexpr MoveRule kRena1Rules[] = {
     // the 2-a-tick bleed after frame 17.
     {311,-1,18,9999,MoveOp::Decelerate,2.f},
     {311,0,0,0,MoveOp::Speed,20.f},
+    {311,-1,0,0,MoveOp::Turn,180.f},
     {311,-1,0,9,MoveOp::Turn,9.f},
     {311,-1,12,18,MoveOp::Active,0.f},
     {311,-1,12,18,MoveOp::Active,1.f},
@@ -823,6 +825,7 @@ inline constexpr MoveRule kRena1Rules[] = {
     {340,0,15,15,MoveOp::Speed,0.f},
     // ---- shooting (weapon 1) ----
     {400,-1,0,14,MoveOp::Turn,20.f},
+    {400,-1,0,0,MoveOp::Turn,15.f},
     {400,0,0,9999,MoveOp::Decelerate,.5f},
     {400,-1,7,7,MoveOp::Speed,45.f},
     voice_rule(400,-1,15,15,shot_voice(29)),
@@ -838,6 +841,7 @@ inline constexpr MoveRule kRena1Rules[] = {
     // attachment (the ground 400 fires rows 0 then 9) and the rush is 30, not
     // the ground tap's 45. The tick-15 voice is the same fixed 29.
     {401,-1,0,14,MoveOp::Turn,20.f},
+    {401,-1,0,0,MoveOp::Turn,5.f},
     {401,0,0,9999,MoveOp::Decelerate,.5f},
     {401,-1,7,7,MoveOp::Speed,30.f},
     voice_rule(401,-1,15,15,shot_voice(29)),

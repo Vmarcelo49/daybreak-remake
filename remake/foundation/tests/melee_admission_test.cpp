@@ -1144,6 +1144,43 @@ int run() {
               w1span310 && w1span310->last == 7 &&
               w1span311 && w1span311->last == 18,
               "w1 301/310/311 arm their props for 10..16 / 5..7 / 12..18");
+        // Weapon 1's own entry snaps and tick-0 steps (FUN_00448220:736-742, 795-802,
+        // 1681-1690, 1738-1746). Both 400 and 401 turn 20 for ticks 0..14 and add a
+        // second step at tick 0 — 15 and 5 respectively — which the single rule missed.
+        const auto turnAt = [](const gameplay::MoveProgram* program, int move, int phase,
+                               int first) -> const gameplay::MoveRule* {
+            if (!program) return nullptr;
+            for (size_t i = 0; i < program->count; ++i) {
+                const gameplay::MoveRule& r = program->rules[i];
+                if (r.move == move && r.operation == gameplay::MoveOp::Turn &&
+                    r.phase == phase && r.first == first)
+                    return &r;
+            }
+            return nullptr;
+        };
+        const gameplay::MoveRule* w1snap310 = turnAt(p1, 310, 0, 0);
+        const gameplay::MoveRule* w1snap311 = turnAt(p1, 311, -1, 0);
+        // Both tick-0 rules share first == 0 with the 0..14 rule, so pick by `last`.
+        const auto turnEndingAt = [](const gameplay::MoveProgram* program, int move,
+                                     int last) -> const gameplay::MoveRule* {
+            if (!program) return nullptr;
+            for (size_t i = 0; i < program->count; ++i) {
+                const gameplay::MoveRule& r = program->rules[i];
+                if (r.move == move && r.operation == gameplay::MoveOp::Turn &&
+                    r.phase == -1 && r.last == last)
+                    return &r;
+            }
+            return nullptr;
+        };
+        const gameplay::MoveRule* w1step400 = turnEndingAt(p1, 400, 0);
+        const gameplay::MoveRule* w1step401 = turnEndingAt(p1, 401, 0);
+        check(w1snap310 && w1snap310->value == 180.f,
+              "w1 310 snaps 180 degrees on its phase-0 entry");
+        check(w1snap311 && w1snap311->value == 180.f && w1snap311->last == 0,
+              "w1 311 snaps 180 degrees at its tick 0");
+        check(w1step400 && w1step400->value == 15.f && w1step400->last == 0 &&
+              w1step401 && w1step401->value == 5.f && w1step401->last == 0,
+              "w1 400/401 add their own tick-0 step (15 / 5)");
         const gameplay::MoveRule* w2span310 = spanAt(p2, 310, 24);
         const gameplay::MoveRule* w2span311 = spanAt(p2, 311, 32);
         const gameplay::MoveRule* w2span330 = spanAt(p2, 330, 28);
