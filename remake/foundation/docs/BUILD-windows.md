@@ -1,5 +1,61 @@
 # Windows cross-build (MinGW-w64) and Wine verification
 
+## Portable ZIP release
+
+```sh
+./remake/foundation/scripts/package_windows.sh
+```
+
+The ZIP is written under `remake/foundation/build/package/`. Extract its contents
+directly into the original game folder, beside `DaybreakDX.exe`, and double-click
+`DaybreakRemake.exe`. The ZIP includes SDL3, wgpu-native, both caption fonts and
+license notices, with no scripts or original game data. The port's distinct name
+avoids replacing an existing `daybreak.exe`.
+
+The Windows executable uses its own directory for automatic game discovery,
+independently of the working directory. Explicit `--install=` and
+`DAYBREAK_INSTALL` still override it. Missing required bundles or fonts identify
+the exact path, and interactive failures use a native error dialog. Settings use
+the Windows application-data directory when no XDG override is supplied. The
+release uses the Windows GUI subsystem, without an extra console window.
+
+### Package verification — 2026-10-09
+
+Wine 11.19 / RADV Vulkan, using a separately extracted package in a directory
+containing spaces and Japanese characters:
+
+- Direct executable startup from an unrelated working directory opened the title
+  without `--install=`: `RESULT: ok`.
+- The developer-only `windows_startup_smoke` target drove the real no-argument
+  `SDL_AppInit`/frame/quit path twice, including opening playback and settings
+  save/load/replace: both runs reported `errors=0`. It is not included in the ZIP.
+- A 12,000-frame scripted frontend capture completed rounds on stage04 and
+  stage06, returned through results/selection, and entered stage15: `RESULT: ok`.
+  The local fixture changed the first timer adjustment to select 60 s from the
+  corrected default of zero; the committed gate-script timing issue remains #63.
+- Missing Japanese fallback font and missing `daybreak04.dat` both returned
+  exit 1 with the exact missing filename. Headless checks suppressed the dialog.
+- PE import checks found only the two bundled DLLs and Windows system libraries;
+  the ZIP was checked for scripts and game-data files. Linux: 64/64 tests passed.
+
+This establishes package startup and captured rematches under Wine. Actual
+Windows hardware, physical controllers and a live Windows rematch still need
+the recipient's test. The older issue #57 fault below is historical evidence,
+not a result reproduced by these package checks.
+
+### Packaging commit checks — 2026-10-12
+
+Linux and Windows builds and the web cross-build passed. The ZIP packager's DLL
+and file-exclusion checks passed. The rebuilt `windows_startup_smoke` ran twice
+under Wine from a folder with spaces and Japanese characters, launched from an
+unrelated working directory: opening/title and settings save/reload completed
+with `errors=0`, exit 0. This smoke now passes only `--no-audio`; install and screen
+selection remain automatic. The focused bundle/font/settings tests passed 3/3;
+the full rebuilt Linux CTest suite passed 69/69 (205.52 s), with no failures or skips.
+A separate title capture reached `RESULT: ok`, but its PPM output could not be
+written to a Unicode path; Unicode screenshot export remains unverified.
+Actual Windows hardware and live rematch verification remain pending.
+
 ```sh
 cd remake/foundation
 ./build.sh deps      # once
@@ -81,7 +137,7 @@ VS, countdown, a live split-screen battle, a round decided on the time-up rule a
 the result screen. `RELEASE-CHECKLIST.md` §5.2 has the full transcript, the canvas
 captures and the honest ladder (compiled/launched/title/battle/played).
 
-What does not work yet: **round 2 of a rematch faults** — `wine: Unhandled page
+That older run found **a fault in round 2 of a rematch** — `wine: Unhandled page
 fault on read access to ... at address 00000001400B3810`, inside
 `gameplay::CharacterMoves::find(int) const` — while the identical Linux recipe
 completes `RESULT: ok` (issue #57). Before the `cnv.h` fix in issue #35 the run

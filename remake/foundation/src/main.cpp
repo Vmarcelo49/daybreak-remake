@@ -16,6 +16,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -1361,6 +1362,16 @@ static bool usesUserConfig(const Options& o) {
 // unreadable directory all land here as "keep the defaults" plus a printed reason.
 static void loadUserSettings(App& app) {
     app.settingsPath = settings::defaultConfigPath();
+#if defined(_WIN32)
+    // Explorer launches usually have no HOME/XDG variables. Use Windows user
+    // application data so a portable release never writes settings into the game.
+    if (!std::getenv("XDG_CONFIG_HOME")) {
+        if (char* directory = SDL_GetPrefPath("", "daybreak-decomp")) {
+            app.settingsPath = std::string(directory) + "settings.conf";
+            SDL_free(directory);
+        }
+    }
+#endif
     if (app.settingsPath.empty()) {
         std::printf("[settings] no $XDG_CONFIG_HOME or $HOME: running with defaults, "
                     "nothing will be written\n");
@@ -5122,6 +5133,38 @@ bool initScreens(App& app) {
             installSource = "DAYBREAK_INSTALL";
         }
     }
+#if defined(_WIN32)
+    const char* applicationDir = SDL_GetBasePath();
+    if (!applicationDir) {
+        app.error = "Cannot locate the application folder. Extract the release ZIP again.";
+        return false;
+    }
+    // ZIP releases are copied into the original install. The executable's own
+    // directory is stable even when a shortcut uses an unrelated working folder.
+    if (install.empty()) {
+        install = applicationDir;
+        installSource = "executable folder";
+    }
+    std::error_code fileError;
+    for (const char* font : {"gyrotrope-black.otf", "NotoSansCJKjp-Regular.otf"}) {
+        const std::string path = std::string(applicationDir) + "assets/fonts/" + font;
+        if (!std::filesystem::is_regular_file(std::filesystem::u8path(path), fileError)) {
+            app.error = "Required font missing: " + path +
+                        ". Extract all files from the release ZIP beside DaybreakRemake.exe.";
+            return false;
+        }
+    }
+    for (const char* bundle : {"daybreak00.dat", "daybreak02.dat", "daybreak04.dat",
+                               "daybreak05.dat", "daybreak06.dat", "daybreak07.dat"}) {
+        const std::string path = install + "/" + bundle;
+        if (!std::filesystem::is_regular_file(std::filesystem::u8path(path), fileError)) {
+            app.error = "Required game file missing: " + path +
+                        ". Copy the complete release into your Higurashi Daybreak game folder, "
+                        "beside DaybreakDX.exe and the original daybreakXX.dat files.";
+            return false;
+        }
+    }
+#endif
     if (!install.empty()) {
         // An explicit folder that is unusable is a mistake worth failing on: silently
         // falling through to the filesystem would report a missing asset several screens
@@ -6793,6 +6836,14 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 void SDL_AppQuit(void* appstate, SDL_AppResult result) {
     auto* app = static_cast<App*>(appstate);
     if (!app) return;
+#if defined(_WIN32)
+    if (result == SDL_APP_FAILURE && !app->opts.headless) {
+        const char* message = app->error.empty()
+            ? "The game stopped because an error occurred. Please report which character, weapon and stage were in use."
+            : app->error.c_str();
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Higurashi Daybreak port", message, app->window);
+    }
+#endif
     if (!app->opts.screen.empty())
         std::printf("menu-audio: confirm=%llu back=%llu cursor=%llu ready=%llu voices=%llu "
                     "bgm=%llu frames\n",

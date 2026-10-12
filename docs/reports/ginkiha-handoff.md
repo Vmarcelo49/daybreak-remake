@@ -72,13 +72,14 @@ Phases 2–5 are done; do not mark complete early.
   `.local-analysis/RELATORIO-combate-daybreak.md` — working notes (git-ignored).
 - `Higurashi-Daybreak/` — local game install (git-ignored). Tests need it; CI skips without it.
 
-## 3. Branch state (2026-10-09, suite 65/65 green)
+## 3. Branch state (historical baseline: 2026-10-09, suite 65/65 green)
 
 - Branch `ginkiha-help`, forked off `main` WITH the user's uncommitted Windows work
   (`remake/foundation/CMakeLists.txt` WIN32 hunks, `BUILD-windows.md`, package files, etc.).
-  **Never stage or commit those files.** Before every commit, `git status` + stage ONLY your
-  files; the CMakeLists Windows hunk must stay unstaged (use `git apply --cached` with an
-  extracted hunk if you touch that file — precedent exists in history).
+  The owner authorized committing that Windows packaging work on 2026-10-12; it is
+  now included in a separate packaging commit. The earlier instruction to leave those
+  hunks unstaged is retired. Inspect current `git status` and stage only task-owned
+  changes; do not keep treating already committed Windows code as pending work.
 - Push scope per AGENTS.md Git section; never commit: `research/recomp/`, game files,
   `*.full.json`, `remake/foundation/build/`, `third_party/`, `.local-analysis/`.
 

@@ -1,8 +1,8 @@
 #include "exe_strings.h"
 
-#include <cstdio>
 #include <cstring>
 
+#include "asset_source.h"
 #include "cnv.h"   // xm::sjisToUtf8
 
 namespace fnd::assets {
@@ -22,16 +22,10 @@ struct PeImage {
     uint32_t imageBase = 0;
 
     bool load(const std::string& path, std::string& error) {
-        std::FILE* file = std::fopen(path.c_str(), "rb");
-        if (!file) {
+        if (!assetSource().read(path, data)) {
             error = "cannot open " + path;
             return false;
         }
-        uint8_t buffer[65536];
-        size_t got = 0;
-        while ((got = std::fread(buffer, 1, sizeof(buffer), file)) > 0)
-            data.insert(data.end(), buffer, buffer + got);
-        std::fclose(file);
         return parse(error);
     }
 

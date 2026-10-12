@@ -198,9 +198,17 @@ add_executable(foundation_demo src/main.cpp)
 if(FOUNDATION_LIVE_DEBUG)
     target_compile_definitions(foundation_demo PRIVATE FOUNDATION_LIVE_DEBUG=1)
 endif()
+if(WIN32)
+    set_target_properties(foundation_demo PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
 # foundation_movie comes after foundation_ui on purpose: the opening scene lives in the UI
 # layer and calls into the player, and static libraries resolve in this order.
 target_link_libraries(foundation_demo PRIVATE foundation_render foundation_ui foundation_media foundation_game foundation_physics foundation_gameplay foundation_movie)
+if(WIN32)
+    add_executable(windows_startup_smoke EXCLUDE_FROM_ALL tests/windows_startup_smoke.cpp)
+    target_link_libraries(windows_startup_smoke PRIVATE foundation_render foundation_ui
+        foundation_media foundation_game foundation_physics foundation_gameplay foundation_movie)
+endif()
 
 set(CAPTION_CJK_FONT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/NotoSansCJKjp-Regular.otf")
 if(EMSCRIPTEN)
