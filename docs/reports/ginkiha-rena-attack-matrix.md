@@ -32,6 +32,28 @@ no discrepancy is currently known for the rows below.
   the recovered selector itself, so "absent for weapon 2" means the dispatcher never
   selects it — not a missing row.
 
+## Status vocabulary (claims discipline)
+
+Every path below states its status with four distinct labels, and a path only
+carries one at a time:
+
+* **selection implemented** — the input situation resolves to the row through the
+  recovered dispatcher; nothing about the row's own body is claimed.
+* **execution implemented** — the row's movement/vertical/phase/exit contracts are
+  bound (rules or bodies) from the recovered sources; contact windows still ride
+  NN.dat's posed records where the donor defers to them.
+* **automated verification** — an input-driven test pins the named behavior
+  (melee_admission_test's sections). Passing tests establish the behavior those
+  tests exercise; they do not prove zero regressions throughout the game.
+* **live parity** — a silent native run compared against a comparable original
+  run. No path in this matrix currently holds this label: the visual gates
+  (body-lean sign, chase/dive poses, ribbon timing) are pending an owner-present
+  live window.
+
+"Implemented" never silently means "verified"; "verified" never silently means
+"live-equal". Boosted/special-gauge admission remains unmodeled and is recorded
+in §6, not folded into the labels above.
+
 ## 1. Melee admission (input → move), all three weapons
 
 Recovered from `battle_rena_melee_admission.hpp` (= the 445ee0/44d850/43ded0 branches),
@@ -57,7 +79,7 @@ air branch first:
 0x100 record window. The `(weapon!=2 || state!=X)` guards stop weapon 2 from
 re-entering 300/310/311 while already inside them.
 
-**Port status: implemented and verified (2026-10-12).** `melee_admission.h` ports the
+**Port status: selection implemented + automated verification (2026-10-12).** `melee_admission.h` ports the
 dispatcher for the whole group; the attack press AND chain presses during AttackA run
 through it (`Fighter::admit_attack_move`). `melee_admission_test` pins it three ways:
 42 independent table cases, synthetic-Fighter input edges, and install-backed real
@@ -67,7 +89,12 @@ never leaves 300 (127 checks, 0 failures). The shipped priorities/thresholds wer
 probed: every gate from the locomotion rows passes, and the 0x100 windows open
 mid-move. Non-Rena combos keep their previous bounded candidates; nothing here
 generalizes Rena selectors to the roster. The `boosted` (special-gauge contact chain)
-branch remains a recorded gap.
+branch remains a recorded gap. The rejection side is pinned through the real
+Fighter input path: a declined press (failed priority gate, missing destination
+row, declined air press, declined chain) preserves the previous action, its
+bound clip, its phase/tick timeline, the body yaw and the aerial metadata, and
+falls through to the later input checks exactly as FUN_00445ee0's declined
+branches do.
 
 ## 2. Melee execution contracts (per state, per weapon)
 
@@ -76,26 +103,30 @@ phases/clips and the posed hit volumes (the port's `resolve_swing` already reads
 
 | State | w0 | w1 | w2 | Key contracts (source) | Port status |
 |---|---|---|---|---|---|
-| 300 ordinary | ✓ | ✓ | ✓ | w0/w1: speed 15/25 by distance (640000; w1 810000), approach 180→20/phase; phase-1 exit at dist<90000 or frame>10; strike = phase 2, frames 2–10; effect 60/64 @ph2 f0. w2: no movement, offset approach 3°, effect 67 @ph1 f18, motion-driven strike | clip/phases + posed volumes via NN.dat; movement/voices/effect gaps recorded below |
-| 301 followup | ✓ | ✓ | ✓ | w0: speed 10@f1→0@f16; w1: 10@f0→0@f8; w2: 0→12 (10)→22 (0); strike f10–16; effect 61/67 | clip + volumes bound; movement/voices pending |
-| 302 ender | ✓ | **no branch** | ✓ | w0: 15@f0→0@f17; w2: 10@f12→0@f22; strike f12–17; effect 62/67 | clip + volumes bound (w1 N/A by source) |
-| 310 back kick | ✓ | ✓ | ✓ | w0/w1: phase model, approach 20/15, speed decel 1, strike ph2 f5–7, effect 62@f4; jump-cancel: ph2 f>12 && contact && jump → 40. w2: speed 30, decel 2 in f5–25, **−5 @f25** (backward slide), 0@f47, approach 10 until f30, strike f24–45, effect 68@f25 | clip + volumes bound; movement/jump-cancel pending |
-| 311 side kick | ✓ | ✓ | ✓ | w0: decel 0.2, approach 10 until f20, strike ph2 f5–7 (effect 62@f12). w1: speed 20@f0, approach 9 until f10, decel 2 after f17, strike f12–18, effect 67@f12. w2: guard test BEFORE frame-0 clear, speed 0→20@f27→0@f47, strike f32–49, effect 68@f35 | clip + volumes bound; movement/guard-order pending |
-| 320 air chase | ✓ | ✓ | ✓ | policy(0,we): initial speed 12.5, strength 230→125 decay 4 (w2 140 fixed), attack distance 40000 (w2 490000), approach after 10; w2: gravity after 50, land after 55, voice f32, strike f32–39, frame skip 13→22 | clip + volumes bound; chase arc/pitch/pivot pending |
-| 329 landing recovery | ✓ | ✓ | ✓ | after 320 landing; dash-recovery body | clip bound; body pending |
-| 330 dash lunge | ✓ | ✓ | ✓ | w0: speed 30 @ph1, decel 2, strike ph2 f5–10, effect 62@f6. w1: **hop** (vertical 15, gravity .75), strike ph0 f>10 / ph1 f<20. w2: approach 3 until f28, decel 1.5/2, speed 40 @f28, strike f28–34 | clip + volumes bound; hop/movement pending |
-| 331 side dash attack | ✓ | ✓ | ✓ | w0/w1: approach 20 while strength (by dash distance), ph1 exit, strike per volume. w2: approach 10 preserving movement, strike f26–109, speed 10@f35 | clip + volumes bound; movement pending |
-| 332 air-dash dive | ✓ | ✓ | — | keiichi_dive family: dive angle clamp [−20,−5]°, speed 25, pitch/pivot, contact → 334 (clears contact, resets capacity), disable contact after f22, ph2 fall | clip + volumes bound (user-confirmed pose); dive/contact→334 pending |
-| 333 dash recovery | ✓ | ✓ | ✓ | recovery body (gauge/turn restore) | clip bound; body pending |
-| 334 dash followup | ✓ | ✓ | ✓ | after 332 contact | clip bound; body pending |
-| 340 landing melee | ✓ | ✓ | ✓ | w0/w2: speed 15@f0→0@f15, approach 18 until f10, strike f16–24, effect 61@f15. w1: speed 10, approach 6 until f8, strike f10–16, effect 67@f12 | clip + volumes bound; movement pending |
-| 341 landing followup | ✓ | — | ✓ | w0: from 340, leap: ph1 vertical 18, gravity .75, strike ph1 f<20, landing → ph3. w2: same shape (speed 10) | clip bound; leap pending |
+| *(movement mechanism)* | ✓ | ✓ | ✓ | Speed/Decelerate/Turn/Approach existed; **added** the vertical channel (Vertical/Gravity ops, u/tick units), LandExit/LandPhase landing transitions, ContactExit/JumpCancel body-driven exits, PhaseExit, ClockSkip (w2's double-speed frames), kGateNear/kGateFar distance latches, the 320 chase body (ChasePolicy per weapon) and the 332/334 dive body (DivePolicy) | **execution implemented + automated verification** (movement section, 40 checks: profiles, hop/leap vertical, chase arc and 329 landing, dive rebound to 334 and 333 landing, jump-cancel, double clock) |
+| 300 ordinary | ✓ | ✓ | ✓ | w0/w1: speed 15/25 by distance (640000; w1 810000), approach 180→20/phase; phase-1 exit at dist<90000 or frame>10; strike = phase 2, frames 2–10; effect 60/64 @ph2 f0. w2: no movement, offset approach 3°, effect 67 @ph1 f18, motion-driven strike | clip/phases + posed volumes via NN.dat; **movement execution implemented + verified** (w0/w1 profiles, w2's spin incl. the 16..28 double clock); voices/effects pending |
+| 301 followup | ✓ | ✓ | ✓ | w0: speed 10@f1→0@f16; w1: 10@f0→0@f8; w2: 0→12 (10)→22 (0); strike f10–16; effect 61/67 | clip + volumes bound; **movement execution implemented + verified** (w0/w1 301 frame-8 stop, w2's motion-driven 301/302 shapes bound); voices/effects pending |
+| 302 ender | ✓ | **no branch** | ✓ | w0: 15@f0→0@f17; w2: 10@f12→0@f22; strike f12–17; effect 62/67 | clip + volumes bound (w1 N/A by source); **w0 movement bound** |
+| 310 back kick | ✓ | ✓ | ✓ | w0/w1: phase model, approach 20/15, speed decel 1, strike ph2 f5–7, effect 62@f4; jump-cancel: ph2 f>12 && contact && jump → 40. w2: speed 30, decel 2 in f5–25, **−5 @f25** (backward slide), 0@f47, approach 10 until f30, strike f24–45, effect 68@f25 | clip + volumes bound; **movement + jump-cancel implemented + verified** (w0/w1 phase walk and contact cancel; w2's frame-driven kicks incl. the −5 backward slide) |
+| 311 side kick | ✓ | ✓ | ✓ | w0: decel 0.2, approach 10 until f20, strike ph2 f5–7 (effect 62@f12). w1: speed 20@f0, approach 9 until f10, decel 2 after f17, strike f12–18, effect 67@f12. w2: guard test BEFORE frame-0 clear, speed 0→20@f27→0@f47, strike f32–49, effect 68@f35 | clip + volumes bound; **movement implemented + verified** (w0 .2 decay/stop-at-25, w1 approach-9/late bleed, w2's 27/47 speed steps) |
+| 320 air chase | ✓ | ✓ | ✓ | policy(0,we): initial speed 12.5, strength 230→125 decay 4 (w2 140 fixed), attack distance 40000 (w2 490000), approach after 10; w2: gravity after 50, land after 55, voice f32, strike f32–39, frame skip 13→22 | clip + volumes bound; **chase body implemented + verified** (strength latch/decay, angle steering, hang→fall, 329 landing; w2's fixed strength and frame skip included); pitch/pivot render sign pending the live gate |
+| 329 landing recovery | ✓ | ✓ | ✓ | after 320 landing; dash-recovery body | clip bound; **329/333 recovery bodies implemented + verified** (zeroed motion, gauge 40/1000 a tick) |
+| 330 dash lunge | ✓ | ✓ | ✓ | w0: speed 30 @ph1, decel 2, strike ph2 f5–10, effect 62@f6. w1: **hop** (vertical 15, gravity .75), strike ph0 f>10 / ph1 f<20. w2: approach 3 until f28, decel 1.5/2, speed 40 @f28, strike f28–34 | clip + volumes bound; **hop implemented + verified** (vertical 15, gravity .75, landing ends phase 3); w0 lunge/w2 rush bound |
+| 331 side dash attack | ✓ | ✓ | ✓ | w0/w1: approach 20 while strength (by dash distance), ph1 exit, strike per volume. w2: approach 10 preserving movement, strike f26–109, speed 10@f35 | clip + volumes bound; **movement implemented + verified** (331's strength latch via the counter, approach windows, phase-1 exit; 340's per-weapon approach/stop) |
+| 332 air-dash dive | ✓ | ✓ | — | keiichi_dive family: dive angle clamp [−20,−5]°, speed 25, pitch/pivot, contact → 334 (clears contact, resets capacity), disable contact after f22, ph2 fall | clip + volumes bound (user-confirmed pose); **dive body implemented + verified** (clamped launch angle, contact rebound into 334 with the .35 gravity carry, 333 landing, contact cut past frame 22) |
+| 333 dash recovery | ✓ | ✓ | ✓ | recovery body (gauge/turn restore) | clip bound; **329/333 recovery bodies implemented + verified** (zeroed motion, gauge 40/1000 a tick) |
+| 334 dash followup | ✓ | ✓ | ✓ | after 332 contact | clip bound; **329/333 recovery bodies implemented + verified** (zeroed motion, gauge 40/1000 a tick) |
+| 340 landing melee | ✓ | ✓ | ✓ | w0/w2: speed 15@f0→0@f15, approach 18 until f10, strike f16–24, effect 61@f15. w1: speed 10, approach 6 until f8, strike f10–16, effect 67@f12 | clip + volumes bound; **movement implemented + verified** (331's strength latch via the counter, approach windows, phase-1 exit; 340's per-weapon approach/stop) |
+| 341 landing followup | ✓ | — | ✓ | w0: from 340, leap: ph1 vertical 18, gravity .75, strike ph1 f<20, landing → ph3. w2: same shape (speed 10) | **leap implemented + verified** (vertical 18, gravity .75, landing ends phase 3 zeroed) |
 | 350 awakened melee | ✓ | ✓ | — | w1: **strike f21–64**, speed 8.5@f20→0@f73, sounds 68@25/45/65. w0: rewind mechanics, particle scatters, contact-gated scratch @f50 | not started (special-gauge admission deferred with `boosted`) |
 | 392 guard-hit exit / 43 air exit / 40 jump | — | — | — | the exit states themselves | 43 modeled as air-attack fallthrough; 392 via the port's guard/hit reactions; 40 via try_jump |
 
-The "movement pending" rows share one mechanism: attack-state movement (speed
-profiles, `approach_battle_offset` heading walks, gravity tails). That is the next
-shared engine slice after admission, not per-combo guesswork.
+The shared movement slice has landed: attack-state movement (speed profiles,
+approach/turn, the vertical channel with per-move gravity, landing transitions,
+body-driven exits, the chase/dive feedback bodies) is implemented and
+input-driven-verified per weapon above. What remains per row is the audio/visual
+layer (melee voices 0-15 with the close-target variant cycling, effects 60-68),
+the guard-hit exit 392 through the attacker side, and the live pose gate.
 
 ## 3. Shooting admission and states (all three weapons)
 
@@ -124,8 +155,8 @@ Execution contracts (mobile/full-charge references, cross-checked with the handl
 | 402 | row 1/7 @13, ±30 | 3-phase dive ({12,1,35}, phase 1 HELD), phase2 f5 rows 6 / 0+9, dive arc (vertical −40, speed ≤10) | 2-phase ({76,78}), ph0 cap f17, landing <15 → 403 else ph1@25, f35 attachment + ring (pitch rand%50+30) | landing → 403/409 | 402 bound for all (ledger); w1 dive phases / w2 landing branch pending |
 | 403/409 | recovery: recharge +40 (+5 when status<1), cap 1000 | idem | idem | air-shot landings | pending (recharge body) |
 | 405/406 | like 400 @12/13, movement −90/+90 | — | — | lateral dash shots | **landed**: admission + program rules mirroring 400; verified selecting 405/406 from the left/right dash states |
-| 407 | @13: rows 4 (yaw+75,pitch30) + 9 (yaw−75) normal; + 13/14 (±85, pitch20) powered | — | — | back dash shot, movement 180 | **landed**: program rules with fixed-angle aims (the pure routing is pinned; the back-dash situation itself is not yet driven in the real-data test) |
-| 408 | @12 rows 0/6 (the ground rows, one tick early) | — | — | air-dash fast shot | **landed**: admission predicate + program rules (fires the ground pair at tick 12); the pure predicate is pinned and the shipped w0 row exists; the live air-dash→408 sequence is not yet driven end-to-end |
+| 407 | @13: rows 4 (yaw+75,pitch30) + 9 (yaw−75) normal; + 13/14 (±85, pitch20) powered | — | — | back dash shot, movement 180 | **execution implemented + automated verification**: the back-dash situation is now driven end-to-end (row-27 dash → tap → 407 → the row-4/row-9 pair at tick 13) |
+| 408 | @12 rows 0/6 (the ground rows, one tick early) | — | — | air-dash fast shot | **execution implemented + automated verification**: the air-dash→408 sequence is driven end-to-end (row-30 dash with a held direction → release → 408 → the single row-0 request at tick 12) |
 | 450/460 | bound (ledger) | bound | bound | — | bound; air→469 pending |
 | 469 | recovery (recharge) | idem | idem | after air charges | pending |
 | 350 | awakened MELEE (w0/w1) | — | full shot: clock jump 42→95, row 8 @116 (fwd 150, height 70, yaw+1, ±40) | w2 only as shot | w2 bound (ledger); w0/w1 melee pending |
@@ -161,11 +192,18 @@ Execution contracts (mobile/full-charge references, cross-checked with the handl
 
 ## 6. Remaining work (concrete, in order)
 
-1. Attack-state movement mechanism (speed profiles, offset approach, gravity) for the
-   melee contracts in §2 — one shared engine slice.
-2. 320 chase arc + pitch/pivot; 332 dive + contact→334; 330/331 dash-attack bodies.
-3. 402 weapon-specific phase models (w1 dive HOLD, w2 landing branch); 408; 403/409/469
-   recharge bodies.
+1. ~~Attack-state movement mechanism~~ — landed 2026-10-12 (vertical channel,
+   landings, body-driven exits, chase/dive bodies; §2).
+2. ~~320 chase arc, 332 dive + contact→334, 330/331 dash bodies~~ — landed
+   2026-10-12; the pitch/pivot render SIGN and the live poses stay open (§ status
+   vocabulary), as do melee voices/effects and the attacker-side 392 guard exit.
+3. 402 weapon-specific phase models: Rena+1's 3-phase dive (FUN_00448220.c:1777-
+   1854 — the phase-1 speed derives from FUN_0042d980/0042de80/0042da30, tick 3
+   phase jump, phase-2 tick-5 rows 6 / 0+9) and Rena+2's landing branch
+   (FUN_00438310.c:1855-: phase-0 tick-17 cap, landing before tick 15 → 403,
+   phase-1 seek at tick 25). 403/409/469 recharge bodies: `+0x20d` gains 40/tick
+   (5 when `+0x1fd < 1`), capped at 1000 (FUN_00448220.c:1855-1874) — a
+   charge-value refill the port's time-based magazines do not carry yet.
 4. Secondary-clock parity for full-charge/mobile states (§4).
 5. `boosted` (special-gauge) chain admission and the 350 awakened melee family.
 6. Then Mion+0/+1/+2 with the same matrix discipline.

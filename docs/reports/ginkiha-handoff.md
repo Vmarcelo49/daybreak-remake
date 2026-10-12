@@ -39,6 +39,28 @@ checks the grouped ground paths. Continue the same trio's air/landing and follow
 states before claiming completion, then advance to Mion's three weapons. All runs
 remain silent; unrelated working-tree changes are preserved.
 
+**2026-10-12 — admission rejection contract + the melee execution slice:** the
+attack-input branch now resolves admission BEFORE any attack-entry mutation — a
+declined press (failed priority gate, missing destination row, declined air/chain
+press) no longer enters AttackA, binds a fallback clip, arms a swing or touches
+facing/aerial metadata, and falls through to the later input checks exactly as
+FUN_00445ee0's declined branches do. The regression is pinned through the real
+Fighter input path in `melee_admission_test` (now 210 checks). The shared
+attack-state movement slice landed with it: a vertical channel (Vertical/Gravity
+ops in the bodies' u/tick units, sticky per move and carried across row
+switches), landing transitions (LandExit/LandPhase), body-driven exits
+(ContactExit/JumpCancel/PhaseExit), w2's double-speed clock (ClockSkip), the
+distance-latch gates, and the recovered 320 chase and 332/334 dive bodies with
+per-weapon policies in `move_behavior.h`. All three weapons' melee families
+(300/301/302/310/311/320/329/330/331/332+334/333/340/341) carry execution rules
+with provenance comments, and the 407 back-dash pair and the 408 air-dash fast
+shot are driven end-to-end. The matrix now uses four status labels (selection
+implemented / execution implemented / automated verification / live parity) —
+"verified" means the named input-driven tests pass, never live equality, and the
+chase/dive body-lean sign is explicitly pending an owner-present live window.
+Next: the aerial shooting transitions (matrix §6.3 quotes the exact handler
+lines), then boosted/350.
+
 **2026-10-11 — owner-requested attack/animation scope review:** the next work is
 [the attack-animation plan](ginkiha-attack-animation-plan.md), starting with Rena+0/+1/+2.
 Audit real input admission, melee transitions, pose clocks and rendered props alongside
