@@ -1148,6 +1148,62 @@ int run() {
             checkInt(300, p.attack_move_id(),
                      "the same press without the armed state stays 300");
         }
+
+        // (8) The attacker-side guard exit driven through the real update: a guarded
+        // connect on a row that carries the `& 2` branch hands the attacker to 392
+        // (FUN_0043ffc0's 0x188 body), while 320 — which has no branch in any weapon —
+        // keeps its row. The row table itself is asserted above; this is the behaviour.
+        {
+            Fixture fx(1, {}, {392});
+            // 300 carries no `& 2` branch: a guarded connect there keeps the row.
+            Fighter& f = fx.make();
+            input::PlayerState press{};
+            press.down[input::Action::AttackA] = true;
+            tick(f, press);
+            checkInt(300, f.attack_move_id(), "guard fixture enters 300");
+            f.note_melee_hit(0, true);  // the strike met a guard (FUN_0042c7b0 bit 2)
+            press.down[input::Action::AttackA] = false;
+            tick(f, press);
+            checkInt(300, f.attack_move_id(), "300 has no guard branch, so it keeps the row");
+
+            // 301 does, so the same guarded connect hands the attacker to 392.
+            Fighter& g = fx.make();
+            input::PlayerState chain{};
+            chain.down[input::Action::AttackA] = true;
+            tick(g, chain);
+            chain.down[input::Action::AttackA] = false;
+            tick(g, chain);
+            chain.down[input::Action::AttackA] = true;
+            tick(g, chain);
+            checkInt(301, g.attack_move_id(), "guard fixture chains into 301");
+            g.note_melee_hit(0, true);
+            chain.down[input::Action::AttackA] = false;
+            tick(g, chain);
+            checkInt(392, g.attack_move_id(),
+                     "a guarded connect on 301 exits the attacker into the 392 knockback");
+        }
+        {
+            Fixture fx(1, {}, {392});
+            fx.setTicks = {{39, 6}, {40, 30}};
+            Fighter& f = fx.make();
+            Fighter& foe = fx.make();
+            foe.reset(glm::vec3(600.f, 0.f, 0.f), 0.f);
+            input::PlayerState in = pressWith(input::Action::Jump);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            in.down[input::Action::Jump] = false;
+            for (int i = 0; i < 12; ++i) { input::compute_edges(in); f.update(&in, &foe, 1.0 / 64.0); }
+            in = pressWith(input::Action::AttackA);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            checkInt(320, f.attack_move_id(), "guard fixture enters the 320 chase");
+            in.down[input::Action::AttackA] = false;
+            f.note_melee_hit(0, true);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            checkInt(320, f.attack_move_id(),
+                     "320 has no guard branch, so a guarded connect keeps the row");
+        }
     }
 
     section("tap-shot state routing — recovered table");
