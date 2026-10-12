@@ -736,6 +736,8 @@ inline constexpr MoveRule kRena1Rules[] = {
     {301,0,0,0,MoveOp::Speed,10.f},
     {301,-1,8,8,MoveOp::Speed,0.f},
     {301,-1,0,7,MoveOp::Turn,20.f,kGateContact},
+    {301,-1,10,16,MoveOp::Active,0.f},
+    {301,-1,10,16,MoveOp::Active,1.f},
     // Melee voices and effects (FUN_00448220's tick-guarded call sites, read
     // directly — the same latch/cascade caveats as weapon 0's block).
     sound_effect_rule(300,2,0,0,64),
@@ -761,11 +763,15 @@ inline constexpr MoveRule kRena1Rules[] = {
     {310,2,0,9999,MoveOp::Decelerate,1.f},
     {310,2,0,4,MoveOp::Turn,5.f},
     {310,2,13,9999,MoveOp::JumpCancel,0.f,kGateContact},
+    {310,-1,5,7,MoveOp::Active,0.f},
+    {310,-1,5,7,MoveOp::Active,1.f},
     // 311 side kick (weapon 1): entry speed 20, approach 9 through frame 10,
     // the 2-a-tick bleed after frame 17.
     {311,-1,18,9999,MoveOp::Decelerate,2.f},
     {311,0,0,0,MoveOp::Speed,20.f},
     {311,-1,0,9,MoveOp::Turn,9.f},
+    {311,-1,12,18,MoveOp::Active,0.f},
+    {311,-1,12,18,MoveOp::Active,1.f},
     // 320 chase: the fighter.cpp body with the weapon-0/1 policy; gravity past
     // tick 5 of phase 2, landing into 329 past tick 10.
     {320,0,0,0,MoveOp::Gravity,0.f},
@@ -1018,6 +1024,8 @@ inline constexpr MoveRule kRena2Rules[] = {
     {310,-1,0,0,MoveOp::Turn,180.f},
     {310,-1,6,24,MoveOp::Decelerate,2.f},
     {310,-1,25,25,MoveOp::Speed,-5.f},
+    {310,-1,24,45,MoveOp::Active,0.f},
+    {310,-1,24,45,MoveOp::Active,1.f},
     {310,-1,47,47,MoveOp::Speed,0.f},
     {310,-1,0,29,MoveOp::Turn,10.f},
     // 311 side kick (weapon 2): the guard test runs before the frame-0 clear in
@@ -1026,6 +1034,8 @@ inline constexpr MoveRule kRena2Rules[] = {
     {311,-1,0,0,MoveOp::Turn,180.f},
     {311,-1,27,27,MoveOp::Speed,20.f},
     {311,-1,47,47,MoveOp::Speed,0.f},
+    {311,-1,32,49,MoveOp::Active,0.f},
+    {311,-1,32,49,MoveOp::Active,1.f},
     // 320 chase (weapon 2): the fighter.cpp body with the fixed-strength policy
     // (140, attack window 490000); gravity only past tick 50 of phase 2, the
     // landing into 329 past tick 55.
@@ -1051,6 +1061,8 @@ inline constexpr MoveRule kRena2Rules[] = {
     {330,-1,0,27,MoveOp::Decelerate,1.5f},
     {330,-1,28,9999,MoveOp::Decelerate,2.f},
     {330,-1,28,28,MoveOp::Speed,40.f},
+    {330,-1,28,34,MoveOp::Active,0.f},
+    {330,-1,28,34,MoveOp::Active,1.f},
     // 331 side dash attack (weapon 2): no speed of its own (the dash's motion
     // carries), the strength latch reads 810000, approach-preserving 10 through
     // frame 20 while latched, the .75 bleeds outside frames 36..103, speed 10 at
@@ -1061,12 +1073,16 @@ inline constexpr MoveRule kRena2Rules[] = {
     {331,-1,0,35,MoveOp::Decelerate,.75f},
     {331,-1,104,9999,MoveOp::Decelerate,.75f},
     {331,-1,35,35,MoveOp::Speed,10.f},
+    {331,-1,26,109,MoveOp::Active,0.f},
+    {331,-1,26,109,MoveOp::Active,1.f},
     {331,-1,26,109,MoveOp::Turn,2.f},
     // 340 landing melee (weapon 2): the weapon-0 shape — speed 15, approach 18
     // through frame 10, stop at 15.
     {340,0,0,0,MoveOp::Speed,15.f},
     {340,0,0,9,MoveOp::Turn,18.f},
     {340,0,15,15,MoveOp::Speed,0.f},
+    {340,-1,16,24,MoveOp::Active,0.f},
+    {340,-1,16,24,MoveOp::Active,1.f},
     // 341 landing followup (weapon 2): speed 10 through frame 5 (approach 20 on
     // contact), the leap (10 up, gravity .75) at phase 1, landing ends phase 3
     // and clears the gravity.

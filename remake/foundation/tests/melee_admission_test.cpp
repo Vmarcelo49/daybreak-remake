@@ -1123,6 +1123,39 @@ int run() {
         check(w0active341 && w0active341->last == 19,
               "w0 341's contact/ribbon span is phase-1 ticks 0..19");
 
+        // Weapons 1 and 2's own body spans (FUN_00448220 / FUN_00438310): each row's
+        // `(tick < N) || (M < tick)` clears the prop latch, so the else arms it. Every
+        // window is tick-only (no phase guard), which is why `-1` is the phase.
+        const auto spanAt = [](const gameplay::MoveProgram* program, int move, int first)
+            -> const gameplay::MoveRule* {
+            if (!program) return nullptr;
+            for (size_t i = 0; i < program->count; ++i) {
+                const gameplay::MoveRule& r = program->rules[i];
+                if (r.move == move && r.operation == gameplay::MoveOp::Active &&
+                    r.first == first)
+                    return &r;
+            }
+            return nullptr;
+        };
+        const gameplay::MoveRule* w1span301 = spanAt(p1, 301, 10);
+        const gameplay::MoveRule* w1span310 = spanAt(p1, 310, 5);
+        const gameplay::MoveRule* w1span311 = spanAt(p1, 311, 12);
+        check(w1span301 && w1span301->last == 16 &&
+              w1span310 && w1span310->last == 7 &&
+              w1span311 && w1span311->last == 18,
+              "w1 301/310/311 arm their props for 10..16 / 5..7 / 12..18");
+        const gameplay::MoveRule* w2span310 = spanAt(p2, 310, 24);
+        const gameplay::MoveRule* w2span311 = spanAt(p2, 311, 32);
+        const gameplay::MoveRule* w2span330 = spanAt(p2, 330, 28);
+        const gameplay::MoveRule* w2span331 = spanAt(p2, 331, 26);
+        const gameplay::MoveRule* w2span340 = spanAt(p2, 340, 16);
+        check(w2span310 && w2span310->last == 45 &&
+              w2span311 && w2span311->last == 49 &&
+              w2span330 && w2span330->last == 34 &&
+              w2span331 && w2span331->last == 109 &&
+              w2span340 && w2span340->last == 24,
+              "w2 310/311/330/331/340 arm their props for their own frame spans");
+
         // (3) Behavioural: 320's contact volume is cut from the entry tick, before
         // phase 2 arms it (the body calls FUN_00434bd0 in every non-armed tick).
         {
