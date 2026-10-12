@@ -22,6 +22,15 @@ powered gate and per-move counters have migrated. Satoko 2's tap is the first ty
 program and Rika 1's charge was repaired with the counter model. Resume from the blocker
 plan's latest append-only checkpoint (entry 3.0).
 
+**2026-10-12 — the chase's ribbon half, and a reading rule that retracts an item.** 320's
+contact half was already ContactOff-modeled, so its ribbon latch was the missing piece: the
+window is `tick < 8` inside phase 2 (FUN_0043ffc0:985-990 and FUN_00448220's twin), now bound
+for weapons 0 and 1; weapon 2's different 32..39 window stays parked until its phase is read.
+Reading rule worth keeping: the decompiler renders a call inside a condition as a comma
+expression, so `if (PH == 0 && (FUN_0042db10(0,3), tick == 0))` runs that turn on EVERY
+phase-0 tick and only gates the body. That makes weapon 2's phase-0 `Turn 3` correct as bound
+and withdraws the earlier note that listed it as a delta.
+
 **2026-10-12 — the prop-latch sweep under-reported; closed for the group.** The first span
 sweep looked only a few lines back for the enclosing condition, so every FUN_00434b30 site
 whose `if` wraps across lines read as "the else of a window" and got skipped. A brace-aware
