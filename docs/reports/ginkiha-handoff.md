@@ -22,6 +22,14 @@ powered gate and per-move counters have migrated. Satoko 2's tap is the first ty
 program and Rika 1's charge was repaired with the counter model. Resume from the blocker
 plan's latest append-only checkpoint (entry 3.0).
 
+**2026-10-12 — Rena+2's 320 was not a copy.** Reading FUN_00438310's chase case in full
+showed three of its parts had been taken from weapons 0/1: its phase-2 clock JUMPS 13 -> 22
+on both counters (952-955, previously unmodelled, so the already-correct gravity-from-51 and
+329-landing-from-56 arrived ~9 ticks late), its approach turns 2 deg/tick while the clock is
+under 32 (957-959, absent), and its contact/ribbon window is frames 32..39 — not the 0..7
+that came from w0/w1's `tick < 8`, which would have had the hit volume live through the
+windup. All three are bound and pinned; the strike cue at 32 was already right.
+
 **2026-10-12 — the chase's ribbon half, and a reading rule that retracts an item.** 320's
 contact half was already ContactOff-modeled, so its ribbon latch was the missing piece: the
 window is `tick < 8` inside phase 2 (FUN_0043ffc0:985-990 and FUN_00448220's twin), now bound
