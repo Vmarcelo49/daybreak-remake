@@ -246,6 +246,20 @@ They are pinned in the same section. Note for 311: its body calls neither
 it — its volume comes from the NN record's own combat flag, and §2's "strike ph2
 f5–7" line for 311 describes that record data, not a body span.
 
+The same audit then covered the other two handlers, and **neither weapon 1 nor weapon 2
+had a single `Active` rule**, so their props never armed at all:
+
+| Combo | Spans now bound (tick-only, so phase `-1`) |
+|---|---|
+| Rena+1 (`FUN_00448220`) | 301 → 10..16, 310 → 5..7, 311 → 12..18 |
+| Rena+2 (`FUN_00438310`) | 310 → 24..45, 311 → 32..49, 330 → 28..34, 331 → 26..109, 340 → 16..24 |
+
+Two were deliberately left unbound and are recorded, not guessed: weapon 2's 301/302
+windows exist in its handler but `rena_melee_admission` gives weapon 2 no such branch,
+so the rows are unreachable; and both weapons' 320/350 families already model their
+contact span through `ContactOff` (weapon 1's 350 is exactly the corpus's 21..64), so
+reconciling their `Active` half needs the phase structure read first.
+
 ## 4. Animation service facts (scoped for this group)
 
 * Two clocks exist, one per channel: `+0xae04` / `+0xae08` (`param_1[0x2b81]` /
