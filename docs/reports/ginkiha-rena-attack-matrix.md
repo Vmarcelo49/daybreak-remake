@@ -260,6 +260,21 @@ so the rows are unreachable; and both weapons' 320/350 families already model th
 contact span through `ContactOff` (weapon 1's 350 is exactly the corpus's 21..64), so
 reconciling their `Active` half needs the phase structure read first.
 
+**That sweep under-reported, and a brace-aware re-pass fixed it.** The first extraction
+looked only a few lines back for the enclosing condition, so every `FUN_00434b30` site
+whose `if` wraps across lines was misread as "the else of a window" and skipped. Re-running
+over all three handlers with six lines of context found four more armed spans:
+
+| Combo | Spans added |
+|---|---|
+| Rena+1 | 300 → phase-2 frames 3..10 (`FUN_00448220:670-673`); 330 → phase 0 from frame 11 **plus all of phase 1** (1077-1080, a two-part condition the old pass flattened) |
+| Rena+2 | 300 → phase-1 frames 25..34 (`FUN_00438310:633-636`); 341 → all of phase 1 (1371-1374) |
+
+The same pass confirmed every span the port already carried (weapon 0's six, weapon 1's
+301/310/311, weapon 2's 310/311/330/331/340), so the melee prop-latch class is now
+closed for the group. Unreachable rows stay unbound on purpose: weapon 2's 301/302 (its
+admission has no such branch) and weapon 1's 341 (weapon 0 only, per §1).
+
 The turn pass then covered weapon 1's entry steps, which had the same shape as weapon
 0's before its own correction: 310 was missing its phase-0 180° snap (`FUN_00448220`
 736-742), 311 its tick-0 180° (795-802), and 400/401 their second tick-0 step (15° and
