@@ -69,9 +69,15 @@ bound.
    and her second charge has no shoot body in scope, so the port keeps `{-1,-1}` for
    that tier and scopes the 350 admission to the Rena group. Unrecovered semantics —
    recorded, not guessed.
-3. **Melee execution bodies** (movement/launch rules) for the rows in §1: selection and
+3. **Mid-shot prop/model rebinds**: Mion's shot bodies rebind the prop models rather
+   than only hiding them — `FUN_004582a0:51-52` sets slot 0 to item model 4 and unbinds
+   slot 1 (`FUN_00434a70(slot, model)` with a negative model meaning unbind), and the
+   donor's `MionMobileGroundShotEffects` carries an `attachment_model` for exactly this.
+   The port's kMionRules carry no `PropModel`/`Hide` rules, so those rebinds are not
+   modeled yet. Recorded here rather than assumed bound.
+4. **Melee execution bodies** (movement/launch rules) for the rows in §1: selection and
    the clip binding are implemented and verified, but the per-row movement bodies
    (e.g. 310's approach, 320's chase parameters) have not been recovered and bound the
    way the Rena group's were.
-4. **Live parity** for the whole group — no path holds it; the same environmental
+5. **Live parity** for the whole group — no path holds it; the same environmental
    limitation the Rena matrix records applies verbatim.
