@@ -213,6 +213,26 @@ Execution contracts (mobile/full-charge references, cross-checked with the handl
 | 360 | red pair ph2@2 (rows 11/12, ±70/70/70, yaw ±1) + freeze @13 | row 8 @16, fixed 70° pitch | **air** second charge (same clock jump as 350) | w2's 360 is the AIR variant | w0/w1 bound; **w2's air 360 also bound** (speed/vertical ×0.1, gravity .05, the same jump/launch, landing → 469) |
 | 370 | w0 backflip (speed −9.5, vertical 10) + pair; w1 air @16 | | — | w2 has NO 370 | w0/w1 bound (air) |
 
+### 3.1 Correction: the mobile/dash shot windows (2026-10-12)
+
+Re-reading FUN_0043ffc0's own case bodies showed that several of the mobile/dash shot
+windows had been bound from the wrong reading of the same lines — the prop unbind is
+`threshold < tick`, i.e. it starts the tick AFTER the recorded number, and each row's
+approach rate and bleed window are the handler's own:
+
+| State | Before | Corrected | Corpus |
+|---|---|---|---|
+| 401 | bleed .5 from tick 0; unbind from 12 | bleed **.25** from tick 0; unbind from **14** | 1938-1941 / 1934 |
+| 405, 406 | turn 20 for ticks 0..11; bleed .5 from tick 0; unbind from 12 | turn **15** for ticks **0..9**; bleed **.5 only after tick 10**; unbind from **14** | 2111/2166, 2118/2173, 2114/2169 |
+| 407 | turn 15 for ticks 0..9; unbind from 13 | turn **9** for ticks 0..9 **plus 15 on every phase-0 tick** (two original `FUN_0042db10` calls, so early ticks rotate 9 then 15); unbind from **14** | 2221-2222, 2232-2233, 2224 |
+| 408 | unbind from 13 | unbind from **14** | 2282 |
+
+400 and 402 were already correct (`0xb < tick` → 12, `0xc < tick` → 13), which is the
+check that fixes the convention: the port's `Hide` rule window is inclusive, so a
+`threshold < tick` condition becomes `first = threshold + 1`. The corrected values are
+pinned by `melee_admission_test`'s window section, so a future edit cannot silently
+revert them.
+
 ## 4. Animation service facts (scoped for this group)
 
 * Two clocks exist, one per channel: `+0xae04` / `+0xae08` (`param_1[0x2b81]` /

@@ -1070,6 +1070,42 @@ int run() {
                 w2ring = &p2->rules[i];
         check(w2ring && w2ring->phase == 1, "w2 402's ring fires ten requests");
 
+        // The mobile/dash shot bodies' own windows (FUN_0043ffc0's case bodies): the
+        // prop unbind happens the tick AFTER the recorded threshold, and each row's
+        // approach rate and bleed window are the handler's own numbers — 401 bleeds
+        // 0.25 in phase 0 (1938-1941), 405/406 approach 15 for ticks 0..9 (2111/2166)
+        // and bleed 0.5 only after tick 10 (2118/2173), 407 turns 9 early plus 15 for
+        // every phase-0 tick (2221/2232), and 401/404..408 unbind after tick 13
+        // (1934/1984/2059/2114/2169/2224/2282).
+        const gameplay::MoveRule* w0bleed401 =
+            findRule(p0, 401, gameplay::MoveOp::Decelerate, 0);
+        const gameplay::MoveRule* w0hide401 = findRule(p0, 401, gameplay::MoveOp::Hide, -1, 14);
+        check(w0bleed401 && w0bleed401->first == 0 && w0bleed401->value == 0.25f &&
+              w0hide401 && w0hide401->value == 0.f,
+              "w0 401 bleeds 0.25 a phase-0 tick and unbinds from tick 14");
+        const gameplay::MoveRule* w0turn405 = findRule(p0, 405, gameplay::MoveOp::Turn, 0, 0);
+        const gameplay::MoveRule* w0bleed405 =
+            findRule(p0, 405, gameplay::MoveOp::Decelerate, 0);
+        check(w0turn405 && w0turn405->last == 9 && w0turn405->value == 15.f,
+              "w0 405 approaches 15 degrees for ticks 0..9");
+        check(w0bleed405 && w0bleed405->first == 11 && w0bleed405->value == 0.5f,
+              "w0 405 bleeds 0.5 a tick only after tick 10");
+        // Both 407 turn rules start at tick 0, so tell them apart by their last tick.
+        const gameplay::MoveRule* w0turn407a = nullptr;
+        const gameplay::MoveRule* w0turn407b = nullptr;
+        for (size_t i = 0; p0 && i < p0->count; ++i) {
+            const gameplay::MoveRule& r = p0->rules[i];
+            if (r.move != 407 || r.operation != gameplay::MoveOp::Turn || r.phase != 0)
+                continue;
+            if (r.last == 9) w0turn407a = &r;
+            if (r.last == 9999) w0turn407b = &r;
+        }
+        check(w0turn407a && w0turn407a->value == 9.f && w0turn407b &&
+              w0turn407b->value == 15.f,
+              "w0 407 turns 9 degrees early and 15 for every later phase-0 tick");
+        const gameplay::MoveRule* w0hide408 = findRule(p0, 408, gameplay::MoveOp::Hide, -1, 14);
+        check(w0hide408 != nullptr, "w0 408 unbinds its props from tick 14");
+
         // (3) Behavioural: 320's contact volume is cut from the entry tick, before
         // phase 2 arms it (the body calls FUN_00434bd0 in every non-armed tick).
         {
