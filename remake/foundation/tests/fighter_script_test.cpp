@@ -3909,6 +3909,110 @@ void test_rena_character_iteration() {
     check_int("red freeze holds ten updates then advances", 11, freezeVisits);
 }
 
+// FUN_0043ffc0/448220/438310 case 0x192: the AIR TAP, reached by real input (Jump, then a
+// Shoot tap while airborne) and asserted from the handlers' own numbers. Weapon 0 fires its
+// one row-1 (powered: 7) request on frame 13 with the captured elevation clamped +-30.
+// Weapon 1 runs the three-phase dive: phase 0 clears the motion and approaches (no gravity),
+// phase 1 is the single-tick fixed -40 u/tick drop whose horizontal speed is the target
+// geometry clamped [0,10], and phase 2 fires its row-6 (powered: rows 0 then 9) request on
+// frame 5. Weapon 2 clamps its phase-0 clock at 17; landing below frame 15 hands to 403,
+// 15..17 hands to phase 1 with the clock seeking 25, where frame 35 fires the attachment
+// row 0 (powered: 2) plus the TEN-request ring on rows 1 (powered: 3) at pitch rand%50+30.
+void test_rena_air_taps() {
+    section("47. Rena+0/+1/+2 air taps: the 402 bodies through real input");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_rena1Combo.load(install, 0, 1) ||
+        !g_rena2Combo.load(install, 0, 2) || !g_testCombo.ready)
+        return skip_case("all three Rena combos");
+    for (int slot = 0; slot < 3; ++slot) {
+        TestCombo& combo = slot == 0 ? g_testCombo : slot == 1 ? g_rena1Combo : g_rena2Combo;
+        std::printf("  Rena+%d air tap\n", slot);
+        Fighter fighter;
+        fighter.init(&combo.model, combo.controller(), glm::vec3(320.f, 40.f, -230.f), .4f);
+        combo.bind(fighter);
+        settle(fighter);
+        Fighter target;
+        target.init(nullptr, nullptr, fighter.position() + glm::vec3(0.f, 120.f, 500.f), 0.f);
+        target.set_weapon(&combo.weapon);
+        target.set_moves(&combo.moves);
+        settle(target);
+        Input in;
+        in.set(fnd::input::Action::Jump, true);
+        tick(fighter, in, &target);
+        in.set(fnd::input::Action::Jump, false);
+        for (int i = 0; i < 12; ++i) tick(fighter, in, &target);
+        in.set(fnd::input::Action::Shoot, true);
+        tick(fighter, in, &target);
+        in.set(fnd::input::Action::Shoot, false);
+        tick(fighter, in, &target);
+        check_int("the air tap selects 402", 402, fighter.shot_move_id());
+        if (fighter.shot_move_id() != 402) continue;
+
+        std::vector<gameplay::PendingShot> shots;
+        std::vector<int> phases, ticks;
+        bool sawPhaseOneDrop = false;
+        for (int update = 0; update < 300; ++update) {
+            const int phase = fighter.move_phase();
+            const int elapsed = fighter.phase_elapsed();
+            if (slot == 1 && phase == 1)
+                sawPhaseOneDrop = fighter.move_speed() >= 0.f && fighter.move_speed() <= 10.f;
+            tick(fighter, in, &target);
+            for (gameplay::PendingShot s = fighter.take_pending_shot(); s.armed;
+                 s = fighter.take_pending_shot()) {
+                shots.push_back(s);
+                phases.push_back(phase);
+                ticks.push_back(elapsed);
+            }
+        }
+        const auto pitchOf = [](const gameplay::PendingShot& s) {
+            return glm::degrees(std::asin(std::clamp(s.dir.y, -1.f, 1.f)));
+        };
+        if (slot == 0) {
+            check_int("w0's air tap fires exactly one request", 1, (int)shots.size());
+            if (!shots.empty()) {
+                check_int("w0 air row 1 (unpowered)", 1, shots[0].bulletRow);
+                check_int("w0 air request fires at frame 13", 13, ticks[0]);
+                check_bool("w0 air pitch stays inside the body's +-30 clamp", true,
+                           pitchOf(shots[0]) >= -30.1f && pitchOf(shots[0]) <= 30.1f);
+            }
+        } else if (slot == 1) {
+            check_bool("w1's phase 1 keeps the closing speed inside [0,10]", true,
+                       sawPhaseOneDrop);
+            check_int("w1's air tap fires exactly one request", 1, (int)shots.size());
+            if (!shots.empty()) {
+                check_int("w1 air row 6 (unpowered)", 6, shots[0].bulletRow);
+                check_int("w1 air request is phase 2", 2, phases[0]);
+                check_int("w1 air request fires at phase-2 frame 5", 5, ticks[0]);
+            }
+        } else {
+            check_int("w2's air tap fires the attachment request plus the ten-request ring",
+                      11, (int)shots.size());
+            int attach = 0, ring = 0;
+            bool fanned = false;
+            float firstPitch = 0.f;
+            for (std::size_t i = 0; i < shots.size(); ++i) {
+                if (shots[i].bulletRow == 0 || shots[i].bulletRow == 2) {
+                    ++attach;
+                    check_int("w2 attachment row 0 (unpowered)", 0, shots[i].bulletRow);
+                    check_int("w2 attachment fires at phase-1 frame 35", 35, ticks[i]);
+                } else {
+                    ++ring;
+                    check_bool("w2 ring draws rows 1/3", true,
+                               shots[i].bulletRow == 1 || shots[i].bulletRow == 3);
+                    const float pitch = pitchOf(shots[i]);
+                    check_bool("w2 ring pitch is 30 + rand%50 (inside [30,80))", true,
+                               pitch >= 29.9f && pitch < 80.f);
+                    if (ring == 1) firstPitch = pitch;
+                    else if (std::abs(pitch - firstPitch) > 1e-4f) fanned = true;
+                }
+            }
+            check_int("w2 fires one attachment request", 1, attach);
+            check_int("w2 fires ten ring requests", 10, ring);
+            check_bool("w2's ten ring requests draw their own pitch", true, fanned);
+        }
+    }
+}
+
 void test_akane2_world_origin_gap() {
     section("28. Akane 2 item-46 fixture deferred: world-origin shots");
     const auto install = findInstall(nullptr);
@@ -5645,6 +5749,7 @@ int main(int argc, char** argv) {
     test_satoko_five_shot();
     test_rika0_twin_tick();
     test_rena_character_iteration();
+    test_rena_air_taps();
     test_keiichi2_tap_sweep();
     test_satoko1_periodic_world_shot();
     test_simulation_rng_stream();
