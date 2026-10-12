@@ -1452,6 +1452,12 @@ AttackAdmissionInput Fighter::attack_input(bool aerial,
 int Fighter::admit_attack_move(bool aerial, const input::PlayerState* input) const {
     if (!m_moves || !attack_admission_recovered(m_moves->character_index()))
         return resolve_attack_move(m_state == FighterState::Run, aerial);
+    // Every recovered attack branch gates on the fighter-level special/charge gauge:
+    // FUN_00445ee0's dash/air/directional arms each require `0 < +0x834` (lines 63/69/76/
+    // 86/96/104) and the ordinary arm's "no attack" path includes `+0x834 < 1` (line 172),
+    // so an empty gauge declines the press outright. Scoped to the recovered group, where
+    // the gauge is modeled; the tap-shot half is gated in fire_shot.
+    if (m_chargeGauge <= 0) return -1;
     const AttackAdmissionInput in = attack_input(aerial, input);
     // FUN_0044d850:160-167 / FUN_00445ee0:162-168 — the boosted branch: an attack
     // press while grounded (`+0x84`), inside the current row's chainable window

@@ -572,6 +572,11 @@ public:
     float yellow_hold_sec() const;
     float red_hold_sec() const;
 
+    // The fighter-level special/charge gauge (+0x834, 0..1000). The original writes it
+    // from battle init, the hyper regen, the recoveries and the special spend; this
+    // setter is the test seam for the admission/guard gates that read it.
+    void set_charge_gauge(int value) { m_chargeGauge = std::clamp(value, 0, 1000); }
+
     // --- hypermode (spec §3.4) ---
     void set_hypermode(Hypermode m) { m_hypermode = m; }
     // Launch-time state injection, 0..1, clamped. It stood in for the original's F4 (wiki

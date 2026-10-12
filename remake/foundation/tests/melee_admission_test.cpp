@@ -1204,6 +1204,29 @@ int run() {
             checkInt(320, f.attack_move_id(),
                      "320 has no guard branch, so a guarded connect keeps the row");
         }
+
+        // (9) The attack press is gated on the fighter-level special/charge gauge
+        // (`0 < +0x834` on every recovered arm, and the ordinary arm's no-attack path
+        // also tests `+0x834 < 1`): an empty gauge declines the press without entering
+        // AttackA, like every other declined branch.
+        {
+            Fixture fx(1);
+            Fighter& f = fx.make();
+            f.set_charge_gauge(0);
+            input::PlayerState in = pressWith(input::Action::AttackA);
+            tick(f, in);
+            checkInt(-1, f.attack_move_id(), "an empty charge gauge declines the attack press");
+            check(f.state() != FighterState::AttackA,
+                  "the declined press does not enter AttackA");
+            check(f.charge_gauge() == 0, "the declined press leaves the gauge empty");
+
+            Fixture ok(1);
+            Fighter& g = ok.make();
+            g.set_charge_gauge(1);
+            input::PlayerState okIn = pressWith(input::Action::AttackA);
+            tick(g, okIn);
+            checkInt(300, g.attack_move_id(), "a positive gauge admits the ordinary 300");
+        }
     }
 
     section("tap-shot state routing — recovered table");
