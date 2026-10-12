@@ -1082,7 +1082,17 @@ inline constexpr MoveRule kRena2Rules[] = {
     // The 320 body's contact gate (FUN_00438310; same phase-2 ticks 0..7 window).
     {320,0,0,9999,MoveOp::ContactOff},
     {320,1,0,9999,MoveOp::ContactOff},
-    {320,2,8,9999,MoveOp::ContactOff},
+    // FUN_00438310:952-995 — the chase's phase-2 body: the clock JUMPS 13 -> 22
+    // (both clocks), the approach turns 2 a tick while the clock is under 32, the
+    // strike cue fires at 32, and the contact/ribbon window is exactly frames
+    // 32..39 (`tick < 32 || 39 < tick` clears). Gravity .5 from 51 and the 329
+    // landing from 56 ride the jumped clock, as the two rules below already read.
+    {320,2,13,13,MoveOp::ClockSeek,22.f},
+    {320,2,0,31,MoveOp::Turn,2.f},
+    {320,2,0,31,MoveOp::ContactOff},
+    {320,2,40,9999,MoveOp::ContactOff},
+    {320,2,32,39,MoveOp::Active,0.f},
+    {320,2,32,39,MoveOp::Active,1.f},
     // 329/333 dash recovery: zeroed motion, gauge refill 40/1000 a tick.
     {329,-1,0,1,MoveOp::Speed,0.f},
     {329,-1,0,1,MoveOp::Vertical,0.f},

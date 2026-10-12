@@ -1074,13 +1074,24 @@ int run() {
             check(exit && (exit->gate & gameplay::kGateCounterAbove) != 0 &&
                       exit->gateValue2 == 20,
                   "392 hands to phase 1 past scratch 20");
+            // Weapons 0/1 cut contact throughout phases 0/1 and from phase-2 frame 8
+            // (their bodies arm `tick < 8`); weapon 2's chase has its own phase-2 window,
+            // frames 32..39, so its two rules bracket that instead (FUN_00438310:988-992).
+            const bool w2 = program == p2;
             for (int phase = 0; phase < 3; ++phase) {
                 const gameplay::MoveRule* cut =
                     findRule(program, 320, gameplay::MoveOp::ContactOff, phase);
-                const bool expectedWindow = phase == 0 || phase == 1
-                                                ? (cut && cut->first == 0 && cut->last == 9999)
-                                                : (cut && cut->first == 8 && cut->last == 9999);
-                check(expectedWindow, "320 cuts contact outside the body's phase-2 0..7 window");
+                bool ok = false;
+                if (phase == 0 || phase == 1) {
+                    ok = cut && cut->first == 0 && cut->last == 9999;
+                } else if (w2) {
+                    ok = findRule(program, 320, gameplay::MoveOp::ContactOff, 2, 0) &&
+                         findRule(program, 320, gameplay::MoveOp::ContactOff, 2, 40);
+                } else {
+                    ok = cut && cut->first == 8 && cut->last == 9999;
+                }
+                check(ok, w2 ? "320 (w2) cuts contact outside frames 32..39"
+                             : "320 cuts contact outside the body's phase-2 0..7 window");
             }
         }
         const gameplay::MoveRule* w0hit = findRule(p0, 350, gameplay::MoveOp::ContactOff, -1);
@@ -1249,6 +1260,35 @@ int run() {
               "w0 320 arms its props for phase-2 frames 0..7");
         check(w1chaseSpan && w1chaseSpan->phase == 2 && w1chaseSpan->last == 7,
               "w1 320 arms its props for phase-2 frames 0..7");
+        // Weapon 2's chase reads the same shape with its own numbers: the clock JUMPS
+        // 13 -> 22 (FUN_00438310:952-955), the approach turns 2 while the clock is under
+        // 32 (957-959), the strike cue is at 32 (960), and the contact/ribbon window is
+        // frames 32..39 (988-992) — not the 0..7 that had been copied from w0/w1.
+        const gameplay::MoveRule* w2jump = findRule(p2, 320, gameplay::MoveOp::ClockSeek, 2, 13);
+        const gameplay::MoveRule* w2turn = findRule(p2, 320, gameplay::MoveOp::Turn, 2, 0);
+        const gameplay::MoveRule* w2offEarly =
+            findRule(p2, 320, gameplay::MoveOp::ContactOff, 2, 0);
+        const gameplay::MoveRule* w2offLate =
+            findRule(p2, 320, gameplay::MoveOp::ContactOff, 2, 40);
+        const gameplay::MoveRule* w2chaseSpan = spanAt(p2, 320, 32);
+        check(w2jump && w2jump->value == 22.f,
+              "w2 320's phase-2 clock jumps from 13 to 22");
+        check(w2turn && w2turn->last == 31 && w2turn->value == 2.f,
+              "w2 320 approaches 2 degrees while the clock is under 32");
+        check(w2offEarly && w2offEarly->last == 31 && w2offLate && w2offLate->first == 40,
+              "w2 320's contact is off outside frames 32..39");
+        check(w2chaseSpan && w2chaseSpan->phase == 2 && w2chaseSpan->last == 39,
+              "w2 320 arms its props for phase-2 frames 32..39");
+
+        // The jumped clock keeps the two late windows where the body puts them.
+        const gameplay::MoveRule* w2gravity =
+            findRule(p2, 320, gameplay::MoveOp::Gravity, 2, 51);
+        const gameplay::MoveRule* w2land =
+            findRule(p2, 320, gameplay::MoveOp::LandExit, 2, 56);
+        check(w2gravity && w2gravity->value == 0.5f,
+              "w2 320's fall gravity starts at clock 51");
+        check(w2land && w2land->value == 329.f,
+              "w2 320's landing exit starts at clock 56");
 
         // (3) Behavioural: 320's contact volume is cut from the entry tick, before
         // phase 2 arms it (the body calls FUN_00434bd0 in every non-armed tick).
