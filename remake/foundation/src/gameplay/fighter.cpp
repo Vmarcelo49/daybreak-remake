@@ -190,6 +190,8 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_pending = PendingShot{};
     m_pendingShots.clear();
     m_shootingVoice = {};
+    m_meleeVoice = {};
+    m_pendingEffect = {};
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_moveCounter = 0;
@@ -197,6 +199,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_holdTicks = 0;
     m_actionCamera = 0;
     m_chainContact = false;
+    m_chainGuarded = false;
     m_previousWalkInput = {};
     m_propActive = {false, false};
     for (auto& trail : m_trails) trail.reset();
@@ -243,6 +246,8 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_pending = PendingShot{};
     m_pendingShots.clear();
     m_shootingVoice = {};
+    m_meleeVoice = {};
+    m_pendingEffect = {};
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_moveCounter = 0;
@@ -250,6 +255,7 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_holdTicks = 0;
     m_actionCamera = 0;
     m_chainContact = false;
+    m_chainGuarded = false;
     m_previousWalkInput = {};
     m_propActive = {false, false};
     for (auto& trail : m_trails) trail.reset();
@@ -311,6 +317,8 @@ void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     m_pending = PendingShot{};
     m_pendingShots.clear();
     m_shootingVoice = {};
+    m_meleeVoice = {};
+    m_pendingEffect = {};
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_moveElapsedTicks = 0;
@@ -319,6 +327,7 @@ void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     m_holdTicks = 0;
     m_actionCamera = 0;
     m_chainContact = false;
+    m_chainGuarded = false;
     m_previousWalkInput = {};
     m_propActive = {false, false};
     for (auto& trail : m_trails) trail.reset();
@@ -588,13 +597,17 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
             if (m_state == FighterState::Jump ||
                 (m_state == FighterState::Run && m_dashAir)) {
                 set_state(FighterState::Idle);
-            } else if (m_state == FighterState::AttackA) {
+            } else if (m_state == FighterState::AttackA || m_shotMoveId >= 0) {
                 // The recovered attack bodies' landing branches: a LandExit rule
                 // matching the current row/phase/tick switches into the landing
-                // move (320 -> 329, 334 -> 333), a LandPhase rule ends the move in
+                // move (320 -> 329, 334 -> 333, the air taps' 402 -> 403 and the
+                // air charges' 460/370 -> 469), a LandPhase rule ends the move in
                 // one of its own phases with speed and vertical zeroed (the hop's
-                // and 341's landing). The tick windows are the bodies' own frame
-                // compares (elapsed > landingAfter and the like).
+                // and 341's landing), a LandSeek rule enters the phase and seeks its
+                // clock (Rena 2's late landing: phase 1 at tick 25, vertical zeroed).
+                // The tick windows are the bodies' own frame compares. Shot rows are
+                // included: 402/408/460 are Shoot states in this port and their
+                // bodies branch on the ground contact just like the melee rows.
                 const MoveProgram* program = move_program(m_moves);
                 if (program) {
                     const int moveId = state_move_id();
@@ -612,6 +625,16 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
                             m_moveSpeed = 0.f;
                             m_vy = 0.f;
                             enter_phase(static_cast<int>(rule.value));
+                            break;
+                        }
+                        // The late-landing seek (FUN_00438310 case 0x192: grounded at
+                        // tick>=15 enters phase 1 with both clocks set to 25 and the
+                        // vertical cleared): enter the phase and move the clock,
+                        // leaving the carried speed to the row's own bleed.
+                        if (rule.operation == MoveOp::LandSeek) {
+                            m_vy = 0.f;
+                            enter_phase(static_cast<int>(rule.value));
+                            m_moveElapsedTicks = static_cast<int>(rule.second);
                             break;
                         }
                     }
@@ -945,8 +968,8 @@ void Fighter::set_state(FighterState new_state) {
     m_attackGravity = -1.f;
     m_chaseStrength = 0;
     m_clockSkip = 0;
-    m_bodyYaw = 0.f;
-    m_bodyPivot = 0.f;
+    m_bodyPitch = 0.f;
+    m_bodyPivotHeight = 0.f;
     m_contactDisabled = false;
     if (new_state != FighterState::ShootA && new_state != FighterState::ShootB &&
         new_state != FighterState::ShootC) m_shotMoveId = -1;
@@ -962,6 +985,7 @@ void Fighter::set_state(FighterState new_state) {
     // fresh swing may connect again (issue #10's per-swing accounting).
     if (new_state == FighterState::AttackA) {
         m_chainContact = false;
+        m_chainGuarded = false;
         begin_melee_swing();
     }
     try_switch_animation();
@@ -1363,11 +1387,12 @@ void Fighter::begin_melee_swing() {
     m_meleeElapsed = 0;
 }
 
-void Fighter::note_melee_hit(int victimIndex) {
+void Fighter::note_melee_hit(int victimIndex, bool guarded) {
     if (victimIndex < 0 || victimIndex >= kMatchFighterCount) return;
     m_swingHits |= (1u << victimIndex);
     ++m_swingHitCount;
     m_chainContact = true;
+    m_chainGuarded = guarded;
 }
 
 void Fighter::set_moves(const CharacterMoves* moves) {
@@ -1423,8 +1448,23 @@ AttackAdmissionInput Fighter::attack_input(bool aerial,
 int Fighter::admit_attack_move(bool aerial, const input::PlayerState* input) const {
     if (!m_moves || !attack_admission_recovered(m_moves->character_index()))
         return resolve_attack_move(m_state == FighterState::Run, aerial);
-    return rena_melee_admission(attack_input(aerial, input),
-                                AttackAdmissionTable{m_moves});
+    const AttackAdmissionInput in = attack_input(aerial, input);
+    // FUN_0044d850:160-167 / FUN_00445ee0:162-168 — the boosted branch: an attack
+    // press while grounded (`+0x84`), inside the current row's chainable window
+    // (`+0x2ec8` threshold + the 0x100 flag), with a special state armed (`+0x845`
+    // Oyashiro, `+0x844` aim lock, or `+0x846` hyper-2) takes state 0x15e ahead of the
+    // ordinary admission. The port's m_hyperActive carries the armed hyper states; the
+    // aim-lock-only arming (+0x844 without a hyper state) is a recorded partial mapping
+    // — the port's aim layer feeds the powered gate, not admission. Scoped to weapons
+    // 0/1 because only their 0x15e is the awakened MELEE: weapon 2's 0x15e is the
+    // full-charge SHOT, which the port selects through the charge path's {350,360}
+    // tier. The dispatcher itself is weapon-independent, so an attack-key press on
+    // weapon 2 with a special armed is a port-side scoping decision, not a source claim.
+    if (!aerial && m_hyperActive && (in.weaponSlot == 0 || in.weaponSlot == 1) &&
+        in.normalFlag &&
+        AttackAdmissionTable{m_moves}.gate(in.state, 350) && present_move(350) > 0)
+        return 350;
+    return rena_melee_admission(in, AttackAdmissionTable{m_moves});
 }
 
 int Fighter::resolve_attack_move(bool dashAttack, bool aerial) const {
@@ -1588,6 +1628,11 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
     m_propBound = {true, true};
     m_propActive = {false, false};
     m_trailItemModel = {0, 1};
+    // The port's contact model: the posed records own the swing by default, and the
+    // MoveOp::ContactOff windows cut it where the bodies call FUN_00434bd0 (which runs
+    // inside the state bodies, not in a prologue). The reset therefore starts enabled
+    // and each ContactOff rule disables for its ticks.
+    m_contactDisabled = false;
     const MoveProgram* program = move_program(m_moves);
     m_sourceShotVoiceAudited = shot_voice_policy_audited(program, state_move_id());
     const auto* motion = locomotion(m_moves);
@@ -1611,12 +1656,29 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
     // exit for the whole group, superseding the Rena+0-only special case).
     if (m_state == FighterState::AttackA && program) {
         const int moveId = state_move_id();
+        // The attacker-side guard reaction: the melee bodies test the contact
+        // word's bit 2 (FUN_0042c7b0() & 2) every tick and hand the attacker to
+        // the 392 knockback for the rows whose bodies carry the branch — the
+        // per-weapon table in rena_guard_exit_row, recovered from the 0x188
+        // switch sites of all three handlers.
+        if (m_chainGuarded) {
+            const int guardRow = rena_guard_exit_row(weapon_slot_index(), moveId);
+            if (guardRow > 0 && present_move(guardRow)) {
+                switch_attack_row(guardRow);
+                return;
+            }
+        }
         if (program->chase && moveId == 320) {
             advance_rena_chase(*program->chase, opponent);
         } else if (program->dive && (moveId == 332 || moveId == 334)) {
             advance_rena_dive(*program->dive, opponent);
         }
     }
+    // Rena+1's air tap dive launch (FUN_00448220 case 0x192, phase 1 tick 0): the
+    // vertical/horizontal split comes from the target's geometry, so it runs as a
+    // body the same way the chase/dive feedback loops do.
+    if (m_shotMoveId == 402 && m_moves && weapon_slot_index() == 1)
+        advance_rena1_dive_shot(opponent);
     if (motion && m_model && m_state == FighterState::Run && m_dashMoveId == 20) {
         // Constructor-bound handlers use the same phase contract with different
         // profile values. NN.dat supplies each phase's pose/gate/period.
@@ -1673,7 +1735,13 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             m_moveSpeed = opponent && rule.third > 0.f && distanceSquared < rule.third
                               ? rule.second : rule.value;
             break;
-        case MoveOp::Decelerate: m_moveSpeed = std::max(0.f, m_moveSpeed - rule.value); break;
+        // The bodies' bleeds floor at zero for positive speeds; the guard-knockback's
+        // -15 entry (FUN_0043ffc0 case 0x188) recovers TOWARD zero from below, so the
+        // op moves the speed toward zero from either side.
+        case MoveOp::Decelerate:
+            m_moveSpeed = m_moveSpeed > 0.f ? std::max(0.f, m_moveSpeed - rule.value)
+                                            : std::min(0.f, m_moveSpeed + rule.value);
+            break;
         case MoveOp::Turn:
             // Contact-gated turn (second > 0); the Back-held actor-facing rule and
             // the null-opponent case live in turn_toward.
@@ -1775,10 +1843,84 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             // set_hyper_gauge's 0..1 range (the original's min(1000, +40)).
             set_hyper_gauge(m_gauge + rule.value / 1000.f);
             break;
-        // LandExit/LandPhase never act inside the loop: the landing branch in
-        // update() consults them when the ground is actually reached.
+        case MoveOp::Recharge:
+            // The recovery bodies' shot-gauge refill: +40 thousandths a tick, 5
+            // while a status timer is active (FUN_00448220 cases 0x193/0x199/0x1d5;
+            // the status producer is unmodeled, so only the fast rate is bound),
+            // capped at 1000.
+            m_chargeGauge = std::min(1000, m_chargeGauge + static_cast<int>(rule.value));
+            break;
+        case MoveOp::MeleeVoice: {
+            // FUN_004223d0/FUN_00422490 with the melee event ids. The close-target
+            // cascade (voices 0/15/5 at priority 12, FUN_0043ffc0:601-627) reads the
+            // proximity flags +0xaec3/+0xaebe/+0xaeb9, which FUN_0042e110 arms from
+            // the 2v2 pairing structure — a tracker this port does not model, so the
+            // cascade stays documented rather than guessed and the ordinary event
+            // always queues here. The 422490 choice draw reproduces the 32-family's
+            // `rand%100 < percent` pair exactly.
+            int alternative = -1;
+            if (rule.voice.alternativeFirst >= 0 && rule.voice.alternativeSecond >= 0) {
+                alternative = rng_source().modulo(100) <
+                                      static_cast<std::uint32_t>(
+                                          rule.voice.alternativeSecondPercent)
+                                  ? rule.voice.alternativeSecond
+                                  : rule.voice.alternativeFirst;
+            } else if (rule.voice.alternativeFirst >= 0) {
+                alternative = rule.voice.alternativeFirst;  // the fixed 422490 choice
+            }
+            m_meleeVoice = {static_cast<int>(rule.value), alternative};
+            break;
+        }
+        case MoveOp::Effect:
+            // FUN_0042c8b0/0042c880's effect id. The 350 scatter form draws its yaw
+            // and pitch jitter first — two rand%40-20 per particle (FUN_0043ffc0
+            // case 0x15e @0x15e-0x16a) — so the draw consumption matches the body.
+            m_pendingEffect = {static_cast<int>(rule.value), 0.f, 0.f, rule.third > 0.f};
+            if (rule.third > 0.f) {
+                m_pendingEffect.yaw = static_cast<float>(
+                    static_cast<int>(rng_source().modulo(40)) - 20);
+                m_pendingEffect.pitch = static_cast<float>(
+                    static_cast<int>(rng_source().modulo(40)) - 20);
+            }
+            break;
+        case MoveOp::ClockSeek:
+            // Rena+2's clock jumps (the 350/360 42->95 jump, FUN_00438310 cases
+            // 0x15e/0x168): the primary clock moves; the secondary clock (+0xae08,
+            // the animation service's second channel) takes the same seek in the
+            // original — a recorded single-clock approximation.
+            m_moveElapsedTicks = static_cast<int>(rule.value);
+            break;
+        case MoveOp::ClockClamp:
+            m_moveElapsedTicks = std::min(m_moveElapsedTicks,
+                                          static_cast<int>(rule.value));
+            break;
+        case MoveOp::PropModel: {
+            // FUN_00434a70's per-tick rebind: slot (value) carries item model
+            // (second) for this move — Rena+1's 450/460 bind slot 0 to model 2, so
+            // the visible weapon and the ribbon anchors follow the model-2 muzzle.
+            const int slot = static_cast<int>(rule.value);
+            const int model = static_cast<int>(rule.second);
+            if (slot >= 0 && slot < 2 && model >= 0) m_trailItemModel[size_t(slot)] = model;
+            break;
+        }
+        case MoveOp::ScaleMotion:
+            // The entry scalings: the carried speed (value) and vertical (second)
+            // multiply at the window's first tick (Rena+1's 460 halves the speed;
+            // Rena+2's air 360 keeps a tenth of both).
+            m_moveSpeed *= rule.value;
+            m_vy *= rule.second;
+            break;
+        case MoveOp::ContactOff:
+            // The bodies' FUN_00434bd0 windows: cut the contact volume for the
+            // matching ticks (reset each pass, so the posed records' own windows
+            // apply everywhere else).
+            m_contactDisabled = true;
+            break;
+        // LandExit/LandPhase/LandSeek never act inside the loop: the landing
+        // branch in update() consults them when the ground is actually reached.
         case MoveOp::LandExit:
         case MoveOp::LandPhase:
+        case MoveOp::LandSeek:
             break;
         }
     }
@@ -2139,15 +2281,18 @@ void Fighter::switch_attack_row(int moveId) {
     // (m_attackGravity — the original's +58) carry across the switch, matching the
     // persistent scratch the original reads in the landing bodies; the lean pair
     // clears because every recovered transition that switches rows zeroes the pitch.
-    m_attackMoveId = moveId;
-    build_melee_swing(m_attackMoveId);
+    // The active channel decides which row id moves: FUN_00421080 is the same call
+    // for melee and shot states, and a shot state's row lives in m_shotMoveId.
+    if (m_shotMoveId >= 0) m_shotMoveId = moveId;
+    else m_attackMoveId = moveId;
+    build_melee_swing(moveId);
     begin_melee_swing();
     m_phaseIndex = 0;
     m_moveElapsedTicks = 0;
     m_animSetIdx = -1;
     m_contactDisabled = false;
-    m_bodyYaw = 0.f;
-    m_bodyPivot = 0.f;
+    m_bodyPitch = 0.f;
+    m_bodyPivotHeight = 0.f;
     try_switch_animation();
 }
 
@@ -2188,8 +2333,8 @@ void Fighter::advance_rena_chase(const ChasePolicy& policy, Fighter* opponent) {
         m_vy = std::clamp(m_vy, policy.minimumVertical * 64.f, policy.maximumVertical * 64.f);
         m_moveSpeed = policy.initialSpeed;
         m_chaseStrength = distance2 < policy.initialDistance2 ? policy.initialStrength : 0;
-        m_bodyYaw = flightAngle() + policy.pitchBias;
-        m_bodyPivot = 70.f;
+        m_bodyPitch = flightAngle() + policy.pitchBias;
+        m_bodyPivotHeight = 70.f;
     }
     if (m_phaseIndex < 2 && m_chaseStrength > 0) {
         const float targetAngle = glm::degrees(std::atan2(
@@ -2201,8 +2346,8 @@ void Fighter::advance_rena_chase(const ChasePolicy& policy, Fighter* opponent) {
         const float magnitude = static_cast<float>(m_chaseStrength) * .1f;
         m_moveSpeed = std::cos(glm::radians(current)) * magnitude;
         m_vy = std::sin(glm::radians(current)) * magnitude * 64.f;
-        m_bodyYaw = flightAngle() + policy.pitchBias;
-        m_bodyPivot = 70.f;
+        m_bodyPitch = flightAngle() + policy.pitchBias;
+        m_bodyPivotHeight = 70.f;
         turn_toward(opponent, policy.turnStep);
         m_chaseStrength = std::max(policy.minimumStrength, m_chaseStrength - policy.strengthDecay);
     }
@@ -2223,8 +2368,8 @@ void Fighter::advance_rena_chase(const ChasePolicy& policy, Fighter* opponent) {
         // gap the port's single clock approximates). Pitch recovers 5 a tick past 25.
         if (policy.skipAttackFrames && m_moveElapsedTicks == 13) m_moveElapsedTicks = 22;
         if (m_moveElapsedTicks > 25) {
-            m_bodyYaw = m_bodyYaw > 0.f ? std::max(0.f, m_bodyYaw - 5.f)
-                                        : std::min(0.f, m_bodyYaw + 5.f);
+            m_bodyPitch = m_bodyPitch > 0.f ? std::max(0.f, m_bodyPitch - 5.f)
+                                        : std::min(0.f, m_bodyPitch + 5.f);
         }
     }
 }
@@ -2274,14 +2419,14 @@ void Fighter::advance_rena_dive(const DivePolicy& policy, Fighter* opponent) {
             const float angle = std::clamp(elevation, policy.minimumAngle, policy.maximumAngle);
             m_moveSpeed = std::cos(glm::radians(angle)) * policy.launchSpeed;
             m_vy = std::sin(glm::radians(angle)) * policy.launchSpeed * 64.f;
-            m_bodyYaw = std::min(
+            m_bodyPitch = std::min(
                 0.f, glm::degrees(std::atan2(m_vy / 64.f, m_moveSpeed)) + 10.f);
-            m_bodyPivot = 70.f;
+            m_bodyPivotHeight = 70.f;
         }
         if (m_chainContact) {
             // Contact rebound into 334: pitch cleared, vertical 10 up, speed -7
             // back, gravity .35 carried, contact cleared for the follow-up.
-            m_bodyYaw = 0.f;
+            m_bodyPitch = 0.f;
             m_vy = policy.contactVertical * 64.f;
             m_moveSpeed = policy.contactSpeed;
             m_attackGravity = policy.contactGravity;
@@ -2300,12 +2445,34 @@ void Fighter::advance_rena_dive(const DivePolicy& policy, Fighter* opponent) {
         // The fall: gravity .5 from the first fall tick (the Gravity rules carry
         // the window), the pitch recovers 5 a tick in phase 2 only.
         if (m_phaseIndex == 2) {
-            m_bodyYaw = m_bodyYaw > 0.f ? std::max(0.f, m_bodyYaw - 5.f)
-                                        : std::min(0.f, m_bodyYaw + 5.f);
+            m_bodyPitch = m_bodyPitch > 0.f ? std::max(0.f, m_bodyPitch - 5.f)
+                                        : std::min(0.f, m_bodyPitch + 5.f);
         }
         if (m_attackGravity < 0.f) m_attackGravity = .5f;
         m_moveSpeed = std::max(0.f, m_moveSpeed);
     }
+}
+
+void Fighter::advance_rena1_dive_shot(Fighter* opponent) {
+    // FUN_00448220 case 0x192, phase 1 tick 0 — the dive launch. The vertical is a
+    // fixed -40 u/tick (0xc2200000); the horizontal closing speed is the target's own
+    // geometry: (horizontal distance + 1) * -40 / height difference (FUN_0042d980's
+    // squared-distance sum, FUN_0042de80's sqrt, FUN_0042da30's target-minus-self
+    // height), clamped into [0, 10] — a steeper approach dives more vertically, and a
+    // target at or above the attacker clamps to a pure drop. No gravity is applied by
+    // the body (the original never integrates +0x16 here), so the dive is a
+    // constant-velocity drop until the row's landing or completion.
+    if (m_phaseIndex != 1 || m_moveElapsedTicks != 0) return;
+    m_vy = -40.f * 64.f;
+    float horizontal = 0.f;
+    if (opponent) {
+        const glm::vec3 offset = opponent->position() - m_position;
+        const float distance = std::sqrt(std::max(0.f, offset.x * offset.x +
+                                                        offset.z * offset.z));
+        const float height = offset.y;
+        if (height < 0.f) horizontal = (distance + 1.f) * -40.f / height;
+    }
+    m_moveSpeed = std::clamp(horizontal, 0.f, 10.f);
 }
 
 MeleeSwing Fighter::resolve_swing(int moveId) const {
@@ -2474,6 +2641,9 @@ void Fighter::restore_ammo() {
         m_main.value = m_main.max;
         m_charge.value = m_charge.max;
     }
+    // FUN_004219a0's battle-init block: the fighter-level shot gauge returns to
+    // 1000 with the magazines at every respawn/round reset.
+    m_chargeGauge = 1000;
 }
 
 void Fighter::apply_weapon_ammo() {
@@ -2600,6 +2770,13 @@ bool Fighter::can_fire(ShotTier tier) const {
 
 void Fighter::fire_shot(ShotTier tier) {
     if (!can_fire(tier)) return;
+    // The fighter-level shot gauge (+0x834) gates the tap admission in the
+    // recovered selector (FUN_00445ee0: `0 < +0x834` on the 40x branches); the
+    // recovery states refill it. Scoped to the recovered group so other combos
+    // keep their previous admission behavior.
+    if (tier == ShotTier::Tap && m_moves &&
+        attack_admission_recovered(m_moves->character_index()) && m_chargeGauge <= 0)
+        return;
     if (!m_weapon) {
         const ShotParams p = shot_params_for(tier);
         AmmoStock& stock = (tier == ShotTier::Tap) ? m_main : m_charge;
@@ -2725,14 +2902,24 @@ glm::mat4 Fighter::modelMatrix() const {
     //     (tests/parity-baseline/captures/fighter-p1-rena.png);
     //   * the print the arena camera was fitted to (docs/reference/battle-hud.webp)
     //     shows the player's back with the eye behind her.
-    // The chase/dive lean sums into the same rotation the original's world update
-    // builds from its field sum (FUN_00420b30 rotates by heading+90+pivot+pitch,
-    // all one angle). The additive sense follows that sum; the sign against the
-    // original's render is part of the pending live visual gate, not a claim.
-    return glm::translate(glm::mat4(1.0f), m_position) *
-           glm::rotate(glm::mat4(1.0f),
-                       m_facing + glm::pi<float>() + glm::radians(m_bodyYaw + m_bodyPivot),
-                       glm::vec3(0.0f, 1.0f, 0.0f));
+    // The chase/dive lean is the original's field sum, in the original's own slots:
+    // FUN_00420b30's unattached-actor branch builds T(0,-pivot,0) * Rx(pitch) *
+    // Ry(-(heading+90+offset+extra)) * T(position + pivot), where +0x2c is the PITCH
+    // (RotationX, degrees) and +0x2d8 the pivot HEIGHT the model turns about. The
+    // earlier cut summed pitch+pivot into the Y angle, which is neither. The donor's
+    // transcription (actor_world_pose.hpp:14) agrees with the handler. glm point-map
+    // equivalence: the donor's tilt matrix maps (y,z) -> (c*y - s*z, s*y + c*z),
+    // bit-for-bit glm::rotate(+X), so the pitch sign carries over unchanged; the yaw
+    // sum is the negated one that m_facing + pi already encodes for the -Z rig (see
+    // the half-turn note above), so a recovered yaw offset (+0x64/+0x30) would
+    // subtract — neither is modeled, so neither appears.
+    const float pivot = m_bodyPivotHeight;
+    return glm::translate(glm::mat4(1.0f), m_position + glm::vec3(0.0f, pivot, 0.0f)) *
+           glm::rotate(glm::mat4(1.0f), m_facing + glm::pi<float>(),
+                       glm::vec3(0.0f, 1.0f, 0.0f)) *
+           glm::rotate(glm::mat4(1.0f), glm::radians(m_bodyPitch),
+                       glm::vec3(1.0f, 0.0f, 0.0f)) *
+           glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -pivot, 0.0f));
 }
 
 game::FighterPose Fighter::pose() const {

@@ -240,6 +240,13 @@ inline constexpr ShotSpreadSpec kSpreadEmissionJitter =
 inline constexpr ShotSpreadSpec kSpreadRing =
     spread_pitch_then_yaw(30, 20.f, 1.f, 180, -90.f, -1.f);
 
+// Rena 2's 402 ring (FUN_00438310 case 0x192 @0x18b3-0x18d1): the attachment form
+// through FUN_00434fd0 — the pitch is `rand%50 + 30` absolute and the yaw is the same
+// `90 - rand%180` helper offset, drawn AFTER the pitch (the body loads the pitch draw
+// into the helper's third argument).
+inline constexpr ShotSpreadSpec kSpreadRingAir =
+    spread_pitch_then_yaw(50, 30.f, 1.f, 180, -90.f, -1.f);
+
 // A counter-only lateral sweep: no draw at all, the offset is `counter * perTick + offset`
 // (shoot_body_11_2_400's `0x3e * 0.5 - 2`).
 inline constexpr ShotSpreadSpec spread_lateral_sweep(float perTick, float offset) {

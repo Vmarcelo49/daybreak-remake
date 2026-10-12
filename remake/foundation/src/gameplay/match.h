@@ -105,6 +105,15 @@ struct MatchFrame {
     bool sourceShotVoiceAudited[kMatchFighterCount] = {false, false, false, false};
     int shotVoice[kMatchFighterCount] = {-1, -1, -1, -1};
     int shotVoiceAlternative[kMatchFighterCount] = {-1, -1, -1, -1};
+    // The melee voice cue (small event ids, FUN_004223d0/422490) and the effect cue
+    // (FUN_0042c8b0/2c880) — one per fighter per tick, -1 when silent. The scatter
+    // fields carry the 350 particle's two rand%40-20 draws (yaw/pitch jitter).
+    int meleeVoice[kMatchFighterCount] = {-1, -1, -1, -1};
+    int meleeVoiceAlternative[kMatchFighterCount] = {-1, -1, -1, -1};
+    int effectId[kMatchFighterCount] = {-1, -1, -1, -1};
+    bool effectScatter[kMatchFighterCount] = {};
+    float effectYaw[kMatchFighterCount] = {};
+    float effectPitch[kMatchFighterCount] = {};
     bool shotFired[kMatchFighterCount]    = {false, false, false, false};
     // Where that shot left the muzzle (issue #17): the effect layer spawns the muzzle
     // flash from the event's own position instead of re-deriving it from the pose.

@@ -3573,7 +3573,7 @@ void test_rena2_ring() {
     check_bool("Rena 2 program is bound", true,
                program && program->rules == gameplay::kRena2Rules);
     check_int("Rena 2 binds state 400", 400, program ? program->shot[0][0] : -1);
-    check_int("Rena 2 claims nothing for 402", -1, program ? program->shot[0][1] : -2);
+    check_int("Rena 2 binds state 402 (air tap)", 402, program ? program->shot[0][1] : -2);
 
     Fighter f;
     f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);

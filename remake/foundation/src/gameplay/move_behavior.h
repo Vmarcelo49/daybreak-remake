@@ -107,7 +107,42 @@ enum class MoveOp { Speed, Decelerate, Turn, Approach, Launch, Hold, ActionCamer
                     JumpCancel,  // contact + held jump: leave into the jump state
                     PhaseExit,   // unconditional enter_phase(value) inside the window
                     ClockSkip,   // advance the phase clock value extra ticks this update
-                    Gauge };     // add value thousandths to the special gauge (recovery)
+                    Gauge,       // add value thousandths to the special gauge (recovery)
+                    // The 403/409/469 recovery bodies' shot-gauge refill (FUN_00448220
+                    // cases 0x193/0x199/0x1d5): +0x834 gains 40 thousandths a tick, 5
+                    // while a status timer (+0x7f4, producer FUN_0042e110's status family)
+                    // is active — the port models no status, so the fast rate is the only
+                    // reachable one and the slow branch stays cited, not bound.
+                    Recharge,    // add value thousandths to the shot gauge, capped at 1000
+                    // The melee voice cue (FUN_004223d0/FUN_00422490 with the small event
+                    // ids): value is the ordinary event, rule.voice carries the entry
+                    // alternative pair where the body draws one (the 32-family). The
+                    // close-target cascade (voices 0/15/5, priority 12) resolves at the
+                    // op site from the live distance/bearing.
+                    MeleeVoice,
+                    // FUN_0042c8b0's effect id (value). `third > 0` marks the 350
+                    // scatter form, which draws its yaw/pitch jitter (two rand%40-20)
+                    // before emitting — the draw consumption is part of the contract.
+                    Effect,
+                    // On landing: enter_phase(value) and seek the phase clock to `second`
+                    // ticks (Rena+2's 402 late landing: phase 1, clock 25).
+                    LandSeek,
+                    // Set the phase clock to `value` this update (Rena+2's 350/360
+                    // 42->95 jump, written to both the primary and secondary clocks).
+                    ClockSeek,
+                    // Clamp the phase clock at `value` (Rena+2's 402 phase-0 cap 17: the
+                    // clock stops so the row waits for its landing branch).
+                    ClockClamp,
+                    // Bind attachment slot (value) to item model (second) for this move
+                    // (FUN_00434a70; Rena+1's 450/460 bind slot 0 to model 2).
+                    PropModel,
+                    // Scale the carried speed (value) and vertical (second) at the
+                    // window's first tick (Rena+1's 460 halves the entry speed; Rena+2's
+                    // air 360 keeps a tenth of both).
+                    ScaleMotion,
+                    // Cut the melee contact volume while matching (the bodies'
+                    // FUN_00434bd0 windows; the posed records stay the default).
+                    ContactOff };
 enum class ShotVoiceMagazine { Primary, Secondary };
 enum class ShotVoiceCompare { Equal, Less };
 
@@ -196,6 +231,48 @@ constexpr MoveRule voice_rule(int move, int phase, int first, int last,
     return rule;
 }
 
+// The melee voice cue (FUN_004223d0(voice, priority)): `event` is the ordinary id,
+// and the close-target cascade (voices 0/15/5 at priority 12, FUN_0043ffc0:601-627)
+// resolves at the op site from the live distance and battle bearing. `pair`/`percent`
+// reproduce the FUN_00422490 choice draws (the 32-family: `rand%100 < percent` picks
+// `second`, else `first`).
+constexpr MoveRule melee_voice_rule(int move, int phase, int first, int last, int event,
+                                    int firstChoice = -1, int secondChoice = -1,
+                                    int percent = 0) {
+    MoveRule rule{move, phase, first, last, MoveOp::MeleeVoice,
+                  static_cast<float>(event)};
+    if (firstChoice >= 0) {
+        rule.voice.event = event;
+        rule.voice.alternativeFirst = firstChoice;
+        rule.voice.alternativeSecond = secondChoice;
+        rule.voice.alternativeSecondPercent = percent;
+    }
+    return rule;
+}
+
+constexpr MoveRule effect_rule(int move, int phase, int first, int last, int effect,
+                               bool scatter = false) {
+    MoveRule rule{move, phase, first, last, MoveOp::Effect,
+                  static_cast<float>(effect), 0.f, scatter ? 1.f : 0.f};
+    return rule;
+}
+
+// The attacker-side guard exit: which Rena melee rows test the contact word's bit 2
+// (FUN_0042c7b0() & 2) each tick and hand the attacker to 392. Exhaustive per-file
+// scan of every `& 2` site (FUN_0043ffc0:12, FUN_00448220:10, FUN_00438310:13):
+//   301/310/311/331/340 — present in all three weapons;
+//   302 and 330          — present in weapons 0 and 2, absent from weapon 1
+//                          (FUN_00448220 has no 0x12e case at all and no 0x14a guard);
+//   300/320/329/332/333/334/341/350 — absent from every weapon.
+// Every melee-row exit targets 0x188 (392) and pairs with FUN_0042c800(0); the 0x33
+// effect belongs to the 390/391/393/394 exit states, not to these rows.
+inline int rena_guard_exit_row(int weaponSlot, int moveId) {
+    const bool has = moveId == 301 || moveId == 310 || moveId == 311 ||
+                     moveId == 331 || moveId == 340 ||
+                     (weaponSlot != 1 && (moveId == 302 || moveId == 330));
+    return has ? 392 : -1;
+}
+
 // Original FUN_0043ffc0. Inclusive tick intervals; phase -1 means all phases.
 // Launch.value is an ITEM ROW, never a model number, animation set or magazine.
 // Hide/Active are the attachment slot 0..1 operands of FUN_00434a70 and FUN_00434b30: the
@@ -268,6 +345,12 @@ inline constexpr MoveRule kRenaRules[] = {
     {320,0,0,0,MoveOp::Gravity,0.f},
     {320,2,6,9999,MoveOp::Gravity,.5f},
     {320,2,11,9999,MoveOp::LandExit,329.f},
+    // The 320 body's contact gate (FUN_0043ffc0:985-990; the same guard in all three
+    // handlers): the volume is armed by FUN_00434b30 only in phase 2 ticks 0..7 and
+    // cut by FUN_00434bd0 on every other tick, including all of phases 0 and 1.
+    {320,0,0,9999,MoveOp::ContactOff},
+    {320,1,0,9999,MoveOp::ContactOff},
+    {320,2,8,9999,MoveOp::ContactOff},
     // 329/333 dash recovery (battle_dash_recovery, character 0): speed, vertical
     // and gravity zero, and the special gauge refills 40/1000 per tick — the
     // slowed rate (5) belongs to the hit-slow state the port does not carry yet.
@@ -324,6 +407,32 @@ inline constexpr MoveRule kRenaRules[] = {
      ShotOriginSpec{},aim_stored_pitch()},
     {400,0,12,12,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
      ShotOriginSpec{},aim_stored_pitch()},
+    // Melee voices and effects (FUN_0043ffc0's tick-guarded call sites, read
+    // directly): the ordinary voice ids ride the melee latch; the close-target
+    // cascade (voices 0/15/5 at priority 12, FUN_0043ffc0:601-627) reads the
+    // pairing-tracker flags FUN_0042e110 arms, which the port does not model —
+    // documented at the op site, not guessed here. Effect ids are FUN_0042c880's.
+    effect_rule(300,2,0,0,60),
+    melee_voice_rule(300,2,0,0,1),
+    effect_rule(301,0,3,3,61),
+    melee_voice_rule(301,0,3,3,2),
+    effect_rule(302,0,10,10,62),
+    melee_voice_rule(302,0,10,10,3),
+    effect_rule(310,2,4,4,62),
+    melee_voice_rule(310,2,4,4,2),
+    effect_rule(311,0,12,12,62),
+    melee_voice_rule(311,0,12,12,3),
+    effect_rule(320,2,0,0,62),
+    melee_voice_rule(320,2,0,0,1),
+    effect_rule(330,2,6,6,62),
+    melee_voice_rule(330,2,6,6,2),
+    melee_voice_rule(331,2,10,10,2),
+    // 332's entry voice (FUN_0043ffc0 case 0x14c, phase 1 tick 0): event 3 with
+    // the FIXED choice 0 through FUN_00422490(3,0,10,0).
+    melee_voice_rule(332,1,0,0,3,0),
+    effect_rule(340,0,15,15,61),
+    melee_voice_rule(340,0,15,15,2),
+    melee_voice_rule(341,1,0,0,3),
     // 402 air tap: hide from tick 13 (tick>12), launch item row 1 at tick 13
     // (0x444c7a CMP [this+0xae04],0xd) normally and row 7 powered (case 0x192).
     {402,-1,13,9999,MoveOp::Hide,0.f},
@@ -332,6 +441,34 @@ inline constexpr MoveRule kRenaRules[] = {
                                      ShotVoiceCompare::Equal,1)),
     {402,0,13,13,MoveOp::Launch,1.f,0.f,30.f,kGateNormal},
     {402,0,13,13,MoveOp::Launch,7.f,0.f,30.f,kGatePowered},
+    // 402's motion and landing (FUN_0043ffc0 case 0x192, read directly): turn 20
+    // toward the target through tick 12 (FUN_0042dc20 — the heading turns while
+    // the world motion is preserved; the port's Turn follows the facing, a
+    // labeled single-basis approximation), gravity 0.5 armed at entry (the body
+    // applies it only when unset) integrating the vertical itself, and the
+    // landing past tick 0 hands to the 403 recovery (the tick-0 guard is the
+    // rule window's `first`).
+    {402,0,0,12,MoveOp::Turn,20.f},
+    {402,0,0,0,MoveOp::Gravity,.5f},
+    {402,-1,1,9999,MoveOp::LandExit,403.f},
+    // 403/409/469 recovery bodies (FUN_0043ffc0 cases 0x193/0x199/0x1d5): speed,
+    // vertical, gravity and movement offset zeroed EVERY tick (the cases carry no
+    // tick guard), the shot gauge (+0x834) refilling 40 thousandths a tick (5 with a
+    // status timer — the status producer is unmodeled, so the fast rate is the only
+    // reachable branch), capped at 1000. Completion returns to idle through the
+    // period path.
+    {403,-1,0,9999,MoveOp::Speed,0.f},
+    {403,-1,0,9999,MoveOp::Vertical,0.f},
+    {403,-1,0,9999,MoveOp::Gravity,0.f},
+    {403,-1,0,9999,MoveOp::Recharge,40.f},
+    {409,-1,0,9999,MoveOp::Speed,0.f},
+    {409,-1,0,9999,MoveOp::Vertical,0.f},
+    {409,-1,0,9999,MoveOp::Gravity,0.f},
+    {409,-1,0,9999,MoveOp::Recharge,40.f},
+    {469,-1,0,9999,MoveOp::Speed,0.f},
+    {469,-1,0,9999,MoveOp::Vertical,0.f},
+    {469,-1,0,9999,MoveOp::Gravity,0.f},
+    {469,-1,0,9999,MoveOp::Recharge,40.f},
     // 401/405/406 — the walking shot and the lateral dash shots (weapon 0,
     // FUN_00445ee0's slot-7 routing through the mobile reference): the bodies fire
     // the same row-0/6 pair at tick 12 with the ±30 clamp as the ordinary 400,
@@ -348,6 +485,7 @@ inline constexpr MoveRule kRenaRules[] = {
      ShotOriginSpec{},aim_stored_pitch()},
     {401,0,12,12,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
      ShotOriginSpec{},aim_stored_pitch()},
+    {405,0,0,0,MoveOp::Speed,10.f},
     {405,0,0,9999,MoveOp::Decelerate,.5f},
     {405,0,0,11,MoveOp::Turn,20.f},
     {405,-1,12,9999,MoveOp::Hide,0.f},
@@ -359,6 +497,7 @@ inline constexpr MoveRule kRenaRules[] = {
      ShotOriginSpec{},aim_stored_pitch()},
     {405,0,12,12,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
      ShotOriginSpec{},aim_stored_pitch()},
+    {406,0,0,0,MoveOp::Speed,10.f},
     {406,0,0,9999,MoveOp::Decelerate,.5f},
     {406,0,0,11,MoveOp::Turn,20.f},
     {406,-1,12,9999,MoveOp::Hide,0.f},
@@ -372,13 +511,20 @@ inline constexpr MoveRule kRenaRules[] = {
      ShotOriginSpec{},aim_stored_pitch()},
     // 407 back dash shot (weapon 0): tick 13 fires the row-4/row-9 pair at FIXED
     // angles — yaw +75/-75 with pitch 30 — and the powered branch widens to
-    // rows 13/14 at yaw ±85 with pitch 20 (the mobile state407 body).
+    // rows 13/14 at yaw ±85 with pitch 20 (the mobile state407 body). The body
+    // sets its own speed 10 at tick 0 (0x41200000, cases 0x195/0x196/0x197 — the
+    // 405/406 entries above carry the same note) and bleeds 1 a tick past 30
+    // (0x1e) on top of the phase-0 0.25 bleed. The VOICE is `+0x1b7 < 3` →
+    // ShotFinal (30) else ShotB (28) — FUN_0043ffc0:2246-2251 — not the
+    // ordinary 27/Equal-1 pair the first binding carried.
+    {407,0,0,0,MoveOp::Speed,10.f},
     {407,0,0,9,MoveOp::Turn,15.f},
     {407,0,0,9999,MoveOp::Decelerate,.25f},
+    {407,-1,31,9999,MoveOp::Decelerate,1.f},
     {407,-1,13,9999,MoveOp::Hide,0.f},
     {407,-1,13,9999,MoveOp::Hide,1.f},
-    voice_rule(407,0,13,13,shot_voice(27,30,ShotVoiceMagazine::Primary,
-                                     ShotVoiceCompare::Equal,1)),
+    voice_rule(407,0,13,13,shot_voice(28,30,ShotVoiceMagazine::Primary,
+                                     ShotVoiceCompare::Less,3)),
     {407,0,13,13,MoveOp::Launch,4.f,0.f,0.f,kGateNormal,0,
      ShotOriginSpec{},aim_fixed_angles(75.f,30.f)},
     {407,0,13,13,MoveOp::Launch,9.f,0.f,0.f,kGateNormal,0,
@@ -419,6 +565,11 @@ inline constexpr MoveRule kRenaRules[] = {
      ShotOriginSpec{},aim_fixed_angles(0.f,45.f)},
     {460,0,12,12,MoveOp::Launch,8.f,0.f,0.f,kGatePowered,0,
      ShotOriginSpec{},aim_fixed_angles(0.f,45.f)},
+    // 460's fall and landing (FUN_0043ffc0 case 0x1cc): the body applies gravity
+    // 0.5 to the vertical itself every tick, and a grounded fighter still falling
+    // hands to the 469 recovery.
+    {460,0,0,0,MoveOp::Gravity,.5f},
+    {460,-1,0,9999,MoveOp::LandExit,469.f},
     // 360/370 second charge: the ten-update freeze is PHASE 2 tick 13, inside the same
     // phase-2 branch as the tick-2 red launches (360: 0x443aef and 370: 0x443e8b both
     // sit after the 0xadf4==2 gate). Placing it in phase 0 froze the wrong phase. The
@@ -455,6 +606,83 @@ inline constexpr MoveRule kRenaRules[] = {
     {370,2,13,13,MoveOp::CounterSet,0.f,0.f,0.f,kGateCounterEquals,11},
     {370,-1,14,9999,MoveOp::Hide,0.f},
     {370,-1,14,9999,MoveOp::Hide,1.f},
+    // 370's motion (FUN_0043ffc0 case 0x172, read directly): the entry hang —
+    // speed, vertical and gravity all zeroed at phase-0 tick-0 — then the
+    // phase-2 tick-2 backflip launch under the already-bound world pair: speed
+    // -9.5 (0xc1180000), vertical 10 (0x41200000), gravity .5. The landing hands
+    // to 469 like 460's.
+    {370,0,0,0,MoveOp::Speed,0.f},
+    {370,0,0,0,MoveOp::Vertical,0.f},
+    {370,0,0,0,MoveOp::Gravity,0.f},
+    {370,2,2,2,MoveOp::Speed,-9.5f},
+    {370,2,2,2,MoveOp::Vertical,10.f},
+    {370,2,2,2,MoveOp::Gravity,.5f},
+    {370,-1,0,9999,MoveOp::LandExit,469.f},
+    // 392 guard-knockback (FUN_0043ffc0 case 0x188): entered by the central
+    // guard-exit check with speed -15 (0xc1700000) and the movement offset zeroed,
+    // the voice 13 at entry (FUN_004223d0(0xd,10,0)), a scratch counter that walks
+    // 0 -> 21 over phase 0 and hands to phase 1 the moment it passes 20, and the
+    // speed recovering +1 a tick (the negative-aware Decelerate) while phases 0-1
+    // run. The attacker's own 0x188 bodies confirm the shape.
+    melee_voice_rule(392,0,0,0,13),
+    {392,0,0,0,MoveOp::CounterSet,0.f},
+    {392,0,0,9999,MoveOp::Counter,1.f},
+    {392,0,0,9999,MoveOp::PhaseExit,1.f,0.f,0.f,kGateCounterAbove,0,
+     ShotOriginSpec{},ShotAimSpec{},20},
+    {392,-1,0,0,MoveOp::Speed,-15.f},
+    {392,-1,0,9999,MoveOp::Decelerate,1.f},
+    // 350 awakened melee, weapon 0 (FUN_0043ffc0 case 0x15e, read directly and
+    // cross-checked with the donor's battle_rena_full_charge.hpp): both props
+    // stay hidden for the whole move; voice 32 with the FIXED choice 0 at entry
+    // (FUN_00422490(0x20,0,0x14,0)) and voice 33 at frame 56; effect 61 at
+    // frames 11/15/19/23/27/31/35/56; the particle scatters at frames 7/15/23/31
+    // (id 320) and 7/22/37 (id 350) — two rand%40-20 draws each, the yaw added to
+    // the heading+offset, the pitch absolute — plus particle 340 at frame 56;
+    // speed 10 at frame 1 and 0 at frame 10; frames 2..9 play twice (the rewind
+    // scratch alternates a -1 clock skip, so the parity-gated ClockSkip halves
+    // the clock's advance through elapsed 17); frame 70 rewinds to 66 eight
+    // times before the move runs out. The contact latch at frame 50 only feeds
+    // the +0x684 presentation flag the port does not model.
+    {350,-1,0,9999,MoveOp::Hide,0.f},
+    {350,-1,0,9999,MoveOp::Hide,1.f},
+    // The body cuts the melee contact volume at tick 0 and never re-arms it
+    // (FUN_0043ffc0:1392 calls FUN_00434bd0 inside the tick==0 block; there is no
+    // FUN_00434b30 in this case): 350's damage is the particle/effect scatter, not a
+    // swing. Weapon 1's 350 does keep a window (ticks 21..64, FUN_00448220:1306-1311).
+    {350,-1,0,9999,MoveOp::ContactOff},
+    melee_voice_rule(350,0,0,0,32,0),
+    melee_voice_rule(350,0,56,56,33),
+    effect_rule(350,0,11,11,61),
+    effect_rule(350,0,15,15,61),
+    effect_rule(350,0,19,19,61),
+    effect_rule(350,0,23,23,61),
+    effect_rule(350,0,27,27,61),
+    effect_rule(350,0,31,31,61),
+    effect_rule(350,0,35,35,61),
+    effect_rule(350,0,56,56,61),
+    effect_rule(350,0,7,7,320,true),
+    effect_rule(350,0,15,15,320,true),
+    effect_rule(350,0,23,23,320,true),
+    effect_rule(350,0,31,31,320,true),
+    effect_rule(350,0,7,7,350,true),
+    effect_rule(350,0,22,22,350,true),
+    effect_rule(350,0,37,37,350,true),
+    effect_rule(350,0,56,56,340),
+    {350,0,1,1,MoveOp::Speed,10.f},
+    {350,0,10,10,MoveOp::Speed,0.f},
+    // The original's stall (FUN_0043ffc0:1455-1464): while 0 < tick < 10 the +0x3d
+    // alternator rewinds BOTH clocks one tick every other update, so body ticks 1..9
+    // each run twice. The alternator is the UPDATE count (it keeps toggling through a
+    // stall), so it starts at 1 and the first visit of tick 1 is the one that holds;
+    // starting at 0 held tick 2 instead and skipped frame 1's replay. It must read 0
+    // by tick 70, the state the rewind's `0x3d < 8` gate expects (`CounterSet 0` at
+    // tick 10, the first tick past the stall loop).
+    {350,0,0,0,MoveOp::CounterSet,1.f},
+    {350,0,1,9,MoveOp::Counter,1.f},
+    {350,0,1,9,MoveOp::ClockSkip,-1.f,0.f,0.f,kGateCounterMod,2},
+    {350,0,10,10,MoveOp::CounterSet,0.f},
+    {350,0,70,70,MoveOp::Counter,1.f},
+    {350,0,70,70,MoveOp::ClockSeek,66.f,0.f,0.f,kGateCounterBelow,9},
 };
 
 // FUN_00448220.c:1666-1721 is the ground TAP: row 6 normally, rows 0 then 9
@@ -480,6 +708,23 @@ inline constexpr MoveRule kRena1Rules[] = {
     {301,0,0,0,MoveOp::Speed,10.f},
     {301,-1,8,8,MoveOp::Speed,0.f},
     {301,-1,0,7,MoveOp::Turn,20.f,kGateContact},
+    // Melee voices and effects (FUN_00448220's tick-guarded call sites, read
+    // directly — the same latch/cascade caveats as weapon 0's block).
+    effect_rule(300,2,0,0,64),
+    melee_voice_rule(300,2,0,0,1),
+    effect_rule(301,0,3,3,67),
+    melee_voice_rule(301,0,3,3,3),
+    effect_rule(310,2,4,4,62),
+    melee_voice_rule(310,2,4,4,2),
+    effect_rule(311,0,12,12,67),
+    melee_voice_rule(311,0,12,12,3),
+    effect_rule(320,2,0,0,63),
+    melee_voice_rule(320,2,0,0,1),
+    melee_voice_rule(330,1,0,0,3),
+    melee_voice_rule(331,2,10,10,2),
+    melee_voice_rule(332,1,0,0,3,0),
+    effect_rule(340,0,12,12,67),
+    melee_voice_rule(340,0,12,12,3),
     // 310 back kick: the weapon-0/1 body is shared (see kRenaRules 310).
     {310,0,0,0,MoveOp::Speed,30.f},
     {310,0,0,9999,MoveOp::Turn,20.f},
@@ -498,6 +743,11 @@ inline constexpr MoveRule kRena1Rules[] = {
     {320,0,0,0,MoveOp::Gravity,0.f},
     {320,2,6,9999,MoveOp::Gravity,.5f},
     {320,2,11,9999,MoveOp::LandExit,329.f},
+    // The 320 body's contact gate (FUN_00448220; same phase-2 ticks 0..7 window as
+    // the other two handlers).
+    {320,0,0,9999,MoveOp::ContactOff},
+    {320,1,0,9999,MoveOp::ContactOff},
+    {320,2,8,9999,MoveOp::ContactOff},
     // 329/333 dash recovery: zeroed motion, gauge refill 40/1000 a tick.
     {329,-1,0,1,MoveOp::Speed,0.f},
     {329,-1,0,1,MoveOp::Vertical,0.f},
@@ -562,6 +812,12 @@ inline constexpr MoveRule kRena1Rules[] = {
      origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
     {401,-1,18,18,MoveOp::Launch,0.f,0.f,0.f,kGatePowered,0,
      origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    // FUN_00434a70(0,2)/(1,-1) at the case entry (FUN_00448220:2149-2150): slot 0
+    // carries item MODEL 2 and slot 1 is cleared, every tick. The muzzle resolver
+    // already used model 2; this is what makes the RENDERED weapon and the ribbon
+    // anchors follow it (the model2/prop gap closed for 450 as well as 460).
+    {450,-1,0,9999,MoveOp::PropModel,0.f,2.f},
+    {450,-1,0,9999,MoveOp::Hide,1.f},
     {450,0,0,0,MoveOp::CounterSet,0.f},
     {450,-1,0,9,MoveOp::Turn,18.f},
     {450,-1,0,9999,MoveOp::Decelerate,.5f},
@@ -570,6 +826,119 @@ inline constexpr MoveRule kRena1Rules[] = {
      origin_attachment_model(0,2),aim_stored_pitch(),{},kSpreadRena1Charge},
     {450,-1,12,26,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
      origin_attachment_model(0,2),aim_stored_pitch(),{},kSpreadRena1Charge},
+    // 450's own tick-15 effect (FUN_00448220 case 0x1c2): FUN_0042c8b0(0x3f) at
+    // tick 15 inside the 12..26 sweep window.
+    effect_rule(450,-1,15,15,63),
+    // ---- 402 air tap: the three-phase dive (FUN_00448220 case 0x192, read
+    // directly) ----
+    // Phase 0 (12 ticks): tick 0 zeroes the speed, the vertical AND the movement
+    // offset (+0x18, unmodeled). The vertical then stays 0 because the body never
+    // integrates +0x16 in this row, which Gravity(0) states as "this row owns the
+    // fall and its rate is zero" (leaving it unset would apply locomotion gravity).
+    // Turn 20 toward the target through tick 9 (FUN_0042db10 nudges the battle
+    // offset; the port's Turn is the labeled single-basis approximation). Phase 1
+    // (1 tick): the dive launch — a body in fighter.cpp sets the vertical to the
+    // fixed -40 u/tick and the horizontal closing speed from the target's geometry,
+    // clamped [0,10]; no gravity is applied afterwards, so the dive is a
+    // constant-velocity drop. Landing during phases 0/1 enters phase 2 with speed
+    // and vertical cleared (the body's grounded branch). Phase 2 (35 ticks): effect
+    // 67 and voice 29 at tick 0, the row 6 (normal) / rows 0+9 (powered) attachment
+    // requests at tick 5 with effect 77. The cleaver keeps a melee contact window
+    // (phase 2, ticks 0..5, FUN_00434b30) and the posed-record swing integration for
+    // shot states is the recorded gap, as it already was for 401.
+    {402,0,0,0,MoveOp::Speed,0.f},
+    {402,0,0,0,MoveOp::Vertical,0.f},
+    {402,0,0,0,MoveOp::Gravity,0.f},
+    {402,0,0,9,MoveOp::Turn,20.f},
+    {402,0,0,9999,MoveOp::LandPhase,2.f},
+    {402,1,0,9999,MoveOp::LandPhase,2.f},
+    effect_rule(402,2,0,0,67),
+    voice_rule(402,2,0,0,shot_voice(29)),
+    effect_rule(402,2,5,5,77),
+    {402,2,5,5,MoveOp::Launch,6.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {402,2,5,5,MoveOp::Launch,0.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {402,2,5,5,MoveOp::Launch,9.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    // 403/469 recovery bodies (FUN_00448220 cases 0x193/0x1d5): motion zeroed EVERY
+    // tick (no tick guard in the cases), the shot-gauge refill (+40, 5 with a status —
+    // unmodeled producer), cap 1000.
+    {403,-1,0,9999,MoveOp::Speed,0.f},
+    {403,-1,0,9999,MoveOp::Vertical,0.f},
+    {403,-1,0,9999,MoveOp::Gravity,0.f},
+    {403,-1,0,9999,MoveOp::Recharge,40.f},
+    {469,-1,0,9999,MoveOp::Speed,0.f},
+    {469,-1,0,9999,MoveOp::Vertical,0.f},
+    {469,-1,0,9999,MoveOp::Gravity,0.f},
+    {469,-1,0,9999,MoveOp::Recharge,40.f},
+    // ---- 460 air charge (FUN_00448220 case 0x1cc, read directly) ----
+    // Slot 0 carries item model 2 — FUN_00434a70(0,2) re-binds it EVERY tick, so
+    // the visible weapon and the ribbon anchors follow the model-2 muzzle (the
+    // rendered-model2 gap this closes). Turn 18 through tick 9; the entry speed
+    // halves; the 15-shot sweep window runs ticks 15..29 (0xe < tick < 0x1e) with
+    // the 450's counter/yaw shape and effect 63 at tick 15; gravity 0.5 applies
+    // to the vertical every tick; the landing hands to 469; completion goes to
+    // the air exit.
+    {460,-1,0,9999,MoveOp::PropModel,0.f,2.f},
+    {460,-1,0,9,MoveOp::Turn,18.f},
+    {460,-1,0,0,MoveOp::ScaleMotion,.5f,1.f},
+    {460,0,0,0,MoveOp::CounterSet,0.f},
+    {460,-1,15,29,MoveOp::Counter,4.f},
+    {460,-1,15,29,MoveOp::Launch,1.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_model(0,2),aim_stored_pitch(),{},kSpreadRena1Charge},
+    {460,-1,15,29,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_model(0,2),aim_stored_pitch(),{},kSpreadRena1Charge},
+    effect_rule(460,-1,15,15,63),
+    {460,0,0,0,MoveOp::Gravity,.5f},
+    {460,-1,0,9999,MoveOp::LandExit,469.f},
+    // ---- 360/370 second charge (FUN_00448220 cases 0x168/0x172, read
+    // directly) ----
+    // 360 (ground): the entry voice 32 with the rand%100 < 50 choice pair
+    // (4/3 — FUN_00422490(0x20,4|3,0x14,0)), turn 18 through tick 9, the 1.5
+    // bleed, and the tick-16 SINGLE row-8 attachment at fixed pitch 70
+    // (0x428c0000) with effect 64 — no powered split. 370 (air): the same
+    // voice pair at priority 15 (FUN_00422490's 0xf), the entry speed halved
+    // with the vertical zeroed, gravity 0.5, the same tick-16 request, and the
+    // landing to 469.
+    melee_voice_rule(360,0,0,0,32,3,4,50),
+    {360,0,0,9,MoveOp::Turn,18.f},
+    {360,0,0,9999,MoveOp::Decelerate,1.5f},
+    effect_rule(360,0,16,16,64),
+    {360,0,16,16,MoveOp::Launch,8.f,0.f,0.f,kGateNone,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,70.f)},
+    melee_voice_rule(370,0,0,0,32,3,4,50),
+    {370,0,0,9,MoveOp::Turn,18.f},
+    {370,0,0,0,MoveOp::ScaleMotion,.5f,0.f},
+    {370,0,0,0,MoveOp::Gravity,.5f},
+    effect_rule(370,0,16,16,64),
+    {370,0,16,16,MoveOp::Launch,8.f,0.f,0.f,kGateNone,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,70.f)},
+    {370,-1,0,9999,MoveOp::LandExit,469.f},
+    // ---- 350 awakened melee, weapon 1 (FUN_00448220 case 0x15e, read
+    // directly) ----
+    // Effect 68 at frames 25/45/65; approach 25 while frame < 8; speed 8.5 at
+    // frame 20 (0x41080000) and 0 at 73; the contact window frames 21..64 (the
+    // bodies' FUN_00434b30 span — ContactOff cuts outside it); motion zeroed at
+    // entry. No entry voice for this weapon.
+    effect_rule(350,0,25,25,68),
+    effect_rule(350,0,45,45,68),
+    effect_rule(350,0,65,65,68),
+    {350,0,0,0,MoveOp::Speed,0.f},
+    {350,0,0,7,MoveOp::Turn,25.f},
+    {350,0,20,20,MoveOp::Speed,8.5f},
+    {350,0,73,73,MoveOp::Speed,0.f},
+    {350,0,0,20,MoveOp::ContactOff},
+    {350,0,65,9999,MoveOp::ContactOff},
+    // 392 guard-knockback (FUN_00448220 case 0x188): the same shape as weapon
+    // 0's — voice 13 at entry, speed -15 recovering +1 a tick.
+    melee_voice_rule(392,0,0,0,13),
+    {392,0,0,0,MoveOp::CounterSet,0.f},
+    {392,0,0,9999,MoveOp::Counter,1.f},
+    {392,0,0,9999,MoveOp::PhaseExit,1.f,0.f,0.f,kGateCounterAbove,0,
+     ShotOriginSpec{},ShotAimSpec{},20},
+    {392,-1,0,0,MoveOp::Speed,-15.f},
+    {392,-1,0,9999,MoveOp::Decelerate,1.f},
 };
 
 // Rena weapon 2 (handler 0x438310) — no shoot_body_0_2_* exists in either body header,
@@ -581,6 +950,26 @@ inline constexpr MoveRule kRena1Rules[] = {
 // the rules latch a ZERO pitch base and let the spread supply the whole pitch.
 inline constexpr MoveRule kRena2Rules[] = {
     // ---- melee execution (FUN_00438310, weapon 2) ----
+    // Melee voices and effects (FUN_00438310's tick-guarded call sites, read
+    // directly — the same latch/cascade caveats as weapon 0's block).
+    effect_rule(300,1,18,18,67),
+    melee_voice_rule(300,1,18,18,3),
+    effect_rule(301,0,3,3,61),
+    melee_voice_rule(301,0,3,3,2),
+    effect_rule(302,0,10,10,67),
+    melee_voice_rule(302,0,10,10,3),
+    effect_rule(310,0,25,25,68),
+    melee_voice_rule(310,0,25,25,3),
+    effect_rule(311,0,35,35,68),
+    melee_voice_rule(311,0,35,35,3),
+    effect_rule(320,2,32,32,62),
+    melee_voice_rule(320,2,32,32,1),
+    effect_rule(330,0,28,28,62),
+    melee_voice_rule(330,0,28,28,3),
+    melee_voice_rule(331,0,35,35,3),
+    effect_rule(340,0,15,15,61),
+    melee_voice_rule(340,0,15,15,2),
+    melee_voice_rule(341,1,0,0,3),
     // 300 ordinary is the standing spin: no approach at speed — offset approach 3
     // a tick through phase 0 (with the 180 snap at entry) — and the weapon-2
     // motion body in phase 1: rush 45 at frame 0 bleeding 2 a tick, the clock
@@ -615,6 +1004,10 @@ inline constexpr MoveRule kRena2Rules[] = {
     {320,0,0,0,MoveOp::Gravity,0.f},
     {320,2,51,9999,MoveOp::Gravity,.5f},
     {320,2,56,9999,MoveOp::LandExit,329.f},
+    // The 320 body's contact gate (FUN_00438310; same phase-2 ticks 0..7 window).
+    {320,0,0,9999,MoveOp::ContactOff},
+    {320,1,0,9999,MoveOp::ContactOff},
+    {320,2,8,9999,MoveOp::ContactOff},
     // 329/333 dash recovery: zeroed motion, gauge refill 40/1000 a tick.
     {329,-1,0,1,MoveOp::Speed,0.f},
     {329,-1,0,1,MoveOp::Vertical,0.f},
@@ -687,6 +1080,106 @@ inline constexpr MoveRule kRena2Rules[] = {
      origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
     {450,-1,40,40,MoveOp::Launch,5.f,0.f,0.f,kGatePowered,0,
      origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
+    // ---- 402 air tap (FUN_00438310 case 0x192, read directly) ----
+    // Phase 0: the entry 180 offset snap, then turn 10 through tick 9; the speed is
+    // RE-ASSERTED at 20 every phase-0 frame (the body's write is not tick-gated) and
+    // the vertical bleeds 0.5 a tick (the body applies it directly, so Gravity 0.5
+    // carries it); the phase clock CLAMPS at 17 — the row waits for its landing
+    // branch, not its 76-tick duration. Landing before tick 15 hands to the 403
+    // recovery; at 15..17 it enters phase 1 with the clock SEEKING 25 (both clocks in
+    // the original — a recorded single-clock approximation) and the vertical cleared.
+    // Phase 1: the speed bleeds 1 a tick, and tick 35 fires the attachment rows 0/2
+    // plus the TEN-request ring on rows 1/3 — pitch rand%50+30 absolute, yaw
+    // 90-rand%180 on the helper's legacy basis — with effect 170 and the final-round
+    // voice pair. The 400's world-form ring draws the same yaw shape (kSpreadRing);
+    // this one is attachment-based with a wider pitch and needs no CapturePitch (the
+    // ring's pitch is the draw itself).
+    {402,0,0,0,MoveOp::Turn,180.f},
+    {402,0,0,9999,MoveOp::Speed,20.f},
+    {402,0,0,9,MoveOp::Turn,10.f},
+    {402,0,0,9999,MoveOp::Gravity,.5f},
+    {402,0,0,9999,MoveOp::ClockClamp,17.f},
+    {402,0,0,14,MoveOp::LandExit,403.f},
+    {402,0,15,17,MoveOp::LandSeek,1.f,25.f},
+    {402,1,0,9999,MoveOp::Decelerate,1.f},
+    effect_rule(402,1,35,35,170),
+    voice_rule(402,1,35,35,shot_voice(29,30,ShotVoiceMagazine::Primary,
+                                     ShotVoiceCompare::Equal,1)),
+    {402,1,35,35,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {402,1,35,35,MoveOp::Launch,2.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    {402,1,35,35,MoveOp::Launch,1.f,0.f,0.f,kGateNormal,0,
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadRingAir,10},
+    {402,1,35,35,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
+     origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadRingAir,10},
+    // 403/469 recovery bodies (FUN_00438310 cases 0x193/0x1d5): motion zeroed EVERY
+    // tick (no tick guard in the cases), the shot-gauge refill (+40, 5 with a status —
+    // unmodeled producer), cap 1000.
+    {403,-1,0,9999,MoveOp::Speed,0.f},
+    {403,-1,0,9999,MoveOp::Vertical,0.f},
+    {403,-1,0,9999,MoveOp::Gravity,0.f},
+    {403,-1,0,9999,MoveOp::Recharge,40.f},
+    {469,-1,0,9999,MoveOp::Speed,0.f},
+    {469,-1,0,9999,MoveOp::Vertical,0.f},
+    {469,-1,0,9999,MoveOp::Gravity,0.f},
+    {469,-1,0,9999,MoveOp::Recharge,40.f},
+    // ---- 460 air charge (FUN_00438310 case 0x1cc, read directly) ----
+    // Turn 18 through tick 9; the entry speed halves (the body also dips the
+    // vertical 0.5 once at tick 0 — folded into the first fall ticks, a
+    // labeled one-line approximation); gravity 0.1 (0x3dcccccd); the tick-36
+    // right-hand request rows 4/5 at the ±40-clamped pitch with effect 171
+    // (0xab) and the final-round voice pair; the landing hands to 469.
+    {460,-1,0,9,MoveOp::Turn,18.f},
+    {460,-1,0,0,MoveOp::ScaleMotion,.5f,1.f},
+    {460,0,0,0,MoveOp::Gravity,.1f},
+    effect_rule(460,-1,36,36,171),
+    voice_rule(460,-1,36,36,shot_voice(28,30,ShotVoiceMagazine::Secondary,
+                                       ShotVoiceCompare::Equal,1)),
+    {460,-1,36,36,MoveOp::CapturePitch,0.f,40.f,40.f},
+    {460,-1,36,36,MoveOp::Launch,4.f,0.f,0.f,kGateNormal,0,
+     origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
+    {460,-1,36,36,MoveOp::Launch,5.f,0.f,0.f,kGatePowered,0,
+     origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
+    {460,-1,0,9999,MoveOp::LandExit,469.f},
+    // ---- 350/360 full charge (FUN_00438310 cases 0x15e/0x168, read directly) ----
+    // Ground 350: the entry voice 32 with the rand%100 < 51 pair (0/1 —
+    // FUN_00422490(0x20,0|1,0x14,0)); turn 15 through tick 41 (0x2a); the 0.75
+    // bleed; the clock JUMP 42->95 (both clocks — the single-clock
+    // approximation above); props hidden past tick 116; and the tick-116 world
+    // row 8: forward 150, height +70, yaw heading+offset+1, the ±40-clamped
+    // pitch, effect 172 (0xac). Air 360: the same shape with the entry speed
+    // AND vertical scaled to a tenth (0.1/0.1) and gravity 0.05 (0x3d4ccccd);
+    // the landing hands to 469; completion goes to the air exit with gravity
+    // 0.5.
+    melee_voice_rule(350,0,0,0,32,1,0,51),
+    {350,0,0,41,MoveOp::Turn,15.f},
+    {350,0,0,9999,MoveOp::Decelerate,.75f},
+    {350,0,42,42,MoveOp::ClockSeek,95.f},
+    {350,-1,117,9999,MoveOp::Hide,0.f},
+    {350,-1,117,9999,MoveOp::Hide,1.f},
+    effect_rule(350,0,116,116,172),
+    {350,0,116,116,MoveOp::CapturePitch,0.f,40.f,40.f},
+    {350,0,116,116,MoveOp::Launch,8.f,0.f,0.f,kGateNone,0,
+     origin_actor_relative(0.f,150.f,70.f),aim_stored_pitch(1.f)},
+    melee_voice_rule(360,0,0,0,32,1,0,51),
+    {360,0,0,0,MoveOp::ScaleMotion,.1f,.1f},
+    {360,0,0,0,MoveOp::Gravity,.05f},
+    {360,0,0,41,MoveOp::Turn,15.f},
+    {360,0,42,42,MoveOp::ClockSeek,95.f},
+    effect_rule(360,0,116,116,172),
+    {360,0,116,116,MoveOp::CapturePitch,0.f,40.f,40.f},
+    {360,0,116,116,MoveOp::Launch,8.f,0.f,0.f,kGateNone,0,
+     origin_actor_relative(0.f,150.f,70.f),aim_stored_pitch(1.f)},
+    {360,-1,0,9999,MoveOp::LandExit,469.f},
+    // 392 guard-knockback (FUN_00438310 case 0x188): the shared shape.
+    melee_voice_rule(392,0,0,0,13),
+    {392,0,0,0,MoveOp::CounterSet,0.f},
+    {392,0,0,9999,MoveOp::Counter,1.f},
+    {392,0,0,9999,MoveOp::PhaseExit,1.f,0.f,0.f,kGateCounterAbove,0,
+     ShotOriginSpec{},ShotAimSpec{},20},
+    {392,-1,0,0,MoveOp::Speed,-15.f},
+    {392,-1,0,9999,MoveOp::Decelerate,1.f},
 };
 
 // Natsumi weapon 0 (handler 0x5e2af0): the normal ground state400 probe is an
@@ -2335,10 +2828,12 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
     // Keiichi 2: same unbound second charge (bodies 403-412/469 exist but unscoped).
     static constexpr MoveProgram keiichi = {kKeiichiRules, std::size(kKeiichiRules),
                                             {{400,402},{450,460},{-1,-1}}};
-    // Rena+2 ground tap/charge are recovered from FUN_00438310. Air landing
-    // transitions and second-charge dispatch still need their own state bindings.
+    // Rena+2's air tap (the clamped-clock 402 with its landing branches), its air
+    // charge 460 and the 350-ground/360-air full-charge pair are bound in
+    // kRena2Rules now; the ground full-charge release selects 350 through this
+    // map exactly as FUN_0043ded0's charge branch does.
     static constexpr MoveProgram rena2 = {kRena2Rules, std::size(kRena2Rules),
-                                          {{400,-1},{450,-1},{-1,-1}},
+                                          {{400,402},{450,460},{350,360}},
                                           rena_chase_policy(2), nullptr};
     if (binding->handler == 0x438310) return &rena2;
     if (binding->handler == 0x43ffc0) return &rena;
@@ -2395,8 +2890,10 @@ inline const MoveProgram* move_program(const CharacterMoves* moves) {
                                             {{400,402},{450,460},{-1,-1}}};
     if (binding->handler == 0x4b4090) return &satoko1;
     if (binding->handler == 0x4a9c40) return &satoko;
+    // Rena+1's air tap is the three-phase 402 dive and its charges are the 450/460
+    // sweep pair and the 360/370 row-8 family — all bound in kRena1Rules now.
     static constexpr MoveProgram rena1 = {kRena1Rules, std::size(kRena1Rules),
-                                          {{400,-1},{450,-1},{-1,-1}},
+                                          {{400,402},{450,460},{360,370}},
                                           rena_chase_policy(1), rena_dive_policy(1)};
     static constexpr MoveProgram natsumi0 = {kNatsumi0Rules, std::size(kNatsumi0Rules),
                                               {{400,-1},{-1,-1},{-1,-1}}};

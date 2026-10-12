@@ -143,16 +143,20 @@ int admitSections(int id) {
 
 // The Rena melee row inventory with passing gates (priority 10, threshold 0).
 // The chain rows' first record opens the 0x100 window, as the shipped tables do.
-std::vector<std::uint8_t> admissionTable(int weaponId, TableShape shape = {}) {
+// `extraRows` appends shot/recovery ids (392/400/402/403/409/469) for the cases
+// that need them; the base list is untouched so the older indices keep their sets.
+std::vector<std::uint8_t> admissionTable(int weaponId, TableShape shape = {},
+                                         const std::vector<int>& extraRows = {}) {
     std::vector<std::uint8_t> b;
     putU32(b, 0x00010000);
     putName(b, "data/rena/00.X", 0x104);
     putU32(b, 0); putU32(b, 0); putU32(b, 0);
     putU32(b, weaponId);
     putU32(b, 0); putU32(b, 0);
-    const int rows[] = {0, 10, 20, 23, 24, 27, 30, 40, 41, 42, 44,
-                        300, 301, 302, 310, 311, 320, 329, 330, 331,
-                        332, 333, 334, 340, 341};
+    std::vector<int> rows = {0, 10, 20, 23, 24, 27, 30, 40, 41, 42, 44,
+                             300, 301, 302, 310, 311, 320, 329, 330, 331,
+                             332, 333, 334, 340, 341};
+    for (int id : extraRows) rows.push_back(id);
     int rowCount = 0;
     for (int id : rows)
         if (shape.dropRow != id) ++rowCount;
@@ -174,13 +178,17 @@ std::vector<std::uint8_t> admissionTable(int weaponId, TableShape shape = {}) {
     return b;
 }
 
-WeaponDefinition slotWeapon(int itemId) {
+WeaponDefinition slotWeapon(int itemId, int bulletRows = 0) {
     WeaponDefinition w;
     w.id = itemId;
     w.slotCount = 2;
-    w.bulletCount = 0;
+    w.bulletCount = bulletRows;
     w.magazines[0] = gameplay::MagazineDefinition{6, 2, 300, 0, 60, 1};
     w.magazines[1] = gameplay::MagazineDefinition{2, 2, 300, 0, 180, 2};
+    if (bulletRows > 0) {
+        w.bullets = new gameplay::BulletDefinition[static_cast<size_t>(bulletRows)]{};
+        for (int i = 0; i < bulletRows; ++i) w.bullets[i].magazine = 0;
+    }
     return w;
 }
 
@@ -196,11 +204,12 @@ struct Fixture {
     std::vector<std::pair<int, int>> setTicks;
     bool ok = false;
     std::string error;
-    explicit Fixture(int itemId, TableShape shape = {}) {
-        const auto bytes = admissionTable(itemId, shape);
+    explicit Fixture(int itemId, TableShape shape = {},
+                     const std::vector<int>& extraRows = {}, int bulletRows = 0) {
+        const auto bytes = admissionTable(itemId, shape, extraRows);
         ok = moves.parse(bytes.data(), bytes.size(), error);
         moves.set_character_index(0);
-        weapon = slotWeapon(itemId);
+        weapon = slotWeapon(itemId, bulletRows);
         ok = ok && moves.weapon_id() == itemId;
     }
     Fighter& make() {
@@ -676,7 +685,7 @@ int run() {
             checkInt(320, f.attack_move_id(), "airborne press enters the 320 chase");
             check(f.chase_strength() == 226, "chase latches 230 and decays 4 on the first tick");
             check(f.attack_gravity() == 0.f, "chase hangs (gravity 0) before phase 2");
-            check(f.body_pivot() == 70.f, "chase leans with pivot 70");
+            check(f.body_pivot_height() == 70.f, "chase leans with pivot 70");
             // The first arc tick steers to the target angle: the bearing from the
             // (elevated) fighter to the target plus the body's +10 bias, split at
             // strength 23 — computed here from the live geometry, not read back.
@@ -686,7 +695,7 @@ int run() {
                 static_cast<double>(std::hypot(toFoe.x, toFoe.z)))) + 10.f;
             checkFloat(std::cos(glm::radians(targetAngle)) * 23.f, f.move_speed(), 0.3f,
                        "chase's first arc tick steers at the target angle");
-            checkFloat(targetAngle + 20.f, f.body_yaw(), 1.5f,
+            checkFloat(targetAngle + 20.f, f.body_pitch(), 1.5f,
                        "chase lean = flight angle + 20");
             const float startDistance = glm::distance(f.position(), foe.position());
             in.down[input::Action::AttackA] = false;
@@ -808,7 +817,7 @@ int run() {
             f.update(&in, &foe, 1.0 / 64.0);
             checkFloat(std::cos(glm::radians(launchAngle)) * 25.f, f.move_speed(), 0.1f,
                        "dive launch splits cos(angle)*25 along the clamped angle");
-            check(f.body_pivot() == 70.f && f.body_yaw() <= 0.f,
+            check(f.body_pivot_height() == 70.f && f.body_pitch() <= 0.f,
                   "dive leans with pivot 70 and a nonpositive pitch");
             // Contact inside the window rebounds into 334.
             f.note_melee_hit(0);
@@ -865,6 +874,217 @@ int run() {
                 previousElapsed = elapsed;
             }
             check(sawDoubleClock, "the spin's clock runs double through frames 16..28");
+        }
+    }
+
+    section("shared-mechanism review — guard exits, windows, lean transform");
+    {
+        // (1) The guard-exit table. The expected values are the exhaustive
+        // `FUN_0042c7b0() & 2` scan of the three handlers: 301/310/311/331/340 in
+        // every weapon, 302/330 in weapons 0 and 2 only, and NO exit at all for
+        // 300/320/329/332/333/334/341/350.
+        struct GuardCase { int weapon, row, expected; };
+        static const GuardCase kGuard[] = {
+            {0,301,392},{0,302,392},{0,310,392},{0,311,392},{0,330,392},{0,331,392},{0,340,392},
+            {0,300,-1},{0,320,-1},{0,329,-1},{0,332,-1},{0,333,-1},{0,334,-1},{0,341,-1},{0,350,-1},
+            {1,301,392},{1,310,392},{1,311,392},{1,331,392},{1,340,392},
+            {1,302,-1},{1,330,-1},{1,320,-1},{1,332,-1},{1,350,-1},
+            {2,301,392},{2,302,392},{2,310,392},{2,311,392},{2,330,392},{2,331,392},{2,340,392},
+            {2,300,-1},{2,320,-1},{2,350,-1},
+        };
+        int guardMismatches = 0;
+        for (const GuardCase& c : kGuard)
+            if (gameplay::rena_guard_exit_row(c.weapon, c.row) != c.expected) ++guardMismatches;
+        checkInt(0, guardMismatches, "guard-exit table matches the 35-site &2 scan");
+
+        // (2) The rule-window contracts corrected by this review, asserted against
+        // the shipped programs. The numbers are the bodies' own guards: the 350
+        // stall spans 0<tick<10 on the update parity, the 403/409/469 recoveries
+        // zero every tick with no guard at all, 392 walks its scratch past 20 into
+        // phase 1, 320 arms the contact volume only in phase 2 ticks 0..7, weapon
+        // 0's 350 never re-arms it, and 450 re-binds attachment slot 0 to model 2.
+        Fixture w0(1), w1(3), w2(33);
+        check(w0.ok && w1.ok && w2.ok, "three weapon fixtures parse");
+        const gameplay::MoveProgram* p0 = gameplay::move_program(&w0.moves);
+        const gameplay::MoveProgram* p1 = gameplay::move_program(&w1.moves);
+        const gameplay::MoveProgram* p2 = gameplay::move_program(&w2.moves);
+        check(p0 != nullptr && p1 != nullptr && p2 != nullptr,
+              "three weapon programs resolve");
+        const auto findRule = [](const gameplay::MoveProgram* program, int move,
+                                 gameplay::MoveOp op, int phase,
+                                 int first = -999) -> const gameplay::MoveRule* {
+            if (!program) return nullptr;
+            for (size_t i = 0; i < program->count; ++i) {
+                const gameplay::MoveRule& r = program->rules[i];
+                if (r.move == move && r.operation == op && r.phase == phase &&
+                    (first == -999 || r.first == first))
+                    return &r;
+            }
+            return nullptr;
+        };
+        const auto recoveryEveryTick = [&](const gameplay::MoveProgram* program, int move,
+                                           const char* name) {
+            bool ok = true;
+            for (gameplay::MoveOp op : {gameplay::MoveOp::Speed, gameplay::MoveOp::Vertical,
+                                        gameplay::MoveOp::Gravity}) {
+                const gameplay::MoveRule* r = findRule(program, move, op, -1);
+                ok = ok && r && r->first == 0 && r->last == 9999;
+            }
+            check(ok, name);
+        };
+        recoveryEveryTick(p0, 403, "w0 403 zeroes motion every tick");
+        recoveryEveryTick(p0, 409, "w0 409 zeroes motion every tick");
+        recoveryEveryTick(p0, 469, "w0 469 zeroes motion every tick");
+        recoveryEveryTick(p1, 403, "w1 403 zeroes motion every tick");
+        recoveryEveryTick(p1, 469, "w1 469 zeroes motion every tick");
+        recoveryEveryTick(p2, 403, "w2 403 zeroes motion every tick");
+        recoveryEveryTick(p2, 469, "w2 469 zeroes motion every tick");
+        const gameplay::MoveRule* stall = findRule(p0, 350, gameplay::MoveOp::ClockSkip, 0);
+        check(stall && stall->first == 1 && stall->last == 9 &&
+                  (stall->gate & gameplay::kGateCounterMod) != 0 && stall->gateValue == 2,
+              "350's stall runs body ticks 1..9 on the update parity");
+        const gameplay::MoveRule* start = findRule(p0, 350, gameplay::MoveOp::CounterSet, 0, 0);
+        const gameplay::MoveRule* settle = findRule(p0, 350, gameplay::MoveOp::CounterSet, 0, 10);
+        check(start && start->value == 1.f && settle && settle->value == 0.f,
+              "350's alternator starts at 1 and settles to 0 at tick 10");
+        for (const auto* program : {p0, p1, p2}) {
+            const gameplay::MoveRule* exit = findRule(program, 392, gameplay::MoveOp::PhaseExit, 0);
+            check(exit && (exit->gate & gameplay::kGateCounterAbove) != 0 &&
+                      exit->gateValue2 == 20,
+                  "392 hands to phase 1 past scratch 20");
+            for (int phase = 0; phase < 3; ++phase) {
+                const gameplay::MoveRule* cut =
+                    findRule(program, 320, gameplay::MoveOp::ContactOff, phase);
+                const bool expectedWindow = phase == 0 || phase == 1
+                                                ? (cut && cut->first == 0 && cut->last == 9999)
+                                                : (cut && cut->first == 8 && cut->last == 9999);
+                check(expectedWindow, "320 cuts contact outside the body's phase-2 0..7 window");
+            }
+        }
+        const gameplay::MoveRule* w0hit = findRule(p0, 350, gameplay::MoveOp::ContactOff, -1);
+        check(w0hit && w0hit->first == 0 && w0hit->last == 9999,
+              "weapon 0's 350 never re-arms the contact volume");
+        const gameplay::MoveRule* w2speed = findRule(p2, 402, gameplay::MoveOp::Speed, 0);
+        check(w2speed && w2speed->first == 0 && w2speed->last == 9999,
+              "w2 402 re-asserts speed 20 every phase-0 frame");
+        const gameplay::MoveRule* w1prop = findRule(p1, 450, gameplay::MoveOp::PropModel, -1);
+        check(w1prop && w1prop->value == 0.f && w1prop->second == 2.f,
+              "w1 450 binds slot 0 to item model 2");
+        const gameplay::MoveRule* w2ring = nullptr;
+        for (size_t i = 0; p2 && i < p2->count; ++i)
+            if (p2->rules[i].move == 402 && p2->rules[i].operation == gameplay::MoveOp::Launch &&
+                p2->rules[i].repeats == 10)
+                w2ring = &p2->rules[i];
+        check(w2ring && w2ring->phase == 1, "w2 402's ring fires ten requests");
+
+        // (3) Behavioural: 320's contact volume is cut from the entry tick, before
+        // phase 2 arms it (the body calls FUN_00434bd0 in every non-armed tick).
+        {
+            Fixture fx(1);
+            fx.setTicks = {{39, 6}, {40, 30}};
+            Fighter& f = fx.make();
+            Fighter& foe = fx.make();
+            foe.reset(glm::vec3(600.f, 0.f, 0.f), 0.f);
+            input::PlayerState in = pressWith(input::Action::Jump);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            in.down[input::Action::Jump] = false;
+            for (int i = 0; i < 12; ++i) { input::compute_edges(in); f.update(&in, &foe, 1.0 / 64.0); }
+            in = pressWith(input::Action::AttackA);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            checkInt(320, f.attack_move_id(), "contact fixture enters the 320 chase");
+            check(f.contact_disabled(), "320's phase 0 has the contact volume cut");
+
+            // (4) The world transform, rebuilt independently from FUN_00420b30's
+            // field roles (T(0,-pivot,0) * Rx(pitch) * Ry(yaw) * T(position+pivot),
+            // donor actor_world_pose.hpp:14) from the fighter's public pose. The
+            // earlier cut folded pitch and pivot into the Y angle and fails this.
+            in.down[input::Action::AttackA] = false;
+            for (int i = 0; i < 4; ++i) { input::compute_edges(in); f.update(&in, &foe, 1.0 / 64.0); }
+            const glm::vec3 pos = f.position();
+            const float pivot = f.body_pivot_height();
+            const glm::mat4 expected =
+                glm::translate(glm::mat4(1.f), pos + glm::vec3(0.f, pivot, 0.f)) *
+                glm::rotate(glm::mat4(1.f), f.facing_yaw() + glm::pi<float>(),
+                            glm::vec3(0.f, 1.f, 0.f)) *
+                glm::rotate(glm::mat4(1.f), glm::radians(f.body_pitch()), glm::vec3(1.f, 0.f, 0.f)) *
+                glm::translate(glm::mat4(1.f), glm::vec3(0.f, -pivot, 0.f));
+            const glm::mat4 got = f.modelMatrix();
+            float maxDiff = 0.f;
+            for (int c = 0; c < 4; ++c)
+                for (int r = 0; r < 4; ++r)
+                    maxDiff = std::max(maxDiff, std::abs(expected[c][r] - got[c][r]));
+            checkFloat(0.f, maxDiff, 1e-4f,
+                       "model matrix is T(pivot)*Ry*Rx(pitch)*T(-pivot)");
+            const glm::vec4 pivotWorld = got * glm::vec4(0.f, pivot, 0.f, 1.f);
+            check(std::abs(pivotWorld.x - pos.x) < 1e-3f &&
+                      std::abs(pivotWorld.y - (pos.y + pivot)) < 1e-3f &&
+                      std::abs(pivotWorld.z - pos.z) < 1e-3f,
+                  "the pivot height is the rotation center (its own point is fixed)");
+            const glm::vec4 yAxis = got * glm::vec4(0.f, pivot + 1.f, 0.f, 1.f) - pivotWorld;
+            check(std::abs(yAxis.y - std::cos(glm::radians(f.body_pitch()))) < 1e-3f,
+                  "body pitch tilts the local Y axis (it is not a yaw term)");
+        }
+
+        // (5) The landing branch now covers shot rows too: an air tap that reaches
+        // the ground hands to the 403 recovery instead of finishing its clip.
+        {
+            Fixture fx(1, {}, {400, 402, 403, 469}, 12);
+            Fighter& f = fx.make();
+            Fighter& foe = fx.make();
+            foe.reset(glm::vec3(600.f, 0.f, 0.f), 0.f);
+            input::PlayerState in = pressWith(input::Action::Jump);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            in.down[input::Action::Jump] = false;
+            for (int i = 0; i < 12; ++i) { input::compute_edges(in); f.update(&in, &foe, 1.0 / 64.0); }
+            in = pressWith(input::Action::Shoot);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            in.down[input::Action::Shoot] = false;
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            checkInt(402, f.shot_move_id(), "the air tap binds the 402 shot row");
+            int landTick = -1;
+            for (int i = 0; i < 400 && landTick < 0; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+                if (!f.airborne()) landTick = i;
+            }
+            check(landTick >= 0, "the air tap reaches the ground");
+            checkInt(403, f.shot_move_id(), "the air tap's landing enters the 403 recovery");
+            for (int i = 0; i < 3; ++i) { input::compute_edges(in); f.update(&in, &foe, 1.0 / 64.0); }
+            check(f.move_speed() == 0.f && f.attack_gravity() == 0.f,
+                  "403 zeroes the carried motion and the fall (no tick guard)");
+        }
+
+        // (6) The melee voice/effect producer chain: 300's phase-2 entry queues voice
+        // 1 and effect 60 through the same per-tick latch the scene drains. The
+        // consumer mapping (audio cue table + effect catalog spawn) is the next
+        // slice; this pins the recovered producer half so it cannot rot.
+        {
+            Fixture fx(1);
+            fx.setTicks = {{24, 6}};
+            Fighter& f = fx.make();
+            Fighter& foe = fx.make();
+            foe.reset(glm::vec3(900.f, 0.f, 0.f), 0.f);
+            input::PlayerState in = pressWith(input::Action::AttackA);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            checkInt(300, f.attack_move_id(), "cue fixture enters 300");
+            in.down[input::Action::AttackA] = false;
+            bool sawVoice = false, sawEffect = false;
+            for (int i = 0; i < 40 && !(sawVoice && sawEffect); ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+                const auto voice = f.take_melee_voice();
+                const auto effect = f.take_effect();
+                if (f.move_phase() == 2 && voice.event == 1) sawVoice = true;
+                if (f.move_phase() == 2 && effect.id == 60) sawEffect = true;
+            }
+            check(sawVoice, "300's phase-2 entry queues melee voice 1");
+            check(sawEffect, "300's phase-2 entry queues effect 60");
         }
     }
 

@@ -623,6 +623,33 @@ public:
     ShootingVoice take_shooting_voice() { auto cue = m_shootingVoice; m_shootingVoice = {}; return cue; }
     bool source_shot_voice_audited() const { return m_sourceShotVoiceAudited; }
 
+    // The melee voice cue (FUN_004223d0/FUN_00422490 with the small event ids) and
+    // the effect cue (FUN_0042c8b0/0042c880), drained once per tick by the scene the
+    // same way the shot voice is. The melee alternative carries the 422490 choice
+    // (fixed, or the rand%100 pair the 32-family draws); the close-target cascade
+    // (voices 0/15/5) is documented at the op site as requiring the pairing tracker
+    // the port does not model. The effect's yaw/pitch carry the 350 scatter's two
+    // rand%40-20 draws — the RNG consumption is part of the contract.
+    struct MeleeVoiceCue { int event = -1; int alternative = -1; };
+    MeleeVoiceCue take_melee_voice() { auto cue = m_meleeVoice; m_meleeVoice = {}; return cue; }
+    struct EffectCue { int id = -1; float yaw = 0.f; float pitch = 0.f; bool scatter = false; };
+    EffectCue take_effect() { auto cue = m_pendingEffect; m_pendingEffect = {}; return cue; }
+
+    // The original's fighter-level special/charge gauge (int +0x834, 0..1000). The
+    // bodies spell it `param_1[0x20d]` because the actor pointer is `int*`; the two
+    // spellings are the same field, confirmed by the whole-corpus scan (every
+    // `[0x20d]` site declares `int *param_1`). Producers: battle init/reset writes
+    // 1000 (FUN_004219a0:19, FUN_0041dcb0:66); +1 a tick only while a hyper flag
+    // (+0x844/0x845/0x846) is armed (FUN_0041f580:96-99 and 46 siblings — not modeled
+    // here, recorded); +40 a tick (5 while the +0x7f4 status timer is set) in the
+    // 403/409/469 recoveries; -500 on a special-move spend (FUN_00508a60:91). Consumers:
+    // the melee/shot admission gates (`0 < +0x834`, FUN_00445ee0/FUN_0044d850), the
+    // guard-reaction exits (`(FUN_0042c7b0() & 2) && 0 < +0x834`, the 390/393 bodies)
+    // and the awakened-melee spend threshold (`500 < +0x834`). This is NOT the
+    // item-data magazine: the rounds-counted 0x44-byte magazine (FUN_00433eb0) is a
+    // separate per-request cost the launch path already pays.
+    int  charge_gauge() const { return m_chargeGauge; }
+
     // Melee hit test for ONE candidate, called once per attacker→candidate pair while
     // the swing is active. Rejects a candidate that is out of reach vertically, outside
     // the swing arc, or behind a solid barrier, and reports true only on the first
@@ -669,10 +696,12 @@ public:
     // The horizontal per-tick channel the movement rules/bodies drive (u/tick).
     float move_speed() const { return m_moveSpeed; }
     // The recovered attack-body state, for execution witnesses: the bodies' fall
-    // rate (u/tick^2, -1 = unowned), the chase lean pair and the dive's contact cut.
+    // rate (u/tick^2, -1 = unowned), FUN_00420b30's lean pair and the dive's contact
+    // cut. +0x2c is a PITCH in degrees (applied as a RotationX) and +0x2d8 a pivot
+    // HEIGHT (the model's Y rotation center) — not two yaw terms.
     float attack_gravity() const { return m_attackGravity; }
-    float body_yaw() const { return m_bodyYaw; }
-    float body_pivot() const { return m_bodyPivot; }
+    float body_pitch() const { return m_bodyPitch; }
+    float body_pivot_height() const { return m_bodyPivotHeight; }
     int chase_strength() const { return m_chaseStrength; }
     bool contact_disabled() const { return m_contactDisabled; }
     // The original's `byte(+0x845) != 0 && word(+0x848) != 0`, read by 514 of the 841
@@ -714,9 +743,11 @@ public:
     }
 
     // Swing bookkeeping driven by Match: begin clears the per-victim hit set, note
-    // records that this swing already connected with one victim.
+    // records that this swing already connected with one victim. `guarded` carries
+    // FUN_0042c7b0()'s bit 2 — the strike met a guarding opponent — which the melee
+    // bodies read to hand the attacker to the 392 knockback.
     void begin_melee_swing();
-    void note_melee_hit(int victimIndex);
+    void note_melee_hit(int victimIndex, bool guarded = false);
 
     // Debug view of the recovered melee hitbox (issue #10). Data only, so drawing stays
     // in the render layer: `anchors` are the victim's TWO spheres -- head and chest, the
@@ -865,7 +896,11 @@ private:
     unsigned     m_swingHits = 0;
     int          m_swingHitCount = 0;
     bool         m_chainContact = false;
+    bool         m_chainGuarded = false;   // FUN_0042c7b0() bit 2: the strike was guarded
     ShootingVoice m_shootingVoice;
+    MeleeVoiceCue m_meleeVoice;
+    EffectCue     m_pendingEffect;
+    int           m_chargeGauge = 1000;
     bool m_sourceShotVoiceAudited = false;
     SimulationRng* m_rng = nullptr;   // the scene's stream, null for a bare fighter
     SimulationRng  m_ownRng;          // fallback: deterministic per fighter
@@ -898,8 +933,8 @@ private:
     float         m_attackGravity = -1.f;
     // The chase/dive bodies' lean (original +0x64/+0x30): summed into the model's yaw
     // rotation like the original's field sum (FUN_00420b30). Zero outside those rows.
-    float         m_bodyYaw = 0.f;
-    float         m_bodyPivot = 0.f;
+    float         m_bodyPitch = 0.f;
+    float         m_bodyPivotHeight = 0.f;
     // The state-320 chase strength (chasing_air_melee's air.strength): latched at
     // entry from the target distance, decays through the arc.
     int          m_chaseStrength = 0;
@@ -1061,6 +1096,10 @@ private:
     // flight angle each tick, so they run as bodies rather than static rules.
     void advance_rena_chase(const struct ChasePolicy& policy, Fighter* opponent);
     void advance_rena_dive(const struct DivePolicy& policy, Fighter* opponent);
+    // Rena+1's 402 dive launch (FUN_00448220 case 0x192, phase 1 tick 0): the fixed
+    // -40 u/tick drop with the horizontal closing speed derived from the target's
+    // geometry — see the implementation for the exact clamp.
+    void advance_rena1_dive_shot(Fighter* opponent);
     void turn_toward(const Fighter* opponent, float degrees);
     // A move counts when the table ships it with at least one phase (a costume
     // that drops the move must not resolve to a phaseless id).

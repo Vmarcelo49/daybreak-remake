@@ -184,13 +184,18 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[kMatchFighterCount]
             if (m_config.side[i] == m_config.side[j]) continue;      // allies excluded
             if (!m_fighters[j].is_alive()) continue;
             if (m_fighters[i].already_hit_this_swing(j)) continue;   // once per swing
+            // The guard read must happen BEFORE try_melee_hit: the damage call
+            // inside it can stun the victim out of Guard this same tick, and the
+            // attacker's 392 exit (FUN_0042c7b0() bit 2) reads the guarded state of
+            // the strike's landing frame, not of a post-stun victim.
+            const bool guarded = m_fighters[j].state() == FighterState::Guard;
             if (m_fighters[i].try_melee_hit(m_fighters[j], m_movementCollision)) {
-                m_fighters[i].note_melee_hit(j);
+                m_fighters[i].note_melee_hit(j, guarded);
                 out.meleeHit[i] = true;
                 out.meleeVictim[i] = j;
                 // The victim's own state at the landing frame decides the block report
-                // (issue #16); it is read here, before anything can change it this tick.
-                if (m_fighters[j].state() == FighterState::Guard) out.blocked[j] = true;
+                // (issue #16).
+                if (guarded) out.blocked[j] = true;
             }
         }
     }
@@ -200,6 +205,16 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[kMatchFighterCount]
         const auto voice = m_fighters[i].take_shooting_voice();
         out.shotVoice[i] = voice.event;
         out.shotVoiceAlternative[i] = voice.alternative;
+        // The melee voice and effect cues drain the same way (FUN_004223d0/422490
+        // and FUN_0042c8b0/2c880's per-tick latches).
+        const auto meleeVoice = m_fighters[i].take_melee_voice();
+        out.meleeVoice[i] = meleeVoice.event;
+        out.meleeVoiceAlternative[i] = meleeVoice.alternative;
+        const auto effect = m_fighters[i].take_effect();
+        out.effectId[i] = effect.id;
+        out.effectScatter[i] = effect.scatter;
+        out.effectYaw[i] = effect.yaw;
+        out.effectPitch[i] = effect.pitch;
         for (PendingShot shot = m_fighters[i].take_pending_shot(); shot.armed;
              shot = m_fighters[i].take_pending_shot()) {
             if (m_fighters[i].is_alive() &&
