@@ -22,6 +22,13 @@ powered gate and per-move counters have migrated. Satoko 2's tap is the first ty
 program and Rika 1's charge was repaired with the counter model. Resume from the blocker
 plan's latest append-only checkpoint (entry 3.0).
 
+**2026-10-12 — correction: three weapon-0 melee rows.** The same body-by-body pass found
+310 missing its phase-0 180-degree entry snap and its phase-2 5..7 contact/ribbon span
+(FUN_0043ffc0:756-765/772-774, 791), 311 missing the ungated tick-0 180-degree snap
+(824-829 — weapon 2's table already had it), and 341 missing its phase-1 0..19 span
+(1365). All four are pinned now. Also retired 310's stale "needs the effect renderer and
+the melee voice latch" comment: those cues were bound in the voice/effect slice.
+
 **2026-10-12 — correction: Rena+0's mobile/dash shot windows.** Re-reading
 FUN_0043ffc0's own case bodies (not the donor summaries) showed the 401/405/406/407/408
 windows had been read from the wrong side of the same lines: the unbind is
