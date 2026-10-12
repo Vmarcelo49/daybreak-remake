@@ -3252,11 +3252,11 @@ static void updateFxCards(App& app, game::EffectEventQueue& q, uint64_t& events,
 // null too), so a bad id is visible in the caller's own accounting rather than silently
 // drawing the wrong card.
 static bool spawnEffect(App& app, game::EffectEventQueue& queue, int effectId,
-                        const glm::vec3& at) {
+                        const glm::vec3& at, const glm::vec3& direction = glm::vec3(0.f)) {
     const game::EffectEntry* entry = app.fxCatalog.find(effectId);
     if (!entry || !entry->playable()) return false;
     const float ttl = (float)app.fxCatalog.lifetime_ticks(effectId, 64.f) / 64.f;
-    queue.pushSpawn(app.fxNextInstance++, at, entry->asset, ttl);
+    queue.pushSpawn(app.fxNextInstance++, at, entry->asset, ttl, direction);
     return true;
 }
 
@@ -3284,7 +3284,12 @@ static void placeFxCards(App& app) {
     if (!app.opts.debugPrims) {
         for (const game::LiveFxCard& c : app.liveFx) {
             if (c.asset < 0 || (size_t)c.asset >= app.scene.models.size()) continue;
-            instances.push_back({c.asset, glm::translate(glm::mat4(1.f), c.position)});
+            // The request's own pose, composed with the original's order
+            // (FUN_00436150's RotationZ then RotationY then translation — the same
+            // helper and order game/shot_visual.h recovers for the shots). A zero
+            // direction composes to the translation-only matrix this used to build,
+            // so the unposed callers (muzzle, impact, aura puffs) are unchanged.
+            instances.push_back({c.asset, game::shotModelMatrix(c.position, c.direction)});
         }
         // The aura is fighter state, not an event: FUN_004205e0 draws the selected
         // data/aura model once per attach point, on each of the eleven bone matrices at
@@ -3945,12 +3950,24 @@ static bool tickMatch(App& app, double dt) {
         // The action body's own effect request (`(*actor+0xc)` -> FUN_00421aa0 ->
         // FUN_00435990's manager create): the id indexes data/effect by `id / 10` (the 350
         // beats' 320/340/350 resolve to 032/034/035.dat) and the position is the actor's
-        // own (+0x14). The request's heading/pitch orient the card in the original; the
-        // port's card queue carries a position only, so the pose is recorded on the frame
-        // but not yet applied — a stated gap, not a silent drop.
-        if (f.effectId[i] >= 0 && !spawnEffect(app, app.matchFx, f.effectId[i],
-                                               app.match.fighter(i).position()))
-            ++app.fxBadEffect;
+        // own (+0x14). FUN_00436150 rotates the instance into the request's own pose, so
+        // the queue carries that pose too — the gap this comment used to record is closed
+        // for the direction. Whether a given card SHOWS its yaw is the renderer's own
+        // billboard gate, decided per draw, not here.
+
+        if (f.effectId[i] >= 0) {
+            // FUN_00421aa0's own conversion of the request's (heading, pitch) into the
+            // direction the instance composes. The frame carries the two angles exactly
+            // as the body passed them, so the direction is built here at the spawn rather
+            // than assumed earlier.
+            const float yaw = glm::radians(f.effectYaw[i]);
+            const float pitch = glm::radians(f.effectPitch[i]);
+            const glm::vec3 dir(std::sin(yaw) * std::cos(pitch), std::sin(pitch),
+                                std::cos(yaw) * std::cos(pitch));
+            if (!spawnEffect(app, app.matchFx, f.effectId[i],
+                             app.match.fighter(i).position(), dir))
+                ++app.fxBadEffect;
+        }
         // Muzzle flash: FUN_00633ca0 slots 0/1/5 are the three マズルフラッシュ models. The
         // original selects one by the fighter's per-slot fire-mode byte (+0x318) through
         // the attack-start methods 0x421fe0/0x4220e0/0x422160, not by the shot's tier —

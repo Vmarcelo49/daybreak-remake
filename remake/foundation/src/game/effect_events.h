@@ -34,6 +34,13 @@ struct EffectEvent {
     glm::vec3 position{0.f};       // spawn origin, Y-up game units (spawn only)
     int       asset = 0;           // effect-asset table index (spawn only)
     float     ttlSeconds = 0.f;    // renderer-side expiry (spawn only)
+    // The direction the request posed the effect with (spawn only), zero when the
+    // caller has none. FUN_00421aa0 builds it from the request's own (heading, pitch)
+    // and the effect instance's draw composes it into its matrix (FUN_00436150:
+    // RotationZ then RotationY then translation — the same order game/shot_visual.h
+    // recovers for the shots). Carrying it is what lets a posed effect keep its pose;
+    // the port's draw used to translate only, which dropped it.
+    glm::vec3 direction{0.f};
 };
 
 // Dumb FIFO the renderer drains once per frame. `drain()` moves the pending
@@ -42,8 +49,10 @@ struct EffectEvent {
 // per-frame drain bounds it in practice, and a cap would silently drop hits.
 class EffectEventQueue {
 public:
-    void pushSpawn(std::uint32_t id, const glm::vec3& position, int asset, float ttlSeconds) {
-        pending_.push_back(EffectEvent{EffectEvent::Type::Spawn, id, position, asset, ttlSeconds});
+    void pushSpawn(std::uint32_t id, const glm::vec3& position, int asset, float ttlSeconds,
+                  const glm::vec3& direction = glm::vec3(0.f)) {
+        pending_.push_back(EffectEvent{EffectEvent::Type::Spawn, id, position, asset,
+                                       ttlSeconds, direction});
     }
 
     void pushKill(std::uint32_t id) {

@@ -46,6 +46,10 @@ struct LiveFxCard {
     glm::vec3     position{0.f};
     float         ttl = 0.f;
     float         age = 0.f;
+    // The direction the spawn request posed, forwarded from the event (see
+    // effect_events.h). A zero direction is the unposed case, which composes to a
+    // translation-only matrix exactly as before.
+    glm::vec3     direction{0.f};
 };
 
 // What one update did, so a run can prove the population stayed bounded.
@@ -84,8 +88,10 @@ inline FxCardTally updateLiveFxCards(std::vector<LiveFxCard>& live,
             slot->position = e.position;
             slot->ttl = e.ttlSeconds;
             slot->age = 0.f;
+            slot->direction = e.direction;
         } else if (live.size() < cap) {
-            live.push_back(LiveFxCard{e.id, e.asset, e.position, e.ttlSeconds, 0.f});
+            live.push_back(LiveFxCard{e.id, e.asset, e.position, e.ttlSeconds, 0.f,
+                                      e.direction});
             ++tally.spawned;
         } else {
             ++tally.dropped;
