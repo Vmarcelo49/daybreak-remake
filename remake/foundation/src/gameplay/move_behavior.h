@@ -375,6 +375,11 @@ inline constexpr MoveRule kRenaRules[] = {
     // cut by FUN_00434bd0 on every other tick, including all of phases 0 and 1.
     {320,0,0,9999,MoveOp::ContactOff},
     {320,1,0,9999,MoveOp::ContactOff},
+    // FUN_0043ffc0:985-990 / FUN_00448220's twin — the chase's contact AND prop
+    // window is phase 2 frames 0..7 (`tick < 8` arms, else clears), so the ribbon
+    // half rides the same span as the ContactOff rule below.
+    {320,2,0,7,MoveOp::Active,0.f},
+    {320,2,0,7,MoveOp::Active,1.f},
     {320,2,8,9999,MoveOp::ContactOff},
     // 329/333 dash recovery (battle_dash_recovery, character 0): speed, vertical
     // and gravity zero, and the special gauge refills 40/1000 per tick — the
@@ -792,6 +797,11 @@ inline constexpr MoveRule kRena1Rules[] = {
     // the other two handlers).
     {320,0,0,9999,MoveOp::ContactOff},
     {320,1,0,9999,MoveOp::ContactOff},
+    // FUN_0043ffc0:985-990 / FUN_00448220's twin — the chase's contact AND prop
+    // window is phase 2 frames 0..7 (`tick < 8` arms, else clears), so the ribbon
+    // half rides the same span as the ContactOff rule below.
+    {320,2,0,7,MoveOp::Active,0.f},
+    {320,2,0,7,MoveOp::Active,1.f},
     {320,2,8,9999,MoveOp::ContactOff},
     // 329/333 dash recovery: zeroed motion, gauge refill 40/1000 a tick.
     {329,-1,0,1,MoveOp::Speed,0.f},

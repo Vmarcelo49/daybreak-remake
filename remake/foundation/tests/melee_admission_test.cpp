@@ -1239,6 +1239,16 @@ int run() {
               "w2 300 arms its props for phase-1 frames 25..34");
         check(w2span341 && w2span341->phase == 1 && w2span341->last == 19,
               "w2 341 arms its props for all of phase 1");
+        // The chase's ribbon half: its contact span was already modeled through
+        // ContactOff (phases 0/1 all, phase 2 from frame 8), so the armed window is
+        // phase 2 frames 0..7 for weapons 0 and 1. Weapon 2's chase uses the different
+        // 32..39 window and its phase placement is still unread, so it stays parked.
+        const gameplay::MoveRule* w0chaseSpan = spanAt(p0, 320, 0);
+        const gameplay::MoveRule* w1chaseSpan = spanAt(p1, 320, 0);
+        check(w0chaseSpan && w0chaseSpan->phase == 2 && w0chaseSpan->last == 7,
+              "w0 320 arms its props for phase-2 frames 0..7");
+        check(w1chaseSpan && w1chaseSpan->phase == 2 && w1chaseSpan->last == 7,
+              "w1 320 arms its props for phase-2 frames 0..7");
 
         // (3) Behavioural: 320's contact volume is cut from the entry tick, before
         // phase 2 arms it (the body calls FUN_00434bd0 in every non-armed tick).
