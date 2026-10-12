@@ -22,6 +22,15 @@ powered gate and per-move counters have migrated. Satoko 2's tap is the first ty
 program and Rika 1's charge was repaired with the counter model. Resume from the blocker
 plan's latest append-only checkpoint (entry 3.0).
 
+**2026-10-12 — the prop-latch sweep under-reported; closed for the group.** The first span
+sweep looked only a few lines back for the enclosing condition, so every FUN_00434b30 site
+whose `if` wraps across lines read as "the else of a window" and got skipped. A brace-aware
+re-pass (every b30 site, six lines of context, all three handlers) found four more: w1 300
+phase-2 3..10 (FUN_00448220:670-673) and w1 330 phase 0 from 11 plus all of phase 1
+(1077-1080, a two-part condition); w2 300 phase-1 25..34 (FUN_00438310:633-636) and w2 341
+all of phase 1 (1371-1374). It also confirmed every span already bound. Unreachable rows stay
+unbound on purpose: w2 301/302 and w1 341.
+
 **2026-10-12 — correction: weapon 1's entry steps, then the 332 retraction.** FUN_00448220
 gives weapon 1 the same entry shape weapon 0 needed: 310's phase-0 180-degree snap
 (736-742), 311's tick-0 180 (795-802), and 400/401's second tick-0 step (15/5) on top of
