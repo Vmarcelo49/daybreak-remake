@@ -13,6 +13,8 @@
 
 #include "combo_fixture.h"
 #include "gameplay/fighter.h"
+#include "gameplay/fixed_step.h"
+#include "gameplay/match.h"
 #include "gameplay/melee_admission.h"
 #include "gameplay/move_behavior.h"
 
@@ -1451,6 +1453,147 @@ int run() {
             check(sawVoice, "300's phase-2 entry queues melee voice 1");
             check(sawSe, "300's phase-2 entry queues SE 60");
         }
+
+        // (7b) The close-target voice cascade, through the real Match producer. The
+        // three latches come from FUN_0042e110's own reading — attention actor, mutual
+        // attention, combat lock, yaw test, previous-tick state class — and the body's
+        // nest picks 0/15/5 inside its distance gate. A fixture with no match publishes
+        // no latches, which is the mutually-engaged arm: the ordinary voice stands.
+        {
+            Fixture fx(1);
+            fx.setTicks = {{24, 6}};  // 300's phase-0 set: the windup ends fast
+            Fighter& f = fx.make();
+            Fighter& foe = fx.make();
+            // 300 units: the body's own 90000 gate, so the distance arm is exactly the
+            // boundary the corpus tests with `<=`.
+            foe.reset(glm::vec3(300.f, 0.f, 0.f), 0.f);
+            input::PlayerState in = pressWith(input::Action::AttackA);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            checkInt(300, f.attack_move_id(), "cascade fixture enters 300");
+            in.down[input::Action::AttackA] = false;
+            bool sawOrdinary = false;
+            for (int i = 0; i < 40 && !sawOrdinary; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+                const auto voice = f.take_melee_voice();
+                if (f.move_phase() == 2 && voice.event == 1) sawOrdinary = true;
+            }
+            check(sawOrdinary, "an unlatched (mutually engaged) pair keeps voice 1");
+        }
+
+        // (7c) The producer itself, through a real two-fighter Match. The cascade needs
+        // the attention table, and a bare fixture cannot supply it: a 1v1 Match where
+        // both slots start aiming at 0 (FUN_00421670's init) makes fighter 1's target
+        // fighter 0 and fighter 0's target ITSELF — the self-reference that makes the
+        // powered gate hold for player 0. So fighter 1 is mutually engaged and keeps
+        // voice 1, while fighter 0 (whose target is itself, never attending back) is
+        // the arm that would speak the cascade voice. That asymmetry is the recovered
+        // behaviour, so it is asserted as such rather than flattened.
+        {
+            test::Combo combo;
+            std::string error;
+            if (!combo.load(0, 0, error)) return 1;
+            gameplay::MatchConfig cfg;
+            cfg.fighterCount = 2;
+            cfg.moves[0] = &combo.moves;
+            cfg.moves[1] = &combo.moves;
+            cfg.weapon[0] = &combo.weapon;
+            cfg.weapon[1] = &combo.weapon;
+            cfg.spawn[0] = glm::vec3(0.f, 0.f, 0.f);
+            cfg.spawn[1] = glm::vec3(300.f, 0.f, 0.f);
+            cfg.facing[0] = 0.f;
+            cfg.facing[1] = 0.f;
+            const xm::Model* models[4] = {&combo.model, &combo.model, nullptr, nullptr};
+            xm::Controller* anims[4] = {combo.controller(), combo.controller(),
+                                        nullptr, nullptr};
+            gameplay::Match match;
+            match.reset(cfg, models, anims, nullptr, nullptr);
+            match.economy().setLogFile(nullptr);
+            fnd::input::PlayerState idle{};
+            const fnd::input::PlayerState* none[4] = {nullptr, nullptr, nullptr, nullptr};
+            for (int i = 0; i < 70; ++i) {
+                fnd::input::compute_edges(idle);
+                (void)match.step(none, gameplay::FixedStep::seconds);
+            }
+            // Fighter 1 attends to 0 and 0 attends to itself, so 1 is engaged: an
+            // attack from 1 keeps the ordinary voice. Assert the producer's own terms
+            // first — the engagement is what removes the cascade arm.
+            check(match.locked_target(1) == gameplay::kNoTarget,
+                  "no gesture has been made, so no combat lock exists yet");
+            check(match.aim_selection(1) == 0,
+                  "FUN_00421670 starts every aim at player 0");
+            check(match.aim_selection(0) == 0,
+                  "player 0's own aim also starts at 0 (itself)");
+            // Now the whole chain end to end: player 0 stands still and player 1 attacks.
+            // 1's attention is 0, 0's attention is itself (so it does not attend back),
+            // 1 holds no lock, both face the same way (the yaw test passes) and 200 units
+            // is inside 300's 90000 gate — so the close-target latch arms. The body's
+            // nest then picks INTERCEPT (15), not backattack (5): FUN_0042e950 reads the
+            // PREVIOUS tick's state, and by the time the cascade runs at phase 2 the
+            // fighter has been in its attack row for many ticks, so the intercept latch
+            // outranks the backattack one at every site this port binds. The same numbers
+            // with the facings opposed (the default) fail the yaw test and keep voice 1,
+            // which is the check that this is the producer and not a hardcoded voice.
+            fnd::input::PlayerState attack{};
+            attack.down[fnd::input::Action::AttackA] = true;
+            const fnd::input::PlayerState* withAttack[4] = {nullptr, &attack, nullptr,
+                                                            nullptr};
+            int voiceSeen = -1;
+            for (int i = 0; i < 90 && voiceSeen < 0; ++i) {
+                fnd::input::compute_edges(attack);
+                const gameplay::MatchFrame frame = match.step(withAttack,
+                                                              gameplay::FixedStep::seconds);
+                if (frame.meleeVoice[1] >= 0) voiceSeen = frame.meleeVoice[1];
+            }
+            checkInt(15, voiceSeen,
+                     "the producer's latch picks intercept over the ordinary voice");
+        }
+        {
+            // The matching negative, from the SAME configuration with one thing changed:
+            // opposed facings, so FUN_0042e110's yaw test fails and the cascade keeps
+            // the ordinary voice. Without this the previous check could pass for the
+            // wrong reason.
+            test::Combo combo;
+            std::string error;
+            if (!combo.load(0, 0, error)) return 1;
+            gameplay::MatchConfig cfg;
+            cfg.fighterCount = 2;
+            cfg.moves[0] = &combo.moves;
+            cfg.moves[1] = &combo.moves;
+            cfg.weapon[0] = &combo.weapon;
+            cfg.weapon[1] = &combo.weapon;
+            cfg.spawn[0] = glm::vec3(0.f, 0.f, 0.f);
+            cfg.spawn[1] = glm::vec3(200.f, 0.f, 0.f);
+            cfg.facing[0] = 0.f;
+            cfg.facing[1] = glm::pi<float>();   // opposed: the yaw test now fails
+            const xm::Model* models[4] = {&combo.model, &combo.model, nullptr, nullptr};
+            xm::Controller* anims[4] = {combo.controller(), combo.controller(),
+                                        nullptr, nullptr};
+            gameplay::Match match;
+            match.reset(cfg, models, anims, nullptr, nullptr);
+            match.economy().setLogFile(nullptr);
+            fnd::input::PlayerState idle{};
+            const fnd::input::PlayerState* none[4] = {nullptr, nullptr, nullptr, nullptr};
+            for (int i = 0; i < 70; ++i) {
+                fnd::input::compute_edges(idle);
+                (void)match.step(none, gameplay::FixedStep::seconds);
+            }
+            fnd::input::PlayerState attack{};
+            attack.down[fnd::input::Action::AttackA] = true;
+            const fnd::input::PlayerState* withAttack[4] = {nullptr, &attack, nullptr,
+                                                            nullptr};
+            int voiceSeen = -1;
+            for (int i = 0; i < 90 && voiceSeen < 0; ++i) {
+                fnd::input::compute_edges(attack);
+                const gameplay::MatchFrame frame = match.step(withAttack,
+                                                              gameplay::FixedStep::seconds);
+                if (frame.meleeVoice[1] >= 0) voiceSeen = frame.meleeVoice[1];
+            }
+            checkInt(1, voiceSeen, "opposed facings keep the ordinary voice");
+        }
+
+
 
         // (7) The boosted (special-gauge) admission: the awakened 350 is a TWO-LATCH
         // CHORD — `+0x284 && +0x288` (FUN_00445ee0:117-118), the melee latch plus the

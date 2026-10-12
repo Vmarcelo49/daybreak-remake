@@ -1886,13 +1886,32 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             m_chargeGauge = std::min(1000, m_chargeGauge + static_cast<int>(rule.value));
             break;
         case MoveOp::MeleeVoice: {
-            // FUN_004223d0/FUN_00422490 with the melee event ids. The close-target
-            // cascade (voices 0/15/5 at priority 12, FUN_0043ffc0:601-627) reads the
-            // proximity flags +0xaec3/+0xaebe/+0xaeb9, which FUN_0042e110 arms from
-            // the 2v2 pairing structure — a tracker this port does not model, so the
-            // cascade stays documented rather than guessed and the ordinary event
-            // always queues here. The 422490 choice draw reproduces the 32-family's
-            // `rand%100 < percent` pair exactly.
+            // FUN_004223d0/FUN_00422490 with the melee event ids. The 422490 choice
+            // draw reproduces the 32-family's `rand%100 < percent` pair exactly.
+            //
+            // The close-target cascade (voices 0/15/5 at priority 12) resolves first:
+            // the bodies nest the same test three deep inside their distance and
+            // bearing gate — `dist^2 < G && |+0x19| < 30` then +0xaec3 / +0xaebe /
+            // +0xaeb9, else the ordinary id. `rule.second` carries G, and the bearing
+            // term is absent here because the port does not carry the battle offset
+            // (the producer records that), so the distance arm alone decides. The
+            // producer latches come from the shooting context's voice flags, which the
+            // match fills from FUN_0042e110's own reading before the fighter updates.
+            // The addattack arm is unreachable through an attack row at all: it needs a
+            // reaction state, and `can_act` refuses to admit one. The backattack arm is
+            // unreachable at the rows this port binds for the mirror reason: its latch is
+            // the SAME condition minus FUN_0042e950's attack-state test, and the cascade
+            // always runs inside the attack row, so the previous tick's state is that
+            // row and the intercept arm outranks it. Both stay in the nest anyway — they
+            // are the source's order, and a row bound later at its entry tick would need
+            // them — but the reachable pair here is intercept-vs-ordinary.
+            int event = static_cast<int>(rule.value);
+            if (rule.second > 0.f && distanceSquared < rule.second) {
+                const auto& cascade = m_shooting.voice;
+                if (cascade.addAttack())        event = 0;   // addattack
+                else if (cascade.intercept())   event = 15;  // intercept
+                else if (cascade.backAttack())  event = 5;   // backattack
+            }
             int alternative = -1;
             if (rule.voice.alternativeFirst >= 0 && rule.voice.alternativeSecond >= 0) {
                 alternative = rng_source().modulo(100) <
@@ -1903,7 +1922,7 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             } else if (rule.voice.alternativeFirst >= 0) {
                 alternative = rule.voice.alternativeFirst;  // the fixed 422490 choice
             }
-            m_meleeVoice = {static_cast<int>(rule.value), alternative};
+            m_meleeVoice = {event, alternative};
             break;
         }
         case MoveOp::SoundEffect:

@@ -220,6 +220,11 @@ public:
     // The same selected-or-fallback aim that supplies locomotion's input bearing
     // (FUN_0041f580:216-241); body yaw may turn independently of this target.
     int aim_target(int fighter) const;
+    // The close-target voice cascade's three latches (+0xaec3/+0xaebe/+0xaeb9) for one
+    // fighter, as the per-frame update computes them (FUN_0042e110:30-72) — so from the
+    // PREVIOUS tick's state. Private use: Match fills the shooting context from this
+    // before each fighter updates. `alive` is the tick's starting liveness.
+    ShootingContext::VoiceFlags meleeVoiceFlags(int fighter, const bool alive[4]) const;
     void begin_round_entry();
     void step_round_entry(double dt);
 

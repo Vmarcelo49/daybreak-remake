@@ -107,6 +107,48 @@ int Match::melee_target(int fighter) const {
     return victim;
 }
 
+// The close-target voice cascade's producer (FUN_0042e110:30-72), for one fighter.
+// Runs before any fighter updates, so every field read is the previous tick's —
+// see the call site for the ordering proof and the two recorded approximations.
+ShootingContext::VoiceFlags Match::meleeVoiceFlags(int fighter,
+                                                   const bool alive[4]) const {
+    ShootingContext::VoiceFlags out;
+    const Fighter& self = m_fighters[fighter];
+    // FUN_004236c0: the reaction state band 100..299. Attacks are not admittable out of
+    // one (`can_act`), so the addattack latch never arms for a row the port can run.
+    const int state = self.action_state();
+    if (state >= 100 && state <= 299) return out;
+    // The attention actor: +0x308, written by both selectors. A valid combat lock
+    // (+0x304, the direct writer) is the most recent one, else the aim selection
+    // (+0x300, the cycle writer, which init starts at 0 for everybody).
+    const int attention = m_locks.valid_target(fighter) ? m_locks.target(fighter)
+                                                       : m_locks.aim_selection(fighter);
+    if (attention < 0 || attention >= m_config.fighterCount || attention == fighter)
+        return out;
+    const Fighter& other = m_fighters[attention];
+    // The original tests whether the attention actor's OWN attention points back here,
+    // read the same way, and ORs in "I hold a combat lock". Either one makes the target
+    // mutually engaged, which is the ordinary-voice arm.
+    const int theirAttention = m_locks.valid_target(attention)
+                                  ? m_locks.target(attention)
+                                  : m_locks.aim_selection(attention);
+    const bool engaged = theirAttention == fighter || m_locks.valid_target(fighter);
+    if (engaged) return out;
+    // The yaw test: the attention actor's effort heading (its body yaw plus its battle
+    // offset, both at +0x5c/+0x64) against this body's own yaw, wrapped to +-180.
+    // The port carries the body yaw only — the offset is one of the two terms the
+    // cascade's own gate cannot supply — so the comparison is on body yaw alone.
+    const float difference = std::remainder(other.facing_yaw() - self.facing_yaw(),
+                                            glm::two_pi<float>());
+    if (std::abs(difference) >= glm::radians(90.f)) return out;
+    out.flags[2] = 1;  // +0xaeb9 — the "speaking the same direction" latch
+    // FUN_0042e950: an attack-or-shot state. Read on the PREVIOUS tick's state, so a
+    // chained attack (the press that arrived while already in a 3xx row) arms the
+    // intercept latch and a fresh press out of locomotion does not.
+    if ((state >= 300 && state <= 379) || state >= 400) out.flags[1] = 1;
+    return out;
+}
+
 MatchFrame Match::step(const fnd::input::PlayerState* p1Input,
                        const fnd::input::PlayerState* p2Input, double dt) {
     const fnd::input::PlayerState* inputs[kMatchFighterCount] =
@@ -167,6 +209,24 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[kMatchFighterCount]
             context.moveLateral = in.down[fnd::input::Right] ? 1
                                   : in.down[fnd::input::Left] ? -1 : 0;
         }
+        // The close-target voice cascade's three latches, computed BEFORE any fighter
+        // updates so the state they read is the previous tick's — FUN_00634f60 runs
+        // FUN_0042e110 for a fighter and only then its state handler, in the same
+        // per-fighter loop, so a latch computed after the update would read this tick's
+        // state. FUN_0042e110:30-72, read against FUN_004236c0 / FUN_0042e950:
+        //   * `+0xaec3` arms only from a REACTION state (100..299, FUN_004236c0), and
+        //     the state machine refuses attacks out of one, so no admitted attack can
+        //     carry it — the addattack voice is unreachable through an attack row.
+        //   * the armed pair `+0xaeb9`/`+0xaebe` needs the attention actor NOT to
+        //     attend back (`P->+0x308 != me`) and no combat lock of my own, plus the
+        //     yaw test; `+0xaebe` additionally needs an attack-or-shot state.
+        // Two terms of that producer are not modelled here and are recorded, not
+        // guessed: the per-slot device code at `+0x7d8` (written by FUN_00635d40 from
+        // FUN_00430880, whose button order is unrecovered) only ever DISJUNCTS the
+        // unreachable arm, and the battle-offset yaw `+0x19` that the cascade's
+        // `|offset| < 30` gate reads is not carried by this port at all — so the gate
+        // is evaluated with the offset held at 0 and the distance term alone decides.
+        context.voice = meleeVoiceFlags(i, aliveAtStart);
         m_fighters[i].set_shooting_context(context);
         m_fighters[i].update(inputs ? inputs[i] : nullptr,
                              (target != kNoTarget && target < m_config.fighterCount)

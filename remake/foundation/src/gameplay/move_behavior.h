@@ -241,14 +241,18 @@ constexpr MoveRule voice_rule(int move, int phase, int first, int last,
     return rule;
 }
 
-// The melee voice cue (FUN_004223d0(voice, priority)): `event` is the ordinary id,
-// and the close-target cascade (voices 0/15/5 at priority 12, FUN_0043ffc0:601-627)
-// resolves at the op site from the live distance and battle bearing. `pair`/`percent`
-// reproduce the FUN_00422490 choice draws (the 32-family: `rand%100 < percent` picks
-// `second`, else `first`).
+// The melee voice cue (FUN_004223d0(voice, priority)): `event` is the ordinary id.
+// `cascadeDistance2` > 0 arms the close-target cascade on this rule: the body's own
+// nesting (FUN_0043ffc0:601-627 and its twins) selects voices 0 / 15 / 5 from the
+// producer latches inside `dist^2 < cascadeDistance2`, falling back to `event`. The
+// original's nest ALSO tests the battle bearing `|+0x19| < 30`, which this port does not
+// carry, so the gate here is distance alone — recorded at the producer.
+// `pair`/`percent` reproduce the FUN_00422490 choice draws (the 32-family:
+// `rand%100 < percent` picks `second`, else `first`).
 constexpr MoveRule melee_voice_rule(int move, int phase, int first, int last, int event,
-                                    int firstChoice = -1, int secondChoice = -1,
-                                    int percent = 0) {
+                                     int firstChoice = -1, int secondChoice = -1,
+                                     int percent = 0,
+                                     float cascadeDistance2 = 0.f) {
     MoveRule rule{move, phase, first, last, MoveOp::MeleeVoice,
                   static_cast<float>(event)};
     if (firstChoice >= 0) {
@@ -257,6 +261,7 @@ constexpr MoveRule melee_voice_rule(int move, int phase, int first, int last, in
         rule.voice.alternativeSecond = secondChoice;
         rule.voice.alternativeSecondPercent = percent;
     }
+    rule.second = cascadeDistance2;
     return rule;
 }
 
@@ -450,7 +455,7 @@ inline constexpr MoveRule kRenaRules[] = {
     // pairing-tracker flags FUN_0042e110 arms, which the port does not model —
     // documented at the op site, not guessed here. Effect ids are FUN_0042c880's.
     sound_effect_rule(300,2,0,0,60),
-    melee_voice_rule(300,2,0,0,1),
+    melee_voice_rule(300,2,0,0,1,-1,0,0,90000.f),
     sound_effect_rule(301,0,3,3,61),
     melee_voice_rule(301,0,3,3,2),
     sound_effect_rule(302,0,10,10,62),
@@ -460,9 +465,9 @@ inline constexpr MoveRule kRenaRules[] = {
     sound_effect_rule(311,0,12,12,62),
     melee_voice_rule(311,0,12,12,3),
     sound_effect_rule(320,2,0,0,62),
-    melee_voice_rule(320,2,0,0,1),
+    melee_voice_rule(320,2,0,0,1,-1,0,0,40000.f),
     sound_effect_rule(330,2,6,6,62),
-    melee_voice_rule(330,2,6,6,2),
+    melee_voice_rule(330,2,6,6,2,-1,0,0,40000.f),
     melee_voice_rule(331,2,10,10,2),
     // 332's entry voice (FUN_0043ffc0 case 0x14c, phase 1 tick 0): event 3 with
     // the FIXED choice 0 through FUN_00422490(3,0,10,0).
@@ -755,7 +760,7 @@ inline constexpr MoveRule kRena1Rules[] = {
     // Melee voices and effects (FUN_00448220's tick-guarded call sites, read
     // directly — the same latch/cascade caveats as weapon 0's block).
     sound_effect_rule(300,2,0,0,64),
-    melee_voice_rule(300,2,0,0,1),
+    melee_voice_rule(300,2,0,0,1,-1,0,0,90000.f),
     sound_effect_rule(301,0,3,3,67),
     melee_voice_rule(301,0,3,3,3),
     sound_effect_rule(310,2,4,4,62),
@@ -763,8 +768,8 @@ inline constexpr MoveRule kRena1Rules[] = {
     sound_effect_rule(311,0,12,12,67),
     melee_voice_rule(311,0,12,12,3),
     sound_effect_rule(320,2,0,0,63),
-    melee_voice_rule(320,2,0,0,1),
-    melee_voice_rule(330,1,0,0,3),
+    melee_voice_rule(320,2,0,0,1,-1,0,0,40000.f),
+    melee_voice_rule(330,1,0,0,3,-1,0,0,40000.f),
     melee_voice_rule(331,2,10,10,2),
     melee_voice_rule(332,1,0,0,3,0),
     sound_effect_rule(340,0,12,12,67),
@@ -1021,7 +1026,7 @@ inline constexpr MoveRule kRena2Rules[] = {
     // Melee voices and effects (FUN_00438310's tick-guarded call sites, read
     // directly — the same latch/cascade caveats as weapon 0's block).
     sound_effect_rule(300,1,18,18,67),
-    melee_voice_rule(300,1,18,18,3),
+    melee_voice_rule(300,1,18,18,3,-1,0,0,90000.f),
     sound_effect_rule(301,0,3,3,61),
     melee_voice_rule(301,0,3,3,2),
     sound_effect_rule(302,0,10,10,67),
@@ -1031,9 +1036,9 @@ inline constexpr MoveRule kRena2Rules[] = {
     sound_effect_rule(311,0,35,35,68),
     melee_voice_rule(311,0,35,35,3),
     sound_effect_rule(320,2,32,32,62),
-    melee_voice_rule(320,2,32,32,1),
+    melee_voice_rule(320,2,32,32,1,-1,0,0,40000.f),
     sound_effect_rule(330,0,28,28,62),
-    melee_voice_rule(330,0,28,28,3),
+    melee_voice_rule(330,0,28,28,3,-1,0,0,160000.f),
     melee_voice_rule(331,0,35,35,3),
     sound_effect_rule(340,0,15,15,61),
     melee_voice_rule(340,0,15,15,2),

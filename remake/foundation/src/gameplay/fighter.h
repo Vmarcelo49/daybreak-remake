@@ -345,6 +345,18 @@ struct ShootingContext {
     // MT19937, so the scene owns the stream and publishes it here; a fighter without a
     // scene (unit tests) falls back to its own, which keeps both paths deterministic.
     SimulationRng* rng = nullptr;
+    // The close-target voice cascade's three latches (+0xaec3/+0xaebe/+0xaeb9),
+    // recomputed each tick by FUN_0042e110 for every actor IMMEDIATELY BEFORE its
+    // state dispatch (FUN_00634f60's per-fighter loop runs FUN_0042e110, then the
+    // vtable+0x24 handler), so the state they read is the PREVIOUS tick's. Match fills
+    // them from its own attention table; a fighter without a match keeps all zero,
+    // which is the cascade's ordinary-voice arm. melee_admission.h resolves them.
+    struct VoiceFlags {
+        unsigned char flags[3] = {0, 0, 0};  // +0xaec3, +0xaebe, +0xaeb9
+        bool addAttack() const { return flags[0] != 0; }
+        bool intercept() const { return flags[1] != 0; }
+        bool backAttack() const { return flags[2] != 0; }
+    } voice;
 };
 
 // move_behavior.h's executable rule, forward-declared so the gate evaluation beside
@@ -507,6 +519,12 @@ public:
     // The character-.dat move currently used for melee tuning. Exposed for
     // combo-bound evidence checks.
     int attack_move_id() const { return m_attackMoveId; }
+    // The numeric action row this fighter is in, as the original's dispatcher reads
+    // it (+0xadec): an attack row during AttackA, a dash row during Run, the air-dash
+    // row 30 or the jump chain airborne, and 10/0 for locomotion. Match reads it for
+    // the close-target voice cascade's state-class tests, which sample it BEFORE the
+    // fighter updates — so it is the previous tick's row at that point.
+    int action_state() const { return numeric_state(); }
     int bound_move_id() const { return m_boundMoveId; }
     bool air_dash_context() const { return m_dashAir; }
     // NN.dat move selected for a grounded directional dash, or -1 when the
