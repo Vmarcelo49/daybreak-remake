@@ -22,14 +22,18 @@ powered gate and per-move counters have migrated. Satoko 2's tap is the first ty
 program and Rika 1's charge was repaired with the counter model. Resume from the blocker
 plan's latest append-only checkpoint (entry 3.0).
 
-**2026-10-12 — correction: weapon 1's entry steps, and a selectable-but-unbound 332.**
-FUN_00448220 gives weapon 1 the same entry shape weapon 0 needed: 310's phase-0 180-degree
-snap (736-742), 311's tick-0 180 (795-802), and 400/401's second tick-0 step (15/5) on top
-of the shared 20 for ticks 0..14 (1681-1690, 1738-1746). All four are bound and pinned. An
-open finding, recorded: weapon 1's 332 is SELECTABLE (`rena_melee_admission` allows it for
-every weapon but 2 and her NN.dat ships the row) but kRena1Rules has no 332 rules, so it
-binds a clip with no body — its body is a multi-phase one with its own values, so it needs
-its own slice rather than a copy of weapon 0's.
+**2026-10-12 — correction: weapon 1's entry steps, then the 332 retraction.** FUN_00448220
+gives weapon 1 the same entry shape weapon 0 needed: 310's phase-0 180-degree snap
+(736-742), 311's tick-0 180 (795-802), and 400/401's second tick-0 step (15/5) on top of
+the shared 20 for ticks 0..14 (1681-1690, 1738-1746) — all bound and pinned. The same
+round's claim that weapon 1's 332 was "selectable but unbound" was WRONG and is retracted:
+reading `advance_rena_dive` before acting showed the dive policy is bound and dispatched
+for weapons 0 and 1 with the corpus's own values, and both cue tables already carried the
+phase-1 tick-0 voice. The genuine gap was 332's LANDING branch — grounded with `0 < phase`
+hands to 333 (FUN_0043ffc0:1161-1165) — so a dive that landed without connecting stayed in
+332 instead of the 333 recovery. Bound for both weapons, with a falsifiable witness.
+
+
 
 **2026-10-12 — correction: weapons 1 and 2's prop-latch spans.** The weapon-0 audit was
 only one handler; FUN_00448220 and FUN_00438310 carry the same

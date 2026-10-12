@@ -265,14 +265,17 @@ The turn pass then covered weapon 1's entry steps, which had the same shape as w
 736-742), 311 its tick-0 180° (795-802), and 400/401 their second tick-0 step (15° and
 5°) on top of the shared 20° for ticks 0..14 (1681-1690, 1738-1746).
 
-**Open, recorded rather than bound:** weapon 1's **332** (the air-dash dive kick) is
-*selectable* — `rena_melee_admission` allows it for every weapon but 2, and weapon 1's
-NN.dat ships the row — yet `kRena1Rules` contains no 332 rules at all, so the state
-binds a clip with no movement, launch or transition. Its body is not small: phase 0
-turns 5°/tick and clears the motion, phase 1 turns 1°/tick and hands to 0x14d at tick
-0 with the 25× geometry, a 0x14e sub-state carries vertical 10 / speed −0.625 /
-gravity 0.35, and the fall-back path re-arms gravity 0.5 (`FUN_00448220` 1137-1229).
-It needs its own slice, not a copy of weapon 0's 332 — whose values differ.
+**Correction to that note (same day):** reading `advance_rena_dive` before acting on it
+showed the claim above was wrong. Weapon 0's and weapon 1's 332 were *not* missing a
+body: the C++ dive policy (`advance_rena_dive`, `kRenaDive`) is bound and dispatched for
+both (`moveId == 332 || moveId == 334`), it carries the corpus's own values (launch 25
+u/tick, elevation clamped [-20,-5], contact rebound to 334 at 10 / −7 / gravity .35, the
+volume cut past frame 22, the phase-2 hand-off at frame 40), and both tables already
+queue the phase-1 tick-0 voice (`FUN_00422490(3,0,10,0)`). What the tables genuinely
+lacked was 332's **landing branch**: grounded with `0 < phase` hands to 333
+(`FUN_0043ffc0:1161-1165`), so without it a plain dive stayed in 332 on the ground
+instead of entering the 333 recovery. That rule is now bound for both weapons, and the
+witness is falsifiable — removing it makes the new assertion fail.
 
 ## 4. Animation service facts (scoped for this group)
 
