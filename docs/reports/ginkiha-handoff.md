@@ -4,7 +4,8 @@ To the next agent: continue porting character+weapon combo shot programs exactly
 Historical entries below include superseded claims; verify them against current code.
 
 **Current correction — Rena acceptance reopened:** do not expand Mion while required
-Rena cascade producers, boosted gates and effect presentation remain incomplete.
+Rena effect-card orientation and the two visual gates remain open; the cascade producers
+and the boosted-admission chord are bound (§1/§2 of the Rena matrix).
 The previous acceptance-with-caveats decision did not satisfy the owner's ordering.
 Rena+2 320's 13→22 seek already lived in `advance_rena_chase`; the later rule was
 redundant, not a missing-clock fix. It is removed, with a behavioral input-driven
@@ -146,8 +147,29 @@ three-phase 402 dive, weapon 2's clamp/seek 402 with its ten-request ring, the
 awakened-melee bodies for weapons 0/1 (including the frames-1..9 clock-replay window
 fix), 392's exit body, and the melee voice/effect producer latches. `melee_admission_test`
 is now 253 checks. Remaining, in order: the live visual parity window (lean sign and
-the model-2 frame), the close-target voice cascade, and the consumer of the
-`(*actor+0xc)` vtable cue.
+the model-2 frame) and the consumer of the `(*actor+0xc)` vtable cue.
+
+**2026-10-12 — later correction to the two deltas that head this entry:** the
+`+0x284`/`+0x288` pair is the melee latch plus a SECOND latch, and their AND is the
+awakened-melee CHORD (FUN_00445ee0:117-118), not a pair an ordinary press satisfies.
+The admission now requires `down[AttackA] && down[Special]`, so an armed lone press
+falls through to 300 — a narrowing the earlier "armed press → 350" witness had missed.
+The chord's `< 3` half is not recoverable and is recorded. Separately, the
+"+0x844 is aim-lock-only" reading was WRONG: FUN_0063c2a0:267-277 dispatches one
+activation command on the per-slot byte +0x318 into FUN_00421fe0/004220e0/00422160,
+so those three bytes are the three hyper LEVELS and `m_hyperActive` is the faithful
+reading of the disjunction — that delta did not exist.
+
+**2026-10-12 — the close-target cascade is bound.** Its producer is decidable from state
+the port owns, which retires the "needs a pairing tracker" note: attention = a valid
+combat lock else the aim selection; the target is engaged when it attends back or I hold
+a lock; the yaw test is the attention actor's effort heading against mine under 90
+degrees; addattack needs a reaction state that `can_act` refuses, so it is unreachable
+through an attack row; and backattack is unreachable at the bound rows because the
+cascade always runs inside the attack row, so intercept outranks it. The nine sites are
+armed with their own thresholds, and `melee_admission_test` drives a real 1v1 Match for
+both directions. Two producer terms stay unmodelled and recorded: the per-slot device
+code `+0x7d8` and the battle-offset yaw `+0x19` (so the gate is distance alone).
 
 **2026-10-12 — boosted admission and the voice/SE dispatch:** the special-gauge
 admission is implemented and input-driven-verified (armed press → 350, unarmed → 300);
