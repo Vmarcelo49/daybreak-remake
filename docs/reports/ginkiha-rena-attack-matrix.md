@@ -408,7 +408,24 @@ witness is falsifiable — removing it makes the new assertion fail.
    card's orientation from the request's heading/pitch.
 7. Then Mion+0/+1/+2 with the same matrix discipline.
 
-## 7. Group acceptance decision (2026-10-12)
+## 7. Group acceptance decision — reopened
+
+**Correction:** the acceptance statement below was premature and is superseded.
+The required cascade producers, boosted-admission gates and effect presentation are
+still incomplete. Recording those gaps does not satisfy the owner's requirement to
+finish Rena before Mion. Retain the existing Mion commits, but defer further expansion.
+Selection, execution and automated verification must be reported per tested path;
+there is no group-wide completion or live-parity claim.
+
+The Rena+2 320 seek was already implemented in `Fighter::advance_rena_chase` through
+`ChasePolicy::skipAttackFrames` before the later duplicate `ClockSeek` rule was added.
+The claim that the seek had been absent (and gravity nine ticks late) is withdrawn.
+The redundant rule has been removed. A real-input behavioral regression now observes
+13 → 22 → 23 (including the common clock increment), contact only at executed ticks
+32..39, and landing recovery 329 without forcing phases. This verifies execution,
+not merely the presence of a rule. The contact-window and ribbon fixes remain valid.
+
+### Historical acceptance statement (superseded)
 
 The three required categories the review named are resolved for Rena+0/+1/+2: **clocks**
 (the two actor clocks never diverge on a recovered path, §4), **props** (the slot→item-model

@@ -1,7 +1,15 @@
 # Handoff — Phase 2 combo porting (`ginkiha-help` branch)
 
 To the next agent: continue porting character+weapon combo shot programs exactly as below.
-Everything here is verified against the workspace — trust files over memory.
+Historical entries below include superseded claims; verify them against current code.
+
+**Current correction — Rena acceptance reopened:** do not expand Mion while required
+Rena cascade producers, boosted gates and effect presentation remain incomplete.
+The previous acceptance-with-caveats decision did not satisfy the owner's ordering.
+Rena+2 320's 13→22 seek already lived in `advance_rena_chase`; the later rule was
+redundant, not a missing-clock fix. It is removed, with a behavioral input-driven
+witness for the seek, the 32..39 contact window and recovery 329. Preserve the
+contact/ribbon fixes and the existing Mion commits; no group completion is claimed.
 
 **Owner-directed change of order (2026-10-10):** stop usage-order combo porting and
 implement shared blockers first. Follow [ginkiha-blockers-plan.md](ginkiha-blockers-plan.md),

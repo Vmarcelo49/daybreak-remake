@@ -1,5 +1,11 @@
 # Shooting coverage ledger — all 46 combos
 
+**Rena acceptance remains open.** Bound shot schedules and passing focused tests do
+not close required melee producers, boosted gates, effect presentation or live parity.
+Further Mion expansion is deferred. The Rena+2 chase seek was already owned by the
+C++ chase body; its duplicate rule was removed and replaced with behavioral coverage
+of the executed clock, contact window and landing recovery (Rena matrix §7).
+
 Initial snapshot: 2026-10-10. Companion: [blocker plan](ginkiha-blockers-plan.md),
 [architecture decisions](ginkiha-shooting-architecture.md).
 
