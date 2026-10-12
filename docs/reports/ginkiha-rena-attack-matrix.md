@@ -31,8 +31,13 @@ no discrepancy is currently known for the rows below.
   0x2ec8 threshold + the 0x100 window + an armed special state selects 350 for
   weapons 0/1 ahead of the ordinary admission, and `melee_admission_test` drives it
   through the real input path (armed press → 350, unarmed → 300). Two recorded
-  deltas: the branch's surrounding `+0x284`/`+0x288` input conditions are
-  unidentified and not modeled, and the port's `m_hyperActive` carries the armed
+  deltas: (a) the branch also requires the actor's two other action-intent slots to
+  read 1 or 2 — `+0x284`/`+0x288` are produced by the input dispatch FUN_0041efe0
+  (it merges the pad array at `+0x9e` into `+0xa0..+0xa2`) and by the COM brain
+  FUN_0043f4d0 (1 = attack now, 4 = wander), so they are input intents rather than
+  unknown flags; their button identities are not established and the port's single
+  melee press stands in for them, a slightly LOOSER gate; (b) the port's
+  `m_hyperActive` carries the armed
   hyper states while the aim-lock-only arming (`+0x844` without a hyper state) is
   not published to admission. Chains still honor the 0x100 window in general.
 * Weapon-specific families are facts, not assumptions: the admission table below is
@@ -53,13 +58,23 @@ carries one at a time:
   (melee_admission_test's sections). Passing tests establish the behavior those
   tests exercise; they do not prove zero regressions throughout the game.
 * **live parity** — a silent native run compared against a comparable original
-  run. No path in this matrix currently holds this label: the visual gates
-  (body-lean sign, chase/dive poses, ribbon timing) are pending an owner-present
-  live window.
+  run. No path in this matrix currently holds this label. **Exact limitation
+  (2026-10-12):** the 320/332 lean sign and the model-2 frame have no comparable
+  reference here — the parity bank (`remake/tests/parity-baseline/`) holds the
+  deleted DX9 REMAKE's captures, not the original's, and none of them is an aerial
+  pose; `remake/docs/reference/` (the original's own prints) has no aerial-attack
+  frame; and the original's launcher
+  (`remake/tools/hook-tracer/daybreak_launcher.c`) takes only exe/dll paths, with
+  no script or screenshot facility, so the original cannot be driven to a chosen
+  frame and captured from this environment. The lean sign is instead pinned
+  analytically (donor tilt point map ≡ glm's Rx; the face direction's Y is
+  `sin(pitch)`, zero under the old fold) and the port-side frames were inspected
+  but are not parity evidence.
 
 "Implemented" never silently means "verified"; "verified" never silently means
-"live-equal". Boosted/special-gauge admission remains unmodeled and is recorded
-in §6, not folded into the labels above.
+"live-equal". The boosted/special-gauge admission is implemented for weapons 0/1
+(§1 conventions), with its two deltas recorded there — including that the port's
+single melee press stands in for the original's two action-intent slots.
 
 ## 1. Melee admission (input → move), all three weapons
 

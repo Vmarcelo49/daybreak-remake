@@ -62,7 +62,10 @@ the model-2 frame), the close-target voice cascade, and the consumer of the
 
 **2026-10-12 — boosted admission and the voice/SE dispatch:** the special-gauge
 admission is implemented and input-driven-verified (armed press → 350, unarmed → 300);
-its two recorded deltas are the unidentified `+0x284`/`+0x288` input terms and the
+its two recorded deltas are the action-intent slots `+0x284`/`+0x288` (produced by the
+input dispatch FUN_0041efe0, which merges the pad array at `+0x9e` into `+0xa0..+0xa2`,
+and by the COM brain FUN_0043f4d0; button identities not established, so the port's
+single melee press is a looser stand-in) and the
 aim-lock-only arming. The audio layer now consumes the body cues: the melee voice ids
 ARE the voice vocabulary's indices (the original's 40-name table at 0x6b73b0), so a
 `MeleeVoice` event maps the id straight to a `VoiceEvent` with the FUN_00422490
