@@ -2392,9 +2392,9 @@ void Fighter::advance_rena_chase(const ChasePolicy& policy, Fighter* opponent) {
         }
     }
     if (m_phaseIndex == 2) {
-        // Weapon 2 skips frames 13..21 of the strike windup (frame_override applied
-        // to the action clock; the animation service's second channel is a recorded
-        // gap the port's single clock approximates). Pitch recovers 5 a tick past 25.
+        // FUN_00438310:953-955 seeks BOTH clocks from 13 to 22 before the remaining
+        // phase-2 work. Keep this seek here, before rule evaluation, so cues, contact
+        // and animation all sample the same clock. Pitch recovers 5 a tick past 25.
         if (policy.skipAttackFrames && m_moveElapsedTicks == 13) m_moveElapsedTicks = 22;
         if (m_moveElapsedTicks > 25) {
             m_bodyPitch = m_bodyPitch > 0.f ? std::max(0.f, m_bodyPitch - 5.f)

@@ -825,6 +825,53 @@ int run() {
             check(f.hyper_gauge() > 0.2f,
                   "329 refills the gauge (40/1000 a tick)");
         }
+        // FUN_00438310:952-992: observe the executed clock and contact window, not
+        // a duplicate ClockSeek rule (the C++ chase body owns the seek).
+        {
+            Fixture fx(33);
+            fx.setTicks = {{39, 6}, {40, 30}};
+            Fighter& f = fx.make();
+            Fighter& foe = fx.make();
+            foe.reset(glm::vec3(600.f, 0.f, 0.f), 0.f);
+            input::PlayerState in = pressWith(input::Action::Jump);
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            in.down[input::Action::Jump] = false;
+            for (int i = 0; i < 12; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+            }
+            in.down[input::Action::AttackA] = true;
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            checkInt(320, f.attack_move_id(), "Rena+2 jump/attack enters chase 320");
+            in.down[input::Action::AttackA] = false;
+            bool sawSeek = false, sawStrike = false, sawRecovery = false;
+            bool contactMatches = true;
+            for (int i = 0; i < 180 && !sawRecovery; ++i) {
+                const int phase = f.move_phase();
+                const int before = f.phase_elapsed();
+                const int row = f.attack_move_id();
+                input::compute_edges(in);
+                f.update(&in, &foe, 1.0 / 64.0);
+                if (row == 320 && phase == 2 && f.attack_move_id() == 320) {
+                    const int executed = before == 13 ? 22 : before;
+                    if (before == 13) {
+                        sawSeek = true;
+                        checkInt(23, f.phase_elapsed(),
+                                 "Rena+2 chase seeks 13 to 22 then advances once");
+                    }
+                    const bool armed = executed >= 32 && executed <= 39;
+                    contactMatches &= f.contact_disabled() != armed;
+                    sawStrike |= armed;
+                }
+                sawRecovery = f.attack_move_id() == 329;
+            }
+            check(sawSeek, "Rena+2 chase naturally reaches the seek");
+            check(sawStrike && contactMatches,
+                  "Rena+2 chase contact arms only during executed ticks 32..39");
+            check(sawRecovery, "Rena+2 complete chase reaches landing recovery 329");
+        }
         // 330 (weapon 1): the hop — vertical 15, gravity .75, landing ends phase 3.
         {
             Fixture fx(3);
@@ -1264,15 +1311,12 @@ int run() {
         // 13 -> 22 (FUN_00438310:952-955), the approach turns 2 while the clock is under
         // 32 (957-959), the strike cue is at 32 (960), and the contact/ribbon window is
         // frames 32..39 (988-992) — not the 0..7 that had been copied from w0/w1.
-        const gameplay::MoveRule* w2jump = findRule(p2, 320, gameplay::MoveOp::ClockSeek, 2, 13);
         const gameplay::MoveRule* w2turn = findRule(p2, 320, gameplay::MoveOp::Turn, 2, 0);
         const gameplay::MoveRule* w2offEarly =
             findRule(p2, 320, gameplay::MoveOp::ContactOff, 2, 0);
         const gameplay::MoveRule* w2offLate =
             findRule(p2, 320, gameplay::MoveOp::ContactOff, 2, 40);
         const gameplay::MoveRule* w2chaseSpan = spanAt(p2, 320, 32);
-        check(w2jump && w2jump->value == 22.f,
-              "w2 320's phase-2 clock jumps from 13 to 22");
         check(w2turn && w2turn->last == 31 && w2turn->value == 2.f,
               "w2 320 approaches 2 degrees while the clock is under 32");
         check(w2offEarly && w2offEarly->last == 31 && w2offLate && w2offLate->first == 40,
