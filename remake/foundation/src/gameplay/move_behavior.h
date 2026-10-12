@@ -405,6 +405,11 @@ inline constexpr MoveRule kRenaRules[] = {
     {331,2,0,9999,MoveOp::Decelerate,.5f},
     // 334 dash followup: the dive body in fighter.cpp owns the rebound; the
     // landing exits into the 333 recovery (clear_vertical, gravity carried).
+    // 332's own landing branch (FUN_0043ffc0:1161-1165: grounded with phase > 0
+    // hands to 333 after clearing pitch/speed/vertical; 333's own entry rules do
+    // the clearing here). Phase 0 stays airborne — the guard is `0 < phase`.
+    {332,1,0,9999,MoveOp::LandExit,333.f},
+    {332,2,0,9999,MoveOp::LandExit,333.f},
     {334,0,0,9999,MoveOp::LandExit,333.f},
     {334,1,0,9999,MoveOp::LandExit,333.f},
     // 341 landing followup (weapon 0): approach 20 on contact through frame 5,
@@ -816,6 +821,11 @@ inline constexpr MoveRule kRena1Rules[] = {
     {331,1,3,9999,MoveOp::Approach,0.f,2.f,2.f,kGateCounterEquals,0},
     {331,2,0,9999,MoveOp::Decelerate,.5f},
     // 334 dash followup: the dive body owns the rebound; landing exits to 333.
+    // 332's own landing branch (FUN_0043ffc0:1161-1165: grounded with phase > 0
+    // hands to 333 after clearing pitch/speed/vertical; 333's own entry rules do
+    // the clearing here). Phase 0 stays airborne — the guard is `0 < phase`.
+    {332,1,0,9999,MoveOp::LandExit,333.f},
+    {332,2,0,9999,MoveOp::LandExit,333.f},
     {334,0,0,9999,MoveOp::LandExit,333.f},
     {334,1,0,9999,MoveOp::LandExit,333.f},
     // 340 landing melee (weapon 1): speed 10 at entry, approach 6 through

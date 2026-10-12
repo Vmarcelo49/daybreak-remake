@@ -933,6 +933,35 @@ int run() {
                 if (!f.airborne() && f.attack_move_id() == 333) landingTick = i;
             }
             check(landingTick >= 0, "the rebound's landing exits into the 333 recovery");
+
+            // The dive's own landing (no contact): grounded in phase 1/2 hands to 333
+            // (FUN_0043ffc0:1161-1165 — the guard is `0 < phase`, so phase 0 stays up).
+            Fixture plain(1);
+            plain.setTicks = {{51, 6}};
+            Fighter& d = plain.make();
+            Fighter& dfoe = plain.make();
+            dfoe.reset(glm::vec3(500.f, 0.f, 0.f), 0.f);
+            input::PlayerState dip = pressWith(input::Action::Jump);
+            input::compute_edges(dip);
+            d.update(&dip, &dfoe, 1.0 / 64.0);
+            dip.down[input::Action::Jump] = false;
+            for (int i = 0; i < 12; ++i) {
+                input::compute_edges(dip);
+                d.update(&dip, &dfoe, 1.0 / 64.0);
+            }
+            doubleTap(d, input::Action::Up);
+            dip = pressWith(input::Action::AttackA);
+            input::compute_edges(dip);
+            d.update(&dip, &dfoe, 1.0 / 64.0);
+            checkInt(332, d.attack_move_id(), "the plain dive fixture enters 332");
+            dip.down[input::Action::AttackA] = false;
+            int ownLanding = -1;
+            for (int i = 0; i < 200 && ownLanding < 0; ++i) {
+                input::compute_edges(dip);
+                d.update(&dip, &dfoe, 1.0 / 64.0);
+                if (!d.airborne() && d.attack_move_id() == 333) ownLanding = i;
+            }
+            check(ownLanding >= 0, "332's own landing exits into the 333 recovery");
         }
         // 300 (weapon 2): the standing spin — no approach speed, the phase-1 rush
         // at 45, and the double-speed clock through frames 16..28.
