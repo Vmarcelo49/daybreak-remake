@@ -1297,3 +1297,76 @@ rather than a fixed count is what makes the check honest.
 
 **Both acknowledged defects are now closed**, so the remaining-work list is items 3 and 4:
 exact RNG draw-order witnesses, then independent posed-hand launch-position verification.
+
+### 2026-10-11 — 3.29 Exact hand-shot draw witnesses and independent posed origins
+
+**Done:** `fighter_script_test` section 45 replaces Rika+1's range/metadata checks with
+per-shot expectations for all fifteen normal ground state400 requests at seeds 5489 and 37.
+Satoko+0's normal/powered ground state400 fans pin all five/eight requests. An independent
+`std::mt19937` supplies expected raw draws; the body formulas assign Rika yaw then pitch
+(`shoot_body_4_1_400` L21797–21824), and Satoko pitch then yaw (`3_0_400` L12596–12629).
+Yaw expectations convert the original angle convention, and the next unused draw verifies
+that neither idle updates nor requests silently consume extra random values.
+
+**Posed origin gate:** before each update the witness evaluates the real combo rig's current
+animation pose. It applies the source-derived scalar actor rotation/translation to the named
+hand's zero local point, without calling `Fighter::bone_point`, `modelMatrix`, or reading the
+request's origin descriptors. Every request's XYZ is compared with that independent result.
+Nonzero positions and two headings exercise the transform; Rika samples different animated
+hand positions, with checks that the oracle distinguishes Prop1, the opposite hand and root.
+These checks also cover Satoko's shared hand origin across each simultaneous fan.
+
+**Verified:** rebuilt Linux fighter suite: 1394 checks, zero failures/skips. Recon: six tests,
+zero failures/skips. Temporary out-of-tree mutated executables prove section45 rejects swapped
+draw order (77 failures), Prop1 substituted for the hand (129), and one extra RNG draw per
+request (78). No production source was edited for these negative checks. Full rebuilt Linux
+CTest passed 67/67, zero failures/skips (175.95 s).
+
+**Scope:** these witnesses verify the stated ground paths in the remake, not the original's
+global stream position, powered/air Rika tap completion, or all46 coverage. Both requested
+verification items are implemented; the coverage ledger and current handoff describe their
+exact boundary. Unrelated Windows/input/check-audit working changes remain untouched.
+
+### 2026-10-11 — 3.30 Character-group iteration: Rena+0/+1/+2
+
+User-directed order: all legal weapons of one character are investigated in the same
+iteration. Added [the Rena group record](ginkiha-rena-iteration.md) and updated all three
+ledger rows from original handlers, not the incomplete runtime bridge. Section46
+checks both branches of all three ground taps and first charges, their exact requests,
+RNG, independently resolved geometry and Rena+0's full second-charge world/freeze path.
+Shared launch specs now distinguish the item model's muzzle from attachment slot0/1.
+
+Focused rebuilt fighter gate:1761 checks, zero failures/skips. Six recon tests pass.
+Silent native captures for all three combos load the correct NN.dat/item identities and
+finish240 frames with `RESULT: ok`; these are captures, not live parity runs. Item3's
+row9 model/controller interpretation remains a concrete investigation. Full rebuilt Linux CTest passed67/67, zero failures/skips (175.40s) on the final
+fixture tree. Windows and web cross-builds passed; neither cross target was executed.
+
+No combo is promoted to audited complete. The group record lists landing/phase jumps,
+air motion, additional/second-charge dispatch, visual model rebinding and projectile
+lifecycle as the next work for this trio; a missing body header no longer counts as
+missing source when the original handler is present.
+
+### 3.31 — Owner test: focus Rena+0 beyond shot requests (2026-10-11)
+
+The owner narrowed work to Rena+0 after playing the trio. The
+[Rena record](ginkiha-rena-iteration.md#rena0-playable-follow-up-2026-10-11) documents
+full-charge windup targeting, source move-specific/last-round voices, black-padding
+transparency policy and side-dash animation selection. These fixes extend playable
+presentation; they do not close the outstanding air/program/projectile lifecycle audit.
+Native67-test run plus rebuilt stale-dash-test rerun passes, fighter1783 checks;
+Windows/web cross-builds pass. All verification silent. Intro pacing/countdown BGM
+were handled separately and documented in the audio backend record.
+
+
+### 3.32 — Landing verification of the working tree (2026-10-12)
+
+The Rena iteration (3.30), the owner-directed Rena+0 playable follow-up (3.31),
+the checks-audit hardening and the live-debug instrument were re-verified as one
+tree before landing: rebuilt Linux CTest **68/68** (186.48 s), fighter suite
+**1812** checks / animation data **83568** checks / melee **236** checks, all
+zero failures/skips, and Windows + web cross-builds exit 0. `coverage_report.py`
+re-run per AGENTS rule 5 (77.98%, timestamp-only diff). The owner's unrelated
+Windows packaging edits remain uncommitted and unstaged as before; the landed
+commits exclude them. No combo promotion, no new claims — this entry records the
+verification and the landing only.

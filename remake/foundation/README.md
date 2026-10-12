@@ -200,6 +200,15 @@ and caches them in IndexedDB where available. The older `?pack=` `/packs/` loade
 is retained only as historical verification code; see `webdelivery/README.md`
 and `docs/BUILD-web.md`.
 
+## Silent verification runs
+
+Scripted, headless, capture, benchmark, audio-self-check and bounded `--frames` runs
+silence all output by default, including menu sounds, voices, battle music and movies.
+Audio decoding and playback queues still run; the mute does not change saved volumes.
+CTest also forces SDL's dummy audio driver for host tests and their child processes.
+Use `--no-audio` (also accepted as `-no-audio`) to silence any launch. Intentional
+listening checks can opt in with `--with-audio`; `--no-audio` takes precedence.
+
 ## Playing a match
 
 `--match` runs the real game: the fighter/projectile simulation, the match economy

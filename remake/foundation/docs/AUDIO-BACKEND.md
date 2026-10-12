@@ -74,6 +74,14 @@ What remains decoder-side:
   `vs.ogg` — the VS screen's track, `FUN_00411ae0`'s
   `FUN_0065b870("data/bgm/vs.ogg")` — is the one without a sheet, which is why
   failing the load on a missing sheet silenced the VS screen.
+  The VS screen now keeps its finished logo visible for at least the decoded
+  sting duration before its automatic transition (port pacing policy, not a
+  recovered delay). The shipped 206720 stereo frames at 44100 Hz last 4.6875 s;
+  this becomes 300 logic ticks at 64 Hz or 282 capture ticks at 60 Hz. Confirm
+  still skips the presentation. Decoding does not depend on an open device, so
+  `--no-audio` retains that pacing. Battle BGM starts during the 3-2-1 overlay,
+  following `FUN_00635d40:62-73`'s round-entry start, while combat remains held;
+  the track continues without restarting when the countdown ends.
   `fnd::audio::resolve_loop_sheet` (`src/audio/audio_format.h`) is the single
   decision both BGM loaders now use; the loaders always apply the result, since
   a reused `LoopPlayer` keeps its previous region (`set_source` resets position

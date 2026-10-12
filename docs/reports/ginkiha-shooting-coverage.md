@@ -13,11 +13,20 @@ and verification remain pending. `—` means no runtime binding; `P` means pendi
 All 12 paths per combo have pending reachability and completeness audits. Additional
 follow-on/EX states remain pending for every combo, not implicitly N/A.
 
+## Character iterations — current work
+
+Work proceeds in roster order, with all of a character's legal weapon combos audited together.
+The first iteration is [Rena+0/+1/+2](ginkiha-rena-iteration.md). Ground taps and first charges
+are now tested together against the original handlers, with Rena+0's second-charge world pair
+also checked across its natural phases. Air transitions, additional states and projectile
+lifecycle gates remain explicit dependencies; this is not three completed combos.
+Hanyu and Natsumi have two legal weapons each, so their iterations contain two combos.
+
 ## Correction: the "no flag field" notes are wrong
 
 Several recovered tables say a powered/tag branch was skipped because the body has "no flag
-field". **That is false.** The flag is `w[0x1b7]` — the same value the port already models as
-`kGatePowered` — and it was verified directly in seven bodies: Keiichi 2 (`4_0`/`2_2`), Satoko 0
+field". **That is false.** The gate is `byte(+0x845) && word(+0x848)` (word index `0x212`) — the predicate
+the port models as `kGatePowered` — and it was verified directly in seven bodies: Keiichi 2 (`4_0`/`2_2`), Satoko 0
 (`3_0`), Rika 0 (`4_0`), Rika 2 (`4_2`), Chie 2 (`11_2`), Takano 0 (`7_0`) and Irie 1 (`10_1`).
 All seven have since been rebound with it.
 
@@ -42,7 +51,7 @@ Tomitake 2's tap all draw into — is **not** a muzzle offset. `FUN_00435220` is
 `FUN_00435250`, which does this at `0x4352a0`:
 
 ```
-fVar3 = FUN_0065d010(param_7 + bone[0x5c] + bone[100]);
+fVar3 = FUN_0065d010(param_7 + actor[0x5c] + actor[100]);
 ```
 
 i.e. it ADDS the value to the bone's own angles and runs the sum through the sin/cos table. It is
@@ -97,10 +106,17 @@ With the convention established:
 * The comment claiming the helper adds the offset to "the bone's angles" was wrong: it adds it to
   the **actor's heading and movement offset**; the bone matrix supplies the ORIGIN only.
 
-Still open: which draw each shot consumes, so Rika 1 and Satoko 0 bound their values against the
-body's converted ranges rather than pinning each one. Also open, and deliberately not claimed:
-Rika 1's zero-`localOffset` check is a regression check for the muzzle bug, but it does not yet
-verify the launch position against the posed hand.
+Closed by `fighter_script_test` section 45 (2026-10-11): Rika+1's normal ground state400
+pins all 15 requests for seeds 5489 and 37; Satoko+0's normal/powered ground state400 pins
+all five/eight requests. Expected yaw and pitch use independent `std::mt19937` draws and
+body formulas, not runtime spread descriptors. The next unused draw verifies total consumption.
+
+Every launch position is compared with the named hand's pre-update animated rig position,
+transformed independently at nonzero actor positions and two headings. Rika+1's witnesses
+sample different animation ticks and distinguish the left hand from Prop1, the right hand,
+and the actor root. This verifies the remake's posed-hand launch boundary, not original global
+RNG stream alignment or the untested air/powered Rika paths. The old zero-`localOffset`
+regression assertion is superseded by these position checks.
 
 ### Correction: which axis the displacement uses
 
@@ -215,9 +231,9 @@ that substring), and assert the occurrence count *within that scope*.
 
 | Combo | Swap / item | Tap ground | Tap air | Charge 1 ground | Charge 1 air | Charge 2 ground | Charge 2 air | Available body count |
 |---|---|---|---|---|---|---|---|---|
-| Rena 0 | 1 / 1 | 400 attach, gate-bound / rows 6 powered | 402 attach, gate-bound / rows 7 powered | 450 attach, gate-bound / rows 8 powered, fixed 45° | 460 attach, gate-bound / rows 8 powered, fixed 45° | 360 world 11/12 / no branch split | 370 world 11/12 / no branch split | 1 |
-| Rena 1 | 2 / 3 | 400 attach fan 12–26, gate-bound / rows 3 powered | — / P | 450 attach, gate-bound / rows 8 powered, fixed 45° | — / P | — / P | — / P | 0 |
-| Rena 2 | 3 / 33 | 400 attach rows 0/2 @p1t35 + 10-world ring rows 1/3, spread-bound | — / P | — / P | — / P | — / P | — / P | 0 |
+| Rena 0 | 1 / 1 | 400 Prop1 fallback @12, integer ±30 / row6 powered | 402 bound; audit pending | 450 slot0 @13 fixed45 / row8 powered | 460 bound; audit pending | 360 phase2 tick2 world rows11/12, signed offsets; freeze10 | 370 binding corrected; air audit pending | 1 |
+| Rena 1 | 2 / 3 | 400 slot0 row6 @18 / rows0 then9 powered | — / landing phase2 tick5 pending | 450 model2 on slot0, 15-shot yaw sweep @12..26 / row3 powered | — / @15..29 source audited, lifecycle pending | — / row8 pitch70 @16 source audited | — / landing transition pending | 0 |
+| Rena 2 | 3 / 33 | 400 attach rows0/2 + ten-world ring rows1/3 @p1t35; exact RNG/geometry | — / landing graph pending | 450 right hand @40, integer ±40 / rows4/5 | — / @36 source audited; landing recovery pending | — / dispatcher and seek pending | — / dispatcher and seek pending | 0 |
 | Mion 0 | 4 / 2 | 400 slot 0 @p1t2, rows 0/4 gate-bound; phase-3 slot 1 contact-gated | 402 dual-slot volleys c=15/20/25, rows 0/4 gate-bound | 450 slot 0 @17 rows 2/3, clamp −40/+45, freeze 30 | 460 slot 0 @17 rows 2/3, freeze 20 | — / P | — / P | 30 |
 | Mion 1 | 5 / 4 | 400 slot 0 @p1t2 rows 0/4, slot 1 @p2t1 contact-gated rows 0/4 | 402 dual-slot volley c=13, rows 0/4 | 450/460 spread-bound: 15-shot fan @17 rows 1/5 | — / P | — / P | 30 |
 | Mion 2 | 6 / 35 | 400 slot 0 @teleport-tick 10, rows 0/1 | 402 slot 0 @18, rows 0/1, freeze 10 | 450 phase-1 emissions @15..60 rows 2/3, spread-bound (+0x1c8 unmodelled) | 460 same as 450 | — / P | — / P | 24 |

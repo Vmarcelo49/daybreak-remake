@@ -1,12 +1,24 @@
 # Animation set indices and move-table binding
 
+**Verification correction:** Earlier tick121/tick181 scripted captures below are
+historical candidate notes, **not successful live verification**. The user observed
+idle-looking aerial dash and the wrong-looking attack. Controlled debug observation
+subsequently reproduced airborne Run with no bound move, set0/fallback at tick114;
+move311/tag40 at tick115 did not establish visual identity. The user found tick121's
+early pose inconclusive. See [LIVE-DEBUG.md](LIVE-DEBUG.md) for the current evidence
+and remaining gates. The 300/311/current-Back contract is now scoped to Rena+0 only;
+other combos retain their existing aerial340 binding, without a selector-fidelity claim.
+
 **Status:** the remake resolves source-supported states through the bound fighter's
 `data/<char>/NN.dat` table and advances sections using the recovered set period and `+0x20`
-gate. Grounded neutral melee → 300 and Up/Down ground dash → 20/27 are explicit port
-inferences; the executable's initial-input selectors depend on player fields the port does not
-model. The jump chain (moves 40 → 41 → 42) is recovered and every attack move the port already
-resolves (300 / 330 / 340) plays its own table row. Side/air dash, projectile and TagOut
-selectors remain unresolved and report `anim_fallback()` rather than borrowing a guessed clip.
+gate. The bounded #31 candidate selects move 300 for ordinary jump attacks, 311 for an attack
+after air dash, and 330 for grounded dash attacks; each clip tag comes from the equipped
+character+weapon table. Rena's `FUN_00445ee0` admits 300 from jump rows 41/42, and the user has
+confirmed the original's horizontal slash and air-dash kick. The exact universal selector tree
+is still incomplete, so #31 remains open for manual confirmation and #66 retains the broader
+direction/cancel selectors. Move 340 remains bound for its separate contexts (329/333/44), not
+as the blanket ordinary-air choice. Projectile and TagOut selectors still report
+`anim_fallback()` rather than borrowing a guessed clip.
 Guard is not an unresolved selector at all: the source binds no move for a block, so the state
 holds the clip that was already playing and reports `anim_no_selector()`. Cross-fades are gated
 by the recovered character-class callback; only Rena's slot-2 combo has a verified transition
@@ -101,13 +113,13 @@ weapon move phases; the `data/item` table alone does not establish an animation 
 The remake's simplified combat input does not reproduce every original selector branch.
 `FUN_00445ee0` directly shows context-gated transitions such as
 300→301→302, 20→330/331, 23/24→330/331, and 329/333/44→340; the choice depends on input,
-move cancel windows, direction fields, and other player flags. A blanket `dash→330`,
-`air→340`, or “pick any present weapon move” rule drops those conditions. The remake uses
-move 300 as its grounded-neutral default inference because it is a normal-attack target in the
-recovered handler; the handler selects it only through conditional branches, so this does not
-prove the fresh AttackA selector. Which of 300/330/340 a press should resolve is still an
-inference; once it has resolved, the swing plays that row's own phase tag (issue #31 — before
-that fix the presentation path only honoured 300 and showed set 0 for the other two). Voice keys
+move cancel windows, direction fields, and other player flags. The #31 candidate uses the
+user-confirmed input distinction for ordinary jump attacks (300) and air-dash attacks (311),
+while retaining 330 for grounded dash attacks and leaving the 340 contexts unselected by this
+bounded repair. Rena's handler admits 300 from jump rows 41/42, but the full initial-input
+selector is not recovered; the air-dash-to-311 behavior is user-confirmed. Its table-bound
+selection is covered by actual-input remake tests, but not yet by a valid post-countdown live
+capture. Every selected ID resolves through that combo's table, so set numbers are not shared across weapons. The candidate samples digital Down and positive stick Y on the attack edge; Back preserves the current actor yaw through aerial handler turns, while other directions use the current target bearing. Reset, respawn, state exit and landing clear the per-swing mode; this is covered by Rena+0/Akane+0 tests, including a later grounded neutral attack. Post-change Rena+0 captures after BattleStart show the ordinary jump attack at tick 121 (`attackA`, set 31) and an actual air-dash attack at tick 181 (`attackA`, set 40), with swing-start traces and no fallback. The kick route is driven after landing by Jump, then two Up taps while airborne, then Attack. A separate Akane+0 ordinary-air capture shows its own set 31 for the same move family. Table tags vary by combo; Back-vs-target posing is asserted in simulation, but not individually captured across those routes. These remake observations do not prove original selector parity. Voice keys
 `shotA/B/C` are loaded as audio paths by `FUN_00431e70`;
 they do not identify firing animation sets. The numeric 300-chain and EX helper paths also
 do not establish a universal projectile-animation link.
@@ -125,7 +137,7 @@ parallel raw set-index table.
 | BattleStart | 194 | Round reset calls `FUN_00421080(0xc2)` (`FUN_004219a0`). |
 | Hit / Knockdown / KO | 103 / 196 / 203 | Reaction dispatch rows in `FUN_00428510`; runtime uses each bound table's tag. |
 | Up / Down ground dash | 20 / 27 | Port inference from the directional families. Source selection is gated by opaque state/cancel fields in `FUN_0043ded0`; `FUN_00438310` handles an already-selected move. Air dash does not reuse this inference. |
-| Grounded neutral / dash / aerial melee | 300 / 330 / 340 | The *selector* stays a port inference from a conditional normal-attack target in `FUN_0043ded0` / `FUN_00445ee0`. Whichever of the three a press resolves plays its own table row; the presentation path no longer drops 330/340 (issue #31). |
+| Grounded neutral / grounded dash / ordinary jump / after air dash | 300 / 330 / 300 / 311 | Bounded #31 candidate, pending manual confirmation. Rena source admits 300 from jump rows 41/42; the original horizontal slash and air-dash kick were confirmed by the user. Each move resolves through the equipped combo's NN.dat. The distinct 340 contexts are left to the wider selector work in #66. |
 | Jump (launch / rise / fall) | 40 → 41 → 42 | Live `DaybreakDX.exe` (original, md5 `a136ddc01bd7ef355b759b88ac89e02c`) via the bridge: `FUN_0043ffc0` cases `0x28`/`0x29`/`0x2a` chain the three air rows — case `0x28` binds `0x29` once `FUN_004218c0`'s air gate passes, case `0x29` binds `0x2a` once `vy < 6.0`/tick (`0x40c00000`) with the row's second section active. Phase tags are the shipped jump clips: 40 → `[2]`, 41 → `[3,4]`, 42 → `[5,43]`. `FUN_004218c0`'s own budget is not carried, so the port plays row 40 for the launch tick and then follows vy. |
 | Guard | none | Static control-flow interpretation of `FUN_00637950` (0x637950), branch of the decompiled listing (:535-549): it writes the hit registry, the per-slot `0x100` marker and `[victim+0xaf30]`, and calls no move bind and no effect/voice helper, so a block is a damage-path branch, not a move. The predicate is `(|bearing - facing| > 45 || (victimword & 0x2000)) && (victimword & 0x400) && !(attackerword & 8)`, where victimword is `[victim+0x10]+0x28` and attackerword is `[attacker+0x10]+0x2c`. Which physical buttons those two victim bits belong to is NOT recovered (the device button word carries `0x10 << slot`, and this is a different word whose builder is not located). The state therefore holds the clip that was playing (`anim_no_selector()`), which is not the same report as a miss. This is static evidence, not a live original-game observation. |
 | Side dash | unresolved | The table has moves 23 and 24, but current left/right inputs are not tied to either. |
@@ -204,13 +216,18 @@ record's `+0x04` remains a cancel-window threshold, not a phase duration.
 
 `fighter_script_test` checks the resolver's move-ID → table-tag path, immediate default-class
 switches, explicit fallback status, and the Guard hold (a bound clip is kept, not replaced by
-set 0). `melee_rules_test` binds matching character/weapon tables, checks strict phase timing
-and the auto-advance gate, and verifies Rena slot 2's metadata-driven cross-fade. It also runs
-the recovered jump chain row by row (launch / rise / section completion / fall), checks that an
-interruption hard-binds a reaction row off the jump clip, pins the attack rows 330 → set 51 and
-340 → set 88 that issue #31 lost, and sweeps all 46 legal combos through
-idle/walk/jump/guard/attack/hit/knockdown/KO, printing each combo's resolved set and flagging
-whatever still falls back. `animation_pose_test` checks real rig ordering and pose invariants.
+set 0). `animation_data_test` exercises actual jump and air-dash input with Rena+0 and Akane+0,
+checking moves 300/311 against each equipped table, visible facing for Back versus target-facing
+Forward/Right, and Rena+0's attack-step travel direction. Separate live Rena+0 and Akane+0
+captures after BattleStart show ordinary attackA/set 31 from their own tables; a separate Rena+0
+air-dash live capture shows attackA/set 40 (the move-311 NN.dat tag). It also verifies aerial mode clears on
+attack exit, landing, reset and respawn, and that the following grounded neutral attack remains
+300. It does not establish original selector parity for all 46 combos. `melee_rules_test` binds matching character/weapon tables, checks
+strict phase timing and the auto-advance gate, and verifies Rena slot 2's metadata-driven
+cross-fade. It also runs the recovered jump chain row by row, preserves the separate move-340
+table/window checks, and sweeps all 46 legal combos through idle/walk/jump/guard/attack/hit/
+knockdown/KO to report each combo's table-bound set and fallback state. `animation_pose_test`
+checks real rig ordering and pose invariants.
 
 The live instrument is `DAYBREAK_CAMINFO=1`, whose `[daybreak] anim` line prints the playing set
 and the reason: `(no selector)` for the Guard hold, `(fallback)` for a selector or row this port

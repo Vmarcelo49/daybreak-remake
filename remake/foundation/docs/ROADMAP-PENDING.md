@@ -875,7 +875,7 @@ connects twice.
 
 ## B. Battle visuals
 
-### B1. VFX: the effect table, per-instance cards, trails are vestigial — **implemented (issue #17)**
+### B1. VFX: the effect table, per-instance cards and attachments — **implemented (issue #17)**
 
 * **The effect table is recovered.** `FUN_0042eba0` loads **100** descriptors,
   `data/effect/%03d.dat`, into the manager at `scene+0x5210`, with a 1000-entry
@@ -1010,15 +1010,22 @@ connects twice.
     YawPitchRoll triple, and the port has recovered none of them, so it feeds the recovered
     convention the shot's **velocity**. `src/game/shot_visual.h` names both halves and
     `tests/effect_catalog_test.cpp` pins them.
-* **Trails are vestigial — the definitive negative result.** `FUN_00633ca0` loads the 10
-  `data/trail/%02d.bmp` bitmaps into `scene+0x445c`; the **only** code in the whole
-  binary that reads that array is the destructor `FUN_00634520` (`0x63473a`). There is no
-  vertex producer, no slot→texture selection and no blend technique to recover for
-  trails in `DaybreakDX.exe` — the feature was cut and the loader left behind. The port
-  therefore draws **no** trail ribbons, and says so instead of inventing them. The
-  recovered shot draw corroborates it: `FUN_005f60b0` draws the bullet's mesh and its
-  per-bullet sprite definition and touches no `data/trail` slot, so the projectile path is
-  not the missing trail producer either.
+* **Weapon ribbons are a separate path (issue #53).** The earlier conclusion that the
+  executable has no trail geometry was wrong: `FUN_0042fff0` shifts the prop's tip
+  history and grows/decays its ribbon, `FUN_00430120` transforms the item anchors and
+  expands the history, and `FUN_004303b0` draws the triangle fan with the prop's own
+  texture handle. `FUN_00433eb0` only constructs an item prop when its model-name field
+  is nonempty. Rena+0/item001 and Akane+0/item016 have shared, asset-backed miss-trail
+  tests. Akane's handler binds manager Prop0 to item model 2; actual neutral300, dash330,
+  and aerial340 inputs reach their source windows. Source descriptors also record
+  301/302, 331, and 341, but current input/chain dispatch does not reach every row (#66).
+  Table-backed melee lifetime now uses the matching rig's phase periods only when every
+  set is valid and every auto-advance gate is zero; otherwise the contact-timer fallback
+  remains (#70). See `foundation/docs/EFFECTS-TRAILS.md`. Visible weapon models still
+  conflate manager slots with item-model indices and attach to Prop1 (#69); trail anchor
+  validation does not claim that mesh placement is fixed. `FUN_00633ca0` also loads a
+  separate `data/trail/%02d.bmp` table, whose relationship to item-texture ribbons remains
+  unresolved. The recovered shot draw still touches no trail slot and is not that producer.
 * **Blend technique** is per model: `FUN_00436150` switches on the model's `+0x7c` and
   sets the D3D state set for cases 1–4 (default: `FUN_00651110(1)`); the port's
   `Pass::Effect` (additive, unlit, unculled, cylindrical billboard) is the equivalent
@@ -1462,13 +1469,19 @@ stage-aware colour) and the recommendation: `foundation/docs/NPR-EXPERIMENTS.md`
   word's builder is not located. The port therefore keeps its own Guard action
   and holds the playing clip (`anim_no_selector()`), which is a report, not a
   guess.
-* **Attack rows (issue #31).** The three attack selectors the port already
-  resolves (300 grounded, 330 mid-dash, 340 airborne) now play their own table
-  rows; only the *choice* among them remains a port inference. Before this the
-  presentation path honoured 300 alone, so a live aerial swing bound move 340
-  for its hit test and then showed set 0 while airborne. Which of `0x100`'s
-  neighbours gate the original's `FUN_00445ee0` transitions (300→301→302,
-  20→330/331, 23/24→330/331, 329/333/44→340) is still open.
+* **Attack rows (issue #31).** The bounded port candidate now selects move 300
+   for ordinary jump attacks, 311 after an air dash, and 330 for grounded dash
+   attacks, resolving each through its equipped character+weapon NN.dat. The
+   user confirms the Rena+0 slash/kick distinction; Rena's source admits 300
+   from jump rows 41/42. Tests cover Rena+0 and Akane+0 actual-input table tags,
+   attack-time Back versus current-target facing and mode cleanup. Post-change
+   Rena+0 and Akane+0 live remake captures show ordinary jump move 300/set 31
+   after BattleStart; a Rena+0 double-tap air-dash capture reaches attackA and the
+   combo's move-311 tag (set 40) at tick 181. These are remake observations, not
+   original-game evidence or a
+   roster-wide visual survey. The full fresh AttackA selector, other directional
+   branches and `0x100` neighbours in `FUN_00445ee0` remain out of scope in #66;
+   move 340's separate 329/333/44 contexts are retained, not generalized here.
 * **Evidence trail.** `FUN_00428510` (49-case move-id switch, count from
   `8fae1f9`) is the per-move executor, not the selector hunt it once looked
   like; `FUN_0043ded0` and its 46 per-character twins are the per-character act

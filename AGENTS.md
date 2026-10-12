@@ -130,6 +130,14 @@ daybreak-decomp/
 └── .github/                   index Action (regenerates INDEX on push)
 ```
 
+## Quiet testing
+
+All agent-launched remake verification must be silent. Pass `--no-audio` to manual
+smoke, capture and scripted runs. The host also mutes verification and bounded
+`--frames` runs automatically. Do not use `--with-audio` unless the user explicitly
+requests an audible listening test; mute flags must not change saved volume settings.
+CTest forces SDL's dummy audio driver, including for backend tests and child processes.
+
 ## Common commands
 
 ```bash

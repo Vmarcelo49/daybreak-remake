@@ -9,6 +9,11 @@ then close every blocked/partial combo and audit all 46. “Next: Tomitake 0” 
 historical usage-order pointer, not the active task. Earlier “full program” counts do
 not establish complete shooting-path coverage.
 
+**Current owner focus (2026-10-11): Rena+0 playable defects.** The
+[Rena group record](ginkiha-rena-iteration.md) now carries full-charge targeting,
+move-specific voices, black projectile-padding policy and side-dash animation
+selection. Continue Rena+0 manual feedback before expanding the roster again.
+
 Checkpoint: recon tooling, the [46-combo ledger](ginkiha-shooting-coverage.md),
 [launch/admission contracts](ginkiha-launch-contracts.md),
 [architecture decisions](ginkiha-shooting-architecture.md), and the isolated magazine
@@ -16,6 +21,23 @@ primitive are now present. Bound Fighter stocks, row admission, charge counters,
 powered gate and per-move counters have migrated. Satoko 2's tap is the first typed-world
 program and Rika 1's charge was repaired with the counter model. Resume from the blocker
 plan's latest append-only checkpoint (entry 3.0).
+
+**2026-10-11 — remaining verification items 3/4:** `fighter_script_test` section 45 now
+checks Rika+1 normal ground shooting against an independent MT19937 oracle for every shot
+(two seeds), and Satoko+0 normal/powered ground fans (five/eight shots). It also checks the
+actual launch positions against pre-update posed hand transforms, independently of the
+launch resolver, at nonzero positions/headings. These are grounded-path witnesses; do not
+promote untested air paths or claim original global RNG stream alignment. Validation is
+recorded in the blocker plan's latest entry.
+
+**2026-10-11 — character-group iteration:** work now audits all legal weapons of one
+character together. [Rena+0/+1/+2](ginkiha-rena-iteration.md) is the first group. Original
+handlers replaced incorrect Rena+1 bridge schedules, restored its model2 muzzle and
+charge yaw sweep, corrected Rena+2's ring angle and bound its ground hand charge,
+and corrected Rena+0's integer tap aim / second-charge geometry and freeze. Section46
+checks the grouped ground paths. Continue the same trio's air/landing and follow-on
+states before claiming completion, then advance to Mion's three weapons. All runs
+remain silent; unrelated working-tree changes are preserved.
 
 ## 1. What this is
 
