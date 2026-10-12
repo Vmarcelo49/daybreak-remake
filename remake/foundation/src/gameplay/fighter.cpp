@@ -1465,23 +1465,36 @@ int Fighter::admit_attack_move(bool aerial, const input::PlayerState* input) con
     // the gauge is modeled; the tap-shot half is gated in fire_shot.
     if (m_chargeGauge <= 0) return -1;
     const AttackAdmissionInput in = attack_input(aerial, input);
-    // FUN_0044d850:160-167 / FUN_00445ee0:162-168 — the boosted branch: an attack
-    // press while grounded (`+0x84`), inside the current row's chainable window
-    // (`+0x2ec8` threshold + the 0x100 flag), with a special state armed (`+0x845`
-    // Oyashiro, `+0x844` aim lock, or `+0x846` hyper-2) takes state 0x15e ahead of the
-    // ordinary admission. The port's m_hyperActive carries the armed hyper states; the
-    // aim-lock-only arming (+0x844 without a hyper state) is a recorded partial mapping
-    // — the port's aim layer feeds the powered gate, not admission. Scoped to weapons
-    // 0/1 because only their 0x15e is the awakened MELEE: weapon 2's 0x15e is the
-    // full-charge SHOT, which the port selects through the charge path's {350,360}
-    // tier. The dispatcher itself is weapon-independent, so an attack-key press on
-    // weapon 2 with a special armed is a port-side scoping decision, not a source claim.
+    // FUN_0044d850:117-118 / FUN_00445ee0:117-118 — the boosted branch is a TWO-LATCH
+    // CHORD: `(+0x288 != 0) && (+0x284 != 0)`, both `< 3`, on top of the ordinary
+    // admission's own single-button entry `+0x284 == 3` at :316. `+0x284` is the melee
+    // latch (the melee arm takes it alone) and `+0x288` the second one, whose chord with
+    // it also drives the hyper arming command (FUN_0063c2a0 case 0x24). The port carries
+    // the melee button as AttackA and that second button as Special, so the chord is
+    // `down[AttackA] && down[Special]`; a lone attack press is the ORDINARY melee, not
+    // the awakened one. The chord's `< 3` half (the latch held rather than on its press
+    // frame) is not recoverable: the latch's decay inside FUN_0041efe0's max-merge is not
+    // established, so the port accepts either. Recorded, not guessed.
+    //
+    // The arming half is `+0x845 || +0x844 || +0x846` (:164-165). Those three bytes are
+    // the three hyper LEVELS, not "Oyashiro / aim lock / hyper-2": FUN_0063c2a0:267-277
+    // dispatches ONE activation command on the per-slot byte +0x318 into FUN_00421fe0
+    // (level 1, +0x844), FUN_004220e0 (level 2, +0x845) or FUN_00422160 (level 3, +0x846).
+    // The port's single m_hyperActive is therefore the faithful reading of the
+    // disjunction, and the earlier note calling +0x844 an "aim-lock-only" arming was a
+    // misreading of that byte; it is withdrawn.
+    //
+    // Scoped to weapons 0/1 because only their 0x15e is the awakened MELEE: weapon 2's
+    // 0x15e is the full-charge SHOT, which the port selects through the charge path's
+    // {350,360} tier. The dispatcher itself is weapon-independent, so an attack-key press
+    // on weapon 2 with a special armed is a port-side scoping decision, not a source claim.
     // Scoped to the Rena group: Mion's 0x15e is reached from a different section of her
     // dispatchers (the air side of the special/awakened block, FUN_0045f4d0:186-189) and
     // her 0x15e semantics are unrecovered, so admitting it for her would bind a row with
     // no body. A recorded gap, not a silent extension.
+    const bool specialHeld = input && input->down[input::Action::Special];
     if (!aerial && m_moves && m_moves->character_index() == 0 && m_hyperActive &&
-        (in.weaponSlot == 0 || in.weaponSlot == 1) && in.normalFlag &&
+        (in.weaponSlot == 0 || in.weaponSlot == 1) && in.normalFlag && specialHeld &&
         AttackAdmissionTable{m_moves}.gate(in.state, 350) && present_move(350) > 0)
         return 350;
     const int character = m_moves ? m_moves->character_index() : -1;

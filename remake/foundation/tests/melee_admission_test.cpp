@@ -1452,10 +1452,11 @@ int run() {
             check(sawSe, "300's phase-2 entry queues SE 60");
         }
 
-        // (7) The boosted (special-gauge) admission: an attack press while a hyper
-        // state is armed and the current row's chain window is open takes the awakened
-        // 350 (FUN_00445ee0:162-168 / FUN_0044d850:160-167); the same press without the
-        // armed state takes the ordinary 300.
+        // (7) The boosted (special-gauge) admission: the awakened 350 is a TWO-LATCH
+        // CHORD — `+0x284 && +0x288` (FUN_00445ee0:117-118), the melee latch plus the
+        // second one the arming command also uses — with a hyper state armed and the
+        // current row's chain window open. A lone attack press while armed is the
+        // ORDINARY 300, and so is the chord without the armed state.
         {
             Fixture fx(1, {}, {350});
             Fighter& f = fx.make();
@@ -1471,10 +1472,12 @@ int run() {
             input::compute_edges(in);
             f.update(&in, &foe, 1.0 / 64.0);
             check(f.hyper_active(), "the boosted fixture arms the hyper state");
+            // The chord: both latches held while the attack edge arrives.
+            in.down[input::Action::Special] = true;
             in.down[input::Action::AttackA] = true;
             input::compute_edges(in);
             f.update(&in, &foe, 1.0 / 64.0);
-            checkInt(350, f.attack_move_id(), "an armed attack press admits the 350 melee");
+            checkInt(350, f.attack_move_id(), "the armed chord admits the 350 melee");
 
             // The 350 body's own presentation cues: an effect request at frame 7
             // (id 320 -> data/effect/032.dat) carrying the two rand%40-20 angles, and the
@@ -1504,6 +1507,29 @@ int run() {
             p.update(&plainIn, &pfoe, 1.0 / 64.0);
             checkInt(300, p.attack_move_id(),
                      "the same press without the armed state stays 300");
+
+            // The chord's second latch is what separates the awakened row: an armed
+            // fighter pressing the melee button ALONE takes the ordinary 300, because the
+            // dispatcher's chord arm needs both latches.
+            Fixture solo(1, {}, {350});
+            Fighter& s = solo.make();
+            Fighter& sfoe = solo.make();
+            sfoe.reset(glm::vec3(300.f, 0.f, 0.f), 0.f);
+            s.set_hypermode(gameplay::Hypermode::Oyashiro);
+            s.set_hyper_gauge(1.f);
+            input::PlayerState armIn;
+            armIn.down[input::Action::Special] = true;
+            input::compute_edges(armIn);
+            s.update(&armIn, &sfoe, 1.0 / 64.0);
+            armIn.down[input::Action::Special] = false;
+            input::compute_edges(armIn);
+            s.update(&armIn, &sfoe, 1.0 / 64.0);
+            check(s.hyper_active(), "the solo fixture arms the hyper state");
+            input::PlayerState soloIn = pressWith(input::Action::AttackA);
+            input::compute_edges(soloIn);
+            s.update(&soloIn, &sfoe, 1.0 / 64.0);
+            checkInt(300, s.attack_move_id(),
+                     "an armed lone attack press stays the ordinary 300");
         }
 
         // (8) The attacker-side guard exit driven through the real update: a guarded
