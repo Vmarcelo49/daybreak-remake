@@ -169,22 +169,33 @@ Execution contracts (mobile/full-charge references, cross-checked with the handl
 * Two clocks exist, one per channel: `+0xae04` / `+0xae08` (`param_1[0x2b81]` /
   `[0x2b82]`). `FUN_00421100` (phase entry) zeroes BOTH; the handler epilogue increments
   BOTH; `FUN_0041f580:156` reads `+0xae04` for one channel and `+0xae08` for the other.
-  **Resolved divergence:** weapon 2's state 320 applies its windup skip to the SECONDARY
-  clock only (`param_1[0x2b82] = 0x16`, FUN_00438310:955), while the port's
-  `skipAttackFrames` moves the primary `m_moveElapsedTicks` — the port's single clock
-  advances the pose, so the visible skip is approximated but the two clocks are not
-  separately owned. The 350/360 seeks write both clocks, where the single-clock model is
-  exact. The secondary clock's ownership is the remaining clock gap.
-* Two channels exist (0/1) with separate primary/secondary clocks; the port models one
-  clock per move plus its blend. For **Rena only weapon slot 2** has a recovered blend
-  compatibility (`permits_blend`: clip 1 → 31/34/39) — the `+0x20` vtable profile.
-  Weapons 0/1 bind instantly; no dual-channel behavior is claimed for them.
+  **Verified: the two clocks never diverge on a recovered attack path.** Every confirmed
+  seek writes both — weapon 2's 320 windup skip (`param_1[0x2b81] = 0x16; param_1[0x2b82]
+  = 0x16`, FUN_00438310:952-954), weapon 0's 350 stall and rewind (FUN_0043ffc0:1458-59,
+  1467-68), weapon 1's and 2's 350/360 seeks to 95, and Mion 0's 0xbc/0xbd and Mion 2's
+  teleport all write the pair together. An earlier note here claimed the 320 skip wrote
+  the secondary clock alone; a partial grep produced that, the full body contradicts it,
+  and the note is retracted. The port's single `m_moveElapsedTicks` (which drives both the
+  rule ticks and the animation playhead) is therefore exact for these paths.
+  **The only lone-clock sites are outside them:** FUN_0046a190:2346 (Keiichi 0) resets
+  `+0x2b82` on its own and immediately calls FUN_00421410(0,0), a channel-0 animation
+  rebind rather than a phase seek. The residual dual-clock question is the animation
+  SERVICE's per-channel time selection, not the attack bodies.
+* Two channels exist (0/1); the port models one clock per move plus its recovered blend.
+  For **Rena only weapon slot 2** has a recovered blend compatibility (`permits_blend`:
+  clip 1 → 31/34/39) — the `+0x20` vtable profile. Weapons 0/1 bind instantly; no
+  dual-channel behavior is claimed for them.
 * Rena is NOT in `roster_walk_shot_recovered` (the layered lower-body walk-shot roster),
   so the walking shot 401 does not need an independent lower channel for this group.
 * The chase/dive lean is FUN_00420b30's `T(0,-pivot,0) * Rx(pitch) * Ry(yaw) *
   T(position+pivot)`: `+0x2c` is a PITCH (RotationX) and `+0x2d8` a pivot HEIGHT, not two
   yaw terms. The port now builds exactly that (donor `actor_world_pose.hpp:14`), pinned
   by `melee_admission_test`'s matrix check.
+* **Visible weapon:** FUN_00434a70(slot, model) re-points a prop slot at another of the
+  item's attachment models and the original draws whichever model the slot names (Rena
+  1's 450/460 bind slot 0 from model 0 = 11.x to model 2 = 12.x). `Fighter::draws_item_model`
+  is the shared predicate the render gate and the tests read, so the visible weapon and
+  the launch muzzle now come from the same binding.
 
 ## 5. Verification plan per acceptance rules
 
@@ -223,9 +234,15 @@ Execution contracts (mobile/full-charge references, cross-checked with the handl
    -500 on a special spend (FUN_00508a60:91); consumed by the melee/shot admission
    gates, the 390/393 guard exits and the awakened-melee `500 <` threshold. It is
    NOT the item-data magazine.
-4. Secondary-clock ownership for weapon 2's 320 windup skip (§4) and the mobile /
-   full-charge seek parity.
-5. `boosted` (special-gauge) chain admission remains the gate for reaching W0/W1
+4. ~~Secondary-clock ownership~~ — **resolved 2026-10-12: no divergence exists on the
+   recovered attack paths.** All seeks write both clocks together and the phase entry /
+   epilogue move both, so the port's single clock is exact here (§4). The remaining
+   dual-clock matter is the animation service's per-channel time selection, not the
+   attack bodies.
+5. **Visible weapon:** ~~Rena+1's model-2 prop~~ — landed 2026-10-12
+   (`draws_item_model`, §4). Remaining: the actual model-2 mesh in a live frame is still
+   a capture/live-parity question, and other combos' slot→model bindings are not audited.
+6. `boosted` (special-gauge) chain admission remains the gate for reaching W0/W1
    350; its body is implemented. Melee voice/effect cues are produced and pinned
    but the audio/effect CONSUMER mapping is not wired yet.
-6. Then Mion+0/+1/+2 with the same matrix discipline.
+7. Then Mion+0/+1/+2 with the same matrix discipline.

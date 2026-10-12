@@ -56,9 +56,27 @@ three-phase 402 dive, weapon 2's clamp/seek 402 with its ten-request ring, the
 403/409/469 recoveries, the model-2 prop rebind for weapon 1's 450/460, the 350
 awakened-melee bodies for weapons 0/1 (including the frames-1..9 clock-replay window
 fix), 392's exit body, and the melee voice/effect producer latches. `melee_admission_test`
-is now 250 checks. Remaining, in order: the secondary-clock ownership (weapon 2's 320
-windup skip is written to `+0xae08` only), the boosted admission gate for 350, the
-voice/effect CONSUMER mapping, and the live visual parity window. All runs silent.
+is now 250 checks. Remaining, in order: the boosted admission gate for 350, the
+voice/effect CONSUMER mapping, and the live visual parity window.
+
+**2026-10-12 — secondary clocks resolved, Rena+1's visible weapon fixed:** the two actor
+clocks (`+0xae04`/`+0xae08`) never diverge on a recovered attack path. Every confirmed
+seek writes BOTH together (w2 320's windup skip at FUN_00438310:952-954, w0 350's stall
+and rewind, the 350/360 seeks to 95, Mion 0's 0xbc/0xbd, Mion 2's teleport),
+`FUN_00421100` zeroes both and the epilogue increments both, so the port's single
+`m_moveElapsedTicks` (which drives both the rule ticks and the animation playhead) is
+exact. An earlier note claimed w2 320 wrote the secondary clock alone; the full body
+contradicts that partial grep and the claim is retracted. The only lone-clock site is
+FUN_0046a190:2346 (Keiichi 0), which resets `+0x2b82` and immediately calls
+FUN_00421410(0,0) — a channel-0 animation rebind, not a phase seek. Separately, the
+rendered-weapon gap is closed: FUN_00434a70(slot, model) re-points a prop slot at another
+of the item's models and the original draws whichever model the slot names, so
+`Fighter::draws_item_model` is now the render gate's predicate (item 3 ships 11.x at
+model 0 and 12.x at model 2 with identical muzzles, which is why the launch-origin
+witness could not catch the wrong mesh). The install-backed Rena+1 test asserts model 2
+is drawn for the 450 and model 0 for the tap. Remaining before Mion: the boosted gate,
+the voice/effect consumers, and the live visual window (lean sign and the model-2 frame).
+All runs silent; the 2-player capture keeps both fighters armed.
 
 **2026-10-12 — admission rejection contract + the melee execution slice:** the
 attack-input branch now resolves admission BEFORE any attack-entry mutation — a
