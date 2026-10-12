@@ -154,7 +154,17 @@ distinct call paths were separated, and conflating them had been the earlier mis
   indices (the original's 40-name table at 0x6b73b0), so FUN_004223d0(1,10,0) =
   attackA, (0xd,10,0) = guarded, FUN_00422490(0x20,...) = specialA. Dispatched as a
   `MeleeVoice` event, and a row whose cue policy is recovered stands the fallback
-  swing voice down. The close-target cascade (0/15/5) still needs the pairing tracker.
+  swing voice down. **The close-target cascade (0/15/5) is fully specified but not yet
+  bindable:** the selection is `battle_melee_voice`'s — inside `dist^2 < 90000` (40000 in
+  the 320 body) and `|+0x19| < 30`, the FIRST set flag of `[+0xaec3, +0xaebe, +0xaeb9]`
+  wins, giving voice 0 / 15 / 5 at priority 12, otherwise the ordinary voice at priority
+  10 (`FUN_0043ffc0:601-627` has the same order; the Ginkiha donor takes the three flags
+  as INPUTS). What is missing is their producer: FUN_0042e110 computes them from the
+  attention/assist state (`+0x300`/`+0x304` slots and the actor cached at `+0x308`, plus
+  the per-slot device codes at `+0x7d8` and `FUN_004236c0`/`FUN_0042e950`), and the
+  current dump's nesting of that branch contains a contradictory inner condition
+  (`(A || B) && (!A && !B)`), so binding the flags from it would be a guess. It needs a
+  cleaner producer dump or a live trace of the three bytes.
 * **SE** — FUN_0042c8b0 (positional) / FUN_0042c880: the argument is a
   `data/se/%03d.wav` id played at the actor's own position (FUN_0064b060 →
   FUN_0064ae70 → FUN_0065a260's 3D mixer). Dispatched on the SFX bus; the port's sink
@@ -290,6 +300,7 @@ Execution contracts (mobile/full-charge references, cross-checked with the handl
    and the actor effect requests are produced and consumed (the last at the actor's
    position, ids resolving through data/effect's `id / 10`), pinned by
    `combat_audio_test` and `melee_admission_test`. Still open: the close-target voice
-   cascade (0/15/5, needs the pairing tracker), the SE's 3D placement, and the effect
+   cascade (0/15/5: selection pinned, producer needs a cleaner dump — see §2), the SE's
+   3D placement, and the effect
    card's orientation from the request's heading/pitch.
 7. Then Mion+0/+1/+2 with the same matrix discipline.
