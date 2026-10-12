@@ -22,6 +22,16 @@ powered gate and per-move counters have migrated. Satoko 2's tap is the first ty
 program and Rika 1's charge was repaired with the counter model. Resume from the blocker
 plan's latest append-only checkpoint (entry 3.0).
 
+**2026-10-12 — correction: Rena+0's mobile/dash shot windows.** Re-reading
+FUN_0043ffc0's own case bodies (not the donor summaries) showed the 401/405/406/407/408
+windows had been read from the wrong side of the same lines: the unbind is
+`threshold < tick`, so it starts the tick AFTER the recorded number. 401 bleeds 0.25 (not
+0.5) and unbinds from 14 (not 12); 405/406 approach 15 deg for ticks 0..9 (not 20 for
+0..11), bleed 0.5 only after tick 10, and unbind from 14; 407 turns 9 deg for ticks 0..9
+PLUS 15 deg on every phase-0 tick (two `FUN_0042db10` calls) and unbinds from 14; 408
+unbinds from 14. 400 and 402 were already right, which is what fixes the convention.
+`melee_admission_test` now pins all five windows so they cannot silently revert.
+
 **2026-10-12 — Mion group started; her melee admission is on the recovered path.** The
 port's `kDispatchIdentity` slot 7 names Mion's dispatchers (0x45F4D0 / 0x467D70 / 0x456030
 for weapons 0/1/2), and their melee sections are the same condition sequence line for line,
