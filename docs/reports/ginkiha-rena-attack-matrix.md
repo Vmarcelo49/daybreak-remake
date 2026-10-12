@@ -188,9 +188,16 @@ distinct call paths were separated, and conflating them had been the earlier mis
 * **effect** — `(*actor+0xc)(id,x,y,z,heading,pitch)` is the actor-side effect request
   (FUN_00421aa0 → FUN_00435990 → the effect manager's create with that pose). The id
   indexes data/effect by `id / 10` (FUN_0042eba0's 100 slots), so the 350 beats'
-  320/340/350 resolve to 032/034/035.dat. The effect spawns at the actor's position;
-  the pose is carried on the frame but the port's card queue is position-only, so the
-  orientation is not applied yet.
+  320/340/350 resolve to 032/034/035.dat. **The pose is now carried and composed:**
+  FUN_00436150 rotates each instance by its request direction (RotationZ then
+  RotationY then translation), the queue carries that direction, and placement builds
+  the matrix with the same `game::shotModelMatrix` helper the shots use — one
+  convention, not two. The unposed callers are untouched because a zero direction
+  composes to the old translation-only matrix.
+  Two limits stay recorded: whether a card SHOWS its yaw is the renderer's per-draw
+  billboard gate (the 350's ring is a billboarded card, so the observation is "correctly
+  undamaged", not a new orientation on it), and the direction is built from the cue's
+  angles — the request's own pair, not a re-derived one.
 
 The guard-hit exit 392 is implemented, and the live pose gate remains.
 
@@ -417,11 +424,11 @@ witness is falsifiable — removing it makes the new assertion fail.
    a capture/live-parity question, and other combos' slot→model bindings are not audited.
 6. **Voices, SEs and effects:** the melee voice cues, the FUN_0042c8b0/0042c880 SEs
    and the actor effect requests are produced and consumed (the last at the actor's
-   position, ids resolving through data/effect's `id / 10`), pinned by
-   `combat_audio_test` and `melee_admission_test`. Still open: the close-target voice
-   cascade (0/15/5: BOUND — its two unreachable arms and two unmodelled producer terms
-   are recorded in §2), the SE's 3D placement, and the effect card's orientation from the
-   request's heading/pitch.
+   position and pose, ids resolving through data/effect's `id / 10`), pinned by
+   `combat_audio_test`, `melee_admission_test` and `fx_cards_test`. The close-target
+   voice cascade is BOUND (§2: its two unreachable arms and two unmodelled producer
+   terms are recorded there). Still open: the SE's 3D placement (the port's sink is not
+   spatial).
 7. Then Mion+0/+1/+2 with the same matrix discipline.
 
 ## 7. Group acceptance decision — reopened
@@ -432,10 +439,11 @@ the group stays open with Mion deferred. Since this section reopened, the two it
 named as blocking are now BOUND with their limits recorded rather than treated as
 caveats: the boosted 350 admission's two-latch chord (FUN_00445ee0:117-118) and the
 close-target voice cascade's producer (§2), each with an input- or Match-driven
-witness. Effect PRESENTATION — the card's orientation from the request's pose — stays
-open, together with the two visual gates. Selection, execution and automated
-verification are still reported per tested path; there is no group-wide completion or
-live-parity claim.
+witness, and the effect request's pose now flows through the queue and composes with
+the recovered FUN_00436150 convention (fx_cards_test, plus a scripted 350 capture).
+What stays open is narrower: the SE's 3D placement and the two visual gates.
+Selection, execution and automated verification are still reported per tested path;
+there is no group-wide completion or live-parity claim.
 
 The Rena+2 320 seek was already implemented in `Fighter::advance_rena_chase` through
 `ChasePolicy::skipAttackFrames` before the later duplicate `ClockSeek` rule was added.
@@ -458,11 +466,10 @@ verification therefore hold for the paths this matrix lists, with real-input wit
 the admission, the air taps, the dive/ring, the ribbon windows, the boosted 350 and the
 guard exit.
 
-**Live parity is still held by no path**, and the four remaining items are recorded rather
+**Live parity is still held by no path**, and the two remaining items are recorded rather
 than waived: the two visual gates (lean sign render, model-2 frame) have no comparable
-reference in this environment (§ status vocabulary's exact limitation); the close-target
-voice cascade's selection is pinned but its producer needs a cleaner dump or a live trace;
-the SE's 3D placement has no port counterpart (the sink is not spatial); and the effect
-card's orientation from the request pose has no evidenced render convention. None of these
-is a selection/execution/automated-verification claim, and none is folded into the labels
-above. Progression to Mion proceeds on this basis, with the caveat recorded here.
+reference in this environment (§ status vocabulary's exact limitation), and the SE's 3D
+placement has no port counterpart (the sink is not spatial). Neither is a
+selection/execution/automated-verification claim, and neither is folded into the labels
+above. The cascade, the chord and the effect pose that this section used to list as
+caveats are all bound now — the sentence above supersedes that list.
