@@ -233,6 +233,19 @@ check that fixes the convention: the port's `Hide` rule window is inclusive, so 
 pinned by `melee_admission_test`'s window section, so a future edit cannot silently
 revert them.
 
+The same pass over the MELEE rows found three more gaps, all in weapon 0's table:
+
+| State | Missing | Corpus |
+|---|---|---|
+| 310 | phase-0 entry snap 180° before the 20° approach; the phase-2 contact/ribbon span | 756-765 + 772-774; 791 (`tick < 5 \|\| 7 < tick` clears, so 5..7 arms) |
+| 311 | the ungated tick-0 180° snap | 824-829 (weapon 2's table already had it) |
+| 341 | the phase-1 contact/ribbon span, 0..19 | 1365 (`phase == 1 && tick < 0x14`) |
+
+They are pinned in the same section. Note for 311: its body calls neither
+`FUN_00434b30` nor `FUN_00434bd0`, so the port correctly carries no `Active` span for
+it — its volume comes from the NN record's own combat flag, and §2's "strike ph2
+f5–7" line for 311 describes that record data, not a body span.
+
 ## 4. Animation service facts (scoped for this group)
 
 * Two clocks exist, one per channel: `+0xae04` / `+0xae08` (`param_1[0x2b81]` /
