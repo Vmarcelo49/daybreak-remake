@@ -22,6 +22,16 @@ powered gate and per-move counters have migrated. Satoko 2's tap is the first ty
 program and Rika 1's charge was repaired with the counter model. Resume from the blocker
 plan's latest append-only checkpoint (entry 3.0).
 
+**2026-10-12 — correction: weapons 1 and 2's prop-latch spans.** The weapon-0 audit was
+only one handler; FUN_00448220 and FUN_00438310 carry the same
+`(tick < N) || (M < tick)` windows around FUN_00434b30/bd0, and NEITHER table had a
+single `Active` rule, so their props never armed. Now bound: w1 301 (10..16), 310 (5..7),
+311 (12..18); w2 310 (24..45), 311 (32..49), 330 (28..34), 331 (26..109), 340 (16..24).
+Left unbound on purpose and recorded: w2 301/302 (its admission has no such branch, so
+the rows are unreachable) and both weapons' 320/350 (those already model the contact half
+via ContactOff — w1's 350 is exactly 21..64 — so their ribbon half awaits the phase
+structure).
+
 **2026-10-12 — correction: three weapon-0 melee rows.** The same body-by-body pass found
 310 missing its phase-0 180-degree entry snap and its phase-2 5..7 contact/ribbon span
 (FUN_0043ffc0:756-765/772-774, 791), 311 missing the ungated tick-0 180-degree snap
