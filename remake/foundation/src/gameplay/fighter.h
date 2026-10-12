@@ -727,6 +727,16 @@ public:
         return hand >= 0 && hand < static_cast<int>(m_trailItemModel.size())
                    ? m_trailItemModel[static_cast<size_t>(hand)] : -1;
     }
+    // FUN_00434a70's per-slot item-model binding decides which of the item's attachment
+    // models is on screen, so one canonical item model (`model`, the index the DAT ships)
+    // is drawn exactly when a bound prop slot names it. The render gate and the tests
+    // share this predicate: a correct launch origin alone does not prove the visible
+    // weapon is right (Rena 1's 450/460 move slot 0 from model 0 = 11.x to model 2 = 12.x).
+    bool draws_item_model(int model) const {
+        for (int slot = 0; slot < 2; ++slot)
+            if (weapon_slot_bound(slot) && trail_item_model(slot) == model) return true;
+        return false;
+    }
 
     // The swing this fighter WOULD start right now for the given situation — the same
     // resolution set_state(AttackA) performs at the press, without touching state. A COM

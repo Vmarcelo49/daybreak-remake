@@ -1326,8 +1326,16 @@ static void applyWeaponVisibility(App& app) {
         }
         for (size_t fighter = 0; fighter < fighters && fighter < 4; ++fighter)
             if (app.matchRig[fighter] == owner) {
-                visible[i] = app.match.fighter(static_cast<int>(fighter))
-                                 .weapon_slot_bound(sm.propId);
+                const auto& f = app.match.fighter(static_cast<int>(fighter));
+                // The drawn mesh follows the executor's slot -> ITEM MODEL binding, not
+                // the scene model's own load order: FUN_00434a70(slot, model) re-points a
+                // prop slot at another of the item's models (Rena 1's 450/460 bind slot 0
+                // to model 2 = 12.x, where the default slot 0 is model 0 = 11.x) and the
+                // original then draws whichever model that slot names. A scene model IS
+                // one of those canonical model indices, so it is visible exactly when a
+                // bound slot names it. `draws_item_model` is the shared predicate: without
+                // it the launch origin could be model 2 while the visible weapon was 0.
+                visible[i] = f.draws_item_model(sm.propId);
                 break;
             }
     }

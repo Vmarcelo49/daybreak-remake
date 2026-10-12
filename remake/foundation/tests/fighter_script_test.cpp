@@ -3667,6 +3667,26 @@ void test_rena_character_iteration() {
             input.set(fnd::input::Action::Shoot, false);
             tick(fighter, input, aimTarget);
             check_int("source move selected", charged ? 450 : 400, fighter.shot_move_id());
+            // The visible weapon follows the same slot -> item model binding the render
+            // gate reads: FUN_00434a70(0,2) on the 450/460 entry points slot 0 at item
+            // model 2 (12.x), while the tap keeps the default model 0 (11.x).
+            if (slot == 1)
+                check_int("Rena+1 charge binds slot 0 to item model 2", charged ? 2 : 0,
+                          fighter.trail_item_model(0));
+            // ... and the render gate reads that same binding: model 2 is on screen for
+            // the charge and model 0 is not, while the tap is the other way round. This
+            // is the witness a correct muzzle alone cannot give.
+            if (slot == 1) {
+                // ... and the render gate reads that same binding: model 2 is on screen
+                // for the charge and model 0 is not, while the tap is the other way
+                // round. This is the witness a correct muzzle alone cannot give.
+                if (charged)
+                    check_bool("Rena+1 charge draws item model 2, not 0", true,
+                               fighter.draws_item_model(2) && !fighter.draws_item_model(0));
+                else
+                    check_bool("Rena+1 tap draws item model 0, not 2", true,
+                               fighter.draws_item_model(0) && !fighter.draws_item_model(2));
+            }
             std::vector<gameplay::PendingShot> shots;
             std::vector<int> ticks;
             for (int update = 0; update < 150; ++update) {
