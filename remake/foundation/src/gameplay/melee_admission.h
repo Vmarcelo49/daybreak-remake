@@ -1,14 +1,20 @@
 #pragma once
 
-// Recovered attack admission for the Rena group (character 0, weapon slots 0/1/2).
+// Recovered attack admission for the Rena group (character 0, weapon slots 0/1/2) and
+// the Mion group (character 1, weapon slots 0/1/2).
 //
-// Sources: the original dispatchers FUN_00445ee0 (input selector), FUN_0044d850 and
-// FUN_0043ded0 (situation selector), read through the Ginkiha implementation
-// reference (battle_rena_melee_admission.hpp, roster_walk_shot_admission.hpp,
-// roster_ground_shot_admission.hpp, roster_air_dash_cancels.hpp) and cross-checked
-// against research/decompiled/FUN_0043ffc0.c / FUN_00448220.c / FUN_00438310.c.
-// The donor's numbers matched the handlers everywhere they were compared; the
-// handlers stay authoritative on any future disagreement.
+// Sources: the original dispatchers — FUN_00445ee0 (Rena's input selector), FUN_0044d850
+// and FUN_0043ded0 (her situation selectors), and Mion's three FUN_0045f4d0 /
+// FUN_00467d70 / FUN_00456030 (kDispatchIdentity's slot7: weapons 0/1/2 respectively) —
+// read through the Ginkiha implementation reference (battle_rena_melee_admission.hpp,
+// mion_melee_admission.hpp, roster_*_shot_admission.hpp, roster_air_dash_cancels.hpp) and
+// cross-checked against research/decompiled/FUN_0043ffc0.c / FUN_00448220.c /
+// FUN_00438310.c. The donor's numbers matched the handlers everywhere they were compared;
+// the handlers stay authoritative on any future disagreement.
+//
+// Mion's melee branch is COMMON to her three dispatchers: their melee sections are the
+// same condition sequence line for line (checked at the 0x15e/0x154/0x155/0x12d
+// branches), which is why one function serves all three weapons.
 //
 // The original admits attacks as numeric states through one per-frame dispatcher.
 // This header ports that dispatcher's Rena branch onto the port's inputs: the
@@ -22,9 +28,11 @@
 
 namespace gameplay {
 
-// Whether this combo has a recovered admission table. Only the Rena group so far;
+// Whether this combo has a recovered admission table. The Rena and Mion groups so far;
 // every other combo keeps its previous bounded candidates (issue #66 owns the rest).
-inline bool attack_admission_recovered(int characterIndex) { return characterIndex == 0; }
+inline bool attack_admission_recovered(int characterIndex) {
+    return characterIndex == 0 || characterIndex == 1;
+}
 
 // What the original's dispatcher reads when an attack edge arrives. `state` is the
 // numeric action row: 0 idle, 10 walk, dash rows 20/23/24/27, air rows 40..42, the
@@ -38,6 +46,11 @@ struct AttackAdmissionInput {
     int z = 0;  // forward axis (toward target +1, away -1)
     bool normalFlag = false;  // state word bit 0x100 (actionable)
     unsigned contact = 0;     // melee contact bits: 1 hit, 2 guarded
+    // The dispatchers' armed+ready pair (`byte(+0x845) && word(+0x848)`) inside their
+    // 299 < state < 350 window: an armed special turns a contact chain into the boosted
+    // branch. Only the Mion family binds it; the Rena family's boosted arms are the
+    // recorded gap noted at rena_melee_admission.
+    bool boosted = false;
 };
 
 // Gate on the candidate row: true when the current row's cancel threshold permits
@@ -102,6 +115,54 @@ inline int rena_melee_admission(const AttackAdmissionInput& in,
         if (we == 0 && state == 301 && in.normalFlag && gate(302)) return 302;
     }
     if ((we != 2 || state != 300) && enabled && gate(300)) return 300;
+    return -1;
+}
+
+// The recovered Mion melee admission. Mion's melee family differs from Rena's: no
+// 311/332/334 branches, the directional kick is 312, the landing/dash-recovery source
+// selects 340 and the 340->341 follow-up belongs to all three weapons (Rena's is
+// weapon 0 only). The `boosted` form of a branch re-enters a row the ordinary gate
+// refuses unless the current row is already in the ordinary combo set — the corpus's
+// `(threshold || (boosted && 299 < state < 0x15e && state != <row>))` pairs.
+inline int mion_melee_admission(const AttackAdmissionInput& in,
+                                 const AttackAdmissionTable& table) {
+    const AttackAdmissionTable absent{};
+    const AttackAdmissionTable& t = table.moves ? table : absent;
+    const int state = in.state;
+    const bool normal = in.normalFlag;
+    const bool boosted = in.boosted;
+    const bool enabled = normal || (boosted && in.contact != 0);
+    const auto gate = [&](int next) { return t.gate(state, next); };
+    const bool ordinaryCombo = state == 300 || state == 301 || state == 302 ||
+                               state == 340 || state == 341;
+
+    if (!in.grounded)
+        return (enabled && (gate(320) || (boosted && state != 320))) ? 320 : -1;
+    if (normal) {
+        // FUN_0045f4d0:365-400 — forward dash with a lateral input crosses into 331;
+        // the side dashes pick 330 while back is held, else 331.
+        if (state == 20 && in.x != 0 && gate(331)) return 331;
+        if (state == 20 && gate(330)) return 330;
+        if ((state == 23 || state == 24) && in.z < 0 && gate(330)) return 330;
+        if ((state == 23 || state == 24) && gate(331)) return 331;
+    }
+    if (in.z < 0 && enabled && (gate(310) || (boosted && state != 310))) return 310;
+    if (in.x != 0 && enabled && (gate(312) || (boosted && state != 312))) return 312;
+    if ((state == 329 || state == 333 || state == 44) && enabled &&
+        (gate(340) || (boosted && !ordinaryCombo)))
+        return 340;
+    if (state == 340 && normal && gate(341)) return 341;
+    if (state == 300 && normal && gate(301)) return 301;
+    if (enabled && (gate(300) || (boosted && !ordinaryCombo && state != 320))) return 300;
+    return -1;
+}
+
+// The per-character dispatcher entry. Both recovered groups read the same input shape
+// and gate table; only the branch sequence differs.
+inline int melee_admission_for(int characterIndex, const AttackAdmissionInput& in,
+                               const AttackAdmissionTable& table) {
+    if (characterIndex == 0) return rena_melee_admission(in, table);
+    if (characterIndex == 1) return mion_melee_admission(in, table);
     return -1;
 }
 

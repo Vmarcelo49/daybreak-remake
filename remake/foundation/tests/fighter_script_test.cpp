@@ -4056,6 +4056,73 @@ void test_rena_ribbon_windows() {
     check_int("the ribbon decays back to empty", 0, fighter.trail(0).triangles());
 }
 
+// Mion's three dispatchers (kDispatchIdentity slot7: FUN_0045f4d0 / FUN_00467d70 /
+// FUN_00456030) share one melee branch sequence, so every weapon must reach the same
+// family through real input: 300 neutral, 310 with back held, 312 with a lateral held
+// (her family has no 311), 330 from the forward dash and 320 airborne. Weapon 2 carries
+// no per-weapon delta here.
+void test_mion_melee_admission() {
+    section("49. Mion+0/+1/+2 melee admission through real input");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_mionCombo.load(install, 1, 0) ||
+        !g_mion1Combo.load(install, 1, 1) || !g_mion2Combo.load(install, 1, 2))
+        return skip_case("all three Mion combos");
+    for (int slot = 0; slot < 3; ++slot) {
+        TestCombo& combo = slot == 0 ? g_mionCombo : slot == 1 ? g_mion1Combo : g_mion2Combo;
+        std::printf("  Mion+%d melee\n", slot);
+        Fighter f;
+        Input in;
+        const auto fresh = [&]() {
+            f.init(nullptr, nullptr, glm::vec3(0.f, 0.f, 0.f), 0.f);
+            combo.bind(f);
+            settle(f);
+            in.clear();
+            // Settle the cleared input so the next press is a real just-pressed edge
+            // (compute_edges compares against the previous frame's held state).
+            tick(f, in);
+        };
+
+        fresh();
+        in.set(fnd::input::Action::AttackA, true);
+        tick(f, in);
+        check_int("Mion neutral press admits 300", 300, f.attack_move_id());
+
+        fresh();
+        in.set(fnd::input::Action::Down, true);
+        in.set(fnd::input::Action::AttackA, true);
+        tick(f, in);
+        check_int("Mion back-held press admits 310", 310, f.attack_move_id());
+
+        fresh();
+        in.set(fnd::input::Action::Left, true);
+        in.set(fnd::input::Action::AttackA, true);
+        tick(f, in);
+        check_int("Mion lateral-held press admits 312, not 311", 312, f.attack_move_id());
+
+        fresh();
+        in.set(fnd::input::Action::Up, true);
+        tick(f, in);
+        in.set(fnd::input::Action::Up, false);
+        tick(f, in);
+        in.set(fnd::input::Action::Up, true);
+        tick(f, in);
+        check_int("the double tap enters the dash", static_cast<int>(FighterState::Run),
+                  static_cast<int>(f.state()));
+        in.set(fnd::input::Action::AttackA, true);
+        tick(f, in);
+        check_int("Mion forward-dash press admits 330", 330, f.attack_move_id());
+
+        fresh();
+        in.set(fnd::input::Action::Jump, true);
+        tick(f, in);
+        in.set(fnd::input::Action::Jump, false);
+        for (int i = 0; i < 12; ++i) tick(f, in);
+        in.set(fnd::input::Action::AttackA, true);
+        tick(f, in);
+        check_int("Mion airborne press admits 320", 320, f.attack_move_id());
+    }
+}
+
 void test_akane2_world_origin_gap() {
     section("28. Akane 2 item-46 fixture deferred: world-origin shots");
     const auto install = findInstall(nullptr);
@@ -5794,6 +5861,7 @@ int main(int argc, char** argv) {
     test_rena_character_iteration();
     test_rena_air_taps();
     test_rena_ribbon_windows();
+    test_mion_melee_admission();
     test_keiichi2_tap_sweep();
     test_satoko1_periodic_world_shot();
     test_simulation_rng_stream();

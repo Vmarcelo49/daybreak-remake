@@ -416,8 +416,9 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         // combos keep the bounded pair below.
         int next = -1;
         if (m_moves && attack_admission_recovered(m_moves->character_index())) {
-            next = rena_melee_admission(attack_input(!m_grounded, input),
-                                         AttackAdmissionTable{m_moves});
+            next = melee_admission_for(m_moves->character_index(),
+                                       attack_input(!m_grounded, input),
+                                       AttackAdmissionTable{m_moves});
         } else {
             const CharacterMove* from = m_moves->find(m_attackMoveId);
             const CharacterMove* to = m_moves->find(m_attackMoveId + 1);
@@ -1446,6 +1447,11 @@ AttackAdmissionInput Fighter::attack_input(bool aerial,
         ? (current_move_record() && (current_move_record()->stateFlags & 0x100))
         : true;
     in.contact = m_chainContact ? 1u : 0u;
+    // The dispatchers' boosted pair (`byte(+0x845) && word(+0x848)`) is an armed special
+    // plus its ready flag; the port carries the armed Oyashiro state, and the ready half
+    // is the gauge/aim layer the powered shot gate already models (recorded deltas at the
+    // 350 branch and in §1 of the attack matrix).
+    in.boosted = m_hyperActive && m_hypermode == Hypermode::Oyashiro;
     return in;
 }
 
@@ -1470,11 +1476,16 @@ int Fighter::admit_attack_move(bool aerial, const input::PlayerState* input) con
     // full-charge SHOT, which the port selects through the charge path's {350,360}
     // tier. The dispatcher itself is weapon-independent, so an attack-key press on
     // weapon 2 with a special armed is a port-side scoping decision, not a source claim.
-    if (!aerial && m_hyperActive && (in.weaponSlot == 0 || in.weaponSlot == 1) &&
-        in.normalFlag &&
+    // Scoped to the Rena group: Mion's 0x15e is reached from a different section of her
+    // dispatchers (the air side of the special/awakened block, FUN_0045f4d0:186-189) and
+    // her 0x15e semantics are unrecovered, so admitting it for her would bind a row with
+    // no body. A recorded gap, not a silent extension.
+    if (!aerial && m_moves && m_moves->character_index() == 0 && m_hyperActive &&
+        (in.weaponSlot == 0 || in.weaponSlot == 1) && in.normalFlag &&
         AttackAdmissionTable{m_moves}.gate(in.state, 350) && present_move(350) > 0)
         return 350;
-    return rena_melee_admission(in, AttackAdmissionTable{m_moves});
+    const int character = m_moves ? m_moves->character_index() : -1;
+    return melee_admission_for(character, in, AttackAdmissionTable{m_moves});
 }
 
 int Fighter::resolve_attack_move(bool dashAttack, bool aerial) const {
@@ -2826,8 +2837,11 @@ void Fighter::fire_shot(ShotTier tier) {
     // air-dash fast shot 408 — in place of the program's own 400/402 entry.
     // Only a state the program can actually fire (its own entry or its rules)
     // is selected, so no clip is ever bound without its launch body.
+    // Rena's routing only: Mion's dispatchers route the walking tap to her own mobile
+    // states (401/410/411/412 for weapons 0/1), which the port has not bound yet — that
+    // is a shooting-side pending item, not something this block may guess from Rena's.
     if (tier == ShotTier::Tap && program && m_moves && m_weapon &&
-        attack_admission_recovered(m_moves->character_index())) {
+        m_moves->character_index() == 0) {
         const int slot = weaponSlotForItem(m_moves->character_index(), m_weapon->id);
         int admitted = -1;
         if (m_grounded) {

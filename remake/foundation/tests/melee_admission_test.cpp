@@ -205,10 +205,11 @@ struct Fixture {
     bool ok = false;
     std::string error;
     explicit Fixture(int itemId, TableShape shape = {},
-                     const std::vector<int>& extraRows = {}, int bulletRows = 0) {
+                     const std::vector<int>& extraRows = {}, int bulletRows = 0,
+                     int character = 0) {
         const auto bytes = admissionTable(itemId, shape, extraRows);
         ok = moves.parse(bytes.data(), bytes.size(), error);
-        moves.set_character_index(0);
+        moves.set_character_index(character);
         weapon = slotWeapon(itemId, bulletRows);
         ok = ok && moves.weapon_id() == itemId;
     }
@@ -263,6 +264,8 @@ struct TableCase {
     int x, z;
     int expected;
     const char* name;
+    bool boosted = false;   // armed special (+0x845/+0x848), Mion's branches only
+    unsigned contact = 0;   // melee contact bits, required by the boosted form
 };
 
 void runTableCases(const CharacterMoves& moves, const TableCase* cases, size_t count) {
@@ -276,13 +279,103 @@ void runTableCases(const CharacterMoves& moves, const TableCase* cases, size_t c
         in.x = c.x;
         in.z = c.z;
         in.normalFlag = c.normal;
-        in.contact = 0;
+        in.contact = c.contact;
+        in.boosted = c.boosted;
         checkInt(c.expected, gameplay::rena_melee_admission(in, AttackAdmissionTable{&moves}),
                  c.name);
     }
 }
 
+// Mion's melee branch is common to her three dispatchers, so one table drives it.
+void runMionCases(const CharacterMoves& moves, const TableCase* cases, size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+        const TableCase& c = cases[i];
+        AttackAdmissionInput in;
+        in.weaponSlot = c.weapon;
+        in.state = c.state;
+        in.phase = c.phase;
+        in.grounded = c.grounded;
+        in.x = c.x;
+        in.z = c.z;
+        in.normalFlag = c.normal;
+        in.contact = c.contact;
+        in.boosted = c.boosted;
+        const int viaTable = gameplay::mion_melee_admission(in, AttackAdmissionTable{&moves});
+        checkInt(c.expected, viaTable, c.name);
+        // The shared entry must route character 1 here unchanged.
+        checkInt(c.expected,
+                 gameplay::melee_admission_for(1, in, AttackAdmissionTable{&moves}),
+                 "melee_admission_for(1) agrees");
+    }
+}
+
 int run() {
+    section("Mion melee admission — common dispatcher branch");
+    {
+        // Item 2 is Mion weapon 0 (kWeaponIds[1]); character 1 so the item resolves to
+        // slot 0, and 312 ships via extraRows because only Mion uses it.
+        Fixture mion(2, {}, {312}, 0, 1);
+        if (!mion.ok) { check(false, "synthetic Mion table parses"); return 1; }
+        check(gameplay::attack_admission_recovered(1),
+              "the Mion group is on the recovered path");
+        const TableCase cases[] = {
+            {0, 0, 0, true, true, 0, 0, 300, "Mion idle neutral -> 300"},
+            {0, 10, 0, true, true, 0, 0, 300, "Mion walk neutral -> 300"},
+            {0, 20, 0, true, true, 0, 0, 330, "Mion forward dash -> 330"},
+            {0, 20, 0, true, true, 1, 0, 331, "Mion lateral in the forward dash -> 331"},
+            {0, 23, 0, true, true, 0, -1, 330, "Mion back-held side dash -> 330"},
+            {0, 23, 0, true, true, 0, 0, 331, "Mion side dash -> 331"},
+            {0, 24, 0, true, true, 0, 0, 331, "Mion other side dash -> 331"},
+            {0, 0, 0, true, true, 0, -1, 310, "Mion back input -> 310"},
+            {0, 0, 0, true, true, 1, 0, 312, "Mion lateral input -> 312, not 311"},
+            {0, 329, 0, true, true, 0, 0, 340, "Mion landing row -> 340"},
+            {0, 333, 0, true, true, 0, 0, 340, "Mion dash-recovery row -> 340"},
+            {0, 44, 0, true, true, 0, 0, 340, "Mion row 44 source -> 340"},
+            {0, 340, 0, true, true, 0, 0, 341, "Mion 340 -> 341"},
+            {0, 300, 0, true, true, 0, 0, 301, "Mion 300 -> 301"},
+            {0, 301, 0, true, true, 0, 0, 300, "Mion 301 has no 302 follow-up"},
+            {0, 0, 0, false, true, 0, 0, 320, "Mion airborne press -> 320"},
+            {0, 30, 0, false, true, 1, 0, 320, "Mion air dash still resolves 320 (no 332)"},
+            {2, 0, 0, true, true, 0, 0, 300, "Mion+2 shares the same branch"},
+            {2, 0, 0, true, true, 1, 0, 312, "Mion+2 lateral -> 312 (no per-weapon delta)"},
+            {2, 0, 0, false, false, 0, 0, -1, "Mion+2 unarmed air press -> declined"},
+        };
+        runMionCases(mion.moves, cases, std::size(cases));
+
+        // The boosted form needs a contact, and re-enters a row the ordinary gate
+        // refuses unless the current row is already in the ordinary combo set.
+        const TableCase boosted[] = {
+            {0, 0, 0, true, false, 0, 0, -1, "boosted without contact -> declined", true, 0},
+            {0, 0, 0, true, false, 0, -1, 310, "boosted back input -> 310", true, 1},
+            {0, 0, 0, true, false, 1, 0, 312, "boosted lateral input -> 312", true, 1},
+            {0, 329, 0, true, false, 0, 0, 340, "boosted landing -> 340", true, 1},
+            {0, 0, 0, true, false, 0, 0, 300, "boosted neutral -> 300", true, 1},
+            {0, 0, 0, false, false, 0, 0, 320, "boosted airborne -> 320", true, 1},
+        };
+        runMionCases(mion.moves, boosted, std::size(boosted));
+
+        // The `state != <row>` half of the boosted pair only matters when the ordinary
+        // gate refuses: with row 310's cancel threshold above the target priority the
+        // boosted branch must skip 310 (and the neutral fallback admits 300), while the
+        // air branch has no fallback and declines 320 outright.
+        Fixture hold310(2, TableShape{0, -1, 310}, {312}, 0, 1);
+        if (hold310.ok) {
+            const TableCase held[] = {
+                {0, 310, 0, true, false, 0, -1, 300,
+                 "boosted skips the held 310 and admits 300 instead", true, 1},
+            };
+            runMionCases(hold310.moves, held, std::size(held));
+        }
+        Fixture hold320(2, TableShape{0, -1, 320}, {312}, 0, 1);
+        if (hold320.ok) {
+            const TableCase held[] = {
+                {0, 320, 0, false, false, 0, 0, -1,
+                 "boosted cannot re-enter 320 while the gate refuses", true, 1},
+            };
+            runMionCases(hold320.moves, held, std::size(held));
+        }
+    }
+
     section("admission table — recovered dispatcher branches");
     {
         Fixture full(1);
