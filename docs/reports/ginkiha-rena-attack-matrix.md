@@ -249,7 +249,9 @@ Execution contracts (mobile/full-charge references, cross-checked with the handl
    selected shot state id and its fire rules. The AIR TAPS are additionally driven
    through real input for all three weapons (fighter_script_test §47): the expected
    item rows, firing frames and phases are asserted per weapon, including the w1
-   dive's closing-speed clamp and the w2 ring's pitch range and fan-out.
+   dive's closing-speed clamp and the w2 ring's pitch range and fan-out. The weapon
+   RIBBON is verified against its Active windows (§48): it grows only inside 300's
+   phase-2 frames 3..10 and decays to empty afterwards.
 4. Full `ctest` (read its own summary), Windows/web cross-builds, silent captures of
    the changed attack routes.
 5. Live visual parity stays a separate gate (D9): the matrix's status column never
