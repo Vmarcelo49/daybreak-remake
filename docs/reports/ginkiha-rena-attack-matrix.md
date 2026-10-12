@@ -25,9 +25,10 @@ no discrepancy is currently known for the rows below.
   NN record's `stateFlags & 0x100` during attacks and true for locomotion/air rows.
 * `gate(next)` = current row's cancel threshold ≤ candidate row's priority — the same
   comparison the port's 300→301→302 chain already uses (verified pinned behavior).
-* `boosted` = special-gauge active+ready chaining (contact-gated). **Deferred** for all
-  weapons: the port's special-gauge `ready` semantics for the melee branch are not yet
-  modeled; chains currently honor the 0x100 window only. Recorded gap, not silent.
+* `boosted` = special-gauge active+ready chaining (contact-gated). **Admission still
+  deferred** for all weapons: the port's special-gauge `ready` semantics are not fully
+  modeled, so chains honor the 0x100 window only. The 350 BODY is now implemented for
+  weapons 0/1 (§2), so only the gate that selects it is missing. Recorded gap, not silent.
 * Weapon-specific families are facts, not assumptions: the admission table below is
   the recovered selector itself, so "absent for weapon 2" means the dispatcher never
   selects it — not a missing row.
@@ -118,8 +119,8 @@ phases/clips and the posed hit volumes (the port's `resolve_swing` already reads
 | 334 dash followup | ✓ | ✓ | ✓ | after 332 contact | clip bound; **329/333 recovery bodies implemented + verified** (zeroed motion, gauge 40/1000 a tick) |
 | 340 landing melee | ✓ | ✓ | ✓ | w0/w2: speed 15@f0→0@f15, approach 18 until f10, strike f16–24, effect 61@f15. w1: speed 10, approach 6 until f8, strike f10–16, effect 67@f12 | clip + volumes bound; **movement implemented + verified** (331's strength latch via the counter, approach windows, phase-1 exit; 340's per-weapon approach/stop) |
 | 341 landing followup | ✓ | — | ✓ | w0: from 340, leap: ph1 vertical 18, gravity .75, strike ph1 f<20, landing → ph3. w2: same shape (speed 10) | **leap implemented + verified** (vertical 18, gravity .75, landing ends phase 3 zeroed) |
-| 350 awakened melee | ✓ | ✓ | — | w1: **strike f21–64**, speed 8.5@f20→0@f73, sounds 68@25/45/65. w0: rewind mechanics, particle scatters, contact-gated scratch @f50 | not started (special-gauge admission deferred with `boosted`) |
-| 392 guard-hit exit / 43 air exit / 40 jump | — | — | — | the exit states themselves | 43 modeled as air-attack fallthrough; 392 via the port's guard/hit reactions; 40 via try_jump |
+| 350 awakened melee | ✓ | ✓ | — | w1: **strike f21–64**, speed 8.5@f20→0@f73, sounds 68@25/45/65, contact window f21–64, no launch. w0: hidden props, 8 effect-61 beats, particle scatters 320/350/340, voices 32/33, **frames 1..9 replayed** by the clock rewind, gauge latch @f50. w2's 350 is the full-charge SHOT (clock jump 42→95, world row 8 @116) | **w0/w1 bodies execution implemented + automated verification** (incl. the stall window fix); admission still requires the boosted gate |
+| 392 guard-hit exit / 43 air exit / 40 jump | — | — | — | the exit states themselves | 43 modeled as air-attack fallthrough; **392 implemented as the attacker-side exit with the corrected per-weapon row table (301/310/311/331/340 everywhere, 302/330 w0+w2 only; 300/320/332/341/350 have no branch) and its counter→phase-1 body**; 40 via try_jump |
 
 The shared movement slice has landed: attack-state movement (speed profiles,
 approach/turn, the vertical channel with per-move gravity, landing transitions,
@@ -152,8 +153,8 @@ Execution contracts (mobile/full-charge references, cross-checked with the handl
 |---|---|---|---|---|---|
 | 400 | row 0/6 @12, ±30 | rows 6 / 0+9 @18; **melee strike f8–18**; speed 45 @f7 | attachment @35 + 10-pellet ring (pitch rand%30+20, yaw 90−rand%180) | voices 27/30 (last round), 29 (w2) | bound (ledger §5) |
 | 401 | like 400 @12 | row 6 / 0 @18 (powered = single 0), strike f8–18, turn 20→f15, speed 30@f7→0@f15 | → 400 | w1 powered differs from 400 (one request, not two) | **landed**: admission + program rules for w0/w1; w1's powered single request bound; w0 verified to fire exactly one request; the melee-strike window f8–18 (w1) remains pending |
-| 402 | row 1/7 @13, ±30 | 3-phase dive ({12,1,35}, phase 1 HELD), phase2 f5 rows 6 / 0+9, dive arc (vertical −40, speed ≤10) | 2-phase ({76,78}), ph0 cap f17, landing <15 → 403 else ph1@25, f35 attachment + ring (pitch rand%50+30) | landing → 403/409 | 402 bound for all (ledger); w1 dive phases / w2 landing branch pending |
-| 403/409 | recovery: recharge +40 (+5 when status<1), cap 1000 | idem | idem | air-shot landings | pending (recharge body) |
+| 402 | row 1/7 @13, ±30 | 3-phase dive ({12,1,35}, phase 1 HELD), phase2 f5 rows 6 / 0+9, dive arc (vertical −40, speed ≤10) | 2-phase, ph0 clock clamps at 17, landing <15 → 403 else ph1@25, f35 attachment + ring (pitch rand%50+30) | landing → 403/409 | **execution implemented + automated verification** for all three weapons (w0 grounded tick>0 → 403; w1 three-phase dive with the geometric closing speed; w2 early/late landing branch, clock clamp/seek and the ten-request ring) |
+| 403/409/469 | recovery: recharge +40 (+5 when status<1), cap 1000 | idem | idem | air-shot landings | **execution implemented + automated verification**: motion zeroed every tick (no guard), charge gauge +40 capped 1000; the 402/460/408 landings now actually reach 403/409/469 through the shot-state landing branch |
 | 405/406 | like 400 @12/13, movement −90/+90 | — | — | lateral dash shots | **landed**: admission + program rules mirroring 400; verified selecting 405/406 from the left/right dash states |
 | 407 | @13: rows 4 (yaw+75,pitch30) + 9 (yaw−75) normal; + 13/14 (±85, pitch20) powered | — | — | back dash shot, movement 180 | **execution implemented + automated verification**: the back-dash situation is now driven end-to-end (row-27 dash → tap → 407 → the row-4/row-9 pair at tick 13) |
 | 408 | @12 rows 0/6 (the ground rows, one tick early) | — | — | air-dash fast shot | **execution implemented + automated verification**: the air-dash→408 sequence is driven end-to-end (row-30 dash with a held direction → release → 408 → the single row-0 request at tick 12) |
@@ -165,14 +166,25 @@ Execution contracts (mobile/full-charge references, cross-checked with the handl
 
 ## 4. Animation service facts (scoped for this group)
 
+* Two clocks exist, one per channel: `+0xae04` / `+0xae08` (`param_1[0x2b81]` /
+  `[0x2b82]`). `FUN_00421100` (phase entry) zeroes BOTH; the handler epilogue increments
+  BOTH; `FUN_0041f580:156` reads `+0xae04` for one channel and `+0xae08` for the other.
+  **Resolved divergence:** weapon 2's state 320 applies its windup skip to the SECONDARY
+  clock only (`param_1[0x2b82] = 0x16`, FUN_00438310:955), while the port's
+  `skipAttackFrames` moves the primary `m_moveElapsedTicks` — the port's single clock
+  advances the pose, so the visible skip is approximated but the two clocks are not
+  separately owned. The 350/360 seeks write both clocks, where the single-clock model is
+  exact. The secondary clock's ownership is the remaining clock gap.
 * Two channels exist (0/1) with separate primary/secondary clocks; the port models one
   clock per move plus its blend. For **Rena only weapon slot 2** has a recovered blend
   compatibility (`permits_blend`: clip 1 → 31/34/39) — the `+0x20` vtable profile.
   Weapons 0/1 bind instantly; no dual-channel behavior is claimed for them.
 * Rena is NOT in `roster_walk_shot_recovered` (the layered lower-body walk-shot roster),
   so the walking shot 401 does not need an independent lower channel for this group.
-* The secondary clock (`+0x848`/AE08 parity) matters for Rena's full-charge and mobile
-  states; the port's single-clock model is a recorded gap for those states.
+* The chase/dive lean is FUN_00420b30's `T(0,-pivot,0) * Rx(pitch) * Ry(yaw) *
+  T(position+pivot)`: `+0x2c` is a PITCH (RotationX) and `+0x2d8` a pivot HEIGHT, not two
+  yaw terms. The port now builds exactly that (donor `actor_world_pose.hpp:14`), pinned
+  by `melee_admission_test`'s matrix check.
 
 ## 5. Verification plan per acceptance rules
 
@@ -197,13 +209,23 @@ Execution contracts (mobile/full-charge references, cross-checked with the handl
 2. ~~320 chase arc, 332 dive + contact→334, 330/331 dash bodies~~ — landed
    2026-10-12; the pitch/pivot render SIGN and the live poses stay open (§ status
    vocabulary), as do melee voices/effects and the attacker-side 392 guard exit.
-3. 402 weapon-specific phase models: Rena+1's 3-phase dive (FUN_00448220.c:1777-
-   1854 — the phase-1 speed derives from FUN_0042d980/0042de80/0042da30, tick 3
-   phase jump, phase-2 tick-5 rows 6 / 0+9) and Rena+2's landing branch
-   (FUN_00438310.c:1855-: phase-0 tick-17 cap, landing before tick 15 → 403,
-   phase-1 seek at tick 25). 403/409/469 recharge bodies: `+0x20d` gains 40/tick
-   (5 when `+0x1fd < 1`), capped at 1000 (FUN_00448220.c:1855-1874) — a
-   charge-value refill the port's time-based magazines do not carry yet.
-4. Secondary-clock parity for full-charge/mobile states (§4).
-5. `boosted` (special-gauge) chain admission and the 350 awakened melee family.
+   **2026-10-12 review corrections:** the lean transform now applies FUN_00420b30's
+   Rx(pitch) + pivot translation instead of folding both into the yaw (automated
+   matrix witness); the guard-exit row table was corrected against the exhaustive
+   `&2` scan; 320's contact window and weapon 0's 350 contact cut were added.
+3. ~~402 weapon-specific phase models and the 403/409/469 recharge bodies~~ —
+   landed 2026-10-12: weapon 1's three-phase dive (geometric closing speed) and
+   weapon 2's clamp/seek landing branches plus its ten-request attachment ring are
+   bound; the recoveries zero motion every tick and refill the charge gauge. The
+   `+0x20d` field is resolved: it is `param_1[0x20d]` = byte **+0x834**, the
+   fighter-level special/charge gauge — battle init 1000 (FUN_004219a0), +1/tick
+   under an armed hyper flag (FUN_0041f580:96-99), +40/+5 in the recoveries,
+   -500 on a special spend (FUN_00508a60:91); consumed by the melee/shot admission
+   gates, the 390/393 guard exits and the awakened-melee `500 <` threshold. It is
+   NOT the item-data magazine.
+4. Secondary-clock ownership for weapon 2's 320 windup skip (§4) and the mobile /
+   full-charge seek parity.
+5. `boosted` (special-gauge) chain admission remains the gate for reaching W0/W1
+   350; its body is implemented. Melee voice/effect cues are produced and pinned
+   but the audio/effect CONSUMER mapping is not wired yet.
 6. Then Mion+0/+1/+2 with the same matrix discipline.

@@ -39,6 +39,27 @@ checks the grouped ground paths. Continue the same trio's air/landing and follow
 states before claiming completion, then advance to Mion's three weapons. All runs
 remain silent; unrelated working-tree changes are preserved.
 
+**2026-10-12 — shared-mechanism review + the aerial/recovery slice:** the review of the
+just-landed movement/execution mechanisms found and fixed four discrepancies, each
+source-backed: (1) FUN_00420b30 applies the chase/dive lean as `T(0,-pivot,0) *
+Rx(pitch) * Ry(yaw) * T(position+pivot)` — `+0x2c` is a PITCH and `+0x2d8` a pivot
+HEIGHT, and the earlier cut folded both into the Y angle (now pinned by an independent
+matrix witness); (2) the landing branch only ran for `AttackA`, so the air taps/charges
+(Shoot states here) never reached their 403/409/469 recoveries — `switch_attack_row`
+now moves the active channel; (3) the attacker-side guard-exit table was wrong (300/320
+never have the branch; 302/330 exist only for weapons 0 and 2; 392 now also carries its
+scratch→phase-1 body); (4) the 403/409/469 zeroing windows were 0..1 despite the bodies
+having no guard, and weapon 0's 350 must cut contact for the whole move. The
+`+0x20d` question is settled: it is `param_1[0x20d]` = byte +0x834, the fighter-level
+special/charge gauge, not a magazine. The aerial slice landed with it: weapon 1's
+three-phase 402 dive, weapon 2's clamp/seek 402 with its ten-request ring, the
+403/409/469 recoveries, the model-2 prop rebind for weapon 1's 450/460, the 350
+awakened-melee bodies for weapons 0/1 (including the frames-1..9 clock-replay window
+fix), 392's exit body, and the melee voice/effect producer latches. `melee_admission_test`
+is now 250 checks. Remaining, in order: the secondary-clock ownership (weapon 2's 320
+windup skip is written to `+0xae08` only), the boosted admission gate for 350, the
+voice/effect CONSUMER mapping, and the live visual parity window. All runs silent.
+
 **2026-10-12 — admission rejection contract + the melee execution slice:** the
 attack-input branch now resolves admission BEFORE any attack-entry mutation — a
 declined press (failed priority gate, missing destination row, declined air/chain
