@@ -8,6 +8,14 @@ blocked or partial combo, and finish the roster. Companion documents:
 [ginkiha-port-plan.md](ginkiha-port-plan.md) and
 [ginkiha-handoff.md](ginkiha-handoff.md).
 
+## Scope clarification — 2026-10-11
+
+This remains the shooting workstream, not the entire Ginkiha port. The companion
+[attack-animation plan](ginkiha-attack-animation-plan.md) now defines the next Rena-group
+work: input selectors, melee, pose/transitions, channels and rendered weapons. Shooting
+completion does not close that gate. Keep shooting progress here and use both acceptance
+contracts before declaring any character+weapon complete.
+
 ## Completion contract
 
 Every one of the 46 **character+weapon** combos must have an explicit shooting coverage

@@ -1,6 +1,6 @@
 # Plano de port — animações + combate data-driven (a partir do Ginkiha)
 
-Branch `ginkiha-help` · 2026-10-09 (revisto: Fase 0 enxuta, implementação primeiro) · companheiro de
+Branch `ginkiha-help` · 2026-10-09 (revisão de escopo: 2026-10-11) · companheiro de
 `docs/reports/ginkiha-comparison.md`.
 
 **Mudança de postura:** o bundle do Ginkiha (`.local-analysis/balance-reference/` e
@@ -13,13 +13,32 @@ Regras duras vigentes (`AGENTS.md`): nunca editar `research/recomp/`; manter `.X
 D2); todo ataque é personagem+arma (`comboSlotLabel`); **full diff review antes de CADA commit**;
 comentários `why` + proveniência.
 
+## Revisão de escopo — 2026-10-11
+
+O objetivo continua sendo **animações + combate**, incluindo melee. O plano de bloqueios
+virou uma frente de tiro e seu ledger mede requisições/projéteis; isso não demonstra que
+os ataques completos foram portados. A revisão do código e dos commits está em
+[ginkiha-attack-animation-plan.md](ginkiha-attack-animation-plan.md), que define a próxima
+frente e seus gates por personagem+arma.
+
+Há animações funcionando: seleção via NN.dat/.X, fases e blend, além de correções recentes
+para Rena+0 (320/332, dash lateral, relógio e ribbons; `d6b03ce`). Ainda faltam seletores,
+transições e movimento por combo, integração visual de props e auditoria de canais
+independentes. Os headers Ginkiha de melee e animação também entram no port; não limitar
+as fontes aos `shoot_body_*`.
+
+**Próxima execução:** auditar e implementar o ataque completo de Rena+0/+1/+2 antes de
+avançar para Mion. Tiros já ligados permanecem como progresso parcial. Melee necessário
+para os ataques desse grupo entra agora, sem esperar o fim das fases globais de combate.
+
 ## Mudança de ordem — 2026-10-10
 
 Por instrução do dono: interromper a sequência de combos que apenas documenta novos
 bloqueios. Executar [ginkiha-blockers-plan.md](ginkiha-blockers-plan.md): contratos/admissão,
 origens/aim, branches/RNG/capacidade, estado/movimento, fechamento de todos os 46 combos.
 Revisitar também programas já ligados; “full program” não prova cobertura completa.
-Plano criado; implementação dos mecanismos ainda pendente. Fases 2–5 continuam abertas.
+Registro histórico dessa mudança de ordem; os mecanismos avançaram nos checkpoints
+seguintes. Fases 2–5 continuam abertas.
 
 **Atualização 2026-10-10 (entrada 3.0):** os mecanismos compartilhados de tiro avançaram —
 magazines ligados, admissão por linha, contadores de carga, **gate powered recuperado**
@@ -36,8 +55,8 @@ abertas; nenhum combo declarado completo.
 | Fase | Estado | Data | Hora de conclusão |
 |---|---|---|---|
 | 0 — data layer (script + tabela + teste) | concluída | 2026-10-09 | 19:46 |
-| 1 — piloto Rena 0 (timing→animação→valores→teste) | concluída | 2026-10-09 | 20:25 |
-| 2 — generalizar 46 combos | pendente | 2026-10-09 | — |
+| 1 — piloto Rena+0 (ataque completo) | parcial; pipeline inicial em 2026-10-09 20:25, aceite completo reaberto | 2026-10-11 | — |
+| 2 — generalizar 46 combos (tiro + animação/melee) | em andamento; sem gate completo de ataque por combo | 2026-10-11 | — |
 | 3 — combate overall | pendente | 2026-10-09 | — |
 | 4 — CPU/câmera | pendente | 2026-10-09 | — |
 | 5 — paridade stage04 | pendente | 2026-10-09 | — |
@@ -87,6 +106,11 @@ abertas; nenhum combo declarado completo.
 - **Aceite**: Rena 0 joga sem `anim_fallback` nos paths cobertos e sem valor hardcoded novo.
 
 ## 3. Fase 2 — generalizar para os 46 combos
+
+**Leitura dos registros abaixo:** “combo concluído” registra a ligação de uma agenda
+naquele dia, não o aceite integral do personagem+arma. O ledger de tiros mantém 0/46
+combos auditados completos; a frente de animação/melee tem aceite próprio no plano
+companheiro. As próximas alterações devem fechar os dois para cada grupo de personagem.
 
 Primeiro combo concluído 2026-10-09 20:52 (Mion 0: programa `mion` com regras medidas dos
 bodies + `fire_shot` aceitando linha -1 + caso de teste; ver commits `f0ab4f4`/`5c0fdbc` —
@@ -153,7 +177,11 @@ zero falhas. Próximo: implementar a seleção/hold de mira separada do combat l
    `homing` (só horizontal, 42DB10), `lifetime`, `life_cap`, `r=0..255`; campos já parseados passam a
    consumidos (`gauge 7/8`, `attackerHitstun 9`, `blob13/14 → +0x64/+0x68`, `hitSound +0x6C`,
    `impactEffect +0x70`, modelo 260B).
-4. **Melee `vtable+0x20`** (o "Next dig" do roadmap): dano/alcance/stun por personagem; escala 100/70/50/33.
+4. **Animação + melee por combo**: admissão/input→move, fases, relógios, movimento,
+   props/ribbons e contato conforme o [plano de ataque](ginkiha-attack-animation-plan.md).
+   Identificar cada callback pela classe/VA: o slot virtual `+0x20` também aparece na
+   compatibilidade de blend; não tratá-lo como um único contrato universal. Escala
+   100/70/50/33 e dano/stun ficam na frente de regras quando necessários ao ataque auditado.
 - **Aceite**: `weapon_definition_test`/`move_behavior` estendidos por combo; zero comportamento compartilhado
   entre armas onde o bundle mostra valores distintos.
 
@@ -210,9 +238,9 @@ do port.
 
 1. Fase 0 (script + tabela importada) — destrava tudo, risco quase zero.
 2. Fase 1: piloto Rena 0 ponta a ponta (timing→animação→valores→teste).
-3. Fase 2: generalizar tabelas (uso/walks/projéteis) combo a combo, pilotos primeiro.
-4. Fase 3: combate overall (fórmulas com teste).
-5. Fase 2.4 (`+0x20` melee) + Fase 4 (CPU/câmera) — maior incerteza, por último.
+3. Fase 2A: fechar seleção/animação/melee e apresentação de Rena+0/+1/+2 conforme o plano de ataque.
+4. Fase 2: avançar por grupos de personagem (Mion em seguida), mantendo gates de tiro e ataque completo separados; implementar as dependências de combate necessárias a cada grupo.
+5. Fase 3 + Fase 4: fechar regras globais restantes e CPU/câmera; melee deixa de ser uma tarefa adiada para o fim.
 6. Fase 5: paridade stage04 como gate final antes de merge na `main`.
 
 ## 9. Follow-ups com o Ginkiha

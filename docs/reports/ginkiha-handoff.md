@@ -39,6 +39,17 @@ checks the grouped ground paths. Continue the same trio's air/landing and follow
 states before claiming completion, then advance to Mion's three weapons. All runs
 remain silent; unrelated working-tree changes are preserved.
 
+**2026-10-11 — owner-requested attack/animation scope review:** the next work is
+[the attack-animation plan](ginkiha-attack-animation-plan.md), starting with Rena+0/+1/+2.
+Audit real input admission, melee transitions, pose clocks and rendered props alongside
+the existing shooting work. **2026-10-12 — first slice landed:** the recovered
+attack/shot admission for the whole Rena group is implemented
+(`melee_admission.h`, `melee_admission_test` 127 checks) and the per-weapon evidence
+matrix lives in [ginkiha-rena-attack-matrix.md](ginkiha-rena-attack-matrix.md). The usage-ranked shooting recipe in §4 is historical and
+only applies to a shooting subtask; it is not the complete combo-port workflow. Do not
+advance to Mion based on launch checks alone. Phase 1's full attack acceptance is reopened;
+its initial pipeline and subsequent verified improvements remain implemented.
+
 ## 1. What this is
 
 Port of Higurashi Daybreak's combat/animations (DaybreakDX.exe, SHA256

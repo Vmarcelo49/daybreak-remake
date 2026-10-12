@@ -1,0 +1,171 @@
+# Rena attack matrix — evidence-based status for the full attack port
+
+2026-10-12 · branch `ginkiha-help` · companion to [the attack-animation plan](ginkiha-attack-animation-plan.md),
+[the group iteration record](ginkiha-rena-iteration.md) and [the shooting ledger](ginkiha-shooting-coverage.md).
+
+This is the revised working plan for **Rena+0 / Rena+1 / Rena+2** (character 0, weapon
+slots 0/1/2 = NN.dat items 1/3/33). It replaces "combo concluded" claims with per-path
+status. The port unit is character+weapon+attack path; nothing here promotes a combo.
+
+Sources: the original handlers `FUN_0043ffc0.c` / `FUN_00448220.c` / `FUN_00438310.c`
+(read directly), the recovered dispatchers `FUN_00445ee0` (input selector) /
+`FUN_0044d850` / `FUN_0043ded0` (situation selector), and the Ginkiha implementation
+reference under `.local-analysis/daybreak-rebuild/DaybreakRebuild-20261010/source/src/`
+(`battle_rena_melee_admission.hpp`, `battle_rena_{ordinary,directional,followup,landing}_melee.hpp`,
+`battle_rena_ground_dash.hpp`, `battle_chasing_air_melee.hpp`, `battle_rena_ground_shot.hpp`,
+`battle_rena_mobile_shooting.hpp`, `battle_rena_full_charge.hpp`, `roster_{walk,ground}_shot_admission.hpp`,
+`roster_air_dash_cancels.hpp`). Where the donor and the handler disagree, the handler wins;
+no discrepancy is currently known for the rows below.
+
+## Conventions
+
+* States are the original's numeric action rows; the port maps them onto
+  `FighterState` + `m_attackMoveId` / `m_shotMoveId` + `m_phaseIndex`.
+* `normal` = the state word's 0x100 bit (actionable); in the port it is the current
+  NN record's `stateFlags & 0x100` during attacks and true for locomotion/air rows.
+* `gate(next)` = current row's cancel threshold ≤ candidate row's priority — the same
+  comparison the port's 300→301→302 chain already uses (verified pinned behavior).
+* `boosted` = special-gauge active+ready chaining (contact-gated). **Deferred** for all
+  weapons: the port's special-gauge `ready` semantics for the melee branch are not yet
+  modeled; chains currently honor the 0x100 window only. Recorded gap, not silent.
+* Weapon-specific families are facts, not assumptions: the admission table below is
+  the recovered selector itself, so "absent for weapon 2" means the dispatcher never
+  selects it — not a missing row.
+
+## 1. Melee admission (input → move), all three weapons
+
+Recovered from `battle_rena_melee_admission.hpp` (= the 445ee0/44d850/43ded0 branches),
+air branch first:
+
+| Situation | w0 | w1 | w2 | Gate |
+|---|---|---|---|---|
+| air, in dash row 30, phase<2, normal | **332** | **332** | — (no 332 branch) | gate(332) |
+| air, any other actionable air row | 320 | 320 | 320 | enabled && gate(320) |
+| ground, dash row 20 + lateral input | 331 | 331 | 331 | normal && gate(331) |
+| ground, dash row 20 | 330 | 330 | 330 | normal && gate(330) |
+| ground, dash rows 23/24 + back (z<0) | 330 | 330 | 330 | normal && gate(330) |
+| ground, dash rows 23/24 | 331 | 331 | 331 | normal && gate(331) |
+| ground, back input (z<0) | 310 | 310 | 310 | enabled && gate(310) |
+| ground, lateral input (x≠0) | 311 | 311 | 311 | enabled && gate(311) |
+| ground, from 329/333/44 | 340 | 340 | — (weapon≠2 branch) | enabled && gate(340) |
+| ground, in 340 | 341 | — (w0 only) | — | normal && gate(341) |
+| ground, in 300 | 301 | 301 | — (weapon≠2 branch) | normal && gate(301) |
+| ground, in 301 | 302 | — (w0 only!) | — | normal && gate(302) |
+| ground, otherwise | 300 | 300 | 300 | enabled && gate(300) |
+
+`enabled = normal || (boosted && contact)` — with boosted deferred, chains need the
+0x100 record window. The `(weapon!=2 || state!=X)` guards stop weapon 2 from
+re-entering 300/310/311 while already inside them.
+
+**Port status: implemented and verified (2026-10-12).** `melee_admission.h` ports the
+dispatcher for the whole group; the attack press AND chain presses during AttackA run
+through it (`Fighter::admit_attack_move`). `melee_admission_test` pins it three ways:
+42 independent table cases, synthetic-Fighter input edges, and install-backed real
+sequences for all three weapons — idle→300, back→310, lateral→311, dash→330/331,
+air→320 for every weapon; chains w0 300→301→302, w1 stops at 301 (restarts 300), w2
+never leaves 300 (127 checks, 0 failures). The shipped priorities/thresholds were
+probed: every gate from the locomotion rows passes, and the 0x100 windows open
+mid-move. Non-Rena combos keep their previous bounded candidates; nothing here
+generalizes Rena selectors to the roster. The `boosted` (special-gauge contact chain)
+branch remains a recorded gap.
+
+## 2. Melee execution contracts (per state, per weapon)
+
+Strike windows and movement from the Ginkiha execution headers; NN.dat supplies the
+phases/clips and the posed hit volumes (the port's `resolve_swing` already reads them).
+
+| State | w0 | w1 | w2 | Key contracts (source) | Port status |
+|---|---|---|---|---|---|
+| 300 ordinary | ✓ | ✓ | ✓ | w0/w1: speed 15/25 by distance (640000; w1 810000), approach 180→20/phase; phase-1 exit at dist<90000 or frame>10; strike = phase 2, frames 2–10; effect 60/64 @ph2 f0. w2: no movement, offset approach 3°, effect 67 @ph1 f18, motion-driven strike | clip/phases + posed volumes via NN.dat; movement/voices/effect gaps recorded below |
+| 301 followup | ✓ | ✓ | ✓ | w0: speed 10@f1→0@f16; w1: 10@f0→0@f8; w2: 0→12 (10)→22 (0); strike f10–16; effect 61/67 | clip + volumes bound; movement/voices pending |
+| 302 ender | ✓ | **no branch** | ✓ | w0: 15@f0→0@f17; w2: 10@f12→0@f22; strike f12–17; effect 62/67 | clip + volumes bound (w1 N/A by source) |
+| 310 back kick | ✓ | ✓ | ✓ | w0/w1: phase model, approach 20/15, speed decel 1, strike ph2 f5–7, effect 62@f4; jump-cancel: ph2 f>12 && contact && jump → 40. w2: speed 30, decel 2 in f5–25, **−5 @f25** (backward slide), 0@f47, approach 10 until f30, strike f24–45, effect 68@f25 | clip + volumes bound; movement/jump-cancel pending |
+| 311 side kick | ✓ | ✓ | ✓ | w0: decel 0.2, approach 10 until f20, strike ph2 f5–7 (effect 62@f12). w1: speed 20@f0, approach 9 until f10, decel 2 after f17, strike f12–18, effect 67@f12. w2: guard test BEFORE frame-0 clear, speed 0→20@f27→0@f47, strike f32–49, effect 68@f35 | clip + volumes bound; movement/guard-order pending |
+| 320 air chase | ✓ | ✓ | ✓ | policy(0,we): initial speed 12.5, strength 230→125 decay 4 (w2 140 fixed), attack distance 40000 (w2 490000), approach after 10; w2: gravity after 50, land after 55, voice f32, strike f32–39, frame skip 13→22 | clip + volumes bound; chase arc/pitch/pivot pending |
+| 329 landing recovery | ✓ | ✓ | ✓ | after 320 landing; dash-recovery body | clip bound; body pending |
+| 330 dash lunge | ✓ | ✓ | ✓ | w0: speed 30 @ph1, decel 2, strike ph2 f5–10, effect 62@f6. w1: **hop** (vertical 15, gravity .75), strike ph0 f>10 / ph1 f<20. w2: approach 3 until f28, decel 1.5/2, speed 40 @f28, strike f28–34 | clip + volumes bound; hop/movement pending |
+| 331 side dash attack | ✓ | ✓ | ✓ | w0/w1: approach 20 while strength (by dash distance), ph1 exit, strike per volume. w2: approach 10 preserving movement, strike f26–109, speed 10@f35 | clip + volumes bound; movement pending |
+| 332 air-dash dive | ✓ | ✓ | — | keiichi_dive family: dive angle clamp [−20,−5]°, speed 25, pitch/pivot, contact → 334 (clears contact, resets capacity), disable contact after f22, ph2 fall | clip + volumes bound (user-confirmed pose); dive/contact→334 pending |
+| 333 dash recovery | ✓ | ✓ | ✓ | recovery body (gauge/turn restore) | clip bound; body pending |
+| 334 dash followup | ✓ | ✓ | ✓ | after 332 contact | clip bound; body pending |
+| 340 landing melee | ✓ | ✓ | ✓ | w0/w2: speed 15@f0→0@f15, approach 18 until f10, strike f16–24, effect 61@f15. w1: speed 10, approach 6 until f8, strike f10–16, effect 67@f12 | clip + volumes bound; movement pending |
+| 341 landing followup | ✓ | — | ✓ | w0: from 340, leap: ph1 vertical 18, gravity .75, strike ph1 f<20, landing → ph3. w2: same shape (speed 10) | clip bound; leap pending |
+| 350 awakened melee | ✓ | ✓ | — | w1: **strike f21–64**, speed 8.5@f20→0@f73, sounds 68@25/45/65. w0: rewind mechanics, particle scatters, contact-gated scratch @f50 | not started (special-gauge admission deferred with `boosted`) |
+| 392 guard-hit exit / 43 air exit / 40 jump | — | — | — | the exit states themselves | 43 modeled as air-attack fallthrough; 392 via the port's guard/hit reactions; 40 via try_jump |
+
+The "movement pending" rows share one mechanism: attack-state movement (speed
+profiles, `approach_battle_offset` heading walks, gravity tails). That is the next
+shared engine slice after admission, not per-combo guesswork.
+
+## 3. Shooting admission and states (all three weapons)
+
+Tap admission (short release, primary magazine charged), from the recovered routing:
+
+| Situation | w0 | w1 | w2 | Source |
+|---|---|---|---|---|
+| idle (0) | 400 | 400 | 400 | ordinary tap |
+| walking (10) | **401** | **401** | 400 | `roster_walk_shot_admission` (Rena branch, 401 gate) |
+| dash 20 | **401** (gate 402) | 401 | 400 | `roster_ground_shot_admission` |
+| dash 23 (left) | **405** | 401 | 400 | idem |
+| dash 24 (right) | **406** | 401 | 400 | idem |
+| dash 27 (back) | **407** | 401 | 400 | idem |
+| air | 402 | 402 | 402 | air tap |
+| air, in dash row 30 phase<2 + direction | **408** | 402 | 402 | `roster_air_dash_fast_shot(0,0,phase)` |
+| charge release (grounded) | 450 | 450 | 450 | single charge state |
+| charge release (air) | 460 | 460 | 460 | idem |
+| red/full charge | 360/370 | 360/370 | 350/360 | full-charge family below |
+
+Execution contracts (mobile/full-charge references, cross-checked with the handlers):
+
+| State | w0 | w1 | w2 | Notes | Port status |
+|---|---|---|---|---|---|
+| 400 | row 0/6 @12, ±30 | rows 6 / 0+9 @18; **melee strike f8–18**; speed 45 @f7 | attachment @35 + 10-pellet ring (pitch rand%30+20, yaw 90−rand%180) | voices 27/30 (last round), 29 (w2) | bound (ledger §5) |
+| 401 | like 400 @12 | row 6 / 0 @18 (powered = single 0), strike f8–18, turn 20→f15, speed 30@f7→0@f15 | → 400 | w1 powered differs from 400 (one request, not two) | **landed**: admission + program rules for w0/w1; w1's powered single request bound; w0 verified to fire exactly one request; the melee-strike window f8–18 (w1) remains pending |
+| 402 | row 1/7 @13, ±30 | 3-phase dive ({12,1,35}, phase 1 HELD), phase2 f5 rows 6 / 0+9, dive arc (vertical −40, speed ≤10) | 2-phase ({76,78}), ph0 cap f17, landing <15 → 403 else ph1@25, f35 attachment + ring (pitch rand%50+30) | landing → 403/409 | 402 bound for all (ledger); w1 dive phases / w2 landing branch pending |
+| 403/409 | recovery: recharge +40 (+5 when status<1), cap 1000 | idem | idem | air-shot landings | pending (recharge body) |
+| 405/406 | like 400 @12/13, movement −90/+90 | — | — | lateral dash shots | **landed**: admission + program rules mirroring 400; verified selecting 405/406 from the left/right dash states |
+| 407 | @13: rows 4 (yaw+75,pitch30) + 9 (yaw−75) normal; + 13/14 (±85, pitch20) powered | — | — | back dash shot, movement 180 | **landed**: program rules with fixed-angle aims (the pure routing is pinned; the back-dash situation itself is not yet driven in the real-data test) |
+| 408 | @12 rows 0/6 (the ground rows, one tick early) | — | — | air-dash fast shot | **landed**: admission predicate + program rules (fires the ground pair at tick 12); the pure predicate is pinned and the shipped w0 row exists; the live air-dash→408 sequence is not yet driven end-to-end |
+| 450/460 | bound (ledger) | bound | bound | — | bound; air→469 pending |
+| 469 | recovery (recharge) | idem | idem | after air charges | pending |
+| 350 | awakened MELEE (w0/w1) | — | full shot: clock jump 42→95, row 8 @116 (fwd 150, height 70, yaw+1, ±40) | w2 only as shot | w2 bound (ledger); w0/w1 melee pending |
+| 360 | red pair ph2@2 (rows 11/12, ±70/70/70, yaw ±1) + freeze @13 | row 8 @16, fixed 70° pitch | **air** second charge (same clock jump as 350) | w2's 360 is the AIR variant | w0/w1 bound; w2 air variant pending |
+| 370 | w0 backflip (speed −9.5, vertical 10) + pair; w1 air @16 | | — | w2 has NO 370 | w0/w1 bound (air) |
+
+## 4. Animation service facts (scoped for this group)
+
+* Two channels exist (0/1) with separate primary/secondary clocks; the port models one
+  clock per move plus its blend. For **Rena only weapon slot 2** has a recovered blend
+  compatibility (`permits_blend`: clip 1 → 31/34/39) — the `+0x20` vtable profile.
+  Weapons 0/1 bind instantly; no dual-channel behavior is claimed for them.
+* Rena is NOT in `roster_walk_shot_recovered` (the layered lower-body walk-shot roster),
+  so the walking shot 401 does not need an independent lower channel for this group.
+* The secondary clock (`+0x848`/AE08 parity) matters for Rena's full-charge and mobile
+  states; the port's single-clock model is a recorded gap for those states.
+
+## 5. Verification plan per acceptance rules
+
+1. **Admission table test (data-free):** synthetic CharacterMoves with the Rena row
+   inventory; drive every (weapon, source state, phase, grounded, x/z, flags) cell of
+   the recovered table through the real `Fighter` attack press and assert the selected
+   move id. Independent expected table, not read-back.
+2. **Real-input integration:** real Rena tables via the install-backed fixtures —
+   press sequences (idle tap, walk attack, dash attacks per direction, air attack,
+   air-dash attack, chains) asserting `attack_move_id()`, phase entry and clip binding.
+3. **Shot admission test:** walk/dash/idle/air-dash release situations assert the
+   selected shot state id and its fire rules.
+4. Full `ctest` (read its own summary), Windows/web cross-builds, silent captures of
+   the changed attack routes.
+5. Live visual parity stays a separate gate (D9): the matrix's status column never
+   claims live parity from captures alone.
+
+## 6. Remaining work (concrete, in order)
+
+1. Attack-state movement mechanism (speed profiles, offset approach, gravity) for the
+   melee contracts in §2 — one shared engine slice.
+2. 320 chase arc + pitch/pivot; 332 dive + contact→334; 330/331 dash-attack bodies.
+3. 402 weapon-specific phase models (w1 dive HOLD, w2 landing branch); 408; 403/409/469
+   recharge bodies.
+4. Secondary-clock parity for full-charge/mobile states (§4).
+5. `boosted` (special-gauge) chain admission and the 350 awakened melee family.
+6. Then Mion+0/+1/+2 with the same matrix discipline.
