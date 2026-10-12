@@ -22,6 +22,21 @@ powered gate and per-move counters have migrated. Satoko 2's tap is the first ty
 program and Rika 1's charge was repaired with the counter model. Resume from the blocker
 plan's latest append-only checkpoint (entry 3.0).
 
+**2026-10-12 — Mion group started; her melee admission is on the recovered path.** The
+port's `kDispatchIdentity` slot 7 names Mion's dispatchers (0x45F4D0 / 0x467D70 / 0x456030
+for weapons 0/1/2), and their melee sections are the same condition sequence line for line,
+so `melee_admission.h` carries one shared `mion_melee_admission` behind
+`melee_admission_for(character, …)`. `attack_admission_recovered` now covers character 1,
+which puts Mion on the same admission path as Rena; her family is *not* Rena's — no
+311/332/334, the directional kick is 312, and 340→341 belongs to all three weapons. Real
+input reaches 300 (neutral), 310 (back held), 312 (lateral held), 330 (forward dash) and 320
+(airborne) for each weapon. Two things are recorded rather than guessed: Mion's 0x15e is
+reached from a different section of her dispatchers, so the port's boosted-350 admission
+stays scoped to the Rena group; and her dispatchers route the WALKING tap to her own mobile
+states 401/410/411/412 (weapons 0/1 only — FUN_00456030 has no such branch), which the port
+has not bound. The ledger rows and the new
+[Mion matrix](ginkiha-mion-attack-matrix.md) carry both.
+
 **2026-10-11 — remaining verification items 3/4:** `fighter_script_test` section 45 now
 checks Rika+1 normal ground shooting against an independent MT19937 oracle for every shot
 (two seeds), and Satoko+0 normal/powered ground fans (five/eight shots). It also checks the
