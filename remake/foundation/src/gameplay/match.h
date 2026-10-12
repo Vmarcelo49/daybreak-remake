@@ -103,6 +103,9 @@ struct MatchFrame {
     // i armed a melee swing / i's shot was accepted by the pool
     bool swingStarted[kMatchFighterCount] = {false, false, false, false};
     bool sourceShotVoiceAudited[kMatchFighterCount] = {false, false, false, false};
+    // True when the actor's running row carries a recovered melee voice cue, so the
+    // audio layer suppresses its fallback swing voice for that fighter this tick.
+    bool sourceMeleeVoiceAudited[kMatchFighterCount] = {false, false, false, false};
     int shotVoice[kMatchFighterCount] = {-1, -1, -1, -1};
     int shotVoiceAlternative[kMatchFighterCount] = {-1, -1, -1, -1};
     // The melee voice cue (small event ids, FUN_004223d0/422490) and the effect cue
@@ -110,10 +113,10 @@ struct MatchFrame {
     // fields carry the 350 particle's two rand%40-20 draws (yaw/pitch jitter).
     int meleeVoice[kMatchFighterCount] = {-1, -1, -1, -1};
     int meleeVoiceAlternative[kMatchFighterCount] = {-1, -1, -1, -1};
-    int effectId[kMatchFighterCount] = {-1, -1, -1, -1};
-    bool effectScatter[kMatchFighterCount] = {};
-    float effectYaw[kMatchFighterCount] = {};
-    float effectPitch[kMatchFighterCount] = {};
+    int soundEffectId[kMatchFighterCount] = {-1, -1, -1, -1};
+    bool soundEffectScatter[kMatchFighterCount] = {};
+    float soundEffectYaw[kMatchFighterCount] = {};
+    float soundEffectPitch[kMatchFighterCount] = {};
     bool shotFired[kMatchFighterCount]    = {false, false, false, false};
     // Where that shot left the muzzle (issue #17): the effect layer spawns the muzzle
     // flash from the event's own position instead of re-deriving it from the pose.

@@ -3463,6 +3463,12 @@ static fnd::audio::CombatFrameView combatFrameView(const gameplay::MatchFrame& f
     fnd::audio::CombatFrameView view;
     for (int i = 0; i < 4; ++i) {
         view.swing_started[i] = f.swingStarted[i];
+        view.melee_voice[i] = f.meleeVoice[i];
+        view.melee_voice_alternative[i] = f.meleeVoiceAlternative[i];
+        view.melee_voice_audited[i] = f.sourceMeleeVoiceAudited[i];
+        // Only the FUN_0042c8b0/0042c880 cues are SEs; the actor-vtable cues (the 350
+        // scatter beats) carry ids that are absent from data/se and stay unpublished.
+        view.sound_effect_id[i] = f.soundEffectScatter[i] ? -1 : f.soundEffectId[i];
         view.shot_fired[i]    = f.shotFired[i];
         view.shot_voice[i] = f.shotVoice[i];
         view.shot_voice_alternative[i] = f.shotVoiceAlternative[i];

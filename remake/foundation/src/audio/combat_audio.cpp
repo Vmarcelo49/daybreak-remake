@@ -44,6 +44,8 @@ const char* combat_event_name(CombatEventKind k) {
     switch (k) {
         case CombatEventKind::MatchStart:    return "match-start";
         case CombatEventKind::MeleeSwing:    return "melee-swing";
+        case CombatEventKind::MeleeVoice:    return "melee-voice";
+        case CombatEventKind::SoundEffect:   return "sound-effect";
         case CombatEventKind::ShotFired:     return "shot-fired";
         case CombatEventKind::Hit:           return "hit";
         case CombatEventKind::Overkill:      return "overkill";
@@ -87,7 +89,21 @@ CombatEventList combat_events_for_frame(const CombatEventSource& source,
     if (match_start)
         for (int i = 0; i < count; ++i) emit(CombatEventKind::MatchStart, i, -1, 0, false);
     for (int i = 0; i < count; ++i) {
-        if (frame.swing_started[i]) emit(CombatEventKind::MeleeSwing, i, -1, 0, false);
+        if (frame.swing_started[i]) {
+            emit(CombatEventKind::MeleeSwing, i, -1, 0, false);
+            // A row with recovered voice cues speaks on its own schedule (MeleeVoice), so
+            // the swing event must not also fire the vocabulary fallback.
+            list.events[list.count - 1].source_voice_audited = frame.melee_voice_audited[i];
+        }
+        if (frame.melee_voice[i] >= 0) {
+            emit(CombatEventKind::MeleeVoice, i, -1, 0, false);
+            list.events[list.count - 1].voice_override = frame.melee_voice[i];
+            list.events[list.count - 1].voice_alternative = frame.melee_voice_alternative[i];
+        }
+        if (frame.sound_effect_id[i] >= 0) {
+            emit(CombatEventKind::SoundEffect, i, -1, 0, false);
+            list.events[list.count - 1].se_override = frame.sound_effect_id[i];
+        }
         if (frame.shot_fired[i] || frame.shot_voice[i] >= 0) {
             emit(CombatEventKind::ShotFired, i, -1, 0, false);
             list.events[list.count - 1].voice_override = frame.shot_voice[i];
@@ -145,12 +161,30 @@ CombatCue resolve_combat_event(const CombatEvent& e) {
             cue.voice = VoiceEvent::BattleStart;
             break;
         case CombatEventKind::MeleeSwing:
-            // PORT RULE: the vocabulary names the melee chain's own three attacks and the
-            // swing data carries no sound id, so the chain position picks them. seq is the
-            // per-tick swing ordinal, which for one fighter is the chain step.
+            // PORT RULE (fallback only): the swing event carries no sound id, so the chain
+            // position picks the vocabulary's three attacks. Rows whose body cue IS
+            // recovered set source_voice_audited and stay silent here — their MeleeVoice
+            // event fires on the body's own frame instead.
+            if (e.source_voice_audited) break;
             cue.has_voice = true;
             cue.voice = e.seq == 0 ? VoiceEvent::AttackA
                                    : (e.seq == 1 ? VoiceEvent::AttackB : VoiceEvent::AttackC);
+            break;
+        case CombatEventKind::MeleeVoice:
+            // FUN_004223d0(voice, priority, 0) / FUN_00422490(voice, choice, priority, 0):
+            // the id IS the vocabulary index (FUN_00431e70's 40-name table at 0x6b73b0),
+            // and the alternative is the body's own choice draw where it takes one.
+            if (e.voice_override < 0 || e.voice_override >= kVoiceEventCount) break;
+            cue.has_voice = true;
+            cue.voice = static_cast<VoiceEvent>(e.voice_override);
+            break;
+        case CombatEventKind::SoundEffect:
+            // FUN_0042c8b0/0042c880's argument is a data/se/%03d.wav id played at the
+            // actor's own position. The port's sink is not spatial, so the 3D placement
+            // the original applies (FUN_0065a260 -> FUN_006677f0) has no port counterpart
+            // yet — recorded, not silently dropped.
+            if (e.se_override < 0) break;
+            cue.se_id = e.se_override;
             break;
         case CombatEventKind::ShotFired:
             if (e.source_voice_audited && e.voice_override < 0) break;

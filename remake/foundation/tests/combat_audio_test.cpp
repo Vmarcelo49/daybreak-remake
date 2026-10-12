@@ -132,6 +132,26 @@ int main() {
     CHECK(resolve_combat_event(auditedSilentShot).has_voice);
     CHECK(resolve_combat_event(auditedSilentShot).voice == VoiceEvent::ShotC);
     CHECK(resolve_combat_event(ev(CombatEventKind::Hit, 2, 0, 10)).voice == VoiceEvent::Damage);
+    // The melee body's own voice cue: the id IS the vocabulary index, and a row whose cue
+    // policy is recovered silences the swing fallback (MeleeSwing + audited -> no voice).
+    CombatEvent bodyVoice = ev(CombatEventKind::MeleeVoice, 0, -1, 12);
+    bodyVoice.voice_override = int(VoiceEvent::AttackB);
+    CHECK(resolve_combat_event(bodyVoice).has_voice);
+    CHECK(resolve_combat_event(bodyVoice).voice == VoiceEvent::AttackB);
+    bodyVoice.voice_override = int(VoiceEvent::SpecialA);
+    CHECK(resolve_combat_event(bodyVoice).voice == VoiceEvent::SpecialA);
+    bodyVoice.voice_override = -1;
+    CHECK(!resolve_combat_event(bodyVoice).has_voice);
+    CombatEvent auditedSwing = ev(CombatEventKind::MeleeSwing, 0, -1, 12, 0);
+    auditedSwing.source_voice_audited = true;
+    CHECK(!resolve_combat_event(auditedSwing).has_voice);
+    // FUN_0042c8b0/0042c880 request a data/se id — not a voice and not an effect card.
+    CombatEvent bodySe = ev(CombatEventKind::SoundEffect, 0, -1, 12);
+    bodySe.se_override = 60;
+    const CombatCue seCue = resolve_combat_event(bodySe);
+    CHECK(seCue.has_se() && seCue.se_id == 60);
+    CHECK(!seCue.has_voice);
+    CHECK(resolve_combat_event(ev(CombatEventKind::SoundEffect, 0, -1, 12)).se_id == -1);
     CHECK(resolve_combat_event(ev(CombatEventKind::Blocked, 2, 0, 10)).voice ==
           VoiceEvent::Guarded);
     CHECK(resolve_combat_event(ev(CombatEventKind::GuardStart, 2, -1, 10)).voice ==

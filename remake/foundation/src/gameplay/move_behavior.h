@@ -120,10 +120,15 @@ enum class MoveOp { Speed, Decelerate, Turn, Approach, Launch, Hold, ActionCamer
                     // close-target cascade (voices 0/15/5, priority 12) resolves at the
                     // op site from the live distance/bearing.
                     MeleeVoice,
-                    // FUN_0042c8b0's effect id (value). `third > 0` marks the 350
-                    // scatter form, which draws its yaw/pitch jitter (two rand%40-20)
-                    // before emitting — the draw consumption is part of the contract.
-                    Effect,
+                    // The action bodies' SE request (FUN_0042c8b0 positional /
+                    // FUN_0042c880 non-positional): value is the `data/se/%03d.wav` id
+                    // (FUN_0064b060 -> FUN_0064ae70 indexes the manager's data/se table
+                    // and FUN_0065a260 plays it at the actor position). `third > 0` marks
+                    // the cues taken from the unidentified
+                    // `(*actor + 0xc)(id, x, y, z, yaw, pitch)` vtable call (350's
+                    // scatter beats) whose two rand%40-20 draws are consumed here; that
+                    // call's own consumer is still unresolved and is NOT the SE path.
+                    SoundEffect,
                     // On landing: enter_phase(value) and seek the phase clock to `second`
                     // ticks (Rena+2's 402 late landing: phase 1, clock 25).
                     LandSeek,
@@ -250,10 +255,15 @@ constexpr MoveRule melee_voice_rule(int move, int phase, int first, int last, in
     return rule;
 }
 
-constexpr MoveRule effect_rule(int move, int phase, int first, int last, int effect,
-                               bool scatter = false) {
-    MoveRule rule{move, phase, first, last, MoveOp::Effect,
-                  static_cast<float>(effect), 0.f, scatter ? 1.f : 0.f};
+// A gameplay SE request. `id` is the `data/se/%03d.wav` index the body passes to
+// FUN_0042c8b0/0042c880 — a SOUND id, not an entry in data/effect (the effect catalog
+// stops at id 40 while these bodies use 60..77 and 170..172, all present under data/se).
+// `scatter` marks the cues that came from the unidentified actor vtable call instead,
+// which does carry yaw/pitch.
+constexpr MoveRule sound_effect_rule(int move, int phase, int first, int last, int id,
+                                     bool scatter = false) {
+    MoveRule rule{move, phase, first, last, MoveOp::SoundEffect,
+                  static_cast<float>(id), 0.f, scatter ? 1.f : 0.f};
     return rule;
 }
 
@@ -412,25 +422,25 @@ inline constexpr MoveRule kRenaRules[] = {
     // cascade (voices 0/15/5 at priority 12, FUN_0043ffc0:601-627) reads the
     // pairing-tracker flags FUN_0042e110 arms, which the port does not model —
     // documented at the op site, not guessed here. Effect ids are FUN_0042c880's.
-    effect_rule(300,2,0,0,60),
+    sound_effect_rule(300,2,0,0,60),
     melee_voice_rule(300,2,0,0,1),
-    effect_rule(301,0,3,3,61),
+    sound_effect_rule(301,0,3,3,61),
     melee_voice_rule(301,0,3,3,2),
-    effect_rule(302,0,10,10,62),
+    sound_effect_rule(302,0,10,10,62),
     melee_voice_rule(302,0,10,10,3),
-    effect_rule(310,2,4,4,62),
+    sound_effect_rule(310,2,4,4,62),
     melee_voice_rule(310,2,4,4,2),
-    effect_rule(311,0,12,12,62),
+    sound_effect_rule(311,0,12,12,62),
     melee_voice_rule(311,0,12,12,3),
-    effect_rule(320,2,0,0,62),
+    sound_effect_rule(320,2,0,0,62),
     melee_voice_rule(320,2,0,0,1),
-    effect_rule(330,2,6,6,62),
+    sound_effect_rule(330,2,6,6,62),
     melee_voice_rule(330,2,6,6,2),
     melee_voice_rule(331,2,10,10,2),
     // 332's entry voice (FUN_0043ffc0 case 0x14c, phase 1 tick 0): event 3 with
     // the FIXED choice 0 through FUN_00422490(3,0,10,0).
     melee_voice_rule(332,1,0,0,3,0),
-    effect_rule(340,0,15,15,61),
+    sound_effect_rule(340,0,15,15,61),
     melee_voice_rule(340,0,15,15,2),
     melee_voice_rule(341,1,0,0,3),
     // 402 air tap: hide from tick 13 (tick>12), launch item row 1 at tick 13
@@ -652,22 +662,22 @@ inline constexpr MoveRule kRenaRules[] = {
     {350,-1,0,9999,MoveOp::ContactOff},
     melee_voice_rule(350,0,0,0,32,0),
     melee_voice_rule(350,0,56,56,33),
-    effect_rule(350,0,11,11,61),
-    effect_rule(350,0,15,15,61),
-    effect_rule(350,0,19,19,61),
-    effect_rule(350,0,23,23,61),
-    effect_rule(350,0,27,27,61),
-    effect_rule(350,0,31,31,61),
-    effect_rule(350,0,35,35,61),
-    effect_rule(350,0,56,56,61),
-    effect_rule(350,0,7,7,320,true),
-    effect_rule(350,0,15,15,320,true),
-    effect_rule(350,0,23,23,320,true),
-    effect_rule(350,0,31,31,320,true),
-    effect_rule(350,0,7,7,350,true),
-    effect_rule(350,0,22,22,350,true),
-    effect_rule(350,0,37,37,350,true),
-    effect_rule(350,0,56,56,340),
+    sound_effect_rule(350,0,11,11,61),
+    sound_effect_rule(350,0,15,15,61),
+    sound_effect_rule(350,0,19,19,61),
+    sound_effect_rule(350,0,23,23,61),
+    sound_effect_rule(350,0,27,27,61),
+    sound_effect_rule(350,0,31,31,61),
+    sound_effect_rule(350,0,35,35,61),
+    sound_effect_rule(350,0,56,56,61),
+    sound_effect_rule(350,0,7,7,320,true),
+    sound_effect_rule(350,0,15,15,320,true),
+    sound_effect_rule(350,0,23,23,320,true),
+    sound_effect_rule(350,0,31,31,320,true),
+    sound_effect_rule(350,0,7,7,350,true),
+    sound_effect_rule(350,0,22,22,350,true),
+    sound_effect_rule(350,0,37,37,350,true),
+    sound_effect_rule(350,0,56,56,340,true),
     {350,0,1,1,MoveOp::Speed,10.f},
     {350,0,10,10,MoveOp::Speed,0.f},
     // The original's stall (FUN_0043ffc0:1455-1464): while 0 < tick < 10 the +0x3d
@@ -710,20 +720,20 @@ inline constexpr MoveRule kRena1Rules[] = {
     {301,-1,0,7,MoveOp::Turn,20.f,kGateContact},
     // Melee voices and effects (FUN_00448220's tick-guarded call sites, read
     // directly — the same latch/cascade caveats as weapon 0's block).
-    effect_rule(300,2,0,0,64),
+    sound_effect_rule(300,2,0,0,64),
     melee_voice_rule(300,2,0,0,1),
-    effect_rule(301,0,3,3,67),
+    sound_effect_rule(301,0,3,3,67),
     melee_voice_rule(301,0,3,3,3),
-    effect_rule(310,2,4,4,62),
+    sound_effect_rule(310,2,4,4,62),
     melee_voice_rule(310,2,4,4,2),
-    effect_rule(311,0,12,12,67),
+    sound_effect_rule(311,0,12,12,67),
     melee_voice_rule(311,0,12,12,3),
-    effect_rule(320,2,0,0,63),
+    sound_effect_rule(320,2,0,0,63),
     melee_voice_rule(320,2,0,0,1),
     melee_voice_rule(330,1,0,0,3),
     melee_voice_rule(331,2,10,10,2),
     melee_voice_rule(332,1,0,0,3,0),
-    effect_rule(340,0,12,12,67),
+    sound_effect_rule(340,0,12,12,67),
     melee_voice_rule(340,0,12,12,3),
     // 310 back kick: the weapon-0/1 body is shared (see kRenaRules 310).
     {310,0,0,0,MoveOp::Speed,30.f},
@@ -828,7 +838,7 @@ inline constexpr MoveRule kRena1Rules[] = {
      origin_attachment_model(0,2),aim_stored_pitch(),{},kSpreadRena1Charge},
     // 450's own tick-15 effect (FUN_00448220 case 0x1c2): FUN_0042c8b0(0x3f) at
     // tick 15 inside the 12..26 sweep window.
-    effect_rule(450,-1,15,15,63),
+    sound_effect_rule(450,-1,15,15,63),
     // ---- 402 air tap: the three-phase dive (FUN_00448220 case 0x192, read
     // directly) ----
     // Phase 0 (12 ticks): tick 0 zeroes the speed, the vertical AND the movement
@@ -852,9 +862,9 @@ inline constexpr MoveRule kRena1Rules[] = {
     {402,0,0,9,MoveOp::Turn,20.f},
     {402,0,0,9999,MoveOp::LandPhase,2.f},
     {402,1,0,9999,MoveOp::LandPhase,2.f},
-    effect_rule(402,2,0,0,67),
+    sound_effect_rule(402,2,0,0,67),
     voice_rule(402,2,0,0,shot_voice(29)),
-    effect_rule(402,2,5,5,77),
+    sound_effect_rule(402,2,5,5,77),
     {402,2,5,5,MoveOp::Launch,6.f,0.f,0.f,kGateNormal,0,
      origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
     {402,2,5,5,MoveOp::Launch,0.f,0.f,0.f,kGatePowered,0,
@@ -889,7 +899,7 @@ inline constexpr MoveRule kRena1Rules[] = {
      origin_attachment_model(0,2),aim_stored_pitch(),{},kSpreadRena1Charge},
     {460,-1,15,29,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
      origin_attachment_model(0,2),aim_stored_pitch(),{},kSpreadRena1Charge},
-    effect_rule(460,-1,15,15,63),
+    sound_effect_rule(460,-1,15,15,63),
     {460,0,0,0,MoveOp::Gravity,.5f},
     {460,-1,0,9999,MoveOp::LandExit,469.f},
     // ---- 360/370 second charge (FUN_00448220 cases 0x168/0x172, read
@@ -904,14 +914,14 @@ inline constexpr MoveRule kRena1Rules[] = {
     melee_voice_rule(360,0,0,0,32,3,4,50),
     {360,0,0,9,MoveOp::Turn,18.f},
     {360,0,0,9999,MoveOp::Decelerate,1.5f},
-    effect_rule(360,0,16,16,64),
+    sound_effect_rule(360,0,16,16,64),
     {360,0,16,16,MoveOp::Launch,8.f,0.f,0.f,kGateNone,0,
      origin_attachment_slot(0),aim_fixed_angles(0.f,70.f)},
     melee_voice_rule(370,0,0,0,32,3,4,50),
     {370,0,0,9,MoveOp::Turn,18.f},
     {370,0,0,0,MoveOp::ScaleMotion,.5f,0.f},
     {370,0,0,0,MoveOp::Gravity,.5f},
-    effect_rule(370,0,16,16,64),
+    sound_effect_rule(370,0,16,16,64),
     {370,0,16,16,MoveOp::Launch,8.f,0.f,0.f,kGateNone,0,
      origin_attachment_slot(0),aim_fixed_angles(0.f,70.f)},
     {370,-1,0,9999,MoveOp::LandExit,469.f},
@@ -921,9 +931,9 @@ inline constexpr MoveRule kRena1Rules[] = {
     // frame 20 (0x41080000) and 0 at 73; the contact window frames 21..64 (the
     // bodies' FUN_00434b30 span — ContactOff cuts outside it); motion zeroed at
     // entry. No entry voice for this weapon.
-    effect_rule(350,0,25,25,68),
-    effect_rule(350,0,45,45,68),
-    effect_rule(350,0,65,65,68),
+    sound_effect_rule(350,0,25,25,68),
+    sound_effect_rule(350,0,45,45,68),
+    sound_effect_rule(350,0,65,65,68),
     {350,0,0,0,MoveOp::Speed,0.f},
     {350,0,0,7,MoveOp::Turn,25.f},
     {350,0,20,20,MoveOp::Speed,8.5f},
@@ -952,22 +962,22 @@ inline constexpr MoveRule kRena2Rules[] = {
     // ---- melee execution (FUN_00438310, weapon 2) ----
     // Melee voices and effects (FUN_00438310's tick-guarded call sites, read
     // directly — the same latch/cascade caveats as weapon 0's block).
-    effect_rule(300,1,18,18,67),
+    sound_effect_rule(300,1,18,18,67),
     melee_voice_rule(300,1,18,18,3),
-    effect_rule(301,0,3,3,61),
+    sound_effect_rule(301,0,3,3,61),
     melee_voice_rule(301,0,3,3,2),
-    effect_rule(302,0,10,10,67),
+    sound_effect_rule(302,0,10,10,67),
     melee_voice_rule(302,0,10,10,3),
-    effect_rule(310,0,25,25,68),
+    sound_effect_rule(310,0,25,25,68),
     melee_voice_rule(310,0,25,25,3),
-    effect_rule(311,0,35,35,68),
+    sound_effect_rule(311,0,35,35,68),
     melee_voice_rule(311,0,35,35,3),
-    effect_rule(320,2,32,32,62),
+    sound_effect_rule(320,2,32,32,62),
     melee_voice_rule(320,2,32,32,1),
-    effect_rule(330,0,28,28,62),
+    sound_effect_rule(330,0,28,28,62),
     melee_voice_rule(330,0,28,28,3),
     melee_voice_rule(331,0,35,35,3),
-    effect_rule(340,0,15,15,61),
+    sound_effect_rule(340,0,15,15,61),
     melee_voice_rule(340,0,15,15,2),
     melee_voice_rule(341,1,0,0,3),
     // 300 ordinary is the standing spin: no approach at speed — offset approach 3
@@ -1102,7 +1112,7 @@ inline constexpr MoveRule kRena2Rules[] = {
     {402,0,0,14,MoveOp::LandExit,403.f},
     {402,0,15,17,MoveOp::LandSeek,1.f,25.f},
     {402,1,0,9999,MoveOp::Decelerate,1.f},
-    effect_rule(402,1,35,35,170),
+    sound_effect_rule(402,1,35,35,170),
     voice_rule(402,1,35,35,shot_voice(29,30,ShotVoiceMagazine::Primary,
                                      ShotVoiceCompare::Equal,1)),
     {402,1,35,35,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
@@ -1133,7 +1143,7 @@ inline constexpr MoveRule kRena2Rules[] = {
     {460,-1,0,9,MoveOp::Turn,18.f},
     {460,-1,0,0,MoveOp::ScaleMotion,.5f,1.f},
     {460,0,0,0,MoveOp::Gravity,.1f},
-    effect_rule(460,-1,36,36,171),
+    sound_effect_rule(460,-1,36,36,171),
     voice_rule(460,-1,36,36,shot_voice(28,30,ShotVoiceMagazine::Secondary,
                                        ShotVoiceCompare::Equal,1)),
     {460,-1,36,36,MoveOp::CapturePitch,0.f,40.f,40.f},
@@ -1158,7 +1168,7 @@ inline constexpr MoveRule kRena2Rules[] = {
     {350,0,42,42,MoveOp::ClockSeek,95.f},
     {350,-1,117,9999,MoveOp::Hide,0.f},
     {350,-1,117,9999,MoveOp::Hide,1.f},
-    effect_rule(350,0,116,116,172),
+    sound_effect_rule(350,0,116,116,172),
     {350,0,116,116,MoveOp::CapturePitch,0.f,40.f,40.f},
     {350,0,116,116,MoveOp::Launch,8.f,0.f,0.f,kGateNone,0,
      origin_actor_relative(0.f,150.f,70.f),aim_stored_pitch(1.f)},
@@ -1167,7 +1177,7 @@ inline constexpr MoveRule kRena2Rules[] = {
     {360,0,0,0,MoveOp::Gravity,.05f},
     {360,0,0,41,MoveOp::Turn,15.f},
     {360,0,42,42,MoveOp::ClockSeek,95.f},
-    effect_rule(360,0,116,116,172),
+    sound_effect_rule(360,0,116,116,172),
     {360,0,116,116,MoveOp::CapturePitch,0.f,40.f,40.f},
     {360,0,116,116,MoveOp::Launch,8.f,0.f,0.f,kGateNone,0,
      origin_actor_relative(0.f,150.f,70.f),aim_stored_pitch(1.f)},
@@ -1334,6 +1344,17 @@ inline bool shot_voice_policy_audited(const MoveProgram* program, int move) {
     for (const auto& tier : program->shot)
         for (int shot : tier)
             if (shot == move) return true;
+    return false;
+}
+// True when the current row carries at least one recovered melee voice cue. The audio
+// layer suppresses its fallback swing voice for such rows so the source-timed cue is
+// the only one heard (the same audited/fallback split the shot voice uses).
+inline bool melee_voice_policy_audited(const MoveProgram* program, int move) {
+    if (!program || move < 0) return false;
+    for (size_t i = 0; i < program->count; ++i)
+        if (program->rules[i].move == move &&
+            program->rules[i].operation == MoveOp::MeleeVoice)
+            return true;
     return false;
 }
 // Slot7 jump-cancel facts recovered per combo (bundle evidence TSVs, runtime ==

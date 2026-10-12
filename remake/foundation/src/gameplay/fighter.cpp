@@ -191,7 +191,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_pendingShots.clear();
     m_shootingVoice = {};
     m_meleeVoice = {};
-    m_pendingEffect = {};
+    m_pendingSoundEffect = {};
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_moveCounter = 0;
@@ -247,7 +247,7 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_pendingShots.clear();
     m_shootingVoice = {};
     m_meleeVoice = {};
-    m_pendingEffect = {};
+    m_pendingSoundEffect = {};
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_moveCounter = 0;
@@ -318,7 +318,7 @@ void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     m_pendingShots.clear();
     m_shootingVoice = {};
     m_meleeVoice = {};
-    m_pendingEffect = {};
+    m_pendingSoundEffect = {};
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_moveElapsedTicks = 0;
@@ -361,6 +361,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
                      const game::physics::MovementCollision* collision) {
     m_shootingVoice = {};
     m_sourceShotVoiceAudited = false;
+    m_sourceMeleeVoiceAudited = false;
     m_time += dt;
     m_animationBoundThisUpdate = false;
 
@@ -1635,6 +1636,7 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
     m_contactDisabled = false;
     const MoveProgram* program = move_program(m_moves);
     m_sourceShotVoiceAudited = shot_voice_policy_audited(program, state_move_id());
+    m_sourceMeleeVoiceAudited = melee_voice_policy_audited(program, state_move_id());
     const auto* motion = locomotion(m_moves);
     const CharacterMove* move = m_moves ? m_moves->find(state_move_id()) : nullptr;
     if (move && m_model && m_phaseIndex + 1 == move->sectionCount &&
@@ -1871,15 +1873,16 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             m_meleeVoice = {static_cast<int>(rule.value), alternative};
             break;
         }
-        case MoveOp::Effect:
-            // FUN_0042c8b0/0042c880's effect id. The 350 scatter form draws its yaw
-            // and pitch jitter first — two rand%40-20 per particle (FUN_0043ffc0
-            // case 0x15e @0x15e-0x16a) — so the draw consumption matches the body.
-            m_pendingEffect = {static_cast<int>(rule.value), 0.f, 0.f, rule.third > 0.f};
+        case MoveOp::SoundEffect:
+            // The bodies' SE request (FUN_0042c8b0 at the actor's own position) or the
+            // still-unresolved actor-vtable cue. The scatter form draws its yaw and pitch
+            // jitter first — two rand%40-20 per emission (FUN_0043ffc0 case 0x15e
+            // @0x15e-0x16a) — so the draw consumption matches the body.
+            m_pendingSoundEffect = {static_cast<int>(rule.value), 0.f, 0.f, rule.third > 0.f};
             if (rule.third > 0.f) {
-                m_pendingEffect.yaw = static_cast<float>(
+                m_pendingSoundEffect.yaw = static_cast<float>(
                     static_cast<int>(rng_source().modulo(40)) - 20);
-                m_pendingEffect.pitch = static_cast<float>(
+                m_pendingSoundEffect.pitch = static_cast<float>(
                     static_cast<int>(rng_source().modulo(40)) - 20);
             }
             break;

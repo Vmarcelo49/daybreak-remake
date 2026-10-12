@@ -80,6 +80,8 @@ bool voice_event_b_dir(VoiceEvent e);
 enum class CombatEventKind : int {
     MatchStart = 0,  // a fighter's battle-start line
     MeleeSwing,      // a melee swing was armed
+    MeleeVoice,      // a melee body's own voice cue (FUN_004223d0/FUN_00422490)
+    SoundEffect,     // an action body's SE request (FUN_0042c8b0/FUN_0042c880)
     ShotFired,       // a shot was accepted, or its source move emitted a voice cue
     Hit,             // a landed hit that left the victim standing
     Overkill,        // a landed hit on an already-down body
@@ -109,6 +111,9 @@ struct CombatEvent {
     bool     shot    = false;
     int voice_override = -1;
     int voice_alternative = -1;
+    // The `data/se/%03d.wav` id an action body requested (FUN_0042c8b0's positional form
+    // and FUN_0042c880's non-positional one both pass it here).
+    int se_override = -1;
     bool source_voice_audited = false;  // suppress Fire fallback when a bound body is silent
     // Stable identity: tick + kind + the two fighters + the per-tick sequence. Two
     // simulations of the same ticks derive identical ids, and no id repeats within a match,
@@ -132,6 +137,17 @@ public:
 // The frame's own fields, copied so this header does not depend on gameplay/.
 struct CombatFrameView {
     bool swing_started[4] = {};
+    // The melee body's own cue: the id IS a VoiceEvent index (the vocabulary is the
+    // original's 40-name table), the alternative the FUN_00422490 choice where the body
+    // draws one. `melee_voice_audited` marks rows whose cue policy is recovered, so the
+    // fallback swing voice stands down exactly as the shot voice's audited flag does.
+    int melee_voice[4] = {-1, -1, -1, -1};
+    int melee_voice_alternative[4] = {-1, -1, -1, -1};
+    bool melee_voice_audited[4] = {};
+    // The action body's SE request: a data/se id, -1 when silent. The cues that came from
+    // the unidentified actor vtable call are NOT SEs (their ids are absent from data/se)
+    // and are deliberately not published here; that consumer is still open.
+    int sound_effect_id[4] = {-1, -1, -1, -1};
     bool shot_fired[4] = {};
     int shot_voice[4] = {-1, -1, -1, -1};
     int shot_voice_alternative[4] = {-1, -1, -1, -1};

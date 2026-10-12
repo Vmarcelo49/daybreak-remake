@@ -1074,17 +1074,52 @@ int run() {
             f.update(&in, &foe, 1.0 / 64.0);
             checkInt(300, f.attack_move_id(), "cue fixture enters 300");
             in.down[input::Action::AttackA] = false;
-            bool sawVoice = false, sawEffect = false;
-            for (int i = 0; i < 40 && !(sawVoice && sawEffect); ++i) {
+            bool sawVoice = false, sawSe = false;
+            for (int i = 0; i < 40 && !(sawVoice && sawSe); ++i) {
                 input::compute_edges(in);
                 f.update(&in, &foe, 1.0 / 64.0);
                 const auto voice = f.take_melee_voice();
-                const auto effect = f.take_effect();
+                const auto sound = f.take_sound_effect();
                 if (f.move_phase() == 2 && voice.event == 1) sawVoice = true;
-                if (f.move_phase() == 2 && effect.id == 60) sawEffect = true;
+                if (f.move_phase() == 2 && sound.id == 60) sawSe = true;
             }
             check(sawVoice, "300's phase-2 entry queues melee voice 1");
-            check(sawEffect, "300's phase-2 entry queues effect 60");
+            check(sawSe, "300's phase-2 entry queues SE 60");
+        }
+
+        // (7) The boosted (special-gauge) admission: an attack press while a hyper
+        // state is armed and the current row's chain window is open takes the awakened
+        // 350 (FUN_00445ee0:162-168 / FUN_0044d850:160-167); the same press without the
+        // armed state takes the ordinary 300.
+        {
+            Fixture fx(1, {}, {350});
+            Fighter& f = fx.make();
+            Fighter& foe = fx.make();
+            foe.reset(glm::vec3(300.f, 0.f, 0.f), 0.f);
+            f.set_hypermode(gameplay::Hypermode::Oyashiro);
+            f.set_hyper_gauge(1.f);
+            input::PlayerState in;
+            in.down[input::Action::Special] = true;
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            in.down[input::Action::Special] = false;
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            check(f.hyper_active(), "the boosted fixture arms the hyper state");
+            in.down[input::Action::AttackA] = true;
+            input::compute_edges(in);
+            f.update(&in, &foe, 1.0 / 64.0);
+            checkInt(350, f.attack_move_id(), "an armed attack press admits the 350 melee");
+
+            Fixture plain(1, {}, {350});
+            Fighter& p = plain.make();
+            Fighter& pfoe = plain.make();
+            pfoe.reset(glm::vec3(300.f, 0.f, 0.f), 0.f);
+            input::PlayerState plainIn = pressWith(input::Action::AttackA);
+            input::compute_edges(plainIn);
+            p.update(&plainIn, &pfoe, 1.0 / 64.0);
+            checkInt(300, p.attack_move_id(),
+                     "the same press without the armed state stays 300");
         }
     }
 

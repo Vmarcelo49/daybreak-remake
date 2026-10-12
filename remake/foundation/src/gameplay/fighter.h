@@ -622,18 +622,25 @@ public:
     struct ShootingVoice { int event = -1; int alternative = -1; };
     ShootingVoice take_shooting_voice() { auto cue = m_shootingVoice; m_shootingVoice = {}; return cue; }
     bool source_shot_voice_audited() const { return m_sourceShotVoiceAudited; }
+    // True when the running row carries a recovered melee voice cue, so the audio layer
+    // can let the source-timed cue stand alone instead of also firing the fallback swing
+    // voice (the melee ids ARE the voice vocabulary's indices: FUN_004223d0(1,10,0) =
+    // "attackA", FUN_004223d0(0xd,10,0) = "guarded", FUN_00422490(0x20,...) = "specialA").
+    bool source_melee_voice_audited() const { return m_sourceMeleeVoiceAudited; }
 
-    // The melee voice cue (FUN_004223d0/FUN_00422490 with the small event ids) and
-    // the effect cue (FUN_0042c8b0/0042c880), drained once per tick by the scene the
-    // same way the shot voice is. The melee alternative carries the 422490 choice
-    // (fixed, or the rand%100 pair the 32-family draws); the close-target cascade
-    // (voices 0/15/5) is documented at the op site as requiring the pairing tracker
-    // the port does not model. The effect's yaw/pitch carry the 350 scatter's two
-    // rand%40-20 draws — the RNG consumption is part of the contract.
+    // The melee voice cue (FUN_004223d0/FUN_00422490) and the gameplay SE cue
+    // (FUN_0042c8b0 positional / FUN_0042c880 non-positional), drained once per tick by
+    // the scene the same way the shot voice is. The melee alternative carries the
+    // FUN_00422490 choice (fixed, or the rand%100 pair the 32-family draws); the
+    // close-target cascade (voices 0/15/5) is documented at the op site as requiring the
+    // pairing tracker the port does not model. The SE `id` is a data/se/%03d.wav index;
+    // the yaw/pitch on a scatter cue belong to the still-unidentified actor vtable call
+    // whose two rand%40-20 draws the op consumes (the RNG consumption is part of the
+    // contract) — that call is NOT the SE path.
     struct MeleeVoiceCue { int event = -1; int alternative = -1; };
     MeleeVoiceCue take_melee_voice() { auto cue = m_meleeVoice; m_meleeVoice = {}; return cue; }
-    struct EffectCue { int id = -1; float yaw = 0.f; float pitch = 0.f; bool scatter = false; };
-    EffectCue take_effect() { auto cue = m_pendingEffect; m_pendingEffect = {}; return cue; }
+    struct SoundEffectCue { int id = -1; float yaw = 0.f; float pitch = 0.f; bool scatter = false; };
+    SoundEffectCue take_sound_effect() { auto cue = m_pendingSoundEffect; m_pendingSoundEffect = {}; return cue; }
 
     // The original's fighter-level special/charge gauge (int +0x834, 0..1000). The
     // bodies spell it `param_1[0x20d]` because the actor pointer is `int*`; the two
@@ -909,9 +916,10 @@ private:
     bool         m_chainGuarded = false;   // FUN_0042c7b0() bit 2: the strike was guarded
     ShootingVoice m_shootingVoice;
     MeleeVoiceCue m_meleeVoice;
-    EffectCue     m_pendingEffect;
+    SoundEffectCue     m_pendingSoundEffect;
     int           m_chargeGauge = 1000;
     bool m_sourceShotVoiceAudited = false;
+    bool m_sourceMeleeVoiceAudited = false;
     SimulationRng* m_rng = nullptr;   // the scene's stream, null for a bare fighter
     SimulationRng  m_ownRng;          // fallback: deterministic per fighter
     int          m_meleeElapsed = 0;      // ticks since the swing started
