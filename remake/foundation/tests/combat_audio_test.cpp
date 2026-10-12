@@ -78,7 +78,75 @@ CombatEvent ev(CombatEventKind kind, int fighter, int source, uint32_t tick, uin
 
 }  // namespace
 
+// A source stub for the frame -> event derivation (the host's adapter is the only other
+// implementation, and the derivation is what the release path shares with it).
+struct SourceStub : CombatEventSource {
+    int count = 4;
+    bool aliveFlags[4] = {true, true, true, true};
+    int fighter_count() const override { return count; }
+    bool alive(int fighter) const override {
+        return fighter >= 0 && fighter < 4 && aliveFlags[fighter];
+    }
+};
+
+// The frame -> event derivation carries the melee voice, the SE and the audited-swing
+// handshake; the cue resolution for those kinds is pinned above, this pins the emit side.
+bool testFrameEvents() {
+    SourceStub source;
+    CombatFrameView view;
+    view.swing_started[0] = true;
+    view.melee_voice[0] = int(VoiceEvent::AttackB);
+    view.melee_voice_alternative[0] = 2;
+    view.sound_effect_id[0] = 60;
+    const CombatEventList events = combat_events_for_frame(source, view, 7, false);
+    bool sawSwing = false, swingSpoke = false, sawVoice = false, sawSe = false;
+    for (int i = 0; i < events.count; ++i) {
+        const CombatEvent& e = events.events[i];
+        if (e.kind == CombatEventKind::MeleeSwing && e.fighter == 0) {
+            sawSwing = true;
+            swingSpoke = resolve_combat_event(e).has_voice;
+        }
+        if (e.kind == CombatEventKind::MeleeVoice && e.fighter == 0) {
+            sawVoice = true;
+            const CombatCue cue = resolve_combat_event(e);
+            CHECK(cue.has_voice && cue.voice == VoiceEvent::AttackB);
+            CHECK(e.voice_alternative == 2);
+        }
+        if (e.kind == CombatEventKind::SoundEffect && e.fighter == 0) {
+            sawSe = true;
+            const CombatCue cue = resolve_combat_event(e);
+            CHECK(cue.has_se() && cue.se_id == 60);
+            CHECK(!cue.has_voice);
+        }
+    }
+    CHECK(sawSwing && sawVoice && sawSe);
+    CHECK(swingSpoke);  // no audited flag on this frame: the vocabulary fallback stands
+
+    // With the row's cue policy recovered the swing must go silent, and the body's own
+    // cue is the only voice that frame.
+    CombatFrameView audited = view;
+    audited.melee_voice_audited[0] = true;
+    const CombatEventList auditedEvents = combat_events_for_frame(source, audited, 8, false);
+    bool auditedSwingSpoke = false, auditedVoice = false;
+    for (int i = 0; i < auditedEvents.count; ++i) {
+        const CombatEvent& e = auditedEvents.events[i];
+        if (e.kind == CombatEventKind::MeleeSwing && e.fighter == 0) {
+            CHECK(e.source_voice_audited);
+            auditedSwingSpoke = resolve_combat_event(e).has_voice;
+        }
+        if (e.kind == CombatEventKind::MeleeVoice && e.fighter == 0) auditedVoice = true;
+    }
+    CHECK(!auditedSwingSpoke);
+    CHECK(auditedVoice);
+
+    // A silent frame emits nothing for the fighter.
+    CombatFrameView empty;
+    CHECK(combat_events_for_frame(source, empty, 9, false).count == 0);
+    return true;
+}
+
 int main() {
+    CHECK(testFrameEvents());
     auto renaVoice = ev(CombatEventKind::ShotFired, 0, -1, 77);
     renaVoice.voice_override = int(VoiceEvent::ShotA);
     CHECK(resolve_combat_event(renaVoice).voice == VoiceEvent::ShotA);
