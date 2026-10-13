@@ -108,11 +108,10 @@ enum class MoveOp { Speed, Decelerate, Turn, Approach, Launch, Hold, ActionCamer
                     PhaseExit,   // unconditional enter_phase(value) inside the window
                     ClockSkip,   // advance the phase clock value extra ticks this update
                     Gauge,       // add value thousandths to the special gauge (recovery)
-                    // The 403/409/469 recovery bodies' shot-gauge refill (FUN_00448220
-                    // cases 0x193/0x199/0x1d5): +0x834 gains 40 thousandths a tick, 5
-                    // while a status timer (+0x7f4, producer FUN_0042e110's status family)
-                    // is active — the port models no status, so the fast rate is the only
-                    // reachable one and the slow branch stays cited, not bound.
+                    // The recovery bodies refill +0x834 by 40 when actor word +0x1fd is
+                    // clear or 5 otherwise. That aliases byte +0x7f4, seeded from the
+                    // scene's stage-replay delay; the port models the +40 branch, with
+                    // overlap into reachable Rena recovery still unresolved.
                     Recharge,    // add value thousandths to the shot gauge, capped at 1000
                     // The melee voice cue (FUN_004223d0/FUN_00422490 with the small event
                     // ids): value is the ordinary event, rule.voice carries the entry
@@ -504,10 +503,11 @@ inline constexpr MoveRule kRenaRules[] = {
     {402,-1,1,9999,MoveOp::LandExit,403.f},
     // 403/409/469 recovery bodies (FUN_0043ffc0 cases 0x193/0x199/0x1d5): speed,
     // vertical, gravity and movement offset zeroed EVERY tick (the cases carry no
-    // tick guard), the shot gauge (+0x834) refilling 40 thousandths a tick (5 with a
-    // status timer — the status producer is unmodeled, so the fast rate is the only
-    // reachable branch), capped at 1000. Completion returns to idle through the
-    // period path.
+    // tick guard), and the shot gauge (+0x834) refills +40 when actor word +0x1fd is
+    // zero or +5 otherwise, capped at 1000. The +0x1fd field aliases actor byte +0x7f4,
+    // seeded from the scene's stage-selected replay-delay counter; whether it can remain
+    // nonzero into a reachable Rena recovery is unresolved, so the implemented rule models
+    // the normal +40 branch pending that producer/ordering proof. Completion returns to idle.
     {403,-1,0,9999,MoveOp::Speed,0.f},
     {403,-1,0,9999,MoveOp::Vertical,0.f},
     {403,-1,0,9999,MoveOp::Gravity,0.f},
@@ -954,8 +954,9 @@ inline constexpr MoveRule kRena1Rules[] = {
     {402,2,5,5,MoveOp::Launch,9.f,0.f,0.f,kGatePowered,0,
      origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
     // 403/469 recovery bodies (FUN_00448220 cases 0x193/0x1d5): motion zeroed EVERY
-    // tick (no tick guard in the cases), the shot-gauge refill (+40, 5 with a status —
-    // unmodeled producer), cap 1000.
+    // tick (no tick guard); the shot-gauge refill is +40 when actor word +0x1fd is clear,
+    // +5 otherwise, cap 1000. Its +0x7f4 stage replay-delay relationship and overlap with
+    // reachable recovery remain unresolved; the rule below models the +40 branch.
     {403,-1,0,9999,MoveOp::Speed,0.f},
     {403,-1,0,9999,MoveOp::Vertical,0.f},
     {403,-1,0,9999,MoveOp::Gravity,0.f},
@@ -1229,8 +1230,9 @@ inline constexpr MoveRule kRena2Rules[] = {
     {402,1,35,35,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
      origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadRingAir,10},
     // 403/469 recovery bodies (FUN_00438310 cases 0x193/0x1d5): motion zeroed EVERY
-    // tick (no tick guard in the cases), the shot-gauge refill (+40, 5 with a status —
-    // unmodeled producer), cap 1000.
+    // tick (no tick guard); the shot-gauge refill is +40 when actor word +0x1fd is clear,
+    // +5 otherwise, cap 1000. Its +0x7f4 stage replay-delay relationship and overlap with
+    // reachable recovery remain unresolved; the rule below models the +40 branch.
     {403,-1,0,9999,MoveOp::Speed,0.f},
     {403,-1,0,9999,MoveOp::Vertical,0.f},
     {403,-1,0,9999,MoveOp::Gravity,0.f},

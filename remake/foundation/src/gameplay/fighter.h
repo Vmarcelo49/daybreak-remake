@@ -683,8 +683,10 @@ public:
     // `[0x20d]` site declares `int *param_1`). Producers: battle init/reset writes
     // 1000 (FUN_004219a0:19, FUN_0041dcb0:66); +1 a tick only while a hyper flag
     // (+0x844/0x845/0x846) is armed (FUN_0041f580:96-99 and 46 siblings — not modeled
-    // here, recorded); +40 a tick (5 while the +0x7f4 status timer is set) in the
-    // 403/409/469 recoveries; -500 on a special-move spend (FUN_00508a60:91). Consumers:
+    // here, recorded); the recoveries refill +40 when actor word +0x1fd is clear or +5
+    // otherwise. That word aliases byte +0x7f4, the scene's stage-replay delay; whether
+    // it can overlap reachable Rena recovery is unresolved, so this port models +40 only.
+    // The gauge loses 500 on a special-move spend (FUN_00508a60:91). Consumers:
     // the melee/shot admission gates (`0 < +0x834`, FUN_00445ee0/FUN_0044d850), the
     // guard-reaction exits (`(FUN_0042c7b0() & 2) && 0 < +0x834`, the 390/393 bodies)
     // and the awakened-melee spend threshold (`500 < +0x834`). This is NOT the

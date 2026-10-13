@@ -239,9 +239,9 @@ Execution contracts (mobile/full-charge references, cross-checked with the handl
 | State | w0 | w1 | w2 | Notes | Port status |
 |---|---|---|---|---|---|
 | 400 | row 0/6 @12, ±30 | rows 6 / 0+9 @18; **melee strike f8–18**; speed 45 @f7 | attachment @35 + 10-pellet ring (pitch rand%30+20, yaw 90−rand%180) | voices 27/30 (last round), 29 (w2) | bound (ledger §5) |
-| 401 | like 400 @12 | row 6 / 0 @18 (powered = single 0), strike f8–18, turn 20→f15, speed 30@f7→0@f15 | → 400 | w1 powered differs from 400 (one request, not two) | **landed**: admission + program rules for w0/w1; w1's powered single request bound; w0 verified to fire exactly one request; the melee-strike window f8–18 (w1) is the only open item on this row |
+| 401 | like 400 @12 | row 6 / 0 @18 (powered = single 0), mobile turn 20→f15, speed 30@f7→0@f15 | → 400 | w1 powered differs from 400 (one request, not two) | **landed**: admission + program rules for w0/w1; w1's powered single request bound; w0 verified to fire exactly one request; 401 is a mobile-shot row, with no melee-contact volume in `FUN_00448220:1722-1776` |
 | 402 | row 1/7 @13, ±30 | 3-phase dive ({12,1,35}, phase 1 HELD), phase2 f5 rows 6 / 0+9, dive arc (vertical −40, speed ≤10) | 2-phase, ph0 clock clamps at 17, landing <15 → 403 else ph1@25, f35 attachment + ring (pitch rand%50+30) | landing → 403/409 | **execution implemented + automated verification** for all three weapons, driven by REAL input (jump → airborne Shoot tap): w0 fires its one row-1 request at frame 13 with the ±30-clamped pitch; w1's phase 1 keeps the closing speed in [0,10] and fires row 6 at phase-2 frame 5; w2 fires one attachment row-0 at phase-1 frame 35 plus the ten-request ring on rows 1/3, each pitch in [30,80) and each draw its own. The landing exits to 403/409 are covered separately |
-| 403/409/469 | recovery: recharge +40 (+5 when status<1), cap 1000 | idem | idem | air-shot landings | **execution implemented + automated verification**: motion zeroed every tick (no guard), charge gauge +40 capped 1000; the 402/460/408 landings now actually reach 403/409/469 through the shot-state landing branch |
+| 403/409/469 | recovery: +40 if actor `+0x1fd < 1`, else +5; cap 1000 | idem | idem | air-shot landings | **execution implemented + automated verification** for motion reset and normal +40 branch; actor `+0x1fd` aliases byte `+0x7f4`, seeded from stage replay-delay state. Whether the nonzero branch can overlap reachable Rena recovery is unresolved; the port does not model stage replay delay. |
 | 405/406 | like 400 @12/13, movement −90/+90 | — | — | lateral dash shots | **landed**: admission + program rules mirroring 400; verified selecting 405/406 from the left/right dash states |
 | 407 | @13: rows 4 (yaw+75,pitch30) + 9 (yaw−75) normal; + 13/14 (±85, pitch20) powered | — | — | back dash shot, movement 180 | **execution implemented + automated verification**: the back-dash situation is now driven end-to-end (row-27 dash → tap → 407 → the row-4/row-9 pair at tick 13) |
 | 408 | @12 rows 0/6 (the ground rows, one tick early) | — | — | air-dash fast shot | **execution implemented + automated verification**: the air-dash→408 sequence is driven end-to-end (row-30 dash with a held direction → release → 408 → the single row-0 request at tick 12) |
@@ -415,22 +415,22 @@ witness is falsifiable — removing it makes the new assertion fail.
 1. ~~Attack-state movement mechanism~~ — landed 2026-10-12 (vertical channel,
    landings, body-driven exits, chase/dive bodies; §2).
 2. ~~320 chase arc, 332 dive + contact→334, 330/331 dash bodies~~ — landed
-   2026-10-12; the pitch/pivot render SIGN and the live poses stay open (§ status
-   vocabulary), as do melee voices/effects and the attacker-side 392 guard exit.
+   2026-10-12; the pitch/pivot render sign and live poses stay open (§ status vocabulary).
+   The melee voice/effect paths and attacker-side 392 guard exit were subsequently bound
+   and tested (§2 / §7), so they are not remaining implementation gaps.
    **2026-10-12 review corrections:** the lean transform now applies FUN_00420b30's
    Rx(pitch) + pivot translation instead of folding both into the yaw (automated
    matrix witness); the guard-exit row table was corrected against the exhaustive
    `&2` scan; 320's contact window and weapon 0's 350 contact cut were added.
-3. ~~402 weapon-specific phase models and the 403/409/469 recharge bodies~~ —
-   landed 2026-10-12: weapon 1's three-phase dive (geometric closing speed) and
-   weapon 2's clamp/seek landing branches plus its ten-request attachment ring are
-   bound; the recoveries zero motion every tick and refill the charge gauge. The
-   `+0x20d` field is resolved: it is `param_1[0x20d]` = byte **+0x834**, the
-   fighter-level special/charge gauge — battle init 1000 (FUN_004219a0), +1/tick
-   under an armed hyper flag (FUN_0041f580:96-99), +40/+5 in the recoveries,
-   -500 on a special spend (FUN_00508a60:91); consumed by the melee/shot admission
-   gates, the 390/393 guard exits and the awakened-melee `500 <` threshold. It is
-   NOT the item-data magazine.
+3. **402 / 403/409/469:** weapon-specific air-tap bodies, landing branches, and recovery
+   motion resets are implemented and tested; `+0x20d` is `param_1[0x20d]` = byte **+0x834**,
+   the fighter's special/charge gauge (battle init 1000, +1/tick under armed hyper, -500 on
+   a special spend). Recovery refill is +40 at actor `+0x1fd < 1`, else +5; the port covers
+   +40. `+0x1fd` aliases actor byte `+0x7f4`, which stage setup seeds from `DAT_006cfdc5` and
+   the scene decrements as a replay-delay counter. Whether that nonzero scene counter can
+   overlap a reachable Rena recovery is unresolved; do not relabel it poison or claim the
+   +5 path as implemented until that relationship is established. The `+0x834` field is
+   not the item-data magazine.
 4. ~~Secondary-clock ownership~~ — **resolved 2026-10-12: no divergence exists on the
    recovered attack paths.** All seeks write both clocks together and the phase entry /
    epilogue move both, so the port's single clock is exact here (§4). The remaining
