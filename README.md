@@ -3,6 +3,9 @@
 Decompilation **and** remake of **Higurashi Daybreak** (`DaybreakDX.exe`,
 Twilight Frontier / 07th Expansion).
 
+<img width="2560" height="1395" alt="image" src="https://github.com/user-attachments/assets/64fe73d2-a2a7-4e61-aae6-7d9167c0c874" />
+
+
 ## Two halves
 
 | | `remake/` — the product | `research/` — the evidence |
