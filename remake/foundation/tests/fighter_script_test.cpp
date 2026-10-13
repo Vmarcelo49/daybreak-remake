@@ -614,7 +614,7 @@ void test_target_relative_dashes() {
                                                 target.position().z - beforeReentry.z);
         in.set(fnd::input::Action::Right, true);
         tick(actor, in, &target);
-        check_int((prefix + ": changed dash re-enters on right row").c_str(), 24,
+        check_int((prefix + ": changed dash re-enters on right row").c_str(), 23,
                   actor.dash_move_id());
         check_near((prefix + ": changed dash yaw uses current lock").c_str(), reentryBearing,
                    actor.pose().facingYaw, 1e-5);
@@ -628,12 +628,14 @@ void test_target_relative_dashes() {
     };
 
     // Walk right changes the rendered yaw; each dash still uses the target at a
-    // different bearing. Rena 0's NN.dat rows bind back/left/right clips 27/23/24.
+    // different bearing. Rena 0's NN.dat rows bind back/left/right clips
+    // 27/24/23: Left (history x=-1, command 3) selects row 24 (sets 19/20/21)
+    // and Right (x=+1, command 4) selects row 23 (sets 22/23/24).
     runCase(g_testCombo, "Rena+0 back at +Z", fnd::input::Action::Down, 0.f, 27, true);
     runCase(g_testCombo, "Rena+0 left at +X/2", fnd::input::Action::Left,
-            glm::pi<float>() / 3.f, 23, false);
+            glm::pi<float>() / 3.f, 24, false);
     runCase(g_testCombo, "Rena+0 right at -X", fnd::input::Action::Right,
-            -glm::pi<float>() / 2.f, 24, false);
+            -glm::pi<float>() / 2.f, 23, false);
 
     const auto install = findInstall(nullptr);
     TestCombo mion0;
@@ -3901,8 +3903,11 @@ void test_rena_character_iteration() {
         input.set(direction, true); tick(side, input);
         check_int("side double tap enters dash", int(FighterState::Run), int(side.state()));
         check_bool("side dash uses recovered animation", false, side.anim_fallback());
+        // Row mapping is command-based, not mirrored: Left (x=-1, command 3)
+        // selects row 24 (opens on set 19) and Right (x=+1, command 4) selects
+        // row 23 (opens on set 22).
         check_int("side dash selects the NN directional clip",
-                  direction == fnd::input::Action::Left ? 22 : 19, side.anim_set_index());
+                  direction == fnd::input::Action::Left ? 19 : 22, side.anim_set_index());
     }
     check_int("one red pair over the whole move", 2, pairs);
     check_int("one red voice over the whole move", 1, redVoices);

@@ -238,8 +238,8 @@ Tap admission (short release, primary magazine charged), from the recovered rout
 | idle (0) | 400 | 400 | 400 | ordinary tap |
 | walking (10) | **401** | **401** | 400 | `roster_walk_shot_admission` (Rena branch, 401 gate) |
 | dash 20 | **401** (gate 402) | 401 | 400 | `roster_ground_shot_admission` |
-| dash 23 (left) | **405** | 401 | 400 | idem |
-| dash 24 (right) | **406** | 401 | 400 | idem |
+| dash 23 (right) | **405** | 401 | 400 | idem |
+| dash 24 (left) | **406** | 401 | 400 | idem |
 | dash 27 (back) | **407** | 401 | 400 | idem |
 | air | 402 | 402 | 402 | air tap |
 | air, in dash row 30 phase<2 + direction | **408** | 402 | 402 | `roster_air_dash_fast_shot(0,0,phase)` |
@@ -255,7 +255,7 @@ Execution contracts (mobile/full-charge references, cross-checked with the handl
 | 401 | like 400 @12 | row 6 / 0 @18 (powered = single 0), mobile turn 20→f15, speed 30@f7→0@f15 | → 400 | w1 powered differs from 400 (one request, not two) | **landed**: admission + program rules for w0/w1; w1's powered single request bound; w0 verified to fire exactly one request; 401 is a mobile-shot row, with no melee-contact volume in `FUN_00448220:1722-1776` |
 | 402 | row 1/7 @13, ±30 | 3-phase dive ({12,1,35}, phase 1 HELD), phase2 f5 rows 6 / 0+9, dive arc (vertical −40, speed ≤10) | 2-phase, ph0 clock clamps at 17, landing <15 → 403 else ph1@25, f35 attachment + ring (pitch rand%50+30) | landing → 403/409 | **execution implemented + automated verification** for all three weapons, driven by REAL input (jump → airborne Shoot tap): w0 fires its one row-1 request at frame 13 with the ±30-clamped pitch; w1's phase 1 keeps the closing speed in [0,10] and fires row 6 at phase-2 frame 5; w2 fires one attachment row-0 at phase-1 frame 35 plus the ten-request ring on rows 1/3, each pitch in [30,80) and each draw its own. The landing exits to 403/409 are covered separately |
 | 403/409/469 | recovery: +40 if actor `+0x1fd < 1`, else +5; cap 1000 | idem | idem | air-shot landings | **execution implemented + automated verification** for motion reset and both refill values using a direct slot-6 test seam; natural Rena reachability remains unresolved. Generic projectile-hit writer `FUN_00637950` is implemented for `attackFlags & 0x1000`; scanned shipped Rena DAT contacts lack that bit (bounded negative). Scene-relative `scene+0x7f4` is separate. |
-| 405/406 | like 400 @12/13, movement −90/+90 | — | — | lateral dash shots | **landed**: admission + program rules mirroring 400; verified selecting 405/406 from the left/right dash states |
+| 405/406 | like 400 @12/13, movement rides the committed dash direction | — | — | lateral dash shots (405 from row 23, 406 from row 24) | **landed**: admission + program rules mirroring 400; verified selecting 405/406 from the row-23/row-24 dash states |
 | 407 | @13: rows 4 (yaw+75,pitch30) + 9 (yaw−75) normal; + 13/14 (±85, pitch20) powered | — | — | back dash shot, movement 180 | **execution implemented + automated verification**: the back-dash situation is now driven end-to-end (row-27 dash → tap → 407 → the row-4/row-9 pair at tick 13) |
 | 408 | @12 rows 0/6 (the ground rows, one tick early) | — | — | air-dash fast shot | **execution implemented + automated verification**: the air-dash→408 sequence is driven end-to-end (row-30 dash with a held direction → release → 408 → the single row-0 request at tick 12) |
 | 450/460 | bound (ledger) | bound (model2 prop + 450/460 sweep) | bound | — | bound; the landings reach 469 through the shot-state landing branch |
@@ -296,6 +296,22 @@ They are pinned in the same section. Note for 311: its body calls neither
 `FUN_00434b30` nor `FUN_00434bd0`, so the port correctly carries no `Active` span for
 it — its volume comes from the NN record's own combat flag, and §2's "strike ph2
 f5–7" line for 311 describes that record data, not a body span.
+
+### 3.2 Correction: side-dash input rows were mirrored (2026-10-13)
+
+Gameplay prints showed double-tap Left entering row 23 (set 22, `Anim-102`)
+and Right entering row 24 (set 19, `Anim-105`). The direction history yields
+command 3 for x=-1 (Left) and 4 for x=+1 (Right), and every admission switch
+routes command 3 -> row 24 and command 4 -> row 23 (`FUN_00445ee0:86-95`
+branches `+0x830==3 -> 0x18` / `==4 -> 0x17`, REA function identity
+`ev_bf410cc0` on the SHA-verified executable; donor `rena_dash.hpp:11`,
+`battle_roster_air_dash_admission.hpp:8`, `dash_melee_native_control.hpp:82`).
+So Left must play row 24 (sets 19/20/21) and Right row 23 (sets 22/23/24) —
+the port had them backwards. `Fighter::dash_move_for` now maps Left -> 24 /
+Right -> 23; movement vectors are unchanged (they already followed the
+lock-relative input). Pinned by the directional-dash animation-set checks in
+`melee_rules_test` and the Rena+0 double-tap cases in `fighter_script_test`,
+plus the row-23/405 and row-24/406 tap-shot routing in `melee_admission_test`.
 
 The same audit then covered the other two handlers, and **neither weapon 1 nor weapon 2
 had a single `Active` rule**, so their props never armed at all:

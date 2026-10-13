@@ -386,8 +386,8 @@ int run() {
             {0, 0, 0, true, true, 0, 0, 300, "idle neutral -> 300"},
             {0, 10, 0, true, true, 0, 0, 300, "walk neutral -> 300"},
             {0, 20, 0, true, true, 0, 0, 330, "forward dash -> 330"},
-            {0, 23, 0, true, true, 0, 0, 331, "left dash -> 331"},
-            {0, 24, 0, true, true, 0, 0, 331, "right dash -> 331"},
+            {0, 23, 0, true, true, 0, 0, 331, "row-23 (right) dash -> 331"},
+            {0, 24, 0, true, true, 0, 0, 331, "row-24 (left) dash -> 331"},
             {0, 27, 0, true, true, 0, 0, 300, "back dash neutral -> 300"},
             {0, 0, 0, true, true, 0, -1, 310, "back input -> 310"},
             {0, 0, 0, true, true, 1, 0, 311, "lateral input -> 311"},
@@ -1760,8 +1760,8 @@ int run() {
         checkInt(400, gameplay::rena_tap_shot_state(0, 0, true), "idle tap w0 -> 400");
         checkInt(401, gameplay::rena_tap_shot_state(0, 10, true), "walking tap w0 -> 401");
         checkInt(401, gameplay::rena_tap_shot_state(0, 20, true), "forward-dash tap w0 -> 401");
-        checkInt(405, gameplay::rena_tap_shot_state(0, 23, true), "left-dash tap w0 -> 405");
-        checkInt(406, gameplay::rena_tap_shot_state(0, 24, true), "right-dash tap w0 -> 406");
+        checkInt(405, gameplay::rena_tap_shot_state(0, 23, true), "row-23 (right)-dash tap w0 -> 405");
+        checkInt(406, gameplay::rena_tap_shot_state(0, 24, true), "row-24 (left)-dash tap w0 -> 406");
         checkInt(407, gameplay::rena_tap_shot_state(0, 27, true), "back-dash tap w0 -> 407");
         checkInt(401, gameplay::rena_tap_shot_state(1, 23, true), "dash tap w1 -> 401");
         checkInt(400, gameplay::rena_tap_shot_state(2, 10, true), "walking tap w2 -> 400");
@@ -1922,12 +1922,15 @@ int run() {
                 checkInt(slot == 2 ? 400 : 401, f.shot_move_id(), label);
                 d.settle(700);
 
+                // Side-dash rows are command-mapped (FUN_00445ee0:86-95): Left
+                // double-tap enters row 24 -> shot 406, Right enters row 23 ->
+                // shot 405 for weapon 0.
                 std::snprintf(label, sizeof label, "Rena+%d left-dash tap shot", slot);
                 d.press(input::Action::Left); d.release(input::Action::Left);
                 d.press(input::Action::Left);
                 d.press(input::Action::Shoot);
                 d.release(input::Action::Shoot);
-                checkInt(slot == 0 ? 405 : slot == 1 ? 401 : 400, f.shot_move_id(), label);
+                checkInt(slot == 0 ? 406 : slot == 1 ? 401 : 400, f.shot_move_id(), label);
                 d.settle(700);
 
                 std::snprintf(label, sizeof label, "Rena+%d right-dash tap shot", slot);
@@ -1935,7 +1938,7 @@ int run() {
                 d.press(input::Action::Right);
                 d.press(input::Action::Shoot);
                 d.release(input::Action::Shoot);
-                checkInt(slot == 0 ? 406 : slot == 1 ? 401 : 400, f.shot_move_id(), label);
+                checkInt(slot == 0 ? 405 : slot == 1 ? 401 : 400, f.shot_move_id(), label);
                 d.settle(700);
                 delete &f;
             }

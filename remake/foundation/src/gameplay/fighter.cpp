@@ -1568,10 +1568,16 @@ int Fighter::dash_move_for(input::Action dir) const {
     }
     if (dir == input::Action::Up) return present_move(20);
     if (dir == input::Action::Down) return present_move(27);
-    // FUN_0043ded0 selects side-step families 23/24; NN.dat supplies their clips.
+    // Side-step rows are command-mapped, not screen-mirrored: the direction
+    // history yields command 3 for x=-1 (Left) and 4 for x=+1 (Right), and every
+    // admission switch routes command 3 -> row 24 and command 4 -> row 23
+    // (FUN_00445ee0:86-95 branches +0x830==3 -> 0x18 / ==4 -> 0x17; donor
+    // rena_dash.hpp:11, battle_roster_air_dash_admission.hpp:8,
+    // dash_melee_native_control.hpp:82). NN.dat supplies their clips (Rena0
+    // row 24 opens on set 19, row 23 on set 22).
     // Retain the facing-relative movement policy while playing the equipped clips.
-    if (dir == input::Action::Left) return present_move(23);
-    if (dir == input::Action::Right) return present_move(24);
+    if (dir == input::Action::Left) return present_move(24);
+    if (dir == input::Action::Right) return present_move(23);
     return -1;
 }
 

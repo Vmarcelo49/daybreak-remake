@@ -513,12 +513,16 @@ void testDirectionalDashes(const fs::path& install) {
         skip("directional dash sets (matching item unavailable)");
         return;
     }
+    // Side rows are command-mapped: history x=-1 (Left, command 3) selects row
+    // 24 (sets 19/20/21) and x=+1 (Right, command 4) selects row 23 (sets
+    // 22/23/24), per FUN_00445ee0:86-95 (+0x830==3 -> 0x18, ==4 -> 0x17) and the
+    // donor command switches (rena_dash.hpp:11 et al).
     struct Case { int action; int move; int set; const char* name; };
     const Case cases[] = {
         {input::Action::Up, 20, 13, "forward"},
         {input::Action::Down, 27, 16, "back"},
-        {input::Action::Left, 23, 22, "left"},
-        {input::Action::Right, 24, 19, "right"},
+        {input::Action::Left, 24, 19, "left"},
+        {input::Action::Right, 23, 22, "right"},
     };
     for (const Case& c : cases) {
         xm::Model model;
