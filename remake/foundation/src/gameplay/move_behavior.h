@@ -228,6 +228,9 @@ struct MoveRule {
     // and each iteration draws its own spread, which is what makes the volley a fan.
     int repeats = 1;
     ShotVoiceSpec voice{};
+    // FUN_0042c8b0 takes the actor's own +0x14; FUN_0042c880 has no position.
+    // The source form is explicit per action-body cue rather than assumed from its id.
+    bool soundPositional = false;
 };
 
 // Voice-call timing and gates live in the same rule stream as the move body. The original
@@ -266,10 +269,13 @@ constexpr MoveRule melee_voice_rule(int move, int phase, int first, int last, in
 }
 
 // A gameplay SE request. `id` is the `data/se/%03d.wav` index the body passes to
-// FUN_0042c8b0/0042c880 — a SOUND id, not an entry in data/effect (the effect catalog
-// stops at id 40 while these bodies use 60..77 and 170..172, all present under data/se).
-constexpr MoveRule sound_effect_rule(int move, int phase, int first, int last, int id) {
+// FUN_0042c8b0 (positional, actor +0x14) or FUN_0042c880 (non-positional) — a SOUND
+// id, not an entry in data/effect. The explicit `positional` bit is part of the body
+// call site's contract; equal ids do not imply equal spatial handling.
+constexpr MoveRule sound_effect_rule(int move, int phase, int first, int last, int id,
+                                     bool positional = false) {
     MoveRule rule{move, phase, first, last, MoveOp::SoundEffect, static_cast<float>(id)};
+    rule.soundPositional = positional;
     return rule;
 }
 
@@ -449,6 +455,7 @@ inline constexpr MoveRule kRenaRules[] = {
      ShotOriginSpec{},aim_stored_pitch()},
     {400,0,12,12,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
      ShotOriginSpec{},aim_stored_pitch()},
+    sound_effect_rule(400,0,12,12,70,true),
     // Melee voices and effects (FUN_0043ffc0's tick-guarded call sites, read
     // directly): the ordinary voice ids ride the melee latch; the close-target
     // cascade (voices 0/15/5 at priority 12, FUN_0043ffc0:601-627) reads the
@@ -483,6 +490,8 @@ inline constexpr MoveRule kRenaRules[] = {
                                      ShotVoiceCompare::Equal,1)),
     {402,0,13,13,MoveOp::Launch,1.f,0.f,30.f,kGateNormal},
     {402,0,13,13,MoveOp::Launch,7.f,0.f,30.f,kGatePowered},
+    sound_effect_rule(402,0,13,13,70,true),
+    sound_effect_rule(408,0,12,12,70,true),
     // 402's motion and landing (FUN_0043ffc0 case 0x192, read directly): turn 20
     // toward the target through tick 12 (FUN_0042dc20 — the heading turns while
     // the world motion is preserved; the port's Turn follows the facing, a
@@ -527,6 +536,7 @@ inline constexpr MoveRule kRenaRules[] = {
      ShotOriginSpec{},aim_stored_pitch()},
     {401,0,12,12,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
      ShotOriginSpec{},aim_stored_pitch()},
+    sound_effect_rule(401,0,12,12,70,true),
     {405,0,0,0,MoveOp::Speed,10.f},
     {405,0,11,9999,MoveOp::Decelerate,.5f},
     {405,0,0,9,MoveOp::Turn,15.f},
@@ -539,6 +549,7 @@ inline constexpr MoveRule kRenaRules[] = {
      ShotOriginSpec{},aim_stored_pitch()},
     {405,0,12,12,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
      ShotOriginSpec{},aim_stored_pitch()},
+    sound_effect_rule(405,0,12,12,70,true),
     {406,0,0,0,MoveOp::Speed,10.f},
     {406,0,11,9999,MoveOp::Decelerate,.5f},
     {406,0,0,9,MoveOp::Turn,15.f},
@@ -551,6 +562,7 @@ inline constexpr MoveRule kRenaRules[] = {
      ShotOriginSpec{},aim_stored_pitch()},
     {406,0,12,12,MoveOp::Launch,6.f,0.f,0.f,kGatePowered,0,
      ShotOriginSpec{},aim_stored_pitch()},
+    sound_effect_rule(406,0,12,12,70,true),
     // 407 back dash shot (weapon 0): tick 13 fires the row-4/row-9 pair at FIXED
     // angles — yaw +75/-75 with pitch 30 — and the powered branch widens to
     // rows 13/14 at yaw ±85 with pitch 20 (the mobile state407 body). The body
@@ -599,6 +611,7 @@ inline constexpr MoveRule kRenaRules[] = {
      ShotOriginSpec{},aim_fixed_angles(0.f,45.f)},
     {450,0,13,13,MoveOp::Launch,8.f,0.f,0.f,kGatePowered,0,
      ShotOriginSpec{},aim_fixed_angles(0.f,45.f)},
+    sound_effect_rule(450,0,13,13,60,true),
     // 460 air charge: turn 18 deg through tick 9, launch row 2 at tick 12 (case 0x1cc)
     // normally and row 8 powered, same fixed 45 pitch.
     {460,0,0,9,MoveOp::Turn,18.f},
@@ -624,6 +637,7 @@ inline constexpr MoveRule kRenaRules[] = {
     {360,0,0,9999,MoveOp::Turn,15.f},
     {360,1,0,9999,MoveOp::Turn,15.f},
     voice_rule(360,2,2,2,shot_voice_pair(32,1,2,51)),
+    sound_effect_rule(360,2,2,2,83,true),
     {360,2,2,2,MoveOp::CapturePitch,0.f,40.f,40.f},
     {360,2,2,2,MoveOp::Launch,11.f,0.f,0.f,kGateNone,0,
      origin_actor_relative(-70.f,70.f,70.f),aim_stored_pitch(1.f)},
@@ -639,6 +653,7 @@ inline constexpr MoveRule kRenaRules[] = {
     {370,0,0,9999,MoveOp::Turn,15.f},
     {370,1,0,9999,MoveOp::Turn,15.f},
     voice_rule(370,2,2,2,shot_voice_pair(32,1,2,51)),
+    sound_effect_rule(370,2,2,2,83,true),
     {370,2,2,2,MoveOp::CapturePitch,0.f,40.f,40.f},
     {370,2,2,2,MoveOp::Launch,11.f,0.f,0.f,kGateNone,0,
      origin_actor_relative(-70.f,70.f,70.f),aim_stored_pitch(1.f)},
@@ -695,14 +710,14 @@ inline constexpr MoveRule kRenaRules[] = {
     {350,-1,0,9999,MoveOp::ContactOff},
     melee_voice_rule(350,0,0,0,32,0),
     melee_voice_rule(350,0,56,56,33),
-    sound_effect_rule(350,0,11,11,61),
-    sound_effect_rule(350,0,15,15,61),
-    sound_effect_rule(350,0,19,19,61),
-    sound_effect_rule(350,0,23,23,61),
-    sound_effect_rule(350,0,27,27,61),
-    sound_effect_rule(350,0,31,31,61),
-    sound_effect_rule(350,0,35,35,61),
-    sound_effect_rule(350,0,56,56,61),
+    sound_effect_rule(350,0,11,11,61,true),
+    sound_effect_rule(350,0,15,15,61,true),
+    sound_effect_rule(350,0,19,19,61,true),
+    sound_effect_rule(350,0,23,23,61,true),
+    sound_effect_rule(350,0,27,27,61,true),
+    sound_effect_rule(350,0,31,31,61,true),
+    sound_effect_rule(350,0,35,35,61,true),
+    sound_effect_rule(350,0,56,56,61,true),
     effect_rule(350,0,7,7,320),
     effect_rule(350,0,15,15,320),
     effect_rule(350,0,23,23,320),
@@ -871,6 +886,8 @@ inline constexpr MoveRule kRena1Rules[] = {
      origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
     {400,-1,18,18,MoveOp::Launch,9.f,0.f,0.f,kGatePowered,0,
      origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    sound_effect_rule(400,0,15,15,67,true),
+    sound_effect_rule(400,0,18,18,77,true),
     // 401 walking shot (weapon 1, the mobile state401 body): the same 18-tick
     // shape as the ordinary tap, but the powered branch requests ONE row-0
     // attachment (the ground 400 fires rows 0 then 9) and the rush is 30, not
@@ -885,6 +902,8 @@ inline constexpr MoveRule kRena1Rules[] = {
      origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
     {401,-1,18,18,MoveOp::Launch,0.f,0.f,0.f,kGatePowered,0,
      origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
+    sound_effect_rule(401,-1,15,15,67,true),
+    sound_effect_rule(401,-1,18,18,77,true),
     // FUN_00434a70(0,2)/(1,-1) at the case entry (FUN_00448220:2149-2150): slot 0
     // carries item MODEL 2 and slot 1 is cleared, every tick. The muzzle resolver
     // already used model 2; this is what makes the RENDERED weapon and the ribbon
@@ -901,7 +920,7 @@ inline constexpr MoveRule kRena1Rules[] = {
      origin_attachment_model(0,2),aim_stored_pitch(),{},kSpreadRena1Charge},
     // 450's own tick-15 effect (FUN_00448220 case 0x1c2): FUN_0042c8b0(0x3f) at
     // tick 15 inside the 12..26 sweep window.
-    sound_effect_rule(450,-1,15,15,63),
+    sound_effect_rule(450,-1,15,15,63,true),
     // ---- 402 air tap: the three-phase dive (FUN_00448220 case 0x192, read
     // directly) ----
     // Phase 0 (12 ticks): tick 0 zeroes the speed, the vertical AND the movement
@@ -925,9 +944,9 @@ inline constexpr MoveRule kRena1Rules[] = {
     {402,0,0,9,MoveOp::Turn,20.f},
     {402,0,0,9999,MoveOp::LandPhase,2.f},
     {402,1,0,9999,MoveOp::LandPhase,2.f},
-    sound_effect_rule(402,2,0,0,67),
+    sound_effect_rule(402,2,0,0,67,true),
     voice_rule(402,2,0,0,shot_voice(29)),
-    sound_effect_rule(402,2,5,5,77),
+    sound_effect_rule(402,2,5,5,77,true),
     {402,2,5,5,MoveOp::Launch,6.f,0.f,0.f,kGateNormal,0,
      origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
     {402,2,5,5,MoveOp::Launch,0.f,0.f,0.f,kGatePowered,0,
@@ -962,7 +981,7 @@ inline constexpr MoveRule kRena1Rules[] = {
      origin_attachment_model(0,2),aim_stored_pitch(),{},kSpreadRena1Charge},
     {460,-1,15,29,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
      origin_attachment_model(0,2),aim_stored_pitch(),{},kSpreadRena1Charge},
-    sound_effect_rule(460,-1,15,15,63),
+    sound_effect_rule(460,-1,15,15,63,true),
     {460,0,0,0,MoveOp::Gravity,.5f},
     {460,-1,0,9999,MoveOp::LandExit,469.f},
     // ---- 360/370 second charge (FUN_00448220 cases 0x168/0x172, read
@@ -977,14 +996,14 @@ inline constexpr MoveRule kRena1Rules[] = {
     melee_voice_rule(360,0,0,0,32,3,4,50),
     {360,0,0,9,MoveOp::Turn,18.f},
     {360,0,0,9999,MoveOp::Decelerate,1.5f},
-    sound_effect_rule(360,0,16,16,64),
+    sound_effect_rule(360,0,16,16,64,true),
     {360,0,16,16,MoveOp::Launch,8.f,0.f,0.f,kGateNone,0,
      origin_attachment_slot(0),aim_fixed_angles(0.f,70.f)},
     melee_voice_rule(370,0,0,0,32,3,4,50),
     {370,0,0,9,MoveOp::Turn,18.f},
     {370,0,0,0,MoveOp::ScaleMotion,.5f,0.f},
     {370,0,0,0,MoveOp::Gravity,.5f},
-    sound_effect_rule(370,0,16,16,64),
+    sound_effect_rule(370,0,16,16,64,true),
     {370,0,16,16,MoveOp::Launch,8.f,0.f,0.f,kGateNone,0,
      origin_attachment_slot(0),aim_fixed_angles(0.f,70.f)},
     {370,-1,0,9999,MoveOp::LandExit,469.f},
@@ -994,9 +1013,9 @@ inline constexpr MoveRule kRena1Rules[] = {
     // frame 20 (0x41080000) and 0 at 73; the contact window frames 21..64 (the
     // bodies' FUN_00434b30 span — ContactOff cuts outside it); motion zeroed at
     // entry. No entry voice for this weapon.
-    sound_effect_rule(350,0,25,25,68),
-    sound_effect_rule(350,0,45,45,68),
-    sound_effect_rule(350,0,65,65,68),
+    sound_effect_rule(350,0,25,25,68,true),
+    sound_effect_rule(350,0,45,45,68,true),
+    sound_effect_rule(350,0,65,65,68,true),
     {350,0,0,0,MoveOp::Speed,0.f},
     {350,0,0,7,MoveOp::Turn,25.f},
     {350,0,20,20,MoveOp::Speed,8.5f},
@@ -1163,6 +1182,7 @@ inline constexpr MoveRule kRena2Rules[] = {
      origin_actor_relative(0.f,200.f,30.f),aim_stored_pitch(),{},kSpreadRing,10},
     {400,1,35,35,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
      origin_actor_relative(0.f,200.f,30.f),aim_stored_pitch(),{},kSpreadRing,10},
+    sound_effect_rule(400,1,35,35,170,true),
     // FUN_00438310.c:2254-2307: ground charge at tick40, hand R, pitch +/-40.
     {450,-1,0,24,MoveOp::Turn,18.f},
     {450,-1,0,9999,MoveOp::Decelerate,1.5f},
@@ -1174,6 +1194,7 @@ inline constexpr MoveRule kRena2Rules[] = {
      origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
     {450,-1,40,40,MoveOp::Launch,5.f,0.f,0.f,kGatePowered,0,
      origin_named_bone("Bip01_R_Hand"),aim_stored_pitch()},
+    sound_effect_rule(450,-1,40,40,171,true),
     // ---- 402 air tap (FUN_00438310 case 0x192, read directly) ----
     // Phase 0: the entry 180 offset snap, then turn 10 through tick 9; the speed is
     // RE-ASSERTED at 20 every phase-0 frame (the body's write is not tick-gated) and
@@ -1196,7 +1217,7 @@ inline constexpr MoveRule kRena2Rules[] = {
     {402,0,0,14,MoveOp::LandExit,403.f},
     {402,0,15,17,MoveOp::LandSeek,1.f,25.f},
     {402,1,0,9999,MoveOp::Decelerate,1.f},
-    sound_effect_rule(402,1,35,35,170),
+    sound_effect_rule(402,1,35,35,170,true),
     voice_rule(402,1,35,35,shot_voice(29,30,ShotVoiceMagazine::Primary,
                                      ShotVoiceCompare::Equal,1)),
     {402,1,35,35,MoveOp::Launch,0.f,0.f,0.f,kGateNormal,0,
@@ -1227,7 +1248,7 @@ inline constexpr MoveRule kRena2Rules[] = {
     {460,-1,0,9,MoveOp::Turn,18.f},
     {460,-1,0,0,MoveOp::ScaleMotion,.5f,1.f},
     {460,0,0,0,MoveOp::Gravity,.1f},
-    sound_effect_rule(460,-1,36,36,171),
+    sound_effect_rule(460,-1,36,36,171,true),
     voice_rule(460,-1,36,36,shot_voice(28,30,ShotVoiceMagazine::Secondary,
                                        ShotVoiceCompare::Equal,1)),
     {460,-1,36,36,MoveOp::CapturePitch,0.f,40.f,40.f},
@@ -1252,7 +1273,7 @@ inline constexpr MoveRule kRena2Rules[] = {
     {350,0,42,42,MoveOp::ClockSeek,95.f},
     {350,-1,117,9999,MoveOp::Hide,0.f},
     {350,-1,117,9999,MoveOp::Hide,1.f},
-    sound_effect_rule(350,0,116,116,172),
+    sound_effect_rule(350,0,116,116,172,true),
     {350,0,116,116,MoveOp::CapturePitch,0.f,40.f,40.f},
     {350,0,116,116,MoveOp::Launch,8.f,0.f,0.f,kGateNone,0,
      origin_actor_relative(0.f,150.f,70.f),aim_stored_pitch(1.f)},
@@ -1261,7 +1282,7 @@ inline constexpr MoveRule kRena2Rules[] = {
     {360,0,0,0,MoveOp::Gravity,.05f},
     {360,0,0,41,MoveOp::Turn,15.f},
     {360,0,42,42,MoveOp::ClockSeek,95.f},
-    sound_effect_rule(360,0,116,116,172),
+    sound_effect_rule(360,0,116,116,172,true),
     {360,0,116,116,MoveOp::CapturePitch,0.f,40.f,40.f},
     {360,0,116,116,MoveOp::Launch,8.f,0.f,0.f,kGateNone,0,
      origin_actor_relative(0.f,150.f,70.f),aim_stored_pitch(1.f)},

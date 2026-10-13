@@ -2072,6 +2072,20 @@ struct App::CombatSink final : fnd::audio::CombatAudioSink {
         req.channel = channel;
         return app_.versusAudio.play(handle, bus, req);
     }
+    int play_spatial(const std::string& stem, int channel,
+                     const SpatialRequest& request) override {
+        if (!app_.versusAudioOn) return -1;
+        const fnd::audio::SfxHandle handle = handle_for(stem);
+        if (handle < 0) return -1;
+        fnd::audio::SpatialPlayRequest req;
+        req.channel = channel;
+        req.source = request.source;
+        req.listener = request.listener;
+        req.listenerForward = request.listenerForward;
+        req.rolloffFactor = request.rolloffFactor;
+        req.minDistance = request.minDistance;
+        return app_.versusAudio.play_spatial(handle, req);
+    }
     void stop(int channel) override { app_.versusAudio.stop(channel); }
     void stop_bus(fnd::audio::SfxBus bus) override { app_.versusAudio.stop_bus(bus); }
 
@@ -3472,6 +3486,10 @@ static fnd::audio::CombatFrameView combatFrameView(const gameplay::MatchFrame& f
         view.melee_voice_alternative[i] = f.meleeVoiceAlternative[i];
         view.melee_voice_audited[i] = f.sourceMeleeVoiceAudited[i];
         view.sound_effect_id[i] = f.soundEffectId[i];
+        view.sound_effect_positional[i] = f.soundEffectPositional[i];
+        view.sound_effect_position[i] = {f.soundEffectPosition[i].x,
+                                          f.soundEffectPosition[i].y,
+                                          f.soundEffectPosition[i].z};
         view.shot_fired[i]    = f.shotFired[i];
         view.shot_voice[i] = f.shotVoice[i];
         view.shot_voice_alternative[i] = f.shotVoiceAlternative[i];
@@ -3484,6 +3502,11 @@ static fnd::audio::CombatFrameView combatFrameView(const gameplay::MatchFrame& f
         view.melee_victim[i]  = f.meleeVictim[i];
         view.overkill_hits[i] = f.overkillHits[i];
     }
+    view.listener_position = {f.audioListenerPosition.x, f.audioListenerPosition.y,
+                              f.audioListenerPosition.z};
+    view.listener_forward = {f.audioListenerForward.x, f.audioListenerForward.y,
+                             f.audioListenerForward.z};
+    view.listener_valid = f.audioListenerValid;
     view.shot_hit_count = f.shotHitCount < gameplay::MatchFrame::kMaxShotHits
                               ? f.shotHitCount : gameplay::MatchFrame::kMaxShotHits;
     for (int k = 0; k < view.shot_hit_count; ++k) {
@@ -3906,6 +3929,12 @@ static bool tickMatch(App& app, double dt) {
         }
     }
     if (app.liveDebug.enabled()) app.liveDebug.inputs(app.matchFrame, inputs);
+    // FUN_006358c0's one global listener follows DAT_006cfba4's selected fighter.
+    // The port has per-view cameras; the first human view is the explicit single-listener
+    // adaptation, otherwise use the standalone P1 viewer.
+    const int listenerFighter = app.matchViewCount > 0 && app.matchViews[0].followed >= 0
+                                    ? app.matchViews[0].followed : viewerIndex;
+    app.match.set_primary_listener_fighter(listenerFighter);
     const gameplay::MatchFrame f = app.match.step(inputs, dt);
     if (app.liveDebug.enabled()) app.liveDebug.after_tick(app.matchFrame, app.match, f);
     for (int i = 0; i < app.match.config().fighterCount; ++i)

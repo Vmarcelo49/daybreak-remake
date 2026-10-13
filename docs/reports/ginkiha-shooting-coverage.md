@@ -1,11 +1,14 @@
 # Shooting coverage ledger — all 46 combos
 
-**Rena acceptance remains open.** The required melee producers, the boosted-admission
-chord and the effect request's pose are bound (Rena matrix §1/§2; fx_cards_test for the
-last); the SE's 3D placement and the two visual gates remain. Further Mion expansion is
-deferred. The Rena+2 chase seek was already owned by the C++ chase body; its duplicate
-rule was removed and replaced with behavioral coverage of the executed clock, contact
-window and landing recovery (Rena matrix §7).
+**Rena acceptance remains open; do not expand Mion.** The required melee producers, the
+boosted-admission chord, effect-request pose and positional-SE plumbing are bound (Rena
+matrix §1/§2). `fighter_script_test` pins Rena ground SE IDs, ticks, source forms and call-time
+positions; `combat_audio_test` and `ginkiha_tables_test` cover event routing and rule metadata.
+The SDL spatial mixer is explicitly approximate, so audio live parity is not claimed. The two
+visual gates (320/332 lean sign and Rena+1 model-2 frame) also remain unresolved; see the
+matrix's exact capture limitation. The Rena+2 chase seek was already owned by the C++ chase
+body; its duplicate rule was removed and replaced with behavioral coverage of the executed
+clock, contact window and landing recovery (Rena matrix §7).
 
 Initial snapshot: 2026-10-10. Companion: [blocker plan](ginkiha-blockers-plan.md),
 [architecture decisions](ginkiha-shooting-architecture.md).

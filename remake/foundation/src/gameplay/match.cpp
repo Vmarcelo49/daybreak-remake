@@ -2,6 +2,7 @@
 #include "gameplay/match.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace gameplay {
 
@@ -10,6 +11,7 @@ void Match::reset(const MatchConfig& config, const xm::Model* model[kMatchFighte
                   const xm::Model* tamaMesh, const game::physics::ModelIndex* tamaIndex,
                   const game::physics::MovementCollision* movementCollision) {
     m_config = config;
+    m_primaryListener = 0;
     m_tamaMesh = tamaMesh;
     m_tamaIndex = tamaIndex;
     m_movementCollision = movementCollision;
@@ -234,6 +236,24 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[kMatchFighterCount]
                              dt, m_movementCollision);
     }
 
+    if (m_primaryListener >= 0 && m_primaryListener < m_config.fighterCount) {
+        const Fighter& listener = m_fighters[m_primaryListener];
+        out.audioListenerPosition = listener.position() + glm::vec3(0.f, 150.f, 0.f);
+        // IDirectSound3DListener::SetOrientation at raw VA 0x635c20-0x635c6d gets
+        // front=(FUN_0065d050(yaw),0,FUN_0065d010(yaw)), top=(0,1,0). Both helpers
+        // round 0.1-degree indices, take abs(index) and wrap by 3600 before reading the
+        // sine table (FUN_0065cfa0). Apply that lookup exactly; a plain sin/cos formula
+        // differs for negative yaw because of the source's abs step.
+        const float yawDegrees = glm::degrees(listener.facing_yaw());
+        const auto sourceSine = [](float degrees) {
+            const int index = std::abs(static_cast<int>(std::nearbyint(degrees * 10.f))) % 3600;
+            return std::sin(glm::radians(static_cast<float>(index) * .1f));
+        };
+        out.audioListenerForward = glm::normalize(glm::vec3(
+            sourceSine(yawDegrees), 0.f, sourceSine(yawDegrees - 90.f)));
+        out.audioListenerValid = true;
+    }
+
     // Melee evaluates EVERY hostile in the swing volume, not one chosen opponent: a
     // swing that clips two people should connect with both, and the per-victim hit set
     // stops either from being hit twice by the same swing. Ally exclusion is the filter
@@ -273,6 +293,8 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[kMatchFighterCount]
         out.sourceMeleeVoiceAudited[i] = m_fighters[i].source_melee_voice_audited();
         const auto sound = m_fighters[i].take_sound_effect();
         out.soundEffectId[i] = sound.id;
+        out.soundEffectPositional[i] = sound.positional;
+        out.soundEffectPosition[i] = sound.position;
         const auto effect = m_fighters[i].take_effect();
         out.effectId[i] = effect.id;
         out.effectYaw[i] = effect.yaw;

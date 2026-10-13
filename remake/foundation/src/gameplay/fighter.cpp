@@ -1926,9 +1926,11 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             break;
         }
         case MoveOp::SoundEffect:
-            // FUN_0042c8b0/0042c880's argument: a data/se/%03d.wav id played at the
-            // actor's own position.
-            m_pendingSoundEffect = {static_cast<int>(rule.value)};
+            // FUN_0042c8b0's flag=1 is the positional SE request at actor +0x14;
+            // FUN_0042c880's flag=0 has no position. Capture the source where the body
+            // makes the call, before Fighter::update integrates this tick's movement.
+            m_pendingSoundEffect = {static_cast<int>(rule.value), rule.soundPositional,
+                                    m_position};
             break;
         case MoveOp::Effect:
             // The actor's effect request (`(*actor+0xc)` -> FUN_00421aa0 ->

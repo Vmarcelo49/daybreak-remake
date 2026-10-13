@@ -11,6 +11,9 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
+#include <cmath>
+
 #include "audio/audio_sdl3.h"
 
 // Single-header OGG Vorbis decoder, public domain. The implementation lives
@@ -39,13 +42,58 @@ SfxBus bus_of_channel(int ch) {
     if (is_voice_channel(ch)) return SfxBus::Voice;
     return SfxBus::Sfx;
 }
+
 }  // namespace
+
+SpatialMix spatial_mix(const SpatialPlayRequest& request) {
+    const AudioPoint3 delta{request.source.x - request.listener.x,
+                            request.source.y - request.listener.y,
+                            request.source.z - request.listener.z};
+    const float distance = std::sqrt(delta.x*delta.x + delta.y*delta.y + delta.z*delta.z);
+    const float safeMin = std::max(0.001f, request.minDistance);
+    // DirectSound documents full volume at minimum distance, half at 2x minimum for
+    // rolloff 1, and no attenuation at rolloff 0. This port approximates the API curve with
+    // (min/distance)^rolloff; the exact legacy DSP is platform-owned. DistanceFactor is
+    // omitted here because Microsoft specifies it for units/Doppler, not distance rolloff.
+    const float distanceRatio = std::max(1.f, distance / safeMin);
+    const float attenuation = std::pow(1.f / distanceRatio,
+                                       std::max(0.f, request.rolloffFactor));
+    const float fwdLength = std::sqrt(request.listenerForward.x*request.listenerForward.x +
+                                      request.listenerForward.y*request.listenerForward.y +
+                                      request.listenerForward.z*request.listenerForward.z);
+    const AudioPoint3 forward = fwdLength > 0.001f
+        ? AudioPoint3{request.listenerForward.x/fwdLength, request.listenerForward.y/fwdLength,
+                      request.listenerForward.z/fwdLength}
+        : AudioPoint3{0.f,0.f,1.f};
+    // right = world-up × listener-forward
+    const AudioPoint3 right{forward.z, 0.f, -forward.x};
+    const AudioPoint3 direction = distance > 0.001f
+        ? AudioPoint3{delta.x/distance,delta.y/distance,delta.z/distance} : forward;
+    const float pan = std::clamp(direction.x*right.x + direction.y*right.y +
+                                 direction.z*right.z, -1.f, 1.f);
+    // DirectSound 3D sources are spatial point emitters. The bank stores interleaved
+    // stereo for SDL, so use an equal-power mono fold before applying the point pan.
+    return {attenuation * std::sqrt(std::max(0.f, 0.5f * (1.f - pan))),
+            attenuation * std::sqrt(std::max(0.f, 0.5f * (1.f + pan)))};
+}
+
+void spatialize_s16(const int16_t* input, size_t frames, const SpatialMix& mix,
+                    std::vector<int16_t>& output) {
+    output.resize(frames * 2);
+    for (size_t i = 0; i < frames; ++i) {
+        const float mono = (static_cast<float>(input[i * 2]) +
+                            static_cast<float>(input[i * 2 + 1])) * 0.5f;
+        output[i * 2] = float_to_s16((mono * mix.left) / 32768.f);
+        output[i * 2 + 1] = float_to_s16((mono * mix.right) / 32768.f);
+    }
+}
 
 struct Sdl3Engine::Impl {
     SDL_AudioDeviceID dev = 0;
     SDL_AudioStream* music = nullptr;
     SDL_AudioStream* slot[kMaxSfxChannels] = {};
     bool slot_busy[kMaxSfxChannels] = {};
+    std::vector<int16_t> spatialScratch[kMaxSfxChannels];
     std::vector<std::vector<int16_t>> bank;
     std::vector<int> free_handles;
     float music_gain = 1.0f;
@@ -228,35 +276,54 @@ void Sdl3Engine::clear_bank() {
     im.free_handles.clear();
 }
 
+int Sdl3Engine::claim_channel(SfxBus bus, int requested) {
+    Impl& im = *impl_;
+    if (requested < 0) {
+        int first = 0, last = -1;
+        if (!bus_range(bus, first, last)) return -1;
+        for (int c = first; c <= last; ++c) {
+            // A drained SDL stream releases its slot lazily, without stealing a live cue.
+            if (im.slot_busy[c] && SDL_GetAudioStreamQueued(im.slot[c]) == 0)
+                im.slot_busy[c] = false;
+            if (!im.slot_busy[c]) return c;
+        }
+        return -1;  // backpressure, never steal
+    }
+    if (requested >= kMaxSfxChannels || im.slot_busy[requested]) return -1;
+    return requested;
+}
+
 int Sdl3Engine::play(SfxHandle h, SfxBus bus, const PlayRequest& req) {
     bool ready = !gate_ || gate_->ready();
-    if (!sdl3::may_push(ready)) return -1;  // gated: drop, never queue
+    if (!sdl3::may_push(ready)) return -1;
     if (!is_open()) return -1;
     Impl& im = *impl_;
     if (h < 0 || static_cast<size_t>(h) >= im.bank.size() || im.bank[static_cast<size_t>(h)].empty())
         return -1;
-    int ch = req.channel;
-    if (ch < 0) {
-        int first = 0, last = -1;
-        if (!bus_range(bus, first, last)) return -1;
-        ch = -1;
-        for (int c = first; c <= last; ++c) {
-            // Lazy reclaim: a slot whose stream drained is free without the
-            // caller polling. Queued==0 right after put is impossible here
-            // because put precedes any drain, so this cannot free a live play.
-            if (im.slot_busy[c] && SDL_GetAudioStreamQueued(im.slot[c]) == 0)
-                im.slot_busy[c] = false;
-            if (!im.slot_busy[c]) {
-                ch = c;
-                break;
-            }
-        }
-        if (ch < 0) return -1;  // bus full: backpressure, never steal
-    } else {
-        if (ch < 0 || ch >= kMaxSfxChannels || im.slot_busy[ch]) return -1;
-    }
+    const int ch = claim_channel(bus, req.channel);
+    if (ch < 0) return -1;
     const std::vector<int16_t>& buf = im.bank[static_cast<size_t>(h)];
     if (!SDL_PutAudioStreamData(im.slot[ch], buf.data(), static_cast<int>(buf.size() * sizeof(int16_t))))
+        return -1;
+    im.slot_busy[ch] = true;
+    return ch;
+}
+
+int Sdl3Engine::play_spatial(SfxHandle h, const SpatialPlayRequest& req) {
+    bool ready = !gate_ || gate_->ready();
+    if (!sdl3::may_push(ready)) return -1;
+    if (!is_open()) return -1;
+    Impl& im = *impl_;
+    if (h < 0 || static_cast<size_t>(h) >= im.bank.size() || im.bank[static_cast<size_t>(h)].empty())
+        return -1;
+    const int ch = claim_channel(SfxBus::Sfx, req.channel);
+    if (ch < 0) return -1;
+    const std::vector<int16_t>& input = im.bank[static_cast<size_t>(h)];
+    const SpatialMix mix = spatial_mix(req);
+    spatialize_s16(input.data(), input.size() / 2, mix, im.spatialScratch[ch]);
+    const auto& buffer = im.spatialScratch[ch];
+    if (!SDL_PutAudioStreamData(im.slot[ch], buffer.data(),
+                                static_cast<int>(buffer.size() * sizeof(int16_t))))
         return -1;
     im.slot_busy[ch] = true;
     return ch;

@@ -663,8 +663,16 @@ public:
     // the other's ids.
     struct MeleeVoiceCue { int event = -1; int alternative = -1; };
     MeleeVoiceCue take_melee_voice() { auto cue = m_meleeVoice; m_meleeVoice = {}; return cue; }
-    struct SoundEffectCue { int id = -1; };
-    SoundEffectCue take_sound_effect() { auto cue = m_pendingSoundEffect; m_pendingSoundEffect = {}; return cue; }
+    struct SoundEffectCue {
+        int id = -1;
+        bool positional = false;
+        glm::vec3 position{0.f};
+    };
+    SoundEffectCue take_sound_effect() {
+        auto cue = m_pendingSoundEffect;
+        m_pendingSoundEffect = {};
+        return cue;
+    }
     // The pose the body passed: heading is added to the actor's own, pitch is absolute.
     struct EffectCue { int id = -1; float yaw = 0.f; float pitch = 0.f; };
     EffectCue take_effect() { auto cue = m_pendingEffect; m_pendingEffect = {}; return cue; }

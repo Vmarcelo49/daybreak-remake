@@ -3689,6 +3689,13 @@ void test_rena_character_iteration() {
             }
             std::vector<gameplay::PendingShot> shots;
             std::vector<int> ticks;
+            struct SoundObservation {
+                gameplay::Fighter::SoundEffectCue cue;
+                int phase = -1;
+                int tick = -1;
+                glm::vec3 expectedPosition{0.f};
+            };
+            std::vector<SoundObservation> soundObservations;
             for (int update = 0; update < 150; ++update) {
                 const int elapsed = fighter.phase_elapsed();
                 std::vector<glm::mat4> pose;
@@ -3711,7 +3718,11 @@ void test_rena_character_iteration() {
                     pose[combo.model.findFrame("Bip01_R_Hand")][3]));
                 const auto ringOrigin = position + glm::vec3(
                     200.f * std::sin(facing), 30.f, 200.f * std::cos(facing));
+                const int phase = fighter.move_phase();
                 tick(fighter, input, aimTarget);
+                const auto sound = fighter.take_sound_effect();
+                if (sound.id >= 0)
+                    soundObservations.push_back({sound, phase, elapsed, position});
                 const auto voice = fighter.take_shooting_voice();
                 if (slot == 0 && voice.event >= 0)
                     check_int("Rena source shooting voice", charged ? 28 : 27, voice.event);
@@ -3730,6 +3741,25 @@ void test_rena_character_iteration() {
             const int expectedCount = slot == 0 ? 1 : slot == 1
                 ? (charged ? 15 : powered ? 2 : 1) : (charged ? 1 : 11);
             check_int("whole ground attack request count", expectedCount, shots.size());
+            std::vector<std::pair<int,int>> expectedSe;
+            if (slot == 0) expectedSe.push_back({charged ? 60 : 70, charged ? 13 : 12});
+            else if (slot == 1) {
+                if (charged) expectedSe.push_back({63,15});
+                else { expectedSe.push_back({67,15}); expectedSe.push_back({77,18}); }
+            } else expectedSe.push_back({charged ? 171 : 170, charged ? 40 : 35});
+            check_int("source positional SE request count", expectedSe.size(),
+                      soundObservations.size());
+            if (soundObservations.size() == expectedSe.size()) {
+                for (std::size_t i = 0; i < expectedSe.size(); ++i) {
+                    const auto& observation = soundObservations[i];
+                    check_int("source positional SE id", expectedSe[i].first, observation.cue.id);
+                    check_bool("source positional SE form", true, observation.cue.positional);
+                    check_int("source positional SE tick", expectedSe[i].second, observation.tick);
+                    check_near("SE captures actor position at body call", 0.f,
+                               glm::distance(observation.expectedPosition, observation.cue.position),
+                               1e-5);
+                }
+            }
             if (shots.size() != static_cast<std::size_t>(expectedCount)) continue;
             for (std::size_t index = 0; index < shots.size(); ++index) {
                 const auto& shot = shots[index];

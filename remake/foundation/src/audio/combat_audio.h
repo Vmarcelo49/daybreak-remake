@@ -114,6 +114,13 @@ struct CombatEvent {
     // The `data/se/%03d.wav` id an action body requested (FUN_0042c8b0's positional form
     // and FUN_0042c880's non-positional one both pass it here).
     int se_override = -1;
+    // The positional form supplies actor +0x14 to FUN_0065a260; the non-positional
+    // form (0042c880) has no source position. This is not part of event identity.
+    bool se_positional = false;
+    AudioPoint3 se_position{};
+    AudioPoint3 se_listener_position{};
+    AudioPoint3 se_listener_forward{0.f, 0.f, 1.f};
+    bool se_listener_valid = false;
     bool source_voice_audited = false;  // suppress Fire fallback when a bound body is silent
     // Stable identity: tick + kind + the two fighters + the per-tick sequence. Two
     // simulations of the same ticks derive identical ids, and no id repeats within a match,
@@ -144,10 +151,14 @@ struct CombatFrameView {
     int melee_voice[4] = {-1, -1, -1, -1};
     int melee_voice_alternative[4] = {-1, -1, -1, -1};
     bool melee_voice_audited[4] = {};
-    // The action body's SE request: a data/se id, -1 when silent. The cues that came from
-    // the unidentified actor vtable call are NOT SEs (their ids are absent from data/se)
-    // and are deliberately not published here; that consumer is still open.
+    // The action body's SE request: a data/se id, -1 when silent. The source-position
+    // form calls FUN_0042c8b0 and uses fighter +0x14; FUN_0042c880 is non-positional.
     int sound_effect_id[4] = {-1, -1, -1, -1};
+    bool sound_effect_positional[4] = {};
+    AudioPoint3 sound_effect_position[4] = {};
+    AudioPoint3 listener_position{};
+    AudioPoint3 listener_forward{0.f, 0.f, 1.f};
+    bool listener_valid = false;
     bool shot_fired[4] = {};
     int shot_voice[4] = {-1, -1, -1, -1};
     int shot_voice_alternative[4] = {-1, -1, -1, -1};
@@ -195,6 +206,11 @@ struct CombatCue {
     VoiceEvent voice = VoiceEvent::AttackA;
     bool       voice_b_dir = false;  // use the <event>_B directory
     int        se_id = -1;           // -1 = no evidenced SE for this event (see the header)
+    bool       se_positional = false;
+    AudioPoint3 se_position{};
+    AudioPoint3 se_listener_position{};
+    AudioPoint3 se_listener_forward{0.f, 0.f, 1.f};
+    bool       se_listener_valid = false;
     bool has_se() const { return se_id >= 0; }
 };
 CombatCue resolve_combat_event(const CombatEvent& e);
@@ -210,8 +226,20 @@ std::string voice_asset_stem(const std::string& dir, VoiceEvent e, bool b_dir, i
 // (or -1 when the sample is missing or the bus is full, which is backpressure, not an error).
 class CombatAudioSink {
 public:
+    struct SpatialRequest {
+        AudioPoint3 source{};
+        AudioPoint3 listener{};
+        AudioPoint3 listenerForward{0.f, 0.f, 1.f};
+        float rolloffFactor = 0.0005f;  // FUN_00648ad0/006492f0 battle-stage SetRolloffFactor
+        float minDistance = 3.f;        // FUN_006676d0 SetMinDistance, DS3D default init
+    };
     virtual ~CombatAudioSink() = default;
     virtual int play(const std::string& asset_stem, SfxBus bus, int channel) = 0;
+    virtual int play_spatial(const std::string& asset_stem, int channel,
+                             const SpatialRequest& request) {
+        (void)request;
+        return play(asset_stem, SfxBus::Sfx, channel);
+    }
     virtual void stop(int channel) = 0;
     // Stop one whole bus. end_match() uses it so leaving a battle cannot leave a combat cue
     // ringing (issue #15's rule 6); it is also the seam #15 offered to use for its own
@@ -296,7 +324,7 @@ private:
     bool seen(uint64_t id) const;
     void remember(uint64_t id);
     void play_voice(const CombatEvent& e, const CombatCue& cue);
-    void play_se(const CombatEvent& e, const CombatCue& cue);
+    void play_se(const CombatCue& cue);
 };
 
 }  // namespace fnd::audio

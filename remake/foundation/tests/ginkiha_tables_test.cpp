@@ -38,6 +38,28 @@ const ginkiha::BirthProfile* findBirth(int character, int weapon, int slot) {
     return nullptr;
 }
 
+bool hasRenaSound(int weapon, int move, int phase, int tick, int id, bool positional) {
+    const gameplay::MoveRule* rules = nullptr;
+    size_t count = 0;
+    if (weapon == 0) {
+        rules = gameplay::kRenaRules;
+        count = sizeof(gameplay::kRenaRules) / sizeof(gameplay::kRenaRules[0]);
+    } else if (weapon == 1) {
+        rules = gameplay::kRena1Rules;
+        count = sizeof(gameplay::kRena1Rules) / sizeof(gameplay::kRena1Rules[0]);
+    } else {
+        rules = gameplay::kRena2Rules;
+        count = sizeof(gameplay::kRena2Rules) / sizeof(gameplay::kRena2Rules[0]);
+    }
+    for (size_t i = 0; i < count; ++i) {
+        const auto& r = rules[i];
+        if (r.operation == gameplay::MoveOp::SoundEffect && r.move == move &&
+            r.phase == phase && r.first == tick && r.value == static_cast<float>(id) &&
+            r.soundPositional == positional) return true;
+    }
+    return false;
+}
+
 unsigned int walkVa(int character, int weapon) {
     for (int i = 0; i < ginkiha::kWalkHandlerCount; ++i) {
         if (ginkiha::kWalkHandler[i].character == character &&
@@ -85,6 +107,19 @@ int traceOriginEvents(int character, int weapon, int variant, bool tag, char ori
 }  // namespace
 
 int main() {
+    // Rena source-form SE cues: FUN_0042c8b0 is positional, FUN_0042c880 is not.
+    check(hasRenaSound(0,400,0,12,70,true), "Rena+0 400 positional SE 70 at tick 12");
+    check(hasRenaSound(0,300,2,0,60,false), "Rena+0 300 non-positional SE 60");
+    check(hasRenaSound(0,402,0,13,70,true), "Rena+0 402 positional SE 70 at tick 13");
+    check(hasRenaSound(0,360,2,2,83,true), "Rena+0 360 positional SE 83 at tick 2");
+    check(hasRenaSound(0,370,2,2,83,true), "Rena+0 370 positional SE 83 at tick 2");
+    check(hasRenaSound(1,340,0,12,67,false), "Rena+1 340 non-positional SE 67");
+    check(hasRenaSound(1,400,0,15,67,true), "Rena+1 400 positional SE 67 at tick 15");
+    check(hasRenaSound(1,400,0,18,77,true), "Rena+1 400 positional SE 77 at tick 18");
+    check(hasRenaSound(1,350,0,25,68,true), "Rena+1 350 positional SE 68");
+    check(hasRenaSound(2,400,1,35,170,true), "Rena+2 400 positional SE 170");
+    check(hasRenaSound(2,450,-1,40,171,true), "Rena+2 450 positional SE 171");
+
     // 1. Shape: the importer emitted the whole cross product it claims.
     check(ginkiha::kBirthProfileCount == 591, "591 birth profiles");
     check(ginkiha::kWalkHandlerCount == 46, "46 walk handlers");

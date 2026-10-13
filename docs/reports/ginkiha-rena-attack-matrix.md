@@ -74,8 +74,10 @@ carries one at a time:
 "Implemented" never silently means "verified"; "verified" never silently means
 "live-equal". The boosted/special-gauge admission is implemented for weapons 0/1
 (§1 conventions) and its chord is the source's own two-latch one, not a single press
-(§1). The two visual gates and the SE's spatial placement are the only paths this
-matrix still owes evidence for, and both blockers are stated where the path is.
+(§1). The positional-SE request, listener pose and SDL playback path are now implemented
+and covered by automated tests; the remaining source-parity gap is DirectSound's exact
+spatial DSP versus the port's documented approximation. The two visual gates remain
+unavailable in this environment.
 
 ## 1. Melee admission (input → move), all three weapons
 
@@ -182,16 +184,22 @@ distinct call paths were separated, and conflating them had been the earlier mis
   `+0x7d8` only ever disjuncts the unreachable arm, and the battle-offset yaw `+0x19`
   the cascade's gate also reads is not carried by this port, so the gate is distance
   alone. `melee_admission_test` drives a real 1v1 Match for both directions.
-* **SE** — FUN_0042c8b0(id, actor) is the positional request:
-  `FUN_0064b060(id, actor+0x14, 1)` carries the ACTOR'S OWN POSITION (+0x14), and
-  FUN_0064ae70 → FUN_0065a260 → FUN_006677f0 hands that triple to the audio object's
-  setter, which performs the 3D placement. The whole chain is therefore recovered; what
-  is NOT is the port's side of it — the port's `CombatAudioSink::play` takes a stem, bus
-  and channel only, and `Sdl3Engine` mixes 32 SDL streams with per-bus gains and no
-  listener, so there is nothing to place against. The placement also needs the LISTENER
-  (which camera, in up to four split-screen views) and the attenuation curve, neither of
-  which is recovered. So the SE plays centrally — dispatched, correct id, correct bus —
-  and its spatial placement stays a recorded gap rather than an invented pan curve.
+* **SE** — positional `FUN_0042c8b0(id, actor)` carries actor `+0x14` through
+  `FUN_0064b060` → `FUN_0064ae70` → `FUN_0065a260`; the raw caller makes the source-position
+  `SetPosition` call on `IDirectSound3DBuffer` (+0x4c), deferred. The listener path is now
+  source-backed too: per-frame `FUN_006358c0` / `FUN_0063dad0` set `IDirectSound3DListener`
+  position to the selected actor's XYZ with **+150 Y**, set orientation from the yaw sine
+  table, then commit deferred settings; the raw call is at `DaybreakDX.exe` VA 0x635c20–0x635c6d.
+  `FUN_00633ca0` initializes distance factor .01 / rolloff .0002, and battle-stage setup
+  (`FUN_00648ad0` / `FUN_006492f0`) sets distance factor .01 / rolloff .0005. New 3D SE
+  buffers set min distance 3.0 (`FUN_006676d0`); no call to the exposed min/max setter
+  `FUN_00667820` was found, so max distance remains the DirectSound default. The C++ event
+  captures positional/non-positional body form, source coordinates, the primary-view listener
+  pose and yaw-derived orientation; the SDL path applies per-event stereo panning and
+  attenuation. **Port rule:** one listener in split screen uses the primary view; the original's alternate special-control actor branch is not modeled. **Audio
+  parity remains open:** DirectSound owns the exact spatial-mix law; SDL uses an explicitly
+  approximate equal-power pan/rolloff implementation, so source placement is executed and
+  tested but not live-equal.
 * **effect** — `(*actor+0xc)(id,x,y,z,heading,pitch)` is the actor-side effect request
   (FUN_00421aa0 → FUN_00435990 → the effect manager's create with that pose). The id
   indexes data/effect by `id / 10` (FUN_0042eba0's 100 slots), so the 350 beats'
@@ -431,30 +439,39 @@ witness is falsifiable — removing it makes the new assertion fail.
 5. **Visible weapon:** ~~Rena+1's model-2 prop~~ — landed 2026-10-12
    (`draws_item_model`, §4). Remaining: the actual model-2 mesh in a live frame is still
    a capture/live-parity question, and other combos' slot→model bindings are not audited.
-6. ~~**Voices, SEs and effects**~~ — the melee voice cues, the FUN_0042c8b0/0042c880 SEs
-   and the actor effect requests are produced and consumed (the last at the actor's
-   position AND pose, ids resolving through data/effect's `id / 10`), pinned by
-   `combat_audio_test`, `melee_admission_test` and `fx_cards_test`. The close-target
-   voice cascade is BOUND (§2: its two unreachable arms and its two unmodelled producer
-   terms are recorded there). Still open: the SE's 3D placement, whose chain is fully
-   traced but whose port side needs a listener and an attenuation curve that are not
-   recovered (§2) — the cue plays centrally with the correct id and bus.
+6. ~~**Voices, SEs and effects**~~ — the melee voice cues, FUN_0042c8b0/0042c880 SEs
+   and actor effect requests are produced and consumed (the latter at actor position and
+   pose), pinned by `combat_audio_test`, `melee_admission_test`, `ginkiha_tables_test` and
+   `fx_cards_test`. `fighter_script_test` now drives each Rena ground tap/charge and pins
+   its SE id, source form, tick and call-time actor position. Positional SEs also carry
+   listener state through the event queue; `combat_audio_test` pins source/listener
+   propagation, pan/attenuation math and queued SDL playback. The close-target voice cascade
+   is BOUND (§2: its unreachable arms and unmodelled producer terms remain recorded there).
+   Exact DirectSound live audio parity is not claimed.
 7. Then Mion+0/+1/+2 with the same matrix discipline.
 
-## 7. Group acceptance decision — reopened
+## 7. Group acceptance decision
 
-**Correction:** the acceptance statement below was premature and is superseded.
-Recording gaps does not satisfy the owner's requirement to finish Rena before Mion, so
-the group stays open with Mion deferred. Since this section reopened, the two items it
-named as blocking are now BOUND with their limits recorded rather than treated as
-caveats: the boosted 350 admission's two-latch chord (FUN_00445ee0:117-118) and the
-close-target voice cascade's producer (§2), each with an input- or Match-driven
-witness, and the effect request's pose now flows through the queue and composes with
-the recovered FUN_00436150 convention (fx_cards_test, plus a scripted 350 capture).
-What stays open is narrower: the SE's 3D placement and the two visual gates.
-Selection, execution and automated verification are still reported per tested path;
-there is no group-wide completion or live-parity claim.
+The boosted 350 admission's two-latch chord (`FUN_00445ee0:117-118`) and the close-target
+voice cascade's producer (§2) are bound, with input- or Match-driven witnesses. The effect
+request's pose flows through the queue and composes with the recovered `FUN_00436150`
+convention (`fx_cards_test` plus a scripted 350 capture). The cascade's arms were also
+reduced by reading: addattack needs a reaction state that `can_act` refuses and backattack
+is outranked by intercept inside every bound row, so intercept-vs-ordinary is the reachable
+pair.
 
+**Current acceptance state: Rena remains in progress; do not advance to Mion.** The
+source-positioned SE path now carries source coordinates, the recovered single-listener
+pose, and source-form metadata through the event queue. The SDL backend implements an
+explicitly approximate pan/attenuation path; focused tests cover metadata, pan direction,
+attenuation endpoints, dispatch routing, and queued playback. This is **execution
+implemented + automated verification**, not **live parity**: the original delegates 3D
+mixing to DirectSound, while SDL uses a documented port approximation.
+
+The two visual gates remain unresolved and prevent group acceptance: (1) the 320/332 lean
+sign and (2) the Rena+1 model-2 frame have no comparable original capture in this
+environment (§ status vocabulary's exact limitation). No path in this matrix has **live
+parity**. The acceptance list is therefore not closed, and Mion remains deferred.
 The Rena+2 320 seek was already implemented in `Fighter::advance_rena_chase` through
 `ChasePolicy::skipAttackFrames` before the later duplicate `ClockSeek` rule was added.
 The claim that the seek had been absent (and gravity nine ticks late) is withdrawn.
@@ -463,7 +480,9 @@ The redundant rule has been removed. A real-input behavioral regression now obse
 32..39, and landing recovery 329 without forcing phases. This verifies execution,
 not merely the presence of a rule. The contact-window and ribbon fixes remain valid.
 
-### Historical acceptance statement (superseded)
+### Historical acceptance statements (superseded)
+
+**The 2026-10-12 "reopened" statement (historical; superseded by the current decision above).**
 
 The three required categories the review named are resolved for Rena+0/+1/+2: **clocks**
 (the two actor clocks never diverge on a recovered path, §4), **props** (the slot→item-model
@@ -476,11 +495,10 @@ verification therefore hold for the paths this matrix lists, with real-input wit
 the admission, the air taps, the dive/ring, the ribbon windows, the boosted 350 and the
 guard exit.
 
-**Live parity is still held by no path**, and the two remaining items are recorded with
-their exact blockers rather than waived: the two visual gates (lean sign render, model-2
-frame) have no comparable original reference in this environment (§ status vocabulary's
-exact limitation), and the SE's 3D placement needs a listener and an attenuation curve
-that are not recovered (§2). Neither is a selection/execution/automated-verification
-claim, and neither is folded into the labels above. The cascade, the chord and the effect
-pose that this section used to list as caveats are all bound now — the sentence above
-supersedes that list.
+**Live parity is still held by no path.** The two visual gates (lean sign render, model-2
+frame) lack comparable original reference frames in this environment (§ status vocabulary's
+exact limitation). The spatial-SE implementation has automated evidence, but the SDL mix is
+an approximation to DirectSound's platform-owned 3D DSP; no live original audio comparison
+is claimed (§2). Thus spatial SEs can carry **execution implemented + automated
+verification**, while **live parity** remains open. The cascade, chord and effect pose that
+older statements listed as caveats are bound now; the current decision above governs.

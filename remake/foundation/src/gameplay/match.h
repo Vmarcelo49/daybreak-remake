@@ -78,6 +78,12 @@ struct MatchConfig {
 
 // What one frame did, for the trace, the flow and the effect queue.
 struct MatchFrame {
+    // FUN_006358c0/FUN_0063dad0 set one scene-wide DirectSound listener to the selected
+    // actor's XYZ +150Y. Split-screen therefore uses the primary human view as the port's
+    // explicit single-listener rule; these fields feed positional gameplay SEs.
+    glm::vec3 audioListenerPosition{0.f};
+    glm::vec3 audioListenerForward{0.f, 0.f, 1.f};
+    bool audioListenerValid = false;
     bool koSting       = false;  // economy: KO sting window is running
     bool respawned[kMatchFighterCount] = {false, false, false, false};
     bool roundOver     = false;
@@ -117,6 +123,8 @@ struct MatchFrame {
     int meleeVoice[kMatchFighterCount] = {-1, -1, -1, -1};
     int meleeVoiceAlternative[kMatchFighterCount] = {-1, -1, -1, -1};
     int soundEffectId[kMatchFighterCount] = {-1, -1, -1, -1};
+    bool soundEffectPositional[kMatchFighterCount] = {};
+    glm::vec3 soundEffectPosition[kMatchFighterCount] = {};
     int effectId[kMatchFighterCount] = {-1, -1, -1, -1};
     float effectYaw[kMatchFighterCount] = {};
     float effectPitch[kMatchFighterCount] = {};
@@ -219,7 +227,10 @@ public:
     int  melee_target(int fighter) const;
     // The same selected-or-fallback aim that supplies locomotion's input bearing
     // (FUN_0041f580:216-241); body yaw may turn independently of this target.
-    int aim_target(int fighter) const;
+    int  aim_target(int fighter) const;
+    void set_primary_listener_fighter(int fighter) {
+        if (fighter >= 0 && fighter < m_config.fighterCount) m_primaryListener = fighter;
+    }
     // The close-target voice cascade's three latches (+0xaec3/+0xaebe/+0xaeb9) for one
     // fighter, as the per-frame update computes them (FUN_0042e110:30-72) — so from the
     // PREVIOUS tick's state. Private use: Match fills the shooting context from this
@@ -279,6 +290,7 @@ private:
     SimulationRng      m_rng;
     TargetLocks        m_locks;
     MatchConfig        m_config;
+    int                m_primaryListener = 0;
     const xm::Model*   m_tamaMesh = nullptr;
     const game::physics::ModelIndex* m_tamaIndex = nullptr;
     const game::physics::MovementCollision* m_movementCollision = nullptr;

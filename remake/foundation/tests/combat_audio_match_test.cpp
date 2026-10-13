@@ -4,6 +4,7 @@
 // asset-backed tests; the device-free coverage lives in combat_audio_test.
 #include <cstdio>
 #include <cstring>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -122,6 +123,14 @@ CombatFrameView viewOf(const gameplay::MatchFrame& f) {
     CombatFrameView v;
     for (int i = 0; i < 4; ++i) {
         v.swing_started[i] = f.swingStarted[i];
+        v.melee_voice[i] = f.meleeVoice[i];
+        v.melee_voice_alternative[i] = f.meleeVoiceAlternative[i];
+        v.melee_voice_audited[i] = f.sourceMeleeVoiceAudited[i];
+        v.sound_effect_id[i] = f.soundEffectId[i];
+        v.sound_effect_positional[i] = f.soundEffectPositional[i];
+        v.sound_effect_position[i] = {f.soundEffectPosition[i].x,
+                                       f.soundEffectPosition[i].y,
+                                       f.soundEffectPosition[i].z};
         v.shot_fired[i]    = f.shotFired[i];
         v.shot_voice[i] = f.shotVoice[i];
         v.shot_voice_alternative[i] = f.shotVoiceAlternative[i];
@@ -134,6 +143,11 @@ CombatFrameView viewOf(const gameplay::MatchFrame& f) {
         v.melee_victim[i]  = f.meleeVictim[i];
         v.overkill_hits[i] = f.overkillHits[i];
     }
+    v.listener_position = {f.audioListenerPosition.x, f.audioListenerPosition.y,
+                           f.audioListenerPosition.z};
+    v.listener_forward = {f.audioListenerForward.x, f.audioListenerForward.y,
+                          f.audioListenerForward.z};
+    v.listener_valid = f.audioListenerValid;
     v.shot_hit_count = f.shotHitCount;
     for (int k = 0; k < f.shotHitCount; ++k) {
         v.shot_hits[k].shooter = f.shotHits[k].shooter;
@@ -268,6 +282,11 @@ int main() {
             }
             const fnd::input::PlayerState* in[4] = {&inputs[0], &inputs[1], &inputs[2], &inputs[3]};
             const gameplay::MatchFrame frame = match.step(in, 1.0 / 64.0);
+            CHECK(frame.audioListenerValid);
+            CHECK(std::isfinite(frame.audioListenerPosition.x) &&
+                  std::isfinite(frame.audioListenerPosition.y) &&
+                  std::isfinite(frame.audioListenerPosition.z));
+            CHECK(std::abs(glm::length(frame.audioListenerForward) - 1.f) < .001f);
             MatchSource source(match);
             const CombatEventList list =
                 combat_events_for_frame(source, viewOf(frame), tick + 1, match_start);

@@ -3,24 +3,19 @@
 To the next agent: continue porting character+weapon combo shot programs exactly as below.
 Historical entries below include superseded claims; verify them against current code.
 
-**Current correction — Rena acceptance reopened:** do not expand Mion while required
-Rena effect-card orientation is now closed (the queue carries the request's direction and
-placement composes it with the recovered convention); the SE's 3D placement and the two
-visual gates remain open. The cascade producers and the boosted-admission chord are bound
-(§1/§2 of the Rena matrix).
-The previous acceptance-with-caveats decision did not satisfy the owner's ordering.
+**Current correction — Rena acceptance remains open; do not expand Mion.** Effect-card
+orientation and the source-backed positional-SE event/listener path are implemented and
+automatically tested (§2 of the Rena matrix). `fighter_script_test` pins each Rena ground tap /
+charge SE id, tick and call-time source position. SDL uses a documented approximation for
+the DirectSound spatial mix, so live audio parity remains unverified. The two visual gates —
+320/332 lean sign and the Rena+1 model-2 frame — still lack comparable original captures.
+The cascade producer and boosted-admission chord are bound; the acceptance decision below
+keeps the visual gates open and Mion deferred.
 Rena+2 320's 13→22 seek already lived in `advance_rena_chase`; the later rule was
 redundant, not a missing-clock fix. It is removed, with a behavioral input-driven
 witness for the seek, the 32..39 contact window and recovery 329. Preserve the
 contact/ribbon fixes and the existing Mion commits; no group completion is claimed.
 
-Rena effect-card orientation and the two visual gates remain open; the cascade producers
-and the boosted-admission chord are bound (§1/§2 of the Rena matrix).
-The previous acceptance-with-caveats decision did not satisfy the owner's ordering.
-Rena+2 320's 13→22 seek already lived in `advance_rena_chase`; the later rule was
-redundant, not a missing-clock fix. It is removed, with a behavioral input-driven
-witness for the seek, the 32..39 contact window and recovery 329. Preserve the
-contact/ribbon fixes and the existing Mion commits; no group completion is claimed.
 
 **Owner-directed change of order (2026-10-10):** stop usage-order combo porting and
 implement shared blockers first. Follow [ginkiha-blockers-plan.md](ginkiha-blockers-plan.md),

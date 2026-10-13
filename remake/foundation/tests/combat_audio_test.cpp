@@ -35,6 +35,11 @@ public:
         played.push_back(Played{stem, bus, ch});
         return ch;
     }
+    int play_spatial(const std::string& stem, int channel,
+                     const SpatialRequest& request) override {
+        spatial.push_back(request);
+        return play(stem, SfxBus::Sfx, channel);
+    }
     void stop(int channel) override {
         if (channel >= 0 && channel < 32) busy[static_cast<size_t>(channel)] = false;
         stops.push_back(channel);
@@ -60,6 +65,7 @@ public:
     bool accept = true;
     bool busy[32] = {};
     std::vector<Played> played;
+    std::vector<SpatialRequest> spatial;
     std::vector<int> stops;
     std::vector<SfxBus> bus_stops;
 };
@@ -98,6 +104,11 @@ bool testFrameEvents() {
     view.melee_voice[0] = int(VoiceEvent::AttackB);
     view.melee_voice_alternative[0] = 2;
     view.sound_effect_id[0] = 60;
+    view.sound_effect_positional[0] = true;
+    view.sound_effect_position[0] = {1.f,2.f,3.f};
+    view.listener_position = {4.f,5.f,6.f};
+    view.listener_forward = {0.f,0.f,-1.f};
+    view.listener_valid = true;
     const CombatEventList events = combat_events_for_frame(source, view, 7, false);
     bool sawSwing = false, swingSpoke = false, sawVoice = false, sawSe = false;
     for (int i = 0; i < events.count; ++i) {
@@ -116,6 +127,12 @@ bool testFrameEvents() {
             sawSe = true;
             const CombatCue cue = resolve_combat_event(e);
             CHECK(cue.has_se() && cue.se_id == 60);
+            CHECK(cue.se_positional && cue.se_position.x == 1.f && cue.se_position.y == 2.f &&
+                  cue.se_position.z == 3.f);
+            CHECK(cue.se_listener_valid && cue.se_listener_position.x == 4.f &&
+                  cue.se_listener_position.y == 5.f && cue.se_listener_position.z == 6.f);
+            CHECK(cue.se_listener_forward.x == 0.f && cue.se_listener_forward.y == 0.f &&
+                  cue.se_listener_forward.z == -1.f);
             CHECK(!cue.has_voice);
         }
     }
@@ -146,6 +163,37 @@ bool testFrameEvents() {
 }
 
 int main() {
+    // Spatial-SE adapter: source and listener positions are in world units; the original
+    // sets distanceFactor .01, listener rolloff .0002 and buffer min distance 3. DirectSound
+    // defines inverse-distance rolloff beyond minimum, so this pins unity at min, half at
+    // double that distance, and equal-power pan at the listener's left/right.
+    {
+        SpatialPlayRequest req;
+        req.listener = {};
+        req.listenerForward = {0.f,0.f,1.f};
+        req.minDistance = 3.f;
+        req.rolloffFactor = 1.f; // one for test math; the original stage uses .0005
+        req.source = {0.f,0.f,-3.f};
+        SpatialMix atMin = spatial_mix(req);
+        CHECK(atMin.left > .70f && atMin.left < .72f &&
+              atMin.right > .70f && atMin.right < .72f);
+        CHECK(std::abs(atMin.left*atMin.left + atMin.right*atMin.right - 1.f) < .001f);
+        req.source = {0.f,0.f,-6.f};
+        SpatialMix twice = spatial_mix(req);
+        CHECK(std::abs(twice.left*twice.left + twice.right*twice.right - .25f) < .001f);
+        req.source = {-3.f,0.f,0.f};
+        SpatialMix left = spatial_mix(req);
+        req.source = {3.f,0.f,0.f};
+        SpatialMix right = spatial_mix(req);
+        CHECK(left.left > left.right);
+        CHECK(right.right > right.left);
+        std::vector<int16_t> input{16000,16000};
+        std::vector<int16_t> output;
+        spatialize_s16(input.data(),1,left,output);
+        CHECK(output.size()==2 && output[0] > output[1]);
+    }
+
+    // The rest of the file pins cue dispatch and the SFX bus.
     CHECK(testFrameEvents());
     auto renaVoice = ev(CombatEventKind::ShotFired, 0, -1, 77);
     renaVoice.voice_override = int(VoiceEvent::ShotA);
@@ -316,6 +364,29 @@ int main() {
         // The victim's KO line is the victim's own channel, not the attacker's.
         CHECK(rec.played[after_hit].channel == voice_channel_for(2));
 
+        // Rena body SEs using FUN_0042c8b0 route through spatial playback with the
+        // frame's source and listener; non-positional 0042c880 cues stay on the plain SFX path.
+        CombatEvent positionalSe = ev(CombatEventKind::SoundEffect, 0, -1, 105);
+        positionalSe.se_override = 61;
+        positionalSe.se_positional = true;
+        positionalSe.se_position = {1.f,2.f,3.f};
+        positionalSe.se_listener_position = {4.f,5.f,6.f};
+        positionalSe.se_listener_forward = {0.f,0.f,-1.f};
+        positionalSe.se_listener_valid = true;
+        audio.dispatch(positionalSe);
+        CHECK(rec.spatial.size() == 1);
+        CHECK(rec.spatial[0].source.x == 1.f && rec.spatial[0].source.y == 2.f &&
+              rec.spatial[0].source.z == 3.f);
+        CHECK(rec.spatial[0].listener.x == 4.f && rec.spatial[0].listener.y == 5.f &&
+              rec.spatial[0].listener.z == 6.f);
+        CHECK(rec.spatial[0].listenerForward.x == 0.f &&
+              rec.spatial[0].listenerForward.y == 0.f &&
+              rec.spatial[0].listenerForward.z == -1.f);
+        CombatEvent nonpositionalSe = ev(CombatEventKind::SoundEffect, 0, -1, 106);
+        nonpositionalSe.se_override = 62;
+        audio.dispatch(nonpositionalSe);
+        CHECK(rec.spatial.size() == 1);
+
         // Overkill uses SE 10 and the downed line.
         audio.dispatch(ev(CombatEventKind::Overkill, 1, 0, 104));
         CHECK(rec.played.back().stem == "data/se/010");
@@ -437,6 +508,14 @@ int main() {
             engine.set_volumes(v);
             const int ch = engine.play(h, SfxBus::Voice);
             CHECK(ch >= 0);
+            SpatialPlayRequest spatial;
+            spatial.source = {-3.f,0.f,0.f};
+            spatial.listener = {};
+            spatial.listenerForward = {0.f,0.f,1.f};
+            spatial.rolloffFactor = 1.f;
+            const int spatialCh = engine.play_spatial(h, spatial);
+            CHECK(spatialCh >= kSfxFirst && spatialCh <= kSfxLast);
+            CHECK(engine.channel_busy(spatialCh) && engine.sfx_queued_frames(spatialCh) > 0);
             CHECK(engine.channel_busy(ch));
             // The slider moves while the cue is still queued: the gain must follow it.
             v.voice = 25;
@@ -465,6 +544,8 @@ int main() {
             CHECK(engine.bus_gain_applied(SfxBus::Voice) > 0.24f);
             engine.stop_bus(SfxBus::Voice);
             CHECK(!engine.channel_busy(ch));
+            engine.stop(spatialCh);
+            CHECK(!engine.channel_busy(spatialCh));
             engine.close();
         } else {
             std::puts("combat_audio_test: no audio device (dummy driver refused), volume "
