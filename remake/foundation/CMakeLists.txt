@@ -432,6 +432,15 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(rena_dash_admission_test PRIVATE src)
     add_test(NAME rena_dash_admission_test COMMAND rena_dash_admission_test)
 
+    # Issue #71 animation audit (Rena+0/+1/+2): install-backed real input
+    # sequences asserting the bound animation set per checklist situation.
+    # Skips itself without a game install, like fighter_script_test.
+    add_executable(rena_animation_audit_test tests/rena_animation_audit_test.cpp)
+    target_include_directories(rena_animation_audit_test PRIVATE src)
+    target_link_libraries(rena_animation_audit_test PRIVATE foundation_gameplay
+                          foundation_assets)
+    add_test(NAME rena_animation_audit_test COMMAND rena_animation_audit_test)
+
     add_executable(melee_admission_test tests/melee_admission_test.cpp)
     target_include_directories(melee_admission_test PRIVATE src)
     target_link_libraries(melee_admission_test PRIVATE foundation_gameplay
