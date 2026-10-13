@@ -281,6 +281,10 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[kMatchFighterCount]
     }
 
     for (int i = 0; i < m_config.fighterCount; ++i) {   // scenes.cpp:689-696
+        // FUN_00634f60 runs the body at :102-104, then FUN_0042e110 decrements
+        // status at :108-110, and projectile collision runs later at :124-126.
+        // Keep the same-frame read-before-decrement; new hits gate recovery next tick.
+        m_fighters[i].tick_hit_status();
         out.sourceShotVoiceAudited[i] = m_fighters[i].source_shot_voice_audited();
         const auto voice = m_fighters[i].take_shooting_voice();
         out.shotVoice[i] = voice.event;

@@ -20,6 +20,8 @@ struct MoveEntry {
     int stateFlags = 0;
     int attackFlags = 0;
     int collisionShape = 0;
+    // FUN_00637950 uses attackFlags bits (0x40 << statusSlot); slot 6 enables
+    // the per-hit duration/power pair at victim+0x7f4/+0x818.
     int baseDamage = 0;
     int hpDamage = 0; // provisional alias: combat[5], not established HP damage
     int reflectDamage = 0; // provisional alias: combat[6], reflection role unverified

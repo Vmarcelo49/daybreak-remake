@@ -1,6 +1,6 @@
 # Rena attack matrix — evidence-based status for the full attack port
 
-2026-10-12 · branch `ginkiha-help` · companion to [the attack-animation plan](ginkiha-attack-animation-plan.md),
+2026-10-13 · branch `main` · companion to [the attack-animation plan](ginkiha-attack-animation-plan.md),
 [the group iteration record](ginkiha-rena-iteration.md) and [the shooting ledger](ginkiha-shooting-coverage.md).
 
 This is the revised working plan for **Rena+0 / Rena+1 / Rena+2** (character 0, weapon
@@ -43,6 +43,19 @@ no discrepancy is currently known for the rows below.
 * Weapon-specific families are facts, not assumptions: the admission table below is
   the recovered selector itself, so "absent for weapon 2" means the dispatcher never
   selects it — not a missing row.
+
+**Recovery gauge field (corrected evidence, 2026-10-13).** `+0x20d` is actor
+`+0x834`; recoveries 403/409/469 add +40 if actor status slot 6 (`actor[0x1fd]`,
+byte `+0x7f4`) is clear, otherwise +5, capped at 1000. `FUN_00637950:383-421`
+can write the paired status duration/power on a successful projectile hit whose
+`attackFlags` contains `0x1000` (duration `combat[2]`, power `combat[1]`); the actor
+reset clears the nine-word status array (`FUN_004219a0:12-22`). In `FUN_00634f60`
+the body executor reads the timer before the later status decrement, and projectile
+collision follows both, so a hit can affect the next recovery tick. A bounded scan of
+shipped Rena actor DATs 00/01/02 (276/254/243 contact records) and bullet folders 001/003/033
+(20/20/16 records) found no `0x1000` status-6 records. This establishes the generic
+producer and the recovery consumer, not a natural Rena hit route; scene-object
+`scene+0x7f4` remains a separate field.
 
 ## Status vocabulary (claims discipline)
 
@@ -241,12 +254,12 @@ Execution contracts (mobile/full-charge references, cross-checked with the handl
 | 400 | row 0/6 @12, ±30 | rows 6 / 0+9 @18; **melee strike f8–18**; speed 45 @f7 | attachment @35 + 10-pellet ring (pitch rand%30+20, yaw 90−rand%180) | voices 27/30 (last round), 29 (w2) | bound (ledger §5) |
 | 401 | like 400 @12 | row 6 / 0 @18 (powered = single 0), mobile turn 20→f15, speed 30@f7→0@f15 | → 400 | w1 powered differs from 400 (one request, not two) | **landed**: admission + program rules for w0/w1; w1's powered single request bound; w0 verified to fire exactly one request; 401 is a mobile-shot row, with no melee-contact volume in `FUN_00448220:1722-1776` |
 | 402 | row 1/7 @13, ±30 | 3-phase dive ({12,1,35}, phase 1 HELD), phase2 f5 rows 6 / 0+9, dive arc (vertical −40, speed ≤10) | 2-phase, ph0 clock clamps at 17, landing <15 → 403 else ph1@25, f35 attachment + ring (pitch rand%50+30) | landing → 403/409 | **execution implemented + automated verification** for all three weapons, driven by REAL input (jump → airborne Shoot tap): w0 fires its one row-1 request at frame 13 with the ±30-clamped pitch; w1's phase 1 keeps the closing speed in [0,10] and fires row 6 at phase-2 frame 5; w2 fires one attachment row-0 at phase-1 frame 35 plus the ten-request ring on rows 1/3, each pitch in [30,80) and each draw its own. The landing exits to 403/409 are covered separately |
-| 403/409/469 | recovery: +40 if actor `+0x1fd < 1`, else +5; cap 1000 | idem | idem | air-shot landings | **execution implemented + automated verification** for motion reset and +40 branch. The actor-relative `+0x1fd` producer and nonzero-branch reachability are unresolved; it must not be conflated with scene-relative `scene+0x7f4`. |
+| 403/409/469 | recovery: +40 if actor `+0x1fd < 1`, else +5; cap 1000 | idem | idem | air-shot landings | **execution implemented + automated verification** for motion reset and both refill values using a direct slot-6 test seam; natural Rena reachability remains unresolved. Generic projectile-hit writer `FUN_00637950` is implemented for `attackFlags & 0x1000`; scanned shipped Rena DAT contacts lack that bit (bounded negative). Scene-relative `scene+0x7f4` is separate. |
 | 405/406 | like 400 @12/13, movement −90/+90 | — | — | lateral dash shots | **landed**: admission + program rules mirroring 400; verified selecting 405/406 from the left/right dash states |
 | 407 | @13: rows 4 (yaw+75,pitch30) + 9 (yaw−75) normal; + 13/14 (±85, pitch20) powered | — | — | back dash shot, movement 180 | **execution implemented + automated verification**: the back-dash situation is now driven end-to-end (row-27 dash → tap → 407 → the row-4/row-9 pair at tick 13) |
 | 408 | @12 rows 0/6 (the ground rows, one tick early) | — | — | air-dash fast shot | **execution implemented + automated verification**: the air-dash→408 sequence is driven end-to-end (row-30 dash with a held direction → release → 408 → the single row-0 request at tick 12) |
 | 450/460 | bound (ledger) | bound (model2 prop + 450/460 sweep) | bound | — | bound; the landings reach 469 through the shot-state landing branch |
-| 469 | recovery (recharge) | idem | idem | after air charges | **execution implemented + automated verification**: motion zeroed every tick, charge gauge +40 capped 1000 |
+| 469 | recovery (recharge) | idem | idem | after air charges | **execution implemented + automated verification**: motion zeroed every tick; +40/+5 slot-6 refill logic and cap are tested, but natural Rena +5 reachability is unproven (see recovery note above) |
 | 350 | awakened MELEE (w0/w1) | — | full shot: clock jump 42→95, row 8 @116 (fwd 150, height 70, yaw+1, ±40) | w2 only as shot | **w0/w1 bodies execution implemented + automated verification** (incl. the frames-1..9 clock replay, the voices/SE/effect beats and the boosted admission); w2 bound (ledger) |
 | 360 | red pair ph2@2 (rows 11/12, ±70/70/70, yaw ±1) + freeze @13 | row 8 @16, fixed 70° pitch | **air** second charge (same clock jump as 350) | w2's 360 is the AIR variant | w0/w1 bound; **w2's air 360 also bound** (speed/vertical ×0.1, gravity .05, the same jump/launch, landing → 469) |
 | 370 | w0 backflip (speed −9.5, vertical 10) + pair; w1 air @16 | | — | w2 has NO 370 | w0/w1 bound (air) |
@@ -467,10 +480,20 @@ attenuation endpoints, dispatch routing, and queued playback. This is **executio
 implemented + automated verification**, not **live parity**: the original delegates 3D
 mixing to DirectSound, while SDL uses a documented port approximation.
 
-The two visual gates remain unresolved and prevent group acceptance: (1) the 320/332 lean
-sign and (2) the Rena+1 model-2 frame have no comparable original capture in this
-environment (§ status vocabulary's exact limitation). No path in this matrix has **live
-parity**. The acceptance list is therefore not closed, and Mion remains deferred.
+Two runtime implementation areas remain open beyond the matrix's covered melee/shot
+bodies: item-specific projectile lifecycles for the reachable item001/item003/item033
+registrations, and Rena dash runtime integration. A source-backed 15-sample history and
+pure admission helper now have 46 checks over Rena+0/+1/+2, including +0x834, flags28,
+priority, air row30 and grounded row28 branches. This is **selection logic**, not an
+input-connected dash implementation: dash history is not yet fed by Fighter input, the
+handler's ground/air phase motion and gauge drain are not executed, and row28 is not wired
+as a reachable transition. These remain implementation gaps, not parity-only gaps.
+Recovery +5's generic producer and consumer are source-backed and the consumer is tested;
+a bounded scan found no status-slot-6 (`attackFlags & 0x1000`) contacts in shipped Rena actor
+or bullet DATs, so natural Rena reachability remains unresolved. Scene-object `+0x7f4` is
+separate. The two visual gates remain unresolved: (1) 320/332 lean sign and (2) Rena+1
+model-2 frame lack comparable original captures. No path in this matrix has **live parity**;
+Mion remains deferred.
 The Rena+2 320 seek was already implemented in `Fighter::advance_rena_chase` through
 `ChasePolicy::skipAttackFrames` before the later duplicate `ClockSeek` rule was added.
 The claim that the seek had been absent (and gravity nine ticks late) is withdrawn.

@@ -10,13 +10,15 @@ charge SE id, tick and call-time source position. SDL uses a documented approxim
 the DirectSound spatial mix, so live audio parity remains unverified. The two visual gates —
 320/332 lean sign and the Rena+1 model-2 frame — still lack comparable original captures.
 The cascade producer and boosted-admission chord are bound; the acceptance decision below
-keeps the visual gates open and Mion deferred. The source recovery refill is +40 when actor
-word `+0x1fd` is zero, +5 otherwise. That is actor-relative byte `+0x7f4`; its producer and
-reachability during Rena recovery are unresolved. Scene-relative `scene+0x7f4` is separate
-and handles stage event replay, so do not conflate the fields or call the actor field
-poison/status. The port currently models/verifies +40 only. `+0x834` is the separate
-special/charge gauge. Rena+2 320's 13→22 seek already lived in `advance_rena_chase`; the
-later rule was redundant, not a missing-clock fix.
+keeps visual gates open and Mion deferred. Recovery refills +40 when actor status slot 6
+(`actor[0x1fd]`, byte `+0x7f4`) is clear and +5 otherwise, capped at 1000 in `+0x834`.
+`FUN_00637950` is the generic hit producer when a contact record has `attackFlags & 0x1000`;
+that path and a slot-6 consumer test are implemented. A bounded scan of shipped Rena actor
+and bullet DAT contact records found no such flag, so natural Rena recovery reachability is
+still unresolved. Do not conflate this actor field with the separate scene-object
+`scene+0x7f4`, which stage replay uses. Donor item1/3/33 projectile lifecycle and Rena dash
+selection/motion remain concrete implementation gaps; see the matrix and iteration log.
+Rena+2 320's 13→22 seek already lived in `advance_rena_chase`; the later rule was redundant.
 
 
 **Owner-directed change of order (2026-10-10):** stop usage-order combo porting and

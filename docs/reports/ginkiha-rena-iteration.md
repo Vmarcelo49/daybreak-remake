@@ -56,28 +56,29 @@ prefixing that selector with the install directory does not resolve a roster wea
 
 ## Concrete remaining work for this character group
 
-- Rena+1 air tap: original state402 jumps to phase2 when grounded, clears horizontal
-  and vertical motion, and requests row6 normally / rows0+9 powered at phase2/tick5.
-  It needs the landing/phase transition, not a copied ground schedule.
-- Rena+2 air tap: state402 caps phase0 at tick17; landing before15 enters403, otherwise
-  landing enters phase1 and seeks tick25. Tick35 then fires an attachment-based ring
-  with pitch `rand%50+30`, not the ground world's `rand%30+20`.
-- Air first charges: Rena+1 emits at15–29 and transitions to469 on landing; Rena+2
-  launches at36 and also reaches469 during descent/landing. Vertical entry changes,
-  gravity and recovery-state effects must accompany these bindings.
-- Second charges: Rena+1's360/370 row8 at16 has fixed70° pitch and entry voice RNG;
-  the air path reaches469. Rena+2's350/360 paths seek the clock42→95 and launch a
-  world row8 at116 (forward150/height70, yaw+1). Verify the input dispatcher before
-  assigning these to the standard second-charge selector;370 is not present in that
-  handler and must not be invented or declared N/A solely for this reason.
-- Follow-on shooting states401,403–412 and469 remain in the reachable-state audit.
-- Rena+1 model2 must also be selected on the rendered prop; hiding/rebinding slot1
-  and original turn-helper distinctions remain movement/visual integration work.
-- The native Rena+1 capture reports `data/bullet/003/30.X` missing, referenced by an
-  item3 bullet row. Resolve row9's original birth/controller/effect behavior and asset
-  interpretation before claiming this branch produces the correct visible attack.
-- Validate each required projectile's steering, expiry, children, admission and pool
-  outcomes, plus cancellation, rematch and multi-fighter behavior.
+- The current MovePrograms select real input/request paths for Rena+0/item001,
+  Rena+1/item003, and Rena+2/item033, but the downstream per-item projectile lifecycle
+  is not donor-equivalent yet. The flat `ProjectileBehavior` table covers only item001
+  registrations 000/010/020/030/110/120/150/160/170 and lacks reachable item001
+  registrations 040/060/070/080/090/130/140; there are no item003/item033 entries, and
+  generic motion does not encode their age-specific direct-velocity transitions, RNG,
+  contact/reflect logic, child shots, particles, sound, and fade behavior. Implement the
+  finite item-specific switches and explicit event/child routing for all rows reachable
+  from the three Rena MovePrograms.
+- Rena dash source input history and dash state execution are not complete. `try_dash`
+  currently uses the port stamina/double-tap policy; donor selection uses a 15-sample
+  history, fighter gauge `+0x834`, the current row's 0x100 window and priority gate. It
+  includes the contact-driven state28 branch for Rena+0/+1 and airborne row30 for all three
+  weapons; current row30 admission is Rena+0 only. Port the source-backed selector and
+  per-state ground/air drain/motion without borrowing the actor recovery slot6 status field.
+- Existing 402/403/469 MoveProgram paths are implemented and tested. The recovery +5
+  consumer is implemented/tested with a direct actor-status seam; `FUN_00637950` generic
+  projectile status production is also represented. However, bounded scans of Rena's
+  shipped actor and bullet DAT contact records found no `attackFlags & 0x1000`, so do not
+  claim a natural Rena path reaches +5. Scene `+0x7f4` is a different object field.
+- Keep visual live-parity gates open: no comparable original capture is available here for
+  the 320/332 lean sign or Rena+1 model-2 frame. The SDL spatial audio law is likewise an
+  approximation, not live DirectSound parity.
 
 ## Iteration order
 

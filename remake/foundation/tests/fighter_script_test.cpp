@@ -4047,6 +4047,117 @@ void test_rena_air_taps() {
 // accepted sample while the prop's +0x38 latch is set and decays 2 on every call where it
 // is not. FUN_0043ffc0's 300 arms it through phase-2 frames 3..10 (the executor re-derives
 // the latch each frame), so a real item's ribbon must grow there and nowhere else.
+void test_rena_recovery_status_refill() {
+    section("50. Rena+0/item001 recovery refill: hit-status slot 6, +40/+5, cap");
+    if (!g_testCombo.ready) return skip_case("Rena+0/item001 recovery refill");
+
+    const auto runRecovery = [&](int startingGauge, int statusDuration,
+                                 int expectedRefill, const char* label) {
+        gameplay::Match match;
+        gameplay::MatchConfig config;
+        config.fighterCount = 2;
+        config.side[0] = 0;
+        config.side[1] = 1;
+        config.spawn[0] = glm::vec3(0.f, 0.f, 0.f);
+        config.spawn[1] = glm::vec3(0.f, 0.f, 100.f);
+        config.weapon[0] = config.weapon[1] = &g_testCombo.weapon;
+        config.moves[0] = config.moves[1] = &g_testCombo.moves;
+        const xm::Model* models[gameplay::kMatchFighterCount] = {
+            &g_testCombo.model, &g_testCombo.model, nullptr, nullptr};
+        xm::Controller* controllers[gameplay::kMatchFighterCount] = {
+            g_testCombo.controller(), g_testCombo.controller(), nullptr, nullptr};
+        match.reset(config, models, controllers, nullptr, nullptr);
+        match.fighter(0).set_charge_gauge(startingGauge);
+        Input in;
+        const auto step = [&]() {
+            fnd::input::compute_edges(in.p);
+            const fnd::input::PlayerState* inputs[gameplay::kMatchFighterCount] = {
+                &in.p, nullptr, nullptr, nullptr};
+            return match.step(inputs, 1.0 / 64.0);
+        };
+
+        for (int i = 0; i < 70; ++i) step();
+        in.set(fnd::input::Action::Jump, true);
+        step();
+        in.set(fnd::input::Action::Jump, false);
+        for (int i = 0; i < 12; ++i) step();
+        in.set(fnd::input::Action::Shoot, true);
+        step();
+        in.set(fnd::input::Action::Shoot, false);
+        step();
+        check_int("Rena+0 air tap selects 402 before recovery", 402,
+                  match.fighter(0).shot_move_id());
+        int guard = 0;
+        while (match.fighter(0).shot_move_id() != 403 && guard++ < 400) step();
+        check_int("Rena+0 air tap lands into recovery 403", 403,
+                  match.fighter(0).shot_move_id());
+        // Inject the source-shaped actor slot 6 directly: this isolates the
+        // recovery consumer; natural Rena projectile reachability stays unresolved.
+        if (statusDuration > 0)
+            match.fighter(0).apply_hit_status(6, statusDuration, 1);
+        const int statusBefore = match.fighter(0).hit_status_duration(6);
+        const int before = match.fighter(0).charge_gauge();
+        step();
+        check_int(label, std::min(1000, before + expectedRefill),
+                  match.fighter(0).charge_gauge());
+        check_int("status duration ticks after the recovery branch reads it",
+                  std::max(0, statusBefore - 1), match.fighter(0).hit_status_duration(6));
+    };
+
+    runRecovery(800, 0, 40, "empty slot 6 refills +40 on Rena recovery");
+    runRecovery(800, 180, 5, "active status-slot 6 refills +5 on Rena recovery");
+    runRecovery(990, 0, 40, "Rena +40 recovery refill caps at 1000");
+    runRecovery(995, 180, 5, "Rena +5 recovery refill caps at 1000");
+}
+
+// The weapon ribbon follows the prop's own Active windows: FUN_0042fff0 adds 5 per
+// accepted sample while the prop's +0x38 latch is set and decays 2 on every call where it
+// is not. FUN_0043ffc0's 300 arms it through phase-2 frames 3..10 (the executor re-derives
+// the latch each frame), so a real item's ribbon must grow there and nowhere else.
+void test_rena_slot6_projectile_producer() {
+    section("51. Rena+0/item001 projectile contact writes actor status slot 6");
+    if (!g_testCombo.ready || !g_testCombo.hasBullet[1])
+        return skip_case("Rena+0/item001 projectile status producer");
+
+    gameplay::BulletParameter statusBullet = g_testCombo.bullets[1];
+    gameplay::MoveEntry record{};
+    record.hitRadius = 10000;
+    record.attackFlags = 0x1000;
+    record.combat[1] = 1;
+    record.combat[2] = 9;
+    statusBullet.phases.clear();
+    statusBullet.phases.emplace_back();
+    statusBullet.phases.back().entries[0] = record;
+    statusBullet.phases.back().entryCount = 1;
+    xm::Model projectileModel;
+    gameplay::Match match;
+    gameplay::MatchConfig config;
+    config.fighterCount = 2;
+    config.side[0] = 0;
+    config.side[1] = 1;
+    config.spawn[0] = glm::vec3(0.f, 0.f, 0.f);
+    config.spawn[1] = glm::vec3(0.f, 0.f, 400.f);
+    config.weapon[0] = config.weapon[1] = &g_testCombo.weapon;
+    config.moves[0] = config.moves[1] = &g_testCombo.moves;
+    const xm::Model* models[gameplay::kMatchFighterCount] = {
+        &g_testCombo.model, &g_testCombo.model, nullptr, nullptr};
+    xm::Controller* controllers[gameplay::kMatchFighterCount] = {
+        g_testCombo.controller(), g_testCombo.controller(), nullptr, nullptr};
+    match.reset(config, models, controllers, nullptr, nullptr);
+    match.fighter(1).set_bullet_row(1, &statusBullet);
+    match.fighter(1).set_bullet_model(1, &projectileModel);
+    check_bool("Rena+0/item001 row 1 projectile spawns", true,
+               match.shots().spawn(glm::vec3(0.f, 100.f, 50.f),
+                                   glm::vec3(0.f, 0.f, -1.f), ShotTier::Tap,
+                                   &match.fighter(1), 1));
+    const auto frame = match.step(nullptr, 1.0 / 64.0);
+    check_int("one Rena+0 projectile reaches a victim contact", 1, frame.shotHitCount);
+    check_int("0x1000 contact writes victim actor status slot 6", 9,
+              match.fighter(0).hit_status_duration(6));
+    check_int("contact leaves its event trace in this pool update", 1,
+              match.shots().contact_count());
+}
+
 void test_rena_ribbon_windows() {
     section("48. Rena+0 weapon ribbon: the 300 Active window");
     if (!g_testCombo.ready) return skip_case("Rena 0 combo");
@@ -5890,6 +6001,8 @@ int main(int argc, char** argv) {
     test_rika0_twin_tick();
     test_rena_character_iteration();
     test_rena_air_taps();
+    test_rena_recovery_status_refill();
+    test_rena_slot6_projectile_producer();
     test_rena_ribbon_windows();
     test_mion_melee_admission();
     test_keiichi2_tap_sweep();

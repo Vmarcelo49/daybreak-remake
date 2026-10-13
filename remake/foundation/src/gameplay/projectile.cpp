@@ -246,6 +246,12 @@ void ProjectilePool::update(double dt, Fighter* fighters, int fighterCount,
             }
             // FUN_00637950 latches a result and spends a per-victim allowance;
             // the weapon handler, not the collision test, decides retirement.
+            // FUN_00637950's status loop uses attackFlags bits (0x40 << slot)
+            // after contact has passed collision/target filters. Its slot-6 pair is
+            // record.combat[1] (power) and record.combat[2] (duration), written to
+            // victim+0x818/+0x7f4. This is the producer consumed by Rena recovery.
+            if (record && (static_cast<unsigned>(record->attackFlags) & 0x1000u))
+                f.apply_hit_status(6, record->combat[2], record->combat[1]);
             const bool blocked = f.state() == FighterState::Guard;
             if (s.behavior) {
                 --s.hitsRemaining[static_cast<size_t>(i)];

@@ -26,10 +26,12 @@ follow-on/EX states remain pending for every combo, not implicitly N/A.
 ## Character iterations — current work
 
 Work proceeds in roster order, with all of a character's legal weapon combos audited together.
-The first iteration is [Rena+0/+1/+2](ginkiha-rena-iteration.md). Ground taps and first charges
-are now tested together against the original handlers, with Rena+0's second-charge world pair
-also checked across its natural phases. Air transitions, additional states and projectile
-lifecycle gates remain explicit dependencies; this is not three completed combos.
+The first iteration is [Rena+0/+1/+2](ginkiha-rena-iteration.md). Ground/air tap and first-charge request paths are
+source-backed and exercised. **Acceptance is not complete:** donor item1/3/33 projectile
+lifecycles and Rena-specific dash selection/phase behavior remain runtime gaps under audit;
+recovery +5's generic actor-status producer exists, but no natural Rena route is proven by the
+bounded DAT scan. The two visual gates and audio live-parity limit remain separate. This is not
+three completed combos.
 Hanyu and Natsumi have two legal weapons each, so their iterations contain two combos.
 
 ## Correction: the "no flag field" notes are wrong

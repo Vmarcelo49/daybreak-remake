@@ -428,6 +428,10 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # The recovered attack admission (Rena group): data-free synthetic tables
     # pin the dispatcher's weapon-specific branches, plus install-backed real
     # input sequences through the actual Fighter.
+    add_executable(rena_dash_admission_test tests/rena_dash_admission_test.cpp)
+    target_include_directories(rena_dash_admission_test PRIVATE src)
+    add_test(NAME rena_dash_admission_test COMMAND rena_dash_admission_test)
+
     add_executable(melee_admission_test tests/melee_admission_test.cpp)
     target_include_directories(melee_admission_test PRIVATE src)
     target_link_libraries(melee_admission_test PRIVATE foundation_gameplay

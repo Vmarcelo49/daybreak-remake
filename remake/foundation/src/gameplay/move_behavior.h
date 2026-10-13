@@ -109,9 +109,12 @@ enum class MoveOp { Speed, Decelerate, Turn, Approach, Launch, Hold, ActionCamer
                     ClockSkip,   // advance the phase clock value extra ticks this update
                     Gauge,       // add value thousandths to the special gauge (recovery)
                     // Recovery bodies refill +0x834 by 40 when actor word +0x1fd is clear
-                    // or 5 otherwise. It is actor-relative byte +0x7f4; its producer and
-                    // reachability during Rena recovery are unresolved. Do not conflate it
-                    // with scene-relative scene+0x7f4; this port models +40 only.
+                    // or 5 otherwise. It is actor-relative slot 6 at +0x7f4 in the status
+                    // array. FUN_00637950 can write it from projectile hit flags; shipped
+                    // Rena actor/projectile DATs contain no slot-6 hit flags, so natural
+                    // Rena recovery reachability remains unresolved. The port carries the
+                    // producer for tested projectile contacts; scene+0x7f4 is a distinct
+                    // scene object used for event replay.
                     Recharge,    // add value thousandths to the shot gauge, capped at 1000
                     // The melee voice cue (FUN_004223d0/FUN_00422490 with the small event
                     // ids): value is the ordinary event, rule.voice carries the entry
@@ -953,10 +956,10 @@ inline constexpr MoveRule kRena1Rules[] = {
     {402,2,5,5,MoveOp::Launch,9.f,0.f,0.f,kGatePowered,0,
      origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
     // 403/469 recovery bodies (FUN_00448220 cases 0x193/0x1d5): motion zeroed EVERY
-    // tick (no tick guard); the shot-gauge refill is +40 when actor word +0x1fd is clear,
-    // +5 otherwise, cap 1000. The actor-relative field's producer and reachability during
-    // Rena recovery are unresolved; scene-relative scene+0x7f4 is distinct. The rule below
-    // models the +40 branch.
+    // tick; +0x834 refill is +40 when actor status slot 6 (+0x7f4) is clear, +5 while
+    // active, capped at 1000. Generic hit production is wired in ProjectilePool; scanned
+    // Rena actor/projectile DATs contain no 0x1000 slot-6 contacts, so natural Rena +5
+    // reachability remains unproven. Scene `+0x7f4` is a separate field.
     {403,-1,0,9999,MoveOp::Speed,0.f},
     {403,-1,0,9999,MoveOp::Vertical,0.f},
     {403,-1,0,9999,MoveOp::Gravity,0.f},
@@ -1230,10 +1233,10 @@ inline constexpr MoveRule kRena2Rules[] = {
     {402,1,35,35,MoveOp::Launch,3.f,0.f,0.f,kGatePowered,0,
      origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadRingAir,10},
     // 403/469 recovery bodies (FUN_00438310 cases 0x193/0x1d5): motion zeroed EVERY
-    // tick (no tick guard); the shot-gauge refill is +40 when actor word +0x1fd is clear,
-    // +5 otherwise, cap 1000. The actor-relative field's producer and reachability during
-    // Rena recovery are unresolved; scene-relative scene+0x7f4 is distinct. The rule below
-    // models the +40 branch.
+    // tick; +0x834 refill is +40 when actor status slot 6 (+0x7f4) is clear, +5 while
+    // active, capped at 1000. Generic hit production is wired in ProjectilePool; scanned
+    // Rena actor/projectile DATs contain no 0x1000 slot-6 contacts, so natural Rena +5
+    // reachability remains unproven. Scene `+0x7f4` is a separate field.
     {403,-1,0,9999,MoveOp::Speed,0.f},
     {403,-1,0,9999,MoveOp::Vertical,0.f},
     {403,-1,0,9999,MoveOp::Gravity,0.f},

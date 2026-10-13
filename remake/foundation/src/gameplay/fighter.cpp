@@ -193,6 +193,8 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_meleeVoice = {};
     m_pendingSoundEffect = {};
     m_pendingEffect = {};
+    m_hitStatusDuration.fill(0);
+    m_hitStatusPower.fill(0);
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_moveCounter = 0;
@@ -250,6 +252,8 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_meleeVoice = {};
     m_pendingSoundEffect = {};
     m_pendingEffect = {};
+    m_hitStatusDuration.fill(0);
+    m_hitStatusPower.fill(0);
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_moveCounter = 0;
@@ -322,6 +326,8 @@ void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     m_meleeVoice = {};
     m_pendingSoundEffect = {};
     m_pendingEffect = {};
+    m_hitStatusDuration.fill(0);
+    m_hitStatusPower.fill(0);
     m_shotMoveId = -1;
     m_moveSpeed = 0.f;
     m_moveElapsedTicks = 0;
@@ -954,6 +960,25 @@ void Fighter::update_facing(const Fighter* opp, double dt) {
     while (diff < -glm::pi<float>()) diff += 2.0f * glm::pi<float>();
 
     m_facing += diff * FighterConstants::kTurnSpeed * static_cast<float>(dt);
+}
+
+void Fighter::apply_hit_status(unsigned slot, int duration, int power) {
+    if (slot >= m_hitStatusDuration.size() || duration <= 0) return;
+    int& oldDuration = m_hitStatusDuration[slot];
+    int& oldPower = m_hitStatusPower[slot];
+    if (oldDuration == 0 || (oldPower <= power && oldDuration < duration)) {
+        oldDuration = duration;
+        oldPower = power;
+    }
+}
+
+void Fighter::tick_hit_status() {
+    for (int& duration : m_hitStatusDuration)
+        if (duration > 0) --duration;
+}
+
+int Fighter::hit_status_duration(unsigned slot) const {
+    return slot < m_hitStatusDuration.size() ? m_hitStatusDuration[slot] : 0;
 }
 
 void Fighter::set_state(FighterState new_state) {
@@ -1878,12 +1903,15 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             // set_hyper_gauge's 0..1 range (the original's min(1000, +40)).
             set_hyper_gauge(m_gauge + rule.value / 1000.f);
             break;
-        case MoveOp::Recharge:
-            // Recovery +0x834 refill is +40 when actor word +0x1fd is clear or +5
-            // otherwise. The word is actor-relative byte +0x7f4; its producer and overlap
-            // with reachable Rena recovery are unresolved. Scene-relative +0x7f4 is distinct.
-            m_chargeGauge = std::min(1000, m_chargeGauge + static_cast<int>(rule.value));
+        case MoveOp::Recharge: {
+            // FUN_00637950 writes actor status slot 6 at +0x7f4 when a hit record's
+            // flags2c carries 0x1000. The native move callback reads it before the later
+            // FUN_0042e110 decrement; generic producer is implemented, but scanned Rena
+            // actor/projectile DATs do not establish natural slot-6 reachability.
+            const int refill = m_hitStatusDuration[6] > 0 ? 5 : static_cast<int>(rule.value);
+            m_chargeGauge = std::min(1000, m_chargeGauge + refill);
             break;
+        }
         case MoveOp::MeleeVoice: {
             // FUN_004223d0/FUN_00422490 with the melee event ids. The 422490 choice
             // draw reproduces the 32-family's `rand%100 < percent` pair exactly.

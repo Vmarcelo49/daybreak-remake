@@ -41,6 +41,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <string>
 
@@ -451,6 +452,12 @@ public:
     // already-down credit differ from melee's (see match_economy.h).
     DamageResult take_damage(int amount, Fighter* source = nullptr, int hitstunFrames = -1,
                              int hitCategory = 0, bool shot = false);
+    // FUN_00637950 writes hit-driven status durations at actor+0x7dc+slot*4;
+    // Rena recovery reads slot 6 at actor+0x7f4. The match ticks durations after
+    // the fighter executor, preserving the source's same-frame read-before-decrement.
+    void apply_hit_status(unsigned slot, int duration, int power);
+    void tick_hit_status();
+    int hit_status_duration(unsigned slot) const;
     void set_state(FighterState new_state);
 
     // A hit on an already-down fighter credits the balloon but must not re-enter the
@@ -683,10 +690,11 @@ public:
     // `[0x20d]` site declares `int *param_1`). Producers: battle init/reset writes
     // 1000 (FUN_004219a0:19, FUN_0041dcb0:66); +1 a tick only while a hyper flag
     // (+0x844/0x845/0x846) is armed (FUN_0041f580:96-99 and 46 siblings — not modeled
-    // here, recorded); recoveries refill +40 when actor word +0x1fd is clear or +5
-    // otherwise. Word +0x1fd is actor-relative byte +0x7f4; its producer and whether the
-    // nonzero branch is reachable during Rena recovery remain unresolved, so this port models
-    // +40 only. Do not conflate it with scene-relative `scene+0x7f4`.
+    // here, recorded); Rena recoveries refill +40 when actor status slot 6 at +0x7f4 is
+    // clear and +5 while it is active. FUN_00637950 is the generic projectile-hit producer
+    // (attackFlags bit 0x1000, duration/power from the contact record); this port carries
+    // that path. The scanned shipped Rena actor/projectile DATs have no bit-0x1000 contacts,
+    // so natural Rena recovery reachability remains unproven. Scene+0x7f4 is a different field.
     // The gauge loses 500 on a special-move spend (FUN_00508a60:91). Consumers:
     // the melee/shot admission gates (`0 < +0x834`, FUN_00445ee0/FUN_0044d850), the
     // guard-reaction exits (`(FUN_0042c7b0() & 2) && 0 < +0x834`, the 390/393 bodies)
@@ -957,6 +965,10 @@ private:
     SoundEffectCue     m_pendingSoundEffect;
     EffectCue     m_pendingEffect;
     int           m_chargeGauge = 1000;
+    // Nine actor-owned status timers (`+0x7dc..+0x7fc`), decremented after the
+    // body executor by FUN_0042e110. Slot 6 is the Rena +40/+5 recovery gate.
+    std::array<int, 9> m_hitStatusDuration{};
+    std::array<int, 9> m_hitStatusPower{};
     bool m_sourceShotVoiceAudited = false;
     bool m_sourceMeleeVoiceAudited = false;
     SimulationRng* m_rng = nullptr;   // the scene's stream, null for a bare fighter
