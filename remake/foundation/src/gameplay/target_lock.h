@@ -124,6 +124,11 @@ public:
         for (int i = 0; i < kMatchFighterCount; ++i) {
             m_side[i] = side[i];
             m_locks[i] = TargetLock{};
+            // FUN_00421670: every fighter's aim selection starts at player 0, and the
+            // hold starts at 0 (it pins on the first maintenance tick, since all aims
+            // match player 0's). A rematch re-runs this, so no aim survives one.
+            m_aim[i] = 0;
+            m_aimHold[i] = 0;
         }
     }
 
@@ -134,16 +139,43 @@ public:
     int  pulse(int owner) const { return lock_at(owner).pulseTicks; }
     int  hold(int owner) const { return lock_at(owner).holdTicks; }
 
-    // "The selection is an ally" is the recovered meaning of a live +0x848 hold; the
-    // renderer reads it as the blink phase (FUN_00643230:78).
+    // "The selection is an ally" is a PORT RULE for the lock/UX layer, not the
+    // recovered meaning of +0x848: the original re-pins that word while this
+    // fighter's aim-selection target equals player 0's (FUN_0041f580:242-248, with
+    // +0x308 a player pointer — see 0x41f580:221), which is a different predicate
+    // from "locked onto an ally". Kept because the tap/hold gestures, the ring and
+    // both lock suites are built on it; shooting reads aim_holds() below instead.
     bool holding_ally(int owner) const { return lock_at(owner).holdTicks > 0; }
 
+    // --- the aim-selection layer (+0x300), kept distinct from the combat lock ---
+    // The original stores the aim selection separately from the combat lock
+    // (FUN_00421e30 writes +0x300 and clears +0x304; FUN_00421f30 writes +0x304 and
+    // clears the hold). The camera's followed player is a third, independent
+    // selection owned by arena_camera.h. None of the three may stand in for another.
+    //
+    // The aim selection is a fighter index (init 0 for everyone, FUN_00421670), changed
+    // only by an explicit selection gesture. It is NOT cleared when the combat lock is
+    // lost, and it is NOT the fallback facing pick below — that pick reports a target
+    // without storing anything, while this stores without reporting.
+    int aim_selection(int owner) const {
+        return (owner >= 0 && owner < m_count) ? m_aim[owner] : kNoTarget;
+    }
+    // Ticks left in the recovered +0x848 hold for the shooting gate, maintained by
+    // step() from the same-target comparison below.
+    int aim_hold_ticks(int owner) const {
+        return (owner >= 0 && owner < m_count) ? m_aimHold[owner] : 0;
+    }
+    // Word +0x848 != 0 for the firing predicate: this fighter's aim target is the same
+    // fighter player 0 is aiming at. For fighter 0 that comparison is self-referential,
+    // so it holds continuously — which is why the powered branch is reachable in 1v1.
+    bool aim_holds(int owner) const { return aim_hold_ticks(owner) > 0; }
+
     // Which opponent a fighter with NO lock faces: the maintenance walk's pick — the
-    // first living hostile at or after the owner, wrapping (FUN_0041f580:229-237). This
-    // is the port's stand-in for the original's independent aim selection at +0x300, and
-    // it is what the old round-start acquisition wrote into the lock. It reports a
-    // TARGET, never a lock: nothing is stored, so no ring turns green and no pulse is
-    // raised (issue #49). Match::step feeds it to Fighter::update for facing only.
+    // first living hostile at or after the owner, wrapping (FUN_0041f580:229-237). It
+    // reports a TARGET, never a lock: nothing is stored, so no ring turns green and no
+    // pulse is raised (issue #49). Match::step feeds it to Fighter::update for facing
+    // only. It is not the aim selection above: the fallback is recomputed every tick
+    // from liveness, while the aim selection persists until a gesture changes it.
     int fallback_target(int owner, const bool alive[kMatchFighterCount]) const {
         if (owner < 0 || owner >= m_count) return kNoTarget;
         return walk(owner, owner, /*forward=*/true, /*hostileOnly=*/true, alive);
@@ -164,9 +196,12 @@ public:
 
     // FUN_00421f30 (0x421f30): the direct-set writer. A valid index adopts the target
     // with a fresh pulse and a cleared hold; an out-of-range index clears the lock and
-    // changes nothing else — never an out-of-range index is ever stored.
+    // changes nothing else — never an out-of-range index is ever stored. The original
+    // clears +0x848 here unconditionally, so the aim hold below is cleared too while
+    // the aim selection itself is left alone (0x421f30 never stores +0x300).
     void set_target(int owner, int index, const bool alive[kMatchFighterCount]) {
         if (owner < 0 || owner >= m_count) return;
+        m_aimHold[owner] = 0;
         if (!targetable(owner, index, alive)) {
             adopt(owner, kNoTarget, false);
             return;
@@ -178,22 +213,30 @@ public:
     // starts at (current + 1) % count and wraps, which is FUN_0041f580:230-237's rule;
     // landing back on the current selection is a no-op, as it is at 0x421f580:238.
     // Port rule: allies are skipped, because aiming at one is the hold gesture.
+    // A landing also moves the aim selection: the tap descends from the cycle command
+    // (0x2a → FUN_00421e30), which is the only writer of +0x300 besides init.
     void cycle_enemy(int owner, bool forward, const bool alive[kMatchFighterCount]) {
         if (owner < 0 || owner >= m_count) return;
         const int current = lock_at(owner).target;
         const int anchor = current == kNoTarget ? owner : current;
         const int next = walk(owner, anchor, forward, /*hostileOnly=*/true, alive);
         if (next == kNoTarget || next == current) return;
+        m_aim[owner] = next;
         adopt(owner, next, false);   // an enemy selection carries no hold (0x421f30)
     }
 
     // Hold: aim at an ally (input.h — "hold = aim ally"). Picks the first living ally
     // in index order, so the gesture is deterministic and repeatable, and arms the ally
-    // hold FUN_00421e30 writes at 0x421e30:22.
+    // hold FUN_00421e30 writes at 0x421e30:22. The ally is also the new aim selection:
+    // the original's cycle does not gate on team, so selecting an ally is a selection.
     void select_ally(int owner, const bool alive[kMatchFighterCount]) {
         if (owner < 0 || owner >= m_count) return;
         for (int i = 0; i < m_count; ++i)
-            if (targetable(owner, i, alive) && is_ally(owner, i)) { adopt(owner, i, true); return; }
+            if (targetable(owner, i, alive) && is_ally(owner, i)) {
+                m_aim[owner] = i;
+                adopt(owner, i, true);
+                return;
+            }
     }
 
     // One maintenance tick, run before the fighters update. Order matches
@@ -226,13 +269,30 @@ public:
                 // the recovered pulse. The walk skips the anchor by construction (it is
                 // untargetable, which is why the branch was taken), so any landing is
                 // somewhere new.
-                if (next != kNoTarget) adopt(i, next, false);
+                if (next != kNoTarget) {
+                    m_aim[i] = next;   // the re-pick calls FUN_00421e30, which stores +0x300
+                    adopt(i, next, false);
+                }
             }
             TargetLock& l = m_locks[i];
             if (l.target != kNoTarget && is_ally(i, l.target)) {
                 l.holdTicks = kAllyHoldTicks;              // FUN_0041f580:243-244
             } else if (l.holdTicks > 0) {
                 --l.holdTicks;                             // FUN_0041f580:246-247
+            }
+            // The aim-layer hold for the firing predicate (FUN_0041f580:242-248 read
+            // against +0x308): re-pin while this fighter's aim target is the same
+            // fighter player 0 is aiming at, decay otherwise. Indices stand in for the
+            // original's actor pointers — slots are stable for a match, so equal indices
+            // mean the same actor. No liveness test here, matching the original, whose
+            // hold maintenance does not check validity either; a dead aim target simply
+            // stops matching once player 0 re-aims.
+            {
+                const int mine = (i >= 0 && i < m_count) ? m_aim[i] : kNoTarget;
+                const int ref = (m_count > 0) ? m_aim[0] : kNoTarget;
+                const bool same = mine != kNoTarget && mine == ref;
+                if (same) m_aimHold[i] = kAllyHoldTicks;   // 0xb4, the same constant
+                else if (m_aimHold[i] > 0) --m_aimHold[i];
             }
             if (l.pulseTicks > 0) --l.pulseTicks;          // FUN_004201a0
         }
@@ -273,6 +333,11 @@ private:
     int         m_count = 0;
     int         m_side[kMatchFighterCount] = {0, 0, 0, 0};
     TargetLock  m_locks[kMatchFighterCount];
+    // The aim-selection layer (+0x300 per fighter, init 0) and its recovered hold.
+    // Parallel arrays — not fields on TargetLock — so the combat-lock struct keeps
+    // its tested shape and the two selections cannot be confused in review.
+    int         m_aim[kMatchFighterCount] = {0, 0, 0, 0};
+    int         m_aimHold[kMatchFighterCount] = {0, 0, 0, 0};
 };
 
 }  // namespace gameplay

@@ -1,0 +1,328 @@
+# Shooting architecture — decisions, corrections and census
+
+2026-10-10. Decision record for [the shared blocker plan](ginkiha-blockers-plan.md).
+Companion: [launch/admission contracts](ginkiha-launch-contracts.md),
+[the 46-combo ledger](ginkiha-shooting-coverage.md), [the handoff](ginkiha-handoff.md).
+
+This file records **why** the port is shaped the way it is from here on, the
+corrections the evidence forced on the existing reports, and the census that sizes
+the work. The execution log stays in the blocker plan; the per-combo cells stay in
+the ledger.
+
+## 0. Validated starting point
+
+The tree that resumed work carried unvalidated changes (blocker-plan entries 2.1/2.2:
+typed origin/aim descriptors with no test and no build). Both gaps are closed:
+
+- `cmake --build build/linux` — 63 targets, exit 0.
+- full `ctest --test-dir build/linux` — **65/65 passed (167.60 s)**.
+
+Those descriptors are engine support, not coverage. Nothing in this document promotes
+a combo on their basis.
+
+## 1. Why the blocker list grows (measured, not asserted)
+
+Counting the recovered corpus (`reference/source/shoot_native_bodies_20260929.hpp`,
+43 combos, SHA256 `235744…c9d`):
+
+| Measure | Value |
+|---|---|
+| shooting body functions | **841** |
+| lines of body source | 98,770 |
+| explicit origin-family calls | **1,632** |
+| attachment-origin bodies (`FUN_00435000`) | 148 |
+| hand-origin bodies (`FUN_00435220`) | 123 |
+| world-origin bodies (`FUN_00435450`) | 185 |
+| powered-gate idiom `byte(+0x845) && word(+0x848)` | **514 bodies** |
+| RNG draws (`FUN_0065d150`) | 70 bodies |
+| scratch-counter writes | 518 bodies |
+| muzzle-variant events (`FUN_004223d0`) | 493 |
+
+The roster's 46 combos × reachable paths is ~550 hand-encodings against a rule type
+(`MoveRule`) with nine ops and three floats. Each encoding that does not fit becomes
+a documented gap, each gap becomes a deferral, and each deferral is re-investigated
+by the next agent. That is the mechanism producing "way too many blockers" — not a
+shortage of evidence, but a mismatch between the body corpus and the rule vocabulary.
+
+Three structural facts follow, and they are the decisions below:
+
+1. **The corpus is 60% non-firing bodies** (movement, clocks, phase transitions,
+   prop re-binding, effects). They still have to be right, but they need no new
+   primitives — they need the ones already there plus gates.
+2. **One predicate dominates**: the powered gate is read in 514 of 841 bodies, across
+   every action family. One port predicate closes it for the whole roster.
+3. **The request schedule is data** (state, phase, tick, row, gate, offsets), while
+   the *geometry* is often computed. Both are known per body; neither needs a
+   word-bank interpreter.
+
+## 2. Corrections forced by the evidence
+
+These are the revisit items. Each was found while tracing this session and each
+contradicts a statement in the current reports.
+
+### 2.1 The powered gate is `byte +0x845 && word +0x848` — the "0x212" is a word index
+
+The blocker plan (2.2) states the gate as `byte +0x845 != 0 && word +0x848 != 0`.
+The handoff states it as `byte 0x845 != 0 && word 0x212 != 0`. **Both describe the
+same field.** The runtime simulator stores the actor words in an `int` array and
+indexes it by word number, so its `w[0x212]` is byte offset `0x212*4 = 0x848`. The
+decompiled EXE agrees in the other direction: `param_1[0x212]` with `int* param_1`
+is also byte `0x848` (`FUN_0043ffc0.c:1909`). The plan was right; the handoff
+transcribed an array index as a byte offset.
+
+### 2.2 The aim hold now uses the recovered producer (implemented 2026-10-10)
+
+The previous correction (analogue, not parity) is superseded by the implementation
+below — but the history matters, so it stays summarized: `target_lock.h` modelled
+`+0x848` from the combat lock (`+0x304`) and an own-team test, while the original
+re-pins it from the aim-selection target (`+0x308`, a player **pointer** proven by
+`FUN_0041f580.c:221`) compared against player 0's. Naming both values `+0x848` did not
+make the producers equivalent.
+
+What the full trace established (all in `research/decompiled/`):
+
+* `+0x300` (aim selection): init 0 for everyone (`FUN_00421670`); written ONLY by the
+  cycle command (0x2a → `FUN_00421e30`). Read as same-target checks in several handlers.
+* `+0x304` (combat lock): cleared by maintenance/cycle; set ONLY by the direct-set
+  command with a valid index (0x2b → `FUN_00421f30`, which also clears the hold) and by
+  the state-0x1e gate (onto player 0, hold cleared). Closed writer set.
+* `+0x308` (aim target actor): mirrors `+0x38`, written by cycle/direct-set/init.
+* `+0x30c` (pulse): 15 on both writers, decremented by `FUN_004201a0`.
+* `+0x848` (hold): 180 on cycle iff aim targets match; cleared by direct-set and the
+  state gate; re-pinned by maintenance iff match, else decayed.
+* Commands 0x2a/0x2b reach the writers from `FUN_0063c2a0`; player 0 is index 0 of the
+  `FUN_00658a10` player list (`FUN_0064f010` is its vector size).
+* At init every aim is player 0, so every hold pins on the first tick. In 1v1 there is
+  nowhere else to aim, so both holds stay pinned — the powered branch is available by
+  default, and the old "team-play only" claim is retracted with prejudice.
+
+What the port now carries (`target_lock.h`, `match.h/cpp`, `fighter.h`):
+
+* The combat-lock layer (`target`, gestures, ring, pulse) is byte-for-byte untouched in
+  behavior: the tap/hold UX, both lock suites (204 + 277 checks), the bot retarget gate
+  and the camera are exactly as they were. The "shares player 0's team" comment is
+  corrected to say PORT RULE, since that predicate now belongs to the UX layer only.
+* A parallel aim layer (`m_aim[]` + `m_aimHold[]`, init 0/0 on reset/rematch): gestures
+  move the aim with the lock, direct-set clears the shooting hold without touching the
+  aim, maintenance re-picks carry the aim, and the per-tick re-pin/decay uses the
+  recovered same-target comparison with no liveness test (matching the original's
+  maintenance, which has none either).
+* `Match::aim_holds()` feeds `ShootingContext::aimHold`; the old `holding_ally` feed is
+  gone. No production HUD, bot or camera code ever read the hold value — verified by
+  grep — so the only behavioral change is the one the witnesses assert.
+* Deliberate divergences, kept and labelled: the port has no state-0x1e gate (no such
+  state exists here), no aim re-pick on selection-invalid (the port's validity predicate
+  differs), and the tap cycles enemies-only where the original's cycle takes any index.
+
+### 2.3 `byte +0x845` is "the Oyashiro special is armed", not a generic hypermode bit
+
+`FUN_004220e0` (research/decompiled, hash `e06c3b4a…`) arms it:
+
+```
+FUN_0064af20(actor_id, 7);
+*(actor + 0x83c) = *(actor + 0x330);   // charge1 = duration1
+*(byte *)(actor + 0x845) = 1;
+```
+
+and its callers gate on `byte(+0x318) == 1` (e.g. `FUN_00445ee0.c:142-145`):
+state outside 100/299, not already armed, and `limit1 (+0x32c) <= charge1 (+0x83c)`.
+`FUN_0041f580:88-92` clears it when the `+0x83c` countdown reaches zero. `+0x318` is
+the same three-valued mode selector as the port's `Hypermode` enum (Friendship 0 /
+Oyashiro 1 / Kakera 2 — the value order matches the runtime mapping in
+`slot7_native_world.inc.hpp:95-98`). The port's predicate combines that with the
+§2.2 hold:
+
+> **powered ⇔ `m_hyperActive && m_hypermode == Oyashiro && ShootingContext::aimHold`**
+
+Settled from evidence (2026-10-10) — threshold, countdown, and the two deltas:
+
+* **Threshold: automatically satisfied, so the port models none.** `limit1` is
+  `parameters[4]` = 850 roster-wide (700 for Hanyu+1 only), and `+0x83c` is never
+  incremented anywhere in the corpus — its only writers are the arming store
+  (`= duration1`) and the per-tick decrement. The handler-path arming condition
+  therefore cannot fire from a cold start; the enabling write is not in the available
+  corpus (the runtime bridge seeds `charge1 := limit1` on mode entry to make it fire,
+  which is an invention, not evidence). What IS established is that no accumulation
+  gameplay gates the arming — once enabled, the first qualifying frame arms it.
+* **Countdown: DAT-backed, with one outlier.** `duration1` is `parameters[5]` = 900
+  ticks for 45/46 combos (Hanyu+1: 1800). 900 ticks at 60 Hz is 15 s, which is exactly
+  the port's nominal Oyashiro duration — so the gate's lifetime matches the evidence
+  for the whole roster except Hanyu+1, whose 30 s window the port halves. That outlier
+  is recorded, not implemented: per-character durations need DAT `parameters[]`
+  plumbing the port deliberately skips (handoff §7), and it changes no mechanism.
+* **Activation deltas (deliberate, kept):** the original arms on the first qualifying
+  frame with no player action; the port activates hypermode on a Special press at a
+  full gauge. The port therefore cannot reach the powered branch until the player
+  presses Special. Likewise the port counts its 15 s in wall time at 64 Hz (960 ticks),
+  ~7% longer than the original's 900 ticks — immaterial for a non-bit-matching port,
+  but stated so nobody "fixes" it by accident.
+
+So: a fighter running Friendship or Kakera never takes a powered branch (that much is
+firm, it is the mode byte). Reachability otherwise is the conjunction of the player's
+activation and the §2.2 aim predicate — both now witnessed live in 1v1 and 2v2.
+
+### 2.4 The usage catalog's "tag" variant is this branch, not a separate mechanic
+
+`combat-hooks.json` labels the two state-400 usage variants `normal` and `tag`; the
+EXE-derived oracle fixture's "special" scenario sets `+0x845` and `+0x848`
+(`evidence/roster-ground-shot400.md:13`); the recon tool counts them as
+`normal`/`tag`. Satoko 2's measured split confirms the identity — normal fires world
+row 0 twice at frame 20, tag fires world row 1 twice at frame 20. So "tag", "special"
+and "powered" are one branch with three labels, and the port must stop treating
+"tag" as an unknown separate flag (handoff §7).
+
+### 2.5 Rika 1's first charge is already bound *incorrectly*
+
+`kRikaRules`'s 450/460 entries fire rows 2/5 at tick 10 and rows 3/6 once at tick 30
+with `Hold 30`. The body (`shoot_body_4_1_450`, bundle lines 23427-23701) says:
+
+| Body statement | Port before the repair | Port after |
+|---|---|---|
+| tick 10: two world requests, forward **60**, lateral **+50 / −50**, height +70, yaw = heading + movement offset | two requests, lateral 0 | typed specs, forward 60, lateral ±50, height 70 |
+| a scratch counter initialized at phase0/tick0 and incremented every update | absent | `CounterSet` + `Counter` |
+| tick 30 salvo fires when `counter > 0 && counter % 10 == 0` | fires once, ungated | gated, fires 3 pairs |
+| after the counter increment, `if (tick==30 && counter<60) return` — the clock is **frozen** | `Hold 30` (right duration, wrong reason) | `Hold` gated on `counter < 60` |
+| while frozen, tick stays 30, so the tick-30 salvo fires at counter 30, 40, 50 — **3 salvos = 6 requests**, plus the tick-10 pair = **8** | 4 requests | **8 requests** |
+| branch selection: normal rows 3/6, powered rows 4/7 — ONE pair per branch | powered pair unbound | both bound, `kGateNormal` on 3/6 |
+
+So the existing program under-fired by four requests over the frozen interval. This
+is the first repair (§5) precisely because it needs no new origin family: it needs
+the counter and the gate, which the whole roster needs anyway.
+
+Two traps found while repairing it, both worth remembering:
+
+* **The tick-30 salvo is not one event.** Sampling a single visit — as the old test
+  did — passes even when the program is wrong. The witness now counts every request
+  over the whole frozen interval.
+* **The legacy `Launch(row, lateral, pitch)` adapter is not a general world model.**
+  It encodes Rena 0's measured red-charge shape (forward 70, lateral 70, height +70,
+  yaw ±1.0 deg — `FUN_0043ffc0.c:1526-1543`, where the ±1.0 is a literal angle offset,
+  not a bug). Rika's charge was briefly routed through it and got forward 70 with a
+  spurious ±1° yaw. Any body measuring anything else needs typed specs.
+* **The pitch is latched, not re-derived.** `shoot_body_4_1_450` computes the elevation
+  once at tick 10 (`FUN_0042da80` → `FUN_0066b668` → `write_scratch(0x3c)`) and reads it
+  back for the frozen salvos. Recomputing the elevation per launch re-aims a salvo whose
+  target changed height mid-attack — which is what the port did until
+  `MoveOp::CapturePitch` / `ShotAimKind::StoredPitch` latched it. **106 bodies** in the
+  corpus read `0x3c` more than once, so this is a roster-wide mechanism rather than a
+  Rika special case, and the witness drives a dummy that rises 600 units between the
+  two salvos to prove the latch holds.
+
+### Reaching the air charge is its own port problem
+
+The air copy needs two things the port does not provide for free: the charge must survive
+the leap (a Jump press returns before the charge block, costing one tick before the charge
+re-accrues), and the air window must outlast the program (a plain leap is 47 updates;
+holding Z against the fly budget extends it to ~112). Both are documented in the witness
+so the next agent does not mistake an unreachable path for a broken rule.
+
+### 2.6 Satoko 2's tap geometry is fully measured and needs no new engine type
+
+`shoot_body_3_2_400` (bundle lines 16450-16605): both attachment slots bound
+(`FUN_00434a70(0,0)/(1,1)`), turn 15° while tick<20, horizontal bleed 0.5/tick, and
+at tick 20 the twin pair — position = actor + 100·forward(heading) ± 50·right(heading),
+height +70; yaw = heading + movement offset; pitch = target elevation clamped ±40;
+rows 0 normal / 1 powered. The `ActorRelativeOffset` origin and
+`ActorHeadingTargetElevation` aim already express this exactly (their 2.2 validation).
+What is missing is only the gate and the movement-offset input.
+
+## 3. Architecture decisions
+
+**D-S1 — `MoveRule` stays for schedules; gates and counters are added, not replaced.**
+`MoveRule` already carries the 60%-corpus movement/prop/recovery schedules with
+proven behavior. Adding an explicit `gate` bitmask and a per-move counter to it is
+additive and cannot regress the 13 bound programs. No new rule language is invented.
+
+**D-S2 — The powered gate is one named predicate over port state, not a bundle label.**
+`Fighter` gains a narrow shooting context (currently the ally hold) that the scene
+publishes each tick, and one predicate `shoot_gate_powered()` implementing §2.3. The
+original's `+0x300` aim selection remains the camera's concern; only its `+0x848`
+consequence is a firing input.
+
+**D-S3 — No word-bank interpreter, and no generated gameplay rules.**
+The recovered bodies stay evidence. Rule tables stay reviewed values with body line
+citations, as they are today. The runtime never indexes a decompiler word array; this
+is the plan's existing constraint and the census does not change it.
+
+**D-S4 — Complex bodies get focused C++ handlers; the schedule data does not.**
+Where a body computes a request from runtime inputs the data model cannot express
+(spread loops, child spawning, steering), the port writes a handler that calls the
+same shared services (`launch_bullet`'s typed specs, `admit_shooting_row`). Kasai 0's
+scatter is the first expected user. The rule table keeps everything that *is* data.
+
+**D-S5 — One pending-shot path, one stock representation, one freeze mechanism.**
+The migration notes leave three dual representations (legacy `m_pending` beside the
+growable FIFO, `AmmoStock` beside `ShootingMagazine` for unbound fighters, `Hold`
+beside a counter freeze). Each dual needs its consumers audited again by every agent.
+They are collapsed into the FIFO / `ShootingMagazine` / gated `Hold` respectively as
+the affected slices land, with the collapse recorded in the execution log.
+
+## 4. Work sequence
+
+Evidence-normalize → **repair Rika 1 450/460** (correctness first, it is wrong today)
+→ **bind Satoko 2 tap** (first real typed-world + gate witness) → Kasai 0 allocation
+and spread (first C++ handler, first pool audit) → roster by family, Satoko 1 and the
+sparse combos investigated early → gates.
+
+Each slice ships with witness tests and leaves the capability behind for the next
+combo; nothing is deferred to a "combat phase" that no one owns.
+
+## 5. What this session implements
+
+1. `MoveOp::Counter` / `CounterSet` + `MoveRule::gate`/`gateValue` in `move_behavior.h`,
+   carrying `kGatePowered`, `kGateNormal`, `kGateCounter`, `kGateCounterMod` and
+   `kGateCounterBelow`. A gated `Hold` is a bounded freeze whose counter rule is written
+   before it, which is how the original's `return`-before-clock-advance is reproduced.
+2. The recovered aim-selection boundary: `TargetLocks` carries the `+0x300` aim layer
+   (`m_aim[]`, init 0, moved by gestures and maintenance re-picks) beside the untouched
+   combat-lock layer, and the per-tick re-pin/decay implements the recovered
+   same-target-as-player-0 comparison with no liveness test. `Match::aim_holds()` feeds
+   `ShootingContext::aimHold`; the combat lock, ring, pulse, bot retarget gate and
+   camera are behaviorally identical to before (their suites pass unmodified).
+3. `kRikaRules` 450/460 repaired to the measured counter/freeze semantics (§2.5): the
+   frozen-interval salvo count, the ±50/60/70 geometry, both branch pairs, and the latched
+   pitch (`MoveOp::CapturePitch` + `ShotAimKind::StoredPitch`, which 106 bodies need).
+4. `kSatoko2Rules` 400/402 bound: twin world requests, lateral ±50, dynamic pitch
+   clamp, powered row selection, turns and bleed. 450/460 stay pending with their
+   measured parameters recorded in the ledger.
+5. Witness tests: whole-frozen-interval request counts for Rika 1 — ground normal and
+   powered (rows 3/6 vs 4/7, three pairs each), ground pitch latch, and air 460 normal
+   and powered (same three-pair split on the air copy) — with the geometry pinned; the
+   Satoko 2 twin worlds and both gate halves from the real item-38 fixture; aim-layer
+   unit witnesses (init, player-0 trivial hold, shared/diverged aims, gesture updates,
+   direct-set clear, 300-tick expiry, death persistence, rematch reset, 1v1 permanence);
+   a **live 1v1** where the powered twin fires with no gesture at all (plus a Friendship
+   control firing the normal twin, with admission separated per magazine); a **live 2v2**
+   where the shared-aim fighter fires powered and the diverged fighter fires normal;
+   and a **live death/rematch** where killing the shared target re-picks locks and aims
+   together and a reset restores init. The live witnesses count the SPAWN update only,
+   so a single surviving projectile cannot satisfy a two-entry assertion. None of this
+   is a full-fidelity claim: the fired yaw still omits the battle movement offset, the
+   air copy still omits the source's phase0/tick0 velocity and gravity clears, Oyashiro
+   activation stays player-driven, and Hanyu+1's 30 s window is halved to 15 s.
+6. The unused typed vocabulary (WorldPosition, LegacyDegrees, Facing, Direction and
+   their fields) removed in the pre-commit diff review.
+
+Validated: build green, full Linux suite 65/65 with the fighter suite at 788 checks,
+recon 6/6, Windows and web cross-builds, and a live 2-player battle of 2400 frames /
+852 logic ticks. The typed-origin descriptors that resumed the session unvalidated are
+included in that validation.
+
+## 6. Still open (recorded, not hidden)
+
+* The port has no state-0x1e gate (no such state exists here) and no aim re-pick on
+  selection-invalid — both are original behaviors with no port counterpart, kept as
+  explicit gaps rather than invented logic.
+* Hanyu+1's 30 s Oyashiro window (DAT `parameters[5]` = 1800) vs the port's uniform
+  15 s — needs DAT `parameters[]` plumbing the port deliberately skips.
+* The battle movement offset (`source_float(0x19)`) feeding the world yaw: every
+  world request currently aims on heading alone, while the bodies add the movement
+  offset to the yaw.
+* The air-charge entry clears (`w[0x15]` horizontal, `w[0x16]` vertical, `w[0x10]`
+  gravity accumulator at phase0/tick0 — Rika 1 460 is the measured witness) and the
+  air gravity tails, which have no `MoveOp` and stay explicit gaps rather than
+  invented physics.
+* Global 32-projectile pool vs original allocation; deterministic spread and RNG draw
+  order; per-move state reset on death/respawn/rematch; the legacy no-weapon
+  provisional path; exact 3,600-entry cosine-table parity (a measured-tolerance
+  decision is required and is not yet made); Satoko 2 charge bodies; every other combo.

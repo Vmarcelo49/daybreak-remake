@@ -21,6 +21,10 @@
 
 namespace fnd::audio {
 
+// Process-only output policy, configured before opening engines. Verification still
+// decodes and queues audio, but every stream stays silent even if sliders change.
+void set_output_muted(bool muted);
+
 // Which option-screen slider a channel follows. The remake's option screen
 // has master/music/voice/SFX sliders and no UI slider, so UI cues follow SFX.
 enum class SfxBus { Ui, Voice, Sfx };
@@ -146,6 +150,27 @@ struct DecodedOgg {
 };
 bool decode_ogg_s16(const uint8_t* bytes, size_t size, DecodedOgg& out);
 
+struct AudioPoint3 {
+    float x = 0.f, y = 0.f, z = 0.f;
+};
+struct SpatialPlayRequest {
+    int channel = -1;
+    AudioPoint3 source{};
+    AudioPoint3 listener{};
+    AudioPoint3 listenerForward{0.f, 0.f, 1.f};
+    float rolloffFactor = 0.0005f;
+    float minDistance = 3.f;
+};
+struct SpatialMix {
+    float left = 1.f;
+    float right = 1.f;
+};
+// Port-side equal-power pan and attenuation. DirectSound owns the original's spatial mix;
+// this is the approximation boundary around the recovered source/listener parameters.
+SpatialMix spatial_mix(const SpatialPlayRequest& request);
+void spatialize_s16(const int16_t* input, size_t frames, const SpatialMix& mix,
+                    std::vector<int16_t>& output);
+
 // Real Engine: SDL3 device at the game Spec, 32 SFX slot streams + 1 music
 // stream, volume buses, web UnlockGate. SDL types stay in the .cpp (PIMPL)
 // so this header keeps audio.h's no-SDL promise and tests without SDL linked.
@@ -185,6 +210,7 @@ public:
     // free slot in the bus range. Full bus returns -1 (backpressure like the
     // music push) rather than stealing a live voice. Gated drops, as above.
     int play(SfxHandle h, SfxBus bus, const PlayRequest& req = PlayRequest{});
+    int play_spatial(SfxHandle h, const SpatialPlayRequest& req = SpatialPlayRequest{});
     void stop(int channel);
     // Stop every channel of one bus (the pause/leave seam: one call instead of a
     // 16..31 loop). One-shots do not resume — a stopped cue is cut, never queued.
@@ -201,6 +227,7 @@ public:
     size_t bank_size() const;
 
 private:
+    int claim_channel(SfxBus bus, int requested);
     struct Impl;
     std::unique_ptr<Impl> impl_;
     UnlockGate* gate_;  // not owned; null means always ready

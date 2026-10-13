@@ -69,13 +69,16 @@ extended this suite and `user_settings_test` — no suite was added, which is wh
 ctest --test-dir remake/foundation/build/linux --output-on-failure
 ```
 
-* **With the game install present**: `100% tests passed out of 63`
-  (re-measured 2026-10-06; 61 came from issue #4's three delivery suites, 58 from issue
-  #56's `hud_view_geometry`, 57 from issue #50's `pause_overlay_layout_test` and
-  `pause_overlay_panel`, 55 from issue #39's `live_camera_smoothness_test`, 54 from issue
-  #48's `debug_keys_test`, 53 from issue #47's `countdown_overlay_test`, and 52 from issue
-  #51's `lock_switch_camera_test`; issue #21 row 1 adds `shadow_map_test` and
-  `character_shadow`).
+* **With the game install present**: `100% tests passed out of 65`
+  (re-measured 2026-10-09; 63 was the 2026-10-06 measurement: 61 came from issue #4's three
+  delivery suites, 58 from issue #56's `hud_view_geometry`, 57 from issue #50's
+  `pause_overlay_layout_test` and `pause_overlay_panel`, 55 from issue #39's
+  `live_camera_smoothness_test`, 54 from issue #48's `debug_keys_test`, 53 from issue
+  #47's `countdown_overlay_test`, and 52 from issue #51's `lock_switch_camera_test`;
+  issue #21 row 1 adds `shadow_map_test` and `character_shadow`). The Ginkiha port's
+  `ginkiha_tables_test` (docs/reports/ginkiha-port-plan.md §1, Fase 0) is the 65th:
+  device-free AND data-free, so it neither skips without an install nor changes which
+  tests skip, and it pins the generated `ginkiha_tables.h` against the bundle.
 * **Without any game data** (the CI runner's state — no `Higurashi-Daybreak/`):
   the same six tests go `Skipped` (exit 77) — `hud_cell_scale`, `toon_ramp`,
   `npr_experiments`, `npr_normals_test`, `controller_scene_lifetime_test` and
@@ -136,6 +139,26 @@ The workflow (`.github/workflows/build-foundation.yml`, Linux job) runs this
 jobs stay on the version-bump path: a `gate` job diffs the push and runs them when
 `remake/foundation/VERSION` changed anywhere in it, or on a manual dispatch.
 
+## 2b. Automated gates (run these before claiming the section below)
+
+Two gates replace checks this checklist used to describe as manual. Both fail rather than
+warn, and both keep their evidence on failure.
+
+```bash
+# 1. Every asset/GPU-backed suite must EXECUTE, not skip. A green `ctest` on a machine
+#    with no install says nothing about them, so this gate fails on any skip.
+python3 tests/release_check.py build/linux
+
+# 2. The release flow: required scene transitions in order, the roster the recipe asks
+#    for, the rounds it must resolve, and the capture file — in a bounded timeout.
+python3 tests/release_flow_check.py build/linux/foundation_demo <game-dir> --recipe 1v1
+```
+
+`release_check.py` needs a configured CTest build directory; `release_flow_check.py`
+needs the install and takes minutes per recipe (it prints the build directory's own
+transcript on failure). Neither is a CTest entry: the first would need a build directory
+in CI's test step, and the second is a release-time gate, not a per-push one.
+
 ## 3. The acceptance runs (deterministic, real assets)
 
 All four use the committed scripts under `tests/scripts/`, run from
@@ -145,15 +168,28 @@ steps one logic tick per rendered frame (the demo prints
 ticks in the scripts exact and the run reproducible. Run them with a warm
 page cache; each takes seconds to a minute.
 
-> **These four recipes DO NOT REPRODUCE as written (issue #63).** `75e69c3` corrected the stage
-> page's time-limit default from a port-chosen 180 to the original's **0 = infinite**, and the
-> scripts' stage-page taps are relative to that default: the 1v1 script's two LEFT presses used
-> to reach 60 s and now reach 180 s. Every gate's round is therefore longer, ends by balloon
-> burst instead of time up, and the 4p gate's `--frames=9600` no longer lands on a capturable
-> frame (it prints `RESULT: ok` and writes no PPM). **The ladders and digests below are the
-> PRE-fix values, kept because they are what the gate is meant to return once issue #63
-> re-calibrates the scripts** — do not re-record them to match the current behaviour, which is
-> the fix's side effect and not the gate's contract.
+> **Issue #63 is FIXED (re-calibrated 2026-10-10).** `75e69c3` corrected the stage page's
+> time-limit default from a port-chosen 180 to the original's **0 = infinite**, and the scripts'
+> stage-page taps were relative to that default: two LEFT presses reached 60 s from 180 but only
+> 180 s from 0, because the row cycles `wrap(timeLimit + dx*60, 300)`. Every recipe now presses
+> LEFT **four** times, which is what 0 -> 240 -> 180 -> 120 -> **60** costs, and every event after
+> the stage page moved by the same **+24 frames** those two extra press/release pairs take, so the
+> battle taps keep their offset from the match start.
+>
+> Measured after the fix (`frontend-1v1-rematch.txt`, `--frames=15500`): the settings line reads
+> the intended `time 60s, health 50%, gauge 100%, balloon 40%/40%`, every round ends
+> `round over, side N wins (time up) at frame 3600` — the pre-fix value, because the round is the
+> 60 s limit again — and the scene ladder is the pre-fix ladder **+24 on every entry after the
+> stage page** (`34 -> 470 -> 4406 -> 5008 -> 5334 -> 9270` against `34 -> 446 -> 4382 -> 4984 ->
+> 5310 -> 9246`). The `title`/`select(34)` entries are unchanged.
+>
+> The **ladder entries after the stage page below are the PRE-fix ticks** and are superseded by the
+> +24 values just quoted; they are kept because the +24 is arithmetic, not a behavioural change,
+> and a future edit that moves them by anything else is a real regression.
+>
+> **The captures' SHA-256 digests in §3 are NOT re-banked.** They were measured on the pre-fix
+> runs, and re-banking needs a deliberate three-round run per recipe rather than a hash copied
+> from a single pass — do not paste a new digest here to make a failing comparison pass.
 
 The four are §3.1 (§3.1's 1v1), §3.2 (com), §3.3 (2v2) and the four-player
 loop, whose command is:

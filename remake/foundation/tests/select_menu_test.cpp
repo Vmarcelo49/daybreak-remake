@@ -43,12 +43,16 @@ int main() {
     check(menu.phase()==ui::SelectPhase::Character,"team claims panel");
     hold(menu,up,15);
     check(state.slots[0].character==3,"a held direction slides the cursor onto the next character");
-    // The phase transition is what the screen's entry voice line and sound cues read: the
-    // confirm that leaves Character for Weapon reports exactly that pair.
+    // The character confirm reports the phase transition used for its cursor sound. The
+    // entry voice is a separate event on the later Controller -> Ready confirm.
     ui::SelectTransition transition;
     menu.update(confirm,0,&transition);
     check(transition.from==ui::SelectPhase::Character && transition.to==ui::SelectPhase::Weapon,
           "the character confirm reports the Character -> Weapon transition");
+    std::array<ui::SelectTransition,4> voiceTransitions{};
+    voiceTransitions[0]=transition;
+    check(ui::selectEntryVoices(state,menu,confirm,voiceTransitions).empty(),
+          "the first character confirm does not play the entry voice");
     menu.update(up);
     check(state.slots[0].weapon==2,"weapon wraps");
     menu.update(confirm);
@@ -61,6 +65,22 @@ int main() {
     check(transition.entered(ui::SelectPhase::Ready),
           "the controller confirm reports entering Ready (the screen's sound 3)");
     check(state.slots[0].ready && state.slots[0].controller==0,"human locks choices");
+    voiceTransitions={};
+    voiceTransitions[0]=transition;
+    auto humanEntryVoices=ui::selectEntryVoices(state,menu,confirm,voiceTransitions);
+    check(humanEntryVoices.size()==1 && humanEntryVoices[0]=="data/voice/entry/satoko",
+          "a human gets one entry voice after PLAYER confirmation");
+    ui::SelectVoiceQueue humanVoiceQueue;
+    humanVoiceQueue.append(humanEntryVoices);
+    check(humanVoiceQueue.take()=="data/voice/entry/satoko" && humanVoiceQueue.take().empty(),
+          "the host voice seam drains a final-confirm cue exactly once");
+    ui::ScreenInput idleInput;
+    menu.update(idleInput,0,&transition);
+    voiceTransitions={};
+    voiceTransitions[0]=transition;
+    check(transition.from==ui::SelectPhase::Ready && transition.to==ui::SelectPhase::Ready &&
+          ui::selectEntryVoices(state,menu,idleInput,voiceTransitions).empty(),
+          "holding the Ready state does not repeat the entry voice");
     for(int i=0;i<16;++i) menu.tick();
     check(menu.phase()==ui::SelectPhase::Team,"ready releases controller after 16 frames");
     menu.update(cancel);
@@ -69,6 +89,30 @@ int main() {
     check(menu.cursor()==2,"team cursor reaches decide");
     check(menu.update(confirm)==ui::SelectAction::Stage,"decide advances stage");
     check(state.stagePage && state.slots[3].controller==4 && state.slots[3].character>=0,"unset slots become COM");
+
+    ui::FrontendState comVoiceState;
+    ui::SelectMenu comVoiceMenu(comVoiceState);
+    auto comVoiceFor = [&](const ui::ScreenInput& input) {
+        ui::SelectTransition changed;
+        comVoiceMenu.update(input,0,&changed);
+        std::array<ui::SelectTransition,4> changedByController{};
+        changedByController[0]=changed;
+        return ui::selectEntryVoices(comVoiceState,comVoiceMenu,input,changedByController);
+    };
+    comVoiceFor(confirm); // Team -> Character
+    comVoiceFor(confirm); // Character -> Weapon
+    check(comVoiceFor(confirm).empty(),"a COM candidate still has no voice before controller choice"); // Weapon -> Hypermode
+    comVoiceFor(confirm); // Hypermode -> Controller
+    check(comVoiceFor(up).empty(),"choosing COM alone does not play the entry voice");
+    check(comVoiceFor(cancel).empty(),"canceling controller choice does not play the entry voice");
+    check(comVoiceFor(confirm).empty(),"reopening controller choice does not play the entry voice");
+    check(comVoiceFor(up).empty(),"editing back to COM does not play the entry voice");
+    const auto comEntryVoices=comVoiceFor(confirm);
+    check(comVoiceState.slots[0].controller==4 && comVoiceState.slots[0].ready,
+          "the COM choice is committed on the final confirm");
+    check(comEntryVoices.size()==1 && comEntryVoices[0]=="data/voice/entry/rena",
+          "a COM fighter gets one entry voice after COM confirmation");
+
     ui::FrontendState multi;
     ui::SelectMenu controllers(multi);
     controllers.update(confirm,0);
@@ -97,6 +141,64 @@ int main() {
     simultaneous.players[2].confirm=true;
     frameMenu.updateFrame(simultaneous);
     check(frameState.slots[0].character==-1 && frameMenu.phase(2)==ui::SelectPhase::Weapon,"cancel does not swallow another controller confirm");
+
+    // The screen may receive multiple final confirms in one local-player tick. Each path is
+    // queued in controller order so SelectScreen::takeVoice can drain them without overwrite.
+    ui::FrontendState voiceFrameState;
+    ui::SelectMenu voiceFrameMenu(voiceFrameState);
+    ui::ScreenInput voiceFrame;
+    voiceFrame.separatePlayers=true;
+    voiceFrame.players[0].confirm=true;
+    voiceFrame.players[2].confirm=true;
+    std::array<ui::SelectTransition,4> voiceFrameTransitions{};
+    voiceFrameMenu.updateFrame(voiceFrame,nullptr,&voiceFrameTransitions);
+    voiceFrame.players={};
+    voiceFrame.players[0].up=true; voiceFrame.players[0].upHeld=true;
+    voiceFrame.players[2].right=true; voiceFrame.players[2].rightHeld=true;
+    for(int i=0;i<15;++i)
+        voiceFrameMenu.updateFrame(voiceFrame,nullptr,&voiceFrameTransitions);
+    check(voiceFrameState.slots[0].character==3 && voiceFrameState.slots[2].character==4,
+          "local voice fixture selects different characters on panels 0 and 2");
+    voiceFrame.players={};
+    voiceFrame.players[0].confirm=true; voiceFrame.players[2].confirm=true;
+    voiceFrameMenu.updateFrame(voiceFrame,nullptr,&voiceFrameTransitions); // Character -> Weapon
+    check(ui::selectEntryVoices(voiceFrameState,voiceFrameMenu,voiceFrame,
+                                voiceFrameTransitions).empty(),
+          "local character confirms do not play entry voices");
+    voiceFrameMenu.updateFrame(voiceFrame,nullptr,&voiceFrameTransitions); // Weapon -> Hypermode
+    voiceFrameMenu.updateFrame(voiceFrame,nullptr,&voiceFrameTransitions); // Hypermode -> Controller
+    voiceFrame.players={};
+    voiceFrame.players[0].up=true; // panel 0 chooses COM
+    voiceFrameMenu.updateFrame(voiceFrame,nullptr,&voiceFrameTransitions);
+    check(ui::selectEntryVoices(voiceFrameState,voiceFrameMenu,voiceFrame,
+                                voiceFrameTransitions).empty(),
+          "a local controller edit does not play an entry voice");
+    voiceFrame.players={};
+    voiceFrame.players[2].cancel=true;
+    voiceFrameMenu.updateFrame(voiceFrame,nullptr,&voiceFrameTransitions);
+    check(ui::selectEntryVoices(voiceFrameState,voiceFrameMenu,voiceFrame,
+                                voiceFrameTransitions).empty(),
+          "a local controller cancel does not play an entry voice");
+    voiceFrame.players={};
+    voiceFrame.players[2].confirm=true; // Hypermode -> Controller
+    voiceFrameMenu.updateFrame(voiceFrame,nullptr,&voiceFrameTransitions);
+    voiceFrame.players={};
+    voiceFrame.players[0].confirm=true; voiceFrame.players[2].confirm=true;
+    voiceFrameMenu.updateFrame(voiceFrame,nullptr,&voiceFrameTransitions); // Controller -> Ready
+    const auto localEntryVoices=ui::selectEntryVoices(voiceFrameState,voiceFrameMenu,voiceFrame,
+                                                      voiceFrameTransitions);
+    check(voiceFrameState.slots[0].controller==4 && voiceFrameState.slots[2].controller==2,
+          "the two local panels retain independent COM/PLAYER choices");
+    check(localEntryVoices.size()==2 &&
+          localEntryVoices[0]=="data/voice/entry/satoko" &&
+          localEntryVoices[1]=="data/voice/entry/rika",
+          "simultaneous local confirms retain both selected-character voices");
+    ui::SelectVoiceQueue localVoiceQueue;
+    localVoiceQueue.append(localEntryVoices);
+    check(localVoiceQueue.take()=="data/voice/entry/satoko" &&
+          localVoiceQueue.take()=="data/voice/entry/rika" && localVoiceQueue.take().empty(),
+          "the local voice queue drains every cue once without replacing a prior event");
+
     ui::ScreenInput invalid; invalid.confirm=true; invalid.player=-1;
     check(frameMenu.updateFrame(invalid)==ui::SelectAction::None,"invalid player is ignored");
     ui::FrontendState randomA,randomB;

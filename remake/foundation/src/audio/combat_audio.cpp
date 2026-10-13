@@ -44,6 +44,8 @@ const char* combat_event_name(CombatEventKind k) {
     switch (k) {
         case CombatEventKind::MatchStart:    return "match-start";
         case CombatEventKind::MeleeSwing:    return "melee-swing";
+        case CombatEventKind::MeleeVoice:    return "melee-voice";
+        case CombatEventKind::SoundEffect:   return "sound-effect";
         case CombatEventKind::ShotFired:     return "shot-fired";
         case CombatEventKind::Hit:           return "hit";
         case CombatEventKind::Overkill:      return "overkill";
@@ -72,6 +74,10 @@ CombatEventList combat_events_for_frame(const CombatEventSource& source,
                                         const CombatFrameView& frame, uint32_t tick,
                                         bool match_start) {
     CombatEventList list;
+    // One DirectSound listener per scene in the original. The frame publishes the
+    // primary camera target's listener pose (FUN_006358c0: actor xyz + 150 Y). The
+    // port's four-view split screen has no source counterpart, so primary view is the
+    // explicit one-listener adaptation.
     const int count = source.fighter_count() < 0 ? 0
                      : (source.fighter_count() > 4 ? 4 : source.fighter_count());
     auto emit = [&](CombatEventKind kind, int fighter, int src, uint8_t seq, bool shot) {
@@ -87,8 +93,33 @@ CombatEventList combat_events_for_frame(const CombatEventSource& source,
     if (match_start)
         for (int i = 0; i < count; ++i) emit(CombatEventKind::MatchStart, i, -1, 0, false);
     for (int i = 0; i < count; ++i) {
-        if (frame.swing_started[i]) emit(CombatEventKind::MeleeSwing, i, -1, 0, false);
-        if (frame.shot_fired[i])    emit(CombatEventKind::ShotFired, i, -1, 0, false);
+        if (frame.swing_started[i]) {
+            emit(CombatEventKind::MeleeSwing, i, -1, 0, false);
+            // A row with recovered voice cues speaks on its own schedule (MeleeVoice), so
+            // the swing event must not also fire the vocabulary fallback.
+            list.events[list.count - 1].source_voice_audited = frame.melee_voice_audited[i];
+        }
+        if (frame.melee_voice[i] >= 0) {
+            emit(CombatEventKind::MeleeVoice, i, -1, 0, false);
+            list.events[list.count - 1].voice_override = frame.melee_voice[i];
+            list.events[list.count - 1].voice_alternative = frame.melee_voice_alternative[i];
+        }
+        if (frame.sound_effect_id[i] >= 0) {
+            emit(CombatEventKind::SoundEffect, i, -1, 0, false);
+            list.events[list.count - 1].se_override = frame.sound_effect_id[i];
+            list.events[list.count - 1].se_positional = frame.sound_effect_positional[i];
+            list.events[list.count - 1].se_position = frame.sound_effect_position[i];
+            list.events[list.count - 1].se_listener_position = frame.listener_position;
+            list.events[list.count - 1].se_listener_forward = frame.listener_forward;
+            list.events[list.count - 1].se_listener_valid = frame.listener_valid;
+        }
+        if (frame.shot_fired[i] || frame.shot_voice[i] >= 0) {
+            emit(CombatEventKind::ShotFired, i, -1, 0, false);
+            list.events[list.count - 1].voice_override = frame.shot_voice[i];
+            list.events[list.count - 1].voice_alternative = frame.shot_voice_alternative[i];
+            list.events[list.count - 1].source_voice_audited =
+                frame.shot_voice_audited[i] && frame.shot_voice[i] < 0;
+        }
         if (frame.hyper_started[i]) emit(CombatEventKind::HyperActivate, i, -1, 0, false);
         if (frame.guard_started[i]) emit(CombatEventKind::GuardStart, i, -1, 0, false);
         if (frame.respawned[i])     emit(CombatEventKind::Respawn, i, -1, 0, false);
@@ -139,16 +170,43 @@ CombatCue resolve_combat_event(const CombatEvent& e) {
             cue.voice = VoiceEvent::BattleStart;
             break;
         case CombatEventKind::MeleeSwing:
-            // PORT RULE: the vocabulary names the melee chain's own three attacks and the
-            // swing data carries no sound id, so the chain position picks them. seq is the
-            // per-tick swing ordinal, which for one fighter is the chain step.
+            // PORT RULE (fallback only): the swing event carries no sound id, so the chain
+            // position picks the vocabulary's three attacks. Rows whose body cue IS
+            // recovered set source_voice_audited and stay silent here — their MeleeVoice
+            // event fires on the body's own frame instead.
+            if (e.source_voice_audited) break;
             cue.has_voice = true;
             cue.voice = e.seq == 0 ? VoiceEvent::AttackA
                                    : (e.seq == 1 ? VoiceEvent::AttackB : VoiceEvent::AttackC);
             break;
-        case CombatEventKind::ShotFired:
+        case CombatEventKind::MeleeVoice:
+            // FUN_004223d0(voice, priority, 0) / FUN_00422490(voice, choice, priority, 0):
+            // the id IS the vocabulary index (FUN_00431e70's 40-name table at 0x6b73b0),
+            // and the alternative is the body's own choice draw where it takes one.
+            if (e.voice_override < 0 || e.voice_override >= kVoiceEventCount) break;
             cue.has_voice = true;
-            cue.voice = VoiceEvent::Fire;
+            cue.voice = static_cast<VoiceEvent>(e.voice_override);
+            break;
+        case CombatEventKind::SoundEffect:
+            // FUN_0042c8b0 passes actor+0x14 through FUN_0065a260 to the 3D buffer's
+            // SetPosition (+0x4c); FUN_0042c880 stays non-positional. The listener frame
+            // publishes the original followed fighter at +150 Y (FUN_006358c0), with its
+            // yaw-derived forward vector. The source sets distance factor .01 (for units /
+            // Doppler), battle-stage rolloff .0005 and buffer min distance 3.0; this SDL
+            // adapter applies the latter two but has no recovered Doppler model.
+            if (e.se_override < 0) break;
+            cue.se_id = e.se_override;
+            cue.se_positional = e.se_positional;
+            cue.se_position = e.se_position;
+            cue.se_listener_position = e.se_listener_position;
+            cue.se_listener_forward = e.se_listener_forward;
+            cue.se_listener_valid = e.se_listener_valid;
+            break;
+        case CombatEventKind::ShotFired:
+            if (e.source_voice_audited && e.voice_override < 0) break;
+            cue.has_voice = true;
+            cue.voice = e.voice_override >= 0 && e.voice_override < kVoiceEventCount
+                            ? static_cast<VoiceEvent>(e.voice_override) : VoiceEvent::Fire;
             break;
         case CombatEventKind::Hit:
             cue.has_voice = true;
@@ -251,10 +309,11 @@ void CombatAudio::play_voice(const CombatEvent& e, const CombatCue& cue) {
         return;
     }
     // PORT RULE: the original picks the alternative with `rand % count`; the port picks
-    // deterministically from the event's own identity so a capture reproduces exactly.
-    const int alternative = static_cast<int>(
+    // deterministically from the event's identity unless its move supplied an exact alternative.
+    const int alternative = e.voice_alternative >= 0 ? e.voice_alternative : static_cast<int>(
         (static_cast<uint64_t>(e.tick) * 7u + static_cast<uint64_t>(e.fighter) * 3u + e.seq) %
         static_cast<uint64_t>(count));
+    if (alternative >= count) { ++stats_.voice_missing; return; }
     const std::string stem = voice_asset_stem(v.dir, cue.voice, v.b_persona, alternative);
     if (stem.empty()) return;
     // One voice channel per fighter (the original's per-player audio object): the fighter's
@@ -273,18 +332,29 @@ void CombatAudio::play_voice(const CombatEvent& e, const CombatCue& cue) {
     ++stats_.voice_plays;
 }
 
-void CombatAudio::play_se(const CombatEvent& e, const CombatCue& cue) {
+void CombatAudio::play_se(const CombatCue& cue) {
     if (!cue.has_se()) return;
     // The SE bus auto-picks (the original's own bank is a 32-slot table, FUN_0064ade0).
     // The channel is not claimed: an SE is one-shot and frees itself when it drains.
     const std::string stem = numbered_stem("data/se", cue.se_id);
-    if (sink_.play(stem, SfxBus::Sfx, -1) < 0) {
+    int played = -1;
+    if (cue.se_positional && cue.se_listener_valid) {
+        CombatAudioSink::SpatialRequest request;
+        request.source = cue.se_position;
+        request.listener = cue.se_listener_position;
+        request.listenerForward = cue.se_listener_forward;
+        request.rolloffFactor = 0.0005f;
+        request.minDistance = 3.f;
+        played = sink_.play_spatial(stem, -1, request);
+    } else {
+        played = sink_.play(stem, SfxBus::Sfx, -1);
+    }
+    if (played < 0) {
         ++stats_.se_missing;
         return;
     }
     last_se_id_ = cue.se_id;
     ++stats_.se_plays;
-    (void)e;
 }
 
 void CombatAudio::dispatch(const CombatEvent& e) {
@@ -303,7 +373,7 @@ void CombatAudio::dispatch(const CombatEvent& e) {
     }
     const CombatCue cue = resolve_combat_event(e);
     if (cue.has_voice) play_voice(e, cue);
-    play_se(e, cue);
+    play_se(cue);
 }
 
 void CombatAudio::suspend() {

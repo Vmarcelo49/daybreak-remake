@@ -31,6 +31,14 @@ class TickInput;
 struct ScriptEvent {
     uint64_t frame = 0;
     uint32_t mask = 0;  // bit i = Action i held
+    // When set, this event does not deliver input: it HOLDS the script (keeping the
+    // previous mask) until the named scene becomes current, then releases. A menu whose
+    // navigation is state-dependent — the selection screen after a rematch, where a
+    // time-shifted replay stalls — cannot be driven by frame offsets alone, and a fixed
+    // offset that guesses wrong is worse than waiting. The caller publishes the scene
+    // name; an empty name (no scene yet) matches nothing, so a wait cannot be skipped
+    // by accident.
+    std::string waitScene;
 };
 
 class Backend {
@@ -122,6 +130,9 @@ class Backend {
     void sample_script(PlayerState& state, uint64_t tick);
     void clear_script();
     bool script_active() const { return script_active_; }
+    // The current scene, for ScriptEvent::waitScene. main.cpp sets it once per tick
+    // before sample_script so a wait sees the scene the tick is actually running.
+    void set_scene_name(std::string name) { scene_name_ = std::move(name); }
 
   private:
     // SDL_SCANCODE_COUNT without including SDL; backend.cpp pins the equality.
@@ -147,6 +158,7 @@ class Backend {
     size_t script_pos_ = 0;
     uint32_t script_mask_ = 0;
     bool script_active_ = false;
+    std::string scene_name_;
 
     void record_button(int player, int code, bool down);
     void repoll_gamepads();

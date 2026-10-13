@@ -1,103 +1,32 @@
-# Airborne attack: leap, hold up, swing in the air — issue #31's live reproduction.
+# Issue #31 live recipe for the ordinary aerial slash.
 #
-# WHY the retry: `--screen=battle --local-players=1` gives P1 a script and P2 the COM,
-# and the COM's hits interrupt a lone jump (measured: a single JUMP/UP/MELEE attempt at
-# match frame 62 stayed on the ground through every sample, state idle/damage). The
-# recipe therefore repeats the leap-and-swing cycle; one of them lands while airborne.
+# P1 is script-driven and P2 is deliberately idle, so it cannot interrupt the jump.
+# --match starts directly in battle, but the first 60 simulation ticks are BattleStart.
+# First, Jump at 110, make one Up tap at 118 (not a double tap), then attack at 121.
+# This yields the ordinary Rena+0 slash, attackA/set 31, with a swing-start trace.
+# After that swing and landing, a second Jump at 170 followed by Up at 178 and 180
+# performs a real air dash; attack at 181 selects Rena+0's move-311 kick tag (set 40).
+# Both attacks occur after the 60-tick BattleStart/countdown. Use the frame count to
+# capture either pose: --frames=121 for the slash, --frames=181 for the kick.
+# Attack-time Back versus target aim, including changed lock bearing and facing persistence,
+# is separately asserted in simulation for Rena+0 and Akane+0.
 #
-# WHAT it pins: the port state `attackA` resolved from the fighter's own move row
-# (Rena 0 → move 340), whose shipped phase tag is animation set 88. Before #18/#31 the
-# hit test used 340 while the presentation fell back to set 0, so the trace read
-# `set 0 Anim-124 (fallback)`; it must now read `set 88 Anim-36`. Set 43 Anim-81 is the
-# jump row (40/41/42 chain), also visible here.
-#
-#   DAYBREAK_CAMINFO=1 foundation_demo --install=Higurashi-Daybreak --screen=battle \
-#     --local-players=1 --no-devices --script=tests/scripts/air-attack.txt \
-#     --headless --out=/tmp/air.ppm --size=64x64 --frames=1200
-#
-# The trace samples match frames 1, 61, 121, ...; measured on 2026-10-06 this recipe
-# yields 4 `anim p1=set 88` samples in every one of three consecutive runs.
-62 JUMP
-70 UP
-76 MELEE
-82 -
-86 JUMP
-94 UP
-100 MELEE
-106 -
+# Capture an aerial pose after BattleStart:
+#   SDL_AUDIO_DRIVER=dummy DAYBREAK_CAMINFO=1 DAYBREAK_DEBUG_KEYS=1 foundation_demo \
+#     --install=<game-dir> --stage=data/stage03 --character=data/rena:0 \
+#     --enemy=data/mion:0 --spawn=-1200,400,0 --spawn2=-1200,400,800 \
+#     --match --script=tests/scripts/air-attack.txt --no-devices \
+#     --headless --out=/tmp/air-attack.ppm --size=640x360 --frames=181 --no-audio
 110 JUMP
+111 -
 118 UP
-124 MELEE
-130 -
-134 JUMP
-142 UP
-148 MELEE
-154 -
-158 JUMP
-166 UP
-172 MELEE
-178 -
-182 JUMP
-190 UP
-196 MELEE
-202 -
-206 JUMP
-214 UP
-220 MELEE
-226 -
-230 JUMP
-238 UP
-244 MELEE
-250 -
-254 JUMP
-262 UP
-268 MELEE
-274 -
-278 JUMP
-286 UP
-292 MELEE
-298 -
-302 JUMP
-310 UP
-316 MELEE
-322 -
-326 JUMP
-334 UP
-340 MELEE
-346 -
-350 JUMP
-358 UP
-364 MELEE
-370 -
-374 JUMP
-382 UP
-388 MELEE
-394 -
-398 JUMP
-406 UP
-412 MELEE
-418 -
-422 JUMP
-430 UP
-436 MELEE
-442 -
-446 JUMP
-454 UP
-460 MELEE
-466 -
-470 JUMP
-478 UP
-484 MELEE
-490 -
-494 JUMP
-502 UP
-508 MELEE
-514 -
-518 JUMP
-526 UP
-532 MELEE
-538 -
-542 JUMP
-550 UP
-556 MELEE
-562 -
+119 -
+121 MELEE
+122 -
+170 JUMP
+171 -
+178 UP
+179 -
+180 UP
+181 MELEE
+182 -

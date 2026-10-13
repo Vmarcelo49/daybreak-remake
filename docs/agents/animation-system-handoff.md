@@ -9,7 +9,7 @@ regressions. Read this block first; the rest of the document is the earlier chec
 - **Item 1 (phase placement) is confirmed and fixed.** `FUN_0043ffc0` reads phase at
   `this+0xadf4` and tick at `this+0xae04`; the earlier reading of `param_1[0x2b7d]`/
   `[0x2b81]` as `0xadf8`/`0xae08` was wrong. 360/370's hold is phase 2 tick 13 and 402's
-  launch is tick 13, both now in `kNataRules`.
+  launch is tick 13, both now in `kRenaRules`.
 - **Item 2 (air tap timing) is fixed**, and the "turns toward target at 15 degrees" half of
   it was **misdiagnosed**: `FUN_0042dc20`/`FUN_0042db10` converge the *bank/lean* field
   `this+0x64` toward an absolute 0-degree target while counter-rotating `this+0x60`. What
@@ -318,7 +318,7 @@ No known running build/test sessions remain. All work is visible on disk.
 > implemented in the tree as of the same day; the text is kept as the original evidence
 > trail. Read the Update block for what actually landed and what is still open.
 
-1. **Rena0 second-charge hold is in phase2, not phase0.** Current `kNataRules`
+1. **Rena0 second-charge hold is in phase2, not phase0.** Current `kRenaRules`
    incorrectly holds360/370 at **phase0 tick13**. Original `43ffc0` cases0x168
    and0x172 place the ten-update return at **phase2 tick13**, after the phase2
    tick2 launches. Both cases turn toward target at15 degrees while phase<2;

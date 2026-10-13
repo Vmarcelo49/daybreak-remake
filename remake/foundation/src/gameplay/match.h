@@ -36,6 +36,7 @@
 
 #include "gameplay/fighter.h"
 #include "gameplay/match_economy.h"
+#include "gameplay/simulation_rng.h"
 #include "gameplay/projectile.h"
 #include "gameplay/target_lock.h"
 #include "input/input.h"
@@ -77,6 +78,12 @@ struct MatchConfig {
 
 // What one frame did, for the trace, the flow and the effect queue.
 struct MatchFrame {
+    // FUN_006358c0/FUN_0063dad0 set one scene-wide DirectSound listener to the selected
+    // actor's XYZ +150Y. Split-screen therefore uses the primary human view as the port's
+    // explicit single-listener rule; these fields feed positional gameplay SEs.
+    glm::vec3 audioListenerPosition{0.f};
+    glm::vec3 audioListenerForward{0.f, 0.f, 1.f};
+    bool audioListenerValid = false;
     bool koSting       = false;  // economy: KO sting window is running
     bool respawned[kMatchFighterCount] = {false, false, false, false};
     bool roundOver     = false;
@@ -101,6 +108,26 @@ struct MatchFrame {
     // so re-reading a frame cannot replay an event and a fixed 64 Hz tick cannot miss one.
     // i armed a melee swing / i's shot was accepted by the pool
     bool swingStarted[kMatchFighterCount] = {false, false, false, false};
+    bool sourceShotVoiceAudited[kMatchFighterCount] = {false, false, false, false};
+    // True when the actor's running row carries a recovered melee voice cue, so the
+    // audio layer suppresses its fallback swing voice for that fighter this tick.
+    bool sourceMeleeVoiceAudited[kMatchFighterCount] = {false, false, false, false};
+    int shotVoice[kMatchFighterCount] = {-1, -1, -1, -1};
+    int shotVoiceAlternative[kMatchFighterCount] = {-1, -1, -1, -1};
+    // The melee voice cue (FUN_004223d0/422490), the gameplay SE cue (FUN_0042c8b0/
+    // 2c880) and the actor effect request (`(*actor+0xc)` -> FUN_00421aa0 -> FUN_00435990)
+    // — one per fighter per tick, -1 when silent. The two id spaces are different calls
+    // and stay apart: soundEffectId is a data/se index while effectId is a data/effect
+    // id (`id / 10` names the descriptor), whose yaw/pitch carry the request's pose
+    // (including the 350 beats' two rand%40-20 draws).
+    int meleeVoice[kMatchFighterCount] = {-1, -1, -1, -1};
+    int meleeVoiceAlternative[kMatchFighterCount] = {-1, -1, -1, -1};
+    int soundEffectId[kMatchFighterCount] = {-1, -1, -1, -1};
+    bool soundEffectPositional[kMatchFighterCount] = {};
+    glm::vec3 soundEffectPosition[kMatchFighterCount] = {};
+    int effectId[kMatchFighterCount] = {-1, -1, -1, -1};
+    float effectYaw[kMatchFighterCount] = {};
+    float effectPitch[kMatchFighterCount] = {};
     bool shotFired[kMatchFighterCount]    = {false, false, false, false};
     // Where that shot left the muzzle (issue #17): the effect layer spawns the muzzle
     // flash from the event's own position instead of re-deriving it from the pose.
@@ -170,9 +197,20 @@ public:
     // and the one MatchConfig::side/spawn use — not a panel slot, not a controller slot
     // and not a team. Calls are inert for an out-of-range fighter index.
     int  locked_target(int fighter) const { return m_locks.target(fighter); }
-    // True when this fighter's selection is an ally and the recovered hold is live
-    // (FUN_00421e30's 0xb4, re-pinned by FUN_0041f580:244).
+    // True when this fighter's selection is an ally and the UX hold is live. This is
+    // the lock layer's port-rule predicate for the tap/hold gestures and the ring —
+    // NOT the firing predicate below.
     bool lock_holds_ally(int fighter) const { return m_locks.holding_ally(fighter); }
+    // This fighter's aim selection (+0x300): the player index it is aiming at,
+    // independent of the combat lock above and of the camera's followed player.
+    int  aim_selection(int fighter) const { return m_locks.aim_selection(fighter); }
+    // Ticks left in the recovered +0x848 hold for the firing predicate.
+    int  aim_hold_ticks(int fighter) const { return m_locks.aim_hold_ticks(fighter); }
+    // True when this fighter's aim target is the same fighter player 0 is aiming at
+    // (the recovered +0x848 predicate, FUN_0041f580:242-248). For fighter 0 this is
+    // self-referential and holds continuously. This — not lock_holds_ally — is what
+    // the shooting gate reads.
+    bool aim_holds(int fighter) const { return m_locks.aim_holds(fighter); }
     // Ticks left in the recovered 15-tick switch pulse (FUN_00421e30's +0x30c), which
     // the ring reads as a scale and arc advance (FUN_00643230:71-72).
     int  lock_pulse(int fighter) const { return m_locks.pulse(fighter); }
@@ -189,7 +227,15 @@ public:
     int  melee_target(int fighter) const;
     // The same selected-or-fallback aim that supplies locomotion's input bearing
     // (FUN_0041f580:216-241); body yaw may turn independently of this target.
-    int aim_target(int fighter) const;
+    int  aim_target(int fighter) const;
+    void set_primary_listener_fighter(int fighter) {
+        if (fighter >= 0 && fighter < m_config.fighterCount) m_primaryListener = fighter;
+    }
+    // The close-target voice cascade's three latches (+0xaec3/+0xaebe/+0xaeb9) for one
+    // fighter, as the per-frame update computes them (FUN_0042e110:30-72) — so from the
+    // PREVIOUS tick's state. Private use: Match fills the shooting context from this
+    // before each fighter updates. `alive` is the tick's starting liveness.
+    ShootingContext::VoiceFlags meleeVoiceFlags(int fighter, const bool alive[4]) const;
     void begin_round_entry();
     void step_round_entry(double dt);
 
@@ -240,8 +286,11 @@ private:
     Fighter            m_fighters[kMatchFighterCount];
     ProjectilePool     m_shots;
     MatchEconomy       m_economy;
+    // One stream per match, reset per round: the original's global MT19937.
+    SimulationRng      m_rng;
     TargetLocks        m_locks;
     MatchConfig        m_config;
+    int                m_primaryListener = 0;
     const xm::Model*   m_tamaMesh = nullptr;
     const game::physics::ModelIndex* m_tamaIndex = nullptr;
     const game::physics::MovementCollision* m_movementCollision = nullptr;

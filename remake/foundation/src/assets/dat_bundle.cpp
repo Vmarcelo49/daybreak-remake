@@ -7,6 +7,7 @@
 #include "sjis_table.h"   // foundation's generated CP932 -> UTF-8 table
 
 #include <algorithm>
+#include <filesystem>
 
 namespace fnd::assets {
 
@@ -94,7 +95,7 @@ bool DatBundle::open(const std::string& path, NameDecoder decode) {
     close();
     m_lastError.clear();
 
-    auto stream = std::make_unique<std::ifstream>(path, std::ios::binary | std::ios::in);
+    auto stream = std::make_unique<std::ifstream>(std::filesystem::u8path(path), std::ios::binary | std::ios::in);
     if (!stream->is_open()) {
         m_lastError = "open: cannot open " + path;
         return false;

@@ -73,6 +73,11 @@ std::string sjisToUtf8(const std::string& in);
 // stencil guard keeping overlapping cards to a single multiply.
 void keyOutWhite(CnvImage& img);
 
+// Projectile glow art uses black padding with opaque stored alpha. Keep this
+// policy off solid textures: require a mostly black border and nonblack content.
+bool hasBlackBorder(const CnvImage& img);
+void keyOutBlack(CnvImage& img);
+
 // Resolves and caches the textures one model references. `directory` is where the
 // model lives (textures sit beside it); `readFile` defaults to the filesystem and
 // can be replaced to read from the .dat bundles instead.
@@ -213,6 +218,28 @@ std::string sjisToUtf8(const std::string& in) {
         i += take;
     }
     return out;
+}
+
+bool hasBlackBorder(const CnvImage& img) {
+    if (img.width < 2 || img.height < 2 || img.rgba.size() != size_t(img.width) * img.height * 4) return false;
+    size_t border = 0, blackBorder = 0, colored = 0;
+    for (uint32_t y = 0; y < img.height; ++y)
+        for (uint32_t x = 0; x < img.width; ++x) {
+            const size_t i = (size_t(y) * img.width + x) * 4;
+            const bool black = img.rgba[i] == 0 && img.rgba[i+1] == 0 && img.rgba[i+2] == 0;
+            if (!black) ++colored;
+            if (x == 0 || y == 0 || x + 1 == img.width || y + 1 == img.height) {
+                ++border;
+                if (black) ++blackBorder;
+            }
+        }
+    return colored > 0 && blackBorder * 4 >= border * 3;
+}
+
+void keyOutBlack(CnvImage& img) {
+    for (size_t i = 0; i + 3 < img.rgba.size(); i += 4)
+        if (img.rgba[i] == 0 && img.rgba[i+1] == 0 && img.rgba[i+2] == 0)
+            img.rgba[i+3] = 0;
 }
 
 void keyOutWhite(CnvImage& img) {

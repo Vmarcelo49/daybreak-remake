@@ -311,6 +311,30 @@ SelectAction SelectMenu::updateFrame(const ScreenInput& in, int* sound,
     return result;
 }
 
+std::vector<std::string> selectEntryVoices(
+    const FrontendState& state, const SelectMenu& menu, const ScreenInput& input,
+    const std::array<SelectTransition, 4>& transitions) {
+    std::vector<std::string> voices;
+    auto collect = [&](int controller) {
+        const SelectTransition& transition = transitions[(size_t)controller];
+        if (transition.from != SelectPhase::Controller ||
+            transition.to != SelectPhase::Ready)
+            return;
+        const int selectedPanel = menu.panel(controller);
+        if (selectedPanel < 0 || selectedPanel >= (int)state.slots.size()) return;
+        const char* character =
+            frontendCharacterDirectory(state.slots[(size_t)selectedPanel].character);
+        if (character) voices.emplace_back(std::string("data/voice/entry/") + character);
+    };
+
+    if (input.separatePlayers) {
+        for (int controller = 0; controller < 4; ++controller) collect(controller);
+    } else if (input.player >= 0 && input.player < 4) {
+        collect(input.player);
+    }
+    return voices;
+}
+
 SelectScreen::SelectScreen(SpriteRenderer& batch, FrontendState& state, std::string& error)
     : state_(state), menu_(state), batch_(batch) {
     // The scene's own state, as FUN_00408330:143-158 initialises it: this constructor IS the
@@ -357,11 +381,11 @@ ScreenId SelectScreen::update(const ScreenInput& in) {
         if (!in.separatePlayers && player != in.player) continue;
         const SelectTransition& transition=transitions[(size_t)player];
         if (transition.entered(SelectPhase::Ready)) sound_=3;
-        if (transition.from == SelectPhase::Character && transition.to == SelectPhase::Weapon) {
-            const char* character = frontendCharacterDirectory(state_.slots[menu_.panel(player)].character);
-            if (character) voice_=std::string("data/voice/entry/")+character;
-        }
     }
+    // FUN_00409340 @0x409340:178-214 chooses the entry voice in the branch that commits the
+    // controller/COM choice and enters Ready. Preserve every local player's event
+    // when multiple panels confirm on one simulation tick.
+    voiceQueue_.append(selectEntryVoices(state_, menu_, in, transitions));
     if(action==SelectAction::Back) return ScreenId::Title;
     if(action==SelectAction::Stage) {
         std::string error;

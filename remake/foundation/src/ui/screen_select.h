@@ -1,5 +1,8 @@
 #pragma once
 #include <array>
+#include <deque>
+#include <string>
+#include <vector>
 #include "ui/screen.h"
 #include "ui/frontend_state.h"
 
@@ -207,6 +210,30 @@ private:
     std::array<int,4> rolled_{{ -1, -1, -1, -1 }};
     SelectRowSlide slide_;
 };
+
+// FUN_00409340 @0x409340:178-214 sets phase 8 (Ready) after the controller/COM
+// choice, then loads the character's entry voice. Keep this event mapper separate
+// from the screen so multi-controller transitions can be covered without graphics.
+std::vector<std::string> selectEntryVoices(
+    const FrontendState& state, const SelectMenu& menu, const ScreenInput& input,
+    const std::array<SelectTransition, 4>& transitions);
+
+// One render-loop takeVoice() call consumes one cue; keep simultaneous local confirms FIFO.
+class SelectVoiceQueue {
+public:
+    void append(const std::vector<std::string>& voices) {
+        for (const std::string& voice : voices) pending_.push_back(voice);
+    }
+    std::string take() {
+        if (pending_.empty()) return {};
+        std::string voice = pending_.front();
+        pending_.pop_front();
+        return voice;
+    }
+private:
+    std::deque<std::string> pending_;
+};
+
 class SelectScreen final : public Screen {
 public:
     SelectScreen(SpriteRenderer& batch, FrontendState& state, std::string& error);
@@ -214,7 +241,7 @@ public:
     void draw(SpriteRenderer& batch) const override;
     const char* name() const override { return "select"; }
     bool loaded() const;
-    std::string takeVoice() override { std::string voice; voice.swap(voice_); return voice; }
+    std::string takeVoice() override { return voiceQueue_.take(); }
     int takeSound() override { int sound=sound_; sound_=-1; return sound; }
 private:
     FrontendState& state_;
@@ -227,7 +254,7 @@ private:
     SelectReveal reveal_;
     unsigned frames_ = 0;
     int sound_ = -1;
-    std::string voice_;
+    SelectVoiceQueue voiceQueue_;
 };
 std::unique_ptr<Screen> makeSelectScreen(SpriteRenderer& batch, FrontendState& state, std::string& error);
 }

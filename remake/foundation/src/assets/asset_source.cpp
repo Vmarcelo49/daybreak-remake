@@ -50,7 +50,13 @@ std::string normalize(std::string p) {
 // used before this seam existed (which is what keeps tree-only setups rendering the same
 // pixels), including "an empty file reads as a failure".
 bool readFile(const std::string& path, std::vector<uint8_t>& out) {
+#if defined(_WIN32)
+    std::FILE* f = nullptr;
+    try { f = _wfopen(fs::u8path(path).c_str(), L"rb"); }
+    catch (const fs::filesystem_error&) { return false; }
+#else
     std::FILE* f = std::fopen(path.c_str(), "rb");
+#endif
     if (!f) return false;
     std::fseek(f, 0, SEEK_END);
     const long n = std::ftell(f);
@@ -90,10 +96,10 @@ void AssetSource::closeInstall() {
 
 std::string AssetSource::findInstallDir(const std::string& path) {
     std::error_code ec;
-    fs::path p = fs::path(path);
+    fs::path p = fs::u8path(path);
     if (!fs::is_directory(p, ec)) p = p.parent_path();
     for (int depth = 0; depth < 16 && !p.empty(); ++depth) {
-        if (fs::exists(p / "daybreak00.dat", ec)) return normalize(p.string());
+        if (fs::exists(p / "daybreak00.dat", ec)) return normalize(p.u8string());
         const fs::path parent = p.parent_path();
         if (parent == p) break;
         p = parent;
@@ -130,7 +136,12 @@ bool AssetSource::exists(const std::string& path) const {
             return true;
     }
     std::error_code ec;
+#if defined(_WIN32)
+    try { return fs::exists(fs::u8path(path), ec); }
+    catch (const fs::filesystem_error&) { return false; }
+#else
     return fs::exists(fs::path(path), ec);
+#endif
 }
 
 bool AssetSource::read(const std::string& path, std::vector<uint8_t>& out) const {

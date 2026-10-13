@@ -407,6 +407,167 @@ void testHoldForAlly() {
 }
 
 // ---------------------------------------------------------------------------
+// Aim selection (+0x300) and the shooting hold (+0x848, same-target comparison).
+// ---------------------------------------------------------------------------
+void testAimSelectionHold() {
+    section("aim selection and the shooting hold (FUN_00421e30/0x41f580:242-248)");
+    TwoVTwo m;
+    // FUN_00421670: every aim starts at player 0, and the first maintenance tick
+    // pins every hold because all aims match player 0's.
+    for (int i = 0; i < 4; ++i) {
+        checkInt(0, m.locks.aim_selection(i), "aim selection starts at player 0");
+        check(m.locks.aim_holds(i), "round-start hold pins while all aims match");
+    }
+
+    // Player 0 trivially holds: its aim IS player 0's aim, so no gesture by anyone
+    // else can break the comparison. Diverge the other three and it still holds.
+    m.locks.cycle_enemy(1, true, m.alive);
+    m.locks.cycle_enemy(2, true, m.alive);
+    m.locks.cycle_enemy(3, true, m.alive);
+    m.tick();
+    check(m.locks.aim_holds(0), "fighter 0 holds through everyone else's gestures");
+
+    // Shared vs different aims (2v2 focus fire). Blues 0 and 1 both aim at red 2;
+    // red 3 aims at blue 0 while player 0 aims at 2.
+    TwoVTwo focus;
+    focus.locks.cycle_enemy(0, true, focus.alive);
+    focus.locks.cycle_enemy(1, true, focus.alive);
+    focus.locks.cycle_enemy(3, true, focus.alive);
+    checkInt(2, focus.locks.aim_selection(0), "player 0 aims at red 2");
+    checkInt(2, focus.locks.aim_selection(1), "blue 1 aims at the same red 2");
+    checkInt(0, focus.locks.aim_selection(3), "red 3 aims at blue 0 instead");
+    focus.tick();
+    check(focus.locks.aim_holds(1), "a matching aim re-pins the hold");
+    checkInt(gameplay::kAllyHoldTicks, focus.locks.aim_hold_ticks(1),
+             "the re-pin writes the full 180 ticks");
+    checkInt(gameplay::kAllyHoldTicks - 1, focus.locks.aim_hold_ticks(3),
+             "a mismatched aim decays instead of re-pinning");
+
+    // Expiry: a diverged hold counts down to zero and stays there.
+    for (int i = 0; i < 300; ++i) focus.tick();
+    checkInt(0, focus.locks.aim_hold_ticks(3), "a diverged hold drains to zero");
+    check(!focus.locks.aim_holds(3), "the predicate reads false once drained");
+    check(focus.locks.aim_holds(1), "the matching aim is still pinned after 300 ticks");
+
+    // The direct-set writer clears the shooting hold without touching the aim
+    // (FUN_00421f30 stores +0x304 and zeroes +0x848, never +0x300). The clear is
+    // transient: the next maintenance tick re-pins while the aims still match.
+    focus.locks.set_target(1, 3, focus.alive);
+    checkInt(0, focus.locks.aim_hold_ticks(1), "direct set clears the hold at once");
+    checkInt(2, focus.locks.aim_selection(1), "direct set leaves the aim alone");
+    focus.tick();
+    check(focus.locks.aim_holds(1), "the hold re-pins while the aims still match");
+
+    // Death does not move the aim selection: the hold maintenance has no liveness
+    // test, so the predicate follows the stored indices. Here fighter 1's lock is on
+    // red 3 (alive) while its aim still names dead red 2 — and player 0 still names 2.
+    focus.alive[2] = false;
+    focus.tick();
+    checkInt(2, focus.locks.aim_selection(1), "killing the aim target keeps the aim");
+    check(focus.locks.aim_holds(1), "the hold follows the index comparison, not liveness");
+    // But a lock that itself goes bad re-picks, and the re-pick moves the aim with it
+    // (the re-pick calls FUN_00421e30, which stores +0x300). Fresh table: fighter 1
+    // locks red 2, then red 2 dies and the maintenance re-picks red 3.
+    TwoVTwo repick;
+    repick.locks.cycle_enemy(1, true, repick.alive);
+    checkInt(2, repick.locks.aim_selection(1), "fighter 1 aims at red 2");
+    repick.alive[2] = false;
+    repick.tick();
+    checkInt(3, repick.locks.target(1), "a lock on a dead target is re-picked");
+    checkInt(3, repick.locks.aim_selection(1), "the re-pick carries the aim with it");
+}
+
+// 1v1: with nowhere else to aim, the hold cannot drop.
+void testAimHoldOneVsOne() {
+    section("1v1 aim hold (player-0 comparison with two fighters)");
+    gameplay::TargetLocks locks;
+    const int side[4] = {0, 1, 0, 1};
+    locks.reset(2, side);
+    const bool alive[4] = {true, true, true, true};
+    locks.step(alive);
+    check(locks.aim_holds(0), "fighter 0 holds from the first tick");
+    check(locks.aim_holds(1), "fighter 1 holds from the first tick");
+    // Fighter 1's only enemy is fighter 0: cycling lands back where it started.
+    locks.cycle_enemy(1, true, alive);
+    for (int i = 0; i < 500; ++i) locks.step(alive);
+    check(locks.aim_holds(0), "fighter 0 still holds after 500 ticks");
+    check(locks.aim_holds(1), "fighter 1 still holds: no divergence is possible");
+}
+
+// A rematch re-runs init: aims back to player 0, holds back to zero until the first
+// maintenance tick re-pins them.
+void testAimResetOnRematch() {
+    section("rematch resets the aim layer");
+    TwoVTwo m;
+    m.locks.cycle_enemy(0, true, m.alive);
+    m.locks.cycle_enemy(1, true, m.alive);
+    m.tick();
+    const int side[4] = {0, 0, 1, 1};
+    m.locks.reset(4, side);
+    for (int i = 0; i < 4; ++i) {
+        checkInt(0, m.locks.aim_selection(i), "reset restores aim at player 0");
+        checkInt(0, m.locks.aim_hold_ticks(i), "reset clears the hold");
+    }
+    m.tick();
+    for (int i = 0; i < 4; ++i)
+        check(m.locks.aim_holds(i), "the first tick after reset re-pins every hold");
+}
+
+// Death and respawn through a live Match: killing the shared aim target re-picks
+// the locks, and the re-pick carries the aims with it, so the holds re-pin on the
+// survivor instead of dying with the corpse. A rematch re-runs init. Null models are
+// enough — this is lock state, not rendering. (The complementary case, an aim that
+// outlives its target because no lock re-pick touches it, is covered at unit level
+// via the direct-set divergence.)
+void testAimDeathAndRematchLive() {
+    section("Match: death re-picks aim together, rematch resets it");
+    gameplay::Match match;
+    gameplay::MatchConfig config;
+    config.fighterCount = 4;
+    config.side[0] = config.side[1] = 0;
+    config.side[2] = config.side[3] = 1;
+    const xm::Model* models[4] = {};
+    xm::Controller* anims[4] = {};
+    match.reset(config, models, anims, nullptr, nullptr);
+    match.economy().setLogFile(nullptr);
+    const fnd::input::PlayerState* inputs[4] = {};
+    for (int i = 0; i < 70; ++i) match.step(inputs, 1.0 / 60.0);
+    match.cycle_locked_target(0, true);
+    match.cycle_locked_target(1, true);
+    checkInt(2, match.aim_selection(0), "player 0 aims at red 2");
+    checkInt(2, match.aim_selection(1), "blue 1 aims at red 2");
+    check(match.aim_holds(1), "the shared aim holds before the kill");
+    // Exact-lethal damage: massive overkill would burst the balloon, and a bursted
+    // side does not respawn (economy gate) — which would test the burst rule, not the aim.
+    match.fighter(2).take_damage(match.fighter(2).hp(), &match.fighter(0));
+    int deathTicks = 0;
+    while (match.fighter(2).is_alive() && deathTicks++ < 120)
+        match.step(inputs, 1.0 / 60.0);
+    check(!match.fighter(2).is_alive(), "red 2 went down from the lethal hit");
+    for (int i = 0; i < 5; ++i) match.step(inputs, 1.0 / 60.0);
+
+    checkInt(3, match.locked_target(0), "the dead lock re-picks red 3");
+    checkInt(3, match.aim_selection(0), "the re-pick carries player 0's aim");
+    checkInt(3, match.aim_selection(1), "the re-pick carries blue 1's aim");
+    match.step(inputs, 1.0 / 60.0);
+    check(match.aim_holds(0), "player 0 re-pins on the survivor");
+    check(match.aim_holds(1), "blue 1 re-pins: both aims converged again");
+    // Respawn leaves the layer alone: no re-acquisition, no reset.
+    int respawnTicks = 0;
+    while (!match.fighter(2).is_alive() && respawnTicks++ < 2000)
+        match.step(inputs, 1.0 / 60.0);
+    check(match.fighter(2).is_alive(), "red 2 respawned");
+    checkInt(3, match.aim_selection(0), "respawn does not re-aim player 0");
+    checkInt(3, match.aim_selection(1), "respawn does not re-aim blue 1");
+    // A rematch re-runs init through Match::reset.
+    match.reset(config, models, anims, nullptr, nullptr);
+    for (int i = 0; i < 4; ++i) {
+        checkInt(0, match.aim_selection(i), "rematch restores aim at player 0");
+        checkInt(0, match.aim_hold_ticks(i), "rematch clears the hold");
+    }
+}
+
+// ---------------------------------------------------------------------------
 // The recovered switch pulse (FUN_004201a0).
 // ---------------------------------------------------------------------------
 void testSwitchPulse() {
@@ -719,6 +880,10 @@ int main() {
     testKoAndRespawn();
     testInvalidTargets();
     testHoldForAlly();
+    testAimSelectionHold();
+    testAimHoldOneVsOne();
+    testAimResetOnRematch();
+    testAimDeathAndRematchLive();
     testSwitchPulse();
     testAllyExclusion();
     testIndexSpacesStayDistinct();

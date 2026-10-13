@@ -48,4 +48,12 @@ int main() {
     CHECK(timeline.frame() == 108 && timeline.scale() == 1 && timeline.offset(0) == 0);
     CHECK(timeline.update());
     ui::VsTimeline skipped; CHECK(skipped.update(true));
+    // Shipped vs.ogg lasts 206720/44100 seconds. The host protects the complete
+    // sting at 64 Hz, while the recovered slide/scale still finishes at tick 108.
+    ui::VsTimeline withSting(300);
+    for (int i = 0; i < 108; ++i) CHECK(!withSting.update());
+    CHECK(withSting.scale() == 1 && withSting.offset(0) == 0);
+    for (int i = 108; i <= 300; ++i) CHECK(!withSting.update());
+    CHECK(withSting.update());
+    ui::VsTimeline skippedSting(300); CHECK(skippedSting.update(true));
 }

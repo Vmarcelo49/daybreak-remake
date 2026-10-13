@@ -78,7 +78,7 @@ ScreenId OpeningScreen::update(const ScreenInput& in) {
         // AssetSource::read, so the resolved path is what it gets.
         const std::string& install = fnd::assets::assetSource().installDir();
         const std::string resolved = fnd::assets::assetSource().resolve(
-            {path_, install.empty() ? path_ : install + "/" + path_});
+            {install.empty() ? path_ : install + "/" + path_, path_});
         const std::string& file = resolved.empty() ? path_ : resolved;
         std::string openError;
         fnd::movie::AudioPush sink = [this](const int16_t* stereo, size_t frames) {

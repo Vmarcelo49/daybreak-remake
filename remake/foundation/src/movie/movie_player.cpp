@@ -9,6 +9,9 @@
 #include <cstring>
 #include <utility>
 #include <vector>
+#if defined(_WIN32)
+#include <filesystem>
+#endif
 
 #include "audio/audio_format.h"
 
@@ -22,13 +25,26 @@
 namespace fnd::movie {
 namespace {
 
+FILE* openMovieFile(const std::string& path) {
+#if defined(_WIN32)
+    return _wfopen(std::filesystem::u8path(path).c_str(), L"rb");
+#else
+    return std::fopen(path.c_str(), "rb");
+#endif
+}
+
+plm_t* openMovieDecoder(const std::string& path) {
+    FILE* file = openMovieFile(path);
+    return file ? plm_create_with_file(file, 1) : nullptr;
+}
+
 // The stream check pl_mpeg itself cannot make (it "will silently ignore any invalid
 // data"): an MPEG-PS has to start with a pack start code, and the sequence header's
 // width/height are what the surface and the texture are sized from. A missing or
 // non-MPEG-2-free stream must fail here rather than present black for its whole length.
 bool readHeaderAndValidate(const std::string& path, int& width, int& height,
                            std::string& error) {
-    FILE* f = std::fopen(path.c_str(), "rb");
+    FILE* f = openMovieFile(path);
     if (!f) {
         error = "cannot open " + path;
         return false;
@@ -41,7 +57,7 @@ bool readHeaderAndValidate(const std::string& path, int& width, int& height,
                       "system multiplex with MPEG-1 video and MP2 audio)";
         return false;
     }
-    plm_t* probe = plm_create_with_filename(path.c_str());
+    plm_t* probe = openMovieDecoder(path);
     if (!probe) {
         error = "cannot decode " + path;
         return false;
@@ -136,7 +152,7 @@ bool MoviePlayer::open(const std::string& path, AudioPush push, std::string& err
     close();
     int w = 0, h = 0;
     if (!readHeaderAndValidate(path, w, h, error)) return false;
-    plm_t* plm = plm_create_with_filename(path.c_str());
+    plm_t* plm = openMovieDecoder(path);
     if (!plm) {
         error = "cannot decode " + path;
         return false;

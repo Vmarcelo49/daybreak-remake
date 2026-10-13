@@ -11,7 +11,8 @@ namespace ui {
 namespace {
 class VsScreen final : public Screen {
 public:
-    VsScreen(SpriteRenderer& batch, FrontendState& state, std::string& error) {
+    VsScreen(SpriteRenderer& batch, FrontendState& state, std::string& error,
+             int minimumFrames) : timeline_(minimumFrames) {
         const char* stems[] = {"data/vs/vs01", "data/vs/vs02", "data/vs/vs03", "data/select/p03"};
         // The roster is the selection (issue #13): two participants in a 1v1, four in a 2v2,
         // three in a 2v1. FUN_00411cb0 draws four portraits and four name cells in its versus
@@ -116,8 +117,9 @@ private:
     int textSlot_ = -1;
 };
 }
-std::unique_ptr<Screen> makeVsScreen(SpriteRenderer& batch, FrontendState& state, std::string& error) {
-    auto screen = std::make_unique<VsScreen>(batch,state,error);
+std::unique_ptr<Screen> makeVsScreen(SpriteRenderer& batch, FrontendState& state, std::string& error,
+                                   int minimumFrames) {
+    auto screen = std::make_unique<VsScreen>(batch,state,error,minimumFrames);
     if (!screen->loaded()) return nullptr;
     return screen;
 }

@@ -1,0 +1,1380 @@
+# Plan — shared shooting blockers, then all 46 combos
+
+2026-10-10 · `ginkiha-help` · status: live magazine/row admission implemented; typed origin/aim plumbing started; source branch/selection bridge and move counters next.
+
+This changes Phase 2's order at the owner's request: stop advancing the usage-order
+worklist just to defer another combo. Implement the shared mechanisms, return to every
+blocked or partial combo, and finish the roster. Companion documents:
+[ginkiha-port-plan.md](ginkiha-port-plan.md) and
+[ginkiha-handoff.md](ginkiha-handoff.md).
+
+## Scope clarification — 2026-10-11
+
+This remains the shooting workstream, not the entire Ginkiha port. The companion
+[attack-animation plan](ginkiha-attack-animation-plan.md) now defines the next Rena-group
+work: input selectors, melee, pose/transitions, channels and rendered weapons. Shooting
+completion does not close that gate. Keep shooting progress here and use both acceptance
+contracts before declaring any character+weapon complete.
+
+## Completion contract
+
+Every one of the 46 **character+weapon** combos must have an explicit shooting coverage
+record. Cover normal and powered branches, ground and air, tap and both charge levels,
+plus the additional shooting states reachable from those paths. Include movement,
+clock/phase changes, ammunition, request geometry and the projectile behavior required
+for that attack to function. A source-proven absent path is N/A with evidence; a missing
+implementation or unknown rule is pending. Zero-usage combos, especially Satoko 1,
+receive body-driven investigation rather than exclusion.
+
+An existing program, a callback pin, or a successful asset launch is not completion.
+The handoff's “13 full programs” means previously bound schedules; those 13 also need
+this audit. No unresolved roster path may pass the final gate through the provisional
+magazine scan, animation set 0, substituted origins, or silently truncated volleys.
+Evidence gaps become concrete investigation tasks, not permanent deferrals.
+
+This plan closes Phase 2 shooting blockers. The broader melee, combat, CPU/camera and
+stage-parity phases remain pending; attack-critical dependencies discovered here must
+be implemented or tracked against this completion gate, not hidden by that boundary.
+
+## Verified starting point
+
+Latest Linux gate: 65/65 tests, table pins 398 checks, fighter suite 650 checks.
+These tests are the starting baseline, not proof of the completion contract above.
+
+| Shared gap | Evidence / current code | First witnesses |
+|---|---|---|
+| Hand and explicit-world origins | `FUN_00435220/00435250/00435450`; the legacy adapter retains Prop1/root-offset behavior, while typed specs now carry named-bone, explicit-world and actor-relative origins. No combo uses the new families yet. | Keiichi 0/1, Akane 2, Satoko 2, Natsumi 0 charges |
+| Aim semantics and branch inputs | Launch has one symmetric pitch bound; bundle bodies use dynamic scratch pitch, asymmetric branches and raw powered gates | Keiichi 1, Satoko 2, Rena 1, Mion 0 |
+| Volleys and randomness | fighter request array holds 8; projectile pool holds 32 globally; per-row capacity is also enforced separately | Kasai 0: 21 normal / 31 tag callback requests; upgraded Kasai bursts |
+| Admission/ammunition ordering | `fire_shot` spends tier stock before the callback; original launch helpers call `FUN_00435920` conditionally by row | Satoko 2 twins, mixed-row salvos, capacity exhaustion |
+| State/counter/movement operations | rules have no vertical set/scale/gravity or general branch/counter state; both turn helpers currently collapse into limited Turn support | Satoko 2 charge freeze; Rena 1 conditional phase; aerial shooting |
+| Projectile-specific behavior | item rows may be non-damaging controllers/traps; birth/expiry/steering and child/effect behavior cannot be replaced with an ordinary damaging shot | Satoko 2 rows 0/1/4/5; verify each remaining combo |
+
+The handoff also describes `m_lastLaunchRule/Phase/Tick`, but those members are absent
+from the current `fighter.h`/`fighter.cpp`. Treat this as a documentation/source mismatch
+until a test establishes the actual freeze/repeated-fire behavior; do not assume a latch
+already exists. The shared Hold owner (`m_holdRule`) does exist.
+
+## 0. Normalize evidence and establish the roster ledger
+
+- Add a read-only recon helper under `remake/foundation/tools/`: select by character AND
+  weapon, resolve swap/item from the roster, report dispatch/walk/birth/usage and complete
+  trace event counts by origin, and delimit named bodies. Record source identity and exact
+  ranges. Keep the local bundles ignored; do not generate or commit their whole contents.
+- Establish the 46-combo coverage ledger, with one entry per combo and cells for each
+  reachable shooting path: source, runtime binding, origin/aim, branch/RNG, ammo/admission,
+  movement/clocks, projectile behavior, verification, and outstanding dependency.
+- Normalize helper signatures from the existing corpus and bundle wrappers: attachment
+  slot versus item row, hand matrix versus local offset, explicit XYZ, yaw/pitch units and
+  axis conventions, raw-word versus numeric scratch conversion, target selection and
+  powered/ready predicates. Start with `FUN_00435000`, `00435220`, `00435250`, `00435450`,
+  `00435920`, `0042da80`, `0042db10`, `0042dc20`, `0066b668`, and trig helpers.
+- Verify generated `source_float` adapters and helper services before deriving numeric
+  geometry from raw tuples. State400 stubs at `(0,70,0)` do not validate Satoko 2's
+  forward/lateral displacement. Use targeted disassembly/live probes when necessary.
+- Compare old tests and source claims, including freeze/launch handling. Establish tests
+  that expose duplicate requests, missing requests and early/late ammo consumption.
+
+**Exit:** all 46 identities represented; each known blocker has evidence and a witness;
+normalized contracts exist for the first origins and admission helpers. Unknown contracts
+remain explicit investigation tasks. No runtime port is claimed from this step.
+
+## 1. Introduce an explicit launch contract and admission boundary
+
+Keep simple movement rules, but stop packing origin, aim and branch semantics into
+`MoveRule`'s three floats. Proposed design: typed launch/aim descriptions and a small
+shooting context; use focused C++ callbacks for genuinely computed bodies. Confirm the
+concrete types after step 0; do not embed a decompiler word-bank interpreter in the game.
+
+Separate three observable stages: **callback request → ammo/row admission → pool spawn**.
+Trace them separately in verification. Preserve original ordering and side effects,
+including rejected requests; do not force a whole salvo to be atomically admitted unless
+that is established by the original. Resolve item row/magazine/registration from actual
+DATs. Verify whether gate/consumption happens at move entry, callback time, or both for
+that path. Correct the current eager tier-spend path where the evidence requires it.
+
+**Exit:** tests cover unmetered/metered rows, empty ammo, reload gates, rejected pool
+spawns, mixed-magazine requests and multiple requests in one tick, with measured ordering.
+
+## 2. Support all three origin families and computed aim
+
+- Attachment: explicit slot/bone, item muzzle anchor, and the unbound-prop bone-origin
+  case. Preserve slot 0 versus slot 1 rather than always choosing Prop1.
+- Hand: transform the named hand bone with the exact helper's offset/aim semantics.
+  A missing expected bone in a roster rig is an explicit failure, not root substitution.
+- World: accept computed XYZ independently of aim. Carry yaw/pitch or normalized direction
+  from an explicit aim calculation; distinguish base heading, movement-preserving offset,
+  target-relative yaw and absolute angles.
+- Implement separate lower/upper pitch bounds, fixed pitch, target-derived pitch and the
+  distance-dependent adjustment where recovered. Reproduce integer conversion and the
+  air-tap ±30 comparison / ±45 assignment discontinuity for Keiichi 1.
+
+**Exit:** real posed-rig tests at multiple headings and animation ticks verify hand versus
+Prop1; world tests use nonzero positions, lateral offsets, target heights and distances.
+Satoko 2's two tap origins must remain distinct even with empty prop meshes. Existing
+programs are checked against evidence; preserve proven behavior and correct proven errors.
+
+## 3. Add branch inputs, deterministic spread and adequate capacity
+
+- Recover the powered/ready/tag/aim predicates and connect them to actual fighter state;
+  do not equate a bundle label “tag” with a particular hypermode without evidence.
+- Supply a deterministic simulation RNG through the match/shooting context. Keep it
+  separate from visual RNG; preserve recovered draw order, distribution and per-volley
+  shared aim versus per-pellet perturbations. Tests use known seeds and branch inputs.
+- Support runtime burst counts/upgrades and asymmetric row/count selection.
+- Replace the eight-request truncation with storage sized or growable for measured
+  volleys. Audit the 32-shot global pool independently against original allocation and
+  DAT per-row capacities; increasing only the pending array does not solve four-fighter
+  scatter. Keep source-proven admission limits, with visible verification outcomes.
+
+**Exit:** Kasai 0 normal 21 and tag 31 requests retained in order, correct per-row admission,
+exact spread/RNG behavior, upgraded burst counts, and simultaneous 2v2 volleys. Capacity
+or RNG failures cannot masquerade as a successful schedule.
+
+## 4. Complete shooting state, counters and movement
+
+- Add typed per-move state for counters, phase jumps, conditional transitions, tick rewind,
+  freeze and per-event execution. Reset it correctly on entry, cancellation, re-entry,
+  death and respawn. Distinguish an event that must fire once at a frozen tick from a
+  loop deliberately firing repeatedly; choose semantics from the body, not a global latch.
+- Support vertical velocity set/scale, horizontal scaling, unclamped gravity tails, and
+  phase-dependent gravity. Preserve distinct `FUN_0042db10` / `FUN_0042dc20` behavior.
+- Match lower/upper animation metadata and clock order where bodies depend on them. Use
+  actual DAT phase durations to prove reachable firing paths and termination.
+- Cover air/ground landing transitions and second-charge/EX/follow-on shooting states
+  wherever the combo's input/state dispatcher reaches them.
+
+**Exit:** Satoko 2 phase1/tick6 request and ten-update tick26 freeze; Keiichi multiple
+stalls; Rena 1 conditional state402; representative air gravity/landing paths; exact
+request counts across held ticks and re-entered phases. No invented phase-0 restriction.
+
+## 5. Revisit blocked and partial ports, then complete the roster
+
+Capability witnesses land with their implementation; do not wait for every engine step
+before exercising real combos. Close the currently deferred/partial entries first:
+
+| Combo | Required closure |
+|---|---|
+| Keiichi 0 | hand tap/air tap; normalize and implement charge helpers/rows |
+| Keiichi 1 | hand tap/air tap, world charges, dynamic/discontinuous pitch |
+| Akane 2 | computed world requests and normal/powered secondary scheduling |
+| Satoko 2 | twin world tap, phase1 charge, freeze, row controller/projectile behavior |
+| Kasai 0 | normal/tag scatter, request/pool capacity, shared aim and per-pellet spread |
+| Shion 0 | finish the bounded body audit; record and implement its actual requirements |
+| Rena 1 | conditional air tap, random spread, air/second charges |
+| Natsumi 0 | air tap, powered/random multi-row tap, world charges |
+
+Then migrate the remaining bound schedules and finish the unported combos using the
+ledger. Usage density can order work within a family, but cannot remove a combo.
+For every combo, implement all reachable required paths, not just its state400 probe.
+Investigate required steering/expiry, non-damaging controllers, child spawning and effects
+with the same provenance rules. Asset availability does not prove behavior.
+
+## 6. Finish with 46/46 coverage and integration gates
+
+1. Ledger contains exactly the authoritative roster, each combo with real NN.dat AND item
+   data. All required cells complete; N/A cells carry source evidence; no pending/deferred
+   entries. Replace the misleading “full program” scoreboard with measured path coverage.
+2. Asset-backed tests drive natural ground/air, tap/charge and powered paths. Pure geometry
+   tests isolate transforms; request/admission/spawn tests retain separate counts. Test
+   sparse/no-usage combos through bodies and reachable state dispatch.
+3. Four-fighter cases exercise simultaneous volleys, pool saturation, branch/RNG state,
+   death/respawn and rematches. Run the complete rebuilt Linux suite after each coherent
+   runtime slice, then Linux/Windows/web builds for the integrated change.
+4. Perform actual live runs with game data, including a four-view 2v2 rematch, plus targeted
+   original/remake comparisons of newly supported attacks. Captures supplement live runs;
+   document platform execution gaps instead of treating compilation as execution.
+
+## Delivery and execution rules
+
+Implement in dependency order: evidence/contracts → request/admission → origins/aim →
+branches/spread/capacity → state/movement → roster closure → integrated gate. Each slice
+ships with meaningful witness tests; subsequent discoveries extend the shared capabilities
+rather than restarting the defer cycle. No fixed time estimate until step 0 resolves the
+contracts and inventories all dependencies.
+
+Use the shared recon helper and parameterized catalog checks to reduce repeated extraction
+and test boilerplate. Body predicates, geometry and admission still require review; an
+extractor must not automatically turn raw operands into gameplay rules.
+
+All new runtime code stays in `remake/foundation/`. Keep original `.X` assets and D1–D9.
+Never edit `research/recomp/`; research promotion is targeted and requires the coverage
+report. Keep local bundles/game assets ignored. Rebuild before runtime gates, read both
+full diffs before every commit, stage only the current slice, and keep the unrelated
+Windows work uncommitted. Separate engine/test commits from documentation updates.
+
+## Append-only execution log
+
+### 2026-10-10 — 0.1 Recon helper and initial roster ledger
+
+**Done:** added `remake/foundation/tools/ginkiha_recon.py`, sharing catalog identity
+checks with the existing importer. It resolves exact character+weapon identities, validates
+support input hashes, reads actual runtime dispatch bindings, counts all callback requests
+by origin/row, and reports exact shooting/full-charge body ranges. Unknown runtime syntax
+and hash drift fail instead of silently returning incomplete evidence. Sources stay local.
+
+Created [the 46-combo ledger](ginkiha-shooting-coverage.md): 15 bound schedules, zero
+combos declared audited complete, all normal/powered ground/air tap/charge paths pending.
+Satoko 1's zero-usage case and Rena 1's missing generated bodies remain visible.
+
+**Verified:** five stdlib Python tests passed, including exact selection, 21/31 Kasai
+requests, both Satoko 2 traces, zero usage, missing bodies, chronological first request,
+body boundaries, malformed binding syntax and hash drift. All-roster recon produced
+46 unique entries. No game runtime or research files changed.
+
+**Next:** normalize helper operands/admission from original corpus and verified archive.
+The supplied state400 evidence cites a corrected world-origin oracle and numeric scratch
+adapter in `runtime/DaybreakRebuild-20261010.zip`; inspect those before repeating probes.
+Step 0 remains open: prove helper contracts and freeze/launch/ammo ordering, then start
+step 1's typed request/admission boundary with witness tests.
+
+### 2026-10-10 — 0.2 Original launch/admission and archive contracts
+
+**Done:** added [normalized launch contracts](ginkiha-launch-contracts.md). Original
+bytes confirm row-selected magazine admission, negative-index bypass, six world-spawn
+operands, degree/table-based trig, and consume-before-creation ordering. Verified the
+canonical EXE hash and runtime archive SHA; found the numeric scratch adapter and corrected
+Satoko 2 state400 world geometry. Recorded remaining original FILD/indexing/oracle gates.
+
+**Important correction:** a generic launch latch is not the fix for all frozen frames.
+Rika 1's state450 body gates tick30 requests on scratch counter%10==0 and freezes until
+counter60. The current static salvo+Hold30 misses those semantics. Source ranges and
+limits are in the contract report; previously bound schedules remain unaudited.
+
+**Verified:** targeted disassembly of `00435450`, `00435920`, `0065d010/0065d050`;
+archive hashes and three entry hashes recorded. The corrected 690-record world golden
+TSV was not found in the supplied inventory, so its geometry verification remains open.
+No runtime behavior changed yet.
+
+**Next:** implement a typed magazine admission/refill model, verified against the original
+helpers, then wire it into requests without eager tier spending or double charging.
+Audit charge/HUD/bot consumers together; do not change only consumption. In parallel
+within the same workstream, add full-freeze request-count witnesses before replacing
+Rika's schedule. Step 0 remains in progress; use the recon helper/ledger to cover all46.
+
+### 2026-10-10 — 1.1 Round-counted magazine primitive
+
+**Done:** implemented `src/gameplay/shooting_magazine.h`: typed round-counted state,
+DAT-definition initialization, reset, signed interval admission, and mode0/1/2 tick/refill
+behavior. Original 32-bit wrap and flag/counter effects are preserved. This is an isolated
+primitive; live Fighter still uses provisional AmmoStock, so no live ammo migration is
+claimed. Keeping this tested boundary separate avoids changing charge/HUD/bot behavior
+before all of their consumers are accounted for.
+
+**Verified:** added 31 fixture-backed checks using Rena 0 + item1; focused fighter suite
+passed 681 checks, zero failures/skips. Tests cover same-tick callbacks, zero stock and
+nonzero interval rejection, signed cooldown, partial versus empty refill, all three modes,
+reset/flag/counter behavior, and retained empty-refill display progress. The rebuilt full
+Linux suite is running; append its result before committing this slice.
+
+**Next:** implement row-selected request admission (negative magazine bypass, bounds,
+consume-before-spawn), then connect the new stocks to Fighter with one authoritative tick,
+correct request-time consumption and consistent HUD/bot/charge reads. Audit original
+refillStep initialization/modifiers and charge helper before enabling live stocks. In the
+same migration, add mixed-row/failed-pool tests and whole-freeze counter-gated witnesses.
+Steps 0 and 1 remain open; all46 ledger entries remain pending complete-path audit.
+
+### 2026-10-10 — Validation and resumption checkpoint
+
+**Done/verified:** full rebuilt Linux CTest passed 65/65 (163.74 s), including the
+updated fighter suite (681 checks). Recon tests now pass six cases: the added case
+proves a wrong combo locomotion handler is rejected instead of misreporting a runtime
+binding. All46 recon and exact Satoko 2 recon both succeed; output is barred from writing
+over the read-only support/reference bundles. Full diff review completed before commits.
+
+**Current boundary:** code supplies the tested magazine primitive and recon tooling;
+Fighter, charge/HUD/bots and projectile request/spawn behavior have not yet migrated.
+Neither step0 nor step1 is declared complete. No combo was promoted to full coverage.
+
+**Exact next task for the next agent:** read `ginkiha-launch-contracts.md` and the new
+`shooting_magazine.h`. Audit `FUN_0043f3e0` and refillStep setup/modifiers, inventory
+Fighter's `m_main/m_charge` consumers, then implement row-selected admission and integrate
+one authoritative stock per magazine across charge/HUD/bot reads. Preserve negative-index
+bypass and consumption before failed pool creation; add tests for mixed rows and no eager
+spend. Then replace counter-gated freeze schedules with source-driven event state, starting
+Rika1 state450, before declaring origins/spawn paths complete. Update the ledger and append
+done/verification/next notes after each unit. Preserve the unrelated Windows edits.
+
+### 2026-10-10 — 1.2 Consumer/charge/refill audit before live migration
+
+**Done:** inventoried Fighter init/reset/respawn/weapon swap/F4, HUD fraction/count,
+BotBrain can_fire/hold_ticks, eager fire_shot, and callback launch consumption. Original
+`0043ded0` charges the SECOND magazine (bytes add actor+0x708 at 0x43dee9), with
+`0043f3e0`'s initial30 ticks followed by the DAT secondary charge threshold. Primary
+chargeMax is not the yellow threshold. `00435560` sets both magazines' refillStep;
+`0043ded0` resets it to1, uses3 for active byte845 and2 for byte846. Common `0041f580`
+calls `00434800` after the action/animation pass, which ticks each magazine once.
+
+**Next:** add charge counters and row-admission primitives, then switch bound weapon
+stocks and their public readers together. Preserve the explicitly provisional mobile
+charge/action gate and unbound move selection as pending paths, not source parity claims.
+Remove eager tier spending for programmed shots; consume each callback's own row, retain
+negative-index bypass, and test rejected pool creation without refunds. Validate against
+the complete suite and append all changed expectations with their source reason.
+
+### 2026-10-10 — 1.3 Live row admission, stocks and charge migration
+
+**Done:** bound weapons now own two round-counted ShootingMagazines. Programmed move
+selection spends nothing; each Launch consumes its item row's magazine, negative indices
+bypass stock, invalid metadata fails explicitly, and failed pool creation cannot refund
+consumption. HUD fractions/digits, can_fire/bot hold planning, charge counters, weapon-swap
+fill preservation, init/reset/respawn and F4 use the same authoritative bound stocks.
+Charge stage1 uses30 initial updates and stage2 uses the secondary DAT threshold; refill
+steps are1 normally,3 for the current Friendship adapter and2 for Kakera. The C-held marker
+is independent of secondary charge: an empty CHARGE stock still permits a primary tap.
+
+Admitted requests use a growable FIFO rather than the eight-entry truncation. This removes
+that queue limit only; the global32 projectile pool and actual scatter/RNG remain open.
+Unbound move selection, row-less provisional requests, mobile/actionable charge restrictions,
+legacy no-weapon tuning, exact hypermode/status parity and origin geometry remain explicitly
+pending. No combo is declared complete by this shared migration.
+
+**Verified so far:** focused fighter suite697 checks, zero failures/skips. Rena0 witnesses
+cover no eager spend, primary/secondary row selection, unmetered red rows11/12,30/210-tick
+charge, source refill, empty-secondary tap, F4/reset, negative-index bypass and saturated
+pool consumption without refund. A shared semantic hold_yellow driver replaced13 repeated
+charge calculations/drivers. Initial full-suite failures exposed obsolete threshold/air
+reachability, approximate empty-stock setup and AI-seed-dependent audio coverage; corrected
+these without weakening their functional assertions. The air-charge animation case now
+executes460 instead of incorrectly claiming it cannot be reached. The bot empty-stock case
+now binds character AND weapon; the audio gate drives a real activation input explicitly.
+Those four focused suites passed, then the rebuilt full suite passed65/65 (163.76s).
+
+Linux native non-capture 1v1 smoke completed3000 frames/1065 logic ticks at64Hz, RESULT ok;
+this is not a played parity or four-view rematch gate. Windows and web cross-builds passed.
+Review removed redundant request initialization and an unused bound-tier parameter lookup;
+final rebuild/full-suite/platform confirmations are running and must be appended next.
+
+**Next:** introduce explicit typed origin/aim requests and pose transforms, starting hand
+and world witnesses (Keiichi0/1 and Satoko2). Do not bind rawworld/hand bodies to Prop1.
+Preserve request/admission/spawn distinctions; finish per-move counter semantics (Rika1
+450 is the known witness) before accepting its frozen salvo totals. Audit global projectile
+capacity and deterministic spread for Kasai0, and remaining source-specific branch/status
+inputs. Update the ledger by path; step1 still needs those integration/coverage gates.
+
+### 2026-10-10 — Final migration gate and next-agent checkpoint
+
+**Done/verified:** final reviewed tree rebuilt; Linux CTest65/65 passed (167.18s),
+fighter suite704 checks/zero failures/skips, recon six tests passed. Windows and web
+reviewed cross-builds passed; neither platform was executed for this slice. Linux native
+1v1 non-capture smoke previously completed3000 frames/1065 logic ticks, RESULT ok.
+Review retained clip completion and provisional EX input/event checks while replacing
+obsolete eager-spend/refill expectations. Thirteen duplicated charge drivers were unified.
+The code and tests form one coherent stock/admission migration; documentation is separate.
+
+**Still open:** typed launch-origin/aim descriptions, explicit request/admission/spawn
+verification records, exact hypermode/status bridge, counter-gated move bodies, global
+projectile allocation/spread, and all46 complete-path audits. Legacy no-weapon and
+unbound/row-less request paths remain provisional. This is not46/46 shooting completion.
+
+**Exact next task:** implement typed Launch origin/aim resolution using the normalized
+contracts and existing row-admission boundary. Add real posed-rig witnesses for hand versus
+Prop1 (Keiichi0/1), and nonzero-position/heading/elevation twin world requests for Satoko2;
+preserve fixed actor-heading origin versus offset projectile yaw. Verify scratch numeric
+conversion and legacy trig at their original sites. Then integrate source per-move counters
+with Rika1 450's whole frozen interval, and audit the global32 pool with Kasai0 21/31
+requests and simultaneous2v2 volleys. Keep the growable request FIFO, avoid reintroducing
+eager tier costs, and append done/verification/next notes after each unit.
+
+### 2026-10-10 — 2.1 Typed origin/aim plumbing started
+
+**Done:** added `shot_launch.h` value types for attachment, bound-bone fallback, named-bone,
+explicit-world, and actor-relative-offset origins, plus facing, target-elevation, legacy-angle
+and explicit-direction aims. `MoveRule` can carry these descriptors; `PendingShot` preserves
+them through the scene handoff. Existing Launch rules now pass through a compatibility adapter
+that retains their current attachment/root-offset and symmetric pitch behavior. A named-bone
+request rejects a missing posed rig/bone. Origin and direction resolve before row admission,
+so a missing transform cannot consume stock; accepted requests still consume before pool spawn.
+
+No character program has yet opted into a new origin/aim family. The LegacyDegrees path records
+the source angle convention but uses the current math library; exact 3,600-entry table indexing
+and actor-basis parity remain required. Handler-specific gates, paired launches, spread/RNG and
+per-move counters also remain outstanding.
+
+**Verification:** no tests or build were run in this step. The source changes are uncommitted and
+await the required validation. Do not bind a deferred combo from these descriptors alone.
+
+**Next:** connect a source-evidenced combo to typed specs. Start with the Satoko 2 state400 normal
+world pair (row mapping and fixed actor-heading origin already measured), preserving target-offset
+aim separately. Recover the two powered-branch inputs and emission-count semantics before wiring
+tag. Then add per-move counters/events for the counter-gated Rika 1 charge freeze. Keep hand-bone
+rows deferred until callback operands versus item rows are reconciled for Keiichi 0/1.
+
+### 2026-10-10 — 2.2 Typed world geometry and Satoko 2 branch audit
+
+**Done:** extended typed launch resolution with actor-relative XYZ offsets and a world aim that
+converts the remake's facing basis into `FUN_00435450`'s legacy yaw basis, with target-derived
+elevation and independent pitch bounds. Explicit attachment-local offsets now add to the DAT muzzle
+instead of being ignored. This is engine support only; no combo is promoted from these descriptors.
+
+Audited Satoko 2 state400's actual request rows: ordinary fires row 0 twice and powered fires row 1
+twice at tick 20. Both pairs use forward 100, height 70 and lateral -50/+50; pitch comes from the
+dynamic scratch value clamped to ±40, and yaw uses actor heading plus the movement offset. The
+powered predicate is byte `+0x845 != 0` AND word `+0x848 != 0`; the ordinary branch is its inverse.
+The latter is the `+0x300` aim-selection team's hold against player 0, maintained by
+`FUN_00421e30` / `FUN_0041f580`, not simply the remake's per-owner combat-lock (`+0x304`) hold.
+Therefore the existing `TargetLocks::holding_ally` value is not wired into Satoko firing. The
+source movement offset and numeric scratch conversion also still need a live runtime input path.
+
+**Verification:** source findings were cross-checked against `FUN_0043ffc0`,
+`FUN_00421e30`, `FUN_0041f580`, `FUN_004220e0`, and the normalized `FUN_00435450` contract.
+No tests or build were run; the typed engine changes remain uncommitted and unvalidated. Satoko 2
+remains pending, as do all other combo completion cells.
+
+**Next:** represent the original aim-selection target/team and `+0x848` hold separately from the
+combat lock, then bind Satoko 2 state400's two row-specific branches with the measured origins and
+pitch conversion. Extend that path to air and charge bodies only after their movement, counter,
+freeze, row-admission and projectile-controller behavior are represented. Then add the whole-frozen-
+interval counter/event model, starting with Rika 1 state450. Keep exact cosine-table parity open.
+
+### 2026-10-10 — 3.0 Decision record, powered gate recovered, Rika 1 repaired, Satoko 2 tap bound
+
+**Decisions first:** [ginkiha-shooting-architecture.md](ginkiha-shooting-architecture.md) records the census
+that explains the blocker count (841 bodies / 43 combos / 1,632 origin calls / 514 powered-gate reads /
+70 RNG bodies), the corrections below, and five architecture decisions (D-S1..D-S5). It supersedes the
+plan's step-0 "normalize helper signatures" framing where it conflicts: the gate predicate was the missing
+piece, not a new normalization pass.
+
+**Corrections established from source:**
+- The powered gate is `byte +0x845 && word +0x848`. The handoff's "word `0x212`" is the runtime
+  simulator's *array index* for byte offset `0x848` (its `w[]` is an int array); the decompiled EXE
+  agrees in the other direction (`param_1[0x212]` with `int*`). The plan's `+0x848` was correct.
+- `TargetLocks::holding_ally` **is** word `+0x848`. The port already models it (180-tick hold,
+  re-pinned per tick while the aim selection shares player 0's team, `FUN_0041f580:242-248`); it simply
+  was not wired to firing. No new field had to be recovered.
+- `byte +0x845` is the **Oyashiro special armed** byte: `FUN_004220e0` sets it (`charge1 = duration1`),
+  gated on mode byte `+0x318 == 1` with `limit1 (+0x32c) <= charge1 (+0x83c)`; `FUN_0041f580:88-92`
+  clears it when the countdown ends. `+0x318` is the same 0/1/2 selector as `Hypermode`'s enum order, so
+  the port predicate is exact: `m_hyperActive && m_hypermode == Oyashiro && allyHold`.
+  Consequence: a Friendship/Kakera fighter never takes a powered branch, and in 1v1 nobody can — both
+  branches are team-play only.
+- The usage catalog's "tag", the oracle fixture's "special" and the body's "powered" are **one branch**;
+  Satoko 2's measured split (normal row 0 twice at 20F, tag row 1 twice at 20F) confirms the identity.
+
+**Done — engine:** `MoveRule` gained `gate`/`gateValue` and `MoveOp::Counter`/`CounterSet`; the executor
+evaluates gates and drives a per-move counter reset with the move (`set_state`, init/reset/respawn), not
+per section. `Fighter` exposes `shoot_gate_powered()` and a narrow `ShootingContext` the scene publishes
+each tick from `TargetLocks::holding_ally` (match.cpp). Dead vocabulary from the earlier
+typed-origin work (WorldPosition, LegacyDegrees, Facing, Direction and their fields) was removed in the
+pre-commit diff review; the surviving families each have a user.
+
+**Done — Rika 1 450/460 repaired** (the known-incorrect program, now first because it needed no new
+origin family): the tick-30 salvo is counter-gated (`counter > 0 && counter % 10 == 0`) and fires **three
+times** while the clock is pinned for 30 updates by a `kGateCounterBelow 60` Hold ordered after the
+counter increment, the twin requests carry the measured lateral ±50, and the powered branch's rows 4/7
+are now bound alongside the normal 3/6.
+
+**Done — Satoko 2 tap bound** (`kSatoko2Rules`, 400/402): the measured twin at tick 20 — forward 100,
+lateral −50/+50, height +70, legacy-basis yaw, elevation pitch clamped ±40 — with the normal/powered row
+split, the 15°/20° turns and the 0.5 bleed. This is the first real user of the typed origin/aim specs.
+450/460 stay pending with their measured parameters recorded in the ledger.
+
+**Verified:** `cmake --build build/linux` 63 targets; full `ctest` **65/65 (167.41 s)** with the fighter
+suite at 730 checks (Rika's frozen interval now counted over the whole 30-update freeze; Satoko 2's twin
+worlds, row split and gate read from a live fixture); recon 6/6; Windows and web cross-builds; a live
+2-player battle of 2400 frames / 852 logic ticks at 64 Hz, RESULT ok. The uncommitted typed-origin work
+that resumed this session is now built, tested and included in this slice.
+
+**Next:** the whole-frozen-interval model is now reusable — audit the other `Hold` schedules against
+their bodies before trusting their tests (Tomitake 2, Keiichi 2, Satoko 0). Then Keiichi 0/1's hand
+origin (`FUN_00435220`, `Bip01_R_Hand`/`Bip01_L_Hand`) with a posed-rig witness, then Kasai 0 as the
+first C++ handler with the pool/allocation audit. Wire the battle movement offset (`source_float(0x19)`)
+into the world yaw, and re-pin Satoko 2 450/460 (phase 1, tick 6, row 4/5, tick-26 ten-update freeze).
+
+### 2026-10-10 — 3.1 Corrections found in review, plus a live powered witness
+
+**Done — three review findings fixed:**
+
+1. **Rows 3/6 were missing `kGateNormal`** in both 450 and 460, so a powered fighter fired
+   both the normal and the powered tick-30 pair — 10 requests over the charge instead of
+   the body's 8, and extra ammunition spent. The body selects one pair per branch.
+2. **The Rika charge geometry was still the legacy adapter's**: lateral ±50 requested
+   forward 70 / height 70 and a ±1° yaw nudge. That adapter encodes Rena 0's measured
+   red-charge shape (`FUN_0043ffc0.c:1526-1543`: forward 70, lateral 70, height +70, yaw
+   ±1.0 — a real angle offset, not a bug), so it must not be reused for other bodies.
+   Rika's charge now uses typed specs with its measured forward 60 / lateral ±50 /
+   height +70 and no yaw offset, and the test pins those numbers so the next body cannot
+   quietly inherit the wrong ones.
+3. **The ally-hold mapping is downgraded from "exact" to "analogue".** The maintenance
+   shape is right but the producer is not: the original re-pins `+0x848` while this
+   fighter's aim-selection target (`+0x308`, a player **pointer** — `FUN_0041f580.c:221`
+   dereferences it and reads `+0xaecc` off the result) equals player 0's; the port pins
+   it from the combat lock (`+0x304`) when that names an ally. `target_lock.h`'s own
+   header reads the comparison as "shares player 0's team", which the pointer evidence
+   contradicts; that is now a recorded work item with its blast radius
+   (`Match::lock_holds_ally`, the HUD ring, two test suites) instead of a silent claim.
+
+**Retracted:** the claim that powered branches are impossible outside team play. It
+follows only from the port's predicate; under the original's, fighter 0 holds it in any
+match, 1v1 included. Also recorded: the port arms Oyashiro on a Special press where the
+original arms it automatically at `limit1 <= charge1`, and its countdown is seconds
+against the original's tick-based `+0x83c`.
+
+**Done — witnesses:** the Rika test now counts both branches over the whole frozen
+interval (normal 3/6 ×3, powered 4/7 ×3, 8 requests each, no leakage) and pins the
+geometry; and a new live 4-fighter match drives the powered branch through `Match`'s
+own lock maintenance — an ally lock on fighter 0 makes the scene spawn item row 1, a
+hostile lock keeps row 0. That witness proves the port's producer, not the original's.
+
+**Verified:** full Linux suite **65/65**, fighter suite **755 checks / 0 failures**,
+recon 6/6. Windows and web cross-builds and the live battle smoke re-run after these
+edits.
+
+**Next:** settle the `+0x848` producer (model `+0x300`, or keep the analogue and say so
+everywhere), then Keiichi 0/1's hand origin, then Kasai 0 as the first C++ handler with
+the pool audit. The 1v1 powered availability question rides on the producer work.
+
+### 2026-10-10 — 3.2 Pitch latch, air-copy witness, and a counting fix
+
+**Done — the pitch is latched, not re-derived.** `shoot_body_4_1_450` computes the target
+elevation once at tick 10 (`FUN_0042da80` → `FUN_0066b668` → `write_scratch(0x3c)`) and reads
+it back for the frozen tick-30 salvos. The port was recomputing it per launch, so a target
+that changed height between the two would silently re-aim the later salvos.
+`MoveOp::CapturePitch` + `ShotAimKind::StoredPitch` now latch it (keeping the original's
+integer truncation), and **106 bodies** read `0x3c` more than once, so this is a roster
+mechanism rather than a Rika fix.
+
+**Done — the air copy is witnessed end to end, both branches.** `460` was untested in
+both branches. Reaching it exposed two port behaviors worth writing down: a Jump press
+returns before the charge block (one tick lost, then the charge re-accrues), and a plain
+leap's 47-update air window is too short for the 60-update program, so the witness holds
+Z against the fly budget to reach ~112. The air frozen interval then fires all three
+pairs per branch (powered 4/7, normal 3/6) with the opposite gate correctly off. What the
+air copy still does not show: the fired yaw omits the battle movement offset, and the
+source's phase0/tick0 velocity/gravity clears have no `MoveOp` — both documented, both
+blocking any full-fidelity claim for this area.
+
+**Done — the live witness no longer double-counts.** It appended every living projectile
+on each update until it had two entries, so one surviving twin could satisfy the
+assertion. It now reads the SPAWN update only, which is where both requests of a volley
+appear together.
+
+**Verified:** full Linux suite **65/65 (166.6 s)**, fighter suite **788 checks / 0
+failures**, recon 6/6, Windows and web cross-builds, live battle smoke RESULT ok.
+
+**Next:** the `+0x848` producer (model `+0x300`, or commit to the analogue everywhere),
+then Keiichi 0/1's hand origin, then Kasai 0 with the pool audit. The latched-pitch
+mechanism is expected to be needed by dozens of bodies, so keep using it rather than
+re-deriving elevation per launch.
+
+### 2026-10-10 — 3.3 Recovered aim-selection producer replaces the analogue
+
+**Done — the `+0x848` producer is source-backed.** The full trace closed all four
+fields: `+0x300` (aim selection, init 0, written only by the 0x2a cycle),
+`+0x304` (combat lock, closed writer set), `+0x308` (aim-target actor pointer,
+proven by the `+0xaecc` dereference at `FUN_0041f580.c:221`), `+0x30c` (15-tick
+pulse), `+0x848` (180 on cycle iff aim targets match; cleared by direct-set and the
+state-0x1e gate; re-pinned iff match, else decayed). Commands 0x2a/0x2b reach the
+writers from `FUN_0063c2a0`; player 0 is index 0 of the player list.
+
+**Done — the boundary.** `TargetLocks` carries the `+0x300` aim layer (`m_aim[]`,
+`m_aimHold[]`) beside the behaviorally untouched combat-lock layer; gestures move the
+aim with the lock, direct-set clears the shooting hold without touching the aim,
+maintenance re-picks carry the aim, and the per-tick re-pin/decay has no liveness
+test exactly like the original. `Match::aim_holds()` feeds `ShootingContext::aimHold`
+(renamed from `allyHold`); the combat lock, ring, pulse, bot retarget gate and camera
+are identical — their suites pass unmodified, and no production HUD/bot/camera code
+ever read the hold value. Deliberate divergences kept and labelled: no state-0x1e
+gate, no aim re-pick on selection-invalid, enemies-only tap cycle.
+
+**Done — Oyashiro settled.** Threshold `limit1` = 850 (700 Hanyu+1) from DAT
+`parameters[4]` is auto-satisfied (the corpus never increments `+0x83c`, so no
+accumulation gameplay gates the arming; the runtime bridge's seed is an invention).
+Countdown `duration1` = 900 ticks (1800 Hanyu+1 only) from `parameters[5]` — the
+port's 15 s matches 45/46 combos, halves Hanyu+1's 30 s (recorded, needs DAT plumbing
+to fix). Activation stays player-driven (Special press at full gauge) vs the
+original's automatic first-frame arming, and 15 s at 64 Hz runs ~7% long — both stated.
+
+**Done — witnesses.** Aim-layer units (init, player-0 trivial hold, shared/diverged
+2v2 aims, gesture updates, direct-set clear, 300-tick expiry, death persistence,
+rematch reset, 1v1 permanence: 266 lock checks); live 1v1 powered twin with no gesture
+plus Friendship control with admission separated per magazine; live 2v2 shared-aim
+powered vs diverged-aim normal through one scene drain; live death (locks+aims re-pick
+together onto the survivor, holds re-pin) and rematch (reset restores init). No roster
+expansion: still 13 programs + Satoko 2 tap + 5 deferred + 25 TODO.
+
+**Verified:** full rebuilt Linux CTest **65/65 (184.24 s)**, fighter suite 822 checks,
+lock suite 266 checks, recon six tests passed. Windows and web reviewed cross-builds
+passed; neither platform was executed for this slice. Linux native 2-player battle
+smoke (1200 frames) RESULT ok; rematch logic (reset path) covered by unit and
+Match-level tests.
+
+**Next:** Keiichi 0/1's hand origin (`FUN_00435220`), then Kasai 0 with the pool audit.
+The movement-offset yaw and the remaining gaps in §6 of the architecture record are
+the next fidelity items after the roster unblocks.
+
+### 2026-10-10 — 3.4 Keiichi 0/1 bound: hand origins, snap pitch, range pitch
+
+**Done — both combos bound** (`kKeiichi0Rules`, `kKeiichi1Rules`, handlers 0x46a190 /
+0x473610): taps as single hand requests at tick 13 (Bip01_R_Hand, rows 0 + 3/1, stored
+pitch), charges at tick 4 (Keiichi 0 only: left hand row 1, fixed angles) and tick 20
+(Keiichi 0: attachment slot 0 rows 2/4; Keiichi 1: world rows 9 + 2/3 at lateral -50 /
+forward 0 / height +40/+20). All branches gate on the recovered powered predicate; the
+`FUN_00435000` row mapping the handoff called unestablished resolves to slot 0 with rows
+2 normal / 4 powered straight from the body tuple.
+
+**Done — three pitch mechanisms, all measured:** the air-tap discontinuity (compare
+±30, assign ±45, in 9 bodies) rides on `CapturePitch`'s new assign bound; Keiichi 1's
+charge pitch (base plus live `dist*40/5000`, ×0.95 when negative, horizontal distance
+only) is the new `ElevationPlusRange` kind (2 bodies use it, named honestly); literal
+yaw/pitch requests use the new `FixedAngles` kind. `NamedBone` gets its first real
+users plus the `origin_named_bone` factory; a rig missing the bone fails explicitly.
+
+**Verified:** full rebuilt Linux CTest **65/65 (203.48 s)**, fighter suite 878 checks 0
+failures (56 new Keiichi checks: hand KIND + bone names, row splits on both branches,
+tick-4/tick-20 charges, forward-60/lateral-50 geometry, range pitch exact at sin(4°)),
+recon six tests passed, Windows and web cross-builds passed, live 2-player battle smoke
+RESULT ok. Table pins for both combos already existed in the shared origin-pin loop;
+no new pins needed.
+
+**Still pending for both:** movement-offset yaw, air velocity/gravity ops (entry halve,
+movement clear, gravity tails), second charges (no 360/370 bodies in scope). The ledger
+carries the per-path cells; the handoff scoreboard is now 13 + 2 subsets + 5 partial
+typed programs (Satoko 2 tap, Keiichi 0, Keiichi 1) + 3 deferred + 25 TODO.
+
+**Next:** Kasai 0 as the first C++ handler with the pool audit (21/31 requests, spread,
+global-32 capacity), then the roster families. The latched-pitch, snap-pitch and
+range-pitch mechanisms are expected to recur — keep using them.
+
+### 2026-10-10 — 3.5 Ledger order: Rena 0 powered branches, Rena 1 fan, Rena 2 RNG-blocked
+
+**Done — Rena 0 audited and extended** (handler 0x43ffc0): every launch site was gated on
+the recovered predicate and every powered row was missing. Tap 400 rows 0/6, air tap 402
+rows 1/7, charge 450/460 rows 2/8 (all `FUN_00434fd0` = slot-0 attachment) are now
+gate-bound. The charge pitch is a **fixed 45° constant** (`0x42340000`), not the scratch —
+`FixedAngles` carries it and the old `pitch 45` adapter value is replaced. The 360/370
+freeze is counter-gated (init 0, +1, release at 10) like Rika's, replacing the plain
+`Hold 10` — 22 updates to clear tick 13, witnessed by draining the interval.
+
+**Done — Rena 1 audited and extended** (runtime source, not a body): the tap is a
+**15-roll fan at frames 12..26** (row 1 normal / 3 powered), not a single frame-18
+anchor — the earlier note read the ground-phase helper only. The fan is bound per-frame
+with the row split; its per-shot `draw()%10` spread stays an explicit gap. The 450 charge
+is the single fixed-45 attachment shot (rows 2/8). 402/460/360/370 stay unbound.
+
+**Done — Rena 2 audited and documented as blocked**: no body exists at all; the handler
+`FUN_00438310.c` gives a fully measured state400 volley at phase 1 tick 35 — one
+attachment row 0/2 plus ten world rows 1/3, each with pitch `rng()%30+20`, yaw
+`heading+offset+90 − rng()%180` and a 200-forward/+30-high position. The EXE trace
+confirms 11 requests but the harness fixes the RNG, so all ten rows read identical
+coordinates. **Deliberately not bound**: without a per-shot draw the program would fire
+ten stacked projectiles, which the completion contract forbids. It is a one-step port once
+Kasai 0's deterministic shooting RNG lands — same blocker, same queue.
+
+**Verified:** full rebuilt Linux CTest **65/65 (168.55 s)**, fighter suite 905 checks 0
+failures (Rena 0/1 rewrote the 27-section test; 37 new powered/freeze checks), recon six
+tests passed, Windows and web cross-builds passed, live 2-player battle smoke RESULT ok.
+No roster expansion; ledger rows and the handoff scoreboard updated.
+
+### 2026-10-10 — 3.6 Ledger order: Mion 0 fully bound, 1/2 taps, RNG isolated as the gate
+
+**Done — Mion 0 audited and repaired** (handler 0x4582a0). Three real defects fell out:
+(1) every powered row was missing (0/4 on the taps, 2/3 on the charges — the gate switches
+the row, never the slot); (2) the ground tap fired at elapsed tick 2 in ANY phase, which is
+phase 0 in practice, while the body's condition is phase 1 tick 2; (3) the charge bound row
+0 where the body fires rows 2/3. The 402 air tap was misread as "two rows" when it is two
+SLOTS with the same row, so the old program fired a powered row on the normal branch and
+never touched slot 1. Now bound: phase-1 slot-0 tap (±30) plus the phase-3 slot-1 follow-up
+(±40, contact-gated), the three dual-slot counter volleys at 15/20/25, the asymmetric
+[-40, +45] charge clamp, and counter-gated freezes of 30 and 20 updates replacing plain
+`Hold` values that only coincided.
+
+**Done — Mion 1 and 2 audited.** Mion 1's 400 has the same slot-0/slot-1 split with a
+contact-gated phase-2 follow-up and a repeated one-frame hold; its 402 fires both slots at
+counter 13. Mion 2's 400 force-writes its tick counter from 10 to 18, so ticks 11..17 never
+run — the port places the launch on the teleport update and shifts every later window by
+seven, which moved the tick-23 freeze to elapsed 15 (the pre-existing rule had it at 23).
+
+**Done — the shared mechanisms the family needed:** `origin_attachment_slot` (slot 1 was
+unreachable before), `kGateContact` (the `0 < w[0x1b7]` "has connected" flag that 186 bodies
+guard on, with no writer in the corpus so the mapping is by role), `kGateCounterEquals` and
+`kGateCounterAbove` (the bodies' scratch counters survive a phase change while the phase
+tick does not — FUN_00421100 zeroes `+0xadfc`), and `CapturePitch` now taking separate low
+and high bounds, because 12 bodies clamp asymmetrically (Mion 0 [-40,+45], Shion 0
+[-70,+40], Akane [-15,+55]).
+
+**Blocked, and now precisely so — the draw service.** Mion 1's 450/460 (15-iteration bursts,
+rows 1/5, yaw `(rand%200-100)*0.1`, pitch `(rand%100-50)*0.1`) and Mion 2's 450/460 (rows
+2/3, yaw `(rand%100-50)*0.1`, pitch `(rand%80-40)*0.1`, plus the `0 < w[0x1c8]` gate with no
+writer) cannot be bound faithfully without it, and neither can Rena 2's ten-shot ring. The
+original RNG is recoverable: `FUN_0065d150` is standard MT19937 and `FUN_0065d0c0` seeds it
+with the canonical 5489, so a deterministic port RNG can match the algorithm, the modulo
+ranges and the draw counts even though stream position will not match (no bit-matching is
+attempted). That is the next mechanism, ahead of Kasai 0, which needs it too.
+
+**Verified:** full rebuilt Linux CTest **65/65 (176.91 s)**, fighter suite 933 checks 0
+failures (new sections 38/39: dual-slot volley counting, the exact +45 high bound against a
++40 symmetric clamp, and the contact gate discriminating both ways), recon six tests passed,
+Windows and web cross-builds passed, live 2-player battle smoke RESULT ok.
+
+**Next:** the deterministic shooting RNG (MT19937 + per-body draw ranges) to close Mion
+1/2's charges and Rena 2, then Kasai 0's scatter, then the remaining families.
+
+### 2026-10-10 — 3.7 The deterministic draw service; Mion 1/2 charges and Rena 2 bound
+
+**Done — the RNG is recovered, not invented.** `FUN_0065d150` is stock MT19937: the twist
+reads `mt[i+397]` below 227 and `mt[i-227]` above (the two base pointers `DAT_006d3804` and
+`DAT_006d2e44` are mt+397*4 and mt-227*4), selects the 0x9908b0df matrix word through a
+two-entry table by the low bit, and tempers with the canonical `>>11`,
+`(<<7)&0x9d2c5680`, `(<<15)&0xefc60000`, `>>18`. `FUN_0065d0c0` is `init_genrand`, and the
+re-seed path calls it with 0x1571 — **5489, MT19937's own default seed**. `simulation_rng.h`
+reproduces it and is pinned against the canonical seed-5489 vector
+(3499211612, 581869302, 3890346734, 3586334585, 545404204), so a wrong twist, matrix word,
+temper mask or seed fails the test rather than quietly shifting every spread.
+
+**Done — the spread boundary.** `ShotSpreadSpec` states each axis as
+`(modulo(n) + offset) * scale`, because that is literally the bodies' expression. The draw
+order is pitch-then-yaw: every measured family loads the pitch draw first and the yaw draw
+second, and the witness pins both against the canonical stream (the first burst request
+pitches at `(3499211612 % 100 - 50) * 0.1 = -3.8` degrees and yaws at
+`(581869302 % 200 - 100) * 0.1 = +0.2`), so swapping the order fails. A zero modulus
+consumes **no** draw, so a deterministic rule cannot shift the stream for later spreads.
+`MoveRule::repeats` carries the bodies' `for` loops — Mion 1 runs 15 iterations inside tick
+17 and Rena 2 runs 10 — and each iteration re-draws, which is what makes the volley a fan.
+
+**Done — three families closed:** Mion 1's 450/460 (15-shot fans, rows 1/5, the 460 clamp
+being the ±30-compare/±45-write mismatch), Mion 2's 450/460 (phase-1 emissions, rows 2/3),
+and Rena 2's state 400 outright (one slot-0 attachment at fixed angles, rows 0/2, plus the
+ten-world ring at 200 forward / +30 high, rows 1/3). Rena 2 had no recovered bodies at all,
+so the handler was the only source and nothing is claimed for its 402/450/460.
+
+**Fixed in passing:** the +5-degree air-tap turn on Mion 0's 402 was gated on the wrong
+bound — `kGateCounterAbove` reads `gateValue2` and the rule passed only one bound, so the
+extra turn would have applied from counter 1 instead of 16.
+
+**Recorded gaps, not hidden:** the port applies the spread to the DIRECTION only, while the
+original also rotates the attachment (so the muzzle's positional offset is not reproduced);
+and Mion 2's emissions still ignore the `0 < w[0x1c8]` gate, a field at byte +0x720 with no
+writer anywhere in the corpus — its usage (`0 < +0x2b8 && +0x730 == N && 0 < +0x720`,
+`< 5` picking a voice line) reads as an input hold counter, but that is inference, so the
+port treats the gate as satisfied rather than inventing a source.
+
+**Verified:** full rebuilt Linux CTest **65/65 (171.06 s)**, fighter suite 962 checks 0
+failures (sections 40-42 pin the RNG vector, the draw order against it, and the ring's
+count/rows/range), recon six tests passed, Windows and web cross-builds passed, live
+2-player battle smoke RESULT ok.
+
+**Next:** Keiichi 2's audit (the last unaudited member of the Keiichi trio), then Satoko
+0/1/2, then Kasai 0 — whose scatter is now unblocked.
+
+### 2026-10-10 — 3.8 Ledger order: Keiichi 2's sweeping tap; two charge gaps named
+
+**Done — Keiichi 2's tap audited and bound** (handler 0x47b940, bodies
+shoot_body_2_2_400/402). The previous binding fired one straight row-0 shot a tick through
+the legacy adapter. The body is a SWEEP: eleven requests (ticks 10..20, guard `9 < tick <
+0x15`), each tick growing scratch `0x3a` by 2 and aiming `0x3a - 15 + draw%10` on the yaw
+with `draw%10 + 5` of pitch over the clamped target elevation, row 0 normally and row 1
+powered. It is also the only family that draws the YAW first. Two small, general mechanisms
+carried it: `ShotSpreadSpec::yawPerTick` (a counter-driven sweep, `counter * yawPerTick`
+added before the jitter) and `SpreadOrder` (which axis draws first). The witness pins the
+arithmetic exactly against the canonical stream — request 1 yaws at 79 and pitches at 7,
+request 2 at 83 and 10 — which fails if the counter, the jitter or the draw order is wrong.
+The powered branch is witnessed at 11 requests on row 1.
+
+**Measured, deliberately unbound — two charge gaps:**
+
+* **The low pitch clamp assigns a different value than it compares.** The body tests
+  `0x40 < -30.0` and writes `-0x3e100000` (-0.140625) while the high end writes the +30.0 it
+  compared. Both the body header and `FUN_0047b940.c:1825`/`:1884` agree, so it is not a
+  one-off, but clamping to [-0.140625, +30] is not equivalent: it would also flatten values
+  in [-30, -0.14). The port keeps the symmetric ±30 clamp (which matches both comparisons)
+  and the quirk stays open rather than being guessed at.
+* **The charges are world requests the port places wrongly.** 450/460 turn 18 deg while tick
+  under 13, clamp the scratch to ±40 at tick 13, fire rows 2/3 through `FUN_00435450` (the
+  WORLD helper, with a 600-unit term in the position expression), and freeze 10 updates at
+  tick 5 and 15 at tick 32. The port binds them through the attachment adapter with a ±50
+  pitch — a different origin family and a different clamp. The 600-unit term is not decoded,
+  and **Keiichi 1's charge binding used the same family's shape** (`origin_actor_relative(-50,
+  0, 40)`), so that earlier binding must be re-verified against this formula before either is
+  trusted. Recorded as an open item rather than carried as a defect. The rewind stalls are
+  correctly plain `Hold 10`/`Hold 15`: the body's counter only rewinds the clock.
+
+**Verified:** full rebuilt Linux CTest (see the round's report), fighter suite 976 checks 0
+failures (section 43 is the new witness: 11 requests, rows 0/1, the sweep's span and step
+bounds, the pitch window, and the two exact canonical-stream values).
+
+**Next:** Satoko 0 and 1 (Satoko 2's tap is bound), then the Keiichi 1 / Keiichi 2 charge
+geometry decode, then Rika 0/1/2.
+
+### 2026-10-10 — 3.9 Ledger order: Satoko 0's hand fan; Satoko 1 needs its own harness
+
+**Done — Satoko 0's tap audited and rebound** (handler 0x4a9c40, bodies
+shoot_body_3_0_400/402). The existing binding unrolled five identical adapter launches and
+recorded the powered eight as "no flag field, skipped" — the flag is `w[0x1b7]`, the powered
+gate the port already uses everywhere else. The body is a HAND FAN on the posed
+`Bip01_R_Hand`: five requests normally, eight powered, all row 0, each drawing `draw%15` of
+pitch over the latched ±40 target elevation and then `(draw%240-120)*0.1` of lateral offset
+(`(draw%300-150)*0.1` powered). The program is now one `CapturePitch` plus one repeated
+Launch per branch, so the two draws land in the body's order with no unrolled duplication.
+
+Two mechanisms came out of it:
+
+* `ShotSpreadSpec::lateralModulus/Offset/Scale` — a per-request offset on the bone origin's
+  own local offset, which is what `FUN_00435220`'s third argument is. It also exposed a
+  **latent bug**: the `NamedBone` resolver read the *spec's* `localOffset`, so any spread
+  that adjusted the resolved offset was silently dropped. Fixed.
+* The witness pins the canonical stream exactly — request 1 pitches at 2, request 2 at 14,
+  and they sit 8.3 lateral units apart — which fails if the draw order is reversed. The fan
+  is bounded at 23.9 units normal / 29.9 powered, and the powered branch is witnessed at
+  eight requests on row 0.
+
+**Measured, not yet bound — Satoko 1 (handler 0x4b4090) is a bodies-only combo.** The recon's
+shot400 harness reaches NO request on any variant and the usage table is empty, so nothing
+about it can be checked against a preview yet. Read directly, `shoot_body_3_1_400` fires two
+WORLD requests at tick 0 on rows 6/7 at `y + 600`, then a 10 deg / 15 deg turn pair, then a
+hand request at tick 13 with a powered count split (`w[0x1b7] < 6`), then more world rows 6/7.
+It needs a purpose-built harness before its salvo count and geometry can be trusted.
+
+**Verified:** full rebuilt Linux CTest 67/67, 0 skipped; fighter suite 985 checks / 0 failures
+(section 25 now witnesses the fan, its bounds and the powered eight).
+
+**Next:** build Satoko 1's harness and audit it, then Rika 0/1/2, then the Keiichi 1/Keiichi 2
+charge geometry decode.
+
+### 2026-10-10 — 3.10 Ledger order: Satoko 1's periodic world shot
+
+**Done — Satoko 1 audited and bound from nothing** (handler 0x4b4090). It had NO move program
+at all before this, so its combo had no shooting behaviour. Its family
+(`shoot_body_3_1_{400,402,450,460}`) is uniform and unusual: every state runs the same
+PERIODIC fire — a countdown from 120 dropping one a tick, firing ONE world request when it is
+`1 mod 30`, from the actor's own position 600 units up, heading yaw and pitch 0, row 6
+normally and row 7 powered. The charges add one request at tick 35 at the actor's own
+position, row 0 normal / row 1 powered.
+
+`kGateCounterMod` already tests `counter % n == 0`, so starting the counter at 118 reproduces
+the body's `% 30 == 1` ticks with no new op. The witness pins the tick-28 landing, rows 6/7,
+the 600-unit height and one request per fire.
+
+**Open — the port's state/duration model is too short for periodic weapons.** Only the first
+fire lands in a run: the port's tap move lasts about 40 ticks, while the body's family walks
+ten states (400..409) and would fire five times. The shot table maps two states per form, so
+periodic weapons cannot express their full cadence until the state/duration model is widened.
+Recorded rather than hidden by shortening the period.
+
+**Next:** widen the state/duration model for periodic weapons (or confirm it is out of scope),
+then Rika 0/1/2, then the Keiichi 1/Keiichi 2 charge geometry decode.
+
+### 2026-10-10 — 3.11 Ledger order: Rika 0's powered branches, and the "no flag field" myth
+
+**Done — Rika 0's powered branches bound** (handler 0x484be0). The taps fire TWO world
+requests on row 0 normally and FOUR on row 1 powered; the charges fire two on row 2 normally
+and two on row 3 powered, with identical pitch thirds across the branches. The old binding
+fired row 0 / row 2 always, citing "no flag field"; the flag is `w[0x1b7] < 3` — kGatePowered.
+One gated rule per branch now carries it, and the witness checks four row-1 requests on the
+powered tap and two row-3 requests on the powered charge.
+
+**Found — the "no flag field" note is false everywhere it appears.** The flag is `w[0x1b7]`,
+which the port already models as `kGatePowered`; verified directly in Keiichi 2, Satoko 0,
+Rika 0 and Rika 2 bodies. Keiichi 2's and Satoko 0's rules were rebound earlier; Rika 0's now.
+**Still to re-read: Chie 2 (L1098), Takano 0 (L1128), Irie 1 (L1194), Tomitake 2 (L1399).**
+Each is a pending audit, not a missing flag — the notes are corrected in the ledger so the
+next pass does not inherit the excuse.
+
+**Found — Rika 2 hides more than a flag.** Its note was wrong, and the body shows: the NORMAL
+tap's row is selected by `w[0x9e]` (row 2 below 0, row 0 in [0,1), row 1 otherwise), the TAG
+tap fires three requests on rows 0/2/1, and every request passes pitch 0 although scratch
+`0x3c` is filled with the clamped ±40 target elevation and then never used. Its rules are
+unchanged pending a `w[0x9e]` decode.
+
+**Open — Rika 0's twin separation.** The pairs are `+-600` apart on the taps and `+-50` on the
+charges; the port's adapter origin places both at the same point. Needs the world-origin decode.
+
+**Next:** re-read the four remaining "no flag field" sites and bind their powered branches,
+then Rika 1's audit, then the Rika 2 `w[0x9e]` decode, then the Keiichi/‌Rika world-origin
+decode.
+
+### 2026-10-10 — 3.12 Ledger order: Rika 1's tap window and its lateral-first spread
+
+**Done — Rika 1's tap audited and simplified** (handler 0x492f70). The body fires while
+`tick > 11 && scratch < 30` on EVEN scratch values (ticks 12..40, fifteen shots). Because the
+scratch only increments inside the window it equals `tick - 12`, so the even test is the
+tick's own parity — one `kGateCounterMod` rule over the tick window replaces the fifteen
+unrolled anchors, and it sits before the Counter so it reads the pre-increment value the body
+does. The binding's own comment had invited this ("a counter gate would express that window
+directly") while keeping the anchors; that tension is now resolved.
+
+Each shot's spread is bound too: `draw%14 - 7` of LATERAL offset drawn FIRST, then
+`draw%10 - 5` of pitch over the live clamped ±40 target elevation. The witness pins the window,
+the pitches -3/0/-4 and the lateral offsets 1/1/-5 against the canonical stream; swapping the
+draws moves all six. Two stale claims in the old comment were corrected: the row and the hand
+both come from the body's own `FUN_00435220` call, and the item table was not the source.
+
+**New mechanism — three-axis draw order.** `SpreadOrder` now names the measured pairs:
+`PitchThenYaw`, `YawThenPitch`, `PitchThenLateral` (Satoko 0) and `LateralThenPitch` (Rika 1).
+The first attempt only named three orders and silently stopped drawing Satoko 0's lateral;
+the suite caught it (three failures), which is why the fourth is enumerated rather than
+inferred.
+
+**Next:** Rika 2's `w[0x9e]` row selector and three-request tag branch, then the four
+"no flag field" re-reads (Chie 2, Takano 0, Irie 1, Tomitake 2), then the world-origin decode
+that Keiichi 1/2 and Rika 0 are all waiting on.
+
+### 2026-10-10 — 3.13 Ledger order: Rika 2's tag branches, and an editing hazard
+
+**Done — Rika 2's tag branches bound** (handler 0x49d890). The note claimed they needed "an
+aim/tag flag this model has no field for"; the flag is `w[0x1b7] < 3` (kGatePowered). The tap's
+tag branch fires THREE `Bip01_R_Hand` requests on rows 0, 2 and 1 in that order; the charges'
+tag branch fires three fan requests on row 6 against row 4 normally. Both are witnessed,
+including the row order, and the tap's normal rule moved from the legacy adapter to the typed
+hand origin the body actually calls.
+
+**Open — Rika 2's normal tap row selector.** `w[0x9e]` picks row 2 below 0, row 0 in [0,1) and
+row 1 otherwise; it is READ throughout the corpus (FUN_0043ffc0's prologue included) and
+**never written anywhere in it**, so it needs original-binary work rather than more body
+reading. The rule keeps the row-0 reading the traces show.
+
+**Hazard found and recorded — identical rule lines across tables.** Chie 2's and Rika 2's 400
+taps are byte-identical, as are Takano 0's 402 and Rika 2's, so a file-wide string replace
+lands in the wrong table. It did: the first attempt at this slice silently rewrote **Chie 2's
+400 and Takano 0's 402**, and only the Rika 2 test failed — the corruption would have shipped
+silently otherwise. The edit was reverted and redone scoped to the `kRika2Rules` array with the
+occurrence count asserted inside that scope. Same discipline for every future table edit.
+
+**Next:** the four "no flag field" re-reads (Chie 2, Takano 0, Irie 1, Tomitake 2 — note Chie 2
+and Takano 0 were briefly corrupted here and are back at their committed state), Rika 2's
+`w[0x9e]`, then the world-origin decode for Keiichi 1/2, Rika 0 and Rika 2.
+
+### 2026-10-10 — 3.14 Ledger order: Chie 2's burst, and a total axis order
+
+**Done — Chie 2's four states bound** (handler 0x566a40). The burst is scratch-driven: the
+counter starts at 1, steps one a tick, and fires while `counter % 3 == 1` — four shots on the
+ground tap (`counter < 11`) and five on the air tap (`< 14`), on `Bip01_R_Hand` and
+`Bip01_L_Hand` respectively, aiming `counter * 0.5 - 2` of lateral offset with the target
+elevation clamped ±40. Rows 0 normal / 1 powered. The charges fire one `Bip01_R_Hand` request,
+row 2 normal / row 3 powered, elevation clamped ±30, at tick 22 (450) and tick 15 (460). The
+"no flag field" note on this family is retired.
+
+**Fixed — the 460 charge's tick.** The rule sat at tick 22 while its comment said 15; the body's
+`== 0xf` settles it at 15. Nothing tested 460, so it had been wrong unnoticed.
+
+**New term — `lateralPerTick`.** The mirror of `yawPerTick`: Chie's burst draws nothing and the
+counter IS the spread, so the lateral needed `counter * perTick + offset`. Witnessed exactly at
+-1.5, 0, 1.5 and 3.0.
+
+**Mechanism correction — the axis order is now total.** `spread_axis_order` returns all three
+axes for every order (the named pair in order, the remaining axis last), instead of listing only
+the pair a family draws. The earlier cut silently dropped any axis an order did not mention —
+it cost Satoko 0's lateral under `PitchThenYaw` and Chie 2's before the fix. No measured family
+configures all three axes, so the trailing slot is unobservable and the failure mode is gone.
+
+**Next:** Takano 0, Irie 1 and Tomitake 2 — the three remaining "no flag field" re-reads — then
+Rika 2's `w[0x9e]`, then the world-origin decode for Keiichi 1/2, Rika 0 and Rika 2.
+
+### 2026-10-10 — 3.15 Ledger order: Takano 0's tag rows, both families
+
+**Done — Takano 0's four states bound** (handler 0x531ce0). The taps fire three
+`FUN_00435220` requests on `Bip01_R_Hand` at ticks 12, 15 and 18 — three single shots, not a
+repeating window — with the target elevation clamped ±40, row 0 normal / row 6 powered. The
+charges fire one slot-0 attachment request at tick 18 (450) and tick 17 (460), row 1 normal /
+row 7 powered, also clamped ±40. The tag branches read `w[0x1b7] < 4`, i.e. kGatePowered; the
+"no flag field" note is retired. Note the two families use different tag rows (taps 0/6,
+charges 1/7), so neither can be inferred from the other.
+
+**Process note — the two-table trap, second occurrence.** The ledger carries two tables and
+both have a Takano 0 row. The first edit matched the correction table's row, exactly as
+happened with Chie 2 last round. This time a guard asserting the full expected row (swap/item
+and body count included) aborted before the write. Use that pattern for every ledger edit: never
+anchor on the combo name alone.
+
+**Next:** Irie 1 and Tomitake 2 — the last two "no flag field" sites — then Rika 2's `w[0x9e]`,
+then the world-origin decode for Keiichi 1/2, Rika 0 and Rika 2.
+
+### 2026-10-10 — 3.16 Ledger order: Irie 1's four-request tag branch
+
+**Done — Irie 1's four states bound** (handler 0x57f600). Both taps fire at tick 12: TWO world
+requests normally, on rows 1 then 0, and FOUR powered, on rows 3, 2, 1 then 0 — the tag branch
+ADDS the row-2/3 pair rather than replacing the row-0/1 one. The gate is `w[0x1b7] < 4`
+(kGatePowered) and the "no flag field" note is retired. The charges fire one `FUN_00434fd0`
+request, row 4 normal / row 5 powered, elevation clamped ±30, at tick 22 (450) and 17 (460).
+
+**A test was encoding a bug.** The old assertion checked rows 0 then 1, because the un-ordered
+binding emitted them in table order; the body fires row 1 first. The rules now follow the body
+and the assertion was corrected — not the other way round.
+
+**Method note — grep the whole helper family.** Searching for this family's fire helper under
+the names already known (`FUN_00435220`, `FUN_00435000`, `FUN_00435450`) returned nothing, which
+looked like a fabricated rule. The real helper is `FUN_00434fd0`. Search `FUN_0043xxxx` broadly
+before concluding a body makes no request.
+
+**Seen, not bound:** state 401's tick-15 pair (slots 0/1, row 0, elevation ±40) and its
+after-tick-29 transition to 0x19b/0x19c/0x19a/0x191 selected by `w[0x9e]`/`w[0x9f]`. The port
+maps {400, 402} here, so 401 is outside its table — and `w[0x9e]` is the same selector Rika 2
+still waits on.
+
+**Next:** Tomitake 2 — the last "no flag field" site — then Rika 2's `w[0x9e]`, then the
+world-origin decode for Keiichi 1/2, Rika 0, Irie 1 and Rika 2.
+
+### 2026-10-10 — 3.17 Ledger order: Tomitake 2, and the last "no flag field" site closes
+
+**Done — Tomitake 2's tap bound** (handler 0x527880), writing the last of the four flagged
+sites. `shoot_body_6_2_400/402` fire two shots per scheduled tick (15..33 step 3) under
+`scratch % 3 == 0 && 0 < w[0x1b7]`: row 7 always with lateral 0 and pitch 0, then row 5
+normally or row 6 powered by the `byte(+0x845) && word(+0x212)` idiom. The ground tap draws
+`(draw%12-6)*0.25` of pitch and `(draw%6-3)*0.5` of lateral on row 5, swapping both moduli on
+row 6; the air tap uses 6/-3 for both. Elevation clamped ±45. Witnessed exactly (row 5 at +0.5
+pitch, -1.5 lateral; row 6 at -0.25, 0).
+
+**Open — the charge's tag rows 6/2.** Deliberately not bound: its body was not re-read in this
+pass. The flag exists (the tap proves it), so this is a scheduling gap, not the old excuse.
+
+**Correction — which field the tag branch reads.** Six comments from earlier slices cited
+`w[0x1b7] < N` as the powered gate. It is not: the row/count gate is
+`byte(+0x845) && word(+0x212)`, the pair `kGatePowered` models, while `w[0x1b7]` picks the
+sound (and here an outer burst gate). The bindings were right, the justifications were wrong,
+and all six comments are fixed. Worth remembering: `word(+0x212)` is `byte(+0x848)`, which is
+why the port's gate name does not appear anywhere in the bodies.
+
+**The "no flag field" work list is now empty.** All four flagged sites — Chie 2, Takano 0,
+Irie 1, Tomitake 2 — are re-read, bound where the body allowed it, and their notes retired.
+
+**Next:** Rika 2's `w[0x9e]` row selector (now with sightings in Irie 1's state 401 as well),
+Tomitake 2's charge tag rows, then the world-origin decode for Keiichi 1/2, Rika 0, Irie 1 and
+Rika 2.
+
+### 2026-10-10 — 3.18 Decode: `w[0x9e]`/`w[0x9f]` are the COM's movement direction
+
+**Decoded — the selector that had been blocking Rika 2 and Irie 1's state 401.** `w[0x9e]` and
+`w[0x9f]` are `(+0x278, +0x27c)`, a 3×3 COM movement-direction decision:
+
+* only two functions write it, `FUN_0043f4d0` and `FUN_00447730`, both COM decision routines: a
+  wander timer `+0x864 ∈ [-200,199]` drives `+0x278` to -1/0/+1, and squared-distance tests
+  (`< 250000`, `< 122500`, `< 90000`) set the two components together;
+* all 471 other references are reads, across movement, action and shoot code;
+* the port's `bot_brain.h` already documents it as "a 3x3 movement direction in
+  +0x278/+0x27c" and models the timer, corroborating the decode from the port side.
+
+**Why it matters:** it is an AI decision, not player input. A human-controlled fighter never has
+it written, so it stays 0 and the fighter takes Rika 2's row-0 branch and Irie 1's no-direction
+branch. The port's bindings are therefore correct for players, and the gap is COM-only — a
+material re-scoping of two entries that had been carried as flat blockers.
+
+**Follow-up, now well-defined:** publish the direction on the shooting context and add a gate for
+its sign. The bot brain already computes it, so this is a publish plus a gate, not new AI — but
+it touches the fighter context, the gate table and the match plumbing, so it wants its own slice
+rather than a tail-end edit.
+
+**Next:** that direction gate (which also finishes Irie 1's 401 follow-up states), Tomitake 2's
+charge tag rows, then the world-origin decode for Keiichi 1/2, Rika 0, Irie 1 and Rika 2.
+
+### 2026-10-10 — 3.19 The AI direction gate, and Rika 2's three normal rows
+
+**Done — the decode from 3.18 landed as a mechanism.** `ShootingContext::moveLateral` carries the
+sign of `+0x278`; `Match::step` publishes it for **AI slots only**, derived from the applied
+direction keys (this port expresses the brain's intent through those keys); and three exclusive
+gates `kGateDirLeft/Neutral/Right` state the branches. Rika 2's normal tap rules now carry
+`kGateNormal | kGateDir*` — the direction selects the NORMAL row while the powered branch still
+fires all three.
+
+**Caught by the suite, worth remembering:** the first cut used the direction gates ALONE, so a
+powered fighter with neutral lateral fired the row-0 normal rule *and* the three powered rules —
+four shots instead of three. The rule shape has to say "normal AND this direction", and the
+existing powered test is what exposed it.
+
+**Verified end to end:** the witness publishes each sign through the context and gets rows 2, 0
+and 1, rather than asserting the rules' own constants. A human slot publishes 0 and is unchanged.
+
+**Open and ready:** `+0x27c` (`w[0x9f]`, the second axis) is decoded but not published, because
+nothing in the port's table reads it yet. Irie 1's state 401 needs both signs for its four
+follow-up states, and 401 sits outside that family's `{400, 402}` mapping — so the plumbing is in
+place and only the rules remain, once 401 is in scope.
+
+**Next:** Irie 1's 401 follow-ups, Tomitake 2's charge tag rows, then the world-origin decode for
+Keiichi 1/2, Rika 0, Irie 1 and Rika 2.
+
+### 2026-10-10 — 3.20 Tomitake 2's charges close; Irie 1's 401 needs a new op
+
+**Done — Tomitake 2's charge tag rows bound.** Both charges (L39390-39440, L39550-39600) fire row
+4 unconditionally — lateral 0, pitch 0, height +75 — then row 0 normally or row 2 powered on
+`byte(+0x845) && word(+0x212)`. The old note called the tag rows "6/2"; the body says row 4 always
+plus row 2 powered, so only the second shot moves. Witnessed as rows 4 then 2. **Tomitake 2 is now
+bound on all four states.**
+
+**Blocked, with the reason pinned — Irie 1's 401.** It fires a two-slot attachment request at tick
+15 (slots 0 and 1, row 0, elevation ±40) and then JUMPS after tick 29 to one of four follow-up
+states (0x19b/0x19c/0x19a/0x191) chosen by the signs of `w[0x9e]`/`w[0x9f]`. Two obstacles, and
+neither is a flag:
+
+* `MoveOp` has **no state-transition operation**, so no rule can request the jump; and
+* 401 is **not in Irie 1's `{400, 402}` mapping**, so making the tap enter it changes the phase
+  progression the traces validate.
+
+That is a product change — a new op plus a progression decision — and it wants its own slice. The
+direction plumbing added for Rika 2 already carries the sign test 401 needs.
+
+**Next:** the state-transition op plus Irie 1's 401 (which would also unblock the four follow-up
+states), then the world-origin decode for Keiichi 1/2, Rika 0, Irie 1 and Rika 2.
+
+### 2026-10-10 — 3.21 The world origins decode, and two mis-read float constants
+
+**Done — Rika 0's tap world geometry bound** (handler 0x484be0). `FUN_00435450`'s world requests
+are the actor's own position displaced ALONG THE FACING, which is exactly what the port's
+`facing_relative(0, R)` computes — so `origin_actor_relative(0, R, H)` is the right model and the
+adapter was the whole error. The tap fires `±50` (`0x42480000`) at height +70 (`0x428c0000`):
++50 then -50 normally, +50/-50/+50/-50 powered. Witnessed at 100 apart, 70 above. This is the
+decode the Keiichi charges were waiting on.
+
+**Correction — two float constants were eyeballed instead of decoded.**
+
+* Rika 0's pair was noted as ±600 (taps) and ±50 (charges). The taps are `0x42480000` = **50**;
+  the charges are `0x41c80000` = **25**.
+* **Satoko 1's periodic shot was bound at height 600 and its note said so.** The body says
+  `0x42480000` = **50**. Binding and witness are both fixed.
+
+**The process failure worth remembering:** Satoko 1's witness asserted 600 — the BINDING's own
+constant — so it could only confirm the binding against itself, and it passed for a whole slice
+while being wrong. A witness must take its numbers from the body. Decimal literals in the
+decompilation (the `(draw%12-6)*0.25` spreads, the integer clamps `0x28`/`0x1e`) are safe to
+quote; hex floats must be decoded.
+
+**Next:** the Keiichi 2 charge origins (same decode, `0x42480000` = 50 at height +40), Rika 0's
+charge origins (R = 25, height +50), then the state-transition op for Irie 1's 401.
+
+### 2026-10-10 — 3.22 Keiichi 2's charges, and the axis the displacement uses
+
+**Done — Keiichi 2's charges bound** (handler 0x47b940), completing the combo on all four states.
+The charges (L12186-12217) are WORLD requests: the actor's position displaced `-50` on the
+PERPENDICULAR axis (`0x42480000` against the table at `yaw + 90`) at height +40 (`0x42200000`),
+elevation latched at tick 13 and clamped ±40 → `origin_actor_relative(-50, 0, 40)`, rows 2 normal /
+3 powered. Witnessed exactly (-50 X, 0 forward, +40 up at facing 0).
+
+**Correction — the axis, which also fixed Rika 0.** A world position comes from TWO table lookups:
+at `yaw` for forward, at `yaw + 90` for perpendicular. Which one a constant multiplies decides the
+`origin_actor_relative` arguments. Rika 0's tap multiplies the `yaw + 90` table by ±50 and the `yaw`
+table by 10, so it is `(±50, 10, 70)` — LATERAL, not forward. The round-15 binding had it inverted
+and its witness could not tell: the pair is 100 apart either way, so the check passed. The witness
+now asserts the X separation, the shared forward line and the forward offset as three separate
+facts, which is the shape a geometry witness needs.
+
+**Next:** Rika 0's charges (`25` lateral at height `+50`, rows 2/3 — the same decode), then the
+state-transition op for Irie 1's 401, then the remaining `w[0x19]` movement-offset term.
+
+### 2026-10-10 — 3.23 Rika 0's charges, completing the combo's geometry
+
+**Done — Rika 0's charges bound** (handler 0x484be0). They fire twin WORLD requests at ticks 15
+and 25: lateral `±25` (`0x41c80000` against the `yaw + 90` table), forward 50 (`0x42480000`
+against the `yaw` table), height +50, with an explicit world YAW and PITCH rather than the target
+elevation — yaw `±5`/pitch 45 at tick 15, yaw `±10`/pitch 30 (450) and 40 (460) at tick 25. The
+witness checks 50 apart laterally, 50 in front, 50 up, 10 degrees of yaw separation and the fixed
+45 pitch.
+
+**Worth carrying forward:** the aim SPEC differs per family and must come from the body. Rika 0
+names its angles (FixedAngles); Keiichi 2 latched the target elevation and clamped it
+(StoredPitch); Satoko 1 passes pitch 0. Three families, three aim kinds — a family-wide
+assumption would have been wrong for at least two of them.
+
+**Next:** the state-transition op for Irie 1's 401 (a product change), then the `w[0x19]`
+movement-offset yaw term that several families still omit, then the remaining `w[0xae]`-gated
+bursts seen in Irie 1's 402.
+
+### 2026-10-10 — 3.24 Review findings: the spread axis was a yaw, not a muzzle offset
+
+A review of the committed spread work returned three findings. All three were checked against the
+corpus before acting; **the first was confirmed and is fixed**, the other two are confirmed and
+carried here as work.
+
+**FIXED — [P1] the hand helpers' third argument is a YAW.** `FUN_00435220` wraps
+`FUN_00435250`, which at `0x4352a0` adds its `param_7` to the bone's own angles and passes the sum
+through the sin/cos table. So the value Rika 1, Satoko 0, Chie 2 and Tomitake 2 draw into is a yaw
+offset in degrees, not a muzzle position. `SpreadAxis::Lateral` now adds to the aim's yaw; only
+`FUN_00435450`'s world form takes a position, and those families state it explicitly. The four
+witnesses had been reading the value out of the field the binding wrote it to, which is why they
+agreed with the error; they now assert a swing instead. **Follow-up:** pin the per-shot stream
+position so those witnesses can assert absolutes again.
+
+**CONFIRMED, not yet done — [P2] Keiichi 2's charges drop the range-based pitch.** The body carries
+`0x457a0000` (4000) and `0x42200000` (40), the shape Keiichi 1 uses (`base + clamp(dist*40/N, low,
+high)`, `*0.95` when the base is negative). Keiichi 2's rules call `aim_stored_pitch()`, so they
+add 0 where the source adds a distance term. The existing witness checks position and row, so it
+cannot see this. The port already has `aim_elevation_plus_range()` for this shape; it needs 4000
+as the divisor rather than the 5000 Keiichi 1 uses, so the kind likely wants a parameter.
+
+**CONFIRMED, not yet done — [P2b] Tomitake 2's charges still use the adapter.** The bodies carry
+`0x42480000` (50, six occurrences) and `0x42960000` (75, three), so those charges are WORLD
+requests 50 forward and 75 above with row 4 at literal pitch 0. The committed rules fixed the ROW
+selection but kept the attachment origin and a target-derived pitch, so the launch geometry is
+still wrong. This is the same decode that fixed Rika 0's and Keiichi 2's charges.
+
+**Process note.** Three of this session's errors — a mis-read hex float, an inverted axis, and this
+yaw-versus-position confusion — share one shape: a witness that reads back what the binding wrote
+cannot falsify the binding. The world-geometry and direction witnesses added since take their
+numbers from the body; the spread witnesses are the remaining place that needs the same treatment.
+
+### 2026-10-10 — 3.25 Witness quality: restore the exact checks the review called out
+
+A second review of the spread fix found the replacement witnesses too weak, and one bound wrong.
+All three points were correct.
+
+**Fixed — Chie 2's exact checks restored.** Its sweep is deterministic (no draw; the counter steps
+by 3 between the shots the gate passes), so the offsets are exactly -1.5, 0, 1.5, 3. The witness
+pins 1.5° spacing, a monotonic direction and the 4.5° span. The global SIGN is still open and is
+named as a follow-up: the body adds the value to the BONE's angles while the witness measures yaw
+against the fighter's facing, and I have not established that those two bases rotate the same way.
+That is a convention to resolve, not to hide behind a range.
+
+**Fixed — Satoko 0's bound was mathematically wrong.** `(draw%240-120)*0.1` bounds an INDIVIDUAL
+offset to [-12.0, +11.9], so two shots may differ by 23.9; my "half-span <= 12.5" could reject a
+valid fan. Each offset is now checked against the body's own bounds, and the five shots must leave
+the muzzle at one point.
+
+**Fixed — Rika 1's muzzle check was too weak.** `|position.x| < 1000` establishes nothing. It now
+asserts the resolved `localOffset` is exactly zero on every shot — the rule's spec sets zero, so
+any nonzero value could only come from the spread.
+
+**Still open and next in line, in the reviewer's order:** the draw-order pinning for Rika 1 and
+Satoko 0, then Keiichi 2's range-based pitch term, then Tomitake 2's charge origins.
+
+### 2026-10-10 — 3.26 The legacy-yaw convention, pinned
+
+A third review supplied the explanation for the yaw inversion I had left open, and it checks out
+against both the source and the resolver:
+
+* `FUN_00435250` (L29) aims at `legacyYaw = 90 - actorHeading + offset`;
+* the resolver's legacy kinds (`ActorHeadingTargetElevation`, `StoredPitch`,
+  `ElevationPlusRange`) build the direction as `(cos legacyYaw, _, sin legacyYaw)`;
+* converting back to the remake's yaw gives **`shotYaw - fighterFacing = -offset`**, while the
+  remake-basis kinds (`TargetElevation`, `FixedAngles`) give `+offset`.
+
+Every hand family here binds `aim_target_elevation`, which returns `ActorHeadingTargetElevation` —
+the legacy kind — so their body offsets arrive at a witness **negated**. `-1.5` measuring as `+1.5`
+is therefore the expected conversion, not a mystery, and the tests now say so in a named helper
+with the derivation beside it.
+
+**Acted on:**
+
+* **Chie 2's signed values are pinned exactly.** Its sweep is deterministic, so
+  `remake_yaw_for_legacy_offset(-1.5, 0, 1.5, 3)` is asserted per shot. Spacing plus monotonicity
+  alone would have allowed the whole sweep to shift.
+* **Satoko 0's bounds converted.** The body's `(draw%240-120)*0.1` is [-12.0, +11.9], so the shot
+  sees [-11.9, +12.0]; the raw bounds could reject a valid +12. Rika 1's [-7, +6] converts to
+  [-6, +7] and is checked the same way.
+* **The comment corrected.** The helper adds the offset to the actor's HEADING and movement
+  offset; the bone matrix supplies the origin only. My earlier wording ("the bone's angles") was
+  misleading, and it is what made the inversion look unexplained.
+
+**Order for what remains, per the reviews:** finish Keiichi 2's range-based pitch term, then
+Tomitake 2's charge origins, then draw-order pinning for Rika 1 and Satoko 0, then an independent
+launch-position check against the posed hand (Rika 1's `localOffset == 0` is a regression check for
+the muzzle bug, not that verification).
+
+### 2026-10-10 — 3.27 Keiichi 2's range-based pitch restored (review item 1)
+
+The first of the two acknowledged runtime defects. The body does not fire the bare latched
+elevation: after clamping it into `w[0x3a]` it computes a RANGE term (L12172-12184)
+
+```
+w[0x40] = dist * 40 / 4000;
+if (50 < w[0x40]) w[0x40] = 50;      // high bound
+if (w[0x40] < 10) w[0x40] = 10;      // low bound
+if (w[0x3a] < 0)  w[0x40] *= 0.95;   // shrink when the base is negative
+pitch = w[0x3a] + w[0x40];
+```
+
+so the port was adding 0 where the source adds that term. `aim_elevation_plus_range()` already
+modelled the shape for Keiichi 1, but it hard-coded BOTH the divisor (5000) and the bounds
+([0, 40]); Keiichi 2 divides by 4000 and clamps to [10, 50]. `ShotAimSpec` now carries
+`rangeDivisor`, `rangeMinimum`, `rangeMaximum` and `rangeNegativeScale`, stated per rule, and
+`aim_elevation_plus_range_keiichi2()` supplies this family's values. Keiichi 1's factory is
+unchanged.
+
+**Witnessed at the reviewer's own example:** an equal-height target at 1000 units must add
+`1000 * 40 / 4000 = 10` degrees, and it now measures 10.000. The existing witness checked position
+and row only, which is why the missing term went unseen.
+
+**Next:** Tomitake 2's world origins and fixed row-4 pitch, then draw-order pinning, then the
+independent posed-hand launch-position check.
+
+### 2026-10-10 — 3.28 Tomitake 2's world charge origins (review item 2)
+
+The second of the two acknowledged runtime defects, and the last of the three findings from the
+spread review. The charges were still on the attachment adapter with a target-derived pitch.
+Reading `shoot_body_6_2_{450,460}` (L39403-39440) they are WORLD requests:
+
+* the actor's own position displaced **50 forward** (`0x42480000` against the `yaw` table) and
+  **75 up** (`0x42960000`) — no lateral term at all;
+* **row 4** fires unconditionally at that origin with **literal pitch 0** and lateral 0;
+* then **row 0 normally / row 2 powered** on `byte(+0x845) && word(+0x212)`, at the SAME origin
+  but with the target elevation clamped +-40 as the pitch (`aim_target_elevation(40)`, the legacy
+  kind — correct here, because `FUN_00435450`'s world requests aim on the legacy basis).
+
+So `origin_actor_relative(0, 50, 75)`, not the default attachment slot. The witness checks 50 in
+front, 0 lateral, 75 above, row 4 first, and pitch 0. **The clock-freeze detail matters for the
+witness**: the body returns before `write_clock` while a counter is below its bound, so the phase
+pins at 28 for 15 updates and the tick-30 pass only *runs* when the rule's elapsed reaches 30 —
+the shot lands ~16 updates later than a naive "tick 30" count, so collecting for a bounded window
+rather than a fixed count is what makes the check honest.
+
+**Both acknowledged defects are now closed**, so the remaining-work list is items 3 and 4:
+exact RNG draw-order witnesses, then independent posed-hand launch-position verification.
+
+### 2026-10-11 — 3.29 Exact hand-shot draw witnesses and independent posed origins
+
+**Done:** `fighter_script_test` section 45 replaces Rika+1's range/metadata checks with
+per-shot expectations for all fifteen normal ground state400 requests at seeds 5489 and 37.
+Satoko+0's normal/powered ground state400 fans pin all five/eight requests. An independent
+`std::mt19937` supplies expected raw draws; the body formulas assign Rika yaw then pitch
+(`shoot_body_4_1_400` L21797–21824), and Satoko pitch then yaw (`3_0_400` L12596–12629).
+Yaw expectations convert the original angle convention, and the next unused draw verifies
+that neither idle updates nor requests silently consume extra random values.
+
+**Posed origin gate:** before each update the witness evaluates the real combo rig's current
+animation pose. It applies the source-derived scalar actor rotation/translation to the named
+hand's zero local point, without calling `Fighter::bone_point`, `modelMatrix`, or reading the
+request's origin descriptors. Every request's XYZ is compared with that independent result.
+Nonzero positions and two headings exercise the transform; Rika samples different animated
+hand positions, with checks that the oracle distinguishes Prop1, the opposite hand and root.
+These checks also cover Satoko's shared hand origin across each simultaneous fan.
+
+**Verified:** rebuilt Linux fighter suite: 1394 checks, zero failures/skips. Recon: six tests,
+zero failures/skips. Temporary out-of-tree mutated executables prove section45 rejects swapped
+draw order (77 failures), Prop1 substituted for the hand (129), and one extra RNG draw per
+request (78). No production source was edited for these negative checks. Full rebuilt Linux
+CTest passed 67/67, zero failures/skips (175.95 s).
+
+**Scope:** these witnesses verify the stated ground paths in the remake, not the original's
+global stream position, powered/air Rika tap completion, or all46 coverage. Both requested
+verification items are implemented; the coverage ledger and current handoff describe their
+exact boundary. Unrelated Windows/input/check-audit working changes remain untouched.
+
+### 2026-10-11 — 3.30 Character-group iteration: Rena+0/+1/+2
+
+User-directed order: all legal weapons of one character are investigated in the same
+iteration. Added [the Rena group record](ginkiha-rena-iteration.md) and updated all three
+ledger rows from original handlers, not the incomplete runtime bridge. Section46
+checks both branches of all three ground taps and first charges, their exact requests,
+RNG, independently resolved geometry and Rena+0's full second-charge world/freeze path.
+Shared launch specs now distinguish the item model's muzzle from attachment slot0/1.
+
+Focused rebuilt fighter gate:1761 checks, zero failures/skips. Six recon tests pass.
+Silent native captures for all three combos load the correct NN.dat/item identities and
+finish240 frames with `RESULT: ok`; these are captures, not live parity runs. Item3's
+row9 model/controller interpretation remains a concrete investigation. Full rebuilt Linux CTest passed67/67, zero failures/skips (175.40s) on the final
+fixture tree. Windows and web cross-builds passed; neither cross target was executed.
+
+No combo is promoted to audited complete. The group record lists landing/phase jumps,
+air motion, additional/second-charge dispatch, visual model rebinding and projectile
+lifecycle as the next work for this trio; a missing body header no longer counts as
+missing source when the original handler is present.
+
+### 3.31 — Owner test: focus Rena+0 beyond shot requests (2026-10-11)
+
+The owner narrowed work to Rena+0 after playing the trio. The
+[Rena record](ginkiha-rena-iteration.md#rena0-playable-follow-up-2026-10-11) documents
+full-charge windup targeting, source move-specific/last-round voices, black-padding
+transparency policy and side-dash animation selection. These fixes extend playable
+presentation; they do not close the outstanding air/program/projectile lifecycle audit.
+Native67-test run plus rebuilt stale-dash-test rerun passes, fighter1783 checks;
+Windows/web cross-builds pass. All verification silent. Intro pacing/countdown BGM
+were handled separately and documented in the audio backend record.
+
+
+### 3.32 — Landing verification of the working tree (2026-10-12)
+
+The Rena iteration (3.30), the owner-directed Rena+0 playable follow-up (3.31),
+the checks-audit hardening and the live-debug instrument were re-verified as one
+tree before landing: rebuilt Linux CTest **68/68** (186.48 s), fighter suite
+**1812** checks / animation data **83568** checks / melee **236** checks, all
+zero failures/skips, and Windows + web cross-builds exit 0. `coverage_report.py`
+re-run per AGENTS rule 5 (77.98%, timestamp-only diff). The owner's unrelated
+Windows packaging edits remain uncommitted and unstaged as before; the landed
+commits exclude them. No combo promotion, no new claims — this entry records the
+verification and the landing only.

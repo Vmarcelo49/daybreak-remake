@@ -37,11 +37,11 @@ game data is unavailable, so a CI box without a GPU or the install does not repo
 false failure.
 """
 import os
-import subprocess
 import sys
 import tempfile
 
-SKIP = 77
+from capture_probe import (CaptureFailed, main_guard, read_ppm, require_asset,
+                           require_install, run_demo)
 
 # The clear colour the scene pass writes (scenes.cpp:736, D3DCOLOR_XRGB(40,42,54)): every
 # pixel that is not this is geometry, which is the character mask this test measures.
@@ -57,38 +57,6 @@ SIZE = "800x600"
 CHARACTER_DIRS = ("rena", "rika", "akane", "mion")
 
 
-def run_demo(demo, install, out, args, cwd):
-    cmd = [demo, "--headless", "--install=" + install, "--out=" + out] + args
-    proc = subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                          text=True, timeout=900)
-    if proc.returncode != 0 or "RESULT: ok" not in proc.stdout:
-        return None
-    return proc.stdout
-
-
-def read_ppm(path):
-    with open(path, "rb") as handle:
-        data = handle.read()
-    if not data.startswith(b"P6"):
-        return None
-    fields = []
-    i = 2
-    while len(fields) < 3:
-        while i < len(data) and data[i:i + 1].isspace():
-            i += 1
-        if data[i:i + 1] == b"#":
-            while data[i:i + 1] not in (b"\n", b""):
-                i += 1
-            continue
-        start = i
-        while i < len(data) and not data[i:i + 1].isspace():
-            i += 1
-        fields.append(int(data[start:i]))
-    i += 1
-    w, h, _ = fields
-    return w, h, data[i:i + w * h * 3]
-
-
 def measure(on_path, off_path):
     """Silhouette and rim statistics between two frames of the same scene.
 
@@ -102,8 +70,9 @@ def measure(on_path, off_path):
     """
     on = read_ppm(on_path)
     off = read_ppm(off_path)
-    if on is None or off is None or on[:2] != off[:2]:
-        return None
+    if on[:2] != off[:2]:
+        raise CaptureFailed("frames differ in size: %dx%d vs %dx%d"
+                            % (on[0], on[1], off[0], off[1]))
     w, h, a = off
     _, _, b = on
     stats = {"off_px": 0, "on_px": 0, "rim": 0, "lost": 0, "changed": 0,
@@ -134,8 +103,9 @@ def changed_per_cell(on_path, off_path, cols, rows):
     """Changed-pixel count per grid cell, or None when the frames are not comparable."""
     on = read_ppm(on_path)
     off = read_ppm(off_path)
-    if on is None or off is None or on[:2] != off[:2]:
-        return None
+    if on[:2] != off[:2]:
+        raise CaptureFailed("frames differ in size: %dx%d vs %dx%d"
+                            % (on[0], on[1], off[0], off[1]))
     w, h, a = off
     _, _, b = on
     counts = [0] * (cols * rows)
@@ -155,9 +125,7 @@ def main():
     demo = os.path.abspath(sys.argv[1])
     install = os.path.abspath(sys.argv[2])
     cwd = os.path.abspath(sys.argv[3]) if len(sys.argv) > 3 else os.getcwd()
-    if not os.path.exists(os.path.join(install, "data")):
-        print("toon_ramp: no game data at %s, skipped" % install)
-        return SKIP
+    require_install(install, "toon_ramp")
     fighter = None
     for name in CHARACTER_DIRS:
         candidate = os.path.join(install, "data", name)
@@ -165,9 +133,9 @@ def main():
             fighter = candidate
             break
     stage = os.path.join(install, "data", "stage01")
-    if fighter is None or not os.path.isdir(stage):
-        print("toon_ramp: no character or stage directory in %s, skipped" % install)
-        return SKIP
+    require_asset(stage, "toon_ramp", "stage01")
+    if fighter is None:
+        raise CaptureFailed("toon_ramp: no character directory in %s" % install)
 
     failures = []
     with tempfile.TemporaryDirectory() as tmp:
@@ -180,9 +148,7 @@ def main():
         scene = ["--character=" + fighter + ":0", "--no-anim", "--frames=3",
                  "--size=" + SIZE]
         for path, extra in ((default, []), (off, ["--no-toon"]), (on, ["--toon"])):
-            if run_demo(demo, install, path, scene + extra, cwd) is None:
-                print("toon_ramp: headless renderer unavailable, skipped")
-                return SKIP
+            run_demo(demo, install, path, scene + extra, cwd)
         with open(default, "rb") as f:
             default_bytes = f.read()
         with open(off, "rb") as f:
@@ -190,9 +156,6 @@ def main():
         if default_bytes != off_bytes:
             failures.append("the default frame differs from --no-toon: OFF is not the default")
         stats = measure(on, off)
-        if stats is None:
-            print("toon_ramp: captures are not comparable PPMs, skipped")
-            return SKIP
         print("  character frame: off %d px (mean lum %.1f), on %d px, rim %d px "
               "(mean lum %.1f), lost %d, interior changed %d"
               % (stats["off_px"], stats["off_lum"], stats["on_px"], stats["rim"],
@@ -224,25 +187,22 @@ def main():
         stage_args = ["--stage=" + stage, "--no-anim", "--frames=3", "--size=400x300"]
         stage_off = os.path.join(tmp, "stage_off.ppm")
         stage_on = os.path.join(tmp, "stage_on.ppm")
-        if (run_demo(demo, install, stage_off, stage_args + ["--no-toon"], cwd) is not None and
-                run_demo(demo, install, stage_on, stage_args + ["--toon"], cwd) is not None):
-            with open(stage_off, "rb") as f:
-                stage_off_bytes = f.read()
-            with open(stage_on, "rb") as f:
-                stage_on_bytes = f.read()
-            stage_px = read_ppm(stage_off)
-            stage_mask = 0 if stage_px is None else sum(
-                1 for i in range(0, len(stage_px[2]), 3)
-                if tuple(stage_px[2][i:i + 3]) != BACKGROUND)
-            if stage_mask < 0.1 * 400 * 300:
-                failures.append("the stage frame has almost no geometry: the A/B would be vacuous")
-            elif stage_off_bytes != stage_on_bytes:
-                failures.append("--toon moved a stage-only frame: the technique is reaching "
-                                "draws the original does not cover")
-            print("  stage frame: %d non-background px, --toon %s"
-                  % (stage_mask, "identical" if stage_off_bytes == stage_on_bytes else "DIFFERS"))
-        else:
-            print("  stage frame: skipped (stage render unavailable)")
+        run_demo(demo, install, stage_off, stage_args + ["--no-toon"], cwd)
+        run_demo(demo, install, stage_on, stage_args + ["--toon"], cwd)
+        with open(stage_off, "rb") as f:
+            stage_off_bytes = f.read()
+        with open(stage_on, "rb") as f:
+            stage_on_bytes = f.read()
+        stage_px = read_ppm(stage_off)
+        stage_mask = sum(1 for i in range(0, len(stage_px[2]), 3)
+                         if tuple(stage_px[2][i:i + 3]) != BACKGROUND)
+        if stage_mask < 0.1 * 400 * 300:
+            failures.append("the stage frame has almost no geometry: the A/B would be vacuous")
+        elif stage_off_bytes != stage_on_bytes:
+            failures.append("--toon moved a stage-only frame: the technique is reaching "
+                            "draws the original does not cover")
+        print("  stage frame: %d non-background px, --toon %s"
+              % (stage_mask, "identical" if stage_off_bytes == stage_on_bytes else "DIFFERS"))
 
         # 3. The split-screen path: four views, one match frame. A battle frame has stage
         # geometry behind the fighters, so the rim no longer lands on the clear colour and
@@ -253,24 +213,18 @@ def main():
         four_off = os.path.join(tmp, "four_off.ppm")
         four_on = os.path.join(tmp, "four_on.ppm")
         four_args = ["--screen=battle", "--local-players=4", "--frames=300", "--size=960x540"]
-        if (run_demo(demo, install, four_off, four_args + ["--no-toon"], cwd) is not None and
-                run_demo(demo, install, four_on, four_args + ["--toon"], cwd) is not None):
-            cells = changed_per_cell(four_on, four_off, 2, 2)
-            if cells is None:
-                failures.append("the 4-view captures are not comparable PPMs")
-            else:
-                total = sum(cells)
-                print("  4-view battle: %d changed px, per view %s"
-                      % (total, ", ".join(str(c) for c in cells)))
-                if total < 500:
-                    failures.append("--toon changed only %d pixels in the 4-view battle frame"
-                                    % total)
-                for index, count in enumerate(cells):
-                    if count < 50:
-                        failures.append("view %d changed only %d pixels: the toon state is "
-                                        "not reaching every view's draw" % (index, count))
-        else:
-            print("  4-view battle: skipped (match render unavailable)")
+        run_demo(demo, install, four_off, four_args + ["--no-toon"], cwd)
+        run_demo(demo, install, four_on, four_args + ["--toon"], cwd)
+        cells = changed_per_cell(four_on, four_off, 2, 2)
+        total = sum(cells)
+        print("  4-view battle: %d changed px, per view %s"
+              % (total, ", ".join(str(c) for c in cells)))
+        if total < 500:
+            failures.append("--toon changed only %d pixels in the 4-view battle frame" % total)
+        for index, count in enumerate(cells):
+            if count < 50:
+                failures.append("view %d changed only %d pixels: the toon state is "
+                                "not reaching every view's draw" % (index, count))
 
     if failures:
         print("toon_ramp: FAIL")
@@ -283,4 +237,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main_guard(main))

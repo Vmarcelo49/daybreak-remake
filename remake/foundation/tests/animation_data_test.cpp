@@ -4,6 +4,7 @@
 #include "assets/cnv.h"
 #include "game/shot_visual.h"
 #include "gameplay/fighter.h"
+#include "gameplay/match.h"
 #include "gameplay/move_behavior.h"
 #include "combo_fixture.h"
 
@@ -15,6 +16,7 @@
 
 namespace {
 int checks = 0, failures = 0;
+int gatedTimelineCharacter = -1, gatedTimelineWeapon = -1, gatedTimelineMove = -1;
 void check(bool pass, const std::string& label) {
     ++checks;
     if (!pass) { ++failures; std::printf("FAIL: %s\n", label.c_str()); }
@@ -88,6 +90,11 @@ void records() {
     bool finite = true;
     for (const auto& v : vertices) finite &= std::isfinite(v.pos.x) && std::isfinite(v.pos.y) && std::isfinite(v.pos.z);
     check(finite,"all clamped spline spans produce finite vertices");
+    check(vertices[0].uv.x == 0.f && vertices[0].uv.y == 0.f &&
+          vertices[1].uv.x == 1.f && vertices[1].uv.y == 0.f &&
+          vertices[gameplay::WeaponTrail::kVertices - 1].uv.x == 1.f &&
+          vertices[gameplay::WeaponTrail::kVertices - 1].uv.y == 1.f,
+          "ribbon texture keeps U at the outer edge and advances V along the trail");
     // FUN_0042fff0 shifts the history and grows only when the tip sample CHANGED
     // (0x43001d FUN_00430670 gates 0x43004e/0x4300a1). A held weapon must not keep
     // stacking the same point, and its inactive ribbon still decays by two per call.
@@ -131,6 +138,22 @@ void roster() {
             const auto label = gameplay::comboSlotLabel(character,slot);
             check(loaded,label + " joins the exact NN.dat and item ID");
             if (!loaded) continue;
+            if (gatedTimelineCharacter < 0) {
+                for (int candidate : {300,311,330}) {
+                    const auto* move = combo->moves.find(candidate);
+                    if (!move) continue;
+                    for (int phase = 0; phase < move->sectionCount; ++phase) {
+                        const int set = move->phase_set_index(phase);
+                        if (set >= 0 && combo->moves.animation_set_phase_gate(set) != 0) {
+                            gatedTimelineCharacter = character;
+                            gatedTimelineWeapon = slot;
+                            gatedTimelineMove = candidate;
+                            break;
+                        }
+                    }
+                    if (gatedTimelineCharacter >= 0) break;
+                }
+            }
             ++combos; moves += combo->moves.count(); sets += combo->moves.animation_set_count();
             xm::TextureCache itemTextures("data/item/");
             for (int slotIndex = 0; slotIndex < combo->weapon.slotCount; ++slotIndex) {
@@ -188,31 +211,230 @@ void roster() {
     std::printf("roster: %d combos, %d moves, %d phases, %d records, %d sets, %d texture events\n",combos,moves,phases,entries,sets,textures);
 }
 
-// Issue #31's own selector: an airborne melee press must bind the aerial row and play
-// that row's set, not fall back to the grounded neutral. `execution()` covers the ground
-// chain; this is the air half, which the reworked tests had dropped.
-void aerial_attack(const Combo& combo) {
+void air_attack_route(const Combo& combo, const char* label, bool afterAirDash,
+                      fnd::input::Action dashDirection,
+                      fnd::input::Action attackDirection,
+                      float targetBearingAfterDash, bool analogBack = false,
+                      bool checkTravel = false) {
+    constexpr float kFarTarget = 1000.f;
+    const float initialActorFacing = glm::half_pi<float>();
     gameplay::Fighter fighter, opponent;
-    combo.init(fighter);
-    combo.init(opponent,{0,0,300});
+    combo.init(fighter,{},initialActorFacing);
+    combo.init(opponent,{0.f,0.f,kFarTarget});
+
+    // Leave the lock unbound during takeoff so this fixture's visible body yaw is
+    // deliberately different from the later target bearing.
+    fnd::input::PlayerState input;
+    input.down[fnd::input::Action::Jump] = true;
+    tick(fighter,input);
+    input.down[fnd::input::Action::Jump] = false;
+    tick(fighter,input);
+    check(fighter.airborne(),std::string(label) + " jumps before the attack input");
+
+    if (afterAirDash) {
+        input.down[dashDirection] = true;
+        tick(fighter,input,&opponent);
+        input.down[dashDirection] = false;
+        tick(fighter,input,&opponent);
+        input.down[dashDirection] = true;
+        tick(fighter,input,&opponent);
+        check(fighter.state() == gameplay::FighterState::Run,
+              std::string(label) + " reaches Run through a real airborne double tap");
+        input.down[dashDirection] = false;
+        tick(fighter,input,&opponent);
+
+        // Move the lock only after the dash commits. The selector and the attack-time
+        // facing rule must use this live bearing, while Back keeps the body's actual yaw.
+        const glm::vec3 offset(std::sin(targetBearingAfterDash) * kFarTarget,0.f,
+                               std::cos(targetBearingAfterDash) * kFarTarget);
+        opponent.reset(fighter.position() + offset,0.f);
+    }
+
+    const float actorYawAtAttack = fighter.facing_yaw();
+    const glm::vec3 toTarget = opponent.position() - fighter.position();
+    const float lockedYaw = std::atan2(toTarget.x,toTarget.z);
+    const bool backHeld = analogBack || attackDirection == fnd::input::Action::Down;
+    if (analogBack) input.stick_y = 16000; // SDL's positive Y is the Back half of the stick.
+    else input.down[attackDirection] = true;
+    const glm::vec3 beforeAttack = fighter.position();
+    input.down[fnd::input::Action::AttackA] = true;
+    tick(fighter,input,&opponent);
+
+    const int expectedMove = afterAirDash ? 332 : 320;
+    const std::string prefix = std::string(label) + ": ";
+    check(fighter.state() == gameplay::FighterState::AttackA &&
+          fighter.attack_move_id() == expectedMove,
+          prefix + (afterAirDash ? "air-dash attack binds source row 332 (visual check separate)" :
+                                   "ordinary jump attack binds row320; visual identity and timing checked separately"));
+    check(fighter.anim_set_index() == combo.moves.first_set_index(expectedMove) &&
+          !fighter.anim_fallback(),
+          prefix + "plays this equipped combo's first move tag without set-0 fallback");
+    check(fighter.aerial_attack(),prefix + "records this swing as aerial");
+
+    const float expectedYaw = backHeld ? actorYawAtAttack : lockedYaw;
+    const float yawAfterEntry = fighter.pose().facingYaw;
+    check(std::abs(std::remainder(yawAfterEntry - expectedYaw,glm::two_pi<float>())) < 1e-4f,
+          prefix + (backHeld ? "Back keeps the actor's visible yaw at attack entry" :
+                               "Forward/side faces the currently locked target at attack entry"));
+
+    const bool hasRena0Approach = combo.moves.character_index() == 0 &&
+        gameplay::weaponSlotForItem(combo.moves.character_index(),combo.moves.weapon_id()) == 0;
+    if (checkTravel && hasRena0Approach && expectedMove == 300) {
+        const glm::vec3 delta = fighter.position() - beforeAttack;
+        const glm::vec3 horizontal(delta.x,0.f,delta.z);
+        const glm::vec3 expectedForward(std::sin(expectedYaw),0.f,std::cos(expectedYaw));
+        check(glm::length(horizontal) > 0.1f &&
+              glm::dot(glm::normalize(horizontal),expectedForward) > 0.999f,
+              prefix + "move 300's first attack step travels along its selected facing basis");
+    }
+
+    bool heldThroughHandlerTicks = true;
+    int protectedTicks = 0;
+    for (int frame = 0; frame < 6 && fighter.state() == gameplay::FighterState::AttackA;
+         ++frame) {
+        tick(fighter,input,&opponent);
+        ++protectedTicks;
+        heldThroughHandlerTicks &=
+            std::abs(std::remainder(fighter.pose().facingYaw - expectedYaw,
+                                    glm::two_pi<float>())) < 1e-4f;
+    }
+    check(protectedTicks >= 2,
+          prefix + "keeps the selected move active while its direction is checked");
+    check(heldThroughHandlerTicks,
+          prefix + (backHeld ? "move Turn rules do not override Back's actor-facing basis" :
+                               "move Turn rules preserve the target-facing attack basis"));
+    if (checkTravel && hasRena0Approach) {
+        for (int frame = 0; frame < 180 && fighter.state() == gameplay::FighterState::AttackA;
+             ++frame)
+            tick(fighter,input,&opponent);
+        check(fighter.state() != gameplay::FighterState::AttackA && !fighter.aerial_attack(),
+              prefix + "clears the per-swing aerial-facing mode when the attack ends");
+    }
+}
+
+// User-confirmed #31 contract, checked with real per-combo NN.dat, rig and item rows:
+// Rena+0 ordinary Jump→Attack binds row320; after airborne dash it binds332.
+// Live user inspection confirmed the slash/kick poses, but rejected slash timing. Attack-time Back follows the visible actor yaw, while
+// forward/side use the current lock, independent of the dash's initiating direction.
+void air_attack_facing_persistence(const Combo& combo, const char* label) {
+    gameplay::Fighter fighter, opponent;
+    combo.init(fighter,{},glm::half_pi<float>());
+    combo.init(opponent,{0.f,0.f,1000.f});
     fighter.set_state(gameplay::FighterState::Idle);
     fnd::input::PlayerState input;
     input.down[fnd::input::Action::Jump] = true;
-    tick(fighter,input,&opponent);
-    check(fighter.airborne(),"Rena+0 leaves the ground on the jump press");
-    check(!fighter.aerial_attack(),"the jump alone does not select an aerial swing");
+    tick(fighter,input);
     input.down[fnd::input::Action::Jump] = false;
-    for (int i = 0; i < 8 && fighter.state() != gameplay::FighterState::Jump; ++i)
-        tick(fighter,input,&opponent);
+    tick(fighter,input);
+    input.down[fnd::input::Action::Down] = true;
     input.down[fnd::input::Action::AttackA] = true;
     tick(fighter,input,&opponent);
-    check(fighter.aerial_attack(),"pressing melee while airborne flags the aerial swing");
-    const int air = combo.moves.find(340) ? 340 : -1;
-    check(air > 0 && fighter.attack_move_id() == air,
-          "the airborne press resolves the weapon's own aerial row 340");
-    const int set = combo.moves.first_set_index(340);
-    check(set >= 0 && fighter.anim_set_index() == set,
-          "move 340 plays its own table set (" + std::to_string(set) + "), not set 0");
+    check(fighter.state() == gameplay::FighterState::AttackA &&
+          fighter.attack_move_id() == 320 && fighter.aerial_attack(),
+          std::string(label) + ": Back attack enters the aerial slash");
+    const float backFacing = fighter.facing_yaw();
+    check(std::abs(std::remainder(backFacing-glm::half_pi<float>(),glm::two_pi<float>())) < 1e-4f,
+          std::string(label) + ": Back keeps the pre-attack actor yaw");
+    input.down[fnd::input::Action::Down] = false;
+    input.down[fnd::input::Action::AttackA] = false;
+    bool landed = false;
+    for (int i = 0; i < 180 && !!fighter.airborne(); ++i) {
+        tick(fighter,input,&opponent);
+        landed |= !fighter.airborne();
+        if (fighter.state() != gameplay::FighterState::AttackA) break;
+    }
+    if (!fighter.airborne()) fighter.set_state(gameplay::FighterState::Idle);
+    check(landed && fighter.state() != gameplay::FighterState::AttackA &&
+          !fighter.aerial_attack(),
+          std::string(label) + ": landing and attack exit clear the aerial Back mode");
+}
+
+void reset_respawn_clear(const Combo& combo, const char* label) {
+    gameplay::Fighter fighter;
+    combo.init(fighter);
+    fighter.set_state(gameplay::FighterState::Idle);
+    fnd::input::PlayerState input;
+    input.down[fnd::input::Action::Jump] = true;
+    tick(fighter,input);
+    input.down[fnd::input::Action::Jump] = false;
+    tick(fighter,input);
+    input.down[fnd::input::Action::Down] = true;
+    input.down[fnd::input::Action::AttackA] = true;
+    tick(fighter,input);
+    check(fighter.aerial_attack(),std::string(label) + ": aerial swing arms before reset");
+    fighter.reset(glm::vec3(1.f,0.f,2.f),0.f);
+    check(!fighter.aerial_attack() && fighter.state() == gameplay::FighterState::BattleStart,
+          std::string(label) + ": round reset clears aerial swing mode");
+
+    fighter.set_state(gameplay::FighterState::Idle);
+    input = {};
+    input.down[fnd::input::Action::Jump] = true;
+    tick(fighter,input);
+    input.down[fnd::input::Action::Jump] = false;
+    tick(fighter,input);
+    input.down[fnd::input::Action::Down] = true;
+    input.down[fnd::input::Action::AttackA] = true;
+    tick(fighter,input);
+    check(fighter.aerial_attack(),std::string(label) + ": second aerial swing arms before respawn");
+    fighter.respawn(glm::vec3(2.f,0.f,3.f),0.f,800.f);
+    check(!fighter.aerial_attack() && fighter.state() == gameplay::FighterState::BattleStart,
+          std::string(label) + ": respawn clears aerial swing mode");
+}
+
+void grounded_attack_after_air(const Combo& combo, const char* label) {
+    gameplay::Fighter fighter, opponent;
+    combo.init(fighter,{},glm::half_pi<float>());
+    combo.init(opponent,{0.f,0.f,1000.f});
+    fighter.set_state(gameplay::FighterState::Idle);
+    fnd::input::PlayerState input;
+    input.down[fnd::input::Action::Jump] = true;
+    tick(fighter,input);
+    input.down[fnd::input::Action::Jump] = false;
+    tick(fighter,input);
+    input.down[fnd::input::Action::Down] = true;
+    input.down[fnd::input::Action::AttackA] = true;
+    tick(fighter,input,&opponent);
+    input.down[fnd::input::Action::Down] = false;
+    input.down[fnd::input::Action::AttackA] = false;
+    bool landed = false;
+    for (int i = 0; i < 180; ++i) {
+        tick(fighter,input,&opponent);
+        landed |= !fighter.airborne();
+        if (landed && fighter.state() != gameplay::FighterState::AttackA) break;
+    }
+    check(landed && !fighter.airborne() && !fighter.aerial_attack(),
+          std::string(label) + ": landing clears aerial mode before the next grounded attack");
+    fighter.set_state(gameplay::FighterState::Idle);
+    input.down[fnd::input::Action::AttackA] = true;
+    tick(fighter,input,&opponent);
+    check(fighter.state() == gameplay::FighterState::AttackA &&
+          fighter.attack_move_id() == 300 && !fighter.aerial_attack(),
+          std::string(label) + ": grounded attack retains neutral move 300");
+}
+
+void aerial_attack(const Combo& combo, const char* label) {
+    air_attack_route(combo,label,false,fnd::input::Action::Up,
+                     fnd::input::Action::Down,0.f,false,true);
+    air_attack_route(combo,label,false,fnd::input::Action::Up,
+                     fnd::input::Action::Up,0.f);
+    air_attack_route(combo,label,false,fnd::input::Action::Up,
+                     fnd::input::Action::Right,0.f);
+    air_attack_route(combo,label,false,fnd::input::Action::Up,
+                     fnd::input::Action::Up,0.f,true);
+    // Attack-time input, not the historical dash direction, determines Back.
+    air_attack_route(combo,label,true,fnd::input::Action::Up,
+                     fnd::input::Action::Down,glm::half_pi<float>());
+    air_attack_route(combo,label,true,fnd::input::Action::Down,
+                     fnd::input::Action::Up,0.f);
+    air_attack_route(combo,label,true,fnd::input::Action::Left,
+                     fnd::input::Action::Right,-glm::half_pi<float>());
+    air_attack_route(combo,label,true,fnd::input::Action::Right,
+                     fnd::input::Action::Up,0.f,true);
+    air_attack_route(combo,label,true,fnd::input::Action::Up,
+                     fnd::input::Action::Left,-glm::half_pi<float>());
+    air_attack_facing_persistence(combo,label);
+    grounded_attack_after_air(combo,label);
+    reset_respawn_clear(combo,label);
 }
 
 // FUN_00637950's entry test is radius != 0 (0x6379e0, byte-verified) and combat[0] is read
@@ -360,13 +582,384 @@ void execution(const Combo& combo) {
     check(chainedThird,"third press selects row 302, not directional kick 311");
 }
 
+void miss_trail_world_anchors(const Combo& combo) {
+    check(combo.weapon.slotCount > 1 && combo.weapon.slots[0].has_prop(),
+          "Rena+0 item001 prop0 is an available weapon attachment");
+    check(combo.weapon.slotCount > 1 && !combo.weapon.slots[1].has_prop() &&
+          !combo.weapon.slots[1].textureName.empty(),
+          "Rena+0 item001 prop1 has a texture field but no model/prop availability");
+    gameplay::MatchConfig config;
+    config.fighterCount = 2;
+    const xm::Model* models[2] = {&combo.model, &combo.model};
+    xm::Controller* controllers[2] = {combo.controller(), combo.controller()};
+    for (int i = 0; i < 2; ++i) {
+        config.side[i] = i;
+        config.moves[i] = &combo.moves;
+        config.weapon[i] = &combo.weapon;
+        config.spawn[i] = glm::vec3(0.f, 0.f, i ? 1500.f : 0.f);
+    }
+    gameplay::Match match;
+    match.reset(config, models, controllers, nullptr, nullptr);
+    match.economy().setLogFile(nullptr);
+
+    fnd::input::PlayerState input;
+    const fnd::input::PlayerState* inputs[2] = {&input, nullptr};
+    bool contacted = false;
+    bool ribbonOnWhiff = false;
+    bool anchorMatch = false;
+    int firstRibbonFrame = -1;
+    int firstRibbonPhase = -1;
+    int firstRibbonElapsed = -1;
+    for (int frame = 1; frame <= 120; ++frame) {
+        input.down[fnd::input::Action::AttackA] = frame == 62;
+        fnd::input::compute_edges(input);
+        const gameplay::MatchFrame report = match.step(inputs, 1.0 / 64.0);
+        contacted |= report.meleeHit[0];
+
+        const gameplay::Fighter& attacker = match.fighter(0);
+        const gameplay::WeaponTrail& ribbon = attacker.trail(0);
+        if (ribbon.triangles() <= 0 || report.meleeHit[0]) continue;
+        ribbonOnWhiff = true;
+        if (firstRibbonFrame < 0) {
+            firstRibbonFrame = frame;
+            firstRibbonPhase = attacker.move_phase();
+            firstRibbonElapsed = attacker.phase_elapsed();
+        }
+
+        // FUN_00430120 transforms the equipped item's prop-local root/tip through
+        // the posed Prop1 frame. Rebuild that path from the controller and matrices
+        // independently of Fighter::bone_point, then compare it with the dynamic
+        // mesh's world-space endpoints.
+        const int propFrame = combo.model.findFrame("Bip01_Prop1");
+        if (propFrame < 0) continue;
+        std::vector<glm::mat4> posed;
+        controllers[0]->evalWorld(posed);
+        if (static_cast<size_t>(propFrame) >= posed.size()) continue;
+        const auto& slot = combo.weapon.slots[0];
+        const glm::vec3 rootLocal(slot.ribbonRoot[0], slot.ribbonRoot[1], slot.ribbonRoot[2]);
+        const glm::vec3 tipLocal(slot.ribbonTip[0], slot.ribbonTip[1], slot.ribbonTip[2]);
+        const glm::mat4 actorWorld = attacker.modelMatrix();
+        const glm::vec3 expectedRoot = glm::vec3(actorWorld * posed[static_cast<size_t>(propFrame)] *
+                                                  glm::vec4(rootLocal, 1.f));
+        const glm::vec3 expectedTip = glm::vec3(actorWorld * posed[static_cast<size_t>(propFrame)] *
+                                                 glm::vec4(tipLocal, 1.f));
+        const auto vertices = ribbon.vertices();
+        if (glm::length(vertices[0].pos - expectedRoot) < 1e-3f &&
+            glm::length(vertices[1].pos - expectedTip) < 1e-3f)
+            anchorMatch = true;
+    }
+    check(!contacted && match.fighter(0).swing_hit_count() == 0,
+          "Rena+0 move 300 stays a whiff with the dummy outside its reach");
+    check(ribbonOnWhiff,
+          "Rena+0 move 300 activates its weapon ribbon without a melee contact");
+    check(firstRibbonFrame == 87 && firstRibbonPhase == 2 && firstRibbonElapsed == 4,
+          "Rena+0 miss ribbon begins at move300 phase2 source tick3 (post-step tick4)");
+    check(match.fighter(0).trail(1).triangles() == 0,
+          "the texture-only item001 slot cannot generate a phantom second ribbon");
+    check(anchorMatch,
+          "Rena+0 ribbon endpoints match the posed item anchors in world space");
+}
+
+void akane0_trail_windows(const Combo& combo) {
+    const auto window = [&](int move, int phase, int tick) {
+        return gameplay::trail_window(&combo.moves, move, phase, tick, 0);
+    };
+    const auto binding = [&](int move) {
+        return gameplay::trail_binding(&combo.moves,move,0);
+    };
+    check(gameplay::comboSlotLabel(13,0) == "Akane 0" && combo.moves.weapon_id() == 16,
+          "trail source witness is the bound Akane+0/item016 combo");
+    check(combo.weapon.slotCount > 2 && combo.weapon.slots[2].has_prop(),
+          "Akane+0 item016 model 2 is a real mesh-backed prop");
+    check(binding(300) && binding(300)->itemModel == 2 &&
+          window(300,2,3) && window(300,2,10) && !window(300,2,11) &&
+          window(300,2,10)->propSlot == 0,
+          "Akane+0 move300 binds Prop0<-item2 throughout, active phase2 ticks3..10");
+    check(binding(301) && binding(301)->itemModel == 2 &&
+          window(301,0,10) && window(301,0,16) && !window(301,0,17),
+          "Akane+0 source move301 ribbon window is ticks10..16");
+    check(binding(302) && binding(302)->itemModel == 2 &&
+          window(302,0,10) && window(302,0,13) && !window(302,0,14),
+          "Akane+0 source move302 ribbon window is ticks10..13");
+    check(binding(330) && binding(330)->itemModel == 2 &&
+          window(330,2,10) && window(330,2,15) && !window(330,2,16),
+          "Akane+0 move330 ribbon window is phase2 ticks10..15");
+    check(binding(331) && binding(331)->itemModel == 2 &&
+          window(331,2,7) && window(331,2,16) && !window(331,2,17),
+          "Akane+0 source move331 ribbon window is phase2 ticks7..16");
+    check(binding(340) && binding(340)->itemModel == 2 &&
+          window(340,0,16) && window(340,0,24) && !window(340,0,25),
+          "Akane+0 move340 ribbon window is ticks16..24");
+    check(binding(341) && binding(341)->itemModel == 2 &&
+          window(341,0,17) && window(341,0,19) && !window(341,0,20),
+          "Akane+0 source move341 ribbon window is ticks17..19");
+    check(gameplay::trail_window(&combo.moves,300,1,3,0) == nullptr &&
+          gameplay::trail_window(&combo.moves,300,2,3,1) == nullptr,
+          "Akane+0 trail descriptor rejects wrong phase and wrong manager prop slot");
+}
+
+void akane0_miss_trail(const Combo& combo, int expectedMove, const char* label) {
+    gameplay::MatchConfig config;
+    config.fighterCount = 2;
+    const xm::Model* models[2] = {&combo.model, &combo.model};
+    xm::Controller* controllers[2] = {combo.controller(), combo.controller()};
+    for (int i = 0; i < 2; ++i) {
+        config.side[i] = i;
+        config.moves[i] = &combo.moves;
+        config.weapon[i] = &combo.weapon;
+        config.spawn[i] = glm::vec3(0.f, 0.f, i ? 1500.f : 0.f);
+    }
+    gameplay::Match match;
+    match.reset(config, models, controllers, nullptr, nullptr);
+    match.economy().setLogFile(nullptr);
+    fnd::input::PlayerState input;
+    const fnd::input::PlayerState* inputs[2] = {&input, nullptr};
+    bool sourcePeriodTimeline = combo.model.ticksPerSecond > 0.f;
+    int periodBudget = 0;
+    const auto* attack = combo.moves.find(expectedMove);
+    if (!attack) sourcePeriodTimeline = false;
+    if (attack) for (int phase = 0; phase < attack->sectionCount; ++phase) {
+        const int set = attack->phase_set_index(phase);
+        if (set < 0 || static_cast<size_t>(set) >= combo.model.anims.size() ||
+            combo.moves.animation_set_phase_gate(set) != 0) {
+            sourcePeriodTimeline = false;
+            continue;
+        }
+        const float duration = combo.model.anims[static_cast<size_t>(set)].duration;
+        if (!std::isfinite(duration) || duration < 0.f) {
+            sourcePeriodTimeline = false;
+            continue;
+        }
+        const int period = static_cast<int>(std::nearbyint(
+            duration / combo.model.ticksPerSecond / gameplay::kOriginalAnimationTick));
+        periodBudget += period + 1;
+    }
+    gameplay::Fighter lifetimeFixture;
+    combo.init(lifetimeFixture);
+    const auto contactTimer = lifetimeFixture.preview_melee_swing(
+        expectedMove == 311 || expectedMove == 330,
+        expectedMove == 311).total_ticks();
+    const int expectedLifetime = sourcePeriodTimeline ? periodBudget : contactTimer;
+    bool selected = false;
+    bool contacted = false;
+    bool active = false;
+    bool correctItem = false;
+    bool decayUsesBoundModel = false;
+    bool anchorMatch = false;
+    bool havePreviousBoundTip = false;
+    glm::vec3 previousBoundTip(0.f);
+    int boundTipChanges = 0;
+    int firstTrailTipChanges = -1;
+    bool sawAttack = false;
+    bool released = false;
+    int firstFrame = -1;
+    int firstPhase = -1;
+    int firstTick = -1;
+    int releaseFrame = -1;
+    for (int frame = 1; frame <= 300; ++frame) {
+        input.down[fnd::input::Action::AttackA] =
+            expectedMove == 300 ? frame == 62 : false;
+        input.down[fnd::input::Action::Up] =
+            expectedMove == 330 && (frame == 62 || frame == 64);
+        input.down[fnd::input::Action::Jump] =
+            expectedMove == 340 && frame == 62;
+        if (expectedMove == 330 && frame == 65)
+            input.down[fnd::input::Action::AttackA] = true;
+        if (expectedMove == 340 && frame == 71)
+            input.down[fnd::input::Action::AttackA] = true;
+        fnd::input::compute_edges(input);
+        const gameplay::MatchFrame report = match.step(inputs, 1.0 / 64.0);
+        contacted |= report.meleeHit[0];
+        const auto& attacker = match.fighter(0);
+        const bool inExpectedAttack = attacker.state() == gameplay::FighterState::AttackA &&
+                                      attacker.attack_move_id() == expectedMove;
+        selected |= inExpectedAttack;
+        sawAttack |= inExpectedAttack;
+        if (sawAttack && !inExpectedAttack && releaseFrame < 0) {
+            released = true;
+            releaseFrame = frame;
+        }
+        glm::vec3 expectedRoot(0.f), expectedTip(0.f);
+        bool anchorsValid = false;
+        const int propFrame = combo.model.findFrame("Bip01_Prop1");
+        if (inExpectedAttack && propFrame >= 0) {
+            std::vector<glm::mat4> posed;
+            controllers[0]->evalWorld(posed);
+            if (static_cast<size_t>(propFrame) < posed.size()) {
+                const auto& slot = combo.weapon.slots[2];
+                const glm::vec3 root(slot.ribbonRoot[0],slot.ribbonRoot[1],slot.ribbonRoot[2]);
+                const glm::vec3 tip(slot.ribbonTip[0],slot.ribbonTip[1],slot.ribbonTip[2]);
+                const glm::mat4 boneWorld = attacker.modelMatrix() * posed[static_cast<size_t>(propFrame)];
+                expectedRoot = glm::vec3(boneWorld * glm::vec4(root,1.f));
+                expectedTip = glm::vec3(boneWorld * glm::vec4(tip,1.f));
+                anchorsValid = true;
+                if (!havePreviousBoundTip || expectedTip != previousBoundTip)
+                    ++boundTipChanges;
+                previousBoundTip = expectedTip;
+                havePreviousBoundTip = true;
+            }
+        }
+        const auto& ribbon = attacker.trail(0);
+        if (attacker.attack_move_id() == expectedMove &&
+            attacker.trail_item_model(0) == 2 && ribbon.triangles() > 0 &&
+            !gameplay::trail_window(&combo.moves,expectedMove,attacker.move_phase(),
+                                   attacker.phase_elapsed(),0))
+            decayUsesBoundModel = true;
+        if (ribbon.triangles() <= 0 || attacker.trail_item_model(0) != 2) continue;
+        active = true;
+        correctItem = true;
+        if (firstFrame < 0) {
+            firstFrame = frame;
+            firstPhase = attacker.move_phase();
+            firstTick = attacker.phase_elapsed();
+            firstTrailTipChanges = boundTipChanges;
+        }
+        if (!anchorsValid) continue;
+        const auto vertices = ribbon.vertices();
+        if (glm::length(vertices[0].pos - expectedRoot) < 1e-3f &&
+            glm::length(vertices[1].pos - expectedTip) < 1e-3f)
+            anchorMatch = true;
+    }
+    const std::string prefix = std::string(label) + ": ";
+    check(selected,prefix + "actual input selects its mapped weapon move " + std::to_string(expectedMove));
+    check(!contacted && match.fighter(0).swing_hit_count() == 0,
+          prefix + "distant Akane+0 target keeps the swing a miss");
+    check(active && correctItem,
+          prefix + "source-window ribbon uses prop-manager slot0 and item model2 on a miss");
+    check(decayUsesBoundModel,
+          prefix + "keeps item-model-2 anchors/texture bound while the inactive ribbon decays");
+    check(anchorMatch,
+          prefix + "item016 model2 root/tip match the independently posed Prop1 world anchors");
+    check(firstTrailTipChanges >= 12,
+          prefix + "more than the twelve-sample trail history is refreshed from item-model-2 tips before activation");
+    const int expectedFrame = expectedMove == 300 ? 92 : expectedMove == 330 ? 102 : 87;
+    const int expectedPhase = expectedMove == 340 ? 0 : 2;
+    const int expectedTick = expectedMove == 300 ? 4 : expectedMove == 330 ? 11 : 17;
+    check(firstFrame == expectedFrame && firstPhase == expectedPhase && firstTick == expectedTick,
+          prefix + "begins on the source window at the expected move frame/phase/tick");
+    check(released,
+          prefix + "completes its table-backed phases and releases AttackA");
+    const int attackStartFrame = expectedMove == 300 ? 62 : expectedMove == 330 ? 65 : 71;
+    const int observedLifetime = releaseFrame >= 0 ? releaseFrame - attackStartFrame + 1 : 0;
+    check(released && observedLifetime <= expectedLifetime + 2,
+          prefix + "releases within measured " +
+              std::string(sourcePeriodTimeline ? "NN/.X period sum " : "fallback contact timer ") +
+              std::to_string(expectedLifetime) + " ticks (observed " +
+              std::to_string(observedLifetime) + ")");
+    check(match.fighter(0).trail(1).triangles() == 0,
+          prefix + "does not invent an active second prop trail");
+}
+
+void akane0_contact_timing(const Combo& combo) {
+    gameplay::Fighter attacker, victim;
+    xm::Controller attackerController, victimController;
+    attacker.init(&combo.model,&attackerController,glm::vec3(0.f),0.f);
+    victim.init(&combo.model,&victimController,glm::vec3(0.f,0.f,1500.f),0.f);
+    combo.bind(attacker);
+    combo.bind(victim);
+    for (int i = 0; i < 70; ++i) {
+        attacker.update(nullptr,nullptr,1.0/64.0);
+        victim.update(nullptr,nullptr,1.0/64.0);
+    }
+    fnd::input::PlayerState input;
+    input.down[fnd::input::Action::AttackA] = true;
+    tick(attacker,input);
+    input.down[fnd::input::Action::AttackA] = false;
+    tick(attacker,input);
+    bool hit = false;
+    int hitPhase = -1;
+    int hitTick = -1;
+    bool hitRecord = false;
+    for (int frame = 0; frame < 100 && !hit; ++frame) {
+        tick(attacker,input);
+        if (!attacker.melee_in_active()) continue;
+        const auto& record = attacker.current_move_record();
+        if (!record || !record->has_combat()) continue;
+        const int bone = combo.model.findFrame(record->boneName);
+        if (bone < 0) continue;
+        std::vector<glm::mat4> posed;
+        attackerController.evalWorld(posed);
+        if (static_cast<size_t>(bone) >= posed.size()) continue;
+        // Independently transform the parsed move-record anchors through the rig.
+        // Do not use HitboxDebug::attackCenter as both target input and assertion.
+        const glm::mat4 boneWorld = attacker.modelMatrix() * posed[static_cast<size_t>(bone)];
+        const glm::vec3 start = glm::vec3(boneWorld * glm::vec4(record->anchor[0],
+            record->anchor[1],record->anchor[2],1.f));
+        const glm::vec3 end = glm::vec3(boneWorld * glm::vec4(record->endAnchor[0],
+            record->endAnchor[1],record->endAnchor[2],1.f));
+        const glm::vec3 center = record->collisionShape != 0 ? (start + end) * 0.5f : start;
+        victim.reset(center - victim.hurtbox_anchor_offset(1),victim.facing_yaw());
+        victim.set_state(gameplay::FighterState::Idle);
+        hit = attacker.try_melee_hit(victim);
+        if (!hit) continue;
+        attacker.note_melee_hit(1);
+        hitPhase = attacker.move_phase();
+        hitTick = attacker.phase_elapsed();
+        const auto* current = attacker.current_move_record();
+        hitRecord = attacker.attack_move_id() == 300 && current && current->has_combat() &&
+                    current->boneName == "Bip01_Prop1" && current->activeFrame <= hitTick;
+    }
+    check(hit,"Akane+0 move300 connects when its live weapon volume is occupied");
+    check(hitPhase == 2 && hitTick >= 3 && hitRecord,
+          "Akane+0 contact lands on the current phase-2 Prop1 record, after its activeFrame");
+    check(attacker.swing_hit_count() == 1,
+          "the longer move lifetime preserves one-contact-per-victim accounting");
+    check(victim.hp() < victim.max_hp(),
+          "the phase-2 contact applies the weapon record's damage");
+}
+
+void gated_timeline_fallback() {
+    if (gatedTimelineCharacter < 0) {
+        check(false,"roster has a gated 300/311/330 phase to validate fallback lifetime");
+        return;
+    }
+    Combo combo;
+    std::string error;
+    const bool loaded = combo.load(gatedTimelineCharacter,gatedTimelineWeapon,error);
+    const std::string label = gameplay::comboSlotLabel(gatedTimelineCharacter,
+                                                        gatedTimelineWeapon);
+    check(loaded,label + " gated-phase combo fixture reloads");
+    if (!loaded) return;
+    gameplay::Fighter fighter;
+    combo.init(fighter);
+    fnd::input::PlayerState input;
+    auto pulse = [&](fnd::input::Action action) {
+        input.down[action] = true;
+        tick(fighter,input);
+        input.down[action] = false;
+        tick(fighter,input);
+    };
+    if (gatedTimelineMove == 330) {
+        pulse(fnd::input::Action::Up);
+        pulse(fnd::input::Action::Up);
+    } else if (gatedTimelineMove == 311) {
+        pulse(fnd::input::Action::Jump);
+        pulse(fnd::input::Action::Up);
+        pulse(fnd::input::Action::Up);
+    }
+    input.down[fnd::input::Action::AttackA] = true;
+    tick(fighter,input);
+    input.down[fnd::input::Action::AttackA] = false;
+    tick(fighter,input);
+    const bool selected = fighter.state() == gameplay::FighterState::AttackA &&
+                          fighter.attack_move_id() == gatedTimelineMove;
+    check(selected,label + " actual input selects gated move " +
+          std::to_string(gatedTimelineMove));
+    bool released = false;
+    for (int i = 0; i < 300 && fighter.state() == gameplay::FighterState::AttackA; ++i)
+        tick(fighter,input);
+    released = fighter.state() != gameplay::FighterState::AttackA;
+    check(released,label + " nonzero +0x20 callback gate keeps the fallback timer and releases");
+}
+
 void shots(const Combo& combo) {
     for (int tier = 0; tier < 3; ++tier) {
         gameplay::Fighter fighter;
         combo.init(fighter);
         fnd::input::PlayerState input;
         input.down[fnd::input::Action::Shoot] = true;
-        const int hold = tier == 0 ? 1 : tier == 1 ? 80 : 200;
+        const int hold = tier == 0 ? 1 : tier == 1 ? 30
+            : 30 + combo.weapon.magazines[1].chargeMax;
         for (int i = 0; i < hold; ++i) tick(fighter,input);
         input.down[fnd::input::Action::Shoot] = false;
         tick(fighter,input);
@@ -398,13 +991,8 @@ void launch_rules(const Combo& combo) {
         {gameplay::ShotTier::Tap,     1, false, 12, 0, true,  "Rena+0 ground tap"},
         {gameplay::ShotTier::Tap,     1, true,  13, 1, true,  "Rena+0 air tap"},
         {gameplay::ShotTier::Yellow, 80, false, 13, 2, false, "Rena+0 first charge"},
-        // The airborne charged move 460 is NOT reachable with this combo: Rena 0's own
-        // magazine charges yellow at 0.9375 s, longer than the leap, so the whole charge
-        // window fits inside an airtime only as a partial one and the release fires the
-        // tap tier. This case asserts the airborne launch against whichever move actually
-        // bound, which is what catches a transcription error like the air tap firing a
-        // tick early. 460's own rule is checked against the table below.
-        {gameplay::ShotTier::Yellow, 40, true,  13, 1, true,  "Rena+0 airborne release"},
+        // FUN_0043f3e0 reaches Yellow in30 updates, now within the leap.
+        {gameplay::ShotTier::Yellow, 30, true,  12, 2, false, "Rena+0 air first charge"},
     };
     for (const Case& test : cases) {
         gameplay::Fighter fighter;
@@ -436,11 +1024,7 @@ void launch_rules(const Combo& combo) {
         const gameplay::ShotTier released = fighter.charge_tier();
         input.down[fnd::input::Action::Shoot] = false;
         tick(fighter,input,foe);
-        if (test.airborne && test.tier != gameplay::ShotTier::Tap)
-            check(released == gameplay::ShotTier::Tap,
-                  std::string(test.label) + " cannot build a charge inside the leap");
-        else
-            check(released == test.tier,std::string(test.label) + " holds long enough for its tier");
+        check(released == test.tier,std::string(test.label) + " holds long enough for its tier");
         if (test.airborne && !fighter.airborne()) {
             check(false,std::string(test.label) + " fixture released while still airborne");
             continue;
@@ -465,7 +1049,7 @@ void launch_rules(const Combo& combo) {
               std::string(test.label) + " launches on the recovered tick " +
               std::to_string(test.expectedTick) + " (observed " + std::to_string(fired) + ")");
         bool matched = false;
-        for (const auto& rule : gameplay::kNataRules)
+        for (const auto& rule : gameplay::kRenaRules)
             matched |= rule.move == move && rule.operation == gameplay::MoveOp::Launch &&
                        rule.first <= fired && fired <= rule.last &&
                        static_cast<int>(rule.value) == test.expectedRow &&
@@ -488,7 +1072,7 @@ void launch_rules(const Combo& combo) {
     combo.init(charged);
     fnd::input::PlayerState held;
     held.down[fnd::input::Action::Shoot] = true;
-    for (int i = 0; i < 200; ++i) tick(charged,held);
+    for (int i = 0; i < 30 + combo.weapon.magazines[1].chargeMax; ++i) tick(charged,held);
     held.down[fnd::input::Action::Shoot] = false;
     tick(charged,held);
     for (int frame = 0; frame < 40 && charged.state() != gameplay::FighterState::ShootC; ++frame)
@@ -507,10 +1091,9 @@ void launch_rules(const Combo& combo) {
     }
     check(launches == false || charged.phase_elapsed() <= 3,
           "Rena+0 second charge reaches its red launches by phase two tick two");
-    // Move 460 is a real row in the table even though this combo cannot charge inside a
-    // leap: assert the recovered tick directly instead of inventing a fixture.
+    // The air fixture above exercises460; also pin its transcribed launch anchor.
     bool airCharge = false;
-    for (const auto& rule : gameplay::kNataRules)
+    for (const auto& rule : gameplay::kRenaRules)
         airCharge |= rule.move == 460 && rule.operation == gameplay::MoveOp::Launch &&
                      rule.first == 12 && rule.last == 12;
     check(airCharge,"air charge 460 launches row 2 on tick twelve in the recovered table");
@@ -667,18 +1250,44 @@ int main() {
         return failures ? 1 : 0;
     }
     roster();
+    gated_timeline_fallback();
     auto rena = std::make_unique<Combo>();
     std::string error;
     const bool loaded = rena->load(0,0,error);
     check(loaded,"Rena+0 actual move/item/rig fixture loads");
     if (loaded) {
-        aerial_attack(*rena);
+        aerial_attack(*rena,"Rena+0");
         execution(*rena);
+        miss_trail_world_anchors(*rena);
         zero_power_contact();
         zero_power_projectile(*rena);
         shots(*rena);
         launch_rules(*rena);
         projectile_clocks(*rena);
+    }
+    auto akane = std::make_unique<Combo>();
+    error.clear();
+    const bool akaneLoaded = akane->load(13,0,error);
+    check(akaneLoaded,"Akane+0 actual move/item/rig fixture loads");
+    if (akaneLoaded) {
+        akane0_trail_windows(*akane);
+        // #31's confirmed selector is Rena+0-only. Another real combo checks
+        // its own existing aerial row/tag rather than inheriting that contract.
+        gameplay::Fighter smoke;
+        akane->init(smoke);
+        fnd::input::PlayerState input;
+        input.down[fnd::input::Jump] = true;
+        tick(smoke,input);
+        input.down[fnd::input::Jump] = false;
+        tick(smoke,input);
+        input.down[fnd::input::AttackA] = true;
+        tick(smoke,input);
+        check(smoke.attack_move_id() == 340 &&
+              smoke.anim_set_index() == akane->moves.first_set_index(340) &&
+              !smoke.anim_fallback(), "Akane+0 retains its own aerial table binding, not Rena's selector");
+        akane0_miss_trail(*akane,300,"Akane+0 neutral 300");
+        akane0_miss_trail(*akane,330,"Akane+0 dash 330");
+        akane0_contact_timing(*akane);
     }
     std::printf("ANIMATION_DATA: %d checks, %d failures\n",checks,failures);
     return failures ? 1 : 0;

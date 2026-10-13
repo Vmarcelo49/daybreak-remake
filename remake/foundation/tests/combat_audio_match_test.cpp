@@ -4,6 +4,7 @@
 // asset-backed tests; the device-free coverage lives in combat_audio_test.
 #include <cstdio>
 #include <cstring>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -102,6 +103,8 @@ constexpr VoiceEvent kEvents[] = {
     VoiceEvent::BattleStart, VoiceEvent::AttackA,   VoiceEvent::Fire,     VoiceEvent::Damage,
     VoiceEvent::DamageDown,  VoiceEvent::Guard,     VoiceEvent::Guarded,  VoiceEvent::AttackKO,
     VoiceEvent::DamageKO,    VoiceEvent::Revival,   VoiceEvent::Oyashiro,
+    VoiceEvent::ShotA, VoiceEvent::ShotB, VoiceEvent::ShotC, VoiceEvent::ShotFinal,
+    VoiceEvent::SpecialA,
 };
 
 // The adapter the host also uses, over a live Match.
@@ -120,7 +123,18 @@ CombatFrameView viewOf(const gameplay::MatchFrame& f) {
     CombatFrameView v;
     for (int i = 0; i < 4; ++i) {
         v.swing_started[i] = f.swingStarted[i];
+        v.melee_voice[i] = f.meleeVoice[i];
+        v.melee_voice_alternative[i] = f.meleeVoiceAlternative[i];
+        v.melee_voice_audited[i] = f.sourceMeleeVoiceAudited[i];
+        v.sound_effect_id[i] = f.soundEffectId[i];
+        v.sound_effect_positional[i] = f.soundEffectPositional[i];
+        v.sound_effect_position[i] = {f.soundEffectPosition[i].x,
+                                       f.soundEffectPosition[i].y,
+                                       f.soundEffectPosition[i].z};
         v.shot_fired[i]    = f.shotFired[i];
+        v.shot_voice[i] = f.shotVoice[i];
+        v.shot_voice_alternative[i] = f.shotVoiceAlternative[i];
+        v.shot_voice_audited[i] = f.sourceShotVoiceAudited[i];
         v.hyper_started[i] = f.hyperStarted[i];
         v.guard_started[i] = f.guardStarted[i];
         v.respawned[i]     = f.respawned[i];
@@ -129,6 +143,11 @@ CombatFrameView viewOf(const gameplay::MatchFrame& f) {
         v.melee_victim[i]  = f.meleeVictim[i];
         v.overkill_hits[i] = f.overkillHits[i];
     }
+    v.listener_position = {f.audioListenerPosition.x, f.audioListenerPosition.y,
+                           f.audioListenerPosition.z};
+    v.listener_forward = {f.audioListenerForward.x, f.audioListenerForward.y,
+                          f.audioListenerForward.z};
+    v.listener_valid = f.audioListenerValid;
     v.shot_hit_count = f.shotHitCount;
     for (int k = 0; k < f.shotHitCount; ++k) {
         v.shot_hits[k].shooter = f.shotHits[k].shooter;
@@ -144,9 +163,12 @@ int main() {
     const fs::path install = findInstall();
     std::error_code ec;
     if (install.empty() || !fs::is_directory(install / "data", ec)) {
+        // Exit 77: the install is this suite's only prerequisite, and CTest's
+        // SKIP_RETURN_CODE records it as a skip rather than a pass (audit finding B).
+        // The device-free policy coverage lives in combat_audio_test either way.
         std::puts("combat_audio_match_test: no install, skipped (device-free coverage is in "
                   "combat_audio_test)");
-        return 0;
+        return 77;
     }
     // Four shipped combos, slot 0, exactly as the live path binds them (AGENTS rule 7).
     static const int kRoster[4] = {0, 1, 2, 4};
@@ -160,22 +182,31 @@ int main() {
         std::snprintf(item, sizeof(item), "item/%03d.dat", itemId);
         std::vector<uint8_t> bytes;
         if (!readFile(install / "data" / item, bytes)) {
-            std::printf("combat_audio_match_test: %s missing, skipped\n", item);
-            return 0;
+            // The install is present, so this file is expected to be there: a missing
+            // item is a broken install, and calling it a skip hid exactly that.
+            std::printf("combat_audio_match_test: FAIL: %s is missing from an install that "
+                        "exists\n", item);
+            return 1;
         }
         auto w = std::make_unique<gameplay::WeaponDefinition>();
         if (!w->parse(itemId, bytes.data(), bytes.size(), err)) {
-            std::printf("combat_audio_match_test: %s: %s, skipped\n", item, err.c_str());
-            return 0;
+            std::printf("combat_audio_match_test: FAIL: %s did not parse: %s\n",
+                        item, err.c_str());
+            return 1;
         }
         char table[64];
         std::snprintf(table, sizeof(table), "%s/00.dat", gameplay::kCharacterDirs[character]);
         std::vector<uint8_t> moveBytes;
         auto m = std::make_unique<gameplay::CharacterMoves>();
-        if (!readFile(install / "data" / table, moveBytes) ||
-            !m->parse(moveBytes.data(), moveBytes.size(), err)) {
-            std::printf("combat_audio_match_test: %s: %s, skipped\n", table, err.c_str());
-            return 0;
+        if (!readFile(install / "data" / table, moveBytes)) {
+            std::printf("combat_audio_match_test: FAIL: %s is missing from an install that "
+                        "exists\n", table);
+            return 1;
+        }
+        if (!m->parse(moveBytes.data(), moveBytes.size(), err)) {
+            std::printf("combat_audio_match_test: FAIL: %s did not parse: %s\n",
+                        table, err.c_str());
+            return 1;
         }
         weapons.push_back(std::move(w));
         tables.push_back(std::move(m));
@@ -236,12 +267,26 @@ int main() {
 
         fnd::input::PlayerState inputs[4];
         bool match_start = true;
+        bool hyper_input_driven = false;
         bool round_over = false;
         uint32_t tick = 0;
         for (; tick < 4000 && !round_over; ++tick) {
             for (int i = 0; i < 4; ++i) gameplay::updateBotInput(brains[i], ctx[i], inputs[i], tick);
+            // This gate verifies audio dispatch. Drive its hyper input explicitly so
+            // a slower source magazine does not make coverage depend on an AI seed.
+            if (!hyper_input_driven && match.fighter(0).actionable()) {
+                match.fighter(0).set_hyper_gauge(1.f);
+                inputs[0].down[fnd::input::Action::Special] = true;
+                inputs[0].just_pressed[fnd::input::Action::Special] = true;
+                hyper_input_driven = true;
+            }
             const fnd::input::PlayerState* in[4] = {&inputs[0], &inputs[1], &inputs[2], &inputs[3]};
             const gameplay::MatchFrame frame = match.step(in, 1.0 / 64.0);
+            CHECK(frame.audioListenerValid);
+            CHECK(std::isfinite(frame.audioListenerPosition.x) &&
+                  std::isfinite(frame.audioListenerPosition.y) &&
+                  std::isfinite(frame.audioListenerPosition.z));
+            CHECK(std::abs(glm::length(frame.audioListenerForward) - 1.f) < .001f);
             MatchSource source(match);
             const CombatEventList list =
                 combat_events_for_frame(source, viewOf(frame), tick + 1, match_start);

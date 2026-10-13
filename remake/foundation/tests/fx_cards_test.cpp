@@ -79,6 +79,31 @@ int main() {
         check_near("newborn ages in its spawn frame", 0.25f, live[0].age, 1e-6f);
     }
 
+    // 1b. The request's pose survives the queue: FUN_00421aa0's direction is carried
+    // on the event, a re-spawn refreshes it, and an unposed spawn leaves it zero (which
+    // composes to the translation-only matrix the placement builds from it).
+    {
+        std::vector<game::LiveFxCard> live;
+        game::EffectEvent posed = spawnEv(9, 1, 4.f);
+        posed.direction = glm::vec3(0.5f, 0.f, -0.25f);
+        game::updateLiveFxCards(live, {posed}, 0.25f);
+        check_near("spawn keeps the requested direction x", 0.5f,
+                   live[0].direction.x, 1e-6f);
+        check_near("spawn keeps the requested direction z", -0.25f,
+                   live[0].direction.z, 1e-6f);
+        // A repeated emitter re-arming itself re-poses the existing instance.
+        game::EffectEvent reposed = spawnEv(9, 1, 4.f);
+        reposed.direction = glm::vec3(0.f, 1.f, 0.f);
+        game::updateLiveFxCards(live, {reposed}, 0.25f);
+        check_int("a re-spawn refreshes in place", 1, (long long)live.size());
+        check_near("a re-spawn re-poses the instance", 1.f, live[0].direction.y, 1e-6f);
+        // And the direction is default-zero, so the unposed callers are unchanged.
+        game::updateLiveFxCards(live, {spawnEv(11, 1, 4.f)}, 0.25f);
+        check_near("an unposed spawn keeps the direction zero", 0.f,
+                   live[1].direction.x * live[1].direction.y * live[1].direction.z,
+                   1e-6f);
+    }
+
     // 2. Same-id spawn replaces: fields refresh, age resets, count stays 1.
     {
         std::vector<game::LiveFxCard> live;

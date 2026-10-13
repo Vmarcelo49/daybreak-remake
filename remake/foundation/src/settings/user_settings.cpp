@@ -178,7 +178,7 @@ std::string configDirectory(const char* xdgConfigHome, const char* home) {
     // $HOME/.config (base directory spec). A hostile value therefore cannot redirect the
     // write into the working directory.
     const std::string xdg = xdgConfigHome ? xdgConfigHome : "";
-    if (!xdg.empty() && xdg[0] == '/') return xdg + "/" + kAppDirectory;
+    if (absolutePath(xdg)) return xdg + "/" + kAppDirectory;
     const std::string base = home ? home : "";
     if (base.empty()) return {};
     return base + "/.config/" + kAppDirectory;
@@ -529,7 +529,7 @@ bool load(const std::string& path, UserSettings& out, LoadReport& report) {
         report.messages.push_back("user settings are not persisted on this target");
         return false;
     }
-    std::ifstream file(path, std::ios::binary);
+    std::ifstream file(std::filesystem::u8path(path), std::ios::binary);
     if (!file) {
         report.messages.push_back("no config file at " + path + " (first launch)");
         return false;
@@ -561,7 +561,7 @@ bool save(const std::string& path, const UserSettings& settings, std::string& er
         error = "no user config directory ($XDG_CONFIG_HOME/$HOME are unset)";
         return false;
     }
-    const size_t slash = path.find_last_of('/');
+    const size_t slash = path.find_last_of("/\\");
     const std::string directory = slash == std::string::npos ? std::string(".") : path.substr(0, slash);
     const std::string text = serialize(settings);
 
@@ -570,7 +570,7 @@ bool save(const std::string& path, const UserSettings& settings, std::string& er
     // create the whole directory; a failure here is the unwritable-directory case and is
     // reported by the write below.
     std::error_code ec;
-    fs::create_directories(directory, ec);
+    fs::create_directories(fs::u8path(directory), ec);
 
 #if defined(_WIN32) || defined(__EMSCRIPTEN__)
     // Best-effort fallback for the non-Linux targets: still a temp file in the same
@@ -578,14 +578,14 @@ bool save(const std::string& path, const UserSettings& settings, std::string& er
     // Linux one; the Windows cross-build only has to compile and behave).
     const std::string temp = path + ".tmp";
     {
-        std::ofstream out(temp, std::ios::binary | std::ios::trunc);
+        std::ofstream out(fs::u8path(temp), std::ios::binary | std::ios::trunc);
         if (!out) { error = "cannot write " + temp; return false; }
         out << text;
         out.flush();
         if (!out) { error = "cannot write " + temp; return false; }
     }
-    fs::rename(temp, path, ec);
-    if (ec) { fs::remove(temp, ec); error = "cannot replace " + path; return false; }
+    fs::rename(fs::u8path(temp), fs::u8path(path), ec);
+    if (ec) { fs::remove(fs::u8path(temp), ec); error = "cannot replace " + path; return false; }
     return true;
 #else
     const std::string temp = path + ".tmp";

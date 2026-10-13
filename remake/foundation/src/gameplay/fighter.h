@@ -31,8 +31,8 @@
 //  State machine (port inputs are simplified from the original's move graph):
 //    Idle ↔ Walk                   (stick or d-pad movement)
 //    Idle ↔ Run                    (double-tap dash; forward/back move selectors)
-//    AttackA                       (one melee input; neutral ground uses move 300,
-//                                   while dash/air animation selectors are unresolved)
+//    AttackA                       (one melee input; bounded 300/311/330 selector
+//                                   candidates resolve through the equipped NN.dat)
 //    ShootA/B/C                    (port charge tiers; firing animation selector unresolved)
 //    Jump / Guard                  (port states with unresolved animation selectors)
 //    Any → Hit / Knockdown / KO    (reaction selectors recovered from move dispatch)
@@ -47,11 +47,16 @@
 #include "assets/xmodel.h"          // xm::Model / xm::Controller (non-owning)
 #include "game/fighter_pose.h"      // game::IFighterPose / game::FighterPose
 #include "gameplay/character_moves.h"  // CharacterMoves (borrowed move table)
+#include "gameplay/melee_admission.h"   // recovered attack admission tables
 #include "gameplay/match_economy.h"    // the KO/Overkill credit rules (issue #11)
 #include "gameplay/projectile.h"
+#include "gameplay/simulation_rng.h"
+#include "gameplay/shot_launch.h"
 #include "gameplay/melee_rules.h"
 #include "gameplay/weapon_trail.h"
 #include "gameplay/weapon_definition.h"
+#include "gameplay/shooting_magazine.h"
+#include <vector>
 #include "input/input.h"
 #include "render/arena_camera.h"    // for render::ArenaTarget
 
@@ -304,9 +309,8 @@ struct MeleeSwing {
     bool is_recovery(int elapsed) const { return window.is_recovery(elapsed); }
 };
 
-// Handoff from Fighter (input/charge side) to the scene (spawn/collide side):
-// update_state_machine() arms this on C release; Scene_Gameplay drains it
-// into the ProjectilePool the same frame, so at most one shot queues.
+// Handoff from the move callback to the scene's spawn/collide step. Twin callback
+// requests remain separate entries and the scene drains them in request order.
 struct PendingShot {
     bool          armed = false;
     ShotTier      tier  = ShotTier::Tap;
@@ -314,7 +318,51 @@ struct PendingShot {
     glm::vec3     dir   {0, 0, 1};
     int           bulletRow = -1;
     Fighter*      target = nullptr;
+    ShotOriginSpec origin{};
+    ShotAimSpec   aim{};
 };
+
+// The per-tick world state a shooting body reads from outside the fighter. The
+// original reads these straight off the player struct, so the scene publishes them
+// instead of the fighter duplicating (or guessing) them. Currently carries the one
+// recovered firing predicate; target geometry and the simulation RNG join it as their
+// users land.
+struct ShootingContext {
+    // word +0x848 != 0: the 180-tick hold target_lock.h re-pins while this fighter's
+    // aim target is the same fighter player 0 is aiming at (FUN_0041f580:242-248).
+    // Together with the Oyashiro special byte +0x845 it forms the roster-wide powered
+    // gate. This is the aim-selection predicate, not the combat lock's ally hold.
+    bool aimHold = false;
+    // The RECOVERED direction decision of an AI-controlled fighter: word +0x278, which
+    // Rika 2's tap reads to pick its item row and Irie 1's state 401 reads (with +0x27c)
+    // to pick its follow-up state. Only the COM decision routines write it
+    // (FUN_0043f4d0/FUN_00447730 — a wander timer driving +-1/0), so it is 0 for every
+    // human-controlled fighter, and the port publishes it only for AI slots. The port
+    // expresses the brain's intent through the four direction keys, so this is the sign of
+    // that applied lateral input.
+    int moveLateral = 0;   // -1 left, 0 neutral, +1 right
+    // The match's shared random stream. The original draws spread from ONE global
+    // MT19937, so the scene owns the stream and publishes it here; a fighter without a
+    // scene (unit tests) falls back to its own, which keeps both paths deterministic.
+    SimulationRng* rng = nullptr;
+    // The close-target voice cascade's three latches (+0xaec3/+0xaebe/+0xaeb9),
+    // recomputed each tick by FUN_0042e110 for every actor IMMEDIATELY BEFORE its
+    // state dispatch (FUN_00634f60's per-fighter loop runs FUN_0042e110, then the
+    // vtable+0x24 handler), so the state they read is the PREVIOUS tick's. Match fills
+    // them from its own attention table; a fighter without a match keeps all zero,
+    // which is the cascade's ordinary-voice arm. melee_admission.h resolves them.
+    struct VoiceFlags {
+        unsigned char flags[3] = {0, 0, 0};  // +0xaec3, +0xaebe, +0xaeb9
+        bool addAttack() const { return flags[0] != 0; }
+        bool intercept() const { return flags[1] != 0; }
+        bool backAttack() const { return flags[2] != 0; }
+    } voice;
+};
+
+// move_behavior.h's executable rule, forward-declared so the gate evaluation beside
+// execute_move_program can name it without pulling the tables into this header (the
+// same reason m_holdRule is type-erased).
+struct MoveRule;
 
 struct CombatStats { int kos = 0, deaths = 0, damageDealt = 0, damageTaken = 0; };
 
@@ -471,9 +519,18 @@ public:
     // The character-.dat move currently used for melee tuning. Exposed for
     // combo-bound evidence checks.
     int attack_move_id() const { return m_attackMoveId; }
-    // Port candidate for a grounded Up/Down dash (an input-to-move inference);
-    // -1 means no candidate is used, including side and air dashes.
+    // The numeric action row this fighter is in, as the original's dispatcher reads
+    // it (+0xadec): an attack row during AttackA, a dash row during Run, the air-dash
+    // row 30 or the jump chain airborne, and 10/0 for locomotion. Match reads it for
+    // the close-target voice cascade's state-class tests, which sample it BEFORE the
+    // fighter updates — so it is the previous tick's row at that point.
+    int action_state() const { return numeric_state(); }
+    int bound_move_id() const { return m_boundMoveId; }
+    bool air_dash_context() const { return m_dashAir; }
+    // NN.dat move selected for a grounded directional dash, or -1 when the
+    // combo has no row or the dash is airborne.
     int dash_move_id() const { return m_dashMoveId; }
+    input::Action dash_input_direction() const { return m_dashInputDirection; }
     // Firing move the current shot plays, keyed off the charge tier and whether the
     // fighter was airborne at the release (move_behavior.h's MoveProgram::shot).
     int shot_move_id() const { return m_shotMoveId; }
@@ -533,6 +590,11 @@ public:
     float yellow_hold_sec() const;
     float red_hold_sec() const;
 
+    // The fighter-level special/charge gauge (+0x834, 0..1000). The original writes it
+    // from battle init, the hyper regen, the recoveries and the special spend; this
+    // setter is the test seam for the admission/guard gates that read it.
+    void set_charge_gauge(int value) { m_chargeGauge = std::clamp(value, 0, 1000); }
+
     // --- hypermode (spec §3.4) ---
     void set_hypermode(Hypermode m) { m_hypermode = m; }
     // Launch-time state injection, 0..1, clamped. It stood in for the original's F4 (wiki
@@ -565,8 +627,7 @@ public:
     // (FUN_00634f60:184-204). The port carries no selector, so every meter it models is
     // filled; debug_keys.h names the recovered arm behind each (MAIN, CHARGE, hypermode).
     void fill_gauges() {
-        m_main.value = m_main.max;
-        m_charge.value = m_charge.max;
+        restore_ammo();
         set_hyper_gauge(1.0f);
     }
     int max_hp() const { return m_maxHP; }
@@ -581,6 +642,57 @@ public:
     // Scene drains the shot armed by C-release into the ProjectilePool.
     // Disarms on read (at most one pending shot ever queues).
     PendingShot take_pending_shot();
+    struct ShootingVoice { int event = -1; int alternative = -1; };
+    ShootingVoice take_shooting_voice() { auto cue = m_shootingVoice; m_shootingVoice = {}; return cue; }
+    bool source_shot_voice_audited() const { return m_sourceShotVoiceAudited; }
+    // True when the running row carries a recovered melee voice cue, so the audio layer
+    // can let the source-timed cue stand alone instead of also firing the fallback swing
+    // voice (the melee ids ARE the voice vocabulary's indices: FUN_004223d0(1,10,0) =
+    // "attackA", FUN_004223d0(0xd,10,0) = "guarded", FUN_00422490(0x20,...) = "specialA").
+    bool source_melee_voice_audited() const { return m_sourceMeleeVoiceAudited; }
+
+    // The melee voice cue (FUN_004223d0/FUN_00422490), the gameplay SE cue
+    // (FUN_0042c8b0 positional / FUN_0042c880 non-positional) and the actor effect cue
+    // (`(*actor+0xc)` = FUN_00421aa0 -> FUN_00435990's manager create with a pose),
+    // drained once per tick by the scene the same way the shot voice is. The melee
+    // alternative carries the FUN_00422490 choice (fixed, or the rand%100 pair the
+    // 32-family draws); the close-target cascade (voices 0/15/5) is documented at the op
+    // site as requiring the pairing tracker the port does not model. The SE `id` is a
+    // data/se/%03d.wav index and the effect `id` a data/effect id (`id / 10` names the
+    // descriptor) — two different call paths, kept apart so neither consumer can read
+    // the other's ids.
+    struct MeleeVoiceCue { int event = -1; int alternative = -1; };
+    MeleeVoiceCue take_melee_voice() { auto cue = m_meleeVoice; m_meleeVoice = {}; return cue; }
+    struct SoundEffectCue {
+        int id = -1;
+        bool positional = false;
+        glm::vec3 position{0.f};
+    };
+    SoundEffectCue take_sound_effect() {
+        auto cue = m_pendingSoundEffect;
+        m_pendingSoundEffect = {};
+        return cue;
+    }
+    // The pose the body passed: heading is added to the actor's own, pitch is absolute.
+    struct EffectCue { int id = -1; float yaw = 0.f; float pitch = 0.f; };
+    EffectCue take_effect() { auto cue = m_pendingEffect; m_pendingEffect = {}; return cue; }
+
+    // The original's fighter-level special/charge gauge (int +0x834, 0..1000). The
+    // bodies spell it `param_1[0x20d]` because the actor pointer is `int*`; the two
+    // spellings are the same field, confirmed by the whole-corpus scan (every
+    // `[0x20d]` site declares `int *param_1`). Producers: battle init/reset writes
+    // 1000 (FUN_004219a0:19, FUN_0041dcb0:66); +1 a tick only while a hyper flag
+    // (+0x844/0x845/0x846) is armed (FUN_0041f580:96-99 and 46 siblings — not modeled
+    // here, recorded); the recoveries refill +40 when actor word +0x1fd is clear or +5
+    // otherwise. That word aliases byte +0x7f4, the scene's stage-replay delay; whether
+    // it can overlap reachable Rena recovery is unresolved, so this port models +40 only.
+    // The gauge loses 500 on a special-move spend (FUN_00508a60:91). Consumers:
+    // the melee/shot admission gates (`0 < +0x834`, FUN_00445ee0/FUN_0044d850), the
+    // guard-reaction exits (`(FUN_0042c7b0() & 2) && 0 < +0x834`, the 390/393 bodies)
+    // and the awakened-melee spend threshold (`500 < +0x834`). This is NOT the
+    // item-data magazine: the rounds-counted 0x44-byte magazine (FUN_00433eb0) is a
+    // separate per-request cost the launch path already pays.
+    int  charge_gauge() const { return m_chargeGauge; }
 
     // Melee hit test for ONE candidate, called once per attacker→candidate pair while
     // the swing is active. Rejects a candidate that is out of reach vertically, outside
@@ -624,11 +736,51 @@ public:
     const MoveEntry* current_move_record() const;
     int move_phase() const { return m_phaseIndex; }
     int phase_elapsed() const { return m_moveElapsedTicks; }
+    int move_counter() const { return m_moveCounter; }
+    // The horizontal per-tick channel the movement rules/bodies drive (u/tick).
+    float move_speed() const { return m_moveSpeed; }
+    // The recovered attack-body state, for execution witnesses: the bodies' fall
+    // rate (u/tick^2, -1 = unowned), FUN_00420b30's lean pair and the dive's contact
+    // cut. +0x2c is a PITCH in degrees (applied as a RotationX) and +0x2d8 a pivot
+    // HEIGHT (the model's Y rotation center) — not two yaw terms.
+    float attack_gravity() const { return m_attackGravity; }
+    float body_pitch() const { return m_bodyPitch; }
+    float body_pivot_height() const { return m_bodyPivotHeight; }
+    int chase_strength() const { return m_chaseStrength; }
+    bool contact_disabled() const { return m_contactDisabled; }
+    // The original's `byte(+0x845) != 0 && word(+0x848) != 0`, read by 514 of the 841
+    // recovered shoot bodies and by every other action family. +0x845 is the Oyashiro
+    // special armed byte (FUN_004220e0 sets it, FUN_0041f580:88-92 clears it when its
+    // countdown ends) and +0x848 is the aim hold the scene publishes (same aim target
+    // as player 0). A fighter running Friendship or Kakera never takes a powered
+    // branch, which is source behavior and not a gap.
+    bool shoot_gate_powered() const {
+        return m_hyperActive && m_hypermode == Hypermode::Oyashiro && m_shooting.aimHold;
+    }
+    // The scene publishes the per-tick firing context before update().
+    void set_shooting_context(const ShootingContext& context) {
+        m_shooting = context;
+        m_rng = context.rng;
+    }
     // FUN_00435000 launches from the bound slot's item muzzle anchor and falls back to
     // the bone origin only when the slot's prop id is -1 (FUN_00434a70's clear).
     bool weapon_slot_bound(int slot) const;
     int action_camera() const { return m_actionCamera; }
     const WeaponTrail& trail(int hand) const { return m_trails[static_cast<size_t>(hand)]; }
+    int trail_item_model(int hand) const {
+        return hand >= 0 && hand < static_cast<int>(m_trailItemModel.size())
+                   ? m_trailItemModel[static_cast<size_t>(hand)] : -1;
+    }
+    // FUN_00434a70's per-slot item-model binding decides which of the item's attachment
+    // models is on screen, so one canonical item model (`model`, the index the DAT ships)
+    // is drawn exactly when a bound prop slot names it. The render gate and the tests
+    // share this predicate: a correct launch origin alone does not prove the visible
+    // weapon is right (Rena 1's 450/460 move slot 0 from model 0 = 11.x to model 2 = 12.x).
+    bool draws_item_model(int model) const {
+        for (int slot = 0; slot < 2; ++slot)
+            if (weapon_slot_bound(slot) && trail_item_model(slot) == model) return true;
+        return false;
+    }
 
     // The swing this fighter WOULD start right now for the given situation — the same
     // resolution set_state(AttackA) performs at the press, without touching state. A COM
@@ -645,9 +797,11 @@ public:
     }
 
     // Swing bookkeeping driven by Match: begin clears the per-victim hit set, note
-    // records that this swing already connected with one victim.
+    // records that this swing already connected with one victim. `guarded` carries
+    // FUN_0042c7b0()'s bit 2 — the strike met a guarding opponent — which the melee
+    // bodies read to hand the attacker to the 392 knockback.
     void begin_melee_swing();
-    void note_melee_hit(int victimIndex);
+    void note_melee_hit(int victimIndex, bool guarded = false);
 
     // Debug view of the recovered melee hitbox (issue #10). Data only, so drawing stays
     // in the render layer: `anchors` are the victim's TWO spheres -- head and chest, the
@@ -705,18 +859,18 @@ public:
     // anim_fallback(): holding a clip is the source behaviour, while a fallback is
     // a selector or table row this port has not recovered.
     bool               anim_no_selector() const { return m_animNoSelector; }
-    // Fractional stocks feed the HUD bars directly (ammo-bar.webp).
-    // Divide by the stock's OWN max, not the kMainMax/kChargeMax constants: a bound
-    // weapon resizes both pools from data/item/NNN.dat, and the HUD bar is a fraction of
-    // whatever the pool currently is. With no weapon max still equals the constant.
-    float main_frac() const { return m_main.frac(); }
-    float charge_frac() const { return m_charge.frac(); }
-    int main_whole() const { return m_main.whole(); }
-    int charge_whole() const { return m_charge.whole(); }
+    // Bound weapon digits count rounds; bars include the original refill progress.
+    float main_frac() const { return m_weapon ? m_shootingMagazines[0].fraction() : m_main.frac(); }
+    float charge_frac() const { return m_weapon ? m_shootingMagazines[1].fraction() : m_charge.frac(); }
+    int main_whole() const { return m_weapon ? static_cast<int>(m_shootingMagazines[0].rounds) : m_main.whole(); }
+    int charge_whole() const { return m_weapon ? static_cast<int>(m_shootingMagazines[1].rounds) : m_charge.whole(); }
     // 0..1 across the full hold (red threshold = 1); colors the HUD meter.
     float charge_hold_frac() const;
     ShotTier charge_tier() const;
-    bool reload_ok() const { return m_reloadTimer <= 0; }
+    bool reload_ok() const {
+        return m_weapon ? m_shootingMagazines[m_pending.tier == ShotTier::Tap ? 0 : 1].can_consume()
+                        : m_reloadTimer <= 0;
+    }
 
     // For ArenaTarget compatibility.
     // (ArenaCamera reads position + facingYaw from ArenaTarget; the DX9
@@ -796,6 +950,16 @@ private:
     unsigned     m_swingHits = 0;
     int          m_swingHitCount = 0;
     bool         m_chainContact = false;
+    bool         m_chainGuarded = false;   // FUN_0042c7b0() bit 2: the strike was guarded
+    ShootingVoice m_shootingVoice;
+    MeleeVoiceCue m_meleeVoice;
+    SoundEffectCue     m_pendingSoundEffect;
+    EffectCue     m_pendingEffect;
+    int           m_chargeGauge = 1000;
+    bool m_sourceShotVoiceAudited = false;
+    bool m_sourceMeleeVoiceAudited = false;
+    SimulationRng* m_rng = nullptr;   // the scene's stream, null for a bare fighter
+    SimulationRng  m_ownRng;          // fallback: deterministic per fighter
     int          m_meleeElapsed = 0;      // ticks since the swing started
     MeleeRules   m_meleeRules{};           // legacy tuning + recovered shape;
                                            // data-driven swings override it via m_swing
@@ -804,6 +968,38 @@ private:
     int          m_shotMoveId = -1;
     int          m_holdTicks = 0;
     bool         m_holdAnimation = false;
+    // Which MoveRule Hold owns m_holdTicks (type-erased: move_behavior.h stays out of
+    // this header). A move holding twice (Keiichi's 450/460 stall at two ticks via
+    // clock rewinds) needs per-rule progress — the shared counter alone would starve
+    // the second hold. The dash hold path never consults this latch.
+    const void*  m_holdRule = nullptr;
+    // Per-move scratch counter (MoveOp::Counter/CounterSet), the port stand-in for the
+    // bodies' `write_scratch(0x3e, ...)` counters. Reset with the move, not with each
+    // section, because a body seeds it once at phase0/tick0 and then counts updates —
+    // including the frozen ones a gated Hold pins, which is what makes Rika 1's
+    // counter-gated salvo repeat.
+    int          m_moveCounter = 0;
+    // FUN_0042da80's latched pitch (whole degrees) for the bodies that read it back
+    // from scratch 0x3c instead of re-deriving the elevation.
+    float         m_movePitch = 0.f;
+    // The attack bodies' own fall (original actor +40/+58): a per-move gravity in
+    // the bodies' u/tick^2, sticky within the move and carried across row switches
+    // the way the original's fields persist. -1 means no body owns the fall yet and
+    // the locomotion rate applies (today's behavior for unbound air rows).
+    float         m_attackGravity = -1.f;
+    // The chase/dive bodies' lean (original +0x64/+0x30): summed into the model's yaw
+    // rotation like the original's field sum (FUN_00420b30). Zero outside those rows.
+    float         m_bodyPitch = 0.f;
+    float         m_bodyPivotHeight = 0.f;
+    // The state-320 chase strength (chasing_air_melee's air.strength): latched at
+    // entry from the target distance, decays through the arc.
+    int          m_chaseStrength = 0;
+    // Extra phase-clock ticks this update (weapon 2's double-speed spin frames).
+    int          m_clockSkip = 0;
+    // The dive body turns its contact volume off past phase-1 frame 22.
+    bool         m_contactDisabled = false;
+    // The scene's per-tick publication of the firing-relevant world state.
+    ShootingContext m_shooting;
     // Attachment slots 0/1. The executor re-binds slot0<-prop0, slot1<-prop1 and
     // deactivates both at the top of every frame, so a slot is unbound only while a
     // Hide rule's ticks match (FUN_00434a70(slot,-1)) and a prop is active only inside
@@ -811,6 +1007,7 @@ private:
     // latch is what grows its ribbon.
     std::array<bool, 2> m_propBound{true, true};
     std::array<bool, 2> m_propActive{false, false};
+    std::array<int, 2> m_trailItemModel{0, 1};
     int          m_actionCamera = 0;
     float        m_moveSpeed = 0.f;
     float        m_walkTurnRate = 20.f;
@@ -820,6 +1017,7 @@ private:
     int          m_dashMoveId = -1;         // inferred grounded dash candidate, or unresolved
     MeleeSwing   m_swing{};                 // this swing's resolved numbers
     bool         m_aerialAttack = false;   // this swing is the aerial variant
+    bool         m_attackUsesActorFacing = false; // D-pad/stick Back at this aerial attack edge
 
     // --- hypermode (spec §3.4; numbers in hypermode_params) ---
     Hypermode    m_hypermode    = Hypermode::Friendship;
@@ -837,13 +1035,13 @@ private:
     // also decoded there, but their hit-resolution use does not establish shot-tier moves.
     const WeaponDefinition* m_weapon = nullptr;   // borrowed
     const BulletParameter*  m_bulletParams[2] = {nullptr, nullptr};  // per charge level
-    AmmoStock    m_main;         // MAIN pool (charge level 1)
-    AmmoStock    m_charge;       // CHARGE pool (charge level 2)
-    float        m_chargeHeld = 0.0f;  // seconds C held (resets on release)
-    int          m_reloadTimer = 0;    // reloadNG window (frames, 0 = reloadOK)
+    std::array<ShootingMagazine, 2> m_shootingMagazines{};
+    AmmoStock    m_main;         // legacy stock without a bound weapon
+    AmmoStock    m_charge;
+    float        m_chargeHeld = 0.0f;  // legacy hold seconds / bound C-held marker
+    int          m_reloadTimer = 0;    // legacy reloadNG window
     PendingShot  m_pending;      // armed shot awaiting scene spawn
-    std::array<PendingShot, 8> m_pendingShots{};
-    int m_pendingShotCount = 0;
+    std::vector<PendingShot> m_pendingShots;
     std::array<const BulletParameter*, 64> m_bulletRows{};
     std::array<const xm::Model*, 64> m_bulletModels{};
 
@@ -853,6 +1051,13 @@ private:
     float        m_groundY = 0.0f;      // takeoff height (flat-arena landing)
     float        m_flyLeft = FighterConstants::kFlyTimeSec;  // flight budget
     glm::vec3    m_dashDir{0, 0, 1};   // committed dash direction (world XZ)
+    // The tapped action owns this dash's committed travel. A later aerial attack
+    // reads the direction held at its own press instead of reusing this value.
+    input::Action m_dashInputDirection = input::Action::Up;
+    // Held directional axes sampled at input dispatch; the tap-shot admission's
+    // air-dash fast-shot branch reads them at the release edge.
+    int m_inputAxisX = 0;
+    int m_inputAxisZ = 0;
     float        m_dashSpeed = FighterConstants::kRunSpeed;
     bool         m_dashAir = false;     // current dash started airborne
     bool         m_airDashed = false;   // air dash spent (resets on landing)
@@ -860,12 +1065,12 @@ private:
     double       m_lastTap[4] = {-1.0, -1.0, -1.0, -1.0};  // Up/Down/Left/Right
 
     // --- movement helpers ---
-    // Screen (lock-on camera) direction → world direction. The eye sits behind
-    // the facing looking at the locked opponent, so screen-up is the facing
-    // (toward the opponent) and screen-right is 90° clockwise of it. Walk,
-    // dash and air control all share this basis, so a tap and a hold never
-    // disagree about where "up" goes.
+    // Convert a screen-relative input using either the rendered body yaw or the
+    // current target bearing. The original keeps those separate while moving
+    // (FUN_004202b0 / FUN_0042dd90), so a walked heading cannot redefine dash-up.
+    glm::vec3 relative_direction(float yaw, float screenRight, float screenUp) const;
     glm::vec3 facing_relative(float screenRight, float screenUp) const;
+    glm::vec3 target_relative(float screenRight, float screenUp) const;
     void update_movement(const input::PlayerState* input, double dt);
     void update_state_machine(const input::PlayerState* input, Fighter* opponent,
                               double dt);
@@ -884,16 +1089,15 @@ private:
     bool can_act() const;
     bool can_move() const;
 
-    // C-release firing: picks the tier from hold time, then fire_shot().
+    // C release selects the secondary magazine stage (legacy hold time without a weapon).
     void try_fire();
 
-    // (Re)builds m_main/m_charge from m_weapon, or restores the historical fractional
-    // stocks when no weapon is bound. Called on bind and on reset.
+    // DAT-backed magazines own bound weapons; legacy stocks serve custom unarmed data.
     void apply_weapon_ammo();
+    void restore_ammo();
 
-    // Spends the tier's stock, opens the reloadNG window, and arms
-    // m_pending for the scene. Silently drops when reloading or broke (the
-    // HUD already shows the gate).
+    // Selects an admitted move without spending programmed shots' ammo. Their
+    // firing callbacks consume the row-selected magazine before pool creation.
     void fire_shot(ShotTier tier);
 
     // Hypermode plumbing: gauge credit, S activation (with Oyashiro's
@@ -908,27 +1112,30 @@ private:
     // false when the stamina gate or the once-per-airtime rule blocks it.
     void try_jump();
     bool try_dash(input::Action dir);
+    // Slot7 jump-cancel for shot states, evaluated outside the actionable gate (the
+    // normal state machine never runs mid-shot): true only for a recovered admission
+    // — pilot combo Rena 0 out of shot move 400 at elapsed frame 20
+    // (kPilotShotJumpCancel). Everything else keeps today's behavior.
+    bool shot_jump_cancel_pressed(const input::PlayerState* input) const;
 
     // Knocks the target away without damage (Oyashiro activation). Reuses
     // the Hit state's friction branch to carry the push; the real knockback
     // animation state is un-RE'd.
     void apply_knockback(const glm::vec3& dir, float speed);
 
-    // Current move choice for combat tuning. Its port-context heuristic does not
-    // establish an animation selector; animation resolution uses the separate
-    // confirmed ID below.
-    // Situation → character-.dat move id for a melee press (issue #26 step 3),
-    // or -1 when no table is bound or the situation's move is absent. The map
-    // is provisional: FUN_0043ded0 gates several attack moves per situation on
-    // unrecovered flags, so each row is the best-evidenced candidate —
-    //   dash (press while Run) → 330, the lunge ("dash forward + attack", nata)
-    //   air                     → 340, the single-phase weapon aerial ([88])
-    //   ground                  → 300, the ground neutral (first phase 31)
-    // — with 320 (ground branch at FUN_0043ded0:311, frame-1 startup) on record
-    // as the alternative for ground/air, and the kicks (310/311) unused for lack
-    // of a recovered selection rule. A costume that drops the row's move falls
-    // through to any weapon-family move present rather than the jump clip.
+    // Live input and COM previews share table resolution. Rena+0 ordinary-air320
+    // and air-dash332 have user-confirmed pose identities, not timing parity.
+    // Other combos retain their prior aerial340 candidate; #66 owns selector recovery.
+    // Every selected move resolves through the equipped combo's NN.dat.
     int resolve_attack_move(bool dashAttack, bool aerial) const;
+    // Recovered dispatcher admission (melee_admission.h): the Rena group's
+    // weapon-specific selector, fed by the numeric state and held axes. Other
+    // combos keep resolve_attack_move's bounded candidates (issue #66).
+    AttackAdmissionInput attack_input(bool aerial,
+                                       const input::PlayerState* input) const;
+    int admit_attack_move(bool aerial, const input::PlayerState* input) const;
+    int numeric_state() const;
+    int weapon_slot_index() const;
     // The resolved numbers for one move id: the move's first combat entry, or the
     // legacy tuning when there is no table, no move, or no combat entry. Shared by
     // build_melee_swing() (which binds it) and preview_melee_swing() (which does not).
@@ -936,6 +1143,20 @@ private:
     // Fills m_swing from the move's first combat entry (or the legacy tuning
     // when there is no table, no move, or no combat entry).
     void build_melee_swing(int moveId);
+    // FUN_00421080's row switch shared by chains, landings and contact exits: fresh
+    // phase cursor/clip and per-row swing, with the air fields (gravity, lean)
+    // carried the way the original's +40/+58 persist across the switch.
+    void switch_attack_row(int moveId);
+    // The state-320 chase and 332/334 dive bodies (ChasePolicy/DivePolicy in
+    // move_behavior.h): feedback loops that re-derive speed/vertical from the live
+    // flight angle each tick, so they run as bodies rather than static rules.
+    void advance_rena_chase(const struct ChasePolicy& policy, Fighter* opponent);
+    void advance_rena_dive(const struct DivePolicy& policy, Fighter* opponent);
+    // Rena+1's 402 dive launch (FUN_00448220 case 0x192, phase 1 tick 0): the fixed
+    // -40 u/tick drop with the horizontal closing speed derived from the target's
+    // geometry — see the implementation for the exact clamp.
+    void advance_rena1_dive_shot(Fighter* opponent);
+    void turn_toward(const Fighter* opponent, float degrees);
     // A move counts when the table ships it with at least one phase (a costume
     // that drops the move must not resolve to a phaseless id).
     int present_move(int id) const;
@@ -943,8 +1164,8 @@ private:
     // move order has no recovered link to the port's left/right inputs.
     int dash_move_for(input::Action dir) const;
     // The move whose phases the current state plays, or -1 if its selector is
-    // not recovered. Grounded neutral 300, the dash lunge 330 and the aerial 340
-    // are all bound rows now (issue #31); Jump resolves the recovered air chain.
+    // not recovered. AttackA preserves the selected combo move; Jump resolves the
+    // recovered 40→41→42 air chain.
     int state_move_id() const;
     // The jump chain the source advances by physics (live FUN_0043ffc0 cases
     // 0x28/0x29/0x2a): 40 on the ground, 41 while rising, 42 once vy falls under
@@ -959,8 +1180,19 @@ private:
     void advance_animation_phase();
     glm::vec3 bone_point(const std::string& name, const glm::vec3& local) const;
     void execute_move_program(Fighter* opponent, const input::PlayerState* input);
+    // A rule's gate bits evaluated against current fighter state (kGatePowered,
+    // the counter tests). Kept beside the executor so the gate vocabulary and the
+    // state it reads cannot drift apart.
+    bool rule_gate_holds(const MoveRule& rule, float distanceSquared) const;
+    float capture_target_pitch(float lowDegrees, float highDegrees,
+                               float snapDegrees, const Fighter* opponent);
     void enter_phase(int phase);
-    void launch_bullet(int row, float lateral, float pitchLimit, Fighter* opponent);
+    void launch_bullet(int row, const ShotOriginSpec& origin, const ShotAimSpec& aim,
+                       float legacyLateral, float legacyPitchLimit,
+                       const ShotSpreadSpec& spread, Fighter* opponent);
+    // The stream a spread draws from: the scene's when one was published, else this
+    // fighter's own.
+    SimulationRng& rng_source() { return m_rng ? *m_rng : m_ownRng; }
 
     // Shared pulse for the aura's alpha + radius (DX9 render did both from one
     // expression; kept single-sourced so they cannot drift).

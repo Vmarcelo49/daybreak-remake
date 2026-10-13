@@ -33,14 +33,9 @@ def main():
                 if m:
                     in_degree[m.group(2)] += 1
 
-    # Top 20 mais chamadas que estão unreviewed
+    # Top 20 mais chamadas que estão unreviewed, ordenadas pelo in-degree do callgraph.
     unreviewed_addrs = [addr for addr, e in entries.items()
                        if e.get("status") == "unreviewed"]
-    for addr in unreviewed_addrs:
-        if int(addr, 16) in [int(a, 16) for a in in_degree.keys()]:
-            # Ajuste: comparação direta de strings lowercase
-            pass
-    # Simpler: ordena por in_degree
     sorted_unreviewed = sorted(
         [(addr, in_degree.get(addr, 0)) for addr in unreviewed_addrs],
         key=lambda x: -x[1]

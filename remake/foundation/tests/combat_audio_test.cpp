@@ -35,6 +35,11 @@ public:
         played.push_back(Played{stem, bus, ch});
         return ch;
     }
+    int play_spatial(const std::string& stem, int channel,
+                     const SpatialRequest& request) override {
+        spatial.push_back(request);
+        return play(stem, SfxBus::Sfx, channel);
+    }
     void stop(int channel) override {
         if (channel >= 0 && channel < 32) busy[static_cast<size_t>(channel)] = false;
         stops.push_back(channel);
@@ -60,6 +65,7 @@ public:
     bool accept = true;
     bool busy[32] = {};
     std::vector<Played> played;
+    std::vector<SpatialRequest> spatial;
     std::vector<int> stops;
     std::vector<SfxBus> bus_stops;
 };
@@ -78,7 +84,131 @@ CombatEvent ev(CombatEventKind kind, int fighter, int source, uint32_t tick, uin
 
 }  // namespace
 
+// A source stub for the frame -> event derivation (the host's adapter is the only other
+// implementation, and the derivation is what the release path shares with it).
+struct SourceStub : CombatEventSource {
+    int count = 4;
+    bool aliveFlags[4] = {true, true, true, true};
+    int fighter_count() const override { return count; }
+    bool alive(int fighter) const override {
+        return fighter >= 0 && fighter < 4 && aliveFlags[fighter];
+    }
+};
+
+// The frame -> event derivation carries the melee voice, the SE and the audited-swing
+// handshake; the cue resolution for those kinds is pinned above, this pins the emit side.
+bool testFrameEvents() {
+    SourceStub source;
+    CombatFrameView view;
+    view.swing_started[0] = true;
+    view.melee_voice[0] = int(VoiceEvent::AttackB);
+    view.melee_voice_alternative[0] = 2;
+    view.sound_effect_id[0] = 60;
+    view.sound_effect_positional[0] = true;
+    view.sound_effect_position[0] = {1.f,2.f,3.f};
+    view.listener_position = {4.f,5.f,6.f};
+    view.listener_forward = {0.f,0.f,-1.f};
+    view.listener_valid = true;
+    const CombatEventList events = combat_events_for_frame(source, view, 7, false);
+    bool sawSwing = false, swingSpoke = false, sawVoice = false, sawSe = false;
+    for (int i = 0; i < events.count; ++i) {
+        const CombatEvent& e = events.events[i];
+        if (e.kind == CombatEventKind::MeleeSwing && e.fighter == 0) {
+            sawSwing = true;
+            swingSpoke = resolve_combat_event(e).has_voice;
+        }
+        if (e.kind == CombatEventKind::MeleeVoice && e.fighter == 0) {
+            sawVoice = true;
+            const CombatCue cue = resolve_combat_event(e);
+            CHECK(cue.has_voice && cue.voice == VoiceEvent::AttackB);
+            CHECK(e.voice_alternative == 2);
+        }
+        if (e.kind == CombatEventKind::SoundEffect && e.fighter == 0) {
+            sawSe = true;
+            const CombatCue cue = resolve_combat_event(e);
+            CHECK(cue.has_se() && cue.se_id == 60);
+            CHECK(cue.se_positional && cue.se_position.x == 1.f && cue.se_position.y == 2.f &&
+                  cue.se_position.z == 3.f);
+            CHECK(cue.se_listener_valid && cue.se_listener_position.x == 4.f &&
+                  cue.se_listener_position.y == 5.f && cue.se_listener_position.z == 6.f);
+            CHECK(cue.se_listener_forward.x == 0.f && cue.se_listener_forward.y == 0.f &&
+                  cue.se_listener_forward.z == -1.f);
+            CHECK(!cue.has_voice);
+        }
+    }
+    CHECK(sawSwing && sawVoice && sawSe);
+    CHECK(swingSpoke);  // no audited flag on this frame: the vocabulary fallback stands
+
+    // With the row's cue policy recovered the swing must go silent, and the body's own
+    // cue is the only voice that frame.
+    CombatFrameView audited = view;
+    audited.melee_voice_audited[0] = true;
+    const CombatEventList auditedEvents = combat_events_for_frame(source, audited, 8, false);
+    bool auditedSwingSpoke = false, auditedVoice = false;
+    for (int i = 0; i < auditedEvents.count; ++i) {
+        const CombatEvent& e = auditedEvents.events[i];
+        if (e.kind == CombatEventKind::MeleeSwing && e.fighter == 0) {
+            CHECK(e.source_voice_audited);
+            auditedSwingSpoke = resolve_combat_event(e).has_voice;
+        }
+        if (e.kind == CombatEventKind::MeleeVoice && e.fighter == 0) auditedVoice = true;
+    }
+    CHECK(!auditedSwingSpoke);
+    CHECK(auditedVoice);
+
+    // A silent frame emits nothing for the fighter.
+    CombatFrameView empty;
+    CHECK(combat_events_for_frame(source, empty, 9, false).count == 0);
+    return true;
+}
+
 int main() {
+    // Spatial-SE adapter: source and listener positions are in world units; the original
+    // sets distanceFactor .01, listener rolloff .0002 and buffer min distance 3. DirectSound
+    // defines inverse-distance rolloff beyond minimum, so this pins unity at min, half at
+    // double that distance, and equal-power pan at the listener's left/right.
+    {
+        SpatialPlayRequest req;
+        req.listener = {};
+        req.listenerForward = {0.f,0.f,1.f};
+        req.minDistance = 3.f;
+        req.rolloffFactor = 1.f; // one for test math; the original stage uses .0005
+        req.source = {0.f,0.f,-3.f};
+        SpatialMix atMin = spatial_mix(req);
+        CHECK(atMin.left > .70f && atMin.left < .72f &&
+              atMin.right > .70f && atMin.right < .72f);
+        CHECK(std::abs(atMin.left*atMin.left + atMin.right*atMin.right - 1.f) < .001f);
+        req.source = {0.f,0.f,-6.f};
+        SpatialMix twice = spatial_mix(req);
+        CHECK(std::abs(twice.left*twice.left + twice.right*twice.right - .25f) < .001f);
+        req.source = {-3.f,0.f,0.f};
+        SpatialMix left = spatial_mix(req);
+        req.source = {3.f,0.f,0.f};
+        SpatialMix right = spatial_mix(req);
+        CHECK(left.left > left.right);
+        CHECK(right.right > right.left);
+        std::vector<int16_t> input{16000,16000};
+        std::vector<int16_t> output;
+        spatialize_s16(input.data(),1,left,output);
+        CHECK(output.size()==2 && output[0] > output[1]);
+    }
+
+    // The rest of the file pins cue dispatch and the SFX bus.
+    CHECK(testFrameEvents());
+    auto renaVoice = ev(CombatEventKind::ShotFired, 0, -1, 77);
+    renaVoice.voice_override = int(VoiceEvent::ShotA);
+    CHECK(resolve_combat_event(renaVoice).voice == VoiceEvent::ShotA);
+    renaVoice.voice_override = int(VoiceEvent::ShotFinal);
+    CHECK(resolve_combat_event(renaVoice).voice == VoiceEvent::ShotFinal);
+    renaVoice.voice_override = int(VoiceEvent::SpecialA);
+    renaVoice.voice_alternative = 2;
+    Recorder renaSink;
+    CombatAudio renaAudio(renaSink);
+    renaAudio.set_fighter_voice(0, "data/voice/rena", false);
+    renaAudio.set_voice_alternatives(0, VoiceEvent::SpecialA, 3);
+    renaAudio.dispatch(renaVoice);
+    CHECK(renaSink.played.size() == 1);
+    CHECK(renaSink.played[0].stem == voice_asset_stem("data/voice/rena", VoiceEvent::SpecialA, false, 2));
     // --- the recovered vocabulary ------------------------------------------
     CHECK(kVoiceEventCount == 40);
     CHECK(std::string(voice_event_name(VoiceEvent::AddAttack)) == "addattack");
@@ -111,7 +241,33 @@ int main() {
           VoiceEvent::AttackC);
     CHECK(resolve_combat_event(ev(CombatEventKind::ShotFired, 1, -1, 10)).voice ==
           VoiceEvent::Fire);
+    CombatEvent auditedSilentShot = ev(CombatEventKind::ShotFired, 1, -1, 11);
+    auditedSilentShot.source_voice_audited = true;
+    CHECK(!resolve_combat_event(auditedSilentShot).has_voice);
+    auditedSilentShot.voice_override = int(VoiceEvent::ShotC);
+    CHECK(resolve_combat_event(auditedSilentShot).has_voice);
+    CHECK(resolve_combat_event(auditedSilentShot).voice == VoiceEvent::ShotC);
     CHECK(resolve_combat_event(ev(CombatEventKind::Hit, 2, 0, 10)).voice == VoiceEvent::Damage);
+    // The melee body's own voice cue: the id IS the vocabulary index, and a row whose cue
+    // policy is recovered silences the swing fallback (MeleeSwing + audited -> no voice).
+    CombatEvent bodyVoice = ev(CombatEventKind::MeleeVoice, 0, -1, 12);
+    bodyVoice.voice_override = int(VoiceEvent::AttackB);
+    CHECK(resolve_combat_event(bodyVoice).has_voice);
+    CHECK(resolve_combat_event(bodyVoice).voice == VoiceEvent::AttackB);
+    bodyVoice.voice_override = int(VoiceEvent::SpecialA);
+    CHECK(resolve_combat_event(bodyVoice).voice == VoiceEvent::SpecialA);
+    bodyVoice.voice_override = -1;
+    CHECK(!resolve_combat_event(bodyVoice).has_voice);
+    CombatEvent auditedSwing = ev(CombatEventKind::MeleeSwing, 0, -1, 12, 0);
+    auditedSwing.source_voice_audited = true;
+    CHECK(!resolve_combat_event(auditedSwing).has_voice);
+    // FUN_0042c8b0/0042c880 request a data/se id — not a voice and not an effect card.
+    CombatEvent bodySe = ev(CombatEventKind::SoundEffect, 0, -1, 12);
+    bodySe.se_override = 60;
+    const CombatCue seCue = resolve_combat_event(bodySe);
+    CHECK(seCue.has_se() && seCue.se_id == 60);
+    CHECK(!seCue.has_voice);
+    CHECK(resolve_combat_event(ev(CombatEventKind::SoundEffect, 0, -1, 12)).se_id == -1);
     CHECK(resolve_combat_event(ev(CombatEventKind::Blocked, 2, 0, 10)).voice ==
           VoiceEvent::Guarded);
     CHECK(resolve_combat_event(ev(CombatEventKind::GuardStart, 2, -1, 10)).voice ==
@@ -207,6 +363,29 @@ int main() {
         CHECK(audio.last_se_id() == 9);
         // The victim's KO line is the victim's own channel, not the attacker's.
         CHECK(rec.played[after_hit].channel == voice_channel_for(2));
+
+        // Rena body SEs using FUN_0042c8b0 route through spatial playback with the
+        // frame's source and listener; non-positional 0042c880 cues stay on the plain SFX path.
+        CombatEvent positionalSe = ev(CombatEventKind::SoundEffect, 0, -1, 105);
+        positionalSe.se_override = 61;
+        positionalSe.se_positional = true;
+        positionalSe.se_position = {1.f,2.f,3.f};
+        positionalSe.se_listener_position = {4.f,5.f,6.f};
+        positionalSe.se_listener_forward = {0.f,0.f,-1.f};
+        positionalSe.se_listener_valid = true;
+        audio.dispatch(positionalSe);
+        CHECK(rec.spatial.size() == 1);
+        CHECK(rec.spatial[0].source.x == 1.f && rec.spatial[0].source.y == 2.f &&
+              rec.spatial[0].source.z == 3.f);
+        CHECK(rec.spatial[0].listener.x == 4.f && rec.spatial[0].listener.y == 5.f &&
+              rec.spatial[0].listener.z == 6.f);
+        CHECK(rec.spatial[0].listenerForward.x == 0.f &&
+              rec.spatial[0].listenerForward.y == 0.f &&
+              rec.spatial[0].listenerForward.z == -1.f);
+        CombatEvent nonpositionalSe = ev(CombatEventKind::SoundEffect, 0, -1, 106);
+        nonpositionalSe.se_override = 62;
+        audio.dispatch(nonpositionalSe);
+        CHECK(rec.spatial.size() == 1);
 
         // Overkill uses SE 10 and the downed line.
         audio.dispatch(ev(CombatEventKind::Overkill, 1, 0, 104));
@@ -329,6 +508,14 @@ int main() {
             engine.set_volumes(v);
             const int ch = engine.play(h, SfxBus::Voice);
             CHECK(ch >= 0);
+            SpatialPlayRequest spatial;
+            spatial.source = {-3.f,0.f,0.f};
+            spatial.listener = {};
+            spatial.listenerForward = {0.f,0.f,1.f};
+            spatial.rolloffFactor = 1.f;
+            const int spatialCh = engine.play_spatial(h, spatial);
+            CHECK(spatialCh >= kSfxFirst && spatialCh <= kSfxLast);
+            CHECK(engine.channel_busy(spatialCh) && engine.sfx_queued_frames(spatialCh) > 0);
             CHECK(engine.channel_busy(ch));
             // The slider moves while the cue is still queued: the gain must follow it.
             v.voice = 25;
@@ -342,8 +529,23 @@ int main() {
             engine.set_volumes(v);
             CHECK(engine.bus_gain_applied(SfxBus::Voice) == 0.0f);
             CHECK(engine.volumes().voice == 25);
+            // A verification mute survives volume changes without overwriting settings
+            // or disabling the queues that the audio policy tests exercise.
+            set_output_muted(true);
+            v.master = 100;
+            engine.set_volumes(v);
+            CHECK(engine.bus_gain_applied(SfxBus::Voice) == 0.0f);
+            CHECK(engine.bus_gain_applied(SfxBus::Ui) == 0.0f);
+            CHECK(engine.bus_gain_applied(SfxBus::Sfx) == 0.0f);
+            CHECK(engine.volumes().master == 100);
+            CHECK(engine.channel_busy(ch));
+            set_output_muted(false);
+            engine.set_volumes(v);
+            CHECK(engine.bus_gain_applied(SfxBus::Voice) > 0.24f);
             engine.stop_bus(SfxBus::Voice);
             CHECK(!engine.channel_busy(ch));
+            engine.stop(spatialCh);
+            CHECK(!engine.channel_busy(spatialCh));
             engine.close();
         } else {
             std::puts("combat_audio_test: no audio device (dummy driver refused), volume "

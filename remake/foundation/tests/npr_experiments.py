@@ -39,11 +39,11 @@ game data is unavailable, so a CI box without a GPU or the install does not repo
 failure.
 """
 import os
-import subprocess
 import sys
 import tempfile
 
-SKIP = 77
+from capture_probe import (CaptureFailed, main_guard, read_ppm, require_asset,
+                           require_install, run_demo)
 
 # The clear colour the scene pass writes (scenes.cpp:736, D3DCOLOR_XRGB(40,42,54)): every
 # pixel that is not this is geometry.
@@ -122,9 +122,8 @@ def noop_check(run, probes, scene, scene_label, failures, tmp):
     for label, on_args, off_args in probes:
         on_path = os.path.join(tmp, "noop_on.ppm")
         off_path = os.path.join(tmp, "noop_off.ppm")
-        if (run(on_path, scene + on_args) is None or run(off_path, scene + off_args) is None):
-            failures.append("the no-op probe '%s' (%s) did not render" % (label, scene_label))
-            continue
+        run(on_path, scene + on_args)
+        run(off_path, scene + off_args)
         probed += 1
         with open(on_path, "rb") as handle:
             on_bytes = handle.read()
@@ -144,38 +143,6 @@ def noop_check(run, probes, scene, scene_label, failures, tmp):
           % (scene_label, probed, len(inert_seen)))
     for label in inert_seen:
         print("    KNOWN INERT %s - %s" % (label, KNOWN_INERT[label]))
-
-
-def run_demo(demo, install, out, args, cwd):
-    cmd = [demo, "--headless", "--install=" + install, "--out=" + out] + args
-    proc = subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                          text=True, timeout=900)
-    if proc.returncode != 0 or "RESULT: ok" not in proc.stdout:
-        return None
-    return proc.stdout
-
-
-def read_ppm(path):
-    with open(path, "rb") as handle:
-        data = handle.read()
-    if not data.startswith(b"P6"):
-        return None
-    fields = []
-    i = 2
-    while len(fields) < 3:
-        while i < len(data) and data[i:i + 1].isspace():
-            i += 1
-        if data[i:i + 1] == b"#":
-            while data[i:i + 1] not in (b"\n", b""):
-                i += 1
-            continue
-        start = i
-        while i < len(data) and not data[i:i + 1].isspace():
-            i += 1
-        fields.append(int(data[start:i]))
-    i += 1
-    w, h, _ = fields
-    return w, h, data[i:i + w * h * 3]
 
 
 def luminance(pixel):
@@ -252,8 +219,9 @@ def mean_rgb(pixels):
 def compare(on_path, off_path):
     """Per-pixel comparison of two frames of the same scene."""
     on, off = read_ppm(on_path), read_ppm(off_path)
-    if on is None or off is None or on[:2] != off[:2]:
-        return None
+    if on[:2] != off[:2]:
+        raise CaptureFailed("frames differ in size: %dx%d vs %dx%d"
+                            % (on[0], on[1], off[0], off[1]))
     w, h, a = off
     _, _, b = on
     stats = {"off_px": 0, "on_px": 0, "added": 0, "lost": 0, "changed": 0,
@@ -296,8 +264,9 @@ def shifted_pixels(on_path, off_path, mask_path):
     """
     on, off = read_ppm(on_path), read_ppm(off_path)
     mask = read_ppm(mask_path)
-    if on is None or off is None or mask is None or on[:2] != off[:2] or on[:2] != mask[:2]:
-        return None
+    if on[:2] != off[:2] or on[:2] != mask[:2]:
+        raise CaptureFailed("frames differ in size: %dx%d, %dx%d, %dx%d"
+                            % (on[0], on[1], off[0], off[1], mask[0], mask[1]))
     w, h, a = off
     _, _, b = on
     _, _, m = mask
@@ -320,9 +289,7 @@ def main():
     demo = os.path.abspath(sys.argv[1])
     install = os.path.abspath(sys.argv[2])
     cwd = os.path.abspath(sys.argv[3]) if len(sys.argv) > 3 else os.getcwd()
-    if not os.path.exists(os.path.join(install, "data")):
-        print("npr_experiments: no game data at %s, skipped" % install)
-        return SKIP
+    require_install(install, "npr_experiments")
     fighter = None
     for name in CHARACTER_DIRS:
         candidate = os.path.join(install, "data", name)
@@ -338,9 +305,9 @@ def main():
             enemy = candidate
             break
     stage = os.path.join(install, "data", "stage01")
-    if fighter is None or not os.path.isdir(stage):
-        print("npr_experiments: no character or stage directory in %s, skipped" % install)
-        return SKIP
+    require_asset(stage, "npr_experiments", "stage01")
+    if fighter is None:
+        raise CaptureFailed("npr_experiments: no character directory in %s" % install)
 
     failures = []
     with tempfile.TemporaryDirectory() as tmp:
@@ -352,17 +319,13 @@ def main():
             if name in cache:
                 return cache[name]
             path = os.path.join(tmp, name + ".ppm")
-            if run_demo(demo, install, path, scene + extra, cwd) is None:
-                return None
+            run_demo(demo, install, path, scene + extra, cwd)
             cache[name] = path
             return path
 
         # --- A. OFF is the default, byte for byte -----------------------------------
         base = capture("base", [])
         off = capture("off", ["--npr=off"])
-        if base is None or off is None:
-            print("npr_experiments: headless renderer unavailable, skipped")
-            return SKIP
         with open(base, "rb") as f:
             base_bytes = f.read()
         with open(off, "rb") as f:
@@ -387,159 +350,134 @@ def main():
         hard = capture("hard", ["--npr=bands:hard,shadow"])
         soft = capture("soft", ["--npr=bands:soft,shadow"])
         three = capture("three", ["--npr=bands:three,shadow"])
-        if hard and soft and three:
-            f_hard, f_soft, f_three = read_ppm(hard), read_ppm(soft), read_ppm(three)
-            wide = capture("softwide", ["--npr=bands:soft,soft:0.3,shadow"])
-            hard_stats = compare(hard, base)
-            soft_stats = compare(soft, base)
-            three_stats = compare(three, base)
-            print("  B bands: changed px hard %d, soft %d, three %d (of %d)"
-                  % (hard_stats["changed"], soft_stats["changed"], three_stats["changed"],
-                     hard_stats["off_px"]))
-            for label, st in (("hard", hard_stats), ("soft", soft_stats),
-                              ("three", three_stats)):
-                # A quarter of the silhouette is the bar: the curve reaches the shadowed
-                # side of every surface, and the number is well above the ~10% the tint
-                # alone would touch if the band term were inert.
-                if st["changed"] < 0.25 * st["off_px"]:
-                    failures.append("the %s band changed only %d of %d pixels: the curve is "
-                                    "not reaching the surface"
-                                    % (label, st["changed"], st["off_px"]))
-            # How much the CURVE ITSELF matters: hard against soft at the default width,
-            # and against a deliberately wide transition. The measured answer is the
-            # finding — at 0.06 the two are nearly the same picture on this character
-            # (2575 px of 72284), and a 0.3 transition is what separates them (14345 px).
-            hs = compare(soft, hard)
-            print("  B bands: hard vs soft (width 0.06) %d px, vs width 0.3 %d px"
-                  % (hs["changed"], compare(wide, hard)["changed"] if wide else -1))
-            if hs["changed"] >= 0.4 * hard_stats["off_px"]:
-                failures.append("hard and soft differ on %d px: the smoothstep is not a "
-                                "short transition at the default width" % hs["changed"])
-            if wide is None or compare(wide, hard)["changed"] < 2 * hs["changed"]:
-                failures.append("a 0.3-wide transition does not separate the curves more "
-                                "than the 0.06 default: the softness parameter is inert")
-            # The third band: it must darken a real region of the shadow side relative to
-            # the same curve without it. (Not "the darkest pixel is darker": the outline
-            # hull and the alpha-tested texels both reach black on their own, so a
-            # minimum-based metric cannot see a band at all.)
-            th = compare(three, hard)
-            print("  B bands: the 3-band arm is darker than the 2-band on %d px"
-                  % th["darker"])
-            if th["darker"] < 0.05 * th["off_px"]:
-                failures.append("the 3-band arm darkened only %d px against the 2-band "
-                                "curve: the third band is not drawing" % th["darker"])
-            # It is not perfectly monotone: the lower edge moves with the generated mask,
-            # so a few pixels near the boundary land in the upper band's transition
-            # instead of the core. The measured share is ~19% of the darkened set, which
-            # is a boundary effect and not the band failing to draw — the check is there
-            # so a curve that LIGHTENS the shadow side overall still fails.
-            if th["brighter"] > 0.3 * th["darker"]:
-                failures.append("the 3-band arm lightened %d px against %d darkened: the "
-                                "third band is not a darker shadow"
-                                % (th["brighter"], th["darker"]))
-        else:
-            failures.append("a band arm did not render")
+        f_hard, f_soft, f_three = read_ppm(hard), read_ppm(soft), read_ppm(three)
+        wide = capture("softwide", ["--npr=bands:soft,soft:0.3,shadow"])
+        hard_stats = compare(hard, base)
+        soft_stats = compare(soft, base)
+        three_stats = compare(three, base)
+        print("  B bands: changed px hard %d, soft %d, three %d (of %d)"
+              % (hard_stats["changed"], soft_stats["changed"], three_stats["changed"],
+                 hard_stats["off_px"]))
+        for label, st in (("hard", hard_stats), ("soft", soft_stats),
+                          ("three", three_stats)):
+            # A quarter of the silhouette is the bar: the curve reaches the shadowed
+            # side of every surface, and the number is well above the ~10% the tint
+            # alone would touch if the band term were inert.
+            if st["changed"] < 0.25 * st["off_px"]:
+                failures.append("the %s band changed only %d of %d pixels: the curve is "
+                                "not reaching the surface"
+                                % (label, st["changed"], st["off_px"]))
+        # How much the CURVE ITSELF matters: hard against soft at the default width,
+        # and against a deliberately wide transition. The measured answer is the
+        # finding — at 0.06 the two are nearly the same picture on this character
+        # (2575 px of 72284), and a 0.3 transition is what separates them (14345 px).
+        hs = compare(soft, hard)
+        print("  B bands: hard vs soft (width 0.06) %d px, vs width 0.3 %d px"
+              % (hs["changed"], compare(wide, hard)["changed"]))
+        if hs["changed"] >= 0.4 * hard_stats["off_px"]:
+            failures.append("hard and soft differ on %d px: the smoothstep is not a "
+                            "short transition at the default width" % hs["changed"])
+        if compare(wide, hard)["changed"] < 2 * hs["changed"]:
+            failures.append("a 0.3-wide transition does not separate the curves more "
+                            "than the 0.06 default: the softness parameter is inert")
+        # The third band: it must darken a real region of the shadow side relative to
+        # the same curve without it. (Not "the darkest pixel is darker": the outline
+        # hull and the alpha-tested texels both reach black on their own, so a
+        # minimum-based metric cannot see a band at all.)
+        th = compare(three, hard)
+        print("  B bands: the 3-band arm is darker than the 2-band on %d px"
+              % th["darker"])
+        if th["darker"] < 0.05 * th["off_px"]:
+            failures.append("the 3-band arm darkened only %d px against the 2-band "
+                            "curve: the third band is not drawing" % th["darker"])
+        # It is not perfectly monotone: the lower edge moves with the generated mask,
+        # so a few pixels near the boundary land in the upper band's transition
+        # instead of the core. The measured share is ~19% of the darkened set, which
+        # is a boundary effect and not the band failing to draw — the check is there
+        # so a curve that LIGHTENS the shadow side overall still fails.
+        if th["brighter"] > 0.3 * th["darker"]:
+            failures.append("the 3-band arm lightened %d px against %d darkened: the "
+                            "third band is not a darker shadow"
+                            % (th["brighter"], th["darker"]))
 
         # --- C. colored shadows -----------------------------------------------------
         nomask = capture("nomask", ["--npr=bands:soft,shadow,mask:0"])
         neutral = capture("neutral", ["--npr=bands:soft,shadow:none,mask:0"])
-        if nomask and neutral:
-            # The control is the SAME curve with a neutral tint, not the baseline: the band
-            # edge and the outline are then identical between the two frames and the only
-            # variable left is the colour, which is what this experiment is about.
-            split = shifted_pixels(nomask, neutral, neutral)
-            if split is None:
-                failures.append("the shadow-tint frames are not comparable PPMs")
-            else:
-                (dark_rgb, n_dark), (light_rgb, n_light) = split
-                print("  C shadow: %d px darkened to rgb(%.0f,%.0f,%.0f), %d lightened to "
-                      "rgb(%.0f,%.0f,%.0f)"
-                      % (n_dark, dark_rgb[0], dark_rgb[1], dark_rgb[2],
-                         n_light, light_rgb[0], light_rgb[1], light_rgb[2]))
-                if n_dark < 0.1 * len(base_px):
-                    failures.append("the shadow tint darkened only %d px: the shadow side "
-                                    "is not being tinted" % n_dark)
-                # The default tint is the violet-grey (0.86, 0.74, 0.78): red must come
-                # out on top, which is what "tinted, not just darkened" means.
-                # The control's darkened pixels, for the same curve with a neutral tint:
-                # the tint has to move the shadowed side's HUE, and comparing the two arms'
-                # shadowed sets is what isolates that from the material colours the
-                # character's own textures carry.
-                ctrl = shifted_pixels(neutral, base, base)
-                if ctrl is None:
-                    failures.append("the neutral-tint control is not comparable")
-                else:
-                    (ctrl_rgb, n_ctrl), _ = ctrl
-                    print("  C shadow: neutral-tint control darkened %d px to "
-                          "rgb(%.0f,%.0f,%.0f)" % (n_ctrl, ctrl_rgb[0], ctrl_rgb[1],
-                                                   ctrl_rgb[2]))
-                    # The default tint is (0.86, 0.74, 0.78): its red is the largest and
-                    # its green the smallest, so the tinted shadow must shift that way
-                    # relative to the neutral one.
-                    if dark_rgb[0] / max(dark_rgb[1], 1e-3) <= ctrl_rgb[0] / max(ctrl_rgb[1], 1e-3):
-                        failures.append("the shadow tint did not raise the red/green ratio "
-                                        "(tinted %.3f against neutral %.3f): the shadowed "
-                                        "side is not tinted"
-                                        % (dark_rgb[0] / max(dark_rgb[1], 1e-3),
-                                           ctrl_rgb[0] / max(ctrl_rgb[1], 1e-3)))
-                    if dark_rgb[0] <= dark_rgb[2]:
-                        failures.append("the darkened pixels' mean rgb(%.0f,%.0f,%.0f) has no "
-                                        "red over blue: the violet-grey tint is not applied"
-                                        % dark_rgb)
-                if n_light > 0.2 * n_dark:
-                    failures.append("%d px got lighter under a shadow-only experiment: the "
-                                    "tint is reaching the lit side" % n_light)
-        else:
-            failures.append("the shadow-tint arm did not render")
+        (dark_rgb, n_dark), (light_rgb, n_light) = shifted_pixels(nomask, neutral,
+                                                                  neutral)
+        print("  C shadow: %d px darkened to rgb(%.0f,%.0f,%.0f), %d lightened to "
+              "rgb(%.0f,%.0f,%.0f)"
+              % (n_dark, dark_rgb[0], dark_rgb[1], dark_rgb[2],
+                 n_light, light_rgb[0], light_rgb[1], light_rgb[2]))
+        if n_dark < 0.1 * len(base_px):
+            failures.append("the shadow tint darkened only %d px: the shadow side "
+                            "is not being tinted" % n_dark)
+        # The default tint is the violet-grey (0.86, 0.74, 0.78): red must come
+        # out on top, which is what "tinted, not just darkened" means.
+        # The control's darkened pixels, for the same curve with a neutral tint:
+        # the tint has to move the shadowed side's HUE, and comparing the two arms'
+        # shadowed sets is what isolates that from the material colours the
+        # character's own textures carry.
+        (ctrl_rgb, n_ctrl), _ = shifted_pixels(neutral, base, base)
+        print("  C shadow: neutral-tint control darkened %d px to "
+              "rgb(%.0f,%.0f,%.0f)" % (n_ctrl, ctrl_rgb[0], ctrl_rgb[1],
+                                       ctrl_rgb[2]))
+        # The default tint is (0.86, 0.74, 0.78): its red is the largest and
+        # its green the smallest, so the tinted shadow must shift that way
+        # relative to the neutral one.
+        if dark_rgb[0] / max(dark_rgb[1], 1e-3) <= ctrl_rgb[0] / max(ctrl_rgb[1], 1e-3):
+            failures.append("the shadow tint did not raise the red/green ratio "
+                            "(tinted %.3f against neutral %.3f): the shadowed "
+                            "side is not tinted"
+                            % (dark_rgb[0] / max(dark_rgb[1], 1e-3),
+                               ctrl_rgb[0] / max(ctrl_rgb[1], 1e-3)))
+        if dark_rgb[0] <= dark_rgb[2]:
+            failures.append("the darkened pixels' mean rgb(%.0f,%.0f,%.0f) has no "
+                            "red over blue: the violet-grey tint is not applied"
+                            % dark_rgb)
+        if n_light > 0.2 * n_dark:
+            failures.append("%d px got lighter under a shadow-only experiment: the "
+                            "tint is reaching the lit side" % n_light)
 
         # --- D. character key light -------------------------------------------------
         keyfix = capture("keyfix", ["--npr=bands:soft,shadow,key:fixed"])
         keycam = capture("keycam", ["--npr=bands:soft,shadow,key:cam"])
-        if keyfix and keycam:
-            fx, cx = compare(keyfix, nomask), compare(keycam, nomask)
-            print("  D key: fixed +%d/-%d px, cam +%d/-%d px (brighter/darker)"
-                  % (fx["brighter"], fx["darker"], cx["brighter"], cx["darker"]))
-            for label, st in (("fixed", fx), ("cam", cx)):
-                if st["brighter"] < 0.05 * st["off_px"]:
-                    failures.append("the %s key light brightened only %d px: the key is "
-                                    "not being added" % (label, st["brighter"]))
-                if st["darker"] > 0.2 * st["brighter"]:
-                    failures.append("the %s key light darkened %d px against %d brightened: "
-                                    "it is replacing the world light, not adding to it"
-                                    % (label, st["darker"], st["brighter"]))
-            if fx["brighter"] and cx["brighter"]:
-                # The two arms must not be the same picture: they light from different
-                # directions, which is the whole reason the experiment has two of them.
-                diff = compare(keycam, keyfix)
-                if diff["changed"] < 0.05 * diff["off_px"]:
-                    failures.append("the fixed and camera-relative key arms differ on only "
-                                    "%d px: they are the same light" % diff["changed"])
-        else:
-            failures.append("a key-light arm did not render")
+        fx, cx = compare(keyfix, nomask), compare(keycam, nomask)
+        print("  D key: fixed +%d/-%d px, cam +%d/-%d px (brighter/darker)"
+              % (fx["brighter"], fx["darker"], cx["brighter"], cx["darker"]))
+        for label, st in (("fixed", fx), ("cam", cx)):
+            if st["brighter"] < 0.05 * st["off_px"]:
+                failures.append("the %s key light brightened only %d px: the key is "
+                                "not being added" % (label, st["brighter"]))
+            if st["darker"] > 0.2 * st["brighter"]:
+                failures.append("the %s key light darkened %d px against %d brightened: "
+                                "it is replacing the world light, not adding to it"
+                                % (label, st["darker"], st["brighter"]))
+        if fx["brighter"] and cx["brighter"]:
+            # The two arms must not be the same picture: they light from different
+            # directions, which is the whole reason the experiment has two of them.
+            diff = compare(keycam, keyfix)
+            if diff["changed"] < 0.05 * diff["off_px"]:
+                failures.append("the fixed and camera-relative key arms differ on only "
+                                "%d px: they are the same light" % diff["changed"])
 
         # --- E. secondary lighting normals ------------------------------------------
         normals = capture("normals", ["--npr=normals"])
-        if normals:
-            st = compare(normals, base)
-            print("  E normals: %d px changed, silhouette added %d lost %d"
-                  % (st["changed"], st["added"], st["lost"]))
-            if st["changed"] < 0.1 * st["off_px"]:
-                failures.append("the secondary normals changed only %d of %d surface px: "
-                                "the stream is not reaching the lighting"
-                                % (st["changed"], st["off_px"]))
-            # The experiment's whole claim: a coarser LIGHTING normal, the same mesh.
-            if st["added"] or st["lost"]:
-                failures.append("the secondary normals moved the silhouette by %d/%d px: "
-                                "they are not lighting-only" % (st["added"], st["lost"]))
-        else:
-            failures.append("the normals arm did not render")
+        st = compare(normals, base)
+        print("  E normals: %d px changed, silhouette added %d lost %d"
+              % (st["changed"], st["added"], st["lost"]))
+        if st["changed"] < 0.1 * st["off_px"]:
+            failures.append("the secondary normals changed only %d of %d surface px: "
+                            "the stream is not reaching the lighting"
+                            % (st["changed"], st["off_px"]))
+        # The experiment's whole claim: a coarser LIGHTING normal, the same mesh.
+        if st["added"] or st["lost"]:
+            failures.append("the secondary normals moved the silhouette by %d/%d px: "
+                            "they are not lighting-only" % (st["added"], st["lost"]))
 
         # --- G/H. specular and rim add light, never remove it ------------------------
         for label, args in (("spec", ["--npr=spec"]), ("rim", ["--npr=rim"])):
             path = capture(label, args)
-            if not path:
-                failures.append("the %s arm did not render" % label)
-                continue
             st = compare(path, base)
             print("  %s %s: %d px changed, +%d/-%d brighter/darker"
                   % (label.upper(), label, st["changed"], st["brighter"], st["darker"]))
@@ -555,54 +493,49 @@ def main():
         toon2 = capture("outline2", ["--toon", "--npr=outline:2"])
         toonhalf = capture("outlinehalf", ["--toon", "--npr=outline:0.4"])
         plain_toon = capture("toononly", ["--toon"])
-        if toon1 and toon2 and toonhalf and plain_toon:
-            with open(toon1, "rb") as f:
-                o1 = f.read()
-            with open(plain_toon, "rb") as f:
-                pt = f.read()
-            if o1 != pt:
-                failures.append("--npr=outline:1 differs from --toon alone: the recovered "
-                                "hull width is not the identity of the experiment")
-            wide = compare(toon2, toon1)
-            thin = compare(toonhalf, toon1)
-            print("  I outline: x2 added %d/lost %d px, x0.4 added %d/lost %d px"
-                  % (wide["added"], wide["lost"], thin["added"], thin["lost"]))
-            if wide["added"] <= wide["lost"]:
-                failures.append("a 2x hull did not widen the rim (+%d/-%d px)"
-                                % (wide["added"], wide["lost"]))
-            if thin["lost"] <= thin["added"]:
-                failures.append("a 0.4x hull did not thin the rim (+%d/-%d px)"
-                                % (thin["added"], thin["lost"]))
-        else:
-            failures.append("an outline-width arm did not render")
+        with open(toon1, "rb") as f:
+            o1 = f.read()
+        with open(plain_toon, "rb") as f:
+            pt = f.read()
+        if o1 != pt:
+            failures.append("--npr=outline:1 differs from --toon alone: the recovered "
+                            "hull width is not the identity of the experiment")
+        wide = compare(toon2, toon1)
+        thin = compare(toonhalf, toon1)
+        print("  I outline: x2 added %d/lost %d px, x0.4 added %d/lost %d px"
+              % (wide["added"], wide["lost"], thin["added"], thin["lost"]))
+        if wide["added"] <= wide["lost"]:
+            failures.append("a 2x hull did not widen the rim (+%d/-%d px)"
+                            % (wide["added"], wide["lost"]))
+        if thin["lost"] <= thin["added"]:
+            failures.append("a 0.4x hull did not thin the rim (+%d/-%d px)"
+                            % (thin["added"], thin["lost"]))
 
         # --- the composed stack is not any single arm -------------------------------
         stack = capture("stack", ["--npr=on"])
-        if stack:
-            st = compare(stack, base)
-            print("  stack: %d px changed (+%d/-%d)" % (st["changed"], st["brighter"],
-                                                        st["darker"]))
-            if st["changed"] < 0.3 * st["off_px"]:
-                failures.append("the composed stack changed only %d px" % st["changed"])
+        st = compare(stack, base)
+        print("  stack: %d px changed (+%d/-%d)" % (st["changed"], st["brighter"],
+                                                    st["darker"]))
+        if st["changed"] < 0.3 * st["off_px"]:
+            failures.append("the composed stack changed only %d px" % st["changed"])
 
         # --- a stage-only frame must not move ---------------------------------------
         stage_args = ["--stage=" + stage, "--no-anim", "--frames=3", "--size=400x300"]
         stage_off = os.path.join(tmp, "stage_off.ppm")
         stage_on = os.path.join(tmp, "stage_on.ppm")
-        if (run_demo(demo, install, stage_off, stage_args + ["--npr=off"], cwd) is not None
-                and run_demo(demo, install, stage_on, stage_args + ["--npr=on"], cwd)
-                is not None):
-            with open(stage_off, "rb") as f:
-                a = f.read()
-            with open(stage_on, "rb") as f:
-                b = f.read()
-            if a != b:
-                failures.append("--npr=on moved a stage-only frame: the experiments are "
-                                "reaching draws they do not cover")
-            else:
-                print("  stage-only frame: identical with the stack on and off")
+        # run_demo raises on a real problem, so this A/B is mandatory: a stage render that
+        # fails is a failure, not a silently skipped third of the suite.
+        run_demo(demo, install, stage_off, stage_args + ["--npr=off"], cwd)
+        run_demo(demo, install, stage_on, stage_args + ["--npr=on"], cwd)
+        with open(stage_off, "rb") as f:
+            a = f.read()
+        with open(stage_on, "rb") as f:
+            b = f.read()
+        if a != b:
+            failures.append("--npr=on moved a stage-only frame: the experiments are "
+                            "reaching draws they do not cover")
         else:
-            print("  stage-only frame: skipped (stage render unavailable)")
+            print("  stage-only frame: identical with the stack on and off")
 
         # --- issue #27: no arm may be a silent no-op --------------------------------
         noop_check(lambda out, args: run_demo(demo, install, out, args, cwd),
@@ -611,7 +544,8 @@ def main():
         # where the product draws them. 120 frames is enough for the fighters to be on
         # screen and keeps the suite's cost down.
         if enemy is None:
-            print("  #27 no-op check (fight scene): skipped, only one character directory")
+            raise CaptureFailed("npr_experiments: the fight-scene no-op check needs a "
+                                "second character directory; %s has only one" % install)
         else:
             fight_scene = ["--stage=" + stage, "--character=" + fighter + ":0",
                            "--enemy=" + enemy + ":0", "--versus", "--camera=arena",
@@ -631,4 +565,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main_guard(main))

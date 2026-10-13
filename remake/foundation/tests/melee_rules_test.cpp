@@ -513,12 +513,12 @@ void testDirectionalDashes(const fs::path& install) {
         skip("directional dash sets (matching item unavailable)");
         return;
     }
-    struct Case { int action; int move; int set; const char* name; bool known; };
+    struct Case { int action; int move; int set; const char* name; };
     const Case cases[] = {
-        {input::Action::Up, 20, 13, "forward", true},
-        {input::Action::Down, 27, 16, "back", true},
-        {input::Action::Left, -1, 0, "left", false},
-        {input::Action::Right, -1, 0, "right", false},
+        {input::Action::Up, 20, 13, "forward"},
+        {input::Action::Down, 27, 16, "back"},
+        {input::Action::Left, 23, 22, "left"},
+        {input::Action::Right, 24, 19, "right"},
     };
     for (const Case& c : cases) {
         xm::Model model;
@@ -531,17 +531,11 @@ void testDirectionalDashes(const fs::path& install) {
         checkInt(static_cast<int>(FighterState::Run), static_cast<int>(f.state()),
                  "double-tap dashes");
         char what[96];
-        if (c.known) {
-            std::snprintf(what, sizeof(what), "%s dash resolves move %d", c.name, c.move);
-            checkInt(c.move, f.dash_move_id(), what);
-            std::snprintf(what, sizeof(what), "%s dash opens on set %d", c.name, c.set);
-            checkInt(c.set, f.anim_set_index(), what);
-        } else {
-            std::snprintf(what, sizeof(what), "%s selector remains unresolved", c.name);
-            checkInt(c.move, f.dash_move_id(), what);
-            checkInt(c.set, f.anim_set_index(), "unresolved side dash uses set 0");
-            check(f.anim_fallback(), "unresolved side dash reports fallback");
-        }
+        std::snprintf(what, sizeof(what), "%s dash resolves move %d", c.name, c.move);
+        checkInt(c.move, f.dash_move_id(), what);
+        std::snprintf(what, sizeof(what), "%s dash opens on set %d", c.name, c.set);
+        checkInt(c.set, f.anim_set_index(), what);
+        check(!f.anim_fallback(), "directional dash binds the equipped animation");
     }
 
     // Changing the direction during an active Run state changes the port's
@@ -581,9 +575,9 @@ void testDirectionalDashes(const fs::path& install) {
         double_tap(f, input::Action::Up);
         checkInt(static_cast<int>(FighterState::Run), static_cast<int>(f.state()),
                  "air double-tap still enters the port dash state");
-        checkInt(-1, f.dash_move_id(), "air dash has no inferred ground move candidate");
-        checkInt(0, f.anim_set_index(), "unmapped air dash uses set 0");
-        check(f.anim_fallback(), "unmapped air dash reports its animation fallback");
+        checkInt(30, f.dash_move_id(), "Rena+0 airborne dispatch binds its source row 30");
+        checkInt(moves.first_set_index(30), f.anim_set_index(), "air dash uses the equipped row-30 tag");
+        check(!f.anim_fallback(), "Rena+0 air dash no longer presents idle fallback");
     }
 }
 

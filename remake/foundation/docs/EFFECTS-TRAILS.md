@@ -1,75 +1,78 @@
-# EFFECTS-TRAILS — finding: no trail geometry ships; documented, not built
+# EFFECTS-TRAILS — item-backed weapon ribbons
 
-> **Status: research for `ROADMAP-PENDING.md` B1, not a gameplay effect path.**
-> Auras and melee-hit bursts draw their real cards by default (B1 commit
-> `c0c2f4e`), shots draw the bullet's own model (issue #32), and `--debug-prims`
-> keeps the all-cube A/B. `--effect` cards
-> exercise only the
-> verification scaffolding (additive Effect pass, cylindrical yaw). Nothing here
-> changes gameplay VFX.
+> **Status:** the shared ribbon renderer is source-aligned, with asset-backed miss
+> witnesses for Rena+0/item001 and Akane+0/item016. Other handler windows and exact
+> blend parity remain open. This corrects the earlier conclusion that the executable
+> had no trail geometry.
 
-No owned files changed. Per the track order (survey `data/trail/` and aura/effect
-meshes first; build only if the assets carry trail data), this records the survey
-and why there is nothing to implement against.
+## Original path
 
-## What `data/trail/` holds
+- `FUN_00433eb0` constructs a prop only when its item row has a nonempty model name.
+  It passes that prop's item texture and the two ribbon anchors into `FUN_0042fe90`.
+  A texture-only item row is not an available prop.
+- `FUN_0042fff0` samples the transformed tip. When it changes, the object shifts its
+  12-point history and grows an active ribbon by five triangles, up to 40. An inactive
+  ribbon decays by two triangles on every update.
+- `FUN_00430120` transforms the item's root and tip through the current prop matrix,
+  then expands the history into spline samples. `FUN_004303b0` draws those samples as
+  a triangle fan using the prop's item-texture handle. Its constructor `FUN_0042fce0`
+  initializes the non-root vertices at U=1; the draw assigns V from the sample index.
+- The separate `data/trail/%02d.bmp` table is loaded by `FUN_00633ca0`, but its
+  connection to this item-backed draw path is not established. The Rena+0 ribbon
+  texture comes from its item row (`kiseki02.cnv`), not a guessed table index.
 
-Six textures, nothing else: `00.cnv` … `05.cnv` (65553 bytes each — the standard
-256x256 packed BMP-backed `.cnv` size; the trail loop below asks for `%02d`, and
-only six indices ship). No `.X` meshes, no `.dat` effect descriptors, no animation
-sets.
+For Rena 0, `FUN_0043ffc0` reasserts prop-active windows every update. Move 300's
+ribbon is active in phase 2, ticks 3–10; moves 301 and 302 use ticks 10–16 and 12–17.
+`move_behavior.h` carries those windows. The prop's active latch is separate from hit
+resolution, so the ribbon appears on a whiff.
 
-## Nothing references trails except the exe's runtime table
+Akane 0 (`FUN_00595460`, item016) binds manager prop slot 0 to item model 2 for
+its normal, dash, and aerial moves. Source windows are move 300 phase 2 ticks 3–10,
+301 ticks 10–16, 302 ticks 10–13, move 330 phase 2 ticks 10–15, 331 phase 2 ticks
+7–16, move 340 ticks 16–24, and 341 ticks 17–19. The trail descriptor keeps the
+manager slot (Prop1 bone) separate from item model 2 (anchors and texture). Current
+real-input dispatch reaches 300, 330 and 340; Akane's neutral 301/302 chain is not
+reachable because the port gates chain admission on its unrelated `MoveProgram`
+registry (tracked in #66). Rows 301/302/331/341 are recorded as source-backed
+descriptors, not claimed as live paths.
 
-- Case-insensitive byte search for `trail` across all of `Higurashi-Daybreak/data/`
-  (effect, aura, bullet, item, stages included): **zero files**. No `.X` material
-  names a trail texture; no `data/effect/*.dat` payload mentions one.
-- `grep -rn -i trail remake/foundation/src research/symbols/`: no trail system, no
-  ribbon builder, no trail render state (only unrelated `trailing-*` tokens and one
-  CP932 `trail byte` comment).
-  Case-insensitive search across `Higurashi-Daybreak/data/` likewise returns zero
-  files.
-- The sole consumer is the original binary itself: `DaybreakDX.exe` contains the
-  format string `data/trail/%02d.bmp`, loaded by **`FUN_00633ca0`** into a runtime
-  texture table — loop `local_124 = 0..9`, `wsprintfA("data/trail/%02d.bmp")`,
-  each handle stored at `param_1 + 0x445c + local_124 * 4` (10 slots), immediately
-  followed by the `data/aura/%02d` table load. The string address is pinned in the
-  corpus (`research/binary_data/strings/filter_bmp.txt`: `006a49b0:
-  "data/trail/%02d.bmp"`).
+## Port and verification
 
-## Why that means "document, don't build"
+`WeaponTrail` keeps world-space samples from the bound item model's anchors, transformed
+through the manager slot's `Bip01_Prop1/2` bone. The renderer gives the dynamic mesh an
+identity model matrix because the fighter and posed bone transforms are already included
+in each point. It creates a trail carrier only when some item slot has a model name,
+matching the source availability gate, and chooses the active item model's texture.
+U stays at the outer edge and V advances along the trail, matching the original vertex
+setup.
 
-Trail geometry is **procedural**: the exe keeps indexed trail textures and (per the
-genre — sword/afterimage ribbons) must extrude ribbon strips from motion history
-at runtime. The producers — sample points, widths, lifetimes, UV scroll, blend
-state — live in unmapped exe logic; no shipped mesh, frame, or animation carries
-them, and the foundation's parsed material
-(`diffuse/power/specular/emissive/texture/effectFile`, `src/assets/xmodel.h`) has no
-field that could drive a ribbon: `effectFile` is a filename binding (empty on every
-shipped asset), and no vertex carries trail parameters. Any `src/render/*` trail
-builder written now would be fan fiction
-dressed as a port: geometry sources, update rules, and the card→texture-index
-mapping would all be guesses with no reference frame to check against.
+`animation_data_test` exercises the shipped Rena+0/item001 combo with a distant dummy.
+The move 300 ribbon first grows at match frame 87 (phase 2, post-step elapsed 4, which
+corresponds to source tick 3), while the match reports no contact. The test compares
+the dynamic mesh endpoints against a separate `xm::Controller::evalWorld` transform of
+the equipped prop anchors, and checks that item001's texture-only second row produces
+no second ribbon. The same whiff is rendered at the final active sample; the original
+screenshots supplied during issue #53 show the broad cyan/blue blade sweep. The port
+uses its existing additive `Pass::Effect` state. `FUN_004303b0` sets D3D draw state,
+but its exact WebGPU blend/fade equivalent is not established, so the capture is a
+shape/color-family match rather than a pixel-parity claim.
 
-Aura/effect meshes corroborate the absence: all 12 surveyed files (`aura/00–05.X`,
-`06.x`, `effect/01,02,04,05,08,14`) are unskinned cards/fans/rings with a single
-`Anim-1` set each (spin-or-scale; durs 240–9600 ticks) — none is a ribbon, none
-carries per-vertex trail parameters, and none names `data/trail/*`.
+`animation_data_test` also drives actual Akane+0 input with a distant dummy. The
+move-300 miss starts its ribbon at frame 92 (phase 2, post-step tick 4/source tick 3),
+dash move 330 at frame 102 (phase 2, post-step tick 11/source tick 10), and aerial
+move 340 at frame 87 (phase 0, post-step tick 17/source tick 16). In each case the test
+checks the active item model is 2 and compares the dynamic trail endpoints with a
+separate evaluation of that model's anchors through the posed Prop1 bone. The source
+phase table also drives AttackA completion when every phase has a valid rig clip and a
+zero `+0x20` auto-advance gate. Missing clips or nonzero gates keep the contact-timer
+fallback, so a gated move cannot be left stuck waiting for an unimplemented handler
+callback (#70).
 
-## What would unblock trail rendering (parent-owned RE, not this track)
+The visible Akane weapon meshes still conflate manager prop slots with item-model
+indices and attach every item model to Prop1; this is independently tracked by #69.
+The trail witness validates its source-selected item016 model-2 anchors/texture and world
+anchors, not corrected visible katana/sheath placement. `data/trail/%02d.bmp` is a
+separate table whose connection to item-backed ribbons remains unestablished.
 
-1. Map the `FUN_00633ca0` table owner (`param_1 + 0x4434…` region) to the fighter/
-   projectile update that writes ribbon vertices — the trail producer.
-   **Narrowed by issue #32**: the shot path is not it. A shot's render is `FUN_005f60b0`
-   (the shot object's vtable `0x6a4814` slot `+0x20`), and it draws the bullet's own `.X`
-   model plus the bullet's per-variant sprite definition and touches no `scene+0x445c`
-   trail slot — see `ROADMAP-PENDING.md` B1 and `src/game/shot_visual.h`. Whatever wrote
-   trail geometry, it is neither the shot's update nor its draw.
-2. Recover the ribbon format (positions per frame history? widths? UV.x along the
-   strip?) and the slot→texture-index rule (which of the 10 slots a trail uses).
-3. Recover the blend/technique for the strip (likely one of the 10 compiled
-   effects from `FUN_0064ff80` — see `EFFECTS-BLEND.md` — but the binding is
-   unobserved on both render paths today).
-
-Until then, `data/trail/*.cnv` remain loadable textures with no geometry to wear
-them, and no trail code exists in `src/render/*` by decision, not omission.
+Remaining checks: source-backed activation windows for other character/weapon handlers
+and whether any producer uses the dedicated `data/trail` table.

@@ -2,6 +2,7 @@
 #include "gameplay/match.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace gameplay {
 
@@ -10,6 +11,7 @@ void Match::reset(const MatchConfig& config, const xm::Model* model[kMatchFighte
                   const xm::Model* tamaMesh, const game::physics::ModelIndex* tamaIndex,
                   const game::physics::MovementCollision* movementCollision) {
     m_config = config;
+    m_primaryListener = 0;
     m_tamaMesh = tamaMesh;
     m_tamaIndex = tamaIndex;
     m_movementCollision = movementCollision;
@@ -37,6 +39,9 @@ void Match::reset(const MatchConfig& config, const xm::Model* model[kMatchFighte
     m_shots.clear();
     m_locks.reset(m_config.fighterCount, m_config.side);
     m_economy.reset();
+    // A fresh round restarts the stream, so a rematch replays the same spread sequence
+    // rather than continuing the previous round's draws.
+    m_rng.reset();
     m_economy.set_round_rules(config.timeLimit, config.balloonSize);
     // Issue #48's F2/F3 flag: battle state like the lock table, so a rematch starts with every
     // COM brain live again — the original sets it to 1 wherever a slot is bound to a battle
@@ -104,6 +109,48 @@ int Match::melee_target(int fighter) const {
     return victim;
 }
 
+// The close-target voice cascade's producer (FUN_0042e110:30-72), for one fighter.
+// Runs before any fighter updates, so every field read is the previous tick's —
+// see the call site for the ordering proof and the two recorded approximations.
+ShootingContext::VoiceFlags Match::meleeVoiceFlags(int fighter,
+                                                   const bool alive[4]) const {
+    ShootingContext::VoiceFlags out;
+    const Fighter& self = m_fighters[fighter];
+    // FUN_004236c0: the reaction state band 100..299. Attacks are not admittable out of
+    // one (`can_act`), so the addattack latch never arms for a row the port can run.
+    const int state = self.action_state();
+    if (state >= 100 && state <= 299) return out;
+    // The attention actor: +0x308, written by both selectors. A valid combat lock
+    // (+0x304, the direct writer) is the most recent one, else the aim selection
+    // (+0x300, the cycle writer, which init starts at 0 for everybody).
+    const int attention = m_locks.valid_target(fighter) ? m_locks.target(fighter)
+                                                       : m_locks.aim_selection(fighter);
+    if (attention < 0 || attention >= m_config.fighterCount || attention == fighter)
+        return out;
+    const Fighter& other = m_fighters[attention];
+    // The original tests whether the attention actor's OWN attention points back here,
+    // read the same way, and ORs in "I hold a combat lock". Either one makes the target
+    // mutually engaged, which is the ordinary-voice arm.
+    const int theirAttention = m_locks.valid_target(attention)
+                                  ? m_locks.target(attention)
+                                  : m_locks.aim_selection(attention);
+    const bool engaged = theirAttention == fighter || m_locks.valid_target(fighter);
+    if (engaged) return out;
+    // The yaw test: the attention actor's effort heading (its body yaw plus its battle
+    // offset, both at +0x5c/+0x64) against this body's own yaw, wrapped to +-180.
+    // The port carries the body yaw only — the offset is one of the two terms the
+    // cascade's own gate cannot supply — so the comparison is on body yaw alone.
+    const float difference = std::remainder(other.facing_yaw() - self.facing_yaw(),
+                                            glm::two_pi<float>());
+    if (std::abs(difference) >= glm::radians(90.f)) return out;
+    out.flags[2] = 1;  // +0xaeb9 — the "speaking the same direction" latch
+    // FUN_0042e950: an attack-or-shot state. Read on the PREVIOUS tick's state, so a
+    // chained attack (the press that arrived while already in a 3xx row) arms the
+    // intercept latch and a fresh press out of locomotion does not.
+    if ((state >= 300 && state <= 379) || state >= 400) out.flags[1] = 1;
+    return out;
+}
+
 MatchFrame Match::step(const fnd::input::PlayerState* p1Input,
                        const fnd::input::PlayerState* p2Input, double dt) {
     const fnd::input::PlayerState* inputs[kMatchFighterCount] =
@@ -143,10 +190,68 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[kMatchFighterCount]
     for (int i = 0; i < m_config.fighterCount; ++i) {
         int target = m_locks.target(i);
         if (target == kNoTarget) target = m_locks.fallback_target(i, aliveAtStart);
+        // Publish the firing-relevant aim state the original reads straight off the
+        // player struct: word +0x848, re-pinned while this fighter's aim target is the
+        // same fighter player 0 is aiming at, is one half of the powered gate every
+        // shoot body tests (the other is the fighter's own Oyashiro special). This is
+        // the aim-selection predicate, not the combat lock's ally hold.
+        ShootingContext context;
+        context.aimHold = m_locks.aim_holds(i);
+        // The scene's single stream: the original draws spread from one global MT19937,
+        // so every participant shares this and the sequence depends on the match's own
+        // draw order (which is deterministic but not the original's).
+        context.rng = &m_rng;
+        // Word +0x278, the AI's own movement decision. Only the COM decision routines write
+        // it, so a human slot leaves it at 0 — publishing an input-derived value for a human
+        // would invent a branch the original never takes. The port's brain expresses the same
+        // intent through the direction keys, so the sign of the applied lateral input is what
+        // the shot bodies would have read.
+        if (ai_enabled(i) && inputs && inputs[i]) {
+            const auto& in = *inputs[i];
+            context.moveLateral = in.down[fnd::input::Right] ? 1
+                                  : in.down[fnd::input::Left] ? -1 : 0;
+        }
+        // The close-target voice cascade's three latches, computed BEFORE any fighter
+        // updates so the state they read is the previous tick's — FUN_00634f60 runs
+        // FUN_0042e110 for a fighter and only then its state handler, in the same
+        // per-fighter loop, so a latch computed after the update would read this tick's
+        // state. FUN_0042e110:30-72, read against FUN_004236c0 / FUN_0042e950:
+        //   * `+0xaec3` arms only from a REACTION state (100..299, FUN_004236c0), and
+        //     the state machine refuses attacks out of one, so no admitted attack can
+        //     carry it — the addattack voice is unreachable through an attack row.
+        //   * the armed pair `+0xaeb9`/`+0xaebe` needs the attention actor NOT to
+        //     attend back (`P->+0x308 != me`) and no combat lock of my own, plus the
+        //     yaw test; `+0xaebe` additionally needs an attack-or-shot state.
+        // Two terms of that producer are not modelled here and are recorded, not
+        // guessed: the per-slot device code at `+0x7d8` (written by FUN_00635d40 from
+        // FUN_00430880, whose button order is unrecovered) only ever DISJUNCTS the
+        // unreachable arm, and the battle-offset yaw `+0x19` that the cascade's
+        // `|offset| < 30` gate reads is not carried by this port at all — so the gate
+        // is evaluated with the offset held at 0 and the distance term alone decides.
+        context.voice = meleeVoiceFlags(i, aliveAtStart);
+        m_fighters[i].set_shooting_context(context);
         m_fighters[i].update(inputs ? inputs[i] : nullptr,
                              (target != kNoTarget && target < m_config.fighterCount)
                                  ? &m_fighters[target] : nullptr,
                              dt, m_movementCollision);
+    }
+
+    if (m_primaryListener >= 0 && m_primaryListener < m_config.fighterCount) {
+        const Fighter& listener = m_fighters[m_primaryListener];
+        out.audioListenerPosition = listener.position() + glm::vec3(0.f, 150.f, 0.f);
+        // IDirectSound3DListener::SetOrientation at raw VA 0x635c20-0x635c6d gets
+        // front=(FUN_0065d050(yaw),0,FUN_0065d010(yaw)), top=(0,1,0). Both helpers
+        // round 0.1-degree indices, take abs(index) and wrap by 3600 before reading the
+        // sine table (FUN_0065cfa0). Apply that lookup exactly; a plain sin/cos formula
+        // differs for negative yaw because of the source's abs step.
+        const float yawDegrees = glm::degrees(listener.facing_yaw());
+        const auto sourceSine = [](float degrees) {
+            const int index = std::abs(static_cast<int>(std::nearbyint(degrees * 10.f))) % 3600;
+            return std::sin(glm::radians(static_cast<float>(index) * .1f));
+        };
+        out.audioListenerForward = glm::normalize(glm::vec3(
+            sourceSine(yawDegrees), 0.f, sourceSine(yawDegrees - 90.f)));
+        out.audioListenerValid = true;
     }
 
     // Melee evaluates EVERY hostile in the swing volume, not one chosen opponent: a
@@ -159,18 +264,41 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[kMatchFighterCount]
             if (m_config.side[i] == m_config.side[j]) continue;      // allies excluded
             if (!m_fighters[j].is_alive()) continue;
             if (m_fighters[i].already_hit_this_swing(j)) continue;   // once per swing
+            // The guard read must happen BEFORE try_melee_hit: the damage call
+            // inside it can stun the victim out of Guard this same tick, and the
+            // attacker's 392 exit (FUN_0042c7b0() bit 2) reads the guarded state of
+            // the strike's landing frame, not of a post-stun victim.
+            const bool guarded = m_fighters[j].state() == FighterState::Guard;
             if (m_fighters[i].try_melee_hit(m_fighters[j], m_movementCollision)) {
-                m_fighters[i].note_melee_hit(j);
+                m_fighters[i].note_melee_hit(j, guarded);
                 out.meleeHit[i] = true;
                 out.meleeVictim[i] = j;
                 // The victim's own state at the landing frame decides the block report
-                // (issue #16); it is read here, before anything can change it this tick.
-                if (m_fighters[j].state() == FighterState::Guard) out.blocked[j] = true;
+                // (issue #16).
+                if (guarded) out.blocked[j] = true;
             }
         }
     }
 
     for (int i = 0; i < m_config.fighterCount; ++i) {   // scenes.cpp:689-696
+        out.sourceShotVoiceAudited[i] = m_fighters[i].source_shot_voice_audited();
+        const auto voice = m_fighters[i].take_shooting_voice();
+        out.shotVoice[i] = voice.event;
+        out.shotVoiceAlternative[i] = voice.alternative;
+        // The melee voice and effect cues drain the same way (FUN_004223d0/422490
+        // and FUN_0042c8b0/2c880's per-tick latches).
+        const auto meleeVoice = m_fighters[i].take_melee_voice();
+        out.meleeVoice[i] = meleeVoice.event;
+        out.meleeVoiceAlternative[i] = meleeVoice.alternative;
+        out.sourceMeleeVoiceAudited[i] = m_fighters[i].source_melee_voice_audited();
+        const auto sound = m_fighters[i].take_sound_effect();
+        out.soundEffectId[i] = sound.id;
+        out.soundEffectPositional[i] = sound.positional;
+        out.soundEffectPosition[i] = sound.position;
+        const auto effect = m_fighters[i].take_effect();
+        out.effectId[i] = effect.id;
+        out.effectYaw[i] = effect.yaw;
+        out.effectPitch[i] = effect.pitch;
         for (PendingShot shot = m_fighters[i].take_pending_shot(); shot.armed;
              shot = m_fighters[i].take_pending_shot()) {
             if (m_fighters[i].is_alive() &&

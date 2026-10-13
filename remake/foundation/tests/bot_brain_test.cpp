@@ -26,6 +26,7 @@
 #include "gameplay/match.h"
 #include "gameplay/weapon_definition.h"
 #include "combo_fixture.h"
+#include "synthetic_combo.h"
 
 #include <algorithm>
 #include <cmath>
@@ -87,113 +88,9 @@ void skip(const char* name) {
 // resolver selects (300 ground / 301 charged / 302), with rena 300's recovered
 // hit entry (frame 4, radius 20) and a follower at frame 7 to bound the window.
 // ---------------------------------------------------------------------------
-void putU32(std::vector<uint8_t>& b, int v) {
-    const uint32_t u = static_cast<uint32_t>(v);
-    for (int i = 0; i < 4; ++i) b.push_back(static_cast<uint8_t>((u >> (8 * i)) & 0xffu));
-}
-void putF32(std::vector<uint8_t>& b, float v) {
-    int i = 0;
-    std::memcpy(&i, &v, 4);
-    putU32(b, i);
-}
-void putName(std::vector<uint8_t>& b, const char* s, int width) {
-    const size_t n = std::strlen(s);
-    for (int i = 0; i < width; ++i)
-        b.push_back(i < static_cast<int>(n) ? static_cast<uint8_t>(s[i]) : 0u);
-}
-
-struct SynthEntry {
-    const char* name = "";
-    int activeFrame = 0;
-    int hitRadius = 0;
-    int hpDamage = 0;       // synthetic neutral pool damage (base power is twice this)
-    int defenderHitstun = 0;  // combat[10]
-};
-
-void addPhase(std::vector<uint8_t>& b, int setIndex, const std::vector<SynthEntry>& entries) {
-    putU32(b, setIndex);
-    putU32(b, static_cast<int>(entries.size()));
-    for (const SynthEntry& e : entries) {
-        putName(b, e.name, 30);
-        putU32(b, e.activeFrame);
-        putF32(b, 0.f);
-        putF32(b, 0.f);
-        putF32(b, 0.f);
-        putU32(b, e.hitRadius);
-        int combat[20] = {0};
-        combat[0] = e.hpDamage * 2;
-        combat[10] = e.defenderHitstun;
-        for (int c : combat) putU32(b, c);
-        putU32(b, 0);
-        putU32(b, 0);
-        putU32(b, 0);
-        putF32(b, 0.f);
-        putF32(b, 0.f);
-        putF32(b, 0.f);
-    }
-}
-
-using SynthPhase = std::pair<int, std::vector<SynthEntry>>;
-
-SynthEntry prop(const char* name, int frame, int radius, int hpDamage, int hitstun) {
-    SynthEntry e;
-    e.name = name;
-    e.activeFrame = frame;
-    e.hitRadius = radius;
-    e.hpDamage = hpDamage;
-    e.defenderHitstun = hitstun;
-    return e;
-}
-
-void addMove(std::vector<uint8_t>& b, int id, int cancelThreshold,
-             const std::vector<SynthPhase>& phases) {
-    putU32(b, id);
-    putU32(b, 0);
-    putU32(b, cancelThreshold);
-    putU32(b, static_cast<int>(phases.size()));
-    for (const auto& p : phases) addPhase(b, p.first, p.second);
-}
-
-// The move table FUN_0041e180 reads: header, weapon id at file offset 0x114, moves.
-std::vector<uint8_t> renaMoveTable() {
-    std::vector<uint8_t> b;
-    putU32(b, 0x00010000);                 // tag
-    putName(b, "data/rena/00.X", 0x104);   // 260-byte model path block
-    putU32(b, 0);
-    putU32(b, 0);
-    putU32(b, 0);
-    putU32(b, 1);                          // header[3] = the table's weapon id (0x114)
-    putU32(b, 0);
-    putU32(b, 0);
-    putU32(b, 4);                          // move count
-    const SynthEntry pose = prop("", 0, 0, 0, 0);
-    addMove(b, 10, 0, {SynthPhase{1, {pose}}});                        // walk
-    addMove(b, 20, 8, {SynthPhase{13, {pose}},                         // dash
-                       SynthPhase{14, {pose}},
-                       SynthPhase{15, {pose}}});
-    // rena move 300: the hit goes live on frame 4 at radius 20 and the next effect
-    // bounds the window at 7 (the shipped values, melee_rules_test's anchor).
-    addMove(b, 300, 12, {SynthPhase{31, {pose, prop("Prop1", 4, 20, 750, 10),
-                                       prop("Whiff", 7, 0, 0, 0)}}});
-    addMove(b, 301, 12, {SynthPhase{33, {pose, prop("Prop1", 7, 20, 1500, 12),
-                                       prop("Whiff", 9, 0, 0, 0)}}});
-    putU32(b, 124);
-    for (int i = 0; i < 124; ++i) {
-        putU32(b,0); putU32(b,0); putU32(b,0);
-    }
-    return b;
-}
-
-std::unique_ptr<gameplay::WeaponDefinition> rena1Weapon() {
-    auto w = std::make_unique<gameplay::WeaponDefinition>();
-    w->id = 1;
-    w->slotCount = 2;
-    w->bulletCount = 0;
-    w->magazines[0] = gameplay::MagazineDefinition{6, 2, 300, 0, 60, 1};
-    w->magazines[1] = gameplay::MagazineDefinition{2, 2, 300, 0, 180, 2};
-    return w;
-}
-
+// The shared synthetic combo: bot tests must run with no game data, and AGENTS rule 7
+// makes an unequipped Match a false claim, so the pair comes from synthetic_combo.h.
+// Fully qualified at the call sites: `auto weapon = test::synthetic::weapon();` would self-initialise.
 // One "Rena 0" fighter, settled out of the 60-frame BattleStart pose.
 Fighter makeFighter(const gameplay::WeaponDefinition* weapon,
                     const gameplay::CharacterMoves* moves, const glm::vec3& at,
@@ -401,8 +298,8 @@ RunResult runSolo(BotBrain& brain, Fighter& self, Fighter& enemy, int ticks,
 
 void testAvailability() {
     section("no unavailable move is ever requested");
-    auto weapon = rena1Weapon();
-    std::vector<uint8_t> table = renaMoveTable();
+    auto weapon = test::synthetic::weapon();
+    std::vector<uint8_t> table = test::synthetic::moveTable();
     // Heap: CharacterMoves is ~10 MB (512 moves x 8 phases x 24 entries).
     auto moves = std::make_unique<gameplay::CharacterMoves>();
     std::string err;
@@ -436,24 +333,22 @@ void testAvailability() {
 
 void testEmptyAmmoIsNotSpammed() {
     section("an empty magazine is waited out, not hammered");
-    auto weapon = rena1Weapon();
-    Fighter self = makeFighter(weapon.get(), nullptr, glm::vec3(0, 0, 0));
-    Fighter enemy = makeFighter(weapon.get(), nullptr, glm::vec3(0, 0, 400));
-    // Drain both pools by firing as fast as the gates allow. The tap pool refills one
-    // shot per second, so this leaves the fighter reloading and nearly dry.
-    input::PlayerState in;
-    for (int i = 0; i < 40; ++i) {
-        in.down[input::Action::Shoot] = true;
-        input::compute_edges(in);
-        self.update(&in, &enemy, 1.0 / 64.0);
-        input::PlayerState up;
-        input::compute_edges(up);
-        self.update(&up, &enemy, 1.0 / 64.0);
-    }
+    auto weapon = test::synthetic::weapon();
+    // Controlled empty stocks isolate refusal policy from refill/battle pacing.
+    weapon->magazines[0].num = weapon->magazines[1].num = 0;
+    const auto table = test::synthetic::moveTable();
+    auto moves = std::make_unique<gameplay::CharacterMoves>();
+    std::string error;
+    check(moves->parse(table.data(), table.size(), error), "empty-stock Rena 0 move fixture parses");
+    moves->set_character_index(0);
+    Fighter self = makeFighter(weapon.get(), moves.get(), glm::vec3(0, 0, 0));
+    Fighter enemy = makeFighter(weapon.get(), moves.get(), glm::vec3(0, 0, 400));
+
     check(!self.can_fire(gameplay::ShotTier::Tap) ||
               !self.can_fire(gameplay::ShotTier::Yellow),
           "the fighter really is out of firable tiers");
 
+    input::PlayerState in;
     BotBrain brain;
     brain.reset(77);
     int heldWhileBlocked = 0;
@@ -480,7 +375,7 @@ void testEmptyAmmoIsNotSpammed() {
 
 void testGuardExhaustion() {
     section("guard exhaustion and stamina are respected");
-    auto weapon = rena1Weapon();
+    auto weapon = test::synthetic::weapon();
     Fighter self = makeFighter(weapon.get(), nullptr, glm::vec3(0, 0, 0));
     Fighter enemy = makeFighter(weapon.get(), nullptr, glm::vec3(0, 0, 200));
     // Hold block until the stamina bar is empty and the recovery lock arms.
@@ -516,7 +411,7 @@ void testGuardExhaustion() {
 
 void testDodge() {
     section("defensive reaction to an incoming attack");
-    auto weapon = rena1Weapon();
+    auto weapon = test::synthetic::weapon();
     Fighter self = makeFighter(weapon.get(), nullptr, glm::vec3(0, 0, 0));
     Fighter enemy = makeFighter(weapon.get(), nullptr, glm::vec3(0, 0, 300));
     BotBrain brain;
@@ -582,8 +477,8 @@ void testWallRecovery() {
     game::physics::MovementCollision collision;
     collision.setMeshes(&stage, &stage);
 
-    auto weapon = rena1Weapon();
-    std::vector<uint8_t> table = renaMoveTable();
+    auto weapon = test::synthetic::weapon();
+    std::vector<uint8_t> table = test::synthetic::moveTable();
     auto moves = std::make_unique<gameplay::CharacterMoves>();
     std::string err;
     moves->parse(table.data(), table.size(), err);
@@ -646,8 +541,8 @@ struct MatchRig {
         }
         // Balloon capacity is per SIDE (MatchConfig::balloonSize has two entries).
         config.balloonSize[0] = config.balloonSize[1] = balloon;
-        m_weapon = rena1Weapon();
-        m_table = renaMoveTable();
+        m_weapon = test::synthetic::weapon();
+        m_table = test::synthetic::moveTable();
         std::string err;
         if (!m_moves->parse(m_table.data(), m_table.size(), err)) std::puts(err.c_str());
         for (int i = 0; i < 4; ++i) {

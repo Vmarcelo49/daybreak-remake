@@ -1,5 +1,6 @@
 #include "ui/caption.h"
 #include <fstream>
+#include <filesystem>
 #include <iterator>
 #include <SDL3/SDL.h>
 
@@ -8,11 +9,11 @@ namespace {
 std::vector<uint8_t> fontBytes(const char* file) {
     if (!file || !*file) return {};
     for (auto roots = fontSearchRoots(); *roots; ++roots) {
-        std::ifstream stream(std::string(*roots) + file, std::ios::binary);
+        std::ifstream stream(std::filesystem::u8path(std::string(*roots) + file), std::ios::binary);
         if (stream) return {std::istreambuf_iterator<char>(stream), {}};
     }
     if (const char* base = SDL_GetBasePath()) {
-        std::ifstream stream(std::string(base)+"assets/fonts/"+file,std::ios::binary);
+        std::ifstream stream(std::filesystem::u8path(std::string(base)+"assets/fonts/"+file),std::ios::binary);
         if (stream) return {std::istreambuf_iterator<char>(stream), {}};
     }
     return {};

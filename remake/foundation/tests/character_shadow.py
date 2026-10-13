@@ -35,11 +35,11 @@ game data is unavailable, so a CI box without a GPU or the install does not repo
 false failure.
 """
 import os
-import subprocess
 import sys
 import tempfile
 
-SKIP = 77
+from capture_probe import (CaptureFailed, main_guard, read_ppm, require_asset,
+                           require_install, run_demo)
 
 # 960x540 is the split-screen size the toon row's test also uses: four 480x270 cells, big
 # enough that a fighter's shadow is tens of pixels across.
@@ -59,38 +59,6 @@ STAGE_ARGS = ["--stage={stage}", "--no-anim", "--frames=3", "--size=400x300"]
 MAX_DROP = 153
 
 
-def run_demo(demo, install, out, args, cwd):
-    cmd = [demo, "--headless", "--install=" + install, "--out=" + out] + args
-    proc = subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                          text=True, timeout=900)
-    if proc.returncode != 0 or "RESULT: ok" not in proc.stdout:
-        return None
-    return proc.stdout
-
-
-def read_ppm(path):
-    with open(path, "rb") as handle:
-        data = handle.read()
-    if not data.startswith(b"P6"):
-        return None
-    fields = []
-    i = 2
-    while len(fields) < 3:
-        while i < len(data) and data[i:i + 1].isspace():
-            i += 1
-        if data[i:i + 1] == b"#":
-            while data[i:i + 1] not in (b"\n", b""):
-                i += 1
-            continue
-        start = i
-        while i < len(data) and not data[i:i + 1].isspace():
-            i += 1
-        fields.append(int(data[start:i]))
-    i += 1
-    w, h, _ = fields
-    return w, h, data[i:i + w * h * 3]
-
-
 def measure(on_path, off_path):
     """Darkening statistics between two frames of the same scene.
 
@@ -103,8 +71,9 @@ def measure(on_path, off_path):
     """
     on = read_ppm(on_path)
     off = read_ppm(off_path)
-    if on is None or off is None or on[:2] != off[:2]:
-        return None
+    if on[:2] != off[:2]:
+        raise CaptureFailed("frames differ in size: %dx%d vs %dx%d"
+                            % (on[0], on[1], off[0], off[1]))
     w, h, a = off
     _, _, b = on
     stats = {"changed": 0, "darker": 0, "brighter": 0, "max_drop": 0,
@@ -136,13 +105,9 @@ def main():
     demo = os.path.abspath(sys.argv[1])
     install = os.path.abspath(sys.argv[2])
     cwd = os.path.abspath(sys.argv[3]) if len(sys.argv) > 3 else os.getcwd()
-    if not os.path.exists(os.path.join(install, "data")):
-        print("character_shadow: no game data at %s, skipped" % install)
-        return SKIP
+    require_install(install, "character_shadow")
     stage = os.path.join(install, "data", "stage01")
-    if not os.path.isdir(stage):
-        print("character_shadow: no stage01 in %s, skipped" % install)
-        return SKIP
+    require_asset(stage, "character_shadow", "stage01")
 
     failures = []
     with tempfile.TemporaryDirectory() as tmp:
@@ -152,9 +117,7 @@ def main():
         on2 = os.path.join(tmp, "on2.ppm")
         for path, extra in ((default, []), (off, ["--no-shadows"]),
                             (on, ["--shadows"]), (on2, ["--shadows"])):
-            if run_demo(demo, install, path, BATTLE_ARGS + extra, cwd) is None:
-                print("character_shadow: headless renderer unavailable, skipped")
-                return SKIP
+            run_demo(demo, install, path, BATTLE_ARGS + extra, cwd)
         with open(default, "rb") as f:
             default_bytes = f.read()
         with open(off, "rb") as f:
@@ -169,9 +132,6 @@ def main():
             failures.append("two --shadows runs of the same recipe differ: the frame is not "
                             "deterministic, so nothing below can be trusted")
         stats = measure(on, off)
-        if stats is None:
-            print("character_shadow: captures are not comparable PPMs, skipped")
-            return SKIP
         share = 100.0 * stats["changed"] / stats["total"]
         print("  4-view battle: %d changed px (%.2f%% of the frame), %d darker, %d brighter, "
               "largest channel drop %d, per view %s"
@@ -208,30 +168,24 @@ def main():
         stage_off = os.path.join(tmp, "stage_off.ppm")
         stage_on = os.path.join(tmp, "stage_on.ppm")
         args = [a.format(stage=stage) for a in STAGE_ARGS]
-        if (run_demo(demo, install, stage_off, args + ["--no-shadows"], cwd) is not None and
-                run_demo(demo, install, stage_on, args + ["--shadows"], cwd) is not None):
-            with open(stage_off, "rb") as f:
-                stage_off_bytes = f.read()
-            with open(stage_on, "rb") as f:
-                stage_on_bytes = f.read()
-            stage_px = read_ppm(stage_off)
-            if stage_px is None:
-                failures.append("the stage-only captures are not comparable PPMs")
-            else:
-                moved = 0
-                _, _, a = stage_px
-                b = read_ppm(stage_on)[2]
-                for i in range(0, len(a), 3):
-                    if a[i:i + 3] != b[i:i + 3]:
-                        moved += 1
-                print("  stage-only frame: %d of %d px moved by --shadows"
-                      % (moved, len(a) // 3))
-                if moved:
-                    failures.append("--shadows moved %d pixels of a frame with no fighters: "
-                                    "the receiver is darkening geometry no caster covers"
-                                    % moved)
-        else:
-            print("  stage-only frame: skipped (stage render unavailable)")
+        # No `is not None` guard: run_demo raises on a real problem, so a stage render
+        # that fails is a failure here rather than a silently skipped third of the suite.
+        run_demo(demo, install, stage_off, args + ["--no-shadows"], cwd)
+        run_demo(demo, install, stage_on, args + ["--shadows"], cwd)
+        with open(stage_off, "rb") as f:
+            stage_off_bytes = f.read()
+        with open(stage_on, "rb") as f:
+            stage_on_bytes = f.read()
+        moved = 0
+        _, _, a = read_ppm(stage_off)
+        b = read_ppm(stage_on)[2]
+        for i in range(0, len(a), 3):
+            if a[i:i + 3] != b[i:i + 3]:
+                moved += 1
+        print("  stage-only frame: %d of %d px moved by --shadows" % (moved, len(a) // 3))
+        if moved:
+            failures.append("--shadows moved %d pixels of a frame with no fighters: "
+                            "the receiver is darkening geometry no caster covers" % moved)
 
     if failures:
         print("character_shadow: FAIL")
@@ -245,4 +199,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main_guard(main))
