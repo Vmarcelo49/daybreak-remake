@@ -1,9 +1,9 @@
-# daybreak-decomp
+# daybreak-remake
 
 Decompilation **and** remake of **Higurashi Daybreak** (`DaybreakDX.exe`,
 Twilight Frontier / 07th Expansion).
 
-## Which half do you want?
+## Two halves
 
 | | `remake/` — the product | `research/` — the evidence |
 |---|---|---|
@@ -14,7 +14,7 @@ Twilight Frontier / 07th Expansion).
 ## Layout
 
 ```
-daybreak-decomp/
+daybreak-remake/
 ├── AGENTS.md / README.md               the two-halves map + hard rules (read first), then this map
 ├── INDEX.md / INDEX.json               generated index (python3 .github/scripts/generate_index.py; index Action on push)
 ├── docs/                               English docs
@@ -43,23 +43,10 @@ daybreak-decomp/
 └── .github/                            index Action
 ```
 
-## Current playable port
+## Current status
 
-The front end connects title, character/weapon/hypermode/controller selection,
-stage and battle settings, VS/countdown, live 1v1 **and four-fighter 2v2**
-battles, results and rematch. Runtime captions use Gyrotrope Black with a
-Japanese fallback. Battle camera and HUD adapt automatically to the viewport,
-including ultrawide; menu art stays in 4:3 with black bars. Options includes
-native resolution/fullscreen selection, audio volumes and keyboard/gamepad
-rebinding, all persisted. The four-fighter roster, the recovered victory quote
-and the earned-title report landed with issues #13/#20.
-
-Renderer option row 2 (texture resolution) and original result-title/quote
-fidelity remain open; rows 0–1 (toon shading and character shadows) are live.
-See `remake/foundation/docs/ROADMAP-PENDING.md` for current status,
-`remake/foundation/docs/RELEASE-CHECKLIST.md` for the Linux release gate, and
-`remake/docs/decisions.md` for binding decisions. Read the checklist for
-the current native test count; Linux, Windows cross-build and web builds pass.
+Intro movie, Main menu, character select, and the overall program loop works
+Combat and animations are broken on almost all the cast
 
 ## Original binary summary
 
@@ -72,42 +59,6 @@ the current native test count; Linux, Windows cross-build and web builds pass.
 | Network | DirectPlay 8 (documented, not ported) |
 | Binary hygiene | Clean — no packing, no anti-debug |
 
-## Quick commands
-
-```bash
-# RE pipeline (after dump changes)
-python3 research/tools/ingest.py --full
-python3 research/tools/generate_recomp.py
-python3 research/tools/coverage_report.py   # run before committing
-
-# Search the evidence offline
-rg "pattern" research/binary_data/strings/
-rg -l "pattern" research/decompiled/
-
-# Rebuild the repo index
-python3 .github/scripts/generate_index.py
-
-# Build the product (deps once, then a target)
-./remake/foundation/build.sh deps                 # pinned third-party sources
-./remake/foundation/build.sh linux                # also: windows, web, all
-./remake/foundation/build/linux/foundation_demo --frames=300  # plain triangle
-./remake/foundation/build/linux/foundation_demo --install=Higurashi-Daybreak --screen=title
-ctest --test-dir remake/foundation/build/linux --output-on-failure
-
-# Host toolchain + fonts only (optional, no sudo)
-./remake/scripts/fetch_deps.sh
-
-# Drive the original under Wine to capture new ground-truth prints (see remake/docs/reference/)
-./tools/launch_original.sh
-```
-
-## Conventions
-
-Commit prefixes (`feat/fix/docs/chore/refactor/recomp:/symbols:`), C11 research
-style and C++17 product rules are defined in `docs/conventions.md` and
-`AGENTS.md`. Never hand-edit `research/recomp/`; `research/symbols/` needs
-human review for promotion. Run `coverage_report.py` before committing research
-changes and review both unstaged and staged diffs before every commit.
 
 ## License
 
