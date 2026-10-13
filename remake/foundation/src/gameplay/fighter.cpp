@@ -1879,9 +1879,9 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             set_hyper_gauge(m_gauge + rule.value / 1000.f);
             break;
         case MoveOp::Recharge:
-            // Recovery +0x834 refill is +40 when actor +0x1fd is clear or +5 otherwise.
-            // That aliases byte +0x7f4, seeded from the scene's stage-replay delay; its
-            // overlap with reachable Rena recovery is unresolved, so this rule models +40.
+            // Recovery +0x834 refill is +40 when actor word +0x1fd is clear or +5
+            // otherwise. The word is actor-relative byte +0x7f4; its producer and overlap
+            // with reachable Rena recovery are unresolved. Scene-relative +0x7f4 is distinct.
             m_chargeGauge = std::min(1000, m_chargeGauge + static_cast<int>(rule.value));
             break;
         case MoveOp::MeleeVoice: {

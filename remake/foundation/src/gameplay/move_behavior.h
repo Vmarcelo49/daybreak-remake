@@ -108,10 +108,10 @@ enum class MoveOp { Speed, Decelerate, Turn, Approach, Launch, Hold, ActionCamer
                     PhaseExit,   // unconditional enter_phase(value) inside the window
                     ClockSkip,   // advance the phase clock value extra ticks this update
                     Gauge,       // add value thousandths to the special gauge (recovery)
-                    // The recovery bodies refill +0x834 by 40 when actor word +0x1fd is
-                    // clear or 5 otherwise. That aliases byte +0x7f4, seeded from the
-                    // scene's stage-replay delay; the port models the +40 branch, with
-                    // overlap into reachable Rena recovery still unresolved.
+                    // Recovery bodies refill +0x834 by 40 when actor word +0x1fd is clear
+                    // or 5 otherwise. It is actor-relative byte +0x7f4; its producer and
+                    // reachability during Rena recovery are unresolved. Do not conflate it
+                    // with scene-relative scene+0x7f4; this port models +40 only.
                     Recharge,    // add value thousandths to the shot gauge, capped at 1000
                     // The melee voice cue (FUN_004223d0/FUN_00422490 with the small event
                     // ids): value is the ordinary event, rule.voice carries the entry
@@ -502,12 +502,11 @@ inline constexpr MoveRule kRenaRules[] = {
     {402,0,0,0,MoveOp::Gravity,.5f},
     {402,-1,1,9999,MoveOp::LandExit,403.f},
     // 403/409/469 recovery bodies (FUN_0043ffc0 cases 0x193/0x199/0x1d5): speed,
-    // vertical, gravity and movement offset zeroed EVERY tick (the cases carry no
-    // tick guard), and the shot gauge (+0x834) refills +40 when actor word +0x1fd is
-    // zero or +5 otherwise, capped at 1000. The +0x1fd field aliases actor byte +0x7f4,
-    // seeded from the scene's stage-selected replay-delay counter; whether it can remain
-    // nonzero into a reachable Rena recovery is unresolved, so the implemented rule models
-    // the normal +40 branch pending that producer/ordering proof. Completion returns to idle.
+    // vertical, gravity and movement offset zeroed EVERY tick (the cases carry no tick
+    // guard), and shot gauge +0x834 refills +40 if actor word +0x1fd is clear or +5
+    // otherwise, capped at 1000. It is actor-relative byte +0x7f4; its producer and
+    // reachability during Rena recovery are unresolved, and scene-relative scene+0x7f4 is
+    // distinct. The implemented rule models +40. Completion returns to idle.
     {403,-1,0,9999,MoveOp::Speed,0.f},
     {403,-1,0,9999,MoveOp::Vertical,0.f},
     {403,-1,0,9999,MoveOp::Gravity,0.f},
@@ -955,8 +954,9 @@ inline constexpr MoveRule kRena1Rules[] = {
      origin_attachment_slot(0),aim_fixed_angles(0.f,0.f)},
     // 403/469 recovery bodies (FUN_00448220 cases 0x193/0x1d5): motion zeroed EVERY
     // tick (no tick guard); the shot-gauge refill is +40 when actor word +0x1fd is clear,
-    // +5 otherwise, cap 1000. Its +0x7f4 stage replay-delay relationship and overlap with
-    // reachable recovery remain unresolved; the rule below models the +40 branch.
+    // +5 otherwise, cap 1000. The actor-relative field's producer and reachability during
+    // Rena recovery are unresolved; scene-relative scene+0x7f4 is distinct. The rule below
+    // models the +40 branch.
     {403,-1,0,9999,MoveOp::Speed,0.f},
     {403,-1,0,9999,MoveOp::Vertical,0.f},
     {403,-1,0,9999,MoveOp::Gravity,0.f},
@@ -1231,8 +1231,9 @@ inline constexpr MoveRule kRena2Rules[] = {
      origin_attachment_slot(0),aim_stored_pitch(),{},kSpreadRingAir,10},
     // 403/469 recovery bodies (FUN_00438310 cases 0x193/0x1d5): motion zeroed EVERY
     // tick (no tick guard); the shot-gauge refill is +40 when actor word +0x1fd is clear,
-    // +5 otherwise, cap 1000. Its +0x7f4 stage replay-delay relationship and overlap with
-    // reachable recovery remain unresolved; the rule below models the +40 branch.
+    // +5 otherwise, cap 1000. The actor-relative field's producer and reachability during
+    // Rena recovery are unresolved; scene-relative scene+0x7f4 is distinct. The rule below
+    // models the +40 branch.
     {403,-1,0,9999,MoveOp::Speed,0.f},
     {403,-1,0,9999,MoveOp::Vertical,0.f},
     {403,-1,0,9999,MoveOp::Gravity,0.f},

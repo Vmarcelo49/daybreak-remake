@@ -11,12 +11,12 @@ the DirectSound spatial mix, so live audio parity remains unverified. The two vi
 320/332 lean sign and the Rena+1 model-2 frame — still lack comparable original captures.
 The cascade producer and boosted-admission chord are bound; the acceptance decision below
 keeps the visual gates open and Mion deferred. The source recovery refill is +40 when actor
-word `+0x1fd` is zero, +5 otherwise. That word aliases actor byte `+0x7f4`, which stage
-setup seeds from `DAT_006cfdc5` and scene updates decrement while replaying queued events.
-Whether this nonzero replay-delay state can overlap reachable Rena recovery is unresolved;
-do not call it poison/status or invent a producer. The port currently models/verifies +40
-only. `+0x834` is the separate special/charge gauge. Rena+2 320's 13→22 seek already lived
-in `advance_rena_chase`; the later rule was redundant, not a missing-clock fix.
+word `+0x1fd` is zero, +5 otherwise. That is actor-relative byte `+0x7f4`; its producer and
+reachability during Rena recovery are unresolved. Scene-relative `scene+0x7f4` is separate
+and handles stage event replay, so do not conflate the fields or call the actor field
+poison/status. The port currently models/verifies +40 only. `+0x834` is the separate
+special/charge gauge. Rena+2 320's 13→22 seek already lived in `advance_rena_chase`; the
+later rule was redundant, not a missing-clock fix.
 
 
 **Owner-directed change of order (2026-10-10):** stop usage-order combo porting and
