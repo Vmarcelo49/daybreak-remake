@@ -73,8 +73,9 @@ carries one at a time:
 
 "Implemented" never silently means "verified"; "verified" never silently means
 "live-equal". The boosted/special-gauge admission is implemented for weapons 0/1
-(§1 conventions), with its two deltas recorded there — including that the port's
-single melee press stands in for the original's two action-intent slots.
+(§1 conventions) and its chord is the source's own two-latch one, not a single press
+(§1). The two visual gates and the SE's spatial placement are the only paths this
+matrix still owes evidence for, and both blockers are stated where the path is.
 
 ## 1. Melee admission (input → move), all three weapons
 
@@ -230,7 +231,7 @@ Execution contracts (mobile/full-charge references, cross-checked with the handl
 | State | w0 | w1 | w2 | Notes | Port status |
 |---|---|---|---|---|---|
 | 400 | row 0/6 @12, ±30 | rows 6 / 0+9 @18; **melee strike f8–18**; speed 45 @f7 | attachment @35 + 10-pellet ring (pitch rand%30+20, yaw 90−rand%180) | voices 27/30 (last round), 29 (w2) | bound (ledger §5) |
-| 401 | like 400 @12 | row 6 / 0 @18 (powered = single 0), strike f8–18, turn 20→f15, speed 30@f7→0@f15 | → 400 | w1 powered differs from 400 (one request, not two) | **landed**: admission + program rules for w0/w1; w1's powered single request bound; w0 verified to fire exactly one request; the melee-strike window f8–18 (w1) remains pending |
+| 401 | like 400 @12 | row 6 / 0 @18 (powered = single 0), strike f8–18, turn 20→f15, speed 30@f7→0@f15 | → 400 | w1 powered differs from 400 (one request, not two) | **landed**: admission + program rules for w0/w1; w1's powered single request bound; w0 verified to fire exactly one request; the melee-strike window f8–18 (w1) is the only open item on this row |
 | 402 | row 1/7 @13, ±30 | 3-phase dive ({12,1,35}, phase 1 HELD), phase2 f5 rows 6 / 0+9, dive arc (vertical −40, speed ≤10) | 2-phase, ph0 clock clamps at 17, landing <15 → 403 else ph1@25, f35 attachment + ring (pitch rand%50+30) | landing → 403/409 | **execution implemented + automated verification** for all three weapons, driven by REAL input (jump → airborne Shoot tap): w0 fires its one row-1 request at frame 13 with the ±30-clamped pitch; w1's phase 1 keeps the closing speed in [0,10] and fires row 6 at phase-2 frame 5; w2 fires one attachment row-0 at phase-1 frame 35 plus the ten-request ring on rows 1/3, each pitch in [30,80) and each draw its own. The landing exits to 403/409 are covered separately |
 | 403/409/469 | recovery: recharge +40 (+5 when status<1), cap 1000 | idem | idem | air-shot landings | **execution implemented + automated verification**: motion zeroed every tick (no guard), charge gauge +40 capped 1000; the 402/460/408 landings now actually reach 403/409/469 through the shot-state landing branch |
 | 405/406 | like 400 @12/13, movement −90/+90 | — | — | lateral dash shots | **landed**: admission + program rules mirroring 400; verified selecting 405/406 from the left/right dash states |
@@ -317,8 +318,10 @@ The chase was the last armed span: `FUN_00434b30` arms `+0xfc` **and** the prop'
 latch together, and 320's contact half was already modeled through `ContactOff`
 (phases 0/1 all, phase 2 from frame 8), so its ribbon half was missing. The body's window
 is `tick < 8` inside phase 2 (`FUN_0043ffc0:985-990` and its `FUN_00448220` twin), now
-bound for weapons 0 and 1. Weapon 2's chase keeps its different 32..39 window parked: its
-phase placement has not been read, and guessing it could put the ribbon in the wrong phase.
+bound for weapons 0 and 1. Weapon 2's chase has the SAME gap in its own numbers: its
+window is `tick < 32 || 39 < tick` inside phase 2 (`FUN_00438310:988-992`), and once that
+phase placement was read its 32..39 span was bound too — so the class is closed for all
+three weapons.
 
 **Reading note that retracts an earlier "remaining" item:** the decompiler renders a call
 made inside a condition as a comma expression — `if (PH == 0 && (FUN_0042db10(0,3),
@@ -428,13 +431,14 @@ witness is falsifiable — removing it makes the new assertion fail.
 5. **Visible weapon:** ~~Rena+1's model-2 prop~~ — landed 2026-10-12
    (`draws_item_model`, §4). Remaining: the actual model-2 mesh in a live frame is still
    a capture/live-parity question, and other combos' slot→model bindings are not audited.
-6. **Voices, SEs and effects:** the melee voice cues, the FUN_0042c8b0/0042c880 SEs
+6. ~~**Voices, SEs and effects**~~ — the melee voice cues, the FUN_0042c8b0/0042c880 SEs
    and the actor effect requests are produced and consumed (the last at the actor's
-   position and pose, ids resolving through data/effect's `id / 10`), pinned by
+   position AND pose, ids resolving through data/effect's `id / 10`), pinned by
    `combat_audio_test`, `melee_admission_test` and `fx_cards_test`. The close-target
-   voice cascade is BOUND (§2: its two unreachable arms and two unmodelled producer
-   terms are recorded there). Still open: the SE's 3D placement (the port's sink is not
-   spatial).
+   voice cascade is BOUND (§2: its two unreachable arms and its two unmodelled producer
+   terms are recorded there). Still open: the SE's 3D placement, whose chain is fully
+   traced but whose port side needs a listener and an attenuation curve that are not
+   recovered (§2) — the cue plays centrally with the correct id and bus.
 7. Then Mion+0/+1/+2 with the same matrix discipline.
 
 ## 7. Group acceptance decision — reopened
