@@ -181,10 +181,16 @@ distinct call paths were separated, and conflating them had been the earlier mis
   `+0x7d8` only ever disjuncts the unreachable arm, and the battle-offset yaw `+0x19`
   the cascade's gate also reads is not carried by this port, so the gate is distance
   alone. `melee_admission_test` drives a real 1v1 Match for both directions.
-* **SE** — FUN_0042c8b0 (positional) / FUN_0042c880: the argument is a
-  `data/se/%03d.wav` id played at the actor's own position (FUN_0064b060 →
-  FUN_0064ae70 → FUN_0065a260's 3D mixer). Dispatched on the SFX bus; the port's sink
-  is not spatial, so the 3D placement is a recorded gap.
+* **SE** — FUN_0042c8b0(id, actor) is the positional request:
+  `FUN_0064b060(id, actor+0x14, 1)` carries the ACTOR'S OWN POSITION (+0x14), and
+  FUN_0064ae70 → FUN_0065a260 → FUN_006677f0 hands that triple to the audio object's
+  setter, which performs the 3D placement. The whole chain is therefore recovered; what
+  is NOT is the port's side of it — the port's `CombatAudioSink::play` takes a stem, bus
+  and channel only, and `Sdl3Engine` mixes 32 SDL streams with per-bus gains and no
+  listener, so there is nothing to place against. The placement also needs the LISTENER
+  (which camera, in up to four split-screen views) and the attenuation curve, neither of
+  which is recovered. So the SE plays centrally — dispatched, correct id, correct bus —
+  and its spatial placement stays a recorded gap rather than an invented pan curve.
 * **effect** — `(*actor+0xc)(id,x,y,z,heading,pitch)` is the actor-side effect request
   (FUN_00421aa0 → FUN_00435990 → the effect manager's create with that pose). The id
   indexes data/effect by `id / 10` (FUN_0042eba0's 100 slots), so the 350 beats'
@@ -466,10 +472,11 @@ verification therefore hold for the paths this matrix lists, with real-input wit
 the admission, the air taps, the dive/ring, the ribbon windows, the boosted 350 and the
 guard exit.
 
-**Live parity is still held by no path**, and the two remaining items are recorded rather
-than waived: the two visual gates (lean sign render, model-2 frame) have no comparable
-reference in this environment (§ status vocabulary's exact limitation), and the SE's 3D
-placement has no port counterpart (the sink is not spatial). Neither is a
-selection/execution/automated-verification claim, and neither is folded into the labels
-above. The cascade, the chord and the effect pose that this section used to list as
-caveats are all bound now — the sentence above supersedes that list.
+**Live parity is still held by no path**, and the two remaining items are recorded with
+their exact blockers rather than waived: the two visual gates (lean sign render, model-2
+frame) have no comparable original reference in this environment (§ status vocabulary's
+exact limitation), and the SE's 3D placement needs a listener and an attenuation curve
+that are not recovered (§2). Neither is a selection/execution/automated-verification
+claim, and neither is folded into the labels above. The cascade, the chord and the effect
+pose that this section used to list as caveats are all bound now — the sentence above
+supersedes that list.
