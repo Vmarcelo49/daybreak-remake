@@ -2509,6 +2509,12 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             m_pendingSoundEffect = {static_cast<int>(rule.value), rule.soundPositional,
                                     m_position};
             break;
+        case MoveOp::ContactReset:
+            // FUN_0042c800(0) + FUN_0042c840(1): clear the per-victim markers and allow one hit
+            // each, which the row calls on every tick of its flurry window. The port's model of
+            // that registry is the per-swing hit set, so clearing it is the equivalent.
+            m_swingHits = 0;
+            break;
         case MoveOp::Effect:
             // The actor's effect request (`(*actor+0xc)` -> FUN_00421aa0 ->
             // FUN_00435990): the id indexes data/effect by `id / 10`, and the heading and

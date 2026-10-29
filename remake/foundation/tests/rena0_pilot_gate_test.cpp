@@ -942,8 +942,14 @@ int main(int argc, char** argv) {
         require(ex.row == 350, "the EX press must bind row 350, got " + std::to_string(ex.row));
         require(ex.hits > 0, "the EX must connect with an opponent on its volume, got " +
                                  std::to_string(ex.hits) + " hit(s)");
-        require(ex.victimHp < 100, "the EX must damage the opponent, HP " +
-                                       std::to_string(ex.victimHp));
+        // The EX is a flurry, not a single swing: the body re-arms one hit per victim per tick
+        // across its seven one-tick contact windows (FUN_0042c800(0)/FUN_0042c840(1)), so a
+        // victim loses more than one eight. How many depends on how much of the pose the
+        // placement intersects — a capture with the opponent held on the volume measures 45 HP,
+        // i.e. nearly every window — so the assertion is that it hits more than once, not a
+        // number that would encode the placement.
+        require(ex.victimHp < 92, "the EX must hit repeatedly, HP " +
+                                      std::to_string(ex.victimHp));
         require(ex.lateCamera == 1,
                 "a connecting EX must switch to camera set 1 past tick 0x33, got " +
                     std::to_string(ex.lateCamera));

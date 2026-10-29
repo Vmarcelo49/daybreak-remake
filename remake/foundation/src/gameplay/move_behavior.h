@@ -152,9 +152,17 @@ enum class MoveOp { Speed, Decelerate, Turn, Approach, Launch, Hold, ActionCamer
                     // window's first tick (Rena+1's 460 halves the entry speed; Rena+2's
                     // air 360 keeps a tenth of both).
                     ScaleMotion,
-                    // Cut the melee contact volume while matching (the bodies'
-                    // FUN_00434bd0 windows; the posed records stay the default).
-                    ContactOff };
+                    // Weight the weapon trail's ribbon for this move (the bodies'
+                    // FUN_00434bd0/FUN_00434b30 windows). It touches the ACTOR's trail object at
+                    // +0x6a0 and is not the contact volume — row 350's tick-0 call is this one,
+                    // which is why the EX keeps its hand records (V3-43). The port draws no
+                    // ribbon, so the op is recorded and inert.
+                    ContactOff,
+                    // Re-arm the per-victim hit markers (FUN_0042c800(0)) and give each victim a
+                    // budget of one hit (FUN_0042c840(1)): 0x88+i*2 and 0x90+i*4 for the four
+                    // slots. The EX body calls both on every tick below 0x24 and at 0x37, so the
+                    // move hits once per contact window instead of once per swing.
+                    ContactReset };
 enum class ShotVoiceMagazine { Primary, Secondary };
 enum class ShotVoiceCompare { Equal, Less };
 
@@ -730,6 +738,11 @@ inline constexpr MoveRule kRenaRules[] = {
     // against the victim (subtracting +0x7a4 at 0x638a96). So row 350's seven one-tick hand
     // records are live, which is what FUN_0042c800(0)/FUN_0042c840(1) at 0x443443 prepare
     // for. Recorded in V3-43; the EX used to deal no damage at all.
+    // The flurry: the body re-arms one hit per victim per tick below 0x24 and again at 0x37
+    // (FUN_0042c800(0)/FUN_0042c840(1) at 0x443443), so the seven one-tick contact records each
+    // land instead of only the first.
+    {350,-1,0,0x24,MoveOp::ContactReset},
+    {350,-1,0x37,0x37,MoveOp::ContactReset},
 
     melee_voice_rule(350,0,0,0,32,0),
     melee_voice_rule(350,0,56,56,33),

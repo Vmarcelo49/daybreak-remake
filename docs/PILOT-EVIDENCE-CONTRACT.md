@@ -2523,3 +2523,13 @@ whiff run stays on set 0 and a connecting run reaches set 1.
 **Also retracted with it:** the "350's damage is the particle/effect scatter" line in the rule
 table. The effect requests are what the recovered code does spawn (ids 320/350/340 via
 `FUN_00421aa0` → `FUN_00435990`), but they are visuals; the damage is the hand contacts.
+
+**And it is a flurry, not one hit.** The body re-arms the per-victim registry on every tick below
+`0x24` and again at `0x37`: `FUN_0042c800(0)` writes zero to the four markers at `char+0x88+i*2`
+and `FUN_0042c840(1)` writes one to the four budgets at `char+0x90+i*4` (both loops are four
+entries), which is "clear the markers, allow one hit each" — so each of the seven one-tick contact
+windows can land on the same victim. The port's equivalent registry is its per-swing hit set, so a
+new `MoveOp::ContactReset` clears it and row 350 now carries two such rules (`0..0x24` and `0x37`).
+Measured with the opponent held on the volume: **100 → 45 HP**, i.e. most of the seven windows.
+The gate test only asserts "more than one hit" (it measures 85 with its own placement), because the
+exact count depends on how much of the pose the placement intersects.
