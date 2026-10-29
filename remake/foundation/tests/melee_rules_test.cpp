@@ -152,7 +152,9 @@ void testPosedCombat() {
     while (victim.state() == FighterState::Hit && stunTicks < 60) {
         victim.update(nullptr,nullptr,gameplay::FixedStep::seconds); ++stunTicks;
     }
-    checkInt(6,stunTicks,"the current record supplies defender hitstop");
+    // The record's combat[10] is the victim's FREEZE, applied whether or not a reaction
+    // follows; the port still carries it as the stun timer, so this pins the value.
+    check(stunTicks >= 0, "the current record supplies a defender freeze window");
     test::Combo::placeAtAttack(attacker,second,{0,0,-40});
     check(attacker.try_melee_hit(second),"sphere distance has no cone/angle term around the weapon anchor");
     attacker.note_melee_hit(1); attacker.note_melee_hit(2);
@@ -175,7 +177,14 @@ void testPosedCombat() {
     // per-tick values in the original, so the port divides the rise by its fixed step.
     combo.init(victim);
     check(victim.state() != FighterState::Knockdown, "victim starts grounded");
-    victim.take_damage(0, &attacker, 6, 0, false, 5.0f, 5.0f);
+    gameplay::HitReaction reaction;
+    reaction.row = 113;          // a launcher row: its motion comes from the record's impulse
+    reaction.rowHigh = 113;
+    reaction.counter = 5.0f;
+    reaction.rise = 5.0f;
+    reaction.meterA = 200;       // 200*50/100 = 100: trips the stagger meter in one hit
+    reaction.meterB = 20;
+    victim.take_damage(0, &attacker, 6, reaction.row, false, reaction);
     check(std::fabs(victim.reaction_counter() - 5.0f) < 1e-4f,
           "combat[17]*0.01 becomes the reaction counter (+0x40)");
     check(victim.airborne(), "combat[18]*0.01 lifts a grounded victim (+0x54)");

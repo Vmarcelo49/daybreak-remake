@@ -270,10 +270,17 @@ void ProjectilePool::update(double dt, Fighter* fighters, int fighterCount,
                                     (float(f.max_hp())/20000.f) + .5f) : p.damage;
             // A shot's record carries the same launch words as a swing's (+0x87c/+0x878,
             // 0x638633/0x638645), so an uncharged bullet reacts the same way.
+            HitReaction reaction;
+            if (record) {
+                reaction.row = record->reactionMove;
+                reaction.rowHigh = record->combat[14];
+                reaction.counter = static_cast<float>(record->combat[17]) * 0.01f;
+                reaction.rise = static_cast<float>(record->combat[18]) * 0.01f;
+                reaction.meterA = record->combat[7];
+                reaction.meterB = record->combat[8];
+            }
             f.take_damage(damage,s.owner,record ? record->defenderHitstun : -1,
-                            record ? record->reactionMove : hitCategory,/*shot=*/true,
-                            record ? static_cast<float>(record->combat[17]) * 0.01f : 0.f,
-                            record ? static_cast<float>(record->combat[18]) * 0.01f : 0.f);
+                            record ? record->reactionMove : hitCategory,/*shot=*/true,reaction);
             spawn_spark(s.pos, 0.35f);
             if (!s.alive) break;
         }

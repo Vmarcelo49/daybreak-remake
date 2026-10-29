@@ -69,6 +69,21 @@ namespace gameplay {
 // below read exactly like the source's `input::Action` / `input::PlayerInput`.
 namespace input = fnd::input;
 
+// Everything FUN_00637950 hands the victim on a landed hit. The two row words select the
+// reaction the victim plays: `row` (record +0x64 = combat[13]) normally, `rowHigh`
+// (+0x68 = combat[14]) once the victim's own +0x7c0 has reached 100 — the escalation ladder,
+// which is why the same swing looks different late in a combo. `meterA`/`meterB` are the
+// record's combat[7]/[8], accumulated into the victim's +0x7b8/+0x7c0; the +0x7b8 stagger
+// meter (threshold 100) is what decides whether ANY reaction happens at all.
+struct HitReaction {
+    int   row = 0;
+    int   rowHigh = 0;
+    float counter = 0.f;   // combat[17] * 0.01 -> +0x40
+    float rise = 0.f;      // combat[18] * 0.01 -> +0x54
+    int   meterA = 0;      // combat[7]  -> +0x7b8
+    int   meterB = 0;      // combat[8]  -> +0x7c0
+};
+
 // Fighter states are port labels. The executable stores move IDs directly in
 // `[player+0xadec]`; only recovered port-state selectors map to those IDs.
 enum class FighterState : int {
@@ -481,7 +496,7 @@ public:
     // already-down credit differ from melee's (see match_economy.h).
     DamageResult take_damage(int amount, Fighter* source = nullptr, int hitstunFrames = -1,
                              int hitCategory = 0, bool shot = false,
-                             float launchCounter = 0.f, float launchRise = 0.f);
+                             const HitReaction& reaction = HitReaction());
     // The reaction countdown and its expiry (see m_reactionCounter above).
     float reaction_counter() const { return m_reactionCounter; }
     // FUN_00637950 writes hit-driven status durations at actor+0x7dc+slot*4;
@@ -1122,6 +1137,12 @@ private:
     // take_damage's `hitCategory`. 103 is the constant the port used before the records were
     // read (state_to_move_id's Hit entry), kept as the default when a record names none.
     int          m_reactionMove = 103;
+    int          m_hitMeterA = 0;      // +0x7b8: stagger meter, threshold 100
+    int          m_hitMeterB = 0;      // +0x7c0: combo count inside its own window
+    int          m_staggerDecay = 0;   // +0x7bc
+    int          m_comboDecay = 0;     // +0x7c4
+    // +0x7d0: the victim's stun susceptibility, default 50 (FUN_0043ded0 recomputes it).
+    static constexpr int kStaggerResist = 50;
     float        m_reactionCounter = 0.f;   // +0x40
     float        m_reactionRise = 0.f;      // +0x54, sign-flipped into m_vy
     int          m_hyperActivationFrames = 0;  // overlay window, or <0 for a gated hold (issue #71)

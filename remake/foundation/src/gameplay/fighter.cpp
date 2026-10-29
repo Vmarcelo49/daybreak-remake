@@ -1,6 +1,7 @@
 // FUN_0041f580 / FUN_00420b30: fighter update, move records and world pose.
 // Recovered executable rules live separately in move_behavior.h; NN.dat owns
 // phase/set selection, record geometry and material intervals.
+#include "gameplay/reaction_motion.h"
 #include "gameplay/fighter.h"
 #include "gameplay/animation_period.h"
 #include "gameplay/held_axis.h"
@@ -422,6 +423,10 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // The activation flash decays 4 a tick from 0xFC (FUN_0041f580's +0x334
     // maintenance), independent of states and overlays.
     if (m_hyperFlash > 0) m_hyperFlash = std::max(0, m_hyperFlash - 4);
+    // The stagger meter's window (+0x7bc) and the combo window (+0x7c4): both expire together
+    // with their counters (FUN_0041f580 0x41f673-0x41f732).
+    if (m_staggerDecay > 0 && --m_staggerDecay == 0) m_hitMeterA = 0;
+    if (m_comboDecay > 0 && --m_comboDecay == 0) { m_hitMeterB = 0; }
     // The hit's reaction clock (+0x40): -0x3e99999a = 0.3 per tick, and reaching zero switches
     // the victim to move 0x76 (118) — the recovered consumer at 0x428943/0x428946/0x42897a.
     if (m_reactionCounter > 0.f) {
@@ -1530,7 +1535,7 @@ const char* Fighter::anim_set_name() const {
 
 Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hitstunFrames,
                                            int hitCategory, bool shot,
-                                           float launchCounter, float launchRise) {
+                                           const HitReaction& reaction) {
     if (!is_alive()) {
         // Already down: this is Overkill. The original credits exactly +1 per hit to
         // the victim's own side and does not touch HP, the KO clock or the death count
@@ -1632,9 +1637,40 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
                 stun = false;
             }
         }
+        // The stagger meter (+0x7b8) is recovered and tracked, but the reaction is NOT gated on
+        // it yet: the original only changes the victim's row when the meter trips, and a hit
+        // that does not trip it applies damage plus a FREEZE (+0xa0 = combat[10], physics and
+        // the animation clock paused) with no state change at all. The port has no freeze
+        // mechanic, so gating here would silently remove every hit's interruption. The meter is
+        // accumulated for the row escalation and the gate is the next step (V3-47).
+        m_hitMeterA += (reaction.meterA * kStaggerResist) / 100;
+        m_staggerDecay = 120;   // +0x7bc: the meter's own 120-tick window
+        const bool trips = m_hitMeterA >= 100;
+        if (trips) {
+            m_hitMeterA = 0;
+            // +0x7c0 counts tripping hits inside its own window and selects the heavy row.
+            m_hitMeterB += reaction.meterB;
+            m_comboDecay = 120;
+        }
+        const bool heavy = m_hitMeterB >= 100;
+        // combat[13] is the normal row, combat[14] the heavy one (0x6386f9-0x63870d), and a
+        // hit from more than 90 degrees behind adds 100 — the back variant of the same band.
+        // The heavy row is selected by the victim's own state as well: an AIRBORNE victim takes
+        // combat[14] whatever the combo counter says (FUN_00637950 :349-356 tests the grounded
+        // byte +0x84 alongside +0x7c0).
+        const bool heavyRow = (heavy || !m_grounded) && reaction.rowHigh > 0;
+        int row = heavyRow ? reaction.rowHigh : hitCategory;
+        if (source) {
+            const glm::vec3 toAttacker = source->position() - m_position;
+            if (std::abs(toAttacker.x) > 1e-4f || std::abs(toAttacker.z) > 1e-4f) {
+                const float bearing = std::atan2(toAttacker.x, toAttacker.z);
+                const float relative =
+                    glm::degrees(std::remainder(m_facing - bearing, glm::two_pi<float>()));
+                if (std::abs(relative) > 90.f) row += 100;
+            }
+        }
+        m_reactionMove = row > 0 ? row : 103;
         if (stun) {
-            // combat[13] selects the reaction ROW the victim plays; 0 keeps the port's default.
-            m_reactionMove = hitCategory > 0 ? hitCategory : 103;
             set_state(FighterState::Hit);
             // The stun a weapon inflicts is that weapon's own (FUN_00637950:308); a
             // weapon that specifies none keeps the shared default.
@@ -1642,21 +1678,24 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
                                              : FighterConstants::kHitStunFrames;
             // The record's launch (FUN_00637950 @0x638633/0x638645 → the consumer at
             // 0x428af8-0x428b2e). A record with no launch keeps the victim planted.
-            m_reactionCounter = launchCounter;
-            m_reactionRise = launchRise;
-            // +0x54 is the SPEED the motion integrator applies along the body's own facing:
-            // FUN_004202b0 computes sin/cos of (+0x5c + +0x60 + +0x64) and multiplies it by
-            // +0x54 before calling the horizontal mover (0x420349-0x420398). The hit writes it
-            // NEGATIVE, so the victim travels backwards. It is a per-TICK speed, so the fixed
-            // step converts it to the port's per-second velocity.
-            if (launchRise != 0.f) {
-                const glm::vec3 back(-std::sin(m_facing), 0.f, -std::cos(m_facing));
-                m_velocity = back * (launchRise / static_cast<float>(FixedStep::seconds));
-                // The recoil also lifts: the port keeps the pop the owner confirmed while the
-                // slide runs, so a hit does not look like a pure ground slide.
-                if (m_grounded) {
-                    m_vy = std::max(m_vy, std::fabs(launchRise) /
-                                              static_cast<float>(FixedStep::seconds));
+            m_reactionCounter = reaction.counter;
+            m_reactionRise = reaction.rise;
+            // The ROW decides what the victim does — the hit code itself writes no motion
+            // (FUN_00428510's per-row handlers own every constant). A row with no motion
+            // profile leaves the victim planted: that is the "crumple in place" reaction.
+            const ReactionMotion motion = reaction_motion(m_reactionMove);
+            if (motion.applies) {
+                const float inverseStep = 1.f / static_cast<float>(FixedStep::seconds);
+                const float speed = motion.slideFromRecord ? -reaction.counter : motion.speed;
+                // +0x54 is applied along the body's own facing by the motion integrator
+                // (FUN_004202b0 at 0x420349-0x420398); negative means backwards.
+                if (speed != 0.f) {
+                    const glm::vec3 forward(-std::sin(m_facing), 0.f, -std::cos(m_facing));
+                    m_velocity = forward * (speed * inverseStep);
+                }
+                const float rise = motion.liftFromRecord ? std::fabs(reaction.counter) : motion.rise;
+                if (rise > 0.f) {
+                    m_vy = std::max(m_vy, rise * inverseStep);
                     m_grounded = false;
                 }
             }
@@ -1817,9 +1856,15 @@ bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollis
             const int damage = portDamage(meleePoolDamage(record->baseDamage), m_maxHP);
             // combat[17]/[18] are the launch words (+0x87c/+0x878, 0x638633/0x638645); the
             // consumer scales them by the global 0.01 at 0x6a24c4.
+            HitReaction reaction;
+            reaction.row = record->reactionMove;
+            reaction.rowHigh = record->combat[14];
+            reaction.counter = static_cast<float>(record->combat[17]) * 0.01f;
+            reaction.rise = static_cast<float>(record->combat[18]) * 0.01f;
+            reaction.meterA = record->combat[7];
+            reaction.meterB = record->combat[8];
             target.take_damage(damage, this, record->defenderHitstun, record->reactionMove, false,
-                               static_cast<float>(record->combat[17]) * 0.01f,
-                               static_cast<float>(record->combat[18]) * 0.01f);
+                               reaction);
         }
         return true;
     }
@@ -2072,8 +2117,13 @@ int Fighter::state_move_id() const {
         // change). One constant row for every hit was the port's stand-in; the shipped tables
         // use 100 for the light swing, 101 for the kicks, 130/131 for the Hyper EX and so on,
         // which is what makes two hits look different.
-        case FighterState::Hit:
-            return present_move(m_reactionMove);
+        case FighterState::Hit: {
+            // Fall back to the state's own row when the table does not carry the reaction id
+            // (a synthetic table in a test, or a table without the row) — the same rule the
+            // landing row uses, so a missing row cannot silently unbind the state.
+            const int row = present_move(m_reactionMove);
+            return row >= 0 ? row : state_to_move_id(m_state);
+        }
         default:                    return state_to_move_id(m_state);
     }
 }

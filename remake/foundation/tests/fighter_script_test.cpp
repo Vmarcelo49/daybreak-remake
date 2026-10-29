@@ -1335,7 +1335,10 @@ void test_hypermode() {
                   static_cast<int>(b.state()));
 
         // Activation burst: the opponent is knocked back at kRunSpeed, no
-        // damage, and the Hit state carries the push.
+        // damage, and the Hit state carries the push. The ten hits above now push the
+        // victim for real (the record's reaction motion), so the pair is re-seated inside
+        // the burst's reach before the shove is measured.
+        a.reset(b.position() + glm::vec3(0.f, 0.f, -100.f), 0.f);
         const int a_hp_before = a.hp();
         Input in;
         in.set(fnd::input::Action::Special, true);
