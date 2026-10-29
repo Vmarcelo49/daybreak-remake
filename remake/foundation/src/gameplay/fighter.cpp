@@ -588,6 +588,9 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     if ((m_state == FighterState::Hit || m_state == FighterState::Knockdown) && m_rowSpeed != 0.f) {
         const glm::vec3 forward(std::sin(m_facing), 0.f, std::cos(m_facing));
         m_velocity = forward * (m_rowSpeed / static_cast<float>(dt));
+        // The row's speed is per TICK, so it is integrated here rather than through the generic
+        // velocity path (which this branch replaces).
+        m_position += forward * m_rowSpeed;
         const float step = m_rowDecel;
         m_rowSpeed = m_rowSpeed > 0.f ? std::max(0.f, m_rowSpeed - step)
                                       : std::min(0.f, m_rowSpeed + step);

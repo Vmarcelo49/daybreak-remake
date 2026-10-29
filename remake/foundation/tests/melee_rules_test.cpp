@@ -177,12 +177,14 @@ void testPosedCombat() {
     // per-tick values in the original, so the port divides the rise by its fixed step.
     combo.init(victim);
     check(victim.state() != FighterState::Knockdown, "victim starts grounded");
+    // Rena+0 move 302's contact record (the XXX finisher): row 113, combat[17] = 500 (lift) and
+    // combat[18] = 2000 (slide), scaled by the recovered 0.01.
     gameplay::HitReaction reaction;
-    reaction.row = 113;          // a launcher row: its motion comes from the record's impulse
+    reaction.row = 113;
     reaction.rowHigh = 113;
     reaction.counter = 5.0f;
-    reaction.rise = 5.0f;
-    reaction.meterA = 200;       // 200*50/100 = 100: trips the stagger meter in one hit
+    reaction.rise = 20.0f;
+    reaction.meterA = 120;
     reaction.meterB = 20;
     victim.take_damage(0, &attacker, 6, reaction.row, false, reaction);
     check(std::fabs(victim.reaction_counter() - 5.0f) < 1e-4f,
@@ -195,12 +197,18 @@ void testPosedCombat() {
 
     // The launch has to land somewhere: on touchdown the victim enters the knockdown chain
     // (lying row 118, then the get-up row 120) instead of standing straight back up.
+    const glm::vec3 launchStart = victim.position();
+    check(victim.airborne(), "the XXX finisher lifts her off the ground");
     int ticks = 0;
     while (victim.state() != FighterState::Knockdown && ticks < 400) {
         victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
         ++ticks;
     }
     check(victim.state() == FighterState::Knockdown, "a launched victim lands into Knockdown");
+    // combat[18] = 2000 gives a 20/tick slide along her facing, so the throw is unmistakable.
+    const glm::vec3 thrown = victim.position() - launchStart;
+    check(glm::length(glm::vec2(thrown.x, thrown.z)) > 40.f,
+          "and the throw carries her across the stage before she lands");
     const int lyingRow = victim.down_row_for_test();
     check(lyingRow == 118 || lyingRow == 119,
           "and lies on row 118 (or its back twin 119)");
