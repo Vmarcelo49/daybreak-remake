@@ -1265,6 +1265,12 @@ private:
     // integrates vertical gravity. So the fighter keeps sliding after the dash instead of
     // dropping straight down (owner: D2).
     bool         m_airDashCarry = false;
+    // An air dash that ends in the air completes into the original's state 43, whose row is
+    // move 43 / set 43 — not the jump chain's falling row 42, whose FIRST section is set 5
+    // (32 frames) and only its second section is set 43. The port reached set 43 anyway, but
+    // one 32-frame clip late. This flag makes the fall bind row 43 directly, and it also
+    // suppresses the row-41 hover, which state 43 does not have (V3-42).
+    bool         m_dashFall = false;
     // The air dash's phase-1 visit counter (the body's +0x3a). Set 55 declares the +0x20
     // hold, so its clock can never advance the phase; the body leaves for phase 2 once
     // more than five visits have passed and either no direction is held or the meter is

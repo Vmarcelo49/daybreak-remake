@@ -446,7 +446,6 @@ AirDashRun airDashRun(test::Combo& combo) {
     }
     run.meterDrained = meterAtEntry - fighter.charge_gauge();
     if (run.drop < 0.0) run.drop = 0.0;
-    if (run.drop < 0.0) run.drop = 0.0;
     for (int tick = 0; tick < 90; ++tick) {
         step(match, actor);
         const double x = fighter.position().x;

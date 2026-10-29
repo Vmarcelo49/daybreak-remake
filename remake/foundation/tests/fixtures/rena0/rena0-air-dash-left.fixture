@@ -31,5 +31,10 @@ expect 27 phase 2
 expect 31 y 28
 # Back to the airborne state with the dash's momentum, then the ground.
 expect 33 airborne 1
+# The dash completes into the original's STATE 43, whose row is move 43 / set 43 — not the jump
+# chain's falling row 42, whose first section is set 5 (32 frames). The port used to play set 5
+# here and reach set 43 a clip later (V3-42).
+expect 33 anim_set 43
+expect 36 anim_set 43
 expect 37 state 0
 expect 40 y 0

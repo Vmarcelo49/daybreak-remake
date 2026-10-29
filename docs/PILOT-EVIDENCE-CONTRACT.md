@@ -2384,3 +2384,38 @@ vector — the enemy selection lives at `+0x300` with its own container at `+0x2
 merging of the two into one field works for the 1v1 pilot but the label is wrong, and
 `Match::aim_target` therefore reads the `+0x304`-backed field while the comment beside it claims
 `+0x300`.
+
+### V3-42 — an air dash that ends airborne falls in state 43, not in the jump chain
+
+The air dash's after-state was a named limit ("completes into the port's Jump, which re-arms the
+row-41 hover"). The recovered answer is sharper than the limit, and half of it is now implemented.
+
+**State 43 is a real row.** `FUN_0043ffc0` case `0x1e` completes with `FUN_00421080(0x2b)`
+(`:379-381`), the *state* setter, so the fighter enters state 43 — move **43**, whose single
+section's tag is **43**, i.e. animation set **43** (800 ticks = 10 frames, gate **1**). The port
+reached set 43 eventually, but through the jump chain's falling row 42, whose *first* section is
+set **5** (2480 ticks = 32 frames); so after a dash the port played 32 frames of set 5 before set
+43 appeared.
+
+**Implemented:** a `m_dashFall` flag set when an air dash completes still airborne, which makes
+`jump_chain_move()` return move 43 (and suppresses the row-41 hover, which state 43 does not
+have). The air-dash fixture now pins it: `anim_set 43` on the first post-dash update, where the
+port previously bound **5**. Removing the binding fails it with `tick 33 anim_set exp 43 got 5`.
+
+**Still missing, and specified rather than vague:**
+
+- **State 44, the shared landing row.** `FUN_0043ffc0`'s `if (iVar5 == 0x2c)` body (`:54-81`) is
+  move **44** → set **44** (1760 ticks = 22 frames, gate 0): it zeroes speed, movement angle and
+  turn, adds 40 (or 5 while status slot 6 is set) to the meter with a 1000 cap, and leaves when
+  `FUN_004218c0()` fires — 21 updates of body, the 22nd leaving into state 0. It is shared by
+  every air state that touches down (the port's own respawn note at `fighter.cpp:830-831` records
+  that move `0xc2` also lands into `0x2c`). The port lands straight into Idle and binds set 0, so
+  the landing clip and its ~0.367 s are absent. The observable is exact (`anim_set 44` held 22
+  updates) but implementing it means giving `Idle` a landing window, which changes the meter
+  refill's start and every `state_enum 0` expectation — a change of its own, not a pin.
+- **The turn write.** State 43 writes `+0x874 = 1.0` every update (`:537`) and then steers `+0x64`
+  toward the held 8-way bearing (`FUN_00421780`); the port hardcodes 1°/tick only inside the
+  carry path, so the steering exists but the field does not.
+- **No hover, edge case.** The hover is suppressed in the fall, but the observation window after a
+  dash is short enough that no fixture could see the difference (the only honest test would land
+  before the climb showed), so this half is specified and untested rather than pinned.

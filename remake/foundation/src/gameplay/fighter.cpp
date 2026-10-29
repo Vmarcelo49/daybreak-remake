@@ -219,6 +219,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_dashAir = false;
     m_airDashed = false;
     m_airDashCarry = false;
+    m_dashFall = false;
     m_hoverSpent = false;   // a new airtime re-arms the one hover
     try_switch_animation();
 }
@@ -251,6 +252,7 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_dashAir = false;
     m_airDashed = false;
     m_airDashCarry = false;
+    m_dashFall = false;
     m_hoverSpent = false;   // a new airtime re-arms the one hover
     // FUN_00435660 restores round capacity while retaining refill/interval progress.
     restore_ammo();
@@ -312,6 +314,7 @@ void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     m_dashAir = false;
     m_airDashed = false;
     m_airDashCarry = false;
+    m_dashFall = false;
     m_hoverSpent = false;   // a new airtime re-arms the one hover
     m_hp = m_maxHP;
     m_stamina = static_cast<float>(FighterConstants::kMaxStamina);
@@ -678,7 +681,10 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         // never a duration). The 1.2 s kFlyTimeSec budget cut the climb with ~28% of the
         // bar still full — the meter is the only limit (V3-12). The legacy path keeps it.
         const bool flyBudget = m_pilotMeter ? m_actionMeter > 0 : m_flyLeft > 0.0f;
-        const bool wantFly = jumpDown && m_state == FighterState::Jump &&
+        // State 43 — the fall an air dash completes into — has no hover: its body writes only
+        // the fall, the turn and the gravity restore (case 0x2b :529-545). So the row-41 climb
+        // is not available until the fighter lands and leaves that state.
+        const bool wantFly = jumpDown && m_state == FighterState::Jump && !m_dashFall &&
                              flyBudget && !m_hoverSpent && is_alive();
         // An air dash hangs while its phase is below 2 and then falls. FUN_0043ffc0 case
         // 0x1e subtracts 0.5/tick from +0x10 in BOTH windows but only the early one floors
@@ -750,6 +756,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
             m_flyLeft = FighterConstants::kFlyTimeSec;
             m_airDashed = false;
             m_airDashCarry = false;
+            m_dashFall = false;
             m_hoverSpent = false;   // a new airtime re-arms the one hover
             if (m_state == FighterState::Jump ||
                 (m_state == FighterState::Run && m_dashAir)) {
@@ -821,6 +828,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
             m_dashAir = false;
             m_airDashed = false;
             m_airDashCarry = false;
+            m_dashFall = false;
             m_hoverSpent = false;   // a new airtime re-arms the one hover
         } else if (m_grounded) {
             m_safePosition = m_position;
@@ -1981,6 +1989,11 @@ int Fighter::jump_chain_move() const {
     // carry, and the port's leap is airborne on the press tick: one startup tick is
     // what plays the recovered move-40 set-2 clip without inventing a duration.
     if (m_grounded || m_jumpStartup) return present_move(40);
+    // State 43 has NO clock of its own and no hover: it is the row an air dash completes into
+    // (FUN_0043ffc0 case 0x1e -> FUN_00421080(0x2b), :379-381), its body only falls and steers
+    // (case 0x2b :529-545), and it leaves only on landing (into row 44). Binding it here is what
+    // makes the first post-dash update play set 43 instead of the jump chain's set 5.
+    if (m_dashFall) return present_move(43);
     if (m_vy >= FighterConstants::kJumpApexSpeed) return present_move(41);
     return present_move(42);
 }
@@ -2044,8 +2057,12 @@ void Fighter::advance_animation_phase() {
     if (lastSection && !m_holdAnimation && periodThreshold <= m_moveElapsedTicks - clockStep + 1) {
         if (m_state == FighterState::AttackA || m_state == FighterState::Run ||
             m_state == FighterState::ShootA || m_state == FighterState::ShootB ||
-            m_state == FighterState::ShootC)
+            m_state == FighterState::ShootC) {
+            // An air dash that ends still airborne lands in the original's state 43, not in
+            // the jump chain: remember it so the fall binds move 43's clip (V3-42).
+            if (m_state == FighterState::Run && m_dashAir && !m_grounded) m_dashFall = true;
             set_state(m_grounded ? FighterState::Idle : FighterState::Jump);
+        }
         return;
     }
     if (periodThreshold >= m_moveElapsedTicks) return;
