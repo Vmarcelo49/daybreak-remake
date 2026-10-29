@@ -53,7 +53,7 @@ RESULT: ok
 
 The log above is an earlier triangle/render benchmark. Its variable render
 intervals do not describe current gameplay timing: live gameplay and frontend
-updates now use the 64 Hz accumulator described in decision D9. Render pacing
+updates now use the 60 Hz accumulator described in decision D15. Render pacing
 remains the swapchain's job (FIFO); rendering may run faster than the display
 under a compositor without real vsync.
 

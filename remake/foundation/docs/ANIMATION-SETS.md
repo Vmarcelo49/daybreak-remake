@@ -132,7 +132,7 @@ parallel raw set-index table.
 
 | Port state/context | Move selector | Evidence and limit |
 |---|---:|---|
-| Idle | 0 | Player reset calls `FUN_00421080(0)` (`FUN_0041de68`). |
+| Idle | 0 | Player reset calls `FUN_00421080` (`FUN_0041dcb0:57`); the value is a field read, **not verified to be 0 — needs static research** (`docs/QUESTIONS.md` Q3). |
 | Walk | 10 | Walk move row selected by the state dispatcher (`FUN_00428510`). |
 | BattleStart | 194 | Round reset calls `FUN_00421080(0xc2)` (`FUN_004219a0`). |
 | Hit / Knockdown / KO | 103 / 196 / 203 | Reaction dispatch rows in `FUN_00428510`; runtime uses each bound table's tag. |

@@ -306,7 +306,7 @@ Still port rules or unrecovered, by file:
   It runs from the per-frame placement paths (versus and match); a scene whose placement
   is baked once keeps its attachments drawn.
 - Move 460 (airborne charged shot) is unreachable with Rena 0: her magazine charges yellow
-  at `chargeMax/tickRate` = 0.9375 s, longer than the leap, so a normal air release fires
+  at `chargeMax/tickRate` = 1.0 s, longer than the leap, so a normal air release fires
   the tap tier. Its rule is verified against the table, not exercised in play.
 - Full billboard flag `0x1000`, projectile reflection `0x100`, the remaining combat-column
   consumers, and animation metadata for the extra `.X` sets remain open. The `has_combat()`
@@ -616,11 +616,11 @@ Still open from the same investigation, and **not** silently absorbed:
 
 ### 11.2 Other verified open items from the independent review
 
-- The port's fixed step is 64 Hz (`FixedStep::tickRate`) while the recovered handler values
-  are per original 60 Hz update, so live locomotion runs ~6.7 % fast and the pose clock
-  (`elapsed × 0.016`) disagrees with movement by ~2.4 %. The tests step at 1/60 and cannot
-  see it. Scaling displacement or moving the simulation to 60 Hz is a design decision, not
-  a data fix.
+- **Resolved by D15 (2026-10-14).** The port's fixed step was 64 Hz (`FixedStep::tickRate`)
+  while the recovered handler values are per original 60 Hz update, so live locomotion ran
+  ~6.7 % fast and the pose clock (`elapsed × 0.016`) disagreed with movement by ~2.4 %; the
+  tests stepped at 1/60 and could not see it. Scaling displacement or moving the simulation
+  to 60 Hz was a design decision, not a data fix, and D15 moved the simulation to 60 Hz.
 - Attacks for the 45 combos without a recovered move program no longer turn toward the
   opponent: `update_facing` is gated on `!locomotion(m_moves)`, which is now false for
   every shipped combo, and only Rena 0's rules carry a facing turn.

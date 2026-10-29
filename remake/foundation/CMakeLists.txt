@@ -441,6 +441,126 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                           foundation_assets)
     add_test(NAME rena_animation_audit_test COMMAND rena_animation_audit_test)
 
+    # F1-5 feasibility probe (Rena+0 only, observation-only): a device-free test
+    # linked to foundation_gameplay drives the real Match/Fighter with real combo
+    # data, and the attributed recovered idle/walk control proposes outputs that
+    # are never applied. It keeps the repository's data-free CI invariant: no
+    # reachable install exits 77 and is reported Skipped, which is never an F1-5
+    # pass. An install that is present but unreadable still fails hard, so missing
+    # or mismatched combo data cannot hide behind the skip. The seeded sensitivity
+    # run is deliberate and is not registered as a ctest case (WILL_FAIL would also
+    # pass on a data-missing failure):
+    #   rena0_locomotion_observation_test --seed-wrong-speed   (expected nonzero)
+    add_executable(rena0_locomotion_observation_test tests/rena0_locomotion_observation_test.cpp)
+    target_link_libraries(rena0_locomotion_observation_test PRIVATE foundation_gameplay)
+    add_test(NAME rena0_locomotion_observation_test COMMAND rena0_locomotion_observation_test)
+    set_tests_properties(rena0_locomotion_observation_test PROPERTIES
+                         LABELS "asset;feasibility" SKIP_RETURN_CODE 77)
+
+    # F1-3 deterministic offline fixtures (DIRECTION.md §4 Phase 1): text fixtures under
+    # tests/fixtures/rena0/ record combo, spawn, collision scope, per-tick inputs and the
+    # expected observables of the F1-2 contract; this runner drives the production
+    # Match/Fighter over real combo data and checks them. Same data-free CI rule as the
+    # F1-5 probe: no install exits 77 (Skipped, never a pass).
+    add_executable(rena0_fixture_test tests/rena0_fixture_test.cpp)
+    target_link_libraries(rena0_fixture_test PRIVATE foundation_gameplay)
+    add_test(NAME rena0_fixture_test
+             COMMAND rena0_fixture_test "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/rena0")
+    set_tests_properties(rena0_fixture_test PROPERTIES
+                         LABELS "asset;feasibility" SKIP_RETURN_CODE 77)
+
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME rena0_manifest_enforcement_test
+                 COMMAND ${Python3_EXECUTABLE}
+                         "${CMAKE_CURRENT_SOURCE_DIR}/tests/rena0_manifest_enforcement_test.py"
+                         $<TARGET_FILE:rena0_fixture_test>
+                         "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/rena0")
+        set_tests_properties(rena0_manifest_enforcement_test PROPERTIES
+                             LABELS "asset;feasibility" SKIP_RETURN_CODE 77)
+    endif()
+
+    # P2-5 (2c) offline body tests: explicit scalar inputs into the recovered Rena+0
+    # locomotion body, independent of Match/Fighter integration. Data-free by construction
+    # (the projection is header-only), so it runs everywhere and never skips.
+    add_executable(rena0_body_test tests/rena0_body_test.cpp)
+    target_link_libraries(rena0_body_test PRIVATE foundation_gameplay)
+    add_test(NAME rena0_body_test COMMAND rena0_body_test)
+    set_tests_properties(rena0_body_test PROPERTIES LABELS "feasibility")
+
+    # P2-5 (2c) offline body tests for the recovered melee admission: explicit scalar
+    # inputs, the real move table's priority gate. Install-backed, skip-not-pass without data.
+    add_executable(rena0_admission_body_test tests/rena0_admission_body_test.cpp)
+    target_link_libraries(rena0_admission_body_test PRIVATE foundation_gameplay)
+    add_test(NAME rena0_admission_body_test COMMAND rena0_admission_body_test)
+    set_tests_properties(rena0_admission_body_test PROPERTIES
+                         LABELS "asset;feasibility" SKIP_RETURN_CODE 77)
+
+    # P2-5 (2c) increment 2: the fixture-linked differential — recovered locomotion body vs
+    # the production run, per fixture, with named divergence classes. Install-backed.
+    add_executable(rena0_differential_test tests/rena0_differential_test.cpp)
+    target_link_libraries(rena0_differential_test PRIVATE foundation_gameplay)
+    add_test(NAME rena0_differential_test
+             COMMAND rena0_differential_test "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/rena0")
+    set_tests_properties(rena0_differential_test PROPERTIES
+                         LABELS "asset;feasibility" SKIP_RETURN_CODE 77)
+
+    # P2-6 (2d) resolver: explicit move/phase/set with fallback reasons, pilot-path only.
+    # The source directory is passed so the test can verify nothing under src/ includes it.
+    add_executable(rena0_resolver_test tests/rena0_resolver_test.cpp)
+    target_link_libraries(rena0_resolver_test PRIVATE foundation_gameplay)
+    add_test(NAME rena0_resolver_test
+             COMMAND rena0_resolver_test "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    set_tests_properties(rena0_resolver_test PROPERTIES
+                         LABELS "asset;feasibility" SKIP_RETURN_CODE 77)
+
+    # P2-7 shot family: the recovered ground-shot body's ordered event list, pinned offline.
+    # Data-free by construction (scalars in, event list out), so it never skips.
+    add_executable(rena0_shot_body_test tests/rena0_shot_body_test.cpp)
+    target_link_libraries(rena0_shot_body_test PRIVATE foundation_gameplay)
+    add_test(NAME rena0_shot_body_test COMMAND rena0_shot_body_test)
+    set_tests_properties(rena0_shot_body_test PROPERTIES LABELS "feasibility")
+
+    # P2-7 guard family: the recovered guard body (states 390/391/392), pinned offline.
+    # Data-free by construction, so it never skips.
+    add_executable(rena0_guard_body_test tests/rena0_guard_body_test.cpp)
+    target_link_libraries(rena0_guard_body_test PRIVATE foundation_gameplay)
+    add_test(NAME rena0_guard_body_test COMMAND rena0_guard_body_test)
+    set_tests_properties(rena0_guard_body_test PROPERTIES LABELS "feasibility")
+
+    # P2-7 (2e) pilot gate: the two recovered slot-7 refusals driven through the production
+    # Match/Fighter with real equipped Rena+0 — the +0x834 dash admission (PILOT-SEAM.md §25)
+    # and the empty-magazine tap voice (PILOT-SEAM.md §26). Install-backed, skip-not-pass
+    # without data. The seeded sensitivity run is deliberate and is not registered as a ctest
+    # case (WILL_FAIL would also pass on a data-missing failure):
+    #   rena0_pilot_gate_test --seed-wrong-gate        (expected nonzero)
+    add_executable(rena0_pilot_gate_test tests/rena0_pilot_gate_test.cpp)
+    target_link_libraries(rena0_pilot_gate_test PRIVATE foundation_gameplay)
+    add_test(NAME rena0_pilot_gate_test COMMAND rena0_pilot_gate_test)
+    set_tests_properties(rena0_pilot_gate_test PROPERTIES
+                         LABELS "asset;feasibility" SKIP_RETURN_CODE 77)
+
+    # P2-7 charge family: the recovered charge-gauge bodies (attacker mode 1, victim modes 0/2).
+    # Data-free by construction, so it never skips.
+    add_executable(rena0_charge_body_test tests/rena0_charge_body_test.cpp)
+    target_link_libraries(rena0_charge_body_test PRIVATE foundation_gameplay)
+    add_test(NAME rena0_charge_body_test COMMAND rena0_charge_body_test)
+    set_tests_properties(rena0_charge_body_test PROPERTIES LABELS "feasibility")
+
+    # P2-7 charge family: the mode-gauge state against the shipped actor parameters.
+    # Install-backed (the limits are actor data), skip-not-pass without the install.
+    add_executable(rena0_mode_gauge_test tests/rena0_mode_gauge_test.cpp)
+    target_link_libraries(rena0_mode_gauge_test PRIVATE foundation_gameplay)
+    add_test(NAME rena0_mode_gauge_test COMMAND rena0_mode_gauge_test)
+    set_tests_properties(rena0_mode_gauge_test PROPERTIES
+                         LABELS "asset;feasibility" SKIP_RETURN_CODE 77)
+
+    # P2-7 guard family: the predicate's flag words in the shipped records (install-backed).
+    add_executable(rena0_guard_flags_test tests/rena0_guard_flags_test.cpp)
+    target_link_libraries(rena0_guard_flags_test PRIVATE foundation_gameplay)
+    add_test(NAME rena0_guard_flags_test COMMAND rena0_guard_flags_test)
+    set_tests_properties(rena0_guard_flags_test PROPERTIES
+                         LABELS "asset;feasibility" SKIP_RETURN_CODE 77)
+
     add_executable(melee_admission_test tests/melee_admission_test.cpp)
     target_include_directories(melee_admission_test PRIVATE src)
     target_link_libraries(melee_admission_test PRIVATE foundation_gameplay

@@ -131,7 +131,7 @@ Both are the same C API. The differences that are real, and where they live:
 
 ## Frame model
 
-Live gameplay and frontend updates use **64 Hz** simulation ticks, independent
+Live gameplay and frontend updates use **60 Hz** simulation ticks, independent
 of render frequency. The host samples devices once per render, queues input
 transitions (including taps completed between polls), and consumes each edge
 once on a tick. Catch-up is capped at eight ticks per render; excess whole-tick
@@ -142,7 +142,7 @@ simulation state. The round-start countdown remains three seconds.
 Deterministic `--out` captures deliberately keep one update per capture frame
 and explicit `--dt` (default 1/60 s), with interpolation disabled. Standalone
 match scripts use match ticks; frontend scripts use global logic ticks. This
-preserves historical capture recipes rather than claiming they test live 64 Hz
+preserves historical capture recipes rather than claiming they test live 60 Hz
 pacing. Integer move/reload windows retain their tick counts at the chosen port
 cadence. Standalone asset viewers and the scripted `--versus` vignette retain
 their existing presentation clocks.
@@ -318,7 +318,7 @@ New since the port landed, all verified the same way:
   result quote plays its shipped voice once. The report displays real KO, death
   and damage totals; original earned titles and four-fighter layouts remain open.
 - Local split-screen: one view per human controller, each with its own camera,
-  cell and HUD values, with the match still stepped once at 64 Hz. The layouts are
+  cell and HUD values, with the match still stepped once at 60 Hz. The layouts are
   the original's (`FUN_006396f0`): one full frame, two 400×300 views at top-left
   and bottom-right, or the four-cell TL/BL/TR/BR grid — three humans reuse the grid
   and leave the human-less cell empty. Each view sets both a viewport and a scissor
@@ -423,7 +423,7 @@ its implementation handoff is in
 Renderer options row 0 (toon shading) and row 1 (character shadows) are live
 and persisted; row 2 (texture resolution) remains unavailable (issue #21).
 Battle fidelity includes unresolved animation/VFX details;
-LAN netplay awaits its own implementation. The Linux CTest suite has 63 tests (2026-10-06),
+LAN netplay awaits its own implementation. The Linux CTest suite has 81 tests (2026-10-16; the fixture runner carries 22 fixtures, 2 of them pilot-gate extras),
 including issue #4's three delivery suites (the archive-ordering cross-check against the
 native reader, the service's prepare/catalog/HTTP surface, and the host-testable half of
 the web asset client) and issue #21 row 1's `shadow_map_test` and `character_shadow`, including frontend selection/configuration, VS/result timelines, HUD geometry, the

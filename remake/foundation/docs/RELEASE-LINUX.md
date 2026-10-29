@@ -57,7 +57,7 @@ What works today, each with the command or doc that proves it:
 |---|---|
 | title → selection → stage settings → VS/countdown → live battle → results → selection, 1v1 and four-fighter 2v2, one camera + HUD per human controller | §3.1/§3.2/§3.3 and the four-player gate; this run reproduced all four ladders and final captures |
 | COM fighters run the recovered decision state (not the old sparring policy) | `bot_brain_test` (in `ctest`); `ROADMAP-PENDING.md` *"COM decision state and tactics"* |
-| fixed 64 Hz simulation independent of render rate; bounded catch-up | `fixed_step_test`; checklist §5 (30/60/144 Hz rows); D9 in `remake/docs/decisions.md` |
+| fixed 60 Hz simulation independent of render rate; bounded catch-up | `fixed_step_test`; checklist §5 (30/60/144 Hz rows); D15 in `remake/docs/decisions.md` |
 | KO/overkill/respawn/timeout/team victory, simultaneous outcomes | `match_economy_test`, `round_rules_test`; `ROADMAP-PENDING.md` *"KO, Overkill, respawn and victory rules"* |
 | battle pause / resume / return to selection, focus-loss auto-pause | `battle_pause_test`, `pause_overlay_layout_test`, `pause_overlay_panel`; D11 |
 | every legal character+weapon selection launches and runs a match | `weapon_definition_test` — measured today `747 checks, 0 failed, 0 skipped`, `all 46 legal selections ran a match` |
@@ -324,7 +324,7 @@ disagree, that document wins.
 | 7 | Package + launcher | `./scripts/package_linux.sh` then `./tests/launcher_test.sh ./package/daybreak` | §1 | The script's assertions (no game data; `ldd` inside the package/base system; same digest twice); `launcher_test` 0 failures; the packaged run and the bad-path exit are done too |
 | 8 | All 46 selections | `./build/linux/weapon_definition_test` | §4.1 | `0 failed`; with the install `0 skipped` and `all 46 legal selections ran a match` |
 | 9 | Character × stage sweep | `python3 tests/showcase.py --check --allow-problems=43 --out-dir /tmp/sweep` | §4.2 | **Exit 0 with 43 problem cells** (the documented install gaps) and no new untextured draw; more than 43 is a regression and exits non-zero. The bare `--check` in §4.2/§8 exits 1 on that same baseline — §1.2 residual 3 |
-| 10 | Window path and pacing | the §5 rows (Wayland, X11, 30 Hz, high refresh, fullscreen), recipe in §5.1 | §5 | A window presents with FIFO vsync and the simulation stays 64 Hz regardless of the render rate |
+| 10 | Window path and pacing | the §5 rows (Wayland, X11, 30 Hz, high refresh, fullscreen), recipe in §5.1 | §5 | A window presents with FIFO vsync and the simulation stays 60 Hz regardless of the render rate |
 | 11 | Prolonged-match stability | `… --local-players=4 --script=tests/scripts/frontend-2v2-longrun.txt --frames=40000` | §6 | **Five** `match: round over` lines (the committed script's reach; §6 says why eight is not reachable by extending the taps), `RESULT: ok`, no crash, bounded live cards (`peak=4/128`, `dropped=0`) |
 
 Also load-bearing by inclusion: `live_camera_smoothness_test` (§3.5's device-free

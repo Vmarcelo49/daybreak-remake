@@ -424,3 +424,50 @@ comments — when a decision changes.
   `wgpu-native → Vulkan (RADV)`).
 - This is a **port-side deployment rule**, not recovered behaviour: the original shipped
   DX9 and had no adapter selection to recover.
+
+## D14 — the recovered action bodies become the character runtime (2026-10-14)
+
+- **The port stops hand-transcribing per-character behaviour.** The target is the
+  recovered original action logic: the control headers and "native body" modules
+  from the reference bundle, one binding resolver, and a per-frame differential
+  harness that compares our build against the original executable. Plan and
+  phases: [`docs/DIRECTION.md`](../../docs/DIRECTION.md) §4.
+- **Why:** 46 combos exist, one per character+weapon pair, and each is its own
+  handler in the original (vtable block `0x6a4e10`, 46 vtables, stride `0x28`;
+  `FUN_00649790` is the 46-case factory). The 184 per-combo functions are 57.6% of
+  the decompiled corpus and none is reviewed. Hand-porting them as `MoveRule`
+  tables measured 0/46 complete after weeks of work and the project's own
+  architecture note names the mechanism (≈550 hand-encodings against a 9-op rule
+  vocabulary).
+- **What this forbids:** new per-character or per-weapon rule arrays, new
+  per-combo branches in `fighter.cpp`, and new binding/controller tables that no
+  runtime path reads. The freeze list and the three-question test are in
+  [`AGENTS.md`](../../AGENTS.md); that file is the enforcement point and the
+  single source of truth for what is frozen.
+- **Provisional, and how it reverses:** the decision stands until the pilot
+  verdict recorded in [`docs/SCOREBOARD.md`](../../docs/SCOREBOARD.md) rejects it
+  (criteria: `DIRECTION.md` §4, 2g). A red verdict sends the project to
+  `DIRECTION.md` §5 — fork the reference runtime as the simulation core, or
+  re-scope — and the pilot is reverted behind its flag. No bundle code becomes
+  load-bearing until the licence/provenance question in `docs/QUESTIONS.md` (Q1)
+  is answered.
+- **Port-side decision, not recovered behaviour:** the original has no notion of
+  a "pilot", a freeze or a harness; this records how *this* project intends to
+  finish, and it is the reason the old per-character plans are retired.
+
+## D15 — live simulation is 60 Hz; D9's 64 Hz cadence is superseded (2026-10-14)
+
+- The owner changed the live cadence from **64 Hz to 60 Hz**. Rationale, in the
+  owner's words: 64 came from general online-3D guidance and is irrelevant beside
+  matching the original, which is a 60 Hz-capped DX9 game, when the point is
+  proper tests.
+- **Effect:** `gameplay::FixedStep::tickRate` becomes 60, so the shipped cadence
+  and the differential harness's comparison domain are the same number. Integer
+  windows now match the original's wall-clock durations — a 12-tick window is
+  0.200 s, not 0.1875 s.
+- **D9 stands except for the rate:** fixed-step simulation independent of render
+  pacing, one device poll per render, queued edges consumed once per tick,
+  catch-up bounded to eight ticks, excess whole-tick wall time discarded.
+- **Consequence for work in flight:** every file or document that states the
+  64 Hz cadence is updated in the same change as the constant; capture recipes
+  already ran at `--dt` 1/60 and are unaffected.

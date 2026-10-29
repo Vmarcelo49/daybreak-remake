@@ -69,7 +69,7 @@ extended this suite and `user_settings_test` — no suite was added, which is wh
 ctest --test-dir remake/foundation/build/linux --output-on-failure
 ```
 
-* **With the game install present**: `100% tests passed out of 65`
+* **With the game install present**: `100% tests passed out of 81` (fixture set 23, three of them pilot extras: the two guard-gate fixtures and the charge-spend fixture — **build all targets after editing the shared fixture header**, or the differential runs a stale binary and fails on an unknown directive) (fixture set 22, two of them pilot-gate extras) (2026-10-16, after the P2-5 body tests and differential, the P2-6 resolver test and the P2-7 shot-body and guard-body tests were added; `ctest`'s own summary is authoritative)
   (re-measured 2026-10-09; 63 was the 2026-10-06 measurement: 61 came from issue #4's three
   delivery suites, 58 from issue #56's `hud_view_geometry`, 57 from issue #50's
   `pause_overlay_layout_test` and `pause_overlay_panel`, 55 from issue #39's
@@ -207,7 +207,7 @@ so the path is `--install=../../Higurashi-Daybreak` (or an absolute path).
 is the repo or worktree root.
 
 **Do not elide `--headless` when repeating a recipe.** §3.4's own warning
-applies: a windowed run steps at the real 64 Hz clock instead of one logic tick
+applies: a windowed run steps at the real 60 Hz clock instead of one logic tick
 per rendered frame, so it still prints `RESULT: ok` on a *different* ladder and
 the tick numbers below no longer mean anything. The shorthand in §3.1-§3.3
 ("same with …") assumes every flag above it is carried.
@@ -421,11 +421,11 @@ those four in every round, because a rematch round's selection starts empty.
   An extended run (the prolonged row of §6, `frontend-2v2-longrun.txt`) repeats that
   block per round; it reaches five rounds, not eight -- see that row.
 * **A windowed (live) run is not the same clock.** The live loop steps the
-  simulation at 64 Hz, while a capture steps once per rendered frame, so a round
-  lasts 3840 ticks there and 3600 here: the rematch blocks above (whose offsets
-  are measured in capture ticks) no longer line up after round 1. Use the
-  capture path for round-by-round evidence; §5's windowed runs verify the window
-  path itself (present, pacing, 64 Hz logic) and use the battle-screen script.
+  simulation at 60 Hz from the wall clock, while a capture steps exactly one
+  logic tick per rendered frame. The rematch blocks above (whose offsets are
+  measured in capture ticks) are verified on the capture path: use it for
+  round-by-round evidence; §5's windowed runs verify the window path itself
+  (present, pacing, 60 Hz logic) and use the battle-screen script.
 
 ### 3.5 The live path (issue #39): what a capture cannot see
 
@@ -640,7 +640,7 @@ window ever appeared on the real session.
 | 5 | High refresh (gamescope `-r 144`) | `... -r 144 -- <demo> --frames=1200` | `frames : 1200 in 6.743 s`, `delta avg : 5.616 ms (178.1 fps)`, `logic : 431 ticks, 64 Hz` → **0.36 ticks per frame** |
 | 6 | Fullscreen + resolution change | `--screen=options --script=<options walk>` on Wayland and X11 | Wayland: `[display] requested 1280x720 fullscreen, window now 960x540`, `[display] fullscreen on, window 960x540`, then `[display] requested 640x480 fullscreen, window now 640x480` and `720x480`; X11: `[display] fullscreen on, window 960x540`, then `[display] requested 320x240 fullscreen, window now 320x200` |
 
-Pacing conclusion, stated plainly: the **simulation is 64 Hz regardless of
+Pacing conclusion, stated plainly: the **simulation is 60 Hz regardless of
 the render rate** — at 30 fps two logic ticks share a frame, at ~181 fps
 roughly one frame in three has none — and every windowed run above presented
 with FIFO vsync (`present mode : Fifo(vsync)`), which is the original's
@@ -672,7 +672,7 @@ demo's own `--frames` summary (wall-clock deltas), not from a stopwatch.
   ./build/linux/foundation_demo --install=../../Higurashi-Daybreak --screen=battle \
       --local-players=2 --frames=1500
   ```
-  A healthy run prints `present mode : Fifo(vsync)` and `logic : N ticks, 64 Hz`
+  A healthy run prints `present mode : Fifo(vsync)` and `logic : N ticks, 60 Hz`
   and ends `RESULT: ok`; kill the session when done.
 * **An interactive compositor-side window drag-resize** — resize was driven
   through the port's own Options resolution list; a mouse drag on the window

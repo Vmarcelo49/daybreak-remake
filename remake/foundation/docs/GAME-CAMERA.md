@@ -32,7 +32,7 @@ acceptance criterion 5: a movement turn must not swing the live camera with the
 body. The target bearing remains the view and control reference.
 
 LockSwitch selects the next enemy on the press edge. Selecting an ally requires
-16 continuously held logic ticks, including the press tick: 250 ms at 64 Hz.
+16 continuously held logic ticks, including the press tick: 267 ms at 60 Hz.
 This duration is a port rule; the recovered 180-tick ally dwell is separate from
 the input gesture. Releasing resets the gesture clock, so tapping again after
 an ally selection stays on an enemy until a new full hold. The product-path
@@ -108,3 +108,24 @@ The original proposal sketched a generic `FighterPose`/clamp composition before
 the match camera class and caller paths landed. That sample is omitted here to
 avoid presenting a second, non-authoritative implementation; see `GAME-INTERFACES.md`
 for the current contract overview.
+
+## Correction (2026-10-23): what the cited functions and constants really are
+
+A scoping pass against the pinned binary (`27e61475…`) found that the provenance this note
+quoted does not support the eye formula in `render/arena_camera.h`:
+
+- **`fcn.006507c0` is the camera *renderer*, not the camera update.** It builds `LookAtLH` and
+  `PerspectiveFovLH` and binds shader constants; it computes no follow.
+- **`0x6a1720` (300.0) and `0x6a4928` (800.0) are the near and far plane offsets**, applied to the
+  eye→aim distance at that projection call (`fadd ds:0x6a4928`, `fsub ds:0x6a1720`, disassembled at
+  `0x6508ae`/`0x6508bb`). 300.0 is *also* the camera reset's eye Z (`fcn.006616d0` sets
+  eye = (0,0,300)). Neither is a height or an orbit distance, so `kHeightOffset`/`kDistanceOffset`
+  are not recovered values.
+- **`fcn.0042cb50` is the fighter push-apart**, not camera collision: `fcn.006394c0` calls it to
+  separate two fighters closer than 60 units horizontally and vertically.
+
+The real follow lives in `fcn.006333b0` (`mode95 == 0 && mode94 == 0`), and is recovered in
+`docs/PILOT-EVIDENCE-CONTRACT.md` V3-14: eye height `dist*0.03 + 140`, a `+200` vertical clamp, a
+`-120` vertical bias, and aim `+20 - dist*0.2`. Because the port's flat 300/+50 keeps eye and aim
+rising together, a jump translates the view without tilting it — which is the reported symptom.
+Implementing it needs the `+0x18` rig chain recovered first.

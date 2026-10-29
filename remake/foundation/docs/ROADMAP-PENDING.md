@@ -1,5 +1,11 @@
 # Pending work — the foundation, after the DX9 cutover
 
+> **Status roster, not a task list — 2026-10-14.** Use this file to look up an
+> item's status, issue ID and measured limits. It does **not** authorize work:
+> the only active plan is [`docs/DIRECTION.md`](../../../docs/DIRECTION.md) and
+> the mandate in [`AGENTS.md`](../../../AGENTS.md). Character/combat items below
+> the cutover notes are frozen until the pilot verdict (`DIRECTION.md` §4, 2g).
+
 > Written 2026-10-02, the day of the Phase 5 cutover
 > (`FULL-REPLACEMENT-PLAN.md` §8). DX9 is gone, so this file is the handoff:
 > what is still open, what evidence points at it, and a concrete way in.
@@ -99,8 +105,10 @@ state in `src/gameplay/bot_brain.{h,cpp}`, with `bot_input.{h,cpp}` as the host 
   that field with player 0's (集中 wants the same target, 各個 a different one).
 * **COM class selection**: `FUN_006492f0:14-38` picks one of three per-character AI
   classes per slot with `rng % 3` (reduced to `% 2` for rena and rika), and
-  `FUN_00649790(characterId, kind)` builds it from the class table at 0x6a4e10. There is
-  no difficulty setting in the original.
+  `FUN_00649790(characterId, kind)` builds the fighter object (46 cases, one per
+  character/weapon), whose vtable block starts at `0x6a4e10` (46 distinct vtables,
+  stride `0x28`) — that is the attack/move class, not the AI class chosen above. There
+  is no difficulty setting in the original.
 
 **Port rules (provisional, labelled in code).** The original steers by absolute yaw
 (`FUN_00421780`/`FUN_0042db10`); this port's fighters are lock-on facing-relative
@@ -1840,7 +1848,7 @@ counts, and the team-select diamond's y anchor discrepancy. Scenes 2 and
 ### F0. Live combat SEs and character voices — IMPLEMENTED (issue #16)
 
 * **What landed.** The frontend battle now dispatches attack, firing, hit, block, KO, respawn
-  and hypermode cues out of the fixed 64 Hz `MatchFrame`, through the battle engine, with the
+  and hypermode cues out of the fixed 60 Hz `MatchFrame`, through the battle engine, with the
   recovered per-character voice vocabulary and the recovered SE ids.
 * **Recovered.** The voice vocabulary is a 40-entry table of 16-byte names at VA 0x6b73b0
   (`addattack`, `attackA`..`specialC`); `FUN_00431e70` loads each event's alternatives from
