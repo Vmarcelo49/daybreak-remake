@@ -2318,8 +2318,9 @@ The glow-quad rule from V3-36 is unchanged and stays depth-tested: a quad in a m
 draws additively but is still occluded by the stage, which matches the original, where Z is only
 turned off inside cases 2/4.
 
-Suite 83/83 excluding the known `device_isolation_test` flake; a match frame still draws its
-four effect cards and the pipeline count grows by the one new pass.
+Suite 83/83 excluding the known `device_isolation_test` flake; a match frame still reports its
+four effect cards. The depthless pipeline is built lazily, the first time a shot whose record asks
+for mode 2 or 4 is drawn, so a frame with no such shot is unchanged.
 
 ### V3-40 — what row 390 (guard) really does, and why it is still not implemented
 
