@@ -89,7 +89,8 @@ int Match::melee_target(int fighter) const {
     if (fighter < 0 || fighter >= m_config.fighterCount) return kNoTarget;
     bool alive[kMatchFighterCount];
     liveness(alive);
-    // The locked target when it is a living hostile (FUN_00421f30's +0x304). Allies are
+    // The locked target when it is a living hostile (the original's +0x300 index; +0x304 is the
+    // ally index and cannot hold a hostile). Allies are
     // excluded here unconditionally: an ally may be aimed at, never attacked.
     const int locked = m_locks.target(fighter);
     if (m_locks.targetable(fighter, locked, alive) && !m_locks.is_ally(fighter, locked))

@@ -100,10 +100,15 @@ inline constexpr int kLockPulseTicks = 15;
 // (FUN_0041f580:244).
 inline constexpr int kAllyHoldTicks = 180;
 
-// One fighter's lock state. The three timers are the original's +0x304/+0x30c/+0x848
+// One fighter's lock state. The three timers are the original's +0x300..+0x30c and +0x848
 // kept together because they are read together by the ring and the per-player update.
 struct TargetLock {
-    int  target     = kNoTarget;  // +0x304: locked combat target, a fighter index
+    // A locked ENEMY index. The original keeps enemy and ally selections in two fields —
+    // +0x300 indexes the opponent vector at +0x2e0, +0x304 the ally vector at +0x2f0
+    // (FUN_00421670 / FUN_00421730, built per team in FUN_00634980) — and this field is the
+    // +0x300 one. The ally index has no port field because a different-team 1v1 leaves the ally
+    // vector empty, so nothing can ever write a non-negative +0x304 (V3-41).
+    int  target     = kNoTarget;  // +0x300: locked enemy, a fighter index
     int  pulseTicks = 0;          // +0x30c: ticks left in the switch pulse
     int  holdTicks  = 0;          // +0x848: ally hold, 0 while the selection is hostile
     bool switched   = false;      // the selection changed this tick (drives the pulse)
