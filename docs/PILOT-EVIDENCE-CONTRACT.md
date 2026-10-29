@@ -1906,3 +1906,42 @@ Suite 83/83 excluding the known `device_isolation_test` flake; fixture matrix un
 
 Still open (D4): the `+0x280`-gated extra −3 meter arm and the *climb* arm of `+0x10` in
 phases 0-1 (it rises 0.5/tick, capped at 8.0, when that word is non-zero).
+
+### V3-31 — what the air dash still does not model (D4 and its neighbours)
+
+Cross-check of V3-29/V3-30 against `FUN_0043ffc0` case `0x1e`/`0x2b` and the transcribed
+body `.local-analysis/.../dash_native_bodies_20260929.hpp:512-629`. The transcribed body
+matches the dump operator for operator, including `0x41840000`, `-0xb`, `0x41000000`,
+`0x3f000000` and `0x40000000`, and the phase-0-frame-0 ordering.
+
+Confirmed matching already: the 16.5/tick slide, the 60°/2° steering, the 0.5/tick² fall
+(`kGravity` 1800 = 0.5×60²), the phase-1 release on `5 < +0x3a`, and the hang floor.
+
+Open, in priority order:
+
+1. **The climb arm (D4).** Phases below 2 do not merely floor `+0x40` at zero — when the
+   word at **byte +0x280** is non-zero they add 0.5/tick up to a **cap of 8.0/tick**, and
+   charge an extra **−3 meter** (`:391-396`). So an air dash can *rise*, fast, at extra
+   cost. Nothing of this exists in the port, and `+0x280` is still unmapped.
+2. **Phase 2 starts from the accumulator.** `:423-425` subtracts 0.5/tick from whatever
+   `+0x40` holds, so a dash that exited phases 0–1 at +8 keeps rising for ~16 updates
+   before falling. With the climb arm absent the accumulator is always 0, so this is inert
+   until item 1 lands — they must ship together.
+3. **The ground test exists only in phase 2** (`:426-430` → state `0x2c` = 44, the
+   air-landing row). The port's generic collision landing ends the dash in *any* phase and
+   goes to Idle, so it never enters a landing row. Fixing this means modelling state 44,
+   which is a structural change, not a constant.
+4. **The state the dash ends in is not the port's Jump.** `:379-381` completes into state
+   43, whose `+0x10`/`+0x16` handling differs (a button word in 1..59 *suspends* gravity,
+   `:542-544`) and which has no hover path. The port ends into Jump, which re-enables the
+   row-41 hover. The momentum carry of V3-29 is behaviourally right for the slide, but the
+   state behind it is not state 43.
+5. **State 41's climb is modelled from the wrong field.** `:485-487` suspends gravity while
+   the button word sits in 1..59 and `:458` seeds `+0x10` = 12.0; the port's `+0.2/tick`
+   climb comes from the *horizontal* `+0x15` ramp at `:495-498`, not a vertical rate. Same
+   unmapped word.
+
+Items 1, 2 and 5 are all gated on identifying byte **+0x280**; 3 and 4 are state-model work.
+The `battle_air_dash.hpp` tuning defaults (speed 15.5, drain 9) disagree with both the body
+and the dump (16.5, 11) — use the transcribed body, and note the port already uses the
+body's values.
