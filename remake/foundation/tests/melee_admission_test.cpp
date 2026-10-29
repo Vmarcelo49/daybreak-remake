@@ -1152,6 +1152,25 @@ int run() {
         // is why this program must carry NO contact cut for it (V3-43).
         check(findRule(p0, 350, gameplay::MoveOp::ContactOff, -1) == nullptr,
               "weapon 0's 350 carries no contact cut (the body cuts the trail, not the volume)");
+        // The flurry rules the corrected reading requires: the body re-arms one hit per victim
+        // per tick below 0x24 and again at 0x37, so both windows must be present and correctly
+        // shaped. Asserting their shape is what catches the off-by-one (<= 0x24) and a dropped
+        // 0x37 window, which the HP assertions alone cannot see.
+        const gameplay::MoveRule* flurry = findRule(p0, 350, gameplay::MoveOp::ContactReset, -1);
+        check(flurry && flurry->first == 0 && flurry->last == 0x23,
+              "350 re-arms the hit registry over the body's tick < 0x24 window (0..35)");
+        bool hasLateReset = false;
+        bool lateShaped = false;
+        if (p0) {
+            for (size_t i = 0; i < p0->count; ++i) {
+                const gameplay::MoveRule& r = p0->rules[i];
+                if (r.move != 350 || r.operation != gameplay::MoveOp::ContactReset) continue;
+                if (r.first == 0x37 && r.last == 0x37) { hasLateReset = true; lateShaped = true; }
+                else if (r.first != 0) hasLateReset = false;
+            }
+        }
+        check(hasLateReset && lateShaped,
+              "350 re-arms again at tick 0x37 (the frame-57 right-hand contact)");
         const gameplay::MoveRule* w2speed = findRule(p2, 402, gameplay::MoveOp::Speed, 0);
         check(w2speed && w2speed->first == 0 && w2speed->last == 9999,
               "w2 402 re-asserts speed 20 every phase-0 frame");

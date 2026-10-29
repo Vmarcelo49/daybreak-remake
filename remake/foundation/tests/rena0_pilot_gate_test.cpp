@@ -617,7 +617,7 @@ ActionCameraRun actionCameraRun(test::Combo& combo) {
             run.exRow = 350;
             run.cameraOnWhiff = std::max(run.cameraOnWhiff, fighter.action_camera());
         }
-            if (fighter.state() != gameplay::FighterState::AttackA && i > 2) break;
+        if (fighter.state() != gameplay::FighterState::AttackA && i > 2) break;
     }
     return run;
 }
@@ -632,6 +632,8 @@ struct ExDamage {
     int hits = 0;
     int victimHp = 100;
     int lateCamera = -1;   // the camera once the move's own clock passes the late window (0x33)
+    int lateCameraTick = -1;    // the first move-clock tick that reported set 1
+    int beforeLateCamera = -1;  // the last move-clock tick that reported set 0
 };
 
 ExDamage exDamageRun(test::Combo& combo) {
@@ -669,16 +671,22 @@ ExDamage exDamageRun(test::Combo& combo) {
     actor.down[input::Action::Special] = false;
     ExDamage run;
     for (int i = 0; i < 80; ++i) {
-        // Keep the opponent on the volume every tick, which is what the melee fixtures' own
-        // place_at_attack does: the EX lunges forward, so a placement made once ends up behind her.
-        test::Combo::placeAtAttack(fighter, match.fighter(1));
+        // The placement helper is only valid while the attacker's volume is live: it reads
+        // hitbox_debug().attackCenter, which is zero unless the fighter is attacking, so an
+        // unguarded call would teleport the opponent to the world origin between windows — the
+        // same guard the fixture runner's own place_at_attack applies (rena0_fixture_test.cpp).
+        if (fighter.melee_in_active()) test::Combo::placeAtAttack(fighter, match.fighter(1));
         step(match, actor);
         if (fighter.attack_move_id() == 350) {
             run.row = 350;
             // 0x33 = 51 of the move's own clock: once the late hit latch is armed AND the clock
-            // has passed it, the EX switches to camera set 1 (FUN_0043ffc0:1437-1446).
-            if (fighter.phase_elapsed() >= 52)
-                run.lateCamera = std::max(run.lateCamera, fighter.action_camera());
+            // has passed it, the EX switches to camera set 1 (FUN_0043ffc0:1437-1446). Record the
+            // boundary rather than a range, so a rule firing at 50, 51 or 53 is not all the same.
+            const int elapsed = fighter.phase_elapsed();
+            const int camera = fighter.action_camera();
+            if (camera == 1 && run.lateCameraTick < 0) run.lateCameraTick = elapsed;
+            if (camera == 0) run.beforeLateCamera = elapsed;
+            run.lateCamera = std::max(run.lateCamera, camera);
         }
         run.hits = std::max(run.hits, fighter.swing_hit_count());
     }
@@ -967,6 +975,16 @@ int main(int argc, char** argv) {
         require(ex.lateCamera == 1,
                 "a connecting EX must switch to camera set 1 past tick 0x33, got " +
                     std::to_string(ex.lateCamera));
+        // The boundary itself. The rule's window opens at the move's tick 0x33 = 51, but the
+        // program runs BEFORE the tick's own increment, so the first sample that reports set 1
+        // reads the clock at 52 and the last one still on set 0 reads 51. Both ends are pinned:
+        // a rule at 50, 51 or 53 (in either convention) fails here.
+        require(ex.lateCameraTick == 52,
+                "the late switch must appear on the sample after the move's tick 0x33, got " +
+                    std::to_string(ex.lateCameraTick));
+        require(ex.beforeLateCamera == 51,
+                "the last tick on set 0 must read the move clock at 0x33, got " +
+                    std::to_string(ex.beforeLateCamera));
         require(camera.cameraOnWhiff == 0,
                 "the EX attack must play the recovered camera set 0 even when it misses, "
                 "got " + std::to_string(camera.cameraOnWhiff));

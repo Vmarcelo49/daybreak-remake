@@ -155,11 +155,14 @@ enum class MoveOp { Speed, Decelerate, Turn, Approach, Launch, Hold, ActionCamer
                     // Model the bodies' FUN_00434bd0/FUN_00434b30 windows. Those touch the
                     // ACTOR's trail object at +0x6a0 — the weave/ribbon's intensity and its two
                     // effect slots — and are NOT the contact volume (V3-43). The op still drives
-                    // the port's contact gate because that is how it was first read; its only
-                    // remaining users are row 320's windows, where the shipped records carry no
-                    // contact anyway, so nothing observable depends on the conflation. Row 350's
-                    // rule was deleted on the corrected reading; if the gate is ever given its
-                    // own op, these become no-ops.
+                    // the port's contact gate because that is how it was first read.
+                    //
+                    // Its remaining users are row 320's windows (where the shipped records carry
+                    // no contact anyway, so nothing observable depends on the conflation) and
+                    // weapon 1's row 350 (:1063-1064, the 21..64 window). Those two are the SAME
+                    // misreading — the recovered call is about the trail — and they are left
+                    // alone because weapon 1 is outside the Rena+0 pilot; whoever brings that
+                    // weapon in should re-check them before trusting the window.
                     ContactOff,
                     // Re-arm the per-victim hit markers (FUN_0042c800(0)) and give each victim a
                     // budget of one hit (FUN_0042c840(1)): 0x88+i*2 and 0x90+i*4 for the four
@@ -359,8 +362,9 @@ inline constexpr MoveRule kRenaRules[] = {
     // The base rule is ungated (the `second` column), which is why the cinematic plays on a
     // whiff; the late switch stays gated on contact. PORT RULE for the latch: the original
     // clears the per-slot hit flags every tick until frame 0x24, so only a hit landing in
-    // ticks 0x24..0x32 arms it, while the port's `m_chainContact` records a hit anywhere in
-    // the move — the approximation can switch to set 1 slightly earlier than the original.
+    // ticks 0x24..0x32 arms it, while the port's `m_chainContact` records a hit anywhere in the
+    // move. The switch tick (0x33) is the same; the port just accepts hits the original would
+    // have discarded.
     {350,-1,0,9999,MoveOp::ActionCamera,0.f,1.f},
     // 0x33 = 51, not the frame the latch is armed on: the body stores the camera request
     // BEFORE it tests +0xe8 in the same update, so a latch armed at frame 0x32 can only reach
@@ -728,12 +732,12 @@ inline constexpr MoveRule kRenaRules[] = {
     // speed 10 at frame 1 and 0 at frame 10; frames 2..9 play twice (the rewind
     // scratch alternates a -1 clock skip, so the parity-gated ClockSkip halves
     // the clock's advance through elapsed 17); frame 70 rewinds to 66 eight
-    // times before the move runs out. The contact latch at frame 50 only feeds
-    // the +0x684 presentation flag the port does not model.
+    // times before the move runs out. The contact latch at frame 50 is what arms the late camera
+    // request afterwards — the `+0x684` word the set-1 rule below writes (V3-37).
     {350,-1,0,9999,MoveOp::Hide,0.f},
     {350,-1,0,9999,MoveOp::Hide,1.f},
     // NO contact cut here, and the earlier reading that put one is retracted: the tick-0
-    // call at 0x4433fa is `add ecx,0x6a0` → FUN_00434bd0, which operates on the actor's
+    // `add ecx,0x6a0` at 0x4433f4 and the call at 0x4433fa are FUN_00434bd0, which operates on the actor's
     // TRAIL object — it clears trail+0xfc and drops two effect slots via FUN_00435900
     // (FUN_00434bd0.c:9-19). Nothing in the hit path reads it: the contact record pointer is
     // char+0x10 (maintained by FUN_004212f0 from the phase's record index), its anchors are

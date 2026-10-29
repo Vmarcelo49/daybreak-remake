@@ -879,10 +879,10 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         // playhead and applying any eligible class blend for this same tick. A
         // FUN_00421100 bind resets both elapsed counters; the common update leaves
         // that newly selected set at position zero on this tick.
-        // The landing window counts down before the refresh so the tick that ends it rebinds
-        // Idle's own row instead of playing row 44 one frame too long. Leaving Idle (walking,
-        // attacking, jumping) ends the window early, which is what the port's immediate cancel
-        // means today.
+        // The landing window counts down here, before the refresh, and the tick that closes it
+        // rebinds Idle's own row below (refresh_state_move returns early for anything but Jump,
+        // so the rebind cannot come from there). Leaving Idle (walking, attacking, jumping) ends
+        // the window early, which is what the port's immediate cancel means today.
         if (m_landingTicks > 0) {
             if (m_state != FighterState::Idle) {
                 m_landingTicks = 0;

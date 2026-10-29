@@ -132,7 +132,12 @@ const std::pair<const char*, const char*> kRequiredFields[] = {
     {"round_over", "rena0-round-timeout.fixture"},
     {"round_end", "rena0-round-timeout.fixture"},
     {"balloon1", "rena0-round-timeout.fixture"},
-    {"dummy_static", "rena0-idle-walk-turn-stop.fixture"}};
+    {"dummy_static", "rena0-idle-walk-turn-stop.fixture"},
+    // Added with the Hyper EX camera fixture (V3-37): the request word and the mode flag are
+    // asserted there, and a required field must be listed here or deleting its manifest line
+    // would go unnoticed (the runner's check is one-way).
+    {"action_camera", "rena0-hyper-ex-camera.fixture"},
+    {"hyper", "rena0-hyper-ex-camera.fixture"}};
 
 // Per-observable tolerance, kept in step with the contract's §2b table: positions and
 // displacements carry accumulation noise, the hold-seconds are exact data-derived values

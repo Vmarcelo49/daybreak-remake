@@ -1133,8 +1133,9 @@ void SceneRenderer::setEffectInstances(const std::vector<EffectInstance>& instan
     effectInstances_ = instances;
     // The pose arrays belong to the caller's frame, and the cards are usually re-sampled
     // every frame; the renderer keeps the record but must not keep the pointer, which
-    // dangles the moment this call returns. Nulling it here also leaves the dedupe above
-    // comparing like with like (a stored instance never claims to carry a pose).
+    // dangles the moment this call returns. (Nulling it also means the dedupe above can never
+    // match an animated card — its predicate requires both sides to carry no pose — so a frame
+    // with posed cards rebuilds the list, which it has to anyway: the pose changed.)
     for (EffectInstance& stored : effectInstances_) stored.poseWorld = nullptr;
     draws_ = baseDrawList_;
     applyModelVisibility();
@@ -1208,6 +1209,24 @@ void SceneRenderer::setEffectInstances(const std::vector<EffectInstance>& instan
             draws_.push_back(d);
         }
     }
+    // The per-instance copies were appended in instance order, and an instance's pass can be
+    // EffectNoDepth while a later one is Opaque — so the pass grouping has to be re-established
+    // over the whole list, not just the base draws. Without this a solid shot copy drawn after a
+    // depthless card would still paint over it (the depthless pass tests ALWAYS and writes no
+    // depth, so the card cannot defend itself).
+    std::stable_partition(draws_.begin(), draws_.end(),
+                          [](const DrawItem& d) { return d.pass != Pass::EffectNoDepth; });
+    std::stable_partition(draws_.begin(), draws_.end(),
+                          [](const DrawItem& d) {
+                              return d.pass == Pass::Outline || d.pass == Pass::Opaque ||
+                                     d.pass == Pass::Decal;
+                          });
+    std::stable_partition(draws_.begin(), draws_.end(),
+                          [](const DrawItem& d) {
+                              return d.pass == Pass::Outline || d.pass == Pass::Opaque;
+                          });
+    std::stable_partition(draws_.begin(), draws_.end(),
+                          [](const DrawItem& d) { return d.pass == Pass::Outline; });
     int instEffects = 0, instDecals = 0;
     for (const DrawItem& d : draws_)
         if (d.instance) {

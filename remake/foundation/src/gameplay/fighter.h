@@ -1276,11 +1276,14 @@ private:
     // suppresses the row-41 hover, which state 43 does not have (V3-42).
     bool         m_dashFall = false;
     // Landing screen. State 44 is a real row — move 44, one section tagged 44, 22 frames at the
-    // shipped 1760/4800 ticks — and every air state that touches down enters it (FUN_0043ffc0
-    // :54-81, and state 43's own exit at :530-536). The port has no 44 state and keeps the
+    // shipped 1760/4800 ticks — entered by the air states whose landing is a normal touchdown:
+    // state 41/42/43 all exit into it (FUN_0043ffc0 :54-81, and state 43's own exit at :530-536).
+    // An AIR ATTACK's touchdown is a different branch: its body lands through its own LandExit /
+    // LandPhase rows, so this window does not open for it. The port has no 44 state and keeps the
     // fighter in Idle, so this counter plays the row's clip for its recovered length and then
-    // falls back to Idle's own. What it does NOT carry is the row's frame-10 flags-0x100 record,
-    // so the port can still cancel out of the landing on the first tick (V3-42).
+    // falls back to Idle's own. It runs on BOTH paths — the row is recovered behaviour, not a
+    // pilot experiment. What it does NOT carry is the row's frame-10 flags-0x100 record, so the
+    // port can still cancel out of the landing on the first tick (V3-42).
     int          m_landingTicks = 0;
     // The air dash's phase-1 visit counter (the body's +0x3a). Set 55 declares the +0x20
     // hold, so its clock can never advance the phase; the body leaves for phase 2 once

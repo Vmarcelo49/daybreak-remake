@@ -40,6 +40,11 @@ expect 36 anim_set 43
 # and returns to Idle's own row when the window closes (V3-42).
 expect 40 anim_set 44
 expect 50 anim_set 44
+# The window is the row's own 22 frames: the last tick still holding set 44 is 57, and the
+# tick that closes it (58) is already back on Idle's row. Pinning both ends is what makes the
+# derived length matter — a 21- or 23-frame window fails here.
+expect 57 anim_set 44
+expect 58 anim_set 0
 expect 60 anim_set 0
 expect 37 state 0
 expect 40 y 0

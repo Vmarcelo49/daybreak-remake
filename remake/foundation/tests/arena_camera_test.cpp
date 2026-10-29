@@ -869,7 +869,9 @@ void actionCameraCases() {
           "set 0 leaves the ordinary follow (0 is a real set, not off)", v3s(setZero - off), "> 50");
     check(glm::length(setOne - off) > 50.f,
           "control: set 1 leaves it too, so the check above is not luck", v3s(setOne - off), "> 50");
-    // And -1 is the sentinel: the eye is exactly what the plain follow produces.
+    // And -1 is the sentinel. This baseline never calls set_action at all, so it is an
+    // independent expectation rather than a second copy of the -1 setup: a camera that ignored
+    // the sentinel and played set 0 would fail the comparison.
     ArenaCamera plain(ArenaCameraPreset::referenceRemake());
     CameraTarget self{};
     self.position = glm::vec3(0.f, 200.f, 0.f);
@@ -877,9 +879,9 @@ void actionCameraCases() {
     plain.set_target_pool(pool);
     plain.set_active_target(0);
     plain.set_action_rig(&rig);
-    plain.set_action(-1, self.position, 0.f, self.position);
     plain.update(1.0 / 60.0);
-    checkNear("-1 keeps the ordinary follow (the sentinel really is off)", off, plain.eye(), 1e-3f);
+    checkNear("-1 keeps the ordinary follow (no action camera was ever requested)",
+              off, plain.eye(), 1e-3f);
 }
 
 int main() {

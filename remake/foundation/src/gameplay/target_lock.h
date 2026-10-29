@@ -4,10 +4,14 @@
 //
 // WHY this is separate from the camera: in the remake the camera owns *which player is
 // followed* (gameplay/arena_camera.h, the ported ArenaCamera) and this file owns *which
-// fighter each fighter attacks and faces*. The original keeps both on one player struct
-// — the followed player at +0x300 and the locked combat target at +0x304 — but they are
-// distinct fields with distinct writers, and FUN_00421e30/FUN_00421f30 write them
-// separately. Keeping them apart here is what lets two players hold independent locks
+// fighter each fighter attacks and faces*. The original keeps two selections on one player
+// struct — an opponent index at +0x300 (into the other-team vector at +0x2e0) and an ally
+// index at +0x304 (into the same-team vector at +0x2f0) — written separately by
+// FUN_00421e30 and FUN_00421f30. The port models the first: the fighter a fighter attacks
+// and faces. (The disassembly that settles the two offsets is tabulated in
+// PILOT-EVIDENCE-CONTRACT V3-41; this field's label at the bottom of the struct still reads
+// +0x304 because these notes were written the other way round, and the note there says so.)
+// Keeping the two apart here is what lets two players hold independent locks
 // (issue #8) instead of sharing one camera-owned selection.
 //
 // INDICES. Everything in this file is a *fighter index*: a launch-slot index in
@@ -29,12 +33,14 @@
 //   and plays cue 0xd. So the same writer produces both the enemy and the ally case,
 //   and the team comparison is what distinguishes them.
 //
-//   FUN_00421f30 (0x421f30) — the *direct-set* writer. With 0 <= index < player count
-//   (FUN_0064f010 is the player-count query): stores the index at +0x304, writes the
-//   pulse, copies position and team, **clears the ally hold**, and plays cue 0xd. With
-//   any other index it stores 0xffffffff and touches nothing else — an invalid index
-//   clears the lock rather than latching an arbitrary fighter. That asymmetry is the
-//   port's "invalid targets never produce an index" rule, kept exactly.
+//   FUN_00421f30 (0x421f30) — the direct-set writer for the ALLY index. It bounds-checks
+//   against the same-team vector at +0x2f0 (`add ecx,0x2f0` at 0x421f40 and 0x421f7f) and
+//   stores that index at +0x304, writes the pulse, copies position and team, clears the
+//   ally hold, and plays cue 0xd. With any other index it stores 0xffffffff and touches
+//   nothing else — an invalid index clears the selection rather than latching an arbitrary
+//   fighter. That asymmetry is the port's "invalid targets never produce an index" rule,
+//   kept exactly (for the opponent selection the port does model, FUN_00421e30 is its
+//   writer and follows the same shape).
 //
 //   FUN_004201a0 (0x4201a0) — the per-tick decrement of the +0x30c pulse, clamped at 0.
 //   The ring reads it as both a 1.0 + 0.1*pulse scale and a 9-degree-per-tick arc
@@ -103,13 +109,13 @@ inline constexpr int kAllyHoldTicks = 180;
 // One fighter's lock state. The three timers are the original's +0x304/+0x30c/+0x848
 // kept together because they are read together by the ring and the per-player update.
 struct TargetLock {
-    // OFFSET NOTE (2026-10-29): the notes below call this +0x304, but the instructions put the
-    // ENEMY selection at +0x300 and the ally one at +0x304 — FUN_00421f30 bounds-checks and
-    // indexes the same-team list at +0x2f0 (0x421f40, 0x421f7f) while FUN_00421e30 indexes the
-    // other-team list at +0x2e0 (0x421e5d, 0x421e7d), and FUN_00634980 fills those two lists by
-    // comparing team records (0x634b75-0x634bb8). This field is the enemy selection, so it is the
-    // +0x300 one. The label is left as the file has it because the paragraphs below are built on
-    // the old naming; PILOT-EVIDENCE-CONTRACT V3-41 carries the address table.
+    // OFFSET NOTE (2026-10-29): the instructions put the ENEMY selection at +0x300 and the ally
+    // one at +0x304 — FUN_00421f30 bounds-checks and indexes the same-team list at +0x2f0
+    // (0x421f40, 0x421f7f) while FUN_00421e30 indexes the other-team list at +0x2e0 (0x421e5d,
+    // 0x421e7d), and FUN_00634980 fills those two lists by comparing team records
+    // (0x634b75-0x634bb8). This field is the enemy selection, i.e. the +0x300 one; the trailing
+    // label keeps the +0x304 the older notes gave it, and PILOT-EVIDENCE-CONTRACT V3-41 carries
+    // the address table.
     int  target     = kNoTarget;  // +0x304: locked combat target, a fighter index
     int  pulseTicks = 0;          // +0x30c: ticks left in the switch pulse
     int  holdTicks  = 0;          // +0x848: ally hold, 0 while the selection is hostile

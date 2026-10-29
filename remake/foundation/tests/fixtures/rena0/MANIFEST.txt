@@ -1,4 +1,7 @@
 # F1-3/2e acceptance manifest — v3 (APPROVED 2026-10-22 by the repo owner).
+# The APPROVED v3 set was 24 fixtures / 25 case rows / 44 asserted fields. This file now
+# carries more (30 / 31 / 49): the later pilot rows were added by work after that approval and
+# await the owner's re-approval — see docs/SCOREBOARD.md. Nothing here narrows the approved set.
 #
 # The runner REQUIRES this file and fails when:
 #   - a listed fixture is missing (fail-closed: deleting a fixture cannot shrink coverage);

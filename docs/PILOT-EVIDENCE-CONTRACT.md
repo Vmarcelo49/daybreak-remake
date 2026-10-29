@@ -2206,15 +2206,16 @@ Owner report, with an original-runtime screenshot: in Hyper mode the Special pre
 single EX attack (row 350), and that move plays the cinematic camera **whether or not it
 connects** — unlike the melee chain, where the camera is a hit effect.
 
-The port never played it. Measured, not assumed: row 350's recovered program had **29 ops and
-zero `ActionCamera` ops**, so `action_camera()` stayed 0 for the whole move (probed with the
+The port never played it. Measured, not assumed: the port's own rule program for row 350 had
+**29 ops and zero `ActionCamera` ops**, so `action_camera()` stayed 0 for the whole move (probed with the
 opponent 2000 units away, so every swing whiffed). Nothing was suppressing it — the op was
 missing.
 
 Two things were needed:
 
-- **The rule.** `{350, -1, 0, 9999, MoveOp::ActionCamera, 2.f, 1.f}` — the whole move, firing
-  once. `FUN_0043ffc0` case `0x15e` has no contact test around its request, which is why the
+- **The rule.** The first attempt used `{350, -1, 0, 9999, MoveOp::ActionCamera, 2.f, 1.f}` — the
+  whole move, firing once, borrowing the melee combo's index. **That index was wrong and is
+  superseded below**; the shipped rule is `0.f` (see "The clip index is 0"). `FUN_0043ffc0` case `0x15e` has no contact test around its request, which is why the
   owner sees it on a whiff.
 - **An ungated arm.** The executor gated every camera on `m_chainContact`, the latch
   `note_melee_hit` sets. That gate is right for the chain (a whiffed swing must not play it —
@@ -2228,8 +2229,9 @@ Two things were needed:
 `0x443686`). That word is the rig's animation-set index: `FUN_006358c0:59-64` tests it for
 `< 0` (clear the action camera) and otherwise passes it to `FUN_00633140`, which stores it at
 `camera+0x7c` and reads the set period; `FUN_006333b0:83-85` then binds both controller
-tracks to it. The rig is `data/camera/01.x`, and the port already reverses its sets the same
-way the reference bundle documents, so port index == native index.
+tracks to it. The rig is `data/camera/01.x`, and the port reverses its sets the same way the
+reference bundle documents; assuming that reversal matches, port index == native index (a
+loader consistency check, not independent proof — the fixture pins the port's set 0).
 
 So the move requests **set 0 for the whole move** — that is the cinematic the owner sees on a
 whiff — and **set 1 from tick `0x33`** only when the late hit latch `+0xe8` is set (armed at
@@ -2246,12 +2248,14 @@ carry `-1`. With set 0 played, the port frames the move close and frontal at the
 height — the same angle as the print — where set 5 was wide and from the wrong side.
 
 PORT RULE that remains: the late switch to set 1 is gated on the port's `m_chainContact`, which
-records a hit anywhere in the move, while the original only survives a hit landing in ticks
-`0x24..0x32` (it clears the per-slot flags every tick before that). So the port can switch to
-set 1 slightly earlier than the original, and never for a hit that landed before tick `0x24`.
+records a hit ANYWHERE in the move, while the original arms its latch only for a hit landing in
+ticks `0x24..0x32` (it clears the per-slot flags every tick before that). The switch tick itself
+is the same `0x33` in both; what differs is the set of hits that qualify, so the port can switch
+where the original would not (a hit before tick `0x24`), never the other way round.
 
 
-Regression, two layers. `rena0_pilot_gate_test` Case G drives the whole sequence — a whiffed
+Regression, two layers. `rena0_pilot_gate_test` (the camera assertions after Case F) drives the
+whole sequence — a whiffed
 melee swing must leave the camera at **-1**, Hyper activation must not arm it, and the EX press
 must put **set 0** on for the move with the opponent out of reach; deleting the rule fails it.
 `rena0-hyper-ex-camera.fixture` pins the same path at fixture level, so the acceptance matrix
@@ -2422,6 +2426,12 @@ reached set 43 eventually, but through the jump chain's falling row 42, whose *f
 set **5** (2480 ticks = 32 frames); so after a dash the port played 32 frames of set 5 before set
 43 appeared.
 
+**The landing row runs on both paths, deliberately.** It is recovered behaviour, not a pilot
+experiment, so a plain match (no `--native-actions=rena0`) also plays row 44 on touchdown — the
+difference from the dash fall above, which only exists where the dash has sections. Anyone
+comparing default-path captures across this change should expect the landing clip to differ;
+nothing else on that path moved.
+
 **Implemented:** a `m_dashFall` flag set when an air dash completes still airborne, which makes
 `jump_chain_move()` return move 43 (and suppresses the row-41 hover, which state 43 does not
 have). The air-dash fixture now pins it: `anim_set 43` on the first post-dash update, where the
@@ -2439,9 +2449,9 @@ the recovered completion only exists where the sections do.
   move **44** → set **44** (1760 ticks = 22 frames, gate 0): it zeroes speed, movement angle and
   turn, adds 40 (or 5 while status slot 6 is set) to the meter with a 1000 cap, and leaves when
   `FUN_004218c0()` fires — 21 updates of body, the 22nd leaving into state 0. It is shared by
-  every air state that touches down (the port's own respawn note at `fighter.cpp:830-831` records
-  that move `0xc2` also lands into `0x2c`). The port lands straight into Idle and binds set 0, so
-  the landing clip and its ~0.367 s are absent. The observable is exact (`anim_set 44` held 22
+  the touchdown of a normal air state (the port's own respawn note records
+  that move `0xc2` also lands into `0x2c`). Before the change the port landed straight into Idle
+  and bound set 0, so the landing clip and its ~0.367 s were absent. The observable is exact (`anim_set 44` held 22
   updates) but implementing it means giving `Idle` a landing window, which changes the meter
   refill's start and every `state_enum 0` expectation — a change of its own, not a pin.
 - **The turn write.** State 43 writes `+0x874 = 1.0` every update (`:537`) and then steers `+0x64`
@@ -2468,8 +2478,10 @@ State 44's row now plays. It was specified in the entry above and is in place:
 - The differential comparator had to learn the same thing: the tick that closes the window is a
   transition in which the state setter restarts the clock, so it is compared as one instead of
   being measured against a row that has already ended.
-- The meter is untouched: row 44 refills +40 (or +5 with status slot 6) per update and the port's
-  Idle adds the same, so the window is animation-only and no meter expectation moved.
+- The meter is untouched for a JUMP landing: row 44 refills +40 (or +5 with status slot 6) per
+  update and the port's Idle adds the same, so no meter expectation moved. The air-dash arm still
+  skips the touchdown tick's +40 (its own gate is Jump-only) — a pre-existing gap the window does
+  not change either way.
 
 **Pinned:** `rena0-air-dash-left.fixture` — `anim_set 44` at the landing updates and `anim_set 0`
 once the window closes; removing the row fails it with `tick 40 anim_set exp 44 got 0`.
@@ -2501,42 +2513,50 @@ path never touches it:
 | record selection | `FUN_004212f0` advances the phase's record index (`char+0xadfc`) and writes the current contact record pointer `char+0x10` (`:20-30`), on every tick from the shared tail `0x445ce0` |
 | geometry | `FUN_00420880` transforms the record anchors into `char+0xc4` / `char+0xd4` (`:48-51`) |
 | hit pass | `FUN_00637680` calls `FUN_00637950` for every ordered pair (`0x637915-0x63793c`) |
-| damage | `FUN_00637950` gates on the record's radius (`cmp [edx+0x24],0` @`0x6379da`), tests against `char+0xc4/+0xd4`, marks the victim, and subtracts HP at `0x638a96` |
+| damage | `FUN_00637950` gates on the record's radius (`0x6379da` compares `[edx+0x24]` against 0; the entry test the port's `fighter.cpp` cites at `0x6379e0` is the same gate), tests against `char+0xc4/+0xd4`, marks the victim, and subtracts HP at `0x638a96` |
 
 Row 350's data carries exactly what that needs: seven one-tick hand contacts
 (`Bip01_L_Hand`, radius 30, sphere, frames 11/15/20/24/28/32/36) and one at frame 57
 (`Bip01_R_Hand`, radius 60). The body even prepares for them — `FUN_0042c800(0)` /
 `FUN_0042c840(1)` at `0x443443` wipe the per-victim hit words and set one hit per victim per tick.
 
-**Fixed:** the `{350,-1,0,9999,MoveOp::ContactOff}` rule is gone. Measured after the change, with
-the opponent kept on the attack volume, the EX lands (`swing_hits 1`) and takes it from 100 to
-**92 HP** — one standard 8-damage melee hit (the flurry at the end of this section raises that to
-55). Restoring the rule takes it back to zero hits, so the
-regression is load-bearing: `rena0_pilot_gate_test` now asserts the row binds and the hit lands,
-and `melee_admission_test` asserts the program carries **no** contact cut for row 350 instead of
-asserting the old rule.
+**Fixed:** the `{350,-1,0,9999,MoveOp::ContactOff}` rule is gone. Restoring it takes the EX back
+to zero hits, which is the load-bearing check. With the rule gone but the per-swing hit set still
+blocking re-hits, only the first contact window landed; the flurry rules below lift that.
+
+Measured on the pilot path with Oyashiro active and the opponent held on the attack volume
+(`place_at_attack active`, SPECIAL at frame 20, sampled to tick 110): **6 hits, 100 → 37 HP**, i.e.
+63 damage across six one-tick windows at roughly 10–11 each — that figure is the record's power
+after the mode's ×1.5 `damageDealtMul`, not a bare 8. `rena0_pilot_gate_test` asserts the row
+binds, that more than one hit lands and the HP drops; `melee_admission_test` asserts the program
+carries **no** contact cut for row 350 instead of asserting the old rule.
 
 **And the late camera now works.** With the EX able to connect, its hit latch is set, and once the
 move's own clock passes `0x33` the request switches to set 1 as V3-37 recovered. Measured: the
-switch lands around fixture tick 80 rather than 71, which is the body's own clock skips (the
+switch lands around fixture tick 80 rather than 71 (a manual observation from the probe fixture,
+not asserted), which is the body's own clock skips (the
 `ClockSkip -1` window over frames 1..9) holding the move's clock behind the fixture's. Row 350's
-clip is 91 frames (7040 ticks at 4800/s), so the whole body — including the frame-56 voice and the
-frame-70 rewind — fits inside it. Both paths are pinned now: `rena0_pilot_gate_test` asserts the
-whiff run stays on set 0 and a connecting run reaches set 1.
+clip is 91 frames — `trunc(7040 / 4800 / 0.016)` through the loader's own window — so the whole
+body, including the frame-56 voice and the frame-70 rewind, fits inside it. Both paths are pinned
+now: `rena0_pilot_gate_test` asserts the whiff run stays on set 0 and a connecting run reaches
+set 1 (observed from the move's tick 52 onward, so the `0x33` boundary itself is not asserted).
 
 **Also retracted with it:** the "350's damage is the particle/effect scatter" line in the rule
 table. The effect requests are what the recovered code does spawn (ids 320/350/340 via
 `FUN_00421aa0` → `FUN_00435990`), but they are visuals; the damage is the hand contacts.
 
 **And it is a flurry, not one hit.** The body re-arms the per-victim registry on every tick below
-`0x24` and again at `0x37`: `FUN_0042c800(0)` writes zero to the four markers at `char+0x88+i*2`
-and `FUN_0042c840(1)` writes one to the four budgets at `char+0x90+i*4` (both loops are four
-entries), which is "clear the markers, allow one hit each" — so each of the seven one-tick contact
-windows can land on the same victim. The port's equivalent registry is its per-swing hit set, so a
-new `MoveOp::ContactReset` clears it and row 350 now carries two such rules (`0..0x24` and `0x37`).
-Measured with the opponent held on the volume: **100 → 45 HP**, i.e. most of the seven windows.
-The gate test only asserts "more than one hit" (it measures 85 with its own placement), because the
-exact count depends on how much of the pose the placement intersects.
+`0x24` — ticks 0..35, so the rule is `0..0x23` — and again at `0x37`: `FUN_0042c800(0)` writes zero
+to the four markers at `char+0x88+i*2` and `FUN_0042c840(1)` writes one to the four budgets at
+`char+0x90+i*4` (both loops are four entries), which is "clear the markers, allow one hit each".
+The first span covers the seven hand windows (frames 11/15/20/24/28/32/36); the `0x37` re-arm is
+what lets the frame-57 right-hand contact land afterwards. The port's equivalent registry is its
+per-swing hit set, so a new `MoveOp::ContactReset` clears it on both spans.
+
+The gate test keeps the opponent on the volume only while the volume is live (the placement helper
+reads the attacker's hitbox, which is empty between windows) and asserts "more than one hit"; the
+exact count depends on how much of the pose the placement intersects, which is why the number above
+comes from the fixture's own `place_at_attack active`, not from a hand-placed dummy.
 
 ### V3-44 — guard stops melee but only discounts shots (open, cited)
 
