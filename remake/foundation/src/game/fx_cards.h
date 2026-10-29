@@ -52,17 +52,22 @@ struct LiveFxCard {
     glm::vec3     direction{0.f};
 };
 
-// PORT RULE (owner decision 2026-10-28): a card's LIFETIME is its animation clock.
+// How far into its animation a card is: age over lifetime, scaled to the clip's length.
 //
-// WHY the lifetime and not the animation's own duration: an effect card ships an
-// AnimationSet whose length need not match the descriptor lifetime the original gives the
-// card (038.dat's model animates 0.833 s while its descriptor's lifetime is its own
-// number), and nothing recovered says which one the original advances. Rather than invent
-// a rate, the card plays its animation across exactly the time it is alive: at birth it is
-// on its first frame, at expiry its last, and the two clocks cannot drift apart.
+// This is RECOVERED, not a port rule (tier 2). The effect descriptor carries no lifetime of
+// its own: `EffectEntry::lifetimeSeconds` is `anims[0].duration / ticksPerSecond`
+// (game/effect_catalog.h, from FUN_0042eec0 -> FUN_0064e8b0(model, 0) / 0.016), and the
+// attachment cards use the same quotient. So the lifetime of every card that plays an
+// animation IS that animation's length, and with `animationSeconds` equal to the lifetime
+// this function reduces to `age` — the card plays from its spawn at the animation's own rate,
+// which is exactly FUN_00436150's `age * 0.016`. The projectile path has driven its model
+// clock the same way since it was written (gameplay/projectile.cpp's advancePose).
 //
-// Not recovered. If a shipped card is later found to play at its own AnimationSet rate,
-// this is the one function to change; every caller goes through it.
+// The scaling below therefore only does work when a caller passes a lifetime that differs
+// from the clip. That is the one case worth guarding: the equality `ttl == animationSeconds`
+// is what makes this the recovered rule rather than an invented rescale, so a future
+// lifetime source that breaks it (a longer descriptor ttl, say) silently turns this into a
+// new rule and leaves a non-looping card frozen on its last frame. Assert or label it then.
 inline double cardAnimationSeconds(float age, float ttl, double animationSeconds) {
     if (ttl <= 0.f || animationSeconds <= 0.0) return 0.0;
     const double progress = std::clamp(static_cast<double>(age) / static_cast<double>(ttl),

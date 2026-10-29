@@ -3361,11 +3361,11 @@ static void placeFxCards(App& app) {
             render::SceneRenderer::EffectInstance instance;
             instance.modelIndex = c.asset;
             instance.model = game::shotModelMatrix(c.position, c.direction);
-            // A card's model ships an AnimationSet (effect/01.X carries one with 10 keys),
-            // and the original animates it: the port used to draw every card in its bind
-            // pose, which is why a spinning card read as static hoops. PORT RULE: the
-            // card's lifetime is its animation clock — see game/fx_cards.h's
-            // cardAnimationSeconds for why, and for the one place to change it.
+            // A card's model ships an AnimationSet — RECOVERED: FUN_00436150 drives it with
+            // age * 0.016, and the descriptor lifetime is derived from the clip's own length
+            // (game/effect_catalog.h) — and the port used to draw every card in its bind
+            // pose. See game/fx_cards.h's cardAnimationSeconds: the clock is the card's age
+            // at the animation's own rate, not a rescale.
             const xm::Model& cardModel = app.scene.models[(size_t)c.asset].model;
             if (app.opts.fxAnimation && !cardModel.anims.empty()) {
                 const double animSeconds = cardModel.anims[0].duration /

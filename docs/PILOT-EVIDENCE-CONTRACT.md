@@ -2056,11 +2056,17 @@ card `data/aura/00.x` animates a 1.0 → 0.876 scale), and none of it was played
   shader's `palette[o + bones]` path covers skinned and unskinned alike
   (`shaders/model_wgsl.h:121-127`).
 - `main.cpp` samples each live card once per frame from its own model, at its own age.
-- The clock is a **port rule**: `game::cardAnimationSeconds(age, ttl, animSeconds)` puts the
-  card on its first frame at birth and its last at expiry, so the animation cannot outlive or
-  underrun the card. Neither the animation's own rate nor the descriptor's lifetime is
-  recovered as the original's driver, and the owner chose the lifetime; the function is the
-  one place to change if evidence says otherwise.
+- The clock is **recovered (tier 2), not a port rule** — an earlier draft of this entry said
+  otherwise and was wrong. The descriptor carries no lifetime of its own:
+  `EffectEntry::lifetimeSeconds` is `anims[0].duration / ticksPerSecond`
+  (`game/effect_catalog.h`, from `FUN_0042eec0` -> `FUN_0064e8b0(model, 0) / 0.016`), and
+  `FUN_00436150` drives the clip with `age * 0.016`. So every card that plays an animation has
+  `ttl == animationSeconds`, and `game::cardAnimationSeconds(age, ttl, animSeconds)` reduces to
+  `age`: the card plays from its spawn at the animation's own rate — the same rule
+  `gameplay/projectile.cpp`'s `advancePose` already used for shot models. The function still
+  scales when a caller passes a lifetime that differs from the clip, and that is now the
+  guarded case: if a lifetime source ever breaks the equality, the rescale becomes a new rule
+  and a non-looping card freezes on its last frame.
 - `--no-fx-anim` reproduces the previous bind-pose draw for before/after comparison and
   rollback.
 
@@ -2088,10 +2094,14 @@ loads a card through the same bundle reader; untracked):
 | `data/effect/01.X` (the empty-tap ring, texture 渦巻き) | 1 set, 20 frames | 1.333 s | the drawn mesh scales 1.0 → 1.05 → 0.99 → 1.11 and **collapses to 0.158 on Y** by the end |
 | `data/aura/00.x` (muzzle starburst) | 1 set, 2 frames | **0.050 s** | scale pops 1.0 → 1.43 → 0.876 |
 
-The muzzle card is the useful coincidence: its animation is **exactly** as long as its
-descriptor lifetime (0.050 s each), so for that card the lifetime clock and the animation's
-own rate agree, which is the first shipped evidence that the owner's rule is not arbitrary.
-The ring card's animation is strong enough that its appearance should change noticeably.
+The muzzle card's animation and its descriptor lifetime agree exactly (0.050 s each) — not a
+coincidence, but the construction above: the lifetime *is* the clip's length, which is why the
+owner's answer ("use its lifetime") and the recovered rule coincide.
+
+**The ring in the owner's screenshots is not one of these cards.** `data/effect/01.X` is never
+added to the scene — no shipped descriptor names it — and V3-35 establishes that the ring is
+the shot model `data/bullet/001/06.X` drawn opaque. This entry's animation fix stands on its
+own (cards did draw bind pose); it was not that symptom.
 
 **Named limits.** The hyper-mode aura attachment (the eleven attach points) still draws the
 bind pose — it is fighter state, not a spawned card, and has no per-instance age; and the
