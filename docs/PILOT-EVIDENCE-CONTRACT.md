@@ -2097,3 +2097,11 @@ The ring card's animation is strong enough that its appearance should change not
 bind pose — it is fighter state, not a spawned card, and has no per-instance age; and the
 per-card `Controller` is constructed per frame, which is fine at the observed card
 populations (peak 1-2 in a shot-heavy run, cap 128) but not free.
+
+**Addendum — `anims[0]` is not a choice.** Every shipped card was enumerated through the same
+loader (`data/effect/*.X` and `data/aura/*.X`, 35 files): each carries **exactly one
+`AnimationSet`**, and all of them report `ticksPerSecond = 4800`, the same time base the
+character clips use. So selecting set 0 is not picking one animation out of several; there is
+no second one to pick. Cards with a single *frame* still animate that frame's transform
+(`aura/00.x` is 2 frames and scales; `effect/01.X` is 20 frames and 11 meshes), which is why
+the animation is a palette matrix even for the smallest card.
