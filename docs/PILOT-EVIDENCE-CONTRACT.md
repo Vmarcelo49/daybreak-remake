@@ -2384,16 +2384,28 @@ non-negative writer (`FUN_00421f30`, bounds-checked against that vector) never f
 stays `-1`, and the branch cannot be reached. The same branch exists in the second camera updater
 `FUN_0063dad0` with the same condition.
 
-**An offset label this pass could not settle, and deliberately left alone.** The reading above
-puts the opponent index at `+0x300` and the ally index at `+0x304`. The port's own notes (in
-`target_lock.h`, `match.cpp` and `main.cpp`) have the two the other way round, citing the same
-store in `FUN_00421f30` — which is consistent on the address and differs on which container that
-store indexes. The relabel was attempted and reverted: changing one of six places that carry the
-convention leaves the tree contradicting itself, and the question is which container
-`FUN_00421f30` bounds-checks, not what the port's field means (both readings agree it holds the
-locked *enemy*). Settling it needs one more reading of `FUN_00421f30`'s entry and its two
-callers, which is cheaper than a runtime trace. `target_lock.h` records the conflict where the
-field lives, so neither reading disappears.
+**The two selection offsets, settled from the disassembly (2026-10-29).** The port's notes call
+`+0x304` "the locked combat target"; the two containers say otherwise, and the instructions are
+unambiguous:
+
+| evidence | what it shows |
+|---|---|
+| `0x634b75-0x634b96` (`FUN_00634980`, the reset that also builds the cameras) | it compares the two fighters' team records (`[[actor+0xc]]`): **equal** teams → `call 0x421730`, which does `add ecx,0x2f0` — the same-team list |
+| `0x634b9d-0x634bb8` | **different** teams → `call 0x421670`, which does `add ecx,0x2e0` — the other-team list |
+| `FUN_00421f30` @ `0x421f40` and `0x421f7f` | it bounds-checks and indexes **`+0x2f0`**, then stores the index into `+0x304` |
+| `FUN_00421e30` @ `0x421e5d` and `0x421e7d` | it indexes **`+0x2e0`** and stores into `+0x300` |
+| `FUN_006358c0` @ `0x635ab9` | the camera's `+0x304 >= 0` branch looks at element 0 of `+0x2f0` |
+
+So **`+0x300` indexes the opponent (other-team) list and `+0x304` the ally (same-team) one**; the
+port's `TargetLock::target` — the fighter a fighter attacks and faces — is the `+0x300`
+selection, and `FUN_00421f30` is the *ally* writer, not the combat lock's. That is also why the
+camera branch is dead in a different-team 1v1 (V3-41 above).
+
+The relabel itself was **reverted**: `target_lock.h` carries six paragraphs of recovered notes
+built on the old naming, and rewriting one field's comment while those stay would leave the file
+contradicting itself worse than a consistently-wrong label does. `target_lock.h` now records both
+readings where the field is declared, and this table is the authority until the file's notes are
+rewritten as a whole.
 
 ### V3-42 — an air dash that ends airborne falls in state 43, not in the jump chain
 

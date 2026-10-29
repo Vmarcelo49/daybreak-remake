@@ -103,13 +103,13 @@ inline constexpr int kAllyHoldTicks = 180;
 // One fighter's lock state. The three timers are the original's +0x304/+0x30c/+0x848
 // kept together because they are read together by the ring and the per-player update.
 struct TargetLock {
-    // Labelled +0x304 by the notes in this file (FUN_00421f30's write). A 2026-10-29 reading
-    // argues the roles are the other way round — +0x300 is the opponent index (FUN_00421e30)
-    // and +0x304 the ally index that funnels a writer bounds-checked against the same-team
-    // vector at +0x2f0 (fun_00634980 builds both by team) — and that the camera's >= 0 branch
-    // is that same ally path. Nothing in the port changes either way (this field is the one
-    // locked ENEMY, which both readings agree on); the offset label stays as this file has it
-    // until the roles are settled. See PILOT-EVIDENCE-CONTRACT V3-41.
+    // OFFSET NOTE (2026-10-29): the notes below call this +0x304, but the instructions put the
+    // ENEMY selection at +0x300 and the ally one at +0x304 — FUN_00421f30 bounds-checks and
+    // indexes the same-team list at +0x2f0 (0x421f40, 0x421f7f) while FUN_00421e30 indexes the
+    // other-team list at +0x2e0 (0x421e5d, 0x421e7d), and FUN_00634980 fills those two lists by
+    // comparing team records (0x634b75-0x634bb8). This field is the enemy selection, so it is the
+    // +0x300 one. The label is left as the file has it because the paragraphs below are built on
+    // the old naming; PILOT-EVIDENCE-CONTRACT V3-41 carries the address table.
     int  target     = kNoTarget;  // +0x304: locked combat target, a fighter index
     int  pulseTicks = 0;          // +0x30c: ticks left in the switch pulse
     int  holdTicks  = 0;          // +0x848: ally hold, 0 while the selection is hostile
