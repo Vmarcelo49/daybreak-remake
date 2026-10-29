@@ -2626,7 +2626,23 @@ fixtures need re-recording with realistic spacing before the mechanic can be the
 the port keeps its accepted matrix green and the mechanic is exercised by its own suite and by
 `--body-separation` in a live match.
 
-**Open:** the four fixtures above (re-record at ≥60 units, no per-tick teleport); and while
-re-recording, confirm the guard genuinely holds at separation distance — the fixture harness reads
-`vflags=0x100` for a dummy that holds Guard from tick 0, which is unconfirmed as either a harness
-artefact (the teleport reset) or a real gap in the guard's admission.
+**Overturned by measurement (2026-10-29, same day).** The owner played the live match with the
+mechanic on and reported it felt like the original, so the default was tried. Two install-backed
+suites then failed, and the cause is not the push:
+
+- `bot_brain_test`'s "the COM lands melee hits": with separation on, the COM closes to exactly 60
+  units and **presses melee 150 times without landing one**. The separation correctly stops the
+  bodies from getting closer, so the swing has to reach from 60 — and the port's swing geometry at
+  exactly that distance does not, while a static attacker at 55–80 units does land (probed).
+- The guard fixtures fail for a second, independent reason: Guard is a state with no animation
+  selector, so a guarding victim keeps its **previous** move record and its flags stay `0x100`
+  (not guard-capable). The teleporting setup re-built the victim every tick and hid this; it is a
+  real gap in the guard's record source, not a harness artefact.
+
+So the flag stays **off by default** until the melee gear at the 60-unit stand-off is understood.
+That is the next focused question: which record/pose the swing uses for the dash-attack rows, and
+whether the recovered `bodyRadius + radius` sphere is being applied to the right anchor at the
+separation distance. Turning the default on is one line once that lands.
+
+**Open:** the four fixtures above (re-record at ≥60 units, no per-tick teleport); the COM's melee
+reach at the stand-off; and the guarding victim's record source (`0x400` flags).

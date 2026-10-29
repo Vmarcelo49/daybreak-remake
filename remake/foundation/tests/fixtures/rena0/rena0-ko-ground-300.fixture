@@ -11,6 +11,9 @@
 # update 100 after this KO. Either the balloon credit is reported on another index, or it
 # needs the round's balloon rules configured (this fixture leaves timeLimit/balloonSize at
 # their defaults); the fixture therefore does not assert it.
+# Body separation off: the dummy is held on the attack volume, inside the 60-unit radius
+# (V3-45's open item).
+body_separation 0
 combo 0 0
 seed 5489
 spawn 0 0 0 0

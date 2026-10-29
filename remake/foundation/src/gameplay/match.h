@@ -183,8 +183,10 @@ public:
     // decisions, HUD values) so the presented frame stays frozen; see battle_pause.h.
     void set_paused(bool paused) { m_paused = paused; }
 
-    // FUN_006394c0's push-apart. Opt-in while the fixtures that place bodies inside the 60-unit
-    // radius are re-recorded; the mechanic itself is recovered (body_separation.h, V3-45).
+    // FUN_006394c0's push-apart (body_separation.h, V3-45). OFF by default while the port's
+    // melee reach at exactly 60 body units is settled: with it on, a COM cannot land a swing
+    // (measured 150 presses, 0 hits), which is a reach question the separation exposes rather
+    // than a property of the push itself. Four fixtures also opt out for their own setups.
     void set_body_separation(bool on) { m_bodySeparation = on; }
     bool body_separation_enabled() const { return m_bodySeparation; }
     bool paused() const { return m_paused; }

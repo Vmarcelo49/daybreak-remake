@@ -8,6 +8,9 @@
 # The `pilot rena0-guard` directive attaches the recovered gate to the dummy exactly as
 # --native-actions=rena0 does in the live run. Without it, the same scenario pins the legacy
 # path (rena0-guard-gate-legacy.fixture) and the two differ only in that directive.
+# Body separation off: the dummy is held on the attack volume, inside the 60-unit radius
+# (V3-45's open item).
+body_separation 0
 combo 0 0
 seed 5489
 spawn 0 0 0 0

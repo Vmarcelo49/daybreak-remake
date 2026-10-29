@@ -46,7 +46,9 @@ struct Fixture {
     std::vector<long long> traceTicks;   // authoring aid: print the tick's key fields
     int dummyStartHp = 100;             // MatchConfig::startHP[1]
     int timeLimit = 0;                  // MatchConfig::timeLimit (0 = untimed)
+    bool bodySeparation = true;         // FUN_006394c0; off for fixtures that overlap bodies
     bool dummyGuard = false;            // hold the Guard action on the dummy's input
+    long long dummyGuardFrom = 0;       // ... from this tick (a late hold is not exhausted)
     bool pilotGuard = false;            // attach the recovered guard gate to the dummy
     bool hyperOyashiro = false;         // full gauge, Oyashiro selected and activated
     int  chargeGauge = 1000;            // MatchConfig leaves the shot gauge at its 1000 cap
@@ -113,10 +115,19 @@ Fixture parseFixture(const std::string& path) {
                 f.placeTicks.push_back(tick);
                 f.maxTick = std::max(f.maxTick, tick);
             }
+        } else if (directive == "body_separation") {
+            int on = 0;
+            if (!(ls >> on) || (on != 0 && on != 1)) fail(f, lineNo, "body_separation needs 0 or 1");
+            f.bodySeparation = on != 0;
         } else if (directive == "dummy_guard") {
             int on = 0;
             if (!(ls >> on) || (on != 0 && on != 1)) fail(f, lineNo, "dummy_guard needs 0 or 1");
             f.dummyGuard = on != 0;
+            // Optional start tick: a dummy that holds Guard from tick 0 drains its meter during
+            // the round intro and arrives exhausted, which reads as "guard never engages". A
+            // fixture that wants a live guard names the tick it starts.
+            long long from = 0;
+            if (ls >> from) f.dummyGuardFrom = from;
         } else if (directive == "hyper") {
             std::string what;
             if (!(ls >> what) || what != "oyashiro")

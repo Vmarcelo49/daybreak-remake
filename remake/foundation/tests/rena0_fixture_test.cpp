@@ -298,15 +298,16 @@ bool runFixture(const Fixture& fx, std::string& error) {
     // the recovery rule: the product has no path that lowers the gauge (Q19 removed the
     // misattributed powered-shot deduction).
     if (fx.chargeGaugeSet) match.fighter(0).set_charge_gauge(fx.chargeGauge);
+    // FUN_006394c0's body separation runs by default; a fixture whose own setup puts the two
+    // bodies inside the 60-unit radius (the melee/guard family places the dummy on the attack
+    // volume) turns it off so it keeps pinning the rule it was written for.
+    match.set_body_separation(fx.bodySeparation);
     match.set_ai_enabled(1, false);
     match.economy().setLogFile(nullptr);
     input::PlayerState actor{};
     // The dummy's slot takes no input by default (the DX9 scene's shape). A guarded-contact
     // fixture needs it holding Guard, which is the port's own guard key.
     input::PlayerState dummyInput{};
-    if (fx.dummyGuard) dummyInput.down[input::Action::Guard] = true;
-    const input::PlayerState* inputs[gameplay::kMatchFighterCount] = {
-        &actor, fx.dummyGuard ? &dummyInput : nullptr, nullptr, nullptr};
     // P2-7 (2e): the recovered guard gate, attached to the victim exactly as the pilot flag
     // does in main.cpp. Without this directive the fixture pins the legacy path instead.
     gameplay::native::Rena0PilotGuard pilotGuardPolicy;
@@ -328,7 +329,11 @@ bool runFixture(const Fixture& fx, std::string& error) {
     int startup = 0;
     while ((!match.fighter(0).actionable() || !match.fighter(1).actionable()) && startup < 512) {
         input::compute_edges(actor);
-        match.step(inputs, gameplay::FixedStep::seconds);
+        // The startup walk runs before tick 0 and never holds the dummy's Guard: the hold starts
+        // at the fixture's own tick, so the intro cannot drain it into exhaustion.
+        const input::PlayerState* noInputs[gameplay::kMatchFighterCount] = {
+            &actor, nullptr, nullptr, nullptr};
+        match.step(noInputs, gameplay::FixedStep::seconds);
         ++startup;
     }
     if (startup == 0 || startup >= 512) { error = "startup did not settle"; return false; }
@@ -350,6 +355,12 @@ bool runFixture(const Fixture& fx, std::string& error) {
         if (fx.placeOnActive && match.fighter(0).melee_in_active())
             test::Combo::placeAtAttack(match.fighter(0), match.fighter(1));
         input::compute_edges(actor);
+        // A dummy that holds Guard exposes no action buttons otherwise; start the hold at the
+        // fixture's tick so the round intro does not drain it into exhaustion.
+        const bool dummyGuardHeld = fx.dummyGuard && tick >= fx.dummyGuardFrom;
+        dummyInput.down[input::Action::Guard] = dummyGuardHeld;
+        const input::PlayerState* inputs[gameplay::kMatchFighterCount] = {
+            &actor, dummyGuardHeld ? &dummyInput : nullptr, nullptr, nullptr};
         const glm::vec3 before = previous;
         const float beforeYaw = previousYaw;
         const long long guardedBefore = pilotGuardPolicy.guarded;

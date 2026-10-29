@@ -9,6 +9,11 @@
 # 14-19 and the contact lands at update 15 (100 -> 92 HP). Note this window differs from
 # the same row's window with the dummy out of reach, which opens at 25+ — see
 # rena0-melee-ground-300.fixture and the open question recorded with it.
+# Body separation off: this fixture keeps the dummy on the posed attack volume (35-50 units
+# away), a placement inside FUN_006394c0's 60-unit radius that the original never allows. With
+# separation on the contact lands a tick earlier and the recorded tick no longer holds. The
+# realistic-spacing re-record is V3-45's open item.
+body_separation 0
 combo 0 0
 seed 5489
 spawn 0 0 0 0
