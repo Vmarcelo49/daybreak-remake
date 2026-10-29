@@ -1074,7 +1074,8 @@ int run() {
         // stall spans 0<tick<10 on the update parity, the 403/409/469 recoveries
         // zero every tick with no guard at all, 392 walks its scratch past 20 into
         // phase 1, 320 arms the contact volume only in phase 2 ticks 0..7, weapon
-        // 0's 350 never re-arms it, and 450 re-binds attachment slot 0 to model 2.
+        // 0's 350 keeps its volume (the body's tick-0 cut is the trail, V3-43), and
+        // 450 re-binds attachment slot 0 to model 2.
         Fixture w0(1), w1(3), w2(33);
         check(w0.ok && w1.ok && w2.ok, "three weapon fixtures parse");
         const gameplay::MoveProgram* p0 = gameplay::move_program(&w0.moves);
@@ -1144,9 +1145,13 @@ int run() {
                              : "320 cuts contact outside the body's phase-2 0..7 window");
             }
         }
-        const gameplay::MoveRule* w0hit = findRule(p0, 350, gameplay::MoveOp::ContactOff, -1);
-        check(w0hit && w0hit->first == 0 && w0hit->last == 9999,
-              "weapon 0's 350 never re-arms the contact volume");
+        // Corrected 2026-10-29: the tick-0 call in case 0x15e is `add ecx,0x6a0` →
+        // FUN_00434bd0, which clears the actor's TRAIL object (trail+0xfc and two effect
+        // slots), not the contact volume. The hit path reads char+0x10 → FUN_00420880 →
+        // FUN_00637950 and never touches +0x6a0, so row 350's hand records stay live — which
+        // is why this program must carry NO contact cut for it (V3-43).
+        check(findRule(p0, 350, gameplay::MoveOp::ContactOff, -1) == nullptr,
+              "weapon 0's 350 carries no contact cut (the body cuts the trail, not the volume)");
         const gameplay::MoveRule* w2speed = findRule(p2, 402, gameplay::MoveOp::Speed, 0);
         check(w2speed && w2speed->first == 0 && w2speed->last == 9999,
               "w2 402 re-asserts speed 20 every phase-0 frame");

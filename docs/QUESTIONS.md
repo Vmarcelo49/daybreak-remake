@@ -340,3 +340,11 @@ by **Q21**, which the owner answered by unifying the `+0x834` meter (implemented
   [`PILOT-EVIDENCE-CONTRACT.md`](PILOT-EVIDENCE-CONTRACT.md) V3-43 with measurements, and neither
   option is started without a decision because both change gameplay the owner has already judged by
   feel.
+- **RESOLVED FROM THE EVIDENCE 2026-10-29 — no owner decision needed.** A bounded read of the
+  damage chain settled it: the tick-0 call the port's rule cited is `add ecx,0x6a0` →
+  `FUN_00434bd0`, which clears the actor's **trail** object, while the hit path reads the contact
+  record pointer `char+0x10` (maintained by `FUN_004212f0`), transforms its anchors with
+  `FUN_00420880` and resolves them in `FUN_00637950` (HP subtraction at `0x638a96`). So neither
+  option above was needed: the `ContactOff` rule was a misreading and has been **deleted**. With it
+  gone the EX lands and takes the opponent from 100 to 92 HP; restoring it returns zero hits.
+  Recorded in V3-43 with the address table. The row's own length is a separate open item there.

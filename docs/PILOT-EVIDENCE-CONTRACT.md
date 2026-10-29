@@ -2482,43 +2482,43 @@ Still not carried: the row's frame-10 `flags 0x100` record, so the port can stil
 the landing on its first tick. The row's zeroing writes (speed, movement angle, turn, vertical)
 have no port field to land in, and state 43's turn write stays unmodelled for the same reason.
 
-### V3-43 — the Hyper EX deals no damage, and the chain that causes it (open)
+### V3-43 — the Hyper EX now deals damage; the contact cut was a misreading
 
-Found while trying to pin the late-camera path — the port's only writer of camera set 1 needs the
-EX to connect. **The EX deals no damage at all.** It is the combo's signature attack, so this is
-the largest gap open after tonight's work, and it is a missing feature rather than a broken hitbox.
+The EX used to deal no damage at all. The port cut its melee contact for the whole move on the
+reading that the body's tick-0 `FUN_00434bd0` call removed the hit volume. **That reading was
+wrong, and the rule is retracted.**
 
-**The chain, in order.** Row 350 carries real contact data: one section (set 32, 19 entries) whose
-entries alternate — a contact entry followed by a radius-0 one at the next frame:
+**The call is about the trail, not the hit.** At `0x4433f4` the body does `add ecx,0x6a0` before
+`call 0x434bd0`, so the function operates on the actor's *trail* object: `FUN_00434bd0` clears
+`trail+0xfc` and drops two effect slots through `FUN_00435900` (`FUN_00434bd0.c:9-19`). The hit
+path never touches it:
 
-| entry | frame | bone | radius | shape | anchor |
-|---|---|---|---|---|---|
-| 3, 5, 7, 9, 11, 13, 15 | 11, 15, 20, 24, 28, 32, 36 | `Bip01_L_Hand` | 30 | 0 (sphere) | (27,0,0) |
-| 17 | 57 | `Bip01_R_Hand` | 60 | 0 | (27,0,0) |
+| step | what runs |
+|---|---|
+| record selection | `FUN_004212f0` advances the phase's record index (`char+0xadfc`) and writes the current contact record pointer `char+0x10` (`:20-30`), on every tick from the shared tail `0x445ce0` |
+| geometry | `FUN_00420880` transforms the record anchors into `char+0xc4` / `char+0xd4` (`:48-51`) |
+| hit pass | `FUN_00637680` calls `FUN_00637950` for every ordered pair (`0x637915-0x63793c`) |
+| damage | `FUN_00637950` gates on the record's radius (`cmp [edx+0x24],0` @`0x6379da`), tests against `char+0xc4/+0xd4`, marks the victim, and subtracts HP at `0x638a96` |
 
-Contact is therefore live on exactly those seven ticks (each odd entry has radius 0 on the
-following frame, and `record_at` picks the last entry whose frame has passed). The running port
-selects them correctly — `current_move_record()` returns `Bip01_L_Hand`, radius 30, on precisely
-those seven ticks.
+Row 350's data carries exactly what that needs: seven one-tick hand contacts
+(`Bip01_L_Hand`, radius 30, sphere, frames 11/15/20/24/28/32/36) and one at frame 57
+(`Bip01_R_Hand`, radius 60). The body even prepares for them — `FUN_0042c800(0)` /
+`FUN_0042c840(1)` at `0x443443` wipe the per-victim hit words and set one hit per victim per tick.
 
-**It still cannot land, by design of the port's own rule table.** `{350,-1,0,9999,MoveOp::ContactOff}`
-cuts the melee contact for the whole move, citing the body: `FUN_0043ffc0:1392` calls the cut
-(`FUN_00434bd0`) inside the tick-0 block and nothing re-arms it, so the conclusion recorded there is
-that "350's damage is the particle/effect scatter, not a swing". Measured: `m_contactDisabled` is 1
-on every one of the seven contact ticks, which is why `try_melee_hit` returns before it ever forms
-a volume — and why the opponent's HP does not move with the dummy at any distance from 40 to 480
-units, nor when placed by the fixture's own `place_at_attack` helper.
+**Fixed:** the `{350,-1,0,9999,MoveOp::ContactOff}` rule is gone. Measured after the change, with
+the opponent kept on the attack volume, the EX lands (`swing_hits 1`) and takes it from 100 to
+**92 HP** — the standard 8-damage melee hit. Restoring the rule takes it back to zero hits, so the
+regression is load-bearing: `rena0_pilot_gate_test` now asserts the row binds and the hit lands,
+and `melee_admission_test` asserts the program carries **no** contact cut for row 350 instead of
+asserting the old rule.
 
-**So the gap is the particle path.** The port spawns the EX's effect requests as visuals and has no
-damaging particle/effect entity, so the move's only damage source is unimplemented and the seven
-hand contacts that the shipped data does carry are currently unreachable. (The other contact-cut
-row, 320, is scoped correctly and does land: a dive fixture with the opponent on the volume reads
-`dummy_hp 92`. 350 is the only silent one.)
+**Still open, and now visible because the fix let the move run:** the port's row 350 ends around
+elapsed 47, while the recovered body has rules at frame 56 (voice 33) and frame 70 (a `ClockSeek`
+rewind to 66), so its clock must reach at least 70. That is why the late camera switch (V3-37's
+set 1 from `0x33`) still never arms even with a connecting EX — the window is past the move's end
+in the port. The row's length/clock is therefore the next thing to reconcile here; the damage fix
+does not depend on it.
 
-**Consequence for V3-37:** the late camera switch (set 1 from tick 0x33, gated on the hit latch)
-cannot fire in practice while the EX cannot hit, which is why no fixture pins it. The rule stays —
-it is what the body does — but the whiff path is the only one observable today. Two ways forward, and the
-choice is a design one: re-arm the contacts (the data supports it, but the port rule's reading says
-the original cuts them) or implement effect-carried damage (the reading the port rule implies, and
-a much larger piece). Nothing was changed here; the finding is recorded so the next session starts
-from the chain rather than from "the EX does not hit".
+**Also retracted with it:** the "350's damage is the particle/effect scatter" line in the rule
+table. The effect requests are what the recovered code does spawn (ids 320/350/340 via
+`FUN_00421aa0` → `FUN_00435990`), but they are visuals; the damage is the hand contacts.

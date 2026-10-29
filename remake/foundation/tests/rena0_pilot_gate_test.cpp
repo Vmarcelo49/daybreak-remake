@@ -617,8 +617,65 @@ ActionCameraRun actionCameraRun(test::Combo& combo) {
             run.exRow = 350;
             run.cameraOnWhiff = std::max(run.cameraOnWhiff, fighter.action_camera());
         }
-        if (fighter.state() != gameplay::FighterState::AttackA && i > 2) break;
+            if (fighter.state() != gameplay::FighterState::AttackA && i > 2) break;
     }
+    return run;
+}
+
+// The EX must actually damage. The port cut its melee contact for the whole move on the reading
+// that the body's tick-0 FUN_00434bd0 call removed the hit volume; that call is `add ecx,0x6a0`
+// and operates on the actor's TRAIL object, while the hit path reads char+0x10 → FUN_00420880 →
+// FUN_00637950 and never touches it (V3-43). With the cut gone the move's seven one-tick hand
+// records do the work, so an opponent inside the volume must lose HP.
+struct ExDamage {
+    int row = -1;
+    int hits = 0;
+    int victimHp = 100;
+};
+
+ExDamage exDamageRun(test::Combo& combo) {
+    gameplay::Match match;
+    gameplay::MatchConfig config;
+    config.spawn[0] = {0.f, 0.f, 0.f};
+    config.spawn[1] = {0.f, 0.f, 300.f};
+    const xm::Model* models[gameplay::kMatchFighterCount] = {&combo.model, &combo.model};
+    xm::Controller* controllers[gameplay::kMatchFighterCount] =
+        {combo.controller(), combo.controller()};
+    for (int i = 0; i < 2; ++i) {
+        config.moves[i] = &combo.moves;
+        config.weapon[i] = &combo.weapon;
+    }
+    match.reset(config, models, controllers, nullptr, nullptr, nullptr);
+    match.set_ai_enabled(1, false);
+    match.economy().setLogFile(nullptr);
+    PilotPolicies policies;
+    policies.attach(match.fighter(0));
+    input::PlayerState actor{};
+    int startupTicks = 0;
+    startup(match, actor, combo, startupTicks);
+    auto& fighter = match.fighter(0);
+    // Put the opponent on the attack volume the way the melee fixtures do, rather than trusting a
+    // hand-picked distance: the EX's contact sits on the hands, which move during the pose.
+    test::Combo::placeAtAttack(fighter, match.fighter(1));
+    fighter.set_charge_gauge(1000);
+    fighter.set_hyper_gauge(1.0f);
+    actor.down[input::Action::Special] = true;
+    step(match, actor);
+    actor.down[input::Action::Special] = false;
+    for (int i = 0; i < 20; ++i) step(match, actor);
+    actor.down[input::Action::Special] = true;
+    step(match, actor);
+    actor.down[input::Action::Special] = false;
+    ExDamage run;
+    for (int i = 0; i < 80; ++i) {
+        // Keep the opponent on the volume every tick, which is what the melee fixtures' own
+        // place_at_attack does: the EX lunges forward, so a placement made once ends up behind her.
+        test::Combo::placeAtAttack(fighter, match.fighter(1));
+        step(match, actor);
+        if (fighter.attack_move_id() == 350) run.row = 350;
+        run.hits = std::max(run.hits, fighter.swing_hit_count());
+    }
+    run.victimHp = match.fighter(1).hp();
     return run;
 }
 
@@ -874,6 +931,12 @@ int main(int argc, char** argv) {
                     std::to_string(camera.cameraOnActivation));
         require(camera.exRow == 350, "the Hyper press must enter the EX row 350, got " +
                                          std::to_string(camera.exRow));
+        const ExDamage ex = exDamageRun(combo);
+        require(ex.row == 350, "the EX press must bind row 350, got " + std::to_string(ex.row));
+        require(ex.hits > 0, "the EX must connect with an opponent on its volume, got " +
+                                 std::to_string(ex.hits) + " hit(s)");
+        require(ex.victimHp < 100, "the EX must damage the opponent, HP " +
+                                       std::to_string(ex.victimHp));
         require(camera.cameraOnWhiff == 0,
                 "the EX attack must play the recovered camera set 0 even when it misses, "
                 "got " + std::to_string(camera.cameraOnWhiff));

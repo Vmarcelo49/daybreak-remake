@@ -721,11 +721,16 @@ inline constexpr MoveRule kRenaRules[] = {
     // the +0x684 presentation flag the port does not model.
     {350,-1,0,9999,MoveOp::Hide,0.f},
     {350,-1,0,9999,MoveOp::Hide,1.f},
-    // The body cuts the melee contact volume at tick 0 and never re-arms it
-    // (FUN_0043ffc0:1392 calls FUN_00434bd0 inside the tick==0 block; there is no
-    // FUN_00434b30 in this case): 350's damage is the particle/effect scatter, not a
-    // swing. Weapon 1's 350 does keep a window (ticks 21..64, FUN_00448220:1306-1311).
-    {350,-1,0,9999,MoveOp::ContactOff},
+    // NO contact cut here, and the earlier reading that put one is retracted: the tick-0
+    // call at 0x4433fa is `add ecx,0x6a0` → FUN_00434bd0, which operates on the actor's
+    // TRAIL object — it clears trail+0xfc and drops two effect slots via FUN_00435900
+    // (FUN_00434bd0.c:9-19). Nothing in the hit path reads it: the contact record pointer is
+    // char+0x10 (maintained by FUN_004212f0 from the phase's record index), its anchors are
+    // transformed into char+0xc4/+0xd4 by FUN_00420880, and FUN_00637950 resolves those
+    // against the victim (subtracting +0x7a4 at 0x638a96). So row 350's seven one-tick hand
+    // records are live, which is what FUN_0042c800(0)/FUN_0042c840(1) at 0x443443 prepare
+    // for. Recorded in V3-43; the EX used to deal no damage at all.
+
     melee_voice_rule(350,0,0,0,32,0),
     melee_voice_rule(350,0,56,56,33),
     sound_effect_rule(350,0,11,11,61,true),
