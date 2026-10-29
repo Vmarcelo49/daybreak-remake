@@ -3763,6 +3763,14 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
         // branch (+0x304 >= 0, a second container at actor+0x2f0) is unimplemented, and a
         // view with no lock at all falls back to a point 600 units along the facing (the
         // recovered 400..800 distance band's midpoint).
+        //
+        // The ally branch is dead in this game's 1v1 and does not need implementing: FUN_006358c0
+        // takes it when the actor's +0x304 (an index into the SAME-TEAM vector at +0x2f0) is >= 0,
+        // and then looks at element 0 of that vector, not at the stored index (0x635ab9 `jl`, then
+        // `push 0` before `vector[::operator[]]`). FUN_00634980 builds both vectors by comparing
+        // each pair's team record, so two fighters on different teams leave +0x2f0 empty, the only
+        // non-negative writer (FUN_00421f30) is bounds-checked against that empty vector, +0x304
+        // stays -1 and the branch can never fire (V3-41).
         const bool recoveredFollow =
             app.opts.nativeActions == "rena0" &&
             gameplay::native::is_rena0_pilot_combo(cameraFighter);

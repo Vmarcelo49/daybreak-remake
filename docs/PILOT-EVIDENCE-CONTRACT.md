@@ -1002,7 +1002,11 @@ i.e. exactly one-for-one, no tilt.
 
 - the `+0x18` rig update (`FUN_0042dec0`) that turns the deltas above into world positions;
 - the `mode95 != 0` alternate follow;
-- the value of `[camera+0x78]` (used as the distance numerator) — set outside `FUN_006616d0`;
+- ~~the value of `[camera+0x78]`~~ — **resolved (V3-15's later entry, confirmed 2026-10-29): a
+  float distance of exactly 300.0, one store (`FUN_00632e10` @`0x632e1a`, reached from the
+  per-camera constructor and the reset loop) and two reads: the follow scale numerator
+  (`FUN_006333b0` @`0x63374b`) and the stage-obstruction ray's range (`FUN_00633930` @`0x6339ef`).
+  No other writer exists in the corpus, so the value is statically settled;**
 - the projection modes (`FUN_00661740`): `(π/4, 4:3, near 50, far 150000)` and a second
   `(0.1122, 4:3, near 100, far 150000)` selected by the byte at `+0x95`.
 
@@ -1080,8 +1084,9 @@ eye lies along the rig→target axis, so the camera looks straight down the lock
 
 ### Still open
 
-`[cam+0x78]`'s value (the one term needed before this can be implemented) and the writers of
-`+0x18`/`+0x48` in the scene. Both are named, not guessed.
+`[cam+0x78]`'s value is **no longer open** — it is 300.0 with a single store site and two reads
+(see the corrected line above); the V3-16 entry below implements it. What remains open is the
+writers of `+0x18`/`+0x48` in the scene, which are named, not guessed.
 
 ## V3-16. Recovered follow implemented behind the pilot flag (2026-10-23)
 
@@ -2347,3 +2352,35 @@ unchanged: the port's flat Guard stays, and the release section remains a named 
 
 **A separate, uncontroversial half was kept:** nothing. The sentinel and camera work in V3-37
 are unrelated and stand on their own.
+
+### V3-41 — the camera's ally branch is unreachable in a 1v1, and `+0x304` is not a combat lock
+
+Two camera notes in this contract were carried as open limits. Both are now settled, one of them
+by deletion.
+
+**`[cam+0x78]`** is a `float` distance of exactly **300.0** (`0x43960000`), written once by the
+camera's default-init `FUN_00632e10` @`0x632e1a` (reached from the per-camera constructor
+`FUN_00632c30` and the reset loop `FUN_00634760`), and read twice: as the follow-boom numerator
+(`FUN_006333b0` @`0x63374b`, `300 / |V|` clamped to 1.5) and as the stage-obstruction ray's range
+(`FUN_00633930` @`0x6339ef`, compared against the ray hit before copying the frame name). No other
+writer exists in the corpus. The port already hardcodes it as `kViewDistance`. The "still open"
+wording elsewhere in this file is superseded.
+
+**The ally anchor branch (`+0x304 >= 0`) is not a pilot gap and needs no implementation.**
+`FUN_006358c0` takes it when the actor's `+0x304` — an index into the **same-team** pointer vector
+at `actor+0x2f0` — is non-negative (`:46-58`, asm `0x635ab9` `jl`), and when it does it looks at
+**element 0** of that vector, not at the stored index. `FUN_00634980` builds the two vectors by
+comparing each pair's team record (`scene+0x12ac` for slots 0/1, `scene+0x12b8` for slots 2/3):
+same team → `FUN_00421730` pushes onto `+0x2f0`, different team → `FUN_00421670` pushes onto
+`+0x2e0`. So in a two-fighter match on different teams the ally vector is empty, the only
+non-negative writer (`FUN_00421f30`, bounds-checked against that vector) never fires, `+0x304`
+stays `-1`, and the branch cannot be reached. The same branch exists in the second camera updater
+`FUN_0063dad0` with the same condition.
+
+**One port mislabel worth knowing** (not changed here, because it is a behaviour question): the
+port's `target_lock.h` labels its `target` field "`+0x304`: locked combat target", and
+`cycle_enemy` stores enemy indices there. The corpus only ever writes `+0x304` from the *ally*
+vector — the enemy selection lives at `+0x300` with its own container at `+0x2e0`. The port's
+merging of the two into one field works for the 1v1 pilot but the label is wrong, and
+`Match::aim_target` therefore reads the `+0x304`-backed field while the comment beside it claims
+`+0x300`.
