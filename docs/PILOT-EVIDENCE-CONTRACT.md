@@ -1419,7 +1419,7 @@ Two defects, both confirmed:
    section the owner asked for is never played — the row leaves Run after phase 1.
 2. **Phase 0 takes 13 state ticks against a 7-tick clip.** That is the "taking too long" the owner
    measured against the original. `advance_animation_phase` gates on
-   `nearbyint(clipDuration / ticksPerSecond / 0.016) >= m_moveElapsedTicks`, so a 7-tick clip
+   `animation_period_frames(clip) >= m_moveElapsedTicks`, so a 7-update clip
    should advance at 7; it advances at 13, so the elapsed counter is losing ticks (the
    `m_holdAnimation` hold on a transition tick is the obvious suspect, but that alone does not
    account for six).
@@ -1505,7 +1505,7 @@ model declares `AnimTicksPerSecond = 4800` (`xmodel.h`). So `seconds = duration 
 
 Left mirrors it (19 / 20 / 21 at the same lengths).
 
-The port advances a phase when `elapsed > nearbyint(seconds / 0.016)`, so with these values phase 0
+The port advances a phase when `elapsed > trunc(seconds / 0.016)` (V3-26), so with these values phase 0
 ends after 8 ticks, phase 1 after 13 and phase 2 after 25 — a 46-tick row.
 
 **Open:** the owner reports the pose resting on its last frame for many ticks before the next part.
@@ -1675,3 +1675,57 @@ flag-off control at 1000. Removing the phase guard fails it with
 `the recovery phase must open at 784, got 772`. Suite 83/83 excluding the known
 `device_isolation_test` flake; fixture matrix unchanged at 29/30/47. Tier 2 source-backed,
 tier 4 install-backed regression; no visual claim.
+
+### V3-26 — the engine truncates the clip period; it does not round
+
+The port computed each phase window with `std::nearbyint(duration / ticksPerSecond /
+0.016)`, on the reading that `0x41e839` divides by 0.016 "before x87 rounding". That
+reading was wrong, and it was wrong in the expensive direction: it only agrees with the
+engine when the period lands on a whole number of updates or on a `.5` tie that rounds
+down, so roughly half the clips in the game ran one update too long.
+
+The instruction trail, from the saved `.text` disassembly:
+
+- `0x41e834` calls the `GetPeriod` wrapper, `0x41e839` does `fdiv DWORD PTR ds:0x6a2434`
+  (the 0.016 constant), `0x41e83f` calls **`0x66b668`**, and `0x41e84a` stores the `eax`
+  result — a plain `int`.
+- `0x66b668` is not a bespoke rounding helper. It is the compiler's own float→int
+  conversion: it appears at **1148 call sites** in the image, which is only consistent
+  with every `(int)float` in the program. Its body (`0x66b668-0x66b6c5`) rounds with
+  `fistp`, forms the residual `x - round(x)`, and then corrects it with
+  `add ecx,0x7fffffff; sbb eax,0` — the standard carry trick that subtracts one exactly
+  when the rounding went up. That is **truncation toward zero**, under any FPU rounding
+  mode.
+- The recovered bundle states the same rule: `actor_animation_clock.hpp:17-22`,
+  `unsigned(period / 0.016f)`.
+
+So a 23.958-frame clip is a **23-update** window, not 24. The rule is now one shared
+helper, `gameplay/animation_period.h`, used by `advance_animation_phase`, the
+pre-emptive last-section exit, the activation-overlay window and both adapter window
+computations — the duplicated arithmetic is gone with it.
+
+A zero window is a real window: the source's test is strict `period < elapsed`, so a clip
+that truncates to 0 advances on its first update. The helper therefore returns `-1` for
+"cannot be derived" and `0` for a genuine zero, and an existing synthetic half-update case
+in `melee_rules_test` now guards that distinction — it failed on the first attempt at this
+change, which is what caught the mistake.
+
+Measured blast radius, from the full suite (83 tests):
+
+| what moved | before | after |
+|---|---|---|
+| Rena+0 right side dash, recovery window | 24 updates | 23 |
+| Rena+0 right side dash, row length | 40 updates | **39** |
+| Akane+0 move 300, ribbon first active frame | 92 | **91** (in-phase tick 4 unchanged) |
+| Akane+0 move 330, ribbon first active frame | 102 | **101** (in-phase tick 11 unchanged) |
+
+The two Akane observations are not pilot cases, so this is the first global rule change
+touched by the pilot work; it was applied only with the owner's explicit approval, and the
+re-pin is one frame each with the in-phase tick unchanged, which is the signature of the
+*preceding* phase getting shorter rather than of a different window shape.
+
+Verify: suite 83/83 excluding the known `device_isolation_test` flake, fixture matrix
+unchanged at 29/30/47. Tier 2 (instruction-level) with tier 4 regression coverage. The
+tick values stay provisional: `FUN_004218c0` completes on `period <= frame + 1` while the
+tail advances on `period < frame`, and whether those two record pointers (`+0xade8` vs
+`+0xade4`) hold the same period for a given row is not settled by the corpus.

@@ -833,11 +833,17 @@ void akane0_miss_trail(const Combo& combo, int expectedMove, const char* label) 
           prefix + "item016 model2 root/tip match the independently posed Prop1 world anchors");
     check(firstTrailTipChanges >= 12,
           prefix + "more than the twelve-sample trail history is refreshed from item-model-2 tips before activation");
-    const int expectedFrame = expectedMove == 300 ? 92 : expectedMove == 330 ? 102 : 87;
+    // The source window's frame numbers come from the engine's truncating period rule
+    // (animation_period.h): the phase before the ribbon's first active one is one update
+    // shorter than nearest-even rounding predicted, so both frames moved down by one and
+    // the in-phase tick did not move at all.
+    const int expectedFrame = expectedMove == 300 ? 91 : expectedMove == 330 ? 101 : 87;
     const int expectedPhase = expectedMove == 340 ? 0 : 2;
     const int expectedTick = expectedMove == 300 ? 4 : expectedMove == 330 ? 11 : 17;
     check(firstFrame == expectedFrame && firstPhase == expectedPhase && firstTick == expectedTick,
-          prefix + "begins on the source window at the expected move frame/phase/tick");
+          prefix + "begins on the source window at the expected move frame/phase/tick (" +
+              std::to_string(firstFrame) + "/" + std::to_string(firstPhase) + "/" +
+              std::to_string(firstTick) + ")");
     check(released,
           prefix + "completes its table-backed phases and releases AttackA");
     const int attackStartFrame = expectedMove == 300 ? 62 : expectedMove == 330 ? 65 : 71;

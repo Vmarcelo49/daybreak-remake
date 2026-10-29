@@ -170,10 +170,16 @@ set's `+0x20` gate is zero. The remake reads that gate from the NN.dat trailer a
 period from the matching `.X` rig's animation set.
 
 `FUN_0041e180` constructs each runtime period with D3DX `GetPeriod()`, divides by the float
-at `0x6a2434` (**0.016**; the loader instructions at 0x41e834-0x41e84a do `FDIV` and then
-round), and compares the result to its update counter — `round(GetPeriod()/0.016)`, not
-rounded seconds. Comparisons against the original's `d3dx9_25.dll` matched every set in
-Rena 00, Rika 01, and Akane 00. The port applies the same division in
+at `0x6a2434` (**0.016**; the loader at 0x41e834-0x41e84a does `FDIV` then calls
+`0x66b668`), and compares the result to its update counter — `trunc(GetPeriod()/0.016)`,
+not rounded seconds and **not** rounded frames. `0x66b668` is the compiler's own
+float-to-int conversion (1148 call sites in the image): it rounds with `fistp`, forms the
+residual `x - round(x)` and corrects it with `add ecx,0x7fffffff; sbb eax,0`, i.e.
+truncation toward zero regardless of the FPU mode. A 23.96-frame clip is therefore a
+23-update window. Comparisons against the original's `d3dx9_25.dll` matched every set in
+Rena 00, Rika 01, and Akane 00 — that half of the claim is about `GetPeriod` itself, which
+this note does not touch. The port applies the same division and truncation through
+`gameplay/animation_period.h`. The port applies the same division in
 `advance_animation_phase` and in the weapon reader, and preserves the strict boundary even
 though the units are unusual. It does not guess from the move record's `+0x04` or a
 separate clip-end callback.

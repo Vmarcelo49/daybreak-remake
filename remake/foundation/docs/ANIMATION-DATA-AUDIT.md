@@ -42,10 +42,14 @@ movement, trails and projectiles consequently use different clocks and selectors
   These names do not identify effect assets.
 
 The original loader assembly at **0x41e834–0x41e84a** calls `GetPeriod`, performs
-`FDIV [0x6a2434]`, then calls the x87 integer-round helper and stores the result.
+`FDIV [0x6a2434]`, then calls `0x66b668` and stores the result.
 The divisor bytes at 0x6a2434 are `6f 12 83 3c` = **0.016f**. The saved loader
 decompilation omits this division. Therefore a set's frame period is
-`round(GetPeriod()/0.016f)`, not `round(GetPeriod())`.
+`trunc(GetPeriod()/0.016f)`, not `trunc(GetPeriod())`.
+`0x66b668` is the CRT's float-to-int conversion helper, not a bespoke rounding call:
+it rounds with `fistp`, computes the residual and corrects it with
+`add ecx,0x7fffffff; sbb eax,0`, which subtracts one exactly when the rounding went up —
+truncation toward zero under any FPU mode. See `gameplay/animation_period.h`.
 
 Original `FUN_0064e6c0` calls `D3DXFrameFind`, returning a frame matrix pointer.
 Original loader instructions at 0x41e67d, 0x41e69f, 0x41e6c1, 0x41e751,

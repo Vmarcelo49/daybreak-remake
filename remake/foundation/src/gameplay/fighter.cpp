@@ -2,6 +2,7 @@
 // Recovered executable rules live separately in move_behavior.h; NN.dat owns
 // phase/set selection, record geometry and material intervals.
 #include "gameplay/fighter.h"
+#include "gameplay/animation_period.h"
 #include "gameplay/held_axis.h"
 #include "gameplay/fixed_step.h"
 #include "gameplay/move_behavior.h"
@@ -99,29 +100,25 @@ bool hasAutomaticMeleeTimeline(const CharacterMoves* moves,
 }
 
 // Activation-clip window from the engine's own period rule (issue #71), not a
-// shared provisional constant. FUN_0041e180 derives each set's period as
-// nearbyint(setDuration / ticksPerSecond / 0.016), and FUN_0041f580/FUN_00421410
-// complete a phase on strict `period < elapsed` unless the set's +0x20 gate is
-// nonzero (which holds the phase past expiry — cf. the set-14 precedent in
-// docs/ANIMATION-SETS.md). Returns the updates the clip occupies, -1 when a
-// gated phase holds it until the fighter's next clip-binding action, or 0 when
-// the window cannot be derived from the parsed data.
+// shared provisional constant: animation_period_frames() is the original's truncating
+// conversion, and FUN_0041f580/FUN_00421410 complete a phase on strict `period <
+// elapsed` unless the set's +0x20 gate is nonzero (which holds the phase past expiry —
+// cf. the set-14 precedent in docs/ANIMATION-SETS.md). Returns the updates the clip
+// occupies, -1 when a gated phase holds it until the fighter's next clip-binding action,
+// or 0 when the window cannot be derived from the parsed data.
 int hyper_activation_window_frames(const CharacterMoves* moves,
                                    const xm::Model* model, int moveId) {
     if (!moves || !model || !moves->valid() || model->anims.empty()) return 0;
     const CharacterMove* move = moves->find(moveId);
     if (!move || move->sectionCount <= 0) return 0;
-    const float ticksPerSecond = model->ticksPerSecond;
-    if (!std::isfinite(ticksPerSecond) || ticksPerSecond <= 0.f) return 0;
     int total = 0;
     for (int phase = 0; phase < move->sectionCount; ++phase) {
         const int set = move->phase_set_index(phase);
         if (set < 0 || static_cast<std::size_t>(set) >= model->anims.size()) return 0;
         if (moves->animation_set_phase_gate(set) != 0) return -1;
-        const float setDuration = model->anims[static_cast<std::size_t>(set)].duration;
-        if (!std::isfinite(setDuration) || setDuration < 0.f) return 0;
-        total += static_cast<int>(std::nearbyint(
-            setDuration / ticksPerSecond / kOriginalAnimationTick));
+        const int window = animation_period_frames(*model, set);
+        if (window < 0) return 0;
+        total += window;
     }
     return total + 1;
 }
@@ -1967,15 +1964,11 @@ void Fighter::advance_animation_phase() {
     if (!m_holdAnimation) m_moveElapsedTicks += clockStep;
     if (m_moves->animation_set_phase_gate(set) != 0) return;
 
-    const float ticksPerSecond = m_model->ticksPerSecond;
-    if (!std::isfinite(ticksPerSecond) || ticksPerSecond <= 0.0f) return;
-    const float setDuration = m_model->anims[static_cast<std::size_t>(set)].duration;
-    if (!std::isfinite(setDuration) || setDuration < 0.0f) return;
-    // FUN_0041e180 passes D3DX GetPeriod() through x87 ROUND (nearest-even at
-    // the game's default FP mode); the native DLL matches duration/ticksPerSecond
-    // for every set in Rena 00, Rika 01, and Akane 00.
-    const int periodThreshold = static_cast<int>(std::nearbyint(
-        (setDuration / ticksPerSecond) / kOriginalAnimationTick));
+    // FUN_0041e180's window: GetPeriod() / 0.016 through the CRT's truncating
+    // float->int conversion (animation_period.h), so a 23.96-frame clip occupies 23
+    // updates. A gated phase holds past expiry and is handled above.
+    const int periodThreshold = animation_period_frames(*m_model, set);
+    if (periodThreshold < 0) return;   // data cannot settle the window; 0 is a real window
     if (periodThreshold >= m_moveElapsedTicks) return;
 
     if (m_phaseIndex + 1 == move->sectionCount) {
@@ -2023,9 +2016,8 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
         (m_state == FighterState::AttackA ||
          (motion && m_state == FighterState::Run && m_dashMoveId == 20) || m_shotMoveId >= 0)) {
         const int set = move->phase_set_index(m_phaseIndex);
-        if (set >= 0 && static_cast<size_t>(set) < m_model->anims.size() && m_model->ticksPerSecond > 0.f) {
-            const int period = static_cast<int>(std::nearbyint(
-                m_model->anims[static_cast<size_t>(set)].duration / m_model->ticksPerSecond / kOriginalAnimationTick));
+        const int period = animation_period_frames(*m_model, set);
+        if (set >= 0 && static_cast<size_t>(set) < m_model->anims.size() && period >= 0) {
             if (period <= m_moveElapsedTicks + 1) {
                 set_state(m_grounded ? FighterState::Idle : FighterState::Jump);
                 m_moveSpeed = 0.f;

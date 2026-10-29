@@ -19,6 +19,7 @@
 #pragma once
 
 #include "gameplay/character_moves.h"
+#include "gameplay/animation_period.h"
 #include "gameplay/fighter.h"
 #include "gameplay/held_axis.h"
 #include "gameplay/match.h"
@@ -154,9 +155,7 @@ inline const char* observe_rena0_tick(const Rena0PilotSample& before, const Figh
     const int set = before.set;
     const int duration = (set >= 0 && static_cast<std::size_t>(set) < model->anims.size() &&
                           model->ticksPerSecond > 0.f)
-                             ? static_cast<int>(std::nearbyint(
-                                   model->anims[static_cast<std::size_t>(set)].duration /
-                                   model->ticksPerSecond / .016f))
+                             ? gameplay::animation_period_frames(*model, set)
                              : 0;
     Rena0ResolverView view;
     view.weaponSlot = 0;  // unused by the locomotion path; the weapon row is P2-6's own check
@@ -692,9 +691,7 @@ private:
         const int set = f.anim_set_index();
         const int duration = (set >= 0 && static_cast<std::size_t>(set) < model->anims.size() &&
                               model->ticksPerSecond > 0.f)
-                                 ? static_cast<int>(std::nearbyint(
-                                       model->anims[static_cast<std::size_t>(set)].duration /
-                                       model->ticksPerSecond / .016f))
+                                 ? gameplay::animation_period_frames(*model, set)
                                  : 0;
         Rena0ResolverView view;
         view.weaponSlot = 0;
