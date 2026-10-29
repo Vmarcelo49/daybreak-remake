@@ -308,6 +308,8 @@ void usage() {
         "                     has one, else framed bounds)\n"
         "  --anim=N --time=S --dt=S   pose with animation set N, seek and step\n"
         "                     the set index, WASD orbits the camera, name on top\n"
+        "  --no-fx-anim       draw effect cards in bind pose (the pre-V3-34 behaviour),\n"
+        "                     for before/after comparison and as a rollback switch\n"
         "  --no-textures      draw untextured, for an A/B of texture resolution\n"
         "  --no-anim          bind no animation set: render the bind pose. The DX9\n"
         "                     reference binds none either (its d3dx9 under Wine\n"
@@ -3367,10 +3369,16 @@ static void placeFxCards(App& app) {
             // pose. See game/fx_cards.h's cardAnimationSeconds: the clock is the card's age
             // at the animation's own rate, not a rescale.
             const xm::Model& cardModel = app.scene.models[(size_t)c.asset].model;
-            if (app.opts.fxAnimation && !cardModel.anims.empty()) {
-                const double animSeconds = cardModel.anims[0].duration /
-                                           (cardModel.ticksPerSecond > 0.f
-                                                ? cardModel.ticksPerSecond : 1.f);
+            // The same guard the catalog uses when it derives a descriptor's lifetime
+            // (buildFxAssets): a model with no clip, or one whose ticks-per-second never
+            // arrived, has no clock — treating tps == 0 as 1 Hz instead would jump the card
+            // to its last frame on the first update.
+            const bool animated = app.opts.fxAnimation && !cardModel.anims.empty() &&
+                                  cardModel.ticksPerSecond > 0.f &&
+                                  cardModel.anims[0].duration > 0.f;
+            if (animated) {
+                const double animSeconds =
+                    cardModel.anims[0].duration / cardModel.ticksPerSecond;
                 xm::Controller pose;   // fresh: this card's animation starts from bind pose
                 pose.bind(&cardModel);
                 pose.setAnimation(0, false);

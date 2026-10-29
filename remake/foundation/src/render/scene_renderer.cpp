@@ -1120,6 +1120,11 @@ void SceneRenderer::setEffectInstances(const std::vector<EffectInstance>& instan
                    }))
         return;   // unchanged: keep the current draw list (the common frame)
     effectInstances_ = instances;
+    // The pose arrays belong to the caller's frame, and the cards are usually re-sampled
+    // every frame; the renderer keeps the record but must not keep the pointer, which
+    // dangles the moment this call returns. Nulling it here also leaves the dedupe above
+    // comparing like with like (a stored instance never claims to carry a pose).
+    for (EffectInstance& stored : effectInstances_) stored.poseWorld = nullptr;
     draws_ = baseDrawList_;
     applyModelVisibility();
     draws_.reserve(drawTemplates_.size() + instances.size());
