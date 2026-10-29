@@ -1118,6 +1118,10 @@ private:
     // victim to move 0x76 when it reaches zero (0x42897a/0x42897f). The counter and the rise are
     // kept in the port's own units: seconds-free tick counts, with `m_vy` positive upward (the
     // recovered slot's negation is the original's downward-positive convention).
+    // The row a hit reaction plays: combat[13] of the record that landed, handed in as
+    // take_damage's `hitCategory`. 103 is the constant the port used before the records were
+    // read (state_to_move_id's Hit entry), kept as the default when a record names none.
+    int          m_reactionMove = 103;
     float        m_reactionCounter = 0.f;   // +0x40
     float        m_reactionRise = 0.f;      // +0x54, sign-flipped into m_vy
     int          m_hyperActivationFrames = 0;  // overlay window, or <0 for a gated hold (issue #71)

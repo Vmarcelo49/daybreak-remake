@@ -221,6 +221,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_airDashCarry = false;
     m_dashFall = false;
     m_landingTicks = 0;
+    m_reactionMove = 103;
     m_hoverSpent = false;   // a new airtime re-arms the one hover
     try_switch_animation();
 }
@@ -255,6 +256,7 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_airDashCarry = false;
     m_dashFall = false;
     m_landingTicks = 0;
+    m_reactionMove = 103;
     m_hoverSpent = false;   // a new airtime re-arms the one hover
     // FUN_00435660 restores round capacity while retaining refill/interval progress.
     restore_ammo();
@@ -318,6 +320,7 @@ void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     m_airDashCarry = false;
     m_dashFall = false;
     m_landingTicks = 0;
+    m_reactionMove = 103;
     m_hoverSpent = false;   // a new airtime re-arms the one hover
     m_hp = m_maxHP;
     m_stamina = static_cast<float>(FighterConstants::kMaxStamina);
@@ -1630,6 +1633,8 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
             }
         }
         if (stun) {
+            // combat[13] selects the reaction ROW the victim plays; 0 keeps the port's default.
+            m_reactionMove = hitCategory > 0 ? hitCategory : 103;
             set_state(FighterState::Hit);
             // The stun a weapon inflicts is that weapon's own (FUN_00637950:308); a
             // weapon that specifies none keeps the shared default.
@@ -2062,6 +2067,13 @@ int Fighter::state_move_id() const {
         // The landing window: row 44's clip, then Idle's own row.
         case FighterState::Idle:
             return m_landingTicks > 0 ? present_move(44) : state_to_move_id(m_state);
+        // The reaction row: the record that landed names it in combat[13], which reaches
+        // take_damage as `hitCategory` (FUN_00637950 hands the victim the row before the state
+        // change). One constant row for every hit was the port's stand-in; the shipped tables
+        // use 100 for the light swing, 101 for the kicks, 130/131 for the Hyper EX and so on,
+        // which is what makes two hits look different.
+        case FighterState::Hit:
+            return present_move(m_reactionMove);
         default:                    return state_to_move_id(m_state);
     }
 }
