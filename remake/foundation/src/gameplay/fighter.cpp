@@ -2199,6 +2199,25 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             m_actionMeter = std::max(0, m_actionMeter - 11);
         }
     }
+    // The air dash's lift. Byte +0x280 is the JUMP button's held-frame counter (slot 0 of
+    // the input counters at actor+0x280..0x29c; incremented while the key is down and
+    // zeroed on release by the per-frame poll, FUN_00657390), *not* the +0xa0 freeze word.
+    // While it is non-zero and the phase is below 2 the body adds 0.5/tick to the vertical
+    // (cap 8.0/tick) and charges an extra -3 meter (FUN_0043ffc0 :385-396); with the button
+    // up it bleeds 0.5/tick back to zero, which is the hang the port had hard-coded.
+    // Phase 2 then subtracts gravity from whatever this accumulator reached (:423-425).
+    if (m_pilotMeter && m_state == FighterState::Run && m_dashMoveId == 30 &&
+        m_phaseIndex < 2) {
+        constexpr float kLiftStep = 0.5f * 60.0f;    // 0.5 u/tick per tick, in u/s
+        constexpr float kLiftCap = 8.0f * 60.0f;     // 8.0 u/tick, in u/s
+        const bool jumpHeld = input && input->down[input::Action::Jump];
+        if (jumpHeld) {
+            m_vy = std::min(m_vy + kLiftStep, kLiftCap);
+            m_actionMeter = std::max(0, m_actionMeter - 3);
+        } else {
+            m_vy = std::max(0.0f, m_vy - kLiftStep);
+        }
+    }
     // Side-step travel speed. FUN_0043ffc0 case 0x17/0x18 seeds 20.0 on the phase's
     // first update, bleeds 0.5 per update while the phase is below 2 (floor 12.5) and
     // 0.7 per update in recovery (floor 0) (:186-214). A constant kRunSpeed covers the

@@ -38,6 +38,7 @@
 #include "gameplay/move_behavior.h"
 #include "gameplay/native/rena0_pilot_adapter.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -293,6 +294,75 @@ void checkRightDashClock(const DashClockSample& got, const ExpectedClock& want, 
 // the movement angle at 0 (along the actor's own angle) and re-runs FUN_00421780, which
 // steers that angle toward the held input's compass bearing; case 0x2b then never writes
 // the horizontal speed or angle again, so the slide continues.
+// Same dash, but with JUMP held throughout: byte +0x280 is that button's held counter, and
+// while it is non-zero the body lifts 0.5/tick (cap 8.0) and charges an extra -3 meter
+// (FUN_0043ffc0 :385-396), so the dash climbs instead of hanging.
+struct AirDashLift {
+    double rise = 0.0;      // y gained during the dash
+    int meterDrained = 0;   // total action-meter spend over the dash
+    int ticks = 0;
+    std::vector<int> drain;   // per-update spend
+    std::vector<int> phase;   // phase reported after each update
+};
+
+AirDashLift airDashLiftRun(test::Combo& combo) {
+    gameplay::Match match;
+    gameplay::MatchConfig config;
+    config.spawn[0] = {0.f, 0.f, 0.f};
+    config.spawn[1] = {0.f, 0.f, 2000.f};
+    const xm::Model* models[gameplay::kMatchFighterCount] = {&combo.model, &combo.model};
+    xm::Controller* controllers[gameplay::kMatchFighterCount] =
+        {combo.controller(), combo.controller()};
+    for (int i = 0; i < 2; ++i) {
+        config.moves[i] = &combo.moves;
+        config.weapon[i] = &combo.weapon;
+    }
+    match.reset(config, models, controllers, nullptr, nullptr, nullptr);
+    match.set_ai_enabled(1, false);
+    match.economy().setLogFile(nullptr);
+    PilotPolicies policies;
+    policies.attach(match.fighter(0));
+
+    input::PlayerState actor{};
+    int startupTicks = 0;
+    startup(match, actor, combo, startupTicks);
+    auto& fighter = match.fighter(0);
+    fighter.set_charge_gauge(1000);
+
+    actor.down[input::Action::Jump] = true;
+    step(match, actor);
+    int guard = 0;
+    while (!fighter.airborne() && guard++ < 30) step(match, actor);
+    require(fighter.airborne(), "the lift case needs the fighter airborne");
+
+    // Jump stays held from here, which is what the arm reads.
+    actor.down[input::Action::Right] = true;
+    step(match, actor);
+    actor.down[input::Action::Right] = false;
+    step(match, actor);
+    actor.down[input::Action::Right] = true;
+    step(match, actor);
+    actor.down[input::Action::Right] = false;
+    require(fighter.dash_move_id() == 30, "the lift case must enter the air dash");
+
+    AirDashLift run;
+    const double startY = fighter.position().y;
+    const int startMeter = fighter.charge_gauge();
+    int last = fighter.charge_gauge();
+    while (fighter.state() == gameplay::FighterState::Run && fighter.airborne() &&
+           run.ticks < 60) {
+        step(match, actor);
+        ++run.ticks;
+        const int now = fighter.charge_gauge();
+        run.drain.push_back(last - now);
+        run.phase.push_back(fighter.move_phase());
+        last = now;
+    }
+    run.rise = fighter.position().y - startY;
+    run.meterDrained = startMeter - fighter.charge_gauge();
+    return run;
+}
+
 struct AirDashRun {
     int row = -1;
     int set = -1;
@@ -301,6 +371,8 @@ struct AirDashRun {
     double bearing = 0.0;     // yaw that would point at the opponent
     double slideAfter = 0.0;  // horizontal distance covered after the dash ended
     double drop = 0.0;        // how far it descended during the dash itself
+    int meterDrained = 0;     // action-meter spend over the dash
+    int dashTicks = 0;        // updates the dash ran
     int airborneAfter = 0;
     bool landed = false;
 };
@@ -363,13 +435,16 @@ AirDashRun airDashRun(test::Combo& combo) {
 
     // Release everything and let the dash end. Momentum is what keeps her sliding.
     actor.down[input::Action::Right] = false;
+    const int meterAtEntry = fighter.charge_gauge();
     const double peakY = fighter.position().y;
     double lastX = fighter.position().x;
     double lastZ = fighter.position().z;
     while (fighter.state() == gameplay::FighterState::Run && fighter.airborne()) {
         step(match, actor);
+        ++run.dashTicks;
         run.drop = peakY - fighter.position().y;
     }
+    run.meterDrained = meterAtEntry - fighter.charge_gauge();
     if (run.drop < 0.0) run.drop = 0.0;
     if (run.drop < 0.0) run.drop = 0.0;
     for (int tick = 0; tick < 90; ++tick) {
@@ -720,6 +795,33 @@ int main(int argc, char** argv) {
         require(air.drop > 2.0,
                 "the air dash must descend in its recovery phase, dropped " +
                     std::to_string(air.drop) + " units");
+        // Holding jump through the dash lifts it and costs the extra -3 per tick.
+        const AirDashLift lift = airDashLiftRun(combo);
+        require(lift.ticks > 8, "the lift case must observe the air dash, got " +
+                                    std::to_string(lift.ticks) + " updates");
+        require(lift.rise > 5.0,
+                "holding jump must lift the air dash, rose " + std::to_string(lift.rise));
+        // The lift is the base -11 plus the recovered -3 on every update while the jump
+        // counter is non-zero AND the phase is below 2; the recovery phase keeps only the
+        // base rate. Nothing may ever exceed the 14 of a lifted travel update.
+        int lifted = 0, recovery = 0;
+        for (std::size_t i = 0; i < lift.drain.size(); ++i) {
+            require(lift.drain[i] <= 14,
+                    "an air dash update cannot spend more than 11 + 3, got " +
+                        std::to_string(lift.drain[i]));
+            if (lift.drain[i] == 14) ++lifted;
+            if (lift.drain[i] == 11) ++recovery;
+        }
+        require(lifted >= 10,
+                "holding jump must charge 14/update through the travel phases, lifted " +
+                    std::to_string(lifted) + " updates");
+        require(recovery >= 3,
+                "the recovery phase must charge the base 11 while jump is still held, got " +
+                    std::to_string(recovery) + " updates");
+        // The lift value carries into the recovery phase: the body subtracts 0.5/tick from
+        // the accumulator, so a climbing dash keeps rising for a while after phase 2 opens.
+        require(std::find(lift.phase.begin(), lift.phase.end(), 2) != lift.phase.end(),
+                "the lift case must reach the recovery phase");
         require(air.slideAfter > 20.0,
                 "the air dash must keep sliding after it ends, covered " +
                     std::to_string(air.slideAfter) + " units");

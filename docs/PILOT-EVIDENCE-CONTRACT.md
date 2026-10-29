@@ -1651,8 +1651,8 @@ The recovered condition is a phase guard on the drain, in every ground dash case
 The air dash's extra −3 sits inside `+0x2b7d < 2` and is gated on the word at byte
 **+0x280** — `param_1[0xa0]` is word index `0xa0`, not byte `+0xa0`; that byte is the
 prologue's freeze word `param_1[0x28]` (`:28-30`), which returns before any body runs.
-The port leaves `+0x280` UNMAPPED, so that arm stays a named limit and this change does
-not touch it.
+**+0x280 is the JUMP button's held-frame counter** (see V3-32); this entry left the arm
+unimplemented, and V3-32 implements it.
 
 Two related facts settled in the same read, because they decide whether the port needs
 more than a guard:
@@ -1945,3 +1945,48 @@ Items 1, 2 and 5 are all gated on identifying byte **+0x280**; 3 and 4 are state
 The `battle_air_dash.hpp` tuning defaults (speed 15.5, drain 9) disagree with both the body
 and the dump (16.5, 11) — use the transcribed body, and note the port already uses the
 body's values.
+
+### V3-32 — D4: +0x280 is the jump button's held counter; the air dash lifts while it is down
+
+The air dash's extra −3 meter arm and its lift were blocked on identifying the word at byte
+`+0x280`. It is now settled, and it corrects a mislabel this contract has carried since
+V3-25: the field is **not** the `+0xa0` freeze word (`param_1[0x28]`, which returns before
+any body runs) but **slot 0 of an 8-word held-input counter array at `+0x280..+0x29c`**,
+inside the actor's embedded input object at `+0x240` — `input+0x40`.
+
+- Producer: the per-frame poll `FUN_00657390` (asm `0x657478-0x6574cb`) increments the
+  counter while its bound bit is down and zeroes it on release, with **no actor-state gate**;
+  its one-frame release mirror is `+0x2b0`. The keyboard branch reads
+  `DAT_0061928[key] & 0x80` the same way.
+- Admission uses it as a **3-frame press window**: `[0x280] == 3 || 0 < [+0x2b0] < 3`
+  (`FUN_00445ee0.c:441/449`, asm `cmp dword [reg+0x280],3` at `0x43f2af`/`0x43f339`) —
+  grounded sends the press to row 40, airborne to row 30, i.e. the jump / air-dash button.
+- A **hold** stance proves it is a held state rather than an id: row 390 exits on
+  `[0x20d] == 0 || [0xa0] == 0 || [0xa1] == 0` (`:1652/1668`, `:1798`).
+- Nothing in rows 30/41/42/43 or the admissions writes it, so it can be **non-zero during
+  an air dash**: the dash is entered on a press, and holding the button keeps the counter
+  climbing (4, 5, …). A tap releases within two frames, zeroes it, and the arm never fires.
+
+The arm itself (`FUN_0043ffc0` case `0x1e` `:385-396`) is therefore simply *hold jump during
+the air dash*: while the counter is non-zero and the phase is below 2, the vertical gains
+0.5/tick up to a cap of 8.0/tick and the meter pays an extra 3 per update; with the button
+up the vertical bleeds 0.5/tick back to zero, which is the hang the port had hard-coded. The
+recovery phase then subtracts gravity from whatever the accumulator reached, so a climbing
+dash keeps rising for a while after phase 2 opens (V3-31 item 2 — the same code path, now
+reachable).
+
+Implemented on the pilot path: the air dash's travel phases now ramp `m_vy` at ±0.5/tick
+(cap 8.0/tick = 480 u/s) from the jump-held state and charge 11 + 3 per lifted update.
+
+Measured, holding jump through a dash from 1000 meter: **14 per update in phases 0-1, 11 in
+phase 2**, y rising 19.5 → 62.5 by the phase-2 transition and continuing to 85 before the
+dash ends — the accumulator carrying over, exactly as `:423-425` describes.
+
+Regression: `rena0_pilot_gate_test` Case F's lift variant requires at least 10 updates at
+exactly 14, at least 3 at exactly 11, no update above 14, a rise greater than 5 units, and
+that the recovery phase is reached. The transferable lesson: an unmapped field is worth one
+bounded census — mislabelling `+0x280` as the `+0xa0` freeze word is what kept this arm out
+of the port for three contract entries.
+
+Also fixed by the same finding: `docs/PILOT-SEAM.md:1467` already mapped `0xa0 | 0x280 |
+jump-held count | input.down[Jump]`; the contract now agrees with it.

@@ -362,7 +362,7 @@ bool runFixture(const Fixture& fx, std::string& error) {
                 const gameplay::Fighter& a0 = match.fighter(0);
                 const gameplay::Fighter& d1 = match.fighter(1);
                 std::printf("    trace tick=%lld state=%d set=%d row=%d active=%d recov=%d hit=%d victim=%d "
-                            "swing_hits=%d phase=%d elapsed=%d x=%.3f z=%.3f hp=%d alive=%d pko=%d ko=%d "
+                            "swing_hits=%d phase=%d elapsed=%d x=%.3f y=%.3f z=%.3f hp=%d alive=%d pko=%d ko=%d "
                             "respawn=%d credit0=%d credit1=%d overkill0=%d balloon1=%.1f gauge=%d tier=%d "
                             "main=%d yhold=%.4f rhold=%.4f round_over=%d round_end=%d "
                             "hyper=%d hyperwire=%d aimhold=%d shotrow=%d bullet=%d live=%d\n",
@@ -370,7 +370,8 @@ bool runFixture(const Fixture& fx, std::string& error) {
                             a0.melee_in_active() ? 1 : 0, a0.melee_in_recovery() ? 1 : 0,
                             frame.meleeHit[0] ? 1 : 0, frame.meleeVictim[0], a0.swing_hit_count(),
                             a0.move_phase(), a0.phase_elapsed(), (double)a0.position().x,
-                            (double)a0.position().z, d1.hp(), d1.is_alive() ? 1 : 0,
+                            (double)a0.position().y, (double)a0.position().z, d1.hp(),
+                            d1.is_alive() ? 1 : 0,
                             d1.pending_ko() ? 1 : 0, match.economy().koAt(1) >= 0.0 ? 1 : 0,
                             frame.respawned[1] ? 1 : 0, frame.koCredits[0], frame.koCredits[1],
                             frame.overkillHits[0], (double)match.economy().balloon(1),

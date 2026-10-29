@@ -2,6 +2,12 @@
 # Expectations cite the recovered airborne row for Rena+0 (30) and the air-dash trigger
 # the audit test uses (jump, then a double tap while airborne;
 # tests/rena_animation_audit_test.cpp:197-222).
+#
+# The stick is RELEASED on tick 16 on purpose: row 30's travel set declares the +0x20
+# hold, so holding a direction never lets the clock advance it. The body leaves that
+# section on its own counter once `5 < +0x3a` and the stick is neutral
+# (FUN_0043ffc0 case 0x1e :413-420), which is what drops the dash into its recovery phase
+# and, with it, into the fall the port used to skip entirely (V3-30).
 combo 0 0
 seed 5489
 spawn 0 0 0 0
@@ -12,8 +18,18 @@ input 1 -
 input 12 LEFT
 input 13 -
 input 14 LEFT
+input 16 -
 expect 11 airborne 1
 expect 14 dash_row 30
 expect 14 anim_row 30
 expect 14 air_dash_context 1
-expect 30 dummy_static 1
+expect 14 phase 0
+expect 14 y 38.5
+# Recovery phase: the airborne section ends on the release rule, not on a frame timer.
+expect 27 phase 2
+# The recovery phase descends (0.5/tick^2, the body's +0x16); the travel phase holds y.
+expect 31 y 28
+# Back to the airborne state with the dash's momentum, then the ground.
+expect 33 airborne 1
+expect 37 state 0
+expect 40 y 0
