@@ -2511,7 +2511,13 @@ units, nor when placed by the fixture's own `place_at_attack` helper.
 
 **So the gap is the particle path.** The port spawns the EX's effect requests as visuals and has no
 damaging particle/effect entity, so the move's only damage source is unimplemented and the seven
-hand contacts that the shipped data does carry are currently unreachable. Two ways forward, and the
+hand contacts that the shipped data does carry are currently unreachable. (The other contact-cut
+row, 320, is scoped correctly and does land: a dive fixture with the opponent on the volume reads
+`dummy_hp 92`. 350 is the only silent one.)
+
+**Consequence for V3-37:** the late camera switch (set 1 from tick 0x33, gated on the hit latch)
+cannot fire in practice while the EX cannot hit, which is why no fixture pins it. The rule stays —
+it is what the body does — but the whiff path is the only one observable today. Two ways forward, and the
 choice is a design one: re-arm the contacts (the data supports it, but the port rule's reading says
 the original cuts them) or implement effect-carried damage (the reading the port rule implies, and
 a much larger piece). Nothing was changed here; the finding is recorded so the next session starts
