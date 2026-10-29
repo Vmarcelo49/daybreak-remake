@@ -1262,6 +1262,11 @@ private:
     // integrates vertical gravity. So the fighter keeps sliding after the dash instead of
     // dropping straight down (owner: D2).
     bool         m_airDashCarry = false;
+    // The air dash's phase-1 visit counter (the body's +0x3a). Set 55 declares the +0x20
+    // hold, so its clock can never advance the phase; the body leaves for phase 2 once
+    // more than five visits have passed and either no direction is held or the meter is
+    // empty (FUN_0043ffc0 :413-420).
+    int          m_airDashTicks = 0;
     bool         m_dashAir = false;     // current dash started airborne
     bool         m_airDashed = false;   // air dash spent (resets on landing)
     double       m_time = 0.0;          // per-fighter clock (double-tap)

@@ -680,8 +680,14 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         const bool flyBudget = m_pilotMeter ? m_actionMeter > 0 : m_flyLeft > 0.0f;
         const bool wantFly = jumpDown && m_state == FighterState::Jump &&
                              flyBudget && !m_hoverSpent && is_alive();
-        // An air dash hangs for its window (no fall until it expires).
-        const bool dashHang = m_state == FighterState::Run && m_dashAir;
+        // An air dash hangs while its phase is below 2 and then falls. FUN_0043ffc0 case
+        // 0x1e subtracts 0.5/tick from +0x10 in BOTH windows but only the early one floors
+        // it at zero (:386-390), so the dash can never descend before its recovery phase;
+        // phase 2 subtracts +0x16 with no floor (:422-424), i.e. an ordinary fall. The
+        // port hung for all three sections. kGravity is 1800 u/s^2, which is exactly the
+        // body's 0.5 per tick per tick, so the normal fall is the recovered rate.
+        const bool dashHang = m_state == FighterState::Run && m_dashAir &&
+                              !(m_pilotMeter && m_phaseIndex >= 2);
         // A recovered attack body owns its fall while the value it published is
         // live: the bodies' per-tick^2 gravity (FUN_0043ffc0's air field +58)
         // replaces the locomotion rate, and 0 is a real hang (the chase's
@@ -1234,6 +1240,12 @@ int Fighter::hit_status_duration(unsigned slot) const {
 
 void Fighter::set_state(FighterState new_state) {
     if (m_state == new_state) return;
+    // The air dash's carried momentum belongs to the airborne window it opened; a hit,
+    // knockdown or KO that interrupts that window must not leave the fighter sliding at
+    // dash speed when the reaction ends back in Jump.
+    if (new_state == FighterState::Hit || new_state == FighterState::Knockdown ||
+        new_state == FighterState::KO)
+        m_airDashCarry = false;
     m_state = new_state;
     if (new_state != FighterState::AttackA) {
         m_aerialAttack = false;
@@ -2165,6 +2177,20 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
     // the word at byte +0x280 (:384-396; `param_1[0xa0]` is word index 0xa0, not byte
     // +0xa0 — that byte is the prologue's freeze word, `param_1[0x28]`), which the port
     // leaves UNMAPPED; that arm stays a named limit.
+    // The air dash's travel section is a GATED hold: its set declares +0x20, so neither
+    // the clock nor the completion predicate can end it. The body counts its own visits in
+    // +0x3a and leaves for the recovery phase once more than five have passed and either
+    // no direction is held or the meter is empty (FUN_0043ffc0 :413-420). Holding the
+    // stick therefore extends the dash, which is what makes it steerable.
+    if (m_pilotMeter && m_state == FighterState::Run && m_dashMoveId == 30 &&
+        m_phaseIndex == 1) {
+        ++m_airDashTicks;
+        const bool noDirection = m_inputAxisX == 0 && m_inputAxisZ == 0;
+        if (m_airDashTicks > 5 && (noDirection || m_actionMeter <= 0)) {
+            enter_phase(2);
+            return;
+        }
+    }
     if (m_pilotMeter && m_state == FighterState::Run) {
         if (m_dashMoveId == 23 || m_dashMoveId == 24 ||
             m_dashMoveId == 27 || m_dashMoveId == 28) {
@@ -3294,6 +3320,7 @@ bool Fighter::try_dash(input::Action dir) {
         // FUN_00421780 then steers toward the held input's compass bearing. So an air dash
         // points where it was input rather than at the target (owner: D3).
         m_dashSpeed = FighterConstants::kAirDashSpeed;
+        m_airDashTicks = 0;
         if (m_pilotMeter) {
             m_dashSpeed = 16.5f * 60.0f;
             if (m_inputAxisX != 0 || m_inputAxisZ != 0) {
@@ -3322,14 +3349,14 @@ bool Fighter::try_dash(input::Action dir) {
     // (row 23 phase 2 = set 24, row 24 phase 2 = set 21). The phase clock now ends the
     // dash through advance_animation_phase's last-section branch instead.
     const CharacterMove* dashRow = m_moves ? m_moves->find(dashMove) : nullptr;
-    // GROUNDED only: the air dash (row 30) keeps its frame timer, which is what expires it
-    // back into Jump — making that phase-driven changed an airborne exit that is not the
-    // reported problem.
-    // PILOT PATH ONLY for the side/back rows: the COM drives the same fighter class, and
-    // its cadence (and the bot suite's expectations) were built on the truncated dash, so
-    // the recovered full-length dash is applied where the recovered rules already apply.
+    // PILOT PATH ONLY: the COM drives the same fighter class, and its cadence (and the bot
+    // suite's expectations) were built on the truncated dash, so the recovered full-length
+    // dash applies where the recovered rules already apply. Airborne too: row 30's three
+    // sections are 10/15/10 updates, and the 20-update kDashFrames timer cut the air dash
+    // inside phase 1 — its recovery phase, which is where the body starts to descend
+    // (case 0x1e :422-424), never ran at all.
     const bool phaseDriven =
-        programmed || (m_pilotMeter && m_grounded && dashRow && dashRow->sectionCount > 1);
+        programmed || (m_pilotMeter && dashRow && dashRow->sectionCount > 1);
     m_stateTimer = phaseDriven ? 0 : FighterConstants::kDashFrames;
     return true;
 }

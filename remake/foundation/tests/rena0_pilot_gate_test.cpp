@@ -300,6 +300,7 @@ struct AirDashRun {
     double facing = 0.0;      // actor yaw at admission
     double bearing = 0.0;     // yaw that would point at the opponent
     double slideAfter = 0.0;  // horizontal distance covered after the dash ended
+    double drop = 0.0;        // how far it descended during the dash itself
     int airborneAfter = 0;
     bool landed = false;
 };
@@ -338,6 +339,16 @@ AirDashRun airDashRun(test::Combo& combo) {
     while (fighter.airborne() == false && guard++ < 30) step(match, actor);
     require(fighter.airborne(), "the air dash case needs the fighter airborne");
 
+    // Climb first: the air dash's recovery descends fast, so momentum can only be observed
+    // when the dash ends with the fighter still high. Row 41's hover is the meter-only
+    // climb (V3-12), so holding jump gains altitude for as long as the meter lasts.
+    actor.down[input::Action::Jump] = true;
+    for (int climb = 0; climb < 40; ++climb) step(match, actor);
+    actor.down[input::Action::Jump] = false;
+    step(match, actor);
+    require(fighter.position().y > 40.0f,
+            "the air dash case needs altitude to observe the carried momentum");
+
     // Double tap Right in the air; the last press stays held so the axis is defined.
     actor.down[input::Action::Right] = true;
     step(match, actor);
@@ -352,8 +363,15 @@ AirDashRun airDashRun(test::Combo& combo) {
 
     // Release everything and let the dash end. Momentum is what keeps her sliding.
     actor.down[input::Action::Right] = false;
+    const double peakY = fighter.position().y;
     double lastX = fighter.position().x;
     double lastZ = fighter.position().z;
+    while (fighter.state() == gameplay::FighterState::Run && fighter.airborne()) {
+        step(match, actor);
+        run.drop = peakY - fighter.position().y;
+    }
+    if (run.drop < 0.0) run.drop = 0.0;
+    if (run.drop < 0.0) run.drop = 0.0;
     for (int tick = 0; tick < 90; ++tick) {
         step(match, actor);
         const double x = fighter.position().x;
@@ -699,6 +717,9 @@ int main(int argc, char** argv) {
         require(air.landed, "the air dash case must come back down");
         require(air.airborneAfter > 0,
                 "the air dash must leave airborne ticks to carry momentum through");
+        require(air.drop > 2.0,
+                "the air dash must descend in its recovery phase, dropped " +
+                    std::to_string(air.drop) + " units");
         require(air.slideAfter > 20.0,
                 "the air dash must keep sliding after it ends, covered " +
                     std::to_string(air.slideAfter) + " units");

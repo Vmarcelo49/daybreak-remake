@@ -1870,3 +1870,39 @@ fixture matrix unchanged at 29/30/47.
 
 Tier 2 for every field and rate; tier 3 for the intended feel. The `+0x280`-gated extra −3
 meter arm is untouched and remains D4.
+
+### V3-30 — the air dash's gated travel section, its descent, and its release rule
+
+Found while testing V3-29: the air dash never reached its recovery phase, so its descent and
+its completion never ran. Three separate things were wrong, and the 20-update
+`kDashFrames` timer was masking all of them.
+
+**1. Row 30's travel set declares the phase gate.** Set 55's `+0x20` hold flag is 1, so the
+clock can never advance the phase (`advance_animation_phase` returns on a gated set) and the
+completion predicate cannot fire either. The body leaves phase 1 on **its own counter**:
+`+0x3a` is zeroed in the phase-0 seed (`:408`), incremented once per phase-1 visit (`:415`),
+and the phase advances once `5 < +0x3a` and either no direction is held (`+0x9f == 0 &&
++0x9e == 0`) or the meter is empty (`+0x20d < 1`) — `:416-420`. Holding the stick therefore
+*extends* the air dash, which is what makes it steerable; releasing drops it into recovery.
+
+**2. The recovery phase descends.** Phases below 2 subtract 0.5/tick from `+0x10` and floor
+it at zero (`:386-390`), so the dash can never sink while it travels — a hang. Phase 2
+subtracts `+0x16` with no floor (`:422-424`), i.e. an ordinary fall. The port hung for all
+three sections. `kGravity` is 1800 u/s², exactly the body's 0.5 per tick per tick, so the
+normal fall is already the recovered rate; only the hang window needed narrowing.
+
+**3. The row was truncated.** `kDashFrames` = 20 cut the dash inside phase 1; the row's three
+sections are 10/15/10 = 35 updates. The pilot's airborne dash is now phase-driven, like the
+ground ones. Scoped to the pilot path: `fighter_script_test`'s air-dash case attaches no
+meter policy and keeps the legacy 20-update window, so it is untouched.
+
+Measured on the pinned scenario: 5 updates of hang in phase 0, a 6-update travel window that
+ends on the release rule, then a descent from y = 16.5 to the ground. Regression Case F now
+also requires the dash to **descend** (`drop > 2`) and, because the descent lands quickly,
+climbs to y > 40 first so the momentum carry of V3-29 still has airborne ticks to observe.
+
+Suite 83/83 excluding the known `device_isolation_test` flake; fixture matrix unchanged at
+29/30/47. Tier 2 for the release rule, the descent rates and the section windows.
+
+Still open (D4): the `+0x280`-gated extra −3 meter arm and the *climb* arm of `+0x10` in
+phases 0-1 (it rises 0.5/tick, capped at 8.0, when that word is non-zero).
