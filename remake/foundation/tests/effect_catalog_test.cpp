@@ -483,10 +483,10 @@ void testInstallAuraTable(int argc, char** argv) {
 // The glow-card rule the shot pass keys on (V3-36/V3-38): inside a shot model, a mesh that is
 // exactly one quad is drawn additively. The rule is geometric because the materials carry no
 // blend signal and the quad textures are opaque black outside the glow, so no alpha test can
-// cut their backing. This sweep is what keeps the rule honest: every quad in the shipped
-// corpus must have the shape the rule assumes, and no quad may be the model's only *solid*
-// body. It reads the install directly (data/bullet is loose on disk), so it is skipped when
-// there is none.
+// cut their backing. This sweep guards the rule's PREMISE, not the renderer: every quad in the
+// shipped corpus must have the shape the rule assumes (planar, unskinned, one submesh), so an
+// asset that would break it fails here instead of rendering wrong quietly. It reads the install
+// directly (data/bullet is loose on disk), so it is skipped when there is none.
 void testShotQuadRule(int argc, char** argv) {
     section("asset-backed: every quad mesh in data/bullet has the shape the glow rule assumes");
     const fs::path install = findInstall(argc, argv);
@@ -543,6 +543,9 @@ void testShotQuadRule(int argc, char** argv) {
     }
     check(models > 0, "the install ships shot models to survey");
     check(quads > 0, "the corpus contains quad meshes (the rule applies to something)");
+    // Models whose only geometry is a quad are the projectile/effect cards the rule is FOR;
+    // a corpus with none would mean the rule has nothing to act on at all.
+    check(soleQuadModels > 0, "the corpus contains sole-quad effect models");
     checkInt(0, skinnedQuads, "no quad in a shot model is skinned (a card is one matrix)");
     checkInt(0, multiSubQuads, "no quad in a shot model carries several submeshes");
     checkInt(0, notPlanar, "every quad in a shot model is planar");

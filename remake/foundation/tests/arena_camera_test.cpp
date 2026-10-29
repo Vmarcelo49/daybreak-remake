@@ -820,6 +820,68 @@ void recoveredFollowCases() {
 
 }  // namespace
 
+// ---------------------------------------------------------------------------------------
+// 9. the action camera's sentinel: set 0 plays, and only a negative value means "off"
+//
+// FUN_006358c0:59-64 clears the action camera on a NEGATIVE request and otherwise passes the
+// value to FUN_00633140 as an animation set on the rig — 0 included. The port used 0 as its own
+// "off" value until V3-37, which made the recovered Hyper EX request (set 0) unplayable; the rig
+// path is guarded by `m_actionClip >= 0`. This case fails if that comparison goes back to `> 0`,
+// which no fighter-level assertion can see.
+// ---------------------------------------------------------------------------------------
+glm::vec3 actionCameraEye(const xm::Model& rig, int clip) {
+    ArenaCamera cam(ArenaCameraPreset::referenceRemake());
+    CameraTarget self{};
+    self.position = glm::vec3(0.f, 200.f, 0.f);
+    CameraTarget foe{};
+    foe.position = glm::vec3(0.f, 200.f, 400.f);
+    std::vector<CameraTarget*> pool = {&self, &foe};
+    cam.set_target_pool(pool);
+    cam.set_active_target(0);
+    cam.set_action_rig(&rig);
+    cam.set_action(clip, self.position, 0.f, foe.position);
+    cam.update(1.0 / 60.0);
+    return cam.eye();
+}
+
+void actionCameraCases() {
+    section("9. the action camera plays set 0 and is off at -1");
+    // A minimal rig with the real frame names and one animation per set. The bind offsets do
+    // not matter: the action eye is actionPosition + rotation * pose[Box01] * (1,0,0), which
+    // sits at the fighter, while the ordinary follow sits a preset distance behind her.
+    xm::Model rig;
+    xm::Frame box1;
+    box1.name = "Box01";
+    box1.bindLocal = glm::mat4(1.f);
+    xm::Frame box2;
+    box2.name = "Box02";
+    box2.bindLocal = glm::mat4(1.f);
+    rig.frames = {box1, box2};
+    rig.anims.resize(2);
+    rig.anims[0].duration = 800.f;
+    rig.anims[1].duration = 480.f;
+    rig.ticksPerSecond = 4800.f;
+
+    const glm::vec3 off = actionCameraEye(rig, -1);
+    const glm::vec3 setZero = actionCameraEye(rig, 0);
+    const glm::vec3 setOne = actionCameraEye(rig, 1);
+    check(glm::length(setZero - off) > 50.f,
+          "set 0 leaves the ordinary follow (0 is a real set, not off)", v3s(setZero - off), "> 50");
+    check(glm::length(setOne - off) > 50.f,
+          "control: set 1 leaves it too, so the check above is not luck", v3s(setOne - off), "> 50");
+    // And -1 is the sentinel: the eye is exactly what the plain follow produces.
+    ArenaCamera plain(ArenaCameraPreset::referenceRemake());
+    CameraTarget self{};
+    self.position = glm::vec3(0.f, 200.f, 0.f);
+    std::vector<CameraTarget*> pool = {&self};
+    plain.set_target_pool(pool);
+    plain.set_active_target(0);
+    plain.set_action_rig(&rig);
+    plain.set_action(-1, self.position, 0.f, self.position);
+    plain.update(1.0 / 60.0);
+    checkNear("-1 keeps the ordinary follow (the sentinel really is off)", off, plain.eye(), 1e-3f);
+}
+
 int main() {
     desiredEyeCases();
     convergenceCases();
@@ -829,6 +891,7 @@ int main() {
     originalPresetCases();
     splitViewCameraCases();
     recoveredFollowCases();
+    actionCameraCases();
 
     std::printf("\nchecks=%d failures=%d\n", g_checks, g_failures);
     std::printf("ARENA_CAMERA: %s\n", g_failures == 0 ? "ok" : "FAIL");
