@@ -106,7 +106,7 @@ void ArenaCamera::update(double /*dt*/, const CollisionQuery& collision) {
     m_target = glm::vec3(t->position.x, t->position.y + m_preset.aimHeight, t->position.z);
 
     glm::vec3 desiredEye = compute_desired_eye(t);
-    if (m_actionRig && m_actionClip > 0 && static_cast<size_t>(m_actionClip) < m_actionRig->anims.size()) {
+    if (m_actionRig && m_actionClip >= 0 && static_cast<size_t>(m_actionClip) < m_actionRig->anims.size()) {
         // FUN_00633140 / FUN_006333b0: camera/01.x Box01/Box02 offsets.
         // The source transforms (1,0,0), not the origin, at elapsed * 0.016.
         m_actionController.setTrackPosition(0, m_actionTime);

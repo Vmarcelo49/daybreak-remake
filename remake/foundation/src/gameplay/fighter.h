@@ -1177,7 +1177,10 @@ private:
     std::array<bool, 2> m_propBound{true, true};
     std::array<bool, 2> m_propActive{false, false};
     std::array<int, 2> m_trailItemModel{0, 1};
-    int          m_actionCamera = 0;
+    // The actor's +0x684 camera-request word: NEGATIVE means no action camera, any other
+    // value is an animation set on data/camera/01.x (FUN_006358c0:59-64 tests `< 0`). 0 is a
+    // real set, which is what the Hyper EX row 350 requests (V3-37).
+    int          m_actionCamera = -1;
     float        m_moveSpeed = 0.f;
     float        m_walkTurnRate = 20.f;
     float        m_inputFacing = 0.f;

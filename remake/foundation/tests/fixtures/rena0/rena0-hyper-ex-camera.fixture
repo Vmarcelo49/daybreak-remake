@@ -1,11 +1,10 @@
 # rena0-hyper-ex-camera — F1-3 fixture, the Hyper EX attack's action camera
 #
-# Source: FUN_0043ffc0 case 0x15e (the EX body, move 350) plays the battle camera for the
-# whole move and has NO contact test around the request, so it plays on a whiff too — the
-# owner confirmed that against the original's own screenshot (V3-37). The set is 5: the owner
-# identified it by eye after every set of data/camera/01.x was rendered for this move, so the
-# index is a tier-3 observation standing in for a recovered constant, and it is pinned here so
-# a future edit cannot quietly change the framing.
+# Source: FUN_0043ffc0 case 0x15e (the EX body, move 350) writes the actor's camera-request
+# word itself (:1437-1442): set 0 for the whole move, and set 1 from tick 0x33 only when the
+# late-window hit latch is set. The request has NO contact test around it, so the base
+# cinematic plays on a whiff too — the owner confirmed that against the original's own
+# screenshot. This fixture pins the whiff path: set 0 (V3-37).
 #
 # The opponent sits 2000 units away, so the EX swing cannot connect: `attack_row 350` and a
 # non-zero `action_camera` on the same tick prove the camera is not a hit effect.
@@ -20,9 +19,10 @@ input 1 -
 input 20 SPECIAL
 input 21 -
 expect 0 hyper 1
-expect 19 action_camera 0
+# -1 is "no action camera"; 0 is the rig's first set, which is what this move requests.
+expect 19 action_camera -1
 # The press tick already runs the move's first program update, so the camera arms there.
 expect 20 attack_row 350
-expect 20 action_camera 5
-expect 30 action_camera 5
+expect 20 action_camera 0
+expect 30 action_camera 0
 expect 30 swing_hits 0

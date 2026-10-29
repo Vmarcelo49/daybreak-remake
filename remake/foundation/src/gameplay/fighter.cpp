@@ -205,7 +205,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_moveCounter = 0;
     m_movePitch = 0.f;
     m_holdTicks = 0;
-    m_actionCamera = 0;
+    m_actionCamera = -1;
     m_chainContact = false;
     m_chainGuarded = false;
     m_previousWalkInput = {};
@@ -269,7 +269,7 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_moveCounter = 0;
     m_movePitch = 0.f;
     m_holdTicks = 0;
-    m_actionCamera = 0;
+    m_actionCamera = -1;
     m_chainContact = false;
     m_chainGuarded = false;
     m_previousWalkInput = {};
@@ -347,7 +347,7 @@ void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     m_moveCounter = 0;
     m_movePitch = 0.f;
     m_holdTicks = 0;
-    m_actionCamera = 0;
+    m_actionCamera = -1;
     m_chainContact = false;
     m_chainGuarded = false;
     m_previousWalkInput = {};
@@ -1255,7 +1255,7 @@ void Fighter::set_state(FighterState new_state) {
     m_movePitch = 0.f;
     m_holdTicks = 0;
     m_propActive = {false, false};
-    m_actionCamera = 0;
+    m_actionCamera = -1;
     // Fresh action: the attack-body fall/lean state starts clean (the original's
     // +40/+58 persist only across row switches within one air action).
     m_attackGravity = -1.f;

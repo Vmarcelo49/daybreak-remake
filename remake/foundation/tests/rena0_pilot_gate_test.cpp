@@ -557,10 +557,10 @@ EmptyTapRun emptyTapRun(test::Combo& combo, bool pilot, int gauge, int holdTicks
 // request; the port's own rule was missing the op entirely until V3-37.
 struct ActionCameraRun {
     bool hyper = false;
-    int cameraOnActivation = 0;
+    int cameraOnActivation = -2;   // -1 is the "no action camera" value
     int exRow = -1;
-    int cameraOnWhiff = 0;
-    int meleeCameraOnWhiff = 0;
+    int cameraOnWhiff = -2;
+    int meleeCameraOnWhiff = -2;
 };
 
 ActionCameraRun actionCameraRun(test::Combo& combo) {
@@ -590,6 +590,7 @@ ActionCameraRun actionCameraRun(test::Combo& combo) {
     actor.down[input::Action::AttackA] = true;
     step(match, actor);
     actor.down[input::Action::AttackA] = false;
+    run.meleeCameraOnWhiff = -1;   // -1 = the melee camera stayed off
     for (int i = 0; i < 12; ++i) {
         step(match, actor);
         run.meleeCameraOnWhiff = std::max(run.meleeCameraOnWhiff, fighter.action_camera());
@@ -610,6 +611,7 @@ ActionCameraRun actionCameraRun(test::Combo& combo) {
     actor.down[input::Action::Special] = true;
     step(match, actor);
     actor.down[input::Action::Special] = false;
+    run.cameraOnWhiff = -1;
     for (int i = 0; i < 30; ++i) {
         step(match, actor);
         if (fighter.attack_move_id() == 350) {
@@ -868,15 +870,15 @@ int main(int argc, char** argv) {
         // The Hyper EX attack's action camera, and the melee camera it must not infect.
         const ActionCameraRun camera = actionCameraRun(combo);
         require(camera.hyper, "the action camera case must reach Hyper mode");
-        require(camera.cameraOnActivation == 0,
+        require(camera.cameraOnActivation == -1,
                 "activating Hyper must not arm the action camera, got " +
                     std::to_string(camera.cameraOnActivation));
         require(camera.exRow == 350, "the Hyper press must enter the EX row 350, got " +
                                          std::to_string(camera.exRow));
-        require(camera.cameraOnWhiff == 5,
-                "the EX attack must play action camera set 5 (the owner's pick against the "
-                "original) even when it misses, got " + std::to_string(camera.cameraOnWhiff));
-        require(camera.meleeCameraOnWhiff == 0,
+        require(camera.cameraOnWhiff == 0,
+                "the EX attack must play the recovered camera set 0 even when it misses, "
+                "got " + std::to_string(camera.cameraOnWhiff));
+        require(camera.meleeCameraOnWhiff == -1,
                 "a whiffed melee swing must NOT play the action camera, got " +
                     std::to_string(camera.meleeCameraOnWhiff));
 

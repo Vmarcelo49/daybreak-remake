@@ -2207,26 +2207,43 @@ Two things were needed:
   asserted) and wrong for this move, so `MoveRule::second` now means "plays regardless of
   contact" for `ActionCamera` only. The field was unused for this op.
 
-**The clip index is 5, and it came from the owner's eye, not the binary.** `value` is an
-animation set on the action-camera rig (`data/camera/01.x`, which ships **six** sets; the
-reference bundle records that the native index order is reversed, so native index 0 is
-serialized `Anim-6`). Which set `0x15e` requests is **not recovered** — the helpers around it
-(`FUN_0042c800/840/880`) are slot arrays and a positional request, not camera calls. So the
-first attempt borrowed the melee combo's index 2, the owner played it and said the angle was
-wrong, and every set was then rendered for this move and compared against the owner's original
-screenshot; the owner picked set 5 (`local-data/harness/fxanim/ex_camera_sweep.png` and
-`ex_camera_late.png` carry the sweep).
+**The clip index is 0, and it is recovered — the earlier tier-3 answer of 5 was wrong.**
+`FUN_0043ffc0` case `0x15e` writes the actor's camera-request word **`+0x684`** itself
+(`:1437-1442`: `if (param_1[0x3a] == 0) param_1[0x1a1] = 0; else param_1[0x1a1] = 1;`, and
+`0x1a1 * 4 = 0x684`; disassembly at `0x443692` / `0x4436a1`, branch on `[eax+0xe8]` at
+`0x443686`). That word is the rig's animation-set index: `FUN_006358c0:59-64` tests it for
+`< 0` (clear the action camera) and otherwise passes it to `FUN_00633140`, which stores it at
+`camera+0x7c` and reads the set period; `FUN_006333b0:83-85` then binds both controller
+tracks to it. The rig is `data/camera/01.x`, and the port already reverses its sets the same
+way the reference bundle documents, so port index == native index.
 
-That makes this an **owner observation standing in for a recovered constant** — tier 3, not
-tier 2 — and it is labelled as such in the rule table. At the strike frame the framing is still
-wider than the print: the angle agrees, the distance does not, so if it still reads wrong in
-play the remaining difference is the rig's playback or the camera preset, not the set.
+So the move requests **set 0 for the whole move** — that is the cinematic the owner sees on a
+whiff — and **set 1 from tick `0x33`** only when the late hit latch `+0xe8` is set (armed at
+frame `0x32` by `FUN_0042c7b0() & 1`, which ORs the per-slot hit flags the body clears every
+tick while the frame is below `0x24`). **No instruction in row 350 writes 5**; the only
+`mov [reg+0x684],5` stores in the image belong to another character's state machine.
 
-Regression: `rena0_pilot_gate_test` Case G drives the whole sequence — a whiffed melee swing
-must leave the camera at 0, Hyper activation must not arm it, and the EX press must put it on
-for the move with the opponent out of reach. Deleting the rule fails it with `the EX attack
-must play its action camera even when it misses, got 0`. Suite 83/83 excluding the known
-`device_isolation_test` flake.
+**Why the owner's pick looked right, and what it exposed.** The port's `ArenaCamera::set_action`
+used **0 as its "off" sentinel** (`if (clip > 0)`), so the recovered set 0 was unrepresentable —
+the sweep's "set 0" panel was the ordinary camera, native `Anim-6` was never shown, and 5 was
+the closest visible framing. That mismatch is now fixed: the sentinel is negative (matching
+`+0x684 < 0`), 0 is a real set, and `fighter.cpp`'s four reset sites and the member initialiser
+carry `-1`. With set 0 played, the port frames the move close and frontal at the owner's own
+height — the same angle as the print — where set 5 was wide and from the wrong side.
+
+PORT RULE that remains: the late switch to set 1 is gated on the port's `m_chainContact`, which
+records a hit anywhere in the move, while the original only survives a hit landing in ticks
+`0x24..0x32` (it clears the per-slot flags every tick before that). So the port can switch to
+set 1 slightly earlier than the original, and never for a hit that landed before tick `0x24`.
+
+
+Regression, two layers. `rena0_pilot_gate_test` Case G drives the whole sequence — a whiffed
+melee swing must leave the camera at **-1**, Hyper activation must not arm it, and the EX press
+must put **set 0** on for the move with the opponent out of reach; deleting the rule fails it.
+`rena0-hyper-ex-camera.fixture` pins the same path at fixture level, so the acceptance matrix
+carries it: `action_camera -1` before the press, `0` on the press tick, `0` while the swing
+hangs, with `swing_hits 0` proving nothing connected. Suite 83/83 excluding the known
+`device_isolation_test` flake; fixtures 30 / 31 case rows / 49 fields.
 
 ### V3-38 — the glow-quad rule, measured across the whole shot corpus
 

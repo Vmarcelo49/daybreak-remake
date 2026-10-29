@@ -162,10 +162,15 @@ struct CollisionQuery {
 
 class ArenaCamera {
 public:
+    // `clip` is the actor's +0x684 camera-request word (FUN_006358c0:59-64): a NEGATIVE
+    // value clears the action camera and any other value is an animation set on the rig —
+    // including 0. The port used 0 as its own "off" sentinel, which made the recovered
+    // request for the Hyper EX (set 0, FUN_0043ffc0 case 0x15e) unrepresentable and is why
+    // that move was pinned to set 5 by eye instead (V3-37).
     void set_action_rig(const xm::Model* model) {
         m_actionRig = model;
         m_actionController.bind(model);
-        m_actionClip = 0;
+        m_actionClip = -1;
         m_actionTime = 0.f;
     }
     void set_action(int clip, const glm::vec3& position, float yaw, const glm::vec3& opponent) {
@@ -174,7 +179,7 @@ public:
             m_actionTime = 0.f;
             m_actionYaw = yaw;
             m_previousActionAim = m_target;
-            if (clip > 0) m_actionController.setAnimationBothTracks(clip, false);
+            if (clip >= 0) m_actionController.setAnimationBothTracks(clip, false);
         }
         m_actionPosition = position;
         m_actionOpponent = opponent;
@@ -260,7 +265,7 @@ public:
 private:
     const xm::Model* m_actionRig = nullptr;
     xm::Controller m_actionController;
-    int m_actionClip = 0;
+    int m_actionClip = -1;   // -1 = no action camera; 0.. are rig animation sets
     float m_actionTime = 0.f;
     float m_actionYaw = 0.f;
     glm::vec3 m_actionPosition{0.f};

@@ -340,18 +340,18 @@ inline constexpr MoveRule kRenaRules[] = {
     {302,-1,12,17,MoveOp::Active,1.f},
     {302,-1,0,9999,MoveOp::ActionCamera,2.f},
     {302,0,0,11,MoveOp::Turn,20.f,1.f},
-    // 350 (the Hyper-mode EX attack, FUN_0043ffc0 case 0x15e) plays the action camera
-    // for the whole move and does it whether or not the swing connects — owner report
-    // with an original-runtime screenshot, and unlike the melee chain above, whose
-    // camera is a hit effect. The `second` column is the ungated flag the ActionCamera
-    // executor reads; without it the contact latch would suppress the shot on a whiff.
+    // 350 (the Hyper-mode EX attack, FUN_0043ffc0 case 0x15e) writes the actor's camera
+    // request itself (:1437-1442): set 0 for the whole move, and set 1 from tick 0x33 only
+    // when the late-window hit latch (+0xe8) is set. Both are recovered — the row contains no
+    // other camera value, and 5 belongs to a different character's function.
     //
-    // The clip index is 5, identified by the owner against the original's own screenshot
-    // after all six sets of data/camera/01.x were rendered for this move (a sweep kept
-    // under local-data/harness/fxanim/). It is NOT recovered: nothing in case 0x15e names
-    // a set, and 2 — the melee combo's index — framed the strike from the wrong side. So
-    // this is an owner observation standing in for a recovered constant (V3-37).
-    {350,-1,0,9999,MoveOp::ActionCamera,5.f,1.f},
+    // The base rule is ungated (the `second` column), which is why the cinematic plays on a
+    // whiff; the late switch stays gated on contact. PORT RULE for the latch: the original
+    // clears the per-slot hit flags every tick until frame 0x24, so only a hit landing in
+    // ticks 0x24..0x32 arms it, while the port's `m_chainContact` records a hit anywhere in
+    // the move — the approximation can switch to set 1 slightly earlier than the original.
+    {350,-1,0,9999,MoveOp::ActionCamera,0.f,1.f},
+    {350,0,49,9999,MoveOp::ActionCamera,1.f},
     {330,0,0,9999,MoveOp::Turn,5.f},
     {330,1,0,9999,MoveOp::Turn,5.f},
     {330,1,0,9999,MoveOp::Speed,30.f},
