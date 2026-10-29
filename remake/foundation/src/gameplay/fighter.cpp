@@ -1724,6 +1724,12 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
                 const float relative =
                     glm::degrees(std::remainder(m_facing - bearing, glm::two_pi<float>()));
                 if (std::abs(relative) > 90.f) row += 100;
+                // The staggering hit turns the victim to face the attacker (+0x64 =
+                // -(V+0x5c - bearing), normalised): she reacts toward the blow, and the row's
+                // slide is taken along THAT facing. Without the turn a stale facing sends her
+                // along the wrong axis — into the attacker, where body separation cancels the
+                // displacement and only the vertical survives.
+                m_facing = bearing;
             }
         }
         if (!trips) {

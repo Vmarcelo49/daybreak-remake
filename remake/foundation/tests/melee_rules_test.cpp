@@ -222,6 +222,47 @@ void testPosedCombat() {
     for (int i = 0; i < 240 && attacker.state() == FighterState::AttackA; ++i) tick_held(attacker,in);
     check(attacker.state() == FighterState::Idle,"actual final-set period completes the attack without a recovery timer");
 }
+// A hit from BEHIND must still throw the victim AWAY from the attacker. She faces the blow
+// first (+0x64), so the row's backwards slide is unambiguous; with a stale facing the slide
+// points at the attacker and body separation cancels it, leaving only the vertical.
+void test_back_hit_throws_away() {
+    section("a hit from behind throws the victim away from the attacker");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    gameplay::MatchConfig config; config.fighterCount = 2;
+    for (int i = 0; i < 2; ++i) {
+        config.moves[i] = &combo.moves; config.weapon[i] = &combo.weapon;
+    }
+    // The attacker stands BEHIND the victim: she faces -Z, he is at +Z of her.
+    config.spawn[0] = glm::vec3(0, 0, 60);
+    config.spawn[1] = glm::vec3(0, 0, -60);
+    const xm::Model* models[4] = {&combo.model, &combo.model};
+    xm::Controller* controllers[4] = {combo.controller(), combo.controller()};
+    gameplay::Match match; match.reset(config, models, controllers, nullptr, nullptr);
+    match.economy().setLogFile(nullptr);
+    const input::PlayerState* idle[4]{};
+    for (int i = 0; i < 70; ++i) match.step(idle, gameplay::FixedStep::seconds);
+
+    Fighter& victim = match.fighter(1);
+    gameplay::HitReaction finisher;
+    finisher.row = 113; finisher.rowHigh = 113;
+    finisher.counter = 5.0f;   // combat[17]: the lift
+    finisher.rise = 20.0f;     // combat[18]: the slide
+    finisher.meterA = 120; finisher.meterB = 20;
+    const glm::vec3 start = victim.position();
+    const glm::vec3 attackerAt = match.fighter(0).position();
+    victim.take_damage(0, &match.fighter(0), 6, 113, false, finisher);
+    for (int i = 0; i < 20; ++i) match.step(idle, gameplay::FixedStep::seconds);
+    const glm::vec3 moved = victim.position() - start;
+    const float awayFromAttacker = glm::length(glm::vec2(moved.x, moved.z));
+    check(awayFromAttacker > 30.f, "the victim travels horizontally");
+    // The displacement must increase her distance from the attacker, not reduce it.
+    const float before = glm::length(glm::vec2(start.x - attackerAt.x, start.z - attackerAt.z));
+    const float after = glm::length(glm::vec2(victim.position().x - attackerAt.x,
+                                              victim.position().z - attackerAt.z));
+    check(after > before, "and away from him, not through him");
+}
+
 // A landed hit must (a) play the reaction row the record names and (b) MOVE the victim. The
 // harness above teleports the dummy every active tick, which resets its state, so this case
 // places the pair once and then lets the blow land on its own.
@@ -1030,6 +1071,7 @@ int main(int argc, char** argv) {
     if (install.empty()) { std::puts("MELEE_RULES: SKIP (no game install)"); return 0; }
     fnd::assets::assetSource().openInstall(install.string());
     testPosedCombat(); testPosedMatch(); test_reaction_displaces_victim();
+    test_back_hit_throws_away();
     testRepeatContactSuppression(); testPhaseClock();
     testCharacterMoveTable(install);
     testClassSpecificAnimationBlend(install);
