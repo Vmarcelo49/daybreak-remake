@@ -316,3 +316,27 @@ by **Q21**, which the owner answered by unifying the `+0x834` meter (implemented
 - **Options:** (a, recommended) unify into one source-shaped 0..1000 meter **behind `--native-actions=rena0`**, delete `m_chargeGauge`, re-pin the `stamina` expectations it changes, keep the legacy path, and record the air-dash state-30 branch and the fly drain as named limits if they cannot be closed in the same change; (b) mirror the two counters at 10:1 as an expiring stopgap; (c) document the divergence and proceed to the verdict with it accepted as a limitation.
 - **Default if unanswered:** option (c) — nothing frozen is touched, the divergence stays recorded in §30 and in the scoreboard's open-limit row, and the verdict remains the owner's to give. Because (a) edits frozen files, it additionally needs an owner exception row in [`EXCEPTIONS.md`](EXCEPTIONS.md) naming `fighter.cpp`, `fighter.h`, `main.cpp` and the pilot tests; that row cannot be written by an agent.
 - **ANSWERED 2026-10-23 — owner approved option (a).** Implemented as scoped: one source-shaped 0..1000 `m_actionMeter`, authoritative only when a `PilotMeter` policy is attached (`--native-actions=rena0` for Rena+0; the acceptance fixtures attach it directly); default path untouched. Guard exhaustion re-pinned 245 → 99, tick-59 stamina 75 → 40; shot fixtures re-pinned for the jump's own costs; gate test Case A rebuilt around the now-reachable empty-meter refusal. Recorded in `PILOT-EVIDENCE-CONTRACT.md` V3-8 and `PILOT-SEAM.md` §30.6. Full suite 84/84, pilot 13/13, seeded wrong-gate fails by design. **Still needed from the owner:** the `EXCEPTIONS.md` row for the frozen-file edits (dated, expiring, naming `fighter.cpp`, `fighter.h`, `main.cpp` and the pilot tests) — an agent cannot write it — and the 2g verdict itself.
+
+## Q22 — How should the Hyper EX deal damage? (2026-10-29, overnight pilot session)
+- **Blocks:** the pilot's most visible gap. The EX (row 350) is the combo's signature attack and it
+  currently deals **no damage at all**, verified with the opponent at twelve distances from 40 to
+  480 units and with the fixture's own `place_at_attack` helper (`swing_hits` 0, HP unchanged).
+- **What is recovered:** `FUN_0043ffc0` case `0x15e` calls the contact **cut** (`FUN_00434bd0`) in
+  its tick-0 block and never re-arms it (`FUN_00434b30` does not appear in the case), which is why
+  the port's table carries `{350,-1,0,9999,MoveOp::ContactOff}` and why `m_contactDisabled` is 1 on
+  every one of the seven ticks where the shipped data DOES carry a contact entry
+  (`Bip01_L_Hand`, radius 30, frames 11/15/20/24/28/32/36 — the entries alternate with radius-0
+  ones, so each window is one tick). The rule table's note reads: "350's damage is the
+  particle/effect scatter, not a swing", and the body's particles are ids 320/350 at frames
+  7/15/23/31 and 7/22/37 plus 340 at frame 56. The port spawns those as **visuals only**; it has no
+  damaging effect entity.
+- **Options:** (a) implement effect-carried damage — spawn the particle with a short-lived hit
+  volume and resolve it against the opponent's two anchors, the reading the port rule implies, and
+  the larger piece; (b) re-arm the melee contact for row 350 and let the shipped hand records do the
+  work — small, uses data that already exists, but contradicts the recorded reading of the body;
+  (c) leave it, accept that the EX deals no damage, and record it as a declared limitation of the
+  pilot.
+- **Default if unanswered:** (c). Nothing is invented, the gap is named in
+  [`PILOT-EVIDENCE-CONTRACT.md`](PILOT-EVIDENCE-CONTRACT.md) V3-43 with measurements, and neither
+  option is started without a decision because both change gameplay the owner has already judged by
+  feel.
