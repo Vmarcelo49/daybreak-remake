@@ -1773,3 +1773,57 @@ with `update 38 must end the row on Idle`. Suite 83/83 excluding the known
 This also retires the last "provisional" part of the phase clock: window length (V3-26),
 between-section advance (strict, unchanged) and row completion (this entry) are now three
 separate, individually cited rules.
+
+### Open defect list (owner observation, 2026-10-28)
+
+Reported from live play and recorded before being worked. These are tier 3 (owner
+observation): they state what the original does and what the port fails to do, and none of
+them is yet backed by a fixture or a recovered rule.
+
+| id | report | current port behaviour | scope |
+|---|---|---|---|
+| D1 | the side dashes move in a **circular arc toward the targeted enemy**, not along the input direction | `try_dash` fixes one world direction at entry (`m_dashDir = target_relative(±1, 0)`) and integrates a straight line for every Run update | rows 23/24 |
+| D2 | an **air dash carries its momentum**; the character should not drop straight down when it ends | the air dash hangs then the normal gravity path takes over with no carried velocity | row 30 |
+| D3 | an air dash **points where it was input** | the fighter always faces the target | row 30 |
+| D4 | the air dash's extra −3 meter arm | unimplemented: needs the byte-`+0x280` word, identity unresolved (V3-25) | row 30 |
+
+Work order: D1, then D2 and D3 together, then D4. Each needs a fixture that fails before
+its change, in the same shape as the side-dash work (V3-22, V3-25, V3-27).
+
+### V3-28 — D1: the side step arcs toward the target
+
+Owner report (D1): the side dashes travel in a **straight line** in the input direction;
+the original moves in a **circular arc toward the targeted enemy**.
+
+The mechanism was already in the source; the port had collapsed it. `FUN_0043ffc0` case
+`0x17`/`0x18` writes the movement angle as **±90** (`:265-271`, `0xc2b40000` = −90 for row
+23 and `0x42b40000` = +90 for row 24) — a *relative* angle, re-asserted on the phase-1
+visit rather than captured once. The basis it is relative to is refreshed every update:
+the port's own `m_inputFacing` is that basis (`fighter.cpp` computes it as the bearing to
+the opponent before input dispatch, per `FUN_004202b0`/`FUN_0042dd90`). The dash entry
+froze `target_relative(±1, 0)` into a world vector and integrated it for the whole row, so
+the step could only be straight.
+
+Implemented: `m_dashSide` records the screen axis at admission (+1 row 23, −1 row 24, 0 for
+every other dash), and the Run movement step re-derives `target_relative(m_dashSide, 0)`
+from the current basis each tick. Because the basis rotates as the fighter slides, the
+path bends toward the opponent — a circular arc whose radius is set by the distance to the
+target, which is why the effect is subtle at range and pronounced up close.
+
+Measured on the pinned scenario (opponent 2000 units away, +x tap):
+
+| | before | after |
+|---|---|---|
+| path length | 382.9 | **382.90** (unchanged — same speed profile) |
+| displacement along the tap | 382.9 | **380.61** |
+| displacement toward the opponent | 0.45 (tap drift only) | **35.80** |
+
+Regression: the gate test now separates path length from displacement and requires
+`endZ > 1`, `endX < path − 1` and that the first update still leaves along the tapped
+axis. Disabling the per-tick re-derivation fails it with
+`the side step must curve toward the target, but z stayed at 0.450308`. Suite 83/83
+excluding the known `device_isolation_test` flake; fixtures 29/30/47 unchanged.
+
+Tier 2 for the ±90 write and the basis refresh; tier 3 for the arc's *shape* — the owner's
+observation is what establishes that the arc is the intended look, since no fixture or
+trace here measures the original's path.

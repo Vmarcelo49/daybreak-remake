@@ -161,12 +161,17 @@ struct DashClockSample {
     bool running = false;
     int gauge = -1;
     double x = 0.0;
+    double z = 0.0;
     double track0 = -1.0;
     double track1 = -1.0;
 };
 
 struct DashClockRun {
     int startup = 0;
+    // Position the instant before the dash is admitted: the two tap ticks already moved
+    // the fighter, so measuring deltas from the origin would fold that in.
+    double startX = 0.0;
+    double startZ = 0.0;
     std::vector<DashClockSample> ticks;  // one-based dash updates, entry first
 };
 
@@ -208,6 +213,7 @@ DashClockRun dashClockRun(test::Combo& combo, bool pilot, input::Action directio
         tick.running = fighter.state() == gameplay::FighterState::Run;
         tick.gauge = fighter.charge_gauge();
         tick.x = fighter.position().x;
+        tick.z = fighter.position().z;
         tick.track0 = controller->trackPosition(0);
         tick.track1 = controller->trackPosition(1);
         run.ticks.push_back(tick);
@@ -217,6 +223,8 @@ DashClockRun dashClockRun(test::Combo& combo, bool pilot, input::Action directio
     step(match, actor);
     actor.down[direction] = false;
     step(match, actor);
+    run.startX = fighter.position().x;
+    run.startZ = fighter.position().z;
     actor.down[direction] = true;
     step(match, actor);
     const int expectedRow = direction == input::Action::Right ? 23 : 24;
@@ -518,8 +526,9 @@ int main(int argc, char** argv) {
         // both pins the profile and fails if the old constant returns.
         double travelled = 0.0;
         for (int update = 1; update <= 37; ++update) {
-            const double from = update == 1 ? 0.0
-                                            : pilotRight.ticks[static_cast<std::size_t>(update - 2)].x;
+            const double from = update == 1
+                                    ? pilotRight.startX
+                                    : pilotRight.ticks[static_cast<std::size_t>(update - 2)].x;
             travelled += pilotRight.ticks[static_cast<std::size_t>(update - 1)].x - from;
         }
         require(travelled > 380.0 && travelled < 386.0,
@@ -528,6 +537,36 @@ int main(int argc, char** argv) {
         require(travelled < 500.0,
                 "the constant-speed side dash (600 units) must not come back, got " +
                     std::to_string(travelled));
+
+        // The step ARCS toward the target. The body writes the movement as +/-90 relative
+        // to the target-facing basis (FUN_0043ffc0 case 0x17 :265-271), and that basis is
+        // refreshed every update, so the path bends as the bearing to the opponent moves.
+        // The opponent sits at +z and the tap is +x, so a straight step keeps z at 0 while
+        // the arc gains +z; the flat-x check below is what a frozen world vector fails.
+        double arcLength = 0.0;
+        for (int update = 1; update <= 37; ++update) {
+            const auto& now = pilotRight.ticks[static_cast<std::size_t>(update - 1)];
+            const double fromX = update == 1
+                                     ? pilotRight.startX
+                                     : pilotRight.ticks[static_cast<std::size_t>(update - 2)].x;
+            const double fromZ = update == 1
+                                     ? pilotRight.startZ
+                                     : pilotRight.ticks[static_cast<std::size_t>(update - 2)].z;
+            arcLength += std::hypot(now.x - fromX, now.z - fromZ);
+        }
+        const double endX = pilotRight.ticks[36].x - pilotRight.startX;
+        const double endZ = pilotRight.ticks[36].z - pilotRight.startZ;
+        require(arcLength > 380.0 && arcLength < 386.0,
+                "the side step's PATH must stay the recovered ~383 units, got " +
+                    std::to_string(arcLength));
+        require(endZ > 1.0, "the side step must curve toward the target, but z stayed at " +
+                                std::to_string(endZ));
+        require(endX < arcLength - 1.0,
+                "a curved path covers less x than its own length, got x " +
+                    std::to_string(endX) + " of " + std::to_string(arcLength));
+        require(pilotRight.ticks[0].z - pilotRight.startZ < 1.0 &&
+                    pilotRight.ticks[0].x - pilotRight.startX > 19.0,
+                "the first update must still leave along the tapped axis");
 
         // Meter. The row drains -12 per update only while its phase is below 2
         // (FUN_0043ffc0 case 0x17 :257-259); the recovery phase spends nothing, and the

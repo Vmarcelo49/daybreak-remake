@@ -1250,6 +1250,12 @@ private:
     int m_inputAxisX = 0;
     int m_inputAxisZ = 0;
     float        m_dashSpeed = FighterConstants::kRunSpeed;
+    // Side dash's screen axis (+1 right, -1 left, 0 for every other dash). The body
+    // writes the movement angle as +/-90 RELATIVE to the target-facing basis (whose own
+    // refresh is the port's m_inputFacing), so the direction has to be re-derived each
+    // tick; freezing it into a world vector makes the step a straight line (owner: the
+    // side steps should arc toward the target).
+    int          m_dashSide = 0;
     bool         m_dashAir = false;     // current dash started airborne
     bool         m_airDashed = false;   // air dash spent (resets on landing)
     double       m_time = 0.0;          // per-fighter clock (double-tap)

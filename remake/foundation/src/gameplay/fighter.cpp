@@ -1069,6 +1069,12 @@ void Fighter::update_movement(const input::PlayerState* input, double dt) {
         if (const auto* motion = locomotion(m_moves)) {
             if (m_dashMoveId == 20) m_dashSpeed = motion->forwardDash / static_cast<float>(dt);
         }
+        // FUN_0043ffc0 case 0x17/0x18 store the side dash's movement as +/-90 (:265-271),
+        // i.e. relative to the actor's target-facing basis, and the basis is refreshed
+        // every update — so the step arcs toward the target rather than following the
+        // direction captured at the tap. Re-derive it here, after this update's basis.
+        if (m_pilotMeter && m_dashSide != 0)
+            m_dashDir = target_relative(static_cast<float>(m_dashSide), 0.0f);
         m_velocity.x = m_dashDir.x * m_dashSpeed;
         m_velocity.z = m_dashDir.z * m_dashSpeed;
         m_position += m_velocity * static_cast<float>(dt);
@@ -3224,6 +3230,11 @@ bool Fighter::try_dash(input::Action dir) {
     // drain only. The legacy path keeps its explicit twenty-percent spend.
     if (!programmed && !m_pilotMeter) m_stamina -= FighterConstants::kDashStamina;
     m_dashDir = d;
+    // Only the pilot's grounded side steps re-derive their direction per tick; every other
+    // dash keeps the world vector its arm resolved. Row 23 is the Right step, 24 the Left.
+    m_dashSide = 0;
+    if (m_pilotMeter && m_grounded && (dashMove == 23 || dashMove == 24))
+        m_dashSide = dashMove == 23 ? 1 : -1;
     if (m_state == FighterState::Run && m_dashMoveId != dashMove) {
         m_phaseIndex = 0;
         m_moveElapsedTicks = 0;
