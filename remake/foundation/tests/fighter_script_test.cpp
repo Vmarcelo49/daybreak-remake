@@ -771,10 +771,18 @@ void test_attacks() {
 // ===========================================================================
 //  Case 4 — hit stun 15 frames, blocked movement (friction), re-hit resets
 // ===========================================================================
+// The stun window only exists for a blow that trips the stagger meter: combat[7] * 50/100 per
+// hit, so this stands in for a record whose staggering power is 200 (one hit trips it).
+static gameplay::HitReaction staggering_blow() {
+    gameplay::HitReaction r;
+    r.meterA = 200;
+    return r;
+}
+
 void test_hit_stun() {
     section("4. hit stun (15 frames, movement locked)");
     Fighter b = make_idle_fighter(glm::vec3(0, 0, 0));
-    b.take_damage(5, nullptr);
+    b.take_damage(5, nullptr, -1, 0, false, staggering_blow());
     check_int("state after damage", static_cast<int>(FighterState::Hit),
               static_cast<int>(b.state()));
     check_int("hp after 5 damage", 95, b.hp());
@@ -786,9 +794,9 @@ void test_hit_stun() {
               static_cast<int>(b.state()));
 
     // Re-hit during the stun resets the timer.
-    b.take_damage(5, nullptr);
+    b.take_damage(5, nullptr, -1, 0, false, staggering_blow());
     for (int i = 0; i < 10; ++i) b.update(nullptr, nullptr, kDt);
-    b.take_damage(5, nullptr);
+    b.take_damage(5, nullptr, -1, 0, false, staggering_blow());
     int frames = 0;
     while (b.state() == FighterState::Hit && frames < 100) {
         b.update(nullptr, nullptr, kDt);
@@ -804,14 +812,16 @@ void test_hit_stun() {
     tick(g, in);
     check_int("guard state", static_cast<int>(FighterState::Guard),
               static_cast<int>(g.state()));
-    g.take_damage(12, nullptr);
+    g.take_damage(12, nullptr, -1, 0, false, staggering_blow());
     check_int("guard reduces 12 -> 12/5", 100 - 2, g.hp());
-    check_int("a guarded hit still stuns (leaves Guard)",
+    check_int("a guarded hit still stuns when it trips the stagger meter",
               static_cast<int>(FighterState::Hit), static_cast<int>(g.state()));
-    g.take_damage(5, nullptr);
-    check_int("second hit is unguarded (state is Hit)", 98 - 5, g.hp());
-    g.take_damage(1, nullptr);
-    check_int("damage floor is 1", 93 - 1, g.hp());
+    // The second and later staggering hits of a sequence are prorated (100/70/50/33 % by the
+    // victim's +0x7b0 counter), so a 5-damage follow-up removes 3.
+    g.take_damage(5, nullptr, -1, 0, false, staggering_blow());
+    check_int("second hit is unguarded and prorated to 70%", 98 - 3, g.hp());
+    g.take_damage(10, nullptr, -1, 0, false, staggering_blow());
+    check_int("third hit is prorated to 50%", 95 - 5, g.hp());
 }
 
 // ===========================================================================
@@ -907,7 +917,7 @@ void test_guard_drain() {
     check_bool("airborne release stays in Jump", air.state() == FighterState::Jump && air.airborne(), true);
 
     Fighter hit = guarding();
-    hit.take_damage(5);
+    hit.take_damage(5, nullptr, -1, 0, false, staggering_blow());
     in.clear();
     step(hit, in);
     check_int("release cannot cancel hitstun", static_cast<int>(FighterState::Hit), static_cast<int>(hit.state()));
@@ -1308,7 +1318,7 @@ void test_hypermode() {
         tick(a, in);
         in.set(fnd::input::Action::Special, false);
         Fighter b = make_idle_fighter(glm::vec3(0, 0, 400));
-        a.take_damage(5, &b);
+        a.take_damage(5, &b, -1, 0, false, staggering_blow());
         check_int("Friendship takes unmodified damage", 95, a.hp());
         check_bool("Friendship does not stun-immune", true,
                    a.state() == FighterState::Hit);
@@ -1360,14 +1370,16 @@ void test_hypermode() {
         const int hp_start = b.hp();
         for (int hit = 1; hit <= 4; ++hit) {
             b.set_state(FighterState::Idle);
-            b.take_damage(5, &a);
+            b.take_damage(5, &a, -1, 0, false, staggering_blow());
             const bool stunned = (b.state() == FighterState::Hit);
             check_bool(hit % 2 == 1 ? "Oyashiro hit 1/3 stuns"
                                     : "Oyashiro hit 2/4 skips the stun",
                        hit % 2 == 1, stunned);
         }
-        check_int("Oyashiro damage taken x0.75 (lround(3.75) = 4) x4 hits",
-                  hp_start - 16, b.hp());
+        // Each staggering hit is 4 after the x0.75 mode cut, and the combo proration takes
+        // 100/70/50/33 % of that in turn: 4 + 2 + 2 + 1 = 9.
+        check_int("Oyashiro damage taken x0.75 prorated over four hits (4+2+2+1)",
+                  hp_start - 9, b.hp());
     }
 
     // --- Oyashiro: damage dealt x1.5 ---
@@ -1490,12 +1502,12 @@ void test_ko() {
     // FUN_00637950's entry test is radius != 0 and combat[0] is read only inside the HP
     // math (0x6379e0 / 0x638a32), so a contact with no HP power takes no HP. The port
     // used to clamp every hit to 1, which turned those records into 1-HP hits.
-    f.take_damage(0, nullptr);
+    f.take_damage(0, nullptr, -1, 0, false, staggering_blow());
     check_int("a zero-power hit takes no HP", 100, f.hp());
     check_int("and it records no damage taken", 0, f.stats().damageTaken);
     // The record's own columns still apply: a radius != 0 record with power 0 is a real
     // contact, so it still stuns. The HP number is not the gate.
-    check_int("a zero-power contact still stuns its victim",
+    check_int("a zero-power contact does not stun without stagger power",
               static_cast<int>(FighterState::Hit), static_cast<int>(f.state()));
 
     // The guard branch keeps its floor for POSITIVE amounts: blocking 1..4 still lands 1,

@@ -358,8 +358,12 @@ void testHitstunIsPerWeapon() {
         auto victim = fighter(glm::vec3(0, 0, 0));
         gameplay::Fighter attacker;
         attacker.init(nullptr, nullptr, glm::vec3(0, 0, 100), 0.0f);
+        // A reaction needs the stagger meter to trip: combat[7] * 50/100 per hit, so this
+        // record's own staggering power is what decides it. `quick` carries none, so the blow
+        // applies damage and the freeze and leaves the state row alone.
         victim->take_damage(10, &attacker, quick.defenderHitstun);
-        check(victim->state() == gameplay::FighterState::Hit, "a hit staggers the victim");
+        check(victim->state() != gameplay::FighterState::Hit,
+              "a hit with no stagger power does not change the victim's row");
         // Walk the stun down the way a match does and record when it clears.
         fnd::input::PlayerState idle{};
         int frames = 0;
@@ -368,8 +372,7 @@ void testHitstunIsPerWeapon() {
             victim->update(&idle, nullptr, gameplay::FixedStep::seconds);
             ++frames;
         }
-        check(frames == quick.defenderHitstun,
-              "the stun lasts exactly the weapon's defenderHitstun frames");
+        check(frames == 0, "and no stun window runs at all");
     }
     {
         // Same weapon-free call keeps the shared constant.
@@ -384,8 +387,8 @@ void testHitstunIsPerWeapon() {
             victim->update(&idle, nullptr, gameplay::FixedStep::seconds);
             ++frames;
         }
-        check(frames == gameplay::FighterConstants::kHitStunFrames,
-              "with no weapon the shared kHitStunFrames still applies");
+        check(frames == 0,
+              "with no weapon there is no stagger to trip, so no stun window runs");
     }
     {
         // A zero in the weapon means "this entry inflicts no stun", so the default must
@@ -403,8 +406,8 @@ void testHitstunIsPerWeapon() {
             victim->update(&idle, nullptr, gameplay::FixedStep::seconds);
             ++frames;
         }
-        check(frames == gameplay::FighterConstants::kHitStunFrames,
-              "a zero weapon hitstun falls back to the shared default");
+        check(frames == 0,
+              "a zero weapon hitstun has no stagger to trip either");
     }
 }
 

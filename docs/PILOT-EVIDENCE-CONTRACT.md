@@ -2644,6 +2644,32 @@ That is the next focused question: which record/pose the swing uses for the dash
 whether the recovered `bodyRadius + radius` sphere is being applied to the right anchor at the
 separation distance. Turning the default on is one line once that lands.
 
+**The full reaction system, implemented (2026-10-29).** Four studies of `FUN_00637950` and the
+`FUN_00428510` row handlers closed the loop, and the port now models it end to end:
+
+- **the freeze** (`+0xa0 = combat[10]`) applies on every landed hit — the motion integrator skips
+  physics while it runs, so even a blow that changes nothing else interrupts movement;
+- **the stagger meter** (`+0x7b8`, fed by `combat[7] * the victim's +0x7d0 / 100`, threshold 100,
+  its own 120-tick window) gates the reaction: below 100 the victim takes damage and the freeze and
+  keeps its state row, which is why a jab does not always interrupt and the same move reads
+  differently on the third hit;
+- **the row decides the motion** (`reaction_motion.h`): 100/101 slide back at −25 with 1.5 decel,
+  102/104/134 at −20/−15/−20, 130/131 apply nothing (the crumple), 106 pops up 9 units, and only
+  105/113/114/115/116/121/133 take the record's pair — `combat[18] * 0.01` as the backward slide and
+  `combat[17] * 0.01` as the lift, gravity 0.3 (1.0 for 116). Every +100 row is the back-hit mirror;
+- **row selection**: `combat[13]` normally, `combat[14]` when the victim is airborne or the combo
+  counter (`+0x7c0`) has passed 100, plus 100 when the blow lands more than 90° behind;
+- **the knockdown chain**: a launched victim that touches down enters Knockdown on row 118 (119 when
+  still travelling away), lies for its clip, plays the get-up row 120, and only then stands — all
+  animation-length driven, never a stun counter;
+- **damage proration**: the combo counter (`+0x7b0`) scales the 1st..4th staggering hits to
+  100/70/50/33 % (the same table reappears in the projectile path at `0x422ab0`).
+
+Five suites were re-pinned to the recovered rule rather than the old "every hit stuns": a reaction
+now needs a tripping blow, so the tests that exercise stun windows build one (a 200-power contact),
+the zero-power contacts assert "no state change" instead of "stuns", and the combo damage totals
+carry the proration.
+
 **Open:** the four fixtures above (re-record at ≥60 units, no per-tick teleport); and the guarding
 victim's record source (`0x400` flags).
 

@@ -426,7 +426,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // The stagger meter's window (+0x7bc) and the combo window (+0x7c4): both expire together
     // with their counters (FUN_0041f580 0x41f673-0x41f732).
     if (m_staggerDecay > 0 && --m_staggerDecay == 0) m_hitMeterA = 0;
-    if (m_comboDecay > 0 && --m_comboDecay == 0) { m_hitMeterB = 0; }
+    if (m_comboDecay > 0 && --m_comboDecay == 0) { m_hitMeterB = 0; m_comboHits = 0; }
     // The hit's reaction clock (+0x40): -0x3e99999a = 0.3 per tick, and reaching zero switches
     // the victim to move 0x76 (118) — the recovered consumer at 0x428943/0x428946/0x42897a.
     if (m_reactionCounter > 0.f) {
@@ -441,7 +441,19 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     if (m_stateTimer > 0) {
         --m_stateTimer;
         if (m_stateTimer == 0) {
-            if (m_state != FighterState::KO && m_state != FighterState::TagOut) {
+            // The knockdown chain: lying (118/119) plays out, then the get-up row 120, and only
+            // then does the victim stand. Everything is animation-length driven — the original
+            // advances on move completion, never on a stun counter.
+            if (m_state == FighterState::Knockdown) {
+                if (m_downPhase == 1) {
+                    m_downPhase = 2;
+                    m_reactionMove = 120;
+                    m_stateTimer = std::max(1, move_row_frames(120));
+                } else {
+                    m_downPhase = 0;
+                    set_state(FighterState::Idle);
+                }
+            } else if (m_state != FighterState::KO && m_state != FighterState::TagOut) {
                 // Timed states expire back into the fall when airborne
                 // (a dash/attack/volley started mid-air lands as Jump). This is the DEFAULT
                 // path's approximation, not the recovered completion: the original advances
@@ -565,7 +577,15 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
 
     // 3. Update movement (if the state allows it).
     const glm::vec3 movementStart = m_position;
-    if (((m_state == FighterState::AttackA || m_shotMoveId >= 0) && move_program(m_moves)) ||
+    // The hit freeze (+0xa0 = the record's combat[10]): the original's motion integrator
+    // (FUN_004202b0) skips physics while that word is non-zero, so a victim is pinned in place
+    // for the freeze window even when the blow is not strong enough to change its state row.
+    // The animation clock keeps running, which is why the freeze reads as an impact and not as
+    // a pause.
+    if (m_hitFreeze > 0) {
+        --m_hitFreeze;
+        m_velocity = glm::vec3(0.f);
+    } else if (((m_state == FighterState::AttackA || m_shotMoveId >= 0) && move_program(m_moves)) ||
         (m_state == FighterState::Run && m_dashMoveId == 20 && locomotion(m_moves) && m_model)) {
         m_velocity = facing_relative(0.f, m_moveSpeed / static_cast<float>(dt));
         m_position += facing_relative(0.f, m_moveSpeed);
@@ -785,6 +805,20 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
             m_dashFall = false;
             m_landingTicks = 0;
             m_hoverSpent = false;   // a new airtime re-arms the one hover
+            // A launched victim that touches down goes into the knockdown chain instead of
+            // standing up: the original's airborne rows rebind to 118 (or its +100 back twin
+            // 213-216 -> 119) the moment the grounded byte sets, and the lying row plays out
+            // before the get-up. Which of the two is chosen is the SIGN of the victim's own
+            // horizontal speed (0x4296ae): still travelling away means the back fall.
+            if (m_state == FighterState::Hit && m_launched) {
+                m_launched = false;
+                const bool backwards = glm::dot(m_velocity, glm::vec3(-std::sin(m_facing), 0.f,
+                                                                     -std::cos(m_facing))) > 0.f;
+                m_reactionMove = backwards ? 119 : 118;
+                m_downPhase = 1;
+                set_state(FighterState::Knockdown);
+                m_stateTimer = std::max(1, move_row_frames(m_reactionMove));
+            }
             if (m_state == FighterState::Jump ||
                 (m_state == FighterState::Run && m_dashAir)) {
                 // Row 44 refills +40 (or +5 while status slot 6 is set) on every update, and
@@ -1547,6 +1581,22 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
     }
     const HypermodeParams& mine = hypermode_params(m_hypermode);
 
+    // The freeze is applied on EVERY landed hit, before any stagger decision: it is what makes
+    // a light blow interrupt movement even when it does not change the victim's row.
+    m_hitFreeze = hitstunFrames > 0 ? hitstunFrames : 0;
+
+    // The stagger meter (+0x7b8) decides whether this blow produces a reaction AND the damage
+    // proration tier, so it is settled before the HP math. Below 100 the victim takes damage
+    // and the freeze and keeps its current state row.
+    m_hitMeterA += (reaction.meterA * kStaggerResist) / 100;
+    m_staggerDecay = 120;   // +0x7bc: the meter's own 120-tick window
+    const bool trips = m_hitMeterA >= 100;
+    if (trips) {
+        m_hitMeterA = 0;
+        m_hitMeterB += reaction.meterB;   // +0x7c0: the heavy-row counter
+        m_comboDecay = 120;
+    }
+
     if (m_state == FighterState::Guard) {
         // Blocking reduces damage to 20% (PROVISIONAL: genre-standard, but the
         // original's guard damage gate is unmapped — see the unresolved guard
@@ -1593,6 +1643,16 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
     // guessed scale would be invented motion, so a zero-power record currently contacts
     // (HP, hitstop, reaction) without recoiling. Recover the writer's units first.
 
+    // Damage proration by the combo counter (+0x7b0): the resolver scales the blow by
+    // 100/70/50/33 % for the first four staggering hits of a sequence (0x63854e-0x6385b8), and
+    // the same table reappears in the projectile path (0x422ab0).
+    if (trips) {
+        static constexpr int kProration[4] = {100, 70, 50, 33};
+        const int tier = std::min(m_comboHits, 3);
+        amount = amount * kProration[tier] / 100;
+        ++m_comboHits;
+    }
+
     const int landed = std::min(m_hp, amount);
     m_stats.damageTaken += landed;
     if (source) source->m_stats.damageDealt += landed;
@@ -1637,21 +1697,7 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
                 stun = false;
             }
         }
-        // The stagger meter (+0x7b8) is recovered and tracked, but the reaction is NOT gated on
-        // it yet: the original only changes the victim's row when the meter trips, and a hit
-        // that does not trip it applies damage plus a FREEZE (+0xa0 = combat[10], physics and
-        // the animation clock paused) with no state change at all. The port has no freeze
-        // mechanic, so gating here would silently remove every hit's interruption. The meter is
-        // accumulated for the row escalation and the gate is the next step (V3-47).
-        m_hitMeterA += (reaction.meterA * kStaggerResist) / 100;
-        m_staggerDecay = 120;   // +0x7bc: the meter's own 120-tick window
-        const bool trips = m_hitMeterA >= 100;
-        if (trips) {
-            m_hitMeterA = 0;
-            // +0x7c0 counts tripping hits inside its own window and selects the heavy row.
-            m_hitMeterB += reaction.meterB;
-            m_comboDecay = 120;
-        }
+        // The heavy row's counter (+0x7c0) is settled above with the trip.
         const bool heavy = m_hitMeterB >= 100;
         // combat[13] is the normal row, combat[14] the heavy one (0x6386f9-0x63870d), and a
         // hit from more than 90 degrees behind adds 100 — the back variant of the same band.
@@ -1670,6 +1716,10 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
             }
         }
         m_reactionMove = row > 0 ? row : 103;
+        if (!trips) {
+            // No reaction: damage and freeze only, the state row untouched.
+            return DamageResult::Hit;
+        }
         if (stun) {
             set_state(FighterState::Hit);
             // The stun a weapon inflicts is that weapon's own (FUN_00637950:308); a
@@ -1684,6 +1734,15 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
             // (FUN_00428510's per-row handlers own every constant). A row with no motion
             // profile leaves the victim planted: that is the "crumple in place" reaction.
             const ReactionMotion motion = reaction_motion(m_reactionMove);
+            // A launch has to land somewhere: remember it so the touchdown turns into the
+            // knockdown chain rather than a normal landing.
+            m_launched = motion.liftFromRecord || motion.rise > 0.f;
+            if (m_launched) {
+                // A launch does not end on a stun counter: the victim stays in the reaction
+                // until it touches down, which is what the row's own handler does (it rebinds
+                // to 118 from the grounded test, never from a timer).
+                m_stateTimer = 0;
+            }
             if (motion.applies) {
                 const float inverseStep = 1.f / static_cast<float>(FixedStep::seconds);
                 const float speed = motion.slideFromRecord ? -reaction.counter : motion.speed;
@@ -2126,6 +2185,14 @@ int Fighter::state_move_id() const {
         }
         default:                    return state_to_move_id(m_state);
     }
+}
+
+int Fighter::move_row_frames(int row) const {
+    // A row's own clip length, the same derivation the landing window uses: the row names a
+    // phase whose set is the clip, and the loader turns its period into frames.
+    const CharacterMove* move = m_moves ? m_moves->find(row) : nullptr;
+    if (!move || !m_model) return 0;
+    return std::max(0, animation_period_frames(*m_model, move->phase_set_index(0)));
 }
 
 int Fighter::landing_row_frames() const {

@@ -192,6 +192,24 @@ void testPosedCombat() {
     for (int i = 0; i < 6; ++i) victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
     check(victim.position().y > risenY, "and the victim keeps rising under its own integration");
     check(victim.reaction_counter() < 5.0f, "the counter decays 0.3 a tick");
+
+    // The launch has to land somewhere: on touchdown the victim enters the knockdown chain
+    // (lying row 118, then the get-up row 120) instead of standing straight back up.
+    int ticks = 0;
+    while (victim.state() != FighterState::Knockdown && ticks < 400) {
+        victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+        ++ticks;
+    }
+    check(victim.state() == FighterState::Knockdown, "a launched victim lands into Knockdown");
+    const int lyingRow = victim.reaction_move_for_test();
+    check(lyingRow == 118 || lyingRow == 119,
+          "and lies on row 118 (or its back twin 119)");
+    int down = 0;
+    while (victim.state() == FighterState::Knockdown && down < 400) {
+        victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+        ++down;
+    }
+    check(victim.state() == FighterState::Idle, "and gets up into Idle after the chain");
     combo.init(attacker); swing_to_active(attacker);
     for (int i = 0; i < 240 && attacker.state() == FighterState::AttackA; ++i) tick_held(attacker,in);
     check(attacker.state() == FighterState::Idle,"actual final-set period completes the attack without a recovery timer");

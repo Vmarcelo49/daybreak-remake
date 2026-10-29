@@ -499,6 +499,8 @@ public:
                              const HitReaction& reaction = HitReaction());
     // The reaction countdown and its expiry (see m_reactionCounter above).
     float reaction_counter() const { return m_reactionCounter; }
+    // The row the current reaction plays (a test seam: the row is otherwise internal).
+    int reaction_move_for_test() const { return m_reactionMove; }
     // FUN_00637950 writes hit-driven status durations at actor+0x7dc+slot*4;
     // Rena recovery reads slot 6 at actor+0x7f4. The match ticks durations after
     // the fighter executor, preserving the source's same-frame read-before-decrement.
@@ -1139,8 +1141,12 @@ private:
     int          m_reactionMove = 103;
     int          m_hitMeterA = 0;      // +0x7b8: stagger meter, threshold 100
     int          m_hitMeterB = 0;      // +0x7c0: combo count inside its own window
+    int          m_hitFreeze = 0;      // +0xa0: physics pause, set from combat[10]
+    bool         m_launched = false;   // the current Hit is a launch: landing becomes a knockdown
+    int          m_downPhase = 0;      // +0xadf4's reaction phases: 1 lying, 2 get-up
     int          m_staggerDecay = 0;   // +0x7bc
     int          m_comboDecay = 0;     // +0x7c4
+    int          m_comboHits = 0;      // +0x7b0: the damage-proration counter
     // +0x7d0: the victim's stun susceptibility, default 50 (FUN_0043ded0 recomputes it).
     static constexpr int kStaggerResist = 50;
     float        m_reactionCounter = 0.f;   // +0x40
@@ -1458,6 +1464,7 @@ private:
     // the apex literal. Each row's first phase tag is the jump clip.
     int jump_chain_move() const;
     int landing_row_frames() const;
+    int move_row_frames(int row) const;
     // A state can change its move without changing its port label (only the air
     // chain does today). The source rebinds through FUN_00421080 whenever the
     // move id changes, so re-check the binding once per update.

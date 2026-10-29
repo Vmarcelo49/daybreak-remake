@@ -431,9 +431,15 @@ void auditCombo(int slot) {
     {
         Fighter f;
         combo.init(f, glm::vec3(0.f), 0.f);
-        f.take_damage(5, nullptr, -1, 0, false);
+        // A reaction needs the stagger meter: combat[7] fills it by combat[7]*50/100 per hit,
+        // so a 120-power contact trips it on the second blow, not the first.
+        gameplay::HitReaction reaction;
+        reaction.row = 103;
+        reaction.meterA = 120;
+        f.take_damage(5, nullptr, -1, 0, false, reaction);
+        f.take_damage(5, nullptr, -1, 0, false, reaction);
         checkInt(static_cast<int>(FighterState::Hit), static_cast<int>(f.state()),
-                 "damage enters Hit");
+                 "two stagger-tripping hits enter Hit");
         expectClip(f, combo, comboLabel, "damage reaction 103", 103);
     }
 

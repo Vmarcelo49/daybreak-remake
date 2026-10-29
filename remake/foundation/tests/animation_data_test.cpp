@@ -511,20 +511,18 @@ void zero_power_contact() {
     check(attacker.stats().damageDealt == 0, "nor any for the attacker");
     check(victim.hyper_gauge() == hyperBefore,
           "and does not misroute the record's mode-gauge column into the hyper bar");
-    check(victim.state() == gameplay::FighterState::Hit,
-          "the zero-power contact still stuns the victim");
+    // A contact whose record carries no stagger power (combat[7] == 0) can never trip the
+    // meter, so it applies damage and the freeze but leaves the victim's state row alone.
+    check(victim.state() != gameplay::FighterState::Hit,
+          "a zero-power contact does not stagger the victim");
     int stunned = 1;
     while (victim.state() == gameplay::FighterState::Hit && stunned < 200) {
         tick(victim, input, nullptr);
         ++stunned;
     }
-    // The landing frame is the first of the state; the counter then runs down once per
-    // update, so the state lasts defenderHitstun + 1 observed frames.
-    check(stunned == zero.defenderHitstun + 1,
-          "for exactly the record's own defender hitstop: " + std::to_string(stunned) +
-              " frames for the record's " + std::to_string(zero.defenderHitstun) +
-              " (a shared default would be " +
-              std::to_string(gameplay::FighterConstants::kHitStunFrames + 1) + ")");
+    // A zero-stagger contact leaves the state alone, so the freeze is the only window it applies.
+    check(victim.reaction_counter() == 0.f, "and arms no reaction clock");
+    check(stunned == 1, "and never enters the stun state");
 }
 
 void execution(const Combo& combo) {
@@ -1173,16 +1171,11 @@ void zero_power_projectile(const Combo& combo) {
     if (pool.contact_count() > 0)
         check(pool.contact(0).effect == 30,
               "carrying the record's own impact effect");
-    check(victim.state() == gameplay::FighterState::Hit,
-          "and the zero-power projectile still stuns its victim");
-    int stunned = 1;
-    fnd::input::PlayerState idle;
-    while (victim.state() == gameplay::FighterState::Hit && stunned < 200) {
-        tick(victim, idle, nullptr);
-        ++stunned;
-    }
-    check(stunned == rec.defenderHitstun + 1,
-          "for the record's own defender hitstop (" + std::to_string(stunned) + " frames)");
+    // Same rule as the melee copy above: no stagger power, no state change — the shot still
+    // reports its contact and its impact effect, and the freeze is all the victim feels.
+    check(victim.state() != gameplay::FighterState::Hit,
+          "and the zero-power projectile does not stagger its victim");
+    check(victim.reaction_counter() == 0.f, "and arms no reaction clock");
 }
 
 void projectile_clocks(const Combo& combo) {
