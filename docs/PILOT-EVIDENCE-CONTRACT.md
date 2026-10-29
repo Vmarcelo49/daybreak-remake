@@ -1827,3 +1827,46 @@ excluding the known `device_isolation_test` flake; fixtures 29/30/47 unchanged.
 Tier 2 for the ±90 write and the basis refresh; tier 3 for the arc's *shape* — the owner's
 observation is what establishes that the arc is the intended look, since no fixture or
 trace here measures the original's path.
+
+### V3-29 — D2/D3: the air dash points along the input and keeps its momentum
+
+Two owner reports, one state (row 30). Both came from the same reading of the body.
+
+**D3 — it points where it was input.** `FUN_0043ffc0` case `0x1e` sets `+0x18` (movement
+angle) to **0** (`:408`), i.e. along the actor's own angle, and then calls
+`FUN_00421780()` at the end of **every** update (`:412`, `:427`) with `+0x874` = 60°/tick in
+phase 0 (`:408`) and 2°/tick from phase 1 (`:414`). `FUN_00421780` steers the angle at
+`+0x64` toward one of **eight compass bearings derived from the held-input words** at
+`+0x278`/`+0x27c` — 0, ±45, ±90, ±135, 180 — not toward the target. So the air dash turns
+with the stick, and the fighter's heading follows it. The port resolved the direction
+against the target axis and left `m_facing` at the target bearing, so she slid sideways
+while still facing the enemy.
+
+Implemented: the airborne dash takes its direction from the held axes, sets `m_facing` to
+that direction, and re-steers once per update at the body's own rates (60°, then 2°).
+
+**D2 — momentum survives the dash.** Case `0x1e` completes into state 43 (`:379-381`), and
+case `0x2b` (state 43) **never writes** the horizontal speed `+0x15` or the movement angle
+`+0x18`: it only steers the angle (`+0x874` = 1.0/tick, `:485-486`) and integrates the
+vertical. So the dash's horizontal velocity is still there afterwards and the fighter keeps
+sliding. The port's airborne movement recomputed velocity from the stick every tick and
+zeroed it when nothing was held, which is why she dropped straight down.
+
+Implemented: `m_airDashCarry` keeps the dash's speed and direction through the airborne
+state that follows, steering at 1°/tick toward held input, cleared wherever the air dash is
+re-armed (landing, respawn, round reset).
+
+**One correction found while reading:** the port's air dash speed was `kAirDashSpeed` =
+20.0/tick; the body writes `+0x15` = `0x41840000` = **16.5/tick** (`:407`). The pilot path
+now uses the body's value.
+
+Regression (`rena0_pilot_gate_test` Case F): jump, then double tap Right in the air with the
+opponent at +z. It requires row 30 with its first set bound, that the actor's yaw differs
+from the target bearing by more than 1 rad, and that the fighter covers more than 20 units
+horizontally while airborne **after** the dash ends. Reverting the direction/facing work
+fails with `facing -0.002520 vs bearing -0.010770`; reverting the momentum carry fails with
+`covered 0.000000 units`. Suite 83/83 excluding the known `device_isolation_test` flake;
+fixture matrix unchanged at 29/30/47.
+
+Tier 2 for every field and rate; tier 3 for the intended feel. The `+0x280`-gated extra −3
+meter arm is untouched and remains D4.

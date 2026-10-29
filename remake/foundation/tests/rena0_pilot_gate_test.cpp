@@ -288,6 +288,87 @@ void checkRightDashClock(const DashClockSample& got, const ExpectedClock& want, 
                 std::to_string(got.track1));
 }
 
+// Air dash (row 30): the body points it along the held input and lets its momentum
+// survive into the fall state. FUN_0043ffc0 case 0x1e :407-408 sets +0x15 = 16.5/tick with
+// the movement angle at 0 (along the actor's own angle) and re-runs FUN_00421780, which
+// steers that angle toward the held input's compass bearing; case 0x2b then never writes
+// the horizontal speed or angle again, so the slide continues.
+struct AirDashRun {
+    int row = -1;
+    int set = -1;
+    int expectedSet = -1;
+    double facing = 0.0;      // actor yaw at admission
+    double bearing = 0.0;     // yaw that would point at the opponent
+    double slideAfter = 0.0;  // horizontal distance covered after the dash ended
+    int airborneAfter = 0;
+    bool landed = false;
+};
+
+AirDashRun airDashRun(test::Combo& combo) {
+    gameplay::Match match;
+    gameplay::MatchConfig config;
+    config.spawn[0] = {0.f, 0.f, 0.f};
+    config.spawn[1] = {0.f, 0.f, 2000.f};
+    const xm::Model* models[gameplay::kMatchFighterCount] = {&combo.model, &combo.model};
+    xm::Controller* controllers[gameplay::kMatchFighterCount] =
+        {combo.controller(), combo.controller()};
+    for (int i = 0; i < 2; ++i) {
+        config.moves[i] = &combo.moves;
+        config.weapon[i] = &combo.weapon;
+    }
+    match.reset(config, models, controllers, nullptr, nullptr, nullptr);
+    match.set_ai_enabled(1, false);
+    match.economy().setLogFile(nullptr);
+    PilotPolicies policies;
+    policies.attach(match.fighter(0));
+
+    input::PlayerState actor{};
+    int startupTicks = 0;
+    startup(match, actor, combo, startupTicks);
+    auto& fighter = match.fighter(0);
+    fighter.set_charge_gauge(1000);
+    AirDashRun run;
+    run.expectedSet = combo.moves.find(30)->first_set_index();
+
+    // Leave the ground: one jump press, then wait until she is airborne.
+    actor.down[input::Action::Jump] = true;
+    step(match, actor);
+    actor.down[input::Action::Jump] = false;
+    int guard = 0;
+    while (fighter.airborne() == false && guard++ < 30) step(match, actor);
+    require(fighter.airborne(), "the air dash case needs the fighter airborne");
+
+    // Double tap Right in the air; the last press stays held so the axis is defined.
+    actor.down[input::Action::Right] = true;
+    step(match, actor);
+    actor.down[input::Action::Right] = false;
+    step(match, actor);
+    actor.down[input::Action::Right] = true;
+    step(match, actor);
+    run.row = fighter.dash_move_id();
+    run.set = fighter.anim_set_index();
+    run.facing = fighter.facing_yaw();
+    run.bearing = std::atan2(0.0 - fighter.position().x, 2000.0 - fighter.position().z);
+
+    // Release everything and let the dash end. Momentum is what keeps her sliding.
+    actor.down[input::Action::Right] = false;
+    double lastX = fighter.position().x;
+    double lastZ = fighter.position().z;
+    for (int tick = 0; tick < 90; ++tick) {
+        step(match, actor);
+        const double x = fighter.position().x;
+        const double z = fighter.position().z;
+        if (fighter.state() != gameplay::FighterState::Run && fighter.airborne()) {
+            ++run.airborneAfter;
+            run.slideAfter += std::hypot(x - lastX, z - lastZ);
+        }
+        lastX = x;
+        lastZ = z;
+        if (!fighter.airborne()) { run.landed = true; break; }
+    }
+    return run;
+}
+
 struct EmptyTapRun {
     int holdTicks = 0;         // frames the empty press was held before release
     int startup = 0;
@@ -602,6 +683,25 @@ int main(int argc, char** argv) {
         // only exists behind the meter policy, so this must not become 988.
         require(legacyRight.ticks[0].gauge == 1000,
                 "flag-off must keep the legacy trigger spend, not the recovered drain");
+
+        // Case F — the air dash points where it was input and keeps its momentum. The
+        // opponent sits at +z while the tap is +x, so a target-facing dash would leave the
+        // actor's yaw at ~0; the recovered arm points it along the input instead.
+        const AirDashRun air = airDashRun(combo);
+        require(air.row == 30, "the airborne double tap must enter the air dash row 30, got " +
+                                   std::to_string(air.row));
+        require(air.expectedSet >= 0 && air.set == air.expectedSet,
+                "the air dash must bind row 30's first set, got " + std::to_string(air.set));
+        const double outward = std::abs(std::remainder(air.facing - air.bearing, glm::two_pi<double>()));
+        require(outward > 1.0,
+                "the air dash must point along the input, not at the target: facing " +
+                    std::to_string(air.facing) + " vs bearing " + std::to_string(air.bearing));
+        require(air.landed, "the air dash case must come back down");
+        require(air.airborneAfter > 0,
+                "the air dash must leave airborne ticks to carry momentum through");
+        require(air.slideAfter > 20.0,
+                "the air dash must keep sliding after it ends, covered " +
+                    std::to_string(air.slideAfter) + " units");
 
         // Case E — a sparse clip only writes the bones it names. The travel set 23 keys the
         // right arm and the left leg, so the LEFT arm must keep the pose the startup clip

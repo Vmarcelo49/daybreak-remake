@@ -1256,6 +1256,12 @@ private:
     // tick; freezing it into a world vector makes the step a straight line (owner: the
     // side steps should arc toward the target).
     int          m_dashSide = 0;
+    // An air dash's momentum survives into the airborne state it ends in: FUN_0043ffc0
+    // case 0x1e completes into state 43, and case 0x2b never writes the horizontal speed
+    // (+0x15) or the movement angle (+0x18) — it only steers the angle (+0x874 = 1.0) and
+    // integrates vertical gravity. So the fighter keeps sliding after the dash instead of
+    // dropping straight down (owner: D2).
+    bool         m_airDashCarry = false;
     bool         m_dashAir = false;     // current dash started airborne
     bool         m_airDashed = false;   // air dash spent (resets on landing)
     double       m_time = 0.0;          // per-fighter clock (double-tap)

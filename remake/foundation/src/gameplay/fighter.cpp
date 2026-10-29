@@ -218,6 +218,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_flyLeft = FighterConstants::kFlyTimeSec;
     m_dashAir = false;
     m_airDashed = false;
+    m_airDashCarry = false;
     m_hoverSpent = false;   // a new airtime re-arms the one hover
     try_switch_animation();
 }
@@ -249,6 +250,7 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_flyLeft = FighterConstants::kFlyTimeSec;
     m_dashAir = false;
     m_airDashed = false;
+    m_airDashCarry = false;
     m_hoverSpent = false;   // a new airtime re-arms the one hover
     // FUN_00435660 restores round capacity while retaining refill/interval progress.
     restore_ammo();
@@ -309,6 +311,7 @@ void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     m_flyLeft = FighterConstants::kFlyTimeSec;
     m_dashAir = false;
     m_airDashed = false;
+    m_airDashCarry = false;
     m_hoverSpent = false;   // a new airtime re-arms the one hover
     m_hp = m_maxHP;
     m_stamina = static_cast<float>(FighterConstants::kMaxStamina);
@@ -740,6 +743,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
             m_grounded = true;
             m_flyLeft = FighterConstants::kFlyTimeSec;
             m_airDashed = false;
+            m_airDashCarry = false;
             m_hoverSpent = false;   // a new airtime re-arms the one hover
             if (m_state == FighterState::Jump ||
                 (m_state == FighterState::Run && m_dashAir)) {
@@ -810,6 +814,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
             m_flyLeft = FighterConstants::kFlyTimeSec;
             m_dashAir = false;
             m_airDashed = false;
+            m_airDashCarry = false;
             m_hoverSpent = false;   // a new airtime re-arms the one hover
         } else if (m_grounded) {
             m_safePosition = m_position;
@@ -1075,6 +1080,45 @@ void Fighter::update_movement(const input::PlayerState* input, double dt) {
         // direction captured at the tap. Re-derive it here, after this update's basis.
         if (m_pilotMeter && m_dashSide != 0)
             m_dashDir = target_relative(static_cast<float>(m_dashSide), 0.0f);
+        // Case 0x1e re-runs FUN_00421780 every update with +0x874 = 60 deg/tick in phase 0
+        // (:408) and 2 deg/tick from phase 1 (:414), so the dash turns with the stick
+        // instead of freezing its entry direction.
+        if (m_pilotMeter && m_dashAir && (m_inputAxisX != 0 || m_inputAxisZ != 0)) {
+            const glm::vec3 wanted = relative_direction(
+                m_inputFacing, static_cast<float>(m_inputAxisX),
+                static_cast<float>(m_inputAxisZ));
+            const float current = std::atan2(m_dashDir.x, m_dashDir.z);
+            const float difference = std::remainder(std::atan2(wanted.x, wanted.z) - current,
+                                                    glm::two_pi<float>());
+            const float rate = glm::radians(m_phaseIndex == 0 ? 60.0f : 2.0f);
+            const float next = current + std::clamp(difference, -rate, rate);
+            m_dashDir = glm::vec3(std::sin(next), 0.0f, std::cos(next));
+            m_facing = next;
+        }
+        m_velocity.x = m_dashDir.x * m_dashSpeed;
+        m_velocity.z = m_dashDir.z * m_dashSpeed;
+        m_position += m_velocity * static_cast<float>(dt);
+        return;
+    }
+
+    // Momentum after an air dash. Case 0x2b (state 43) never writes the horizontal speed
+    // or the movement angle, so the dash's slide continues and only the angle is steered,
+    // at +0x874 = 1.0 deg/tick (:485-486). Without this the port zeroed the velocity when
+    // no direction was held and the fighter dropped straight down (owner: D2).
+    if (m_pilotMeter && m_airDashCarry && !m_grounded && m_state == FighterState::Jump) {
+        if (m_inputAxisX != 0 || m_inputAxisZ != 0) {
+            const glm::vec3 wanted = relative_direction(
+                m_inputFacing, static_cast<float>(m_inputAxisX),
+                static_cast<float>(m_inputAxisZ));
+            const float current = std::atan2(m_dashDir.x, m_dashDir.z);
+            const float difference = std::remainder(std::atan2(wanted.x, wanted.z) - current,
+                                                    glm::two_pi<float>());
+            constexpr float kFallTurnDegrees = 1.0f;   // +0x874 in case 0x2b
+            const float next = current + std::clamp(difference, -glm::radians(kFallTurnDegrees),
+                                                    glm::radians(kFallTurnDegrees));
+            m_dashDir = glm::vec3(std::sin(next), 0.0f, std::cos(next));
+            m_facing = next;
+        }
         m_velocity.x = m_dashDir.x * m_dashSpeed;
         m_velocity.z = m_dashDir.z * m_dashSpeed;
         m_position += m_velocity * static_cast<float>(dt);
@@ -3245,7 +3289,22 @@ bool Fighter::try_dash(input::Action dir) {
     if (m_dashAir) {
         m_airDashed = true;
         m_vy = 0.0f;  // air dash hangs: no fall during the window
+        // FUN_0043ffc0 case 0x1e :407 writes +0x15 = 0x41840000 = 16.5/tick, and :408
+        // puts the movement angle +0x18 at 0 — i.e. along the actor's own angle, which
+        // FUN_00421780 then steers toward the held input's compass bearing. So an air dash
+        // points where it was input rather than at the target (owner: D3).
         m_dashSpeed = FighterConstants::kAirDashSpeed;
+        if (m_pilotMeter) {
+            m_dashSpeed = 16.5f * 60.0f;
+            if (m_inputAxisX != 0 || m_inputAxisZ != 0) {
+                const glm::vec3 wanted = relative_direction(
+                    m_inputFacing, static_cast<float>(m_inputAxisX),
+                    static_cast<float>(m_inputAxisZ));
+                d = wanted;
+                m_facing = std::atan2(wanted.x, wanted.z);
+            }
+            m_airDashCarry = true;
+        }
     } else {
         m_dashSpeed = FighterConstants::kRunSpeed;
     }
