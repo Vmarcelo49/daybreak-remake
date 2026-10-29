@@ -127,10 +127,29 @@ inline const char* observe_rena0_tick(const Rena0PilotSample& before, const Figh
     // Domain: the fighter ends the tick grounded in Idle or Walk, and the only held axes are
     // the ones the F1-5 mapping established (Right -> +x, Up -> -z).
     const FighterState state = after.state();
-    // A fighter in its landing window is playing row 44, not the locomotion row, so it is out
-    // of this comparison's domain even though the port keeps it in Idle (V3-42).
-    const bool locomotion = (state == FighterState::Idle && after.landing_ticks() == 0) ||
-                            state == FighterState::Walk;
+    // State 44 is compared, not skipped: while the landing window is open the fighter IS on
+    // row 44, and the binding is checkable against the row itself (V3-42).
+    if (state == FighterState::Idle && after.landing_ticks() > 0) {
+        const CharacterMove* landing = moves->find(44);
+        const int wantSet = landing ? landing->phase_set_index(0) : -1;
+        if (wantSet < 0) {
+            ++obs.outOfDomain;
+            obs.note("landing-row-unbound");
+            return "landing-row-unbound";
+        }
+        ++obs.compared;
+        if (after.anim_set_index() != wantSet) {
+            ++obs.disagreed;
+            obs.note("landing-binding");
+            return "landing-binding";
+        }
+        // Counted like any other agreement, so the totals close (compared == agreed + disagreed
+        // + out-of-domain) instead of leaving the landing ticks unaccounted.
+        ++obs.agreed;
+        obs.note("ok");
+        return "ok";
+    }
+    const bool locomotion = state == FighterState::Idle || state == FighterState::Walk;
     if (!locomotion) {
         ++obs.outOfDomain;
         obs.note("not-a-locomotion-state");
