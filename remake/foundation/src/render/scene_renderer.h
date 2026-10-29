@@ -333,8 +333,16 @@ struct Stats {
 // additive effect cards last. Classification lives in scene_renderer.cpp (classifyPass);
 // the asset layer's SceneModel::role is the only effect signal the renderer may
 // read, because shipped material terms do not distinguish effect cards (R2).
-enum class Pass : uint8_t { Outline = 0, Opaque = 1, Decal = 2, Effect = 3 };
-inline constexpr size_t kPassCount = 4;
+enum class Pass : uint8_t {
+    Outline = 0, Opaque = 1, Decal = 2,
+    // Additive cards, depth-tested: the ordinary effect card.
+    Effect = 3,
+    // Additive cards the original draws with ZENABLE = 0 while the rest keeps depth:
+    // FUN_005f60b0's cases 2 and 4 set the blend, turn Z off for the draw and turn it back on
+    // afterwards (:84-89, :100-109). Used for shot models whose record asks for it.
+    EffectNoDepth = 4
+};
+inline constexpr size_t kPassCount = 5;
 
 class SceneRenderer {
 public:

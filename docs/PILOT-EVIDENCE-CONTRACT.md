@@ -2286,3 +2286,23 @@ Regression: `effect_catalog_test` now sweeps the install and asserts the shape t
 assumes — no quad in a shot model is skinned, none carries several submeshes, all are planar —
 so an asset that breaks the premise fails instead of silently rendering wrong. It reports the
 survey (351 models, 155 quads) on every run.
+
+### V3-39 — the depthless half of `+0x7c` cases 2 and 4
+
+`FUN_005f60b0` switches render state on the shot record's `+0x7c`, and two of its cases do more
+than pick a blend: case 2 (`:84-89`) and case 4 (`:100-109`) save the current DESTBLEND, set
+`ZENABLE = 0`, draw, then restore `ZENABLE = 1`. So those shots are drawn with **no depth test
+at all** — over everything the frame has drawn so far, including the stage — while the port kept
+the effect pass's depth test and only dropped the depth write.
+
+That is now modelled as a fifth pass, `Pass::EffectNoDepth`: same additive blend as the effect
+pass, `depthCompare = Always`, sorted after every other pass so it cannot be occluded. Which
+shots take it is the record's own word — `+0x7c` 2 or 4 — so the port needs no new rule: the
+mapping the port already had (2/4 -> additive) just carries its second half.
+
+The glow-quad rule from V3-36 is unchanged and stays depth-tested: a quad in a mode 0/1 model
+draws additively but is still occluded by the stage, which matches the original, where Z is only
+turned off inside cases 2/4.
+
+Suite 83/83 excluding the known `device_isolation_test` flake; a match frame still draws its
+four effect cards and the pipeline count grows by the one new pass.

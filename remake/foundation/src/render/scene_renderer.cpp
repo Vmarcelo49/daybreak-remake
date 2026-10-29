@@ -914,14 +914,25 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
     // surface; depth testing makes the global order equivalent, and it keeps the pipeline
     // switches to one per pass.) The instance-only templates are ordered with the base
     // draws so an instance lands in the same pass group its model would have.
+    // Pass order is Outline, Opaque, Decal, Effect, EffectNoDepth — the depthless cards go
+    // last so they cannot be occluded by anything the frame drew before them, which is what
+    // the original's Z-off window achieves. Built up back-to-front so each partition keeps
+    // the group it just placed at the end.
     std::stable_partition(draws_.begin(), draws_.end(),
-                          [](const DrawItem& d) { return d.pass != Pass::Effect; });
+                          [](const DrawItem& d) { return d.pass != Pass::EffectNoDepth; });
+    std::stable_partition(draws_.begin(), draws_.end(),
+                          [](const DrawItem& d) {
+                              return d.pass == Pass::Outline || d.pass == Pass::Opaque ||
+                                     d.pass == Pass::Decal;
+                          });
     std::stable_partition(draws_.begin(), draws_.end(),
                           [](const DrawItem& d) {
                               return d.pass == Pass::Outline || d.pass == Pass::Opaque;
                           });
     std::stable_partition(draws_.begin(), draws_.end(),
                           [](const DrawItem& d) { return d.pass == Pass::Outline; });
+    std::stable_partition(drawTemplates_.begin(), drawTemplates_.end(),
+                          [](const DrawItem& d) { return d.pass != Pass::EffectNoDepth; });
     std::stable_partition(drawTemplates_.begin(), drawTemplates_.end(),
                           [](const DrawItem& d) { return d.pass != Pass::Effect; });
     // The instance source of truth: the base draws in their final pass order, then the
@@ -935,7 +946,7 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
         for (const DrawItem& d : drawTemplates_) {
             if (d.texture >= 0) ++tTextured; else ++tUntextured;
             if (d.pass == Pass::Decal) ++tDecals;
-            else if (d.pass == Pass::Effect) ++tEffects;
+            else if (d.pass == Pass::Effect || d.pass == Pass::EffectNoDepth) ++tEffects;
         }
         stats_.textured -= tTextured;
         stats_.untextured -= tUntextured;
@@ -1172,8 +1183,10 @@ void SceneRenderer::setEffectInstances(const std::vector<EffectInstance>& instan
                 // geometric (4 vertices, 6 indices), because no recovered per-mesh blend
                 // signal exists; it is the same kind of geometric routing setScene already
                 // uses for the billboard verdict.
-                const bool glowQuad = t.cardQuad || e.renderMode == 2 || e.renderMode == 4;
-                d.pass = glowQuad ? Pass::Effect : Pass::Opaque;
+                const bool depthless = e.renderMode == 2 || e.renderMode == 4;
+                const bool glowQuad = t.cardQuad || depthless;
+                d.pass = depthless ? Pass::EffectNoDepth
+                                   : glowQuad ? Pass::Effect : Pass::Opaque;
                 d.flags &= ~xm::kDrawUnlit;                if (e.renderMode == 3 || e.renderMode == 4) d.flags |= xm::kDrawUnlit;
             }
             for (const auto& offset : offsets)
@@ -1195,7 +1208,7 @@ void SceneRenderer::setEffectInstances(const std::vector<EffectInstance>& instan
     int instEffects = 0, instDecals = 0;
     for (const DrawItem& d : draws_)
         if (d.instance) {
-            if (d.pass == Pass::Effect) ++instEffects;
+            if (d.pass == Pass::Effect || d.pass == Pass::EffectNoDepth) ++instEffects;
             else if (d.pass == Pass::Decal) ++instDecals;
         }
     stats_.effects = baseEffects_ + instEffects;
@@ -1315,7 +1328,7 @@ WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, Pass pas
             blend.color.dstFactor = WGPUBlendFactor_Zero;
             blend.alpha.srcFactor = WGPUBlendFactor_Zero;
             blend.alpha.dstFactor = WGPUBlendFactor_One;
-        } else if (kind == Pass::Effect) {
+        } else if (kind == Pass::Effect || kind == Pass::EffectNoDepth) {
             blend.color.srcFactor = WGPUBlendFactor_SrcAlpha;
             blend.color.dstFactor = WGPUBlendFactor_One;
             blend.alpha.srcFactor = WGPUBlendFactor_One;
@@ -1338,7 +1351,11 @@ WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, Pass pas
         depth.depthWriteEnabled = (kind == Pass::Opaque || kind == Pass::Outline)
                                       ? WGPUOptionalBool_True
                                       : WGPUOptionalBool_False;
-        depth.depthCompare = WGPUCompareFunction_LessEqual;
+        // FUN_005f60b0's cases 2/4 disable Z for the draw; the depthless effect pass
+        // keeps that as ALWAYS instead of turning the attachment off, which the renderer
+        // cannot do per draw.
+        depth.depthCompare = kind == Pass::EffectNoDepth ? WGPUCompareFunction_Always
+                                                        : WGPUCompareFunction_LessEqual;
         setStencilOps(depth.stencilFront);
         setStencilOps(depth.stencilBack);
         // Full masks on every pass, not just the decal one: the masks are meaningless
