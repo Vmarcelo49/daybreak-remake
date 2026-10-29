@@ -101,8 +101,6 @@ inline int rena_melee_admission(const AttackAdmissionInput& in,
     // them on every actionable press. Weapon 2 may not re-enter the row it holds.
     if (in.z < 0 && (we != 2 || state != 310) && enabled && gate(310)) return 310;
     if (in.x != 0 && (we != 2 || state != 311) && enabled && gate(311)) return 311;
-    const bool combo = state == 300 || state == 301 || state == 302 ||
-                       state == 340 || state == 341;
     if (we != 2) {
         // Landing/dash-recovery sources select the landing melee; the 340→341
         // follow-up is Rena+0's alone.
