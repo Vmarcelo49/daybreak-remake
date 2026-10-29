@@ -551,6 +551,76 @@ EmptyTapRun emptyTapRun(test::Combo& combo, bool pilot, int gauge, int holdTicks
 }
 }  // namespace
 
+// The action camera: the Hyper EX attack (row 350) plays its cinematic whether or not the
+// swing connects — the owner confirmed it against the original, and unlike the melee chain,
+// whose camera is a hit effect. FUN_0043ffc0 case 0x15e has no contact test around its
+// request; the port's own rule was missing the op entirely until V3-37.
+struct ActionCameraRun {
+    bool hyper = false;
+    int cameraOnActivation = 0;
+    int exRow = -1;
+    int cameraOnWhiff = 0;
+    int meleeCameraOnWhiff = 0;
+};
+
+ActionCameraRun actionCameraRun(test::Combo& combo) {
+    gameplay::Match match;
+    gameplay::MatchConfig config;
+    config.spawn[0] = {0.f, 0.f, 0.f};
+    config.spawn[1] = {0.f, 0.f, 2000.f};   // far away: every swing whiffs
+    const xm::Model* models[gameplay::kMatchFighterCount] = {&combo.model, &combo.model};
+    xm::Controller* controllers[gameplay::kMatchFighterCount] =
+        {combo.controller(), combo.controller()};
+    for (int i = 0; i < 2; ++i) {
+        config.moves[i] = &combo.moves;
+        config.weapon[i] = &combo.weapon;
+    }
+    match.reset(config, models, controllers, nullptr, nullptr, nullptr);
+    match.set_ai_enabled(1, false);
+    match.economy().setLogFile(nullptr);
+    PilotPolicies policies;
+    policies.attach(match.fighter(0));
+    input::PlayerState actor{};
+    int startupTicks = 0;
+    startup(match, actor, combo, startupTicks);
+    auto& fighter = match.fighter(0);
+    ActionCameraRun run;
+
+    // A melee swing that cannot reach the opponent must NOT arm the camera.
+    actor.down[input::Action::AttackA] = true;
+    step(match, actor);
+    actor.down[input::Action::AttackA] = false;
+    for (int i = 0; i < 12; ++i) {
+        step(match, actor);
+        run.meleeCameraOnWhiff = std::max(run.meleeCameraOnWhiff, fighter.action_camera());
+    }
+    while (fighter.state() == gameplay::FighterState::AttackA) step(match, actor);
+
+    // Hyper activation spends the gauge; the activation itself must not arm it either.
+    fighter.set_charge_gauge(1000);
+    fighter.set_hyper_gauge(1.0f);
+    actor.down[input::Action::Special] = true;
+    step(match, actor);
+    actor.down[input::Action::Special] = false;
+    run.hyper = fighter.hyper_active();
+    run.cameraOnActivation = fighter.action_camera();
+    for (int i = 0; i < 20; ++i) step(match, actor);
+
+    // The EX attack, whiffing: the camera must be on for the whole move.
+    actor.down[input::Action::Special] = true;
+    step(match, actor);
+    actor.down[input::Action::Special] = false;
+    for (int i = 0; i < 30; ++i) {
+        step(match, actor);
+        if (fighter.attack_move_id() == 350) {
+            run.exRow = 350;
+            run.cameraOnWhiff = std::max(run.cameraOnWhiff, fighter.action_camera());
+        }
+        if (fighter.state() != gameplay::FighterState::AttackA && i > 2) break;
+    }
+    return run;
+}
+
 int main(int argc, char** argv) {
     try {
         // Deliberately wrong expectation for this case's own gate: a seeded run asserts that the
@@ -795,6 +865,21 @@ int main(int argc, char** argv) {
         require(air.drop > 2.0,
                 "the air dash must descend in its recovery phase, dropped " +
                     std::to_string(air.drop) + " units");
+        // The Hyper EX attack's action camera, and the melee camera it must not infect.
+        const ActionCameraRun camera = actionCameraRun(combo);
+        require(camera.hyper, "the action camera case must reach Hyper mode");
+        require(camera.cameraOnActivation == 0,
+                "activating Hyper must not arm the action camera, got " +
+                    std::to_string(camera.cameraOnActivation));
+        require(camera.exRow == 350, "the Hyper press must enter the EX row 350, got " +
+                                         std::to_string(camera.exRow));
+        require(camera.cameraOnWhiff != 0,
+                "the EX attack must play its action camera even when it misses, got " +
+                    std::to_string(camera.cameraOnWhiff));
+        require(camera.meleeCameraOnWhiff == 0,
+                "a whiffed melee swing must NOT play the action camera, got " +
+                    std::to_string(camera.meleeCameraOnWhiff));
+
         // Holding jump through the dash lifts it and costs the extra -3 per tick.
         const AirDashLift lift = airDashLiftRun(combo);
         require(lift.ticks > 8, "the lift case must observe the air dash, got " +

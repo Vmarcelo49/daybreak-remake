@@ -2338,7 +2338,12 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             }
             break;
         case MoveOp::ActionCamera:
-            if (m_chainContact) m_actionCamera = static_cast<int>(rule.value);
+            // `second` marks a camera the move plays regardless of contact: the Hyper
+            // EX attack (row 350) shows its cinematic on a whiff too, which is what the
+            // owner's original-runtime screenshot shows. Everything else stays a hit
+            // effect, as the melee chain is.
+            if (m_chainContact || rule.second > 0.f)
+                m_actionCamera = static_cast<int>(rule.value);
             break;
         // The attack bodies' vertical channel: value is the bodies' per-tick unit,
         // converted once here (u/tick -> u/s), matching the horizontal channel's

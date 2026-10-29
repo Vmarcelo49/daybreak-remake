@@ -2185,3 +2185,37 @@ unchanged at 29/30/47.
 **Open:** the geometric split is a rule, not a recovered fact — a quad that is NOT a glow card
 would be drawn additively (none found in weapon 001's models, not yet swept across all 46
 weapons), and the Z-off half of `+0x7c` cases 2/4 remains unmodelled.
+
+### V3-37 — the Hyper EX attack (row 350) plays its action camera, whiff or not
+
+Owner report, with an original-runtime screenshot: in Hyper mode the Special press fires the
+single EX attack (row 350), and that move plays the cinematic camera **whether or not it
+connects** — unlike the melee chain, where the camera is a hit effect.
+
+The port never played it. Measured, not assumed: row 350's recovered program had **29 ops and
+zero `ActionCamera` ops**, so `action_camera()` stayed 0 for the whole move (probed with the
+opponent 2000 units away, so every swing whiffed). Nothing was suppressing it — the op was
+missing.
+
+Two things were needed:
+
+- **The rule.** `{350, -1, 0, 9999, MoveOp::ActionCamera, 2.f, 1.f}` — the whole move, firing
+  once. `FUN_0043ffc0` case `0x15e` has no contact test around its request, which is why the
+  owner sees it on a whiff.
+- **An ungated arm.** The executor gated every camera on `m_chainContact`, the latch
+  `note_melee_hit` sets. That gate is right for the chain (a whiffed swing must not play it —
+  asserted) and wrong for this move, so `MoveRule::second` now means "plays regardless of
+  contact" for `ActionCamera` only. The field was unused for this op.
+
+**Port rule, and the one number in it:** `value` is an animation set on the action-camera rig
+(`data/camera/01.x`, which ships **six** sets; the reference bundle records that the native
+index order is reversed, so native index 0 is serialized `Anim-6`). Which set `0x15e` requests
+is **not recovered** — the helpers around it (`FUN_0042c800/840/880`) are slot arrays and a
+positional request, not camera calls — so the move borrows the melee combo's index 2 until
+evidence says otherwise. That index is already a port rule for rows 301/302.
+
+Regression: `rena0_pilot_gate_test` Case G drives the whole sequence — a whiffed melee swing
+must leave the camera at 0, Hyper activation must not arm it, and the EX press must put it on
+for the move with the opponent out of reach. Deleting the rule fails it with `the EX attack
+must play its action camera even when it misses, got 0`. Suite 83/83 excluding the known
+`device_isolation_test` flake.

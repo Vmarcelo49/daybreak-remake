@@ -340,6 +340,15 @@ inline constexpr MoveRule kRenaRules[] = {
     {302,-1,12,17,MoveOp::Active,1.f},
     {302,-1,0,9999,MoveOp::ActionCamera,2.f},
     {302,0,0,11,MoveOp::Turn,20.f,1.f},
+    // 350 (the Hyper-mode EX attack, FUN_0043ffc0 case 0x15e) plays the action camera
+    // for the whole move and does it whether or not the swing connects — owner report
+    // with an original-runtime screenshot, and unlike the melee chain above, whose
+    // camera is a hit effect. The `second` column is the ungated flag the ActionCamera
+    // executor reads; without it the contact latch would suppress the shot on a whiff.
+    // PORT RULE for the clip index: the camera rig (data/camera/01.x, six sets) does not
+    // recover which set 0x15e requests, so it borrows the melee combo's 2 until evidence
+    // says otherwise — the one number here that is not sourced (V3-37).
+    {350,-1,0,9999,MoveOp::ActionCamera,2.f,1.f},
     {330,0,0,9999,MoveOp::Turn,5.f},
     {330,1,0,9999,MoveOp::Turn,5.f},
     {330,1,0,9999,MoveOp::Speed,30.f},
