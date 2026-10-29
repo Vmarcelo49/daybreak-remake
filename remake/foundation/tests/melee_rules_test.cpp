@@ -201,7 +201,7 @@ void testPosedCombat() {
         ++ticks;
     }
     check(victim.state() == FighterState::Knockdown, "a launched victim lands into Knockdown");
-    const int lyingRow = victim.reaction_move_for_test();
+    const int lyingRow = victim.down_row_for_test();
     check(lyingRow == 118 || lyingRow == 119,
           "and lies on row 118 (or its back twin 119)");
     int down = 0;
@@ -214,6 +214,58 @@ void testPosedCombat() {
     for (int i = 0; i < 240 && attacker.state() == FighterState::AttackA; ++i) tick_held(attacker,in);
     check(attacker.state() == FighterState::Idle,"actual final-set period completes the attack without a recovery timer");
 }
+// A landed hit must (a) play the reaction row the record names and (b) MOVE the victim. The
+// harness above teleports the dummy every active tick, which resets its state, so this case
+// places the pair once and then lets the blow land on its own.
+void test_reaction_displaces_victim() {
+    section("a landed hit plays its row and displaces the victim");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    gameplay::MatchConfig config; config.fighterCount = 2;
+    for (int i = 0; i < 2; ++i) {
+        config.moves[i] = &combo.moves; config.weapon[i] = &combo.weapon;
+        config.spawn[i] = glm::vec3(0, 0, 120.f * i);
+    }
+    const xm::Model* models[4] = {&combo.model, &combo.model};
+    xm::Controller* controllers[4] = {combo.controller(), combo.controller()};
+    gameplay::Match match; match.reset(config, models, controllers, nullptr, nullptr);
+    match.economy().setLogFile(nullptr);
+
+    Fighter& attacker = match.fighter(0);
+    Fighter& victim = match.fighter(1);
+    const input::PlayerState* idle[4]{};
+    for (int i = 0; i < 70; ++i) match.step(idle, gameplay::FixedStep::seconds);
+
+    // One placement puts the dummy's chest in the posed volume; the swing then lands on its own.
+    input::PlayerState input; input.down[input::Action::AttackA] = true;
+    const input::PlayerState* inputs[4] = {&input, nullptr, nullptr, nullptr};
+    bool landed = false;
+    int setOnHit = -1;
+    for (int i = 0; i < 120 && !landed; ++i) {
+        input::compute_edges(input);
+        if (attacker.melee_in_active()) test::Combo::placeAtAttack(attacker, victim);
+        const gameplay::MatchFrame frame = match.step(inputs, gameplay::FixedStep::seconds);
+        if (frame.meleeHit[0]) { landed = true; setOnHit = victim.anim_set_index(); }
+    }
+    check(landed, "the swing lands");
+    if (!landed) return;
+    // Row 100 is the standing flinch and its first phase is set 25.
+    checkInt(25, setOnHit, "the victim plays the standing-flinch row's clip");
+    checkInt(static_cast<int>(FighterState::Hit), static_cast<int>(victim.state()),
+             "and is in the reaction state");
+
+    const glm::vec3 before = victim.position();
+    input.down[input::Action::AttackA] = false;
+    for (int i = 0; i < 24; ++i) {
+        input::compute_edges(input);
+        match.step(inputs, gameplay::FixedStep::seconds);
+    }
+    const glm::vec3 moved = victim.position() - before;
+    // The row's own law is a -25/tick slide along the victim's facing, so it must travel.
+    check(glm::length(glm::vec2(moved.x, moved.z)) > 5.f,
+          "and the row's slide actually carries her");
+}
+
 void testPosedMatch() {
     section("Match: current record damages each enemy once, never its ally");
     test::Combo combo; std::string error;
@@ -969,7 +1021,8 @@ int main(int argc, char** argv) {
     const fs::path install = findInstall(argc,argv);
     if (install.empty()) { std::puts("MELEE_RULES: SKIP (no game install)"); return 0; }
     fnd::assets::assetSource().openInstall(install.string());
-    testPosedCombat(); testPosedMatch(); testRepeatContactSuppression(); testPhaseClock();
+    testPosedCombat(); testPosedMatch(); test_reaction_displaces_victim();
+    testRepeatContactSuppression(); testPhaseClock();
     testCharacterMoveTable(install);
     testClassSpecificAnimationBlend(install);
     testDirectionalDashes(install);

@@ -511,18 +511,16 @@ void zero_power_contact() {
     check(attacker.stats().damageDealt == 0, "nor any for the attacker");
     check(victim.hyper_gauge() == hyperBefore,
           "and does not misroute the record's mode-gauge column into the hyper bar");
-    // A contact whose record carries no stagger power (combat[7] == 0) can never trip the
-    // meter, so it applies damage and the freeze but leaves the victim's state row alone.
-    check(victim.state() != gameplay::FighterState::Hit,
-          "a zero-power contact does not stagger the victim");
+    // A zero-POWER contact (combat[0] == 0) still carries staggering power, so it interrupts
+    // the victim exactly like any other contact — power and stagger are different columns.
+    check(victim.state() == gameplay::FighterState::Hit,
+          "a zero-power contact still staggers the victim");
     int stunned = 1;
     while (victim.state() == gameplay::FighterState::Hit && stunned < 200) {
         tick(victim, input, nullptr);
         ++stunned;
     }
-    // A zero-stagger contact leaves the state alone, so the freeze is the only window it applies.
-    check(victim.reaction_counter() == 0.f, "and arms no reaction clock");
-    check(stunned == 1, "and never enters the stun state");
+    check(stunned > 1, "and runs its own stun window");
 }
 
 void execution(const Combo& combo) {
@@ -1171,11 +1169,8 @@ void zero_power_projectile(const Combo& combo) {
     if (pool.contact_count() > 0)
         check(pool.contact(0).effect == 30,
               "carrying the record's own impact effect");
-    // Same rule as the melee copy above: no stagger power, no state change — the shot still
-    // reports its contact and its impact effect, and the freeze is all the victim feels.
-    check(victim.state() != gameplay::FighterState::Hit,
-          "and the zero-power projectile does not stagger its victim");
-    check(victim.reaction_counter() == 0.f, "and arms no reaction clock");
+    check(victim.state() == gameplay::FighterState::Hit,
+          "and the zero-power projectile still staggers its victim");
 }
 
 void projectile_clocks(const Combo& combo) {

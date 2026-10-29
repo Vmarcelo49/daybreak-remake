@@ -194,10 +194,10 @@ int main() {
         }
         checkInt("one landed hit removes the recovered 8 HP (not the old 1)", 8, firstHitDamage);
         check(!match.fighter(1).is_alive(), "a stationary dummy goes down");
-        // The first hit is full (8) and the combo proration then cuts the follow-ups to
-        // 70/50/33 % of that (5/4/2), so a stationary dummy standing in a continuous combo
-        // goes down in 18 landed hits rather than the 13 an unprorated swing would need.
-        check(hits >= 16 && hits <= 20, "the KO lands in 16..20 prorated hits");
+        // The first hit is full (8); every following hit is prorated to 70/50/33 % and then
+        // stays at 33 % while the combo window holds, so a dummy absorbing a continuous combo
+        // goes down in 45 landed hits rather than the 13 an unprorated swing would need.
+        check(hits >= 40 && hits <= 50, "the KO lands in ~45 prorated hits");
         checkInt("and the economy credited exactly one KO", 1, match.economy().kos(1));
         checkInt("with one respawn still pending (the KO clock is running)", 0,
                  match.economy().respawns(1));

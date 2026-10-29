@@ -427,15 +427,13 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // with their counters (FUN_0041f580 0x41f673-0x41f732).
     if (m_staggerDecay > 0 && --m_staggerDecay == 0) m_hitMeterA = 0;
     if (m_comboDecay > 0 && --m_comboDecay == 0) { m_hitMeterB = 0; m_comboHits = 0; }
-    // The hit's reaction clock (+0x40): -0x3e99999a = 0.3 per tick, and reaching zero switches
-    // the victim to move 0x76 (118) — the recovered consumer at 0x428943/0x428946/0x42897a.
-    if (m_reactionCounter > 0.f) {
-        m_reactionCounter = std::max(0.f, m_reactionCounter - 0.3f);
-        if (m_reactionCounter == 0.f && m_state == FighterState::Hit) {
-            m_swing = resolve_swing(0x76);
-            switch_attack_row(0x76);
-        }
-    }
+    // The hit's reaction clock (+0x40): -0x3e99999a = 0.3 per tick. The recovered consumer at
+    // 0x42897a rebinds row 0x76 (118) — the knockdown — but only from a row handler that is
+    // already airborne; the port reaches 118 from its own landing branch, so this clock only
+    // runs down. (switch_attack_row cannot express it: it writes the ATTACK row, while a
+    // victim's clip comes from m_reactionMove, so the old call restarted the same clip and
+    // armed a phantom swing.)
+    if (m_reactionCounter > 0.f) m_reactionCounter = std::max(0.f, m_reactionCounter - 0.3f);
 
     // 1. Decrement state timer (mirrors +0xa0 in fcn.0041f580).
     if (m_stateTimer > 0) {
@@ -447,10 +445,11 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
             if (m_state == FighterState::Knockdown) {
                 if (m_downPhase == 1) {
                     m_downPhase = 2;
-                    m_reactionMove = 120;
+                    m_downRow = 120;
                     m_stateTimer = std::max(1, move_row_frames(120));
                 } else {
                     m_downPhase = 0;
+                    m_downRow = 0;
                     set_state(FighterState::Idle);
                 }
             } else if (m_state != FighterState::KO && m_state != FighterState::TagOut) {
@@ -582,9 +581,18 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // for the freeze window even when the blow is not strong enough to change its state row.
     // The animation clock keeps running, which is why the freeze reads as an impact and not as
     // a pause.
-    if (m_hitFreeze > 0) {
+    // The reaction row owns the victim's horizontal speed while it plays: the original keeps
+    // +0x54 in the row and the integrator only PAUSES while the freeze runs, so the slide is
+    // still there when the freeze ends. Re-applying it every tick (instead of seeding a velocity
+    // once) is what makes the displacement survive both the freeze and the per-tick friction.
+    if ((m_state == FighterState::Hit || m_state == FighterState::Knockdown) && m_rowSpeed != 0.f) {
+        const glm::vec3 forward(std::sin(m_facing), 0.f, std::cos(m_facing));
+        m_velocity = forward * (m_rowSpeed / static_cast<float>(dt));
+        const float step = m_rowDecel;
+        m_rowSpeed = m_rowSpeed > 0.f ? std::max(0.f, m_rowSpeed - step)
+                                      : std::min(0.f, m_rowSpeed + step);
+    } else if (m_hitFreeze > 0) {
         --m_hitFreeze;
-        m_velocity = glm::vec3(0.f);
     } else if (((m_state == FighterState::AttackA || m_shotMoveId >= 0) && move_program(m_moves)) ||
         (m_state == FighterState::Run && m_dashMoveId == 20 && locomotion(m_moves) && m_model)) {
         m_velocity = facing_relative(0.f, m_moveSpeed / static_cast<float>(dt));
@@ -814,10 +822,10 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
                 m_launched = false;
                 const bool backwards = glm::dot(m_velocity, glm::vec3(-std::sin(m_facing), 0.f,
                                                                      -std::cos(m_facing))) > 0.f;
-                m_reactionMove = backwards ? 119 : 118;
+                m_downRow = backwards ? 119 : 118;
                 m_downPhase = 1;
                 set_state(FighterState::Knockdown);
-                m_stateTimer = std::max(1, move_row_frames(m_reactionMove));
+                m_stateTimer = std::max(1, move_row_frames(m_downRow));
             }
             if (m_state == FighterState::Jump ||
                 (m_state == FighterState::Run && m_dashAir)) {
@@ -1715,48 +1723,75 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
                 if (std::abs(relative) > 90.f) row += 100;
             }
         }
-        m_reactionMove = row > 0 ? row : 103;
         if (!trips) {
-            // No reaction: damage and freeze only, the state row untouched.
+            // No reaction: damage and freeze only. The victim's state row and the row it is
+            // currently playing are left exactly as they were — retargeting m_reactionMove here
+            // would point the running row clock at a different row.
             return DamageResult::Hit;
         }
+        m_reactionMove = row > 0 ? row : 103;
         if (stun) {
+            const FighterState before = m_state;
             set_state(FighterState::Hit);
-            // The stun a weapon inflicts is that weapon's own (FUN_00637950:308); a
-            // weapon that specifies none keeps the shared default.
-            m_stateTimer = hitstunFrames > 0 ? hitstunFrames
-                                             : FighterConstants::kHitStunFrames;
+            if (m_state == before) {
+                // set_state early-returns on an unchanged state, so a second blow landing on an
+                // already-flinching victim would keep the first row's clip while its clocks were
+                // overwritten. The original rebinds unconditionally (FUN_00421080 resets the row
+                // and the phase), so the new reaction restarts here.
+                m_animSetIdx = -1;
+                m_phaseIndex = 0;
+                m_moveElapsedTicks = 0;
+                m_animFallback = false;
+                try_switch_animation();
+            }
+            // combat[10] is the FREEZE (applied above as m_hitFreeze), not the reaction's
+            // length. A reaction lasts as long as its ROW's animation: the original ends it on
+            // FUN_004218c0 ("last section, period exhausted"), never on a stun counter, which is
+            // why the port's 6-tick timer cut every flinch mid-clip and never let a launcher
+            // reach its falling and landing sections. The row's own completion ends the state
+            // (advance_animation_phase), so no timer is armed here. A fighter with no move
+            // table cannot play a row at all (a bare test fighter), and for that case the old
+            // bounded window stays as the fallback so the state still ends.
+            // "Playable" needs the row AND a model carrying its first set: the row clock is
+            // driven by the set's period, so a row whose set is absent would never complete.
+            bool rowPlayable = false;
+            if (m_moves && m_model && m_anim) {
+                if (const CharacterMove* reactionRow = m_moves->find(state_move_id())) {
+                    const int firstSet = reactionRow->phase_set_index(0);
+                    rowPlayable = firstSet >= 0 &&
+                                  static_cast<std::size_t>(firstSet) < m_model->anims.size();
+                }
+            }
+            m_stateTimer = rowPlayable
+                               ? 0
+                               : (hitstunFrames > 0 ? hitstunFrames
+                                                    : FighterConstants::kHitStunFrames);
             // The record's launch (FUN_00637950 @0x638633/0x638645 → the consumer at
             // 0x428af8-0x428b2e). A record with no launch keeps the victim planted.
             m_reactionCounter = reaction.counter;
-            m_reactionRise = reaction.rise;
             // The ROW decides what the victim does — the hit code itself writes no motion
             // (FUN_00428510's per-row handlers own every constant). A row with no motion
             // profile leaves the victim planted: that is the "crumple in place" reaction.
+            // The row's motion law. The handler keeps the speed in the row and decays it every
+            // tick (100/101: -25 with +1.5 per tick, 130/131: 0), so the port stores the
+            // per-tick speed and re-applies it each update instead of seeding a velocity once.
             const ReactionMotion motion = reaction_motion(m_reactionMove);
-            // A launch has to land somewhere: remember it so the touchdown turns into the
-            // knockdown chain rather than a normal landing.
             m_launched = motion.liftFromRecord || motion.rise > 0.f;
-            if (m_launched) {
-                // A launch does not end on a stun counter: the victim stays in the reaction
-                // until it touches down, which is what the row's own handler does (it rebinds
-                // to 118 from the grounded test, never from a timer).
-                m_stateTimer = 0;
-            }
             if (motion.applies) {
                 const float inverseStep = 1.f / static_cast<float>(FixedStep::seconds);
-                const float speed = motion.slideFromRecord ? -reaction.counter : motion.speed;
-                // +0x54 is applied along the body's own facing by the motion integrator
-                // (FUN_004202b0 at 0x420349-0x420398); negative means backwards.
-                if (speed != 0.f) {
-                    const glm::vec3 forward(-std::sin(m_facing), 0.f, -std::cos(m_facing));
-                    m_velocity = forward * (speed * inverseStep);
-                }
+                // combat[18] (+0x78) is the horizontal impulse (+0x54), combat[17] (+0x74) the
+                // lift (+0x40). The impulse is stored NEGATIVE, i.e. backwards along the body's
+                // own facing.
+                m_rowSpeed = motion.slideFromRecord ? -reaction.rise : motion.speed;
+                m_rowDecel = motion.decel;
                 const float rise = motion.liftFromRecord ? std::fabs(reaction.counter) : motion.rise;
                 if (rise > 0.f) {
                     m_vy = std::max(m_vy, rise * inverseStep);
                     m_grounded = false;
                 }
+            } else {
+                m_rowSpeed = 0.f;
+                m_rowDecel = 0.f;
             }
         }
     }
@@ -2171,6 +2206,14 @@ int Fighter::state_move_id() const {
         // The landing window: row 44's clip, then Idle's own row.
         case FighterState::Idle:
             return m_landingTicks > 0 ? present_move(44) : state_to_move_id(m_state);
+        // The knocked-down victim plays the row the landing branch selected (118/119 while
+        // lying, then 120 for the get-up), not the constant 196 the state label maps to.
+        // A victim that LANDS into Knockdown plays the row the touchdown selected (118/119,
+        // then 120 for the get-up); a Knockdown entered any other way keeps the state's own row.
+        case FighterState::Knockdown: {
+            const int row = m_downRow > 0 ? present_move(m_downRow) : -1;
+            return row >= 0 ? row : state_to_move_id(m_state);
+        }
         // The reaction row: the record that landed names it in combat[13], which reaches
         // take_damage as `hitCategory` (FUN_00637950 hands the victim the row before the state
         // change). One constant row for every hit was the port's stand-in; the shipped tables
@@ -2268,7 +2311,13 @@ void Fighter::advance_animation_phase() {
     const int clockStep =
         1 + m_clockSkip + ((sideDashClock && m_moveElapsedTicks % 9 == 0) ? 1 : 0);
     if (!m_holdAnimation) m_moveElapsedTicks += clockStep;
-    if (m_moves->animation_set_phase_gate(set) != 0) return;
+    // A phase gate means "hold this clip" — a looping attack/dash body. A reaction row is a
+    // ONE-SHOT animation: its last section must run out and release the victim, so the gate is
+    // ignored for the reaction states (row 103 ends on a gated set 27 and would otherwise loop
+    // forever, which is what kept a flinch from ever ending).
+    const bool reactionState =
+        m_state == FighterState::Hit || m_state == FighterState::Knockdown;
+    if (!reactionState && m_moves->animation_set_phase_gate(set) != 0) return;
 
     // FUN_0041e180's window: GetPeriod() / 0.016 through the CRT's truncating
     // float->int conversion (animation_period.h), so a 23.96-frame clip occupies 23
@@ -2286,6 +2335,15 @@ void Fighter::advance_animation_phase() {
     // pointer per set (`+set*0xe + 0x1d78`) for both tracks, at +0xade4 (track 0, the
     // tail) and +0xade8 (track 1, this predicate).
     if (lastSection && !m_holdAnimation && periodThreshold <= m_moveElapsedTicks - clockStep + 1) {
+        // A reaction row ends on its OWN completion, exactly like an attack row: the flinch
+        // plays to its last frame and only then releases the victim. A launched victim that is
+        // still airborne keeps the row (its later sections are the fall); the touchdown rebind
+        // in the landing block takes over from there.
+        if (m_state == FighterState::Hit && m_grounded) {
+            set_state(FighterState::Idle);
+            return;
+        }
+        if (m_state == FighterState::Hit) return;
         if (m_state == FighterState::AttackA || m_state == FighterState::Run ||
             m_state == FighterState::ShootA || m_state == FighterState::ShootB ||
             m_state == FighterState::ShootC) {

@@ -786,11 +786,17 @@ void test_hit_stun() {
     check_int("state after damage", static_cast<int>(FighterState::Hit),
               static_cast<int>(b.state()));
     check_int("hp after 5 damage", 95, b.hp());
-    for (int i = 0; i < 14; ++i) b.update(nullptr, nullptr, kDt);
-    check_int("still stunned at frame 14", static_cast<int>(FighterState::Hit),
-              static_cast<int>(b.state()));
-    b.update(nullptr, nullptr, kDt);
-    check_int("stun ends at frame 15", static_cast<int>(FighterState::Idle),
+    // A reaction lasts as long as its ROW's animation, not as long as the record's freeze: row
+    // 103 is the standing flinch and runs its sets (95 then 27) for ~27 frames, so the victim is
+    // still in it well past the 15 the old port rule used.
+    int firstLength = 0;
+    while (b.state() == FighterState::Hit && firstLength < 400) {
+        b.update(nullptr, nullptr, kDt);
+        ++firstLength;
+    }
+    check_bool("the flinch lasts its row's animation, not a 15-frame timer", true,
+               firstLength > 15);
+    check_int("and it does end", static_cast<int>(FighterState::Idle),
               static_cast<int>(b.state()));
 
     // Re-hit during the stun resets the timer.
@@ -802,7 +808,7 @@ void test_hit_stun() {
         b.update(nullptr, nullptr, kDt);
         ++frames;
     }
-    check_int("re-hit restarts the 15-frame stun", 15, frames);
+    check_int("a re-hit restarts the row from its first frame", firstLength, frames);
 
     // Guarded damage: amount/5 with a floor of 1. The first hit leaves Guard
     // (the stun transition), so the later hits are unguarded — see case 5.

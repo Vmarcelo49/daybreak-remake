@@ -501,6 +501,7 @@ public:
     float reaction_counter() const { return m_reactionCounter; }
     // The row the current reaction plays (a test seam: the row is otherwise internal).
     int reaction_move_for_test() const { return m_reactionMove; }
+    int down_row_for_test() const { return m_downRow; }
     // FUN_00637950 writes hit-driven status durations at actor+0x7dc+slot*4;
     // Rena recovery reads slot 6 at actor+0x7f4. The match ticks durations after
     // the fighter executor, preserving the source's same-frame read-before-decrement.
@@ -1142,15 +1143,21 @@ private:
     int          m_hitMeterA = 0;      // +0x7b8: stagger meter, threshold 100
     int          m_hitMeterB = 0;      // +0x7c0: combo count inside its own window
     int          m_hitFreeze = 0;      // +0xa0: physics pause, set from combat[10]
+    // The reaction row's own horizontal law (+0x54): a per-TICK facing-relative speed and its
+    // per-tick decay, re-applied while the row plays (FUN_00428510's handlers own both numbers).
+    float        m_rowSpeed = 0.f;
+    float        m_rowDecel = 0.f;
     bool         m_launched = false;   // the current Hit is a launch: landing becomes a knockdown
     int          m_downPhase = 0;      // +0xadf4's reaction phases: 1 lying, 2 get-up
+    int          m_downRow = 0;        // 118/119 while lying, 120 for the get-up (0 = none)
     int          m_staggerDecay = 0;   // +0x7bc
     int          m_comboDecay = 0;     // +0x7c4
     int          m_comboHits = 0;      // +0x7b0: the damage-proration counter
-    // +0x7d0: the victim's stun susceptibility, default 50 (FUN_0043ded0 recomputes it).
-    static constexpr int kStaggerResist = 50;
+    // +0x7d0: the victim's stun susceptibility. The initializer writes 100 (0x41e067); the 50
+    // at 0x43df11 is a conditional recompute, not the default. At 100 a 120-power contact fills
+    // the meter in ONE hit, which is why every swing flinches.
+    static constexpr int kStaggerResist = 100;
     float        m_reactionCounter = 0.f;   // +0x40
-    float        m_reactionRise = 0.f;      // +0x54, sign-flipped into m_vy
     int          m_hyperActivationFrames = 0;  // overlay window, or <0 for a gated hold (issue #71)
     int          m_hyperActivationSet = -1;   // overlay's bound set; -1 once superseded (issue #71)
     int          m_hyperActivationElapsed = 0;  // ticks since the overlay bound (issue #71)
