@@ -1,5 +1,11 @@
 # Plano de port — animações + combate data-driven (a partir do Ginkiha)
 
+> **Superseded as a work order — 2026-10-14.** This file is evidence and history.
+> It does **not** authorize implementation work. The only active plan is
+> [`docs/DIRECTION.md`](../DIRECTION.md); the mandate and the frozen list are in
+> [`AGENTS.md`](../../AGENTS.md). Do not continue the per-combo porting this
+> document describes.
+
 Branch `ginkiha-help` · 2026-10-09 (revisão de escopo: 2026-10-11) · companheiro de
 `docs/reports/ginkiha-comparison.md`.
 

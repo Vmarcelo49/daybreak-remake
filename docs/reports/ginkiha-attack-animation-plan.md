@@ -1,5 +1,11 @@
 # Plano de ataque e animação — revisão da branch Ginkiha
 
+> **Superseded as a work order — 2026-10-14.** This file is evidence and history.
+> It does **not** authorize implementation work. The only active plan is
+> [`docs/DIRECTION.md`](../DIRECTION.md); the mandate and the frozen list are in
+> [`AGENTS.md`](../../AGENTS.md). Do not continue the per-combo porting this
+> document describes.
+
 2026-10-11 · `ginkiha-help` · revisão estática de HEAD `aa9588c` e seu código.
 Companheiros: [plano geral](ginkiha-port-plan.md), [bloqueios de tiro](ginkiha-blockers-plan.md),
 [grupo Rena](ginkiha-rena-iteration.md). Não houve execução do jogo nesta revisão.

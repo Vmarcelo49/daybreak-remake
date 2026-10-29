@@ -1,5 +1,11 @@
 # Character iteration 1 — Rena+0 / Rena+1 / Rena+2
 
+> **Superseded as a work order — 2026-10-14.** This file is evidence and history.
+> It does **not** authorize implementation work. The only active plan is
+> [`docs/DIRECTION.md`](../DIRECTION.md); the mandate and the frozen list are in
+> [`AGENTS.md`](../../AGENTS.md). Do not continue the per-combo porting this
+> document describes.
+
 2026-10-11. Companion: [coverage ledger](ginkiha-shooting-coverage.md).
 
 All three legal weapons were investigated together. This iteration corrects ground

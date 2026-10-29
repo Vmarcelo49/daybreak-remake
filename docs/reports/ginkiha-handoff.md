@@ -1,5 +1,11 @@
 # Handoff — Phase 2 combo porting (`ginkiha-help` branch)
 
+> **Superseded as a work order — 2026-10-14.** This file is evidence and history.
+> It does **not** authorize implementation work. The only active plan is
+> [`docs/DIRECTION.md`](../DIRECTION.md); the mandate and the frozen list are in
+> [`AGENTS.md`](../../AGENTS.md). Do not continue the per-combo porting this
+> document describes.
+
 To the next agent: continue porting character+weapon combo shot programs exactly as below.
 Historical entries below include superseded claims; verify them against current code.
 
