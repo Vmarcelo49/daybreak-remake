@@ -13,9 +13,9 @@
     "total_coverage_pct": 75.44,
     "binary_data_categories": {
       "other": 48,
-      "callgraph": 1,
-      "segments": 2,
       "strings": 23,
+      "segments": 2,
+      "callgraph": 1,
       "types": 26
     }
   },
@@ -47059,64 +47059,140 @@
   "binary_data_artifacts": {
     "other": [
       {
-        "file": "research/binary_data/exports.txt",
-        "size_bytes": 17
-      },
-      {
-        "file": "research/binary_data/mass_decompile_progress.json",
-        "size_bytes": 37466
-      },
-      {
-        "file": "research/binary_data/open_programs.txt",
-        "size_bytes": 410
+        "file": "research/binary_data/metadata.txt",
+        "size_bytes": 316
       },
       {
         "file": "research/binary_data/globals.txt",
         "size_bytes": 4680
       },
       {
+        "file": "research/binary_data/mass_decompile_progress.json",
+        "size_bytes": 37466
+      },
+      {
         "file": "research/binary_data/entry_points.txt",
         "size_bytes": 116
-      },
-      {
-        "file": "research/binary_data/external_locations.txt",
-        "size_bytes": 7178
-      },
-      {
-        "file": "research/binary_data/data_items.txt",
-        "size_bytes": 4500
-      },
-      {
-        "file": "research/binary_data/imports.txt",
-        "size_bytes": 5604
-      },
-      {
-        "file": "research/binary_data/metadata.txt",
-        "size_bytes": 316
       },
       {
         "file": "research/binary_data/segments_list.txt",
         "size_bytes": 162
       },
       {
-        "file": "research/binary_data/pe_extract/shader_info.json",
-        "size_bytes": 1191
+        "file": "research/binary_data/external_locations.txt",
+        "size_bytes": 7178
       },
       {
-        "file": "research/binary_data/pe_extract/pe_info.json",
-        "size_bytes": 993
+        "file": "research/binary_data/exports.txt",
+        "size_bytes": 17
+      },
+      {
+        "file": "research/binary_data/imports.txt",
+        "size_bytes": 5604
+      },
+      {
+        "file": "research/binary_data/data_items.txt",
+        "size_bytes": 4500
+      },
+      {
+        "file": "research/binary_data/open_programs.txt",
+        "size_bytes": 410
+      },
+      {
+        "file": "research/binary_data/scene_table/0x006a16c0_256bytes.bin",
+        "size_bytes": 256
+      },
+      {
+        "file": "research/binary_data/scene_table/FASE9_REPORT.md",
+        "size_bytes": 6554
+      },
+      {
+        "file": "research/binary_data/scene_table/callees/006586d0.c",
+        "size_bytes": 179
+      },
+      {
+        "file": "research/binary_data/scene_table/callees/00408050.c",
+        "size_bytes": 1376
+      },
+      {
+        "file": "research/binary_data/scene_table/callees/0064ad70.c",
+        "size_bytes": 192
+      },
+      {
+        "file": "research/binary_data/scene_table/callees/00406850.c",
+        "size_bytes": 9369
+      },
+      {
+        "file": "research/binary_data/scene_table/callees/006584e0.c",
+        "size_bytes": 468
+      },
+      {
+        "file": "research/binary_data/scene_table/callees/006585f0.c",
+        "size_bytes": 890
+      },
+      {
+        "file": "research/binary_data/scene_table/callees/00657390.c",
+        "size_bytes": 7273
+      },
+      {
+        "file": "research/binary_data/scene_table/callees/0064aed0.c",
+        "size_bytes": 348
+      },
+      {
+        "file": "research/binary_data/scene_table/callees/0065d6a0.c",
+        "size_bytes": 169
+      },
+      {
+        "file": "research/binary_data/scene_table/callees/0065d150.c",
+        "size_bytes": 1381
+      },
+      {
+        "file": "research/binary_data/scene_table/callees/0065b870.c",
+        "size_bytes": 717
+      },
+      {
+        "file": "research/binary_data/scene_table/callees/0065d670.c",
+        "size_bytes": 169
+      },
+      {
+        "file": "research/binary_data/scene_table/callees/00648f30.c",
+        "size_bytes": 2799
+      },
+      {
+        "file": "research/binary_data/anti_analysis/iocs.txt",
+        "size_bytes": 10439
+      },
+      {
+        "file": "research/binary_data/anti_analysis/anti_debug.txt",
+        "size_bytes": 11666
+      },
+      {
+        "file": "research/binary_data/anti_analysis/FASE12_REPORT.md",
+        "size_bytes": 3971
+      },
+      {
+        "file": "research/binary_data/anti_analysis/malware_behaviors.txt",
+        "size_bytes": 260
+      },
+      {
+        "file": "research/binary_data/pe_extract/ip_address.bin",
+        "size_bytes": 0
+      },
+      {
+        "file": "research/binary_data/pe_extract/active_slots.bin",
+        "size_bytes": 0
       },
       {
         "file": "research/binary_data/pe_extract/char_selections.bin",
         "size_bytes": 0
       },
       {
-        "file": "research/binary_data/pe_extract/section_.rdata.bin",
-        "size_bytes": 90112
+        "file": "research/binary_data/pe_extract/pe_info.json",
+        "size_bytes": 993
       },
       {
-        "file": "research/binary_data/pe_extract/ip_address.bin",
-        "size_bytes": 0
+        "file": "research/binary_data/pe_extract/section_.rdata.bin",
+        "size_bytes": 90112
       },
       {
         "file": "research/binary_data/pe_extract/scene_dispatcher_config.bin",
@@ -47127,15 +47203,19 @@
         "size_bytes": 2752512
       },
       {
+        "file": "research/binary_data/pe_extract/shader_info.json",
+        "size_bytes": 1191
+      },
+      {
         "file": "research/binary_data/pe_extract/section_.rsrc.bin",
         "size_bytes": 4096
       },
       {
-        "file": "research/binary_data/pe_extract/active_slots.bin",
+        "file": "research/binary_data/pe_extract/input_state.bin",
         "size_bytes": 0
       },
       {
-        "file": "research/binary_data/pe_extract/input_state.bin",
+        "file": "research/binary_data/pe_extract/port.bin",
         "size_bytes": 0
       },
       {
@@ -47143,205 +47223,45 @@
         "size_bytes": 69632
       },
       {
-        "file": "research/binary_data/pe_extract/port.bin",
-        "size_bytes": 0
+        "file": "research/binary_data/render_pipeline/FASE_RENDER_LOOP_REPORT.md",
+        "size_bytes": 15191
       },
       {
         "file": "research/binary_data/render_pipeline/candidates.json",
         "size_bytes": 10283
       },
       {
-        "file": "research/binary_data/render_pipeline/FASE_RENDER_LOOP_REPORT.md",
-        "size_bytes": 15191
-      },
-      {
         "file": "research/binary_data/render_pipeline/FASE_D3D_REPORT.md",
         "size_bytes": 11371
-      },
-      {
-        "file": "research/binary_data/scene_table/FASE9_REPORT.md",
-        "size_bytes": 6554
-      },
-      {
-        "file": "research/binary_data/scene_table/0x006a16c0_256bytes.bin",
-        "size_bytes": 256
-      },
-      {
-        "file": "research/binary_data/scene_table/callees/00657390.c",
-        "size_bytes": 7273
-      },
-      {
-        "file": "research/binary_data/scene_table/callees/00408050.c",
-        "size_bytes": 1376
-      },
-      {
-        "file": "research/binary_data/scene_table/callees/006584e0.c",
-        "size_bytes": 468
-      },
-      {
-        "file": "research/binary_data/scene_table/callees/0065d150.c",
-        "size_bytes": 1381
-      },
-      {
-        "file": "research/binary_data/scene_table/callees/00648f30.c",
-        "size_bytes": 2799
-      },
-      {
-        "file": "research/binary_data/scene_table/callees/0065d670.c",
-        "size_bytes": 169
-      },
-      {
-        "file": "research/binary_data/scene_table/callees/006585f0.c",
-        "size_bytes": 890
-      },
-      {
-        "file": "research/binary_data/scene_table/callees/00406850.c",
-        "size_bytes": 9369
-      },
-      {
-        "file": "research/binary_data/scene_table/callees/0065b870.c",
-        "size_bytes": 717
-      },
-      {
-        "file": "research/binary_data/scene_table/callees/0065d6a0.c",
-        "size_bytes": 169
-      },
-      {
-        "file": "research/binary_data/scene_table/callees/0064ad70.c",
-        "size_bytes": 192
-      },
-      {
-        "file": "research/binary_data/scene_table/callees/006586d0.c",
-        "size_bytes": 179
-      },
-      {
-        "file": "research/binary_data/scene_table/callees/0064aed0.c",
-        "size_bytes": 348
       },
       {
         "file": "research/binary_data/network_analysis/candidates.json",
         "size_bytes": 14668
       },
       {
-        "file": "research/binary_data/network_analysis/FASE11C_REPORT.md",
-        "size_bytes": 14964
+        "file": "research/binary_data/network_analysis/FASE11_REPORT.md",
+        "size_bytes": 12813
       },
       {
         "file": "research/binary_data/network_analysis/FASE11B_REPORT.md",
         "size_bytes": 11063
       },
       {
-        "file": "research/binary_data/network_analysis/FASE11_REPORT.md",
-        "size_bytes": 12813
-      },
-      {
-        "file": "research/binary_data/anti_analysis/anti_debug.txt",
-        "size_bytes": 11666
-      },
-      {
-        "file": "research/binary_data/anti_analysis/iocs.txt",
-        "size_bytes": 10439
-      },
-      {
-        "file": "research/binary_data/anti_analysis/FASE12_REPORT.md",
-        "size_bytes": 3971
-      },
-      {
-        "file": "research/binary_data/anti_analysis/malware_behaviors.txt",
-        "size_bytes": 260
-      }
-    ],
-    "callgraph": [
-      {
-        "file": "research/binary_data/callgraph/full_call_graph.txt",
-        "size_bytes": 52801
-      }
-    ],
-    "segments": [
-      {
-        "file": "research/binary_data/segments/Headers.bin",
-        "size_bytes": 4096
-      },
-      {
-        "file": "research/binary_data/segments/segments_list.txt",
-        "size_bytes": 162
+        "file": "research/binary_data/network_analysis/FASE11C_REPORT.md",
+        "size_bytes": 14964
       }
     ],
     "strings": [
       {
-        "file": "research/binary_data/strings/filter_bgm.txt",
-        "size_bytes": 828
-      },
-      {
-        "file": "research/binary_data/strings/filter_File.txt",
-        "size_bytes": 521
-      },
-      {
-        "file": "research/binary_data/strings/filter_mpg.txt",
-        "size_bytes": 121
-      },
-      {
-        "file": "research/binary_data/strings/filter_dat.txt",
-        "size_bytes": 400
-      },
-      {
-        "file": "research/binary_data/strings/filter_Error.txt",
-        "size_bytes": 864
-      },
-      {
-        "file": "research/binary_data/strings/filter_stage.txt",
-        "size_bytes": 78
-      },
-      {
-        "file": "research/binary_data/strings/filter_x.txt",
-        "size_bytes": 196
-      },
-      {
-        "file": "research/binary_data/strings/filter_bmp.txt",
-        "size_bytes": 2966
-      },
-      {
-        "file": "research/binary_data/strings/filter_voice.txt",
-        "size_bytes": 586
-      },
-      {
-        "file": "research/binary_data/strings/filter_teamselect.txt",
-        "size_bytes": 220
+        "file": "research/binary_data/strings/filter_s.txt",
+        "size_bytes": 1188
       },
       {
         "file": "research/binary_data/strings/filter_Cmovie.txt",
         "size_bytes": 25
       },
       {
-        "file": "research/binary_data/strings/filter_player.txt",
-        "size_bytes": 62
-      },
-      {
         "file": "research/binary_data/strings/filter_ERROR.txt",
-        "size_bytes": 864
-      },
-      {
-        "file": "research/binary_data/strings/all_strings.txt",
-        "size_bytes": 45
-      },
-      {
-        "file": "research/binary_data/strings/filter_s.txt",
-        "size_bytes": 1188
-      },
-      {
-        "file": "research/binary_data/strings/filter_ogg.txt",
-        "size_bytes": 804
-      },
-      {
-        "file": "research/binary_data/strings/filter_select.txt",
-        "size_bytes": 1303
-      },
-      {
-        "file": "research/binary_data/strings/filter_data.txt",
-        "size_bytes": 3391
-      },
-      {
-        "file": "research/binary_data/strings/filter_error.txt",
         "size_bytes": 864
       },
       {
@@ -47353,97 +47273,165 @@
         "size_bytes": 35
       },
       {
-        "file": "research/binary_data/strings/filter_wav.txt",
-        "size_bytes": 584
+        "file": "research/binary_data/strings/filter_teamselect.txt",
+        "size_bytes": 220
       },
       {
         "file": "research/binary_data/strings/filter_Cdata.txt",
         "size_bytes": 98
+      },
+      {
+        "file": "research/binary_data/strings/filter_error.txt",
+        "size_bytes": 864
+      },
+      {
+        "file": "research/binary_data/strings/filter_mpg.txt",
+        "size_bytes": 121
+      },
+      {
+        "file": "research/binary_data/strings/filter_bgm.txt",
+        "size_bytes": 828
+      },
+      {
+        "file": "research/binary_data/strings/filter_x.txt",
+        "size_bytes": 196
+      },
+      {
+        "file": "research/binary_data/strings/filter_ogg.txt",
+        "size_bytes": 804
+      },
+      {
+        "file": "research/binary_data/strings/filter_player.txt",
+        "size_bytes": 62
+      },
+      {
+        "file": "research/binary_data/strings/filter_File.txt",
+        "size_bytes": 521
+      },
+      {
+        "file": "research/binary_data/strings/filter_wav.txt",
+        "size_bytes": 584
+      },
+      {
+        "file": "research/binary_data/strings/filter_stage.txt",
+        "size_bytes": 78
+      },
+      {
+        "file": "research/binary_data/strings/filter_data.txt",
+        "size_bytes": 3391
+      },
+      {
+        "file": "research/binary_data/strings/filter_voice.txt",
+        "size_bytes": 586
+      },
+      {
+        "file": "research/binary_data/strings/filter_Error.txt",
+        "size_bytes": 864
+      },
+      {
+        "file": "research/binary_data/strings/all_strings.txt",
+        "size_bytes": 45
+      },
+      {
+        "file": "research/binary_data/strings/filter_dat.txt",
+        "size_bytes": 400
+      },
+      {
+        "file": "research/binary_data/strings/filter_bmp.txt",
+        "size_bytes": 2966
+      },
+      {
+        "file": "research/binary_data/strings/filter_select.txt",
+        "size_bytes": 1303
+      }
+    ],
+    "segments": [
+      {
+        "file": "research/binary_data/segments/segments_list.txt",
+        "size_bytes": 162
+      },
+      {
+        "file": "research/binary_data/segments/Headers.bin",
+        "size_bytes": 4096
+      }
+    ],
+    "callgraph": [
+      {
+        "file": "research/binary_data/callgraph/full_call_graph.txt",
+        "size_bytes": 52801
       }
     ],
     "types": [
       {
-        "file": "research/binary_data/types/cat_WinDef.h.txt",
-        "size_bytes": 3173
+        "file": "research/binary_data/types/cat_ehdata.h.txt",
+        "size_bytes": 56
       },
       {
-        "file": "research/binary_data/types/cat_fltintrn.h.txt",
-        "size_bytes": 287
-      },
-      {
-        "file": "research/binary_data/types/cat_winnls.h.txt",
-        "size_bytes": 200
-      },
-      {
-        "file": "research/binary_data/types/cat_guiddef.h.txt",
-        "size_bytes": 235
-      },
-      {
-        "file": "research/binary_data/types/cat_vadefs.h.txt",
-        "size_bytes": 101
-      },
-      {
-        "file": "research/binary_data/types/cat_mbstring.h.txt",
-        "size_bytes": 150
-      },
-      {
-        "file": "research/binary_data/types/cat_winnt.h.txt",
-        "size_bytes": 2793
+        "file": "research/binary_data/types/cat_winuser.h.txt",
+        "size_bytes": 670
       },
       {
         "file": "research/binary_data/types/cat_DOS.txt",
         "size_bytes": 58
       },
       {
-        "file": "research/binary_data/types/cat_Demangler.txt",
-        "size_bytes": 1692
-      },
-      {
-        "file": "research/binary_data/types/cat_wingdi.h.txt",
-        "size_bytes": 610
-      },
-      {
-        "file": "research/binary_data/types/cat_PE.txt",
-        "size_bytes": 5544
-      },
-      {
-        "file": "research/binary_data/types/all_data_types.txt",
-        "size_bytes": 236
-      },
-      {
-        "file": "research/binary_data/types/categories.txt",
-        "size_bytes": 520
-      },
-      {
-        "file": "research/binary_data/types/cat_mtdll.h.txt",
-        "size_bytes": 431
-      },
-      {
-        "file": "research/binary_data/types/cat_excpt.h.txt",
-        "size_bytes": 388
-      },
-      {
         "file": "research/binary_data/types/cat_winbase.h.txt",
         "size_bytes": 1456
-      },
-      {
-        "file": "research/binary_data/types/cat_unknwn.h.txt",
-        "size_bytes": 281
-      },
-      {
-        "file": "research/binary_data/types/cat_wtypes.h.txt",
-        "size_bytes": 44
-      },
-      {
-        "file": "research/binary_data/types/cat_stdlib.h.txt",
-        "size_bytes": 387
       },
       {
         "file": "research/binary_data/types/cat_imm.h.txt",
         "size_bytes": 122
       },
       {
-        "file": "research/binary_data/types/cat_basetsd.h.txt",
+        "file": "research/binary_data/types/cat_unknwn.h.txt",
+        "size_bytes": 281
+      },
+      {
+        "file": "research/binary_data/types/cat_wingdi.h.txt",
+        "size_bytes": 610
+      },
+      {
+        "file": "research/binary_data/types/cat_search.h.txt",
+        "size_bytes": 42
+      },
+      {
+        "file": "research/binary_data/types/all_data_types.txt",
+        "size_bytes": 236
+      },
+      {
+        "file": "research/binary_data/types/cat_mtdll.h.txt",
+        "size_bytes": 431
+      },
+      {
+        "file": "research/binary_data/types/cat_wtypes.h.txt",
+        "size_bytes": 44
+      },
+      {
+        "file": "research/binary_data/types/cat_PE.txt",
+        "size_bytes": 5544
+      },
+      {
+        "file": "research/binary_data/types/cat_winnls.h.txt",
+        "size_bytes": 200
+      },
+      {
+        "file": "research/binary_data/types/cat_excpt.h.txt",
+        "size_bytes": 388
+      },
+      {
+        "file": "research/binary_data/types/cat_mbstring.h.txt",
+        "size_bytes": 150
+      },
+      {
+        "file": "research/binary_data/types/cat_fltintrn.h.txt",
+        "size_bytes": 287
+      },
+      {
+        "file": "research/binary_data/types/cat_Demangler.txt",
+        "size_bytes": 1692
+      },
+      {
+        "file": "research/binary_data/types/cat_stdlib.h.txt",
         "size_bytes": 387
       },
       {
@@ -47451,20 +47439,32 @@
         "size_bytes": 1345
       },
       {
-        "file": "research/binary_data/types/cat_ehdata.h.txt",
-        "size_bytes": 56
-      },
-      {
         "file": "research/binary_data/types/cat_crtdefs.h.txt",
         "size_bytes": 1289
       },
       {
-        "file": "research/binary_data/types/cat_search.h.txt",
-        "size_bytes": 42
+        "file": "research/binary_data/types/cat_winnt.h.txt",
+        "size_bytes": 2793
       },
       {
-        "file": "research/binary_data/types/cat_winuser.h.txt",
-        "size_bytes": 670
+        "file": "research/binary_data/types/cat_vadefs.h.txt",
+        "size_bytes": 101
+      },
+      {
+        "file": "research/binary_data/types/cat_guiddef.h.txt",
+        "size_bytes": 235
+      },
+      {
+        "file": "research/binary_data/types/cat_basetsd.h.txt",
+        "size_bytes": 387
+      },
+      {
+        "file": "research/binary_data/types/categories.txt",
+        "size_bytes": 520
+      },
+      {
+        "file": "research/binary_data/types/cat_WinDef.h.txt",
+        "size_bytes": 3173
       }
     ]
   },
