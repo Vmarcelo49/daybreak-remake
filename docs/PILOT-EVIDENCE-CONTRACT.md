@@ -2481,3 +2481,42 @@ and left the port's own clock reset looking like a one-tick regression.
 Still not carried: the row's frame-10 `flags 0x100` record, so the port can still cancel out of
 the landing on its first tick. The row's zeroing writes (speed, movement angle, turn, vertical)
 have no port field to land in, and state 43's turn write stays unmodelled for the same reason.
+
+### V3-43 — the Hyper EX's contact volume does not reach the opponent (open, reproduced)
+
+Found while trying to pin the late-camera path (the port's only writer of camera set 1 needs the
+EX to connect). **The EX swing does not register a hit against an opponent placed anywhere I
+could put it.** This is recorded as an open defect, not a fixed one — it is the largest known gap
+in the pilot after tonight's work, and the signature attack of the combo.
+
+**What was measured** (all with `--native-actions=rena0`, `hyper oyashiro`, SPECIAL at tick 20,
+`attack_row 350` confirmed on the press tick):
+
+| setup | result |
+|---|---|
+| dummy at z = 120, 150, 180, 300, 330, 380, 430, 480 | `swing_hits 0` and `dummy_hp 100` at every sampled tick through 100 |
+| dummy placed with the fixture's `place_at_attack active` helper | same: `swing_hits 0` through tick 75 |
+
+**Why it misses.** Row 350's phase does carry contact: of the ticks the body spends in it, seven
+have `has_combat()` true (`hitRadius 20`, collision shape 1 = segment). On those ticks the formed
+segment is on `Bip01_Prop1` and lands around `(18, 67, 406)`–`(110, 87, 373)` in world space while
+the attacker stands at z ≈ 180 — i.e. the contact volume sits roughly **220 units in front of
+her**, well beyond where an opponent placed on her own attack volume ends up, so
+`combatVolumeHits` returns false and no hit is ever emitted.
+
+For contrast, row 300 (the neutral swing, which does land: `rena0-hit-ground-300.fixture`) uses
+the same bone with authored anchors `(0,0,0)`→`(0,100,0)` — a 100-unit vertical segment at the
+prop bone. Row 350's transformed volume being 220 units forward suggests one of: the prop bone's
+posed transform for this move, `bone_point`'s model-space multiply, or the record's own anchors
+being intended for a different space. The port's `bone_point` is
+`modelMatrix * pose[frame] * vec4(local,1)`, so an authored anchor that is really in MODEL space
+would be displaced exactly this way.
+
+**What is NOT the cause**, ruled out by measurement: the state (it is `AttackA` on every contact
+tick), the active window (`melee_in_active()` is true there), the opponent's liveness, and the
+harness (row 300 lands in the same conditions).
+
+**What would settle it:** the record's authored anchors for row 350 next to row 300's, and whether
+the recovered contact resolver (`FUN_00637950`) transforms them by the prop bone or by the model
+root. That is one bounded reading of the loader and the resolver, and it decides whether this is
+a port bug in `bone_point`'s use or a per-row anchor-space difference.
