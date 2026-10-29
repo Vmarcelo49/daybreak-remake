@@ -645,6 +645,10 @@ public:
     // the close-target voice cascade's state-class tests, which sample it BEFORE the
     // fighter updates — so it is the previous tick's row at that point.
     int action_state() const { return numeric_state(); }
+    // Non-zero while the fighter is playing the landing row (44) instead of Idle's own: the
+    // original's state 44 is a row, not a flavour of Idle, so this is what tells a reader that
+    // the Idle *state* is in its landing window.
+    int landing_ticks() const { return m_landingTicks; }
     int bound_move_id() const { return m_boundMoveId; }
     bool air_dash_context() const { return m_dashAir; }
     // NN.dat move selected for a grounded directional dash, or -1 when the
@@ -1271,6 +1275,13 @@ private:
     // one 32-frame clip late. This flag makes the fall bind row 43 directly, and it also
     // suppresses the row-41 hover, which state 43 does not have (V3-42).
     bool         m_dashFall = false;
+    // Landing screen. State 44 is a real row — move 44, one section tagged 44, 22 frames at the
+    // shipped 1760/4800 ticks — and every air state that touches down enters it (FUN_0043ffc0
+    // :54-81, and state 43's own exit at :530-536). The port has no 44 state and keeps the
+    // fighter in Idle, so this counter plays the row's clip for its recovered length and then
+    // falls back to Idle's own. What it does NOT carry is the row's frame-10 flags-0x100 record,
+    // so the port can still cancel out of the landing on the first tick (V3-42).
+    int          m_landingTicks = 0;
     // The air dash's phase-1 visit counter (the body's +0x3a). Set 55 declares the +0x20
     // hold, so its clock can never advance the phase; the body leaves for phase 2 once
     // more than five visits have passed and either no direction is held or the meter is
@@ -1388,6 +1399,7 @@ private:
     // 0x28/0x29/0x2a): 40 on the ground, 41 while rising, 42 once vy falls under
     // the apex literal. Each row's first phase tag is the jump clip.
     int jump_chain_move() const;
+    int landing_row_frames() const;
     // A state can change its move without changing its port label (only the air
     // chain does today). The source rebinds through FUN_00421080 whenever the
     // move id changes, so re-check the binding once per update.

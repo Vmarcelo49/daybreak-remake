@@ -760,13 +760,14 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
             m_hoverSpent = false;   // a new airtime re-arms the one hover
             if (m_state == FighterState::Jump ||
                 (m_state == FighterState::Run && m_dashAir)) {
-                // One tick of the landing row's +40 refill (jump bodies 44): the port
-                // has no landing row, so the transition carries a single tick. Jump
-                // landings only; dash/melee landing rows are unrecovered.
+                // Row 44 refills +40 (or +5 while status slot 6 is set) on every update, and
+                // the port's Idle adds the same amount, so the window is animation-only and
+                // the meter timing does not move.
                 if (m_pilotMeter && m_state == FighterState::Jump) {
                     const int refill = m_hitStatusDuration[6] > 0 ? 5 : 40;
                     m_actionMeter = std::min(1000, m_actionMeter + refill);
                 }
+                m_landingTicks = landing_row_frames();
                 set_state(FighterState::Idle);
             } else if (m_state == FighterState::AttackA || m_shotMoveId >= 0) {
                 // The recovered attack bodies' landing branches: a LandExit rule
@@ -865,6 +866,24 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         // playhead and applying any eligible class blend for this same tick. A
         // FUN_00421100 bind resets both elapsed counters; the common update leaves
         // that newly selected set at position zero on this tick.
+        // The landing window counts down before the refresh so the tick that ends it rebinds
+        // Idle's own row instead of playing row 44 one frame too long. Leaving Idle (walking,
+        // attacking, jumping) ends the window early, which is what the port's immediate cancel
+        // means today.
+        if (m_landingTicks > 0) {
+            if (m_state != FighterState::Idle) {
+                m_landingTicks = 0;
+            } else {
+                --m_landingTicks;
+                // Ending the window has to clear the bound set first: try_switch_animation
+                // returns early while m_animSetIdx is still >= 0, which is what keeps a state's
+                // clip stable across ticks.
+                if (m_landingTicks == 0) {
+                    m_animSetIdx = -1;
+                    try_switch_animation();
+                }
+            }
+        }
         refresh_state_move();
         advance_animation_phase();
         if (m_state == FighterState::Guard && m_animate) {
@@ -1971,8 +1990,22 @@ int Fighter::state_move_id() const {
         // (button_a && button_b) that would exit the stance rather than hold it. The
         // stance's CLIP is bound in try_switch_animation instead -- see the note there.
         case FighterState::Guard:   return -1;
+        // The landing window: row 44's clip, then Idle's own row.
+        case FighterState::Idle:
+            return m_landingTicks > 0 ? present_move(44) : state_to_move_id(m_state);
         default:                    return state_to_move_id(m_state);
     }
+}
+
+int Fighter::landing_row_frames() const {
+    // The recovered length is the row's own clip, not a constant: set 44 is 1760 ticks at the
+    // model's 4800 ticks/second, and the original's window is the frame count its loader derives
+    // from that period (trunc(1760 / 4800 / 0.016) = 22). Reading the bound model keeps the
+    // number honest for a combo whose landing clip differs.
+    const CharacterMove* landing = m_moves ? m_moves->find(44) : nullptr;
+    const int set = landing ? landing->phase_set_index(0) : -1;
+    if (!m_model) return 0;
+    return std::max(0, animation_period_frames(*m_model, set));
 }
 
 int Fighter::jump_chain_move() const {

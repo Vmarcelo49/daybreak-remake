@@ -2424,3 +2424,30 @@ port previously bound **5**. Removing the binding fails it with `tick 33 anim_se
 - **No hover, edge case.** The hover is suppressed in the fall, but the observation window after a
   dash is short enough that no fixture could see the difference (the only honest test would land
   before the climb showed), so this half is specified and untested rather than pinned.
+
+### V3-42 (continued) — the landing row is implemented
+
+State 44's row now plays. It was specified in the entry above and is in place:
+
+- `landing_row_frames()` reads the length from the row itself — move 44's first section set,
+  through the shared `animation_period_frames` truncation — so a combo whose landing clip differs
+  gets its own number instead of a constant (Rena+0: 1760/4800/0.016 → **22** frames).
+- The window opens on the touchdown that lands from `Jump` or from an air dash, and Idle's row
+  resolver returns move 44 while it is open.
+- It closes by clearing the bound set before re-resolving — `try_switch_animation` returns early
+  while a set is bound, which is what keeps a state's clip stable and is exactly why the window
+  first got stuck on set 44.
+- The meter is untouched: row 44 refills +40 (or +5 with status slot 6) per update and the port's
+  Idle adds the same, so the window is animation-only and no meter expectation moved.
+
+**Pinned:** `rena0-air-dash-left.fixture` — `anim_set 44` at the landing updates and `anim_set 0`
+once the window closes; removing the row fails it with `tick 40 anim_set exp 44 got 0`.
+
+**A real port-loop finding came out of it:** the differential comparison treats "Idle" as the
+locomotion row, so a fighter playing row 44 inside Idle read as a binding mismatch on 27 ticks.
+The adapter's domain now excludes a fighter whose landing window is open, which is the honest
+classification — the original's state 44 is a row, not a flavour of Idle.
+
+Still not carried: the row's frame-10 `flags 0x100` record, so the port can still cancel out of
+the landing on its first tick. The row's zeroing writes (speed, movement angle, turn, vertical)
+have no port field to land in, and state 43's turn write stays unmodelled for the same reason.

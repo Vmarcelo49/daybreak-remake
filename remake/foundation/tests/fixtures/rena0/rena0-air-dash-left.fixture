@@ -36,5 +36,10 @@ expect 33 airborne 1
 # here and reach set 43 a clip later (V3-42).
 expect 33 anim_set 43
 expect 36 anim_set 43
+# Landing enters row 44 — the shared landing row, 22 frames at the shipped 1760/4800 ticks —
+# and returns to Idle's own row when the window closes (V3-42).
+expect 40 anim_set 44
+expect 50 anim_set 44
+expect 60 anim_set 0
 expect 37 state 0
 expect 40 y 0

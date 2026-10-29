@@ -127,7 +127,10 @@ inline const char* observe_rena0_tick(const Rena0PilotSample& before, const Figh
     // Domain: the fighter ends the tick grounded in Idle or Walk, and the only held axes are
     // the ones the F1-5 mapping established (Right -> +x, Up -> -z).
     const FighterState state = after.state();
-    const bool locomotion = state == FighterState::Idle || state == FighterState::Walk;
+    // A fighter in its landing window is playing row 44, not the locomotion row, so it is out
+    // of this comparison's domain even though the port keeps it in Idle (V3-42).
+    const bool locomotion = (state == FighterState::Idle && after.landing_ticks() == 0) ||
+                            state == FighterState::Walk;
     if (!locomotion) {
         ++obs.outOfDomain;
         obs.note("not-a-locomotion-state");
