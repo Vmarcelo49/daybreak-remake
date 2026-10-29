@@ -782,6 +782,12 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                 d.paletteOffset = paletteOffset;
                 d.modelIndex = mi;
                 d.model = model;
+                // One quad = one effect card. The shot models carry the thrown weapon as a
+                // 67-68 vertex mesh and its glow as separate 4-vertex quads
+                // (data/bullet/001/03.X: blade + two quads; 06.X is a lone quad), and the
+                // quad textures are fully opaque black outside the glow, so only additive
+                // blending can hide their background. V3-36.
+                d.cardQuad = mesh.vertices.size() == 4 && mesh.indices.size() == 6;
 
                 const xm::Material& mat =
                     (sub.material >= 0 && (size_t)sub.material < mesh.materials.size())
@@ -1144,23 +1150,26 @@ void SceneRenderer::setEffectInstances(const std::vector<EffectInstance>& instan
             d.model = e.model;
             d.instance = true;
             if (e.renderMode >= 0) {
-                // FUN_005f60b0 switches the render state on the shot record's +0x7c, and
-                // EVERY case enables alpha blending (:78-:131): case 1 sets
-                // ALPHABLENDENABLE, case 3 sets it with the technique-8 state (and an
-                // optional colour), cases 2 and 4 set it with DESTBLEND = ZERO and Z off,
-                // and the `default` case the shipped shots actually take (:136-:143)
-                // changes no state at all and only picks a technique. None of them draws a
-                // shot surface opaque, so neither does the port now: an opaque draw shows
-                // the card's own black plate, which is why the muzzle ring model
-                // (data/bullet/001/06.X) appeared as a black square with rings on it
-                // instead of the glowing ring the original shows.
-                //
-                // 3/4 still select the unlit technique. The Z-off half of cases 2/4 is not
-                // modelled: the effect pass keeps its depth test and drops only the depth
-                // write, which is the closest this renderer has to "draw over, don't occlude".
-                d.pass = Pass::Effect;
-                d.flags &= ~xm::kDrawUnlit;
-                if (e.renderMode == 3 || e.renderMode == 4) d.flags |= xm::kDrawUnlit;
+                // FUN_005f60b0 switches state on the shot record's +0x7c (:77), and the
+                // port's mapping (2/4 additive, 3/4 unlit) is where this stopped. What the
+                // shipped models need is PER MESH, not per record: data/bullet/001/03.X is
+                // ONE shot model holding the thrown nata (mesh 0, 67 verts, an ordinary
+                // textured blade) and the two additive glow quads around it (meshes 1 and 2,
+                // 4 verts each). Drawing the whole model additively makes the nata vanish
+                // into the background; drawing it opaque puts the quads' black plate over
+                // the ground. Neither is right, and no recovered per-mesh signal has been
+                // found yet, so the record's own mapping stands until one is (V3-36).
+                // A shot model mixes both: the thrown weapon and the glow cards around it.
+                // The quads go additive so their opaque-black background disappears, while
+                // the weapon keeps the record's own mapping — drawing the whole model
+                // additively made the nata vanish into the stage (owner report), and drawing
+                // it all opaque put a black plate over the ground. PORT RULE: the split is
+                // geometric (4 vertices, 6 indices), because no recovered per-mesh blend
+                // signal exists; it is the same kind of geometric routing setScene already
+                // uses for the billboard verdict.
+                const bool glowQuad = t.cardQuad || e.renderMode == 2 || e.renderMode == 4;
+                d.pass = glowQuad ? Pass::Effect : Pass::Opaque;
+                d.flags &= ~xm::kDrawUnlit;                if (e.renderMode == 3 || e.renderMode == 4) d.flags |= xm::kDrawUnlit;
             }
             for (const auto& offset : offsets)
                 if (offset.first == t.paletteOffset) d.paletteOffset = offset.second;

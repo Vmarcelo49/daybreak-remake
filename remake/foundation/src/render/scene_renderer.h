@@ -516,6 +516,10 @@ private:
         // True for an extra draw added by setEffectInstances: its matrix comes from the
         // instance list, so the per-model upload must not overwrite it.
         bool       instance = false;
+        // This mesh is exactly one quad (4 vertices, 6 indices): in a shot model those are
+        // the additive glow cards that sit around the thrown weapon, and drawing them
+        // opaque shows their fully-opaque black background (V3-36).
+        bool       cardQuad = false;
         // This draw is one the original's toon technique covers (character or weapon):
         // the appearance switch turns it into kDrawToon at uniform-fill time.
         bool       toon = false;

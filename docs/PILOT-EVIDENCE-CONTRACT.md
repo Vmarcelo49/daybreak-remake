@@ -2148,3 +2148,40 @@ every shot this weapon fires (probed on live shots), so the difference for that 
 come from another field — the candidates are the bullet parameter's own state or the ambient
 state the original's `default` case inherits. Until that is settled the Z-off half of cases
 2/4 is also unmodelled: the effect pass keeps the depth test and drops only the depth write.
+
+### V3-36 — a shot model holds BOTH the weapon and its glow: the pass is per MESH
+
+The owner's follow-up killed the blanket fix in V3-35: "the effect is correct but now the mesh is
+not there — the nata is being thrown, and now there is only the effect."
+
+The reason is the model, not the state. `data/bullet/001/03.X` — the thrown nata — is **one
+model with three meshes**:
+
+| mesh | verts | texture | what it is |
+|---|---|---|---|
+| 0 | 67 | `鉈02` ("nata 02") | the thrown blade |
+| 1, 2 | 4 each | `鉈回転エフェクト` ("nata rotation effect") | the glow cards around it |
+
+Drawing the whole model additively made the blade wash out; drawing it opaque put the quads'
+black background over the ground. Both are the same file, so no per-model pass can satisfy it.
+
+The glow texture explains why blending is the only lever: `data/bullet/001/鉈回転エフェクト.cnv`
+is **alpha 255 on every texel** (measured: min = max = 255), so alpha test cannot cut the black
+field and normal alpha blending would paint it. Only additive lets black contribute nothing.
+
+Implemented as a per-mesh split: a mesh that is exactly one quad (4 vertices, 6 indices) inside a
+shot model is drawn with the effect pass; everything else keeps the record's own mapping
+(`+0x7c` 2/4 additive, 3/4 unlit). This is a **PORT RULE** and it is labelled as one: no recovered
+per-mesh blend signal exists — the two meshes' materials differ only in `Power` (32 on the quads,
+0 on the blade) with `Specular` zero on both, which is not a blend control. It is the same kind of
+geometric routing `setScene` already uses for the billboard verdict, and the survey supports it:
+across weapon 001's shot models the weapon is a 67-68 vertex mesh and every glow is a 4-vertex
+quad (`06.X` is a lone quad — the pure ring).
+
+Rendered at the same frame: the nata is solid and lit and the ring glows over the ground with no
+black plate. Suite 83/83 excluding the known `device_isolation_test` flake; fixture matrix
+unchanged at 29/30/47.
+
+**Open:** the geometric split is a rule, not a recovered fact — a quad that is NOT a glow card
+would be drawn additively (none found in weapon 001's models, not yet swept across all 46
+weapons), and the Z-off half of `+0x7c` cases 2/4 remains unmodelled.
