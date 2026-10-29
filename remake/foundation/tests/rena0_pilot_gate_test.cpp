@@ -631,6 +631,7 @@ struct ExDamage {
     int row = -1;
     int hits = 0;
     int victimHp = 100;
+    int lateCamera = -1;   // the camera once the move's own clock passes the late window (0x33)
 };
 
 ExDamage exDamageRun(test::Combo& combo) {
@@ -672,7 +673,13 @@ ExDamage exDamageRun(test::Combo& combo) {
         // place_at_attack does: the EX lunges forward, so a placement made once ends up behind her.
         test::Combo::placeAtAttack(fighter, match.fighter(1));
         step(match, actor);
-        if (fighter.attack_move_id() == 350) run.row = 350;
+        if (fighter.attack_move_id() == 350) {
+            run.row = 350;
+            // 0x33 = 51 of the move's own clock: once the late hit latch is armed AND the clock
+            // has passed it, the EX switches to camera set 1 (FUN_0043ffc0:1437-1446).
+            if (fighter.phase_elapsed() >= 52)
+                run.lateCamera = std::max(run.lateCamera, fighter.action_camera());
+        }
         run.hits = std::max(run.hits, fighter.swing_hit_count());
     }
     run.victimHp = match.fighter(1).hp();
@@ -937,6 +944,9 @@ int main(int argc, char** argv) {
                                  std::to_string(ex.hits) + " hit(s)");
         require(ex.victimHp < 100, "the EX must damage the opponent, HP " +
                                        std::to_string(ex.victimHp));
+        require(ex.lateCamera == 1,
+                "a connecting EX must switch to camera set 1 past tick 0x33, got " +
+                    std::to_string(ex.lateCamera));
         require(camera.cameraOnWhiff == 0,
                 "the EX attack must play the recovered camera set 0 even when it misses, "
                 "got " + std::to_string(camera.cameraOnWhiff));

@@ -2512,12 +2512,13 @@ regression is load-bearing: `rena0_pilot_gate_test` now asserts the row binds an
 and `melee_admission_test` asserts the program carries **no** contact cut for row 350 instead of
 asserting the old rule.
 
-**Still open, and now visible because the fix let the move run:** the port's row 350 ends around
-elapsed 47, while the recovered body has rules at frame 56 (voice 33) and frame 70 (a `ClockSeek`
-rewind to 66), so its clock must reach at least 70. That is why the late camera switch (V3-37's
-set 1 from `0x33`) still never arms even with a connecting EX — the window is past the move's end
-in the port. The row's length/clock is therefore the next thing to reconcile here; the damage fix
-does not depend on it.
+**And the late camera now works.** With the EX able to connect, its hit latch is set, and once the
+move's own clock passes `0x33` the request switches to set 1 as V3-37 recovered. Measured: the
+switch lands around fixture tick 80 rather than 71, which is the body's own clock skips (the
+`ClockSkip -1` window over frames 1..9) holding the move's clock behind the fixture's. Row 350's
+clip is 91 frames (7040 ticks at 4800/s), so the whole body — including the frame-56 voice and the
+frame-70 rewind — fits inside it. Both paths are pinned now: `rena0_pilot_gate_test` asserts the
+whiff run stays on set 0 and a connecting run reaches set 1.
 
 **Also retracted with it:** the "350's damage is the particle/effect scatter" line in the rule
 table. The effect requests are what the recovered code does spawn (ids 320/350/340 via
