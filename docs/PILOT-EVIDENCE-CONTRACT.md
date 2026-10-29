@@ -2646,3 +2646,45 @@ separation distance. Turning the default on is one line once that lands.
 
 **Open:** the four fixtures above (re-record at ≥60 units, no per-tick teleport); the COM's melee
 reach at the stand-off; and the guarding victim's record source (`0x400` flags).
+
+### V3-46 — melee volume audit: the shape dispatch is faithful, and the chest sphere was 25 units off
+
+Three independent audits ran against the melee hit geometry (recovered code, port code, and the
+shipped move tables) because the body-separation work kept landing on it. All three converged.
+
+**The shape dispatch is NOT a port bug (tier 2, both sides).** `FUN_00637950` gates on the record's
+radius (`+0x24 != 0`, `0x6379da`), then branches on `record+0x08`: zero evaluates
+`FUN_0063b470(victim+0xa4, 30.0f, attacker+0xc4, radius)` and again against `+0xb4`; non-zero
+evaluates `FUN_0063b4d0` with both `+0xc4` and `+0xd4`. `FUN_00420880` fills those two slots from
+`record+0x0c` and `record+0x18` under the matrix of the bone the record names
+(`FUN_0041e180` → `FUN_0064e6c0`), with no shape test. The port does exactly that
+(`fighter.cpp:1768-1777`, `combat_volume.h`). A "sphere" record is a body-part contact sphere — the
+shipped bones are `Bip00` (142), `Head` (126), `L_Toe` (100), `R_Toe` (92), `L_Hand` (74),
+`R_Hand` (61), `Prop1` (20), `Prop2` (12), `Spine` (11) over the 653 radius-carrying shape-0
+records — and its reach is the record's radius plus the victim's 30, not a forward offset. 72% of
+the shipped contact records are shape 0, and 88 of them even carry a second anchor that neither
+implementation reads: that is a data property, not a defect.
+
+**Fixed: the chest sphere was 25 units out.** Both recovered builders pass `0xC1C80000` to
+`FUN_00423750` (`FUN_00420880:36`, `FUN_0063dad0:242`), which is **-25.0f**; the port carried
+`-50.0` (`fighter.cpp:3248`, comments in `fighter.h` and `melee_rules.h`, and
+`ROADMAP-PENDING.md` repeated it as recovered). The literal is now the named
+`MeleeRules::chestAnchorOffset` with the address in its comment, so the value cannot drift again
+without touching one citation. Effect: the victim's chest sphere now sits where the original puts
+it, which moves every marginal chest-height hit; the accepted fixture matrix still passes unchanged.
+
+**Fixed: the `--hitbox-debug` overlay drew the wrong volume for every capsule record.** It drew
+`attackCenter` as one sphere and never read `capsule`/`attackEnd`, so the 100-unit blade that
+actually connects was invisible and a capsule swing *looked* like a point on the prop bone — which
+is what made the visual audit misread the geometry. It now samples the segment.
+
+**Recorded, not changed:**
+- the COM's reach model is `bodyRadius + the FIRST combat record's radius` (`fighter.h:938`), which
+  ignores where the record's anchor sits and how long the blade is — and with body separation on it
+  presses from under 60 while the stand-off holds the pair at exactly 60, so it never presses at all
+  (measured: 14 presses, 0 hits). That is a bot rule, not the hit test.
+- the occlusion test queries `start → victim chest` rather than the swept volume (`FUN_00637950` has
+  no occlusion test at all), so it can only remove hits the recovered rule grants.
+- the recovered capsule predicate is perpendicular distance to the blade line plus a
+  `|anchor − blade midpoint| < 2R` bound (`0x63b4d0-0x63b5de`), not an exact clamped segment
+  distance; the two agree except near the ends of long blades.

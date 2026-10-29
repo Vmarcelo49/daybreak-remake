@@ -798,7 +798,7 @@ it is gone, and `melee_rules.h` now reproduces the sphere. The `30.0` is the lit
 
 The victim's extent is the real vertical limit and it is **anatomical**: `FUN_0063dad0`
 builds exactly **two** victim anchors, from the `Bip01_Head` and `Bip01_Spine` bones
-(spine at -50.0). A fighter is a head sphere and a chest sphere and nothing else, which
+(spine offset -25.0, the literal 0xC1C80000 both recovered builders pass). A fighter is a head sphere and a chest sphere and nothing else, which
 is why legs cannot be hit. The port reproduces the two-anchor shape.
 
 A directional filter **does** exist — `weapon+0x2C` is an 8-way facing mask filtered at

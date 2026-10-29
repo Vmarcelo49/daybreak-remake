@@ -4355,8 +4355,22 @@ static void fillMatchCubes(App& app) {
             const gameplay::Fighter::HitboxDebug hb = app.match.fighter(i).hitbox_debug();
             for (const glm::vec3& anchor : hb.anchors)
                 app.hitboxCubes.addSphere(anchor, hb.anchorRadius, kHurtVolume);
-            if (hb.attacking)
+            if (!hb.attacking) continue;
+            // A capsule record is a swept blade, not a point: draw the volume along the whole
+            // segment. Drawing only the centre is what made every capsule record look like a
+            // sphere sitting on the prop bone during the melee-reach audit (V3-46).
+            if (hb.capsule) {
+                const glm::vec3 axis = hb.attackEnd - hb.attackCenter;
+                const float length = glm::length(axis);
+                const int steps = std::max(1, static_cast<int>(length / (hb.attackRadius * 0.5f)));
+                for (int k = 0; k <= steps; ++k) {
+                    const float t = static_cast<float>(k) / static_cast<float>(steps);
+                    app.hitboxCubes.addSphere(hb.attackCenter + axis * t, hb.attackRadius,
+                                              kHitVolume);
+                }
+            } else {
                 app.hitboxCubes.addSphere(hb.attackCenter, hb.attackRadius, kHitVolume);
+            }
         }
     }
 

@@ -3243,10 +3243,12 @@ glm::vec3 Fighter::hurtbox_anchor_offset(int index) const {
             if (f >= 0 && m_anim) return bone_point("Bip01_Head", glm::vec3(0.f)) - m_position;
             if (f >= 0) return glm::vec3(bindWorld(m_model, f)[3]);
         } else {
-            // FUN_0063dad0:244 transforms (-50.0,0,0) by the Spine frame.
+            // FUN_0063dad0:242 transforms FUN_00423750(0xc1c80000,0,0) = (-25,0,0) by the
+            // Spine frame. The recovered literal is the rules' chestAnchorOffset.
+            const float spineX = m_meleeRules.chestAnchorOffset;
             const int f = m_model->findFrame("Bip01_Spine");
-            if (f >= 0 && m_anim) return bone_point("Bip01_Spine", glm::vec3(-50.f,0.f,0.f)) - m_position;
-            if (f >= 0) return glm::vec3(bindWorld(m_model, f) * glm::vec4(-50.f, 0.f, 0.f, 1.f));
+            if (f >= 0 && m_anim) return bone_point("Bip01_Spine", glm::vec3(spineX,0.f,0.f)) - m_position;
+            if (f >= 0) return glm::vec3(bindWorld(m_model, f) * glm::vec4(spineX, 0.f, 0.f, 1.f));
         }
     }
     // No rig, or a rig without these bones: fractions of the collision body height. Only

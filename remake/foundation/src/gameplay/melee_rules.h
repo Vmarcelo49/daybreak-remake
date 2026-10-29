@@ -12,9 +12,15 @@ struct MeleeRules {
     // The victim's own body radius: the literal 30.0 the original passes to the sphere
     // test (0x41f00000 in FUN_00637950:96). Every hit is `dist < bodyRadius + radius`.
     float bodyRadius = 30.0f;
-    // Victim anchors as fractions of MovementCollision::kFighterHeight. The original
-    // takes these from the Head and Spine bones (FUN_0063dad0:238-243, spine at -50.0);
-    // fractions stand in for the rig, and are the reason a swing cannot reach legs.
+    // The chest anchor's displacement along the Spine bone's local X, recovered from the
+    // literal both functions pass to FUN_00423750: 0xc1c80000 = -25.0f
+    // (FUN_00420880:36 and FUN_0063dad0:242). The port carried -50.0 until 2026-10-29, which
+    // put the whole chest sphere 25 units away from the original's and moved every marginal
+    // chest-height hit.
+    float chestAnchorOffset = -25.0f;
+    // Victim anchors as fractions of MovementCollision::kFighterHeight, used only when a rig
+    // has no Head/Spine frames; fractions stand in for the rig, and are the reason a swing
+    // cannot reach legs.
     float headHeightFrac  = 1.0f;
     float chestHeightFrac = 0.42f;
 
