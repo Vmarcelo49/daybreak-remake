@@ -637,10 +637,13 @@ contrast. The suite carries the comparison on the guard fixture (**240 guard tic
 disagreements**).
 
 **Finding: the port's guard is coarser than the recovered body, and its damage gate is a
-provisional port rule.** The port binds **no** clip or phase for `Guard`
-(`state_has_animation_selector` returns −1 for it), so the body's phases 0/1/2, its 390/391/392
+provisional port rule.** The port binds no *move* for `Guard` (`state_has_animation_selector`
+returns −1 for it) and keeps no simulation phase, so the body's phases 0/1/2, its 390/391/392
 rows and its 20-frame hold counter have **no port counterpart** — recorded as
-`guard-granularity-unrepresented`. What the port does have is recovered on the attacker side:
+`guard-granularity-unrepresented`. (Its *animation* phases do exist: `m_guardClip`/`m_guardPhase`
+bind row 390's sections — sets 60 then 61 — and advance on the clip's own period plus the set's
+hold gate, which is what makes the stance loop. The sim phase, the release section and 391/392
+are what is missing; contract V3-40 specifies them.) What the port does have is recovered on the attacker side:
 a guarded contact switches the attacker to the 392 recoil row through `rena_guard_exit_row`
 (`fighter.cpp:1829-1836`). On the victim side the damage gate is explicitly **PROVISIONAL**:
 `take_damage` reduces a guarded hit to 20% with a comment saying the original's guard damage

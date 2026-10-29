@@ -1204,9 +1204,10 @@ finding changes the plan.
   port reads the guard **before** the damage call and that same call stuns the victim out of `Guard`
   (`match.cpp:265-280`), so the block report and the state exit arrive on one tick — the observer now checks
   the contact first, which is why the first run saw `blocks 0/0` and the final one sees `2/2`. Two findings
-  are recorded rather than smoothed over: (1) the port binds **no** clip or phase for `Guard`, so the body's
-  phases 0/1/2, its 390/391/392 rows and its 20-frame hold counter have no port counterpart
-  (`guard-granularity-unrepresented`) — although the attacker-side 392 recoil **is** recovered through
+  are recorded rather than smoothed over: (1) the port binds no *move* and keeps no simulation phase for
+  `Guard`, so the body's phases 0/1/2, its 390/391/392 rows and its 20-frame hold counter have no port
+  counterpart (`guard-granularity-unrepresented`) — later work bound the stance's *animation* sections
+  (sets 60 then 61, gate-aware), which is why the later entries read differently — although the attacker-side 392 recoil **is** recovered through
   `rena_guard_exit_row`; and (2) the victim-side guard damage gate is an explicitly **PROVISIONAL** port rule
   (guarded damage reduced to 20%, `fighter.cpp:1228-1235`, whose own comment says the original's guard damage
   gate is unmapped), while the body's gauge is not the port's stamina (`guard-gauge-units-unresolved`). That
