@@ -1639,12 +1639,21 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
             // 0x428af8-0x428b2e). A record with no launch keeps the victim planted.
             m_reactionCounter = launchCounter;
             m_reactionRise = launchRise;
-            if (launchRise > 0.f && m_grounded) {
-                // The recovered slot is a per-TICK displacement (the original integrates
-                // +0x54 into the position once per frame), while m_vy is per second — so the
-                // rise is divided by the fixed step, not multiplied by any invented factor.
-                m_vy = std::max(m_vy, launchRise / static_cast<float>(FixedStep::seconds));
-                m_grounded = false;
+            // +0x54 is the SPEED the motion integrator applies along the body's own facing:
+            // FUN_004202b0 computes sin/cos of (+0x5c + +0x60 + +0x64) and multiplies it by
+            // +0x54 before calling the horizontal mover (0x420349-0x420398). The hit writes it
+            // NEGATIVE, so the victim travels backwards. It is a per-TICK speed, so the fixed
+            // step converts it to the port's per-second velocity.
+            if (launchRise != 0.f) {
+                const glm::vec3 back(-std::sin(m_facing), 0.f, -std::cos(m_facing));
+                m_velocity = back * (launchRise / static_cast<float>(FixedStep::seconds));
+                // The recoil also lifts: the port keeps the pop the owner confirmed while the
+                // slide runs, so a hit does not look like a pure ground slide.
+                if (m_grounded) {
+                    m_vy = std::max(m_vy, std::fabs(launchRise) /
+                                              static_cast<float>(FixedStep::seconds));
+                    m_grounded = false;
+                }
             }
         }
     }
