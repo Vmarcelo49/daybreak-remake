@@ -160,10 +160,10 @@ struct Options {
     int battleFighterCount = 0;
     bool        versus = false;  // scripted two-fighter vignette (capture-oriented)
     bool        match = false;   // playable match: the ported simulation, not a script
-    // FUN_006394c0's body separation. OFF by default while the acceptance fixtures that place
-    // bodies inside the 60-unit radius are re-recorded with realistic spacing — see
-    // docs/PILOT-EVIDENCE-CONTRACT.md V3-45.
-    bool        bodySeparation = false;
+    // FUN_006394c0's body separation. ON by default (it is recovered behaviour); the switch
+    // exists for an A/B run and is applied where the match is built, not here — a default here
+    // that disagreed with Match's own would silently cancel the feature.
+    bool        bodySeparation = true;
     std::string script;          // P1 input script (device override, DX9 format)
     // P2-7 (2e) slice 1: observe-mode pilot adapter. Empty = the legacy path, untouched.
     std::string nativeActions;   // "--native-actions=rena0" runs the locomotion observer
@@ -396,10 +396,9 @@ void usage() {
         "                     --character, --enemy and --frames>=30\n"
         "  --bgm=<file.ogg>   versus BGM track played through the loop player\n"
         "  --sfx=<file.cnv>    versus hit cue fired at scripted hits\n"
-        "  --body-separation  enable the recovered body separation (FUN_006394c0): bodies\n"
-        "                     closer than 60 units are pushed apart, half each. Off by\n"
-        "                     default until the acceptance fixtures that place bodies\n"
-        "                     inside that radius are re-recorded (V3-45).\n"
+        "  --body-separation  A/B switch for the recovered body separation (FUN_006394c0):\n"
+        "                     bodies closer than 60 units are pushed apart, half each. It\n"
+        "                     is ON by default; --no-body-separation turns it off.\n"
         "  --match            playable match: the ported fighter simulation, the real\n"
         "                     match economy and live HUD values (needs --stage,\n"
         "                     --character and --enemy, like --versus)\n"
@@ -687,6 +686,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--versus") o.versus = true;
         else if (a == "--match") o.match = true;
         else if (a == "--body-separation") o.bodySeparation = true;
+        else if (a == "--no-body-separation") o.bodySeparation = false;
         else if (!(v = val("--script=")).empty()) o.script = v;
         else if (!(v = val("--native-actions=")).empty()) o.nativeActions = v;
         else if (!(v = val("--script2=")).empty()) o.script2 = v;
