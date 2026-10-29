@@ -83,7 +83,8 @@ const std::pair<const char*, const char*> kRequiredCases[] = {
     {"single-hover", "rena0-single-hover.fixture"},
     {"jump-climb", "rena0-jump-climb.fixture"},
     {"air-turn", "rena0-air-turn.fixture"},
-    {"attack-empty-meter", "rena0-attack-empty-meter.fixture"}};
+    {"attack-empty-meter", "rena0-attack-empty-meter.fixture"},
+    {"ex-hyper-camera", "rena0-hyper-ex-camera.fixture"}};
 const std::pair<const char*, const char*> kRequiredFields[] = {
     {"state", "rena0-idle-walk-turn-stop.fixture"},
     {"state_enum", "rena0-melee-ground-300.fixture"},
@@ -211,6 +212,11 @@ std::string evalExpectation(const gameplay::Match& match, const gameplay::Charac
     if (e.field == "balloon1") return real("balloon1", (double)match.economy().balloon(1));
     if (e.field == "airborne") return boolean("airborne", f.airborne());
     if (e.field == "air_dash_context") return boolean("air_dash_context", f.air_dash_context());
+    // The action camera and the Hyper flag: what the Hyper EX attack (row 350) drives. The
+    // camera is an animation SET on the battle camera rig, so this pins which one, not just
+    // "a camera" (V3-37).
+    if (e.field == "action_camera") return exact("action_camera", f.action_camera());
+    if (e.field == "hyper") return boolean("hyper", f.hyper_active());
     if (e.field == "melee_active") return boolean("melee_active", f.melee_in_active());
     if (e.field == "melee_recovery") return boolean("melee_recovery", f.melee_in_recovery());
     if (e.field == "swing_started") return boolean("swing_started", frame.swingStarted[0]);

@@ -221,6 +221,32 @@ int main() {
         check_int("an unknown kill counts nothing", 0, (long long)t.killed);
     }
 
+    // 12. The card animation clock (game/fx_cards.h). RECOVERED rule: a card's lifetime IS
+    // its clip's length (EffectEntry::lifetimeSeconds comes from the model's own
+    // AnimationSet), and the original drives the clip with age * 0.016 — so at birth the
+    // card is on its first frame, halfway through its life on the middle of the clip, and
+    // at expiry on the last. The edges are what this pins: a zero lifetime or a model with
+    // no animation must yield 0 rather than a division by zero, and a past-expiry age must
+    // clamp instead of overshooting the clip.
+    {
+        check_near("birth is the first frame", 0.0,
+                   static_cast<float>(game::cardAnimationSeconds(0.f, 2.f, 1.5)), 1e-6f);
+        check_near("half life is half the clip", 0.75,
+                   static_cast<float>(game::cardAnimationSeconds(1.f, 2.f, 1.5)), 1e-6f);
+        check_near("expiry is the last frame", 1.5,
+                   static_cast<float>(game::cardAnimationSeconds(2.f, 2.f, 1.5)), 1e-6f);
+        check_near("a past-expiry age clamps", 1.5,
+                   static_cast<float>(game::cardAnimationSeconds(9.f, 2.f, 1.5)), 1e-6f);
+        check_near("a zero lifetime yields no time", 0.0,
+                   static_cast<float>(game::cardAnimationSeconds(1.f, 0.f, 1.5)), 1e-6f);
+        check_near("a model with no clip yields no time", 0.0,
+                   static_cast<float>(game::cardAnimationSeconds(1.f, 2.f, 0.0)), 1e-6f);
+        check_near("a negative age cannot rewind", 0.0,
+                   static_cast<float>(game::cardAnimationSeconds(-1.f, 2.f, 1.5)), 1e-6f);
+        check_near("matching lifetime is the age", 0.4,
+                   static_cast<float>(game::cardAnimationSeconds(0.4f, 0.4f, 0.4)), 1e-6f);
+    }
+
     std::printf("%d checks, %d failed\n", g_checks, g_failed);
     std::printf(g_failed ? "FX_CARDS: FAIL\n" : "FX_CARDS: ok\n");
     return g_failed ? 1 : 0;

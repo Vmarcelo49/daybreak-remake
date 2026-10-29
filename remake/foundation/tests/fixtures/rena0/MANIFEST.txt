@@ -45,6 +45,7 @@ case single-hover      rena0-single-hover.fixture
 case jump-climb        rena0-jump-climb.fixture
 case air-turn          rena0-air-turn.fixture
 case attack-empty-meter rena0-attack-empty-meter.fixture
+case ex-hyper-camera rena0-hyper-ex-camera.fixture
 case idle-refill       rena0-idle-refill.fixture
 
 field state            rena0-idle-walk-turn-stop.fixture
@@ -77,6 +78,8 @@ field swing_started    rena0-melee-ground-300.fixture
 field melee_active     rena0-melee-ground-300.fixture
 field melee_recovery   rena0-hit-ground-300.fixture
 field swing_hits       rena0-hit-ground-300.fixture
+field action_camera rena0-hyper-ex-camera.fixture
+field hyper rena0-hyper-ex-camera.fixture
 field melee_hit        rena0-hit-ground-300.fixture
 field melee_victim     rena0-hit-ground-300.fixture
 field guard_started    rena0-guard-hold.fixture
