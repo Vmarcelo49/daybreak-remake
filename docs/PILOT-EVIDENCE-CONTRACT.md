@@ -1990,3 +1990,46 @@ of the port for three contract entries.
 
 Also fixed by the same finding: `docs/PILOT-SEAM.md:1467` already mapped `0xa0 | 0x280 |
 jump-held count | input.down[Jump]`; the contract now agrees with it.
+
+### V3-33 — the empty-tap shot's ring card is drawn with no animation (open, needs owner scope)
+
+Owner report with two screenshots (2026-10-28, tier 3): the effect card that plays on the
+empty-tap shot does not match the original. In the original it reads as a soft, bright band;
+in the port it reads as separated, hard-edged hoops with dark gaps between them.
+
+Identified, not guessed:
+
+- The card is **`data/effect/01.X`**. Rendering it alone reproduces the port's in-game
+  appearance exactly (`--effect=Higurashi-Daybreak/data/effect/01.X`), so the in-game path
+  is not substituting a different asset.
+- That file is an **MSZIP-compressed** `.X` (`xof 0303bzip0032`; the port's own
+  `decompressMSZip` at `assets/xmodel.h:782` documents the block format). Inflated, its
+  material names the texture **`渦巻き.bmp`** — "spiral". `data/effect/渦巻き.cnv` exists and
+  decodes to vertical fire streaks, and `TextureCache::get` (`assets/cnv.h:304-310`) resolves
+  the `.bmp` → `.cnv` swap, so the texture is bound, not missing.
+- The card **carries animation**: the inflated stream holds one `AnimationSet`, **10
+  `AnimationKey`s and 40 `Frame` references**.
+- **The port never plays it.** `SceneRenderer::EffectInstance`
+  (`render/scene_renderer.h:386-400`) carries a model matrix, a billboard flag and — for
+  projectiles only — a `pose` controller; `main.cpp` pushes effect cards as
+  `{c.asset, shotModelMatrix(...)}` with no pose, so every card draws its bind pose. Rendering
+  the card at frames 1, 5, 10, 20, 30, 40 and 60 of the demo produces **seven identical
+  images**: the effect does not move.
+
+That is a mechanical explanation for the visual difference — a spinning/evolving "spiral"
+drawn frozen — and it is consistent with the hoops being visible individually instead of
+blending into a band. It is *not* yet proof: no original-side frame trace exists, so the
+claim "the original plays this card's animation" rests on the asset carrying keys at all
+(tier 2) plus the owner's observation (tier 3), not on observing the original advance it.
+
+Why this needs an owner decision before implementation: the change is in the **shared effect
+path**, not the Rena+0 seam. Effect cards are spawned for every combo (muzzle, impacts, hit
+cards, hyper aura), so animating them changes the look of the whole game — squarely the kind
+of global change this repo requires approval for. The shape would be: `EffectInstance` gains
+the card's own pose clock, `main.cpp` advances it from the card's age, and the renderer binds
+`pose` for cards the way it already does for projectiles — verified afterwards with a capture
+of the same shot.
+
+Open questions for the verdict: (a) implement card animation now, or record and defer;
+(b) if implemented, should the clock be the card's own `AnimationSet` rate or the spawn's
+lifetime (they are different things and the original may use either).
