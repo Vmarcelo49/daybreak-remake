@@ -169,6 +169,20 @@ void testPosedCombat() {
     check(!attacker.try_melee_hit(victim),"the next noncombat record disables collision");
     attacker.take_damage(1,&victim);
     check(!attacker.try_melee_hit(victim),"interruption disables the old attack volume");
+
+    // The record's launch (FUN_00637950 @0x638633/0x638645 → consumer 0x428af8): the counter is
+    // the record word scaled by the global 0.01, and the rise lifts a grounded victim. Both are
+    // per-tick values in the original, so the port divides the rise by its fixed step.
+    combo.init(victim);
+    check(victim.state() != FighterState::Knockdown, "victim starts grounded");
+    victim.take_damage(0, &attacker, 6, 0, false, 5.0f, 5.0f);
+    check(std::fabs(victim.reaction_counter() - 5.0f) < 1e-4f,
+          "combat[17]*0.01 becomes the reaction counter (+0x40)");
+    check(victim.airborne(), "combat[18]*0.01 lifts a grounded victim (+0x54)");
+    const float risenY = victim.position().y;
+    for (int i = 0; i < 6; ++i) victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+    check(victim.position().y > risenY, "and the victim keeps rising under its own integration");
+    check(victim.reaction_counter() < 5.0f, "the counter decays 0.3 a tick");
     combo.init(attacker); swing_to_active(attacker);
     for (int i = 0; i < 240 && attacker.state() == FighterState::AttackA; ++i) tick_held(attacker,in);
     check(attacker.state() == FighterState::Idle,"actual final-set period completes the attack without a recovery timer");

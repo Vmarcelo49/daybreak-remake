@@ -2707,3 +2707,44 @@ is what made the visual audit misread the geometry. It now samples the segment.
 - the recovered capsule predicate is perpendicular distance to the blade line plus a
   `|anchor − blade midpoint| < 2R` bound (`0x63b4d0-0x63b5de`), not an exact clamped segment
   distance; the two agree except near the ends of long blades.
+
+### V3-47 — hit reactions: the record's launch words, the counter, and the reaction row
+
+**Owner report:** hits apply no effect — an uncharged shot, or the third hit of a combo, should
+throw the opponent. Nothing did.
+
+**Recovered (tier 2).** `FUN_00637950` writes two words from the record into the victim
+(`0x638633`/`0x638645`, gated by `victim+0x7b8 >= 100`):
+
+- `victim+0x87c = (float)record[+0x74]` — `fild` of the integer at `[attacker+0x10]+0x74`, i.e.
+  `combat[17]`;
+- `victim+0x878 = (float)record[+0x78]` = `combat[18]`;
+- and `victim+0x7b0 += 1` (a hit counter).
+
+The consumer is at `0x428af8-0x428b2e`: both words are multiplied by the global float at
+**`0x6a24c4` = 0.01** (`0x3c23d70a`), then
+
+- `victim+0x40 = combat[17] * 0.01` — a counter that **decays by `+0x58` per tick**, where
+  `+0x58` is set to **0.3** (`0x3e99999a`) right there, and the decrement is `0x428943`/`0x428946`;
+- `victim+0x54 = -(combat[18] * 0.01)` — the vertical slot. The sibling branch at `0x42892c`
+  hardcodes the same field to `0xc0a00000` = **-5.0**, which is exactly what `combat[18] = 500`
+  produces through this path, so -5.0 is the standard launch;
+- when the counter reaches zero (`0x428963` against `0.0`, `0x42897a`) the victim is switched to
+  **move `0x76` = 118** via `FUN_00421080` — the reaction row.
+
+So a hit is a *timed reaction*, not a one-frame state change: an 500-powered contact holds the
+victim for ~17 ticks (5.0 / 0.3) and then hands them to row 118.
+
+**Implemented:** `Fighter::take_damage` takes the record's two words (`combat[17] * 0.01` as the
+counter, `combat[18] * 0.01` as the rise) from both the melee path and the shot path, so an
+uncharged bullet reacts the same way as a swing. The counter ticks down 0.3 a tick and, on expiry,
+switches the victim's row to 118. The rise is a **per-tick** displacement in the original, so the
+port divides it by the fixed step when it seeds `m_vy` — a unit conversion, not a tuning factor.
+
+**Open:** the horizontal pushback. The recovered `+0x40` is a *counter*, not a sideways velocity,
+so "knocked backwards" must come from row 118's own animation (or a field the consumer path does
+not touch). Until that is recovered the port throws the victim up and plays the reaction row, with
+no independent horizontal impulse.
+
+**Also open:** the mid-move reaction rows (row 118 is one id; the combo finishers presumably use
+others) and whether shots pick their reaction row from the bullet record the same way.

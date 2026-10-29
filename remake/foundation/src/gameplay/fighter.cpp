@@ -419,6 +419,15 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // The activation flash decays 4 a tick from 0xFC (FUN_0041f580's +0x334
     // maintenance), independent of states and overlays.
     if (m_hyperFlash > 0) m_hyperFlash = std::max(0, m_hyperFlash - 4);
+    // The hit's reaction clock (+0x40): -0x3e99999a = 0.3 per tick, and reaching zero switches
+    // the victim to move 0x76 (118) — the recovered consumer at 0x428943/0x428946/0x42897a.
+    if (m_reactionCounter > 0.f) {
+        m_reactionCounter = std::max(0.f, m_reactionCounter - 0.3f);
+        if (m_reactionCounter == 0.f && m_state == FighterState::Hit) {
+            m_swing = resolve_swing(0x76);
+            switch_attack_row(0x76);
+        }
+    }
 
     // 1. Decrement state timer (mirrors +0xa0 in fcn.0041f580).
     if (m_stateTimer > 0) {
@@ -1517,7 +1526,8 @@ const char* Fighter::anim_set_name() const {
 }
 
 Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hitstunFrames,
-                                           int hitCategory, bool shot) {
+                                           int hitCategory, bool shot,
+                                           float launchCounter, float launchRise) {
     if (!is_alive()) {
         // Already down: this is Overkill. The original credits exactly +1 per hit to
         // the victim's own side and does not touch HP, the KO clock or the death count
@@ -1625,6 +1635,17 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
             // weapon that specifies none keeps the shared default.
             m_stateTimer = hitstunFrames > 0 ? hitstunFrames
                                              : FighterConstants::kHitStunFrames;
+            // The record's launch (FUN_00637950 @0x638633/0x638645 → the consumer at
+            // 0x428af8-0x428b2e). A record with no launch keeps the victim planted.
+            m_reactionCounter = launchCounter;
+            m_reactionRise = launchRise;
+            if (launchRise > 0.f && m_grounded) {
+                // The recovered slot is a per-TICK displacement (the original integrates
+                // +0x54 into the position once per frame), while m_vy is per second — so the
+                // rise is divided by the fixed step, not multiplied by any invented factor.
+                m_vy = std::max(m_vy, launchRise / static_cast<float>(FixedStep::seconds));
+                m_grounded = false;
+            }
         }
     }
     return DamageResult::Hit;
@@ -1780,7 +1801,11 @@ bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollis
         m_meleeChargeBases = {record->hpDamage, record->reflectDamage};
         if (!pilot_guard_blocks(target, *this)) {
             const int damage = portDamage(meleePoolDamage(record->baseDamage), m_maxHP);
-            target.take_damage(damage, this, record->defenderHitstun, record->reactionMove);
+            // combat[17]/[18] are the launch words (+0x87c/+0x878, 0x638633/0x638645); the
+            // consumer scales them by the global 0.01 at 0x6a24c4.
+            target.take_damage(damage, this, record->defenderHitstun, record->reactionMove, false,
+                               static_cast<float>(record->combat[17]) * 0.01f,
+                               static_cast<float>(record->combat[18]) * 0.01f);
         }
         return true;
     }

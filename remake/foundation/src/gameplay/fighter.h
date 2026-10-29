@@ -480,7 +480,10 @@ public:
     // unmatched value does. `shot` marks projectile damage, whose increment formula and
     // already-down credit differ from melee's (see match_economy.h).
     DamageResult take_damage(int amount, Fighter* source = nullptr, int hitstunFrames = -1,
-                             int hitCategory = 0, bool shot = false);
+                             int hitCategory = 0, bool shot = false,
+                             float launchCounter = 0.f, float launchRise = 0.f);
+    // The reaction countdown and its expiry (see m_reactionCounter above).
+    float reaction_counter() const { return m_reactionCounter; }
     // FUN_00637950 writes hit-driven status durations at actor+0x7dc+slot*4;
     // Rena recovery reads slot 6 at actor+0x7f4. The match ticks durations after
     // the fighter executor, preserving the source's same-frame read-before-decrement.
@@ -1108,6 +1111,15 @@ private:
     // --- state machine ---
     FighterState m_state       = FighterState::Idle;
     int          m_stateTimer  = 0;    // frames remaining in current state
+    // FUN_00637950 @0x638633/0x638645 hands the victim two launch words from the record
+    // (combat[17] → +0x87c, combat[18] → +0x878). Its consumer (0x428af8-0x428b2e) scales both
+    // by the global 0.01 (0x6a24c4), stores -(combat[18]*0.01) in the vertical slot (+0x54) and
+    // combat[17]*0.01 in +0x40, which decays by 0.3 a tick (0x428943/0x428946) and switches the
+    // victim to move 0x76 when it reaches zero (0x42897a/0x42897f). The counter and the rise are
+    // kept in the port's own units: seconds-free tick counts, with `m_vy` positive upward (the
+    // recovered slot's negation is the original's downward-positive convention).
+    float        m_reactionCounter = 0.f;   // +0x40
+    float        m_reactionRise = 0.f;      // +0x54, sign-flipped into m_vy
     int          m_hyperActivationFrames = 0;  // overlay window, or <0 for a gated hold (issue #71)
     int          m_hyperActivationSet = -1;   // overlay's bound set; -1 once superseded (issue #71)
     int          m_hyperActivationElapsed = 0;  // ticks since the overlay bound (issue #71)
