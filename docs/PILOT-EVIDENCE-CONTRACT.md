@@ -2412,6 +2412,12 @@ set **5** (2480 ticks = 32 frames); so after a dash the port played 32 frames of
 have). The air-dash fixture now pins it: `anim_set 43` on the first post-dash update, where the
 port previously bound **5**. Removing the binding fails it with `tick 33 anim_set exp 43 got 5`.
 
+**Scope, stated plainly:** this reaches the *programmed* dash — the one whose row 30 advances
+through its own sections (`try_dash` marks it phase-driven, which on Rena+0's air row needs the
+pilot meter). The default path still ends its dash on the port's `kDashFrames` timer, which the
+original does not have; its fall stays on the jump chain and does **not** claim row 43, because
+the recovered completion only exists where the sections do.
+
 **Still missing, and specified rather than vague:**
 
 - **State 44, the shared landing row.** `FUN_0043ffc0`'s `if (iVar5 == 0x2c)` body (`:54-81`) is
@@ -2439,9 +2445,14 @@ State 44's row now plays. It was specified in the entry above and is in place:
   gets its own number instead of a constant (Rena+0: 1760/4800/0.016 → **22** frames).
 - The window opens on the touchdown that lands from `Jump` or from an air dash, and Idle's row
   resolver returns move 44 while it is open.
-- It closes by clearing the bound set before re-resolving — `try_switch_animation` returns early
-  while a set is bound, which is what keeps a state's clip stable and is exactly why the window
-  first got stuck on set 44.
+- It closes by clearing the bound set **and the row clock** before re-resolving. Two things were
+  wrong first: `try_switch_animation` returns early while a set is bound (which keeps a state's
+  clip stable, and is why the window stuck on set 44), and leaving the clock alone made the
+  standing clip start at row 44's last tick (~frame 22) on every landing — the port's own
+  `refresh_state_move` and `set_state` both zero that clock for exactly this reason.
+- The differential comparator had to learn the same thing: the tick that closes the window is a
+  transition in which the state setter restarts the clock, so it is compared as one instead of
+  being measured against a row that has already ended.
 - The meter is untouched: row 44 refills +40 (or +5 with status slot 6) per update and the port's
   Idle adds the same, so the window is animation-only and no meter expectation moved.
 
