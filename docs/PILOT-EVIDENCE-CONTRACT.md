@@ -661,7 +661,9 @@ the approved v2 manifest's `21 case rows, 39 acceptance fields, 7 unsupported, 3
 > how the runner works: it now requires the file to be named exactly `MANIFEST.txt`, because the
 > free `.txt` fallback let a decoy file rescue a missing manifest (V3-7). The approval this
 > section anticipated happened on the same date, and V3-1's `shot-gauge-spend` row was replaced
-> by the owner-approved correction; the current set is 24 fixtures / 25 case rows / 44 fields.
+> by the owner-approved correction. That was the set as of 2026-10-22; the runner now carries
+> **30 fixtures / 31 case rows / 49 fields** (2026-10-29), the additions being later pilot work
+> that is pinned by tests and awaits the owner's re-approval (see `SCOREBOARD.md`).
 
 **What approving this does not do.** It does not change the scoreboard (still `0/46`), does not
 lift freeze list A, does not start 2h, and does not assert original-runtime parity. It fixes the
