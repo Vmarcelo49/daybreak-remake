@@ -2105,3 +2105,36 @@ character clips use. So selecting set 0 is not picking one animation out of seve
 no second one to pick. Cards with a single *frame* still animate that frame's transform
 (`aura/00.x` is 2 frames and scales; `effect/01.X` is 20 frames and 11 meshes), which is why
 the animation is a palette matrix even for the smallest card.
+
+### V3-35 — the ring is a BULLET model drawn opaque; V3-33 named the wrong asset
+
+Correction to V3-33, found by an independent audit and confirmed by rendering: the ring in
+the owner's screenshots is **not** an effect card. `data/effect/01.X` — the file V3-33 named
+— is never added to the scene: no shipped effect descriptor names it (the 22 descriptors name
+14.X, 12.X, hit02.X, 05.X, g01.X, 06.X, 07.X, 13.X, 09.X, 10.X, 08.X, 15.X, 16.X, 17.X,
+19.X, 20.X, 21.X), so only `--effect=<file>` can show it. The V3-34 animation work is still a
+real fix (cards did draw bind pose), but it was not this symptom.
+
+The ring is **`data/bullet/001/06.X`** — weapon slot 001's shot model — and the defect is the
+**pass**, not the animation. Rendering that one file two ways proves it: with the model role
+(opaque) it is a black quad with rings on it, exactly the port's picture; with the effect role
+(additive) it is the glowing ring of the original's picture.
+
+`FUN_005f60b0` is why. It switches on the shot record's `+0x7c` (`:77`) and **every** case
+enables alpha blending: 1 sets `ALPHABLENDENABLE` (`:79`), 3 sets it with the technique-8
+state and an optional colour (`:91-:99`), 2 and 4 set it with `DESTBLEND = ZERO` and Z off
+(`:84-:89`), and the `default` case the shipped shots actually take (`:136-:143`) changes no
+state and only picks a technique. Nothing draws a shot surface opaque — the port did, for
+every `+0x7c` outside 2/4, and the shipped value is **0** (`combat[19] == 0` on live shots,
+probed). That black plate is the symptom.
+
+Fix: a projectile instance now always uses `Pass::Effect`, with `+0x7c` 3/4 still selecting
+the unlit technique. Rendered in-game at the same frame, the ring glows additively over the
+ground instead of sitting on a black quad.
+
+**Open:** the object at the ring's centre is now over-bright (white) where the original shows
+it dark, so the per-record distinction is not simply "all shots additive". `+0x7c` is 0 for
+every shot this weapon fires (probed on live shots), so the difference for that object must
+come from another field — the candidates are the bullet parameter's own state or the ambient
+state the original's `default` case inherits. Until that is settled the Z-off half of cases
+2/4 is also unmodelled: the effect pass keeps the depth test and drops only the depth write.
