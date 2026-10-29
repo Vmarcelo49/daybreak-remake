@@ -392,11 +392,12 @@ bool BotBrain::try_melee(const BotView& v, float dist) {
     const int engage = std::min(100, w.engageWeight * tune.engageScale / 100);
     if (static_cast<int>(m_rng.below(100)) >= engage) return false;
 
-    // The FULL reach (bodyRadius + the move's hitRadius) is what try_melee_hit() tests, so
-    // the press uses it as-is; the movement stop keeps the 0.9 margin so the COM settles
-    // just inside the window instead of at its edge.
+    // `melee_reach` is the geometric MAXIMUM: the volume's own extent plus the two radii the
+    // hit test adds. At exactly that distance the contact sits on the strict `<` boundary, so
+    // the press keeps a margin — the same 0.9 the movement stop uses, so the COM swings from
+    // just inside the window instead of on its edge.
     const bool dashAttack = self.state() == FighterState::Run;
-    const float reach = self.melee_reach(dashAttack, self.airborne());
+    const float reach = self.melee_reach(dashAttack, self.airborne()) * 0.9f;
     if (dist > reach) return false;
     if (!self.actionable()) {
         ++m_stats.meleeBlocked;

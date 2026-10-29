@@ -2644,8 +2644,24 @@ That is the next focused question: which record/pose the swing uses for the dash
 whether the recovered `bodyRadius + radius` sphere is being applied to the right anchor at the
 separation distance. Turning the default on is one line once that lands.
 
-**Open:** the four fixtures above (re-record at ≥60 units, no per-tick teleport); the COM's melee
-reach at the stand-off; and the guarding victim's record source (`0x400` flags).
+**Open:** the four fixtures above (re-record at ≥60 units, no per-tick teleport); and the guarding
+victim's record source (`0x400` flags).
+
+**What still blocks the default, measured.** With the reach model fixed the COM now presses (105
+attempts at ≤72 units), and the instrumented geometry shows why it still misses: at the press the
+pair is 66.8 apart but the volume's closest point to the victim's chest is **62**, against a
+50-unit tolerance — the volume is mostly *lateral* (the segment runs vertically at
+`start=(-59,61,19)`, `end=(-59,161,19)` while the chest sits at `(0,61,0)`), so the swing is not
+pointed at the target when it starts. That is the COM's aiming/timing, not the reach model and not
+the hit test. Turning the default on needs the bot to face (or close) before pressing; the flag
+stays off until then.
+
+**Also fixed while measuring:** the synthetic move table wrote its anchors as float bits while the
+shipped tables store integer words that the loader converts (`combat_record.h` reads `word()` and
+casts). An end anchor of `100` written as a float read back as `1120403456`, so the synthetic
+capsule's second endpoint was garbage. It is written as an integer now, and the synthetic records
+carry the shipped shape (capsule + `(0,100,0)`) with the weapon bone at the hand instead of on the
+body axis.
 
 ### V3-46 — melee volume audit: the shape dispatch is faithful, and the chest sphere was 25 units off
 
@@ -2679,10 +2695,13 @@ actually connects was invisible and a capsule swing *looked* like a point on the
 is what made the visual audit misread the geometry. It now samples the segment.
 
 **Recorded, not changed:**
-- the COM's reach model is `bodyRadius + the FIRST combat record's radius` (`fighter.h:938`), which
-  ignores where the record's anchor sits and how long the blade is — and with body separation on it
-  presses from under 60 while the stand-off holds the pair at exactly 60, so it never presses at all
-  (measured: 14 presses, 0 hits). That is a bot rule, not the hit test.
+- **the COM's reach model was `bodyRadius + the FIRST combat record's radius`** — it ignored where
+  the record's volume sits and how long the blade is, and with body separation on it pressed from
+  under 60 while the stand-off holds the pair at 60, so it never pressed at all. It now derives the
+  reach from the record itself: the horizontal extent of its anchor (and end anchor for a capsule)
+  under its bone at the current pose, plus `hitRadius + bodyRadius`, with the same 0.9 margin the
+  movement stop uses so the press does not sit on the strict `<` boundary. That cleared the
+  never-presses failure; what remains is different and is recorded below.
 - the occlusion test queries `start → victim chest` rather than the swept volume (`FUN_00637950` has
   no occlusion test at all), so it can only remove hits the recovered rule grants.
 - the recovered capsule predicate is perpendicular distance to the blade line plus a

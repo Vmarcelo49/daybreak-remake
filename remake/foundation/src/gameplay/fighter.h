@@ -325,6 +325,13 @@ struct MeleeSwing {
     int         moveId = -1;   // character-.dat move this swing plays (-1 = legacy)
     MeleeWindow window = kLegacyWindow;
     float       radius = kLegacyRadius;   // stands in for weapon+0x24
+    // The BODY-CENTRE distance at which this swing could connect, derived from the record's
+    // own volume: the horizontal extent of its anchor (and end anchor, for a capsule) under
+    // its bone at the current pose, plus the sphere radii the hit test adds. The bot used to
+    // press at `bodyRadius + radius`, which ignores both where the volume sits and how long
+    // the blade is — see V3-46.
+    float       reach = kLegacyRadius;
+    bool        reachKnown = false;
     int         damage = FighterConstants::kLightDamage;
     int         hitstun = 8;              // legacy active-window stun
     int total_ticks() const { return window.total_ticks(); }
@@ -932,11 +939,17 @@ public:
     MeleeSwing preview_melee_swing(bool dashAttack, bool aerial) const {
         return resolve_swing(resolve_attack_move(dashAttack, aerial));
     }
-    // The horizontal distance at which that swing can connect: the recovered
-    // `bodyRadius + radius` sphere (FUN_0063b470 via melee_rules.h), which
-    // try_melee_hit() applies. Nothing else is a melee range in this port.
+    // The horizontal distance at which that swing can connect. try_melee_hit() tests the
+    // record's volume against the VICTIM's head/chest spheres, so the conversion to a
+    // body-centre gate needs the volume's own reach (resolve_swing derives it from the
+    // record's anchor, end anchor and bone) plus the two radii. The previous form,
+    // `bodyRadius + radius`, assumed the volume sat on the body centre and had no length,
+    // which put the gate below the 60-unit body separation a COM can never pass (measured:
+    // zero presses in 8000 ticks, and 14 presses with no hits once the separation was on).
     float melee_reach(bool dashAttack, bool aerial) const {
-        return m_meleeRules.bodyRadius + preview_melee_swing(dashAttack, aerial).radius;
+        const MeleeSwing swing = preview_melee_swing(dashAttack, aerial);
+        if (swing.reachKnown) return swing.reach;
+        return m_meleeRules.bodyRadius + swing.radius;   // no record: the legacy sphere
     }
 
     // Swing bookkeeping driven by Match: begin clears the per-victim hit set, note

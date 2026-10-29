@@ -52,6 +52,11 @@ struct SynthEntry {
     int hitRadius = 0;
     int hpDamage = 0;        // synthetic neutral pool damage (base power is twice this)
     int defenderHitstun = 0; // combat[10]
+    // The shipped Rena+0 neutral contact is a CAPSULE (shape 1) whose end anchor is the blade.
+    // Writing a sphere here instead models a body-part contact point, which is a different
+    // attack (V3-46).
+    int collisionShape = 1;
+    float endAnchor[3] = {0.f, 100.f, 0.f};
 };
 
 inline SynthEntry prop(const char* name, int frame, int radius, int hpDamage, int hitstun) {
@@ -81,10 +86,11 @@ inline void addPhase(std::vector<std::uint8_t>& b, int setIndex,
         for (int c : combat) putU32(b, c);
         putU32(b, 0);
         putU32(b, 0);
-        putU32(b, 0);
-        putF32(b, 0.f);
-        putF32(b, 0.f);
-        putF32(b, 0.f);
+        putU32(b, e.collisionShape);
+        // The table stores anchors as INTEGER words that the loader converts to float
+        // (combat_record.h reads `word()` and casts), so 100 must be written as 100, not as
+        // the float bit pattern 0x42C80000 — that reads back as 1120403456.
+        for (float v : e.endAnchor) putU32(b, static_cast<int>(v));
     }
 }
 

@@ -555,10 +555,14 @@ struct MatchRig {
         m_model.ticksPerSecond = 1000.f;
         m_model.anims.resize(124);
         for (auto& animation : m_model.anims) animation.duration = 400.f;
+        // The weapon bone sits where a rig puts it: out at the hand, not on the body centre.
+        // The shipped tables name hands, toes and props; a synthetic bone at (0,61,0) made
+        // every contact record a point on the fighter's own axis, which cannot reach across
+        // the body separation (V3-46).
         m_model.frames.emplace_back();
         m_model.frames.back().name = "Prop1";
-        m_model.frames.back().bindLocal = glm::translate(glm::mat4(1.f),glm::vec3(0,61,0));
-        m_model.frames.back().bindT = glm::vec3(0,61,0);
+        m_model.frames.back().bindLocal = glm::translate(glm::mat4(1.f),glm::vec3(30,61,0));
+        m_model.frames.back().bindT = glm::vec3(30,61,0);
         for (int i = 0; i < fighters; ++i) {
             models[i] = &m_model;
             anims[i] = &m_controllers[static_cast<size_t>(i)];

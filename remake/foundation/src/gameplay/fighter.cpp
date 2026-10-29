@@ -3173,6 +3173,28 @@ MeleeSwing Fighter::resolve_swing(int moveId) const {
     // 311 → 11, 330 → 5). A last-entry hit keeps the legacy 8-tick window.
     if (nextFrame > hit->activeFrame) swing.window.activeTicks = nextFrame - hit->activeFrame;
     if (hit->hitRadius > 0) swing.radius = static_cast<float>(hit->hitRadius);
+    // The volume's own horizontal reach: the farthest point of the anchor (and of the end
+    // anchor when the record is a capsule) from this fighter's centre, under the record's
+    // bone at the current pose. A body-part sphere sits close to the body; a swept blade
+    // reaches a blade length past it. Radii are added by the caller's gate.
+    {
+        const auto horizontal = [&](const glm::vec3& point) {
+            const float dx = point.x - m_position.x;
+            const float dz = point.z - m_position.z;
+            return std::sqrt(dx * dx + dz * dz);
+        };
+        const glm::vec3 start =
+            bone_point(hit->boneName, glm::vec3(hit->anchor[0], hit->anchor[1], hit->anchor[2]));
+        float extent = horizontal(start);
+        if (hit->collisionShape != 0) {
+            const glm::vec3 end = bone_point(hit->boneName, glm::vec3(hit->endAnchor[0],
+                                                                      hit->endAnchor[1],
+                                                                      hit->endAnchor[2]));
+            extent = std::max(extent, horizontal(end));
+        }
+        swing.reach = extent + static_cast<float>(hit->hitRadius) + m_meleeRules.bodyRadius;
+        swing.reachKnown = true;
+    }
     // The melee HP damage is the move's combat[0x00] power through FUN_00639160's chain
     // (see the top of this file). A hit with no power at all keeps the legacy value, which
     // is also what a move table with no combat entry falls back to.
