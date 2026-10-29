@@ -423,7 +423,7 @@ its implementation handoff is in
 Renderer options row 0 (toon shading) and row 1 (character shadows) are live
 and persisted; row 2 (texture resolution) remains unavailable (issue #21).
 Battle fidelity includes unresolved animation/VFX details;
-LAN netplay awaits its own implementation. The Linux CTest suite has 81 tests (2026-10-16; the fixture runner carries 22 fixtures, 2 of them pilot-gate extras),
+LAN netplay awaits its own implementation. The Linux CTest suite has 84 tests (2026-10-29; the fixture runner carries 30 fixtures and 31 case rows over 49 asserted fields, 6 unsupported),
 including issue #4's three delivery suites (the archive-ordering cross-check against the
 native reader, the service's prepare/catalog/HTTP surface, and the host-testable half of
 the web asset client) and issue #21 row 1's `shadow_map_test` and `character_shadow`, including frontend selection/configuration, VS/result timelines, HUD geometry, the
