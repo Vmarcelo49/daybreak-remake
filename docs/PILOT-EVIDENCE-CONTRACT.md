@@ -2741,10 +2741,16 @@ uncharged bullet reacts the same way as a swing. The counter ticks down 0.3 a ti
 switches the victim's row to 118. The rise is a **per-tick** displacement in the original, so the
 port divides it by the fixed step when it seeds `m_vy` — a unit conversion, not a tuning factor.
 
-**Open:** the horizontal pushback. The recovered `+0x40` is a *counter*, not a sideways velocity,
-so "knocked backwards" must come from row 118's own animation (or a field the consumer path does
-not touch). Until that is recovered the port throws the victim up and plays the reaction row, with
-no independent horizontal impulse.
+**Open, and now narrowed: the horizontal pushback does not exist in the hit code.** A second copy
+of the consumer exists for the grounded/airborne split (`0x428e5f-0x428ecc`), and it does the same
+thing as the first: `+0x54 = -(combat[18] * 0.01)`, `+0x40 = combat[17] * 0.01`, `+0x58 = 0.3`,
+plus a voice. Neither copy writes a sideways velocity, and `+0x40` is only ever decremented
+(`0x428943`, `0x428c1b`, `0x428e31`), clamped to zero and tested for the row switch — it is a
+timer, never integrated into a position. The vertical slot `+0x54` is the only one with an
+integrator: it gains `[0x6a1c7c]` a tick while below `[0x6a24c0]` (`0x428c2a-0x428c49`), which is
+the fall. So "thrown backwards" has to be the reaction row 118's own displacement — root motion or
+a per-row offset — not a value the hit writes. That is the next question, and it is a different
+subsystem from the hit predicate.
 
 **Also open:** the mid-move reaction rows (row 118 is one id; the combo finishers presumably use
 others) and whether shots pick their reaction row from the bullet record the same way.
