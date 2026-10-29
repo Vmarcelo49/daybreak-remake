@@ -1503,10 +1503,16 @@ int run() {
         // voice 1, while fighter 0 (whose target is itself, never attending back) is
         // the arm that would speak the cascade voice. That asymmetry is the recovered
         // behaviour, so it is asserted as such rather than flattened.
-        {
+        // Without the install there is no Rena+0 rig to build the Match on, and this
+        // section used to `return 1` here — which exits the whole test before its summary
+        // and made every CI run red (no install is checked out there). Skip it like the
+        // other install-backed sections instead.
+        if (test::gameInstall().empty()) {
+            skip("no game install: the two-fighter Match cascade case");
+        } else {
             test::Combo combo;
             std::string error;
-            if (!combo.load(0, 0, error)) return 1;
+            check(combo.load(0, 0, error), "Rena+0 loads for the Match cascade case");
             gameplay::MatchConfig cfg;
             cfg.fighterCount = 2;
             cfg.moves[0] = &combo.moves;
@@ -1562,14 +1568,17 @@ int run() {
             checkInt(15, voiceSeen,
                      "the producer's latch picks intercept over the ordinary voice");
         }
-        {
+        // Same install requirement as the positive above: skip, never exit.
+        if (test::gameInstall().empty()) {
+            skip("no game install: the opposed-facing cascade negative");
+        } else {
             // The matching negative, from the SAME configuration with one thing changed:
             // opposed facings, so FUN_0042e110's yaw test fails and the cascade keeps
             // the ordinary voice. Without this the previous check could pass for the
             // wrong reason.
             test::Combo combo;
             std::string error;
-            if (!combo.load(0, 0, error)) return 1;
+            check(combo.load(0, 0, error), "Rena+0 loads for the opposed-facing case");
             gameplay::MatchConfig cfg;
             cfg.fighterCount = 2;
             cfg.moves[0] = &combo.moves;
