@@ -931,8 +931,8 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                           });
     std::stable_partition(draws_.begin(), draws_.end(),
                           [](const DrawItem& d) { return d.pass == Pass::Outline; });
-    std::stable_partition(drawTemplates_.begin(), drawTemplates_.end(),
-                          [](const DrawItem& d) { return d.pass != Pass::EffectNoDepth; });
+    // Only instances can carry EffectNoDepth (the depthless pass is chosen per shot record at
+    // instance time), so the template list needs just its two groups.
     std::stable_partition(drawTemplates_.begin(), drawTemplates_.end(),
                           [](const DrawItem& d) { return d.pass != Pass::Effect; });
     // The instance source of truth: the base draws in their final pass order, then the

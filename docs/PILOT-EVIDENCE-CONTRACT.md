@@ -2384,13 +2384,16 @@ non-negative writer (`FUN_00421f30`, bounds-checked against that vector) never f
 stays `-1`, and the branch cannot be reached. The same branch exists in the second camera updater
 `FUN_0063dad0` with the same condition.
 
-**One port mislabel worth knowing** (not changed here, because it is a behaviour question): the
-port's `target_lock.h` labels its `target` field "`+0x304`: locked combat target", and
-`cycle_enemy` stores enemy indices there. The corpus only ever writes `+0x304` from the *ally*
-vector — the enemy selection lives at `+0x300` with its own container at `+0x2e0`. The port's
-merging of the two into one field works for the 1v1 pilot but the label is wrong, and
-`Match::aim_target` therefore reads the `+0x304`-backed field while the comment beside it claims
-`+0x300`.
+**An offset label this pass could not settle, and deliberately left alone.** The reading above
+puts the opponent index at `+0x300` and the ally index at `+0x304`. The port's own notes (in
+`target_lock.h`, `match.cpp` and `main.cpp`) have the two the other way round, citing the same
+store in `FUN_00421f30` — which is consistent on the address and differs on which container that
+store indexes. The relabel was attempted and reverted: changing one of six places that carry the
+convention leaves the tree contradicting itself, and the question is which container
+`FUN_00421f30` bounds-checks, not what the port's field means (both readings agree it holds the
+locked *enemy*). Settling it needs one more reading of `FUN_00421f30`'s entry and its two
+callers, which is cheaper than a runtime trace. `target_lock.h` records the conflict where the
+field lives, so neither reading disappears.
 
 ### V3-42 — an air dash that ends airborne falls in state 43, not in the jump chain
 
@@ -2447,8 +2450,10 @@ once the window closes; removing the row fails it with `tick 40 anim_set exp 44 
 
 **A real port-loop finding came out of it:** the differential comparison treats "Idle" as the
 locomotion row, so a fighter playing row 44 inside Idle read as a binding mismatch on 27 ticks.
-The adapter's domain now excludes a fighter whose landing window is open, which is the honest
-classification — the original's state 44 is a row, not a flavour of Idle.
+The adapter now *compares* those ticks — the bound set must be row 44's first section — and it
+also models the row's completion, because the tick that closes the window is a transition in
+which the state setter restarts the clock. Excluding them would have hidden a checkable quantity
+and left the port's own clock reset looking like a one-tick regression.
 
 Still not carried: the row's frame-10 `flags 0x100` record, so the port can still cancel out of
 the landing on its first tick. The row's zeroing writes (speed, movement angle, turn, vertical)

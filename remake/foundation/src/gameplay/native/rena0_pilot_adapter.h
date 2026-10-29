@@ -93,12 +93,13 @@ struct Rena0PilotSample {
     int actionState = 0;    // the port's collapsed action state (the admission's `state`)
     int attackMoveId = -1;  // the melee row bound before this tick, -1 when none
     int shotMoveId = -1;    // the shot row bound before this tick, -1 when none
+    int landingTicks = 0;   // the landing row's remaining window (state 44), 0 when closed
 };
 
 inline Rena0PilotSample sample_rena0_pilot_tick(const Fighter& f) {
     return {f.state(), f.move_phase(), f.phase_elapsed(), f.move_counter(), f.anim_set_index(),
             f.airborne(), f.actionable(), f.action_state(), f.attack_move_id(),
-            f.shot_move_id()};
+            f.shot_move_id(), f.landing_ticks()};
 }
 
 // Why a tick did not agree, for the log line: a mismatch must be diagnosable from the run
@@ -143,11 +144,26 @@ inline const char* observe_rena0_tick(const Rena0PilotSample& before, const Figh
             obs.note("landing-binding");
             return "landing-binding";
         }
-        // Counted like any other agreement, so the totals close (compared == agreed + disagreed
-        // + out-of-domain) instead of leaving the landing ticks unaccounted.
+        // Counted like any other agreement: `compared` counts in-domain ticks, of which every
+        // one is either `agreed` or `disagreed`, so nothing is silently skipped.
         ++obs.agreed;
         obs.note("ok");
         return "ok";
+    }
+    // The tick that CLOSES the landing row is a transition, not a locomotion tick: row 44's
+    // completion runs FUN_004218c0 and enters state 0, and the state setter restarts the clock.
+    // The comparator has to know that, or it measures the port against a row that has already
+    // ended (and reads the reset clock as a one-tick regression).
+    if (before.landingTicks > 0 && after.landing_ticks() == 0) {
+        ++obs.compared;
+        if (after.move_phase() == 0 && after.phase_elapsed() <= 1) {
+            ++obs.agreed;
+            obs.note("ok");
+            return "ok";
+        }
+        ++obs.disagreed;
+        obs.note("landing-exit");
+        return "landing-exit";
     }
     const bool locomotion = state == FighterState::Idle || state == FighterState::Walk;
     if (!locomotion) {

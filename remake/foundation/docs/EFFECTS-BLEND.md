@@ -63,8 +63,9 @@ foundation parser; texture names below SJIS-decoded where ASCII):
   (`:84-89`, `:100-109`), and `default` changes no state at all and only picks a
   technique (`:136-143`). `scene_renderer.cpp` maps that to: 2/4 → `Pass::EffectNoDepth`
   (additive, no depth test), 3/4 → unlit shading, a quad mesh inside a shot model →
-  `Pass::Effect`, everything else keeps ordinary depth/alpha. No case draws a shot
-  surface opaque, which is why the mapping has no opaque arm any more (V3-35, V3-39).
+  `Pass::Effect`, and a non-quad mesh in a mode 0/1/3 model stays on `Pass::Opaque`.
+  No case turns blending off for the *card* surfaces, which is why the pass is additive
+  for every quad (V3-35, V3-38, V3-39).
   This controls projectile model draws, not the ordinary aura/event-card factor or
   technique binding.
 

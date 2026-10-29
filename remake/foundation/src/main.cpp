@@ -3759,18 +3759,15 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
         // render::arenaViewProj. The anchor is the RECOVERED one: FUN_006358c0 @0x635af4
         // pushes `container[actor+0x300].position` (+0x300 is the lock-on target this port
         // also models) into camera+0x48, so the primary branch is the locked opponent —
-        // see PILOT-EVIDENCE-CONTRACT V3-16. PORT RULES, both narrow: the source's ally
-        // branch (+0x304 >= 0, a second container at actor+0x2f0) is unimplemented, and a
-        // view with no lock at all falls back to a point 600 units along the facing (the
-        // recovered 400..800 distance band's midpoint).
-        //
-        // The ally branch is dead in this game's 1v1 and does not need implementing: FUN_006358c0
-        // takes it when the actor's +0x304 (an index into the SAME-TEAM vector at +0x2f0) is >= 0,
-        // and then looks at element 0 of that vector, not at the stored index (0x635ab9 `jl`, then
-        // `push 0` before `vector[::operator[]]`). FUN_00634980 builds both vectors by comparing
-        // each pair's team record, so two fighters on different teams leave +0x2f0 empty, the only
-        // non-negative writer (FUN_00421f30) is bounds-checked against that empty vector, +0x304
-        // stays -1 and the branch can never fire (V3-41).
+        // see PILOT-EVIDENCE-CONTRACT V3-16. The mode's second anchor branch (+0x304 >= 0, a
+        // container at actor+0x2f0) needs no implementation for a 1v1: FUN_006358c0 takes it
+        // only when that index is non-negative and then looks at element 0 of the container
+        // (0x635ab9 `jl`, then `push 0` before `vector[::operator[]]`), while FUN_00634980
+        // fills the two containers by comparing each pair's team record — so two fighters on
+        // different teams leave the ally container empty, the only non-negative writer is
+        // bounds-checked against it, and the branch cannot fire (V3-41). What the mode does
+        // need is the no-lock fallback: a point 600 units along the facing (the recovered
+        // 400..800 distance band's midpoint), a port constant.
         const bool recoveredFollow =
             app.opts.nativeActions == "rena0" &&
             gameplay::native::is_rena0_pilot_combo(cameraFighter);

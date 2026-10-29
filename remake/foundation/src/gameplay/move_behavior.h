@@ -351,7 +351,11 @@ inline constexpr MoveRule kRenaRules[] = {
     // ticks 0x24..0x32 arms it, while the port's `m_chainContact` records a hit anywhere in
     // the move — the approximation can switch to set 1 slightly earlier than the original.
     {350,-1,0,9999,MoveOp::ActionCamera,0.f,1.f},
-    {350,0,49,9999,MoveOp::ActionCamera,1.f},
+    // 0x33 = 51, not the frame the latch is armed on: the body stores the camera request
+    // BEFORE it tests +0xe8 in the same update, so a latch armed at frame 0x32 can only reach
+    // the camera on the next one (FUN_0043ffc0:1437-1446, stores at 0x443692/0x4436a1, the
+    // arming test at 0x4436be-0x4436ca).
+    {350,0,51,9999,MoveOp::ActionCamera,1.f},
     {330,0,0,9999,MoveOp::Turn,5.f},
     {330,1,0,9999,MoveOp::Turn,5.f},
     {330,1,0,9999,MoveOp::Speed,30.f},

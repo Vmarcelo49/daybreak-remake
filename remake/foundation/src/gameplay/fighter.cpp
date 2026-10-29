@@ -220,6 +220,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_airDashed = false;
     m_airDashCarry = false;
     m_dashFall = false;
+    m_landingTicks = 0;
     m_hoverSpent = false;   // a new airtime re-arms the one hover
     try_switch_animation();
 }
@@ -253,6 +254,7 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_airDashed = false;
     m_airDashCarry = false;
     m_dashFall = false;
+    m_landingTicks = 0;
     m_hoverSpent = false;   // a new airtime re-arms the one hover
     // FUN_00435660 restores round capacity while retaining refill/interval progress.
     restore_ammo();
@@ -315,6 +317,7 @@ void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     m_airDashed = false;
     m_airDashCarry = false;
     m_dashFall = false;
+    m_landingTicks = 0;
     m_hoverSpent = false;   // a new airtime re-arms the one hover
     m_hp = m_maxHP;
     m_stamina = static_cast<float>(FighterConstants::kMaxStamina);
@@ -423,7 +426,11 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         if (m_stateTimer == 0) {
             if (m_state != FighterState::KO && m_state != FighterState::TagOut) {
                 // Timed states expire back into the fall when airborne
-                // (a dash/attack/volley started mid-air lands as Jump).
+                // (a dash/attack/volley started mid-air lands as Jump). This is the DEFAULT
+                // path's approximation, not the recovered completion: the original advances
+                // row 30 through its own sections and enters state 43 from that exit, which
+                // this timer stands in for. So the fall here stays on the jump chain and does
+                // not claim row 43 (V3-42).
                 set_state(m_grounded ? FighterState::Idle : FighterState::Jump);
             }
         }
@@ -605,7 +612,9 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // every tick it is bound (jump bodies 40; the port binds row 40 for exactly the
     // launch tick via m_jumpStartup, and refresh_state_move runs after this section
     // so the flag is still set here). Landing refills the same way through the
-    // landing transition below; the row-44 multi-tick duration is not modeled.
+    // landing transition below, and the row itself is bound now: row 44 plays for its
+    // own derived length and Idle adds the same +40 per tick, so the multi-tick window
+    // costs the meter nothing (V3-42).
     if (m_pilotMeter && m_state == FighterState::Jump && m_jumpStartup) {
         const int refill = m_hitStatusDuration[6] > 0 ? 5 : 40;
         m_actionMeter = std::min(1000, m_actionMeter + refill);
@@ -757,12 +766,15 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
             m_airDashed = false;
             m_airDashCarry = false;
             m_dashFall = false;
+            m_landingTicks = 0;
             m_hoverSpent = false;   // a new airtime re-arms the one hover
             if (m_state == FighterState::Jump ||
                 (m_state == FighterState::Run && m_dashAir)) {
                 // Row 44 refills +40 (or +5 while status slot 6 is set) on every update, and
-                // the port's Idle adds the same amount, so the window is animation-only and
-                // the meter timing does not move.
+                // the port's Idle adds the same amount, so for a JUMP landing the window is
+                // animation-only and the meter timing does not move. The dash arm below still
+                // skips the landing tick's refill (its own gate is Jump-only), which is the
+                // pre-existing gap; the window does not change it either way.
                 if (m_pilotMeter && m_state == FighterState::Jump) {
                     const int refill = m_hitStatusDuration[6] > 0 ? 5 : 40;
                     m_actionMeter = std::min(1000, m_actionMeter + refill);
@@ -830,6 +842,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
             m_airDashed = false;
             m_airDashCarry = false;
             m_dashFall = false;
+            m_landingTicks = 0;
             m_hoverSpent = false;   // a new airtime re-arms the one hover
         } else if (m_grounded) {
             m_safePosition = m_position;
@@ -879,7 +892,13 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
                 // returns early while m_animSetIdx is still >= 0, which is what keeps a state's
                 // clip stable across ticks.
                 if (m_landingTicks == 0) {
+                    // The row clock has to go with the set: it still reads row 44's last tick,
+                    // and Idle's playhead is derived from it, so a landing would start the
+                    // standing clip at ~frame 22 instead of frame 0. This is what set_state()
+                    // did for the landing before the row existed.
                     m_animSetIdx = -1;
+                    m_phaseIndex = 0;
+                    m_moveElapsedTicks = 0;
                     try_switch_animation();
                 }
             }
