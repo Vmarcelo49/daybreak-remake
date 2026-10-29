@@ -282,7 +282,11 @@ void testPhaseClock() {
     model.anims[13].duration = .008f * model.ticksPerSecond;
     fighter.set_moves(&combo.moves); fighter.set_weapon(&combo.weapon);
     double_tap(fighter,input::Action::Up);
-    checkInt(14,fighter.anim_set_index(),"nearest-even half-update period rounds to zero");
+    // 0.008 s / 0.016 = 0.5 frames, and 0x66b668 truncates toward zero, so the clip takes
+    // its whole duration (480 ticks = 14 updates) instead of expiring on the entry update.
+    // This is the case an earlier std::nearbyint read got wrong (it would have used 1
+    // update), which is why the label names the truncation rule rather than a rounding mode.
+    checkInt(14,fighter.anim_set_index(),"half-frame period truncates to zero updates");
 }
 void testCharacterMoveTable(const fs::path& install) {
     section("the character move table (recovered)");
