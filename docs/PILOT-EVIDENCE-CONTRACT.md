@@ -2227,3 +2227,45 @@ must leave the camera at 0, Hyper activation must not arm it, and the EX press m
 for the move with the opponent out of reach. Deleting the rule fails it with `the EX attack
 must play its action camera even when it misses, got 0`. Suite 83/83 excluding the known
 `device_isolation_test` flake.
+
+### V3-38 — the glow-quad rule, measured across the whole shot corpus
+
+V3-36 split a shot model's pass per mesh: a mesh that is exactly one quad is drawn additively,
+everything else keeps the record's `+0x7c` mapping. That was derived from weapon 001 alone, so
+it was labelled a port rule. It has now been swept against **every** shipped shot model.
+
+**The corpus** (all `data/bullet/**/*.X`, loaded through the port's own reader):
+
+| | |
+|---|---|
+| models / meshes | 351 / 515 (0 load failures) |
+| quad meshes (4 vertices, 6 indices) | **155**, in 128 models |
+| models whose only geometry is a quad | 85 (for example `001/06.X`, the pure ring) |
+| distinct quad textures | 19 — flames, flashes, rings, shockwaves, sparks, bubbles, smoke, energy balls |
+| models a bullet record names | 116 of the 128 |
+
+**No counter-example exists.** Every quad in the corpus is planar, axis-aligned, unskinned,
+one submesh, one material, UV `(0,0)..(1,1)`; 18 of its 19 textures store alpha 255 everywhere
+(only `毒泡` has real alpha), and all have 19–84% exact-black texels with a 37–100% black
+border — which is why additive is the only blend that hides their backing. The contrast set is
+as clean as it gets: the 132 models whose materials are all full-coverage textures contain
+**zero** quad meshes. No quad is a solid blade, leaf, shield or opaque billboard, and in the
+nine models that mix a card with an object the object is always real geometry (nata 67v,
+zippo 68v, rulers 64v/132v, saw 111v) — including `030/03.X`, where the card is mesh 0 and the
+weapon mesh 1, so mesh order is not a signal and the rule does not use it.
+
+**What the rule actually changes** is much smaller than the corpus suggests: 125 of the 155
+quads sit in models whose every record row is already additive (mode 2/4), so the rule only
+flips **17 quads in 10 models** (`001/03`, `001/05`, `001/09`, `003/17`, `014/03`, `025/03`,
+`027/03`, `029/09`, `030/03`, `041/01`). Sixteen of those are also saved by the projectile
+black-key; `027/03.X` is the one where the quad rule is doing work nothing else does.
+
+**It is under-inclusive, not wrong.** Black-backed glow meshes that are *not* quads — 12v/18i
+muzzle-flash and explosion-ring cards, the 158v/672i nata beam, a 60v/324i beam-saber — stay on
+the record's own mapping, some of them in modes 0/1, where they would show their black plate.
+That is the remaining gap, and it is not fixed here.
+
+Regression: `effect_catalog_test` now sweeps the install and asserts the shape the rule
+assumes — no quad in a shot model is skinned, none carries several submeshes, all are planar —
+so an asset that breaks the premise fails instead of silently rendering wrong. It reports the
+survey (351 models, 155 quads) on every run.

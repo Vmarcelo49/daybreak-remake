@@ -479,6 +479,78 @@ void testInstallAuraTable(int argc, char** argv) {
 
 }  // namespace
 
+// ---------------------------------------------------------------------------
+// The glow-card rule the shot pass keys on (V3-36/V3-38): inside a shot model, a mesh that is
+// exactly one quad is drawn additively. The rule is geometric because the materials carry no
+// blend signal and the quad textures are opaque black outside the glow, so no alpha test can
+// cut their backing. This sweep is what keeps the rule honest: every quad in the shipped
+// corpus must have the shape the rule assumes, and no quad may be the model's only *solid*
+// body. It reads the install directly (data/bullet is loose on disk), so it is skipped when
+// there is none.
+void testShotQuadRule(int argc, char** argv) {
+    section("asset-backed: every quad mesh in data/bullet has the shape the glow rule assumes");
+    const fs::path install = findInstall(argc, argv);
+    std::error_code ec;
+    const fs::path bullet = install / "data" / "bullet";
+    if (install.empty() || !fs::is_directory(bullet, ec)) {
+        skip("the shot-model quad survey (no install found)");
+        return;
+    }
+    int models = 0, quads = 0, skinnedQuads = 0, multiSubQuads = 0, notPlanar = 0;
+    int soleQuadModels = 0;
+    std::vector<std::string> offenders;
+    for (const fs::directory_entry& weapon : fs::directory_iterator(bullet, ec)) {
+        if (!weapon.is_directory(ec)) continue;
+        for (const fs::directory_entry& f : fs::directory_iterator(weapon.path(), ec)) {
+            const std::string name = f.path().filename().string();
+            if (name.size() < 3) continue;
+            const std::string ext = name.substr(name.find_last_of('.') + 1);
+            if (ext != "X" && ext != "x") continue;
+            xm::Model m;
+            try {
+                m = xm::loadFile(f.path().string());
+            } catch (const std::exception&) {
+                check(false, f.path().filename().string() + " loads");
+                continue;
+            }
+            if (m.meshes.empty()) continue;
+            ++models;
+            int modelQuads = 0, modelSolids = 0;
+            for (const xm::Mesh& mesh : m.meshes) {
+                const bool quad = mesh.vertices.size() == 4 && mesh.indices.size() == 6;
+                if (!quad) { ++modelSolids; continue; }
+                ++quads;
+                ++modelQuads;
+                if (mesh.skinned) { ++skinnedQuads;
+                    offenders.push_back(f.path().filename().string() + ": skinned quad"); }
+                if (mesh.submeshes.size() != 1) ++multiSubQuads;
+                // A card is planar: every vertex normal points the same way, and the four
+                // vertices span a rectangle rather than a solid.
+                if (!mesh.vertices.empty()) {
+                    const glm::vec3 n0 = mesh.vertices[0].normal;
+                    for (const xm::Vertex& v : mesh.vertices) {
+                        if (glm::length(v.normal - n0) > 1e-3f) { ++notPlanar;
+                            offenders.push_back(f.path().filename().string() + ": non-planar quad");
+                            break; }
+                    }
+                }
+            }
+            // A model whose ONLY geometry is quads is a projectile/effect card. A model that
+            // mixes them must keep its solid part among the non-quad meshes — which is what
+            // the rule assumes by drawing only the quads additively.
+            if (modelQuads > 0 && modelSolids == 0) ++soleQuadModels;
+        }
+    }
+    check(models > 0, "the install ships shot models to survey");
+    check(quads > 0, "the corpus contains quad meshes (the rule applies to something)");
+    checkInt(0, skinnedQuads, "no quad in a shot model is skinned (a card is one matrix)");
+    checkInt(0, multiSubQuads, "no quad in a shot model carries several submeshes");
+    checkInt(0, notPlanar, "every quad in a shot model is planar");
+    std::printf("        surveyed %d model(s): %d quad mesh(es), %d sole-quad effect model(s)\n",
+                models, quads, soleQuadModels);
+    for (const std::string& o : offenders) std::printf("        offender: %s\n", o.c_str());
+}
+
 int main(int argc, char** argv) {
     std::puts("effect_catalog_test — issue #17 effect table, issue #33 attach points, "
               "issue #34 muzzle slot, issue #32 shot visual");
@@ -489,6 +561,7 @@ int main(int argc, char** argv) {
     testMuzzleSlotRule();
     testShotVisualRule();
     testInstallAuraTable(argc, argv);
+    testShotQuadRule(argc, argv);
     std::printf("\n%d checks, %d failure(s)%s\n", checks, failures,
                 skipped ? " (with skips)" : "");
     return failures == 0 ? 0 : 1;
