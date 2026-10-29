@@ -792,9 +792,11 @@ jump-body writer shows the actual shape, and it is uniform across all 46 combos:
   combo) all share the gate `gravity == 0`, i.e. they are the **hover** drain, not a
   per-leap cost. The modal −100 has been deleted from the pilot path (legacy keeps it).
 - rows 40 (launch) and 44 (landing) refill +40 (+5 with hit-status slot 6), clamped at
-  1000, every tick they are bound. The port binds its launch row for exactly one tick
-  and has no landing row, so the pilot applies one +40 on the launch tick
-  (`m_jumpStartup`) and one +40 on the Jump→Idle landing transition.
+  1000, every tick they are bound. The port binds its launch row for exactly one tick,
+  so the pilot applies one +40 on the launch tick (`m_jumpStartup`) and one +40 on the
+  Jump→Idle landing transition. **The landing row itself is bound now** (V3-42): row 44
+  plays for its own 22 frames, and because it refills at the same +40 the port's Idle
+  also adds, the meter timing recorded here does not move — the window is animation-only.
 - the port's hold-to-fly is the hover counterpart, so on the pilot path it now drains
   the recovered −10/tick (launch tick excluded — that tick belongs to the row-40
   refill), where the legacy path keeps its 30/s port rule.
