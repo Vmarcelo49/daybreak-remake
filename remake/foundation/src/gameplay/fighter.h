@@ -482,6 +482,11 @@ public:
     int hit_status_duration(unsigned slot) const;
     void set_state(FighterState new_state);
 
+    // Body separation (FUN_006394c0): displace this fighter horizontally by `delta`, clamped
+    // by the stage exactly as ordinary movement is, because the recovered function applies each
+    // half through the horizontal mover (FUN_0042cb50) rather than writing the position.
+    void shove(const glm::vec3& delta, const game::physics::MovementCollision* collision);
+
     // A hit on an already-down fighter credits the balloon but must not re-enter the
     // KO state, restart the death clock or count another death. The scene drains the
     // pending credit into MatchEconomy, so it is counted exactly once.

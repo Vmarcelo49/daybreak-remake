@@ -1,6 +1,8 @@
 // gameplay/match.cpp — see match.h for the order this reproduces and why.
 #include "gameplay/match.h"
 
+#include "gameplay/body_separation.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -69,6 +71,24 @@ void Match::lock_ally_target(int fighter) {
 
 void Match::begin_round_entry() {
     for (int i = 0; i < m_config.fighterCount; ++i) m_fighters[i].begin_round_entry();
+}
+
+void Match::separate_bodies() {
+    if (!m_bodySeparation) return;
+    // FUN_006394c0, verbatim in body_separation.h. Pairs are taken in slot order and the
+    // positions are read live, so a body already pushed by an earlier pair is pushed from where
+    // it now stands — which is what the original does (it moves each actor in place).
+    for (int a = 0; a < m_config.fighterCount; ++a) {
+        for (int b = a + 1; b < m_config.fighterCount; ++b) {
+            Fighter& first = m_fighters[a];
+            Fighter& second = m_fighters[b];
+            const BodySeparation separation =
+                body_separation(first.position(), second.position());
+            if (!separation.active) continue;
+            first.shove(separation.push, m_movementCollision);
+            second.shove(-separation.push, m_movementCollision);
+        }
+    }
 }
 
 void Match::step_round_entry(double dt) {
@@ -280,6 +300,8 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[kMatchFighterCount]
             }
         }
     }
+
+    separate_bodies();
 
     for (int i = 0; i < m_config.fighterCount; ++i) {   // scenes.cpp:689-696
         // FUN_00634f60 runs the body at :102-104, then FUN_0042e110 decrements

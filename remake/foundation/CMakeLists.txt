@@ -539,6 +539,12 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     set_tests_properties(rena0_pilot_gate_test PROPERTIES
                          LABELS "asset;feasibility" SKIP_RETURN_CODE 77)
 
+    # Body separation (FUN_006394c0): the recovered push-apart. Data-free by construction, so it
+    # never skips — the formula is a pure function and the wiring needs only positions.
+    add_executable(body_separation_test tests/body_separation_test.cpp)
+    target_link_libraries(body_separation_test PRIVATE foundation_gameplay)
+    add_test(NAME body_separation_test COMMAND body_separation_test)
+
     # P2-7 charge family: the recovered charge-gauge bodies (attacker mode 1, victim modes 0/2).
     # Data-free by construction, so it never skips.
     add_executable(rena0_charge_body_test tests/rena0_charge_body_test.cpp)

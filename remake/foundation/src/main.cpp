@@ -160,6 +160,10 @@ struct Options {
     int battleFighterCount = 0;
     bool        versus = false;  // scripted two-fighter vignette (capture-oriented)
     bool        match = false;   // playable match: the ported simulation, not a script
+    // FUN_006394c0's body separation. OFF by default while the acceptance fixtures that place
+    // bodies inside the 60-unit radius are re-recorded with realistic spacing — see
+    // docs/PILOT-EVIDENCE-CONTRACT.md V3-45.
+    bool        bodySeparation = false;
     std::string script;          // P1 input script (device override, DX9 format)
     // P2-7 (2e) slice 1: observe-mode pilot adapter. Empty = the legacy path, untouched.
     std::string nativeActions;   // "--native-actions=rena0" runs the locomotion observer
@@ -392,6 +396,10 @@ void usage() {
         "                     --character, --enemy and --frames>=30\n"
         "  --bgm=<file.ogg>   versus BGM track played through the loop player\n"
         "  --sfx=<file.cnv>    versus hit cue fired at scripted hits\n"
+        "  --body-separation  enable the recovered body separation (FUN_006394c0): bodies\n"
+        "                     closer than 60 units are pushed apart, half each. Off by\n"
+        "                     default until the acceptance fixtures that place bodies\n"
+        "                     inside that radius are re-recorded (V3-45).\n"
         "  --match            playable match: the ported fighter simulation, the real\n"
         "                     match economy and live HUD values (needs --stage,\n"
         "                     --character and --enemy, like --versus)\n"
@@ -678,6 +686,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--enemy=")).empty()) o.enemy = v;
         else if (a == "--versus") o.versus = true;
         else if (a == "--match") o.match = true;
+        else if (a == "--body-separation") o.bodySeparation = true;
         else if (!(v = val("--script=")).empty()) o.script = v;
         else if (!(v = val("--native-actions=")).empty()) o.nativeActions = v;
         else if (!(v = val("--script2=")).empty()) o.script2 = v;
@@ -4630,6 +4639,7 @@ bool initScene(App& app) {
         if (!initVersus(app)) return false;
     } else if (app.opts.match) {
         if (!initMatch(app)) return false;
+        app.match.set_body_separation(app.opts.bodySeparation);
     }
 
     // ---- framing. A stage's visible set includes an inverted sky dome far larger than

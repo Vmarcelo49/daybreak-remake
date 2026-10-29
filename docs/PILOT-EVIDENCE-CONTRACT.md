@@ -2585,3 +2585,48 @@ means teaching the guard predicate to take a record (or a `ProjectilePool` shot)
 reaches it with the bullet's record or only the melee pass does — and whether the unblockable flag
 is even read for a bullet (`attackFlags & 8` on a shot record). One focused read of the shot damage
 caller, then the predicate can take the record it needs.
+
+### V3-45 — body separation: bodies do not overlap, and the push is (60 − d) / 2 each
+
+**Owner report:** the fighters pass through each other; bodies should push on contact, and the size
+of the push was to be investigated.
+
+**Recovered (tier 2).** `FUN_006394c0` at `0x6394c0`, called once per frame from `FUN_00634f60` at
+`0x63595e` — after the actors' motion basis (`FUN_004202b0`) and their contact anchors
+(`FUN_00420880`), i.e. after the melee pass at `0x63544a`/`0x6355f2`. The whole formula, from the
+decompilation:
+
+- every ordered pair `a < b` of the four actor slots;
+- skip the pair if either actor's `+0xaecc` byte is set (the same proxy/redirect flag the camera
+  reads); there is **no** team, HP or hitstop filter, so allies and KO'd bodies are pushed too;
+- `dist = sqrt(dx² + dz²)` over X/Z, `dy = |a.y − b.y|`;
+- when `dist == 0` the listing forces `dx = 1, dist = 1` — so a perfect overlap separates to **59**,
+  not 60, and no pair is ever skipped for being coincident;
+- if `dist < 60` **and** `dy < 60`: `half = (60 − dist) / 2`, each body moves `±(dx, 0, dz)/dist *
+  half`, i.e. **half the remaining overlap each, horizontally only**;
+- both halves go through `FUN_0042cb50`, the horizontal mover, so a stage wall clamps each body
+  independently rather than cancelling the pair's push.
+
+The constants are the listing's own (60.0 twice, 2.0), not port choices. The Y delta is a gate,
+never a direction.
+
+**Implemented:** `gameplay/body_separation.h` (the formula as a pure function),
+`Fighter::shove` (the push through the same wall-clamped mover), and `Match::separate_bodies()`
+called after the melee pass. A data-free suite (`body_separation_test`, 18 checks) pins the formula
+(including the 59 degenerate case and both gates) and the wiring (both bodies move half each; a body
+70 units up is not pushed; a pair 600 apart is untouched).
+
+**Why it is opt-in for now (`--body-separation`).** Four acceptance fixtures —
+`rena0-hit-ground-300`, `rena0-ko-ground-300`, `rena0-guard-gate-legacy`, `rena0-guard-gate-pilot` —
+place the dummy **inside** the 60-unit radius with `place_at_attack active` (measured distances
+35–50), a configuration the original never allows. With separation on, the contact lands one tick
+earlier (14 instead of 15) and the two guard fixtures read the victim's flags as `0x100` (not
+guard-capable) because the per-tick teleport resets it to Idle on the very tick of contact. Those
+fixtures need re-recording with realistic spacing before the mechanic can be the default; until then
+the port keeps its accepted matrix green and the mechanic is exercised by its own suite and by
+`--body-separation` in a live match.
+
+**Open:** the four fixtures above (re-record at ≥60 units, no per-tick teleport); and while
+re-recording, confirm the guard genuinely holds at separation distance — the fixture harness reads
+`vflags=0x100` for a dummy that holds Guard from tick 0, which is unconfirmed as either a harness
+artefact (the teleport reset) or a real gap in the guard's admission.

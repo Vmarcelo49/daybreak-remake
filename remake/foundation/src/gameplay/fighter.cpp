@@ -1284,6 +1284,22 @@ int Fighter::hit_status_duration(unsigned slot) const {
     return slot < m_hitStatusDuration.size() ? m_hitStatusDuration[slot] : 0;
 }
 
+void Fighter::shove(const glm::vec3& delta, const game::physics::MovementCollision* collision) {
+    if (delta == glm::vec3(0.f)) return;
+    const glm::vec3 start = m_position;
+    const glm::vec3 desired = start + delta;
+    if (!collision) {
+        m_position = desired;
+        return;
+    }
+    // Same mover the ordinary step uses, so walls clamp the push instead of letting it tunnel
+    // (the recovered function calls FUN_0042cb50 for each half for exactly this reason).
+    const game::physics::MovementResult moved = collision->move(start, desired, m_grounded);
+    m_position = moved.position;
+    m_grounded = moved.grounded;
+    if (m_grounded) m_groundY = m_position.y;
+}
+
 void Fighter::set_state(FighterState new_state) {
     if (m_state == new_state) return;
     // The air dash's carried momentum belongs to the airborne window it opened; a hit,

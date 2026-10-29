@@ -182,6 +182,11 @@ public:
     // become catch-up ticks. The host also skips its own per-tick work (frame counter, COM
     // decisions, HUD values) so the presented frame stays frozen; see battle_pause.h.
     void set_paused(bool paused) { m_paused = paused; }
+
+    // FUN_006394c0's push-apart. Opt-in while the fixtures that place bodies inside the 60-unit
+    // radius are re-recorded; the mechanic itself is recovered (body_separation.h, V3-45).
+    void set_body_separation(bool on) { m_bodySeparation = on; }
+    bool body_separation_enabled() const { return m_bodySeparation; }
     bool paused() const { return m_paused; }
 
     // The two-input overload preserves the trace path; the roster overload accepts
@@ -289,11 +294,16 @@ public:
     // reported in MatchFrame so the caller can push effect cards for them.
 
 private:
+    // FUN_006394c0: push overlapping bodies apart, half each, once per frame. Called after the
+    // melee pass, which is where FUN_00634f60 runs it relative to FUN_00637680.
+    void separate_bodies();
+
     // The fighters' current liveness as one 4-wide array. The lock table, the melee
     // victim and the economy all need it, so it is read in one place.
     void liveness(bool out[kMatchFighterCount]) const;
 
     bool               m_paused = false;   // issue #15; set_paused above
+    bool               m_bodySeparation = false;   // V3-45; set_body_separation above
     // Issue #48's F2/F3 flag. True is the original's initialized value (FUN_0041efa0:10).
     bool               m_aiEnabled[kMatchFighterCount] = {true, true, true, true};
     Fighter            m_fighters[kMatchFighterCount];
