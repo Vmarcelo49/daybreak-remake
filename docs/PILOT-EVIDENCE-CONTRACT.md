@@ -2306,3 +2306,44 @@ turned off inside cases 2/4.
 
 Suite 83/83 excluding the known `device_isolation_test` flake; a match frame still draws its
 four effect cards and the pipeline count grows by the one new pass.
+
+### V3-40 — what row 390 (guard) really does, and why it is still not implemented
+
+The named limit "guard row 390's release section is unreached" now has a full recovered answer.
+It is recorded here because implementing it is **not** a local change, and the attempt made on
+2026-10-29 was reverted.
+
+**The framing that was wrong.** `FUN_00421100` is the *phase* setter and `FUN_00421080` the
+*state* setter, so `FUN_00421100(2)` in case `0x186` (`:1669`, asm `0x443ffd-0x444007`) enters
+row 390's **third section** — set 63 — and **keeps the state**. The release is a phase, not a
+state exit; "releasing leaves Guard" is the port's shortcut, and the contract's earlier line
+`:1964-1965` drew that conclusion from the right addresses.
+
+**The row.** Row 390 is `priority 0`, `cancelThreshold 150`, sections set **60** (prep, gate 0,
+transition 10), **61** (hold, gate 1), **63** (release, gate 0). Only the hold section's record
+carries `stateFlags 0x400`.
+
+**The exits, exactly** (`:1639-1689`):
+| id | condition | target |
+|---|---|---|
+| E1 | row complete **and** airborne | state `0x2b` (43), `+0x58 = 0.5` |
+| E2 | row complete **and** grounded | state `0` (idle) |
+| E3 | airborne, row not complete | state `0x2b` (43) |
+| E4 | `phase == 1 && (meter == 0 \|\| jump-held == 0 \|\| melee-held == 0)`, tested **after** the −10 drain | `FUN_00421100(2)`: **same state**, phase 2 / set 63 |
+| E5 | `(FUN_0042c7b0() & 2) != 0 && meter > 0` | state `0x187` (391), effect `0x46`, SE `0x33` |
+| E6 | `phase == 2` | no exit; turn step 0, speed −1/tick |
+
+The drain belongs to phase 1 only (`:1655-1657`), so prep and release cost no meter — the port
+drains on every Guard tick, which shorts the stance by the whole preparation window.
+
+**Why the implementation was reverted.** The recovered model keeps the actor in state `0x186`
+through the release clip, and the port has no cancellation rule for that window: five suites
+encode the current behaviour ("release permits next action immediately"), and the original's
+admission gate that would let an attack cancel out of the stance (`cancelThreshold 150` against
+each row's priority) is not established here. Shipping the release phase without it turned a
+validated guard into a 20-tick lock-out. So the finding is recorded and the behaviour is
+unchanged: the port's flat Guard stays, and the release section remains a named limit — now a
+*precisely specified* one, with the phase, the clip, the drain window and the five exits above.
+
+**A separate, uncontroversial half was kept:** nothing. The sentinel and camera work in V3-37
+are unrelated and stand on their own.
