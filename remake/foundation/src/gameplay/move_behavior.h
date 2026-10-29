@@ -345,10 +345,13 @@ inline constexpr MoveRule kRenaRules[] = {
     // with an original-runtime screenshot, and unlike the melee chain above, whose
     // camera is a hit effect. The `second` column is the ungated flag the ActionCamera
     // executor reads; without it the contact latch would suppress the shot on a whiff.
-    // PORT RULE for the clip index: the camera rig (data/camera/01.x, six sets) does not
-    // recover which set 0x15e requests, so it borrows the melee combo's 2 until evidence
-    // says otherwise — the one number here that is not sourced (V3-37).
-    {350,-1,0,9999,MoveOp::ActionCamera,2.f,1.f},
+    //
+    // The clip index is 5, identified by the owner against the original's own screenshot
+    // after all six sets of data/camera/01.x were rendered for this move (a sweep kept
+    // under local-data/harness/fxanim/). It is NOT recovered: nothing in case 0x15e names
+    // a set, and 2 — the melee combo's index — framed the strike from the wrong side. So
+    // this is an owner observation standing in for a recovered constant (V3-37).
+    {350,-1,0,9999,MoveOp::ActionCamera,5.f,1.f},
     {330,0,0,9999,MoveOp::Turn,5.f},
     {330,1,0,9999,MoveOp::Turn,5.f},
     {330,1,0,9999,MoveOp::Speed,30.f},

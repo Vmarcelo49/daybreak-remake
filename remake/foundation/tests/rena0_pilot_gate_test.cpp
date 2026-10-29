@@ -873,9 +873,9 @@ int main(int argc, char** argv) {
                     std::to_string(camera.cameraOnActivation));
         require(camera.exRow == 350, "the Hyper press must enter the EX row 350, got " +
                                          std::to_string(camera.exRow));
-        require(camera.cameraOnWhiff != 0,
-                "the EX attack must play its action camera even when it misses, got " +
-                    std::to_string(camera.cameraOnWhiff));
+        require(camera.cameraOnWhiff == 5,
+                "the EX attack must play action camera set 5 (the owner's pick against the "
+                "original) even when it misses, got " + std::to_string(camera.cameraOnWhiff));
         require(camera.meleeCameraOnWhiff == 0,
                 "a whiffed melee swing must NOT play the action camera, got " +
                     std::to_string(camera.meleeCameraOnWhiff));

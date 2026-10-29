@@ -2207,12 +2207,20 @@ Two things were needed:
   asserted) and wrong for this move, so `MoveRule::second` now means "plays regardless of
   contact" for `ActionCamera` only. The field was unused for this op.
 
-**Port rule, and the one number in it:** `value` is an animation set on the action-camera rig
-(`data/camera/01.x`, which ships **six** sets; the reference bundle records that the native
-index order is reversed, so native index 0 is serialized `Anim-6`). Which set `0x15e` requests
-is **not recovered** — the helpers around it (`FUN_0042c800/840/880`) are slot arrays and a
-positional request, not camera calls — so the move borrows the melee combo's index 2 until
-evidence says otherwise. That index is already a port rule for rows 301/302.
+**The clip index is 5, and it came from the owner's eye, not the binary.** `value` is an
+animation set on the action-camera rig (`data/camera/01.x`, which ships **six** sets; the
+reference bundle records that the native index order is reversed, so native index 0 is
+serialized `Anim-6`). Which set `0x15e` requests is **not recovered** — the helpers around it
+(`FUN_0042c800/840/880`) are slot arrays and a positional request, not camera calls. So the
+first attempt borrowed the melee combo's index 2, the owner played it and said the angle was
+wrong, and every set was then rendered for this move and compared against the owner's original
+screenshot; the owner picked set 5 (`local-data/harness/fxanim/ex_camera_sweep.png` and
+`ex_camera_late.png` carry the sweep).
+
+That makes this an **owner observation standing in for a recovered constant** — tier 3, not
+tier 2 — and it is labelled as such in the rule table. At the strike frame the framing is still
+wider than the print: the angle agrees, the distance does not, so if it still reads wrong in
+play the remaining difference is the rig's playback or the camera preset, not the set.
 
 Regression: `rena0_pilot_gate_test` Case G drives the whole sequence — a whiffed melee swing
 must leave the camera at 0, Hyper activation must not arm it, and the EX press must put it on
