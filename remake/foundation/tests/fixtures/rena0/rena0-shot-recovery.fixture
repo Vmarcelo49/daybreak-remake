@@ -1,0 +1,29 @@
+# rena0-shot-recovery — F1-3 fixture, P2-7 charge family (the recovery refill)
+#
+# Source: the recovered air recovery (state 403, FUN_0043ffc0.c:2021-2040) adds 0x28 (40) to
+# the shot gauge on every tick and clamps the result to 1000. (The 5-point form is the
+# hit-status slot-6 branch.)
+#
+# The start value is a harness affordance, not a reachable original state: the product resets
+# the gauge to 1000 and natural play rarely drops it, so the refill is only observable from
+# below the cap. The scripted jump's launch tick carries the row-40 refill (+40, clamped),
+# bringing the 900 start to 940 on tick 4 with no launch spend; the air recovery then
+# refills +40/tick from tick 49 and clamps at 1000 on tick 50. What this fixture proves is
+# the rule's rate and its clamp; jump-row durations beyond the port's single launch tick
+# stay a named limit (PILOT-SEAM.md §30.6).
+combo 0 0
+seed 5489
+spawn 0 0 0 0
+spawn 1 0 0 300
+collision open-field
+hyper oyashiro
+charge_gauge 400
+input 0 SPECIAL
+input 1 -
+input 4 JUMP
+input 5 -
+input 10 SHOOT
+input 11 -
+expect 24 charge_gauge 640
+expect 25 shot_bullet_row 7
+expect 48 charge_gauge 1000

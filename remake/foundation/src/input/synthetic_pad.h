@@ -29,7 +29,7 @@ struct SyntheticPadState {
     }
 };
 
-// `tick` is the match's 1-based 64 Hz tick. Windows are short enough to read as taps and
+// `tick` is the match's 1-based 60 Hz tick. Windows are short enough to read as taps and
 // long enough to survive a render that samples held state once per tick.
 //
 // `lockTaps` is opt-in (`--lock-taps`) and OFF by default. Its LockSwitch tap re-picks

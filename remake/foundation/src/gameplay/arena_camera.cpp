@@ -75,6 +75,17 @@ glm::vec3 ArenaCamera::compute_desired_eye(const CameraTarget* t) const {
     // reading .eye out of it is exact; the aspect argument only feeds matrices that are
     // discarded here. The nudge carries the difference between the render helper's π/4
     // baseline and the preset's, so no second copy of the azimuth math exists.
+    if (m_recoveredFollow) {
+        // V3-15: the recovered normal follow needs the rig and its lock-on anchor, and
+        // owns its whole eye/aim derivation — present it the same params the
+        // reconstruction uses so projection/clip stay shared.
+        render::ArenaCameraParams p;
+        p.fovY       = m_preset.fovY;
+        p.nearClip   = m_preset.nearClip;
+        p.farClip    = m_preset.farClip;
+        return render::arenaRecoveredFollow(t->position, m_followAnchor, p, 1.0f).eye;
+    }
+
     render::ArenaCameraParams p;
     p.heightOffset   = effective_height();
     p.distanceOffset = effective_distance();

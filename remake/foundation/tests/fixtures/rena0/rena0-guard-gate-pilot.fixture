@@ -1,0 +1,22 @@
+# rena0-guard-gate-pilot — F1-3 fixture, P2-7 guard family
+# The recovered guard gate: a guarded melee hit applies NO damage and no stun.
+# `FUN_00637950`'s guarded branch (the `else` at the listing's lines 541-552) writes the
+# contact word, the per-slot marker and [victim+0xaf30] and calls no damage helper; the
+# predicate is (|bearing - facing| <= 45 || victim 0x2000) && victim 0x400 && !attack 8
+# (fighter.h's guard note; the bundle's battle_hit_guard.hpp).
+#
+# The `pilot rena0-guard` directive attaches the recovered gate to the dummy exactly as
+# --native-actions=rena0 does in the live run. Without it, the same scenario pins the legacy
+# path (rena0-guard-gate-legacy.fixture) and the two differ only in that directive.
+combo 0 0
+seed 5489
+spawn 0 0 0 0
+spawn 1 0 0 300
+collision open-field
+dummy_guard 1
+pilot rena0-guard
+input 0 MELEE
+place_at_attack active
+expect 15 melee_hit 1
+expect 16 dummy_hp 100
+expect 16 dummy_ko 0

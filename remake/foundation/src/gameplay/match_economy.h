@@ -58,7 +58,7 @@
 //    which zeroes it at @0x42029c). This class detects the burst in the same update()
 //    call that credits it, because update() IS the port's single end-of-frame step;
 //    the winning side is unaffected, the round-over frame is one earlier;
-//  * the countdown is kept in seconds (the port runs a 64 Hz fixed step, so a limit of
+//  * the countdown is kept in seconds (the port runs a 60 Hz fixed step, so a limit of
 //    N seconds lasts N seconds) while the original counts frames; the ORDER — timeout
 //    decided before any KO/respawn bookkeeping — is preserved;
 //  * kRespawnSec below is the port's single KO clock. The original instead runs the

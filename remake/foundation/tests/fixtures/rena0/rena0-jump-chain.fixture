@@ -1,0 +1,41 @@
+# rena0-jump-chain — F1-3 fixture
+# Expectations cite FUN_0043ffc0 cases 0x28/0x29/0x2a (the jump chain 40 -> 41 -> 42).
+#
+# Finding recorded while authoring this fixture: the chain is NOT apex-driven. The port's
+# own cited physics (kJumpSpeed 720 u/s, kGravity 1800 u/s^2, kJumpApexSpeed 360;
+# fighter.h:283-291) puts the apex at 24 updates, yet the bound set leaves row 40 within
+# 4 updates, passes row 41 at 4-6, is on a further chain set by 10 and is on row 42 by 30,
+# while the fighter stays airborne through update 47 and lands at 48. So the 40/41/42
+# transitions are phase-driven and early relative to the apex, and row 42 covers most of
+# the flight. The audit test asserts the same three rows exist but not their timing; these
+# anchors are this build's measured trace, and the timing divergence is an open question
+# for the seam audit rather than something this fixture settles.
+#
+# The below-cap start also pins the unified meter's jump economy (V3-9/V3-11): the launch
+# tick refills by its row-40 rule, then every climbing tick drains 10 (row 41). The meter,
+# not an altitude cap, ends the climb -- the 420-unit kFlyMaxAlt was a port invention and
+# no longer applies on the pilot path. No launch spend exists in the jump bodies.
+#
+# The update-10 link is asserted by raw set index because its row is unresolved here:
+# first_set_index(41)=3 and first_set_index(42)=5, so set 4 is a further chain row (the
+# audit's allow-list is sets {2,3,4,5,43}) whose move-row identity is not yet identified.
+combo 0 0
+seed 5489
+spawn 0 0 0 0
+spawn 1 0 0 2000
+collision open-field
+charge_gauge 900
+input 0 JUMP
+input 1 -
+expect 0 anim_row 40
+expect 24 airborne 1
+expect 0 charge_gauge 980
+# A one-tick tap releases immediately, so there is no sustained climb: vy decays from the
+# leap's 12/tick and the arc lands at 25 (the old 48 came from pinning vy at 12 every tick).
+# Holding the button is the case the climb rules below cover -- height is bounded only by
+# the meter, never by an altitude cap (V3-11).
+expect 4 anim_row 42
+expect 10 anim_set 5
+expect 20 airborne 1
+expect 25 airborne 0
+expect 55 dummy_static 1

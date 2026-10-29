@@ -1,0 +1,19 @@
+# rena0-melee-lateral-dash-331 — F1-3 fixture
+# By symmetry with the audit's forward-dash recipe (tests/rena_animation_audit_test.cpp:272-283)
+# and the recovered admission rule that a lateral dash with AttackA admits 331
+# (battle_rena_melee_admission.hpp: 20 with x held -> 331). This fixture is new evidence:
+# it either admits 331 or is recorded as a gap.
+combo 0 0
+seed 5489
+spawn 0 0 0 0
+spawn 1 0 0 2000
+collision open-field
+input 0 LEFT
+input 1 -
+input 2 LEFT
+input 3 MELEE
+input 4 -
+expect 3 attack_row 331
+expect 3 anim_row 331
+expect 3 swing_started 1
+expect 10 dummy_static 1

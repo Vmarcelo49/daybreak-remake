@@ -48,8 +48,10 @@ int main() {
     CHECK(timeline.frame() == 108 && timeline.scale() == 1 && timeline.offset(0) == 0);
     CHECK(timeline.update());
     ui::VsTimeline skipped; CHECK(skipped.update(true));
-    // Shipped vs.ogg lasts 206720/44100 seconds. The host protects the complete
-    // sting at 64 Hz, while the recovered slide/scale still finishes at tick 108.
+    // Shipped vs.ogg lasts 206720/44100 seconds (~4.69 s) — the host protects the complete
+    // sting by holding the logo for that long. minimumFrames is the caller's tick count, so
+    // this case stays 300 ticks whatever the cadence; the recovered slide/scale still
+    // finishes at tick 108 either way.
     ui::VsTimeline withSting(300);
     for (int i = 0; i < 108; ++i) CHECK(!withSting.update());
     CHECK(withSting.scale() == 1 && withSting.offset(0) == 0);

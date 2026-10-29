@@ -1,0 +1,23 @@
+# P2-7 (2e) melee recipe: grounded AttackA presses with the dummy inside reach.
+#
+# The pilot's first combat family. --match starts in battle and the first 60 simulation ticks
+# are BattleStart; P2 is idle at 60 units in front of P1 (--spawn2), close enough for the
+# recovered 300-family swing to connect. Three presses with gaps so several fresh admissions
+# happen, one press while walking, and one back-held press (Down + AttackA), which is the
+# branch whose axis convention is facing-relative rather than a naive screen axis.
+#
+#   --stage=data/stage03 --character=data/rena:0 --enemy=data/mion:0 \
+#     --spawn=-1200,400,0 --spawn2=-1200,400,60 --match --no-devices --headless \
+#     --script=tests/scripts/melee-ground-300.txt --frames=260 --no-audio --out=/tmp/melee.ppm
+70 MELEE
+74 -
+100 MELEE
+104 -
+130 RIGHT
+140 MELEE
+144 -
+# Row 302's recovery keeps the fighter in AttackA past tick 198, so the back-held press waits
+# for the return to Idle — a press during recovery is refused, which is correct behaviour.
+210 DOWN
+220 DOWN MELEE
+224 -

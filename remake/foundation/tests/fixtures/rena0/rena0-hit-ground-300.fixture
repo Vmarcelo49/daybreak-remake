@@ -1,0 +1,25 @@
+# rena0-hit-ground-300 — F1-3 fixture
+# Placement mirrors the device-free melee tests (tests/damage_scale_test.cpp:184-185,
+# tests/fighter_script_test.cpp:761): the dummy is kept on the attacker's posed attack
+# volume with test::Combo::placeAtAttack, rather than placed by an invented sphere.
+# Damage is the recovered 8 HP per landed melee hit (tests/damage_scale_test.cpp:195,
+# FUN_00639160).
+#
+# Measured on this build with the dummy on the volume: the swing is active over updates
+# 14-19 and the contact lands at update 15 (100 -> 92 HP). Note this window differs from
+# the same row's window with the dummy out of reach, which opens at 25+ — see
+# rena0-melee-ground-300.fixture and the open question recorded with it.
+combo 0 0
+seed 5489
+spawn 0 0 0 0
+spawn 1 0 0 300
+collision open-field
+input 0 MELEE
+place_at_attack active
+expect 14 melee_active 1
+expect 15 melee_hit 1
+expect 16 dummy_hp 92
+expect 15 melee_victim 1
+expect 15 swing_hits 1
+expect 15 dummy_alive 1
+expect 22 melee_recovery 1

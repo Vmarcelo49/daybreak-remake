@@ -4,6 +4,7 @@
 #include "assets/cnv.h"
 #include "game/shot_visual.h"
 #include "gameplay/fighter.h"
+#include "gameplay/fixed_step.h"
 #include "gameplay/match.h"
 #include "gameplay/move_behavior.h"
 #include "combo_fixture.h"
@@ -41,7 +42,7 @@ using Combo = test::Combo;
 
 void tick(gameplay::Fighter& fighter, fnd::input::PlayerState& input, gameplay::Fighter* opponent = nullptr) {
     fnd::input::compute_edges(input);
-    fighter.update(&input,opponent,1.0/64.0);
+    fighter.update(&input,opponent,gameplay::FixedStep::seconds);
 }
 
 void records() {
@@ -613,7 +614,7 @@ void miss_trail_world_anchors(const Combo& combo) {
     for (int frame = 1; frame <= 120; ++frame) {
         input.down[fnd::input::Action::AttackA] = frame == 62;
         fnd::input::compute_edges(input);
-        const gameplay::MatchFrame report = match.step(inputs, 1.0 / 64.0);
+        const gameplay::MatchFrame report = match.step(inputs, gameplay::FixedStep::seconds);
         contacted |= report.meleeHit[0];
 
         const gameplay::Fighter& attacker = match.fighter(0);
@@ -768,7 +769,7 @@ void akane0_miss_trail(const Combo& combo, int expectedMove, const char* label) 
         if (expectedMove == 340 && frame == 71)
             input.down[fnd::input::Action::AttackA] = true;
         fnd::input::compute_edges(input);
-        const gameplay::MatchFrame report = match.step(inputs, 1.0 / 64.0);
+        const gameplay::MatchFrame report = match.step(inputs, gameplay::FixedStep::seconds);
         contacted |= report.meleeHit[0];
         const auto& attacker = match.fighter(0);
         const bool inExpectedAttack = attacker.state() == gameplay::FighterState::AttackA &&
@@ -858,8 +859,8 @@ void akane0_contact_timing(const Combo& combo) {
     combo.bind(attacker);
     combo.bind(victim);
     for (int i = 0; i < 70; ++i) {
-        attacker.update(nullptr,nullptr,1.0/64.0);
-        victim.update(nullptr,nullptr,1.0/64.0);
+        attacker.update(nullptr,nullptr,gameplay::FixedStep::seconds);
+        victim.update(nullptr,nullptr,gameplay::FixedStep::seconds);
     }
     fnd::input::PlayerState input;
     input.down[fnd::input::Action::AttackA] = true;
@@ -1145,7 +1146,7 @@ void zero_power_projectile(const Combo& combo) {
           "the reshaped shot allocates");
     const int hpBefore = victim.hp();
     const int takenBefore = victim.stats().damageTaken;
-    pool.update(1.0 / 64.0, &victim, 1, nullptr, nullptr);
+    pool.update(gameplay::FixedStep::seconds, &victim, 1, nullptr, nullptr);
     check(victim.hp() == hpBefore, "a zero-power projectile takes no HP");
     check(victim.stats().damageTaken == 0, "and records no damage taken");
     check(pool.contact_count() > 0, "while still reporting a contact");
@@ -1178,10 +1179,10 @@ void projectile_clocks(const Combo& combo) {
     }
     gameplay::ProjectilePool pool;
     check(pool.spawn({0,0,0},{0,0,1},gameplay::ShotTier::Tap,&owner,0),"exact tap row allocates");
-    pool.update(1./64.,nullptr,0,nullptr,nullptr);
+    pool.update(gameplay::FixedStep::seconds,nullptr,0,nullptr,nullptr);
     check(std::abs(pool.shots()[0].pos.z-37.5f) < 1e-4f,"nata speed is 37.5 per original update, not shared tier tuning");
     check(pool.spawn({100,0,0},{0,0,1},gameplay::ShotTier::Tap,&owner,0),"second tap has its own instance");
-    pool.update(1./64.,nullptr,0,nullptr,nullptr);
+    pool.update(gameplay::FixedStep::seconds,nullptr,0,nullptr,nullptr);
     check(pool.shots()[0].elapsed == 2 && pool.shots()[1].elapsed == 1,
           "same-row simultaneous shots retain independent pose clocks");
     check(pool.shots()[0].record() == combo.bullets[0].phases[0].record_at(2),
@@ -1192,23 +1193,23 @@ void projectile_clocks(const Combo& combo) {
           "row capacity four limits live instances, not a four-projectile volley");
     pool.clear();
     pool.spawn({0,0,0},{0,0,1},gameplay::ShotTier::Yellow,&owner,2);
-    pool.update(1./64.,nullptr,0,nullptr,nullptr);
-    pool.update(1./64.,nullptr,0,nullptr,nullptr);
+    pool.update(gameplay::FixedStep::seconds,nullptr,0,nullptr,nullptr);
+    pool.update(gameplay::FixedStep::seconds,nullptr,0,nullptr,nullptr);
     check(std::abs(pool.shots()[0].pos.z-50.f)<1e-4f && std::abs(pool.shots()[0].pos.y-9.7f)<1e-4f,
           "grenade uses its own speed, delayed vertical launch and gravity");
     pool.clear();
     pool.spawn({0,0,0},{0,0,1},gameplay::ShotTier::Red,&owner,11);
-    pool.update(1./64.,nullptr,0,nullptr,nullptr);
+    pool.update(gameplay::FixedStep::seconds,nullptr,0,nullptr,nullptr);
     check(pool.live_shots() == 2 && pool.shots()[1].bulletRow == 17 && pool.shots()[1].elapsed == 0,
           "red nata emits exact secondary trail row 17, with a newborn independent clock");
     const glm::vec3 trailPosition = pool.shots()[1].pos;
-    pool.update(1./64.,nullptr,0,nullptr,nullptr);
+    pool.update(gameplay::FixedStep::seconds,nullptr,0,nullptr,nullptr);
     check(pool.shots()[1].pos == trailPosition,"secondary trail is stationary, not a guessed moving projectile");
     bool finite = true;
     const auto matrix = pool.shots()[1].model_matrix();
     for (int col=0; col<4; ++col) for (int row=0; row<4; ++row) finite &= std::isfinite(matrix[col][row]);
     check(finite,"zero-speed trail retains its launch direction and finite model rotation");
-    pool.update(1./64.,nullptr,0,nullptr,nullptr);
+    pool.update(gameplay::FixedStep::seconds,nullptr,0,nullptr,nullptr);
     check(pool.live_shots() == 3,"red secondary emissions repeat every two original updates");
 
     gameplay::Fighter victim;
@@ -1216,26 +1217,26 @@ void projectile_clocks(const Combo& combo) {
     const auto chest = victim.hitbox_debug().anchors[1];
     pool.clear();
     pool.spawn(chest-glm::vec3(0,0,37.5f),{0,0,1},gameplay::ShotTier::Tap,&owner,0);
-    pool.update(1./64.,&victim,1,nullptr,nullptr);
+    pool.update(gameplay::FixedStep::seconds,&victim,1,nullptr,nullptr);
     check(victim.hp()<victim.max_hp() && pool.shots()[0].alive,
           "normal nata contact spends a victim allowance without consuming the projectile");
     const int tapHp = victim.hp();
-    pool.update(1./64.,&victim,1,nullptr,nullptr);
+    pool.update(gameplay::FixedStep::seconds,&victim,1,nullptr,nullptr);
     check(victim.hp()==tapHp,"normal nata cannot damage the same victim twice");
 
     combo.init(victim);
     pool.clear();
     pool.spawn(victim.hitbox_debug().anchors[1]-glm::vec3(0,0,45.f),{0,0,1},
                gameplay::ShotTier::Red,&owner,11);
-    pool.update(1./64.,&victim,1,nullptr,nullptr);
+    pool.update(gameplay::FixedStep::seconds,&victim,1,nullptr,nullptr);
     const auto contactPosition = pool.shots()[0].pos;
     const int contactAge = pool.shots()[0].elapsed;
     check(victim.hp()<victim.max_hp() && pool.shots()[0].contactPending,
           "red nata records contact for its executable pause policy");
-    for (int i=0; i<5; ++i) pool.update(1./64.,nullptr,0,nullptr,nullptr);
+    for (int i=0; i<5; ++i) pool.update(gameplay::FixedStep::seconds,nullptr,0,nullptr,nullptr);
     check(pool.shots()[0].pos==contactPosition && pool.shots()[0].elapsed==contactAge,
           "red nata's first five contact updates freeze movement and its record clock");
-    pool.update(1./64.,nullptr,0,nullptr,nullptr);
+    pool.update(gameplay::FixedStep::seconds,nullptr,0,nullptr,nullptr);
     check(std::abs(pool.shots()[0].pos.z-contactPosition.z-60.f)<1e-4f &&
           pool.shots()[0].hitsRemaining[0]==4 && !pool.shots()[0].contactPending,
           "red nata resumes at sixty units/update, retaining its five-hit victim budget");

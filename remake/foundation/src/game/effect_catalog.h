@@ -26,7 +26,7 @@
 //     confirms the unit.
 //
 // Port rule: the recovered count is a frame count at 0.016 s per frame, so the port
-// keeps the animation's SECONDS and converts them at its own 64 Hz step. An effect then
+// keeps the animation's SECONDS and converts them at its own 60 Hz step. An effect then
 // lasts the same wall-clock time it did in the original instead of inheriting 62.5 Hz
 // arithmetic. glm + std only: this header is device-free and unit-tested.
 #include <array>

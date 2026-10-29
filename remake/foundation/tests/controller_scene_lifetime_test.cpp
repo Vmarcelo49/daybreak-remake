@@ -356,7 +356,7 @@ int main(int argc, char** argv) {
         // 3. advanceAnimation is allowed to run now — the call the reporter's backtrace
         //    died in (evalLocal -> operator new -> std::bad_alloc). It must return, and the
         //    pose pass it drives must leave the same invariant behind.
-        advanceAnimation(app, 1.0 / 64.0);
+        advanceAnimation(app, gameplay::FixedStep::seconds);
         check(staleControllers(app, stages[round]) == 0,
               "advanceAnimation ran over the swapped scene and left the invariant intact");
 

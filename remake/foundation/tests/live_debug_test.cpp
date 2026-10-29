@@ -1,3 +1,4 @@
+#include "gameplay/fixed_step.h"
 #include "gameplay/live_debug.h"
 #include "synthetic_combo.h"
 #include <algorithm>
@@ -53,7 +54,7 @@ int main() {
         require(i != 0 || inputs[0]->just_pressed[fnd::input::Jump]);
         require(i != 1 || inputs[0]->just_released[fnd::input::Jump]);
         require(i != 2 || inputs[0]->just_pressed[fnd::input::AttackA]);
-        debug.after_tick(tick, match, match.step(inputs, 1.0/64));
+        debug.after_tick(tick, match, match.step(inputs, gameplay::FixedStep::seconds));
         ++renders; debug.presented(tick, renders, match);
     }
     require(!debug.wants_tick());

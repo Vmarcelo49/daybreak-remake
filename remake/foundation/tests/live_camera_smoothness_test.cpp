@@ -19,7 +19,7 @@
 //      combo (AGENTS rule 7) and stand still — the acceptance's "followed fighter is
 //      stationary";
 //    * one frame at a time exactly as the frame loop composes it: gameplay::FixedStep
-//      decides how many 64 Hz ticks the frame runs and what fraction of the next one has
+//      decides how many simulation ticks the frame runs and what fraction of the next one has
 //      elapsed, tickMatch() steps the match, and buildFrameViews() then builds the frame
 //      the scene pass draws. matchAlphaFor() is the product's own alpha resolution, so a
 //      break in the live alpha path breaks this test;
@@ -181,8 +181,9 @@ struct Combo {
 
 // ---------------------------------------------------------------------------
 // The fixture: a match and its per-view state the way initMatch builds them, with one
-// human controller per fighter (the front-end battle's keying). `dt` is the live 64 Hz
-// step and the round has no time limit, so the fixture cannot end mid-test.
+// human controller per fighter (the front-end battle's keying). `dt` is the live fixed step
+// (gameplay::FixedStep::seconds) and the round has no time limit, so the fixture cannot end
+// mid-test.
 // ---------------------------------------------------------------------------
 struct Fixture {
     Combo combo;   // declared first: app.match borrows its weapon/move table
@@ -319,7 +320,7 @@ void report(const Sweep& s, const char* when, double delta) {
 
 // ---------------------------------------------------------------------------
 // The acceptance's smoothness check at one cadence: a settled camera, a stationary
-// followed fighter, real per-frame tick fractions, and a bound on how far the RENDERED eye
+// followed fighter, that cadence's own tick shape, and a bound on how far the RENDERED eye
 // may move between frames.
 // ---------------------------------------------------------------------------
 void testSettledCameraDoesNotSweep(double delta, const char* name, int fighters,
@@ -333,14 +334,19 @@ void testSettledCameraDoesNotSweep(double delta, const char* name, int fighters,
     checkAtMost(s.fighterDrift, 0.5f, "the followed fighter is stationary over the window");
     checkAtMost(s.facingDrift, 0.001f, "and does not turn: the camera's desired eye cannot orbit");
     checkAtMost(s.maxCameraStep, 0.5f, "the camera's own eye is settled over the window");
-    check(s.maxAlpha - s.minAlpha > 0.5f, "the frames span a real tick fraction, not one alpha");
+    // At the port cadence an exact 60 Hz render delta consumes exactly one tick and leaves no
+    // remainder, so this case is boundary-exact: one tick, alpha 0, every frame. The D9 tick
+    // fraction — a frame that renders BETWEEN two ticks — is asserted where it is real, at
+    // the 144 Hz sub-tick render below.
+    check(s.zeroTickFrames == 0 && s.multiTickFrames == 0,
+          "the cadence runs exactly one tick per frame (no fraction to span)");
     checkAtMost(s.maxRenderedStep, kMaxEyeStep,
                 "consecutive rendered frames do not sweep the camera eye");
 }
 
 // ---------------------------------------------------------------------------
 // The cadence matrix: the live loop runs 0, 1 or 2 ticks in a frame depending on the
-// render rate against the 64 Hz clock, and the defect's sweep grew with the tick fraction
+// render rate against the fixed-step clock, and the defect's sweep grew with the tick fraction
 // the frame happened to land on. All three shapes must hold the same bound.
 // ---------------------------------------------------------------------------
 void testCadences() {
@@ -348,7 +354,7 @@ void testCadences() {
     const glm::vec3 spawn[4] = {glm::vec3(0.f), glm::vec3(2000.f, 0.f, 0.f),
                                 glm::vec3(0.f), glm::vec3(0.f)};
 
-    // 60 Hz: 1.067 ticks per frame — the live loop's ordinary case.
+    // 60 Hz render against the same 60 Hz clock: the ordinary live case, boundary-exact.
     testSettledCameraDoesNotSweep(1.0 / 60.0, "1v1, two views, 60 Hz (one tick per frame)",
                                   2, side, spawn);
 
@@ -361,6 +367,9 @@ void testCadences() {
         const Sweep s = sweep(f, 1.0 / 144.0, 400);
         report(s, "144 Hz", 1.0 / 144.0);
         check(s.zeroTickFrames > 100, "most frames run no simulation tick");
+        // The D9 gate (issue #39): the live path must render between ticks, so the fixture
+        // has to land on a spread of fractions rather than on one alpha.
+        check(s.maxAlpha - s.minAlpha > 0.5f, "the frames span a real tick fraction, not one alpha");
         checkAtMost(s.fighterDrift, 0.5f, "the followed fighter is stationary over the window");
         checkAtMost(s.facingDrift, 0.001f, "and does not turn: the camera's desired eye cannot orbit");
         checkAtMost(s.maxCameraStep, 0.5f, "the camera's own eye is settled over the window");

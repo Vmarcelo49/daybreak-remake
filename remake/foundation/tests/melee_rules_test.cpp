@@ -1,6 +1,7 @@
 // NN.dat collision/clock integration. Real combat uses an equipped item and its
 // bundle-winning rig; synthetic rigs below isolate selector/blend/period contracts.
 #include "combo_fixture.h"
+#include "gameplay/fixed_step.h"
 #include "gameplay/melee_rules.h"
 #include "gameplay/match.h"
 #include <array>
@@ -42,12 +43,12 @@ void section(const char* title) { std::printf("\n-- %s\n", title); }
 void tick(Fighter& f, const input::PlayerState& in) {
     input::PlayerState copy = in;
     input::compute_edges(copy);
-    f.update(&copy, nullptr, 1.0 / 64.0);
+    f.update(&copy, nullptr, gameplay::FixedStep::seconds);
 }
 
 void tick_held(Fighter& f, input::PlayerState& in) {
     input::compute_edges(in);
-    f.update(&in, nullptr, 1.0 / 64.0);
+    f.update(&in, nullptr, gameplay::FixedStep::seconds);
 }
 
 void bind_synthetic_rig(Fighter& f, xm::Model& model, xm::Controller& ctrl,
@@ -149,7 +150,7 @@ void testPosedCombat() {
     checkInt(92,victim.hp(),"the current record's power removes eight HP");
     int stunTicks = 0;
     while (victim.state() == FighterState::Hit && stunTicks < 60) {
-        victim.update(nullptr,nullptr,1.0/64.0); ++stunTicks;
+        victim.update(nullptr,nullptr,gameplay::FixedStep::seconds); ++stunTicks;
     }
     checkInt(6,stunTicks,"the current record supplies defender hitstop");
     test::Combo::placeAtAttack(attacker,second,{0,0,-40});
@@ -187,7 +188,7 @@ void testPosedMatch() {
     gameplay::Match match; match.reset(config,models,controllers,nullptr,nullptr);
     match.economy().setLogFile(nullptr);
     const input::PlayerState* idle[4]{};
-    for (int i = 0; i < 70; ++i) match.step(idle,1.0/64.0);
+    for (int i = 0; i < 70; ++i) match.step(idle,gameplay::FixedStep::seconds);
     input::PlayerState input; input.down[input::Action::AttackA] = true;
     const input::PlayerState* inputs[4] = {&input,nullptr,nullptr,nullptr};
     int enemyContacts = 0;
@@ -196,7 +197,7 @@ void testPosedMatch() {
         if (match.fighter(0).melee_in_active())
             for (int victim = 1; victim < 4; ++victim)
                 test::Combo::placeAtAttack(match.fighter(0),match.fighter(victim));
-        match.step(inputs,1.0/64.0);
+        match.step(inputs,gameplay::FixedStep::seconds);
         enemyContacts = std::max(enemyContacts,match.fighter(0).swing_hit_count());
         input.down[input::Action::AttackA] = false;
     }
@@ -224,7 +225,7 @@ void testRepeatContactSuppression() {
     gameplay::Match match; match.reset(config,models,controllers,nullptr,nullptr);
     match.economy().setLogFile(nullptr);
     const input::PlayerState* idle[2]{};
-    for (int i = 0; i < 70; ++i) match.step(idle,1.0/64.0);
+    for (int i = 0; i < 70; ++i) match.step(idle,gameplay::FixedStep::seconds);
     match.fighter(0).set_state(FighterState::Idle);
 
     input::PlayerState input; input.down[input::Action::AttackA] = true;
@@ -238,7 +239,7 @@ void testRepeatContactSuppression() {
             // the victim back inside the posed volume.
             test::Combo::placeAtAttack(match.fighter(0),match.fighter(1));
         }
-        match.step(inputs,1.0/64.0);
+        match.step(inputs,gameplay::FixedStep::seconds);
         if (hpAfterFirst < 0 && match.fighter(1).hp() < match.fighter(1).max_hp())
             hpAfterFirst = match.fighter(1).hp();
         input.down[input::Action::AttackA] = false;
@@ -739,7 +740,7 @@ void testJumpAnimationChain(const fs::path& install) {
 }
 
 void testGuardHoldsPlayingClip(const fs::path& install) {
-    section("guard holds the playing clip (no selector, not a fallback)");
+    section("guard plays row 390's stance clip (no selector, not a fallback)");
     test::Combo combo;
     std::string error;
     if (!combo.load(0,0,error)) { skip("Rena+0 guard fixture unavailable"); return; }
@@ -759,11 +760,16 @@ void testGuardHoldsPlayingClip(const fs::path& install) {
     tick_held(f, walk);
     checkInt(static_cast<int>(FighterState::Guard), static_cast<int>(f.state()),
              "holding the guard key enters Guard");
-    checkInt(1, f.anim_set_index(), "guard keeps the walk clip it was already playing");
+    // Guard has no move SELECTOR (the block branch of FUN_00637950 binds nothing), but it
+    // is not animateless: the character DAT carries the stance as row 390, whose opening
+    // clip is what the state must show. Holding the previous clip read as "blocking has
+    // no animation at all" (PILOT-EVIDENCE-CONTRACT V3-19).
+    const int guardSet = combo.moves.first_set_index(390);
+    check(guardSet >= 0, "row 390 carries the guard stance clip");
+    checkInt(guardSet, f.anim_set_index(), "guard binds row 390's opening clip");
     check(!f.anim_fallback(), "guard is not a set-0 fallback");
-    check(f.anim_no_selector(), "guard reports the no-selector hold");
     for (int i = 0; i < 5; ++i) tick_held(f, walk);
-    checkInt(1, f.anim_set_index(), "the held clip stays bound while guarding");
+    checkInt(guardSet, f.anim_set_index(), "the guard clip stays bound while guarding");
     walk.down[input::Action::Guard] = false;
     tick_held(f, walk);
     checkInt(static_cast<int>(FighterState::Walk), static_cast<int>(f.state()),
@@ -783,7 +789,10 @@ void testGuardHoldsPlayingClip(const fs::path& install) {
     tick_held(f, stand);
     stand.down[input::Action::Guard] = true;
     tick_held(f, stand);
-    checkInt(0, f.anim_set_index(), "a standing guard holds the idle set 0");
+    // A guard entered from standing binds row 390's opening clip for the same reason a
+    // guard entered from walking does: the stance has its own animation (V3-19).
+    checkInt(combo.moves.first_set_index(390), f.anim_set_index(),
+             "a standing guard binds row 390's opening clip");
     check(!f.anim_fallback(), "a standing guard is still not a fallback");
     check(f.anim_no_selector(), "a standing guard is a no-selector hold");
     // An unmapped state keeps the visible fallback: this is the distinction.

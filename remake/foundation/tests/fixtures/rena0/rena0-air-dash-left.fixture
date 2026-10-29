@@ -1,0 +1,19 @@
+# rena0-air-dash-left — F1-3 fixture
+# Expectations cite the recovered airborne row for Rena+0 (30) and the air-dash trigger
+# the audit test uses (jump, then a double tap while airborne;
+# tests/rena_animation_audit_test.cpp:197-222).
+combo 0 0
+seed 5489
+spawn 0 0 0 0
+spawn 1 0 0 2000
+collision open-field
+input 0 JUMP
+input 1 -
+input 12 LEFT
+input 13 -
+input 14 LEFT
+expect 11 airborne 1
+expect 14 dash_row 30
+expect 14 anim_row 30
+expect 14 air_dash_context 1
+expect 30 dummy_static 1

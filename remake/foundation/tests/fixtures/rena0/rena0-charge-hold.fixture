@@ -1,0 +1,23 @@
+# rena0-charge-hold — F1-3 fixture
+# Expectations cite the recovered charge rules: the bound weapon gives
+# yellow_hold_sec = 30 updates and red_hold_sec = 30 + the weapon's chargeThreshold
+# (fighter.cpp:2727-2735, from FUN_0043f3e0), and charge_tier walks Tap -> Yellow -> Red
+# (fighter.cpp:2874-2880). Tap = 0, Yellow = 1, Red = 2.
+#
+# Measured on this build while authoring: Yellow is already held at update 30 (matching
+# the cited 30-update threshold), the tier is still Yellow at 205 and Red by 212, so the
+# first Red update lies in [206, 212] — that window is recorded as measured, and this
+# fixture deliberately does not guess the weapon's chargeThreshold value.
+combo 0 0
+seed 5489
+spawn 0 0 0 0
+spawn 1 0 0 2000
+collision open-field
+input 0 SHOOT
+expect 0 charge_tier 0
+expect 30 charge_tier 1
+expect 30 yellow_hold_sec 0.5
+expect 205 charge_tier 1
+expect 210 red_hold_sec 3.5
+expect 210 charge_tier 2
+expect 215 dummy_static 1

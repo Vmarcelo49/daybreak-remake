@@ -103,12 +103,16 @@ struct CombatEvent {
     CombatEventKind kind = CombatEventKind::MeleeSwing;
     int      fighter = -1;
     int      source  = -1;
-    uint32_t tick    = 0;   // the fixed 64 Hz simulation tick that produced it
+    uint32_t tick    = 0;   // the fixed 60 Hz simulation tick that produced it
     uint8_t  seq     = 0;   // disambiguates several events of one kind in one tick
     // The blow came from a projectile rather than a melee swing. Only the KO pair reads it
     // (see resolve_combat_event); it is not part of the identity, which needs uniqueness
     // per occurrence, not every attribute.
     bool     shot    = false;
+    // The actor's hypermode selector (0 Friendship / 1 Oyashiro / 2 Kakera) for
+    // HyperActivate only; the S-press presentation is per-mode (issue #71).
+    // Not part of event identity.
+    int      hyper_mode = -1;
     int voice_override = -1;
     int voice_alternative = -1;
     // The `data/se/%03d.wav` id an action body requested (FUN_0042c8b0's positional form
@@ -164,6 +168,9 @@ struct CombatFrameView {
     int shot_voice_alternative[4] = {-1, -1, -1, -1};
     bool shot_voice_audited[4] = {};
     bool hyper_started[4] = {};
+    // The actor's hypermode selector per fighter (same order as hyper_started),
+    // so the per-mode S-press presentation resolves without invented defaults.
+    int hyper_mode[4] = {-1, -1, -1, -1};
     bool guard_started[4] = {};
     bool respawned[4] = {};
     bool blocked[4] = {};

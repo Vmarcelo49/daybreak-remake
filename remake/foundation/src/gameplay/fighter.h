@@ -131,8 +131,12 @@ inline int state_to_move_id(FighterState s) {
 // registry, the per-slot `0x100` marker and `[victim+0xaf30]`, and calls no move bind
 // (FUN_00421080 / FUN_00421100 / FUN_00421410) and no effect or voice helper. The
 // predicate that reaches it is
-//   (|bearing - facing| > 45 || (victimword & 0x2000)) && (victimword & 0x400)
+//   (|bearing - facing| <= 45 || (victimword & 0x2000)) && (victimword & 0x400)
 //   && !(attackerword & 8)
+// Polarity note (2026-10-16, P2-7 guard work): this read `> 45` until then. Both the
+// decompiled `else` — the very branch this note describes — and the bundle's
+// `battle_hit_guard.hpp` require the impact to be WITHIN 45 degrees of the victim's facing;
+// `> 45` describes the damage branch, so the earlier wording would have inverted the guard.
 // with victimword = [victim+0x10]+0x28 and attackerword = [attacker+0x10]+0x2c, whose
 // 8 bit is the unblockable flag. Which physical buttons the two victim bits belong to
 // is NOT recovered — the device button word carries `0x10 << slot`, and this is a
@@ -177,6 +181,23 @@ enum class Hypermode : int {
     Oyashiro   = 1,
     Kakera     = 2,
 };
+
+// The executable's own mode numbering (+0x318) runs the other way round:
+// Oyashiro 0, Friendship 1, Kakera 2. Established across five independent
+// sites (issue #71): the S-press move branch (+0x318==0 starts move 500/501),
+// the red flash's +0x844 arm, the HUD caption rows (0 OYASHIRO), the aura
+// models (0/1/5), and the victim-side gauge feed for value 0 (param_3 takes
+// the HP in FUN_00637950, so value 0 fills by taking damage). The port enum
+// above is the UI order and stays; every site that branches on the wire value
+// translates through here instead of re-deriving it.
+inline int hypermode_wire_value(Hypermode m) {
+    switch (m) {
+        case Hypermode::Oyashiro:   return 0;
+        case Hypermode::Friendship: return 1;
+        case Hypermode::Kakera:     return 2;
+    }
+    return 1;
+}
 
 // Per-mode rules. Durations and damage/stun multipliers are wiki numbers;
 // fill rates and recharge boosts are provisional tuning (the wiki gives no
@@ -228,8 +249,9 @@ inline HypermodeParams hypermode_params(Hypermode m) {
 // them.
 struct FighterConstants {
     static constexpr float kWalkSpeed     = 420.0f;  // 7.0/tick, the modal walk
-    static constexpr float kRunSpeed      = 900.0f;  // 15.0/tick, the modal dash;
-                                                     // phase-2 decay not modelled
+    static constexpr float kRunSpeed      = 900.0f;  // 15.0/tick, the modal dash; the
+                                                     // pilot side steps use the recovered
+                                                     // per-update profile instead
     static constexpr float kTurnSpeed     = 8.0f;    // radians/sec (lerp factor)
     static constexpr int   kMaxHP         = 100;     // 0x64 in the binary
     static constexpr int   kMaxStamina    = 100;
@@ -521,6 +543,97 @@ public:
     // Binds the parsed data/<char>/NN.dat for this fighter's own rig. Borrowed,
     // like the model and the weapon; null keeps legacy shared melee tuning and
     // leaves animation states without a recovered table binding on set 0.
+    // P2-7 (2e) slice 2 — the pilot's locomotion policy. The legacy default attaches none and
+    // is byte-for-byte unchanged. With --native-actions=rena0 the recovered Rena+0 locomotion
+    // body answers the two locomotion questions the seam marks as its own (PILOT-SEAM §16):
+    // the Idle/Walk proposal and the walk speed. The turn step and the phase clock stay with
+    // the port, which already encodes the same recovered rule and clock convention — driving
+    // them would add a second implementation of identical behaviour, not a recovered one.
+    //
+    // Live implementations are owned by the pilot (src/gameplay/native/rena0_pilot_adapter.h)
+    // and must be attached only for the pilot fighter; a value < 0 keeps the legacy answer.
+    struct PilotLocomotion {
+        virtual ~PilotLocomotion() = default;
+        // 0 idle, 10 walk, 43 airborne (the recovered body's state numbers), or -1 to keep
+        // the legacy decision.
+        virtual int proposed_state(const Fighter& f) const = 0;
+        // Walk speed in units per tick, or < 0 to keep the legacy value.
+        virtual float walk_speed_per_tick(const Fighter& f) const = 0;
+    };
+    void set_pilot_locomotion(const PilotLocomotion* policy) { m_pilotLocomotion = policy; }
+    const PilotLocomotion* pilot_locomotion() const { return m_pilotLocomotion; }
+
+    // P2-7 (2e) — the pilot's guard policy, attached to the VICTIM. It answers the recovered
+    // predicate above; when it says a hit is guarded, the hit applies no damage and no stun,
+    // which is what `FUN_00637950`'s guarded branch does (it writes the contact word, the
+    // per-slot marker and [victim+0xaf30] and calls no damage helper). The legacy default
+    // attaches none and keeps its own provisional 20% rule.
+    // P2-7 (2e) charge family: the two charge bases a landed melee hit carries. They are the
+    // hit record's combat[5]/[6] columns — the ones the port's own damage-path note identifies
+    // as the feeds for the original's mode gauges (+0x838/+0x840/+0x83C at FUN_00637950's sites
+    // 0x638321/0x6383e6/0x638493) and deliberately leaves unread because `gain_gauge` feeds the
+    // hypermode bar instead. The record parser's `hpDamage`/`reflectDamage` aliases ARE these
+    // columns; the names are historical and the pilot reads them under their recovered role.
+    struct MeleeChargeBases {
+        int victim = 0;    // combat[5], the victim-side (mode 0/2) base
+        int attacker = 0;  // combat[6], the attacker-side (mode 1) base
+    };
+    const MeleeChargeBases& melee_charge_bases() const { return m_meleeChargeBases; }
+
+    // P2-7 (2e) shot family: the recovered shot body clears both held item-model slots on every
+    // frame after its frame 11 (`battle_rena_ground_shot.hpp:37`), and this port re-derives the
+    // slots every tick from the move's trail binding (fighter.cpp:1898-1903), so the clear has
+    // to be part of that derivation rather than a write to the array. The pilot drives it from
+    // the fire event; the default path has no policy and keeps the derived binding.
+    // P2-7 (2e) guard family: the guard state binds no clip or phase in this port
+    // (`state_move_id()` returns -1 for Guard, and its own note records why), so the live frame
+    // record the recovered guard predicate reads does not exist while a human fighter guards.
+    // The pilot supplies it from the recovered guard row instead: the row's guard-capable
+    // record (stateFlags 0x400), which is what the predicate's victim word carries.
+    struct PilotGuardMotion {
+        virtual ~PilotGuardMotion() = default;
+        virtual const MoveEntry* guard_record() const { return nullptr; }
+    };
+    void set_pilot_guard_motion(const PilotGuardMotion* motion) { m_pilotGuardMotion = motion; }
+    const PilotGuardMotion* pilot_guard_motion() const { return m_pilotGuardMotion; }
+
+    struct PilotShot {
+        virtual ~PilotShot() = default;
+        virtual bool clears_item_models() const { return false; }
+        // The recovered empty-magazine tap: the adapted slot-7 body's release branch
+        // (`0 < released < 20 && primary rounds == 0`) requests ONE voice and increments the
+        // empty-shot statistic, and never requests a shot row — it is inside the wrapper whose
+        // `+0x834 < 1` term excludes the ordinary admission (PILOT-SEAM.md §26). The port's own
+        // `can_fire` returns before any voice is queued, so the pilot answers the voice half on
+        // the same per-tick cue the host already drains. < 0 is "no opinion"; the unowned
+        // statistic is NOT published through a new Fighter field.
+        virtual int empty_shot_voice() const { return -1; }
+    };
+    void set_pilot_shot(const PilotShot* shot) { m_pilotShot = shot; }
+    const PilotShot* pilot_shot() const { return m_pilotShot; }
+
+    struct PilotGuard {
+        virtual ~PilotGuard() = default;
+        virtual bool guards_hit(const Fighter& victim, const Fighter& attacker) const = 0;
+    };
+    void set_pilot_guard(const PilotGuard* policy) { m_pilotGuard = policy; }
+    const PilotGuard* pilot_guard() const { return m_pilotGuard; }
+
+    // P2-7 meter family: the unified action meter (+0x834, 0..1000). Attached by the
+    // pilot flag for Rena+0 (and by the acceptance runner for its fixtures); a null
+    // policy keeps the legacy m_stamina/m_chargeGauge pair exactly as it was. The meter
+    // carries the recovered integer rates — dash -12/tick (air dash 30: -11; the -3
+    // inner arm is a named limit), guard -10/tick, jump launch/landing +40, hover
+    // -10, recovery +40/+5 clamped at 1000, mode-2 +1/tick — with no passive refill
+    // and no launch spend (FUN_0041f580's only unconditional +1 is behind the mode-2
+    // special flag; every other refill rides a body row). The Kakera gate at the
+    // refill site names its mapping limit.
+    struct PilotMeter {
+        virtual ~PilotMeter() = default;
+    };
+    void set_pilot_meter(const PilotMeter* meter) { m_pilotMeter = meter; }
+    const PilotMeter* pilot_meter() const { return m_pilotMeter; }
+
     void set_moves(const CharacterMoves* moves);
     const CharacterMoves* moves() const { return m_moves; }
     // The character-.dat move currently used for melee tuning. Exposed for
@@ -599,8 +712,13 @@ public:
 
     // The fighter-level special/charge gauge (+0x834, 0..1000). The original writes it
     // from battle init, the hyper regen, the recoveries and the special spend; this
-    // setter is the test seam for the admission/guard gates that read it.
-    void set_charge_gauge(int value) { m_chargeGauge = std::clamp(value, 0, 1000); }
+    // setter is the test seam for the admission/guard gates that read it. On the pilot
+    // path it doubles as the unified-meter injector: admission and recovery tests set
+    // the meter through the same call.
+    void set_charge_gauge(int value) {
+        m_chargeGauge = std::clamp(value, 0, 1000);
+        if (m_pilotMeter) m_actionMeter = m_chargeGauge;
+    }
 
     // --- hypermode (spec §3.4) ---
     void set_hypermode(Hypermode m) { m_hypermode = m; }
@@ -701,7 +819,7 @@ public:
     // and the awakened-melee spend threshold (`500 < +0x834`). This is NOT the
     // item-data magazine: the rounds-counted 0x44-byte magazine (FUN_00433eb0) is a
     // separate per-request cost the launch path already pays.
-    int  charge_gauge() const { return m_chargeGauge; }
+    int  charge_gauge() const { return m_pilotMeter ? m_actionMeter : m_chargeGauge; }
 
     // Melee hit test for ONE candidate, called once per attacker→candidate pair while
     // the swing is active. Rejects a candidate that is out of reach vertically, outside
@@ -776,6 +894,13 @@ public:
     bool weapon_slot_bound(int slot) const;
     int action_camera() const { return m_actionCamera; }
     const WeaponTrail& trail(int hand) const { return m_trails[static_cast<size_t>(hand)]; }
+    // P2-7 (2e) shot family: the recovered shot body clears both held item-model slots at its
+    // frame 12 (`battle_rena_ground_shot.hpp:37`), and this port's consumer already reads a
+    // negative model as "no prop in that slot" (fighter.cpp:751-755). The pilot drives the
+    // clear behind the flag from the fire event, which is the same frame the body clears on.
+    void set_item_model_slot(int slot, int model) {
+        if (slot >= 0 && slot < 2) m_trailItemModel[static_cast<size_t>(slot)] = model;
+    }
     int trail_item_model(int hand) const {
         return hand >= 0 && hand < static_cast<int>(m_trailItemModel.size())
                    ? m_trailItemModel[static_cast<size_t>(hand)] : -1;
@@ -847,7 +972,8 @@ public:
     const glm::vec3&   position()   const { return m_position; }
     float              facing_yaw() const { return m_facing; }
     int                hp()         const { return m_hp; }
-    int                stamina()    const { return static_cast<int>(m_stamina); }
+    int                stamina()    const { return m_pilotMeter ? m_actionMeter / 10
+                                                              : static_cast<int>(m_stamina); }
     FighterState       state()      const { return m_state; }
     bool               is_alive()   const { return m_hp > 0; }
     bool               airborne()   const { return !m_grounded; }
@@ -868,6 +994,22 @@ public:
     // anim_fallback(): holding a clip is the source behaviour, while a fallback is
     // a selector or table row this port has not recovered.
     bool               anim_no_selector() const { return m_animNoSelector; }
+    // Activation-overlay clock (issue #71): ticks since the move-500 clip was
+    // bound, or -1 when no overlay is playing. The overlay set's own texture
+    // events (e.g. Rena set 69's face swap) key off this, not the state's move
+    // clock, which belongs to a different row while the overlay plays.
+    int                hyper_activation_elapsed() const {
+        return m_hyperActivationSet >= 0 ? m_hyperActivationElapsed : -1;
+    }
+    // True while the activation overlay's own clip is still what's bound: a
+    // superseding action's rebind ends the overlay even before its window lapses.
+    bool               hyper_activation_playing() const {
+        return m_hyperActivationSet >= 0 && m_animSetIdx == m_hyperActivationSet;
+    }
+    // Activation flash alpha (0 when idle): FUN_0063a130 fills the viewport
+    // with (alpha << 24) | mode-colour while nonzero. The renderer reads it
+    // per view (issue #71).
+    int                hyper_flash_alpha() const { return m_hyperFlash; }
     // Bound weapon digits count rounds; bars include the original refill progress.
     float main_frac() const { return m_weapon ? m_shootingMagazines[0].fraction() : m_main.frac(); }
     float charge_frac() const { return m_weapon ? m_shootingMagazines[1].fraction() : m_charge.frac(); }
@@ -944,8 +1086,18 @@ private:
     // --- state machine ---
     FighterState m_state       = FighterState::Idle;
     int          m_stateTimer  = 0;    // frames remaining in current state
+    int          m_hyperActivationFrames = 0;  // overlay window, or <0 for a gated hold (issue #71)
+    int          m_hyperActivationSet = -1;   // overlay's bound set; -1 once superseded (issue #71)
+    int          m_hyperActivationElapsed = 0;  // ticks since the overlay bound (issue #71)
+    int          m_hyperFlash = 0;              // activation flash alpha, 0xFC down 4/tick (issue #71)
     int          m_animSetIdx  = -1;   // set bound for the current state (-1 = none)
     bool         m_animFallback = false;  // m_animSetIdx is the set-0 default
+    const PilotLocomotion* m_pilotLocomotion = nullptr;  // P2-7 slice 2; null on the default path
+    const PilotGuard* m_pilotGuard = nullptr;            // P2-7 guard gate; null on the default path
+    const PilotMeter* m_pilotMeter = nullptr;            // P2-7 unified meter; null on the default path
+    const PilotShot* m_pilotShot = nullptr;              // P2-7 item-model clear; null by default
+    const PilotGuardMotion* m_pilotGuardMotion = nullptr; // P2-7 guard record supply; null by default
+    MeleeChargeBases m_meleeChargeBases{};                // P2-7 charge bases of the last landed hit
     bool         m_animNoSelector = false;  // state has no selector: the clip is held
     int          m_boundMoveId = -1;   // move whose phase bound m_animSetIdx (-1 = none)
     bool         m_jumpStartup = false;  // launch tick: the air chain plays row 40 first
@@ -965,6 +1117,10 @@ private:
     SoundEffectCue     m_pendingSoundEffect;
     EffectCue     m_pendingEffect;
     int           m_chargeGauge = 1000;
+    // P2-7 unified action meter (+0x834, 0..1000). Authoritative only when a pilot meter
+    // policy is attached; the default path never reads it. Reset alongside the legacy
+    // pair so a stale value cannot leak across a round.
+    int           m_actionMeter = 1000;
     // Nine actor-owned status timers (`+0x7dc..+0x7fc`), decremented after the
     // body executor by FUN_0042e110. Slot 6 is the Rena +40/+5 recovery gate.
     std::array<int, 9> m_hitStatusDuration{};
@@ -1052,6 +1208,15 @@ private:
     AmmoStock    m_main;         // legacy stock without a bound weapon
     AmmoStock    m_charge;
     float        m_chargeHeld = 0.0f;  // legacy hold seconds / bound C-held marker
+    // Frames the charge button has been held, reset on release: the recovered empty-tap branch
+    // tests this count (`0 < released < 20`), which the seconds field cannot express because a
+    // bound weapon pins it to one tick. See the empty-shot voice note on PilotShot.
+    static constexpr int kChargeHoldTickCap = 20;  // the exclusive bound the body tests
+    int          m_chargeHeldTicks = 0;
+    void clear_charge_hold() {
+        m_chargeHeld = 0.0f;
+        m_chargeHeldTicks = 0;
+    }
     int          m_reloadTimer = 0;    // legacy reloadNG window
     PendingShot  m_pending;      // armed shot awaiting scene spawn
     std::vector<PendingShot> m_pendingShots;
@@ -1063,6 +1228,19 @@ private:
     bool         m_grounded = true;    // false between takeoff and landing
     float        m_groundY = 0.0f;      // takeoff height (flat-arena landing)
     float        m_flyLeft = FighterConstants::kFlyTimeSec;  // flight budget
+    // The hover is ONE shot per airtime, not a re-enterable mode: the original admits
+    // the jump row (40) only while grounded (FUN_00445ee0's jump branch requires the
+    // grounded byte 0x84 != 0), so releasing and re-pressing the button mid-air
+    // resumes nothing — the air chain runs once, then the fighter falls or takes
+    // another air action. Set while hovering; cleared only by landing.
+    bool         m_hoverSpent = false;
+    // The Guard stance's own clip (character row 390's opening set), bound once on entry
+    // so the state animates instead of holding whatever was playing. -1 = not bound.
+    int          m_guardClip = -1;
+    // Row 390's stance progression: 0 = preparation clip, 1 = hold clip. The release
+    // section is a named limit (leaving Guard goes straight to Idle).
+    int          m_guardPhase = 0;
+    int          m_guardTicks = 0;
     glm::vec3    m_dashDir{0, 0, 1};   // committed dash direction (world XZ)
     // The tapped action owns this dash's committed travel. A later aerial attack
     // reads the direction held at its own press instead of reusing this value.
@@ -1117,7 +1295,7 @@ private:
     // no-damage knockback burst), the EX move, and the Kakera death save.
     void gain_gauge(float fraction);
     bool try_activate_hypermode(Fighter* opponent);
-    void try_ex_move();
+    bool try_ex_move();
     void update_hypermode(double dt);
 
     // Z leap (grounded only) and double-tap dash setup. try_dash maps the

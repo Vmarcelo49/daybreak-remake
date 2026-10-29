@@ -16,7 +16,12 @@
         }                                                                                          \
     } while (0)
 
-static_assert(gameplay::FixedStep::tickRate == 64, "Live simulation tests must use 64 Hz");
+// F1-9: after P0-10 the shipped live cadence is the owner's 60 Hz (D15, which supersedes
+// D9's 64 Hz), and the scripted/--out capture domain is the same number. These pin the
+// decision, not the arithmetic: if either cadence moves alone, one of them fails here.
+static_assert(gameplay::FixedStep::tickRate == 60, "Live simulation uses the owner's 60 Hz (D15)");
+static_assert(gameplay::FixedStep::scriptedCaptureSeconds == gameplay::FixedStep::seconds,
+              "the live step and the scripted capture step are the same number (F1-9)");
 
 struct Run
 {

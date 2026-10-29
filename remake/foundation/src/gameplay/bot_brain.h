@@ -95,7 +95,7 @@
 //
 // DETERMINISM: every random draw comes from this brain's own gameplay::MatchRng, seeded
 // from the match seed and the fighter index. update() is a pure function of (state, view,
-// tick) at the fixed 64 Hz tick — no clock, no frame time, no allocation.
+// tick) at the fixed 60 Hz tick — no clock, no frame time, no allocation.
 #include <cstdint>
 
 #include <glm/glm.hpp>

@@ -51,6 +51,7 @@
 #include "game/effect_catalog.h"
 #include "game/muzzle_slot.h"
 #include "game/shot_visual.h"
+#include "gameplay/fixed_step.h"
 
 #include <cctype>
 #include <cstdio>
@@ -90,6 +91,10 @@ void skip(const char* what) {
     ++skipped;
     std::printf("  SKIP  %s\n", what);
 }
+
+// The port's live cadence (D15): the recovered seconds become ticks through it, so the
+// expectations below follow the constant instead of restating a rate.
+const float kPortRate = static_cast<float>(gameplay::FixedStep::tickRate);
 
 std::vector<uint8_t> synthDescriptor(const std::string& modelPath, uint32_t variants,
                                      uint32_t version = 3) {
@@ -164,10 +169,12 @@ void testIdMappingAndLifetime() {
     // The original: round(seconds / 0.016) frames. 0.25 s -> 16 frames at 62.5 fps.
     checkInt(16, (int)std::lround(0.25 / game::kOriginalFrameSeconds),
              "the recovered conversion turns 0.25 s into 16 original frames");
-    // The port keeps the seconds: the same effect at 64 Hz.
-    checkInt(16, game::effectLifetimeTicks(0.25f, 64.f), "0.25 s is 16 ticks at 64 Hz");
-    checkInt(0, game::effectLifetimeTicks(0.f, 64.f), "no animation means no lifetime");
-    checkInt(0, game::effectLifetimeTicks(-1.f, 64.f), "a negative duration is not a lifetime");
+    // The port keeps the seconds and converts them with its own cadence (D15): 0.25 s is
+    // 15 ticks at the port's 60 Hz, one fewer than the original's 16 frames at 62.5 fps.
+    checkInt(15, game::effectLifetimeTicks(0.25f, kPortRate), "0.25 s is 15 ticks at 60 Hz");
+    checkInt(0, game::effectLifetimeTicks(0.f, kPortRate), "no animation means no lifetime");
+    checkInt(0, game::effectLifetimeTicks(-1.f, kPortRate),
+             "a negative duration is not a lifetime");
     checkInt(0, game::effectLifetimeTicks(0.25f, 0.f), "a zero tick rate is not a lifetime");
 
     EffectCatalog cat;
@@ -176,8 +183,8 @@ void testIdMappingAndLifetime() {
     check(cat.find(3) != nullptr, "ids N*10+1..9 clamp onto the same descriptor record");
     check(cat.find(10) == nullptr, "an id whose descriptor the install does not ship resolves to nothing");
     check(cat.find(-1) == nullptr, "a negative id resolves to nothing");
-    checkInt(16, cat.lifetime_ticks(0, 64.f), "the catalog reports the recovered tick count");
-    checkInt(0, cat.lifetime_ticks(10, 64.f), "an unshipped id has no lifetime");
+    checkInt(15, cat.lifetime_ticks(0, kPortRate), "the catalog reports the recovered tick count");
+    checkInt(0, cat.lifetime_ticks(10, kPortRate), "an unshipped id has no lifetime");
     const EffectEntry* e = cat.find(0);
     check(e && e->playable(), "an entry with a model, an asset and an animation is playable");
     checkInt(1, cat.count(), "the catalog counts the descriptors it holds");
@@ -186,7 +193,7 @@ void testIdMappingAndLifetime() {
     dead.add(2, game::parseEffectDescriptor(synthDescriptor("13.X", 1)), 3, 0.f);
     check(dead.find(20) && !dead.find(20)->playable(),
           "a model with no animation is present but not playable (descriptor[0] == 0 retires at once)");
-    checkInt(0, dead.lifetime_ticks(20, 64.f), "an unplayable entry has no lifetime");
+    checkInt(0, dead.lifetime_ticks(20, kPortRate), "an unplayable entry has no lifetime");
 }
 
 // ---------------------------------------------------------------------------
@@ -225,18 +232,22 @@ void testInstallTable(int argc, char** argv) {
             m.anims.empty() ? 0.f : m.anims[0].duration / (m.ticksPerSecond > 0 ? m.ticksPerSecond : 1.f);
         if (seconds > 0.f) ++withAnim;
         cat.add(type, d, /*asset=*/type, seconds);
-        std::printf("        id %3d  %-9s %-9s %5.3f s -> %3d ticks @64Hz (%2d original frames)\n",
+        std::printf("        id %3d  %-9s %-9s %5.3f s -> %3d ticks @%dHz (%2d original frames)\n",
                     type * 10, rel + 11, d.modelPath.c_str(), (double)seconds,
-                    cat.lifetime_ticks(type * 10, 64.f),
+                    cat.lifetime_ticks(type * 10, kPortRate),
+                    gameplay::FixedStep::tickRate,
                     (int)std::lround(seconds / game::kOriginalFrameSeconds));
     }
     checkInt(22, present, "the install ships 22 effect descriptors");
     checkInt(22, withModel, "every descriptor's model loads");
     checkInt(22, withAnim, "every shipped effect model carries an animation (the lifetime source)");
     checkInt(22, cat.count(), "the catalog holds one entry per shipped descriptor");
-    // The melee-hit card the port drew for 12 s: 14.X is 0.250 s.
-    checkInt(16, cat.lifetime_ticks(0, 64.f), "the melee-hit card (id 0 -> 14.X) lives 16 ticks at 64 Hz");
-    check(cat.lifetime_ticks(0, 64.f) < 64, "the recovered hit-card lifetime is under a second");
+    // The melee-hit card the port drew for 12 s: 14.X is 0.250 s, i.e. 15 ticks at the
+    // port's 60 Hz (it was 16 at the superseded 64 Hz).
+    checkInt(15, cat.lifetime_ticks(0, kPortRate),
+             "the melee-hit card (id 0 -> 14.X) lives 15 ticks at the port's 60 Hz");
+    check(cat.lifetime_ticks(0, kPortRate) < gameplay::FixedStep::tickRate,
+          "the recovered hit-card lifetime is under a second");
 }
 
 // ---------------------------------------------------------------------------

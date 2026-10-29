@@ -1,0 +1,24 @@
+# P2-7 (2e) charge recipe: two powered air taps, the action the shot gauge is spent by.
+#
+# The recovered spend is `FUN_00508a60:84-90`: inside action 402's (0x192, the air tap)
+# powered branch, `if (499 < [+0x834]) [+0x834] -= 500`. The port's powered branch is the
+# `kGatePowered` launch of its 402 program, so each powered air tap should take 500 off the
+# gauge: 1000 -> 500 -> 0, and the third would find nothing to spend.
+#
+#   --stage=data/stage03 --character=data/rena:0 --enemy=data/mion:0 \
+#     --spawn=-1200,400,0 --spawn2=-1200,400,800 --match --no-devices --headless \
+#     --script=tests/scripts/shot-air-402.txt --frames=300 --no-audio --out=/tmp/air.ppm
+#
+# P2 is idle and out of reach so nothing interrupts. The first 60 ticks are BattleStart.
+70 JUMP
+74 -
+80 SHOOT
+84 -
+150 JUMP
+154 -
+160 SHOOT
+164 -
+240 JUMP
+244 -
+250 SHOOT
+254 -

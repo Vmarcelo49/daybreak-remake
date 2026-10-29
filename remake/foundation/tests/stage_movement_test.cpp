@@ -1,4 +1,5 @@
 #include "gameplay/fighter.h"
+#include "gameplay/fixed_step.h"
 #include "gameplay/match.h"
 #include "physics/raycast.h"
 
@@ -148,7 +149,7 @@ void testSweepsAndFighterLanding() {
     collision.setMeshes(&wall, &wall);
     gameplay::Fighter fighter;
     fighter.init(nullptr, nullptr, {0.f, 20.f, 0.f}, 1.5707963f);
-    constexpr double dt = 1.0 / 64.0;
+    constexpr double dt = gameplay::FixedStep::seconds;
     for (int i = 0; i < gameplay::FighterConstants::kBattleStartFrames; ++i)
         fighter.update(nullptr, nullptr, dt, &collision);
     fnd::input::PlayerState input;
@@ -239,7 +240,7 @@ void testSpawnAndRecovery() {
     // the balloon stays under its LIMIT (a 1000-point hit would be a tenfold overkill
     // and legitimately bursts — FUN_00639160 @0x6393a5 divides by 1000 with no cap).
     match.fighter(0).take_damage(match.fighter(0).max_hp());
-    match.step(nullptr, nullptr, 1.0 / 64.0);
+    match.step(nullptr, nullptr, gameplay::FixedStep::seconds);
     const gameplay::MatchFrame respawn = match.step(nullptr, nullptr, 10.0);
     check(respawn.respawned[0], "KO respawn fires through the match economy");
     near(-100.f, match.fighter(0).position().x, 0.1f,
@@ -254,7 +255,7 @@ void testSpawnAndRecovery() {
           "the respawn re-entry is not targetable until it lands ([fighter+0xaecb])");
     check(match.fighter(0).hp() == match.fighter(0).max_hp(), "the respawn restores HP");
     for (int i = 0; i < 300 && match.fighter(0).airborne(); ++i)
-        match.step(nullptr, nullptr, 1.0 / 64.0);
+        match.step(nullptr, nullptr, gameplay::FixedStep::seconds);
     check(!match.fighter(0).airborne(), "the respawned fighter falls back onto the stage");
     check(!match.fighter(0).respawn_locked(), "the respawn lock ends on landing");
     near(0.f, match.fighter(0).position().y, 0.1f, "landed on the stage floor");

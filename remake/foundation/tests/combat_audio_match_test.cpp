@@ -16,6 +16,7 @@
 #include "gameplay/bot_brain.h"
 #include "gameplay/bot_input.h"
 #include "gameplay/character_moves.h"
+#include "gameplay/fixed_step.h"
 #include "gameplay/match.h"
 #include "gameplay/weapon_definition.h"
 
@@ -103,6 +104,7 @@ constexpr VoiceEvent kEvents[] = {
     VoiceEvent::BattleStart, VoiceEvent::AttackA,   VoiceEvent::Fire,     VoiceEvent::Damage,
     VoiceEvent::DamageDown,  VoiceEvent::Guard,     VoiceEvent::Guarded,  VoiceEvent::AttackKO,
     VoiceEvent::DamageKO,    VoiceEvent::Revival,   VoiceEvent::Oyashiro,
+    VoiceEvent::TagBack,
     VoiceEvent::ShotA, VoiceEvent::ShotB, VoiceEvent::ShotC, VoiceEvent::ShotFinal,
     VoiceEvent::SpecialA,
 };
@@ -136,6 +138,7 @@ CombatFrameView viewOf(const gameplay::MatchFrame& f) {
         v.shot_voice_alternative[i] = f.shotVoiceAlternative[i];
         v.shot_voice_audited[i] = f.sourceShotVoiceAudited[i];
         v.hyper_started[i] = f.hyperStarted[i];
+        v.hyper_mode[i] = f.hyperMode[i];
         v.guard_started[i] = f.guardStarted[i];
         v.respawned[i]     = f.respawned[i];
         v.blocked[i]       = f.blocked[i];
@@ -274,6 +277,8 @@ int main() {
             for (int i = 0; i < 4; ++i) gameplay::updateBotInput(brains[i], ctx[i], inputs[i], tick);
             // This gate verifies audio dispatch. Drive its hyper input explicitly so
             // a slower source magazine does not make coverage depend on an AI seed.
+            // Fighter 0 keeps the default Friendship mode, so the run covers its
+            // S-press presentation (TagBack line plus SE 7, issue #71).
             if (!hyper_input_driven && match.fighter(0).actionable()) {
                 match.fighter(0).set_hyper_gauge(1.f);
                 inputs[0].down[fnd::input::Action::Special] = true;
@@ -281,7 +286,7 @@ int main() {
                 hyper_input_driven = true;
             }
             const fnd::input::PlayerState* in[4] = {&inputs[0], &inputs[1], &inputs[2], &inputs[3]};
-            const gameplay::MatchFrame frame = match.step(in, 1.0 / 64.0);
+            const gameplay::MatchFrame frame = match.step(in, gameplay::FixedStep::seconds);
             CHECK(frame.audioListenerValid);
             CHECK(std::isfinite(frame.audioListenerPosition.x) &&
                   std::isfinite(frame.audioListenerPosition.y) &&

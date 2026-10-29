@@ -760,6 +760,64 @@ void splitViewCameraCases() {
           "the horizontal scale differs per cell aspect", f2s(quadrant[0][0]), f2s(wide[0][0]));
 }
 
+// ===========================================================================
+//  Recovered normal follow — FUN_006333b0 (+0x95 == 0 && +0x94 == 0)
+//  Every constant is from the pinned binary's .rdata; see
+//  docs/PILOT-EVIDENCE-CONTRACT.md V3-15. The behavioural claim this covers is
+//  the owner's: raising the rig must change the eye->aim ANGLE (a jump tilts the
+//  camera), which the old flat height/aim formula could never do.
+// ===========================================================================
+void recoveredFollowCases() {
+    section("recovered normal follow (V3-15)");
+    render::ArenaCameraParams p;
+    const float aspect = 4.f / 3.f;
+
+    // Rig at the origin, anchor 600 units ahead on +Z: inside the 400..800 band, so
+    // the aim basis shrinks by dist/800 = 0.75 and dist stays 600.
+    const render::ArenaFrame f =
+        render::arenaRecoveredFollow(glm::vec3(0.f), glm::vec3(0.f, 0.f, 600.f), p, aspect);
+    // offset = delta*0.75 - (0,120,0) = (0,-120,450); |offset| = 465.7; scale = 300/465.7.
+    const float scale = std::min(300.f / std::sqrt(120.f * 120.f + 450.f * 450.f), 1.5f);
+    checkFloat("eye sits behind the rig on the anchor axis", f.eye.z,
+               -(450.f * scale), 1e-3f);
+    checkFloat("eye is lifted by 140 + 0.03*dist over the bias",
+               f.eye.y, 140.f + 600.f * 0.03f + 120.f * scale, 1e-3f);
+    checkFloat("eye keeps the rig's x", f.eye.x, 0.f, 1e-4f);
+    checkFloat("aim lands on the anchor axis", f.aim.z, 450.f, 1e-3f);
+    checkFloat("aim is lifted by 20 - 0.2*dist", f.aim.y, 20.f - 600.f * 0.2f, 1e-3f);
+
+    // The tilt: hold the anchor fixed and raise the rig by a jump. The eye->aim
+    // angle must change; a flat-offset camera would keep it identical.
+    const glm::vec3 anchor(0.f, 0.f, 600.f);
+    const render::ArenaFrame grounded = render::arenaRecoveredFollow(glm::vec3(0.f), anchor, p, aspect);
+    const render::ArenaFrame airborne =
+        render::arenaRecoveredFollow(glm::vec3(0.f, 300.f, 0.f), anchor, p, aspect);
+    const auto pitchOf = [](const render::ArenaFrame& fr) {
+        const glm::vec3 d = fr.aim - fr.eye;
+        return std::atan2(-d.y, std::sqrt(d.x * d.x + d.z * d.z));
+    };
+    check(std::fabs(pitchOf(airborne) - pitchOf(grounded)) > 0.02f,
+          "a raised rig changes the camera pitch", f2s(pitchOf(airborne)),
+          "!= " + f2s(pitchOf(grounded)));
+
+    // Near band: closer than 400 the basis is expanded to the 400 floor, so the
+    // reported distance stops shrinking.
+    const render::ArenaFrame near =
+        render::arenaRecoveredFollow(glm::vec3(0.f), glm::vec3(0.f, 0.f, 100.f), p, aspect);
+    checkFloat("below the 400 floor the aim basis uses 400", near.aim.z, 400.f * (400.f / 100.f) / 2.f * (100.f / 400.f) + 0.f,
+               1e-2f);
+    // offset at the floor = (0, -120, 200); the lift term is -offset.y after scaling.
+    const float nearScale = std::min(300.f / std::sqrt(120.f * 120.f + 200.f * 200.f), 1.5f);
+    checkFloat("below the floor the eye lift uses dist = 400", near.eye.y,
+               140.f + 400.f * 0.03f + 120.f * nearScale, 1e-2f);
+
+    // The 1.5 cap: a nearly coincident rig and anchor saturates the view distance.
+    const render::ArenaFrame capped =
+        render::arenaRecoveredFollow(glm::vec3(0.f), glm::vec3(0.f, 0.5f, 0.5f), p, aspect);
+    const float capLen = glm::length(capped.eye - glm::vec3(0.f));
+    check(capLen <= 450.f + 1e-2f, "the view distance caps at 1.5x300", f2s(capLen), "<= 450");
+}
+
 }  // namespace
 
 int main() {
@@ -770,6 +828,7 @@ int main() {
     matrixCases();
     originalPresetCases();
     splitViewCameraCases();
+    recoveredFollowCases();
 
     std::printf("\nchecks=%d failures=%d\n", g_checks, g_failures);
     std::printf("ARENA_CAMERA: %s\n", g_failures == 0 ? "ok" : "FAIL");

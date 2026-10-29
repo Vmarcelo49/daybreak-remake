@@ -189,6 +189,14 @@ public:
     // Swaps the framing. State (eye, target, orbit nudge, pool) is untouched: a preset
     // is geometry, not behaviour, and update() re-derives the desired eye from it.
     void                     set_preset(const ArenaCameraPreset& preset) { m_preset = preset; }
+
+    // Switches the desired-eye formula to the recovered follow and supplies its anchor
+    // (the opponent the followed fighter is locked onto). Call the setter every frame;
+    // the camera reads it at update time. Deliberately separate from set_preset:
+    // a preset is framing geometry, this is a different *rule*.
+    void set_recovered_follow(bool on) { m_recoveredFollow = on; }
+    void set_follow_anchor(const glm::vec3& anchorPos) { m_followAnchor = anchorPos; }
+    bool recovered_follow() const { return m_recoveredFollow; }
     const ArenaCameraPreset& preset() const { return m_preset; }
 
     // ---- target management -------------------------------------------------
@@ -283,6 +291,15 @@ private:
     float m_orbitNudge = 0.0f;
     float m_heightOverride = -1.0f;   // <0 = preset height
     float m_distOverride = -1.0f;     // <0 = preset distance
+
+    // ---- recovered follow (PILOT-EVIDENCE-CONTRACT V3-15) --------------------
+    // `arenaViewProj`'s height/distance are a reconstruction (V3-14), so the pitch is
+    // constant and a jump cannot tilt the view. With this on, the desired eye comes
+    // from render::arenaRecoveredFollow — FUN_006333b0's normal branch — which needs
+    // the lock-on anchor (the followed fighter's target). Opt-in so the default
+    // framing, and every capture pinned to it, is untouched.
+    bool      m_recoveredFollow = false;
+    glm::vec3 m_followAnchor{0.f};
 
     ArenaCameraPreset m_preset{};
 

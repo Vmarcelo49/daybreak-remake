@@ -53,6 +53,7 @@ struct HudFighterValues {
     bool  hyperReady = false;                // Fighter::hyper_ready()
     float hyperSecondsLeft = 0.f;            // Fighter::hyper_seconds_left()
     game::GameRgb hyperAura{1.f, 1.f, 1.f};  // hypermode_params(...).aura, rgb8/255
+    float hyperFlash = 0.f;                  // Fighter::hyper_flash_alpha()/252 (issue #71)
     int   stamina = 100;                     // Fighter::stamina()
     // Fighter::state() in {Run, Guard, Jump} (scenes.cpp:879-882): the state enum
     // does not cross into this tree, so the caller resolves the contextual gate.
@@ -100,6 +101,7 @@ inline game::GameHudValues fillHudValues(const MatchEconomy& eco, const HudFillI
     v.hyperReady = f.hyperReady;
     v.hyperSecondsLeft = f.hyperSecondsLeft;
     v.hyperAura = f.hyperAura;
+    v.hyperFlash = f.hyperFlash;
     v.staminaVisible = f.staminaVisible;                             // scenes.cpp:880-882
     v.staminaFrac = static_cast<float>(f.stamina) / 100.f;           // scenes.cpp:885
     v.koVisible = eco.koStingActive();                               // scenes.cpp:889

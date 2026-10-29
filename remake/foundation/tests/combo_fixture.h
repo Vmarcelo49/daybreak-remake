@@ -2,6 +2,7 @@
 
 #include "assets/asset_source.h"
 #include "gameplay/fighter.h"
+#include "gameplay/fixed_step.h"
 
 #include <array>
 #include <cstdlib>
@@ -75,7 +76,7 @@ struct Combo {
     void init(gameplay::Fighter& fighter, glm::vec3 at = {}, float facing = 0.f) const {
         fighter.init(&model,controller(),at,facing);
         bind(fighter);
-        for (int i = 0; i < 70; ++i) fighter.update(nullptr,nullptr,1.0/64.0);
+        for (int i = 0; i < 70; ++i) fighter.update(nullptr,nullptr,gameplay::FixedStep::seconds);
     }
 
     // Collision tests place a victim by the actual posed attack volume, not an

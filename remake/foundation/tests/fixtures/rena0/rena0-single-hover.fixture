@@ -1,0 +1,23 @@
+# rena0-single-hover — F1-3 fixture, P2-7 jump family (one hover per airtime)
+#
+# Source: the jump row (40) is admitted ONLY while grounded — FUN_00445ee0's jump
+# branch requires the grounded byte `0x84 != 0`. No airborne branch returns to it, so
+# releasing and re-pressing the jump button mid-air resumes nothing: the air chain
+# (40 -> 41 -> 42) runs once per airtime, and the fighter falls or takes another air
+# action. The port modelled the hover as a time budget re-enterable at will, which let
+# a re-press keep floating; this fixture pins the corrected one-shot rule.
+#
+# Shape: jump, hold 10 ticks (climb), release, press and hold again. The re-press must not
+# re-arm the climb, so the fighter falls in the arc the release started and lands well
+# before the window's end; with a re-enterable hover the re-press kept it aloft.
+combo 0 0
+seed 5489
+spawn 0 0 0 0
+spawn 1 0 0 2000
+collision open-field
+input 0 JUMP
+input 10 -
+input 16 JUMP
+expect 20 airborne 1
+expect 55 airborne 0
+expect 60 dummy_static 1

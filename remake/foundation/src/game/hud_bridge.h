@@ -116,6 +116,7 @@ inline ui::HudState makeHudState(const GameHudValues& v) {
     st.hyperReady = v.hyperReady;
     st.hyperSecondsLeft = v.hyperSecondsLeft;
     st.hyperAura = ui::UiColor{v.hyperAura.r, v.hyperAura.g, v.hyperAura.b, 1.f};
+    st.hyperFlash = v.hyperFlash;
     st.staminaVisible = v.staminaVisible;
     st.staminaFrac = v.staminaFrac;
     st.koVisible = v.koVisible;

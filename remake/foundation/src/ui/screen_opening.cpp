@@ -9,6 +9,7 @@
 #include "audio/audio_engine.h"
 #include "ui/frontend_settings.h"
 #include "ui/screen_opening.h"
+#include "gameplay/fixed_step.h"
 
 namespace ui {
 namespace {
@@ -94,7 +95,7 @@ ScreenId OpeningScreen::update(const ScreenInput& in) {
         std::printf("movie        : %s (%s)\n", path_.c_str(), player_.describeFormat().c_str());
     }
 
-    player_.update(1.0 / 64.0);   // the front end's logic tick
+    player_.update(gameplay::FixedStep::seconds);   // the front end's logic tick
     if (movieLogEnabled() && player_.framesPresented() != lastLoggedFrame_ &&
         player_.framesPresented() % 64 == 0) {
         lastLoggedFrame_ = player_.framesPresented();

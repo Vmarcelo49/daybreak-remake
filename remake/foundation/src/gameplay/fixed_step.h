@@ -5,12 +5,17 @@
 namespace gameplay
 {
 // Combat timers and FUN_004201a0's HUD pulse count updates, not presents.
-// Live gameplay uses the user-selected 64 Hz port cadence; historical
-// captures bypass this clock with their explicit --dt.
+// Live gameplay uses the owner-selected 60 Hz port cadence (D15, which supersedes
+// D9's 64 Hz); historical captures bypass this clock with their explicit --dt.
 class FixedStep
 {
   public:
-    static constexpr int tickRate   = 64;
+    static constexpr int tickRate   = 60;
+    // The scripted/--out capture step (D9). It is kept an explicit recipe number so the
+    // historical captures never move with the live rate; after D15 the two coincide, and
+    // fixed_step_test asserts that equality instead of either side restating it.
+    static constexpr int    scriptedCaptureRate    = 60;
+    static constexpr double scriptedCaptureSeconds = 1.0 / scriptedCaptureRate;
     static constexpr double seconds = 1.0 / tickRate;
     static constexpr int maxCatchUp = 8;
 

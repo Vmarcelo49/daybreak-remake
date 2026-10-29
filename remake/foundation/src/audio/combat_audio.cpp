@@ -60,7 +60,7 @@ const char* combat_event_name(CombatEventKind k) {
 }
 
 uint64_t CombatEvent::id() const {
-    // 24 bits of tick (2^24 ticks at 64 Hz = 72 hours of match), 4 bits of kind, 3 bits per
+    // 24 bits of tick (2^24 ticks at 60 Hz = about 78 hours of match), 4 bits of kind, 3 bits per
     // fighter index, 8 bits of per-tick sequence. Deterministic and collision-free for any
     // match this port can run.
     const uint64_t f = static_cast<uint64_t>(fighter < 0 ? 7 : fighter) & 0x7u;
@@ -120,7 +120,10 @@ CombatEventList combat_events_for_frame(const CombatEventSource& source,
             list.events[list.count - 1].source_voice_audited =
                 frame.shot_voice_audited[i] && frame.shot_voice[i] < 0;
         }
-        if (frame.hyper_started[i]) emit(CombatEventKind::HyperActivate, i, -1, 0, false);
+        if (frame.hyper_started[i]) {
+            emit(CombatEventKind::HyperActivate, i, -1, 0, false);
+            list.events[list.count - 1].hyper_mode = frame.hyper_mode[i];
+        }
         if (frame.guard_started[i]) emit(CombatEventKind::GuardStart, i, -1, 0, false);
         if (frame.respawned[i])     emit(CombatEventKind::Respawn, i, -1, 0, false);
     }
@@ -242,10 +245,21 @@ CombatCue resolve_combat_event(const CombatEvent& e) {
             cue.voice = VoiceEvent::Revival;
             break;
         case CombatEventKind::HyperActivate:
-            // PORT RULE: the vocabulary has one hyper-mode line ("oyashiro", the mode the
-            // game names) and no per-mode activation event, so all three port modes use it.
-            cue.has_voice = true;
-            cue.voice = VoiceEvent::Oyashiro;
+            // Per-mode S-press presentation (issue #71; hyper_mode is the wire
+            // value, see hypermode_wire_value). Only the wire-1 (Friendship)
+            // arm (FUN_004220e0) carries audio: SE 7 (its sole audio call,
+            // FUN_0064af20 with the data/se id) plus the handler's voice
+            // (FUN_00445ee0's wire-1 branch: 0x23 TagBack while the copy is
+            // within 0x78 of full, else 0x24 TagFront — the copy is fresh at a
+            // full-bar press, so TagBack). The Oyashiro move-500/501 start and
+            // the Kakera trigger play nothing at the press; the move-500 shout
+            // and boom ride its dash-cancel instead (FUN_00428510: voice 0x13
+            // plus SE 0x31 via FUN_0042c880).
+            if (e.hyper_mode == 1) {
+                cue.has_voice = true;
+                cue.voice = VoiceEvent::TagBack;
+                cue.se_id = 7;
+            }
             break;
         case CombatEventKind::Count:
             break;

@@ -3,9 +3,10 @@
 //  gameplay (remake/foundation/src/gameplay/{fighter,projectile}.{h,cpp}).
 //
 //  Device-free and deterministic: no window, no WebGPU, no SDL, no clock, no
-//  nondeterministic RNG. Every case drives the simulation at a fixed dt = 1/60 s with scripted
-//  input edges (fnd::input::compute_edges, the same call the live poll path
-//  makes) and prints expected vs got for every assertion.
+//  nondeterministic RNG. Every case drives the simulation at the port's fixed step
+//  (gameplay::FixedStep::seconds, D15) with scripted input edges
+//  (fnd::input::compute_edges, the same call the live poll path makes) and prints
+//  expected vs got for every assertion.
 //
 //  Build from the repo root (glm ships in the foundation's third_party):
 //    g++ -std=c++17 -Wall -Wextra -I remake/foundation/src
@@ -31,7 +32,7 @@
 //
 //  Source quirks found while deriving the expectations are pinned as tests:
 //  the leap velocity kJumpSpeed is overwritten by the fly rise on the same frame, Kakera's HP
-//  drain rounds to 0 at 60 Hz, and the Friendship gauge needs a 13th hit to
+//  drain rounds to 0 at the port cadence, and the Friendship gauge needs a 13th hit to
 //  clamp to 1.0. These are in the DX9 source too. Guard release is corrected
 //  for live play.
 // =============================================================================
@@ -80,7 +81,9 @@ using gameplay::ProjectilePool;
 using gameplay::Rgb;
 using gameplay::ShotTier;
 
-constexpr double kDt = 1.0 / 60.0;
+// The port's fixed step (D15). Every case below drives the simulation through this alias,
+// so the suite follows FixedStep instead of restating a cadence.
+constexpr double kDt = gameplay::FixedStep::seconds;
 const float      kStep = static_cast<float>(kDt);
 
 int g_checks = 0;
@@ -812,10 +815,10 @@ void test_hit_stun() {
 }
 
 // ===========================================================================
-//  Case 5 — live Guard lifecycle at the selected 64 Hz simulation cadence
+//  Case 5 — live Guard lifecycle at the port's 60 Hz simulation cadence (D15)
 // ===========================================================================
 void test_guard_drain() {
-    section("5. Guard release, exhaustion and interruptions at 64 Hz");
+    section("5. Guard release, exhaustion and interruptions at the port cadence");
     auto step = [](Fighter& f, Input& in) {
         fnd::input::compute_edges(in.p);
         f.update(&in.p, nullptr, gameplay::FixedStep::seconds);
@@ -852,20 +855,25 @@ void test_guard_drain() {
     Fighter f = make_idle_fighter(glm::vec3(0));
     Input in;
     in.set(fnd::input::Guard, true);
-    for (int i = 0; i < 64; ++i) step(f, in);
+    // kGuardDrainSec is a per-second rate, so a hold window has to be a duration in ticks at
+    // the port cadence: the pre-D15 64-tick literals drained 64/60 s of stamina.
+    for (int i = 0; i < gameplay::FixedStep::tickRate; ++i) step(f, in);
     check_int("one second held drains 25 stamina", 75, f.stamina());
     check_int("held Guard persists", static_cast<int>(FighterState::Guard), static_cast<int>(f.state()));
     in.clear();
     step(f, in);
     check_int("release returns to Idle", static_cast<int>(FighterState::Idle), static_cast<int>(f.state()));
-    for (int i = 0; i < 64; ++i) step(f, in);
+    for (int i = 0; i < gameplay::FixedStep::tickRate; ++i) step(f, in);
     check_int("released Guard regenerates to cap", 100, f.stamina());
 
     in.set(fnd::input::Guard, true);
-    for (int i = 0; i < 256; ++i) step(f, in);
+    for (int i = 0; i < 4 * gameplay::FixedStep::tickRate; ++i) step(f, in);
     check_int("four seconds drain stamina to zero", 0, f.stamina());
+    // 25/60 has no exact float, so 240 per-tick drains leave a ~1e-4 residue: stamina crosses
+    // zero, and Guard exits, on the tick after the four-second window rather than inside it.
+    step(f, in);
     check_int("exhaustion exits Guard on the draining tick", static_cast<int>(FighterState::Idle), static_cast<int>(f.state()));
-    for (int i = 0; i < 128; ++i) step(f, in);
+    for (int i = 0; i < 2 * gameplay::FixedStep::tickRate; ++i) step(f, in);
     check_int("holding exhausted Guard cannot re-enter", static_cast<int>(FighterState::Idle), static_cast<int>(f.state()));
     check_int("exhausted hold allows stamina recovery", 100, f.stamina());
     in.clear();
@@ -886,12 +894,17 @@ void test_guard_drain() {
     ai.set(fnd::input::Jump, true);
     step(air, ai);
     ai.clear();
+    const int staminaBeforeAirGuard = air.stamina();
     ai.set(fnd::input::Guard, true);
     step(air, ai);
-    check_bool("airborne Guard entered", air.state() == FighterState::Guard, true);
+    // The original has no air block: a held Guard press mid-air must not enter the stance.
+    // It also must not drain the meter the grounded stance would have spent.
+    check_bool("airborne Guard is refused", air.state() == FighterState::Jump, true);
+    check_bool("a refused air Guard stays airborne", air.airborne(), true);
+    check_int("a refused air Guard drains no stamina", staminaBeforeAirGuard, air.stamina());
     ai.clear();
     step(air, ai);
-    check_bool("airborne release returns to Jump", air.state() == FighterState::Jump && air.airborne(), true);
+    check_bool("airborne release stays in Jump", air.state() == FighterState::Jump && air.airborne(), true);
 
     Fighter hit = guarding();
     hit.take_damage(5);
@@ -1090,11 +1103,17 @@ void test_shots() {
     tick(exOwner, xi);
     xi.set(fnd::input::Action::Special, true);
     tick(exOwner, xi);
-    const auto ex = exOwner.take_pending_shot();
-    check_bool("Active-mode Special still arms provisional EX", true, ex.armed);
-    check_int("Provisional EX still carries its tier", static_cast<int>(ShotTier::Ex), static_cast<int>(ex.tier));
-    check_int("Provisional EX still enters ShotFinal", static_cast<int>(FighterState::ShotFinal), static_cast<int>(exOwner.state()));
-    check_int("Provisional EX admits its selected secondary row", 1, exOwner.charge_whole());
+    // Rena's EX is the real move-350 swing (FUN_00445ee0's armed 0x15e branch),
+    // not a provisional shot: AttackA on row 350, nothing pending, the secondary
+    // stock unspent, and the swing's own SpecialA line on entry.
+    check_int("EX second-S enters AttackA", static_cast<int>(FighterState::AttackA),
+              static_cast<int>(exOwner.state()));
+    check_int("EX second-S swings move 350", 350, exOwner.attack_move_id());
+    check_bool("EX second-S arms no provisional shot", false,
+               exOwner.take_pending_shot().armed);
+    check_int("EX second-S leaves the secondary stock unspent", 2, exOwner.charge_whole());
+    check_int("EX second-S speaks SpecialA on entry", 32,
+              exOwner.take_melee_voice().event);
 
 }
 
@@ -1400,12 +1419,12 @@ void test_hypermode() {
         v.take_damage(5, &f);
         check_int("Kakera deals lround(5*1.5) = 8", 100 - 8, v.hp());
 
-        // HP drain is int(3.96*dt + 0.5) = int(0.566) = 0 per frame at 60 Hz,
-        // so the mode never drains and never self-terminates through HP; the
-        // 25 s timer is the only exit.
+        // HP drain is int(3.96*dt + 0.5) = int(0.566) = 0 per frame at the port
+        // cadence (D15), so the mode never drains and never self-terminates
+        // through HP; the 25 s timer is the only exit.
         const int hp_before = f.hp();
         for (int i = 0; i < 600; ++i) f.update(nullptr, nullptr, kDt);
-        check_int("Kakera HP drain is a no-op at 60 Hz", hp_before, f.hp());
+        check_int("Kakera HP drain is a no-op at the port cadence", hp_before, f.hp());
         check_bool("Kakera still active after 10 s", true, f.hyper_active());
         int frames = 0;
         while (f.hyper_active() && frames < 3000) { f.update(nullptr, nullptr, kDt); ++frames; }
@@ -3291,7 +3310,7 @@ void test_keiichi2_tap_sweep() {
     gameplay::PendingShot ranged;
     for (int i = 0; i < 24 && !ranged.armed; ++i) {
         // The rule needs an opponent: at 1000 units the source adds 1000*40/4000 = 10 degrees.
-        rng.update(nullptr, &mark, 1.0 / 64.0);
+        rng.update(nullptr, &mark, kDt);
         ranged = rng.take_pending_shot();
     }
     if (ranged.armed) {
@@ -4078,7 +4097,7 @@ void test_rena_recovery_status_refill() {
             fnd::input::compute_edges(in.p);
             const fnd::input::PlayerState* inputs[gameplay::kMatchFighterCount] = {
                 &in.p, nullptr, nullptr, nullptr};
-            return match.step(inputs, 1.0 / 64.0);
+            return match.step(inputs, kDt);
         };
 
         for (int i = 0; i < 70; ++i) step();
@@ -4155,7 +4174,7 @@ void test_rena_slot6_projectile_producer() {
                match.shots().spawn(glm::vec3(0.f, 100.f, 50.f),
                                    glm::vec3(0.f, 0.f, -1.f), ShotTier::Tap,
                                    &match.fighter(1), 1));
-    const auto frame = match.step(nullptr, 1.0 / 64.0);
+    const auto frame = match.step(nullptr, kDt);
     check_int("one Rena+0 projectile reaches a victim contact", 1, frame.shotHitCount);
     check_int("0x1000 contact writes victim actor status slot 6", 9,
               match.fighter(0).hit_status_duration(6));
@@ -5970,7 +5989,7 @@ void test_determinism() {
 
 int main(int argc, char** argv) {
     std::printf("fighter_script_test — ported fighter + projectile gameplay\n");
-    std::printf("dt = 1/60 s (double %.17g, float step %.9g)\n", kDt,
+    std::printf("dt = 1/%d s (double %.17g, float step %.9g)\n", gameplay::FixedStep::tickRate, kDt,
                 static_cast<double>(kStep));
     const auto install = findInstall(argc > 0 ? argv[0] : nullptr);
     if (!install.empty() && g_testCombo.load(install))

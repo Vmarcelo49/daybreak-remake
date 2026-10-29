@@ -28,6 +28,7 @@
 //    cmake --build remake/foundation/build/linux --target round_rules_test
 //  Exit status: 0 when every check passes, 1 otherwise.
 // =============================================================================
+#include "gameplay/fixed_step.h"
 #include "gameplay/match.h"
 
 #include <cmath>
@@ -65,7 +66,7 @@ void checkFloat(float expected, float actual, float tolerance, const char* name)
 
 void section(const char* title) { std::printf("\n-- %s\n", title); }
 
-constexpr double kDt = 1.0 / 64.0;  // the port's fixed step
+constexpr double kDt = gameplay::FixedStep::seconds;  // the port's fixed step
 
 // A 1v1 with no models: Fighter::reset() drives the whole state machine, which is
 // what Match::reset does for a null model (match.cpp:22-23).

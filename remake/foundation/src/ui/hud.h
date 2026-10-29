@@ -193,6 +193,7 @@ struct HudState {
     bool    hyperReady = false;      // full gauge, S activates
     float   hyperSecondsLeft = 0.f;
     UiColor hyperAura = kHudWhite;   // per-mode aura, fills the bar while active
+    float hyperFlash = 0.f;           // 0..1 activation flash alpha over the viewport (issue #71)
     bool  staminaVisible = false;    // contextual: dash/guard/airborne only
     float staminaFrac = 0.f;
     bool  koVisible = false;         // elapsed < stingUntil in the DX9 path

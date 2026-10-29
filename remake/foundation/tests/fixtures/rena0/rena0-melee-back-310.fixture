@@ -1,0 +1,14 @@
+# rena0-melee-back-310 — F1-3 fixture
+# Recipe from the animation audit (tests/rena_animation_audit_test.cpp:246-258): holding
+# the back direction with AttackA admits the back-held row 310 for Rena+0.
+combo 0 0
+seed 5489
+spawn 0 0 0 0
+spawn 1 0 0 2000
+collision open-field
+input 0 DOWN MELEE
+input 1 -
+expect 0 attack_row 310
+expect 0 anim_row 310
+expect 0 swing_started 1
+expect 10 dummy_static 1

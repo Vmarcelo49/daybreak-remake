@@ -1,0 +1,32 @@
+# rena0-powered-shot — F1-3 fixture, P2-7 charge family (the powered air tap)
+#
+# Source: Rena+0's air-tap body (FUN_0043ffc0.c:1968-2020) emits its shot at frame 13 and picks
+# the bullet row from the held-aim pair `+0x845`/`+0x212` — row 7 when both are set, row 1
+# otherwise (:2009-2014, :1961-1965). That path performs NO subtraction of the shot gauge.
+# Q19 withdrew the earlier claim that FUN_00508a60's −500 was this spend: there it is a
+# directional air-dash cancel out of state 402 into state 30, in another combo's selector.
+#
+# So this fixture pins the powered launch and its cost: the shot that leaves the fighter is
+# bullet row 7 (the ordinary ground tap is row 0, rena0-tap-shot.fixture), and `charge_gauge`
+# is unchanged by the launch itself — it reads the 1000 cap throughout. The scripted jump
+# costs nothing to launch (no jump body charges one); its launch tick carries the row-40
+# refill (+40, clamped here), and the powered 402 emission subtracts nothing.
+#
+# `hyper oyashiro` fills the gauge, selects Oyashiro and arms the aim selection; the SPECIAL
+# press at tick 0 is the real activation edge (fighter.cpp:843).
+combo 0 0
+seed 5489
+spawn 0 0 0 0
+spawn 1 0 0 300
+collision open-field
+hyper oyashiro
+input 0 SPECIAL
+input 1 -
+input 4 JUMP
+input 5 -
+input 10 SHOOT
+input 11 -
+expect 24 charge_gauge 1000
+expect 25 shot_bullet_row 7
+expect 25 charge_gauge 1000
+expect 40 charge_gauge 1000

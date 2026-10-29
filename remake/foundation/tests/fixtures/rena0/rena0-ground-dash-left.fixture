@@ -1,0 +1,17 @@
+# rena0-ground-dash-left — F1-3 fixture
+# Expectations cite FUN_00445ee0:86-95 (the command-mapped ground dash rows: Left -> 24,
+# Right -> 23), the same rows the animation audit pins
+# (tests/rena_animation_audit_test.cpp:139-163). The double tap is the port's recovered
+# dash trigger: press, release, press on consecutive updates.
+combo 0 0
+seed 5489
+spawn 0 0 0 0
+spawn 1 0 0 2000
+collision open-field
+input 0 LEFT
+input 1 -
+input 2 LEFT
+expect 2 dash_row 24
+expect 2 anim_row 24
+expect 2 airborne 0
+expect 6 dummy_static 1

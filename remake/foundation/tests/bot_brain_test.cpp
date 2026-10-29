@@ -23,6 +23,7 @@
 #include "gameplay/bot_brain.h"
 #include "gameplay/bot_input.h"
 #include "gameplay/character_moves.h"
+#include "gameplay/fixed_step.h"
 #include "gameplay/match.h"
 #include "gameplay/weapon_definition.h"
 #include "combo_fixture.h"
@@ -103,7 +104,7 @@ Fighter makeFighter(const gameplay::WeaponDefinition* weapon,
     for (int i = 0; i < 70; ++i) {
         input::PlayerState copy = idle;
         input::compute_edges(copy);
-        f.update(&copy, nullptr, 1.0 / 64.0);
+        f.update(&copy, nullptr, gameplay::FixedStep::seconds);
     }
     return f;
 }
@@ -290,7 +291,7 @@ RunResult runSolo(BotBrain& brain, Fighter& self, Fighter& enemy, int ticks,
             if (d.moveForward != 0.f || d.moveRight != 0.f) ++r.dashStarts;
         }
         BotBrain::apply(d, in);
-        self.update(&in, &enemy, 1.0 / 64.0, collision);
+        self.update(&in, &enemy, gameplay::FixedStep::seconds, collision);
     }
     r.distanceMoved = brain.stats().distanceMoved;
     return r;
@@ -365,7 +366,7 @@ void testEmptyAmmoIsNotSpammed() {
                                 self.can_fire(gameplay::ShotTier::Red);
         if (d.shoot && !anyFirable) ++heldWhileBlocked;
         BotBrain::apply(d, in);
-        self.update(&in, &enemy, 1.0 / 64.0);
+        self.update(&in, &enemy, gameplay::FixedStep::seconds);
     }
     checkInt(0, heldWhileBlocked, "no shot is held while every tier is unaffordable");
     const uint64_t blocked = brain.stats().shotBlocked;
@@ -383,7 +384,7 @@ void testGuardExhaustion() {
     for (int i = 0; i < 400 && !self.guard_exhausted(); ++i) {
         in.down[input::Action::Guard] = true;
         input::compute_edges(in);
-        self.update(&in, &enemy, 1.0 / 64.0);
+        self.update(&in, &enemy, gameplay::FixedStep::seconds);
     }
     check(self.guard_exhausted(), "holding block long enough exhausts the guard");
     check(self.stamina() <= 0, "and drains the stamina that pays for it");
@@ -403,7 +404,7 @@ void testGuardExhaustion() {
         const BotDecision d = brain.update(view, (uint64_t)i);
         if (d.guard && (self.guard_exhausted() || self.stamina() <= 0)) ++guardsWhileExhausted;
         BotBrain::apply(d, in);
-        self.update(&in, &enemy, 1.0 / 64.0);
+        self.update(&in, &enemy, gameplay::FixedStep::seconds);
     }
     checkInt(0, (long long)guardsWhileExhausted,
              "a threatened but exhausted COM never holds a refused guard");
@@ -430,7 +431,7 @@ void testDodge() {
         const BotDecision d = brain.update(view, (uint64_t)i);
         if (d.action == BotAction::Guard || d.action == BotAction::Evade) ++defensive;
         BotBrain::apply(d, in);
-        self.update(&in, &enemy, 1.0 / 64.0);
+        self.update(&in, &enemy, gameplay::FixedStep::seconds);
     }
     check(defensive > 20, "an incoming shot produces guard/evade ticks");
     check(brain.stats().guards + brain.stats().evades > 5,
@@ -505,7 +506,7 @@ void testWallRecovery() {
         view.collision = &collision;
         const BotDecision d = brain.update(view, (uint64_t)i);
         BotBrain::apply(d, in);
-        self.update(&in, &enemy, 1.0 / 64.0, &collision);
+        self.update(&in, &enemy, gameplay::FixedStep::seconds, &collision);
         const glm::vec3 now = self.position();
         total += std::sqrt((now.x - prev.x) * (now.x - prev.x) +
                            (now.z - prev.z) * (now.z - prev.z));
@@ -598,7 +599,7 @@ void testRetarget() {
     checkInt(3, view.targetIndex, "and that is what the brain is given");
     check(view.targetAlive, "which it sees as alive");
     input::PlayerState in;
-    gameplay::MatchFrame frame = m.step(nullptr, nullptr, 1.0 / 64.0);
+    gameplay::MatchFrame frame = m.step(nullptr, nullptr, gameplay::FixedStep::seconds);
     (void)frame;
     checkInt(3, m.locked_target(1), "the match's own maintenance re-picks the lock");
 
@@ -638,7 +639,7 @@ void testRetarget() {
     // the test taps it. The COM then takes its OWN lock (issue #49: nothing is handed to
     // it at round start) through the brain's retarget request, which lands on the same
     // enemy because the recovered walk starts next to the COM's own index.
-    for (int i = 0; i < 3; ++i) m3.step(nullptr, nullptr, 1.0 / 64.0);
+    for (int i = 0; i < 3; ++i) m3.step(nullptr, nullptr, gameplay::FixedStep::seconds);
     checkInt(gameplay::kNoTarget, m3.locked_target(0), "no lock is handed out at round start");
     m3.cycle_locked_target(0);
     checkInt(2, m3.locked_target(0), "the leader's LockSwitch tap selects fighter 2");
@@ -653,7 +654,8 @@ void testRetarget() {
         for (int i = 0; i < ticks; ++i) {
             gameplay::updateBotInput(brain3, ctx3, in3, (uint64_t)i);
             inputs[1] = &in3;
-            m3.step(inputs, 1.0 / 64.0);   // decays the recovered 15-tick switch pulse
+            // decays the recovered 15-tick switch pulse
+            m3.step(inputs, gameplay::FixedStep::seconds);
         }
     };
     brain3.set_tactic(BotTactic::Separate);
@@ -734,7 +736,7 @@ void testRoundFinishes() {
         input::PlayerState idle;
         input::compute_edges(idle);
         const input::PlayerState* inputs[4] = {&idle, &com, nullptr, nullptr};
-        frame = m.step(inputs, 1.0 / 64.0);
+        frame = m.step(inputs, gameplay::FixedStep::seconds);
         for (int i = 0; i < 2; ++i)
             if (frame.meleeHit[i]) ++hits;
         shots += (uint64_t)frame.shotsSpawned;
@@ -777,7 +779,7 @@ void testPartnerDoesNotFriendlyFire() {
         gameplay::updateBotInput(brainB, ctxB, inB, tick);
         input::compute_edges(idle);
         const input::PlayerState* inputs[4] = {&idle, &inA, &idle, &inB};
-        const gameplay::MatchFrame f = m.step(inputs, 1.0 / 64.0);
+        const gameplay::MatchFrame f = m.step(inputs, gameplay::FixedStep::seconds);
         shots += (uint64_t)f.shotsSpawned;
         for (int i = 0; i < 4; ++i) {
             const int victim = f.meleeVictim[i];
@@ -949,7 +951,7 @@ void testAssetBackedFourFighter(int argc, char** argv) {
     for (uint64_t tick = 1; tick <= 6000; ++tick) {
         for (int i = 0; i < 4; ++i) gameplay::updateBotInput(brains[i], ctx[i], inputs[i], tick);
         const input::PlayerState* in[4] = {&inputs[0], &inputs[1], &inputs[2], &inputs[3]};
-        frame = match.step(in, 1.0 / 64.0);
+        frame = match.step(in, gameplay::FixedStep::seconds);
         shots += (uint64_t)frame.shotsSpawned;
         for (int i = 0; i < 4; ++i) {
             const int victim = frame.meleeVictim[i];

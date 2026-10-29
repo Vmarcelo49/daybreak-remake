@@ -67,7 +67,7 @@ void section(const char* title) { std::printf("\n-- %s\n", title); }
 void tick(Fighter& f, const input::PlayerState& in) {
     input::PlayerState copy = in;
     input::compute_edges(copy);
-    f.update(&copy, nullptr, 1.0 / 64.0);
+    f.update(&copy, nullptr, gameplay::FixedStep::seconds);
 }
 
 // ---------------------------------------------------------------------------
@@ -607,9 +607,9 @@ int run() {
             input::PlayerState in = pressWith(input::Action::Jump);
             tick(f, in);
             in.down[input::Action::Jump] = false;
-            // 16 ticks: vy = 720 - 1800*16/64 = 270 < 360, so the air chain sits on
-            // the falling row 42 (its phase-0 clip is set 20 in this table) — the
-            // row whose threshold blocks the 320 gate.
+            // 16 ticks at the port's 60 Hz: vy = 720 - 1800*16/60 = 240 < 360, so the air
+            // chain sits on the falling row 42 (its phase-0 clip is set 20 in this table) —
+            // the row whose threshold blocks the 320 gate.
             for (int i = 0; i < 16; ++i) tick(f, in);
             check(f.state() == FighterState::Jump && f.anim_set_index() == 20,
                   "air fixture is airborne on the falling row");
@@ -618,7 +618,8 @@ int run() {
             const int elapsedBefore = f.phase_elapsed();
             in = pressWith(input::Action::AttackA);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);  // opponent present: inputFacing is +pi/2
+            // opponent present: inputFacing is +pi/2
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             check(f.state() == FighterState::Jump, "declined air press keeps the jump");
             check(f.attack_move_id() < 0 && !f.pending_swing_start(),
                   "declined air press arms nothing");
@@ -679,7 +680,7 @@ int run() {
             foe.reset(glm::vec3(900.f, 0.f, 0.f), 0.f);  // 810000 >= 640000: far
             input::PlayerState in = pressWith(input::Action::AttackA);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             checkInt(300, f.attack_move_id(), "movement fixture enters 300");
             check(std::abs(f.move_speed() - 15.f) < 0.01f,
                   "300 lunge reads 15 against a far target (>= 640000)");
@@ -688,19 +689,19 @@ int run() {
             nearFoe.reset(glm::vec3(500.f, 0.f, 0.f), 0.f);  // 250000 < 640000
             input::PlayerState nin = pressWith(input::Action::AttackA);
             input::compute_edges(nin);
-            near.update(&nin, &nearFoe, 1.0 / 64.0);
+            near.update(&nin, &nearFoe, gameplay::FixedStep::seconds);
             check(std::abs(near.move_speed() - 25.f) < 0.01f,
                   "300 lunge reads 25 against a near target (< 640000)");
             // The phase walk: period-driven 0 -> 1, then the approach exit into 2.
             in.down[input::Action::AttackA] = false;
             for (int i = 0; i < 30 && f.move_phase() != 2; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
             }
             check(f.move_phase() == 2, "300 reaches phase 2 (windup period then approach exit)");
             const float bleed = f.move_speed();
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             check(std::abs(f.move_speed() - (bleed - 1.5f)) < 0.01f,
                   "300 phase 2 bleeds 1.5 a tick");
         }
@@ -713,25 +714,25 @@ int run() {
             foe.reset(glm::vec3(300.f, 0.f, 0.f), 0.f);
             input::PlayerState in = pressWith(input::Action::AttackA, input::Action::Down);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             checkInt(310, f.attack_move_id(), "back-held press enters 310");
             check(std::abs(f.move_speed() - 30.f) < 0.01f, "310 enters with speed 30");
             in.down[input::Action::AttackA] = false;
             in.down[input::Action::Down] = false;
             for (int i = 0; i < 20 && f.move_phase() != 2; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
             }
             check(f.move_phase() == 2, "310 walks phases 0-1-2 (phase 1 exits on its tick)");
             for (int i = 0; i < 15; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
             }
             // A connected hit with jump held past frame 12 leaves the kick.
             f.note_melee_hit(0);
             in.down[input::Action::Jump] = true;
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             check(f.state() == FighterState::Jump && f.airborne(),
                   "310 jump-cancels into the air chain on contact + held jump");
         }
@@ -743,19 +744,19 @@ int run() {
             foe.reset(glm::vec3(300.f, 0.f, 0.f), 0.f);
             input::PlayerState in = pressWith(input::Action::AttackA, input::Action::Right);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             checkInt(311, f.attack_move_id(), "lateral press enters 311");
             checkFloat(20.f, f.move_speed(), 0.01f, "311 enters with speed 20");
             in.down[input::Action::AttackA] = false;
             in.down[input::Action::Right] = false;
             for (int i = 0; i < 5; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
             }
             checkFloat(19.f, f.move_speed(), 0.05f, "311 bleeds 0.2 a tick after entry");
             for (int i = 0; i < 22; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
             }
             check(f.move_speed() == 0.f, "311 stops fully at frame 25");
         }
@@ -768,15 +769,15 @@ int run() {
             foe.reset(glm::vec3(600.f, 0.f, 0.f), 0.f);
             input::PlayerState in = pressWith(input::Action::Jump);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             in.down[input::Action::Jump] = false;
             for (int i = 0; i < 12; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
             }
             in = pressWith(input::Action::AttackA);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             checkInt(320, f.attack_move_id(), "airborne press enters the 320 chase");
             check(f.chase_strength() == 226, "chase latches 230 and decays 4 on the first tick");
             check(f.attack_gravity() == 0.f, "chase hangs (gravity 0) before phase 2");
@@ -796,32 +797,32 @@ int run() {
             in.down[input::Action::AttackA] = false;
             for (int i = 0; i < 10; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
             }
             check(glm::distance(f.position(), foe.position()) < startDistance - 100.f,
                   "the chase closes on the target");
             int phase2Tick = -1;
             for (int i = 0; i < 90 && phase2Tick < 0; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
                 if (f.move_phase() == 2) phase2Tick = i;
             }
             check(phase2Tick >= 0, "chase reaches phase 2 (approach exit or timeout)");
             for (int i = 0; i < 8; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
             }
             check(f.attack_gravity() == 0.5f, "phase 2 falls at the body's 0.5 gravity");
             int landingTick = -1;
             for (int i = 0; i < 90 && landingTick < 0; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
                 if (!f.airborne() && f.attack_move_id() == 329) landingTick = i;
             }
             check(landingTick >= 0, "the chase lands into the 329 recovery");
             for (int i = 0; i < 6; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
             }
             checkFloat(0.f, f.move_speed(), 0.f, "329 zeroes the motion");
             check(f.hyper_gauge() > 0.2f,
@@ -837,15 +838,15 @@ int run() {
             foe.reset(glm::vec3(600.f, 0.f, 0.f), 0.f);
             input::PlayerState in = pressWith(input::Action::Jump);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             in.down[input::Action::Jump] = false;
             for (int i = 0; i < 12; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
             }
             in.down[input::Action::AttackA] = true;
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             checkInt(320, f.attack_move_id(), "Rena+2 jump/attack enters chase 320");
             in.down[input::Action::AttackA] = false;
             bool sawSeek = false, sawStrike = false, sawRecovery = false;
@@ -855,7 +856,7 @@ int run() {
                 const int before = f.phase_elapsed();
                 const int row = f.attack_move_id();
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
                 if (row == 320 && phase == 2 && f.attack_move_id() == 320) {
                     const int executed = before == 13 ? 22 : before;
                     if (before == 13) {
@@ -884,32 +885,32 @@ int run() {
             doubleTap(f, input::Action::Up);
             input::PlayerState in = pressWith(input::Action::AttackA);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             checkInt(330, f.attack_move_id(), "dash attack enters the 330 hop");
             in.down[input::Action::AttackA] = false;
             int hopTick = -1;
             for (int i = 0; i < 15 && hopTick < 0; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
                 if (f.move_phase() == 1) hopTick = i;
             }
             check(hopTick >= 0, "the hop's phase 1 arrives with the windup period");
             // The phase change lands at the END of that update; the hop's own rules
             // fire on phase 1's first full tick.
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             check(f.airborne(), "the hop lifts off (vertical 15)");
             check(f.attack_gravity() == 0.75f, "the hop falls at the body's 0.75 gravity");
             const float rise = f.position().y;
             for (int i = 0; i < 3; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
             }
             check(f.position().y > rise, "the hop still rises on the following ticks");
             int landingTick = -1;
             for (int i = 0; i < 90 && landingTick < 0; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
                 if (!f.airborne() && f.move_phase() == 3) landingTick = i;
             }
             check(landingTick >= 0 && f.move_speed() == 0.f,
@@ -924,25 +925,25 @@ int run() {
             foe.reset(glm::vec3(500.f, 0.f, 0.f), 0.f);
             input::PlayerState in = pressWith(input::Action::Jump);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             in.down[input::Action::Jump] = false;
             for (int i = 0; i < 12; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
             }
             doubleTap(f, input::Action::Up);
             check(f.state() == FighterState::Run && f.air_dash_context(),
                   "dive fixture enters the air dash");
             in = pressWith(input::Action::AttackA);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             checkInt(332, f.attack_move_id(), "air-dash press enters the 332 dive");
             check(f.move_speed() == 0.f, "the dive starts from rest");
             in.down[input::Action::AttackA] = false;
             int diveTick = -1;
             for (int i = 0; i < 15 && diveTick < 0; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
                 if (f.move_phase() == 1) diveTick = i;
             }
             check(diveTick >= 0, "the dive's phase 1 arrives with the windup period");
@@ -956,7 +957,7 @@ int run() {
                     static_cast<double>(std::hypot(launchGap.x, launchGap.z))))),
                 -20.f, -5.f);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             checkFloat(std::cos(glm::radians(launchAngle)) * 25.f, f.move_speed(), 0.1f,
                        "dive launch splits cos(angle)*25 along the clamped angle");
             check(f.body_pivot_height() == 70.f && f.body_pitch() <= 0.f,
@@ -964,21 +965,21 @@ int run() {
             // Contact inside the window rebounds into 334.
             f.note_melee_hit(0);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             checkInt(334, f.attack_move_id(), "dive contact rebounds into 334");
             check(f.attack_gravity() == 0.35f && f.airborne(),
                   "the rebound rises at gravity 0.35");
             int fallTick = -1;
             for (int i = 0; i < 20 && fallTick < 0; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
                 if (f.move_phase() == 1) fallTick = i;
             }
             check(fallTick >= 0, "the rebound hands to its fall phase under 6 u/tick");
             int landingTick = -1;
             for (int i = 0; i < 90 && landingTick < 0; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
                 if (!f.airborne() && f.attack_move_id() == 333) landingTick = i;
             }
             check(landingTick >= 0, "the rebound's landing exits into the 333 recovery");
@@ -992,22 +993,22 @@ int run() {
             dfoe.reset(glm::vec3(500.f, 0.f, 0.f), 0.f);
             input::PlayerState dip = pressWith(input::Action::Jump);
             input::compute_edges(dip);
-            d.update(&dip, &dfoe, 1.0 / 64.0);
+            d.update(&dip, &dfoe, gameplay::FixedStep::seconds);
             dip.down[input::Action::Jump] = false;
             for (int i = 0; i < 12; ++i) {
                 input::compute_edges(dip);
-                d.update(&dip, &dfoe, 1.0 / 64.0);
+                d.update(&dip, &dfoe, gameplay::FixedStep::seconds);
             }
             doubleTap(d, input::Action::Up);
             dip = pressWith(input::Action::AttackA);
             input::compute_edges(dip);
-            d.update(&dip, &dfoe, 1.0 / 64.0);
+            d.update(&dip, &dfoe, gameplay::FixedStep::seconds);
             checkInt(332, d.attack_move_id(), "the plain dive fixture enters 332");
             dip.down[input::Action::AttackA] = false;
             int ownLanding = -1;
             for (int i = 0; i < 200 && ownLanding < 0; ++i) {
                 input::compute_edges(dip);
-                d.update(&dip, &dfoe, 1.0 / 64.0);
+                d.update(&dip, &dfoe, gameplay::FixedStep::seconds);
                 if (!d.airborne() && d.attack_move_id() == 333) ownLanding = i;
             }
             check(ownLanding >= 0, "332's own landing exits into the 333 recovery");
@@ -1022,14 +1023,14 @@ int run() {
             foe.reset(glm::vec3(600.f, 0.f, 0.f), 0.f);
             input::PlayerState in = pressWith(input::Action::AttackA);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             checkInt(300, f.attack_move_id(), "w2 neutral press enters the spin");
             check(f.move_speed() == 0.f, "the spin does not lunge at entry");
             in.down[input::Action::AttackA] = false;
             float rushSpeed = -1.f;
             for (int i = 0; i < 15 && rushSpeed < 0.f; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
                 if (f.move_phase() == 1 && f.move_speed() > 40.f) rushSpeed = f.move_speed();
             }
             check(rushSpeed > 42.9f && rushSpeed <= 43.01f,
@@ -1038,7 +1039,7 @@ int run() {
             int previousElapsed = f.phase_elapsed();
             for (int i = 0; i < 40; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
                 const int elapsed = f.phase_elapsed();
                 if (previousElapsed >= 15 && previousElapsed <= 28 && elapsed == previousElapsed + 2)
                     sawDoubleClock = true;
@@ -1346,12 +1347,15 @@ int run() {
             foe.reset(glm::vec3(600.f, 0.f, 0.f), 0.f);
             input::PlayerState in = pressWith(input::Action::Jump);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             in.down[input::Action::Jump] = false;
-            for (int i = 0; i < 12; ++i) { input::compute_edges(in); f.update(&in, &foe, 1.0 / 64.0); }
+            for (int i = 0; i < 12; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
+            }
             in = pressWith(input::Action::AttackA);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             checkInt(320, f.attack_move_id(), "contact fixture enters the 320 chase");
             check(f.contact_disabled(), "320's phase 0 has the contact volume cut");
 
@@ -1360,7 +1364,10 @@ int run() {
             // donor actor_world_pose.hpp:14) from the fighter's public pose. The
             // earlier cut folded pitch and pivot into the Y angle and fails this.
             in.down[input::Action::AttackA] = false;
-            for (int i = 0; i < 4; ++i) { input::compute_edges(in); f.update(&in, &foe, 1.0 / 64.0); }
+            for (int i = 0; i < 4; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
+            }
             const glm::vec3 pos = f.position();
             const float pivot = f.body_pivot_height();
             const glm::mat4 expected =
@@ -1403,25 +1410,31 @@ int run() {
             foe.reset(glm::vec3(600.f, 0.f, 0.f), 0.f);
             input::PlayerState in = pressWith(input::Action::Jump);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             in.down[input::Action::Jump] = false;
-            for (int i = 0; i < 12; ++i) { input::compute_edges(in); f.update(&in, &foe, 1.0 / 64.0); }
+            for (int i = 0; i < 12; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
+            }
             in = pressWith(input::Action::Shoot);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             in.down[input::Action::Shoot] = false;
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             checkInt(402, f.shot_move_id(), "the air tap binds the 402 shot row");
             int landTick = -1;
             for (int i = 0; i < 400 && landTick < 0; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
                 if (!f.airborne()) landTick = i;
             }
             check(landTick >= 0, "the air tap reaches the ground");
             checkInt(403, f.shot_move_id(), "the air tap's landing enters the 403 recovery");
-            for (int i = 0; i < 3; ++i) { input::compute_edges(in); f.update(&in, &foe, 1.0 / 64.0); }
+            for (int i = 0; i < 3; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
+            }
             check(f.move_speed() == 0.f && f.attack_gravity() == 0.f,
                   "403 zeroes the carried motion and the fall (no tick guard)");
         }
@@ -1438,13 +1451,13 @@ int run() {
             foe.reset(glm::vec3(900.f, 0.f, 0.f), 0.f);
             input::PlayerState in = pressWith(input::Action::AttackA);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             checkInt(300, f.attack_move_id(), "cue fixture enters 300");
             in.down[input::Action::AttackA] = false;
             bool sawVoice = false, sawSe = false;
             for (int i = 0; i < 40 && !(sawVoice && sawSe); ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
                 const auto voice = f.take_melee_voice();
                 const auto sound = f.take_sound_effect();
                 if (f.move_phase() == 2 && voice.event == 1) sawVoice = true;
@@ -1469,13 +1482,13 @@ int run() {
             foe.reset(glm::vec3(300.f, 0.f, 0.f), 0.f);
             input::PlayerState in = pressWith(input::Action::AttackA);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             checkInt(300, f.attack_move_id(), "cascade fixture enters 300");
             in.down[input::Action::AttackA] = false;
             bool sawOrdinary = false;
             for (int i = 0; i < 40 && !sawOrdinary; ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
                 const auto voice = f.take_melee_voice();
                 if (f.move_phase() == 2 && voice.event == 1) sawOrdinary = true;
             }
@@ -1610,16 +1623,16 @@ int run() {
             input::PlayerState in;
             in.down[input::Action::Special] = true;
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             in.down[input::Action::Special] = false;
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             check(f.hyper_active(), "the boosted fixture arms the hyper state");
             // The chord: both latches held while the attack edge arrives.
             in.down[input::Action::Special] = true;
             in.down[input::Action::AttackA] = true;
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             checkInt(350, f.attack_move_id(), "the armed chord admits the 350 melee");
 
             // The 350 body's own presentation cues: an effect request at frame 7
@@ -1630,7 +1643,7 @@ int run() {
             bool sawEffect = false, sawSe = false;
             for (int i = 0; i < 40 && !(sawEffect && sawSe); ++i) {
                 input::compute_edges(in);
-                f.update(&in, &foe, 1.0 / 64.0);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
                 const auto effect = f.take_effect();
                 const auto sound = f.take_sound_effect();
                 if (effect.id == 320)
@@ -1647,7 +1660,7 @@ int run() {
             pfoe.reset(glm::vec3(300.f, 0.f, 0.f), 0.f);
             input::PlayerState plainIn = pressWith(input::Action::AttackA);
             input::compute_edges(plainIn);
-            p.update(&plainIn, &pfoe, 1.0 / 64.0);
+            p.update(&plainIn, &pfoe, gameplay::FixedStep::seconds);
             checkInt(300, p.attack_move_id(),
                      "the same press without the armed state stays 300");
 
@@ -1663,14 +1676,14 @@ int run() {
             input::PlayerState armIn;
             armIn.down[input::Action::Special] = true;
             input::compute_edges(armIn);
-            s.update(&armIn, &sfoe, 1.0 / 64.0);
+            s.update(&armIn, &sfoe, gameplay::FixedStep::seconds);
             armIn.down[input::Action::Special] = false;
             input::compute_edges(armIn);
-            s.update(&armIn, &sfoe, 1.0 / 64.0);
+            s.update(&armIn, &sfoe, gameplay::FixedStep::seconds);
             check(s.hyper_active(), "the solo fixture arms the hyper state");
             input::PlayerState soloIn = pressWith(input::Action::AttackA);
             input::compute_edges(soloIn);
-            s.update(&soloIn, &sfoe, 1.0 / 64.0);
+            s.update(&soloIn, &sfoe, gameplay::FixedStep::seconds);
             checkInt(300, s.attack_move_id(),
                      "an armed lone attack press stays the ordinary 300");
         }
@@ -1716,42 +1729,42 @@ int run() {
             foe.reset(glm::vec3(600.f, 0.f, 0.f), 0.f);
             input::PlayerState in = pressWith(input::Action::Jump);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             in.down[input::Action::Jump] = false;
-            for (int i = 0; i < 12; ++i) { input::compute_edges(in); f.update(&in, &foe, 1.0 / 64.0); }
+            for (int i = 0; i < 12; ++i) {
+                input::compute_edges(in);
+                f.update(&in, &foe, gameplay::FixedStep::seconds);
+            }
             in = pressWith(input::Action::AttackA);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             checkInt(320, f.attack_move_id(), "guard fixture enters the 320 chase");
             in.down[input::Action::AttackA] = false;
             f.note_melee_hit(0, true);
             input::compute_edges(in);
-            f.update(&in, &foe, 1.0 / 64.0);
+            f.update(&in, &foe, gameplay::FixedStep::seconds);
             checkInt(320, f.attack_move_id(),
                      "320 has no guard branch, so a guarded connect keeps the row");
         }
 
-        // (9) The attack press is gated on the fighter-level special/charge gauge
-        // (`0 < +0x834` on every recovered arm, and the ordinary arm's no-attack path
-        // also tests `+0x834 < 1`): an empty gauge declines the press without entering
-        // AttackA, like every other declined branch.
+        // (9) The attack press is NOT gated on the fighter-level gauge. Every explicit
+        // `0 < +0x834` test in FUN_00445ee0 guards a dash or jump arm (its lines
+        // 59/65/72/82/92/100/441/449 bind moves 0x14/0x1e/0x28 and the +0x830 arm), and
+        // the single `+0x834 < 1` (line 168) is an OR term that routes the press into the
+        // SHOT path, not a refusal. The gauge gates blocking, dashes, jump and the air
+        // dash only — so a plain attack must still be admitted at zero.
+        // Owner report: an empty meter refusing normal attacks does not happen in the
+        // original (PILOT-EVIDENCE-CONTRACT V3-18).
         {
             Fixture fx(1);
             Fighter& f = fx.make();
             f.set_charge_gauge(0);
             input::PlayerState in = pressWith(input::Action::AttackA);
             tick(f, in);
-            checkInt(-1, f.attack_move_id(), "an empty charge gauge declines the attack press");
-            check(f.state() != FighterState::AttackA,
-                  "the declined press does not enter AttackA");
-            check(f.charge_gauge() == 0, "the declined press leaves the gauge empty");
-
-            Fixture ok(1);
-            Fighter& g = ok.make();
-            g.set_charge_gauge(1);
-            input::PlayerState okIn = pressWith(input::Action::AttackA);
-            tick(g, okIn);
-            checkInt(300, g.attack_move_id(), "a positive gauge admits the ordinary 300");
+            checkInt(300, f.attack_move_id(), "an empty charge gauge still admits the ordinary 300");
+            check(f.state() == FighterState::AttackA,
+                  "the press enters AttackA with an empty gauge");
+            check(f.charge_gauge() == 0, "the admitted press spends no gauge");
         }
     }
 
@@ -1786,7 +1799,7 @@ int run() {
                 input::PlayerState st{};
                 void step() {
                     input::compute_edges(st);
-                    f.update(&st, nullptr, 1.0 / 64.0);
+                    f.update(&st, nullptr, gameplay::FixedStep::seconds);
                 }
                 void press(int a)  { st.down[a] = true;  step(); }
                 void release(int a) { st.down[a] = false; step(); }

@@ -1,0 +1,32 @@
+# rena0-idle-walk-turn-stop — F1-3 fixture
+# Expectations cite FUN_0043ffc0: cases 0/10 at :84-179 (state admission and the
+# row-0/row-10 clip binding), :167 the 0x40e66666 = 7.2 walking speed, :121-166 the
+# 0x41a00000 = 20 turn-step reset with 1/update decay and floor 1.
+# The tick anchors (first walk update 4, +19 deg, reversal -19 deg at 16, stop at 28)
+# are this build's recorded F1-5 probe trace (docs/PILOT-EVIDENCE-CONTRACT.md,
+# Appendix A): measured behaviour of the port, not an original runtime trace.
+combo 0 0
+seed 5489
+spawn 0 0 0 0
+spawn 1 0 0 2000
+collision open-field
+input 4 RIGHT
+input 16 UP
+input 28 -
+expect 3 state 0
+expect 3 step 0
+expect 4 state 10
+expect 4 anim_row 10
+expect 4 step 7.2
+expect 4 turn_deg 19
+expect 12 step 7.2
+expect 12 phase 0
+expect 12 elapsed 9
+expect 12 x 55.235
+expect 12 z 20.422
+expect 16 turn_deg -19
+expect 27 state 10
+expect 28 state 0
+expect 28 anim_row 0
+expect 28 step 0
+expect 31 dummy_static 1

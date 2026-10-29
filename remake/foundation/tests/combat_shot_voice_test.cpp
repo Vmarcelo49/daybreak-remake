@@ -1,5 +1,6 @@
 #include "audio/combat_audio.h"
 #include "combo_fixture.h"
+#include "gameplay/fixed_step.h"
 #include "gameplay/match.h"
 #include "gameplay/move_behavior.h"
 
@@ -160,7 +161,7 @@ void testRena1CuePrecedesRequest() {
     auto step = [&]() {
         fnd::input::compute_edges(p1);
         fnd::input::compute_edges(p2);
-        return match.step(inputs, 1.0 / 64.0);
+        return match.step(inputs, gameplay::FixedStep::seconds);
     };
     for (int i = 0; i < 70; ++i) (void)step();
     p1.down[fnd::input::Shoot] = true;

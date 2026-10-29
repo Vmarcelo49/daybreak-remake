@@ -297,6 +297,13 @@ void HudComposer::composeBattle(SpriteRenderer& batch, const HudState& st, const
     // view loop (FUN_006396f0:203-210).
     if (st.showFps)
         battleAtlas_.number(batch, HudFont::SmallYellow, st.fps, layout.fps.x, layout.fps.y, 0.5f);
+
+    // Activation flash (FUN_0063a130): fullscreen (alpha << 24) | 0xB00000 over
+    // everything the view drew, HUD included — the pause overlay draws later in
+    // its own layer, so it stays untinted (issue #71).
+    if (st.hyperFlash > 0.f)
+        batch.pushSolid(UiRect{0.f, 0.f, layout.width, layout.height},
+                        UiColor{0xB0 / 255.f, 0.f, 0.f, std::clamp(st.hyperFlash, 0.f, 1.f)});
 }
 
 void HudComposer::composeFighters(SpriteRenderer& batch, const HudState& st, const BattleHudLayout& layout) {

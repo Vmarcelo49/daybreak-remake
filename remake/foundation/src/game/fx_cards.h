@@ -19,7 +19,7 @@
 // counted in the tally, the same discipline SpriteRenderer's quad pool uses. The
 // default is a PORT RULE sized from the recovered emitters: the heaviest one, the
 // burning aura (FUN_0042e110 spawns effect 380 every 7 frames, and 038.dat's model
-// animates for 0.833 s = 53 ticks at 64 Hz), holds 8 cards per burning fighter, so a
+// animates for 0.833 s = 50 ticks at 60 Hz), holds 8 cards per burning fighter, so a
 // four-fighter 2v2 with every fighter burning is 32; the transient muzzle/impact cards
 // add a few per fighter on top. 128 is ~4x that worst case, and the tally proves the
 // bound is never silently exceeded.

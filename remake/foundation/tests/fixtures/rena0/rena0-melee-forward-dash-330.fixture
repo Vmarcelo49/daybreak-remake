@@ -1,0 +1,17 @@
+# rena0-melee-forward-dash-330 — F1-3 fixture
+# Recipe from the animation audit (tests/rena_animation_audit_test.cpp:272-283): a forward
+# ground dash (double-tap Up) followed by AttackA admits row 330.
+combo 0 0
+seed 5489
+spawn 0 0 0 0
+spawn 1 0 0 2000
+collision open-field
+input 0 UP
+input 1 -
+input 2 UP
+input 3 MELEE
+input 4 -
+expect 3 attack_row 330
+expect 3 anim_row 330
+expect 3 swing_started 1
+expect 10 dummy_static 1

@@ -15,6 +15,7 @@
 // previous frame's eye and the frame delta, which belong to the game loop, not to
 // a camera function. The integration patch is reported in docs/RENDER-CAMERA.md.
 
+#include <algorithm>
 #include <cmath>
 
 #include <glm/glm.hpp>
@@ -63,6 +64,68 @@ inline ArenaFrame arenaViewProj(const ArenaTarget& t, const ArenaCameraParams& p
     f.eye = t.position + glm::vec3(-std::sin(angle) * p.distanceOffset, p.heightOffset,
                                    -std::cos(angle) * p.distanceOffset);
     f.aim = t.position + glm::vec3(0.f, 50.f, 0.f);
+    const glm::mat4 view = glm::lookAtLH(f.eye, f.aim, glm::vec3(0.f, 1.f, 0.f));
+    const glm::mat4 proj = glm::perspectiveLH_ZO(p.fovY, aspect, p.nearClip, p.farClip);
+    f.viewProj = proj * view;
+    return f;
+}
+
+// ---- The recovered normal follow (PILOT-EVIDENCE-CONTRACT V3-15) ----
+//
+// `arenaViewProj` above is a reconstruction: its `heightOffset`/`distanceOffset`
+// are not recovered values (V3-14 — the constants it cites are the renderer's
+// near/far plane offsets, and its π/4 "orbit" is a 2D overlay rotation). This is
+// the real thing: FUN_006333b0's normal branch, taken when `+0x95 == 0 && +0x94 == 0`
+// (no cinematic shot, no scripted camera animation). Every constant below was read
+// from the pinned binary's .rdata and every step from its disassembly.
+//
+// The camera object holds the rig at +0x18 and the anchor at +0x48. The follow
+// derives the eye by pushing away from the anchor along the rig→anchor axis, so
+// the view looks down the lock-on bearing and its pitch depends on the geometry —
+// which is what makes a jump tilt the camera.
+inline ArenaFrame arenaRecoveredFollow(const glm::vec3& rigPos, const glm::vec3& anchorPos,
+                                       const ArenaCameraParams& p, float aspect) {
+    constexpr float kSpanLimit      = 800.0f;  // 0x6a4928 — also the renderer's far offset
+    constexpr float kSpanFloor      = 400.0f;  // 0x6a16d4
+    constexpr float kSpanHalf       = 2.0f;    // 0x6a19d0
+    constexpr float kVerticalBias   = 120.0f;  // 0x6a170c
+    constexpr float kViewDistance   = 300.0f;  // [camera+0x78], FUN_00632e10 @0x632e1a
+    constexpr float kScaleMax       = 1.5f;    // 0x6a24cc
+    constexpr float kEyeLift        = 140.0f;  // 0x6a2c70
+    constexpr float kEyeLiftPerUnit = 0.03f;   // 0x6a4924
+    constexpr float kEyeCeiling     = 200.0f;  // 0x6a16d8
+    constexpr float kAimLift        = 20.0f;   // 0x6a16c4
+    constexpr float kAimDropPerUnit = 0.2f;    // 0x6a16cc
+
+    glm::vec3 delta = anchorPos - rigPos;      // FUN_0042dfd0 is `this - param`
+    float dist = glm::length(delta);
+    // The source divides by `dist`; a coincident rig and anchor is degenerate there
+    // too, so guard rather than reproduce the NaN.
+    if (dist < 1e-4f) dist = 1e-4f;
+    if (dist < kSpanLimit) {
+        if (dist < kSpanFloor) {
+            delta *= (kSpanFloor / dist) / kSpanHalf;
+            dist = kSpanFloor;
+        } else {
+            delta *= dist / kSpanLimit;
+        }
+    }
+    const glm::vec3 aimBasis = delta;
+
+    glm::vec3 offset = delta - glm::vec3(0.0f, kVerticalBias, 0.0f);
+    const float offsetLen = glm::length(offset);
+    const float scale =
+        offsetLen > 1e-4f ? std::min(kViewDistance / offsetLen, kScaleMax) : kScaleMax;
+    offset *= scale;
+
+    ArenaFrame f;
+    f.eye.x = rigPos.x - offset.x;
+    f.eye.y = rigPos.y + kEyeLift + dist * kEyeLiftPerUnit - offset.y;
+    f.eye.y = std::min(f.eye.y, rigPos.y + kEyeCeiling - offset.y);
+    f.eye.z = rigPos.z - offset.z;
+    f.aim = rigPos + aimBasis;
+    f.aim.y += kAimLift - dist * kAimDropPerUnit;
+
     const glm::mat4 view = glm::lookAtLH(f.eye, f.aim, glm::vec3(0.f, 1.f, 0.f));
     const glm::mat4 proj = glm::perspectiveLH_ZO(p.fovY, aspect, p.nearClip, p.farClip);
     f.viewProj = proj * view;

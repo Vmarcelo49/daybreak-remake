@@ -1,0 +1,9 @@
+# P2-7 (2e) guard recipe (P2): three swings into the guard, spaced past the recovery.
+# Two swings land while P1 guards (the 391 path) and one lands after P1's release, so the
+# comparison has both a guarded and an unguarded landing to distinguish.
+90 MELEE
+94 -
+150 MELEE
+154 -
+210 MELEE
+214 -

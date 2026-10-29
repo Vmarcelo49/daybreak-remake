@@ -13,6 +13,7 @@
 // so passing here is necessary but not sufficient for any checklist box.
 #include "combo_fixture.h"
 #include "gameplay/fighter.h"
+#include "gameplay/fixed_step.h"
 #include "gameplay/projectile.h"
 
 #include <cstdio>
@@ -57,11 +58,11 @@ struct Input {
 
 void tick(Fighter& f, Input& in, Fighter* opp = nullptr) {
     fnd::input::compute_edges(in.p);
-    f.update(&in.p, opp, 1.0 / 64.0);
+    f.update(&in.p, opp, gameplay::FixedStep::seconds);
 }
 
 void settle(Fighter& f, int frames = 70) {
-    for (int i = 0; i < frames; ++i) f.update(nullptr, nullptr, 1.0 / 64.0);
+    for (int i = 0; i < frames; ++i) f.update(nullptr, nullptr, gameplay::FixedStep::seconds);
 }
 
 void doubleTap(Fighter& f, Input& in, int action) {
@@ -338,6 +339,77 @@ void auditCombo(int slot) {
         tick(f, in);
         checkInt(450, f.shot_move_id(), "charge-1 release binds 450");
         expectClip(f, combo, comboLabel, "charge-1 shot 450", 450);
+    }
+
+    // EX shot (hypermode, S while active) binds move 500 via ShotFinal.
+    // EX second-S while armed: Rena fires the real move-350 swing
+    // (FUN_00445ee0's armed 0x15e branch) with its own attack clip — a different
+    // row from the activation set in every combo.
+    {
+        Fighter f;
+        combo.init(f, glm::vec3(0.f), 0.f);
+        f.set_hyper_gauge(1.0f);
+        Input in;
+        doubleTap(f, in, input::Action::Special);
+        checkInt(static_cast<int>(FighterState::AttackA), static_cast<int>(f.state()),
+                 "EX second-S enters AttackA");
+        checkInt(350, f.attack_move_id(), "EX second-S swings move 350");
+        expectClip(f, combo, comboLabel, "EX move 350", 350);
+        check(!f.take_pending_shot().armed, "EX second-S arms no shot");
+    }
+
+    // Hypermode activation (S at full gauge) in Oyashiro mode: move 500's own
+    // phase-0 set plays as an overlay without changing state (FUN_00445ee0's
+    // wire-0 branch starts move 500/501), for move 500's own phase window —
+    // period 50 + strict `period < elapsed` completion = 51 updates on Rena+0/+1
+    // (gate 0), while Rena+2's nonzero set-69 gate holds the clip until the next
+    // action. Friendship arms with no overlay (SE 7 plus the TagBack line ride
+    // the audio event instead).
+    {
+        Fighter f;
+        combo.init(f, glm::vec3(0.f), 0.f);
+        f.set_hypermode(gameplay::Hypermode::Oyashiro);
+        f.set_hyper_gauge(1.0f);
+        Input in;
+        in.set(input::Action::Special, true);
+        tick(f, in);
+        in.set(input::Action::Special, false);
+        check(f.hyper_active(), "full-gauge Special activates hypermode");
+        checkInt(static_cast<int>(FighterState::Idle), static_cast<int>(f.state()),
+                 "activation keeps the Idle state");
+        expectClip(f, combo, comboLabel, "hypermode activation 500", 500);
+        check(f.hyper_activation_playing(), "activation overlay reports playing");
+        checkInt(0, f.hyper_activation_elapsed(), "overlay clock starts at 0");
+        for (int i = 0; i < 50; ++i) tick(f, in);
+        if (slot == 2) {
+            checkInt(combo.moves.first_set_index(500), f.anim_set_index(),
+                      "Rena+2 gated activation clip still holds at 51 updates");
+            check(f.hyper_activation_playing(), "Rena+2 gated overlay still reports playing");
+            checkInt(50, f.hyper_activation_elapsed(), "Rena+2 overlay clock keeps counting");
+        } else {
+            checkInt(combo.moves.first_set_index(500), f.anim_set_index(),
+                      "activation clip still plays 50 ticks after activation");
+            checkInt(50, f.hyper_activation_elapsed(), "overlay clock reaches 50");
+            tick(f, in);
+            checkInt(combo.moves.first_set_index(0), f.anim_set_index(),
+                      "activation clip restores the idle clip 51 ticks after activation");
+            check(!f.hyper_activation_playing(), "overlay reports done after restore");
+            checkInt(-1, f.hyper_activation_elapsed(), "overlay clock parks at -1");
+        }
+    }
+
+    // Friendship activation arms with no overlay: the idle clip keeps playing.
+    {
+        Fighter f;
+        combo.init(f, glm::vec3(0.f), 0.f);
+        f.set_hyper_gauge(1.0f);
+        Input in;
+        in.set(input::Action::Special, true);
+        tick(f, in);
+        in.set(input::Action::Special, false);
+        check(f.hyper_active(), "Friendship Special activates hypermode");
+        check(!f.hyper_activation_playing(), "Friendship activation binds no overlay");
+        expectClip(f, combo, comboLabel, "Friendship activation keeps idle", 0);
     }
 
     // Guard holds the playing clip (no selector in the source).

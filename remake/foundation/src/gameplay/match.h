@@ -105,7 +105,7 @@ struct MatchFrame {
     // The simulation reports what happened; audio and effects consume it. Every flag here
     // is an EDGE armed by the transition itself (Fighter::take_swing_start /
     // take_hyper_start, the pool's spawn, the economy's respawn) and drained exactly once,
-    // so re-reading a frame cannot replay an event and a fixed 64 Hz tick cannot miss one.
+    // so re-reading a frame cannot replay an event and a fixed 60 Hz tick cannot miss one.
     // i armed a melee swing / i's shot was accepted by the pool
     bool swingStarted[kMatchFighterCount] = {false, false, false, false};
     bool sourceShotVoiceAudited[kMatchFighterCount] = {false, false, false, false};
@@ -135,6 +135,10 @@ struct MatchFrame {
                                                 glm::vec3(0.f), glm::vec3(0.f)};
     // i activated hypermode / i raised its guard
     bool hyperStarted[kMatchFighterCount] = {false, false, false, false};
+    // The actor's hypermode WIRE value per fighter (0/1/2, see
+    // hypermode_wire_value), read fresh each tick so the per-mode S-press
+    // presentation resolves (issue #71).
+    int hyperMode[kMatchFighterCount] = {-1, -1, -1, -1};
     bool guardStarted[kMatchFighterCount] = {false, false, false, false};
     // A landed hit's victim was guarding. The port's guard gate is provisional
     // (Fighter::take_damage's 20% block), so this is a port rule, not the original's.
@@ -204,6 +208,15 @@ public:
     // This fighter's aim selection (+0x300): the player index it is aiming at,
     // independent of the combat lock above and of the camera's followed player.
     int  aim_selection(int fighter) const { return m_locks.aim_selection(fighter); }
+    // Harness seam (P2-7 charge fixtures): arm a fighter's aim selection so the aim hold the
+    // powered shooting gate reads can hold. The scene normally drives this from the lock
+    // input, which the offline fixture runner has no way to press; the lock's own rule is
+    // reused, so this cannot disagree with the runtime path.
+    void cycle_aim_selection(int fighter, bool forward) {
+        bool alive[kMatchFighterCount] = {false, false, false, false};
+        for (int i = 0; i < kMatchFighterCount; ++i) alive[i] = m_fighters[i].is_alive();
+        m_locks.cycle_enemy(fighter, forward, alive);
+    }
     // Ticks left in the recovered +0x848 hold for the firing predicate.
     int  aim_hold_ticks(int fighter) const { return m_locks.aim_hold_ticks(fighter); }
     // True when this fighter's aim target is the same fighter player 0 is aiming at

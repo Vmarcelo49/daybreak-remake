@@ -71,7 +71,7 @@ public:
 };
 
 CombatEvent ev(CombatEventKind kind, int fighter, int source, uint32_t tick, uint8_t seq = 0,
-               bool shot = false) {
+               bool shot = false, int hyper_mode = -1) {
     CombatEvent e;
     e.kind = kind;
     e.fighter = fighter;
@@ -79,6 +79,7 @@ CombatEvent ev(CombatEventKind kind, int fighter, int source, uint32_t tick, uin
     e.tick = tick;
     e.seq = seq;
     e.shot = shot;
+    e.hyper_mode = hyper_mode;
     return e;
 }
 
@@ -276,8 +277,15 @@ int main() {
           VoiceEvent::Revival);
     CHECK(resolve_combat_event(ev(CombatEventKind::MatchStart, 3, -1, 0)).voice ==
           VoiceEvent::BattleStart);
-    CHECK(resolve_combat_event(ev(CombatEventKind::HyperActivate, 1, -1, 10)).voice ==
-          VoiceEvent::Oyashiro);
+    // HyperActivate resolves per mode (issue #71): only the Oyashiro arm
+    // carries audio — the handler's TagBack line plus SE 7. Other modes (and
+    // an unknown mode) stay silent rather than borrowing the oyashiro line.
+    const CombatCue hyper_oya =
+        resolve_combat_event(ev(CombatEventKind::HyperActivate, 1, -1, 10, 0, false, 1));
+    CHECK(hyper_oya.voice == VoiceEvent::TagBack && hyper_oya.se_id == 7);
+    CHECK(!resolve_combat_event(ev(CombatEventKind::HyperActivate, 1, -1, 10, 0, false, 0))
+               .has_voice);
+    CHECK(!resolve_combat_event(ev(CombatEventKind::HyperActivate, 0, -1, 10)).has_se());
     // The KO pair reads the blow's source, and both carry the recovered SE 9.
     const CombatCue ko_melee = resolve_combat_event(ev(CombatEventKind::Ko, 2, 0, 10));
     CHECK(ko_melee.voice == VoiceEvent::AttackKO && ko_melee.se_id == 9);

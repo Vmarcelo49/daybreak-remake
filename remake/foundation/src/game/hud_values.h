@@ -73,6 +73,7 @@ struct GameHudValues {
     bool  hyperReady = false;       // full gauge, S activates
     float hyperSecondsLeft = 0.f;
     GameRgb hyperAura{1.f, 1.f, 1.f};
+    float hyperFlash = 0.f;          // 0..1 activation flash alpha (issue #71)
     bool  staminaVisible = false;   // dash/guard/airborne only
     float staminaFrac = 0.f;
     bool  koVisible = false;        // elapsed < stingUntil in the DX9 path

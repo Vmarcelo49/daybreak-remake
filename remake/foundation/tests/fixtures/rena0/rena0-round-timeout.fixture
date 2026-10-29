@@ -1,0 +1,20 @@
+# rena0-round-timeout — F1-3 fixture
+# Expectations cite the economy's timed-round path: a round with `timeLimit` set is timed
+# (`match_economy.h:318-320`), and the round ends through `RoundEnd::Timeout` — measured
+# here as enum value 2 — with the losing side's balloon at 0 (MatchFrame::roundOver,
+# MatchEconomy::roundEnd/balloon; FUN_00635d40 per the port's own comment).
+combo 0 0
+seed 5489
+spawn 0 0 0 0
+spawn 1 0 0 2000
+time_limit 2
+collision open-field
+expect 59 round_over 0
+expect 60 round_over 1
+expect 60 round_end 2
+expect 60 balloon1 0
+#
+# Finding recorded while authoring: the round clock also runs during the 60-update
+# BattleStart, so `time_limit 1` (a 60-update clock) expires before this fixture's tick 0
+# and the round is already over there. A 2-second limit leaves exactly 60 updates after
+# startup, which is why the transition sits between updates 59 and 60.

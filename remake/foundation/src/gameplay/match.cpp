@@ -337,6 +337,7 @@ MatchFrame Match::step(const fnd::input::PlayerState* inputs[kMatchFighterCount]
     for (int i = 0; i < m_config.fighterCount; ++i) {
         out.swingStarted[i] = m_fighters[i].take_swing_start();
         out.hyperStarted[i] = m_fighters[i].take_hyper_start();
+        out.hyperMode[i] = gameplay::hypermode_wire_value(m_fighters[i].hypermode());
         out.guardStarted[i] = m_fighters[i].take_guard_start();
     }
 

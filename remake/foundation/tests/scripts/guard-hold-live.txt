@@ -1,0 +1,11 @@
+# P2-7 (2e) guard recipe (P1): hold the guard, then release.
+#
+# Pair this with tests/scripts/guard-attacker.txt on P2 (--script2) and spawn P2 inside melee
+# reach, so the recovered guard body's 391 path (a guarded contact) is exercised live.
+#
+#   --stage=data/stage03 --character=data/rena:0 --enemy=data/mion:0 \
+#     --spawn=-1200,400,0 --spawn2=-1200,400,60 --match --no-devices --headless \
+#     --script=tests/scripts/guard-hold-live.txt --script2=tests/scripts/guard-attacker.txt \
+#     --frames=260 --no-audio --out=/tmp/guard.ppm
+70 GUARD
+200 -

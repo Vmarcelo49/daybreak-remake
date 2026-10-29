@@ -91,7 +91,7 @@ void tick(App& app, int controller, bool lockDown) {
         in.down[fnd::input::LockSwitch] = (c == controller) && lockDown;
         fnd::input::compute_edges(in);
     }
-    tickMatch(app, 1.0 / 64.0);
+    tickMatch(app, gameplay::FixedStep::seconds);
 }
 
 // A tap: one tick pressed, one released — the shape input.h's "tap = cycle enemy" reads.
@@ -101,8 +101,9 @@ void tap(App& app, int controller) {
 }
 
 // The test's fixture: the match and the per-view state the way initMatch sets them up,
-// with one human controller per fighter (the front-end battle's keying). `dt` is fixed at
-// 1/64 and the round has no time limit, so the fixture cannot end mid-test.
+// with one human controller per fighter (the front-end battle's keying). `dt` is the port's
+// fixed step (gameplay::FixedStep::seconds) and the round has no time limit, so the fixture
+// cannot end mid-test.
 struct Fixture {
     App app;
 
@@ -272,9 +273,11 @@ void testFourViewsKeepTheirOwnCameras() {
     f.reportCameras("after twelve taps");
 
     // The hold gesture: aim the ally, arm the recovered 180-tick hold, never the camera.
-    // Physical taps last several ticks. Only a fresh continuous 250 ms press
-    // selects the ally; the recovered ally dwell must not override a later tap.
-    checkInt(16, kLockHoldTicks, "ally hold requires 250 ms at 64 Hz");
+    // Physical taps last several ticks. Only a fresh continuous press past the port's
+    // threshold selects the ally; the recovered ally dwell must not override a later tap.
+    // kLockHoldTicks is a port constant (main.cpp): 16 ticks, ~267 ms at the 60 Hz cadence
+    // (D15 superseded D9's 64 Hz, where the same tick count was 250 ms).
+    checkInt(16, kLockHoldTicks, "ally hold keeps its 16 ticks (~267 ms at 60 Hz)");
     for (int i = 0; i < kLockHoldTicks - 1; ++i) {
         tick(f.app, 2, true);
         check(f.app.match.locked_target(2) == 0 || f.app.match.locked_target(2) == 1,

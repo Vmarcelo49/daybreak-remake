@@ -18,6 +18,7 @@
 //  Exit status: 0 when every check passes, 1 otherwise.
 // =============================================================================
 #include "gameplay/fighter.h"
+#include "gameplay/fixed_step.h"
 #include "gameplay/match.h"
 #include "gameplay/weapon_definition.h"
 
@@ -364,7 +365,7 @@ void testHitstunIsPerWeapon() {
         int frames = 0;
         while (victim->state() == gameplay::FighterState::Hit && frames < 200) {
             fnd::input::compute_edges(idle);
-            victim->update(&idle, nullptr, 1.0 / 64.0);
+            victim->update(&idle, nullptr, gameplay::FixedStep::seconds);
             ++frames;
         }
         check(frames == quick.defenderHitstun,
@@ -380,7 +381,7 @@ void testHitstunIsPerWeapon() {
         int frames = 0;
         while (victim->state() == gameplay::FighterState::Hit && frames < 200) {
             fnd::input::compute_edges(idle);
-            victim->update(&idle, nullptr, 1.0 / 64.0);
+            victim->update(&idle, nullptr, gameplay::FixedStep::seconds);
             ++frames;
         }
         check(frames == gameplay::FighterConstants::kHitStunFrames,
@@ -399,7 +400,7 @@ void testHitstunIsPerWeapon() {
         int frames = 0;
         while (victim->state() == gameplay::FighterState::Hit && frames < 200) {
             fnd::input::compute_edges(idle);
-            victim->update(&idle, nullptr, 1.0 / 64.0);
+            victim->update(&idle, nullptr, gameplay::FixedStep::seconds);
             ++frames;
         }
         check(frames == gameplay::FighterConstants::kHitStunFrames,
@@ -608,9 +609,11 @@ void testWeaponDrivesFighter() {
              "and the charge count shows shots too (600/300 = 2)");
     check(std::fabs(fast.main_frac() - 1.0f) < 1e-4f,
           "while the bar still fills from the pool (FUN_00433eb0 initialises current from capacity)");
-    check(std::fabs(fast.yellow_hold_sec() - 30.0f / 64.0f) < 1e-5f,
+    // The recovered initial30/secondary180 hold lengths are tick counts the port converts
+    // with its cadence (Fighter::yellow_hold_sec/red_hold_sec use FixedStep::tickRate).
+    check(std::fabs(fast.yellow_hold_sec() - 30.0f / gameplay::FixedStep::tickRate) < 1e-5f,
           "the yellow threshold is the original initial30 updates");
-    check(std::fabs(fast.red_hold_sec() - 210.0f / 64.0f) < 1e-5f,
+    check(std::fabs(fast.red_hold_sec() - 210.0f / gameplay::FixedStep::tickRate) < 1e-5f,
           "red adds secondary180 updates after the initial30");
     checkInt(4, fastW->bullets[0].poolCapacity,
              "row zero retains its live-instance capacity, not a volley count");
@@ -654,7 +657,7 @@ void testWeaponDrivesFighter() {
             fnd::input::PlayerState idle{};
             for (int i = 0; i < 70; ++i) {
                 fnd::input::compute_edges(idle);
-                f.update(&idle, nullptr, 1.0 / 64.0);
+                f.update(&idle, nullptr, gameplay::FixedStep::seconds);
                 f.take_pending_shot();
             }
             int fired = 0;
@@ -663,7 +666,7 @@ void testWeaponDrivesFighter() {
                 fnd::input::PlayerState in{};
                 in.down[fnd::input::Shoot] = (i % 2) == 0;   // press, then release
                 fnd::input::compute_edges(in);
-                f.update(&in, nullptr, 1.0 / 64.0);
+                f.update(&in, nullptr, gameplay::FixedStep::seconds);
                 if (f.take_pending_shot().armed) ++fired;
                 lowest = std::min(lowest, f.main_frac());
             }
@@ -709,7 +712,7 @@ void testEverySelectionSmoke(const fs::path& install) {
                 fnd::input::compute_edges(p2);
                 inputs[0] = &p1;
                 inputs[1] = &p2;
-                match.step(inputs, 1.0 / 64.0);
+                match.step(inputs, gameplay::FixedStep::seconds);
             }
             const auto& f0 = match.fighter(0);
             const bool sane = f0.hp() >= 0 && f0.hp() <= f0.max_hp() &&

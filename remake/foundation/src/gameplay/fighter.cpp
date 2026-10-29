@@ -2,6 +2,7 @@
 // Recovered executable rules live separately in move_behavior.h; NN.dat owns
 // phase/set selection, record geometry and material intervals.
 #include "gameplay/fighter.h"
+#include "gameplay/held_axis.h"
 #include "gameplay/fixed_step.h"
 #include "gameplay/move_behavior.h"
 #include "gameplay/melee_admission.h"
@@ -97,32 +98,38 @@ bool hasAutomaticMeleeTimeline(const CharacterMoves* moves,
     return true;
 }
 
+// Activation-clip window from the engine's own period rule (issue #71), not a
+// shared provisional constant. FUN_0041e180 derives each set's period as
+// nearbyint(setDuration / ticksPerSecond / 0.016), and FUN_0041f580/FUN_00421410
+// complete a phase on strict `period < elapsed` unless the set's +0x20 gate is
+// nonzero (which holds the phase past expiry — cf. the set-14 precedent in
+// docs/ANIMATION-SETS.md). Returns the updates the clip occupies, -1 when a
+// gated phase holds it until the fighter's next clip-binding action, or 0 when
+// the window cannot be derived from the parsed data.
+int hyper_activation_window_frames(const CharacterMoves* moves,
+                                   const xm::Model* model, int moveId) {
+    if (!moves || !model || !moves->valid() || model->anims.empty()) return 0;
+    const CharacterMove* move = moves->find(moveId);
+    if (!move || move->sectionCount <= 0) return 0;
+    const float ticksPerSecond = model->ticksPerSecond;
+    if (!std::isfinite(ticksPerSecond) || ticksPerSecond <= 0.f) return 0;
+    int total = 0;
+    for (int phase = 0; phase < move->sectionCount; ++phase) {
+        const int set = move->phase_set_index(phase);
+        if (set < 0 || static_cast<std::size_t>(set) >= model->anims.size()) return 0;
+        if (moves->animation_set_phase_gate(set) != 0) return -1;
+        const float setDuration = model->anims[static_cast<std::size_t>(set)].duration;
+        if (!std::isfinite(setDuration) || setDuration < 0.f) return 0;
+        total += static_cast<int>(std::nearbyint(
+            setDuration / ticksPerSecond / kOriginalAnimationTick));
+    }
+    return total + 1;
+}
+
 bool backInputHeld(const input::PlayerState* input) {
     // The SDL stick uses positive Y for Down; analog Back must match the D-pad.
     return input && (input->down[input::Action::Down] ||
                      input->stick_y > input::kStickDeadzone);
-}
-
-// Held directional axes as the original's dispatcher reads them: the D-pad wins
-// over the stick, and SDL's positive-Y-down convention flips for the forward axis.
-int held_axis_x(const input::PlayerState* input) {
-    if (!input) return 0;
-    const int digital = (input->down[input::Action::Right] ? 1 : 0) -
-                        (input->down[input::Action::Left] ? 1 : 0);
-    if (digital) return digital;
-    if (input->stick_x > input::kStickDeadzone) return 1;
-    if (input->stick_x < -input::kStickDeadzone) return -1;
-    return 0;
-}
-
-int held_axis_z(const input::PlayerState* input) {
-    if (!input) return 0;
-    const int digital = (input->down[input::Action::Up] ? 1 : 0) -
-                        (input->down[input::Action::Down] ? 1 : 0);
-    if (digital) return digital;
-    if (input->stick_y < -input::kStickDeadzone) return 1;
-    if (input->stick_y > input::kStickDeadzone) return -1;
-    return 0;
 }
 
 struct AnimationBlendRule {
@@ -172,6 +179,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_velocity = glm::vec3(0, 0, 0);
     m_hp = m_maxHP;
     m_stamina = static_cast<float>(FighterConstants::kMaxStamina);
+    m_actionMeter = 1000;
     m_state = FighterState::BattleStart;
     m_stateTimer = FighterConstants::kBattleStartFrames;
     m_attackMoveId = -1;   // no swing in flight across a round reset
@@ -185,7 +193,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_animSetIdx = -1;   // bind() looked the previous state up; BattleStart wins
     clear_tracks();      // a round reset is a fresh bind, never a blend
     apply_weapon_ammo();
-    m_chargeHeld = 0.0f;
+    clear_charge_hold();
     m_reloadTimer = 0;
     m_pending = PendingShot{};
     m_pendingShots.clear();
@@ -213,6 +221,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_flyLeft = FighterConstants::kFlyTimeSec;
     m_dashAir = false;
     m_airDashed = false;
+    m_hoverSpent = false;   // a new airtime re-arms the one hover
     try_switch_animation();
 }
 
@@ -223,6 +232,7 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_velocity = glm::vec3(0, 0, 0);
     m_hp = m_maxHP;
     m_stamina = static_cast<float>(FighterConstants::kMaxStamina);
+    m_actionMeter = 1000;
     m_state = FighterState::BattleStart;
     m_stateTimer = FighterConstants::kBattleStartFrames;
     m_attackMoveId = -1;
@@ -242,9 +252,10 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_flyLeft = FighterConstants::kFlyTimeSec;
     m_dashAir = false;
     m_airDashed = false;
+    m_hoverSpent = false;   // a new airtime re-arms the one hover
     // FUN_00435660 restores round capacity while retaining refill/interval progress.
     restore_ammo();
-    m_chargeHeld = 0.0f;
+    clear_charge_hold();
     m_reloadTimer = 0;
     m_pending = PendingShot{};
     m_pendingShots.clear();
@@ -301,8 +312,10 @@ void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     m_flyLeft = FighterConstants::kFlyTimeSec;
     m_dashAir = false;
     m_airDashed = false;
+    m_hoverSpent = false;   // a new airtime re-arms the one hover
     m_hp = m_maxHP;
     m_stamina = static_cast<float>(FighterConstants::kMaxStamina);
+    m_actionMeter = 1000;
     m_guardExhausted = false;
     // Move 0xc2 (194) plays on re-entry; its set is 43, which is exactly the set
     // state_to_anim_set(BattleStart) binds. The timer is held at 0 so the landing —
@@ -318,7 +331,7 @@ void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     m_dashInputDirection = input::Action::Up;
     m_phaseIndex = 0;
     m_swing = MeleeSwing{};
-    m_chargeHeld = 0.0f;
+    clear_charge_hold();
     m_reloadTimer = 0;
     m_pending = PendingShot{};
     m_pendingShots.clear();
@@ -378,6 +391,29 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // Kakera HP, all before the state machine reads the mode's modifiers.
     update_hypermode(dt);
 
+    // Expiry of a timed activation overlay re-binds the state's own clip, but
+    // only when the overlay is still what's playing: a superseding action has
+    // already rebound (set_state clears the overlay's set), and rebinding here
+    // would restart that action's clip mid-play (issue #71).
+    if (m_hyperActivationFrames > 0) {
+        --m_hyperActivationFrames;
+        if (m_hyperActivationFrames == 0) {
+            if (m_hyperActivationSet >= 0 && m_animSetIdx == m_hyperActivationSet) {
+                m_animSetIdx = -1;
+                try_switch_animation();
+            }
+            m_hyperActivationSet = -1;
+        }
+    }
+    // The overlay's own event clock runs while it is armed — including a gated
+    // hold, whose elapsed keeps counting past the period in the source (the
+    // +0x20 gate holds the phase, not the clock). Superseding actions leave the
+    // set cleared, which freezes this clock via hyper_activation_elapsed().
+    if (m_hyperActivationSet >= 0) ++m_hyperActivationElapsed;
+    // The activation flash decays 4 a tick from 0xFC (FUN_0041f580's +0x334
+    // maintenance), independent of states and overlays.
+    if (m_hyperFlash > 0) m_hyperFlash = std::max(0, m_hyperFlash - 4);
+
     // 1. Decrement state timer (mirrors +0xa0 in fcn.0041f580).
     if (m_stateTimer > 0) {
         --m_stateTimer;
@@ -395,8 +431,15 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // do not establish it). Exhaustion requires a release before another hold.
     const bool guardHeld = input && input->down[input::Action::Guard];
     if (!guardHeld) m_guardExhausted = false;
-    if (m_state == FighterState::Guard && (!guardHeld || m_stamina <= 0.0f)) {
+    // Guard is a grounded stance only (owner: the original does not allow blocking in the
+    // air). Leaving the ground therefore ends it as well as releasing the button or
+    // draining the meter — the same three exits, one of them now positional.
+    if (m_state == FighterState::Guard &&
+        (!guardHeld || !m_grounded || m_stamina <= 0.0f)) {
         if (guardHeld) m_guardExhausted = true;
+        m_guardClip = -1;
+        m_guardPhase = 0;
+        m_guardTicks = 0;
         set_state(m_grounded ? FighterState::Idle : FighterState::Jump);
     }
 
@@ -410,7 +453,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
 
     // 2. Update state machine (check input, transition states).
     // A lost action window (hit, KO) breaks any charge hold in progress.
-    if (!can_act()) m_chargeHeld = 0.0f;
+    if (!can_act()) clear_charge_hold();
     if (m_state == FighterState::AttackA && input &&
         input->just_pressed[input::Action::AttackA] &&
         (attack_admission_recovered(m_moves ? m_moves->character_index() : -1) ||
@@ -529,21 +572,91 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         update_facing(opponent, dt);
     }
 
-    // 5. Stamina: grounded refill (fast after use — battle-stamina.webp)
-    // plus block-hold drain. Dash/leap/flight spends happen at trigger
-    // sites below; airtime never refills, so flight is a real budget.
+    // 5. Stamina: the original refills in the standing handler (executor case 0,
+    // +40/tick) and drains while blocking; dash/leap/flight spends happen at the
+    // trigger sites below. The pilot path applies the recovered integer rates; the
+    // legacy path keeps its grounded 60/s port rule.
     if (m_grounded && can_act() && !(m_state == FighterState::Run && m_dashMoveId == 20 &&
                                    locomotion(m_moves) && m_model)) {
-        m_stamina = std::min(m_stamina + FighterConstants::kStaminaRegenSec *
-                             static_cast<float>(dt),
-                             static_cast<float>(FighterConstants::kMaxStamina));
+        if (m_pilotMeter) {
+            // The original's ordinary refill: executor case 0 (standing/idle,
+            // FUN_0043ffc0) adds 0x28 (40) to +0x834 every tick, or 5 while hit-status
+            // slot 6 is set, clamped at 1000 — before input handling, but NOT on a tick
+            // that leaves the standing branch: one tick runs exactly one executor case,
+            // so a launch/guard/attack tick takes that row's rule instead. The port's
+            // state only changes after this section, hence stateBeforeInput. Mode 2's
+            // extra +1 rides FUN_0041f580:97-98 independently.
+            if (stateBeforeInput == FighterState::Idle && m_state == FighterState::Idle) {
+                const int refill = m_hitStatusDuration[6] > 0 ? 5 : 40;
+                m_actionMeter = std::min(1000, m_actionMeter + refill);
+            }
+            if (m_hyperActive && m_hypermode == Hypermode::Kakera)
+                m_actionMeter = std::min(1000, m_actionMeter + 1);
+        } else {
+            m_stamina = std::min(m_stamina + FighterConstants::kStaminaRegenSec *
+                                 static_cast<float>(dt),
+                                 static_cast<float>(FighterConstants::kMaxStamina));
+        }
+    }
+    // P2-7 meter, jump rows: the launch row refills +40 (+5 with hit-status slot 6)
+    // every tick it is bound (jump bodies 40; the port binds row 40 for exactly the
+    // launch tick via m_jumpStartup, and refresh_state_move runs after this section
+    // so the flag is still set here). Landing refills the same way through the
+    // landing transition below; the row-44 multi-tick duration is not modeled.
+    if (m_pilotMeter && m_state == FighterState::Jump && m_jumpStartup) {
+        const int refill = m_hitStatusDuration[6] > 0 ? 5 : 40;
+        m_actionMeter = std::min(1000, m_actionMeter + refill);
     }
     if (m_state == FighterState::Guard) {
-        m_stamina = std::max(0.0f, m_stamina - FighterConstants::kGuardDrainSec *
-                             static_cast<float>(dt));
-        if (m_stamina <= 0.0f) {
-            m_guardExhausted = true;
-            set_state(m_grounded ? FighterState::Idle : FighterState::Jump);
+        // Guard stance progression, recovered from the shipped data. Row 390's sections
+        // are [preparation, hold, release]; the stance advances to the next section only
+        // when the CURRENT clip has played past its own duration AND that clip does not
+        // declare a hold phase. Animation-set +0x20 is that flag -- the format is
+        // (blend_frames, hold_phase, event_count), which the port already parses as
+        // animation_set_phase_gate() and never applied. A hold phase stays put and its
+        // clip loops, which is the looping guard animation the original shows. The
+        // release section (63) is not reached: releasing leaves Guard directly.
+        if (m_moves && m_model && m_guardClip >= 0) {
+            const CharacterMove* guardMove = m_moves->find(390);
+            m_guardTicks += 1;
+            if (guardMove && m_guardPhase + 1 < guardMove->sectionCount &&
+                m_moves->animation_set_phase_gate(m_guardClip) == 0) {
+                const std::size_t clip = static_cast<std::size_t>(m_guardClip);
+                // anim.duration is in the model's X tick scale, not seconds: divide by
+                // ticksPerSecond (xmodel.h; Rena's clips declare 4800) to get the clip's
+                // wall-clock length. Comparing the raw value against seconds never
+                // elapsed, so the stance never reached the hold phase.
+                const double duration =
+                    clip < m_model->anims.size() && m_model->ticksPerSecond > 0.f
+                        ? static_cast<double>(m_model->anims[clip].duration) /
+                              static_cast<double>(m_model->ticksPerSecond)
+                        : 0.0;
+                const int nextSet = guardMove->phase_set_index(m_guardPhase + 1);
+                if (duration > 0.0 && m_guardTicks * dt > duration && nextSet >= 0 &&
+                    static_cast<std::size_t>(nextSet) < m_model->anims.size()) {
+                    m_guardPhase += 1;
+                    m_guardTicks = 0;
+                    m_guardClip = nextSet;
+                    bind_animation_set(nextSet);
+                }
+            }
+        }
+        if (m_pilotMeter) {
+            // Recovered guard 390 phase 1 drains 10/tick and exits at 0
+            // (guard_native_control.hpp:38-42). The port has no guard phases, so the
+            // drain runs every Guard tick; that granularity stays a named limit.
+            m_actionMeter = std::max(0, m_actionMeter - 10);
+            if (m_actionMeter <= 0) {
+                m_guardExhausted = true;
+                set_state(m_grounded ? FighterState::Idle : FighterState::Jump);
+            }
+        } else {
+            m_stamina = std::max(0.0f, m_stamina - FighterConstants::kGuardDrainSec *
+                                 static_cast<float>(dt));
+            if (m_stamina <= 0.0f) {
+                m_guardExhausted = true;
+                set_state(m_grounded ? FighterState::Idle : FighterState::Jump);
+            }
         }
     }
 
@@ -553,9 +666,20 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // their state through touchdown.
     if (!m_grounded) {
         const float step = static_cast<float>(dt);
-        const bool wantFly = input && input->down[input::Action::Jump] &&
-                             m_state == FighterState::Jump && m_flyLeft > 0.0f &&
-                             is_alive();
+        // One hover per airtime: the original admits the jump row only while grounded
+        // (FUN_00445ee0's jump branch needs the grounded byte 0x84 != 0), so releasing
+        // the button mid-air ends that airtime's hover for good — a re-press falls
+        // instead of climbing again (V3-10). The latch arms on the release, not on the
+        // first hover tick, so a held button keeps climbing for the whole budget.
+        const bool jumpDown = input && input->down[input::Action::Jump];
+        if (!jumpDown) m_hoverSpent = true;
+        // The pilot path has NO time budget: the recovered climb ends only when the button
+        // is released or the meter is empty (row 41's exits are `0x3a`/meter comparisons,
+        // never a duration). The 1.2 s kFlyTimeSec budget cut the climb with ~28% of the
+        // bar still full — the meter is the only limit (V3-12). The legacy path keeps it.
+        const bool flyBudget = m_pilotMeter ? m_actionMeter > 0 : m_flyLeft > 0.0f;
+        const bool wantFly = jumpDown && m_state == FighterState::Jump &&
+                             flyBudget && !m_hoverSpent && is_alive();
         // An air dash hangs for its window (no fall until it expires).
         const bool dashHang = m_state == FighterState::Run && m_dashAir;
         // A recovered attack body owns its fall while the value it published is
@@ -567,9 +691,22 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
             (m_state == FighterState::AttackA || m_shotMoveId >= 0) &&
             move_program(m_moves) && m_attackGravity >= 0.f;
         if (wantFly) {
-            m_vy = FighterConstants::kFlyRise;
+            // Recovered row-41 climb: vy accelerates by +0.2/tick while the button is
+            // held, capped at 6.0/tick, and every climbing tick spends 10 of the action
+            // meter. THE METER IS THE ONLY LIMIT — no altitude cap exists in the air
+            // chain (FUN_00421bd0, which an earlier note cited as a "flight cap", only
+            // writes spawn X/Z and a 1000.0 respawn Y). The port used to overwrite vy
+            // with a constant 12/tick and clamp the position at kFlyMaxAlt.
+            if (m_pilotMeter) {
+                constexpr float kClimbAccel = 0.2f * 60.f;   // 0.2 u/tick^2 in u/s^2
+                constexpr float kClimbMax = 6.0f * 60.f;     // 6.0 u/tick in u/s
+                m_vy = std::min(m_vy + kClimbAccel * static_cast<float>(dt), kClimbMax);
+                if (!m_jumpStartup) m_actionMeter = std::max(0, m_actionMeter - 10);
+            } else {
+                m_vy = FighterConstants::kFlyRise;
+                m_stamina = std::max(0.0f, m_stamina - FighterConstants::kFlyDrainSec * step);
+            }
             m_flyLeft -= step;
-            m_stamina = std::max(0.0f, m_stamina - FighterConstants::kFlyDrainSec * step);
         } else if (!dashHang) {
             if (attackFall)
                 m_vy -= m_attackGravity * 4096.f * step;  // u/tick^2 -> u/s^2
@@ -578,10 +715,11 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         }
         const float previousY = m_position.y;
         m_position.y += m_vy * step;
+        // The 420-unit "flight cap" was a port invention with a misattributed citation
+        // (FUN_00421bd0 has no cap); the recovered jump has no altitude limit at all, so
+        // the pilot path keeps the legacy clamp only for the paths that still use it.
         const float ceiling = m_groundY + FighterConstants::kFlyMaxAlt;
-        // FUN_00421bd0 starts descent above the flight cap; clamping it here
-        // teleports the entrant downward instead of letting gravity land it.
-        if (m_position.y > ceiling && !m_respawnLock) {
+        if (!m_pilotMeter && m_position.y > ceiling && !m_respawnLock) {
             m_position.y = ceiling;
             if (m_vy > 0.0f) m_vy = 0.0f;
         }
@@ -605,8 +743,16 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
             m_grounded = true;
             m_flyLeft = FighterConstants::kFlyTimeSec;
             m_airDashed = false;
+            m_hoverSpent = false;   // a new airtime re-arms the one hover
             if (m_state == FighterState::Jump ||
                 (m_state == FighterState::Run && m_dashAir)) {
+                // One tick of the landing row's +40 refill (jump bodies 44): the port
+                // has no landing row, so the transition carries a single tick. Jump
+                // landings only; dash/melee landing rows are unrecovered.
+                if (m_pilotMeter && m_state == FighterState::Jump) {
+                    const int refill = m_hitStatusDuration[6] > 0 ? 5 : 40;
+                    m_actionMeter = std::min(1000, m_actionMeter + refill);
+                }
                 set_state(FighterState::Idle);
             } else if (m_state == FighterState::AttackA || m_shotMoveId >= 0) {
                 // The recovered attack bodies' landing branches: a LandExit rule
@@ -667,6 +813,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
             m_flyLeft = FighterConstants::kFlyTimeSec;
             m_dashAir = false;
             m_airDashed = false;
+            m_hoverSpent = false;   // a new airtime re-arms the one hover
         } else if (m_grounded) {
             m_safePosition = m_position;
         }
@@ -704,11 +851,30 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         // that newly selected set at position zero on this tick.
         refresh_state_move();
         advance_animation_phase();
-        if (m_moves && m_animate) {
-            m_anim->setTrackPosition(m_blendTicks >= 0 ? 1 : 0,
-                                    m_moveElapsedTicks * kOriginalAnimationTick);
-            if (m_blendTicks < 0)
-                m_anim->setTrackPosition(1, m_moveElapsedTicks * kOriginalAnimationTick);
+        if (m_state == FighterState::Guard && m_animate) {
+            // Guard runs no move, so m_moveElapsedTicks never advances and driving the
+            // playhead from it pinned the stance to frame 0 forever -- the "one frame,
+            // static" the owner reported. The original advances the guard clip from its
+            // own tick counter (bundle: `actor_animation_key_time(guard_tick, ...)`), so
+            // the playhead follows m_guardTicks and wraps inside the clip's duration,
+            // which is what makes a hold phase loop.
+            double time = m_guardTicks * kOriginalAnimationTick;
+            if (m_model && m_guardClip >= 0) {
+                const std::size_t clip = static_cast<std::size_t>(m_guardClip);
+                if (clip < m_model->anims.size() && m_model->anims[clip].duration > 0.0 &&
+                    m_model->ticksPerSecond > 0.f) {
+                    const double clipSeconds =
+                        static_cast<double>(m_model->anims[clip].duration) /
+                        static_cast<double>(m_model->ticksPerSecond);
+                    if (clipSeconds > 0.0) time = std::fmod(time, clipSeconds);
+                }
+            }
+            m_anim->setTrackPosition(m_blendTicks >= 0 ? 1 : 0, static_cast<float>(time));
+            if (m_blendTicks < 0) m_anim->setTrackPosition(1, static_cast<float>(time));
+        } else if (m_moves && m_animate) {
+            const float time = m_moveElapsedTicks * kOriginalAnimationTick;
+            m_anim->setTrackPosition(m_blendTicks >= 0 ? 1 : 0, time);
+            if (m_blendTicks < 0) m_anim->setTrackPosition(1, time);
         } else if (m_animate && !m_animationBoundThisUpdate) {
             m_anim->advanceTime(std::min(dt, 0.1));
         }
@@ -812,10 +978,7 @@ void Fighter::update_state_machine(const input::PlayerState* input,
     // otherwise does it charge the shot like C does.
     if (input->just_pressed[input::Action::Special]) {
         if (try_activate_hypermode(opponent)) return;
-        if (m_hyperActive) {
-            try_ex_move();
-            return;
-        }
+        if (m_hyperActive && try_ex_move()) return;
     }
 
     // Shoot (C) — or S when neither of the above applies: holding
@@ -826,6 +989,9 @@ void Fighter::update_state_machine(const input::PlayerState* input,
     const bool chargeDown = input->down[input::Action::Shoot] ||
                             (input->down[input::Action::Special] && !m_hyperActive);
     if (chargeDown) {
+        // The release count the recovered empty-tap branch tests counts held frames, not
+        // seconds: a bound weapon pins the seconds field to one tick.
+        if (m_chargeHeldTicks < kChargeHoldTickCap) ++m_chargeHeldTicks;
         if (m_weapon) {
             m_shootingMagazines[1].charge();
             // A held C still releases a primary tap when the secondary stock is empty.
@@ -837,11 +1003,22 @@ void Fighter::update_state_machine(const input::PlayerState* input,
         // Fire even on a sub-frame tap (charge_tier() then reads Tap).
         // Drops under reloadNG/no stock.
         try_fire();
-        m_chargeHeld = 0.0f;
+        clear_charge_hold();
         if (m_pending.armed) return;
     }
 
-    if (input->down[input::Action::Guard] && !m_guardExhausted && m_stamina > 0.0f) {
+    // Grounded only: the original has no air block, so an airborne press neither enters
+    // the stance nor consumes the meter.
+    if (input->down[input::Action::Guard] && m_grounded && !m_guardExhausted &&
+        (m_pilotMeter ? m_actionMeter > 0 : m_stamina > 0.0f)) {
+        // This branch runs on every HELD tick, not just the press edge, so the stance
+        // reset must be edge-gated: resetting here unconditionally wiped the clip and the
+        // tick counter every frame, which pinned the guard to frame 0 and made it static.
+        if (m_state != FighterState::Guard) {
+            m_guardClip = -1;   // re-bind row 390's opening clip for this stance
+            m_guardPhase = 0;
+            m_guardTicks = 0;
+        }
         set_state(FighterState::Guard);
         m_stateTimer = 0;
         m_guardStartedPending = true;  // the guard edge for the frame report (issue #16)
@@ -854,6 +1031,13 @@ void Fighter::update_state_machine(const input::PlayerState* input,
                   input->down[input::Action::Right] ||
                   std::abs(input->stick_x) > 8000 ||
                   std::abs(input->stick_y) > 8000;
+
+    // P2-7 (2e) slice 2: with the pilot policy attached the recovered body answers the
+    // Idle/Walk question; -1 (any state outside locomotion) keeps the legacy answer.
+    if (m_pilotLocomotion) {
+        const int proposal = m_pilotLocomotion->proposed_state(*this);
+        if (proposal == 0 || proposal == 10) moving = proposal == 10;
+    }
 
     if (moving && m_state == FighterState::Idle) {
         set_state(FighterState::Walk);
@@ -918,9 +1102,29 @@ void Fighter::update_movement(const input::PlayerState* input, double dt) {
 
         const auto* motion = locomotion(m_moves);
         float speed = motion ? motion->walk / static_cast<float>(dt) : FighterConstants::kWalkSpeed;
+        // P2-7 (2e) slice 2: the pilot policy's speed is the recovered body's own output; the
+        // body reports units per tick, and the legacy expression divides the recovered
+        // per-tick value by dt for the same reason (fighter.cpp's walk speed comment).
+        if (m_pilotLocomotion) {
+            const float pilotSpeed = m_pilotLocomotion->walk_speed_per_tick(*this);
+            if (pilotSpeed >= 0.f) speed = pilotSpeed / static_cast<float>(dt);
+        }
         if (!m_grounded) speed *= FighterConstants::kAirControl;
 
-        if (motion && m_state == FighterState::Walk) {
+        const bool pilotAttached = m_pilotMeter || m_pilotLocomotion;
+        if (pilotAttached && !m_grounded) {
+            // Recovered air turn: the airborne movement branch (FUN_00428510 @0x428d9b)
+            // writes +0x874 = 0x40000000 (2.0 degrees/tick) and calls FUN_00421780, which
+            // turns the yaw toward the input's compass bearing by at most that step
+            // (FUN_0042db10). So holding a direction mid-air rotates the body — the ground
+            // turn's airborne counterpart, at its own rate. Without it the body never
+            // rotated while airborne: the walk branch below only runs in the Walk state.
+            const float desired = std::atan2(dir.x, dir.z);
+            const float difference = std::remainder(desired - m_facing, glm::two_pi<float>());
+            constexpr float kAirTurnDegrees = 2.0f;   // +0x874, per tick
+            m_facing += std::clamp(difference, -glm::radians(kAirTurnDegrees),
+                                   glm::radians(kAirTurnDegrees));
+        } else if (motion && m_state == FighterState::Walk) {
             // FUN_00421780 / FUN_0042db10: input-relative yaw, shortest bounded step.
             const glm::vec2 inputDirection(screenRight, screenUp);
             if (inputDirection != m_previousWalkInput) m_walkTurnRate = 20.f;
@@ -1010,6 +1214,11 @@ void Fighter::set_state(FighterState new_state) {
         m_animSetIdx = -1;  // force animation re-lookup
         m_phaseIndex = 0;
         m_moveElapsedTicks = 0;
+        // A fresh action supersedes a pending activation overlay: its clip is
+        // already replaced by the rebind below, so the overlay's expiry must
+        // not rebind (and restart) this action's clip later (issue #71). Guard
+        // keeps this field: it never re-binds.
+        m_hyperActivationSet = -1;
     }
     // Leaving the attack state ends this swing: the per-victim hit set clears so a
     // fresh swing may connect again (issue #10's per-swing accounting).
@@ -1054,10 +1263,30 @@ void Fighter::try_switch_animation() {
     m_boundMoveId = move;  // what refresh_state_move() compares against next tick
 
     if (!state_has_animation_selector(m_state)) {
-        // No selector for this state (Guard): the source binds nothing, so the move
-        // and the clip already playing continue. Only a state entered with nothing
-        // bound (animation was off) needs a clip, and the standing set is that clip —
-        // it is not a substituted guess, so it is not reported as a fallback.
+        // No selector for this state (Guard): the source binds nothing, so the move and
+        // the clip already playing continue. Only a state entered with nothing bound
+        // (animation was off) needs a clip, and the standing set is that clip — it is
+        // not a substituted guess, so it is not reported as a fallback.
+        //
+        // Guard is nonetheless NOT animateless. The character DAT carries the guard
+        // stance as row 390 (preparation/hold/release), 391 (successful block) and 392
+        // (the attacker's recoil), each with its own clips (Rena+0: 390 -> sets
+        // 60/61/63, 391 -> 77/62/63, 392 -> 64/65). Not adopting the 390 MOVE body is a
+        // deliberate separation: that body is a two-button chord (button_a &&
+        // button_b) whose phase 1 exits on a missing button, so running it here would
+        // drop the stance instead of holding it. Binding the opening clip gives the
+        // stance its animation without touching the guard logic.
+        if (m_state == FighterState::Guard && m_moves &&
+            (m_animSetIdx < 0 || m_guardClip < 0)) {
+            if (const CharacterMove* guardMove = m_moves->find(390)) {
+                const int guardSet = guardMove->first_set_index();
+                if (guardSet >= 0 && static_cast<std::size_t>(guardSet) < m_model->anims.size() &&
+                    guardSet != m_animSetIdx) {
+                    bind_animation_set(guardSet);
+                    m_guardClip = guardSet;
+                }
+            }
+        }
         if (m_animSetIdx < 0) bind_animation_set(0);
         m_animNoSelector = true;
         m_animFallback = false;
@@ -1286,7 +1515,16 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
 void Fighter::gain_gauge(float fraction) {
     if (m_hyperActive || fraction <= 0.0f || !is_alive()) return;
     // DAT_006cf3bc is the select page gauge percentage (FUN_0040acb0).
+    // The cap-crossing ding (issue #71): the wire-0 feed plays SE 5 and the
+    // wire-1 feed SE 6 exactly when the gauge reaches full (FUN_00637950's two
+    // feed branches); wire 2 crosses silently.
+    const bool wasFull = m_gauge >= 1.0f;
     m_gauge = std::min(1.0f, m_gauge + fraction * m_gaugeRate);
+    if (!wasFull && m_gauge >= 1.0f) {
+        const int wire = hypermode_wire_value(m_hypermode);
+        if (wire == 0) m_pendingSoundEffect = {5, false, m_position};
+        else if (wire == 1) m_pendingSoundEffect = {6, false, m_position};
+    }
 }
 
 bool Fighter::try_activate_hypermode(Fighter* opponent) {
@@ -1301,9 +1539,37 @@ bool Fighter::try_activate_hypermode(Fighter* opponent) {
     m_hyperTimer = p.durationSec;
     m_hitsActive = 0;
     m_hyperStartedPending = true;  // the activation edge for the frame report (issue #16)
+    // Per-wire presentation (issue #71; see hypermode_wire_value). Only wire 0
+    // (Oyashiro) starts the move-500/501 pose: FUN_00445ee0's +0x318==0 branch
+    // binds its phase-0 set (FUN_00421100 binds phase 0 on move start; every
+    // Rena combo carries move 500 -> set 69), held as an overlay without
+    // changing state. Its length is move 500's own phase window (see
+    // hyper_activation_window_frames). A negative window is a gated hold: no
+    // restore is scheduled and the fighter's next clip-binding action replaces
+    // the clip. Friendship (wire 1) only arms (SE 7 plus the TagBack line ride
+    // the audio event); it keeps the idle clip.
+    // The red flash rides the same arm: the original sets +0x334 to 0xFC here
+    // and FUN_0041f580 decays it 4 a tick while FUN_0063a130 fills the screen
+    // with (alpha << 24) | 0xB00000. Kakera never sets it (no flash, per the
+    // original's death-trigger path).
+    const bool poses = hypermode_wire_value(m_hypermode) == 0;
+    const CharacterMove* actMove = (m_moves && poses) ? m_moves->find(500) : nullptr;
+    const int actSet = actMove ? actMove->first_set_index() : -1;
+    if (m_animate && m_model && !m_model->anims.empty() && actSet >= 0 &&
+        static_cast<std::size_t>(actSet) < m_model->anims.size()) {
+        bind_animation_set(actSet);
+        m_hyperActivationFrames = hyper_activation_window_frames(m_moves, m_model, 500);
+        m_hyperActivationSet = actSet;
+        m_hyperActivationElapsed = 0;
+    } else {
+        m_hyperActivationFrames = 0;
+        m_hyperActivationSet = -1;
+    }
+    if (poses) m_hyperFlash = 0xFC;
 
-    // Oyashiro's activation shoves anyone in melee range away, no damage.
-    if (opponent && opponent->is_alive()) {
+    // Move 500's frame-8 ring shoves anyone in range away with no damage, so
+    // only the posing (wire-0) activation shoves.
+    if (poses && opponent && opponent->is_alive()) {
         const glm::vec3& tp = opponent->position();
         glm::vec3 away(tp.x - m_position.x, 0.0f, tp.z - m_position.z);
         const float dist = glm::length(away);
@@ -1314,10 +1580,26 @@ bool Fighter::try_activate_hypermode(Fighter* opponent) {
     return true;
 }
 
-void Fighter::try_ex_move() {
+bool Fighter::try_ex_move() {
+    // The armed S-press fires move 0x15e (FUN_00445ee0's EX branch; 350 for
+    // Rena) once the +0x84 descent/grounded flag is set — rising fighters fall
+    // through to the charge logic instead. Other characters' EX rows are
+    // unmapped, so they keep the provisional ShotFinal path (issue #71).
+    if (!m_grounded && m_vy > 0.f) return false;
+    if (m_moves && m_moves->character_index() == 0 && present_move(350)) {
+        set_aerial_attack(!m_grounded);
+        m_attackMoveId = 350;
+        build_melee_swing(m_attackMoveId);
+        set_state(FighterState::AttackA);
+        m_stateTimer = hasAutomaticMeleeTimeline(m_moves, m_weapon, m_model, 350)
+                           ? 0
+                           : m_swing.total_ticks();
+        return true;
+    }
     // EX content per character is un-RE'd. `shotFinal` is a provisional port
     // label; the corpus confirms a conditional numeric move-503 follow-up, not a cue binding.
     fire_shot(ShotTier::Ex);
+    return true;
 }
 
 void Fighter::update_hypermode(double dt) {
@@ -1344,6 +1626,15 @@ void Fighter::apply_knockback(const glm::vec3& dir, float speed) {
     m_stateTimer = FighterConstants::kHitStunFrames;
 }
 
+// P2-7 (2e) guard gate: the recovered predicate, answered by the pilot policy when one is
+// attached to the victim. `FUN_00637950`'s guarded branch applies no damage and no stun, so a
+// guarded hit must not reach take_damage. Asked only once a hit has landed, so the predicate
+// can never change whether a swing connects.
+inline bool pilot_guard_blocks(const Fighter& victim, const Fighter& attacker) {
+    const Fighter::PilotGuard* guard = victim.pilot_guard();
+    return guard && guard->guards_hit(victim, attacker);
+}
+
 bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollision* collision) {
     // Only the light/chain melee plays this path; the EX and shots go elsewhere.
     if (m_state != FighterState::AttackA) return false;
@@ -1365,8 +1656,11 @@ bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollis
                               static_cast<float>(record->hitRadius),head,chest)) return false;
         if (collision && !collision->empty() &&
             game::physics::segmentBlocked(start, chest, collision->movementMesh())) return false;
-        const int damage = portDamage(meleePoolDamage(record->baseDamage), m_maxHP);
-        target.take_damage(damage, this, record->defenderHitstun, record->reactionMove);
+        m_meleeChargeBases = {record->hpDamage, record->reflectDamage};
+        if (!pilot_guard_blocks(target, *this)) {
+            const int damage = portDamage(meleePoolDamage(record->baseDamage), m_maxHP);
+            target.take_damage(damage, this, record->defenderHitstun, record->reactionMove);
+        }
         return true;
     }
 
@@ -1406,8 +1700,18 @@ bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollis
     // A data-driven swing carries its move's own power (FUN_00639160's chain); the legacy
     // swing keeps the shared light value. There is no heavy variant: the corpus has one
     // melee input bit and no heavy bit at all (issue #10).
-    const int dmg = m_swing.dataDriven ? m_swing.damage : FighterConstants::kLightDamage;
-    target.take_damage(dmg, this, m_swing.hitstun);
+    // P2-7 (2e) guard gate: with the pilot policy attached to the victim, a guarded hit
+    // applies no damage and no stun — `FUN_00637950`'s guarded branch writes only the contact
+    // word, the per-slot marker and [victim+0xaf30], and calls no damage helper. The block
+    // report and the attacker's 392 recoil still happen in the match pass. The legacy default
+    // has no policy and keeps the provisional 20% rule inside take_damage.
+    // The legacy swing carries no record columns; the recovered charge bases are a record
+    // property, so they stay zero here and the pilot's mode gauges simply do not advance.
+    m_meleeChargeBases = {};
+    if (!pilot_guard_blocks(target, *this)) {
+        const int dmg = m_swing.dataDriven ? m_swing.damage : FighterConstants::kLightDamage;
+        target.take_damage(dmg, this, m_swing.hitstun);
+    }
     return true;
 }
 
@@ -1483,12 +1787,14 @@ AttackAdmissionInput Fighter::attack_input(bool aerial,
 int Fighter::admit_attack_move(bool aerial, const input::PlayerState* input) const {
     if (!m_moves || !attack_admission_recovered(m_moves->character_index()))
         return resolve_attack_move(m_state == FighterState::Run, aerial);
-    // Every recovered attack branch gates on the fighter-level special/charge gauge:
-    // FUN_00445ee0's dash/air/directional arms each require `0 < +0x834` (lines 63/69/76/
-    // 86/96/104) and the ordinary arm's "no attack" path includes `+0x834 < 1` (line 172),
-    // so an empty gauge declines the press outright. Scoped to the recovered group, where
-    // the gauge is modeled; the tap-shot half is gated in fire_shot.
-    if (m_chargeGauge <= 0) return -1;
+    // NO gauge gate on the melee press. Every explicit `0 < +0x834` test in FUN_00445ee0
+    // guards a DASH or JUMP arm (its lines 59/65/72/82/92/100/441/449 bind moves
+    // 0x14/0x1e/0x28 and the +0x830 dash-selector arm), and the single `+0x834 < 1`
+    // (line 168) is an OR term that routes the press into the SHOT path -- it is not a
+    // refusal. The recovered meter therefore gates blocking, dashes, jump and the air
+    // dash only; a plain attack stays available at zero. Owner report (V3-18) and the
+    // line-by-line reading agree. The tap-shot gauge question lives in fire_shot, which
+    // gates on ammunition, not on this meter.
     const AttackAdmissionInput in = attack_input(aerial, input);
     // FUN_0044d850:117-118 / FUN_00445ee0:117-118 — the boosted branch is a TWO-LATCH
     // CHORD: `(+0x288 != 0) && (+0x284 != 0)`, both `< 3`, on top of the ordinary
@@ -1593,8 +1899,10 @@ int Fighter::state_move_id() const {
         case FighterState::ShootC: return present_move(m_shotMoveId);
         case FighterState::Run:     return m_dashMoveId;
         case FighterState::Jump:    return jump_chain_move();
-        // Guard binds nothing; see state_has_animation_selector for the recovered
-        // block path. try_switch_animation holds the playing clip for it.
+        // Guard binds no MOVE: the block branch of FUN_00637950 binds nothing at the
+        // instant of the block, and the 390 body is a two-button chord
+        // (button_a && button_b) that would exit the stance rather than hold it. The
+        // stance's CLIP is bound in try_switch_animation instead -- see the note there.
         case FighterState::Guard:   return -1;
         default:                    return state_to_move_id(m_state);
     }
@@ -1647,7 +1955,16 @@ void Fighter::advance_animation_phase() {
     // ++frame through 16..28): the whole phase clock — the record cursor the
     // rules read and the animation's own phase advancement — runs the extra ticks
     // the ClockSkip rule published this update.
-    if (!m_holdAnimation) m_moveElapsedTicks += 1 + m_clockSkip;
+    //
+    // Row 23's body adds a SECOND increment when the entering primary clock is divisible
+    // by 9 (FUN_0043ffc0 case 0x17, :288-291), before the common tail's ordinary one
+    // (:2439-2443). Zero is divisible, so the phase opens on frame 2 and the sequence runs
+    // 2,3,...9,11,12; without it every section lasts one update too long. Row 24's body
+    // (case 0x18) carries the same rule and remains a named follow-up.
+    const bool sideDashClock = m_pilotMeter && m_state == FighterState::Run && m_dashMoveId == 23;
+    const int clockStep =
+        1 + m_clockSkip + ((sideDashClock && m_moveElapsedTicks % 9 == 0) ? 1 : 0);
+    if (!m_holdAnimation) m_moveElapsedTicks += clockStep;
     if (m_moves->animation_set_phase_gate(set) != 0) return;
 
     const float ticksPerSecond = m_model->ticksPerSecond;
@@ -1659,7 +1976,6 @@ void Fighter::advance_animation_phase() {
     // for every set in Rena 00, Rika 01, and Akane 00.
     const int periodThreshold = static_cast<int>(std::nearbyint(
         (setDuration / ticksPerSecond) / kOriginalAnimationTick));
-    // Original loader 0x41e839 divides GetPeriod by 0.016 before x87 rounding.
     if (periodThreshold >= m_moveElapsedTicks) return;
 
     if (m_phaseIndex + 1 == move->sectionCount) {
@@ -1748,7 +2064,13 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
     if (motion && m_model && m_state == FighterState::Run && m_dashMoveId == 20) {
         // Constructor-bound handlers use the same phase contract with different
         // profile values. NN.dat supplies each phase's pose/gate/period.
-        if (m_phaseIndex < 2) m_stamina = std::max(0.f,m_stamina-motion->dashDrain);
+        // Rena+0's grounded dash drains the recovered -12/tick on the pilot path
+        // (dash bodies :53); the -3 inner arm of air dash 30 is a named limit (the
+        // port has no state-30 frame clock), so state 30 takes the outer -11.
+        if (m_phaseIndex < 2) {
+            if (m_pilotMeter) m_actionMeter = std::max(0, m_actionMeter - 12);
+            else m_stamina = std::max(0.f,m_stamina-motion->dashDrain);
+        }
         if (m_phaseIndex == 0 && m_moveElapsedTicks == 0) {
             m_moveSpeed = motion->forwardDash;
             m_facing = m_inputFacing;
@@ -1759,7 +2081,7 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             if (input && (std::abs(input->stick_x)>8000 || std::abs(input->stick_y)>8000)) {
                 x = static_cast<float>(input->stick_x); z = -static_cast<float>(input->stick_y);
             }
-            if ((!x && !z) || m_stamina <= 0.f) { enter_phase(2); return; }
+            if ((!x && !z) || (m_pilotMeter ? m_actionMeter <= 0 : m_stamina <= 0.f)) { enter_phase(2); return; }
             const float target = m_inputFacing + std::atan2(x,z);
             const float diff = std::remainder(target-m_facing,glm::two_pi<float>());
             const float turn = glm::radians(motion->dashSteer);
@@ -1771,6 +2093,35 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
                 m_holdAnimation = m_holdTicks++ < motion->dashHoldLength;
         }
     }
+    // Pilot path: the dash states the move-20 block above does not model drain the
+    // recovered per-state rates (Rena+0 dash bodies: -12 for 23/24/27/28, outer -11
+    // for air dash 30). The default path keeps the legacy flat trigger spend.
+    // NAMED LIMIT: the bodies drain only while the phase is below 2 (:177-185); this
+    // block drains on every Run update, so the recovery phase is overdrawn.
+    if (m_pilotMeter && m_state == FighterState::Run) {
+        if (m_dashMoveId == 23 || m_dashMoveId == 24 ||
+            m_dashMoveId == 27 || m_dashMoveId == 28)
+            m_actionMeter = std::max(0, m_actionMeter - 12);
+        else if (m_dashMoveId == 30)
+            m_actionMeter = std::max(0, m_actionMeter - 11);
+    }
+    // Side-step travel speed. FUN_0043ffc0 case 0x17/0x18 seeds 20.0 on the phase's
+    // first update, bleeds 0.5 per update while the phase is below 2 (floor 12.5) and
+    // 0.7 per update in recovery (floor 0) (:186-214). A constant kRunSpeed covers the
+    // same updates at the wrong speed, ~57% more ground, so the profile is per update in
+    // the units the movement step consumes (u/s = per-update * 60). Pilot-only, like the
+    // recovered row rules beside it; the COM keeps the constant legacy speed.
+    if (m_pilotMeter && m_state == FighterState::Run &&
+        (m_dashMoveId == 23 || m_dashMoveId == 24)) {
+        constexpr float kDashSpeedScale = 60.0f;          // per-update units to units/second
+        constexpr float kSideSeed = 20.0f * kDashSpeedScale;
+        constexpr float kSideFloor = 12.5f * kDashSpeedScale;
+        constexpr float kSideBleed = 0.5f * kDashSpeedScale;
+        constexpr float kSideStop = 0.7f * kDashSpeedScale;
+        if (m_phaseIndex == 0 && m_moveElapsedTicks == 0) m_dashSpeed = kSideSeed;
+        if (m_phaseIndex < 2) m_dashSpeed = std::max(kSideFloor, m_dashSpeed - kSideBleed);
+        else m_dashSpeed = std::max(0.0f, m_dashSpeed - kSideStop);
+    }
     // Akane+0's recovered handler binds Prop0 to item model 2 for these
     // exact move windows (FUN_00595460 -> FUN_00434a70). Keep this
     // trail-only descriptor outside MoveProgram so it does not claim her
@@ -1779,7 +2130,10 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
         for (int hand = 0; hand < 2; ++hand) {
             const TrailBinding* binding = trail_binding(m_moves,state_move_id(),hand);
             const int itemModel = binding ? binding->itemModel : hand;
-            m_trailItemModel[static_cast<size_t>(hand)] = itemModel;
+            // The recovered shot body's clear takes precedence over the derived binding; only
+            // the pilot policy ever asks for it, so the default path is unchanged.
+            m_trailItemModel[static_cast<size_t>(hand)] =
+                (m_pilotShot && m_pilotShot->clears_item_models()) ? -1 : itemModel;
             if (!trail_window(m_moves,state_move_id(),m_phaseIndex,m_moveElapsedTicks,hand))
                 continue;
             if (itemModel >= 0 && itemModel < m_weapon->slotCount &&
@@ -1915,7 +2269,10 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             // FUN_0042e110 decrement; generic producer is implemented, but scanned Rena
             // actor/projectile DATs do not establish natural slot-6 reachability.
             const int refill = m_hitStatusDuration[6] > 0 ? 5 : static_cast<int>(rule.value);
-            m_chargeGauge = std::min(1000, m_chargeGauge + refill);
+            // The refill lands on the unified word on the pilot path, the legacy
+            // counter otherwise; the rule (+40/+5, clamp 1000) is the same.
+            if (m_pilotMeter) m_actionMeter = std::min(1000, m_actionMeter + refill);
+            else m_chargeGauge = std::min(1000, m_chargeGauge + refill);
             break;
         }
         case MoveOp::MeleeVoice: {
@@ -1996,7 +2353,15 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
             // the visible weapon and the ribbon anchors follow the model-2 muzzle.
             const int slot = static_cast<int>(rule.value);
             const int model = static_cast<int>(rule.second);
-            if (slot >= 0 && slot < 2 && model >= 0) m_trailItemModel[size_t(slot)] = model;
+            // A negative model CLEARS the slot, which is what the recovered shot body does at
+            // its frame 12 (`battle_rena_ground_shot.hpp:37`: `if (frame > 11)` emits
+            // `model -1` for slots 0 and 1), and what this port's own consumer already
+            // implements: `itemModel < 0` resets the trail (fighter.cpp:751-755). The writer
+            // previously refused negatives, so the clear could not be expressed at all —
+            // measured as 0/148 on the shot scenario. No shipped row carries a negative model
+            // (only Rena+1's 450/460, which bind model 2), so accepting them changes nothing
+            // on the current default path.
+            if (slot >= 0 && slot < 2) m_trailItemModel[size_t(slot)] = model;
             break;
         }
         case MoveOp::ScaleMotion:
@@ -2738,8 +3103,10 @@ void Fighter::restore_ammo() {
         m_charge.value = m_charge.max;
     }
     // FUN_004219a0's battle-init block: the fighter-level shot gauge returns to
-    // 1000 with the magazines at every respawn/round reset.
+    // 1000 with the magazines at every respawn/round reset. The unified meter resets
+    // with it so a stale value cannot leak across a round.
     m_chargeGauge = 1000;
+    m_actionMeter = 1000;
 }
 
 void Fighter::apply_weapon_ammo() {
@@ -2787,7 +3154,11 @@ bool Fighter::shot_jump_cancel_pressed(const input::PlayerState* input) const {
 }
 
 void Fighter::try_jump() {
-    m_stamina = std::max(0.0f, m_stamina - FighterConstants::kJumpStamina);
+    // No launch spend on the pilot path: none of the jump bodies charges one. Row 41
+    // spends -10 (-4/-6/-12 by combo) only while gravity reads zero — the hover
+    // states — and rows 40/44 refill instead (see the per-tick rules below). The
+    // legacy path keeps its explicit per-leap trigger cost.
+    if (!m_pilotMeter) m_stamina = std::max(0.0f, m_stamina - FighterConstants::kJumpStamina);
     m_grounded = false;
     m_vy = FighterConstants::kJumpSpeed;
     // The launch tick still plays the air chain's startup row (move 40 / set 2);
@@ -2802,7 +3173,15 @@ bool Fighter::try_dash(input::Action dir) {
     const bool programmed = m_grounded && m_model && dashMove == 20 && locomotion(m_moves);
     // FUN_0043ffc0 drains twelve pool units per update, not a twenty-percent
     // trigger cost. Unsupported handlers still use the explicitly legacy path.
-    if (programmed ? m_stamina <= 0.f : m_stamina < FighterConstants::kDashStamina) return false;
+    // This IS the recovered `0 < +0x834` dash gate: on the pilot path the unified
+    // meter answers it (the recovered 12/tick drain is meter -12, and the body's
+    // phase-1 exit at `+0x834 < 1` is `meter <= 0` in the Run update above). The
+    // default path keeps the legacy stamina gate and flat trigger spend.
+    if (m_pilotMeter) {
+        if (m_actionMeter <= 0) return false;
+    } else if (programmed ? m_stamina <= 0.f : m_stamina < FighterConstants::kDashStamina) {
+        return false;
+    }
     if (!m_grounded && m_airDashed) return false;
     m_dashInputDirection = dir;
     const bool backwardAirDash = !m_grounded && dir == input::Action::Down;
@@ -2823,7 +3202,9 @@ bool Fighter::try_dash(input::Action dir) {
     // Forward move 20 keeps its recovered phase-0 snap and phase-1 steering.
     if (!programmed && !backwardAirDash) m_facing = m_inputFacing;
 
-    if (!programmed) m_stamina -= FighterConstants::kDashStamina;
+    // No flat trigger spend on the pilot path: the recovered dash costs per-tick
+    // drain only. The legacy path keeps its explicit twenty-percent spend.
+    if (!programmed && !m_pilotMeter) m_stamina -= FighterConstants::kDashStamina;
     m_dashDir = d;
     if (m_state == FighterState::Run && m_dashMoveId != dashMove) {
         m_phaseIndex = 0;
@@ -2845,8 +3226,23 @@ bool Fighter::try_dash(input::Action dir) {
     // set_state() intentionally early-outs for identical labels, so rebind after
     // the candidate reset above instead of leaving the previous clip active.
     if (wasRunning && m_animSetIdx < 0) try_switch_animation();
-    m_stateTimer = programmed
-                        ? 0 : FighterConstants::kDashFrames;
+    // A dash whose row is recovered and multi-section must be PHASE-driven, not cut by
+    // a fixed frame count. `programmed` covers only the forward dash (move 20), so the
+    // side steps (23/24) and the back dash (27) were ending on kDashFrames = 20 before
+    // their last section: a side row is 7/12/24 ticks across three phases, and 8+11 left
+    // it inside phase 1 — which is why neither side step ever played its recovery clip
+    // (row 23 phase 2 = set 24, row 24 phase 2 = set 21). The phase clock now ends the
+    // dash through advance_animation_phase's last-section branch instead.
+    const CharacterMove* dashRow = m_moves ? m_moves->find(dashMove) : nullptr;
+    // GROUNDED only: the air dash (row 30) keeps its frame timer, which is what expires it
+    // back into Jump — making that phase-driven changed an airborne exit that is not the
+    // reported problem.
+    // PILOT PATH ONLY for the side/back rows: the COM drives the same fighter class, and
+    // its cadence (and the bot suite's expectations) were built on the truncated dash, so
+    // the recovered full-length dash is applied where the recovered rules already apply.
+    const bool phaseDriven =
+        programmed || (m_pilotMeter && m_grounded && dashRow && dashRow->sectionCount > 1);
+    m_stateTimer = phaseDriven ? 0 : FighterConstants::kDashFrames;
     return true;
 }
 
@@ -2865,13 +3261,30 @@ bool Fighter::can_fire(ShotTier tier) const {
 }
 
 void Fighter::fire_shot(ShotTier tier) {
-    if (!can_fire(tier)) return;
+    if (!can_fire(tier)) {
+        // The recovered release branch services an empty tap without a state: one voice and the
+        // empty-shot statistic, inside the wrapper whose `+0x834 < 1` term excludes the ordinary
+        // shot admission (slot7_native_bodies_20260929.hpp:172-182; PILOT-SEAM.md §26). It also
+        // requires the body's release count `0 < released < 20`, so a longer hold asks for
+        // nothing. The port reaches no voice at all because it returns here, so the pilot
+        // answers the voice half on the per-tick cue the host already drains. The statistic has
+        // no port owner and is not invented as a Fighter field.
+        if (tier == ShotTier::Tap && m_pilotShot && m_moves &&
+            attack_admission_recovered(m_moves->character_index()) &&
+            m_chargeHeldTicks > 0 && m_chargeHeldTicks < kChargeHoldTickCap) {
+            const int voice = m_pilotShot->empty_shot_voice();
+            if (voice >= 0) m_shootingVoice.event = voice;
+        }
+        return;
+    }
     // The fighter-level shot gauge (+0x834) gates the tap admission in the
     // recovered selector (FUN_00445ee0: `0 < +0x834` on the 40x branches); the
     // recovery states refill it. Scoped to the recovered group so other combos
-    // keep their previous admission behavior.
+    // keep their previous admission behavior. On the pilot path the unified meter
+    // answers; the default path reads the legacy counter.
     if (tier == ShotTier::Tap && m_moves &&
-        attack_admission_recovered(m_moves->character_index()) && m_chargeGauge <= 0)
+        attack_admission_recovered(m_moves->character_index()) &&
+        (m_pilotMeter ? m_actionMeter : m_chargeGauge) <= 0)
         return;
     if (!m_weapon) {
         const ShotParams p = shot_params_for(tier);

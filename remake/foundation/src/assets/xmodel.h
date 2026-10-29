@@ -244,7 +244,11 @@ class Controller {
 public:
     static constexpr int kMaxTracks = 8;
 
-    void bind(const Model* m) { model_ = m; }
+    // A fresh rig has no retained pose to start from; the first evaluation seeds from bind.
+    void bind(const Model* m) {
+        if (m != model_) poseValid_ = false;
+        model_ = m;
+    }
     const Model* model() const { return model_; }
 
     void  setTrackAnimationSet(int track, int animIndex);   // -1 clears the track
@@ -311,6 +315,14 @@ private:
 
     const Model* model_ = nullptr;
     Track        tracks_[kMaxTracks];
+    // Retained local pose. The native controller keeps its skeleton between updates and a
+    // set only writes the bones it names, so bones a sparse set omits hold the previous
+    // pose instead of snapping back to bind (prepared_actor_controller_pose.hpp:27+,
+    // "sparse sets leave unnamed matrices intact"). Rena's side-dash travel set names only
+    // the right arm and the left leg, which is why the omitted left arm must persist.
+    mutable std::vector<glm::vec3> heldT_, heldS_;
+    mutable std::vector<glm::quat> heldR_;
+    mutable bool                  poseValid_ = false;
 };
 
 // Throws std::runtime_error on failure. `data` is not retained.
@@ -2143,8 +2155,14 @@ void Controller::evalLocal(std::vector<glm::vec3>& pos, std::vector<glm::quat>& 
         scale.clear();
         return;
     }
-    bindChannels(model_->frames, pos, rot, scale);
     const size_t nf = model_->frames.size();
+    if (poseValid_ && heldT_.size() == nf && heldR_.size() == nf && heldS_.size() == nf) {
+        pos = heldT_;
+        rot = heldR_;
+        scale = heldS_;
+    } else {
+        bindChannels(model_->frames, pos, rot, scale);
+    }
 
     std::vector<float> accW(nf, 0.f);
     for (const Track& t : tracks_) {
@@ -2180,6 +2198,10 @@ void Controller::evalLocal(std::vector<glm::vec3>& pos, std::vector<glm::quat>& 
         }
     }
     for (size_t i = 0; i < nf; ++i) if (glm::dot(rot[i], rot[i]) > 0.f) rot[i] = glm::normalize(rot[i]);
+    heldT_ = pos;
+    heldR_ = rot;
+    heldS_ = scale;
+    poseValid_ = true;
 }
 
 void Controller::evalWorld(std::vector<glm::mat4>& world) const {
