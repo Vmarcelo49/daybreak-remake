@@ -2507,7 +2507,8 @@ Row 350's data carries exactly what that needs: seven one-tick hand contacts
 
 **Fixed:** the `{350,-1,0,9999,MoveOp::ContactOff}` rule is gone. Measured after the change, with
 the opponent kept on the attack volume, the EX lands (`swing_hits 1`) and takes it from 100 to
-**92 HP** — the standard 8-damage melee hit. Restoring the rule takes it back to zero hits, so the
+**92 HP** — one standard 8-damage melee hit (the flurry at the end of this section raises that to
+55). Restoring the rule takes it back to zero hits, so the
 regression is load-bearing: `rena0_pilot_gate_test` now asserts the row binds and the hit lands,
 and `melee_admission_test` asserts the program carries **no** contact cut for row 350 instead of
 asserting the old rule.
