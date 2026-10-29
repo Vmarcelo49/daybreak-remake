@@ -55,11 +55,18 @@ foundation parser; texture names below SJIS-decoded where ASCII):
   DX9 remake's loader log is retained as history in `remake/docs/placeholders.md`
   and the frozen evidence bank, not as current renderer behavior.
 - The projectile path forwards the active shot record's `combat[19]` (wire
-  offset `+0x7c`) as `EffectInstance::renderMode`; `scene_renderer.cpp` maps modes
-  2/4 to `Pass::Effect` and modes 3/4 to unlit shading. This controls projectile
-  model draws, not the ordinary aura/event-card factor or technique binding.
-  Whether this code's field interpretation matches the original selector remains
-  listed as unresolved in `ROADMAP-PENDING.md` B1.
+  offset `+0x7c`) as `EffectInstance::renderMode`. The switch behind it is now read
+  rather than guessed: `FUN_005f60b0` branches on that field (`:77`) and sets D3D
+  state per case — case 1 sets `ALPHABLENDENABLE` (`:79`), case 3 sets it with the
+  technique-8 state and an optional colour (`:91-99`), cases 2 and 4 set it with
+  `DESTBLEND = ZERO` and `ZENABLE = 0` for the draw, restoring both afterwards
+  (`:84-89`, `:100-109`), and `default` changes no state at all and only picks a
+  technique (`:136-143`). `scene_renderer.cpp` maps that to: 2/4 → `Pass::EffectNoDepth`
+  (additive, no depth test), 3/4 → unlit shading, a quad mesh inside a shot model →
+  `Pass::Effect`, everything else keeps ordinary depth/alpha. No case draws a shot
+  surface opaque, which is why the mapping has no opaque arm any more (V3-35, V3-39).
+  This controls projectile model draws, not the ordinary aura/event-card factor or
+  technique binding.
 
 ## Ordinary effect-card blend
 

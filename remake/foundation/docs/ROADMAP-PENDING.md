@@ -885,6 +885,15 @@ connects twice.
 
 ### B1. VFX: the effect table, per-instance cards and attachments — **implemented (issue #17)**
 
+> **Update 2026-10-29 — the `+0x7c` selector is no longer unresolved.** `FUN_005f60b0`
+> switches on it (`:77`): case 1 enables alpha blending, case 3 enables it with the
+> technique-8 state and an optional colour, cases 2 and 4 additionally turn `ZENABLE` off for
+> the draw and restore it, and `default` (the value every shipped shot of weapon 001 carries)
+> changes no state and only picks a technique. Every case blends, so no shot surface is drawn
+> opaque; the port models that as `Pass::Effect` / `Pass::EffectNoDepth` (V3-35, V3-39).
+> The per-card fade is carried by the animation itself, which the port now plays (V3-34).
+
+
 * **The effect table is recovered.** `FUN_0042eba0` loads **100** descriptors,
   `data/effect/%03d.dat`, into the manager at `scene+0x5210`, with a 1000-entry
   0x1c-byte variant array, a 100-entry 0x38-byte descriptor array and 100 model
