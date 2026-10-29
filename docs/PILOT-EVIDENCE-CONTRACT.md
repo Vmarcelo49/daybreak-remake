@@ -754,7 +754,9 @@ integer rates. The default (flag-off) path is byte-for-byte the old behaviour.
 
 **What the pilot path now does** (`fighter.cpp`, all sites cite their source):
 - dash: gate `meter <= 0` refuses for every dash arm (no flat trigger spend); per-tick
-  drain −12 for states 20/23/24/27/28, −11 for air state 30;
+  drain −12 for states 20/23/24/27/28 **while the phase is below 2** (the recovery phase
+  spends nothing — see V3-25), −11 for air state 30 on every update of its three-section
+  row;
 - guard: −10/tick while Guard, exit + exhausted at 0;
 - recovery rows: +40, or +5 with hit-status slot 6, clamped at 1000;
 - mode-2 special active: +1/tick (gated on port Kakera == wire value 2 — mapping named);
@@ -1628,3 +1630,48 @@ not as behaviour.
 Two lessons for the pilot record: a clip index is not evidence of clip content (the
 same `Anim-NN` name carries different channels in `00.X`, `01.X` and `02.X`), and a
 missing animation can be a runtime composition rather than missing data.
+
+### V3-25 — the ground dash spends meter only before its recovery phase
+
+The port drained −12 on **every** Run update of the side and back dash rows, so the
+recovery phase — 22 of the row's 40 updates — billed the meter for a phase the body
+does not charge. Measured on the right side dash from a full meter: **480 spent
+(1000 → 520)** where the source spends **216 (1000 → 784)**.
+
+The recovered condition is a phase guard on the drain, in every ground dash case:
+
+| state | body | drain guard |
+|---|---|---|
+| 20 forward | `FUN_0043ffc0` case `0x14` `:195` | `+0x2b7d < 2` |
+| 23 right | case `0x17` `:257-259` | `+0x2b7d < 2` |
+| 24 left | case `0x18` `:309-311` | `+0x2b7d < 2` |
+| 27/28 back | cases `0x1b`/`0x1c` `:355` | `+0x2b7d < 2` |
+| 30 air | case `0x1e` `:382-383` | `+0x2b7d < 3`, i.e. every section of its three-phase row |
+
+The air dash's extra −3 sits inside `+0x2b7d < 2` and is gated on the word at byte
+**+0x280** — `param_1[0xa0]` is word index `0xa0`, not byte `+0xa0`; that byte is the
+prologue's freeze word `param_1[0x28]` (`:28-30`), which returns before any body runs.
+The port leaves `+0x280` UNMAPPED, so that arm stays a named limit and this change does
+not touch it.
+
+Two related facts settled in the same read, because they decide whether the port needs
+more than a guard:
+
+- **No meter exit on the ground dash rows.** Only the forward dash (`:229`) and the air
+  dash (`:418`) leave phase 1 on `+0x834 < 1`. States 23/24/27/28 contain no meter test
+  beyond the drain and its clamp, so a side or back dash admitted at any positive meter
+  runs to its last update even at zero. The port already behaved that way; nothing to
+  add, and adding an exit would have been wrong.
+- **The drain precedes the clock inside a body visit.** In case `0x17` the order is
+  drain `:257-263`, entry seed `:264-269`, movement/speed `:270-286`, the `%9` extra
+  `:288-291`, then the common tail's increments, cursor and phase test `:2439-2444`. So
+  the drain is charged to the phase the update *entered* with, exactly as the port's own
+  order does (`execute_move_program` before `advance_animation_phase`). The two
+  transition updates therefore still drain, which is why the count is 18 and not 16.
+
+Regression: `rena0_pilot_gate_test` Case D now samples the meter on every dash update
+and requires 988…784 across updates 1-18, then a flat 784 through update 40, with a
+flag-off control at 1000. Removing the phase guard fails it with
+`the recovery phase must open at 784, got 772`. Suite 83/83 excluding the known
+`device_isolation_test` flake; fixture matrix unchanged at 29/30/47. Tier 2 source-backed,
+tier 4 install-backed regression; no visual claim.

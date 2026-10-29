@@ -2065,8 +2065,9 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
         // Constructor-bound handlers use the same phase contract with different
         // profile values. NN.dat supplies each phase's pose/gate/period.
         // Rena+0's grounded dash drains the recovered -12/tick on the pilot path
-        // (dash bodies :53); the -3 inner arm of air dash 30 is a named limit (the
-        // port has no state-30 frame clock), so state 30 takes the outer -11.
+        // (dash bodies :53); the -3 inner arm of air dash 30 is a named limit (it needs
+        // the +0x280 word, and the port has no state-30 frame clock), so state 30 takes
+        // the outer -11.
         if (m_phaseIndex < 2) {
             if (m_pilotMeter) m_actionMeter = std::max(0, m_actionMeter - 12);
             else m_stamina = std::max(0.f,m_stamina-motion->dashDrain);
@@ -2094,16 +2095,24 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
         }
     }
     // Pilot path: the dash states the move-20 block above does not model drain the
-    // recovered per-state rates (Rena+0 dash bodies: -12 for 23/24/27/28, outer -11
-    // for air dash 30). The default path keeps the legacy flat trigger spend.
-    // NAMED LIMIT: the bodies drain only while the phase is below 2 (:177-185); this
-    // block drains on every Run update, so the recovery phase is overdrawn.
+    // recovered per-state rates, and the default path keeps the legacy flat trigger
+    // spend. Ground rows 23/24/27/28 drain -12 only while the phase is below 2
+    // (FUN_0043ffc0 case 0x14 :195, 0x17 :257-259, 0x18 :309-311, 0x1b/0x1c :355) — the
+    // recovery phase spends nothing. Those rows also carry NO meter exit, unlike the
+    // forward dash (:229) and the air dash (:418) which leave phase 1 on `+0x834 < 1`,
+    // so an admitted side or back dash runs to its last update even at zero. Air dash 30
+    // guards on `phase < 3` (:382-383), which is every section of its three-phase row, so
+    // its -11 covers the whole state. Its extra -3 sits inside `phase < 2` and is gated on
+    // the word at byte +0x280 (:384-396; `param_1[0xa0]` is word index 0xa0, not byte
+    // +0xa0 — that byte is the prologue's freeze word, `param_1[0x28]`), which the port
+    // leaves UNMAPPED; that arm stays a named limit.
     if (m_pilotMeter && m_state == FighterState::Run) {
         if (m_dashMoveId == 23 || m_dashMoveId == 24 ||
-            m_dashMoveId == 27 || m_dashMoveId == 28)
-            m_actionMeter = std::max(0, m_actionMeter - 12);
-        else if (m_dashMoveId == 30)
+            m_dashMoveId == 27 || m_dashMoveId == 28) {
+            if (m_phaseIndex < 2) m_actionMeter = std::max(0, m_actionMeter - 12);
+        } else if (m_dashMoveId == 30) {
             m_actionMeter = std::max(0, m_actionMeter - 11);
+        }
     }
     // Side-step travel speed. FUN_0043ffc0 case 0x17/0x18 seeds 20.0 on the phase's
     // first update, bleeds 0.5 per update while the phase is below 2 (floor 12.5) and

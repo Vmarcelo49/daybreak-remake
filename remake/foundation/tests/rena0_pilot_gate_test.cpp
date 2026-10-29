@@ -159,6 +159,7 @@ struct DashClockSample {
     int elapsed = -1;
     int state = -1;
     bool running = false;
+    int gauge = -1;
     double x = 0.0;
     double track0 = -1.0;
     double track1 = -1.0;
@@ -205,6 +206,7 @@ DashClockRun dashClockRun(test::Combo& combo, bool pilot, input::Action directio
         tick.elapsed = fighter.phase_elapsed();
         tick.state = fighter.action_state();
         tick.running = fighter.state() == gameplay::FighterState::Run;
+        tick.gauge = fighter.charge_gauge();
         tick.x = fighter.position().x;
         tick.track0 = controller->trackPosition(0);
         tick.track1 = controller->trackPosition(1);
@@ -522,6 +524,25 @@ int main(int argc, char** argv) {
                 "the constant-speed side dash (600 units) must not come back, got " +
                     std::to_string(travelled));
 
+        // Meter. The row drains -12 per update only while its phase is below 2
+        // (FUN_0043ffc0 case 0x17 :257-259); the recovery phase spends nothing, and the
+        // row has no meter exit (:229/:418 are the forward and air arms), so it runs to
+        // its last update. From a full meter that is 18 drains = 216, ending at 784.
+        for (int update = 1; update <= 18; ++update) {
+            const int expected = 1000 - 12 * update;
+            require(pilotRight.ticks[static_cast<std::size_t>(update - 1)].gauge == expected,
+                    "pilot right dash update " + std::to_string(update) +
+                        " must drain 12 to " + std::to_string(expected) + ", got " +
+                        std::to_string(pilotRight.ticks[static_cast<std::size_t>(update - 1)].gauge));
+        }
+        require(pilotRight.ticks[18].gauge == 784,
+                "the recovery phase must open at 784, got " +
+                    std::to_string(pilotRight.ticks[18].gauge));
+        for (int update = 19; update <= 40; ++update)
+            require(pilotRight.ticks[static_cast<std::size_t>(update - 1)].gauge == 784,
+                    "the recovery phase must not drain: update " + std::to_string(update) +
+                        " has " + std::to_string(pilotRight.ticks[static_cast<std::size_t>(update - 1)].gauge) +
+                        ", expected 784");
         // Negative controls: the isolated fix is row 23 and pilot-only. Left keeps the old
         // single increment, and flag-off right keeps it too; neither extended timing is
         // asserted here.
@@ -533,6 +554,10 @@ int main(int argc, char** argv) {
         require(legacyRight.ticks[0].phase == 0 && legacyRight.ticks[0].set == 22 &&
                     legacyRight.ticks[0].elapsed == 1 && legacyRight.ticks[0].running,
                 "the flag-off right dash must keep the old entry clock 1");
+        // The flag-off dash keeps the legacy trigger spend: the recovered per-update drain
+        // only exists behind the meter policy, so this must not become 988.
+        require(legacyRight.ticks[0].gauge == 1000,
+                "flag-off must keep the legacy trigger spend, not the recovered drain");
 
         // Case E — a sparse clip only writes the bones it names. The travel set 23 keys the
         // right arm and the left leg, so the LEFT arm must keep the pose the startup clip
