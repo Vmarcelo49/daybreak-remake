@@ -2534,3 +2534,31 @@ new `MoveOp::ContactReset` clears it and row 350 now carries two such rules (`0.
 Measured with the opponent held on the volume: **100 → 45 HP**, i.e. most of the seven windows.
 The gate test only asserts "more than one hit" (it measures 85 with its own placement), because the
 exact count depends on how much of the pose the placement intersects.
+
+### V3-44 — guard stops melee but only discounts shots (open, cited)
+
+Found while auditing the shot path after V3-43. On the pilot path the two damage routes disagree
+about a guarding victim:
+
+- **Melee** asks the recovered predicate first: `FUN_00637950`'s guarded branch "applies no damage
+  and no stun", so `pilot_guard_blocks` gates the `take_damage` call and a guarded hit does
+  nothing (`fighter.cpp`, the melee branch).
+- **Shots** never ask it. `projectile.cpp` computes `const bool blocked = f.state() ==
+  FighterState::Guard;` for the contact report and then calls `take_damage(...)` regardless, so the
+  only reduction is `take_damage`'s own **provisional** 20 % rule — the one whose comment says the
+  original's gate is unmapped.
+
+So a guarding opponent loses 20 % of a shot's damage and 0 % of a melee hit, on the same build,
+against a recovered branch that applies neither.
+
+**Why this is recorded rather than changed.** The fix looks like one call, but the predicate needs
+the *attacker's* attack record for its unblockable test (`attackFlags & 8`), and for a shot that
+record belongs to the bullet, not to the shooter's current move — the melee predicate would be
+answering with the wrong record, or with none while the shooter stands idle. Doing it properly
+means teaching the guard predicate to take a record (or a `ProjectilePool` shot) instead of a
+`Fighter`, which is a change to the pilot's policy seam, not a one-liner.
+
+**What would settle the shape:** `FUN_00637950`'s caller for shots — whether the projectile pass
+reaches it with the bullet's record or only the melee pass does — and whether the unblockable flag
+is even read for a bullet (`attackFlags & 8` on a shot record). One focused read of the shot damage
+caller, then the predicate can take the record it needs.
