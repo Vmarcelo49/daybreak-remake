@@ -1969,9 +1969,26 @@ void Fighter::advance_animation_phase() {
     // updates. A gated phase holds past expiry and is handled above.
     const int periodThreshold = animation_period_frames(*m_model, set);
     if (periodThreshold < 0) return;   // data cannot settle the window; 0 is a real window
+
+    const bool lastSection = m_phaseIndex + 1 == move->sectionCount;
+    // FUN_004218c0 ends the ROW on `period <= frame + 1`, using the frame the update
+    // entered with, and only once the phase is the row's last (it also requires
+    // `FUN_0063bf40() - 1 <= phase`, and that function is just `this + 0x10`, the section
+    // count cached by FUN_00421100). That is one update earlier than the tail's
+    // `period < frame` advance between sections (:2442), so the last section ends before
+    // its clock passes the period. Both read the SAME record: FUN_00421410:31 stores one
+    // pointer per set (`+set*0xe + 0x1d78`) for both tracks, at +0xade4 (track 0, the
+    // tail) and +0xade8 (track 1, this predicate).
+    if (lastSection && !m_holdAnimation && periodThreshold <= m_moveElapsedTicks - clockStep + 1) {
+        if (m_state == FighterState::AttackA || m_state == FighterState::Run ||
+            m_state == FighterState::ShootA || m_state == FighterState::ShootB ||
+            m_state == FighterState::ShootC)
+            set_state(m_grounded ? FighterState::Idle : FighterState::Jump);
+        return;
+    }
     if (periodThreshold >= m_moveElapsedTicks) return;
 
-    if (m_phaseIndex + 1 == move->sectionCount) {
+    if (lastSection) {
         if (m_state == FighterState::AttackA || m_state == FighterState::Run || m_state == FighterState::ShootA ||
             m_state == FighterState::ShootB || m_state == FighterState::ShootC)
             set_state(m_grounded ? FighterState::Idle : FighterState::Jump);

@@ -25,7 +25,7 @@
 //   adds one more (FUN_0043ffc0.c:288-291 and :2439-2443; bundle
 //   dash_native_bodies_20260929.hpp:215-232). With the row's 7/12/24 thresholds and the strict
 //   `threshold < elapsed` exit, the pilot right dash samples clock 2 on entry, binds set 23 on
-//   one-based update 7, set 24 on update 18 and Idle on update 39. Both controller tracks carry
+//   one-based update 7, set 24 on update 18 and Idle on update 38. Both controller tracks carry
 //   the primary clock (elapsed * 0.016). Left and flag-off keep the old single increment; their
 //   extended timing is deliberately not asserted (PILOT-EVIDENCE-CONTRACT V3-22).
 //
@@ -170,7 +170,7 @@ struct DashClockRun {
     std::vector<DashClockSample> ticks;  // one-based dash updates, entry first
 };
 
-// Double tap one direction and record the dash's next 39 updates. The trigger tick is
+// Double tap one direction and record the dash's next 38 updates. The trigger tick is
 // update 1; no movement or meter value is asserted here.
 DashClockRun dashClockRun(test::Combo& combo, bool pilot, input::Action direction) {
     gameplay::Match match;
@@ -197,7 +197,7 @@ DashClockRun dashClockRun(test::Combo& combo, bool pilot, input::Action directio
     fighter.set_charge_gauge(1000);
     require(fighter.charge_gauge() == 1000, "the dash clock run needs a full charge gauge");
     xm::Controller* controller = controllers[0];
-    run.ticks.reserve(39);
+    run.ticks.reserve(38);
 
     const auto sample = [&] {
         DashClockSample tick;
@@ -224,7 +224,7 @@ DashClockRun dashClockRun(test::Combo& combo, bool pilot, input::Action directio
                 fighter.dash_move_id() == expectedRow,
             "a side double tap must enter its recovered dash row");
     sample();
-    for (int update = 1; update < 39; ++update) {
+    for (int update = 1; update < 38; ++update) {
         step(match, actor);
         sample();
     }
@@ -238,12 +238,14 @@ struct ExpectedClock {
     bool running;
 };
 
-// One-based updates 1..39. The row's body adds a second tick whenever the entering clock
+// One-based updates 1..38. The row's body adds a second tick whenever the entering clock
 // is 0/9/18 and the common tail adds one, so the clock is increment-only. The windows are
 // the engine's truncating period rule (animation_period.h): 7, 12 and 23 updates for clips
 // of 7.29, 12.5 and 23.96 frames — nearest-even rounding would have made the last one 24
-// and the row 40.
-constexpr ExpectedClock kPilotRightClock[39] = {
+// and the row 40. The row ends one update before the strict tail rule would: FUN_004218c0
+// completes on `period <= entry + 1` once the phase is the last, which is why the final
+// section does not reach frame 23.
+constexpr ExpectedClock kPilotRightClock[38] = {
     {0, 22, 2, true},  {0, 22, 3, true},  {0, 22, 4, true},  {0, 22, 5, true},
     {0, 22, 6, true},  {0, 22, 7, true},  {1, 23, 0, true},  {1, 23, 2, true},
     {1, 23, 3, true},  {1, 23, 4, true},  {1, 23, 5, true},  {1, 23, 6, true},
@@ -253,7 +255,7 @@ constexpr ExpectedClock kPilotRightClock[39] = {
     {2, 24, 8, true},  {2, 24, 9, true},  {2, 24, 11, true}, {2, 24, 12, true},
     {2, 24, 13, true}, {2, 24, 14, true}, {2, 24, 15, true}, {2, 24, 16, true},
     {2, 24, 17, true}, {2, 24, 18, true}, {2, 24, 20, true}, {2, 24, 21, true},
-    {2, 24, 22, true}, {2, 24, 23, true}, {0, 0, 0, false},
+    {2, 24, 22, true}, {0, 0, 0, false},
 };
 
 void checkRightDashClock(const DashClockSample& got, const ExpectedClock& want, int update) {
@@ -483,10 +485,11 @@ int main(int argc, char** argv) {
 
         // Case D — the pilot right side-dash clock (row 23). The row's extra increment on
         // clock 0/9/18 plus the common tail's one increment gives 2/3/4... and the strict
-        // 7/12/23 windows put the transitions on one-based updates 7, 18 and 39.
+        // 7/12/23 windows put the transitions on one-based updates 7 and 18, and the
+        // completion predicate ends the row on update 38.
         const DashClockRun pilotRight = dashClockRun(combo, true, input::Action::Right);
-        require(pilotRight.ticks.size() == 39,
-                "the right dash clock must expose the 39 one-based updates");
+        require(pilotRight.ticks.size() == 38,
+                "the right dash clock must expose the 38 one-based updates");
         require(pilotRight.ticks[0].phase == 0 && pilotRight.ticks[0].set == 22 &&
                     pilotRight.ticks[0].elapsed == 2 && pilotRight.ticks[0].running,
                 "pilot right dash entry must sample clock 2 from the recovered extra increment");
@@ -498,13 +501,13 @@ int main(int argc, char** argv) {
         require(pilotRight.ticks[17].phase == 2 && pilotRight.ticks[17].set == 24 &&
                     pilotRight.ticks[17].elapsed == 0 && pilotRight.ticks[17].running,
                 "pilot right dash update 18 must bind recovery set 24 with its clock reset");
-        require(!pilotRight.ticks[38].running &&
-                    pilotRight.ticks[38].state ==
+        require(!pilotRight.ticks[37].running &&
+                    pilotRight.ticks[37].state ==
                         static_cast<int>(gameplay::FighterState::Idle) &&
-                    pilotRight.ticks[38].phase == 0 && pilotRight.ticks[38].set == 0 &&
-                    pilotRight.ticks[38].elapsed == 0,
-                "pilot right dash update 39 must end the row on Idle");
-        for (int update = 1; update <= 39; ++update)
+                    pilotRight.ticks[37].phase == 0 && pilotRight.ticks[37].set == 0 &&
+                    pilotRight.ticks[37].elapsed == 0,
+                "pilot right dash update 38 must end the row on Idle");
+        for (int update = 1; update <= 38; ++update)
             checkRightDashClock(pilotRight.ticks[static_cast<std::size_t>(update - 1)],
                                 kPilotRightClock[update - 1], update);
 
@@ -514,7 +517,7 @@ int main(int argc, char** argv) {
         // constant kRunSpeed instead covers 600 — the owner's "goes too far" — so this
         // both pins the profile and fails if the old constant returns.
         double travelled = 0.0;
-        for (int update = 1; update <= 38; ++update) {
+        for (int update = 1; update <= 37; ++update) {
             const double from = update == 1 ? 0.0
                                             : pilotRight.ticks[static_cast<std::size_t>(update - 2)].x;
             travelled += pilotRight.ticks[static_cast<std::size_t>(update - 1)].x - from;
@@ -540,7 +543,7 @@ int main(int argc, char** argv) {
         require(pilotRight.ticks[18].gauge == 784,
                 "the recovery phase must open at 784, got " +
                     std::to_string(pilotRight.ticks[18].gauge));
-        for (int update = 19; update <= 39; ++update)
+        for (int update = 19; update <= 38; ++update)
             require(pilotRight.ticks[static_cast<std::size_t>(update - 1)].gauge == 784,
                     "the recovery phase must not drain: update " + std::to_string(update) +
                         " has " + std::to_string(pilotRight.ticks[static_cast<std::size_t>(update - 1)].gauge) +

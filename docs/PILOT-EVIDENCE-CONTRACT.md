@@ -1729,3 +1729,47 @@ unchanged at 29/30/47. Tier 2 (instruction-level) with tier 4 regression coverag
 tick values stay provisional: `FUN_004218c0` completes on `period <= frame + 1` while the
 tail advances on `period < frame`, and whether those two record pointers (`+0xade8` vs
 `+0xade4`) hold the same period for a given row is not settled by the corpus.
+
+### V3-27 — a row ends on the completion predicate, one update before the tail rule
+
+V3-26 left one question open: the tail advances a phase on `period < frame`
+(`FUN_0043ffc0:2442`) while `FUN_004218c0` completes on `period <= frame + 1`. Read in
+full, the predicate is settled and so is the record it reads.
+
+`FUN_004218c0(this)` is exactly:
+
+```
+ptr = *(int **)(this + 0xade8);            // the current set's record
+if (*ptr <= *(int *)(this + 0xae04) + 1) { // period <= entry frame + 1
+    if (FUN_0063bf40() - 1 <= *(int *)(this + 0xadf4)) // sectionCount - 1 <= phase
+        return 1;                           // complete
+}
+return 0;
+```
+
+- `FUN_0063bf40` is `return *(undefined4 *)(param_1 + 0x10)`, and `FUN_00421100:15`
+  writes that field from the row lookup at every phase change — it is the **section
+  count**, so the second condition is "the phase is the row's last".
+- `+0xade4` (the tail's record) and `+0xade8` (this predicate's) hold the **same**
+  pointer. `FUN_00421410:31` stores `param_1 + set*0xe + 0x1d78` — a per-set record whose
+  word 0 is the period and whose `+0x20` is the gate — and that expression does not
+  depend on the track index, so track 0 and track 1 point at one record. The earlier
+  suspicion that the two sites might read different periods is therefore closed: they
+  read the same one and differ only in the comparison.
+
+Consequence: for the last section the row ends when `entry_frame + 1 >= period`, one
+update earlier than the between-sections rule would end it. The port took the tail rule
+for the last section too, so **every row ran one update long**. Implemented as an explicit
+early completion for the last section, using the frame the update entered with (the clock
+step is subtracted, and the predicate does not run on a held-clock tick, matching the
+body's early `FUN_00421100` return).
+
+Measured: the full suite moves by exactly one assertion — Rena+0's right side dash, 39
+updates to **38** — and nothing else in 83 tests changes, which is what a one-update
+truncation of the row's end should look like. Reverting the predicate fails the pinned row
+with `update 38 must end the row on Idle`. Suite 83/83 excluding the known
+`device_isolation_test` flake; fixtures unchanged at 29/30/47. Tier 2 instruction-level.
+
+This also retires the last "provisional" part of the phase clock: window length (V3-26),
+between-section advance (strict, unchanged) and row completion (this entry) are now three
+separate, individually cited rules.
