@@ -1182,12 +1182,15 @@ void SceneRenderer::setEffectInstances(const std::vector<EffectInstance>& instan
                 // it all opaque put a black plate over the ground. PORT RULE: the split is
                 // geometric (4 vertices, 6 indices), because no recovered per-mesh blend
                 // signal exists; it is the same kind of geometric routing setScene already
-                // uses for the billboard verdict.
+                // uses for the billboard verdict. Swept against all 351 shipped shot models
+                // (V3-38): every quad there is a black-backed card, and the corpus has no
+                // counter-example.
                 const bool depthless = e.renderMode == 2 || e.renderMode == 4;
                 const bool glowQuad = t.cardQuad || depthless;
                 d.pass = depthless ? Pass::EffectNoDepth
                                    : glowQuad ? Pass::Effect : Pass::Opaque;
-                d.flags &= ~xm::kDrawUnlit;                if (e.renderMode == 3 || e.renderMode == 4) d.flags |= xm::kDrawUnlit;
+                d.flags &= ~xm::kDrawUnlit;
+                if (e.renderMode == 3 || e.renderMode == 4) d.flags |= xm::kDrawUnlit;
             }
             for (const auto& offset : offsets)
                 if (offset.first == t.paletteOffset) d.paletteOffset = offset.second;
