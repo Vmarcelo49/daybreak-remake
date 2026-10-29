@@ -2482,47 +2482,37 @@ Still not carried: the row's frame-10 `flags 0x100` record, so the port can stil
 the landing on its first tick. The row's zeroing writes (speed, movement angle, turn, vertical)
 have no port field to land in, and state 43's turn write stays unmodelled for the same reason.
 
-### V3-43 — the Hyper EX never connects, and the reason is now pinned down (open)
+### V3-43 — the Hyper EX deals no damage, and the chain that causes it (open)
 
-Found while trying to pin the late-camera path (the port's only writer of camera set 1 needs the
-EX to connect). **The EX swing never registers a hit.** It is the combo's signature attack, so
-this is the largest gap open after tonight's work.
+Found while trying to pin the late-camera path — the port's only writer of camera set 1 needs the
+EX to connect. **The EX deals no damage at all.** It is the combo's signature attack, so this is
+the largest gap open after tonight's work, and it is a missing feature rather than a broken hitbox.
 
-**The data does carry contact, and the port selects it.** Row 350 has one section (set 32, 19
-entries) and its entries alternate — a contact entry followed by a radius-0 one at the next
-frame:
+**The chain, in order.** Row 350 carries real contact data: one section (set 32, 19 entries) whose
+entries alternate — a contact entry followed by a radius-0 one at the next frame:
 
 | entry | frame | bone | radius | shape | anchor |
 |---|---|---|---|---|---|
-| 3 | 11 | `Bip01_L_Hand` | 30 | 0 (sphere) | (27,0,0) |
-| 5 | 15 | `Bip01_L_Hand` | 30 | 0 | (27,0,0) |
-| 7 | 20 | `Bip01_L_Hand` | 30 | 0 | (27,0,0) |
-| 9 | 24 | `Bip01_L_Hand` | 30 | 0 | (27,0,0) |
-| 11 | 28 | `Bip01_L_Hand` | 30 | 0 | (27,0,0) |
-| 13 | 32 | `Bip01_L_Hand` | 30 | 0 | (27,0,0) |
-| 15 | 36 | `Bip01_L_Hand` | 30 | 0 | (27,0,0) |
+| 3, 5, 7, 9, 11, 13, 15 | 11, 15, 20, 24, 28, 32, 36 | `Bip01_L_Hand` | 30 | 0 (sphere) | (27,0,0) |
 | 17 | 57 | `Bip01_R_Hand` | 60 | 0 | (27,0,0) |
 
-Each contact is therefore live on **exactly one tick**, because `record_at` picks the last entry
-whose frame has passed and the odd entries at frame+1 have radius 0. Measured on the running port,
-`has_combat()` is true on precisely those seven ticks — so the selection is correct and
-`try_melee_hit` does reach its contact branch there.
+Contact is therefore live on exactly those seven ticks (each odd entry has radius 0 on the
+following frame, and `record_at` picks the last entry whose frame has passed). The running port
+selects them correctly — `current_move_record()` returns `Bip01_L_Hand`, radius 30, on precisely
+those seven ticks.
 
-**It never lands.** With the opponent at z = 40, 60, 80, 100, 120, 150, 180, 300, 330, 380, 430
-and 480, and separately with the fixture's own `place_at_attack active` helper, `swing_hits` stays
-0 and the dummy's HP never moves.
+**It still cannot land, by design of the port's own rule table.** `{350,-1,0,9999,MoveOp::ContactOff}`
+cuts the melee contact for the whole move, citing the body: `FUN_0043ffc0:1392` calls the cut
+(`FUN_00434bd0`) inside the tick-0 block and nothing re-arms it, so the conclusion recorded there is
+that "350's damage is the particle/effect scatter, not a swing". Measured: `m_contactDisabled` is 1
+on every one of the seven contact ticks, which is why `try_melee_hit` returns before it ever forms
+a volume — and why the opponent's HP does not move with the dummy at any distance from 40 to 480
+units, nor when placed by the fixture's own `place_at_attack` helper.
 
-**Where the mismatch is** — the contact volume the port builds does not sit where the record says.
-Instrumented on a contact tick, the formed segment was reported on **`Bip01_Prop1` with radius 20
-and shape 1**, i.e. row **300**'s record, not row 350's `Bip01_L_Hand`/30/sphere. Two things follow
-and one of them is the bug: either `current_move_record()` is resolving the wrong row's phase for
-this state, or `state_move_id()` and `m_attackMoveId` disagree while `m_phaseIndex` still points at
-the previous row. Row 300 is the only other row in the table with a Prop1 shape-1 contact, so the
-port is forming a *different move's* hitbox during the EX.
-
-**What settles it:** the order in which `m_attackMoveId`, `state_move_id()` and `m_phaseIndex` are
-updated when row 350 is entered from a SPECIAL press (the port switches attack rows through
-`switch_attack_row`, which resets the phase cursor), and whether `current_move_record()` should
-follow the bound move rather than `state_move_id()`. That is one focused read of
-`switch_attack_row` and `current_move_record`, not a data question — the data above is complete and
-the bundle and the loose file agree on it.
+**So the gap is the particle path.** The port spawns the EX's effect requests as visuals and has no
+damaging particle/effect entity, so the move's only damage source is unimplemented and the seven
+hand contacts that the shipped data does carry are currently unreachable. Two ways forward, and the
+choice is a design one: re-arm the contacts (the data supports it, but the port rule's reading says
+the original cuts them) or implement effect-carried damage (the reading the port rule implies, and
+a much larger piece). Nothing was changed here; the finding is recorded so the next session starts
+from the chain rather than from "the EX does not hit".
