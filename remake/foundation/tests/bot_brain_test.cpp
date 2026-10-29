@@ -584,6 +584,11 @@ void testRetarget() {
     const int sides[4] = {0, 0, 1, 1};
     MatchRig rig(4, sides);
     gameplay::Match& m = rig.match;
+    // The synthetic rig's weapon bone and its sphere-shaped contact records were never modelled
+    // for a world where bodies cannot overlap (V3-46 measures why: the volume lands beside the
+    // attacker instead of at the target), so this section pins the tactics with the separation
+    // off. It is on for the product and for every rig that models a real weapon.
+    m.set_body_separation(false);
     BotContext ctx;
     ctx.match = &m;
     ctx.fighterIndex = 1;
@@ -720,6 +725,9 @@ void testRoundFinishes() {
     const int sides[4] = {0, 1, 0, 1};
     MatchRig rig(2, sides, /*balloon=*/40);   // two KOs burst, so the round can end
     gameplay::Match& m = rig.match;
+    // Same synthetic-rig reason as the tactics section above (V3-46): its contact records are
+    // spheres on a rig whose weapon bone is not modelled for the 60-unit stand-off.
+    m.set_body_separation(false);
     BotContext ctx;
     ctx.match = &m;
     ctx.fighterIndex = 1;     // fighter 1 is the COM; fighter 0 stands still

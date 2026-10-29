@@ -183,10 +183,10 @@ public:
     // decisions, HUD values) so the presented frame stays frozen; see battle_pause.h.
     void set_paused(bool paused) { m_paused = paused; }
 
-    // FUN_006394c0's push-apart (body_separation.h, V3-45). OFF by default while the port's
-    // melee reach at exactly 60 body units is settled: with it on, a COM cannot land a swing
-    // (measured 150 presses, 0 hits), which is a reach question the separation exposes rather
-    // than a property of the push itself. Four fixtures also opt out for their own setups.
+    // FUN_006394c0's push-apart (body_separation.h, V3-45), ON by default — it is recovered
+    // behaviour, not a pilot experiment. The acceptance fixtures that deliberately place bodies
+    // inside the 60-unit radius, and two choreography tests whose rigs assume overlapping bodies,
+    // opt out with a documented reason.
     void set_body_separation(bool on) { m_bodySeparation = on; }
     bool body_separation_enabled() const { return m_bodySeparation; }
     bool paused() const { return m_paused; }
@@ -305,7 +305,7 @@ private:
     void liveness(bool out[kMatchFighterCount]) const;
 
     bool               m_paused = false;   // issue #15; set_paused above
-    bool               m_bodySeparation = false;   // V3-45; set_body_separation above
+    bool               m_bodySeparation = true;    // V3-45; set_body_separation above
     // Issue #48's F2/F3 flag. True is the original's initialized value (FUN_0041efa0:10).
     bool               m_aiEnabled[kMatchFighterCount] = {true, true, true, true};
     Fighter            m_fighters[kMatchFighterCount];

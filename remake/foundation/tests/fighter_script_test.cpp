@@ -4520,6 +4520,10 @@ void test_satoko2_powered_branch_live() {
         }
         gameplay::Match m;
         m.reset(cfg, models, animations, nullptr, nullptr);
+        // This section pins the powered-twin trigger, not the body separation: the rig spawns the
+        // pair inside FUN_006394c0's 60-unit radius and the twin gate reads the aim selection at
+        // that spacing (V3-45/V3-46). Off here, on everywhere else.
+        m.set_body_separation(false);
         m.economy().setLogFile(nullptr);
         fnd::input::PlayerState idle{};
         for (int i = 0; i < 70; ++i) {
