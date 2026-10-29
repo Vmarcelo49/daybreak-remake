@@ -1140,10 +1140,12 @@ builds the camera's own point into `+0xc/+0x10/+0x14`, and copies that into
 **`+0x18/+0x1c/+0x20`** (the tuple the follow reads) when forced — and the updater passes force
 (`0x634c2f: push 0x1`). So `+0x18` is the followed fighter's position, as wired.
 
-**Remaining named limit (tier 6, narrow):** the `+0x304 >= 0` ally branch takes the anchor from a
-second container (`actor+0x2f0`) at index 0; the port models only the primary branch and, with no
-lock at all, falls back to a point 600 units along the fighter's facing (a port constant).
-The ally-anchor variant is unimplemented, not unknown.
+**The `+0x304 >= 0` ally branch is not a gap (closed 2026-10-29, V3-41):** it takes the anchor
+from the same-team container at `actor+0x2f0`, index 0 — and in a two-fighter match on different
+teams that container is empty, so the only non-negative writer never fires, `+0x304` stays `-1`
+and the branch cannot be reached. The port models the primary branch only, which is the whole of
+it for the pilot; with no lock at all it falls back to a point 600 units along the facing, still
+a port constant.
 
 ## V3-17. The camera anchor is +0x300 (aim), not +0x304 (combat lock) — owner report (2026-10-23)
 
@@ -1273,8 +1275,9 @@ animation at all" was still true in the only sense that matters: nothing moved.
 Fix: the stance now steps through row 390's own section order — preparation clip, then the hold
 clip — advancing when the **preparation clip's own duration** has elapsed (read from the bound
 DAT; no invented constant). Captures now differ by **8.8%** between the two phases. Row 390's
-third section (the release) stays a named limit: releasing leaves Guard directly, so there is no
-release window to play it in.
+third section (the release) **is** reachable — a release in the hold section enters it as a
+phase, not a state exit (V3-40) — but the port cannot play it yet: its Guard leaves the state on
+release, so there is no window to bind set 63 into.
 
 Coverage: `melee_rules_test`'s guard section (was "guard keeps the walk clip") now pins row 390's
 opening clip and its persistence, for both the walk→guard and stand→guard entries;
@@ -1328,8 +1331,9 @@ or held it.
 elapsed **and** `animation_set_phase_gate(current) == 0`; a hold phase stays. Measured on a live
 pilot match with Guard held: prep→hold transition changes 2.7% of pixels, the hold is stable
 (0.3–0.5%), and the stance ends when the meter empties (the −10/tick drain), which is the
-recovered exit. Row 390's release section remains unreached because releasing leaves Guard
-directly — still a named limit.
+recovered exit. Row 390's release section stays unreached because the port's Guard leaves the
+state on release; V3-40 records exactly where the original puts it (phase 2, set 63) and why it
+is not implemented yet.
 
 Tier: the *rule* is recovered (bundle mirrors the shipped format field-for-field and cites the
 state numbers); the field's presence in the port's own parse is verifiable in-tree. No originality
@@ -1363,8 +1367,9 @@ Measured after the fix, live pilot match with Guard held:
 | then hold clip (phase 1 = set 61, `hold_phase = 1`) | loops, period ~0.167 s |
 | hold clock | wraps 0.048 → 0.041 → 0.028 → 0.015 |
 
-Row 390's release section (set 63, `hold_phase = 0`) is still unreached because releasing leaves
-Guard directly — a named limit.
+Row 390's release section (set 63, `hold_phase = 0`) is still unreached because the port's Guard
+leaves the state on release — the original enters a third phase instead (V3-40), which needs the
+stance's cancellation rules before it can be played.
 
 Honest note on appearance: frame-to-frame change over the hold is small (0.5–0.9% of pixels),
 because set 61 is a subtle stance loop. The mechanism is verified correct against the recovered
@@ -1790,10 +1795,10 @@ them is yet backed by a fixture or a recovered rule.
 | D1 | the side dashes move in a **circular arc toward the targeted enemy**, not along the input direction | `try_dash` fixes one world direction at entry (`m_dashDir = target_relative(±1, 0)`) and integrates a straight line for every Run update | rows 23/24 |
 | D2 | an **air dash carries its momentum**; the character should not drop straight down when it ends | the air dash hangs then the normal gravity path takes over with no carried velocity | row 30 |
 | D3 | an air dash **points where it was input** | the fighter always faces the target | row 30 |
-| D4 | the air dash's extra −3 meter arm | unimplemented: needs the byte-`+0x280` word, identity unresolved (V3-25) | row 30 |
+| D4 | the air dash's extra −3 meter arm | **fixed** in V3-32: `+0x280` is the jump button's held-frame counter, and the arm charges 3 while it is down in phases below 2 | row 30 |
 
-Work order: D1, then D2 and D3 together, then D4. Each needs a fixture that fails before
-its change, in the same shape as the side-dash work (V3-22, V3-25, V3-27).
+All four were closed: D1 in V3-28, D2 and D3 in V3-29, D4 in V3-32, each with a regression that
+fails without its change. This table is kept as the intake record, not as open work.
 
 ### V3-28 — D1: the side step arcs toward the target
 
