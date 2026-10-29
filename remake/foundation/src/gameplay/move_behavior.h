@@ -152,11 +152,14 @@ enum class MoveOp { Speed, Decelerate, Turn, Approach, Launch, Hold, ActionCamer
                     // window's first tick (Rena+1's 460 halves the entry speed; Rena+2's
                     // air 360 keeps a tenth of both).
                     ScaleMotion,
-                    // Weight the weapon trail's ribbon for this move (the bodies'
-                    // FUN_00434bd0/FUN_00434b30 windows). It touches the ACTOR's trail object at
-                    // +0x6a0 and is not the contact volume — row 350's tick-0 call is this one,
-                    // which is why the EX keeps its hand records (V3-43). The port draws no
-                    // ribbon, so the op is recorded and inert.
+                    // Model the bodies' FUN_00434bd0/FUN_00434b30 windows. Those touch the
+                    // ACTOR's trail object at +0x6a0 — the weave/ribbon's intensity and its two
+                    // effect slots — and are NOT the contact volume (V3-43). The op still drives
+                    // the port's contact gate because that is how it was first read; its only
+                    // remaining users are row 320's windows, where the shipped records carry no
+                    // contact anyway, so nothing observable depends on the conflation. Row 350's
+                    // rule was deleted on the corrected reading; if the gate is ever given its
+                    // own op, these become no-ops.
                     ContactOff,
                     // Re-arm the per-victim hit markers (FUN_0042c800(0)) and give each victim a
                     // budget of one hit (FUN_0042c840(1)): 0x88+i*2 and 0x90+i*4 for the four
