@@ -2,6 +2,8 @@
 // Bundle-winning bytes, equipped item and the actual .X periods travel together.
 #include "assets/asset_source.h"
 #include "assets/cnv.h"
+#include "assets/xmodel.h"
+#include "game/fx_cards.h"
 #include "game/shot_visual.h"
 #include "gameplay/fighter.h"
 #include "gameplay/fixed_step.h"
@@ -36,6 +38,18 @@ std::string install() {
 
 bool read(const std::string& path, std::vector<uint8_t>& bytes) {
     return fnd::assets::assetSource().read(path, bytes);
+}
+
+// One effect card as the game would load it (the bundles carry the .X; the texture resolves
+// beside it). Returns null when the install does not ship the file.
+std::unique_ptr<xm::Model> read_card_model(const std::string& path) {
+    std::vector<uint8_t> bytes;
+    if (!read(path, bytes) || bytes.empty()) return nullptr;
+    try {
+        return std::make_unique<xm::Model>(xm::loadMemory(bytes.data(), bytes.size()));
+    } catch (const std::exception&) {
+        return nullptr;
+    }
 }
 
 using Combo = test::Combo;
@@ -1272,6 +1286,43 @@ int main() {
         launch_rules(*rena);
         projectile_clocks(*rena);
     }
+    // V3-34: effect cards animate, and their clock is the card's lifetime. The card the
+    // empty tap draws is data/effect/01.X (texture 渦巻き); it ships an AnimationSet, and
+    // before this the port drew every card in bind pose, so a moving card read as static
+    // hoops. This checks the two halves separately: that shipping the model exposes an
+    // animation, and that the clock reaches distinct pose samples across the card's life.
+    if (const auto card = read_card_model("data/effect/01.X")) {
+        check(!card->anims.empty() && card->anims[0].duration > 0.f,
+              "the empty-tap card ships an animation to play");
+        if (!card->anims.empty() && card->ticksPerSecond > 0.f) {
+            const double animSeconds =
+                card->anims[0].duration / card->ticksPerSecond;
+            check(animSeconds > 0.0, "the card's animation has a positive duration");
+            std::vector<glm::mat4> first, middle, last;
+            for (const auto& [age, out] : {std::pair<float, std::vector<glm::mat4>*>{0.f, &first},
+                                           {0.5f, &middle}, {1.f, &last}}) {
+                xm::Controller pose;   // fresh: each card starts from bind pose
+                pose.bind(card.get());
+                pose.setAnimation(0, false);
+                pose.setTrackPosition(0, game::cardAnimationSeconds(
+                                               age, 1.f, animSeconds));
+                pose.evalWorld(*out);
+            }
+            bool moved = false;
+            if (first.size() == last.size())
+                for (size_t i = 0; i < first.size(); ++i)
+                    if (first[i] != last[i]) { moved = true; break; }
+            check(moved, "the card's pose differs between birth and expiry");
+            bool halfway = false;
+            if (first.size() == middle.size())
+                for (size_t i = 0; i < first.size(); ++i)
+                    if (first[i] != middle[i]) { halfway = true; break; }
+            check(halfway, "and it moves through the middle of its life, not only at the end");
+        }
+    } else {
+        check(false, "the empty-tap card data/effect/01.X loads from the install");
+    }
+
     auto akane = std::make_unique<Combo>();
     error.clear();
     const bool akaneLoaded = akane->load(13,0,error);

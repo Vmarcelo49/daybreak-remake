@@ -1109,7 +1109,8 @@ void SceneRenderer::setEffectInstances(const std::vector<EffectInstance>& instan
                    [](const EffectInstance& a, const EffectInstance& b) {
                        return a.modelIndex == b.modelIndex && a.model == b.model &&
                               a.billboard == b.billboard && !a.pose && !b.pose &&
-                              a.textures == b.textures && a.renderMode == b.renderMode;
+                              !a.poseWorld && !b.poseWorld && a.textures == b.textures &&
+                              a.renderMode == b.renderMode;
                    }))
         return;   // unchanged: keep the current draw list (the common frame)
     effectInstances_ = instances;
@@ -1119,12 +1120,20 @@ void SceneRenderer::setEffectInstances(const std::vector<EffectInstance>& instan
     palette_.resize(basePaletteSize_);
     for (const EffectInstance& e : instances) {
         std::vector<std::pair<uint32_t,uint32_t>> offsets;
-        if (e.pose) {
-            std::vector<glm::mat4> world, meshPalette;
-            e.pose->evalWorld(world);
+        if (e.poseWorld || e.pose) {
+            // An animated card arrives with its node matrices already sampled; a
+            // projectile keeps a live controller. Both feed the same palette builder, which
+            // gives an unskinned mesh its own frame matrix (xmodel.h:2051-2055) — the whole
+            // of a card's animation is that one matrix.
+            std::vector<glm::mat4> owned, meshPalette;
+            const std::vector<glm::mat4>* world = e.poseWorld;
+            if (!world && e.pose) {
+                e.pose->evalWorld(owned);
+                world = &owned;
+            }
             for (const auto& mesh : meshes_) {
                 if (static_cast<int>(mesh.modelIndex) != e.modelIndex) continue;
-                mesh.model->buildPalette(*mesh.mesh,world,meshPalette);
+                mesh.model->buildPalette(*mesh.mesh,*world,meshPalette);
                 offsets.emplace_back(mesh.paletteOffset,static_cast<uint32_t>(palette_.size()));
                 palette_.insert(palette_.end(),meshPalette.begin(),meshPalette.end());
             }

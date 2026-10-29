@@ -200,6 +200,9 @@ struct Options {
     // unmapped entries (Jump/Guard/TagOut return -1) and set 2 does not look like an
     // attack, which is only checkable by looking at the clips side by side.
     bool        animPlayer = false;
+    // Effect cards play their model's animation (default). Off reproduces the bind-pose
+    // draw the port had before V3-34, for before/after captures and for rollback.
+    bool        fxAnimation = true;
     bool        unlit      = false;
     // Toon rendering (issue #21). `toonSet` separates "the flag was passed" from the
     // default: without it the live Options row governs, with it the flag wins — so a
@@ -607,6 +610,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--frames=")).empty()) o.frames = std::atoi(v.c_str());
         else if (!(v = val("--anim=")).empty()) o.anim = std::atoi(v.c_str());
         else if (a == "--anim-player") o.animPlayer = true;
+        else if (a == "--no-fx-anim") o.fxAnimation = false;
         else if (!(v = val("--time=")).empty()) o.time = (float)std::atof(v.c_str());
         else if (!(v = val("--dt=")).empty()) o.dt = (float)std::atof(v.c_str());
         else if (!(v = val("--camera=")).empty()) o.camera = v;
@@ -3335,17 +3339,47 @@ static bool spawnAttachment(App& app, game::EffectEventQueue& queue, int slot,
 // that follows.
 static void placeFxCards(App& app) {
     std::vector<render::SceneRenderer::EffectInstance> instances;
+    // Node matrices for the animated cards of this frame. The outer vector is sized before
+    // any pointer into it is taken and never grows again, so the `poseWorld` pointers stored
+    // in `instances` stay valid until setEffectInstances reads them.
+    std::vector<std::vector<glm::mat4>> cardWorld;
     instances.reserve(app.liveFx.size() + 2 * game::kAuraAttachPoints +
                       gameplay::ProjectilePool::kMaxShots);
     if (!app.opts.debugPrims) {
-        for (const game::LiveFxCard& c : app.liveFx) {
+        // One node-matrix array per live card, filled in place while the instances still
+        // point at it: `poseWorld` is read during setEffectInstances, not later.
+        cardWorld.clear();
+        cardWorld.resize(app.liveFx.size());
+        for (size_t ci = 0; ci < app.liveFx.size(); ++ci) {
+            const game::LiveFxCard& c = app.liveFx[ci];
             if (c.asset < 0 || (size_t)c.asset >= app.scene.models.size()) continue;
             // The request's own pose, composed with the original's order
             // (FUN_00436150's RotationZ then RotationY then translation — the same
             // helper and order game/shot_visual.h recovers for the shots). A zero
             // direction composes to the translation-only matrix this used to build,
             // so the unposed callers (muzzle, impact, aura puffs) are unchanged.
-            instances.push_back({c.asset, game::shotModelMatrix(c.position, c.direction)});
+            render::SceneRenderer::EffectInstance instance;
+            instance.modelIndex = c.asset;
+            instance.model = game::shotModelMatrix(c.position, c.direction);
+            // A card's model ships an AnimationSet (effect/01.X carries one with 10 keys),
+            // and the original animates it: the port used to draw every card in its bind
+            // pose, which is why a spinning card read as static hoops. PORT RULE: the
+            // card's lifetime is its animation clock — see game/fx_cards.h's
+            // cardAnimationSeconds for why, and for the one place to change it.
+            const xm::Model& cardModel = app.scene.models[(size_t)c.asset].model;
+            if (app.opts.fxAnimation && !cardModel.anims.empty()) {
+                const double animSeconds = cardModel.anims[0].duration /
+                                           (cardModel.ticksPerSecond > 0.f
+                                                ? cardModel.ticksPerSecond : 1.f);
+                xm::Controller pose;   // fresh: this card's animation starts from bind pose
+                pose.bind(&cardModel);
+                pose.setAnimation(0, false);
+                pose.setTrackPosition(
+                    0, game::cardAnimationSeconds(c.age, c.ttl, animSeconds));
+                pose.evalWorld(cardWorld[ci]);
+                instance.poseWorld = &cardWorld[ci];
+            }
+            instances.push_back(instance);
         }
         // The aura is fighter state, not an event: FUN_004205e0 draws the selected
         // data/aura model once per attach point, on each of the eleven bone matrices at

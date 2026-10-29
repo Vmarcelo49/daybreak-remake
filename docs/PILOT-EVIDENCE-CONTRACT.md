@@ -2033,3 +2033,54 @@ of the same shot.
 Open questions for the verdict: (a) implement card animation now, or record and defer;
 (b) if implemented, should the clock be the card's own `AnimationSet` rate or the spawn's
 lifetime (they are different things and the original may use either).
+
+### V3-34 — effect cards play their animation; the card's lifetime is the clock
+
+Owner decision (2026-10-28): implement card animation now, globally, because a frozen card
+is not a Rena+0 defect but a whole-game one — every muzzle flash, impact card and hit flash
+is drawn the same way.
+
+**What was wrong.** `SceneRenderer::EffectInstance` carried the instance's model matrix and,
+for projectiles only, a live `xm::Controller`. `main.cpp` pushed every effect card as
+`{asset, matrix}`, so all cards drew their bind pose. The cards ship animation (the empty-tap
+card `data/effect/01.X` carries one `AnimationSet` with 10 keys over 40 frames; the muzzle
+card `data/aura/00.x` animates a 1.0 → 0.876 scale), and none of it was played.
+
+**What changed.**
+
+- `EffectInstance` gains `poseWorld`, a pre-evaluated node-matrix array. An effect card lives
+  for a few frames and is dropped at the end of the frame, so there is no controller to keep;
+  a projectile keeps using `pose`. The renderer accepts either and feeds the same
+  `Model::buildPalette`, which already gives an unskinned mesh its own frame matrix
+  (`xmodel.h:2051-2055`) — a card's entire animation is that one matrix, and the vertex
+  shader's `palette[o + bones]` path covers skinned and unskinned alike
+  (`shaders/model_wgsl.h:121-127`).
+- `main.cpp` samples each live card once per frame from its own model, at its own age.
+- The clock is a **port rule**: `game::cardAnimationSeconds(age, ttl, animSeconds)` puts the
+  card on its first frame at birth and its last at expiry, so the animation cannot outlive or
+  underrun the card. Neither the animation's own rate nor the descriptor's lifetime is
+  recovered as the original's driver, and the owner chose the lifetime; the function is the
+  one place to change if evidence says otherwise.
+- `--no-fx-anim` reproduces the previous bind-pose draw for before/after comparison and
+  rollback.
+
+**Verification.**
+
+- Tier 4 (install-backed): `animation_data_test` loads the shipped card, asserts it ships an
+  animation with a positive duration, and asserts its pose differs between birth, the middle
+  of its life and expiry. Freezing the clock (`return 0.0`) fails both pose checks, so the
+  assertions are load-bearing.
+- Tier 6 boundary check: the renderer uploads a different palette for an animated card
+  (scale 1.5708 → 1.2234 across the muzzle card's life) and `--no-fx-anim` uploads no posed
+  palette at all; the instance palette-offset remap matches the template (probed during
+  development, probes removed).
+- **Not verified pixel-level.** The A/B capture could not be closed: these cards live 1-3
+  frames (the muzzle card's `ttl` is 0.05 s), and `--out` renders one specific frame, so the
+  on/off captures landed on the card's first frame where its pose equals bind pose. A 3x
+  scale probe on the same instance did change the capture, which rules out the capture
+  ignoring the instance path. The visible result is therefore the owner's to confirm.
+
+**Named limits.** The hyper-mode aura attachment (the eleven attach points) still draws the
+bind pose — it is fighter state, not a spawned card, and has no per-instance age; and the
+per-card `Controller` is constructed per frame, which is fine at the observed card
+populations (peak 1-2 in a shot-heavy run, cap 128) but not free.

@@ -52,6 +52,24 @@ struct LiveFxCard {
     glm::vec3     direction{0.f};
 };
 
+// PORT RULE (owner decision 2026-10-28): a card's LIFETIME is its animation clock.
+//
+// WHY the lifetime and not the animation's own duration: an effect card ships an
+// AnimationSet whose length need not match the descriptor lifetime the original gives the
+// card (038.dat's model animates 0.833 s while its descriptor's lifetime is its own
+// number), and nothing recovered says which one the original advances. Rather than invent
+// a rate, the card plays its animation across exactly the time it is alive: at birth it is
+// on its first frame, at expiry its last, and the two clocks cannot drift apart.
+//
+// Not recovered. If a shipped card is later found to play at its own AnimationSet rate,
+// this is the one function to change; every caller goes through it.
+inline double cardAnimationSeconds(float age, float ttl, double animationSeconds) {
+    if (ttl <= 0.f || animationSeconds <= 0.0) return 0.0;
+    const double progress = std::clamp(static_cast<double>(age) / static_cast<double>(ttl),
+                                       0.0, 1.0);
+    return progress * animationSeconds;
+}
+
 // What one update did, so a run can prove the population stayed bounded.
 struct FxCardTally {
     std::uint32_t spawned = 0;   // cards created
