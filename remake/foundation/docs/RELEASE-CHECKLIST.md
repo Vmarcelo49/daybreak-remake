@@ -133,11 +133,13 @@ ctest --test-dir remake/foundation/build/linux --output-on-failure
   asset-backed sweep), so the denominator is unchanged at 57 and the with-install count
   above is re-measured.
 
-The workflow (`.github/workflows/build-foundation.yml`, Linux job) runs this
-`ctest` step on every push to `main` that touches `remake/foundation/**` (issue
-#28), so a broken test cannot sit on `main`. The same workflow's Windows and Web
-jobs stay on the version-bump path: a `gate` job diffs the push and runs them when
-`remake/foundation/VERSION` changed anywhere in it, or on a manual dispatch.
+**There is no CI.** The GitHub workflows were removed on 2026-10-29 (owner
+decision: nothing is being shipped yet, and every push bought a hosted run).
+`ctest` is something a person runs before a commit, not something a runner
+enforces, so the checklist above is the gate. The Windows and Web matrices that
+the old `gate` job drove are likewise manual: build them with
+`./remake/foundation/build.sh windows` / `web` when one of those targets is
+actually being touched.
 
 ## 2b. Automated gates (run these before claiming the section below)
 
