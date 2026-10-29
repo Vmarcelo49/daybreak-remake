@@ -1,11 +1,30 @@
 name: Build decompilation index
 
+# Cadence: the index is generated FROM research/ (generate_index.py walks it and rewrites
+# INDEX.md, INDEX.json and the research/ tables it owns), so a push that changes nothing
+# under research/ cannot change the output. It used to run on every push to main, which
+# spent a run on each docs- or code-only commit for a result identical to the last one.
+# `paths` keeps it to the inputs it actually reads, and workflow_dispatch stays available
+# for a deliberate refresh. The workflow file itself is deliberately NOT in `paths`: a
+# cadence edit should not buy a run to prove itself, and this job only rewrites files.
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'research/**'
+      - '.github/scripts/generate_index.py'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'research/**'
+      - '.github/scripts/generate_index.py'
   workflow_dispatch:
+
+# Two pushes in quick succession should not queue two identical generations: the newer
+# push supersedes the older one's output.
+concurrency:
+  group: build-index-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-index:
