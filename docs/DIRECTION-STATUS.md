@@ -1746,6 +1746,8 @@ finding changes the plan.
   - Owner items still outstanding and unchanged: the `EXCEPTIONS.md` rows for frozen-file edits, the 2g verdict, and any push decision.
 
 
+- Late addition to the overnight session — **the Hyper EX deals damage again (V3-43).** The port cut row 350's melee contact for the whole move, on the reading that the body's tick-0 `FUN_00434bd0` call removed the hit volume. That reading was wrong: at `0x4433f4` the body does `add ecx,0x6a0` before the call, so it operates on the actor's **trail** object, while the hit path reads the contact record pointer `char+0x10` (maintained by `FUN_004212f0`), transforms its anchors through `FUN_00420880` and resolves them in `FUN_00637950` (HP subtraction at `0x638a96`). Row 350's data carries seven one-tick hand contacts (radius 30) and one right-hand contact at frame 57, which is what the body preps with `FUN_0042c800(0)`/`FUN_0042c840(1)`. The rule is deleted; the EX now lands for the standard 8 damage (100 → 92 HP) and, because it can hit, the late camera switch V3-37 recovered (set 1 past the move's clock tick `0x33`) is reachable too. `melee_admission_test` previously asserted the wrong rule and now asserts the program carries no contact cut for row 350; `rena0_pilot_gate_test` asserts the hit and both camera paths. Suite 83/83 excluding the known `device_isolation_test` flake; fixtures 30 / 31 / 49 unaffected.
+
 ## Recovered-body completeness census (2026-10-15, measured)
 
 The owner's working hypothesis is that the Ginkiha recovery "is probably almost everything we need
