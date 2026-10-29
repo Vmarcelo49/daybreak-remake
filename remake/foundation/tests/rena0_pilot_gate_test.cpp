@@ -950,6 +950,20 @@ int main(int argc, char** argv) {
         // number that would encode the placement.
         require(ex.victimHp < 92, "the EX must hit repeatedly, HP " +
                                       std::to_string(ex.victimHp));
+        // The EX's records carry attackFlags bit 8, which the recovered guard predicate reads as
+        // "unblockable" (fighter.h:141). Asserted here so the property that makes the flurry
+        // land through a guard is visible next to the damage check rather than only in the data.
+        {
+            const gameplay::CharacterMove* exMove = combo.moves.find(350);
+            bool unblockable = false;
+            if (exMove) {
+                for (int section = 0; section < exMove->sectionCount; ++section)
+                    for (int e = 0; e < exMove->phases[section].entryCount; ++e)
+                        if ((exMove->phases[section].entries[e].attackFlags & 8) != 0)
+                            unblockable = true;
+            }
+            require(unblockable, "row 350's records must carry the unblockable flag (bit 8)");
+        }
         require(ex.lateCamera == 1,
                 "a connecting EX must switch to camera set 1 past tick 0x33, got " +
                     std::to_string(ex.lateCamera));
