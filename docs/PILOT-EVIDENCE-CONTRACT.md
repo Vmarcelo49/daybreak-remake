@@ -2074,11 +2074,24 @@ card `data/aura/00.x` animates a 1.0 → 0.876 scale), and none of it was played
   (scale 1.5708 → 1.2234 across the muzzle card's life) and `--no-fx-anim` uploads no posed
   palette at all; the instance palette-offset remap matches the template (probed during
   development, probes removed).
-- **Not verified pixel-level.** The A/B capture could not be closed: these cards live 1-3
-  frames (the muzzle card's `ttl` is 0.05 s), and `--out` renders one specific frame, so the
-  on/off captures landed on the card's first frame where its pose equals bind pose. A 3x
-  scale probe on the same instance did change the capture, which rules out the capture
-  ignoring the instance path. The visible result is therefore the owner's to confirm.
+- Tier 6 raster check: forcing a card to a fixed mid-animation pose changes the captured
+  pixels (`bind=e3a47a0365` vs `mid=a03a3f70db` at the same frame), so the sampled pose does
+  reach the raster, not just the palette upload. The plain on/off A/B is identical **only
+  because `--out` renders one specific frame and these cards live 1-3 frames**, so it lands
+  on the spawn frame where the pose is bind pose.
+
+**What the cards actually animate** (`local-data/harness/card_anim_probe.log`, a probe that
+loads a card through the same bundle reader; untracked):
+
+| card | anim | duration | motion |
+|---|---|---|---|
+| `data/effect/01.X` (the empty-tap ring, texture 渦巻き) | 1 set, 20 frames | 1.333 s | the drawn mesh scales 1.0 → 1.05 → 0.99 → 1.11 and **collapses to 0.158 on Y** by the end |
+| `data/aura/00.x` (muzzle starburst) | 1 set, 2 frames | **0.050 s** | scale pops 1.0 → 1.43 → 0.876 |
+
+The muzzle card is the useful coincidence: its animation is **exactly** as long as its
+descriptor lifetime (0.050 s each), so for that card the lifetime clock and the animation's
+own rate agree, which is the first shipped evidence that the owner's rule is not arbitrary.
+The ring card's animation is strong enough that its appearance should change noticeably.
 
 **Named limits.** The hyper-mode aura attachment (the eleven attach points) still draws the
 bind pose — it is fighter state, not a spawned card, and has no per-instance age; and the
