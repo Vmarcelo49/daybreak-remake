@@ -741,7 +741,7 @@ inline constexpr MoveRule kRenaRules[] = {
     // The flurry: the body re-arms one hit per victim per tick below 0x24 and again at 0x37
     // (FUN_0042c800(0)/FUN_0042c840(1) at 0x443443), so the seven one-tick contact records each
     // land instead of only the first.
-    {350,-1,0,0x24,MoveOp::ContactReset},
+    {350,-1,0,0x23,MoveOp::ContactReset},   // the body tests `tick < 0x24`, so 0..35 inclusive
     {350,-1,0x37,0x37,MoveOp::ContactReset},
 
     melee_voice_rule(350,0,0,0,32,0),
