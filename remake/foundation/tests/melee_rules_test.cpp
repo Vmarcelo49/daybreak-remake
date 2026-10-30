@@ -2,6 +2,7 @@
 // bundle-winning rig; synthetic rigs below isolate selector/blend/period contracts.
 #include "combo_fixture.h"
 #include "gameplay/fixed_step.h"
+#include "gameplay/melee_admission.h"
 #include "gameplay/melee_rules.h"
 #include "gameplay/match.h"
 #include <array>
@@ -152,9 +153,8 @@ void testPosedCombat() {
     while (victim.state() == FighterState::Hit && stunTicks < 60) {
         victim.update(nullptr,nullptr,gameplay::FixedStep::seconds); ++stunTicks;
     }
-    // The record's combat[10] is the victim's FREEZE, applied whether or not a reaction
-    // follows; the port still carries it as the stun timer, so this pins the value.
-    check(stunTicks >= 0, "the current record supplies a defender freeze window");
+    check(stunTicks > 0 && stunTicks < 60 && victim.state() != FighterState::Hit,
+          "the reaction eventually completes rather than sticking in Hit");
     test::Combo::placeAtAttack(attacker,second,{0,0,-40});
     check(attacker.try_melee_hit(second),"sphere distance has no cone/angle term around the weapon anchor");
     attacker.note_melee_hit(1); attacker.note_melee_hit(2);
@@ -172,9 +172,8 @@ void testPosedCombat() {
     attacker.take_damage(1,&victim);
     check(!attacker.try_melee_hit(victim),"interruption disables the old attack volume");
 
-    // The record's launch (FUN_00637950 @0x638633/0x638645 → consumer 0x428af8): the counter is
-    // the record word scaled by the global 0.01, and the rise lifts a grounded victim. Both are
-    // per-tick values in the original, so the port divides the rise by its fixed step.
+    // FUN_00428510 case 0x71 seeds vertical velocity from combat[17] and
+    // horizontal speed from combat[18], each scaled by 0.01 per update.
     combo.init(victim);
     check(victim.state() != FighterState::Knockdown, "victim starts grounded");
     // Rena+0 move 302's contact record (the XXX finisher): row 113, combat[17] = 500 (lift) and
@@ -187,44 +186,843 @@ void testPosedCombat() {
     reaction.meterA = 120;
     reaction.meterB = 20;
     victim.take_damage(0, &attacker, 6, reaction.row, false, reaction);
-    check(std::fabs(victim.reaction_counter() - 5.0f) < 1e-4f,
-          "combat[17]*0.01 becomes the reaction counter (+0x40)");
-    check(victim.airborne(), "combat[18]*0.01 lifts a grounded victim (+0x54)");
+    check(victim.airborne(), "combat[17]*0.01 lifts a grounded victim (+0x40)");
     const float risenY = victim.position().y;
     for (int i = 0; i < 6; ++i) victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
     check(victim.position().y > risenY, "and the victim keeps rising under its own integration");
-    check(victim.reaction_counter() < 5.0f, "the counter decays 0.3 a tick");
 
     // The launch has to land somewhere: on touchdown the victim enters the knockdown chain
     // (lying row 118, then the get-up row 120) instead of standing straight back up.
     const glm::vec3 launchStart = victim.position();
     check(victim.airborne(), "the XXX finisher lifts her off the ground");
+    float prevSpeed = 0.f;
+    float firstSpeed = 0.f;
+    for (int i = 0; i < 4; ++i) {
+        const glm::vec3 beforeStep = victim.position();
+        victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+        const glm::vec3 delta = victim.position() - beforeStep;
+        const float speed = glm::length(glm::vec2(delta.x, delta.z));
+        if (i == 0) firstSpeed = speed;
+        prevSpeed = speed;
+    }
+    check(firstSpeed - prevSpeed > 0.5f,
+          "row 113's horizontal speed approaches -4 by 0.25 per tick");
     int ticks = 0;
+    float peak = victim.position().y;
     while (victim.state() != FighterState::Knockdown && ticks < 400) {
         victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+        peak = std::max(peak, victim.position().y);
         ++ticks;
     }
+    check(peak >= 35.f, "row 113 uses 0.3 per-tick gravity rather than 0.5");
     check(victim.state() == FighterState::Knockdown, "a launched victim lands into Knockdown");
     // combat[18] = 2000 gives a 20/tick slide along her facing, so the throw is unmistakable.
     const glm::vec3 thrown = victim.position() - launchStart;
     check(glm::length(glm::vec2(thrown.x, thrown.z)) > 40.f,
           "and the throw carries her across the stage before she lands");
     const int lyingRow = victim.down_row_for_test();
-    check(lyingRow == 118 || lyingRow == 119,
-          "and lies on row 118 (or its back twin 119)");
+    checkInt(118, lyingRow, "front row 113 lands into row 118");
+    const glm::vec3 landedAt = victim.position();
     int down = 0;
+    bool boundGetup = false;
     while (victim.state() == FighterState::Knockdown && down < 400) {
         victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+        if (victim.down_row_for_test() == 120) {
+            const auto* getup = combo.moves.find(120);
+            boundGetup |= getup && victim.anim_set_index() == getup->phase_set_index(0);
+        }
         ++down;
     }
+    check(boundGetup, "lying row binds the get-up row 120's own animation");
     check(victim.state() == FighterState::Idle, "and gets up into Idle after the chain");
+    const glm::vec3 duringDown = victim.position() - landedAt;
+    check(glm::length(glm::vec2(duringDown.x, duringDown.z)) < 900.f,
+          "knockdown slide decelerates at 0.25 per tick");
+    const glm::vec3 afterDown = victim.position();
+    for (int i = 0; i < 10; ++i)
+        victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+    check(glm::length(victim.position() - afterDown) < 1.f,
+          "the reaction leaves no residual movement in Idle");
     combo.init(attacker); swing_to_active(attacker);
     for (int i = 0; i < 240 && attacker.state() == FighterState::AttackA; ++i) tick_held(attacker,in);
     check(attacker.state() == FighterState::Idle,"actual final-set period completes the attack without a recovery timer");
 }
-// A hit from BEHIND must still throw the victim AWAY from the attacker. She faces the blow
-// first (+0x64), so the row's backwards slide is unambiguous; with a stale facing the slide
-// points at the attacker and body separation cancels it, leaving only the vertical.
+// FUN_00637950 only refreshes the stagger window when combat[7] is positive.
+void test_zero_meter_hit_does_not_refresh_stagger() {
+    section("zero-meter hits preserve stagger expiry");
+    test::Combo combo; std::string error;
+    if (!combo.load(0, 0, error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    Fighter attacker, victim;
+    combo.init(attacker); combo.init(victim);
+    victim.reset(glm::vec3(0.f), 0.f);
+    victim.set_state(FighterState::Idle);
+    gameplay::HitReaction weak; weak.meterA = 60;
+    victim.take_damage(0, &attacker, 0, 100, false, weak);
+    for (int i = 0; i < 119; ++i)
+        victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+    gameplay::HitReaction zero;
+    victim.take_damage(0, &attacker, 0, 100, false, zero);
+    victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+    victim.take_damage(0, &attacker, 0, 100, false, weak);
+    check(victim.state() != FighterState::Hit,
+          "a zero-meter contact does not extend the 120-update stagger window");
+}
+
+// FUN_00445ee0 admits 341 only from row 340, and FUN_0043ffc0 case 0x155 runs its four
+// phases (sets 89/90/43/91). The chain branch that admits 341 installs no legacy swing
+// timer, so the row must run to its gated landing phase instead of being cut at the
+// fallback's 36-update total.
+// `melee_in_active()` reads the current record's radius, not its active frame, and
+// `record_at` starts from entry 0 unconditionally — so a phase whose FIRST record is a
+// live hitbox must open at frame 0, or the swing would report a hit window before the
+// data opens it. The shipped rows satisfy this; the sweep pins the premise for every
+// row the table carries.
+void test_first_live_record_opens_at_frame_zero() {
+    section("Rena+0: every phase's first live record opens at frame 0");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    int rows = 0, liveFirst = 0, lateFirst = 0;
+    for (int id = 0; id < gameplay::CharacterMoves::kMaxMoves; ++id) {
+        const gameplay::CharacterMove* move = combo.moves.find(id);
+        if (!move) continue;
+        ++rows;
+        for (int phase = 0; phase < move->sectionCount; ++phase) {
+            const gameplay::MovePhase& records = move->phases[phase];
+            if (records.entryCount == 0) continue;
+            const gameplay::MoveEntry& first = records.entries[0];
+            if (!first.has_combat()) continue;
+            ++liveFirst;
+            if (first.activeFrame != 0) ++lateFirst;
+        }
+    }
+    check(rows > 0, "the Rena+0 move table parses");
+    check(liveFirst > 0, "its phases carry live hitbox records");
+    checkInt(0, lateFirst, "no phase opens with a live record after frame 0");
+}
+
+// FUN_00428510 cases 0x68/0x69/0xcc/0xcd: phase 0 is a gated eight-frame clip and the
+// handler keeps it until its own frame counter passes 0x3c, then seeds the motion on the
+// phase-1 transition. No shipped Rena+0 contact names these rows, so the row is injected
+// through take_damage; the phases, gates and clips are the real 00.dat/00.X ones.
+// The live contact gate is the CURRENT phase-local record (record_at), not a window
+// derived from the move's first entry. Each reachable melee row is driven with its
+// fixture input script; the first connecting tick must be exactly the first tick whose
+// record carries a hitbox, and the victim must play that record's reaction row.
+void test_move_contact_windows() {
+    section("Rena+0: contact opens exactly on the record's frame");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    struct Script {
+        int row;
+        std::vector<std::pair<int, std::vector<input::Action>>> frames;
+    };
+    const auto keys = [](std::initializer_list<input::Action> list) {
+        return std::vector<input::Action>(list);
+    };
+    const Script scripts[] = {
+        {300, {{0, keys({input::Action::AttackA})}}},
+        {310, {{0, keys({input::Action::Down, input::Action::AttackA})}}},
+        {311, {{0, keys({input::Action::Right, input::Action::AttackA})}}},
+        {330, {{0, keys({input::Action::Up})}, {1, {}}, {2, keys({input::Action::Up})},
+               {3, keys({input::Action::AttackA})}}},
+        {331, {{0, keys({input::Action::Left})}, {1, {}}, {2, keys({input::Action::Left})},
+               {3, keys({input::Action::AttackA})}}},
+        {320, {{0, keys({input::Action::Jump})}, {1, {}},
+               {13, keys({input::Action::AttackA})}, {14, {}}}},
+        {332, {{0, keys({input::Action::Jump})}, {1, {}},
+               {12, keys({input::Action::Left})}, {13, {}},
+               {14, keys({input::Action::Left})}, {15, keys({input::Action::AttackA})},
+               {16, {}}}},
+    };
+    for (const Script& script : scripts) {
+        Fighter attacker, opponent, victim;
+        combo.init(attacker);
+        combo.init(opponent, glm::vec3(0, 0, 2000));
+        combo.init(victim, glm::vec3(0, 0, 2000));
+        input::PlayerState in;
+        int entered = -1, firstActive = -1, firstHit = -1;
+        const gameplay::MoveEntry* hitRecord = nullptr;
+        for (int tick = 0; tick < 400 && firstHit < 0; ++tick) {
+            for (bool& down : in.down) down = false;
+            for (const auto& frame : script.frames)
+                if (frame.first == tick)
+                    for (input::Action action : frame.second) in.down[action] = true;
+            input::compute_edges(in);
+            attacker.update(&in, &opponent, gameplay::FixedStep::seconds);
+            if (entered < 0 && attacker.attack_move_id() == script.row &&
+                attacker.state() == FighterState::AttackA)
+                entered = tick;
+            if (entered < 0 || attacker.state() != FighterState::AttackA) continue;
+            if (attacker.melee_in_active()) {
+                if (firstActive < 0) firstActive = tick;
+                hitRecord = attacker.current_move_record();
+                test::Combo::placeAtAttack(attacker, victim);
+                // placeAtAttack keeps the victim's yaw, so she would be struck from
+                // behind; face her at the attacker to exercise the front reaction row.
+                const glm::vec3 toward = attacker.position() - victim.position();
+                victim.reset(victim.position(), std::atan2(toward.x, toward.z));
+                victim.set_state(FighterState::Idle);
+            }
+            if (attacker.try_melee_hit(victim)) firstHit = tick;
+        }
+        checkInt(script.row, attacker.attack_move_id(), "the script admits the expected row");
+        check(entered >= 0, "the row is entered from real input");
+        check(firstActive >= 0 && firstHit == firstActive,
+              "the first contact lands on the first record-active tick");
+        check(hitRecord && hitRecord->has_combat() && hitRecord->hitRadius != 0,
+              "the connecting record carries the live hitbox");
+        check(victim.hp() < 100 && victim.state() == FighterState::Hit,
+              "the contact damages and staggers the placed victim");
+        checkInt(hitRecord ? hitRecord->reactionMove : -1,
+                 victim.reaction_move_for_test(),
+                 "the victim plays the connecting record's reaction row");
+    }
+}
+
+// FUN_00445ee0's chain: a connected 300 admits 301 and a connected 301 admits 302.
+// Each row must connect on its own phase-local record, not on the first swing's window.
+void test_melee_chain_contacts() {
+    section("Rena+0: the 300 -> 301 -> 302 chain connects on its own records");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    Fighter attacker, opponent, victim;
+    combo.init(attacker);
+    combo.init(opponent, glm::vec3(0, 0, 2000));
+    combo.init(victim, glm::vec3(0, 0, 2000));
+    input::PlayerState in;
+    const auto step = [&]() {
+        input::compute_edges(in);
+        attacker.update(&in, &opponent, gameplay::FixedStep::seconds);
+    };
+    const auto tap = [&]() {
+        for (bool& down : in.down) down = false;
+        in.down[input::Action::AttackA] = true;
+        step();
+        for (bool& down : in.down) down = false;
+        step();
+    };
+    const auto place = [&]() {
+        test::Combo::placeAtAttack(attacker, victim);
+        const glm::vec3 toward = attacker.position() - victim.position();
+        victim.reset(victim.position(), std::atan2(toward.x, toward.z));
+        victim.set_state(FighterState::Idle);
+    };
+    // Connect the current swing; returns the hit tick or -1.
+    const auto connect = [&](const gameplay::MoveEntry** record) {
+        for (int i = 0; i < 240 && attacker.state() == FighterState::AttackA; ++i) {
+            step();
+            if (!attacker.melee_in_active()) continue;
+            *record = attacker.current_move_record();
+            place();
+            if (attacker.try_melee_hit(victim)) return i;
+        }
+        return -1;
+    };
+
+    tap();
+    checkInt(300, attacker.attack_move_id(), "the first press enters row 300");
+    const gameplay::MoveEntry* first = nullptr;
+    check(connect(&first) >= 0, "row 300 connects on its own record");
+    checkInt(100, victim.reaction_move_for_test(), "the 300 contact plays reaction row 100");
+
+    // The chain window is the current record's 0x100 flag, so the press has to land
+    // on a tick that carries it; mash like a player until the admission opens.
+    bool chained = false;
+    for (int i = 0; i < 90 && !chained; ++i) {
+        tap();
+        chained = attacker.attack_move_id() == 301;
+    }
+    check(chained, "a connected 300 chains into row 301");
+    const gameplay::MoveEntry* second = nullptr;
+    check(connect(&second) >= 0, "row 301 connects on its own record");
+    check(second && second != first, "row 301 uses its own phase-local record");
+    checkInt(101, victim.reaction_move_for_test(), "the 301 contact plays reaction row 101");
+
+    chained = false;
+    for (int i = 0; i < 90 && !chained; ++i) {
+        tap();
+        chained = attacker.attack_move_id() == 302;
+    }
+    check(chained, "a connected 301 chains into row 302");
+    const gameplay::MoveEntry* third = nullptr;
+    check(connect(&third) >= 0, "row 302 connects on its own record");
+    checkInt(113, victim.reaction_move_for_test(),
+             "the 302 contact plays the launcher reaction row 113");
+    check(victim.airborne(), "row 302's contact lifts its victim");
+}
+
+// Rows 340 and 341 are reached only through the landing follow-up chain; each must
+// connect on its own phase-local record (340 -> reaction 101, 341 -> launcher 113).
+void test_landing_followup_contacts() {
+    section("Rena+0: rows 340 and 341 connect on the landing chain");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    Fighter attacker, opponent, victim;
+    combo.init(attacker);
+    combo.init(opponent, glm::vec3(0, 0, 2000));
+    combo.init(victim, glm::vec3(0, 0, 2000));
+    input::PlayerState in;
+    const auto step = [&]() {
+        input::compute_edges(in);
+        attacker.update(&in, &opponent, gameplay::FixedStep::seconds);
+    };
+    const auto tap = [&]() {
+        for (bool& down : in.down) down = false;
+        in.down[input::Action::AttackA] = true;
+        step();
+        for (bool& down : in.down) down = false;
+        step();
+    };
+    const auto place = [&]() {
+        test::Combo::placeAtAttack(attacker, victim);
+        const glm::vec3 toward = attacker.position() - victim.position();
+        victim.reset(victim.position(), std::atan2(toward.x, toward.z));
+        victim.set_state(FighterState::Idle);
+    };
+    const auto connect = [&](const gameplay::MoveEntry** record) {
+        for (int i = 0; i < 240 && attacker.state() == FighterState::AttackA; ++i) {
+            step();
+            if (!attacker.melee_in_active()) continue;
+            *record = attacker.current_move_record();
+            place();
+            if (attacker.try_melee_hit(victim)) return i;
+        }
+        return -1;
+    };
+    // Jump, then the airborne press admits 320 and the landing exit row 329.
+    for (bool& down : in.down) down = false;
+    in.down[input::Action::Jump] = true;
+    step();
+    for (bool& down : in.down) down = false;
+    for (int i = 0; i < 40 && attacker.attack_move_id() != 320; ++i) {
+        if (attacker.airborne() && attacker.state() != FighterState::AttackA) {
+            in.down[input::Action::AttackA] = true;
+            step();
+            for (bool& down : in.down) down = false;
+        }
+        step();
+    }
+    checkInt(320, attacker.attack_move_id(), "the air press starts the landing chain");
+    for (int i = 0; i < 240 && attacker.attack_move_id() != 329; ++i) step();
+    checkInt(329, attacker.attack_move_id(), "row 320 lands into the 329 exit");
+    for (int i = 0; i < 240 && attacker.phase_elapsed() < 5; ++i) step();
+    tap();
+    checkInt(340, attacker.attack_move_id(), "329 admits the landing row 340");
+    const gameplay::MoveEntry* landing = nullptr;
+    check(connect(&landing) >= 0, "row 340 connects on its own record");
+    checkInt(101, victim.reaction_move_for_test(), "the 340 contact plays reaction row 101");
+
+    bool chained = false;
+    for (int i = 0; i < 120 && !chained; ++i) {
+        tap();
+        chained = attacker.attack_move_id() == 341;
+    }
+    check(chained, "a connected 340 chains into row 341");
+    const gameplay::MoveEntry* followup = nullptr;
+    check(connect(&followup) >= 0, "row 341 connects on its own record");
+    checkInt(113, victim.reaction_move_for_test(),
+             "the 341 contact plays the launcher reaction row 113");
+}
+
+// The Hyper EX (row 350) is the one melee row whose data carries eight one-tick hand
+// records. V3-43 removed the port's contact cut for weapon 0 and added the per-tick
+// ContactReset, so every shipped window must open and connect. Q22's "deals no
+// damage" reading is superseded by those rule lines; this pins the live result.
+void test_hyper_ex_contact() {
+    section("Rena+0: the Hyper EX connects on every hand record");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    Fighter attacker, opponent, victim;
+    combo.init(attacker);
+    combo.init(opponent, glm::vec3(0, 0, 4000));
+    combo.init(victim, glm::vec3(0, 0, 4000));
+    input::PlayerState in;
+    const auto step = [&]() {
+        input::compute_edges(in);
+        attacker.update(&in, &opponent, gameplay::FixedStep::seconds);
+    };
+    const auto tap = [&](input::Action action) {
+        for (bool& down : in.down) down = false;
+        in.down[action] = true;
+        step();
+        for (bool& down : in.down) down = false;
+        step();
+    };
+    const auto start_ex = [&]() {
+        attacker.set_hypermode(gameplay::Hypermode::Oyashiro);
+        attacker.set_hyper_gauge(1.0f);
+        tap(input::Action::Special);
+        tap(input::Action::Special);
+        return attacker.attack_move_id() == 350;
+    };
+
+    int expectedWindows = 0;
+    if (const gameplay::CharacterMove* ex = combo.moves.find(350)) {
+        for (int phase = 0; phase < ex->sectionCount; ++phase)
+            for (int entry = 0; entry < ex->phases[phase].entryCount; ++entry)
+                if (ex->phases[phase].entries[entry].has_combat()) ++expectedWindows;
+    }
+    check(expectedWindows > 0, "row 350 ships hand contact records");
+
+    check(start_ex(), "the second Special press fires the EX row 350");
+    // The body rewinds part of its clock, so a window can span several updated ticks;
+    // what matters is that every distinct shipped record becomes current.
+    std::vector<std::pair<int, int>> seen;
+    for (int i = 0; i < 400 && attacker.state() == FighterState::AttackA; ++i) {
+        step();
+        if (!attacker.melee_in_active()) continue;
+        const gameplay::MoveEntry* current = attacker.current_move_record();
+        const int phase = attacker.move_phase();
+        const gameplay::CharacterMove* ex = combo.moves.find(350);
+        if (!ex || phase < 0 || phase >= ex->sectionCount) continue;
+        for (int entry = 0; entry < ex->phases[phase].entryCount; ++entry) {
+            if (&ex->phases[phase].entries[entry] != current) continue;
+            const std::pair<int, int> key{phase, entry};
+            bool known = false;
+            for (const auto& prior : seen) known = known || prior == key;
+            if (!known) seen.push_back(key);
+        }
+    }
+    checkInt(expectedWindows, static_cast<int>(seen.size()),
+             "every shipped hand record becomes the live volume");
+
+    combo.init(attacker);
+    check(start_ex(), "the EX can be fired again from a fresh activation");
+    const gameplay::MoveEntry* record = nullptr;
+    bool hit = false;
+    for (int i = 0; i < 400 && attacker.state() == FighterState::AttackA && !hit; ++i) {
+        step();
+        if (!attacker.melee_in_active()) continue;
+        record = attacker.current_move_record();
+        test::Combo::placeAtAttack(attacker, victim);
+        const glm::vec3 toward = attacker.position() - victim.position();
+        victim.reset(victim.position(), std::atan2(toward.x, toward.z));
+        victim.set_state(FighterState::Idle);
+        hit = attacker.try_melee_hit(victim);
+    }
+    check(hit, "a placed victim is struck during a hand window");
+    checkInt(record ? record->reactionMove : -1, victim.reaction_move_for_test(),
+             "the EX contact plays its own reaction row");
+    checkInt(130, victim.reaction_move_for_test(), "row 350's record selects reaction 130");
+}
+
+// Row 370 is the airborne second charge: the program's shot matrix maps the red
+// tier airborne to 370, whose phase-2 tick-2 launches the row-11/12 pair.
+void test_air_full_charge_370() {
+    section("Rena+0: the airborne full charge binds row 370 and fires rows 11/12");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    Fighter fighter, target;
+    combo.init(fighter);
+    combo.init(target, glm::vec3(0, 0, 2000));
+    input::PlayerState in;
+    const auto step = [&]() {
+        input::compute_edges(in);
+        fighter.update(&in, &target, gameplay::FixedStep::seconds);
+    };
+    // Charge on the ground past the Red boundary, then jump and release aloft.
+    for (bool& down : in.down) down = false;
+    in.down[input::Action::Shoot] = true;
+    for (int i = 0; i < 230; ++i) step();
+    check(fighter.charge_tier() == gameplay::ShotTier::Red,
+          "230 held updates reach the Red charge tier");
+    in.down[input::Action::Jump] = true;
+    step();
+    in.down[input::Action::Jump] = false;
+    step();
+    check(fighter.airborne(), "the charge is released airborne");
+    check(fighter.charge_tier() == gameplay::ShotTier::Red,
+          "the Red tier survives the jump");
+    in.down[input::Action::Shoot] = false;
+    step();
+    checkInt(370, fighter.shot_move_id(), "the airborne red charge binds row 370");
+
+    std::vector<gameplay::PendingShot> shots;
+    std::vector<std::pair<int, int>> frames;
+    for (int update = 0; update < 240 && shots.size() < 2; ++update) {
+        const int phase = fighter.move_phase();
+        const int elapsed = fighter.phase_elapsed();
+        step();
+        for (gameplay::PendingShot shot = fighter.take_pending_shot(); shot.armed;
+             shot = fighter.take_pending_shot()) {
+            shots.push_back(shot);
+            frames.emplace_back(phase, elapsed);
+        }
+    }
+    checkInt(2, static_cast<int>(shots.size()), "the red air charge launches the row-11/12 pair");
+    if (shots.size() == 2) {
+        check(shots[0].bulletRow == 11 || shots[1].bulletRow == 11,
+              "the pair includes the row-11 projectile");
+        check(shots[0].bulletRow == 12 || shots[1].bulletRow == 12,
+              "the pair includes the row-12 projectile");
+        check(frames[0] == std::make_pair(2, 2) && frames[1] == std::make_pair(2, 2),
+              "both requests fire on phase-2 frame 2");
+    }
+}
+
+// FUN_00445ee0 routes a tap shot out of the back dash (state 27) to 407, whose body
+// fires the row-4/row-9 pair at fixed +-75 yaw on phase-0 frame 13.
+void test_back_dash_shot_407() {
+    section("Rena+0: the back-dash tap binds 407 and fires rows 4/9");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    Fighter fighter, target;
+    combo.init(fighter);
+    combo.init(target, glm::vec3(0, 0, 2000));
+    input::PlayerState in;
+    const auto step = [&]() {
+        input::compute_edges(in);
+        fighter.update(&in, &target, gameplay::FixedStep::seconds);
+    };
+    // Double-tap back: the second tap admits the back dash row 27.
+    for (int tap = 0; tap < 2; ++tap) {
+        in.down[input::Action::Down] = true;
+        step();
+        in.down[input::Action::Down] = false;
+        step();
+    }
+    check(fighter.state() == FighterState::Run, "the double tap starts a dash");
+    checkInt(27, fighter.dash_move_id(), "the dash is the back row 27");
+    // A tap shot released here leaves the dash through 407.
+    in.down[input::Action::Shoot] = true;
+    step();
+    in.down[input::Action::Shoot] = false;
+    step();
+    checkInt(407, fighter.shot_move_id(), "the back-dash tap binds the 407 body");
+
+    std::vector<gameplay::PendingShot> shots;
+    std::vector<std::pair<int, int>> frames;
+    for (int update = 0; update < 40 && shots.size() < 2; ++update) {
+        const int phase = fighter.move_phase();
+        const int elapsed = fighter.phase_elapsed();
+        step();
+        for (gameplay::PendingShot shot = fighter.take_pending_shot(); shot.armed;
+             shot = fighter.take_pending_shot()) {
+            shots.push_back(shot);
+            frames.emplace_back(phase, elapsed);
+        }
+    }
+    checkInt(2, static_cast<int>(shots.size()), "407 fires its row-4/9 pair");
+    if (shots.size() == 2) {
+        check(shots[0].bulletRow == 4 || shots[1].bulletRow == 4,
+              "the pair includes row 4");
+        check(shots[0].bulletRow == 9 || shots[1].bulletRow == 9,
+              "the pair includes row 9");
+        check(frames[0] == std::make_pair(0, 13) && frames[1] == std::make_pair(0, 13),
+              "both fire on phase-0 frame 13");
+        const float yaw0 = glm::degrees(std::atan2(shots[0].dir.x, shots[0].dir.z));
+        check(std::abs(std::abs(yaw0) - 75.f) < 0.5f,
+              "the pair keeps the body's fixed +-75 yaw");
+    }
+}
+
+// Row 351 ships with a hand record but no requester: no recovered admission branch
+// returns it, which is why it is recorded as handler-only rather than as coverage.
+void test_row_351_is_handler_only() {
+    section("Rena+0: row 351 exists but no admission selects it");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    const gameplay::CharacterMove* move = combo.moves.find(351);
+    check(move && move->sectionCount == 3, "row 351 parses with its three phases");
+    const gameplay::AttackAdmissionTable table{&combo.moves};
+    bool selected = false;
+    const int states[] = {0, 10, 20, 23, 24, 27, 30, 40, 41, 42,
+                          300, 301, 302, 310, 311, 320, 329, 332, 333, 340, 341};
+    for (int weapon = 0; weapon < 3; ++weapon)
+        for (int state : states)
+            for (int phase = 0; phase < 3; ++phase)
+                for (int x : {-1, 0, 1})
+                    for (int z : {-1, 0, 1})
+                        for (bool flag : {false, true})
+                            for (bool grounded : {true, false}) {
+                                gameplay::AttackAdmissionInput in;
+                                in.weaponSlot = weapon;
+                                in.state = state;
+                                in.phase = phase;
+                                in.grounded = grounded;
+                                in.x = x;
+                                in.z = z;
+                                in.normalFlag = flag;
+                                in.contact = flag ? 1u : 0u;
+                                selected = selected ||
+                                    gameplay::rena_melee_admission(in, table) == 351;
+                            }
+    check(!selected, "no admission input selects row 351");
+    // 404 is the shooting side's handler-only row: no recovered tap-shot route
+    // returns it either.
+    bool shot404 = false;
+    for (int weapon = 0; weapon < 3; ++weapon)
+        for (int state = 0; state <= 50; ++state)
+            for (bool grounded : {true, false})
+                shot404 = shot404 ||
+                    gameplay::rena_tap_shot_state(weapon, state, grounded) == 404;
+    check(!shot404, "no tap-shot route selects handler-only row 404");
+}
+
+// The walking/dash taps route through FUN_00445ee0's shot branches: walking to 401,
+// side dashes to 405/406 and the air dash to 408. Each fires its normal row-0 request
+// on frame 12.
+void test_dash_tap_shots() {
+    section("Rena+0: the walking/dash taps bind 401/405/406/408 on frame 12");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    struct Case { int expectedState; input::Action dir; bool airborneDash; bool walk; int dashRow; };
+    const Case cases[] = {{401, input::Action::Right, false, true, 0},
+                          {405, input::Action::Right, false, false, 23},
+                          {406, input::Action::Left, false, false, 24},
+                          {408, input::Action::Right, true, false, 30}};
+    for (const Case& c : cases) {
+        Fighter fighter, target;
+        combo.init(fighter);
+        combo.init(target, glm::vec3(0, 0, 2000));
+        input::PlayerState in;
+        const auto step = [&]() {
+            input::compute_edges(in);
+            fighter.update(&in, &target, gameplay::FixedStep::seconds);
+        };
+        if (c.walk) {
+            in.down[c.dir] = true;
+            for (int i = 0; i < 8; ++i) step();
+            check(fighter.state() == FighterState::Walk, "holding a direction walks");
+        } else {
+            if (c.airborneDash) {
+                in.down[input::Action::Jump] = true;
+                step();
+                in.down[input::Action::Jump] = false;
+                for (int i = 0; i < 10; ++i) step();
+            }
+            for (int tap = 0; tap < 2; ++tap) {
+                in.down[c.dir] = true;
+                step();
+                in.down[c.dir] = false;
+                step();
+            }
+            check(fighter.state() == FighterState::Run, "the tap opens a dash state");
+            checkInt(c.dashRow, fighter.dash_move_id(), "the dash carries its row");
+            // Hold the direction through a tick first: re-pressing it here would be a
+            // fresh double-tap edge, which admits another dash and returns before the
+            // shot charge branch (408's admission needs the axis held).
+            in.down[c.dir] = true;
+            step();
+        }
+        in.down[input::Action::Shoot] = true;
+        step();
+        in.down[input::Action::Shoot] = false;
+        step();
+        check(fighter.state() == FighterState::ShootA, "the release enters the shot state");
+        checkInt(c.expectedState, fighter.shot_move_id(), "the tap binds its shot state");
+        if (fighter.shot_move_id() != c.expectedState) continue;
+        bool fired = false;
+        int frame = -1, row = -1;
+        for (int update = 0; update < 40 && !fired; ++update) {
+            const int elapsed = fighter.phase_elapsed();
+            step();
+            for (gameplay::PendingShot shot = fighter.take_pending_shot(); shot.armed;
+                 shot = fighter.take_pending_shot()) {
+                fired = true;
+                frame = elapsed;
+                row = shot.bulletRow;
+            }
+        }
+        check(fired, "the tap fires a request");
+        checkInt(0, row, "the tap request is the normal row 0");
+        checkInt(12, frame, "the request fires on frame 12");
+    }
+}
+
+void test_delayed_reaction_rows() {
+    section("rows 104/105/204/205 hold phase 0 before seeding");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    struct Case {
+        int row;
+        float expectedFirstDelta;
+        float expectedChange;   // first minus second per-update delta
+        float expectedTravel;   // distance covered over the 7 updates after the seed
+        bool lifts;
+    };
+    // 104/204 seed a fixed -15/+15 and decay 1.5 a tick; 105/205 seed the record pair
+    // (counter 5 lift, rise 5 slide), 105 settling toward -4 and 205 toward +4
+    // (FUN_00428510 cases 0x69/0xcd).
+    const Case cases[] = {
+        {104, 15.f, 1.5f, 63.f, false},
+        {105,  5.f, 0.25f, 29.5f, true},
+        {204, 15.f, 1.5f, 63.f, false},
+        {205,  5.f, 0.25f, 29.5f, true},
+    };
+    for (const Case& c : cases) {
+        Fighter attacker, victim;
+        combo.init(attacker, glm::vec3(0, 0, 100));
+        combo.init(victim);
+        victim.set_state(FighterState::Idle);
+        gameplay::HitReaction injected;
+        injected.row = injected.rowHigh = c.row;
+        injected.meterA = 120;
+        injected.counter = 5.f;
+        injected.rise = 5.f;
+        victim.take_damage(0, &attacker, 0, c.row, false, injected);
+        checkInt(c.row, victim.reaction_move_for_test(),
+                 "an injected contact keeps its reaction row");
+        checkInt(0, victim.move_phase(), "the injected reaction starts in phase 0");
+        const glm::vec3 held = victim.position();
+        float peak = held.y;
+        for (int i = 0; i < 61; ++i) {
+            victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+            peak = std::max(peak, victim.position().y);
+        }
+        const glm::vec3 heldAfter = victim.position();
+        check(glm::length(glm::vec2(heldAfter.x - held.x, heldAfter.z - held.z)) < 1e-3f,
+              "phase 0 plays standing still");
+        check(peak - held.y < 1e-3f, "phase 0 does not lift the victim");
+        checkInt(0, victim.move_phase(), "the gated phase 0 still holds at 61 updates");
+
+        victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+        checkInt(1, victim.move_phase(), "the 62nd executor call enters phase 1");
+        const glm::vec3 seededAt = victim.position();
+        const float firstDelta = glm::length(
+            glm::vec2(seededAt.x - heldAfter.x, seededAt.z - heldAfter.z));
+        check(std::fabs(firstDelta - c.expectedFirstDelta) < 0.06f,
+              "phase 1 seeds the recovered slide speed");
+        check(victim.airborne() == c.lifts, "only the launcher rows leave the ground");
+
+        float previous = firstDelta;
+        victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+        const float second = glm::length(glm::vec2(victim.position().x - seededAt.x,
+                                                   victim.position().z - seededAt.z));
+        check(std::fabs((previous - second) - c.expectedChange) < 0.06f,
+              "the slide follows the row's own per-tick decay");
+        for (int i = 0; i < 6; ++i)
+            victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+        const float travelled = glm::length(glm::vec2(victim.position().x - seededAt.x,
+                                                      victim.position().z - seededAt.z));
+        check(std::fabs(travelled - c.expectedTravel) < 0.5f,
+              "the seeded law travels the recovered distance");
+        if (c.lifts) {
+            for (int i = 0; i < 40 && victim.state() == FighterState::Hit; ++i)
+                victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+            checkInt(c.row == 205 ? 119 : 118, victim.down_row_for_test(),
+                     "the launcher lands into its own lying row");
+        }
+    }
+}
+
+void test_landing_followup_chain_runs_to_its_last_phase() {
+    section("Rena+0 landing follow-up chain reaches row 341's last phase");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    Fighter fighter;
+    combo.init(fighter);
+    input::PlayerState in;
+    const auto step = [&]() {
+        input::compute_edges(in);
+        fighter.update(&in, nullptr, gameplay::FixedStep::seconds);
+    };
+    const auto press = [&](input::Action action) {
+        for (bool& down : in.down) down = false;
+        in.down[action] = true;
+        step();
+        for (bool& down : in.down) down = false;
+        step();
+    };
+    press(input::Action::Jump);
+    for (int i = 0; i < 40 && !fighter.airborne(); ++i) step();
+    check(fighter.airborne(), "the chain starts from an airborne fighter");
+    press(input::Action::AttackA);
+    for (int i = 0; i < 40 && fighter.attack_move_id() != 320; ++i) step();
+    checkInt(320, fighter.attack_move_id(), "the air press admits row 320");
+    for (int i = 0; i < 240 && fighter.attack_move_id() != 329; ++i) step();
+    checkInt(329, fighter.attack_move_id(), "row 320 lands into the 329 exit row");
+    for (int i = 0; i < 240 && fighter.phase_elapsed() < 5; ++i) step();
+    press(input::Action::AttackA);
+    for (int i = 0; i < 40 && fighter.attack_move_id() != 340; ++i) step();
+    checkInt(340, fighter.attack_move_id(), "329 admits the landing row 340");
+    for (int i = 0; i < 240 && fighter.phase_elapsed() < 25; ++i) step();
+    press(input::Action::AttackA);
+    for (int i = 0; i < 40 && fighter.attack_move_id() != 341; ++i) step();
+    checkInt(341, fighter.attack_move_id(), "340 admits its follow-up row 341");
+
+    const gameplay::CharacterMove* followup = combo.moves.find(341);
+    check(followup && followup->sectionCount == 4, "row 341 carries its four-phase body");
+    int seenPhases = 0;
+    bool setsMatch = true;
+    int updates = 0;
+    while (fighter.state() == FighterState::AttackA && updates++ < 200) {
+        if (followup) {
+            const int phase = fighter.move_phase();
+            if (phase >= 0 && phase < followup->sectionCount) {
+                seenPhases = std::max(seenPhases, phase + 1);
+                setsMatch &= fighter.anim_set_index() == followup->phase_set_index(phase);
+            }
+        }
+        step();
+    }
+    checkInt(4, seenPhases, "the row advances through all four phases");
+    check(setsMatch, "every phase binds its own phase's animation set");
+    check(fighter.state() == FighterState::Idle && !fighter.airborne(),
+          "the chain finishes standing");
+}
+
+void test_back_kick_completes_its_final_phase() {
+    section("Rena+0 back kick lifetime");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    Fighter fighter, opponent;
+    combo.init(fighter); combo.init(opponent, glm::vec3(0,0,2000));
+    input::PlayerState in;
+    in.down[input::Action::Down] = true;
+    in.down[input::Action::AttackA] = true;
+    tick_held(fighter, in);
+    checkInt(310, fighter.attack_move_id(), "back input selects row 310");
+    in.down[input::Action::Down] = false;
+    in.down[input::Action::AttackA] = false;
+    for (int i = 0; i < 27; ++i) tick_held(fighter, in);
+    check(fighter.state() == FighterState::AttackA && fighter.move_phase() == 2,
+          "row 310 stays active after the legacy 27-tick timer");
+    int updates = 0;
+    while (fighter.state() == FighterState::AttackA && updates++ < 100)
+        tick_held(fighter, in);
+    check(fighter.state() != FighterState::AttackA,
+          "row 310 exits after its last phase completes");
+}
+
+// FUN_0043ffc0 pauses the executor; FUN_004202b0 skips integration until
+// the preceding FUN_0041f580 decrement clears +0xa0.
+void test_hitstop_freezes_reaction() {
+    section("Rena+0 hitstop pauses reaction and movement");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    Fighter attacker, victim;
+    combo.init(attacker, glm::vec3(0,0,100));
+    combo.init(victim);
+    gameplay::HitReaction hit;
+    hit.row = 113; hit.rowHigh = 113; hit.meterA = 200;
+    hit.counter = 5.f; hit.rise = 20.f;
+    victim.take_damage(0, &attacker, 6, 113, false, hit);
+    const glm::vec3 start = victim.position();
+    const int frame = victim.phase_elapsed();
+    for (int i = 0; i < 5; ++i)
+        victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+    check(glm::length(victim.position() - start) < 1e-4f,
+          "hitstop prevents horizontal and vertical displacement");
+    checkInt(frame, victim.phase_elapsed(), "hitstop holds the reaction clock");
+    victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+    check(glm::length(victim.position() - start) > 1.f,
+          "movement resumes after the final hitstop decrement");
+    checkInt(frame, victim.phase_elapsed(), "the executor still sees the last hitstop tick");
+    victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+    check(victim.phase_elapsed() > frame, "the reaction clock resumes on the next update");
+
+    victim.take_damage(0, &attacker, 6, 113, false, hit);
+    victim.reset(glm::vec3(0.f), 0.f);
+    victim.set_state(FighterState::Idle);
+    const int resetFrame = victim.phase_elapsed();
+    victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+    check(victim.phase_elapsed() > resetFrame,
+          "round reset clears the previous hitstop");
+}
+
+// FUN_00637950 adds 180 degrees to the impact bearing for a back hit;
+// row 200's positive speed must carry the victim away from the attacker.
 void test_back_hit_throws_away() {
     section("a hit from behind throws the victim away from the attacker");
     test::Combo combo; std::string error;
@@ -251,7 +1049,18 @@ void test_back_hit_throws_away() {
     finisher.meterA = 120; finisher.meterB = 20;
     const glm::vec3 start = victim.position();
     const glm::vec3 attackerAt = match.fighter(0).position();
-    victim.take_damage(0, &match.fighter(0), 6, 113, false, finisher);
+    // Face away explicitly: match targeting may otherwise rotate the actors during setup.
+    victim.reset(start, glm::pi<float>());
+    victim.set_state(FighterState::Idle);
+    finisher.row = finisher.rowHigh = 100;
+    finisher.meterA = 60;
+    const float facingBefore = victim.facing_yaw();
+    victim.take_damage(0, &match.fighter(0), 6, 100, false, finisher);
+    check(victim.state() == FighterState::Idle &&
+          std::abs(std::remainder(victim.facing_yaw() - facingBefore, glm::two_pi<float>())) < 1e-5f,
+          "a non-tripping hit preserves the victim's facing");
+    victim.take_damage(0, &match.fighter(0), 6, 100, false, finisher);
+    checkInt(200, victim.reaction_move_for_test(), "two 60-point back hits select row 200");
     for (int i = 0; i < 20; ++i) match.step(idle, gameplay::FixedStep::seconds);
     const glm::vec3 moved = victim.position() - start;
     const float awayFromAttacker = glm::length(glm::vec2(moved.x, moved.z));
@@ -290,11 +1099,16 @@ void test_reaction_displaces_victim() {
     const input::PlayerState* inputs[4] = {&input, nullptr, nullptr, nullptr};
     bool landed = false;
     int setOnHit = -1;
+    int attackerStop = 0;
     for (int i = 0; i < 120 && !landed; ++i) {
         input::compute_edges(input);
         if (attacker.melee_in_active()) test::Combo::placeAtAttack(attacker, victim);
         const gameplay::MatchFrame frame = match.step(inputs, gameplay::FixedStep::seconds);
-        if (frame.meleeHit[0]) { landed = true; setOnHit = victim.anim_set_index(); }
+        if (frame.meleeHit[0]) {
+            landed = true;
+            setOnHit = victim.anim_set_index();
+            attackerStop = attacker.current_move_record()->combat[9];
+        }
     }
     check(landed, "the swing lands");
     if (!landed) return;
@@ -303,8 +1117,17 @@ void test_reaction_displaces_victim() {
     checkInt(static_cast<int>(FighterState::Hit), static_cast<int>(victim.state()),
              "and is in the reaction state");
 
-    const glm::vec3 before = victim.position();
+    const int attackerFrame = attacker.phase_elapsed();
     input.down[input::Action::AttackA] = false;
+    if (attackerStop > 0) {
+        input::compute_edges(input);
+        match.step(inputs, gameplay::FixedStep::seconds);
+        checkInt(attackerFrame, attacker.phase_elapsed(),
+                 "the attacker's record combat[9] freezes its clock");
+    } else {
+        skip("row 300 attacker hitstop is zero");
+    }
+    const glm::vec3 before = victim.position();
     for (int i = 0; i < 24; ++i) {
         input::compute_edges(input);
         match.step(inputs, gameplay::FixedStep::seconds);
@@ -1071,6 +1894,20 @@ int main(int argc, char** argv) {
     if (install.empty()) { std::puts("MELEE_RULES: SKIP (no game install)"); return 0; }
     fnd::assets::assetSource().openInstall(install.string());
     testPosedCombat(); testPosedMatch(); test_reaction_displaces_victim();
+    test_hitstop_freezes_reaction();
+    test_zero_meter_hit_does_not_refresh_stagger();
+    test_move_contact_windows();
+    test_melee_chain_contacts();
+    test_landing_followup_contacts();
+    test_hyper_ex_contact();
+    test_air_full_charge_370();
+    test_back_dash_shot_407();
+    test_row_351_is_handler_only();
+    test_dash_tap_shots();
+    test_delayed_reaction_rows();
+    test_first_live_record_opens_at_frame_zero();
+    test_landing_followup_chain_runs_to_its_last_phase();
+    test_back_kick_completes_its_final_phase();
     test_back_hit_throws_away();
     testRepeatContactSuppression(); testPhaseClock();
     testCharacterMoveTable(install);

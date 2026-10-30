@@ -44,6 +44,7 @@
 #include "gameplay/fixed_step.h"
 #include "gameplay/match.h"
 #include "gameplay/projectile.h"
+#include "gameplay/projectile_behavior.h"
 #include "gameplay/character_moves.h"
 #include "gameplay/weapon_definition.h"
 #include "gameplay/move_behavior.h"
@@ -2109,6 +2110,267 @@ void test_projectile_pool() {
 }
 
 // ===========================================================================
+//  Case 13b — Rena+0 powered charge row 8: the stage hit owns the explosion
+// ===========================================================================
+// The unpowered first charge (row 2) is the other stage-triggered explosion: its
+// recovered behavior spawns child row 3, whose own hitbox window is what damages.
+void test_rena0_unpowered_stage_explosion() {
+    section("13c. Rena+0 row 2 stage hit -> explosion child row 3");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_testCombo.load(install, 0, 0))
+        return skip_case("Rena 0 row 2 stage explosion");
+
+    const gameplay::BulletDefinition& row2 = g_testCombo.weapon.bullets[2];
+    const gameplay::BulletDefinition& row3 = g_testCombo.weapon.bullets[3];
+    check_int("row 2 parameter is type*10+status", 20, row2.paramId());
+    check_int("row 3 parameter is type*10+status", 30, row3.paramId());
+    const gameplay::ProjectileBehavior* parent =
+        gameplay::projectileBehavior(g_testCombo.weapon.id, row2.paramId());
+    const gameplay::ProjectileBehavior* child =
+        gameplay::projectileBehavior(g_testCombo.weapon.id, row3.paramId());
+    check_bool("row 2 behavior is registered", true, parent != nullptr);
+    check_bool("row 3 behavior is registered", true, child != nullptr);
+    if (!parent || !child) return;
+    check_int("row 2's wall child is row 3", 3, parent->wallRow);
+    check_int("row 2's own hit radius", 0, g_testCombo.bullets[2].hitRadius);
+
+    const gameplay::BulletParameter& charge = g_testCombo.bullets[2];
+    const gameplay::BulletParameter& boom = g_testCombo.bullets[3];
+    bool window = boom.phases.size() == 1 && boom.phases[0].entryCount == 2;
+    for (int age = 0; age <= 9; ++age) {
+        const gameplay::MoveEntry* record =
+            boom.phases.empty() ? nullptr : boom.phases[0].record_at(age);
+        window = window && record && record->has_combat();
+    }
+    check_bool("row 3 keeps its hitbox through age 9", true, window);
+    const gameplay::MoveEntry* closing =
+        boom.phases.empty() ? nullptr : boom.phases[0].record_at(10);
+    check_bool("row 3's hitbox closes at age 10", true,
+               closing && !closing->has_combat());
+
+    std::vector<uint8_t> bytes;
+    check_bool("row 2 model exists", true,
+               fnd::assets::assetSource().read("data/bullet/001/" + charge.modelName, bytes) &&
+                   !bytes.empty());
+    if (bytes.empty()) return;
+    xm::Model chargeModel = xm::loadMemory(bytes.data(), bytes.size());
+    bytes.clear();
+    check_bool("row 3 model exists", true,
+               fnd::assets::assetSource().read("data/bullet/001/" + boom.modelName, bytes) &&
+                   !bytes.empty());
+    if (bytes.empty()) return;
+    xm::Model boomModel = xm::loadMemory(bytes.data(), bytes.size());
+
+    Fighter shooter = make_idle_fighter(glm::vec3(0, 0, 0));
+    shooter.set_bullet_model(2, &chargeModel);
+    shooter.set_bullet_model(3, &boomModel);
+    Fighter victim = make_idle_fighter(glm::vec3(0, 0, 100));
+    const xm::Model wall = make_wall_model();
+    const game::physics::ModelIndex wallIndex = game::physics::buildModelIndex(wall);
+    ProjectilePool pool;
+    const auto findRow = [&pool](int row) -> const gameplay::Projectile* {
+        for (const auto& shot : pool.shots())
+            if (shot.alive && shot.bulletRow == row) return &shot;
+        return nullptr;
+    };
+    check_bool("row 2 charge allocates", true,
+               pool.spawn(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1), ShotTier::Yellow,
+                          &shooter, 2));
+    int stageHit = 0;
+    while (findRow(2) && stageHit < 30) {
+        pool.update(kDt, &victim, 1, &wall, &wallIndex);
+        ++stageHit;
+    }
+    check_int("the charge crosses the victim without damage", 100, victim.hp());
+    check_bool("the stage terminates the row 2 charge", true, findRow(2) == nullptr);
+    const gameplay::Projectile* explosion = findRow(3);
+    check_bool("the stage hit spawns child row 3", true, explosion != nullptr);
+    if (!explosion) return;
+    check_int("the child is spawned after the wall", 0, explosion->ticks);
+    check_bool("the child carries its real row 3 record and rig", true,
+               explosion->parameter == &boom && explosion->model == &boomModel);
+
+    pool.update(kDt, &victim, 1, nullptr, nullptr);
+    check_int("the row 3 explosion damages the victim", 85, victim.hp());
+    check_int("the explosion reports one contact", 1, pool.contact_count());
+    const int after = victim.hp();
+    pool.update(kDt, &victim, 1, nullptr, nullptr);
+    check_int("one explosion damages the same victim once", after, victim.hp());
+}
+
+void test_rena0_powered_stage_explosion() {
+    section("13b. Rena+0 powered row 8 stage hit -> explosion child row 10");
+    const auto install = findInstall(nullptr);
+    if (install.empty() || !g_testCombo.load(install, 0, 0))
+        return skip_case("Rena 0 powered row 8 stage explosion");
+
+    // Real item data, not a test table: data/item/001.dat gives row 8 type 8/status 0
+    // (parameter 80) and row 10 type 10/status 0 (parameter 100). Row 8 is the powered
+    // air charge; its recovered wall child is row 10.
+    const gameplay::BulletDefinition& row8 = g_testCombo.weapon.bullets[8];
+    const gameplay::BulletDefinition& row10 = g_testCombo.weapon.bullets[10];
+    check_int("row 8 parameter is type*10+status", 80, row8.paramId());
+    check_int("row 10 parameter is type*10+status", 100, row10.paramId());
+    const gameplay::ProjectileBehavior* parentBehavior =
+        gameplay::projectileBehavior(g_testCombo.weapon.id, row8.paramId());
+    const gameplay::ProjectileBehavior* childBehavior =
+        gameplay::projectileBehavior(g_testCombo.weapon.id, row10.paramId());
+    check_bool("row 8 behavior is registered", true, parentBehavior != nullptr);
+    check_bool("row 10 behavior is registered", true, childBehavior != nullptr);
+    if (!parentBehavior || !childBehavior) return;
+    check_int("row 8's wall child is row 10", 10, parentBehavior->wallRow);
+    check_int("row 10 explosion lifetime", 51, childBehavior->lifetime);
+    check_int("row 10 persists after contact",
+              static_cast<int>(gameplay::ProjectileContact::Persist),
+              static_cast<int>(childBehavior->contact));
+
+    // Row 8's own record has radius 0, so the charge passes a fighter without contact;
+    // only the stage can retire it. Row 10's first record is the real explosion hitbox
+    // (radius 600, activeFrame 0) and the second starts at age 10 with radius 0, so
+    // 0..9 is the only damage window.
+    const gameplay::BulletParameter& charge = g_testCombo.bullets[8];
+    const gameplay::BulletParameter& explosion = g_testCombo.bullets[10];
+    check_bool("row 8 has one combat record", true,
+               charge.phases.size() == 1 && charge.phases[0].entryCount == 1);
+    check_int("row 8's own hit radius", 0, charge.hitRadius);
+    check_bool("row 10 has two records", true,
+               explosion.phases.size() == 1 && explosion.phases[0].entryCount == 2);
+    bool window = explosion.phases.size() == 1;
+    for (int age = 0; age <= 9; ++age) {
+        const gameplay::MoveEntry* record =
+            explosion.phases.empty() ? nullptr : explosion.phases[0].record_at(age);
+        window = window && record && record->activeFrame == 0 &&
+                 record->has_combat() && record->hitRadius == 600;
+    }
+    check_bool("row 10's 600-radius hitbox is live for every age 0..9", true, window);
+    const gameplay::MoveEntry* closing =
+        explosion.phases.empty() ? nullptr : explosion.phases[0].record_at(10);
+    check_bool("row 10's hitbox closes at age 10", true,
+               closing && closing->activeFrame == 10 && !closing->has_combat() &&
+               closing->hitRadius == 0);
+    const gameplay::MoveEntry* opening =
+        explosion.phases.empty() ? nullptr : explosion.phases[0].record_at(0);
+    check_int("row 10 power", 3000, opening ? opening->baseDamage : -1);
+    check_int("row 10 impact effect", 10, opening ? opening->combat[16] : -1);
+    // FUN_00637950's shot chain: baseDamage 3000 -> 1500 pool -> 15 on maxHP 100.
+    check_int("row 10's damage on a 100 HP victim", 15,
+              opening ? static_cast<int>(opening->baseDamage * 100.f / 20000.f + .5f) : -1);
+
+    // The real .X rigs the two rows name. Row 10's model is load-bearing: without it the
+    // explosion takes the legacy radius path and never reads the record hitbox.
+    std::vector<uint8_t> modelBytes;
+    check_bool("row 8 model exists", true,
+               fnd::assets::assetSource().read("data/bullet/001/" + charge.modelName,
+                                              modelBytes) && !modelBytes.empty());
+    if (modelBytes.empty()) return;
+    xm::Model chargeModel = xm::loadMemory(modelBytes.data(), modelBytes.size());
+    modelBytes.clear();
+    check_bool("row 10 model exists", true,
+               fnd::assets::assetSource().read("data/bullet/001/" + explosion.modelName,
+                                              modelBytes) && !modelBytes.empty());
+    if (modelBytes.empty()) return;
+    xm::Model explosionModel = xm::loadMemory(modelBytes.data(), modelBytes.size());
+
+    Fighter shooter = make_idle_fighter(glm::vec3(0, 0, 0));
+    shooter.set_bullet_model(8, &chargeModel);
+    shooter.set_bullet_model(10, &explosionModel);
+    Fighter victim = make_idle_fighter(glm::vec3(0, 0, 100));
+
+    // A 200x200 quad at z = 100, the layout collision_tama.x parses to (the existing
+    // wall case above pins that shape). The charge's 25-unit steps cross it on update 4.
+    const xm::Model wall = make_wall_model();
+    const game::physics::ModelIndex wallIndex = game::physics::buildModelIndex(wall);
+    ProjectilePool pool;
+    const auto findRow = [&pool](int row) -> const gameplay::Projectile* {
+        for (const auto& shot : pool.shots())
+            if (shot.alive && shot.bulletRow == row) return &shot;
+        return nullptr;
+    };
+    check_bool("row 8 charge allocates", true,
+               pool.spawn(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1),
+                          ShotTier::Yellow, &shooter, 8));
+    check_bool("the charge carries row 8's behavior", true,
+               findRow(8) && findRow(8)->behavior == parentBehavior);
+    check_bool("no explosion exists before the stage hit", true, findRow(10) == nullptr);
+
+    int stageHit = 0;
+    while (findRow(8) && stageHit < 30) {
+        pool.update(kDt, &victim, 1, &wall, &wallIndex);
+        ++stageHit;
+    }
+    // Row 8's radius is 0: it crosses the victim without damage, and only the stage
+    // retires it.
+    check_int("the charge crosses the victim without damage", 100, victim.hp());
+    check_bool("the stage terminates the charge", true, findRow(8) == nullptr);
+    check_int("stage hit update", 4, stageHit);
+    const gameplay::Projectile* child = findRow(10);
+    check_bool("the stage hit spawns child row 10", true, child != nullptr);
+    if (!child) return;
+    // Spawn-after-wall: emissions are resolved after the shot loop, so the child is
+    // still at its birth state after the update that killed its parent.
+    check_int("child is spawned after the wall, not advanced by it", 0, child->ticks);
+    check_int("child's record clock starts at age 0", 0, child->elapsed);
+    check_bits("child's age starts at 0", 0.0f, child->age);
+    check_near("child sits on the stage plane", 100.0, child->pos.z, 1e-3);
+    check_bool("child carries its real row 10 record and rig", true,
+               child->parameter == &explosion && child->model == &explosionModel);
+    check_bool("child age 0 is the 600-radius hitbox", true,
+               child->record() && child->record()->hitRadius == 600 &&
+               child->record()->activeFrame == 0);
+    check_int("the stage hit leaves one spark", 1, count_live_sparks(pool));
+
+    // First child update (age 1, inside the 0..9 window): the explosion damages.
+    pool.update(kDt, &victim, 1, nullptr, nullptr);
+    check_int("the row 10 explosion deals 15", 85, victim.hp());
+    check_int("the explosion reports one contact", 1, pool.contact_count());
+    if (pool.contact_count() > 0) {
+        check_int("the contact names the victim", 0, pool.contact(0).victim);
+        check_int("the contact carries row 10's impact effect", 10,
+                  pool.contact(0).effect);
+    }
+    check_bool("the persisted explosion survives its hit", true, findRow(10) != nullptr);
+    const int afterExplosion = victim.hp();
+    pool.update(kDt, &victim, 1, nullptr, nullptr);
+    check_int("one explosion damages the same victim once", afterExplosion, victim.hp());
+
+    // Boundary: an explosion allowed to age past 9 with no victim cannot damage one at
+    // age 10; its second record has radius 0 and does not enter the combat test.
+    ProjectilePool aged;
+    const auto agedRow = [&aged](int row) -> const gameplay::Projectile* {
+        for (const auto& shot : aged.shots())
+            if (shot.alive && shot.bulletRow == row) return &shot;
+        return nullptr;
+    };
+    check_bool("second charge allocates", true,
+               aged.spawn(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1),
+                          ShotTier::Yellow, &shooter, 8));
+    int agedStageHit = 0;
+    while (agedRow(8) && agedStageHit < 30) {
+        aged.update(kDt, nullptr, 0, &wall, &wallIndex);
+        ++agedStageHit;
+    }
+    check_bool("second charge spawns its explosion", true, agedRow(10) != nullptr);
+    if (!agedRow(10)) return;
+    bool agesStayOpen = true;
+    for (int age = 1; age <= 9; ++age) {
+        aged.update(kDt, nullptr, 0, nullptr, nullptr);
+        const gameplay::Projectile* shot = agedRow(10);
+        agesStayOpen = agesStayOpen && shot && shot->elapsed == age &&
+                       shot->record() && shot->record()->activeFrame == 0 &&
+                       shot->record()->hitRadius == 600;
+    }
+    check_bool("row 10 keeps its hitbox through age 9", true, agesStayOpen);
+    aged.update(kDt, &victim, 1, nullptr, nullptr);
+    check_int("the age-10 record is selected", 10,
+              agedRow(10) ? agedRow(10)->elapsed : -1);
+    check_bool("the age-10 record has no combat", true,
+               agedRow(10) && agedRow(10)->record() &&
+               !agedRow(10)->record()->has_combat());
+    check_int("no damage after the age 0..9 window", 85, victim.hp());
+    check_int("no contact after the window", 0, aged.contact_count());
+}
+
+// ===========================================================================
 //  Case 14 — determinism: the same 600-frame script twice, byte-identical
 // ===========================================================================
 void trace_put(std::vector<unsigned char>& out, const void* p, std::size_t n) {
@@ -3111,19 +3373,12 @@ void test_rena0_powered_branches() {
               static_cast<int>(airCharge.charge_tier()));
     // Leap and HOLD Z: the plain-leap window (47 updates) is shorter than the
     // remaining program, so hold Z against the fly budget like the Rika air witness
-    // does. The charge is re-lost for one tick (the jump returns before the charge
-    // block) and then re-accrues, so keep C held through the air as well.
+    // does. FUN_00445ee0:17-19 asserts the charge before the jump branch, so the tier
+    // survives the leap and the release can follow immediately.
     air.set(fnd::input::Action::Jump, true);
     tick(airCharge, air);
-    // Wait only until the charge re-accrues mid-flight, then release immediately: the
-    // fly budget holds ~112 updates, which is more than the 60-update program needs,
-    // but draining the whole flight first would land the fighter before the release.
-    int airTicks = 0;
-    while (airCharge.charge_tier() != ShotTier::Yellow && airCharge.airborne() &&
-           airTicks++ < 200)
-        tick(airCharge, air);
-    check_bool("charge re-accrues during the flight", true,
-               airTicks > 1 && airTicks < 200);
+    check_bool("the charge survives the leap", true,
+               airCharge.charge_tier() == ShotTier::Yellow);
     check_bool("driver still airborne at the release", true, airCharge.airborne());
     air.set(fnd::input::Action::Shoot, false);
     tick(airCharge, air);
@@ -6075,6 +6330,8 @@ int main(int argc, char** argv) {
     test_facing();
     test_anim_binding();
     test_projectile_pool();
+    test_rena0_powered_stage_explosion();
+    test_rena0_unpowered_stage_explosion();
     test_determinism();
 
     std::printf("\n%d checks, %d failed, %d skipped\n", g_checks, g_fails, g_skipped);

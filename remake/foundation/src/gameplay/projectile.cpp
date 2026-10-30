@@ -47,14 +47,19 @@ void moveShot(Projectile& shot, float step) {
         if (shot.ticks == 1) shot.vel.y = behavior->launchVertical / step;
         if (shot.ticks > 0) shot.vel.y -= behavior->gravity / step;
     } else {
-        if (shot.target && shot.homing && behavior->turn + behavior->turnBase + behavior->turnDecay > 0.f) {
+        if (shot.target && shot.homing &&
+            behavior->turn + behavior->turnBase + behavior->turnDecay + behavior->turnGrow > 0.f) {
             const glm::vec3 offset = shot.target->position() - shot.pos;
             const float desiredYaw = std::atan2(offset.x,offset.z);
             const float difference = std::remainder(desiredYaw-shot.yaw,glm::two_pi<float>());
             if (std::abs(difference) > glm::half_pi<float>()) shot.homing = false;
             if (shot.homing) {
-                const float rate = glm::radians(behavior->turn + behavior->turnBase +
-                    behavior->turnDecay * std::max(0,behavior->turnCounter-shot.ticks-1));
+                // FUN_005f91c0's degree steps: a decaying term for the 110/120 pair
+                // and a growing one for the Q25 rows (counter*0.01+0.25, capped 120).
+            const int counter = std::min(behavior->turnCounter, shot.ticks + 1);
+            const float rate = glm::radians(behavior->turn + behavior->turnBase +
+                    behavior->turnDecay * std::max(0,behavior->turnCounter-shot.ticks-1) +
+                    behavior->turnGrow * static_cast<float>(counter));
                 shot.yaw += std::clamp(difference,-rate,rate);
                 const float desiredPitch = std::atan2(offset.y,std::hypot(offset.x,offset.z));
                 const float pitchDifference = desiredPitch-shot.pitch;
@@ -108,6 +113,7 @@ bool ProjectilePool::spawn(const glm::vec3& pos, const glm::vec3& dir,
         s.model = owner ? owner->bullet_model(bulletRow) : nullptr;
         s.behavior = definition ? projectileBehavior(weapon->id,definition->paramId()) : nullptr;
         s.yaw = std::atan2(dir.x,dir.z);
+        if (s.behavior) s.yaw += glm::radians(s.behavior->initialYaw);
         s.pitch = std::atan2(dir.y,std::hypot(dir.x,dir.z));
         s.aimDirection = dir;
         if (s.behavior) {

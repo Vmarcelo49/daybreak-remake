@@ -4,7 +4,7 @@
 # reach, so the recovered guard body's 391 path (a guarded contact) is exercised live.
 #
 #   --stage=data/stage03 --character=data/rena:0 --enemy=data/mion:0 \
-#     --spawn=-1200,400,0 --spawn2=-1200,400,60 --match --no-devices --headless \
+#     --spawn=-1200,400,0 --spawn2=-1200,400,60 --match --headless \
 #     --script=tests/scripts/guard-hold-live.txt --script2=tests/scripts/guard-attacker.txt \
 #     --frames=260 --no-audio --out=/tmp/guard.ppm
 70 GUARD

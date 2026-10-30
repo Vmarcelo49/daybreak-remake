@@ -23,6 +23,52 @@ recorded that the owner did not give. Current plan: [`DIRECTION.md`](DIRECTION.m
 
 ## Open
 
+## Q25 — Extend the projectile behavior table to the remaining shipped rows? (2026-10-29, frame-data audit)
+- **Blocks:** full frame-data coverage of Rena+0's shot family. The powered taps launch item rows 6/7 (`parameter 60/70`) and state 407 launches rows 4/9/13/14 (`40/90/130/140`); none of those parameters has an entry in `kProjectileBehavior`, so they fall back to the provisional per-tier tuning instead of the recovered motion, lifetime and wall-child rules. The other rows are covered: 0/1/2/3/10/11/12/17 and the two stage explosions (row 8→10, row 2→3).
+- **Evidence available:** the reconstructed switch (`rena_projectile_switches.hpp`, tier 3) covers all 18 registrations, and the original function `FUN_005f91c0` is addressable in the binary for the disputed cases (tier 2). This is a table extension, not a new mechanic.
+- **Why it needs the owner:** `projectile_behavior.h` is the frozen decision table. The Q23 exception covers only row 8→10, and Q24 only the reaction rows; neither reaches these six parameters.
+- **Options:** approve a scoped exception for the six parameters plus their tests (recommended), or leave the fallback documented as a named limit.
+- **Owner response (2026-10-29):** approved the scoped exception; recorded in `EXCEPTIONS.md` Q25.
+- **Tier-2 verification done (2026-10-29), and it found a model gap.** `FUN_005f91c0` confirms: 0x28 → speed 30, lifetime 480, initial yaw +45°, wall child 5; 0x3c → vertical 20, speed 45, lifetime 240, child 5; 0x46 → speed 45, lifetime 240, child 5; 0x5a → speed 30, yaw -45°, lifetime 480, child 5; 0x82/0x8c → speed 25, yaw ±60°, lifetime 480, child 5. The offsets are written to `+0x30` (an initial yaw offset relative to the aim) and the steering steps (`FUN_0042db10(0, step)`) are offsets in the same angle space as `+0x64`, while `ProjectileBehavior` can only set a visual `modelRoll`/`randomYaw` and treats its turn fields as radians. The unit is now settled: `FUN_0042db10` wraps `+0x64` within ±180 and steps by `param_3`, so these offsets are **degrees**, not radians. Applying the constants now would either drop the ±45/±60 launch yaw or convert degrees to radians without a model that means degrees.
+- **Implemented (2026-10-29):** `ProjectileBehavior` gained `initialYaw` (degrees added at
+  spawn) and `turnGrow` (degrees/tick per counted tick, capped by `turnCounter`). The six
+  parameters are registered: 40/90 at speed 30 and 130/140 at speed 25 (all lifetime 480,
+  3-degree approach, wall child 5, initial yaw +45/-45/+60/-60); 60/70 at speed 45,
+  lifetime 240 and the growing step `0.25 + 0.01 x min(120, tick+1)`. `animation_data_test`
+  checks each row's per-update speed, initial yaw, wall child and row 6's lifetime
+  boundary. **Still approximate, and named in `projectile_behavior.h`:** 0x3c's `+0x34`
+  vertical 20, the sub-degree inner steering (0.0035/0.004 x counter), the `FUN_0042dac0`
+  aim jitter and the 0xf/0x10 particles.
+
+
+## Q24 — Implement the latent reaction rows 104/105/204/205? — **ANSWERED 2026-10-29: implement**
+- **Owner response:** "Q24, implement agora, pode continuar." The bounded four-row
+  correction is recorded in [`EXCEPTIONS.md`](EXCEPTIONS.md) Q24 with its expiry.
+- **Tried (before the change):** Static read of `FUN_00428510` cases 0x68/0x69/0xcc/0xcd.
+  Phase 0 is an eight-frame gated clip (`+0x20 = 1`), so the generic tail never advances
+  it; each handler waits until the phase frame is greater than 0x3c before seeding motion
+  in phase 1. 105/205 take `combat[18]` as the slide and `combat[17]` as the lift with
+  0.3 gravity; 105 approaches -4 and 205 approaches +4 (0.25 a tick); touchdown
+  binds 118/119. Parsing
+  every `NN.dat` in the install: Rena+0's contact rows name only 100/101/113/114/115/
+  130/131, and 105/204/205 appear in no file at all (104 only in `ohishi/02.dat`).
+- **Implemented:** the gate now holds those four rows through phase 0, the phase-1
+  transition seeds the recovered law, 205 gained its entry with its +4 floor/0.25
+  decay, 105 gained the -4 floor, and 121/221 gained their 0.25 settle. `melee_rules_test` injects each row through
+  `take_damage` (documented as injection, not shipped contact) and asserts the 61-update
+  standstill, the 62nd-call transition, the per-row decay and the 118/119 touchdown. The
+  same test fails at the transition assertion when the new branch is disabled.
+- **Limits:** no tier-1 evidence; the port maps the recovered per-row seed signs
+  (0x69 negates combat[18], 0xcd adds it; 0xd8 alone stays negated) into its rotated
+  back frame, which is a tier-6 mapping of a tier-2 rule; the rows remain unreachable
+  from any shipped contact, so this is latent-path coverage, not pilot behaviour.
+
+## Q23 — Reconcile the approved melee fixture with recovered attacker hitstop, and scope projectile work? (2026-10-29, frame-data audit)
+- **Blocks:** an honest green pilot fixture run and changes to the approved acceptance expectation; extending the frozen Rena+0 projectile decision table for powered charge row 8.
+- **Tried:** `FUN_00637950:307-308` writes combat[9] to attacker hitstop and combat[10] to victim; the shipped Rena+0 row 300 contains 6 for each. A failing-first install-backed test now checks the attacker clock. The unchanged `rena0-hit-ground-300.fixture` expects recovery at tick 22 and fails after the fix; a scratch port trace sees recovery beginning at tick 26. The fixture repeatedly resets/repositions its dummy, so this is a port observation, not an original-runtime trace. The approved contract must not be silently changed. Separately, powered projectile row 8 has radius zero and the current projectile table lacks its wall-child behavior; the reconstructed table describes child row 10, but the relevant decision-table work is frozen without an allowed scoped exception or cited pilot blocker.
+- **Options:** approve a versioned correction to the melee expectation after reviewing its evidence (and, separately, a scoped pilot exception for the projectile behavior), or retain the old acceptance baseline and direct a different integration approach.
+- **Owner response (2026-10-29):** approved a versioned fixture correction with its port-observation limit, and approved a narrowly scoped exception for powered row 8 → child row 10. The owner subsequently explicitly requested that the agent record the narrow, dated, expiring exception on their behalf; see Q23 in `EXCEPTIONS.md`. No comprehensive parity claim.
+
 ## Q3 — Is Idle really move row 0? (2026-10-14, coordinator/AGENTS.md review)
 - **Decision (owner, 2026-10-14):** leave the row in place but mark it as needing
   static research.

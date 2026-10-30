@@ -445,7 +445,8 @@ is the violet-grey the tint asks for.
   which is what "it reaches every view's draw" looks like at 480x270 per cell.
 * **The 4-view capture is deterministic in this environment** — sha256 `0f30fad5…` on two
   runs of `--npr=off` — so §1's "not reproducible here" row is stale: it was measured
-  before issue #29 made verification runs ignore physical devices.
+  before issue #29 made verification runs ignore physical devices (that isolation was
+  removed on 2026-10-29).
 * Continuity with §6.9: the `--versus` 960x540 frame with `--npr=off` is still
   **md5 `b6c2ded7…`** and `--npr=on` still `b6f7fea9…`, i.e. the fight frame has not moved
   since the #25 captures.

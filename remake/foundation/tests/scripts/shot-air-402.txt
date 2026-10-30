@@ -6,7 +6,7 @@
 # gauge: 1000 -> 500 -> 0, and the third would find nothing to spend.
 #
 #   --stage=data/stage03 --character=data/rena:0 --enemy=data/mion:0 \
-#     --spawn=-1200,400,0 --spawn2=-1200,400,800 --match --no-devices --headless \
+#     --spawn=-1200,400,0 --spawn2=-1200,400,800 --match --headless \
 #     --script=tests/scripts/shot-air-402.txt --frames=300 --no-audio --out=/tmp/air.ppm
 #
 # P2 is idle and out of reach so nothing interrupts. The first 60 ticks are BattleStart.

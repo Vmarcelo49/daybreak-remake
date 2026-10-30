@@ -9,6 +9,7 @@
 #include "gameplay/fixed_step.h"
 #include "gameplay/match.h"
 #include "gameplay/move_behavior.h"
+#include "gameplay/projectile_behavior.h"
 #include "combo_fixture.h"
 
 #include <cmath>
@@ -1248,6 +1249,48 @@ void projectile_clocks(const Combo& combo) {
     check(std::abs(pool.shots()[0].pos.z-contactPosition.z-60.f)<1e-4f &&
           pool.shots()[0].hitsRemaining[0]==4 && !pool.shots()[0].contactPending,
           "red nata resumes at sixty units/update, retaining its five-hit victim budget");
+
+    // Q25 rows (item 001 parameters 40/60/70/90/130/140): FUN_005f91c0's speeds,
+    // lifetime, wall child 5 and the +0x30 initial yaw offset. No target, so the
+    // projectile flies straight along that offset.
+    struct Q25Row { int row; float speed; float yawDegrees; };
+    const Q25Row q25[] = {{4,30.f,45.f},{6,45.f,0.f},{7,45.f,0.f},
+                          {9,30.f,-45.f},{13,25.f,60.f},{14,25.f,-60.f}};
+    for (const Q25Row& expected : q25) {
+        pool.clear();
+        check(pool.spawn({0,0,0},{0,0,1},gameplay::ShotTier::Tap,&owner,expected.row),
+              "Q25 row allocates");
+        const gameplay::Projectile* shot = nullptr;
+        for (const auto& s : pool.shots())
+            if (s.alive && s.bulletRow==expected.row) shot=&s;
+        check(shot && shot->behavior && shot->behavior->wallRow==5,
+              "Q25 row carries the recovered behavior and wall child 5");
+        if (!shot) continue;
+        const glm::vec3 from = shot->pos;
+        pool.update(gameplay::FixedStep::seconds,nullptr,0,nullptr,nullptr);
+        const gameplay::Projectile* moved = nullptr;
+        for (const auto& s : pool.shots())
+            if (s.alive && s.bulletRow==expected.row) moved=&s;
+        check(moved!=nullptr,"Q25 row survives its first update");
+        if (!moved) continue;
+        const glm::vec3 delta = moved->pos - from;
+        check(std::abs(glm::length(delta)-expected.speed)<1e-3f,
+              "Q25 row moves at the recovered per-update speed");
+        const float yaw = glm::degrees(std::atan2(delta.x,delta.z));
+        check(std::abs(std::remainder(yaw-expected.yawDegrees,360.f))<0.5f,
+              "Q25 row launches on its recovered initial yaw offset");
+    }
+    // Row 60's lifetime is 240 updates (FUN_005f91c0 case 0x3c); the tick that sees
+    // ticks > lifetime retires it.
+    pool.clear();
+    check(pool.spawn({0,0,0},{0,0,1},gameplay::ShotTier::Tap,&owner,6),
+          "row 6 lifetime probe allocates");
+    for (int i=0;i<241;++i) pool.update(gameplay::FixedStep::seconds,nullptr,0,nullptr,nullptr);
+    check(pool.shots()[0].ticks==241, "row 6 has ticked 241 times (got " +
+          std::to_string(pool.shots()[0].ticks) + ")");
+    check(pool.live_shots()==1,"row 6 is alive while its tick count equals the lifetime");
+    pool.update(gameplay::FixedStep::seconds,nullptr,0,nullptr,nullptr);
+    check(pool.live_shots()==0,"row 6 retires once the tick count passes its 240 lifetime");
 }
 } // namespace
 

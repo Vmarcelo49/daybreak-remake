@@ -60,7 +60,7 @@ WHOLE_RE = re.compile(r"overall (\d+\.\d+)")
 
 
 def run_capture(spawn, spawn2, out):
-    cmd = [str(BINARY), "--headless", "--no-devices", f"--out={out}",
+    cmd = [str(BINARY), "--headless", f"--out={out}",
            f"--stage={DATA / 'stage01'}", f"--character={DATA / 'rena'}",
            f"--enemy={DATA / 'mion'}", "--match", "--camera=arena",
            f"--spawn={spawn}", f"--spawn2={spawn2}",

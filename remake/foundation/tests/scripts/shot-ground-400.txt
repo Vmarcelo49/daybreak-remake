@@ -5,7 +5,7 @@
 # levels share the same body. P2 is idle and out of melee reach so nothing interrupts.
 #
 #   --stage=data/stage03 --character=data/rena:0 --enemy=data/mion:0 \
-#     --spawn=-1200,400,0 --spawn2=-1200,400,800 --match --no-devices --headless \
+#     --spawn=-1200,400,0 --spawn2=-1200,400,800 --match --headless \
 #     --script=tests/scripts/shot-ground-400.txt --frames=260 --no-audio --out=/tmp/shot.ppm
 70 SHOOT
 74 -

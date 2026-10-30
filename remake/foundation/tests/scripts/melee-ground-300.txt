@@ -7,7 +7,7 @@
 # branch whose axis convention is facing-relative rather than a naive screen axis.
 #
 #   --stage=data/stage03 --character=data/rena:0 --enemy=data/mion:0 \
-#     --spawn=-1200,400,0 --spawn2=-1200,400,60 --match --no-devices --headless \
+#     --spawn=-1200,400,0 --spawn2=-1200,400,60 --match --headless \
 #     --script=tests/scripts/melee-ground-300.txt --frames=260 --no-audio --out=/tmp/melee.ppm
 70 MELEE
 74 -

@@ -6,7 +6,7 @@ GUI to the game. Enable the Linux development build with
 then build `foundation_demo`. Normal builds default OFF, and normal launches do not
 create an endpoint. Windows/web currently have no transport.
 
-Launch a **visible standalone match** with `--live-debug --no-devices --no-audio`
+Launch a **visible standalone match** with `--live-debug --no-audio`
 and `SDL_AUDIO_DRIVER=dummy`. The game prints a fresh private session directory and
 starts paused. Connect `python3 remake/foundation/scripts/live_debug.py <directory>`.
 The client is interactive and retains one socket; disconnect pauses the match and

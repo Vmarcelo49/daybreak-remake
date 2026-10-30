@@ -3,7 +3,8 @@
 // victim anchors (Head origin, Spine local -50 on X; FUN_00420880).
 // NN.dat current records supply geometry and combat values. melee_rules.h
 // keeps only the anatomical radius and the legacy/custom-character defaults;
-// the active data path does not use a fabricated startup/recovery window.
+// live contact uses phase-local records; a provisional preview/fallback window
+// remains in use by some gated moves (see Fighter::resolve_swing).
 
 namespace gameplay {
 
@@ -35,9 +36,9 @@ struct MeleeRules {
     }
 };
 
-// A swing's startup/active/recovery split, in ticks of the fixed simulation. The
-// historical 30-frame attack is 5 + 8 + 17, so no timing drifts; a bound move table
-// overwrites the three fields per swing.
+// Provisional legacy/preview split, not an original frame-data source. A bound
+// move table can replace startup and active but recovery remains 17; phases and
+// body-driven transitions cannot generally be represented by this single window.
 struct MeleeWindow {
     int startupTicks  = 5;
     int activeTicks   = 8;

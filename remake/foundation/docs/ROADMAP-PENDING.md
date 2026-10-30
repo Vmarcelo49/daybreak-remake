@@ -46,7 +46,7 @@ that these screens or their audio do not exist.
 | G1 | Real-asset versus and live match executed in a browser | Hardware GPU and usable browser screenshots remain unverified |
 | G2 | Unverified | No macOS hardware available |
 | G3 | Re-measured for the issue #23 release gate: **165 pass, 43 known flags, 0 pipeline failures** (16 characters × 13 stages = 208 runs) | Existing install gaps remain and are unchanged: stage05/stage15 miss 4 dust textures on every other character and `kasai` misses its `g` texture on every stage. The old note here — "two roster characters (Satoko, item 008; Takano, item 011) currently fail the loud gear-up join" — is STALE and was retired by E8: all 46 selections launch |
-| #12 | One view per human controller: its own camera, cell and HUD values, match still stepped once; recovered one/two/four-cell layouts, viewport + scissor per view, per-view marker projection | Three-human layout is the original's four-cell grid with an empty cell (port policy for the placeholder); non-Linux execution unverified. Physical pads and interactive resize/fullscreen were the other two gaps: the port's own Options screen now drives a resolution change and a fullscreen toggle on both Wayland and X11 (nested compositor, `[display]` lines in `docs/RELEASE-CHECKLIST.md` §5), but a compositor-side mouse drag on the window edge is still untested and no run has driven the attached physical pad — the pad attached to the gate machine perturbed runs until device isolation was added (issue #29: a verification run ignores physical devices by default, `--devices` asks for them back, an unfocused window takes no input) — `docs/SPLIT-SCREEN.md` |
+| #12 | One view per human controller: its own camera, cell and HUD values, match still stepped once; recovered one/two/four-cell layouts, viewport + scissor per view, per-view marker projection | Three-human layout is the original's four-cell grid with an empty cell (port policy for the placeholder); non-Linux execution unverified. Physical pads and interactive resize/fullscreen were the other two gaps: the port's own Options screen now drives a resolution change and a fullscreen toggle on both Wayland and X11 (nested compositor, `[display]` lines in `docs/RELEASE-CHECKLIST.md` §5), but a compositor-side mouse drag on the window edge is still untested and no run has driven the attached physical pad — the pad attached to the gate machine perturbed runs until issue #29 added device isolation, which the owner removed on 2026-10-29 (every run reads the devices; an unfocused window takes no input) — `docs/SPLIT-SCREEN.md` |
 | #23 | Release gate: the checklist in `docs/RELEASE-CHECKLIST.md` demonstrates two humans (1v1), one human with COM and four humans (2v2) through three rounds each, the 46-selection sweep, the character × stage texture matrix, Wayland/X11, 30/60/high-refresh pacing, resize/fullscreen and a five-round prolonged stability run | Three release-blocking defects were found and fixed by the gate (the 1v1 result screen never loaded; a rematch submitted released vertex buffers and aborted; rematch rounds diverged from round 1). Still unverified, and named as such in the checklist: a second GPU vendor, physical controllers, hardware audio listening, other distributions and an interactive compositor-side resize |
 | #48 | The original's in-battle debug keys implemented (F1 full HP + both balloons, F2 COMs off, F3 COMs on, F4 gauges, Escape leave) with the recovered map, the per-fighter AI flag on `Match`, sampling on the fixed-step boundary, `--no-debug-keys` and the `--debug-keys=KEY@TICK` injection | Two port rules: the `DAT_006cfce9` gate becomes "always active in a battle" (the port has no story mode) and F4 fills every meter the port models because the original's per-slot `+0x318` selector has no counterpart; the interactive Escape stays issue #15's pause key, so the recovered leave is reached through the pause menu there. Full map, addresses and the evidence trace: `docs/DEBUG-KEYS.md` |
 
@@ -1943,7 +1943,7 @@ counts, and the team-select diamond's y anchor discrepancy. Scenes 2 and
 * **Evidence (measured, this pass — issue #23's release gate).** `tests/showcase.py --check`
   runs every (character, stage) pair headless and reads the demo's own
   `draws: N (X textured, Y untextured)` line, so the loader is the oracle.
-  Re-measured 2026-10-05 with `--no-devices`: **165/208 pass, 43 flag, zero
+  Re-measured 2026-10-05 (device isolation then on; removed 2026-10-29): **165/208 pass, 43 flag, zero
   pipeline failures** — the same baseline as the earlier pass, with the same
   breakdown (30 cells at 4 untextured draws on stage05/stage15, 11 cells at 2
   on `kasai`, 2 cells at 6 where both gaps overlap). The 43 reduce to
@@ -2000,13 +2000,12 @@ all fixed:
 
 Two evidence gaps were closed with them: `[menu] battle:` prints the round's
 settings, the display callbacks print what a fullscreen/resolution request
-actually did, and `--no-devices` keeps a verification run off physical input
-devices — SDL reports a connected pad whether or not the window has focus, and
-the pad attached to the gate machine moved menus and changed a HUD capture
-until the host suite and the demo-driving tools stopped reading devices. Issue
-#29 then made that the *default* for a verification run (the obstruction was
-opt-in, so any new recipe silently got contaminated results), added `--devices`
-to ask for the devices back, and made an unfocused window take no input.
+actually did, and the host suite stopped reading physical devices — SDL reports
+a connected pad whether or not the window has focus, and the pad attached to the
+gate machine moved menus and changed a HUD capture. Issue #29 turned that into a
+device-isolation switch for verification runs; the owner removed it on 2026-10-29
+because it made ordinary play-testing fail silently, so every run now reads the
+devices again and only an unfocused window ignores input.
 
 Still open, and stated as such in the checklist: a second GPU vendor, physical
 controllers, hardware audio listening, other distributions, an interactive
@@ -2196,7 +2195,7 @@ it cannot observe the windowed path. Captures cannot see this class at all:
 function — the blind spot issue #39 owns.
 
 Verified on 2026-10-06 (Linux, RADV, four-view battles at ~180 fps): the non-capturing
-windowed recipe (`--screen=title --local-players=4 --no-devices
+windowed recipe (`--screen=title --local-players=4
 --script=tests/scripts/frontend-2v2-rematch.txt`) died with `std::bad_alloc`/SIGABRT
 at the second scene swap before the fix, and after it ran round 1 (`stage04`) and
 round 2 (`stage21`) through their round-over and a third round (`stage01`) past its

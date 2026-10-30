@@ -6,7 +6,7 @@
 # enough in-domain ticks for the observer to compare state, binding and the phase clock.
 # P2 is deliberately idle (no --script2), exactly like the standalone dummy.
 #
-#   --match --script=tests/scripts/locomotion-walk-turn.txt --no-devices --headless \
+#   --match --script=tests/scripts/locomotion-walk-turn.txt --headless \
 #     --frames=240 --no-audio
 #
 # Add --native-actions=rena0 for the observe-mode pilot run; every non-[rena0-pilot] line

@@ -110,7 +110,7 @@ game runs. **With the game install (issue #35)**, wine-11.19, run inside an
 isolated headless KWin session:
 
 ```sh
-wine build/windows/foundation_demo.exe --install=Z:/<abs>/Higurashi-Daybreak --no-devices
+wine build/windows/foundation_demo.exe --install=Z:/<abs>/Higurashi-Daybreak
 ```
 
 reaches the title screen through the opening movie (issue #40's decoder, on this
@@ -128,7 +128,7 @@ and with the release gate's own script
 
 ```sh
 wine build/windows/foundation_demo.exe --install=Z:/<abs>/Higurashi-Daybreak \
-  --screen=title --local-players=2 --no-devices \
+  --screen=title --local-players=2 \
   --script=Z:/<abs>/remake/foundation/tests/scripts/frontend-1v1-rematch.txt
 ```
 

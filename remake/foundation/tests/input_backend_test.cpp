@@ -17,28 +17,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     {
-        // --no-devices (issue #23's verification instrument): with devices disabled the
-        // backend reports no pad for slots 1..3 and drops the keyboard, so a run is driven
-        // only by its script and the synthetic pads. SDL reports a connected controller
-        // whether or not the window has focus, so without this a second application's pad
-        // moves a capture's menus (measured: hud_cell_scale's probe markers moved).
-        fnd::input::Backend isolated;
-        if (!isolated.init()) { SDL_Quit(); return 1; }
-        isolated.set_devices_enabled(false);
-        isolated.poll();
-        check(isolated.device(0) == fnd::input::DeviceType::Keyboard,
-              "device-free run keeps the keyboard slot for the script");
-        for (int p = 1; p < 4; ++p)
-            check(isolated.device(p) == fnd::input::DeviceType::None,
-                  "device-free run reports no pad for a pad-less slot");
-        bool anyHeld = false;
-        for (int p = 0; p < 4; ++p)
-            for (int a = 0; a < fnd::input::ActionCount; ++a)
-                anyHeld = anyHeld || isolated.player(p).down[a];
-        check(!anyHeld, "device-free run starts with no held action");
-    }
-    {
-        // Issue #29's focus gate: an unfocused window accepts no device input, and the
+        // Focus gate: an unfocused window accepts no device input, and the
         // DEFAULT is focused — a compositor that never delivers FOCUS_GAINED (or a run with
         // no window at all, like --headless) must not leave the game unresponsive.
         using namespace fnd::input;

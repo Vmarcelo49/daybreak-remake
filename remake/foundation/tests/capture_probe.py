@@ -77,7 +77,7 @@ def transcript_tail(text, lines=TRANSCRIPT_TAIL_LINES):
     return "\n".join(tail[-lines:])
 
 
-def run_demo(demo, install, out, args, cwd=None, timeout=900, no_devices=True):
+def run_demo(demo, install, out, args, cwd=None, timeout=900):
     """Run one headless capture, returning its merged transcript.
 
     Raises PrerequisiteMissing when the demo reports no usable GPU adapter, and
@@ -85,8 +85,6 @@ def run_demo(demo, install, out, args, cwd=None, timeout=900, no_devices=True):
     failure: a suite that waits forever must not look like a clean skip.
     """
     cmd = [demo, "--headless"]
-    if no_devices:
-        cmd.append("--no-devices")
     cmd += ["--install=" + install, "--out=" + out] + list(args)
     try:
         proc = subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE,

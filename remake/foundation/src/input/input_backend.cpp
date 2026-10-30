@@ -205,12 +205,9 @@ const PlayerState& Backend::player(int index) const {
 
 DeviceType Backend::device(int index) const {
     if (index < 0 || index >= kMaxPlayers) return DeviceType::None;
-    // A device-free run reports no pad at all, so a pad-less controller takes the synthetic
-    // pattern (driveSyntheticLocalPads) instead of being skipped for a device the run is
-    // ignoring. The focus gate deliberately does NOT do this: an unfocused window still
-    // names the pad it has, because a slot reported empty would be handed to the synthetic
-    // pad and the game would play itself.
-    if (!devices_enabled_) return index == 0 ? DeviceType::Keyboard : DeviceType::None;
+    // The focus gate does not blank the slot: an unfocused window still names the pad it
+    // has, because a slot reported empty would be handed to the synthetic pad and the game
+    // would play itself.
     return devices_[index];
 }
 

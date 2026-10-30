@@ -177,7 +177,6 @@ int main(int argc, char** argv) {
     // Match assembly mutates opts.match, but a played frontend's backend policy
     // was chosen at startup and must survive both first entry and rematches.
     check(app.matchInput.init(), "interactive input backend initializes");
-    app.matchInput.set_devices_enabled(readPhysicalDevices(app.opts));
     app.matchInputReady = true;
     auto sampleInput = [&]() {
         app.matchInput.poll(false);

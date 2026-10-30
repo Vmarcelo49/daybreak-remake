@@ -63,16 +63,6 @@ class Backend {
 
     const PlayerState& player(int index) const;
     DeviceType device(int index) const;
-    // Device isolation (issue #29; a verification instrument, not a player feature). When
-    // off: poll() stops reading the keyboard and the gamepads, the forwarded device events
-    // (note_key/note_gamepad_button) are dropped, and device() reports none of them, so a
-    // run is driven only by its script and by --local-players' synthetic pads. WHY it
-    // exists: SDL reports a connected controller whether or not this window has focus, so
-    // on a shared machine another application's pad moves this run's menus and changes its
-    // captures. main.cpp turns it off for every verification run (--headless, --out=,
-    // --script=, ...) unless --devices asks for the physical devices back; --no-devices
-    // asks for the same thing in a run that would otherwise read them.
-    void set_devices_enabled(bool enabled) { devices_enabled_ = enabled; }
     int gamepad_player(int32_t instanceId) const;
     bool any_just_pressed(Action action) const;
     bool any_down(Action action) const;
@@ -83,8 +73,8 @@ class Backend {
     // and those keys are deliberately not actions: routing them through the key-config
     // screen would let a player rebind away the only way to skip a movie, and a remapped
     // action would skip it on the wrong key. Fed by note_key like everything else, so the
-    // device gate (issue #29), the focus gate and suppression all still hold — a
-    // verification run's script and synthetic pads can never report a key down here.
+    // focus gate and suppression still hold — a script or synthetic pad can never report a
+    // key down here.
     bool key_down(int scancode) const {
         return scancode >= 0 && scancode < kKeyHeldSize && key_held_[scancode];
     }
@@ -143,7 +133,6 @@ class Backend {
     void* pads_[kMaxPlayers];  // SDL_Gamepad* when open; void* keeps SDL out
     bool key_held_[kKeyHeldSize];
     bool inited_ = false;
-    bool devices_enabled_ = true;
     bool window_focused_ = true;   // unknown focus means focused (note_focus_lost)
     bool suppressedKeys_[kKeyHeldSize] = {};
     bool suppressedButtons_[kMaxPlayers][26] = {};
@@ -166,9 +155,9 @@ class Backend {
     void update_keyboard();
     void update_gamepad(int index);
     void suppress_held_devices();
-    // True when physical device input must not be read: the run owns every slot
-    // (set_devices_enabled(false)) or the window is unfocused.
-    bool device_input_ignored() const { return !devices_enabled_ || !window_focused_; }
+    // True when physical device input must not be read: the window is unfocused. A lost
+    // focus drops held keys and ignores the devices until focus returns.
+    bool device_input_ignored() const { return !window_focused_; }
 };
 
 }  // namespace fnd::input

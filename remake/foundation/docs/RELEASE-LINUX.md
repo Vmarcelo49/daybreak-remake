@@ -221,7 +221,7 @@ observation is recorded with the command, the session (Wayland/X11) and the date
 
 **A6. Close the hardware and environment rows that need hardware.** Checklist
 §5.1 names them: a physical controller walking a panel and a battle with its own
-bindings (`--devices`); hardware audio listening (the backend's dummy-device
+bindings (the run reads physical devices by default); hardware audio listening (the backend's dummy-device
 verification is not listening); a second GPU vendor; an interactive
 compositor-side window drag-resize. *Depends on:* A3; runs in parallel with A5.
 *Done when:* each row is either **run** (with the transcript) or explicitly

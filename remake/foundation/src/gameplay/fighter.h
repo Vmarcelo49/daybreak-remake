@@ -485,10 +485,9 @@ public:
 
     // `source` applies the attacker's Hypermode damage bonus and earns its
     // gauge (Friendship). Pass nullptr for environmental damage.
-    // `hitstunFrames` overrides the hit-stun length when > 0: FUN_00637950:308 writes
-    // the attacker's weapon block defenderHitstun (blob index 10, record +0x58) into
-    // the victim's +0xa0 action counter, so the stun length is per weapon. 0 and
-    // negative (the default) keep the shared kHitStunFrames.
+    // `hitstunFrames` is the victim's hitstop (+0xa0), not reaction length:
+    // FUN_00637950:308 reads combat[10] at record+0x58. The legacy timed
+    // fallback for a missing playable reaction row is separate.
     // `hitCategory` is the RAW record +0x64 dword the original feeds FUN_0063ba80
     // (@0x638c26) to pick the victim's reaction move; 0 is "unspecified", which takes
     // that function's default branch (198, the downed reaction) exactly as any
@@ -497,8 +496,6 @@ public:
     DamageResult take_damage(int amount, Fighter* source = nullptr, int hitstunFrames = -1,
                              int hitCategory = 0, bool shot = false,
                              const HitReaction& reaction = HitReaction());
-    // The reaction countdown and its expiry (see m_reactionCounter above).
-    float reaction_counter() const { return m_reactionCounter; }
     // The row the current reaction plays (a test seam: the row is otherwise internal).
     int reaction_move_for_test() const { return m_reactionMove; }
     int down_row_for_test() const { return m_downRow; }
@@ -1076,6 +1073,9 @@ public:
     }
 
 private:
+    void reset_hit_reaction();
+    void seed_pending_reaction();
+    void apply_reaction_motion(const HitReaction& reaction, bool fromPhaseOne);
     // --- visual ---
     const xm::Model* m_model = nullptr;   // borrowed
     xm::Controller*  m_anim  = nullptr;   // borrowed; owns the playhead
@@ -1129,24 +1129,24 @@ private:
     // --- state machine ---
     FighterState m_state       = FighterState::Idle;
     int          m_stateTimer  = 0;    // frames remaining in current state
-    // FUN_00637950 @0x638633/0x638645 hands the victim two launch words from the record
-    // (combat[17] → +0x87c, combat[18] → +0x878). Its consumer (0x428af8-0x428b2e) scales both
-    // by the global 0.01 (0x6a24c4), stores -(combat[18]*0.01) in the vertical slot (+0x54) and
-    // combat[17]*0.01 in +0x40, which decays by 0.3 a tick (0x428943/0x428946) and switches the
-    // victim to move 0x76 when it reaches zero (0x42897a/0x42897f). The counter and the rise are
-    // kept in the port's own units: seconds-free tick counts, with `m_vy` positive upward (the
-    // recovered slot's negation is the original's downward-positive convention).
+    // FUN_00637950 @0x638633/0x638645 supplies combat[17]/[18] at +0x87c/+0x878.
+    // FUN_00428510 case 0x71 scales them by 0.01 into vertical +0x40 and
+    // horizontal +0x54 respectively, with gravity +0x58 = 0.3 per update.
     // The row a hit reaction plays: combat[13] of the record that landed, handed in as
     // take_damage's `hitCategory`. 103 is the constant the port used before the records were
     // read (state_to_move_id's Hit entry), kept as the default when a record names none.
     int          m_reactionMove = 103;
     int          m_hitMeterA = 0;      // +0x7b8: stagger meter, threshold 100
     int          m_hitMeterB = 0;      // +0x7c0: combo count inside its own window
-    int          m_hitFreeze = 0;      // +0xa0: physics pause, set from combat[10]
+    int          m_hitFreeze = 0;      // +0xa0: record combat[9] attacker / combat[10] victim
     // The reaction row's own horizontal law (+0x54): a per-TICK facing-relative speed and its
     // per-tick decay, re-applied while the row plays (FUN_00428510's handlers own both numbers).
     float        m_rowSpeed = 0.f;
     float        m_rowDecel = 0.f;
+    // Rows 104/105/204/205 hold their gated phase 0 before seeding motion, so the
+    // record's pair waits here until the phase-1 transition (Q24).
+    HitReaction  m_pendingReaction;
+    bool         m_reactionSeedPending = false;
     bool         m_launched = false;   // the current Hit is a launch: landing becomes a knockdown
     int          m_downPhase = 0;      // +0xadf4's reaction phases: 1 lying, 2 get-up
     int          m_downRow = 0;        // 118/119 while lying, 120 for the get-up (0 = none)
@@ -1157,7 +1157,6 @@ private:
     // at 0x43df11 is a conditional recompute, not the default. At 100 a 120-power contact fills
     // the meter in ONE hit, which is why every swing flinches.
     static constexpr int kStaggerResist = 100;
-    float        m_reactionCounter = 0.f;   // +0x40
     int          m_hyperActivationFrames = 0;  // overlay window, or <0 for a gated hold (issue #71)
     int          m_hyperActivationSet = -1;   // overlay's bound set; -1 once superseded (issue #71)
     int          m_hyperActivationElapsed = 0;  // ticks since the overlay bound (issue #71)

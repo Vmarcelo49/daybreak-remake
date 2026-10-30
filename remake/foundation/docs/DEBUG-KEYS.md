@@ -59,11 +59,9 @@ keys are sampled inside `tickMatch`, which is the only place a battle ticks. The
 `DAT_006cfce9` therefore has no port counterpart and is not invented.
 
 `--no-debug-keys` switches them off; the keys are **on by default**. That default is the
-faithful one (the original's keys are live in a versus battle) and it costs nothing to the
-"off stays byte-identical" rule, because every verification run ignores the physical devices
-(issue #29) — `key_down()` reads `false` for every key, so no capture can move. The switch
-exists for the one run that does read devices in a capture (`--devices --out=`, a windowed
-recipe), where a stray F-key would otherwise silently change the frame.
+faithful one (the original's keys are live in a versus battle). Every run reads the physical
+devices and only an unfocused window ignores them, so the switch is the guard for a windowed
+`--out=` capture, where a stray F-key would otherwise silently change the frame.
 
 ### 2.2 The fixed-step boundary
 

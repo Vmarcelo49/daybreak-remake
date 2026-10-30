@@ -410,9 +410,10 @@ decodes video itself, so `src/movie/movie_player.cpp` compiles to a stub under E
 that reports the gap rather than shipping a second decoder into wasm
 ([`docs/MEDIA-INPUT.md`](docs/MEDIA-INPUT.md) §3). Live-pad and browser-gesture
 verification remain open: a pad attached to the gate machine perturbed runs
-until device isolation existed (issue #29 — a verification run ignores physical
-devices by default and an unfocused window takes no input), and no run drives
-that attached pad by hand; the pad-facing runs use SDL's virtual pad. The
+until issue #29 added a device-isolation switch, which the owner removed on
+2026-10-29 — every run now reads the devices and only an unfocused window
+ignores them — and no run drives that attached pad by hand; the pad-facing runs
+use SDL's virtual pad. The
 four-fighter battle path builds and passes the Linux test suite, and the release
 gate's four-human 2v2 completes three consecutive rounds with its VS/result
 presentation, per-view HUD markers and four-row report

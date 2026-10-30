@@ -168,6 +168,60 @@ void Fighter::bind(const xm::Model* model, xm::Controller* anim) {
     try_switch_animation();
 }
 
+void Fighter::reset_hit_reaction() {
+    m_reactionMove = 103;
+    m_hitMeterA = m_hitMeterB = m_hitFreeze = 0;
+    m_rowSpeed = m_rowDecel = 0.f;
+    m_pendingReaction = HitReaction{};
+    m_reactionSeedPending = false;
+    m_launched = false;
+    m_downPhase = m_downRow = 0;
+    m_staggerDecay = m_comboDecay = m_comboHits = 0;
+}
+
+// FUN_00428510 cases 0x68/0x69/0xcc/0xcd seed the reaction motion when the handler
+// transitions out of its gated phase 0, not when the blow lands.
+void Fighter::seed_pending_reaction() {
+    if (!m_reactionSeedPending) return;
+    m_reactionSeedPending = false;
+    apply_reaction_motion(m_pendingReaction, true);
+}
+
+void Fighter::apply_reaction_motion(const HitReaction& reaction, bool fromPhaseOne) {
+    const ReactionMotion motion = reaction_motion(m_reactionMove);
+    if (!motion.applies) {
+        m_rowSpeed = m_rowDecel = 0.f;
+        m_reactionSeedPending = false;
+        return;
+    }
+    if (motion.seedOnPhaseOne && !fromPhaseOne) {
+        // The recovered handler plays its gated phase 0 standing still and seeds the
+        // record on the phase-1 transition (FUN_00428510).
+        m_rowSpeed = 0.f;
+        m_rowDecel = motion.decel;
+        m_pendingReaction = reaction;
+        m_reactionSeedPending = true;
+        m_launched = false;
+        return;
+    }
+    m_reactionSeedPending = false;
+    // combat[18] (+0x78) is the horizontal impulse (+0x54), combat[17] (+0x74) the
+    // lift (+0x40). The front seed is `-combat[18]*0.01` (case 0x69), backwards along
+    // the body's facing. The +100 handlers write the opposite word: 0xd5/0xd6/0xd7 and
+    // 0xcd store `+combat[18]*0.01`, so the port's rotated back frame takes `+rise`;
+    // 0xd8 (216) alone negates it, keeping the front sign.
+    m_rowSpeed = motion.slideFromRecord
+                     ? (m_reactionMove >= 200 ? reaction.rise : -reaction.rise)
+                     : motion.speed;
+    m_rowDecel = motion.decel;
+    const float rise = motion.liftFromRecord ? std::fabs(reaction.counter) : motion.rise;
+    if (rise > 0.f) {
+        m_vy = std::max(m_vy, rise / static_cast<float>(FixedStep::seconds));
+        m_grounded = false;
+        m_launched = true;
+    }
+}
+
 void Fighter::init(const xm::Model* model, xm::Controller* anim,
                    const glm::vec3& pos, float facing) {
     bind(model, anim);
@@ -222,7 +276,7 @@ void Fighter::init(const xm::Model* model, xm::Controller* anim,
     m_airDashCarry = false;
     m_dashFall = false;
     m_landingTicks = 0;
-    m_reactionMove = 103;
+    reset_hit_reaction();
     m_hoverSpent = false;   // a new airtime re-arms the one hover
     try_switch_animation();
 }
@@ -257,7 +311,7 @@ void Fighter::reset(const glm::vec3& pos, float facing) {
     m_airDashCarry = false;
     m_dashFall = false;
     m_landingTicks = 0;
-    m_reactionMove = 103;
+    reset_hit_reaction();
     m_hoverSpent = false;   // a new airtime re-arms the one hover
     // FUN_00435660 restores round capacity while retaining refill/interval progress.
     restore_ammo();
@@ -321,7 +375,7 @@ void Fighter::respawn(const glm::vec3& spawn, float facing, float airY) {
     m_airDashCarry = false;
     m_dashFall = false;
     m_landingTicks = 0;
-    m_reactionMove = 103;
+    reset_hit_reaction();
     m_hoverSpent = false;   // a new airtime re-arms the one hover
     m_hp = m_maxHP;
     m_stamina = static_cast<float>(FighterConstants::kMaxStamina);
@@ -396,6 +450,9 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     m_sourceMeleeVoiceAudited = false;
     m_time += dt;
     m_animationBoundThisUpdate = false;
+    // Rena+0's executor returns at entry while actor+0xa0 is nonzero
+    // (FUN_0043ffc0); FUN_0041f580 decrements it later in the update.
+    const bool executorFrozen = m_hitFreeze > 0;
 
     // Hypermode first: it can activate this frame (S), expire, or drain
     // Kakera HP, all before the state machine reads the mode's modifiers.
@@ -425,18 +482,13 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     if (m_hyperFlash > 0) m_hyperFlash = std::max(0, m_hyperFlash - 4);
     // The stagger meter's window (+0x7bc) and the combo window (+0x7c4): both expire together
     // with their counters (FUN_0041f580 0x41f673-0x41f732).
-    if (m_staggerDecay > 0 && --m_staggerDecay == 0) m_hitMeterA = 0;
-    if (m_comboDecay > 0 && --m_comboDecay == 0) { m_hitMeterB = 0; m_comboHits = 0; }
-    // The hit's reaction clock (+0x40): -0x3e99999a = 0.3 per tick. The recovered consumer at
-    // 0x42897a rebinds row 0x76 (118) — the knockdown — but only from a row handler that is
-    // already airborne; the port reaches 118 from its own landing branch, so this clock only
-    // runs down. (switch_attack_row cannot express it: it writes the ATTACK row, while a
-    // victim's clip comes from m_reactionMove, so the old call restarted the same clip and
-    // armed a phantom swing.)
-    if (m_reactionCounter > 0.f) m_reactionCounter = std::max(0.f, m_reactionCounter - 0.3f);
-
-    // 1. Decrement state timer (mirrors +0xa0 in fcn.0041f580).
-    if (m_stateTimer > 0) {
+    if (!executorFrozen) {
+        if (m_staggerDecay > 0 && --m_staggerDecay == 0) m_hitMeterA = 0;
+        if (m_comboDecay > 0 && --m_comboDecay == 0) { m_hitMeterB = 0; m_comboHits = 0; }
+    }
+    // Port-only timed states approximate row completion, which the executor
+    // cannot evaluate during hitstop (FUN_0043ffc0).
+    if (!executorFrozen && m_stateTimer > 0) {
         --m_stateTimer;
         if (m_stateTimer == 0) {
             // The knockdown chain: lying (118/119) plays out, then the get-up row 120, and only
@@ -446,6 +498,10 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
                 if (m_downPhase == 1) {
                     m_downPhase = 2;
                     m_downRow = 120;
+                    m_phaseIndex = 0;
+                    m_moveElapsedTicks = 0;
+                    m_animSetIdx = -1;
+                    try_switch_animation();
                     m_stateTimer = std::max(1, move_row_frames(120));
                 } else {
                     m_downPhase = 0;
@@ -463,6 +519,15 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
             }
         }
     }
+
+    // FUN_00445ee0:17-19 asserts the shot charge before any action branch, so a held
+    // charge survives a jump, an attack or hitstop. The magazine's own tick resets an
+    // unasserted hold, so doing this only in the shoot block below wiped the charge on
+    // every tick another action (jump/melee/dash/guard) claimed.
+    if (m_weapon && input && is_alive() &&
+        (input->down[input::Action::Shoot] ||
+         (input->down[input::Action::Special] && !m_hyperActive)))
+        m_shootingMagazines[1].charge();
 
     // Guard is not actionable: release must bypass can_act(). Port rule until
     // the incoming-damage block flag is recovered (FUN_00431e70's voice keys
@@ -563,7 +628,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         // already-armed fallback shot has committed its aim before this point.
         if (!hasTurnRuleAtEntry && !m_pending.armed && !backJump) m_facing = m_inputFacing;
     }
-    execute_move_program(opponent, input);
+    if (!executorFrozen) execute_move_program(opponent, input);
     // The ribbon samples the prop's own active latch, which the executor re-derives
     // every frame; keep the value this frame's move program produced before anything
     // below can bind a different row or phase.
@@ -571,31 +636,40 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // The swing clock drives startup/active/recovery (melee_rules.h). It advances on
     // every tick the attack state is held, including recovery, so the recovery window is
     // a real lockout rather than a label.
-    if (m_state == FighterState::AttackA)
+    if (!executorFrozen && m_state == FighterState::AttackA)
         ++m_meleeElapsed;
 
     // 3. Update movement (if the state allows it).
     const glm::vec3 movementStart = m_position;
-    // The hit freeze (+0xa0 = the record's combat[10]): the original's motion integrator
-    // (FUN_004202b0) skips physics while that word is non-zero, so a victim is pinned in place
-    // for the freeze window even when the blow is not strong enough to change its state row.
-    // The animation clock keeps running, which is why the freeze reads as an impact and not as
-    // a pause.
-    // The reaction row owns the victim's horizontal speed while it plays: the original keeps
-    // +0x54 in the row and the integrator only PAUSES while the freeze runs, so the slide is
-    // still there when the freeze ends. Re-applying it every tick (instead of seeding a velocity
-    // once) is what makes the displacement survive both the freeze and the per-tick friction.
-    if ((m_state == FighterState::Hit || m_state == FighterState::Knockdown) && m_rowSpeed != 0.f) {
+    // FUN_004202b0 skips both axes while +0xa0 is nonzero. The counter is
+    // decremented before movement (FUN_0041f580), but the row executor sees the
+    // value from the start of the update (FUN_0043ffc0).
+    if (m_hitFreeze > 0) --m_hitFreeze;
+    const bool movementFrozen = m_hitFreeze > 0;
+    // While frozen the row speed is retained: the pause must not erase the
+    // displacement that follows it (FUN_004202b0 skips both axes).
+    if (!movementFrozen &&
+        (m_state == FighterState::Hit || m_state == FighterState::Knockdown) &&
+        m_rowSpeed != 0.f) {
         const glm::vec3 forward(std::sin(m_facing), 0.f, std::cos(m_facing));
         m_velocity = forward * (m_rowSpeed / static_cast<float>(dt));
         // The row's speed is per TICK, so it is integrated here rather than through the generic
         // velocity path (which this branch replaces).
         m_position += forward * m_rowSpeed;
-        const float step = m_rowDecel;
-        m_rowSpeed = m_rowSpeed > 0.f ? std::max(0.f, m_rowSpeed - step)
-                                      : std::min(0.f, m_rowSpeed + step);
-    } else if (m_hitFreeze > 0) {
-        --m_hitFreeze;
+        // Flight rows approach a ±4 floor instead of settling to zero; the knocked-down
+        // rows settle toward zero (FUN_00428510's per-row handlers own both laws).
+        const int row = m_reactionMove;
+        if (!executorFrozen) {
+            const bool flightRow = m_state == FighterState::Hit &&
+                                   reaction_motion(row).floorAtFour;
+            if (flightRow) {
+                if (m_rowSpeed < -4.f) m_rowSpeed += row == 114 ? 0.5f : 0.25f;
+                else if (m_rowSpeed > 4.f) m_rowSpeed -= row == 214 ? 0.5f : 0.25f;
+            } else {
+                m_rowSpeed = m_rowSpeed > 0.f ? std::max(0.f, m_rowSpeed - m_rowDecel)
+                                              : std::min(0.f, m_rowSpeed + m_rowDecel);
+            }
+        }
     } else if (((m_state == FighterState::AttackA || m_shotMoveId >= 0) && move_program(m_moves)) ||
         (m_state == FighterState::Run && m_dashMoveId == 20 && locomotion(m_moves) && m_model)) {
         m_velocity = facing_relative(0.f, m_moveSpeed / static_cast<float>(dt));
@@ -606,7 +680,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         m_velocity *= 0.8f;
         m_position += m_velocity * static_cast<float>(dt);
     }
-    if (collision) {
+    if (collision && !movementFrozen) {
         // FUN_0041f580 owns the source's per-player update, while the collision mesh
         // contract comes from FUN_004011f0. Body size and step thresholds are port rules.
         const game::physics::MovementResult moved = collision->move(movementStart, m_position,
@@ -644,7 +718,8 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
             // so a launch/guard/attack tick takes that row's rule instead. The port's
             // state only changes after this section, hence stateBeforeInput. Mode 2's
             // extra +1 rides FUN_0041f580:97-98 independently.
-            if (stateBeforeInput == FighterState::Idle && m_state == FighterState::Idle) {
+            if (!executorFrozen && stateBeforeInput == FighterState::Idle &&
+                m_state == FighterState::Idle) {
                 const int refill = m_hitStatusDuration[6] > 0 ? 5 : 40;
                 m_actionMeter = std::min(1000, m_actionMeter + refill);
             }
@@ -663,11 +738,11 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // landing transition below, and the row itself is bound now: row 44 plays for its
     // own derived length and Idle adds the same +40 per tick, so the multi-tick window
     // costs the meter nothing (V3-42).
-    if (m_pilotMeter && m_state == FighterState::Jump && m_jumpStartup) {
+    if (!executorFrozen && m_pilotMeter && m_state == FighterState::Jump && m_jumpStartup) {
         const int refill = m_hitStatusDuration[6] > 0 ? 5 : 40;
         m_actionMeter = std::min(1000, m_actionMeter + refill);
     }
-    if (m_state == FighterState::Guard) {
+    if (!executorFrozen && m_state == FighterState::Guard) {
         // Guard stance progression, recovered from the shipped data. Row 390's sections
         // are [preparation, hold, release]; the stance advances to the next section only
         // when the CURRENT clip has played past its own duration AND that clip does not
@@ -724,7 +799,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // gravity. Runs for every state (corpses fall too); only Jump and an
     // airborne dash convert the landing into Idle — Hit/KO/attacks keep
     // their state through touchdown.
-    if (!m_grounded) {
+    if (!m_grounded && !movementFrozen) {
         const float step = static_cast<float>(dt);
         // One hover per airtime: the original admits the jump row only while grounded
         // (FUN_00445ee0's jump branch needs the grounded byte 0x84 != 0), so releasing
@@ -779,6 +854,10 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         } else if (!dashHang) {
             if (attackFall)
                 m_vy -= m_attackGravity * 4096.f * step;  // u/tick^2 -> u/s^2
+            else if (m_state == FighterState::Hit && m_launched &&
+                     reaction_motion(m_reactionMove).gravity > 0.f)
+                m_vy -= reaction_motion(m_reactionMove).gravity /
+                        static_cast<float>(FixedStep::seconds);
             else
                 m_vy -= FighterConstants::kGravity * step;
         }
@@ -816,17 +895,18 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
             m_dashFall = false;
             m_landingTicks = 0;
             m_hoverSpent = false;   // a new airtime re-arms the one hover
-            // A launched victim that touches down goes into the knockdown chain instead of
-            // standing up: the original's airborne rows rebind to 118 (or its +100 back twin
-            // 213-216 -> 119) the moment the grounded byte sets, and the lying row plays out
-            // before the get-up. Which of the two is chosen is the SIGN of the victim's own
-            // horizontal speed (0x4296ae): still travelling away means the back fall.
+            // This port models a partial knockdown chain. The front/back launch
+            // handlers select 118/119 respectively; bounce and later get-up rows
+            // are not yet represented (FUN_00428510 cases 0x71/0xd5).
             if (m_state == FighterState::Hit && m_launched) {
                 m_launched = false;
-                const bool backwards = glm::dot(m_velocity, glm::vec3(-std::sin(m_facing), 0.f,
-                                                                     -std::cos(m_facing))) > 0.f;
-                m_downRow = backwards ? 119 : 118;
+                // Front flight rows bind 118; their +100 mirrors bind 119.
+                // FUN_00428510 cases 0x71/0xd5 use these rows directly.
+                m_downRow = m_reactionMove >= 200 ? 119 : 118;
                 m_downPhase = 1;
+                // Rows 118 and 119 settle +0x54 toward zero by 0.25 per tick
+                // (FUN_00428510 cases 0x76/0x77).
+                m_rowDecel = 0.25f;
                 set_state(FighterState::Knockdown);
                 m_stateTimer = std::max(1, move_row_frames(m_downRow));
             }
@@ -945,7 +1025,7 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         // rebinds Idle's own row below (refresh_state_move returns early for anything but Jump,
         // so the rebind cannot come from there). Leaving Idle (walking, attacking, jumping) ends
         // the window early, which is what the port's immediate cancel means today.
-        if (m_landingTicks > 0) {
+        if (!executorFrozen && m_landingTicks > 0) {
             if (m_state != FighterState::Idle) {
                 m_landingTicks = 0;
             } else {
@@ -965,8 +1045,10 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
                 }
             }
         }
-        refresh_state_move();
-        advance_animation_phase();
+        if (!executorFrozen) {
+            refresh_state_move();
+            advance_animation_phase();
+        }
         if (m_state == FighterState::Guard && m_animate) {
             // Guard runs no move, so m_moveElapsedTicks never advances and driving the
             // playhead from it pinned the stance to frame 0 forever -- the "one frame,
@@ -1053,9 +1135,12 @@ void Fighter::update_state_machine(const input::PlayerState* input,
             // duration must not preempt later callbacks such as Akane's 300 phase-2
             // ribbon in FUN_00595460. Sets with a nonzero +0x20 gate still use the
             // contact timer until their handler-specific phase transition is mapped.
-            const bool renaAirTimeline = rena0 && aerial &&
-                (admitted == 320 || admitted == 332);
-            m_stateTimer = renaAirTimeline ||
+            // Row 310's recovered phase-1 handler explicitly enters phase 2;
+            // its gated middle clip must not fall back to the legacy swing timer
+            // (FUN_0043ffc0 case 0x136).
+            const bool renaHandledTimeline = rena0 &&
+                (admitted == 310 || (aerial && (admitted == 320 || admitted == 332)));
+            m_stateTimer = renaHandledTimeline ||
                                hasAutomaticMeleeTimeline(m_moves, m_weapon, m_model, admitted)
                                ? 0 : m_swing.total_ticks();
             return;
@@ -1109,7 +1194,7 @@ void Fighter::update_state_machine(const input::PlayerState* input,
         // seconds: a bound weapon pins the seconds field to one tick.
         if (m_chargeHeldTicks < kChargeHoldTickCap) ++m_chargeHeldTicks;
         if (m_weapon) {
-            m_shootingMagazines[1].charge();
+            // The charge itself is asserted at the top of the update (FUN_00445ee0:17).
             // A held C still releases a primary tap when the secondary stock is empty.
             m_chargeHeld = static_cast<float>(FixedStep::seconds);
         } else if (m_chargeHeld < red_hold_sec()) {
@@ -1364,6 +1449,8 @@ void Fighter::shove(const glm::vec3& delta, const game::physics::MovementCollisi
 
 void Fighter::set_state(FighterState new_state) {
     if (m_state == new_state) return;
+    // A pending phase-1 seed belongs to the Hit it was armed for.
+    if (new_state != FighterState::Hit) m_reactionSeedPending = false;
     // The air dash's carried momentum belongs to the airborne window it opened; a hit,
     // knockdown or KO that interrupts that window must not leave the fighter sliding at
     // dash speed when the reaction ends back in Jump.
@@ -1599,9 +1686,13 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
     // The stagger meter (+0x7b8) decides whether this blow produces a reaction AND the damage
     // proration tier, so it is settled before the HP math. Below 100 the victim takes damage
     // and the freeze and keeps its current state row.
-    m_hitMeterA += (reaction.meterA * kStaggerResist) / 100;
-    m_staggerDecay = 120;   // +0x7bc: the meter's own 120-tick window
-    const bool trips = m_hitMeterA >= 100;
+    // FUN_00637950:333-338 updates and refreshes +0x7b8/+0x7bc only
+    // for a strictly positive combat[7].
+    if (reaction.meterA > 0) {
+        m_hitMeterA += (reaction.meterA * kStaggerResist) / 100;
+        m_staggerDecay = 120;
+    }
+    const bool trips = reaction.meterA > 0 && m_hitMeterA >= 100;
     if (trips) {
         m_hitMeterA = 0;
         m_hitMeterB += reaction.meterB;   // +0x7c0: the heavy-row counter
@@ -1708,6 +1799,7 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
                 stun = false;
             }
         }
+        if (!trips) return DamageResult::Hit;
         // The heavy row's counter (+0x7c0) is settled above with the trip.
         const bool heavy = m_hitMeterB >= 100;
         // combat[13] is the normal row, combat[14] the heavy one (0x6386f9-0x63870d), and a
@@ -1723,20 +1815,13 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
                 const float bearing = std::atan2(toAttacker.x, toAttacker.z);
                 const float relative =
                     glm::degrees(std::remainder(m_facing - bearing, glm::two_pi<float>()));
-                if (std::abs(relative) > 90.f) row += 100;
-                // The staggering hit turns the victim to face the attacker (+0x64 =
-                // -(V+0x5c - bearing), normalised): she reacts toward the blow, and the row's
-                // slide is taken along THAT facing. Without the turn a stale facing sends her
-                // along the wrong axis — into the attacker, where body separation cancels the
-                // displacement and only the vertical survives.
-                m_facing = bearing;
+                const bool fromBehind = std::abs(relative) > 90.f;
+                if (fromBehind) row += 100;
+                // FUN_00637950:367–373 adds 180 degrees to the impact bearing
+                // for a back hit before writing the movement yaw offset.
+                m_facing = std::remainder(bearing + (fromBehind ? glm::pi<float>() : 0.f),
+                                          glm::two_pi<float>());
             }
-        }
-        if (!trips) {
-            // No reaction: damage and freeze only. The victim's state row and the row it is
-            // currently playing are left exactly as they were — retargeting m_reactionMove here
-            // would point the running row clock at a different row.
-            return DamageResult::Hit;
         }
         m_reactionMove = row > 0 ? row : 103;
         if (stun) {
@@ -1777,7 +1862,6 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
                                                     : FighterConstants::kHitStunFrames);
             // The record's launch (FUN_00637950 @0x638633/0x638645 → the consumer at
             // 0x428af8-0x428b2e). A record with no launch keeps the victim planted.
-            m_reactionCounter = reaction.counter;
             // The ROW decides what the victim does — the hit code itself writes no motion
             // (FUN_00428510's per-row handlers own every constant). A row with no motion
             // profile leaves the victim planted: that is the "crumple in place" reaction.
@@ -1786,22 +1870,7 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
             // per-tick speed and re-applies it each update instead of seeding a velocity once.
             const ReactionMotion motion = reaction_motion(m_reactionMove);
             m_launched = motion.liftFromRecord || motion.rise > 0.f;
-            if (motion.applies) {
-                const float inverseStep = 1.f / static_cast<float>(FixedStep::seconds);
-                // combat[18] (+0x78) is the horizontal impulse (+0x54), combat[17] (+0x74) the
-                // lift (+0x40). The impulse is stored NEGATIVE, i.e. backwards along the body's
-                // own facing.
-                m_rowSpeed = motion.slideFromRecord ? -reaction.rise : motion.speed;
-                m_rowDecel = motion.decel;
-                const float rise = motion.liftFromRecord ? std::fabs(reaction.counter) : motion.rise;
-                if (rise > 0.f) {
-                    m_vy = std::max(m_vy, rise * inverseStep);
-                    m_grounded = false;
-                }
-            } else {
-                m_rowSpeed = 0.f;
-                m_rowDecel = 0.f;
-            }
+            apply_reaction_motion(reaction, false);
         }
     }
     return DamageResult::Hit;
@@ -1956,6 +2025,9 @@ bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollis
             game::physics::segmentBlocked(start, chest, collision->movementMesh())) return false;
         m_meleeChargeBases = {record->hpDamage, record->reflectDamage};
         if (!pilot_guard_blocks(target, *this)) {
+            // FUN_00637950 writes the attacker's +0xa0 from record+0x54
+            // (combat[9]) and the victim's from record+0x58 (combat[10]).
+            m_hitFreeze = std::max(0, record->attackerHitstun);
             const int damage = portDamage(meleePoolDamage(record->baseDamage), m_maxHP);
             // combat[17]/[18] are the launch words (+0x87c/+0x878, 0x638633/0x638645); the
             // consumer scales them by the global 0.01 at 0x6a24c4.
@@ -2320,17 +2392,10 @@ void Fighter::advance_animation_phase() {
     const int clockStep =
         1 + m_clockSkip + ((sideDashClock && m_moveElapsedTicks % 9 == 0) ? 1 : 0);
     if (!m_holdAnimation) m_moveElapsedTicks += clockStep;
-    // A phase gate means "hold this clip" — a looping attack/dash body. A reaction row is a
-    // ONE-SHOT animation: its last section must run out and release the victim, so the gate is
-    // ignored for the reaction states (row 103 ends on a gated set 27 and would otherwise loop
-    // forever, which is what kept a flinch from ever ending).
-    const bool reactionState =
-        m_state == FighterState::Hit || m_state == FighterState::Knockdown;
-    if (!reactionState && m_moves->animation_set_phase_gate(set) != 0) return;
+    const bool phaseGated = m_moves->animation_set_phase_gate(set) != 0;
 
-    // FUN_0041e180's window: GetPeriod() / 0.016 through the CRT's truncating
-    // float->int conversion (animation_period.h), so a 23.96-frame clip occupies 23
-    // updates. A gated phase holds past expiry and is handled above.
+    // FUN_0041e180 truncates GetPeriod() / 0.016; a gated phase may
+    // hold past expiry, but the row-completion predicate is independent.
     const int periodThreshold = animation_period_frames(*m_model, set);
     if (periodThreshold < 0) return;   // data cannot settle the window; 0 is a real window
 
@@ -2343,6 +2408,7 @@ void Fighter::advance_animation_phase() {
     // its clock passes the period. Both read the SAME record: FUN_00421410:31 stores one
     // pointer per set (`+set*0xe + 0x1d78`) for both tracks, at +0xade4 (track 0, the
     // tail) and +0xade8 (track 1, this predicate).
+    // FUN_004218c0 checks completion independently of the tail's phase gate.
     if (lastSection && !m_holdAnimation && periodThreshold <= m_moveElapsedTicks - clockStep + 1) {
         // A reaction row ends on its OWN completion, exactly like an attack row: the flinch
         // plays to its last frame and only then releases the victim. A launched victim that is
@@ -2363,7 +2429,7 @@ void Fighter::advance_animation_phase() {
         }
         return;
     }
-    if (periodThreshold >= m_moveElapsedTicks) return;
+    if (phaseGated || periodThreshold >= m_moveElapsedTicks) return;
 
     if (lastSection) {
         if (m_state == FighterState::AttackA || m_state == FighterState::Run || m_state == FighterState::ShootA ||
@@ -2401,6 +2467,14 @@ void Fighter::execute_move_program(Fighter* opponent, const input::PlayerState* 
     // inside the state bodies, not in a prologue). The reset therefore starts enabled
     // and each ContactOff rule disables for its ticks.
     m_contactDisabled = false;
+    // Rows 104/105/204/205 leave their gated phase 0 on the handler's own counter
+    // (`frame > 0x3c`), then seed the reaction motion on the phase-1 transition
+    // (FUN_00428510 cases 0x68/0x69/0xcc/0xcd).
+    if (m_reactionSeedPending && m_state == FighterState::Hit && m_phaseIndex == 0 &&
+        m_moveElapsedTicks > 0x3c) {
+        enter_phase(1);
+        seed_pending_reaction();
+    }
     const MoveProgram* program = move_program(m_moves);
     m_sourceShotVoiceAudited = shot_voice_policy_audited(program, state_move_id());
     m_sourceMeleeVoiceAudited = melee_voice_policy_audited(program, state_move_id());

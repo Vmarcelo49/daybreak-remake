@@ -110,7 +110,7 @@ def run_capture(char, enemy, stage, frames, size, out, script=None, co_spawn=Fal
     first weapon, and a sweep that leaves it implicit cannot honestly claim more than
     "base model with slot 0" coverage (AGENTS rule 7).
     """
-    cmd = [str(BINARY), "--headless", "--no-devices", f"--out={out}",
+    cmd = [str(BINARY), "--headless", f"--out={out}",
            f"--stage={DATA / stage}", f"--character={DATA / char}:{slot}",
            f"--enemy={DATA / enemy}:{slot}", "--match", "--camera=arena",
            f"--frames={frames}", f"--size={size}"]

@@ -188,11 +188,6 @@ struct Options {
 
     std::string camera = "auto";   // auto|player|front|top|bounds
     bool        headless = false;  // no window/surface: offscreen captures only
-    // Device isolation (issue #29, a port rule — the original predates the concern).
-    // `noDevices` forces it on for any run; `devices` opts a verification run back into
-    // reading the physical keyboard and pads. See readPhysicalDevices below.
-    bool        noDevices = false;
-    bool        devices   = false;
     std::string install;           // dir holding daybreakXX.dat; auto-detected when empty
     bool        noCameraClamp = false;   // A/B switch for the arena eye clamp
     bool        noTextures = false;
@@ -380,16 +375,6 @@ void usage() {
         "  --combat-audio-log   log every dispatched combat SE/voice with its resolved file\n"
         "  --audio-file=<path>  with --audio-test: decode a real file as well\n"
         "  --input-test         run the input backend self-check and exit\n"
-        "  --no-devices         ignore the keyboard and every gamepad: the run is driven\n"
-        "                     only by --script= and --local-players' synthetic pads. A\n"
-        "                     verification run (--headless, --out=, --script=, ...) does this\n"
-        "                     by default; --no-devices also silences a run that would read\n"
-        "                     them (a windowed 4-view recipe, for instance)\n"
-        "  --devices            read the physical keyboard and pads in a verification run.\n"
-        "                     Off by default: SDL reports a connected controller whether or\n"
-        "                     not this window has focus, so on a shared machine another\n"
-        "                     application's pad moves the run's menus and changes its\n"
-        "                     captures. A plain player run reads the devices either way\n"
         "  --enemy=<baseDir>/<name>[:costume]  versus P2 fighter (needs --versus)\n"
         "  --versus           scripted vignette: stage + P1 + P2, arena follow,\n"
         "                     timeline HUD, BGM loop, SFX cues; needs --stage,\n"
@@ -433,8 +418,7 @@ void usage() {
         "                     versus battle: it has no story mode, so its\n"
         "                     DAT_006cfce9 gate is always open in a battle here (a port\n"
         "                     rule; docs/DEBUG-KEYS.md). This switch is for a run that\n"
-        "                     reads physical devices (--devices) and must not have a stray\n"
-        "                     F-key move its capture\n"
+        "                     must not have a stray F-key move its capture\n"
         "  --debug-keys=SPEC  scripted taps for an evidence run: KEY@TICK[,...] with KEY one\n"
         "                     of f1 f2 f3 f4 esc, TICK the 1-based simulation tick (the\n"
         "                     clock the input scripts and the capture recipes use). KEY is\n"
@@ -680,8 +664,6 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--with-audio") o.withAudio = true;
         else if (a == "--combat-audio-log") o.combatAudioLog = true;
         else if (a == "--input-test") o.inputTest = true;
-        else if (a == "--no-devices") o.noDevices = true;
-        else if (a == "--devices") o.devices = true;
         else if (!(v = val("--enemy=")).empty()) o.enemy = v;
         else if (a == "--versus") o.versus = true;
         else if (a == "--match") o.match = true;
@@ -789,10 +771,6 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
             return false;
         }
     }
-    if (o.devices && o.noDevices) {
-        error = "--devices and --no-devices are opposites; pass one";
-        return false;
-    }
     if (!o.out.empty()) {
         if (!hasAsset(o) && o.screen.empty() && o.movie.empty()) {
             error = "--out needs an asset argument; the triangle demo draws into the window";
@@ -809,38 +787,16 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
     return false;
 }
 
-// ---------------------------------------------------------------------------------------
-// Device isolation (issue #29) — a port rule, not recovered behaviour: the original has one
-// focused window and reads whatever the OS reports, so neither rule below exists there.
-//
-//   (a) A verification run owns every input slot by default. A capture must not depend on
-//       whoever is holding a pad: SDL reports a connected controller whether or not this
-//       window has focus, so a second game on the same machine moves this run's menus, and
-//       the failure reads as a flaky test rather than as input. --devices opts back in.
-//   (b) An unfocused window accepts no input (input_backend's focus gate, which starts
-//       focused so a compositor that drops FOCUS_GAINED cannot wedge the game).
-//
-// The verification set is every mode that produces evidence rather than being played:
-// --out= writes a frame, --headless has no window to play in, --script=/--script2= take
-// their input from a file, --match/--versus are the standalone harness vignettes (the front
-// end is the product path), --hud-test is the HUD test rig, --bench= measures cost and
-// --list enumerates the assets and exits. A plain front-end run (`--screen=<id>` and nothing
-// else), the asset viewers and --local-players=N without a capture flag are played, so they
-// keep reading the device they are played with. --audio-test and --input-test are outside
-// the gate for a different reason: they exit before the app opens its input backend, and
-// --input-test deliberately reads a device to verify that reading works.
-static bool verificationRunOwnsInput(const Options& o) {
+// A "verification run" produces evidence rather than being played: --out= writes a
+// frame, --headless has no window to play in, --script=/--script2= take their input from
+// a file, --match/--versus are the standalone harness vignettes (the front end is the
+// product path), --hud-test is the HUD test rig, --bench= measures cost and --list
+// enumerates the assets and exits. It is used to default the audio output to muted.
+// Physical input is NOT gated by it: the devices are always read, and an unfocused window
+// simply ignores them (input_backend's focus gate).
+static bool verificationRun(const Options& o) {
     return o.headless || !o.out.empty() || !o.script.empty() || !o.script2.empty() ||
            o.match || o.versus || o.hudTest || o.bench > 0 || o.list;
-}
-
-// The effective gate. An explicit flag always wins; otherwise a verification run owns its
-// slots. --no-devices stays meaningful for a run outside that set (a windowed 4-view
-// recipe, say), where it is the only way to ask for silence.
-static bool readPhysicalDevices(const Options& o) {
-    if (o.noDevices) return false;
-    if (o.devices) return true;
-    return !verificationRunOwnsInput(o);
 }
 
 // A plain interactive launch is the original's boot: scene 0x00, the opening movie, then
@@ -851,7 +807,7 @@ static bool readPhysicalDevices(const Options& o) {
 static bool resolveBootOpening(const Options& o) {
     if (!o.screen.empty() || hasAsset(o)) return false;
     if (!o.movie.empty()) return true;   // --movie names the scene it belongs to
-    return !verificationRunOwnsInput(o);
+    return !verificationRun(o);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -2815,7 +2771,6 @@ static bool initMatch(App& app) {
             app.error = "--match needs the input backend";
             return false;
         }
-        app.matchInput.set_devices_enabled(readPhysicalDevices(app.opts));
         app.matchInputReady = true;
     }
 
@@ -5522,7 +5477,6 @@ bool initScreens(App& app) {
         return false;
     }
     app.matchInputReady = true;
-    app.matchInput.set_devices_enabled(readPhysicalDevices(app.opts));
     if (!app.opts.script.empty() && !app.matchInput.load_script(app.opts.script.c_str())) {
         app.error = "cannot read input script " + app.opts.script;
         return false;
@@ -5843,7 +5797,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     }
     app->opts.bootOpening = resolveBootOpening(app->opts);
     const bool muteOutput = app->opts.noAudio || (!app->opts.withAudio &&
-        (verificationRunOwnsInput(app->opts) || app->opts.frames > 0 || app->opts.audioTest));
+        (verificationRun(app->opts) || app->opts.frames > 0 || app->opts.audioTest));
     fnd::audio::set_output_muted(muteOutput);
     if (muteOutput) std::printf("audio output : muted (verification/no-audio)\n");
 #if defined(__EMSCRIPTEN__)
@@ -7084,23 +7038,17 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
             app->matchInput.note_key((int)event->key.scancode, false);
             break;
         case SDL_EVENT_WINDOW_FOCUS_LOST:
-            // #6's safety fix: held keys are dropped so a lost KEY_UP cannot hold Guard.
+            // Owner decision: losing focus no longer pauses the battle. Held keys are still
+            // dropped (a lost KEY_UP must not hold Guard) and the input backend ignores the
+            // devices while unfocused, so the match keeps running but takes no input.
             app->matchInput.note_focus_lost();
-            // A live battle must not keep running (and keep taking damage) while the player
-            // cannot see or control it, so focus loss pauses it. Regaining focus does NOT
-            // auto-resume: the player resumes deliberately. A scripted verification run is
-            // left alone — its script owns the pause state, and a stray focus event must not
-            // make a recipe non-deterministic.
-            if (battlePauseAvailable(*app) && !app->battlePaused &&
-                !app->matchInput.script_active())
-                enterBattlePause(*app, "focus lost");
             break;
         case SDL_EVENT_WINDOW_FOCUS_GAINED:
-            // Issue #29: an unfocused window accepts no input — SDL reports pads whatever
-            // the focus is, so a second game on the machine drove this port's menus. Focus is
-            // re-armed here and nowhere else; note_focus_gained also re-derives the
-            // release-before-input snapshot, because releases that happened while unfocused
-            // were never delivered. Resuming a paused battle stays the player's decision.
+            // Focus gate: an unfocused window accepts no input — SDL reports pads whatever
+            // the focus is. Focus is re-armed here and nowhere else; note_focus_gained also
+            // re-derives the release-before-input snapshot, because releases that happened
+            // while unfocused were never delivered. Losing focus did not pause the battle,
+            // so nothing resumes here.
             app->matchInput.note_focus_gained();
             break;
         case SDL_EVENT_GAMEPAD_BUTTON_DOWN:

@@ -16,9 +16,9 @@
 > driven by a script file plus `--local-players`, which fills the pad-less
 > controllers with a deterministic synthetic pattern. A physical pad *was*
 > attached to this machine — its owner was using it for another game while the
-> gate ran — and no run here drives it: issue #29 made a verification run ignore
-> physical devices by default (§3.0), which is why the commands below no longer
-> carry `--no-devices`.
+> gate ran — and no run here drives it. Physical devices are read in every run
+> since the owner removed the device-isolation switch (2026-10-29, §3.0); a
+> stray pad is therefore a run-environment risk the gate operator accepts.
 
 ## 0. What the gate demonstrates
 
@@ -221,52 +221,31 @@ one against the other. (This convention was implicit until it cost two readers
 an afternoon; the two digest families were being mixed with only the md5 ones
 labelled.)
 
-### 3.0 Why a verification run ignores the physical devices (and when to ask for them)
+### 3.0 Physical devices, focus and pause
 
-SDL reports a connected controller whether or not the window has focus, so on a
-machine where another application is using a pad, that pad's live input reaches
-this port's menus and captures. It was measured on the gate machine (an 8BitDo
-Ultimate 2C attached): with the owner playing another game, a
-`--screen=title --local-players=2` run selected the title's *story* item instead
-of *versus* because the pad's state moved the cursor first, and `hud_cell_scale`
-failed because the pad changed the match the capture measured.
+**Every run reads the physical devices.** The owner removed the device-isolation
+instrument and its `--devices`/`--no-devices` flags on 2026-10-29: the switch made
+ordinary play-testing fail silently (a `--match` run ignored the keyboard unless
+the player knew to pass `--devices`), which cost more than the isolation was
+worth. A scripted run therefore coexists with whatever the machine's keyboard and
+pads report; a stray pad can move a scripted run's menus, and the gate operator
+owns that risk by keeping other pads idle while the gate runs.
 
-**A verification run owns every input slot by default** (issue #29; a port rule,
-not recovered behaviour — the original has one focused window and reads whatever
-the OS reports). A run is a verification run when it produces evidence rather
-than being played: `--headless`, any `--out=` capture, `--script=`/`--script2=`,
-`--match`, `--versus`, `--hud-test`, `--bench=` or `--list`. In such a run the
-keyboard and every gamepad are ignored — the polled device state, the key/pad
-events the app forwards, and the SDL event queue the backend harvests alike — so
-the script drives controller 0 and `--local-players`' synthetic pads drive the
-rest. `--devices` asks for the physical devices back in one of those runs, and is
-then the only way a capture can be driven from real hardware.
+**An unfocused window accepts no input**: while the window is unfocused every
+device reads as released, and input re-arms on `SDL_EVENT_WINDOW_FOCUS_GAINED`.
+Focus starts as *focused*, so a compositor that never delivers a focus event — or
+a `--headless` run with no window at all — cannot leave the game unresponsive.
+The device itself is never relinquished: an unfocused pad keeps its slot, because
+a slot reported empty would be handed to a synthetic pad and the game would play
+itself.
 
-`--no-devices` still works and still means the same thing. It is redundant inside
-the set above and meaningful outside it: a **player** run (a plain `--screen=`
-run, the asset viewers, or `--local-players=N` without a capture or a script)
-reads the devices it is played with, and `--no-devices` silences one of those.
-Passing both flags is rejected.
+**Losing focus does not pause the battle** (same owner decision): an unfocused
+match keeps running on its last state and takes no input; pausing stays the
+player's command (`Escape`/`W`). The pause menu, its four rows and the
+held-button rule are unchanged.
 
-**An unfocused window also accepts no input** (the same issue): while the window
-is unfocused every device reads as released, and input re-arms on
-`SDL_EVENT_WINDOW_FOCUS_GAINED`. Focus starts as *focused*, so a compositor that
-never delivers a focus event — or a `--headless` run with no window at all —
-cannot leave the game unresponsive. The device itself is never relinquished: an
-unfocused pad keeps its slot, because a slot reported empty would be handed to a
-synthetic pad and the game would play itself.
-
-The commands below therefore do not pass `--no-devices`: the capture flags imply
-it (the flag is still accepted, and the transcripts quoted in §3.1–§3.3 are the
-ones those gate runs produced). The regression test is
-`tests/device_isolation_test.cpp`: it drives the demo's own SDL entry points,
-injects device events into a headless capture through `Backend::note_key` /
-`note_gamepad_button`, a pushed `SDL_EVENT_KEY_DOWN` and a real SDL virtual
-gamepad, and asserts the frame hash and the scene ladder did not move — while a
-`--devices` row proves the same injection does move them. The host suite's
-demo-driving tools (`hud_cell_scale`, `showcase`, `pin_viewpoint`) still pass
-`--no-devices` explicitly, which is what keeps them green on a machine with a pad
-in use. It is a verification instrument, not a feature.
+The focus gate is pinned by `tests/input_backend_test.cpp`. The commands below
+pass no device flag.
 
 ### 3.1 Two humans, 1v1, three rounds
 
@@ -611,8 +590,7 @@ Without an install the sweep skips itself and the test still passes
 python3 tests/showcase.py --check --allow-problems=43 --out-dir /tmp/sweep
 ```
 
-Expected summary and the current baseline (re-measured for this checklist;
-the tool passes `--no-devices` itself, §3.0):
+Expected summary and the current baseline (re-measured for this checklist):
 
 ```
 asset check: 16 character(s) x 13 stage(s) -> 208 runs
@@ -656,8 +634,7 @@ demo's own `--frames` summary (wall-clock deltas), not from a stopwatch.
 * **Physical controllers** — every run uses `--local-players` synthetic pads
   or the script, and no run drives the attached 8BitDo by hand. What would
   settle it: a real pad walking a panel and a battle, with the pad's own
-  bindings — a run that asks for the devices (`--devices`, §3.0) plus the
-  attached pad.
+  bindings — a run that reads the devices (§3.0) plus the attached pad.
 * **Hardware audio listening** — the audio backend runs (dummy-device
   verification, combat voice/SE counts in the log), but nobody listened on
   real hardware.
@@ -719,10 +696,10 @@ Nothing here is rung 5, on any target. (Linux's §3 captures are rung 4 and its
 cd remake/foundation
 ./build.sh deps && ./build.sh windows
 # a) interactive boot (movie -> title), no script: the #40 movie decodes on Windows
-wine build/windows/foundation_demo.exe --install=Z:/<abs>/Higurashi-Daybreak --no-devices
-# b) front end, three rounds, two humans; --no-devices so only the script drives it
+wine build/windows/foundation_demo.exe --install=Z:/<abs>/Higurashi-Daybreak
+# b) front end, three rounds, two humans, driven by the script
 wine build/windows/foundation_demo.exe --install=Z:/<abs>/Higurashi-Daybreak \
-  --screen=title --local-players=2 --no-devices \
+  --screen=title --local-players=2 \
   --script=Z:/<abs>/remake/foundation/tests/scripts/frontend-1v1-rematch.txt
 ```
 

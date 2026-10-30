@@ -1,5 +1,14 @@
 # Rena+0 pilot — minimal independent contract (v2, **approved** 2026-10-16 for the stated Rena+0 scope)
 
+> **v4 correction (owner approved 2026-10-29; only the hit-300 recovery anchor):**
+> In `rena0-hit-ground-300.fixture`, retain the setup and all other expectations,
+> replace tick 22 recovery with tick 26 recovery, and assert tick 25 remains
+> active. This is a measured port fixture with repeated dummy reset, **not** an
+> original-runtime observation. `FUN_00637950:307-308` writes the attacker stop
+> from combat[9]; the shipped row 300 supplies 6. The previous tick-22 anchor
+> predated implementation of attacker hitstop. This correction does not approve
+> the other unapproved manifest additions or establish whole-move parity.
+
 **Status: APPROVED 2026-10-16 by the repo owner, for the stated Rena+0 pilot scope only.**
 Reviewed content: `sha256 c5df99313725d80ee1ba9ae8d7161d4ca252512349ac65e962f37730565a18c6` — the identifier of the revision the owner approved. This
 status block and the title are metadata added afterwards; the acceptance content is unchanged,
@@ -2746,6 +2755,13 @@ throw the opponent. Nothing did.
   `combat[17]`;
 - `victim+0x878 = (float)record[+0x78]` = `combat[18]`;
 - and `victim+0x7b0 += 1` (a hit counter).
+
+> **Erratum (2026-10-29):** The field meanings and implementation claims in the
+> next historical paragraph are wrong. `+0x40` is vertical velocity, `+0x54`
+> is horizontal speed, and `+0x58` is gravity. `FUN_00428510` case 0x71
+> selects row 118 upon grounding with negative vertical velocity, not merely
+> when a counter reaches zero. The port's reaction scripts remain partial; see
+> `DIRECTION-STATUS.md` and Q23. Do not use the historical paragraph as proof.
 
 The consumer is at `0x428af8-0x428b2e`: both words are multiplied by the global float at
 **`0x6a24c4` = 0.01** (`0x3c23d70a`), then

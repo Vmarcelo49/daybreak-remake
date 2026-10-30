@@ -121,10 +121,10 @@ right unit.
   untested.
 - Not verified: physical gamepads — a pad *was* attached to the gate machine and its live
   input reached these runs' menus (SDL reports a controller whether or not the window has
-  focus). Issue #29 removed that obstruction: a verification run ignores physical devices by
-  default and an unfocused window takes no input, so the commands below no longer need
-  `--no-devices` — but no run drives the *attached* pad by hand (the pad-facing runs use
-  SDL's virtual pad), so this stays open. Also unverified: any non-Linux target execution.
+  focus). Physical devices are read in every run since the owner removed the device-isolation
+  switch (2026-10-29); an unfocused window still takes no input, but no run drives the
+  *attached* pad by hand (the pad-facing runs use SDL's virtual pad), so this stays open.
+  Also unverified: any non-Linux target execution.
 
 ## Commands used
 
