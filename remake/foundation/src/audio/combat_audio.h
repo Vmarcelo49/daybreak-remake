@@ -280,7 +280,8 @@ public:
                         const AudioPoint3& forward, bool listenerValid);
     // data/sysse's separate 32-entry bank (FUN_0064ade0), always nonpositional.
     void play_system_se_direct(int id);
-    void play_voice_direct(int fighter, const std::string& path);
+    void play_voice_direct(int fighter, const std::string& path, bool positional = false, const AudioPoint3& position = {},
+                           const AudioPoint3& listener = {}, const AudioPoint3& forward = {}, bool listenerValid = false);
 
     // #15 coordination: suspending stops this layer's voice channels so a pause during a
     // swing/KO leaves nothing playing, and drops events until resume. BGM policy is the

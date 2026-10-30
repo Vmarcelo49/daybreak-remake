@@ -204,6 +204,17 @@ int main() {
         CHECK(output.size()==2 && output[0] > output[1]);
     }
 
+    // A positional voice keeps its fighter's channel but takes the spatial path.
+    {
+        Recorder sink;
+        CombatAudio audio(sink);
+        audio.begin_match(1);
+        audio.play_voice_direct(0, "data/voice/rena/attackA/000.wav", true, {0.f,0.f,1000.f}, {}, {0.f,0.f,1.f}, true);
+        CHECK(sink.spatial.size() == 1 && sink.spatial[0].source.z == 1000.f);
+        audio.play_voice_direct(0, "data/voice/rena/battlestart/000.wav");
+        CHECK(sink.spatial.size() == 1);
+    }
+
     // The rest of the file pins cue dispatch and the SFX bus.
     CHECK(testFrameEvents());
     auto renaVoice = ev(CombatEventKind::ShotFired, 0, -1, 77);

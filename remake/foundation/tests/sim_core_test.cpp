@@ -269,9 +269,12 @@ void test_hud_values(const std::string& game) {
 // The attenuation needs world positions on the cues: a cue at the origin or on the listener
 // would stay at full volume whatever the fighters do.
 void test_positional_sounds(const std::string& game) {
-    sim::Battle battle(match(game, 0, 0));
-    size_t positional = 0;
+    sim::BattleConfig config = match(game, 0, 0);
+    config.slots[0].cpu = false;  // one human means one view, the case that positions voices
+    sim::Battle battle(config);
+    size_t positional = 0, positionalVoices = 0, starts = 0;
     float farthest = 0.f;
+    bool startPositional = false, voiceAtHead = true;
     for (unsigned t = 0; t < 3600; ++t) {
         battle.step({});
         const std::array<float, 3> listener = battle.actor(0).position;
@@ -281,7 +284,19 @@ void test_positional_sounds(const std::string& game) {
             const float dx = sound.position[0] - listener[0], dy = sound.position[1] - listener[1] - 150.f, dz = sound.position[2] - listener[2];
             farthest = std::max(farthest, std::sqrt(dx * dx + dy * dy + dz * dz));
         }
+        for (const auto& voice : battle.events().voices) {
+            const sim::ActorState speaker = battle.actor(static_cast<unsigned>(voice.actor));
+            const bool start = voice.path.find("/battlestart/") != std::string::npos;
+            starts += start;
+            startPositional |= start && voice.positional;
+            positionalVoices += voice.positional;
+            voiceAtHead = voiceAtHead && (!voice.positional || std::fabs(voice.position[1] - speaker.position[1] - 145.f) < .01f);
+        }
     }
+    check(starts == 1, "only the human's start line plays");
+    check(!startPositional, "and it is not positional");
+    check(positionalVoices > 0, "attack voices are positional with one view");
+    check(voiceAtHead, "at the speaker's head");
     check(positional > 0, "a match requests positional sounds");
     check(farthest > 500.f, "and they carry world positions away from the listener");
 }

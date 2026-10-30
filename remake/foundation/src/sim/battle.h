@@ -110,7 +110,7 @@ struct ProjectileState {
 struct BattleEvents {
     struct Effect { int actor, id; std::array<float, 3> position, direction; };
     struct Sound { int actor, id; bool positional; std::array<float, 3> position; bool system; };
-    struct Voice { int actor; std::string path; };
+    struct Voice { int actor; std::string path; bool positional; std::array<float, 3> position; };
     std::vector<Effect> effects;
     std::vector<Sound> sounds;
     std::vector<Voice> voices;

@@ -3695,7 +3695,8 @@ static fnd::audio::CombatFrameView combatFrameView(const gameplay::MatchFrame& f
 // fnd::audio::CombatAudio de-duplicates on: the same frame replayed (a catch-up step, a
 // rollback resimulation) carries the same ids and plays nothing twice.
 static void dispatchCombatAudio(App& app, const gameplay::MatchFrame& f) {
-    if (!app.combatAudio) return;
+    // The core asks for its own sounds and voices; this path would add a second start line per fighter.
+    if (!app.combatAudio || app.opts.simCore) return;
     const uint32_t tick = (uint32_t)app.matchFrame;   // 1-based, same clock as the captures
     App::CombatEventSource source(app);
     const fnd::audio::CombatEventList list = fnd::audio::combat_events_for_frame(
@@ -4170,7 +4171,10 @@ static bool tickMatch(App& app, double dt) {
                                                  toArray(f.audioListenerPosition), toArray(f.audioListenerForward),
                                                  f.audioListenerValid);
         }
-        for (const auto& cue : f.voiceCues) app.combatAudio->play_voice_direct(cue.fighter, cue.path);
+        for (const auto& cue : f.voiceCues)
+            app.combatAudio->play_voice_direct(cue.fighter, cue.path, cue.positional, toArray(cue.position),
+                                               toArray(f.audioListenerPosition), toArray(f.audioListenerForward),
+                                               f.audioListenerValid);
         if (app.opts.combatAudioLog)
             for (const auto& cue : f.voiceCues)
                 std::printf("[combat-audio] tick %llu voice fighter=%d %s\n", (unsigned long long)app.matchFrame, cue.fighter, cue.path.c_str());

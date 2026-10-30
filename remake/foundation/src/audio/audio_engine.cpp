@@ -51,10 +51,10 @@ SpatialMix spatial_mix(const SpatialPlayRequest& request) {
                             request.source.z - request.listener.z};
     const float distance = std::sqrt(delta.x*delta.x + delta.y*delta.y + delta.z*delta.z);
     const float safeMin = std::max(0.001f, request.minDistance);
-    // Port rule: the inverse-distance law min/(min + rolloff*(distance-min)), full volume at
-    // minimum and half at 2x minimum for rolloff 1. Microsoft does not publish DirectSound's
-    // formula, so this is the model as secondary sources describe it. A power law leaves the
-    // original's raw world units (FUN_006358c0, FUN_0065a260) and rolloff .0005 inaudible.
+    // Port rule: min/(min + rolloff*(distance-min)), which is also Wine's DSOUND_Calc3DBuffer
+    // once its millibels are converted. Microsoft does not publish DirectSound's formula. A
+    // power law leaves the original's raw world units (FUN_006358c0, FUN_0065a260) and
+    // rolloff .0005 inaudible.
     // DistanceFactor is omitted: Microsoft specifies it for units/Doppler, not rolloff.
     const float attenuation = safeMin / (safeMin + std::max(0.f, request.rolloffFactor) *
                                                        std::max(0.f, distance - safeMin));

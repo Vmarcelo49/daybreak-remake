@@ -6,6 +6,7 @@
 #include "battle_magazine_hud.hpp"
 #include "battle_manual_aim_camera.hpp"
 #include "battle_special_hud.hpp"
+#include "battle_voice_route.hpp"
 #include "battle_cpu_driver.hpp"
 #include "battle_cpu_obstacle.hpp"
 #include "battle_input_buttons.hpp"
@@ -213,7 +214,13 @@ struct Battle::Impl {
             const unsigned which = voices->bank(request.actor, request.bank != 0);
             const auto& names = voices->names(request.actor, which, request.category);
             if (static_cast<size_t>(request.selected_choice) >= names.size()) continue;
-            events.voices.push_back({static_cast<int>(request.actor), names[static_cast<size_t>(request.selected_choice)]});
+            // FUN_0065b420: with one view (DAT_006cfd00, FUN_006396f0) these two callers use the
+            // 3D buffer, which FUN_00420880 keeps at the actor's head. The other callers stay flat.
+            const bool positional = battle_voice_alternate_route(request.source) && battle_voice_layout_byte(roster, combat.scene_phase()) != 0;
+            const auto& actor = world.actors[request.actor];
+            const std::array<float, 3> position{actor.position[0] + 5.f * legacy_trig(actor.heading, false), actor.position[1] + 145.f,
+                                                actor.position[2] + 5.f * legacy_trig(actor.heading, true)};
+            events.voices.push_back({static_cast<int>(request.actor), names[static_cast<size_t>(request.selected_choice)], positional, position});
         }
     }
 

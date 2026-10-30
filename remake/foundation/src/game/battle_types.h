@@ -204,7 +204,7 @@ struct BattleFrame {
     // path leaves these empty.
     struct EffectSpawn { int id = -1; glm::vec3 position{0.f}, direction{0.f}; };
     struct SoundCue { int id = -1; bool positional = false; glm::vec3 position{0.f}; bool system = false; };
-    struct VoiceCue { int fighter = -1; std::string path; };
+    struct VoiceCue { int fighter = -1; std::string path; bool positional = false; glm::vec3 position{0.f}; };
     std::vector<EffectSpawn> effectSpawns;
     std::vector<SoundCue> soundCues;
     std::vector<VoiceCue> voiceCues;

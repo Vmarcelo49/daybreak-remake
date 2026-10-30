@@ -21,6 +21,15 @@ constexpr const char* kVoiceEventNames[kVoiceEventCount] = {
 constexpr VoiceEvent kBVariantEvents[] = {VoiceEvent::AttackKO, VoiceEvent::BattleStart,
                                           VoiceEvent::DamageKO, VoiceEvent::Revival};
 
+CombatAudioSink::SpatialRequest stage_spatial_request(const AudioPoint3& source, const AudioPoint3& listener,
+                                                      const AudioPoint3& forward) {
+    CombatAudioSink::SpatialRequest request;
+    request.source = source;
+    request.listener = listener;
+    request.listenerForward = forward;
+    return request;
+}
+
 std::string numbered_stem(const char* dir, int alternative) {
     char number[16];
     std::snprintf(number, sizeof(number), "%03d", alternative < 0 ? 0 : alternative);
@@ -363,14 +372,17 @@ void CombatAudio::play_system_se_direct(int id) {
     else ++stats_.se_plays;
 }
 
-void CombatAudio::play_voice_direct(int fighter, const std::string& path) {
+void CombatAudio::play_voice_direct(int fighter, const std::string& path, bool positional, const AudioPoint3& position,
+                                    const AudioPoint3& listener, const AudioPoint3& forward, bool listenerValid) {
     if (fighter < 0 || fighter >= 4) return;
     FighterVoice& v = voices_[static_cast<size_t>(fighter)];
     const int channel = voice_channel_for(fighter);
     if (v.channel >= 0) sink_.stop(v.channel);
     const size_t dot = path.find_last_of('.');
     const std::string stem = dot == std::string::npos ? path : path.substr(0, dot);
-    const int played = sink_.play(stem, SfxBus::Voice, channel);
+    const int played = positional && listenerValid
+        ? sink_.play_spatial(stem, channel, stage_spatial_request(position, listener, forward))
+        : sink_.play(stem, SfxBus::Voice, channel);
     v.channel = played;
     if (played < 0) {
         ++stats_.voice_missing;
@@ -387,13 +399,7 @@ void CombatAudio::play_se(const CombatCue& cue) {
     const std::string stem = numbered_stem("data/se", cue.se_id);
     int played = -1;
     if (cue.se_positional && cue.se_listener_valid) {
-        CombatAudioSink::SpatialRequest request;
-        request.source = cue.se_position;
-        request.listener = cue.se_listener_position;
-        request.listenerForward = cue.se_listener_forward;
-        request.rolloffFactor = 0.0005f;
-        request.minDistance = 3.f;
-        played = sink_.play_spatial(stem, -1, request);
+        played = sink_.play_spatial(stem, -1, stage_spatial_request(cue.se_position, cue.se_listener_position, cue.se_listener_forward));
     } else {
         played = sink_.play(stem, SfxBus::Sfx, -1);
     }

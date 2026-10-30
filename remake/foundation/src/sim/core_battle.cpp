@@ -158,7 +158,7 @@ game::BattleFrame CoreBattle::step(const fnd::input::PlayerState* inputs[game::k
     const BattleEvents& events = m_battle->events();
     for (const auto& e : events.effects) frame.effectSpawns.push_back({e.id, toVec(e.position), toVec(e.direction)});
     for (const auto& s : events.sounds) frame.soundCues.push_back({s.id, s.positional, toVec(s.position), s.system});
-    for (const auto& v : events.voices) frame.voiceCues.push_back({v.actor, v.path});
+    for (const auto& v : events.voices) frame.voiceCues.push_back({v.actor, v.path, v.positional, toVec(v.position)});
 
     // FUN_006358c0: one listener at the selected actor's XYZ +150Y.
     const CoreFighter& listener = m_fighters[static_cast<size_t>(m_listener)];
