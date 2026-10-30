@@ -197,6 +197,15 @@ struct HudState {
     bool  staminaVisible = false;    // contextual: dash/guard/airborne only
     float staminaFrac = 0.f;
     bool  koVisible = false;         // elapsed < stingUntil in the DX9 path
+    // The centre notices FUN_0063a130 draws after the HUD. noticesOnly is the result phase,
+    // which shows them with the battle HUD gone.
+    int   noticeType = -1;           // 0 KO, 1 and 2 respawn, 3..5 the digits, 6 start
+    float noticeScale = 1.f;
+    int   resultWinner = -1;         // team 0 uses P05, team 1 P08
+    bool  resultMain = false, resultSecondary = false;
+    float resultMainScale = 1.f, resultSecondaryScale = 1.f;
+    int   resultBarOffset = -1;      // draw_battle_result_bars: 1056 down to 0, < 0 hides them
+    bool  noticesOnly = false;
     // The original's frame counter (`*param_1`, the HUD object's first field) and the
     // values its clock-driven elements read. The composer itself stays clock-free —
     // it draws whatever these say — so the seam is explicit: the caller advances
@@ -303,6 +312,7 @@ private:
     // fills, then the two balloon corners. Elements whose atlas or state the port
     // does not have are simply not drawn here; what is deliberately left out and why
     // is recorded in the track's report, not silently mixed in.
+    void composeNotices(SpriteRenderer& batch, const HudState& st, const BattleHudLayout& layout);
     void composeBattle(SpriteRenderer& batch, const HudState& st, const BattleHudLayout& layout);
     // FUN_00643230 + the target-bar drawer at 0x00643e38: the targeting ring, the
     // target's com bar (frame, lagging fill, live fill, 1P/2P/3P/com tag) and the

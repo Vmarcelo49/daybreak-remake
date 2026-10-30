@@ -153,10 +153,7 @@ public:
     // Call between beginFrame and render.
     void draw(SpriteRenderer& batch) const;
 
-    // The current screen ALONE. FUN_00657c80's fade is this class's own overlay, and a
-    // caller that has to fade the whole target rather than the 800x600 canvas draws it
-    // itself from fadeFrame() + fadeAlpha8() — ui::drawScreenOverlay does (the countdown
-    // over the live battle has no opaque background to hide the letterbox bars).
+    // The current screen alone, without the fade.
     void drawContent(SpriteRenderer& batch) const;
 
     int takeSound() { return current_ ? current_->takeSound() : -1; }
@@ -199,15 +196,5 @@ private:
 bool drawScreenFrame(const ScreenStack& stack, SpriteRenderer& batch, uint32_t w, uint32_t h,
                      WGPUCommandEncoder encoder, WGPUTextureView view, WGPUTextureFormat format,
                      std::string& error);
-
-// The same pass WITHOUT that background quad, for a screen drawn over an already-rendered
-// scene — the pre-round countdown (issue #47), whose background is the live battle. Both
-// draw the same screen with the same canvas transform and clip and the same fadeAlpha8()
-// ramp; they differ in exactly two things, both required by the missing background: no
-// opaque quad, and a fade that covers the whole target rather than the 800x600 canvas
-// (which the opaque quad would otherwise back).
-bool drawScreenOverlay(const ScreenStack& stack, SpriteRenderer& batch, uint32_t w, uint32_t h,
-                       WGPUCommandEncoder encoder, WGPUTextureView view, WGPUTextureFormat format,
-                       std::string& error);
 
 }  // namespace ui

@@ -69,6 +69,20 @@ struct ActorTotals {
     int kills = 0, deaths = 0, damageDealt = 0, damageTaken = 0;
 };
 
+// One actor's centre-screen notice (FUN_0063a130): 0 KO, 1 and 2 respawn, 3..5 the digits, 6 start.
+struct NoticeState {
+    int type = -1;  // -1 when nothing shows
+    float scale = 1.f;
+};
+
+// The win or lose glyphs of scene phase 3 (battle_phase_hud).
+struct ResultNotice {
+    int winner = -1;
+    bool main = false, secondary = false;
+    float mainScale = 1.f, secondaryScale = 1.f;
+    int barOffset = -1;  // scene phases 4 and 5: the bars closing in, 1056 down to 0
+};
+
 struct MatchState {
     int winner = -1;                       // the winning team once the round is decided
     bool finished = false;                 // the result screens are ready
@@ -161,6 +175,8 @@ public:
     bool hud_hidden() const { return scene_phase() >= 3; }
     ActorAnimation animation(unsigned slot) const;
     SpecialState special(unsigned slot) const;
+    NoticeState notice(unsigned slot) const;
+    ResultNotice result_notice() const;
     ActorTotals totals(unsigned slot) const;
     HandTrail hand_trail(unsigned slot, unsigned hand) const;
     CameraPose camera(unsigned slot) const;

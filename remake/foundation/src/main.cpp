@@ -48,7 +48,6 @@
 #include "ui/pause_layout.h"
 #include "ui/sprite.h"
 #include "ui/screen.h"
-#include "ui/screen_countdown.h"
 #include "ui/screen_vs.h"
 #include "ui/screen_opening.h"
 #include "ui/frontend_state.h"
@@ -917,6 +916,13 @@ Mat4 rotationZ(float radians, float scale) {
 // ---------------------------------------------------------------------------------------
 // The app
 // ---------------------------------------------------------------------------------------
+// The stack asks for a screen per id; the battle itself is drawn by the match path.
+struct BattleEntryScreen final : ui::Screen {
+    ui::ScreenId update(const ui::ScreenInput&) override { return ui::ScreenId::Battle; }
+    void draw(ui::SpriteRenderer&) const override {}
+    const char* name() const override { return "battle"; }
+};
+
 struct App {
     Options      opts;
     SDL_Window*  window = nullptr;
@@ -948,13 +954,6 @@ struct App {
     bool                         screensMode = false;
     bool                         frontendMatch = false;
     bool                         frontendBattleReady = false;
-    // The pre-round countdown is up over the already-built battle (issue #47). Set by the
-    // Battle screen's factory, cleared the tick the countdown's clock ends (the same tick
-    // tickFrontend hands the frame to the match) — so it is true for exactly the 3 x tickRate
-    // ticks of the countdown. While it is true the screen stack still owns the frame and the
-    // render path draws the battle scene underneath it (ui::drawScreenOverlay), and the
-    // only the fighters' entrance descent runs; combat and input remain gated.
-    bool                         roundCountdown = false;
     bool                         rendererReady = false;
     ui::FrontendState            frontend;
     fnd::audio::Sdl3Engine        menuAudio;
@@ -2756,15 +2755,18 @@ struct FrameView {
 static void buildFrameViews(App& app, uint32_t width, uint32_t height,
                             std::vector<FrameView>& out) {
     out.clear();
-    const game::SplitLayout layout = game::splitLayoutFor(app.matchViewCount);
+    // FUN_006396f0: the result phases show one fixed fighter to everyone, full screen.
+    const bool oneView = app.battle->hud_hidden();
+    const game::SplitLayout layout = oneView ? game::SplitLayout::Single : game::splitLayoutFor(app.matchViewCount);
     for (int v = 0; v < app.matchViewCount; ++v) {
         const game::MatchView& view = app.matchViews[v];
         if (!view.active()) continue;
-        const game::ViewRect rect = game::viewCell(layout, v, width, height);
+        if (oneView && !out.empty()) break;
+        const game::ViewRect rect = game::viewCell(layout, oneView ? 0 : v, width, height);
         if (rect.empty()) continue;
         FrameView frameView;
         frameView.cell = rect;
-        frameView.camera.rect = app.matchViewCount > 1
+        frameView.camera.rect = app.matchViewCount > 1 && !oneView
             ? render::ViewportRect{rect.x, rect.y, rect.w, rect.h}
             : render::ViewportRect{};
         frameView.camera.eye = glm::mix(view.previousEye, view.camera.eye(), app.matchAlpha);
@@ -3398,6 +3400,16 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
         // original draws it once, outside its view loop (FUN_006396f0:203-210), so only
         // the first view carries it.
         view.hud.fps = app.fpsShown;
+        const game::BattleNotice notice = app.battle->notice(view.fighter);
+        view.hud.noticeType = notice.type;
+        view.hud.noticeScale = notice.scale;
+        const game::BattleResultNotice result = app.battle->result_notice();
+        view.hud.resultWinner = result.winner;
+        view.hud.resultMain = result.main;
+        view.hud.resultSecondary = result.secondary;
+        view.hud.resultMainScale = result.mainScale;
+        view.hud.resultSecondaryScale = result.secondaryScale;
+        view.hud.resultBarOffset = result.barOffset;
         view.hud.showFps = (v == 0);
         // The composer is clock-free by design, so the frame counter the original's
         // alternations and pulse read (FUN_00644150's `(frame % 0x1e) / 0xf` flash pair and
@@ -4235,7 +4247,7 @@ void advanceAnimation(App& app, double delta) {
         xm::Controller& c = app.controllers[i];
         if (!c.model()) continue;
         bool matchRig = false;
-        if (app.matchMode || app.roundCountdown)
+        if (app.matchMode)
             for (int fighter = 0; fighter < app.battle->fighter_count(); ++fighter)
                 matchRig = matchRig || i == app.matchRig[fighter];
         if (matchRig) continue;
@@ -4243,22 +4255,13 @@ void advanceAnimation(App& app, double delta) {
         moved = true;
     }
     // A match still needs the pose refreshed: the fighters moved their own tracks.
-    if (app.matchMode || app.roundCountdown) moved = true;
+    if (app.matchMode) moved = true;
     if (!moved) return;
     for (size_t i = 0; i < app.controllers.size(); ++i)
         if (app.controllers[i].model()) app.controllers[i].evalWorld(app.worlds[i]);
     for (int fighter = 0; fighter < app.battle->fighter_count(); ++fighter)
         app.battle->fighter(fighter).core_pose(app.worlds[app.matchRig[fighter]]);
     app.renderer.updatePose(app.worlds);
-}
-
-static void tickRoundEntry(App& app, double dt) {
-    for (int i = 0; i < app.battle->fighter_count(); ++i)
-        app.previousFighter[i] = app.battle->fighter(i).pose();
-    app.battle->step_round_entry(dt);
-    advanceAnimation(app, dt);
-    const fnd::input::PlayerState* none[4] = {};
-    updateMatchViews(app, none, dt);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -4437,11 +4440,6 @@ bool runInputTest(App& app) {
     if (!ok) app.error = "input edge sequence mismatch";
     return ok;
 }
-
-// The round-start countdown is ui/screen_countdown.{h,cpp} (issue #47): it is a screen,
-// like the other front-end scenes, and moving it there is what lets a device-free test
-// draw the real screen and assert the overlay policy. Its art, its three-cell PORT RULE
-// duration and the reason the phase is not a black screen are all documented there.
 
 static void playFrontendMusic(App& app, ui::ScreenId id) {
     // Decode independently of the device so muted/device-less runs retain VS
@@ -4871,42 +4869,13 @@ bool initScreens(App& app) {
             requestWebMatchGroup(stage, slots, weaponIds);
         }
         if (sid == ui::ScreenId::Battle) {
-            // Issue #47: the VS intro has ended, and enterFrontendBattle has already built
-            // the whole match — scene, fighters, cameras, weapons, HUD state (initScene ->
-            // initMatch). The countdown screen added over it is presentation only: the
-            // round stays held (roundCountdown) until its clock ends, and the render path
-            // draws this screen's digit OVER the live battle scene instead of over black.
+            // The VS intro has ended and enterFrontendBattle built the match. Nothing holds the
+            // round back: this screen only hands over.
             if (!enterFrontendBattle(app)) return nullptr;
-            ui::CountdownInfo info;
-            info.tickRate = app.opts.out.empty() ? gameplay::FixedStep::tickRate
-                                                 : gameplay::FixedStep::scriptedCaptureRate;
-            char settings[96];
-            std::snprintf(settings, sizeof(settings), "TIME %ds   BALLOON %d%% / %d%%",
-                          app.frontend.timeLimit, app.frontend.blueBalloon,
-                          app.frontend.redBalloon);
-            info.settings = settings;
-            // The round's own settings, then one line per participant (issue #13): the
-            // roster is the selection, so a 2v2 lists four. Name combos, never bare
-            // fighters (AGENTS.md rule 7).
-            for (int i = 0; i < app.participantCount; ++i) {
-                const ui::Participant& p = app.participants[i];
-                info.roster.push_back({std::string(ui::teamLabel(p.team)) + "  " + p.combo() +
-                                           "  " + ui::controllerLabel(p.controller),
-                                       p.team == 0});
-            }
-            auto countdown = ui::makeCountdownScreen(app.uiRenderer, info,
-                                                     app.frontendBattleReady, app.error);
-            if (!countdown) return nullptr;
-            app.roundCountdown = true;
-            app.battle->begin_round_entry();
             for (int i = 0; i < app.battle->fighter_count(); ++i)
                 app.previousFighter[i] = app.battle->fighter(i).pose();
-            // The tick ladder's own record (the release gate quotes it): the countdown
-            // starts here, three cells of tickRate ticks, over the live battle.
-            std::printf("[menu] countdown: %d ticks over the live battle on %s (tick %llu)\n",
-                        info.tickRate * 3, app.opts.stage.c_str(),
-                        (unsigned long long)app.logicTicks);
-            return countdown;
+            app.frontendBattleReady = true;
+            return std::make_unique<BattleEntryScreen>();
         }
         // FUN_00411ae0 supplies the slide/scale timing, but not a sting-completion
         // gate. PORT PACING: retain the finished VS logo until its decoded track
@@ -5265,6 +5234,7 @@ struct HudTestHook {
     // for a single view, which is the historical path.
     std::vector<ui::UiRect> separators;
     ui::UiViewport          target{};
+    bool                    syntheticWhenEmpty = true;  // --hud-test; a match with no pass draws none
 };
 
 ui::HudState syntheticHudState() {
@@ -5286,19 +5256,26 @@ HudTestHook battleHudHook(App& app) {
 void appendMatchHudPasses(App& app, const std::vector<FrameView>& views, uint32_t width,
                           uint32_t height, HudTestHook& hook) {
     hook.target = ui::UiViewport{width, height, 0, 0};
-    if (app.battle->hud_hidden()) return;
+    const bool noticesOnly = app.battle->hud_hidden();
     for (const FrameView& view : views) {
+        // Phase 3 draws its notices once over the whole target, with the battle HUD gone.
+        if (noticesOnly && (&view != &views.front() ||
+                            (view.hud.noticeType < 0 && view.hud.resultWinner < 0 &&
+                             view.hud.resultBarOffset < 0))) continue;
         HudPass pass;
         pass.state = view.hud;
+        pass.state.noticesOnly = noticesOnly;
         pass.hasState = true;
         // A match view's markers were already projected into its own logical viewport, so
         // they need no reference-coordinate shift; the versus vignette still does.
         pass.referenceCoordinates = false;
-        pass.viewport = ui::UiViewport{(uint32_t)view.cell.w, (uint32_t)view.cell.h,
-                                       (uint32_t)view.cell.x, (uint32_t)view.cell.y};
+        pass.viewport = noticesOnly ? hook.target
+                                    : ui::UiViewport{(uint32_t)view.cell.w, (uint32_t)view.cell.h,
+                                                     (uint32_t)view.cell.x, (uint32_t)view.cell.y};
         hook.passes.push_back(std::move(pass));
     }
-    const int separators = game::separatorCount(game::splitLayoutFor(app.matchViewCount));
+    hook.syntheticWhenEmpty = false;
+    const int separators = noticesOnly ? 0 : game::separatorCount(game::splitLayoutFor(app.matchViewCount));
     for (int i = 0; i < separators; ++i) {
         const game::ViewRect rect = game::separatorRect(i, width, height);
         hook.separators.push_back(ui::UiRect{rect.x, rect.y, rect.w, rect.h});
@@ -5354,7 +5331,7 @@ void reportMatchViews(const App& app, uint32_t width, uint32_t height) {
 bool hudTestHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat format,
                  uint32_t w, uint32_t h, void* ud) {
     auto* hk = static_cast<HudTestHook*>(ud);
-    if (hk->passes.empty()) {
+    if (hk->passes.empty() && hk->syntheticWhenEmpty) {
         HudPass pass;
         pass.viewport = ui::UiViewport{w, h, 0, 0};
         hk->passes.push_back(std::move(pass));
@@ -5408,17 +5385,12 @@ struct ScreenCaptureHook {
     const ui::ScreenStack* screens = nullptr;
     ui::SpriteRenderer*    ui = nullptr;
     std::string*           error = nullptr;
-    // True for a screen drawn over an already-rendered scene (the countdown, issue #47):
-    // the background-less ui::drawScreenOverlay instead of ui::drawScreenFrame.
-    bool                   overlay = false;
 };
 
 bool screenCaptureHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat format,
                        uint32_t w, uint32_t h, void* ud) {
     auto* sk = static_cast<ScreenCaptureHook*>(ud);
-    return sk->overlay
-        ? ui::drawScreenOverlay(*sk->screens, *sk->ui, w, h, enc, view, format, *sk->error)
-        : ui::drawScreenFrame(*sk->screens, *sk->ui, w, h, enc, view, format, *sk->error);
+    return ui::drawScreenFrame(*sk->screens, *sk->ui, w, h, enc, view, format, *sk->error);
 }
 
 // The overlay's line set: a pure function of loaded state (bounds, aim, desired eye), so
@@ -5653,11 +5625,8 @@ static SDL_AppResult tickFrontend(App& state) {
         if (app->menuAudio.play(handle,fnd::audio::SfxBus::Voice) >= 0) ++app->menuVoicePlays;
     }
     if (app->screens.current() == ui::ScreenId::Battle && app->frontendBattleReady && app->screens.fadeFrame() == 0) {
-        // The countdown's clock ended and the stack's fade is done: the round starts on the
-        // NEXT tick (this frame was still the countdown's, drawn over the scene). Clearing
-        // the flag here is what lets the match's first step happen — before it, tickMatch is
-        // never called at all, so no input can reach the simulation during the countdown.
-        app->roundCountdown = false;
+        // The stack's fade is done: the round starts now, and the core plays its own 3-2-1
+        // while the fighters fall, with commands locked (battle_startup.hpp).
         app->screensMode = false;
         app->matchMode = true;
         return SDL_APP_CONTINUE;
@@ -5892,30 +5861,15 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 app->lastTime = plat::now();
                 return SDL_APP_CONTINUE;
             }
-            // Entrance descent belongs to the countdown. tickMatch stays out of
-            // this phase so input, COM decisions and the round clock cannot advance.
-            if (app->roundCountdown) {
-                const double entryDt = capturing ? app->opts.dt : gameplay::FixedStep::seconds;
-                tickRoundEntry(*app, entryDt);
-                // FUN_00635d40:62-73 starts battle BGM during round entry. Combat
-                // remains held here; waiting for tickMatch delayed it past 3-2-1.
-                if (app->versusAudioOn && app->versusAudio.music_queued_frames() < 4096) {
-                    const uint64_t before = app->versusBgmPushed;
-                    app->versusBgmPushed += app->versusLoop.push_next(app->versusAudio, 1024);
-                    if (before == 0 && app->versusBgmPushed > 0)
-                        std::printf("[menu] countdown music: started before combat (tick %llu)\n",
-                                    (unsigned long long)app->logicTicks);
-                }
-            }
         }
     }
 
-    if (app->matchMode || app->roundCountdown) {
+    if (app->matchMode) {
         placeFxCards(*app);
         placeMatchFighters(*app);
     }
 
-    if (app->screensMode && !app->roundCountdown) {
+    if (app->screensMode) {
 
         if (capturing) {
             if (app->frames >= (uint64_t)app->opts.frames) {
@@ -5966,7 +5920,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         // Not in match mode: tickMatch already stepped the ported reference camera,
         // and this block's spring would overwrite its eye with the demo's own framing.
         // The countdown is the same case (issue #47): its views carry the arena camera.
-        if (app->opts.camera == "arena" && !app->matchMode && !app->roundCountdown) {
+        if (app->opts.camera == "arena" && !app->matchMode) {
             // First frame seeds from the desired eye, so single-frame captures stay
             // exactly deterministic; longer runs converge through the dt-correct
             // spring instead of snapping.
@@ -6006,7 +5960,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         // A countdown frame takes the match's own camera path (issue #47): the match is
         // built and its per-view cameras are already converging on the spawns, so the digit
         // is drawn over the real arena, at the real split-screen cells.
-        if (app->matchMode || app->roundCountdown) {
+        if (app->matchMode) {
             buildFrameViews(*app, w, h, frameViews);
             for (const FrameView& view : frameViews) frameCameras.push_back(view.camera);
             vp = frameCameras.front().viewProj;
@@ -6032,8 +5986,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         // review). The HUD draws one pass per view plus the separator, and a countdown frame
         // adds the overlay and possibly the clip-browser caption.
         {
-            const size_t uiPasses = frameCameras.size() + 1 /*separator*/ +
-                                    (app->roundCountdown ? 1u : 0u);
+            const size_t uiPasses = frameCameras.size() + 1 /*separator*/;
             if (uiPasses > ui::SpriteRenderer::kMaxPassesPerFrame) {
                 std::fprintf(stderr,
                              "[ui] %zu passes on one renderer exceed the %u-region budget; "
@@ -6076,17 +6029,11 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 // Only more than one view takes the split-screen scene pass; a single view
                 // keeps render()'s exact commands (and the banked captures' pixels).
                 const std::vector<render::ViewCamera>* viewArg =
-                    (app->matchMode || app->roundCountdown) && frameCameras.size() > 1
+                    app->matchMode && frameCameras.size() > 1
                         ? &frameCameras : nullptr;
-                // A countdown capture renders the scene and composites the SCREEN over it
-                // (issue #47): its overlay hook is drawScreenOverlay — no opaque background
-                // — where a match frame composites the HUD and the prims.
-                ScreenCaptureHook overlay{&app->screens, &app->uiRenderer, &app->error,
-                                          /*overlay=*/true};
                 render::SceneRenderer::UiHook uiHook = nullptr;
                 void* uiData = nullptr;
-                if (app->roundCountdown) { uiHook = screenCaptureHook; uiData = &overlay; }
-                else if (useHook) { uiHook = captureHook; uiData = &cap; }
+                if (useHook) { uiHook = captureHook; uiData = &cap; }
                 if (!app->renderer.capture((uint32_t)app->opts.sizeW,
                                            (uint32_t)app->opts.sizeH, rgba, app->error,
                                            uiHook, uiData, viewArg))
@@ -6174,7 +6121,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         target.format = app->sc.format;
         target.width = app->sc.width;
         target.height = app->sc.height;
-        const bool multiView = (app->matchMode || app->roundCountdown) && frameCameras.size() > 1;
+        const bool multiView = app->matchMode && frameCameras.size() > 1;
         const bool sceneOk = multiView ? app->renderer.renderViews(target, frameCameras, app->error)
                                        : app->renderer.render(target, app->error);
         if (!sceneOk) {
@@ -6251,15 +6198,6 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 gpu::endFrame(app->ctx,app->sc,frame);
                 return SDL_APP_FAILURE;
             }
-        }
-        // The pre-round countdown, last: the screen stack's current screen over the scene
-        // pass above, with no background of its own (issue #47). The battle HUD is not part
-        // of it — the HUD belongs to the running round, and the first round tick draws it.
-        if (app->roundCountdown &&
-            !ui::drawScreenOverlay(app->screens, app->uiRenderer, app->sc.width, app->sc.height,
-                                   frame.encoder, frame.view, app->sc.format, app->error)) {
-            gpu::endFrame(app->ctx, app->sc, frame);
-            return SDL_APP_FAILURE;
         }
         if (!gpu::endFrame(app->ctx, app->sc, frame)) return SDL_APP_FAILURE;
     } else {

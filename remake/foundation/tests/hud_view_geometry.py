@@ -36,8 +36,7 @@ import tempfile
 from capture_probe import (CaptureFailed, main_guard, read_ppm, require_install,
                            run_demo)
 
-# The capture frame and size of the four-view recipe: the countdown holds the round for 180
-# ticks, so this is match frame 120 — four fighters spread over the stage, each view's HUD
+# The capture frame and size of the four-view recipe: match frame 300 — four fighters spread over the stage, each view's HUD
 # carrying four distinct ring anchors, which is what makes the per-view difference readable.
 FRAMES = 300
 WIDTH, HEIGHT = 960, 540

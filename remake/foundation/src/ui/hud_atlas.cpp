@@ -15,7 +15,7 @@ namespace {
 // Sheet spelling: FUN_006560c0 takes the .bmp name the exe asks for and the
 // archives ship .cnv, so both are probed, .cnv first (an extracted tree keeps
 // .cnv too; a .bmp beside it would be a conversion, which the project does not do).
-const char* kSheetNames[(int)HudSheet::Count] = {"P00", "P01", "P02", "P03", "P06", "P09"};
+const char* kSheetNames[(int)HudSheet::Count] = {"P00", "P01", "P02", "P03", "P06", "P09", "P04", "P05", "P08"};
 
 }  // namespace
 

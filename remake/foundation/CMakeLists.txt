@@ -112,7 +112,6 @@ add_library(foundation_ui STATIC
     src/ui/screen_select.cpp
     src/ui/screen_stage_select.cpp
     src/ui/screen_vs.cpp
-    src/ui/screen_countdown.cpp
     src/ui/screen_result.cpp
     src/ui/result_quote.cpp
     src/ui/frontend_launch.cpp
@@ -745,12 +744,6 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(frontend_lifecycle_test PRIVATE foundation_ui foundation_gameplay glm)
     add_test(NAME frontend_lifecycle_test COMMAND frontend_lifecycle_test)
 
-    # Issue #47's pre-round countdown: the gate boundary and the overlay policy. Device-free
-    # (a SpriteRenderer without a device keeps its quads on the CPU, so the batch is
-    # readable); a pixel test would need a GPU adapter and the game data.
-    add_executable(countdown_overlay_test tests/countdown_overlay_test.cpp)
-    target_link_libraries(countdown_overlay_test PRIVATE foundation_ui foundation_gameplay glm)
-    add_test(NAME countdown_overlay_test COMMAND countdown_overlay_test)
 
     # Issue #15's pause semantics: the match gate, the menu and the stale-edge rule.
     # Device-free (no SDL, no assets), like the other gameplay tests.

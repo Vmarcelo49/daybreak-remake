@@ -347,6 +347,31 @@ void HudComposer::composeFighters(SpriteRenderer& batch, const HudState& st, con
     }
 }
 
+// The scale the core decays toward 1 also turns the sprite: (scale - 1) * 5 degrees (battle_phase_hud).
+void HudComposer::composeNotices(SpriteRenderer& batch, const HudState& st, const BattleHudLayout& layout) {
+    const auto pulse = [&](HudIcon icon, float y, float scale) {
+        battleAtlas_.draw(batch, icon, layout.ko.x, y, scale, (scale - 1.f) * 5.f);
+    };
+    static constexpr HudIcon kNotices[] = {HudIcon::KoSting, HudIcon::NoticeRevive, HudIcon::NoticeReviveAlt,
+                                           HudIcon::NoticeThree, HudIcon::NoticeTwo, HudIcon::NoticeOne,
+                                           HudIcon::NoticeStart};
+    if (st.noticeType >= 0 && st.noticeType <= 6) pulse(kNotices[st.noticeType], layout.ko.y, st.noticeScale);
+    if (st.resultBarOffset >= 0) {
+        // PORT RULE: solid black; the original textures these from its result bar sheet, with a
+        // soft leading edge. They close from opposite sides, 60 high on top and 176 below.
+        const float x = (float)st.resultBarOffset * layout.width / 800.f;
+        const UiColor black{0.f, 0.f, 0.f, 1.f};
+        batch.pushSolid(UiRect{x, 0.f, layout.width - x + 1.f, 60.f}, black);
+        batch.pushSolid(UiRect{0.f, layout.height - 176.f, layout.width - x, 176.f}, black);
+    }
+    if (st.resultWinner < 0) return;
+    const bool blue = st.resultWinner == 0;
+    if (st.resultMain)
+        pulse(blue ? HudIcon::ResultBlueMain : HudIcon::ResultRedMain, layout.ko.y - 100.f, st.resultMainScale);
+    if (st.resultSecondary)
+        pulse(blue ? HudIcon::ResultBlueSecond : HudIcon::ResultRedSecond, layout.ko.y + 100.f, st.resultSecondaryScale);
+}
+
 void HudComposer::compose(SpriteRenderer& batch, const HudState& st) {
     const auto battle = computeBattleHudLayout(batch.viewportW(),batch.viewportH());
     batch.setCanvasTransform(battle.scale);
@@ -358,6 +383,10 @@ void HudComposer::compose(SpriteRenderer& batch, const HudState& st) {
     // invention and is deliberately not mixed in — a frame is either the original's
     // HUD or the remake's stand-in, never half of each.
     if (ensureBattleAtlas(batch)) {
+        if (st.noticesOnly) {
+            composeNotices(batch, st, battle);
+            return;
+        }
         composeFighters(batch, st, battle);
         // The round stings sit between the fighters and the corners: FUN_0063a130
         // @0x63a4b4 draws them centred at (400,300) at the viewport scale times a
@@ -366,6 +395,7 @@ void HudComposer::compose(SpriteRenderer& batch, const HudState& st) {
         // by scaling this call, not something the composer can invent.
         if (st.koVisible) battleAtlas_.draw(batch, HudIcon::KoSting, battle.ko.x, battle.ko.y, 0.5f);
         composeBattle(batch, st, battle);
+        composeNotices(batch, st, battle);
         return;
     }
     // New linked glyphs can grow the atlas and change queued quads' UV denominator.

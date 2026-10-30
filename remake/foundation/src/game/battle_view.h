@@ -119,12 +119,26 @@ struct CameraPoseView {
     float fovY = 0.f, nearPlane = 0.f;
 };
 
+// What the simulation shows at the centre of a view (see sim::NoticeState, sim::ResultNotice).
+struct BattleNotice {
+    int type = -1;
+    float scale = 1.f;
+};
+struct BattleResultNotice {
+    int winner = -1;
+    bool main = false, secondary = false;
+    float mainScale = 1.f, secondaryScale = 1.f;
+    int barOffset = -1;
+};
+
 class BattleView {
 public:
     virtual ~BattleView() = default;
 
     // The result presentation draws no battle HUD.
     virtual bool hud_hidden() const { return false; }
+    virtual BattleNotice notice(int) const { return {}; }
+    virtual BattleResultNotice result_notice() const { return {}; }
     // False leaves the view to the product's own ArenaCamera.
     virtual bool camera_pose(int, CameraPoseView&) const { return false; }
 
@@ -148,8 +162,6 @@ public:
     // One optional input per fighter, in launch order. A paused battle returns an empty frame.
     virtual BattleFrame step(const fnd::input::PlayerState* inputs[kMatchFighterCount], double dt) = 0;
     virtual void set_paused(bool paused) = 0;
-    virtual void begin_round_entry() = 0;
-    virtual void step_round_entry(double dt) = 0;
     virtual void set_primary_listener_fighter(int fighter) = 0;
 };
 

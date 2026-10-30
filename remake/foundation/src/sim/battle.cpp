@@ -325,6 +325,29 @@ ActorAnimation Battle::animation(unsigned slot) const {
     return out;
 }
 
+NoticeState Battle::notice(unsigned slot) const {
+    const auto& combat = m_impl->combat;
+    NoticeState out;
+    if (!combat.startup.enabled || combat.scene_phase() >= 4 || !combat.startup.notice_ticks.at(slot)) return out;
+    out.type = combat.startup.notice_type[slot];
+    out.scale = combat.startup.notice_scale[slot];
+    return out;
+}
+
+ResultNotice Battle::result_notice() const {
+    const auto& combat = m_impl->combat;
+    ResultNotice out;
+    if (combat.scene_phase() >= 4 && combat.match.presentation_phase == 0)
+        out.barOffset = std::max(0, static_cast<int>(combat.match.presentation_offset));
+    if (combat.scene_phase() != 3 || combat.match.winner < 0 || combat.match.ready) return out;
+    out.winner = combat.match.winner;
+    out.main = combat.match.countdown != 0;
+    out.mainScale = combat.phase_notices.main_scale;
+    out.secondary = combat.phase_notices.secondary_ticks != 0;
+    out.secondaryScale = combat.phase_notices.secondary_scale;
+    return out;
+}
+
 SpecialState Battle::special(unsigned slot) const {
     const auto& combat = m_impl->combat;
     const auto& gauge = combat.special_gauges[slot];

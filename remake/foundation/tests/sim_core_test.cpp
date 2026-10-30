@@ -301,6 +301,40 @@ void test_positional_sounds(const std::string& game) {
     check(farthest > 500.f, "and they carry world positions away from the listener");
 }
 
+// FUN_00635d40 case 1, as battle_startup.hpp keeps it: three digits of 60 ticks while everyone
+// falls from the spawn with commands locked, then the start notice and free movement.
+void test_round_start(const std::string& game) {
+    sim::BattleConfig config = match(game, 0, 0);
+    config.slots[0].cpu = false;
+    sim::Battle battle(config);
+    const float spawnY = battle.actor(0).position[1];
+    const std::array<float, 3> spawn = battle.actor(0).position;
+    sim::Inputs held{};
+    held[0].x = 1;
+    std::vector<int> seen;
+    bool movedDuringCount = false;
+    float lowest = spawnY;
+    for (unsigned t = 0; t < 179; ++t) {
+        battle.step(held);
+        const int type = battle.notice(0).type;
+        if (type >= 0 && (seen.empty() || seen.back() != type)) seen.push_back(type);
+        const auto at = battle.actor(0).position;
+        movedDuringCount |= at[0] != spawn[0] || at[2] != spawn[2];
+        lowest = std::min(lowest, at[1]);
+    }
+    check(seen == std::vector<int>({3, 4, 5}), "the digits 3, 2, 1 play from the first tick");
+    check(lowest < spawnY - 1.f, "the fighters fall during the count");
+    check(!movedDuringCount, "and held input does not move them");
+    for (unsigned t = 0; t < 120; ++t) {
+        battle.step(held);
+        const int type = battle.notice(0).type;
+        if (type >= 0 && seen.back() != type) seen.push_back(type);
+    }
+    check(seen.back() == 6, "the start notice follows the digits");
+    const auto after = battle.actor(0).position;
+    check(after[0] != spawn[0] || after[2] != spawn[2], "held input moves the fighter once the count ends");
+}
+
 void test_invalid_combos_are_rejected(const std::string& game) {
     const auto rejected = [&](int character, int weapon) {
         try {
@@ -357,6 +391,7 @@ int main() {
     test_rena_ex_camera(game);
     test_hud_values(game);
     test_positional_sounds(game);
+    test_round_start(game);
     test_determinism(game);
     test_input_sensitivity(game);
     test_scripted_rena_reaches_her_rows(game);

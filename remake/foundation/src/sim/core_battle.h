@@ -111,6 +111,8 @@ public:
     int aim_target(int fighter) const override { return locked_target(fighter); }
     int lock_pulse(int fighter) const override { return m_battle ? m_battle->actor(static_cast<unsigned>(fighter)).lockPulse : 0; }
     bool hud_hidden() const override { return m_battle && m_battle->hud_hidden(); }
+    game::BattleNotice notice(int fighter) const override;
+    game::BattleResultNotice result_notice() const override;
     bool ai_enabled(int) const override { return true; }
     bool camera_pose(int fighter, game::CameraPoseView& out) const override;
     void for_each_shot(const std::function<void(const game::ShotView&)>& visit) const override;
@@ -118,8 +120,6 @@ public:
 
     game::BattleFrame step(const fnd::input::PlayerState* inputs[game::kMatchFighterCount], double dt) override;
     void set_paused(bool paused) override { m_paused = paused; }
-    void begin_round_entry() override {}
-    void step_round_entry(double) override {}
     void set_primary_listener_fighter(int fighter) override { m_listener = fighter; }
 
 private:

@@ -44,7 +44,7 @@ namespace ui {
 // P09 carries the round stings; it is loaded because the KO sting is a state the
 // match simulation already has (MatchEconomy's KO window), not a transient the port
 // would have to invent.
-enum class HudSheet : uint8_t { P00 = 0, P01, P02, P03, P06, P09, Count };
+enum class HudSheet : uint8_t { P00 = 0, P01, P02, P03, P06, P09, P04, P05, P08, Count };
 
 // The sprites the implemented elements draw. The name after the comment is the
 // exe's own static sprite (or HUD-object slot) the numbers were read from.
@@ -88,6 +88,16 @@ enum class HudIcon : uint8_t {
     AlertPale,           // 0x6c78f8  P06 (0,128,128,128)    pivot (64,64)
     // Round sting (FUN_0063a130 @0x63a4b4, sprite scene+0x7f8).
     KoSting,             // scene+0x7f8 P09 (0,256,512,256)  pivot (256,128)
+    NoticeThree,         // 633ca0 bindings, 63a130: the startup digits and start, the respawn
+    NoticeTwo,           // notices, and the P05/P08 win and lose glyphs of phase 3
+    NoticeOne,
+    NoticeStart,
+    NoticeRevive,
+    NoticeReviveAlt,
+    ResultBlueMain,
+    ResultBlueSecond,
+    ResultRedMain,
+    ResultRedSecond,
     Count,
 };
 
@@ -149,6 +159,16 @@ inline constexpr HudSprite kHudSprites[] = {
     /* TagCell          */ {HudSheet::P01, {320.f, 256.f, 64.f, 32.f}, 32.f, 16.f},
     /* AlertPale        */ {HudSheet::P06, {0.f, 128.f, 128.f, 128.f}, 64.f, 64.f},
     /* KoSting          */ {HudSheet::P09, {0.f, 256.f, 512.f, 256.f}, 256.f, 128.f},
+    /* NoticeThree      */ {HudSheet::P09, {0.f, 0.f, 192.f, 256.f}, 96.f, 128.f},
+    /* NoticeTwo        */ {HudSheet::P09, {192.f, 0.f, 192.f, 256.f}, 96.f, 128.f},
+    /* NoticeOne        */ {HudSheet::P09, {384.f, 0.f, 128.f, 256.f}, 64.f, 128.f},
+    /* NoticeStart      */ {HudSheet::P04, {0.f, 256.f, 512.f, 256.f}, 256.f, 128.f},
+    /* NoticeRevive     */ {HudSheet::P04, {0.f, 0.f, 512.f, 256.f}, 256.f, 128.f},
+    /* NoticeReviveAlt  */ {HudSheet::P04, {0.f, 288.f, 512.f, 192.f}, 256.f, 96.f},
+    /* ResultBlueMain   */ {HudSheet::P05, {0.f, 0.f, 512.f, 256.f}, 256.f, 128.f},
+    /* ResultBlueSecond */ {HudSheet::P05, {0.f, 256.f, 512.f, 256.f}, 256.f, 128.f},
+    /* ResultRedMain    */ {HudSheet::P08, {0.f, 0.f, 512.f, 256.f}, 256.f, 128.f},
+    /* ResultRedSecond  */ {HudSheet::P08, {0.f, 256.f, 512.f, 256.f}, 256.f, 128.f},
 };
 static_assert(sizeof(kHudSprites) / sizeof(kHudSprites[0]) == (size_t)HudIcon::Count,
               "sprite table and HudIcon must stay in step");

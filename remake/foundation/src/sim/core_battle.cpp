@@ -183,6 +183,18 @@ game::BattleFrame CoreBattle::step(const fnd::input::PlayerState* inputs[game::k
     return frame;
 }
 
+game::BattleNotice CoreBattle::notice(int fighter) const {
+    if (!m_battle) return {};
+    const NoticeState notice = m_battle->notice(static_cast<unsigned>(fighter));
+    return {notice.type, notice.scale};
+}
+
+game::BattleResultNotice CoreBattle::result_notice() const {
+    if (!m_battle) return {};
+    const ResultNotice notice = m_battle->result_notice();
+    return {notice.winner, notice.main, notice.secondary, notice.mainScale, notice.secondaryScale, notice.barOffset};
+}
+
 bool CoreBattle::camera_pose(int fighter, game::CameraPoseView& out) const {
     if (!m_battle) return false;
     const CameraPose pose = m_battle->camera(static_cast<unsigned>(fighter));

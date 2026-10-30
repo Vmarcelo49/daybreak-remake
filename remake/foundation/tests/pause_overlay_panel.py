@@ -43,12 +43,10 @@ import sys
 import tempfile
 
 from capture_probe import (main_guard, read_ppm, require_install, run_demo)
-# The match frame the recipes pause at, and the frontend's countdown in capture frames. The
-# harness steps one logic tick per frame and holds the round for 180 ticks, so the pause
-# lands on capture frame N + 181 and its same-state reference is N + 180; both runs' own
-# "match: N frames" line proves it before anything is measured.
+# The match frame the recipes pause at, and the one capture frame the hand-over to the battle
+# takes. Both runs' own "match: N frames" line proves it before anything is measured.
 PAUSE_FRAME = 300
-COUNTDOWN = 180
+HANDOVER = 1
 # A pixel is menu ink when every channel is at least this bright: the title and rows are
 # white and 0.85 grey (217), while the dimmed stage's stone sits near 180.
 INK_MIN = 210
@@ -213,11 +211,11 @@ def capture(demo, install, workdir, tag, args):
 
 def pause_args(size, extra=()):
     return ["--screen=battle", "--pause-overlay=%d" % PAUSE_FRAME,
-            "--frames=%d" % (PAUSE_FRAME + COUNTDOWN + 1), "--size=" + size] + list(extra)
+            "--frames=%d" % (PAUSE_FRAME + HANDOVER + 1), "--size=" + size] + list(extra)
 
 
 def ref_args(size, extra=()):
-    return ["--screen=battle", "--frames=%d" % (PAUSE_FRAME + COUNTDOWN),
+    return ["--screen=battle", "--frames=%d" % (PAUSE_FRAME + HANDOVER),
             "--size=" + size] + list(extra)
 
 
@@ -320,10 +318,10 @@ def main():
         # unpaused frames, so a "panel" cannot be scene noise the paused frame happens to
         # darken. Frames one apart, like the paused pair.
         noise = capture(demo, install, tmp, "noise-a",
-                        ["--screen=battle", "--frames=%d" % (PAUSE_FRAME + COUNTDOWN),
+                        ["--screen=battle", "--frames=%d" % (PAUSE_FRAME + HANDOVER),
                          "--size=960x540"])
         noise2 = capture(demo, install, tmp, "noise-b",
-                         ["--screen=battle", "--frames=%d" % (PAUSE_FRAME + COUNTDOWN + 1),
+                         ["--screen=battle", "--frames=%d" % (PAUSE_FRAME + HANDOVER + 1),
                           "--size=960x540"])
         nw, nh, npx = noise["ppm"]
         noise_count, _ = panel_mask(npx, nw, nh, noise2["ppm"][2])
@@ -361,7 +359,7 @@ def main():
         # bytes (issue #15's contract, measured from the capture path).
         later = capture(demo, install, tmp, "960x540-later",
                         ["--screen=battle", "--pause-overlay=%d" % PAUSE_FRAME,
-                         "--frames=%d" % (PAUSE_FRAME + COUNTDOWN + 61), "--size=960x540"])
+                         "--frames=%d" % (PAUSE_FRAME + HANDOVER + 61), "--size=960x540"])
         if later is None:
             failures.append("960x540: the later paused capture failed")
         elif later["ppm"][2] != small["paused"]["ppm"][2]:

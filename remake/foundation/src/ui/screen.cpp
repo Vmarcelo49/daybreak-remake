@@ -229,25 +229,4 @@ bool drawScreenFrame(const ScreenStack& stack, SpriteRenderer& batch, uint32_t w
     return batch.render(encoder, view, format, error);
 }
 
-bool drawScreenOverlay(const ScreenStack& stack, SpriteRenderer& batch, uint32_t w, uint32_t h,
-                       WGPUCommandEncoder encoder, WGPUTextureView view, WGPUTextureFormat format,
-                       std::string& error) {
-    batch.beginFrame(w, h);
-    // No background: the scene pass under this screen IS the background (issue #47), and
-    // dropping the quad is the whole point of the function.
-    const UiCanvasTransform canvas = fitCanvas({w, h});
-    batch.setCanvasTransform(canvas.scale, canvas.x, canvas.y);
-    batch.setCanvasClip({true, 0.f, 0.f, 800.f, 600.f});
-    stack.drawContent(batch);
-    batch.resetCanvasTransform();
-    // The fade, however, covers the WHOLE target here. FUN_00657c80's ramp is a full-frame
-    // one (the original faded the D3D9 backbuffer), and the canvas-space quad alone would
-    // leave the letterbox bars showing the scene mid-fade — a black rectangle in the middle
-    // of a live frame. One alpha rule for both: fadeAlpha8().
-    if (stack.fadeFrame() > 0)
-        batch.pushSolid({0.f, 0.f, float(w), float(h)},
-                        UiColor{0.f, 0.f, 0.f, ScreenStack::fadeAlpha8(stack.fadeFrame()) / 255.f});
-    return batch.render(encoder, view, format, error);
-}
-
 }  // namespace ui
