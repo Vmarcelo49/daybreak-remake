@@ -15,6 +15,7 @@
 #include "frontend/screen_select.h"
 #include "frontend/screen_vs.h"
 #include "frontend/screen_options.h"
+#include "frontend/screen_story.h"
 #include "frontend/screen_result.h"
 
 namespace ui {
@@ -78,6 +79,7 @@ const ScreenEntry kScreens[] = {
          return makeVsScreen(batch, state, error);
      }},
     {ScreenId::Result, &makeResultScreen},
+    {ScreenId::StoryAdv, &makeStoryScreen},
 };
 
 }  // namespace

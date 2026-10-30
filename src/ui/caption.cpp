@@ -36,9 +36,10 @@ bool loadCaptionFont(TextLayer& layer, float cellHeight, std::string& error,
     if (!bytes.empty()) chain.push_back({std::move(bytes), cellHeight});
     return layer.loadFontChain(chain, error);
 }
-bool CaptionText::load(SpriteRenderer& batch, float cellHeight, std::string& error) {
+bool CaptionText::load(SpriteRenderer& batch, float cellHeight, std::string& error,
+                       const char* primary, const char* fallback) {
     if (atlas_ >= 0) return true;
-    if (!loadCaptionFont(layer_, cellHeight, error)) return false;
+    if (!loadCaptionFont(layer_, cellHeight, error, primary, fallback)) return false;
     // ASCII captions cannot change atlas dimensions after their first quad is queued.
     for (int cp = 32; cp < 127; ++cp) {
         const char one[] = {static_cast<char>(cp), '\0'};

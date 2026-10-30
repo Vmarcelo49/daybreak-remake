@@ -49,6 +49,8 @@ struct FrontendState {
         randomState = randomState * 1664525u + 1013904223u;
         return randomState >> 8;
     }
+    // Scene 8's script path. The ladder fills it; --story names one directly.
+    std::string storyScript;
     int resultWinner = 0;
     std::array<ResultSlotStats, 4> resultStats{};
     // Outcome numbers the result screen's quote rule reads (issue #20): the round's balloon

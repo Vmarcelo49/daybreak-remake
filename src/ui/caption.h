@@ -17,7 +17,8 @@ void drawCaptionLayout(SpriteRenderer& batch, const TextLayer& layer, const Text
 // Runtime captions share the chosen face; FUN_0065d870's Japanese glyphs use font linking.
 class CaptionText {
 public:
-    bool load(SpriteRenderer& batch, float cellHeight, std::string& error);
+    bool load(SpriteRenderer& batch, float cellHeight, std::string& error,
+              const char* primary = kCaptionFontFile, const char* fallback = kCaptionFallbackFile);
     // Prepare every frame string before drawing if captions may introduce new Unicode glyphs.
     bool prepare(SpriteRenderer& batch, const std::vector<std::string>& lines, std::string& error);
     void draw(SpriteRenderer& batch, const char* text, float x, float y,

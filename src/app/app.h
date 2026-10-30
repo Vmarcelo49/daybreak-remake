@@ -94,6 +94,8 @@ struct Options {
     // through this one screen rather than a second one. Naming a movie implies that scene,
     // like naming an asset implies its viewer.
     std::string movie;
+    // --story=D41-0: which script scene 8 plays, with --screen=storyadv.
+    std::string story;
     // A plain interactive launch boots scene 0x00 like the original does, unless a
     // verification run owns the input (issue #40's criterion 4). Resolved after parsing,
     // because it depends on the whole flag set; see resolveBootOpening.
@@ -169,6 +171,7 @@ struct App {
     fnd::audio::SfxHandle         menuSounds[4] = {-1, -1, -1, -1};
     uint64_t                     menuSoundPlays[4] = {};
     uint64_t                     menuVoicePlays = 0;
+    bool                         storyEscape = false;
     uint64_t                     menuBgmPushed = 0;  // frames the menu stream accepted
     fnd::audio::DecodedOgg        menuBgm;
     fnd::audio::LoopPlayer        menuLoop;

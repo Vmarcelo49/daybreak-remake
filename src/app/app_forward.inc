@@ -93,6 +93,7 @@ static void advanceAnimation(App& app, double delta);
 static bool runAudioTest(App& app);
 static bool runInputTest(App& app);
 static void playFrontendMusic(App& app, ui::ScreenId id);
+static void playMenuTrack(App& app, const char* path);
 static void requestWebMatchGroup(const std::string& stageDir, const std::vector<std::string>& slots, const std::vector<int>& weaponIds);
 static bool requestWebStandaloneGroup(App& app);
 static bool enterFrontendBattle(App& app);

@@ -116,6 +116,8 @@ add_library(ui STATIC
     src/frontend/screen_result.cpp
     src/frontend/result_quote.cpp
     src/frontend/story_script.cpp
+    src/frontend/story_dialogue.cpp
+    src/frontend/screen_story.cpp
     src/frontend/frontend_launch.cpp
     src/frontend/frontend_settings.cpp
     src/settings/user_settings.cpp
@@ -248,11 +250,16 @@ if(WIN32)
 endif()
 
 set(CAPTION_CJK_FONT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/NotoSansCJKjp-Regular.otf")
+set(STORY_FONT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/NotoSansCJKjp-Bold.otf")
 if(EMSCRIPTEN)
     set_property(TARGET daybreak APPEND PROPERTY LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/gyrotrope-black.otf")
     if(EXISTS "${CAPTION_CJK_FONT}")
         target_link_options(daybreak PRIVATE "SHELL:--preload-file ${CAPTION_CJK_FONT}@/assets/fonts/NotoSansCJKjp-Regular.otf")
         set_property(TARGET daybreak APPEND PROPERTY LINK_DEPENDS "${CAPTION_CJK_FONT}")
+    endif()
+    if(EXISTS "${STORY_FONT}")
+        target_link_options(daybreak PRIVATE "SHELL:--preload-file ${STORY_FONT}@/assets/fonts/NotoSansCJKjp-Bold.otf")
+        set_property(TARGET daybreak APPEND PROPERTY LINK_DEPENDS "${STORY_FONT}")
     endif()
 else()
     add_custom_target(caption_fonts
@@ -263,6 +270,11 @@ else()
         add_custom_command(TARGET caption_fonts POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${CAPTION_CJK_FONT}" "$<TARGET_FILE_DIR:daybreak>/assets/fonts/NotoSansCJKjp-Regular.otf")
+    endif()
+    if(EXISTS "${STORY_FONT}")
+        add_custom_command(TARGET caption_fonts POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${STORY_FONT}" "$<TARGET_FILE_DIR:daybreak>/assets/fonts/NotoSansCJKjp-Bold.otf")
     endif()
 endif()
 
@@ -295,6 +307,9 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     if(EXISTS "${CAPTION_CJK_FONT}")
         install(FILES "${CAPTION_CJK_FONT}"
                 DESTINATION assets/fonts RENAME NotoSansCJKjp-Regular.otf)
+    endif()
+    if(EXISTS "${STORY_FONT}")
+        install(FILES "${STORY_FONT}" DESTINATION assets/fonts)
     endif()
     install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/package/daybreak" DESTINATION .)
     install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/package/README-LINUX.md"
@@ -735,6 +750,11 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(bgm_loop_test PRIVATE src)
     add_test(NAME bgm_loop_test COMMAND bgm_loop_test)
     set_tests_properties(bgm_loop_test PROPERTIES LABELS asset)
+
+    add_executable(story_dialogue_test tests/story_dialogue_test.cpp src/frontend/story_dialogue.cpp
+                   src/frontend/story_script.cpp)
+    target_include_directories(story_dialogue_test PRIVATE src)
+    add_test(NAME story_dialogue_test COMMAND story_dialogue_test)
 
     add_executable(story_script_test tests/story_script_test.cpp)
     target_link_libraries(story_script_test PRIVATE ui assets glm)

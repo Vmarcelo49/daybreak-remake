@@ -19,6 +19,8 @@ static SDL_AppResult tickFrontend(App& state) {
     in.right   = anyPressed(fnd::input::Right);
     in.confirm = anyPressed(fnd::input::Jump);
     in.cancel  = anyPressed(fnd::input::AttackA);
+    in.start   = anyPressed(fnd::input::Pause);
+    in.escape  = std::exchange(app->storyEscape, false);
     // The held state beside the edges (screen.h): the select screen's free cursor slides while
     // a direction is down, which an edge alone cannot express on the keyboard path.
     in.upHeld    = anyDown(fnd::input::Up);
@@ -76,8 +78,13 @@ static SDL_AppResult tickFrontend(App& state) {
     if (!app->error.empty()) return SDL_APP_FAILURE;
     if (app->menuAudio.music_queued_frames() < 4096)
         app->menuBgmPushed += app->menuLoop.push_next(app->menuAudio, 1024);
+    const std::string track = app->screens.takeMusic();
+    if (!track.empty()) playMenuTrack(*app, track.c_str());
     const std::string voice = app->screens.takeVoice();
     if (!voice.empty()) {
+        // FUN_0040f4c0's case 4: a story line cuts off the one before it.
+        if (app->screens.current() == ui::ScreenId::StoryAdv)
+            app->menuAudio.stop_bus(fnd::audio::SfxBus::Voice);
         auto& source = fnd::assets::assetSource();
         const size_t dot = voice.find_last_of('.');
         const std::string stem = dot == std::string::npos ? voice : voice.substr(0,dot);
@@ -684,6 +691,12 @@ static SDL_AppResult appEvent(App* app, SDL_Event* event) {
                 return SDL_APP_CONTINUE;
             }
             app->matchInput.note_key((int)event->key.scancode, true);
+            if (event->key.key == SDLK_ESCAPE && app->screensMode &&
+                app->screens.current() == ui::ScreenId::StoryAdv) {
+                // FUN_0040eb30:20-22: Escape leaves the story for the title, not the game.
+                app->storyEscape = true;
+                return SDL_APP_CONTINUE;
+            }
             if (event->key.key == SDLK_ESCAPE) {
                 // A live offline battle: Escape opens the pause menu (or leaves it) instead
                 // of killing the process — the audit's "Escape exits immediately" is what

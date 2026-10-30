@@ -828,6 +828,10 @@ static void playFrontendMusic(App& app, ui::ScreenId id) {
     // when its fade BEGINS (SDL_AppIterate), so by the time the factory constructs the scene
     // 25 frames later the track is up and restarting it here would cut the first bars —
     // which is the hole this whole path exists to close.
+    playMenuTrack(app, path);
+}
+
+void playMenuTrack(App& app, const char* path) {
     if (path && app.menuBgmPath == path) return;
     app.menuAudio.clear_music();
     app.menuLoop = fnd::audio::LoopPlayer{};
@@ -1098,6 +1102,7 @@ static bool enterFrontendBattle(App& app) {
 // --match uses, so a script drives the menu through the vocabulary the DX9 suite speaks.
 bool initScreens(App& app) {
     ui::ScreenId id = ui::ScreenId::Quit;
+    if (!app.opts.story.empty()) app.frontend.storyScript = "data/scenario/" + app.opts.story + ".txt";
     // No --screen and a plain launch means the original's boot scene, 0x00 (resolveBootOpening
     // decided that); anything else here has to name an id the parser knows.
     if (app.opts.screen.empty()) {

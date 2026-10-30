@@ -16,13 +16,12 @@ struct StoryCommand {
     Type type = Type::Text;
 
     // Text: the line, with its \n, \cRRGGBB and \e escapes still in it.
-    // Background, Character, Voice: the path, directory prefix included. Character may be NULL,
-    // which clears the slot. Bgm: a name under data/bgm/.
+    // Background, Character, Voice: the path, directory prefix included. Bgm: a name under data/bgm/.
     std::string text;
     int slot = 0;        // Character, Move, Front: 0..5
     bool hasX = false;   // Character: a zero third field keeps the slot's x
     int x = 0;           // Character
-    int delta = 0;       // Move: pixels, over `frames`
+    int delta = 0;       // Move: pixels per frame, for `frames`
     int frames = 0;      // Move
     int milliseconds = 0;  // Sleep
 };

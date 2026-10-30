@@ -11,6 +11,7 @@ text comes from. The package's own code is `daybreak-decomp.txt` (the repository
 | wgpu-native v24.0.3.1 | the WebGPU implementation behind `webgpu.h` — shipped as `lib/libwgpu_native.so` | MIT (upstream also offers Apache-2.0) | `wgpu-native-MIT.txt` |
 | WebGPU-distribution (third_party/webgpu) | the CMake wrapper and headers that fetch wgpu-native | MIT | `wgpu-distribution-MIT.txt` |
 | Gyrotrope Black | the runtime caption face, `assets/fonts/gyrotrope-black.otf` | SIL Open Font License 1.1 | `SIL-OFL-1.1.txt` |
+| Noto Sans CJK JP Bold | Story dialogue face, `assets/fonts/NotoSansCJKjp-Bold.otf` | SIL OFL 1.1 |
 | Noto Sans CJK JP Regular | Japanese fallback face, `assets/fonts/NotoSansCJKjp-Regular.otf` | SIL Open Font License 1.1 | `SIL-OFL-1.1.txt` |
 | GLM | header-only math (compiled into the executable) | MIT | `glm-MIT.txt` |
 | stb_truetype / stb_vorbis | header-only font rasterizer and Ogg Vorbis decoder (compiled into the executable) | MIT or public domain, at your option | `stb.txt` |

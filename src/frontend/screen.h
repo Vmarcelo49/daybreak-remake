@@ -78,6 +78,8 @@ struct ScreenButtons {
 struct ScreenInput {
     bool up = false, down = false, left = false, right = false, confirm = false, cancel = false;
     bool upHeld = false, downHeld = false, leftHeld = false, rightHeld = false;
+    bool start = false;   // the pad's start button
+    bool escape = false;  // the Escape key, for the one scene that does not quit on it
     int player = 0;
     bool separatePlayers = false;
     std::array<ScreenButtons,4> players{};
@@ -95,6 +97,8 @@ public:
     // FUN_0064aed0 system-bank ids; the host owns playback.
     virtual int takeSound() { return -1; }
     virtual std::string takeVoice() { return {}; }
+    // A track this scene asks for by name, on top of the host's per-scene music.
+    virtual std::string takeMusic() { return {}; }
 };
 
 // FUN_004020a0's switch as a predicate: true for the ids the port can construct. The
@@ -160,6 +164,7 @@ public:
 
     int takeSound() { return current_ ? current_->takeSound() : -1; }
     std::string takeVoice() { return current_ ? current_->takeVoice() : std::string{}; }
+    std::string takeMusic() { return current_ ? current_->takeMusic() : std::string{}; }
 
     bool     finished() const { return finished_; }
     ScreenId current() const { return currentId_; }
