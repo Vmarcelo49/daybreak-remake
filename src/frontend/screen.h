@@ -37,11 +37,11 @@ namespace fnd::input { class Backend; }
 namespace ui {
 
 // The scene ids the RE proves (FUN_004020a0's switch; FRONTEND-PLAN.md §1.2 lists every
-// update function's returned ids). 0x02 and 0x0e-0x13 are story-mode support scenes
-// whose identity is deliberately not RE'd (plan §7.6), so they are not named here.
+// update function's returned ids). 0x0e-0x13 are not RE'd (plan §7.6), so they are not named here.
 enum class ScreenId : int {
     Opening      = 0x00,   // FUN_00404eb0: movie/op.mpg
     Title        = 0x01,   // FUN_00410d60 ctor, FUN_00410f60 update, FUN_004114f0 draw
+    StoryEnding  = 0x02,   // FUN_004052b0: the team's ending movie
     Select       = 0x03,   // FUN_00408330: team/character/weapon/hypermode/controller/ready
     Prologue     = 0x04,   // FUN_00405650: the title's ストーリー target
     StoryTeam    = 0x05,   // FUN_004057c0

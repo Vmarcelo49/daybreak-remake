@@ -85,6 +85,24 @@ const ScreenEntry kScreens[] = {
                                   ScreenId::Prologue, ScreenId::StoryTeam);
      }},
     {ScreenId::StoryTeam, &makeStoryTeamScreen},
+    {ScreenId::StoryEnding, [](SpriteRenderer& batch, FrontendState& state, std::string& error) {
+         if (!gOpeningInput || !gOpeningAudio) {
+             error = "the ending needs its audio engine and input backend";
+             return std::unique_ptr<Screen>{};
+         }
+         return makeOpeningScreen(batch, *gOpeningInput, *gOpeningAudio, state.story.endingMovie, error,
+                                  ScreenId::StoryEnding, ScreenId::StaffRoll);
+     }},
+    {ScreenId::StaffRoll, [](SpriteRenderer& batch, FrontendState& state, std::string& error) {
+         if (!gOpeningInput || !gOpeningAudio) {
+             error = "the staff roll needs its audio engine and input backend";
+             return std::unique_ptr<Screen>{};
+         }
+         // FUN_0040dde0: DAT_006cfbc6 is the team file, and team 1 has its own roll.
+         return makeOpeningScreen(batch, *gOpeningInput, *gOpeningAudio,
+                                  state.story.team == 1 ? "movie/staffroll2.mpg" : "movie/staffroll.mpg",
+                                  error, ScreenId::StaffRoll, ScreenId::Title);
+     }},
     {ScreenId::Options, [](SpriteRenderer& batch, FrontendState&, std::string& error) { return makeOptionsScreen(batch,error); }},
     {ScreenId::KeyConfig, [](SpriteRenderer& batch, FrontendState&, std::string& error) { return makeKeyConfigScreen(batch,error); }},
     {ScreenId::Select, &makeSelectScreen},

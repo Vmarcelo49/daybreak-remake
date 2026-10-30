@@ -1269,6 +1269,16 @@ bool initScreens(App& app) {
     };
     if (app.opts.storyTeam >= 0 && !ui::beginStoryTeam(app.frontend, app.opts.storyTeam, app.error))
         return false;
+    if (!app.opts.storyFight.empty()) {
+        int fight = 0, part = 0;
+        if (std::sscanf(app.opts.storyFight.c_str(), "%d:%d", &fight, &part) != 2 || fight < 0 ||
+            fight >= ui::kStoryFights || part < 0 || part > 1 || !app.frontend.story.active) {
+            app.error = "--story-fight needs --story-team and F:P, with F 0..5 and P 0..1";
+            return false;
+        }
+        app.frontend.story.fight = fight;
+        app.frontend.story.part = part;
+    }
     if (!app.screens.begin(id, factory, app.error)) return false;
     auto& settings = ui::frontendSettings();
     settings.applyVolumes = [&app](const fnd::audio::Volumes& v) {

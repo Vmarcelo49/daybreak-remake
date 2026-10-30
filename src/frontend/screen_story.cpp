@@ -129,7 +129,8 @@ private:
             dialogue_.beginInterlude();
             return ScreenId::StoryAdv;
         }
-        if (story.fight >= kStoryFights) return ScreenId::Title;
+        // FUN_0040eb30:120-127: team 1 ships no e01.mpg and goes straight to its staff roll.
+        if (story.fight >= kStoryFights) return story.team == 1 ? ScreenId::StaffRoll : ScreenId::StoryEnding;
         std::string failure;
         dialogue_.load(loadScript(story.scriptPath(), failure));
         if (!failure.empty()) {
