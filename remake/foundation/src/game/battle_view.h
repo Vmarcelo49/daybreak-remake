@@ -111,9 +111,18 @@ struct SparkView {
     Rgb color = 0;
 };
 
+// A simulation's own camera for one fighter's view.
+struct CameraPoseView {
+    glm::vec3 eye{0.f}, lookAt{0.f};
+    float fovY = 0.f, nearPlane = 0.f;
+};
+
 class BattleView {
 public:
     virtual ~BattleView() = default;
+
+    // False leaves the view to the product's own ArenaCamera.
+    virtual bool camera_pose(int, CameraPoseView&) const { return false; }
 
     virtual int fighter_count() const = 0;
     virtual int side(int fighter) const = 0;

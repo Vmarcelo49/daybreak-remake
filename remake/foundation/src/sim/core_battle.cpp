@@ -184,6 +184,16 @@ game::BattleFrame CoreBattle::step(const fnd::input::PlayerState* inputs[game::k
     return frame;
 }
 
+bool CoreBattle::camera_pose(int fighter, game::CameraPoseView& out) const {
+    if (!m_battle) return false;
+    const CameraPose pose = m_battle->camera(static_cast<unsigned>(fighter));
+    out.eye = glm::vec3(pose.eye[0], pose.eye[1], pose.eye[2]);
+    out.lookAt = glm::vec3(pose.lookAt[0], pose.lookAt[1], pose.lookAt[2]);
+    out.fovY = pose.fovY;
+    out.nearPlane = pose.nearPlane;
+    return true;
+}
+
 void CoreBattle::for_each_shot(const std::function<void(const game::ShotView&)>& visit) const {
     if (!m_battle) return;
     m_battle->for_each_projectile([&](const ProjectileState& p) {

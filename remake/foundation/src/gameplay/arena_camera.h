@@ -245,6 +245,8 @@ public:
     // blocked/unblocked eye rule (see the header banner). `dt` is accepted for call
     // shape only and deliberately unused — the reference blends per call.
     void update(double dt, const CollisionQuery& collision = {});
+    // Take a pose a simulation computed itself, instead of update(). The projection follows it.
+    void set_external_pose(const glm::vec3& eye, const glm::vec3& target, float fovY, float nearPlane);
 
     // ---- outputs -----------------------------------------------------------
     const glm::mat4& view_matrix() const { return m_view; }

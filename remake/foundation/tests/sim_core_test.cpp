@@ -5,6 +5,7 @@
 #include "sim/script.h"
 
 #include <climits>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -215,21 +216,31 @@ void test_rena_ex_camera(const std::string& game) {
     config.slots[0].specialMode = 0;
     sim::Battle battle(config);
     bool inRow = false, clipDuringRow = false, clearedAfter = false;
+    bool ordinaryBefore = false, animatedDuringRow = false, anchoredOnRena = true;
     for (unsigned t = 0; t < 1200; ++t) {
         if (t == 190) battle.fill_special_for_test();
         sim::Inputs inputs{};
         if ((t >= 200 && t < 204) || (t >= 540 && t < 544)) inputs[0].buttons = sim::Melee | sim::Shoot;
         battle.step(inputs);
         const sim::ActorState rena = battle.actor(0);
+        const sim::CameraPose camera = battle.camera(0);
+        if (!inRow && t > 100) ordinaryBefore |= !camera.animated;
         if (rena.state == 350) {
             inRow = true;
             clipDuringRow |= rena.actionCamera == 0;
+            animatedDuringRow |= camera.animated;
+            // Clips stay close to their anchor, while the target stands far across the stage.
+            const float dx = camera.eye[0] - rena.position[0], dz = camera.eye[2] - rena.position[2];
+            if (camera.animated && std::sqrt(dx * dx + dz * dz) > 1000.f) anchoredOnRena = false;
         } else if (inRow) {
             clearedAfter |= rena.actionCamera == -1;
         }
     }
     check(inRow, "the chord during the mode reaches row 350");
     check(clipDuringRow, "row 350 asks for camera clip 0 without a hit");
+    check(ordinaryBefore, "the ordinary follow runs before the EX");
+    check(animatedDuringRow, "and the EX's clip drives the camera");
+    check(anchoredOnRena, "with the eye orbiting Rena, not the target (FUN_006333b0)");
     check(clearedAfter, "and the camera request ends with the row");
 }
 

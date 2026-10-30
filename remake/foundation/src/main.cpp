@@ -3864,7 +3864,11 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
                           glm::vec3(std::sin(cameraFighter.facing_yaw()), 0.f,
                                     std::cos(cameraFighter.facing_yaw())) * 600.f);
         }
-        view.camera.update(dt,cameraQuery);
+        game::CameraPoseView corePose;
+        if (app.battle->camera_pose(view.fighter, corePose))
+            view.camera.set_external_pose(corePose.eye, corePose.lookAt, corePose.fovY, corePose.nearPlane);
+        else
+            view.camera.update(dt,cameraQuery);
         // Mirror the camera's own selection back into the view. Since issue #51 the tap no
         // longer cycles the camera and nothing else in a match calls cycle_target, so this
         // is the construction value for the whole match; it stays because view.followed IS

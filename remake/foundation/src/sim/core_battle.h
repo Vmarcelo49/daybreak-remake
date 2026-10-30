@@ -107,6 +107,7 @@ public:
     int aim_target(int fighter) const override { return locked_target(fighter); }
     int lock_pulse(int) const override { return 0; }
     bool ai_enabled(int) const override { return true; }
+    bool camera_pose(int fighter, game::CameraPoseView& out) const override;
     void for_each_shot(const std::function<void(const game::ShotView&)>& visit) const override;
     void for_each_spark(const std::function<void(const game::SparkView&)>&) const override {}
 

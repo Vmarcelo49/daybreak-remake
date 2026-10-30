@@ -1,6 +1,9 @@
 #include "sim/battle.h"
 
 #include "basic_battle_roster_assets.hpp"
+#include "battle_animated_camera.hpp"
+#include "battle_camera_viewports.hpp"
+#include "battle_manual_aim_camera.hpp"
 #include "battle_cpu_driver.hpp"
 #include "battle_cpu_obstacle.hpp"
 #include "battle_input_buttons.hpp"
@@ -99,6 +102,10 @@ struct Battle::Impl {
     std::uint64_t digest = 1469598103934665603ull;
     BattleEvents events;
     std::shared_ptr<BattleVoiceInventory> voices;
+    BattleAnimatedCameraAsset cameraAsset;
+    std::array<BattleCameraTracking, 4> cameras{};
+    std::array<BattleAnimatedCameraState, 4> animatedCameras{};
+    std::array<BattleCameraView, 4> manualCameras{};
 
     explicit Impl(const BattleConfig& config)
         : assets(mount_assets(config.gameDir)),
@@ -128,6 +135,36 @@ struct Battle::Impl {
         const auto env = StageEnvironment::decode(assets.read(stage_path(config.stage) + "/env.dat").bytes);
         world.initialize(env.positions, {}, {}, {});
         combat.configure_respawn(env.respawn_bounds());
+        cameraAsset = BattleAnimatedCameraAsset::load(assets);
+        update_cameras(true);
+    }
+
+    // RuntimeBattle::update_cameras, FUN_006358c0's per-actor camera service.
+    void update_cameras(bool immediate) {
+        for (unsigned i = 0; i < 4; ++i) {
+            const auto pair = combat.target_availability[i].paired_actor;
+            const unsigned owner = world.actors[i].motion.blocked && pair < 4 ? pair : i;
+            const auto& actor = world.actors[owner];
+            auto& camera = cameras[i];
+            auto& animation = animatedCameras[i];
+            float offset;
+            std::memcpy(&offset, &actor.relationships.heading_offset_bits, 4);
+            if ((static_cast<unsigned>(combat.full_charge_manual_flag_[owner]) & 255u) != 0) {
+                const auto socket = combat.selected_weapon_socket(world, owner);
+                manualCameras[i] = manual_battle_camera_view({socket[0], socket[1], socket[2]}, actor.heading + offset,
+                                                             combat.full_charge_manual_aim_[owner]);
+                animation.special = true;
+            } else {
+                set_battle_camera_target(camera, world.actors.at(actor.relationships.target).position, immediate);
+                set_battle_camera_anchor(camera, actor.position, immediate);
+                const int requested = combat.native_contact_mode[owner];
+                if (requested < 0) animation.clear();
+                else animation.select(requested, actor.heading + offset, cameraAsset);
+            }
+            advance_battle_camera_tracking(camera);
+            animation.advance();
+            camera.animated = animation.active;
+        }
     }
 
     void mix(const void* data, size_t size) {
@@ -205,6 +242,7 @@ struct Battle::Impl {
                                             poolMotion, globalMotion, &buttons, [] {},
                                             [&] { resolve_victory(); }, [] {});
         if (!combat.offline_pause.paused) {
+            update_cameras(false);
             combat.update_with_projectile_contacts(
                 world, inputs,
                 [&](unsigned pool) { projectiles.resolve_pool_contacts(combat, world, pool, true); },
@@ -305,6 +343,30 @@ HandTrail Battle::hand_trail(unsigned slot, unsigned hand) const {
         out.hasBone = true;
         out.boneWorld = combat.actor_bone_world(m_impl->world, slot, bone);
     }
+    return out;
+}
+
+CameraPose Battle::camera(unsigned slot) const {
+    const auto& impl = *m_impl;
+    // FUN_006396f0's layout: result phases 3..5 show one fixed actor's camera to everyone.
+    const unsigned phase = impl.combat.scene_phase();
+    const auto layout = battle_camera_viewports(impl.roster, phase >= 3 ? phase : 0, static_cast<int>(impl.combat.match.focus),
+                                                static_cast<int>(impl.combat.last_defeat_attacker));
+    unsigned actor = slot;
+    if (phase >= 3 && layout.slots[0].active && layout.slots[0].actor >= 0) actor = static_cast<unsigned>(layout.slots[0].actor);
+    const auto& animation = impl.animatedCameras.at(actor);
+    const BattleCameraView view =
+        animation.special ? impl.manualCameras[actor]
+        : animation.active ? animated_battle_camera_view(impl.cameraAsset, animation, impl.cameras[actor].smoothed_anchor)
+                           : ordinary_battle_camera_view(impl.cameras[actor]);
+    const BattleCameraProjection projection = battle_camera_projection(animation.special);
+    CameraPose out;
+    out.eye = view.eye;
+    out.lookAt = view.look_at;
+    out.fovY = projection.fov_y;
+    out.nearPlane = projection.near_plane;
+    out.animated = animation.active;
+    out.actor = static_cast<int>(actor);
     return out;
 }
 

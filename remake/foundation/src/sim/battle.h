@@ -75,6 +75,14 @@ struct MatchState {
     std::array<float, 2> score{}, limit{};  // the balloon percentages the HUD shows
 };
 
+// What one player's view shows this tick (RuntimeBattle::camera_view, battle_camera_projection).
+struct CameraPose {
+    std::array<float, 3> eye{}, lookAt{};
+    float fovY = 0.f, nearPlane = 0.f;
+    bool animated = false;  // a data/camera/01.x clip is driving it
+    int actor = 0;          // whose camera it is: the result screens focus another actor
+};
+
 // One hand's weapon trail source (WeaponVisualController, RuntimeBattle::advance_weapon_trails).
 struct HandTrail {
     int model = -1;       // the held item model, -1 for an empty hand
@@ -146,6 +154,7 @@ public:
     SpecialState special(unsigned slot) const;
     ActorTotals totals(unsigned slot) const;
     HandTrail hand_trail(unsigned slot, unsigned hand) const;
+    CameraPose camera(unsigned slot) const;
     MatchState match_state() const;
     const BattleEvents& events() const;
     void for_each_projectile(const std::function<void(const ProjectileState&)>& visit) const;

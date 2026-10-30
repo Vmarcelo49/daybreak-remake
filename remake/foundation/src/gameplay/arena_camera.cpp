@@ -171,6 +171,16 @@ void ArenaCamera::update(double /*dt*/, const CollisionQuery& collision) {
     m_view = glm::lookAtLH(m_eye, m_target, m_up);
 }
 
+void ArenaCamera::set_external_pose(const glm::vec3& eye, const glm::vec3& target, float fovY, float nearPlane) {
+    m_eye = eye;
+    m_target = target;
+    m_up = glm::vec3(0.f, 1.f, 0.f);
+    if (eye != target) m_view = glm::lookAtLH(m_eye, m_target, m_up);
+    m_preset.fovY = fovY;
+    m_preset.nearClip = nearPlane;
+    m_preset.farClip = 150000.f;  // FUN_00633860
+}
+
 glm::mat4 ArenaCamera::proj_matrix(int viewport_w, int viewport_h) const {
     // The aspect is the viewport's, not the original's constant 4/3: the original's own
     // D3DXMatrixPerspectiveFovLH call passes 4/3 because its window was 800x600, and a
