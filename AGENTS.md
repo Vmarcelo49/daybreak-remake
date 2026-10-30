@@ -12,80 +12,41 @@ Twilight Frontier / 07th Expansion, PE32 x86). End goal: a playable modern port.
 
 **No binary-level matching:** we neither link nor reproduce the original's code,
 and byte-identity with it is not a goal. The target is faithful **behaviour**.
-Integration acceptance uses the versioned, coverage-aware offline and scripted
-port contract in [`docs/DIRECTION.md`](docs/DIRECTION.md) §6. Original-runtime
-parity is a separate claim, requiring original-runtime evidence; it is not a
-hidden prerequisite for the pilot. A claim that cannot name its evidence tier,
-scope and limitations is not a result.
+Progress is measured as in [`docs/DIRECTION.md`](docs/DIRECTION.md) §6. Original-runtime
+parity is a separate claim, requiring original-runtime evidence. A claim that
+cannot name its evidence tier, scope and limitations is not a result.
 
 ## Work mandate
 
-**The plan is [`docs/DIRECTION.md`](docs/DIRECTION.md)** — it owns the critical
-path, the phases and the pilot. Read it before choosing anything; if you were
-handed a task, check it against the plan first.
-
-**Pilot** = the Phase 2 step that proves the method end to end on **one** combo
-(Rena+0) behind a runtime flag, before any of it is scaled or becomes
-load-bearing.
-
-### PIlot scope beats the global freeze (owner, 2026-10-29)
-
-**Any change that directly or indirectly affects Rena+0 is pilot work and is allowed.**
-The owner retired the "global work is frozen" reading: shared systems (hit reactions,
-knockdown, recovery, projectiles, input) are in scope when they change what Rena+0 does,
-even if the file or the rule is used by every combo. Do not stop to ask for an exception
-for those; record the change and its evidence like any other pilot work.
-The freeze below still applies to work that does **not** reach Rena+0.
+**The plan is [`docs/DIRECTION.md`](docs/DIRECTION.md)** — it owns the milestones. Read it
+before choosing anything; if you were handed a task, check it against the plan first.
+The Rena+0 pilot closed green on 2026-10-30, and its method-acceptance rules no longer
+gate work.
 
 ### Frozen work — this list is the single source of truth
 
+`DIRECTION.md` links here instead of repeating this list, so the two cannot drift apart.
 
-`DIRECTION.md` links here instead of repeating this list, so the two cannot drift
-apart.
+**A. Hand-written combat — frozen permanently.** No new behaviour in the legacy path
+(`fighter.{h,cpp}`, `move_behavior.h`, the selectors, rule tables, `bot_brain`, `native/`).
+Only fixes needed to keep it running until M5 deletes it. Behaviour changes belong in the
+core, cited and listed in `src/sim/core/PATCHES.md`.
 
-**A. Character and combat work — frozen until the pilot verdict is green:**
+**B. Product roadmap — frozen until M5 closes:** web delivery, netplay, story mode, movies,
+macOS, extra renderer options, 3v3/4v4 (issues #58–#61, #3; roadmap G1/G2/E1–E3/H). The
+owner orders this work in M6.
 
-- character work on any combo other than **Rena+0**;
-- new per-character/per-weapon rule arrays (`…Rules[]`, `MoveRule`), new per-combo
-  branches in `fighter.cpp`, or new hardcoded `character_index()==` clauses;
-- new binding/controller tables that no runtime path reads;
-- **extending or polishing the frozen decision logic** — the files marked
-  REPLACE in `DIRECTION.md` §7 (the rule tables, the selectors, the admission and
-  shot/dash programmes). Changes there are thrown away. "Frozen" never means
-  stale-and-unused — the same files are the default path until their gate — and
-  it never means permanent preservation. **For Rena+0, keep the legacy path
-  through the owner's 2g verdict, then delete it in the separate 2h cleanup.
-  Later combos are deleted after their recorded acceptance.** No permanent
-  shims or two authoritative decision paths. Flag rollback works before
-  deletion; afterward use the recorded pre-cleanup revision.
-
-**B. Non-character roadmap — frozen until Phase 3 closes (46/46):** front end,
-web delivery, netplay, story mode, movies, macOS, extra renderer options, 3v3/4v4
-(issues #58–#61, #3; roadmap G1/G2/E1–E3/H).
-
-The offline evidence/fixture work (Phase 1), the pilot (Phase 2) and fixes the
-three-question test admits are the **only** permitted new work. Frame-perfect
-original-game control, a new capture/replay platform and save-state or emulator
-projects are outside this plan, not fallback tasks.
-
-**Exit:** the **repo owner** declares the pilot verdict against `DIRECTION.md` §4
-(2g) and records it in [`docs/SCOREBOARD.md`](docs/SCOREBOARD.md). Green replaces
-list A with the Phase 3 order (list B still waits for Phase 3); red sends the
-project to the adoption decision in `DIRECTION.md` §3 (broader reference core,
-or re-scope) with list A still frozen and the pilot disabled behind its flag.
-Green accepts the integration method under the approved contract; it does not
-assert original-runtime parity. Until a verdict is recorded, list A stands.
+Frame-perfect original-game control, a new capture/replay platform and save-state or
+emulator projects are outside this plan, not fallback tasks.
 
 ### Is your task allowed? Ask these three, in order
 
-1. Is it a step of the critical path in `docs/DIRECTION.md` §4?
+1. Is it a step of a milestone in `docs/DIRECTION.md` §4, in order?
 2. Is it an owner exception in [`docs/EXCEPTIONS.md`](docs/EXCEPTIONS.md), unexpired,
    with a scope that names your files?
-3. Is it a fix required by a **concrete, cited** failure — a named fixture or
-   scripted port scenario with its field/event and step, or a named pilot blocker?
-   "Required" without that evidence does not qualify.
+3. Is it a fix required by a **concrete, cited** failure — a named test or `simctl`
+   scenario with its field/event and tick? "Required" without that evidence does not qualify.
 
-Before them: if the change directly or indirectly affects Rena+0, it is pilot work — proceed.
 If none is true: **stop and ask**. Do not infer a task from an old report, a TODO,
 a "next steps" list, or a milestone table. A task that fails these three is drift,
 and drift is reverted work no matter how well it is executed.
@@ -106,10 +67,8 @@ Each focused investigation gets **3 attempts or 2 hours**, whichever comes
 first; only the owner raises it (`docs/EXCEPTIONS.md`). Past it, stop, report the
 missing capability and ask or re-scope. Do not restart the same investigation
 under new task names or automatically descend into DLLs, memory writers or
-screen-replay tooling. This is not a two-hour budget for the entire pilot;
-implementation effort is reported separately, with a bounded pilot budget to
-be agreed before integration. Unproven original automation is never required
-for offline feasibility work.
+screen-replay tooling. This is not a two-hour budget for a whole milestone.
+Unproven original automation is never required.
 
 ### Precedence — old documents are evidence, not instructions
 
@@ -123,26 +82,23 @@ the reader to continue the old per-character hand-port. Those instructions are
 | `docs/reports/ginkiha-*.md` | what the reference recovered, per-combo findings, the acceptance bar | "next execution" orders, "advance to Mion", per-combo port plans |
 | `remake/foundation/docs/ROADMAP-PENDING.md` | issue IDs, measured limits, an item's status | choosing work; its "next dig" and suggestion lines |
 | `ANIMATION-SETS.md`, `ANIMATION-DATA-AUDIT.md`, `LIVE-DEBUG.md`, `EFFECTS-*.md`, `GAME-CAMERA.md`, `SHADOWS.md` (under `remake/foundation/docs/`) | original-behaviour evidence, and what the port does today | new feature work, new selector/table work |
-| `remake/docs/decisions.md` | binding decisions and historical rationale; read before touching `remake/` | new decisions — the owner adds those; D14's original-trace prerequisite and D15's implementation claims do not override the revised plan |
+| `remake/docs/decisions.md` | binding decisions and historical rationale; read before touching `remake/` | new decisions — the owner adds those |
+| `docs/PILOT-EVIDENCE-CONTRACT.md`, `docs/PILOT-SEAM.md` | what the pilot established, addressed findings, seam facts | new contract or per-rule work |
 | `remake/tests/parity-baseline/README.md` + the bank | history: what the deleted DX9 tree captured, and what it could not | a fidelity oracle — its fighters bound zero animation sets |
 | `FULL-REPLACEMENT-PLAN.md`, `remake/docs/port-from-mvp-plan.md`, `remake/docs/roadmap.md`, `docs/archive/**` | history and rationale | anything current |
 | `docs/status.md`, `docs/agents/**` | research pipeline, conventions | product work orders |
 
 **Do not read the whole documentation tree "for context"** — that is how agents
 re-implement a retired plan. Route by task: any task → this file, then
-`DIRECTION.md` and its task list `docs/DIRECTION-STATUS.md`; Phase 1 →
-`DIRECTION.md` §4 Phase 1, the relevant bundle bodies/control headers and existing
-addressed research; original-binary questions → the skill routing below;
-optional live-observation tools are historical capability evidence, not the
-Phase 1 default; Phase 2 →
-`DIRECTION.md` §4 Phase 2, `docs/reports/fighter-animation-binding-proposal.md`,
-the `.local-analysis/` bundles; research corpus → `docs/pipeline.md`,
+`DIRECTION.md` and its task list `docs/DIRECTION-STATUS.md`; the core →
+`remake/foundation/src/sim/core/README.md`; original-binary questions → the skill routing
+below; research corpus → `docs/pipeline.md`,
 `docs/conventions.md`; release/platform → `remake/foundation/docs/RELEASE-CHECKLIST.md`,
 which is also where current status lives.
 
 Status goes to four places and nowhere else: [`docs/DIRECTION-STATUS.md`](docs/DIRECTION-STATUS.md)
 (the task list and the work reports), [`docs/SCOREBOARD.md`](docs/SCOREBOARD.md)
-(the one metric and the pilot verdict), [`docs/QUESTIONS.md`](docs/QUESTIONS.md)
+(the one metric and verdicts), [`docs/QUESTIONS.md`](docs/QUESTIONS.md)
 (blockers) and [`docs/EXCEPTIONS.md`](docs/EXCEPTIONS.md) (owner overrides), under
 the plan in `DIRECTION.md`. Do not open other ledgers or progress documents.
 
@@ -344,13 +300,12 @@ clone does not carry.
   bundle's author, and this project's own licence is open ("use what you want").
   Bundle **code** (bodies, control headers, spine, dispatch, tables, catalogs,
   traces) may be adapted and **vendored into tracked files with attribution**
-  under `remake/foundation/src/gameplay/native/`. Bundle **game assets**
+  under `remake/foundation/src/sim/core/`. Bundle **game assets**
   (`data/**` DAT/X/CNV, textures, models, audio) remain the original rights
   holders' and are **never committed** — the author could license his
   reconstruction, not the original art.
-- Keep the local bundles unchanged as provenance/reference material. Reviewed
-  adaptations belong in this repo's native runtime; offline fixtures may compile
-  the explicitly selected recovered code to test feasibility. Do not build the
-  entire external application as an implicit dependency of the port.
+- Keep the local bundles unchanged as provenance/reference material. Only the
+  platform-free simulation closure is vendored; the bundle's Windows, Direct3D and
+  DirectSound code never comes across.
 
 Don't reference absolute local paths in committed docs.

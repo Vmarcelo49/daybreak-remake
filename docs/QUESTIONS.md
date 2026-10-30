@@ -300,6 +300,12 @@ recorded that the owner did not give. Current plan: [`DIRECTION.md`](DIRECTION.m
 
 ## Answered
 
+## Q27 — Adopt the reference core as the combat authority? — **ANSWERED 2026-10-30: yes**
+The owner approved [`reports/reference-core-plan-2026-10-30.md`](reports/reference-core-plan-2026-10-30.md)
+as written, including the `N/46 running under --sim=core` metric and skipping the separate 2h
+cleanup. This also settles Q14 (route) and closes Q16, Q17, Q18 and Q26 as work on the legacy
+path; their findings stay as evidence.
+
 ## Q1 — Bundle licence — **ANSWERED 2026-10-14**
 Full permission from the author for anything; the project's own licence is open
 ("use what you want"). Bundle **code** may be vendored with attribution; decoded
