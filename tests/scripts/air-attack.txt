@@ -12,7 +12,7 @@
 # is separately asserted in simulation for Rena+0 and Akane+0.
 #
 # Capture an aerial pose after BattleStart:
-#   SDL_AUDIO_DRIVER=dummy DAYBREAK_CAMINFO=1 DAYBREAK_DEBUG_KEYS=1 foundation_demo \
+#   SDL_AUDIO_DRIVER=dummy DAYBREAK_CAMINFO=1 DAYBREAK_DEBUG_KEYS=1 daybreak \
 #     --install=<game-dir> --stage=data/stage03 --character=data/rena:0 \
 #     --enemy=data/mion:0 --spawn=-1200,400,0 --spawn2=-1200,400,800 \
 #     --match --script=tests/scripts/air-attack.txt \

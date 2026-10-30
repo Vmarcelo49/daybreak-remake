@@ -32,7 +32,7 @@ output. The NPR arms are PORT-SIDE EXPERIMENTS with no RE provenance and this fi
 inherits that label.
 
 Usage:
-    npr_evidence.py --demo <foundation_demo> --install <game dir> --outdir <evidence dir>
+    npr_evidence.py --demo <daybreak> --install <game dir> --outdir <evidence dir>
                     [--workdir <scratch>] [--only id,id] [--quick]
 
 The evidence directory keeps the ../npr-evidence layout (captures/, logs/) and gains
@@ -369,7 +369,7 @@ class Rig:
         no absolute local paths in committed files). The placeholders are the repo-relative
         forms the other recipes use, so a command can still be copied and run."""
         for path, placeholder in ((self.install, "Higurashi-Daybreak"),
-                                  (self.demo, "remake/foundation/build/linux/foundation_demo"),
+                                  (self.demo, "build/linux/daybreak"),
                                   (self.workdir, "<workdir>")):
             text = text.replace(path, placeholder)
         return text
@@ -1026,7 +1026,7 @@ def howto_sheet(control, out_path):
         draw.text((10, 7 + index * 24), line, font=font(17), fill=LABEL)
     rows.append([(strip, None)])
     compose("how to read these sheets (issue #27 evidence)",
-            "every frame is the committed demo, headless: foundation_demo --headless "
+            "every frame is the committed demo, headless: daybreak --headless "
             "--install=<game> --character=<game>/data/rena:0 --weapon=<game>/data/item/01.x "
             "--no-anim --camera=bounds --frames=3 --size=<WxH> --out=<file.ppm>",
             rows, out_path)
@@ -1041,7 +1041,7 @@ def summarise(report):
     """The human-readable metrics.md: one block per technique and sweep."""
     out = []
     out.append("# NPR evidence, issue #27 - measured\n")
-    out.append("Generated %s by `remake/foundation/tests/npr_evidence.py`. Every number "
+    out.append("Generated %s by `tests/npr_evidence.py`. Every number "
                "below is a measurement of a committed-demo capture; the recipes are in "
                "`metrics.json` (`commands`) and beside each capture under `logs/`.\n"
                % report["generated"])

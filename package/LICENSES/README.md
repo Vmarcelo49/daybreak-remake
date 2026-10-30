@@ -24,7 +24,7 @@ Notes:
   are licensed under the SIL Open Font License 1.1, whose text is `SIL-OFL-1.1.txt`. The
   package redistributes them unmodified.
 - wgpu-native is dual-licensed MIT / Apache-2.0; the MIT text is included here. The
-  prebuilt `libwgpu_native.so` is fetched by `remake/foundation/scripts/fetch_deps.sh`
+  prebuilt `libwgpu_native.so` is fetched by `scripts/fetch_deps.sh`
   from the pinned upstream release `v24.0.3.1`.
 - `libstdc++`, `libm`, `libgcc_s`, `libc` and the dynamic loader are **not** bundled: they
   are part of the distribution the package runs on, and shipping them would break the
@@ -34,7 +34,7 @@ Notes:
   `SPDX-License-Identifier: MIT` in its header and the project README states the licence.
   The text above is the standard MIT grant and the copyright holder is the library's author
   and publisher, Dominic Szablewski. It is fetched as one pinned raw blob by
-  `remake/foundation/scripts/fetch_deps.sh`, like the two stb headers.
+  `scripts/fetch_deps.sh`, like the two stb headers.
 - The movies pl_mpeg decodes (`Higurashi-Daybreak/data/movie/*.mpg`) are **not** part of
   this package or of any artifact built here: they are user-owned game data, exactly like
   the rest of the install.

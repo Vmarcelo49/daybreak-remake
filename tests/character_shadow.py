@@ -28,7 +28,7 @@ So this script renders the same 4-view battle frame with no flag, --no-shadows a
     alone.
 
 Usage:
-    character_shadow.py <foundation_demo> <install-dir> [workdir]
+    character_shadow.py <daybreak> <install-dir> [workdir]
 
 Exit 0 when every measurement holds, 1 otherwise, and 77 (skip) when the renderer or the
 game data is unavailable, so a CI box without a GPU or the install does not report a

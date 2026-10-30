@@ -1,11 +1,11 @@
 // tests/arena_camera_test.cpp — device-free test for gameplay/ArenaCamera.
 //
 // Build from the repo root (glm ships in the foundation's third_party):
-//   g++ -std=c++20 -O2 -Wall -Wextra -I remake/foundation/src
-//       -I remake/foundation/third_party/glm
-//       remake/foundation/src/gameplay/arena_camera.cpp
-//       remake/foundation/src/physics/raycast.cpp
-//       remake/foundation/tests/arena_camera_test.cpp -o /tmp/arena_camera_test
+//   g++ -std=c++20 -O2 -Wall -Wextra -I src
+//       -I third_party/glm
+//       src/camera/arena_camera.cpp
+//       src/physics/raycast.cpp
+//       tests/arena_camera_test.cpp -o /tmp/arena_camera_test
 //   /tmp/arena_camera_test
 //
 // What this pins (every expectation is hand arithmetic, printed next to the measured

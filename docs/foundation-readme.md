@@ -29,8 +29,8 @@ you, and only on Linux, where the distribution package is normally the right one
 Run the demo:
 
 ```bash
-./build/linux/foundation_demo --frames=300   # 0 or omitted = until the window closes
-python3 -m http.server 8177 -d build/web     # then open foundation_demo.html
+./build/linux/daybreak --frames=300   # 0 or omitted = until the window closes
+python3 -m http.server 8177 -d build/web     # then open daybreak.html
 ```
 
 ### The Linux release package
@@ -57,17 +57,17 @@ fog), and `--out` renders offscreen and writes a PPM, which is how it gets verif
 without a display:
 
 ```bash
-./build/linux/foundation_demo --stage=<data/stageNN> --camera=player --out=stage.ppm --size=400
-./build/linux/foundation_demo --character=<data/akane:0> --anim=2 --frames=30 --out=char.ppm
-./build/linux/foundation_demo --weapon=<data/item/05.X> --out=weapon.ppm
-./build/linux/foundation_demo --effect=<data/effect/01.X> --out=effect.ppm
-./build/linux/foundation_demo --stage=<data/stage21> --camera=arena --out=arena.ppm
-./build/linux/foundation_demo --character=<data/akane:0> --hud-test --out=hud.ppm
-./build/linux/foundation_demo --audio-test
-./build/linux/foundation_demo --input-test
-./build/linux/foundation_demo --install=<game-dir> --screen=title  # playable front end
-./build/linux/foundation_demo --install=<game-dir> --screen=title --out=title.ppm --frames=30
-./build/linux/foundation_demo --list                    # what a spec loads, then exit
+./build/linux/daybreak --stage=<data/stageNN> --camera=player --out=stage.ppm --size=400
+./build/linux/daybreak --character=<data/akane:0> --anim=2 --frames=30 --out=char.ppm
+./build/linux/daybreak --weapon=<data/item/05.X> --out=weapon.ppm
+./build/linux/daybreak --effect=<data/effect/01.X> --out=effect.ppm
+./build/linux/daybreak --stage=<data/stage21> --camera=arena --out=arena.ppm
+./build/linux/daybreak --character=<data/akane:0> --hud-test --out=hud.ppm
+./build/linux/daybreak --audio-test
+./build/linux/daybreak --input-test
+./build/linux/daybreak --install=<game-dir> --screen=title  # playable front end
+./build/linux/daybreak --install=<game-dir> --screen=title --out=title.ppm --frames=30
+./build/linux/daybreak --list                    # what a spec loads, then exit
 ```
 
 `--camera` takes `auto|player|front|top|bounds|arena`. `--no-anim` binds no
@@ -177,7 +177,7 @@ A verification run needs no tree at all:
 
 ```bash
 mkdir -p /tmp/install-only && ln -s "<game-dir>"/daybreak0*.dat /tmp/install-only/
-./build/linux/foundation_demo --install=/tmp/install-only \
+./build/linux/daybreak --install=/tmp/install-only \
   --stage=/tmp/install-only/data/stage21 --character=/tmp/install-only/data/akane:0 --list
 ```
 
@@ -216,7 +216,7 @@ listening checks can opt in with `--with-audio`; `--no-audio` takes precedence.
 the match rules and the camera all come from `src/sim/core/`.
 
 ```bash
-./build/linux/foundation_demo --headless --match --install=<game-dir> \
+./build/linux/daybreak --headless --match --install=<game-dir> \
   --stage=<game-dir>/data/stage21 \
   --sim-roster=<game-dir>/data/rika@0,<game-dir>/data/takano@0,<game-dir>/data/rena@0,<game-dir>/data/mion@0 \
   --script=../tests/parity-baseline/scripts/melee.txt --frames=150 --out=match.ppm --size=400
@@ -343,13 +343,13 @@ New since the port landed, all verified the same way:
   scripted versus (300 frames, 60.2 fps) and live match (411 frames, 60.1 fps),
   with `RESULT: ok`. Visual browser parity and hardware rendering remain
   unverified; console evidence and the asset subset are in `docs/BUILD-web.md`.
-- `foundation_ui` (sprite batch, bitmap font, HUD composer, diagnostics) is wired
-  into the demo; `foundation_media` now carries the real SDL3 audio and input
+- `ui` (sprite batch, bitmap font, HUD composer, diagnostics) is wired
+  into the demo; `media` now carries the real SDL3 audio and input
   backends, verified in-engine with `--audio-test` (440 Hz tone through music +
   SFX paths, gains applied) and `--input-test` (canned 6-frame tap with exact
   edge output). Media backends run on Linux and Wine; the browser gesture path
   and audible checks remain open.
-- `foundation_movie` (issue #40) is the pl_mpeg-backed player behind scene 0x00.
+- `movie` (issue #40) is the pl_mpeg-backed player behind scene 0x00.
   A local run of the shipped `data/movie/op.mpg` presented 684/684 frames over 22.789 s of
   decoder clock with the PCM 0.26-0.28 s ahead and steady (the audio lead, not
   drift), and `--screen=opening --movie=data/movie/staffroll.mpg` presented

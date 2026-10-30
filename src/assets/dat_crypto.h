@@ -18,8 +18,8 @@
 //  encrypt and decrypt.
 //
 //  Deviation from the DX9 header: these take (pointer, size) instead of
-//  std::span, because the foundation builds as C++17 (remake/foundation/
-//  CMakeLists.txt sets CMAKE_CXX_STANDARD 17) while remake/src/ is C++23.
+//  std::span, because the product builds as C++17 (the root CMakeLists.txt sets
+//  CMAKE_CXX_STANDARD 17) while the old DX9 tree was C++23.
 //  The arithmetic is unchanged.
 // =============================================================================
 #pragma once

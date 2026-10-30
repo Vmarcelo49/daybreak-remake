@@ -402,10 +402,8 @@ int main(int argc, char** argv) {
     if (argc > 1 && argv[1][0]) fontPath = fs::path(argv[1]);
     if (fontPath.empty() && envFont && *envFont) fontPath = fs::path(envFont);
     if (fontPath.empty()) {
-        static const char* kRel[3] = {
-            "remake/foundation/third_party/fonts/NotoSansCJKjp-Regular.otf",
+        static const char* kRel[1] = {
             "third_party/fonts/NotoSansCJKjp-Regular.otf",
-            "foundation/third_party/fonts/NotoSansCJKjp-Regular.otf",
         };
         for (const char* rel : kRel) {
             fontPath = findUpwards(fs::current_path(), rel);

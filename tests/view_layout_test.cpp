@@ -16,7 +16,7 @@
 //      frame through the same layout/HUD/projection calls the host uses, and the two runs
 //      must end in identical simulation state with identical tick counts.
 //
-// Build (from remake/foundation): cmake --build build/linux && build/linux/view_layout_test
+// Build (from the repository root): cmake --build build/linux && build/linux/view_layout_test
 #include <cmath>
 #include <cstdint>
 #include <cstdio>

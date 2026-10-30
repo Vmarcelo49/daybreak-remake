@@ -302,7 +302,7 @@ const std::size_t kDirCount = sizeof(kDirs) / sizeof(kDirs[0]);
 // Oracle: extract_dat.py driven through its own functions.
 // ---------------------------------------------------------------------------
 const char* const kOracleScript = R"PY(#!/usr/bin/env python3
-"""Oracle driver for remake/foundation/tests/dat_bundle_bytes.cpp.
+"""Oracle driver for tests/dat_bundle_bytes.cpp.
 
 Every decode below goes through remake/tools/asset-tools/extract_dat.py's own
 functions (decode_entry_table, safe_filename); the payload XOR is the same

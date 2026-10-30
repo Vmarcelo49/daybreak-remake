@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Compare fighter traces between the DX9 build and the WebGPU foundation.
+"""Compare fighter traces between the DX9 build and the WebGPU product.
 
-Why this exists: Phase 2 ports the fighter simulation out of `remake/src` into
-`remake/foundation`, and the only cross-implementation evidence available is the
+Why this exists: Phase 2 ported the fighter simulation out of the DX9 tree into
+the product, and the only cross-implementation evidence available is the
 console trace the DX9 build already prints under DAYBREAK_CAMINFO (one line per
 60 render calls: eye, both fighters' positions and animation-state names). This
 script turns two logs into a per-sample verdict instead of an eyeball diff.

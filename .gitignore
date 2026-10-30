@@ -28,12 +28,21 @@ Higurashi-Daybreak/
 # Raw binary Evidence, captures and generated experiment reports.
 local-data/harness/
 
+# Build outputs and fetched third-party sources. Both are produced by build.sh and
+# fetch_deps.sh; a clean checkout has neither.
+/build/
+/third_party/
+
+# Local leftovers under the retired remake/ tree: the old build outputs and the fetched
+# toolchains. Nothing tracked lives here any more; the owner deletes these on disk.
+/remake/
+
 # Web asset delivery (issue #4). The prepared tree and its catalog are derived from the
 # host's own game install: the tooling is committed, the data never is. `prepare` also
 # writes a .gitignore into its own output directory, so a host who points --out
 # somewhere else is covered without depending on this file.
-remake/foundation/webdelivery/client/
-remake/foundation/web-data/
+/webdelivery/client/
+/web-data/
 
 # Editor-local settings
 .vscode/

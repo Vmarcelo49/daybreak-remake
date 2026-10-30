@@ -6,10 +6,10 @@
 // this test never creates a device or a texture). The webgpu include dir is the one the
 // build already fetched; on a Linux tree it is:
 //   g++ -std=c++23 -O2 -Wall -Wextra
-//       -I remake/foundation/src -I remake/foundation/src/assets
-//       -I remake/foundation/third_party/glm
-//       -I remake/foundation/build/linux/_deps/wgpu-linux-x86_64-release-src/include
-//       remake/foundation/tests/lighting_test.cpp -o /tmp/lighting_test
+//       -I src -I src/assets
+//       -I third_party/glm
+//       -I build/linux/_deps/wgpu-linux-x86_64-release-src/include
+//       tests/lighting_test.cpp -o /tmp/lighting_test
 //   /tmp/lighting_test
 //
 // What this pins, all of it read off remake/src/core/scenes.cpp:736-769 (the DX9

@@ -11,7 +11,7 @@ a rendered frame can. This script measures the rendered HUD in each cell against
 single-view reference of the same cell size.
 
 Usage:
-    hud_cell_scale.py <foundation_demo> <install-dir> [workdir]
+    hud_cell_scale.py <daybreak> <install-dir> [workdir]
 
 Exit 0 when every cell's HUD sits where a cell-sized single view puts it, 1 on a real
 failure, and 77 only when a prerequisite is missing (no game data, no GPU adapter). Once

@@ -44,11 +44,11 @@ mkdir -p "$root"
 
 git -C "$primary" worktree add -b "$branch" "$wt" "$base"
 
-cp -al "$primary/remake/foundation/third_party" "$wt/remake/foundation/third_party"
+cp -al "$primary/third_party" "$wt/third_party"
 ln -s "$install" "$wt/Higurashi-Daybreak"
 
-cmake -S "$wt/remake/foundation" -B "$wt/remake/foundation/build/linux" -GNinja \
+cmake -S "$wt" -B "$wt/build/linux" -GNinja \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER_LAUNCHER=ccache >/dev/null
-cmake --build "$wt/remake/foundation/build/linux" >/dev/null
+cmake --build "$wt/build/linux" >/dev/null
 
 echo "worktree ready: $wt  branch=$branch  base=$base"

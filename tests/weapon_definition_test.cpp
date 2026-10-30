@@ -14,7 +14,7 @@
 //      regress into the shared tuning silently.
 //
 //  Build (CMake target `weapon_definition_test`):
-//    cmake --build remake/foundation/build/linux --target weapon_definition_test
+//    cmake --build build/linux --target weapon_definition_test
 //  Exit status: 0 when every check passes, 1 otherwise.
 // =============================================================================
 #include "gameplay/fixed_step.h"

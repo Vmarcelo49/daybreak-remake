@@ -22,7 +22,7 @@
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
-root=$(cd "$here/.." && pwd)          # remake/foundation
+root=$(cd "$here/.." && pwd)          # the repository root
 version=$(tr -d '[:space:]' < "$root/VERSION")
 name="daybreak-${version}-linux-x86_64"
 out_dir="$root/build/package"
@@ -51,7 +51,7 @@ if [ "$build" = 1 ]; then
     echo "== building =="
     "$root/build.sh" linux
 fi
-[ -f "$root/build/linux/foundation_demo" ] \
+[ -f "$root/build/linux/daybreak" ] \
     || fail "no build in $root/build/linux — run ./build.sh linux first (or drop --no-build)"
 [ -f "$root/third_party/fonts/NotoSansCJKjp-Regular.otf" ] \
     || fail "third_party/fonts/NotoSansCJKjp-Regular.otf is missing — run ./build.sh deps (D7 needs the Japanese fallback in the package)"
@@ -64,7 +64,7 @@ cmake --install "$root/build/linux" --prefix "$stage" >/dev/null
 
 echo "== required files =="
 required=(
-    foundation_demo daybreak README-LINUX.md VERSION
+    daybreak-bin daybreak README-LINUX.md VERSION
     assets/fonts/gyrotrope-black.otf assets/fonts/NotoSansCJKjp-Regular.otf
     lib/libwgpu_native.so lib/libSDL3.so.0
     LICENSES/README.md LICENSES/SDL3.txt LICENSES/wgpu-native-MIT.txt
@@ -75,7 +75,7 @@ for f in "${required[@]}"; do
     [ -e "$stage/$f" ] || fail "the staged package is missing $f"
 done
 [ -x "$stage/daybreak" ] || fail "the launcher is not executable in the package"
-[ -x "$stage/foundation_demo" ] || fail "the executable is not executable in the package"
+[ -x "$stage/daybreak-bin" ] || fail "the executable is not executable in the package"
 
 echo "== no game data =="
 # Both routes the port reads are game data: the shipped .dat bundles and an extracted
@@ -91,7 +91,7 @@ $game_files"
 echo "no daybreakXX.dat, data/, movie/, .X, .cnv, .dat, .ogg or .sfl file in the artifact"
 
 echo "== runtime libraries (ldd) =="
-ldd_out=$(ldd "$stage/foundation_demo")
+ldd_out=$(ldd "$stage/daybreak-bin")
 printf '%s\n' "$ldd_out"
 printf '%s\n' "$ldd_out" | grep -q 'not found' \
     && fail "a library does not resolve — the package would not start on a machine without the build tree"

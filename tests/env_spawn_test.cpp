@@ -17,12 +17,9 @@
 //  it, following animation_pose_test. Links asset_source for readEnv's file
 //  seam, like dat_bundle_bytes.
 //
-//    g++ -std=c++17 -Wall -Wextra -I remake/foundation/src
-//        -I remake/foundation/third_party/glm
-//        remake/foundation/tests/env_spawn_test.cpp
-//        remake/foundation/src/assets/asset_source.cpp
-//        remake/foundation/src/assets/dat_bundle.cpp
-//        remake/foundation/src/assets/dat_crypto.cpp -o /tmp/env_spawn_test
+//    g++ -std=c++17 -Wall -Wextra -I src -I third_party/glm
+//        tests/env_spawn_test.cpp src/assets/asset_source.cpp
+//        src/assets/dat_bundle.cpp src/assets/dat_crypto.cpp -o /tmp/env_spawn_test
 //    /tmp/env_spawn_test [game_dir]       # prints ENV_SPAWN: ok|FAIL|skip
 // =============================================================================
 
@@ -123,14 +120,14 @@ int main(int argc, char** argv) {
         game = fs::path(envGame);
     } else {
         // Like animation_pose_test: walk up from the test binary and the cwd
-        // to the repo root (marked by remake/foundation), so ctest — which
-        // runs from build/linux — finds the install next to the repo.
+        // to the repo root (marked by src/assets), so ctest — which runs
+        // from build/linux — finds the install next to the repo.
         game = fs::path("Higurashi-Daybreak");
         for (fs::path d : {fs::absolute(fs::path(argv[0])).parent_path(),
                            fs::current_path()}) {
             for (fs::path r = d; !r.empty(); r = r.parent_path()) {
                 std::error_code ec2;
-                if (fs::is_directory(r / "remake" / "foundation", ec2)) {
+                if (fs::is_directory(r / "src" / "assets", ec2)) {
                     game = r / "Higurashi-Daybreak";
                     break;
                 }

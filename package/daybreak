@@ -78,7 +78,7 @@ version=$(cat "$here/VERSION" 2>/dev/null || true)
 # A half-unpacked archive fails later with a loader or font error; name the missing piece
 # here instead, where the fix ("unpack it again") is still obvious.
 missing=
-[ -x "$here/foundation_demo" ] || missing="foundation_demo"
+[ -x "$here/daybreak-bin" ] || missing="daybreak-bin"
 for f in assets/fonts/gyrotrope-black.otf assets/fonts/NotoSansCJKjp-Regular.otf \
          lib/libwgpu_native.so lib/libSDL3.so.0; do
     [ -e "$here/$f" ] || missing="${missing:+$missing, }$f"
@@ -357,4 +357,4 @@ say "[daybreak] starting the title screen — controls are in README-LINUX.md"
 
 # --screen=title is the front end's entry point; a --screen= of the user's own later on
 # the command line overrides it (the binary applies options in order).
-exec "$here/foundation_demo" --install="$install" --screen=title "$@"
+exec "$here/daybreak-bin" --install="$install" --screen=title "$@"

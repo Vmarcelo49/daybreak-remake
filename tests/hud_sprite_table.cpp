@@ -5,9 +5,9 @@
 //  No WebGPU device, no window, no game data: everything here is arithmetic over
 //  the constants transcribed from the exe, so it runs anywhere.
 //
-//    g++ -std=gnu++17 -Wall -Wextra -I remake/foundation/src
+//    g++ -std=gnu++17 -Wall -Wextra -I src
 //        -isystem <wgpu include> -isystem <wgpu include>/webgpu
-//        remake/foundation/tests/hud_sprite_table.cpp -o /tmp/hud_sprite_table
+//        tests/hud_sprite_table.cpp -o /tmp/hud_sprite_table
 //    /tmp/hud_sprite_table        # prints HUD_SPRITE_TABLE: ok|FAIL
 //
 //  What it pins, and why each one is worth pinning:

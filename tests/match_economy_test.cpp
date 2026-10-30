@@ -10,10 +10,10 @@
 //  — the game/hud_bridge.h -> ui/ -> webgpu.h seam — is compiled by the real
 //  target instead (see the deliverable report).
 //
-//    g++ -std=c++20 -Wall -Wextra -I remake/foundation/src
-//        -I remake/foundation/third_party/glm
-//        remake/foundation/tests/match_economy_test.cpp
-//        remake/foundation/src/gameplay/match_economy.cpp -o /tmp/match_economy_test
+//    g++ -std=c++20 -Wall -Wextra -I src
+//        -I third_party/glm
+//        tests/match_economy_test.cpp
+//        src/gameplay/match_economy.cpp -o /tmp/match_economy_test
 //    /tmp/match_economy_test          # prints MATCH_ECONOMY: ok|FAIL, exit 1 on mismatch
 //
 //  Every case prints expected vs got. Comparisons are exact: the timings used at

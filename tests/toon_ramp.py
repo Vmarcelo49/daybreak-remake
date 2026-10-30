@@ -30,7 +30,7 @@ So this script renders the same bind-pose character frame with no flag, --no-too
     mismatch the whole frame is rejected for).
 
 Usage:
-    toon_ramp.py <foundation_demo> <install-dir> [workdir]
+    toon_ramp.py <daybreak> <install-dir> [workdir]
 
 Exit 0 when every measurement holds, 1 otherwise, and 77 (skip) when the renderer or the
 game data is unavailable, so a CI box without a GPU or the install does not report a

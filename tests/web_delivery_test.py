@@ -3,7 +3,7 @@
 
 Run from anywhere:
 
-    python3 remake/foundation/tests/web_delivery_test.py
+    python3 tests/web_delivery_test.py
 
 What it proves, all of it hermetic (synthetic .DAT bundles written here, no game
 data, no network beyond 127.0.0.1):
@@ -36,8 +36,8 @@ import tempfile
 import threading
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(REPO / "remake" / "foundation" / "webdelivery"))
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "webdelivery"))
 
 from daybreak_web import catalog as catalog_mod          # noqa: E402
 from daybreak_web import groups, server                  # noqa: E402
@@ -373,13 +373,13 @@ def test_stale_install(install: Path, out: Path) -> None:
 def test_client_files(tmp: Path, out: Path) -> None:
     client_dir = tmp / "client"
     client_dir.mkdir()
-    (client_dir / "foundation_demo.html").write_text("<html>client</html>")
-    (client_dir / "foundation_demo.wasm").write_bytes(b"\x00asm")
+    (client_dir / "daybreak.html").write_text("<html>client</html>")
+    (client_dir / "daybreak.wasm").write_bytes(b"\x00asm")
     httpd, client = serve(out, client_dir=client_dir)
     try:
-        status, headers, body = client.get("/client/foundation_demo.html")
+        status, headers, body = client.get("/client/daybreak.html")
         check(status == 200 and b"client" in body, "the client must be served same-origin")
-        status, headers, _ = client.get("/client/foundation_demo.wasm")
+        status, headers, _ = client.get("/client/daybreak.wasm")
         check(headers.get("Content-Type") == "application/wasm",
               "wasm must be served with the type the browser requires")
         status, _, _ = client.get("/client/../daybreak_web/server.py")

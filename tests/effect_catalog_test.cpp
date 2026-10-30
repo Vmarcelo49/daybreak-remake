@@ -30,7 +30,7 @@
 //      active aura, not one. A future rig with a partial attach set fails here instead of
 //      quietly drawing fewer than the original.
 //
-//  Build: cmake --build remake/foundation/build/linux --target effect_catalog_test
+//  Build: cmake --build build/linux --target effect_catalog_test
 //  Exit status: 0 when every check passes, 1 otherwise.
 //
 //  Issue #32 adds one device-free section: what an in-flight shot draws. It pins the

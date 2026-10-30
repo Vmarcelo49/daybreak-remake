@@ -452,7 +452,7 @@ std::string serialize(const UserSettings& settings) {
     out << "# daybreak-decomp user settings (issue #19). Written atomically; delete this\n"
         << "# file to reset every setting to its default. Session state (earned titles,\n"
         << "# result stats) is deliberately not stored here.\n"
-        << "# Format and policies: remake/foundation/docs/USER-SETTINGS.md\n"
+        << "# Format and policies: docs/USER-SETTINGS.md\n"
         << "version = " << kSchemaVersion << "\n\n";
 
     // The key is ALWAYS written, empty when no folder is remembered: the load reports a

@@ -12,7 +12,7 @@ targeting image"), its opening quads ghosted the HUD's art, and the overlay's ow
 disappeared. Only a rendered frame can see that; this script measures one.
 
 Usage:
-    pause_overlay_panel.py <foundation_demo> <install-dir> [workdir]
+    pause_overlay_panel.py <daybreak> <install-dir> [workdir]
 
 Every measurement is taken against a reference frame of the SAME match state captured one
 frame earlier without --pause-overlay, which is what makes the numbers readable: outside the

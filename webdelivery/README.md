@@ -22,7 +22,7 @@ docker compose up --build          # prepare, then serve, on http://localhost:80
 ```
 
 Open <http://localhost:8080/> and follow *Start the client*. That link is
-`/client/foundation_demo.html?delivery=1`, which turns on the per-asset delivery client
+`/client/daybreak.html?delivery=1`, which turns on the per-asset delivery client
 and materialises the delivered assets at the paths the port's own asset layer already
 reads (`data/...`, `movie/...`).
 
@@ -78,7 +78,7 @@ happens to leave behind. The archive order, duplicate resolution and case-insens
 matching are the rules the original executable implements and the native asset layer
 ports (`src/assets/dat_bundle.cpp`): bundles are searched in registration order
 (`daybreak07`, `04`, `00`, `05`, `02`, `06`), first match wins, and a lookup is exact
-first and then ASCII-case-insensitive. `remake/foundation/tests/web_catalog_order.cpp`
+first and then ASCII-case-insensitive. `tests/web_catalog_order.cpp`
 compares this service's ordering against the native reader's — 11,261 names and 983
 duplicate names on a real install, and a synthetic install that needs no game data.
 

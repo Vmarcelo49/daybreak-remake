@@ -1,9 +1,9 @@
 // tests/raycast_analytic.cpp — host test for physics/raycast.{h,cpp}.
 //
 // Build from the repo root (glm ships in the foundation's third_party):
-//   g++ -std=c++20 -O2 -Wall -Wextra -I remake/foundation/src
-//       -I remake/foundation/third_party/glm remake/foundation/src/physics/raycast.cpp
-//       remake/foundation/tests/raycast_analytic.cpp -o /tmp/raycast_analytic
+//   g++ -std=c++20 -O2 -Wall -Wextra -I src
+//       -I third_party/glm src/physics/raycast.cpp
+//       tests/raycast_analytic.cpp -o /tmp/raycast_analytic
 //   /tmp/raycast_analytic [path/to/collision_camera.X]
 //
 // What the evidence is, and what it is not:

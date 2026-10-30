@@ -2,11 +2,11 @@ cmake_minimum_required(VERSION 3.20)
 
 # The version lives in VERSION so that bumping it is a one-line act — and the only
 # thing that triggers the multi-target CI build (see .github/workflows).
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" FOUNDATION_VERSION)
-string(STRIP "${FOUNDATION_VERSION}" FOUNDATION_VERSION)
-project(daybreak_foundation VERSION ${FOUNDATION_VERSION} LANGUAGES C CXX)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" DAYBREAK_VERSION)
+string(STRIP "${DAYBREAK_VERSION}" DAYBREAK_VERSION)
+project(daybreak VERSION ${DAYBREAK_VERSION} LANGUAGES C CXX)
 
-# Multi-platform foundation: SDL3 + WebGPU (webgpu.h), built for Linux, Windows
+# Multi-platform product: SDL3 + WebGPU (webgpu.h), built for Linux, Windows
 # (MinGW cross-compile) and the web (Emscripten) from this one file.
 #
 #   linux    cmake -B build/linux   -GNinja
@@ -38,7 +38,7 @@ if(EMSCRIPTEN)
     # miss that Linux and Wine log and walk past aborted the module instead (measured:
     # the first missing data/aura/00.x after the stage load). With it, the web reaches
     # the title and a live match, which it could not before (issue #35). Cost measured
-    # on the same tree: foundation_demo.wasm 6,249,962 -> 8,186,870 bytes (+31%).
+    # on the same tree: daybreak.wasm 6,249,962 -> 8,186,870 bytes (+31%).
     add_compile_options(-sUSE_SDL=3 -fexceptions)
     add_link_options(-sUSE_SDL=3 -fexceptions -sASYNCIFY=1 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576 -sFETCH=1 -lidbfs.js)
     add_link_options("SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts@/assets/fonts")
@@ -63,27 +63,27 @@ target_include_directories(glm INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/third_part
 # backend it was proved on. dat_bundle/dat_crypto read the shipped daybreakXX.dat
 # archives, so an install can be used without extracting it (see docs/CJK-TEXT.md
 # for the sibling text decision and tests/dat_bundle_bytes.cpp for the parity proof).
-add_library(foundation_assets STATIC
+add_library(assets STATIC
     src/assets/assets.cpp
     src/assets/asset_source.cpp
     src/assets/dat_bundle.cpp
     src/assets/dat_crypto.cpp
     src/assets/exe_strings.cpp)
-target_include_directories(foundation_assets PUBLIC src/assets)
-target_link_libraries(foundation_assets PUBLIC glm)
+target_include_directories(assets PUBLIC src/assets)
+target_link_libraries(assets PUBLIC glm)
 
-add_library(foundation STATIC
+add_library(runtime STATIC
     src/platform/platform.cpp
     src/platform/surface.cpp
     src/platform/web_pack.cpp
     src/platform/web_assets.cpp
     src/platform/asset_client.cpp
     src/gpu/gpu.cpp)
-target_include_directories(foundation PUBLIC src)
-target_link_libraries(foundation PUBLIC webgpu)
+target_include_directories(runtime PUBLIC src)
+target_link_libraries(runtime PUBLIC webgpu)
 
 if(NOT EMSCRIPTEN)
-    target_link_libraries(foundation PUBLIC SDL3::SDL3 sdl3webgpu)
+    target_link_libraries(runtime PUBLIC SDL3::SDL3 sdl3webgpu)
 endif()
 
 # The scene renderer is the one layer above gpu/ that also needs the asset layer: it
@@ -91,14 +91,14 @@ endif()
 # debug_prims is its line-list sibling: a second pass over the same encoder, used to
 # annotate a frame (capture diagnostics), with a device-free geometry half the host
 # test below exercises.
-add_library(foundation_render STATIC
+add_library(render STATIC
     src/render/scene_renderer.cpp
     src/render/debug_prims.cpp)
-target_link_libraries(foundation_render PUBLIC foundation foundation_assets)
+target_link_libraries(render PUBLIC runtime assets)
 
 # The 2D/UI layer: sprite batch, bitmap font, HUD composition, diagnostics. Same
-# shape as foundation_render; verified headless before wiring (docs/UI-VERIFY.md).
-add_library(foundation_ui STATIC
+# shape as render; verified headless before wiring (docs/UI-VERIFY.md).
+add_library(ui STATIC
     src/ui/sprite.cpp
     src/ui/font.cpp
     src/ui/caption.cpp
@@ -119,27 +119,27 @@ add_library(foundation_ui STATIC
     src/settings/user_settings.cpp
     src/ui/screen_options.cpp
     src/ui/soft_keyboard.cpp)
-target_include_directories(foundation_ui PUBLIC src)
+target_include_directories(ui PUBLIC src)
 # hud_atlas.cpp decodes HUD sheets through xm::decodeCnvImage, which assets/ owns: state it
-# here so a target linking foundation_ui alone still links.
-target_link_libraries(foundation_ui PUBLIC foundation_assets)
+# here so a target linking ui alone still links.
+target_link_libraries(ui PUBLIC assets)
 # stb_truetype for the CJK rasterizer, alongside the vendored stb_vorbis the media
-# layer uses (foundation_media adds the same directory).
-target_include_directories(foundation_ui PRIVATE third_party/stb)
-# foundation_movie: the screen factory's opening entry (issue #40) lives in this layer and
-# calls the movie player, so every target that links foundation_ui needs the player too.
-target_link_libraries(foundation_ui PUBLIC foundation foundation_movie)
+# layer uses (media adds the same directory).
+target_include_directories(ui PRIVATE third_party/stb)
+# movie: the screen factory's opening entry (issue #40) lives in this layer and
+# calls the movie player, so every target that links ui needs the player too.
+target_link_libraries(ui PUBLIC runtime movie)
 
 # Media/input contracts and tables. Header-only by design (they unit-test
 # anywhere), so this library is one TU of static_asserts against the real SDL3
 # headers: the tables cannot drift from SDL3 without failing every target build.
-add_library(foundation_media STATIC src/input/pin_tables.cpp src/audio/audio_engine.cpp
+add_library(media STATIC src/input/pin_tables.cpp src/audio/audio_engine.cpp
     src/audio/combat_audio.cpp
                           src/input/input_backend.cpp)
-target_include_directories(foundation_media PUBLIC src)
-target_include_directories(foundation_media PRIVATE third_party/stb)
+target_include_directories(media PUBLIC src)
+target_include_directories(media PRIVATE third_party/stb)
 if(NOT EMSCRIPTEN)
-    target_link_libraries(foundation_media PUBLIC SDL3::SDL3)
+    target_link_libraries(media PUBLIC SDL3::SDL3)
 endif()
 
 # The movies (issue #40): pl_mpeg (pinned, third_party/pl_mpeg) behind one player class,
@@ -147,56 +147,56 @@ endif()
 # media/ because it is the one layer that owns a third-party decoder, and because the web
 # target must not pull one in: movie_player.cpp compiles to a stub under EMSCRIPTEN, so
 # this target builds everywhere and decodes only natively.
-add_library(foundation_movie STATIC
+add_library(movie STATIC
     src/movie/movie_player.cpp)
-target_include_directories(foundation_movie PUBLIC src)
-target_include_directories(foundation_movie PRIVATE third_party/pl_mpeg)
-target_link_libraries(foundation_movie PUBLIC foundation foundation_media)
+target_include_directories(movie PUBLIC src)
+target_include_directories(movie PRIVATE third_party/pl_mpeg)
+target_link_libraries(movie PUBLIC runtime media)
 
 # Game-facing interfaces: header-only (glm+std, plus hud_bridge.h over ui/), so
 # this library is a check TU that forces every target to compile them — the
 # same rationale as the pin TU above.
-add_library(foundation_game STATIC src/game/game_check.cpp)
-target_include_directories(foundation_game PUBLIC src)
-target_link_libraries(foundation_game PUBLIC foundation_ui glm)
+add_library(game_interfaces STATIC src/game/game_check.cpp)
+target_include_directories(game_interfaces PUBLIC src)
+target_link_libraries(game_interfaces PUBLIC ui glm)
 
 # Collision queries over loaded meshes: the D3DXIntersect replacement (CPU
 # triangle raycast) plus the arena camera clamp's physics side. No WebGPU and no
 # window, so gameplay code links it without a device.
-add_library(foundation_physics STATIC src/physics/raycast.cpp)
-target_include_directories(foundation_physics PUBLIC src)
-target_link_libraries(foundation_physics PUBLIC foundation_assets glm)
+add_library(physics STATIC src/physics/raycast.cpp)
+target_include_directories(physics PUBLIC src)
+target_link_libraries(physics PUBLIC assets glm)
 
 # The ported game truth (FULL-REPLACEMENT-PLAN.md Phase 2): fighter/projectile
 # simulation, the match loop that composes them in the reference's order, the match
 # economy and the HUD value computation — lifted out of remake/src so the WebGPU path
 # runs the game's own rules instead of a scripted vignette. hud_fill.cpp is the one TU
-# here that reaches ui/ -> webgpu.h (through game/hud_bridge.h), which foundation_ui
+# here that reaches ui/ -> webgpu.h (through game/hud_bridge.h), which ui
 # supplies; the simulation half is std + glm + the ported raycast.
-add_library(foundation_gameplay STATIC
+add_library(gameplay STATIC
     src/gameplay/arena_camera.cpp
     src/gameplay/match_economy.cpp
     src/gameplay/character_moves.cpp
     src/gameplay/weapon_definition.cpp
     src/gameplay/hud_fill.cpp
     src/gameplay/result_title.cpp)
-target_include_directories(foundation_gameplay PUBLIC src)
-target_link_libraries(foundation_gameplay
-    PUBLIC foundation_physics
-    PRIVATE foundation_ui)
+target_include_directories(gameplay PUBLIC src)
+target_link_libraries(gameplay
+    PUBLIC physics
+    PRIVATE ui)
 
 # The vendored reference simulation (docs/DIRECTION.md). The core is third-party code kept
 # byte-identical, so its warnings are silenced, not fixed.
-add_library(foundation_sim_zlib STATIC
+add_library(battle_core_zlib STATIC
     src/sim/core/zlib/adler32.c
     src/sim/core/zlib/crc32.c
     src/sim/core/zlib/inffast.c
     src/sim/core/zlib/inflate.c
     src/sim/core/zlib/inftrees.c
     src/sim/core/zlib/zutil.c)
-target_compile_options(foundation_sim_zlib PRIVATE -w)
+target_compile_options(battle_core_zlib PRIVATE -w)
 
-add_library(foundation_sim STATIC
+add_library(battle_core STATIC
     src/sim/battle.cpp
     src/sim/core/compiled_native_bodies/dash.cpp
     src/sim/core/compiled_native_bodies/full_charge.cpp
@@ -205,62 +205,62 @@ add_library(foundation_sim STATIC
     src/sim/core/compiled_native_bodies/shoot.cpp
     src/sim/core/compiled_native_bodies/slot7.cpp
     src/sim/core/compiled_native_bodies/special_strike.cpp)
-target_include_directories(foundation_sim
+target_include_directories(battle_core
     PUBLIC src
     PRIVATE src/sim/core src/sim/core/zlib)
 # Bodies stay out of every other TU's compile: the core's public control headers then
 # declare them, as its own build does.
-target_compile_definitions(foundation_sim PRIVATE DAYBREAK_COMPILED_NATIVE_BODIES=1)
-target_compile_options(foundation_sim PRIVATE -w
+target_compile_definitions(battle_core PRIVATE DAYBREAK_COMPILED_NATIVE_BODIES=1)
+target_compile_options(battle_core PRIVATE -w
     "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/sim/core_prelude.h")
-target_link_libraries(foundation_sim PRIVATE foundation_sim_zlib)
+target_link_libraries(battle_core PRIVATE battle_core_zlib)
 if(EMSCRIPTEN)
     # Two core headers use SSE intrinsics; Emscripten maps those onto WebAssembly SIMD.
-    target_compile_options(foundation_sim PRIVATE -msimd128 -msse)
+    target_compile_options(battle_core PRIVATE -msimd128 -msse)
 endif()
 
 # game::Battle over the core. Includes only sim/battle.h, never the core.
-add_library(foundation_sim_backend STATIC src/sim/core_battle.cpp)
-target_link_libraries(foundation_sim_backend PUBLIC foundation_sim foundation_gameplay)
+add_library(battle_backend STATIC src/sim/core_battle.cpp)
+target_link_libraries(battle_backend PUBLIC battle_core gameplay)
 
 if(NOT CMAKE_CROSSCOMPILING)
     add_executable(simctl src/sim/simctl.cpp)
-    target_link_libraries(simctl PRIVATE foundation_sim)
+    target_link_libraries(simctl PRIVATE battle_core)
     add_executable(simfuzz src/sim/simfuzz.cpp)
-    target_link_libraries(simfuzz PRIVATE foundation_sim)
+    target_link_libraries(simfuzz PRIVATE battle_core)
 endif()
 
-add_executable(foundation_demo src/main.cpp)
-target_link_libraries(foundation_demo PRIVATE foundation_sim_backend)
+add_executable(daybreak src/main.cpp)
+target_link_libraries(daybreak PRIVATE battle_backend)
 if(WIN32)
-    set_target_properties(foundation_demo PROPERTIES WIN32_EXECUTABLE TRUE)
+    set_target_properties(daybreak PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
-# foundation_movie comes after foundation_ui on purpose: the opening scene lives in the UI
+# movie comes after ui on purpose: the opening scene lives in the UI
 # layer and calls into the player, and static libraries resolve in this order.
-target_link_libraries(foundation_demo PRIVATE foundation_render foundation_ui foundation_media foundation_game foundation_physics foundation_gameplay foundation_movie)
+target_link_libraries(daybreak PRIVATE render ui media game_interfaces physics gameplay movie)
 if(WIN32)
     add_executable(windows_startup_smoke EXCLUDE_FROM_ALL tests/windows_startup_smoke.cpp)
-    target_link_libraries(windows_startup_smoke PRIVATE foundation_render foundation_ui
-        foundation_media foundation_game foundation_physics foundation_sim_backend foundation_gameplay
-        foundation_movie)
+    target_link_libraries(windows_startup_smoke PRIVATE render ui
+        media game_interfaces physics battle_backend gameplay
+        movie)
 endif()
 
 set(CAPTION_CJK_FONT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/NotoSansCJKjp-Regular.otf")
 if(EMSCRIPTEN)
-    set_property(TARGET foundation_demo APPEND PROPERTY LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/gyrotrope-black.otf")
+    set_property(TARGET daybreak APPEND PROPERTY LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/gyrotrope-black.otf")
     if(EXISTS "${CAPTION_CJK_FONT}")
-        target_link_options(foundation_demo PRIVATE "SHELL:--preload-file ${CAPTION_CJK_FONT}@/assets/fonts/NotoSansCJKjp-Regular.otf")
-        set_property(TARGET foundation_demo APPEND PROPERTY LINK_DEPENDS "${CAPTION_CJK_FONT}")
+        target_link_options(daybreak PRIVATE "SHELL:--preload-file ${CAPTION_CJK_FONT}@/assets/fonts/NotoSansCJKjp-Regular.otf")
+        set_property(TARGET daybreak APPEND PROPERTY LINK_DEPENDS "${CAPTION_CJK_FONT}")
     endif()
 else()
-    add_custom_target(foundation_caption_fonts
+    add_custom_target(caption_fonts
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts" "$<TARGET_FILE_DIR:foundation_demo>/assets/fonts")
-    add_dependencies(foundation_demo foundation_caption_fonts)
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts" "$<TARGET_FILE_DIR:daybreak>/assets/fonts")
+    add_dependencies(daybreak caption_fonts)
     if(EXISTS "${CAPTION_CJK_FONT}")
-        add_custom_command(TARGET foundation_caption_fonts POST_BUILD
+        add_custom_command(TARGET caption_fonts POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${CAPTION_CJK_FONT}" "$<TARGET_FILE_DIR:foundation_demo>/assets/fonts/NotoSansCJKjp-Regular.otf")
+                "${CAPTION_CJK_FONT}" "$<TARGET_FILE_DIR:daybreak>/assets/fonts/NotoSansCJKjp-Regular.otf")
     endif()
 endif()
 
@@ -272,8 +272,13 @@ endif()
 # ships beside itself. CMake rewrites the RPATH in the installed copy only, so
 # `build.sh linux` and the build-tree binary keep working exactly as before.
 if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
-    install(TARGETS foundation_demo RUNTIME DESTINATION .)
-    set_target_properties(foundation_demo PROPERTIES INSTALL_RPATH "$ORIGIN/lib")
+    install(TARGETS daybreak RUNTIME DESTINATION .)
+    set_target_properties(daybreak PROPERTIES INSTALL_RPATH "$ORIGIN/lib")
+    # The launcher (installed below) owns the name `daybreak` in a package, because that
+    # is the entry point package/README-LINUX.md documents; the executable it starts is
+    # installed beside it under this name instead of over it.
+    install(CODE [[file(RENAME "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/daybreak"
+                        "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/daybreak-bin")]])
     # SDL3 comes from the distribution's development package; wgpu-native from the pinned
     # fetched release. Both are bundled because a user machine may have neither. The C/C++
     # runtime is deliberately NOT bundled (see package/LICENSES/README.md). SDL3 is taken
@@ -295,7 +300,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/package/LICENSES" DESTINATION .)
     # The port's own licence comes straight from the repository root, so it cannot drift
     # from what the source tree ships.
-    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../../LICENSE"
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
             DESTINATION LICENSES RENAME daybreak-decomp.txt)
 endif()
 
@@ -325,7 +330,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         add_test(NAME hud_cell_scale
                  COMMAND ${Python3_EXECUTABLE}
                          "${CMAKE_CURRENT_SOURCE_DIR}/tests/hud_cell_scale.py"
-                         "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
+                         "$<TARGET_FILE:daybreak>" "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak"
                          "${CMAKE_CURRENT_SOURCE_DIR}")
         set_tests_properties(hud_cell_scale PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
 
@@ -337,7 +342,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         add_test(NAME hud_view_geometry
                  COMMAND ${Python3_EXECUTABLE}
                          "${CMAKE_CURRENT_SOURCE_DIR}/tests/hud_view_geometry.py"
-                         "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
+                         "$<TARGET_FILE:daybreak>" "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak"
                          "${CMAKE_CURRENT_SOURCE_DIR}")
         set_tests_properties(hud_view_geometry PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
 
@@ -349,7 +354,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         add_test(NAME pause_overlay_panel
                  COMMAND ${Python3_EXECUTABLE}
                          "${CMAKE_CURRENT_SOURCE_DIR}/tests/pause_overlay_panel.py"
-                         "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
+                         "$<TARGET_FILE:daybreak>" "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak"
                          "${CMAKE_CURRENT_SOURCE_DIR}")
         set_tests_properties(pause_overlay_panel PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
 
@@ -360,7 +365,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         add_test(NAME toon_ramp
                  COMMAND ${Python3_EXECUTABLE}
                          "${CMAKE_CURRENT_SOURCE_DIR}/tests/toon_ramp.py"
-                         "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
+                         "$<TARGET_FILE:daybreak>" "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak"
                          "${CMAKE_CURRENT_SOURCE_DIR}")
         set_tests_properties(toon_ramp PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
 
@@ -372,7 +377,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         add_test(NAME character_shadow
                  COMMAND ${Python3_EXECUTABLE}
                          "${CMAKE_CURRENT_SOURCE_DIR}/tests/character_shadow.py"
-                         "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
+                         "$<TARGET_FILE:daybreak>" "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak"
                          "${CMAKE_CURRENT_SOURCE_DIR}")
         set_tests_properties(character_shadow PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
 
@@ -384,7 +389,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         add_test(NAME npr_experiments
                  COMMAND ${Python3_EXECUTABLE}
                          "${CMAKE_CURRENT_SOURCE_DIR}/tests/npr_experiments.py"
-                         "$<TARGET_FILE:foundation_demo>" "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak"
+                         "$<TARGET_FILE:daybreak>" "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak"
                          "${CMAKE_CURRENT_SOURCE_DIR}")
         set_tests_properties(npr_experiments PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
 
@@ -404,7 +409,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME debug_prims_geometry COMMAND debug_prims_geometry)
 
     # Links only glm: the test defines XMODEL_IMPLEMENTATION itself (it loads real .X
-    # collision meshes), so foundation_assets would be a duplicate-definition error.
+    # collision meshes), so assets would be a duplicate-definition error.
     add_executable(raycast_analytic tests/raycast_analytic.cpp src/physics/raycast.cpp)
     target_include_directories(raycast_analytic PRIVATE src)
     target_link_libraries(raycast_analytic PRIVATE glm)
@@ -441,7 +446,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
 
     # Economy + HUD fill: device-free, and it links match_economy.cpp only —
     # hud_fill.cpp's bridge half needs webgpu.h, so the test includes just the
-    # value header (the seam TU is compiled by foundation_gameplay).
+    # value header (the seam TU is compiled by gameplay).
     add_executable(match_economy_test tests/match_economy_test.cpp
                    src/gameplay/match_economy.cpp)
     target_include_directories(match_economy_test PRIVATE src)
@@ -487,7 +492,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
 
     # The env.dat spawn contract: owns the scene/cnv/xmodel implementations
     # itself (see the test header), so like the XMODEL_IMPLEMENTATION tests
-    # it must not link foundation_assets. Skips without a game install.
+    # it must not link assets. Skips without a game install.
     add_executable(env_spawn_test tests/env_spawn_test.cpp
                    src/assets/asset_source.cpp src/assets/dat_bundle.cpp
                    src/assets/dat_crypto.cpp)
@@ -505,11 +510,11 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(shadow_map_test PRIVATE glm)
     add_test(NAME shadow_map_test COMMAND shadow_map_test)
 
-    # Device-free camera test; foundation_assets supplies the action-rig controller.
+    # Device-free camera test; assets supplies the action-rig controller.
     add_executable(arena_camera_test tests/arena_camera_test.cpp
                    src/gameplay/arena_camera.cpp src/physics/raycast.cpp)
     target_include_directories(arena_camera_test PRIVATE src)
-    target_link_libraries(arena_camera_test PRIVATE foundation_assets glm)
+    target_link_libraries(arena_camera_test PRIVATE assets glm)
     add_test(NAME arena_camera_test COMMAND arena_camera_test)
 
 
@@ -518,36 +523,36 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # for all 46 legal character/weapon selections. Device-free; the shipped-data parts
     # skip themselves when the install is absent.
     add_executable(weapon_definition_test tests/weapon_definition_test.cpp)
-    target_link_libraries(weapon_definition_test PRIVATE foundation_gameplay)
+    target_link_libraries(weapon_definition_test PRIVATE gameplay)
     add_test(NAME weapon_definition_test COMMAND weapon_definition_test)
     set_tests_properties(weapon_definition_test PROPERTIES LABELS asset)
 
 
     # The vendored simulation: all 46 combos run, and the digest repeats and reacts (M1).
     add_executable(sim_core_test tests/sim_core_test.cpp)
-    target_link_libraries(sim_core_test PRIVATE foundation_sim)
+    target_link_libraries(sim_core_test PRIVATE battle_core)
     target_include_directories(sim_core_test PRIVATE src/sim src/sim/core)
     add_test(NAME sim_core_test COMMAND sim_core_test)
     set_tests_properties(sim_core_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
     # The admission bodies against the original's recorded answers; skips without the bundle.
     add_executable(sim_oracle_test tests/sim_oracle_test.cpp)
     target_compile_definitions(sim_oracle_test PRIVATE DAYBREAK_COMPILED_NATIVE_BODIES=1)
-    target_link_libraries(sim_oracle_test PRIVATE foundation_sim)
+    target_link_libraries(sim_oracle_test PRIVATE battle_core)
     target_include_directories(sim_oracle_test PRIVATE src/sim src/sim/core)
     add_test(NAME sim_oracle_test COMMAND sim_oracle_test)
     set_tests_properties(sim_oracle_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
     # M4's first risk: the core's bones against our own rig sampling, per animation set.
     add_executable(sim_pose_test tests/sim_pose_test.cpp)
-    target_link_libraries(sim_pose_test PRIVATE foundation_sim foundation_gameplay)
+    target_link_libraries(sim_pose_test PRIVATE battle_core gameplay)
     add_test(NAME sim_pose_test COMMAND sim_pose_test)
     set_tests_properties(sim_pose_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
     # The real front end through the core: title, selection, versus, battle, result. Empty panels
     # become COMs, so a one-human selection still fights four.
     add_test(NAME sim_frontend_flow COMMAND ${Python3_EXECUTABLE}
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/release_flow_check.py $<TARGET_FILE:foundation_demo>
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak --recipe=com --rounds=1 --frames=5000 --fighters=4)
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/release_flow_check.py $<TARGET_FILE:daybreak>
+        ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak --recipe=com --rounds=1 --frames=5000 --fighters=4)
     set_tests_properties(sim_frontend_flow PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600 LABELS asset)
 
 
@@ -576,37 +581,37 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # 1.5x..2.7x off and only a 480000-pixel comparison shows it). It includes
     # render/scene_renderer.h for them, so it needs that header's own include path
     # (webgpu.h from the imported target) although it never creates a device;
-    # foundation_assets supplies src/assets for scene.h.
+    # assets supplies src/assets for scene.h.
     # The secondary lighting normals (issue #25, E/F): device-free on purpose — the
     # failure modes (a cluster radius that merges a limb, a blend that flips a normal, a
     # mask that is constant) are all geometry. Needs the install for a real mesh, so it
     # skips itself (exit 77) without one, like the capture tests.
     add_executable(npr_normals_test tests/npr_normals_test.cpp)
     target_include_directories(npr_normals_test PRIVATE src)
-    target_link_libraries(npr_normals_test PRIVATE foundation_assets glm)
+    target_link_libraries(npr_normals_test PRIVATE assets glm)
     add_test(NAME npr_normals_test COMMAND npr_normals_test
-             "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak")
+             "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak")
     set_tests_properties(npr_normals_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
     add_executable(lighting_test tests/lighting_test.cpp)
     target_include_directories(lighting_test PRIVATE src)
-    target_link_libraries(lighting_test PRIVATE foundation_assets webgpu glm)
+    target_link_libraries(lighting_test PRIVATE assets webgpu glm)
     add_test(NAME lighting_test COMMAND lighting_test)
 
     # Issue #46: the Controller/Model ownership across a scene swap. It compiles
     # src/main.cpp into its own TU (SDL_MAIN_HANDLED, so the app's SDL_App* entry points
     # do not collide with the test's main) to drive the real initScene/initMatch rather
-    # than a copy of them, and it links what foundation_demo links because that is what
+    # than a copy of them, and it links what daybreak links because that is what
     # main.cpp needs. The cost is one more compile of the app's largest TU; the
     # alternative — testing a reimplementation of the swap — would not have caught the
     # defect. Needs the install (skips itself, exit 77, without one), no device.
     add_executable(controller_scene_lifetime_test tests/controller_scene_lifetime_test.cpp)
     target_include_directories(controller_scene_lifetime_test PRIVATE src)
-    target_link_libraries(controller_scene_lifetime_test PRIVATE foundation_render
-        foundation_ui foundation_media foundation_game foundation_physics
-        foundation_sim_backend foundation_gameplay)
+    target_link_libraries(controller_scene_lifetime_test PRIVATE render
+        ui media game_interfaces physics
+        battle_backend gameplay)
     add_test(NAME controller_scene_lifetime_test COMMAND controller_scene_lifetime_test
-             "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak")
+             "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak")
     set_tests_properties(controller_scene_lifetime_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
     # The CJK text layer: device-free (it rasterizes into host memory), and it links
@@ -621,7 +626,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     set_tests_properties(text_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
     add_executable(caption_font_test tests/caption_font_test.cpp)
-    target_link_libraries(caption_font_test PRIVATE foundation_ui)
+    target_link_libraries(caption_font_test PRIVATE ui)
     add_test(NAME caption_font_test COMMAND caption_font_test)
     set_tests_properties(caption_font_test PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
@@ -661,10 +666,10 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # controller-keyed view assignment, per-view projection into each view's own aspect,
     # the synthetic pad pattern, and the guard that rendering N views does not multiply
     # simulation or audio updates (it steps a real Match and compares a 1-view with a
-    # 4-view run). Device-free; links foundation_gameplay for Match/Fighter and the HUD fill.
+    # 4-view run). Device-free; links gameplay for Match/Fighter and the HUD fill.
     add_executable(view_layout_test tests/view_layout_test.cpp)
     target_include_directories(view_layout_test PRIVATE src)
-    target_link_libraries(view_layout_test PRIVATE foundation_gameplay glm webgpu)
+    target_link_libraries(view_layout_test PRIVATE gameplay glm webgpu)
     add_test(NAME view_layout_test COMMAND view_layout_test)
 
     # The HUD's text metrics against the banked DX9 frames: device-free (it rasterizes
@@ -686,15 +691,15 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
 
     # The front-end screen stack and the title menu's cursor machine: device-free (the
     # stack's factory is injected, so transitions run against fake screens). It links
-    # foundation_ui for makeScreen -> screen_title -> hud_atlas -> sprite, but never
+    # ui for makeScreen -> screen_title -> hud_atlas -> sprite, but never
     # creates a device.
     add_executable(input_backend_test tests/input_backend_test.cpp)
-    target_link_libraries(input_backend_test PRIVATE foundation_media foundation_gameplay)
+    target_link_libraries(input_backend_test PRIVATE media gameplay)
     add_test(NAME input_backend_test COMMAND input_backend_test
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/scripts/frontend-smoke.txt")
 
     add_executable(fixed_step_test tests/fixed_step_test.cpp)
-    target_link_libraries(fixed_step_test PRIVATE foundation_gameplay)
+    target_link_libraries(fixed_step_test PRIVATE gameplay)
     add_test(NAME fixed_step_test COMMAND fixed_step_test)
     # Issue #13's participant roster and the screen geometry it drives: the 1v1/2v1/2v2
     # derivations, the four recovered VS slots, the result report's rows and the victory
@@ -707,7 +712,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # voice channels, suspend/resume and repeated-match cleanup. Device-free (a recording
     # sink stands in for the engine).
     add_executable(combat_audio_test tests/combat_audio_test.cpp)
-    target_link_libraries(combat_audio_test PRIVATE foundation_media glm)
+    target_link_libraries(combat_audio_test PRIVATE media glm)
     add_test(NAME combat_audio_test COMMAND combat_audio_test)
 
     # The install is its only prerequisite; once present, a missing or unparseable item
@@ -723,32 +728,32 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     set_tests_properties(bgm_loop_test PROPERTIES LABELS asset)
 
     add_executable(result_title_test tests/result_title_test.cpp)
-    target_link_libraries(result_title_test PRIVATE foundation_gameplay foundation_ui foundation_assets glm)
+    target_link_libraries(result_title_test PRIVATE gameplay ui assets glm)
     add_test(NAME result_title_test COMMAND result_title_test)
     set_tests_properties(result_title_test PROPERTIES LABELS asset)
 
     add_executable(participant_layout_test tests/participant_layout_test.cpp)
-    target_link_libraries(participant_layout_test PRIVATE foundation_ui glm)
+    target_link_libraries(participant_layout_test PRIVATE ui glm)
     add_test(NAME participant_layout_test COMMAND participant_layout_test)
 
     foreach(frontend_test select_menu_test stage_vs_test frontend_config_test result_screen_test
                          select_cursor_test select_row_slidein_test)
         add_executable(${frontend_test} tests/${frontend_test}.cpp)
-        # foundation_gameplay: frontend_launch.cpp reads the item's attachment meshes
+        # gameplay: frontend_launch.cpp reads the item's attachment meshes
         # through gameplay::WeaponDefinition (issue #23's gear-up fix).
-        target_link_libraries(${frontend_test} PRIVATE foundation_ui foundation_gameplay glm)
+        target_link_libraries(${frontend_test} PRIVATE ui gameplay glm)
         add_test(NAME ${frontend_test} COMMAND ${frontend_test})
     endforeach()
     # Issue #45's front-end lifecycle: what a screen entry clears and what it must not.
     add_executable(frontend_lifecycle_test tests/frontend_lifecycle_test.cpp)
-    target_link_libraries(frontend_lifecycle_test PRIVATE foundation_ui foundation_gameplay glm)
+    target_link_libraries(frontend_lifecycle_test PRIVATE ui gameplay glm)
     add_test(NAME frontend_lifecycle_test COMMAND frontend_lifecycle_test)
 
 
     # Issue #15's pause semantics: the match gate, the menu and the stale-edge rule.
     # Device-free (no SDL, no assets), like the other gameplay tests.
     add_executable(battle_pause_test tests/battle_pause_test.cpp)
-    target_link_libraries(battle_pause_test PRIVATE foundation_gameplay)
+    target_link_libraries(battle_pause_test PRIVATE gameplay)
     add_test(NAME battle_pause_test COMMAND battle_pause_test)
 
     # Issue #19's user configuration: the parser/validator, the atomic write and the
@@ -760,35 +765,35 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
 
     add_executable(screen_stack_test tests/screen_stack_test.cpp)
     target_include_directories(screen_stack_test PRIVATE src)
-    # foundation_gameplay: frontend_launch.cpp reads the item's attachment meshes through
+    # gameplay: frontend_launch.cpp reads the item's attachment meshes through
     # gameplay::WeaponDefinition (issue #23's gear-up fix), so the UI layer needs it here.
-    target_link_libraries(screen_stack_test PRIVATE foundation_ui foundation_gameplay glm)
+    target_link_libraries(screen_stack_test PRIVATE ui gameplay glm)
     add_test(NAME screen_stack_test COMMAND screen_stack_test)
 endif()
 
-# Host backend tests may open audio without passing through foundation_demo's
+# Host backend tests may open audio without passing through daybreak's
 # output policy. Keep those tests, and their child processes, off real speakers.
-get_property(foundation_host_tests DIRECTORY PROPERTY TESTS)
-if(foundation_host_tests)
-    set_property(TEST ${foundation_host_tests} APPEND PROPERTY ENVIRONMENT "SDL_AUDIO_DRIVER=dummy")
+get_property(host_tests DIRECTORY PROPERTY TESTS)
+if(host_tests)
+    set_property(TEST ${host_tests} APPEND PROPERTY ENVIRONMENT "SDL_AUDIO_DRIVER=dummy")
 endif()
 
 if(EMSCRIPTEN)
-    set_target_properties(foundation_demo PROPERTIES SUFFIX ".html")
+    set_target_properties(daybreak PROPERTIES SUFFIX ".html")
     # argv never reaches wasm, so a local verification build can name its one asset here.
     # The plain web build leaves this empty and keeps the triangle demo.
     if(FOUNDATION_WEB_ASSET)
-        target_compile_definitions(foundation_demo PRIVATE "FOUNDATION_WEB_ASSET=\"${FOUNDATION_WEB_ASSET}\"")
+        target_compile_definitions(daybreak PRIVATE "FOUNDATION_WEB_ASSET=\"${FOUNDATION_WEB_ASSET}\"")
     endif()
 else()
-    target_copy_webgpu_binaries(foundation_demo)
+    target_copy_webgpu_binaries(daybreak)
 endif()
 
 # Tests never read a physical pad. The port reads every device on every run (2026-10-29), so a
 # connected controller's stick noise reached the scripted runs: character_shadow passed 2 of 8
 # with an 8BitDo attached and 8 of 8 with this hint.
-get_property(foundation_tests DIRECTORY PROPERTY TESTS)
-if(foundation_tests)
-    set_property(TEST ${foundation_tests} APPEND PROPERTY ENVIRONMENT
+get_property(daybreak_tests DIRECTORY PROPERTY TESTS)
+if(daybreak_tests)
+    set_property(TEST ${daybreak_tests} APPEND PROPERTY ENVIRONMENT
         "SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT=0x0000/0x0000")
 endif()

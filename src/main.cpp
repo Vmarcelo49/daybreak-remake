@@ -225,7 +225,7 @@ static bool resolveFighterWeapon(const std::string& charDir,
 
 void usage() {
     std::fprintf(stderr,
-        "usage: foundation_demo [<model.x> | --model=<file.x> | --stage=<dir> |\n"
+        "usage: daybreak [<model.x> | --model=<file.x> | --stage=<dir> |\n"
         "                       --character=<baseDir>/<name>[:costume] |\n"
         "                       --weapon=<dir or .x>[:slot] | --effect=<file.x]] [options]\n"
         "  --out=<file.ppm>   render offscreen and write a PPM (verification path)\n"
@@ -5025,7 +5025,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
         static std::vector<std::string> webArgs;
         static std::vector<const char*> webArgv;
         webArgs.clear();
-        webArgs.push_back("foundation_demo");
+        webArgs.push_back("daybreak");
         if (!webAsset.empty()) webArgs.push_back(webAsset);
         // Local browser verification needs the same multi-asset recipe as native.
         const std::string extra = plat::webQueryParam("args");

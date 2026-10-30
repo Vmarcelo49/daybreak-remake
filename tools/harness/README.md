@@ -148,7 +148,7 @@ python3 tools/harness/orig_capture.py --seconds 60 \
 
 `--keys` is `name:seconds` steps executed in order after boot: `down`, `up`,
 `left`, `right`, `confirm` (Enter), `cancel`. The flow is not guessed — it is from
-the RE'd scene table in `remake/foundation/docs/FRONTEND-PLAN.md`:
+the RE'd scene table in `docs/archive/FRONTEND-PLAN.md`:
 title items in atlas order are ストーリー / 対戦 / 通信対戦 / 環境設定 / 操作設定 /
 終了 (`title.cnv`, six 192×48 cells), the cursor is `+0x1f0`, confirm is
 `+0x1fc == 1`, and the 対戦 item (second) returns scene 3 → page 1 confirm → scene

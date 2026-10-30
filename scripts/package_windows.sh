@@ -25,10 +25,10 @@ mkdir -p "$out_dir"
 out_dir=$(cd "$out_dir" && pwd)
 stage=$(mktemp -d "$out_dir/windows-stage.XXXXXX")
 trap 'rm -rf "$stage"; rm -f "$stage.zip"' EXIT
-for file in foundation_demo.exe SDL3.dll wgpu_native.dll; do
+for file in daybreak.exe SDL3.dll wgpu_native.dll; do
     test -s "$root/build/windows/$file"
 done
-cp "$root/build/windows/foundation_demo.exe" "$stage/DaybreakRemake.exe"
+cp "$root/build/windows/daybreak.exe" "$stage/DaybreakRemake.exe"
 cp "$root/build/windows/SDL3.dll" "$root/build/windows/wgpu_native.dll" "$stage/"
 mkdir -p "$stage/assets/fonts"
 cp "$root/assets/fonts/gyrotrope-black.otf" "$stage/assets/fonts/"

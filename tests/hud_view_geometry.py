@@ -22,7 +22,7 @@ the team-colored reticle must be in the frame at that anchor. Under the defect i
 another view's anchor (26-44 px away in this recipe) or nowhere at all.
 
 Usage:
-    hud_view_geometry.py <foundation_demo> <install-dir> [workdir]
+    hud_view_geometry.py <daybreak> <install-dir> [workdir]
 
 Exit 0 when every view's reticles sit on that view's own anchors, 1 otherwise, and 77 (skip)
 when the renderer or the install is unavailable, so a CI box without a GPU or the game data

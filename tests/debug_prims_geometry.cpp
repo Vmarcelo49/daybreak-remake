@@ -6,9 +6,9 @@
 //  No WebGPU, no device, no window: DEBUG_PRIMS_GEOMETRY_ONLY makes the header
 //  skip its pipeline half, so this compiles and runs anywhere glm does.
 //
-//    g++ -std=c++20 -Wall -Wextra -I remake/foundation/src
-//        -I remake/foundation/third_party/glm
-//        remake/foundation/tests/debug_prims_geometry.cpp -o /tmp/debug_prims_geometry
+//    g++ -std=c++20 -Wall -Wextra -I src
+//        -I third_party/glm
+//        tests/debug_prims_geometry.cpp -o /tmp/debug_prims_geometry
 //    /tmp/debug_prims_geometry        # prints DEBUG_PRIMS_GEOMETRY: ok|FAIL
 //
 //  Every case prints expected vs got, and any mismatch makes the exit status 1.

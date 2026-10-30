@@ -157,12 +157,8 @@ const char* const* fontSearchRoots() {
     // the ctest binaries from the build tree; tests/text_test.cpp additionally probes
     // upwards and next to argv[0], which is what makes the build-dir case work.
     static const char* const kRoots[] = {
-        "remake/foundation/assets/fonts/",
         "assets/fonts/",
-        "foundation/assets/fonts/",
-        "remake/foundation/third_party/fonts/",
         "third_party/fonts/",
-        "foundation/third_party/fonts/",
         nullptr,
     };
     return kRoots;

@@ -3,12 +3,12 @@
 #
 # WHY a shell test: the launcher IS the user-facing behaviour this issue ships — which
 # folder it picks, what it remembers, and what it says when it cannot. The binary behind it
-# needs a GPU and a display, so this test builds a sandbox "package" whose foundation_demo
+# needs a GPU and a display, so this test builds a sandbox "package" whose daybreak-bin
 # is a stub that prints its arguments, and drives the real launcher inside it. That covers
 # the search order, the persistence file and the failure messages with no device and no
 # game data (a fake install is an empty daybreak00.dat marker).
 #
-#   usage: launcher_test.sh <path to remake/foundation/package/daybreak>
+#   usage: launcher_test.sh <path to package/daybreak>
 #
 # The GUI-notice path is exercised too: a zenity stub earlier on PATH records the call
 # instead of opening a dialog on the developer's desktop.
@@ -54,11 +54,11 @@ make_package() { # make_package <dir> — the packaged layout the launcher check
     : > "$1/assets/fonts/NotoSansCJKjp-Regular.otf"
     : > "$1/lib/libwgpu_native.so"
     : > "$1/lib/libSDL3.so.0"
-    cat > "$1/foundation_demo" <<'STUB'
+    cat > "$1/daybreak-bin" <<'STUB'
 #!/bin/sh
 printf 'STUB %s\n' "$*"
 STUB
-    chmod +x "$1/foundation_demo"
+    chmod +x "$1/daybreak-bin"
 }
 
 make_install() { mkdir -p "$1"; : > "$1/daybreak00.dat"; }

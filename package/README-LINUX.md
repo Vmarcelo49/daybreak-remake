@@ -69,7 +69,7 @@ The folder is remembered in the port's **own** settings file, next to the port's
 settings and nowhere else: the launcher hands it to the binary, which writes it to
 `$XDG_CONFIG_HOME/daybreak-decomp/settings.conf` (`[game] install_dir`) when it opens it.
 The launcher itself writes no config file at all, so a direct
-`./foundation_demo --screen=title` run — no launcher, no flag — starts from the same folder.
+`./daybreak-bin --screen=title` run — no launcher, no flag — starts from the same folder.
 Releases before this one kept the folder in a separate `install.conf` in that directory;
 a leftover one is read once (so your answer is not lost), moved into `settings.conf` by the
 same mechanism, and then removed.

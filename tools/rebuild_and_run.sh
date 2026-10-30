@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# rebuild_and_run.sh — rebuild the foundation and launch a versus match.
+# rebuild_and_run.sh — rebuild the game and launch a versus match.
 #
 # What it does:
-#   1. Rebuilds remake/foundation/build/linux (ctest does NOT rebuild the
+#   1. Rebuilds build/linux (ctest does NOT rebuild the
 #      demo binary, so testing a fix without this step runs stale code).
-#   2. Stops any already-running foundation_demo (a stale window hides the
+#   2. Stops any already-running daybreak (a stale window hides the
 #      new build behind the old behaviour).
 #   3. Launches the demo detached with the standard versus flags, logging to
 #      $LOG (default /tmp/win3.log), then reports instances + log tail.
@@ -16,13 +16,13 @@
 #   STAGE=data/stage14 CHARACTER=data/mion ENEMY=data/rika LOG=/tmp/m.log \
 #       ./tools/rebuild_and_run.sh --hitbox-debug
 #
-# Any extra arguments are forwarded to foundation_demo (they override the
+# Any extra arguments are forwarded to daybreak (they override the
 # STAGE/CHARACTER/ENEMY defaults below only when they repeat those flags).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD="$ROOT/remake/foundation/build/linux"
-DEMO="$BUILD/foundation_demo"
+BUILD="$ROOT/build/linux"
+DEMO="$BUILD/daybreak"
 LOG="${LOG:-/tmp/win3.log}"
 STAGE="${STAGE:-data/stage21}"
 CHARACTER="${CHARACTER:-data/rena}"
@@ -43,7 +43,7 @@ if [ ! -x "$DEMO" ]; then
 fi
 
 echo "==> stopping old instances"
-pkill -f 'foundation_dem[o]' 2>/dev/null || true
+pkill -f 'build/linux/daybrea[k]' 2>/dev/null || true
 sleep 1
 
 echo "==> launching (log: $LOG)"
@@ -55,5 +55,5 @@ setsid nohup env SDL_AUDIODRIVER=dummy "$DEMO" \
     "$@" > "$LOG" 2>&1 < /dev/null &
 disown
 sleep 18
-echo "instances: $(pgrep -c 'foundation_dem[o]')"
+echo "instances: $(pgrep -c 'build/linux/daybrea[k]')"
 tail -3 "$LOG"

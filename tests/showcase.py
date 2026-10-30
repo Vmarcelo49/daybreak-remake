@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """showcase.py — asset smoke check + progress showcase captures.
 
-Two jobs, one headless binary (build/linux/foundation_demo):
+Two jobs, one headless binary (build/linux/daybreak):
 
 1. Checker (--check): run every (character, stage) pair headless for a few
    frames and report which pairs load with a fully textured draw list. A
@@ -29,8 +29,8 @@ import tempfile
 from pathlib import Path
 
 FOUNDATION = Path(__file__).resolve().parents[1]
-DATA = FOUNDATION.parents[1] / "Higurashi-Daybreak" / "data"
-BINARY = FOUNDATION / "build" / "linux" / "foundation_demo"
+DATA = FOUNDATION / "Higurashi-Daybreak" / "data"
+BINARY = FOUNDATION / "build" / "linux" / "daybreak"
 
 # Directories that live next to the characters but are not characters: stages
 # (auto-detected separately), VFX tables, audio, UI and config.

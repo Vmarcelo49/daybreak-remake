@@ -54,7 +54,7 @@ INDEX_HTML = """<!doctype html>
 <h1>Higurashi Daybreak — self-hosted web delivery</h1>
 <p>The web client is served from this same origin; the assets come from your own
 installation, prepared once.</p>
-<p><a style="color:#8cf" href="/client/foundation_demo.html?delivery=1">Start the client</a></p>
+<p><a style="color:#8cf" href="/client/daybreak.html?delivery=1">Start the client</a></p>
 <p>Catalog: <a style="color:#8cf" href="/api/catalog">/api/catalog</a> ·
 health: <a style="color:#8cf" href="/api/health">/api/health</a> ·
 startup manifest: <a style="color:#8cf" href="/api/manifest/startup">/api/manifest/startup</a></p>

@@ -28,7 +28,7 @@ gate work.
 `DIRECTION.md` links here instead of repeating this list, so the two cannot drift apart.
 
 **A. Hand-written combat — deleted at M5.** Do not bring it back. Behaviour changes belong
-in the core, cited and listed in `src/sim/core/PATCHES.md`. The last revision with the old
+in the core, cited and listed in `src/battle/core/PATCHES.md`. The last revision with the old
 path is `e9347627`.
 
 **B. Product roadmap — frozen until M5 closes:** web delivery, netplay, story mode, movies,
@@ -79,20 +79,20 @@ the reader to continue the old per-character hand-port. Those instructions are
 | Document | Still good for | Never authorizes |
 |---|---|---|
 | `docs/reports/ginkiha-*.md` | what the reference recovered, per-combo findings, the acceptance bar | "next execution" orders, "advance to Mion", per-combo port plans |
-| `remake/foundation/docs/ROADMAP-PENDING.md` | issue IDs, measured limits, an item's status | choosing work; its "next dig" and suggestion lines |
-| `ANIMATION-SETS.md`, `ANIMATION-DATA-AUDIT.md`, `LIVE-DEBUG.md`, `EFFECTS-*.md`, `GAME-CAMERA.md`, `SHADOWS.md` (under `remake/foundation/docs/`) | original-behaviour evidence, and what the port does today | new feature work, new selector/table work |
-| `remake/docs/decisions.md` | binding decisions and historical rationale; read before touching `remake/` | new decisions — the owner adds those |
+| `docs/ROADMAP-PENDING.md` | issue IDs, measured limits, an item's status | choosing work; its "next dig" and suggestion lines |
+| `ANIMATION-SETS.md`, `ANIMATION-DATA-AUDIT.md`, `LIVE-DEBUG.md`, `EFFECTS-*.md`, `GAME-CAMERA.md`, `SHADOWS.md` (under `docs/`) | original-behaviour evidence, and what the port does today | new feature work, new selector/table work |
+| `docs/decisions.md` | binding decisions and historical rationale; read before touching the product tree | new decisions — the owner adds those |
 | `docs/PILOT-EVIDENCE-CONTRACT.md`, `docs/PILOT-SEAM.md` | what the pilot established, addressed findings, seam facts | new contract or per-rule work |
-| `remake/tests/parity-baseline/README.md` + the bank | history: what the deleted DX9 tree captured, and what it could not | a fidelity oracle — its fighters bound zero animation sets |
-| `FULL-REPLACEMENT-PLAN.md`, `remake/docs/port-from-mvp-plan.md`, `remake/docs/roadmap.md`, `docs/archive/**` | history and rationale | anything current |
+| `research/evidence/parity-baseline/README.md` + the bank | history: what the deleted DX9 tree captured, and what it could not | a fidelity oracle — its fighters bound zero animation sets |
+| `docs/archive/FULL-REPLACEMENT-PLAN.md`, `docs/archive/port-from-mvp-plan.md`, `docs/archive/roadmap.md`, `docs/archive/**` | history and rationale | anything current |
 | `docs/status.md`, `docs/agents/**` | research pipeline, conventions | product work orders |
 
 **Do not read the whole documentation tree "for context"** — that is how agents
 re-implement a retired plan. Route by task: any task → this file, then
 `DIRECTION.md` and its task list `docs/DIRECTION-STATUS.md`; the core →
-`remake/foundation/src/sim/core/README.md`; original-binary questions → the skill routing
+`src/battle/core/README.md`; original-binary questions → the skill routing
 below; research corpus → `docs/pipeline.md`,
-`docs/conventions.md`; release/platform → `remake/foundation/docs/RELEASE-CHECKLIST.md`,
+`docs/conventions.md`; release/platform → `docs/RELEASE-CHECKLIST.md`,
 which is also where current status lives.
 
 Status goes to four places and nowhere else: [`docs/DIRECTION-STATUS.md`](docs/DIRECTION-STATUS.md)
@@ -133,7 +133,7 @@ Every verification claim names its tier; the highest one wins:
 1. **original runtime observation/trace** — strongest for the behaviour actually
    observed; sampled reads are not coherent per-update traces by default;
 2. **recovered original code** with an address (`FUN_xxxxxx`, field offsets);
-3. **original static prints** (`remake/docs/reference/`) or **owner observation**;
+3. **original static prints** (`docs/reference/`) or **owner observation**;
 4. **install-backed automated test** against the real game data;
 5. **capture of our own build** (`--out`);
 6. **port rule** — provisional, labelled as such in code and in the report.
@@ -148,28 +148,28 @@ changes need owner approval, never a silent denominator reduction.
 
 ## The two halves
 
-| | `remake/` (product) | `research/` (evidence) |
+| | the product (`src/`, `tests/`, the root) | `research/` (evidence) |
 |---|---|---|
 | Language | C++17, SDL3 + WebGPU (D2) | C11 dumps, Python pipeline, JSON |
 | Rule | **All new game code goes here** | Nothing here runs the game |
-| Entry docs | `remake/foundation/README.md` → `remake/docs/decisions.md` | `docs/overview.md` → `docs/pipeline.md` |
-| Build | `remake/foundation/build.sh deps` (once), then `./remake/foundation/build.sh {linux,windows,web}` | `python3 research/tools/coverage_report.py` (no deps) |
+| Entry docs | `README.md` → `docs/decisions.md` | `docs/overview.md` → `docs/pipeline.md` |
+| Build | `./build.sh deps` (once), then `./build.sh {linux,windows,web}` | `python3 research/tools/coverage_report.py` (no deps) |
 
 ## Hard rules (violations = reverted work)
 
 1. **Never hand-edit `research/recomp/`.** Generated output; edits are overwritten.
    Source of truth is `research/symbols/`.
-2. **`remake/` keeps the original `.X` files — no conversion pipeline.** The
+2. **The product keeps the original `.X` files — no conversion pipeline.** The
    renderer is **SDL3 + WebGPU** (D2): `webgpu.h`, wgpu-native natively and
-   emdawnwebgpu on the web, built from `remake/foundation/`. DX9 was dropped in the
+   emdawnwebgpu on the web, built from the repository root. DX9 was dropped in the
    Phase 5 cutover (2026-10-02) and its tree is deleted, so
-   `remake/tests/parity-baseline/` is **history and framing evidence only**, not the
-   appearance or behaviour target. Appearance references are the original's prints
-   in `remake/docs/reference/`. Read `remake/docs/decisions.md` (D1–D14) before
-   touching `remake/`.
+   `research/evidence/parity-baseline/` is **history and framing evidence only**, not
+   the appearance or behaviour target. Appearance references are the original's prints
+   in `docs/reference/`. Read `docs/decisions.md` (D1–D14) before touching the
+   product tree.
 3. **`mvp/` is gone.** Retired 2026-10-01 after its contents were ported. Don't
    recreate it; decomp provenance lives in `research/`.
-4. **Comment policy in `remake/`:** explain *why*, cite RE provenance (`FUN_xxxxxx`,
+4. **Comment policy in the product tree:** explain *why*, cite RE provenance (`FUN_xxxxxx`,
    addresses). No restatement comments, no dead code.
 5. **Run `coverage_report.py` before committing** research changes.
 6. **Full diff review before EVERY commit** — see below. Not optional, no size
@@ -179,7 +179,7 @@ changes need owner approval, never a silent denominator reduction.
    + item data). A bare fighter is a false claim, not a simplification — tests that
    exercise one without the other are rejected. Name combos as Name+N (`Rena 1` is
    her second weapon) or Name+Weapon (`Keiichi Invincible Iron`; atlas names in
-   `remake/docs/ASSET-CATALOG.md` §3.2). In code the helper is
+   `docs/ASSET-CATALOG.md` §3.2). In code the helper is
    `gameplay::comboSlotLabel`; NN.dat number IS the weapon slot and file offset
    `0x114` carries the weapon id (verified 46/46 against `kWeaponIds`). A roster
    fighter that ends up with no weapon fails the launch loudly — only unknown
@@ -236,21 +236,21 @@ Original-side runs may be audible; muting there is convenience only (above).
 ## Common commands
 
 ```bash
-./remake/foundation/build.sh deps && ./remake/foundation/build.sh linux
-ctest --test-dir remake/foundation/build/linux --output-on-failure
+./build.sh deps && ./build.sh linux
+ctest --test-dir build/linux --output-on-failure
 ./tools/launch_original.sh            # the original, under Wine
 python3 research/tools/coverage_report.py
 ```
 
 Read `ctest`'s own summary rather than any count written in a document — every
 added suite moves the denominator. Measured counts, the full command set and the
-list that skips without game data are in `remake/foundation/README.md` and
-`remake/foundation/docs/RELEASE-CHECKLIST.md` §2.
+list that skips without game data are in `README.md` and
+`docs/RELEASE-CHECKLIST.md` §2.
 
 ## Conventions (short)
 
 Prefixes: `feat/fix/docs/chore/refactor/recomp:/symbols:`. C11 in research
-(`PascalCase` funcs, `FUN_<addr>` until reviewed); C++17 in the foundation. Full
+(`PascalCase` funcs, `FUN_<addr>` until reviewed); C++17 in the product. Full
 rules: `docs/conventions.md`.
 
 ## Git
@@ -272,20 +272,18 @@ rules: `docs/conventions.md`.
   or left exactly as found.
 - Push scope: `research/decompiled`, `research/binary_data`, reviewed
   `research/symbols`, `research/progress`, docs, and reviewed source/tests/runtime
-  caption assets under `remake/foundation/`.
+  caption assets under the product tree.
 - Never commit: `research/recomp/`, game files, keys, `*.full.json`, build outputs
-  (`remake/build/`, `remake/foundation/build/`), fetched dependencies
-  (`remake/foundation/third_party/`), `remake/tools/` toolchain dirs, and
-  `.local-analysis/`.
+  (`build/`), fetched dependencies (`third_party/`), the leftover local toolchain
+  trees under `remake/tools/`, and `.local-analysis/`.
 - Full diff review before every commit — see above.
 
 ## Local-only (present on disk, absent from git)
 
-`Higurashi-Daybreak/` (the game install), `remake/tools/` toolchain
-(MinGW/Python/SDL — re-fetch via `remake/scripts/fetch_deps.sh`), `remake/build/`,
-`remake/foundation/build/`, fetched `remake/foundation/third_party/`
-dependencies/fonts, and `.local-analysis/`. Gyrotrope Black is bundled source under
-`remake/foundation/assets/fonts/`, not a fetched dependency.
+`Higurashi-Daybreak/` (the game install), the fetched `third_party/` sources and
+fonts (`./build.sh deps`), `build/`, the toolchain trees under `remake/tools/` that
+predate the flattening, and `.local-analysis/`. Gyrotrope Black is bundled source
+under `assets/fonts/`, not a fetched dependency.
 
 **`.local-analysis/`** holds the external reverse-engineer's bundles
 (`DaybreakRebuild-20261010`, `balance-reference-v0.10`,
@@ -299,7 +297,7 @@ clone does not carry.
   bundle's author, and this project's own licence is open ("use what you want").
   Bundle **code** (bodies, control headers, spine, dispatch, tables, catalogs,
   traces) may be adapted and **vendored into tracked files with attribution**
-  under `remake/foundation/src/sim/core/`. Bundle **game assets**
+  under `src/battle/core/`. Bundle **game assets**
   (`data/**` DAT/X/CNV, textures, models, audio) remain the original rights
   holders' and are **never committed** — the author could license his
   reconstruction, not the original art.

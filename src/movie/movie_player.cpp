@@ -250,7 +250,7 @@ bool MoviePlayer::open(const std::string& path, AudioPush push, std::string& err
     // .mpg served as a URL — issue #4's asset delivery, not this player's business. Until
     // that exists the web build reports the gap instead of decoding nothing in silence.
     error = "the web build does not decode movies in wasm: the browser must play them "
-            "(HTMLVideoElement/WebCodecs); see remake/foundation/docs/MEDIA-INPUT.md";
+            "(HTMLVideoElement/WebCodecs); see docs/MEDIA-INPUT.md";
     open_ = false;
     return false;
 }

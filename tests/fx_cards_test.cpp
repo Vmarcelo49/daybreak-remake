@@ -9,9 +9,9 @@
 //  placement half (card set -> model matrices) stays in main.cpp with the
 //  renderer wiring and is covered by captures, not here.
 //
-//    g++ -std=c++17 -Wall -Wextra -I remake/foundation/src
-//        -I remake/foundation/third_party/glm
-//        remake/foundation/tests/fx_cards_test.cpp -o /tmp/fx_cards_test
+//    g++ -std=c++17 -Wall -Wextra -I src
+//        -I third_party/glm
+//        tests/fx_cards_test.cpp -o /tmp/fx_cards_test
 //    /tmp/fx_cards_test              # prints FX_CARDS: ok|FAIL
 //
 //  All time arithmetic uses binary-exact steps (0.25/0.5 s), so every boundary
