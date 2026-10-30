@@ -4,13 +4,13 @@
 
 The host owns this port-side development instrument. It does not attach the DSH
 GUI to the game. Enable the Linux development build with
-`cmake -S remake/foundation -B remake/foundation/build/linux -DFOUNDATION_LIVE_DEBUG=ON`,
-then build `foundation_demo`. Normal builds default OFF, and normal launches do not
+`cmake -S . -B build/linux -DFOUNDATION_LIVE_DEBUG=ON`,
+then build `daybreak`. Normal builds default OFF, and normal launches do not
 create an endpoint. Windows/web currently have no transport.
 
 Launch a **visible standalone match** with `--live-debug --no-audio`
 and `SDL_AUDIO_DRIVER=dummy`. The game prints a fresh private session directory and
-starts paused. Connect `python3 remake/foundation/scripts/live_debug.py <directory>`.
+starts paused. Connect `python3 scripts/live_debug.py <directory>`.
 The client is interactive and retains one socket; disconnect pauses the match and
 clears input scheduling/breakpoints. Do not use separate client processes for an
 ordered sequence that must survive across commands.

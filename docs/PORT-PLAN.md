@@ -3,7 +3,7 @@
 > **Archive, not current status.** This plan was captured on 2026-10-04, at
 > the post-cutover point when the foundation host suite had 13 tests. Its
 > owner-file lists, pending-work descriptions, and checkpoint are historical;
-> implementation has since moved on. The current product is `remake/foundation/`
+> implementation has since moved on. The current product is the repository root
 > (SDL3 + WebGPU).
 >
 > Use [`ROADMAP-PENDING.md`](ROADMAP-PENDING.md) for remaining product work,

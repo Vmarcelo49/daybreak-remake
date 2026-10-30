@@ -105,7 +105,7 @@ untouched plain `build/web` for the baseline check only.
 
 ```bash
 export AGENT_BROWSER_SESSION="$(agent-browser session id --scope worktree --prefix webassets)"
-agent-browser --webgpu open "http://127.0.0.1:8178/foundation_demo.html"   # web-assets build, --character=/assets/akane:0
+agent-browser --webgpu open "http://127.0.0.1:8178/daybreak.html"   # web-assets build, --character=/assets/akane:0
 agent-browser snapshot -i
 agent-browser focus "#canvas" && agent-browser press Escape                # quit → timing summary + RESULT
 agent-browser console
@@ -157,7 +157,7 @@ correct spinning vertex-colored triangle — the no-asset production baseline ru
   `main.cpp`): coverage **189211 px of 518400 (36.50%)**, luminance
   **0.022–1.000**.
 - **Native cross-check** (read-only run, no rebuild):
-  `build/linux/foundation_demo --character=Higurashi-Daybreak/data/akane:0
+  `build/linux/daybreak --character=Higurashi-Daybreak/data/akane:0
   --out=/tmp/native-akane.ppm --size=512` → identical scene stats (8 meshes,
   2195 vertices, 13 draws, 5 GPU textures), coverage 22.94% at 512×512,
   luminance 0.020–1.000. Coverage differs because the viewports differ
@@ -180,8 +180,8 @@ offscreen capture through the existing `SceneRenderer::capture()` path
 browser harness can read it. No new asset mechanism, no layering change.
 
 ```diff
---- a/remake/foundation/CMakeLists.txt
-+++ b/remake/foundation/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
 @@ if(EMSCRIPTEN)
      set(FOUNDATION_WEB_ASSETS "" CACHE PATH "Local directory preloaded as /assets in the web build")
      set(FOUNDATION_WEB_ASSET "" CACHE STRING "Single asset argument injected on web, e.g. --character=/assets/akane:0")
@@ -191,13 +191,13 @@ browser harness can read it. No new asset mechanism, no layering change.
      endif()
 @@ if(EMSCRIPTEN)
      if(FOUNDATION_WEB_ASSET)
-         target_compile_definitions(foundation_demo PRIVATE "FOUNDATION_WEB_ASSET=\"${FOUNDATION_WEB_ASSET}\"")
+         target_compile_definitions(daybreak PRIVATE "FOUNDATION_WEB_ASSET=\"${FOUNDATION_WEB_ASSET}\"")
      endif()
 +    if(FOUNDATION_WEB_CAPTURE)
-+        target_compile_definitions(foundation_demo PRIVATE "FOUNDATION_WEB_CAPTURE=${FOUNDATION_WEB_CAPTURE}")
++        target_compile_definitions(daybreak PRIVATE "FOUNDATION_WEB_CAPTURE=${FOUNDATION_WEB_CAPTURE}")
 +    endif()
---- a/remake/foundation/src/main.cpp
-+++ b/remake/foundation/src/main.cpp
+--- a/src/main.cpp
++++ b/src/main.cpp
 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
      // The whole frame model, in three lines ...
 +#if defined(__EMSCRIPTEN__) && defined(FOUNDATION_WEB_ASSET) && defined(FOUNDATION_WEB_CAPTURE)

@@ -147,7 +147,7 @@ Worked example (a live four-fighter battle, one COM on panel 3, F2 at tick 400 a
 900 — see `RELEASE-CHECKLIST.md` §3 for the recipe form):
 
 ```bash
-DAYBREAK_DEBUG_KEYS=1 ./build/linux/foundation_demo --install=<game-dir> \
+DAYBREAK_DEBUG_KEYS=1 ./build/linux/daybreak --install=<game-dir> \
   --screen=battle --local-players=3 --debug-keys=f2@400,f3@900 \
   --headless --out=/tmp/debugkeys.ppm --size=960x540 --frames=1400
 ```

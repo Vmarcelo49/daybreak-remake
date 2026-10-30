@@ -161,7 +161,7 @@ void OpeningScreen::draw(SpriteRenderer& batch) const {
     // FUN_00655af0(spr,0,0,0x280,0x1e0) + FUN_00408250(1.25f): the 640x480 blit drawn at
     // 1.25x, which is exactly the 800x600 menu canvas. The film's own black bars are
     // inside the video, so the port draws no letterbox of its own
-    // (remake/docs/reference/README.md:42 says the same about the banked reference frame).
+    // (docs/reference/README.md:42 says the same about the banked reference frame).
     batch.pushTextured(texture_, UiRect{0.f, 0.f, 800.f, 600.f}, UiRect{0.f, 0.f, 1.f, 1.f},
                        UiColor{1.f, 1.f, 1.f, 1.f});
 }

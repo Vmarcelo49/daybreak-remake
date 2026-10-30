@@ -64,10 +64,10 @@ Mion 0, Rika 0.
 ## How to re-render
 
 ```bash
-python3 remake/foundation/tests/npr_evidence.py \
-  --demo remake/foundation/build/linux/foundation_demo \
+python3 tests/npr_evidence.py \
+  --demo build/linux/daybreak \
   --install Higurashi-Daybreak \
-  --outdir remake/tests/npr-evidence/issue-27 \
+  --outdir research/evidence/npr-evidence/issue-27 \
   --workdir /tmp/npr-evidence-work
 ```
 

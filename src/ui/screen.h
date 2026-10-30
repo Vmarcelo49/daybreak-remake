@@ -50,7 +50,7 @@ enum class ScreenId : int {
     StoryAdv     = 0x08,   // FUN_0040e720
     VsIntro      = 0x09,   // FUN_004115f0
     Battle       = 0x0a,   // FUN_00403ae0 stub; the battle module owns the frame
-    NetplayMenu  = 0x0b,   // FUN_00412110, deferred (remake/docs/decisions.md D6)
+    NetplayMenu  = 0x0b,   // FUN_00412110, deferred (docs/decisions.md D6)
     NetplayLobby = 0x0c,   // FUN_00414750, deferred
     NetplayEntry = 0x0d,   // FUN_00419f10 (name/IP), deferred
     GameOver     = 0x14,   // FUN_00403d70

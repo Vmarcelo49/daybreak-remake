@@ -770,7 +770,7 @@ xm::Scene loadScene(const Options& o, std::string& error, size_t* enemyBegin = n
         scene = xm::loadStage(o.stage, sopt);
         // Say what the directory *is*, not just where it is: stage21 is the schoolyard at
         // night, which is how every early comparison ended up measured on the wrong
-        // variant (remake/docs/ASSET-CATALOG.md §1, docs/FULL-REPLACEMENT-PLAN.md §6a).
+        // variant (docs/ASSET-CATALOG.md §1, docs/archive/FULL-REPLACEMENT-PLAN.md §6a).
         std::printf("stage        : %s\n", assets::describeStage(o.stage).c_str());
         if (o.match && o.battleFighterCount > 0) {
             for (int i = 0; i < o.battleFighterCount && i < 4; ++i) {

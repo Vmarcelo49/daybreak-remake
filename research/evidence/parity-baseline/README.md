@@ -3,7 +3,7 @@
 > Banked before the WebGPU cutover as historical behavioral evidence. The DX9
 > tree and `remake/build.sh` were deleted in Phase 5; `regen.sh` is preserved as
 > provenance, not a runnable recipe. The original game's appearance references
-> are the prints under [`remake/docs/reference/`](../../docs/reference/README.md).
+> are the prints under [`remake/docs/reference/`](../../../docs/reference/README.md).
 > The bank can still verify claims against its committed artifacts, but it
 > cannot produce new DX9 output.
 
@@ -38,7 +38,7 @@ regenerable from the current tree.
 
 | Capture | Historical evidence and limit |
 |---|---|
-| `title-100.png` | Not the main menu: the DX9 scene named `title` drew only `data/select/bg00.cnv`, the shared select-panel background. The original's shrine title menu is `remake/docs/reference/title-menu.webp`; the capture is historical evidence of the old scene, not title-screen parity. |
+| `title-100.png` | Not the main menu: the DX9 scene named `title` drew only `data/select/bg00.cnv`, the shared select-panel background. The original's shrine title menu is `docs/reference/title-menu.webp`; the capture is historical evidence of the old scene, not title-screen parity. |
 | `gameplay-default.png`, `gameplay-school.png` | DX9 versus idle on its hardcoded stage21 (schoolyard night); `gameplay-school` varies the spawn/viewpoint, not the stage. |
 | `fighter-p1-*`, `fighter-p2-*` | Four fighters reachable through the old CLI; the P2 cases changed camera target with a script and are not additional character coverage. |
 | `fighter-bind.png` | DX9 bind pose plus the old mesh/texture survey in its log. The removed DX9 loader bound zero animation sets. |

@@ -11,7 +11,7 @@
 //     and FUN_00408250 @0x408250 writes it to sprite+0x84/+0x88, the two scale fields
 //     ui::SpriteRenderer::pushSprite documents (ui/sprite.h:277) — so the movie is drawn
 //     640x480 * 1.25 = 800x600, i.e. exactly the port's menu canvas, and its own black
-//     bars are inside the video (remake/docs/reference/README.md:42).
+//     bars are inside the video (docs/reference/README.md:42).
 //   * the same constructor's update is vtable slot 3 of 0x6a14ec = FUN_00404ff0
 //     @0x404ff0; its skip/exit machine is transcribed in ui/screen_opening.cpp.
 //

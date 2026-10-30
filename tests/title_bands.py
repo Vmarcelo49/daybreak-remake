@@ -6,7 +6,7 @@ instrument FRONTEND-PLAN.md §6.3 names for "did each element land where the
 original draws it": the band tables are per screen, the reading/cropping/RMSE/ink
 -half lives in `hud_bands.py` and is imported rather than copied.
 
-The print is `remake/docs/reference/title-menu.webp`, 803x608: a capture of the
+The print is `docs/reference/title-menu.webp`, 803x608: a capture of the
 800x600 frame with a **(+1,+5) px offset**, so
     game = (print_x - 1, print_y - 5)
 That is this screen's own measurement, **not** the battle HUD's (-2,+6):

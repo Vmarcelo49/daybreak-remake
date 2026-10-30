@@ -23,7 +23,7 @@ Used explicitly in every table, strongest first:
 | Tier | Meaning |
 |---|---|
 | `RE` | An address or `FUN_xxxxxx` in `research/decompiled/`, or a Shift-JIS/ASCII string inside the shipped data (`.X` texture names, `.ini`, `.txt`, bundle entry names). In-file strings are the strongest available signal — the schoolyard was pinned this way. |
-| `print` | A reference capture in `remake/docs/reference/*.webp` that shows the name/likeness. Sub-case: a **shipped select-screen texture** that the capture is a photograph *of* — `data/select/{NN,iNN,cosNN,wNN}.cnv`, `data/talk/cNN-*.cnv`. These are the source art, so they are stronger than a capture; they are filed under `print` because they are images, not strings. |
+| `print` | A reference capture in `docs/reference/*.webp` that shows the name/likeness. Sub-case: a **shipped select-screen texture** that the capture is a photograph *of* — `data/select/{NN,iNN,cosNN,wNN}.cnv`, `data/talk/cNN-*.cnv`. These are the source art, so they are stronger than a capture; they are filed under `print` because they are images, not strings. |
 | `filename` | Inferred from the asset path/naming convention only. **Unverified** — flagged inline. |
 
 Two supporting techniques are used and named where they apply:
@@ -38,9 +38,9 @@ The game reads **bundles first**, in precedence order
 case-insensitively**. This is the registration order in the current asset
 source, not numeric order or the separate archive-open sequence. The extracted
 tree `Higurashi-Daybreak/data/` is the fallback
-(`remake/foundation/src/assets/asset_source.{h,cpp}`,
+(`src/assets/asset_source.{h,cpp}`,
 `dat_bundle.{h,cpp}`; container format documented in
-`remake/tools/asset-tools/extract_dat.py`). `daybreak03.dat` is absent from
+`tools/asset-tools/extract_dat.py`). `daybreak03.dat` is absent from
 this install.
 
 Measured on this install (entry tables read directly, no extraction):
@@ -99,7 +99,7 @@ Evidence for the split, all `RE` + render:
   the first digit is a variant of the same scene — the sub-models differ in
   bytes but reference the same texture vocabulary.
 * **`env.dat` fog colour** (dwords at offsets 8/12/16 = R/G/B, per
-  `readEnv()` in `remake/foundation/src/assets/scene.h:253`, which mirrors
+  `readEnv()` in `src/assets/scene.h:253`, which mirrors
   `FUN_00650a30`). For **every** pair the `1x` variant turns
   red-dominant relative to its `0x` sibling, and `stage21` is near-black
   blue with a 6× shorter fog distance:
@@ -392,7 +392,7 @@ Every one of the 67 slot-directories is identified below from **two shipped
 sources that agree row for row**:
 
 * **render-and-look** — one headless frame per slot:
-  `foundation_demo --headless --character=<install>/data/<char>:<N> --frames=1
+  `daybreak --headless --character=<install>/data/<char>:<N> --frames=1
   --out=… --size=512x512`, N = 0…5. `N` is the *ordinal* slot and the loader
   appends the letter itself — passing an already-suffixed directory
   (`…/data/rena_C:2`) loads **nothing**. The demo resolves assets
@@ -575,7 +575,7 @@ files contain only body/face/hair/cloth meshes.
 Source: `data/select/wNN.cnv`, the **shipped weapon-select text atlas** for
 character index NN — 16 files, each holding that character's weapon names
 and flavour text as rendered glyphs. Verified against the capture: the
-panel in `remake/docs/reference/weapon-select-rena.webp` reads
+panel in `docs/reference/weapon-select-rena.webp` reads
 **愛用の鉈** + 「血糊びの浮いた愛用の鉈 / 切れ味は鈍いが殺傷力は抜群！」, and
 `data/select/w00.cnv` contains exactly that, over the 竜宮レナ nameplate.
 Tier: `print` (shipped select texture — the source the capture shows).
@@ -750,7 +750,7 @@ for char in ("rena","mion","keiichi","satoko","rika","shion","tomitake","takano"
 * This reads the **tree** copy for convenience. The same field was read out of
   **every bundle copy of these files** — 87 copies of the 46 `.dat`s across
   `daybreak00.dat` (28), `daybreak04.dat` (46) and `daybreak07.dat` (13), via
-  the XOR-decoded entry tables as in `remake/tools/asset-tools/extract_dat.py`
+  the XOR-decoded entry tables as in `tools/asset-tools/extract_dat.py`
   — and matches the tree value in all 87. The character `.dat` *sizes* differ
   between bundle and tree (§0.1); this field does not.
 * The `.dat` layout used: dword version (`4`) at 0, 260-byte model name at 4,
@@ -777,7 +777,7 @@ read before writing new code or docs.
 |---|---|---|---|---|
 | 1 | `data/stage21` | "stage 21" | **schoolyard at night** — scene 1, night variant. The DX9 remake hardcodes it, so all its frames are night while the prints show day. | texture set == `stage01`; fog RGB 15,20,50 + fogEnd 10 000; render |
 | 2 | `data/stage01` / `data/stage11` | "stage 1" / "stage 11" | scene **1** (schoolyard) at **day** / **sunset**. `stage12` is scene **2** (village) at sunset, not the schoolyard. | §1.1 |
-| 3 | `data/title/` (the DX9 scene literally named `title`) | the title screen | draws only `data/select/bg00.cnv`, the shared **select-screen panel background**. The real menu background is the shrine (`title-menu.webp`). | `remake/docs/reference/README.md`; path literals |
+| 3 | `data/title/` (the DX9 scene literally named `title`) | the title screen | draws only `data/select/bg00.cnv`, the shared **select-screen panel background**. The real menu background is the shrine (`title-menu.webp`). | `docs/reference/README.md`; path literals |
 | 4 | `data/<char>_B` … `_F` | separate characters | **costume slots 1…5** of one character. The loader `FUN_0041e180` switches the dir on a costume index 0–5. | §2.4 |
 | 5 | `data/ohishi_b` | a typo, or a different naming scheme | costume slot 1 of Ōishi, lowercase. Works because bundle lookup folds case (`__stricmp` `0x00663c20`) and Windows folds case. | dir census; §2.4 |
 | 6 | `stageNN/NNb.X` | "version b of model NN" | an **alternative sub-model set** selected by the config byte `stage+0x2c` (`FUN_004011f0`) — not a second model, and sometimes byte-identical to its partner or simply absent. | `research/decompiled/FUN_004011f0.c` |
@@ -789,7 +789,7 @@ read before writing new code or docs.
 | 12 | `data/object/p00…p13` | stage objects / stage thumbnails | **HUD and system UI sprites** — team balloons, gauges, digit glyphs, 青組大勝利 / 赤組大勝利 / 撃沈 / 開始 / 撃破 / 3‑2‑1. | converted and inspected |
 | 13 | `data/aura/` | a character's aura | shared **effect models** (`"data/aura/%02d.x"`): muzzle flashes, hit sparks, burning aura, bucket. | exe path literal + texture names |
 | 14 | `data/camera/` | a stage | camera models; the exe has exactly one literal, `"data/camera/01.x"`. `a01.X` is unreferenced by any `data/...` literal — role unresolved. | exe literals |
-| 15 | the "40+ named animation sets" in `remake/docs/placeholders.md` §5 | an existing doc that is wrong (the suspicion) | The executable holds a 39-entry ASCII **voice-cue key** table at **VMA 0x6b73c0 = file offset 0x2b73c0**, 16-byte stride: `attackA/B/C`, `attackKO`, `backattack`, `backdamage`, `battlestart`, `damage`, `damagedown`, `damageKO`, `fire`, `guard`, `guarded`, `HPcheck`, `intercept`, `missdamage`, `nearLose`, `nearWin`, `oyashiro`, `oyashiroB`, `poison`, `provoke`, `recovery`, `reloadNG`, `reloadOK`, `revival`, `shotA/B/C`, `shotFinal`, `spark`, `specialA/B/C`, `tactics`, `tagback`, `tagfront`, `tagOK`, `thank`. `FUN_00431e70` uses these keys to construct `data/voice/<char>/<key>/%03d.wav`; the strings do not establish gameplay-state, animation, projectile-tier, or tag-swap meanings. Every shipped character `.X` names its `AnimationSet`s `Anim-1` … `Anim-124` (124 sets, `data/rena/00.X`, `rena_B/00.X`, `rika/01.X` all identical in this respect) with per-bone tracks `Anim-Bip00`, `Anim-Bip00_Pelvis`, `Anim-Bone06`, … The exe binds animation indices from each character's `.dat`. | measured: exe dump at 0x2b73c0; `FUN_00431e70`; `AnimationSet` name extraction |
+| 15 | the "40+ named animation sets" in `docs/archive/placeholders.md` §5 | an existing doc that is wrong (the suspicion) | The executable holds a 39-entry ASCII **voice-cue key** table at **VMA 0x6b73c0 = file offset 0x2b73c0**, 16-byte stride: `attackA/B/C`, `attackKO`, `backattack`, `backdamage`, `battlestart`, `damage`, `damagedown`, `damageKO`, `fire`, `guard`, `guarded`, `HPcheck`, `intercept`, `missdamage`, `nearLose`, `nearWin`, `oyashiro`, `oyashiroB`, `poison`, `provoke`, `recovery`, `reloadNG`, `reloadOK`, `revival`, `shotA/B/C`, `shotFinal`, `spark`, `specialA/B/C`, `tactics`, `tagback`, `tagfront`, `tagOK`, `thank`. `FUN_00431e70` uses these keys to construct `data/voice/<char>/<key>/%03d.wav`; the strings do not establish gameplay-state, animation, projectile-tier, or tag-swap meanings. Every shipped character `.X` names its `AnimationSet`s `Anim-1` … `Anim-124` (124 sets, `data/rena/00.X`, `rena_B/00.X`, `rika/01.X` all identical in this respect) with per-bone tracks `Anim-Bip00`, `Anim-Bip00_Pelvis`, `Anim-Bone06`, … The exe binds animation indices from each character's `.dat`. | measured: exe dump at 0x2b73c0; `FUN_00431e70`; `AnimationSet` name extraction |
 | 16 | the address `0x6b73c0` | a file offset you can seek to | it is a **VMA**. `.data` sits at VMA 0x6b7000 / file 0x2b7000, so the file offset is **0x2b73c0**. Seeking to 0x6b73c0 finds nothing. | `objdump -h DaybreakDX.exe` |
 | 17 | `data/stage06/*` in the tree | the shipped stage | the **tree copy differs from the bundle** (`00.x` 195 860 vs 20 055 B, `env.dat` 156 vs 84 B). Bundles win, so the tree copy is not what runs. | bundle entry tables; §0.1 |
 | 18 | "the extracted tree is the game's data" | true | **214 names** have different sizes in a bundle than in the tree; 16 names ship only in bundles. Read via the asset source, not the tree. | §0.1 |
@@ -945,7 +945,7 @@ So the next agent can re-run instead of re-deriving:
   directory plus the ordinal; an already-suffixed directory loads nothing),
   one per weapon mesh (`--model=<install>/data/item/NN.X`), plus the
   `data/select` and `data/object` icons converted with
-  `remake/tools/asset-tools/cnv_convert.py` and viewed. All 13 stages, all 16
+  `tools/asset-tools/cnv_convert.py` and viewed. All 13 stages, all 16
   index portraits, weapon/costume icon sheets, **all 67 costume slots** (a
   chibi-cell ↔ render comparison per character), and the 18 weapon meshes whose
   own names were not decisive.
@@ -986,7 +986,7 @@ So the next agent can re-run instead of re-deriving:
   names mentioned against speaker indices, plus self-introductions
   (`D06-0.txt`: 「園崎ママ、園崎茜！」; `D59-0.txt`: 「園崎茜さん、葛西辰由さん。」;
   `D34-0.txt`: 「知恵先生だー。」), is what pinned indices 06–13.
-* **Verification of a prior doc.** `remake/docs/placeholders.md` §5 was
+* **Verification of a prior doc.** `docs/archive/placeholders.md` §5 was
   re-derived from data rather than trusted — see trap #15. It is
   substantially correct; what needed fixing was the *nature* of the 39
   names (exe state keys, not model animation sets).

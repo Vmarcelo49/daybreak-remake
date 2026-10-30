@@ -10,14 +10,14 @@ seam has landed (`--audio-test`/`--audio-file`, `--input-test` via
 Surveyed `remake/src/audio/audio_engine.{h,cpp}`,
 `remake/src/input/input_manager.{h,cpp}`,
 `remake/src/render/video_player.{h,cpp}`, `remake/src/third_party/pl_mpeg.h`,
-`remake/src/core/scenes.cpp`, `remake/docs/{reverse-engineering,placeholders,
-roadmap}.md`, `remake/tools/asset-tools/cnv_convert.py`. Nothing there was
+`remake/src/core/scenes.cpp`, `docs/{reverse-engineering,placeholders,
+roadmap}.md`, `tools/asset-tools/cnv_convert.py`. Nothing there was
 edited; all paths below are the reference's. Note: the `remake/src/**` paths
 above were deleted in the Phase 5 cutover (2026-10-02) — treat their rows as
 transcribed findings. Live provenance is the foundation (`src/audio/*`,
 `src/input/*`, `src/gameplay/*`) plus the surviving
-`remake/tools/asset-tools/cnv_convert.py` and the banked
-`remake/tests/parity-baseline/` evidence.
+`tools/asset-tools/cnv_convert.py` and the banked
+`research/evidence/parity-baseline/` evidence.
 
 ### Audio
 
@@ -27,7 +27,7 @@ transcribed findings. Live provenance is the foundation (`src/audio/*`,
 | BGM bundles | `daybreak05.dat`: 41 entries, `.ogg` + `.sfl` pairs; `.sfl` (136 B) holds loop points |
 | BGM at survey time | single hardcoded `data/bgm/01.ogg` per match via `Mix_Music`; that pre-cutover run failed with `Unrecognized audio format` (historical status, not current SDL3 audio) |
 | Voice/SFX format | `data/voice/entry/%s.wav` WAV PCM; `daybreak07.dat` (178 entries) items/bullets/voice snippets |
-| CNV audio | 16-byte header (channels, reserved==1, rate ∈ {22050,44100,48000}, bits ∈ {8,16}) + raw PCM, from `FUN_00665020`; converter: `remake/tools/asset-tools/cnv_convert.py` |
+| CNV audio | 16-byte header (channels, reserved==1, rate ∈ {22050,44100,48000}, bits ∈ {8,16}) + raw PCM, from `FUN_00665020`; converter: `tools/asset-tools/cnv_convert.py` |
 | Mixer model | 32 SFX channels + 1 music; ch 0 = UI, 1–15 = voice, 16–31 = gameplay SFX; option screen has 4 sliders (master/music/voice/SFX) |
 | Load path | temp files everywhere (`write_temp_file`, `extract_to_temp`): SDL_mixer takes file paths, not memory |
 | Movie audio | MP2 stereo 44100 Hz via pl_mpeg; float[−1,1] → S16 stereo chunks drained by `Mix_HookMusic` callback |
@@ -129,13 +129,13 @@ in the committed foundation tests (including `screen_stack_test`,
 format/model harnesses below used no game data or physical device:
 
 ```bash
-g++ -std=c++17 -Werror -Wall -Wextra -I remake/foundation/src \
+g++ -std=c++17 -Werror -Wall -Wextra -I src \
   /tmp/trackm/test_audio_format.cpp -o /tmp/trackm/t_audio_format && /tmp/trackm/t_audio_format
-g++ -std=c++17 -Werror -Wall -Wextra -I remake/foundation/src \
+g++ -std=c++17 -Werror -Wall -Wextra -I src \
   /tmp/trackm/test_audio_engine.cpp -o /tmp/trackm/t_audio_engine && /tmp/trackm/t_audio_engine
-g++ -std=c++17 -Werror -Wall -Wextra -I remake/foundation/src \
+g++ -std=c++17 -Werror -Wall -Wextra -I src \
   /tmp/trackm/test_input.cpp -o /tmp/trackm/t_input && /tmp/trackm/t_input
-g++ -std=c++17 -Werror -Wall -Wextra -I remake/foundation/src \
+g++ -std=c++17 -Werror -Wall -Wextra -I src \
   /tmp/trackm/test_video.cpp -o /tmp/trackm/t_video && /tmp/trackm/t_video
 ```
 
@@ -192,7 +192,7 @@ target_link_libraries(foundation_media PUBLIC foundation)
 if(NOT EMSCRIPTEN)
   target_link_libraries(foundation_media PUBLIC SDL3::SDL3)
 endif()
-# + foundation_media is linked into foundation_demo.
+# + foundation_media is linked into daybreak.
 ```
 
 ```cpp

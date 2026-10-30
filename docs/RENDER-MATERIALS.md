@@ -75,10 +75,10 @@ all emissive on characters/weapons (`akane/00.X` face `e=(0.91,0.75,0.68)`,
 ## Verification (all `/tmp` builds, repo `build/` untouched)
 
 ```bash
-cp -a remake/foundation /tmp/fcheck   # minus build/; cmake -B /tmp/fcheck/build/linux; build
-remake/foundation/build/linux/foundation_demo --stage=<data>/stage01 \
+cp -a . /tmp/fcheck   # minus build/; cmake -B /tmp/fcheck/build/linux; build
+build/linux/daybreak --stage=<data>/stage01 \
   --out=/tmp/rprobe/s01_old.ppm --size=400        # pre-change binary, still pristine
-/tmp/fcheck/build/linux/foundation_demo --stage=<data>/stage01 \
+/tmp/fcheck/build/linux/daybreak --stage=<data>/stage01 \
   --out=/tmp/rprobe/s01_new.ppm --size=400
 # akane :0, stage21, item/05.X, effect/01.X likewise; PIL ImageChops.difference
 ```

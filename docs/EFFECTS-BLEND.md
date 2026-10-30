@@ -36,7 +36,7 @@ foundation parser; texture names below SJIS-decoded where ASCII):
 
 ## Technique bindings and projectile selector
 
-- The ten compiled shader blobs (`remake/assets/shaders/effect_0..9.bin`,
+- The ten compiled shader blobs (`research/evidence/assets/shaders/effect_0..9.bin`,
   `FUN_0064ff80` "CreateAllShaders" — sizes match the decompile's `0xd6c, 0xe38,
   0x32c, …` lengths verbatim) each carry **exactly one technique**
   (`SampleTexhnique` — the original's typo, 1 occurrence per blob) with distinct
@@ -52,7 +52,7 @@ foundation parser; texture names below SJIS-decoded where ASCII):
   (`src/assets/xmodel.h:1400-1407`), but the 728-file reload found zero shipped
   materials carrying one (`RENDER-MATERIALS.md`). No card-to-technique binding is
   established, and the foundation does not load or bind the ten blobs. The deleted
-  DX9 remake's loader log is retained as history in `remake/docs/placeholders.md`
+  DX9 remake's loader log is retained as history in `docs/archive/placeholders.md`
   and the frozen evidence bank, not as current renderer behavior.
 - The projectile path forwards the active shot record's `combat[19]` (wire
   offset `+0x7c`) as `EffectInstance::renderMode`. The switch behind it is now read

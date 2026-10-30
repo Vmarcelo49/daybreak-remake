@@ -5,7 +5,7 @@ Phase 3's camera gate is "a foundation frame frames the fighter like the origina
 print does", so the deliverable needs numbers, not a look: the player's pixel height,
 her horizontal centre, where her soles sit relative to the frame bottom, and the
 opponent's pixel height and centre. This prints those for any frame of the same scene
--- `remake/docs/reference/battle-hud.webp` (the specification) or a foundation capture
+-- `docs/reference/battle-hud.webp` (the specification) or a foundation capture
 of the same moment (the measurement) -- using the character's own colours, so the two
 sides are measured by the same instrument.
 

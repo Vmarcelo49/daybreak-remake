@@ -46,7 +46,7 @@ longer exists. What it says, and what a run today says:
 
 | Issue #24 (2026-10-04) | Measured 2026-10-06 | Evidence |
 |---|---|---|
-| "All **24** Linux CTest tests passed (35.15 seconds)" | **58 registered, 58 passed, 0 skipped, 143.68 s** on this branch's base; `main`'s §2 re-measured **61** after issue #4 added three delivery suites, so the merged denominator is 61 | `ctest --test-dir remake/foundation/build/linux` (this run); `RELEASE-CHECKLIST.md` §2 |
+| "All **24** Linux CTest tests passed (35.15 seconds)" | **58 registered, 58 passed, 0 skipped, 143.68 s** on this branch's base; `main`'s §2 re-measured **61** after issue #4 added three delivery suites, so the merged denominator is 61 | `ctest --test-dir build/linux` (this run); `RELEASE-CHECKLIST.md` §2 |
 | "asset-backed 2v2 is still **unverified** and its presentation retains two-player assumptions" | four-fighter 2v2 runs **three rounds and four views** with per-participant HUD/VS/results and a four-row report, `RESULT: ok` | §3.3 + the four-player gate; this run (both green, digests below) |
 | "No new asset-backed/hardware session was run for this audit" | four scripted capture runs, the 208-cell sweep, the package and a **windowed Wayland** battle were run today | §1.1 below |
 | "Execute in this order" #5–#23 | on GitHub the list is closed except **#18** and **#21** (checked today): #18 landed (Guard/Jump mapping and #31's airborne row with it) but carries the selector residuals; #21's row 0 landed and rows 1–2 are open. Beyond the issue's list, **#26** is open and re-scoped to the handler-family remainder | `gh issue list --state open`; `docs/agents/issue-status-2026-10-06.md`; `ROADMAP-PENDING.md` C1 |
@@ -57,7 +57,7 @@ What works today, each with the command or doc that proves it:
 |---|---|
 | title → selection → stage settings → VS/countdown → live battle → results → selection, 1v1 and four-fighter 2v2, one camera + HUD per human controller | §3.1/§3.2/§3.3 and the four-player gate; this run reproduced all four ladders and final captures |
 | COM fighters run the recovered decision state (not the old sparring policy) | `bot_brain_test` (in `ctest`); `ROADMAP-PENDING.md` *"COM decision state and tactics"* |
-| fixed 60 Hz simulation independent of render rate; bounded catch-up | `fixed_step_test`; checklist §5 (30/60/144 Hz rows); D15 in `remake/docs/decisions.md` |
+| fixed 60 Hz simulation independent of render rate; bounded catch-up | `fixed_step_test`; checklist §5 (30/60/144 Hz rows); D15 in `docs/decisions.md` |
 | KO/overkill/respawn/timeout/team victory, simultaneous outcomes | `match_economy_test`, `round_rules_test`; `ROADMAP-PENDING.md` *"KO, Overkill, respawn and victory rules"* |
 | battle pause / resume / return to selection, focus-loss auto-pause | `battle_pause_test`, `pause_overlay_layout_test`, `pause_overlay_panel`; D11 |
 | every legal character+weapon selection launches and runs a match | `weapon_definition_test` — measured today `747 checks, 0 failed, 0 skipped`, `all 46 legal selections ran a match` |
@@ -71,8 +71,8 @@ not re-derived from the test body.
 
 ### 1.1 Measured in this pass (2026-10-06)
 
-Commands are from `remake/foundation/`; the install was reached as
-`--install=../../Higurashi-Daybreak`. Wall times are the demo's own summaries on
+Commands are from the repository root; the install was reached as
+`--install=Higurashi-Daybreak`. Wall times are the demo's own summaries on
 a shared box; one sweep ran concurrently with the windowed row, so those two are
 upper bounds, not benchmarks — the reproducible numbers are the ladders, the
 digests and the logic tick rate.
@@ -88,7 +88,7 @@ digests and the logic tick rate.
 | `./tests/launcher_test.sh ./package/daybreak` | `launcher_test: 38 checks, 0 failure(s)` |
 | `python3 tests/showcase.py --check --out-dir <dir>` | `asset check: 16 character(s) x 13 stage(s) -> 208 runs`, **`165 pass, 43 problem(s)`** — the documented baseline exactly (30 cells on stage05/stage15, 11 on `kasai`, 2 overlapping), so no new untextured draw; the exit-status contract is §3.1 check 9 |
 | `./scripts/package_linux.sh` then `--no-build` again | `daybreak-0.1.0-linux-x86_64.tar.gz`, 19,548,061 B, sha256 `0eba2b9d…` **identical on both runs** (determinism); the script's own `== no game data ==` and `== runtime libraries (ldd) ==` checks pass |
-| packaged `foundation_demo`, headless, `--screen=title --frames=300` against the install | `RESULT: ok`, adapter `AMD Radeon RX 9070 XT (RADV GFX1201) [Vulkan]` |
+| packaged `daybreak`, headless, `--screen=title --frames=300` against the install | `RESULT: ok`, adapter `AMD Radeon RX 9070 XT (RADV GFX1201) [Vulkan]` |
 | packaged `daybreak --install=<bad path>` with empty `HOME`/XDG dirs | exit 1, `No game data in "…"`, then the search list and the exact command to run |
 | `./build/linux/live_camera_smoothness_test` | `LIVE_CAMERA_SMOOTHNESS: ok (25 checks, 0 failed)`; the fractional-alpha check reads `expected 16.1214, got 16.1214` on a 32.243-unit two-tick gap |
 | §3.5 companion recipe `--match-alpha` (stage21, Rena 0 vs Mion 0, 3 frames at 400x400) | no flag and `--match-alpha=1` are byte-identical (`f80d0368…`, the prefix §3.5 quotes); `--match-alpha=0.5` moves **118,424 of 160,000 pixels (74.0 %)**, matching §3.5's pixel figure — the same run differs in 324,683 of 480,015 **bytes** (67.6 %), a different metric; `--match-alpha=2` is rejected |
@@ -125,7 +125,7 @@ The mapping:
 | checklist §6's two 1v1 wall times (10.690 s vs 5.273 s), unlabelled | the row now reads **`10.690 s (pre-#30; 5.273 s after it)`** |
 | `ROADMAP-PENDING.md`'s COM "Open" (chie's `data/item/014.dat` blocks a four-fighter run) | **closed 2026-10-06** in place, citing this audit's `COM Chie 0` and four-fighter runs |
 | `decisions.md` D6's "asset-backed four-fighter … remains unverified" and two-fighter VS/result | **superseded 2026-10-06** in place, with the §3 gates named as the evidence |
-| "three renderer options" in `AGENTS.md`, `package/README-LINUX.md` §4, `ROADMAP-PENDING.md` E3 and `remake/foundation/README.md` | those four now say **two** (row 0, toon, is live and persisted); three stragglers survive, see below |
+| "three renderer options" in `AGENTS.md`, `package/README-LINUX.md` §4, `ROADMAP-PENDING.md` E3 and `README.md` | those four now say **two** (row 0, toon, is live and persisted); three stragglers survive, see below |
 | checklist §6's prolonged-stability row named an uncommitted script (this pass measured three rounds from the committed §3.3 script at `--frames=40000`) | the committed **`tests/scripts/frontend-2v2-longrun.txt`** is the row's recipe, re-measured after #32: **five** rounds, `peak=4/128`, `dropped=0`, with §6 stating why eight is not reachable by extending the taps |
 | checklist §5's environment matrix was a description, not a recipe (a naive `kwin_wayland` launch dies silently and leaves its socket behind) | §5.1 now carries the working recipe: a private `XDG_RUNTIME_DIR`, `setsid dbus-run-session -- kwin_wayland --virtual --xwayland`, and the healthy-run lines to expect |
 | historical-only counts (24/25/26/30/31) read as current | unchanged and correctly dated; the `24` in `ROADMAP-PENDING.md` is still the weak case (no date of its own) |
@@ -138,7 +138,7 @@ one-line change; they are listed so the next reader does not re-derive them):
    so it is stale by three again. Its own sentence points at §2, which is why it
    is survivable — but it is a dated, current-tense count.
 2. **Three "three renderer options" stragglers**: `README.md:57`, and
-   `remake/docs/game-spec.md:270` and `:272` (the latter says "the three renderer
+   `docs/game-spec.md:270` and `:272` (the latter says "the three renderer
    toggles stay unavailable"). The Options screen marks rows 1–2 `UNAVAILABLE`;
    row 0 is live.
 3. **Checklist §4.2's printed command cannot exit 0 on its own documented
@@ -164,11 +164,11 @@ operator, not something these checks decide.
 
 ### Band A — the delivery path
 
-**A1. Re-establish the baseline.** `./remake/foundation/build.sh deps` (once per
+**A1. Re-establish the baseline.** `./build.sh deps` (once per
 worktree — `third_party/` is hardlinked, and a dependency fetched by one branch
 exists only there; this worktree needed it for issue #40's `pl_mpeg.h`), then
-`./remake/foundation/build.sh linux`, then
-`ctest --test-dir remake/foundation/build/linux --output-on-failure`.
+`./build.sh linux`, then
+`ctest --test-dir build/linux --output-on-failure`.
 *Depends on:* nothing. *Done when:* `100% tests passed` out of the registered
 count, none `Failed`; read ctest's own summary, not a number in a doc.
 *Evidence:* checklist §1–§2; measured 58/58 on this branch's base, and the
@@ -232,7 +232,7 @@ it" sentence per row, which is the honest form. *Evidence:* §5, §5.1.
 `main` (§1.2's ledger), so this step is a maintenance pass, not a repair: close
 the four residuals §1.2 lists — `docs/status.md:29`'s 58 vs §2's 61, the three
 "three renderer options" stragglers (`README.md:57`,
-`remake/docs/game-spec.md:270` and `:272`), checklist §4.2/§8's bare
+`docs/game-spec.md:270` and `:272`), checklist §4.2/§8's bare
 `showcase.py --check` command (it exits 1 on its own documented baseline; the
 tool's `--allow-problems=43` is the fix), and §6's two leftover "eight-round row"
 paragraphs that contradict the five-round row above them. *Depends on:* A1–A4
@@ -313,10 +313,10 @@ disagree, that document wins.
 
 ### 3.1 The load-bearing checks
 
-| # | Check | Command (from `remake/foundation/`) | Canonical | Pass criterion |
+| # | Check | Command (from the repository root) | Canonical | Pass criterion |
 |---|---|---|---|---|
 | 1 | Host suite | `ctest --test-dir build/linux --output-on-failure` | §2 | `100% tests passed` out of the registered count — **61** on `main` as of 2026-10-06 (58 on this branch's base); none `Failed`. The asset-dependent tests may be `Skipped` **only** in the documented data-free shape. |
-| 2 | 1v1, two humans, three rounds | `./build/linux/foundation_demo --install=<game-dir> --screen=title --local-players=2 --script=tests/scripts/frontend-1v1-rematch.txt --headless --out=/tmp/rel-1v1.ppm --size=1280x720 --frames=15500` | §3.1 | `RESULT: ok`; the documented ladder; `[split]` roster `Rena 0` vs `Keiichi 1`; sha256 prefix `8cc49e6c` |
+| 2 | 1v1, two humans, three rounds | `./build/linux/daybreak --install=<game-dir> --screen=title --local-players=2 --script=tests/scripts/frontend-1v1-rematch.txt --headless --out=/tmp/rel-1v1.ppm --size=1280x720 --frames=15500` | §3.1 | `RESULT: ok`; the documented ladder; `[split]` roster `Rena 0` vs `Keiichi 1`; sha256 prefix `8cc49e6c` |
 | 3 | One human + COM, three rounds | same with `--local-players=1 --script=tests/scripts/frontend-com-rematch.txt --out=/tmp/rel-com.ppm` | §3.2 | `RESULT: ok`; the same ladder tick-for-tick; a single view with a `COM` opponent; sha256 prefix `b813155d` |
 | 4 | 2v2, four humans, three rounds | same with `--local-players=4 --script=tests/scripts/frontend-2v2-rematch.txt --out=/tmp/rel-2v2.ppm` | §3.3 | `RESULT: ok`; the same ladder; four views and the four documented combos (`Rena 0`/`Keiichi 0`/`Rika 0`/`Mion 0`); sha256 prefix `8cc49e6c`. **Read the ladder and the digest, not the outcome line** — the grade/margin/script follow combat state. |
 | 5 | Four-player front-end loop | `… --local-players=4 --script=tests/scripts/frontend-4p.txt --out=/tmp/rel-4p.ppm --frames=9600` | §3 preamble | `RESULT: ok`; ladder `0/34/446/4382/4984/5584/9520`; sha256 prefix `14305bc9` |

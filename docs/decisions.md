@@ -8,9 +8,9 @@ comments — when a decision changes.
 
 - The old `mvp/` tree (`<project>/mvp/`) was frozen, ported per
   `docs/port-from-mvp-plan.md`, then **deleted** (2026-10-01). All new
-  code is written in `remake/foundation/` (`src/`, `tests/`, `scripts/`) —
+  code is written in the product tree (`src/`, `tests/`, `scripts/`) —
   the DX9 `remake/src/` was deleted in the Phase 5 cutover (D2 reversal).
-  `remake/{scripts,tools,assets,docs}/` keep the surviving tooling and
+  `tools/`, `docs/` and `research/evidence/` keep the surviving tooling and
   evidence.
 - What survives from `mvp/`: the relocated tooling
   (`tools/asset-tools/`, `tools/hook-tracer/`, `assets/shaders/`),
@@ -46,7 +46,7 @@ comments — when a decision changes.
   renderer." No longer true: the cutover deleted `remake/src/`,
   `remake/CMakeLists.txt`, `remake/build.sh` and `remake/cmake/`
   (`foundation/docs/FULL-REPLACEMENT-PLAN.md` §8), and the A/B reference
-  is the frozen `tests/parity-baseline/` bank plus the original's prints.
+  is the frozen `research/evidence/parity-baseline/` bank plus the original's prints.
 - Evidence, as recorded at decision time in the now-deleted prototype
   (`webgpu-spike/FINDINGS.md`, archived in `3fea431`, deleted in `5a63db3`
   — read it with `git show 3fea431:webgpu-spike/FINDINGS.md`):
@@ -92,7 +92,7 @@ comments — when a decision changes.
   the `webgpu-mvp/` / `webgpu-spike/` prototypes. Full list and what was
   deliberately kept: `foundation/docs/FULL-REPLACEMENT-PLAN.md` §8.
 - **What replaces the A/B reference.** (a) The **banked reference bank**
-  `tests/parity-baseline/` (33 cases / 36 captures, 47 logs, manifest +
+  `research/evidence/parity-baseline/` (33 cases / 36 captures, 47 logs, manifest +
   hashes) — now a **frozen archive**: `regen.sh` needs the deleted
   `build/daybreak.exe`, so it documents provenance, it does not regenerate;
   and (b) the original's **23 prints** in `docs/reference/`, which are the
@@ -388,12 +388,12 @@ comments — when a decision changes.
   with the whole stack on and off.
 - **Authoring.** The shadow mask and the secondary normals are *generated* from the
   bind-pose geometry, because the install ships neither. They are placeholders for authored
-  data, and the recommendation in `foundation/docs/NPR-EXPERIMENTS.md` says so: the
+  data, and the recommendation in `docs/NPR-EXPERIMENTS.md` says so: the
   switches are worth keeping, the generated data is not the final answer.
 - Verification: 45 host tests including the new `npr_experiments` rendered-frame pin and
   the device-free `npr_normals_test`; Linux, Windows cross-build and web builds succeed.
   Evidence, per-arm cost and the explicit "what the human should look at" list:
-  `foundation/docs/NPR-EXPERIMENTS.md`, captures under `remake/tests/npr-evidence/`.
+  `docs/NPR-EXPERIMENTS.md`, captures under `research/evidence/npr-evidence/`.
 - Rationale: an experiment issue needs an instrument, and an instrument that changes the
   baseline cannot measure it.
 

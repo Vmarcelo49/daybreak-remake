@@ -84,7 +84,7 @@ struct ArenaCameraPreset {
 
     // The original game's arena camera: THE match camera.
     //
-    // Measured from the original's own screens (remake/docs/reference/*.webp, the
+    // Measured from the original's own screens (docs/reference/*.webp, the
     // visual specification since §6a), not from the remake. Four pixel measurements on
     // battle-hud.webp — player head top 287 / sole 599, opponent head top 143 / sole
     // 194 in a 606-row frame — over-determine the geometry. Four unknowns (distance,
@@ -128,7 +128,7 @@ struct ArenaCameraPreset {
     // The DX9 remake's port: height 300, distance 800, aim +50, baseline π/4, fov π/4,
     // near 1, far 100000. Kept reachable because it is the *behavioural* oracle's
     // framing: tests/arena_camera_test.cpp pins the ported rules against it and
-    // tests/parity-baseline/logs/*.log were banked with it. Not the match camera.
+    // research/evidence/parity-baseline/logs/*.log were banked with it. Not the match camera.
     static constexpr ArenaCameraPreset referenceRemake() {
         ArenaCameraPreset p;
         p.height        = 300.f;

@@ -13,8 +13,8 @@ convenience. The game follows fighters with a target-locked arena camera
 (`src/gameplay/arena_camera.h`, RE section 14: `fcn.006507c0` +
 `fcn.0042cb50`; history: the earlier `remake/src/render/arena_camera.h`
 reference tree is deleted — the live citations are the banked oracle
-`remake/tests/parity-baseline/` plus the original's prints in
-`remake/docs/reference/`). `render::arenaViewProj()` is the foundation side of that path:
+`research/evidence/parity-baseline/` plus the original's prints in
+`docs/reference/`). `render::arenaViewProj()` is the foundation side of that path:
 desired eye + aim + view-projection from one target, term-by-term mirroring of
 `ArenaCamera::compute_desired_eye/update/proj_matrix`:
 

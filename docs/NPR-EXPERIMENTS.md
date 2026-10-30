@@ -82,9 +82,9 @@ unmodified path, and the OFF frame moved by a pixel when that was tried.
 Command (one arm; every capture below is this line with `$FLAGS` substituted):
 
 ```bash
-cd remake/foundation/build/linux
+cd build/linux
 I=../../Higurashi-Daybreak
-./foundation_demo --headless --install=$I --character=$I/data/rena:0 --no-anim \
+./daybreak --headless --install=$I --character=$I/data/rena:0 --no-anim \
   --frames=3 --size=800x600 --out=/tmp/npr/<arm>.ppm $FLAGS
 ```
 
@@ -95,7 +95,7 @@ survives at gameplay distance; the numbers in §3–§5 are the close scene, whi
 
 ## 3. The experiments, arm by arm
 
-Captures are committed as PNGs under `remake/tests/npr-evidence/captures/`; the `.log`
+Captures are committed as PNGs under `research/evidence/npr-evidence/captures/`; the `.log`
 beside each one is the demo's own output for that run. `A_baseline` is the reference for
 every "changed px" number.
 
@@ -230,10 +230,10 @@ committed for whoever needs it.
 All paths are relative to the repository root. Each capture is the same frame, camera and
 pose; open them side by side.
 
-1. **`remake/tests/npr-evidence/contact-baseline-hard-soft-stack.png`** — the four-up
+1. **`research/evidence/npr-evidence/contact-baseline-hard-soft-stack.png`** — the four-up
    sheet. This is the fastest read: baseline (top-left), hard band (top-right), soft band
    (bottom-left), the recommended stack (bottom-right).
-2. **`remake/tests/npr-evidence/captures/A_baseline.png`** vs
+2. **`research/evidence/npr-evidence/captures/A_baseline.png`** vs
    **`.../DE_stack.png`** — the A/B the issue asks for first. Does the stack improve the
    read at this distance, or does it look like a filter?
 3. **`.../B_hard.png`** vs **`.../B_soft.png`** — the band edge. At the default width they
@@ -250,7 +250,7 @@ pose; open them side by side.
    **`.../I_outline_half.png`** — the outline width, with `--toon` on.
 8. **`.../A_toon_on_stack.png`** — the recovered row and the stack together, which is what
    the recommended state would actually look like.
-9. **Gameplay distance** — `remake/tests/npr-evidence/captures/GAMEPLAY_vs_off.png` vs
+9. **Gameplay distance** — `research/evidence/npr-evidence/captures/GAMEPLAY_vs_off.png` vs
    `.../GAMEPLAY_vs_stack.png`: the same scripted versus frame at 960×540 with the stack
    off and on. This is the read that decides whether the stack is art or a filter, and it
    is the one to judge the recommendation by. (Regenerate with the command below; this
@@ -258,10 +258,10 @@ pose; open them side by side.
    capture the identity table calls out.)
 
 ```bash
-cd remake/foundation/build/linux
+cd build/linux
 I=../../Higurashi-Daybreak
 for s in "--npr=off" "--npr=on"; do
-  ./foundation_demo --headless --install=$I --stage=$I/data/stage01 \
+  ./daybreak --headless --install=$I --stage=$I/data/stage01 \
     --character=$I/data/rena:0 --enemy=$I/data/mion:0 --versus --camera=arena \
     --frames=300 --size=960x540 --out=/tmp/npr/vs_$(echo $s|tr -d '=').ppm $s
 done
@@ -308,10 +308,10 @@ they are the two that add colour rather than structure — and keep E and D.
 > where they disagree with this section, this section is the measurement.
 >
 > Everything here is reproducible with
-> `python3 remake/foundation/tests/npr_evidence.py --demo remake/foundation/build/linux/foundation_demo --install <game dir>`
+> `python3 tests/npr_evidence.py --demo build/linux/daybreak --install <game dir>`
 > (contact sheets, region metrics and the sweeps) and
-> `python3 remake/foundation/tests/npr_experiments.py <demo> <game dir>` (the no-op gate).
-> Captures: `remake/tests/npr-evidence/issue-27/`. Numbers below are from the machine that
+> `python3 tests/npr_experiments.py <demo> <game dir>` (the no-op gate).
+> Captures: `research/evidence/npr-evidence/issue-27/`. Numbers below are from the machine that
 > ran it; sha256 prefixes identify each frame.
 
 ### 8.1 The scene, and why it changed

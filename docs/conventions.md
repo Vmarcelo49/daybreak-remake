@@ -8,7 +8,7 @@
 ## 1. Language standard (by zone)
 
 - **`research/` is C11** (`-std=c11`).
-- **`remake/foundation/` is C++17** (`CMAKE_CXX_STANDARD 17`, with
+- **The product is C++17** (`CMAKE_CXX_STANDARD 17`, with
   `CMAKE_C_STANDARD 11` alongside) over SDL3 + WebGPU.
 - Rationale for C11 in research: `//` comments, declarations anywhere in a
   block, `stdint.h`, `_Static_assert`, anonymous unions.

@@ -3,11 +3,11 @@
 > **Since M5 (2026-10-30) the web build compiles but cannot run a battle.** The core reads `daybreak*.dat` directly and the web build streams single assets, so a battle fails at launch until the core gets an asset seam (M6). The menus are unaffected. The `--character`/`--enemy` match recipes below are history; the last revision with a working web battle is `e9347627`.
 
 ```bash
-cd remake/foundation   # all paths below are relative to here
+# run from the repository root; all paths below are relative to it
 ./build.sh deps     # once (populates third_party/, CMakeLists.txt:27-29)
 ./build.sh web      # sources ~/emsdk/emsdk_env.sh (EMSDK= overrides)
 python3 -m http.server 8177 -d build/web
-# open http://127.0.0.1:8177/foundation_demo.html
+# open http://127.0.0.1:8177/daybreak.html
 ```
 
 The page needs a WebGPU-capable browser and, because wasm is fetched with
@@ -35,7 +35,7 @@ path) to reach `SDL_AppQuit`, which is what prints the timing summary and
 
 ```bash
 export AGENT_BROWSER_SESSION="$(agent-browser session id --scope worktree --prefix webgpu-foundation)"
-agent-browser --webgpu open "http://127.0.0.1:8177/foundation_demo.html"   # --webgpu = SwiftShader
+agent-browser --webgpu open "http://127.0.0.1:8177/daybreak.html"   # --webgpu = SwiftShader
 agent-browser focus "#canvas" && agent-browser press Escape
 agent-browser console
 ```
@@ -83,7 +83,7 @@ recipe works too, and requests its own match group from the arguments:
 
 ```bash
 # note the /data/... paths: the delivered tree is the MEMFS root
-foundation_demo.html?delivery=1&args=--stage=/data/stage21|--character=/data/rena:0|--enemy=/data/mion:0|--match|--frames=300
+daybreak.html?delivery=1&args=--stage=/data/stage21|--character=/data/rena:0|--enemy=/data/mion:0|--match|--frames=300
 ```
 
 The startup gate (the assets the first usable screen needs) holds `SDL_AppInit`;
@@ -105,7 +105,7 @@ emcmake cmake -S . -B build/web-assets -GNinja \
   "-DFOUNDATION_WEB_ASSET=--character=/assets/akane:0"
 cmake --build build/web-assets
 python3 -m http.server 8178 -d build/web-assets
-# open http://127.0.0.1:8178/foundation_demo.html
+# open http://127.0.0.1:8178/daybreak.html
 ```
 
 For a quick local check, `?asset=--character=/assets/akane:0` in the page URL
@@ -171,7 +171,7 @@ emcmake cmake -S . -B build/web-roadmap -GNinja \
   "-DCMAKE_EXE_LINKER_FLAGS=--preload-file $PWD/third_party/fonts@/third_party/fonts"
 cmake --build build/web-roadmap
 python3 -m http.server 8179 -d build/web-roadmap
-# foundation_demo.html?args=--stage=/assets/stage01|--character=/assets/rena:0|--enemy=/assets/mion:0|--versus|--camera=arena|--frames=300
+# daybreak.html?args=--stage=/assets/stage01|--character=/assets/rena:0|--enemy=/assets/mion:0|--versus|--camera=arena|--frames=300
 ```
 
 Chromium with `agent-browser --webgpu` used `google swiftshader

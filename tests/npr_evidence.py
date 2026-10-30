@@ -35,7 +35,7 @@ Usage:
     npr_evidence.py --demo <daybreak> --install <game dir> --outdir <evidence dir>
                     [--workdir <scratch>] [--only id,id] [--quick]
 
-The evidence directory keeps the ../npr-evidence layout (captures/, logs/) and gains
+The evidence directory keeps the research/evidence/npr-evidence layout (captures/, logs/) and gains
 metrics.json + metrics.md. Pass --only to re-render a subset of the sheets.
 """
 
@@ -1174,7 +1174,7 @@ def main():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--demo", required=True)
     parser.add_argument("--install", required=True)
-    parser.add_argument("--outdir", default="remake/tests/npr-evidence/issue-27")
+    parser.add_argument("--outdir", default="research/evidence/npr-evidence/issue-27")
     parser.add_argument("--workdir", default="/tmp/npr-evidence-work")
     parser.add_argument("--only", default="", help="comma-separated technique/sweep ids")
     parser.add_argument("--quick", action="store_true",

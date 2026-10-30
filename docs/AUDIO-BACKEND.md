@@ -116,19 +116,19 @@ Harness sources live only in `/tmp/audio-verify/` (never committed);
 test tones/bytes are synthesized in code — no game data, no hardware.
 
 ```bash
-g++ -std=c++17 -Werror -Wall -Wextra -I remake/foundation/src \
-  /tmp/audio-verify/test_audio_backend.cpp remake/foundation/src/audio/audio_engine.cpp \
+g++ -std=c++17 -Werror -Wall -Wextra -I src \
+  /tmp/audio-verify/test_audio_backend.cpp src/audio/audio_engine.cpp \
   -o /tmp/audio-verify/t_audio_backend $(pkg-config --libs sdl3)
 SDL_AUDIO_DRIVER=dummy /tmp/audio-verify/t_audio_backend
 
 # header stays SDL-free (decode path tests/links without SDL at all):
-g++ -std=c++17 -Werror -Wall -Wextra -I remake/foundation/src \
+g++ -std=c++17 -Werror -Wall -Wextra -I src \
   /tmp/audio-verify/decode_only.cpp -o /tmp/audio-verify/t_decode_only && /tmp/audio-verify/t_decode_only
 
 # lifetime check (open/bind/play/close under ASan+UBSan):
 g++ -std=c++17 -Werror -Wall -Wextra -g -fsanitize=address,undefined \
-  -I remake/foundation/src /tmp/audio-verify/test_audio_backend.cpp \
-  remake/foundation/src/audio/audio_engine.cpp \
+  -I src /tmp/audio-verify/test_audio_backend.cpp \
+  src/audio/audio_engine.cpp \
   -o /tmp/audio-verify/t_audio_asan $(pkg-config --libs sdl3)
 SDL_AUDIO_DRIVER=dummy /tmp/audio-verify/t_audio_asan
 ```

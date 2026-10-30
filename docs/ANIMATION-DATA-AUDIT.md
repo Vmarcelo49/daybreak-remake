@@ -399,7 +399,7 @@ this resolver; flag names below are descriptive summaries, not recovered symboli
 | `0x40 << i`, `i=0..7` | Gates per-slot bookkeeping loop (0x638822); slots 1 and 2 are explicitly skipped when enabled. |
 
 A bundle-first inventory using the port's `AssetSource`, `CharacterMoves` parser, and the
-roster's character+weapon table (`remake/foundation/tools/audit_attack_flags.cpp`) found
+roster's character+weapon table (`tools/audit_attack_flags.cpp`) found
 12,161 combat records across the shipped combo tables; 26 carry bit `0x8` in 19 `(combo, move)`
 rows (also 19 `(combo, move, phase)` rows) spanning 10 character+weapon combos. This includes Rena+0 (item 001), move 350, phase 0
 records 3, 5, 7, 9, 11, 13, 15, and 17; Mion+0 (item 002), move 370, phase 1 record 0; and
@@ -434,13 +434,13 @@ is a disassembly/decompiler/xref service; the local hook-tracer only logs file o
 launcher injects only when run. Obtaining the required witness therefore needs an authorized
 original-game session plus suitable debugger/runtime instrumentation; none has been performed.
 
-The local hook-tracer is explicitly limited to file-access logging (`remake/tools/hook-tracer/README.md`);
+The local hook-tracer is explicitly limited to file-access logging (`tools/hook-tracer/README.md`);
 it does not instrument combat functions. No existing runtime probe in the product audit tool
 observes resolver calls or victim memory. Therefore the current local tooling adds no positive
 original contact witness; runtime instrumentation or direct original execution evidence is still
 required before assigning status-2 semantics.
 No positive original contact witness is established by this table inventory. The archived
-`remake/tests/parity-baseline/logs/action-guard.log` is explicitly from the pre-cutover DX9 remake
+`research/evidence/parity-baseline/logs/action-guard.log` is explicitly from the pre-cutover DX9 remake
 and reports the remake's fighter state only; it contains no original-process trace, bit-`0x8`
 record identity, or resolver event, so it cannot be promoted to an original witness. The Ghidra bridge
 health and instance endpoints identify open program `DaybreakDX.exe` (project `daybreak`). Its
@@ -740,7 +740,7 @@ After the user explicitly authorized a launch and captures, a controlled native 
 was attempted for the original `DaybreakDX.exe`; its isolated Wine prefix stalled at first-run
 `wineboot --init` before the game appeared, and those Wine processes and isolated GUI sessions
 were stopped. To honor the request for visual animation/combat references without attributing
-remake behavior to the original, I used the already-built Linux `foundation_demo` instead.
+remake behavior to the original, I used the already-built Linux `daybreak` instead.
 
 - The standalone `--match` preview bound **Rena+0 (item 001)** vs **Mion+0 (item 002)** on
   stage21 and rendered one captured frame at 800×600; both weapon meshes and both move tables

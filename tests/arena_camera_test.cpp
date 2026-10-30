@@ -40,7 +40,7 @@
 // What this does NOT prove: parity with the DX9 binary. There is no in-process DX9
 // oracle, and the collision cases use this test's own two-triangle quads, so they pin
 // the rule (snap vs lerp, offsets, cutoff), not a banked frame. The frame-by-frame
-// comparison against remake/tests/parity-baseline/logs/ is the caller's.
+// comparison against research/evidence/parity-baseline/logs/ is the caller's.
 //
 // Exit status: 0 when every check passed, 1 otherwise.
 

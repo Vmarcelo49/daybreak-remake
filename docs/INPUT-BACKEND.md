@@ -93,14 +93,14 @@ Harness sources live only in `/tmp/trackm_in/` (never in the repo); they
 compile the backend TU directly:
 
 ```bash
-g++ -std=c++17 -Werror -Wall -Wextra -I remake/foundation/src \
-  /tmp/trackm_in/test_backend_keys.cpp remake/foundation/src/input/input_backend.cpp \
+g++ -std=c++17 -Werror -Wall -Wextra -I src \
+  /tmp/trackm_in/test_backend_keys.cpp src/input/input_backend.cpp \
   -o /tmp/trackm_in/t_keys $(pkg-config --cflags --libs sdl3) && /tmp/trackm_in/t_keys
-g++ -std=c++17 -Werror -Wall -Wextra -I remake/foundation/src \
-  /tmp/trackm_in/test_backend_script.cpp remake/foundation/src/input/input_backend.cpp \
+g++ -std=c++17 -Werror -Wall -Wextra -I src \
+  /tmp/trackm_in/test_backend_script.cpp src/input/input_backend.cpp \
   -o /tmp/trackm_in/t_script $(pkg-config --cflags --libs sdl3) && /tmp/trackm_in/t_script
 printf '#include "input/input_backend.h"\nint main() { return 0; }\n' > /tmp/trackm_in/hdronly.cpp
-g++ -std=c++17 -Werror -Wall -Wextra -I remake/foundation/src \
+g++ -std=c++17 -Werror -Wall -Wextra -I src \
   -c /tmp/trackm_in/hdronly.cpp -o /tmp/trackm_in/hdronly.o  # SDL-free proof
 ```
 

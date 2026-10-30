@@ -35,7 +35,7 @@ have zero hits in `research/decompiled/`; only this GDI path).
 
 ## 2. What that means for text on screen (evidence: banked reference frames)
 
-Read against `remake/docs/reference/*.webp` (the ground-truth captures):
+Read against `docs/reference/*.webp` (the ground-truth captures):
 
 - **In-battle HUD**: mostly Latin — `LIMIT 100%`, `MAIN`, `CHARGE`, `HP`,
   `STAMINA`, `com`, `0%`, `OYASHIRO` — plus one CJK-looking label: the
@@ -70,7 +70,7 @@ Read against `remake/docs/reference/*.webp` (the ground-truth captures):
   decision; its weight moves to the three real GDI consumers (result
   quote/report, chat, story ADV per FRONTEND-PLAN §4.2–4.3). (History: the
   scene named `title` in the deleted `remake/src` tree drew the
-  select-screen background; see `remake/docs/placeholders.md` §13. The
+  select-screen background; see `docs/archive/placeholders.md` §13. The
   live title evidence is `src/ui/screen_title.{h,cpp}` + FRONTEND-PLAN
   §4.2.)
 - **Result screens** (`result-report.webp`) are a full page of Japanese
@@ -100,7 +100,7 @@ canvas `measureText`/`fillText` into an atlas.
   Linux native rasterizes with fontconfig/FreeType and Wine rasterizes with
   GDI. Env-dependent face availability is exactly the failure the DX9 HUD
   already hit (Wine often lacks CJK fonts — see the banked DX9 parity
-  evidence in `remake/tests/parity-baseline/`).
+  evidence in `research/evidence/parity-baseline/`).
 
 ### B. In-process TrueType rasterization from one fetched font
 
@@ -162,8 +162,8 @@ landed in `src/ui/text.{h,cpp}`; runtime caption selection later changed under
 D7: the primary face is the bundled Gyrotrope Black, with the fetched Noto Sans
 CJK JP fallback. `ui/caption.{h,cpp}` owns that shared load path, while game
 strings are converted from Shift-JIS before reaching the UTF-8 text layer. See
-`remake/docs/decisions.md` D7, `remake/foundation/src/ui/caption.h`, and
-`remake/foundation/assets/fonts/README.md` for current asset/runtime policy.
+`docs/decisions.md` D7, `src/ui/caption.h`, and
+`assets/fonts/README.md` for current asset/runtime policy.
 
 The old “implementation lands in Phase 3” statement and proposed Noto-first
 runtime chain describe the 2026-10-02 plan, not current status. Option C remains

@@ -167,7 +167,7 @@ private:
 // Multi-bundle lookup.
 //
 // The exe opens six bundles and searches them in a fixed order, first match
-// wins: remake/tests/parity-baseline/logs/asset-*.log shows the DX9 port
+// wins: research/evidence/parity-baseline/logs/asset-*.log shows the DX9 port
 // reporting "opened daybreak00.dat .. daybreak07.dat" in this exact order and
 // then the daybreak00 entry for data/rika/01.X, which also exists in
 // daybreak04.dat with different bytes (9675158 vs 9893738).  983 names are

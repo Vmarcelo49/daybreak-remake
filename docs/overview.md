@@ -8,7 +8,7 @@ This repo has **two halves** with different rules:
 
 | Half | Path | Goal | Rule of thumb |
 |---|---|---|---|
-| **Product** | `remake/foundation/` | Playable modern port (C++17, SDL3 + WebGPU: `webgpu.h`, wgpu-native native, emdawnwebgpu web; Linux/Windows/web) | All new game code goes here — build with `./remake/foundation/build.sh {deps,linux,windows,web}`; see `remake/docs/decisions.md` D1–D6 |
+| **Product** | the repository root | Playable modern port (C++17, SDL3 + WebGPU: `webgpu.h`, wgpu-native native, emdawnwebgpu web; Linux/Windows/web) | All new game code goes here — build with `./build.sh {deps,linux,windows,web}`; see `docs/decisions.md` D1–D6 |
 | **Research** | `research/` | Reverse-engineering evidence + readable-C pipeline | Nothing here runs the game; `research/recomp/` is never hand-edited |
 
 ## Repo map
@@ -69,7 +69,7 @@ metric. Full version in `docs/pipeline.md`.
 - **Render**: D3D9 + D3DX (25 mapped calls), `.x` meshes via
   `D3DXLoadMeshHierarchyFromXInMemory`, collision is `D3DXIntersect`
   ray-vs-mesh only, 10 embedded D3DX effects (relocated to the remake
-  at `remake/assets/shaders/`).
+  at `research/evidence/assets/shaders/`).
 - **Network**: DirectPlay 8 (not Winsock), ~27 functions, client/server/
   peer modes. Replaced, not ported, in the remake (out of scope).
 - **Binary is clean**: no anti-debug, no packing (verified, phase 12).
@@ -79,7 +79,7 @@ metric. Full version in `docs/pipeline.md`.
 ## Where to go next
 
 - New here? Read `docs/pipeline.md`, then `docs/status.md`.
-- Writing game code? Go to `remake/` and read `remake/docs/decisions.md`.
+- Writing game code? Go to `remake/` and read `docs/decisions.md`.
 - Driving the original for comparison? `tools/launch_original.sh`.
 - Automating RE work? `docs/agents/`.
 - Old Portuguese docs? `docs/archive/` (historical, superseded by `docs/`).

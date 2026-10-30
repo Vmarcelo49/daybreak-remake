@@ -3,7 +3,7 @@
 These interfaces are implemented and integrated, rather than pending proposals.
 `src/game/` defines the pose, effect-event, HUD-value, and camera-collision
 contracts; `foundation_game` and `foundation_gameplay` are linked into
-`foundation_demo` (`CMakeLists.txt:160-198`). `gameplay::Fighter` implements
+`daybreak` (`CMakeLists.txt:160-198`). `gameplay::Fighter` implements
 `game::IFighterPose` (`src/gameplay/fighter.h:321,361-363`); `src/main.cpp`
 drives the camera, effect-event, and HUD paths (`main.cpp:2767-2786,3152-3163,
 3526-3547`), and `syntheticHudState()` forwards to the tested game-side

@@ -11,7 +11,7 @@
 //  What it proves, for real shipped bundles:
 //   1. Table parity — for all 12,345 entries of the six shipped bundles, the
 //      entry count, offset, length and undecoded name bytes match
-//      remake/tools/asset-tools/extract_dat.py, driven through its own
+//      tools/asset-tools/extract_dat.py, driven through its own
 //      decode_entry_table()/decode_file_data()/safe_filename() functions (the
 //      independent oracle).  The decoded UTF-8 name is compared too; names that
 //      need CP932 codes the foundation's generated sjis_table.h lacks are
@@ -24,7 +24,7 @@
 //      bundle that has the name (daybreak07, 04, 00, then 05, 02, 06 — the
 //      exe's registration order, which decides duplicates; its name table's
 //      00/04/07/05/02/06 is the open sequence, a different thing), matching the
-//      DX9 logs (parity-baseline/logs/asset-*.log: data/rika/01.X -> daybreak00,
+//      DX9 logs (research/evidence/parity-baseline/logs/asset-*.log: data/rika/01.X -> daybreak00,
 //      index 6017, 9675158 bytes) and the oracle's independent archive scan.
 //   4. Negative cases — missing asset, out-of-bounds entry, truncated/corrupt
 //      headers and an all-zero 65535-entry table must fail cleanly (no crash,
@@ -304,7 +304,7 @@ const std::size_t kDirCount = sizeof(kDirs) / sizeof(kDirs[0]);
 const char* const kOracleScript = R"PY(#!/usr/bin/env python3
 """Oracle driver for tests/dat_bundle_bytes.cpp.
 
-Every decode below goes through remake/tools/asset-tools/extract_dat.py's own
+Every decode below goes through tools/asset-tools/extract_dat.py's own
 functions (decode_entry_table, safe_filename); the payload XOR is the same
 arithmetic as extract_dat.decode_file_data, done with a 256-entry translation
 table so multi-hundred-MB payloads stay fast.

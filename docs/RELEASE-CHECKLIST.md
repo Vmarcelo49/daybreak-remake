@@ -40,18 +40,18 @@
 ## 1. Build and package
 
 ```bash
-./remake/foundation/build.sh deps          # once; pinned third-party sources
-./remake/foundation/build.sh linux         # the warm build used below
+./build.sh deps          # once; pinned third-party sources
+./build.sh linux         # the warm build used below
 ```
 
-Expected: the build ends with `Linking CXX executable foundation_demo`, exit 0.
+Expected: the build ends with `Linking CXX executable daybreak`, exit 0.
 `build.sh linux` also builds every host test binary (`build/linux/*_test`).
 
 The release archive (issue #22) and its launcher:
 
 ```bash
-./remake/foundation/scripts/package_linux.sh
-./remake/foundation/tests/launcher_test.sh ./remake/foundation/package/daybreak
+./scripts/package_linux.sh
+./tests/launcher_test.sh ./package/daybreak
 ```
 
 Expected: the packaging script stages `build/package/daybreak-<version>-linux-x86_64/`
@@ -68,7 +68,7 @@ extended this suite and `user_settings_test` — no suite was added, which is wh
 ## 2. Host suite (the CI job runs exactly this)
 
 ```bash
-ctest --test-dir remake/foundation/build/linux --output-on-failure
+ctest --test-dir build/linux --output-on-failure
 ```
 
 * **With the game install present**: `100% tests passed out of 81` (fixture set 23, three of them pilot extras: the two guard-gate fixtures and the charge-spend fixture — **build all targets after editing the shared fixture header**, or the differential runs a stale binary and fails on an unknown directive) (fixture set 22, two of them pilot-gate extras) (2026-10-16, after the P2-5 body tests and differential, the P2-6 resolver test and the P2-7 shot-body and guard-body tests were added; `ctest`'s own summary is authoritative)
@@ -140,7 +140,7 @@ decision: nothing is being shipped yet, and every push bought a hosted run).
 `ctest` is something a person runs before a commit, not something a runner
 enforces, so the checklist above is the gate. The Windows and Web matrices that
 the old `gate` job drove are likewise manual: build them with
-`./remake/foundation/build.sh windows` / `web` when one of those targets is
+`./build.sh windows` / `web` when one of those targets is
 actually being touched.
 
 ## 2b. Automated gates (run these before claiming the section below)
@@ -155,7 +155,7 @@ python3 tests/release_check.py build/linux
 
 # 2. The release flow: required scene transitions in order, the roster the recipe asks
 #    for, the rounds it must resolve, and the capture file — in a bounded timeout.
-python3 tests/release_flow_check.py build/linux/foundation_demo <game-dir> --recipe 1v1
+python3 tests/release_flow_check.py build/linux/daybreak <game-dir> --recipe 1v1
 ```
 
 `release_check.py` needs a configured CTest build directory; `release_flow_check.py`
@@ -166,7 +166,7 @@ in CI's test step, and the second is a release-time gate, not a per-push one.
 ## 3. The acceptance runs (deterministic, real assets)
 
 All four use the committed scripts under `tests/scripts/`, run from
-`remake/foundation/`. They are **capture runs**: `--headless --out --frames`
+the repository root. They are **capture runs**: `--headless --out --frames`
 steps one logic tick per rendered frame (the demo prints
 `logic: N ticks, explicit capture cadence`), which is what makes the tap
 ticks in the scripts exact and the run reproducible. Run them with a warm
@@ -198,17 +198,15 @@ page cache; each takes seconds to a minute.
 The four are §3.1 (§3.1's 1v1), §3.2 (com), §3.3 (2v2) and the four-player
 loop, whose command is:
 ```bash
-./build/linux/foundation_demo --install=<game-dir> --screen=title \
+./build/linux/daybreak --install=<game-dir> --screen=title \
   --local-players=4 --script=tests/scripts/frontend-4p.txt \
   --headless --out=/tmp/rel-4p.ppm --size=1280x720 --frames=9600
 ```
 
 **`<game-dir>` has a working form, and copying the recipes literally does not
-give it.** Run from `remake/foundation/`, the install is at the *worktree root*,
-so the path is `--install=../../Higurashi-Daybreak` (or an absolute path).
-`--install=Higurashi-Daybreak` exits 1 with `no game data in
-"Higurashi-Daybreak"` — the bare name only resolves when the working directory
-is the repo or worktree root.
+give it.** Run from the repository root, so the path is
+`--install=Higurashi-Daybreak` (or an absolute path). A run from another
+directory has to name the install absolutely.
 
 **Do not elide `--headless` when repeating a recipe.** §3.4's own warning
 applies: a windowed run steps at the real 60 Hz clock instead of one logic tick
@@ -252,7 +250,7 @@ pass no device flag.
 ### 3.1 Two humans, 1v1, three rounds
 
 ```bash
-./build/linux/foundation_demo --install=<game-dir> --screen=title \
+./build/linux/daybreak --install=<game-dir> --screen=title \
   --local-players=2 --script=tests/scripts/frontend-1v1-rematch.txt \
   --headless --out=/tmp/rel-1v1.ppm --size=1280x720 --frames=15500
 ```
@@ -321,7 +319,7 @@ OK cell and the stage-page timing.
 ### 3.2 One human with COM, three rounds
 
 ```bash
-./build/linux/foundation_demo --install=<game-dir> --screen=title \
+./build/linux/daybreak --install=<game-dir> --screen=title \
   --local-players=1 --script=tests/scripts/frontend-com-rematch.txt \
   --headless --out=/tmp/rel-com.ppm --size=1280x720 --frames=15500
 ```
@@ -349,7 +347,7 @@ the stage, is per round.
 ### 3.3 Four fighters (2v2), three rounds
 
 ```bash
-./build/linux/foundation_demo --install=<game-dir> --screen=title \
+./build/linux/daybreak --install=<game-dir> --screen=title \
   --local-players=4 --script=tests/scripts/frontend-2v2-rematch.txt \
   --headless --out=/tmp/rel-2v2.ppm --size=1280x720 --frames=15500
 ```
@@ -457,7 +455,7 @@ headless frame at a fixed presentation fraction instead of pinning it to 1, so a
 capture sees the interpolation the live path sees:
 
 ```bash
-./build/linux/foundation_demo --install=<game-dir> --headless --match \
+./build/linux/daybreak --install=<game-dir> --headless --match \
   --stage=data/stage21 --character=data/rena --enemy=data/mion \
   --frames=3 --size=400x400 --match-alpha=0.5 --out=/tmp/live-alpha.ppm
 ```
@@ -525,7 +523,7 @@ path writes and binds region 0 exactly as it wrote and bound the whole buffer, s
 **byte-identical**; **multi-view** frames deliberately move, because they were reading
 another view's geometry before.
 
-| recipe (from `remake/foundation/`, install via `--install=`) | before | after |
+| recipe (from the repository root, install via `--install=`) | before | after |
 |---|---|---|
 | `--screen=battle --local-players=1 --frames=300 --size=960x540` | `db392ca6` | `db392ca6` (identical) |
 | `--match --stage=data/stage03 --character=data/rena --enemy=data/mion --frames=300 --size=800x600` | `10f6cbbd` | `10f6cbbd` (identical) |
@@ -616,7 +614,7 @@ window ever appeared on the real session.
 | # | Environment | Command shape | Result |
 |---|---|---|---|
 | 1 | Headless, Vulkan RADV | the §3 capture runs | `RESULT: ok`, real GPU, no window |
-| 2 | Wayland, nested KWin, 60 Hz | `XDG_RUNTIME_DIR=<own> WAYLAND_DISPLAY=wayland-issue23 ./build/linux/foundation_demo --screen=battle --local-players=2 --script=tests/scripts/split-two-human.txt --frames=1500` | `video driver : wayland`, `surface : 960x540 ... fifo=yes`, `present mode : Fifo(vsync)`, `frames : 1500 in 24.931 s`, `delta avg : 16.608 ms (60.2 fps)`, `logic : 1594 ticks, 64 Hz`, `RESULT: ok` |
+| 2 | Wayland, nested KWin, 60 Hz | `XDG_RUNTIME_DIR=<own> WAYLAND_DISPLAY=wayland-issue23 ./build/linux/daybreak --screen=battle --local-players=2 --script=tests/scripts/split-two-human.txt --frames=1500` | `video driver : wayland`, `surface : 960x540 ... fifo=yes`, `present mode : Fifo(vsync)`, `frames : 1500 in 24.931 s`, `delta avg : 16.608 ms (60.2 fps)`, `logic : 1594 ticks, 64 Hz`, `RESULT: ok` |
 | 3 | X11, nested Xwayland `:1` | same with `DISPLAY=:1` | `video driver : x11`, `present mode : Fifo(vsync)`, `frames : 1500 in 24.935 s (60.2 fps)`, `logic : 1593 ticks, 64 Hz`, `RESULT: ok` |
 | 4 | 30 Hz output | `gamescope --backend wayland -W 1280 -H 720 -r 30 -- <demo> --frames=300` | `frames : 300 in 9.885 s`, `delta avg : 32.927 ms (30.4 fps)`, `logic : 632 ticks, 64 Hz` → **2.11 logic ticks per frame** |
 | 5 | High refresh (gamescope `-r 144`) | `... -r 144 -- <demo> --frames=1200` | `frames : 1200 in 6.743 s`, `delta avg : 5.616 ms (178.1 fps)`, `logic : 431 ticks, 64 Hz` → **0.36 ticks per frame** |
@@ -650,7 +648,7 @@ demo's own `--frames` summary (wall-clock deltas), not from a stopwatch.
   export XDG_RUNTIME_DIR=$(mktemp -d)
   setsid dbus-run-session -- kwin_wayland --virtual --xwayland --socket dbd-test &
   export WAYLAND_DISPLAY=dbd-test
-  ./build/linux/foundation_demo --install=../../Higurashi-Daybreak --screen=battle \
+  ./build/linux/daybreak --install=Higurashi-Daybreak --screen=battle \
       --local-players=2 --frames=1500
   ```
   A healthy run prints `present mode : Fifo(vsync)` and `logic : N ticks, 60 Hz`
@@ -695,14 +693,14 @@ Nothing here is rung 5, on any target. (Linux's §3 captures are rung 4 and its
 ### Windows — rungs 3 and 4, then a fault
 
 ```bash
-cd remake/foundation
+cd "$(git rev-parse --show-toplevel)"
 ./build.sh deps && ./build.sh windows
 # a) interactive boot (movie -> title), no script: the #40 movie decodes on Windows
-wine build/windows/foundation_demo.exe --install=Z:/<abs>/Higurashi-Daybreak
+wine build/windows/daybreak.exe --install=Z:/<abs>/Higurashi-Daybreak
 # b) front end, three rounds, two humans, driven by the script
-wine build/windows/foundation_demo.exe --install=Z:/<abs>/Higurashi-Daybreak \
+wine build/windows/daybreak.exe --install=Z:/<abs>/Higurashi-Daybreak \
   --screen=title --local-players=2 \
-  --script=Z:/<abs>/remake/foundation/tests/scripts/frontend-1v1-rematch.txt
+  --script=Z:/<abs>/tests/scripts/frontend-1v1-rematch.txt
 ```
 
 `wine --version` on this machine: **wine-11.19**. Run inside an isolated headless
@@ -797,14 +795,14 @@ mkdir -p /tmp/dbd-web/rig && cd Higurashi-Daybreak/data
 cp -a title select teamselect vs win talk trail scenario chat sysse keyconfig \
       camera config object directX item effect aura bullet/001 bullet/002 \
       stage01 rena mion /tmp/dbd-web/rig/
-cp remake/foundation/tests/scripts/frontend-1v1-rematch.txt /tmp/dbd-web/rig/
-cd remake/foundation && source ~/emsdk/emsdk_env.sh
+cp tests/scripts/frontend-1v1-rematch.txt /tmp/dbd-web/rig/
+cd "$(git rev-parse --show-toplevel)" && source ~/emsdk/emsdk_env.sh
 emcmake cmake -S . -B build/web-data -GNinja \
   "-DCMAKE_EXE_LINKER_FLAGS=--preload-file /tmp/dbd-web/rig@/data"
 cmake --build build/web-data
 python3 -m http.server 8179 -d build/web-data
 # interactive boot: title screen (and the movie stub, below)
-#   http://127.0.0.1:8179/foundation_demo.html
+#   http://127.0.0.1:8179/daybreak.html
 # a live match, no front end:
 #   ...?args=--stage=/data/stage01|--character=/data/rena:0|--enemy=/data/mion:0|--match|--frames=4000
 ```
@@ -824,7 +822,7 @@ What did **not** work on the web:
   `#if defined(__EMSCRIPTEN__)` path was compiled and run for the first time
   here. An interactive launch logs
   `[error] [movie] the web build does not decode movies in wasm: the browser must
-  play them (HTMLVideoElement/WebCodecs); see remake/foundation/docs/MEDIA-INPUT.md`
+  play them (HTMLVideoElement/WebCodecs); see docs/MEDIA-INPUT.md`
   and moves on: `[menu] scene: opening (tick 0)` → `[menu] scene: title (tick 25)`.
   No crash, no silence, exactly the documented gap. It is a gap to close (issue
   #4's asset delivery), not a defect.
@@ -834,7 +832,7 @@ What did **not** work on the web:
   `Aborted(Assertion failed: Exception thrown, but exception catching is not
   enabled ...)` where Linux and Wine log the miss and walk on. Fixed in this
   change (`CMakeLists.txt`, `-fexceptions`); cost measured on the same tree:
-  `foundation_demo.wasm` 6,249,962 → 8,186,870 bytes (+31%).
+  `daybreak.wasm` 6,249,962 → 8,186,870 bytes (+31%).
 * **A scripted front-end run does not leave the selection screen.** The same
   script, the same build settings and the same roster reach VS and a battle on
   Linux and under Wine, but in the browser the run sits on the select screen for
@@ -965,14 +963,14 @@ fullscreen/resolution request actually did.
 ## 8. Reproducing the whole gate
 
 ```bash
-cd remake/foundation
+cd "$(git rev-parse --show-toplevel)"
 ./build.sh linux
 ctest --test-dir build/linux --output-on-failure          # §2 (includes §3.5's live-path test)
 ./build/linux/weapon_definition_test                      # §4.1
 python3 tests/showcase.py --check --allow-problems=43 --out-dir /tmp/sweep    # §4.2
 for p in 2 1 4; do                                        # §3
   case $p in 2) s=1v1;; 1) s=com;; 4) s=2v2;; esac
-  ./build/linux/foundation_demo --install=<game-dir> --screen=title \
+  ./build/linux/daybreak --install=<game-dir> --screen=title \
     --local-players=$p --script=tests/scripts/frontend-$s-rematch.txt \
     --headless --out=/tmp/rel-$s.ppm --size=1280x720 --frames=15500
   sha256sum /tmp/rel-$s.ppm   # the digest §3 quotes (NOT md5sum)

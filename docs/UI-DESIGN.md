@@ -3,7 +3,7 @@
 The current 2D/UI/HUD layer: textured quads, the battle HUD's `.cnv` atlas
 composition, implemented front-end screens, shared CJK-capable caption/text
 paths, and fallback diagnostics. It is built as `foundation_ui` by
-`CMakeLists.txt:99-132` and linked into `foundation_demo`. HUD/versus/match,
+`CMakeLists.txt:99-132` and linked into `daybreak`. HUD/versus/match,
 menu, result, countdown, and pause paths are wired from `src/main.cpp`; see
 [UI-INTEGRATION.md](UI-INTEGRATION.md) for the core seams and
 [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md) for current verification limits.

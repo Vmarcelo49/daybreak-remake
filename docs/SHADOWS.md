@@ -63,7 +63,7 @@ bindings (`FUN_00652220` at `0x652279`/`0x6524e2`, `FUN_00652af0` at
 The technique's own effect blob is slot 2 of the ten `D3DXCreateEffect` calls in
 `FUN_0064ff80` (`0x0064ff80`): `renderer+0x08` = the blob at `0x6a7b10`, length
 `0x32c` (`FUN_0064ff80:24-27`). It is committed as
-`remake/assets/shaders/effect_2.bin` and has exactly one technique
+`research/evidence/assets/shaders/effect_2.bin` and has exactly one technique
 (`SampleTexhnique`) with one pass, one vs_1_1 and one ps_1_1:
 
 ```hlsl
@@ -182,7 +182,7 @@ when the stage object's byte `+0x2c` is non-zero and mode 0 otherwise. Mode 3 is
 * `"Tex1"` (handle `0x6aac00`) = `DAT_006d13f4` = `renderer+0x34`, **the shadow map**.
 
 Its effect is slot 3 (`renderer+0x28 == 3`), i.e. the blob at `0x6a7e40`, length
-`0x7ac` (`FUN_0064ff80:31-34`), committed as `remake/assets/shaders/effect_3.bin`:
+`0x7ac` (`FUN_0064ff80:31-34`), committed as `research/evidence/assets/shaders/effect_3.bin`:
 
 ```hlsl
 // vs_1_1 (blob +0x46c), 24 slots
@@ -228,7 +228,7 @@ disassembled source is `r0.wwww`. With the recovered near/far the whole scene ma
 into `z/w` in roughly `[0.13, 0.44]`, and a fighter's own height is only ~130
 units of light-space depth (~0.12 of NDC), so a literal `> 0.5` test could never
 shadow a ground receiver — while the original's own prints plainly show ground
-shadows (`remake/docs/reference/battle-stamina.webp`: a full character silhouette
+shadows (`docs/reference/battle-stamina.webp`: a full character silhouette
 on the ground next to the runner). The two readings that make the code work are
 `> 0` (the natural codegen for an HLSL `a > b`, and the reading under which the
 cleared alpha of 1.0 and the 0.95 clamp both do exactly their job) and "the

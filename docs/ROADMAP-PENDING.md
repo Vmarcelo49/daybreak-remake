@@ -132,7 +132,7 @@ outside its band, because a full charge costs the fighter its firing pose.
 asset-backed section without an install). Asset-backed 1v1:
 
 ```bash
-SDL_AUDIODRIVER=dummy ./remake/foundation/build/linux/foundation_demo \
+SDL_AUDIODRIVER=dummy ./build/linux/daybreak \
   --headless --install=Higurashi-Daybreak --screen=battle \
   --frames=11000 --out=/tmp/battle.ppm --size=320x240
 ```
@@ -244,9 +244,9 @@ match rules and combat statistics. All 24 Linux CTest tests pass; Linux,
 Windows cross-build and web asset builds succeed. Native smoke recipe:
 
 ```bash
-SDL_AUDIODRIVER=dummy ./remake/foundation/build/linux/foundation_demo \
+SDL_AUDIODRIVER=dummy ./build/linux/daybreak \
   --headless --install=Higurashi-Daybreak --screen=title \
-  --script=remake/foundation/tests/scripts/frontend-smoke.txt \
+  --script=tests/scripts/frontend-smoke.txt \
   --frames=4700 --out=/tmp/frontend-smoke.ppm --size=800x600
 ```
 
@@ -390,10 +390,10 @@ Rika/Takano run completes 850 ticks with Guard → Walk → Jump, exhaustion to
 Idle and a fresh Guard hold in its trace (`RESULT: ok`). Reproduce with:
 
 ```bash
-SDL_AUDIODRIVER=dummy DAYBREAK_CAMINFO=1 ./remake/foundation/build/linux/foundation_demo \
+SDL_AUDIODRIVER=dummy DAYBREAK_CAMINFO=1 ./build/linux/daybreak \
   --headless --install=Higurashi-Daybreak --match --stage=data/stage21 \
   --character=data/rika --enemy=data/takano --frames=850 --size=400x400 \
-  --dt=0.015625 --script=remake/foundation/tests/scripts/guard-lifecycle.txt \
+  --dt=0.015625 --script=tests/scripts/guard-lifecycle.txt \
   --out=/tmp/guard-lifecycle.ppm
 ```
 
@@ -1404,7 +1404,7 @@ vertex stride changes. Full evidence, per-arm cost, the authoring gaps (the gene
 and the generated normals are placeholders for authored data), the four experiments that
 were deliberately **not** run (J stepped pose, K unlit VFX, L impact presentation, M
 stage-aware colour) and the recommendation: `foundation/docs/NPR-EXPERIMENTS.md`; captures:
-`tests/npr-evidence/`.
+`research/evidence/npr-evidence/`.
 
 ### Row 1 — shadows (`DAT_006cfcea`) — IMPLEMENTED (LIGHT-SPACE SHADOW MAP)
 
@@ -1508,8 +1508,8 @@ stage-aware colour) and the recommendation: `foundation/docs/NPR-EXPERIMENTS.md`
   no character swap: control never transfers between fighters, and the only
   switch mechanic is the reticle target cycle (`FUN_00421e30`, which also
   plays the 0xd/0xe/0xf switch cues). The swap story traces to old PT
-  `remake/docs/roadmap.md:127-128`, an inference from voice-dir names
-  (`tagfront`/`tagback`/`tagOK`) that `remake/docs/game-spec.md:93` and then
+  `docs/archive/roadmap.md:127-128`, an inference from voice-dir names
+  (`tagfront`/`tagback`/`tagOK`) that `docs/game-spec.md:93` and then
   `fighter.h` repeated. Those keys sit between `tactics` and `thank` in the
   16-byte key table — a team-communication cluster (orders, callouts,
   thanks), consistent with COM-partner coordination, not a swap. Consequences
@@ -1890,7 +1890,7 @@ counts, and the team-select diamond's y anchor discrepancy. Scenes 2 and
   unit-covered, live-unexercised. The standalone `--match`/`--versus` parity paths stay silent
   by design. The real-device check is a *measurement*, not a listening check — `parec` on the
   default sink's monitor captured the port's own streams at rms 0.25-0.40 across the battle
-  window after they were unmuted; PipeWire stream-restore had `foundation_demo` muted, which is
+  window after they were unmuted; PipeWire stream-restore had `daybreak` muted, which is
   why the same run was silent beforehand.
 
 ### F1. A seam from the screen layer to the audio backend (menu SEs) — DONE
@@ -1930,7 +1930,7 @@ counts, and the team-select diamond's y anchor discrepancy. Scenes 2 and
   and D2's macOS bullet all agree. No execution evidence exists anywhere.
 * **Sketch.** Either keep the explicit "unverified" status (the honest
   default every doc currently uses) or do a first run on real hardware:
-  wgpu-native prebuilts + `sdl3webgpu`'s Metal path, `foundation_demo`
+  wgpu-native prebuilts + `sdl3webgpu`'s Metal path, `daybreak`
   offscreen, and record the adapter/backend lines. Nothing in the code is
   claimed to block it; nothing has been run.
 

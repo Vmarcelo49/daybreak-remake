@@ -7,7 +7,7 @@ Evidence base: `DaybreakDX.exe` (base 0x400000; .text 0x401000-0x6a0fff, .rdata 
 
 The HUD atlases are **game assets and are not committed**: this document names them, gives
 their sub-rects, and says how to reproduce every dump with the tools already in the repo
-(`remake/tools/asset-tools/extract_dat.py` lists/extracts bundle entries and
+(`tools/asset-tools/extract_dat.py` lists/extracts bundle entries and
 `cnv_convert.py` decodes a `.cnv`), so a reader can re-measure anything here without
 trusting a screenshot.
 
@@ -141,11 +141,11 @@ texture art or GDI text (see §4).
 ## 3. Asset inventory
 
 Bundle read order matters: `AssetSource` resolves the **first** matching entry in
-precedence order (earliest-registered archive wins; `remake/foundation/src/assets/dat_bundle.cpp`).
+precedence order (earliest-registered archive wins; `src/assets/dat_bundle.cpp`).
 The exe asks for
 `data/object/*.bmp` but the archives ship `*.cnv` — the loader maps the extension
 (`FUN_006560c0` @0x006560c0 → `FUN_00656c80`; `cnv` header reverse-engineered from
-`FUN_00665e70`, documented in `remake/tools/asset-tools/cnv_convert.py`). **Two of these
+`FUN_00665e70`, documented in `tools/asset-tools/cnv_convert.py`). **Two of these
 entries exist in more than one bundle with different bytes** (§6 Q2).
 
 Dumped to PNG for inspection during the investigation (32bpp RGBA); reproduce with the recipe in §7.
@@ -337,11 +337,11 @@ this document can be re-derived with the tools already here:
 
 | what | how |
 |---|---|
-| list a bundle's entries | `python3 remake/tools/asset-tools/extract_dat.py` (see its usage) — header-only listing, no full extraction |
-| dump one `.cnv` atlas to an image | extract the entry, then `python3 remake/tools/asset-tools/cnv_convert.py <file.cnv> <out.png>` (32bpp; keep RGBA) |
+| list a bundle's entries | `python3 tools/asset-tools/extract_dat.py` (see its usage) — header-only listing, no full extraction |
+| dump one `.cnv` atlas to an image | extract the entry, then `python3 tools/asset-tools/cnv_convert.py <file.cnv> <out.png>` (32bpp; keep RGBA) |
 | sub-rect / alpha bounding boxes / connected components | any image tool; the sprite table in §3 already gives the rects, so this is only needed to check a claim |
-| measure the print | `remake/docs/reference/battle-hud.webp`, converted to PNG; remember the (-2,+6) print-vs-frame offset from the top of this document |
-| print-parity capture vs `battle-hud.webp` (pinned spawn, `ROADMAP-PENDING.md` A2) | `remake/foundation/build/linux/foundation_demo --headless --out=/tmp/bh_p0.ppm --stage=<data>/stage01 --character=<data>/rena --enemy=<data>/mion --match --camera=arena --spawn=-463,200,-2200 --spawn2=-1363,200,-2200 --frames=150 --size=800x600`, then `python3 remake/foundation/tests/hud_bands.py /tmp/bh_p0.ppm --bands scene-floor` (expect 0.2772). Pinned: P1 `points[0]`, P2 `points[1]`; converged eye `(-174,411,-2200)`. `--frames` ≥121 is load-bearing (match eye converges 10%/call from the origin); the `camera arena at ...` log line is the static remake-preset seed, not the rendered match camera (`gameplay::ArenaCamera`, original preset); capturing fixes `--dt` at 1/60, so the run is deterministic; re-check all four spawn configs with `python3 remake/foundation/tests/pin_viewpoint.py` |
+| measure the print | `docs/reference/battle-hud.webp`, converted to PNG; remember the (-2,+6) print-vs-frame offset from the top of this document |
+| print-parity capture vs `battle-hud.webp` (pinned spawn, `ROADMAP-PENDING.md` A2) | `build/linux/daybreak --headless --out=/tmp/bh_p0.ppm --stage=<data>/stage01 --character=<data>/rena --enemy=<data>/mion --match --camera=arena --spawn=-463,200,-2200 --spawn2=-1363,200,-2200 --frames=150 --size=800x600`, then `python3 tests/hud_bands.py /tmp/bh_p0.ppm --bands scene-floor` (expect 0.2772). Pinned: P1 `points[0]`, P2 `points[1]`; converged eye `(-174,411,-2200)`. `--frames` ≥121 is load-bearing (match eye converges 10%/call from the origin); the `camera arena at ...` log line is the static remake-preset seed, not the rendered match camera (`gameplay::ArenaCamera`, original preset); capturing fixes `--dt` at 1/60, so the run is deterministic; re-check all four spawn configs with `python3 tests/pin_viewpoint.py` |
 | string and address lookups in the exe | `research/tools/` and the PE section map in `research/binary_data/metadata.txt` (VA ↔ file offset) |
 
 ## 8. Appendix — per-player HUD sprite slots (`FUN_00642a00`, 0x00642a00)

@@ -5,7 +5,7 @@
 // twice. `data/stage21` is not "stage 21" — it is the schoolyard at *night*, and the DX9
 // remake hardcodes it, so days of frame comparison were measured on the night variant
 // while the reference prints show the day one. `data/title` is not the title screen. The
-// identification and its evidence live in `remake/docs/ASSET-CATALOG.md`; this header is
+// identification and its evidence live in `docs/ASSET-CATALOG.md`; this header is
 // the one place code should ask instead of parsing a path.
 //
 // The stage scheme is a two-digit code, not a number (catalog §1.1):

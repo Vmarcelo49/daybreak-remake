@@ -3,13 +3,13 @@
 This records the pre-integration scratch verification, not the current UI status.
 The checks ran from a disposable `/tmp/ui_verify` directory and did not change a
 shared build file. At that point they compiled selected `src/ui/*` files directly
-against `webgpu.h`; the UI was subsequently integrated into `foundation_demo`
+against `webgpu.h`; the UI was subsequently integrated into `daybreak`
 (`CMakeLists.txt:99-132`, `src/main.cpp:5091-5176,6207-6212`).
 
 ## Commands (exact)
 
 ```bash
-F=/home/marcelo/Projetos/daybreak-decomp/remake/foundation
+F=$(git rev-parse --show-toplevel)
 W=$F/build/linux/_deps/wgpu-linux-x86_64-release-src/include
 g++ -std=gnu++17 -DWEBGPU_BACKEND_WGPU -Wall -Wextra \
   -I$F/src -isystem $W -isystem $W/webgpu \

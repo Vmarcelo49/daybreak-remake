@@ -169,7 +169,7 @@ is untested because no shipped duplicate is known to depend on its order.
 The two sources are *not* interchangeable, which is why the order matters: 983 names
 ship in more than one bundle and 445 groups differ in bytes. `extract_dat.py` leaves the
 last copy in a tree while the game reads the first, so `data/rika/01.X` is 9,675,158
-bytes from the bundles (what DX9 loads — `remake/tests/parity-baseline/logs/asset-*.log`,
+bytes from the bundles (what DX9 loads — `research/evidence/parity-baseline/logs/asset-*.log`,
 index 6017) and 9,893,738 from the extracted tree. `--list` prints each model's byte
 count so the loaded copy is visible.
 
@@ -438,7 +438,7 @@ See `docs/ROADMAP-PENDING.md` for the remaining work.
 Where to read next: plan and handoff in `docs/FULL-REPLACEMENT-PLAN.md` (§5 quirks,
 §8 cutover) then `docs/ROADMAP-PENDING.md`; the ordered path to the release claim
 and what the gate does not cover in `docs/RELEASE-LINUX.md`; assets in
-`remake/docs/ASSET-CATALOG.md`; HUD tables in `docs/BATTLE-HUD-SPEC.md`; screens
+`docs/ASSET-CATALOG.md`; HUD tables in `docs/BATTLE-HUD-SPEC.md`; screens
 in `docs/FRONTEND-PLAN.md`; per-target build logs in `docs/BUILD-linux.md`,
 `docs/BUILD-windows.md` and `docs/BUILD-web.md`; measured RAM/GPU footprint and
 the minimum-requirements estimate in `docs/PERFORMANCE.md`.

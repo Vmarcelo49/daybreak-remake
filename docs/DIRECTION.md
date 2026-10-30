@@ -34,10 +34,10 @@ input ─► sim::Battle (wrapper) ─► vendored core
 
 | Location | Role |
 |---|---|
-| `remake/foundation/src/sim/core/` | Vendored files, attributed. Every local change is listed in its `PATCHES.md`. Generated bodies are never reformatted |
-| `remake/foundation/src/sim/battle.{h,cpp}` | The only product code that includes the core. Owns the update order recovered in `RuntimeBattle::update` |
+| `src/sim/core/` | Vendored files, attributed. Every local change is listed in its `PATCHES.md`. Generated bodies are never reformatted |
+| `src/sim/battle.{h,cpp}` | The only product code that includes the core. Owns the update order recovered in `RuntimeBattle::update` |
 | `game::BattleView` (M3) | The read interface the product consumes |
-| `remake/foundation/src/sim/simctl.cpp` | Headless runs, scripted input and per-tick traces |
+| `src/sim/simctl.cpp` | Headless runs, scripted input and per-tick traces |
 
 Roster indices at the `sim::` boundary are the core's (`character_names.hpp`), which differ
 from our data-directory order. Every combo is still a character **and** a weapon.

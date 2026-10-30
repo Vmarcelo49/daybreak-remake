@@ -2,14 +2,14 @@
 """
 gen_sjis_table.py — re-homed from webgpu-mvp/tools (Phase 5 deletes that tree).
 
-Why it moved: remake/foundation/src/assets/sjis_table.h is a generated header that the
-foundation still ships, and this is its only generator. Deleting the prototype would
+Why it moved: src/assets/sjis_table.h is a generated header that the
+product still ships, and this is its only generator. Deleting the prototype would
 have left the table unregenerable, so the tool now lives with the other asset tools.
 
-Run it against the foundation's header path to keep the vendored copy in step:
+Run it against the product's header path to keep the vendored copy in step:
 
-    python3 remake/tools/asset-tools/gen_sjis_table.py --full \
-        -o remake/foundation/src/assets/sjis_table.h
+    python3 tools/asset-tools/gen_sjis_table.py --full \
+        -o src/assets/sjis_table.h
 
 Original docstring follows.
 

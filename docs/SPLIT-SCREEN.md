@@ -86,7 +86,7 @@ right unit.
 
 ## Verification (2026-10-04, Linux, RADV, headless captures)
 
-- Host suite: `ctest --test-dir remake/foundation/build/linux --output-on-failure` —
+- Host suite: `ctest --test-dir build/linux --output-on-failure` —
   **30/30 pass** (29 before this change + `view_layout_test`).
 - `view_layout_test` pins the cell geometry at 800×600, 1920×1080, 3440×1440, 1080×1920 and
   1373×777 (inside, disjoint, exact tiling, 1-px bars at 800×600), the controller-keyed
@@ -130,21 +130,21 @@ right unit.
 
 ```bash
 # host suite
-ctest --test-dir remake/foundation/build/linux --output-on-failure
+ctest --test-dir build/linux --output-on-failure
 
 # two humans, 800x600, capture at frame 900 (180 of them are the countdown)
-./build/linux/foundation_demo --headless --install=<game-dir> --screen=battle \
+./build/linux/daybreak --headless --install=<game-dir> --screen=battle \
   --local-players=2 --script=tests/scripts/split-two-human.txt \
   --frames=900 --out=/tmp/two.ppm --size=800x600
 
 # four humans, 2v2, 1920x1080
-./build/linux/foundation_demo --headless --install=<game-dir> --screen=battle \
+./build/linux/daybreak --headless --install=<game-dir> --screen=battle \
   --local-players=4 --frames=3200 --out=/tmp/four.ppm --size=1920x1080
 
 # the same with a window instead of a capture (a --script= run ignores the
 # physical devices by default, so a pad another application is using cannot
 # reach this run's menus)
-./build/linux/foundation_demo --install=<game-dir> --screen=battle \
+./build/linux/daybreak --install=<game-dir> --screen=battle \
   --local-players=2 --script=tests/scripts/split-two-human.txt --frames=1500
 ```
 

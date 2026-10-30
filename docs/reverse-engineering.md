@@ -3,9 +3,9 @@
 This is a historical RE notebook for the original 2007 executable, not a current
 DX9 implementation guide. `DaybreakDX.exe` (2.8 MB) was analyzed with radare2
 5.9.8 (`remake/scripts/r2.sh`). DX9/D3DX claims below describe the original
-binary; the current product is `remake/foundation/` (SDL3 + WebGPU), and the old
+binary; the current product is the repository root (SDL3 + WebGPU), and the old
 `remake/src/` remake tree was deleted in Phase 5. Current parser and runtime
-claims should be checked against foundation source and `remake/docs/decisions.md`.
+claims should be checked against foundation source and `docs/decisions.md`.
 
 ## 1. PE header
 
@@ -46,7 +46,7 @@ claims should be checked against foundation source and `remake/docs/decisions.md
 | `OLEAUT32.dll`| COM automation                                          |
 | `IMM32.dll`   | Input Method Manager (Japanese text input)             |
 
-**Note**: the game ships with `d3dx9_25.dll` (DX9 March 2006 SDK). The foundation does not link any D3DX — it parses `.X` itself (`foundation/src/assets/xmodel.h`: `xm::loadMemory`, `xmodel.h:267`) on the SDL3 + WebGPU path — so there is no `d3dx9_43` import to pick. The DLL version only matters to the frozen DX9 reference bank under `remake/tests/parity-baseline/`, not to what we ship.
+**Note**: the game ships with `d3dx9_25.dll` (DX9 March 2006 SDK). The foundation does not link any D3DX — it parses `.X` itself (`foundation/src/assets/xmodel.h`: `xm::loadMemory`, `xmodel.h:267`) on the SDL3 + WebGPU path — so there is no `d3dx9_43` import to pick. The DLL version only matters to the frozen DX9 reference bank under `research/evidence/parity-baseline/`, not to what we ship.
 
 ## 4. .DAT parser — confirmed bit-exact match
 
@@ -111,7 +111,7 @@ for (DWORD i = 0; i < filesize; ++i) {
 ```
 
 The original's standalone-file key formula is `((offset >> 1) & 0xff) | 0x08`.
-Compare with `remake/foundation/src/assets/dat_crypto.cpp` for the port implementation.
+Compare with `src/assets/dat_crypto.cpp` for the port implementation.
 
 ### 4.3 Bootstrap
 
@@ -166,9 +166,9 @@ Microsoft (R) D3DX9 Shader Compiler 9.06.168.0000   (D3DX9 embedded shader compi
 
 - **No “cnv” string** was found in the executable. This describes the original's
   BMP/WAV/OGG file requests, not the port's asset pipeline: the current
-  foundation decodes shipped CNV images/audio at runtime (`remake/foundation/src/assets/cnv.h`).
+  foundation decodes shipped CNV images/audio at runtime (`src/assets/cnv.h`).
 - **`DInput-Error`** is present; the original initializes DirectInput. The port
-  uses SDL3 (`remake/foundation/src/input/`).
+  uses SDL3 (`src/input/`).
 - **Japanese strings** are present as Shift-JIS. The port decodes relevant names
   and text before its UTF-8 renderer.
 - Compiled with VS2003/2005 (inferred from the PDB path and runtime strings).
@@ -188,9 +188,9 @@ Microsoft (R) D3DX9 Shader Compiler 9.06.168.0000   (D3DX9 embedded shader compi
 
 The original's format is the RE result; the old parser-column comparison is
 retired because its `remake/src/` implementation was deleted in Phase 5. The
-current foundation sources are `remake/foundation/src/assets/dat_bundle.cpp`
+current foundation sources are `src/assets/dat_bundle.cpp`
 and `dat_crypto.cpp`; current runtime/build evidence is in
-`remake/foundation/docs/BUILD-linux.md` and `remake/foundation/docs/RELEASE-CHECKLIST.md`.
+`docs/BUILD-linux.md` and `docs/RELEASE-CHECKLIST.md`.
 
 ## 8. Files / locations for the next stages
 
@@ -327,8 +327,8 @@ The naming is in Japanese:
   through small obstacles that characters would collide with.
 
 The foundation currently loads and identifies the three collision roles in
-`remake/foundation/src/assets/scene.h` and queries them through
-`remake/foundation/src/physics/raycast.h`. The closest-hit (`raycastModel`) and
+`src/assets/scene.h` and queries them through
+`src/physics/raycast.h`. The closest-hit (`raycastModel`) and
 early-out (`raycastModelAny`) shapes correspond to `FUN_0042d3b0` /
 `FUN_0042cd50` and `FUN_0042d2c0`; old snake_case `raycast_model*` names refer
 to the deleted DX9 side.
@@ -427,12 +427,12 @@ actual hit test still being a triangle raycast.
 
 | Original-binary fact | Current foundation reference |
 |---|---|
-| In-memory `.X` loader; `0x220` D3DX managed-buffer flags | `remake/foundation/src/assets/xmodel.h` implements the parser/controller without D3DX flags |
+| In-memory `.X` loader; `0x220` D3DX managed-buffer flags | `src/assets/xmodel.h` implements the parser/controller without D3DX flags |
 | Up to two original animation tracks at load | `xm::Controller` supports multiple tracks; see `xmodel.h` |
 | Biped frame names such as `Bip01_*` | Preserved as asset naming facts; foundation frame lookup is in `xmodel.h` |
-| Collision uses mesh-space ray tests, no per-frame transform | `remake/foundation/src/physics/raycast.h` documents the matching query surface and traversal |
+| Collision uses mesh-space ray tests, no per-frame transform | `src/physics/raycast.h` documents the matching query surface and traversal |
 | Original closest-hit/early-out walkers | Foundation `raycastModel` / `raycastModelAny` are the corresponding APIs |
-| Stage uses collision, camera, and projectile meshes | Roles and stage loading are in `remake/foundation/src/assets/scene.h`; camera queries in `src/physics/raycast.h` |
+| Stage uses collision, camera, and projectile meshes | Roles and stage loading are in `src/assets/scene.h`; camera queries in `src/physics/raycast.h` |
 
 The former compatibility table compared against the deleted DX9 remake and
 contained obsolete snake_case names and paths. This replacement is a navigation
@@ -441,7 +441,7 @@ behavior and verification.
 
 ## 12. radare2 setup (for future sessions)
 
-`remake/scripts/r2.sh` wraps `r2` and the various `r2*` tools (`rabin2`, `rafind2`, `rahash2`, `rasm2`, etc.) with the correct `LD_LIBRARY_PATH` and `MAGIC` env vars. The radare2 install itself lives under `remake/tools/r2/` and is fetched by `remake/scripts/fetch_deps.sh` (see the r2 block in `fetch_deps.sh`).
+`remake/scripts/r2.sh` wraps `r2` and the various `r2*` tools (`rabin2`, `rafind2`, `rahash2`, `rasm2`, etc.) with the correct `LD_LIBRARY_PATH` and `MAGIC` env vars. The radare2 install itself lives under `remake/tools/r2/` and is fetched by `scripts/fetch_deps.sh` (see the r2 block in `fetch_deps.sh`).
 
 ```bash
 ./remake/scripts/r2.sh rabin2 -I path/to/DaybreakDX.exe
@@ -472,7 +472,7 @@ Each character ships with:
 - `data/<char>/00.X` — main 3D model (binary `.X`, 7-10 MB each)
 - `data/<char>/01.X` — alternate model (costume / form change?)
 - `data/<char>/00.dat`, `01.dat`, `02.dat` — animation/move data (referenced as `"00.X"` etc internally — confirmed by hex dump of `takano/02.dat`)
-- `data/<char>/*.cnv` — CNV textures; the original requests BMP names, while the current foundation decodes CNV at runtime (`remake/foundation/src/assets/cnv.h`).
+- `data/<char>/*.cnv` — CNV textures; the original requests BMP names, while the current foundation decodes CNV at runtime (`src/assets/cnv.h`).
 
 ### Stages confirmed (paths `data/stageNN/`)
 
@@ -497,7 +497,7 @@ The game ships `.X` files in **three different D3DX-supported encodings**:
 
 All three encodings are accepted by the original D3DX in-memory loader. The
 foundation parser also handles text, binary, and bzip-compressed `.X` (see
-`remake/foundation/src/assets/xmodel.h`); current parser verification is
+`src/assets/xmodel.h`); current parser verification is
 tracked in the foundation build/release records.
 
 ### Asset integrity validated
@@ -541,7 +541,7 @@ This confirms:
 This install-backed validation confirmed the parser at the time and documented
 representative `.X` payloads. The “start M1 (asset manager)” milestone is
 obsolete: the current foundation asset layer, parser, collision, and runtime
-paths are already in place. See `remake/foundation/docs/BUILD-linux.md` and
+paths are already in place. See `docs/BUILD-linux.md` and
 `RELEASE-CHECKLIST.md` for current run/build evidence.
 
 ## 14. Camera system (RE round 2 — focused investigation)
@@ -748,8 +748,8 @@ method (`foundation/src/gameplay/arena_camera.h:180-188`:
 
 The following were recommendations at the time of this RE pass, not current
 open work. The `gameplay::ArenaCamera` and camera collision path now exist in
-`remake/foundation/src/gameplay/arena_camera.{h,cpp}` and
-`remake/foundation/src/physics/raycast.h`; the banked DX9 oracle and original
+`src/gameplay/arena_camera.{h,cpp}` and
+`src/physics/raycast.h`; the banked DX9 oracle and original
 prints remain the available comparisons. The original-derived ideas were:
 
 1. **Hold a target pointer** (not a fixed position).  The camera always
@@ -793,6 +793,6 @@ prints remain the available comparisons. The original-derived ideas were:
   yes, but we haven't traced the actual shake animation data.
 
 These were open questions when the RE pass was written. Current release and
-verification status is tracked in `remake/foundation/docs/ROADMAP-PENDING.md`
+verification status is tracked in `docs/ROADMAP-PENDING.md`
 and `RELEASE-CHECKLIST.md`; this historical list is not the current task list.
 

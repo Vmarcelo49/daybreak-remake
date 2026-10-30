@@ -1,10 +1,10 @@
 # Linux (native)
 
 ```bash
-cd remake/foundation   # all paths below are relative to here
+# run from the repository root; all paths below are relative to it
 ./build.sh deps        # once
 ./build.sh linux
-./build/linux/foundation_demo --frames=180
+./build/linux/daybreak --frames=180
 ```
 
 Release artifact: `./scripts/package_linux.sh` builds and stages
@@ -25,7 +25,7 @@ for anything that moves the binary away from that directory — point
 `LD_LIBRARY_PATH` at the executable's own directory only in that case.
 
 Native checks need two local-only faces in `third_party/fonts/` (gitignored;
-fetched by `remake/scripts/fetch_deps.sh`, the host-toolchain-and-fonts script —
+fetched by `scripts/fetch_deps.sh`, the host-toolchain-and-fonts script —
 not by `build.sh deps`, which only fetches third-party sources): `NotoSansCJKjp-Regular.otf`, the CJK face
 `text_test` looks for (`tests/text_test.cpp:406`), and
 `LiberationSans-Bold.ttf`, the Latin face `hud_text_test` needs. Without them

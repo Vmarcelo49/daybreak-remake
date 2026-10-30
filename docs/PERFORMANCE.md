@@ -79,7 +79,7 @@ for the browser target.
 
 ```bash
 # RAM and per-process GPU memory while a windowed battle runs
-./remake/foundation/build/linux/foundation_demo --install=Higurashi-Daybreak \
+./build/linux/daybreak --install=Higurashi-Daybreak \
     --screen=battle --local-players=4 --frames=3000 &
 PID=$!
 for n in /proc/$PID/fdinfo/*; do
