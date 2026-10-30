@@ -9,6 +9,8 @@
 #include "audio/audio_engine.h"
 #include "frontend/frontend_settings.h"
 #include "frontend/screen_opening.h"
+
+#include <filesystem>
 #include "battle/fixed_step.h"
 
 namespace ui {
@@ -54,8 +56,8 @@ void MovieAudio::close() {
 }
 
 OpeningScreen::OpeningScreen(SpriteRenderer& batch, fnd::input::Backend& input,
-                             MovieAudio& audio, std::string path)
-    : batch_(batch), input_(input), audio_(audio), path_(std::move(path)) {}
+                             MovieAudio& audio, std::string path, ScreenId own, ScreenId next)
+    : batch_(batch), input_(input), audio_(audio), path_(std::move(path)), own_(own), next_(next) {}
 
 bool OpeningScreen::takeBgmRequest() {
     const bool pending = bgmPending_;
@@ -85,11 +87,16 @@ ScreenId OpeningScreen::update(const ScreenInput& in) {
         fnd::movie::AudioPush sink = [this](const int16_t* stereo, size_t frames) {
             return audio_.push(stereo, frames);
         };
-        if (!player_.open(file, std::move(sink), openError)) {
+        // Only op.mpg and staffroll.mpg are loose in the install; the rest are archive entries.
+        std::vector<uint8_t> bytes;
+        std::error_code missing;
+        if (!std::filesystem::exists(std::filesystem::u8path(file), missing))
+            fnd::assets::assetSource().read(path_, bytes);
+        if (!player_.open(file, std::move(sink), openError, std::move(bytes))) {
             failed_ = true;
             error_ = openError;
             std::fprintf(stderr, "[movie] %s\n", openError.c_str());
-            return ScreenId::Title;
+            return next_;
         }
         bgmPending_ = true;
         std::printf("movie        : %s (%s)\n", path_.c_str(), player_.describeFormat().c_str());
@@ -124,7 +131,7 @@ ScreenId OpeningScreen::update(const ScreenInput& in) {
                         (unsigned long long)player_.framesPresented(), player_.frameTime(),
                         (double)player_.audioFramesPushed() / fnd::movie::kAudioRate);
         }
-        return ScreenId::Title;
+        return next_;
     }
     // The recovered skip input (Return/LAlt/RAlt) OR the front-end's own buttons.
     //
@@ -136,9 +143,9 @@ ScreenId OpeningScreen::update(const ScreenInput& in) {
     if (movieSkipHeld([this](int sc) { return input_.key_down(sc); }) || in.confirm || in.cancel) {
         std::printf("movie        : skipped at frame %llu (%.3f s)\n",
                     (unsigned long long)player_.framesPresented(), player_.frameTime());
-        return ScreenId::Title;
+        return next_;
     }
-    return ScreenId::Opening;   // stay
+    return own_;   // stay
 }
 
 void OpeningScreen::draw(SpriteRenderer& batch) const {
@@ -168,12 +175,12 @@ void OpeningScreen::draw(SpriteRenderer& batch) const {
 
 std::unique_ptr<Screen> makeOpeningScreen(SpriteRenderer& batch, fnd::input::Backend& input,
                                           MovieAudio& audio, std::string path,
-                                          std::string& error) {
+                                          std::string& error, ScreenId own, ScreenId next) {
     // An unopenable movie is not a construct failure: the scene is built, reports it from
     // inside its own first update and leaves for the title (the original's scene is built
     // the same way, and FUN_0065c080's own failure just leaves the stream closed).
     (void)error;
-    return std::make_unique<OpeningScreen>(batch, input, audio, std::move(path));
+    return std::make_unique<OpeningScreen>(batch, input, audio, std::move(path), own, next);
 }
 
 }  // namespace ui

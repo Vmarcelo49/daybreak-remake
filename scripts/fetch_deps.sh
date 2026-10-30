@@ -82,17 +82,6 @@ if [ ! -e "$CJK_FONT" ]; then
 fi
 verify_sha256 "$CJK_FONT" "$CJK_SHA256"
 
-# Noto Sans CJK JP Bold (OFL 1.1): the story dialogue's stand-in for ＭＳ ゴシック bold.
-STORY_FONT="$tp/fonts/NotoSansCJKjp-Bold.otf"
-STORY_SHA256=e53dcb0dcb2922e45d01aae1ebd2f382bb81d4229b18b6b883bd170678af1f76
-if [ ! -e "$STORY_FONT" ]; then
-    echo "  Noto Sans CJK JP Bold: fetching"
-    curl -fsSL --retry 3 -o "$STORY_FONT.tmp" \
-        "https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJKjp-Bold.otf"
-    mv "$STORY_FONT.tmp" "$STORY_FONT"
-fi
-verify_sha256 "$STORY_FONT" "$STORY_SHA256"
-
 # Liberation Sans Bold (OFL 1.1): the Arial substitute tests/hud_text_test.cpp pins against
 # the banked DX9 frames. The upstream release has no binary asset, so it comes from the .deb.
 LATIN_FONT="$tp/fonts/LiberationSans-Bold.ttf"

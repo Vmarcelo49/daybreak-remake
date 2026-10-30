@@ -65,7 +65,7 @@ cmake --install "$root/build/linux" --prefix "$stage" >/dev/null
 echo "== required files =="
 required=(
     daybreak-bin daybreak README-LINUX.md VERSION
-    assets/fonts/gyrotrope-black.otf assets/fonts/NotoSansCJKjp-Regular.otf assets/fonts/NotoSansCJKjp-Bold.otf
+    assets/fonts/gyrotrope-black.otf assets/fonts/NotoSansCJKjp-Regular.otf
     lib/libwgpu_native.so lib/libSDL3.so.0
     LICENSES/README.md LICENSES/SDL3.txt LICENSES/wgpu-native-MIT.txt
     LICENSES/SIL-OFL-1.1.txt LICENSES/glm-MIT.txt LICENSES/stb.txt

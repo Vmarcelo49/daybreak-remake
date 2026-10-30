@@ -49,7 +49,9 @@ class MoviePlayer {
     // so the sequence header is validated here rather than presenting 90 seconds of black
     // (issue #40's error-handling requirement). `push` may be null (silent playback); the
     // return value is the frames the sink accepted, for the A/V accounting.
-    bool open(const std::string& path, AudioPush push, std::string& error);
+    // `bytes`, when given, is the stream itself and `path` only names it in messages.
+    bool open(const std::string& path, AudioPush push, std::string& error,
+              std::vector<uint8_t> bytes = {});
     void close();
 
     // Advances playback by `dt` seconds of wall time, decodes what is due within it,
@@ -99,6 +101,7 @@ class MoviePlayer {
     uint64_t framesPresented_ = 0;
     size_t audioFramesPushed_ = 0;
     bool open_ = false, ended_ = false;
+    std::vector<uint8_t> bytes_;
     std::vector<uint8_t> rgba_;
     std::vector<int16_t> audio_;
 };

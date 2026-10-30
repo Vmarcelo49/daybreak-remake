@@ -118,7 +118,7 @@ inline bool movieSkipHeld(HeldFn&& held) {
 class OpeningScreen final : public Screen {
   public:
     OpeningScreen(SpriteRenderer& batch, fnd::input::Backend& input, MovieAudio& audio,
-                  std::string path);
+                  std::string path, ScreenId own = ScreenId::Opening, ScreenId next = ScreenId::Title);
     ScreenId update(const ScreenInput& in) override;
     void draw(SpriteRenderer& batch) const override;
     const char* name() const override { return "opening"; }
@@ -135,6 +135,7 @@ class OpeningScreen final : public Screen {
     fnd::input::Backend& input_;
     MovieAudio& audio_;
     std::string path_;
+    ScreenId own_, next_;
     fnd::movie::MoviePlayer player_;
     // Written from draw(), which the Screen contract makes const (the original's draw is
     // too, and it is where its own texture upload lives).
@@ -148,6 +149,7 @@ class OpeningScreen final : public Screen {
 };
 
 std::unique_ptr<Screen> makeOpeningScreen(SpriteRenderer& batch, fnd::input::Backend& input,
-                                          MovieAudio& audio, std::string path, std::string& error);
+                                          MovieAudio& audio, std::string path, std::string& error,
+                                          ScreenId own = ScreenId::Opening, ScreenId next = ScreenId::Title);
 
 }  // namespace ui

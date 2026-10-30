@@ -5,6 +5,7 @@
 // and the port must not carry a second, silent decoder into wasm (issue #40's web note).
 #include "movie/movie_player.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <utility>
@@ -33,7 +34,9 @@ FILE* openMovieFile(const std::string& path) {
 #endif
 }
 
-plm_t* openMovieDecoder(const std::string& path) {
+// The movies the install keeps only inside its archives arrive as bytes, which stay the caller's.
+plm_t* openMovieDecoder(const std::string& path, std::vector<uint8_t>& bytes) {
+    if (!bytes.empty()) return plm_create_with_memory(bytes.data(), bytes.size(), 0);
     FILE* file = openMovieFile(path);
     return file ? plm_create_with_file(file, 1) : nullptr;
 }
@@ -42,22 +45,28 @@ plm_t* openMovieDecoder(const std::string& path) {
 // data"): an MPEG-PS has to start with a pack start code, and the sequence header's
 // width/height are what the surface and the texture are sized from. A missing or
 // non-MPEG-2-free stream must fail here rather than present black for its whole length.
-bool readHeaderAndValidate(const std::string& path, int& width, int& height,
-                           std::string& error) {
-    FILE* f = openMovieFile(path);
-    if (!f) {
-        error = "cannot open " + path;
-        return false;
-    }
+bool readHeaderAndValidate(const std::string& path, std::vector<uint8_t>& bytes, int& width,
+                           int& height, std::string& error) {
     unsigned char head[8] = {};
-    const size_t got = std::fread(head, 1, sizeof(head), f);
-    std::fclose(f);
+    size_t got = 0;
+    if (!bytes.empty()) {
+        got = std::min(bytes.size(), sizeof(head));
+        std::memcpy(head, bytes.data(), got);
+    } else {
+        FILE* f = openMovieFile(path);
+        if (!f) {
+            error = "cannot open " + path;
+            return false;
+        }
+        got = std::fread(head, 1, sizeof(head), f);
+        std::fclose(f);
+    }
     if (got < 4 || head[0] != 0x00 || head[1] != 0x00 || head[2] != 0x01 || head[3] != 0xBA) {
         error = path + ": not an MPEG program stream (no pack start code; expected MPEG-1 "
                       "system multiplex with MPEG-1 video and MP2 audio)";
         return false;
     }
-    plm_t* probe = openMovieDecoder(path);
+    plm_t* probe = openMovieDecoder(path, bytes);
     if (!probe) {
         error = "cannot decode " + path;
         return false;
@@ -148,11 +157,13 @@ void MoviePlayer::close() {
 
 MoviePlayer::~MoviePlayer() { close(); }
 
-bool MoviePlayer::open(const std::string& path, AudioPush push, std::string& error) {
+bool MoviePlayer::open(const std::string& path, AudioPush push, std::string& error,
+                       std::vector<uint8_t> bytes) {
     close();
+    bytes_ = std::move(bytes);
     int w = 0, h = 0;
-    if (!readHeaderAndValidate(path, w, h, error)) return false;
-    plm_t* plm = openMovieDecoder(path);
+    if (!readHeaderAndValidate(path, bytes_, w, h, error)) return false;
+    plm_t* plm = openMovieDecoder(path, bytes_);
     if (!plm) {
         error = "cannot decode " + path;
         return false;
@@ -242,9 +253,11 @@ void MoviePlayer::close() {
 
 MoviePlayer::~MoviePlayer() { close(); }
 
-bool MoviePlayer::open(const std::string& path, AudioPush push, std::string& error) {
+bool MoviePlayer::open(const std::string& path, AudioPush push, std::string& error,
+                       std::vector<uint8_t> bytes) {
     (void)path;
     (void)push;
+    (void)bytes;
     // PORT RULE (web): the movie is decoded by the browser, not by wasm. That path is an
     // HTMLVideoElement (or WebCodecs) feeding copyExternalImageToTexture, and it needs the
     // .mpg served as a URL — issue #4's asset delivery, not this player's business. Until

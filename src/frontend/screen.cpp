@@ -72,7 +72,19 @@ const ScreenEntry kScreens[] = {
          return makeOpeningScreen(batch, *gOpeningInput, *gOpeningAudio, gOpeningMovie,
                                   error);
      }},
-    {ScreenId::Title, [](SpriteRenderer& batch, FrontendState&, std::string& error) { return makeTitleScreen(batch,error); }},
+    {ScreenId::Title, [](SpriteRenderer& batch, FrontendState& state, std::string& error) {
+         state.story.active = false;
+         return makeTitleScreen(batch,error);
+     }},
+    {ScreenId::Prologue, [](SpriteRenderer& batch, FrontendState&, std::string& error) {
+         if (!gOpeningInput || !gOpeningAudio) {
+             error = "the prologue needs its audio engine and input backend";
+             return std::unique_ptr<Screen>{};
+         }
+         return makeOpeningScreen(batch, *gOpeningInput, *gOpeningAudio, "movie/prologue.mpg", error,
+                                  ScreenId::Prologue, ScreenId::StoryTeam);
+     }},
+    {ScreenId::StoryTeam, &makeStoryTeamScreen},
     {ScreenId::Options, [](SpriteRenderer& batch, FrontendState&, std::string& error) { return makeOptionsScreen(batch,error); }},
     {ScreenId::KeyConfig, [](SpriteRenderer& batch, FrontendState&, std::string& error) { return makeKeyConfigScreen(batch,error); }},
     {ScreenId::Select, &makeSelectScreen},

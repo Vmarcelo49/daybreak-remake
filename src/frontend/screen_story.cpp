@@ -21,9 +21,12 @@ constexpr float kPortraitY = 88.f, kPortraitSize = 512.f, kPortraitHotspot = 256
 constexpr UiRect kWindow{10.f, 440.f, 780.f, 150.f}, kWindowSource{0.f, 0.f, 780.f, 150.f};
 constexpr UiRect kPrompt{720.f, 550.f, 64.f, 32.f}, kPromptSource{0.f, 160.f, 64.f, 32.f};
 constexpr float kTextX = 20.f, kTextY = 450.f, kRowHeight = 34.f, kShadow = 3.f;
-constexpr float kFontCell = 24.f;  // FUN_0065d7e0's 0x18
-// The port's stand-in for ＭＳ ゴシック bold, which is not ours to ship.
-constexpr const char* kStoryFont = "NotoSansCJKjp-Bold.otf";
+// FUN_0065d7e0 asks for a 24 px em, and FUN_0040f130 steps 24 px per glyph. The loader sizes a face
+// by its cell, and Noto's is 1.448 em.
+constexpr float kFontCell = 24.f * 1.448f;
+// The port's stand-in for ＭＳ ゴシック, which is not ours to ship. The owner's capture of the
+// original shows a thin stroke, so this is the Regular the captions already ship.
+constexpr const char* kStoryFont = kCaptionFallbackFile;
 
 std::vector<StoryCommand> loadScript(const std::string& path, std::string& error) {
     std::vector<uint8_t> bytes;
@@ -34,14 +37,17 @@ std::vector<StoryCommand> loadScript(const std::string& path, std::string& error
     return parseStoryScript(xm::sjisToUtf8(std::string(bytes.begin(), bytes.end())));
 }
 
-// FUN_006492f0 and the team-select's own picks: the human on panel 0, the ally beside them.
+// FUN_006492f0: the enemies, stage and rules of the current fight.
 void prepareStoryFight(FrontendState& state) {
     const StoryLadder& story = state.story;
     const StoryFight& fight = story.current();
     for (int side = 0; side < 2; ++side) {
+        // --story-team skips the team select, which fills these in play.
         FrontendSlot& member = state.slots[side];
-        member.character = story.members[side];
-        member.controller = side == 0 ? 0 : 4;
+        if (member.character < 0) {
+            member.character = story.members[side];
+            member.controller = side == 0 ? 0 : 4;
+        }
 
         FrontendSlot& enemy = state.slots[side + 2];
         enemy = FrontendSlot{};

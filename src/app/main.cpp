@@ -821,7 +821,7 @@ static void playFrontendMusic(App& app, ui::ScreenId id) {
     // — the movie's audio is a separate stream and plays over it.
     const char* path = id == ui::ScreenId::Opening ? "data/bgm/titlesemi.ogg" :
         id == ui::ScreenId::Title ? "data/bgm/title.ogg" :
-        id == ui::ScreenId::Select ? "data/bgm/select01.ogg" :
+        id == ui::ScreenId::Select || id == ui::ScreenId::StoryTeam ? "data/bgm/select01.ogg" :
         id == ui::ScreenId::VsIntro ? "data/bgm/vs.ogg" :
         id == ui::ScreenId::Result && app.frontend.resultWinner >= 0 ?
             (app.frontend.resultWinner == localSide ? "data/bgm/win.ogg" : "data/bgm/lose.ogg") : nullptr;
