@@ -28,7 +28,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
-            libxi-dev libxss-dev libxfixes-dev libxkbcommon-dev libwayland-dev wayland-protocols \
+            libxi-dev libxss-dev libxtst-dev libxfixes-dev libxkbcommon-dev libwayland-dev wayland-protocols \
             libegl1-mesa-dev libasound2-dev libpulse-dev libdecor-0-dev libudev-dev mesa-vulkan-drivers
       - uses: actions/cache@v4
         with:
