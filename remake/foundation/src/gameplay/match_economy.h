@@ -244,10 +244,13 @@ public:
 
     // A backend that keeps its own score overwrites the read side each tick; the credit and
     // tick paths below are then unused.
-    void mirror(const float balloon[kSideCount], const float capacity[kSideCount], int winner, int secondsLeft) {
+    void mirror(const float balloon[kSideCount], const float capacity[kSideCount], const int delta[kSideCount],
+                const int deltaTicks[kSideCount], int winner, int secondsLeft) {
         for (int side = 0; side < kSideCount; ++side) {
             m_balloon[side] = m_balloonDisplay[side] = balloon[side];
             m_capacity[side] = capacity[side];
+            m_balloonDelta[side] = delta[side];
+            m_balloonDeltaTicks[side] = deltaTicks[side];
         }
         m_roundOverSide = winner;
         m_roundOver = winner >= 0;

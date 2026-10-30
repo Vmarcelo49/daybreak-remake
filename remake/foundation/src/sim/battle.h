@@ -41,8 +41,12 @@ struct SlotInput {
 };
 using Inputs = std::array<SlotInput, 4>;
 
+// One magazine as FUN_00642060 snapshots it for the HUD (battle_magazine_hud).
 struct MagazineState {
-    int rounds = 0, capacity = 0;
+    int rounds = 0;
+    float fill = 0.f;        // the bar: its display counter, or reload progress when empty
+    float charge = 0.f;      // the first charge strip
+    float followup = 0.f;    // the second charge strip
 };
 
 // A row-major D3D matrix: the same 16 floats in memory as a glm::mat4 of the same transform.
@@ -53,8 +57,8 @@ struct SpecialState {
     unsigned mode = 0;
     bool active = false;
     bool ready = false;      // the meter is full and the mode can start
-    int charge = 0, limit = 0;
-    int ticksLeft = 0;       // the running mode's own clock
+    float fraction = 0.f;    // the fan: toward the threshold, or the time left while active
+    int ticksLeft = 0;       // the running mode's own clock, 0 when not active
     int flash = 0;           // the presentation's red flash, 0..255
     int entryRow = 0;        // 500..503 while the activation plays, else 0
     int entryFrame = 0;
@@ -73,6 +77,7 @@ struct MatchState {
     bool timed = false;
     int remainingTicks = 0;
     std::array<float, 2> score{}, limit{};  // the balloon percentages the HUD shows
+    std::array<int, 2> scoreDelta{}, scoreDeltaTicks{};  // the "+N%" popup (FUN_006431d0)
 };
 
 // What one player's view shows this tick (RuntimeBattle::camera_view, battle_camera_projection).
@@ -118,6 +123,8 @@ struct ActorState {
     unsigned phase = 0;    // the section within the row
     unsigned frame = 0;    // the section's animation clock
     int hp = 0;
+    int delayedHp = 0;     // the ghost behind the HP bar
+    int lockPulse = 0;     // the target ring's retarget pulse
     int gauge = 0;         // +0x834, 0..1000
     bool grounded = false;
     int target = 0;        // the slot this actor is locked on to
@@ -150,6 +157,8 @@ public:
     unsigned scene_phase() const;
     unsigned live_projectiles() const;
     bool match_finished() const;
+    // The result phases (3 and up) draw no battle HUD (RuntimeBattle's draw, phase < 3).
+    bool hud_hidden() const { return scene_phase() >= 3; }
     ActorAnimation animation(unsigned slot) const;
     SpecialState special(unsigned slot) const;
     ActorTotals totals(unsigned slot) const;

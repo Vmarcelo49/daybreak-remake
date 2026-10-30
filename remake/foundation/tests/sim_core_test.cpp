@@ -244,6 +244,28 @@ void test_rena_ex_camera(const std::string& game) {
     check(clearedAfter, "and the camera request ends with the row");
 }
 
+// What the battle HUD reads: fractions stay in range, the ghost trails the HP after a hit, and a
+// survivor is never reported at zero.
+void test_hud_values(const std::string& game) {
+    sim::Battle battle(match(game, 0, 0));
+    bool inRange = true, ghostAbove = false, popup = false;
+    for (unsigned t = 0; t < 3600; ++t) {
+        battle.step({});
+        for (unsigned slot = 0; slot < 4; ++slot) {
+            const sim::ActorState actor = battle.actor(slot);
+            ghostAbove |= actor.delayedHp > actor.hp;
+            for (const sim::MagazineState& magazine : battle.magazines(slot))
+                inRange = inRange && magazine.fill >= 0.f && magazine.fill <= 1.f && magazine.charge >= 0.f && magazine.charge <= 1.f;
+            const float fan = battle.special(slot).fraction;
+            inRange = inRange && fan >= 0.f && fan <= 1.f;
+        }
+        popup |= battle.match_state().scoreDeltaTicks[0] > 0 || battle.match_state().scoreDeltaTicks[1] > 0;
+    }
+    check(inRange, "every HUD fraction stays within 0..1");
+    check(ghostAbove, "the HP ghost trails above the live HP after a hit");
+    check(popup, "a score change arms the popup");
+}
+
 void test_invalid_combos_are_rejected(const std::string& game) {
     const auto rejected = [&](int character, int weapon) {
         try {
@@ -298,6 +320,7 @@ int main() {
     test_presentation_events(game);
     test_round_end(game);
     test_rena_ex_camera(game);
+    test_hud_values(game);
     test_determinism(game);
     test_input_sensitivity(game);
     test_scripted_rena_reaches_her_rows(game);

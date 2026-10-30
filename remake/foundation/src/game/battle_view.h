@@ -83,6 +83,8 @@ public:
     // A simulation that samples its own skeleton fills one model-space matrix per rig frame
     // and returns true. The legacy path animates the rig's xm::Controller instead.
     virtual bool core_pose(std::vector<glm::mat4>&) const { return false; }
+    // The HP bar's ghost in percent, when the simulation keeps one.
+    virtual bool hp_ghost(float&) const { return false; }
     // The earned title, when the simulation chose it itself; -1 leaves it to the product's rules.
     virtual int result_title() const { return -1; }
 };
@@ -121,6 +123,8 @@ class BattleView {
 public:
     virtual ~BattleView() = default;
 
+    // The result presentation draws no battle HUD.
+    virtual bool hud_hidden() const { return false; }
     // False leaves the view to the product's own ArenaCamera.
     virtual bool camera_pose(int, CameraPoseView&) const { return false; }
 

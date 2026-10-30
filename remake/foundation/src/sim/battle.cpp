@@ -3,7 +3,9 @@
 #include "basic_battle_roster_assets.hpp"
 #include "battle_animated_camera.hpp"
 #include "battle_camera_viewports.hpp"
+#include "battle_magazine_hud.hpp"
 #include "battle_manual_aim_camera.hpp"
+#include "battle_special_hud.hpp"
 #include "battle_cpu_driver.hpp"
 #include "battle_cpu_obstacle.hpp"
 #include "battle_input_buttons.hpp"
@@ -293,6 +295,8 @@ ActorState Battle::actor(unsigned slot) const {
     out.phase = combat.projectile_owner_phase(slot);
     out.frame = combat.projectile_owner_animation_frame(slot);
     out.hp = static_cast<int>(combat.health[slot]);
+    out.delayedHp = static_cast<int>(combat.delayed_health[slot]);
+    out.lockPulse = combat.targeting[slot].cooldown;
     out.gauge = combat.gauge[slot];
     out.grounded = a.grounded != 0;
     out.target = static_cast<int>(a.relationships.target);
@@ -317,15 +321,14 @@ ActorAnimation Battle::animation(unsigned slot) const {
 SpecialState Battle::special(unsigned slot) const {
     const auto& combat = m_impl->combat;
     const auto& gauge = combat.special_gauges[slot];
+    const BattleSpecialHud hud = battle_special_hud(gauge);
     SpecialState out;
     out.mode = gauge.mode & 255u;
-    out.active = gauge.active0 || gauge.active1 || gauge.active2;
-    // Mode 0 fills from taking damage (charge0/limit0) and mode 1 from dealing it (charge1/limit1).
-    const bool second = out.mode == 1;
-    out.charge = static_cast<int>(second ? gauge.charge1 : gauge.charge0);
-    out.limit = static_cast<int>(second ? gauge.limit1 : gauge.limit0);
-    out.ready = !out.active && out.limit > 0 && out.charge >= out.limit;
-    out.ticksLeft = static_cast<int>(second ? gauge.duration1 : gauge.duration0);
+    out.active = hud.active;
+    out.ready = hud.ready;
+    out.fraction = hud.fraction;
+    // While active the mode's charge counter is the clock the fan divides by its duration.
+    if (hud.active) out.ticksLeft = static_cast<int>(out.mode == 0 ? gauge.charge0 : out.mode == 1 ? gauge.charge1 : gauge.charge2);
     out.flash = gauge.flash;
     out.entryRow = static_cast<int>(combat.special_entry[slot].state);
     out.entryFrame = static_cast<int>(combat.special_entry[slot].frame);
@@ -391,8 +394,11 @@ MatchState Battle::match_state() const {
     out.timed = combat.match.timed;
     out.remainingTicks = static_cast<int>(combat.match.remaining_ticks);
     const auto scores = combat.displayed_team_scores();
+    const auto& feedback = combat.score_feedback();
     for (unsigned team = 0; team < 2; ++team) {
         out.score[team] = scores[team];
+        out.scoreDelta[team] = static_cast<int>(feedback.value[team]);
+        out.scoreDeltaTicks[team] = static_cast<int>(feedback.timer[team]);
         out.limit[team] = static_cast<float>(m_impl->roster.rule_values[2 + team]);
     }
     return out;
@@ -431,8 +437,11 @@ std::array<MagazineState, 2> Battle::magazines(unsigned slot) const {
     std::array<MagazineState, 2> out;
     const auto& source = m_impl->combat.magazines[slot];
     for (size_t i = 0; i < out.size() && i < source.size(); ++i) {
-        out[i].rounds = static_cast<int>(source[i].rounds);
-        out[i].capacity = static_cast<int>(source[i].capacity);
+        const BattleMagazineHud hud = battle_magazine_hud(source[i]);
+        out[i].rounds = static_cast<int>(hud.rounds);
+        out[i].fill = hud.fill_fraction;
+        out[i].charge = hud.initial_charge_fraction;
+        out[i].followup = hud.followup_charge_fraction;
     }
     return out;
 }

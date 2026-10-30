@@ -55,6 +55,7 @@ struct HudFighterValues {
     game::GameRgb hyperAura{1.f, 1.f, 1.f};  // hypermode_params(...).aura, rgb8/255
     float hyperFlash = 0.f;                  // Fighter::hyper_flash_alpha()/252 (issue #71)
     int   stamina = 100;                     // Fighter::stamina()
+    float hpLag = 100.f;                     // the bar's ghost; the legacy path keeps none
     // Fighter::state() in {Run, Guard, Jump} (scenes.cpp:879-882): the state enum
     // does not cross into this tree, so the caller resolves the contextual gate.
     bool  staminaVisible = false;
@@ -95,6 +96,7 @@ inline game::GameHudValues fillHudValues(const MatchEconomy& eco, const HudFillI
     v.holdFrac = f.chargeHoldFrac;
     v.holdTier = f.chargeTier;
     v.hp = static_cast<float>(f.hp);         // scenes.cpp:857 divides by 100
+    v.hpLag = f.hpLag;
     v.hyperName = f.hyperName;
     v.hyperGauge = f.hyperGauge;
     v.hyperActive = f.hyperActive;

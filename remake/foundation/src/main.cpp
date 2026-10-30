@@ -3594,6 +3594,7 @@ static void sampleHudFill(gameplay::HudFighterValues& out, const game::FighterVi
                           const fnd::input::PlayerState* input) {
     out.hp = f.hp() * 100 / f.max_hp();
     out.alive = f.is_alive();
+    f.hp_ghost(out.hpLag);
     out.mainWhole = f.main_whole();
     out.mainFrac = f.main_frac();
     out.reloadOk = f.reload_ok();
@@ -3927,7 +3928,8 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
             view.hud.fighters[i].slot = p.controller;
             view.hud.fighters[i].tagSheet = p.team;
             view.hud.fighters[i].hp = (float)f.hp() / f.max_hp();
-            view.hud.fighters[i].hpLag = view.hud.fighters[i].hp;
+            float ghost = 0.f;
+            view.hud.fighters[i].hpLag = f.hp_ghost(ghost) ? ghost / 100.f : view.hud.fighters[i].hp;
             view.hud.fighters[i].alertDir = -1;   // the render pass resolves it per view
         }
     }
@@ -6002,6 +6004,7 @@ HudTestHook battleHudHook(App& app) {
 void appendMatchHudPasses(App& app, const std::vector<FrameView>& views, uint32_t width,
                           uint32_t height, HudTestHook& hook) {
     hook.target = ui::UiViewport{width, height, 0, 0};
+    if (app.battle->hud_hidden()) return;
     for (const FrameView& view : views) {
         HudPass pass;
         pass.state = view.hud;

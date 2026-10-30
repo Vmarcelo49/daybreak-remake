@@ -23,10 +23,6 @@ glm::mat4 to_glm(const Matrix& m) {
     return out;
 }
 
-float fraction(const MagazineState& magazine) {
-    return magazine.capacity > 0 ? static_cast<float>(magazine.rounds) / static_cast<float>(magazine.capacity) : 0.f;
-}
-
 SlotInput slot_input(const fnd::input::PlayerState& state) {
     using fnd::input::Action;
     SlotInput out;
@@ -77,7 +73,10 @@ void CoreFighter::refresh() {
     m_row = static_cast<int>(actor.state);
     m_frame = static_cast<int>(actor.frame);
     m_state = fighter_state_for_row(actor.state);
-    m_hp = actor.hp / 100;  // the core's scale is 10000; the product's HUD reads percent
+    // The core's scale is 10000 and the HUD reads percent; rounding up keeps a survivor on 1 or more.
+    m_hp = (actor.hp + 99) / 100;
+    m_alive = actor.hp > 0;
+    m_ghost = static_cast<float>(actor.delayedHp) / 100.f;
     m_gauge = actor.gauge;
     m_actionCamera = actor.actionCamera;
     m_held = m_battle->held_models(m_slot);
@@ -116,10 +115,6 @@ game::Hypermode CoreFighter::hypermode() const {
     }
 }
 
-float CoreFighter::hyper_gauge() const {
-    return m_special.limit > 0 ? std::min(1.f, static_cast<float>(m_special.charge) / static_cast<float>(m_special.limit)) : 0.f;
-}
-
 game::FighterPose CoreFighter::pose() const {
     game::FighterPose out;
     out.position = m_position;
@@ -128,8 +123,10 @@ game::FighterPose CoreFighter::pose() const {
     return out;
 }
 
-float CoreFighter::main_frac() const { return fraction(m_magazines[0]); }
-float CoreFighter::charge_frac() const { return fraction(m_magazines[1]); }
+game::ShotTier CoreFighter::charge_tier() const {
+    if (m_magazines[1].followup > 0.f) return game::ShotTier::Red;
+    return m_magazines[1].charge > 0.f ? game::ShotTier::Yellow : game::ShotTier::Tap;
+}
 
 bool CoreFighter::core_pose(std::vector<glm::mat4>& worldOut) const {
     m_battle->bone_poses(m_slot, m_boneNames, m_bones);
@@ -175,7 +172,9 @@ game::BattleFrame CoreBattle::step(const fnd::input::PlayerState* inputs[game::k
     // The product leaves the battle on roundOver, so it waits for the core's own result
     // preparation (the KO presentation, then the titles) rather than the first decided tick.
     const int finishedWinner = match.awardsReady ? match.winner : -1;
-    m_economy.mirror(score, limit, finishedWinner, match.timed ? match.remainingTicks / 60 : 0);
+    const int delta[2] = {match.scoreDelta[0], match.scoreDelta[1]};
+    const int deltaTicks[2] = {match.scoreDeltaTicks[0], match.scoreDeltaTicks[1]};
+    m_economy.mirror(score, limit, delta, deltaTicks, finishedWinner, match.timed ? match.remainingTicks / 60 : 0);
     frame.roundOver = match.awardsReady && !m_roundReported;
     frame.roundOverSide = match.winner;
     m_roundReported = match.awardsReady;

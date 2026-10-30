@@ -194,42 +194,45 @@ target_link_libraries(foundation_gameplay
     PUBLIC foundation_physics
     PRIVATE foundation_ui)
 
-# The vendored reference simulation (docs/DIRECTION.md). Native host only until M4 wires it
-# into the product; ARM and WebAssembly need its two SSE headers replaced first (M6). The
-# core is third-party code kept byte-identical, so its warnings are silenced, not fixed.
-if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
-    add_library(foundation_sim_zlib STATIC
-        src/sim/core/zlib/adler32.c
-        src/sim/core/zlib/crc32.c
-        src/sim/core/zlib/inffast.c
-        src/sim/core/zlib/inflate.c
-        src/sim/core/zlib/inftrees.c
-        src/sim/core/zlib/zutil.c)
-    target_compile_options(foundation_sim_zlib PRIVATE -w)
+# The vendored reference simulation (docs/DIRECTION.md). The core is third-party code kept
+# byte-identical, so its warnings are silenced, not fixed.
+add_library(foundation_sim_zlib STATIC
+    src/sim/core/zlib/adler32.c
+    src/sim/core/zlib/crc32.c
+    src/sim/core/zlib/inffast.c
+    src/sim/core/zlib/inflate.c
+    src/sim/core/zlib/inftrees.c
+    src/sim/core/zlib/zutil.c)
+target_compile_options(foundation_sim_zlib PRIVATE -w)
 
-    add_library(foundation_sim STATIC
-        src/sim/battle.cpp
-        src/sim/core/compiled_native_bodies/dash.cpp
-        src/sim/core/compiled_native_bodies/full_charge.cpp
-        src/sim/core/compiled_native_bodies/jump.cpp
-        src/sim/core/compiled_native_bodies/remaining_melee.cpp
-        src/sim/core/compiled_native_bodies/shoot.cpp
-        src/sim/core/compiled_native_bodies/slot7.cpp
-        src/sim/core/compiled_native_bodies/special_strike.cpp)
-    target_include_directories(foundation_sim
-        PUBLIC src
-        PRIVATE src/sim/core src/sim/core/zlib)
-    # Bodies stay out of every other TU's compile: the core's public control headers then
-    # declare them, as its own build does.
-    target_compile_definitions(foundation_sim PRIVATE DAYBREAK_COMPILED_NATIVE_BODIES=1)
-    target_compile_options(foundation_sim PRIVATE -w
-        "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/sim/core_prelude.h")
-    target_link_libraries(foundation_sim PRIVATE foundation_sim_zlib)
+add_library(foundation_sim STATIC
+    src/sim/battle.cpp
+    src/sim/core/compiled_native_bodies/dash.cpp
+    src/sim/core/compiled_native_bodies/full_charge.cpp
+    src/sim/core/compiled_native_bodies/jump.cpp
+    src/sim/core/compiled_native_bodies/remaining_melee.cpp
+    src/sim/core/compiled_native_bodies/shoot.cpp
+    src/sim/core/compiled_native_bodies/slot7.cpp
+    src/sim/core/compiled_native_bodies/special_strike.cpp)
+target_include_directories(foundation_sim
+    PUBLIC src
+    PRIVATE src/sim/core src/sim/core/zlib)
+# Bodies stay out of every other TU's compile: the core's public control headers then
+# declare them, as its own build does.
+target_compile_definitions(foundation_sim PRIVATE DAYBREAK_COMPILED_NATIVE_BODIES=1)
+target_compile_options(foundation_sim PRIVATE -w
+    "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/sim/core_prelude.h")
+target_link_libraries(foundation_sim PRIVATE foundation_sim_zlib)
+if(EMSCRIPTEN)
+    # Two core headers use SSE intrinsics; Emscripten maps those onto WebAssembly SIMD.
+    target_compile_options(foundation_sim PRIVATE -msimd128 -msse)
+endif()
 
-    # --sim=core: game::Battle over the core. Includes only sim/battle.h, never the core.
-    add_library(foundation_sim_backend STATIC src/sim/core_battle.cpp)
-    target_link_libraries(foundation_sim_backend PUBLIC foundation_sim foundation_gameplay)
+# --sim=core: game::Battle over the core. Includes only sim/battle.h, never the core.
+add_library(foundation_sim_backend STATIC src/sim/core_battle.cpp)
+target_link_libraries(foundation_sim_backend PUBLIC foundation_sim foundation_gameplay)
 
+if(NOT CMAKE_CROSSCOMPILING)
     add_executable(simctl src/sim/simctl.cpp)
     target_link_libraries(simctl PRIVATE foundation_sim)
     add_executable(simfuzz src/sim/simfuzz.cpp)
@@ -241,10 +244,8 @@ add_executable(foundation_demo src/main.cpp)
 if(FOUNDATION_LIVE_DEBUG)
     target_compile_definitions(foundation_demo PRIVATE FOUNDATION_LIVE_DEBUG=1)
 endif()
-if(TARGET foundation_sim_backend)
-    target_compile_definitions(foundation_demo PRIVATE FOUNDATION_HAS_SIM=1)
-    target_link_libraries(foundation_demo PRIVATE foundation_sim_backend)
-endif()
+target_compile_definitions(foundation_demo PRIVATE FOUNDATION_HAS_SIM=1)
+target_link_libraries(foundation_demo PRIVATE foundation_sim_backend)
 if(WIN32)
     set_target_properties(foundation_demo PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
