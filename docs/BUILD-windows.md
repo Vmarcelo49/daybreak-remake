@@ -149,12 +149,12 @@ With an X display present the adapter instead comes from Mesa's software path
 `RESULT: ok` — useful as a fallback, since it needs no GPU:
 
 ```sh
-remake/tools/xvfb/usr/bin/Xvfb :99 -screen 0 1280x800x24 &
+Xvfb :99 -screen 0 1280x800x24 &
 DISPLAY=:99 wine build/windows/daybreak.exe --frames=120
 ```
 
-The Xvfb fallback needs a local X server toolchain at `remake/tools/xvfb`
-(local-only, not fetched by `build.sh deps`; `xvfb-run` must not wrap
+The Xvfb fallback needs an `Xvfb` installed on the system
+(not fetched by `build.sh deps`; `xvfb-run` must not wrap
 agent-browser's own Xvfb) and `build/wine_frame.png` is a local capture, not a
 committed reference — re-take it with the `DISPLAY=:99 wine ...` command above
 rather than expecting it in the checkout; a re-taken capture shows the rotating

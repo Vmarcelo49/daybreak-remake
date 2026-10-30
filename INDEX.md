@@ -35,7 +35,7 @@ daybreak-decomp/
 │   ├── progress/                  Coverage metrics (official)
 │   ├── tools/                     ingest → generate_recomp → coverage_report
 │   └── extraction_phases/         Raw phase dumps + prioritization JSONs
-├── remake/                        Playable C++ remake (the product)
+├── src/, tests/, CMakeLists.txt    Playable C++ remake (the product)
 ├── tools/
 │   └── launch_original.sh         Run the original exe under Wine (repo-root relative)
 ├── Higurashi-Daybreak/            Local game install (gitignored, not in repo)

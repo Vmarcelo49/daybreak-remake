@@ -32,15 +32,12 @@ daybreak-decomp/
 │   ├── symbols/        source of truth: names, types, notes
 │   ├── progress/       coverage metrics (official)
 │   ├── tools/          ingest → generate_recomp → coverage_report
-│   └── extraction_phases/  raw phase dumps + prioritization JSONs
-├── remake/                             the product and its evidence
-│   ├── foundation/                     SDL3 + WebGPU product (C++17; Linux/Windows/web)
-│   ├── docs/decisions.md               binding D1–D6; docs/reference/ = 23 prints of the
-│   │                                   original game — the visual target (plan §6a)
-│   ├── tests/parity-baseline/          frozen DX9 bank — the behavioural oracle
-│   ├── tools/{asset-tools,hook-tracer} .dat/.cnv tools; original-exe hook tracer
-│   └── assets/shaders/effect_*.bin     10 dumps of the original's effect bytecode (evidence)
+│   ├── extraction_phases/  raw phase dumps + prioritization JSONs
+│   └── evidence/           DX9 parity bank (history only), NPR evidence, and
+│                           assets/shaders/effect_*.bin: the original's effect bytecode
+├── src/, tests/, CMakeLists.txt        SDL3 + WebGPU product (C++17; Linux/Windows/web)
 ├── tools/launch_original.sh            run the original exe under Wine
+├── tools/{asset-tools,hook-tracer}/    .dat/.cnv tools; original-exe hook tracer
 ├── Higurashi-Daybreak/                 local game install (gitignored)
 └── .github/                            index Action (see INDEX.md header)
 ```
@@ -79,7 +76,7 @@ metric. Full version in `docs/pipeline.md`.
 ## Where to go next
 
 - New here? Read `docs/pipeline.md`, then `docs/status.md`.
-- Writing game code? Go to `remake/` and read `docs/decisions.md`.
+- Writing game code? Read `docs/decisions.md`, then work in `src/`.
 - Driving the original for comparison? `tools/launch_original.sh`.
 - Automating RE work? `docs/agents/`.
 - Old Portuguese docs? `docs/archive/` (historical, superseded by `docs/`).

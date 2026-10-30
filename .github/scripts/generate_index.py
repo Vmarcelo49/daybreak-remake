@@ -164,7 +164,7 @@ md.append("│   ├── symbols/                   Source of truth (names, ty
 md.append("│   ├── progress/                  Coverage metrics (official)")
 md.append("│   ├── tools/                     ingest → generate_recomp → coverage_report")
 md.append("│   └── extraction_phases/         Raw phase dumps + prioritization JSONs")
-md.append("├── remake/                        Playable C++ remake (the product)")
+md.append("├── src/, tests/, CMakeLists.txt    Playable C++ remake (the product)")
 md.append("├── tools/")
 md.append("│   └── launch_original.sh         Run the original exe under Wine (repo-root relative)")
 md.append("├── Higurashi-Daybreak/            Local game install (gitignored, not in repo)")
