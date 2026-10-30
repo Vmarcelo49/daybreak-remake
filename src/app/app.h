@@ -96,6 +96,8 @@ struct Options {
     std::string movie;
     // --story=D41-0: which script scene 8 plays, with --screen=storyadv.
     std::string story;
+    // --story-team=N: runs team N's six fights (the team-select scene does this in play).
+    int storyTeam = -1;
     // A plain interactive launch boots scene 0x00 like the original does, unless a
     // verification run owns the input (issue #40's criterion 4). Resolved after parsing,
     // because it depends on the whole flag set; see resolveBootOpening.

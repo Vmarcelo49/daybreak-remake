@@ -80,6 +80,7 @@ static SDL_AppResult tickFrontend(App& state) {
         app->menuBgmPushed += app->menuLoop.push_next(app->menuAudio, 1024);
     const std::string track = app->screens.takeMusic();
     if (!track.empty()) playMenuTrack(*app, track.c_str());
+    if (app->screens.takeMusicStop()) playMenuTrack(*app, nullptr);
     const std::string voice = app->screens.takeVoice();
     if (!voice.empty()) {
         // FUN_0040f4c0's case 4: a story line cuts off the one before it.
@@ -285,8 +286,13 @@ static SDL_AppResult appIterate(App* app) {
                 // (issue #16's repeated-match cleanup). The decoded sample cache stays.
                 reportCombatAudio(*app);
                 stopCombatAudio(*app);
-                app->screens.requestInstant(ui::ScreenId::Result);
-                app->resultOverScene = true;
+                if (app->frontend.story.active && app->frontend.resultWinner == 0) {
+                    // FUN_00403b70: a won story fight goes back to the dialogue.
+                    app->screens.request(ui::ScreenId::StoryAdv);
+                } else {
+                    app->screens.requestInstant(ui::ScreenId::Result);
+                    app->resultOverScene = true;
+                }
                 app->screensMode = true;
                 const SDL_AppResult result = tickFrontend(*app);
                 if (result != SDL_APP_CONTINUE) return result;

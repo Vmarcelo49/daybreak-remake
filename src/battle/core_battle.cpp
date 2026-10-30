@@ -172,13 +172,16 @@ game::BattleFrame CoreBattle::step(const fnd::input::PlayerState* inputs[game::k
     const float limit[2] = {match.limit[0], match.limit[1]};
     // The product leaves the battle on roundOver, so it waits for the core's own result
     // preparation (the KO presentation, then the titles) rather than the first decided tick.
-    const int finishedWinner = match.awardsReady ? match.winner : -1;
+    // A story win leaves at once and a story loss waits for the retry prompt; neither has titles.
+    const bool over = match.story ? match.exitRequested || (match.winner == 1 && match.finished)
+                                  : match.awardsReady;
+    const int finishedWinner = over ? match.winner : -1;
     const int delta[2] = {match.scoreDelta[0], match.scoreDelta[1]};
     const int deltaTicks[2] = {match.scoreDeltaTicks[0], match.scoreDeltaTicks[1]};
     m_economy.mirror(score, limit, delta, deltaTicks, finishedWinner, match.timed ? match.remainingTicks / 60 : 0);
-    frame.roundOver = match.awardsReady && !m_roundReported;
+    frame.roundOver = over && !m_roundReported;
     frame.roundOverSide = match.winner;
-    m_roundReported = match.awardsReady;
+    m_roundReported = over;
     if (match.awardsReady)
         for (size_t i = 0; i < m_fighters.size(); ++i) m_fighters[i].set_result_title(match.awards[i]);
     return frame;

@@ -15,6 +15,7 @@
 #include "frontend/screen_select.h"
 #include "frontend/screen_vs.h"
 #include "frontend/screen_options.h"
+#include "frontend/frontend_state.h"
 #include "frontend/screen_story.h"
 #include "frontend/screen_result.h"
 
@@ -78,8 +79,12 @@ const ScreenEntry kScreens[] = {
     {ScreenId::VsIntro, [](SpriteRenderer& batch, FrontendState& state, std::string& error) {
          return makeVsScreen(batch, state, error);
      }},
-    {ScreenId::Result, &makeResultScreen},
+    {ScreenId::Result, [](SpriteRenderer& batch, FrontendState& state, std::string& error) {
+         return state.story.active ? makeStoryRetryScreen(batch, state, error)
+                                   : makeResultScreen(batch, state, error);
+     }},
     {ScreenId::StoryAdv, &makeStoryScreen},
+    {ScreenId::GameOver, &makeGameOverScreen},
 };
 
 }  // namespace

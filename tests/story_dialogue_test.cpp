@@ -1,8 +1,11 @@
 // Scene 8's dialogue rules against FUN_0040eb30 and FUN_0040f4c0, without a device.
 #include <cstdio>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 #include "frontend/story_dialogue.h"
+#include "frontend/story_ladder.h"
 
 #define CHECK(condition) do { if (!(condition)) { std::fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #condition); ++g_failures; } } while (0)
 
@@ -100,7 +103,49 @@ static void testInterlude() {
     CHECK(d.takeMusicStop());
 }
 
+static void testLadder() {
+    std::vector<uint8_t> bytes;
+    const auto put = [&](int value) { for (int i = 0; i < 4; ++i) bytes.push_back(static_cast<uint8_t>(value >> (i * 8))); };
+    put(2);
+    put(0);
+    for (int row = 0; row < ui::kStoryFights; ++row) {
+        put(row);
+        put(row + 10);
+        put(row + 20);
+        put(row + 30);
+        put(row + 40);
+    }
+    for (char c : std::string("movie/e00.mpg")) bytes.push_back(static_cast<uint8_t>(c));
+    bytes.push_back(0);
+
+    uint32_t counter = 0;
+    ui::StoryLadder ladder;
+    CHECK(ui::parseStoryLadder(bytes, 0, [&] { return counter++; }, ladder));
+    CHECK(ladder.members[0] == 2 && ladder.members[1] == 0);
+    CHECK(ladder.endingMovie == "movie/e00.mpg");
+    // Only rows 1..3 move.
+    CHECK(ladder.fights[0].script == 40 && ladder.fights[4].script == 44 && ladder.fights[5].script == 45);
+    int middle = 0;
+    for (int i = 1; i <= 3; ++i) middle += ladder.fights[i].script;
+    CHECK(middle == 41 + 42 + 43);
+    CHECK(ladder.scriptPath() == "data/scenario/D40-0.txt");
+
+    // Teams 1, 5 and 6 keep the file's order and draw nothing.
+    counter = 0;
+    CHECK(ui::parseStoryLadder(bytes, 5, [&] { return counter++; }, ladder));
+    CHECK(counter == 0 && ladder.fights[1].script == 41 && ladder.fights[3].enemies[1] == 13);
+
+    bytes.resize(20);
+    CHECK(!ui::parseStoryLadder(bytes, 0, [&] { return counter++; }, ladder));
+
+    CHECK(ui::storyEnemyWeapon(0, 0, 0, 5) == 1);   // Rena: first two only
+    CHECK(ui::storyEnemyWeapon(0, 0, 4, 2) == 0);   // Rika too
+    CHECK(ui::storyEnemyWeapon(0, 0, 2, 5) == 2);
+    CHECK(ui::storyEnemyWeapon(7, 5, 0, 5) == 2);   // team 7's last fight
+}
+
 int main() {
+    testLadder();
     testRows();
     testFlow();
     testSkip();

@@ -680,6 +680,10 @@ static bool startCoreBattle(App& app, const MatchSetup& config) {
     if (app.frontendMatch) core.seed = static_cast<uint32_t>(app.logicTicks) * 2654435761u + 1u;
     core.timeLimitSeconds = static_cast<unsigned>(std::max(0, config.timeLimit));
     core.rules = {config.healthPercent, config.gaugePercent, config.balloonSize[0], config.balloonSize[1]};
+    if (app.frontend.story.active) {
+        core.storyMode = true;
+        core.storyMusic = app.frontend.story.current().music;
+    }
     const std::string stageDir = charDirForSpec(app.opts.stage);
     core.stage = static_cast<unsigned>(std::atoi(stageDir.c_str() + std::min<size_t>(5, stageDir.size())));
     std::array<const gameplay::CharacterMoves*, 4> moves{};
@@ -881,8 +885,13 @@ static bool initMatch(App& app) {
     // BGM: the reference plays data/bgm/01.ogg on entering the match (scenes.cpp:473,
     // 570-591), looped through the .sfl sheet. --bgm overrides the track; a build
     // without an audio device keeps running silently, as the DX9 side does.
-    const std::string bgm = app.opts.bgm.empty() ? (app.opts.stage + "/../bgm/01.ogg")
-                                                 : app.opts.bgm;
+    std::string bgm = app.opts.bgm.empty() ? (app.opts.stage + "/../bgm/01.ogg") : app.opts.bgm;
+    if (app.frontend.story.active) {
+        // FUN_00635d40:64-67: a story fight names its own track.
+        char track[32];
+        std::snprintf(track, sizeof track, "data/bgm/%02d.ogg", app.frontend.story.current().music);
+        bgm = track;
+    }
     if (app.versusAudio.open(fnd::audio::Spec{})) {
         app.versusAudioOn = true;
         if (!loadBgmTrack(bgm, app.versusAudio, app.versusBgm, app.versusLoop, app.error)) {

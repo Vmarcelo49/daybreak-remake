@@ -60,6 +60,9 @@ std::vector<std::string> storyVisibleRows(const std::string& line, int revealed)
 void StoryDialogue::load(std::vector<StoryCommand> commands) {
     commands_ = std::move(commands);
     next_ = 0;
+    // FUN_0040f970 resets moves and draw order; the portraits stay until a script replaces them.
+    order_ = {0, 1, 2, 3, 4, 5};
+    for (auto& queue : moves_) queue.clear();
     waiting_ = false;
     interlude_ = false;
     revealed_ = 0;

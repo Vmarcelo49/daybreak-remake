@@ -68,6 +68,8 @@ LocalBattleRoster make_roster(const BattleConfig& config) {
     roster.controlled_count = controllers;
     roster.stage = config.stage;
     roster.rule_values = config.rules;
+    roster.story_mode = config.storyMode;
+    roster.story_music = config.storyMusic;
     BattleRandom random;
     random.seed(config.seed);
     roster.simulation_random = random;
@@ -460,6 +462,8 @@ MatchState Battle::match_state() const {
     out.winner = combat.match.winner;
     out.finished = combat.match.ready;
     out.awardsReady = combat.awards.ready;
+    out.story = combat.match.story_mode;
+    out.exitRequested = combat.match.exit_requested;
     if (out.awardsReady)
         for (unsigned i = 0; i < 4; ++i) out.awards[i] = static_cast<int>(combat.awards.ids[i]);
     out.timed = combat.match.timed;

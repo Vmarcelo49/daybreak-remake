@@ -94,6 +94,7 @@ void usage() {
         "                     run (--out/--headless/--script/...) never does, so no\n"
         "                     evidence run pays for the movie decode (issue #40)\n"
         "  --story=<D41-0>    the script --screen=storyadv plays\n"
+        "  --story-team=<N>   run team N's six fights from --screen=storyadv\n"
         "  --movie=<path>     which movie to play, relative to the install (default\n"
         "                     data/movie/op.mpg); implies --screen=opening. staffroll.mpg\n"
         "                     runs through the same player this way\n"
@@ -404,6 +405,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--screen=")).empty()) o.screen = v;
         else if (!(v = val("--movie=")).empty()) o.movie = v;
         else if (!(v = val("--story=")).empty()) o.story = v;
+        else if (!(v = val("--story-team=")).empty()) o.storyTeam = std::atoi(v.c_str());
         else if (!(v = val("--bgm=")).empty()) o.bgm = v;
         else if (!(v = val("--sfx=")).empty()) o.sfx = v;
         else if (!(v = val("--local-players=")).empty()) o.localPlayers = std::atoi(v.c_str());

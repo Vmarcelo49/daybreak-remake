@@ -117,6 +117,7 @@ add_library(ui STATIC
     src/frontend/result_quote.cpp
     src/frontend/story_script.cpp
     src/frontend/story_dialogue.cpp
+    src/frontend/story_ladder.cpp
     src/frontend/screen_story.cpp
     src/frontend/frontend_launch.cpp
     src/frontend/frontend_settings.cpp
@@ -752,7 +753,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     set_tests_properties(bgm_loop_test PROPERTIES LABELS asset)
 
     add_executable(story_dialogue_test tests/story_dialogue_test.cpp src/frontend/story_dialogue.cpp
-                   src/frontend/story_script.cpp)
+                   src/frontend/story_script.cpp src/frontend/story_ladder.cpp)
     target_include_directories(story_dialogue_test PRIVATE src)
     add_test(NAME story_dialogue_test COMMAND story_dialogue_test)
 

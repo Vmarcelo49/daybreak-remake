@@ -50,6 +50,7 @@
 #include "frontend/screen.h"
 #include "frontend/screen_vs.h"
 #include "frontend/screen_opening.h"
+#include "frontend/screen_story.h"
 #include "frontend/frontend_state.h"
 #include "frontend/frontend_launch.h"
 #include "frontend/participants.h"
@@ -1266,6 +1267,8 @@ bool initScreens(App& app) {
         if (screen) std::printf("[menu] scene: %s (tick %llu)\n", screen->name(), (unsigned long long)app.logicTicks);
         return screen;
     };
+    if (app.opts.storyTeam >= 0 && !ui::beginStoryTeam(app.frontend, app.opts.storyTeam, app.error))
+        return false;
     if (!app.screens.begin(id, factory, app.error)) return false;
     auto& settings = ui::frontendSettings();
     settings.applyVolumes = [&app](const fnd::audio::Volumes& v) {

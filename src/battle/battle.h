@@ -29,6 +29,8 @@ struct BattleConfig {
     // Health, gauge, blue and red limits, in percent. The core rejects values its menus cannot
     // produce (configure_match_values).
     std::array<int, 4> rules{{100, 100, 100, 100}};
+    bool storyMode = false;  // DAT_006cfce9
+    int storyMusic = 0;      // the fight's data/bgm/%02d.ogg
 };
 
 // Buttons as the original's physical bits, before battle_button_carrier.
@@ -99,6 +101,8 @@ struct MatchState {
     int winner = -1;                       // the winning team once the round is decided
     bool finished = false;                 // the result screens are ready
     bool awardsReady = false;              // the titles below are chosen
+    bool story = false;                    // a story fight: no titles, no statistics
+    bool exitRequested = false;            // a story win is over (FUN_00635d40:206-211)
     std::array<int, 4> awards{{-1, -1, -1, -1}};  // FUN_00430880's title per slot
     bool timed = false;
     int remainingTicks = 0;

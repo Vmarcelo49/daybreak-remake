@@ -99,6 +99,7 @@ public:
     virtual std::string takeVoice() { return {}; }
     // A track this scene asks for by name, on top of the host's per-scene music.
     virtual std::string takeMusic() { return {}; }
+    virtual bool takeMusicStop() { return false; }
 };
 
 // FUN_004020a0's switch as a predicate: true for the ids the port can construct. The
@@ -165,6 +166,7 @@ public:
     int takeSound() { return current_ ? current_->takeSound() : -1; }
     std::string takeVoice() { return current_ ? current_->takeVoice() : std::string{}; }
     std::string takeMusic() { return current_ ? current_->takeMusic() : std::string{}; }
+    bool takeMusicStop() { return current_ && current_->takeMusicStop(); }
 
     bool     finished() const { return finished_; }
     ScreenId current() const { return currentId_; }
