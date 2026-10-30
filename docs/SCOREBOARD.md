@@ -11,6 +11,8 @@
 > state at `261078b0`). It accepted the legacy-path pilot under that contract and does
 > not claim a perfect Rena+0.
 >
+> M5 approved by the owner on 2026-10-30 at `534b990f`; the legacy path last exists at `e9347627`.
+>
 > Updated by whoever runs the checks; verdicts are written by the repo owner.
 
 Plan: [`DIRECTION.md`](DIRECTION.md). Task list and work reports:
