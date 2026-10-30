@@ -2408,7 +2408,7 @@ static bool startCoreBattle(App& app, const MatchSetup& config) {
         int costume = 0;
         splitSuffix(app.opts.battleCharacters[i], specPath, costume);
         core.slots[static_cast<size_t>(i)] = {character, slot, !human, costume,
-                                              static_cast<unsigned>(game::hypermode_wire_value(config.hyper[i]))};
+                                              static_cast<unsigned>(config.hyper[i])};
         moves[static_cast<size_t>(i)] = config.moves[i];
         weapons[static_cast<size_t>(i)] = weapon;
     }
@@ -3168,7 +3168,7 @@ static void placeFxCards(App& app) {
             // FUN_004205e0 selects the aura card by the wire mode value — 0, 1,
             // 5 for wire modes 0/1/2 — from the same seven data/aura/%02d.x
             // attachments, not one model for every mode.
-            const int wire = game::hypermode_wire_value(f.hypermode());
+            const int wire = static_cast<int>(f.hypermode());
             const int auraModel = wire == 2 ? 5 : wire;
             const int card = (auraModel >= 0 && auraModel < game::kAuraSlots)
                                  ? app.fxAttach[auraModel]

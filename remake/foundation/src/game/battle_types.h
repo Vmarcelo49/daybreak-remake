@@ -58,11 +58,11 @@ inline const char* state_to_anim_name(FighterState s) {
     }
 }
 
-// Hypermode pick (spec §3.4). Index order matches the versus setup list and the -hyper CLI
-// argument: Friendship, Oyashiro, Kakera (DX's third mode).
+// Hypermode pick (spec §3.4). The selection screen's row is the value the actor keeps at +0x318:
+// FUN_0040d130:106 copies the slot's +0x3d18 across untouched.
 enum class Hypermode : int {
-    Friendship = 0,
-    Oyashiro   = 1,
+    Oyashiro   = 0,
+    Friendship = 1,
     Kakera     = 2,
 };
 
@@ -94,17 +94,6 @@ inline constexpr std::uint8_t rgbB(Rgb c) {
 
 inline constexpr std::uint8_t rgbA(Rgb c) {
     return static_cast<std::uint8_t>((c >> 24) & 0xffu);
-}
-
-// The wire value the original stores at +0x318 (0 Oyashiro, 1 Friendship, 2 Kakera). The enum
-// above is the UI order; every site that needs the wire value translates through here.
-inline int hypermode_wire_value(Hypermode m) {
-    switch (m) {
-        case Hypermode::Oyashiro:   return 0;
-        case Hypermode::Friendship: return 1;
-        case Hypermode::Kakera:     return 2;
-    }
-    return 1;
 }
 
 // The HUD's caption and aura colour per mode. The colours follow the wiki's mode captures;
