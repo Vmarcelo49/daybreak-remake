@@ -2780,6 +2780,8 @@ static bool initMatch(App& app) {
     for (int i = 0; i < fighterCount; ++i) {
         models[i] = &app.scene.models[rigs[i]].model;
         anims[i] = &app.controllers[rigs[i]];
+        // initScene cleared every binding; a front-end rig has no --anim loop to rebind it.
+        anims[i]->bind(models[i]);
         app.matchRig[i] = rigs[i];
         // Each fighter fights with its weapon slot's move table (NN = slot, id at
         // file 0x114 — not the rig's costume variant), on both the frontend and

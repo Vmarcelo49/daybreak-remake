@@ -103,13 +103,13 @@ public:
     void start(const BattleConfig& config, const std::array<const gameplay::CharacterMoves*, 4>& moves,
                const std::array<const gameplay::WeaponDefinition*, 4>& weapons);
 
-    int fighter_count() const override { return 4; }
+    int fighter_count() const override { return m_battle ? 4 : 0; }
     int side(int fighter) const override { return fighter / 2; }
     const game::FighterView& fighter(int index) const override { return m_fighters[static_cast<size_t>(index)]; }
     const gameplay::MatchEconomy& economy() const override { return m_economy; }
-    int locked_target(int fighter) const override { return m_battle->actor(static_cast<unsigned>(fighter)).target; }
+    int locked_target(int fighter) const override { return m_battle ? m_battle->actor(static_cast<unsigned>(fighter)).target : -1; }
     int aim_target(int fighter) const override { return locked_target(fighter); }
-    int lock_pulse(int fighter) const override { return m_battle->actor(static_cast<unsigned>(fighter)).lockPulse; }
+    int lock_pulse(int fighter) const override { return m_battle ? m_battle->actor(static_cast<unsigned>(fighter)).lockPulse : 0; }
     bool hud_hidden() const override { return m_battle && m_battle->hud_hidden(); }
     bool ai_enabled(int) const override { return true; }
     bool camera_pose(int fighter, game::CameraPoseView& out) const override;
