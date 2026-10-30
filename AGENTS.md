@@ -3,7 +3,7 @@
 > Read this first, then [`docs/DIRECTION.md`](docs/DIRECTION.md). You are in a
 > repo with **two halves**: a playable remake and a reverse-engineering corpus.
 > This file is the map, the enforcement point and the permanent rules;
-> `DIRECTION.md` owns the plan.
+> `docs/DIRECTION.md` owns the plan.
 
 ## What this project is
 
@@ -25,7 +25,7 @@ gate work.
 
 ### Frozen work — this list is the single source of truth
 
-`DIRECTION.md` links here instead of repeating this list, so the two cannot drift apart.
+`docs/DIRECTION.md` links here instead of repeating this list, so the two cannot drift apart.
 
 **A. Hand-written combat — deleted at M5.** Do not bring it back. Behaviour changes belong
 in the core, cited and listed in `src/battle/core/PATCHES.md`. The last revision with the old
@@ -73,33 +73,36 @@ Unproven original automation is never required.
 
 Documents in this repo were written under superseded plans, and many still tell
 the reader to continue the old per-character hand-port. Those instructions are
-**retired**: when a document disagrees with `DIRECTION.md` about what to work on,
-`DIRECTION.md` wins — no exceptions, no "but this file says".
+**retired**: when a document disagrees with `docs/DIRECTION.md` about what to work on,
+`docs/DIRECTION.md` wins — no exceptions, no "but this file says".
 
 | Document | Still good for | Never authorizes |
 |---|---|---|
-| `docs/reports/ginkiha-*.md` | what the reference recovered, per-combo findings, the acceptance bar | "next execution" orders, "advance to Mion", per-combo port plans |
+| `docs/archive/ginkiha-*.md` | what the reference recovered, per-combo findings, the acceptance bar | "next execution" orders, "advance to Mion", per-combo port plans |
 | `docs/ROADMAP-PENDING.md` | issue IDs, measured limits, an item's status | choosing work; its "next dig" and suggestion lines |
 | `ANIMATION-SETS.md`, `ANIMATION-DATA-AUDIT.md`, `LIVE-DEBUG.md`, `EFFECTS-*.md`, `GAME-CAMERA.md`, `SHADOWS.md` (under `docs/`) | original-behaviour evidence, and what the port does today | new feature work, new selector/table work |
 | `docs/decisions.md` | binding decisions and historical rationale; read before touching the product tree | new decisions — the owner adds those |
-| `docs/PILOT-EVIDENCE-CONTRACT.md`, `docs/PILOT-SEAM.md` | what the pilot established, addressed findings, seam facts | new contract or per-rule work |
+| `docs/archive/PILOT-EVIDENCE-CONTRACT.md`, `docs/archive/PILOT-SEAM.md` | what the pilot established, addressed findings, seam facts | new contract or per-rule work |
 | `research/evidence/parity-baseline/README.md` + the bank | history: what the deleted DX9 tree captured, and what it could not | a fidelity oracle — its fighters bound zero animation sets |
 | `docs/archive/FULL-REPLACEMENT-PLAN.md`, `docs/archive/port-from-mvp-plan.md`, `docs/archive/roadmap.md`, `docs/archive/**` | history and rationale | anything current |
 | `docs/status.md`, `docs/agents/**` | research pipeline, conventions | product work orders |
 
 **Do not read the whole documentation tree "for context"** — that is how agents
 re-implement a retired plan. Route by task: any task → this file, then
-`DIRECTION.md` and its task list `docs/DIRECTION-STATUS.md`; the core →
+`docs/DIRECTION.md` and its task list `docs/DIRECTION-STATUS.md`; the core →
 `src/battle/core/README.md`; original-binary questions → the skill routing
 below; research corpus → `docs/pipeline.md`,
 `docs/conventions.md`; release/platform → `docs/RELEASE-CHECKLIST.md`,
 which is also where current status lives.
 
+Path moves are mapped once in [`docs/PATHS.md`](docs/PATHS.md) — use it instead of
+the historical text of an archived document.
+
 Status goes to four places and nowhere else: [`docs/DIRECTION-STATUS.md`](docs/DIRECTION-STATUS.md)
 (the task list and the work reports), [`docs/SCOREBOARD.md`](docs/SCOREBOARD.md)
 (the one metric and verdicts), [`docs/QUESTIONS.md`](docs/QUESTIONS.md)
 (blockers) and [`docs/EXCEPTIONS.md`](docs/EXCEPTIONS.md) (owner overrides), under
-the plan in `DIRECTION.md`. Do not open other ledgers or progress documents.
+the plan in `docs/DIRECTION.md`. Do not open other ledgers or progress documents.
 
 ## Original-binary skill routing
 
@@ -171,7 +174,7 @@ changes need owner approval, never a silent denominator reduction.
    recreate it; decomp provenance lives in `research/`.
 4. **Comment policy in the product tree:** explain *why*, cite RE provenance (`FUN_xxxxxx`,
    addresses). No restatement comments, no dead code.
-5. **Run `coverage_report.py` before committing** research changes.
+5. **Run `research/tools/coverage_report.py` before committing** research changes.
 6. **Full diff review before EVERY commit** — see below. Not optional, no size
    exemption.
 7. **Character+weapon combos, never bare fighters.** Every attack is a weapon attack
@@ -267,22 +270,22 @@ rules: `docs/conventions.md`.
   worktree without first listing its unique commits (`git log main..<branch>`) and
   showing the owner. This governs **git state**, not source files: deleting a
   REPLACE file at its gate is an ordinary edit inside a reviewed commit
-  (`DIRECTION.md` §7).
+  (`docs/DIRECTION.md` §7).
 - **An uncommitted diff is never discarded.** It is committed in reviewable parts,
   or left exactly as found.
 - Push scope: `research/decompiled`, `research/binary_data`, reviewed
   `research/symbols`, `research/progress`, docs, and reviewed source/tests/runtime
   caption assets under the product tree.
 - Never commit: `research/recomp/`, game files, keys, `*.full.json`, build outputs
-  (`build/`), fetched dependencies (`third_party/`), the leftover local toolchain
-  trees under `remake/tools/`, and `.local-analysis/`.
+  (`build/`), fetched dependencies (`third_party/`), ignored local leftovers of the
+  retired layout, and `.local-analysis/`.
 - Full diff review before every commit — see above.
 
 ## Local-only (present on disk, absent from git)
 
 `Higurashi-Daybreak/` (the game install), the fetched `third_party/` sources and
-fonts (`./build.sh deps`), `build/`, the toolchain trees under `remake/tools/` that
-predate the flattening, and `.local-analysis/`. Gyrotrope Black is bundled source
+fonts (`./build.sh deps`), `build/`, any ignored local leftovers of the retired layout
+(the owner deletes them), and `.local-analysis/`. Gyrotrope Black is bundled source
 under `assets/fonts/`, not a fetched dependency.
 
 **`.local-analysis/`** holds the external reverse-engineer's bundles

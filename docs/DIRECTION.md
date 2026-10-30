@@ -83,7 +83,7 @@ skip is not a pass.
 **The metric is `N/46 running under --sim=core`**, reported from M4 with coverage and open
 disagreements beside it. Original-runtime parity stays a separate column and is `not
 verified` until original-runtime evidence exists. The per-rule contract work
-([`PILOT-EVIDENCE-CONTRACT.md`](PILOT-EVIDENCE-CONTRACT.md)) ends after M4; until then its
+([`PILOT-EVIDENCE-CONTRACT.md`](archive/PILOT-EVIDENCE-CONTRACT.md)) ends after M4; until then its
 fixtures keep guarding the legacy default.
 
 ## 7. Stop rules

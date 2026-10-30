@@ -23,6 +23,12 @@ recorded that the owner did not give. Current plan: [`DIRECTION.md`](DIRECTION.m
 
 ## Open
 
+## Q28 — `research/recomp/` is tracked although `AGENTS.md` forbids committing it (2026-10-30, reorganization)
+- **Blocks:** nothing in the reorganization; the move left the tree exactly as it was, and the review reads this as a pre-existing contradiction rather than a new one.
+- **Tried:** `git ls-files research/recomp | wc -l` returns **3,169** tracked files at `b389ca6d` and on this branch, while `AGENTS.md` says "Never hand-edit `research/recomp/`. Generated output; edits are overwritten. Source of truth is `research/symbols/`" and its Git section lists `research/recomp/` under "Never commit".
+- **Options:** (a) untrack `research/recomp/` in one commit, keeping the generator (`research/tools/generate_recomp.py`) and a note that the tree is rebuilt from `research/symbols/`; (b) keep it tracked and change the rule to say it is generated but committed for browsing, with the no-hand-edit rule unchanged; (c) keep it as is and record the exception. The brief that ordered this reorganization forbids touching `research/recomp/`, so the agent did not choose any of them.
+- **Default if unanswered:** leave the tree untouched and the contradiction named here; no rule is quietly relaxed.
+
 ## Q26 — Implement the shared knockdown/tech/get-up system for the pilot? (2026-10-29, owner-reported gap)
 - **Blocks:** the "Rena+0 is perfect" claim. The port only has 118/119 -> 120 -> Idle; the original also has the Jump-held landing tech (45), the 120 -> 124/128 choice, 30-tick get-up invincibility (124..129/194), the down meter (`+0x7c0`, 120-tick window, 30 i-frames at >=100), 103/203 fall-back, the flagged 121 ground roll and 133 wall bounce. Every one changes combo routes and wake-up pressure. Evidence and the port gap: [`reports/knockdown-getup-2026-10-29.md`](reports/knockdown-getup-2026-10-29.md).
 - **Why it needs the owner:** the implementation edits the frozen decision path (`fighter.{h,cpp}`, reaction scripts) and adds a shared system, not a Rena+0-only rule. The Q24 exception covers only the delayed reaction rows.
