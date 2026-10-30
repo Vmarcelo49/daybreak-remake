@@ -131,6 +131,15 @@ struct BattleResultNotice {
     int barOffset = -1;
 };
 
+struct LockRingView {
+    int target = -1;
+    bool invincible = false, onAlly = false, friendship = false, joint = false, shared = false;
+    bool manualAim = false;
+};
+struct DirectionWarningView {
+    int state = 0, direction = 0, ticks = 0;
+};
+
 class BattleView {
 public:
     virtual ~BattleView() = default;
@@ -138,6 +147,10 @@ public:
     // The result presentation draws no battle HUD.
     virtual bool hud_hidden() const { return false; }
     virtual BattleNotice notice(int) const { return {}; }
+    virtual LockRingView lock_ring(int) const { return {}; }
+    virtual std::vector<DirectionWarningView> direction_warnings(int) const { return {}; }
+    virtual int cpu_command(int, float& pulse) const { pulse = 0.f; return -1; }
+    virtual int round_ticks_left() const { return -1; }
     virtual BattleResultNotice result_notice() const { return {}; }
     // False leaves the view to the product's own ArenaCamera.
     virtual bool camera_pose(int, CameraPoseView&) const { return false; }

@@ -102,6 +102,7 @@ struct Battle::Impl {
     BattleWorld world;
     unsigned ticks = 0;
     bool victoryResolved = false;
+    std::array<bool, 4> tacticsHeld{};
     std::uint64_t digest = 1469598103934665603ull;
     BattleEvents events;
     std::shared_ptr<BattleVoiceInventory> voices;
@@ -287,7 +288,10 @@ void Battle::step(const Inputs& inputs) {
     for (unsigned i = 0; i < 4; ++i) {
         frame[i].x = static_cast<std::int16_t>(inputs[i].x);
         frame[i].z = static_cast<std::int16_t>(inputs[i].z);
-        frame[i].buttons = battle_button_carrier(inputs[i].buttons);
+        // FUN_0041f580 acts on the tactics press's first tick only.
+        const bool tactics = (inputs[i].buttons & Tactics) != 0;
+        frame[i].buttons = battle_button_carrier(inputs[i].buttons, tactics && !m_impl->tacticsHeld[i]);
+        m_impl->tacticsHeld[i] = tactics;
     }
     m_impl->step(frame);
 }
@@ -332,6 +336,37 @@ NoticeState Battle::notice(unsigned slot) const {
     out.type = combat.startup.notice_type[slot];
     out.scale = combat.startup.notice_scale[slot];
     return out;
+}
+
+LockRing Battle::lock_ring(unsigned slot) const {
+    const auto& combat = m_impl->combat;
+    const auto& relationships = m_impl->world.actors.at(slot).relationships;
+    const auto& targeting = combat.targeting[slot];
+    LockRing out;
+    if (relationships.secondary_target < 4) out.target = static_cast<int>(relationships.secondary_target);
+    if (out.target >= 0) out.invincible = damage_signed(combat.stagger[static_cast<size_t>(out.target)].invincible) > 0;
+    out.onAlly = targeting.ally_index >= 0;
+    const auto& gauge = combat.special_gauges[slot];
+    out.friendship = (gauge.mode & 255u) == 1 && gauge.active1;
+    out.joint = targeting.joint_ticks != 0;
+    out.shared = !relationships.allies.empty() &&
+                 relationships.target_index == m_impl->world.actors.at(relationships.allies.front()).relationships.target_index;
+    out.manualAim = (static_cast<unsigned>(combat.full_charge_manual_flag_[slot]) & 255u) != 0;
+    return out;
+}
+
+std::vector<DirectionWarning> Battle::direction_warnings(unsigned slot) const {
+    std::vector<DirectionWarning> out;
+    for (const auto& warning : m_impl->combat.direction_warnings[slot])
+        out.push_back({warning.state, warning.direction, warning.ticks});
+    return out;
+}
+
+int Battle::cpu_command(unsigned slot, float& pulse) const {
+    pulse = 0.f;
+    if (m_impl->roster.owner[slot] >= 4) return -1;  // FUN_00644150 hides it for a CPU seat
+    pulse = m_impl->cpu.command_display_scale[slot];
+    return m_impl->cpu.commands[slot];
 }
 
 ResultNotice Battle::result_notice() const {

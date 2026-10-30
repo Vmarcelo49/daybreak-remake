@@ -151,84 +151,11 @@ struct BattleFrame {
     glm::vec3 audioListenerPosition{0.f};
     glm::vec3 audioListenerForward{0.f, 0.f, 1.f};
     bool audioListenerValid = false;
-    bool koSting       = false;  // economy: KO sting window is running
-    bool respawned[kMatchFighterCount] = {false, false, false, false};
     bool roundOver     = false;
     // The WINNING side once roundOver (MatchEconomy::roundOverSide; issue #11). -1
     // only before the round ends — a timed round always resolves to a side.
     int  roundOverSide = -1;
-    // Issue #11's credits, per fighter: the balloon % a KO added this frame and how
-    // many hits landed on an already-down body. Both are already applied to the
-    // economy; they are reported so effects/audio/results can key off the event
-    // without re-deriving it (the KO credit is one-shot by construction).
-    int  koCredits[kMatchFighterCount]     = {0, 0, 0, 0};
-    int  overkillHits[kMatchFighterCount]  = {0, 0, 0, 0};
-    int  shotsSpawned  = 0;      // accepted by the pool this frame
-    int  muzzleSparks  = 0;
-    // i hit an opposing fighter this frame
-    bool meleeHit[kMatchFighterCount] = {false, false, false, false};
-    int meleeVictim[kMatchFighterCount] = {-1, -1, -1, -1};
-    // --- live combat events (issue #16) -------------------------------------------------
-    // The simulation reports what happened; audio and effects consume it. Every flag here
-    // is an EDGE armed by the transition itself (Fighter::take_swing_start /
-    // take_hyper_start, the pool's spawn, the economy's respawn) and drained exactly once,
-    // so re-reading a frame cannot replay an event and a fixed 60 Hz tick cannot miss one.
-    // i armed a melee swing / i's shot was accepted by the pool
-    bool swingStarted[kMatchFighterCount] = {false, false, false, false};
-    bool sourceShotVoiceAudited[kMatchFighterCount] = {false, false, false, false};
-    // True when the actor's running row carries a recovered melee voice cue, so the
-    // audio layer suppresses its fallback swing voice for that fighter this tick.
-    bool sourceMeleeVoiceAudited[kMatchFighterCount] = {false, false, false, false};
-    int shotVoice[kMatchFighterCount] = {-1, -1, -1, -1};
-    int shotVoiceAlternative[kMatchFighterCount] = {-1, -1, -1, -1};
-    // The melee voice cue (FUN_004223d0/422490), the gameplay SE cue (FUN_0042c8b0/
-    // 2c880) and the actor effect request (`(*actor+0xc)` -> FUN_00421aa0 -> FUN_00435990)
-    // — one per fighter per tick, -1 when silent. The two id spaces are different calls
-    // and stay apart: soundEffectId is a data/se index while effectId is a data/effect
-    // id (`id / 10` names the descriptor), whose yaw/pitch carry the request's pose
-    // (including the 350 beats' two rand%40-20 draws).
-    int meleeVoice[kMatchFighterCount] = {-1, -1, -1, -1};
-    int meleeVoiceAlternative[kMatchFighterCount] = {-1, -1, -1, -1};
-    int soundEffectId[kMatchFighterCount] = {-1, -1, -1, -1};
-    bool soundEffectPositional[kMatchFighterCount] = {};
-    glm::vec3 soundEffectPosition[kMatchFighterCount] = {};
-    int effectId[kMatchFighterCount] = {-1, -1, -1, -1};
-    float effectYaw[kMatchFighterCount] = {};
-    float effectPitch[kMatchFighterCount] = {};
-    bool shotFired[kMatchFighterCount]    = {false, false, false, false};
-    // Where that shot left the muzzle (issue #17): the effect layer spawns the muzzle
-    // flash from the event's own position instead of re-deriving it from the pose.
-    glm::vec3 shotPoints[kMatchFighterCount] = {glm::vec3(0.f), glm::vec3(0.f),
-                                                glm::vec3(0.f), glm::vec3(0.f)};
-    // i activated hypermode / i raised its guard
-    bool hyperStarted[kMatchFighterCount] = {false, false, false, false};
-    // The actor's hypermode WIRE value per fighter (0/1/2, see
-    // hypermode_wire_value), read fresh each tick so the per-mode S-press
-    // presentation resolves (issue #71).
-    int hyperMode[kMatchFighterCount] = {-1, -1, -1, -1};
-    bool guardStarted[kMatchFighterCount] = {false, false, false, false};
-    // A landed hit's victim was guarding. The port's guard gate is provisional
-    // (Fighter::take_damage's 20% block), so this is a port rule, not the original's.
-    bool blocked[kMatchFighterCount]      = {false, false, false, false};
-    // Shot -> fighter contacts the pool resolved this frame, in pool order. The melee path
-    // reports one victim per attacker above; a shot volley can connect with several
-    // fighters in one tick, so this is its own list.
-    static constexpr int kMaxShotHits = 8;
-    struct ShotHit {
-        int  shooter = -1;
-        int  victim  = -1;
-        bool blocked = false;
-        // Issue #17: the contact point and the impact effect id the shot carried
-        // (bullet record +0x70). The effect layer spawns one instance per hit from
-        // these, so overlapping hits cannot retire each other's cards.
-        glm::vec3 point{0.f};
-        int  effect = -1;
-    };
-    int     shotHitCount = 0;
-    ShotHit shotHits[kMaxShotHits];
-    // A backend that resolves its own presentation requests lists them here instead of using
-    // the per-fighter fields above, since one tick can ask for several per fighter. The legacy
-    // path leaves these empty.
+    // What the core asked the presentation to do this tick; one tick can ask for several.
     struct EffectSpawn { int id = -1; glm::vec3 position{0.f}, direction{0.f}; };
     struct SoundCue { int id = -1; bool positional = false; glm::vec3 position{0.f}; bool system = false; };
     struct VoiceCue { int fighter = -1; std::string path; bool positional = false; glm::vec3 position{0.f}; };

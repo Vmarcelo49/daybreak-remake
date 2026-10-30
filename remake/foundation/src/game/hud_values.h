@@ -48,7 +48,6 @@ struct GameFighterHud {
     int   tagSheet = 0;               // 0 blue tag rows, 1 red
     float hp = 1.f;                   // hud+0x7a4 / 10000
     float hpLag = 1.f;                // hud+0x7a8 / 10000
-    int   alertDir = -1;              // -1 none, else 0 top 1 bottom 2 left 3 right
 };
 
 // Every value the battle HUD needs, in game units. Fractions are 0..1, hp and
@@ -142,7 +141,6 @@ inline GameHudValues syntheticHudValues() {
     v.fighters[0].tagSheet = 1;  // the red tag rows
     v.fighters[0].hp = 0.8f;
     v.fighters[0].hpLag = 0.95f;
-    v.fighters[0].alertDir = 0;  // the pentagon above the bar
     return v;
 }
 

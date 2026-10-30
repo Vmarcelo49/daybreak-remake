@@ -141,7 +141,6 @@ inline ui::HudState makeHudState(const GameHudValues& v) {
         st.fighters[i].tagSheet = v.fighters[i].tagSheet;
         st.fighters[i].hp = v.fighters[i].hp;
         st.fighters[i].hpLag = v.fighters[i].hpLag;
-        st.fighters[i].alertDir = v.fighters[i].alertDir;
     }
     return st;
 }

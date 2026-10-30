@@ -15,7 +15,7 @@ namespace {
 // Sheet spelling: FUN_006560c0 takes the .bmp name the exe asks for and the
 // archives ship .cnv, so both are probed, .cnv first (an extracted tree keeps
 // .cnv too; a .bmp beside it would be a conversion, which the project does not do).
-const char* kSheetNames[(int)HudSheet::Count] = {"P00", "P01", "P02", "P03", "P06", "P09", "P04", "P05", "P08"};
+const char* kSheetNames[(int)HudSheet::Count] = {"P00", "P01", "P02", "P03", "P06", "P09", "P04", "P05", "P08", "P12"};
 
 }  // namespace
 
@@ -47,6 +47,28 @@ bool uploadCnvSheet(SpriteRenderer& batch, const char* stem, int& slot, std::str
     return true;
 }
 
+bool uploadMultiplyMask(SpriteRenderer& batch, const char* stem, int& slot, std::string& error) {
+    std::vector<uint8_t> bytes;
+    if (!fnd::assets::assetSource().read(std::string(stem) + ".cnv", bytes)) {
+        error = std::string(stem) + ".cnv is in no open bundle and on no filesystem path";
+        return false;
+    }
+    xm::CnvImage image;
+    try {
+        image = xm::decodeCnvImage(bytes.data(), bytes.size());
+    } catch (const std::exception& e) {
+        error = std::string(stem) + ".cnv: " + e.what();
+        return false;
+    }
+    for (size_t i = 0; i + 3 < image.rgba.size(); i += 4) {
+        const int luminance = (image.rgba[i] + image.rgba[i + 1] + image.rgba[i + 2]) / 3;
+        image.rgba[i] = image.rgba[i + 1] = image.rgba[i + 2] = 0;
+        image.rgba[i + 3] = static_cast<uint8_t>(255 - luminance);
+    }
+    slot = batch.addTexture(image.width, image.height, image.rgba.data(), error);
+    return slot >= 0;
+}
+
 bool HudAtlas::upload(SpriteRenderer& batch, std::string& error) {
     if (ready()) return true;
     int loaded[(int)HudSheet::Count];
@@ -65,6 +87,16 @@ bool HudAtlas::draw(SpriteRenderer& batch, HudIcon icon, float x, float y, float
     const int tex = sheet(s.sheet);
     if (tex < 0) return false;
     return batch.pushSprite(tex, s.src, s.pivotX, s.pivotY, x, y, scale, rotDeg, tint);
+}
+
+bool HudAtlas::drawRect(SpriteRenderer& batch, HudSheet which, const UiRect& src, float x, float y) const {
+    const int tex = sheet(which);
+    return tex >= 0 && batch.pushSprite(tex, src, 0.f, 0.f, x, y);
+}
+
+bool HudAtlas::fillRect(SpriteRenderer& batch, HudSheet which, const UiRect& src, float frac, float x, float y) const {
+    const int tex = sheet(which);
+    return tex >= 0 && batch.pushFill(tex, src, 0.f, 0.f, frac, FillMode::Right, x, y, UiColor{});
 }
 
 bool HudAtlas::fill(SpriteRenderer& batch, HudIcon icon, float frac, float x, float y,

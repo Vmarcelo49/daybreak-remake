@@ -1,4 +1,4 @@
-// Issue #20: the recovered victory-quote rule and the earned-title chain.
+// Issue #20: the recovered victory-quote rule and the earned-title names.
 //
 // Device-free for the rules themselves; the title NAMES come from the installed exe's own table
 // (VA 0x6b7308), so the one check that reads them skips when the install is absent — the same
@@ -31,18 +31,6 @@ static fs::path findInstall() {
         if (fs::is_directory(game / "data", ec)) return game;
     }
     return fs::path();
-}
-
-// A seed whose next penalty roll is below `percent` (or above it), so the penalty-title branches
-// can be pinned without exposing the roll itself.
-static uint32_t seedWithRoll(bool below, int percent) {
-    for (uint32_t seed = 1; seed < 100000; ++seed) {
-        uint32_t rng = seed;
-        rng = rng * 1664525u + 1013904223u;
-        const int roll = (int)((rng >> 8) % 100u);
-        if (below ? roll < percent : roll >= percent) return seed;
-    }
-    return 1;
 }
 
 int main() {
@@ -127,88 +115,6 @@ int main() {
         CHECK(ui::resultQuoteEntryIndex(0, 0, 0) == -1);
     }
 
-    // --- the earned-title chain --------------------------------------------
-    // Branch B's first condition (FUN_00430880's winner branch): a dominant standing winner.
-    {
-        gameplay::ResultRecord r;
-        r.teamCapacity = 100;
-        r.enemyCapacity = 100;
-        r.koed = false;
-        r.damageToOthers = 40000;    // 40% of the opponents' budget in the original's unit
-        r.damageFromOthers = 10000;
-        // The recovered shape of a dominant round: most hits land on opponents that are NOT
-        // locked on this fighter (the +0x30 bucket), and it takes almost nothing back.
-        r.hitsToTarget = 6;
-        r.hitsToOthers = 40;
-        r.hitsFromTarget = 5;        // > hitsToTarget * 0.5
-        r.hitsFromOthers = 1;        // hitsTaken 6 <= hitsDealt 46 * 0.15
-        uint32_t rng = seedWithRoll(false, 100);
-        bool resolved = false;
-        const int title = gameplay::resultTitleIndex(r, rng, &resolved);
-        CHECK(title == 6);
-        CHECK(resolved);
-    }
-    // A lone wolf: the same shape but it never touched the local player's fighter.
-    {
-        gameplay::ResultRecord r;
-        r.teamCapacity = 100;
-        r.enemyCapacity = 100;
-        r.damageToOthers = 30000;
-        r.damageFromOthers = 20000;
-        r.hitsToTarget = 4;
-        r.hitsOnLocalPlayer = 0;
-        uint32_t rng = seedWithRoll(false, 100);
-        bool resolved = false;
-        CHECK(gameplay::resultTitleIndex(r, rng, &resolved) == 3);
-        CHECK(resolved);
-    }
-    // A KO'd fighter that barely hit anything: the chain reaches branch A's hits condition
-    // AFTER skipping the conditions whose fields are not recovered, so the answer is flagged.
-    {
-        gameplay::ResultRecord r;
-        r.teamCapacity = 100;
-        r.enemyCapacity = 100;
-        r.koed = true;
-        r.damageToOthers = 0;
-        r.damageFromOthers = 50000;
-        r.hitsToOthers = 2;
-        r.hitsFromOthers = 30;
-        uint32_t rng = seedWithRoll(false, 100);
-        bool resolved = true;
-        const int title = gameplay::resultTitleIndex(r, rng, &resolved);
-        CHECK(title == 27);
-        CHECK(!resolved);
-    }
-    // The penalty title: when the branch's roll passes, the original awards 0x28 instead, and
-    // that is the index the host turns into the session's penalty flag.
-    {
-        gameplay::ResultRecord r;
-        r.teamCapacity = 100;
-        r.enemyCapacity = 100;
-        r.koed = true;
-        r.damageToOthers = 40000;
-        r.damageFromOthers = 0;
-        r.hitsToTarget = 10;
-        r.hitsToOthers = 4;
-        r.eventsToTarget = 20;
-        r.eventsToOthers = 20;
-        uint32_t rng = seedWithRoll(true, 1);
-        bool resolved = false;
-        CHECK(gameplay::resultTitleIndex(r, rng, &resolved) == gameplay::kResultTitlePenalty);
-        CHECK(gameplay::kResultTitlePenalty == 40);
-    }
-    // A record that matches nothing anywhere returns the chain's own fallback.
-    {
-        gameplay::ResultRecord r;
-        r.teamCapacity = 100;
-        r.enemyCapacity = 100;
-        r.koed = false;
-        uint32_t rng = seedWithRoll(false, 100);
-        bool resolved = true;
-        CHECK(gameplay::resultTitleIndex(r, rng, &resolved) == gameplay::kResultTitleFallback);
-        CHECK(!resolved);
-    }
-
     // --- the shipped title table (asset-backed, skipped without the install) ---
     const fs::path install = findInstall();
     if (!install.empty()) {
@@ -225,6 +131,6 @@ int main() {
         std::puts("result_title_test: install not found, title-table checks skipped");
     }
 
-    std::puts("result_title_test: quote rule and title chain ok");
+    std::puts("result_title_test: quote rule and title names ok");
     return 0;
 }

@@ -23,6 +23,7 @@
 #include <cmath>
 #include <algorithm>
 #include <string>
+#include <vector>
 
 #include "ui/font.h"
 #include "ui/caption.h"
@@ -84,7 +85,10 @@ struct HudFighterHud {
     int   tagSheet = 0;               // 0 blue rows, 1 red rows (0x64408c)
     float hp = 1.f;                   // 0..1, hud+0x7a4 / 10000: the live com-bar fill
     float hpLag = 1.f;                // 0..1, hud+0x7a8 / 10000: the ghost under it
-    int   alertDir = -1;              // -1 none, else 0 top 1 bottom 2 left 3 right (0x643722)
+    bool  ring = false;               // this view's reticle sits here (draw_battle_lock_hud)
+    int   ringCol = 0, ringRow = 1;   // the P03 cell
+    bool  ringSecond = false;         // both allies share the target: the counter-rotating copy
+    bool  allyBar = false;            // the ally's overhead frame and strips
 };
 
 // One entry per selection panel: the HUD carries the whole active roster, so a 2v2 shows
@@ -102,16 +106,16 @@ inline HudRingTransform hudRingTransform(int frame, int pulse) {
 // establish enemy/ally colors; an actor's own lock does not determine its team.
 struct HudRingCell { int col = 0; int row = 1; };
 inline HudRingCell hudRingCell(const HudFighterHud& f) {
-    return {0, f.role == HudFighterRole::Ally ? 2 : 1};
+    return {f.ringCol, f.ringRow};
 }
 
 inline bool hudFighterHasRing(const HudFighterHud& f) {
-    return f.visible && f.role != HudFighterRole::Owner;
+    return f.visible && f.ring;
 }
 
 // The outward triangles mark mutual targeting on the opponent, never the viewer.
 inline bool hudRingCounterRotates(const HudFighterHud& f) {
-    return f.role == HudFighterRole::Enemy && f.target && f.targetsViewer;
+    return f.ringSecond;
 }
 
 // The second copy is a DIFFERENT reticle, not the first one again (issue #55). P03 carries
@@ -146,29 +150,6 @@ inline void hudProjectClip(float ndcX, float ndcY, float& x, float& y,
 inline float hudBalloonScale(float pct, int pulse) {
     const float wobble = std::sin((float)pulse * 3.f * 3.14159265358979323846f / 180.f) * 20.f;
     return (pct * 1.5f + 20.f + wobble) / 100.f;
-}
-
-// The off-screen alert marker's edge for one fighter's projected anchor: 0 top, 1 bottom,
-// 2 left, 3 right, -1 while the anchor is inside the logical viewport (the ring is then the
-// marker). PORT RULE: the original's marker art and its four positions are recovered
-// (0x643722-0x6437d0, FUN_00643230:110-152), but the rule that picks an edge is not in the
-// corpus, so the port takes the nearest edge measured on the outside distance; a fighter
-// behind the eye has no screen side and takes the bottom edge.
-inline int hudAlertDirection(const HudFighterHud& f, float width, float height) {
-    if (width <= 0.f || height <= 0.f) return -1;
-    if (f.visible && f.ringX >= 0.f && f.ringX <= width && f.ringY >= 0.f && f.ringY <= height)
-        return -1;
-    if (!f.visible) return 1;
-    const float left = f.ringX < 0.f ? -f.ringX : 0.f;
-    const float right = f.ringX > width ? f.ringX - width : 0.f;
-    const float top = f.ringY < 0.f ? -f.ringY : 0.f;
-    const float bottom = f.ringY > height ? f.ringY - height : 0.f;
-    const float worst = std::max(std::max(left, right), std::max(top, bottom));
-    if (worst <= 0.f) return -1;
-    if (worst == top) return 0;
-    if (worst == bottom) return 1;
-    if (worst == left) return 2;
-    return 3;
 }
 
 // Per-frame game state feeding the HUD. Fractions are 0..1 (clamped at draw).
@@ -213,6 +194,11 @@ struct HudState {
     int   hudFrame = 0;
     float hpLag = 100.f;             // hud+0x7a8: the ghost fill's lagging percentage
     int   commandCell = -1;          // hud+0x310: boxed tactics cell; < 0 hides it
+    int   roundTicks = -1;           // the round clock; < 0 when the round is untimed
+    bool  scope = false;             // P13 over the scene: the manual aim of a full charge
+    // actor+850, one record per opponent (draw_battle_direction_hud).
+    struct DirectionWarning { int direction = 0; int frame = 0; float scale = 1.f; };
+    std::vector<DirectionWarning> directionWarnings;
     float commandScale = 0.f;        // hud+0x314: extra scale, 0 draws at 1.0
     // hud+0x78e0 / hud+0x78e8: a balloon corner's change popup. FUN_006431d0
     // @0x6431d0 arms a 60-frame countdown and the value to show when a corner's value
@@ -318,6 +304,8 @@ private:
     // target's com bar (frame, lagging fill, live fill, 1P/2P/3P/com tag) and the
     // P06 off-screen alert marker, all hung off one projected point per fighter.
     void composeFighters(SpriteRenderer& batch, const HudState& st, const BattleHudLayout& layout);
+    int  scopeTexture_ = -1;
+    bool scopeTried_ = false;
     // One-shot resolve + upload of every HUD sheet. False (and a single stderr line)
     // leaves the text HUD in place, which is the documented asset-less behaviour.
     bool ensureBattleAtlas(SpriteRenderer& batch);

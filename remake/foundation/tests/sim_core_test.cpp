@@ -335,6 +335,37 @@ void test_round_start(const std::string& game) {
     check(after[0] != spawn[0] || after[2] != spawn[2], "held input moves the fighter once the count ends");
 }
 
+// The core's HUD state the view draws: the tactic a human gives its CPU ally, the round clock,
+// the reticle and the direction warnings.
+void test_hud_state(const std::string& game) {
+    sim::BattleConfig config = match(game, 0, 0);
+    config.slots[0].cpu = false;
+    config.timeLimitSeconds = 60;
+    sim::Battle battle(config);
+    float pulse = 0.f;
+    for (unsigned t = 0; t < 200; ++t) battle.step({});
+    const int before = battle.cpu_command(0, pulse);
+    check(before >= 0, "a human with a CPU ally has a tactic to give");
+    check(battle.cpu_command(1, pulse) == -1, "a CPU seat shows none");
+    sim::Inputs press{};
+    press[0].buttons = sim::Tactics;
+    battle.step(press);
+    battle.step(press);
+    battle.step(press);
+    check(battle.cpu_command(0, pulse) == (before + 1) % 6, "one held press cycles the tactic once");
+    check(pulse > 0.f, "and pulses its cell");
+    check(battle.match_state().timed && battle.match_state().remainingTicks > 0, "the round has a clock");
+    bool warned = false, ringed = false;
+    for (unsigned t = 0; t < 1800; ++t) {
+        battle.step({});
+        for (const sim::DirectionWarning& w : battle.direction_warnings(0))
+            warned |= w.state != 0 && w.direction >= 0 && w.direction <= 3;
+        ringed |= battle.lock_ring(0).target >= 0;
+    }
+    check(warned, "incoming locks raise a direction warning");
+    check(ringed, "the view has a reticle target");
+}
+
 void test_invalid_combos_are_rejected(const std::string& game) {
     const auto rejected = [&](int character, int weapon) {
         try {
@@ -392,6 +423,7 @@ int main() {
     test_hud_values(game);
     test_positional_sounds(game);
     test_round_start(game);
+    test_hud_state(game);
     test_determinism(game);
     test_input_sensitivity(game);
     test_scripted_rena_reaches_her_rows(game);

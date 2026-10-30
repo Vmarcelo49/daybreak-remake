@@ -33,6 +33,7 @@ SlotInput slot_input(const fnd::input::PlayerState& state) {
     if (state.down[Action::Shoot]) out.buttons |= Shoot;
     if (state.down[Action::LockSwitch]) out.buttons |= Target;
     if (state.down[Action::Guard]) out.buttons |= Guard;
+    if (state.down[Action::Tactics]) out.buttons |= Tactics;
     // The port's Special key is the original's melee + shot chord (FUN_0063c2a0 case 0x24).
     if (state.down[Action::Special]) out.buttons |= Melee | Shoot;
     return out;
@@ -181,6 +182,31 @@ game::BattleFrame CoreBattle::step(const fnd::input::PlayerState* inputs[game::k
     if (match.awardsReady)
         for (size_t i = 0; i < m_fighters.size(); ++i) m_fighters[i].set_result_title(match.awards[i]);
     return frame;
+}
+
+game::LockRingView CoreBattle::lock_ring(int fighter) const {
+    if (!m_battle) return {};
+    const LockRing ring = m_battle->lock_ring(static_cast<unsigned>(fighter));
+    return {ring.target, ring.invincible, ring.onAlly, ring.friendship, ring.joint, ring.shared, ring.manualAim};
+}
+
+std::vector<game::DirectionWarningView> CoreBattle::direction_warnings(int fighter) const {
+    std::vector<game::DirectionWarningView> out;
+    if (!m_battle) return out;
+    for (const DirectionWarning& w : m_battle->direction_warnings(static_cast<unsigned>(fighter)))
+        out.push_back({w.state, w.direction, w.ticks});
+    return out;
+}
+
+int CoreBattle::cpu_command(int fighter, float& pulse) const {
+    pulse = 0.f;
+    return m_battle ? m_battle->cpu_command(static_cast<unsigned>(fighter), pulse) : -1;
+}
+
+int CoreBattle::round_ticks_left() const {
+    if (!m_battle) return -1;
+    const MatchState match = m_battle->match_state();
+    return match.timed ? match.remainingTicks : -1;
 }
 
 game::BattleNotice CoreBattle::notice(int fighter) const {

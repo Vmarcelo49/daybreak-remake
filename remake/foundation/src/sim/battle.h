@@ -32,7 +32,7 @@ struct BattleConfig {
 };
 
 // Buttons as the original's physical bits, before battle_button_carrier.
-enum Button : unsigned { Jump = 1, Melee = 2, Shoot = 4, Target = 8, Guard = 32 };
+enum Button : unsigned { Jump = 1, Melee = 2, Shoot = 4, Target = 8, Guard = 32, Tactics = 64 };
 
 struct SlotInput {
     int x = 0;  // -1 left, +1 right
@@ -81,6 +81,18 @@ struct ResultNotice {
     bool main = false, secondary = false;
     float mainScale = 1.f, secondaryScale = 1.f;
     int barOffset = -1;  // scene phases 4 and 5: the bars closing in, 1056 down to 0
+};
+
+// What one view's target reticle shows (draw_battle_lock_hud).
+struct LockRing {
+    int target = -1;
+    bool invincible = false, onAlly = false, friendship = false, joint = false, shared = false;
+    bool manualAim = false;  // the scope replaces the reticle
+};
+
+// One actor+850 record: 0 clear, 1 locked on, 2 attacking; 0 top, 1 bottom, 2 left, 3 right.
+struct DirectionWarning {
+    int state = 0, direction = 0, ticks = 0;
 };
 
 struct MatchState {
@@ -176,6 +188,10 @@ public:
     ActorAnimation animation(unsigned slot) const;
     SpecialState special(unsigned slot) const;
     NoticeState notice(unsigned slot) const;
+    LockRing lock_ring(unsigned slot) const;
+    std::vector<DirectionWarning> direction_warnings(unsigned slot) const;
+    // The tactic this seat can give its CPU ally, or -1; `pulse` is the press's extra scale.
+    int cpu_command(unsigned slot, float& pulse) const;
     ResultNotice result_notice() const;
     ActorTotals totals(unsigned slot) const;
     HandTrail hand_trail(unsigned slot, unsigned hand) const;

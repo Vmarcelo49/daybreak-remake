@@ -44,7 +44,7 @@ namespace ui {
 // P09 carries the round stings; it is loaded because the KO sting is a state the
 // match simulation already has (MatchEconomy's KO window), not a transient the port
 // would have to invent.
-enum class HudSheet : uint8_t { P00 = 0, P01, P02, P03, P06, P09, P04, P05, P08, Count };
+enum class HudSheet : uint8_t { P00 = 0, P01, P02, P03, P06, P09, P04, P05, P08, P12, Count };
 
 // The sprites the implemented elements draw. The name after the comment is the
 // exe's own static sprite (or HUD-object slot) the numbers were read from.
@@ -86,6 +86,10 @@ enum class HudIcon : uint8_t {
     ComBarFillGhost,     // hud+0xb0  P01 (320,352,80,6)     pivot (40,3)
     TagCell,             // 0x6c7ad8  P01 (320,256,64,32)    pivot (32,16)
     AlertPale,           // 0x6c78f8  P06 (0,128,128,128)    pivot (64,64)
+    AlertHot,            // draw_battle_direction_hud: P06 (0,0,128,128), its pair one cell along
+    ComBarFrameAlly,     // draw_battle_overhead_hud: the ally's frame and strips
+    ComBarFillAlly,
+    ComBarFillGhostAlly,
     // Round sting (FUN_0063a130 @0x63a4b4, sprite scene+0x7f8).
     KoSting,             // scene+0x7f8 P09 (0,256,512,256)  pivot (256,128)
     NoticeThree,         // 633ca0 bindings, 63a130: the startup digits and start, the respawn
@@ -109,6 +113,9 @@ enum class HudIcon : uint8_t {
 // screens load through this too (ui/screen_title.cpp), so ui/ has ONE bundle-first CNV
 // path per screen family rather than one per screen; HudAtlas::upload is the HUD's user.
 bool uploadCnvSheet(SpriteRenderer& batch, const char* stem, int& slot, std::string& error);
+// P13 multiplies the scene by its RGB (FUN_00643230 mode 3). The batch only blends by alpha, so
+// the mask uploads as black with alpha 1 - luminance, which gives the same result for a grey mask.
+bool uploadMultiplyMask(SpriteRenderer& batch, const char* stem, int& slot, std::string& error);
 
 // One entry of the original's sprite table: the atlas sub-rect (FUN_00655b20's
 // params 2..5) and the pivot (its params 6..7).
@@ -158,6 +165,10 @@ inline constexpr HudSprite kHudSprites[] = {
     /* ComBarFillGhost  */ {HudSheet::P01, {320.f, 352.f, 80.f, 6.f}, 40.f, 3.f},
     /* TagCell          */ {HudSheet::P01, {320.f, 256.f, 64.f, 32.f}, 32.f, 16.f},
     /* AlertPale        */ {HudSheet::P06, {0.f, 128.f, 128.f, 128.f}, 64.f, 64.f},
+    /* AlertHot         */ {HudSheet::P06, {0.f, 0.f, 128.f, 128.f}, 64.f, 64.f},
+    /* ComBarFrameAlly  */ {HudSheet::P01, {320.f, 448.f, 192.f, 64.f}, 96.f, 32.f},
+    /* ComBarFillAlly   */ {HudSheet::P01, {320.f, 333.f, 80.f, 6.f}, 40.f, 4.f},
+    /* ComBarFillGhostA */ {HudSheet::P01, {320.f, 349.f, 80.f, 6.f}, 40.f, 4.f},
     /* KoSting          */ {HudSheet::P09, {0.f, 256.f, 512.f, 256.f}, 256.f, 128.f},
     /* NoticeThree      */ {HudSheet::P09, {0.f, 0.f, 192.f, 256.f}, 96.f, 128.f},
     /* NoticeTwo        */ {HudSheet::P09, {192.f, 0.f, 192.f, 256.f}, 96.f, 128.f},
@@ -247,6 +258,9 @@ public:
     // one CNV decoder (assets/cnv.h), not a second one. `error` carries the failing
     // sheet and reason; the caller logs it once and falls back.
     bool upload(SpriteRenderer& batch, std::string& error);
+    // A source rect the sprite table does not name: FUN_00655830 picks the fan's cells by mode.
+    bool drawRect(SpriteRenderer& batch, HudSheet sheet, const UiRect& src, float x, float y) const;
+    bool fillRect(SpriteRenderer& batch, HudSheet sheet, const UiRect& src, float frac, float x, float y) const;
 
     // False until every sheet is up; the composer reads it as "draw the art HUD".
     bool ready() const {

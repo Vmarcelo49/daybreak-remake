@@ -1896,6 +1896,8 @@ next unblocked row.
 
 - 2026-10-30 — M6, owner playtest of `f7374d61` — **the result over the battle "ficou certo".** Tier 3 owner observation of our build. Original-runtime parity stays not verified.
 
+- 2026-10-30 — M6, HUD from the core and cleanup — **the remaining HUD gaps now read the core's state.** Round clock; the tactic a human gives a CPU ally, with the Tactics key now reaching the core; direction warnings from the actor+850 records, replacing the port's off-screen markers; overhead bars on every other fighter, with the ally's own art; one reticle on the view's target, with its invincible, ally and Friendship cells; the P13 scope in full-charge manual aim; the fan's cells per mode, including P12 for Kakera; and all four fighters in the standalone `--match` roster. **Port rules:** the scope mask uploads as black with alpha 1 - luminance, because the batch has no multiply blend, and on a wide frame the area past 4:3 is solid black. Player names do not apply offline: the original only draws them when a name is present, which comes from netplay. Cleanup: `BattleFrame` keeps only what the core fills; `combat_events_for_frame` and the audio policy layer are gone, leaving request playback; the product's title chain is gone, because the core picks titles. Checked (tier 5): Linux suite 55/55; `test_hud_state` pins the tactic, clock, warnings and reticle; forced-state captures showed the clock with its last-ten pulse, the Kakera and Friendship fans, and the scope. The forcing patch was temporary and is removed. `2v2` and `4p` flows pass; Windows builds. Not played on this revision.
+
 ## Recovered-body completeness census (2026-10-15, measured)
 
 The owner's working hypothesis is that the Ginkiha recovery "is probably almost everything we need

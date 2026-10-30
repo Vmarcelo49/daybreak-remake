@@ -234,15 +234,21 @@ void HudComposer::composeBattle(SpriteRenderer& batch, const HudState& st, const
     // here, FUN_00642c50 @0x00642cf8-0x642e5b) and, while charged, alternates the
     // pair on (frame % 0x1e) / 0xf (0x6446b0) — the same counter as the HP flash.
     battleAtlas_.draw(batch, HudIcon::FanFrame, layout.fan.x, layout.fan.y, 1.f, 0.f, white);
+    // draw_battle_hud: the mode picks the cells. Kakera charges on P12, Friendship uses the
+    // right column of P02, and a ready gauge draws whole rather than filling.
     const float gauge = std::clamp(st.hyperGauge, 0.f, 1.f);
-    if (st.hyperActive || st.hyperReady) {
-        battleAtlas_.fill(batch, ((frame % 0x1e) / 0xf) != 0 ? HudIcon::FanFillReadyAlt
-                                                             : HudIcon::FanFillReady,
-                          gauge, layout.fan.x, layout.fan.y);
+    const int mode = st.hyperRow;
+    const float column = mode == 1 ? 256.f : 0.f;
+    const int blink = (frame % 0x1e) / 0xf;
+    if (st.hyperReady && !st.hyperActive) {
+        battleAtlas_.drawRect(batch, mode == 2 ? HudSheet::P12 : HudSheet::P02,
+                              {column, (float)(blink + 1) * 96.f, 256.f, 96.f}, layout.fan.x, layout.fan.y);
+        battleAtlas_.draw(batch, HudIcon::MaxLabel, layout.maxLabel.x, layout.maxLabel.y, 1.f, 0.f, white);
     } else {
-        battleAtlas_.fill(batch, HudIcon::FanFillCharging, gauge, layout.fan.x, layout.fan.y);
+        battleAtlas_.fillRect(batch, mode == 2 && !st.hyperActive ? HudSheet::P12 : HudSheet::P02,
+                              {column, st.hyperActive ? 288.f + 96.f * (float)blink : 0.f, 230.f, 91.f},
+                              gauge, layout.fan.x, layout.fan.y);
     }
-    if (st.hyperReady && !st.hyperActive) battleAtlas_.draw(batch, HudIcon::MaxLabel, layout.maxLabel.x, layout.maxLabel.y);
     battleAtlas_.cell(batch, HudIcon::FanCaption, 0, st.hyperRow, layout.fanCaption.x, layout.fanCaption.y, 1.f, 0.f, white);
 
     // STAMINA: frame 0x6ca5a0 @0x64476d at (400,517) and the fill slot hud+0x4b8
@@ -301,6 +307,20 @@ void HudComposer::composeBattle(SpriteRenderer& batch, const HudState& st, const
     // Activation flash (FUN_0063a130): fullscreen (alpha << 24) | 0xB00000 over
     // everything the view drew, HUD included — the pause overlay draws later in
     // its own layer, so it stays untinted (issue #71).
+    // The round clock (draw_battle_hud): the last ten seconds pulse once a second.
+    if (st.roundTicks >= 0) {
+        const int rounded = st.roundTicks + 59;
+        const int seconds = rounded / 60;
+        const float centre = layout.width * .5f - 400.f;
+        if (rounded < 600) {
+            const float zoom = std::max(1.f, (float)(rounded % 60) * .05f);
+            battleAtlas_.number(batch, HudFont::SmallYellow, seconds, centre + (zoom - 1.f) * 16.f + 416.f,
+                                10.f - (zoom - 1.f) * 10.f, zoom);
+        } else {
+            battleAtlas_.number(batch, HudFont::SmallYellow, seconds, centre + (rounded < 6000 ? 428.f : 442.f), 10.f);
+        }
+    }
+
     if (st.hyperFlash > 0.f)
         batch.pushSolid(UiRect{0.f, 0.f, layout.width, layout.height},
                         UiColor{0xB0 / 255.f, 0.f, 0.f, std::clamp(st.hyperFlash, 0.f, 1.f)});
@@ -322,28 +342,27 @@ void HudComposer::composeFighters(SpriteRenderer& batch, const HudState& st, con
                 battleAtlas_.cell(batch, HudIcon::Ring, hudRingSecondCellColumn(col), row,
                                   f.ringX, f.ringY, ring.scale, ring.secondDeg, white);
         }
-        // The target's com bar (the drawer at 0x643fa7): frame, the lagging fill
-        // (hud+0xb0 = P01 (320,352,80,6)) then the live one (hud+0x4 =
-        // P01 (320,320,80,6)), both pivot (40,3) so they grow right from the bar's
-        // left edge, and the tag cell at (+24,+16) — 1P/2P/3P in row 0, 4P/com in row
-        // 1, the red copies four rows down (0x64408c). The tag is the panel's controller,
-        // so a 2v2 shows at a glance who is human and who is COM.
-        if (f.visible && f.target) {
-            battleAtlas_.draw(batch, HudIcon::ComBarFrame, f.barX, f.barY, 1.f, 0.f, white);
-            battleAtlas_.fill(batch, HudIcon::ComBarFillGhost, f.hpLag, f.barX, f.barY);
-            battleAtlas_.fill(batch, HudIcon::ComBarFill, f.hp, f.barX, f.barY);
+        // draw_battle_overhead_hud, for every other fighter: frame, the lagging fill, the live
+        // one, then the tag cell. The tag is the panel's controller, so a 2v2 shows at a glance
+        // who is human and who is COM.
+        if (f.visible) {
+            battleAtlas_.draw(batch, f.allyBar ? HudIcon::ComBarFrameAlly : HudIcon::ComBarFrame, f.barX, f.barY, 1.f, 0.f, white);
+            battleAtlas_.fill(batch, f.allyBar ? HudIcon::ComBarFillGhostAlly : HudIcon::ComBarFillGhost, f.hpLag, f.barX, f.barY);
+            battleAtlas_.fill(batch, f.allyBar ? HudIcon::ComBarFillAlly : HudIcon::ComBarFill, f.hp, f.barX, f.barY);
             battleAtlas_.cell(batch, HudIcon::TagCell, f.slot % 3, f.slot / 3 + 4 * f.tagSheet,
                               f.barX + 24.f, f.barY + 16.f, 1.f, 0.f, white);
         }
-        // The off-screen alert marker (0x643722-0x6437d0): the pale P06 pentagon on
-        // the screen edge the fighter went off, at (400,64) top, (400,536) bottom,
-        // (64,300) left, (736,300) right. It is the only cue an off-screen participant
-        // has, so it is drawn for every roster entry that carries a direction.
-        if (f.alertDir >= 0 && f.alertDir < 4) {
-            const float ax = f.alertDir == 2 ? 64.f : (f.alertDir == 3 ? layout.width-64.f : layout.width*.5f);
-            const float ay = f.alertDir == 0 ? 64.f : (f.alertDir == 1 ? layout.height-64.f : layout.height*.5f);
-            battleAtlas_.draw(batch, HudIcon::AlertPale, ax, ay, 1.f, 0.f, white);
+    }
+    // draw_battle_direction_hud: one edge marker per warning; an attack blocks later ones there.
+    bool blocked[4] = {};
+    for (const HudState::DirectionWarning& w : st.directionWarnings) {
+        if (!blocked[w.direction]) {
+            const float x = w.direction == 2 ? 64.f : (w.direction == 3 ? layout.width - 64.f : layout.width * .5f);
+            const float y = w.direction == 0 ? 64.f : (w.direction == 1 ? layout.height - 64.f : layout.height * .5f);
+            if (w.frame == 0) battleAtlas_.draw(batch, HudIcon::AlertPale, x, y, w.scale, 0.f, white);
+            else battleAtlas_.cell(batch, HudIcon::AlertHot, w.frame - 1, 0, x, y, w.scale, 0.f, white);
         }
+        if (w.frame != 0) blocked[w.direction] = true;
     }
 }
 
@@ -386,6 +405,21 @@ void HudComposer::compose(SpriteRenderer& batch, const HudState& st) {
         if (st.noticesOnly) {
             composeNotices(batch, st, battle);
             return;
+        }
+        if (st.scope) {
+            if (!scopeTried_) {
+                scopeTried_ = true;
+                std::string failure;
+                if (!uploadMultiplyMask(batch, "data/object/P13", scopeTexture_, failure))
+                    std::fprintf(stderr, "[fnd::ui] scope mask unavailable: %s\n", failure.c_str());
+            }
+            // Past the 4:3 mask, the wide frame stays dark as the mask's own border is.
+            const float x = (battle.width - 800.f) * .5f;
+            if (scopeTexture_ >= 0) batch.pushTextured(scopeTexture_, {x, 0.f, 800.f, 600.f}, {0.f, 0.f, 1.f, 1.f}, {});
+            if (x > 0.f) {
+                batch.pushSolid({0.f, 0.f, x, 600.f}, {0.f, 0.f, 0.f, 1.f});
+                batch.pushSolid({x + 800.f, 0.f, x, 600.f}, {0.f, 0.f, 0.f, 1.f});
+            }
         }
         composeFighters(batch, st, battle);
         // The round stings sit between the fighters and the corners: FUN_0063a130

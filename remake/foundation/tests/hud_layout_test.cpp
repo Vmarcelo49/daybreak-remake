@@ -73,48 +73,20 @@ int main() {
     const auto cellB = ui::computeBattleHudLayout(960,540);
     CHECK(near(cellA.hp.x,cellB.hp.x) && near(cellA.ko.y,cellB.ko.y));
 
-    // Issue #13: every active participant keeps a marker on screen. The off-screen alert
-    // edge is a port rule (the original's marker art and its four positions are recovered,
-    // 0x643722-0x6437d0, but not the rule that picks one): the nearest edge of the logical
-    // view, and the bottom edge for a fighter behind the eye.
     {
-        ui::HudFighterHud fighter;
-        fighter.visible = true;
-        fighter.ringX = 400.f; fighter.ringY = 300.f;
-        CHECK(ui::hudAlertDirection(fighter,800.f,600.f) == -1);
-        fighter.ringX = -20.f;
-        CHECK(ui::hudAlertDirection(fighter,800.f,600.f) == 2);
-        fighter.ringX = 900.f;
-        CHECK(ui::hudAlertDirection(fighter,800.f,600.f) == 3);
-        fighter.ringX = 400.f; fighter.ringY = -40.f;
-        CHECK(ui::hudAlertDirection(fighter,800.f,600.f) == 0);
-        fighter.ringY = 700.f;
-        CHECK(ui::hudAlertDirection(fighter,800.f,600.f) == 1);
-        fighter.visible = false;
-        fighter.ringX = 400.f; fighter.ringY = 300.f;
-        CHECK(ui::hudAlertDirection(fighter,800.f,600.f) == 1);
-        // An absent view has no markers at all.
-        CHECK(ui::hudAlertDirection(fighter,0.f,0.f) == -1);
-    }
-    {
-        for (auto role : {ui::HudFighterRole::Owner, ui::HudFighterRole::Ally,
-                          ui::HudFighterRole::Enemy}) {
-            ui::HudFighterHud f;
-            f.visible = true;
-            f.role = role;
-            CHECK(ui::hudFighterHasRing(f) == (role != ui::HudFighterRole::Owner));
-            CHECK(ui::hudRingCell(f).row == (role == ui::HudFighterRole::Ally ? 2 : 1));
-            for (bool selected : {false, true}) for (bool incoming : {false, true}) {
-                f.target = selected;
-                f.targetsViewer = incoming;
-                CHECK(ui::hudRingCounterRotates(f) ==
-                      (role == ui::HudFighterRole::Enemy && selected && incoming));
-                CHECK(ui::hudRingCell(f).row == (role == ui::HudFighterRole::Ally ? 2 : 1));
-            }
-            CHECK(ui::hudRingCell(f).col == 0);
-            f.visible = false;
-            CHECK(!ui::hudFighterHasRing(f));
-        }
+        // Only the fighter this view locks on to wears the reticle, in the cell the core chose.
+        ui::HudFighterHud f;
+        f.visible = true;
+        CHECK(!ui::hudFighterHasRing(f));
+        f.ring = true;
+        CHECK(ui::hudFighterHasRing(f));
+        f.ringCol = 2; f.ringRow = 1;
+        CHECK(ui::hudRingCell(f).col == 2 && ui::hudRingCell(f).row == 1);
+        CHECK(!ui::hudRingCounterRotates(f));
+        f.ringSecond = true;
+        CHECK(ui::hudRingCounterRotates(f));
+        f.visible = false;
+        CHECK(!ui::hudFighterHasRing(f));
         CHECK(ui::hudRingSecondCellColumn(0) == 1);
         CHECK(ui::hudRingSecondCellColumn(2) == 3);
     }

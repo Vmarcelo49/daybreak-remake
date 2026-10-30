@@ -1020,11 +1020,6 @@ struct App {
     // can evidence from the frame's melee events — hits dealt/taken split by the lock each side
     // held, and the hits landed on the local (1P) fighter. Damage totals come from
     // Fighter::stats() and the capacities from the economy when the round resolves.
-    struct TitleHits {
-        int toTarget = 0, toOthers = 0, fromTarget = 0, fromOthers = 0, onLocalPlayer = 0;
-    };
-    TitleHits                    titleHits[4];
-    uint32_t                     titleRng = 0x9e3779b9u;   // session RNG for the penalty rolls
     // --local-players' menu clock: the tick the selection screen appeared, so the synthetic
     // pads' panel walk is timed from the screen and not from process start. Every entry is a
     // fresh selection (issue #45: FrontendState::beginSelection), so every appearance runs the
@@ -1077,7 +1072,6 @@ struct App {
     // here so the pointers MatchConfig::moves hands out outlive the match. Empty
     // when the rig's .dat cannot be found, which keeps the legacy shared swing.
     std::vector<std::unique_ptr<gameplay::CharacterMoves>> moveDefs;
-    uint64_t                     matchShots = 0, matchSparks = 0, matchHits = 0;
     uint64_t                     matchRoundOverFrame = 0;
     game::EffectEventQueue       matchFx;
     uint64_t                     matchFxEvents = 0;
@@ -1972,7 +1966,7 @@ struct App::CombatSink final : fnd::audio::CombatAudioSink {
 };
 
 static void setupCombatVoices(App& app) {
-    if (app.combatAudio) app.combatAudio->begin_match(app.battle->fighter_count());
+    if (app.combatAudio) app.combatAudio->begin_match();
 }
 
 // Versus one-time setup, after load/pose/bind and before framing: ranges,
@@ -2572,14 +2566,11 @@ static bool initMatch(App& app) {
     if (!app.frontendMatch) {
         if (!app.combatSink) app.combatSink = std::make_unique<App::CombatSink>(app);
         if (!app.combatAudio) app.combatAudio = std::make_unique<fnd::audio::CombatAudio>(*app.combatSink);
-        app.combatAudio->begin_match(fighterCount);
+        app.combatAudio->begin_match();
         app.versusAudio.set_volumes(ui::frontendSettings().volumes);
     }
     // The roster in panel order, with each entry linked to its MatchConfig index (issue #13).
     buildMatchRoster(app);
-    // The earned-title counters are per ROUND (the original clears the record with the round):
-    // a repeated round must not inherit the previous one's hits.
-    for (auto& hits : app.titleHits) hits = App::TitleHits{};
     // The frontend already chose its device policy before it set opts.match for
     // scene assembly. Reclassifying that live session here silences every device.
     if (!app.matchInputReady) {
@@ -2694,17 +2685,15 @@ static void buildMatchRoster(App& app) {
                     app.participants[i].fighter = j;
         return;
     }
-    // Standalone: two fighters on panels 0 and 1, controller 0 on the device/script and COM
-    // on the dummy opponent. The character index is resolved from the same spec the scene
-    // assembly used, so the HUD's combo label matches the rig that was loaded.
-    app.participantCount = app.battle->fighter_count() < 2 ? app.battle->fighter_count() : 2;
+    // Standalone: controller 0 on the device or script, COM on the rest. The character index is
+    // resolved from the same spec the scene assembly used, so the combo label matches the rig.
+    app.participantCount = app.battle->fighter_count();
     for (int i = 0; i < app.participantCount; ++i) {
         ui::Participant& p = app.participants[i];
         p = ui::Participant{};
         p.panel = i;
-        p.team = i;
-        const std::string& spec = i == 0 ? app.opts.character : app.opts.enemy;
-        p.character = gameplay::characterIndexForDir(charDirForSpec(spec));
+        p.team = i / 2;
+        p.character = gameplay::characterIndexForDir(charDirForSpec(app.opts.battleCharacters[i]));
         p.controller = i == 0 ? 0 : 4;
         p.fighter = i;
     }
@@ -2733,7 +2722,6 @@ static void projectViewHud(const App& app, const float viewProj[16], float width
         // An off-screen participant keeps a marker on the edge it left through. The original's
         // edge choice is not recovered (only the four marker positions, 0x643722-0x6437d0), so
         // this is a PORT RULE: the nearest edge of the view.
-        hud.fighters[i].alertDir = ui::hudAlertDirection(hud.fighters[i], width, height);
     }
 }
 
@@ -3311,16 +3299,9 @@ static void reportCombatAudio(App& app) {
     app.combatVoicePlays = (uint64_t)stats.voice_plays;
     app.combatSePlays = (uint64_t)stats.se_plays;
     if (!app.opts.combatAudioLog) return;
-    std::printf("[combat-audio] match end: voice=%d se=%d duplicates=%d "
-                "suspended_drops=%d voice_missing=%d se_missing=%d channels_held=%d\n",
-                stats.voice_plays, stats.se_plays,
-                stats.duplicates, stats.suspended_drops, stats.voice_missing, stats.se_missing,
-                app.combatAudio->claimed_channels());
-    for (int k = 0; k < fnd::audio::kCombatEventKindCount; ++k)
-        if (stats.dispatched[k] > 0)
-            std::printf("[combat-audio]   %-12s %d\n",
-                        fnd::audio::combat_event_name((fnd::audio::CombatEventKind)k),
-                        stats.dispatched[k]);
+    std::printf("[combat-audio] match end: voice=%d se=%d suspended_drops=%d voice_missing=%d se_missing=%d "
+                "channels_held=%d\n", stats.voice_plays, stats.se_plays, stats.suspended_drops,
+                stats.voice_missing, stats.se_missing, app.combatAudio->claimed_channels());
 }
 
 // The per-view presentation state — the arena camera each human view follows and that
@@ -3412,6 +3393,16 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
         view.hud.resultMainScale = result.mainScale;
         view.hud.resultSecondaryScale = result.secondaryScale;
         view.hud.resultBarOffset = result.barOffset;
+        view.hud.commandCell = app.battle->cpu_command(view.fighter, view.hud.commandScale);
+        view.hud.roundTicks = app.battle->round_ticks_left();
+        view.hud.directionWarnings.clear();
+        for (const game::DirectionWarningView& w : app.battle->direction_warnings(view.fighter)) {
+            if (w.state == 0 || w.direction < 0 || w.direction > 3) continue;
+            view.hud.directionWarnings.push_back(
+                {w.direction, w.state == 1 ? 0 : (w.ticks % 10 < 5) + 1, (float)w.ticks * .005f + 1.f});
+        }
+        const game::LockRingView lockRing = app.battle->lock_ring(view.fighter);
+        view.hud.scope = lockRing.manualAim;
         view.hud.showFps = (v == 0);
         // The composer is clock-free by design, so the frame counter the original's
         // alternations and pulse read (FUN_00644150's `(frame % 0x1e) / 0xf` flash pair and
@@ -3446,7 +3437,16 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
             view.hud.fighters[i].hp = (float)f.hp() / f.max_hp();
             float ghost = 0.f;
             view.hud.fighters[i].hpLag = f.hp_ghost(ghost) ? ghost / 100.f : view.hud.fighters[i].hp;
-            view.hud.fighters[i].alertDir = -1;   // the render pass resolves it per view
+            view.hud.fighters[i].allyBar = view.hud.fighters[i].role == ui::HudFighterRole::Ally;
+            // draw_battle_lock_hud's cell: invincible, on an ally, Friendship, or plain.
+            if (!lockRing.manualAim && fighterIndex == lockRing.target) {
+                ui::HudFighterHud& hud = view.hud.fighters[i];
+                hud.ring = true;
+                hud.ringCol = !lockRing.invincible && !lockRing.onAlly && lockRing.friendship ? 2 : 0;
+                hud.ringRow = lockRing.invincible ? 0 : lockRing.onAlly ? 2
+                              : lockRing.friendship ? (lockRing.joint ? (view.hud.hudFrame % 30) / 15 : 0) : 1;
+                hud.ringSecond = lockRing.shared && !lockRing.onAlly;
+            }
         }
     }
 
@@ -3523,25 +3523,19 @@ static void tickMatch(App& app, double dt) {
                                     ? app.matchViews[0].followed : viewerIndex;
     app.battle->set_primary_listener_fighter(listenerFighter);
     const game::BattleFrame f = app.battle->step(inputs, dt);
-    for (int i = 0; i < app.battle->fighter_count(); ++i)
-        if (f.respawned[i]) app.previousFighter[i] = app.battle->fighter(i).pose();
     if (app.versusAudioOn)
         app.versusBgmPushed += app.versusLoop.push_next(app.versusAudio, 1024);
-    app.matchShots += (uint64_t)f.shotsSpawned;
-    app.matchSparks += (uint64_t)f.muzzleSparks;
-    for (int i = 0; i < app.battle->fighter_count(); ++i)
-        if (f.meleeHit[i]) ++app.matchHits;
     // The core's own audio requests for this tick.
     if (app.combatAudio) {
         const auto toArray = [](const glm::vec3& v) { return fnd::audio::AudioPoint3{v.x, v.y, v.z}; };
         for (const auto& cue : f.soundCues) {
-            if (cue.system) app.combatAudio->play_system_se_direct(cue.id);
-            else app.combatAudio->play_se_direct(cue.id, cue.positional, toArray(cue.position),
+            if (cue.system) app.combatAudio->play_system_se(cue.id);
+            else app.combatAudio->play_se(cue.id, cue.positional, toArray(cue.position),
                                                  toArray(f.audioListenerPosition), toArray(f.audioListenerForward),
                                                  f.audioListenerValid);
         }
         for (const auto& cue : f.voiceCues)
-            app.combatAudio->play_voice_direct(cue.fighter, cue.path, cue.positional, toArray(cue.position),
+            app.combatAudio->play_voice(cue.fighter, cue.path, cue.positional, toArray(cue.position),
                                                toArray(f.audioListenerPosition), toArray(f.audioListenerForward),
                                                f.audioListenerValid);
         if (app.opts.combatAudioLog)
@@ -3550,66 +3544,7 @@ static void tickMatch(App& app, double dt) {
     }
     for (const auto& spawn : f.effectSpawns)
         if (!spawnEffect(app, app.matchFx, spawn.id, spawn.position, spawn.direction)) ++app.fxBadEffect;
-    // The earned-title counters (issue #20). The original splits them the same way: the damage
-    // functions credit the attacker's "to target/others" pair by whether the victim was its
-    // lock (FUN_00639160), the hit functions credit the victim's "from target/others" pair by
-    // whether the two held each other (FUN_00423000), and both count the attacker's hits on the
-    // local player's fighter (FUN_00423000:22-25). Shot hits are NOT counted: the projectile
-    // pool reports no victim, so the melee/shot comparisons stay among the unresolved
-    // conditions (gameplay/result_title.h).
-    {
-        const int localFighter = app.matchViewCount > 0 ? app.matchViews[0].fighter : 0;
-        for (int i = 0; i < app.battle->fighter_count(); ++i) {
-            if (!f.meleeHit[i] || f.meleeVictim[i] < 0) continue;
-            const int victim = f.meleeVictim[i];
-            if (victim >= 4 || i >= 4) continue;
-            if (app.battle->locked_target(i) == victim) ++app.titleHits[i].toTarget;
-            else ++app.titleHits[i].toOthers;
-            if (app.battle->locked_target(victim) == i) ++app.titleHits[victim].fromTarget;
-            else ++app.titleHits[victim].fromOthers;
-            if (victim == localFighter) ++app.titleHits[i].onLocalPlayer;
-        }
-    }
-
-    // Combat effects (issue #17). Every card is one INSTANCE of one combat event: the
-    // muzzle flash of a shot that was fired, the impact effect the shot carried, the
-    // melee-hit card, the in-flight shot itself, and the burning aura's periodic puffs.
-    // Each gets its own id, so simultaneous hits cannot retire each other's cards (the
-    // old code kill-chained the previous hit's card on every new hit). Lifetimes are the
-    // models' own animation durations, recovered through FUN_0042eec0; nothing here is a
-    // fixed 12 s.
-    for (int i = 0; i < app.battle->fighter_count() && i < 4; ++i) {
-        // The action body's own effect request (`(*actor+0xc)` -> FUN_00421aa0 ->
-        // FUN_00435990's manager create): the id indexes data/effect by `id / 10` (the 350
-        // beats' 320/340/350 resolve to 032/034/035.dat) and the position is the actor's
-        // own (+0x14). FUN_00436150 rotates the instance into the request's own pose, so
-        // the queue carries that pose too — the gap this comment used to record is closed
-        // for the direction. Whether a given card SHOWS its yaw is the renderer's own
-        // billboard gate, decided per draw, not here.
-
-        if (f.effectId[i] >= 0) {
-            // FUN_00421aa0's own conversion of the request's (heading, pitch) into the
-            // direction the instance composes. The frame carries the two angles exactly
-            // as the body passed them, so the direction is built here at the spawn rather
-            // than assumed earlier.
-            const float yaw = glm::radians(f.effectYaw[i]);
-            const float pitch = glm::radians(f.effectPitch[i]);
-            const glm::vec3 dir(std::sin(yaw) * std::cos(pitch), std::sin(pitch),
-                                std::cos(yaw) * std::cos(pitch));
-            if (!spawnEffect(app, app.matchFx, f.effectId[i],
-                             app.battle->fighter(i).position(), dir))
-                ++app.fxBadEffect;
-        }
-        // Muzzle flash: FUN_00633ca0 slots 0/1/5 are the three マズルフラッシュ models. The
-        // original selects one by the fighter's per-slot fire-mode byte (+0x318) through
-        // the attack-start methods 0x421fe0/0x4220e0/0x422160, not by the shot's tier —
-        // game/muzzle_slot.h carries the recovered rule. PORT RULE: the port carries no
-        // such byte, so the shot tier picks among the same three slots.
-        if (f.shotFired[i]) {
-            spawnAttachment(app, app.matchFx,
-                            game::muzzleSlotForTier(app.battle->fighter(i).last_shot_tier()),
-                            f.shotPoints[i]);
-        }
+    for (int i = 0; i < app.battle->fighter_count(); ++i) {
         // Hypermode: the recovered burning effect 380 re-spawns every 7 frames
         // ONLY while the fighter is in the downed/burning move family
         // (FUN_0042e110:83-95 gates on executor rows 0x6a/0x6b/0x6c/0xce) — never
@@ -3629,25 +3564,6 @@ static void tickMatch(App& app, double dt) {
                                            (float)((h >> 16) % 100) - 50.f);
             spawnEffect(app, app.matchFx, 380, at);
         }
-    }
-    // Impact effects: the shot's own bullet record names the id (record +0x70 through
-    // FUN_00637950:221-228 -> FUN_00435990 -> the manager's create), spawned at the
-    // contact point the pool reported. A blocked hit still spawns in the original, so the
-    // effect is not gated on damage.
-    for (int k = 0; k < f.shotHitCount; ++k) {
-        const game::BattleFrame::ShotHit& hit = f.shotHits[k];
-        if (!spawnEffect(app, app.matchFx, hit.effect, hit.point) && hit.effect >= 0)
-            ++app.fxBadEffect;
-    }
-    // Melee hits keep the port's existing choice of the hit card (id 0 -> 000.dat ->
-    // 14.X, the 8-quad hitC01/hitC05 card) now that its lifetime is recovered; the
-    // original's melee hit path spawns no effect of its own (FUN_00639160 has no manager
-    // call), so this is a PORT RULE, not a recovered binding.
-    for (int i = 0; i < app.battle->fighter_count(); ++i) {
-        if (!f.meleeHit[i] || f.meleeVictim[i] < 0) continue;
-        const glm::vec3 at = app.battle->fighter(f.meleeVictim[i]).position() +
-                             glm::vec3(0.f, 100.f, 0.f);
-        spawnEffect(app, app.matchFx, 0, at);
     }
     // The in-flight shot is NOT a card: it is the bullet's own model, drawn at the shot's
     // own transform by placeFxCards() (issue #32). See game/shot_visual.h.
@@ -4699,7 +4615,6 @@ static bool enterFrontendBattle(App& app) {
     app.opts.match = true;
     app.opts.camera = "arena";
     app.matchFrame = app.matchRoundOverFrame = 0;
-    app.matchHits = app.matchShots = app.matchSparks = 0;
     app.liveFx.clear();
     app.fxCatalog.clear();
     for (int& slot : app.fxAttach) slot = -1;
@@ -5331,13 +5246,13 @@ void reportMatchViews(const App& app, uint32_t width, uint32_t height) {
             const ui::HudFighterHud& f = projected.fighters[i];
             const ui::Participant& p = app.participants[i];
             std::printf("[split]   p%d panel=%d team=%d %s %s role=%s fighter=%d visible=%d "
-                        "target=%d incoming=%d alert=%d hp=%.0f ring=(%.0f,%.0f)\n",
+                        "target=%d incoming=%d reticle=%d hp=%.0f ring=(%.0f,%.0f)\n",
                         i, p.panel, p.team, ui::controllerLabel(p.controller), p.combo().c_str(),
                         f.role == ui::HudFighterRole::Owner
                             ? "owner"
                             : (f.role == ui::HudFighterRole::Ally ? "ally" : "enemy"),
                         p.fighter, f.visible ? 1 : 0, f.target ? 1 : 0, f.targetsViewer ? 1 : 0,
-                        f.alertDir, f.hp * 100.f, f.ringX, f.ringY);
+                        f.ring ? 1 : 0, f.hp * 100.f, f.ringX, f.ringY);
         }
     }
 }
@@ -5804,32 +5719,8 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     const auto& stats = app->battle->fighter(i).stats();
                     const int panel = app->battleLaunch.fighters[i].panel;
                     app->frontend.resultStats[panel] = {stats.kos,stats.deaths,stats.damageDealt,stats.damageTaken};
-                    // The earned title (issue #20): the recovered record + chain. The port fills
-                    // the fields it can evidence; the chain skips the conditions whose fields are
-                    // not recovered and says so through `resolved`.
-                    const int side = app->battle->side(i);
-                    gameplay::ResultRecord record;
-                    record.teamCapacity = (int)eco.capacity(side);
-                    record.enemyCapacity = (int)eco.capacity(1 - side);
-                    record.koed = eco.koAt(i) >= 0 || !app->battle->fighter(i).is_alive();
-                    // The port's stats are not split by the fighter's lock, so the damage sits in
-                    // the "others" bucket; the chain's split-specific damage conditions are among
-                    // the skipped ones. UNIT: the original's record is HP-scale damage (10000 per
-                    // fighter — FUN_00639160 subtracts the same value it credits from the victim's
-                    // +0x7a4) while this port's kMaxHP is 100, so the ×100 puts the record in the
-                    // unit the chain's `capacity * N / 100` thresholds are written in.
-                    record.damageToOthers = stats.damageDealt * 100;
-                    record.damageFromOthers = stats.damageTaken * 100;
-                    record.hitsToTarget = app->titleHits[i].toTarget;
-                    record.hitsToOthers = app->titleHits[i].toOthers;
-                    record.hitsFromTarget = app->titleHits[i].fromTarget;
-                    record.hitsFromOthers = app->titleHits[i].fromOthers;
-                    record.hitsOnLocalPlayer = app->titleHits[i].onLocalPlayer;
-                    bool resolved = false;
-                    const int coreTitle = app->battle->fighter(i).result_title();
-                    if (coreTitle >= 0) resolved = true;
-                    const int title = coreTitle >= 0 ? coreTitle
-                                                     : gameplay::resultTitleIndex(record, app->titleRng, &resolved);
+                    // The core chose the earned title with the round's real counters.
+                    const int title = app->battle->fighter(i).result_title();
                     static gameplay::ResultTitleTable titleTable;
                     static bool titleTableTried = false;
                     if (!titleTableTried) {
@@ -5849,13 +5740,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     if (title == gameplay::kResultTitlePenalty &&
                         app->frontend.slots[panel].controller < 4)
                         app->frontend.penaltyDecided[panel] = true;
-                    std::printf("[title] panel %d fighter %d side %d ko=%d dmg=%d/%d "
-                                "hits=%d+%d/%d+%d on1p=%d -> %d '%s'%s\n",
-                                panel, i, side, record.koed ? 1 : 0, record.damageDealt(),
-                                record.damageTaken(), record.hitsToTarget, record.hitsToOthers,
-                                record.hitsFromTarget, record.hitsFromOthers,
-                                record.hitsOnLocalPlayer, title, titleTable.text(title),
-                                resolved ? "" : " (chain reached unrecovered conditions)");
+                    std::printf("[title] panel %d fighter %d -> %d '%s'\n", panel, i, title, titleTable.text(title));
                 }
                 app->matchMode = false;
                 app->frontendBattleReady = false;
@@ -6091,15 +5976,12 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     reportMatchViews(*app, w, h);
                     const gameplay::MatchEconomy& eco = app->battle->economy();
                     std::printf("match: %llu frames, hp1=%d hp2=%d, balloon=%.0f%%/%.0f%% "
-                                "(LIMIT %.0f%%/%.0f%%), shots=%llu sparks=%llu hits=%llu, "
+                                "(LIMIT %.0f%%/%.0f%%), "
                                 "fx events=%llu, bgm pushed %llu frames, %llu wraps, roundOver=%d\n",
                                 (unsigned long long)app->matchFrame, app->battle->fighter(0).hp(),
                                 app->battle->fighter(1).hp(), (double)eco.balloon(0),
                                 (double)eco.balloon(1), (double)eco.capacity(0),
                                 (double)eco.capacity(1),
-                                (unsigned long long)app->matchShots,
-                                (unsigned long long)app->matchSparks,
-                                (unsigned long long)app->matchHits,
                                 (unsigned long long)app->matchFxEvents,
                                 (unsigned long long)app->versusBgmPushed,
                                 (unsigned long long)app->versusLoop.loops_completed(),

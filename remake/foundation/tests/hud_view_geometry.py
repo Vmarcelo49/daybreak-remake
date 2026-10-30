@@ -70,13 +70,13 @@ def is_green(r, g, b):
 VIEW_RE = re.compile(r"\[split\] view (\d+): .* "
                      r"cell=\((-?[\d.]+),(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)\)")
 RING_RE = re.compile(r"\[split\]   p(\d+) .* role=(\w+).* visible=(\d+) "
-                     r".* ring=\((-?[\d.]+),(-?[\d.]+)\)")
+                     r".* reticle=(\d) .* ring=\((-?[\d.]+),(-?[\d.]+)\)")
 
 
 def parse_report(log):
     """{view: {"cell": (x, y, w, h), "rings": {participant: (x, y, role, visible)}}} from the
     demo's own per-view evidence line — the values the HUD composition draws with, not a
-    guess. Only visible participants other than the active player have rings to measure."""
+    guess. Only the participant a view locks on to has a ring to measure."""
     views = {}
     current = None
     for line in log.splitlines():
@@ -87,8 +87,8 @@ def parse_report(log):
             continue
         m = RING_RE.match(line)
         if m and current is not None:
-            views[current]["rings"][int(m.group(1))] = (float(m.group(4)), float(m.group(5)),
-                                                        m.group(2), m.group(3) == "1")
+            views[current]["rings"][int(m.group(1))] = (float(m.group(5)), float(m.group(6)), m.group(2),
+                                                        m.group(3) == "1" and m.group(4) == "1")
     return views
 
 

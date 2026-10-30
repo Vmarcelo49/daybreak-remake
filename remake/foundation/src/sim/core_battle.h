@@ -112,6 +112,10 @@ public:
     int lock_pulse(int fighter) const override { return m_battle ? m_battle->actor(static_cast<unsigned>(fighter)).lockPulse : 0; }
     bool hud_hidden() const override { return m_battle && m_battle->hud_hidden(); }
     game::BattleNotice notice(int fighter) const override;
+    game::LockRingView lock_ring(int fighter) const override;
+    std::vector<game::DirectionWarningView> direction_warnings(int fighter) const override;
+    int cpu_command(int fighter, float& pulse) const override;
+    int round_ticks_left() const override;
     game::BattleResultNotice result_notice() const override;
     bool ai_enabled(int) const override { return true; }
     bool camera_pose(int fighter, game::CameraPoseView& out) const override;
