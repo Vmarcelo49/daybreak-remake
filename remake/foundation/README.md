@@ -4,9 +4,9 @@ SDL3 + WebGPU (`webgpu.h`) in one CMake project that builds for **Linux, Windows
 (MinGW cross-compile) and the web (Emscripten)**: `./build.sh deps` once, then
 `./build.sh linux|windows|web`. macOS is not attempted — no Mac available (see the
 table below). This is the product after the renderer migration (decision D2):
-it is a playable front end and match as well as a viewer — `--match` runs the ported
-fighter/projectile simulation with the live match economy and HUD values
-(`src/gameplay/match.cpp`), `--versus` keeps the scripted capture vignette, and
+it is a playable front end and match as well as a viewer — `--match` runs the vendored
+reference simulation (`src/sim/core/`, behind `src/sim/battle.h`) with the live HUD values,
+`--versus` keeps the scripted capture vignette, and
 `--camera=arena` follows the ported arena camera (`src/gameplay/arena_camera.cpp`).
 It loads and draws Daybreak's real stages, characters and weapons.
 
@@ -91,8 +91,9 @@ src/assets/     the Daybreak asset layer: .X meshes/animation, .cnv textures,
 src/render/     draws an xm::Scene — depth buffer, pipelines, per-draw uniforms,
                 camera and fog
 src/shaders/    WGSL, embedded in the binary (demo, model, ui, debug_line)
-src/gameplay/   the ported simulation and match loop (fighter, projectile, match,
-                match economy, hud_fill) — what --match/--versus run
+src/sim/        the vendored core and the wrapper the product reads it through
+src/gameplay/   the product's own data and presentation helpers (item and move parsers,
+                arena camera, HUD values, result titles)
 src/game/       interfaces (fighter pose, HUD values, camera collision, effect events)
 src/ui/         sprite/font/HUD/screens (--hud-test, --screen=title)
 src/audio/ + src/input/   backends (--audio-test, --input-test)
@@ -211,16 +212,13 @@ listening checks can opt in with `--with-audio`; `--no-audio` takes precedence.
 
 ## Playing a match
 
-`--match` runs the real game: the fighter/projectile simulation, the match economy
-(balloon / LIMIT / KO clock) and the live HUD values live in `src/gameplay/`
-(`fighter.cpp`, `projectile.cpp`, `match.cpp`, `match_economy.cpp`, `hud_fill.cpp`),
-ported from the deleted DX9 tree (`pre-webgpu-cutover` tag), and drive the frame,
-instead of the versus vignette's frame-index script.
+`--match` runs the real game on the vendored core, four fighters at once: combat, the CPU,
+the match rules and the camera all come from `src/sim/core/`.
 
 ```bash
 ./build/linux/foundation_demo --headless --match --install=<game-dir> \
-  --stage=<game-dir>/data/stage21 --character=<game-dir>/data/rika:0 \
-  --enemy=<game-dir>/data/takano:0 --spawn=0,200,0 --spawn2=-2200,200,-1363 \
+  --stage=<game-dir>/data/stage21 \
+  --sim-roster=<game-dir>/data/rika@0,<game-dir>/data/takano@0,<game-dir>/data/rena@0,<game-dir>/data/mion@0 \
   --script=../tests/parity-baseline/scripts/melee.txt --frames=150 --out=match.ppm --size=400
 ```
 

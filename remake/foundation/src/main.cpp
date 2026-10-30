@@ -62,16 +62,9 @@
 #include "game/view_layout.h"
 #include "gameplay/arena_camera.h"
 #include "gameplay/battle_pause.h"
-#include "gameplay/debug_keys.h"
 #include "game/battle_view.h"
-#include "gameplay/legacy_battle.h"
-#ifdef FOUNDATION_HAS_SIM
 #include "sim/core_battle.h"
-#endif
-#include "gameplay/live_debug.h"
 #include "gameplay/fixed_step.h"
-#include "gameplay/native/rena0_pilot_run.h"
-#include "gameplay/bot_input.h"
 #include "gameplay/hud_fill.h"
 #include "gameplay/result_title.h"
 #include "audio/audio.h"
@@ -95,53 +88,6 @@ namespace {
 // ---------------------------------------------------------------------------------------
 // Command line
 // ---------------------------------------------------------------------------------------
-// One scripted tap: the key reads as held on `tick` and on no other. The tick is
-// App::matchFrame, the 1-based simulation clock the banked captures and the input scripts
-// already use, so the injection a capture made is written on its command line. The key IS
-// the recovered DIK scancode (gameplay/debug_keys.h), not a second enum, so the injection
-// and the recovered map cannot drift apart.
-struct DebugKeyTap {
-    uint64_t tick = 0;
-    int      dik  = gameplay::kDikF2;
-};
-
-// The tap list's spelling: `--debug-keys=f2@300,f1@900` (keys case-insensitive, ESC as well as
-// ESCAPE). One parser so the usage text, the error and the test cannot disagree.
-bool parseDebugKeys(const std::string& spec, std::vector<DebugKeyTap>& out, std::string& error) {
-    size_t pos = 0;
-    while (pos <= spec.size()) {
-        const size_t comma = spec.find(',', pos);
-        std::string item = spec.substr(pos, comma == std::string::npos ? std::string::npos
-                                                                       : comma - pos);
-        pos = comma == std::string::npos ? spec.size() + 1 : comma + 1;
-        if (item.empty()) continue;
-        const size_t at = item.find('@');
-        if (at == std::string::npos) {
-            error = "--debug-keys wants <key>@<tick>, got '" + item + "'";
-            return false;
-        }
-        std::string name = item.substr(0, at);
-        for (char& c : name) c = (char)std::tolower((unsigned char)c);
-        int dik;
-        if (name == "esc" || name == "escape")    dik = gameplay::kDikEscape;
-        else if (name == "f1")                    dik = gameplay::kDikF1;
-        else if (name == "f2")                    dik = gameplay::kDikF2;
-        else if (name == "f3")                    dik = gameplay::kDikF3;
-        else if (name == "f4")                    dik = gameplay::kDikF4;
-        else {
-            error = "--debug-keys: unknown key '" + name + "' (f1, f2, f3, f4, esc)";
-            return false;
-        }
-        const long long tick = std::atoll(item.c_str() + at + 1);
-        if (tick < 1) {
-            error = "--debug-keys: the tick is 1-based, got '" + item.substr(at + 1) + "'";
-            return false;
-        }
-        out.push_back(DebugKeyTap{(uint64_t)tick, dik});
-    }
-    return true;
-}
-
 struct Options {
     // Asset selection. Exactly one of stage/character/weapon/model, or none for the
     // triangle demo; an effect file may ride along with any of them.
@@ -154,7 +100,6 @@ struct Options {
     int         pauseOverlay = 0;
     bool        debugPrims = false; // draw the deterministic debug line overlay
     bool        audioTest = false; // run the audio backend self-check and exit
-    bool        liveDebug = false;
     bool        noAudio = false;
     bool        withAudio = false;
     bool        combatAudioLog = false;  // --combat-audio-log: name every resolved SE/voice
@@ -167,21 +112,8 @@ struct Options {
     int battleFighterCount = 0;
     bool        versus = false;  // scripted two-fighter vignette (capture-oriented)
     bool        match = false;   // playable match: the ported simulation, not a script
-    // FUN_006394c0's body separation. ON by default (it is recovered behaviour); the switch
-    // exists for an A/B run and is applied where the match is built, not here — a default here
-    // that disagreed with Match's own would silently cancel the feature.
-    bool        bodySeparation = true;
     std::string script;          // P1 input script (device override, DX9 format)
-    // P2-7 (2e) slice 1: observe-mode pilot adapter. Empty = the legacy path, untouched.
-    std::string nativeActions;   // "--native-actions=rena0" runs the locomotion observer
-#if defined(FOUNDATION_HAS_SIM) && !defined(__EMSCRIPTEN__)
-    bool        simCore = true;  // the vendored core drives the battle; --sim=legacy until M5's cleanup
-#else
-    bool        simCore = false; // the web build cannot read the core's archives yet
-#endif
     std::string script2;         // P2 input script; absent -> dummy, like the DX9
-    bool        hasSpawn[2] = {false, false};   // --spawn / --spawn2 x,y,z
-    glm::vec3   spawn[2] = {glm::vec3(0.f), glm::vec3(0.f)};
     std::string bgm;             // versus BGM track (.ogg; sibling .sfl looped)
     std::string sfx;             // versus hit cue (.cnv)
 
@@ -205,7 +137,6 @@ struct Options {
     bool        noTextures = false;
     bool        fog        = false;   // opt-in: the DX9 reference renders unfogged
     bool        noAnim     = false;   // bind pose: the DX9 reference binds no sets
-    bool        hitboxDebug = false;  // draw the recovered melee hit spheres (issue #10)
     // Interactive animation browser: one rig, no stage, arrows change the set index
     // and WASD orbits the camera. Exists because the state's anim-set table has
     // unmapped entries (Jump/Guard/TagOut return -1) and set 2 does not look like an
@@ -266,17 +197,6 @@ struct Options {
     // interpolation buildFrameViews applies; at alpha 1 that blend is the identity, which is
     // why the live camera defect (92b6d70) survived every capture-based gate.
     float       matchAlpha = -1.f;
-    // Issue #48's debug keys. `noDebugKeys` is the port's own switch, not the recovered gate
-    // (gameplay/debug_keys.h): with it, the keys are inert whatever arrives. Default OFF, i.e.
-    // the keys are live, because that is the original's state in a versus battle — and a
-    // verification run cannot press a function key anyway (issue #29's device gate leaves
-    // key_down() false for every physical key), so the default changes no capture's bytes.
-    bool        noDebugKeys = false;
-    // --debug-keys=<key>@<tick>[,...]: scripted taps for an evidence run, on the SIMULATION
-    // tick clock. A key has to arrive on a tick boundary to be reproducible at all, and a
-    // physical F-key cannot be delivered to a headless run (no window, no events), so this is
-    // the injection path the F1-F4/Escape evidence uses.
-    std::vector<DebugKeyTap> debugKeyTaps;
 };
 
 bool hasAsset(const Options& o) {
@@ -393,26 +313,13 @@ void usage() {
         "                     --character, --enemy and --frames>=30\n"
         "  --bgm=<file.ogg>   versus BGM track played through the loop player\n"
         "  --sfx=<file.cnv>    versus hit cue fired at scripted hits\n"
-        "  --body-separation  A/B switch for the recovered body separation (FUN_006394c0):\n"
-        "                     bodies closer than 60 units are pushed apart, half each. It\n"
-        "                     is ON by default; --no-body-separation turns it off.\n"
-        "  --match            playable match: the ported fighter simulation, the real\n"
-        "                     match economy and live HUD values (needs --stage,\n"
-        "                     --character and --enemy, like --versus)\n"
+        "  --match            playable match on the vendored core: needs --stage and\n"
+        "                     --sim-roster\n"
         "  --script=<file>    P1 input script for --match (\"<frame> TOKEN...\" lines,\n"
         "                     the DX9 visual-suite format); absent -> live device\n"
         "  --script2=<file>   P2 input script; absent -> P2 takes no input (dummy,\n"
-        "  --sim=core         drive the battle from the vendored core (docs/DIRECTION.md, M4);\n"
-        "                     needs four fighters\n"
         "  --sim-roster=<a>,<b>,<c>,<d>  with --match: four <dir>/<name>[:costume][@weaponSlot]\n"
-        "  --native-actions=rena0\n"
-        "                     P2-7 pilot: drive Rena+0 (and only Rena+0, item 001) from the\n"
-        "                     recovered bodies — locomotion proposal, guard gate, shot\n"
-        "                     clear/voice and the unified action meter — and log per-tick\n"
-        "                     agreement with the port. Absent -> legacy path for all.\n"
         "                     exactly what the DX9 scene does)\n"
-        "  --spawn=x,y,z      P1 start position (default: the stage's env.dat point)\n"
-        "  --spawn2=x,y,z     P2 start position\n"
         "  --local-players=N  verification: open N local human views (1..4) by assigning\n"
         "                     controllers 0..N-1 to the battle panels and give a\n"
         "                     controller with no attached pad a deterministic synthetic\n"
@@ -427,18 +334,6 @@ void usage() {
         "                     clock's own fraction otherwise). A capture then renders the\n"
         "                     live interpolation buildFrameViews applies, which alpha 1\n"
         "                     collapses to the current tick; absent, nothing changes\n"
-        "  --no-debug-keys    make the original's in-battle debug keys inert (F1 full HP,\n"
-        "                     F2 COMs off, F3 COMs on, F4 fill gauges, Escape leave). The\n"
-        "                     keys are LIVE by default, which is the original's state in a\n"
-        "                     versus battle: it has no story mode, so its\n"
-        "                     DAT_006cfce9 gate is always open in a battle here (a port\n"
-        "                     rule; docs/DEBUG-KEYS.md). This switch is for a run that\n"
-        "                     must not have a stray F-key move its capture\n"
-        "  --debug-keys=SPEC  scripted taps for an evidence run: KEY@TICK[,...] with KEY one\n"
-        "                     of f1 f2 f3 f4 esc, TICK the 1-based simulation tick (the\n"
-        "                     clock the input scripts and the capture recipes use). KEY is\n"
-        "                     held on that tick alone, which every one of the five effects\n"
-        "                     makes enough: e.g. --debug-keys=f2@300,f3@600\n"
         "With no asset argument the spinning-triangle demo runs.\n");
 }
 
@@ -610,8 +505,6 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--weapon=")).empty()) o.weapon = v;
         else if (!(v = val("--effect=")).empty()) o.effect = v;
         else if (!(v = val("--out=")).empty()) o.out = v;
-        else if (val("--sim=") == "core") o.simCore = true;
-        else if (val("--sim=") == "legacy") o.simCore = false;
         else if (!(v = val("--sim-roster=")).empty()) {
             std::stringstream roster(v);
             std::string spec;
@@ -688,17 +581,8 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--no-camera-clamp") o.noCameraClamp = true;
         // Debug overlay: draw the recovered melee hit spheres (issue #10). Off by
         // default so no capture and no trace is affected by it.
-        else if (a == "--hitbox-debug") o.hitboxDebug = true;
         else if (a == "--headless") o.headless = true;
         else if (a == "--audio-test") o.audioTest = true;
-        else if (a == "--live-debug") {
-#if defined(FOUNDATION_LIVE_DEBUG)
-            o.liveDebug = true;
-#else
-            error = "live debug is disabled in this build (development CMake opt-in required)";
-            return false;
-#endif
-        }
         else if (a == "--no-audio" || a == "-no-audio") o.noAudio = true;
         else if (a == "--with-audio") o.withAudio = true;
         else if (a == "--combat-audio-log") o.combatAudioLog = true;
@@ -706,25 +590,10 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--enemy=")).empty()) o.enemy = v;
         else if (a == "--versus") o.versus = true;
         else if (a == "--match") o.match = true;
-        else if (a == "--body-separation") o.bodySeparation = true;
-        else if (a == "--no-body-separation") o.bodySeparation = false;
         else if (!(v = val("--script=")).empty()) o.script = v;
-        else if (!(v = val("--native-actions=")).empty()) o.nativeActions = v;
         else if (!(v = val("--script2=")).empty()) o.script2 = v;
         else if (!(v = val("--screen=")).empty()) o.screen = v;
         else if (!(v = val("--movie=")).empty()) o.movie = v;
-        else if (!(v = val("--spawn=")).empty() || !(v = val("--spawn2=")).empty()) {
-            // Match the KEY, not the whole argument: `a` carries the value too, so
-            // `a == "--spawn2"` is never true and both flags would write slot 0.
-            const int slot = (a.rfind("--spawn2=", 0) == 0) ? 1 : 0;
-            if (std::sscanf(v.c_str(), "%f,%f,%f", &o.spawn[slot].x, &o.spawn[slot].y,
-                            &o.spawn[slot].z) == 3)
-                o.hasSpawn[slot] = true;
-            else {
-                error = a + " needs x,y,z";
-                return false;
-            }
-        }
         else if (!(v = val("--bgm=")).empty()) o.bgm = v;
         else if (!(v = val("--sfx=")).empty()) o.sfx = v;
         else if (!(v = val("--local-players=")).empty()) o.localPlayers = std::atoi(v.c_str());
@@ -738,11 +607,6 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
             }
         }
         else if (a == "--lock-taps") o.lockTaps = true;
-        // Issue #48: the original's in-battle debug keys.
-        else if (a == "--no-debug-keys") o.noDebugKeys = true;
-        else if (!(v = val("--debug-keys=")).empty()) {
-            if (!parseDebugKeys(v, o.debugKeyTaps, error)) return false;
-        }
         else if (a.rfind("--", 0) == 0) {
             error = "unknown option " + a;
             return false;
@@ -789,13 +653,8 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         error = "--enemy needs --versus or --match (P2 placement and rig ownership live there)";
         return false;
     }
-    if (!o.nativeActions.empty() && o.nativeActions != "rena0") {
-        error = "--native-actions accepts only 'rena0' (the pilot combo) for now";
-        return false;
-    }
-    if ((!o.script.empty() || !o.script2.empty() || o.hasSpawn[0] || o.hasSpawn[1]) &&
-        !o.match && o.screen.empty()) {
-        error = "--script/--script2/--spawn/--spawn2 need --match or --screen";
+    if ((!o.script.empty() || !o.script2.empty()) && !o.match && o.screen.empty()) {
+        error = "--script/--script2 need --match or --screen";
         return false;
     }
     if (o.headless && o.out.empty()) {
@@ -1059,10 +918,7 @@ Mat4 rotationZ(float radians, float scale) {
 // The app
 // ---------------------------------------------------------------------------------------
 struct App {
-    gameplay::LiveDebug liveDebug;
     Options      opts;
-    // The closed pilot's flag path; unused unless --native-actions=rena0. Removed at M5.
-    gameplay::native::Rena0PilotRun pilotRun;
     SDL_Window*  window = nullptr;
     gpu::Context ctx;
     gpu::Swapchain sc;
@@ -1084,13 +940,9 @@ struct App {
     render::DebugLineBatch       debugLines;   // rebuilt per frame, capacity kept
     render::CubeBatch            matchCubes{2048};
     render::CubeBatch            auraCubes{64};   // additive, drawn in its own pass
-    render::CubeBatch            hitboxCubes{4096};  // --hitbox-debug: hit/hurt volumes
     glm::vec3                    debugBoundsLo{0.f}, debugBoundsHi{0.f};
     bool                         haveDebugBounds = false;
     game::physics::CameraCollision cameraCollision;   // arena eye clamp, per stage
-    game::physics::MovementCollision movementCollision; // borrowed collision.x movement/ground meshes
-    const xm::Model* projectileCollisionMesh = nullptr;
-    game::physics::ModelIndex projectileCollisionIndex;
     ui::SpriteRenderer           uiRenderer;
     ui::ScreenStack              screens;          // front end: current screen + fade
     bool                         screensMode = false;
@@ -1120,19 +972,6 @@ struct App {
     // (see playFrontendMusic), so the factory's construction-time call must not restart the
     // same track 25 frames later; this is what lets it tell "already playing" from "new".
     std::string                   menuBgmPath;
-    fnd::input::PlayerState       botInput[4];
-    // The input a COM takes while F2 has its brain switched off (issue #48): the original
-    // memsets the fighter's whole input block in that case (FUN_00634f60:60-73), so the
-    // fighter's own state machine still runs and sees nothing held — it walks nowhere and
-    // presses nothing, and a locomotion state falls back to idle instead of freezing
-    // mid-stride. Never written, so it keeps zero edges and cannot fire a release.
-    fnd::input::PlayerState       neutralInput;
-    // One COM decision state per fighter slot (issue #14) plus the recovered tactics
-    // readout the whole team shares (gameplay/bot_input.h). The brains are reseeded from
-    // the match seed when a match resets, so a run replays from its seed alone.
-    gameplay::BotBrain            botBrains[4];
-    gameplay::TacticReadout       tacticReadout;
-
     ui::HudComposer              hudComposer;
     bool                         uiReady = false;
     // The pause overlay's own batch (issue #50): a second SpriteRenderer, so the overlay's
@@ -1160,14 +999,10 @@ struct App {
 
     // Playable match (Phase 2): the ported simulation drives the fighters, the HUD
     // values and the effects, instead of the versus vignette's frame-index script.
-    // The legacy simulation sits behind game::Battle; `battle` is all the product reads.
-    // legacyBattle.match() is the seam for setup and tools that only exist on that path.
-    gameplay::LegacyBattle       legacyBattle;
-    game::Battle*                battle = &legacyBattle;
-#ifdef FOUNDATION_HAS_SIM
-    sim::CoreBattle              coreBattle;   // --sim=core
-#endif
-    std::deque<xm::Controller>   coreShotControllers;   // --sim=core: this frame's shot poses
+    // The vendored core drives the battle; `battle` is all the product reads.
+    sim::CoreBattle              coreBattle;
+    game::Battle*                battle = &coreBattle;
+    std::deque<xm::Controller>   coreShotControllers;   // this frame's shot poses
     bool                         matchMode = false;
     uint64_t                     matchFrame = 0;      // 1-based, the DX9's frame_count+1
     // Per-controller views of the live match (issue #12). Views exist for HUMAN
@@ -1297,13 +1132,10 @@ struct App {
     // de-duplication, suspend/resume and per-match cleanup. `combatTick` is the fixed
     // simulation tick the events are stamped with (the same clock the economy counts on).
     struct CombatSink;
-    struct CombatEventSource;
     std::unique_ptr<CombatSink>   combatSink;
     std::unique_ptr<fnd::audio::CombatAudio> combatAudio;
     std::unordered_map<std::string, fnd::audio::SfxHandle> combatSamples;  // stem -> handle
-    bool                         combatMatchStarted = false;
-    uint32_t                     combatTick = 0;
-    uint64_t                     combatEvents = 0, combatVoicePlays = 0, combatSePlays = 0;
+    uint64_t                     combatVoicePlays = 0, combatSePlays = 0;
     ui::HudState                 versusHud;
 
     double   startTime = 0.0;
@@ -1396,7 +1228,7 @@ static float matchAlphaFor(const App& app, bool capturing) {
 // same traces whether or not the user has a config file, so they neither read it nor
 // write it. --screen=<menu> without a capture is interactive and does use it.
 static bool usesUserConfig(const Options& o) {
-    return !o.liveDebug && o.frames == 0 && o.out.empty() && !o.headless && !o.match && !o.versus &&
+    return o.frames == 0 && o.out.empty() && !o.headless && !o.match && !o.versus &&
            !o.hudTest && !o.list && !o.audioTest && !o.inputTest && o.anim < 0 &&
            o.model.empty() && o.stage.empty() && o.character.empty() && o.effect.empty();
 }
@@ -1536,7 +1368,7 @@ static bool initMatch(App& app);
 // the pause state — so their frames and traces are identical whether or not a pause key is
 // bound. Same shape as #19's usesUserConfig, for the same reason.
 static bool battlePauseAvailable(const App& app) {
-    return !app.opts.liveDebug && app.matchMode && app.opts.out.empty() && !app.opts.headless && app.opts.frames == 0;
+    return app.matchMode && app.opts.out.empty() && !app.opts.headless && app.opts.frames == 0;
 }
 
 // The controller slot that drives a frontend panel, or -1 for COM.
@@ -1602,7 +1434,7 @@ static void playPauseCue(App& app) {
 static void enterBattlePause(App& app, const char* reason) {
     if (app.battlePaused) return;
     app.battlePaused = true;
-    app.battle->set_paused(true);   // the authoritative gate (gameplay/match.h)
+    app.battle->set_paused(true);   // the authoritative gate
     app.pauseMenu.rows = app.frontendMatch ? gameplay::kPauseRowsWithSelection
                                            : gameplay::kPauseRowsStandalone;
     app.pauseMenu.reset();
@@ -2135,71 +1967,11 @@ struct App::CombatSink final : fnd::audio::CombatAudioSink {
         app_.combatSamples.emplace(stem, handle);   // misses are cached too: one probe each
         return handle;
     }
-    // The original discovers an event's alternatives by probing NNN upward until the file is
-    // missing (FUN_00431e70:78-151). Same rule here, with a small cap so a pathological
-    // directory cannot walk forever.
-    int probe_alternatives(const std::string& dir, fnd::audio::VoiceEvent event, bool b_dir) {
-        int count = 0;
-        for (int i = 0; i < 4; ++i) {
-            const std::string stem = fnd::audio::voice_asset_stem(dir, event, b_dir, i);
-            if (stem.empty()) break;
-            if (handle_for(stem) < 0) break;
-            ++count;
-        }
-        return count;
-    }
     App& app_;
 };
 
-// The events this port emits (issue #16). Only these are probed at match start; the rest of
-// the 40-name vocabulary stays available to fnd::audio::CombatAudio without a filesystem walk.
-static constexpr fnd::audio::VoiceEvent kCombatVoiceEvents[] = {
-    fnd::audio::VoiceEvent::BattleStart, fnd::audio::VoiceEvent::AttackA,
-    fnd::audio::VoiceEvent::Fire,        fnd::audio::VoiceEvent::Damage,
-    fnd::audio::VoiceEvent::DamageDown,  fnd::audio::VoiceEvent::Guard,
-    fnd::audio::VoiceEvent::Guarded,     fnd::audio::VoiceEvent::AttackKO,
-    fnd::audio::VoiceEvent::DamageKO,    fnd::audio::VoiceEvent::Revival,
-    fnd::audio::VoiceEvent::Oyashiro, fnd::audio::VoiceEvent::TagBack,
-    fnd::audio::VoiceEvent::ShotA,
-    fnd::audio::VoiceEvent::ShotB, fnd::audio::VoiceEvent::ShotC,
-    fnd::audio::VoiceEvent::ShotFinal,
-    fnd::audio::VoiceEvent::SpecialA,
-};
-
-// Per-fighter voice setup for a battle: the character's own voice directory (FUN_0041e180's
-// data/voice/<name>) plus the alternatives of every event this port emits. The decoded-sample
-// cache is kept ACROSS matches on purpose — the stems are the same ones next round, and the
-// engine has no per-handle free — while the channels are released per match (end_match).
 static void setupCombatVoices(App& app) {
-    if (!app.combatAudio) return;
-    const int count = app.battle->fighter_count();
-    app.combatAudio->begin_match(count);
-    app.combatMatchStarted = false;
-    app.combatTick = 0;
-    for (int i = 0; i < count; ++i) {
-        const int panel = app.battleLaunch.fighters[i].panel;
-        const int character = app.frontend.slots[panel].character;
-        const int weapon = app.frontend.slots[panel].weapon;
-        if (character < 0 || character >= gameplay::kCharacterCount) continue;
-        // PORT RULE: the B-persona voice directory. The install ships renaB/rikaB/chieB/
-        // hanyuB and FUN_0041e180:196-206 selects them per character, but the port only has
-        // the persona gate it recovered in #20 (character 0/4 with weapon slot 2); chie's and
-        // hanyu's persona gates are NOT recovered, so they keep their base directory.
-        const bool persona = (character == 0 || character == 4) && weapon == 2;
-        std::string dir = std::string("data/voice/") + gameplay::kCharacterDirs[character];
-        if (persona) dir += "B";
-        app.combatAudio->set_fighter_voice(i, dir, persona);
-        for (fnd::audio::VoiceEvent event : kCombatVoiceEvents) {
-            const int alternatives = app.combatSink->probe_alternatives(dir, event, persona);
-            app.combatAudio->set_voice_alternatives(i, event, alternatives);
-            if (app.opts.combatAudioLog && alternatives > 0)
-                std::printf("[combat-audio] fighter %d panel %d %s -> %s/%s%s alternatives=%d\n",
-                            i, panel, gameplay::kCharacterDirs[character], dir.c_str(),
-                            fnd::audio::voice_event_name(event),
-                            fnd::audio::voice_event_b_dir(event) && persona ? "_B" : "",
-                            alternatives);
-        }
-    }
+    if (app.combatAudio) app.combatAudio->begin_match(app.battle->fighter_count());
 }
 
 // Versus one-time setup, after load/pose/bind and before framing: ranges,
@@ -2598,14 +2370,19 @@ static bool loadBulletParameter(int row, const gameplay::WeaponDefinition& weapo
     return true;
 }
 
-// --sim=core: the same roster, stage and seed handed to the core. The legacy Match stays reset
-// beside it so the setup seams keep working, and is never stepped.
-static bool startCoreBattle(App& app, const gameplay::MatchConfig& config) {
-#ifdef FOUNDATION_HAS_SIM
-    if (config.fighterCount != 4) {
-        app.error = "--sim=core needs four fighters";
-        return false;
-    }
+// The roster, stage and seed handed to the core.
+struct MatchSetup {
+    int healthPercent = 100, gaugePercent = 100;
+    int timeLimit = 0;
+    int balloonSize[2] = {100, 100};
+    int fighterCount = 0;
+    game::Hypermode hyper[4] = {game::Hypermode::Friendship, game::Hypermode::Oyashiro,
+                                game::Hypermode::Friendship, game::Hypermode::Oyashiro};
+    const gameplay::WeaponDefinition* weapon[4] = {};
+    const gameplay::CharacterMoves* moves[4] = {};
+};
+
+static bool startCoreBattle(App& app, const MatchSetup& config) {
     sim::BattleConfig core;
     core.gameDir = fnd::assets::assetSource().installDir();
     if (app.frontendMatch) core.seed = static_cast<uint32_t>(app.logicTicks) * 2654435761u + 1u;
@@ -2624,7 +2401,7 @@ static bool startCoreBattle(App& app, const gameplay::MatchConfig& config) {
         const int ownIndex = gameplay::characterIndexForDir(dir);
         const int slot = weapon ? gameplay::weaponSlotForItem(ownIndex, weapon->id) : -1;
         if (character < 0 || slot < 0) {
-            app.error = "--sim=core: fighter " + std::to_string(i) + " (" + dir + ") is not a legal combo";
+            app.error = "battle: fighter " + std::to_string(i) + " (" + dir + ") is not a legal combo";
             return false;
         }
         bool human = i == 0 && !app.frontendMatch;
@@ -2636,23 +2413,17 @@ static bool startCoreBattle(App& app, const gameplay::MatchConfig& config) {
         int costume = 0;
         splitSuffix(app.opts.battleCharacters[i], specPath, costume);
         core.slots[static_cast<size_t>(i)] = {character, slot, !human, costume,
-                                              static_cast<unsigned>(gameplay::hypermode_wire_value(config.hyper[i]))};
+                                              static_cast<unsigned>(game::hypermode_wire_value(config.hyper[i]))};
         moves[static_cast<size_t>(i)] = config.moves[i];
         weapons[static_cast<size_t>(i)] = weapon;
     }
     try {
         app.coreBattle.start(core, moves, weapons);
     } catch (const std::exception& error) {
-        app.error = std::string("--sim=core: ") + error.what();
+        app.error = std::string("battle: ") + error.what();
         return false;
     }
-    app.battle = &app.coreBattle;
     return true;
-#else
-    (void)config;
-    app.error = "--sim=core is not built on this platform";
-    return false;
-#endif
 }
 
 static bool initMatch(App& app) {
@@ -2660,33 +2431,26 @@ static bool initMatch(App& app) {
         app.error = "four-panel battles need all four env.dat spawn points";
         return false;
     }
-    if (!app.scene.env.present && (!app.opts.hasSpawn[0] || !app.opts.hasSpawn[1])) {
-        app.error = "--match needs a stage with env.dat spawns, or --spawn/--spawn2";
+    if (!app.frontendMatch && app.opts.battleFighterCount != 4) {
+        app.error = "--match needs four fighters: pass --sim-roster=<a>,<b>,<c>,<d>";
         return false;
     }
     std::array<size_t, 4> rigs{{app.scene.models.size(), app.scene.models.size(),
                                 app.scene.models.size(), app.scene.models.size()}};
-    int fighterCount = app.frontendMatch ? app.battleLaunch.fighterCount
-                       : app.opts.battleFighterCount > 0 ? app.opts.battleFighterCount : 2;
-    if (app.frontendMatch || app.opts.battleFighterCount > 0) {
-        int found = 0;
-        for (size_t i = 0; i < app.scene.models.size() && found < fighterCount; ++i)
-            if (app.scene.models[i].role == "character") rigs[found++] = i;
-        if (found != fighterCount) {
-            app.error = "front end: loaded character rigs do not match the selected roster";
-            return false;
-        }
-    } else {
-        rigs[0] = firstCharacter(app.scene, 0);
-        rigs[1] = firstCharacter(app.scene, app.enemyBegin);
+    const int fighterCount = app.frontendMatch ? app.battleLaunch.fighterCount : app.opts.battleFighterCount;
+    if (fighterCount != 4) {
+        app.error = "the core plays four fighters, the launch built " + std::to_string(fighterCount);
+        return false;
     }
-    if (fighterCount < 2 || fighterCount > 4 || rigs[0] >= app.scene.models.size() ||
-        rigs[1] >= app.scene.models.size()) {
-        app.error = "--match found an invalid fighter roster";
+    int found = 0;
+    for (size_t i = 0; i < app.scene.models.size() && found < fighterCount; ++i)
+        if (app.scene.models[i].role == "character") rigs[found++] = i;
+    if (found != fighterCount) {
+        app.error = "loaded character rigs do not match the selected roster";
         return false;
     }
 
-    gameplay::MatchConfig config;
+    MatchSetup config;
     config.fighterCount = fighterCount;
     if (app.frontendMatch) {
         config.healthPercent = app.frontend.health;
@@ -2696,11 +2460,7 @@ static bool initMatch(App& app) {
         config.balloonSize[1] = app.frontend.redBalloon;
         for (int i = 0; i < fighterCount; ++i) {
             const int panel = app.battleLaunch.fighters[i].panel;
-            config.side[i] = panel < 2 ? 0 : 1;
-            config.spawn[i] = app.scene.env.points[panel];
-            config.facing[i] = config.side[i] == 0 ? 0.f : 3.14159f;
-            config.startHP[i] = app.frontend.health;
-            config.hyper[i] = (gameplay::Hypermode)app.frontend.slots[panel].hypermode;
+            config.hyper[i] = (game::Hypermode)app.frontend.slots[panel].hypermode;
             // The selected weapon's own combat definition (issue #9): magazine sizes,
             // charge thresholds, per-shot costs and volley counts come from the item
             // file, not from a shared table.
@@ -2708,14 +2468,7 @@ static bool initMatch(App& app) {
                 config.weapon[i] = app.weaponDefs[i].get();
         }
     }
-    const glm::vec3 envP1 = app.scene.env.points[0];
-    // FUN_00423420 indexes spawns by the selected panel; parity captures retain slots 0/1.
-    const glm::vec3 envP2 = app.scene.env.points[app.frontendMatch ? ui::kFrontendBattleSlots[1] : 1];
     if (!app.frontendMatch) {
-        config.spawn[0] = app.opts.hasSpawn[0] ? app.opts.spawn[0] : envP1;
-        config.spawn[1] = app.opts.hasSpawn[1] ? app.opts.spawn[1] : envP2;
-        config.facing[0] = 0.0f;
-        config.facing[1] = 3.14159f;
         // Standalone matches never selected weapons: resolve each fighter to its
         // character's legal combo (mesh attached at assembly; combat data here),
         // so bare-handed shared-tuning fights cannot happen by omission. The
@@ -2725,19 +2478,8 @@ static bool initMatch(App& app) {
                 config.weapon[i] = app.weaponDefs[i].get();
                 continue;
             }
-            std::string charSpec, explicitSpec;
-            if (app.opts.battleFighterCount > 0 && i < 4) {
-                charSpec = app.opts.battleCharacters[i];
-                explicitSpec = app.opts.battleWeapons[i];
-            } else if (i == 0) {
-                charSpec = app.opts.character;
-                explicitSpec = app.opts.weapon;
-            } else if (i == 1) {
-                charSpec = app.opts.enemy;
-                explicitSpec = app.opts.enemyWeapon;
-            } else {
-                continue;
-            }
+            const std::string& charSpec = app.opts.battleCharacters[i];
+            const std::string& explicitSpec = app.opts.battleWeapons[i];
             std::string mesh;
             int itemId = 0;
             const std::string charDir = charDirForSpec(charSpec);
@@ -2823,20 +2565,10 @@ static bool initMatch(App& app) {
                         app.scene.models[app.matchRig[i]].source.c_str());
     }
 
-    // Standalone --match captures/scripts are the historical unclamped trace path:
-    // their positions and camera samples remain comparable to the banked recipes.
-    // Interactive --match and front-end battles use collision.x movement/ground
-    // queries; no collision model keeps the existing open-field fallback.
-    const game::physics::MovementCollision* movement =
-        historicalMatchCapture(app) || app.movementCollision.empty()
-            ? nullptr : &app.movementCollision;
-    const xm::Model* tamaMesh = app.projectileCollisionMesh;
-    app.legacyBattle.match().reset(config, models, anims, tamaMesh,
-                    tamaMesh ? &app.projectileCollisionIndex : nullptr, movement);
-    if (app.opts.simCore && !startCoreBattle(app, config)) return false;
+    if (!startCoreBattle(app, config)) return false;
     // The core chooses its own voices and SEs, so a standalone --match needs the playback half
     // of the combat layer too; the front end builds it in enterFrontendBattle.
-    if (app.opts.simCore && !app.frontendMatch) {
+    if (!app.frontendMatch) {
         if (!app.combatSink) app.combatSink = std::make_unique<App::CombatSink>(app);
         if (!app.combatAudio) app.combatAudio = std::make_unique<fnd::audio::CombatAudio>(*app.combatSink);
         app.combatAudio->begin_match(fighterCount);
@@ -2847,29 +2579,6 @@ static bool initMatch(App& app) {
     // The earned-title counters are per ROUND (the original clears the record with the round):
     // a repeated round must not inherit the previous one's hits.
     for (auto& hits : app.titleHits) hits = App::TitleHits{};
-    // Hand each fighter its recovered projectile parameters. Match::reset has already
-    // bound the weapon (MatchConfig::weapon), which sized the magazines.
-    for (int i = 0; i < fighterCount; ++i)
-        for (int row = 0; row < 64; ++row)
-            if (i < static_cast<int>(app.bulletParams.size()))
-                app.legacyBattle.match().fighter(i).set_bullet_row(
-                    row, app.bulletParams[static_cast<size_t>(i)]
-                               [static_cast<size_t>(row)].get());
-    // Bind pose on request: the DX9 reference renders no animation (its d3dx9 under
-    // Wine hands back no controller), so this is what makes a gate frame comparable.
-    if (app.opts.noAnim) {
-        for (int i = 0; i < fighterCount; ++i) app.legacyBattle.match().fighter(i).set_animate(false);
-        std::printf("match anim   : off (bind pose)\n");
-    }
-    // Fresh COM decision state for this match: one RNG stream per fighter index, derived
-    // from the one match seed, so the whole match replays from that seed alone (issue #14).
-    for (int i = 0; i < 4; ++i)
-        app.botBrains[i].reset(gameplay::bot_seed(gameplay::MatchRng::kDefaultSeed, i));
-    app.tacticReadout.reset();
-    std::printf("match        : %d fighters, movement/ground=%s, projectile=%s\n",
-                fighterCount, movement && !movement->empty() ? "loaded" : "disabled",
-                tamaMesh ? "loaded" : "missing");
-
     // The frontend already chose its device policy before it set opts.match for
     // scene assembly. Reclassifying that live session here silences every device.
     if (!app.matchInputReady) {
@@ -2965,18 +2674,10 @@ static glm::vec3 matchRenderPosition(const App& app, int fighter) {
 
 static glm::mat4 matchRenderMatrix(const App& app, int fighter) {
     if (app.matchAlpha == 1.f) return app.battle->fighter(fighter).modelMatrix();
-    if (app.opts.simCore) {
-        // The core's rotation is its own (pitch and throw poses included); only the root moves.
-        glm::mat4 matrix = app.battle->fighter(fighter).modelMatrix();
-        matrix[3] = glm::vec4(matchRenderPosition(app, fighter), 1.f);
-        return matrix;
-    }
-    const float previous = app.previousFighter[fighter].facingYaw;
-    const float current = app.battle->fighter(fighter).facing_yaw();
-    const float yaw = previous + std::remainder(current - previous, glm::two_pi<float>()) * app.matchAlpha;
-    // FUN_00420b30: the authored rig faces -Z; retain Fighter::modelMatrix's half turn.
-    return glm::translate(glm::mat4(1.f), matchRenderPosition(app, fighter)) *
-        glm::rotate(glm::mat4(1.f), yaw + glm::pi<float>(), glm::vec3(0.f,1.f,0.f));
+    // The core's rotation is its own (pitch and throw poses included); only the root moves.
+    glm::mat4 matrix = app.battle->fighter(fighter).modelMatrix();
+    matrix[3] = glm::vec4(matchRenderPosition(app, fighter), 1.f);
+    return matrix;
 }
 
 // The launch roster (issue #13): the front end's four slots in panel order, or the
@@ -3293,8 +2994,6 @@ static void bindShotModels(App& app) {
                     for (const auto& event : set.textures)
                         if (std::find(variants.begin(),variants.end(),event.replacement) == variants.end())
                             variants.push_back(event.replacement);
-                app.legacyBattle.match().fighter(static_cast<int>(i)).set_bullet_model(static_cast<int>(row),
-                    &app.scene.models[static_cast<size_t>(card)].model);
             }
         }
     }
@@ -3477,7 +3176,7 @@ static void placeFxCards(App& app) {
             // FUN_004205e0 selects the aura card by the wire mode value — 0, 1,
             // 5 for wire modes 0/1/2 — from the same seven data/aura/%02d.x
             // attachments, not one model for every mode.
-            const int wire = gameplay::hypermode_wire_value(f.hypermode());
+            const int wire = game::hypermode_wire_value(f.hypermode());
             const int auraModel = wire == 2 ? 5 : wire;
             const int card = (auraModel >= 0 && auraModel < game::kAuraSlots)
                                  ? app.fxAttach[auraModel]
@@ -3552,48 +3251,6 @@ static void printFxSummary(const App& app) {
                 app.renderer.stats().effects);
 }
 
-// Issue #14's acceptance evidence, from the run's own counters: how each COM moved,
-// what it asked for, every request the resource gates refused (a refused move that is not
-// retried in a loop) and the bounded wall recovery. `blocked` counts probes whose wanted
-// direction the stage refused; `stuck` the recoveries that fired. Printed at round over
-// and again at the end of a capture run, so a match that never finishes still reports.
-static void printComSummary(const App& app) {
-    for (int i = 0; i < app.battle->fighter_count(); ++i) {
-        const gameplay::BotStats& bs = app.botBrains[i].stats();
-        if (bs.ticks == 0) continue;   // a human slot
-        std::printf("match com %d : tactic=%s action=%s moved=%.0f, "
-                    "melee=%llu blockedMelee=%llu shots=%llu fired=%llu "
-                    "blockedShot=%llu, dash=%llu jump=%llu guard=%llu "
-                    "evade=%llu hyper=%llu retarget=%llu, "
-                    "wallTicks=%llu stuck=%llu turns=%llu\n",
-                    i,
-                    gameplay::bot_tactic_name(app.botBrains[i].tactic()),
-                    gameplay::bot_action_name(app.botBrains[i].decision().action),
-                    (double)bs.distanceMoved,
-                    (unsigned long long)bs.meleePresses,
-                    (unsigned long long)bs.meleeBlocked,
-                    (unsigned long long)bs.shotsStarted,
-                    (unsigned long long)bs.shotsFired,
-                    (unsigned long long)bs.shotBlocked,
-                    (unsigned long long)bs.dashStarts,
-                    (unsigned long long)bs.jumps,
-                    (unsigned long long)bs.guards,
-                    (unsigned long long)bs.evades,
-                    (unsigned long long)bs.hypers,
-                    (unsigned long long)bs.retargets,
-                    (unsigned long long)bs.blockedTicks,
-                    (unsigned long long)bs.stuckRecoveries,
-                    (unsigned long long)bs.directionChanges);
-    }
-}
-
-// How long LockSwitch must be HELD, with no fresh tap, before the selection moves to an
-// ally (input.h: "hold = aim ally"). PORT RULE: the hold itself is recovered
-// (FUN_00421e30's 0xb4, re-pinned by FUN_0041f580:244), but the gesture length that
-// raises it is not in the corpus. Allow a normal physical tap to finish before
-// treating it as a hold: 16 ticks at the port's fixed 60 Hz (267 ms), including the press tick.
-static constexpr int kLockHoldTicks = 16;
-
 // One fighter's HUD-side values (gameplay/hud_fill.h's HudFighterValues), sampled from the
 // live fighter and the input that drives it. Split out of tickMatch because each view
 // samples its OWN fighter and controller with the same rules (issue #12).
@@ -3610,122 +3267,31 @@ static void sampleHudFill(gameplay::HudFighterValues& out, const game::FighterVi
     out.shootHeld = input && input->down[fnd::input::Shoot];
     out.chargeHoldFrac = f.charge_hold_frac();
     switch (f.charge_tier()) {   // ShotTier -> HoldTier (scenes.cpp:847-851)
-        case gameplay::ShotTier::Red:    out.chargeTier = game::HoldTier::Red; break;
-        case gameplay::ShotTier::Yellow: out.chargeTier = game::HoldTier::Yellow; break;
+        case game::ShotTier::Red:    out.chargeTier = game::HoldTier::Red; break;
+        case game::ShotTier::Yellow: out.chargeTier = game::HoldTier::Yellow; break;
         default:                         out.chargeTier = game::HoldTier::Idle; break;
     }
-    const gameplay::HypermodeParams hp = gameplay::hypermode_params(f.hypermode());
+    const game::HypermodeHud hp = game::hypermode_hud(f.hypermode());
     out.hyperName = hp.name;
     out.hyperGauge = f.hyper_gauge();
     out.hyperActive = f.hyper_active();
     out.hyperReady = f.hyper_ready();
     out.hyperSecondsLeft = f.hyper_seconds_left();
-    out.hyperAura = game::GameRgb{(float)gameplay::rgbR(hp.aura) / 255.f,
-                                  (float)gameplay::rgbG(hp.aura) / 255.f,
-                                  (float)gameplay::rgbB(hp.aura) / 255.f};
+    out.hyperAura = game::GameRgb{(float)game::rgbR(hp.aura) / 255.f,
+                                  (float)game::rgbG(hp.aura) / 255.f,
+                                  (float)game::rgbB(hp.aura) / 255.f};
     out.hyperFlash = f.hyper_flash_alpha() / 252.f;
     out.stamina = f.stamina();
     // The reference's contextual gate is the state, not airborne() (scenes.cpp:879-882).
-    out.staminaVisible = f.state() == gameplay::FighterState::Run ||
-                         f.state() == gameplay::FighterState::Guard ||
-                         f.state() == gameplay::FighterState::Jump;
+    out.staminaVisible = f.state() == game::FighterState::Run ||
+                         f.state() == game::FighterState::Guard ||
+                         f.state() == game::FighterState::Jump;
 }
 
 // One match frame: the reference's order lives in game::Battle::step; this adds
 // what the scene added around it — tick inputs, the camera's target switch, the
 // HUD values, the effect events and the debug cubes.
 // ---------------------------------------------------------------------------
-// Live combat audio dispatch (issue #16)
-// ---------------------------------------------------------------------------
-// Every event below is read from the MatchFrame the fixed 60 Hz step just produced, so the
-// audio is a function of simulation state and not of what a render pass happened to see. Each
-// event is stamped with that frame's tick and a per-tick sequence, which is the identity
-// fnd::audio::CombatAudio de-duplicates on: the same frame replayed (a catch-up step, a
-// rollback resimulation) carries the same ids and plays nothing twice.
-// The adapter that lets the shared derivation read the live match (issue #16).
-struct App::CombatEventSource final : fnd::audio::CombatEventSource {
-    explicit CombatEventSource(const App& app) : app_(app) {}
-    int fighter_count() const override { return app_.battle->fighter_count(); }
-    bool alive(int fighter) const override {
-        return fighter >= 0 && fighter < app_.battle->fighter_count() &&
-               app_.battle->fighter(fighter).is_alive();
-    }
-    const App& app_;
-};
-
-// The frame the simulation just produced, copied into the module's own view. Keeping the
-// derivation in fnd::audio (and the copy here) is what lets the asset-backed match test
-// exercise exactly the events the release path dispatches.
-static fnd::audio::CombatFrameView combatFrameView(const gameplay::MatchFrame& f) {
-    fnd::audio::CombatFrameView view;
-    for (int i = 0; i < 4; ++i) {
-        view.swing_started[i] = f.swingStarted[i];
-        view.melee_voice[i] = f.meleeVoice[i];
-        view.melee_voice_alternative[i] = f.meleeVoiceAlternative[i];
-        view.melee_voice_audited[i] = f.sourceMeleeVoiceAudited[i];
-        view.sound_effect_id[i] = f.soundEffectId[i];
-        view.sound_effect_positional[i] = f.soundEffectPositional[i];
-        view.sound_effect_position[i] = {f.soundEffectPosition[i].x,
-                                          f.soundEffectPosition[i].y,
-                                          f.soundEffectPosition[i].z};
-        view.shot_fired[i]    = f.shotFired[i];
-        view.shot_voice[i] = f.shotVoice[i];
-        view.shot_voice_alternative[i] = f.shotVoiceAlternative[i];
-        view.shot_voice_audited[i] = f.sourceShotVoiceAudited[i];
-        view.hyper_started[i] = f.hyperStarted[i];
-        view.hyper_mode[i] = f.hyperMode[i];
-        view.guard_started[i] = f.guardStarted[i];
-        view.respawned[i]     = f.respawned[i];
-        view.blocked[i]       = f.blocked[i];
-        view.melee_hit[i]     = f.meleeHit[i];
-        view.melee_victim[i]  = f.meleeVictim[i];
-        view.overkill_hits[i] = f.overkillHits[i];
-    }
-    view.listener_position = {f.audioListenerPosition.x, f.audioListenerPosition.y,
-                              f.audioListenerPosition.z};
-    view.listener_forward = {f.audioListenerForward.x, f.audioListenerForward.y,
-                             f.audioListenerForward.z};
-    view.listener_valid = f.audioListenerValid;
-    view.shot_hit_count = f.shotHitCount < gameplay::MatchFrame::kMaxShotHits
-                              ? f.shotHitCount : gameplay::MatchFrame::kMaxShotHits;
-    for (int k = 0; k < view.shot_hit_count; ++k) {
-        view.shot_hits[k].shooter = f.shotHits[k].shooter;
-        view.shot_hits[k].victim  = f.shotHits[k].victim;
-        view.shot_hits[k].blocked = f.shotHits[k].blocked;
-    }
-    return view;
-}
-
-// Every event below comes from the MatchFrame the fixed 60 Hz step just produced, so the audio
-// is a function of simulation state and not of what a render pass happened to see. Each event
-// is stamped with that frame's tick and a per-tick sequence, which is the identity
-// fnd::audio::CombatAudio de-duplicates on: the same frame replayed (a catch-up step, a
-// rollback resimulation) carries the same ids and plays nothing twice.
-static void dispatchCombatAudio(App& app, const gameplay::MatchFrame& f) {
-    // The core asks for its own sounds and voices; this path would add a second start line per fighter.
-    if (!app.combatAudio || app.opts.simCore) return;
-    const uint32_t tick = (uint32_t)app.matchFrame;   // 1-based, same clock as the captures
-    App::CombatEventSource source(app);
-    const fnd::audio::CombatEventList list = fnd::audio::combat_events_for_frame(
-        source, combatFrameView(f), tick, !app.combatMatchStarted);
-    if (!app.combatMatchStarted && list.count > 0) app.combatMatchStarted = true;
-    for (int i = 0; i < list.count; ++i) {
-        const fnd::audio::CombatEvent& e = list.events[i];
-        app.combatAudio->dispatch(e);
-        ++app.combatEvents;
-        if (app.opts.combatAudioLog) {
-            // Evidence line: one per dispatched event, naming the file/SE the policy resolved
-            // (empty voice = the event has no line, -1 = no evidenced SE id).
-            const std::string& voice = app.combatAudio->last_voice_stem();
-            std::printf("[combat-audio] tick %u %-12s fighter=%d source=%d%s -> voice=%s se=%d\n",
-                        tick, fnd::audio::combat_event_name(e.kind), e.fighter, e.source,
-                        e.shot ? " (shot)" : "",
-                        voice.empty() ? "(none)" : voice.c_str(),
-                        app.combatAudio->last_se_id());
-        }
-    }
-}
-
 // "Stop everything this match started" (issue #16's cleanup entry point, named for #15's
 // leave path): releases the combat layer's voice channels and cuts the SFX bus. Null-safe, so
 // a leave path can call it whether or not a battle ever built the layer.
@@ -3741,9 +3307,9 @@ static void reportCombatAudio(App& app) {
     app.combatVoicePlays = (uint64_t)stats.voice_plays;
     app.combatSePlays = (uint64_t)stats.se_plays;
     if (!app.opts.combatAudioLog) return;
-    std::printf("[combat-audio] match end: events=%llu voice=%d se=%d duplicates=%d "
+    std::printf("[combat-audio] match end: voice=%d se=%d duplicates=%d "
                 "suspended_drops=%d voice_missing=%d se_missing=%d channels_held=%d\n",
-                (unsigned long long)app.combatEvents, stats.voice_plays, stats.se_plays,
+                stats.voice_plays, stats.se_plays,
                 stats.duplicates, stats.suspended_drops, stats.voice_missing, stats.se_missing,
                 app.combatAudio->claimed_channels());
     for (int k = 0; k < fnd::audio::kCombatEventKindCount; ++k)
@@ -3791,36 +3357,6 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
         game::MatchView& view = app.matchViews[v];
         if (!view.active() || view.fighter >= app.battle->fighter_count()) continue;
         const fnd::input::PlayerState* viewInput = inputs[view.fighter];
-        // LockSwitch is the original's target switch (input.h: tap = cycle enemy,
-        // hold = aim ally) and it re-picks that view's COMBAT target alone. The recovered
-        // target-change writer FUN_00421e30 stores the fighter's own +0x300 (the selection),
-        // +0x304 (cleared), +0x30c (the 15-tick pulse), +0x308 (the target's team field) and
-        // +0x848 (the ally hold) — and no view, camera or followed-player state. Its other
-        // caller settles it: the command dispatcher FUN_0063c2a0 case 0x2a applies a REMOTE
-        // player's target switch, which would be nonsense if it moved the local camera. So
-        // the tap must not touch the camera: a view follows its own fighter for the whole
-        // match (issue #51), which is also what keeps every split-screen cell stable (issue
-        // #12). The camera owns who is followed (gameplay/arena_camera.h), gameplay/
-        // target_lock.h owns who each fighter attacks, so two players hold different locks
-        // while each camera follows its own player.
-        if (viewInput && viewInput->just_pressed[fnd::input::LockSwitch]) {
-            app.battle->cycle_locked_target(view.fighter, true);
-            view.lockHeldTicks = 1;
-        } else if (viewInput && viewInput->down[fnd::input::LockSwitch]) {
-            // Held past the threshold, so the tap above is not undone by the finger still
-            // being on the button. PORT RULE: the original's hold is recovered as the
-            // 180-tick dwell FUN_0041f580:244 re-pins on an ally selection, but the gesture
-            // length that raises it is not, so this threshold is a port constant.
-            if (++view.lockHeldTicks >= kLockHoldTicks)
-                app.battle->lock_ally_target(view.fighter);
-        } else {
-            view.lockHeldTicks = 0;
-        }
-        // The DX9 reference's own camera switch (Guard just_pressed while its heavy key was
-        // held, scenes.cpp:644-646) went with that key: the original has one melee input and
-        // no heavy bit (issue #10), so re-picking the combat target is the recovered
-        // LockSwitch action alone (gameplay/target_lock.h) — nothing in a match re-points a
-        // view's camera any more (issue #51).
         // Scripted/offscreen standalone runs retain the banked null-query camera path;
         // live matches clamp the eye against collision_camera.x unless the A/B switch asks
         // for the historical unclamped behavior. The blend remains per call as in the port.
@@ -3838,41 +3374,6 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
         const int actionOpponent = app.battle->locked_target(view.followed);
         view.camera.set_action(cameraFighter.action_camera(), cameraFighter.position(), cameraFighter.facing_yaw(),
             actionOpponent >= 0 ? app.battle->fighter(actionOpponent).position() : cameraFighter.position());
-        // The recovered normal follow (PILOT-EVIDENCE-CONTRACT V3-15) replaces the
-        // reconstructed eye formula with FUN_006333b0's, whose pitch depends on the
-        // rig/anchor geometry — the reason a jump tilts the original's camera. Pilot
-        // views only: the default framing, and every capture pinned to it, keep using
-        // render::arenaViewProj. The anchor is the RECOVERED one: FUN_006358c0 @0x635af4
-        // pushes `container[actor+0x300].position` (+0x300 is the lock-on target this port
-        // also models) into camera+0x48, so the primary branch is the locked opponent —
-        // see PILOT-EVIDENCE-CONTRACT V3-16. The mode's second anchor branch (+0x304 >= 0, a
-        // container at actor+0x2f0) needs no implementation for a 1v1: FUN_006358c0 takes it
-        // only when that index is non-negative and then looks at element 0 of the container
-        // (0x635ab9 `jl`, then `push 0` before `vector[::operator[]]`), while FUN_00634980
-        // fills the two containers by comparing each pair's team record — so two fighters on
-        // different teams leave the ally container empty, the only non-negative writer is
-        // bounds-checked against it, and the branch cannot fire (V3-41). What the mode does
-        // need is the no-lock fallback: a point 600 units along the facing (the recovered
-        // 400..800 distance band's midpoint), a port constant.
-        const bool recoveredFollow =
-            app.opts.nativeActions == "rena0" &&
-            gameplay::native::is_rena0_pilot_combo(cameraFighter);
-        view.camera.set_recovered_follow(recoveredFollow);
-        if (recoveredFollow) {
-            // The anchor is +0x300, the AIM selection — NOT the combat lock at +0x304.
-            // They are different fields with different lifetimes: FUN_00421e30 writes
-            // +0x300, FUN_00421f30 writes +0x304, and the round reset (FUN_0041dcb0)
-            // starts them at +0x300 = 0 and +0x304 = -1. Reading the combat lock here
-            // left the camera with no anchor on the opening frames, which is why the
-            // view only found its target after a manual change-target press.
-            const int aimTarget = app.battle->aim_target(view.followed);
-            view.camera.set_follow_anchor(
-                aimTarget >= 0 && aimTarget < app.battle->fighter_count()
-                    ? app.battle->fighter(aimTarget).position()
-                    : cameraFighter.position() +
-                          glm::vec3(std::sin(cameraFighter.facing_yaw()), 0.f,
-                                    std::cos(cameraFighter.facing_yaw())) * 600.f);
-        }
         game::CameraPoseView corePose;
         if (app.battle->camera_pose(view.fighter, corePose))
             view.camera.set_external_pose(corePose.eye, corePose.lookAt, corePose.fovY, corePose.nearPlane);
@@ -3902,13 +3403,6 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
         // alternations and pulse read (FUN_00644150's `(frame % 0x1e) / 0xf` flash pair and
         // the balloon popup's growth) is carried in the state instead of read from a clock.
         view.hud.hudFrame = (int)app.matchFrame;
-        // The boxed tactics readout (P03's 128x64 cells: 0 適当, 1 格闘, 2 射撃, 3 集中,
-        // 4 各個, 5 後退). The cell IS the COM decision state's tactic: gameplay/bot_input.h
-        // owns the recovered pairing of the +0x310 cell with the +0x314 display timer
-        // (FUN_0041f580:291-295 writes it, FUN_004201a0:13-15 drains it, FUN_00644150:92-96
-        // fades it), so what the HUD draws and what the COM obeys cannot drift apart.
-        view.hud.commandCell = app.tacticReadout.hud_cell();
-
         // Outgoing and incoming locks are distinct: having a target does not tell
         // us the fighter's team or whether its lock is mutual with this viewer.
         const int lockedTarget = app.battle->locked_target(view.fighter);
@@ -3951,116 +3445,10 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
 }
 
 // ---------------------------------------------------------------------------------------
-// Issue #48: the original's in-battle debug keys (gameplay/debug_keys.h has the recovered
-// map, the gate and the two port rules). Three small pieces: which slots a key may call COM,
-// one tick's held set, and the gated evidence trace.
-// ---------------------------------------------------------------------------------------
-// The ownership test F3 is gated on. It is the SAME test the input build below uses to decide
-// between a controller and the bot brain — `controller` 0..3 is a human panel, anything else
-// is COM (4 is the selection screen's COM, ui/frontend_state.h) — which is the port's form of
-// the recovered `3 < DAT_006cfaf8…` (FUN_0040d130:70 writes 4 for an unset slot, :108 tests
-// `< 4`). A standalone --match has no COM slots at all: its two fighters are the device and
-// the script, so no key may re-enable a brain there.
-static void debugKeyComOwned(const App& app, bool out[4]) {
-    for (int i = 0; i < 4; ++i) out[i] = false;
-    if (!app.frontendMatch) return;
-    for (int i = 0; i < app.battle->fighter_count(); ++i) {
-        const int panel = app.battleLaunch.fighters[i].panel;
-        if (panel < 0 || panel >= 4) continue;
-        const int controller = app.frontend.slots[panel].controller;
-        out[i] = !(controller >= 0 && controller < gameplay::kComControllerType);
-    }
-}
-
-// One simulation tick's held key set: the physical keyboard (SDL scancodes for the same five
-// physical keys, pinned in input/input_sdl3.h) plus every tap --debug-keys scheduled for this
-// tick. The device read is a pure state read — with the issue #29 gate on, every physical key
-// reads released, so a verification run sees only its own taps.
-//
-// ESCAPE IS ONE KEY WITH TWO PORT BINDINGS: the original's recovered leave (scene+0x4a40 = 1)
-// and #15's "Escape opens the pause menu instead of quitting the process", which is bound in
-// SDL_AppEvent for exactly the sessions where the pause is available (docs/PAUSE.md). That
-// binding is issue #15's and is not this issue's to change, so where it applies the physical
-// key stays the pause key and the recovered leave is reached through the menu's return row;
-// everywhere else — a capture, a --frames run, the standalone harness — Escape is the
-// original's leave again. Scripted taps are never redirected: an explicit
-// --debug-keys=esc@T is the injection the evidence uses, and it leaves wherever it runs.
-static gameplay::DebugKeysHeld sampleDebugKeys(const App& app, uint64_t tick) {
-    gameplay::DebugKeysHeld held;
-    held.escape = !battlePauseAvailable(app) &&
-                  app.matchInput.key_down(fnd::input::sdl3::kScEscape);
-    held.f1     = app.matchInput.key_down(fnd::input::sdl3::kScF1);
-    held.f2     = app.matchInput.key_down(fnd::input::sdl3::kScF2);
-    held.f3     = app.matchInput.key_down(fnd::input::sdl3::kScF3);
-    held.f4     = app.matchInput.key_down(fnd::input::sdl3::kScF4);
-    for (const DebugKeyTap& tap : app.opts.debugKeyTaps) {
-        if (tap.tick != tick) continue;
-        switch (tap.dik) {
-            case gameplay::kDikEscape: held.escape = true; break;
-            case gameplay::kDikF1:     held.f1 = true;     break;
-            case gameplay::kDikF2:     held.f2 = true;     break;
-            case gameplay::kDikF3:     held.f3 = true;     break;
-            case gameplay::kDikF4:     held.f4 = true;     break;
-        }
-    }
-    return held;
-}
-
-// The evidence trace for this issue, off unless DAYBREAK_DEBUG_KEYS is set: one line per
-// fighter per tick, carrying exactly what the five keys are supposed to move. It exists
-// because the two things the criteria ask to MEASURE — a frozen COM's position over a window,
-// and the meters F1/F4 fill — are not in any existing report (the --local-players line prints
-// the HUD's own view values on request, every 128 ticks and only for the followed fighter,
-// and the COM summary prints cumulative brain counters). It runs after the tick, so the frame
-// events it prints are that tick's own. Behind an env var because it is one line per fighter
-// per tick, which no other run should pay for; a run without the variable cannot differ from
-// one before this issue.
-static void traceDebugKeys(const App& app, const gameplay::MatchFrame& frame) {
-    if (!std::getenv("DAYBREAK_DEBUG_KEYS")) return;
-    for (int i = 0; i < app.battle->fighter_count(); ++i) {
-        const game::FighterView& f = app.battle->fighter(i);
-        int controller = -1;
-        if (app.frontendMatch) {
-            const int panel = app.battleLaunch.fighters[i].panel;
-            if (panel >= 0 && panel < 4) controller = app.frontend.slots[panel].controller;
-        }
-        // This fighter's own shots still in flight: the per-fighter half of "no shot events",
-        // which the global matchShots counter cannot show.
-        int live = 0;
-        app.battle->for_each_shot([&](const game::ShotView& p) { if (p.owner == i) ++live; });
-        const glm::vec3& p = f.position();
-        std::printf("[debugkey] tick=%llu f=%d ctl=%d ai=%d pos=(%.2f,%.2f,%.2f) "
-                    "hp=%d/%d main=%.3f charge=%.3f hyper=%.3f state=%d swung=%d fired=%d "
-                    "live=%d matchShots=%llu\n",
-                    (unsigned long long)app.matchFrame, i, controller,
-                    app.battle->ai_enabled(i) ? 1 : 0, p.x, p.y, p.z, f.hp(), f.max_hp(),
-                    (double)f.main_frac(), (double)f.charge_frac(), (double)f.hyper_gauge(),
-                    (int)f.state(), frame.swingStarted[i] ? 1 : 0, frame.shotFired[i] ? 1 : 0,
-                    live, (unsigned long long)app.matchShots);
-    }
-}
-
-// Returns true when this tick's Escape asked the battle to leave (the original's
-// scene+0x4a40 = 1); the caller resolves that through the existing leave path, after the tick
-// has finished, so a leaving frame still simulates and presents like any other.
-static bool tickMatch(App& app, double dt) {
-    // The 15-tick switch pulse is not counted here: Match's lock table owns and decays
-    // it (gameplay/target_lock.h, FUN_004201a0), so the HUD reads one source of truth.
+static void tickMatch(App& app, double dt) {
     for (int i = 0; i < app.battle->fighter_count(); ++i)
         app.previousFighter[i] = app.battle->fighter(i).pose();
     ++app.matchFrame;   // 1-based simulation tick, matching banked captures
-
-    // The debug keys, on the SIMULATION tick (D9): the key is sampled here, on the tick whose
-    // number is app.matchFrame, and its effect lands on that same tick, which is what makes
-    // the toggle reproducible — a capture replays the tick and gets the same battle. A key
-    // that changes simulation state belongs here rather than in the camera/HUD pass
-    // (updateMatchViews), which reads state and must not create it.
-    bool comOwned[4];
-    debugKeyComOwned(app, comOwned);
-    const bool debugLeave = !app.opts.simCore &&
-                            gameplay::applyDebugKeys(app.legacyBattle.match(),
-                                                     sampleDebugKeys(app, app.matchFrame),
-                                                     comOwned, !app.opts.noDebugKeys);
 
     // P2: a script drives it when given; otherwise it takes no input, which is
     // exactly what the DX9 scene passes (scenes.cpp:680).
@@ -4084,9 +3472,7 @@ static bool tickMatch(App& app, double dt) {
     if (app.matchInputReady && !app.frontendMatch) p1 = &app.tickInput[0];
 
     // The viewer is the fighter on panel kFrontendBattleSlots[0] (1P). A PANEL index; the
-    // lookup yields a FIGHTER index, and the controller slot is a third, distinct index
-    // space (see gameplay/target_lock.h). Read before the step because the COM brains want
-    // the leader's lock, and again below for the HUD.
+    // lookup yields a FIGHTER index, and the controller slot is a third, distinct index space.
     int viewerIndex = 0;
     if (app.frontendMatch)
         for (int j = 0; j < app.battleLaunch.fighterCount; ++j)
@@ -4095,71 +3481,22 @@ static bool tickMatch(App& app, double dt) {
                 break;
             }
 
-    // The recovered tactics gesture: any human pressing Tactics cycles the team cell, which
-    // FUN_0041f580:291-295 mirrors onto player 0's +0x310, and every COM reads that cell.
-    // Keeping ONE cell is exactly what the mirroring produces.
-    {
-        bool pressed = false;
-        if (app.frontendMatch) {
-            for (int i = 0; i < app.battleLaunch.fighterCount && !pressed; ++i) {
-                const int controller =
-                    app.frontend.slots[app.battleLaunch.fighters[i].panel].controller;
-                if (controller >= 0 && controller < 4)
-                    pressed = app.tickInput[controller].just_pressed[fnd::input::Tactics];
-            }
-        } else if (p1) {
-            pressed = p1->just_pressed[fnd::input::Tactics];
-        }
-        if (pressed) {
-            const gameplay::BotTactic cell = app.tacticReadout.press();
-            for (gameplay::BotBrain& brain : app.botBrains) brain.set_tactic(cell);
-        }
-        app.tacticReadout.tick();
-    }
-
     const fnd::input::PlayerState* inputs[4] = {p1, p2, nullptr, nullptr};
     if (app.frontendMatch) {
         for (int i = 0; i < app.battle->fighter_count(); ++i) {
             const int panel = app.battleLaunch.fighters[i].panel;
             const int controller = app.frontend.slots[panel].controller;
-            if (controller >= 0 && controller < 4) inputs[i] = &app.tickInput[controller];
-            else if (app.opts.simCore) inputs[i] = nullptr;  // the core runs its own CPU
-            else if (app.battle->ai_enabled(i)) {
-                // COM. The decision state owns the target pick, the movement, the presses
-                // and the retarget request; gameplay/bot_input.h turns that into this
-                // fighter's input for the tick (issue #14).
-                gameplay::BotContext bot;
-                bot.match = &app.legacyBattle.match();
-                bot.fighterIndex = i;
-                bot.leaderTarget = app.battle->locked_target(viewerIndex);
-                gameplay::updateBotInput(app.botBrains[i], bot, app.botInput[i],
-                                         app.matchFrame);
-                inputs[i] = &app.botInput[i];
-            }
-            // A COM whose brain F2 switched off (issue #48's [fighter+0x860] counterpart)
-            // gets `neutralInput`: the original zeroes that slot's whole input block when the
-            // flag is clear (FUN_00634f60:60-73, keeping two edge fields) and gates the AI's
-            // own decision on the same flag (FUN_00421730:10), so the fighter sees nothing
-            // held — it stands still and attacks nothing, while every human slot's controller
-            // keeps driving its fighter. The brain is not ticked either: a decision that
-            // cannot be applied must not move the lock table or the brain's own timers.
-            // Note this is NOT the nullptr a standalone --match's dummy P2 passes: nullptr
-            // skips the state machine entirely and would leave the fighter in its last
-            // locomotion state, which is not what a zeroed input block does.
-            else inputs[i] = &app.neutralInput;
+            // A null input is a COM: the core runs its own CPU driver.
+            inputs[i] = controller >= 0 && controller < 4 ? &app.tickInput[controller] : nullptr;
         }
     }
-    if (app.liveDebug.enabled()) app.liveDebug.inputs(app.matchFrame, inputs);
     // FUN_006358c0's one global listener follows DAT_006cfba4's selected fighter.
     // The port has per-view cameras; the first human view is the explicit single-listener
     // adaptation, otherwise use the standalone P1 viewer.
     const int listenerFighter = app.matchViewCount > 0 && app.matchViews[0].followed >= 0
                                     ? app.matchViews[0].followed : viewerIndex;
     app.battle->set_primary_listener_fighter(listenerFighter);
-    const bool pilotObserve = app.pilotRun.before_step(app.legacyBattle.match(), inputs, app.opts.nativeActions == "rena0");
-    const gameplay::MatchFrame f = app.battle->step(inputs, dt);
-    if (app.liveDebug.enabled() && !app.opts.simCore) app.liveDebug.after_tick(app.matchFrame, app.legacyBattle.match(), f);
-    if (pilotObserve) app.pilotRun.after_step(app.legacyBattle.match(), inputs, f);
+    const game::BattleFrame f = app.battle->step(inputs, dt);
     for (int i = 0; i < app.battle->fighter_count(); ++i)
         if (f.respawned[i]) app.previousFighter[i] = app.battle->fighter(i).pose();
     if (app.versusAudioOn)
@@ -4168,8 +3505,7 @@ static bool tickMatch(App& app, double dt) {
     app.matchSparks += (uint64_t)f.muzzleSparks;
     for (int i = 0; i < app.battle->fighter_count(); ++i)
         if (f.meleeHit[i]) ++app.matchHits;
-    // Live combat audio (issue #16): the frame just produced is the event source.
-    dispatchCombatAudio(app, f);
+    // The core's own audio requests for this tick.
     if (app.combatAudio) {
         const auto toArray = [](const glm::vec3& v) { return fnd::audio::AudioPoint3{v.x, v.y, v.z}; };
         for (const auto& cue : f.soundCues) {
@@ -4257,7 +3593,7 @@ static bool tickMatch(App& app, double dt) {
         // rate, and the jitter is a deterministic function of (fighter, tick) — the
         // original's rand()%100 - 50 box around the fighter's position.
         if (app.battle->fighter(i).aura_active() &&
-            app.battle->fighter(i).state() == gameplay::FighterState::Knockdown &&
+            app.battle->fighter(i).state() == game::FighterState::Knockdown &&
             app.matchFrame % 7 == 0) {
             const uint32_t h = (uint32_t)(app.matchFrame / 7) * 2654435761u +
                                (uint32_t)i * 40503u;
@@ -4273,7 +3609,7 @@ static bool tickMatch(App& app, double dt) {
     // contact point the pool reported. A blocked hit still spawns in the original, so the
     // effect is not gated on damage.
     for (int k = 0; k < f.shotHitCount; ++k) {
-        const gameplay::MatchFrame::ShotHit& hit = f.shotHits[k];
+        const game::BattleFrame::ShotHit& hit = f.shotHits[k];
         if (!spawnEffect(app, app.matchFx, hit.effect, hit.point) && hit.effect >= 0)
             ++app.fxBadEffect;
     }
@@ -4302,12 +3638,8 @@ static bool tickMatch(App& app, double dt) {
                     f.roundOverSide,
                     eco.roundEnd() == gameplay::RoundEnd::Timeout ? "time up" : "burst",
                     (unsigned long long)app.matchFrame);
-        printComSummary(app);
         printFxSummary(app);
     }
-
-    traceDebugKeys(app, f);
-    return debugLeave;
 }
 
 // The trace the DX9 build prints under DAYBREAK_CAMINFO, reproduced field for field
@@ -4321,8 +3653,8 @@ static void traceMatch(App& app) {
     std::printf("[daybreak] cam eye=(%.0f,%.0f,%.0f) p1=(%.0f,%.0f,%.0f,%s) "
                 "p2=(%.0f,%.0f,%.0f,%s)\n",
                 app.eye.x, app.eye.y, app.eye.z, a.position().x, a.position().y, a.position().z,
-                gameplay::state_to_anim_name(a.state()), b.position().x, b.position().y,
-                b.position().z, gameplay::state_to_anim_name(b.state()));
+                game::state_to_anim_name(a.state()), b.position().x, b.position().y,
+                b.position().z, game::state_to_anim_name(b.state()));
     // The set that actually plays, next to the state it came from, and why it is what
     // it is. `state_to_anim_name` stays the compared field: the DX9 side of the trace
     // binds no animation sets at all, so it has no set to print and changing that field
@@ -4347,18 +3679,9 @@ static void traceMatch(App& app) {
 // representation — their real VFX are trails, which are RE-blocked (EFFECTS-TRAILS.md)
 // — while the aura now draws its actual card by default; its cube only appears under
 // --debug-prims, which is the A/B against the old all-cube view. Rebuilt, never appended.
-// --hitbox-debug overlay colours. Green is what you can HURT, red is what HITS, and
-// grey is anything that is neither — the convention a future marker follows rather than
-// re-deciding. Grey is defined but not yet drawn: there is no third category today, and
-// an unused colour constant would be dead code.
-static constexpr render::DebugColor kHurtVolume  = render::packColor(0, 230, 60, 90);
-static constexpr render::DebugColor kHitVolume   = render::packColor(255, 40, 40, 110);
-static constexpr render::DebugColor kOtherVolume = render::packColor(150, 150, 150, 90);
-
 static void fillMatchCubes(App& app) {
     app.matchCubes.clear();
     app.auraCubes.clear();
-    app.hitboxCubes.clear();
     // Issue #17: shots and sparks draw as real effect cards by default; these cubes are
     // the explicit A/B view behind --debug-prims, which is also where the aura cube lives.
     if (app.opts.debugPrims) {
@@ -4369,35 +3692,6 @@ static void fillMatchCubes(App& app) {
             app.matchCubes.add(s.pos, s.size * 0.5f, s.color);
         });
     }
-    // --hitbox-debug: the recovered melee hit spheres from issue #10, drawn as filled
-    // translucent red volumes. These are the SAME anchors and radius try_melee_hit()
-    // tests (Fighter::hitbox_debug() reads the fighter's own rules), so the overlay
-    // cannot drift from the simulation. Separate from matchCubes so it can be toggled
-    // without changing what the shots/sparks pass submits.
-    if (app.opts.hitboxDebug) {
-        for (int i = 0; i < app.battle->fighter_count(); ++i) {
-            const game::HitboxDebug hb = app.battle->fighter(i).hitbox_debug();
-            for (const glm::vec3& anchor : hb.anchors)
-                app.hitboxCubes.addSphere(anchor, hb.anchorRadius, kHurtVolume);
-            if (!hb.attacking) continue;
-            // A capsule record is a swept blade, not a point: draw the volume along the whole
-            // segment. Drawing only the centre is what made every capsule record look like a
-            // sphere sitting on the prop bone during the melee-reach audit (V3-46).
-            if (hb.capsule) {
-                const glm::vec3 axis = hb.attackEnd - hb.attackCenter;
-                const float length = glm::length(axis);
-                const int steps = std::max(1, static_cast<int>(length / (hb.attackRadius * 0.5f)));
-                for (int k = 0; k <= steps; ++k) {
-                    const float t = static_cast<float>(k) / static_cast<float>(steps);
-                    app.hitboxCubes.addSphere(hb.attackCenter + axis * t, hb.attackRadius,
-                                              kHitVolume);
-                }
-            } else {
-                app.hitboxCubes.addSphere(hb.attackCenter, hb.attackRadius, kHitVolume);
-            }
-        }
-    }
-
     if (!app.opts.debugPrims) return;   // the real aura card is the default view
     // The aura cube: the reference render's second, additive cube pass, drawn in the
     // fighter's own space: its local centre through the fighter's model matrix.
@@ -4613,30 +3907,12 @@ bool initScene(App& app) {
 
     // Effects are part of SceneModel storage too, so finish appending them before
     // borrowing any model pointers for fighters or collision queries.
-    const xm::Model* movementMesh = nullptr;
-    const xm::Model* groundMesh = nullptr;
     const xm::Model* cameraMesh = nullptr;
-    app.projectileCollisionMesh = nullptr;
     for (size_t i = 0; i < app.scene.models.size(); ++i) {
         const xm::SceneModel& sm = app.scene.models[i];
-        if (sm.hasCollisionChannel(xm::StageCollisionChannel::Movement)) movementMesh = &sm.model;
-        if (sm.hasCollisionChannel(xm::StageCollisionChannel::Ground)) groundMesh = &sm.model;
-        if (sm.hasCollisionChannel(xm::StageCollisionChannel::Projectile)) {
-            app.projectileCollisionMesh = &sm.model;
-            app.projectileCollisionIndex = game::physics::buildModelIndex(sm.model);
-        }
         if (sm.hasCollisionChannel(xm::StageCollisionChannel::Camera)) cameraMesh = &sm.model;
     }
-    app.movementCollision.setMeshes(movementMesh, groundMesh);
     app.cameraCollision.setMesh(cameraMesh);
-    if (movementMesh)
-        std::printf("movement collision : collision.x (%s)\n",
-                    app.movementCollision.empty() ? "empty mesh" : "swept query loaded");
-    if (groundMesh)
-        std::printf("ground collision   : collision.x (%s)\n",
-                    app.movementCollision.empty() ? "empty mesh" : "surface query loaded");
-    if (app.projectileCollisionMesh)
-        std::printf("projectile collision: collision_tama.x\n");
     if (cameraMesh)
         std::printf("camera collision   : collision_camera.x (%s)\n",
                     app.cameraCollision.empty() ? "empty mesh, no clamp" : "loaded");
@@ -4677,7 +3953,6 @@ bool initScene(App& app) {
         if (!initVersus(app)) return false;
     } else if (app.opts.match) {
         if (!initMatch(app)) return false;
-        app.legacyBattle.match().set_body_separation(app.opts.bodySeparation);
     }
 
     // ---- framing. A stage's visible set includes an inverted sky dome far larger than
@@ -4972,9 +4247,8 @@ void advanceAnimation(App& app, double delta) {
     if (!moved) return;
     for (size_t i = 0; i < app.controllers.size(); ++i)
         if (app.controllers[i].model()) app.controllers[i].evalWorld(app.worlds[i]);
-    if (app.opts.simCore)
-        for (int fighter = 0; fighter < app.battle->fighter_count(); ++fighter)
-            app.battle->fighter(fighter).core_pose(app.worlds[app.matchRig[fighter]]);
+    for (int fighter = 0; fighter < app.battle->fighter_count(); ++fighter)
+        app.battle->fighter(fighter).core_pose(app.worlds[app.matchRig[fighter]]);
     app.renderer.updatePose(app.worlds);
 }
 
@@ -5328,17 +4602,15 @@ static bool enterFrontendBattle(App& app) {
     // The core always plays four actors. FUN_0040d130 gives each unselected slot a random
     // COM (character, weapon, mode, costume), as the bundle's prepare_local_roster does; the
     // draws here are the port's own, not the battle RNG's.
-    if (app.opts.simCore) {
-        std::mt19937 fill(static_cast<uint32_t>(app.logicTicks) * 2654435761u + 1u);
-        for (int panel = 0; panel < 4; ++panel) {
-            ui::FrontendSlot& slot = app.frontend.slots[panel];
-            if (slot.character >= 0) continue;
-            slot = ui::FrontendSlot{};
-            slot.character = static_cast<int>(fill() % gameplay::kCharacterCount);
-            slot.weapon = static_cast<int>(fill() % gameplay::weaponCountForCharacter(slot.character));
-            slot.hypermode = static_cast<int>(fill() % 3);
-            slot.controller = 4;
-        }
+    std::mt19937 fill(static_cast<uint32_t>(app.logicTicks) * 2654435761u + 1u);
+    for (int panel = 0; panel < 4; ++panel) {
+        ui::FrontendSlot& slot = app.frontend.slots[panel];
+        if (slot.character >= 0) continue;
+        slot = ui::FrontendSlot{};
+        slot.character = static_cast<int>(fill() % gameplay::kCharacterCount);
+        slot.weapon = static_cast<int>(fill() % gameplay::weaponCountForCharacter(slot.character));
+        slot.hypermode = static_cast<int>(fill() % 3);
+        slot.controller = 4;
     }
     ui::FrontendLaunch launch;
     if (!ui::frontendLaunch(app.frontend, launch, app.error, (uint32_t)app.logicTicks)) return false;
@@ -5415,7 +4687,6 @@ static bool enterFrontendBattle(App& app) {
     app.opts.match = true;
     app.opts.camera = "arena";
     app.matchFrame = app.matchRoundOverFrame = 0;
-    for (auto& input : app.botInput) input = {};
     app.matchHits = app.matchShots = app.matchSparks = 0;
     app.liveFx.clear();
     app.fxCatalog.clear();
@@ -6246,7 +5517,6 @@ struct CaptureHook {
     const render::DebugLineBatch* lines = nullptr;
     const render::CubeBatch*      solid = nullptr;   // shots + sparks (opaque)
     const render::CubeBatch*      additive = nullptr;   // hypermode auras
-    const render::CubeBatch*      hitbox  = nullptr;   // --hitbox-debug melee spheres
     // One entry per view for the overlay passes: the same matrix and cell the scene pass
     // drew with, so a view's cubes and lines land in that view (issue #12). An entry with
     // an empty rect is the single-view frame, whose passes keep the full-target viewport.
@@ -6277,15 +5547,6 @@ bool captureHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat
             render::DebugPrims::Options o;   // depth-tested, the reference's opaque cube pass
             o.viewport = rect;
             if (!ck->prims->drawCubes(target, frameView.viewProj, *ck->solid,
-                                      ck->renderer->depthView(), o, *ck->error))
-                return false;
-        }
-        // Straight alpha (not additive): a translucent hit volume should tint what is behind
-        // it rather than blow out, so overlapping fighters stay readable.
-        if (ck->hitbox && !ck->hitbox->empty()) {
-            render::DebugPrims::Options o;
-            o.viewport = rect;
-            if (!ck->prims->drawCubes(target, frameView.viewProj, *ck->hitbox,
                                       ck->renderer->depthView(), o, *ck->error))
                 return false;
         }
@@ -6488,26 +5749,11 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     // While paused the clock is not advanced at all, so paused wall time cannot become
     // catch-up ticks when the pause ends; the paused ticks still run so the device queues
     // are drained and the menu can be driven (issue #15).
-    if (app->opts.liveDebug && !app->liveDebug.enabled()) {
-        if (!app->matchMode || capturing || app->opts.headless || app->frontendMatch) {
-            app->error = "--live-debug requires a visible standalone --match development launch";
-            return SDL_APP_FAILURE;
-        }
-        if (!app->liveDebug.start(app->error)) return SDL_APP_FAILURE;
-        std::printf("live debug session: %s\n", app->liveDebug.directory().c_str());
-        std::fflush(stdout);
-    }
-    app->liveDebug.poll(app->matchFrame, app->frames, app->legacyBattle.match());
-    if (app->liveDebug.stop_requested()) return SDL_APP_SUCCESS;
-    const int ticks = app->liveDebug.enabled()
-                    ? (app->liveDebug.stepping() ? 1 : app->liveDebug.paused() ? 0
-                       : app->logicClock.advance(app->frames > 1 ? delta : 0.0))
-                    : capturing ? 1
+    const int ticks = capturing ? 1
                     : (app->battlePaused ? 1
                                          : app->logicClock.advance(app->frames > 1 ? delta : 0.0));
-    app->matchAlpha = app->liveDebug.enabled() ? 1.f : matchAlphaFor(*app, capturing);
+    app->matchAlpha = matchAlphaFor(*app, capturing);
     for (int tick = 0; tick < ticks; ++tick) {
-        if (app->liveDebug.enabled() && !app->liveDebug.wants_tick()) break;
         ++app->logicTicks;
         for (int p = 0; p < 4; ++p) app->tickInput[p] = app->pendingInput[p].consume();
         driveSyntheticLocalPads(*app);
@@ -6538,26 +5784,13 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 continue;
             }
             if (!capturing) advanceAnimation(*app, gameplay::FixedStep::seconds);
-            const bool debugLeave =
-                tickMatch(*app, capturing ? app->opts.dt : gameplay::FixedStep::seconds);
+            tickMatch(*app, capturing ? app->opts.dt : gameplay::FixedStep::seconds);
             traceMatch(*app);
             // --local-players evidence: the per-view cameras/HUD values every 128 ticks,
             // bounded by the run's own length so a long run cannot flood the log.
             if (app->opts.localPlayers > 0 && app->matchFrame % 128 == 0)
                 reportMatchViews(*app, capturing ? (uint32_t)app->opts.sizeW : app->sc.width,
                                  capturing ? (uint32_t)app->opts.sizeH : app->sc.height);
-            // Issue #48: Escape's leave request, taken after the tick has simulated and
-            // presented like any other. It resolves through the same path #15's "return to
-            // selection" row uses, and before the round-over branch below: when the round ends
-            // and Escape arrive on the same tick the leave wins, because an abort has no result
-            // screen (the original's flag is a scene-level leave and its own ordering with the
-            // round machine is not recovered).
-            if (debugLeave) {
-                leaveBattleTo(*app, ui::ScreenId::Select);
-                std::printf("[debugkey] escape: left the battle at frame %llu\n",
-                            (unsigned long long)app->matchFrame);
-                continue;
-            }
             if (app->frontendMatch && app->battle->economy().roundOver()) {
                 // The economy reports the WINNING side (issue #11); the DX9 port
                 // reported the burst side here and this line inverted it.
@@ -6837,7 +6070,6 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     if (app->matchMode) {
                         cap.solid = &app->matchCubes;
                         cap.additive = &app->auraCubes;
-                        if (app->opts.hitboxDebug) cap.hitbox = &app->hitboxCubes;
                     }
                 }
                 const bool useHook = useHud || cap.prims;
@@ -6905,7 +6137,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                                 app->matchRoundOverFrame ? 1 : 0);
                     // Issue #11's single-counted audit: one KO credit per death, one
                     // Overkill credit per hit, one respawn per return.
-        if (app->opts.simCore) reportCombatAudio(*app);
+                    reportCombatAudio(*app);
                     std::printf("match round : winner=%d (%s), KOs=%d/%d overkill=%d/%d "
                                 "respawns=%d/%d, time left=%.1fs\n",
                                 eco.roundOverSide(),
@@ -6913,9 +6145,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                                 (eco.roundEnd() == gameplay::RoundEnd::Burst ? "burst" : "running"),
                                 eco.kos(0), eco.kos(1), eco.overkills(0), eco.overkills(1),
                                 eco.respawns(0), eco.respawns(1), eco.timeLeft());
-                    // Issue #14's per-COM counters (see printComSummary) and issue #17's
-                    // effect population (see printFxSummary).
-                    printComSummary(*app);
+                    // Issue #17's effect population (see printFxSummary).
                     printFxSummary(*app);
                 }
                 if (app->versusMode) {
@@ -6961,18 +6191,6 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     cubeOptions.viewport = camera.rect;
                     if (!app->debugPrims.drawCubes(target, camera.viewProj, app->matchCubes,
                                                    app->renderer.depthView(), cubeOptions,
-                                                   app->error)) {
-                        gpu::endFrame(app->ctx, app->sc, frame);
-                        return SDL_APP_FAILURE;
-                    }
-                }
-                if (app->matchMode && app->opts.hitboxDebug && !app->hitboxCubes.empty()) {
-                    // Straight alpha (not additive): the volume should tint what is behind
-                    // it rather than blow out, so overlapping fighters stay readable.
-                    render::DebugPrims::Options hitboxOptions;
-                    hitboxOptions.viewport = camera.rect;
-                    if (!app->debugPrims.drawCubes(target, camera.viewProj, app->hitboxCubes,
-                                                   app->renderer.depthView(), hitboxOptions,
                                                    app->error)) {
                         gpu::endFrame(app->ctx, app->sc, frame);
                         return SDL_APP_FAILURE;
@@ -7044,27 +6262,6 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             return SDL_APP_FAILURE;
         }
         if (!gpu::endFrame(app->ctx, app->sc, frame)) return SDL_APP_FAILURE;
-        if (app->liveDebug.evidence_pending()) {
-            std::vector<uint8_t> rgba;
-            HudTestHook hud = battleHudHook(*app);
-            appendMatchHudPasses(*app, frameViews, w, h, hud);
-            CaptureHook cap;
-            cap.renderer = &app->renderer;
-            cap.error = &app->error;
-            cap.views = frameCameras;
-            if (app->uiReady) cap.hud = &hud;
-            cap.prims = &app->debugPrims;
-            cap.lines = &app->debugLines;
-            cap.solid = &app->matchCubes;
-            cap.additive = &app->auraCubes;
-            if (app->opts.hitboxDebug) cap.hitbox = &app->hitboxCubes;
-            const auto* views = frameCameras.size() > 1 ? &frameCameras : nullptr;
-            if (!app->renderer.capture(w, h, rgba, app->error, captureHook, &cap, views))
-                return SDL_APP_FAILURE;
-            writePpm(app->liveDebug.evidence_path(app->matchFrame), rgba, w, h);
-        }
-        if (app->liveDebug.enabled())
-            app->liveDebug.presented(app->matchFrame, app->frames, app->legacyBattle.match());
     } else {
         app->spin += (float)delta * 1.2f;
         const Mat4 transform = rotationZ(app->spin, 1.0f);
@@ -7194,57 +6391,6 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 void SDL_AppQuit(void* appstate, SDL_AppResult result) {
     auto* app = static_cast<App*>(appstate);
     if (!app) return;
-    if (app->opts.nativeActions == "rena0") {
-        // Slice 1's evidence line: what the observer compared and what it found. A run with
-        // the flag must otherwise be indistinguishable from one without it.
-        const auto& obs = app->pilotRun.observer;
-        std::fprintf(stderr, "[rena0-pilot] summary ticks=%lld compared=%lld out-of-domain=%lld agreed=%lld "
-                    "disagreed=%lld\n",
-                    obs.ticks, obs.compared, obs.outOfDomain, obs.agreed, obs.disagreed);
-        std::fprintf(stderr, "[rena0-pilot] drive ticks=%lld (state proposal + walk speed answered "
-                             "by the recovered body)\n",
-                     app->pilotRun.locomotion.observer().driven);
-        std::fprintf(stderr, "[rena0-pilot] melee compared=%lld agreed=%lld disagreed=%lld\n",
-                     obs.meleeCompared, obs.meleeAgreed, obs.meleeDisagreed);
-        std::fprintf(stderr, "[rena0-pilot] guard ticks=%lld starts=%lld blocks %lld/%lld disagreed=%lld\n",
-                     obs.guardTicks, obs.guardStarts, obs.guardBlockAgreed, obs.guardBlocks,
-                     obs.guardDisagreed);
-        std::fprintf(stderr, "[rena0-pilot] mode gauges: victim-hits=%lld attacker-hits=%lld "
-                             "charge0=%u charge1=%u notify5=%lld notify6=%lld "
-                             "(limits %u/%u from the actor DAT)\n",
-                     obs.gaugeVictimHits, obs.gaugeAttackerHits, obs.modeGauges.charge0,
-                     obs.modeGauges.charge1, obs.modeGauges.notify5, obs.modeGauges.notify6,
-                     obs.modeGauges.limits.limit0, obs.modeGauges.limits.limit1);
-        std::fprintf(stderr, "[rena0-pilot] charge gauge=%d (spend 500 per powered air tap, "
-                             "recovered; the +1/tick refill is identified but not implemented)\n",
-                     app->battle->fighter(0).charge_gauge());
-        std::fprintf(stderr, "[rena0-pilot] hp fighter0=%d fighter1=%d\n",
-                     app->battle->fighter(0).hp(), app->battle->fighter(1).hp());
-        std::fprintf(stderr, "[rena0-pilot] guard gate asked=%lld guarded=%lld no-record=%lld "
-                             "not-guard-capable=%lld unblockable=%lld outside-angle=%lld\n",
-                     app->pilotRun.guardPolicy.calls, app->pilotRun.guardPolicy.guarded,
-                     app->pilotRun.guardPolicy.no_record, app->pilotRun.guardPolicy.not_guard_capable,
-                     app->pilotRun.guardPolicy.unblockable, app->pilotRun.guardPolicy.outside_angle);
-        std::fprintf(stderr, "[rena0-pilot] note the body's shot `model` clear requests have no verified "
-                             "port counterpart (measured 0/%lld); the mapping is unverified, not asserted\n",
-                     obs.shotModelCompared);
-        std::fprintf(stderr, "[rena0-pilot] guard gate: guarded hits apply no damage under the recovered "
-                             "predicate (angle within 45 degrees; the victim's 0x2000 and the attacker's "
-                             "unblockable flag 8 are not expressible and are not applied)\n");
-        std::fprintf(stderr, "[rena0-pilot] note the guard body's phases and 20-frame hold counter have "
-                             "no port counterpart, and its 0..1000 gauge is not the port's 0..100 stamina\n");
-        std::fprintf(stderr, "[rena0-pilot] shot ticks=%lld fire %lld/%lld sound %lld/%lld "
-                             "voice %lld/%lld model %lld/%lld bullet-pitch %lld/%lld disagreed=%lld\n",
-                     obs.shotTicks, obs.shotFireAgreed, obs.shotFireCompared, obs.shotSoundAgreed,
-                     obs.shotSoundCompared, obs.shotVoiceAgreed, obs.shotVoiceCompared,
-                     obs.shotModelAgreed, obs.shotModelCompared, obs.shotBulletAgreed,
-                     obs.shotBulletCompared, obs.shotDisagreed);
-        std::fprintf(stderr, "[rena0-pilot] note move_counter is a move-program data counter "
-                    "(CounterSet/Counter ops), not a per-tick clock; the body's secondary has no "
-                    "established port counterpart and is not compared.\n");
-        for (const auto& [name, count] : obs.classes)
-            std::fprintf(stderr, "[rena0-pilot] class %-28s %lld\n", name.c_str(), count);
-    }
 #if defined(_WIN32)
     if (result == SDL_APP_FAILURE && !app->opts.headless) {
         const char* message = app->error.empty()

@@ -27,13 +27,10 @@
 #include "game/hud_bridge.h"
 #include "game/view_layout.h"
 #include "gameplay/arena_camera.h"
-#include "gameplay/bot_input.h"
 #include "gameplay/fixed_step.h"
 #include "gameplay/hud_fill.h"
-#include "gameplay/match.h"
 #include "input/synthetic_pad.h"
 #include "ui/hud.h"
-#include "synthetic_combo.h"
 
 namespace {
 
@@ -339,125 +336,6 @@ void syntheticPadCases() {
           "the pattern is defined for any controller index");
 }
 
-// 5. The acceptance guard: view count must not multiply simulation or audio. Two identical
-// matches are stepped one tick per frame; the "renderer" runs the same per-view calls the
-// host runs (layout, HUD fill, per-view camera, projection) for 1 view in the first run and
-// 4 in the second. Any rendering-side stepping, or a per-view simulation/audio call, changes
-// the final state or the counters.
-struct SimRun {
-    uint64_t matchFrame = 0;
-    uint64_t ticks = 0;
-    uint64_t audioPushes = 0;
-    uint64_t hudFills = 0;
-    float hp[4] = {};
-    float x[4] = {};
-    float z[4] = {};
-    float balloon[2] = {};
-};
-
-SimRun runFrames(int viewCount, int frames) {
-    gameplay::Match match;
-    gameplay::MatchConfig config;
-    config.fighterCount = 4;
-    config.side[0] = config.side[1] = 0;
-    config.side[2] = config.side[3] = 1;
-    config.spawn[1] = glm::vec3(-800.f, 0.f, 0.f);
-    config.spawn[2] = glm::vec3(900.f, 0.f, 0.f);
-    config.spawn[3] = glm::vec3(1400.f, 0.f, 200.f);
-    // AGENTS rule 7: the run steps a live battle for its views, so it is equipped.
-    // Static so the combo outlives the match, which copies the config's pointers.
-    static const test::synthetic::Combo combo;
-    combo.bind(config, config.fighterCount);
-    const xm::Model* models[4] = {};
-    xm::Controller* animations[4] = {};
-    match.reset(config, models, animations, nullptr, nullptr);
-    match.economy().setLogFile(nullptr);
-
-    const int controllers[4] = {0, 1, 2, 3};
-    game::HumanView views[4];
-    const int viewTotal = game::buildHumanViews(controllers, viewCount, views);
-    check(viewTotal == viewCount, "the run's views match the requested count");
-
-    fnd::input::PlayerState bots[4];
-    gameplay::BotBrain botBrains[4];
-    SimRun run;
-    for (int frame = 0; frame < frames; ++frame) {
-        // The tick the brain sees is the run's 1-based match frame, the same value the
-        // host passes (main.cpp's tickMatch); the two runs must stay comparable.
-        for (int i = 0; i < config.fighterCount; ++i) {
-            gameplay::BotContext bot;
-            bot.match = &match;
-            bot.fighterIndex = i;
-            bot.leaderTarget = (i + 1) % config.fighterCount;
-            gameplay::updateBotInput(botBrains[i], bot, bots[i], run.matchFrame + 1);
-        }
-        const fnd::input::PlayerState* inputs[4] = {&bots[0], &bots[1], &bots[2], &bots[3]};
-        ++run.ticks;
-        ++run.audioPushes;   // the host's one audio push per tick (tickMatch)
-        ++run.matchFrame;
-        match.step(inputs, gameplay::FixedStep::seconds);
-
-        // The "renderer": one pass per view, reading the same state and writing nothing back.
-        const game::SplitLayout layout = game::splitLayoutFor(viewTotal);
-        const uint32_t width = 1920, height = 1080;
-        gameplay::CameraTarget arenaTargets[4];
-        for (int i = 0; i < 4; ++i) {
-            arenaTargets[i].position = match.fighter(i).position();
-            arenaTargets[i].facingYaw = match.fighter(i).facing_yaw();
-            arenaTargets[i].alive = match.fighter(i).is_alive();
-        }
-        for (int v = 0; v < viewTotal; ++v) {
-            const game::ViewRect cell = game::viewCell(layout, v, width, height);
-            gameplay::CameraTarget* pool[4] = {&arenaTargets[0], &arenaTargets[1],
-                                               &arenaTargets[2], &arenaTargets[3]};
-            gameplay::ArenaCamera camera;
-            camera.set_target_pool({pool[0], pool[1], pool[2], pool[3]});
-            camera.set_active_target(views[v].fighter);
-            camera.update(gameplay::FixedStep::seconds);
-            const glm::mat4 vp =
-                camera.proj_matrix((int)cell.w, (int)cell.h) * camera.view_matrix();
-            const ui::BattleHudLayout hudLayout =
-                ui::computeBattleHudLayout((int)cell.w, (int)cell.h);
-            gameplay::HudFillInput fill;
-            fill.p1.hp = match.fighter(views[v].fighter).hp();
-            fill.p1.alive = match.fighter(views[v].fighter).is_alive();
-            ui::HudState state = gameplay::hudStateFor(match.economy(), fill);
-            ++run.hudFills;
-            ui::HudFighterHud hud;
-            game::projectFighterHud(&vp[0][0], arenaTargets[views[v].fighter].position.x,
-                                    arenaTargets[views[v].fighter].position.y,
-                                    arenaTargets[views[v].fighter].position.z, hud,
-                                    hudLayout.width, hudLayout.height);
-            (void)state;
-        }
-    }
-    for (int i = 0; i < 4; ++i) {
-        run.hp[i] = (float)match.fighter(i).hp();
-        run.x[i] = match.fighter(i).position().x;
-        run.z[i] = match.fighter(i).position().z;
-    }
-    run.balloon[0] = match.economy().balloon(0);
-    run.balloon[1] = match.economy().balloon(1);
-    return run;
-}
-
-void simulationGuardCases() {
-    const SimRun one = runFrames(1, 240);
-    const SimRun four = runFrames(4, 240);
-    check(one.ticks == four.ticks && one.ticks == 240, "the tick count is the frame count in both runs");
-    check(one.audioPushes == four.audioPushes && one.audioPushes == one.ticks,
-          "audio updates equal ticks: the view count does not multiply them");
-    check(one.matchFrame == four.matchFrame, "the match frame counter advances once per tick");
-    check(four.hudFills == one.hudFills * 4, "the render side did run four HUD fills per frame");
-    for (int i = 0; i < 4; ++i) {
-        check(near(one.hp[i], four.hp[i]), "fighter hp is identical for 1 and 4 views");
-        check(near(one.x[i], four.x[i]) && near(one.z[i], four.z[i]),
-              "fighter position is identical for 1 and 4 views");
-    }
-    check(near(one.balloon[0], four.balloon[0]) && near(one.balloon[1], four.balloon[1]),
-          "the economy is identical for 1 and 4 views");
-}
-
 }  // namespace
 
 int main() {
@@ -465,7 +343,6 @@ int main() {
     assignmentCases();
     perViewProjectionCases();
     syntheticPadCases();
-    simulationGuardCases();
     std::printf("view_layout_test: %s\n", g_failures ? "FAIL" : "ok");
     return g_failures ? 1 : 0;
 }

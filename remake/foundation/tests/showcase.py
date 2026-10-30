@@ -102,8 +102,7 @@ def discover_stages():
                   if d.is_dir() and re.fullmatch(r"stage\d+", d.name))
 
 
-def run_capture(char, enemy, stage, frames, size, out, script=None, co_spawn=False,
-                slot=0):
+def run_capture(char, enemy, stage, frames, size, out, script=None, slot=0):
     """One headless demo run. Returns (ok, textured, untextured, stderr_tail).
 
     `slot` is stated explicitly and passed to the demo: the default is the character's
@@ -111,13 +110,9 @@ def run_capture(char, enemy, stage, frames, size, out, script=None, co_spawn=Fal
     "base model with slot 0" coverage (AGENTS rule 7).
     """
     cmd = [str(BINARY), "--headless", f"--out={out}",
-           f"--stage={DATA / stage}", f"--character={DATA / char}:{slot}",
-           f"--enemy={DATA / enemy}:{slot}", "--match", "--camera=arena",
+           f"--stage={DATA / stage}", "--match", "--camera=arena",
+           "--sim-roster=" + ",".join(f"{DATA / name}@{slot}" for name in (char, enemy, enemy, char)),
            f"--frames={frames}", f"--size={size}"]
-    if co_spawn:
-        # Midpoint of the stage's arena: both fighters start together so
-        # the scripted melee presses all land (see write_fx_script).
-        cmd += ["--spawn=-803,200,-2200", "--spawn2=-803,200,-2200"]
     if script:
         cmd.append(f"--script={script}")
     # errors="replace": the demo prints Shift-JIS stage/character names to
@@ -207,7 +202,7 @@ def check_matrix(out_dir, slot=0):
 def write_fx_script(path):
     """The VFX showcase input script: 13 melee hits (fills the Friendship gauge)
     then SPECIAL on the last frame, so the capture shows the hit card and the
-    active aura card. Co-spawned fighters make every press land."""
+    active aura card."""
     lines = []
     f = 100
     for _ in range(13):
@@ -220,26 +215,26 @@ def write_fx_script(path):
 
 
 def showcase_shots(out_dir):
-    # (name, p1, p2, stage, frames, size, co_spawn, fx)
+    # (name, p1, p2, stage, frames, size, fx)
     shots = [
-        ("rena_mion_stage01",      "rena",     "mion",    "stage01", 120, "1280x720", False, False),
-        ("chie_rika_stage02",      "chie",     "rika",    "stage02", 120, "1280x720", False, False),
-        ("satoko_hanyu_stage11",   "satoko",   "hanyu",   "stage11", 120, "1280x720", False, False),
-        ("keiichi_shion_stage06",  "keiichi",  "shion",   "stage06", 120, "1280x720", False, False),
-        ("akane_tomitake_stage16", "akane",    "tomitake", "stage16", 120, "1280x720", False, False),
-        ("irie_kasai_stage21",     "irie",     "kasai",   "stage21", 120, "1280x720", False, False),
-        ("mion_rika_stage15",      "mion",     "rika",    "stage15", 120, "1280x720", False, False),
-        ("rena_mion_fx_stage01",   "rena",     "mion",    "stage01", 950, "1280x720", True,  True),
+        ("rena_mion_stage01",      "rena",     "mion",    "stage01", 120, "1280x720", False),
+        ("chie_rika_stage02",      "chie",     "rika",    "stage02", 120, "1280x720", False),
+        ("satoko_hanyu_stage11",   "satoko",   "hanyu",   "stage11", 120, "1280x720", False),
+        ("keiichi_shion_stage06",  "keiichi",  "shion",   "stage06", 120, "1280x720", False),
+        ("akane_tomitake_stage16", "akane",    "tomitake", "stage16", 120, "1280x720", False),
+        ("irie_kasai_stage21",     "irie",     "kasai",   "stage21", 120, "1280x720", False),
+        ("mion_rika_stage15",      "mion",     "rika",    "stage15", 120, "1280x720", False),
+        ("rena_mion_fx_stage01",   "rena",     "mion",    "stage01", 950, "1280x720", True),
     ]
     ok_all = True
-    for name, c1, c2, stage, frames, size, co_spawn, fx in shots:
+    for name, c1, c2, stage, frames, size, fx in shots:
         out = out_dir / f"shot_{name}.ppm"
         script = None
         if fx:
             script = out_dir / f"script_{name}.txt"
             write_fx_script(script)
         ok, textured, untextured, tail = run_capture(c1, c2, stage, frames, size, out,
-                                                     script, co_spawn)
+                                                     script)
         ok_shot = ok and untextured == 0
         ok_all &= ok_shot
         extra = f"{textured} textured, {untextured} untextured" if ok else tail

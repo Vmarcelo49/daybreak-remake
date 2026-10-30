@@ -274,7 +274,7 @@ public:
     // and while suspended nothing is played (the #15 pause expectation).
     void dispatch(const CombatEvent& e);
 
-    // Direct requests from a backend that resolves its own cues (--sim=core): the id or file
+    // Direct requests from a backend that resolves its own cues (the core): the id or file
     // is already chosen, so no policy or alternative selection applies.
     void play_se_direct(int id, bool positional, const AudioPoint3& position, const AudioPoint3& listener,
                         const AudioPoint3& forward, bool listenerValid);

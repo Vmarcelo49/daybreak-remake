@@ -1,5 +1,7 @@
 # Web (Emscripten)
 
+> **Since M5 (2026-10-30) the web build compiles but cannot run a battle.** The core reads `daybreak*.dat` directly and the web build streams single assets, so a battle fails at launch until the core gets an asset seam (M6). The menus are unaffected. The `--character`/`--enemy` match recipes below are history; the last revision with a working web battle is `e9347627`.
+
 ```bash
 cd remake/foundation   # all paths below are relative to here
 ./build.sh deps     # once (populates third_party/, CMakeLists.txt:27-29)

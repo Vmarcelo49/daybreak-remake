@@ -104,7 +104,7 @@ inline ViewRect viewCell(SplitLayout layout, int viewIndex, uint32_t targetW, ui
 
 // Views the frame draws, in controller-slot order, exactly as FUN_006396f0 keys them.
 // `controllerOfFighter[i]` is fighter i's controller slot, or negative for COM. Fighter
-// index and controller index are different spaces (gameplay/target_lock.h): a slot that
+// index and controller index are different spaces: a slot that
 // owns no fighter gets no view, which is how COM participants never allocate one.
 // Returns the number of views; `out` is only written where a view exists, and a match
 // with no human at all gets the original's forced single view on controller 0 following

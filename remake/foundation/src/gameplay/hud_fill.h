@@ -30,33 +30,33 @@ namespace ui { struct HudState; }
 namespace gameplay {
 
 // One frame of P1's HUD-side state, sampled by the caller from the live fighter
-// and input (Fighter in remake/src/gameplay/fighter.h). Values are copied, not
+// and input (game::FighterView). Values are copied, not
 // linked: plain data in the units GameHudValues speaks.
 struct HudFighterValues {
-    int   hp = 100;                     // Fighter::hp(), 0..100
-    bool  alive = true;                 // Fighter::is_alive()
-    int   mainWhole = 0;                // Fighter::main_whole()
-    float mainFrac = 0.f;               // Fighter::main_frac()
-    bool  reloadOk = true;              // Fighter::reload_ok()
-    int   chargeWhole = 0;              // Fighter::charge_whole()
-    float chargeFrac = 0.f;             // Fighter::charge_frac()
+    int   hp = 100;                     // FighterView::hp(), 0..100
+    bool  alive = true;                 // FighterView::is_alive()
+    int   mainWhole = 0;                // FighterView::main_whole()
+    float mainFrac = 0.f;               // FighterView::main_frac()
+    bool  reloadOk = true;              // FighterView::reload_ok()
+    int   chargeWhole = 0;              // FighterView::charge_whole()
+    float chargeFrac = 0.f;             // FighterView::charge_frac()
     bool  shootHeld = false;            // input->player(0).down[input::Action::Shoot]
-    float chargeHoldFrac = 0.f;         // Fighter::charge_hold_frac()
+    float chargeHoldFrac = 0.f;         // FighterView::charge_hold_frac()
     // ShotTier -> HoldTier, resolved caller-side: ShotTier lives in
     // remake/src/gameplay/projectile.h (D3D-typed), which this tree cannot
     // include. Red -> Red, Yellow -> Yellow, anything else -> Idle
     // (scenes.cpp:847-851).
     game::HoldTier chargeTier = game::HoldTier::Idle;
     std::string hyperName = "FRIENDSHIP";    // hypermode_params(...).name
-    float hyperGauge = 0.f;                  // Fighter::hyper_gauge()
-    bool  hyperActive = false;               // Fighter::hyper_active()
-    bool  hyperReady = false;                // Fighter::hyper_ready()
-    float hyperSecondsLeft = 0.f;            // Fighter::hyper_seconds_left()
+    float hyperGauge = 0.f;                  // FighterView::hyper_gauge()
+    bool  hyperActive = false;               // FighterView::hyper_active()
+    bool  hyperReady = false;                // FighterView::hyper_ready()
+    float hyperSecondsLeft = 0.f;            // FighterView::hyper_seconds_left()
     game::GameRgb hyperAura{1.f, 1.f, 1.f};  // hypermode_params(...).aura, rgb8/255
-    float hyperFlash = 0.f;                  // Fighter::hyper_flash_alpha()/252 (issue #71)
-    int   stamina = 100;                     // Fighter::stamina()
+    float hyperFlash = 0.f;                  // FighterView::hyper_flash_alpha()/252 (issue #71)
+    int   stamina = 100;                     // FighterView::stamina()
     float hpLag = 100.f;                     // the bar's ghost; the legacy path keeps none
-    // Fighter::state() in {Run, Guard, Jump} (scenes.cpp:879-882): the state enum
+    // FighterView::state() in {Run, Guard, Jump} (scenes.cpp:879-882): the state enum
     // does not cross into this tree, so the caller resolves the contextual gate.
     bool  staminaVisible = false;
 };

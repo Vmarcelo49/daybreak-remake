@@ -1,8 +1,9 @@
 #pragma once
 
 #include "assets/asset_source.h"
-#include "gameplay/fighter.h"
-#include "gameplay/fixed_step.h"
+#include "assets/xmodel.h"
+#include "gameplay/character_moves.h"
+#include "gameplay/weapon_definition.h"
 
 #include <array>
 #include <cstdlib>
@@ -32,7 +33,6 @@ struct Combo {
     xm::Model model;
     std::array<gameplay::BulletParameter,64> bullets;
     std::array<bool,64> hasBullet{};
-    mutable std::vector<std::unique_ptr<xm::Controller>> controllers;
 
     bool load(int character, int slot, std::string& error) {
         auto& source = fnd::assets::assetSource();
@@ -59,38 +59,6 @@ struct Combo {
             hasBullet[static_cast<size_t>(row)] = true;
         }
         return true;
-    }
-
-    xm::Controller* controller() const {
-        controllers.push_back(std::make_unique<xm::Controller>());
-        return controllers.back().get();
-    }
-    void bind(gameplay::Fighter& fighter) const {
-        if (!fighter.model()) fighter.bind(&model,controller());
-        fighter.set_moves(&moves);
-        fighter.set_weapon(&weapon);
-        for (int row = 0; row < weapon.bulletCount; ++row)
-            if (hasBullet[static_cast<size_t>(row)])
-                fighter.set_bullet_row(row,&bullets[static_cast<size_t>(row)]);
-    }
-    void init(gameplay::Fighter& fighter, glm::vec3 at = {}, float facing = 0.f) const {
-        fighter.init(&model,controller(),at,facing);
-        bind(fighter);
-        for (int i = 0; i < 70; ++i) fighter.update(nullptr,nullptr,gameplay::FixedStep::seconds);
-    }
-
-    // Collision tests place a victim by the actual posed attack volume, not an
-    // invented chest-centred sphere at a fixed root distance (issue #31).
-    static void placeAtAttack(gameplay::Fighter& attacker, gameplay::Fighter& victim,
-                              glm::vec3 offset = {}) {
-        const auto attack = attacker.hitbox_debug();
-        const int hp = victim.hp();
-        victim.set_state(gameplay::FighterState::Idle);
-        const auto body = victim.hitbox_debug();
-        victim.reset(victim.position() + attack.attackCenter - body.anchors[1] + offset,
-                     victim.facing_yaw());
-        victim.set_state(gameplay::FighterState::Idle);
-        victim.set_hp(hp);
     }
 };
 } // namespace test

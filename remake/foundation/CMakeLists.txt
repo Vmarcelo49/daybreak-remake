@@ -176,17 +176,9 @@ target_link_libraries(foundation_physics PUBLIC foundation_assets glm)
 # supplies; the simulation half is std + glm + the ported raycast.
 add_library(foundation_gameplay STATIC
     src/gameplay/arena_camera.cpp
-    src/gameplay/fighter.cpp
-    src/gameplay/legacy_battle.cpp
-    src/gameplay/projectile.cpp
-    src/gameplay/match.cpp
     src/gameplay/match_economy.cpp
     src/gameplay/character_moves.cpp
     src/gameplay/weapon_definition.cpp
-    src/gameplay/bot_brain.cpp
-    src/gameplay/bot_input.cpp
-    src/gameplay/debug_keys.cpp
-    src/gameplay/live_debug.cpp
     src/gameplay/hud_fill.cpp
     src/gameplay/result_title.cpp)
 target_include_directories(foundation_gameplay PUBLIC src)
@@ -228,7 +220,7 @@ if(EMSCRIPTEN)
     target_compile_options(foundation_sim PRIVATE -msimd128 -msse)
 endif()
 
-# --sim=core: game::Battle over the core. Includes only sim/battle.h, never the core.
+# game::Battle over the core. Includes only sim/battle.h, never the core.
 add_library(foundation_sim_backend STATIC src/sim/core_battle.cpp)
 target_link_libraries(foundation_sim_backend PUBLIC foundation_sim foundation_gameplay)
 
@@ -239,12 +231,7 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(simfuzz PRIVATE foundation_sim)
 endif()
 
-option(FOUNDATION_LIVE_DEBUG "Enable local Linux development match control" OFF)
 add_executable(foundation_demo src/main.cpp)
-if(FOUNDATION_LIVE_DEBUG)
-    target_compile_definitions(foundation_demo PRIVATE FOUNDATION_LIVE_DEBUG=1)
-endif()
-target_compile_definitions(foundation_demo PRIVATE FOUNDATION_HAS_SIM=1)
 target_link_libraries(foundation_demo PRIVATE foundation_sim_backend)
 if(WIN32)
     set_target_properties(foundation_demo PROPERTIES WIN32_EXECUTABLE TRUE)
@@ -255,7 +242,8 @@ target_link_libraries(foundation_demo PRIVATE foundation_render foundation_ui fo
 if(WIN32)
     add_executable(windows_startup_smoke EXCLUDE_FROM_ALL tests/windows_startup_smoke.cpp)
     target_link_libraries(windows_startup_smoke PRIVATE foundation_render foundation_ui
-        foundation_media foundation_game foundation_physics foundation_gameplay foundation_movie)
+        foundation_media foundation_game foundation_physics foundation_sim_backend foundation_gameplay
+        foundation_movie)
 endif()
 
 set(CAPTION_CJK_FONT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/NotoSansCJKjp-Regular.otf")
@@ -334,15 +322,6 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                          "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_tools_test.py")
         set_tests_properties(check_tools_test PROPERTIES TIMEOUT 300)
 
-        # The recon tool's own suites: the synthetic half needs nothing (trace summaries,
-        # body boundaries, runtime syntax, binding mismatches) and always runs, while the
-        # install-backed half skips ITSELF when the local reference bundle is absent. The
-        # script exits 77 only when every case was unavailable, so CTest records a skip
-        # rather than a pass (audit finding G).
-        add_test(NAME ginkiha_recon_test
-                 COMMAND ${Python3_EXECUTABLE}
-                         "${CMAKE_CURRENT_SOURCE_DIR}/tests/ginkiha_recon_test.py")
-        set_tests_properties(ginkiha_recon_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
         add_test(NAME hud_cell_scale
                  COMMAND ${Python3_EXECUTABLE}
@@ -469,177 +448,28 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(match_economy_test PRIVATE src)
     add_test(NAME match_economy_test COMMAND match_economy_test)
 
-    add_executable(live_debug_test tests/live_debug_test.cpp)
-    target_link_libraries(live_debug_test PRIVATE foundation_gameplay)
-    add_test(NAME live_debug_test COMMAND live_debug_test)
 
-    # The recovered attack admission (Rena group): data-free synthetic tables
-    # pin the dispatcher's weapon-specific branches, plus install-backed real
-    # input sequences through the actual Fighter.
-    add_executable(rena_dash_admission_test tests/rena_dash_admission_test.cpp)
-    target_include_directories(rena_dash_admission_test PRIVATE src)
-    add_test(NAME rena_dash_admission_test COMMAND rena_dash_admission_test)
 
-    # Issue #71 animation audit (Rena+0/+1/+2): install-backed real input
-    # sequences asserting the bound animation set per checklist situation.
-    # Skips itself without a game install, like fighter_script_test.
-    add_executable(rena_animation_audit_test tests/rena_animation_audit_test.cpp)
-    target_include_directories(rena_animation_audit_test PRIVATE src)
-    target_link_libraries(rena_animation_audit_test PRIVATE foundation_gameplay
-                          foundation_assets)
-    add_test(NAME rena_animation_audit_test COMMAND rena_animation_audit_test)
 
-    # F1-5 feasibility probe (Rena+0 only, observation-only): a device-free test
-    # linked to foundation_gameplay drives the real Match/Fighter with real combo
-    # data, and the attributed recovered idle/walk control proposes outputs that
-    # are never applied. It keeps the repository's data-free CI invariant: no
-    # reachable install exits 77 and is reported Skipped, which is never an F1-5
-    # pass. An install that is present but unreadable still fails hard, so missing
-    # or mismatched combo data cannot hide behind the skip. The seeded sensitivity
-    # run is deliberate and is not registered as a ctest case (WILL_FAIL would also
-    # pass on a data-missing failure):
-    #   rena0_locomotion_observation_test --seed-wrong-speed   (expected nonzero)
-    add_executable(rena0_locomotion_observation_test tests/rena0_locomotion_observation_test.cpp)
-    target_link_libraries(rena0_locomotion_observation_test PRIVATE foundation_gameplay)
-    add_test(NAME rena0_locomotion_observation_test COMMAND rena0_locomotion_observation_test)
-    set_tests_properties(rena0_locomotion_observation_test PROPERTIES
-                         LABELS "asset;feasibility" SKIP_RETURN_CODE 77)
 
-    # F1-3 deterministic offline fixtures (DIRECTION.md §4 Phase 1): text fixtures under
-    # tests/fixtures/rena0/ record combo, spawn, collision scope, per-tick inputs and the
-    # expected observables of the F1-2 contract; this runner drives the production
-    # Match/Fighter over real combo data and checks them. Same data-free CI rule as the
-    # F1-5 probe: no install exits 77 (Skipped, never a pass).
-    add_executable(rena0_fixture_test tests/rena0_fixture_test.cpp)
-    target_link_libraries(rena0_fixture_test PRIVATE foundation_gameplay)
-    add_test(NAME rena0_fixture_test
-             COMMAND rena0_fixture_test "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/rena0")
-    set_tests_properties(rena0_fixture_test PROPERTIES
-                         LABELS "asset;feasibility" SKIP_RETURN_CODE 77)
 
     if(Python3_Interpreter_FOUND)
-        add_test(NAME rena0_manifest_enforcement_test
-                 COMMAND ${Python3_EXECUTABLE}
-                         "${CMAKE_CURRENT_SOURCE_DIR}/tests/rena0_manifest_enforcement_test.py"
-                         $<TARGET_FILE:rena0_fixture_test>
-                         "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/rena0")
-        set_tests_properties(rena0_manifest_enforcement_test PROPERTIES
-                             LABELS "asset;feasibility" SKIP_RETURN_CODE 77)
     endif()
 
-    # P2-5 (2c) offline body tests: explicit scalar inputs into the recovered Rena+0
-    # locomotion body, independent of Match/Fighter integration. Data-free by construction
-    # (the projection is header-only), so it runs everywhere and never skips.
-    add_executable(rena0_body_test tests/rena0_body_test.cpp)
-    target_link_libraries(rena0_body_test PRIVATE foundation_gameplay)
-    add_test(NAME rena0_body_test COMMAND rena0_body_test)
-    set_tests_properties(rena0_body_test PROPERTIES LABELS "feasibility")
 
-    # P2-5 (2c) offline body tests for the recovered melee admission: explicit scalar
-    # inputs, the real move table's priority gate. Install-backed, skip-not-pass without data.
-    add_executable(rena0_admission_body_test tests/rena0_admission_body_test.cpp)
-    target_link_libraries(rena0_admission_body_test PRIVATE foundation_gameplay)
-    add_test(NAME rena0_admission_body_test COMMAND rena0_admission_body_test)
-    set_tests_properties(rena0_admission_body_test PROPERTIES
-                         LABELS "asset;feasibility" SKIP_RETURN_CODE 77)
 
-    # P2-5 (2c) increment 2: the fixture-linked differential — recovered locomotion body vs
-    # the production run, per fixture, with named divergence classes. Install-backed.
-    add_executable(rena0_differential_test tests/rena0_differential_test.cpp)
-    target_link_libraries(rena0_differential_test PRIVATE foundation_gameplay)
-    add_test(NAME rena0_differential_test
-             COMMAND rena0_differential_test "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/rena0")
-    set_tests_properties(rena0_differential_test PROPERTIES
-                         LABELS "asset;feasibility" SKIP_RETURN_CODE 77)
 
-    # P2-6 (2d) resolver: explicit move/phase/set with fallback reasons, pilot-path only.
-    # The source directory is passed so the test can verify nothing under src/ includes it.
-    add_executable(rena0_resolver_test tests/rena0_resolver_test.cpp)
-    target_link_libraries(rena0_resolver_test PRIVATE foundation_gameplay)
-    add_test(NAME rena0_resolver_test
-             COMMAND rena0_resolver_test "${CMAKE_CURRENT_SOURCE_DIR}/src")
-    set_tests_properties(rena0_resolver_test PROPERTIES
-                         LABELS "asset;feasibility" SKIP_RETURN_CODE 77)
 
-    # P2-7 shot family: the recovered ground-shot body's ordered event list, pinned offline.
-    # Data-free by construction (scalars in, event list out), so it never skips.
-    add_executable(rena0_shot_body_test tests/rena0_shot_body_test.cpp)
-    target_link_libraries(rena0_shot_body_test PRIVATE foundation_gameplay)
-    add_test(NAME rena0_shot_body_test COMMAND rena0_shot_body_test)
-    set_tests_properties(rena0_shot_body_test PROPERTIES LABELS "feasibility")
 
-    # P2-7 guard family: the recovered guard body (states 390/391/392), pinned offline.
-    # Data-free by construction, so it never skips.
-    add_executable(rena0_guard_body_test tests/rena0_guard_body_test.cpp)
-    target_link_libraries(rena0_guard_body_test PRIVATE foundation_gameplay)
-    add_test(NAME rena0_guard_body_test COMMAND rena0_guard_body_test)
-    set_tests_properties(rena0_guard_body_test PROPERTIES LABELS "feasibility")
 
-    # P2-7 (2e) pilot gate: the two recovered slot-7 refusals driven through the production
-    # Match/Fighter with real equipped Rena+0 — the +0x834 dash admission (PILOT-SEAM.md §25)
-    # and the empty-magazine tap voice (PILOT-SEAM.md §26). Install-backed, skip-not-pass
-    # without data. The seeded sensitivity run is deliberate and is not registered as a ctest
-    # case (WILL_FAIL would also pass on a data-missing failure):
-    #   rena0_pilot_gate_test --seed-wrong-gate        (expected nonzero)
-    add_executable(rena0_pilot_gate_test tests/rena0_pilot_gate_test.cpp)
-    target_link_libraries(rena0_pilot_gate_test PRIVATE foundation_gameplay)
-    add_test(NAME rena0_pilot_gate_test COMMAND rena0_pilot_gate_test)
-    set_tests_properties(rena0_pilot_gate_test PROPERTIES
-                         LABELS "asset;feasibility" SKIP_RETURN_CODE 77)
 
-    # Body separation (FUN_006394c0): the recovered push-apart. Data-free by construction, so it
-    # never skips — the formula is a pure function and the wiring needs only positions.
-    add_executable(body_separation_test tests/body_separation_test.cpp)
-    target_link_libraries(body_separation_test PRIVATE foundation_gameplay)
-    add_test(NAME body_separation_test COMMAND body_separation_test)
 
-    # P2-7 charge family: the recovered charge-gauge bodies (attacker mode 1, victim modes 0/2).
-    # Data-free by construction, so it never skips.
-    add_executable(rena0_charge_body_test tests/rena0_charge_body_test.cpp)
-    target_link_libraries(rena0_charge_body_test PRIVATE foundation_gameplay)
-    add_test(NAME rena0_charge_body_test COMMAND rena0_charge_body_test)
-    set_tests_properties(rena0_charge_body_test PROPERTIES LABELS "feasibility")
 
-    # P2-7 charge family: the mode-gauge state against the shipped actor parameters.
-    # Install-backed (the limits are actor data), skip-not-pass without the install.
-    add_executable(rena0_mode_gauge_test tests/rena0_mode_gauge_test.cpp)
-    target_link_libraries(rena0_mode_gauge_test PRIVATE foundation_gameplay)
-    add_test(NAME rena0_mode_gauge_test COMMAND rena0_mode_gauge_test)
-    set_tests_properties(rena0_mode_gauge_test PROPERTIES
-                         LABELS "asset;feasibility" SKIP_RETURN_CODE 77)
 
-    # P2-7 guard family: the predicate's flag words in the shipped records (install-backed).
-    add_executable(rena0_guard_flags_test tests/rena0_guard_flags_test.cpp)
-    target_link_libraries(rena0_guard_flags_test PRIVATE foundation_gameplay)
-    add_test(NAME rena0_guard_flags_test COMMAND rena0_guard_flags_test)
-    set_tests_properties(rena0_guard_flags_test PROPERTIES
-                         LABELS "asset;feasibility" SKIP_RETURN_CODE 77)
 
-    add_executable(melee_admission_test tests/melee_admission_test.cpp)
-    target_include_directories(melee_admission_test PRIVATE src)
-    target_link_libraries(melee_admission_test PRIVATE foundation_gameplay
-                          foundation_assets)
-    add_test(NAME melee_admission_test COMMAND melee_admission_test)
 
-    add_executable(fighter_script_test tests/fighter_script_test.cpp)
-    target_include_directories(fighter_script_test PRIVATE src)
-    target_link_libraries(fighter_script_test PRIVATE foundation_gameplay)
-    add_test(NAME fighter_script_test COMMAND fighter_script_test)
 
-    add_executable(animation_data_test tests/animation_data_test.cpp)
-    target_include_directories(animation_data_test PRIVATE src)
-    target_link_libraries(animation_data_test PRIVATE foundation_gameplay)
-    add_test(NAME animation_data_test COMMAND animation_data_test)
-    set_tests_properties(animation_data_test PROPERTIES LABELS asset)
 
-    # The generated Ginkiha table (docs/reports/ginkiha-port-plan.md Fase 0): header-only,
-    # device-free and game-data-free — it pins the importer's output against the bundle's
-    # own two extractions and our kLocomotion handlers, so drift fails a test, not a port.
-    add_executable(ginkiha_tables_test tests/ginkiha_tables_test.cpp)
-    target_include_directories(ginkiha_tables_test PRIVATE src)
-    target_link_libraries(ginkiha_tables_test PRIVATE foundation_gameplay)
-    add_test(NAME ginkiha_tables_test COMMAND ginkiha_tables_test)
-    set_tests_properties(ginkiha_tables_test PROPERTIES LABELS asset)
 
     # The effect-card live set: header-only game logic (glm + std), no device.
     add_executable(fx_cards_test tests/fx_cards_test.cpp)
@@ -683,11 +513,6 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(arena_camera_test PRIVATE foundation_assets glm)
     add_test(NAME arena_camera_test COMMAND arena_camera_test)
 
-    # Swept stage movement, ground support, landing and match spawn recovery. Synthetic
-    # geometry runs everywhere; passing a local data/ directory also checks real stages.
-    add_executable(stage_movement_test tests/stage_movement_test.cpp)
-    target_link_libraries(stage_movement_test PRIVATE foundation_gameplay)
-    add_test(NAME stage_movement_test COMMAND stage_movement_test)
 
     # The per-weapon combat definitions (issue #9): the data/item/NNN.dat reader
     # transcribed from FUN_00433eb0, every shipped weapon swept, and a match smoke run
@@ -698,12 +523,6 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME weapon_definition_test COMMAND weapon_definition_test)
     set_tests_properties(weapon_definition_test PROPERTIES LABELS asset)
 
-    # Issue #10: directional/aerial/multi-target melee. Needs the gameplay lib for
-    # Match/Fighter and the physics lib for the #7 collision mesh; the character move
-    # table parse is device-free and skips its shipped-data half without an install.
-    add_executable(melee_rules_test tests/melee_rules_test.cpp)
-    target_link_libraries(melee_rules_test PRIVATE foundation_gameplay)
-    add_test(NAME melee_rules_test COMMAND melee_rules_test)
 
     # The vendored simulation: all 46 combos run, and the digest repeats and reacts (M1).
     add_executable(sim_core_test tests/sim_core_test.cpp)
@@ -729,82 +548,20 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # become COMs, so a one-human selection still fights four.
     add_test(NAME sim_frontend_flow COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/release_flow_check.py $<TARGET_FILE:foundation_demo>
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak --recipe=com --rounds=1 --frames=5000 --fighters=4
-        --demo-arg=--sim=core)
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak --recipe=com --rounds=1 --frames=5000 --fighters=4)
     set_tests_properties(sim_frontend_flow PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600 LABELS asset)
 
-    # M3's boundary: the product reaches the legacy simulation only at its named seams.
-    add_test(NAME battle_seam_test COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/battle_seam_test.sh
-        ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
     # The input seed that threw before PATCHES.md's trig entry, at tick 797.
     add_test(NAME sim_fuzz_regression COMMAND simfuzz 8 2 1 1000 9)
     set_tests_properties(sim_fuzz_regression PROPERTIES SKIP_RETURN_CODE 77 LABELS asset
         FAIL_REGULAR_EXPRESSION "exception")
 
-    # The per-fighter combat target (issue #8): cycling, hold-for-ally, the 15-tick
-    # switch pulse, the KO/invalid-index fallbacks and the Match wiring that makes
-    # facing and melee follow the lock. Drives TargetLocks directly and Match through
-    # its public API; both live in foundation_gameplay.
-    add_executable(target_lock_test tests/target_lock_test.cpp)
-    target_link_libraries(target_lock_test PRIVATE foundation_gameplay)
-    add_test(NAME target_lock_test COMMAND target_lock_test)
 
-    # Issue #51: the LockSwitch tap re-points the combat target and NOT the camera. It
-    # compiles src/main.cpp into its own TU (SDL_MAIN_HANDLED, like
-    # controller_scene_lifetime_test) and drives tickMatch(), so what it pins is the tap
-    # handler the player actually presses. Device-free, data-free and window-free: the
-    # match runs with the historical null models (the test never attacks, so no combat
-    # claim rides on it) and it links what main.cpp needs.
-    add_executable(lock_switch_camera_test tests/lock_switch_camera_test.cpp)
-    target_include_directories(lock_switch_camera_test PRIVATE src)
-    target_link_libraries(lock_switch_camera_test PRIVATE foundation_render foundation_ui
-        foundation_media foundation_game foundation_physics foundation_gameplay
-        foundation_movie)
-    add_test(NAME lock_switch_camera_test COMMAND lock_switch_camera_test)
 
-    # Issue #39: the live presentation path — the one the capture stack cannot see. The
-    # camera defect fixed in 92b6d70 lived in buildFrameViews' glm::mix(previousEye,
-    # camera.eye(), matchAlpha), which is the identity at the alpha 1 every capture recipe
-    # pins (D9), so no capture could ever have caught it. This compiles src/main.cpp into
-    # its own TU (SDL_MAIN_HANDLED, like lock_switch_camera_test), composes frames the way
-    # the frame loop does — the fixed-step clock, tickMatch, then buildFrameViews — and
-    # asserts on FrameView::camera.eye, the frame-view state the renderer consumes. No GPU,
-    # no window and no game data: the fighters carry a synthetic Rena 1 combo (AGENTS rule
-    # 7) and stand still.
-    add_executable(live_camera_smoothness_test tests/live_camera_smoothness_test.cpp)
-    target_include_directories(live_camera_smoothness_test PRIVATE src)
-    target_link_libraries(live_camera_smoothness_test PRIVATE foundation_render foundation_ui
-        foundation_media foundation_game foundation_physics foundation_gameplay
-        foundation_movie)
-    add_test(NAME live_camera_smoothness_test COMMAND live_camera_smoothness_test)
 
-    # Issue #48: the original's in-battle debug keys (F1 HP/balloon restore, F2 COM off, F3
-    # COM on, F4 gauges, Escape leave) behind the recovered gate. The gameplay half is
-    # device-free over a hand-built Match; the acceptance half compiles src/main.cpp into its
-    # own TU (SDL_MAIN_HANDLED, like lock_switch_camera_test) and drives the product's own
-    # tickMatch(), so the fixed-step key sampling and the COM input gate are the shipped ones.
-    # --debug-keys' tick-keyed taps are the injection (a headless run has no key events).
-    add_executable(debug_keys_test tests/debug_keys_test.cpp)
-    target_include_directories(debug_keys_test PRIVATE src)
-    target_link_libraries(debug_keys_test PRIVATE foundation_render foundation_ui
-        foundation_media foundation_game foundation_physics foundation_gameplay
-        foundation_movie)
-    add_test(NAME debug_keys_test COMMAND debug_keys_test)
 
-    # Issue #11: KO -> Overkill -> respawn, team credits, capacity extremes,
-    # simultaneous deaths/bursts and the timed-round winner, driven through Match so
-    # Fighter::take_damage, the projectile pool and MatchFrame are all covered.
-    add_executable(round_rules_test tests/round_rules_test.cpp)
-    target_link_libraries(round_rules_test PRIVATE foundation_gameplay)
-    add_test(NAME round_rules_test COMMAND round_rules_test)
 
-    # Issue #14: the COM decision state — determinism, the recovered tactic table, the
-    # resource/availability gates, retargeting, ally exclusion and the wall/corner
-    # recovery, all against a synthetic "Rena 1" combo and the #7 collision sweeps.
-    add_executable(bot_brain_test tests/bot_brain_test.cpp)
-    target_link_libraries(bot_brain_test PRIVATE foundation_gameplay)
-    add_test(NAME bot_brain_test COMMAND bot_brain_test)
 
     # The .X animation path against the shipped rigs: defines XMODEL_IMPLEMENTATION
     # itself (same reason as raycast_analytic), sweeps data/<name>/<NN>.X at run time,
@@ -848,7 +605,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(controller_scene_lifetime_test PRIVATE src)
     target_link_libraries(controller_scene_lifetime_test PRIVATE foundation_render
         foundation_ui foundation_media foundation_game foundation_physics
-        foundation_gameplay)
+        foundation_sim_backend foundation_gameplay)
     add_test(NAME controller_scene_lifetime_test COMMAND controller_scene_lifetime_test
              "${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak")
     set_tests_properties(controller_scene_lifetime_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
@@ -937,9 +694,6 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME input_backend_test COMMAND input_backend_test
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/scripts/frontend-smoke.txt")
 
-    add_executable(frontend_battle_test tests/frontend_battle_test.cpp)
-    target_link_libraries(frontend_battle_test PRIVATE foundation_gameplay)
-    add_test(NAME frontend_battle_test COMMAND frontend_battle_test)
     add_executable(fixed_step_test tests/fixed_step_test.cpp)
     target_link_libraries(fixed_step_test PRIVATE foundation_gameplay)
     add_test(NAME fixed_step_test COMMAND fixed_step_test)
@@ -957,14 +711,8 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(combat_audio_test PRIVATE foundation_media glm)
     add_test(NAME combat_audio_test COMMAND combat_audio_test)
 
-    # Issue #16's asset-backed live match: four shipped combos, a COM 2v2 with a full gauge
-    # and low HP, the real event derivation and the real (probed) voice files, twice.
-    add_executable(combat_audio_match_test tests/combat_audio_match_test.cpp)
-    target_link_libraries(combat_audio_match_test PRIVATE foundation_gameplay foundation_media glm)
-    add_test(NAME combat_audio_match_test COMMAND combat_audio_match_test)
     # The install is its only prerequisite; once present, a missing or unparseable item
     # or move table is a FAILURE (the data is expected and available), not a skip.
-    set_tests_properties(combat_audio_match_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
     # Issue #42: a BGM track's .sfl loop sheet is optional — absent and unusable
     # sheets both mean "no loop region, play once to EOF" (FUN_00668820), while a
@@ -1004,10 +752,6 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(countdown_overlay_test PRIVATE foundation_ui foundation_gameplay glm)
     add_test(NAME countdown_overlay_test COMMAND countdown_overlay_test)
 
-    # The two recovered damage chains, pinned against real combo data (Rena + item 001).
-    add_executable(damage_scale_test tests/damage_scale_test.cpp)
-    target_link_libraries(damage_scale_test PRIVATE foundation_gameplay)
-    add_test(NAME damage_scale_test COMMAND damage_scale_test)
     # Issue #15's pause semantics: the match gate, the menu and the stale-edge rule.
     # Device-free (no SDL, no assets), like the other gameplay tests.
     add_executable(battle_pause_test tests/battle_pause_test.cpp)

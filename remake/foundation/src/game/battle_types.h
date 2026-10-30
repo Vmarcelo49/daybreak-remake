@@ -96,6 +96,33 @@ inline constexpr std::uint8_t rgbA(Rgb c) {
     return static_cast<std::uint8_t>((c >> 24) & 0xffu);
 }
 
+// The wire value the original stores at +0x318 (0 Oyashiro, 1 Friendship, 2 Kakera). The enum
+// above is the UI order; every site that needs the wire value translates through here.
+inline int hypermode_wire_value(Hypermode m) {
+    switch (m) {
+        case Hypermode::Oyashiro:   return 0;
+        case Hypermode::Friendship: return 1;
+        case Hypermode::Kakera:     return 2;
+    }
+    return 1;
+}
+
+// The HUD's caption and aura colour per mode. The colours follow the wiki's mode captures;
+// Kakera has no capture yet, so green keeps it distinguishable.
+struct HypermodeHud {
+    const char* name;
+    Rgb aura;
+};
+
+inline HypermodeHud hypermode_hud(Hypermode m) {
+    switch (m) {
+        case Hypermode::Friendship: return {"FRIENDSHIP", packRgb(130, 220, 255)};
+        case Hypermode::Oyashiro:   return {"OYASHIRO", packRgb(255, 110, 220)};
+        case Hypermode::Kakera:     return {"KAKERA", packRgb(150, 255, 160)};
+    }
+    return {"FRIENDSHIP", packRgb(255, 255, 255)};
+}
+
 enum class ShotTier : std::uint8_t {
     Tap    = 0,
     Yellow = 1,

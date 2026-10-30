@@ -34,7 +34,7 @@ inline constexpr int kScCamLeft = 20;  // Q doubles as camera-left nudge
 inline constexpr int kScCamRight = 8;  // SDL_SCANCODE_E, camera-right nudge
 
 // The original's in-battle debug keys (issue #48). SDL scancodes are USB HID codes, NOT the
-// DIK codes FUN_00634f60 reads (gameplay/debug_keys.h names those), so the mapping lives here
+// DIK codes FUN_00634f60 reads, so the mapping lives here
 // where pin_tables.cpp can assert it against SDL: Escape DIK 0x01 -> HID 41, F1 DIK 0x3b ->
 // HID 58, F2 0x3c -> 59, F3 0x3d -> 60, F4 0x3e -> 61. Deliberately not actions: the debug
 // keys are not part of the 13-action vocabulary and must not be rebindable.

@@ -1,5 +1,7 @@
 # Linux release checklist — the offline versus gate (issue #23)
 
+> **Since M5 (2026-10-30) the vendored core is the only battle.** `--match` takes four fighters through `--sim-roster=<dir>/<a>@0,<dir>/<b>@0,<dir>/<c>@0,<dir>/<d>@0`. Recipes below that use `--character`/`--enemy`/`--spawn`, their pinned hashes, and test counts and names are measurements of the old path, not current commands; that path last exists at `e9347627`. Read `ctest`'s own summary for today's count. `release_flow_check.py` runs on the core with `--fighters 4`.
+
 > What this is: the reproducible evidence that the Linux playable release is
 > releasable, plus the honest list of what this machine could **not** verify.
 > A second person should be able to follow it top to bottom and get the same

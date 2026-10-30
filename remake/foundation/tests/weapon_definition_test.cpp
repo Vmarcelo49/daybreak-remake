@@ -17,9 +17,7 @@
 //    cmake --build remake/foundation/build/linux --target weapon_definition_test
 //  Exit status: 0 when every check passes, 1 otherwise.
 // =============================================================================
-#include "gameplay/fighter.h"
 #include "gameplay/fixed_step.h"
-#include "gameplay/match.h"
 #include "gameplay/weapon_definition.h"
 
 #include <algorithm>
@@ -305,137 +303,6 @@ void testBulletParameterParser() {
           "a truncated file is rejected rather than read past");
     check(!gameplay::parseBulletParameter(nullptr, 0, 0, out, err),
           "an empty buffer is rejected");
-
-    section("device-free: per-weapon parameters reach the shot");
-    auto weapon = parseOrNull(1, synthDat(2, 1, {6, 2, 300, 0, 60, 1},
-                                          {2, 2, 300, 0, 180, 2},
-                                          {{0, 3, 0, 0}}));
-    check(weapon != nullptr, "the weapon with one bullet parses");
-    if (!weapon) return;
-    gameplay::Fighter f;
-    f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
-    f.set_weapon(weapon.get());
-    const gameplay::ShotParams bare = f.shot_params_for(gameplay::ShotTier::Tap);
-    const gameplay::ShotParams redBare = f.shot_params_for(gameplay::ShotTier::Red);
-    checkInt(4, bare.damage, "without a bullet parameter the shared damage is used");
-
-    f.set_bullet_parameter(1, &src);
-    const gameplay::ShotParams armed = f.shot_params_for(gameplay::ShotTier::Tap);
-    // baseDamage 1750 through FUN_00637950's chain (@0x637950): 1750 * 100/100 * 50/100 =
-    // 875 on the original's 10000-based pool, i.e. 9 HP on this port's 0..maxHP range. The
-    // record's +0x44 field (hpDamage) is the victim's gauge feed (:280), not HP.
-    checkInt(9, armed.damage, "the recovered baseDamage replaces the shared value");
-    checkInt(30, static_cast<int>(armed.hitRadius), "and the recovered hit radius is used");
-    check(armed.damage != bare.damage, "a weapon genuinely changes what a shot does");
-    check(f.shot_params_for(gameplay::ShotTier::Red).damage == redBare.damage,
-          "binding the tap level leaves the charged level on the shared table");
-
-    f.set_bullet_parameter(2, &src);
-    check(f.shot_params_for(gameplay::ShotTier::Red).damage != redBare.damage,
-          "binding the charged level changes that level");
-    check(f.shot_params_for(gameplay::ShotTier::Tap).damage == armed.damage,
-          "and leaves the tap level as it was");
-}
-
-// ---------------------------------------------------------------------------
-// 1c. Recovered hit-stun reaches the victim; unrecoverable fields stay shared.
-// ---------------------------------------------------------------------------
-void testHitstunIsPerWeapon() {
-    section("behavior: per-weapon hit-stun");
-    gameplay::BulletParameter quick;
-    quick.hpDamage = 50;
-    quick.defenderHitstun = 7;
-    gameplay::BulletParameter heavy;
-    heavy.hpDamage = 50;
-    heavy.defenderHitstun = 45;
-
-    auto fighter = [](const glm::vec3& at) {
-        auto f = std::make_unique<gameplay::Fighter>();
-        f->init(nullptr, nullptr, at, 0.0f);
-        return f;
-    };
-    {
-        auto victim = fighter(glm::vec3(0, 0, 0));
-        gameplay::Fighter attacker;
-        attacker.init(nullptr, nullptr, glm::vec3(0, 0, 100), 0.0f);
-        // A reaction needs the stagger meter to trip: combat[7] * 50/100 per hit, so this
-        // record's own staggering power is what decides it. `quick` carries none, so the blow
-        // applies damage and the freeze and leaves the state row alone.
-        victim->take_damage(10, &attacker, quick.defenderHitstun);
-        check(victim->state() != gameplay::FighterState::Hit,
-              "a hit with no stagger power does not change the victim's row");
-        // Walk the stun down the way a match does and record when it clears.
-        fnd::input::PlayerState idle{};
-        int frames = 0;
-        while (victim->state() == gameplay::FighterState::Hit && frames < 200) {
-            fnd::input::compute_edges(idle);
-            victim->update(&idle, nullptr, gameplay::FixedStep::seconds);
-            ++frames;
-        }
-        check(frames == 0, "and no stun window runs at all");
-    }
-    {
-        // Same weapon-free call keeps the shared constant.
-        auto victim = fighter(glm::vec3(0, 0, 0));
-        gameplay::Fighter attacker;
-        attacker.init(nullptr, nullptr, glm::vec3(0, 0, 100), 0.0f);
-        victim->take_damage(10, &attacker);
-        fnd::input::PlayerState idle{};
-        int frames = 0;
-        while (victim->state() == gameplay::FighterState::Hit && frames < 200) {
-            fnd::input::compute_edges(idle);
-            victim->update(&idle, nullptr, gameplay::FixedStep::seconds);
-            ++frames;
-        }
-        check(frames == 0,
-              "with no weapon there is no stagger to trip, so no stun window runs");
-    }
-    {
-        // A zero in the weapon means "this entry inflicts no stun", so the default must
-        // win over it rather than a zero-length stun.
-        auto victim = fighter(glm::vec3(0, 0, 0));
-        gameplay::Fighter attacker;
-        attacker.init(nullptr, nullptr, glm::vec3(0, 0, 100), 0.0f);
-        gameplay::BulletParameter none;
-        none.defenderHitstun = 0;
-        victim->take_damage(10, &attacker, none.defenderHitstun);
-        fnd::input::PlayerState idle{};
-        int frames = 0;
-        while (victim->state() == gameplay::FighterState::Hit && frames < 200) {
-            fnd::input::compute_edges(idle);
-            victim->update(&idle, nullptr, gameplay::FixedStep::seconds);
-            ++frames;
-        }
-        check(frames == 0,
-              "a zero weapon hitstun has no stagger to trip either");
-    }
-}
-
-void testUnrecoveredFieldsStayShared() {
-    section("behavior: fields with no evidence stay shared");
-    // Speed and lifetime are provably absent from the item and bullet records, so no
-    // weapon may change them. This pins that: if someone later adds a per-weapon speed
-    // without recovering one, this fails.
-    auto fastW = parseOrNull(1, synthDat(2, 1, {6, 2, 300, 0, 60, 1},
-                                         {2, 2, 300, 0, 180, 2}, {{0, 3, 0, 0}}));
-    auto slowW = parseOrNull(2, synthDat(2, 1, {60, 2, 20, 0, 60, 1},
-                                         {4, 2, 600, 0, 600, 2}, {{0, 1, 0, 0}}));
-    check(fastW && slowW, "both weapons parse");
-    if (!fastW || !slowW) return;
-    gameplay::Fighter fast, slow;
-    fast.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
-    slow.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
-    fast.set_weapon(fastW.get());
-    slow.set_weapon(slowW.get());
-    for (int tier = 0; tier < 4; ++tier) {
-        const auto t = static_cast<gameplay::ShotTier>(tier);
-        check(fast.shot_params_for(t).speed == slow.shot_params_for(t).speed,
-              "shot speed is shared: it is absent from the shipped weapon data");
-        check(fast.shot_params_for(t).lifeSec == slow.shot_params_for(t).lifeSec,
-              "shot lifetime is shared: likewise absent");
-    }
-    check(fast.main_whole() != slow.main_whole(),
-          "while magazine size, which IS in the data, still differs");
 }
 
 // ---------------------------------------------------------------------------
@@ -582,163 +449,6 @@ std::unique_ptr<WeaponDefinition> loadWeapon(const fs::path& install, int id) {
     const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)),
                                      std::istreambuf_iterator<char>());
     return parseOrNull(id, bytes);
-}
-
-void testWeaponDrivesFighter() {
-    section("behavior: a bound weapon replaces the shared tuning");
-    // Two weapons that differ on every axis the file controls.
-    std::vector<SynthBullet> fastBullets{{0, 4, 0, 0}, {1, 3, 1, 0}, {1, 1, 2, 0}};
-    std::vector<SynthBullet> heavyBullets{{0, 1, 0, 0}, {1, 1, 1, 0}};
-    auto fastW = parseOrNull(1, synthDat(2, 3, {6, 2, 300, 0, 60, 1},
-                                         {2, 2, 300, 0, 180, 2}, fastBullets));
-    auto heavyW = parseOrNull(2, synthDat(2, 2, {60, 2, 20, 0, 60, 1},
-                                          {4, 2, 600, 0, 600, 2}, heavyBullets));
-    check(fastW && heavyW, "both synthetic weapons parse");
-    if (!fastW || !heavyW) return;
-
-    gameplay::Fighter bare;
-    bare.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
-    check(bare.weapon() == nullptr, "a fighter starts with no weapon bound");
-    const float bareMain = bare.main_frac();
-    check(bareMain > 0.99f, "and with the historical full magazine");
-
-    gameplay::Fighter fast;
-    fast.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
-    fast.set_weapon(fastW.get());
-    check(fast.weapon() == fastW.get(), "set_weapon binds the parsed definition");
-    checkInt(6, fast.main_whole(),
-             "the HUD count shows shots (num = 6), not pool units (1800)");
-    checkInt(2, fast.charge_whole(),
-             "and the charge count shows shots too (600/300 = 2)");
-    check(std::fabs(fast.main_frac() - 1.0f) < 1e-4f,
-          "while the bar still fills from the pool (FUN_00433eb0 initialises current from capacity)");
-    // The recovered initial30/secondary180 hold lengths are tick counts the port converts
-    // with its cadence (Fighter::yellow_hold_sec/red_hold_sec use FixedStep::tickRate).
-    check(std::fabs(fast.yellow_hold_sec() - 30.0f / gameplay::FixedStep::tickRate) < 1e-5f,
-          "the yellow threshold is the original initial30 updates");
-    check(std::fabs(fast.red_hold_sec() - 210.0f / gameplay::FixedStep::tickRate) < 1e-5f,
-          "red adds secondary180 updates after the initial30");
-    checkInt(4, fastW->bullets[0].poolCapacity,
-             "row zero retains its live-instance capacity, not a volley count");
-    checkInt(3, fastW->bullets[1].poolCapacity,
-             "row one has an independent live-instance capacity");
-
-    gameplay::Fighter heavy;
-    heavy.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
-    heavy.set_weapon(heavyW.get());
-    checkInt(60, heavy.main_whole(), "a different weapon holds 60 shots (1200/20)");
-    check(heavy.red_hold_sec() > 3.0f * 3.0f,
-          "and a much longer charge (600 ticks vs 180)");
-    check(heavy.main_whole() != fast.main_whole(),
-          "two weapons do NOT share one magazine size");
-
-    section("behavior: no weapon keeps the historical numbers");
-    gameplay::Fighter legacy;
-    legacy.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
-    checkInt(gameplay::FighterConstants::kMainMax, legacy.main_whole(),
-             "an unbound fighter keeps kMainMax");
-    check(std::fabs(legacy.yellow_hold_sec() -
-                    gameplay::FighterConstants::kYellowHoldSec) < 1e-6f,
-          "and the historical yellow threshold");
-    check(std::fabs(legacy.red_hold_sec() -
-                    gameplay::FighterConstants::kRedHoldSec) < 1e-6f,
-          "and the historical red threshold");
-
-    section("behavior: the per-shot cost comes from the magazine");
-    // A fighter with 2 shots' worth of tap ammo must be able to fire twice, not once.
-    {
-        std::vector<SynthBullet> b{{0, 1, 0, 0}};
-        auto w = parseOrNull(3, synthDat(2, 1, {2, 2, 100, 0, 60, 1},
-                                         {1, 2, 100, 0, 180, 2}, b));
-        check(w != nullptr, "a two-shot weapon parses");
-        if (w) {
-            gameplay::Fighter f;
-            f.init(nullptr, nullptr, glm::vec3(0, 0, 0), 0.0f);
-            f.set_weapon(w.get());
-            checkInt(2, f.main_whole(), "the count shows 2 shots, not 200 pool units");
-            // Settle out of the 60-frame BattleStart pose, then tap-fire.
-            fnd::input::PlayerState idle{};
-            for (int i = 0; i < 70; ++i) {
-                fnd::input::compute_edges(idle);
-                f.update(&idle, nullptr, gameplay::FixedStep::seconds);
-                f.take_pending_shot();
-            }
-            int fired = 0;
-            float lowest = 1.0f;
-            for (int i = 0; i < 20; ++i) {
-                fnd::input::PlayerState in{};
-                in.down[fnd::input::Shoot] = (i % 2) == 0;   // press, then release
-                fnd::input::compute_edges(in);
-                f.update(&in, nullptr, gameplay::FixedStep::seconds);
-                if (f.take_pending_shot().armed) ++fired;
-                lowest = std::min(lowest, f.main_frac());
-            }
-            check(fired >= 1, "the weapon-bound fighter actually fires");
-            check(fired <= 2, "and cannot fire past its two-shot magazine");
-            check(lowest >= 0.0f && lowest <= 1.0f,
-                  "its magazine stays inside [0,1] while firing");
-        }
-    }
-}
-
-void testEverySelectionSmoke(const fs::path& install) {
-    section("behavior: every legal selection runs a match");
-    int ran = 0, skippedHere = 0;
-    for (int c = 0; c < gameplay::kCharacterCount; ++c) {
-        for (int w = 0; w < gameplay::kWeaponSlots; ++w) {
-            if (!gameplay::weaponSlotIsLegal(c, w)) continue;
-            const int id = gameplay::kWeaponIds[c][w];
-            const auto def = loadWeapon(install, id);
-            if (!def) { ++skippedHere; continue; }
-            ++ran;
-            gameplay::MatchConfig config;
-            config.fighterCount = 2;
-            config.side[0] = 0; config.side[1] = 1;
-            config.spawn[0] = glm::vec3(0, 0, 0);
-            config.spawn[1] = glm::vec3(300, 0, 0);
-            config.weapon[0] = def.get();
-            config.weapon[1] = def.get();     // same weapon both sides: a mirror match
-            const xm::Model* models[4] = {};
-            xm::Controller* anims[4] = {};
-            gameplay::Match match;
-            match.reset(config, models, anims, nullptr, nullptr);
-            match.economy().setLogFile(nullptr);
-
-            // Run a short fight with the fire button held so the weapon's own magazines,
-            // charge thresholds and volley counts are all exercised.
-            const fnd::input::PlayerState* inputs[4] = {};
-            for (int tick = 0; tick < 240; ++tick) {
-                fnd::input::PlayerState p1{}, p2{};
-                p1.down[fnd::input::Shoot] = true;
-                p2.down[fnd::input::Shoot] = true;
-                fnd::input::compute_edges(p1);
-                fnd::input::compute_edges(p2);
-                inputs[0] = &p1;
-                inputs[1] = &p2;
-                match.step(inputs, gameplay::FixedStep::seconds);
-            }
-            const auto& f0 = match.fighter(0);
-            const bool sane = f0.hp() >= 0 && f0.hp() <= f0.max_hp() &&
-                              f0.main_frac() >= 0.0f && f0.main_frac() <= 1.0f &&
-                              f0.charge_frac() >= 0.0f && f0.charge_frac() <= 1.0f &&
-                              match.locked_target(0) == gameplay::kNoTarget ||
-                              match.locked_target(0) >= 0;
-            check(sane, "a selection runs 240 ticks with sane state");
-        }
-    }
-    // Without the install every selection above is skipped, so the count can only be
-    // asserted when there was data to run against. CI has no game data (issue #23: the
-    // host suite runs on the Linux build while asset checks stay local/opt-in), so an
-    // empty sweep is absent data, not a failure — a partially present install still
-    // fails here, which is what makes the check worth keeping.
-    if (ran == 0 && skippedHere > 0)
-        skip("all 46 legal selections ran a match (no install: every selection skipped)");
-    else
-        checkInt(46, ran, "all 46 legal selections ran a match");
-    if (skippedHere > 0) {
-        std::printf("  (%d selections skipped: no item file)\n", skippedHere);
-        check(true, "skipped selections are absent data, not failures");
-    }
 }
 
 // Families are named by their shipped profile so the sweep reads as the issue asks.
@@ -908,14 +618,10 @@ int main(int argc, char** argv) {
     const fs::path install = findInstall(argc, argv);
     testParser();
     testBulletParameterParser();
-    testHitstunIsPerWeapon();
-    testUnrecoveredFieldsStayShared();
-    testWeaponDrivesFighter();
     testRosterLabels();
     testInventory(install);
     testShotModelsShip(install);
     testRepresentativeFamilies(install);
-    testEverySelectionSmoke(install);
     std::printf("\nWEAPON_DEFINITION: %s (%d checks, %d failed, %d skipped)\n",
                 failures == 0 ? "ok" : "FAIL", checks, failures, skipped);
     return failures == 0 ? 0 : 1;

@@ -69,8 +69,8 @@ The separate Rena+0 cleanup (old step 2h) is skipped: M5 removes the legacy path
 | Tests not coupled to `Fighter` | Camera and HUD logic, evaluated against ours | `native/`, `ginkiha_tables.h` and the coupled tests, once replaced |
 | `research/` as an independent check | Later: story, dialogue and network protocols | |
 
-Until M5 the legacy path stays the default and receives no new behaviour, only fixes needed
-to keep it running. Bundle code is vendored with attribution; original game assets are never
+M5 removed the legacy path; its last revision is `e9347627`. Bundle code is vendored with
+attribution; original game assets are never
 committed.
 
 ## 6. Verification and reporting

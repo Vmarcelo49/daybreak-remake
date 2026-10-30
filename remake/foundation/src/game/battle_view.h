@@ -133,7 +133,7 @@ public:
     virtual const FighterView& fighter(int index) const = 0;
     virtual const gameplay::MatchEconomy& economy() const = 0;
 
-    // Combat targets, by fighter index (gameplay/target_lock.h).
+    // Combat targets, by fighter index.
     virtual int locked_target(int fighter) const = 0;
     virtual int aim_target(int fighter) const = 0;
     virtual int lock_pulse(int fighter) const = 0;
@@ -150,8 +150,6 @@ public:
     virtual void set_paused(bool paused) = 0;
     virtual void begin_round_entry() = 0;
     virtual void step_round_entry(double dt) = 0;
-    virtual void cycle_locked_target(int fighter, bool forward) = 0;
-    virtual void lock_ally_target(int fighter) = 0;
     virtual void set_primary_listener_fighter(int fighter) = 0;
 };
 

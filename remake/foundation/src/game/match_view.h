@@ -23,7 +23,7 @@ namespace game {
 
 struct MatchView {
     // Controller slot that owns this view and the fighter it renders. Both are indices in
-    // different spaces (gameplay/target_lock.h): controller 0..3 or -1 for none, fighter
+    // different spaces: controller 0..3 or -1 for none, fighter
     // 0..fighterCount-1 in MatchConfig order.
     int controller = -1;
     int fighter = -1;
@@ -33,7 +33,6 @@ struct MatchView {
     // cycles independently after that.
     gameplay::ArenaCamera camera;
     int                   followed = -1;   // camera's active target (fighter index)
-    int                   lockHeldTicks = 0;
 
     // Render interpolation: the eye/aim the previous tick ended with. `primed` marks the
     // first tick, which has no earlier view to interpolate from.

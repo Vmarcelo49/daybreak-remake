@@ -1,5 +1,5 @@
 #pragma once
-// game::Battle over the vendored core, behind --sim=core (docs/DIRECTION.md, M4).
+// game::Battle over the vendored core (docs/DIRECTION.md).
 //
 // In progress: the owner's closing playtest (M4) and the switch to default (M5) remain.
 #include <array>
@@ -120,8 +120,6 @@ public:
     void set_paused(bool paused) override { m_paused = paused; }
     void begin_round_entry() override {}
     void step_round_entry(double) override {}
-    void cycle_locked_target(int, bool) override {}
-    void lock_ally_target(int) override {}
     void set_primary_listener_fighter(int fighter) override { m_listener = fighter; }
 
 private:

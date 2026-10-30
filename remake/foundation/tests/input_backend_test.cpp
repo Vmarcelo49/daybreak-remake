@@ -1,6 +1,5 @@
 #include "input/input_backend.h"
 #include "input/tick_input.h"
-#include "gameplay/fighter.h"
 #include "gameplay/fixed_step.h"
 #include <SDL3/SDL.h>
 #include <cstdio>
@@ -134,21 +133,17 @@ int main(int argc, char** argv) {
         check(player > 0, "controller assigned a player");
         if (joystick && player > 0) {
             TickInput ticks[kMaxPlayers];
-            gameplay::Fighter fighter;
             auto sample = [&]() {
                 SDL_UpdateJoysticks();
                 backend.poll(false);
                 backend.sample_tick_inputs(ticks);
                 const auto state = ticks[player].consume();
-                fighter.update(&state, nullptr, gameplay::FixedStep::seconds);
                 return state;
             };
             SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_SOUTH, true);
             check(sample().just_pressed[Guard], "controller Guard hold reaches tick");
-            check(fighter.state() == gameplay::FighterState::Guard, "controller hold starts fighter Guard");
             backend.note_focus_lost();
             check(sample().just_released[Guard], "focus loss releases controller Guard");
-            check(fighter.state() == gameplay::FighterState::Idle, "focus loss frees guarding fighter");
             check(!sample().down[Guard], "physical hold cannot re-enter after focus loss");
             // Issue #29: the pad keeps its slot while unfocused, and input resumes only once
             // focus returns — which is what the next sample does.
@@ -163,7 +158,6 @@ int main(int argc, char** argv) {
             check(sample().just_pressed[Guard], "fresh controller press works after focus is regained");
             SDL_DetachVirtualJoystick(id);
             check(sample().just_released[Guard], "controller disconnect releases held Guard");
-            check(fighter.state() == gameplay::FighterState::Idle, "disconnect frees guarding fighter");
             check(!sample().down[Guard], "disconnected Guard stays released");
         } else if (id) {
             SDL_DetachVirtualJoystick(id);

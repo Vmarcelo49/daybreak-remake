@@ -1,5 +1,7 @@
 # In-battle debug keys (issue #48)
 
+> **Historical since M5 (2026-10-30).** The keys acted on the deleted hand-written combat and are gone; the last revision with them is `e9347627`. The recovered key map stays valid evidence, and nothing on the core implements it yet.
+
 The original's battle scene has five test keys. This document is the recovered map, the gate
 they sit behind, and what each one does in this port — written down so nobody has to
 re-derive it. The code is [`gameplay/debug_keys.h`](../src/gameplay/debug_keys.h) (the

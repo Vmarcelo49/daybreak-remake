@@ -27,10 +27,9 @@ gate work.
 
 `DIRECTION.md` links here instead of repeating this list, so the two cannot drift apart.
 
-**A. Hand-written combat — frozen permanently.** No new behaviour in the legacy path
-(`fighter.{h,cpp}`, `move_behavior.h`, the selectors, rule tables, `bot_brain`, `native/`).
-Only fixes needed to keep it running until M5 deletes it. Behaviour changes belong in the
-core, cited and listed in `src/sim/core/PATCHES.md`.
+**A. Hand-written combat — deleted at M5.** Do not bring it back. Behaviour changes belong
+in the core, cited and listed in `src/sim/core/PATCHES.md`. The last revision with the old
+path is `e9347627`.
 
 **B. Product roadmap — frozen until M5 closes:** web delivery, netplay, story mode, movies,
 macOS, extra renderer options, 3v3/4v4 (issues #58–#61, #3; roadmap G1/G2/E1–E3/H). The

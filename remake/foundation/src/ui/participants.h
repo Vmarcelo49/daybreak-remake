@@ -9,7 +9,7 @@
 // without a device.
 //
 // Panel, team, fighter index and controller are four DIFFERENT index spaces and stay
-// separate here (gameplay/target_lock.h makes the same point for targets):
+// separate here:
 //   * `panel`      0..3, the selection grid (0/1 blue, 2/3 red);
 //   * `team`       0 blue / 1 red, derived from the panel (FUN_00409340);
 //   * `fighter`    the index in MatchConfig order (the launch's own order), host-filled;

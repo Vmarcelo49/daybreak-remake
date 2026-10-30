@@ -310,19 +310,5 @@ class ReleaseCheckTests(unittest.TestCase):
         self.assertEqual(len(skipped), 2)
 
 
-class ReconTestExitCodeTests(unittest.TestCase):
-    """A fully skipped recon run reports 77, never a pass."""
-
-    def test_all_skipped_exits_77(self):
-        script = TESTS / "ginkiha_recon_test.py"
-        source = script.read_text(encoding="utf-8")
-        # The mechanism, not a full run: the code path exists and returns 77 when nothing
-        # ran. Running it for real is CTest's job (it needs the local bundle).
-        self.assertIn("sys.exit(77)", source)
-        self.assertIn("if ran == 0:", source)
-        self.assertIn("SKIP_RETURN_CODE 77", (TESTS.parent / "CMakeLists.txt").read_text(
-            encoding="utf-8"))
-
-
 if __name__ == "__main__":
     unittest.main(verbosity=2)
