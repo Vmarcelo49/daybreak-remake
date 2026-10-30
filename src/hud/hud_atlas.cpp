@@ -40,10 +40,24 @@ bool uploadCnvSheet(SpriteRenderer& batch, const char* stem, int& slot, std::str
         error = base + ".cnv: " + e.what();
         return false;
     }
+    // Screens address a sheet in the original's pixels, so a pack image has to be a whole multiple
+    // of it. Anything else would draw the wrong cells, so that image is refused.
+    xm::CnvImage packed;
+    fnd::assets::assetSource().readPackImage(base, packed.width, packed.height, packed.rgba);
+    if (!packed.empty() && (packed.width % image.width || packed.height % image.height ||
+                            packed.width / image.width != packed.height / image.height)) {
+        std::fprintf(stderr, "[pack] %s: %ux%u is not a whole multiple of the original %ux%u, ignoring it\n",
+                     base.c_str(), packed.width, packed.height, image.width, image.height);
+        packed = xm::CnvImage{};
+    }
+    const xm::CnvImage& source = packed.empty() ? image : packed;
     ui::LocalizedSheet localized;
-    if (ui::localizeSheet(base, image.rgba.data(), static_cast<int>(image.width), static_cast<int>(image.height), localized))
+    if (ui::localizeSheet(base, source.rgba.data(), static_cast<int>(source.width), static_cast<int>(source.height),
+                          static_cast<int>(image.width), localized))
         slot = batch.addScaledTexture(image.width, image.height, static_cast<uint32_t>(localized.width),
                                       static_cast<uint32_t>(localized.height), localized.rgba.data(), error);
+    else if (!packed.empty())
+        slot = batch.addScaledTexture(image.width, image.height, packed.width, packed.height, packed.rgba.data(), error);
     else
         slot = batch.addTexture(image.width, image.height, image.rgba.data(), error);
     if (slot < 0) {

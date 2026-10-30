@@ -15,6 +15,7 @@
 // key): toKey() maps it, and a path outside the install has no key and goes to the
 // filesystem. Nothing here caches decoded data — it answers where bytes come from, not
 // what they mean.
+#include <unordered_map>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -32,6 +33,13 @@ public:
     // previous install. Returns false only when nothing at all could be opened.
     bool openInstall(const std::string& installDir);
     void closeInstall();
+
+    // An optional texture pack: a folder of PNGs at the game's paths, in any size, such as
+    // <pack>/data/rena/face.png for data/rena/face.cnv. Names compare case-blind, like the
+    // bundles'. Returns the number of images found. An empty path turns the pack off.
+    size_t openTexturePack(const std::string& folder);
+    // The pack's image for a game path, whatever its extension. False when the pack has none.
+    bool readPackImage(const std::string& path, uint32_t& width, uint32_t& height, std::vector<uint8_t>& rgba) const;
 
     bool                bundlesOpen() const { return bundlesOpen_; }
     const DatBundleSet& bundles() const { return bundles_; }
@@ -68,6 +76,7 @@ private:
     AssetSource() = default;
 
     DatBundleSet bundles_;
+    std::unordered_map<std::string, std::string> packImages_;  // lower-case stem -> file
     std::string  installDir_;   // normalized, no trailing separator
     bool         bundlesOpen_ = false;
 };

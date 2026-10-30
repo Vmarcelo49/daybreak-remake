@@ -281,13 +281,12 @@ void addFirstX(Scene& scene, const std::string& dir, const std::string& role,
             return;
         }
     }
+    // A loose tree: sorted, since the filesystem's own order differs from one folder to the next.
     std::error_code ec;
-    for (const auto& e : fs::directory_iterator(dir, ec)) {
-        if (hasXExtension(e.path().string())) {
-            addModel(scene, e.path().string(), role, -1, opt);
-            return;
-        }
-    }
+    std::vector<std::string> names;
+    for (const auto& e : fs::directory_iterator(dir, ec))
+        if (hasXExtension(e.path().string())) names.push_back(e.path().string());
+    if (!names.empty()) addModel(scene, *std::min_element(names.begin(), names.end()), role, -1, opt);
 }
 
 void readEnv(const std::string& path, StageEnv& env) {
@@ -446,13 +445,11 @@ Scene loadWeapon(const std::string& bulletDir, int slot, const Model* attachTo,
         }
     }
     if (modelName.empty()) {
+        // Sorted, for the same reason as addFirstX.
         std::error_code ec;
-        for (const auto& e : fs::directory_iterator(bulletDir, ec)) {
-            if (detail::hasXExtension(e.path().string())) {
+        for (const auto& e : fs::directory_iterator(bulletDir, ec))
+            if (detail::hasXExtension(e.path().string()) && (modelName.empty() || e.path().filename().string() < modelName))
                 modelName = e.path().filename().string();
-                break;
-            }
-        }
     }
     if (modelName.empty()) {
         std::fprintf(stderr, "[scene] %s: no model named by slot %d\n", bulletDir.c_str(), slot);

@@ -71,6 +71,8 @@ add_library(assets STATIC
     src/assets/dat_crypto.cpp
     src/assets/exe_strings.cpp)
 target_include_directories(assets PUBLIC src/assets)
+# Tests compile this file into their own targets too, so the path travels with the source.
+set_source_files_properties(src/assets/asset_source.cpp PROPERTIES INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb")
 target_link_libraries(assets PUBLIC glm)
 
 add_library(runtime STATIC

@@ -98,6 +98,8 @@ struct Options {
     std::string story;
     // --language=en: translated menu and HUD labels, from assets/locale/en.txt.
     std::string language;
+    // --texture-pack=<folder>: PNGs at the game's paths, replacing its textures at any size.
+    std::string texturePack;
     // --story-team=N: runs team N's six fights (the team-select scene does this in play).
     int storyTeam = -1;
     // --story-fight=F:P starts that team at fight F, part P (0 before the battle, 1 after).

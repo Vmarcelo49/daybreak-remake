@@ -3,10 +3,30 @@
 
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <system_error>
+
+#define STBI_ONLY_PNG
+#define STBI_NO_STDIO
+#define STB_IMAGE_STATIC
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 namespace fnd::assets {
 namespace {
+
+// A pack key: the path's stem, lower case, with forward slashes.
+std::string packKey(std::string path) {
+    for (char& c : path) {
+        if (c == '\\') c = '/';
+        else if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    }
+    const size_t dot = path.find_last_of('.');
+    const size_t slash = path.find_last_of('/');
+    if (dot != std::string::npos && (slash == std::string::npos || dot > slash)) path.resize(dot);
+    return path;
+}
 
 namespace fs = std::filesystem;
 
@@ -126,6 +146,42 @@ std::string AssetSource::toKey(const std::string& path) const {
         if (at != std::string::npos) return p.substr(at + 1);
     }
     return {};
+}
+
+size_t AssetSource::openTexturePack(const std::string& folder) {
+    namespace fs = std::filesystem;
+    packImages_.clear();
+    if (folder.empty()) return 0;
+    std::error_code ec;
+    const fs::path root = fs::u8path(folder);
+    for (fs::recursive_directory_iterator it(root, ec), end; !ec && it != end; it.increment(ec)) {
+        if (!it->is_regular_file(ec)) continue;
+        std::string extension = it->path().extension().u8string();
+        for (char& c : extension)
+            if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+        if (extension != ".png") continue;
+        packImages_[packKey(it->path().lexically_relative(root).generic_u8string())] = it->path().u8string();
+    }
+    return packImages_.size();
+}
+
+bool AssetSource::readPackImage(const std::string& path, uint32_t& width, uint32_t& height, std::vector<uint8_t>& rgba) const {
+    if (packImages_.empty()) return false;
+    const auto found = packImages_.find(packKey(toKey(path)));
+    if (found == packImages_.end()) return false;
+    std::ifstream file(std::filesystem::u8path(found->second), std::ios::binary);
+    const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    int w = 0, h = 0, channels = 0;
+    stbi_uc* pixels = bytes.empty() ? nullptr : stbi_load_from_memory(bytes.data(), static_cast<int>(bytes.size()), &w, &h, &channels, 4);
+    if (!pixels) {
+        std::fprintf(stderr, "[pack] %s: not a readable PNG\n", found->second.c_str());
+        return false;
+    }
+    width = static_cast<uint32_t>(w);
+    height = static_cast<uint32_t>(h);
+    rgba.assign(pixels, pixels + static_cast<size_t>(w) * h * 4);
+    stbi_image_free(pixels);
+    return true;
 }
 
 bool AssetSource::exists(const std::string& path) const {

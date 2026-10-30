@@ -308,6 +308,17 @@ const CnvImage* TextureCache::get(const std::string& rawName) const {
         directory_ + rawName,
     };
 
+    // A pack replaces the image at any size: model UVs are normalised, so nothing else changes.
+    {
+        auto packed = std::make_unique<CnvImage>();
+        if (fnd::assets::assetSource().readPackImage(directory_ + stem, packed->width, packed->height, packed->rgba)) {
+            const CnvImage* result = packed.get();
+            cache_.emplace(rawName, std::move(packed));
+            ++resolved_;
+            return result;
+        }
+    }
+
     std::vector<uint8_t> bytes;
     for (const std::string& path : candidates) {
         bytes.clear();

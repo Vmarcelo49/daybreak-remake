@@ -35,6 +35,7 @@ struct LocalizedSheet {
 };
 // False when the file names no label on this sheet, so the caller keeps the original pixels.
 // `stem` is the path the screen asked for.
-bool localizeSheet(const std::string& stem, const uint8_t* rgba, int width, int height, LocalizedSheet& out);
+// `logicalWidth` is the original's width: a pack's larger image is painted at its own scale.
+bool localizeSheet(const std::string& stem, const uint8_t* rgba, int width, int height, int logicalWidth, LocalizedSheet& out);
 
 }  // namespace ui

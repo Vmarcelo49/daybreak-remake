@@ -425,18 +425,28 @@ bool setSheetLanguage(const std::string& language, std::string& error) {
 
 const std::string& sheetLanguage() { return gLanguage; }
 
-bool localizeSheet(const std::string& stem, const uint8_t* rgba, int width, int height, LocalizedSheet& out) {
+bool localizeSheet(const std::string& stem, const uint8_t* rgba, int width, int height, int logicalWidth, LocalizedSheet& out) {
     const std::string key = lowered(stem);
     const auto named = [&](const SheetLabel& label) { return label.sheet == key; };
     if (std::none_of(gLabels.begin(), gLabels.end(), named)) return false;
-    const int scale = sheetScale(key, width);
-    out.width = width * scale;
-    out.height = height * scale;
+    // A pack image may already be as large as the labels want, or larger.
+    const int sourceScale = width / logicalWidth;
+    const int enlarge = std::max(1, sheetScale(key, logicalWidth) / sourceScale);
+    const int scale = sourceScale * enlarge;
+    out.width = width * enlarge;
+    out.height = height * enlarge;
     // Clearing a label before enlarging saves the work on pixels it would throw away.
     std::vector<uint8_t> source(rgba, rgba + static_cast<size_t>(width) * height * 4);
     for (const SheetLabel& label : gLabels)
-        if (named(label) && kStyles.at(label.style).erase == Erase::Clear) eraseRect(label, Erase::Clear, source.data(), width, height);
-    out.rgba = enlarged(source.data(), width, height, scale);
+        if (named(label) && kStyles.at(label.style).erase == Erase::Clear) {
+            SheetLabel scaled = label;
+            scaled.x *= sourceScale;
+            scaled.y *= sourceScale;
+            scaled.w *= sourceScale;
+            scaled.h *= sourceScale;
+            eraseRect(scaled, Erase::Clear, source.data(), width, height);
+        }
+    out.rgba = enlarged(source.data(), width, height, enlarge);
     for (const SheetLabel& label : gLabels)
         if (named(label)) paintLabel(label, kStyles.at(label.style), scale, out.rgba.data(), out.width, out.height);
     return true;

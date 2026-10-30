@@ -94,6 +94,7 @@ void usage() {
         "                     run (--out/--headless/--script/...) never does, so no\n"
         "                     evidence run pays for the movie decode (issue #40)\n"
         "  --language=<en>    translated menu and HUD labels\n"
+        "  --texture-pack=<dir> PNGs at the game's paths, replacing its textures at any size\n"
         "  --story=<D41-0>    the script --screen=storyadv plays\n"
         "  --story-team=<N>   run team N's six fights from --screen=storyadv\n"
         "  --story-fight=<F:P> start that team at fight F, part P (1 is after the battle)\n"
@@ -407,6 +408,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--screen=")).empty()) o.screen = v;
         else if (!(v = val("--movie=")).empty()) o.movie = v;
         else if (!(v = val("--language=")).empty()) o.language = v;
+        else if (!(v = val("--texture-pack=")).empty()) o.texturePack = v;
         else if (!(v = val("--story=")).empty()) o.story = v;
         else if (!(v = val("--story-team=")).empty()) o.storyTeam = std::atoi(v.c_str());
         else if (!(v = val("--story-fight=")).empty()) o.storyFight = v;

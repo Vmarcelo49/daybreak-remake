@@ -1268,6 +1268,10 @@ bool initScreens(App& app) {
         if (screen) std::printf("[menu] scene: %s (tick %llu)\n", screen->name(), (unsigned long long)app.logicTicks);
         return screen;
     };
+    if (!app.opts.texturePack.empty()) {
+        const size_t images = fnd::assets::assetSource().openTexturePack(app.opts.texturePack);
+        std::printf("[pack] %s: %zu image(s)\n", app.opts.texturePack.c_str(), images);
+    }
     // --language wins for one run and is an error if it cannot load; a stale saved one only warns.
     if (!app.opts.language.empty()) {
         if (!ui::setSheetLanguage(app.opts.language, app.error)) return false;

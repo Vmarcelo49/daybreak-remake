@@ -31,7 +31,7 @@ fetch_zip "https://github.com/g-truc/glm/archive/refs/tags/${GLM_VERSION}.zip" "
 # directly. stb_truetype.h is a hard requirement (ui/text.cpp includes it and CMake puts
 # third_party/stb on the include path), and it used to be fetched by nothing: the build
 # only succeeded where the header happened to already exist, so a fresh checkout failed.
-for f in stb_vorbis.c stb_truetype.h; do
+for f in stb_vorbis.c stb_truetype.h stb_image.h; do
     if [ ! -e "$tp/stb/$f" ]; then
         echo "  $f (pinned ${STB_COMMIT}): fetching"
         mkdir -p "$tp/stb"

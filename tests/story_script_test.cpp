@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -49,6 +50,28 @@ static void testGrammar() {
     CHECK(commands[8].type == Type::Move && commands[8].slot == 2 && commands[8].delta == -20 && commands[8].frames == 20);
     CHECK(commands[9].type == Type::Sleep && commands[9].milliseconds == 500);
     CHECK(commands[10].text == "cut here");
+}
+
+// A pack image is found by the game's path, case-blind and whatever the extension asked for.
+static void testTexturePack() {
+    static const unsigned char kPng[] = {0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0xf4, 0x22, 0x7f, 0x8a, 0x00, 0x00, 0x00, 0x11, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0xe0, 0x12, 0x91, 0xfb, 0xaf, 0x61, 0x64, 0xf3, 0x1f, 0x00, 0x09, 0x41, 0x02, 0xd1, 0x14, 0x88, 0xff, 0x4a, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82};
+    const fs::path root = fs::temp_directory_path() / "daybreak_pack_test";
+    std::error_code ec;
+    fs::remove_all(root, ec);
+    fs::create_directories(root / "data" / "Rena", ec);
+    std::ofstream(root / "data" / "Rena" / "Face.PNG", std::ios::binary).write(reinterpret_cast<const char*>(kPng), sizeof kPng);
+    std::ofstream(root / "data" / "Rena" / "notes.txt") << "not an image";
+
+    auto& assets = fnd::assets::assetSource();
+    CHECK(assets.openTexturePack(root.string()) == 1);
+    uint32_t w = 0, h = 0;
+    std::vector<uint8_t> rgba;
+    CHECK(assets.readPackImage("data/rena/face.cnv", w, h, rgba));
+    CHECK(w == 2 && h == 1 && rgba.size() == 8 && rgba[4] == 40);
+    CHECK(!assets.readPackImage("data/rena/other.cnv", w, h, rgba));
+    CHECK(assets.openTexturePack("") == 0);
+    CHECK(!assets.readPackImage("data/rena/face.cnv", w, h, rgba));
+    fs::remove_all(root, ec);
 }
 
 static fs::path findInstall() {
@@ -118,6 +141,7 @@ static bool testShippedScripts() {
 
 int main() {
     testGrammar();
+    testTexturePack();
     const bool ranScripts = testShippedScripts();
     if (g_failures) {
         std::printf("story_script_test: %d failure(s)\n", g_failures);
