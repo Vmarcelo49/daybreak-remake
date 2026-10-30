@@ -174,7 +174,11 @@ struct Options {
     std::string script;          // P1 input script (device override, DX9 format)
     // P2-7 (2e) slice 1: observe-mode pilot adapter. Empty = the legacy path, untouched.
     std::string nativeActions;   // "--native-actions=rena0" runs the locomotion observer
-    bool        simCore = false; // --sim=core: the vendored core drives the battle (M4)
+#if defined(FOUNDATION_HAS_SIM) && !defined(__EMSCRIPTEN__)
+    bool        simCore = true;  // the vendored core drives the battle; --sim=legacy until M5's cleanup
+#else
+    bool        simCore = false; // the web build cannot read the core's archives yet
+#endif
     std::string script2;         // P2 input script; absent -> dummy, like the DX9
     bool        hasSpawn[2] = {false, false};   // --spawn / --spawn2 x,y,z
     glm::vec3   spawn[2] = {glm::vec3(0.f), glm::vec3(0.f)};
@@ -607,6 +611,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--effect=")).empty()) o.effect = v;
         else if (!(v = val("--out=")).empty()) o.out = v;
         else if (val("--sim=") == "core") o.simCore = true;
+        else if (val("--sim=") == "legacy") o.simCore = false;
         else if (!(v = val("--sim-roster=")).empty()) {
             std::stringstream roster(v);
             std::string spec;

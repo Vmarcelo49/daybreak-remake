@@ -26,7 +26,7 @@ Asserted, at 960x540, 1920x1080 and in a 4-view split at 960x540:
     tall AND wide. The defect's quad was 156x157 px at 960x540; the HUD's own white ink
     (glyphs, the stamina/HP fills, the bars) never reaches that shape.
   * a translucent backing panel is present, and it is the text block plus its margin: the
-    panel's mask (pixels darker than the plain dim by more than rounding) forms one
+    panel's mask (pixels matching its composite over the plain dim) forms one
     rectangle whose width is its widest drawn line plus that margin, the title and the menu's
     line bands sit inside it, and the same mask on two unpaused frames finds nothing.
   * the menu is legible and canvas-derived: the title's ink height and the panel's width at
@@ -56,6 +56,11 @@ INK_MIN = 210
 # comparison allows.
 DIM = 0.45
 SLACK = 6
+# The backing panel (ui/pause_layout.h: kPausePanelGrey, kPausePanelAlpha) and the slack its
+# composite is measured with.
+PANEL_GREY = 0.16 * 255.0
+PANEL_ALPHA = 0.78
+PANEL_TOL = 5
 # A white block must span this fraction of the frame in BOTH dimensions to count as one.
 WHITE_SHAPE_FRACTION = 1.0 / 9.0
 
@@ -97,28 +102,38 @@ def white_block(px, w, h):
 
 
 def panel_mask(px, w, h, ref):
-    """Pixels the overlay's panel darkened beyond the plain dim, as (count, bbox).
+    """Pixels the overlay's panel covers, as (count, bbox).
 
-    The panel is drawn over the already-dimmed frame, so against the same state's un-dimmed
-    pixels it is everything darker than DIM * reference by more than rounding. A count of 0
-    means no panel (or no overlay at all).
+    The panel is a translucent grey over the already-dimmed frame, so it darkens a bright
+    stage and lightens a dark one: the test is the composite itself, on pixels the panel
+    visibly moved away from the plain dim. Stray matches elsewhere (the HUD, a neutral patch
+    of stage) are too sparse to hold a row or column, so the bbox uses only the dense ones.
+    A count of 0 means no panel (or no overlay at all).
     """
     count = 0
-    x0, y0, x1, y1 = w, h, -1, -1
+    rows = [0] * h
+    cols = [0] * w
     for y in range(h):
         row = y * w * 3
         for x in range(w):
             o = row + x * 3
-            if (px[o] < ref[o] * DIM - SLACK and px[o + 1] < ref[o + 1] * DIM - SLACK and
-                    px[o + 2] < ref[o + 2] * DIM - SLACK):
+            hit = True
+            moved = False
+            for c in range(3):
+                dimmed = ref[o + c] * DIM
+                if abs(px[o + c] - (PANEL_ALPHA * PANEL_GREY + (1.0 - PANEL_ALPHA) * dimmed)) > PANEL_TOL:
+                    hit = False
+                    break
+                moved = moved or abs(px[o + c] - dimmed) > SLACK
+            if hit and moved:
                 count += 1
-                if x < x0: x0 = x
-                if y < y0: y0 = y
-                if x > x1: x1 = x
-                if y > y1: y1 = y
-    if x1 < 0:
+                rows[y] += 1
+                cols[x] += 1
+    dense_rows = [y for y in range(h) if rows[y] >= max(rows) * 0.5] if count else []
+    dense_cols = [x for x in range(w) if cols[x] >= max(cols) * 0.5] if count else []
+    if not dense_rows or not dense_cols:
         return 0, (0, 0, 0, 0)
-    return count, (x0, y0, x1, y1)
+    return count, (dense_cols[0], dense_rows[0], dense_cols[-1], dense_rows[-1])
 
 
 def dim_matches(px, w, h, ref, rect, min_fraction=0.90, tol=24):
@@ -238,11 +253,11 @@ def check_case(name, demo, install, tmp, size, extra, failures):
     # and 2.93% in a four-view frame, where the same panel sits over a busier background). The
     # check still catches a MISSING panel, which is what it is for.
     if fraction < 0.02 or rect[2] <= rect[0] or rect[3] <= rect[1]:
-        failures.append("%s: no backing panel (only %.2f%% of the frame is darker than the "
-                        "dim)" % (name, fraction * 100.0))
+        failures.append("%s: no backing panel (only %.2f%% of the frame matches its "
+                        "composite)" % (name, fraction * 100.0))
         return None
     bbox, bands = ink_in(px, w, h, rect)
-    print("  %s: panel %dx%d at (%d,%d), %.0f%% of the frame darkened, %d text band(s)"
+    print("  %s: panel %dx%d at (%d,%d), %.0f%% of the frame covered, %d text band(s)"
           % (name, rect[2] - rect[0] + 1, rect[3] - rect[1] + 1, rect[0], rect[1],
              fraction * 100.0, len(bands)))
     # The title and the four rows are 5 bands. There is no binding footer any more: it was the
