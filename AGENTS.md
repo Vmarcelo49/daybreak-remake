@@ -80,7 +80,7 @@ the reader to continue the old per-character hand-port. Those instructions are
 |---|---|---|
 | `docs/archive/ginkiha-*.md` | what the reference recovered, per-combo findings, the acceptance bar | "next execution" orders, "advance to Mion", per-combo port plans |
 | `docs/ROADMAP-PENDING.md` | issue IDs, measured limits, an item's status | choosing work; its "next dig" and suggestion lines |
-| `ANIMATION-SETS.md`, `ANIMATION-DATA-AUDIT.md`, `LIVE-DEBUG.md`, `EFFECTS-*.md`, `GAME-CAMERA.md`, `SHADOWS.md` (under `docs/`) | original-behaviour evidence, and what the port does today | new feature work, new selector/table work |
+| `docs/ANIMATION-SETS.md`, `docs/ANIMATION-DATA-AUDIT.md`, `docs/LIVE-DEBUG.md`, `docs/EFFECTS-*.md`, `docs/GAME-CAMERA.md`, `docs/SHADOWS.md` | original-behaviour evidence, and what the port does today | new feature work, new selector/table work |
 | `docs/decisions.md` | binding decisions and historical rationale; read before touching the product tree | new decisions — the owner adds those |
 | `docs/archive/PILOT-EVIDENCE-CONTRACT.md`, `docs/archive/PILOT-SEAM.md` | what the pilot established, addressed findings, seam facts | new contract or per-rule work |
 | `research/evidence/parity-baseline/README.md` + the bank | history: what the deleted DX9 tree captured, and what it could not | a fidelity oracle — its fighters bound zero animation sets |

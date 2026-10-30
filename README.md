@@ -147,7 +147,7 @@ Two rules keep the graphics backend swappable, and they are the whole point of t
 
 1. **`gpu/` includes nothing but `webgpu.h`.** No Dawn or wgpu-native header appears outside
    the build system, so choosing an implementation stays a build decision.
-2. **`platform/` knows nothing about WebGPU**, except `platform/surface.{h,cpp}`, which exists
+2. **`platform/` knows nothing about WebGPU**, except `src/platform/surface.{h,cpp}`, which exists
    to be the one place they meet.
 
 `render/` is a deliberate third exception: building render pipelines is not something `gpu/`
@@ -159,7 +159,7 @@ wraps, so it includes `webgpu.h` and consumes the asset layer's `xm::DrawUniform
 | Linux, Windows | wgpu-native (prebuilt) | `third_party/webgpu` |
 | Web | emdawnwebgpu (official Dawn port) | switched automatically by `emcmake` |
 
-Both are the same C API. The real differences live in `gpu.cpp` (wgpu-native returns a
+Both are the same C API. The real differences live in `src/gpu/gpu.cpp` (wgpu-native returns a
 present status, Dawn returns `void`) and in surface creation; the web has no present call at
 all, because the browser composites the canvas on the next animation frame, which is exactly
 when SDL3's iterate callback runs.
