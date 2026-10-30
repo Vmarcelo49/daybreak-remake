@@ -79,6 +79,7 @@ void CoreFighter::refresh() {
     m_state = fighter_state_for_row(actor.state);
     m_hp = actor.hp / 100;  // the core's scale is 10000; the product's HUD reads percent
     m_gauge = actor.gauge;
+    m_actionCamera = actor.actionCamera;
     m_held = m_battle->held_models(m_slot);
     m_magazines = m_battle->magazines(m_slot);
     m_animation = m_battle->animation(m_slot);
@@ -159,7 +160,7 @@ game::BattleFrame CoreBattle::step(const fnd::input::PlayerState* inputs[game::k
     const auto toVec = [](const std::array<float, 3>& v) { return glm::vec3(v[0], v[1], v[2]); };
     const BattleEvents& events = m_battle->events();
     for (const auto& e : events.effects) frame.effectSpawns.push_back({e.id, toVec(e.position), toVec(e.direction)});
-    for (const auto& s : events.sounds) frame.soundCues.push_back({s.id, s.positional, toVec(s.position)});
+    for (const auto& s : events.sounds) frame.soundCues.push_back({s.id, s.positional, toVec(s.position), s.system});
     for (const auto& v : events.voices) frame.voiceCues.push_back({v.actor, v.path});
 
     // FUN_006358c0: one listener at the selected actor's XYZ +150Y.

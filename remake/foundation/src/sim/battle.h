@@ -96,7 +96,7 @@ struct ProjectileState {
 // What the last tick asked the presentation to do, after the core's audibility rules.
 struct BattleEvents {
     struct Effect { int actor, id; std::array<float, 3> position, direction; };
-    struct Sound { int actor, id; bool positional; std::array<float, 3> position; };
+    struct Sound { int actor, id; bool positional; std::array<float, 3> position; bool system; };
     struct Voice { int actor; std::string path; };
     std::vector<Effect> effects;
     std::vector<Sound> sounds;
@@ -113,6 +113,7 @@ struct ActorState {
     int gauge = 0;         // +0x834, 0..1000
     bool grounded = false;
     int target = 0;        // the slot this actor is locked on to
+    int actionCamera = -1; // +0x684: the data/camera/01.x clip the actor asks for, -1 for none
 };
 
 // The bound animation sets. The two channels are the rig's lower and upper body; a row usually
@@ -158,6 +159,8 @@ public:
     void bone_poses(unsigned slot, std::vector<std::string>& names, std::vector<Matrix>& model) const;
     // Every row the slot's NN.dat declares, for coverage reports.
     std::vector<unsigned> declared_rows(unsigned slot) const;
+    // Test seam for the original's keyboard shortcut (fill_keyboard_special): a full hypermode meter.
+    void fill_special_for_test();
     // FNV-1a over every completed tick's actor states, projectile count and RNG cursor.
     std::uint64_t hash() const;
 

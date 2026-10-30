@@ -2501,6 +2501,7 @@ public:
       s.recharge=std::uint32_t(gauge[i]);s.status7f4=status[i].duration[6];s.activated=special_gauges[i].activated0;
       s.contacts=contact_ledger[i].flags;for(unsigned v=0;v<4;++v)s.capacity[v]=damage_signed(contact_ledger[i].remaining[v]);
       const auto next=advance_rena_full_charge(s,[&](){return next_battle_random();});
+      if(s.state==350&&action_binding(i).weapon==0)native_contact_mode[i]=int(s.attack_flag); //PATCHES.md: 43ffc0 case 0x15e writes +684 each update.
       action.speed=s.speed;action.offset=s.offset;action.movement_angle=s.movement;
       motion.velocity[1]=s.vertical;ground_shot_[i].gravity=s.gravity;walk_motion_[i].step=s.turn_step;
       gauge[i]=damage_signed(s.recharge);special_gauges[i].activated0=s.activated;

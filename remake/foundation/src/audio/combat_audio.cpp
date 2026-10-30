@@ -358,6 +358,11 @@ void CombatAudio::play_se_direct(int id, bool positional, const AudioPoint3& pos
     play_se(cue);
 }
 
+void CombatAudio::play_system_se_direct(int id) {
+    if (sink_.play(numbered_stem("data/sysse", id), SfxBus::Sfx, -1) < 0) ++stats_.se_missing;
+    else ++stats_.se_plays;
+}
+
 void CombatAudio::play_voice_direct(int fighter, const std::string& path) {
     if (fighter < 0 || fighter >= 4) return;
     FighterVoice& v = voices_[static_cast<size_t>(fighter)];

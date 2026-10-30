@@ -162,6 +162,24 @@ void test_presentation_events(const std::string& game) {
         for (unsigned hand = 0; hand < 2; ++hand) trails += swinger.hand_trail(0, hand).active;
     }
     check(trails > 0, "a melee weapon draws trails");
+
+    // Hypermode activation: the chord starts row 500 and its notice reaches a local player.
+    auto human = match(game, 0, 0);
+    human.slots[0].cpu = false;
+    human.slots[0].specialMode = 0;
+    for (size_t i = 1; i < 4; ++i) human.slots[i].cpu = false;
+    sim::Battle activation(human);
+    bool enteredRow500 = false, voiceOrSound = false;
+    for (unsigned t = 0; t < 300; ++t) {
+        if (t == 190) activation.fill_special_for_test();
+        sim::Inputs inputs{};
+        if (t >= 200 && t < 204) inputs[0].buttons = sim::Melee | sim::Shoot;
+        activation.step(inputs);
+        enteredRow500 |= activation.actor(0).state == 500;
+        for (const auto& sound : activation.events().sounds) voiceOrSound |= sound.actor == 0 && t >= 200;
+    }
+    check(enteredRow500, "the chord with a full meter starts the activation row");
+    check(voiceOrSound, "and the activation asks for its sound");
     const sim::MatchState state = battle.match_state();
     check(state.limit[0] == 100.f && state.limit[1] == 100.f, "the score limit defaults to 100");
 }
@@ -187,6 +205,32 @@ void test_round_end(const std::string& game) {
     }
     check(titlesChosen, "the core chooses the earned titles");
     check(battle.match_state().timed, "the round reports its clock");
+}
+
+// FUN_0043ffc0 case 0x15e writes +0x684 on every update of Rena+0's row 350: clip 0 from the
+// start, even on a whiff, so the Hyper EX's camera plays. Leaving the row clears it.
+void test_rena_ex_camera(const std::string& game) {
+    auto config = match(game, 0, 0);
+    for (auto& slot : config.slots) slot.cpu = false;
+    config.slots[0].specialMode = 0;
+    sim::Battle battle(config);
+    bool inRow = false, clipDuringRow = false, clearedAfter = false;
+    for (unsigned t = 0; t < 1200; ++t) {
+        if (t == 190) battle.fill_special_for_test();
+        sim::Inputs inputs{};
+        if ((t >= 200 && t < 204) || (t >= 540 && t < 544)) inputs[0].buttons = sim::Melee | sim::Shoot;
+        battle.step(inputs);
+        const sim::ActorState rena = battle.actor(0);
+        if (rena.state == 350) {
+            inRow = true;
+            clipDuringRow |= rena.actionCamera == 0;
+        } else if (inRow) {
+            clearedAfter |= rena.actionCamera == -1;
+        }
+    }
+    check(inRow, "the chord during the mode reaches row 350");
+    check(clipDuringRow, "row 350 asks for camera clip 0 without a hit");
+    check(clearedAfter, "and the camera request ends with the row");
 }
 
 void test_invalid_combos_are_rejected(const std::string& game) {
@@ -242,6 +286,7 @@ int main() {
     test_invalid_combos_are_rejected(game);
     test_presentation_events(game);
     test_round_end(game);
+    test_rena_ex_camera(game);
     test_determinism(game);
     test_input_sensitivity(game);
     test_scripted_rena_reaches_her_rows(game);

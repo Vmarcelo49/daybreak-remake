@@ -158,7 +158,15 @@ struct Battle::Impl {
         for (const auto& request : combat.sound_requests) {
             if (request.system && !battle_contact_sound_audible(request, roster.controlled_slots, roster.controlled_count)) continue;
             events.sounds.push_back({static_cast<int>(request.actor), static_cast<int>(request.id),
-                                     !request.system && request.mode == BattleSoundMode::Spatial, request.position});
+                                     !request.system && request.mode == BattleSoundMode::Spatial, request.position,
+                                     request.system});
+        }
+        // RuntimeBattle::update: an activation notice is a nonpositional system SE for the
+        // slots local controllers own (FUN_004220e0 -> FUN_0064af20).
+        for (const auto& request : combat.special_activation_events) {
+            for (unsigned n = 0; n < roster.controlled_count; ++n)
+                if (roster.controlled_slots[n] == request.slot)
+                    events.sounds.push_back({static_cast<int>(request.slot), static_cast<int>(request.notification), false, {}, true});
         }
         for (const auto& request : combat.voice_requests) {
             if (!battle_event_voice_audible(request, roster.controlled_slots, roster.controlled_count)) continue;
@@ -250,6 +258,7 @@ ActorState Battle::actor(unsigned slot) const {
     out.gauge = combat.gauge[slot];
     out.grounded = a.grounded != 0;
     out.target = static_cast<int>(a.relationships.target);
+    out.actionCamera = combat.native_contact_mode[slot];
     return out;
 }
 
@@ -383,6 +392,8 @@ void Battle::bone_poses(unsigned slot, std::vector<std::string>& names, std::vec
         model[i] = combined[i];
     }
 }
+
+void Battle::fill_special_for_test() { m_impl->combat.fill_keyboard_special(); }
 
 std::vector<unsigned> Battle::declared_rows(unsigned slot) const {
     std::vector<unsigned> rows;

@@ -278,6 +278,8 @@ public:
     // is already chosen, so no policy or alternative selection applies.
     void play_se_direct(int id, bool positional, const AudioPoint3& position, const AudioPoint3& listener,
                         const AudioPoint3& forward, bool listenerValid);
+    // data/sysse's separate 32-entry bank (FUN_0064ade0), always nonpositional.
+    void play_system_se_direct(int id);
     void play_voice_direct(int fighter, const std::string& path);
 
     // #15 coordination: suspending stops this layer's voice channels so a pause during a

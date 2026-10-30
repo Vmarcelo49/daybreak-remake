@@ -2827,6 +2827,14 @@ static bool initMatch(App& app) {
     app.legacyBattle.match().reset(config, models, anims, tamaMesh,
                     tamaMesh ? &app.projectileCollisionIndex : nullptr, movement);
     if (app.opts.simCore && !startCoreBattle(app, config)) return false;
+    // The core chooses its own voices and SEs, so a standalone --match needs the playback half
+    // of the combat layer too; the front end builds it in enterFrontendBattle.
+    if (app.opts.simCore && !app.frontendMatch) {
+        if (!app.combatSink) app.combatSink = std::make_unique<App::CombatSink>(app);
+        if (!app.combatAudio) app.combatAudio = std::make_unique<fnd::audio::CombatAudio>(*app.combatSink);
+        app.combatAudio->begin_match(fighterCount);
+        app.versusAudio.set_volumes(ui::frontendSettings().volumes);
+    }
     // The roster in panel order, with each entry linked to its MatchConfig index (issue #13).
     buildMatchRoster(app);
     // The earned-title counters are per ROUND (the original clears the record with the round):
@@ -4150,11 +4158,16 @@ static bool tickMatch(App& app, double dt) {
     dispatchCombatAudio(app, f);
     if (app.combatAudio) {
         const auto toArray = [](const glm::vec3& v) { return fnd::audio::AudioPoint3{v.x, v.y, v.z}; };
-        for (const auto& cue : f.soundCues)
-            app.combatAudio->play_se_direct(cue.id, cue.positional, toArray(cue.position),
-                                            toArray(f.audioListenerPosition), toArray(f.audioListenerForward),
-                                            f.audioListenerValid);
+        for (const auto& cue : f.soundCues) {
+            if (cue.system) app.combatAudio->play_system_se_direct(cue.id);
+            else app.combatAudio->play_se_direct(cue.id, cue.positional, toArray(cue.position),
+                                                 toArray(f.audioListenerPosition), toArray(f.audioListenerForward),
+                                                 f.audioListenerValid);
+        }
         for (const auto& cue : f.voiceCues) app.combatAudio->play_voice_direct(cue.fighter, cue.path);
+        if (app.opts.combatAudioLog)
+            for (const auto& cue : f.voiceCues)
+                std::printf("[combat-audio] tick %llu voice fighter=%d %s\n", (unsigned long long)app.matchFrame, cue.fighter, cue.path.c_str());
     }
     for (const auto& spawn : f.effectSpawns)
         if (!spawnEffect(app, app.matchFx, spawn.id, spawn.position, spawn.direction)) ++app.fxBadEffect;
@@ -6874,6 +6887,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                                 app->matchRoundOverFrame ? 1 : 0);
                     // Issue #11's single-counted audit: one KO credit per death, one
                     // Overkill credit per hit, one respawn per return.
+        if (app->opts.simCore) reportCombatAudio(*app);
                     std::printf("match round : winner=%d (%s), KOs=%d/%d overkill=%d/%d "
                                 "respawns=%d/%d, time left=%.1fs\n",
                                 eco.roundOverSide(),

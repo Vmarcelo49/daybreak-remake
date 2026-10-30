@@ -203,7 +203,7 @@ struct BattleFrame {
     // the per-fighter fields above, since one tick can ask for several per fighter. The legacy
     // path leaves these empty.
     struct EffectSpawn { int id = -1; glm::vec3 position{0.f}, direction{0.f}; };
-    struct SoundCue { int id = -1; bool positional = false; glm::vec3 position{0.f}; };
+    struct SoundCue { int id = -1; bool positional = false; glm::vec3 position{0.f}; bool system = false; };
     struct VoiceCue { int fighter = -1; std::string path; };
     std::vector<EffectSpawn> effectSpawns;
     std::vector<SoundCue> soundCues;

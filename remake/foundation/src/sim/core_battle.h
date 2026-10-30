@@ -34,7 +34,7 @@ public:
     int phase_elapsed() const override { return m_frame; }
     int attack_move_id() const override { return m_row >= 300 && m_row < 400 ? m_row : -1; }
     int shot_move_id() const override { return m_row >= 400 && m_row < 500 ? m_row : -1; }
-    int action_camera() const override { return -1; }
+    int action_camera() const override { return m_actionCamera; }
     game::HitboxDebug hitbox_debug() const override { return {}; }
     int main_whole() const override { return m_magazines[0].rounds; }
     float main_frac() const override;
@@ -78,7 +78,7 @@ private:
     float m_yaw = 0.f;
     glm::mat4 m_world{1.f};
     game::FighterState m_state = game::FighterState::Idle;
-    int m_row = 0, m_frame = 0, m_hp = 100, m_gauge = 0;
+    int m_row = 0, m_frame = 0, m_hp = 100, m_gauge = 0, m_actionCamera = -1;
     std::array<int, 2> m_held{{-1, -1}};
     std::array<MagazineState, 2> m_magazines{};
     ActorAnimation m_animation{};

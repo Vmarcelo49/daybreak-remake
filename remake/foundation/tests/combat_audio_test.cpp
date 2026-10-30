@@ -577,6 +577,9 @@ int main() {
         audio.play_se_direct(12, false, {}, {}, {0.f, 0.f, 1.f}, false);
         CHECK(sink.played.size() == 3);
         CHECK(sink.played[2].bus == SfxBus::Sfx);
+        audio.play_system_se_direct(7);
+        CHECK(sink.played.size() == 4);
+        CHECK(sink.played[3].stem == "data/sysse/007");
     }
     return 0;
 }
