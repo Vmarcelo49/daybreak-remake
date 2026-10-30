@@ -1906,6 +1906,8 @@ next unblocked row.
 
 - 2026-10-30 — M6, order set by the owner — **platforms first: CI, Windows and web battles; story mode follows, then graphics and translation.** Reorganization reviewed and merged into `main` (`8ef274cf`). Measured before starting (tier 5): under Wine, headless with no audio, `daybreak.exe` ran the `4p` script through two rounds and a rematch without a fault, and its `--screen=battle` capture is byte-identical to Linux's. Windows has not been played with a window or on real hardware. Web still cannot run a battle. ARM, macOS, netplay and graphics stay out of this step.
 
+- 2026-10-30 — M6, platforms — **CI runs when `VERSION` changes, and a web battle runs on the core again.** The workflow built and packaged all three targets on `8a05b5df`. The packaged Windows zip passed the `2v2` and `4p` scripts under Wine, headless. The core reads loose files when no archive is present (`PATCHES.md`), and `tests/web_match_group_check.py` gives the install's hash for all 46 combos on only the files a browser downloads. The web build had no optimization since its first commit; Release took `--screen=battle` from 2.7 to 58.9 fps in headless Chromium, 33 s after a cold start, with no audio (tier 5). A Release web link takes about 18 minutes, and that build has not run in CI. **Not verified:** the menu flow in a browser, audio there, a human playing web or Windows. Issues #58-#60 stay open. With no pad attached, `release_flow_check` ends early on both the old and new revisions, likely script calibration (#63).
+
 ## Recovered-body completeness census (2026-10-15, measured)
 
 The owner's working hypothesis is that the Ginkiha recovery "is probably almost everything we need

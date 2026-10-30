@@ -117,11 +117,12 @@ def match_prefixes(stage: str, slots: Sequence[str]) -> list[str]:
     """
     prefixes = [f"data/{stage}/"]
     for slot in slots:
-        character = slot.split(":", 1)[0]
+        # The client sends its launch spec, e.g. data/rena:0:1: the costume is the last field.
+        character = slot.split(":", 1)[0].removeprefix("data/")
         costume = 0
         if ":" in slot:
             try:
-                costume = int(slot.split(":", 1)[1])
+                costume = int(slot.rsplit(":", 1)[1])
             except ValueError:
                 costume = 0
         suffixes = {""} | {"_B", "_C", "_D", "_E", "_F"}

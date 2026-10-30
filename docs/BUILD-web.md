@@ -1,6 +1,6 @@
 # Web (Emscripten)
 
-> **Since M5 (2026-10-30) the web build compiles but cannot run a battle.** The core reads `daybreak*.dat` directly and the web build streams single assets, so a battle fails at launch until the core gets an asset seam (M6). The menus are unaffected. The `--character`/`--enemy` match recipes below are history; the last revision with a working web battle is `e9347627`.
+> **The web build runs a battle on the core when served through `webdelivery`.** Measured 2026-10-30 in headless Chromium on a local server and an AMD GPU, with no audio: `--screen=battle` reached the battle 33 s after a cold start (a 325 MB match group) and ran 600 frames at 58.9 fps. Check it with `node tests/web_flow_check.mjs <url> <out.png>`. The full front-end flow in a browser is not verified, and issues #58-#60 stay open. A Release link took 18 minutes on this machine. The `--character`/`--enemy` match recipes below are history.
 
 ```bash
 # run from the repository root; all paths below are relative to it
