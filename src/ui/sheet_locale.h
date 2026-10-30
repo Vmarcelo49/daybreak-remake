@@ -15,6 +15,8 @@ namespace ui {
 
 // False, with `error` set, when the file or the font cannot be read.
 bool setSheetLanguage(const std::string& language, std::string& error);
+// Empty until a language is set: the game's own Japanese.
+const std::string& sheetLanguage();
 
 struct SheetLabel {
     std::string sheet;  // lower case, without an extension

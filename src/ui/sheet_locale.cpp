@@ -57,6 +57,7 @@ const std::map<std::string, Style> kStyles = {
 };
 
 std::vector<SheetLabel> gLabels;
+std::string gLanguage;
 std::vector<uint8_t> gFontBytes;
 stbtt_fontinfo gFont;
 
@@ -371,8 +372,11 @@ bool setSheetLanguage(const std::string& language, std::string& error) {
         error = std::string("cannot read ") + kFontFile + " from assets/fonts";
         return false;
     }
+    gLanguage = language;
     return true;
 }
+
+const std::string& sheetLanguage() { return gLanguage; }
 
 bool localizeSheet(const std::string& stem, const uint8_t* rgba, int width, int height, LocalizedSheet& out) {
     const std::string key = lowered(stem);
