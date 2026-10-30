@@ -11,29 +11,28 @@ and WebGPU**, and builds for Linux, Windows and the browser.
 
 ## Project status
 
-**Early playable development — not ready for a normal playthrough.**
+**Playable locally.** With your own copy of the game, you can play story and versus from the
+title to the results.
 
-You can navigate the menus, select characters, fight a match and reach the results screen.
-The combat itself is not faithful yet: many moves, animations and interactions are
-incomplete or wrong.
+Combat runs on a reconstructed simulation of the original. How closely it matches the original
+at runtime has not been verified.
 
-| Area | Current limitations |
+| Area | State |
 |---|---|
-| Combat | Many attacks, character-specific behaviours and interactions remain incorrect or incomplete. |
-| Animations | Selection, transitions and synchronisation are unreliable across much of the roster. |
-| Visual fidelity | Some effects, shadows, rendering details and UI behaviour still differ from the original. |
-| Game balance and AI | Combat behaviour and computer opponents are not yet faithful. |
-| Windows | Builds reach gameplay; a rematch crash has been documented. |
-| Web | Experimental: the build compiles, but the core's bundle reads do not run in a browser yet. |
-| Multiplayer | LAN and online multiplayer are not implemented. |
-| Story mode | Not implemented. |
+| Combat, CPU, match rules | Run on the vendored reference core for all 46 character and weapon combos. |
+| Story mode | Implemented: dialogue, ladder, retry, game over, endings and staff roll. |
+| Language | Menus and HUD in English or Japanese. Story dialogue is still Japanese. |
+| Texture packs | Optional PNG packs are read from beside the executable. No pack is published yet. |
+| Linux, Windows | Build and package. CI builds both when `VERSION` changes. |
+| Web | Battles run, but an uncaught exception ends them after about 31 s (issue #88). |
+| Multiplayer | Local only. LAN and online are not implemented. |
 | macOS | Not attempted. |
 
 This is not an exhaustive bug list. The plan and its live state are
 [`docs/DIRECTION.md`](docs/DIRECTION.md) (what is being done and why),
 [`docs/DIRECTION-STATUS.md`](docs/DIRECTION-STATUS.md) (the task list and the work log),
 [`docs/SCOREBOARD.md`](docs/SCOREBOARD.md) (the one metric) and
-[`docs/QUESTIONS.md`](docs/QUESTIONS.md) (open owner decisions). Read
+[`docs/QUESTIONS.md`](docs/QUESTIONS.md) (open owner decisions). Open bugs are the GitHub issues. Read
 [`AGENTS.md`](AGENTS.md) before changing anything: it is the map and the enforcement point.
 
 ## Repository layout
@@ -42,7 +41,7 @@ This is not an exhaustive bug list. The plan and its live state are
 src/            the product (C++17, SDL3 + WebGPU)
   app/          entry points, app state and the per-area blocks main.cpp is split into
   battle/       the simulation wrapper, its interface and the battle-side rules
-  battle/core/  the vendored reference simulation, byte-pinned and unchanged
+  battle/core/  the vendored reference simulation, byte-pinned; changes are in PATCHES.md
   hud/          HUD composition, its value bridge and the pause overlay layout
   frontend/     screens, front-end state, launch and the result quote/title
   ui/           sprite batch, bitmap font, CJK text and captions

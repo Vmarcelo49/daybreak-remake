@@ -6,6 +6,10 @@ question, newest last. While a question is open, mark the affected claim
 `TODO(question NN)` in code or docs and either take the next allowed task or end
 the session — never invent work to stay busy.
 
+**State on 2026-10-30:** nothing here blocks work, on the owner's word that the game is playable
+locally with its blockers gone. Open entries from before M5 were asked about the deleted
+hand-written combat and the pilot, and stand as history. Q28 is still a real housekeeping question.
+
 Format:
 
 ```

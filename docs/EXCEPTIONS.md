@@ -4,6 +4,9 @@ The freeze list in [`../AGENTS.md`](../AGENTS.md) is the default. Work outside i
 is allowed **only** through an entry here, written by the repo owner. An entry
 without a date or an expiry is not an exception.
 
+**State on 2026-10-30:** the freeze ended with M5, so this file is no longer needed for product
+work. The rows below name hand-written combat files that no longer exist and stand as history.
+
 | ID | Date | Expires | Scope (what is allowed, which files) | Why | Owner |
 |---|---|---|---|---|---|
 | Q23 | 2026-10-29 | 2026-10-30 | Rena+0 powered projectile row 8 → explosion row 10 only: `remake/foundation/src/gameplay/projectile_behavior.h` and associated projectile tests | Restore and verify the sourced wall-triggered explosion for the powered charge | Repo owner (explicitly authorized agent to record) |

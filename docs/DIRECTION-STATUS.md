@@ -24,7 +24,8 @@
 | Item | Current value |
 |---|---|
 | Plan | Reference core approved 2026-10-30: [`DIRECTION.md`](DIRECTION.md). Everything below this section under Phases 0-3 is the closed pilot's history |
-| Metric | **0/46 running under `--sim=core`** ([`SCOREBOARD.md`](SCOREBOARD.md)). Closed: 1/46 under contract v3 |
+| Phase | **M6.** The core is the only combat path since M5; the game is playable locally, and the owner orders the work |
+| Metric | The core runs 46/46 combos (CTest). Closed: 1/46 under contract v3 ([`SCOREBOARD.md`](SCOREBOARD.md)) |
 | Original-runtime parity | **not verified** |
 
 The measured numbers inside old task cells and the whole work log are **historical**. The
@@ -1922,6 +1923,7 @@ next unblocked row.
 
 - 2026-10-30 — M6, loose trees — **a loose tree now finds files in any case, as the bundles do.** The HUD fell to its reserve drawing there because it asks for `P00` and the file is `p00.cnv`. With no bundle open, a failed lookup now compares names case-blind (0x00663c20's rule). A loose capture of `--screen=battle` then differs from the install's in 0.002% of pixels (tier 5). Not run in a browser: the web build reads loose files and should benefit, and issue #88 stays open.
 - 2026-10-30 — M6, texture packs — **the game finds packs beside the executable, and a tool extracts what to upscale.** `custom-textures/` wins over `hd-textures/`, and a verification run reads only what `--texture-pack` names. `tools/asset-tools/texture_pack.py extract` writes the 3D textures: 3,303, of which 1,169 are distinct (24.5 of 63.9 Mpx), with the rest named in `duplicates.txt`. `verify` refuses unknown names, lost alpha and bad sheet sizes. A pack image now always gets computed mips and never the original's. Evidence, tier 5: with the extraction as a pack at original size, before the mip change, the three PIX fingerprints matched; with every texture magenta, all 13 stages measured 0.0% other pixels; a 4x Lanczos pack is 271 MB, and took a 400-frame battle from 2.3 s to 3.8 s and 294 MB to 622 MB of peak memory. Limits: distant ground is smoother than the original because the chain no longer stops at `_2`, and no real upscaler output has been tried. The download and first-run prompt are not built, waiting for a pack. Original-runtime parity: not verified.
+- 2026-10-30 — M6, documentation — **the agent guidance now describes the game as it is.** `AGENTS.md` gained the current state and a table of where things are, and the freeze and three-question test became the M6 rule: the owner orders the work. README, `DIRECTION.md`, `QUESTIONS.md`, `EXCEPTIONS.md` and this snapshot were corrected. "No blockers" is the owner's word; open issues stay #3, #38, #61, #88 and #89. Older documents were not audited one by one.
 
 ## Recovered-body completeness census (2026-10-15, measured)
 

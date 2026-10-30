@@ -16,8 +16,8 @@
 > Updated by whoever runs the checks; verdicts are written by the repo owner.
 
 Plan: [`DIRECTION.md`](DIRECTION.md). Task list and work reports:
-[`DIRECTION-STATUS.md`](DIRECTION-STATUS.md). Freeze list and the three-question
-test: [`../AGENTS.md`](../AGENTS.md). Questions: [`QUESTIONS.md`](QUESTIONS.md).
+[`DIRECTION-STATUS.md`](DIRECTION-STATUS.md). What work is allowed:
+[`../AGENTS.md`](../AGENTS.md). Questions: [`QUESTIONS.md`](QUESTIONS.md).
 
 ## Headline
 

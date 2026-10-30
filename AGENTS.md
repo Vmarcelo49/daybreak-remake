@@ -12,69 +12,80 @@ Twilight Frontier / 07th Expansion, PE32 x86). End goal: a playable modern port.
 
 **No binary-level matching:** we neither link nor reproduce the original's code,
 and byte-identity with it is not a goal. The target is faithful **behaviour**.
-Progress is measured as in [`docs/DIRECTION.md`](docs/DIRECTION.md) §6. Original-runtime
-parity is a separate claim, requiring original-runtime evidence. A claim that
-cannot name its evidence tier, scope and limitations is not a result.
+Original-runtime parity is a separate claim, requiring original-runtime evidence.
+A claim that cannot name its evidence tier, scope and limitations is not a result.
+
+## Current state (2026-10-30)
+
+**Playable locally, with no known blocker.** The native build runs the whole loop: title,
+story, versus, character select, battle, results and options.
+
+| Area | State | Where |
+|---|---|---|
+| Combat | The vendored reference core is the only authority (M5 closed). Original-runtime parity: **not verified** | `src/battle/core/`, wrapper `src/battle/` |
+| Story | Dialogue, ladder, retry, game over, endings, staff roll | `src/frontend/story_*`, `screen_story*` |
+| Language | Menus and HUD in English or Japanese. Dialogue is still Japanese | `src/ui/sheet_locale.*`, `assets/locale/en.txt`, `docs/TRANSLATION-INVENTORY.md` |
+| Options and settings | Our own settings file, never the original's | `src/frontend/screen_options.cpp`, `docs/USER-SETTINGS.md` |
+| Texture packs | Read from beside the executable; extractor and verifier exist. Download and prompt wait for a pack | `docs/TEXTURE-PACKS.md`, `tools/asset-tools/texture_pack.py` |
+| Web | Builds and fights, with an open crash (#88) | `docs/BUILD-web.md`, `webdelivery/` |
+| Not built | Netplay (#3), macOS | |
+
+Open issues are on GitHub (`Vmarcelo49/daybreak-remake`), and they are the current bug list.
 
 ## Work mandate
 
-**The plan is [`docs/DIRECTION.md`](docs/DIRECTION.md)** — it owns the milestones. Read it
-before choosing anything; if you were handed a task, check it against the plan first.
-The Rena+0 pilot closed green on 2026-10-30, and its method-acceptance rules no longer
-gate work.
+The project is in **M6**: the owner orders product work directly. The milestones and why the
+core exists are in [`docs/DIRECTION.md`](docs/DIRECTION.md).
 
-### Frozen work — this list is the single source of truth
+### Is your task allowed?
 
-`docs/DIRECTION.md` links here instead of repeating this list, so the two cannot drift apart.
+1. The owner asked for it in this conversation; or
+2. it is a fix for a concrete, cited failure: a named test or scenario, or an open issue.
 
-**A. Hand-written combat — deleted at M5.** Do not bring it back. Behaviour changes belong
-in the core, cited and listed in `src/battle/core/PATCHES.md`. The last revision with the old
-path is `e9347627`.
+Otherwise ask. Do not infer a task from an old report, a TODO, a "next steps" list or a
+milestone table.
 
-**B. Product roadmap — frozen until M5 closes:** web delivery, netplay, story mode, movies,
-macOS, extra renderer options, 3v3/4v4 (issues #58–#61, #3; roadmap G1/G2/E1–E3/H). The
-owner orders this work in M6.
+### Still forbidden
 
-Frame-perfect original-game control, a new capture/replay platform and save-state or
-emulator projects are outside this plan, not fallback tasks.
+- **Hand-written combat.** It was deleted at M5; do not bring it back. Behaviour changes belong
+  in the core, cited and listed in `src/battle/core/PATCHES.md`. The last revision with the old
+  path is `e9347627`.
+- Frame-perfect original-game control, a new capture/replay platform, and save-state or
+  emulator projects, unless the owner asks.
 
-### Is your task allowed? Ask these three, in order
+### Stop and ask
 
-1. Is it a step of a milestone in `docs/DIRECTION.md` §4, in order?
-2. Is it an owner exception in [`docs/EXCEPTIONS.md`](docs/EXCEPTIONS.md), unexpired,
-   with a scope that names your files?
-3. Is it a fix required by a **concrete, cited** failure — a named test or `simctl`
-   scenario with its field/event and tick? "Required" without that evidence does not qualify.
-
-If none is true: **stop and ask**. Do not infer a task from an old report, a TODO,
-a "next steps" list, or a milestone table. A task that fails these three is drift,
-and drift is reverted work no matter how well it is executed.
-
-### Stop and ask — including unattended work
-
-- Write the question in [`docs/QUESTIONS.md`](docs/QUESTIONS.md) in its format, and
-  mark the affected claim `TODO(question NN)` in code or docs.
-- Then take the next task that passes the three questions, or **end the session**
-  with a blocker note there. Never invent work to stay busy.
-- Ask *before acting* if a step would touch the owner's live desktop session,
-  inject input anywhere other than this repo's own game process, or reach outside
-  the repository.
+- Ask *before acting* if a step would touch the owner's live desktop session, inject input
+  anywhere other than this repo's own game process, or reach outside the repository.
+- If the owner cannot be reached, write the question in [`docs/QUESTIONS.md`](docs/QUESTIONS.md)
+  and end the session or take another allowed task. Never invent work to stay busy.
 
 ### Attempt ceilings
 
-Each focused investigation gets **3 attempts or 2 hours**, whichever comes
-first; only the owner raises it (`docs/EXCEPTIONS.md`). Past it, stop, report the
-missing capability and ask or re-scope. Do not restart the same investigation
-under new task names or automatically descend into DLLs, memory writers or
-screen-replay tooling. This is not a two-hour budget for a whole milestone.
-Unproven original automation is never required.
+Each focused investigation gets **3 attempts or 2 hours**, whichever comes first; only the
+owner raises it. Past it, stop, report the missing capability and ask or re-scope. Do not
+restart the same investigation under a new name, or descend into DLLs, memory writers or
+screen-replay tooling. Unproven original automation is never required.
+
+### Where to find things
+
+| You need | Read |
+|---|---|
+| The plan and milestones | `docs/DIRECTION.md` |
+| What was done, newest entries last in the work log | `docs/DIRECTION-STATUS.md` |
+| Binding product decisions | `docs/decisions.md` (D1–D14) |
+| The core and its changes | `src/battle/core/README.md`, `PATCHES.md`, `MANIFEST.sha256` |
+| Regression hashes | `bash tools/fingerprints.sh $PWD/build/linux/simctl $PWD/build/linux/daybreak <outdir> tests/scripts`. Expected on 2026-10-30: SIM `746ce7a9cbe6e44a`, `5331c6e70cd13962`, `e79f1dbb68d73853`; PIX `8e0bbc43`, `a88d4de4`, `ae6aa987`. A deliberate behaviour change moves them; say so in its report |
+| Builds and release | `docs/BUILD-*.md`, `docs/RELEASE-CHECKLIST.md`. CI runs when `VERSION` changes on `main` (`.github/workflows/build.yml`) |
+| Assets and paths | `docs/ASSET-CATALOG.md`; moved paths in `docs/PATHS.md` |
+| Original-binary questions | The skill routing below |
+| Research corpus | `docs/pipeline.md`, `docs/conventions.md` |
 
 ### Precedence — old documents are evidence, not instructions
 
 Documents in this repo were written under superseded plans, and many still tell
 the reader to continue the old per-character hand-port. Those instructions are
-**retired**: when a document disagrees with `docs/DIRECTION.md` about what to work on,
-`docs/DIRECTION.md` wins — no exceptions, no "but this file says".
+**retired**: only the owner and this file say what to work on.
 
 | Document | Still good for | Never authorizes |
 |---|---|---|
@@ -87,13 +98,8 @@ the reader to continue the old per-character hand-port. Those instructions are
 | `docs/archive/FULL-REPLACEMENT-PLAN.md`, `docs/archive/port-from-mvp-plan.md`, `docs/archive/roadmap.md`, `docs/archive/**` | history and rationale | anything current |
 | `docs/status.md`, `docs/agents/**` | research pipeline, conventions | product work orders |
 
-**Do not read the whole documentation tree "for context"** — that is how agents
-re-implement a retired plan. Route by task: any task → this file, then
-`docs/DIRECTION.md` and its task list `docs/DIRECTION-STATUS.md`; the core →
-`src/battle/core/README.md`; original-binary questions → the skill routing
-below; research corpus → `docs/pipeline.md`,
-`docs/conventions.md`; release/platform → `docs/RELEASE-CHECKLIST.md`,
-which is also where current status lives.
+**Do not read the whole documentation tree "for context"**: that is how agents re-implement a
+retired plan. Use the table above.
 
 Path moves are mapped once in [`docs/PATHS.md`](docs/PATHS.md) — use it instead of
 the historical text of an archived document.
@@ -269,8 +275,7 @@ rules: `docs/conventions.md`.
 - **Never** `reset --hard`, `clean -fd`, `checkout .`, or delete a branch or
   worktree without first listing its unique commits (`git log main..<branch>`) and
   showing the owner. This governs **git state**, not source files: deleting a
-  REPLACE file at its gate is an ordinary edit inside a reviewed commit
-  (`docs/DIRECTION.md` §7).
+  REPLACE file at its gate is an ordinary edit inside a reviewed commit.
 - **An uncommitted diff is never discarded.** It is committed in reviewable parts,
   or left exactly as found.
 - Push scope: `research/decompiled`, `research/binary_data`, reviewed

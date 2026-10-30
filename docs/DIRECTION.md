@@ -56,6 +56,8 @@ where marked. The task list is [`DIRECTION-STATUS.md`](DIRECTION-STATUS.md).
 | **M5** | Core becomes the default; the legacy path is deleted in its own reviewed commit | Owner approves after playtest; full front-end loop passes; pre-cleanup revision recorded |
 | **M6** | Product work: story, netplay, ARM and web, polish | Ordered by the owner after M5 |
 
+**M1 to M5 are closed. The project is in M6**, where the owner orders the work directly.
+
 The separate Rena+0 cleanup (old step 2h) is skipped: M5 removes the legacy path as a whole.
 
 ## 5. What is kept and retired
@@ -83,8 +85,7 @@ skip is not a pass.
 **The metric is `N/46 running under --sim=core`**, reported from M4 with coverage and open
 disagreements beside it. Original-runtime parity stays a separate column and is `not
 verified` until original-runtime evidence exists. The per-rule contract work
-([`PILOT-EVIDENCE-CONTRACT.md`](archive/PILOT-EVIDENCE-CONTRACT.md)) ends after M4; until then its
-fixtures keep guarding the legacy default.
+([`PILOT-EVIDENCE-CONTRACT.md`](archive/PILOT-EVIDENCE-CONTRACT.md)) ended with M4.
 
 ## 7. Stop rules
 
