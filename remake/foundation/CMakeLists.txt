@@ -227,6 +227,8 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
 
     add_executable(simctl src/sim/simctl.cpp)
     target_link_libraries(simctl PRIVATE foundation_sim)
+    add_executable(simfuzz src/sim/simfuzz.cpp)
+    target_link_libraries(simfuzz PRIVATE foundation_sim)
 endif()
 
 option(FOUNDATION_LIVE_DEBUG "Enable local Linux development match control" OFF)
@@ -696,8 +698,21 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # The vendored simulation: all 46 combos run, and the digest repeats and reacts (M1).
     add_executable(sim_core_test tests/sim_core_test.cpp)
     target_link_libraries(sim_core_test PRIVATE foundation_sim)
+    target_include_directories(sim_core_test PRIVATE src/sim src/sim/core)
     add_test(NAME sim_core_test COMMAND sim_core_test)
     set_tests_properties(sim_core_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
+    # The admission bodies against the original's recorded answers; skips without the bundle.
+    add_executable(sim_oracle_test tests/sim_oracle_test.cpp)
+    target_compile_definitions(sim_oracle_test PRIVATE DAYBREAK_COMPILED_NATIVE_BODIES=1)
+    target_link_libraries(sim_oracle_test PRIVATE foundation_sim)
+    target_include_directories(sim_oracle_test PRIVATE src/sim src/sim/core)
+    add_test(NAME sim_oracle_test COMMAND sim_oracle_test)
+    set_tests_properties(sim_oracle_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
+
+    # The input seed that threw before PATCHES.md's trig entry, at tick 797.
+    add_test(NAME sim_fuzz_regression COMMAND simfuzz 8 2 1 1000 9)
+    set_tests_properties(sim_fuzz_regression PROPERTIES SKIP_RETURN_CODE 77 LABELS asset
+        FAIL_REGULAR_EXPRESSION "exception")
 
     # The per-fighter combat target (issue #8): cycling, hold-for-ally, the 15-tick
     # switch pulse, the KO/invalid-index fallbacks and the Match wiring that makes

@@ -12,7 +12,11 @@ inline float legacy_trig(float angle,bool sine,TrigPrecision precision=TrigPreci
     long double scaled;
     if(precision==TrigPrecision::Float24){volatile float product=angle*10.f;volatile float shifted=product-(sine?900.f:0.f);scaled=shifted;}
     else {volatile double product=double(angle)*10.;volatile double shifted=product-(sine?900.:0.);scaled=shifted;}
-    if(!std::isfinite(scaled)||scaled<=-2147483648.L||scaled>=2147483648.L)throw std::runtime_error("Legacy angle outside defined conversion range");
-    auto index=static_cast<std::int32_t>(scaled);if(index<0)index=-index;auto bits=legacy_cosine_bits[static_cast<unsigned>(index)%3600];float result;std::memcpy(&result,&bits,4);return result;
+    // FUN_0066b668 (_ftol2) is a 64-bit FISTP and returns EAX, so a large angle keeps its low
+    // 32 bits instead of failing; past 2^63 FISTP is integer-indefinite with EAX 0.
+    const bool fits=scaled>-9223372036854775808.L&&scaled<9223372036854775808.L;
+    const auto low=fits?static_cast<std::uint32_t>(static_cast<std::uint64_t>(static_cast<std::int64_t>(scaled))):0u;
+    // FUN_0066b65c is abs(). Its one overflow, 0x80000000, stays in range here (see PATCHES.md).
+    const auto magnitude=low>>31?0u-low:low;auto bits=legacy_cosine_bits[magnitude%3600];float result;std::memcpy(&result,&bits,4);return result;
 }
 }

@@ -217,6 +217,11 @@ unsigned Battle::tick() const { return m_impl->ticks; }
 unsigned Battle::scene_phase() const { return m_impl->combat.scene_phase(); }
 unsigned Battle::live_projectiles() const { return static_cast<unsigned>(m_impl->projectiles.live.size()); }
 bool Battle::match_finished() const { return m_impl->combat.match.ready; }
+std::vector<unsigned> Battle::declared_rows(unsigned slot) const {
+    std::vector<unsigned> rows;
+    for (const auto& entry : m_impl->combat.actor_assets(slot).state_frames_) rows.push_back(entry.first);
+    return rows;
+}
 std::uint64_t Battle::hash() const { return m_impl->digest; }
 
 }  // namespace sim

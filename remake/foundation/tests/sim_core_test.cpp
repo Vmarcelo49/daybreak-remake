@@ -4,12 +4,16 @@
 #include "sim/battle.h"
 #include "sim/script.h"
 
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <set>
 #include <sstream>
 #include <string>
+
+#include "core_prelude.h"
+#include "legacy_trig.hpp"
 
 namespace {
 
@@ -141,6 +145,17 @@ void test_invalid_combos_are_rejected(const std::string& game) {
     check(rejected(16, 0), "character 16 does not exist");
 }
 
+// PATCHES.md, 2026-10-30. Ohishi+2's row 463 really does hand the trig call a pitch near 2^32,
+// and _ftol2 (FUN_0066b668) keeps the low 32 bits of a 64-bit FISTP.
+void test_trig_takes_the_ftol_path() {
+    using daybreak::legacy_trig;
+    const float wrapped = 4294967296.f;  // angle*10 has low 32 bits of zero
+    check(legacy_trig(wrapped, false) == legacy_trig(0.f, false), "a pitch of 2^32 reads table entry 0, not a throw");
+    check(legacy_trig(-wrapped, false) == legacy_trig(0.f, false), "and so does its negative");
+    check(legacy_trig(1e30f, false) == legacy_trig(0.f, false), "past 2^63 FISTP is indefinite, low word 0");
+    check(legacy_trig(90.f, false) == legacy_trig(-90.f, false), "ordinary angles keep their symmetry");
+}
+
 void test_script_parser() {
     const auto spans = script_from("# comment\n\n1 5 9 x=-1 jump guard # trailing\n");
     check(spans.size() == 1, "comments and blank lines are skipped");
@@ -160,6 +175,7 @@ void test_script_parser() {
 
 int main() {
     test_script_parser();
+    test_trig_takes_the_ftol_path();
     const std::string game = find_game();
     if (game.empty()) {
         std::puts("SIM_CORE: skipped, no game install");

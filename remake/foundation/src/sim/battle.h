@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace sim {
 
@@ -64,6 +65,8 @@ public:
     unsigned scene_phase() const;
     unsigned live_projectiles() const;
     bool match_finished() const;
+    // Every row the slot's NN.dat declares, for coverage reports.
+    std::vector<unsigned> declared_rows(unsigned slot) const;
     // FNV-1a over every completed tick's actor states, projectile count and RNG cursor.
     std::uint64_t hash() const;
 
