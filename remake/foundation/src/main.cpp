@@ -18,6 +18,8 @@
 #include <cstdio>
 #include <filesystem>
 #include <cstdlib>
+#include <random>
+#include <deque>
 #include <sstream>
 #include <cstring>
 #include <fstream>
@@ -1160,6 +1162,7 @@ struct App {
 #ifdef FOUNDATION_HAS_SIM
     sim::CoreBattle              coreBattle;   // --sim=core
 #endif
+    std::deque<xm::Controller>   coreShotControllers;   // --sim=core: this frame's shot poses
     bool                         matchMode = false;
     uint64_t                     matchFrame = 0;      // 1-based, the DX9's frame_count+1
     // Per-controller views of the live match (issue #12). Views exist for HUMAN
@@ -2600,6 +2603,7 @@ static bool startCoreBattle(App& app, const gameplay::MatchConfig& config) {
     }
     sim::BattleConfig core;
     core.gameDir = fnd::assets::assetSource().installDir();
+    if (app.frontendMatch) core.seed = static_cast<uint32_t>(app.logicTicks) * 2654435761u + 1u;
     core.timeLimitSeconds = static_cast<unsigned>(std::max(0, config.timeLimit));
     core.rules = {config.healthPercent, config.gaugePercent, config.balloonSize[0], config.balloonSize[1]};
     const std::string stageDir = charDirForSpec(app.opts.stage);
@@ -2945,7 +2949,13 @@ static glm::vec3 matchRenderPosition(const App& app, int fighter) {
 }
 
 static glm::mat4 matchRenderMatrix(const App& app, int fighter) {
-    if (app.matchAlpha == 1.f || app.opts.simCore) return app.battle->fighter(fighter).modelMatrix();
+    if (app.matchAlpha == 1.f) return app.battle->fighter(fighter).modelMatrix();
+    if (app.opts.simCore) {
+        // The core's rotation is its own (pitch and throw poses included); only the root moves.
+        glm::mat4 matrix = app.battle->fighter(fighter).modelMatrix();
+        matrix[3] = glm::vec4(matchRenderPosition(app, fighter), 1.f);
+        return matrix;
+    }
     const float previous = app.previousFighter[fighter].facingYaw;
     const float current = app.battle->fighter(fighter).facing_yaw();
     const float yaw = previous + std::remainder(current - previous, glm::two_pi<float>()) * app.matchAlpha;
@@ -3477,6 +3487,7 @@ static void placeFxCards(App& app) {
         // model the install does not ship draws nothing here, which is what the original
         // does with the empty model slot that same missing file leaves behind; the tally
         // below makes that visible instead of silent.
+        size_t coreShotPoses = 0;
         app.battle->for_each_shot([&](const game::ShotView& p) {
             const int owner = p.owner;
             // The shot carries the exact item row it was launched from, so the card is
@@ -3487,7 +3498,20 @@ static void placeFxCards(App& app) {
                 ++app.fxShotNoModel;
                 return;
             }
-            instances.push_back({card,p.modelMatrix,p.billboard,p.controller,p.textureOverrides,p.tint});
+            const xm::Controller* pose = p.controller;
+            if (!pose && p.animationSeconds >= 0.f) {
+                const xm::Model& model = app.scene.models[(size_t)card].model;
+                if (!model.anims.empty()) {
+                    // Instances keep the pointer until setEffectInstances: the deque never moves it.
+                    if (coreShotPoses >= app.coreShotControllers.size()) app.coreShotControllers.emplace_back();
+                    xm::Controller& controller = app.coreShotControllers[coreShotPoses++];
+                    controller.bind(&model);
+                    controller.setAnimation(0, true);
+                    controller.setTrackPosition(0, p.animationSeconds);
+                    pose = &controller;
+                }
+            }
+            instances.push_back({card,p.modelMatrix,p.billboard,pose,p.textureOverrides,p.tint});
             ++app.fxShotCards;
         });
     }
@@ -5271,6 +5295,21 @@ static bool enterFrontendBattle(App& app) {
             if (!selected) app.frontend.slots[i] = ui::FrontendSlot{};
         }
     }
+    // The core always plays four actors. FUN_0040d130 gives each unselected slot a random
+    // COM (character, weapon, mode, costume), as the bundle's prepare_local_roster does; the
+    // draws here are the port's own, not the battle RNG's.
+    if (app.opts.simCore) {
+        std::mt19937 fill(static_cast<uint32_t>(app.logicTicks) * 2654435761u + 1u);
+        for (int panel = 0; panel < 4; ++panel) {
+            ui::FrontendSlot& slot = app.frontend.slots[panel];
+            if (slot.character >= 0) continue;
+            slot = ui::FrontendSlot{};
+            slot.character = static_cast<int>(fill() % gameplay::kCharacterCount);
+            slot.weapon = static_cast<int>(fill() % gameplay::weaponCountForCharacter(slot.character));
+            slot.hypermode = static_cast<int>(fill() % 3);
+            slot.controller = 4;
+        }
+    }
     ui::FrontendLaunch launch;
     if (!ui::frontendLaunch(app.frontend, launch, app.error, (uint32_t)app.logicTicks)) return false;
     app.battleLaunch = launch;
@@ -6537,7 +6576,10 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     record.hitsFromOthers = app->titleHits[i].fromOthers;
                     record.hitsOnLocalPlayer = app->titleHits[i].onLocalPlayer;
                     bool resolved = false;
-                    const int title = gameplay::resultTitleIndex(record, app->titleRng, &resolved);
+                    const int coreTitle = app->battle->fighter(i).result_title();
+                    if (coreTitle >= 0) resolved = true;
+                    const int title = coreTitle >= 0 ? coreTitle
+                                                     : gameplay::resultTitleIndex(record, app->titleRng, &resolved);
                     static gameplay::ResultTitleTable titleTable;
                     static bool titleTableTried = false;
                     if (!titleTableTried) {

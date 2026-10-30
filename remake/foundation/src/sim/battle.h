@@ -52,15 +52,35 @@ using Matrix = std::array<float, 16>;
 struct SpecialState {
     unsigned mode = 0;
     bool active = false;
+    bool ready = false;      // the meter is full and the mode can start
     int charge = 0, limit = 0;
+    int ticksLeft = 0;       // the running mode's own clock
+    int flash = 0;           // the presentation's red flash, 0..255
+    int entryRow = 0;        // 500..503 while the activation plays, else 0
+    int entryFrame = 0;
+};
+
+// The slot's running totals (ActorStatistics), on the core's 10000-per-fighter HP scale.
+struct ActorTotals {
+    int kills = 0, deaths = 0, damageDealt = 0, damageTaken = 0;
 };
 
 struct MatchState {
     int winner = -1;                       // the winning team once the round is decided
     bool finished = false;                 // the result screens are ready
+    bool awardsReady = false;              // the titles below are chosen
+    std::array<int, 4> awards{{-1, -1, -1, -1}};  // FUN_00430880's title per slot
     bool timed = false;
     int remainingTicks = 0;
     std::array<float, 2> score{}, limit{};  // the balloon percentages the HUD shows
+};
+
+// One hand's weapon trail source (WeaponVisualController, RuntimeBattle::advance_weapon_trails).
+struct HandTrail {
+    int model = -1;       // the held item model, -1 for an empty hand
+    bool active = false;  // the current move asks this model for a trail
+    Matrix boneWorld{};   // Bip01_Prop1/2 in the world, valid when the rig has the bone
+    bool hasBone = false;
 };
 
 // One live projectile, in the render pass's terms (projectile_render_pose).
@@ -70,6 +90,7 @@ struct ProjectileState {
     Matrix modelMatrix{};
     bool billboard = false;
     int tint = 0;
+    int frame = 0;  // the model's animation clock, in original updates
 };
 
 // What the last tick asked the presentation to do, after the core's audibility rules.
@@ -122,6 +143,8 @@ public:
     bool match_finished() const;
     ActorAnimation animation(unsigned slot) const;
     SpecialState special(unsigned slot) const;
+    ActorTotals totals(unsigned slot) const;
+    HandTrail hand_trail(unsigned slot, unsigned hand) const;
     MatchState match_state() const;
     const BattleEvents& events() const;
     void for_each_projectile(const std::function<void(const ProjectileState&)>& visit) const;

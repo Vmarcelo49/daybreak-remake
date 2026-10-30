@@ -1,8 +1,7 @@
 #pragma once
 // game::Battle over the vendored core, behind --sim=core (docs/DIRECTION.md, M4).
 //
-// In progress. Trails, combat statistics, hit edges for the title counters and animated shot
-// models are still empty on this path.
+// In progress: the owner's closing playtest (M4) and the switch to default (M5) remain.
 #include <array>
 #include <memory>
 #include <string>
@@ -48,25 +47,29 @@ public:
     game::Hypermode hypermode() const override;
     float hyper_gauge() const override;
     bool hyper_active() const override { return m_special.active; }
-    bool hyper_ready() const override { return !m_special.active && hyper_gauge() >= 1.f; }
-    float hyper_seconds_left() const override { return 0.f; }
-    int hyper_flash_alpha() const override { return 0; }
-    bool hyper_activation_playing() const override { return false; }
-    int hyper_activation_elapsed() const override { return 0; }
+    bool hyper_ready() const override { return m_special.ready; }
+    float hyper_seconds_left() const override { return static_cast<float>(m_special.ticksLeft) / 60.f; }
+    int hyper_flash_alpha() const override { return m_special.flash; }
+    bool hyper_activation_playing() const override { return m_special.entryRow != 0; }
+    int hyper_activation_elapsed() const override { return m_special.entryFrame; }
     bool aura_active() const override { return m_special.active; }
     glm::vec3 aura_center_local() const override { return glm::vec3(0.f, 58.f, 0.f); }
     float aura_radius() const override { return 0.f; }
     game::Rgb aura_color() const override { return 0; }
     bool draws_item_model(int model) const override { return model == m_held[0] || model == m_held[1]; }
     const gameplay::WeaponTrail& trail(int hand) const override { return m_trails[static_cast<size_t>(hand)]; }
-    int trail_item_model(int) const override { return -1; }
+    int trail_item_model(int hand) const override { return m_trailModels[static_cast<size_t>(hand)]; }
     bool core_pose(std::vector<glm::mat4>& worldOut) const override;
+    int result_title() const override { return m_title; }
 
     void bind(const Battle* battle, unsigned slot, const gameplay::CharacterMoves* moves,
               const gameplay::WeaponDefinition* weapon);
     void refresh();
+    void set_result_title(int title) { m_title = title; }
 
 private:
+    void refresh_trails();
+
     const Battle* m_battle = nullptr;
     unsigned m_slot = 0;
     const gameplay::CharacterMoves* m_moves = nullptr;
@@ -80,8 +83,10 @@ private:
     std::array<MagazineState, 2> m_magazines{};
     ActorAnimation m_animation{};
     SpecialState m_special{};
+    int m_title = -1;
     game::CombatStats m_stats{};
     std::array<gameplay::WeaponTrail, 2> m_trails{};
+    std::array<int, 2> m_trailModels{{-1, -1}};
     mutable std::vector<std::string> m_boneNames;
     mutable std::vector<Matrix> m_bones;
 };

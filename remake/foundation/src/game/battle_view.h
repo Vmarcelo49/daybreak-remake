@@ -83,6 +83,8 @@ public:
     // A simulation that samples its own skeleton fills one model-space matrix per rig frame
     // and returns true. The legacy path animates the rig's xm::Controller instead.
     virtual bool core_pose(std::vector<glm::mat4>&) const { return false; }
+    // The earned title, when the simulation chose it itself; -1 leaves it to the product's rules.
+    virtual int result_title() const { return -1; }
 };
 
 inline constexpr float kShotCubeSize = 16.0f;
@@ -97,6 +99,8 @@ struct ShotView {
     glm::mat4 modelMatrix{1.f};
     bool billboard = false;
     const xm::Controller* controller = nullptr;  // null without a model
+    // With no controller, the time into the model's first set the shot's pose samples, or < 0.
+    float animationSeconds = -1.f;
     std::vector<std::pair<std::string, std::string>> textureOverrides;
     int tint = 0;
 };

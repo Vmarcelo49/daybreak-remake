@@ -268,12 +268,44 @@ ActorAnimation Battle::animation(unsigned slot) const {
 }
 
 SpecialState Battle::special(unsigned slot) const {
-    const auto& gauge = m_impl->combat.special_gauges[slot];
+    const auto& combat = m_impl->combat;
+    const auto& gauge = combat.special_gauges[slot];
     SpecialState out;
-    out.mode = gauge.mode;
+    out.mode = gauge.mode & 255u;
     out.active = gauge.active0 || gauge.active1 || gauge.active2;
-    out.charge = static_cast<int>(gauge.charge0);
-    out.limit = static_cast<int>(gauge.limit0);
+    // Mode 0 fills from taking damage (charge0/limit0) and mode 1 from dealing it (charge1/limit1).
+    const bool second = out.mode == 1;
+    out.charge = static_cast<int>(second ? gauge.charge1 : gauge.charge0);
+    out.limit = static_cast<int>(second ? gauge.limit1 : gauge.limit0);
+    out.ready = !out.active && out.limit > 0 && out.charge >= out.limit;
+    out.ticksLeft = static_cast<int>(second ? gauge.duration1 : gauge.duration0);
+    out.flash = gauge.flash;
+    out.entryRow = static_cast<int>(combat.special_entry[slot].state);
+    out.entryFrame = static_cast<int>(combat.special_entry[slot].frame);
+    return out;
+}
+
+HandTrail Battle::hand_trail(unsigned slot, unsigned hand) const {
+    const auto& combat = m_impl->combat;
+    HandTrail out;
+    out.model = combat.selected_held_weapon_models(slot)[hand];
+    if (out.model >= 0 && out.model < 12) out.active = combat.weapon_visual_controllers[slot].model_trail[static_cast<size_t>(out.model)];
+    std::optional<ActorSkeleton> fallback;
+    const unsigned bone = combat.render_pose_view(slot, fallback).find(hand ? "Bip01_Prop2" : "Bip01_Prop1");
+    if (bone) {
+        out.hasBone = true;
+        out.boneWorld = combat.actor_bone_world(m_impl->world, slot, bone);
+    }
+    return out;
+}
+
+ActorTotals Battle::totals(unsigned slot) const {
+    const auto& s = m_impl->combat.statistics[slot];
+    ActorTotals out;
+    out.kills = static_cast<int>(s.kills);
+    out.deaths = static_cast<int>(s.deaths);
+    out.damageDealt = static_cast<int>(s.dealt[0] + s.dealt[1]);
+    out.damageTaken = static_cast<int>(s.received[0] + s.received[1]);
     return out;
 }
 
@@ -282,6 +314,9 @@ MatchState Battle::match_state() const {
     MatchState out;
     out.winner = combat.match.winner;
     out.finished = combat.match.ready;
+    out.awardsReady = combat.awards.ready;
+    if (out.awardsReady)
+        for (unsigned i = 0; i < 4; ++i) out.awards[i] = static_cast<int>(combat.awards.ids[i]);
     out.timed = combat.match.timed;
     out.remainingTicks = static_cast<int>(combat.match.remaining_ticks);
     const auto scores = combat.displayed_team_scores();
@@ -312,6 +347,7 @@ void Battle::for_each_projectile(const std::function<void(const ProjectileState&
         out.modelMatrix = projectile_render_pose(p.state, frame.flags28, kIdentity, bound ? &external : nullptr);
         out.billboard = (frame.flags28 & 0x1000u) != 0;
         out.tint = frame.fields[19];
+        out.frame = static_cast<int>(p.state.frame);
         visit(out);
     }
 }

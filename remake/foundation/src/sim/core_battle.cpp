@@ -14,6 +14,9 @@ namespace sim {
 
 namespace {
 
+// FUN_0041fb09's frame-to-seconds constant (actor_track_time.hpp).
+constexpr float kOriginalAnimationTick = 0.016000000759959221f;
+
 glm::mat4 to_glm(const Matrix& m) {
     glm::mat4 out;
     std::memcpy(&out[0][0], m.data(), sizeof(float) * 16);
@@ -80,6 +83,28 @@ void CoreFighter::refresh() {
     m_magazines = m_battle->magazines(m_slot);
     m_animation = m_battle->animation(m_slot);
     m_special = m_battle->special(m_slot);
+    // The product's stats read on its 100-per-fighter HP scale.
+    const ActorTotals totals = m_battle->totals(m_slot);
+    m_stats = {totals.kills, totals.deaths, totals.damageDealt / 100, totals.damageTaken / 100};
+    refresh_trails();
+}
+
+// Anchors 3..5 and 6..8 of the held slot are the ribbon's two endpoints (FUN_00430120).
+void CoreFighter::refresh_trails() {
+    for (unsigned hand = 0; hand < 2; ++hand) {
+        const HandTrail source = m_battle->hand_trail(m_slot, hand);
+        gameplay::WeaponTrail& trail = m_trails[hand];
+        m_trailModels[hand] = source.model;
+        if (!m_weapon || !source.hasBone || source.model < 0 || source.model >= m_weapon->slotCount ||
+            !m_weapon->slots[source.model].has_prop()) {
+            trail.reset();
+            continue;
+        }
+        const auto& slot = m_weapon->slots[source.model];
+        const glm::mat4 bone = to_glm(source.boneWorld);
+        const auto point = [&](const auto& p) { return glm::vec3(bone * glm::vec4(p[0], p[1], p[2], 1.f)); };
+        trail.step(source.active, point(slot.ribbonRoot), point(slot.ribbonTip));
+    }
 }
 
 game::Hypermode CoreFighter::hypermode() const {
@@ -146,10 +171,15 @@ game::BattleFrame CoreBattle::step(const fnd::input::PlayerState* inputs[game::k
     const MatchState match = m_battle->match_state();
     const float score[2] = {match.score[0], match.score[1]};
     const float limit[2] = {match.limit[0], match.limit[1]};
-    m_economy.mirror(score, limit, match.winner, match.timed ? match.remainingTicks / 60 : 0);
-    frame.roundOver = match.winner >= 0 && !m_roundReported;
+    // The product leaves the battle on roundOver, so it waits for the core's own result
+    // preparation (the KO presentation, then the titles) rather than the first decided tick.
+    const int finishedWinner = match.awardsReady ? match.winner : -1;
+    m_economy.mirror(score, limit, finishedWinner, match.timed ? match.remainingTicks / 60 : 0);
+    frame.roundOver = match.awardsReady && !m_roundReported;
     frame.roundOverSide = match.winner;
-    m_roundReported = match.winner >= 0;
+    m_roundReported = match.awardsReady;
+    if (match.awardsReady)
+        for (size_t i = 0; i < m_fighters.size(); ++i) m_fighters[i].set_result_title(match.awards[i]);
     return frame;
 }
 
@@ -167,6 +197,7 @@ void CoreBattle::for_each_shot(const std::function<void(const game::ShotView&)>&
         view.modelMatrix = to_glm(p.modelMatrix);
         view.billboard = p.billboard;
         view.tint = p.tint;
+        view.animationSeconds = static_cast<float>(p.frame) * kOriginalAnimationTick;
         visit(view);
     });
 }

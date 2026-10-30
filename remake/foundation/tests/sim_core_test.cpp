@@ -135,7 +135,7 @@ void test_scripted_rena_reaches_her_rows(const std::string& game) {
 // every request resolves to something the presentation can use.
 void test_presentation_events(const std::string& game) {
     sim::Battle battle(match(game, 1, 0));
-    size_t effects = 0, sounds = 0, voices = 0, shots = 0, unknownRows = 0;
+    size_t effects = 0, sounds = 0, voices = 0, shots = 0, unknownRows = 0, trails = 0;
     bool badVoicePath = false;
     for (unsigned t = 0; t < 3600; ++t) {
         battle.step({});
@@ -155,6 +155,13 @@ void test_presentation_events(const std::string& game) {
     check(!badVoicePath, "voices resolve to shipped paths");
     check(shots > 0, "a match has live projectiles");
     check(unknownRows == 0, "every projectile maps back to a weapon row");
+    // Only melee weapons ask for trails, so this names a combo that swings: Shion+2.
+    sim::Battle swinger(match(game, 5, 2));
+    for (unsigned t = 0; t < 2400; ++t) {
+        swinger.step({});
+        for (unsigned hand = 0; hand < 2; ++hand) trails += swinger.hand_trail(0, hand).active;
+    }
+    check(trails > 0, "a melee weapon draws trails");
     const sim::MatchState state = battle.match_state();
     check(state.limit[0] == 100.f && state.limit[1] == 100.f, "the score limit defaults to 100");
 }
@@ -173,6 +180,12 @@ void test_round_end(const std::string& game) {
     }
     check(decided, "the time limit decides a winner");
     check(ready, "and the result screens become ready");
+    bool titlesChosen = false;
+    for (unsigned t = 0; t < 2000 && !titlesChosen; ++t) {
+        battle.step({});
+        titlesChosen = battle.match_state().awardsReady;
+    }
+    check(titlesChosen, "the core chooses the earned titles");
     check(battle.match_state().timed, "the round reports its clock");
 }
 

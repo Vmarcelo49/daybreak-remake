@@ -57,6 +57,8 @@ def main():
     ap.add_argument("--out", default=None)
     ap.add_argument("--workdir", default=None)
     ap.add_argument("--timeout", type=float, default=900.0)
+    ap.add_argument("--demo-arg", action="append", default=[], help="extra argument for the demo")
+    ap.add_argument("--fighters", type=int, default=None, help="override the recipe's roster size")
     args = ap.parse_args()
 
     recipe = RECIPES[args.recipe]
@@ -71,11 +73,12 @@ def main():
         print("SKIP: no game data at %s" % args.install)
         return 77
 
+    fighters = args.fighters if args.fighters is not None else recipe["fighters"]
     cmd = [str(Path(args.demo).resolve()), "--install=" + str(Path(args.install).resolve()),
            "--screen=title", "--local-players=%d" % recipe["players"],
            "--script=" + str(SCRIPTS / recipe["script"]),
            "--headless", "--no-audio", "--out=" + str(out), "--size=1280x720",
-           "--frames=%d" % frames]
+           "--frames=%d" % frames] + args.demo_arg
     print("release_flow_check: %s (%d frame budget, %d round(s) required)"
           % (args.recipe, frames, rounds_required))
     try:
@@ -112,9 +115,9 @@ def main():
     roster = ROSTER_RE.search(text)
     if not roster:
         failures.append("the run never reported a battle roster")
-    elif int(roster.group(1)) != recipe["fighters"]:
+    elif int(roster.group(1)) != fighters:
         failures.append("the battle built %s fighter(s), the recipe asks for %d"
-                        % (roster.group(1), recipe["fighters"]))
+                        % (roster.group(1), fighters))
 
     completed = len(ROUND_RE.findall(text))
     if completed < rounds_required:

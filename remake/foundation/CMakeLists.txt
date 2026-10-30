@@ -724,6 +724,14 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME sim_pose_test COMMAND sim_pose_test)
     set_tests_properties(sim_pose_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
+    # The real front end through the core: title, selection, versus, battle, result. Empty panels
+    # become COMs, so a one-human selection still fights four.
+    add_test(NAME sim_frontend_flow COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/release_flow_check.py $<TARGET_FILE:foundation_demo>
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Higurashi-Daybreak --recipe=com --rounds=1 --frames=5000 --fighters=4
+        --demo-arg=--sim=core)
+    set_tests_properties(sim_frontend_flow PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600 LABELS asset)
+
     # M3's boundary: the product reaches the legacy simulation only at its named seams.
     add_test(NAME battle_seam_test COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/battle_seam_test.sh
         ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -1036,4 +1044,13 @@ if(EMSCRIPTEN)
     endif()
 else()
     target_copy_webgpu_binaries(foundation_demo)
+endif()
+
+# Tests never read a physical pad. The port reads every device on every run (2026-10-29), so a
+# connected controller's stick noise reached the scripted runs: character_shadow passed 2 of 8
+# with an 8BitDo attached and 8 of 8 with this hint.
+get_property(foundation_tests DIRECTORY PROPERTY TESTS)
+if(foundation_tests)
+    set_property(TEST ${foundation_tests} APPEND PROPERTY ENVIRONMENT
+        "SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT=0x0000/0x0000")
 endif()
