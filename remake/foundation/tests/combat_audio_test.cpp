@@ -1,6 +1,7 @@
 // Issue #16: the live combat SE/voice policy — event identity, de-duplication, per-fighter
 // voice bookkeeping, suspend/resume and repeated-match cleanup. Device-free: the sink records
 // calls, so no SDL device and no audio hardware are involved.
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -188,6 +189,15 @@ int main() {
         SpatialMix right = spatial_mix(req);
         CHECK(left.left > left.right);
         CHECK(right.right > right.left);
+        // The battle stage's own values: the distance must be audible in world units.
+        req.rolloffFactor = .0005f;
+        const auto gain = [&](float distance) {
+            req.source = {0.f,0.f,-distance};
+            const SpatialMix mix = spatial_mix(req);
+            return std::sqrt(mix.left*mix.left + mix.right*mix.right);
+        };
+        CHECK(std::abs(gain(1000.f) - .857f) < .002f);
+        CHECK(std::abs(gain(6003.f) - .5f) < .002f);
         std::vector<int16_t> input{16000,16000};
         std::vector<int16_t> output;
         spatialize_s16(input.data(),1,left,output);

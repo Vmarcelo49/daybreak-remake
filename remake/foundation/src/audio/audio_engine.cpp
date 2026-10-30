@@ -51,13 +51,13 @@ SpatialMix spatial_mix(const SpatialPlayRequest& request) {
                             request.source.z - request.listener.z};
     const float distance = std::sqrt(delta.x*delta.x + delta.y*delta.y + delta.z*delta.z);
     const float safeMin = std::max(0.001f, request.minDistance);
-    // DirectSound documents full volume at minimum distance, half at 2x minimum for
-    // rolloff 1, and no attenuation at rolloff 0. This port approximates the API curve with
-    // (min/distance)^rolloff; the exact legacy DSP is platform-owned. DistanceFactor is
-    // omitted here because Microsoft specifies it for units/Doppler, not distance rolloff.
-    const float distanceRatio = std::max(1.f, distance / safeMin);
-    const float attenuation = std::pow(1.f / distanceRatio,
-                                       std::max(0.f, request.rolloffFactor));
+    // Port rule: the inverse-distance law min/(min + rolloff*(distance-min)), full volume at
+    // minimum and half at 2x minimum for rolloff 1. Microsoft does not publish DirectSound's
+    // formula, so this is the model as secondary sources describe it. A power law leaves the
+    // original's raw world units (FUN_006358c0, FUN_0065a260) and rolloff .0005 inaudible.
+    // DistanceFactor is omitted: Microsoft specifies it for units/Doppler, not rolloff.
+    const float attenuation = safeMin / (safeMin + std::max(0.f, request.rolloffFactor) *
+                                                       std::max(0.f, distance - safeMin));
     const float fwdLength = std::sqrt(request.listenerForward.x*request.listenerForward.x +
                                       request.listenerForward.y*request.listenerForward.y +
                                       request.listenerForward.z*request.listenerForward.z);

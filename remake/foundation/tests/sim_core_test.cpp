@@ -266,6 +266,26 @@ void test_hud_values(const std::string& game) {
     check(popup, "a score change arms the popup");
 }
 
+// The attenuation needs world positions on the cues: a cue at the origin or on the listener
+// would stay at full volume whatever the fighters do.
+void test_positional_sounds(const std::string& game) {
+    sim::Battle battle(match(game, 0, 0));
+    size_t positional = 0;
+    float farthest = 0.f;
+    for (unsigned t = 0; t < 3600; ++t) {
+        battle.step({});
+        const std::array<float, 3> listener = battle.actor(0).position;
+        for (const auto& sound : battle.events().sounds) {
+            if (!sound.positional) continue;
+            ++positional;
+            const float dx = sound.position[0] - listener[0], dy = sound.position[1] - listener[1] - 150.f, dz = sound.position[2] - listener[2];
+            farthest = std::max(farthest, std::sqrt(dx * dx + dy * dy + dz * dz));
+        }
+    }
+    check(positional > 0, "a match requests positional sounds");
+    check(farthest > 500.f, "and they carry world positions away from the listener");
+}
+
 void test_invalid_combos_are_rejected(const std::string& game) {
     const auto rejected = [&](int character, int weapon) {
         try {
@@ -321,6 +341,7 @@ int main() {
     test_round_end(game);
     test_rena_ex_camera(game);
     test_hud_values(game);
+    test_positional_sounds(game);
     test_determinism(game);
     test_input_sensitivity(game);
     test_scripted_rena_reaches_her_rows(game);
