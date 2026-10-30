@@ -40,8 +40,12 @@ bool uploadCnvSheet(SpriteRenderer& batch, const char* stem, int& slot, std::str
         error = base + ".cnv: " + e.what();
         return false;
     }
-    localizeSheet(base, image.rgba.data(), static_cast<int>(image.width), static_cast<int>(image.height));
-    slot = batch.addTexture(image.width, image.height, image.rgba.data(), error);
+    ui::LocalizedSheet localized;
+    if (ui::localizeSheet(base, image.rgba.data(), static_cast<int>(image.width), static_cast<int>(image.height), localized))
+        slot = batch.addScaledTexture(image.width, image.height, static_cast<uint32_t>(localized.width),
+                                      static_cast<uint32_t>(localized.height), localized.rgba.data(), error);
+    else
+        slot = batch.addTexture(image.width, image.height, image.rgba.data(), error);
     if (slot < 0) {
         error = base + ".cnv upload failed: " + error;
         return false;

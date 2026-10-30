@@ -24,7 +24,16 @@ struct SheetLabel {
 // Device-free so the file format is testable. Malformed lines are reported in `error`.
 std::vector<SheetLabel> parseSheetLabels(const std::string& text, std::string& error);
 
-// Paints this sheet's labels into its RGBA pixels. `stem` is the path the screen asked for.
-void localizeSheet(const std::string& stem, uint8_t* rgba, int width, int height);
+// A translated sheet is drawn this many times larger than the original, so its text stays sharp when
+// the 800x600 canvas is scaled up. The screens keep using the original's coordinates.
+inline constexpr int kSheetScale = 4;
+
+struct LocalizedSheet {
+    int width = 0, height = 0;
+    std::vector<uint8_t> rgba;
+};
+// False when the file names no label on this sheet, so the caller keeps the original pixels.
+// `stem` is the path the screen asked for.
+bool localizeSheet(const std::string& stem, const uint8_t* rgba, int width, int height, LocalizedSheet& out);
 
 }  // namespace ui

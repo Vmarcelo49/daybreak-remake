@@ -10,14 +10,17 @@
 
 #include <SDL3/SDL.h>
 
-#include "ui/caption.h"
+// STBTT_STATIC, as in text.cpp: each user keeps its own private copy of the vendor symbols.
+#define STBTT_STATIC
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "stb_truetype.h"
 #include "ui/text.h"
 
 namespace ui {
 namespace {
 
 constexpr const char* kFontFile = "Goldman-Bold.ttf";
-constexpr float kRasterCell = 96.f;
+constexpr float kRasterEm = 512.f;
 constexpr float kShear = 0.25f;  // Goldman has no italic; the game's lettering leans this way
 
 struct Rgb { float r, g, b; };
@@ -54,7 +57,8 @@ const std::map<std::string, Style> kStyles = {
 };
 
 std::vector<SheetLabel> gLabels;
-TextLayer gLayer;
+std::vector<uint8_t> gFontBytes;
+stbtt_fontinfo gFont;
 
 std::string lowered(std::string text) {
     for (char& c : text)
@@ -79,51 +83,60 @@ std::vector<std::string> splitLines(const std::string& text) {
 struct Mask { int w = 0, h = 0; std::vector<float> a; };
 
 Mask rasterLine(const std::string& line) {
-    const TextLayout layout = gLayer.layout(line.c_str());
-    std::vector<GlyphQuad> quads;
-    const int margin = 8;
-    gLayer.buildQuads(layout, 0.f, 0.f, 1.f, quads);
-    float right = 0.f, top = 1e9f, bottom = -1e9f;
-    for (const GlyphQuad& q : quads) {
-        right = std::max(right, q.x + q.w);
-        top = std::min(top, q.y);
-        bottom = std::max(bottom, q.y + q.h);
+    const float scale = stbtt_ScaleForPixelHeight(&gFont, kRasterEm);
+    int ascent = 0, descent = 0, gap = 0;
+    stbtt_GetFontVMetrics(&gFont, &ascent, &descent, &gap);
+    const int baseline = static_cast<int>(std::ceil(ascent * scale));
+    const int height = static_cast<int>(std::ceil((ascent - descent) * scale));
+
+    // The labels are ASCII: the translated text never needs another face.
+    float pen = 0.f;
+    for (size_t i = 0; i < line.size(); ++i) {
+        int advance = 0, bearing = 0;
+        stbtt_GetCodepointHMetrics(&gFont, line[i], &advance, &bearing);
+        pen += advance * scale;
+        if (i + 1 < line.size()) pen += stbtt_GetCodepointKernAdvance(&gFont, line[i], line[i + 1]) * scale;
     }
     Mask out;
-    if (quads.empty()) return out;
-    const float height = bottom - top;
+    if (line.empty()) return out;
+    constexpr int kMargin = 16;
     const int lean = static_cast<int>(std::ceil(kShear * height));
-    out.w = static_cast<int>(std::ceil(right)) + lean + margin * 2;
-    out.h = static_cast<int>(std::ceil(height)) + margin * 2;
+    out.w = static_cast<int>(std::ceil(pen)) + lean + kMargin * 2;
+    out.h = height + kMargin * 2;
     out.a.assign(static_cast<size_t>(out.w) * out.h, 0.f);
-    const std::vector<uint8_t>& atlas = gLayer.atlasRGBA();
-    const int aw = gLayer.atlasWidth(), ah = gLayer.atlasHeight();
-    for (const GlyphQuad& q : quads) {
-        const int gw = static_cast<int>(std::lround(q.w)), gh = static_cast<int>(std::lround(q.h));
-        const int ax = static_cast<int>(std::lround(q.u0 * aw)), ay = static_cast<int>(std::lround(q.v0 * ah));
+    pen = 0.f;
+    for (size_t i = 0; i < line.size(); ++i) {
+        int gw = 0, gh = 0, ox = 0, oy = 0;
+        unsigned char* bitmap = stbtt_GetCodepointBitmap(&gFont, 0, scale, line[i], &gw, &gh, &ox, &oy);
         for (int y = 0; y < gh; ++y) {
-            const float yFromBottom = bottom - (q.y + y);
-            const int dy = static_cast<int>(std::lround(q.y + y - top)) + margin;
-            const int shift = static_cast<int>(std::lround(kShear * yFromBottom));
+            const int row = baseline + oy + y;
+            const float lift = kShear * static_cast<float>(height - row);
             for (int x = 0; x < gw; ++x) {
-                const int dx = static_cast<int>(std::lround(q.x)) + x + shift + margin;
+                const int dx = static_cast<int>(std::lround(pen + ox + x + lift)) + kMargin;
+                const int dy = row + kMargin;
                 if (dx < 0 || dx >= out.w || dy < 0 || dy >= out.h) continue;
-                const size_t from = (static_cast<size_t>(ay + y) * aw + (ax + x)) * 4 + 3;
                 float& to = out.a[static_cast<size_t>(dy) * out.w + dx];
-                to = std::max(to, atlas[from] / 255.f);
+                to = std::max(to, bitmap[static_cast<size_t>(y) * gw + x] / 255.f);
             }
         }
+        stbtt_FreeBitmap(bitmap, nullptr);
+        int advance = 0, bearing = 0;
+        stbtt_GetCodepointHMetrics(&gFont, line[i], &advance, &bearing);
+        pen += advance * scale;
+        if (i + 1 < line.size()) pen += stbtt_GetCodepointKernAdvance(&gFont, line[i], line[i + 1]) * scale;
     }
     return out;
 }
 
-// Area average: the raster is always larger than the label.
+// Area average: the raster is larger than any label on a 4x sheet.
 std::vector<float> shrink(const Mask& m, int w, int h) {
     std::vector<float> out(static_cast<size_t>(w) * h, 0.f);
     for (int y = 0; y < h; ++y) {
-        const int y0 = y * m.h / h, y1 = std::max(y0 + 1, (y + 1) * m.h / h);
+        const int y0 = static_cast<int>(static_cast<int64_t>(y) * m.h / h);
+        const int y1 = std::max(y0 + 1, static_cast<int>(static_cast<int64_t>(y + 1) * m.h / h));
         for (int x = 0; x < w; ++x) {
-            const int x0 = x * m.w / w, x1 = std::max(x0 + 1, (x + 1) * m.w / w);
+            const int x0 = static_cast<int>(static_cast<int64_t>(x) * m.w / w);
+            const int x1 = std::max(x0 + 1, static_cast<int>(static_cast<int64_t>(x + 1) * m.w / w));
             float sum = 0.f;
             for (int sy = y0; sy < y1 && sy < m.h; ++sy)
                 for (int sx = x0; sx < x1 && sx < m.w; ++sx) sum += m.a[static_cast<size_t>(sy) * m.w + sx];
@@ -188,7 +201,11 @@ void eraseRect(const SheetLabel& label, Erase mode, uint8_t* rgba, int width, in
     }
 }
 
-void paintLabel(const SheetLabel& label, const Style& style, uint8_t* rgba, int width, int height) {
+void paintLabel(SheetLabel label, const Style& style, uint8_t* rgba, int width, int height) {
+    label.x *= kSheetScale;
+    label.y *= kSheetScale;
+    label.w *= kSheetScale;
+    label.h *= kSheetScale;
     eraseRect(label, style.erase, rgba, width, height);
     const std::vector<std::string> lines = splitLines(label.text);
     const float rowHeight = label.h * style.fillRatio / static_cast<float>(lines.size());
@@ -247,6 +264,46 @@ void paintLabel(const SheetLabel& label, const Style& style, uint8_t* rgba, int 
             }
         }
     }
+}
+
+// What the GPU's linear filter would show, so the art beside a label looks as it did.
+std::vector<uint8_t> enlarged(const uint8_t* rgba, int width, int height) {
+    const int w = width * kSheetScale, h = height * kSheetScale;
+    std::vector<uint8_t> out(static_cast<size_t>(w) * h * 4);
+    for (int y = 0; y < h; ++y) {
+        const float sy = std::max(0.f, (y + 0.5f) / kSheetScale - 0.5f);
+        const int y0 = static_cast<int>(sy), y1 = std::min(height - 1, y0 + 1);
+        const float fy = sy - y0;
+        for (int x = 0; x < w; ++x) {
+            const float sx = std::max(0.f, (x + 0.5f) / kSheetScale - 0.5f);
+            const int x0 = static_cast<int>(sx), x1 = std::min(width - 1, x0 + 1);
+            const float fx = sx - x0;
+            const uint8_t* corner[4] = {rgba + (static_cast<size_t>(y0) * width + x0) * 4, rgba + (static_cast<size_t>(y0) * width + x1) * 4,
+                                        rgba + (static_cast<size_t>(y1) * width + x0) * 4, rgba + (static_cast<size_t>(y1) * width + x1) * 4};
+            const float weight[4] = {(1 - fx) * (1 - fy), fx * (1 - fy), (1 - fx) * fy, fx * fy};
+            float alpha = 0.f, colour[3] = {0, 0, 0};
+            for (int i = 0; i < 4; ++i) {
+                const float a = corner[i][3] * weight[i];
+                alpha += a;
+                for (int c = 0; c < 3; ++c) colour[c] += corner[i][c] * a;
+            }
+            uint8_t* p = out.data() + (static_cast<size_t>(y) * w + x) * 4;
+            for (int c = 0; c < 3; ++c) p[c] = alpha > 0.f ? static_cast<uint8_t>(std::lround(colour[c] / alpha)) : 0;
+            p[3] = static_cast<uint8_t>(std::lround(alpha));
+        }
+    }
+    return out;
+}
+
+std::vector<uint8_t> readFontFile(const char* name) {
+    std::vector<std::string> paths;
+    for (auto roots = fontSearchRoots(); *roots; ++roots) paths.push_back(std::string(*roots) + name);
+    if (const char* base = SDL_GetBasePath()) paths.push_back(std::string(base) + "assets/fonts/" + name);
+    for (const std::string& path : paths) {
+        std::ifstream file(std::filesystem::u8path(path), std::ios::binary);
+        if (file) return {std::istreambuf_iterator<char>(file), {}};
+    }
+    return {};
 }
 
 std::string readLocaleFile(const std::string& name) {
@@ -309,14 +366,24 @@ bool setSheetLanguage(const std::string& language, std::string& error) {
             error = language + ".txt: unknown style " + label.style;
             return false;
         }
-    return loadCaptionFont(gLayer, kRasterCell, error, kFontFile, nullptr);
+    gFontBytes = readFontFile(kFontFile);
+    if (gFontBytes.empty() || !stbtt_InitFont(&gFont, gFontBytes.data(), 0)) {
+        error = std::string("cannot read ") + kFontFile + " from assets/fonts";
+        return false;
+    }
+    return true;
 }
 
-void localizeSheet(const std::string& stem, uint8_t* rgba, int width, int height) {
-    if (gLabels.empty()) return;
+bool localizeSheet(const std::string& stem, const uint8_t* rgba, int width, int height, LocalizedSheet& out) {
     const std::string key = lowered(stem);
+    const auto named = [&](const SheetLabel& label) { return label.sheet == key; };
+    if (std::none_of(gLabels.begin(), gLabels.end(), named)) return false;
+    out.width = width * kSheetScale;
+    out.height = height * kSheetScale;
+    out.rgba = enlarged(rgba, width, height);
     for (const SheetLabel& label : gLabels)
-        if (label.sheet == key) paintLabel(label, kStyles.at(label.style), rgba, width, height);
+        if (named(label)) paintLabel(label, kStyles.at(label.style), out.rgba.data(), out.width, out.height);
+    return true;
 }
 
 }  // namespace ui

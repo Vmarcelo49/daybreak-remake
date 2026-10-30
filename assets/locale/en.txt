@@ -216,34 +216,34 @@ data/select/bg01 | 531 411 158 100 | patchred | RED
 # Story teams: names on two rows, the team above its underline
 data/teamselect/p00 |   0   4 256 46 | left  | KEIICHI MAEBARA
 data/teamselect/p00 |   0  50 256 46 | right | & RENA RYUUGU
-data/teamselect/p00 |   6 108 220 30 | gold  | THE HEROES!
+data/teamselect/p00 | 6 104 220 38 | gold  | THE HEROES!
 data/teamselect/p00 |   0 164 256 46 | left  | MION SONOZAKI
 data/teamselect/p00 |   0 210 256 46 | right | & SHION SONOZAKI
-data/teamselect/p00 |   6 268 220 30 | gold  | TROUBLESOME TWINS
+data/teamselect/p00 | 6 264 220 38 | gold  | TROUBLESOME TWINS
 data/teamselect/p00 |   0 324 256 46 | left  | RIKA FURUDE
 data/teamselect/p00 |   0 370 256 46 | right | & SATOKO HOUJOU
-data/teamselect/p00 |   6 428 220 30 | gold  | GO, LITTLE ONES!
+data/teamselect/p00 | 6 424 220 38 | gold  | GO, LITTLE ONES!
 data/teamselect/p00 | 256   4 256 46 | left  | MIYO TAKANO
 data/teamselect/p00 | 256  50 256 46 | right | & JIROU TOMITAKE
-data/teamselect/p00 | 262 108 220 30 | gold  | LOVEBIRDS
+data/teamselect/p00 | 262 104 220 38 | gold  | LOVEBIRDS
 data/teamselect/p00 | 256 164 256 46 | left  | KURAUDO OOISHI
 data/teamselect/p00 | 256 210 256 46 | right | & MAMORU AKASAKA
-data/teamselect/p00 | 262 268 220 30 | gold  | OKINOMIYA DETECTIVES
+data/teamselect/p00 | 262 264 220 38 | gold  | OKINOMIYA DETECTIVES
 data/teamselect/p00 | 256 324 256 46 | left  | KYOUSUKE IRIE
 data/teamselect/p00 | 256 370 256 46 | right | & RUMIKO CHIE
-data/teamselect/p00 | 262 428 220 30 | gold  | HINAMIZAWA TEACHERS
+data/teamselect/p00 | 262 424 220 38 | gold  | HINAMIZAWA TEACHERS
 data/teamselect/p01 |   0   4 256 46 | left  | AKANE SONOZAKI
 data/teamselect/p01 |   0  50 256 46 | right | & TATSUYOSHI KASAI
-data/teamselect/p01 |   6 108 220 30 | gold  | SONOZAKI FIGHTERS
+data/teamselect/p01 | 6 104 220 38 | gold  | SONOZAKI FIGHTERS
 data/teamselect/p01 |   0 164 256 46 | left  | KEIICHI MAEBARA
 data/teamselect/p01 |   0 210 256 46 | right | & MION SONOZAKI
-data/teamselect/p01 |   6 268 220 30 | gold  | THE CLUB LEADER'S CIRCLE
+data/teamselect/p01 | 6 264 220 38 | gold  | THE CLUB LEADER'S CIRCLE
 data/teamselect/p01 |   0 324 256 46 | left  | SATOKO HOUJOU
 data/teamselect/p01 |   0 370 256 46 | right | & SHION SONOZAKI
-data/teamselect/p01 |   6 428 220 30 | gold  | TOGETHER WITH NEE-NEE
+data/teamselect/p01 | 6 424 220 38 | gold  | TOGETHER WITH NEE-NEE
 data/teamselect/p01 | 256   4 256 46 | left  | RENA RYUUGU
 data/teamselect/p01 | 256  50 256 46 | right | & RIKA FURUDE
-data/teamselect/p01 | 262 108 220 30 | gold  | RENA'S TAKE-HOME
+data/teamselect/p01 | 262 104 220 38 | gold  | RENA'S TAKE-HOME
 
 # Options: selected and unselected rows, then the value columns
 data/config/0001 | 240 12 320 44 | patch | GRAPHICS AND SOUND

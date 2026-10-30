@@ -3,6 +3,7 @@
 // gpu/ owns shader-module creation and buffer helpers (it tracks the header
 // spelling both backends accept); ui/ consumes them exactly as render/ does,
 // which keeps the backend choice a build decision rather than a code change.
+#include <algorithm>
 #include <cmath>
 
 #include "gpu/gpu.h"
@@ -77,7 +78,7 @@ bool SpriteRenderer::init(WGPUDevice device, WGPUQueue queue, std::string& error
     sd.addressModeU = sd.addressModeV = sd.addressModeW = WGPUAddressMode_ClampToEdge;
     sd.magFilter = WGPUFilterMode_Linear;
     sd.minFilter = WGPUFilterMode_Linear;
-    sd.mipmapFilter = WGPUMipmapFilterMode_Nearest;
+    sd.mipmapFilter = WGPUMipmapFilterMode_Linear;
     sd.maxAnisotropy = 1;   // zero-init leaves 0, which the validator rejects
     sampler_ = wgpuDeviceCreateSampler(device_, &sd);
 
@@ -153,6 +154,16 @@ int SpriteRenderer::addTexture(uint32_t w, uint32_t h, const void* rgba, std::st
     return (int)textures_.size() - 1;
 }
 
+int SpriteRenderer::addScaledTexture(uint32_t logicalW, uint32_t logicalH, uint32_t w, uint32_t h,
+                                     const void* rgba, std::string& error) {
+    Texture t;
+    if (!createTexture(t, w, h, rgba, error, true)) return -1;
+    t.w = logicalW;
+    t.h = logicalH;
+    textures_.push_back(t);
+    return (int)textures_.size() - 1;
+}
+
 bool SpriteRenderer::updateTexture(int slot, uint32_t w, uint32_t h, const void* rgba,
                                    std::string& error) {
     if (slot < 0 || (size_t)slot >= textures_.size()) {
@@ -169,7 +180,7 @@ bool SpriteRenderer::updateTexture(int slot, uint32_t w, uint32_t h, const void*
 }
 
 bool SpriteRenderer::createTexture(Texture& t, uint32_t w, uint32_t h, const void* rgba,
-                                   std::string& error) {
+                                   std::string& error, bool mips) {
     if (!device_) {
         error = "sprite renderer not initialized";
         return false;
@@ -184,6 +195,8 @@ bool SpriteRenderer::createTexture(Texture& t, uint32_t w, uint32_t h, const voi
     td.size = WGPUExtent3D{w, h, 1};
     td.format = WGPUTextureFormat_RGBA8Unorm;
     td.mipLevelCount = 1;
+    if (mips)
+        for (uint32_t size = std::max(w, h); size > 1; size /= 2) ++td.mipLevelCount;
     td.sampleCount = 1;
     t.w = w;
     t.h = h;
@@ -196,6 +209,37 @@ bool SpriteRenderer::createTexture(Texture& t, uint32_t w, uint32_t h, const voi
         layout.bytesPerRow = w * 4;
         layout.rowsPerImage = h;
         wgpuQueueWriteTexture(queue_, &dst, rgba, (size_t)w * h * 4, &layout, &td.size);
+        // Each level averages the one above, weighting colour by alpha so a transparent
+        // neighbour's colour cannot bleed into the edge of a glyph.
+        std::vector<uint8_t> level;
+        const uint8_t* above = static_cast<const uint8_t*>(rgba);
+        uint32_t lw = w, lh = h;
+        for (uint32_t mip = 1; mip < td.mipLevelCount; ++mip) {
+            const uint32_t nw = std::max(1u, lw / 2), nh = std::max(1u, lh / 2);
+            std::vector<uint8_t> next((size_t)nw * nh * 4);
+            for (uint32_t y = 0; y < nh; ++y)
+                for (uint32_t x = 0; x < nw; ++x) {
+                    uint32_t alpha = 0, colour[3] = {0, 0, 0};
+                    for (uint32_t k = 0; k < 4; ++k) {
+                        const uint32_t sx = std::min(lw - 1, x * 2 + (k & 1)), sy = std::min(lh - 1, y * 2 + (k >> 1));
+                        const uint8_t* p = above + ((size_t)sy * lw + sx) * 4;
+                        alpha += p[3];
+                        for (int c = 0; c < 3; ++c) colour[c] += (uint32_t)p[c] * p[3];
+                    }
+                    uint8_t* out = next.data() + ((size_t)y * nw + x) * 4;
+                    for (int c = 0; c < 3; ++c) out[c] = alpha ? (uint8_t)(colour[c] / alpha) : 0;
+                    out[3] = (uint8_t)(alpha / 4);
+                }
+            level = std::move(next);
+            above = level.data();
+            lw = nw;
+            lh = nh;
+            dst.mipLevel = mip;
+            layout.bytesPerRow = lw * 4;
+            layout.rowsPerImage = lh;
+            const WGPUExtent3D extent{lw, lh, 1};
+            wgpuQueueWriteTexture(queue_, &dst, level.data(), (size_t)lw * lh * 4, &layout, &extent);
+        }
         t.view = wgpuTextureCreateView(t.tex, nullptr);
     }
     if (!t.tex || !t.view) {

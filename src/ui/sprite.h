@@ -232,6 +232,10 @@ public:
     // (BMP-backed callers decode to the same layout first). Returns the slot id
     // for pushTextured, or -1 on failure. Slot 0 is the 1x1 white fallback.
     int addTexture(uint32_t w, uint32_t h, const void* rgba, std::string& error);
+    // A texture larger than the sheet it stands for: callers keep the logical size's pixel rects,
+    // and a full mip chain keeps it clean when the canvas is drawn smaller than the pixels.
+    int addScaledTexture(uint32_t logicalW, uint32_t logicalH, uint32_t w, uint32_t h, const void* rgba,
+                         std::string& error);
     // Re-uploads into an existing slot, keeping its id, and recreates the texture when
     // the pixel size changed. The UI text atlas needs this: it grows by doubling its
     // height as glyphs are first drawn, which moves every tile's UV denominator, so the
@@ -323,7 +327,8 @@ private:
     bool ensureBuffers(std::string& error);
     // Texture + view + bind group as one unit; the pair below is the only place that
     // creates or destroys them, so addTexture/updateTexture/clearTextures cannot drift.
-    bool createTexture(Texture& t, uint32_t w, uint32_t h, const void* rgba, std::string& error);
+    bool createTexture(Texture& t, uint32_t w, uint32_t h, const void* rgba, std::string& error,
+                       bool mips = false);
     static void destroyTexture(Texture& t);
 
     WGPUDevice device_ = nullptr;   // borrowed
