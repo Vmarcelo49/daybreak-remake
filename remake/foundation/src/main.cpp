@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <cstdlib>
+#include <sstream>
 #include <cstring>
 #include <fstream>
 #include <string>
@@ -62,6 +63,9 @@
 #include "gameplay/debug_keys.h"
 #include "game/battle_view.h"
 #include "gameplay/legacy_battle.h"
+#ifdef FOUNDATION_HAS_SIM
+#include "sim/core_battle.h"
+#endif
 #include "gameplay/live_debug.h"
 #include "gameplay/fixed_step.h"
 #include "gameplay/native/rena0_pilot_run.h"
@@ -168,6 +172,7 @@ struct Options {
     std::string script;          // P1 input script (device override, DX9 format)
     // P2-7 (2e) slice 1: observe-mode pilot adapter. Empty = the legacy path, untouched.
     std::string nativeActions;   // "--native-actions=rena0" runs the locomotion observer
+    bool        simCore = false; // --sim=core: the vendored core drives the battle (M4)
     std::string script2;         // P2 input script; absent -> dummy, like the DX9
     bool        hasSpawn[2] = {false, false};   // --spawn / --spawn2 x,y,z
     glm::vec3   spawn[2] = {glm::vec3(0.f), glm::vec3(0.f)};
@@ -391,6 +396,9 @@ void usage() {
         "  --script=<file>    P1 input script for --match (\"<frame> TOKEN...\" lines,\n"
         "                     the DX9 visual-suite format); absent -> live device\n"
         "  --script2=<file>   P2 input script; absent -> P2 takes no input (dummy,\n"
+        "  --sim=core         drive the battle from the vendored core (docs/DIRECTION.md, M4);\n"
+        "                     needs four fighters\n"
+        "  --sim-roster=<a>,<b>,<c>,<d>  with --match: four <dir>/<name>[:costume][@weaponSlot]\n"
         "  --native-actions=rena0\n"
         "                     P2-7 pilot: drive Rena+0 (and only Rena+0, item 001) from the\n"
         "                     recovered bodies — locomotion proposal, guard gate, shot\n"
@@ -596,6 +604,29 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--weapon=")).empty()) o.weapon = v;
         else if (!(v = val("--effect=")).empty()) o.effect = v;
         else if (!(v = val("--out=")).empty()) o.out = v;
+        else if (val("--sim=") == "core") o.simCore = true;
+        else if (!(v = val("--sim-roster=")).empty()) {
+            std::stringstream roster(v);
+            std::string spec;
+            int count = 0;
+            while (count < 4 && std::getline(roster, spec, ',')) {
+                // <dir>/<name>[:costume][@weaponSlot]
+                const size_t at = spec.find('@');
+                if (at != std::string::npos) {
+                    const int character = gameplay::characterIndexForDir(charDirForSpec(spec.substr(0, at)));
+                    const int slot = std::atoi(spec.c_str() + at + 1);
+                    if (character >= 0 && slot >= 0 && slot < gameplay::weaponCountForCharacter(character)) {
+                        char item[32];
+                        std::snprintf(item, sizeof item, "data/bullet/%03d", gameplay::kWeaponIds[character][slot]);
+                        o.battleWeapons[count] = item;
+                    }
+                    spec.resize(at);
+                }
+                o.battleCharacters[count++] = spec;
+            }
+            o.battleFighterCount = count;
+            if (count >= 2) { o.character = o.battleCharacters[0]; o.enemy = o.battleCharacters[1]; }
+        }
         else if (!(v = val("--size=")).empty()) {
             const size_t x = v.find('x');
             o.sizeW = std::atoi(v.c_str());
@@ -1125,7 +1156,10 @@ struct App {
     // The legacy simulation sits behind game::Battle; `battle` is all the product reads.
     // legacyBattle.match() is the seam for setup and tools that only exist on that path.
     gameplay::LegacyBattle       legacyBattle;
-    game::Battle&                battle = legacyBattle;
+    game::Battle*                battle = &legacyBattle;
+#ifdef FOUNDATION_HAS_SIM
+    sim::CoreBattle              coreBattle;   // --sim=core
+#endif
     bool                         matchMode = false;
     uint64_t                     matchFrame = 0;      // 1-based, the DX9's frame_count+1
     // Per-controller views of the live match (issue #12). Views exist for HUMAN
@@ -1308,7 +1342,7 @@ static void applyWeaponVisibility(App& app) {
         app.renderer.setModelVisibility(visible);
         return;
     }
-    const size_t fighters = app.battle.fighter_count();
+    const size_t fighters = app.battle->fighter_count();
     for (size_t i = 0; i < app.scene.models.size(); ++i) {
         const xm::SceneModel& sm = app.scene.models[i];
         if (sm.propId < 0 || sm.attachFrame < 0) continue;   // not a weapon attachment
@@ -1321,7 +1355,7 @@ static void applyWeaponVisibility(App& app) {
         }
         for (size_t fighter = 0; fighter < fighters && fighter < 4; ++fighter)
             if (app.matchRig[fighter] == owner) {
-                const auto& f = app.battle.fighter(static_cast<int>(fighter));
+                const auto& f = app.battle->fighter(static_cast<int>(fighter));
                 // The drawn mesh follows the executor's slot -> ITEM MODEL binding, not
                 // the scene model's own load order: FUN_00434a70(slot, model) re-points a
                 // prop slot at another of the item's models (Rena 1's 450/460 bind slot 0
@@ -1560,7 +1594,7 @@ static void playPauseCue(App& app) {
 static void enterBattlePause(App& app, const char* reason) {
     if (app.battlePaused) return;
     app.battlePaused = true;
-    app.battle.set_paused(true);   // the authoritative gate (gameplay/match.h)
+    app.battle->set_paused(true);   // the authoritative gate (gameplay/match.h)
     app.pauseMenu.rows = app.frontendMatch ? gameplay::kPauseRowsWithSelection
                                            : gameplay::kPauseRowsStandalone;
     app.pauseMenu.reset();
@@ -1583,7 +1617,7 @@ static void enterBattlePause(App& app, const char* reason) {
 static void resumeBattle(App& app) {
     if (!app.battlePaused) return;
     app.battlePaused = false;
-    app.battle.set_paused(false);
+    app.battle->set_paused(false);
     app.pauseMenu.reset();
     // Nothing is replayed: the paused ticks drained the device queues, so a button held
     // across the pause has no edge left to fire (the acceptance case) and the clock's
@@ -2130,7 +2164,7 @@ static constexpr fnd::audio::VoiceEvent kCombatVoiceEvents[] = {
 // engine has no per-handle free — while the channels are released per match (end_match).
 static void setupCombatVoices(App& app) {
     if (!app.combatAudio) return;
-    const int count = app.battle.fighter_count();
+    const int count = app.battle->fighter_count();
     app.combatAudio->begin_match(count);
     app.combatMatchStarted = false;
     app.combatTick = 0;
@@ -2556,6 +2590,59 @@ static bool loadBulletParameter(int row, const gameplay::WeaponDefinition& weapo
     return true;
 }
 
+// --sim=core: the same roster, stage and seed handed to the core. The legacy Match stays reset
+// beside it so the setup seams keep working, and is never stepped.
+static bool startCoreBattle(App& app, const gameplay::MatchConfig& config) {
+#ifdef FOUNDATION_HAS_SIM
+    if (config.fighterCount != 4) {
+        app.error = "--sim=core needs four fighters";
+        return false;
+    }
+    sim::BattleConfig core;
+    core.gameDir = fnd::assets::assetSource().installDir();
+    const std::string stageDir = charDirForSpec(app.opts.stage);
+    core.stage = static_cast<unsigned>(std::atoi(stageDir.c_str() + std::min<size_t>(5, stageDir.size())));
+    std::array<const gameplay::CharacterMoves*, 4> moves{};
+    std::array<const gameplay::WeaponDefinition*, 4> weapons{};
+    for (int i = 0; i < 4; ++i) {
+        const std::string dir = charDirForSpec(app.opts.battleCharacters[i]);
+        int character = -1;
+        for (int c = 0; c < sim::character_count(); ++c)
+            if (sim::character_name(c) == dir) character = c;
+        const gameplay::WeaponDefinition* weapon = config.weapon[i];
+        const int ownIndex = gameplay::characterIndexForDir(dir);
+        const int slot = weapon ? gameplay::weaponSlotForItem(ownIndex, weapon->id) : -1;
+        if (character < 0 || slot < 0) {
+            app.error = "--sim=core: fighter " + std::to_string(i) + " (" + dir + ") is not a legal combo";
+            return false;
+        }
+        bool human = i == 0 && !app.frontendMatch;
+        if (app.frontendMatch) {
+            const int controller = app.frontend.slots[app.battleLaunch.fighters[i].panel].controller;
+            human = controller >= 0 && controller < 4;
+        }
+        std::string specPath;
+        int costume = 0;
+        splitSuffix(app.opts.battleCharacters[i], specPath, costume);
+        core.slots[static_cast<size_t>(i)] = {character, slot, !human, costume};
+        moves[static_cast<size_t>(i)] = config.moves[i];
+        weapons[static_cast<size_t>(i)] = weapon;
+    }
+    try {
+        app.coreBattle.start(core, moves, weapons);
+    } catch (const std::exception& error) {
+        app.error = std::string("--sim=core: ") + error.what();
+        return false;
+    }
+    app.battle = &app.coreBattle;
+    return true;
+#else
+    (void)config;
+    app.error = "--sim=core is not built on this platform";
+    return false;
+#endif
+}
+
 static bool initMatch(App& app) {
     if (app.frontendMatch && !app.scene.env.present) {
         app.error = "four-panel battles need all four env.dat spawn points";
@@ -2567,8 +2654,9 @@ static bool initMatch(App& app) {
     }
     std::array<size_t, 4> rigs{{app.scene.models.size(), app.scene.models.size(),
                                 app.scene.models.size(), app.scene.models.size()}};
-    int fighterCount = app.frontendMatch ? app.battleLaunch.fighterCount : 2;
-    if (app.frontendMatch) {
+    int fighterCount = app.frontendMatch ? app.battleLaunch.fighterCount
+                       : app.opts.battleFighterCount > 0 ? app.opts.battleFighterCount : 2;
+    if (app.frontendMatch || app.opts.battleFighterCount > 0) {
         int found = 0;
         for (size_t i = 0; i < app.scene.models.size() && found < fighterCount; ++i)
             if (app.scene.models[i].role == "character") rigs[found++] = i;
@@ -2731,6 +2819,7 @@ static bool initMatch(App& app) {
     const xm::Model* tamaMesh = app.projectileCollisionMesh;
     app.legacyBattle.match().reset(config, models, anims, tamaMesh,
                     tamaMesh ? &app.projectileCollisionIndex : nullptr, movement);
+    if (app.opts.simCore && !startCoreBattle(app, config)) return false;
     // The roster in panel order, with each entry linked to its MatchConfig index (issue #13).
     buildMatchRoster(app);
     // The earned-title counters are per ROUND (the original clears the record with the round):
@@ -2823,7 +2912,7 @@ static bool initMatch(App& app) {
     game::HumanView viewList[game::kMaxHumanViews];
     app.matchViewCount = game::buildHumanViews(controllerOfFighter, fighterCount, viewList);
     std::vector<gameplay::CameraTarget*> cameraPool;
-    for (int i = 0; i < app.battle.fighter_count(); ++i)
+    for (int i = 0; i < app.battle->fighter_count(); ++i)
         cameraPool.push_back(&app.arenaTargets[i]);
     for (int v = 0; v < game::kMaxHumanViews; ++v) {
         game::MatchView& view = app.matchViews[v];
@@ -2843,19 +2932,19 @@ static bool initMatch(App& app) {
         view.previousEye = view.camera.eye();
         view.previousTarget = view.camera.target();
     }
-    for (int i = 0; i < fighterCount; ++i) app.previousFighter[i] = app.battle.fighter(i).pose();
+    for (int i = 0; i < fighterCount; ++i) app.previousFighter[i] = app.battle->fighter(i).pose();
     return true;
 }
 
 static glm::vec3 matchRenderPosition(const App& app, int fighter) {
     return glm::mix(app.previousFighter[fighter].position,
-                    app.battle.fighter(fighter).position(), app.matchAlpha);
+                    app.battle->fighter(fighter).position(), app.matchAlpha);
 }
 
 static glm::mat4 matchRenderMatrix(const App& app, int fighter) {
-    if (app.matchAlpha == 1.f) return app.battle.fighter(fighter).modelMatrix();
+    if (app.matchAlpha == 1.f || app.opts.simCore) return app.battle->fighter(fighter).modelMatrix();
     const float previous = app.previousFighter[fighter].facingYaw;
-    const float current = app.battle.fighter(fighter).facing_yaw();
+    const float current = app.battle->fighter(fighter).facing_yaw();
     const float yaw = previous + std::remainder(current - previous, glm::two_pi<float>()) * app.matchAlpha;
     // FUN_00420b30: the authored rig faces -Z; retain Fighter::modelMatrix's half turn.
     return glm::translate(glm::mat4(1.f), matchRenderPosition(app, fighter)) *
@@ -2878,7 +2967,7 @@ static void buildMatchRoster(App& app) {
     // Standalone: two fighters on panels 0 and 1, controller 0 on the device/script and COM
     // on the dummy opponent. The character index is resolved from the same spec the scene
     // assembly used, so the HUD's combo label matches the rig that was loaded.
-    app.participantCount = app.battle.fighter_count() < 2 ? app.battle.fighter_count() : 2;
+    app.participantCount = app.battle->fighter_count() < 2 ? app.battle->fighter_count() : 2;
     for (int i = 0; i < app.participantCount; ++i) {
         ui::Participant& p = app.participants[i];
         p = ui::Participant{};
@@ -2993,7 +3082,7 @@ static void placeAttachedProp(App& app, size_t index, size_t rig) {
 static void placeMatchFighters(App& app) {
     std::vector<render::SceneRenderer::TextureOverride> textures;
     for (size_t i = 0; i < app.scene.models.size(); ++i) {
-        for (int fighter = 0; fighter < app.battle.fighter_count(); ++fighter)
+        for (int fighter = 0; fighter < app.battle->fighter_count(); ++fighter)
             if (i == app.matchRig[fighter]) {
                 app.modelMatrices[i] = matchRenderMatrix(app, fighter);
                 break;
@@ -3003,14 +3092,14 @@ static void placeMatchFighters(App& app) {
         const xm::SceneModel& sm = app.scene.models[i];
         if (sm.attachFrame < 0) continue;
         size_t rig = app.matchRig[0];
-        for (int fighter = 1; fighter < app.battle.fighter_count(); ++fighter)
+        for (int fighter = 1; fighter < app.battle->fighter_count(); ++fighter)
             if (app.matchRig[fighter] < i && app.matchRig[fighter] > rig) rig = app.matchRig[fighter];
         placeAttachedProp(app, i, rig);
     }
     app.renderer.setModelMatrices(app.modelMatrices);
     applyWeaponVisibility(app);
-    for (int i = 0; i < app.battle.fighter_count(); ++i) {
-        const auto& fighter = app.battle.fighter(i);
+    for (int i = 0; i < app.battle->fighter_count(); ++i) {
+        const auto& fighter = app.battle->fighter(i);
         if (const auto* moves = fighter.moves()) {
             // A playing activation overlay owns its set's texture events on its
             // own clock: set 69's face swap keys off the overlay elapsed (move
@@ -3188,10 +3277,10 @@ static void bindAnimationMaterials(App& app) {
     if (fnd::assets::assetSource().read("data/camera/01.x",cameraBytes))
         app.actionCameraModel = xm::loadMemory(cameraBytes.data(),cameraBytes.size());
     for (auto& pair : app.trailModels) pair.fill(-1);
-    for (int fighter = 0; fighter < app.battle.fighter_count(); ++fighter) {
+    for (int fighter = 0; fighter < app.battle->fighter_count(); ++fighter) {
         const size_t rig = app.matchRig[fighter];
-        const auto* moves = app.battle.fighter(fighter).moves();
-        const auto* weapon = app.battle.fighter(fighter).weapon();
+        const auto* moves = app.battle->fighter(fighter).moves();
+        const auto* weapon = app.battle->fighter(fighter).weapon();
         if (!moves || !weapon || rig >= app.scene.models.size()) continue;
         auto& variants = app.scene.models[rig].textureVariants;
         for (int set = 0; set < moves->animation_set_count(); ++set)
@@ -3355,7 +3444,7 @@ static void placeFxCards(App& app) {
         // which is where a bone-attached weapon already goes. See game/aura_attach.h for
         // the enumeration that settles the instance count.
         for (int i = 0; i < 2; ++i) {
-            const game::FighterView& f = app.battle.fighter(i);
+            const game::FighterView& f = app.battle->fighter(i);
             if (!f.aura_active()) continue;
             // FUN_004205e0 selects the aura card by the wire mode value — 0, 1,
             // 5 for wire modes 0/1/2 — from the same seven data/aura/%02d.x
@@ -3385,7 +3474,7 @@ static void placeFxCards(App& app) {
         // model the install does not ship draws nothing here, which is what the original
         // does with the empty model slot that same missing file leaves behind; the tally
         // below makes that visible instead of silent.
-        app.battle.for_each_shot([&](const game::ShotView& p) {
+        app.battle->for_each_shot([&](const game::ShotView& p) {
             const int owner = p.owner;
             // The shot carries the exact item row it was launched from, so the card is
             // that row's own model; the tier only chose the row back at the release.
@@ -3427,7 +3516,7 @@ static void printFxSummary(const App& app) {
 // direction the stage refused; `stuck` the recoveries that fired. Printed at round over
 // and again at the end of a capture run, so a match that never finishes still reports.
 static void printComSummary(const App& app) {
-    for (int i = 0; i < app.battle.fighter_count(); ++i) {
+    for (int i = 0; i < app.battle->fighter_count(); ++i) {
         const gameplay::BotStats& bs = app.botBrains[i].stats();
         if (bs.ticks == 0) continue;   // a human slot
         std::printf("match com %d : tactic=%s action=%s moved=%.0f, "
@@ -3513,10 +3602,10 @@ static void sampleHudFill(gameplay::HudFighterValues& out, const game::FighterVi
 // The adapter that lets the shared derivation read the live match (issue #16).
 struct App::CombatEventSource final : fnd::audio::CombatEventSource {
     explicit CombatEventSource(const App& app) : app_(app) {}
-    int fighter_count() const override { return app_.battle.fighter_count(); }
+    int fighter_count() const override { return app_.battle->fighter_count(); }
     bool alive(int fighter) const override {
-        return fighter >= 0 && fighter < app_.battle.fighter_count() &&
-               app_.battle.fighter(fighter).is_alive();
+        return fighter >= 0 && fighter < app_.battle->fighter_count() &&
+               app_.battle->fighter(fighter).is_alive();
     }
     const App& app_;
 };
@@ -3628,16 +3717,16 @@ static void reportCombatAudio(App& app) {
 // the countdown passes none, which is what keeps every view gesture (LockSwitch) out of the
 // pre-round phase as well as out of the match itself.
 static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4], double dt) {
-    for (int i = 0; i < app.battle.fighter_count(); ++i) {
-        const game::FighterView& fighter = app.battle.fighter(i);
+    for (int i = 0; i < app.battle->fighter_count(); ++i) {
+        const game::FighterView& fighter = app.battle->fighter(i);
         app.arenaTargets[i].position = fighter.position();
         app.arenaTargets[i].facingYaw = fighter.facing_yaw();
         if (!historicalMatchCapture(app)) {
             // The movement turn (FUN_00421780 / FUN_0042db10) rotates the body,
             // not the lock-on view. Keep the camera's orbit on the combat bearing.
-            const int target = app.battle.aim_target(i);
+            const int target = app.battle->aim_target(i);
             if (target >= 0) {
-                const glm::vec3 direction = app.battle.fighter(target).position() - fighter.position();
+                const glm::vec3 direction = app.battle->fighter(target).position() - fighter.position();
                 if (direction.x * direction.x + direction.z * direction.z > 0.0001f)
                     app.arenaTargets[i].facingYaw = std::atan2(direction.x, direction.z);
             }
@@ -3656,7 +3745,7 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
             : gameplay::CollisionQuery{};
     for (int v = 0; v < app.matchViewCount; ++v) {
         game::MatchView& view = app.matchViews[v];
-        if (!view.active() || view.fighter >= app.battle.fighter_count()) continue;
+        if (!view.active() || view.fighter >= app.battle->fighter_count()) continue;
         const fnd::input::PlayerState* viewInput = inputs[view.fighter];
         // LockSwitch is the original's target switch (input.h: tap = cycle enemy,
         // hold = aim ally) and it re-picks that view's COMBAT target alone. The recovered
@@ -3671,7 +3760,7 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
         // target_lock.h owns who each fighter attacks, so two players hold different locks
         // while each camera follows its own player.
         if (viewInput && viewInput->just_pressed[fnd::input::LockSwitch]) {
-            app.battle.cycle_locked_target(view.fighter, true);
+            app.battle->cycle_locked_target(view.fighter, true);
             view.lockHeldTicks = 1;
         } else if (viewInput && viewInput->down[fnd::input::LockSwitch]) {
             // Held past the threshold, so the tap above is not undone by the finger still
@@ -3679,7 +3768,7 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
             // 180-tick dwell FUN_0041f580:244 re-pins on an ally selection, but the gesture
             // length that raises it is not, so this threshold is a port constant.
             if (++view.lockHeldTicks >= kLockHoldTicks)
-                app.battle.lock_ally_target(view.fighter);
+                app.battle->lock_ally_target(view.fighter);
         } else {
             view.lockHeldTicks = 0;
         }
@@ -3701,10 +3790,10 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
         // current camera unchanged (D9's one-update-per-frame recipes).
         view.previousEye = view.camera.eye();
         view.previousTarget = view.camera.target();
-        const auto& cameraFighter = app.battle.fighter(view.followed);
-        const int actionOpponent = app.battle.locked_target(view.followed);
+        const auto& cameraFighter = app.battle->fighter(view.followed);
+        const int actionOpponent = app.battle->locked_target(view.followed);
         view.camera.set_action(cameraFighter.action_camera(), cameraFighter.position(), cameraFighter.facing_yaw(),
-            actionOpponent >= 0 ? app.battle.fighter(actionOpponent).position() : cameraFighter.position());
+            actionOpponent >= 0 ? app.battle->fighter(actionOpponent).position() : cameraFighter.position());
         // The recovered normal follow (PILOT-EVIDENCE-CONTRACT V3-15) replaces the
         // reconstructed eye formula with FUN_006333b0's, whose pitch depends on the
         // rig/anchor geometry — the reason a jump tilts the original's camera. Pilot
@@ -3732,10 +3821,10 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
             // starts them at +0x300 = 0 and +0x304 = -1. Reading the combat lock here
             // left the camera with no anchor on the opening frames, which is why the
             // view only found its target after a manual change-target press.
-            const int aimTarget = app.battle.aim_target(view.followed);
+            const int aimTarget = app.battle->aim_target(view.followed);
             view.camera.set_follow_anchor(
-                aimTarget >= 0 && aimTarget < app.battle.fighter_count()
-                    ? app.battle.fighter(aimTarget).position()
+                aimTarget >= 0 && aimTarget < app.battle->fighter_count()
+                    ? app.battle->fighter(aimTarget).position()
                     : cameraFighter.position() +
                           glm::vec3(std::sin(cameraFighter.facing_yaw()), 0.f,
                                     std::cos(cameraFighter.facing_yaw())) * 600.f);
@@ -3754,8 +3843,8 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
         // the balloon corners are the only two-side readout (side 0 left, side 1 right),
         // every other field belongs to the viewer's fighter.
         gameplay::HudFillInput hf;
-        sampleHudFill(hf.p1, app.battle.fighter(view.fighter), viewInput);
-        view.hud = gameplay::hudStateFor(app.battle.economy(), hf);
+        sampleHudFill(hf.p1, app.battle->fighter(view.fighter), viewInput);
+        view.hud = gameplay::hudStateFor(app.battle->economy(), hf);
         // D1: the render-FPS counter rides the HUD state (60 while capturing). The
         // original draws it once, outside its view loop (FUN_006396f0:203-210), so only
         // the first view carries it.
@@ -3774,8 +3863,8 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
 
         // Outgoing and incoming locks are distinct: having a target does not tell
         // us the fighter's team or whether its lock is mutual with this viewer.
-        const int lockedTarget = app.battle.locked_target(view.fighter);
-        const int viewPulse = app.battle.lock_pulse(view.fighter);
+        const int lockedTarget = app.battle->locked_target(view.fighter);
+        const int viewPulse = app.battle->lock_pulse(view.fighter);
         // One HUD entry per ROSTER entry (issue #13): the participant's own fighter, its
         // team and its controller. A 1v1 fills two, a 2v2 all four.
         for (int i = 0; i < ui::kHudFighterCount; ++i) {
@@ -3783,15 +3872,15 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
             const int fighterIndex = hudEntryFighter(app, i);
             if (fighterIndex < 0) continue;
             const ui::Participant& p = app.participants[i];
-            const game::FighterView& f = app.battle.fighter(fighterIndex);
-            const int viewSide = app.battle.side(view.fighter);
+            const game::FighterView& f = app.battle->fighter(fighterIndex);
+            const int viewSide = app.battle->side(view.fighter);
             view.hud.fighters[i].role = fighterIndex == view.fighter
                 ? ui::HudFighterRole::Owner
-                : (app.battle.side(fighterIndex) == viewSide ? ui::HudFighterRole::Ally
+                : (app.battle->side(fighterIndex) == viewSide ? ui::HudFighterRole::Ally
                                                                     : ui::HudFighterRole::Enemy);
             view.hud.fighters[i].target = (fighterIndex == lockedTarget);
             view.hud.fighters[i].targetsViewer =
-                app.battle.locked_target(fighterIndex) == view.fighter;
+                app.battle->locked_target(fighterIndex) == view.fighter;
             view.hud.fighters[i].ringPulse =
                 (fighterIndex == lockedTarget) ? viewPulse : 0;
             // Slot 0 is 1P and slot 4 is com in the tag atlas (P01 (320,256,64,32) rows);
@@ -3826,7 +3915,7 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
 static void debugKeyComOwned(const App& app, bool out[4]) {
     for (int i = 0; i < 4; ++i) out[i] = false;
     if (!app.frontendMatch) return;
-    for (int i = 0; i < app.battle.fighter_count(); ++i) {
+    for (int i = 0; i < app.battle->fighter_count(); ++i) {
         const int panel = app.battleLaunch.fighters[i].panel;
         if (panel < 0 || panel >= 4) continue;
         const int controller = app.frontend.slots[panel].controller;
@@ -3879,8 +3968,8 @@ static gameplay::DebugKeysHeld sampleDebugKeys(const App& app, uint64_t tick) {
 // one before this issue.
 static void traceDebugKeys(const App& app, const gameplay::MatchFrame& frame) {
     if (!std::getenv("DAYBREAK_DEBUG_KEYS")) return;
-    for (int i = 0; i < app.battle.fighter_count(); ++i) {
-        const game::FighterView& f = app.battle.fighter(i);
+    for (int i = 0; i < app.battle->fighter_count(); ++i) {
+        const game::FighterView& f = app.battle->fighter(i);
         int controller = -1;
         if (app.frontendMatch) {
             const int panel = app.battleLaunch.fighters[i].panel;
@@ -3889,13 +3978,13 @@ static void traceDebugKeys(const App& app, const gameplay::MatchFrame& frame) {
         // This fighter's own shots still in flight: the per-fighter half of "no shot events",
         // which the global matchShots counter cannot show.
         int live = 0;
-        app.battle.for_each_shot([&](const game::ShotView& p) { if (p.owner == i) ++live; });
+        app.battle->for_each_shot([&](const game::ShotView& p) { if (p.owner == i) ++live; });
         const glm::vec3& p = f.position();
         std::printf("[debugkey] tick=%llu f=%d ctl=%d ai=%d pos=(%.2f,%.2f,%.2f) "
                     "hp=%d/%d main=%.3f charge=%.3f hyper=%.3f state=%d swung=%d fired=%d "
                     "live=%d matchShots=%llu\n",
                     (unsigned long long)app.matchFrame, i, controller,
-                    app.battle.ai_enabled(i) ? 1 : 0, p.x, p.y, p.z, f.hp(), f.max_hp(),
+                    app.battle->ai_enabled(i) ? 1 : 0, p.x, p.y, p.z, f.hp(), f.max_hp(),
                     (double)f.main_frac(), (double)f.charge_frac(), (double)f.hyper_gauge(),
                     (int)f.state(), frame.swingStarted[i] ? 1 : 0, frame.shotFired[i] ? 1 : 0,
                     live, (unsigned long long)app.matchShots);
@@ -3908,8 +3997,8 @@ static void traceDebugKeys(const App& app, const gameplay::MatchFrame& frame) {
 static bool tickMatch(App& app, double dt) {
     // The 15-tick switch pulse is not counted here: Match's lock table owns and decays
     // it (gameplay/target_lock.h, FUN_004201a0), so the HUD reads one source of truth.
-    for (int i = 0; i < app.battle.fighter_count(); ++i)
-        app.previousFighter[i] = app.battle.fighter(i).pose();
+    for (int i = 0; i < app.battle->fighter_count(); ++i)
+        app.previousFighter[i] = app.battle->fighter(i).pose();
     ++app.matchFrame;   // 1-based simulation tick, matching banked captures
 
     // The debug keys, on the SIMULATION tick (D9): the key is sampled here, on the tick whose
@@ -3919,7 +4008,8 @@ static bool tickMatch(App& app, double dt) {
     // (updateMatchViews), which reads state and must not create it.
     bool comOwned[4];
     debugKeyComOwned(app, comOwned);
-    const bool debugLeave = gameplay::applyDebugKeys(app.legacyBattle.match(),
+    const bool debugLeave = !app.opts.simCore &&
+                            gameplay::applyDebugKeys(app.legacyBattle.match(),
                                                      sampleDebugKeys(app, app.matchFrame),
                                                      comOwned, !app.opts.noDebugKeys);
 
@@ -3980,18 +4070,19 @@ static bool tickMatch(App& app, double dt) {
 
     const fnd::input::PlayerState* inputs[4] = {p1, p2, nullptr, nullptr};
     if (app.frontendMatch) {
-        for (int i = 0; i < app.battle.fighter_count(); ++i) {
+        for (int i = 0; i < app.battle->fighter_count(); ++i) {
             const int panel = app.battleLaunch.fighters[i].panel;
             const int controller = app.frontend.slots[panel].controller;
             if (controller >= 0 && controller < 4) inputs[i] = &app.tickInput[controller];
-            else if (app.battle.ai_enabled(i)) {
+            else if (app.opts.simCore) inputs[i] = nullptr;  // the core runs its own CPU
+            else if (app.battle->ai_enabled(i)) {
                 // COM. The decision state owns the target pick, the movement, the presses
                 // and the retarget request; gameplay/bot_input.h turns that into this
                 // fighter's input for the tick (issue #14).
                 gameplay::BotContext bot;
                 bot.match = &app.legacyBattle.match();
                 bot.fighterIndex = i;
-                bot.leaderTarget = app.battle.locked_target(viewerIndex);
+                bot.leaderTarget = app.battle->locked_target(viewerIndex);
                 gameplay::updateBotInput(app.botBrains[i], bot, app.botInput[i],
                                          app.matchFrame);
                 inputs[i] = &app.botInput[i];
@@ -4015,18 +4106,18 @@ static bool tickMatch(App& app, double dt) {
     // adaptation, otherwise use the standalone P1 viewer.
     const int listenerFighter = app.matchViewCount > 0 && app.matchViews[0].followed >= 0
                                     ? app.matchViews[0].followed : viewerIndex;
-    app.battle.set_primary_listener_fighter(listenerFighter);
+    app.battle->set_primary_listener_fighter(listenerFighter);
     const bool pilotObserve = app.pilotRun.before_step(app.legacyBattle.match(), inputs, app.opts.nativeActions == "rena0");
-    const gameplay::MatchFrame f = app.battle.step(inputs, dt);
-    if (app.liveDebug.enabled()) app.liveDebug.after_tick(app.matchFrame, app.legacyBattle.match(), f);
+    const gameplay::MatchFrame f = app.battle->step(inputs, dt);
+    if (app.liveDebug.enabled() && !app.opts.simCore) app.liveDebug.after_tick(app.matchFrame, app.legacyBattle.match(), f);
     if (pilotObserve) app.pilotRun.after_step(app.legacyBattle.match(), inputs, f);
-    for (int i = 0; i < app.battle.fighter_count(); ++i)
-        if (f.respawned[i]) app.previousFighter[i] = app.battle.fighter(i).pose();
+    for (int i = 0; i < app.battle->fighter_count(); ++i)
+        if (f.respawned[i]) app.previousFighter[i] = app.battle->fighter(i).pose();
     if (app.versusAudioOn)
         app.versusBgmPushed += app.versusLoop.push_next(app.versusAudio, 1024);
     app.matchShots += (uint64_t)f.shotsSpawned;
     app.matchSparks += (uint64_t)f.muzzleSparks;
-    for (int i = 0; i < app.battle.fighter_count(); ++i)
+    for (int i = 0; i < app.battle->fighter_count(); ++i)
         if (f.meleeHit[i]) ++app.matchHits;
     // Live combat audio (issue #16): the frame just produced is the event source.
     dispatchCombatAudio(app, f);
@@ -4039,13 +4130,13 @@ static bool tickMatch(App& app, double dt) {
     // conditions (gameplay/result_title.h).
     {
         const int localFighter = app.matchViewCount > 0 ? app.matchViews[0].fighter : 0;
-        for (int i = 0; i < app.battle.fighter_count(); ++i) {
+        for (int i = 0; i < app.battle->fighter_count(); ++i) {
             if (!f.meleeHit[i] || f.meleeVictim[i] < 0) continue;
             const int victim = f.meleeVictim[i];
             if (victim >= 4 || i >= 4) continue;
-            if (app.battle.locked_target(i) == victim) ++app.titleHits[i].toTarget;
+            if (app.battle->locked_target(i) == victim) ++app.titleHits[i].toTarget;
             else ++app.titleHits[i].toOthers;
-            if (app.battle.locked_target(victim) == i) ++app.titleHits[victim].fromTarget;
+            if (app.battle->locked_target(victim) == i) ++app.titleHits[victim].fromTarget;
             else ++app.titleHits[victim].fromOthers;
             if (victim == localFighter) ++app.titleHits[i].onLocalPlayer;
         }
@@ -4058,7 +4149,7 @@ static bool tickMatch(App& app, double dt) {
     // old code kill-chained the previous hit's card on every new hit). Lifetimes are the
     // models' own animation durations, recovered through FUN_0042eec0; nothing here is a
     // fixed 12 s.
-    for (int i = 0; i < app.battle.fighter_count() && i < 4; ++i) {
+    for (int i = 0; i < app.battle->fighter_count() && i < 4; ++i) {
         // The action body's own effect request (`(*actor+0xc)` -> FUN_00421aa0 ->
         // FUN_00435990's manager create): the id indexes data/effect by `id / 10` (the 350
         // beats' 320/340/350 resolve to 032/034/035.dat) and the position is the actor's
@@ -4077,7 +4168,7 @@ static bool tickMatch(App& app, double dt) {
             const glm::vec3 dir(std::sin(yaw) * std::cos(pitch), std::sin(pitch),
                                 std::cos(yaw) * std::cos(pitch));
             if (!spawnEffect(app, app.matchFx, f.effectId[i],
-                             app.battle.fighter(i).position(), dir))
+                             app.battle->fighter(i).position(), dir))
                 ++app.fxBadEffect;
         }
         // Muzzle flash: FUN_00633ca0 slots 0/1/5 are the three マズルフラッシュ models. The
@@ -4087,7 +4178,7 @@ static bool tickMatch(App& app, double dt) {
         // such byte, so the shot tier picks among the same three slots.
         if (f.shotFired[i]) {
             spawnAttachment(app, app.matchFx,
-                            game::muzzleSlotForTier(app.battle.fighter(i).last_shot_tier()),
+                            game::muzzleSlotForTier(app.battle->fighter(i).last_shot_tier()),
                             f.shotPoints[i]);
         }
         // Hypermode: the recovered burning effect 380 re-spawns every 7 frames
@@ -4098,12 +4189,12 @@ static bool tickMatch(App& app, double dt) {
         // Knockdown state. The cadence is the simulation tick, not the render
         // rate, and the jitter is a deterministic function of (fighter, tick) — the
         // original's rand()%100 - 50 box around the fighter's position.
-        if (app.battle.fighter(i).aura_active() &&
-            app.battle.fighter(i).state() == gameplay::FighterState::Knockdown &&
+        if (app.battle->fighter(i).aura_active() &&
+            app.battle->fighter(i).state() == gameplay::FighterState::Knockdown &&
             app.matchFrame % 7 == 0) {
             const uint32_t h = (uint32_t)(app.matchFrame / 7) * 2654435761u +
                                (uint32_t)i * 40503u;
-            const glm::vec3 at = app.battle.fighter(i).position() +
+            const glm::vec3 at = app.battle->fighter(i).position() +
                                  glm::vec3((float)(h % 100) - 50.f,
                                            (float)((h >> 8) % 60),
                                            (float)((h >> 16) % 100) - 50.f);
@@ -4123,9 +4214,9 @@ static bool tickMatch(App& app, double dt) {
     // 14.X, the 8-quad hitC01/hitC05 card) now that its lifetime is recovered; the
     // original's melee hit path spawns no effect of its own (FUN_00639160 has no manager
     // call), so this is a PORT RULE, not a recovered binding.
-    for (int i = 0; i < app.battle.fighter_count(); ++i) {
+    for (int i = 0; i < app.battle->fighter_count(); ++i) {
         if (!f.meleeHit[i] || f.meleeVictim[i] < 0) continue;
-        const glm::vec3 at = app.battle.fighter(f.meleeVictim[i]).position() +
+        const glm::vec3 at = app.battle->fighter(f.meleeVictim[i]).position() +
                              glm::vec3(0.f, 100.f, 0.f);
         spawnEffect(app, app.matchFx, 0, at);
     }
@@ -4139,7 +4230,7 @@ static bool tickMatch(App& app, double dt) {
         app.matchRoundOverFrame = app.matchFrame;
         // Issue #11: roundOverSide is the WINNER (the original's scene+0x442c), and
         // roundEnd() says which rule ended it — a balloon burst or the time limit.
-        const gameplay::MatchEconomy& eco = app.battle.economy();
+        const gameplay::MatchEconomy& eco = app.battle->economy();
         std::printf("[daybreak] match: round over, side %d wins (%s) at frame %llu\n",
                     f.roundOverSide,
                     eco.roundEnd() == gameplay::RoundEnd::Timeout ? "time up" : "burst",
@@ -4158,8 +4249,8 @@ static bool tickMatch(App& app, double dt) {
 static void traceMatch(App& app) {
     if (!std::getenv("DAYBREAK_CAMINFO")) return;
     if ((app.matchFrame - 1) % 60 != 0) return;
-    const game::FighterView& a = app.battle.fighter(0);
-    const game::FighterView& b = app.battle.fighter(1);
+    const game::FighterView& a = app.battle->fighter(0);
+    const game::FighterView& b = app.battle->fighter(1);
     std::printf("[daybreak] cam eye=(%.0f,%.0f,%.0f) p1=(%.0f,%.0f,%.0f,%s) "
                 "p2=(%.0f,%.0f,%.0f,%s)\n",
                 app.eye.x, app.eye.y, app.eye.z, a.position().x, a.position().y, a.position().z,
@@ -4204,10 +4295,10 @@ static void fillMatchCubes(App& app) {
     // Issue #17: shots and sparks draw as real effect cards by default; these cubes are
     // the explicit A/B view behind --debug-prims, which is also where the aura cube lives.
     if (app.opts.debugPrims) {
-        app.battle.for_each_shot([&](const game::ShotView& p) {
+        app.battle->for_each_shot([&](const game::ShotView& p) {
             app.matchCubes.add(p.pos, game::kShotCubeSize, p.color);
         });
-        app.battle.for_each_spark([&](const game::SparkView& s) {
+        app.battle->for_each_spark([&](const game::SparkView& s) {
             app.matchCubes.add(s.pos, s.size * 0.5f, s.color);
         });
     }
@@ -4217,8 +4308,8 @@ static void fillMatchCubes(App& app) {
     // cannot drift from the simulation. Separate from matchCubes so it can be toggled
     // without changing what the shots/sparks pass submits.
     if (app.opts.hitboxDebug) {
-        for (int i = 0; i < app.battle.fighter_count(); ++i) {
-            const game::HitboxDebug hb = app.battle.fighter(i).hitbox_debug();
+        for (int i = 0; i < app.battle->fighter_count(); ++i) {
+            const game::HitboxDebug hb = app.battle->fighter(i).hitbox_debug();
             for (const glm::vec3& anchor : hb.anchors)
                 app.hitboxCubes.addSphere(anchor, hb.anchorRadius, kHurtVolume);
             if (!hb.attacking) continue;
@@ -4244,7 +4335,7 @@ static void fillMatchCubes(App& app) {
     // The aura cube: the reference render's second, additive cube pass, drawn in the
     // fighter's own space: its local centre through the fighter's model matrix.
     for (int i = 0; i < 2; ++i) {
-        const game::FighterView& f = app.battle.fighter(i);
+        const game::FighterView& f = app.battle->fighter(i);
         if (!f.aura_active()) continue;
         const glm::vec3 at = glm::vec3(f.modelMatrix() * glm::vec4(f.aura_center_local(), 1.f));
         app.auraCubes.add(at, f.aura_radius(), f.aura_color());
@@ -4803,7 +4894,7 @@ void advanceAnimation(App& app, double delta) {
         if (!c.model()) continue;
         bool matchRig = false;
         if (app.matchMode || app.roundCountdown)
-            for (int fighter = 0; fighter < app.battle.fighter_count(); ++fighter)
+            for (int fighter = 0; fighter < app.battle->fighter_count(); ++fighter)
                 matchRig = matchRig || i == app.matchRig[fighter];
         if (matchRig) continue;
         c.advanceTime((float)delta);
@@ -4814,13 +4905,16 @@ void advanceAnimation(App& app, double delta) {
     if (!moved) return;
     for (size_t i = 0; i < app.controllers.size(); ++i)
         if (app.controllers[i].model()) app.controllers[i].evalWorld(app.worlds[i]);
+    if (app.opts.simCore)
+        for (int fighter = 0; fighter < app.battle->fighter_count(); ++fighter)
+            app.battle->fighter(fighter).core_pose(app.worlds[app.matchRig[fighter]]);
     app.renderer.updatePose(app.worlds);
 }
 
 static void tickRoundEntry(App& app, double dt) {
-    for (int i = 0; i < app.battle.fighter_count(); ++i)
-        app.previousFighter[i] = app.battle.fighter(i).pose();
-    app.battle.step_round_entry(dt);
+    for (int i = 0; i < app.battle->fighter_count(); ++i)
+        app.previousFighter[i] = app.battle->fighter(i).pose();
+    app.battle->step_round_entry(dt);
     advanceAnimation(app, dt);
     const fnd::input::PlayerState* none[4] = {};
     updateMatchViews(app, none, dt);
@@ -5223,7 +5317,7 @@ static bool enterFrontendBattle(App& app) {
     app.frontendMatch = true;
     app.frontendBattleReady = false;
     app.battlePaused = false;   // a fresh battle never starts paused (issue #15)
-    app.battle.set_paused(false);
+    app.battle->set_paused(false);
     app.pauseMenu.reset();
     app.frontend.resultStats = {};
     app.opts.stage = launch.stage;
@@ -5451,9 +5545,9 @@ bool initScreens(App& app) {
                                                      app.frontendBattleReady, app.error);
             if (!countdown) return nullptr;
             app.roundCountdown = true;
-            app.battle.begin_round_entry();
-            for (int i = 0; i < app.battle.fighter_count(); ++i)
-                app.previousFighter[i] = app.battle.fighter(i).pose();
+            app.battle->begin_round_entry();
+            for (int i = 0; i < app.battle->fighter_count(); ++i)
+                app.previousFighter[i] = app.battle->fighter(i).pose();
             // The tick ladder's own record (the release gate quotes it): the countdown
             // starts here, three cells of tickRate ticks, over the live battle.
             std::printf("[menu] countdown: %d ticks over the live battle on %s (tick %llu)\n",
@@ -6381,10 +6475,10 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                             (unsigned long long)app->matchFrame);
                 continue;
             }
-            if (app->frontendMatch && app->battle.economy().roundOver()) {
+            if (app->frontendMatch && app->battle->economy().roundOver()) {
                 // The economy reports the WINNING side (issue #11); the DX9 port
                 // reported the burst side here and this line inverted it.
-                const gameplay::MatchEconomy& eco = app->battle.economy();
+                const gameplay::MatchEconomy& eco = app->battle->economy();
                 app->frontend.resultWinner = eco.roundOverSide();
                 app->frontend.matchFrame = app->matchFrame;
                 // The quote rule's inputs (FUN_00635d40:288-318): the balloon margin, clamped
@@ -6398,24 +6492,24 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     app->frontend.resultMargin =
                         std::min(winnerCapacity, loserBalloon) - winnerBalloon;
                     bool hurt = true;
-                    for (int i = 0; i < app->battle.fighter_count(); ++i)
-                        if (app->battle.side(i) == winner &&
-                            app->battle.fighter(i).hp() * 2 >= app->battle.fighter(i).max_hp())
+                    for (int i = 0; i < app->battle->fighter_count(); ++i)
+                        if (app->battle->side(i) == winner &&
+                            app->battle->fighter(i).hp() * 2 >= app->battle->fighter(i).max_hp())
                             hurt = false;
                     app->frontend.resultWinnersHurt = hurt;
                 }
-                for (int i = 0; i < app->battle.fighter_count(); ++i) {
-                    const auto& stats = app->battle.fighter(i).stats();
+                for (int i = 0; i < app->battle->fighter_count(); ++i) {
+                    const auto& stats = app->battle->fighter(i).stats();
                     const int panel = app->battleLaunch.fighters[i].panel;
                     app->frontend.resultStats[panel] = {stats.kos,stats.deaths,stats.damageDealt,stats.damageTaken};
                     // The earned title (issue #20): the recovered record + chain. The port fills
                     // the fields it can evidence; the chain skips the conditions whose fields are
                     // not recovered and says so through `resolved`.
-                    const int side = app->battle.side(i);
+                    const int side = app->battle->side(i);
                     gameplay::ResultRecord record;
                     record.teamCapacity = (int)eco.capacity(side);
                     record.enemyCapacity = (int)eco.capacity(1 - side);
-                    record.koed = eco.koAt(i) >= 0 || !app->battle.fighter(i).is_alive();
+                    record.koed = eco.koAt(i) >= 0 || !app->battle->fighter(i).is_alive();
                     // The port's stats are not split by the fighter's lock, so the damage sits in
                     // the "others" bucket; the chain's split-specific damage conditions are among
                     // the skipped ones. UNIT: the original's record is HP-scale damage (10000 per
@@ -6708,12 +6802,12 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 // summary (and issue #14's per-COM counters) is printed for it too.
                 if (app->matchMode || app->frontendMatch) {
                     reportMatchViews(*app, w, h);
-                    const gameplay::MatchEconomy& eco = app->battle.economy();
+                    const gameplay::MatchEconomy& eco = app->battle->economy();
                     std::printf("match: %llu frames, hp1=%d hp2=%d, balloon=%.0f%%/%.0f%% "
                                 "(LIMIT %.0f%%/%.0f%%), shots=%llu sparks=%llu hits=%llu, "
                                 "fx events=%llu, bgm pushed %llu frames, %llu wraps, roundOver=%d\n",
-                                (unsigned long long)app->matchFrame, app->battle.fighter(0).hp(),
-                                app->battle.fighter(1).hp(), (double)eco.balloon(0),
+                                (unsigned long long)app->matchFrame, app->battle->fighter(0).hp(),
+                                app->battle->fighter(1).hp(), (double)eco.balloon(0),
                                 (double)eco.balloon(1), (double)eco.capacity(0),
                                 (double)eco.capacity(1),
                                 (unsigned long long)app->matchShots,
@@ -7036,9 +7130,9 @@ void SDL_AppQuit(void* appstate, SDL_AppResult result) {
                      obs.modeGauges.limits.limit0, obs.modeGauges.limits.limit1);
         std::fprintf(stderr, "[rena0-pilot] charge gauge=%d (spend 500 per powered air tap, "
                              "recovered; the +1/tick refill is identified but not implemented)\n",
-                     app->battle.fighter(0).charge_gauge());
+                     app->battle->fighter(0).charge_gauge());
         std::fprintf(stderr, "[rena0-pilot] hp fighter0=%d fighter1=%d\n",
-                     app->battle.fighter(0).hp(), app->battle.fighter(1).hp());
+                     app->battle->fighter(0).hp(), app->battle->fighter(1).hp());
         std::fprintf(stderr, "[rena0-pilot] guard gate asked=%lld guarded=%lld no-record=%lld "
                              "not-guard-capable=%lld unblockable=%lld outside-angle=%lld\n",
                      app->pilotRun.guardPolicy.calls, app->pilotRun.guardPolicy.guarded,

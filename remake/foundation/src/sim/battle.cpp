@@ -48,6 +48,7 @@ LocalBattleRoster make_roster(const BattleConfig& config) {
             throw std::invalid_argument("sim: slot " + std::to_string(i) + " is not a legal combo");
         roster.character[i] = slot.character;
         roster.weapon[i] = slot.weapon;
+        roster.option[i] = static_cast<unsigned char>(slot.costume);
         if (slot.cpu) {
             roster.owner[i] = 4;  // BattleCpuDriver::configure: owners >= 4 are CPU
         } else {
@@ -217,6 +218,48 @@ unsigned Battle::tick() const { return m_impl->ticks; }
 unsigned Battle::scene_phase() const { return m_impl->combat.scene_phase(); }
 unsigned Battle::live_projectiles() const { return static_cast<unsigned>(m_impl->projectiles.live.size()); }
 bool Battle::match_finished() const { return m_impl->combat.match.ready; }
+ActorAnimation Battle::animation(unsigned slot) const {
+    const auto& service = m_impl->combat.animation_service(slot);
+    ActorAnimation out;
+    out.lowerSet = service.channels[0].selected;
+    out.upperSet = service.channels[1].selected;
+    out.lowerTime = service.channels[0].position[out.lowerSet];
+    out.upperTime = service.channels[1].position[out.upperSet];
+    return out;
+}
+
+std::array<int, 2> Battle::held_models(unsigned slot) const {
+    return m_impl->combat.selected_held_weapon_models(slot);
+}
+
+std::array<MagazineState, 2> Battle::magazines(unsigned slot) const {
+    std::array<MagazineState, 2> out;
+    const auto& source = m_impl->combat.magazines[slot];
+    for (size_t i = 0; i < out.size() && i < source.size(); ++i) {
+        out[i].rounds = static_cast<int>(source[i].rounds);
+        out[i].capacity = static_cast<int>(source[i].capacity);
+    }
+    return out;
+}
+
+Matrix Battle::actor_world(unsigned slot) const {
+    return m_impl->combat.world_pose(m_impl->world, slot);
+}
+
+void Battle::bone_poses(unsigned slot, std::vector<std::string>& names, std::vector<Matrix>& model) const {
+    std::optional<ActorSkeleton> fallback;
+    const ActorSkeleton& pose = m_impl->combat.render_pose_view(slot, fallback);
+    static const LegacyMatrix kIdentity{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+    std::vector<LegacyMatrix> combined;
+    combine_actor_world_hierarchy(pose, kIdentity, combined);
+    names.resize(pose.bones.size());
+    model.resize(pose.bones.size());
+    for (size_t i = 0; i < pose.bones.size(); ++i) {
+        names[i] = pose.bones[i].name;
+        model[i] = combined[i];
+    }
+}
+
 std::vector<unsigned> Battle::declared_rows(unsigned slot) const {
     std::vector<unsigned> rows;
     for (const auto& entry : m_impl->combat.actor_assets(slot).state_frames_) rows.push_back(entry.first);

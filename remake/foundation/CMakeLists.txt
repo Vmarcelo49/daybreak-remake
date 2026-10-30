@@ -226,6 +226,10 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/sim/core_prelude.h")
     target_link_libraries(foundation_sim PRIVATE foundation_sim_zlib)
 
+    # --sim=core: game::Battle over the core. Includes only sim/battle.h, never the core.
+    add_library(foundation_sim_backend STATIC src/sim/core_battle.cpp)
+    target_link_libraries(foundation_sim_backend PUBLIC foundation_sim foundation_gameplay)
+
     add_executable(simctl src/sim/simctl.cpp)
     target_link_libraries(simctl PRIVATE foundation_sim)
     add_executable(simfuzz src/sim/simfuzz.cpp)
@@ -236,6 +240,10 @@ option(FOUNDATION_LIVE_DEBUG "Enable local Linux development match control" OFF)
 add_executable(foundation_demo src/main.cpp)
 if(FOUNDATION_LIVE_DEBUG)
     target_compile_definitions(foundation_demo PRIVATE FOUNDATION_LIVE_DEBUG=1)
+endif()
+if(TARGET foundation_sim_backend)
+    target_compile_definitions(foundation_demo PRIVATE FOUNDATION_HAS_SIM=1)
+    target_link_libraries(foundation_demo PRIVATE foundation_sim_backend)
 endif()
 if(WIN32)
     set_target_properties(foundation_demo PROPERTIES WIN32_EXECUTABLE TRUE)
@@ -709,6 +717,12 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(sim_oracle_test PRIVATE src/sim src/sim/core)
     add_test(NAME sim_oracle_test COMMAND sim_oracle_test)
     set_tests_properties(sim_oracle_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
+
+    # M4's first risk: the core's bones against our own rig sampling, per animation set.
+    add_executable(sim_pose_test tests/sim_pose_test.cpp)
+    target_link_libraries(sim_pose_test PRIVATE foundation_sim foundation_gameplay)
+    add_test(NAME sim_pose_test COMMAND sim_pose_test)
+    set_tests_properties(sim_pose_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
     # M3's boundary: the product reaches the legacy simulation only at its named seams.
     add_test(NAME battle_seam_test COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/battle_seam_test.sh

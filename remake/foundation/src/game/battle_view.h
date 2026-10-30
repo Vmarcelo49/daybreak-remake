@@ -79,6 +79,10 @@ public:
     virtual bool draws_item_model(int model) const = 0;
     virtual const gameplay::WeaponTrail& trail(int hand) const = 0;
     virtual int trail_item_model(int hand) const = 0;
+
+    // A simulation that samples its own skeleton fills one model-space matrix per rig frame
+    // and returns true. The legacy path animates the rig's xm::Controller instead.
+    virtual bool core_pose(std::vector<glm::mat4>&) const { return false; }
 };
 
 inline constexpr float kShotCubeSize = 16.0f;

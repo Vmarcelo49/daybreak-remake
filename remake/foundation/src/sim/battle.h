@@ -15,6 +15,7 @@ struct Slot {
     int character = 0;
     int weapon = 0;
     bool cpu = true;
+    int costume = 0;   // the rig variant: 0 is data/<name>, N is data/<name>_<'A'+N>
 };
 
 struct BattleConfig {
@@ -35,6 +36,10 @@ struct SlotInput {
 };
 using Inputs = std::array<SlotInput, 4>;
 
+struct MagazineState {
+    int rounds = 0, capacity = 0;
+};
+
 struct ActorState {
     std::array<float, 3> position{};
     float heading = 0.f;
@@ -44,6 +49,16 @@ struct ActorState {
     int hp = 0;
     int gauge = 0;         // +0x834, 0..1000
     bool grounded = false;
+};
+
+// A row-major D3D matrix: the same 16 floats in memory as a glm::mat4 of the same transform.
+using Matrix = std::array<float, 16>;
+
+// The bound animation sets. The two channels are the rig's lower and upper body; a row usually
+// binds the same set to both.
+struct ActorAnimation {
+    unsigned lowerSet = 0, upperSet = 0;
+    float lowerTime = 0.f, upperTime = 0.f;  // seconds into each set
 };
 
 int character_count();
@@ -65,6 +80,15 @@ public:
     unsigned scene_phase() const;
     unsigned live_projectiles() const;
     bool match_finished() const;
+    ActorAnimation animation(unsigned slot) const;
+    // The item models the actor holds, -1 for an empty hand.
+    std::array<int, 2> held_models(unsigned slot) const;
+    // The weapon's first two magazines, as the HUD reads them.
+    std::array<MagazineState, 2> magazines(unsigned slot) const;
+    // Where the actor's root sits in the world.
+    Matrix actor_world(unsigned slot) const;
+    // Every bone in model space, in the rig's frame order, with the core's implicit root at 0.
+    void bone_poses(unsigned slot, std::vector<std::string>& names, std::vector<Matrix>& model) const;
     // Every row the slot's NN.dat declares, for coverage reports.
     std::vector<unsigned> declared_rows(unsigned slot) const;
     // FNV-1a over every completed tick's actor states, projectile count and RNG cursor.
