@@ -6,6 +6,7 @@
 
 #include "frontend/story_dialogue.h"
 #include "frontend/story_ladder.h"
+#include "ui/sheet_locale.h"
 
 #define CHECK(condition) do { if (!(condition)) { std::fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #condition); ++g_failures; } } while (0)
 
@@ -144,7 +145,22 @@ static void testLadder() {
     CHECK(ui::storyEnemyWeapon(7, 5, 0, 5) == 2);   // team 7's last fight
 }
 
+static void testSheetLabels() {
+    std::string error;
+    const auto labels = ui::parseSheetLabels("# note\n\ndata/Title/Title | 1 2 3 4 | label | STORY \r\n", error);
+    CHECK(error.empty());
+    CHECK(labels.size() == 1);
+    if (labels.size() == 1) {
+        CHECK(labels[0].sheet == "data/title/title");
+        CHECK(labels[0].x == 1 && labels[0].y == 2 && labels[0].w == 3 && labels[0].h == 4);
+        CHECK(labels[0].style == "label" && labels[0].text == "STORY");
+    }
+    ui::parseSheetLabels("data/title/title | 1 2 | label | STORY\n", error);
+    CHECK(error.find("line 1") != std::string::npos);
+}
+
 int main() {
+    testSheetLabels();
     testLadder();
     testRows();
     testFlow();

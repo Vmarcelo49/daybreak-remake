@@ -42,6 +42,7 @@ if(EMSCRIPTEN)
     add_compile_options(-sUSE_SDL=3 -fexceptions)
     add_link_options(-sUSE_SDL=3 -fexceptions -sASYNCIFY=1 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576 -sFETCH=1 -lidbfs.js)
     add_link_options("SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts@/assets/fonts")
+    add_link_options("SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/assets/locale@/assets/locale")
     # Local game data can be mounted at /assets for browser verification. Both stay
     # local-only: the data is copyrighted and build/ is ignored, so this never changes
     # what the plain web build contains.
@@ -106,6 +107,7 @@ add_library(ui STATIC
     src/hud/hud.cpp
     src/hud/hud_atlas.cpp
     src/ui/text.cpp
+    src/ui/sheet_locale.cpp
     src/hud/fallback.cpp
     src/frontend/screen.cpp
     src/frontend/screen_opening.cpp
@@ -261,7 +263,9 @@ if(EMSCRIPTEN)
 else()
     add_custom_target(caption_fonts
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts" "$<TARGET_FILE_DIR:daybreak>/assets/fonts")
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts" "$<TARGET_FILE_DIR:daybreak>/assets/fonts"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/locale" "$<TARGET_FILE_DIR:daybreak>/assets/locale")
     add_dependencies(daybreak caption_fonts)
     if(EXISTS "${CAPTION_CJK_FONT}")
         add_custom_command(TARGET caption_fonts POST_BUILD
@@ -292,7 +296,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # libSDL3.so.0.4.18, and the executable's NEEDED entry is the SONAME.
     install(FILES "$<TARGET_FILE:webgpu>" DESTINATION lib)
     install(FILES "$<TARGET_FILE:SDL3::SDL3>" DESTINATION lib RENAME "$<TARGET_SONAME_FILE_NAME:SDL3::SDL3>")
-    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts"
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts" "${CMAKE_CURRENT_SOURCE_DIR}/assets/locale"
             DESTINATION assets PATTERN "README.md" EXCLUDE)
     # The Japanese fallback is fetched (scripts/fetch_deps.sh) rather than committed, so it
     # is installed by name; package_linux.sh refuses to build a package without it (D7).
@@ -743,6 +747,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_executable(story_dialogue_test tests/story_dialogue_test.cpp src/frontend/story_dialogue.cpp
                    src/frontend/story_script.cpp src/frontend/story_ladder.cpp)
     target_include_directories(story_dialogue_test PRIVATE src)
+    target_link_libraries(story_dialogue_test PRIVATE ui)
     add_test(NAME story_dialogue_test COMMAND story_dialogue_test)
 
     add_executable(story_script_test tests/story_script_test.cpp)

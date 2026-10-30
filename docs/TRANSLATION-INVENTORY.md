@@ -41,9 +41,6 @@ English labels (`CHARACTER SELECT`, `PAUSE`, `STAMINA`, `OVER KILL!!`) can stay.
 
 ## What the data implies
 
-- A replacement sheet can keep the original's cell layout, so the code's coordinates do not change.
-- Most labels are Japanese in a brush-like outline, not the wide italic Latin of the HUD. The Latin
-  letterforms traced from the HUD cover the HUD's style; translated menu labels still need one
-  decided look.
+- `assets/locale/en.txt` keeps the original's cell layout, so the code's coordinates do not change.
 - A translated label has to fit a cell sized for two to five Japanese glyphs, and weapon
   descriptions are two dense lines. Some translations will have to be short.

@@ -1,0 +1,315 @@
+# English labels for the menus and the HUD.
+# sheet | x y w h | style | text
+# A rect is the label's cell on the sheet. \n breaks a line. Styles are in src/ui/sheet_locale.cpp.
+
+# Title: selected and unselected columns
+data/title/title |   0   0 192 48 | label | STORY
+data/title/title | 192   0 192 48 | dim   | STORY
+data/title/title |   0  48 192 48 | label | VERSUS
+data/title/title | 192  48 192 48 | dim   | VERSUS
+data/title/title |   0  96 192 48 | label | NETWORK
+data/title/title | 192  96 192 48 | dim   | NETWORK
+data/title/title |   0 144 192 48 | label | OPTIONS
+data/title/title | 192 144 192 48 | dim   | OPTIONS
+data/title/title |   0 192 192 48 | label | CONTROLS
+data/title/title | 192 192 192 48 | dim   | CONTROLS
+data/title/title |   0 240 192 48 | label | QUIT
+data/title/title | 192 240 192 48 | dim   | QUIT
+
+# HUD: tactics, inside their coloured frames
+data/object/p03 |  26  20 84 26 | tag | AUTO
+data/object/p03 | 154  20 84 26 | tag | MELEE
+data/object/p03 | 282  20 84 26 | tag | SHOOT
+data/object/p03 | 410  20 84 26 | tag | FOCUS
+data/object/p03 |  26  84 84 26 | tag | SPLIT
+data/object/p03 | 154  84 84 26 | tag | GUARD
+
+# HUD: notices
+data/object/p04 | 0   0 512 256 | sting | DEFEATED!
+data/object/p04 | 0 256 512 256 | sting | START!
+data/object/p05 | 0   0 512 256 | bluesting | BLUE TEAM
+data/object/p05 | 0 256 512 256 | bluesting | VICTORY!
+data/object/p08 | 0   0 512 256 | redsting | RED TEAM
+data/object/p08 | 0 256 512 256 | redsting | VICTORY!
+data/object/p09 | 0 256 512 256 | sting | K.O.!
+
+# Results and the story's retry prompt
+data/object/system |   0 128 416 64 | label | TRY AGAIN?
+data/object/system |   0 192 256 64 | label | YES
+data/object/system | 256 192 256 64 | dim   | YES
+data/object/system |   0 256 256 64 | label | NO
+data/object/system | 256 256 256 64 | dim   | NO
+data/object/system |   0 320 288 64 | label | TODAY'S REPORT
+
+# Selection
+data/select/p00 | 320   0 192 64 | label | OYASHIRO MODE
+data/select/p00 | 320  64 192 64 | label | TAG MODE
+data/select/p00 | 320 128 192 64 | label | KAKERA MODE
+data/select/p01 |   0   0 256 64 | label | START BATTLE
+data/select/p01 |   0  64 256 64 | dim   | START BATTLE
+data/select/p01 |   0 128 256 64 | label | READY!
+data/select/p01 | 256  64 128 64 | label | OK
+data/select/p01 | 384  64 128 64 | label | BACK
+data/select/p01 | 256 128 128 64 | dim   | OK
+data/select/p01 | 384 128 128 64 | dim   | BACK
+data/select/p01 |   0 320 256 64 | label | TIME LIMIT
+data/select/p01 | 256 320 256 64 | dim   | TIME LIMIT
+data/select/p01 |   0 384 256 64 | label | HEALTH
+data/select/p01 | 256 384 256 64 | dim   | HEALTH
+data/select/p01 |   0 448 256 64 | label | GAUGE GAIN
+data/select/p01 | 256 448 256 64 | dim   | GAUGE GAIN
+data/select/p02 |   0   0 256 64 | blue    | BLUE BALLOON SIZE
+data/select/p02 | 256   0 256 64 | bluedim | BLUE BALLOON SIZE
+data/select/p02 |   0  64 256 64 | red     | RED BALLOON SIZE
+data/select/p02 | 256  64 256 64 | reddim  | RED BALLOON SIZE
+data/select/p02 |   0 128 256 64 | small | Triggered by damage, with shot + melee.\nIron will that ignores enemy attacks.
+data/select/p02 |   0 192 256 64 | small | Triggered by hits, with shot + melee.\nShots grow on your partner's target.
+data/select/p02 |   0 256 256 64 | small | Triggered by your own defeat.\nThe strongest boost of all modes!
+
+# Character names, as kCharacterDirs orders them
+data/select/p03 |   0   0 256 64 | label | RENA RYUUGU
+data/select/p03 |   0  64 256 64 | label | MION SONOZAKI
+data/select/p03 |   0 128 256 64 | label | KEIICHI MAEBARA
+data/select/p03 |   0 192 256 64 | label | SATOKO HOUJOU
+data/select/p03 |   0 256 256 64 | label | RIKA FURUDE
+data/select/p03 |   0 320 256 64 | label | SHION SONOZAKI
+data/select/p03 |   0 384 256 64 | label | JIROU TOMITAKE
+data/select/p03 |   0 448 256 64 | label | MIYO TAKANO
+data/select/p03 | 256   0 256 64 | label | KURAUDO OOISHI
+data/select/p03 | 256  64 256 64 | label | MAMORU AKASAKA
+data/select/p03 | 256 128 256 64 | label | KYOUSUKE IRIE
+data/select/p03 | 256 192 256 64 | label | RUMIKO CHIE
+data/select/p03 | 256 256 256 64 | label | TATSUYOSHI KASAI
+data/select/p03 | 256 320 256 64 | label | AKANE SONOZAKI
+data/select/p03 | 256 384 256 64 | label | HANYUU
+data/select/p03 | 256 448 256 64 | label | NATSUMI KIMIYOSHI
+
+# Weapons: name, then two lines of description
+data/select/w00 |   0   0 256 64 | label | TRUSTY CLEAVER
+data/select/w00 | 256   0 256 64 | small | A beloved, blood-rusted cleaver.\nDull edge, but deadly all the same!
+data/select/w00 |   0  64 256 64 | label | CHIPPED AXE
+data/select/w00 | 256  64 256 64 | small | A beloved axe that oozes menace.\nUp close, its power is unreal.
+data/select/w00 |   0 128 256 64 | label | IRON SLAB CLEAVER
+data/select/w00 | 256 128 256 64 | small | Less a cleaver than a lump of iron.\nHits friend and foe alike.
+data/select/w01 |   0   0 256 64 | label | TWIN PISTOLS
+data/select/w01 | 256   0 256 64 | small | A nimble handgun in each hand,\nplus a powerful rocket launcher.
+data/select/w01 |   0  64 256 64 | label | CUSTOM WATER GUN
+data/select/w01 | 256  64 256 64 | small | Is that really water? Doubtful.\nQuick weapon for mid range.
+data/select/w01 |   0 128 256 64 | label | RIOT WATER CANNON
+data/select/w01 | 256 128 256 64 | small | Is that really water? Doubtful.\nHeavy tank drains your stamina.
+data/select/w02 |   0   0 256 64 | label | NEW KID'S BAT
+data/select/w02 | 256   0 256 64 | small | A bat holding a student's soul.\nIts hits split the sky with light.
+data/select/w02 |   0  64 256 64 | label | INVINCIBLE IRON
+data/select/w02 | 256  64 256 64 | small | A golf club fit for a true maniac.\nWhatever it hits, explodes.
+data/select/w02 |   0 128 256 64 | label | EVIDENCE SHOVEL
+data/select/w02 | 256 128 256 64 | small | Digs through any ground with ease.\nEven opens holes to other worlds.
+data/select/w03 |   0   0 256 64 | label | PREMIUM FIREWORKS
+data/select/w03 | 256   0 256 64 | small | Fireworks picked by Satoko herself.\nFine in club, unsafe on people.
+data/select/w03 |   0  64 256 64 | label | SATOKO'S TRAPS
+data/select/w03 | 256  64 256 64 | small | Her full course of signature traps.\nAn odd kit: everything is placed.
+data/select/w03 |   0 128 256 64 | label | HOMING FIREWORKS
+data/select/w03 | 256 128 256 64 | small | Overdid it on big firepower.\nThe weight slows her down.
+data/select/w04 |   0   0 256 64 | label | RITUAL HOE
+data/select/w04 | 256   0 256 64 | small | A hoe used in the shrine's rite.\nSomehow it controls syringes.
+data/select/w04 |   0  64 256 64 | label | ANTI-GUN MOP
+data/select/w04 | 256  64 256 64 | small | Hurts more than it looks. Comes\nwith spray weapons for close range.
+data/select/w04 |   0 128 256 64 | label | SHRINE SICKLE
+data/select/w04 | 256 128 256 64 | small | The hundred-year witch's strong style.\nGreat speed, little defence.
+data/select/w05 |   0   0 256 64 | label | COMBAT KNIFE
+data/select/w05 | 256   0 256 64 | small | Small, but cuts just fine.\nShort reach: built for close quarters.
+data/select/w05 |   0  64 256 64 | label | MODDED STUN GUN
+data/select/w05 | 256  64 256 64 | small | A stun gun with boosted output.\nLeaves enemies in shock.
+data/select/w05 |   0 128 256 64 | label | SHRINE VAULT WHIP
+data/select/w05 | 256 128 256 64 | small | An eerie whip from the shrine vault.\nBinds a target and throws it.
+data/select/w06 |   0   0 256 64 | label | SURVIVAL CAMERA
+data/select/w06 | 256   0 256 64 | small | Tomitake's plain-looking camera.\nIts flash can attack enemies.
+data/select/w06 |   0  64 256 64 | label | SPIRIT CAMERA
+data/select/w06 | 256  64 256 64 | small | A retro camera that is said to\ndrain the life of its subject.
+data/select/w06 |   0 128 256 64 | label | SUBMACHINE GUN
+data/select/w06 | 256 128 256 64 | small | Shaky, but a great rapid-fire gun.\nThe flash is modded for range too.
+data/select/w07 |   0   0 256 64 | label | POISON SYRINGE
+data/select/w07 | 256   0 256 64 | small | Takano's special poison syringe.\nEven a graze slowly saps health.
+data/select/w07 |   0  64 256 64 | label | POISON GAS CAN
+data/select/w07 | 256  64 256 64 | small | Spray cans of assorted gases.\nThrown rather than held.
+data/select/w07 |   0 128 256 64 | label | SUPPORT BEACON
+data/select/w07 | 256 128 256 64 | small | Calls in support fire from above.\nThe strike takes a moment to land.
+data/select/w08 |   0   0 256 64 | label | TRUSTY REVOLVER
+data/select/w08 | 256   0 256 64 | small | A very ordinary handgun, plus a\nflash grenade to blind the enemy.
+data/select/w08 |   0  64 256 64 | label | HYPER ARM
+data/select/w08 | 256  64 256 64 | small | Grabs enemies for all sorts of throws.\nClose range, but proven power.
+data/select/w08 |   0 128 256 64 | label | EVIDENCE LOCKER
+data/select/w08 | 256 128 256 64 | small | Borrows other people's seized weapons.\nThey come at random: careful.
+data/select/w09 |   0   0 256 64 | label | WAVE SECRETS
+data/select/w09 | 256   0 256 64 | small | The secrets of bodily energy.\nHoned ki fells far-off enemies.
+data/select/w09 |   0  64 256 64 | label | KARATE SECRETS
+data/select/w09 | 256  64 256 64 | small | A manual of karate's deep secrets.\nA fist past sound: a gale unmatched.
+data/select/w09 |   0 128 256 64 | label | INSTANT SECRETS
+data/select/w09 | 256 128 256 64 | small | The secret of deflecting every blow.\nMaster it to become a fortress.
+data/select/w10 |   0   0 256 64 | label | IRIE'S MEDICAL KIT
+data/select/w10 | 256   0 256 64 | small | Fires syringes of assorted drugs.\nAllies they hit recover health.
+data/select/w10 |   0  64 256 64 | label | IRIE'S WARD KIT
+data/select/w10 | 256  64 256 64 | small | Calms patients who are too lively.\nSedatives weaken their attacks.
+data/select/w10 |   0 128 256 64 | label | IRIE'S CHEER KIT
+data/select/w10 | 256 128 256 64 | small | Syringes of doping for your allies.\nNo side effects. Eco-friendly!
+data/select/w11 |   0   0 256 64 | label | CLASSROOM T-SQUARE
+data/select/w11 | 256   0 256 64 | small | An ordinary school T-square.\nThrown, it has rifle speed and impact.
+data/select/w11 |   0  64 256 64 | label | CLASSROOM COMPASS
+data/select/w11 | 256  64 256 64 | small | That giant compass from every school.\nHits the enemy again and again.
+data/select/w11 |   0 128 256 64 | label | CLASSROOM CHALK
+data/select/w11 | 256 128 256 64 | small | A teacher's chalk becomes a bullet.\nIts dust may also blind the enemy.
+data/select/w12 |   0   0 256 64 | label | SHOTGUN
+data/select/w12 | 256   0 256 64 | small | Pellets that cover a wide area.\nGas pressure can launch grenades.
+data/select/w12 |   0  64 256 64 | label | MACHINE GUN
+data/select/w12 | 256  64 256 64 | small | A compact gun firing rapid rounds.\nTap shoot to control the burst.
+data/select/w12 |   0 128 256 64 | label | SNIPER RIFLE
+data/select/w12 | 256 128 256 64 | small | Fires accurate, high-speed rounds.\nHard to aim, but can kill in one.
+data/select/w13 |   0   0 256 64 | label | NAMELESS
+data/select/w13 | 256   0 256 64 | small | Unsigned, but a real work of art.\nFires its slashes as vacuum blades.
+data/select/w13 |   0  64 256 64 | label | BULLET PARRY
+data/select/w13 | 256  64 256 64 | small | A blade said to deflect even bullets.\nTrue to its name, it turns attacks.
+data/select/w13 |   0 128 256 64 | label | IAI BLADE
+data/select/w13 | 256 128 256 64 | small | Lives on its lunge and fast draw.\nFirst-rate speed up close.
+data/select/w14 |   0   0 256 64 | label | WORLD OF GODS
+data/select/w14 | 256   0 256 64 | small | Power beyond knowledge over time\nand fate. In a word: cheating.
+data/select/w14 |   0  64 256 64 | label | ONIGARI RYUOU
+data/select/w14 | 256  64 256 64 | small | Drawn, a legend fit for a demon god.\nSheathed, it drains its owner.
+data/select/w15 |   0   0 256 64 | label | MOM'S KNIFE
+data/select/w15 | 256   0 256 64 | small | A kitchen knife from any home.\nShort reach, superb edge.
+data/select/w15 |   0  64 256 64 | label | GRANNY'S SAW
+data/select/w15 | 256  64 256 64 | small | A saw that could cut up a god.\nShines against fallen enemies.
+
+# Stage page: each sheet's selected and unselected states
+data/select/pbg00 |   0   0 320 64 | label | RANDOM
+data/select/pbg00 |   0  64 320 64 | label | SCHOOLYARD
+data/select/pbg00 |   0 128 320 64 | label | ROAD TO SCHOOL
+data/select/pbg00 |   0 192 320 64 | label | FURUDE SHRINE
+data/select/pbg00 |   0 256 320 64 | label | RIVERSIDE ROAD
+data/select/pbg00 |   0 320 320 64 | label | DAM SITE RUINS
+data/select/pbg00 |   0 384 320 64 | label | SHRINE VAULT
+data/select/pbg00 | 384   0 128 64 | label | RANDOM
+data/select/pbg00 | 384  64 128 64 | label | DAY
+data/select/pbg00 | 384 128 128 64 | label | DUSK
+data/select/pbg00 | 384 192 128 64 | label | NIGHT
+data/select/pbg02 |   0   0 320 64 | dim | RANDOM
+data/select/pbg02 |   0  64 320 64 | dim | SCHOOLYARD
+data/select/pbg02 |   0 128 320 64 | dim | ROAD TO SCHOOL
+data/select/pbg02 |   0 192 320 64 | dim | FURUDE SHRINE
+data/select/pbg02 |   0 256 320 64 | dim | RIVERSIDE ROAD
+data/select/pbg02 |   0 320 320 64 | dim | DAM SITE RUINS
+data/select/pbg02 |   0 384 320 64 | dim | SHRINE VAULT
+data/select/pbg02 | 384   0 128 64 | dim | RANDOM
+data/select/pbg02 | 384  64 128 64 | dim | DAY
+data/select/pbg02 | 384 128 128 64 | dim | DUSK
+data/select/pbg02 | 384 192 128 64 | dim | NIGHT
+
+# Backgrounds: the text is part of the art
+data/teamselect/bg00 | 300 6 200 50 | patch | TODAY'S STARS
+data/select/bg00 | 135 100 130 72 | patchblue | BLUE
+data/select/bg00 | 135 425 130 72 | patchblue | BLUE
+data/select/bg00 | 545 100 130 72 | patchred | RED
+data/select/bg00 | 545 425 130 72 | patchred | RED
+data/select/bg01 | 135 100 130 72 | patchblue | BLUE
+data/select/bg01 | 135 425 130 72 | patchblue | BLUE
+data/select/bg01 | 545 100 130 72 | patchred | RED
+data/select/bg01 | 545 425 130 72 | patchred | RED
+
+# Story teams: names on two rows, the team above its underline
+data/teamselect/p00 |   0   4 256 46 | left  | KEIICHI MAEBARA
+data/teamselect/p00 |   0  50 256 46 | right | & RENA RYUUGU
+data/teamselect/p00 |   6 108 220 30 | gold  | THE HEROES!
+data/teamselect/p00 |   0 164 256 46 | left  | MION SONOZAKI
+data/teamselect/p00 |   0 210 256 46 | right | & SHION SONOZAKI
+data/teamselect/p00 |   6 268 220 30 | gold  | TROUBLESOME TWINS
+data/teamselect/p00 |   0 324 256 46 | left  | RIKA FURUDE
+data/teamselect/p00 |   0 370 256 46 | right | & SATOKO HOUJOU
+data/teamselect/p00 |   6 428 220 30 | gold  | GO, LITTLE ONES!
+data/teamselect/p00 | 256   4 256 46 | left  | MIYO TAKANO
+data/teamselect/p00 | 256  50 256 46 | right | & JIROU TOMITAKE
+data/teamselect/p00 | 262 108 220 30 | gold  | LOVEBIRDS
+data/teamselect/p00 | 256 164 256 46 | left  | KURAUDO OOISHI
+data/teamselect/p00 | 256 210 256 46 | right | & MAMORU AKASAKA
+data/teamselect/p00 | 262 268 220 30 | gold  | OKINOMIYA DETECTIVES
+data/teamselect/p00 | 256 324 256 46 | left  | KYOUSUKE IRIE
+data/teamselect/p00 | 256 370 256 46 | right | & RUMIKO CHIE
+data/teamselect/p00 | 262 428 220 30 | gold  | HINAMIZAWA TEACHERS
+data/teamselect/p01 |   0   4 256 46 | left  | AKANE SONOZAKI
+data/teamselect/p01 |   0  50 256 46 | right | & TATSUYOSHI KASAI
+data/teamselect/p01 |   6 108 220 30 | gold  | SONOZAKI FIGHTERS
+data/teamselect/p01 |   0 164 256 46 | left  | KEIICHI MAEBARA
+data/teamselect/p01 |   0 210 256 46 | right | & MION SONOZAKI
+data/teamselect/p01 |   6 268 220 30 | gold  | THE CLUB LEADER'S CIRCLE
+data/teamselect/p01 |   0 324 256 46 | left  | SATOKO HOUJOU
+data/teamselect/p01 |   0 370 256 46 | right | & SHION SONOZAKI
+data/teamselect/p01 |   6 428 220 30 | gold  | TOGETHER WITH NEE-NEE
+data/teamselect/p01 | 256   4 256 46 | left  | RENA RYUUGU
+data/teamselect/p01 | 256  50 256 46 | right | & RIKA FURUDE
+data/teamselect/p01 | 262 108 220 30 | gold  | RENA'S TAKE-HOME
+
+# Options: selected and unselected rows, then the value columns
+data/config/0001 | 240 12 320 44 | patch | GRAPHICS AND SOUND
+data/config/0002 |   0   0 192 32 | dim   | TOON SHADING
+data/config/0002 |   0  32 192 32 | label   | TOON SHADING
+data/config/0002 |   0  64 192 32 | dim   | SHADOWS
+data/config/0002 |   0  96 192 32 | label   | SHADOWS
+data/config/0002 |   0 128 192 32 | dim   | TEXTURES
+data/config/0002 |   0 160 192 32 | label   | TEXTURES
+data/config/0002 |   0 192 192 32 | dim   | FRAME RATE
+data/config/0002 |   0 224 192 32 | label   | FRAME RATE
+data/config/0002 |   0 256 192 32 | dim   | SCREEN MODE
+data/config/0002 |   0 288 192 32 | label   | SCREEN MODE
+data/config/0002 |   0 320 192 32 | dim   | MASTER VOLUME
+data/config/0002 |   0 352 192 32 | label   | MASTER VOLUME
+data/config/0002 |   0 384 192 32 | dim   | MUSIC VOLUME
+data/config/0002 |   0 416 192 32 | label   | MUSIC VOLUME
+data/config/0002 |   0 448 192 32 | dim   | EXIT
+data/config/0002 |   0 480 192 32 | label   | EXIT
+data/config/0002 | 192   0  96 32 | dim   | ON
+data/config/0002 | 192  32  96 32 | label   | ON
+data/config/0002 | 288   0 128 32 | dim   | OFF
+data/config/0002 | 288  32 128 32 | label   | OFF
+data/config/0002 | 192  64  96 32 | dim   | ON
+data/config/0002 | 192  96  96 32 | label   | ON
+data/config/0002 | 288  64 128 32 | dim   | OFF
+data/config/0002 | 288  96 128 32 | label   | OFF
+data/config/0002 | 192 128  96 32 | dim   | NORMAL
+data/config/0002 | 192 160  96 32 | label   | NORMAL
+data/config/0002 | 288 128 128 32 | dim   | LOW
+data/config/0002 | 288 160 128 32 | label   | LOW
+data/config/0002 | 192 192  96 32 | dim   | NORMAL
+data/config/0002 | 192 224  96 32 | label   | NORMAL
+data/config/0002 | 288 192 128 32 | dim   | HALF
+data/config/0002 | 288 224 128 32 | label   | HALF
+data/config/0002 | 192 256  96 32 | dim   | WINDOW
+data/config/0002 | 192 288  96 32 | label   | WINDOW
+data/config/0002 | 288 256 128 32 | dim   | FULLSCREEN
+data/config/0002 | 288 288 128 32 | label   | FULLSCREEN
+data/config/0002 | 192 320 128 32 | dim   | VOICE VOLUME
+data/config/0002 | 192 352 128 32 | label   | VOICE VOLUME
+data/config/0002 | 192 384 128 32 | dim   | EFFECTS VOLUME
+data/config/0002 | 192 416 128 32 | label   | EFFECTS VOLUME
+data/config/0003 | 0   0 512 48 | small | Use toon shading? Press left or right.\nTurning it off runs a little lighter.
+data/config/0003 | 0  48 512 48 | small | Show shadows? Press left or right.\nTurning them off runs a little lighter.
+data/config/0003 | 0  96 512 48 | small | Choose texture resolution with left or right.\nLow looks rougher but runs a little lighter.
+data/config/0003 | 0 144 512 48 | small | Choose the frame rate with left or right.\nHalf is less smooth but runs a little lighter.
+data/config/0003 | 0 192 512 48 | small | Choose the screen mode with left or right.\nAlt+Enter also switches it during play.
+data/config/0003 | 0 240 512 48 | small | Set the master volume with left or right.
+data/config/0003 | 0 288 512 48 | small | Set the music volume with left or right.
+data/config/0003 | 0 336 512 48 | small | Set the voice volume with left or right.
+data/config/0003 | 0 384 512 48 | small | Set the effects volume with left or right.
+data/config/0003 | 0 432 512 48 | small | Leave the settings.
+
+# Controls: the labels are part of the background photo
+data/keyconfig/0000 | 250  12 300 44 | patch | CONTROLS
+data/keyconfig/0000 | 170 128 150 30 | patchleft | UP
+data/keyconfig/0000 | 170 160 150 30 | patchleft | DOWN
+data/keyconfig/0000 | 170 192 150 30 | patchleft | LEFT
+data/keyconfig/0000 | 170 224 150 30 | patchleft | RIGHT
+data/keyconfig/0000 | 170 256 150 30 | patchleft | JUMP / OK
+data/keyconfig/0000 | 170 288 150 30 | patchleft | MELEE / CANCEL
+data/keyconfig/0000 | 170 320 150 30 | patchleft | SHOOT
+data/keyconfig/0000 | 170 352 150 30 | patchleft | LOCK SWITCH
+data/keyconfig/0000 | 170 384 150 30 | patchleft | SPECIAL
+data/keyconfig/0000 | 170 416 150 30 | patchleft | GUARD
+data/keyconfig/0000 | 170 448 150 30 | patchleft | TACTICS
+data/keyconfig/0004 | 0 416 96 32 | dim   | EXIT
+data/keyconfig/0004 | 0 448 96 32 | label   | EXIT

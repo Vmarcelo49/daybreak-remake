@@ -51,6 +51,7 @@
 #include "frontend/screen_vs.h"
 #include "frontend/screen_opening.h"
 #include "frontend/screen_story.h"
+#include "ui/sheet_locale.h"
 #include "frontend/frontend_state.h"
 #include "frontend/frontend_launch.h"
 #include "frontend/participants.h"
@@ -1103,6 +1104,7 @@ static bool enterFrontendBattle(App& app) {
 // --match uses, so a script drives the menu through the vocabulary the DX9 suite speaks.
 bool initScreens(App& app) {
     ui::ScreenId id = ui::ScreenId::Quit;
+    if (!app.opts.language.empty() && !ui::setSheetLanguage(app.opts.language, app.error)) return false;
     if (!app.opts.story.empty()) app.frontend.storyScript = "data/scenario/" + app.opts.story + ".txt";
     // No --screen and a plain launch means the original's boot scene, 0x00 (resolveBootOpening
     // decided that); anything else here has to name an id the parser knows.

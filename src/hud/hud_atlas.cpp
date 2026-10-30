@@ -2,6 +2,7 @@
 // battle HUD's sprite table. Header comment carries the provenance; this file is the
 // transcription.
 #include "hud/hud_atlas.h"
+#include "ui/sheet_locale.h"
 
 #include <cstdio>
 #include <vector>
@@ -39,6 +40,7 @@ bool uploadCnvSheet(SpriteRenderer& batch, const char* stem, int& slot, std::str
         error = base + ".cnv: " + e.what();
         return false;
     }
+    localizeSheet(base, image.rgba.data(), static_cast<int>(image.width), static_cast<int>(image.height));
     slot = batch.addTexture(image.width, image.height, image.rgba.data(), error);
     if (slot < 0) {
         error = base + ".cnv upload failed: " + error;

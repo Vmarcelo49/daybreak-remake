@@ -96,6 +96,8 @@ struct Options {
     std::string movie;
     // --story=D41-0: which script scene 8 plays, with --screen=storyadv.
     std::string story;
+    // --language=en: translated menu and HUD labels, from assets/locale/en.txt.
+    std::string language;
     // --story-team=N: runs team N's six fights (the team-select scene does this in play).
     int storyTeam = -1;
     // --story-fight=F:P starts that team at fight F, part P (0 before the battle, 1 after).

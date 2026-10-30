@@ -1912,6 +1912,8 @@ next unblocked row.
 
 - 2026-10-30 — M6, graphics and translation — **the owner decided that art derived from the original, the HUD vectors and a font from its letterforms, is distributed in the project ("Distribuir no projeto").** This covers derived art only: the original's own files stay out of the repository. `docs/TRANSLATION-INVENTORY.md` lists what a translation replaces, about 235 strings in images, 983 lines of dialogue and 570 quote files. Nothing is built yet. The target language is the owner's call.
 
+- 2026-10-30 — M6, translation — **`--language=en` shows the menus and HUD in English.** The owner chose English, and menus and HUD before dialogue. After rejecting a font drawn for the project, the owner picked Goldman Bold (OFL). `src/ui/sheet_locale.cpp` paints labels from `assets/locale/en.txt` over each sheet as it loads, so no original pixels enter the repository, and without the flag the sheets are untouched. Checked (tier 5): captures of title, team select, select, options, controls and battle; fingerprints unchanged without the flag. **Not done:** a language setting in the menus or settings file, story dialogue, victory quotes, earned titles, the upgrade to vector atlases. Weapon descriptions are the agent's translation, read from low-resolution art, and no native speaker has reviewed them. Result, notice and stage screens were not all captured.
+
 ## Recovered-body completeness census (2026-10-15, measured)
 
 The owner's working hypothesis is that the Ginkiha recovery "is probably almost everything we need

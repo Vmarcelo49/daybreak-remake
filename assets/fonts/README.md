@@ -19,7 +19,5 @@ The embedded bitmap font remains an emergency fallback for missing fonts or
 unsupported glyphs. Historical DX9 metric tests explicitly use their original
 Liberation Sans reference and do not define the product's caption face.
 
-`daybreak-latin.ttf` is the project's own face for translated menus and HUD, in the style of the
-game's wide italic lettering. `tools/fonts/build_daybreak_font.py` draws it from centre lines, so it
-contains no traced original art. It has capitals, digits and common punctuation; lowercase maps to
-capitals. It reads poorly near 14 px, so long descriptions need another face.
+`Goldman-Bold.ttf` (SIL OFL 1.1, from google/fonts) draws translated menu and HUD labels. Its
+SHA-256 is `3d875bc02d79dff86369ada5b4c4d8c1b7b184bc70a322b651aa5c39693631e3`.
